@@ -1,0 +1,21 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+coverage/
+.vitest/
+.DS_Store
+
+# local database/data
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# logs
+logs/
+*.log
+
+# optional: keep assets out of git if they will be mounted separately
+# assets/

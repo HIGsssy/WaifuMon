@@ -1,0 +1,69 @@
+{
+  "items": [
+    {
+      "slug": "basic_charm",
+      "name": "Basic Charm",
+      "category": "capture",
+      "captureModifier": 1.0,
+      "isGuaranteedCapture": false,
+      "purchasable": true,
+      "buyPrice": 25,
+      "dailyStockLimit": null,
+      "description": "A simple heart-shaped charm. Gets the job done, sometimes.",
+      "emoji": "🩷",
+      "enabled": true
+    },
+    {
+      "slug": "silk_charm",
+      "name": "Silk Charm",
+      "category": "capture",
+      "captureModifier": 1.5,
+      "isGuaranteedCapture": false,
+      "purchasable": true,
+      "buyPrice": 75,
+      "dailyStockLimit": null,
+      "description": "Woven from enchanted silk. Noticeably more persuasive.",
+      "emoji": "🎀",
+      "enabled": true
+    },
+    {
+      "slug": "velvet_charm",
+      "name": "Velvet Charm",
+      "category": "capture",
+      "captureModifier": 2.25,
+      "isGuaranteedCapture": false,
+      "purchasable": true,
+      "buyPrice": 200,
+      "dailyStockLimit": null,
+      "description": "Plush, luxurious, very hard to say no to.",
+      "emoji": "💜",
+      "enabled": true
+    },
+    {
+      "slug": "prismatic_charm",
+      "name": "Prismatic Charm",
+      "category": "capture",
+      "captureModifier": 4.0,
+      "isGuaranteedCapture": false,
+      "purchasable": false,
+      "buyPrice": 750,
+      "dailyStockLimit": null,
+      "description": "Refracts light into pure temptation. Listed, but not yet in stock.",
+      "emoji": "🌈",
+      "enabled": true
+    },
+    {
+      "slug": "mythic_contract",
+      "name": "Mythic Contract",
+      "category": "capture",
+      "captureModifier": null,
+      "isGuaranteedCapture": true,
+      "purchasable": false,
+      "buyPrice": null,
+      "dailyStockLimit": null,
+      "description": "A binding pact. Guarantees capture. Never sold — only found or granted.",
+      "emoji": "📜",
+      "enabled": true
+    }
+  ]
+}

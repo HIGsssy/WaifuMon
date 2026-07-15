@@ -1,0 +1,223 @@
+/**
+ * Slash-command definitions, registration, and the interaction dispatcher.
+ * The dispatcher is the single wiring point for PlayChannelGuard: the guard
+ * decision (a read-only allowlist lookup — it must not create rows) happens
+ * before provisioning and before any handler, for commands and buttons alike.
+ */
+import {
+  ChannelType,
+  MessageFlags,
+  PermissionFlagsBits,
+  REST,
+  Routes,
+  SlashCommandBuilder,
+  type Interaction,
+} from 'discord.js';
+import type { Logger } from '../shared/logger';
+import { replyWithError } from './commandError';
+import {
+  blockedMessage,
+  decidePlayChannel,
+  extractChannelInfo,
+  type GuardChannelInfo,
+} from './playChannelGuard';
+import { parseCustomId, type ParsedCustomId } from './types';
+
+export function buildCommandDefinitions() {
+  const waifumon = new SlashCommandBuilder()
+    .setName('waifumon')
+    .setDescription('Waifumon — the collection game')
+    .addSubcommand((s) => s.setName('menu').setDescription('Open the main menu'))
+    .addSubcommand((s) => s.setName('profile').setDescription('View your hunter profile'))
+    .addSubcommand((s) => s.setName('daily').setDescription('Claim your daily rewards'))
+    .addSubcommand((s) => s.setName('inventory').setDescription('View your items'))
+    .addSubcommand((s) => s.setName('shop').setDescription('Buy capture charms with WaifuBux'));
+
+  const admin = new SlashCommandBuilder()
+    .setName('waifumon-admin')
+    .setDescription('Waifumon server administration')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .setDMPermission(false)
+    .addSubcommandGroup((g) =>
+      g
+        .setName('allow-channel')
+        .setDescription('Manage the play-channel allowlist')
+        .addSubcommand((s) =>
+          s
+            .setName('add')
+            .setDescription('Allow Waifumon in a channel')
+            .addChannelOption((o) =>
+              o
+                .setName('channel')
+                .setDescription('Channel to allow')
+                .addChannelTypes(ChannelType.GuildText)
+                .setRequired(true),
+            ),
+        )
+        .addSubcommand((s) =>
+          s
+            .setName('remove')
+            .setDescription('Remove a channel from the allowlist')
+            .addChannelOption((o) =>
+              o
+                .setName('channel')
+                .setDescription('Channel to remove')
+                .addChannelTypes(ChannelType.GuildText)
+                .setRequired(true),
+            ),
+        )
+        .addSubcommand((s) => s.setName('list').setDescription('List allowed play channels')),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName('set-announce-channel')
+        .setDescription('Set the rare-capture announcement channel (must be NSFW)')
+        .addChannelOption((o) =>
+          o
+            .setName('channel')
+            .setDescription('NSFW text channel for announcements')
+            .addChannelTypes(ChannelType.GuildText)
+            .setRequired(true),
+        ),
+    );
+
+  return [waifumon.toJSON(), admin.toJSON()];
+}
+
+export async function registerCommands(
+  token: string,
+  clientId: string,
+  guildId: string | undefined,
+  logger: Logger,
+): Promise<void> {
+  const rest = new REST().setToken(token);
+  const body = buildCommandDefinitions();
+  if (guildId) {
+    await rest.put(Routes.applicationGuildCommands(clientId, guildId), { body });
+    logger.info({ guildId, commands: body.length }, 'registered guild-scoped slash commands');
+  } else {
+    await rest.put(Routes.applicationCommands(clientId), { body });
+    logger.info({ commands: body.length }, 'registered global slash commands');
+  }
+}
+
+/** Routing key for a chat command: "name:sub" or "name:group:sub". */
+export function commandKey(interaction: {
+  commandName: string;
+  options: {
+    getSubcommandGroup(required?: boolean): string | null;
+    getSubcommand(required?: boolean): string | null;
+  };
+}): string {
+  const group = interaction.options.getSubcommandGroup(false);
+  const sub = interaction.options.getSubcommand(false) ?? 'menu';
+  return group
+    ? `${interaction.commandName}:${group}:${sub}`
+    : `${interaction.commandName}:${sub}`;
+}
+
+/**
+ * Dependencies are injected so the dispatch pipeline (guard → provision →
+ * handler, in that order) is testable with stubbed interactions and without a
+ * database.
+ */
+export interface DispatcherDeps {
+  logger: Logger;
+  /** Read-only: returns the guild's allowlist without creating any rows. */
+  lookupAllowlist(discordGuildId: string): Promise<string[] | null>;
+  /** Ensures guild + player rows exist; only called after the guard allows. */
+  provision(
+    discordGuildId: string,
+    discordUserId: string,
+  ): Promise<{ guildDbId: number; playerId: number }>;
+  /** Chat handlers keyed by commandKey(); receive the provisioned ids. */
+  commandHandlers: Record<
+    string,
+    (interaction: never, prov: { guildDbId: number; playerId: number }) => Promise<void>
+  >;
+  /** Component handlers keyed by "scope:action". */
+  componentHandlers: Record<
+    string,
+    (
+      interaction: never,
+      prov: { guildDbId: number; playerId: number },
+      args: string[],
+    ) => Promise<void>
+  >;
+  /** Channel-info extraction — overridable so tests can pass plain objects. */
+  extractChannelInfo?: (interaction: Interaction) => GuardChannelInfo;
+}
+
+export function createDispatcher(deps: DispatcherDeps) {
+  const extract = deps.extractChannelInfo ?? extractChannelInfo;
+
+  return async function dispatch(interaction: Interaction): Promise<void> {
+    const isCommand = interaction.isChatInputCommand();
+    const isButton = interaction.isButton();
+    if (!isCommand && !isButton) return;
+
+    let parsed: ParsedCustomId | null = null;
+    if (isButton) {
+      const result = parseCustomId(interaction.customId);
+      if (result === null) return; // not ours
+      if (result === 'unknown_version') {
+        await interaction.reply({
+          content: 'That button is from an older version — re-run /waifumon.',
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+      parsed = result;
+    }
+
+    try {
+      // ── PlayChannelGuard: before provisioning, before any service call. ──
+      const channelInfo = extract(interaction);
+      const allowlist = interaction.guildId
+        ? await deps.lookupAllowlist(interaction.guildId)
+        : null;
+      const decision = decidePlayChannel(channelInfo, allowlist);
+      if (!decision.allow) {
+        await interaction.reply({
+          content: blockedMessage(decision.reason, allowlist),
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      const prov = await deps.provision(interaction.guildId!, interaction.user.id);
+
+      if (isCommand) {
+        const key = commandKey(interaction);
+        const handler = deps.commandHandlers[key];
+        if (!handler) {
+          deps.logger.warn({ key }, 'no handler for command');
+          await interaction.reply({
+            content: "That command isn't available yet.",
+            flags: MessageFlags.Ephemeral,
+          });
+          return;
+        }
+        await handler(interaction as never, prov);
+      } else if (parsed) {
+        const key = `${parsed.scope}:${parsed.action}`;
+        const handler = deps.componentHandlers[key];
+        if (!handler) {
+          deps.logger.warn({ key }, 'no handler for component');
+          await interaction.reply({
+            content: 'That button no longer works — re-run /waifumon.',
+            flags: MessageFlags.Ephemeral,
+          });
+          return;
+        }
+        await handler(interaction as never, prov, parsed.args);
+      }
+    } catch (err) {
+      if (interaction.isRepliable()) {
+        await replyWithError(deps.logger, interaction, err);
+      } else {
+        deps.logger.error({ err }, 'unhandled interaction error (not repliable)');
+      }
+    }
+  };
+}

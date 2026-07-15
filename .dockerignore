@@ -1,0 +1,10 @@
+node_modules
+dist
+.env
+.env.example
+.git
+.ai
+assets
+tests
+coverage
+*.log

@@ -1,0 +1,16 @@
+{
+  "energy": {
+    "baseMax": 25
+  },
+  "inventory": {
+    "captureCapacity": 50
+  },
+  "dailyPackage": {
+    "waifubux": 100,
+    "items": {
+      "basic_charm": 5,
+      "silk_charm": 2,
+      "velvet_charm": 1
+    }
+  }
+}
