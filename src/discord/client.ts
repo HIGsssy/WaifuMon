@@ -11,6 +11,7 @@ import {
 } from './commands/waifumon';
 import {
   handleEncounterCharm,
+  handleEncounterPick,
   handleEncounterRelease,
   handleHunt,
 } from './commands/waifumonHunt';
@@ -69,6 +70,8 @@ export function createDiscordClient(ctx: AppContext): Client {
         handleShopBuy(ctx, i, prov, args[0] ?? ''),
       'enc:charm': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleEncounterCharm(ctx, i, prov, args),
+      'enc:pick': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleEncounterPick(ctx, i, prov, args),
       'enc:release': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleEncounterRelease(ctx, i, prov, args),
     },

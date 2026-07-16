@@ -13,6 +13,7 @@ import type { InventoryService } from '../modules/inventory/inventoryService';
 import type { DailyService } from '../modules/daily/dailyService';
 import type { ShopService } from '../modules/shop/shopService';
 import type { HuntService } from '../modules/hunt/huntService';
+import type { CaptureService } from '../modules/capture/captureService';
 
 export interface AppServices {
   guilds: GuildService;
@@ -22,6 +23,7 @@ export interface AppServices {
   daily: DailyService;
   shop: ShopService;
   hunt: HuntService;
+  capture: CaptureService;
 }
 
 export interface AppContext {

@@ -18,6 +18,7 @@ import { createInventoryService } from './modules/inventory/inventoryService';
 import { createPlayerService } from './modules/players/playerService';
 import { createShopService } from './modules/shop/shopService';
 import { createHuntService } from './modules/hunt/huntService';
+import { createCaptureService } from './modules/capture/captureService';
 import { createLogger } from './shared/logger';
 
 async function main(): Promise<void> {
@@ -73,6 +74,12 @@ async function main(): Promise<void> {
         currency,
         inventory,
         tables: content.tables,
+        logger,
+      }),
+      capture: createCaptureService({
+        db,
+        inventory,
+        captureConfig: content.tables.capture,
         logger,
       }),
     },

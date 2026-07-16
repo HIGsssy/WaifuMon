@@ -9,6 +9,7 @@ import { createCurrencyService } from '../../src/modules/currency/currencyServic
 import { createDailyService } from '../../src/modules/daily/dailyService';
 import { createGuildService } from '../../src/modules/guilds/guildService';
 import { createHuntService } from '../../src/modules/hunt/huntService';
+import { createCaptureService } from '../../src/modules/capture/captureService';
 import { createInventoryService } from '../../src/modules/inventory/inventoryService';
 import { createPlayerService } from '../../src/modules/players/playerService';
 import { createShopService } from '../../src/modules/shop/shopService';
@@ -32,11 +33,13 @@ export interface App {
   daily: ReturnType<typeof createDailyService>;
   shop: ReturnType<typeof createShopService>;
   hunt: ReturnType<typeof createHuntService>;
+  capture: ReturnType<typeof createCaptureService>;
 }
 
 export interface BootstrapOptions {
   timezone?: string;
   huntRng?: Rng;
+  captureRng?: Rng;
 }
 
 /** Wires all services against a test database with the shipped content seeded. */
@@ -77,6 +80,13 @@ export async function bootstrapApp(
       tables: content.tables,
       logger: t.logger,
       ...(opts.huntRng ? { rng: opts.huntRng } : {}),
+    }),
+    capture: createCaptureService({
+      db: t.db,
+      inventory,
+      captureConfig: content.tables.capture,
+      logger: t.logger,
+      ...(opts.captureRng ? { rng: opts.captureRng } : {}),
     }),
   };
 }

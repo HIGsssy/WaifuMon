@@ -154,6 +154,36 @@ export class EncounterExpiredError extends AppError {
   }
 }
 
+export class EncounterAlreadyResolvedError extends AppError {
+  constructor() {
+    super(
+      'ENCOUNTER_ALREADY_RESOLVED',
+      'Encounter is no longer active',
+      'That attempt already resolved~',
+    );
+  }
+}
+
+export class NoAttemptsRemainingError extends AppError {
+  constructor() {
+    super(
+      'NO_ATTEMPTS_REMAINING',
+      'Encounter has no remaining capture attempts',
+      "She's already gone after 3 tries.",
+    );
+  }
+}
+
+export class ItemNotUsableError extends AppError {
+  constructor(slug: string) {
+    super(
+      'ITEM_NOT_USABLE',
+      `Item "${slug}" cannot be used to capture`,
+      "You can't use that on a Waifumon.",
+    );
+  }
+}
+
 /** Detects a Postgres unique-constraint violation (possibly wrapped by drizzle). */
 export function isUniqueViolation(err: unknown): boolean {
   if (err && typeof err === 'object') {

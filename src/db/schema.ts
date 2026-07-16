@@ -222,6 +222,72 @@ export const encounters = pgTable(
   ],
 );
 
+/**
+ * Every capture button click writes one row here — successful attempts double
+ * as the capture log. `guaranteed=true` marks Mythic Contract captures so
+ * audits can distinguish them from ordinary rolls.
+ */
+export const captureAttempts = pgTable(
+  'capture_attempts',
+  {
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    encounterId: bigint('encounter_id', { mode: 'number' })
+      .notNull()
+      .references(() => encounters.id),
+    playerId: bigint('player_id', { mode: 'number' })
+      .notNull()
+      .references(() => players.id),
+    attemptNumber: integer('attempt_number').notNull(),
+    itemId: bigint('item_id', { mode: 'number' })
+      .notNull()
+      .references(() => items.id),
+    computedChance: real('computed_chance').notNull(),
+    roll: real('roll').notNull(),
+    success: boolean('success').notNull(),
+    guaranteed: boolean('guaranteed').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // Deterministic ordering + doubles as a per-encounter attempt guard.
+    uniqueIndex('capture_attempts_encounter_number_uq').on(t.encounterId, t.attemptNumber),
+    index('capture_attempts_encounter_idx').on(t.encounterId),
+  ],
+);
+
+/**
+ * One row per owned copy (duplicates get their own rows, per plan §12).
+ * Level/affection/nickname/buddy semantics land in later milestones — the
+ * capture path only writes id/player/species/caughtAt today.
+ */
+export const playerWaifus = pgTable(
+  'player_waifus',
+  {
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    playerId: bigint('player_id', { mode: 'number' })
+      .notNull()
+      .references(() => players.id),
+    speciesId: bigint('species_id', { mode: 'number' })
+      .notNull()
+      .references(() => species.id),
+    level: integer('level').notNull().default(1),
+    xp: integer('xp').notNull().default(0),
+    affection: integer('affection').notNull().default(0),
+    nickname: text('nickname'),
+    isFavorite: boolean('is_favorite').notNull().default(false),
+    variant: text('variant').notNull().default('standard'),
+    cosmetics: jsonb('cosmetics').$type<string[]>().notNull().default([]),
+    caughtAt: timestamp('caught_at', { withTimezone: true }).notNull().defaultNow(),
+    releasedAt: timestamp('released_at', { withTimezone: true }),
+  },
+  (t) => [
+    index('player_waifus_player_idx').on(t.playerId),
+    index('player_waifus_player_species_idx').on(t.playerId, t.speciesId),
+    check('player_waifus_level_check', sql`${t.level} >= 1`),
+    check('player_waifus_xp_check', sql`${t.xp} >= 0`),
+    check('player_waifus_affection_check', sql`${t.affection} >= 0`),
+  ],
+);
+
 export type GuildRow = typeof guilds.$inferSelect;
 export type PlayerRow = typeof players.$inferSelect;
 export type PlayerCurrenciesRow = typeof playerCurrencies.$inferSelect;
@@ -231,3 +297,5 @@ export type PlayerInventoryRow = typeof playerInventory.$inferSelect;
 export type DailyClaimRow = typeof dailyClaims.$inferSelect;
 export type ShopTransactionRow = typeof shopTransactions.$inferSelect;
 export type EncounterRow = typeof encounters.$inferSelect;
+export type CaptureAttemptRow = typeof captureAttempts.$inferSelect;
+export type PlayerWaifuRow = typeof playerWaifus.$inferSelect;

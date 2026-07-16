@@ -108,6 +108,25 @@ export const HuntTableSchema = z.object({
   flavor: z.array(z.string().min(1)).min(1),
 });
 
+/**
+ * Capture math config: default base-capture rates per rarity, clamp bounds,
+ * and the rarity thresholds for public announcements and @here mentions.
+ * Species-level `baseCaptureRate` overrides the rarity default when set.
+ */
+export const CaptureConfigSchema = z.object({
+  baseRatesByRarity: z.object(
+    Object.fromEntries(
+      RARITIES.map((r) => [r, z.number().gt(0).lte(1)] as const),
+    ) as { [K in (typeof RARITIES)[number]]: z.ZodNumber },
+  ),
+  minChance: z.number().gt(0).lt(1),
+  maxChance: z.number().gt(0).lte(1),
+  /** Rarity at or above which a capture posts a public announcement. */
+  announceMinRarity: z.enum(RARITIES),
+  /** Rarity at or above which the announcement includes an @here mention. */
+  hereMentionMinRarity: z.enum(RARITIES),
+});
+
 export const TablesFileSchema = z.object({
   energy: z.object({
     baseMax: z.number().int().positive(),
@@ -122,6 +141,7 @@ export const TablesFileSchema = z.object({
     items: z.record(slug, z.number().int().positive()),
   }),
   hunt: HuntTableSchema,
+  capture: CaptureConfigSchema,
 });
 
 export type ItemContent = z.infer<typeof ItemContentSchema>;

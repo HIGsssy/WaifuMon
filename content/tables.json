@@ -53,5 +53,20 @@
       "A single silk ribbon flutters by, ownerless.",
       "You catch a whiff of perfume — then it's gone."
     ]
+  },
+  "capture": {
+    "baseRatesByRarity": {
+      "N": 0.5,
+      "R": 0.35,
+      "SR": 0.22,
+      "SSR": 0.12,
+      "UR": 0.06,
+      "LR": 0.03,
+      "EX": 0.03
+    },
+    "minChance": 0.02,
+    "maxChance": 0.95,
+    "announceMinRarity": "SSR",
+    "hereMentionMinRarity": "UR"
   }
 }
