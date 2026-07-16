@@ -52,6 +52,13 @@ async function main(): Promise<void> {
     config: content.tables.progression,
     baseMaxEnergy: content.tables.energy.baseMax,
   });
+  const collection = createCollectionService({
+    db,
+    currency,
+    duplicateConfig: content.tables.duplicate,
+    waifuConfig: content.tables.waifuProgression,
+    totalSpeciesCount: content.species.filter((s) => s.enabled).length,
+  });
   const ctx: AppContext = {
     config,
     logger,
@@ -82,6 +89,7 @@ async function main(): Promise<void> {
         currency,
         inventory,
         progression,
+        collection,
         tables: content.tables,
         logger,
       }),
@@ -93,12 +101,7 @@ async function main(): Promise<void> {
         captureConfig: content.tables.capture,
         logger,
       }),
-      collection: createCollectionService({
-        db,
-        currency,
-        duplicateConfig: content.tables.duplicate,
-        totalSpeciesCount: content.species.filter((s) => s.enabled).length,
-      }),
+      collection,
     },
   };
 

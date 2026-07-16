@@ -83,11 +83,11 @@ describe('grantXp — audit and level-up mechanics', () => {
     expect(grant.levelUps).toEqual([]);
     const [player] = await t.db.select().from(players).where(eq(players.id, playerId));
     expect(player?.xp).toBe(5);
-    const [{ n }] = await t.db
+    const rowsA = await t.db
       .select({ n: count() })
       .from(playerProgressionEvents)
       .where(eq(playerProgressionEvents.playerId, playerId));
-    expect(n).toBe(1);
+    expect(rowsA[0]?.n).toBe(1);
   });
 
   it('levels up once when crossing exactly one threshold', async () => {
@@ -131,11 +131,11 @@ describe('grantXp — audit and level-up mechanics', () => {
     const [player] = await t.db.select().from(players).where(eq(players.id, playerId));
     expect(player?.xp).toBe(0);
     expect(player?.level).toBe(1);
-    const [{ n }] = await t.db
+    const rowsB = await t.db
       .select({ n: count() })
       .from(playerProgressionEvents)
       .where(eq(playerProgressionEvents.playerId, playerId));
-    expect(n).toBe(0);
+    expect(rowsB[0]?.n).toBe(0);
   });
 });
 

@@ -37,9 +37,12 @@ import type {
   LevelUpEvent,
   ProgressionService,
 } from '../progression/progressionService';
+import type { BuddyAwardResult, CollectionService } from '../collection/collectionService';
 
 interface WithXp {
   levelUps: LevelUpEvent[];
+  /** Per-hunt buddy XP + affection award, null when the player has no buddy. */
+  buddyAward: BuddyAwardResult | null;
 }
 
 export interface HuntEncounterResult extends WithXp {
@@ -113,6 +116,7 @@ export interface HuntServiceDeps {
   currency: CurrencyService;
   inventory: InventoryService;
   progression: ProgressionService;
+  collection: CollectionService;
   tables: TablesContent;
   logger: Logger;
   rng?: Rng;
@@ -121,7 +125,7 @@ export interface HuntServiceDeps {
 const MAX_RARITY_REROLLS = 6;
 
 export function createHuntService(deps: HuntServiceDeps): HuntService {
-  const { db, currency, inventory, progression, tables, logger } = deps;
+  const { db, currency, inventory, progression, collection, tables, logger } = deps;
   const rng = deps.rng ?? defaultRng();
   const hunt = tables.hunt;
 
@@ -253,6 +257,9 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
         });
         const levelUps = xp.levelUps;
 
+        // Buddy hunt reward — small XP + affection, only if a buddy is set.
+        const buddyAward = await collection.awardBuddyOnHunt(tx, playerId);
+
         // Roll the result table.
         const kind: HuntResultKind = rollWeighted(
           hunt.resultTable.map((r) => ({ weight: r.weight, value: r.kind })),
@@ -269,6 +276,7 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
               text: hunt.flavor[rng.intInclusive(0, hunt.flavor.length - 1)]!,
               energyRemaining,
               levelUps,
+              buddyAward,
             } satisfies HuntFlavorResult;
           }
           const expiresAt = new Date(now.getTime() + hunt.encounterExpirySeconds * 1000);
@@ -291,6 +299,7 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
               encounter: encounter!,
               energyRemaining,
               levelUps,
+              buddyAward,
             } satisfies HuntEncounterResult;
           } catch (err) {
             if (isUniqueViolation(err)) {
@@ -314,6 +323,7 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
               text: hunt.flavor[rng.intInclusive(0, hunt.flavor.length - 1)]!,
               energyRemaining,
               levelUps,
+              buddyAward,
             } satisfies HuntFlavorResult;
           }
           const quantity = rng.intInclusive(sub.minQty, sub.maxQty);
@@ -324,6 +334,7 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
             quantity,
             energyRemaining,
             levelUps,
+            buddyAward,
           } satisfies HuntItemResult;
         }
 
@@ -336,6 +347,7 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
             balanceAfter: row.waifubux,
             energyRemaining,
             levelUps,
+            buddyAward,
           } satisfies HuntWaifubuxResult;
         }
 
@@ -348,12 +360,19 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
             balanceAfter: row.essence,
             energyRemaining,
             levelUps,
+            buddyAward,
           } satisfies HuntEssenceResult;
         }
 
         // kind === 'flavor'
         const text = hunt.flavor[rng.intInclusive(0, hunt.flavor.length - 1)]!;
-        return { kind: 'flavor', text, energyRemaining, levelUps } satisfies HuntFlavorResult;
+        return {
+          kind: 'flavor',
+          text,
+          energyRemaining,
+          levelUps,
+          buddyAward,
+        } satisfies HuntFlavorResult;
       });
     },
 

@@ -1,7 +1,7 @@
 import { and, eq, gte, sql } from 'drizzle-orm';
 import type { Db, DbOrTx } from '../../db/client';
 import { playerCurrencies, type PlayerCurrenciesRow } from '../../db/schema';
-import { InsufficientFundsError, PlayerNotFoundError } from '../../shared/errors';
+import { InsufficientEssenceError, InsufficientFundsError, PlayerNotFoundError } from '../../shared/errors';
 
 /**
  * Currency operations. Mutations take a DbOrTx so callers compose them into
@@ -16,6 +16,7 @@ export interface CurrencyService {
   grantWaifubux(tx: DbOrTx, playerId: number, amount: number): Promise<PlayerCurrenciesRow>;
   spendWaifubux(tx: DbOrTx, playerId: number, amount: number): Promise<PlayerCurrenciesRow>;
   grantEssence(tx: DbOrTx, playerId: number, amount: number): Promise<PlayerCurrenciesRow>;
+  spendEssence(tx: DbOrTx, playerId: number, amount: number): Promise<PlayerCurrenciesRow>;
   setHuntEnergy(tx: DbOrTx, playerId: number, value: number): Promise<PlayerCurrenciesRow>;
 }
 
@@ -93,6 +94,29 @@ export function createCurrencyService(db: Db): CurrencyService {
         .where(eq(playerCurrencies.playerId, playerId))
         .returning();
       if (!row) throw new PlayerNotFoundError(playerId);
+      return row;
+    },
+
+    async spendEssence(tx, playerId, amount) {
+      assertPositiveInt(amount);
+      const [row] = await tx
+        .update(playerCurrencies)
+        .set({
+          essence: sql`${playerCurrencies.essence} - ${amount}`,
+          updatedAt: sql`now()`,
+        })
+        .where(
+          and(eq(playerCurrencies.playerId, playerId), gte(playerCurrencies.essence, amount)),
+        )
+        .returning();
+      if (!row) {
+        const [current] = await tx
+          .select({ essence: playerCurrencies.essence })
+          .from(playerCurrencies)
+          .where(eq(playerCurrencies.playerId, playerId));
+        if (!current) throw new PlayerNotFoundError(playerId);
+        throw new InsufficientEssenceError(amount, current.essence);
+      }
       return row;
     },
 

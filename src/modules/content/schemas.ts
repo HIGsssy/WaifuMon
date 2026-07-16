@@ -214,6 +214,29 @@ export const ProgressionConfigSchema = z.object({
     .default([]),
 });
 
+/**
+ * Waifumon-side progression: per-copy level curve, buddy hunt rewards, and
+ * Essence investment yields. Separate from player XP so both can be tuned
+ * without spillover.
+ */
+export const WaifuProgressionConfigSchema = z.object({
+  levelCurve: z.object({
+    base: z.number().int().positive(),
+    growth: z.number().int().nonnegative(),
+  }),
+  maxLevel: z.number().int().positive(),
+  buddy: z.object({
+    xpPerHunt: z.number().int().nonnegative(),
+    affectionPerHunt: z.number().int().nonnegative(),
+  }),
+  essenceInvestment: z.object({
+    essenceCost: z.number().int().positive(),
+    xpGranted: z.number().int().positive(),
+  }),
+  /** Minimum waifu level required before a nickname can be set. */
+  nicknameMinLevel: z.number().int().positive(),
+});
+
 export const TablesFileSchema = z.object({
   energy: z.object({
     baseMax: z.number().int().positive(),
@@ -231,6 +254,7 @@ export const TablesFileSchema = z.object({
   capture: CaptureConfigSchema,
   duplicate: DuplicateConfigSchema,
   progression: ProgressionConfigSchema,
+  waifuProgression: WaifuProgressionConfigSchema,
 });
 
 export type ItemContent = z.infer<typeof ItemContentSchema>;
@@ -238,6 +262,7 @@ export type SpeciesContent = z.infer<typeof SpeciesContentSchema>;
 export type TablesContent = z.infer<typeof TablesFileSchema>;
 export type DuplicateConfig = z.infer<typeof DuplicateConfigSchema>;
 export type ProgressionConfig = z.infer<typeof ProgressionConfigSchema>;
+export type WaifuProgressionConfig = z.infer<typeof WaifuProgressionConfigSchema>;
 
 export interface LoadedContent {
   items: ItemContent[];

@@ -125,5 +125,18 @@
     "prestigeTitles": [
       { "atLevel": 50, "label": "Prestige Hunter" }
     ]
+  },
+  "waifuProgression": {
+    "levelCurve": { "base": 30, "growth": 10 },
+    "maxLevel": 50,
+    "buddy": {
+      "xpPerHunt": 2,
+      "affectionPerHunt": 1
+    },
+    "essenceInvestment": {
+      "essenceCost": 10,
+      "xpGranted": 25
+    },
+    "nicknameMinLevel": 5
   }
 }

@@ -50,6 +50,13 @@ export const players = pgTable(
     discordUserId: text('discord_user_id').notNull(),
     xp: integer('xp').notNull().default(0),
     level: integer('level').notNull().default(1),
+    /**
+     * Currently active buddy — nullable, no FK (player_waifus is defined below
+     * and drizzle can't express a self-referencing cycle cleanly). Application
+     * code (CollectionService) enforces the invariants: buddy must be an owned
+     * active copy; soft-release/convert clears the field if it matched.
+     */
+    buddyWaifuId: bigint('buddy_waifu_id', { mode: 'number' }),
     showcase: jsonb('showcase').$type<Record<string, unknown>>(),
     lastHuntAt: timestamp('last_hunt_at', { withTimezone: true }),
     settings: jsonb('settings').$type<Record<string, unknown>>().notNull().default({}),

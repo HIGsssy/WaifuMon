@@ -83,10 +83,15 @@ export async function handleProfile(
   const progress = ctx.services.progression.progressFor(player.xp);
   const maxEnergy = ctx.services.progression.computeMaxEnergy(player.level);
   const prestige = ctx.services.progression.getPrestigeTitle(player.level);
+  const buddy = await ctx.services.collection.getBuddy(prov.playerId);
 
   const xpLine = progress.atMaxLevel
     ? `${player.xp} XP · **MAX**`
     : `${progress.xpIntoLevel} / ${progress.xpToNext} XP to Lv ${progress.level + 1} · ${player.xp} total`;
+
+  const buddyLine = buddy
+    ? `${buddy.waifu.nickname ? `${buddy.waifu.nickname} (${buddy.species.name})` : buddy.species.name} · Lv ${buddy.waifu.level}`
+    : '_(none — set one from `/waifumon buddy`)_';
 
   const embed = new EmbedBuilder()
     .setTitle(`👤 ${interaction.user.displayName}'s Profile`)
@@ -97,6 +102,7 @@ export async function handleProfile(
       { name: '⚡ Hunt Energy', value: `${currencies.huntEnergy} / ${maxEnergy}`, inline: true },
       { name: '💰 WaifuBux', value: `${currencies.waifubux}`, inline: true },
       { name: '✨ Essence', value: `${currencies.essence}`, inline: true },
+      { name: '★ Buddy', value: buddyLine, inline: false },
     )
     .setFooter({ text: `Hunter since ${player.createdAt.toDateString()}` });
   await respondScreen(interaction, { embeds: [embed], components: withBackRow() });

@@ -1,0 +1,1 @@
+ALTER TABLE "players" ADD COLUMN "buddy_waifu_id" bigint;

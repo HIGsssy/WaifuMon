@@ -28,6 +28,7 @@ function fakeInteraction(opts: FakeInteractionOptions) {
     isButton: () => opts.kind === 'button',
     isStringSelectMenu: () => false,
     isAutocomplete: () => false,
+    isModalSubmit: () => false,
     isRepliable: () => true,
     customId: opts.customId ?? '',
     commandName: 'waifumon',
@@ -169,6 +170,7 @@ describe('dispatcher — select menus and autocomplete', () => {
       isButton: () => false,
       isStringSelectMenu: () => true,
       isAutocomplete: () => false,
+    isModalSubmit: () => false,
       isRepliable: () => true,
       customId,
       values: ['42'],
@@ -187,6 +189,7 @@ describe('dispatcher — select menus and autocomplete', () => {
       isButton: () => false,
       isStringSelectMenu: () => false,
       isAutocomplete: () => true,
+      isModalSubmit: () => false,
       isRepliable: () => false,
       commandName: 'waifumon',
       options: {

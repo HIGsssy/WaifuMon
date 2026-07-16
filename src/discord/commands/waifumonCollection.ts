@@ -13,16 +13,25 @@ import {
   ButtonBuilder,
   ButtonStyle,
   EmbedBuilder,
+  MessageFlags,
+  ModalBuilder,
   StringSelectMenuBuilder,
+  TextInputBuilder,
+  TextInputStyle,
   type ButtonInteraction,
+  type ChatInputCommandInteraction,
+  type ModalSubmitInteraction,
   type StringSelectMenuInteraction,
 } from 'discord.js';
 import type { OwnedEntry, PaginatedOwned } from '../../modules/collection/collectionService';
 import { resolveAssetPath } from '../../modules/content/loader';
 import {
+  InsufficientEssenceError,
   NotADuplicateError,
   WaifuAlreadyReleasedError,
+  WaifuIsBuddyError,
   WaifuIsFavoriteError,
+  WaifuNicknameTooEarlyError,
   WaifuNotOwnedError,
 } from '../../shared/errors';
 import type { AppContext, PlayerInteraction, Provisioned } from '../types';
@@ -239,9 +248,11 @@ export async function handleInspectAutocomplete(
 }
 
 function inspectComponents(
+  ctx: AppContext,
   entry: OwnedEntry,
   isDuplicate: boolean,
   convertEssence: number,
+  isBuddy: boolean,
 ): ActionRowBuilder<ButtonBuilder>[] {
   const favBtn = new ButtonBuilder()
     .setCustomId(buildCustomId('waifu', 'fav', String(entry.waifu.id)))
@@ -255,20 +266,37 @@ function inspectComponents(
     .setCustomId(buildCustomId('col', 'list'))
     .setLabel('⟵ Collection')
     .setStyle(ButtonStyle.Secondary);
-  // Convert only surfaces when this really is a duplicate (i.e. the player
-  // owns another active copy of the same species). Unique copies must go
-  // through Release (smaller Essence value).
-  const buttons: ButtonBuilder[] = [favBtn];
+  const buddyBtn = new ButtonBuilder()
+    .setCustomId(buildCustomId('waifu', 'buddy', String(entry.waifu.id)))
+    .setLabel(isBuddy ? '★ Buddy' : '🤝 Set Buddy')
+    .setStyle(isBuddy ? ButtonStyle.Success : ButtonStyle.Primary)
+    .setDisabled(isBuddy);
+  const investBtn = new ButtonBuilder()
+    .setCustomId(buildCustomId('waifu', 'invest', String(entry.waifu.id)))
+    .setLabel(
+      `✨ Invest ${ctx.content.tables.waifuProgression.essenceInvestment.essenceCost} Essence`,
+    )
+    .setStyle(ButtonStyle.Secondary);
+  const nickBtn = new ButtonBuilder()
+    .setCustomId(buildCustomId('waifu', 'nick_open', String(entry.waifu.id)))
+    .setLabel('📝 Nickname')
+    .setStyle(ButtonStyle.Secondary)
+    .setDisabled(entry.waifu.level < ctx.content.tables.waifuProgression.nicknameMinLevel);
+
+  const rows: ActionRowBuilder<ButtonBuilder>[] = [];
+  const primary: ButtonBuilder[] = [favBtn, buddyBtn];
   if (isDuplicate) {
-    buttons.push(
+    primary.push(
       new ButtonBuilder()
         .setCustomId(buildCustomId('waifu', 'convert', String(entry.waifu.id)))
-        .setLabel(`✨ Convert to Essence (+${convertEssence})`)
+        .setLabel(`✨ Convert (+${convertEssence})`)
         .setStyle(ButtonStyle.Primary),
     );
   }
-  buttons.push(releaseBtn, backBtn);
-  return [new ActionRowBuilder<ButtonBuilder>().addComponents(...buttons)];
+  primary.push(releaseBtn);
+  rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(...primary));
+  rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(investBtn, nickBtn, backBtn));
+  return rows;
 }
 
 async function renderInspect(
@@ -279,17 +307,29 @@ async function renderInspect(
 ): Promise<void> {
   try {
     const entry = await ctx.services.collection.getOwned(prov.playerId, waifuId);
-    const isDuplicate = await ctx.services.collection.hasOtherActiveCopies(
-      prov.playerId,
-      waifuId,
-    );
+    const [isDuplicate, buddy] = await Promise.all([
+      ctx.services.collection.hasOtherActiveCopies(prov.playerId, waifuId),
+      ctx.services.collection.getBuddy(prov.playerId),
+    ]);
+    const isBuddy = buddy?.waifu.id === waifuId;
     const { waifu, species } = entry;
     const caught = waifu.caughtAt.toISOString().slice(0, 10);
     const convertEssence =
       (ctx.content.tables.duplicate.essenceByRarity as Record<string, number>)[species.rarity] ??
       0;
+
+    const waifuProg = ctx.services.collection.waifuProgress(waifu);
+    const xpLine = waifuProg.atMaxLevel
+      ? `${waifu.xp} XP · **MAX**`
+      : `${waifuProg.xpIntoLevel} / ${waifuProg.xpToNext} XP to Lv ${waifu.level + 1}`;
+
+    const nicknameUnlock = ctx.content.tables.waifuProgression.nicknameMinLevel;
+    const unlockLines: string[] = [];
+    if (waifu.level >= nicknameUnlock) unlockLines.push('📝 Nickname unlocked');
+    else unlockLines.push(`🔒 Nickname at Lv ${nicknameUnlock}`);
+
     const embed = new EmbedBuilder()
-      .setTitle(`✨ ${displayName(entry)}`)
+      .setTitle(`✨ ${displayName(entry)}${isBuddy ? ' · ★ Buddy' : ''}`)
       .setColor(rarityColor(species.rarity))
       .setDescription(species.description || '_A mysterious presence…_')
       .addFields(
@@ -297,22 +337,24 @@ async function renderInspect(
         { name: 'Archetype', value: species.archetype, inline: true },
         { name: 'Variant', value: waifu.variant, inline: true },
         { name: 'Level', value: `${waifu.level}`, inline: true },
+        { name: 'XP', value: xpLine, inline: true },
         { name: 'Affection', value: `${waifu.affection}`, inline: true },
-        { name: 'Favorite', value: waifu.isFavorite ? '★ yes' : '☆ no', inline: true },
         { name: 'Nickname', value: waifu.nickname || '_(none)_', inline: true },
+        { name: 'Favorite', value: waifu.isFavorite ? '★ yes' : '☆ no', inline: true },
         { name: 'Captured', value: caught, inline: true },
         {
           name: 'Copies',
           value: isDuplicate ? 'duplicate — extras convertible' : 'only copy',
           inline: true,
         },
+        { name: 'Unlocks', value: unlockLines.join('\n'), inline: true },
       );
     const card = attachCardOr(ctx, species.imagePath, species.slug);
     const files = card ? [card] : [];
     if (card) embed.setImage(`attachment://${CARD_FILENAME}`);
     await respondScreen(interaction, {
       embeds: [embed],
-      components: inspectComponents(entry, isDuplicate, convertEssence),
+      components: inspectComponents(ctx, entry, isDuplicate, convertEssence, isBuddy),
       files,
     });
   } catch (err) {
@@ -450,6 +492,13 @@ export async function handleWaifuReleaseConfirm(
     if (err instanceof WaifuIsFavoriteError) {
       // Should be rare — the confirm button we sent already carried force=true
       // for favorites — but stay safe.
+      await respondScreen(interaction, {
+        content: err.userMessage,
+        components: withBackRow(),
+      });
+      return;
+    }
+    if (err instanceof WaifuIsBuddyError) {
       await respondScreen(interaction, {
         content: err.userMessage,
         components: withBackRow(),
@@ -707,10 +756,248 @@ async function performConvertFromInspect(
       });
       return;
     }
+    if (err instanceof WaifuIsBuddyError) {
+      await respondScreen(interaction, {
+        content: err.userMessage,
+        components: withBackRow(),
+      });
+      return;
+    }
     if (err instanceof WaifuNotOwnedError || err instanceof WaifuAlreadyReleasedError) {
       await respondScreen(interaction, { content: err.userMessage, components: withBackRow() });
       return;
     }
     throw err;
   }
+}
+
+
+// --------------------------- buddy / invest / nickname ---------------------------
+
+const EPHEMERAL = { flags: MessageFlags.Ephemeral } as const;
+
+/** waifu:buddy � set as active buddy, then re-render inspect. */
+export async function handleWaifuSetBuddy(
+  ctx: AppContext,
+  interaction: ButtonInteraction,
+  prov: Provisioned,
+  args: string[],
+): Promise<void> {
+  const waifuId = Number(args[0]);
+  if (!Number.isInteger(waifuId)) {
+    await respondScreen(interaction, {
+      content: 'That Waifumon is no longer available.',
+      components: withBackRow(),
+    });
+    return;
+  }
+  try {
+    await ctx.services.collection.setBuddy(prov.playerId, waifuId);
+  } catch (err) {
+    if (err instanceof WaifuNotOwnedError || err instanceof WaifuAlreadyReleasedError) {
+      await respondScreen(interaction, { content: err.userMessage, components: withBackRow() });
+      return;
+    }
+    throw err;
+  }
+  await renderInspect(ctx, interaction, prov, waifuId);
+}
+
+/** waifu:invest � spend Essence for waifu XP, re-render inspect with a status. */
+export async function handleWaifuInvest(
+  ctx: AppContext,
+  interaction: ButtonInteraction,
+  prov: Provisioned,
+  args: string[],
+): Promise<void> {
+  const waifuId = Number(args[0]);
+  if (!Number.isInteger(waifuId)) {
+    await respondScreen(interaction, {
+      content: 'That Waifumon is no longer available.',
+      components: withBackRow(),
+    });
+    return;
+  }
+  try {
+    const result = await ctx.services.collection.investEssence(prov.playerId, waifuId);
+    if (result.toLevel > result.fromLevel) {
+      await interaction.followUp({
+        content: `\u2b06\ufe0f **${displayName({ waifu: result.waifu, species: (await ctx.services.collection.getOwned(prov.playerId, waifuId)).species })}** advanced to Lv ${result.toLevel}!`,
+        ...EPHEMERAL,
+      });
+    }
+    await renderInspect(ctx, interaction, prov, waifuId);
+  } catch (err) {
+    if (err instanceof InsufficientEssenceError) {
+      await respondScreen(interaction, { content: err.userMessage, components: withBackRow() });
+      return;
+    }
+    if (err instanceof WaifuNotOwnedError || err instanceof WaifuAlreadyReleasedError) {
+      await respondScreen(interaction, { content: err.userMessage, components: withBackRow() });
+      return;
+    }
+    throw err;
+  }
+}
+
+/** waifu:nick_open � show the nickname modal. */
+export async function handleWaifuNicknameOpen(
+  ctx: AppContext,
+  interaction: ButtonInteraction,
+  prov: Provisioned,
+  args: string[],
+): Promise<void> {
+  const waifuId = Number(args[0]);
+  if (!Number.isInteger(waifuId)) {
+    await respondScreen(interaction, {
+      content: 'That Waifumon is no longer available.',
+      components: withBackRow(),
+    });
+    return;
+  }
+  let entry: OwnedEntry;
+  try {
+    entry = await ctx.services.collection.getOwned(prov.playerId, waifuId);
+  } catch (err) {
+    if (err instanceof WaifuNotOwnedError || err instanceof WaifuAlreadyReleasedError) {
+      await respondScreen(interaction, { content: err.userMessage, components: withBackRow() });
+      return;
+    }
+    throw err;
+  }
+  const minLevel = ctx.content.tables.waifuProgression.nicknameMinLevel;
+  if (entry.waifu.level < minLevel) {
+    await respondScreen(interaction, {
+      content: `Nicknames unlock at Lv ${minLevel} (currently Lv ${entry.waifu.level}).`,
+      components: withBackRow(),
+    });
+    return;
+  }
+  const modal = new ModalBuilder()
+    .setCustomId(buildCustomId('waifu', 'nick_submit', String(waifuId)))
+    .setTitle(`Nickname for ${entry.species.name}`)
+    .addComponents(
+      new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new TextInputBuilder()
+          .setCustomId('nickname')
+          .setLabel('Nickname (max 32 chars, blank clears)')
+          .setStyle(TextInputStyle.Short)
+          .setRequired(false)
+          .setMaxLength(32)
+          .setValue(entry.waifu.nickname ?? ''),
+      ),
+    );
+  await interaction.showModal(modal);
+}
+
+/** waifu:nick_submit � modal callback. */
+export async function handleWaifuNicknameSubmit(
+  ctx: AppContext,
+  interaction: ModalSubmitInteraction,
+  prov: Provisioned,
+  args: string[],
+): Promise<void> {
+  const waifuId = Number(args[0]);
+  if (!Number.isInteger(waifuId)) {
+    await interaction.reply({ content: 'That Waifumon is no longer available.', ...EPHEMERAL });
+    return;
+  }
+  const raw = interaction.fields.getTextInputValue('nickname');
+  try {
+    await ctx.services.collection.setNickname(prov.playerId, waifuId, raw || null);
+    await interaction.reply({
+      content: raw.trim().length > 0 ? `Nickname set to **${raw.trim()}**.` : 'Nickname cleared.',
+      ...EPHEMERAL,
+    });
+  } catch (err) {
+    if (err instanceof WaifuNicknameTooEarlyError) {
+      await interaction.reply({ content: err.userMessage, ...EPHEMERAL });
+      return;
+    }
+    if (err instanceof WaifuNotOwnedError || err instanceof WaifuAlreadyReleasedError) {
+      await interaction.reply({ content: err.userMessage, ...EPHEMERAL });
+      return;
+    }
+    throw err;
+  }
+}
+
+// --------------------------- /waifumon buddy ---------------------------
+
+/**
+ * /waifumon buddy [name] � no arg shows the current buddy, with-arg sets it.
+ * Autocomplete over the player's own waifus (same as inspect).
+ */
+export async function handleBuddyCommand(
+  ctx: AppContext,
+  interaction: PlayerInteraction,
+  prov: Provisioned,
+): Promise<void> {
+  if (!interaction.isChatInputCommand()) return;
+  const cmd = interaction as ChatInputCommandInteraction;
+  const raw = cmd.options.getString('name')?.trim();
+  if (!raw) {
+    // Show current buddy.
+    const buddy = await ctx.services.collection.getBuddy(prov.playerId);
+    if (!buddy) {
+      await respondScreen(interaction, {
+        content: 'No buddy set~ Set one from `/waifumon inspect` or `/waifumon buddy <name>`.',
+        components: withBackRow(),
+      });
+      return;
+    }
+    await renderInspect(ctx, interaction, prov, buddy.waifu.id);
+    return;
+  }
+  const asId = Number(raw);
+  let waifuId: number | null = null;
+  if (Number.isInteger(asId) && asId > 0) waifuId = asId;
+  else {
+    const matches = await ctx.services.collection.searchByName(prov.playerId, raw, 1);
+    if (matches.length > 0) waifuId = matches[0]!.waifu.id;
+  }
+  if (waifuId == null) {
+    await respondScreen(interaction, {
+      content: `No Waifumon matching "${raw}" in your collection.`,
+      components: withBackRow(),
+    });
+    return;
+  }
+  try {
+    await ctx.services.collection.setBuddy(prov.playerId, waifuId);
+  } catch (err) {
+    if (err instanceof WaifuNotOwnedError || err instanceof WaifuAlreadyReleasedError) {
+      await respondScreen(interaction, { content: err.userMessage, components: withBackRow() });
+      return;
+    }
+    throw err;
+  }
+  await renderInspect(ctx, interaction, prov, waifuId);
+}
+
+/** Autocomplete for /waifumon buddy � same shape as inspect. */
+export async function handleBuddyAutocomplete(
+  ctx: AppContext,
+  interaction: import('discord.js').AutocompleteInteraction,
+  playerId: number | null,
+): Promise<void> {
+  if (playerId == null) {
+    await interaction.respond([]);
+    return;
+  }
+  const focused = interaction.options.getFocused(true);
+  if (focused.name !== 'name') {
+    await interaction.respond([]);
+    return;
+  }
+  const matches = await ctx.services.collection.searchByName(playerId, focused.value, 25);
+  await interaction.respond(
+    matches.map((entry) => ({
+      name: `[${entry.species.rarity}] ${displayName(entry)} � Lv ${entry.waifu.level}`.slice(
+        0,
+        100,
+      ),
+      value: String(entry.waifu.id),
+    })),
+  );
 }

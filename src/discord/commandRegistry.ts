@@ -47,6 +47,18 @@ export function buildCommandDefinitions() {
             .setRequired(true)
             .setAutocomplete(true),
         ),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName('buddy')
+        .setDescription('Show or set your active buddy')
+        .addStringOption((o) =>
+          o
+            .setName('name')
+            .setDescription('Nickname or species name (leave blank to view current buddy)')
+            .setRequired(false)
+            .setAutocomplete(true),
+        ),
     );
 
   const admin = new SlashCommandBuilder()
@@ -187,7 +199,8 @@ export function createDispatcher(deps: DispatcherDeps) {
     const isButton = interaction.isButton();
     const isSelect = interaction.isStringSelectMenu();
     const isAutocomplete = interaction.isAutocomplete();
-    if (!isCommand && !isButton && !isSelect && !isAutocomplete) return;
+    const isModalSubmit = interaction.isModalSubmit();
+    if (!isCommand && !isButton && !isSelect && !isAutocomplete && !isModalSubmit) return;
 
     // Autocomplete bypass: no side effects, no guard, no provision. Query
     // the read-only lookup and hand a possibly-null playerId to the handler.
@@ -222,6 +235,18 @@ export function createDispatcher(deps: DispatcherDeps) {
       if (result === 'unknown_version') {
         await (interaction as { reply: (o: unknown) => Promise<unknown> }).reply({
           content: 'That button is from an older version — re-run /waifumon.',
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+      parsed = result;
+    }
+    if (isModalSubmit) {
+      const result = parseCustomId(interaction.customId);
+      if (result === null) return;
+      if (result === 'unknown_version') {
+        await interaction.reply({
+          content: 'That form is from an older version — re-run /waifumon.',
           flags: MessageFlags.Ephemeral,
         });
         return;

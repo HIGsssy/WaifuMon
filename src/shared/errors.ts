@@ -65,6 +65,16 @@ export class InsufficientFundsError extends AppError {
   }
 }
 
+export class InsufficientEssenceError extends AppError {
+  constructor(required: number, balance: number) {
+    super(
+      'INSUFFICIENT_ESSENCE',
+      `Needs ${required} Essence, has ${balance}`,
+      `You need ${required} Essence but only have ${balance}.`,
+    );
+  }
+}
+
 export class InsufficientItemsError extends AppError {
   constructor(itemId: number, requested: number) {
     super(
@@ -220,6 +230,26 @@ export class NotADuplicateError extends AppError {
       'NOT_A_DUPLICATE',
       `Waifu ${waifuId} is the only active copy of its species`,
       "That's your only copy of her — release her instead if you want the Essence.",
+    );
+  }
+}
+
+export class WaifuIsBuddyError extends AppError {
+  constructor() {
+    super(
+      'WAIFU_IS_BUDDY',
+      'Cannot release/convert the active buddy',
+      "That's your active buddy~ Switch buddies first.",
+    );
+  }
+}
+
+export class WaifuNicknameTooEarlyError extends AppError {
+  constructor(minLevel: number) {
+    super(
+      'WAIFU_NICKNAME_TOO_EARLY',
+      `Nicknames unlock at waifu level ${minLevel}`,
+      `Nicknames unlock at level ${minLevel}~ Invest some Essence first.`,
     );
   }
 }

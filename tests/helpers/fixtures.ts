@@ -63,6 +63,13 @@ export async function bootstrapApp(
     config: content.tables.progression,
     baseMaxEnergy: content.tables.energy.baseMax,
   });
+  const collection = createCollectionService({
+    db: t.db,
+    currency,
+    duplicateConfig: content.tables.duplicate,
+    waifuConfig: content.tables.waifuProgression,
+    totalSpeciesCount: content.species.filter((s) => s.enabled).length,
+  });
   return {
     content,
     guilds: createGuildService(t.db),
@@ -90,6 +97,7 @@ export async function bootstrapApp(
       currency,
       inventory,
       progression,
+      collection,
       tables: content.tables,
       logger: t.logger,
       ...(opts.huntRng ? { rng: opts.huntRng } : {}),
@@ -103,12 +111,7 @@ export async function bootstrapApp(
       logger: t.logger,
       ...(opts.captureRng ? { rng: opts.captureRng } : {}),
     }),
-    collection: createCollectionService({
-      db: t.db,
-      currency,
-      duplicateConfig: content.tables.duplicate,
-      totalSpeciesCount: content.species.filter((s) => s.enabled).length,
-    }),
+    collection,
   };
 }
 

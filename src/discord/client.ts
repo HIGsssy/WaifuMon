@@ -16,6 +16,8 @@ import {
   handleHunt,
 } from './commands/waifumonHunt';
 import {
+  handleBuddyAutocomplete,
+  handleBuddyCommand,
   handleCollection,
   handleCollectionList,
   handleCollectionPage,
@@ -28,8 +30,12 @@ import {
   handleWaifuConvert,
   handleWaifuConvertConfirm,
   handleWaifuFavorite,
+  handleWaifuInvest,
+  handleWaifuNicknameOpen,
+  handleWaifuNicknameSubmit,
   handleWaifuRelease,
   handleWaifuReleaseConfirm,
+  handleWaifuSetBuddy,
 } from './commands/waifumonCollection';
 import {
   handleAdminAllowChannelAdd,
@@ -41,6 +47,7 @@ import type {
   AutocompleteInteraction,
   ButtonInteraction,
   ChatInputCommandInteraction,
+  ModalSubmitInteraction,
   StringSelectMenuInteraction,
 } from 'discord.js';
 import type { Provisioned } from './types';
@@ -77,6 +84,8 @@ export function createDiscordClient(ctx: AppContext): Client {
         handleCollection(ctx, i, prov),
       'waifumon:inspect': (i: ChatInputCommandInteraction, prov: Provisioned) =>
         handleInspectCommand(ctx, i, prov),
+      'waifumon:buddy': (i: ChatInputCommandInteraction, prov: Provisioned) =>
+        handleBuddyCommand(ctx, i, prov),
       'waifumon-admin:allow-channel:add': (i: ChatInputCommandInteraction) =>
         handleAdminAllowChannelAdd(ctx, i),
       'waifumon-admin:allow-channel:remove': (i: ChatInputCommandInteraction) =>
@@ -89,6 +98,8 @@ export function createDiscordClient(ctx: AppContext): Client {
     autocompleteHandlers: {
       'waifumon:inspect': (i: AutocompleteInteraction, playerId: number | null) =>
         handleInspectAutocomplete(ctx, i, playerId),
+      'waifumon:buddy': (i: AutocompleteInteraction, playerId: number | null) =>
+        handleBuddyAutocomplete(ctx, i, playerId),
     },
     componentHandlers: {
       'menu:hunt': (i: ButtonInteraction, prov: Provisioned) => handleHunt(ctx, i, prov),
@@ -126,6 +137,14 @@ export function createDiscordClient(ctx: AppContext): Client {
         handleWaifuConvert(ctx, i, prov, args),
       'waifu:convert_confirm': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleWaifuConvertConfirm(ctx, i, prov, args),
+      'waifu:buddy': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleWaifuSetBuddy(ctx, i, prov, args),
+      'waifu:invest': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleWaifuInvest(ctx, i, prov, args),
+      'waifu:nick_open': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleWaifuNicknameOpen(ctx, i, prov, args),
+      'waifu:nick_submit': (i: ModalSubmitInteraction, prov: Provisioned, args: string[]) =>
+        handleWaifuNicknameSubmit(ctx, i, prov, args),
       'dup:keep': (i: ButtonInteraction, prov: Provisioned) =>
         handleDuplicateKeep(ctx, i, prov),
       'dup:convert': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
