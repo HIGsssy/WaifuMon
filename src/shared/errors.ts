@@ -98,6 +98,62 @@ export class AlreadyClaimedError extends AppError {
   }
 }
 
+export class InsufficientEnergyError extends AppError {
+  constructor() {
+    super(
+      'INSUFFICIENT_ENERGY',
+      'Player is out of hunt energy',
+      "You're out of Hunt Energy~ Claim your daily to refill.",
+    );
+  }
+}
+
+export class HuntCooldownError extends AppError {
+  readonly retryAt: Date;
+
+  constructor(retryAt: Date) {
+    super(
+      'HUNT_COOLDOWN',
+      'Hunt cooldown active',
+      `Slow down~ You can hunt again <t:${Math.floor(retryAt.getTime() / 1000)}:R>.`,
+    );
+    this.retryAt = retryAt;
+  }
+}
+
+export class ActiveEncounterError extends AppError {
+  readonly encounterId: number;
+
+  constructor(encounterId: number) {
+    super(
+      'ACTIVE_ENCOUNTER',
+      `Player already has active encounter ${encounterId}`,
+      "You've already met someone~ Finish that encounter first.",
+    );
+    this.encounterId = encounterId;
+  }
+}
+
+export class EncounterNotFoundError extends AppError {
+  constructor() {
+    super(
+      'ENCOUNTER_NOT_FOUND',
+      'Encounter not found or no longer active',
+      "She's already gone~",
+    );
+  }
+}
+
+export class EncounterExpiredError extends AppError {
+  constructor() {
+    super(
+      'ENCOUNTER_EXPIRED',
+      'Encounter has expired',
+      'She slipped away…',
+    );
+  }
+}
+
 /** Detects a Postgres unique-constraint violation (possibly wrapped by drizzle). */
 export function isUniqueViolation(err: unknown): boolean {
   if (err && typeof err === 'object') {

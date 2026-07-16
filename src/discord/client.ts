@@ -10,6 +10,11 @@ import {
   handleShopBuy,
 } from './commands/waifumon';
 import {
+  handleEncounterCharm,
+  handleEncounterRelease,
+  handleHunt,
+} from './commands/waifumonHunt';
+import {
   handleAdminAllowChannelAdd,
   handleAdminAllowChannelList,
   handleAdminAllowChannelRemove,
@@ -34,6 +39,8 @@ export function createDiscordClient(ctx: AppContext): Client {
     commandHandlers: {
       'waifumon:menu': (i: ChatInputCommandInteraction, prov: Provisioned) =>
         handleMenu(ctx, i, prov),
+      'waifumon:hunt': (i: ChatInputCommandInteraction, prov: Provisioned) =>
+        handleHunt(ctx, i, prov),
       'waifumon:profile': (i: ChatInputCommandInteraction, prov: Provisioned) =>
         handleProfile(ctx, i, prov),
       'waifumon:daily': (i: ChatInputCommandInteraction, prov: Provisioned) =>
@@ -52,6 +59,7 @@ export function createDiscordClient(ctx: AppContext): Client {
         handleAdminSetAnnounceChannel(ctx, i),
     },
     componentHandlers: {
+      'menu:hunt': (i: ButtonInteraction, prov: Provisioned) => handleHunt(ctx, i, prov),
       'menu:daily': (i: ButtonInteraction, prov: Provisioned) => handleDaily(ctx, i, prov),
       'menu:shop': (i: ButtonInteraction, prov: Provisioned) => handleShop(ctx, i, prov),
       'menu:profile': (i: ButtonInteraction, prov: Provisioned) => handleProfile(ctx, i, prov),
@@ -59,6 +67,10 @@ export function createDiscordClient(ctx: AppContext): Client {
         handleInventory(ctx, i, prov),
       'shop:buy': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleShopBuy(ctx, i, prov, args[0] ?? ''),
+      'enc:charm': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleEncounterCharm(ctx, i, prov, args),
+      'enc:release': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleEncounterRelease(ctx, i, prov, args),
     },
   });
 

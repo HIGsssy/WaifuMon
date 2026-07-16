@@ -28,6 +28,7 @@ export function buildCommandDefinitions() {
     .setName('waifumon')
     .setDescription('Waifumon — the collection game')
     .addSubcommand((s) => s.setName('menu').setDescription('Open the main menu'))
+    .addSubcommand((s) => s.setName('hunt').setDescription('Spend 1 energy to hunt for a Waifumon'))
     .addSubcommand((s) => s.setName('profile').setDescription('View your hunter profile'))
     .addSubcommand((s) => s.setName('daily').setDescription('Claim your daily rewards'))
     .addSubcommand((s) => s.setName('inventory').setDescription('View your items'))

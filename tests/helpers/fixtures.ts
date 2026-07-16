@@ -8,9 +8,11 @@ import { seedContent } from '../../src/modules/content/seeder';
 import { createCurrencyService } from '../../src/modules/currency/currencyService';
 import { createDailyService } from '../../src/modules/daily/dailyService';
 import { createGuildService } from '../../src/modules/guilds/guildService';
+import { createHuntService } from '../../src/modules/hunt/huntService';
 import { createInventoryService } from '../../src/modules/inventory/inventoryService';
 import { createPlayerService } from '../../src/modules/players/playerService';
 import { createShopService } from '../../src/modules/shop/shopService';
+import type { Rng } from '../../src/shared/random';
 import type { Logger } from '../../src/shared/logger';
 import { silentLogger, type TestDb } from './testDb';
 
@@ -29,10 +31,22 @@ export interface App {
   inventory: ReturnType<typeof createInventoryService>;
   daily: ReturnType<typeof createDailyService>;
   shop: ReturnType<typeof createShopService>;
+  hunt: ReturnType<typeof createHuntService>;
+}
+
+export interface BootstrapOptions {
+  timezone?: string;
+  huntRng?: Rng;
 }
 
 /** Wires all services against a test database with the shipped content seeded. */
-export async function bootstrapApp(t: TestDb, timezone = 'UTC'): Promise<App> {
+export async function bootstrapApp(
+  t: TestDb,
+  timezoneOrOpts: string | BootstrapOptions = 'UTC',
+): Promise<App> {
+  const opts: BootstrapOptions =
+    typeof timezoneOrOpts === 'string' ? { timezone: timezoneOrOpts } : timezoneOrOpts;
+  const timezone = opts.timezone ?? 'UTC';
   const content = loadShippedContent(t.logger);
   await seedContent(t.db, content, t.logger);
   const currency = createCurrencyService(t.db);
@@ -55,6 +69,14 @@ export async function bootstrapApp(t: TestDb, timezone = 'UTC'): Promise<App> {
       currency,
       inventory,
       captureCapacity: content.tables.inventory.captureCapacity,
+    }),
+    hunt: createHuntService({
+      db: t.db,
+      currency,
+      inventory,
+      tables: content.tables,
+      logger: t.logger,
+      ...(opts.huntRng ? { rng: opts.huntRng } : {}),
     }),
   };
 }

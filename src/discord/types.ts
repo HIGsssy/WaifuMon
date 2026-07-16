@@ -12,6 +12,7 @@ import type { CurrencyService } from '../modules/currency/currencyService';
 import type { InventoryService } from '../modules/inventory/inventoryService';
 import type { DailyService } from '../modules/daily/dailyService';
 import type { ShopService } from '../modules/shop/shopService';
+import type { HuntService } from '../modules/hunt/huntService';
 
 export interface AppServices {
   guilds: GuildService;
@@ -20,6 +21,7 @@ export interface AppServices {
   inventory: InventoryService;
   daily: DailyService;
   shop: ShopService;
+  hunt: HuntService;
 }
 
 export interface AppContext {

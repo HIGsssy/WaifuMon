@@ -104,6 +104,18 @@ export function loadContent(contentDir: string, assetsDir: string, logger: Logge
       throw new ContentValidationError(`dailyPackage references unknown item slug: ${slug}`);
     }
   }
+  for (const sub of tables.hunt.itemFind.sub) {
+    if (!itemSlugs.has(sub.slug)) {
+      throw new ContentValidationError(`hunt.itemFind references unknown item slug: ${sub.slug}`);
+    }
+  }
+  for (const sub of tables.hunt.rareItemFind.sub) {
+    if (!itemSlugs.has(sub.slug)) {
+      throw new ContentValidationError(
+        `hunt.rareItemFind references unknown item slug: ${sub.slug}`,
+      );
+    }
+  }
 
   const validatedSpecies = validateSpeciesAssets(species, assetsDir, logger);
 

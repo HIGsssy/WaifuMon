@@ -17,6 +17,7 @@ import { createGuildService } from './modules/guilds/guildService';
 import { createInventoryService } from './modules/inventory/inventoryService';
 import { createPlayerService } from './modules/players/playerService';
 import { createShopService } from './modules/shop/shopService';
+import { createHuntService } from './modules/hunt/huntService';
 import { createLogger } from './shared/logger';
 
 async function main(): Promise<void> {
@@ -67,8 +68,19 @@ async function main(): Promise<void> {
         inventory,
         captureCapacity: content.tables.inventory.captureCapacity,
       }),
+      hunt: createHuntService({
+        db,
+        currency,
+        inventory,
+        tables: content.tables,
+        logger,
+      }),
     },
   };
+
+  // Best-effort startup sweep: mark expired encounters closed after downtime.
+  const expired = await ctx.services.hunt.expireStale();
+  if (expired > 0) logger.info({ expired }, 'swept stale active encounters');
 
   await registerCommands(config.discordToken, config.discordClientId, config.discordGuildId, logger);
 

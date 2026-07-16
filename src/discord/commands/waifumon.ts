@@ -21,6 +21,11 @@ function menuComponents(): ActionRowBuilder<ButtonBuilder>[] {
   return [
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
+        .setCustomId(buildCustomId('menu', 'hunt'))
+        .setLabel('Hunt')
+        .setEmoji('🏹')
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
         .setCustomId(buildCustomId('menu', 'daily'))
         .setLabel('Claim Daily')
         .setEmoji('🎁')
@@ -51,10 +56,10 @@ export async function handleMenu(
     .setTitle('💖 Waifumon')
     .setDescription(
       'Welcome, hunter~\n\n' +
+        '� **Hunt** — spend 1 energy to find someone\n' +
         '🎁 **Claim Daily** — energy refill, WaifuBux, and charms\n' +
         '🛍️ **Shop** — spend WaifuBux on capture charms\n' +
-        '👤 **Profile** · 🎒 **Inventory**\n\n' +
-        '_Hunting opens soon…_',
+        '👤 **Profile** · 🎒 **Inventory**',
     )
     .setColor(0xff6fa5);
   await interaction.reply({ embeds: [embed], components: menuComponents(), ...EPHEMERAL });

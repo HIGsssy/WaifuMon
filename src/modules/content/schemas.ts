@@ -57,6 +57,57 @@ export const SpeciesContentSchema = z.object({
 
 export const SpeciesFileSchema = z.array(SpeciesContentSchema);
 
+export const HUNT_RESULT_KINDS = [
+  'encounter',
+  'item_find',
+  'waifubux_find',
+  'essence_find',
+  'rare_item_find',
+  'flavor',
+] as const;
+export type HuntResultKind = (typeof HUNT_RESULT_KINDS)[number];
+
+const WeightedResult = z.object({
+  kind: z.enum(HUNT_RESULT_KINDS),
+  weight: z.number().nonnegative(),
+});
+
+const WeightedRarity = z.object({
+  rarity: z.enum(RARITIES),
+  weight: z.number().nonnegative(),
+});
+
+const ItemSubEntry = z
+  .object({
+    slug,
+    weight: z.number().nonnegative(),
+    minQty: z.number().int().positive(),
+    maxQty: z.number().int().positive(),
+  })
+  .refine((e) => e.maxQty >= e.minQty, {
+    message: 'maxQty must be >= minQty',
+    path: ['maxQty'],
+  });
+
+const IntRange = z
+  .object({
+    min: z.number().int().positive(),
+    max: z.number().int().positive(),
+  })
+  .refine((v) => v.max >= v.min, { message: 'max must be >= min', path: ['max'] });
+
+export const HuntTableSchema = z.object({
+  cooldownSeconds: z.number().int().nonnegative(),
+  encounterExpirySeconds: z.number().int().positive(),
+  resultTable: z.array(WeightedResult).min(1),
+  rarityTable: z.array(WeightedRarity).min(1),
+  itemFind: z.object({ sub: z.array(ItemSubEntry).min(1) }),
+  rareItemFind: z.object({ sub: z.array(ItemSubEntry).min(1) }),
+  waifubuxFind: IntRange,
+  essenceFind: IntRange,
+  flavor: z.array(z.string().min(1)).min(1),
+});
+
 export const TablesFileSchema = z.object({
   energy: z.object({
     baseMax: z.number().int().positive(),
@@ -70,6 +121,7 @@ export const TablesFileSchema = z.object({
     /** item slug -> quantity granted per daily claim */
     items: z.record(slug, z.number().int().positive()),
   }),
+  hunt: HuntTableSchema,
 });
 
 export type ItemContent = z.infer<typeof ItemContentSchema>;

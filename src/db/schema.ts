@@ -177,6 +177,51 @@ export const shopTransactions = pgTable(
   (t) => [index('shop_transactions_player_created_idx').on(t.playerId, t.createdAt)],
 );
 
+export const ENCOUNTER_STATES = [
+  'active',
+  'captured',
+  'escaped',
+  'released',
+  'expired',
+] as const;
+export type EncounterState = (typeof ENCOUNTER_STATES)[number];
+
+export const encounters = pgTable(
+  'encounters',
+  {
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    playerId: bigint('player_id', { mode: 'number' })
+      .notNull()
+      .references(() => players.id),
+    speciesId: bigint('species_id', { mode: 'number' })
+      .notNull()
+      .references(() => species.id),
+    channelId: text('channel_id').notNull(),
+    publicMessageId: text('public_message_id'),
+    state: text('state').notNull().default('active'),
+    attemptCount: integer('attempt_count').notNull().default(0),
+    maxAttempts: integer('max_attempts').notNull().default(3),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  },
+  (t) => [
+    check(
+      'encounters_state_check',
+      sql`${t.state} in ('active','captured','escaped','released','expired')`,
+    ),
+    check(
+      'encounters_attempts_check',
+      sql`${t.attemptCount} >= 0 and ${t.attemptCount} <= ${t.maxAttempts}`,
+    ),
+    // One active encounter per player — enforced by the database, not just code.
+    uniqueIndex('encounters_active_player_uq')
+      .on(t.playerId)
+      .where(sql`state = 'active'`),
+    index('encounters_player_state_idx').on(t.playerId, t.state),
+  ],
+);
+
 export type GuildRow = typeof guilds.$inferSelect;
 export type PlayerRow = typeof players.$inferSelect;
 export type PlayerCurrenciesRow = typeof playerCurrencies.$inferSelect;
@@ -185,3 +230,4 @@ export type ItemRow = typeof items.$inferSelect;
 export type PlayerInventoryRow = typeof playerInventory.$inferSelect;
 export type DailyClaimRow = typeof dailyClaims.$inferSelect;
 export type ShopTransactionRow = typeof shopTransactions.$inferSelect;
+export type EncounterRow = typeof encounters.$inferSelect;
