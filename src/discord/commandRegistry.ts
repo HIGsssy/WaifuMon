@@ -32,7 +32,22 @@ export function buildCommandDefinitions() {
     .addSubcommand((s) => s.setName('profile').setDescription('View your hunter profile'))
     .addSubcommand((s) => s.setName('daily').setDescription('Claim your daily rewards'))
     .addSubcommand((s) => s.setName('inventory').setDescription('View your items'))
-    .addSubcommand((s) => s.setName('shop').setDescription('Buy capture charms with WaifuBux'));
+    .addSubcommand((s) => s.setName('shop').setDescription('Buy capture charms with WaifuBux'))
+    .addSubcommand((s) =>
+      s.setName('collection').setDescription('Browse your captured Waifumon'),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName('inspect')
+        .setDescription('Inspect one of your Waifumon')
+        .addStringOption((o) =>
+          o
+            .setName('name')
+            .setDescription('Nickname or species name')
+            .setRequired(true)
+            .setAutocomplete(true),
+        ),
+    );
 
   const admin = new SlashCommandBuilder()
     .setName('waifumon-admin')
@@ -131,6 +146,11 @@ export interface DispatcherDeps {
     discordGuildId: string,
     discordUserId: string,
   ): Promise<{ guildDbId: number; playerId: number }>;
+  /**
+   * Read-only lookup: returns the player row's id if it exists, else null.
+   * Used by autocomplete (which must never provision or write).
+   */
+  lookupPlayerId?(discordGuildId: string, discordUserId: string): Promise<number | null>;
   /** Chat handlers keyed by commandKey(); receive the provisioned ids. */
   commandHandlers: Record<
     string,
@@ -145,6 +165,16 @@ export interface DispatcherDeps {
       args: string[],
     ) => Promise<void>
   >;
+  /**
+   * Autocomplete handlers keyed by commandKey(). Autocomplete bypasses the
+   * PlayChannelGuard (it has no side effects and can't reveal anything the
+   * user couldn't fetch via `/waifumon collection`) and is called with a
+   * possibly-null playerId so unprovisioned users get an empty response.
+   */
+  autocompleteHandlers?: Record<
+    string,
+    (interaction: never, playerId: number | null) => Promise<void>
+  >;
   /** Channel-info extraction — overridable so tests can pass plain objects. */
   extractChannelInfo?: (interaction: Interaction) => GuardChannelInfo;
 }
@@ -155,14 +185,42 @@ export function createDispatcher(deps: DispatcherDeps) {
   return async function dispatch(interaction: Interaction): Promise<void> {
     const isCommand = interaction.isChatInputCommand();
     const isButton = interaction.isButton();
-    if (!isCommand && !isButton) return;
+    const isSelect = interaction.isStringSelectMenu();
+    const isAutocomplete = interaction.isAutocomplete();
+    if (!isCommand && !isButton && !isSelect && !isAutocomplete) return;
+
+    // Autocomplete bypass: no side effects, no guard, no provision. Query
+    // the read-only lookup and hand a possibly-null playerId to the handler.
+    if (isAutocomplete) {
+      try {
+        const playerId =
+          interaction.guildId && deps.lookupPlayerId
+            ? await deps.lookupPlayerId(interaction.guildId, interaction.user.id)
+            : null;
+        const key = commandKey(interaction);
+        const handler = deps.autocompleteHandlers?.[key];
+        if (handler) {
+          await handler(interaction as never, playerId);
+        } else {
+          await interaction.respond([]);
+        }
+      } catch (err) {
+        deps.logger.warn({ err }, 'autocomplete failed');
+        try {
+          await interaction.respond([]);
+        } catch (respErr) {
+          deps.logger.warn({ err: respErr }, 'autocomplete recovery failed');
+        }
+      }
+      return;
+    }
 
     let parsed: ParsedCustomId | null = null;
-    if (isButton) {
-      const result = parseCustomId(interaction.customId);
+    if (isButton || isSelect) {
+      const result = parseCustomId((interaction as { customId: string }).customId);
       if (result === null) return; // not ours
       if (result === 'unknown_version') {
-        await interaction.reply({
+        await (interaction as { reply: (o: unknown) => Promise<unknown> }).reply({
           content: 'That button is from an older version — re-run /waifumon.',
           flags: MessageFlags.Ephemeral,
         });
@@ -179,7 +237,7 @@ export function createDispatcher(deps: DispatcherDeps) {
         : null;
       const decision = decidePlayChannel(channelInfo, allowlist);
       if (!decision.allow) {
-        await interaction.reply({
+        await (interaction as { reply: (o: unknown) => Promise<unknown> }).reply({
           content: blockedMessage(decision.reason, allowlist),
           flags: MessageFlags.Ephemeral,
         });
@@ -205,7 +263,7 @@ export function createDispatcher(deps: DispatcherDeps) {
         const handler = deps.componentHandlers[key];
         if (!handler) {
           deps.logger.warn({ key }, 'no handler for component');
-          await interaction.reply({
+          await (interaction as { reply: (o: unknown) => Promise<unknown> }).reply({
             content: 'That button no longer works — re-run /waifumon.',
             flags: MessageFlags.Ephemeral,
           });

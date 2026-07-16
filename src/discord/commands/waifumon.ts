@@ -37,6 +37,13 @@ function menuComponents(): ActionRowBuilder<ButtonBuilder>[] {
         .setEmoji('🛍️')
         .setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
+        .setCustomId(buildCustomId('menu', 'collection'))
+        .setLabel('Collection')
+        .setEmoji('🎒')
+        .setStyle(ButtonStyle.Secondary),
+    ),
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
         .setCustomId(buildCustomId('menu', 'profile'))
         .setLabel('Profile')
         .setStyle(ButtonStyle.Secondary),
@@ -60,6 +67,7 @@ export async function handleMenu(
         '🏹 **Hunt** — spend 1 energy to find someone\n' +
         '🎁 **Claim Daily** — energy refill, WaifuBux, and charms\n' +
         '🛍️ **Shop** — spend WaifuBux on capture charms\n' +
+        '🎒 **Collection** — browse your captured Waifumon\n' +
         '👤 **Profile** · 🎒 **Inventory**',
     )
     .setColor(0xff6fa5);

@@ -10,6 +10,7 @@ import { createDailyService } from '../../src/modules/daily/dailyService';
 import { createGuildService } from '../../src/modules/guilds/guildService';
 import { createHuntService } from '../../src/modules/hunt/huntService';
 import { createCaptureService } from '../../src/modules/capture/captureService';
+import { createCollectionService } from '../../src/modules/collection/collectionService';
 import { createInventoryService } from '../../src/modules/inventory/inventoryService';
 import { createPlayerService } from '../../src/modules/players/playerService';
 import { createShopService } from '../../src/modules/shop/shopService';
@@ -34,6 +35,7 @@ export interface App {
   shop: ReturnType<typeof createShopService>;
   hunt: ReturnType<typeof createHuntService>;
   capture: ReturnType<typeof createCaptureService>;
+  collection: ReturnType<typeof createCollectionService>;
 }
 
 export interface BootstrapOptions {
@@ -87,6 +89,12 @@ export async function bootstrapApp(
       captureConfig: content.tables.capture,
       logger: t.logger,
       ...(opts.captureRng ? { rng: opts.captureRng } : {}),
+    }),
+    collection: createCollectionService({
+      db: t.db,
+      currency,
+      duplicateConfig: content.tables.duplicate,
+      totalSpeciesCount: content.species.filter((s) => s.enabled).length,
     }),
   };
 }

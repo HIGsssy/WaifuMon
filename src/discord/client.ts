@@ -16,12 +16,33 @@ import {
   handleHunt,
 } from './commands/waifumonHunt';
 import {
+  handleCollection,
+  handleCollectionList,
+  handleCollectionPage,
+  handleCollectionPick,
+  handleCollectionPickId,
+  handleDuplicateConvert,
+  handleDuplicateKeep,
+  handleInspectAutocomplete,
+  handleInspectCommand,
+  handleWaifuConvert,
+  handleWaifuConvertConfirm,
+  handleWaifuFavorite,
+  handleWaifuRelease,
+  handleWaifuReleaseConfirm,
+} from './commands/waifumonCollection';
+import {
   handleAdminAllowChannelAdd,
   handleAdminAllowChannelList,
   handleAdminAllowChannelRemove,
   handleAdminSetAnnounceChannel,
 } from './commands/waifumonAdmin';
-import type { ButtonInteraction, ChatInputCommandInteraction } from 'discord.js';
+import type {
+  AutocompleteInteraction,
+  ButtonInteraction,
+  ChatInputCommandInteraction,
+  StringSelectMenuInteraction,
+} from 'discord.js';
 import type { Provisioned } from './types';
 
 /** Builds the Discord client with the interaction router wired up. */
@@ -37,6 +58,8 @@ export function createDiscordClient(ctx: AppContext): Client {
       const player = await ctx.services.players.ensurePlayer(guild.id, discordUserId);
       return { guildDbId: guild.id, playerId: player.id };
     },
+    lookupPlayerId: (discordGuildId, discordUserId) =>
+      ctx.services.players.findPlayerId(discordGuildId, discordUserId),
     commandHandlers: {
       'waifumon:menu': (i: ChatInputCommandInteraction, prov: Provisioned) =>
         handleMenu(ctx, i, prov),
@@ -50,6 +73,10 @@ export function createDiscordClient(ctx: AppContext): Client {
         handleInventory(ctx, i, prov),
       'waifumon:shop': (i: ChatInputCommandInteraction, prov: Provisioned) =>
         handleShop(ctx, i, prov),
+      'waifumon:collection': (i: ChatInputCommandInteraction, prov: Provisioned) =>
+        handleCollection(ctx, i, prov),
+      'waifumon:inspect': (i: ChatInputCommandInteraction, prov: Provisioned) =>
+        handleInspectCommand(ctx, i, prov),
       'waifumon-admin:allow-channel:add': (i: ChatInputCommandInteraction) =>
         handleAdminAllowChannelAdd(ctx, i),
       'waifumon-admin:allow-channel:remove': (i: ChatInputCommandInteraction) =>
@@ -59,6 +86,10 @@ export function createDiscordClient(ctx: AppContext): Client {
       'waifumon-admin:set-announce-channel': (i: ChatInputCommandInteraction) =>
         handleAdminSetAnnounceChannel(ctx, i),
     },
+    autocompleteHandlers: {
+      'waifumon:inspect': (i: AutocompleteInteraction, playerId: number | null) =>
+        handleInspectAutocomplete(ctx, i, playerId),
+    },
     componentHandlers: {
       'menu:hunt': (i: ButtonInteraction, prov: Provisioned) => handleHunt(ctx, i, prov),
       'menu:daily': (i: ButtonInteraction, prov: Provisioned) => handleDaily(ctx, i, prov),
@@ -66,6 +97,8 @@ export function createDiscordClient(ctx: AppContext): Client {
       'menu:profile': (i: ButtonInteraction, prov: Provisioned) => handleProfile(ctx, i, prov),
       'menu:inventory': (i: ButtonInteraction, prov: Provisioned) =>
         handleInventory(ctx, i, prov),
+      'menu:collection': (i: ButtonInteraction, prov: Provisioned) =>
+        handleCollection(ctx, i, prov),
       'menu:back': (i: ButtonInteraction, prov: Provisioned) => handleMenu(ctx, i, prov),
       'shop:buy': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleShopBuy(ctx, i, prov, args[0] ?? ''),
@@ -75,6 +108,28 @@ export function createDiscordClient(ctx: AppContext): Client {
         handleEncounterPick(ctx, i, prov, args),
       'enc:release': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleEncounterRelease(ctx, i, prov, args),
+      'col:page': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleCollectionPage(ctx, i, prov, args),
+      'col:pick': (i: StringSelectMenuInteraction, prov: Provisioned) =>
+        handleCollectionPick(ctx, i, prov),
+      'col:list': (i: ButtonInteraction, prov: Provisioned) =>
+        handleCollectionList(ctx, i, prov),
+      'col:pick_id': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleCollectionPickId(ctx, i, prov, args),
+      'waifu:fav': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleWaifuFavorite(ctx, i, prov, args),
+      'waifu:release': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleWaifuRelease(ctx, i, prov, args),
+      'waifu:release_confirm': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleWaifuReleaseConfirm(ctx, i, prov, args),
+      'waifu:convert': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleWaifuConvert(ctx, i, prov, args),
+      'waifu:convert_confirm': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleWaifuConvertConfirm(ctx, i, prov, args),
+      'dup:keep': (i: ButtonInteraction, prov: Provisioned) =>
+        handleDuplicateKeep(ctx, i, prov),
+      'dup:convert': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleDuplicateConvert(ctx, i, prov, args),
     },
   });
 

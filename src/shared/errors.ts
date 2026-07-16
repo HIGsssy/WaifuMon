@@ -184,6 +184,46 @@ export class ItemNotUsableError extends AppError {
   }
 }
 
+export class WaifuNotOwnedError extends AppError {
+  constructor(waifuId: number) {
+    super(
+      'WAIFU_NOT_OWNED',
+      `Waifu ${waifuId} is not owned by this player`,
+      "That Waifumon isn't in your collection~",
+    );
+  }
+}
+
+export class WaifuAlreadyReleasedError extends AppError {
+  constructor(waifuId: number) {
+    super(
+      'WAIFU_ALREADY_RELEASED',
+      `Waifu ${waifuId} is already released`,
+      'You already let her go~',
+    );
+  }
+}
+
+export class WaifuIsFavoriteError extends AppError {
+  constructor() {
+    super(
+      'WAIFU_IS_FAVORITE',
+      'Cannot release a favorited waifu without confirmation',
+      "That's a ★ favorite — press confirm again to release her.",
+    );
+  }
+}
+
+export class NotADuplicateError extends AppError {
+  constructor(waifuId: number) {
+    super(
+      'NOT_A_DUPLICATE',
+      `Waifu ${waifuId} is the only active copy of its species`,
+      "That's your only copy of her — release her instead if you want the Essence.",
+    );
+  }
+}
+
 /** Detects a Postgres unique-constraint violation (possibly wrapped by drizzle). */
 export function isUniqueViolation(err: unknown): boolean {
   if (err && typeof err === 'object') {

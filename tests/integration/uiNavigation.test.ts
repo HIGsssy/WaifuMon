@@ -49,6 +49,7 @@ beforeAll(async () => {
       shop: app.shop,
       hunt: app.hunt,
       capture: app.capture,
+      collection: app.collection,
     },
   };
 });

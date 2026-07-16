@@ -19,6 +19,7 @@ import { createPlayerService } from './modules/players/playerService';
 import { createShopService } from './modules/shop/shopService';
 import { createHuntService } from './modules/hunt/huntService';
 import { createCaptureService } from './modules/capture/captureService';
+import { createCollectionService } from './modules/collection/collectionService';
 import { createLogger } from './shared/logger';
 
 async function main(): Promise<void> {
@@ -81,6 +82,12 @@ async function main(): Promise<void> {
         inventory,
         captureConfig: content.tables.capture,
         logger,
+      }),
+      collection: createCollectionService({
+        db,
+        currency,
+        duplicateConfig: content.tables.duplicate,
+        totalSpeciesCount: content.species.filter((s) => s.enabled).length,
       }),
     },
   };

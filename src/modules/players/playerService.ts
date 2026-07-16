@@ -1,6 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import type { Db } from '../../db/client';
 import {
+  guilds,
   playerCurrencies,
   players,
   type PlayerCurrenciesRow,
@@ -17,6 +18,11 @@ export interface PlayerService {
   ensurePlayer(guildId: number, discordUserId: string): Promise<PlayerRow>;
   getById(playerId: number): Promise<PlayerRow | undefined>;
   getProfile(playerId: number): Promise<{ player: PlayerRow; currencies: PlayerCurrenciesRow }>;
+  /**
+   * Read-only lookup by discord ids — returns the player row's id if it
+   * already exists, else null. Never writes (used by autocomplete).
+   */
+  findPlayerId(discordGuildId: string, discordUserId: string): Promise<number | null>;
 }
 
 export interface PlayerServiceOptions {
@@ -61,6 +67,15 @@ export function createPlayerService(db: Db, options: PlayerServiceOptions): Play
         throw new AppError('PLAYER_NOT_FOUND', `Player ${playerId} not fully provisioned`);
       }
       return { player, currencies };
+    },
+    async findPlayerId(discordGuildId, discordUserId) {
+      const [row] = await db
+        .select({ id: players.id })
+        .from(players)
+        .innerJoin(guilds, eq(players.guildId, guilds.id))
+        .where(and(eq(guilds.discordGuildId, discordGuildId), eq(players.discordUserId, discordUserId)))
+        .limit(1);
+      return row?.id ?? null;
     },
   };
 }

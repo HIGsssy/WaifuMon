@@ -82,7 +82,7 @@ describe('respondScreen', () => {
 
 describe('withBackRow / backButton', () => {
   it('backButton uses the menu:back custom id', () => {
-    const b = backButton().toJSON();
+    const b = backButton().toJSON() as { custom_id?: string };
     expect(b.custom_id).toBe('wm|v1|menu|back');
   });
 

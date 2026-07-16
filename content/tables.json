@@ -68,5 +68,18 @@
     "maxChance": 0.95,
     "announceMinRarity": "SSR",
     "hereMentionMinRarity": "UR"
+  },
+  "duplicate": {
+    "essenceByRarity": {
+      "N": 5,
+      "R": 15,
+      "SR": 40,
+      "SSR": 100,
+      "UR": 250,
+      "LR": 600,
+      "EX": 1000
+    },
+    "releaseFraction": 0.5,
+    "keepOnTimeoutSeconds": 300
   }
 }

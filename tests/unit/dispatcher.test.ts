@@ -26,6 +26,8 @@ function fakeInteraction(opts: FakeInteractionOptions) {
     deferred: false,
     isChatInputCommand: () => opts.kind === 'command',
     isButton: () => opts.kind === 'button',
+    isStringSelectMenu: () => false,
+    isAutocomplete: () => false,
     isRepliable: () => true,
     customId: opts.customId ?? '',
     commandName: 'waifumon',
@@ -153,6 +155,106 @@ describe('dispatcher — guard before everything', () => {
     await dispatch(interaction as never);
     expect(provision).not.toHaveBeenCalled();
     expect(interaction.reply).toHaveBeenCalledOnce();
+  });
+});
+
+describe('dispatcher — select menus and autocomplete', () => {
+  function fakeSelectInteraction(customId: string) {
+    return {
+      guildId: 'g-1',
+      user: { id: 'u-1' },
+      replied: false,
+      deferred: false,
+      isChatInputCommand: () => false,
+      isButton: () => false,
+      isStringSelectMenu: () => true,
+      isAutocomplete: () => false,
+      isRepliable: () => true,
+      customId,
+      values: ['42'],
+      commandName: 'waifumon',
+      options: { getSubcommandGroup: () => null, getSubcommand: () => 'menu' },
+      reply: vi.fn(async () => {}),
+      followUp: vi.fn(async () => {}),
+    };
+  }
+
+  function fakeAutocompleteInteraction() {
+    return {
+      guildId: 'g-1',
+      user: { id: 'u-1' },
+      isChatInputCommand: () => false,
+      isButton: () => false,
+      isStringSelectMenu: () => false,
+      isAutocomplete: () => true,
+      isRepliable: () => false,
+      commandName: 'waifumon',
+      options: {
+        getSubcommandGroup: () => null,
+        getSubcommand: () => 'inspect',
+        getFocused: () => ({ name: 'name', value: 'ne' }),
+      },
+      respond: vi.fn(async () => {}),
+    };
+  }
+
+  it('routes string-select menus through provision + component handler', async () => {
+    const provision = vi.fn(async () => ({ guildDbId: 1, playerId: 1 }));
+    const componentHandler = vi.fn(async () => {});
+    const deps: DispatcherDeps = {
+      logger: silentLogger(),
+      lookupAllowlist: vi.fn(async () => null),
+      provision,
+      commandHandlers: {},
+      componentHandlers: { 'col:pick': componentHandler },
+      extractChannelInfo: () => nsfwChannel,
+    };
+    const dispatch = createDispatcher(deps);
+    await dispatch(fakeSelectInteraction(buildCustomId('col', 'pick')) as never);
+    expect(provision).toHaveBeenCalledOnce();
+    expect(componentHandler).toHaveBeenCalledOnce();
+  });
+
+  it('autocomplete bypasses the guard and provision, calls handler with playerId', async () => {
+    const provision = vi.fn(async () => ({ guildDbId: 1, playerId: 1 }));
+    const lookup = vi.fn(async () => 99);
+    const autocompleteHandler = vi.fn<(i: never, playerId: number | null) => Promise<void>>(
+      async () => {},
+    );
+    const deps: DispatcherDeps = {
+      logger: silentLogger(),
+      lookupAllowlist: vi.fn(async () => null),
+      provision,
+      lookupPlayerId: lookup,
+      commandHandlers: {},
+      componentHandlers: {},
+      autocompleteHandlers: { 'waifumon:inspect': autocompleteHandler },
+      extractChannelInfo: () => nsfwChannel,
+    };
+    const dispatch = createDispatcher(deps);
+    const interaction = fakeAutocompleteInteraction();
+    await dispatch(interaction as never);
+    expect(provision).not.toHaveBeenCalled();
+    expect(lookup).toHaveBeenCalledOnce();
+    expect(autocompleteHandler).toHaveBeenCalledOnce();
+    expect(autocompleteHandler.mock.calls[0]![1]).toBe(99);
+  });
+
+  it('autocomplete without lookup or handler responds with an empty list', async () => {
+    const provision = vi.fn(async () => ({ guildDbId: 1, playerId: 1 }));
+    const deps: DispatcherDeps = {
+      logger: silentLogger(),
+      lookupAllowlist: vi.fn(async () => null),
+      provision,
+      commandHandlers: {},
+      componentHandlers: {},
+      extractChannelInfo: () => nsfwChannel,
+    };
+    const dispatch = createDispatcher(deps);
+    const interaction = fakeAutocompleteInteraction();
+    await dispatch(interaction as never);
+    expect(interaction.respond).toHaveBeenCalledWith([]);
+    expect(provision).not.toHaveBeenCalled();
   });
 });
 

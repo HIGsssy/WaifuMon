@@ -57,6 +57,7 @@ import {
 import type { AppContext, PlayerInteraction, Provisioned } from '../types';
 import { buildCustomId } from '../types';
 import { respondScreen, withBackRow } from '../ui';
+import { duplicatePromptComponents } from './waifumonCollection';
 
 const EPHEMERAL = { flags: MessageFlags.Ephemeral } as const;
 const CARD_FILENAME = 'card.png';
@@ -483,7 +484,7 @@ function buildEphemeralOutcomeMessage(
   result: CaptureAttemptResult,
   publicOk: boolean,
 ): InteractionEditReplyOptions {
-  const { outcome, species, item, isDuplicate, attempt, attemptsRemaining } = result;
+  const { outcome, species, item, isDuplicate, attempt, attemptsRemaining, newWaifu } = result;
   const embed = new EmbedBuilder().setColor(rarityColor(species.rarity));
   const attachName = `attachment://${CARD_FILENAME}`;
   const card = attachCard(ctx, species);
@@ -491,7 +492,7 @@ function buildEphemeralOutcomeMessage(
 
   if (outcome === 'success') {
     const dupNote = isDuplicate
-      ? '\n\n_Duplicate — kept in your collection. (Convert-to-Essence prompt lands next milestone.)_'
+      ? "\n\n_You already have her! Choose to **Keep** her or **Convert** the copy to Essence._"
       : '';
     embed
       .setTitle(`💖 You captured ${species.name}!`)
@@ -514,6 +515,18 @@ function buildEphemeralOutcomeMessage(
     embed.setFooter({
       text: "Note: I couldn't post publicly in this channel — the capture is still saved.",
     });
+  }
+  // Duplicate captures get an inline Keep / Convert-to-Essence row so the
+  // player can resolve the dup right away without a second slash command.
+  // (Timeout defaults to Keep — the row already exists in the DB.)
+  if (outcome === 'success' && isDuplicate && newWaifu) {
+    const essenceValue =
+      (ctx.content.tables.duplicate.essenceByRarity as Record<string, number>)[species.rarity] ?? 0;
+    return {
+      embeds: [embed],
+      components: [duplicatePromptComponents(newWaifu.id, essenceValue), ...withBackRow()],
+      files,
+    };
   }
   // Final outcomes (success / escape) get a Back button so the player can
   // return to the main menu without a fresh /waifumon. Failure paths get

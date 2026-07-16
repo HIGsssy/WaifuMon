@@ -127,6 +127,23 @@ export const CaptureConfigSchema = z.object({
   hereMentionMinRarity: z.enum(RARITIES),
 });
 
+/**
+ * Duplicate + release economy. `essenceByRarity` is the full-value grant paid
+ * on "Convert to Essence" after a duplicate capture; releasing an owned copy
+ * grants `floor(essenceByRarity[rarity] × releaseFraction)`.
+ */
+export const DuplicateConfigSchema = z.object({
+  essenceByRarity: z.object(
+    Object.fromEntries(
+      RARITIES.map((r) => [r, z.number().int().nonnegative()] as const),
+    ) as { [K in (typeof RARITIES)[number]]: z.ZodNumber },
+  ),
+  /** Fraction of the duplicate-essence value granted on a manual release. */
+  releaseFraction: z.number().gt(0).lte(1),
+  /** How long the ephemeral Keep/Convert prompt stays valid (defaults to Keep). */
+  keepOnTimeoutSeconds: z.number().int().positive(),
+});
+
 export const TablesFileSchema = z.object({
   energy: z.object({
     baseMax: z.number().int().positive(),
@@ -142,11 +159,13 @@ export const TablesFileSchema = z.object({
   }),
   hunt: HuntTableSchema,
   capture: CaptureConfigSchema,
+  duplicate: DuplicateConfigSchema,
 });
 
 export type ItemContent = z.infer<typeof ItemContentSchema>;
 export type SpeciesContent = z.infer<typeof SpeciesContentSchema>;
 export type TablesContent = z.infer<typeof TablesFileSchema>;
+export type DuplicateConfig = z.infer<typeof DuplicateConfigSchema>;
 
 export interface LoadedContent {
   items: ItemContent[];
