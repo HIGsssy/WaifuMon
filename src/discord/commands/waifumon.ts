@@ -1,21 +1,22 @@
 /**
- * Player-facing /waifumon UI (Milestone 1): menu, profile, daily, inventory,
- * shop. Everything is ephemeral. Hunt/collection/buddy arrive in M2+.
+ * Player-facing /waifumon UI (menu, profile, daily, inventory, shop).
+ *
+ * Navigation model: menu buttons and sub-screens paint the *same* ephemeral
+ * message via `respondScreen`, so nothing stacks. First-touch slash commands
+ * (`/waifumon shop`, etc.) reply fresh. Sub-screens carry a Back button that
+ * routes to `menu:back` → `handleMenu`.
  */
 import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
   EmbedBuilder,
-  MessageFlags,
   type ButtonInteraction,
-  type InteractionUpdateOptions,
 } from 'discord.js';
 import { AlreadyClaimedError } from '../../shared/errors';
 import type { AppContext, PlayerInteraction, Provisioned } from '../types';
 import { buildCustomId } from '../types';
-
-const EPHEMERAL = { flags: MessageFlags.Ephemeral } as const;
+import { respondScreen, withBackRow } from '../ui';
 
 function menuComponents(): ActionRowBuilder<ButtonBuilder>[] {
   return [
@@ -56,13 +57,13 @@ export async function handleMenu(
     .setTitle('💖 Waifumon')
     .setDescription(
       'Welcome, hunter~\n\n' +
-        '� **Hunt** — spend 1 energy to find someone\n' +
+        '🏹 **Hunt** — spend 1 energy to find someone\n' +
         '🎁 **Claim Daily** — energy refill, WaifuBux, and charms\n' +
         '🛍️ **Shop** — spend WaifuBux on capture charms\n' +
         '👤 **Profile** · 🎒 **Inventory**',
     )
     .setColor(0xff6fa5);
-  await interaction.reply({ embeds: [embed], components: menuComponents(), ...EPHEMERAL });
+  await respondScreen(interaction, { embeds: [embed], components: menuComponents() });
 }
 
 export async function handleProfile(
@@ -83,7 +84,7 @@ export async function handleProfile(
       { name: '✨ Essence', value: `${currencies.essence}`, inline: true },
     )
     .setFooter({ text: `Hunter since ${player.createdAt.toDateString()}` });
-  await interaction.reply({ embeds: [embed], ...EPHEMERAL });
+  await respondScreen(interaction, { embeds: [embed], components: withBackRow() });
 }
 
 export async function handleDaily(
@@ -104,10 +105,14 @@ export async function handleDaily(
           `💰 **+${result.waifubux}** WaifuBux\n${itemLines}`,
       )
       .setFooter({ text: 'Come back after the daily reset~' });
-    await interaction.reply({ embeds: [embed], ...EPHEMERAL });
+    await respondScreen(interaction, { embeds: [embed], components: withBackRow() });
   } catch (err) {
     if (err instanceof AlreadyClaimedError) {
-      await interaction.reply({ content: err.userMessage, ...EPHEMERAL });
+      const embed = new EmbedBuilder()
+        .setTitle('🎁 Daily')
+        .setColor(0xffc46f)
+        .setDescription(err.userMessage);
+      await respondScreen(interaction, { embeds: [embed], components: withBackRow() });
       return;
     }
     throw err;
@@ -143,13 +148,19 @@ export async function handleInventory(
       });
     }
   }
-  await interaction.reply({ embeds: [embed], ...EPHEMERAL });
+  await respondScreen(interaction, { embeds: [embed], components: withBackRow() });
+}
+
+interface ShopView {
+  embeds: EmbedBuilder[];
+  components: ActionRowBuilder<ButtonBuilder>[];
 }
 
 async function buildShopView(
   ctx: AppContext,
   prov: Provisioned,
-): Promise<Pick<InteractionUpdateOptions, 'embeds' | 'components'>> {
+  statusLine?: string,
+): Promise<ShopView> {
   const [catalog, balances, inventory] = await Promise.all([
     ctx.services.shop.getCatalog(),
     ctx.services.currency.getBalances(prov.playerId),
@@ -165,10 +176,12 @@ async function buildShopView(
     return `${item.emoji ?? '•'} **${item.name}** (${modifier}) — ${price} · owned ×${owned.get(item.id) ?? 0}`;
   });
 
+  const header = `💰 Balance: **${balances.waifubux} WaifuBux**`;
+  const status = statusLine ? `\n\n${statusLine}` : '';
   const embed = new EmbedBuilder()
     .setTitle('🛍️ Charm Shop')
     .setColor(0xffc46f)
-    .setDescription(`💰 Balance: **${balances.waifubux} WaifuBux**\n\n${lines.join('\n')}`);
+    .setDescription(`${header}${status}\n\n${lines.join('\n')}`);
 
   const buyButtons = catalog
     .filter((entry) => entry.available)
@@ -178,11 +191,11 @@ async function buildShopView(
         .setLabel(`Buy ${item.name} — ${item.buyPrice} WB`)
         .setStyle(ButtonStyle.Success),
     );
-  const components =
+  const extras: ActionRowBuilder<ButtonBuilder>[] =
     buyButtons.length > 0
       ? [new ActionRowBuilder<ButtonBuilder>().addComponents(...buyButtons)]
       : [];
-  return { embeds: [embed], components };
+  return { embeds: [embed], components: withBackRow(extras) };
 }
 
 export async function handleShop(
@@ -191,10 +204,13 @@ export async function handleShop(
   prov: Provisioned,
 ): Promise<void> {
   const view = await buildShopView(ctx, prov);
-  await interaction.reply({ ...view, ...EPHEMERAL });
+  await respondScreen(interaction, view);
 }
 
-/** Shop buy button: purchase, then refresh the shop embed in place. */
+/**
+ * Shop buy: refresh the shop embed in place with a status line at the top —
+ * no separate followUp ephemeral so nothing stacks.
+ */
 export async function handleShopBuy(
   ctx: AppContext,
   interaction: ButtonInteraction,
@@ -202,10 +218,7 @@ export async function handleShopBuy(
   itemSlug: string,
 ): Promise<void> {
   const result = await ctx.services.shop.purchase(prov.playerId, itemSlug, 1);
-  const view = await buildShopView(ctx, prov);
-  await interaction.update(view);
-  await interaction.followUp({
-    content: `Bought **${result.item.name}** for **${result.totalPrice} WB** — you now own ×${result.ownedAfter}. Balance: ${result.balanceAfter} WB.`,
-    ...EPHEMERAL,
-  });
+  const status = `✅ Bought **${result.item.name}** for **${result.totalPrice} WB** — you now own ×${result.ownedAfter}.`;
+  const view = await buildShopView(ctx, prov, status);
+  await respondScreen(interaction, view);
 }

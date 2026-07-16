@@ -66,6 +66,7 @@ export function createDiscordClient(ctx: AppContext): Client {
       'menu:profile': (i: ButtonInteraction, prov: Provisioned) => handleProfile(ctx, i, prov),
       'menu:inventory': (i: ButtonInteraction, prov: Provisioned) =>
         handleInventory(ctx, i, prov),
+      'menu:back': (i: ButtonInteraction, prov: Provisioned) => handleMenu(ctx, i, prov),
       'shop:buy': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleShopBuy(ctx, i, prov, args[0] ?? ''),
       'enc:charm': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>

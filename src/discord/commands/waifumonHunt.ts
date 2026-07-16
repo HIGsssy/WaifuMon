@@ -27,7 +27,6 @@ import {
   type ButtonInteraction,
   type GuildTextBasedChannel,
   type InteractionEditReplyOptions,
-  type InteractionReplyOptions,
 } from 'discord.js';
 import {
   captureAttempts,
@@ -57,6 +56,7 @@ import {
 } from '../../shared/errors';
 import type { AppContext, PlayerInteraction, Provisioned } from '../types';
 import { buildCustomId } from '../types';
+import { respondScreen, withBackRow } from '../ui';
 
 const EPHEMERAL = { flags: MessageFlags.Ephemeral } as const;
 const CARD_FILENAME = 'card.png';
@@ -218,7 +218,10 @@ export async function handleHunt(
 ): Promise<void> {
   const channelId = interaction.channelId;
   if (!channelId) {
-    await interaction.reply({ content: 'Hunts need a channel context.', ...EPHEMERAL });
+    await respondScreen(interaction, {
+      content: 'Hunts need a channel context.',
+      components: withBackRow(),
+    });
     return;
   }
   try {
@@ -231,7 +234,8 @@ export async function handleHunt(
         result.species,
         result.energyRemaining,
       );
-      await interaction.reply({ ...view, ...EPHEMERAL } as InteractionReplyOptions);
+      // Encounter reveal has its own actions (charms + Let Her Go); no Back.
+      await respondScreen(interaction, view);
       return;
     }
     const embed = new EmbedBuilder().setColor(0xff6fa5);
@@ -252,7 +256,10 @@ export async function handleHunt(
       embed.setTitle('🍃 Nothing but wind…').setDescription(result.text);
     }
     embed.setFooter({ text: `Energy left: ${result.energyRemaining}` });
-    await interaction.reply({ embeds: [embed], ...EPHEMERAL });
+    await respondScreen(interaction, {
+      embeds: [embed],
+      components: withBackRow([huntAgainRow()]),
+    });
   } catch (err) {
     if (err instanceof ActiveEncounterError) {
       const active = await ctx.services.hunt.getActiveEncounter(prov.playerId);
@@ -260,19 +267,36 @@ export async function handleHunt(
         const species = await loadSpeciesById(ctx, active.speciesId);
         if (species) {
           const view = await buildEncounterView(ctx, prov, active, species);
-          await interaction.reply({ ...view, ...EPHEMERAL } as InteractionReplyOptions);
+          await respondScreen(interaction, view);
           return;
         }
       }
-      await interaction.reply({ content: err.userMessage, ...EPHEMERAL });
+      await respondScreen(interaction, {
+        content: err.userMessage,
+        components: withBackRow(),
+      });
       return;
     }
     if (err instanceof HuntCooldownError || err instanceof InsufficientEnergyError) {
-      await interaction.reply({ content: err.userMessage, ...EPHEMERAL });
+      await respondScreen(interaction, {
+        content: err.userMessage,
+        components: withBackRow(),
+      });
       return;
     }
     throw err;
   }
+}
+
+/** Small "Hunt again" pill for the non-encounter result screen. */
+function huntAgainRow(): ActionRowBuilder<ButtonBuilder> {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(buildCustomId('menu', 'hunt'))
+      .setLabel('Hunt again')
+      .setEmoji('🏹')
+      .setStyle(ButtonStyle.Primary),
+  );
 }
 
 // ─────────────────────────────── capture flow ───────────────────────────────
@@ -491,7 +515,11 @@ function buildEphemeralOutcomeMessage(
       text: "Note: I couldn't post publicly in this channel — the capture is still saved.",
     });
   }
-  return { embeds: [embed], components: [], files };
+  // Final outcomes (success / escape) get a Back button so the player can
+  // return to the main menu without a fresh /waifumon. Failure paths get
+  // their own retry row (see buildFailureRetryReply).
+  const components = outcome === 'failure' ? [] : withBackRow();
+  return { embeds: [embed], components, files };
 }
 
 /** Full retry UI needs current inventory quantities; keep this local. */
@@ -531,7 +559,12 @@ export async function handleEncounterCharm(
     result = await ctx.services.capture.attemptCapture(prov.playerId, encounterId, itemSlug);
   } catch (err) {
     const message = translateCaptureError(err);
-    await interaction.editReply({ content: message, embeds: [], components: [], files: [] });
+    await interaction.editReply({
+      content: message,
+      embeds: [],
+      components: withBackRow(),
+      files: [],
+    });
     return;
   }
 
@@ -588,25 +621,30 @@ export async function handleEncounterPick(
 ): Promise<void> {
   const encounterId = Number(args[0]);
   if (!Number.isInteger(encounterId)) {
-    await interaction.reply({ content: 'That encounter is no longer active.', ...EPHEMERAL });
+    await respondScreen(interaction, {
+      content: 'That encounter is no longer active.',
+      components: withBackRow(),
+    });
     return;
   }
   const active = await ctx.services.hunt.getActiveEncounter(prov.playerId);
   if (!active || active.id !== encounterId) {
-    await interaction.reply({ content: 'That encounter is no longer active.', ...EPHEMERAL });
+    await respondScreen(interaction, {
+      content: 'That encounter is no longer active.',
+      components: withBackRow(),
+    });
     return;
   }
   const speciesRow = await loadSpeciesById(ctx, active.speciesId);
   if (!speciesRow) {
-    await interaction.reply({ content: 'That encounter is no longer active.', ...EPHEMERAL });
+    await respondScreen(interaction, {
+      content: 'That encounter is no longer active.',
+      components: withBackRow(),
+    });
     return;
   }
   const view = await buildEncounterView(ctx, prov, active, speciesRow);
-  await interaction.update({
-    embeds: view.embeds,
-    components: view.components,
-    files: view.files,
-  });
+  await respondScreen(interaction, view);
 }
 
 /** Let Her Go — pre or post-attempt. Finalizes the public message if one exists. */
@@ -618,7 +656,10 @@ export async function handleEncounterRelease(
 ): Promise<void> {
   const encounterId = Number(args[0]);
   if (!Number.isInteger(encounterId)) {
-    await interaction.reply({ content: 'That encounter is no longer active.', ...EPHEMERAL });
+    await respondScreen(interaction, {
+      content: 'That encounter is no longer active.',
+      components: withBackRow(),
+    });
     return;
   }
   let releasedRow: EncounterRow;
@@ -626,7 +667,10 @@ export async function handleEncounterRelease(
     releasedRow = await ctx.services.hunt.letHerGo(prov.playerId, encounterId);
   } catch (err) {
     if (err instanceof EncounterNotFoundError) {
-      await interaction.reply({ content: err.userMessage, ...EPHEMERAL });
+      await respondScreen(interaction, {
+        content: err.userMessage,
+        components: withBackRow(),
+      });
       return;
     }
     throw err;
@@ -670,7 +714,7 @@ export async function handleEncounterRelease(
   await interaction.update({
     content: 'You let her slip back into the neon~',
     embeds: [],
-    components: [],
+    components: withBackRow(),
     files: [],
   });
 }
