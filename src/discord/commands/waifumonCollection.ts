@@ -776,7 +776,7 @@ async function performConvertFromInspect(
 
 const EPHEMERAL = { flags: MessageFlags.Ephemeral } as const;
 
-/** waifu:buddy — set as active buddy, then re-render inspect. */
+/** waifu:buddy ï¿½ set as active buddy, then re-render inspect. */
 export async function handleWaifuSetBuddy(
   ctx: AppContext,
   interaction: ButtonInteraction,
@@ -803,7 +803,7 @@ export async function handleWaifuSetBuddy(
   await renderInspect(ctx, interaction, prov, waifuId);
 }
 
-/** waifu:invest — spend Essence for waifu XP, re-render inspect with a status. */
+/** waifu:invest ï¿½ spend Essence for waifu XP, re-render inspect with a status. */
 export async function handleWaifuInvest(
   ctx: AppContext,
   interaction: ButtonInteraction,
@@ -840,7 +840,7 @@ export async function handleWaifuInvest(
   }
 }
 
-/** waifu:nick_open — show the nickname modal. */
+/** waifu:nick_open ï¿½ show the nickname modal. */
 export async function handleWaifuNicknameOpen(
   ctx: AppContext,
   interaction: ButtonInteraction,
@@ -890,7 +890,7 @@ export async function handleWaifuNicknameOpen(
   await interaction.showModal(modal);
 }
 
-/** waifu:nick_submit — modal callback. */
+/** waifu:nick_submit ï¿½ modal callback. */
 export async function handleWaifuNicknameSubmit(
   ctx: AppContext,
   interaction: ModalSubmitInteraction,
@@ -925,7 +925,7 @@ export async function handleWaifuNicknameSubmit(
 // --------------------------- /waifumon buddy ---------------------------
 
 /**
- * /waifumon buddy [name] — no arg shows the current buddy, with-arg sets it.
+ * /waifumon buddy [name] ï¿½ no arg shows the current buddy, with-arg sets it.
  * Autocomplete over the player's own waifus (same as inspect).
  */
 export async function handleBuddyCommand(
@@ -975,7 +975,7 @@ export async function handleBuddyCommand(
   await renderInspect(ctx, interaction, prov, waifuId);
 }
 
-/** Autocomplete for /waifumon buddy — same shape as inspect. */
+/** Autocomplete for /waifumon buddy ï¿½ same shape as inspect. */
 export async function handleBuddyAutocomplete(
   ctx: AppContext,
   interaction: import('discord.js').AutocompleteInteraction,
@@ -993,7 +993,7 @@ export async function handleBuddyAutocomplete(
   const matches = await ctx.services.collection.searchByName(playerId, focused.value, 25);
   await interaction.respond(
     matches.map((entry) => ({
-      name: `[${entry.species.rarity}] ${displayName(entry)} · Lv ${entry.waifu.level}`.slice(
+      name: `[${entry.species.rarity}] ${displayName(entry)} ï¿½ Lv ${entry.waifu.level}`.slice(
         0,
         100,
       ),
