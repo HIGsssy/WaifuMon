@@ -81,5 +81,49 @@
     },
     "releaseFraction": 0.5,
     "keepOnTimeoutSeconds": 300
+  },
+  "progression": {
+    "levelCurve": { "base": 100, "growth": 50 },
+    "maxLevel": 50,
+    "maxEnergy": {
+      "cap": 40,
+      "levelBonuses": [
+        { "atLevel": 7, "delta": 5 },
+        { "atLevel": 20, "delta": 5 }
+      ]
+    },
+    "xp": {
+      "hunt": 5,
+      "captureFailed": 2,
+      "captureSuccessByRarity": {
+        "N": 10,
+        "R": 15,
+        "SR": 25,
+        "SSR": 50,
+        "UR": 100,
+        "LR": 200,
+        "EX": 100
+      },
+      "newDexEntry": 25,
+      "dailyClaim": 20
+    },
+    "rareEncounterShift": {
+      "atLevel": 40,
+      "fromRarity": "N",
+      "toRarity": "R",
+      "weightUnits": 1
+    },
+    "dailyBonusItems": [
+      { "atLevel": 12, "slug": "silk_charm", "quantity": 1 }
+    ],
+    "dailyRareItemChance": {
+      "atLevel": 30,
+      "chance": 0.15,
+      "slug": "velvet_charm",
+      "quantity": 1
+    },
+    "prestigeTitles": [
+      { "atLevel": 50, "label": "Prestige Hunter" }
+    ]
   }
 }

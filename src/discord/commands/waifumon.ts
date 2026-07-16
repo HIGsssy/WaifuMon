@@ -80,19 +80,35 @@ export async function handleProfile(
   prov: Provisioned,
 ): Promise<void> {
   const { player, currencies } = await ctx.services.players.getProfile(prov.playerId);
+  const progress = ctx.services.progression.progressFor(player.xp);
+  const maxEnergy = ctx.services.progression.computeMaxEnergy(player.level);
+  const prestige = ctx.services.progression.getPrestigeTitle(player.level);
+
+  const xpLine = progress.atMaxLevel
+    ? `${player.xp} XP · **MAX**`
+    : `${progress.xpIntoLevel} / ${progress.xpToNext} XP to Lv ${progress.level + 1} · ${player.xp} total`;
+
   const embed = new EmbedBuilder()
     .setTitle(`👤 ${interaction.user.displayName}'s Profile`)
     .setColor(0xff6fa5)
     .addFields(
-      { name: 'Level', value: `${player.level}`, inline: true },
-      { name: 'XP', value: `${player.xp}`, inline: true },
-      { name: '​', value: '​', inline: true },
-      { name: '⚡ Hunt Energy', value: `${currencies.huntEnergy}`, inline: true },
+      { name: 'Level', value: `${player.level}${prestige ? ` — *${prestige}*` : ''}`, inline: true },
+      { name: 'XP', value: xpLine, inline: false },
+      { name: '⚡ Hunt Energy', value: `${currencies.huntEnergy} / ${maxEnergy}`, inline: true },
       { name: '💰 WaifuBux', value: `${currencies.waifubux}`, inline: true },
       { name: '✨ Essence', value: `${currencies.essence}`, inline: true },
     )
     .setFooter({ text: `Hunter since ${player.createdAt.toDateString()}` });
   await respondScreen(interaction, { embeds: [embed], components: withBackRow() });
+}
+
+function formatLevelUps(levelUps: readonly { toLevel: number; rewardLabels: readonly string[] }[]): string {
+  return levelUps
+    .map((lu) => {
+      const rewards = lu.rewardLabels.length ? ` — ${lu.rewardLabels.join(', ')}` : '';
+      return `⬆️ **Level ${lu.toLevel}!**${rewards}`;
+    })
+    .join('\n');
 }
 
 export async function handleDaily(
@@ -105,12 +121,17 @@ export async function handleDaily(
     const itemLines = result.items
       .map(({ item, quantity }) => `${item.emoji ?? '•'} ${item.name} ×${quantity}`)
       .join('\n');
+    const rareNote = result.rareItemGranted ? '\n🌟 Rare bonus this time!' : '';
+    const levelUpNote = result.levelUps.length ? `\n\n${formatLevelUps(result.levelUps)}` : '';
     const embed = new EmbedBuilder()
       .setTitle('🎁 Daily Claimed!')
       .setColor(0x7ce68a)
       .setDescription(
         `⚡ Hunt Energy refilled to **${result.energySetTo}**\n` +
-          `💰 **+${result.waifubux}** WaifuBux\n${itemLines}`,
+          `💰 **+${result.waifubux}** WaifuBux\n${itemLines}` +
+          rareNote +
+          `\n\n+${result.xp.xpDelta} XP` +
+          levelUpNote,
       )
       .setFooter({ text: 'Come back after the daily reset~' });
     await respondScreen(interaction, { embeds: [embed], components: withBackRow() });

@@ -256,6 +256,12 @@ export async function handleHunt(
     } else if (result.kind === 'flavor') {
       embed.setTitle('🍃 Nothing but wind…').setDescription(result.text);
     }
+    if (result.levelUps.length) {
+      const lu = result.levelUps
+        .map((l) => `⬆️ **Level ${l.toLevel}!**${l.rewardLabels.length ? ` — ${l.rewardLabels.join(', ')}` : ''}`)
+        .join('\n');
+      embed.setDescription(`${embed.data.description ?? ''}\n\n${lu}`.trim());
+    }
     embed.setFooter({ text: `Energy left: ${result.energyRemaining}` });
     await respondScreen(interaction, {
       embeds: [embed],
@@ -511,6 +517,16 @@ function buildEphemeralOutcomeMessage(
       );
   }
   if (card) embed.setImage(attachName);
+  if (result.xpGranted > 0 || result.levelUps.length > 0) {
+    const xpLine = result.xpGranted > 0
+      ? `+${result.xpGranted} XP${result.isNewDex ? ' (incl. new dex)' : ''}`
+      : '';
+    const luLine = result.levelUps
+      .map((l) => `⬆️ **Level ${l.toLevel}!**${l.rewardLabels.length ? ` — ${l.rewardLabels.join(', ')}` : ''}`)
+      .join('\n');
+    const suffix = [xpLine, luLine].filter(Boolean).join('\n');
+    embed.setDescription(`${embed.data.description ?? ''}\n\n${suffix}`.trim());
+  }
   if (!publicOk) {
     embed.setFooter({
       text: "Note: I couldn't post publicly in this channel — the capture is still saved.",

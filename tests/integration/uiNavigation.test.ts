@@ -50,6 +50,7 @@ beforeAll(async () => {
       hunt: app.hunt,
       capture: app.capture,
       collection: app.collection,
+      progression: app.progression,
     },
   };
 });

@@ -1,11 +1,21 @@
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import type { Db } from '../../db/client';
-import { dailyClaims, items, type ItemRow } from '../../db/schema';
-import { AlreadyClaimedError, ContentValidationError, isUniqueViolation } from '../../shared/errors';
+import { dailyClaims, items, players, type ItemRow } from '../../db/schema';
+import {
+  AlreadyClaimedError,
+  ContentValidationError,
+  isUniqueViolation,
+} from '../../shared/errors';
+import { defaultRng, type Rng } from '../../shared/random';
 import { claimDateInTimezone, nextResetAt } from '../../shared/time';
 import type { CurrencyService } from '../currency/currencyService';
 import type { InventoryService } from '../inventory/inventoryService';
 import type { TablesContent } from '../content/schemas';
+import type {
+  GrantXpResult,
+  LevelUpEvent,
+  ProgressionService,
+} from '../progression/progressionService';
 
 export interface DailyClaimResult {
   claimDate: string;
@@ -13,6 +23,11 @@ export interface DailyClaimResult {
   waifubux: number;
   items: Array<{ item: ItemRow; quantity: number }>;
   nextResetAt: Date;
+  xp: GrantXpResult;
+  /** Convenience alias for `xp.levelUps`. */
+  levelUps: LevelUpEvent[];
+  /** True if the level-30 rare-item chance actually fired. */
+  rareItemGranted: boolean;
 }
 
 export interface DailyStatus {
@@ -23,9 +38,9 @@ export interface DailyStatus {
 export interface DailyService {
   /**
    * Once per calendar day (configured timezone). One transaction: insert the
-   * claim row first — the UNIQUE(player_id, claim_date) constraint makes
-   * double-claims impossible even under race — then refill energy to max and
-   * grant WaifuBux + the charm pack.
+   * claim row (unique constraint blocks races), refill Hunt Energy to the
+   * level-scaled max, grant WaifuBux + base charm pack + any level-unlocked
+   * bonus items + a rolled rare-item chance, then award daily-claim XP.
    */
   claim(playerId: number, now?: Date): Promise<DailyClaimResult>;
   status(playerId: number, now?: Date): Promise<DailyStatus>;
@@ -35,23 +50,47 @@ export interface DailyServiceDeps {
   db: Db;
   currency: CurrencyService;
   inventory: InventoryService;
+  progression: ProgressionService;
   tables: TablesContent;
   timezone: string;
+  /** Optional injected RNG for the level-30 daily rare roll. */
+  rng?: Rng;
 }
 
 export function createDailyService(deps: DailyServiceDeps): DailyService {
-  const { db, currency, inventory, tables, timezone } = deps;
+  const { db, currency, inventory, progression, tables, timezone } = deps;
+  const rng = deps.rng ?? defaultRng();
 
   async function claim(playerId: number, now: Date = new Date()): Promise<DailyClaimResult> {
     const claimDate = claimDateInTimezone(now, timezone);
     const reset = nextResetAt(now, timezone);
     const packageItems = tables.dailyPackage.items;
-    const energySetTo = tables.energy.baseMax;
     const waifubux = tables.dailyPackage.waifubux;
 
     try {
       return await db.transaction(async (tx) => {
-        const slugs = Object.keys(packageItems);
+        const [player] = await tx.select().from(players).where(eq(players.id, playerId));
+        if (!player) {
+          throw new ContentValidationError(`Player ${playerId} vanished mid-daily`);
+        }
+        const level = player.level;
+        const energySetTo = progression.computeMaxEnergy(level);
+
+        // Base package + level-scaled bonus items merged into one map.
+        const bonusItems = progression.computeDailyBonusItems(level);
+        const merged: Record<string, number> = { ...packageItems };
+        for (const b of bonusItems) merged[b.slug] = (merged[b.slug] ?? 0) + b.quantity;
+
+        // Level-30 rare-item chance — rolled once per claim.
+        const rareChance = progression.computeDailyRareChance(level);
+        let rareItemGranted = false;
+        if (rareChance > 0 && rng.next() < rareChance) {
+          const rare = tables.progression.dailyRareItemChance;
+          merged[rare.slug] = (merged[rare.slug] ?? 0) + rare.quantity;
+          rareItemGranted = true;
+        }
+
+        const slugs = Object.keys(merged);
         const itemRows = slugs.length
           ? await tx.select().from(items).where(inArray(items.slug, slugs))
           : [];
@@ -59,11 +98,20 @@ export function createDailyService(deps: DailyServiceDeps): DailyService {
           throw new ContentValidationError('dailyPackage references items missing from the database');
         }
 
-        await tx.insert(dailyClaims).values({
-          playerId,
-          claimDate,
-          rewards: { energySetTo, waifubux, items: packageItems },
-        });
+        const [dailyRow] = await tx
+          .insert(dailyClaims)
+          .values({
+            playerId,
+            claimDate,
+            rewards: {
+              energySetTo,
+              waifubux,
+              items: merged,
+              rareItemGranted,
+              level,
+            },
+          })
+          .returning();
 
         await currency.lockCurrencies(tx, playerId);
         await currency.setHuntEnergy(tx, playerId, energySetTo);
@@ -71,13 +119,29 @@ export function createDailyService(deps: DailyServiceDeps): DailyService {
 
         const granted: Array<{ item: ItemRow; quantity: number }> = [];
         for (const item of itemRows) {
-          const quantity = packageItems[item.slug];
+          const quantity = merged[item.slug];
           if (!quantity) continue;
           await inventory.addItem(tx, playerId, item.id, quantity);
           granted.push({ item, quantity });
         }
 
-        return { claimDate, energySetTo, waifubux, items: granted, nextResetAt: reset };
+        const xp = await progression.grantXp(tx, playerId, {
+          eventType: 'daily_claim',
+          xpDelta: tables.progression.xp.dailyClaim,
+          refId: dailyRow?.id ?? null,
+          metadata: { claimDate, rareItemGranted },
+        });
+
+        return {
+          claimDate,
+          energySetTo,
+          waifubux,
+          items: granted,
+          nextResetAt: reset,
+          xp,
+          levelUps: xp.levelUps,
+          rareItemGranted,
+        };
       });
     } catch (err) {
       if (isUniqueViolation(err)) throw new AlreadyClaimedError(reset);

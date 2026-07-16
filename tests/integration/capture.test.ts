@@ -114,6 +114,8 @@ describe('CaptureService — capture math and state machine', () => {
     const capture = createCaptureService({
       db: t.db,
       inventory: app.inventory,
+      progression: app.progression,
+      progressionConfig: app.content.tables.progression,
       captureConfig: app.content.tables.capture,
       logger: t.logger,
       rng: scriptedRng([0.0]), // low roll → below any N chance
@@ -138,6 +140,8 @@ describe('CaptureService — capture math and state machine', () => {
     const capture = createCaptureService({
       db: t.db,
       inventory: app.inventory,
+      progression: app.progression,
+      progressionConfig: app.content.tables.progression,
       captureConfig: app.content.tables.capture,
       logger: t.logger,
       rng: scriptedRng([0.99]), // roll near 1 — well above UR chance
@@ -157,6 +161,8 @@ describe('CaptureService — capture math and state machine', () => {
     const capture = createCaptureService({
       db: t.db,
       inventory: app.inventory,
+      progression: app.progression,
+      progressionConfig: app.content.tables.progression,
       captureConfig: app.content.tables.capture,
       logger: t.logger,
       rng: scriptedRng([0.99, 0.99, 0.99]),
@@ -180,6 +186,8 @@ describe('CaptureService — capture math and state machine', () => {
     const capture = createCaptureService({
       db: t.db,
       inventory: app.inventory,
+      progression: app.progression,
+      progressionConfig: app.content.tables.progression,
       captureConfig: app.content.tables.capture,
       logger: t.logger,
       // Even if RNG were to be consulted, the guaranteed path skips it.
@@ -199,6 +207,8 @@ describe('CaptureService — capture math and state machine', () => {
     const capture = createCaptureService({
       db: t.db,
       inventory: app.inventory,
+      progression: app.progression,
+      progressionConfig: app.content.tables.progression,
       captureConfig: app.content.tables.capture,
       logger: t.logger,
       rng: scriptedRng([0]),

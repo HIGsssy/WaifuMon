@@ -288,6 +288,31 @@ export const playerWaifus = pgTable(
   ],
 );
 
+/**
+ * Audit log for every XP-affecting action. `event_type` is a soft-typed text
+ * column so new sources (quests, events, admin grants) can be added without a
+ * migration; ProgressionService owns the vocabulary. `ref_id` is optional and
+ * points to a related row (encounter, capture_attempt, daily_claim) for
+ * cross-referencing during investigations.
+ */
+export const playerProgressionEvents = pgTable(
+  'player_progression_events',
+  {
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    playerId: bigint('player_id', { mode: 'number' })
+      .notNull()
+      .references(() => players.id),
+    eventType: text('event_type').notNull(),
+    xpDelta: integer('xp_delta').notNull(),
+    refId: bigint('ref_id', { mode: 'number' }),
+    metadata: jsonb('metadata').$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('progression_events_player_created_idx').on(t.playerId, t.createdAt),
+  ],
+);
+
 export type GuildRow = typeof guilds.$inferSelect;
 export type PlayerRow = typeof players.$inferSelect;
 export type PlayerCurrenciesRow = typeof playerCurrencies.$inferSelect;
@@ -299,3 +324,4 @@ export type ShopTransactionRow = typeof shopTransactions.$inferSelect;
 export type EncounterRow = typeof encounters.$inferSelect;
 export type CaptureAttemptRow = typeof captureAttempts.$inferSelect;
 export type PlayerWaifuRow = typeof playerWaifus.$inferSelect;
+export type PlayerProgressionEventRow = typeof playerProgressionEvents.$inferSelect;

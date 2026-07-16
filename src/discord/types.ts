@@ -15,6 +15,7 @@ import type { ShopService } from '../modules/shop/shopService';
 import type { HuntService } from '../modules/hunt/huntService';
 import type { CaptureService } from '../modules/capture/captureService';
 import type { CollectionService } from '../modules/collection/collectionService';
+import type { ProgressionService } from '../modules/progression/progressionService';
 
 export interface AppServices {
   guilds: GuildService;
@@ -26,6 +27,7 @@ export interface AppServices {
   hunt: HuntService;
   capture: CaptureService;
   collection: CollectionService;
+  progression: ProgressionService;
 }
 
 export interface AppContext {

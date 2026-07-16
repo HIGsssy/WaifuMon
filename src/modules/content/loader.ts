@@ -116,6 +116,18 @@ export function loadContent(contentDir: string, assetsDir: string, logger: Logge
       );
     }
   }
+  for (const bonus of tables.progression.dailyBonusItems) {
+    if (!itemSlugs.has(bonus.slug)) {
+      throw new ContentValidationError(
+        `progression.dailyBonusItems references unknown item slug: ${bonus.slug}`,
+      );
+    }
+  }
+  if (!itemSlugs.has(tables.progression.dailyRareItemChance.slug)) {
+    throw new ContentValidationError(
+      `progression.dailyRareItemChance references unknown item slug: ${tables.progression.dailyRareItemChance.slug}`,
+    );
+  }
 
   const validatedSpecies = validateSpeciesAssets(species, assetsDir, logger);
 

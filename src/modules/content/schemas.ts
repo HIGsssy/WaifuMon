@@ -144,6 +144,76 @@ export const DuplicateConfigSchema = z.object({
   keepOnTimeoutSeconds: z.number().int().positive(),
 });
 
+const RarityXpMap = z.object(
+  Object.fromEntries(
+    RARITIES.map((r) => [r, z.number().int().nonnegative()] as const),
+  ) as { [K in (typeof RARITIES)[number]]: z.ZodNumber },
+);
+
+/**
+ * Player XP & level rewards. All data-driven so balancing is a JSON tweak.
+ * Level curve is linear-ish: xp_to_next(level) = base + growth × (level − 1).
+ */
+export const ProgressionConfigSchema = z.object({
+  levelCurve: z.object({
+    base: z.number().int().positive(),
+    growth: z.number().int().nonnegative(),
+  }),
+  maxLevel: z.number().int().positive(),
+  maxEnergy: z.object({
+    cap: z.number().int().positive(),
+    /** Additive bonuses that apply when the player's level meets `atLevel`. */
+    levelBonuses: z
+      .array(
+        z.object({
+          atLevel: z.number().int().positive(),
+          delta: z.number().int().nonnegative(),
+        }),
+      )
+      .default([]),
+  }),
+  xp: z.object({
+    hunt: z.number().int().nonnegative(),
+    captureFailed: z.number().int().nonnegative(),
+    captureSuccessByRarity: RarityXpMap,
+    newDexEntry: z.number().int().nonnegative(),
+    dailyClaim: z.number().int().nonnegative(),
+  }),
+  /**
+   * Level-40 "shift" of the rarity table: move `weightUnits` from `fromRarity`
+   * to `toRarity`. Kept additive so it can never turn negative.
+   */
+  rareEncounterShift: z.object({
+    atLevel: z.number().int().positive(),
+    fromRarity: z.enum(RARITIES),
+    toRarity: z.enum(RARITIES),
+    weightUnits: z.number().nonnegative(),
+  }),
+  dailyBonusItems: z
+    .array(
+      z.object({
+        atLevel: z.number().int().positive(),
+        slug: z.string().min(1),
+        quantity: z.number().int().positive(),
+      }),
+    )
+    .default([]),
+  dailyRareItemChance: z.object({
+    atLevel: z.number().int().positive(),
+    chance: z.number().gte(0).lte(1),
+    slug: z.string().min(1),
+    quantity: z.number().int().positive(),
+  }),
+  prestigeTitles: z
+    .array(
+      z.object({
+        atLevel: z.number().int().positive(),
+        label: z.string().min(1),
+      }),
+    )
+    .default([]),
+});
+
 export const TablesFileSchema = z.object({
   energy: z.object({
     baseMax: z.number().int().positive(),
@@ -160,12 +230,14 @@ export const TablesFileSchema = z.object({
   hunt: HuntTableSchema,
   capture: CaptureConfigSchema,
   duplicate: DuplicateConfigSchema,
+  progression: ProgressionConfigSchema,
 });
 
 export type ItemContent = z.infer<typeof ItemContentSchema>;
 export type SpeciesContent = z.infer<typeof SpeciesContentSchema>;
 export type TablesContent = z.infer<typeof TablesFileSchema>;
 export type DuplicateConfig = z.infer<typeof DuplicateConfigSchema>;
+export type ProgressionConfig = z.infer<typeof ProgressionConfigSchema>;
 
 export interface LoadedContent {
   items: ItemContent[];

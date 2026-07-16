@@ -20,6 +20,7 @@ import { createShopService } from './modules/shop/shopService';
 import { createHuntService } from './modules/hunt/huntService';
 import { createCaptureService } from './modules/capture/captureService';
 import { createCollectionService } from './modules/collection/collectionService';
+import { createProgressionService } from './modules/progression/progressionService';
 import { createLogger } from './shared/logger';
 
 async function main(): Promise<void> {
@@ -47,6 +48,10 @@ async function main(): Promise<void> {
 
   const currency = createCurrencyService(db);
   const inventory = createInventoryService(db);
+  const progression = createProgressionService({
+    config: content.tables.progression,
+    baseMaxEnergy: content.tables.energy.baseMax,
+  });
   const ctx: AppContext = {
     config,
     logger,
@@ -57,10 +62,12 @@ async function main(): Promise<void> {
       players: createPlayerService(db, { initialEnergy: content.tables.energy.baseMax }),
       currency,
       inventory,
+      progression,
       daily: createDailyService({
         db,
         currency,
         inventory,
+        progression,
         tables: content.tables,
         timezone: config.dailyTimezone,
       }),
@@ -74,12 +81,15 @@ async function main(): Promise<void> {
         db,
         currency,
         inventory,
+        progression,
         tables: content.tables,
         logger,
       }),
       capture: createCaptureService({
         db,
         inventory,
+        progression,
+        progressionConfig: content.tables.progression,
         captureConfig: content.tables.capture,
         logger,
       }),

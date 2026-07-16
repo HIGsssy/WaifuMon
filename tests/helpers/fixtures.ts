@@ -11,6 +11,7 @@ import { createGuildService } from '../../src/modules/guilds/guildService';
 import { createHuntService } from '../../src/modules/hunt/huntService';
 import { createCaptureService } from '../../src/modules/capture/captureService';
 import { createCollectionService } from '../../src/modules/collection/collectionService';
+import { createProgressionService } from '../../src/modules/progression/progressionService';
 import { createInventoryService } from '../../src/modules/inventory/inventoryService';
 import { createPlayerService } from '../../src/modules/players/playerService';
 import { createShopService } from '../../src/modules/shop/shopService';
@@ -36,12 +37,14 @@ export interface App {
   hunt: ReturnType<typeof createHuntService>;
   capture: ReturnType<typeof createCaptureService>;
   collection: ReturnType<typeof createCollectionService>;
+  progression: ReturnType<typeof createProgressionService>;
 }
 
 export interface BootstrapOptions {
   timezone?: string;
   huntRng?: Rng;
   captureRng?: Rng;
+  dailyRng?: Rng;
 }
 
 /** Wires all services against a test database with the shipped content seeded. */
@@ -56,18 +59,25 @@ export async function bootstrapApp(
   await seedContent(t.db, content, t.logger);
   const currency = createCurrencyService(t.db);
   const inventory = createInventoryService(t.db);
+  const progression = createProgressionService({
+    config: content.tables.progression,
+    baseMaxEnergy: content.tables.energy.baseMax,
+  });
   return {
     content,
     guilds: createGuildService(t.db),
     players: createPlayerService(t.db, { initialEnergy: content.tables.energy.baseMax }),
     currency,
     inventory,
+    progression,
     daily: createDailyService({
       db: t.db,
       currency,
       inventory,
+      progression,
       tables: content.tables,
       timezone,
+      ...(opts.dailyRng ? { rng: opts.dailyRng } : {}),
     }),
     shop: createShopService({
       db: t.db,
@@ -79,6 +89,7 @@ export async function bootstrapApp(
       db: t.db,
       currency,
       inventory,
+      progression,
       tables: content.tables,
       logger: t.logger,
       ...(opts.huntRng ? { rng: opts.huntRng } : {}),
@@ -86,6 +97,8 @@ export async function bootstrapApp(
     capture: createCaptureService({
       db: t.db,
       inventory,
+      progression,
+      progressionConfig: content.tables.progression,
       captureConfig: content.tables.capture,
       logger: t.logger,
       ...(opts.captureRng ? { rng: opts.captureRng } : {}),

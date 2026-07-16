@@ -41,6 +41,11 @@ import { defaultRng, type Rng } from '../../shared/random';
 import type { CaptureConfig } from './captureMath';
 import { computeCaptureChance } from './captureMath';
 import type { InventoryService } from '../inventory/inventoryService';
+import type {
+  LevelUpEvent,
+  ProgressionService,
+} from '../progression/progressionService';
+import type { ProgressionConfig } from '../content/schemas';
 
 export type CaptureOutcome = 'success' | 'failure' | 'escape';
 
@@ -54,6 +59,11 @@ export interface CaptureAttemptResult {
   newWaifu: PlayerWaifuRow | null;
   /** True when the player already owned this species before this capture. */
   isDuplicate: boolean;
+  /** XP granted for this attempt (2 on fail, rarity value + optional dex bonus on success). */
+  xpGranted: number;
+  levelUps: LevelUpEvent[];
+  /** True when this success was the first time the player caught this species. */
+  isNewDex: boolean;
 }
 
 export interface CaptureService {
@@ -76,13 +86,15 @@ export interface CaptureService {
 export interface CaptureServiceDeps {
   db: Db;
   inventory: InventoryService;
+  progression: ProgressionService;
+  progressionConfig: ProgressionConfig;
   captureConfig: CaptureConfig;
   logger: Logger;
   rng?: Rng;
 }
 
 export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
-  const { db, inventory, captureConfig, logger } = deps;
+  const { db, inventory, progression, progressionConfig, captureConfig, logger } = deps;
   const rng = deps.rng ?? defaultRng();
 
   return {
@@ -164,6 +176,8 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
         let newWaifu: PlayerWaifuRow | null = null;
         let isDuplicate = false;
         let attemptOutcome: CaptureOutcome;
+        let xpDelta = 0;
+        let isNewDex = false;
 
         if (success) {
           const [row] = await tx
@@ -188,6 +202,7 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
               ),
             );
           isDuplicate = (existing?.count ?? 0) > 0;
+          isNewDex = !isDuplicate;
 
           const [created] = await tx
             .insert(playerWaifus)
@@ -198,6 +213,11 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
             .returning();
           newWaifu = created!;
           attemptOutcome = 'success';
+          xpDelta =
+            (progressionConfig.xp.captureSuccessByRarity as Record<string, number>)[
+              speciesRow.rarity
+            ] ?? 0;
+          if (isNewDex) xpDelta += progressionConfig.xp.newDexEntry;
           logger.info(
             {
               playerId,
@@ -208,6 +228,8 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
               roll,
               guaranteed,
               isDuplicate,
+              isNewDex,
+              xpDelta,
             },
             'capture success',
           );
@@ -223,6 +245,7 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
             .returning();
           updatedEncounter = row!;
           attemptOutcome = 'escape';
+          xpDelta = progressionConfig.xp.captureFailed;
         } else {
           const [row] = await tx
             .update(encounters)
@@ -231,6 +254,30 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
             .returning();
           updatedEncounter = row!;
           attemptOutcome = 'failure';
+          xpDelta = progressionConfig.xp.captureFailed;
+        }
+
+        // Grant XP in the same transaction as the capture state change.
+        const xpResult = await progression.grantXp(tx, playerId, {
+          eventType: attemptOutcome === 'success' ? 'capture_success' : 'capture_failed',
+          xpDelta,
+          refId: attempt?.id ?? null,
+          metadata: {
+            outcome: attemptOutcome,
+            rarity: speciesRow.rarity,
+            speciesSlug: speciesRow.slug,
+            itemSlug: item.slug,
+            isNewDex,
+          },
+        });
+        // "new dex entry" is logged separately for audit clarity.
+        if (isNewDex && progressionConfig.xp.newDexEntry > 0) {
+          await progression.grantXp(tx, playerId, {
+            eventType: 'new_dex_entry',
+            xpDelta: 0, // already included above; this row is bookkeeping-only
+            refId: attempt?.id ?? null,
+            metadata: { speciesSlug: speciesRow.slug, rarity: speciesRow.rarity },
+          });
         }
 
         return {
@@ -244,6 +291,9 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
             attemptsRemaining: Math.max(0, encounter.maxAttempts - attemptNumber),
             newWaifu,
             isDuplicate,
+            xpGranted: xpDelta,
+            levelUps: xpResult.levelUps,
+            isNewDex,
           },
         };
       });

@@ -18,6 +18,7 @@ import {
   species,
   type EncounterRow,
   type ItemRow,
+  type Rarity,
   type SpeciesRow,
 } from '../../db/schema';
 import {
@@ -28,40 +29,48 @@ import {
   isUniqueViolation,
 } from '../../shared/errors';
 import type { Logger } from '../../shared/logger';
-import { defaultRng, rollWeighted, type Rng } from '../../shared/random';
+import { defaultRng, rollWeighted, type Rng, type WeightedEntry } from '../../shared/random';
 import type { CurrencyService } from '../currency/currencyService';
 import type { InventoryService } from '../inventory/inventoryService';
 import type { HuntResultKind, TablesContent } from '../content/schemas';
+import type {
+  LevelUpEvent,
+  ProgressionService,
+} from '../progression/progressionService';
 
-export interface HuntEncounterResult {
+interface WithXp {
+  levelUps: LevelUpEvent[];
+}
+
+export interface HuntEncounterResult extends WithXp {
   kind: 'encounter';
   species: SpeciesRow;
   encounter: EncounterRow;
   energyRemaining: number;
 }
 
-export interface HuntItemResult {
+export interface HuntItemResult extends WithXp {
   kind: 'item_find' | 'rare_item_find';
   item: ItemRow;
   quantity: number;
   energyRemaining: number;
 }
 
-export interface HuntWaifubuxResult {
+export interface HuntWaifubuxResult extends WithXp {
   kind: 'waifubux_find';
   amount: number;
   balanceAfter: number;
   energyRemaining: number;
 }
 
-export interface HuntEssenceResult {
+export interface HuntEssenceResult extends WithXp {
   kind: 'essence_find';
   amount: number;
   balanceAfter: number;
   energyRemaining: number;
 }
 
-export interface HuntFlavorResult {
+export interface HuntFlavorResult extends WithXp {
   kind: 'flavor';
   text: string;
   energyRemaining: number;
@@ -103,6 +112,7 @@ export interface HuntServiceDeps {
   db: Db;
   currency: CurrencyService;
   inventory: InventoryService;
+  progression: ProgressionService;
   tables: TablesContent;
   logger: Logger;
   rng?: Rng;
@@ -111,18 +121,40 @@ export interface HuntServiceDeps {
 const MAX_RARITY_REROLLS = 6;
 
 export function createHuntService(deps: HuntServiceDeps): HuntService {
-  const { db, currency, inventory, tables, logger } = deps;
+  const { db, currency, inventory, progression, tables, logger } = deps;
   const rng = deps.rng ?? defaultRng();
   const hunt = tables.hunt;
 
+  /**
+   * Applies the level-40 rare-encounter shift additively: subtracts `weightUnits`
+   * from `fromRarity` (floored at 0) and adds it to `toRarity`. Total weight
+   * is preserved so the roll stays uniform.
+   */
+  function rarityEntriesFor(level: number): Array<WeightedEntry<Rarity>> {
+    const entries: Array<WeightedEntry<Rarity>> = hunt.rarityTable.map((r) => ({
+      weight: r.weight,
+      value: r.rarity,
+    }));
+    const shift = progression.computeRareShift(level);
+    if (!shift) return entries;
+    return entries.map((e) => {
+      if (e.value === shift.fromRarity) {
+        return { weight: Math.max(0, e.weight - shift.weightUnits), value: e.value };
+      }
+      if (e.value === shift.toRarity) {
+        return { weight: e.weight + shift.weightUnits, value: e.value };
+      }
+      return e;
+    });
+  }
+
   async function pickEncounterSpecies(
     tx: Parameters<Parameters<Db['transaction']>[0]>[0],
+    level: number,
   ): Promise<SpeciesRow | null> {
+    const rarityEntries = rarityEntriesFor(level);
     for (let attempt = 0; attempt < MAX_RARITY_REROLLS; attempt++) {
-      const rarity = rollWeighted(
-        hunt.rarityTable.map((r) => ({ weight: r.weight, value: r.rarity })),
-        rng,
-      );
+      const rarity = rollWeighted(rarityEntries, rng);
       const rows = await tx
         .select()
         .from(species)
@@ -213,6 +245,14 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
 
         const energyRemaining = updatedCur?.huntEnergy ?? 0;
 
+        // Grant hunt XP (in the same tx — energy spent + XP go together).
+        const xp = await progression.grantXp(tx, playerId, {
+          eventType: 'hunt',
+          xpDelta: tables.progression.xp.hunt,
+          metadata: { channelId },
+        });
+        const levelUps = xp.levelUps;
+
         // Roll the result table.
         const kind: HuntResultKind = rollWeighted(
           hunt.resultTable.map((r) => ({ weight: r.weight, value: r.kind })),
@@ -220,7 +260,7 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
         );
 
         if (kind === 'encounter') {
-          const picked = await pickEncounterSpecies(tx);
+          const picked = await pickEncounterSpecies(tx, player.level);
           if (!picked) {
             // No species at all — degrade to flavor rather than crash.
             logger.error('no enabled species available; degrading encounter to flavor');
@@ -228,6 +268,7 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
               kind: 'flavor',
               text: hunt.flavor[rng.intInclusive(0, hunt.flavor.length - 1)]!,
               energyRemaining,
+              levelUps,
             } satisfies HuntFlavorResult;
           }
           const expiresAt = new Date(now.getTime() + hunt.encounterExpirySeconds * 1000);
@@ -249,11 +290,10 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
               species: picked,
               encounter: encounter!,
               energyRemaining,
+              levelUps,
             } satisfies HuntEncounterResult;
           } catch (err) {
             if (isUniqueViolation(err)) {
-              // Should be unreachable — we already checked and expired any
-              // active row above under FOR UPDATE. Convert to a clean error.
               throw new ActiveEncounterError(-1);
             }
             throw err;
@@ -273,6 +313,7 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
               kind: 'flavor',
               text: hunt.flavor[rng.intInclusive(0, hunt.flavor.length - 1)]!,
               energyRemaining,
+              levelUps,
             } satisfies HuntFlavorResult;
           }
           const quantity = rng.intInclusive(sub.minQty, sub.maxQty);
@@ -282,6 +323,7 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
             item,
             quantity,
             energyRemaining,
+            levelUps,
           } satisfies HuntItemResult;
         }
 
@@ -293,6 +335,7 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
             amount,
             balanceAfter: row.waifubux,
             energyRemaining,
+            levelUps,
           } satisfies HuntWaifubuxResult;
         }
 
@@ -304,12 +347,13 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
             amount,
             balanceAfter: row.essence,
             energyRemaining,
+            levelUps,
           } satisfies HuntEssenceResult;
         }
 
         // kind === 'flavor'
         const text = hunt.flavor[rng.intInclusive(0, hunt.flavor.length - 1)]!;
-        return { kind: 'flavor', text, energyRemaining } satisfies HuntFlavorResult;
+        return { kind: 'flavor', text, energyRemaining, levelUps } satisfies HuntFlavorResult;
       });
     },
 
