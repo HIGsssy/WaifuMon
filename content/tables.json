@@ -150,5 +150,8 @@
       "The air feels charged, like a capture waiting to happen.",
       "Your buddy watches the shadows, waiting for the next signal."
     ]
+  },
+  "session": {
+    "inactiveTimeoutMinutes": 45
   }
 }

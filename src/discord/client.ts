@@ -76,6 +76,7 @@ export function createDiscordClient(ctx: AppContext): Client {
         playerId: session.playerId,
         discordUserId: player.discordUserId,
         displayName: session.ownerDisplayName ?? null,
+        expired: ctx.services.session.isExpired(session),
       };
     },
     commandHandlers: {

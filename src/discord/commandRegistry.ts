@@ -169,12 +169,15 @@ export interface DispatcherDeps {
    * the check fails, the dispatcher rejects the interaction ephemerally
    * without invoking any handler. `displayName` (when available) is used to
    * name the owner in the rejection copy so a foreign clicker knows whose
-   * board it is.
+   * board it is. `expired` (when true) means the board has gone past the
+   * inactivity timeout — even the owner is rejected ephemerally so the stale
+   * board can't mutate state after the fact.
    */
   lookupSessionOwner?(messageId: string): Promise<{
     playerId: number;
     discordUserId: string;
     displayName?: string | null;
+    expired?: boolean;
   } | null>;
   /** Chat handlers keyed by commandKey(); receive the provisioned ids. */
   commandHandlers: Record<
@@ -312,6 +315,16 @@ export function createDispatcher(deps: DispatcherDeps) {
             const mentionSuffix = owner.displayName ? ` (<@${owner.discordUserId}>)` : '';
             await (interaction as { reply: (o: unknown) => Promise<unknown> }).reply({
               content: `That's ${ownerLabel}'s Waifumon session${mentionSuffix}. Run \`/waifumon\` to start your own.`,
+              flags: MessageFlags.Ephemeral,
+            });
+            return;
+          }
+          if (owner.expired) {
+            // Owner is clicking a stale board — reject without consuming
+            // energy/items/currency and without touching the session row.
+            await (interaction as { reply: (o: unknown) => Promise<unknown> }).reply({
+              content:
+                'That Waifumon session has expired. Run `/waifumon` to start a fresh one.',
               flags: MessageFlags.Ephemeral,
             });
             return;

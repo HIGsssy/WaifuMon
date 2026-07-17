@@ -89,16 +89,21 @@ export async function handleMenu(
     )
     .setColor(0xff6fa5);
   // "Today" summary: fold in whatever the session board has recorded so far.
+  // Use a read-only lookup here — a slash-entry expiration check inside
+  // `paintSession` needs to see the un-bumped `last_activity_at` to detect a
+  // stale board. `paintSession` will upsert / refresh the row itself.
   const channelId = interaction.channelId;
   if (channelId) {
-    const session = await ctx.services.session.ensureSession(
-      prov.guildDbId,
+    const existing = await ctx.services.session.findByPlayerAndChannel(
       prov.playerId,
       channelId,
     );
-    const summary = ctx.services.session.isSummaryFresh(session)
-      ? ctx.services.session.readSummary(session)
-      : ctx.services.session.readSummary({ ...session, summaryJson: {} });
+    const summary =
+      existing && ctx.services.session.isSummaryFresh(existing)
+        ? ctx.services.session.readSummary(existing)
+        : ctx.services.session.readSummary({
+            summaryJson: {},
+          } as never);
     embed.addFields({ name: '📅 Today', value: renderSummaryLines(summary).join('\n') });
   }
   await paintSession(ctx, interaction, prov, { embeds: [embed], components: menuComponents() });

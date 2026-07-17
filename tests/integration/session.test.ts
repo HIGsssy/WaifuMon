@@ -710,3 +710,328 @@ describe('main menu flavor text', () => {
     expect(found).toBe(true);
   });
 });
+
+// ─────────────────────────── session inactivity timeout ───────────────────────────
+
+const TIMEOUT_GUILD_ID = 'g-timeout-1';
+
+/** Force a session row's last activity into the distant past. */
+async function ageSession(sessionId: number, minutesAgo: number): Promise<void> {
+  const at = new Date(Date.now() - minutesAgo * 60 * 1000);
+  await t.db
+    .update(waifumonSessions)
+    .set({ lastActivityAt: at })
+    .where(eq(waifumonSessions.id, sessionId));
+}
+
+async function sessionForPlayer(playerId: number) {
+  const [row] = await t.db
+    .select()
+    .from(waifumonSessions)
+    .where(eq(waifumonSessions.playerId, playerId))
+    .limit(1);
+  return row;
+}
+
+describe('session inactivity timeout — config + isExpired', () => {
+  it('tables.session.inactiveTimeoutMinutes is configured and positive', () => {
+    const cfg = ctx.content.tables.session;
+    expect(cfg).toBeDefined();
+    expect(cfg?.inactiveTimeoutMinutes).toBeGreaterThan(0);
+    // Service reflects the configured minutes.
+    expect(app.session.inactiveTimeoutMs).toBe(
+      (cfg?.inactiveTimeoutMinutes ?? 45) * 60 * 1000,
+    );
+  });
+
+  it('isExpired is false when the session has no live public message', () => {
+    const fake = {
+      id: 0,
+      guildId: 0,
+      playerId: 0,
+      channelId: 'x',
+      messageId: null,
+      currentScreen: 'menu',
+      ownerDisplayName: null,
+      summaryJson: {},
+      summaryDate: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      lastActivityAt: new Date(Date.now() - 60 * 60 * 1000),
+    } as unknown as Parameters<typeof app.session.isExpired>[0];
+    expect(app.session.isExpired(fake)).toBe(false);
+  });
+
+  it('isExpired flips to true past the inactivity budget', () => {
+    const timeout = app.session.inactiveTimeoutMs;
+    const fresh = {
+      id: 1,
+      messageId: 'm-1',
+      lastActivityAt: new Date(Date.now() - Math.floor(timeout / 2)),
+    } as unknown as Parameters<typeof app.session.isExpired>[0];
+    const stale = {
+      id: 2,
+      messageId: 'm-2',
+      lastActivityAt: new Date(Date.now() - timeout - 60_000),
+    } as unknown as Parameters<typeof app.session.isExpired>[0];
+    expect(app.session.isExpired(fresh)).toBe(false);
+    expect(app.session.isExpired(stale)).toBe(true);
+  });
+});
+
+describe('session inactivity timeout — /waifumon slash entry', () => {
+  it('reuses an existing non-expired session (edits, no new send)', async () => {
+    const p = await provisionPlayer(app, TIMEOUT_GUILD_ID, 'u-timeout-reuse');
+    const ch = fakeChannel('c-timeout-reuse');
+    // Open the board.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleMenu(ctx, fakeCommand('u-timeout-reuse', ch, { memberNick: 'Ru' }) as any, p);
+    const before = await sessionForPlayer(p.playerId);
+    const originalId = before!.messageId!;
+    ch.send.mockClear();
+    ch.messages.edit.mockClear();
+    // Re-open on same channel — should edit the existing message.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleMenu(ctx, fakeCommand('u-timeout-reuse', ch, { memberNick: 'Ru' }) as any, p);
+    const after = await sessionForPlayer(p.playerId);
+    expect(after?.messageId).toBe(originalId);
+    expect(ch.messages.edit).toHaveBeenCalled();
+    expect(ch.send).not.toHaveBeenCalled();
+  });
+
+  it('retires an expired board and posts a fresh public message', async () => {
+    const p = await provisionPlayer(app, TIMEOUT_GUILD_ID, 'u-timeout-expire');
+    const ch = fakeChannel('c-timeout-expire');
+    // First open — creates the board.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleMenu(ctx, fakeCommand('u-timeout-expire', ch, { memberNick: 'Xy' }) as any, p);
+    const before = await sessionForPlayer(p.playerId);
+    const staleId = before!.messageId!;
+
+    // Fast-forward the row past the timeout.
+    const beyond = Math.ceil(app.session.inactiveTimeoutMs / 60_000) + 1;
+    await ageSession(before!.id, beyond);
+
+    ch.send.mockClear();
+    ch.messages.edit.mockClear();
+
+    // Second open — should finalize the old message and send a NEW one.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleMenu(ctx, fakeCommand('u-timeout-expire', ch, { memberNick: 'Xy' }) as any, p);
+
+    // Old message got the "Session Ended" edit with disabled components.
+    expect(ch.messages.edit).toHaveBeenCalled();
+    const endedCall = ch.messages.edit.mock.calls[0];
+    expect(endedCall![0]).toBe(staleId);
+    const endedPayload = endedCall![1] as {
+      embeds: { toJSON: () => { title?: string; description?: string } }[];
+      components: unknown[];
+    };
+    expect(endedPayload.components).toEqual([]);
+    const endedEmbed = endedPayload.embeds[0]!.toJSON();
+    expect(endedEmbed.title).toMatch(/session ended/i);
+    expect(endedEmbed.description).toMatch(/\/waifumon/);
+
+    // A brand-new public message was sent.
+    expect(ch.send).toHaveBeenCalledOnce();
+
+    const after = await sessionForPlayer(p.playerId);
+    expect(after?.messageId).not.toBe(staleId);
+    expect(after?.messageId).toBeTruthy();
+  });
+
+  it('still creates a fresh board when the old message can no longer be edited', async () => {
+    const p = await provisionPlayer(app, TIMEOUT_GUILD_ID, 'u-timeout-missing');
+    const ch = fakeChannel('c-timeout-missing');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleMenu(ctx, fakeCommand('u-timeout-missing', ch, { memberNick: 'Mi' }) as any, p);
+    const before = await sessionForPlayer(p.playerId);
+    const staleId = before!.messageId!;
+    const beyond = Math.ceil(app.session.inactiveTimeoutMs / 60_000) + 1;
+    await ageSession(before!.id, beyond);
+
+    // Simulate the old message having been deleted.
+    ch.messages.edit.mockImplementationOnce(async () => {
+      const err = new Error('Unknown Message') as Error & { code?: number };
+      err.code = 10008;
+      // discord.js throws DiscordAPIError; our missing-message check hits on code 10008.
+      const { DiscordAPIError } = await import('discord.js');
+      throw new DiscordAPIError(
+        { message: 'Unknown Message', code: 10008 } as never,
+        10008,
+        404,
+        'PATCH',
+        `/channels/${ch.id}/messages/${staleId}`,
+        { files: [] },
+      );
+    });
+
+    ch.send.mockClear();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleMenu(ctx, fakeCommand('u-timeout-missing', ch, { memberNick: 'Mi' }) as any, p);
+    // Even though the edit failed, a new board is sent and the row updated.
+    expect(ch.send).toHaveBeenCalledOnce();
+    const after = await sessionForPlayer(p.playerId);
+    expect(after?.messageId).not.toBe(staleId);
+    expect(after?.messageId).toBeTruthy();
+  });
+});
+
+describe('session inactivity timeout — expired button clicks are rejected', () => {
+  it('owner clicking an expired-board button is rejected ephemerally with no handler invoked', async () => {
+    const p = await provisionPlayer(app, TIMEOUT_GUILD_ID, 'u-timeout-btn-owner');
+    const ch = fakeChannel('c-timeout-btn-owner');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleMenu(ctx, fakeCommand('u-timeout-btn-owner', ch, { memberNick: 'Bo' }) as any, p);
+    const session = await sessionForPlayer(p.playerId);
+    const staleMsg = session!.messageId!;
+    const beyond = Math.ceil(app.session.inactiveTimeoutMs / 60_000) + 1;
+    await ageSession(session!.id, beyond);
+
+    const handler = vi.fn(async () => {});
+    const dispatch = createDispatcher({
+      logger: t.logger,
+      lookupAllowlist: async () => null,
+      provision: async (guildId, userId) => {
+        const g = await app.guilds.ensureGuild(guildId);
+        const pl = await app.players.ensurePlayer(g.id, userId);
+        return { guildDbId: g.id, playerId: pl.id };
+      },
+      lookupSessionOwner: async (mid) => {
+        const s = await app.session.findByMessageId(mid);
+        if (!s) return null;
+        const player = await app.players.getById(s.playerId);
+        return player
+          ? {
+              playerId: s.playerId,
+              discordUserId: player.discordUserId,
+              displayName: s.ownerDisplayName ?? null,
+              expired: app.session.isExpired(s),
+            }
+          : null;
+      },
+      commandHandlers: {},
+      componentHandlers: { 'menu:profile': handler },
+      extractChannelInfo: () => ({
+        isGuildChannel: true,
+        isNsfw: true,
+        channelId: 'c-timeout-btn-owner',
+        parentChannelId: null,
+      }),
+    });
+
+    const reply = vi.fn(async () => {});
+    const btn = {
+      isChatInputCommand: () => false,
+      isButton: () => true,
+      isStringSelectMenu: () => false,
+      isAutocomplete: () => false,
+      isModalSubmit: () => false,
+      isRepliable: () => true,
+      customId: 'wm|v1|menu|profile',
+      message: { id: staleMsg },
+      guildId: TIMEOUT_GUILD_ID,
+      user: { id: 'u-timeout-btn-owner' },
+      reply,
+    };
+    const beforeActivity = (await sessionForPlayer(p.playerId))!.lastActivityAt;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await dispatch(btn as any);
+    expect(handler).not.toHaveBeenCalled();
+    expect(reply).toHaveBeenCalledOnce();
+    const payload = (reply.mock.calls[0] as unknown as [{ content: string; flags?: number }])[0];
+    expect(payload.flags).toBe(MessageFlags.Ephemeral);
+    expect(payload.content).toMatch(/expired/i);
+    expect(payload.content).toMatch(/\/waifumon/);
+    // Rejected clicks do NOT refresh last_activity_at.
+    const afterActivity = (await sessionForPlayer(p.playerId))!.lastActivityAt;
+    expect((afterActivity as Date).getTime()).toBe((beforeActivity as Date).getTime());
+  });
+});
+
+describe('session activity tracking — bump discipline', () => {
+  it('owner successful interaction refreshes last_activity_at', async () => {
+    const p = await provisionPlayer(app, TIMEOUT_GUILD_ID, 'u-bump-owner');
+    const ch = fakeChannel('c-bump-owner');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleMenu(ctx, fakeCommand('u-bump-owner', ch, { memberNick: 'Bp' }) as any, p);
+    const before = await sessionForPlayer(p.playerId);
+    // Age it 5 minutes into the past so the next interaction produces a
+    // measurable bump.
+    await ageSession(before!.id, 5);
+    const beforeActivity = (await sessionForPlayer(p.playerId))!.lastActivityAt;
+    const btn = fakeButtonOnMessage(before!.messageId!, 'u-bump-owner', ch, {
+      memberNick: 'Bp',
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleProfile(ctx, btn as any, p);
+    const afterActivity = (await sessionForPlayer(p.playerId))!.lastActivityAt;
+    expect((afterActivity as Date).getTime()).toBeGreaterThan(
+      (beforeActivity as Date).getTime(),
+    );
+  });
+
+  it('wrong-user rejection does NOT refresh last_activity_at', async () => {
+    const p = await provisionPlayer(app, TIMEOUT_GUILD_ID, 'u-bump-owner-2');
+    const ch = fakeChannel('c-bump-owner-2');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleMenu(ctx, fakeCommand('u-bump-owner-2', ch, { memberNick: 'Bq' }) as any, p);
+    const session = await sessionForPlayer(p.playerId);
+    const messageId = session!.messageId!;
+    const beforeActivity = session!.lastActivityAt;
+
+    const handler = vi.fn(async () => {});
+    const dispatch = createDispatcher({
+      logger: t.logger,
+      lookupAllowlist: async () => null,
+      provision: async (guildId, userId) => {
+        const g = await app.guilds.ensureGuild(guildId);
+        const pl = await app.players.ensurePlayer(g.id, userId);
+        return { guildDbId: g.id, playerId: pl.id };
+      },
+      lookupSessionOwner: async (mid) => {
+        const s = await app.session.findByMessageId(mid);
+        if (!s) return null;
+        const player = await app.players.getById(s.playerId);
+        return player
+          ? {
+              playerId: s.playerId,
+              discordUserId: player.discordUserId,
+              displayName: s.ownerDisplayName ?? null,
+              expired: app.session.isExpired(s),
+            }
+          : null;
+      },
+      commandHandlers: {},
+      componentHandlers: { 'menu:profile': handler },
+      extractChannelInfo: () => ({
+        isGuildChannel: true,
+        isNsfw: true,
+        channelId: 'c-bump-owner-2',
+        parentChannelId: null,
+      }),
+    });
+
+    const reply = vi.fn(async () => {});
+    const foreignBtn = {
+      isChatInputCommand: () => false,
+      isButton: () => true,
+      isStringSelectMenu: () => false,
+      isAutocomplete: () => false,
+      isModalSubmit: () => false,
+      isRepliable: () => true,
+      customId: 'wm|v1|menu|profile',
+      message: { id: messageId },
+      guildId: TIMEOUT_GUILD_ID,
+      user: { id: 'u-random-lurker' },
+      reply,
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await dispatch(foreignBtn as any);
+    expect(handler).not.toHaveBeenCalled();
+    expect(reply).toHaveBeenCalledOnce();
+    const afterActivity = (await sessionForPlayer(p.playerId))!.lastActivityAt;
+    expect((afterActivity as Date).getTime()).toBe((beforeActivity as Date).getTime());
+  });
+});
+

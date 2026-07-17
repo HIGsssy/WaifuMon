@@ -114,7 +114,11 @@ export async function bootstrapApp(
       ...(opts.captureRng ? { rng: opts.captureRng } : {}),
     }),
     collection,
-    session: createSessionService({ db: t.db, timezone }),
+    session: createSessionService({
+      db: t.db,
+      timezone,
+      inactiveTimeoutMinutes: content.tables.session?.inactiveTimeoutMinutes,
+    }),
   };
 }
 

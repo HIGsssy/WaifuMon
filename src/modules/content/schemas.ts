@@ -248,6 +248,19 @@ export const UiFlavorConfigSchema = z
   })
   .default({ mainMenu: [] });
 
+/**
+ * Public session-board tunables. `inactiveTimeoutMinutes` controls when a
+ * stale board is retired: after that many minutes without owner activity,
+ * `/waifumon` ends the old public message and starts a fresh board instead
+ * of editing the stale one. Old buttons/selects from an expired session are
+ * rejected ephemerally without mutating state.
+ */
+export const SessionConfigSchema = z
+  .object({
+    inactiveTimeoutMinutes: z.number().int().positive().default(45),
+  })
+  .default({ inactiveTimeoutMinutes: 45 });
+
 export const TablesFileSchema = z.object({
   energy: z.object({
     baseMax: z.number().int().positive(),
@@ -267,6 +280,7 @@ export const TablesFileSchema = z.object({
   progression: ProgressionConfigSchema,
   waifuProgression: WaifuProgressionConfigSchema,
   uiFlavor: UiFlavorConfigSchema.optional().default({ mainMenu: [] }),
+  session: SessionConfigSchema.optional().default({ inactiveTimeoutMinutes: 45 }),
 });
 
 export type ItemContent = z.infer<typeof ItemContentSchema>;

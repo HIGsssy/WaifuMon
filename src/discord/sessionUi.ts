@@ -150,6 +150,31 @@ export async function paintSession(
   // refresh the cached display name on the session row so foreign-click
   // rejections can name them without a Discord round-trip.
   const owner = ownerFromInteraction(interaction);
+
+  // Slash-command entry retires an expired public board *before* we upsert
+  // the session row. We do a read-only lookup, and if the previous board has
+  // gone quiet past the inactivity timeout, we (best-effort) edit that old
+  // message into a "Session Ended" note with disabled components and clear
+  // `message_id` so the paint below takes the fresh-send path.
+  if (isCommand(interaction)) {
+    const existing = await ctx.services.session.findByPlayerAndChannel(
+      prov.playerId,
+      channelId,
+    );
+    if (existing && existing.messageId && ctx.services.session.isExpired(existing)) {
+      const channelForCleanup = getTextChannel(interaction);
+      if (channelForCleanup) {
+        await finalizeExpiredBoard(
+          ctx,
+          channelForCleanup,
+          existing.messageId,
+          existing.ownerDisplayName ?? owner.displayName,
+        );
+      }
+      await ctx.services.session.endSession(existing.id);
+    }
+  }
+
   const session = await ctx.services.session.ensureSession(
     prov.guildDbId,
     prov.playerId,
@@ -285,6 +310,47 @@ function getTextChannel(interaction: Interaction): GuildTextBasedChannel | null 
   if (!ch || typeof ch !== 'object') return null;
   if (!('send' in ch)) return null;
   return ch as GuildTextBasedChannel;
+}
+
+/**
+ * Best-effort edit of an expired public board into a terminal "Session
+ * Ended" state with no components. Failures (message deleted, permission
+ * lost, …) are logged and swallowed — the caller still clears `message_id`
+ * so the DB view is consistent even if the Discord side couldn't be updated.
+ */
+async function finalizeExpiredBoard(
+  ctx: AppContext,
+  channel: GuildTextBasedChannel,
+  oldMessageId: string,
+  ownerDisplayName: string,
+): Promise<void> {
+  const endedEmbed = new EmbedBuilder()
+    .setColor(0x808080)
+    .setAuthor({ name: `🎴 ${ownerDisplayName}'s Waifumon` })
+    .setTitle(`🎴 ${ownerDisplayName}'s Waifumon Hunt — Session Ended`)
+    .setDescription('This session went quiet. Run `/waifumon` to start a fresh hunt.')
+    .setFooter({ text: 'Old buttons no longer work — a new board has been posted below.' });
+  try {
+    await channel.messages.edit(oldMessageId, {
+      content: '',
+      embeds: [endedEmbed],
+      components: [],
+      files: [],
+      allowedMentions: { parse: [] },
+    });
+  } catch (err) {
+    if (isMissingMessageError(err)) {
+      ctx.logger.info(
+        { oldMessageId, channelId: channel.id },
+        'expired board: old message already gone — nothing to finalize',
+      );
+      return;
+    }
+    ctx.logger.warn(
+      { err, oldMessageId, channelId: channel.id },
+      'expired board: failed to edit old message into ended state',
+    );
+  }
 }
 
 function isMissingMessageError(err: unknown): boolean {

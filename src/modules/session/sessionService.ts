@@ -164,11 +164,34 @@ export interface SessionService {
   /** Look up a session by its owning message id (component ownership check). */
   findByMessageId(messageId: string): Promise<WaifumonSessionRow | null>;
 
+  /** Look up the session row for (player, channel) without mutating anything. */
+  findByPlayerAndChannel(
+    playerId: number,
+    channelId: string,
+  ): Promise<WaifumonSessionRow | null>;
+
   /** Read a specific session row by id (used by paint after ensure). */
   getById(sessionId: number): Promise<WaifumonSessionRow | null>;
 
   /** Persist the public message id after the first send or a re-send. */
   setMessageId(sessionId: number, messageId: string | null): Promise<void>;
+
+  /**
+   * Mark the session's public board as ended: clear `message_id` so future
+   * lookups can't find it and refresh `last_activity_at` so the next paint
+   * starts a fresh window. Summary is left intact — today's stats still
+   * belong to the same player.
+   */
+  endSession(sessionId: number): Promise<void>;
+
+  /**
+   * Whether the row has gone past the configured inactivity timeout. A row
+   * with a null `messageId` is considered fresh (nothing to expire yet).
+   */
+  isExpired(session: WaifumonSessionRow, now?: Date): boolean;
+
+  /** Configured inactivity timeout in milliseconds (test/diagnostic helper). */
+  readonly inactiveTimeoutMs: number;
 
   /** Bump activity + optionally record the current screen for diagnostics. */
   touch(sessionId: number, currentScreen?: SessionScreen): Promise<void>;
@@ -190,12 +213,15 @@ export interface SessionService {
 export interface SessionServiceDeps {
   db: Db;
   timezone: string;
+  /** Inactivity budget for a public session board; defaults to 45 minutes. */
+  inactiveTimeoutMinutes?: number;
   now?: () => Date;
 }
 
 export function createSessionService(deps: SessionServiceDeps): SessionService {
   const now = () => (deps.now ? deps.now() : new Date());
   const today = () => claimDateInTimezone(now(), deps.timezone);
+  const inactiveTimeoutMs = Math.max(1, deps.inactiveTimeoutMinutes ?? 45) * 60 * 1000;
 
   const readSummary: SessionService['readSummary'] = (session) =>
     parseSummary(session.summaryJson);
@@ -208,6 +234,17 @@ export function createSessionService(deps: SessionServiceDeps): SessionService {
     const stored =
       raw instanceof Date ? raw.toISOString().slice(0, 10) : String(raw).slice(0, 10);
     return stored === day;
+  };
+
+  const isExpired: SessionService['isExpired'] = (session, at) => {
+    // A row with no live public message can't be "expired" — nothing to end.
+    if (!session.messageId) return false;
+    const last =
+      session.lastActivityAt instanceof Date
+        ? session.lastActivityAt
+        : new Date(session.lastActivityAt as unknown as string);
+    const point = at ?? now();
+    return point.getTime() - last.getTime() >= inactiveTimeoutMs;
   };
 
   return {
@@ -262,6 +299,28 @@ export function createSessionService(deps: SessionServiceDeps): SessionService {
         .where(eq(waifumonSessions.messageId, messageId))
         .limit(1);
       return row ?? null;
+    },
+
+    async findByPlayerAndChannel(playerId, channelId) {
+      const [row] = await deps.db
+        .select()
+        .from(waifumonSessions)
+        .where(
+          and(
+            eq(waifumonSessions.playerId, playerId),
+            eq(waifumonSessions.channelId, channelId),
+          ),
+        )
+        .limit(1);
+      return row ?? null;
+    },
+
+    async endSession(sessionId) {
+      const at = now();
+      await deps.db
+        .update(waifumonSessions)
+        .set({ messageId: null, updatedAt: at, lastActivityAt: at })
+        .where(eq(waifumonSessions.id, sessionId));
     },
 
     async getById(sessionId) {
@@ -324,6 +383,8 @@ export function createSessionService(deps: SessionServiceDeps): SessionService {
 
     readSummary,
     isSummaryFresh,
+    isExpired,
+    inactiveTimeoutMs,
   };
 }
 

@@ -103,7 +103,11 @@ async function main(): Promise<void> {
         logger,
       }),
       collection,
-      session: createSessionService({ db, timezone: config.dailyTimezone }),
+      session: createSessionService({
+        db,
+        timezone: config.dailyTimezone,
+        inactiveTimeoutMinutes: content.tables.session?.inactiveTimeoutMinutes,
+      }),
     },
   };
 
