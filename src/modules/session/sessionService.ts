@@ -150,12 +150,15 @@ export interface SessionService {
   /**
    * Ensure a session row exists for (player, channel). Never creates
    * duplicates thanks to the (player_id, channel_id) unique index — safe under
-   * concurrent `/waifumon` invocations.
+   * concurrent `/waifumon` invocations. If `ownerDisplayName` is provided it
+   * is refreshed on both insert and conflict-update so per-guild nickname
+   * changes propagate to the session board.
    */
   ensureSession(
     guildDbId: number,
     playerId: number,
     channelId: string,
+    ownerDisplayName?: string | null,
   ): Promise<WaifumonSessionRow>;
 
   /** Look up a session by its owning message id (component ownership check). */
@@ -208,27 +211,31 @@ export function createSessionService(deps: SessionServiceDeps): SessionService {
   };
 
   return {
-    async ensureSession(guildDbId, playerId, channelId) {
+    async ensureSession(guildDbId, playerId, channelId, ownerDisplayName) {
       const at = now();
-      // Upsert on the (player, channel) unique index.
+      // Upsert on the (player, channel) unique index. When a display name is
+      // provided we refresh it on conflict too so per-guild nickname changes
+      // land on the session row without a Discord round-trip.
+      const insertValues = {
+        guildId: guildDbId,
+        playerId,
+        channelId,
+        summaryJson: emptySummary() as unknown as Record<string, unknown>,
+        summaryDate: today(),
+        createdAt: at,
+        updatedAt: at,
+        lastActivityAt: at,
+        ...(ownerDisplayName ? { ownerDisplayName } : {}),
+      };
+      const updateSet = ownerDisplayName
+        ? { lastActivityAt: at, updatedAt: at, ownerDisplayName }
+        : { lastActivityAt: at, updatedAt: at };
       const [row] = await deps.db
         .insert(waifumonSessions)
-        .values({
-          guildId: guildDbId,
-          playerId,
-          channelId,
-          summaryJson: emptySummary() as unknown as Record<string, unknown>,
-          summaryDate: today(),
-          createdAt: at,
-          updatedAt: at,
-          lastActivityAt: at,
-        })
+        .values(insertValues)
         .onConflictDoUpdate({
           target: [waifumonSessions.playerId, waifumonSessions.channelId],
-          set: {
-            lastActivityAt: at,
-            updatedAt: at,
-          },
+          set: updateSet,
         })
         .returning();
       if (!row) {

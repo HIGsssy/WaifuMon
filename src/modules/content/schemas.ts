@@ -237,6 +237,17 @@ export const WaifuProgressionConfigSchema = z.object({
   nicknameMinLevel: z.number().int().positive(),
 });
 
+/**
+ * Optional cosmetic flavor text pools that hydrate the session board UI.
+ * Empty arrays and missing entries are safe — render helpers fall back to a
+ * built-in default line.
+ */
+export const UiFlavorConfigSchema = z
+  .object({
+    mainMenu: z.array(z.string().min(1)).default([]),
+  })
+  .default({ mainMenu: [] });
+
 export const TablesFileSchema = z.object({
   energy: z.object({
     baseMax: z.number().int().positive(),
@@ -255,6 +266,7 @@ export const TablesFileSchema = z.object({
   duplicate: DuplicateConfigSchema,
   progression: ProgressionConfigSchema,
   waifuProgression: WaifuProgressionConfigSchema,
+  uiFlavor: UiFlavorConfigSchema.optional().default({ mainMenu: [] }),
 });
 
 export type ItemContent = z.infer<typeof ItemContentSchema>;

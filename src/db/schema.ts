@@ -341,6 +341,13 @@ export const waifumonSessions = pgTable(
     channelId: text('channel_id').notNull(),
     messageId: text('message_id'),
     currentScreen: text('current_screen').notNull().default('menu'),
+    /**
+     * Cached server display name of the session owner. Refreshed on every
+     * paint so per-guild nickname changes propagate; used to render the
+     * public "Hunter" line and the ephemeral wrong-user rejection copy
+     * without a Discord round-trip.
+     */
+    ownerDisplayName: text('owner_display_name'),
     summaryJson: jsonb('summary_json').$type<Record<string, unknown>>().notNull().default({}),
     summaryDate: date('summary_date'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

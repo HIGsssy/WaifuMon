@@ -18,6 +18,7 @@ import type { AppContext, PlayerInteraction, Provisioned } from '../types';
 import { buildCustomId } from '../types';
 import { paintSession, respondEphemeral } from '../sessionUi';
 import { renderSummaryLines } from '../../modules/session/sessionService';
+import { ownerFromInteraction } from '../userDisplay';
 import { withBackRow } from '../ui';
 
 function menuComponents(): ActionRowBuilder<ButtonBuilder>[] {
@@ -57,15 +58,29 @@ function menuComponents(): ActionRowBuilder<ButtonBuilder>[] {
   ];
 }
 
+const DEFAULT_MENU_FLAVOR =
+  'The charm compass hums softly. Somewhere nearby, a Waifumon is watching.';
+
+/** Pick one main-menu flavor line, safe against empty/missing content. */
+export function pickMainMenuFlavor(
+  pool: readonly string[] | undefined,
+  rng: () => number = Math.random,
+): string {
+  if (!pool || pool.length === 0) return DEFAULT_MENU_FLAVOR;
+  const idx = Math.floor(rng() * pool.length);
+  return pool[Math.min(idx, pool.length - 1)] ?? DEFAULT_MENU_FLAVOR;
+}
+
 export async function handleMenu(
   ctx: AppContext,
   interaction: PlayerInteraction,
   prov: Provisioned,
 ): Promise<void> {
+  const flavor = pickMainMenuFlavor(ctx.content.tables.uiFlavor?.mainMenu);
   const embed = new EmbedBuilder()
     .setTitle('💖 Waifumon')
     .setDescription(
-      'Welcome, hunter~\n\n' +
+      `_${flavor}_\n\n` +
         '🏹 **Hunt** — spend 1 energy to find someone\n' +
         '🎁 **Claim Daily** — energy refill, WaifuBux, and charms\n' +
         '🛍️ **Shop** — spend WaifuBux on capture charms\n' +
@@ -109,7 +124,7 @@ export async function handleProfile(
     : '_(none — set one from `/waifumon buddy`)_';
 
   const embed = new EmbedBuilder()
-    .setTitle(`👤 ${interaction.user.displayName}'s Profile`)
+    .setTitle(`👤 ${ownerFromInteraction(interaction).displayName}'s Profile`)
     .setColor(0xff6fa5)
     .addFields(
       { name: 'Level', value: `${player.level}${prestige ? ` — *${prestige}*` : ''}`, inline: true },

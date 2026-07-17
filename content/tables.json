@@ -138,5 +138,17 @@
       "xpGranted": 25
     },
     "nicknameMinLevel": 5
+  },
+  "uiFlavor": {
+    "mainMenu": [
+      "The charm compass hums softly. Somewhere nearby, a Waifumon is watching.",
+      "Neon mist coils around the alley as your next hunt comes into focus.",
+      "Your charms rattle at your belt. The hunt is ready.",
+      "A distant laugh echoes through the district, gone before you can place it.",
+      "The radar flickers once. Something rare may be close.",
+      "Another hunt begins beneath the glow of the Waifumon skyline.",
+      "The air feels charged, like a capture waiting to happen.",
+      "Your buddy watches the shadows, waiting for the next signal."
+    ]
   }
 }

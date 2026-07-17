@@ -167,11 +167,14 @@ export interface DispatcherDeps {
    * Session-owner check (Rev 4 UI model). Returns the player id that owns the
    * session board carrying `messageId`, or null if no session matches. When
    * the check fails, the dispatcher rejects the interaction ephemerally
-   * without invoking any handler.
+   * without invoking any handler. `displayName` (when available) is used to
+   * name the owner in the rejection copy so a foreign clicker knows whose
+   * board it is.
    */
   lookupSessionOwner?(messageId: string): Promise<{
     playerId: number;
     discordUserId: string;
+    displayName?: string | null;
   } | null>;
   /** Chat handlers keyed by commandKey(); receive the provisioned ids. */
   commandHandlers: Record<
@@ -299,8 +302,16 @@ export function createDispatcher(deps: DispatcherDeps) {
             return;
           }
           if (owner.playerId !== prov.playerId) {
+            // Name the owner by their stored server display name when
+            // available so a foreign clicker knows whose board it is. Fall
+            // back to a mention (which is guaranteed) if no display name has
+            // been cached yet.
+            const ownerLabel = owner.displayName
+              ? `**${owner.displayName}**`
+              : `<@${owner.discordUserId}>`;
+            const mentionSuffix = owner.displayName ? ` (<@${owner.discordUserId}>)` : '';
             await (interaction as { reply: (o: unknown) => Promise<unknown> }).reply({
-              content: `This is <@${owner.discordUserId}>'s Waifumon session. Run \`/waifumon\` to start your own.`,
+              content: `That's ${ownerLabel}'s Waifumon session${mentionSuffix}. Run \`/waifumon\` to start your own.`,
               flags: MessageFlags.Ephemeral,
             });
             return;

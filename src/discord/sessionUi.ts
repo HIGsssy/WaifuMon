@@ -20,6 +20,7 @@
  */
 import {
   DiscordAPIError,
+  EmbedBuilder,
   MessageFlags,
   type BaseMessageOptions,
   type ButtonInteraction,
@@ -32,6 +33,7 @@ import {
 import type { WaifumonSessionRow } from '../db/schema';
 import { isStaleInteractionError } from './ui';
 import type { AppContext, Provisioned } from './types';
+import { ownerFromInteraction, type OwnerIdentity } from './userDisplay';
 
 /**
  * Payload shape reused across every screen. We accept anything a Discord
@@ -56,6 +58,55 @@ function normalize(payload: SessionPayload): BaseMessageOptions {
   out.embeds = payload.embeds ?? [];
   out.components = payload.components ?? [];
   out.files = payload.files ?? [];
+  return out;
+}
+
+/**
+ * Decorate every session-board embed with the owner identity so multiple
+ * players' public boards in the same channel are visually distinguishable:
+ *   - `setAuthor(...)` on the first embed (replaced only if not already set),
+ *   - a "Hunter: <@id>" prefix in that embed's description,
+ *   - a "Only <name> can use these controls" note appended to the footer.
+ *
+ * If the payload had no embeds we synthesize a minimal owner header embed so
+ * even content-only paints (release, brief transitions) carry identity.
+ */
+function decorateWithOwner(
+  embeds: readonly unknown[],
+  owner: OwnerIdentity,
+): EmbedBuilder[] {
+  const controlNote = `Only ${owner.displayName} can use these controls · /waifumon starts your own session`;
+  const authorName = `🎴 ${owner.displayName}'s Waifumon`;
+  if (embeds.length === 0) {
+    return [
+      new EmbedBuilder()
+        .setColor(0xff6fa5)
+        .setAuthor({ name: authorName })
+        .setDescription(`**Hunter:** ${owner.mention}`)
+        .setFooter({ text: controlNote }),
+    ];
+  }
+  const out: EmbedBuilder[] = [];
+  embeds.forEach((raw, idx) => {
+    if (!(raw instanceof EmbedBuilder)) {
+      // Foreign embed (plain APIEmbed / JSONEncodable). Leave it alone.
+      out.push(raw as unknown as EmbedBuilder);
+      return;
+    }
+    if (idx === 0) {
+      if (!raw.data.author) raw.setAuthor({ name: authorName });
+      const desc = raw.data.description ?? '';
+      if (!desc.startsWith('**Hunter:**') && !desc.includes(`Hunter:** ${owner.mention}`)) {
+        raw.setDescription(`**Hunter:** ${owner.mention}${desc ? `\n\n${desc}` : ''}`);
+      }
+      const existingFooter = raw.data.footer?.text ?? '';
+      if (!existingFooter.includes('can use these controls')) {
+        const combined = existingFooter ? `${existingFooter} · ${controlNote}` : controlNote;
+        raw.setFooter({ text: combined });
+      }
+    }
+    out.push(raw);
+  });
   return out;
 }
 
@@ -94,12 +145,21 @@ export async function paintSession(
     await replyEphemeral(interaction, 'Waifumon needs a channel context~');
     throw new Error('paintSession without channelId');
   }
+  // Resolve owner identity from the live interaction — the dispatcher's
+  // session-owner check has already ensured only the owner reaches here — and
+  // refresh the cached display name on the session row so foreign-click
+  // rejections can name them without a Discord round-trip.
+  const owner = ownerFromInteraction(interaction);
   const session = await ctx.services.session.ensureSession(
     prov.guildDbId,
     prov.playerId,
     channelId,
+    owner.displayName,
   );
-  const body = normalize(payload);
+
+  // Decorate the payload with owner identity before we hand it to Discord.
+  const decoratedEmbeds = decorateWithOwner(payload.embeds ?? [], owner);
+  const body = normalize({ ...payload, embeds: decoratedEmbeds });
 
   // Fast path: a button/select clicked on the session message itself. This is
   // the common case for real gameplay navigation.

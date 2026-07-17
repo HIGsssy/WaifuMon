@@ -43,6 +43,13 @@
       "when": 1816207200000,
       "tag": "0005_public_session_board",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1816293600000,
+      "tag": "0006_session_owner_display",
+      "breakpoints": true
     }
   ]
 }

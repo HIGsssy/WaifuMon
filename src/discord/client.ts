@@ -72,7 +72,11 @@ export function createDiscordClient(ctx: AppContext): Client {
       if (!session) return null;
       const player = await ctx.services.players.getById(session.playerId);
       if (!player) return null;
-      return { playerId: session.playerId, discordUserId: player.discordUserId };
+      return {
+        playerId: session.playerId,
+        discordUserId: player.discordUserId,
+        displayName: session.ownerDisplayName ?? null,
+      };
     },
     commandHandlers: {
       'waifumon:menu': (i: ChatInputCommandInteraction, prov: Provisioned) =>
