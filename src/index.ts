@@ -21,6 +21,7 @@ import { createHuntService } from './modules/hunt/huntService';
 import { createCaptureService } from './modules/capture/captureService';
 import { createCollectionService } from './modules/collection/collectionService';
 import { createProgressionService } from './modules/progression/progressionService';
+import { createSessionService } from './modules/session/sessionService';
 import { createLogger } from './shared/logger';
 
 async function main(): Promise<void> {
@@ -102,6 +103,7 @@ async function main(): Promise<void> {
         logger,
       }),
       collection,
+      session: createSessionService({ db, timezone: config.dailyTimezone }),
     },
   };
 

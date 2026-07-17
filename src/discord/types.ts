@@ -1,6 +1,8 @@
 import type {
   ButtonInteraction,
   ChatInputCommandInteraction,
+  ModalSubmitInteraction,
+  StringSelectMenuInteraction,
 } from 'discord.js';
 import type { AppConfig } from '../config/config';
 import type { Db } from '../db/client';
@@ -16,6 +18,7 @@ import type { HuntService } from '../modules/hunt/huntService';
 import type { CaptureService } from '../modules/capture/captureService';
 import type { CollectionService } from '../modules/collection/collectionService';
 import type { ProgressionService } from '../modules/progression/progressionService';
+import type { SessionService } from '../modules/session/sessionService';
 
 export interface AppServices {
   guilds: GuildService;
@@ -28,6 +31,7 @@ export interface AppServices {
   capture: CaptureService;
   collection: CollectionService;
   progression: ProgressionService;
+  session: SessionService;
 }
 
 export interface AppContext {
@@ -44,7 +48,11 @@ export interface Provisioned {
   playerId: number;
 }
 
-export type PlayerInteraction = ChatInputCommandInteraction | ButtonInteraction;
+export type PlayerInteraction =
+  | ChatInputCommandInteraction
+  | ButtonInteraction
+  | StringSelectMenuInteraction
+  | ModalSubmitInteraction;
 
 export type CommandHandler = (
   ctx: AppContext,

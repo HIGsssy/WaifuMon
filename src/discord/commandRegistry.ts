@@ -163,6 +163,16 @@ export interface DispatcherDeps {
    * Used by autocomplete (which must never provision or write).
    */
   lookupPlayerId?(discordGuildId: string, discordUserId: string): Promise<number | null>;
+  /**
+   * Session-owner check (Rev 4 UI model). Returns the player id that owns the
+   * session board carrying `messageId`, or null if no session matches. When
+   * the check fails, the dispatcher rejects the interaction ephemerally
+   * without invoking any handler.
+   */
+  lookupSessionOwner?(messageId: string): Promise<{
+    playerId: number;
+    discordUserId: string;
+  } | null>;
   /** Chat handlers keyed by commandKey(); receive the provisioned ids. */
   commandHandlers: Record<
     string,
@@ -270,6 +280,33 @@ export function createDispatcher(deps: DispatcherDeps) {
       }
 
       const prov = await deps.provision(interaction.guildId!, interaction.user.id);
+
+      // ── Session-owner check (Rev 4 UI model). ──
+      // Component clicks live on the public session board — reject foreign
+      // clicks ephemerally without invoking any handler. Modal submits are
+      // inherently owned by the submitter, so they skip this check.
+      if ((isButton || isSelect) && deps.lookupSessionOwner) {
+        const clickedMessageId =
+          (interaction as { message?: { id?: string } }).message?.id ?? null;
+        if (clickedMessageId) {
+          const owner = await deps.lookupSessionOwner(clickedMessageId);
+          if (!owner) {
+            await (interaction as { reply: (o: unknown) => Promise<unknown> }).reply({
+              content:
+                'This session is no longer active — run `/waifumon` to open a fresh board.',
+              flags: MessageFlags.Ephemeral,
+            });
+            return;
+          }
+          if (owner.playerId !== prov.playerId) {
+            await (interaction as { reply: (o: unknown) => Promise<unknown> }).reply({
+              content: `This is <@${owner.discordUserId}>'s Waifumon session. Run \`/waifumon\` to start your own.`,
+              flags: MessageFlags.Ephemeral,
+            });
+            return;
+          }
+        }
+      }
 
       if (isCommand) {
         const key = commandKey(interaction);

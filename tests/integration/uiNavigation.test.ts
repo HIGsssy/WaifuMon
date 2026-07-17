@@ -1,7 +1,10 @@
 /**
- * Handler navigation tests: menu → sub-screen updates the same ephemeral
- * message (button uses `.update()`), and slash-command entry replies fresh
- * with the Ephemeral flag. Also verifies sub-screens carry a Back button.
+ * Handler navigation tests (Rev 4 UI model).
+ *
+ * Menu buttons on the session board update the board in place via
+ * `interaction.update()` (no new send, no ephemeral stacking). Slash commands
+ * post the session board via `channel.send()` and acknowledge the interaction
+ * ephemerally. This replaces the old ephemeral-navigation contract.
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { MessageFlags } from 'discord.js';
@@ -15,6 +18,8 @@ import {
 import { bootstrapApp, provisionPlayer, type App } from '../helpers/fixtures';
 import { createTestDb, type TestDb } from '../helpers/testDb';
 import type { AppContext, Provisioned } from '../../src/discord/types';
+import { waifumonSessions } from '../../src/db/schema';
+import { eq } from 'drizzle-orm';
 
 let t: TestDb;
 let app: App;
@@ -24,8 +29,7 @@ let ctx: AppContext;
 beforeAll(async () => {
   t = await createTestDb();
   app = await bootstrapApp(t);
-  const provisioned = await provisionPlayer(app, 'g-ui-nav', 'u-1');
-  prov = provisioned;
+  prov = await provisionPlayer(app, 'g-ui-nav', 'u-1');
   ctx = {
     config: {
       assetsDir: process.cwd(),
@@ -51,6 +55,7 @@ beforeAll(async () => {
       capture: app.capture,
       collection: app.collection,
       progression: app.progression,
+      session: app.session,
     },
   };
 });
@@ -58,108 +63,147 @@ afterAll(async () => {
   await t.cleanup();
 });
 
-interface RecordedInteraction {
+interface FakeChannel {
+  id: string;
+  send: ReturnType<typeof vi.fn>;
+  messages: { edit: ReturnType<typeof vi.fn> };
+}
+
+function fakeChannel(id = 'c-1'): FakeChannel {
+  return {
+    id,
+    send: vi.fn(async () => ({ id: `m-${id}` })),
+    messages: { edit: vi.fn(async () => undefined) },
+  };
+}
+
+interface FakeInteraction {
+  isChatInputCommand: () => boolean;
   isButton: () => boolean;
+  isStringSelectMenu: () => boolean;
+  isModalSubmit: () => boolean;
   replied: boolean;
   deferred: boolean;
   reply: ReturnType<typeof vi.fn>;
-  update: ReturnType<typeof vi.fn>;
   editReply: ReturnType<typeof vi.fn>;
-  user: { id: string; displayName: string };
+  update: ReturnType<typeof vi.fn>;
+  followUp: ReturnType<typeof vi.fn>;
+  deferUpdate: ReturnType<typeof vi.fn>;
+  channel: FakeChannel;
   channelId: string;
+  user: { id: string; displayName: string };
+  guildId: string;
+  message?: { id: string };
 }
 
-function fakeButton(): RecordedInteraction {
+function fakeButtonOnSession(sessionMessageId: string, channel = fakeChannel()): FakeInteraction {
   return {
+    isChatInputCommand: () => false,
     isButton: () => true,
+    isStringSelectMenu: () => false,
+    isModalSubmit: () => false,
     replied: false,
     deferred: false,
     reply: vi.fn(async () => {}),
-    update: vi.fn(async () => {}),
     editReply: vi.fn(async () => {}),
+    update: vi.fn(async () => {}),
+    followUp: vi.fn(async () => {}),
+    deferUpdate: vi.fn(async () => {}),
+    channel,
+    channelId: channel.id,
     user: { id: 'u-1', displayName: 'Hunter' },
-    channelId: 'c-1',
+    guildId: 'g-ui-nav',
+    message: { id: sessionMessageId },
   };
 }
 
-function fakeCommand(): RecordedInteraction {
+function fakeCommand(channel = fakeChannel()): FakeInteraction {
   return {
+    isChatInputCommand: () => true,
     isButton: () => false,
+    isStringSelectMenu: () => false,
+    isModalSubmit: () => false,
     replied: false,
     deferred: false,
     reply: vi.fn(async () => {}),
-    update: vi.fn(async () => {}),
     editReply: vi.fn(async () => {}),
+    update: vi.fn(async () => {}),
+    followUp: vi.fn(async () => {}),
+    deferUpdate: vi.fn(async () => {}),
+    channel,
+    channelId: channel.id,
     user: { id: 'u-1', displayName: 'Hunter' },
-    channelId: 'c-1',
+    guildId: 'g-ui-nav',
   };
 }
 
-function hasBackButton(payload: unknown): boolean {
-  const rows = (payload as { components?: Array<{ toJSON: () => unknown }> }).components ?? [];
-  for (const row of rows) {
-    const json = row.toJSON() as { components: Array<{ custom_id: string }> };
-    if (json.components.some((c) => c.custom_id === 'wm|v1|menu|back')) return true;
-  }
-  return false;
+async function currentSession() {
+  const [row] = await t.db
+    .select()
+    .from(waifumonSessions)
+    .where(eq(waifumonSessions.playerId, prov.playerId))
+    .limit(1);
+  return row;
 }
 
-describe('menu navigation — buttons update in place, commands reply fresh', () => {
-  it('menu button → profile calls update() (not reply/followUp)', async () => {
-    const btn = fakeButton();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await handleProfile(ctx, btn as any, prov);
-    expect(btn.update).toHaveBeenCalledOnce();
-    expect(btn.reply).not.toHaveBeenCalled();
-    expect(btn.editReply).not.toHaveBeenCalled();
-  });
-
-  it('/waifumon profile replies ephemerally on first touch', async () => {
+describe('session-board navigation: slash commands post publicly, buttons edit in place', () => {
+  it('slash /waifumon menu channel.sends the board and stores the message id', async () => {
     const cmd = fakeCommand();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await handleProfile(ctx, cmd as any, prov);
+    await handleMenu(ctx, cmd as any, prov);
+    expect(cmd.channel.send).toHaveBeenCalledOnce();
+    // Ephemeral acknowledgement for the slash command itself.
     expect(cmd.reply).toHaveBeenCalledOnce();
     const payload = cmd.reply.mock.calls[0]![0] as { flags?: number };
     expect(payload.flags).toBe(MessageFlags.Ephemeral);
+    const session = await currentSession();
+    expect(session?.messageId).toBeTruthy();
   });
 
-  it('profile screen carries a Back button', async () => {
-    const btn = fakeButton();
+  it('profile button on the session message updates the board (no new send, no ephemeral)', async () => {
+    const session = await currentSession();
+    const btn = fakeButtonOnSession(session!.messageId!);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await handleProfile(ctx, btn as any, prov);
-    expect(hasBackButton(btn.update.mock.calls[0]![0])).toBe(true);
+    expect(btn.update).toHaveBeenCalledOnce();
+    expect(btn.channel.send).not.toHaveBeenCalled();
+    expect(btn.reply).not.toHaveBeenCalled();
+    expect(btn.followUp).not.toHaveBeenCalled();
   });
 
-  it('inventory: button updates in place with a Back button', async () => {
-    const btn = fakeButton();
+  it('inventory button updates the session board in place', async () => {
+    const session = await currentSession();
+    const btn = fakeButtonOnSession(session!.messageId!);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await handleInventory(ctx, btn as any, prov);
     expect(btn.update).toHaveBeenCalledOnce();
-    expect(hasBackButton(btn.update.mock.calls[0]![0])).toBe(true);
+    expect(btn.channel.send).not.toHaveBeenCalled();
   });
 
-  it('shop: button updates in place with a Back button', async () => {
-    const btn = fakeButton();
+  it('shop button updates the session board in place', async () => {
+    const session = await currentSession();
+    const btn = fakeButtonOnSession(session!.messageId!);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await handleShop(ctx, btn as any, prov);
     expect(btn.update).toHaveBeenCalledOnce();
-    expect(hasBackButton(btn.update.mock.calls[0]![0])).toBe(true);
+    expect(btn.channel.send).not.toHaveBeenCalled();
   });
 
-  it('daily claim: button updates in place with a Back button', async () => {
-    const btn = fakeButton();
+  it('daily claim button updates the session board in place', async () => {
+    const session = await currentSession();
+    const btn = fakeButtonOnSession(session!.messageId!);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await handleDaily(ctx, btn as any, prov);
     expect(btn.update).toHaveBeenCalledOnce();
-    expect(hasBackButton(btn.update.mock.calls[0]![0])).toBe(true);
+    expect(btn.channel.send).not.toHaveBeenCalled();
   });
 
-  it('main menu button (Back) shows the menu with no Back-button row', async () => {
-    const btn = fakeButton();
+  it('menu back button paints menu without stacking', async () => {
+    const session = await currentSession();
+    const btn = fakeButtonOnSession(session!.messageId!);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await handleMenu(ctx, btn as any, prov);
     expect(btn.update).toHaveBeenCalledOnce();
-    // Menu itself does not include a Back row (it is the root screen).
-    expect(hasBackButton(btn.update.mock.calls[0]![0])).toBe(false);
+    expect(btn.channel.send).not.toHaveBeenCalled();
   });
 });

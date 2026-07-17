@@ -15,6 +15,7 @@ import { createProgressionService } from '../../src/modules/progression/progress
 import { createInventoryService } from '../../src/modules/inventory/inventoryService';
 import { createPlayerService } from '../../src/modules/players/playerService';
 import { createShopService } from '../../src/modules/shop/shopService';
+import { createSessionService } from '../../src/modules/session/sessionService';
 import type { Rng } from '../../src/shared/random';
 import type { Logger } from '../../src/shared/logger';
 import { silentLogger, type TestDb } from './testDb';
@@ -38,6 +39,7 @@ export interface App {
   capture: ReturnType<typeof createCaptureService>;
   collection: ReturnType<typeof createCollectionService>;
   progression: ReturnType<typeof createProgressionService>;
+  session: ReturnType<typeof createSessionService>;
 }
 
 export interface BootstrapOptions {
@@ -112,6 +114,7 @@ export async function bootstrapApp(
       ...(opts.captureRng ? { rng: opts.captureRng } : {}),
     }),
     collection,
+    session: createSessionService({ db: t.db, timezone }),
   };
 }
 

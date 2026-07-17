@@ -320,6 +320,45 @@ export const playerProgressionEvents = pgTable(
   ],
 );
 
+/**
+ * Public single-message session board (Rev 4 UI model).
+ *
+ * One active session per (player, channel). `message_id` is the public
+ * channel-post that every navigation edits in place; `summary_json` holds
+ * today's per-player tally that renders in the menu embed. The row is
+ * upserted on `/waifumon` and refreshed on every action.
+ */
+export const waifumonSessions = pgTable(
+  'waifumon_sessions',
+  {
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    guildId: bigint('guild_id', { mode: 'number' })
+      .notNull()
+      .references(() => guilds.id),
+    playerId: bigint('player_id', { mode: 'number' })
+      .notNull()
+      .references(() => players.id),
+    channelId: text('channel_id').notNull(),
+    messageId: text('message_id'),
+    currentScreen: text('current_screen').notNull().default('menu'),
+    summaryJson: jsonb('summary_json').$type<Record<string, unknown>>().notNull().default({}),
+    summaryDate: date('summary_date'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    lastActivityAt: timestamp('last_activity_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    // One active session per (player, channel).
+    uniqueIndex('waifumon_sessions_player_channel_uq').on(t.playerId, t.channelId),
+    // Reverse lookup for component ownership checks (message_id → session).
+    uniqueIndex('waifumon_sessions_message_id_uq')
+      .on(t.messageId)
+      .where(sql`message_id is not null`),
+  ],
+);
+
 export type GuildRow = typeof guilds.$inferSelect;
 export type PlayerRow = typeof players.$inferSelect;
 export type PlayerCurrenciesRow = typeof playerCurrencies.$inferSelect;
@@ -332,3 +371,4 @@ export type EncounterRow = typeof encounters.$inferSelect;
 export type CaptureAttemptRow = typeof captureAttempts.$inferSelect;
 export type PlayerWaifuRow = typeof playerWaifus.$inferSelect;
 export type PlayerProgressionEventRow = typeof playerProgressionEvents.$inferSelect;
+export type WaifumonSessionRow = typeof waifumonSessions.$inferSelect;

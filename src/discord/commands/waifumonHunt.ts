@@ -56,7 +56,8 @@ import {
 } from '../../shared/errors';
 import type { AppContext, PlayerInteraction, Provisioned } from '../types';
 import { buildCustomId } from '../types';
-import { respondScreen, withBackRow } from '../ui';
+import { paintSession, respondEphemeral, type SessionPayload } from '../sessionUi';
+import { withBackRow } from '../ui';
 import { duplicatePromptComponents } from './waifumonCollection';
 
 const EPHEMERAL = { flags: MessageFlags.Ephemeral } as const;
@@ -219,14 +220,48 @@ export async function handleHunt(
 ): Promise<void> {
   const channelId = interaction.channelId;
   if (!channelId) {
-    await respondScreen(interaction, {
-      content: 'Hunts need a channel context.',
-      components: withBackRow(),
-    });
+    await respondEphemeral(interaction, 'Hunts need a channel context.');
     return;
   }
   try {
     const result = await ctx.services.hunt.hunt(prov.playerId, channelId);
+    // Record hunt + any find/level-up into the daily summary board.
+    const session = await ctx.services.session.ensureSession(
+      prov.guildDbId,
+      prov.playerId,
+      channelId,
+    );
+    await ctx.services.session.recordEvent(session.id, { type: 'hunt' });
+    for (const lu of result.levelUps) {
+      await ctx.services.session.recordEvent(session.id, {
+        type: 'levelup',
+        toLevel: lu.toLevel,
+      });
+    }
+    if (result.buddyAward && (result.buddyAward.xpGranted > 0 || result.buddyAward.affectionGranted > 0)) {
+      await ctx.services.session.recordEvent(session.id, {
+        type: 'buddy',
+        xp: result.buddyAward.xpGranted,
+        affection: result.buddyAward.affectionGranted,
+      });
+    }
+    if (result.kind === 'rare_item_find') {
+      await ctx.services.session.recordEvent(session.id, {
+        type: 'find',
+        find: { kind: 'item', label: `${result.item.name} ×${result.quantity}` },
+      });
+    } else if (result.kind === 'waifubux_find') {
+      await ctx.services.session.recordEvent(session.id, {
+        type: 'find',
+        find: { kind: 'waifubux', label: `+${result.amount} WB` },
+      });
+    } else if (result.kind === 'essence_find') {
+      await ctx.services.session.recordEvent(session.id, {
+        type: 'find',
+        find: { kind: 'essence', label: `+${result.amount} Essence` },
+      });
+    }
+
     if (result.kind === 'encounter') {
       const view = await buildEncounterView(
         ctx,
@@ -236,7 +271,7 @@ export async function handleHunt(
         result.energyRemaining,
       );
       // Encounter reveal has its own actions (charms + Let Her Go); no Back.
-      await respondScreen(interaction, view);
+      await paintSession(ctx, interaction, prov, view);
       return;
     }
     const embed = new EmbedBuilder().setColor(0xff6fa5);
@@ -263,7 +298,7 @@ export async function handleHunt(
       embed.setDescription(`${embed.data.description ?? ''}\n\n${lu}`.trim());
     }
     embed.setFooter({ text: `Energy left: ${result.energyRemaining}` });
-    await respondScreen(interaction, {
+    await paintSession(ctx, interaction, prov, {
       embeds: [embed],
       components: withBackRow([huntAgainRow()]),
     });
@@ -274,21 +309,15 @@ export async function handleHunt(
         const species = await loadSpeciesById(ctx, active.speciesId);
         if (species) {
           const view = await buildEncounterView(ctx, prov, active, species);
-          await respondScreen(interaction, view);
+          await paintSession(ctx, interaction, prov, view);
           return;
         }
       }
-      await respondScreen(interaction, {
-        content: err.userMessage,
-        components: withBackRow(),
-      });
+      await respondEphemeral(interaction, err.userMessage);
       return;
     }
     if (err instanceof HuntCooldownError || err instanceof InsufficientEnergyError) {
-      await respondScreen(interaction, {
-        content: err.userMessage,
-        components: withBackRow(),
-      });
+      await respondEphemeral(interaction, err.userMessage);
       return;
     }
     throw err;
@@ -488,7 +517,6 @@ function retryButtonRows(
 function buildEphemeralOutcomeMessage(
   ctx: AppContext,
   result: CaptureAttemptResult,
-  publicOk: boolean,
 ): InteractionEditReplyOptions {
   const { outcome, species, item, isDuplicate, attempt, attemptsRemaining, newWaifu } = result;
   const embed = new EmbedBuilder().setColor(rarityColor(species.rarity));
@@ -527,11 +555,6 @@ function buildEphemeralOutcomeMessage(
     const suffix = [xpLine, luLine].filter(Boolean).join('\n');
     embed.setDescription(`${embed.data.description ?? ''}\n\n${suffix}`.trim());
   }
-  if (!publicOk) {
-    embed.setFooter({
-      text: "Note: I couldn't post publicly in this channel — the capture is still saved.",
-    });
-  }
   // Duplicate captures get an inline Keep / Convert-to-Essence row so the
   // player can resolve the dup right away without a second slash command.
   // (Timeout defaults to Keep — the row already exists in the DB.)
@@ -556,9 +579,8 @@ async function buildFailureRetryReply(
   ctx: AppContext,
   prov: Provisioned,
   result: CaptureAttemptResult,
-  publicOk: boolean,
 ): Promise<InteractionEditReplyOptions> {
-  const base = buildEphemeralOutcomeMessage(ctx, result, publicOk);
+  const base = buildEphemeralOutcomeMessage(ctx, result);
   const owned = await ctx.services.inventory.getQuantity(prov.playerId, result.item.id);
   const charm = findItemContent(ctx, result.item.slug);
   return {
@@ -577,7 +599,7 @@ export async function handleEncounterCharm(
   const encounterId = Number(args[0]);
   const itemSlug = args[1];
   if (!Number.isInteger(encounterId) || !itemSlug) {
-    await interaction.reply({ content: 'That button no longer works.', ...EPHEMERAL });
+    await respondEphemeral(interaction, 'That button no longer works.');
     return;
   }
 
@@ -588,57 +610,59 @@ export async function handleEncounterCharm(
     result = await ctx.services.capture.attemptCapture(prov.playerId, encounterId, itemSlug);
   } catch (err) {
     const message = translateCaptureError(err);
-    await interaction.editReply({
-      content: message,
-      embeds: [],
-      components: withBackRow(),
-      files: [],
-    });
+    // Non-fatal capture rejections (already resolved, expired, out of items)
+    // stay ephemeral so the session board remains on its current state.
+    await respondEphemeral(interaction, message);
     return;
   }
 
-  const channel = interaction.channel as GuildTextBasedChannel | null;
-  const userMention = `<@${interaction.user.id}>`;
-  let publicOk = false;
-
-  if (channel && 'send' in channel) {
-    // Refetch the encounter to pick up publicMessageId set by prior attempts.
-    const attempts = await loadAttemptsForEncounter(ctx, encounterId);
-    const itemsById = await loadItemsByIds(ctx, attempts.map((a) => a.itemId));
-    const outcomeForPublic: CaptureOutcome | 'ongoing' =
-      result.outcome === 'failure' && result.attemptsRemaining > 0 ? 'failure' : result.outcome;
-    const embed = buildPublicCaptureEmbed(
-      result.species,
-      userMention,
-      renderAttemptLog(attempts, itemsById),
-      outcomeForPublic,
-      Boolean(result.species.imagePath),
-      result.attemptsRemaining,
-      result.encounter.maxAttempts,
+  // Record capture/escape into the session summary board. Level-ups too.
+  const channelId = interaction.channelId;
+  if (channelId) {
+    const session = await ctx.services.session.ensureSession(
+      prov.guildDbId,
+      prov.playerId,
+      channelId,
     );
-    // Build a fresh attachment for each public paint (Discord uploads per send).
-    const card = attachCard(ctx, result.species);
-    const files = card ? [card] : [];
-    const publicPayload: BaseMessageOptions = {
-      embeds: [embed],
-      files,
-      allowedMentions: { parse: [] },
-    };
-    const paint = await paintPublicMessage(ctx, channel, result.encounter, publicPayload);
-    publicOk = paint.posted;
+    if (result.outcome === 'success') {
+      await ctx.services.session.recordEvent(session.id, {
+        type: 'capture',
+        speciesName: result.species.name,
+        rarity: result.species.rarity,
+      });
+    } else if (result.outcome === 'escape') {
+      await ctx.services.session.recordEvent(session.id, {
+        type: 'escape',
+        speciesName: result.species.name,
+      });
+    }
+    for (const lu of result.levelUps) {
+      await ctx.services.session.recordEvent(session.id, {
+        type: 'levelup',
+        toLevel: lu.toLevel,
+      });
+    }
   }
 
-  // Rare capture announcement (SSR+): fire once on success only.
+  // Rare capture announcement (SR+): fire once on success only. This is the
+  // *separate* public announcement — not the session board — and still uses
+  // the guild-configured announce channel with safe allowedMentions.
   if (result.outcome === 'success') {
-    await sendRareAnnouncement(ctx, interaction, result.species, userMention, result.isDuplicate);
+    await sendRareAnnouncement(
+      ctx,
+      interaction,
+      result.species,
+      `<@${interaction.user.id}>`,
+      result.isDuplicate,
+    );
   }
 
-  // Paint the player's own ephemeral state.
+  // Paint the outcome (success / escape / failure) onto the session board.
   const reply =
     result.outcome === 'failure'
-      ? await buildFailureRetryReply(ctx, prov, result, publicOk)
-      : buildEphemeralOutcomeMessage(ctx, result, publicOk);
-  await interaction.editReply(reply);
+      ? await buildFailureRetryReply(ctx, prov, result)
+      : buildEphemeralOutcomeMessage(ctx, result);
+  await paintSession(ctx, interaction, prov, reply as unknown as SessionPayload);
 }
 
 /** Use Different Charm — reopens the encounter reveal with fresh quantities. */
@@ -650,33 +674,24 @@ export async function handleEncounterPick(
 ): Promise<void> {
   const encounterId = Number(args[0]);
   if (!Number.isInteger(encounterId)) {
-    await respondScreen(interaction, {
-      content: 'That encounter is no longer active.',
-      components: withBackRow(),
-    });
+    await respondEphemeral(interaction, 'That encounter is no longer active.');
     return;
   }
   const active = await ctx.services.hunt.getActiveEncounter(prov.playerId);
   if (!active || active.id !== encounterId) {
-    await respondScreen(interaction, {
-      content: 'That encounter is no longer active.',
-      components: withBackRow(),
-    });
+    await respondEphemeral(interaction, 'That encounter is no longer active.');
     return;
   }
   const speciesRow = await loadSpeciesById(ctx, active.speciesId);
   if (!speciesRow) {
-    await respondScreen(interaction, {
-      content: 'That encounter is no longer active.',
-      components: withBackRow(),
-    });
+    await respondEphemeral(interaction, 'That encounter is no longer active.');
     return;
   }
   const view = await buildEncounterView(ctx, prov, active, speciesRow);
-  await respondScreen(interaction, view);
+  await paintSession(ctx, interaction, prov, view);
 }
 
-/** Let Her Go — pre or post-attempt. Finalizes the public message if one exists. */
+/** Let Her Go — pre or post-attempt. Session board is the sole surface. */
 export async function handleEncounterRelease(
   ctx: AppContext,
   interaction: ButtonInteraction,
@@ -685,62 +700,20 @@ export async function handleEncounterRelease(
 ): Promise<void> {
   const encounterId = Number(args[0]);
   if (!Number.isInteger(encounterId)) {
-    await respondScreen(interaction, {
-      content: 'That encounter is no longer active.',
-      components: withBackRow(),
-    });
+    await respondEphemeral(interaction, 'That encounter is no longer active.');
     return;
   }
-  let releasedRow: EncounterRow;
   try {
-    releasedRow = await ctx.services.hunt.letHerGo(prov.playerId, encounterId);
+    await ctx.services.hunt.letHerGo(prov.playerId, encounterId);
   } catch (err) {
     if (err instanceof EncounterNotFoundError) {
-      await respondScreen(interaction, {
-        content: err.userMessage,
-        components: withBackRow(),
-      });
+      await respondEphemeral(interaction, err.userMessage);
       return;
     }
     throw err;
   }
 
-  // If attempts happened, edit the public message to a final released state.
-  if (releasedRow.publicMessageId) {
-    const channel = interaction.channel as GuildTextBasedChannel | null;
-    if (channel && 'messages' in channel) {
-      const speciesRow = await loadSpeciesById(ctx, releasedRow.speciesId);
-      if (speciesRow) {
-        const attempts = await loadAttemptsForEncounter(ctx, releasedRow.id);
-        const itemsById = await loadItemsByIds(ctx, attempts.map((a) => a.itemId));
-        const embed = buildPublicCaptureEmbed(
-          speciesRow,
-          `<@${interaction.user.id}>`,
-          renderAttemptLog(attempts, itemsById),
-          'released',
-          Boolean(speciesRow.imagePath),
-          0,
-          releasedRow.maxAttempts,
-        );
-        const card = attachCard(ctx, speciesRow);
-        const files = card ? [card] : [];
-        try {
-          await channel.messages.edit(releasedRow.publicMessageId, {
-            embeds: [embed],
-            files,
-            allowedMentions: { parse: [] },
-          });
-        } catch (err) {
-          ctx.logger.warn(
-            { err, encounterId: releasedRow.id },
-            'failed to finalize released public message',
-          );
-        }
-      }
-    }
-  }
-
-  await interaction.update({
+  await paintSession(ctx, interaction, prov, {
     content: 'You let her slip back into the neon~',
     embeds: [],
     components: withBackRow(),

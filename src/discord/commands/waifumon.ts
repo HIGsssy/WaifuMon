@@ -1,10 +1,10 @@
 /**
  * Player-facing /waifumon UI (menu, profile, daily, inventory, shop).
  *
- * Navigation model: menu buttons and sub-screens paint the *same* ephemeral
- * message via `respondScreen`, so nothing stacks. First-touch slash commands
- * (`/waifumon shop`, etc.) reply fresh. Sub-screens carry a Back button that
- * routes to `menu:back` → `handleMenu`.
+ * Rev 4 UI model: every real gameplay screen paints the *public session
+ * board* (`paintSession`) — one channel-post per (player, channel) that is
+ * edited in place instead of stacking ephemeral replies. Ephemeral responses
+ * are reserved for errors and destructive confirmations.
  */
 import {
   ActionRowBuilder,
@@ -16,7 +16,9 @@ import {
 import { AlreadyClaimedError } from '../../shared/errors';
 import type { AppContext, PlayerInteraction, Provisioned } from '../types';
 import { buildCustomId } from '../types';
-import { respondScreen, withBackRow } from '../ui';
+import { paintSession, respondEphemeral } from '../sessionUi';
+import { renderSummaryLines } from '../../modules/session/sessionService';
+import { withBackRow } from '../ui';
 
 function menuComponents(): ActionRowBuilder<ButtonBuilder>[] {
   return [
@@ -56,9 +58,9 @@ function menuComponents(): ActionRowBuilder<ButtonBuilder>[] {
 }
 
 export async function handleMenu(
-  _ctx: AppContext,
+  ctx: AppContext,
   interaction: PlayerInteraction,
-  _prov: Provisioned,
+  prov: Provisioned,
 ): Promise<void> {
   const embed = new EmbedBuilder()
     .setTitle('💖 Waifumon')
@@ -71,7 +73,20 @@ export async function handleMenu(
         '👤 **Profile** · 🎒 **Inventory**',
     )
     .setColor(0xff6fa5);
-  await respondScreen(interaction, { embeds: [embed], components: menuComponents() });
+  // "Today" summary: fold in whatever the session board has recorded so far.
+  const channelId = interaction.channelId;
+  if (channelId) {
+    const session = await ctx.services.session.ensureSession(
+      prov.guildDbId,
+      prov.playerId,
+      channelId,
+    );
+    const summary = ctx.services.session.isSummaryFresh(session)
+      ? ctx.services.session.readSummary(session)
+      : ctx.services.session.readSummary({ ...session, summaryJson: {} });
+    embed.addFields({ name: '📅 Today', value: renderSummaryLines(summary).join('\n') });
+  }
+  await paintSession(ctx, interaction, prov, { embeds: [embed], components: menuComponents() });
 }
 
 export async function handleProfile(
@@ -105,7 +120,7 @@ export async function handleProfile(
       { name: '★ Buddy', value: buddyLine, inline: false },
     )
     .setFooter({ text: `Hunter since ${player.createdAt.toDateString()}` });
-  await respondScreen(interaction, { embeds: [embed], components: withBackRow() });
+  await paintSession(ctx, interaction, prov, { embeds: [embed], components: withBackRow() });
 }
 
 function formatLevelUps(levelUps: readonly { toLevel: number; rewardLabels: readonly string[] }[]): string {
@@ -124,6 +139,21 @@ export async function handleDaily(
 ): Promise<void> {
   try {
     const result = await ctx.services.daily.claim(prov.playerId);
+    const channelId = interaction.channelId;
+    if (channelId) {
+      const session = await ctx.services.session.ensureSession(
+        prov.guildDbId,
+        prov.playerId,
+        channelId,
+      );
+      await ctx.services.session.recordEvent(session.id, { type: 'daily' });
+      for (const lu of result.levelUps) {
+        await ctx.services.session.recordEvent(session.id, {
+          type: 'levelup',
+          toLevel: lu.toLevel,
+        });
+      }
+    }
     const itemLines = result.items
       .map(({ item, quantity }) => `${item.emoji ?? '•'} ${item.name} ×${quantity}`)
       .join('\n');
@@ -140,14 +170,15 @@ export async function handleDaily(
           levelUpNote,
       )
       .setFooter({ text: 'Come back after the daily reset~' });
-    await respondScreen(interaction, { embeds: [embed], components: withBackRow() });
+    await paintSession(ctx, interaction, prov, {
+      embeds: [embed],
+      components: withBackRow(),
+    });
   } catch (err) {
     if (err instanceof AlreadyClaimedError) {
-      const embed = new EmbedBuilder()
-        .setTitle('🎁 Daily')
-        .setColor(0xffc46f)
-        .setDescription(err.userMessage);
-      await respondScreen(interaction, { embeds: [embed], components: withBackRow() });
+      // Already-claimed is an error condition — reply ephemerally so the
+      // session board stays on its current screen.
+      await respondEphemeral(interaction, `🎁 ${err.userMessage}`);
       return;
     }
     throw err;
@@ -183,7 +214,7 @@ export async function handleInventory(
       });
     }
   }
-  await respondScreen(interaction, { embeds: [embed], components: withBackRow() });
+  await paintSession(ctx, interaction, prov, { embeds: [embed], components: withBackRow() });
 }
 
 interface ShopView {
@@ -239,7 +270,7 @@ export async function handleShop(
   prov: Provisioned,
 ): Promise<void> {
   const view = await buildShopView(ctx, prov);
-  await respondScreen(interaction, view);
+  await paintSession(ctx, interaction, prov, view);
 }
 
 /**
@@ -255,5 +286,5 @@ export async function handleShopBuy(
   const result = await ctx.services.shop.purchase(prov.playerId, itemSlug, 1);
   const status = `✅ Bought **${result.item.name}** for **${result.totalPrice} WB** — you now own ×${result.ownedAfter}.`;
   const view = await buildShopView(ctx, prov, status);
-  await respondScreen(interaction, view);
+  await paintSession(ctx, interaction, prov, view);
 }
