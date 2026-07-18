@@ -19,6 +19,7 @@ import { createPlayerService } from './modules/players/playerService';
 import { createShopService } from './modules/shop/shopService';
 import { createHuntService } from './modules/hunt/huntService';
 import { createCaptureService } from './modules/capture/captureService';
+import { createCareService } from './modules/care/careService';
 import { createCollectionService } from './modules/collection/collectionService';
 import { createProgressionService } from './modules/progression/progressionService';
 import { createSessionService } from './modules/session/sessionService';
@@ -60,6 +61,13 @@ async function main(): Promise<void> {
     waifuConfig: content.tables.waifuProgression,
     totalSpeciesCount: content.species.filter((s) => s.enabled).length,
   });
+  const care = createCareService({
+    db,
+    currency,
+    collection,
+    progression,
+    careConfig: content.tables.energy.careMode,
+  });
   const ctx: AppContext = {
     config,
     logger,
@@ -76,6 +84,7 @@ async function main(): Promise<void> {
         currency,
         inventory,
         progression,
+        care,
         tables: content.tables,
         timezone: config.dailyTimezone,
       }),
@@ -91,6 +100,7 @@ async function main(): Promise<void> {
         inventory,
         progression,
         collection,
+        care,
         tables: content.tables,
         logger,
       }),
@@ -102,6 +112,7 @@ async function main(): Promise<void> {
         captureConfig: content.tables.capture,
         logger,
       }),
+      care,
       collection,
       session: createSessionService({
         db,

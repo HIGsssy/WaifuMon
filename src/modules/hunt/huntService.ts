@@ -38,11 +38,18 @@ import type {
   ProgressionService,
 } from '../progression/progressionService';
 import type { BuddyAwardResult, CollectionService } from '../collection/collectionService';
+import type { CareService, CareTickSummary } from '../care/careService';
 
 interface WithXp {
   levelUps: LevelUpEvent[];
   /** Per-hunt buddy XP + affection award, null when the player has no buddy. */
   buddyAward: BuddyAwardResult | null;
+  /**
+   * Care Mode pending-tick summary applied at the start of this hunt (before
+   * energy was spent). `null` when Care Mode was not active. Care Mode is
+   * *always* exited by a hunt, regardless of tick count.
+   */
+  careExit: CareTickSummary | null;
 }
 
 export interface HuntEncounterResult extends WithXp {
@@ -117,6 +124,7 @@ export interface HuntServiceDeps {
   inventory: InventoryService;
   progression: ProgressionService;
   collection: CollectionService;
+  care: CareService;
   tables: TablesContent;
   logger: Logger;
   rng?: Rng;
@@ -125,7 +133,7 @@ export interface HuntServiceDeps {
 const MAX_RARITY_REROLLS = 6;
 
 export function createHuntService(deps: HuntServiceDeps): HuntService {
-  const { db, currency, inventory, progression, collection, tables, logger } = deps;
+  const { db, currency, inventory, progression, collection, care, tables, logger } = deps;
   const rng = deps.rng ?? defaultRng();
   const hunt = tables.hunt;
 
@@ -192,6 +200,14 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
 
   return {
     async hunt(playerId, channelId, now = new Date()) {
+      // Care Mode: apply pending ticks *before* the hunt transaction so
+      // recovered energy is visible on the energy check. This step does not
+      // exit Care Mode — if the hunt fails with insufficient energy the
+      // player stays in Care Mode (spec §5B / hunt interaction). The care
+      // fields are cleared inside the hunt transaction only after energy
+      // has been successfully spent.
+      const careTicks = await care.applyPending(playerId, now);
+
       return db.transaction(async (tx) => {
         // Lock the currency row (serializes concurrent hunts for this player).
         const currencies = await currency.lockCurrencies(tx, playerId);
@@ -236,6 +252,18 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
           throw new InsufficientEnergyError();
         }
 
+        // Energy is sufficient — exit Care Mode inside this transaction so
+        // the clear is atomic with the spend. `care.applyPending` above
+        // already advanced any pending ticks; this call just clears the
+        // care_* fields (ticksProcessed=0).
+        const careExit = await care.applyAndExit(tx, playerId, now);
+        // Fold the two summaries: report the ticks that were actually
+        // granted (careTicks) but the post-call state (cleared) from
+        // careExit. Either can be null-ish when Care Mode wasn't active.
+        const careForResult = careTicks.active || careTicks.ticksProcessed > 0 || careExit.stopped
+          ? { ...careTicks, active: false, stopped: careExit.stopped || careTicks.stopped }
+          : null;
+
         // Spend energy + stamp lastHuntAt.
         const [updatedCur] = await tx
           .update(playerCurrencies)
@@ -277,6 +305,7 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
               energyRemaining,
               levelUps,
               buddyAward,
+              careExit: careForResult,
             } satisfies HuntFlavorResult;
           }
           const expiresAt = new Date(now.getTime() + hunt.encounterExpirySeconds * 1000);
@@ -300,6 +329,7 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
               energyRemaining,
               levelUps,
               buddyAward,
+              careExit: careForResult,
             } satisfies HuntEncounterResult;
           } catch (err) {
             if (isUniqueViolation(err)) {
@@ -324,6 +354,7 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
               energyRemaining,
               levelUps,
               buddyAward,
+              careExit: careForResult,
             } satisfies HuntFlavorResult;
           }
           const quantity = rng.intInclusive(sub.minQty, sub.maxQty);
@@ -335,6 +366,7 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
             energyRemaining,
             levelUps,
             buddyAward,
+            careExit: careForResult,
           } satisfies HuntItemResult;
         }
 
@@ -348,6 +380,7 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
             energyRemaining,
             levelUps,
             buddyAward,
+            careExit: careForResult,
           } satisfies HuntWaifubuxResult;
         }
 
@@ -361,6 +394,7 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
             energyRemaining,
             levelUps,
             buddyAward,
+            careExit: careForResult,
           } satisfies HuntEssenceResult;
         }
 
@@ -372,6 +406,7 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
           energyRemaining,
           levelUps,
           buddyAward,
+          careExit: careForResult,
         } satisfies HuntFlavorResult;
       });
     },

@@ -59,6 +59,17 @@ export const players = pgTable(
     buddyWaifuId: bigint('buddy_waifu_id', { mode: 'number' }),
     showcase: jsonb('showcase').$type<Record<string, unknown>>(),
     lastHuntAt: timestamp('last_hunt_at', { withTimezone: true }),
+    /**
+     * Care Mode (Milestone 5B) — idle state that lazily recovers Hunt Energy
+     * and slowly trains a chosen owned Waifumon. All three fields move
+     * together: non-null means the player is in Care Mode; null means not.
+     * `careModeWaifuId` points at an owned, unreleased `player_waifus` row —
+     * no FK (matches the buddy pattern); application code enforces the
+     * invariant and self-heals if the row is soft-released underneath.
+     */
+    careModeStartedAt: timestamp('care_mode_started_at', { withTimezone: true }),
+    careModeLastTickAt: timestamp('care_mode_last_tick_at', { withTimezone: true }),
+    careModeWaifuId: bigint('care_mode_waifu_id', { mode: 'number' }),
     settings: jsonb('settings').$type<Record<string, unknown>>().notNull().default({}),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },

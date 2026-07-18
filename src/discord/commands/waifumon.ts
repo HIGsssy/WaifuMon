@@ -11,18 +11,40 @@ import {
   ButtonBuilder,
   ButtonStyle,
   EmbedBuilder,
+  StringSelectMenuBuilder,
   type ButtonInteraction,
+  type ChatInputCommandInteraction,
+  type StringSelectMenuInteraction,
 } from 'discord.js';
-import { AlreadyClaimedError } from '../../shared/errors';
+import {
+  AlreadyClaimedError,
+  CareModeDisabledError,
+  CareTargetRequiredError,
+  WaifuAlreadyReleasedError,
+  WaifuNotOwnedError,
+} from '../../shared/errors';
 import type { AppContext, PlayerInteraction, Provisioned } from '../types';
 import { buildCustomId } from '../types';
 import { paintSession, respondEphemeral } from '../sessionUi';
 import { renderSummaryLines } from '../../modules/session/sessionService';
+import type { CareState, CareTickSummary } from '../../modules/care/careService';
 import { ownerFromInteraction } from '../userDisplay';
 import { withBackRow } from '../ui';
 
-function menuComponents(): ActionRowBuilder<ButtonBuilder>[] {
-  return [
+function menuComponents(care: CareState): ActionRowBuilder<ButtonBuilder>[] {
+  const careButton = care.active
+    ? new ButtonBuilder()
+        .setCustomId(buildCustomId('care', 'leave'))
+        .setLabel('Leave Care Mode')
+        .setEmoji('💤')
+        .setStyle(ButtonStyle.Secondary)
+    : new ButtonBuilder()
+        .setCustomId(buildCustomId('care', 'start'))
+        .setLabel('Care for Waifumon')
+        .setEmoji('💗')
+        .setStyle(care.currentEnergy === 0 ? ButtonStyle.Success : ButtonStyle.Secondary)
+        .setDisabled(!care.enabled);
+  const rows: ActionRowBuilder<ButtonBuilder>[] = [
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
         .setCustomId(buildCustomId('menu', 'hunt'))
@@ -54,8 +76,21 @@ function menuComponents(): ActionRowBuilder<ButtonBuilder>[] {
         .setCustomId(buildCustomId('menu', 'inventory'))
         .setLabel('Inventory')
         .setStyle(ButtonStyle.Secondary),
+      careButton,
     ),
   ];
+  if (care.active) {
+    rows.push(
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setCustomId(buildCustomId('care', 'change_open'))
+          .setLabel('Change Target')
+          .setEmoji('🔄')
+          .setStyle(ButtonStyle.Secondary),
+      ),
+    );
+  }
+  return rows;
 }
 
 const DEFAULT_MENU_FLAVOR =
@@ -76,18 +111,26 @@ export async function handleMenu(
   interaction: PlayerInteraction,
   prov: Provisioned,
 ): Promise<void> {
+  // Lazy Care Mode tick: apply anything pending before rendering so the
+  // board always shows fresh energy/target state. Cheap no-op when Care
+  // Mode isn't active.
+  await ctx.services.care.applyPending(prov.playerId);
+  const care = await ctx.services.care.getState(prov.playerId);
   const flavor = pickMainMenuFlavor(ctx.content.tables.uiFlavor?.mainMenu);
+  const description =
+    `_${flavor}_\n\n` +
+    '🏹 **Hunt** — spend 1 energy to find someone\n' +
+    '🎁 **Claim Daily** — energy refill, WaifuBux, and charms\n' +
+    '🛍️ **Shop** — spend WaifuBux on capture charms\n' +
+    '🎒 **Collection** — browse your captured Waifumon\n' +
+    '👤 **Profile** · 🎒 **Inventory** · 💗 **Care Mode**';
   const embed = new EmbedBuilder()
     .setTitle('💖 Waifumon')
-    .setDescription(
-      `_${flavor}_\n\n` +
-        '🏹 **Hunt** — spend 1 energy to find someone\n' +
-        '🎁 **Claim Daily** — energy refill, WaifuBux, and charms\n' +
-        '🛍️ **Shop** — spend WaifuBux on capture charms\n' +
-        '🎒 **Collection** — browse your captured Waifumon\n' +
-        '👤 **Profile** · 🎒 **Inventory**',
-    )
-    .setColor(0xff6fa5);
+    .setDescription(description)
+    .setColor(care.active ? 0xffb6d1 : 0xff6fa5);
+
+  embed.addFields({ name: '💗 Care Mode', value: renderCareStatusLines(care).join('\n') });
+
   // "Today" summary: fold in whatever the session board has recorded so far.
   // Use a read-only lookup here — a slash-entry expiration check inside
   // `paintSession` needs to see the un-bumped `last_activity_at` to detect a
@@ -106,7 +149,10 @@ export async function handleMenu(
           } as never);
     embed.addFields({ name: '📅 Today', value: renderSummaryLines(summary).join('\n') });
   }
-  await paintSession(ctx, interaction, prov, { embeds: [embed], components: menuComponents() });
+  await paintSession(ctx, interaction, prov, {
+    embeds: [embed],
+    components: menuComponents(care),
+  });
 }
 
 export async function handleProfile(
@@ -307,4 +353,254 @@ export async function handleShopBuy(
   const status = `✅ Bought **${result.item.name}** for **${result.totalPrice} WB** — you now own ×${result.ownedAfter}.`;
   const view = await buildShopView(ctx, prov, status);
   await paintSession(ctx, interaction, prov, view);
+}
+
+// ─────────────────────────── Care Mode ───────────────────────────
+
+/**
+ * Human-readable status lines describing the player's Care Mode state.
+ * Rendered into the menu embed so the board always shows what's happening.
+ */
+export function renderCareStatusLines(care: CareState): string[] {
+  if (!care.enabled) {
+    return ['_Care Mode is currently disabled._'];
+  }
+  if (!care.active || !care.target) {
+    const cap = care.effectiveEnergyCap;
+    const availableNote =
+      care.currentEnergy < cap
+        ? `Care Mode available: **+${care.energyPerTick} energy** and Waifumon training every ${care.intervalMinutes}m up to **${cap} energy**.`
+        : `Energy at cap (**${care.currentEnergy}/${care.maxEnergy}**) — Care Mode still trains Waifumon.`;
+    return [`⚡ **${care.currentEnergy}** energy`, availableNote];
+  }
+  const target = care.target;
+  const nick = target.waifu.nickname?.trim();
+  const label = nick ? `${nick} (${target.species.name})` : target.species.name;
+  const nextTs = care.nextTickAt
+    ? `<t:${Math.floor(care.nextTickAt.getTime() / 1000)}:R>`
+    : 'soon';
+  const capReached = care.currentEnergy >= care.effectiveEnergyCap;
+  const lines = [
+    `**Caring for:** ${label} · Lv ${target.waifu.level}`,
+    `⚡ **${care.currentEnergy}/${care.maxEnergy}** · next tick ${nextTs}`,
+    `Per tick: +${care.energyPerTick} Energy · +${care.waifuXpPerTick} XP · +${care.affectionPerTick} Affection`,
+  ];
+  if (capReached) {
+    lines.push(
+      `⚠️ Energy at Care Mode cap (**${care.effectiveEnergyCap}**) — Waifumon training continues.`,
+    );
+  }
+  return lines;
+}
+
+/** Short summary line after a start/leave/change that had ticks. */
+function formatCareSummary(summary: CareTickSummary): string | null {
+  if (summary.ticksProcessed <= 0) return null;
+  const parts = [
+    `${summary.ticksProcessed} tick${summary.ticksProcessed === 1 ? '' : 's'} applied`,
+    `+${summary.energyGained} ⚡`,
+    `+${summary.waifuXpGained} XP`,
+    `+${summary.affectionGained} affection`,
+  ];
+  const line = parts.join(' · ');
+  return summary.leveledUp && summary.toLevel != null
+    ? `${line} · ⬆️ Waifu now Lv ${summary.toLevel}`
+    : line;
+}
+
+/** Build the target-picker select menu (owned, non-released copies). */
+async function buildChangeTargetView(
+  ctx: AppContext,
+  prov: Provisioned,
+): Promise<{
+  embeds: EmbedBuilder[];
+  components: ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>[];
+} | null> {
+  const matches = await ctx.services.collection.searchByName(prov.playerId, '', 25);
+  if (matches.length === 0) return null;
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId(buildCustomId('care', 'change_pick'))
+    .setPlaceholder('Choose a Waifumon to care for…')
+    .addOptions(
+      matches.slice(0, 25).map((entry) => {
+        const nick = entry.waifu.nickname?.trim();
+        return {
+          label: (nick ?? entry.species.name).slice(0, 100),
+          description: `[${entry.species.rarity}] Lv ${entry.waifu.level}`.slice(0, 100),
+          value: String(entry.waifu.id),
+        };
+      }),
+    );
+  const embed = new EmbedBuilder()
+    .setTitle('💗 Care Mode — choose a target')
+    .setColor(0xffb6d1)
+    .setDescription('Select which Waifumon to care for. Ticks continue every 30 minutes.');
+  const rows: ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>[] = [
+    new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu),
+    ...withBackRow(),
+  ];
+  return { embeds: [embed], components: rows };
+}
+
+/**
+ * "Care for Waifumon" — no arg: use buddy if available, otherwise open the
+ * target picker. From `/waifumon care <name>`: resolve the name and use it.
+ */
+export async function handleCareStart(
+  ctx: AppContext,
+  interaction: PlayerInteraction,
+  prov: Provisioned,
+  explicitTargetId?: number,
+): Promise<void> {
+  if (!ctx.services.care.config.enabled) {
+    await respondEphemeral(interaction, new CareModeDisabledError().userMessage);
+    return;
+  }
+  const care = await ctx.services.care.getState(prov.playerId);
+  let targetId: number | null = explicitTargetId ?? null;
+  if (targetId == null && !care.active) {
+    const buddy = await ctx.services.collection.getBuddy(prov.playerId);
+    if (buddy) targetId = buddy.waifu.id;
+  }
+  if (targetId == null && !care.active) {
+    // No buddy, no explicit target — open the picker.
+    const view = await buildChangeTargetView(ctx, prov);
+    if (!view) {
+      await respondEphemeral(
+        interaction,
+        'You have no Waifumon to care for yet~ Catch one first!',
+      );
+      return;
+    }
+    await paintSession(ctx, interaction, prov, view);
+    return;
+  }
+  try {
+    const summary = await ctx.services.care.start(prov.playerId, targetId ?? undefined);
+    const line = formatCareSummary(summary);
+    if (line) await respondEphemeral(interaction, `💗 ${line}`);
+    // Repaint the menu — care state fields now reflect started/switched.
+    await handleMenu(ctx, interaction, prov);
+  } catch (err) {
+    if (err instanceof WaifuNotOwnedError || err instanceof WaifuAlreadyReleasedError) {
+      await respondEphemeral(interaction, err.userMessage);
+      return;
+    }
+    if (err instanceof CareTargetRequiredError) {
+      await respondEphemeral(interaction, err.userMessage);
+      return;
+    }
+    throw err;
+  }
+}
+
+export async function handleCareLeave(
+  ctx: AppContext,
+  interaction: PlayerInteraction,
+  prov: Provisioned,
+): Promise<void> {
+  const summary = await ctx.services.care.leave(prov.playerId);
+  const line = formatCareSummary(summary);
+  if (line) await respondEphemeral(interaction, `💤 Left Care Mode — ${line}`);
+  await handleMenu(ctx, interaction, prov);
+}
+
+export async function handleCareChangeOpen(
+  ctx: AppContext,
+  interaction: PlayerInteraction,
+  prov: Provisioned,
+): Promise<void> {
+  const view = await buildChangeTargetView(ctx, prov);
+  if (!view) {
+    await respondEphemeral(interaction, 'No Waifumon in your collection~');
+    return;
+  }
+  await paintSession(ctx, interaction, prov, view);
+}
+
+export async function handleCareChangePick(
+  ctx: AppContext,
+  interaction: StringSelectMenuInteraction,
+  prov: Provisioned,
+): Promise<void> {
+  const raw = interaction.values[0];
+  const targetId = Number(raw);
+  if (!Number.isInteger(targetId)) {
+    await respondEphemeral(interaction, 'That Waifumon is no longer available.');
+    return;
+  }
+  try {
+    const care = await ctx.services.care.getState(prov.playerId);
+    // If not in Care Mode, treat as start with target; otherwise change.
+    const summary = care.active
+      ? await ctx.services.care.changeTarget(prov.playerId, targetId)
+      : await ctx.services.care.start(prov.playerId, targetId);
+    const line = formatCareSummary(summary);
+    if (line) await respondEphemeral(interaction, `💗 ${line}`);
+  } catch (err) {
+    if (err instanceof WaifuNotOwnedError || err instanceof WaifuAlreadyReleasedError) {
+      await respondEphemeral(interaction, err.userMessage);
+      return;
+    }
+    throw err;
+  }
+  await handleMenu(ctx, interaction, prov);
+}
+
+/**
+ * `/waifumon care [name]` — no arg starts Care Mode with buddy (or opens
+ * picker); with arg, resolves the name and cares for that specific target.
+ */
+export async function handleCareCommand(
+  ctx: AppContext,
+  interaction: PlayerInteraction,
+  prov: Provisioned,
+): Promise<void> {
+  if (!interaction.isChatInputCommand()) return;
+  const cmd = interaction as ChatInputCommandInteraction;
+  const raw = cmd.options.getString('name')?.trim();
+  if (!raw) {
+    await handleCareStart(ctx, interaction, prov);
+    return;
+  }
+  const asId = Number(raw);
+  let waifuId: number | null = null;
+  if (Number.isInteger(asId) && asId > 0) waifuId = asId;
+  else {
+    const matches = await ctx.services.collection.searchByName(prov.playerId, raw, 1);
+    if (matches.length > 0) waifuId = matches[0]!.waifu.id;
+  }
+  if (waifuId == null) {
+    await respondEphemeral(interaction, `No Waifumon matching "${raw}" in your collection.`);
+    return;
+  }
+  await handleCareStart(ctx, interaction, prov, waifuId);
+}
+
+/** Autocomplete for `/waifumon care` — same shape as inspect/buddy. */
+export async function handleCareAutocomplete(
+  ctx: AppContext,
+  interaction: import('discord.js').AutocompleteInteraction,
+  playerId: number | null,
+): Promise<void> {
+  if (playerId == null) {
+    await interaction.respond([]);
+    return;
+  }
+  const focused = interaction.options.getFocused(true);
+  if (focused.name !== 'name') {
+    await interaction.respond([]);
+    return;
+  }
+  const matches = await ctx.services.collection.searchByName(playerId, focused.value, 25);
+  await interaction.respond(
+    matches.map((entry) => {
+      const nick = entry.waifu.nickname?.trim();
+      const label = nick ? `${nick} (${entry.species.name})` : entry.species.name;
+      return {
+        name: `[${entry.species.rarity}] ${label} · Lv ${entry.waifu.level}`.slice(0, 100),
+        value: String(entry.waifu.id),
+      };
+    }),
+  );
 }

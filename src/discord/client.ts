@@ -8,6 +8,12 @@ import {
   handleProfile,
   handleShop,
   handleShopBuy,
+  handleCareAutocomplete,
+  handleCareChangeOpen,
+  handleCareChangePick,
+  handleCareCommand,
+  handleCareLeave,
+  handleCareStart,
 } from './commands/waifumon';
 import {
   handleEncounterCharm,
@@ -98,6 +104,8 @@ export function createDiscordClient(ctx: AppContext): Client {
         handleInspectCommand(ctx, i, prov),
       'waifumon:buddy': (i: ChatInputCommandInteraction, prov: Provisioned) =>
         handleBuddyCommand(ctx, i, prov),
+      'waifumon:care': (i: ChatInputCommandInteraction, prov: Provisioned) =>
+        handleCareCommand(ctx, i, prov),
       'waifumon-admin:allow-channel:add': (i: ChatInputCommandInteraction) =>
         handleAdminAllowChannelAdd(ctx, i),
       'waifumon-admin:allow-channel:remove': (i: ChatInputCommandInteraction) =>
@@ -112,6 +120,8 @@ export function createDiscordClient(ctx: AppContext): Client {
         handleInspectAutocomplete(ctx, i, playerId),
       'waifumon:buddy': (i: AutocompleteInteraction, playerId: number | null) =>
         handleBuddyAutocomplete(ctx, i, playerId),
+      'waifumon:care': (i: AutocompleteInteraction, playerId: number | null) =>
+        handleCareAutocomplete(ctx, i, playerId),
     },
     componentHandlers: {
       'menu:hunt': (i: ButtonInteraction, prov: Provisioned) => handleHunt(ctx, i, prov),
@@ -125,6 +135,14 @@ export function createDiscordClient(ctx: AppContext): Client {
       'menu:back': (i: ButtonInteraction, prov: Provisioned) => handleMenu(ctx, i, prov),
       'shop:buy': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleShopBuy(ctx, i, prov, args[0] ?? ''),
+      'care:start': (i: ButtonInteraction, prov: Provisioned) =>
+        handleCareStart(ctx, i, prov),
+      'care:leave': (i: ButtonInteraction, prov: Provisioned) =>
+        handleCareLeave(ctx, i, prov),
+      'care:change_open': (i: ButtonInteraction, prov: Provisioned) =>
+        handleCareChangeOpen(ctx, i, prov),
+      'care:change_pick': (i: StringSelectMenuInteraction, prov: Provisioned) =>
+        handleCareChangePick(ctx, i, prov),
       'enc:charm': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleEncounterCharm(ctx, i, prov, args),
       'enc:pick': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>

@@ -59,6 +59,18 @@ export function buildCommandDefinitions() {
             .setRequired(false)
             .setAutocomplete(true),
         ),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName('care')
+        .setDescription('Start Care Mode — recover energy and train a Waifumon over time')
+        .addStringOption((o) =>
+          o
+            .setName('name')
+            .setDescription('Which Waifumon to care for (defaults to your buddy)')
+            .setRequired(false)
+            .setAutocomplete(true),
+        ),
     );
 
   const admin = new SlashCommandBuilder()

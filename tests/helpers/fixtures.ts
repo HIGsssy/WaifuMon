@@ -10,6 +10,7 @@ import { createDailyService } from '../../src/modules/daily/dailyService';
 import { createGuildService } from '../../src/modules/guilds/guildService';
 import { createHuntService } from '../../src/modules/hunt/huntService';
 import { createCaptureService } from '../../src/modules/capture/captureService';
+import { createCareService } from '../../src/modules/care/careService';
 import { createCollectionService } from '../../src/modules/collection/collectionService';
 import { createProgressionService } from '../../src/modules/progression/progressionService';
 import { createInventoryService } from '../../src/modules/inventory/inventoryService';
@@ -37,6 +38,7 @@ export interface App {
   shop: ReturnType<typeof createShopService>;
   hunt: ReturnType<typeof createHuntService>;
   capture: ReturnType<typeof createCaptureService>;
+  care: ReturnType<typeof createCareService>;
   collection: ReturnType<typeof createCollectionService>;
   progression: ReturnType<typeof createProgressionService>;
   session: ReturnType<typeof createSessionService>;
@@ -72,6 +74,13 @@ export async function bootstrapApp(
     waifuConfig: content.tables.waifuProgression,
     totalSpeciesCount: content.species.filter((s) => s.enabled).length,
   });
+  const care = createCareService({
+    db: t.db,
+    currency,
+    collection,
+    progression,
+    careConfig: content.tables.energy.careMode,
+  });
   return {
     content,
     guilds: createGuildService(t.db),
@@ -84,6 +93,7 @@ export async function bootstrapApp(
       currency,
       inventory,
       progression,
+      care,
       tables: content.tables,
       timezone,
       ...(opts.dailyRng ? { rng: opts.dailyRng } : {}),
@@ -100,6 +110,7 @@ export async function bootstrapApp(
       inventory,
       progression,
       collection,
+      care,
       tables: content.tables,
       logger: t.logger,
       ...(opts.huntRng ? { rng: opts.huntRng } : {}),
@@ -113,6 +124,7 @@ export async function bootstrapApp(
       logger: t.logger,
       ...(opts.captureRng ? { rng: opts.captureRng } : {}),
     }),
+    care,
     collection,
     session: createSessionService({
       db: t.db,

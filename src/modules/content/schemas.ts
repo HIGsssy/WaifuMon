@@ -261,9 +261,25 @@ export const SessionConfigSchema = z
   })
   .default({ inactiveTimeoutMinutes: 45 });
 
+/**
+ * Care Mode (Milestone 5B): idle state that recovers Hunt Energy and slowly
+ * trains a chosen owned Waifumon. Ticks are computed lazily. Energy recovery
+ * is capped both by `recoveryCap` and by the player's computed max energy;
+ * Waifumon XP/affection continues even while energy is at the cap.
+ */
+export const CareModeConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  intervalMinutes: z.number().positive(),
+  energyPerTick: z.number().int().nonnegative(),
+  recoveryCap: z.number().int().nonnegative(),
+  waifuXpPerTick: z.number().int().nonnegative(),
+  affectionPerTick: z.number().int().nonnegative(),
+});
+
 export const TablesFileSchema = z.object({
   energy: z.object({
     baseMax: z.number().int().positive(),
+    careMode: CareModeConfigSchema,
   }),
   inventory: z.object({
     /** Soft cap on total capture items; enforced at acquisition time. */
@@ -289,6 +305,7 @@ export type TablesContent = z.infer<typeof TablesFileSchema>;
 export type DuplicateConfig = z.infer<typeof DuplicateConfigSchema>;
 export type ProgressionConfig = z.infer<typeof ProgressionConfigSchema>;
 export type WaifuProgressionConfig = z.infer<typeof WaifuProgressionConfigSchema>;
+export type CareModeConfig = z.infer<typeof CareModeConfigSchema>;
 
 export interface LoadedContent {
   items: ItemContent[];

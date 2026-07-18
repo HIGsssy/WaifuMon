@@ -146,6 +146,8 @@ export interface CollectionService {
   // ── Individual Waifumon progression ───────────────────────────────────────
   /** XP required to advance the waifu from `level` to `level+1` (0 at max). */
   waifuXpToNext(level: number): number;
+  /** Level derived from total waifu XP (clamped to `waifuProgression.maxLevel`). */
+  waifuLevelFromXp(xp: number): number;
   /** Progress payload for the inspect card. */
   waifuProgress(waifu: PlayerWaifuRow): WaifuProgress;
   /**
@@ -517,6 +519,7 @@ export function createCollectionService(deps: CollectionServiceDeps): Collection
 
     // ─────────────────── individual waifu progression ──────────────────
     waifuXpToNext,
+    waifuLevelFromXp,
     waifuProgress: waifuProgressPayload,
 
     async investEssence(playerId, waifuId /* now unused */) {

@@ -54,6 +54,7 @@ beforeAll(async () => {
       hunt: app.hunt,
       capture: app.capture,
       collection: app.collection,
+      care: app.care,
       progression: app.progression,
       session: app.session,
     },

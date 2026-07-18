@@ -7,7 +7,11 @@ import {
   resolveAssetPath,
   validateSpeciesAssets,
 } from '../../src/modules/content/loader';
-import { ItemContentSchema, SpeciesContentSchema } from '../../src/modules/content/schemas';
+import {
+  CareModeConfigSchema,
+  ItemContentSchema,
+  SpeciesContentSchema,
+} from '../../src/modules/content/schemas';
 import { ContentValidationError } from '../../src/shared/errors';
 import { ASSETS_DIR, CONTENT_DIR, loadShippedContent } from '../helpers/fixtures';
 import { silentLogger } from '../helpers/testDb';
@@ -74,6 +78,33 @@ describe('schema invariants', () => {
       imagePath: 'waifumon/x/standard.png',
     });
     expect(result.success).toBe(false);
+  });
+});
+
+describe('careMode config schema', () => {
+  const base = {
+    enabled: true,
+    intervalMinutes: 30,
+    energyPerTick: 1,
+    recoveryCap: 20,
+    waifuXpPerTick: 2,
+    affectionPerTick: 1,
+  };
+  it('accepts the shipped shape', () => {
+    expect(CareModeConfigSchema.safeParse(base).success).toBe(true);
+  });
+  it('rejects a non-positive intervalMinutes', () => {
+    expect(CareModeConfigSchema.safeParse({ ...base, intervalMinutes: 0 }).success).toBe(false);
+    expect(CareModeConfigSchema.safeParse({ ...base, intervalMinutes: -5 }).success).toBe(false);
+  });
+  it('rejects negative per-tick fields', () => {
+    expect(CareModeConfigSchema.safeParse({ ...base, energyPerTick: -1 }).success).toBe(false);
+    expect(CareModeConfigSchema.safeParse({ ...base, waifuXpPerTick: -1 }).success).toBe(false);
+    expect(CareModeConfigSchema.safeParse({ ...base, affectionPerTick: -1 }).success).toBe(false);
+    expect(CareModeConfigSchema.safeParse({ ...base, recoveryCap: -1 }).success).toBe(false);
+  });
+  it('requires all fields (no defaults except enabled)', () => {
+    expect(CareModeConfigSchema.safeParse({}).success).toBe(false);
   });
 });
 

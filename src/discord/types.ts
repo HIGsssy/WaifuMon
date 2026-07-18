@@ -16,6 +16,7 @@ import type { DailyService } from '../modules/daily/dailyService';
 import type { ShopService } from '../modules/shop/shopService';
 import type { HuntService } from '../modules/hunt/huntService';
 import type { CaptureService } from '../modules/capture/captureService';
+import type { CareService } from '../modules/care/careService';
 import type { CollectionService } from '../modules/collection/collectionService';
 import type { ProgressionService } from '../modules/progression/progressionService';
 import type { SessionService } from '../modules/session/sessionService';
@@ -29,6 +30,7 @@ export interface AppServices {
   shop: ShopService;
   hunt: HuntService;
   capture: CaptureService;
+  care: CareService;
   collection: CollectionService;
   progression: ProgressionService;
   session: SessionService;

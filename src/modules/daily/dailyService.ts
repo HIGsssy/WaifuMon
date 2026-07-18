@@ -8,6 +8,7 @@ import {
 } from '../../shared/errors';
 import { defaultRng, type Rng } from '../../shared/random';
 import { claimDateInTimezone, nextResetAt } from '../../shared/time';
+import type { CareService, CareTickSummary } from '../care/careService';
 import type { CurrencyService } from '../currency/currencyService';
 import type { InventoryService } from '../inventory/inventoryService';
 import type { TablesContent } from '../content/schemas';
@@ -28,6 +29,12 @@ export interface DailyClaimResult {
   levelUps: LevelUpEvent[];
   /** True if the level-30 rare-item chance actually fired. */
   rareItemGranted: boolean;
+  /**
+   * Care Mode pending-tick summary applied inside the daily transaction
+   * before the refill. `null` when Care Mode wasn't active. The daily claim
+   * always exits Care Mode.
+   */
+  careExit: CareTickSummary | null;
 }
 
 export interface DailyStatus {
@@ -51,6 +58,7 @@ export interface DailyServiceDeps {
   currency: CurrencyService;
   inventory: InventoryService;
   progression: ProgressionService;
+  care: CareService;
   tables: TablesContent;
   timezone: string;
   /** Optional injected RNG for the level-30 daily rare roll. */
@@ -58,7 +66,7 @@ export interface DailyServiceDeps {
 }
 
 export function createDailyService(deps: DailyServiceDeps): DailyService {
-  const { db, currency, inventory, progression, tables, timezone } = deps;
+  const { db, currency, inventory, progression, care, tables, timezone } = deps;
   const rng = deps.rng ?? defaultRng();
 
   async function claim(playerId: number, now: Date = new Date()): Promise<DailyClaimResult> {
@@ -69,6 +77,12 @@ export function createDailyService(deps: DailyServiceDeps): DailyService {
 
     try {
       return await db.transaction(async (tx) => {
+        // Apply pending Care Mode ticks + exit Care Mode inside the daily
+        // transaction. Any accrued XP/affection lands before the refill; the
+        // refill below unconditionally sets energy to the level-scaled max,
+        // so any care-tick energy is overwritten by the refill (as intended).
+        const careExit = await care.applyAndExit(tx, playerId, now);
+
         const [player] = await tx.select().from(players).where(eq(players.id, playerId));
         if (!player) {
           throw new ContentValidationError(`Player ${playerId} vanished mid-daily`);
@@ -141,6 +155,10 @@ export function createDailyService(deps: DailyServiceDeps): DailyService {
           xp,
           levelUps: xp.levelUps,
           rareItemGranted,
+          careExit:
+            careExit.active || careExit.stopped || careExit.ticksProcessed > 0
+              ? careExit
+              : null,
         };
       });
     } catch (err) {

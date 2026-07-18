@@ -254,6 +254,30 @@ export class WaifuNicknameTooEarlyError extends AppError {
   }
 }
 
+/**
+ * Care Mode was started without an explicit target and the player has no
+ * buddy set — the UI is expected to prompt for a target.
+ */
+export class CareTargetRequiredError extends AppError {
+  constructor() {
+    super(
+      'CARE_TARGET_REQUIRED',
+      'Care Mode requires an explicit target when no buddy is set',
+      'Choose which Waifumon to care for~',
+    );
+  }
+}
+
+export class CareModeDisabledError extends AppError {
+  constructor() {
+    super(
+      'CARE_MODE_DISABLED',
+      'Care Mode is disabled by server configuration',
+      'Care Mode is turned off right now~',
+    );
+  }
+}
+
 /** Detects a Postgres unique-constraint violation (possibly wrapped by drizzle). */
 export function isUniqueViolation(err: unknown): boolean {
   if (err && typeof err === 'object') {

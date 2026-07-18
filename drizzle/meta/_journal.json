@@ -50,6 +50,13 @@
       "when": 1816293600000,
       "tag": "0006_session_owner_display",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1816380000000,
+      "tag": "0007_care_mode",
+      "breakpoints": true
     }
   ]
 }
