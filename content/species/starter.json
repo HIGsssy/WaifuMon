@@ -462,6 +462,20 @@
     "perSpeciesWeight": 1
   },
   {
+    "slug": "darkelf_royal",
+    "name": "Darkelf Royal",
+    "rarity": "SR",
+    "archetype": "dark elf",
+    "baseCaptureRate": null,
+    "description": "Royal blood, midnight skin, eyes that pierce through the veil of night.",
+    "tags": ["starter", "dark elf", "royalty"],
+    "contentRating": "mature",
+    "imagePath": "waifumon/darkelf_royal/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
     "slug": "queen_of_velvet_chains",
     "name": "Queen of Velvet Chains",
     "rarity": "SSR",
