@@ -28,6 +28,7 @@ import {
   QuestPoolEntrySchema,
 } from '../../src/modules/content/schemas';
 import { claimDateInTimezone } from '../../src/shared/time';
+import { ItemNotFoundError } from '../../src/shared/errors';
 import type { Rng } from '../../src/shared/random';
 import { bootstrapApp, getItemBySlug, provisionPlayer, type App } from '../helpers/fixtures';
 import { createTestDb, type TestDb } from '../helpers/testDb';
@@ -375,6 +376,17 @@ describe('QuestService.claimAllCompleted', () => {
     const expectedWb = 30 + (bonus?.waifubux ?? 0);
     expect(result.totalRewards.waifubux).toBe(expectedWb);
     expect(result.totalRewards.essence).toBe(5);
+    // questRewards is the quest-only portion; the bonus is reported separately.
+    expect(result.questRewards.waifubux).toBe(30);
+    expect(result.questRewards.essence).toBe(5);
+    expect(result.allCompleteBonusRewards).not.toBeNull();
+    expect(result.allCompleteBonusRewards!.waifubux).toBe(bonus?.waifubux ?? 0);
+    expect(
+      result.allCompleteBonusRewards!.items.map((i) => ({
+        slug: i.item.slug,
+        quantity: i.quantity,
+      })),
+    ).toEqual(bonus?.items ?? []);
     const bal = await app.currency.getBalances(playerId);
     expect(bal.waifubux).toBe(expectedWb);
     expect(bal.essence).toBe(5);
@@ -385,6 +397,75 @@ describe('QuestService.claimAllCompleted', () => {
       .from(playerDailyQuests)
       .where(eq(playerDailyQuests.id, row!.id));
     expect(after!.claimedAt).not.toBeNull();
+    // The sentinel row now marks the bonus as claimed for the UI.
+    expect(await app.quests.hasClaimedAllCompleteBonus(playerId, DAY1)).toBe(true);
+  });
+
+  it('hasClaimedAllCompleteBonus is false before any claim', async () => {
+    expect(await app.quests.hasClaimedAllCompleteBonus(playerId, DAY1)).toBe(false);
+  });
+
+  it('claim fails atomically when a reward references an unknown item slug', async () => {
+    const [row] = await t.db
+      .insert(playerDailyQuests)
+      .values({
+        playerId,
+        questDate: '2026-08-01',
+        questSlug: 'bad_item_q',
+        titleSnapshot: 'Bad',
+        descriptionSnapshot: 'bad',
+        type: 'inspect_waifu',
+        target: 1,
+        progress: 1,
+        completedAt: DAY1,
+        rewardsJson: {
+          waifubux: 40,
+          essence: 0,
+          items: [{ slug: 'no_such_item', quantity: 1 }],
+        },
+      })
+      .returning();
+    await expect(app.quests.claimAllCompleted(playerId, DAY1)).rejects.toThrow(
+      ItemNotFoundError,
+    );
+    // Nothing was granted and claimed_at was not stamped — the quest stays claimable.
+    const bal = await app.currency.getBalances(playerId);
+    expect(bal.waifubux).toBe(0);
+    const [after] = await t.db
+      .select()
+      .from(playerDailyQuests)
+      .where(eq(playerDailyQuests.id, row!.id));
+    expect(after!.claimedAt).toBeNull();
+    // No bonus sentinel row leaked out of the rolled-back transaction.
+    expect(await app.quests.hasClaimedAllCompleteBonus(playerId, DAY1)).toBe(false);
+  });
+
+  it('nothing-to-claim path does not mutate state', async () => {
+    // One in-progress (incomplete) quest — nothing claimable.
+    await t.db.insert(playerDailyQuests).values({
+      playerId,
+      questDate: '2026-08-01',
+      questSlug: 'incomplete_q',
+      titleSnapshot: 'Incomplete',
+      descriptionSnapshot: '',
+      type: 'inspect_waifu',
+      target: 3,
+      progress: 1,
+      rewardsJson: { waifubux: 10, essence: 0, items: [] },
+    });
+    const result = await app.quests.claimAllCompleted(playerId, DAY1);
+    expect(result.claimed.length).toBe(0);
+    expect(result.allCompleteBonusGranted).toBe(false);
+    expect(result.totalRewards).toEqual({ waifubux: 0, essence: 0, items: [] });
+    const bal = await app.currency.getBalances(playerId);
+    expect(bal.waifubux).toBe(0);
+    expect(bal.essence).toBe(0);
+    const rows = await t.db
+      .select()
+      .from(playerDailyQuests)
+      .where(eq(playerDailyQuests.playerId, playerId));
+    expect(rows.length).toBe(1); // no sentinel row created
+    expect(rows[0]!.claimedAt).toBeNull();
   });
 
   it('cannot claim the same quest twice', async () => {
@@ -441,6 +522,12 @@ describe('QuestService.claimAllCompleted', () => {
     const first = await app.quests.claimAllCompleted(playerId, DAY1);
     expect(first.claimed.length).toBe(2);
     expect(first.allCompleteBonusGranted).toBe(true);
+    // Combined quest-only rewards; total additionally includes the bonus.
+    expect(first.questRewards.waifubux).toBe(25);
+    const bonusWb = app.quests.config.allCompleteBonus?.waifubux ?? 0;
+    expect(first.totalRewards.waifubux).toBe(25 + bonusWb);
+    const bal = await app.currency.getBalances(playerId);
+    expect(bal.waifubux).toBe(25 + bonusWb);
     // Repeated claim-all: no rewards, no bonus (sentinel row already exists).
     const second = await app.quests.claimAllCompleted(playerId, DAY1);
     expect(second.claimed.length).toBe(0);

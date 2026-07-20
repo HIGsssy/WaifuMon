@@ -28,6 +28,7 @@ import {
   type PlayerDailyQuestRow,
   type Rarity,
 } from '../../db/schema';
+import { ItemNotFoundError } from '../../shared/errors';
 import type { Logger } from '../../shared/logger';
 import { defaultRng, rollWeighted, type Rng } from '../../shared/random';
 import { claimDateInTimezone } from '../../shared/time';
@@ -54,6 +55,9 @@ export interface RewardGrant {
 
 export interface QuestClaimResult {
   claimed: PlayerDailyQuestRow[];
+  /** Rewards from the claimed quests only (excludes the all-complete bonus). */
+  questRewards: RewardGrant;
+  /** Grand total: quest rewards plus the all-complete bonus when granted. */
   totalRewards: RewardGrant;
   allCompleteBonusGranted: boolean;
   allCompleteBonusRewards: RewardGrant | null;
@@ -95,6 +99,12 @@ export interface QuestService {
    * and safe under double-click.
    */
   claimAllCompleted(playerId: number, now?: Date): Promise<QuestClaimResult>;
+
+  /**
+   * Whether today's all-complete bonus has already been granted (the
+   * sentinel row exists). Used by the UI to keep the bonus visibly claimed.
+   */
+  hasClaimedAllCompleteBonus(playerId: number, now?: Date): Promise<boolean>;
 }
 
 export interface QuestServiceDeps {
@@ -133,7 +143,7 @@ function freezeEntry(entry: QuestPoolEntry): FrozenQuest {
  * Parse the frozen rewards JSON off a row into a typed rewards struct.
  * Defensive: missing fields default to empty so a bad row can't crash the UI.
  */
-function parseRewards(raw: unknown): QuestRewards {
+export function parseQuestRewards(raw: unknown): QuestRewards {
   const r = (raw ?? {}) as Record<string, unknown>;
   const waifubux = typeof r.waifubux === 'number' && Number.isFinite(r.waifubux) ? r.waifubux : 0;
   const essence = typeof r.essence === 'number' && Number.isFinite(r.essence) ? r.essence : 0;
@@ -213,10 +223,12 @@ export function createQuestService(deps: QuestServiceDeps): QuestService {
     for (const ri of rewards.items) {
       const item = bySlug.get(ri.slug);
       if (!item) {
-        // Frozen snapshot references a slug the DB doesn't have — surface a
-        // warning and skip. Should be impossible if seed matches content.
-        logger.warn({ slug: ri.slug }, 'quest reward references unknown item slug — skipping');
-        continue;
+        // Frozen snapshot references a slug the DB doesn't have. Throwing
+        // rolls the whole claim transaction back, so the quest stays
+        // unclaimed rather than silently losing part of its rewards.
+        // Should be impossible if seed matches content (loader validates).
+        logger.error({ slug: ri.slug }, 'quest reward references unknown item slug — claim aborted');
+        throw new ItemNotFoundError(ri.slug);
       }
       await inventory.addItem(tx, playerId, item.id, ri.quantity);
       granted.push({ item, quantity: ri.quantity });
@@ -412,7 +424,7 @@ export function createQuestService(deps: QuestServiceDeps): QuestService {
         )
         .for('update');
 
-      const totalRewards: RewardGrant = { waifubux: 0, essence: 0, items: [] };
+      const questRewards: RewardGrant = { waifubux: 0, essence: 0, items: [] };
       const claimed: PlayerDailyQuestRow[] = [];
 
       for (const row of readyRows) {
@@ -423,11 +435,11 @@ export function createQuestService(deps: QuestServiceDeps): QuestService {
           .where(and(eq(playerDailyQuests.id, row.id), isNull(playerDailyQuests.claimedAt)))
           .returning();
         if (!stamped) continue;
-        const rewards = parseRewards(row.rewardsJson);
+        const rewards = parseQuestRewards(row.rewardsJson);
         const grant = await grantRewards(tx, playerId, rewards);
-        totalRewards.waifubux += grant.waifubux;
-        totalRewards.essence += grant.essence;
-        totalRewards.items.push(...grant.items);
+        questRewards.waifubux += grant.waifubux;
+        questRewards.essence += grant.essence;
+        questRewards.items.push(...grant.items);
         claimed.push(stamped);
       }
 
@@ -492,15 +504,42 @@ export function createQuestService(deps: QuestServiceDeps): QuestService {
               config.allCompleteBonus,
             );
             allCompleteBonusGranted = true;
-            totalRewards.waifubux += allCompleteBonusRewards.waifubux;
-            totalRewards.essence += allCompleteBonusRewards.essence;
-            totalRewards.items.push(...allCompleteBonusRewards.items);
           }
         }
       }
 
-      return { claimed, totalRewards, allCompleteBonusGranted, allCompleteBonusRewards };
+      const totalRewards: RewardGrant = {
+        waifubux: questRewards.waifubux + (allCompleteBonusRewards?.waifubux ?? 0),
+        essence: questRewards.essence + (allCompleteBonusRewards?.essence ?? 0),
+        items: [...questRewards.items, ...(allCompleteBonusRewards?.items ?? [])],
+      };
+      return {
+        claimed,
+        questRewards,
+        totalRewards,
+        allCompleteBonusGranted,
+        allCompleteBonusRewards,
+      };
     });
+  }
+
+  async function hasClaimedAllCompleteBonus(
+    playerId: number,
+    now: Date = new Date(),
+  ): Promise<boolean> {
+    const questDate = today(now);
+    const [row] = await db
+      .select({ id: playerDailyQuests.id })
+      .from(playerDailyQuests)
+      .where(
+        and(
+          eq(playerDailyQuests.playerId, playerId),
+          eq(playerDailyQuests.questDate, questDate),
+          eq(playerDailyQuests.questSlug, ALL_COMPLETE_BONUS_SLUG),
+        ),
+      )
+      .limit(1);
+    return row != null;
   }
 
   return {
@@ -509,6 +548,7 @@ export function createQuestService(deps: QuestServiceDeps): QuestService {
     getDailyQuests,
     recordQuestEvent,
     claimAllCompleted,
+    hasClaimedAllCompleteBonus,
   };
 }
 

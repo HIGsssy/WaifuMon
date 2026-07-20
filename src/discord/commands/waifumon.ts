@@ -33,7 +33,8 @@ import { ownerFromInteraction } from '../userDisplay';
 import { withBackRow } from '../ui';
 import { resolveAssetPath } from '../../modules/content/loader';
 import fs from 'node:fs';
-import type { UiSplashConfig } from '../../modules/content/schemas';
+import type { QuestRewards, UiSplashConfig } from '../../modules/content/schemas';
+import { parseQuestRewards, type RewardGrant } from '../../modules/quests/questService';
 
 function menuComponents(care: CareState, questsEnabled: boolean): ActionRowBuilder<ButtonBuilder>[] {
   const careButton = care.active
@@ -740,7 +741,7 @@ export async function handleCareAutocomplete(
 
 // ─────────────────────────── Daily Quests ───────────────────────────
 
-interface QuestRow {
+export interface QuestRow {
   id: number;
   slug: string;
   title: string;
@@ -749,12 +750,58 @@ interface QuestRow {
   progress: number;
   completedAt: Date | null;
   claimedAt: Date | null;
+  /** Preformatted reward summary, e.g. "25 WaifuBux, 🧿 Basic Charm ×1". */
+  rewardsLabel: string;
+}
+
+export interface RewardDisplayItem {
+  name: string;
+  emoji?: string | null;
+  quantity: number;
+}
+
+export interface RewardDisplay {
+  waifubux: number;
+  essence: number;
+  items: RewardDisplayItem[];
+}
+
+/**
+ * Format a rewards bundle the same way inventory/shop label items
+ * (`emoji name ×qty`). Same-named items are combined, e.g.
+ * "50 WaifuBux, 10 Essence, 🧿 Basic Charm ×2".
+ */
+export function formatRewardSummary(rewards: RewardDisplay): string {
+  const parts: string[] = [];
+  if (rewards.waifubux > 0) parts.push(`${rewards.waifubux} WaifuBux`);
+  if (rewards.essence > 0) parts.push(`${rewards.essence} Essence`);
+  const combined = new Map<string, RewardDisplayItem>();
+  for (const it of rewards.items) {
+    if (it.quantity <= 0) continue;
+    const existing = combined.get(it.name);
+    if (existing) existing.quantity += it.quantity;
+    else combined.set(it.name, { ...it });
+  }
+  for (const it of combined.values()) {
+    parts.push(`${it.emoji ?? '•'} ${it.name} ×${it.quantity}`);
+  }
+  return parts.join(', ');
+}
+
+export interface QuestBoardExtras {
+  /** Formatted all-complete bonus rewards; null when not configured. */
+  bonusPreview: string | null;
+  /** Whether today's all-complete bonus has already been granted. */
+  bonusClaimed: boolean;
+  /** Claim-result lines to surface on the board (claim summary / nothing-to-claim). */
+  noticeLines?: readonly string[];
 }
 
 /** Build the quests screen from the current quest rows. */
-function questsView(
+export function questsView(
   quests: QuestRow[],
   hasClaimable: boolean,
+  extras: QuestBoardExtras = { bonusPreview: null, bonusClaimed: false },
 ): { embed: EmbedBuilder; components: ActionRowBuilder<ButtonBuilder>[] } {
   const embed = new EmbedBuilder().setTitle('📜 Daily Quests').setColor(0xffc46f);
   if (quests.length === 0) {
@@ -763,13 +810,24 @@ function questsView(
   }
   const lines = quests.map((q) => {
     const status = q.claimedAt
-      ? '✅ Claimed'
+      ? `✅ Claimed (${q.progress}/${q.target})`
       : q.completedAt
-        ? '🎁 Ready to claim'
-        : `⏳ ${q.progress}/${q.target}`;
-    return `**${q.title}** — ${status}\n_${q.description}_`;
+        ? `🎁 Complete — ready to claim (${q.progress}/${q.target})`
+        : `⏳ In Progress (${q.progress}/${q.target})`;
+    const rewardLine = q.rewardsLabel ? `\nRewards: ${q.rewardsLabel}` : '';
+    return `**${q.title}** — ${status}\n_${q.description}_${rewardLine}`;
   });
+  if (extras.bonusPreview) {
+    lines.push(
+      extras.bonusClaimed
+        ? `🏆 **All-complete bonus** — ✅ Claimed · ${extras.bonusPreview}`
+        : `🏆 **All-complete bonus** — complete all quests to earn: ${extras.bonusPreview}`,
+    );
+  }
   embed.setDescription(lines.join('\n\n'));
+  if (extras.noticeLines && extras.noticeLines.length > 0) {
+    embed.addFields({ name: '🧾 Claim Results', value: extras.noticeLines.join('\n') });
+  }
   const claimBtn = new ButtonBuilder()
     .setCustomId(buildCustomId('quests', 'claim_all'))
     .setLabel('Claim Completed')
@@ -779,12 +837,50 @@ function questsView(
   return { embed, components: withBackRow([new ActionRowBuilder<ButtonBuilder>().addComponents(claimBtn)]) };
 }
 
+/** slug → display metadata from content, for reward previews. */
+function itemDisplayBySlug(ctx: AppContext): Map<string, { name: string; emoji?: string | null }> {
+  const map = new Map<string, { name: string; emoji?: string | null }>();
+  for (const item of ctx.content.items) {
+    map.set(item.slug, { name: item.name, emoji: item.emoji ?? null });
+  }
+  return map;
+}
+
+/** Resolve a frozen QuestRewards struct (slugs) into display entries. */
+function rewardDisplayFromConfig(
+  rewards: QuestRewards,
+  bySlug: Map<string, { name: string; emoji?: string | null }>,
+): RewardDisplay {
+  return {
+    waifubux: rewards.waifubux,
+    essence: rewards.essence,
+    items: rewards.items.map((i) => {
+      const meta = bySlug.get(i.slug);
+      return { name: meta?.name ?? i.slug, emoji: meta?.emoji ?? null, quantity: i.quantity };
+    }),
+  };
+}
+
+/** Resolve a granted RewardGrant (item rows) into display entries. */
+function rewardDisplayFromGrant(grant: RewardGrant): RewardDisplay {
+  return {
+    waifubux: grant.waifubux,
+    essence: grant.essence,
+    items: grant.items.map((g) => ({
+      name: g.item.name,
+      emoji: g.item.emoji ?? null,
+      quantity: g.quantity,
+    })),
+  };
+}
+
 async function loadTodayQuests(
   ctx: AppContext,
   playerId: number,
-): Promise<{ rows: QuestRow[]; claimable: number }> {
+): Promise<{ rows: QuestRow[]; claimable: number; board: QuestBoardExtras }> {
   await ctx.services.quests.ensureDailyQuests(playerId);
   const raw = await ctx.services.quests.getDailyQuests(playerId);
+  const bySlug = itemDisplayBySlug(ctx);
   const rows: QuestRow[] = raw.map((r) => ({
     id: r.id,
     slug: r.questSlug,
@@ -794,9 +890,21 @@ async function loadTodayQuests(
     progress: r.progress,
     completedAt: r.completedAt,
     claimedAt: r.claimedAt,
+    rewardsLabel: formatRewardSummary(
+      rewardDisplayFromConfig(parseQuestRewards(r.rewardsJson), bySlug),
+    ),
   }));
   const claimable = rows.filter((r) => r.completedAt && !r.claimedAt).length;
-  return { rows, claimable };
+  const bonusConfig = ctx.services.quests.config.allCompleteBonus;
+  const board: QuestBoardExtras = {
+    bonusPreview: bonusConfig
+      ? formatRewardSummary(rewardDisplayFromConfig(bonusConfig, bySlug))
+      : null,
+    bonusClaimed: bonusConfig
+      ? await ctx.services.quests.hasClaimedAllCompleteBonus(playerId)
+      : false,
+  };
+  return { rows, claimable, board };
 }
 
 /** /waifumon quests and menu:quests button — paint the Daily Quests screen. */
@@ -809,12 +917,17 @@ export async function handleQuests(
     await respondEphemeral(interaction, 'Daily Quests are turned off right now~');
     return;
   }
-  const { rows, claimable } = await loadTodayQuests(ctx, prov.playerId);
-  const { embed, components } = questsView(rows, claimable > 0);
+  const { rows, claimable, board } = await loadTodayQuests(ctx, prov.playerId);
+  const { embed, components } = questsView(rows, claimable > 0, board);
   await paintSession(ctx, interaction, prov, { embeds: [embed], components });
 }
 
-/** Claim every completed-unclaimed quest for today, plus the all-complete bonus. */
+/**
+ * Claim every completed-unclaimed quest for today, plus the all-complete
+ * bonus. Paints the result onto the public session board in a single pass —
+ * replying ephemerally first would flip `interaction.replied` and make
+ * `paintSession` edit the ephemeral reply instead of the public board.
+ */
 export async function handleQuestsClaimAll(
   ctx: AppContext,
   interaction: ButtonInteraction,
@@ -825,36 +938,21 @@ export async function handleQuestsClaimAll(
     return;
   }
   const result = await ctx.services.quests.claimAllCompleted(prov.playerId);
+  const noticeLines: string[] = [];
   if (result.claimed.length === 0 && !result.allCompleteBonusGranted) {
-    await respondEphemeral(interaction, 'No completed quests to claim yet~');
-    // Repaint quests board so state stays fresh.
-    const { rows, claimable } = await loadTodayQuests(ctx, prov.playerId);
-    const view = questsView(rows, claimable > 0);
-    await paintSession(ctx, interaction, prov, {
-      embeds: [view.embed],
-      components: view.components,
-    });
-    return;
+    noticeLines.push('No completed quests are ready to claim yet.');
+  } else {
+    if (result.claimed.length > 0) {
+      const summary = formatRewardSummary(rewardDisplayFromGrant(result.questRewards));
+      noticeLines.push(`Claimed rewards: ${summary || 'nothing'}`);
+    }
+    if (result.allCompleteBonusGranted && result.allCompleteBonusRewards) {
+      const bonus = formatRewardSummary(rewardDisplayFromGrant(result.allCompleteBonusRewards));
+      noticeLines.push(`🎉 All-complete bonus: ${bonus || 'nothing'}`);
+    }
   }
-  const parts: string[] = [];
-  if (result.claimed.length > 0) {
-    parts.push(`Claimed **${result.claimed.length}** quest${result.claimed.length === 1 ? '' : 's'}.`);
-  }
-  const wb = result.totalRewards.waifubux;
-  const es = result.totalRewards.essence;
-  if (wb > 0) parts.push(`+${wb} WaifuBux`);
-  if (es > 0) parts.push(`+${es} Essence`);
-  if (result.totalRewards.items.length > 0) {
-    const items = result.totalRewards.items
-      .map((i) => `${i.item.emoji ?? '•'} ${i.item.name} ×${i.quantity}`)
-      .join(', ');
-    parts.push(items);
-  }
-  if (result.allCompleteBonusGranted) parts.push('🎉 All-Quests bonus!');
-  await respondEphemeral(interaction, parts.join(' · '));
-  // Repaint the quests screen so status flips to Claimed.
-  const { rows, claimable } = await loadTodayQuests(ctx, prov.playerId);
-  const view = questsView(rows, claimable > 0);
+  const { rows, claimable, board } = await loadTodayQuests(ctx, prov.playerId);
+  const view = questsView(rows, claimable > 0, { ...board, noticeLines });
   await paintSession(ctx, interaction, prov, {
     embeds: [view.embed],
     components: view.components,
