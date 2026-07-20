@@ -426,6 +426,27 @@ export const playerDailyQuests = pgTable(
 /** Sentinel quest slug for the "all quests complete" daily bonus row. */
 export const ALL_COMPLETE_BONUS_SLUG = '__all_complete_bonus__';
 
+/**
+ * Daily launch splash tracking. One row per (player, guild-day) marks the
+ * first `/waifumon` of that day so the splash screen renders exactly once
+ * per calendar day (configured timezone). The unique constraint keeps the
+ * insert idempotent under races.
+ */
+export const playerDailySplashViews = pgTable(
+  'player_daily_splash_views',
+  {
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    playerId: bigint('player_id', { mode: 'number' })
+      .notNull()
+      .references(() => players.id),
+    splashDate: date('splash_date').notNull(),
+    shownAt: timestamp('shown_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('player_daily_splash_views_player_date_uq').on(t.playerId, t.splashDate),
+  ],
+);
+
 export type GuildRow = typeof guilds.$inferSelect;
 export type PlayerRow = typeof players.$inferSelect;
 export type PlayerCurrenciesRow = typeof playerCurrencies.$inferSelect;
@@ -440,3 +461,4 @@ export type PlayerWaifuRow = typeof playerWaifus.$inferSelect;
 export type PlayerProgressionEventRow = typeof playerProgressionEvents.$inferSelect;
 export type WaifumonSessionRow = typeof waifumonSessions.$inferSelect;
 export type PlayerDailyQuestRow = typeof playerDailyQuests.$inferSelect;
+export type PlayerDailySplashViewRow = typeof playerDailySplashViews.$inferSelect;

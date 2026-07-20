@@ -249,6 +249,35 @@ export const UiFlavorConfigSchema = z
   .default({ mainMenu: [] });
 
 /**
+ * Daily launch splash screen shown once per (player, guild-day) on the first
+ * `/waifumon` of the day. Body accepts either an array of lines (preferred —
+ * easier to edit) or a single string; the loader normalizes both to lines.
+ * `imagePath` is optional; when unset or unresolvable, the splash renders
+ * text-only. `frequency` reserves the shape for future tuning but only
+ * `daily` and `always` are honored today (`always` re-renders every launch).
+ */
+export const UiSplashConfigSchema = z
+  .object({
+    enabled: z.boolean().default(false),
+    title: z.string().min(1).default('Welcome to Waifumon'),
+    body: z
+      .union([z.array(z.string().min(1)), z.string().min(1)])
+      .default([])
+      .transform((v) => (Array.isArray(v) ? v : [v])),
+    imagePath: z.string().min(1).nullable().default(null),
+    buttonLabel: z.string().min(1).default('Start Hunt'),
+    frequency: z.enum(['daily', 'always']).default('daily'),
+  })
+  .default({
+    enabled: false,
+    title: 'Welcome to Waifumon',
+    body: [],
+    imagePath: null,
+    buttonLabel: 'Start Hunt',
+    frequency: 'daily',
+  });
+
+/**
  * Public session-board tunables. `inactiveTimeoutMinutes` controls when a
  * stale board is retired: after that many minutes without owner activity,
  * `/waifumon` ends the old public message and starts a fresh board instead
@@ -395,6 +424,14 @@ export const TablesFileSchema = z.object({
     pool: [],
   }),
   uiFlavor: UiFlavorConfigSchema.optional().default({ mainMenu: [] }),
+  uiSplash: UiSplashConfigSchema.optional().default({
+    enabled: false,
+    title: 'Welcome to Waifumon',
+    body: [],
+    imagePath: null,
+    buttonLabel: 'Start Hunt',
+    frequency: 'daily',
+  }),
   session: SessionConfigSchema.optional().default({ inactiveTimeoutMinutes: 45 }),
 });
 
@@ -408,6 +445,7 @@ export type CareModeConfig = z.infer<typeof CareModeConfigSchema>;
 export type DailyQuestsConfig = z.infer<typeof DailyQuestsConfigSchema>;
 export type QuestPoolEntry = z.infer<typeof QuestPoolEntrySchema>;
 export type QuestRewards = z.infer<typeof QuestRewardsSchema>;
+export type UiSplashConfig = z.infer<typeof UiSplashConfigSchema>;
 
 export interface LoadedContent {
   items: ItemContent[];

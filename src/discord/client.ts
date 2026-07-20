@@ -5,6 +5,7 @@ import {
   handleDaily,
   handleInventory,
   handleMenu,
+  handleMenuStart,
   handleProfile,
   handleShop,
   handleShopBuy,
@@ -88,27 +89,29 @@ export function createDiscordClient(ctx: AppContext): Client {
       };
     },
     commandHandlers: {
+      // Bare `/waifumon` — commandKey defaults sub to 'menu' when absent.
       'waifumon:menu': (i: ChatInputCommandInteraction, prov: Provisioned) =>
         handleMenu(ctx, i, prov),
-      'waifumon:hunt': (i: ChatInputCommandInteraction, prov: Provisioned) =>
+      // Power-user direct actions live on `/wm <sub>`.
+      'wm:hunt': (i: ChatInputCommandInteraction, prov: Provisioned) =>
         handleHunt(ctx, i, prov),
-      'waifumon:profile': (i: ChatInputCommandInteraction, prov: Provisioned) =>
+      'wm:profile': (i: ChatInputCommandInteraction, prov: Provisioned) =>
         handleProfile(ctx, i, prov),
-      'waifumon:daily': (i: ChatInputCommandInteraction, prov: Provisioned) =>
+      'wm:daily': (i: ChatInputCommandInteraction, prov: Provisioned) =>
         handleDaily(ctx, i, prov),
-      'waifumon:inventory': (i: ChatInputCommandInteraction, prov: Provisioned) =>
+      'wm:inventory': (i: ChatInputCommandInteraction, prov: Provisioned) =>
         handleInventory(ctx, i, prov),
-      'waifumon:shop': (i: ChatInputCommandInteraction, prov: Provisioned) =>
+      'wm:shop': (i: ChatInputCommandInteraction, prov: Provisioned) =>
         handleShop(ctx, i, prov),
-      'waifumon:collection': (i: ChatInputCommandInteraction, prov: Provisioned) =>
+      'wm:collection': (i: ChatInputCommandInteraction, prov: Provisioned) =>
         handleCollection(ctx, i, prov),
-      'waifumon:inspect': (i: ChatInputCommandInteraction, prov: Provisioned) =>
+      'wm:inspect': (i: ChatInputCommandInteraction, prov: Provisioned) =>
         handleInspectCommand(ctx, i, prov),
-      'waifumon:buddy': (i: ChatInputCommandInteraction, prov: Provisioned) =>
+      'wm:buddy': (i: ChatInputCommandInteraction, prov: Provisioned) =>
         handleBuddyCommand(ctx, i, prov),
-      'waifumon:care': (i: ChatInputCommandInteraction, prov: Provisioned) =>
+      'wm:care': (i: ChatInputCommandInteraction, prov: Provisioned) =>
         handleCareCommand(ctx, i, prov),
-      'waifumon:quests': (i: ChatInputCommandInteraction, prov: Provisioned) =>
+      'wm:quests': (i: ChatInputCommandInteraction, prov: Provisioned) =>
         handleQuests(ctx, i, prov),
       'waifumon-admin:allow-channel:add': (i: ChatInputCommandInteraction) =>
         handleAdminAllowChannelAdd(ctx, i),
@@ -120,11 +123,11 @@ export function createDiscordClient(ctx: AppContext): Client {
         handleAdminSetAnnounceChannel(ctx, i),
     },
     autocompleteHandlers: {
-      'waifumon:inspect': (i: AutocompleteInteraction, playerId: number | null) =>
+      'wm:inspect': (i: AutocompleteInteraction, playerId: number | null) =>
         handleInspectAutocomplete(ctx, i, playerId),
-      'waifumon:buddy': (i: AutocompleteInteraction, playerId: number | null) =>
+      'wm:buddy': (i: AutocompleteInteraction, playerId: number | null) =>
         handleBuddyAutocomplete(ctx, i, playerId),
-      'waifumon:care': (i: AutocompleteInteraction, playerId: number | null) =>
+      'wm:care': (i: AutocompleteInteraction, playerId: number | null) =>
         handleCareAutocomplete(ctx, i, playerId),
     },
     componentHandlers: {
@@ -138,6 +141,7 @@ export function createDiscordClient(ctx: AppContext): Client {
         handleCollection(ctx, i, prov),
       'menu:quests': (i: ButtonInteraction, prov: Provisioned) => handleQuests(ctx, i, prov),
       'menu:back': (i: ButtonInteraction, prov: Provisioned) => handleMenu(ctx, i, prov),
+      'menu:start': (i: ButtonInteraction, prov: Provisioned) => handleMenuStart(ctx, i, prov),
       'shop:buy': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleShopBuy(ctx, i, prov, args[0] ?? ''),
       'quests:claim_all': (i: ButtonInteraction, prov: Provisioned) =>

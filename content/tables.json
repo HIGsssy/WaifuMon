@@ -271,6 +271,28 @@
       "Your buddy watches the shadows, waiting for the next signal."
     ]
   },
+  "uiSplash": {
+    "enabled": true,
+    "title": "Welcome to Waifumon",
+    "body": [
+      "Step into the neon district and begin your hunt.",
+      "Catch, train, favorite, and care for your Waifumon collection.",
+      "Use your charms wisely — some encounters will not wait around forever.",
+      "__________________________________________________________________",
+      "Daily Quests are available to help you earn extra rewards.",
+      "Care Mode can help you recover energy and gain affection over time.",
+      "Don't forget to claim your daily package for free charms and Waifubux.",
+      "__________________________________________________________________",
+      "The Waifumon world is always changing, so check back often for new content.",
+      "Brought to you by the Waifumon team",
+      "Whistler",
+      "Gorthig",
+      "Potato"
+    ],
+    "imagePath": "ui/splash.png",
+    "buttonLabel": "Start Hunt",
+    "frequency": "daily"
+  },
   "session": {
     "inactiveTimeoutMinutes": 45
   }

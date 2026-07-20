@@ -24,10 +24,18 @@ import {
 import { parseCustomId, type ParsedCustomId } from './types';
 
 export function buildCommandDefinitions() {
+  // Bare entry point — no subcommands, so `/waifumon` opens the splash/menu
+  // directly (Discord requires a subcommand pick once any are added, so the
+  // direct-action subcommands live on `/wm` instead).
   const waifumon = new SlashCommandBuilder()
     .setName('waifumon')
-    .setDescription('Waifumon — the collection game')
-    .addSubcommand((s) => s.setName('menu').setDescription('Open the main menu'))
+    .setDescription('Open Waifumon — daily splash on first launch, then the main menu');
+
+  // Power-user direct-action commands. All also reachable via buttons on
+  // the session board painted by `/waifumon`.
+  const wm = new SlashCommandBuilder()
+    .setName('wm')
+    .setDescription('Waifumon — direct actions')
     .addSubcommand((s) => s.setName('hunt').setDescription('Spend 1 energy to hunt for a Waifumon'))
     .addSubcommand((s) => s.setName('profile').setDescription('View your hunter profile'))
     .addSubcommand((s) => s.setName('daily').setDescription('Claim your daily rewards'))
@@ -124,7 +132,7 @@ export function buildCommandDefinitions() {
         ),
     );
 
-  return [waifumon.toJSON(), admin.toJSON()];
+  return [waifumon.toJSON(), wm.toJSON(), admin.toJSON()];
 }
 
 export async function registerCommands(

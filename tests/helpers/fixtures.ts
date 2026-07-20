@@ -51,6 +51,12 @@ export interface BootstrapOptions {
   huntRng?: Rng;
   captureRng?: Rng;
   dailyRng?: Rng;
+  /**
+   * Whether the daily launch splash is enabled for this test app. Defaults
+   * to `false` so pre-existing tests continue to exercise the main menu
+   * directly on `/waifumon`. Splash-specific tests opt in with `true`.
+   */
+  splashEnabled?: boolean;
 }
 
 /** Wires all services against a test database with the shipped content seeded. */
@@ -61,7 +67,27 @@ export async function bootstrapApp(
   const opts: BootstrapOptions =
     typeof timezoneOrOpts === 'string' ? { timezone: timezoneOrOpts } : timezoneOrOpts;
   const timezone = opts.timezone ?? 'UTC';
-  const content = loadShippedContent(t.logger);
+  const loaded = loadShippedContent(t.logger);
+  // Override the shipped splash config on a per-test basis without touching
+  // tables.json. Splash-specific tests pass `splashEnabled: true`; every
+  // other test keeps the pre-splash behavior of `/waifumon` opening the menu.
+  const content: LoadedContent = {
+    ...loaded,
+    tables: {
+      ...loaded.tables,
+      uiSplash: {
+        ...(loaded.tables.uiSplash ?? {
+          enabled: false,
+          title: 'Welcome to Waifumon',
+          body: [],
+          imagePath: null,
+          buttonLabel: 'Start Hunt',
+          frequency: 'daily',
+        }),
+        enabled: opts.splashEnabled ?? false,
+      },
+    },
+  };
   await seedContent(t.db, content, t.logger);
   const currency = createCurrencyService(t.db);
   const inventory = createInventoryService(t.db);

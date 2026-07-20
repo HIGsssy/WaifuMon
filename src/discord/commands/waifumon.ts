@@ -8,6 +8,7 @@
  */
 import {
   ActionRowBuilder,
+  AttachmentBuilder,
   ButtonBuilder,
   ButtonStyle,
   EmbedBuilder,
@@ -30,6 +31,9 @@ import { renderSummaryLines } from '../../modules/session/sessionService';
 import type { CareState, CareTickSummary } from '../../modules/care/careService';
 import { ownerFromInteraction } from '../userDisplay';
 import { withBackRow } from '../ui';
+import { resolveAssetPath } from '../../modules/content/loader';
+import fs from 'node:fs';
+import type { UiSplashConfig } from '../../modules/content/schemas';
 
 function menuComponents(care: CareState, questsEnabled: boolean): ActionRowBuilder<ButtonBuilder>[] {
   const careButton = care.active
@@ -122,6 +126,46 @@ export async function handleMenu(
   interaction: PlayerInteraction,
   prov: Provisioned,
 ): Promise<void> {
+  // Daily launch splash (once per guild-day). Only shown on slash-command
+  // entry — clicking Start Hunt (`menu:start`) or any other in-board button
+  // routes straight to the main menu via `renderMainMenu`.
+  const splashCfg = ctx.content.tables.uiSplash;
+  const isSlash = interaction.isChatInputCommand?.() === true;
+  if (isSlash && splashCfg?.enabled) {
+    const wantsEveryLaunch = splashCfg.frequency === 'always';
+    const alreadySeen =
+      !wantsEveryLaunch && (await ctx.services.session.hasSeenSplashToday(prov.playerId));
+    if (!alreadySeen) {
+      await renderSplash(ctx, interaction, prov, splashCfg);
+      return;
+    }
+  }
+  await renderMainMenu(ctx, interaction, prov);
+}
+
+/**
+ * `menu:start` — button on the splash screen. Edits the same public session
+ * message into the normal main menu (no second embed is created because
+ * paintSession routes button clicks through `interaction.update`).
+ */
+export async function handleMenuStart(
+  ctx: AppContext,
+  interaction: PlayerInteraction,
+  prov: Provisioned,
+): Promise<void> {
+  await renderMainMenu(ctx, interaction, prov);
+}
+
+/**
+ * Renders the normal Waifumon main menu / session board. Factored out so
+ * `handleMenu` (splash gate) and `handleMenuStart` (splash button) both hit
+ * the same code path.
+ */
+async function renderMainMenu(
+  ctx: AppContext,
+  interaction: PlayerInteraction,
+  prov: Provisioned,
+): Promise<void> {
   // Lazy Care Mode tick: apply anything pending before rendering so the
   // board always shows fresh energy/target state. Cheap no-op when Care
   // Mode isn't active.
@@ -164,6 +208,84 @@ export async function handleMenu(
     embeds: [embed],
     components: menuComponents(care, ctx.services.quests.config.enabled),
   });
+}
+
+const SPLASH_IMAGE_FILENAME = 'splash.png';
+
+/** Build the splash embed + optional image attachment from config. */
+export function buildSplashView(
+  ctx: AppContext,
+  splash: UiSplashConfig,
+): { embed: EmbedBuilder; files: AttachmentBuilder[] } {
+  const bodyLines = Array.isArray(splash.body) ? splash.body : [splash.body];
+  const description = bodyLines.filter((l) => l && l.length > 0).join('\n\n');
+  const embed = new EmbedBuilder()
+    .setTitle(`🎴 ${splash.title}`)
+    .setColor(0xff6fa5)
+    .setDescription(description || '_Ready when you are~_');
+
+  const files: AttachmentBuilder[] = [];
+  if (splash.imagePath) {
+    try {
+      const abs = resolveAssetPath(ctx.config.assetsDir, splash.imagePath);
+      if (fs.existsSync(abs)) {
+        files.push(new AttachmentBuilder(abs, { name: SPLASH_IMAGE_FILENAME }));
+        embed.setImage(`attachment://${SPLASH_IMAGE_FILENAME}`);
+      } else {
+        ctx.logger.warn(
+          { imagePath: splash.imagePath },
+          'splash image not found — rendering text-only',
+        );
+      }
+    } catch (err) {
+      ctx.logger.warn(
+        { err, imagePath: splash.imagePath },
+        'splash image failed to resolve — rendering text-only',
+      );
+    }
+  }
+  return { embed, files };
+}
+
+function splashComponents(buttonLabel: string): ActionRowBuilder<ButtonBuilder>[] {
+  return [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(buildCustomId('menu', 'start'))
+        .setLabel(buttonLabel)
+        .setEmoji('🏹')
+        .setStyle(ButtonStyle.Primary),
+    ),
+  ];
+}
+
+/**
+ * Paint the splash onto the session board and record the daily view *after*
+ * the paint call returns (so a render failure never marks the splash shown).
+ */
+async function renderSplash(
+  ctx: AppContext,
+  interaction: PlayerInteraction,
+  prov: Provisioned,
+  splash: UiSplashConfig,
+): Promise<void> {
+  const { embed, files } = buildSplashView(ctx, splash);
+  await paintSession(ctx, interaction, prov, {
+    embeds: [embed],
+    components: splashComponents(splash.buttonLabel),
+    files,
+  });
+  // Mark shown only after the paint succeeds. `daily` frequency records the
+  // view so subsequent /waifumon calls this guild-day skip the splash;
+  // `always` never records so the splash renders every launch.
+  if (splash.frequency === 'daily') {
+    try {
+      await ctx.services.session.markSplashShown(prov.playerId);
+    } catch (err) {
+      // Not fatal — worst case the splash shows again this same day.
+      ctx.logger.warn({ err, playerId: prov.playerId }, 'failed to mark splash shown');
+    }
+  }
 }
 
 export async function handleProfile(

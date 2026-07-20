@@ -64,6 +64,13 @@
       "when": 1816466400000,
       "tag": "0008_daily_quests",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1816552800000,
+      "tag": "0009_daily_splash_views",
+      "breakpoints": true
     }
   ]
 }

@@ -11,7 +11,11 @@
  */
 import { and, eq, sql } from 'drizzle-orm';
 import type { Db } from '../../db/client';
-import { waifumonSessions, type WaifumonSessionRow } from '../../db/schema';
+import {
+  playerDailySplashViews,
+  waifumonSessions,
+  type WaifumonSessionRow,
+} from '../../db/schema';
 import { claimDateInTimezone } from '../../shared/time';
 
 export type SessionScreen =
@@ -208,6 +212,21 @@ export interface SessionService {
 
   /** Whether the row's summary_date matches today in the configured timezone. */
   isSummaryFresh(session: WaifumonSessionRow, now?: Date): boolean;
+
+  /**
+   * Returns true if the player already has a splash-view row for today
+   * (configured timezone). Used to decide whether `/waifumon` shows the
+   * daily launch splash or goes straight to the main menu.
+   */
+  hasSeenSplashToday(playerId: number, now?: Date): Promise<boolean>;
+
+  /**
+   * Idempotently records that the player was shown today's splash. Returns
+   * true when a new row was inserted, false when today's row already
+   * existed. Only called *after* the splash was rendered successfully so a
+   * render failure never leaves a stale "seen" marker behind.
+   */
+  markSplashShown(playerId: number, now?: Date): Promise<boolean>;
 }
 
 export interface SessionServiceDeps {
@@ -385,6 +404,37 @@ export function createSessionService(deps: SessionServiceDeps): SessionService {
     isSummaryFresh,
     isExpired,
     inactiveTimeoutMs,
+
+    async hasSeenSplashToday(playerId, at) {
+      const day = claimDateInTimezone(at ?? now(), deps.timezone);
+      const [row] = await deps.db
+        .select({ id: playerDailySplashViews.id })
+        .from(playerDailySplashViews)
+        .where(
+          and(
+            eq(playerDailySplashViews.playerId, playerId),
+            eq(playerDailySplashViews.splashDate, day),
+          ),
+        )
+        .limit(1);
+      return !!row;
+    },
+
+    async markSplashShown(playerId, at) {
+      const day = claimDateInTimezone(at ?? now(), deps.timezone);
+      // Idempotent — the unique (player_id, splash_date) index makes double
+      // calls on the same guild-day a no-op. `returning` on a conflict-do-
+      // nothing insert returns an empty array; that's how we know whether we
+      // were the first writer today.
+      const inserted = await deps.db
+        .insert(playerDailySplashViews)
+        .values({ playerId, splashDate: day, shownAt: at ?? now() })
+        .onConflictDoNothing({
+          target: [playerDailySplashViews.playerId, playerDailySplashViews.splashDate],
+        })
+        .returning({ id: playerDailySplashViews.id });
+      return inserted.length > 0;
+    },
   };
 }
 
