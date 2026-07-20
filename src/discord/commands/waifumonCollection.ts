@@ -307,6 +307,10 @@ async function renderInspect(
 ): Promise<void> {
   try {
     const entry = await ctx.services.collection.getOwned(prov.playerId, waifuId);
+    // Daily-quest: inspecting an owned Waifumon ticks the inspect quest.
+    // Ownership was verified above (getOwned throws WaifuNotOwnedError
+    // otherwise), so wrong-user / stale interactions never reach this call.
+    await ctx.services.quests.recordQuestEvent(null, prov.playerId, 'inspect_waifu', 1, {});
     const [isDuplicate, buddy] = await Promise.all([
       ctx.services.collection.hasOtherActiveCopies(prov.playerId, waifuId),
       ctx.services.collection.getBuddy(prov.playerId),

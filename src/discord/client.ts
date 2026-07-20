@@ -14,6 +14,8 @@ import {
   handleCareCommand,
   handleCareLeave,
   handleCareStart,
+  handleQuests,
+  handleQuestsClaimAll,
 } from './commands/waifumon';
 import {
   handleEncounterCharm,
@@ -106,6 +108,8 @@ export function createDiscordClient(ctx: AppContext): Client {
         handleBuddyCommand(ctx, i, prov),
       'waifumon:care': (i: ChatInputCommandInteraction, prov: Provisioned) =>
         handleCareCommand(ctx, i, prov),
+      'waifumon:quests': (i: ChatInputCommandInteraction, prov: Provisioned) =>
+        handleQuests(ctx, i, prov),
       'waifumon-admin:allow-channel:add': (i: ChatInputCommandInteraction) =>
         handleAdminAllowChannelAdd(ctx, i),
       'waifumon-admin:allow-channel:remove': (i: ChatInputCommandInteraction) =>
@@ -132,9 +136,12 @@ export function createDiscordClient(ctx: AppContext): Client {
         handleInventory(ctx, i, prov),
       'menu:collection': (i: ButtonInteraction, prov: Provisioned) =>
         handleCollection(ctx, i, prov),
+      'menu:quests': (i: ButtonInteraction, prov: Provisioned) => handleQuests(ctx, i, prov),
       'menu:back': (i: ButtonInteraction, prov: Provisioned) => handleMenu(ctx, i, prov),
       'shop:buy': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleShopBuy(ctx, i, prov, args[0] ?? ''),
+      'quests:claim_all': (i: ButtonInteraction, prov: Provisioned) =>
+        handleQuestsClaimAll(ctx, i, prov),
       'care:start': (i: ButtonInteraction, prov: Provisioned) =>
         handleCareStart(ctx, i, prov),
       'care:leave': (i: ButtonInteraction, prov: Provisioned) =>

@@ -71,6 +71,9 @@ export function buildCommandDefinitions() {
             .setRequired(false)
             .setAutocomplete(true),
         ),
+    )
+    .addSubcommand((s) =>
+      s.setName('quests').setDescription('View and claim your daily quests'),
     );
 
   const admin = new SlashCommandBuilder()

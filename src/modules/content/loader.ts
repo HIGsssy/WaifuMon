@@ -129,6 +129,26 @@ export function loadContent(contentDir: string, assetsDir: string, logger: Logge
     );
   }
 
+  // Daily-quest reward slugs.
+  for (const entry of tables.dailyQuests.pool) {
+    for (const item of entry.rewards.items) {
+      if (!itemSlugs.has(item.slug)) {
+        throw new ContentValidationError(
+          `dailyQuests.pool[${entry.slug}].rewards.items references unknown item slug: ${item.slug}`,
+        );
+      }
+    }
+  }
+  if (tables.dailyQuests.allCompleteBonus) {
+    for (const item of tables.dailyQuests.allCompleteBonus.items) {
+      if (!itemSlugs.has(item.slug)) {
+        throw new ContentValidationError(
+          `dailyQuests.allCompleteBonus references unknown item slug: ${item.slug}`,
+        );
+      }
+    }
+  }
+
   const validatedSpecies = validateSpeciesAssets(species, assetsDir, logger);
 
   logger.info(

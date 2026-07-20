@@ -38,6 +38,7 @@ import type { CareModeConfig } from '../content/schemas';
 import type { CollectionService } from '../collection/collectionService';
 import type { CurrencyService } from '../currency/currencyService';
 import type { ProgressionService } from '../progression/progressionService';
+import type { QuestService } from '../quests/questService';
 
 /**
  * Summary of applying pending Care Mode ticks. `active` reflects the state
@@ -147,6 +148,7 @@ export interface CareServiceDeps {
   currency: CurrencyService;
   collection: CollectionService;
   progression: ProgressionService;
+  quests: QuestService;
   careConfig: CareModeConfig;
 }
 
@@ -166,7 +168,7 @@ const INACTIVE_SUMMARY: CareTickSummary = {
 };
 
 export function createCareService(deps: CareServiceDeps): CareService {
-  const { db, currency, collection, progression, careConfig } = deps;
+  const { db, currency, collection, progression, quests, careConfig } = deps;
 
   function intervalMs(): number {
     return Math.max(1, careConfig.intervalMinutes) * 60 * 1000;
@@ -313,6 +315,20 @@ export function createCareService(deps: CareServiceDeps): CareService {
         .update(players)
         .set({ careModeLastTickAt: newLastTick })
         .where(eq(players.id, playerId));
+    }
+
+    // Daily-quest progress: care ticks + accrued affection count toward the
+    // matching quests inside this same transaction so rollback covers them.
+    await quests.recordQuestEvent(tx, playerId, 'care_mode_ticks', ticks, {}, now);
+    if (affectionGained > 0) {
+      await quests.recordQuestEvent(
+        tx,
+        playerId,
+        'waifu_affection_gained',
+        affectionGained,
+        {},
+        now,
+      );
     }
 
     const targetSnapshot = updatedWaifu

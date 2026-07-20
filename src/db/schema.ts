@@ -377,6 +377,55 @@ export const waifumonSessions = pgTable(
   ],
 );
 
+/**
+ * Daily Quests (Milestone 5C): one row per (player, quest_date, quest_slug).
+ * `title_snapshot`, `description_snapshot`, and `rewards_json` freeze the
+ * pool entry at assignment time so content edits don't break already-assigned
+ * quests. `type` is a soft-typed text column (matches
+ * `player_progression_events`) — QuestService owns the vocabulary.
+ *
+ * The all-complete bonus for a given day is tracked on a dedicated
+ * `quest_slug='__all_complete_bonus__'` row so no second table / no extra
+ * column on `players` is needed. That sentinel row's `claimed_at` doubles as
+ * the "bonus already granted" flag.
+ */
+export const playerDailyQuests = pgTable(
+  'player_daily_quests',
+  {
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    playerId: bigint('player_id', { mode: 'number' })
+      .notNull()
+      .references(() => players.id),
+    questDate: date('quest_date').notNull(),
+    questSlug: text('quest_slug').notNull(),
+    titleSnapshot: text('title_snapshot').notNull(),
+    descriptionSnapshot: text('description_snapshot').notNull(),
+    type: text('type').notNull(),
+    /** For rarity-gated event types; null otherwise. */
+    rarityAtLeast: text('rarity_at_least'),
+    target: integer('target').notNull(),
+    progress: integer('progress').notNull().default(0),
+    rewardsJson: jsonb('rewards_json').$type<Record<string, unknown>>().notNull(),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    claimedAt: timestamp('claimed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('player_daily_quests_player_date_slug_uq').on(
+      t.playerId,
+      t.questDate,
+      t.questSlug,
+    ),
+    index('player_daily_quests_player_date_idx').on(t.playerId, t.questDate),
+    check('player_daily_quests_target_check', sql`${t.target} > 0`),
+    check('player_daily_quests_progress_check', sql`${t.progress} >= 0`),
+  ],
+);
+
+/** Sentinel quest slug for the "all quests complete" daily bonus row. */
+export const ALL_COMPLETE_BONUS_SLUG = '__all_complete_bonus__';
+
 export type GuildRow = typeof guilds.$inferSelect;
 export type PlayerRow = typeof players.$inferSelect;
 export type PlayerCurrenciesRow = typeof playerCurrencies.$inferSelect;
@@ -390,3 +439,4 @@ export type CaptureAttemptRow = typeof captureAttempts.$inferSelect;
 export type PlayerWaifuRow = typeof playerWaifus.$inferSelect;
 export type PlayerProgressionEventRow = typeof playerProgressionEvents.$inferSelect;
 export type WaifumonSessionRow = typeof waifumonSessions.$inferSelect;
+export type PlayerDailyQuestRow = typeof playerDailyQuests.$inferSelect;

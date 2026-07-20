@@ -13,6 +13,7 @@ import { createCaptureService } from '../../src/modules/capture/captureService';
 import { createCareService } from '../../src/modules/care/careService';
 import { createCollectionService } from '../../src/modules/collection/collectionService';
 import { createProgressionService } from '../../src/modules/progression/progressionService';
+import { createQuestService } from '../../src/modules/quests/questService';
 import { createInventoryService } from '../../src/modules/inventory/inventoryService';
 import { createPlayerService } from '../../src/modules/players/playerService';
 import { createShopService } from '../../src/modules/shop/shopService';
@@ -41,6 +42,7 @@ export interface App {
   care: ReturnType<typeof createCareService>;
   collection: ReturnType<typeof createCollectionService>;
   progression: ReturnType<typeof createProgressionService>;
+  quests: ReturnType<typeof createQuestService>;
   session: ReturnType<typeof createSessionService>;
 }
 
@@ -67,9 +69,18 @@ export async function bootstrapApp(
     config: content.tables.progression,
     baseMaxEnergy: content.tables.energy.baseMax,
   });
+  const quests = createQuestService({
+    db: t.db,
+    currency,
+    inventory,
+    config: content.tables.dailyQuests,
+    timezone,
+    logger: t.logger,
+  });
   const collection = createCollectionService({
     db: t.db,
     currency,
+    quests,
     duplicateConfig: content.tables.duplicate,
     waifuConfig: content.tables.waifuProgression,
     totalSpeciesCount: content.species.filter((s) => s.enabled).length,
@@ -79,6 +90,7 @@ export async function bootstrapApp(
     currency,
     collection,
     progression,
+    quests,
     careConfig: content.tables.energy.careMode,
   });
   return {
@@ -111,6 +123,7 @@ export async function bootstrapApp(
       progression,
       collection,
       care,
+      quests,
       tables: content.tables,
       logger: t.logger,
       ...(opts.huntRng ? { rng: opts.huntRng } : {}),
@@ -121,11 +134,13 @@ export async function bootstrapApp(
       progression,
       progressionConfig: content.tables.progression,
       captureConfig: content.tables.capture,
+      quests,
       logger: t.logger,
       ...(opts.captureRng ? { rng: opts.captureRng } : {}),
     }),
     care,
     collection,
+    quests,
     session: createSessionService({
       db: t.db,
       timezone,

@@ -147,6 +147,118 @@
     },
     "nicknameMinLevel": 5
   },
+  "dailyQuests": {
+    "enabled": true,
+    "questsPerDay": 3,
+    "allCompleteBonus": {
+      "waifubux": 50,
+      "items": [{ "slug": "silk_charm", "quantity": 1 }]
+    },
+    "pool": [
+      {
+        "slug": "spend_5_energy",
+        "title": "Warm-Up Hunt",
+        "description": "Spend 5 Hunt Energy.",
+        "type": "hunt_energy_spent",
+        "target": 5,
+        "weight": 100,
+        "difficulty": "easy",
+        "rewards": {
+          "waifubux": 25,
+          "items": [{ "slug": "basic_charm", "quantity": 1 }]
+        }
+      },
+      {
+        "slug": "attempt_3_captures",
+        "title": "Take Your Shot",
+        "description": "Attempt 3 captures.",
+        "type": "capture_attempts",
+        "target": 3,
+        "weight": 100,
+        "difficulty": "easy",
+        "rewards": {
+          "essence": 5,
+          "items": [{ "slug": "basic_charm", "quantity": 1 }]
+        }
+      },
+      {
+        "slug": "catch_1_waifumon",
+        "title": "New Company",
+        "description": "Catch 1 Waifumon.",
+        "type": "capture_success",
+        "target": 1,
+        "weight": 100,
+        "difficulty": "easy",
+        "rewards": {
+          "waifubux": 30,
+          "essence": 5
+        }
+      },
+      {
+        "slug": "catch_1_rare_plus",
+        "title": "A Little Sparkle",
+        "description": "Catch 1 Rare or higher Waifumon.",
+        "type": "capture_success_rarity_at_least",
+        "rarityAtLeast": "R",
+        "target": 1,
+        "weight": 70,
+        "difficulty": "medium",
+        "rewards": {
+          "items": [{ "slug": "silk_charm", "quantity": 1 }]
+        }
+      },
+      {
+        "slug": "gain_10_affection",
+        "title": "Soft Hands, Sharp Instincts",
+        "description": "Gain 10 affection with any Waifumon.",
+        "type": "waifu_affection_gained",
+        "target": 10,
+        "weight": 80,
+        "difficulty": "easy",
+        "rewards": {
+          "essence": 10
+        }
+      },
+      {
+        "slug": "care_mode_tick",
+        "title": "Quiet Care",
+        "description": "Process 1 Care Mode tick.",
+        "type": "care_mode_ticks",
+        "target": 1,
+        "weight": 80,
+        "difficulty": "easy",
+        "rewards": {
+          "waifubux": 20,
+          "essence": 5
+        }
+      },
+      {
+        "slug": "convert_1_duplicate",
+        "title": "No Waste",
+        "description": "Convert 1 duplicate to Essence.",
+        "type": "duplicate_converted",
+        "target": 1,
+        "weight": 40,
+        "difficulty": "medium",
+        "rewards": {
+          "items": [{ "slug": "silk_charm", "quantity": 1 }],
+          "essence": 10
+        }
+      },
+      {
+        "slug": "inspect_collection",
+        "title": "Admire the Collection",
+        "description": "Inspect one owned Waifumon.",
+        "type": "inspect_waifu",
+        "target": 1,
+        "weight": 60,
+        "difficulty": "easy",
+        "rewards": {
+          "waifubux": 15
+        }
+      }
+    ]
+  },
   "uiFlavor": {
     "mainMenu": [
       "The charm compass hums softly. Somewhere nearby, a Waifumon is watching.",

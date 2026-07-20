@@ -19,6 +19,7 @@ import type { CaptureService } from '../modules/capture/captureService';
 import type { CareService } from '../modules/care/careService';
 import type { CollectionService } from '../modules/collection/collectionService';
 import type { ProgressionService } from '../modules/progression/progressionService';
+import type { QuestService } from '../modules/quests/questService';
 import type { SessionService } from '../modules/session/sessionService';
 
 export interface AppServices {
@@ -33,6 +34,7 @@ export interface AppServices {
   care: CareService;
   collection: CollectionService;
   progression: ProgressionService;
+  quests: QuestService;
   session: SessionService;
 }
 

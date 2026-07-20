@@ -31,7 +31,7 @@ import type { CareState, CareTickSummary } from '../../modules/care/careService'
 import { ownerFromInteraction } from '../userDisplay';
 import { withBackRow } from '../ui';
 
-function menuComponents(care: CareState): ActionRowBuilder<ButtonBuilder>[] {
+function menuComponents(care: CareState, questsEnabled: boolean): ActionRowBuilder<ButtonBuilder>[] {
   const careButton = care.active
     ? new ButtonBuilder()
         .setCustomId(buildCustomId('care', 'leave'))
@@ -79,16 +79,27 @@ function menuComponents(care: CareState): ActionRowBuilder<ButtonBuilder>[] {
       careButton,
     ),
   ];
-  if (care.active) {
-    rows.push(
-      new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder()
-          .setCustomId(buildCustomId('care', 'change_open'))
-          .setLabel('Change Target')
-          .setEmoji('🔄')
-          .setStyle(ButtonStyle.Secondary),
-      ),
+  const bottomRow: ButtonBuilder[] = [];
+  if (questsEnabled) {
+    bottomRow.push(
+      new ButtonBuilder()
+        .setCustomId(buildCustomId('menu', 'quests'))
+        .setLabel('Daily Quests')
+        .setEmoji('📜')
+        .setStyle(ButtonStyle.Secondary),
     );
+  }
+  if (care.active) {
+    bottomRow.push(
+      new ButtonBuilder()
+        .setCustomId(buildCustomId('care', 'change_open'))
+        .setLabel('Change Target')
+        .setEmoji('🔄')
+        .setStyle(ButtonStyle.Secondary),
+    );
+  }
+  if (bottomRow.length > 0) {
+    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(...bottomRow));
   }
   return rows;
 }
@@ -151,7 +162,7 @@ export async function handleMenu(
   }
   await paintSession(ctx, interaction, prov, {
     embeds: [embed],
-    components: menuComponents(care),
+    components: menuComponents(care, ctx.services.quests.config.enabled),
   });
 }
 
@@ -603,4 +614,127 @@ export async function handleCareAutocomplete(
       };
     }),
   );
+}
+
+// ─────────────────────────── Daily Quests ───────────────────────────
+
+interface QuestRow {
+  id: number;
+  slug: string;
+  title: string;
+  description: string;
+  target: number;
+  progress: number;
+  completedAt: Date | null;
+  claimedAt: Date | null;
+}
+
+/** Build the quests screen from the current quest rows. */
+function questsView(
+  quests: QuestRow[],
+  hasClaimable: boolean,
+): { embed: EmbedBuilder; components: ActionRowBuilder<ButtonBuilder>[] } {
+  const embed = new EmbedBuilder().setTitle('📜 Daily Quests').setColor(0xffc46f);
+  if (quests.length === 0) {
+    embed.setDescription('_No quests today~ Check back at the daily reset._');
+    return { embed, components: withBackRow() };
+  }
+  const lines = quests.map((q) => {
+    const status = q.claimedAt
+      ? '✅ Claimed'
+      : q.completedAt
+        ? '🎁 Ready to claim'
+        : `⏳ ${q.progress}/${q.target}`;
+    return `**${q.title}** — ${status}\n_${q.description}_`;
+  });
+  embed.setDescription(lines.join('\n\n'));
+  const claimBtn = new ButtonBuilder()
+    .setCustomId(buildCustomId('quests', 'claim_all'))
+    .setLabel('Claim Completed')
+    .setEmoji('🎁')
+    .setStyle(hasClaimable ? ButtonStyle.Success : ButtonStyle.Secondary)
+    .setDisabled(!hasClaimable);
+  return { embed, components: withBackRow([new ActionRowBuilder<ButtonBuilder>().addComponents(claimBtn)]) };
+}
+
+async function loadTodayQuests(
+  ctx: AppContext,
+  playerId: number,
+): Promise<{ rows: QuestRow[]; claimable: number }> {
+  await ctx.services.quests.ensureDailyQuests(playerId);
+  const raw = await ctx.services.quests.getDailyQuests(playerId);
+  const rows: QuestRow[] = raw.map((r) => ({
+    id: r.id,
+    slug: r.questSlug,
+    title: r.titleSnapshot,
+    description: r.descriptionSnapshot,
+    target: r.target,
+    progress: r.progress,
+    completedAt: r.completedAt,
+    claimedAt: r.claimedAt,
+  }));
+  const claimable = rows.filter((r) => r.completedAt && !r.claimedAt).length;
+  return { rows, claimable };
+}
+
+/** /waifumon quests and menu:quests button — paint the Daily Quests screen. */
+export async function handleQuests(
+  ctx: AppContext,
+  interaction: PlayerInteraction,
+  prov: Provisioned,
+): Promise<void> {
+  if (!ctx.services.quests.config.enabled) {
+    await respondEphemeral(interaction, 'Daily Quests are turned off right now~');
+    return;
+  }
+  const { rows, claimable } = await loadTodayQuests(ctx, prov.playerId);
+  const { embed, components } = questsView(rows, claimable > 0);
+  await paintSession(ctx, interaction, prov, { embeds: [embed], components });
+}
+
+/** Claim every completed-unclaimed quest for today, plus the all-complete bonus. */
+export async function handleQuestsClaimAll(
+  ctx: AppContext,
+  interaction: ButtonInteraction,
+  prov: Provisioned,
+): Promise<void> {
+  if (!ctx.services.quests.config.enabled) {
+    await respondEphemeral(interaction, 'Daily Quests are turned off right now~');
+    return;
+  }
+  const result = await ctx.services.quests.claimAllCompleted(prov.playerId);
+  if (result.claimed.length === 0 && !result.allCompleteBonusGranted) {
+    await respondEphemeral(interaction, 'No completed quests to claim yet~');
+    // Repaint quests board so state stays fresh.
+    const { rows, claimable } = await loadTodayQuests(ctx, prov.playerId);
+    const view = questsView(rows, claimable > 0);
+    await paintSession(ctx, interaction, prov, {
+      embeds: [view.embed],
+      components: view.components,
+    });
+    return;
+  }
+  const parts: string[] = [];
+  if (result.claimed.length > 0) {
+    parts.push(`Claimed **${result.claimed.length}** quest${result.claimed.length === 1 ? '' : 's'}.`);
+  }
+  const wb = result.totalRewards.waifubux;
+  const es = result.totalRewards.essence;
+  if (wb > 0) parts.push(`+${wb} WaifuBux`);
+  if (es > 0) parts.push(`+${es} Essence`);
+  if (result.totalRewards.items.length > 0) {
+    const items = result.totalRewards.items
+      .map((i) => `${i.item.emoji ?? '•'} ${i.item.name} ×${i.quantity}`)
+      .join(', ');
+    parts.push(items);
+  }
+  if (result.allCompleteBonusGranted) parts.push('🎉 All-Quests bonus!');
+  await respondEphemeral(interaction, parts.join(' · '));
+  // Repaint the quests screen so status flips to Claimed.
+  const { rows, claimable } = await loadTodayQuests(ctx, prov.playerId);
+  const view = questsView(rows, claimable > 0);
+  await paintSession(ctx, interaction, prov, {
+    embeds: [view.embed],
+    components: view.components,
+  });
 }

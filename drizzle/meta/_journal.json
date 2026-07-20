@@ -57,6 +57,13 @@
       "when": 1816380000000,
       "tag": "0007_care_mode",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1816466400000,
+      "tag": "0008_daily_quests",
+      "breakpoints": true
     }
   ]
 }

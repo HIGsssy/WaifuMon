@@ -46,6 +46,7 @@ import type {
   ProgressionService,
 } from '../progression/progressionService';
 import type { ProgressionConfig } from '../content/schemas';
+import type { QuestService } from '../quests/questService';
 
 export type CaptureOutcome = 'success' | 'failure' | 'escape';
 
@@ -89,12 +90,13 @@ export interface CaptureServiceDeps {
   progression: ProgressionService;
   progressionConfig: ProgressionConfig;
   captureConfig: CaptureConfig;
+  quests: QuestService;
   logger: Logger;
   rng?: Rng;
 }
 
 export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
-  const { db, inventory, progression, progressionConfig, captureConfig, logger } = deps;
+  const { db, inventory, progression, progressionConfig, captureConfig, quests, logger } = deps;
   const rng = deps.rng ?? defaultRng();
 
   return {
@@ -278,6 +280,23 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
             refId: attempt?.id ?? null,
             metadata: { speciesSlug: speciesRow.slug, rarity: speciesRow.rarity },
           });
+        }
+
+        // Daily-quest progress inside the same transaction — every attempt
+        // counts, only a success bumps capture_success and its rarity-gated
+        // variant. If the outer transaction rolls back, quest progress does
+        // too.
+        await quests.recordQuestEvent(tx, playerId, 'capture_attempts', 1, {}, now);
+        if (success) {
+          await quests.recordQuestEvent(tx, playerId, 'capture_success', 1, {}, now);
+          await quests.recordQuestEvent(
+            tx,
+            playerId,
+            'capture_success_rarity_at_least',
+            1,
+            { rarity: speciesRow.rarity as import('../../db/schema').Rarity },
+            now,
+          );
         }
 
         return {

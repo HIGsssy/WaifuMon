@@ -32,6 +32,7 @@ import {
   WaifuNotOwnedError,
 } from '../../shared/errors';
 import type { CurrencyService } from '../currency/currencyService';
+import type { QuestService } from '../quests/questService';
 
 export interface OwnedEntry {
   waifu: PlayerWaifuRow;
@@ -171,6 +172,7 @@ export interface CollectionService {
 export interface CollectionServiceDeps {
   db: Db;
   currency: CurrencyService;
+  quests: QuestService;
   duplicateConfig: DuplicateConfig;
   waifuConfig: WaifuProgressionConfig;
   /** Total enabled species in the content set (dex denominator). */
@@ -194,7 +196,7 @@ const RARITY_RANK_SQL = sql`case ${species.rarity}
 end`;
 
 export function createCollectionService(deps: CollectionServiceDeps): CollectionService {
-  const { db, currency, duplicateConfig, waifuConfig, totalSpeciesCount } = deps;
+  const { db, currency, quests, duplicateConfig, waifuConfig, totalSpeciesCount } = deps;
 
   function essenceForRarity(rarity: string, fraction = 1): number {
     const value = (duplicateConfig.essenceByRarity as Record<string, number>)[rarity] ?? 0;
@@ -382,6 +384,12 @@ export function createCollectionService(deps: CollectionServiceDeps): Collection
       if (essence > 0) {
         const row = await currency.grantEssence(tx, playerId, essence);
         balanceAfter = row.essence;
+      }
+
+      // Daily-quest progress: only "convert duplicate" counts. Plain release
+      // is a different intent and doesn't tick the convert quest.
+      if (requireDuplicate) {
+        await quests.recordQuestEvent(tx, playerId, 'duplicate_converted', 1, {}, now);
       }
 
       return {

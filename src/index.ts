@@ -22,6 +22,7 @@ import { createCaptureService } from './modules/capture/captureService';
 import { createCareService } from './modules/care/careService';
 import { createCollectionService } from './modules/collection/collectionService';
 import { createProgressionService } from './modules/progression/progressionService';
+import { createQuestService } from './modules/quests/questService';
 import { createSessionService } from './modules/session/sessionService';
 import { createLogger } from './shared/logger';
 
@@ -54,9 +55,18 @@ async function main(): Promise<void> {
     config: content.tables.progression,
     baseMaxEnergy: content.tables.energy.baseMax,
   });
+  const quests = createQuestService({
+    db,
+    currency,
+    inventory,
+    config: content.tables.dailyQuests,
+    timezone: config.dailyTimezone,
+    logger,
+  });
   const collection = createCollectionService({
     db,
     currency,
+    quests,
     duplicateConfig: content.tables.duplicate,
     waifuConfig: content.tables.waifuProgression,
     totalSpeciesCount: content.species.filter((s) => s.enabled).length,
@@ -66,6 +76,7 @@ async function main(): Promise<void> {
     currency,
     collection,
     progression,
+    quests,
     careConfig: content.tables.energy.careMode,
   });
   const ctx: AppContext = {
@@ -101,6 +112,7 @@ async function main(): Promise<void> {
         progression,
         collection,
         care,
+        quests,
         tables: content.tables,
         logger,
       }),
@@ -110,10 +122,12 @@ async function main(): Promise<void> {
         progression,
         progressionConfig: content.tables.progression,
         captureConfig: content.tables.capture,
+        quests,
         logger,
       }),
       care,
       collection,
+      quests,
       session: createSessionService({
         db,
         timezone: config.dailyTimezone,

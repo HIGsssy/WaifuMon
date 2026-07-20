@@ -39,6 +39,7 @@ import type {
 } from '../progression/progressionService';
 import type { BuddyAwardResult, CollectionService } from '../collection/collectionService';
 import type { CareService, CareTickSummary } from '../care/careService';
+import type { QuestService } from '../quests/questService';
 
 interface WithXp {
   levelUps: LevelUpEvent[];
@@ -125,6 +126,7 @@ export interface HuntServiceDeps {
   progression: ProgressionService;
   collection: CollectionService;
   care: CareService;
+  quests: QuestService;
   tables: TablesContent;
   logger: Logger;
   rng?: Rng;
@@ -133,7 +135,8 @@ export interface HuntServiceDeps {
 const MAX_RARITY_REROLLS = 6;
 
 export function createHuntService(deps: HuntServiceDeps): HuntService {
-  const { db, currency, inventory, progression, collection, care, tables, logger } = deps;
+  const { db, currency, inventory, progression, collection, care, quests, tables, logger } =
+    deps;
   const rng = deps.rng ?? defaultRng();
   const hunt = tables.hunt;
 
@@ -287,6 +290,22 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
 
         // Buddy hunt reward — small XP + affection, only if a buddy is set.
         const buddyAward = await collection.awardBuddyOnHunt(tx, playerId);
+
+        // Daily-quest progress: 1 hunt energy spent per hunt, plus buddy
+        // affection gained (if any). Care Mode ticks and their affection
+        // are recorded by CareService inside its own tick core, so we do
+        // NOT re-record them here.
+        await quests.recordQuestEvent(tx, playerId, 'hunt_energy_spent', 1, {}, now);
+        if (buddyAward && buddyAward.affectionGranted > 0) {
+          await quests.recordQuestEvent(
+            tx,
+            playerId,
+            'waifu_affection_gained',
+            buddyAward.affectionGranted,
+            {},
+            now,
+          );
+        }
 
         // Roll the result table.
         const kind: HuntResultKind = rollWeighted(

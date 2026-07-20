@@ -419,6 +419,7 @@ describe('hunt interacts with Care Mode', () => {
       progression: app.progression,
       collection: app.collection,
       care: app.care,
+      quests: app.quests,
       tables: app.content.tables,
       logger: t.logger,
       rng: scriptedRng([0.99, 0.0]),

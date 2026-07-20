@@ -276,6 +276,100 @@ export const CareModeConfigSchema = z.object({
   affectionPerTick: z.number().int().nonnegative(),
 });
 
+/**
+ * Daily Quests (Milestone 5C): each player receives `questsPerDay` quests
+ * per calendar day, drawn from `pool` using per-entry `weight`. Completing a
+ * quest grants its `rewards`; completing all assigned quests grants the
+ * shared `allCompleteBonus` once per day. All rewards are transactional.
+ */
+export const QUEST_EVENT_TYPES = [
+  'hunt_energy_spent',
+  'capture_attempts',
+  'capture_success',
+  'capture_success_rarity_at_least',
+  'waifu_affection_gained',
+  'care_mode_ticks',
+  'duplicate_converted',
+  'inspect_waifu',
+] as const;
+export type QuestEventType = (typeof QUEST_EVENT_TYPES)[number];
+
+export const QUEST_DIFFICULTIES = ['easy', 'medium', 'hard'] as const;
+export type QuestDifficulty = (typeof QUEST_DIFFICULTIES)[number];
+
+const QuestRewardItemEntry = z.object({
+  slug,
+  quantity: z.number().int().positive(),
+});
+
+export const QuestRewardsSchema = z
+  .object({
+    waifubux: z.number().int().nonnegative().default(0),
+    essence: z.number().int().nonnegative().default(0),
+    items: z.array(QuestRewardItemEntry).default([]),
+  })
+  .refine((r) => r.waifubux > 0 || r.essence > 0 || r.items.length > 0, {
+    message: 'quest reward must grant at least one of waifubux, essence, or items',
+  });
+
+export const QuestPoolEntrySchema = z
+  .object({
+    slug,
+    title: z.string().min(1),
+    description: z.string().min(1),
+    type: z.enum(QUEST_EVENT_TYPES),
+    target: z.number().int().positive(),
+    weight: z.number().positive(),
+    difficulty: z.enum(QUEST_DIFFICULTIES).default('easy'),
+    /** For `capture_success_rarity_at_least`: required minimum rarity. */
+    rarityAtLeast: z.enum(RARITIES).optional(),
+    rewards: QuestRewardsSchema,
+  })
+  .superRefine((q, ctx) => {
+    if (q.type === 'capture_success_rarity_at_least' && !q.rarityAtLeast) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `"${q.slug}": capture_success_rarity_at_least requires rarityAtLeast`,
+        path: ['rarityAtLeast'],
+      });
+    }
+    if (q.type !== 'capture_success_rarity_at_least' && q.rarityAtLeast) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `"${q.slug}": rarityAtLeast is only valid for capture_success_rarity_at_least`,
+        path: ['rarityAtLeast'],
+      });
+    }
+  });
+
+export const DailyQuestsConfigSchema = z
+  .object({
+    enabled: z.boolean().default(true),
+    questsPerDay: z.number().int().positive().default(3),
+    allCompleteBonus: QuestRewardsSchema.optional(),
+    pool: z.array(QuestPoolEntrySchema).default([]),
+  })
+  .superRefine((cfg, ctx) => {
+    const seen = new Set<string>();
+    for (const entry of cfg.pool) {
+      if (seen.has(entry.slug)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Duplicate quest slug in pool: ${entry.slug}`,
+          path: ['pool'],
+        });
+      }
+      seen.add(entry.slug);
+    }
+    if (cfg.enabled && cfg.pool.length > 0 && cfg.pool.length < cfg.questsPerDay) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `dailyQuests.pool has ${cfg.pool.length} entries; fewer than questsPerDay=${cfg.questsPerDay}`,
+        path: ['pool'],
+      });
+    }
+  });
+
 export const TablesFileSchema = z.object({
   energy: z.object({
     baseMax: z.number().int().positive(),
@@ -295,6 +389,11 @@ export const TablesFileSchema = z.object({
   duplicate: DuplicateConfigSchema,
   progression: ProgressionConfigSchema,
   waifuProgression: WaifuProgressionConfigSchema,
+  dailyQuests: DailyQuestsConfigSchema.optional().default({
+    enabled: false,
+    questsPerDay: 3,
+    pool: [],
+  }),
   uiFlavor: UiFlavorConfigSchema.optional().default({ mainMenu: [] }),
   session: SessionConfigSchema.optional().default({ inactiveTimeoutMinutes: 45 }),
 });
@@ -306,6 +405,9 @@ export type DuplicateConfig = z.infer<typeof DuplicateConfigSchema>;
 export type ProgressionConfig = z.infer<typeof ProgressionConfigSchema>;
 export type WaifuProgressionConfig = z.infer<typeof WaifuProgressionConfigSchema>;
 export type CareModeConfig = z.infer<typeof CareModeConfigSchema>;
+export type DailyQuestsConfig = z.infer<typeof DailyQuestsConfigSchema>;
+export type QuestPoolEntry = z.infer<typeof QuestPoolEntrySchema>;
+export type QuestRewards = z.infer<typeof QuestRewardsSchema>;
 
 export interface LoadedContent {
   items: ItemContent[];
