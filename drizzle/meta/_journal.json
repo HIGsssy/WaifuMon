@@ -71,6 +71,13 @@
       "when": 1816552800000,
       "tag": "0009_daily_splash_views",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1816639200000,
+      "tag": "0010_buddy_affinity",
+      "breakpoints": true
     }
   ]
 }

@@ -122,6 +122,8 @@ async function main(): Promise<void> {
         progression,
         progressionConfig: content.tables.progression,
         captureConfig: content.tables.capture,
+        buddyAffinityConfig: content.tables.buddyAffinity,
+        collection,
         quests,
         logger,
       }),

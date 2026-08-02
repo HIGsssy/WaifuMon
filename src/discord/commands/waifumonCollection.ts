@@ -22,6 +22,7 @@ import {
   type ModalSubmitInteraction,
   type StringSelectMenuInteraction,
 } from 'discord.js';
+import { affinityLabel } from '../../modules/capture/affinityMath';
 import type { OwnedEntry, PaginatedOwned } from '../../modules/collection/collectionService';
 import { resolveAssetPath } from '../../modules/content/loader';
 import {
@@ -339,6 +340,7 @@ async function renderInspect(
       .addFields(
         { name: 'Rarity', value: species.rarity, inline: true },
         { name: 'Archetype', value: species.archetype, inline: true },
+        { name: 'Affinity', value: affinityLabel(species.affinity), inline: true },
         { name: 'Variant', value: waifu.variant, inline: true },
         { name: 'Level', value: `${waifu.level}`, inline: true },
         { name: 'XP', value: xpLine, inline: true },

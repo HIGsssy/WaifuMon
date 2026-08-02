@@ -8,10 +8,13 @@ import {
   validateSpeciesAssets,
 } from '../../src/modules/content/loader';
 import {
+  BuddyAffinityConfigSchema,
   CareModeConfigSchema,
   ItemContentSchema,
   SpeciesContentSchema,
+  TablesFileSchema,
 } from '../../src/modules/content/schemas';
+import { AFFINITIES } from '../../src/db/schema';
 import { ContentValidationError } from '../../src/shared/errors';
 import { ASSETS_DIR, CONTENT_DIR, loadShippedContent } from '../helpers/fixtures';
 import { silentLogger } from '../helpers/testDb';
@@ -78,6 +81,147 @@ describe('schema invariants', () => {
       imagePath: 'waifumon/x/standard.png',
     });
     expect(result.success).toBe(false);
+  });
+});
+
+describe('species affinity (5D)', () => {
+  const baseSpecies = {
+    slug: 'affinity_probe',
+    name: 'Affinity Probe',
+    rarity: 'N',
+    archetype: 'test',
+    contentRating: 'suggestive',
+    imagePath: 'waifumon/x/standard.png',
+  };
+
+  it('accepts every valid affinity value', () => {
+    for (const affinity of AFFINITIES) {
+      const parsed = SpeciesContentSchema.safeParse({ ...baseSpecies, affinity });
+      expect(parsed.success).toBe(true);
+      if (parsed.success) expect(parsed.data.affinity).toBe(affinity);
+    }
+  });
+
+  it('rejects an invalid affinity value', () => {
+    expect(SpeciesContentSchema.safeParse({ ...baseSpecies, affinity: 'brat' }).success).toBe(
+      false,
+    );
+    expect(SpeciesContentSchema.safeParse({ ...baseSpecies, affinity: '' }).success).toBe(false);
+    expect(SpeciesContentSchema.safeParse({ ...baseSpecies, affinity: null }).success).toBe(false);
+  });
+
+  it('defaults a missing affinity to switch (backward compatibility)', () => {
+    const parsed = SpeciesContentSchema.parse(baseSpecies);
+    expect(parsed.affinity).toBe('switch');
+  });
+
+  it('does not confuse affinity with archetype', () => {
+    const parsed = SpeciesContentSchema.parse({
+      ...baseSpecies,
+      archetype: 'kitsune',
+      affinity: 'dominant',
+    });
+    expect(parsed.archetype).toBe('kitsune');
+    expect(parsed.affinity).toBe('dominant');
+  });
+
+  it('every shipped species is affinity switch after this patch', () => {
+    const content = loadShippedContent();
+    expect(content.species.length).toBeGreaterThan(0);
+    const offenders = content.species.filter((s) => s.affinity !== 'switch');
+    expect(offenders.map((s) => s.slug)).toEqual([]);
+  });
+});
+
+describe('buddyAffinity config schema (5D)', () => {
+  const base = {
+    styles: [...AFFINITIES],
+    wheel: {
+      dominant: 'submissive',
+      submissive: 'caregiver',
+      caregiver: 'primal',
+      primal: 'dominant',
+    },
+    neutralStyles: ['switch'],
+    strongBonusByRarity: { N: 0.01, R: 0.02, SR: 0.03, SSR: 0.04, UR: 0.05, LR: 0.06, EX: 0.06 },
+    weakPenaltyByRarity: { N: 0, R: 0, SR: 0, SSR: 0, UR: 0, LR: 0, EX: 0 },
+  };
+
+  it('accepts the shipped shape', () => {
+    expect(BuddyAffinityConfigSchema.safeParse(base).success).toBe(true);
+  });
+
+  it('rejects an unknown affinity anywhere in the block', () => {
+    expect(
+      BuddyAffinityConfigSchema.safeParse({ ...base, styles: [...AFFINITIES, 'brat'] }).success,
+    ).toBe(false);
+    expect(
+      BuddyAffinityConfigSchema.safeParse({
+        ...base,
+        wheel: { ...base.wheel, dominant: 'brat' },
+      }).success,
+    ).toBe(false);
+    expect(
+      BuddyAffinityConfigSchema.safeParse({ ...base, wheel: { brat: 'submissive' } }).success,
+    ).toBe(false);
+  });
+
+  it('rejects a wheel edge that gives a neutral style a strength or weakness', () => {
+    expect(
+      BuddyAffinityConfigSchema.safeParse({
+        ...base,
+        wheel: { ...base.wheel, switch: 'dominant' },
+      }).success,
+    ).toBe(false);
+    expect(
+      BuddyAffinityConfigSchema.safeParse({
+        ...base,
+        wheel: { ...base.wheel, dominant: 'switch' },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('rejects a style that beats itself', () => {
+    expect(
+      BuddyAffinityConfigSchema.safeParse({
+        ...base,
+        wheel: { ...base.wheel, dominant: 'dominant' },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('rejects negative bonuses and penalties', () => {
+    expect(
+      BuddyAffinityConfigSchema.safeParse({
+        ...base,
+        strongBonusByRarity: { ...base.strongBonusByRarity, N: -0.01 },
+      }).success,
+    ).toBe(false);
+    expect(
+      BuddyAffinityConfigSchema.safeParse({
+        ...base,
+        weakPenaltyByRarity: { ...base.weakPenaltyByRarity, N: -0.01 },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('requires a complete rarity ladder for both maps', () => {
+    const { EX: _dropped, ...partial } = base.strongBonusByRarity;
+    expect(
+      BuddyAffinityConfigSchema.safeParse({ ...base, strongBonusByRarity: partial }).success,
+    ).toBe(false);
+  });
+
+  it('tables.json omitting the block falls back to an all-neutral default', () => {
+    const parsed = TablesFileSchema.parse({
+      ...loadShippedContent().tables,
+      buddyAffinity: undefined,
+    });
+    expect(parsed.buddyAffinity.wheel).toEqual({});
+    expect(parsed.buddyAffinity.neutralStyles).toEqual(['switch']);
+    expect(Object.values(parsed.buddyAffinity.strongBonusByRarity).every((v) => v === 0)).toBe(
+      true,
+    );
   });
 });
 

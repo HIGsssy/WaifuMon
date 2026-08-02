@@ -143,6 +143,13 @@ export interface CollectionService {
   clearBuddy(playerId: number): Promise<PlayerRow>;
   /** Returns the currently-active buddy entry, or null. */
   getBuddy(playerId: number): Promise<OwnedEntry | null>;
+  /**
+   * Transaction-scoped buddy lookup for callers that already hold a tx (the
+   * capture path). Mirrors `awardBuddyOnHunt`'s self-heal: a pointer aiming at
+   * a missing or soft-released copy is cleared and read as "no buddy", so a
+   * stale buddy can never contribute an affinity bonus.
+   */
+  resolveActiveBuddy(tx: DbOrTx, playerId: number): Promise<OwnedEntry | null>;
 
   // ── Individual Waifumon progression ───────────────────────────────────────
   /** XP required to advance the waifu from `level` to `level+1` (0 at max). */
@@ -522,6 +529,27 @@ export function createCollectionService(deps: CollectionServiceDeps): Collection
       // If the buddy row was somehow soft-released out from under the FK-less
       // pointer, treat it as no buddy (application-level self-heal).
       if (!row || row.waifu.releasedAt != null) return null;
+      return row;
+    },
+
+    async resolveActiveBuddy(tx, playerId) {
+      const [player] = await tx
+        .select({ buddyWaifuId: players.buddyWaifuId })
+        .from(players)
+        .where(eq(players.id, playerId));
+      const buddyId = player?.buddyWaifuId;
+      if (!buddyId) return null;
+      const [row] = await tx
+        .select({ waifu: playerWaifus, species })
+        .from(playerWaifus)
+        .innerJoin(species, eq(playerWaifus.speciesId, species.id))
+        .where(and(eq(playerWaifus.id, buddyId), eq(playerWaifus.playerId, playerId)));
+      if (!row || row.waifu.releasedAt != null) {
+        // Same self-heal as awardBuddyOnHunt — drop the dangling pointer so the
+        // player isn't stuck with an invisible buddy.
+        await tx.update(players).set({ buddyWaifuId: null }).where(eq(players.id, playerId));
+        return null;
+      }
       return row;
     },
 

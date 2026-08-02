@@ -160,6 +160,8 @@ export async function bootstrapApp(
       progression,
       progressionConfig: content.tables.progression,
       captureConfig: content.tables.capture,
+      buddyAffinityConfig: content.tables.buddyAffinity,
+      collection,
       quests,
       logger: t.logger,
       ...(opts.captureRng ? { rng: opts.captureRng } : {}),

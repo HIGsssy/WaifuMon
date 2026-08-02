@@ -28,6 +28,7 @@ import type { AppContext, PlayerInteraction, Provisioned } from '../types';
 import { buildCustomId } from '../types';
 import { paintSession, respondEphemeral } from '../sessionUi';
 import { renderSummaryLines } from '../../modules/session/sessionService';
+import { affinityLabel } from '../../modules/capture/affinityMath';
 import type { CareState, CareTickSummary } from '../../modules/care/careService';
 import { ownerFromInteraction } from '../userDisplay';
 import { withBackRow } from '../ui';
@@ -305,7 +306,7 @@ export async function handleProfile(
     : `${progress.xpIntoLevel} / ${progress.xpToNext} XP to Lv ${progress.level + 1} · ${player.xp} total`;
 
   const buddyLine = buddy
-    ? `${buddy.waifu.nickname ? `${buddy.waifu.nickname} (${buddy.species.name})` : buddy.species.name} · Lv ${buddy.waifu.level}`
+    ? `${buddy.waifu.nickname ? `${buddy.waifu.nickname} (${buddy.species.name})` : buddy.species.name} · Lv ${buddy.waifu.level} · ${affinityLabel(buddy.species.affinity)}`
     : '_(none — set one from `/waifumon buddy`)_';
 
   const embed = new EmbedBuilder()

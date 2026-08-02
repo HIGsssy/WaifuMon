@@ -667,6 +667,8 @@ describe('gameplay actions update quest progress', () => {
       progression: app.progression,
       progressionConfig: app.content.tables.progression,
       captureConfig: app.content.tables.capture,
+      buddyAffinityConfig: app.content.tables.buddyAffinity,
+      collection: app.collection,
       quests: app.quests,
       logger: t.logger,
       rng: scriptedRng([0.0]),

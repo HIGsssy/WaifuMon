@@ -1,5 +1,11 @@
 import { z } from 'zod';
-import { CONTENT_RATINGS, ITEM_CATEGORIES, RARITIES } from '../../db/schema';
+import {
+  AFFINITIES,
+  CONTENT_RATINGS,
+  DEFAULT_AFFINITY,
+  ITEM_CATEGORIES,
+  RARITIES,
+} from '../../db/schema';
 
 const slug = z
   .string()
@@ -49,6 +55,12 @@ export const SpeciesContentSchema = z.object({
   description: z.string().default(''),
   tags: z.array(z.string()).default([]),
   contentRating: z.enum(CONTENT_RATINGS),
+  /**
+   * Buddy capture-matchup style (Milestone 5D). Distinct from `archetype`
+   * (what she is) and `variant` (which art renders). Omitted in older content
+   * files → `switch`, which is always a neutral matchup.
+   */
+  affinity: z.enum(AFFINITIES).default(DEFAULT_AFFINITY),
   imagePath: z.string().min(1),
   enabled: z.boolean().default(true),
   eventKey: z.string().nullable().default(null),
@@ -126,6 +138,85 @@ export const CaptureConfigSchema = z.object({
   /** Rarity at or above which the announcement includes an @here mention. */
   hereMentionMinRarity: z.enum(RARITIES),
 });
+
+const RarityNumberMap = (value: z.ZodNumber) =>
+  z.object(
+    Object.fromEntries(RARITIES.map((r) => [r, value] as const)) as {
+      [K in (typeof RARITIES)[number]]: z.ZodNumber;
+    },
+  );
+
+/**
+ * Buddy Affinity (Milestone 5D). An active buddy whose affinity *beats* the
+ * encounter's affinity adds a flat, rarity-scaled bonus to the capture chance
+ * — applied after the charm multiplier and before the min/max clamp.
+ *
+ * `wheel` maps an affinity to the single affinity it beats. Styles listed in
+ * `neutralStyles` (i.e. `switch`) short-circuit to neutral on either side of
+ * the matchup, so they have no strengths and no weaknesses.
+ *
+ * `weakPenaltyByRarity` exists so unfavorable matchups are tunable later; all
+ * shipped values are 0, i.e. a weak matchup costs nothing today.
+ */
+export const BuddyAffinityConfigSchema = z
+  .object({
+    styles: z.array(z.enum(AFFINITIES)).min(1).default([...AFFINITIES]),
+    wheel: z.record(z.string(), z.enum(AFFINITIES)).default({}),
+    neutralStyles: z.array(z.enum(AFFINITIES)).default([DEFAULT_AFFINITY]),
+    strongBonusByRarity: RarityNumberMap(z.number().nonnegative()),
+    /** Magnitude subtracted on a weak matchup. 0 = no penalty (current tuning). */
+    weakPenaltyByRarity: RarityNumberMap(z.number().nonnegative()),
+  })
+  .superRefine((cfg, ctx) => {
+    const allowed = new Set<string>(AFFINITIES);
+    for (const [from, to] of Object.entries(cfg.wheel)) {
+      if (!allowed.has(from)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `buddyAffinity.wheel has unknown affinity key: ${from}`,
+          path: ['wheel', from],
+        });
+        continue;
+      }
+      if (from === to) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `buddyAffinity.wheel["${from}"] cannot beat itself`,
+          path: ['wheel', from],
+        });
+      }
+      // A neutral style must never appear on either side of a wheel edge —
+      // that is what "no strengths, no weaknesses" means.
+      if (cfg.neutralStyles.includes(from as (typeof AFFINITIES)[number])) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `buddyAffinity.wheel lists neutral style "${from}" as a winner`,
+          path: ['wheel', from],
+        });
+      }
+      if (cfg.neutralStyles.includes(to)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `buddyAffinity.wheel["${from}"] beats neutral style "${to}"`,
+          path: ['wheel', from],
+        });
+      }
+    }
+  });
+
+/** Neutral-everything fallback used when tables.json omits the block. */
+const zeroByRarity = (): { [K in (typeof RARITIES)[number]]: number } =>
+  Object.fromEntries(RARITIES.map((r) => [r, 0])) as {
+    [K in (typeof RARITIES)[number]]: number;
+  };
+
+const BUDDY_AFFINITY_DEFAULT = {
+  styles: [...AFFINITIES],
+  wheel: {},
+  neutralStyles: [DEFAULT_AFFINITY],
+  strongBonusByRarity: zeroByRarity(),
+  weakPenaltyByRarity: zeroByRarity(),
+};
 
 /**
  * Duplicate + release economy. `essenceByRarity` is the full-value grant paid
@@ -415,6 +506,7 @@ export const TablesFileSchema = z.object({
   }),
   hunt: HuntTableSchema,
   capture: CaptureConfigSchema,
+  buddyAffinity: BuddyAffinityConfigSchema.optional().default(BUDDY_AFFINITY_DEFAULT),
   duplicate: DuplicateConfigSchema,
   progression: ProgressionConfigSchema,
   waifuProgression: WaifuProgressionConfigSchema,
@@ -439,6 +531,7 @@ export type ItemContent = z.infer<typeof ItemContentSchema>;
 export type SpeciesContent = z.infer<typeof SpeciesContentSchema>;
 export type TablesContent = z.infer<typeof TablesFileSchema>;
 export type DuplicateConfig = z.infer<typeof DuplicateConfigSchema>;
+export type BuddyAffinityConfig = z.infer<typeof BuddyAffinityConfigSchema>;
 export type ProgressionConfig = z.infer<typeof ProgressionConfigSchema>;
 export type WaifuProgressionConfig = z.infer<typeof WaifuProgressionConfigSchema>;
 export type CareModeConfig = z.infer<typeof CareModeConfigSchema>;

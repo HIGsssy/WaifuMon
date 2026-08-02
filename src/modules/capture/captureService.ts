@@ -6,12 +6,15 @@
  * an item and mutates state. The inventory service's conditional decrement +
  * CHECK (quantity >= 0) is a second line of defense against double-spend.
  *
- * Capture math (plan §9):
+ * Capture math (plan §9 + Milestone 5D):
  *   guaranteed  → chance = 1.0 (Mythic Contract bypasses the formula)
- *   otherwise   → chance = clamp(baseCaptureRate × captureModifier, min, max)
+ *   otherwise   → chance = clamp(
+ *                   baseCaptureRate × captureModifier + buddyAffinityModifier,
+ *                   min, max)
  * `baseCaptureRate` uses the species override when set, otherwise the
- * rarity default from content/tables.json. Buddy / event modifiers are
- * reserved and not applied in 2B (the plan gates them on later milestones).
+ * rarity default from content/tables.json. The buddy-affinity term is flat,
+ * additive, scaled by the *buddy's* rarity, and 0 whenever there is no active
+ * buddy or the matchup isn't strong. Event modifiers remain reserved.
  */
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import type { Db } from '../../db/client';
@@ -40,15 +43,32 @@ import type { Logger } from '../../shared/logger';
 import { defaultRng, type Rng } from '../../shared/random';
 import type { CaptureConfig } from './captureMath';
 import { computeCaptureChance } from './captureMath';
+import { normalizeAffinity, resolveBuddyAffinity, type AffinityMatchup } from './affinityMath';
 import type { InventoryService } from '../inventory/inventoryService';
+import type { CollectionService } from '../collection/collectionService';
 import type {
   LevelUpEvent,
   ProgressionService,
 } from '../progression/progressionService';
-import type { ProgressionConfig } from '../content/schemas';
+import type { BuddyAffinityConfig, ProgressionConfig } from '../content/schemas';
 import type { QuestService } from '../quests/questService';
+import type { Affinity, Rarity } from '../../db/schema';
 
 export type CaptureOutcome = 'success' | 'failure' | 'escape';
+
+/**
+ * Buddy-affinity read for one attempt. Always present so callers (UI, logs)
+ * can render a consistent line; `buddyWaifuId` is null when the player had no
+ * active buddy, in which case the matchup is neutral and the modifier is 0.
+ */
+export interface CaptureAffinityInfo {
+  buddyWaifuId: number | null;
+  buddyAffinity: Affinity | null;
+  encounterAffinity: Affinity;
+  matchup: AffinityMatchup;
+  buddyAffinityModifier: number;
+  finalChance: number;
+}
 
 export interface CaptureAttemptResult {
   outcome: CaptureOutcome;
@@ -65,6 +85,8 @@ export interface CaptureAttemptResult {
   levelUps: LevelUpEvent[];
   /** True when this success was the first time the player caught this species. */
   isNewDex: boolean;
+  /** Buddy-affinity read applied to this attempt (Milestone 5D). */
+  affinity: CaptureAffinityInfo;
 }
 
 export interface CaptureService {
@@ -90,13 +112,27 @@ export interface CaptureServiceDeps {
   progression: ProgressionService;
   progressionConfig: ProgressionConfig;
   captureConfig: CaptureConfig;
+  /** Milestone 5D — buddy affinity wheel and rarity-scaled bonuses. */
+  buddyAffinityConfig: BuddyAffinityConfig;
+  /** Used to resolve (and self-heal) the player's active buddy in-transaction. */
+  collection: CollectionService;
   quests: QuestService;
   logger: Logger;
   rng?: Rng;
 }
 
 export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
-  const { db, inventory, progression, progressionConfig, captureConfig, quests, logger } = deps;
+  const {
+    db,
+    inventory,
+    progression,
+    progressionConfig,
+    captureConfig,
+    buddyAffinityConfig,
+    collection,
+    quests,
+    logger,
+  } = deps;
   const rng = deps.rng ?? defaultRng();
 
   return {
@@ -149,13 +185,39 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
 
         const guaranteed = item.isGuaranteedCapture;
         const rarity = speciesRow.rarity as keyof typeof captureConfig.baseRatesByRarity;
+
+        // Buddy affinity (5D). Resolved inside the same transaction so a buddy
+        // released mid-encounter can't contribute a bonus; the resolver clears
+        // a dangling pointer for us. No buddy → neutral, modifier 0.
+        const buddy = await collection.resolveActiveBuddy(tx, playerId);
+        const resolution = buddy
+          ? resolveBuddyAffinity(
+              {
+                buddyAffinity: buddy.species.affinity,
+                buddyRarity: buddy.species.rarity as Rarity,
+                encounterAffinity: speciesRow.affinity,
+              },
+              buddyAffinityConfig,
+            )
+          : null;
+        const buddyAffinityModifier = resolution?.modifier ?? 0;
+
         const chance = computeCaptureChance({
           guaranteed,
           baseCaptureRate: speciesRow.baseCaptureRate,
           rarity,
           captureModifier: item.captureModifier,
           config: captureConfig,
+          buddyAffinityModifier,
         });
+        const affinity: CaptureAffinityInfo = {
+          buddyWaifuId: buddy?.waifu.id ?? null,
+          buddyAffinity: resolution?.buddyAffinity ?? null,
+          encounterAffinity: normalizeAffinity(speciesRow.affinity),
+          matchup: resolution?.matchup ?? 'neutral',
+          buddyAffinityModifier,
+          finalChance: chance,
+        };
         const roll = guaranteed ? 0 : rng.next();
         const success = guaranteed || roll < chance;
         const attemptNumber = encounter.attemptCount + 1;
@@ -232,6 +294,7 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
               isDuplicate,
               isNewDex,
               xpDelta,
+              affinity,
             },
             'capture success',
           );
@@ -270,6 +333,16 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
             speciesSlug: speciesRow.slug,
             itemSlug: item.slug,
             isNewDex,
+            // Buddy-affinity audit trail. `capture_attempts` has no metadata
+            // column and 5D doesn't add one, so the per-attempt affinity read
+            // rides along on the progression event (which already refs the
+            // capture_attempts row via `refId`).
+            buddyWaifuId: affinity.buddyWaifuId,
+            buddyAffinity: affinity.buddyAffinity,
+            encounterAffinity: affinity.encounterAffinity,
+            affinityMatchup: affinity.matchup,
+            buddyAffinityModifier: affinity.buddyAffinityModifier,
+            finalChance: affinity.finalChance,
           },
         });
         // "new dex entry" is logged separately for audit clarity.
@@ -313,6 +386,7 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
             xpGranted: xpDelta,
             levelUps: xpResult.levelUps,
             isNewDex,
+            affinity,
           },
         };
       });

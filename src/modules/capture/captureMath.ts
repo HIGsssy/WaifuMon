@@ -17,17 +17,26 @@ export interface CaptureChanceInput {
   rarity: Rarity;
   captureModifier: number | null;
   config: CaptureConfig;
+  /**
+   * Milestone 5D buddy-affinity delta. Flat and additive, applied *after* the
+   * charm multiplier and before the clamp. Defaults to 0 (no buddy, neutral
+   * matchup, or a weak matchup under the current all-zero penalty tuning).
+   */
+  buddyAffinityModifier?: number;
 }
 
 /**
- * Milestone 2B: only base_capture_rate and charm modifier matter.
- * Buddy / player / event modifiers are reserved for later milestones.
+ * chance = clamp(base_capture_rate × charm_modifier + buddy_affinity, min, max)
+ *
+ * `base_capture_rate` uses the species override when set, otherwise the rarity
+ * default. Guaranteed items (Mythic Contract) bypass the formula entirely.
+ * Player / event modifiers remain reserved for later milestones.
  */
 export function computeCaptureChance(input: CaptureChanceInput): number {
   if (input.guaranteed) return 1;
   const base = input.baseCaptureRate ?? input.config.baseRatesByRarity[input.rarity];
   const modifier = input.captureModifier ?? 1;
-  const raw = base * modifier;
+  const raw = base * modifier + (input.buddyAffinityModifier ?? 0);
   return clamp(raw, input.config.minChance, input.config.maxChance);
 }
 

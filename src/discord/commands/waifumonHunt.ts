@@ -39,6 +39,13 @@ import {
   type Rarity,
 } from '../../db/schema';
 import { rarityAtLeast, RARITY_RANK } from '../../modules/capture/captureMath';
+import {
+  affinityLabel,
+  formatAffinityBonus,
+  formatAffinityRead,
+  normalizeAffinity,
+  resolveBuddyAffinity,
+} from '../../modules/capture/affinityMath';
 import type { CaptureAttemptResult, CaptureOutcome } from '../../modules/capture/captureService';
 import { resolveAssetPath } from '../../modules/content/loader';
 import type { ItemContent } from '../../modules/content/schemas';
@@ -75,6 +82,12 @@ const RARITY_COLORS: Record<string, number> = {
 
 function rarityColor(rarity: string): number {
   return RARITY_COLORS[rarity] ?? 0xff6fa5;
+}
+
+/** 0.525 → "52.5%" — used next to the buddy-bonus line on capture results. */
+function formatChancePercent(chance: number): string {
+  const pct = Math.round(chance * 1000) / 10;
+  return `${Number.isInteger(pct) ? pct : pct.toFixed(1)}%`;
 }
 
 /** Discord permits max 5 buttons per row; keep Mythic last. */
@@ -152,6 +165,22 @@ async function buildEncounterView(
   const inventory = await ctx.services.inventory.getInventory(prov.playerId);
   const ownedBySlug = new Map(inventory.map((e) => [e.item.slug, e.quantity]));
 
+  // Affinity read (5D): only meaningful with an active buddy. Read-only here —
+  // the authoritative resolution happens inside the capture transaction.
+  const buddy = await ctx.services.collection.getBuddy(prov.playerId);
+  const affinityRead = buddy
+    ? formatAffinityRead(
+        resolveBuddyAffinity(
+          {
+            buddyAffinity: buddy.species.affinity,
+            buddyRarity: buddy.species.rarity as Rarity,
+            encounterAffinity: species.affinity,
+          },
+          ctx.content.tables.buddyAffinity,
+        ),
+      )
+    : null;
+
   const footer =
     energyRemaining != null
       ? `Pick a charm to try, or Let Her Go. · Energy left: ${energyRemaining}`
@@ -164,6 +193,7 @@ async function buildEncounterView(
     .addFields(
       { name: 'Rarity', value: species.rarity, inline: true },
       { name: 'Archetype', value: species.archetype, inline: true },
+      { name: 'Affinity', value: affinityLabel(species.affinity), inline: true },
       {
         name: 'Time',
         value: `Expires <t:${Math.floor(encounter.expiresAt.getTime() / 1000)}:R>`,
@@ -171,6 +201,9 @@ async function buildEncounterView(
       },
     )
     .setFooter({ text: footer });
+  if (affinityRead) {
+    embed.addFields({ name: '🤝 Buddy', value: affinityRead, inline: false });
+  }
 
   const files: AttachmentBuilder[] = [];
   const attach = attachCard(ctx, species);
@@ -545,6 +578,22 @@ function buildEphemeralOutcomeMessage(
       );
   }
   if (card) embed.setImage(attachName);
+  // Buddy affinity (5D) — show what the buddy actually contributed to this
+  // attempt's chance. Guaranteed captures bypass the formula, so no bonus line.
+  if (result.affinity.buddyWaifuId != null && !attempt.guaranteed) {
+    const { matchup, buddyAffinity, encounterAffinity, buddyAffinityModifier } = result.affinity;
+    const detail =
+      matchup === 'strong'
+        ? `${formatAffinityBonus(buddyAffinityModifier)} — ${affinityLabel(buddyAffinity)} beats ${affinityLabel(encounterAffinity)}`
+        : matchup === 'weak'
+          ? 'unfavorable matchup — no bonus'
+          : `${formatAffinityBonus(buddyAffinityModifier)} — no clear advantage`;
+    embed.addFields({
+      name: '🤝 Buddy Bonus',
+      value: `${detail}\nCapture chance: **${formatChancePercent(result.affinity.finalChance)}**`,
+      inline: false,
+    });
+  }
   if (result.xpGranted > 0 || result.levelUps.length > 0) {
     const xpLine = result.xpGranted > 0
       ? `+${result.xpGranted} XP${result.isNewDex ? ' (incl. new dex)' : ''}`

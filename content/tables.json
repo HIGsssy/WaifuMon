@@ -77,6 +77,34 @@
     "announceMinRarity": "SR",
     "hereMentionMinRarity": "UR"
   },
+  "buddyAffinity": {
+    "styles": ["dominant", "submissive", "caregiver", "primal", "switch"],
+    "wheel": {
+      "dominant": "submissive",
+      "submissive": "caregiver",
+      "caregiver": "primal",
+      "primal": "dominant"
+    },
+    "neutralStyles": ["switch"],
+    "strongBonusByRarity": {
+      "N": 0.01,
+      "R": 0.02,
+      "SR": 0.03,
+      "SSR": 0.04,
+      "UR": 0.05,
+      "LR": 0.06,
+      "EX": 0.06
+    },
+    "weakPenaltyByRarity": {
+      "N": 0,
+      "R": 0,
+      "SR": 0,
+      "SSR": 0,
+      "UR": 0,
+      "LR": 0,
+      "EX": 0
+    }
+  },
   "duplicate": {
     "essenceByRarity": {
       "N": 5,

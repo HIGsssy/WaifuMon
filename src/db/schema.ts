@@ -26,6 +26,16 @@ export type Rarity = (typeof RARITIES)[number];
 export const CONTENT_RATINGS = ['suggestive', 'mature', 'explicit'] as const;
 export type ContentRating = (typeof CONTENT_RATINGS)[number];
 
+/**
+ * Buddy affinity (Milestone 5D). Not to be confused with `archetype` (what a
+ * Waifumon *is*) or `variant` (which art is rendered) — affinity only drives
+ * the buddy-vs-encounter capture matchup. `switch` is the neutral default:
+ * no strengths, no weaknesses, and the fallback for any unknown value.
+ */
+export const AFFINITIES = ['dominant', 'submissive', 'caregiver', 'primal', 'switch'] as const;
+export type Affinity = (typeof AFFINITIES)[number];
+export const DEFAULT_AFFINITY: Affinity = 'switch';
+
 export const ITEM_CATEGORIES = ['capture', 'material', 'cosmetic', 'consumable'] as const;
 export type ItemCategory = (typeof ITEM_CATEGORIES)[number];
 
@@ -107,6 +117,8 @@ export const species = pgTable(
     tags: jsonb('tags').$type<string[]>().notNull().default([]),
     /** Metadata only in MVP — drives no runtime behavior. */
     contentRating: text('content_rating').notNull(),
+    /** Buddy capture matchup style; defaults to the neutral `switch`. */
+    affinity: text('affinity').notNull().default('switch'),
     imagePath: text('image_path').notNull(),
     enabled: boolean('enabled').notNull().default(true),
     eventKey: text('event_key'),
@@ -117,6 +129,10 @@ export const species = pgTable(
     check(
       'species_content_rating_check',
       sql`${t.contentRating} in ('suggestive','mature','explicit')`,
+    ),
+    check(
+      'species_affinity_check',
+      sql`${t.affinity} in ('dominant','submissive','caregiver','primal','switch')`,
     ),
   ],
 );

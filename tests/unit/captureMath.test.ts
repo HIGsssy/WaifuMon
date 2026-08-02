@@ -114,6 +114,82 @@ describe('computeCaptureChance', () => {
   });
 });
 
+describe('computeCaptureChance — buddy affinity modifier (5D)', () => {
+  it('applies the charm multiplier first, then the flat buddy bonus', () => {
+    // R base 0.35 × Silk 1.5 = 0.525, then +0.04 → 0.565.
+    // (If the bonus were added before the multiplier it would be 0.585.)
+    expect(
+      computeCaptureChance({
+        guaranteed: false,
+        baseCaptureRate: null,
+        rarity: 'R',
+        captureModifier: 1.5,
+        config,
+        buddyAffinityModifier: 0.04,
+      }),
+    ).toBeCloseTo(0.565, 10);
+  });
+
+  it('defaults to no modifier when the field is omitted', () => {
+    const withoutField = computeCaptureChance({
+      guaranteed: false,
+      baseCaptureRate: null,
+      rarity: 'SR',
+      captureModifier: 1,
+      config,
+    });
+    const withZero = computeCaptureChance({
+      guaranteed: false,
+      baseCaptureRate: null,
+      rarity: 'SR',
+      captureModifier: 1,
+      config,
+      buddyAffinityModifier: 0,
+    });
+    expect(withoutField).toBeCloseTo(0.22, 10);
+    expect(withZero).toBe(withoutField);
+  });
+
+  it('still clamps to the ceiling with a bonus applied', () => {
+    expect(
+      computeCaptureChance({
+        guaranteed: false,
+        baseCaptureRate: 0.94,
+        rarity: 'N',
+        captureModifier: 1,
+        config,
+        buddyAffinityModifier: 0.06,
+      }),
+    ).toBe(config.maxChance);
+  });
+
+  it('still clamps to the floor with a (hypothetical) penalty applied', () => {
+    expect(
+      computeCaptureChance({
+        guaranteed: false,
+        baseCaptureRate: 0.03,
+        rarity: 'LR',
+        captureModifier: 1,
+        config,
+        buddyAffinityModifier: -0.02,
+      }),
+    ).toBe(config.minChance);
+  });
+
+  it('a guaranteed capture ignores the buddy bonus entirely', () => {
+    expect(
+      computeCaptureChance({
+        guaranteed: true,
+        baseCaptureRate: null,
+        rarity: 'LR',
+        captureModifier: null,
+        config,
+        buddyAffinityModifier: 0.06,
+      }),
+    ).toBe(1);
+  });
+});
+
 describe('clamp', () => {
   it('clamps as expected', () => {
     expect(clamp(0.5, 0.1, 0.9)).toBe(0.5);
