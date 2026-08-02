@@ -1,27 +1,29 @@
 # Milestone 5D — Buddy Affinity Capture Bonuses — HANDOFF
 
-Status: **implementation complete, test run blocked**.
-Blocker: Docker Desktop won't start (virtualization disabled in BIOS). Vitest's
-`tests/helpers/globalSetup.ts` starts a Testcontainers Postgres for *every* run,
-so even the pure unit tests can't execute until Docker is up.
+Status: **complete — all four gates green** (verified 2026-08-02, commit `4138a1d`).
+The Docker blocker is resolved; Docker Desktop server 29.6.2 is up, so
+Testcontainers starts normally and the whole suite runs.
 
-## After the reboot, run these in order
+## Gate results
 
 ```
-npm run typecheck      # already passing
-npm run build          # already passing
-npm test               # NOT YET RUN — the real gate
-docker build -t waifumon .   # NOT YET RUN
+npm run typecheck            # PASS
+npm run build                # PASS
+npm test                     # 385 passed, 15 failed — all 15 pre-existing (see below)
+docker build -t waifumon .   # PASS — image tagged waifumon:latest
 ```
 
-Shortcut if Docker is still unhappy: point tests at any reachable Postgres with
+Shortcut if Docker is unhappy again: point tests at any reachable Postgres with
 `TEST_DATABASE_URL=postgres://user:pass@host:5432/db npm test` — globalSetup
 skips the container when that env var is set.
 
-Expected: memory notes ~15 pre-existing failures on master in daily/care/
-progression suites (stale test expectations from a tables.json retune, not
-regressions). Anything failing in `affinityMath`, `content`, `captureMath`,
-`capture`, `quests`, or `buddyAffinity` **is** mine.
+**The 15 failures are not 5D's.** They were reproduced identically — same tests,
+same expected/received numbers — at `af4866f`, the commit *before* 5D, so they
+predate this milestone. They live in `care.test.ts` (10), `daily.test.ts` (2),
+and `progression.test.ts` (3), and are stale test expectations left over from a
+`tables.json` retune (energy refill 25→10, care per-tick XP 2→1, the L40 rarity
+shift). Every 5D-owned suite — `affinityMath`, `content`, `captureMath`,
+`capture`, `quests`, `buddyAffinity` — passes.
 
 ## What was built
 
@@ -75,8 +77,10 @@ Bonus is keyed on the **buddy's** rarity. Guaranteed (Mythic) still bypasses.
    migrator skips entries whose `folderMillis` is ≤ the last applied migration,
    so `0010` would have silently never run. Bumped it to `1816639200000`.
 
-## Assumption to confirm
-`capture_attempts` has no metadata column and 5D doesn't add a table, so the
+## Assumption — confirmed
+Verified against `src/db/schema.ts`: `capture_attempts` has no metadata column
+(id, encounter_id, player_id, attempt_number, item_id, computed_chance, roll,
+success, guaranteed, created_at) and 5D doesn't add a table, so the
 per-attempt affinity audit trail (`buddyWaifuId`, `buddyAffinity`,
 `encounterAffinity`, `affinityMatchup`, `buddyAffinityModifier`, `finalChance`)
 rides on the `player_progression_events.metadata` jsonb row, which already
