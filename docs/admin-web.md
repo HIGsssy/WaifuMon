@@ -76,20 +76,68 @@ then open <http://127.0.0.1:3111/admin> and sign in with the token.
 
 Two things differ:
 
-1. `content/` is baked into the image, so uncomment the `./content:/app/content`
-   bind mount in `docker-compose.yml` — otherwise saves are lost on the next
-   rebuild (and may fail outright, since the image runs as the `node` user).
-2. A loopback bind inside a container is unreachable from outside it. Set
-   `ADMIN_WEB_HOST=0.0.0.0` **and** publish the port to the host's loopback
-   only:
+1. **`content/` must be bind-mounted read-write**, which the shipped
+   `docker-compose.yml` now does by default:
 
    ```yaml
-   ports:
-     - '127.0.0.1:3111:3111'
+   volumes:
+     - ./content:/app/content
    ```
 
-   Publishing as `3111:3111` would expose the panel on every host interface. Do
-   not do that.
+   The image also bakes `content/` in, so the bot boots without the mount — but
+   then admin edits live only inside the container and disappear on the next
+   rebuild. With the mount, edits land in the repo working tree where they are
+   visible to `git` and survive rebuilds.
+
+   *Ownership:* the image runs as `node`, which is **uid/gid 1000** — the first
+   login user on most Linux hosts — so a repo checked out by that user is
+   writable with no `chown`. If your deploy user is not 1000, set it in `.env`
+   rather than chowning the repo:
+
+   ```sh
+   WAIFUMON_UID=$(id -u)
+   WAIFUMON_GID=$(id -g)
+   ```
+
+   If the directory is not writable, the bot logs a warning at startup, the
+   dashboard shows a read-only banner, and saves fail with an explicit message
+   instead of an opaque 500. Browsing, validation and reload still work.
+
+2. **Two binds have to line up.** `ADMIN_WEB_HOST` controls the bind *inside*
+   the container's network namespace; the compose `ports:` mapping controls the
+   bind on the *host*. Getting one right and omitting the other is the usual
+   cause of a connection timeout:
+
+   | `ADMIN_WEB_HOST` | `ports:` | Result |
+   | --- | --- | --- |
+   | `127.0.0.1` | any | Unreachable — loopback inside the container is its own namespace |
+   | `0.0.0.0` | *(omitted)* | Unreachable — the log says "listening", but nothing is published to the host |
+   | `0.0.0.0` | `'127.0.0.1:3111:3111'` | Host loopback only → SSH tunnel |
+   | `0.0.0.0` | `'100.x.y.z:3111:3111'` | The host's tailnet IP → reachable over Tailscale |
+   | `0.0.0.0` | `'3111:3111'` | **Every interface, including public. Do not use.** |
+
+   The `ports:` address is the real security boundary — `ADMIN_WEB_HOST=0.0.0.0`
+   is unavoidable in a container and does not by itself expose anything. The
+   startup warning about a non-loopback bind is expected under Docker.
+
+   Note that Docker inserts published ports ahead of `ufw`/iptables rules, so an
+   unqualified `'3111:3111'` is reachable from the internet even with a firewall
+   enabled. Always qualify the host address.
+
+### Over Tailscale
+
+Publish the port on the host's own tailnet IP (`tailscale ip -4`):
+
+```yaml
+ports:
+  - '100.82.22.79:3111:3111'
+```
+
+Then browse to `http://100.82.22.79:3111/admin` from any device on the tailnet.
+This keeps the panel off the public internet, but it is reachable by **every**
+node on your tailnet — restrict it with a Tailscale ACL if that tailnet has
+devices you don't fully control. It is still plain HTTP with one shared token;
+`tailscale serve` can front it with HTTPS if you want TLS.
 
 > **Security warning.** There is one shared token and no TLS. Do not expose the
 > panel on a public interface. If you must reach it without a tunnel, put it

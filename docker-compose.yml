@@ -10,16 +10,29 @@ services:
       postgres:
         condition: service_healthy
     restart: unless-stopped
+    # The image's `node` user is uid/gid 1000, which matches the first login
+    # user on most Linux hosts — so the bind-mounted content/ below is writable
+    # with no chown. If your deploy user is not 1000, set WAIFUMON_UID and
+    # WAIFUMON_GID in .env to `id -u` / `id -g` instead of chowning the repo.
+    user: '${WAIFUMON_UID:-1000}:${WAIFUMON_GID:-1000}'
     volumes:
       - ./assets:/app/assets:ro
-      # Admin web panel only: content is baked into the image, so bind-mount it
-      # read-write if admins should be able to save edits. See docs/admin-web.md.
-      # - ./content:/app/content
-    # Admin web panel only: inside a container the panel must bind 0.0.0.0 to be
-    # reachable, so add ADMIN_WEB_HOST: 0.0.0.0 to the environment block above
-    # and publish the port to the *host's* loopback and nowhere else:
+      # Read-write on purpose: the admin panel writes content edits and
+      # timestamped backups here. Mounted rather than baked in so edits survive
+      # a rebuild and stay visible to git. Harmless when the panel is disabled.
+      - ./content:/app/content
+    # Admin web panel only. Two separate things have to line up:
+    #   1. ADMIN_WEB_HOST=0.0.0.0 in .env — the bind *inside* the container's
+    #      network namespace. Loopback there is unreachable from outside it.
+    #   2. A ports mapping below — the bind on the *host*. Without this the
+    #      panel is not reachable at all, however it is bound in the container.
+    # Choose the host address deliberately; it is the real security boundary:
     # ports:
-    #   - '127.0.0.1:3111:3111'
+    #   - '127.0.0.1:3111:3111'      # SSH tunnel only (ssh -L 3111:127.0.0.1:3111)
+    #   - '100.x.y.z:3111:3111'      # Tailscale: the host's own tailnet IP
+    #   - '3111:3111'                # every interface, incl. public — do not use
+    # Note: published ports are inserted ahead of ufw/iptables rules, so an
+    # unqualified '3111:3111' is publicly reachable even with a firewall "on".
 
   postgres:
     image: postgres:16-alpine

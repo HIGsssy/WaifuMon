@@ -10,6 +10,8 @@
  * The panel is a sibling module of the bot: it shares the content service and
  * the seeding path but owns no gameplay logic of its own.
  */
+import fs from 'node:fs';
+import path from 'node:path';
 import cookie from '@fastify/cookie';
 import Fastify, {
   type FastifyBaseLogger,
@@ -104,6 +106,32 @@ export interface AdminServerHandle {
 }
 
 /**
+ * A read-only content directory is the most common admin-panel misconfiguration
+ * — under Docker it means the image's baked-in `content/` was not bind-mounted,
+ * or the container uid does not own the mount. Without this check the symptom is
+ * an opaque 500 on the first save; with it, the problem is stated at startup.
+ *
+ * Reported as a warning rather than a fatal: read-only browsing and content
+ * validation are still genuinely useful, and the bot itself is unaffected.
+ */
+export function checkContentWritable(contentDir: string, logger: Logger): boolean {
+  const probe = path.join(contentDir, `.write-probe-${process.pid}`);
+  try {
+    fs.writeFileSync(probe, '');
+    fs.unlinkSync(probe);
+    return true;
+  } catch (err) {
+    logger.warn(
+      { contentDir, err: (err as Error).message },
+      'admin web panel: CONTENT_DIR is not writable — browsing and validation work, ' +
+        'but every save will fail. Under Docker, bind-mount content/ read-write and make ' +
+        'sure the container user owns it (see docs/admin-web.md).',
+    );
+    return false;
+  }
+}
+
+/**
  * Starts the panel when enabled. Returns null when disabled so the caller can
  * treat "no admin server" as a normal, silent state.
  */
@@ -111,6 +139,7 @@ export async function startAdminServer(deps: AdminServerDeps): Promise<AdminServ
   if (!deps.config.enabled) return null;
 
   const app = await createAdminServer(deps);
+  checkContentWritable(deps.content.contentDir, deps.logger);
   await app.listen({ host: deps.config.host, port: deps.config.port });
   deps.logger.info(
     { host: deps.config.host, port: deps.config.port },

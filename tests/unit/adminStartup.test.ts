@@ -2,8 +2,15 @@
  * Startup contract for the admin panel: silent when disabled, bound to the
  * documented loopback default when enabled.
  */
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { startAdminServer, type AdminServerHandle } from '../../src/admin/server';
+import {
+  checkContentWritable,
+  startAdminServer,
+  type AdminServerHandle,
+} from '../../src/admin/server';
 import { loadConfig } from '../../src/config/config';
 import { createAdminFixture, type AdminFixture } from '../helpers/adminFixtures';
 
@@ -55,5 +62,17 @@ describe('startAdminServer', () => {
       headers: { authorization: 'Bearer a-secret' },
     });
     expect(authed.status).toBe(200);
+  });
+});
+
+describe('checkContentWritable', () => {
+  it('reports a writable content directory and leaves no probe file behind', () => {
+    expect(checkContentWritable(f.contentDir, f.logger)).toBe(true);
+    expect(fs.readdirSync(f.contentDir).filter((n) => n.includes('write-probe'))).toEqual([]);
+  });
+
+  it('reports a missing or unwritable directory instead of throwing', () => {
+    const missing = path.join(os.tmpdir(), `waifumon-not-here-${process.pid}`);
+    expect(checkContentWritable(missing, f.logger)).toBe(false);
   });
 });

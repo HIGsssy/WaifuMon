@@ -39,7 +39,16 @@ export function dashboardPage(
   summary: ContentSummary,
   report: ValidationReport,
   reloadAvailable: boolean,
+  contentWritable = true,
 ): string {
+  const readOnly = contentWritable
+    ? ''
+    : `<div class="card" style="border-color:var(--warn)">
+<b style="color:var(--warn)">Content directory is read-only</b>
+<p class="muted" style="margin-bottom:0">Browsing, validation and reload still work, but every save will fail.
+Under Docker this means <span class="mono">content/</span> was not bind-mounted read-write, or the container
+user does not own it. See <span class="mono">docs/admin-web.md</span>.</p></div>`;
+
   const rarityRows = summary.byRarity
     .map(
       (r) => `<tr>
@@ -69,6 +78,7 @@ export function dashboardPage(
     body: `<h1>Dashboard</h1>
 <p class="sub">JSON content under <span class="mono">CONTENT_DIR</span> is the source of truth. Edits here are validated and backed up before they are written.</p>
 
+${readOnly}
 ${statusBanner(report)}
 
 <div class="grid">

@@ -53,6 +53,16 @@ function str(value: unknown): string {
   return typeof value === 'string' ? value : '';
 }
 
+/** Cheap per-render probe so a read-only mount is visible before the first save. */
+function isWritable(dir: string): boolean {
+  try {
+    fs.accessSync(dir, fs.constants.W_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function registerRoutes(app: FastifyInstance, content: AdminContentService): void {
   const html = (reply: import('fastify').FastifyReply, body: string): unknown =>
     reply.type('text/html; charset=utf-8').send(body);
@@ -81,7 +91,10 @@ export function registerRoutes(app: FastifyInstance, content: AdminContentServic
       speciesFiles: [],
       highlights: [],
     };
-    return html(reply, dashboardPage(summary, report, content.reloadAvailable()));
+    return html(
+      reply,
+      dashboardPage(summary, report, content.reloadAvailable(), isWritable(content.contentDir)),
+    );
   });
 
   app.post('/admin/validate-content', async (_req, reply) => {

@@ -2,6 +2,7 @@
  * Admin web server — auth, CSRF, route wiring and the shared reload hand-off.
  * Driven with Fastify's `inject()`, so nothing binds a real port here.
  */
+import fs from 'node:fs';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createAdminServer } from '../../src/admin/server';
@@ -223,6 +224,23 @@ describe('rendered pages', () => {
     // A syntax error here would silently break every form on the page.
     expect(() => new Function(script!)).not.toThrow();
     expect(res.body).not.toContain(TOKEN);
+  });
+
+  it('does not warn about a read-only content directory when it is writable', async () => {
+    const res = await app.inject({ method: 'GET', url: '/admin', headers: bearer });
+    expect(res.body).not.toContain('Content directory is read-only');
+  });
+
+  it('warns on the dashboard when the content directory has gone missing', async () => {
+    // Stands in for a container whose content mount is absent or read-only.
+    fs.renameSync(f.contentDir, `${f.contentDir}-moved`);
+    try {
+      const res = await app.inject({ method: 'GET', url: '/admin', headers: bearer });
+      expect(res.statusCode).toBe(200);
+      expect(res.body).toContain('Content directory is read-only');
+    } finally {
+      fs.renameSync(`${f.contentDir}-moved`, f.contentDir);
+    }
   });
 
   it('exposes every requested tables.json section as an editable block', async () => {

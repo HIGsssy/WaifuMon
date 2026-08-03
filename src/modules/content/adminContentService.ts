@@ -286,6 +286,15 @@ export function createAdminContentService(deps: AdminContentServiceDeps): AdminC
       } catch {
         /* best effort — the original file was never touched */
       }
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === 'EACCES' || code === 'EPERM' || code === 'EROFS') {
+        // Almost always a container that cannot write its content mount.
+        throw new AdminValidationError([
+          `The content directory is not writable (${code}). The edit was valid but could not ` +
+            'be saved. Under Docker, bind-mount content/ read-write and make sure the ' +
+            'container user owns it — see docs/admin-web.md.',
+        ]);
+      }
       throw err;
     }
 
