@@ -12,6 +12,14 @@ services:
     restart: unless-stopped
     volumes:
       - ./assets:/app/assets:ro
+      # Admin web panel only: content is baked into the image, so bind-mount it
+      # read-write if admins should be able to save edits. See docs/admin-web.md.
+      # - ./content:/app/content
+    # Admin web panel only: inside a container the panel must bind 0.0.0.0 to be
+    # reachable, so add ADMIN_WEB_HOST: 0.0.0.0 to the environment block above
+    # and publish the port to the *host's* loopback and nowhere else:
+    # ports:
+    #   - '127.0.0.1:3111:3111'
 
   postgres:
     image: postgres:16-alpine

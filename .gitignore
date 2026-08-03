@@ -7,6 +7,9 @@ coverage/
 .vitest/
 .DS_Store
 
+# admin panel content backups (timestamped copies, never source of truth)
+content/backups/
+
 # local database/data
 data/
 *.db

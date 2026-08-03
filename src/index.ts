@@ -2,15 +2,17 @@
  * Startup order (plan §26): validate env → retry-connect to Postgres →
  * run migrations → load/validate/seed content & assets → register slash
  * commands → Discord login. Fail fast and loud before Discord login.
+ * The optional admin web panel starts last, and only when enabled.
  */
+import { startAdminServer } from './admin/server';
 import { loadConfig } from './config/config';
 import { connectWithRetry, createDb, createPool } from './db/client';
 import { runMigrations } from './db/migrate';
 import { createDiscordClient } from './discord/client';
 import { registerCommands } from './discord/commandRegistry';
 import type { AppContext } from './discord/types';
-import { loadContent } from './modules/content/loader';
-import { seedContent } from './modules/content/seeder';
+import { createAdminContentService } from './modules/content/adminContentService';
+import { createContentReloader } from './modules/content/reloadService';
 import { createCurrencyService } from './modules/currency/currencyService';
 import { createDailyService } from './modules/daily/dailyService';
 import { createGuildService } from './modules/guilds/guildService';
@@ -46,8 +48,15 @@ async function main(): Promise<void> {
   const db = createDb(pool);
   await runMigrations(db, logger);
 
-  const content = loadContent(config.contentDir, config.assetsDir, logger);
-  await seedContent(db, content, logger);
+  // The same reloader the admin panel calls, so startup and hot reload can
+  // never drift apart.
+  const reloadContent = createContentReloader({
+    db,
+    contentDir: config.contentDir,
+    assetsDir: config.assetsDir,
+    logger,
+  });
+  const { content } = await reloadContent();
 
   const currency = createCurrencyService(db);
   const inventory = createInventoryService(db);
@@ -147,8 +156,20 @@ async function main(): Promise<void> {
   const client = createDiscordClient(ctx);
   await client.login(config.discordToken);
 
+  const adminServer = await startAdminServer({
+    config: config.adminWeb,
+    logger,
+    content: createAdminContentService({
+      contentDir: config.contentDir,
+      assetsDir: config.assetsDir,
+      logger,
+      reload: reloadContent,
+    }),
+  });
+
   const shutdown = async (signal: string): Promise<void> => {
     logger.info({ signal }, 'shutting down');
+    await adminServer?.close();
     await client.destroy();
     await pool.end();
     process.exit(0);

@@ -35,9 +35,32 @@ npm test               # Vitest; DB tests use Testcontainers (Docker required),
   allowlist (empty = any NSFW channel).
 - `/waifumon-admin set-announce-channel` — must target an NSFW text channel.
 
+## Admin web panel
+
+An optional internal web UI for editing species, items, drop-rate tables and
+daily quests without hand-editing JSON. **Disabled by default.**
+
+```sh
+ADMIN_WEB_ENABLED=true
+ADMIN_WEB_HOST=127.0.0.1
+ADMIN_WEB_PORT=3111
+ADMIN_WEB_TOKEN=$(openssl rand -hex 32)   # required when enabled
+```
+
+It binds to loopback, so reach it through a tunnel:
+
+```sh
+ssh -L 3111:127.0.0.1:3111 user@server    # then open http://127.0.0.1:3111/admin
+```
+
+Edits are schema-validated, backed up to `content/backups/` and written
+atomically; species and items can be re-seeded into Postgres without a restart.
+Do not expose it publicly. See [docs/admin-web.md](docs/admin-web.md).
+
 ## Layout
 
 - `src/` — bot source (config, db, discord shell, service modules, shared)
+- `src/admin/` — optional internal admin web panel (Fastify, server-rendered)
 - `content/` — species/items/tables JSON, validated with Zod at startup
 - `assets/waifumon/<slug>/standard.png` — card art (placeholders for now)
 - `drizzle/` — generated SQL migrations

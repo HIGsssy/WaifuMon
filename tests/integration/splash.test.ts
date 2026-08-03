@@ -47,6 +47,7 @@ function buildCtx(): AppContext {
       discordGuildId: undefined,
       databaseUrl: 'postgres://x',
       logLevel: 'info',
+      adminWeb: { enabled: false, host: '127.0.0.1', port: 3111, token: '' },
     },
     logger: t.logger,
     db: t.db,

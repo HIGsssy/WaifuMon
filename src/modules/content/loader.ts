@@ -67,29 +67,17 @@ export function validateSpeciesAssets(
 }
 
 /**
- * Loads and validates all content JSON. Bad content fails loudly with
- * file+field errors — never silently.
+ * Cross-file content invariants: slug uniqueness and every cross-reference
+ * (daily package, hunt find tables, progression bonuses, quest rewards)
+ * pointing at an item that actually exists.
+ *
+ * Kept separate from file I/O so the admin panel can validate a *candidate*
+ * content set — edits held in memory, before anything is written to disk —
+ * with exactly the same rules the bot enforces at startup. Throws
+ * `ContentValidationError` on the first violation.
  */
-export function loadContent(contentDir: string, assetsDir: string, logger: Logger): LoadedContent {
-  const itemsFile = parseJsonFile(path.join(contentDir, 'items.json'), ItemsFileSchema);
-  const tables = parseJsonFile(path.join(contentDir, 'tables.json'), TablesFileSchema);
-
-  const speciesDir = path.join(contentDir, 'species');
-  if (!fs.existsSync(speciesDir)) {
-    throw new ContentValidationError(`Species content directory missing: ${speciesDir}`);
-  }
-  const speciesFiles = fs
-    .readdirSync(speciesDir)
-    .filter((f) => f.endsWith('.json'))
-    .sort();
-  if (speciesFiles.length === 0) {
-    throw new ContentValidationError(`No species JSON files found in ${speciesDir}`);
-  }
-  const species = speciesFiles.flatMap((f) =>
-    parseJsonFile(path.join(speciesDir, f), SpeciesFileSchema),
-  );
-
-  const items = itemsFile.items;
+export function validateContentSet(content: LoadedContent): void {
+  const { items, species, tables } = content;
 
   const dupSlug = (slugs: string[]): string | undefined =>
     slugs.find((s, i) => slugs.indexOf(s) !== i);
@@ -148,12 +136,53 @@ export function loadContent(contentDir: string, assetsDir: string, logger: Logge
       }
     }
   }
+}
 
-  const validatedSpecies = validateSpeciesAssets(species, assetsDir, logger);
+/**
+ * Reads every content JSON file under `contentDir` and schema-validates each
+ * one. Does **not** apply asset checks or cross-file checks — callers that
+ * want the full picture use `loadContent`.
+ */
+export function readContentFiles(contentDir: string): LoadedContent {
+  const itemsFile = parseJsonFile(path.join(contentDir, 'items.json'), ItemsFileSchema);
+  const tables = parseJsonFile(path.join(contentDir, 'tables.json'), TablesFileSchema);
+
+  const speciesDir = path.join(contentDir, 'species');
+  if (!fs.existsSync(speciesDir)) {
+    throw new ContentValidationError(`Species content directory missing: ${speciesDir}`);
+  }
+  const speciesFiles = listSpeciesFiles(speciesDir);
+  if (speciesFiles.length === 0) {
+    throw new ContentValidationError(`No species JSON files found in ${speciesDir}`);
+  }
+  const species = speciesFiles.flatMap((f) =>
+    parseJsonFile(path.join(speciesDir, f), SpeciesFileSchema),
+  );
+
+  return { items: itemsFile.items, species, tables };
+}
+
+/** Sorted list of species JSON filenames (basenames) in a species directory. */
+export function listSpeciesFiles(speciesDir: string): string[] {
+  return fs
+    .readdirSync(speciesDir)
+    .filter((f) => f.endsWith('.json'))
+    .sort();
+}
+
+/**
+ * Loads and validates all content JSON. Bad content fails loudly with
+ * file+field errors — never silently.
+ */
+export function loadContent(contentDir: string, assetsDir: string, logger: Logger): LoadedContent {
+  const content = readContentFiles(contentDir);
+  validateContentSet(content);
+
+  const validatedSpecies = validateSpeciesAssets(content.species, assetsDir, logger);
 
   logger.info(
-    { items: items.length, species: validatedSpecies.length },
+    { items: content.items.length, species: validatedSpecies.length },
     'content loaded and validated',
   );
-  return { items, species: validatedSpecies, tables };
+  return { ...content, species: validatedSpecies };
 }
