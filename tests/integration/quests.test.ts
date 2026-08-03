@@ -670,6 +670,7 @@ describe('gameplay actions update quest progress', () => {
       buddyAffinityConfig: app.content.tables.buddyAffinity,
       collection: app.collection,
       quests: app.quests,
+      effects: app.effects,
       logger: t.logger,
       rng: scriptedRng([0.0]),
     });

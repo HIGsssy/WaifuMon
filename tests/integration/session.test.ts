@@ -81,6 +81,8 @@ function buildCtx(): AppContext {
       care: app.care,
       progression: app.progression,
       quests: app.quests,
+      effects: app.effects,
+      itemUse: app.itemUse,
       session: app.session,
     },
   };

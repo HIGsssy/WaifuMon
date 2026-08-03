@@ -4,6 +4,8 @@ import {
   CONTENT_RATINGS,
   DEFAULT_AFFINITY,
   ITEM_CATEGORIES,
+  ITEM_EFFECT_TYPES,
+  PRICE_CURRENCIES,
   RARITIES,
 } from '../../db/schema';
 
@@ -12,37 +14,123 @@ const slug = z
   .min(1)
   .regex(/^[a-z0-9_]+$/, 'slug must be lowercase snake_case');
 
-export const ItemContentSchema = z
+/**
+ * Upper bound on a single capture-bonus item. Small and hard-capped on
+ * purpose: the additive capture terms (buddy affinity + item buffs) must never
+ * add up to something that trivializes rare captures. The admin panel surfaces
+ * this same bound in its field hint.
+ */
+export const MAX_ITEM_CAPTURE_BONUS = 0.25;
+
+/**
+ * Energy Drink. `restoreToMax` is a literal `true` — a "restore energy but not
+ * to max" variant would be a different effect type, not a config flag.
+ * `exitCareMode` documents (and lets an admin flip) the Care Mode interaction:
+ * shipped as `true`, i.e. drinking wakes you up.
+ */
+export const RestoreEnergyEffectSchema = z
   .object({
-    slug,
-    name: z.string().min(1),
-    category: z.enum(ITEM_CATEGORIES),
-    captureModifier: z.number().positive().nullable(),
-    isGuaranteedCapture: z.boolean().default(false),
-    purchasable: z.boolean().default(false),
-    buyPrice: z.number().int().positive().nullable().default(null),
-    dailyStockLimit: z.number().int().positive().nullable().default(null),
-    description: z.string().default(''),
-    emoji: z.string().nullable().default(null),
-    enabled: z.boolean().default(true),
+    restoreToMax: z.literal(true).default(true),
+    exitCareMode: z.boolean().default(true),
   })
-  .superRefine((item, ctx) => {
-    // Schema-level invariants from the plan (§21).
-    if (item.isGuaranteedCapture && item.purchasable) {
+  .strict();
+
+/**
+ * Microdose. Flat capture bonus for a fixed number of *capture attempts*.
+ * `refreshBehavior` decides what a second use does while one is already
+ * active: `refresh` resets charges to the configured max (never above it),
+ * `ignore` leaves the running buff untouched (and refunds nothing).
+ */
+export const CaptureBonusEffectSchema = z
+  .object({
+    captureBonus: z.number().gte(0).lte(MAX_ITEM_CAPTURE_BONUS),
+    charges: z.number().int().positive(),
+    refreshBehavior: z.enum(['refresh', 'ignore']).default('refresh'),
+  })
+  .strict();
+
+export type ItemEffectType = (typeof ITEM_EFFECT_TYPES)[number];
+export type RestoreEnergyEffect = z.infer<typeof RestoreEnergyEffectSchema>;
+export type CaptureBonusEffect = z.infer<typeof CaptureBonusEffectSchema>;
+export type ItemEffectConfig = RestoreEnergyEffect | CaptureBonusEffect;
+
+/** The config schema that goes with an `effectType`. */
+export function effectConfigSchemaFor(
+  effectType: ItemEffectType,
+): typeof RestoreEnergyEffectSchema | typeof CaptureBonusEffectSchema {
+  return effectType === 'restore_energy_full'
+    ? RestoreEnergyEffectSchema
+    : CaptureBonusEffectSchema;
+}
+
+const ItemBaseSchema = z.object({
+  slug,
+  name: z.string().min(1),
+  category: z.enum(ITEM_CATEGORIES),
+  captureModifier: z.number().positive().nullable(),
+  isGuaranteedCapture: z.boolean().default(false),
+  purchasable: z.boolean().default(false),
+  buyPrice: z.number().int().positive().nullable().default(null),
+  /** Which currency `buyPrice` is denominated in; defaults to WaifuBux. */
+  priceCurrency: z.enum(PRICE_CURRENCIES).default('waifubux'),
+  dailyStockLimit: z.number().int().positive().nullable().default(null),
+  /** Non-null makes the item usable from the inventory screen. */
+  effectType: z.enum(ITEM_EFFECT_TYPES).nullable().default(null),
+  /** Validated against `effectType` below, then normalized to the typed shape. */
+  effectConfig: z.record(z.string(), z.unknown()).nullable().default(null),
+  description: z.string().default(''),
+  emoji: z.string().nullable().default(null),
+  enabled: z.boolean().default(true),
+});
+
+export const ItemContentSchema = ItemBaseSchema.superRefine((item, ctx) => {
+  // Schema-level invariants from the plan (§21).
+  if (item.isGuaranteedCapture && item.purchasable) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `"${item.slug}": is_guaranteed_capture=true requires purchasable=false`,
+      path: ['purchasable'],
+    });
+  }
+  if (item.purchasable && item.buyPrice == null) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `"${item.slug}": purchasable=true requires buy_price`,
+      path: ['buyPrice'],
+    });
+  }
+  if (item.effectType == null) {
+    if (item.effectConfig != null && Object.keys(item.effectConfig).length > 0) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: `"${item.slug}": is_guaranteed_capture=true requires purchasable=false`,
-        path: ['purchasable'],
+        message: `"${item.slug}": effectConfig requires an effectType`,
+        path: ['effectConfig'],
       });
     }
-    if (item.purchasable && item.buyPrice == null) {
+    return;
+  }
+  // Per-type config validation. The sub-schemas are `.strict()`, so a
+  // capture-only field on a restore_energy_full item is rejected by name.
+  const parsed = effectConfigSchemaFor(item.effectType).safeParse(item.effectConfig ?? {});
+  if (!parsed.success) {
+    for (const issue of parsed.error.issues) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: `"${item.slug}": purchasable=true requires buy_price`,
-        path: ['buyPrice'],
+        message: `"${item.slug}": effectConfig.${issue.path.join('.') || '(root)'} — ${issue.message}`,
+        path: ['effectConfig', ...issue.path],
       });
     }
-  });
+  }
+}).transform((item) => ({
+  ...item,
+  // Safe: the superRefine above already rejected anything that fails here.
+  effectConfig:
+    item.effectType == null
+      ? null
+      : (effectConfigSchemaFor(item.effectType).parse(
+          item.effectConfig ?? {},
+        ) as ItemEffectConfig),
+}));
 
 export const ItemsFileSchema = z.object({ items: z.array(ItemContentSchema).min(1) });
 

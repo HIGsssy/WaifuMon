@@ -18,17 +18,26 @@ describe('migrations + seeder', () => {
   it('migrates a fresh database and seeds shipped content', async () => {
     const content = loadShippedContent(t.logger);
     const summary = await seedContent(t.db, content, t.logger);
-    expect(summary.items).toBe(5);
+    expect(summary.items).toBe(content.items.length);
     expect(summary.species).toBe(content.species.length);
 
     const itemRows = await t.db.select().from(items);
-    expect(itemRows).toHaveLength(5);
+    expect(itemRows).toHaveLength(content.items.length);
     const mythic = itemRows.find((i) => i.slug === 'mythic_contract');
     expect(mythic?.isGuaranteedCapture).toBe(true);
     expect(mythic?.purchasable).toBe(false);
     const prismatic = itemRows.find((i) => i.slug === 'prismatic_charm');
     expect(prismatic?.enabled).toBe(true);
     expect(prismatic?.purchasable).toBe(false);
+
+    // Effect columns round-trip through the seeder as jsonb.
+    const microdose = itemRows.find((i) => i.slug === 'microdose');
+    expect(microdose?.effectType).toBe('capture_bonus_charges');
+    expect(microdose?.effectConfig).toMatchObject({ captureBonus: 0.03, charges: 5 });
+    expect(microdose?.priceCurrency).toBe('essence');
+    // Items with no effect keep null columns rather than an empty object.
+    expect(itemRows.find((i) => i.slug === 'basic_charm')?.effectType).toBeNull();
+    expect(itemRows.find((i) => i.slug === 'basic_charm')?.effectConfig).toBeNull();
   });
 
   it('is idempotent — running twice yields the same state', async () => {
@@ -38,7 +47,7 @@ describe('migrations + seeder', () => {
     await seedContent(t.db, content, t.logger);
     const after = await t.db.select().from(items).orderBy(items.slug);
     expect(after).toEqual(before);
-    expect(after).toHaveLength(5);
+    expect(after).toHaveLength(content.items.length);
   });
 
   it('updates mutable fields on existing slugs', async () => {

@@ -75,6 +75,8 @@ beforeAll(async () => {
       care: app.care,
       progression: app.progression,
       quests: app.quests,
+      effects: app.effects,
+      itemUse: app.itemUse,
       session: app.session,
     },
   } as unknown as AppContext;
@@ -107,6 +109,7 @@ function captureWith(rng?: Rng) {
     buddyAffinityConfig: app.content.tables.buddyAffinity,
     collection: app.collection,
     quests: app.quests,
+    effects: app.effects,
     logger: t.logger,
     ...(rng ? { rng } : {}),
   });

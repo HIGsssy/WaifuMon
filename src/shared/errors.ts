@@ -194,6 +194,28 @@ export class ItemNotUsableError extends AppError {
   }
 }
 
+/** The item exists but has no active effect — nothing to "use". */
+export class ItemHasNoEffectError extends AppError {
+  constructor(slug: string) {
+    super(
+      'ITEM_HAS_NO_EFFECT',
+      `Item "${slug}" has no usable effect`,
+      "That item isn't something you can use~",
+    );
+  }
+}
+
+/** Energy Drink used at full energy — refused so the item isn't wasted. */
+export class EnergyAlreadyFullError extends AppError {
+  constructor(current: number, max: number) {
+    super(
+      'ENERGY_ALREADY_FULL',
+      `Hunt energy already at max (${current}/${max})`,
+      `Your Hunt Energy is already full (${current}/${max}) — nothing was used.`,
+    );
+  }
+}
+
 export class WaifuNotOwnedError extends AppError {
   constructor(waifuId: number) {
     super(

@@ -19,11 +19,14 @@ import {
 } from 'discord.js';
 import {
   AlreadyClaimedError,
+  AppError,
   CareModeDisabledError,
   CareTargetRequiredError,
   WaifuAlreadyReleasedError,
   WaifuNotOwnedError,
 } from '../../shared/errors';
+import type { PriceCurrency } from '../../db/schema';
+import type { ItemUseResult } from '../../modules/items/itemUseService';
 import type { AppContext, PlayerInteraction, Provisioned } from '../types';
 import { buildCustomId } from '../types';
 import { paintSession, respondEphemeral } from '../sessionUi';
@@ -386,28 +389,89 @@ export async function handleDaily(
   }
 }
 
-export async function handleInventory(
+/** Short currency label used across shop/inventory copy. */
+export function currencyLabel(currency: PriceCurrency): string {
+  return currency === 'essence' ? '✨ Essence' : '💰 WB';
+}
+
+/** "40 ✨ Essence" / "500 💰 WB" — price with its currency, never bare. */
+export function formatPrice(amount: number, currency: PriceCurrency): string {
+  return `${amount} ${currencyLabel(currency)}`;
+}
+
+/** 0.03 → "+3%" — the player-facing form of a flat capture bonus. */
+export function formatCaptureBonus(modifier: number): string {
+  const pct = Math.round(modifier * 1000) / 10;
+  return `+${Number.isInteger(pct) ? pct : pct.toFixed(1)}%`;
+}
+
+/**
+ * One line describing the player's active capture buff, e.g.
+ * "💊 **Microdose** active — +3% capture · **4** charges left".
+ * Returns null when nothing is active so callers can omit the field entirely.
+ */
+export function renderCaptureBonusLine(
+  state: { modifier: number; chargesRemaining: number; sourceItemSlug: string } | null,
+  displayName?: string,
+  emoji?: string | null,
+): string | null {
+  if (!state) return null;
+  const name = displayName ?? state.sourceItemSlug;
+  return (
+    `${emoji ?? '💊'} **${name}** active — ${formatCaptureBonus(state.modifier)} capture chance · ` +
+    `**${state.chargesRemaining}** charge${state.chargesRemaining === 1 ? '' : 's'} left`
+  );
+}
+
+/** Content metadata for an item slug (name/emoji), for buff labelling. */
+function itemMeta(ctx: AppContext, slug: string): { name: string; emoji: string | null } {
+  const found = ctx.content.items.find((i) => i.slug === slug);
+  return { name: found?.name ?? slug, emoji: found?.emoji ?? null };
+}
+
+/** Discord allows 5 buttons per action row. */
+function chunkButtonRows(
+  buttons: readonly ButtonBuilder[],
+): ActionRowBuilder<ButtonBuilder>[] {
+  const rows: ActionRowBuilder<ButtonBuilder>[] = [];
+  for (let i = 0; i < buttons.length; i += 5) {
+    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(...buttons.slice(i, i + 5)));
+  }
+  return rows;
+}
+
+interface ScreenView {
+  embeds: EmbedBuilder[];
+  components: ActionRowBuilder<ButtonBuilder>[];
+}
+
+async function buildInventoryView(
   ctx: AppContext,
-  interaction: PlayerInteraction,
   prov: Provisioned,
-): Promise<void> {
-  const entries = await ctx.services.inventory.getInventory(prov.playerId);
+  statusLine?: string,
+): Promise<ScreenView> {
+  const [entries, captureBonus] = await Promise.all([
+    ctx.services.inventory.getInventory(prov.playerId),
+    ctx.services.effects.getCaptureBonus(prov.playerId),
+  ]);
   const byCategory = new Map<string, string[]>();
   for (const { item, quantity } of entries) {
     const modifier = item.isGuaranteedCapture
       ? '**guarantees capture**'
       : item.captureModifier != null
         ? `×${item.captureModifier} capture`
-        : '';
+        : effectSummary(item.effectType, item.effectConfig);
     const line = `${item.emoji ?? '•'} **${item.name}** ×${quantity}${modifier ? ` — ${modifier}` : ''}`;
     const lines = byCategory.get(item.category) ?? [];
     lines.push(line);
     byCategory.set(item.category, lines);
   }
   const embed = new EmbedBuilder().setTitle('🎒 Inventory').setColor(0xff6fa5);
+  const status = statusLine ? `${statusLine}\n\n` : '';
   if (byCategory.size === 0) {
-    embed.setDescription('Empty~ Claim your daily or visit the shop!');
+    embed.setDescription(`${status}Empty~ Claim your daily or visit the shop!`);
   } else {
+    if (status) embed.setDescription(status.trimEnd());
     for (const [category, lines] of byCategory) {
       embed.addFields({
         name: category.charAt(0).toUpperCase() + category.slice(1),
@@ -415,19 +479,104 @@ export async function handleInventory(
       });
     }
   }
-  await paintSession(ctx, interaction, prov, { embeds: [embed], components: withBackRow() });
+  const buffLine = renderCaptureBonusLine(
+    captureBonus,
+    captureBonus ? itemMeta(ctx, captureBonus.sourceItemSlug).name : undefined,
+    captureBonus ? itemMeta(ctx, captureBonus.sourceItemSlug).emoji : undefined,
+  );
+  if (buffLine) embed.addFields({ name: '⏳ Active Effects', value: buffLine });
+
+  // Usable = has an effect and the player owns at least one.
+  const useButtons = entries
+    .filter((e) => e.item.effectType != null && e.quantity > 0)
+    .slice(0, 10)
+    .map((e) => {
+      const btn = new ButtonBuilder()
+        .setCustomId(buildCustomId('item', 'use', e.item.slug))
+        .setLabel(`Use ${e.item.name}`)
+        .setStyle(ButtonStyle.Success);
+      if (e.item.emoji) btn.setEmoji(e.item.emoji);
+      return btn;
+    });
+  return { embeds: [embed], components: withBackRow(chunkButtonRows(useButtons)) };
 }
 
-interface ShopView {
-  embeds: EmbedBuilder[];
-  components: ActionRowBuilder<ButtonBuilder>[];
+/** Short human description of an item's active effect, for list rows. */
+export function effectSummary(
+  effectType: string | null,
+  effectConfig: Record<string, unknown> | null,
+): string {
+  if (effectType === 'restore_energy_full') return 'restores Hunt Energy to full';
+  if (effectType === 'capture_bonus_charges') {
+    const cfg = effectConfig ?? {};
+    const bonus = typeof cfg.captureBonus === 'number' ? cfg.captureBonus : 0;
+    const charges = typeof cfg.charges === 'number' ? cfg.charges : 0;
+    return `${formatCaptureBonus(bonus)} capture for ${charges} attempts`;
+  }
+  return '';
+}
+
+export async function handleInventory(
+  ctx: AppContext,
+  interaction: PlayerInteraction,
+  prov: Provisioned,
+): Promise<void> {
+  const view = await buildInventoryView(ctx, prov);
+  await paintSession(ctx, interaction, prov, view);
+}
+
+/** Human-readable outcome line for a successful item use. */
+export function formatItemUseResult(result: ItemUseResult): string {
+  if (result.kind === 'restore_energy_full') {
+    const care = result.careModeExited
+      ? ` Left Care Mode${result.careEnergyGained > 0 ? ` (+${result.careEnergyGained} ⚡ from pending ticks)` : ''}.`
+      : '';
+    return (
+      `✅ **${result.item.name}** used: Hunt Energy restored to ` +
+      `**${result.energyAfter}/${result.maxEnergy}**.${care}`
+    );
+  }
+  const verb = result.refreshed ? 'refreshed' : 'active';
+  return (
+    `✅ **${result.item.name}** ${verb}: ${formatCaptureBonus(result.modifier)} capture chance ` +
+    `for your next **${result.chargesRemaining}** capture attempts.`
+  );
+}
+
+/**
+ * `item:use` — consume one usable item and repaint the inventory screen on the
+ * same public session board with a status line. Refusals (energy already full,
+ * none owned) answer ephemerally so the board keeps its current state.
+ */
+export async function handleItemUse(
+  ctx: AppContext,
+  interaction: ButtonInteraction,
+  prov: Provisioned,
+  itemSlug: string,
+): Promise<void> {
+  if (!itemSlug) {
+    await respondEphemeral(interaction, 'That button no longer works~');
+    return;
+  }
+  let result: ItemUseResult;
+  try {
+    result = await ctx.services.itemUse.use(prov.playerId, itemSlug);
+  } catch (err) {
+    if (err instanceof AppError) {
+      await respondEphemeral(interaction, err.userMessage);
+      return;
+    }
+    throw err;
+  }
+  const view = await buildInventoryView(ctx, prov, formatItemUseResult(result));
+  await paintSession(ctx, interaction, prov, view);
 }
 
 async function buildShopView(
   ctx: AppContext,
   prov: Provisioned,
   statusLine?: string,
-): Promise<ShopView> {
+): Promise<ScreenView> {
   const [catalog, balances, inventory] = await Promise.all([
     ctx.services.shop.getCatalog(),
     ctx.services.currency.getBalances(prov.playerId),
@@ -435,34 +584,34 @@ async function buildShopView(
   ]);
   const owned = new Map(inventory.map((e) => [e.item.id, e.quantity]));
 
-  const lines = catalog.map(({ item, available, availabilityNote }) => {
-    const modifier = item.isGuaranteedCapture
+  const lines = catalog.map(({ item, available, availabilityNote, currency }) => {
+    const detail = item.isGuaranteedCapture
       ? 'guarantees capture'
-      : `×${item.captureModifier ?? 1} capture`;
-    const price = available ? `**${item.buyPrice} WB**` : `*${availabilityNote}*`;
-    return `${item.emoji ?? '•'} **${item.name}** (${modifier}) — ${price} · owned ×${owned.get(item.id) ?? 0}`;
+      : item.captureModifier != null
+        ? `×${item.captureModifier} capture`
+        : effectSummary(item.effectType, item.effectConfig) || item.category;
+    const price = available
+      ? `**${formatPrice(item.buyPrice ?? 0, currency)}**`
+      : `*${availabilityNote}*`;
+    return `${item.emoji ?? '•'} **${item.name}** (${detail}) — ${price} · owned ×${owned.get(item.id) ?? 0}`;
   });
 
-  const header = `💰 Balance: **${balances.waifubux} WaifuBux**`;
+  const header = `💰 **${balances.waifubux}** WaifuBux · ✨ **${balances.essence}** Essence`;
   const status = statusLine ? `\n\n${statusLine}` : '';
   const embed = new EmbedBuilder()
-    .setTitle('🛍️ Charm Shop')
+    .setTitle('🛍️ Shop')
     .setColor(0xffc46f)
     .setDescription(`${header}${status}\n\n${lines.join('\n')}`);
 
   const buyButtons = catalog
     .filter((entry) => entry.available)
-    .map(({ item }) =>
+    .map(({ item, currency }) =>
       new ButtonBuilder()
         .setCustomId(buildCustomId('shop', 'buy', item.slug))
-        .setLabel(`Buy ${item.name} — ${item.buyPrice} WB`)
+        .setLabel(`Buy ${item.name} — ${formatPrice(item.buyPrice ?? 0, currency)}`)
         .setStyle(ButtonStyle.Success),
     );
-  const extras: ActionRowBuilder<ButtonBuilder>[] =
-    buyButtons.length > 0
-      ? [new ActionRowBuilder<ButtonBuilder>().addComponents(...buyButtons)]
-      : [];
-  return { embeds: [embed], components: withBackRow(extras) };
+  return { embeds: [embed], components: withBackRow(chunkButtonRows(buyButtons)) };
 }
 
 export async function handleShop(
@@ -485,7 +634,7 @@ export async function handleShopBuy(
   itemSlug: string,
 ): Promise<void> {
   const result = await ctx.services.shop.purchase(prov.playerId, itemSlug, 1);
-  const status = `✅ Bought **${result.item.name}** for **${result.totalPrice} WB** — you now own ×${result.ownedAfter}.`;
+  const status = `✅ Bought **${result.item.name}** for **${formatPrice(result.totalPrice, result.currency)}** — you now own ×${result.ownedAfter}.`;
   const view = await buildShopView(ctx, prov, status);
   await paintSession(ctx, interaction, prov, view);
 }

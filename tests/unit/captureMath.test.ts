@@ -190,6 +190,75 @@ describe('computeCaptureChance — buddy affinity modifier (5D)', () => {
   });
 });
 
+describe('capture bonus modifier (Microdose)', () => {
+  it('adds after the charm multiplier, not before it', () => {
+    // R (0.35) × Silk (1.5) = 0.525, then +0.03 → 0.555.
+    // Multiplying first would give (0.35 + 0.03) × 1.5 = 0.57.
+    expect(
+      computeCaptureChance({
+        guaranteed: false,
+        baseCaptureRate: null,
+        rarity: 'R',
+        captureModifier: 1.5,
+        config,
+        captureBonusModifier: 0.03,
+      }),
+    ).toBeCloseTo(0.555, 5);
+  });
+
+  it('stacks additively alongside the buddy affinity term', () => {
+    expect(
+      computeCaptureChance({
+        guaranteed: false,
+        baseCaptureRate: null,
+        rarity: 'SR', // 0.22
+        captureModifier: 1,
+        config,
+        buddyAffinityModifier: 0.04,
+        captureBonusModifier: 0.03,
+      }),
+    ).toBeCloseTo(0.29, 5);
+  });
+
+  it('is applied before the clamp, never past the ceiling', () => {
+    expect(
+      computeCaptureChance({
+        guaranteed: false,
+        baseCaptureRate: 0.94,
+        rarity: 'N',
+        captureModifier: 1,
+        config,
+        captureBonusModifier: 0.03,
+      }),
+    ).toBe(config.maxChance);
+  });
+
+  it('is ignored entirely on a guaranteed capture', () => {
+    expect(
+      computeCaptureChance({
+        guaranteed: true,
+        baseCaptureRate: null,
+        rarity: 'LR',
+        captureModifier: null,
+        config,
+        captureBonusModifier: 0.03,
+      }),
+    ).toBe(1);
+  });
+
+  it('defaults to no bonus when omitted', () => {
+    expect(
+      computeCaptureChance({
+        guaranteed: false,
+        baseCaptureRate: null,
+        rarity: 'R',
+        captureModifier: 1,
+        config,
+      }),
+    ).toBeCloseTo(0.35, 5);
+  });
+});
+
 describe('clamp', () => {
   it('clamps as expected', () => {
     expect(clamp(0.5, 0.1, 0.9)).toBe(0.5);

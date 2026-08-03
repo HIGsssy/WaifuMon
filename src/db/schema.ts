@@ -39,6 +39,29 @@ export const DEFAULT_AFFINITY: Affinity = 'switch';
 export const ITEM_CATEGORIES = ['capture', 'material', 'cosmetic', 'consumable'] as const;
 export type ItemCategory = (typeof ITEM_CATEGORIES)[number];
 
+/**
+ * Active-use item effects (shop/items expansion). An item with a non-null
+ * `effect_type` can be *used* from the inventory screen; its `effect_config`
+ * carries the per-effect tunables (validated by type in content/schemas.ts).
+ *
+ *   restore_energy_full   — Energy Drink: refill Hunt Energy to computed max.
+ *   capture_bonus_charges — Microdose: flat capture bonus for N attempts.
+ */
+export const ITEM_EFFECT_TYPES = ['restore_energy_full', 'capture_bonus_charges'] as const;
+export type ItemEffectType = (typeof ITEM_EFFECT_TYPES)[number];
+
+/** Currencies a shop entry can be priced in. */
+export const PRICE_CURRENCIES = ['waifubux', 'essence'] as const;
+export type PriceCurrency = (typeof PRICE_CURRENCIES)[number];
+
+/**
+ * Canonical `player_active_effects.effect_type` for the capture-chance buff.
+ * Deliberately *not* the item's `effectType`: every item that grants a capture
+ * bonus shares this one slot, which is what makes the buff non-stacking (the
+ * unique index on (player_id, effect_type) enforces it in the database).
+ */
+export const CAPTURE_BONUS_EFFECT = 'capture_bonus';
+
 export const guilds = pgTable('guilds', {
   id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
   discordGuildId: text('discord_guild_id').notNull().unique(),
@@ -148,7 +171,12 @@ export const items = pgTable(
     isGuaranteedCapture: boolean('is_guaranteed_capture').notNull().default(false),
     purchasable: boolean('purchasable').notNull().default(false),
     buyPrice: integer('buy_price'),
+    /** Which currency `buy_price` is denominated in. */
+    priceCurrency: text('price_currency').notNull().default('waifubux'),
     dailyStockLimit: integer('daily_stock_limit'),
+    /** Non-null makes the item usable from the inventory screen. */
+    effectType: text('effect_type'),
+    effectConfig: jsonb('effect_config').$type<Record<string, unknown>>(),
     description: text('description').notNull().default(''),
     emoji: text('emoji'),
     enabled: boolean('enabled').notNull().default(true),
@@ -158,6 +186,11 @@ export const items = pgTable(
       'items_category_check',
       sql`${t.category} in ('capture','material','cosmetic','consumable')`,
     ),
+    check(
+      'items_effect_type_check',
+      sql`${t.effectType} is null or ${t.effectType} in ('restore_energy_full','capture_bonus_charges')`,
+    ),
+    check('items_price_currency_check', sql`${t.priceCurrency} in ('waifubux','essence')`),
   ],
 );
 
@@ -205,10 +238,15 @@ export const shopTransactions = pgTable(
     quantity: integer('quantity').notNull(),
     unitPrice: integer('unit_price').notNull(),
     totalPrice: integer('total_price').notNull(),
+    /** Currency the purchase was paid in; `balance_after` is that currency. */
+    currency: text('currency').notNull().default('waifubux'),
     balanceAfter: integer('balance_after').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index('shop_transactions_player_created_idx').on(t.playerId, t.createdAt)],
+  (t) => [
+    index('shop_transactions_player_created_idx').on(t.playerId, t.createdAt),
+    check('shop_transactions_currency_check', sql`${t.currency} in ('waifubux','essence')`),
+  ],
 );
 
 export const ENCOUNTER_STATES = [
@@ -463,6 +501,40 @@ export const playerDailySplashViews = pgTable(
   ],
 );
 
+/**
+ * Charge-based (and, later, time-based) buffs granted by using a consumable.
+ *
+ * One row per (player, effect_type) — the unique index is what makes buffs
+ * non-stacking: using a second Microdose while one is active *refreshes*
+ * `charges_remaining` instead of creating a parallel effect. `modifier_json`
+ * snapshots the item's tuning at use time so a later content edit can't change
+ * a buff the player already paid for. Rows are deleted once the last charge is
+ * consumed, so "has an active effect" is simply "a row exists".
+ *
+ * `expires_at` is reserved for future time-boxed buffs; charge-based effects
+ * leave it null and readers treat null as "never expires".
+ */
+export const playerActiveEffects = pgTable(
+  'player_active_effects',
+  {
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    playerId: bigint('player_id', { mode: 'number' })
+      .notNull()
+      .references(() => players.id),
+    effectType: text('effect_type').notNull(),
+    sourceItemSlug: text('source_item_slug').notNull(),
+    modifierJson: jsonb('modifier_json').$type<Record<string, unknown>>().notNull().default({}),
+    chargesRemaining: integer('charges_remaining').notNull().default(0),
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('player_active_effects_player_type_uq').on(t.playerId, t.effectType),
+    check('player_active_effects_charges_check', sql`${t.chargesRemaining} >= 0`),
+  ],
+);
+
 export type GuildRow = typeof guilds.$inferSelect;
 export type PlayerRow = typeof players.$inferSelect;
 export type PlayerCurrenciesRow = typeof playerCurrencies.$inferSelect;
@@ -478,3 +550,4 @@ export type PlayerProgressionEventRow = typeof playerProgressionEvents.$inferSel
 export type WaifumonSessionRow = typeof waifumonSessions.$inferSelect;
 export type PlayerDailyQuestRow = typeof playerDailyQuests.$inferSelect;
 export type PlayerDailySplashViewRow = typeof playerDailySplashViews.$inferSelect;
+export type PlayerActiveEffectRow = typeof playerActiveEffects.$inferSelect;

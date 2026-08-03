@@ -22,7 +22,8 @@ import { silentLogger } from '../helpers/testDb';
 describe('shipped content', () => {
   it('loads and validates, with every referenced image present', () => {
     const content = loadShippedContent();
-    expect(content.items.length).toBe(5);
+    // 5 capture items + 2 utility consumables (Energy Drink, Microdose).
+    expect(content.items.length).toBe(7);
     expect(content.species.length).toBeGreaterThanOrEqual(5);
     // No shipped species may be auto-disabled by a missing image.
     expect(content.species.filter((s) => !s.enabled)).toEqual([]);
@@ -42,9 +43,43 @@ describe('shipped content', () => {
   it('ships Basic/Silk/Velvet purchasable at the launch prices', () => {
     const content = loadShippedContent();
     const prices = Object.fromEntries(
-      content.items.filter((i) => i.purchasable).map((i) => [i.slug, i.buyPrice]),
+      content.items
+        .filter((i) => i.purchasable && i.category === 'capture')
+        .map((i) => [i.slug, i.buyPrice]),
     );
     expect(prices).toEqual({ basic_charm: 25, silk_charm: 75, velvet_charm: 200 });
+  });
+
+  it('ships Energy Drink and Microdose with validated effect config and pricing', () => {
+    const content = loadShippedContent();
+    const drink = content.items.find((i) => i.slug === 'energy_drink');
+    expect(drink).toMatchObject({
+      category: 'consumable',
+      purchasable: true,
+      buyPrice: 500,
+      priceCurrency: 'waifubux',
+      effectType: 'restore_energy_full',
+      effectConfig: { restoreToMax: true, exitCareMode: true },
+    });
+
+    const microdose = content.items.find((i) => i.slug === 'microdose');
+    expect(microdose).toMatchObject({
+      category: 'consumable',
+      purchasable: true,
+      buyPrice: 40,
+      priceCurrency: 'essence',
+      effectType: 'capture_bonus_charges',
+      effectConfig: { captureBonus: 0.03, charges: 5, refreshBehavior: 'refresh' },
+    });
+  });
+
+  it('leaves every non-effect item with a null effect and WaifuBux pricing', () => {
+    const content = loadShippedContent();
+    for (const charm of content.items.filter((i) => i.category === 'capture')) {
+      expect(charm.effectType, charm.slug).toBeNull();
+      expect(charm.effectConfig, charm.slug).toBeNull();
+      expect(charm.priceCurrency, charm.slug).toBe('waifubux');
+    }
   });
 });
 
@@ -81,6 +116,81 @@ describe('schema invariants', () => {
       imagePath: 'waifumon/x/standard.png',
     });
     expect(result.success).toBe(false);
+  });
+
+  it('defaults an item with no effect to null config and WaifuBux pricing', () => {
+    const parsed = ItemContentSchema.parse(baseItem);
+    expect(parsed.effectType).toBeNull();
+    expect(parsed.effectConfig).toBeNull();
+    expect(parsed.priceCurrency).toBe('waifubux');
+  });
+
+  it('fills restore_energy_full defaults and rejects capture-only fields on it', () => {
+    const ok = ItemContentSchema.parse({
+      ...baseItem,
+      category: 'consumable',
+      captureModifier: null,
+      effectType: 'restore_energy_full',
+      effectConfig: { restoreToMax: true },
+    });
+    expect(ok.effectConfig).toEqual({ restoreToMax: true, exitCareMode: true });
+
+    const mixed = ItemContentSchema.safeParse({
+      ...baseItem,
+      category: 'consumable',
+      captureModifier: null,
+      effectType: 'restore_energy_full',
+      effectConfig: { restoreToMax: true, captureBonus: 0.03 },
+    });
+    expect(mixed.success).toBe(false);
+  });
+
+  it('requires capture-bonus fields and bounds them', () => {
+    const ok = ItemContentSchema.parse({
+      ...baseItem,
+      category: 'consumable',
+      captureModifier: null,
+      effectType: 'capture_bonus_charges',
+      effectConfig: { captureBonus: 0.03, charges: 5 },
+    });
+    expect(ok.effectConfig).toEqual({
+      captureBonus: 0.03,
+      charges: 5,
+      refreshBehavior: 'refresh',
+    });
+
+    const invalid = [
+      {},
+      { captureBonus: 0.03 },
+      { charges: 5 },
+      { captureBonus: 0.5, charges: 5 },
+      { captureBonus: -0.01, charges: 5 },
+      { captureBonus: 0.03, charges: 0 },
+      { captureBonus: 0.03, charges: 1.5 },
+      { captureBonus: 0.03, charges: 5, restoreToMax: true },
+    ];
+    for (const effectConfig of invalid) {
+      const result = ItemContentSchema.safeParse({
+        ...baseItem,
+        category: 'consumable',
+        captureModifier: null,
+        effectType: 'capture_bonus_charges',
+        effectConfig,
+      });
+      expect(result.success, JSON.stringify(effectConfig)).toBe(false);
+    }
+  });
+
+  it('rejects an unknown effect type, an effect config with no type, and a bad currency', () => {
+    expect(
+      ItemContentSchema.safeParse({ ...baseItem, effectType: 'mind_control' }).success,
+    ).toBe(false);
+    expect(
+      ItemContentSchema.safeParse({ ...baseItem, effectConfig: { captureBonus: 0.03 } }).success,
+    ).toBe(false);
+    expect(
+      ItemContentSchema.safeParse({ ...baseItem, priceCurrency: 'doubloons' }).success,
+    ).toBe(false);
   });
 });
 

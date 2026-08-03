@@ -65,6 +65,8 @@ function buildCtx(): AppContext {
       care: app.care,
       progression: app.progression,
       quests: app.quests,
+      effects: app.effects,
+      itemUse: app.itemUse,
       session: app.session,
     },
   };
@@ -327,6 +329,8 @@ describe('disabled splash config — /waifumon goes directly to the main menu', 
         care: app2.care,
         progression: app2.progression,
         quests: app2.quests,
+        effects: app2.effects,
+        itemUse: app2.itemUse,
         session: app2.session,
       },
     };

@@ -23,20 +23,30 @@ export interface CaptureChanceInput {
    * matchup, or a weak matchup under the current all-zero penalty tuning).
    */
   buddyAffinityModifier?: number;
+  /**
+   * Flat bonus from an active consumable buff (Microdose). Like the affinity
+   * term it is additive and applied *after* the charm multiplier, so a charm
+   * never multiplies the buff. Defaults to 0 (no active effect).
+   */
+  captureBonusModifier?: number;
 }
 
 /**
- * chance = clamp(base_capture_rate × charm_modifier + buddy_affinity, min, max)
+ * chance = clamp(
+ *   base_capture_rate × charm_modifier + buddy_affinity + capture_bonus,
+ *   min, max)
  *
  * `base_capture_rate` uses the species override when set, otherwise the rarity
  * default. Guaranteed items (Mythic Contract) bypass the formula entirely.
- * Player / event modifiers remain reserved for later milestones.
+ * Both additive terms land after the multiply and before the clamp, so the
+ * clamp bounds remain the single source of truth for the achievable range.
  */
 export function computeCaptureChance(input: CaptureChanceInput): number {
   if (input.guaranteed) return 1;
   const base = input.baseCaptureRate ?? input.config.baseRatesByRarity[input.rarity];
   const modifier = input.captureModifier ?? 1;
-  const raw = base * modifier + (input.buddyAffinityModifier ?? 0);
+  const raw =
+    base * modifier + (input.buddyAffinityModifier ?? 0) + (input.captureBonusModifier ?? 0);
   return clamp(raw, input.config.minChance, input.config.maxChance);
 }
 

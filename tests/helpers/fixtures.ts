@@ -12,6 +12,8 @@ import { createHuntService } from '../../src/modules/hunt/huntService';
 import { createCaptureService } from '../../src/modules/capture/captureService';
 import { createCareService } from '../../src/modules/care/careService';
 import { createCollectionService } from '../../src/modules/collection/collectionService';
+import { createPlayerEffectsService } from '../../src/modules/effects/playerEffectsService';
+import { createItemUseService } from '../../src/modules/items/itemUseService';
 import { createProgressionService } from '../../src/modules/progression/progressionService';
 import { createQuestService } from '../../src/modules/quests/questService';
 import { createInventoryService } from '../../src/modules/inventory/inventoryService';
@@ -44,6 +46,8 @@ export interface App {
   progression: ReturnType<typeof createProgressionService>;
   quests: ReturnType<typeof createQuestService>;
   session: ReturnType<typeof createSessionService>;
+  effects: ReturnType<typeof createPlayerEffectsService>;
+  itemUse: ReturnType<typeof createItemUseService>;
 }
 
 export interface BootstrapOptions {
@@ -119,6 +123,7 @@ export async function bootstrapApp(
     quests,
     careConfig: content.tables.energy.careMode,
   });
+  const effects = createPlayerEffectsService(t.db);
   return {
     content,
     guilds: createGuildService(t.db),
@@ -163,12 +168,22 @@ export async function bootstrapApp(
       buddyAffinityConfig: content.tables.buddyAffinity,
       collection,
       quests,
+      effects,
       logger: t.logger,
       ...(opts.captureRng ? { rng: opts.captureRng } : {}),
     }),
     care,
     collection,
     quests,
+    effects,
+    itemUse: createItemUseService({
+      db: t.db,
+      currency,
+      inventory,
+      effects,
+      progression,
+      care,
+    }),
     session: createSessionService({
       db: t.db,
       timezone,

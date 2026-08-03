@@ -99,6 +99,10 @@ function setPath(obj, dotted, value){
 function collect(scope){
   const out = {};
   scope.querySelectorAll('[data-field]').forEach(function(el){
+    // Disabled inputs are excluded, matching normal form semantics. Forms with
+    // mutually exclusive blocks (e.g. per-effect-type item config) disable the
+    // inactive block so its values never reach the server.
+    if (el.disabled) return;
     const name = el.dataset.field;
     const type = el.dataset.type || 'text';
     const raw = el.type === 'checkbox' ? '' : el.value;

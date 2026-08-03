@@ -19,36 +19,25 @@ export interface SeedSummary {
 export async function seedContent(db: Db, content: LoadedContent, logger: Logger): Promise<SeedSummary> {
   return db.transaction(async (tx) => {
     for (const item of content.items) {
+      const mutable = {
+        name: item.name,
+        category: item.category,
+        captureModifier: item.captureModifier,
+        isGuaranteedCapture: item.isGuaranteedCapture,
+        purchasable: item.purchasable,
+        buyPrice: item.buyPrice,
+        priceCurrency: item.priceCurrency,
+        dailyStockLimit: item.dailyStockLimit,
+        effectType: item.effectType,
+        effectConfig: (item.effectConfig ?? null) as Record<string, unknown> | null,
+        description: item.description,
+        emoji: item.emoji,
+        enabled: item.enabled,
+      };
       await tx
         .insert(items)
-        .values({
-          slug: item.slug,
-          name: item.name,
-          category: item.category,
-          captureModifier: item.captureModifier,
-          isGuaranteedCapture: item.isGuaranteedCapture,
-          purchasable: item.purchasable,
-          buyPrice: item.buyPrice,
-          dailyStockLimit: item.dailyStockLimit,
-          description: item.description,
-          emoji: item.emoji,
-          enabled: item.enabled,
-        })
-        .onConflictDoUpdate({
-          target: items.slug,
-          set: {
-            name: item.name,
-            category: item.category,
-            captureModifier: item.captureModifier,
-            isGuaranteedCapture: item.isGuaranteedCapture,
-            purchasable: item.purchasable,
-            buyPrice: item.buyPrice,
-            dailyStockLimit: item.dailyStockLimit,
-            description: item.description,
-            emoji: item.emoji,
-            enabled: item.enabled,
-          },
-        });
+        .values({ slug: item.slug, ...mutable })
+        .onConflictDoUpdate({ target: items.slug, set: mutable });
     }
 
     const itemSlugs = content.items.map((i) => i.slug);

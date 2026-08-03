@@ -23,6 +23,8 @@ import { createHuntService } from './modules/hunt/huntService';
 import { createCaptureService } from './modules/capture/captureService';
 import { createCareService } from './modules/care/careService';
 import { createCollectionService } from './modules/collection/collectionService';
+import { createPlayerEffectsService } from './modules/effects/playerEffectsService';
+import { createItemUseService } from './modules/items/itemUseService';
 import { createProgressionService } from './modules/progression/progressionService';
 import { createQuestService } from './modules/quests/questService';
 import { createSessionService } from './modules/session/sessionService';
@@ -88,6 +90,7 @@ async function main(): Promise<void> {
     quests,
     careConfig: content.tables.energy.careMode,
   });
+  const effects = createPlayerEffectsService(db);
   const ctx: AppContext = {
     config,
     logger,
@@ -134,11 +137,21 @@ async function main(): Promise<void> {
         buddyAffinityConfig: content.tables.buddyAffinity,
         collection,
         quests,
+        effects,
         logger,
       }),
       care,
       collection,
       quests,
+      effects,
+      itemUse: createItemUseService({
+        db,
+        currency,
+        inventory,
+        effects,
+        progression,
+        care,
+      }),
       session: createSessionService({
         db,
         timezone: config.dailyTimezone,
@@ -156,6 +169,11 @@ async function main(): Promise<void> {
   const client = createDiscordClient(ctx);
   await client.login(config.discordToken);
 
+  // Admin "Save + Reload" re-seeds Postgres *and* republishes the in-memory
+  // content snapshot, so item/species metadata rendered from `ctx.content`
+  // (shop rows, charm buttons, effect labels) goes live without a restart.
+  // tables.json tuning is still baked into service closures at construction —
+  // that part genuinely needs a restart, and the panel says so.
   const adminServer = await startAdminServer({
     config: config.adminWeb,
     logger,
@@ -163,7 +181,11 @@ async function main(): Promise<void> {
       contentDir: config.contentDir,
       assetsDir: config.assetsDir,
       logger,
-      reload: reloadContent,
+      reload: async () => {
+        const result = await reloadContent();
+        ctx.content = result.content;
+        return result;
+      },
     }),
   });
 

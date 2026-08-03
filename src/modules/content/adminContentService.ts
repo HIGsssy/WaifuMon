@@ -575,6 +575,22 @@ export function createAdminContentService(deps: AdminContentServiceDeps): AdminC
       }
     }
 
+    // Shop-facing item problems: a disabled item never reaches the shop, and a
+    // usable item nobody can obtain is almost always an editing mistake.
+    for (const item of raw.items) {
+      if (item.purchasable && !item.enabled) {
+        warnings.push(
+          `items: "${item.slug}" is purchasable but disabled — it will not appear in the shop`,
+        );
+      }
+      if (item.effectType != null && !['capture', 'consumable'].includes(item.category)) {
+        warnings.push(
+          `items: "${item.slug}" has effectType "${item.effectType}" but category "${item.category}" — ` +
+            'only capture and consumable items are listed in the shop',
+        );
+      }
+    }
+
     const t = raw.tables;
     const resultWeight = t.hunt.resultTable.reduce((a, r) => a + r.weight, 0);
     if (resultWeight <= 0) warnings.push('hunt.resultTable: total weight is 0 — hunts cannot roll');

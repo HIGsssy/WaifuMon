@@ -6,15 +6,21 @@
  * an item and mutates state. The inventory service's conditional decrement +
  * CHECK (quantity >= 0) is a second line of defense against double-spend.
  *
- * Capture math (plan §9 + Milestone 5D):
+ * Capture math (plan §9 + Milestone 5D + the shop/items expansion):
  *   guaranteed  → chance = 1.0 (Mythic Contract bypasses the formula)
  *   otherwise   → chance = clamp(
- *                   baseCaptureRate × captureModifier + buddyAffinityModifier,
+ *                   baseCaptureRate × captureModifier
+ *                     + buddyAffinityModifier
+ *                     + captureBonusModifier,
  *                   min, max)
  * `baseCaptureRate` uses the species override when set, otherwise the
  * rarity default from content/tables.json. The buddy-affinity term is flat,
  * additive, scaled by the *buddy's* rarity, and 0 whenever there is no active
- * buddy or the matchup isn't strong. Event modifiers remain reserved.
+ * buddy or the matchup isn't strong. `captureBonusModifier` is the active
+ * consumable buff (Microdose); one charge is spent per *resolved* attempt,
+ * inside this same transaction and under the encounter row lock — so a
+ * double-clicked charm can never spend two charges for one attempt.
+ * Event modifiers remain reserved.
  */
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import type { Db } from '../../db/client';
@@ -51,6 +57,7 @@ import type {
   ProgressionService,
 } from '../progression/progressionService';
 import type { BuddyAffinityConfig, ProgressionConfig } from '../content/schemas';
+import type { PlayerEffectsService } from '../effects/playerEffectsService';
 import type { QuestService } from '../quests/questService';
 import type { Affinity, Rarity } from '../../db/schema';
 
@@ -70,6 +77,21 @@ export interface CaptureAffinityInfo {
   finalChance: number;
 }
 
+/**
+ * Consumable capture buff applied to one attempt. Present only when a buff was
+ * actually active *and* eligible to be spent — guaranteed captures bypass the
+ * chance formula entirely, so they deliberately leave charges untouched
+ * (spending one would buy the player nothing).
+ */
+export interface CaptureEffectInfo {
+  sourceItemSlug: string;
+  captureBonusModifier: number;
+  chargesBefore: number;
+  chargesRemaining: number;
+  /** True when this attempt spent the final charge and the buff ended. */
+  cleared: boolean;
+}
+
 export interface CaptureAttemptResult {
   outcome: CaptureOutcome;
   attempt: CaptureAttemptRow;
@@ -87,6 +109,8 @@ export interface CaptureAttemptResult {
   isNewDex: boolean;
   /** Buddy-affinity read applied to this attempt (Milestone 5D). */
   affinity: CaptureAffinityInfo;
+  /** Consumable capture buff spent on this attempt; null when none applied. */
+  effect: CaptureEffectInfo | null;
 }
 
 export interface CaptureService {
@@ -117,6 +141,8 @@ export interface CaptureServiceDeps {
   /** Used to resolve (and self-heal) the player's active buddy in-transaction. */
   collection: CollectionService;
   quests: QuestService;
+  /** Consumable capture buffs (Microdose). Charges are spent per attempt. */
+  effects: PlayerEffectsService;
   logger: Logger;
   rng?: Rng;
 }
@@ -131,6 +157,7 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
     buddyAffinityConfig,
     collection,
     quests,
+    effects,
     logger,
   } = deps;
   const rng = deps.rng ?? defaultRng();
@@ -202,6 +229,25 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
           : null;
         const buddyAffinityModifier = resolution?.modifier ?? 0;
 
+        // Consumable capture buff (Microdose). Spent here — after the
+        // encounter passed validation and the charm was consumed, so it can
+        // only be charged for an attempt that actually resolves. Guaranteed
+        // captures skip it: the formula is bypassed, so a charge would buy
+        // nothing.
+        const consumed = guaranteed
+          ? null
+          : await effects.consumeCaptureCharge(tx, playerId, now);
+        const captureBonusModifier = consumed?.modifier ?? 0;
+        const effect: CaptureEffectInfo | null = consumed
+          ? {
+              sourceItemSlug: consumed.sourceItemSlug,
+              captureBonusModifier: consumed.modifier,
+              chargesBefore: consumed.chargesBefore,
+              chargesRemaining: consumed.chargesRemaining,
+              cleared: consumed.cleared,
+            }
+          : null;
+
         const chance = computeCaptureChance({
           guaranteed,
           baseCaptureRate: speciesRow.baseCaptureRate,
@@ -209,6 +255,7 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
           captureModifier: item.captureModifier,
           config: captureConfig,
           buddyAffinityModifier,
+          captureBonusModifier,
         });
         const affinity: CaptureAffinityInfo = {
           buddyWaifuId: buddy?.waifu.id ?? null,
@@ -295,6 +342,7 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
               isNewDex,
               xpDelta,
               affinity,
+              effect,
             },
             'capture success',
           );
@@ -343,6 +391,11 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
             affinityMatchup: affinity.matchup,
             buddyAffinityModifier: affinity.buddyAffinityModifier,
             finalChance: affinity.finalChance,
+            // Consumable buff audit trail — mirrors the affinity fields so a
+            // single progression-event row explains the whole chance.
+            captureBonusModifier: effect?.captureBonusModifier ?? 0,
+            captureBonusSource: effect?.sourceItemSlug ?? null,
+            captureBonusChargesRemaining: effect?.chargesRemaining ?? null,
           },
         });
         // "new dex entry" is logged separately for audit clarity.
@@ -387,6 +440,7 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
             levelUps: xpResult.levelUps,
             isNewDex,
             affinity,
+            effect,
           },
         };
       });

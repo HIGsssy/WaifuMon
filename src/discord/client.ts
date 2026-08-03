@@ -4,6 +4,7 @@ import type { AppContext } from './types';
 import {
   handleDaily,
   handleInventory,
+  handleItemUse,
   handleMenu,
   handleMenuStart,
   handleProfile,
@@ -144,6 +145,8 @@ export function createDiscordClient(ctx: AppContext): Client {
       'menu:start': (i: ButtonInteraction, prov: Provisioned) => handleMenuStart(ctx, i, prov),
       'shop:buy': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleShopBuy(ctx, i, prov, args[0] ?? ''),
+      'item:use': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleItemUse(ctx, i, prov, args[0] ?? ''),
       'quests:claim_all': (i: ButtonInteraction, prov: Provisioned) =>
         handleQuestsClaimAll(ctx, i, prov),
       'care:start': (i: ButtonInteraction, prov: Provisioned) =>

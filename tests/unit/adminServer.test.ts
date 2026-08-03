@@ -411,6 +411,198 @@ describe('item routes', () => {
     expect(res.body).toContain('hunt.itemFind');
     expect(res.body).toContain('dailyPackage.items');
   });
+
+  it('lists the utility items with their effect type and priced currency', async () => {
+    const res = await app.inject({ method: 'GET', url: '/admin/items', headers: bearer });
+    expect(res.body).toContain('energy_drink');
+    expect(res.body).toContain('restore_energy_full');
+    expect(res.body).toContain('microdose');
+    expect(res.body).toContain('capture_bonus_charges');
+    expect(res.body).toContain('40 Essence');
+    expect(res.body).toContain('500 WB');
+  });
+
+  it('renders typed effect and currency fields on the item edit page', async () => {
+    const res = await app.inject({ method: 'GET', url: '/admin/items/microdose', headers: bearer });
+    expect(res.statusCode).toBe(200);
+    for (const field of [
+      'data-field="effectType"',
+      'data-field="effectConfig.captureBonus"',
+      'data-field="effectConfig.charges"',
+      'data-field="effectConfig.refreshBehavior"',
+      'data-field="priceCurrency"',
+      'data-field="buyPrice"',
+      'data-field="enabled"',
+    ]) {
+      expect(res.body, field).toContain(field);
+    }
+    // Both effect blocks are rendered; the page script hides + disables the
+    // one that doesn't match the selected type.
+    expect(res.body).toContain('data-effect-block="restore_energy_full"');
+    expect(res.body).toContain('data-effect-block="capture_bonus_charges"');
+  });
+});
+
+describe('item effect editing', () => {
+  const energyDrink = (overrides: Record<string, unknown> = {}): Record<string, unknown> =>
+    validItemInput({
+      slug: 'test_energy_drink',
+      name: 'Test Energy Drink',
+      category: 'consumable',
+      purchasable: true,
+      buyPrice: 500,
+      priceCurrency: 'waifubux',
+      effectType: 'restore_energy_full',
+      effectConfig: { restoreToMax: true, exitCareMode: true },
+      ...overrides,
+    });
+
+  const microdose = (overrides: Record<string, unknown> = {}): Record<string, unknown> =>
+    validItemInput({
+      slug: 'test_microdose',
+      name: 'Test Microdose',
+      category: 'consumable',
+      purchasable: true,
+      buyPrice: 40,
+      priceCurrency: 'essence',
+      effectType: 'capture_bonus_charges',
+      effectConfig: { captureBonus: 0.03, charges: 5, refreshBehavior: 'refresh' },
+      ...overrides,
+    });
+
+  const postItem = (payload: Record<string, unknown>, url = '/admin/items') =>
+    app.inject({ method: 'POST', url, headers: bearer, payload });
+
+  it('accepts a restore_energy_full item', async () => {
+    const res = await postItem(energyDrink());
+    expect(res.statusCode).toBe(200);
+    expect(f.service.findItem('test_energy_drink')).toMatchObject({
+      effectType: 'restore_energy_full',
+      effectConfig: { restoreToMax: true, exitCareMode: true },
+      priceCurrency: 'waifubux',
+    });
+  });
+
+  it('accepts a capture_bonus_charges item', async () => {
+    const res = await postItem(microdose());
+    expect(res.statusCode).toBe(200);
+    expect(f.service.findItem('test_microdose')).toMatchObject({
+      effectType: 'capture_bonus_charges',
+      effectConfig: { captureBonus: 0.03, charges: 5, refreshBehavior: 'refresh' },
+      priceCurrency: 'essence',
+    });
+  });
+
+  it('rejects an out-of-range captureBonus', async () => {
+    for (const captureBonus of [0.9, -0.01, 'lots']) {
+      const res = await postItem(
+        microdose({
+          slug: 'test_bad_bonus',
+          effectConfig: { captureBonus, charges: 5 },
+        }),
+      );
+      expect(res.statusCode, String(captureBonus)).toBe(400);
+      expect(res.json().errors.join(' ')).toContain('captureBonus');
+    }
+    expect(f.service.findItem('test_bad_bonus')).toBeUndefined();
+  });
+
+  it('rejects non-positive / fractional charges', async () => {
+    for (const charges of [0, -3, 2.5]) {
+      const res = await postItem(
+        microdose({
+          slug: 'test_bad_charges',
+          effectConfig: { captureBonus: 0.03, charges },
+        }),
+      );
+      expect(res.statusCode, String(charges)).toBe(400);
+      expect(res.json().errors.join(' ')).toContain('charges');
+    }
+    expect(f.service.findItem('test_bad_charges')).toBeUndefined();
+  });
+
+  it('rejects capture-only fields on a restore_energy_full item', async () => {
+    const res = await postItem(
+      energyDrink({
+        slug: 'test_mixed_effect',
+        effectConfig: { restoreToMax: true, captureBonus: 0.03, charges: 5 },
+      }),
+    );
+    expect(res.statusCode).toBe(400);
+    expect(res.json().errors.join(' ')).toMatch(/captureBonus|unrecognized/i);
+    expect(f.service.findItem('test_mixed_effect')).toBeUndefined();
+  });
+
+  it('rejects a capture_bonus_charges item missing its required fields', async () => {
+    const res = await postItem(microdose({ slug: 'test_empty_effect', effectConfig: {} }));
+    expect(res.statusCode).toBe(400);
+    expect(res.json().errors.join(' ')).toContain('captureBonus');
+  });
+
+  it('rejects an unknown effect type and an unsupported currency', async () => {
+    const badEffect = await postItem(
+      microdose({ slug: 'test_bad_effect_type', effectType: 'mind_control' }),
+    );
+    expect(badEffect.statusCode).toBe(400);
+
+    const badCurrency = await postItem(
+      microdose({ slug: 'test_bad_currency', priceCurrency: 'doubloons' }),
+    );
+    expect(badCurrency.statusCode).toBe(400);
+    expect(badCurrency.json().errors.join(' ')).toContain('priceCurrency');
+  });
+
+  it('rejects a non-positive-integer price', async () => {
+    for (const buyPrice of [0, -25, 12.5]) {
+      const res = await postItem(microdose({ slug: 'test_bad_price', buyPrice }));
+      expect(res.statusCode, String(buyPrice)).toBe(400);
+      expect(res.json().errors.join(' ')).toContain('buyPrice');
+    }
+  });
+
+  it('treats a blank effectType from the form as "no effect"', async () => {
+    const res = await postItem(
+      validItemInput({ slug: 'test_plain_item', effectType: '', effectConfig: {} }),
+    );
+    expect(res.statusCode).toBe(200);
+    expect(f.service.findItem('test_plain_item')).toMatchObject({
+      effectType: null,
+      effectConfig: null,
+    });
+  });
+
+  it('warns when a purchasable item is disabled', async () => {
+    await app.inject({
+      method: 'POST',
+      url: '/admin/items/energy_drink/toggle-enabled',
+      headers: bearer,
+    });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/admin/validate-content',
+      headers: bearer,
+    });
+    expect(res.json().ok).toBe(true);
+    expect(res.json().warnings.join(' ')).toContain('energy_drink');
+  });
+
+  it('Save + Reload hands the edited items to the shared reloader', async () => {
+    const saved = await postItem(microdose({ slug: 'test_reload_item' }));
+    expect(saved.statusCode).toBe(200);
+
+    const reload = await app.inject({
+      method: 'POST',
+      url: '/admin/reload-content',
+      headers: bearer,
+    });
+    expect(reload.statusCode).toBe(200);
+    expect(f.reloadCalls).toBe(1);
+    // The reloader reads from disk, so the edit must already be on disk.
+    const onDisk = (f.readItems().items as Array<Record<string, unknown>>).find(
+      (i) => i.slug === 'test_reload_item',
+    );
+    expect(onDisk).toMatchObject({ effectType: 'capture_bonus_charges' });
+  });
 });
 
 describe('tables and quest routes', () => {

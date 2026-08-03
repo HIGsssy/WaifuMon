@@ -18,6 +18,8 @@ import type { HuntService } from '../modules/hunt/huntService';
 import type { CaptureService } from '../modules/capture/captureService';
 import type { CareService } from '../modules/care/careService';
 import type { CollectionService } from '../modules/collection/collectionService';
+import type { PlayerEffectsService } from '../modules/effects/playerEffectsService';
+import type { ItemUseService } from '../modules/items/itemUseService';
 import type { ProgressionService } from '../modules/progression/progressionService';
 import type { QuestService } from '../modules/quests/questService';
 import type { SessionService } from '../modules/session/sessionService';
@@ -36,12 +38,21 @@ export interface AppServices {
   progression: ProgressionService;
   quests: QuestService;
   session: SessionService;
+  /** Active consumable buffs (Microdose charges). */
+  effects: PlayerEffectsService;
+  /** "Use" an inventory consumable (Energy Drink, Microdose). */
+  itemUse: ItemUseService;
 }
 
 export interface AppContext {
   config: AppConfig;
   logger: Logger;
   db: Db;
+  /**
+   * In-memory content snapshot. Republished by the admin panel's Reload
+   * Content action, so handlers must read `ctx.content` at call time rather
+   * than destructuring it once at wiring time.
+   */
   content: LoadedContent;
   services: AppServices;
 }

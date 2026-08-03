@@ -65,6 +65,7 @@ import type { AppContext, PlayerInteraction, Provisioned } from '../types';
 import { buildCustomId } from '../types';
 import { paintSession, respondEphemeral, type SessionPayload } from '../sessionUi';
 import { withBackRow } from '../ui';
+import { formatCaptureBonus, renderCaptureBonusLine } from './waifumon';
 import { duplicatePromptComponents } from './waifumonCollection';
 
 const EPHEMERAL = { flags: MessageFlags.Ephemeral } as const;
@@ -203,6 +204,15 @@ async function buildEncounterView(
     .setFooter({ text: footer });
   if (affinityRead) {
     embed.addFields({ name: '🤝 Buddy', value: affinityRead, inline: false });
+  }
+
+  // Active consumable buff (Microdose): show the bonus and charges *before*
+  // the player commits a charm, so the decision is informed.
+  const captureBonus = await ctx.services.effects.getCaptureBonus(prov.playerId);
+  if (captureBonus) {
+    const meta = ctx.content.items.find((i) => i.slug === captureBonus.sourceItemSlug);
+    const line = renderCaptureBonusLine(captureBonus, meta?.name, meta?.emoji ?? null);
+    if (line) embed.addFields({ name: '⏳ Active Effect', value: line, inline: false });
   }
 
   const files: AttachmentBuilder[] = [];
@@ -591,6 +601,23 @@ function buildEphemeralOutcomeMessage(
     embed.addFields({
       name: '🤝 Buddy Bonus',
       value: `${detail}\nCapture chance: **${formatChancePercent(result.affinity.finalChance)}**`,
+      inline: false,
+    });
+  }
+  // Consumable capture buff: report the bonus that was applied, the charge
+  // just spent, and what's left (or that the buff has now ended).
+  if (result.effect) {
+    const { sourceItemSlug, captureBonusModifier, chargesRemaining, cleared } = result.effect;
+    const meta = ctx.content.items.find((i) => i.slug === sourceItemSlug);
+    const name = meta?.name ?? sourceItemSlug;
+    const tail = cleared
+      ? 'last charge spent — the effect has worn off.'
+      : `**${chargesRemaining}** charge${chargesRemaining === 1 ? '' : 's'} left.`;
+    embed.addFields({
+      name: `${meta?.emoji ?? '💊'} ${name}`,
+      value:
+        `${formatCaptureBonus(captureBonusModifier)} capture chance applied · 1 charge used — ${tail}\n` +
+        `Capture chance: **${formatChancePercent(result.affinity.finalChance)}**`,
       inline: false,
     });
   }

@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { items, shopTransactions } from '../../src/db/schema';
 import {
+  InsufficientEssenceError,
   InsufficientFundsError,
   InventoryCapacityError,
   ItemNotFoundError,
@@ -22,10 +23,10 @@ afterAll(async () => {
 });
 
 describe('shop catalog', () => {
-  it('lists all 5 capture items: 3 buyable, Prismatic unavailable, Mythic not for sale', async () => {
+  it('lists the 5 capture items plus the utility consumables', async () => {
     const catalog = await app.shop.getCatalog();
     const bySlug = new Map(catalog.map((e) => [e.item.slug, e]));
-    expect(catalog).toHaveLength(5);
+    expect(catalog).toHaveLength(7);
     for (const slug of ['basic_charm', 'silk_charm', 'velvet_charm']) {
       expect(bySlug.get(slug)?.available).toBe(true);
     }
@@ -33,6 +34,13 @@ describe('shop catalog', () => {
     expect(bySlug.get('prismatic_charm')?.availabilityNote).toBe('Unavailable');
     expect(bySlug.get('mythic_contract')?.available).toBe(false);
     expect(bySlug.get('mythic_contract')?.availabilityNote).toBe('Not for sale');
+  });
+
+  it('exposes each entry with the currency its price is denominated in', async () => {
+    const bySlug = new Map((await app.shop.getCatalog()).map((e) => [e.item.slug, e]));
+    expect(bySlug.get('basic_charm')).toMatchObject({ available: true, currency: 'waifubux' });
+    expect(bySlug.get('energy_drink')).toMatchObject({ available: true, currency: 'waifubux' });
+    expect(bySlug.get('microdose')).toMatchObject({ available: true, currency: 'essence' });
   });
 });
 
@@ -131,6 +139,75 @@ describe('shop purchase', () => {
       .from(shopTransactions)
       .where(eq(shopTransactions.playerId, playerId));
     expect(audits).toHaveLength(0);
+  });
+
+  it('buys an Essence-priced item from the Essence balance, leaving WaifuBux alone', async () => {
+    const { playerId } = await provisionPlayer(app, 'g-shop', 'u-essence');
+    await app.currency.grantEssence(t.db, playerId, 100);
+    await app.currency.grantWaifubux(t.db, playerId, 100);
+
+    const result = await app.shop.purchase(playerId, 'microdose');
+    expect(result.currency).toBe('essence');
+    expect(result.totalPrice).toBe(40);
+    expect(result.balanceAfter).toBe(60);
+
+    const balances = await app.currency.getBalances(playerId);
+    expect(balances.essence).toBe(60);
+    expect(balances.waifubux).toBe(100); // untouched
+
+    const [audit] = await t.db
+      .select()
+      .from(shopTransactions)
+      .where(eq(shopTransactions.playerId, playerId));
+    expect(audit).toMatchObject({ currency: 'essence', totalPrice: 40, balanceAfter: 60 });
+  });
+
+  it('buys a WaifuBux-priced consumable and records waifubux on the audit row', async () => {
+    const { playerId } = await provisionPlayer(app, 'g-shop', 'u-drink');
+    await app.currency.grantWaifubux(t.db, playerId, 600);
+
+    const result = await app.shop.purchase(playerId, 'energy_drink');
+    expect(result).toMatchObject({ currency: 'waifubux', totalPrice: 500, balanceAfter: 100 });
+
+    const drink = await getItemBySlug(t.db, 'energy_drink');
+    expect(await app.inventory.getQuantity(playerId, drink.id)).toBe(1);
+    const [audit] = await t.db
+      .select()
+      .from(shopTransactions)
+      .where(eq(shopTransactions.playerId, playerId));
+    expect(audit?.currency).toBe('waifubux');
+  });
+
+  it('blocks an Essence purchase with insufficient Essence — even when rich in WaifuBux', async () => {
+    const { playerId } = await provisionPlayer(app, 'g-shop', 'u-no-essence');
+    await app.currency.grantWaifubux(t.db, playerId, 100_000);
+    await app.currency.grantEssence(t.db, playerId, 39);
+
+    await expect(app.shop.purchase(playerId, 'microdose')).rejects.toBeInstanceOf(
+      InsufficientEssenceError,
+    );
+
+    // Nothing partially granted: no item, no spend, no audit row.
+    const microdose = await getItemBySlug(t.db, 'microdose');
+    expect(await app.inventory.getQuantity(playerId, microdose.id)).toBe(0);
+    const balances = await app.currency.getBalances(playerId);
+    expect(balances.essence).toBe(39);
+    expect(balances.waifubux).toBe(100_000);
+    const audits = await t.db
+      .select()
+      .from(shopTransactions)
+      .where(eq(shopTransactions.playerId, playerId));
+    expect(audits).toHaveLength(0);
+  });
+
+  it('does not count consumables against the capture-item capacity', async () => {
+    const { playerId } = await provisionPlayer(app, 'g-shop', 'u-consumable-cap');
+    await app.currency.grantWaifubux(t.db, playerId, 5_000);
+    const basic = await getItemBySlug(t.db, 'basic_charm');
+    await app.inventory.addItem(t.db, playerId, basic.id, 50); // capture items at the cap
+
+    const result = await app.shop.purchase(playerId, 'energy_drink');
+    expect(result.ownedAfter).toBe(1);
   });
 
   it('concurrent purchases drain the balance without ever going negative', async () => {

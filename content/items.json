@@ -64,6 +64,45 @@
       "description": "A binding pact. Guarantees capture. Never sold — only found or granted.",
       "emoji": "📜",
       "enabled": true
+    },
+    {
+      "slug": "energy_drink",
+      "name": "Energy Drink",
+      "category": "consumable",
+      "captureModifier": null,
+      "isGuaranteedCapture": false,
+      "purchasable": true,
+      "buyPrice": 500,
+      "priceCurrency": "waifubux",
+      "dailyStockLimit": null,
+      "effectType": "restore_energy_full",
+      "effectConfig": {
+        "restoreToMax": true,
+        "exitCareMode": true
+      },
+      "description": "Aggressively carbonated. Refills Hunt Energy to full and snaps you out of Care Mode.",
+      "emoji": "🥤",
+      "enabled": true
+    },
+    {
+      "slug": "microdose",
+      "name": "Microdose",
+      "category": "consumable",
+      "captureModifier": null,
+      "isGuaranteedCapture": false,
+      "purchasable": true,
+      "buyPrice": 40,
+      "priceCurrency": "essence",
+      "dailyStockLimit": null,
+      "effectType": "capture_bonus_charges",
+      "effectConfig": {
+        "captureBonus": 0.03,
+        "charges": 5,
+        "refreshBehavior": "refresh"
+      },
+      "description": "A shimmer of borrowed confidence. +3% capture chance for your next 5 capture attempts.",
+      "emoji": "💊",
+      "enabled": true
     }
   ]
 }

@@ -229,6 +229,21 @@ export function registerRoutes(app: FastifyInstance, content: AdminContentServic
 
   // ── items ──────────────────────────────────────────────────────────────────
 
+  /**
+   * Form-shape fixups only — never validation. The item form always renders a
+   * per-effect-type config block, so a blank `effectType` select arrives as
+   * `''` and must become `null`, and an item with no effect must carry no
+   * config at all. Everything else (including "capture fields on a
+   * restore_energy_full item") is left for the schema to reject, so a
+   * hand-crafted POST gets the same errors the form would.
+   */
+  function normalizeItemBody(input: unknown): Record<string, unknown> {
+    const body = { ...((input ?? {}) as Record<string, unknown>) };
+    if (body.effectType === '' || body.effectType == null) body.effectType = null;
+    if (body.effectType == null) body.effectConfig = null;
+    return body;
+  }
+
   app.get('/admin/items', async (_req, reply) => {
     const raw = content.readRaw();
     const rows = raw.items.map((item) => ({
@@ -248,7 +263,7 @@ export function registerRoutes(app: FastifyInstance, content: AdminContentServic
 
   app.post('/admin/items', async (req, reply) => {
     try {
-      const result = content.createItem(req.body);
+      const result = content.createItem(normalizeItemBody(req.body));
       return reply.send({
         ok: true,
         message: `Created (backup: ${result.backup ?? 'none'}).`,
@@ -261,7 +276,7 @@ export function registerRoutes(app: FastifyInstance, content: AdminContentServic
 
   app.post<{ Params: { slug: string } }>('/admin/items/:slug', async (req, reply) => {
     try {
-      const result = content.updateItem(req.params.slug, req.body);
+      const result = content.updateItem(req.params.slug, normalizeItemBody(req.body));
       const nextSlug = str((req.body as Record<string, unknown>)?.slug);
       return reply.send({
         ok: true,
