@@ -103,37 +103,47 @@ Two things differ:
    dashboard shows a read-only banner, and saves fail with an explicit message
    instead of an opaque 500. Browsing, validation and reload still work.
 
-2. **Two binds have to line up.** `ADMIN_WEB_HOST` controls the bind *inside*
-   the container's network namespace; the compose `ports:` mapping controls the
-   bind on the *host*. Getting one right and omitting the other is the usual
-   cause of a connection timeout:
+2. **Two binds have to line up**, and both come from `.env`:
 
-   | `ADMIN_WEB_HOST` | `ports:` | Result |
+   | Variable | Meaning |
+   | --- | --- |
+   | `ADMIN_WEB_HOST` | The bind *inside* the container's network namespace. Must be `0.0.0.0` under Docker. |
+   | `ADMIN_WEB_PUBLISH_HOST` | The host address compose publishes the port on. **This is the real security boundary.** |
+
+   Getting one right and omitting the other is the usual cause of a connection
+   timeout:
+
+   | `ADMIN_WEB_HOST` | `ADMIN_WEB_PUBLISH_HOST` | Result |
    | --- | --- | --- |
-   | `127.0.0.1` | any | Unreachable — loopback inside the container is its own namespace |
-   | `0.0.0.0` | *(omitted)* | Unreachable — the log says "listening", but nothing is published to the host |
-   | `0.0.0.0` | `'127.0.0.1:3111:3111'` | Host loopback only → SSH tunnel |
-   | `0.0.0.0` | `'100.x.y.z:3111:3111'` | The host's tailnet IP → reachable over Tailscale |
-   | `0.0.0.0` | `'3111:3111'` | **Every interface, including public. Do not use.** |
+   | `127.0.0.1` | anything | Unreachable — loopback inside the container is its own namespace |
+   | `0.0.0.0` | *(no `ports:` mapping)* | Unreachable — the log says "listening", but nothing is published to the host |
+   | `0.0.0.0` | `127.0.0.1` | Host loopback only → SSH tunnel |
+   | `0.0.0.0` | `100.x.y.z` | The host's tailnet IP → reachable over Tailscale |
+   | `0.0.0.0` | `0.0.0.0` | **Every interface, including public. Do not use.** |
 
-   The `ports:` address is the real security boundary — `ADMIN_WEB_HOST=0.0.0.0`
-   is unavoidable in a container and does not by itself expose anything. The
-   startup warning about a non-loopback bind is expected under Docker.
+   `ADMIN_WEB_HOST=0.0.0.0` is unavoidable in a container and does not by itself
+   expose anything, so the startup warning about a non-loopback bind is expected
+   under Docker.
 
-   Note that Docker inserts published ports ahead of `ufw`/iptables rules, so an
-   unqualified `'3111:3111'` is reachable from the internet even with a firewall
-   enabled. Always qualify the host address.
+   Docker inserts published ports **ahead of** `ufw`/iptables rules, so
+   publishing on `0.0.0.0` is reachable from the internet even with a firewall
+   enabled. Always set `ADMIN_WEB_PUBLISH_HOST` to a specific address.
 
 ### Over Tailscale
 
-Publish the port on the host's own tailnet IP (`tailscale ip -4`):
+Find the host's own tailnet address with `tailscale ip -4`, then in `.env`:
 
-```yaml
-ports:
-  - '100.82.22.79:3111:3111'
+```sh
+ADMIN_WEB_ENABLED=true
+ADMIN_WEB_HOST=0.0.0.0
+ADMIN_WEB_PORT=3111
+ADMIN_WEB_PUBLISH_HOST=100.82.22.79
+ADMIN_WEB_TOKEN=<your token>
 ```
 
-Then browse to `http://100.82.22.79:3111/admin` from any device on the tailnet.
+`docker compose up -d`, then browse to `http://100.82.22.79:3111/admin` from any
+device on the tailnet.
+
 This keeps the panel off the public internet, but it is reachable by **every**
 node on your tailnet — restrict it with a Tailscale ACL if that tailnet has
 devices you don't fully control. It is still plain HTTP with one shared token;

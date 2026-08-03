@@ -21,18 +21,19 @@ services:
       # timestamped backups here. Mounted rather than baked in so edits survive
       # a rebuild and stay visible to git. Harmless when the panel is disabled.
       - ./content:/app/content
-    # Admin web panel only. Two separate things have to line up:
-    #   1. ADMIN_WEB_HOST=0.0.0.0 in .env — the bind *inside* the container's
-    #      network namespace. Loopback there is unreachable from outside it.
-    #   2. A ports mapping below — the bind on the *host*. Without this the
-    #      panel is not reachable at all, however it is bound in the container.
-    # Choose the host address deliberately; it is the real security boundary:
-    # ports:
-    #   - '127.0.0.1:3111:3111'      # SSH tunnel only (ssh -L 3111:127.0.0.1:3111)
-    #   - '100.x.y.z:3111:3111'      # Tailscale: the host's own tailnet IP
-    #   - '3111:3111'                # every interface, incl. public — do not use
-    # Note: published ports are inserted ahead of ufw/iptables rules, so an
-    # unqualified '3111:3111' is publicly reachable even with a firewall "on".
+    # Admin web panel. Two separate binds have to line up, both driven from .env:
+    #   ADMIN_WEB_HOST         the bind *inside* the container's network
+    #                          namespace. Must be 0.0.0.0 under Docker —
+    #                          loopback there is unreachable from outside it.
+    #   ADMIN_WEB_PUBLISH_HOST the host address the port is published on. This
+    #                          is the real security boundary. Defaults to
+    #                          loopback (SSH-tunnel only); set it to the host's
+    #                          tailnet IP for Tailscale. Never set it to
+    #                          0.0.0.0 — published ports are inserted ahead of
+    #                          ufw/iptables, so that is publicly reachable even
+    #                          with a firewall enabled.
+    ports:
+      - '${ADMIN_WEB_PUBLISH_HOST:-127.0.0.1}:${ADMIN_WEB_PORT:-3111}:${ADMIN_WEB_PORT:-3111}'
 
   postgres:
     image: postgres:16-alpine
