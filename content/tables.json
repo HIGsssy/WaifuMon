@@ -1,12 +1,12 @@
 {
   "energy": {
-    "baseMax": 10,
+    "baseMax": 25,
     "careMode": {
       "enabled": true,
       "intervalMinutes": 30,
       "energyPerTick": 1,
-      "recoveryCap": 8,
-      "waifuXpPerTick": 1,
+      "recoveryCap": 20,
+      "waifuXpPerTick": 2,
       "affectionPerTick": 1
     }
   },
@@ -33,10 +33,10 @@
       { "kind": "flavor", "weight": 2 }
     ],
     "rarityTable": [
-      { "rarity": "N", "weight": 67 },
+      { "rarity": "N", "weight": 60 },
       { "rarity": "R", "weight": 25 },
-      { "rarity": "SR", "weight": 5 },
-      { "rarity": "SSR", "weight": 2 },
+      { "rarity": "SR", "weight": 10 },
+      { "rarity": "SSR", "weight": 4 },
       { "rarity": "UR", "weight": 0.9 },
       { "rarity": "LR", "weight": 0.1 }
     ],
