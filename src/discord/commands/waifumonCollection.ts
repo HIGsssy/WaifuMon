@@ -1,10 +1,10 @@
 /**
  * Collection, inspect, favorite, release, and duplicate-convert UI (M3).
  *
- * Rev 4 UI model: collection list, inspect card, and follow-ups paint the
- * public session board via `paintSession`. Destructive confirmations
- * (release confirm, convert-a-favorite confirm) go ephemeral via
- * `respondEphemeral` so a mis-click can't publicly bin a favorite copy.
+ * Every screen here is ephemeral (`respondEphemeral`): the collection list,
+ * the inspect card, and the destructive confirmations (release, convert a
+ * favorite) are all private to the player, so a mis-click is never a public
+ * event and browsing someone's collection is never a channel spam source.
  */
 import {
   ActionRowBuilder,
@@ -36,7 +36,7 @@ import {
 } from '../../shared/errors';
 import type { AppContext, PlayerInteraction, Provisioned } from '../types';
 import { buildCustomId } from '../types';
-import { paintSession, respondEphemeral } from '../sessionUi';
+import { respondEphemeral } from '../ephemeralSession';
 import { withBackRow } from '../ui';
 
 const CARD_FILENAME = 'card.png';
@@ -167,7 +167,7 @@ export async function handleCollection(
   prov: Provisioned,
 ): Promise<void> {
   const view = await buildCollectionScreen(ctx, prov.playerId, 1);
-  await paintSession(ctx, interaction, prov, view);
+  await respondEphemeral(interaction, view);
 }
 
 /** col:page button — swap page in place. */
@@ -179,7 +179,7 @@ export async function handleCollectionPage(
 ): Promise<void> {
   const pageNum = Math.max(1, Number(args[0]) || 1);
   const view = await buildCollectionScreen(ctx, prov.playerId, pageNum);
-  await paintSession(ctx, interaction, prov, view);
+  await respondEphemeral(interaction, view);
 }
 
 /** col:pick select — inspect chosen waifu. */
@@ -190,7 +190,7 @@ export async function handleCollectionPick(
 ): Promise<void> {
   const picked = Number(interaction.values[0]);
   if (!Number.isInteger(picked)) {
-    await paintSession(ctx, interaction, prov, {
+    await respondEphemeral(interaction, {
       content: 'That Waifumon is no longer available.',
       components: withBackRow(),
     });
@@ -216,7 +216,7 @@ export async function handleInspectCommand(
   }
   const matches = await ctx.services.collection.searchByName(prov.playerId, raw, 1);
   if (matches.length === 0) {
-    await paintSession(ctx, interaction, prov, {
+    await respondEphemeral(interaction, {
       content: `No Waifumon matching "${raw}" in your collection.`,
       components: withBackRow(),
     });
@@ -358,14 +358,14 @@ async function renderInspect(
     const card = attachCardOr(ctx, species.imagePath, species.slug);
     const files = card ? [card] : [];
     if (card) embed.setImage(`attachment://${CARD_FILENAME}`);
-    await paintSession(ctx, interaction, prov, {
+    await respondEphemeral(interaction, {
       embeds: [embed],
       components: inspectComponents(ctx, entry, isDuplicate, convertEssence, isBuddy),
       files,
     });
   } catch (err) {
     if (err instanceof WaifuNotOwnedError || err instanceof WaifuAlreadyReleasedError) {
-      await paintSession(ctx, interaction, prov, { content: err.userMessage, components: withBackRow() });
+      await respondEphemeral(interaction, { content: err.userMessage, components: withBackRow() });
       return;
     }
     throw err;
@@ -381,7 +381,7 @@ export async function handleWaifuFavorite(
 ): Promise<void> {
   const waifuId = Number(args[0]);
   if (!Number.isInteger(waifuId)) {
-    await paintSession(ctx, interaction, prov, {
+    await respondEphemeral(interaction, {
       content: 'That Waifumon is no longer available.',
       components: withBackRow(),
     });
@@ -391,7 +391,7 @@ export async function handleWaifuFavorite(
     await ctx.services.collection.toggleFavorite(prov.playerId, waifuId);
   } catch (err) {
     if (err instanceof WaifuNotOwnedError || err instanceof WaifuAlreadyReleasedError) {
-      await paintSession(ctx, interaction, prov, { content: err.userMessage, components: withBackRow() });
+      await respondEphemeral(interaction, { content: err.userMessage, components: withBackRow() });
       return;
     }
     throw err;
@@ -423,7 +423,7 @@ export async function handleWaifuRelease(
 ): Promise<void> {
   const waifuId = Number(args[0]);
   if (!Number.isInteger(waifuId)) {
-    await paintSession(ctx, interaction, prov, {
+    await respondEphemeral(interaction, {
       content: 'That Waifumon is no longer available.',
       components: withBackRow(),
     });
@@ -434,7 +434,7 @@ export async function handleWaifuRelease(
     entry = await ctx.services.collection.getOwned(prov.playerId, waifuId);
   } catch (err) {
     if (err instanceof WaifuNotOwnedError || err instanceof WaifuAlreadyReleasedError) {
-      await paintSession(ctx, interaction, prov, { content: err.userMessage, components: withBackRow() });
+      await respondEphemeral(interaction, { content: err.userMessage, components: withBackRow() });
       return;
     }
     throw err;
@@ -451,7 +451,7 @@ export async function handleWaifuRelease(
     .setTitle(`🕊️ Release ${displayName(entry)}?`)
     .setColor(0xff6f6f)
     .setDescription(`${warn}You'll receive **${essence} Essence**. This cannot be undone.`);
-  await paintSession(ctx, interaction, prov, {
+  await respondEphemeral(interaction, {
     embeds: [embed],
     components: [releaseConfirmRow(waifuId, entry.waifu.isFavorite)],
     files: [],
@@ -468,7 +468,7 @@ export async function handleWaifuReleaseConfirm(
   const waifuId = Number(args[0]);
   const force = args[1] === 'force';
   if (!Number.isInteger(waifuId)) {
-    await paintSession(ctx, interaction, prov, {
+    await respondEphemeral(interaction, {
       content: 'That Waifumon is no longer available.',
       components: withBackRow(),
     });
@@ -482,7 +482,7 @@ export async function handleWaifuReleaseConfirm(
       .setDescription(
         `+**${result.essenceGranted}** Essence (balance: ${result.balanceAfter}).`,
       );
-    await paintSession(ctx, interaction, prov, {
+    await respondEphemeral(interaction, {
       embeds: [embed],
       components: withBackRow([
         new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -498,21 +498,21 @@ export async function handleWaifuReleaseConfirm(
     if (err instanceof WaifuIsFavoriteError) {
       // Should be rare — the confirm button we sent already carried force=true
       // for favorites — but stay safe.
-      await paintSession(ctx, interaction, prov, {
+      await respondEphemeral(interaction, {
         content: err.userMessage,
         components: withBackRow(),
       });
       return;
     }
     if (err instanceof WaifuIsBuddyError) {
-      await paintSession(ctx, interaction, prov, {
+      await respondEphemeral(interaction, {
         content: err.userMessage,
         components: withBackRow(),
       });
       return;
     }
     if (err instanceof WaifuNotOwnedError || err instanceof WaifuAlreadyReleasedError) {
-      await paintSession(ctx, interaction, prov, { content: err.userMessage, components: withBackRow() });
+      await respondEphemeral(interaction, { content: err.userMessage, components: withBackRow() });
       return;
     }
     throw err;
@@ -528,7 +528,7 @@ export async function handleCollectionPickId(
 ): Promise<void> {
   const waifuId = Number(args[0]);
   if (!Number.isInteger(waifuId)) {
-    await paintSession(ctx, interaction, prov, {
+    await respondEphemeral(interaction, {
       content: 'That Waifumon is no longer available.',
       components: withBackRow(),
     });
@@ -544,7 +544,7 @@ export async function handleCollectionList(
   prov: Provisioned,
 ): Promise<void> {
   const view = await buildCollectionScreen(ctx, prov.playerId, 1);
-  await paintSession(ctx, interaction, prov, view);
+  await respondEphemeral(interaction, view);
 }
 
 // ───────────────────────────── duplicate prompt ─────────────────────────────
@@ -575,7 +575,7 @@ export async function handleDuplicateKeep(
   interaction: ButtonInteraction,
   prov: Provisioned,
 ): Promise<void> {
-  await paintSession(ctx, interaction, prov, {
+  await respondEphemeral(interaction, {
     content: '💜 Kept in your collection~',
     components: withBackRow(),
   });
@@ -590,7 +590,7 @@ export async function handleDuplicateConvert(
 ): Promise<void> {
   const waifuId = Number(args[0]);
   if (!Number.isInteger(waifuId)) {
-    await paintSession(ctx, interaction, prov, {
+    await respondEphemeral(interaction, {
       content: 'That Waifumon is no longer available.',
       components: withBackRow(),
     });
@@ -610,7 +610,7 @@ export async function handleDuplicateConvert(
       .setDescription(
         `+**${result.essenceGranted}** Essence (balance: ${result.balanceAfter}).`,
       );
-    await paintSession(ctx, interaction, prov, {
+    await respondEphemeral(interaction, {
       embeds: [embed],
       components: withBackRow(),
       files: [],
@@ -621,7 +621,7 @@ export async function handleDuplicateConvert(
       err instanceof WaifuAlreadyReleasedError ||
       err instanceof NotADuplicateError
     ) {
-      await paintSession(ctx, interaction, prov, { content: err.userMessage, components: withBackRow() });
+      await respondEphemeral(interaction, { content: err.userMessage, components: withBackRow() });
       return;
     }
     throw err;
@@ -656,7 +656,7 @@ export async function handleWaifuConvert(
 ): Promise<void> {
   const waifuId = Number(args[0]);
   if (!Number.isInteger(waifuId)) {
-    await paintSession(ctx, interaction, prov, {
+    await respondEphemeral(interaction, {
       content: 'That Waifumon is no longer available.',
       components: withBackRow(),
     });
@@ -667,7 +667,7 @@ export async function handleWaifuConvert(
     entry = await ctx.services.collection.getOwned(prov.playerId, waifuId);
   } catch (err) {
     if (err instanceof WaifuNotOwnedError || err instanceof WaifuAlreadyReleasedError) {
-      await paintSession(ctx, interaction, prov, { content: err.userMessage, components: withBackRow() });
+      await respondEphemeral(interaction, { content: err.userMessage, components: withBackRow() });
       return;
     }
     throw err;
@@ -684,7 +684,7 @@ export async function handleWaifuConvert(
       .setDescription(
         `⚠️ **This is a ★ favorite.** You'll receive **${essence} Essence**. This cannot be undone.`,
       );
-    await paintSession(ctx, interaction, prov, {
+    await respondEphemeral(interaction, {
       embeds: [embed],
       components: [convertConfirmRow(waifuId)],
       files: [],
@@ -704,7 +704,7 @@ export async function handleWaifuConvertConfirm(
   const waifuId = Number(args[0]);
   const force = args[1] === 'force';
   if (!Number.isInteger(waifuId)) {
-    await paintSession(ctx, interaction, prov, {
+    await respondEphemeral(interaction, {
       content: 'That Waifumon is no longer available.',
       components: withBackRow(),
     });
@@ -734,7 +734,7 @@ async function performConvertFromInspect(
       .setDescription(
         `+**${result.essenceGranted}** Essence (balance: ${result.balanceAfter}).`,
       );
-    await paintSession(ctx, interaction, prov, {
+    await respondEphemeral(interaction, {
       embeds: [embed],
       components: withBackRow([
         new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -748,7 +748,7 @@ async function performConvertFromInspect(
     });
   } catch (err) {
     if (err instanceof NotADuplicateError) {
-      await paintSession(ctx, interaction, prov, {
+      await respondEphemeral(interaction, {
         content: err.userMessage,
         components: withBackRow(),
       });
@@ -756,21 +756,21 @@ async function performConvertFromInspect(
     }
     if (err instanceof WaifuIsFavoriteError) {
       // Shouldn't happen — the confirm path passes force=true — but stay safe.
-      await paintSession(ctx, interaction, prov, {
+      await respondEphemeral(interaction, {
         content: err.userMessage,
         components: withBackRow(),
       });
       return;
     }
     if (err instanceof WaifuIsBuddyError) {
-      await paintSession(ctx, interaction, prov, {
+      await respondEphemeral(interaction, {
         content: err.userMessage,
         components: withBackRow(),
       });
       return;
     }
     if (err instanceof WaifuNotOwnedError || err instanceof WaifuAlreadyReleasedError) {
-      await paintSession(ctx, interaction, prov, { content: err.userMessage, components: withBackRow() });
+      await respondEphemeral(interaction, { content: err.userMessage, components: withBackRow() });
       return;
     }
     throw err;
@@ -791,7 +791,7 @@ export async function handleWaifuSetBuddy(
 ): Promise<void> {
   const waifuId = Number(args[0]);
   if (!Number.isInteger(waifuId)) {
-    await paintSession(ctx, interaction, prov, {
+    await respondEphemeral(interaction, {
       content: 'That Waifumon is no longer available.',
       components: withBackRow(),
     });
@@ -801,7 +801,7 @@ export async function handleWaifuSetBuddy(
     await ctx.services.collection.setBuddy(prov.playerId, waifuId);
   } catch (err) {
     if (err instanceof WaifuNotOwnedError || err instanceof WaifuAlreadyReleasedError) {
-      await paintSession(ctx, interaction, prov, { content: err.userMessage, components: withBackRow() });
+      await respondEphemeral(interaction, { content: err.userMessage, components: withBackRow() });
       return;
     }
     throw err;
@@ -818,7 +818,7 @@ export async function handleWaifuInvest(
 ): Promise<void> {
   const waifuId = Number(args[0]);
   if (!Number.isInteger(waifuId)) {
-    await paintSession(ctx, interaction, prov, {
+    await respondEphemeral(interaction, {
       content: 'That Waifumon is no longer available.',
       components: withBackRow(),
     });
@@ -835,11 +835,11 @@ export async function handleWaifuInvest(
     await renderInspect(ctx, interaction, prov, waifuId);
   } catch (err) {
     if (err instanceof InsufficientEssenceError) {
-      await paintSession(ctx, interaction, prov, { content: err.userMessage, components: withBackRow() });
+      await respondEphemeral(interaction, { content: err.userMessage, components: withBackRow() });
       return;
     }
     if (err instanceof WaifuNotOwnedError || err instanceof WaifuAlreadyReleasedError) {
-      await paintSession(ctx, interaction, prov, { content: err.userMessage, components: withBackRow() });
+      await respondEphemeral(interaction, { content: err.userMessage, components: withBackRow() });
       return;
     }
     throw err;
@@ -855,7 +855,7 @@ export async function handleWaifuNicknameOpen(
 ): Promise<void> {
   const waifuId = Number(args[0]);
   if (!Number.isInteger(waifuId)) {
-    await paintSession(ctx, interaction, prov, {
+    await respondEphemeral(interaction, {
       content: 'That Waifumon is no longer available.',
       components: withBackRow(),
     });
@@ -866,14 +866,14 @@ export async function handleWaifuNicknameOpen(
     entry = await ctx.services.collection.getOwned(prov.playerId, waifuId);
   } catch (err) {
     if (err instanceof WaifuNotOwnedError || err instanceof WaifuAlreadyReleasedError) {
-      await paintSession(ctx, interaction, prov, { content: err.userMessage, components: withBackRow() });
+      await respondEphemeral(interaction, { content: err.userMessage, components: withBackRow() });
       return;
     }
     throw err;
   }
   const minLevel = ctx.content.tables.waifuProgression.nicknameMinLevel;
   if (entry.waifu.level < minLevel) {
-    await paintSession(ctx, interaction, prov, {
+    await respondEphemeral(interaction, {
       content: `Nicknames unlock at Lv ${minLevel} (currently Lv ${entry.waifu.level}).`,
       components: withBackRow(),
     });
@@ -946,7 +946,7 @@ export async function handleBuddyCommand(
     // Show current buddy.
     const buddy = await ctx.services.collection.getBuddy(prov.playerId);
     if (!buddy) {
-      await paintSession(ctx, interaction, prov, {
+      await respondEphemeral(interaction, {
         content: 'No buddy set~ Set one from `/waifumon inspect` or `/waifumon buddy <name>`.',
         components: withBackRow(),
       });
@@ -963,7 +963,7 @@ export async function handleBuddyCommand(
     if (matches.length > 0) waifuId = matches[0]!.waifu.id;
   }
   if (waifuId == null) {
-    await paintSession(ctx, interaction, prov, {
+    await respondEphemeral(interaction, {
       content: `No Waifumon matching "${raw}" in your collection.`,
       components: withBackRow(),
     });
@@ -973,7 +973,7 @@ export async function handleBuddyCommand(
     await ctx.services.collection.setBuddy(prov.playerId, waifuId);
   } catch (err) {
     if (err instanceof WaifuNotOwnedError || err instanceof WaifuAlreadyReleasedError) {
-      await paintSession(ctx, interaction, prov, { content: err.userMessage, components: withBackRow() });
+      await respondEphemeral(interaction, { content: err.userMessage, components: withBackRow() });
       return;
     }
     throw err;

@@ -171,9 +171,10 @@ describe('daily launch splash — first /waifumon of the day', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await handleMenu(ctx, cmd as any, prov);
 
-    // A public message was sent (splash lives on the session board).
-    expect(channel.send).toHaveBeenCalledOnce();
-    const payload = channel.send.mock.calls[0]![0] as {
+    // The splash is ephemeral — nothing is written to the channel.
+    expect(channel.send).not.toHaveBeenCalled();
+    expect(cmd.reply).toHaveBeenCalledOnce();
+    const payload = cmd.reply.mock.calls[0]![0] as {
       embeds: { toJSON: () => { title?: string; description?: string } }[];
       components: unknown[];
     };
@@ -198,15 +199,15 @@ describe('daily launch splash — first /waifumon of the day', () => {
     // First launch — splash renders.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await handleMenu(ctx, fakeCommand('u-splash-2', 'g-splash-2', channel) as any, prov);
-    // Second launch — same channel — should edit the same message into the menu.
+    // Second launch — a fresh ephemeral carrying the main menu, not the splash.
     channel.send.mockClear();
     channel.messages.edit.mockClear();
     const cmd2 = fakeCommand('u-splash-2', 'g-splash-2', channel);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await handleMenu(ctx, cmd2 as any, prov);
-    expect(channel.messages.edit).toHaveBeenCalledOnce();
+    expect(channel.messages.edit).not.toHaveBeenCalled();
     expect(channel.send).not.toHaveBeenCalled();
-    const editPayload = channel.messages.edit.mock.calls[0]![1] as {
+    const editPayload = cmd2.reply.mock.calls[0]![0] as {
       embeds: { toJSON: () => { title?: string } }[];
     };
     // Main menu title is "💖 Waifumon"; splash title is "🎴 Welcome to Waifumon".
@@ -261,43 +262,39 @@ describe('daily launch splash — first /waifumon of the day', () => {
     expect(String(row!.splashDate).slice(0, 10)).toBe(today);
   });
 
-  it('splash decorates the board with owner identity', async () => {
+  it('the splash carries no owner decoration — it is private already', async () => {
     const prov = await provisionPlayer(app, 'g-splash-6', 'u-splash-6');
     const channel = fakeChannel('c-splash-6');
+    const cmd = fakeCommand('u-splash-6', 'g-splash-6', channel, 'SplashOwner');
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await handleMenu(ctx, fakeCommand('u-splash-6', 'g-splash-6', channel, 'SplashOwner') as any, prov);
-    const payload = channel.send.mock.calls[0]![0] as {
+    await handleMenu(ctx, cmd as any, prov);
+    const payload = cmd.reply.mock.calls[0]![0] as {
       embeds: { toJSON: () => { author?: { name?: string }; description?: string; footer?: { text?: string } } }[];
     };
     const embed = payload.embeds[0]!.toJSON();
-    expect(embed.author?.name).toContain('SplashOwner');
-    expect(embed.description).toMatch(/\*\*Hunter:\*\*\s*<@u-splash-6>/);
-    expect(embed.footer?.text).toMatch(/only.*can use these controls/i);
+    expect(embed.author).toBeUndefined();
+    expect(embed.description ?? '').not.toContain('Hunter:');
+    expect(embed.footer?.text ?? '').not.toMatch(/can use these controls/i);
   });
 });
 
-describe('Start Hunt button — edits the same session message into the main menu', () => {
-  it('press Start Hunt: same message id, no new send, splash → menu transition', async () => {
+describe('Start Hunt button — updates the same ephemeral into the main menu', () => {
+  it('press Start Hunt: in-place update, no channel writes, splash → menu transition', async () => {
     const prov = await provisionPlayer(app, 'g-splash-start', 'u-splash-start');
     const channel = fakeChannel('c-splash-start');
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await handleMenu(ctx, fakeCommand('u-splash-start', 'g-splash-start', channel) as any, prov);
-    const beforeSession = await currentSession(prov.playerId);
-    const msgId = beforeSession!.messageId!;
     channel.send.mockClear();
     channel.messages.edit.mockClear();
 
-    const btn = fakeButtonOnMessage(msgId, 'u-splash-start', 'g-splash-start', channel);
+    const btn = fakeButtonOnMessage('m-ephemeral', 'u-splash-start', 'g-splash-start', channel);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await handleMenuStart(ctx, btn as any, prov);
 
-    // The button flow calls interaction.update — not channel.send.
+    // The button flow calls interaction.update — nothing reaches the channel.
     expect(btn.update).toHaveBeenCalledOnce();
     expect(channel.send).not.toHaveBeenCalled();
     expect(channel.messages.edit).not.toHaveBeenCalled();
-    const after = await currentSession(prov.playerId);
-    // Same session message id — no new public message was created.
-    expect(after?.messageId).toBe(msgId);
 
     // The updated embed is the main menu (not splash).
     const updatePayload = btn.update.mock.calls[0]![0] as {
@@ -346,9 +343,11 @@ describe('disabled splash config — /waifumon goes directly to the main menu', 
   it('renders the main menu on first /waifumon and does not record a splash view', async () => {
     const prov = await provisionPlayer(app2, 'g-splash-off', 'u-splash-off');
     const channel = fakeChannel('c-splash-off');
+    const cmd = fakeCommand('u-splash-off', 'g-splash-off', channel);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await handleMenu(ctx2, fakeCommand('u-splash-off', 'g-splash-off', channel) as any, prov);
-    const payload = channel.send.mock.calls[0]![0] as {
+    await handleMenu(ctx2, cmd as any, prov);
+    expect(channel.send).not.toHaveBeenCalled();
+    const payload = cmd.reply.mock.calls[0]![0] as {
       embeds: { toJSON: () => { title?: string } }[];
     };
     const title = payload.embeds[0]!.toJSON().title!;
@@ -389,15 +388,12 @@ describe('buildSplashView — image fallback', () => {
   });
 });
 
-describe('splash button — wrong-user + expired-session rejection use existing dispatcher paths', () => {
-  it('foreign user pressing Start Hunt is denied ephemerally and no handler runs', async () => {
-    // Own the session via a first splash render.
+describe('splash button — dispatched directly now that views are ephemeral', () => {
+  it('Start Hunt routes straight to its handler; there is no ownership gate left', async () => {
     const prov = await provisionPlayer(app, 'g-splash-wrong', 'u-splash-wrong');
     const channel = fakeChannel('c-splash-wrong');
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await handleMenu(ctx, fakeCommand('u-splash-wrong', 'g-splash-wrong', channel) as any, prov);
-    const session = await currentSession(prov.playerId);
-    const msgId = session!.messageId!;
 
     const handler = vi.fn(async () => {});
     const dispatch = createDispatcher({
@@ -407,18 +403,6 @@ describe('splash button — wrong-user + expired-session rejection use existing 
         const g = await app.guilds.ensureGuild(guildId);
         const p = await app.players.ensurePlayer(g.id, userId);
         return { guildDbId: g.id, playerId: p.id };
-      },
-      lookupSessionOwner: async (mid) => {
-        const s = await app.session.findByMessageId(mid);
-        if (!s) return null;
-        const player = await app.players.getById(s.playerId);
-        return player
-          ? {
-              playerId: s.playerId,
-              discordUserId: player.discordUserId,
-              displayName: s.ownerDisplayName ?? null,
-            }
-          : null;
       },
       commandHandlers: {},
       componentHandlers: { 'menu:start': handler },
@@ -439,90 +423,17 @@ describe('splash button — wrong-user + expired-session rejection use existing 
       isModalSubmit: () => false,
       isRepliable: () => true,
       customId: 'wm|v1|menu|start',
-      message: { id: msgId },
+      message: { id: 'm-ephemeral' },
       guildId: 'g-splash-wrong',
-      user: { id: 'u-lurker' },
+      user: { id: 'u-splash-wrong' },
       reply,
     };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await dispatch(btn as any);
-    expect(handler).not.toHaveBeenCalled();
-    expect(reply).toHaveBeenCalledOnce();
-    const payload = (reply.mock.calls[0] as unknown as [{ content: string; flags?: number }])[0];
-    expect(payload.flags).toBe(MessageFlags.Ephemeral);
-    expect(payload.content).toMatch(/session/i);
-  });
 
-  it('expired-session Start Hunt is rejected and does not mutate state', async () => {
-    const prov = await provisionPlayer(app, 'g-splash-exp', 'u-splash-exp');
-    const channel = fakeChannel('c-splash-exp');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await handleMenu(ctx, fakeCommand('u-splash-exp', 'g-splash-exp', channel) as any, prov);
-    const session = await currentSession(prov.playerId);
-    const msgId = session!.messageId!;
-    // Age it past the timeout.
-    const beyondMs = app.session.inactiveTimeoutMs + 60_000;
-    const staleAt = new Date(Date.now() - beyondMs);
-    await t.db
-      .update(waifumonSessions)
-      .set({ lastActivityAt: staleAt })
-      .where(eq(waifumonSessions.id, session!.id));
-    const beforeActivity = (await currentSession(prov.playerId))!.lastActivityAt;
-
-    const handler = vi.fn(async () => {});
-    const dispatch = createDispatcher({
-      logger: t.logger,
-      lookupAllowlist: async () => null,
-      provision: async (guildId, userId) => {
-        const g = await app.guilds.ensureGuild(guildId);
-        const p = await app.players.ensurePlayer(g.id, userId);
-        return { guildDbId: g.id, playerId: p.id };
-      },
-      lookupSessionOwner: async (mid) => {
-        const s = await app.session.findByMessageId(mid);
-        if (!s) return null;
-        const player = await app.players.getById(s.playerId);
-        return player
-          ? {
-              playerId: s.playerId,
-              discordUserId: player.discordUserId,
-              displayName: s.ownerDisplayName ?? null,
-              expired: app.session.isExpired(s),
-            }
-          : null;
-      },
-      commandHandlers: {},
-      componentHandlers: { 'menu:start': handler },
-      extractChannelInfo: () => ({
-        isGuildChannel: true,
-        isNsfw: true,
-        channelId: 'c-splash-exp',
-        parentChannelId: null,
-      }),
-    });
-
-    const reply = vi.fn(async () => {});
-    const btn = {
-      isChatInputCommand: () => false,
-      isButton: () => true,
-      isStringSelectMenu: () => false,
-      isAutocomplete: () => false,
-      isModalSubmit: () => false,
-      isRepliable: () => true,
-      customId: 'wm|v1|menu|start',
-      message: { id: msgId },
-      guildId: 'g-splash-exp',
-      user: { id: 'u-splash-exp' },
-      reply,
-    };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await dispatch(btn as any);
-    expect(handler).not.toHaveBeenCalled();
-    expect(reply).toHaveBeenCalledOnce();
-    const payload = (reply.mock.calls[0] as unknown as [{ content: string; flags?: number }])[0];
-    expect(payload.flags).toBe(MessageFlags.Ephemeral);
-    expect(payload.content).toMatch(/expired/i);
-    const afterActivity = (await currentSession(prov.playerId))!.lastActivityAt;
-    expect((afterActivity as Date).getTime()).toBe((beforeActivity as Date).getTime());
+    // Only the owner can ever see an ephemeral's controls, so the dispatcher
+    // no longer needs (or has) a session-ownership or expiry rejection.
+    expect(handler).toHaveBeenCalledOnce();
+    expect(reply).not.toHaveBeenCalled();
   });
 });

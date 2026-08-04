@@ -77,18 +77,6 @@ export function createDiscordClient(ctx: AppContext): Client {
     },
     lookupPlayerId: (discordGuildId, discordUserId) =>
       ctx.services.players.findPlayerId(discordGuildId, discordUserId),
-    lookupSessionOwner: async (messageId) => {
-      const session = await ctx.services.session.findByMessageId(messageId);
-      if (!session) return null;
-      const player = await ctx.services.players.getById(session.playerId);
-      if (!player) return null;
-      return {
-        playerId: session.playerId,
-        discordUserId: player.discordUserId,
-        displayName: session.ownerDisplayName ?? null,
-        expired: ctx.services.session.isExpired(session),
-      };
-    },
     commandHandlers: {
       // Bare `/waifumon` — commandKey defaults sub to 'menu' when absent.
       'waifumon:menu': (i: ChatInputCommandInteraction, prov: Provisioned) =>

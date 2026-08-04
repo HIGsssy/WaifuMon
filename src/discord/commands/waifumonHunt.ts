@@ -1,40 +1,32 @@
 /**
- * Encounter UI (Milestones 2A + 2B).
+ * Encounter UI (Milestones 2A + 2B, ephemeral since the UX redesign).
  *
- * Ephemeral flow:
- *   /waifumon hunt or menu:hunt → HuntService rolls → either a non-encounter
- *   reward embed or an encounter reveal with charm buttons.
- *   Clicking a charm calls CaptureService, then paints the public capture
- *   message (created on first attempt, edited on later attempts) and the
- *   player's own ephemeral state (retry buttons, or the final captured/
- *   escaped/released card).
+ * Flow:
+ *   /wm hunt or menu:hunt → HuntService rolls → either a non-encounter reward
+ *   embed or an encounter reveal with charm buttons, all private to the
+ *   player. Clicking a charm calls CaptureService and repaints that same
+ *   ephemeral with retry buttons or the final captured/escaped card.
  *
- * Public/DB separation: capture state commits inside the CaptureService
- * transaction; the public post/edit and rare-announcement calls happen
- * afterwards. If Discord returns a permission error, the DB result stays
- * committed and the player is told ephemerally that the announce couldn't
- * fire — captures are never eaten by a failed send.
+ * The only public writes left on this path are the SR+ rare-capture rich
+ * embed (unchanged) and the Activity Feed narration, both of which happen
+ * *after* the CaptureService transaction commits. If Discord returns a
+ * permission error the DB result stays committed — captures are never eaten
+ * by a failed send.
  */
-import { asc, eq, inArray } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import {
   ActionRowBuilder,
   AttachmentBuilder,
   ButtonBuilder,
   ButtonStyle,
   EmbedBuilder,
-  MessageFlags,
-  type BaseMessageOptions,
   type ButtonInteraction,
   type GuildTextBasedChannel,
   type InteractionEditReplyOptions,
 } from 'discord.js';
 import {
-  captureAttempts,
-  items as itemsTable,
   species as speciesTable,
-  type CaptureAttemptRow,
   type EncounterRow,
-  type ItemRow,
   type SpeciesRow,
   type Rarity,
 } from '../../db/schema';
@@ -63,14 +55,13 @@ import {
 } from '../../shared/errors';
 import type { AppContext, PlayerInteraction, Provisioned } from '../types';
 import { buildCustomId } from '../types';
-import { paintSession, respondEphemeral, type SessionPayload } from '../sessionUi';
+import { respondEphemeral, type SessionPayload } from '../ephemeralSession';
 import { emitEvents } from '../gameEventEmitter';
 import { captureDescriptors, huntDescriptors } from '../gameEventBuilders';
 import { withBackRow } from '../ui';
 import { formatCaptureBonus, renderCaptureBonusLine } from './waifumon';
 import { duplicatePromptComponents } from './waifumonCollection';
 
-const EPHEMERAL = { flags: MessageFlags.Ephemeral } as const;
 const CARD_FILENAME = 'card.png';
 
 const RARITY_COLORS: Record<string, number> = {
@@ -235,28 +226,6 @@ async function loadSpeciesById(ctx: AppContext, speciesId: number): Promise<Spec
   return row ?? null;
 }
 
-async function loadAttemptsForEncounter(
-  ctx: AppContext,
-  encounterId: number,
-): Promise<CaptureAttemptRow[]> {
-  return ctx.db
-    .select()
-    .from(captureAttempts)
-    .where(eq(captureAttempts.encounterId, encounterId))
-    .orderBy(asc(captureAttempts.attemptNumber));
-}
-
-/** DB items keyed by id — used to render the attempt log. */
-async function loadItemsByIds(
-  ctx: AppContext,
-  ids: readonly number[],
-): Promise<Map<number, ItemRow>> {
-  const unique = Array.from(new Set(ids));
-  if (unique.length === 0) return new Map();
-  const rows = await ctx.db.select().from(itemsTable).where(inArray(itemsTable.id, unique));
-  return new Map(rows.map((r) => [r.id, r]));
-}
-
 /** /waifumon hunt (and the menu Hunt button). */
 export async function handleHunt(
   ctx: AppContext,
@@ -321,7 +290,7 @@ export async function handleHunt(
         result.energyRemaining,
       );
       // Encounter reveal has its own actions (charms + Let Her Go); no Back.
-      await paintSession(ctx, interaction, prov, view);
+      await respondEphemeral(interaction, view);
       await emitEvents(ctx, interaction, prov, events);
       return;
     }
@@ -349,7 +318,7 @@ export async function handleHunt(
       embed.setDescription(`${embed.data.description ?? ''}\n\n${lu}`.trim());
     }
     embed.setFooter({ text: `Energy left: ${result.energyRemaining}` });
-    await paintSession(ctx, interaction, prov, {
+    await respondEphemeral(interaction, {
       embeds: [embed],
       components: withBackRow([huntAgainRow()]),
     });
@@ -361,7 +330,7 @@ export async function handleHunt(
         const species = await loadSpeciesById(ctx, active.speciesId);
         if (species) {
           const view = await buildEncounterView(ctx, prov, active, species);
-          await paintSession(ctx, interaction, prov, view);
+          await respondEphemeral(interaction, view);
           return;
         }
       }
@@ -391,85 +360,6 @@ function huntAgainRow(): ActionRowBuilder<ButtonBuilder> {
 
 function findItemContent(ctx: AppContext, slug: string): ItemContent | undefined {
   return ctx.content.items.find((i) => i.slug === slug);
-}
-
-function renderAttemptLog(
-  attempts: readonly CaptureAttemptRow[],
-  itemsById: ReadonlyMap<number, ItemRow>,
-): string {
-  if (attempts.length === 0) return '_No attempts yet._';
-  return attempts
-    .map((a) => {
-      const item = itemsById.get(a.itemId);
-      const emoji = item?.emoji ?? '•';
-      const name = item?.name ?? `Item #${a.itemId}`;
-      const verdict = a.success
-        ? a.guaranteed
-          ? 'captured (guaranteed)!'
-          : 'captured!'
-        : 'she resisted…';
-      return `${a.attemptNumber}. ${emoji} ${name} — ${verdict}`;
-    })
-    .join('\n');
-}
-
-function buildPublicCaptureEmbed(
-  species: SpeciesRow,
-  userMention: string,
-  logText: string,
-  outcome: CaptureOutcome | 'released' | 'ongoing',
-  cardAttached: boolean,
-  attemptsRemaining: number,
-  maxAttempts: number,
-): EmbedBuilder {
-  const status = (() => {
-    switch (outcome) {
-      case 'success':
-        return `✨ ${userMention} **captured ${species.name}!**`;
-      case 'escape':
-        return `💨 After ${maxAttempts} attempts, **${species.name}** vanished into the night.`;
-      case 'released':
-        return `🍃 ${userMention} let ${species.name} go.`;
-      case 'failure':
-        return `😤 **${species.name}** resisted! ${attemptsRemaining} attempt${attemptsRemaining === 1 ? '' : 's'} remaining.`;
-      case 'ongoing':
-        return `🎯 ${userMention} is trying to capture **${species.name}**…`;
-    }
-  })();
-  const embed = new EmbedBuilder()
-    .setColor(rarityColor(species.rarity))
-    .setTitle(`🎯 ${species.name} · ${species.rarity}`)
-    .setDescription(status)
-    .addFields({ name: 'Attempts', value: logText || '_No attempts yet._' });
-  if (cardAttached) embed.setImage(`attachment://${CARD_FILENAME}`);
-  return embed;
-}
-
-/**
- * First attempt: send a fresh public message and persist its id.
- * Later attempts: fetch the persisted message and edit it in place.
- */
-async function paintPublicMessage(
-  ctx: AppContext,
-  channel: GuildTextBasedChannel,
-  encounter: EncounterRow,
-  publicPayload: BaseMessageOptions,
-): Promise<{ posted: boolean; messageId: string | null; error?: unknown }> {
-  try {
-    if (!encounter.publicMessageId) {
-      const msg = await channel.send(publicPayload);
-      await ctx.services.capture.setPublicMessageId(encounter.id, msg.id);
-      return { posted: true, messageId: msg.id };
-    }
-    await channel.messages.edit(encounter.publicMessageId, publicPayload);
-    return { posted: true, messageId: encounter.publicMessageId };
-  } catch (err) {
-    ctx.logger.warn(
-      { err, encounterId: encounter.id, channelId: channel.id },
-      'failed to paint public capture message',
-    );
-    return { posted: false, messageId: encounter.publicMessageId, error: err };
-  }
 }
 
 async function sendRareAnnouncement(
@@ -747,7 +637,7 @@ export async function handleEncounterCharm(
     result.outcome === 'failure'
       ? await buildFailureRetryReply(ctx, prov, result)
       : buildEphemeralOutcomeMessage(ctx, result);
-  await paintSession(ctx, interaction, prov, reply as unknown as SessionPayload);
+  await respondEphemeral(interaction, reply as unknown as SessionPayload);
 
   // Post-commit narration. The rare-embed path above already ran; the
   // Activity Feed suppresses SR+ successes so there is exactly one public
@@ -778,7 +668,7 @@ export async function handleEncounterPick(
     return;
   }
   const view = await buildEncounterView(ctx, prov, active, speciesRow);
-  await paintSession(ctx, interaction, prov, view);
+  await respondEphemeral(interaction, view);
 }
 
 /** Let Her Go — pre or post-attempt. Session board is the sole surface. */
@@ -803,7 +693,7 @@ export async function handleEncounterRelease(
     throw err;
   }
 
-  await paintSession(ctx, interaction, prov, {
+  await respondEphemeral(interaction, {
     content: 'You let her slip back into the neon~',
     embeds: [],
     components: withBackRow(),

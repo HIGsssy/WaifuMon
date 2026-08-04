@@ -1,10 +1,9 @@
 /**
- * Handler navigation tests (Rev 4 UI model).
+ * Handler navigation tests (ephemeral UI model).
  *
- * Menu buttons on the session board update the board in place via
- * `interaction.update()` (no new send, no ephemeral stacking). Slash commands
- * post the session board via `channel.send()` and acknowledge the interaction
- * ephemerally. This replaces the old ephemeral-navigation contract.
+ * Slash commands reply ephemerally; component clicks call
+ * `interaction.update()` so the player's private view is replaced in place
+ * rather than stacking follow-ups. Nothing on this path touches the channel.
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { MessageFlags } from 'discord.js';
@@ -105,7 +104,7 @@ interface FakeInteraction {
   message?: { id: string };
 }
 
-function fakeButtonOnSession(sessionMessageId: string, channel = fakeChannel()): FakeInteraction {
+function fakeButtonOn(messageId: string, channel = fakeChannel()): FakeInteraction {
   return {
     isChatInputCommand: () => false,
     isButton: () => true,
@@ -122,7 +121,7 @@ function fakeButtonOnSession(sessionMessageId: string, channel = fakeChannel()):
     channelId: channel.id,
     user: { id: 'u-1', displayName: 'Hunter' },
     guildId: 'g-ui-nav',
-    message: { id: sessionMessageId },
+    message: { id: messageId },
   };
 }
 
@@ -155,23 +154,23 @@ async function currentSession() {
   return row;
 }
 
-describe('session-board navigation: slash commands post publicly, buttons edit in place', () => {
-  it('slash /waifumon menu channel.sends the board and stores the message id', async () => {
+describe('ephemeral navigation: slash replies privately, buttons update in place', () => {
+  it('slash /waifumon menu replies ephemerally and never touches the channel', async () => {
     const cmd = fakeCommand();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await handleMenu(ctx, cmd as any, prov);
-    expect(cmd.channel.send).toHaveBeenCalledOnce();
-    // Ephemeral acknowledgement for the slash command itself.
     expect(cmd.reply).toHaveBeenCalledOnce();
     const payload = cmd.reply.mock.calls[0]![0] as { flags?: number };
     expect(payload.flags).toBe(MessageFlags.Ephemeral);
+    expect(cmd.channel.send).not.toHaveBeenCalled();
+    expect(cmd.channel.messages.edit).not.toHaveBeenCalled();
+    // No board id is recorded — the session row is only a daily tally now.
     const session = await currentSession();
-    expect(session?.messageId).toBeTruthy();
+    expect(session?.messageId ?? null).toBeNull();
   });
 
-  it('profile button on the session message updates the board (no new send, no ephemeral)', async () => {
-    const session = await currentSession();
-    const btn = fakeButtonOnSession(session!.messageId!);
+  it('profile button on the session message updates the ephemeral view (no new send, no follow-up)', async () => {
+    const btn = fakeButtonOn('m-ephemeral');
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await handleProfile(ctx, btn as any, prov);
     expect(btn.update).toHaveBeenCalledOnce();
@@ -180,39 +179,39 @@ describe('session-board navigation: slash commands post publicly, buttons edit i
     expect(btn.followUp).not.toHaveBeenCalled();
   });
 
-  it('inventory button updates the session board in place', async () => {
-    const session = await currentSession();
-    const btn = fakeButtonOnSession(session!.messageId!);
+  it('inventory button updates the ephemeral view in place', async () => {
+    const btn = fakeButtonOn('m-ephemeral');
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await handleInventory(ctx, btn as any, prov);
     expect(btn.update).toHaveBeenCalledOnce();
     expect(btn.channel.send).not.toHaveBeenCalled();
+    expect(btn.channel.messages.edit).not.toHaveBeenCalled();
   });
 
-  it('shop button updates the session board in place', async () => {
-    const session = await currentSession();
-    const btn = fakeButtonOnSession(session!.messageId!);
+  it('shop button updates the ephemeral view in place', async () => {
+    const btn = fakeButtonOn('m-ephemeral');
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await handleShop(ctx, btn as any, prov);
     expect(btn.update).toHaveBeenCalledOnce();
     expect(btn.channel.send).not.toHaveBeenCalled();
+    expect(btn.channel.messages.edit).not.toHaveBeenCalled();
   });
 
-  it('daily claim button updates the session board in place', async () => {
-    const session = await currentSession();
-    const btn = fakeButtonOnSession(session!.messageId!);
+  it('daily claim button updates the ephemeral view in place', async () => {
+    const btn = fakeButtonOn('m-ephemeral');
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await handleDaily(ctx, btn as any, prov);
     expect(btn.update).toHaveBeenCalledOnce();
     expect(btn.channel.send).not.toHaveBeenCalled();
+    expect(btn.channel.messages.edit).not.toHaveBeenCalled();
   });
 
-  it('menu back button paints menu without stacking', async () => {
-    const session = await currentSession();
-    const btn = fakeButtonOnSession(session!.messageId!);
+  it('menu back button repaints the menu without stacking', async () => {
+    const btn = fakeButtonOn('m-ephemeral');
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await handleMenu(ctx, btn as any, prov);
     expect(btn.update).toHaveBeenCalledOnce();
     expect(btn.channel.send).not.toHaveBeenCalled();
+    expect(btn.channel.messages.edit).not.toHaveBeenCalled();
   });
 });

@@ -1,10 +1,11 @@
 /**
  * Player-facing /waifumon UI (menu, profile, daily, inventory, shop).
  *
- * Rev 4 UI model: every real gameplay screen paints the *public session
- * board* (`paintSession`) — one channel-post per (player, channel) that is
- * edited in place instead of stacking ephemeral replies. Ephemeral responses
- * are reserved for errors and destructive confirmations.
+ * Every gameplay screen is ephemeral: `respondEphemeral` replies privately on
+ * a slash command and updates in place on a button/select click, so
+ * navigation replaces the previous screen instead of stacking. The public
+ * channel carries only the rare-capture embed and the Care Mode Trainer
+ * Profile.
  */
 import {
   ActionRowBuilder,
@@ -29,7 +30,7 @@ import type { PriceCurrency } from '../../db/schema';
 import type { ItemUseResult } from '../../modules/items/itemUseService';
 import type { AppContext, PlayerInteraction, Provisioned } from '../types';
 import { buildCustomId } from '../types';
-import { paintSession, respondEphemeral } from '../sessionUi';
+import { respondEphemeral } from '../ephemeralSession';
 import { emitEvents } from '../gameEventEmitter';
 import {
   careChangedDescriptors,
@@ -158,9 +159,9 @@ export async function handleMenu(
 }
 
 /**
- * `menu:start` — button on the splash screen. Edits the same public session
- * message into the normal main menu (no second embed is created because
- * paintSession routes button clicks through `interaction.update`).
+ * `menu:start` — button on the splash screen. Updates the same ephemeral
+ * message into the normal main menu (no second message, because
+ * `respondEphemeral` routes button clicks through `interaction.update`).
  */
 export async function handleMenuStart(
   ctx: AppContext,
@@ -171,9 +172,9 @@ export async function handleMenuStart(
 }
 
 /**
- * Renders the normal Waifumon main menu / session board. Factored out so
- * `handleMenu` (splash gate) and `handleMenuStart` (splash button) both hit
- * the same code path.
+ * Renders the normal Waifumon main menu. Factored out so `handleMenu`
+ * (splash gate) and `handleMenuStart` (splash button) both hit the same code
+ * path.
  */
 async function renderMainMenu(
   ctx: AppContext,
@@ -201,10 +202,9 @@ async function renderMainMenu(
 
   embed.addFields({ name: '💗 Care Mode', value: renderCareStatusLines(care).join('\n') });
 
-  // "Today" summary: fold in whatever the session board has recorded so far.
-  // Use a read-only lookup here — a slash-entry expiration check inside
-  // `paintSession` needs to see the un-bumped `last_activity_at` to detect a
-  // stale board. `paintSession` will upsert / refresh the row itself.
+  // "Today" summary: fold in whatever the daily tally has recorded so far.
+  // Read-only — the session row is created/updated by the handlers that
+  // actually record events (hunt, daily, capture).
   const channelId = interaction.channelId;
   if (channelId) {
     const existing = await ctx.services.session.findByPlayerAndChannel(
@@ -219,7 +219,7 @@ async function renderMainMenu(
           } as never);
     embed.addFields({ name: '📅 Today', value: renderSummaryLines(summary).join('\n') });
   }
-  await paintSession(ctx, interaction, prov, {
+  await respondEphemeral(interaction, {
     embeds: [embed],
     components: menuComponents(care, ctx.services.quests.config.enabled),
   });
@@ -286,7 +286,7 @@ async function renderSplash(
   splash: UiSplashConfig,
 ): Promise<void> {
   const { embed, files } = buildSplashView(ctx, splash);
-  await paintSession(ctx, interaction, prov, {
+  await respondEphemeral(interaction, {
     embeds: [embed],
     components: splashComponents(splash.buttonLabel),
     files,
@@ -335,7 +335,7 @@ export async function handleProfile(
       { name: '★ Buddy', value: buddyLine, inline: false },
     )
     .setFooter({ text: `Hunter since ${player.createdAt.toDateString()}` });
-  await paintSession(ctx, interaction, prov, { embeds: [embed], components: withBackRow() });
+  await respondEphemeral(interaction, { embeds: [embed], components: withBackRow() });
 }
 
 function formatLevelUps(levelUps: readonly { toLevel: number; rewardLabels: readonly string[] }[]): string {
@@ -385,7 +385,7 @@ export async function handleDaily(
           levelUpNote,
       )
       .setFooter({ text: 'Come back after the daily reset~' });
-    await paintSession(ctx, interaction, prov, {
+    await respondEphemeral(interaction, {
       embeds: [embed],
       components: withBackRow(),
     });
@@ -539,7 +539,7 @@ export async function handleInventory(
   prov: Provisioned,
 ): Promise<void> {
   const view = await buildInventoryView(ctx, prov);
-  await paintSession(ctx, interaction, prov, view);
+  await respondEphemeral(interaction, view);
 }
 
 /** Human-readable outcome line for a successful item use. */
@@ -589,7 +589,7 @@ export async function handleItemUse(
     throw err;
   }
   const view = await buildInventoryView(ctx, prov, formatItemUseResult(result));
-  await paintSession(ctx, interaction, prov, view);
+  await respondEphemeral(interaction, view);
   // Energy Drink (and any future restore-energy consumable) exits Care Mode.
   // The service reports it as a boolean, so we resolve the name we already
   // know from the pre-use state rather than adding a service field.
@@ -654,7 +654,7 @@ export async function handleShop(
   prov: Provisioned,
 ): Promise<void> {
   const view = await buildShopView(ctx, prov);
-  await paintSession(ctx, interaction, prov, view);
+  await respondEphemeral(interaction, view);
 }
 
 /**
@@ -670,7 +670,7 @@ export async function handleShopBuy(
   const result = await ctx.services.shop.purchase(prov.playerId, itemSlug, 1);
   const status = `✅ Bought **${result.item.name}** for **${formatPrice(result.totalPrice, result.currency)}** — you now own ×${result.ownedAfter}.`;
   const view = await buildShopView(ctx, prov, status);
-  await paintSession(ctx, interaction, prov, view);
+  await respondEphemeral(interaction, view);
 }
 
 // ─────────────────────────── Care Mode ───────────────────────────
@@ -790,16 +790,17 @@ export async function handleCareStart(
       );
       return;
     }
-    await paintSession(ctx, interaction, prov, view);
+    await respondEphemeral(interaction, view);
     return;
   }
   const wasActive = care.active;
   try {
     const summary = await ctx.services.care.start(prov.playerId, targetId ?? undefined);
+    // Repaint the menu first so it claims the primary (in-place) response;
+    // the tick summary follows as a small ephemeral note.
+    await handleMenu(ctx, interaction, prov);
     const line = formatCareSummary(summary);
     if (line) await respondEphemeral(interaction, `💗 ${line}`);
-    // Repaint the menu — care state fields now reflect started/switched.
-    await handleMenu(ctx, interaction, prov);
     await emitEvents(
       ctx,
       interaction,
@@ -844,9 +845,9 @@ export async function handleCareLeave(
   prov: Provisioned,
 ): Promise<void> {
   const summary = await ctx.services.care.leave(prov.playerId);
+  await handleMenu(ctx, interaction, prov);
   const line = formatCareSummary(summary);
   if (line) await respondEphemeral(interaction, `💤 Left Care Mode — ${line}`);
-  await handleMenu(ctx, interaction, prov);
   await emitEvents(ctx, interaction, prov, careLeaveDescriptors(summary, 'manual'));
 }
 
@@ -860,7 +861,7 @@ export async function handleCareChangeOpen(
     await respondEphemeral(interaction, 'No Waifumon in your collection~');
     return;
   }
-  await paintSession(ctx, interaction, prov, view);
+  await respondEphemeral(interaction, view);
 }
 
 export async function handleCareChangePick(
@@ -875,6 +876,7 @@ export async function handleCareChangePick(
     return;
   }
   let events: GameEventDescriptor[] = [];
+  let statusLine: string | null = null;
   try {
     const care = await ctx.services.care.getState(prov.playerId);
     // If not in Care Mode, treat as start with target; otherwise change.
@@ -884,8 +886,7 @@ export async function handleCareChangePick(
     events = care.active
       ? careChangedDescriptors(summary)
       : [...closeHuntSessionForCare(ctx, prov), ...careEnterDescriptors(summary)];
-    const line = formatCareSummary(summary);
-    if (line) await respondEphemeral(interaction, `💗 ${line}`);
+    statusLine = formatCareSummary(summary);
   } catch (err) {
     if (err instanceof WaifuNotOwnedError || err instanceof WaifuAlreadyReleasedError) {
       await respondEphemeral(interaction, err.userMessage);
@@ -894,6 +895,7 @@ export async function handleCareChangePick(
     throw err;
   }
   await handleMenu(ctx, interaction, prov);
+  if (statusLine) await respondEphemeral(interaction, `💗 ${statusLine}`);
   await emitEvents(ctx, interaction, prov, events);
 }
 
@@ -1135,7 +1137,7 @@ export async function handleQuests(
   }
   const { rows, claimable, board } = await loadTodayQuests(ctx, prov.playerId);
   const { embed, components } = questsView(rows, claimable > 0, board);
-  await paintSession(ctx, interaction, prov, { embeds: [embed], components });
+  await respondEphemeral(interaction, { embeds: [embed], components });
 }
 
 /**
@@ -1169,7 +1171,7 @@ export async function handleQuestsClaimAll(
   }
   const { rows, claimable, board } = await loadTodayQuests(ctx, prov.playerId);
   const view = questsView(rows, claimable > 0, { ...board, noticeLines });
-  await paintSession(ctx, interaction, prov, {
+  await respondEphemeral(interaction, {
     embeds: [view.embed],
     components: view.components,
   });
