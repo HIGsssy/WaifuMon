@@ -15,7 +15,7 @@ import {
   handleProfile,
   handleShop,
 } from '../../src/discord/commands/waifumon';
-import { bootstrapApp, provisionPlayer, type App } from '../helpers/fixtures';
+import { bootstrapApp, provisionPlayer, type App, createEventHarness, type EventHarness } from '../helpers/fixtures';
 import { createTestDb, type TestDb } from '../helpers/testDb';
 import type { AppContext, Provisioned } from '../../src/discord/types';
 import { waifumonSessions } from '../../src/db/schema';
@@ -23,12 +23,14 @@ import { eq } from 'drizzle-orm';
 
 let t: TestDb;
 let app: App;
+let harness: EventHarness;
 let prov: Provisioned;
 let ctx: AppContext;
 
 beforeAll(async () => {
   t = await createTestDb();
   app = await bootstrapApp(t);
+  harness = createEventHarness(app, t.logger);
   prov = await provisionPlayer(app, 'g-ui-nav', 'u-1');
   ctx = {
     config: {
@@ -45,6 +47,8 @@ beforeAll(async () => {
     logger: t.logger,
     db: t.db,
     content: app.content,
+    events: harness.bus,
+    huntSessions: harness.huntSessions,
     services: {
       guilds: app.guilds,
       players: app.players,

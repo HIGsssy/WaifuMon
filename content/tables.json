@@ -24,6 +24,13 @@
   "hunt": {
     "cooldownSeconds": 10,
     "encounterExpirySeconds": 120,
+    "sessionIdleMinutes": 15,
+    "locationFlavors": [
+      "the Whispering Forest",
+      "the Neon Boardwalk",
+      "the Velvet Grove",
+      "the Moonlit Docks"
+    ],
     "resultTable": [
       { "kind": "encounter", "weight": 70 },
       { "kind": "item_find", "weight": 12 },

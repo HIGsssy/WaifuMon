@@ -23,6 +23,8 @@ import type { ItemUseService } from '../modules/items/itemUseService';
 import type { ProgressionService } from '../modules/progression/progressionService';
 import type { QuestService } from '../modules/quests/questService';
 import type { SessionService } from '../modules/session/sessionService';
+import type { GameEventBus } from '../modules/events/gameEvents';
+import type { HuntSessionTracker } from '../modules/hunt/huntSession';
 
 export interface AppServices {
   guilds: GuildService;
@@ -55,6 +57,18 @@ export interface AppContext {
    */
   content: LoadedContent;
   services: AppServices;
+  /**
+   * Central gameplay-event bus. Handlers emit onto it **after** their
+   * transaction commits; the Activity Feed and Trainer Profile subscribe.
+   * Subscribers can never fail a gameplay write (see `emitEvents`).
+   */
+  events: GameEventBus;
+  /**
+   * In-memory hunt-session bookkeeping (which players are "out hunting", and
+   * in which flavor location). Cosmetic only — nothing gameplay-relevant
+   * depends on it, and a restart just re-opens sessions.
+   */
+  huntSessions: HuntSessionTracker;
 }
 
 /** Guild + player DB ids resolved after the guard allows the interaction. */

@@ -64,6 +64,8 @@ import {
 import type { AppContext, PlayerInteraction, Provisioned } from '../types';
 import { buildCustomId } from '../types';
 import { paintSession, respondEphemeral, type SessionPayload } from '../sessionUi';
+import { emitEvents } from '../gameEventEmitter';
+import { captureDescriptors, huntDescriptors } from '../gameEventBuilders';
 import { withBackRow } from '../ui';
 import { formatCaptureBonus, renderCaptureBonusLine } from './waifumon';
 import { duplicatePromptComponents } from './waifumonCollection';
@@ -305,6 +307,11 @@ export async function handleHunt(
       });
     }
 
+    // Post-commit narration. Built before painting (the tracker mutation is
+    // cheap and synchronous) and emitted after, so a slow Activity Feed post
+    // never delays the player's own screen.
+    const events = await huntDescriptors(ctx, prov, result);
+
     if (result.kind === 'encounter') {
       const view = await buildEncounterView(
         ctx,
@@ -315,6 +322,7 @@ export async function handleHunt(
       );
       // Encounter reveal has its own actions (charms + Let Her Go); no Back.
       await paintSession(ctx, interaction, prov, view);
+      await emitEvents(ctx, interaction, prov, events);
       return;
     }
     const embed = new EmbedBuilder().setColor(0xff6fa5);
@@ -345,6 +353,7 @@ export async function handleHunt(
       embeds: [embed],
       components: withBackRow([huntAgainRow()]),
     });
+    await emitEvents(ctx, interaction, prov, events);
   } catch (err) {
     if (err instanceof ActiveEncounterError) {
       const active = await ctx.services.hunt.getActiveEncounter(prov.playerId);
@@ -739,6 +748,11 @@ export async function handleEncounterCharm(
       ? await buildFailureRetryReply(ctx, prov, result)
       : buildEphemeralOutcomeMessage(ctx, result);
   await paintSession(ctx, interaction, prov, reply as unknown as SessionPayload);
+
+  // Post-commit narration. The rare-embed path above already ran; the
+  // Activity Feed suppresses SR+ successes so there is exactly one public
+  // announcement per rare catch.
+  await emitEvents(ctx, interaction, prov, await captureDescriptors(ctx, prov, result));
 }
 
 /** Use Different Charm — reopens the encounter reveal with fresh quantities. */

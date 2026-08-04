@@ -196,9 +196,28 @@ const IntRange = z
   })
   .refine((v) => v.max >= v.min, { message: 'max must be >= min', path: ['max'] });
 
+/** Venues the Activity Feed names when a hunt session opens and closes. */
+const DEFAULT_LOCATION_FLAVORS = [
+  'the Whispering Forest',
+  'the Neon Boardwalk',
+  'the Velvet Grove',
+  'the Moonlit Docks',
+] as const;
+
 export const HuntTableSchema = z.object({
   cooldownSeconds: z.number().int().nonnegative(),
   encounterExpirySeconds: z.number().int().positive(),
+  /**
+   * Housekeeping window for hunt-session narration: a hunt after this much
+   * silence closes the abandoned session and opens a new one. Not a gameplay
+   * timer — nothing expires and no state is lost.
+   */
+  sessionIdleMinutes: z.number().int().positive().default(15),
+  /**
+   * Pool the Activity Feed picks a venue from, deterministically per session.
+   * An empty pool falls back to plain "started/finished hunting" wording.
+   */
+  locationFlavors: z.array(z.string().min(1)).default([...DEFAULT_LOCATION_FLAVORS]),
   resultTable: z.array(WeightedResult).min(1),
   rarityTable: z.array(WeightedRarity).min(1),
   itemFind: z.object({ sub: z.array(ItemSubEntry).min(1) }),

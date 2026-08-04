@@ -30,7 +30,7 @@ import {
 import { handleCollectionPickId } from '../../src/discord/commands/waifumonCollection';
 import { handleProfile } from '../../src/discord/commands/waifumon';
 import type { AppContext, Provisioned } from '../../src/discord/types';
-import { ASSETS_DIR, bootstrapApp, getItemBySlug, provisionPlayer, type App } from '../helpers/fixtures';
+import { ASSETS_DIR, bootstrapApp, getItemBySlug, provisionPlayer, type App, createEventHarness, type EventHarness } from '../helpers/fixtures';
 import { createTestDb, type TestDb } from '../helpers/testDb';
 
 /** N-rarity buddy species → +1% strong bonus; SR → +3%. */
@@ -41,12 +41,14 @@ const SWITCH_ENCOUNTER_SLUG = 'cyber_neko'; // N, left on switch
 
 let t: TestDb;
 let app: App;
+let harness: EventHarness;
 let ctx: AppContext;
 let prov: Provisioned;
 
 beforeAll(async () => {
   t = await createTestDb();
   app = await bootstrapApp(t);
+  harness = createEventHarness(app, t.logger);
   prov = await provisionPlayer(app, 'g-affinity', 'u-1');
   ctx = {
     config: {
@@ -62,6 +64,8 @@ beforeAll(async () => {
     logger: t.logger,
     db: t.db,
     content: app.content,
+    events: harness.bus,
+    huntSessions: harness.huntSessions,
     services: {
       guilds: app.guilds,
       players: app.players,

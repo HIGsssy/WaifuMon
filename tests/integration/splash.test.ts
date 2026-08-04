@@ -19,17 +19,19 @@ import {
 import { createDispatcher } from '../../src/discord/commandRegistry';
 import { playerDailySplashViews, waifumonSessions } from '../../src/db/schema';
 import { claimDateInTimezone } from '../../src/shared/time';
-import { bootstrapApp, provisionPlayer, type App } from '../helpers/fixtures';
+import { bootstrapApp, provisionPlayer, type App, createEventHarness, type EventHarness } from '../helpers/fixtures';
 import { createTestDb, type TestDb } from '../helpers/testDb';
 import type { AppContext, Provisioned } from '../../src/discord/types';
 
 let t: TestDb;
 let app: App;
+let harness: EventHarness;
 let ctx: AppContext;
 
 beforeAll(async () => {
   t = await createTestDb();
   app = await bootstrapApp(t, { splashEnabled: true });
+  harness = createEventHarness(app, t.logger);
   ctx = buildCtx();
 });
 afterAll(async () => {
@@ -52,6 +54,8 @@ function buildCtx(): AppContext {
     logger: t.logger,
     db: t.db,
     content: app.content,
+    events: harness.bus,
+    huntSessions: harness.huntSessions,
     services: {
       guilds: app.guilds,
       players: app.players,

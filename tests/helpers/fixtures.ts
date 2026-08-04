@@ -20,6 +20,20 @@ import { createInventoryService } from '../../src/modules/inventory/inventorySer
 import { createPlayerService } from '../../src/modules/players/playerService';
 import { createShopService } from '../../src/modules/shop/shopService';
 import { createSessionService } from '../../src/modules/session/sessionService';
+import {
+  createGameEventBus,
+  type GameEvent,
+  type GameEventBus,
+} from '../../src/modules/events/gameEvents';
+import {
+  createHuntSessionTracker,
+  type HuntSessionTracker,
+} from '../../src/modules/hunt/huntSession';
+import {
+  createActivityFeedService,
+  type ActivityFeedService,
+} from '../../src/modules/activity/activityFeedService';
+import type { EventVisibility } from '../../src/modules/events/gameEvents';
 import type { Rng } from '../../src/shared/random';
 import type { Logger } from '../../src/shared/logger';
 import { silentLogger, type TestDb } from './testDb';
@@ -189,6 +203,78 @@ export async function bootstrapApp(
       timezone,
       inactiveTimeoutMinutes: content.tables.session?.inactiveTimeoutMinutes,
     }),
+  };
+}
+
+export interface ActivityLineCapture {
+  channelId: string;
+  text: string;
+  visibility: EventVisibility;
+}
+
+/**
+ * Event-bus harness for integration tests: a real bus + hunt-session tracker
+ * (so handlers behave exactly as in production), a recorder subscriber that
+ * captures every emitted event, and a real Activity Feed whose Discord side
+ * is a spy.
+ */
+export interface EventHarness {
+  bus: GameEventBus;
+  huntSessions: HuntSessionTracker;
+  activityFeed: ActivityFeedService;
+  /** Every event that reached the bus, in emission order. */
+  events: GameEvent[];
+  /** Every line the Activity Feed posted. */
+  lines: ActivityLineCapture[];
+  /** Events of one kind, for concise assertions. */
+  ofKind<K extends GameEvent['kind']>(kind: K): Extract<GameEvent, { kind: K }>[];
+  reset(): void;
+}
+
+export interface EventHarnessOptions {
+  /** Waifumon Log channel id the feed resolves to. Null = unconfigured. */
+  feedChannelId?: string | null;
+}
+
+export function createEventHarness(
+  app: App,
+  logger: Logger = silentLogger(),
+  opts: EventHarnessOptions = {},
+): EventHarness {
+  const feedChannelId = opts.feedChannelId === undefined ? 'c-waifumon-log' : opts.feedChannelId;
+  const events: GameEvent[] = [];
+  const lines: ActivityLineCapture[] = [];
+  const bus = createGameEventBus({ logger });
+  bus.subscribe((event) => {
+    events.push(event);
+  });
+  const activityFeed = createActivityFeedService({
+    logger,
+    richEmbedMinRarity: app.content.tables.capture.announceMinRarity,
+    resolveChannel: async () => feedChannelId,
+    post: async (channelId, text, visibility) => {
+      lines.push({ channelId, text, visibility });
+    },
+  });
+  activityFeed.subscribe(bus);
+  return {
+    bus,
+    huntSessions: createHuntSessionTracker({
+      locations: app.content.tables.hunt.locationFlavors,
+    }),
+    activityFeed,
+    events,
+    lines,
+    ofKind(kind) {
+      return events.filter((e) => e.kind === kind) as Extract<
+        GameEvent,
+        { kind: typeof kind }
+      >[];
+    },
+    reset() {
+      events.length = 0;
+      lines.length = 0;
+    },
   };
 }
 

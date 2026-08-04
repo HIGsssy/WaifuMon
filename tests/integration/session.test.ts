@@ -27,7 +27,7 @@ import {
 import { rarityAtLeast } from '../../src/modules/capture/captureMath';
 import { renderSummaryLines } from '../../src/modules/session/sessionService';
 import { createDispatcher } from '../../src/discord/commandRegistry';
-import { bootstrapApp, provisionPlayer, type App } from '../helpers/fixtures';
+import { bootstrapApp, provisionPlayer, type App, createEventHarness, type EventHarness } from '../helpers/fixtures';
 import { createTestDb, type TestDb } from '../helpers/testDb';
 import type { AppContext, Provisioned } from '../../src/discord/types';
 import { encounters, waifumonSessions } from '../../src/db/schema';
@@ -35,6 +35,7 @@ import { eq } from 'drizzle-orm';
 
 let t: TestDb;
 let app: App;
+let harness: EventHarness;
 let prov: Provisioned;
 let ctx: AppContext;
 
@@ -45,6 +46,7 @@ const GUILD_ID = 'g-session-1';
 beforeAll(async () => {
   t = await createTestDb();
   app = await bootstrapApp(t);
+  harness = createEventHarness(app, t.logger);
   prov = await provisionPlayer(app, GUILD_ID, USER_ID);
   ctx = buildCtx();
 });
@@ -68,6 +70,8 @@ function buildCtx(): AppContext {
     logger: t.logger,
     db: t.db,
     content: app.content,
+    events: harness.bus,
+    huntSessions: harness.huntSessions,
     services: {
       guilds: app.guilds,
       players: app.players,

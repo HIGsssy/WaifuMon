@@ -40,6 +40,7 @@ import type {
 import type { BuddyAwardResult, CollectionService } from '../collection/collectionService';
 import type { CareService, CareTickSummary } from '../care/careService';
 import type { QuestService } from '../quests/questService';
+import { resolveHuntSessionBoundary, type HuntSessionBoundary } from './huntSession';
 
 interface WithXp {
   levelUps: LevelUpEvent[];
@@ -51,6 +52,12 @@ interface WithXp {
    * *always* exited by a hunt, regardless of tick count.
    */
   careExit: CareTickSummary | null;
+  /**
+   * Whether this hunt crossed a hunt-session boundary. Purely descriptive —
+   * the coordinator turns it into `PLAYER_STARTED_HUNT` /
+   * `PLAYER_COMPLETED_HUNT` narration. No gameplay branches on it.
+   */
+  session: HuntSessionBoundary;
 }
 
 export interface HuntEncounterResult extends WithXp {
@@ -255,6 +262,19 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
           throw new InsufficientEnergyError();
         }
 
+        // Hunt-session boundary (narration only). Computed from the locked
+        // player row *before* `applyAndExit` clears the Care Mode fields, so
+        // "was the player resting?" is answered against pre-hunt state.
+        const session = resolveHuntSessionBoundary({
+          lastHuntAt: player.lastHuntAt,
+          careModeActive:
+            player.careModeStartedAt != null &&
+            player.careModeLastTickAt != null &&
+            player.careModeWaifuId != null,
+          now,
+          idleMinutes: hunt.sessionIdleMinutes,
+        });
+
         // Energy is sufficient — exit Care Mode inside this transaction so
         // the clear is atomic with the spend. `care.applyPending` above
         // already advanced any pending ticks; this call just clears the
@@ -325,6 +345,7 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
               levelUps,
               buddyAward,
               careExit: careForResult,
+              session,
             } satisfies HuntFlavorResult;
           }
           const expiresAt = new Date(now.getTime() + hunt.encounterExpirySeconds * 1000);
@@ -349,6 +370,7 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
               levelUps,
               buddyAward,
               careExit: careForResult,
+              session,
             } satisfies HuntEncounterResult;
           } catch (err) {
             if (isUniqueViolation(err)) {
@@ -374,6 +396,7 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
               levelUps,
               buddyAward,
               careExit: careForResult,
+              session,
             } satisfies HuntFlavorResult;
           }
           const quantity = rng.intInclusive(sub.minQty, sub.maxQty);
@@ -386,6 +409,7 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
             levelUps,
             buddyAward,
             careExit: careForResult,
+            session,
           } satisfies HuntItemResult;
         }
 
@@ -400,6 +424,7 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
             levelUps,
             buddyAward,
             careExit: careForResult,
+            session,
           } satisfies HuntWaifubuxResult;
         }
 
@@ -414,6 +439,7 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
             levelUps,
             buddyAward,
             careExit: careForResult,
+            session,
           } satisfies HuntEssenceResult;
         }
 
@@ -426,6 +452,7 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
           levelUps,
           buddyAward,
           careExit: careForResult,
+          session,
         } satisfies HuntFlavorResult;
       });
     },

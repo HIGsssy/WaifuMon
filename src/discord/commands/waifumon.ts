@@ -30,6 +30,15 @@ import type { ItemUseResult } from '../../modules/items/itemUseService';
 import type { AppContext, PlayerInteraction, Provisioned } from '../types';
 import { buildCustomId } from '../types';
 import { paintSession, respondEphemeral } from '../sessionUi';
+import { emitEvents } from '../gameEventEmitter';
+import {
+  careChangedDescriptors,
+  careEnterDescriptors,
+  careLeaveDescriptors,
+  careTickDescriptors,
+  levelUpDescriptors,
+} from '../gameEventBuilders';
+import { gameEvent, type GameEventDescriptor } from '../../modules/events/gameEvents';
 import { renderSummaryLines } from '../../modules/session/sessionService';
 import { affinityLabel } from '../../modules/capture/affinityMath';
 import type { CareState, CareTickSummary } from '../../modules/care/careService';
@@ -173,8 +182,9 @@ async function renderMainMenu(
 ): Promise<void> {
   // Lazy Care Mode tick: apply anything pending before rendering so the
   // board always shows fresh energy/target state. Cheap no-op when Care
-  // Mode isn't active.
-  await ctx.services.care.applyPending(prov.playerId);
+  // Mode isn't active. Credited ticks are narrated (internally) after the
+  // paint so the Trainer Profile refreshes.
+  const ticks = await ctx.services.care.applyPending(prov.playerId);
   const care = await ctx.services.care.getState(prov.playerId);
   const flavor = pickMainMenuFlavor(ctx.content.tables.uiFlavor?.mainMenu);
   const description =
@@ -213,6 +223,7 @@ async function renderMainMenu(
     embeds: [embed],
     components: menuComponents(care, ctx.services.quests.config.enabled),
   });
+  await emitEvents(ctx, interaction, prov, careTickDescriptors(ticks));
 }
 
 const SPLASH_IMAGE_FILENAME = 'splash.png';
@@ -378,6 +389,12 @@ export async function handleDaily(
       embeds: [embed],
       components: withBackRow(),
     });
+    // The daily claim always exits Care Mode, so the profile has to come down.
+    const events: GameEventDescriptor[] = [
+      ...(result.careExit ? careLeaveDescriptors(result.careExit, 'daily') : []),
+      ...levelUpDescriptors(result.levelUps),
+    ];
+    await emitEvents(ctx, interaction, prov, events);
   } catch (err) {
     if (err instanceof AlreadyClaimedError) {
       // Already-claimed is an error condition — reply ephemerally so the
@@ -558,6 +575,9 @@ export async function handleItemUse(
     await respondEphemeral(interaction, 'That button no longer works~');
     return;
   }
+  // Snapshot the care target before the use — `ItemUseService` reports the
+  // exit as a boolean and the row is cleared by the time we get the result.
+  const careTargetBefore = (await ctx.services.care.getState(prov.playerId)).target;
   let result: ItemUseResult;
   try {
     result = await ctx.services.itemUse.use(prov.playerId, itemSlug);
@@ -570,6 +590,20 @@ export async function handleItemUse(
   }
   const view = await buildInventoryView(ctx, prov, formatItemUseResult(result));
   await paintSession(ctx, interaction, prov, view);
+  // Energy Drink (and any future restore-energy consumable) exits Care Mode.
+  // The service reports it as a boolean, so we resolve the name we already
+  // know from the pre-use state rather than adding a service field.
+  if (result.kind === 'restore_energy_full' && result.careModeExited) {
+    await emitEvents(ctx, interaction, prov, [
+      gameEvent('PLAYER_LEFT_CARE', {
+        waifuId: careTargetBefore?.waifu.id ?? null,
+        buddyName: careTargetBefore
+          ? (careTargetBefore.waifu.nickname?.trim() || careTargetBefore.species.name)
+          : null,
+        reason: 'item',
+      }),
+    ]);
+  }
 }
 
 async function buildShopView(
@@ -759,12 +793,22 @@ export async function handleCareStart(
     await paintSession(ctx, interaction, prov, view);
     return;
   }
+  const wasActive = care.active;
   try {
     const summary = await ctx.services.care.start(prov.playerId, targetId ?? undefined);
     const line = formatCareSummary(summary);
     if (line) await respondEphemeral(interaction, `💗 ${line}`);
     // Repaint the menu — care state fields now reflect started/switched.
     await handleMenu(ctx, interaction, prov);
+    await emitEvents(
+      ctx,
+      interaction,
+      prov,
+      // A bare "start" while already caring is a target switch, not an entry.
+      wasActive
+        ? careChangedDescriptors(summary)
+        : [...closeHuntSessionForCare(ctx, prov), ...careEnterDescriptors(summary)],
+    );
   } catch (err) {
     if (err instanceof WaifuNotOwnedError || err instanceof WaifuAlreadyReleasedError) {
       await respondEphemeral(interaction, err.userMessage);
@@ -778,6 +822,22 @@ export async function handleCareStart(
   }
 }
 
+/**
+ * Care Mode ends any hunt in progress. Returns the `PLAYER_COMPLETED_HUNT`
+ * descriptor when a session was open, or nothing when the player wasn't out
+ * hunting (or the tracker was reset by a restart).
+ */
+function closeHuntSessionForCare(
+  ctx: AppContext,
+  prov: Provisioned,
+): GameEventDescriptor[] {
+  const tracked = ctx.huntSessions.close(prov.playerId);
+  if (!tracked) return [];
+  return [
+    gameEvent('PLAYER_COMPLETED_HUNT', { location: tracked.location, reason: 'care_mode' }),
+  ];
+}
+
 export async function handleCareLeave(
   ctx: AppContext,
   interaction: PlayerInteraction,
@@ -787,6 +847,7 @@ export async function handleCareLeave(
   const line = formatCareSummary(summary);
   if (line) await respondEphemeral(interaction, `💤 Left Care Mode — ${line}`);
   await handleMenu(ctx, interaction, prov);
+  await emitEvents(ctx, interaction, prov, careLeaveDescriptors(summary, 'manual'));
 }
 
 export async function handleCareChangeOpen(
@@ -813,12 +874,16 @@ export async function handleCareChangePick(
     await respondEphemeral(interaction, 'That Waifumon is no longer available.');
     return;
   }
+  let events: GameEventDescriptor[] = [];
   try {
     const care = await ctx.services.care.getState(prov.playerId);
     // If not in Care Mode, treat as start with target; otherwise change.
     const summary = care.active
       ? await ctx.services.care.changeTarget(prov.playerId, targetId)
       : await ctx.services.care.start(prov.playerId, targetId);
+    events = care.active
+      ? careChangedDescriptors(summary)
+      : [...closeHuntSessionForCare(ctx, prov), ...careEnterDescriptors(summary)];
     const line = formatCareSummary(summary);
     if (line) await respondEphemeral(interaction, `💗 ${line}`);
   } catch (err) {
@@ -829,6 +894,7 @@ export async function handleCareChangePick(
     throw err;
   }
   await handleMenu(ctx, interaction, prov);
+  await emitEvents(ctx, interaction, prov, events);
 }
 
 /**

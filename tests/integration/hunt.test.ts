@@ -6,7 +6,13 @@
  */
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { encounters, playerCurrencies, players, species } from '../../src/db/schema';
+import {
+  encounters,
+  playerCurrencies,
+  players,
+  playerWaifus,
+  species,
+} from '../../src/db/schema';
 import { createHuntService } from '../../src/modules/hunt/huntService';
 import {
   ActiveEncounterError,
@@ -453,5 +459,69 @@ describe('HuntService — transaction safety', () => {
       .where(and(eq(encounters.playerId, playerId), eq(encounters.state, 'active')));
     expect(rows).toHaveLength(0);
     spy.mockRestore();
+  });
+});
+
+describe('HuntService — hunt-session boundary reporting', () => {
+  let playerId: number;
+  beforeAll(async () => {
+    ({ playerId } = await provisionPlayer(app, 'g-hunt-session', 'u-1'));
+  });
+  beforeEach(async () => {
+    await resetPlayer(playerId);
+    await t.db
+      .update(players)
+      .set({ careModeStartedAt: null, careModeLastTickAt: null, careModeWaifuId: null })
+      .where(eq(players.id, playerId));
+  });
+
+  it('reports an opened session on the first hunt', async () => {
+    const result = await app.hunt.hunt(playerId, CHANNEL_ID);
+    expect(result.session.opened).toBe(true);
+    expect(result.session.closedPreviousReason).toBeNull();
+    expect(result.session.previousLastHuntAt).toBeNull();
+  });
+
+  it('reports no boundary for a follow-up hunt inside the idle window', async () => {
+    const first = new Date(Date.now() - 60_000);
+    await t.db.update(players).set({ lastHuntAt: first }).where(eq(players.id, playerId));
+    await t.db.delete(encounters).where(eq(encounters.playerId, playerId));
+
+    const result = await app.hunt.hunt(playerId, CHANNEL_ID);
+    expect(result.session.opened).toBe(false);
+    expect(result.session.closedPreviousReason).toBeNull();
+    expect(result.session.previousLastHuntAt?.getTime()).toBe(first.getTime());
+  });
+
+  it('sweeps an abandoned session and opens a new one past sessionIdleMinutes', async () => {
+    const idle = app.content.tables.hunt.sessionIdleMinutes;
+    await t.db
+      .update(players)
+      .set({ lastHuntAt: new Date(Date.now() - (idle + 5) * 60_000) })
+      .where(eq(players.id, playerId));
+    await t.db.delete(encounters).where(eq(encounters.playerId, playerId));
+
+    const result = await app.hunt.hunt(playerId, CHANNEL_ID);
+    expect(result.session.closedPreviousReason).toBe('inactivity');
+    expect(result.session.opened).toBe(true);
+  });
+
+  it('opens a fresh session out of Care Mode without re-closing the old one', async () => {
+    const [waifu] = await t.db.select().from(species).where(eq(species.enabled, true)).limit(1);
+    const [owned] = await t.db
+      .insert(playerWaifus)
+      .values({ playerId, speciesId: waifu!.id, level: 1, xp: 0, affection: 0 })
+      .returning();
+    await app.care.start(playerId, owned!.id);
+    await t.db
+      .update(players)
+      .set({ lastHuntAt: new Date(Date.now() - 60 * 60_000) })
+      .where(eq(players.id, playerId));
+
+    const result = await app.hunt.hunt(playerId, CHANNEL_ID);
+    expect(result.session.opened).toBe(true);
+    expect(result.session.closedPreviousReason).toBeNull();
+    // The hunt still exited Care Mode, as before.
+    expect(result.careExit).not.toBeNull();
   });
 });

@@ -28,6 +28,9 @@ import { createItemUseService } from './modules/items/itemUseService';
 import { createProgressionService } from './modules/progression/progressionService';
 import { createQuestService } from './modules/quests/questService';
 import { createSessionService } from './modules/session/sessionService';
+import { createGameEventBus } from './modules/events/gameEvents';
+import { createHuntSessionTracker } from './modules/hunt/huntSession';
+import { createActivityFeedService } from './modules/activity/activityFeedService';
 import { createLogger } from './shared/logger';
 
 async function main(): Promise<void> {
@@ -91,13 +94,23 @@ async function main(): Promise<void> {
     careConfig: content.tables.energy.careMode,
   });
   const effects = createPlayerEffectsService(db);
+  // Central gameplay-event seam. Handlers emit onto it after their
+  // transaction commits; subscribers (Activity Feed today, Trainer Profile
+  // next) are strictly downstream and can never fail a gameplay write.
+  const gameEventBus = createGameEventBus({ logger });
+  const huntSessions = createHuntSessionTracker({
+    locations: content.tables.hunt.locationFlavors,
+  });
+  const guilds = createGuildService(db);
   const ctx: AppContext = {
     config,
     logger,
     db,
     content,
+    events: gameEventBus,
+    huntSessions,
     services: {
-      guilds: createGuildService(db),
+      guilds,
       players: createPlayerService(db, { initialEnergy: content.tables.energy.baseMax }),
       currency,
       inventory,
@@ -167,6 +180,26 @@ async function main(): Promise<void> {
   await registerCommands(config.discordToken, config.discordClientId, config.discordGuildId, logger);
 
   const client = createDiscordClient(ctx);
+
+  // Activity Feed: the first bus subscriber. It narrates player-visible
+  // events into the guild's "Waifumon Log" (`guilds.announce_channel_id`).
+  // Guilds without one configured stay silent — we deliberately do not fall
+  // back to the play channel, which is reserved for Trainer Profiles.
+  const activityFeed = createActivityFeedService({
+    logger,
+    richEmbedMinRarity: content.tables.capture.announceMinRarity,
+    resolveChannel: async (discordGuildId) => {
+      const guild = await guilds.getByDiscordId(discordGuildId);
+      return guild?.announceChannelId ?? null;
+    },
+    post: async (channelId, text) => {
+      const channel = await client.channels.fetch(channelId);
+      if (!channel || !('send' in channel)) return;
+      await channel.send({ content: text, allowedMentions: { parse: [] } });
+    },
+  });
+  activityFeed.subscribe(gameEventBus);
+
   await client.login(config.discordToken);
 
   // Admin "Save + Reload" re-seeds Postgres *and* republishes the in-memory
