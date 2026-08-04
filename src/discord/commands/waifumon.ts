@@ -36,7 +36,7 @@ import {
   careChangedDescriptors,
   careEnterDescriptors,
   careLeaveDescriptors,
-  careTickDescriptors,
+  carePendingDescriptors,
   levelUpDescriptors,
 } from '../gameEventBuilders';
 import { gameEvent, type GameEventDescriptor } from '../../modules/events/gameEvents';
@@ -223,7 +223,7 @@ async function renderMainMenu(
     embeds: [embed],
     components: menuComponents(care, ctx.services.quests.config.enabled),
   });
-  await emitEvents(ctx, interaction, prov, careTickDescriptors(ticks));
+  await emitEvents(ctx, interaction, prov, carePendingDescriptors(ticks));
 }
 
 const SPLASH_IMAGE_FILENAME = 'splash.png';
@@ -276,7 +276,7 @@ function splashComponents(buttonLabel: string): ActionRowBuilder<ButtonBuilder>[
 }
 
 /**
- * Paint the splash onto the session board and record the daily view *after*
+ * Paint the splash ephemerally and record the daily view *after*
  * the paint call returns (so a render failure never marks the splash shown).
  */
 async function renderSplash(
@@ -398,7 +398,7 @@ export async function handleDaily(
   } catch (err) {
     if (err instanceof AlreadyClaimedError) {
       // Already-claimed is an error condition — reply ephemerally so the
-      // session board stays on its current screen.
+      // current screen stays put.
       await respondEphemeral(interaction, `🎁 ${err.userMessage}`);
       return;
     }
@@ -562,7 +562,7 @@ export function formatItemUseResult(result: ItemUseResult): string {
 
 /**
  * `item:use` — consume one usable item and repaint the inventory screen on the
- * same public session board with a status line. Refusals (energy already full,
+ * same ephemeral view with a status line. Refusals (energy already full,
  * none owned) answer ephemerally so the board keeps its current state.
  */
 export async function handleItemUse(
@@ -800,7 +800,8 @@ export async function handleCareStart(
     // the tick summary follows as a small ephemeral note.
     await handleMenu(ctx, interaction, prov);
     const line = formatCareSummary(summary);
-    if (line) await respondEphemeral(interaction, `💗 ${line}`);
+    const note = careModeNote(wasActive, line);
+    if (note) await respondEphemeral(interaction, note);
     await emitEvents(
       ctx,
       interaction,
@@ -821,6 +822,19 @@ export async function handleCareStart(
     }
     throw err;
   }
+}
+
+/**
+ * The ephemeral confirmation after entering (or re-targeting) Care Mode. The
+ * public Trainer Profile is posted by the bus subscriber, so this tells the
+ * player where to look for it. Returns null when there is nothing to say.
+ */
+function careModeNote(wasActive: boolean, tickSummary: string | null): string | null {
+  const profileNote = wasActive
+    ? '💗 Care target changed — your Trainer Profile has moved to the bottom of the channel.'
+    : '💗 Care Mode active — your Trainer Profile is posted below.';
+  return tickSummary ? `${profileNote}
+${tickSummary}` : profileNote;
 }
 
 /**
@@ -847,7 +861,15 @@ export async function handleCareLeave(
   const summary = await ctx.services.care.leave(prov.playerId);
   await handleMenu(ctx, interaction, prov);
   const line = formatCareSummary(summary);
-  if (line) await respondEphemeral(interaction, `💤 Left Care Mode — ${line}`);
+  if (summary.stopped) {
+    await respondEphemeral(
+      interaction,
+      line
+        ? `💤 Left Care Mode — ${line}
+Your Trainer Profile has been taken down.`
+        : '💤 Left Care Mode — your Trainer Profile has been taken down.',
+    );
+  }
   await emitEvents(ctx, interaction, prov, careLeaveDescriptors(summary, 'manual'));
 }
 
@@ -877,8 +899,10 @@ export async function handleCareChangePick(
   }
   let events: GameEventDescriptor[] = [];
   let statusLine: string | null = null;
+  let wasActiveBeforePick = false;
   try {
     const care = await ctx.services.care.getState(prov.playerId);
+    wasActiveBeforePick = care.active;
     // If not in Care Mode, treat as start with target; otherwise change.
     const summary = care.active
       ? await ctx.services.care.changeTarget(prov.playerId, targetId)
@@ -895,7 +919,8 @@ export async function handleCareChangePick(
     throw err;
   }
   await handleMenu(ctx, interaction, prov);
-  if (statusLine) await respondEphemeral(interaction, `💗 ${statusLine}`);
+  const note = careModeNote(wasActiveBeforePick, statusLine);
+  if (note) await respondEphemeral(interaction, note);
   await emitEvents(ctx, interaction, prov, events);
 }
 
@@ -1142,9 +1167,9 @@ export async function handleQuests(
 
 /**
  * Claim every completed-unclaimed quest for today, plus the all-complete
- * bonus. Paints the result onto the public session board in a single pass —
- * replying ephemerally first would flip `interaction.replied` and make
- * `paintSession` edit the ephemeral reply instead of the public board.
+ * bonus. Paints the result into the player's ephemeral view in a single pass —
+ * replying first would flip `interaction.replied` and demote the board render
+ * to a stacked follow-up instead of an in-place update.
  */
 export async function handleQuestsClaimAll(
   ctx: AppContext,

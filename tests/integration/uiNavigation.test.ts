@@ -164,9 +164,9 @@ describe('ephemeral navigation: slash replies privately, buttons update in place
     expect(payload.flags).toBe(MessageFlags.Ephemeral);
     expect(cmd.channel.send).not.toHaveBeenCalled();
     expect(cmd.channel.messages.edit).not.toHaveBeenCalled();
-    // No board id is recorded — the session row is only a daily tally now.
+    // Gameplay records no message id — the column is Care-Mode-only now.
     const session = await currentSession();
-    expect(session?.messageId ?? null).toBeNull();
+    expect(session?.profileMessageId ?? null).toBeNull();
   });
 
   it('profile button on the session message updates the ephemeral view (no new send, no follow-up)', async () => {

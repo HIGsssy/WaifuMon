@@ -31,6 +31,10 @@ import { createSessionService } from './modules/session/sessionService';
 import { createGameEventBus } from './modules/events/gameEvents';
 import { createHuntSessionTracker } from './modules/hunt/huntSession';
 import { createActivityFeedService } from './modules/activity/activityFeedService';
+import {
+  createTrainerProfileService,
+  type ProfileChannel,
+} from './discord/trainerProfile';
 import { createLogger } from './shared/logger';
 
 async function main(): Promise<void> {
@@ -168,7 +172,6 @@ async function main(): Promise<void> {
       session: createSessionService({
         db,
         timezone: config.dailyTimezone,
-        inactiveTimeoutMinutes: content.tables.session?.inactiveTimeoutMinutes,
       }),
     },
   };
@@ -199,6 +202,25 @@ async function main(): Promise<void> {
     },
   });
   activityFeed.subscribe(gameEventBus);
+
+  // Trainer Profile: the second bus subscriber. It owns the one public
+  // message Waifumon posts on a player's behalf — their Care Mode dashboard
+  // in the play channel. Create / edit / remove are driven entirely by events.
+  const trainerProfile = createTrainerProfileService({
+    logger,
+    services: ctx.services,
+    resolveChannel: async (channelId) => {
+      try {
+        const channel = await client.channels.fetch(channelId);
+        if (!channel || !('send' in channel) || !('messages' in channel)) return null;
+        return channel as unknown as ProfileChannel;
+      } catch (err) {
+        logger.warn({ err, channelId }, 'trainer profile: channel fetch failed');
+        return null;
+      }
+    },
+  });
+  trainerProfile.subscribe(gameEventBus);
 
   await client.login(config.discordToken);
 

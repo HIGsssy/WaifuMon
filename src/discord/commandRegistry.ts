@@ -32,7 +32,7 @@ export function buildCommandDefinitions() {
     .setDescription('Open Waifumon — daily splash on first launch, then the main menu');
 
   // Power-user direct-action commands. All also reachable via buttons on
-  // the session board painted by `/waifumon`.
+  // the ephemeral menu opened by `/waifumon`.
   const wm = new SlashCommandBuilder()
     .setName('wm')
     .setDescription('Waifumon — direct actions')

@@ -201,7 +201,6 @@ export async function bootstrapApp(
     session: createSessionService({
       db: t.db,
       timezone,
-      inactiveTimeoutMinutes: content.tables.session?.inactiveTimeoutMinutes,
     }),
   };
 }

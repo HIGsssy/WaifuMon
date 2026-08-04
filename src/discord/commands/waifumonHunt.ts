@@ -586,7 +586,7 @@ export async function handleEncounterCharm(
   } catch (err) {
     const message = translateCaptureError(err);
     // Non-fatal capture rejections (already resolved, expired, out of items)
-    // stay ephemeral so the session board remains on its current state.
+    // answer ephemerally so the player's current screen stays put.
     await respondEphemeral(interaction, message);
     return;
   }
@@ -620,7 +620,7 @@ export async function handleEncounterCharm(
   }
 
   // Rare capture announcement (SR+): fire once on success only. This is the
-  // *separate* public announcement — not the session board — and still uses
+  // *separate* public announcement — the only public write on this path — and still uses
   // the guild-configured announce channel with safe allowedMentions.
   if (result.outcome === 'success') {
     await sendRareAnnouncement(
@@ -632,7 +632,7 @@ export async function handleEncounterCharm(
     );
   }
 
-  // Paint the outcome (success / escape / failure) onto the session board.
+  // Paint the outcome (success / escape / failure) into the player's ephemeral.
   const reply =
     result.outcome === 'failure'
       ? await buildFailureRetryReply(ctx, prov, result)

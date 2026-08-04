@@ -1,13 +1,16 @@
 /**
- * SessionService — public single-message session board (Rev 4 UI model).
+ * SessionService — per-(player, channel) bookkeeping.
  *
- * One `waifumon_sessions` row per (player, channel). The row remembers the
- * public Discord message id that every navigation edits in place, plus a
- * per-day summary tally that renders on the menu embed. Rows are upserted on
- * `/waifumon` and refreshed on every action; the summary auto-resets when the
- * calendar date rolls over in the configured timezone.
+ * One `waifumon_sessions` row per (player, channel). Since the UX redesign it
+ * carries exactly two things:
+ *   - `profile_message_id`: the player's Care Mode Trainer Profile message,
+ *     the only message the bot owns on their behalf (Discord plumbing lives
+ *     in `src/discord/trainerProfile.ts`);
+ *   - a per-day summary tally rendered on the menu embed, which auto-resets
+ *     when the calendar date rolls over in the configured timezone.
  *
- * The service is pure DB — Discord message plumbing lives in `sessionUi.ts`.
+ * The public session board this table was originally built for is gone; its
+ * leftover columns were dropped in migration 0013.
  */
 import { and, eq, sql } from 'drizzle-orm';
 import type { Db } from '../../db/client';
@@ -17,19 +20,6 @@ import {
   type WaifumonSessionRow,
 } from '../../db/schema';
 import { claimDateInTimezone } from '../../shared/time';
-
-export type SessionScreen =
-  | 'menu'
-  | 'profile'
-  | 'daily'
-  | 'inventory'
-  | 'shop'
-  | 'collection'
-  | 'inspect'
-  | 'hunt'
-  | 'encounter'
-  | 'capture_result'
-  | 'buddy';
 
 /**
  * Notable-find record kept in the summary — small enough that even a whole
@@ -154,19 +144,13 @@ export interface SessionService {
   /**
    * Ensure a session row exists for (player, channel). Never creates
    * duplicates thanks to the (player_id, channel_id) unique index — safe under
-   * concurrent `/waifumon` invocations. If `ownerDisplayName` is provided it
-   * is refreshed on both insert and conflict-update so per-guild nickname
-   * changes propagate to the session board.
+   * concurrent `/waifumon` invocations.
    */
   ensureSession(
     guildDbId: number,
     playerId: number,
     channelId: string,
-    ownerDisplayName?: string | null,
   ): Promise<WaifumonSessionRow>;
-
-  /** Look up a session by its owning message id (component ownership check). */
-  findByMessageId(messageId: string): Promise<WaifumonSessionRow | null>;
 
   /** Look up the session row for (player, channel) without mutating anything. */
   findByPlayerAndChannel(
@@ -177,28 +161,21 @@ export interface SessionService {
   /** Read a specific session row by id (used by paint after ensure). */
   getById(sessionId: number): Promise<WaifumonSessionRow | null>;
 
-  /** Persist the public message id after the first send or a re-send. */
-  setMessageId(sessionId: number, messageId: string | null): Promise<void>;
-
   /**
-   * Mark the session's public board as ended: clear `message_id` so future
-   * lookups can't find it and refresh `last_activity_at` so the next paint
-   * starts a fresh window. Summary is left intact — today's stats still
-   * belong to the same player.
+   * Record (or clear) the player's Care Mode Trainer Profile message for this
+   * channel. Creates the session row on first touch so entering Care Mode
+   * before any other interaction still works. `null` clears the pointer, which
+   * is what leaving Care Mode does.
    */
-  endSession(sessionId: number): Promise<void>;
+  setProfileMessageId(
+    guildDbId: number,
+    playerId: number,
+    channelId: string,
+    messageId: string | null,
+  ): Promise<void>;
 
-  /**
-   * Whether the row has gone past the configured inactivity timeout. A row
-   * with a null `messageId` is considered fresh (nothing to expire yet).
-   */
-  isExpired(session: WaifumonSessionRow, now?: Date): boolean;
-
-  /** Configured inactivity timeout in milliseconds (test/diagnostic helper). */
-  readonly inactiveTimeoutMs: number;
-
-  /** Bump activity + optionally record the current screen for diagnostics. */
-  touch(sessionId: number, currentScreen?: SessionScreen): Promise<void>;
+  /** The player's stored Trainer Profile message id for this channel, if any. */
+  getProfileMessageId(playerId: number, channelId: string): Promise<string | null>;
 
   /**
    * Apply an in-day event to the summary tally, resetting the tally when the
@@ -232,15 +209,12 @@ export interface SessionService {
 export interface SessionServiceDeps {
   db: Db;
   timezone: string;
-  /** Inactivity budget for a public session board; defaults to 45 minutes. */
-  inactiveTimeoutMinutes?: number;
   now?: () => Date;
 }
 
 export function createSessionService(deps: SessionServiceDeps): SessionService {
   const now = () => (deps.now ? deps.now() : new Date());
   const today = () => claimDateInTimezone(now(), deps.timezone);
-  const inactiveTimeoutMs = Math.max(1, deps.inactiveTimeoutMinutes ?? 45) * 60 * 1000;
 
   const readSummary: SessionService['readSummary'] = (session) =>
     parseSummary(session.summaryJson);
@@ -255,43 +229,25 @@ export function createSessionService(deps: SessionServiceDeps): SessionService {
     return stored === day;
   };
 
-  const isExpired: SessionService['isExpired'] = (session, at) => {
-    // A row with no live public message can't be "expired" — nothing to end.
-    if (!session.messageId) return false;
-    const last =
-      session.lastActivityAt instanceof Date
-        ? session.lastActivityAt
-        : new Date(session.lastActivityAt as unknown as string);
-    const point = at ?? now();
-    return point.getTime() - last.getTime() >= inactiveTimeoutMs;
-  };
-
-  return {
-    async ensureSession(guildDbId, playerId, channelId, ownerDisplayName) {
+  const service: SessionService = {
+    async ensureSession(guildDbId, playerId, channelId) {
       const at = now();
-      // Upsert on the (player, channel) unique index. When a display name is
-      // provided we refresh it on conflict too so per-guild nickname changes
-      // land on the session row without a Discord round-trip.
-      const insertValues = {
-        guildId: guildDbId,
-        playerId,
-        channelId,
-        summaryJson: emptySummary() as unknown as Record<string, unknown>,
-        summaryDate: today(),
-        createdAt: at,
-        updatedAt: at,
-        lastActivityAt: at,
-        ...(ownerDisplayName ? { ownerDisplayName } : {}),
-      };
-      const updateSet = ownerDisplayName
-        ? { lastActivityAt: at, updatedAt: at, ownerDisplayName }
-        : { lastActivityAt: at, updatedAt: at };
+      // Upsert on the (player, channel) unique index.
       const [row] = await deps.db
         .insert(waifumonSessions)
-        .values(insertValues)
+        .values({
+          guildId: guildDbId,
+          playerId,
+          channelId,
+          summaryJson: emptySummary() as unknown as Record<string, unknown>,
+          summaryDate: today(),
+          createdAt: at,
+          updatedAt: at,
+          lastActivityAt: at,
+        })
         .onConflictDoUpdate({
           target: [waifumonSessions.playerId, waifumonSessions.channelId],
-          set: updateSet,
+          set: { lastActivityAt: at, updatedAt: at },
         })
         .returning();
       if (!row) {
@@ -311,15 +267,6 @@ export function createSessionService(deps: SessionServiceDeps): SessionService {
       return row;
     },
 
-    async findByMessageId(messageId) {
-      const [row] = await deps.db
-        .select()
-        .from(waifumonSessions)
-        .where(eq(waifumonSessions.messageId, messageId))
-        .limit(1);
-      return row ?? null;
-    },
-
     async findByPlayerAndChannel(playerId, channelId) {
       const [row] = await deps.db
         .select()
@@ -334,14 +281,6 @@ export function createSessionService(deps: SessionServiceDeps): SessionService {
       return row ?? null;
     },
 
-    async endSession(sessionId) {
-      const at = now();
-      await deps.db
-        .update(waifumonSessions)
-        .set({ messageId: null, updatedAt: at, lastActivityAt: at })
-        .where(eq(waifumonSessions.id, sessionId));
-    },
-
     async getById(sessionId) {
       const [row] = await deps.db
         .select()
@@ -351,27 +290,18 @@ export function createSessionService(deps: SessionServiceDeps): SessionService {
       return row ?? null;
     },
 
-    async setMessageId(sessionId, messageId) {
+    async setProfileMessageId(guildDbId, playerId, channelId, messageId) {
+      const session = await service.ensureSession(guildDbId, playerId, channelId);
       const at = now();
       await deps.db
         .update(waifumonSessions)
-        .set({ messageId, updatedAt: at, lastActivityAt: at })
-        .where(eq(waifumonSessions.id, sessionId));
+        .set({ profileMessageId: messageId, updatedAt: at, lastActivityAt: at })
+        .where(eq(waifumonSessions.id, session.id));
     },
 
-    async touch(sessionId, currentScreen) {
-      const at = now();
-      if (currentScreen) {
-        await deps.db
-          .update(waifumonSessions)
-          .set({ currentScreen, updatedAt: at, lastActivityAt: at })
-          .where(eq(waifumonSessions.id, sessionId));
-      } else {
-        await deps.db
-          .update(waifumonSessions)
-          .set({ updatedAt: at, lastActivityAt: at })
-          .where(eq(waifumonSessions.id, sessionId));
-      }
+    async getProfileMessageId(playerId, channelId) {
+      const row = await service.findByPlayerAndChannel(playerId, channelId);
+      return row?.profileMessageId ?? null;
     },
 
     async recordEvent(sessionId, event) {
@@ -402,8 +332,6 @@ export function createSessionService(deps: SessionServiceDeps): SessionService {
 
     readSummary,
     isSummaryFresh,
-    isExpired,
-    inactiveTimeoutMs,
 
     async hasSeenSplashToday(playerId, at) {
       const day = claimDateInTimezone(at ?? now(), deps.timezone);
@@ -436,10 +364,12 @@ export function createSessionService(deps: SessionServiceDeps): SessionService {
       return inserted.length > 0;
     },
   };
+
+  return service;
 }
 
 /**
- * Renders the "Today" summary line(s) shown on the session board menu embed.
+ * Renders the "Today" summary line(s) shown on the main-menu embed.
  * Concise by design so we don't blow embed character limits.
  */
 export function renderSummaryLines(summary: SessionSummary): string[] {

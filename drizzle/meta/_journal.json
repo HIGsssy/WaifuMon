@@ -85,6 +85,20 @@
       "when": 1816725600000,
       "tag": "0011_item_effects",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1816812000000,
+      "tag": "0012_trainer_profile",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1816898400000,
+      "tag": "0013_session_cleanup",
+      "breakpoints": true
     }
   ]
 }

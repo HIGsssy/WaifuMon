@@ -1,10 +1,10 @@
 /**
- * Owner-identity helpers for the public session board.
+ * Player-identity helpers.
  *
- * Every Waifumon session board is labelled with its owner so multiple boards
- * in the same channel are distinguishable at a glance. Prefer the
- * per-server display name (nickname) — fall back to the global name and then
- * the raw username so we always have something to show.
+ * Used for the rare-capture embed, the Trainer Profile title, and the name
+ * every Activity Feed line is narrated under. Prefer the per-server display
+ * name (nickname) — fall back to the global name and then the raw username so
+ * we always have something to show.
  */
 import { GuildMember, type User } from 'discord.js';
 
@@ -13,7 +13,7 @@ export interface OwnerDisplayInput {
   user: User | { id: string; username?: string; globalName?: string | null };
 }
 
-/** Best-effort readable owner label used on every session board render. */
+/** Best-effort readable player label. */
 export function getGuildDisplayName(input: OwnerDisplayInput): string {
   // Real interactions carry a `GuildMember` instance; tests (and any exotic
   // interaction path where instanceof check breaks across module realms)

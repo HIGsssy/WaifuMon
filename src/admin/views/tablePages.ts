@@ -150,7 +150,7 @@ export function tablesPage(raw: RawContent): string {
     },
     { key: 'uiFlavor', title: 'UI flavor', blurb: 'Main-menu flavor line pool.' },
     { key: 'uiSplash', title: 'Splash screen', blurb: 'Daily launch splash: title, body lines, optional image path, button label.' },
-    { key: 'session', title: 'Session', blurb: 'Inactivity timeout before a stale board is retired.' },
+    { key: 'session', title: 'Session', blurb: 'Inactivity timeout — currently unused; the public session board it governed was retired when gameplay went ephemeral.' },
   ];
 
   const rendered = sections
@@ -177,7 +177,7 @@ ${s.notes ?? ''}
 <div class="card">
   <h2 style="margin-top:0">Quick edit</h2>
   <form data-post="/admin/tables" data-wrap='{"section":"session","value":__VALUE__}'>
-    ${numberField('inactiveTimeoutMinutes', 'Session inactivity timeout (minutes)', raw.tables.session.inactiveTimeoutMinutes, { step: '1' })}
+    ${numberField('inactiveTimeoutMinutes', 'Session inactivity timeout (minutes) — currently unused', raw.tables.session.inactiveTimeoutMinutes, { step: '1' })}
     <div class="actions"><button class="primary" type="submit">Save session</button></div>
   </form>
 </div>

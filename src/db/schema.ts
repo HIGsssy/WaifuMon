@@ -269,7 +269,6 @@ export const encounters = pgTable(
       .notNull()
       .references(() => species.id),
     channelId: text('channel_id').notNull(),
-    publicMessageId: text('public_message_id'),
     state: text('state').notNull().default('active'),
     attemptCount: integer('attempt_count').notNull().default(0),
     maxAttempts: integer('max_attempts').notNull().default(3),
@@ -386,7 +385,7 @@ export const playerProgressionEvents = pgTable(
 );
 
 /**
- * Public single-message session board (Rev 4 UI model).
+ * Per-(player, channel) bookkeeping.
  *
  * One active session per (player, channel). `message_id` is the public
  * channel-post that every navigation edits in place; `summary_json` holds
@@ -404,15 +403,13 @@ export const waifumonSessions = pgTable(
       .notNull()
       .references(() => players.id),
     channelId: text('channel_id').notNull(),
-    messageId: text('message_id'),
-    currentScreen: text('current_screen').notNull().default('menu'),
     /**
-     * Cached server display name of the session owner. Refreshed on every
-     * paint so per-guild nickname changes propagate; used to render the
-     * public "Hunter" line and the ephemeral wrong-user rejection copy
-     * without a Discord round-trip.
+     * Id of the player's public Care Mode Trainer Profile message in this
+     * channel, or null when they are not in Care Mode. Formerly the public
+     * session-board id (see migration 0012) — gameplay is ephemeral now, so
+     * this is the only message the bot owns on the player's behalf.
      */
-    ownerDisplayName: text('owner_display_name'),
+    profileMessageId: text('profile_message_id'),
     summaryJson: jsonb('summary_json').$type<Record<string, unknown>>().notNull().default({}),
     summaryDate: date('summary_date'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -422,12 +419,10 @@ export const waifumonSessions = pgTable(
       .defaultNow(),
   },
   (t) => [
-    // One active session per (player, channel).
+    // One active session per (player, channel). The Trainer Profile is looked
+    // up through this index; the old reverse message_id index was dropped in
+    // 0012 along with the public-board ownership check it served.
     uniqueIndex('waifumon_sessions_player_channel_uq').on(t.playerId, t.channelId),
-    // Reverse lookup for component ownership checks (message_id → session).
-    uniqueIndex('waifumon_sessions_message_id_uq')
-      .on(t.messageId)
-      .where(sql`message_id is not null`),
   ],
 );
 

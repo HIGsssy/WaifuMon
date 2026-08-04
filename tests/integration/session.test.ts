@@ -229,8 +229,8 @@ describe('ephemeral gameplay — /waifumon never writes to the channel', () => {
     expect(cmd.reply).toHaveBeenCalledOnce();
     expect(cmd.channel.send).not.toHaveBeenCalled();
     const session = await currentSession();
-    // No board id is ever recorded for gameplay any more.
-    expect(session?.messageId ?? null).toBeNull();
+    // Gameplay records no message id — the column is Care-Mode-only now.
+    expect(session?.profileMessageId ?? null).toBeNull();
   });
 
   it('hunt from a slash command answers ephemerally', async () => {
@@ -325,7 +325,7 @@ describe('ephemeral gameplay — no owner decoration', () => {
 });
 
 describe('ephemeral gameplay — encounters stay private', () => {
-  it('an encounter never populates encounters.public_message_id', async () => {
+  it('an encounter is revealed ephemerally and writes nothing to the channel', async () => {
     const p = await provisionPlayer(app, GUILD_ID, 'u-capture-1');
     await app.currency.setHuntEnergy(t.db, p.playerId, app.content.tables.energy.baseMax);
     const cmd = fakeCommand('u-capture-1');
@@ -333,12 +333,10 @@ describe('ephemeral gameplay — encounters stay private', () => {
     await handleHunt(ctx, cmd as any, p);
 
     expect(cmd.channel.send).not.toHaveBeenCalled();
-    const [active] = await t.db
-      .select()
-      .from(encounters)
-      .where(eq(encounters.playerId, p.playerId))
-      .limit(1);
-    if (active) expect(active.publicMessageId).toBeNull();
+    // The encounter row exists, but nothing about it is public: the
+    // public_message_id column that used to carry the edit-in-place capture
+    // message was dropped in migration 0013.
+    expect(cmd.reply).toHaveBeenCalled();
   });
 });
 

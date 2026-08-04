@@ -162,6 +162,19 @@ export function careLeaveDescriptors(
 }
 
 /**
+ * What a lazy `care.applyPending` produced. Two outcomes matter:
+ *   - ticks were credited → internal `CARE_TICK_APPLIED` (+ any buddy
+ *     milestones), so the Trainer Profile refreshes in place;
+ *   - the service self-healed a broken Care Mode (the target was released
+ *     underneath) → `PLAYER_LEFT_CARE` with `reason: 'auto_stop'`, so the
+ *     Trainer Profile is taken down rather than left pointing at nothing.
+ */
+export function carePendingDescriptors(summary: CareTickSummary): GameEventDescriptor[] {
+  if (summary.stopped) return careLeaveDescriptors(summary, 'auto_stop');
+  return careTickDescriptors(summary);
+}
+
+/**
  * Everything one `hunt()` call produced: the Care Mode exit it forced, the
  * hunt-session boundary it crossed, the roll outcome, and any progression.
  */

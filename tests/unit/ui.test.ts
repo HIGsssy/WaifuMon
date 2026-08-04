@@ -1,6 +1,9 @@
 /**
  * UI helpers — respondScreen chooses update() vs reply() based on interaction
  * kind; withBackRow appends a Back button.
+ *
+ * Also covers `buildTrainerProfileView`, the pure Care Mode dashboard
+ * renderer (phase 3): its MVP fields and its reserved dashboard slots.
  */
 import { describe, expect, it, vi } from 'vitest';
 import { DiscordAPIError, MessageFlags } from 'discord.js';
@@ -10,6 +13,12 @@ import {
   respondScreen,
   withBackRow,
 } from '../../src/discord/ui';
+import {
+  buildTrainerProfileView,
+  formatCountdown,
+  type TrainerProfileInput,
+} from '../../src/discord/trainerProfile';
+import type { CareState } from '../../src/modules/care/careService';
 
 function fakeButtonInteraction(overrides: Partial<Record<string, unknown>> = {}) {
   const state = { replied: false, deferred: false };
@@ -114,5 +123,165 @@ describe('isStaleInteractionError', () => {
     const err = Object.create(DiscordAPIError.prototype) as DiscordAPIError;
     Object.assign(err, { code: 50013, message: 'Missing Permissions' });
     expect(isStaleInteractionError(err)).toBe(false);
+  });
+});
+
+// ───────────────────────── Trainer Profile view (phase 3) ─────────────────────────
+
+function careState(overrides: Partial<CareState> = {}): CareState {
+  const target = {
+    waifu: {
+      id: 7,
+      nickname: null,
+      level: 4,
+      affection: 12,
+    },
+    species: { name: 'Luna', rarity: 'SR', affinity: 'dominant' },
+  } as unknown as CareState['target'];
+  return {
+    active: true,
+    startedAt: new Date('2026-01-01T00:00:00Z'),
+    lastTickAt: new Date('2026-01-01T00:00:00Z'),
+    nextTickAt: new Date(Date.now() + 90_000),
+    target,
+    pendingTicks: 0,
+    intervalMinutes: 30,
+    energyPerTick: 1,
+    waifuXpPerTick: 2,
+    affectionPerTick: 1,
+    recoveryCap: 20,
+    effectiveEnergyCap: 20,
+    currentEnergy: 12,
+    maxEnergy: 25,
+    enabled: true,
+    ...overrides,
+  } as CareState;
+}
+
+function profileInput(overrides: Partial<TrainerProfileInput> = {}): TrainerProfileInput {
+  return {
+    playerName: 'Whistler',
+    player: {
+      id: 1,
+      level: 12,
+      xp: 900,
+      createdAt: new Date('2026-01-05T00:00:00Z'),
+    } as unknown as TrainerProfileInput['player'],
+    currencies: { huntEnergy: 12, waifubux: 100, essence: 5 },
+    careState: careState(),
+    collectionProgress: { owned: 9, distinctSpecies: 7, totalSpecies: 28 },
+    maxEnergy: 25,
+    prestigeTitle: null,
+    ...overrides,
+  };
+}
+
+function fieldsOf(view: { embeds: { toJSON: () => { fields?: { name: string; value: string }[] } }[] }) {
+  const json = view.embeds[0]!.toJSON();
+  return new Map((json.fields ?? []).map((f) => [f.name, f.value]));
+}
+
+describe('formatCountdown', () => {
+  it('renders mm:ss and floors at zero', () => {
+    expect(formatCountdown(90_000)).toBe('01:30');
+    expect(formatCountdown(0)).toBe('00:00');
+    expect(formatCountdown(-5_000)).toBe('00:00');
+    expect(formatCountdown(3_600_000)).toBe('60:00');
+  });
+});
+
+describe('buildTrainerProfileView', () => {
+  it('renders the MVP fields for an active Care Mode session', () => {
+    const view = buildTrainerProfileView(profileInput());
+    const json = view.embeds[0]!.toJSON();
+    const fields = fieldsOf(view);
+
+    expect(json.title).toBe("🌸 Whistler's Trainer Profile");
+    // `toDateString()` is local-time, so derive the expectation the same way
+    // rather than hard-coding a date that shifts with the runner's timezone.
+    expect(json.footer?.text).toBe(
+      `Trainer since ${new Date('2026-01-05T00:00:00Z').toDateString()}`,
+    );
+    expect(fields.get('👤 Trainer')).toContain('Level **12**');
+    expect(fields.get('👤 Trainer')).toContain('⚡ Hunt Energy **12 / 25**');
+    expect(fields.get('⭐ Buddy')).toContain('**Luna**');
+    expect(fields.get('⭐ Buddy')).toContain('SR · Lv 4');
+    expect(fields.get('⭐ Buddy')).toContain('💗 12 affection');
+    expect(fields.get('🎒 Collection')).toBe('7 / 28 unique species (25 %)');
+    expect(fields.get('💗 Activity')).toContain('Currently caring for **Luna**');
+    expect(fields.get('💗 Activity')).toContain('Next tick in **01:30**');
+    expect(fields.get('💗 Activity')).toContain('Per tick: +1 ⚡ · +2 XP · +1 affection');
+  });
+
+  it('is informational only — no components', () => {
+    expect(buildTrainerProfileView(profileInput())).not.toHaveProperty('components');
+  });
+
+  it('prefers the nickname over the species name, keeping the species as context', () => {
+    const state = careState();
+    (state.target!.waifu as { nickname: string | null }).nickname = 'Moonpie';
+    const fields = fieldsOf(buildTrainerProfileView(profileInput({ careState: state })));
+    expect(fields.get('⭐ Buddy')).toContain('**Moonpie** (Luna)');
+    expect(fields.get('💗 Activity')).toContain('Currently caring for **Moonpie**');
+  });
+
+  it('appends the prestige title when the player has one', () => {
+    const fields = fieldsOf(
+      buildTrainerProfileView(profileInput({ prestigeTitle: 'Prestige Hunter' })),
+    );
+    expect(fields.get('👤 Trainer')).toContain('*Prestige Hunter*');
+  });
+
+  it('warns when energy has hit the Care Mode cap', () => {
+    const fields = fieldsOf(
+      buildTrainerProfileView(
+        profileInput({ careState: careState({ currentEnergy: 20, effectiveEnergyCap: 20 }) }),
+      ),
+    );
+    expect(fields.get('💗 Activity')).toContain('Energy at the Care Mode cap (**20**)');
+  });
+
+  it('handles a zero-species content set without dividing by zero', () => {
+    const fields = fieldsOf(
+      buildTrainerProfileView(
+        profileInput({ collectionProgress: { owned: 0, distinctSpecies: 0, totalSpecies: 0 } }),
+      ),
+    );
+    expect(fields.get('🎒 Collection')).toBe('0 / 0 unique species (0 %)');
+  });
+
+  it('skips every reserved dashboard slot when no dashboard data is supplied', () => {
+    const fields = fieldsOf(buildTrainerProfileView(profileInput()));
+    expect(fields.get('👤 Trainer')).not.toContain('XP to Lv');
+    expect(fields.get('👤 Trainer')).not.toContain('🗺️');
+    expect(fields.get('💗 Activity')).not.toContain('Today:');
+    expect(fields.get('💗 Activity')).not.toContain('📜');
+  });
+
+  it('renders a reserved slot as soon as it is wired, without moving the others', () => {
+    const fields = fieldsOf(
+      buildTrainerProfileView(
+        profileInput({
+          dashboard: {
+            currentRegion: 'the Velvet Grove',
+            todaysHunts: 4,
+            todaysCaptures: 2,
+            currentDailyObjective: 'Spend 5 Hunt Energy (3/5)',
+            nextLevelProgress: {
+              level: 12,
+              xpIntoLevel: 40,
+              xpToNext: 150,
+              atMaxLevel: false,
+            } as never,
+          },
+        }),
+      ),
+    );
+    expect(fields.get('👤 Trainer')).toContain('40 / 150 XP to Lv 13');
+    expect(fields.get('👤 Trainer')).toContain('🗺️ the Velvet Grove');
+    expect(fields.get('💗 Activity')).toContain('Today: 4 hunts · 2 caught');
+    expect(fields.get('💗 Activity')).toContain('📜 Spend 5 Hunt Energy (3/5)');
+    // The four MVP blocks are still present and in order.
+    expect([...fields.keys()]).toEqual(['👤 Trainer', '⭐ Buddy', '🎒 Collection', '💗 Activity']);
   });
 });

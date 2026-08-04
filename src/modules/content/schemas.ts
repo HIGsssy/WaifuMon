@@ -436,7 +436,7 @@ export const WaifuProgressionConfigSchema = z.object({
 });
 
 /**
- * Optional cosmetic flavor text pools that hydrate the session board UI.
+ * Optional cosmetic flavor text pools that hydrate the menu UI.
  * Empty arrays and missing entries are safe — render helpers fall back to a
  * built-in default line.
  */
@@ -476,11 +476,15 @@ export const UiSplashConfigSchema = z
   });
 
 /**
- * Public session-board tunables. `inactiveTimeoutMinutes` controls when a
- * stale board is retired: after that many minutes without owner activity,
- * `/waifumon` ends the old public message and starts a fresh board instead
- * of editing the stale one. Old buttons/selects from an expired session are
- * rejected ephemerally without mutating state.
+ * Session tunables.
+ *
+ * ⚠️ `inactiveTimeoutMinutes` is currently **inert**. It governed the public
+ * session board's staleness timeout, and that board was retired when gameplay
+ * went ephemeral: ephemeral views expire on Discord's own schedule and there
+ * is no shared message to go stale. The key is retained (and still editable in
+ * the admin panel) rather than dropped, because removing it is a content
+ * migration and the value is a plausible fit for a future "returned after
+ * inactivity" Trainer Profile hook. Nothing reads it today.
  */
 export const SessionConfigSchema = z
   .object({

@@ -371,10 +371,10 @@ describe('CaptureService — concurrency', () => {
 });
 
 describe('CaptureService — public-message safety', () => {
-  it('capture state stays committed even if the caller drops the public post', async () => {
-    // CaptureService itself never touches Discord. Simulate the "public send
-    // failed" world by simply ignoring setPublicMessageId — the capture result
-    // must be visible in the DB regardless.
+  it('capture state stays committed independently of any Discord post', async () => {
+    // CaptureService never touches Discord: the rare-capture embed and the
+    // Activity Feed line are coordinator-layer side effects that run after
+    // the transaction. A failed post must leave the capture committed.
     const { playerId } = await provisionPlayer(app, 'g-capture-public', 'u-1');
     await grantItem(playerId, 'mythic_contract', 1);
     const { encounter, speciesRow } = await createActiveEncounter(playerId, 'neko_barista');
@@ -383,7 +383,6 @@ describe('CaptureService — public-message safety', () => {
 
     const [row] = await t.db.select().from(encounters).where(eq(encounters.id, encounter.id));
     expect(row?.state).toBe('captured');
-    expect(row?.publicMessageId).toBeNull();
     const owned = await t.db
       .select()
       .from(playerWaifus)

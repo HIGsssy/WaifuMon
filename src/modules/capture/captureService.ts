@@ -116,8 +116,9 @@ export interface CaptureAttemptResult {
 export interface CaptureService {
   /**
    * Resolve one charm click. Atomic: item consumption, attempt row, encounter
-   * state, and any owned-waifu row all commit together. Public-message
-   * side-effects live outside the transaction (see the encounter UI handler).
+   * state, and any owned-waifu row all commit together. Discord side-effects
+   * (the SR+ rare-capture embed, the Activity Feed line) happen afterwards at
+   * the coordinator layer and can never roll this back.
    */
   attemptCapture(
     playerId: number,
@@ -125,9 +126,6 @@ export interface CaptureService {
     itemSlug: string,
     now?: Date,
   ): Promise<CaptureAttemptResult>;
-
-  /** Persist the id of the public capture message created by the UI. */
-  setPublicMessageId(encounterId: number, messageId: string): Promise<void>;
 }
 
 export interface CaptureServiceDeps {
@@ -447,13 +445,6 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
 
       if (outcome.kind === 'expired') throw new EncounterExpiredError();
       return outcome.value;
-    },
-
-    async setPublicMessageId(encounterId, messageId) {
-      await db
-        .update(encounters)
-        .set({ publicMessageId: messageId })
-        .where(eq(encounters.id, encounterId));
     },
   };
 }
