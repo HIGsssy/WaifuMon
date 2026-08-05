@@ -3,7 +3,7 @@
     "slug": "alley_catgirl",
     "name": "Alley Catgirl",
     "rarity": "N",
-    "archetype": "catgirl",
+    "archetype": "demi-human",
     "baseCaptureRate": null,
     "description": "Prowls the fire-escape network at midnight. Trades secrets for tuna and eye contact.",
     "tags": [
@@ -22,7 +22,7 @@
     "slug": "shrine_assistant",
     "name": "Shrine Assistant",
     "rarity": "N",
-    "archetype": "shrine_maiden",
+    "archetype": "demi-human",
     "baseCaptureRate": null,
     "description": "Sweeps the stone steps at dawn. Bows perfectly. Blushes even more perfectly.",
     "tags": [
@@ -41,7 +41,7 @@
     "slug": "cafe_maid",
     "name": "Café Maid",
     "rarity": "N",
-    "archetype": "maid",
+    "archetype": "human",
     "baseCaptureRate": null,
     "description": "Draws hearts in your latte foam. Refills are complimentary. Restraint is not.",
     "tags": [
@@ -60,7 +60,7 @@
     "slug": "neon_school_rebel",
     "name": "Neon School Rebel",
     "rarity": "N",
-    "archetype": "cyberpunk_girl",
+    "archetype": "human",
     "baseCaptureRate": null,
     "description": "Blazer half-unbuttoned, tie loose, LED nails already breaking dress code.",
     "tags": [
@@ -79,7 +79,7 @@
     "slug": "library_goth",
     "name": "Library Goth",
     "rarity": "N",
-    "archetype": "gothic_girl",
+    "archetype": "human",
     "baseCaptureRate": null,
     "description": "Reads forbidden poetry between the shelves. Marks her page with black lace.",
     "tags": [
@@ -98,7 +98,7 @@
     "slug": "arcade_bunny",
     "name": "Arcade Bunny",
     "rarity": "N",
-    "archetype": "bunny_girl",
+    "archetype": "demi-human",
     "baseCaptureRate": null,
     "description": "Trades her tickets for winks. The claw machine is never actually rigged for her.",
     "tags": [
@@ -117,7 +117,7 @@
     "slug": "rainy_day_idol",
     "name": "Rainy Day Idol",
     "rarity": "N",
-    "archetype": "idol",
+    "archetype": "human",
     "baseCaptureRate": null,
     "description": "Practices choreography in an empty station platform. Her umbrella is optional.",
     "tags": [
@@ -136,7 +136,7 @@
     "slug": "sleepy_succubus_intern",
     "name": "Sleepy Succubus Intern",
     "rarity": "N",
-    "archetype": "succubus",
+    "archetype": "demon",
     "baseCaptureRate": null,
     "description": "First week on the job. Still forgetting to hide her tail during the video call.",
     "tags": [
@@ -155,7 +155,7 @@
     "slug": "nurse_imp",
     "name": "Nurse Imp",
     "rarity": "N",
-    "archetype": "nurse",
+    "archetype": "demon",
     "baseCaptureRate": null,
     "description": "Prescription: bedrest and hand-holding. She'll administer both personally.",
     "tags": [
@@ -174,7 +174,7 @@
     "slug": "streetwear_oni",
     "name": "Streetwear Oni",
     "rarity": "N",
-    "archetype": "oni",
+    "archetype": "demon",
     "baseCaptureRate": null,
     "description": "Cropped hoodie, single horn poking through a beanie. Skates louder than she talks.",
     "tags": [
@@ -212,7 +212,7 @@
     "slug": "cyber_neko",
     "name": "Cyber Neko",
     "rarity": "N",
-    "archetype": "catgirl",
+    "archetype": "demi-human",
     "baseCaptureRate": null,
     "description": "Purr indistinguishable from a cooling fan. Runs firmware updates while she naps on you.",
     "tags": [
@@ -231,7 +231,7 @@
     "slug": "potion_shop_clerk",
     "name": "Potion Shop Clerk",
     "rarity": "N",
-    "archetype": "witch",
+    "archetype": "human",
     "baseCaptureRate": null,
     "description": "Recommends the 'confidence' tonic. Insists it is definitely not a love potion. Winks.",
     "tags": [
@@ -250,7 +250,7 @@
     "slug": "velvet_bartender",
     "name": "Velvet Bartender",
     "rarity": "N",
-    "archetype": "vampire",
+    "archetype": "demi-human",
     "baseCaptureRate": null,
     "description": "Slides you something red that is definitely just wine. Probably. Enjoy the ambiance.",
     "tags": [
@@ -288,7 +288,7 @@
     "slug": "beachside_siren",
     "name": "Beachside Siren",
     "rarity": "N",
-    "archetype": "succubus",
+    "archetype": "demon",
     "baseCaptureRate": null,
     "description": "Sings quietly to the surf. Sunscreen application is a group activity around her.",
     "tags": [
@@ -307,7 +307,7 @@
     "slug": "neon_kitsune_apprentice",
     "name": "Neon Kitsune Apprentice",
     "rarity": "R",
-    "archetype": "kitsune",
+    "archetype": "spirit",
     "baseCaptureRate": null,
     "description": "Only three tails so far, and each one already causing a small blackout.",
     "tags": [
@@ -326,7 +326,7 @@
     "slug": "crimson_oni_bride",
     "name": "Crimson Oni Bride",
     "rarity": "R",
-    "archetype": "oni",
+    "archetype": "demon",
     "baseCaptureRate": null,
     "description": "Kimono soaked in dusk. She has already picked out a ring. It is very heavy.",
     "tags": [
@@ -345,7 +345,7 @@
     "slug": "cyber_shrine_maiden",
     "name": "Cyber Shrine Maiden",
     "rarity": "R",
-    "archetype": "shrine_maiden",
+    "archetype": "android",
     "baseCaptureRate": null,
     "description": "Prays in the server room. The lanterns are LEDs. The blessings are real.",
     "tags": [
@@ -383,7 +383,7 @@
     "slug": "gothic_vampire_heiress",
     "name": "Gothic Vampire Heiress",
     "rarity": "R",
-    "archetype": "vampire",
+    "archetype": "demi-human",
     "baseCaptureRate": null,
     "description": "The estate is hers. The nights are longer here. She insists you stay for tea.",
     "tags": [
@@ -402,7 +402,7 @@
     "slug": "hologram_idol",
     "name": "Hologram Idol",
     "rarity": "R",
-    "archetype": "idol",
+    "archetype": "spirit",
     "baseCaptureRate": null,
     "description": "Encore performance in a rainy alley, for an audience of one. Signal quality is perfect.",
     "tags": [
@@ -421,7 +421,7 @@
     "slug": "demon_librarian",
     "name": "Demon Librarian",
     "rarity": "R",
-    "archetype": "librarian",
+    "archetype": "demon",
     "baseCaptureRate": null,
     "description": "The forbidden section is under her personal supervision. Glasses slip when she leans in.",
     "tags": [
@@ -440,7 +440,7 @@
     "slug": "bunny_dealer",
     "name": "Bunny Dealer",
     "rarity": "R",
-    "archetype": "bunny_girl",
+    "archetype": "human",
     "baseCaptureRate": null,
     "description": "Shuffles a deck one-handed. The house always wins, but she might lose on purpose.",
     "tags": [
@@ -478,7 +478,7 @@
     "slug": "witchy_mechanic",
     "name": "Witchy Mechanic",
     "rarity": "R",
-    "archetype": "witch",
+    "archetype": "human",
     "baseCaptureRate": null,
     "description": "Tunes engines with sigils and swearing. Her broom has a working exhaust.",
     "tags": [
@@ -497,7 +497,7 @@
     "slug": "void_catgirl",
     "name": "Void Catgirl",
     "rarity": "SR",
-    "archetype": "catgirl",
+    "archetype": "demi-human",
     "baseCaptureRate": null,
     "description": "Purrs from an empty room. Eyes reflect a sky that isn't yours.",
     "tags": [
@@ -516,7 +516,7 @@
     "slug": "royal_succubus",
     "name": "Royal Succubus",
     "rarity": "SR",
-    "archetype": "succubus",
+    "archetype": "demon",
     "baseCaptureRate": null,
     "description": "Kneeling is optional. Bowing is expected. Her court runs on velvet and consent.",
     "tags": [
@@ -535,7 +535,7 @@
     "slug": "chrome_valkyrie",
     "name": "Chrome Valkyrie",
     "rarity": "SR",
-    "archetype": "android",
+    "archetype": "valkyrie",
     "baseCaptureRate": null,
     "description": "Chassis polished to a mirror. Chooses her hunters based on their reflection.",
     "tags": [
@@ -554,7 +554,7 @@
     "slug": "blood_moon_priestess",
     "name": "Blood Moon Priestess",
     "rarity": "SR",
-    "archetype": "shrine_maiden",
+    "archetype": "human",
     "baseCaptureRate": null,
     "description": "Chants under a red sky. The offerings are wine. The wine is not wine.",
     "tags": [
@@ -573,7 +573,7 @@
     "slug": "casino_kitsune",
     "name": "Casino Kitsune",
     "rarity": "SR",
-    "archetype": "casino_girl",
+    "archetype": "spirit",
     "baseCaptureRate": null,
     "description": "Nine tails, each holding a different chip. The dealer never checks her sleeves.",
     "tags": [
@@ -592,7 +592,7 @@
     "slug": "fallen_angel_nurse",
     "name": "Fallen Angel Nurse",
     "rarity": "SR",
-    "archetype": "nurse",
+    "archetype": "angel",
     "baseCaptureRate": null,
     "description": "Grounded her wings for the graveyard shift. Her bedside manner still saves souls.",
     "tags": [
@@ -630,7 +630,7 @@
     "slug": "darkelf_royal",
     "name": "Darkelf Royal",
     "rarity": "SR",
-    "archetype": "dark elf",
+    "archetype": "demi-human",
     "baseCaptureRate": null,
     "description": "Royal blood, midnight skin, eyes that pierce through the veil of night.",
     "tags": [
@@ -649,7 +649,7 @@
     "slug": "queen_of_velvet_chains",
     "name": "Queen of Velvet Chains",
     "rarity": "SSR",
-    "archetype": "succubus",
+    "archetype": "demon",
     "baseCaptureRate": null,
     "description": "Every chain is negotiable. Every negotiation ends her way. She always leaves the key on the table.",
     "tags": [
@@ -668,7 +668,7 @@
     "slug": "neon_dragon_empress",
     "name": "Neon Dragon Empress",
     "rarity": "SSR",
-    "archetype": "dragon_girl",
+    "archetype": "demi-human",
     "baseCaptureRate": null,
     "description": "Scales like circuit boards, breath like a spotlight. Ruled a skyline for a century already.",
     "tags": [
@@ -687,7 +687,7 @@
     "slug": "eclipse_idol",
     "name": "Eclipse Idol",
     "rarity": "SSR",
-    "archetype": "idol",
+    "archetype": "demon",
     "baseCaptureRate": null,
     "description": "Only performs when the sun goes dark. The stadium fills with candles and hush.",
     "tags": [
@@ -706,7 +706,7 @@
     "slug": "abyssal_shrine_oracle",
     "name": "Abyssal Shrine Oracle",
     "rarity": "SSR",
-    "archetype": "shrine_maiden",
+    "archetype": "demon",
     "baseCaptureRate": null,
     "description": "Speaks with something older than the shrine itself. Her sleeves drip when there is no rain.",
     "tags": [
@@ -744,7 +744,7 @@
     "slug": "cyber_lilith_prime",
     "name": "Cyber Lilith Prime",
     "rarity": "UR",
-    "archetype": "cyberpunk_girl",
+    "archetype": "human",
     "baseCaptureRate": null,
     "description": "First of her line. Her firmware wrote itself. Her firewalls flirt back.",
     "tags": [

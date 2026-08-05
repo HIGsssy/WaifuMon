@@ -3,7 +3,7 @@
     "slug": "neko_barista",
     "name": "Neko Barista",
     "rarity": "N",
-    "archetype": "catgirl",
+    "archetype": "demi-human",
     "baseCaptureRate": null,
     "description": "Serves lattes with a mischievous smile and suspiciously perfect foam art.",
     "tags": [
@@ -20,7 +20,7 @@
     "slug": "gym_oni",
     "name": "Gym Oni",
     "rarity": "N",
-    "archetype": "oni",
+    "archetype": "demon",
     "baseCaptureRate": null,
     "description": "Will spot your bench press. Will not spot your escape.",
     "tags": [
@@ -88,7 +88,7 @@
     "slug": "neon_kitsune",
     "name": "Neon Kitsune",
     "rarity": "SR",
-    "archetype": "kitsune",
+    "archetype": "spirit",
     "baseCaptureRate": null,
     "description": "Nine tails, each glowing a different shade of trouble.",
     "tags": [
@@ -122,7 +122,7 @@
     "slug": "void_empress",
     "name": "Void Empress",
     "rarity": "UR",
-    "archetype": "eldritch",
+    "archetype": "demon",
     "baseCaptureRate": null,
     "description": "Reality bends politely out of her way. You should too.",
     "tags": [
