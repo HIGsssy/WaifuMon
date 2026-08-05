@@ -22,7 +22,7 @@
     }
   },
   "hunt": {
-    "cooldownSeconds": 10,
+    "cooldownSeconds": 5,
     "encounterExpirySeconds": 120,
     "resultTable": [
       {
