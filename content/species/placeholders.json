@@ -54,7 +54,7 @@
     "slug": "arcade_succubus",
     "name": "Arcade Succubus",
     "rarity": "R",
-    "archetype": "succubus",
+    "archetype": "demon",
     "baseCaptureRate": null,
     "description": "Holds every high score. Feeds on continues.",
     "tags": [

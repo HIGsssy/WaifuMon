@@ -777,5 +777,24 @@
     "enabled": true,
     "eventKey": null,
     "perSpeciesWeight": 1
+  },
+  {
+    "slug": "the_waifu_below",
+    "name": "The Waifu Below",
+    "rarity": "LR",
+    "archetype": "demon",
+    "baseCaptureRate": 1,
+    "description": "The dark side of the perfect Waifu. A goddess? maybe. An interesting time, obviously.",
+    "tags": [
+      "starter",
+      "demon",
+      "legendary"
+    ],
+    "contentRating": "explicit",
+    "affinity": "dominant",
+    "imagePath": "waifumon/the_waifu_below/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
   }
 ]
