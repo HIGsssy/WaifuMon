@@ -90,6 +90,71 @@ describe('loadConfig', () => {
     ).toThrow(ConfigError);
   });
 
+  it('leaves the platform API disabled by default', () => {
+    const config = loadConfig(validEnv);
+    expect(config.platformApi).toEqual({
+      enabled: false,
+      host: '127.0.0.1',
+      port: 3120,
+      token: '',
+    });
+  });
+
+  it('rejects PLATFORM_API_ENABLED=true without a token', () => {
+    expect(() => loadConfig({ ...validEnv, PLATFORM_API_ENABLED: 'true' })).toThrow(ConfigError);
+    expect(() =>
+      loadConfig({ ...validEnv, PLATFORM_API_ENABLED: 'true', PLATFORM_API_TOKEN: '   ' }),
+    ).toThrow(/PLATFORM_API_TOKEN is required/);
+  });
+
+  it('defaults the platform API to 127.0.0.1:3120 when enabled with a token', () => {
+    const config = loadConfig({
+      ...validEnv,
+      PLATFORM_API_ENABLED: 'true',
+      PLATFORM_API_TOKEN: 'a-secret',
+    });
+    expect(config.platformApi).toEqual({
+      enabled: true,
+      host: '127.0.0.1',
+      port: 3120,
+      token: 'a-secret',
+    });
+  });
+
+  it('accepts an explicit platform API host and port', () => {
+    const config = loadConfig({
+      ...validEnv,
+      PLATFORM_API_ENABLED: '1',
+      PLATFORM_API_TOKEN: 'a-secret',
+      PLATFORM_API_HOST: '0.0.0.0',
+      PLATFORM_API_PORT: '4100',
+    });
+    expect(config.platformApi.enabled).toBe(true);
+    expect(config.platformApi.host).toBe('0.0.0.0');
+    expect(config.platformApi.port).toBe(4100);
+  });
+
+  it('rejects an out-of-range platform API port', () => {
+    expect(() =>
+      loadConfig({
+        ...validEnv,
+        PLATFORM_API_ENABLED: 'true',
+        PLATFORM_API_TOKEN: 'a-secret',
+        PLATFORM_API_PORT: '99999',
+      }),
+    ).toThrow(ConfigError);
+  });
+
+  it('keeps the two web surfaces independent', () => {
+    const config = loadConfig({
+      ...validEnv,
+      ADMIN_WEB_ENABLED: 'true',
+      ADMIN_WEB_TOKEN: 'admin-secret',
+    });
+    expect(config.adminWeb.enabled).toBe(true);
+    expect(config.platformApi.enabled).toBe(false);
+  });
+
   it('accepts a valid non-UTC timezone and custom ASSETS_DIR', () => {
     const config = loadConfig({
       ...validEnv,

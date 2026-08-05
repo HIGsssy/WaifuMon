@@ -5,6 +5,7 @@
  * The optional admin web panel starts last, and only when enabled.
  */
 import { startAdminServer } from './admin/server';
+import { startPlatformApi } from './api/server';
 import { loadConfig } from './config/config';
 import { connectWithRetry, createDb, createPool } from './db/client';
 import { runMigrations } from './db/migrate';
@@ -244,8 +245,32 @@ async function main(): Promise<void> {
     }),
   });
 
+  // Platform API: a thin HTTP adapter over the same service layer the Discord
+  // handlers call, on its own port and behind its own token. Silent and
+  // zero-overhead unless PLATFORM_API_ENABLED=true. It reads `ctx` live rather
+  // than capturing it, so a content reload is visible to /ready immediately.
+  const platformApi = await startPlatformApi({
+    config: config.platformApi,
+    logger,
+    probes: {
+      pingDatabase: async () => {
+        await pool.query('SELECT 1');
+      },
+      describeContent: () => ({
+        species: ctx.content.species.length,
+        items: ctx.content.items.length,
+      }),
+      describeDiscord: () =>
+        client.isReady()
+          ? { status: 'ok', detail: 'gateway connected' }
+          : { status: 'down', detail: 'gateway not connected' },
+      describeBind: () => `listening on ${config.platformApi.host}:${config.platformApi.port}`,
+    },
+  });
+
   const shutdown = async (signal: string): Promise<void> => {
     logger.info({ signal }, 'shutting down');
+    await platformApi?.close();
     await adminServer?.close();
     await client.destroy();
     await pool.end();

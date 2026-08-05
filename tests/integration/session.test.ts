@@ -74,6 +74,7 @@ function buildCtx(): AppContext {
       databaseUrl: 'postgres://x',
       logLevel: 'info',
       adminWeb: { enabled: false, host: '127.0.0.1', port: 3111, token: '' },
+      platformApi: { enabled: false, host: '127.0.0.1', port: 3120, token: '' },
     },
     logger: t.logger,
     db: t.db,

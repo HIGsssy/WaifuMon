@@ -32,8 +32,16 @@ services:
     #                          0.0.0.0 — published ports are inserted ahead of
     #                          ufw/iptables, so that is publicly reachable even
     #                          with a firewall enabled.
+    #
+    # Platform API (docs/platform-api.md). Same two-bind rule as above:
+    #   PLATFORM_API_HOST         must be 0.0.0.0 under Docker
+    #   PLATFORM_API_PUBLISH_HOST the real boundary; loopback by default,
+    #                             set it to the host's tailnet IP for Tailscale
+    # Publishing the port is harmless while PLATFORM_API_ENABLED=false — nothing
+    # is listening inside the container, so the mapping simply refuses connections.
     ports:
       - '${ADMIN_WEB_PUBLISH_HOST:-127.0.0.1}:${ADMIN_WEB_PORT:-3111}:${ADMIN_WEB_PORT:-3111}'
+      - '${PLATFORM_API_PUBLISH_HOST:-127.0.0.1}:${PLATFORM_API_PORT:-3120}:${PLATFORM_API_PORT:-3120}'
 
   postgres:
     image: postgres:16-alpine

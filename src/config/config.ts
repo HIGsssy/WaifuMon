@@ -35,9 +35,32 @@ const EnvSchema = z.object({
   ADMIN_WEB_PORT: z.coerce.number().int().min(1).max(65535).default(3111),
   /** Shared admin secret. Required when ADMIN_WEB_ENABLED — never logged. */
   ADMIN_WEB_TOKEN: z.string().optional(),
+
+  /**
+   * Internal Platform REST API (`/api/v1/…`). A second Fastify instance in
+   * this same process, sharing the service layer in memory. Disabled by
+   * default; binds to loopback so it is only reachable through an SSH tunnel
+   * or a tailnet address the operator publishes it on.
+   */
+  PLATFORM_API_ENABLED: z
+    .enum(['true', 'false', '1', '0'])
+    .default('false')
+    .transform((v) => v === 'true' || v === '1'),
+  PLATFORM_API_HOST: z.string().min(1).default('127.0.0.1'),
+  PLATFORM_API_PORT: z.coerce.number().int().min(1).max(65535).default(3120),
+  /** Shared bearer secret. Required when PLATFORM_API_ENABLED — never logged. */
+  PLATFORM_API_TOKEN: z.string().optional(),
 });
 
 export interface AdminWebConfig {
+  enabled: boolean;
+  host: string;
+  port: number;
+  /** Empty string only when disabled — a startup check enforces this. */
+  token: string;
+}
+
+export interface PlatformApiConfig {
   enabled: boolean;
   host: string;
   port: number;
@@ -57,6 +80,7 @@ export interface AppConfig {
   dailyTimezone: string;
   logLevel: string;
   adminWeb: AdminWebConfig;
+  platformApi: PlatformApiConfig;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -74,6 +98,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       'Invalid environment configuration — ADMIN_WEB_TOKEN is required when ADMIN_WEB_ENABLED=true',
     );
   }
+  const platformApiToken = (e.PLATFORM_API_TOKEN ?? '').trim();
+  if (e.PLATFORM_API_ENABLED && platformApiToken.length === 0) {
+    throw new ConfigError(
+      'Invalid environment configuration — PLATFORM_API_TOKEN is required when PLATFORM_API_ENABLED=true',
+    );
+  }
   return {
     discordToken: e.DISCORD_TOKEN,
     discordClientId: e.DISCORD_CLIENT_ID,
@@ -88,6 +118,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       host: e.ADMIN_WEB_HOST,
       port: e.ADMIN_WEB_PORT,
       token: adminToken,
+    },
+    platformApi: {
+      enabled: e.PLATFORM_API_ENABLED,
+      host: e.PLATFORM_API_HOST,
+      port: e.PLATFORM_API_PORT,
+      token: platformApiToken,
     },
   };
 }
