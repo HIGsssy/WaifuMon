@@ -5,7 +5,12 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { startPlatformApi, type PlatformApiHandle } from '../../src/api/server';
 import { loadConfig } from '../../src/config/config';
-import { createCapturedLogger, createProbes, TEST_TOKEN } from '../helpers/platformApiFixtures';
+import {
+  createApiContext,
+  createCapturedLogger,
+  createProbes,
+  TEST_TOKEN,
+} from '../helpers/platformApiFixtures';
 
 let handle: PlatformApiHandle | null = null;
 
@@ -26,7 +31,7 @@ describe('startPlatformApi', () => {
     handle = await startPlatformApi({
       config: loadConfig(baseEnv).platformApi,
       logger: log.logger,
-      probes: createProbes(),
+      probes: createProbes(), ctx: createApiContext(),
     });
     expect(handle).toBeNull();
     expect(log.text()).toBe('');
@@ -43,7 +48,7 @@ describe('startPlatformApi', () => {
     expect(config.host).toBe('127.0.0.1');
     expect(config.port).toBe(3120);
 
-    handle = await startPlatformApi({ config, logger: log.logger, probes: createProbes() });
+    handle = await startPlatformApi({ config, logger: log.logger, probes: createProbes(), ctx: createApiContext() });
     expect(handle).not.toBeNull();
     expect(handle!.app.server.address()).toMatchObject({ address: '127.0.0.1', port: 3120 });
 
@@ -69,7 +74,7 @@ describe('startPlatformApi', () => {
     handle = await startPlatformApi({
       config: { enabled: true, host: '0.0.0.0', port: 3121, token: TEST_TOKEN },
       logger: log.logger,
-      probes: createProbes(),
+      probes: createProbes(), ctx: createApiContext(),
     });
     expect(log.text()).toContain('bound to a public interface');
   });

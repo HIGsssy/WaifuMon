@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createPlatformApiServer, isPrivateBind } from '../../../src/api/server';
 import type { ZodFastify } from '../../../src/api/plugins/typeProvider';
 import {
+  createApiContext,
   createCapturedLogger,
   createProbes,
   TEST_TOKEN,
@@ -26,6 +27,7 @@ async function build(probes: ProbeOverrides = {}): Promise<ZodFastify> {
     config: { enabled: true, host: '127.0.0.1', port: 3120, token: TEST_TOKEN },
     logger: log.logger,
     probes: createProbes(probes),
+    ctx: createApiContext(),
   });
 }
 
@@ -44,6 +46,7 @@ describe('construction', () => {
         config: { enabled: true, host: '127.0.0.1', port: 3120, token: '  ' },
         logger: createCapturedLogger().logger,
         probes: createProbes(),
+        ctx: createApiContext(),
       }),
     ).rejects.toThrow(/non-empty platform API token/);
   });

@@ -74,3 +74,22 @@ export function paginated<T>(
 export function requestMeta(requestId: string): ResponseMeta {
   return { requestId };
 }
+
+/**
+ * Route-level shorthand: wrap a payload and stamp the request's correlation id
+ * into `meta`. Every v1 handler returns through `ok` or `okPage` so the
+ * envelope can never drift endpoint to endpoint.
+ */
+export function ok<T>(req: { id: string | number }, data: T): DataEnvelope<T> {
+  return envelope(data, requestMeta(String(req.id)));
+}
+
+export function okPage<T>(
+  req: { id: string | number },
+  data: T[],
+  page: number,
+  pageSize: number,
+  total: number,
+): PaginatedEnvelope<T> {
+  return paginated(data, page, pageSize, total, requestMeta(String(req.id)));
+}

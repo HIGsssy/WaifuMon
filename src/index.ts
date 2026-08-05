@@ -252,6 +252,12 @@ async function main(): Promise<void> {
   const platformApi = await startPlatformApi({
     config: config.platformApi,
     logger,
+    ctx: {
+      services: ctx.services,
+      // Read through `ctx` so an admin-panel content reload is visible to the
+      // API immediately, exactly as it is to the Discord handlers.
+      getContent: () => ctx.content,
+    },
     probes: {
       pingDatabase: async () => {
         await pool.query('SELECT 1');

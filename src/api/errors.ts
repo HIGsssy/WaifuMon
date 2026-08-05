@@ -36,6 +36,56 @@ export class ApiValidationError extends AppError {
 }
 
 /**
+ * Resource-specific 404s raised by the API layer.
+ *
+ * The service layer's own `PlayerNotFoundError` exists but carries the default
+ * "Something went wrong" user message — right for an ephemeral Discord reply,
+ * wrong for an HTTP client that needs to know the id was simply unknown. These
+ * reuse the same `code` values so the machine-readable contract is identical.
+ */
+export class ApiPlayerNotFoundError extends AppError {
+  /** `identifier` may be an internal id or a "guild/user" pair from lookup. */
+  constructor(identifier: number | string) {
+    super('PLAYER_NOT_FOUND', `Player ${identifier} not found`, 'No player with that id.');
+  }
+}
+
+export class ApiGuildNotFoundError extends AppError {
+  constructor(discordGuildId: string) {
+    super('GUILD_NOT_FOUND', `Guild ${discordGuildId} not found`, 'No guild with that id.');
+  }
+}
+
+export class ApiSpeciesNotFoundError extends AppError {
+  constructor(slug: string) {
+    super('SPECIES_NOT_FOUND', `Species "${slug}" not found`, 'No species with that slug.');
+  }
+}
+
+export class ApiTableNotFoundError extends AppError {
+  constructor(key: string) {
+    super('TABLE_NOT_FOUND', `Tuning table "${key}" not found`, 'No tuning table with that key.');
+  }
+}
+
+export class ApiSessionNotFoundError extends AppError {
+  constructor(channelId: string) {
+    super(
+      'SESSION_NOT_FOUND',
+      `No session for channel ${channelId}`,
+      'No session in that channel yet.',
+    );
+  }
+}
+
+/** The player currently has no active encounter / no buddy / no active buff. */
+export class ApiNoActiveResourceError extends AppError {
+  constructor(code: 'ENCOUNTER_NOT_FOUND' | 'BUDDY_NOT_SET', detail: string, userMessage: string) {
+    super(code, detail, userMessage);
+  }
+}
+
+/**
  * Status per `AppError.code`. Grouped by the §8.2 conventions:
  *   404 unknown resource · 409 state conflict · 422 valid shape, rule refused
  *   500 internal · 503 dependency unavailable
@@ -60,6 +110,11 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   ITEM_NOT_FOUND: 404,
   ENCOUNTER_NOT_FOUND: 404,
   WAIFU_NOT_OWNED: 404,
+  GUILD_NOT_FOUND: 404,
+  SPECIES_NOT_FOUND: 404,
+  TABLE_NOT_FOUND: 404,
+  SESSION_NOT_FOUND: 404,
+  BUDDY_NOT_SET: 404,
 
   // --- State conflict -----------------------------------------------------
   ACTIVE_ENCOUNTER: 409,

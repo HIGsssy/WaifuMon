@@ -25,6 +25,7 @@ import type { PlatformApiConfig } from '../config/config';
 import { AppError } from '../shared/errors';
 import type { Logger } from '../shared/logger';
 import { registerAuth } from './auth';
+import type { ApiContext } from './context';
 import {
   ApiNotFoundError,
   ApiValidationError,
@@ -43,6 +44,8 @@ export interface PlatformApiDeps {
   config: PlatformApiConfig;
   logger: Logger;
   probes: ReadinessProbes;
+  /** Services + content snapshot the v1 routes adapt. */
+  ctx: ApiContext;
 }
 
 /**
@@ -151,6 +154,19 @@ export async function createPlatformApiServer(deps: PlatformApiDeps): Promise<Zo
       security: [{ bearerAuth: [] }],
       tags: [
         { name: 'System', description: 'Liveness, readiness and platform metadata.' },
+        { name: 'Players', description: 'Identity, level and the composite profile.' },
+        { name: 'Collection', description: 'Owned Waifumon, dex progress and the active buddy.' },
+        { name: 'Currency', description: 'Hunt Energy, WaifuBux and Essence balances.' },
+        { name: 'Inventory', description: 'Items a player holds.' },
+        { name: 'Effects', description: 'Active consumable buffs.' },
+        { name: 'Care Mode', description: 'Idle energy recovery and Waifumon training.' },
+        { name: 'Encounters', description: 'The short-lived encounter a hunt raises.' },
+        { name: 'Daily', description: 'Daily reward status.' },
+        { name: 'Quests', description: 'Assigned daily quests and their progress.' },
+        { name: 'Shop', description: 'What is for sale.' },
+        { name: 'Sessions', description: 'Per-channel tallies and Trainer Profile pointers.' },
+        { name: 'Content', description: 'Authored species, items, tuning tables and quest pool.' },
+        { name: 'Guilds', description: 'Guild configuration (read-only in v1).' },
       ],
     },
     transform: jsonSchemaTransform,
@@ -161,9 +177,12 @@ export async function createPlatformApiServer(deps: PlatformApiDeps): Promise<Zo
     uiConfig: { docExpansion: 'list', deepLinking: true },
   });
 
-  registerHealthRoutes(app, deps.probes);
-  await app.register(v1Routes, { prefix: '/api/v1' });
-
+  // Both handlers must be installed *before* the routes. Fastify's error and
+  // not-found handlers are encapsulated: a child context created by
+  // `register` captures whatever handler is on its parent at that moment, so
+  // setting them afterwards would leave every v1 route on the framework
+  // defaults — and those emit `{statusCode, error, message}`, which does not
+  // match the error schema the routes declare.
   app.setNotFoundHandler(async (req, reply) => {
     const err = new ApiNotFoundError(`No route for ${req.method} ${req.url.split('?')[0] ?? ''}`);
     return reply.code(404).send(toErrorBody(err, 404, String(req.id)));
@@ -203,6 +222,9 @@ export async function createPlatformApiServer(deps: PlatformApiDeps): Promise<Zo
     );
     return reply.code(status).send(toErrorBody(wrapped, status, requestId));
   });
+
+  registerHealthRoutes(app, deps.probes);
+  await app.register(v1Routes(deps.ctx), { prefix: '/api/v1' });
 
   return app;
 }

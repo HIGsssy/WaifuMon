@@ -9,8 +9,11 @@
  * (and, for the bearer token, did not) reach the log.
  */
 import pino from 'pino';
-import type { Logger } from '../../src/shared/logger';
+import type { ApiContext } from '../../src/api/context';
 import type { ReadinessProbes } from '../../src/api/routes/health';
+import type { AppServices } from '../../src/discord/types';
+import type { LoadedContent } from '../../src/modules/content/schemas';
+import type { Logger } from '../../src/shared/logger';
 
 export const TEST_TOKEN = 'super-secret-platform-token';
 
@@ -51,4 +54,53 @@ export function createProbes(overrides: ProbeOverrides = {}): ReadinessProbes {
       overrides.describeDiscord ?? (() => ({ status: 'ok', detail: 'gateway connected' })),
     describeBind: overrides.describeBind ?? (() => 'listening on 127.0.0.1:3120'),
   };
+}
+
+/**
+ * A context whose services are test doubles. Handler unit tests substitute
+ * only the two or three methods the route under test calls; anything else
+ * throws loudly, which is how a route that reaches for a service it should not
+ * be using gets caught.
+ *
+ * `deep` is `Partial` per service so a test can write
+ * `createApiContext({ services: { currency: { getBalances: async () => row } } })`.
+ */
+export type ServiceStubs = {
+  [K in keyof AppServices]?: Partial<AppServices[K]>;
+};
+
+export interface ApiContextOverrides {
+  services?: ServiceStubs;
+  content?: Partial<LoadedContent>;
+}
+
+const EMPTY_CONTENT: LoadedContent = {
+  items: [],
+  species: [],
+  tables: {} as LoadedContent['tables'],
+};
+
+export function createApiContext(overrides: ApiContextOverrides = {}): ApiContext {
+  const services = new Proxy({} as AppServices, {
+    get(_target, serviceName: string) {
+      const stub = (overrides.services as Record<string, unknown> | undefined)?.[serviceName];
+      return new Proxy(
+        {},
+        {
+          get(_t, method: string) {
+            const impl = (stub as Record<string, unknown> | undefined)?.[method];
+            if (typeof impl === 'function') return impl;
+            return () => {
+              throw new Error(
+                `test double: services.${serviceName}.${method}() was called but not stubbed`,
+              );
+            };
+          },
+        },
+      );
+    },
+  });
+
+  const content: LoadedContent = { ...EMPTY_CONTENT, ...overrides.content };
+  return { services, getContent: () => content };
 }
