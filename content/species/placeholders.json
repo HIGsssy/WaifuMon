@@ -6,9 +6,11 @@
     "archetype": "catgirl",
     "baseCaptureRate": null,
     "description": "Serves lattes with a mischievous smile and suspiciously perfect foam art.",
-    "tags": ["placeholder"],
+    "tags": [
+      "placeholder"
+    ],
     "contentRating": "suggestive",
-    "affinity": "switch",
+    "affinity": "submissive",
     "imagePath": "waifumon/neko_barista/standard.png",
     "enabled": true,
     "eventKey": null,
@@ -21,9 +23,11 @@
     "archetype": "oni",
     "baseCaptureRate": null,
     "description": "Will spot your bench press. Will not spot your escape.",
-    "tags": ["placeholder"],
+    "tags": [
+      "placeholder"
+    ],
     "contentRating": "suggestive",
-    "affinity": "switch",
+    "affinity": "dominant",
     "imagePath": "waifumon/gym_oni/standard.png",
     "enabled": true,
     "eventKey": null,
@@ -36,7 +40,9 @@
     "archetype": "spirit",
     "baseCaptureRate": null,
     "description": "Shushes you from between the stacks. Cold hands, warm heart.",
-    "tags": ["placeholder"],
+    "tags": [
+      "placeholder"
+    ],
     "contentRating": "suggestive",
     "affinity": "switch",
     "imagePath": "waifumon/library_ghost/standard.png",
@@ -51,7 +57,9 @@
     "archetype": "succubus",
     "baseCaptureRate": null,
     "description": "Holds every high score. Feeds on continues.",
-    "tags": ["placeholder"],
+    "tags": [
+      "placeholder"
+    ],
     "contentRating": "mature",
     "affinity": "switch",
     "imagePath": "waifumon/arcade_succubus/standard.png",
@@ -66,9 +74,11 @@
     "archetype": "android",
     "baseCaptureRate": null,
     "description": "Optimized broth algorithms. Steam vents are strictly decorative. Probably.",
-    "tags": ["placeholder"],
+    "tags": [
+      "placeholder"
+    ],
     "contentRating": "suggestive",
-    "affinity": "switch",
+    "affinity": "submissive",
     "imagePath": "waifumon/ramen_android/standard.png",
     "enabled": true,
     "eventKey": null,
@@ -81,9 +91,11 @@
     "archetype": "kitsune",
     "baseCaptureRate": null,
     "description": "Nine tails, each glowing a different shade of trouble.",
-    "tags": ["placeholder"],
+    "tags": [
+      "placeholder"
+    ],
     "contentRating": "mature",
-    "affinity": "switch",
+    "affinity": "submissive",
     "imagePath": "waifumon/neon_kitsune/standard.png",
     "enabled": true,
     "eventKey": null,
@@ -96,9 +108,11 @@
     "archetype": "valkyrie",
     "baseCaptureRate": null,
     "description": "Descends only when the moon covers the sun. Chooses her hunters carefully.",
-    "tags": ["placeholder"],
+    "tags": [
+      "placeholder"
+    ],
     "contentRating": "mature",
-    "affinity": "switch",
+    "affinity": "primal",
     "imagePath": "waifumon/eclipse_valkyrie/standard.png",
     "enabled": true,
     "eventKey": null,
@@ -111,9 +125,11 @@
     "archetype": "eldritch",
     "baseCaptureRate": null,
     "description": "Reality bends politely out of her way. You should too.",
-    "tags": ["placeholder"],
+    "tags": [
+      "placeholder"
+    ],
     "contentRating": "explicit",
-    "affinity": "switch",
+    "affinity": "primal",
     "imagePath": "waifumon/void_empress/standard.png",
     "enabled": true,
     "eventKey": null,

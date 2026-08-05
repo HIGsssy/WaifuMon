@@ -11,7 +11,7 @@
     }
   },
   "inventory": {
-    "captureCapacity": 50
+    "captureCapacity": 100
   },
   "dailyPackage": {
     "waifubux": 100,
@@ -24,44 +24,104 @@
   "hunt": {
     "cooldownSeconds": 10,
     "encounterExpirySeconds": 120,
-    "sessionIdleMinutes": 15,
-    "locationFlavors": [
-      "the Whispering Forest",
-      "the Neon Boardwalk",
-      "the Velvet Grove",
-      "the Moonlit Docks"
-    ],
     "resultTable": [
-      { "kind": "encounter", "weight": 70 },
-      { "kind": "item_find", "weight": 12 },
-      { "kind": "waifubux_find", "weight": 8 },
-      { "kind": "essence_find", "weight": 5 },
-      { "kind": "rare_item_find", "weight": 3 },
-      { "kind": "flavor", "weight": 2 }
+      {
+        "kind": "encounter",
+        "weight": 70
+      },
+      {
+        "kind": "item_find",
+        "weight": 12
+      },
+      {
+        "kind": "waifubux_find",
+        "weight": 8
+      },
+      {
+        "kind": "essence_find",
+        "weight": 5
+      },
+      {
+        "kind": "rare_item_find",
+        "weight": 3
+      },
+      {
+        "kind": "flavor",
+        "weight": 2
+      }
     ],
     "rarityTable": [
-      { "rarity": "N", "weight": 60 },
-      { "rarity": "R", "weight": 25 },
-      { "rarity": "SR", "weight": 10 },
-      { "rarity": "SSR", "weight": 4 },
-      { "rarity": "UR", "weight": 0.9 },
-      { "rarity": "LR", "weight": 0.1 }
+      {
+        "rarity": "N",
+        "weight": 60
+      },
+      {
+        "rarity": "R",
+        "weight": 25
+      },
+      {
+        "rarity": "SR",
+        "weight": 10
+      },
+      {
+        "rarity": "SSR",
+        "weight": 4
+      },
+      {
+        "rarity": "UR",
+        "weight": 0.9
+      },
+      {
+        "rarity": "LR",
+        "weight": 0.1
+      }
     ],
     "itemFind": {
       "sub": [
-        { "slug": "basic_charm", "weight": 70, "minQty": 1, "maxQty": 3 },
-        { "slug": "silk_charm", "weight": 30, "minQty": 1, "maxQty": 2 }
+        {
+          "slug": "basic_charm",
+          "weight": 70,
+          "minQty": 1,
+          "maxQty": 3
+        },
+        {
+          "slug": "silk_charm",
+          "weight": 30,
+          "minQty": 1,
+          "maxQty": 2
+        }
       ]
     },
     "rareItemFind": {
       "sub": [
-        { "slug": "velvet_charm", "weight": 60, "minQty": 1, "maxQty": 1 },
-        { "slug": "prismatic_charm", "weight": 39, "minQty": 1, "maxQty": 1 },
-        { "slug": "mythic_contract", "weight": 1, "minQty": 1, "maxQty": 1 }
+        {
+          "slug": "velvet_charm",
+          "weight": 60,
+          "minQty": 1,
+          "maxQty": 1
+        },
+        {
+          "slug": "prismatic_charm",
+          "weight": 39,
+          "minQty": 1,
+          "maxQty": 1
+        },
+        {
+          "slug": "mythic_contract",
+          "weight": 1,
+          "minQty": 1,
+          "maxQty": 1
+        }
       ]
     },
-    "waifubuxFind": { "min": 25, "max": 75 },
-    "essenceFind": { "min": 3, "max": 10 },
+    "waifubuxFind": {
+      "min": 25,
+      "max": 75
+    },
+    "essenceFind": {
+      "min": 3,
+      "max": 10
+    },
     "flavor": [
       "You found a suspiciously heart-shaped rock.",
       "The wind carried a faint giggle. Nothing else.",
@@ -85,14 +145,22 @@
     "hereMentionMinRarity": "UR"
   },
   "buddyAffinity": {
-    "styles": ["dominant", "submissive", "caregiver", "primal", "switch"],
+    "styles": [
+      "dominant",
+      "submissive",
+      "caregiver",
+      "primal",
+      "switch"
+    ],
     "wheel": {
       "dominant": "submissive",
       "submissive": "caregiver",
       "caregiver": "primal",
       "primal": "dominant"
     },
-    "neutralStyles": ["switch"],
+    "neutralStyles": [
+      "switch"
+    ],
     "strongBonusByRarity": {
       "N": 0.01,
       "R": 0.02,
@@ -126,13 +194,22 @@
     "keepOnTimeoutSeconds": 300
   },
   "progression": {
-    "levelCurve": { "base": 100, "growth": 50 },
+    "levelCurve": {
+      "base": 100,
+      "growth": 50
+    },
     "maxLevel": 50,
     "maxEnergy": {
       "cap": 40,
       "levelBonuses": [
-        { "atLevel": 7, "delta": 5 },
-        { "atLevel": 20, "delta": 5 }
+        {
+          "atLevel": 7,
+          "delta": 5
+        },
+        {
+          "atLevel": 20,
+          "delta": 5
+        }
       ]
     },
     "xp": {
@@ -157,7 +234,11 @@
       "weightUnits": 1
     },
     "dailyBonusItems": [
-      { "atLevel": 12, "slug": "silk_charm", "quantity": 1 }
+      {
+        "atLevel": 12,
+        "slug": "silk_charm",
+        "quantity": 1
+      }
     ],
     "dailyRareItemChance": {
       "atLevel": 30,
@@ -166,11 +247,17 @@
       "quantity": 1
     },
     "prestigeTitles": [
-      { "atLevel": 50, "label": "Prestige Hunter" }
+      {
+        "atLevel": 50,
+        "label": "Prestige Hunter"
+      }
     ]
   },
   "waifuProgression": {
-    "levelCurve": { "base": 30, "growth": 10 },
+    "levelCurve": {
+      "base": 30,
+      "growth": 10
+    },
     "maxLevel": 50,
     "buddy": {
       "xpPerHunt": 2,
@@ -187,7 +274,12 @@
     "questsPerDay": 3,
     "allCompleteBonus": {
       "waifubux": 50,
-      "items": [{ "slug": "silk_charm", "quantity": 1 }]
+      "items": [
+        {
+          "slug": "silk_charm",
+          "quantity": 1
+        }
+      ]
     },
     "pool": [
       {
@@ -200,7 +292,12 @@
         "difficulty": "easy",
         "rewards": {
           "waifubux": 25,
-          "items": [{ "slug": "basic_charm", "quantity": 1 }]
+          "items": [
+            {
+              "slug": "basic_charm",
+              "quantity": 1
+            }
+          ]
         }
       },
       {
@@ -213,7 +310,12 @@
         "difficulty": "easy",
         "rewards": {
           "essence": 5,
-          "items": [{ "slug": "basic_charm", "quantity": 1 }]
+          "items": [
+            {
+              "slug": "basic_charm",
+              "quantity": 1
+            }
+          ]
         }
       },
       {
@@ -239,7 +341,12 @@
         "weight": 70,
         "difficulty": "medium",
         "rewards": {
-          "items": [{ "slug": "silk_charm", "quantity": 1 }]
+          "items": [
+            {
+              "slug": "silk_charm",
+              "quantity": 1
+            }
+          ]
         }
       },
       {
@@ -276,7 +383,12 @@
         "weight": 40,
         "difficulty": "medium",
         "rewards": {
-          "items": [{ "slug": "silk_charm", "quantity": 1 }],
+          "items": [
+            {
+              "slug": "silk_charm",
+              "quantity": 1
+            }
+          ],
           "essence": 10
         }
       },
