@@ -74,7 +74,7 @@ export function QuickLaunch({
             key={tile.to}
             to={tile.to}
             className={cn(
-              'lift group flex flex-col gap-2.5 rounded-2xl border border-border bg-surface p-4 outline-none',
+              'lift group flex flex-col gap-2.5 rounded-2xl border border-border bg-surface p-4',
             )}
           >
             <tile.icon

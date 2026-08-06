@@ -35,6 +35,7 @@ import { useContentItems, useContentTables } from '@/api/hooks/useContent';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
+import { ScrollableRegion } from '@/components/ui/scrollableRegion';
 import { RarityBadge } from '@/components/waifumon/RarityBadge';
 import { formatPercent, titleCase } from '@/lib/format';
 import { RARITY_ORDER } from '@/lib/rarity';
@@ -195,7 +196,7 @@ export function GuidePage() {
             title="Capture odds"
             lead="Rarer Waifumon are harder to convince. These are the starting odds before charms, your buddy's affinity, or luck get involved."
           >
-            <div className="overflow-x-auto">
+            <ScrollableRegion label="Base capture odds table">
               <table className="w-full min-w-[18rem] text-left text-sm">
                 <thead className="text-xs tracking-wide text-ink-muted uppercase">
                   <tr>
@@ -218,7 +219,7 @@ export function GuidePage() {
                   )}
                 </tbody>
               </table>
-            </div>
+            </ScrollableRegion>
           </Section>
         )}
 
@@ -229,7 +230,7 @@ export function GuidePage() {
           link={{ to: '/shop', label: 'See what the shop has' }}
         >
           {captureItems.length > 0 ? (
-            <div className="overflow-x-auto">
+            <ScrollableRegion label="Capture charms table">
               <table className="w-full min-w-[22rem] text-left text-sm">
                 <thead className="text-xs tracking-wide text-ink-muted uppercase">
                   <tr>
@@ -257,7 +258,7 @@ export function GuidePage() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </ScrollableRegion>
           ) : (
             <p className="text-sm text-ink-subtle">Charm details are loading.</p>
           )}

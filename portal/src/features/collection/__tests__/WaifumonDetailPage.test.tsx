@@ -26,7 +26,7 @@ describe('WaifumonDetailPage', () => {
     // Nickname is the title; the species name becomes the subtitle.
     expect(screen.getByText('Void Empress')).toBeInTheDocument();
 
-    expect(screen.getByLabelText('Rarity: Ultra Rare')).toBeInTheDocument();
+    expect(screen.getByText('Rarity: Ultra Rare')).toBeInTheDocument();
     expect(screen.getByText('Level 22')).toBeInTheDocument();
     expect(screen.getByText('5,400 XP total')).toBeInTheDocument();
 

@@ -14,7 +14,7 @@ import { cn } from '@/lib/cn';
 
 const buttonVariants = cva(
   'inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium ' +
-    'transition-colors outline-none disabled:pointer-events-none disabled:opacity-50 ' +
+    'transition-colors disabled:pointer-events-none disabled:opacity-50 ' +
     '[&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0',
   {
     variants: {

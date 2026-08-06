@@ -21,18 +21,20 @@ const entry: OwnedEntry = fixtures.ownedEntries[0]!;
 
 describe('RarityBadge', () => {
   it('names the rarity for assistive tech, not just the tier code', () => {
-    render(<RarityBadge rarity="SSR" />);
-    expect(screen.getByLabelText('Rarity: Super Special Rare')).toHaveTextContent('SSR');
+    const { container } = render(<RarityBadge rarity="SSR" />);
+    // Announced via visually-hidden text; the tier glyphs are aria-hidden.
+    expect(screen.getByText('Rarity: Super Special Rare')).toHaveClass('sr-only');
+    expect(container.textContent).toContain('SSR');
   });
 
   it("renders EX, which the game has but the plan's colour list omitted", () => {
     render(<RarityBadge rarity="EX" />);
-    expect(screen.getByLabelText('Rarity: Exotic')).toBeInTheDocument();
+    expect(screen.getByText('Rarity: Exotic')).toBeInTheDocument();
   });
 
   it('degrades to the common tier for an unknown rarity rather than crashing', () => {
     render(<RarityBadge rarity="???" />);
-    expect(screen.getByLabelText('Rarity: Common')).toBeInTheDocument();
+    expect(screen.getByText('Rarity: Common')).toBeInTheDocument();
   });
 });
 

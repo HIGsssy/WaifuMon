@@ -202,7 +202,7 @@ export function SpeciesDetailPage() {
                     <Link
                       key={candidate.slug}
                       to={`/encyclopedia/${candidate.slug}`}
-                      className="lift block rounded-2xl outline-none"
+                      className="lift block rounded-2xl"
                     >
                       <RarityGlowRing rarity={candidate.rarity}>
                         <Artwork

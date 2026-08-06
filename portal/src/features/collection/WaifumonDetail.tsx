@@ -94,13 +94,13 @@ export function WaifumonDetail({ entry, isBuddy, allSpecies }: WaifumonDetailPro
             <AffinityPill affinity={species.affinity} />
             <ContentRatingPill rating={species.contentRating} />
             {waifu.isFavorite && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-0.5 text-xs font-medium text-amber-600 dark:text-amber-300">
+              <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-0.5 text-xs font-medium text-amber-800 dark:text-amber-200">
                 <Star className="size-3 fill-current" aria-hidden="true" />
                 Favourite
               </span>
             )}
             {isBuddy && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-rose-500/40 bg-rose-500/10 px-2.5 py-0.5 text-xs font-medium text-rose-600 dark:text-rose-300">
+              <span className="inline-flex items-center gap-1 rounded-full border border-rose-500/40 bg-rose-500/10 px-2.5 py-0.5 text-xs font-medium text-rose-800 dark:text-rose-200">
                 <Heart className="size-3 fill-current" aria-hidden="true" />
                 Buddy
               </span>
@@ -208,7 +208,7 @@ export function WaifumonDetail({ entry, isBuddy, allSpecies }: WaifumonDetailPro
                 <Link
                   key={candidate.slug}
                   to={`/encyclopedia/${candidate.slug}`}
-                  className="lift block rounded-2xl outline-none"
+                  className="lift block rounded-2xl"
                 >
                   <RarityGlowRing rarity={candidate.rarity}>
                     <Artwork

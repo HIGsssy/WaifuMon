@@ -3,8 +3,13 @@
  *
  * Accessibility rule, not a style choice: "rarity meaning is never colour-alone
  * — the badge always names the rarity". The tier code (`SR`) is the loud part;
- * the full label (`Super Rare`) is the accessible name, so a screen reader
- * announces something meaningful rather than two letters.
+ * the full label (`Super Rare`) is what gets announced, so a screen reader
+ * hears something meaningful rather than two letters.
+ *
+ * That announcement is carried by visually-hidden text rather than an
+ * `aria-label`. A bare `<span>` has no ARIA role, and `aria-label` on a roleless
+ * element is prohibited — assistive tech is free to ignore it, and axe flags it
+ * as a serious violation. Hidden text works everywhere and needs no role.
  */
 import { rarityStyle } from '@/lib/rarity';
 import { cn } from '@/lib/cn';
@@ -29,11 +34,11 @@ export function RarityBadge({ rarity, variant = 'code', className }: RarityBadge
       style={{
         color: `var(${style.cssVar})`,
         borderColor: `color-mix(in oklch, var(${style.cssVar}) 45%, transparent)`,
-        backgroundColor: `color-mix(in oklch, var(${style.cssVar}) 12%, transparent)`,
+        backgroundColor: `color-mix(in oklch, var(${style.cssVar}) 10%, transparent)`,
       }}
-      // The visible text may be just "SR"; the label is what gets announced.
-      aria-label={`Rarity: ${style.label}`}
     >
+      {/* Announced, never seen. The visible glyphs below are decorative. */}
+      <span className="sr-only">Rarity: {style.label}</span>
       <span aria-hidden="true">{rarity}</span>
       {variant === 'full' && (
         <span aria-hidden="true" className="font-medium normal-case opacity-80">

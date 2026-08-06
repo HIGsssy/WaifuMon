@@ -28,35 +28,47 @@
   --border-strong: oklch(0.82 0.012 300);
 
   /* ── Ink ────────────────────────────────────────────────────────────────── */
+  /* `ink-subtle` is the quietest text in the palette and is used at 12px, so
+     it is the token most likely to fail WCAG AA. Its lightness is set by
+     measurement, not taste: the Playwright accessibility pass runs axe with
+     `color-contrast` enabled against the real stylesheet, and these values are
+     what clear 4.5:1 on the lightest surface each theme puts behind them.
+     §17 calls AA non-negotiable — if the chrome needs to be quieter, it has to
+     get quieter some other way than by dropping contrast. */
   --ink: oklch(0.22 0.015 300);
-  --ink-muted: oklch(0.48 0.014 300);
-  --ink-subtle: oklch(0.62 0.012 300);
+  --ink-muted: oklch(0.46 0.014 300);
+  --ink-subtle: oklch(0.53 0.013 300);
   --ink-inverse: oklch(0.98 0.004 300);
 
   /* ── Quiet accent — used for focus rings and the few active states.
         Deliberately desaturated: rarity owns the loud colours. ─────────────── */
-  --accent: oklch(0.62 0.13 350);
+  /* Every hue below is rendered as *text* somewhere — a rarity badge, a price
+     chip, an error message — often at 12px. On a light background that makes
+     them the binding constraint, so each is dark enough to clear WCAG AA
+     against white and against its own soft tint. The values come from the
+     Playwright contrast pass, not from taste; the hues are unchanged. */
+  --accent: oklch(0.52 0.15 350);
   --accent-soft: oklch(0.94 0.03 350);
   --accent-ink: oklch(1 0 0);
 
-  --danger: oklch(0.55 0.19 25);
-  --danger-soft: oklch(0.95 0.03 25);
+  --danger: oklch(0.44 0.19 25);
+  --danger-soft: oklch(0.97 0.015 25);
 
   /* ── Rarity language (plan §17), mirrored from the Discord embed colours. ── */
-  --rarity-n: oklch(0.58 0.02 265);
-  --rarity-r: oklch(0.62 0.15 250);
-  --rarity-sr: oklch(0.6 0.19 305);
-  --rarity-ssr: oklch(0.75 0.15 85);
-  --rarity-ur: oklch(0.57 0.21 20);
-  --rarity-lr: oklch(0.7 0.18 190);
+  --rarity-n: oklch(0.4 0.02 265);
+  --rarity-r: oklch(0.4 0.16 250);
+  --rarity-sr: oklch(0.44 0.2 305);
+  --rarity-ssr: oklch(0.4 0.1 85);
+  --rarity-ur: oklch(0.43 0.2 20);
+  --rarity-lr: oklch(0.47 0.11 190);
   /* EX exists in the game's rarity enum but is absent from the plan's colour
      list; it gets its own hue rather than silently aliasing another tier. */
-  --rarity-ex: oklch(0.68 0.19 145);
+  --rarity-ex: oklch(0.46 0.13 145);
 
   /* ── Currency accents — small hues on chips only, never on chrome. ───────── */
-  --currency-energy: oklch(0.72 0.16 75);
-  --currency-waifubux: oklch(0.7 0.15 145);
-  --currency-essence: oklch(0.67 0.17 300);
+  --currency-energy: oklch(0.5 0.13 75);
+  --currency-waifubux: oklch(0.46 0.12 145);
+  --currency-essence: oklch(0.46 0.18 300);
 
   --shadow-ambient: 0 1px 2px oklch(0.2 0.02 300 / 0.06), 0 8px 24px oklch(0.2 0.02 300 / 0.08);
   --shadow-lift: 0 2px 4px oklch(0.2 0.02 300 / 0.08), 0 16px 40px oklch(0.2 0.02 300 / 0.14);
@@ -72,29 +84,35 @@
   --border: oklch(0.3 0.011 300);
   --border-strong: oklch(0.4 0.014 300);
 
+  /* See the note in `:root` — these are measured against the dark surfaces. */
   --ink: oklch(0.955 0.005 300);
-  --ink-muted: oklch(0.72 0.012 300);
-  --ink-subtle: oklch(0.56 0.012 300);
+  --ink-muted: oklch(0.76 0.012 300);
+  --ink-subtle: oklch(0.68 0.012 300);
   --ink-inverse: oklch(0.18 0.01 300);
 
   --accent: oklch(0.72 0.13 350);
   --accent-soft: oklch(0.3 0.05 350);
   --accent-ink: oklch(0.15 0.01 350);
 
-  --danger: oklch(0.68 0.18 25);
-  --danger-soft: oklch(0.28 0.06 25);
+  --danger: oklch(0.78 0.15 25);
+  --danger-soft: oklch(0.26 0.05 25);
 
-  --rarity-n: oklch(0.68 0.025 265);
-  --rarity-r: oklch(0.7 0.15 250);
-  --rarity-sr: oklch(0.7 0.18 305);
-  --rarity-ssr: oklch(0.82 0.15 85);
-  --rarity-ur: oklch(0.68 0.2 20);
-  --rarity-lr: oklch(0.79 0.16 190);
-  --rarity-ex: oklch(0.76 0.18 145);
+  /* Rarity doubles as text on its own 10% tint, at 12px. That is the hardest
+     contrast case in the palette, so the dark-theme lightness is set high
+     enough to clear 4.5:1 there — verified by the Playwright contrast pass.
+     The hues are unchanged, so the rarity language still matches the Discord
+     embeds; only the value moves. */
+  --rarity-n: oklch(0.8 0.025 265);
+  --rarity-r: oklch(0.8 0.13 250);
+  --rarity-sr: oklch(0.8 0.15 305);
+  --rarity-ssr: oklch(0.85 0.15 85);
+  --rarity-ur: oklch(0.78 0.17 20);
+  --rarity-lr: oklch(0.84 0.14 190);
+  --rarity-ex: oklch(0.83 0.16 145);
 
-  --currency-energy: oklch(0.8 0.15 75);
-  --currency-waifubux: oklch(0.78 0.14 145);
-  --currency-essence: oklch(0.76 0.16 300);
+  --currency-energy: oklch(0.85 0.14 75);
+  --currency-waifubux: oklch(0.84 0.13 145);
+  --currency-essence: oklch(0.82 0.15 300);
 
   --shadow-ambient: 0 1px 2px oklch(0 0 0 / 0.4), 0 8px 24px oklch(0 0 0 / 0.36);
   --shadow-lift: 0 2px 4px oklch(0 0 0 / 0.45), 0 18px 44px oklch(0 0 0 / 0.5);

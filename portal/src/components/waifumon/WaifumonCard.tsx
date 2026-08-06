@@ -56,7 +56,7 @@ export function WaifumonCard({
       // Opts this navigation into `document.startViewTransition` where the
       // browser supports it; a no-op everywhere else (§14).
       viewTransition
-      className={cn('lift group block rounded-2xl outline-none', className)}
+      className={cn('lift group block rounded-2xl', className)}
       aria-label={`${title}, ${rarity.label}, level ${waifu.level}`}
     >
       <RarityGlowRing rarity={species.rarity} className="h-full">

@@ -31,11 +31,27 @@ function RouteChunkFallback() {
 export function AppShell() {
   return (
     <div className="flex min-h-dvh flex-col bg-canvas">
+      {/*
+        Skip link: the sidebar is twelve focus stops, and a keyboard user should
+        not have to walk them on every page. Visually hidden until focused,
+        which is the point — it appears exactly when it is useful.
+      */}
+      <a
+        href="#main"
+        className="sr-only z-50 focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:rounded-lg focus:border focus:border-border focus:bg-surface-raised focus:px-4 focus:py-2 focus:text-sm focus:text-ink"
+      >
+        Skip to main content
+      </a>
       <Header />
       <DevModeBanner className="hidden sm:flex" />
       <div className="flex flex-1">
         <Sidebar />
-        <main id="main" className="min-w-0 flex-1 px-4 py-6 sm:px-6 sm:py-8 lg:px-10">
+        <main
+          id="main"
+          // Focusable only as the skip link's target, never as a tab stop.
+          tabIndex={-1}
+          className="min-w-0 flex-1 px-4 py-6 outline-none sm:px-6 sm:py-8 lg:px-10"
+        >
           <div className="mx-auto w-full max-w-[88rem]">
             <Suspense fallback={<RouteChunkFallback />}>
               <Outlet />

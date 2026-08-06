@@ -8,3 +8,6 @@ playwright-report/
 .env
 .env.*
 !.env.example
+# Build config for the Playwright suite — no secret, must be committed so CI
+# can reproduce the e2e build.
+!.env.e2e

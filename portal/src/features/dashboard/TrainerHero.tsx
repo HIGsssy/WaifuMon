@@ -117,7 +117,7 @@ function BuddyPanel({
   const name = displayName(buddy);
 
   return (
-    <Link to={`/collection/${buddy.waifu.id}`} className="lift block rounded-2xl outline-none">
+    <Link to={`/collection/${buddy.waifu.id}`} className="lift block rounded-2xl">
       <RarityGlowRing rarity={buddy.species.rarity} glow>
         <div className="relative">
           <Artwork

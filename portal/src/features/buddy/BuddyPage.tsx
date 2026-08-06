@@ -66,7 +66,7 @@ export function BuddyPage() {
             <Link
               to={`/collection/${buddy.data.waifu.id}`}
               viewTransition
-              className="lift block rounded-2xl outline-none"
+              className="lift block rounded-2xl"
             >
               <RarityGlowRing rarity={buddy.data.species.rarity} glow>
                 <Artwork

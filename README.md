@@ -83,10 +83,31 @@ bind, and a wildcard bind falls back to `http://127.0.0.1:$PLATFORM_API_PORT`
 (the API never advertises `0.0.0.0`, which no browser can route to). See
 [docs/platform-api.md](docs/platform-api.md).
 
+## Player Portal
+
+A **read-only companion web app** over the Platform API — collection, buddy,
+inventory, shop, encyclopedia and a game guide. It is a separate package in
+`portal/` with its own dependencies; the bot neither knows nor cares that it
+exists.
+
+```sh
+cd portal
+cp .env.example .env.local    # set VITE_PLATFORM_API_TOKEN and VITE_DEFAULT_PLAYER_ID
+npm install
+npm run dev                   # http://127.0.0.1:5173
+```
+
+Requires the Platform API enabled above. **Development only:** the Portal has no
+authentication and carries the shared API token in the browser bundle, so keep
+it on loopback. It cannot change game state — every non-GET request is rejected
+before it leaves the client. See [docs/portal.md](docs/portal.md).
+
 ## Layout
 
 - `src/` — bot source (config, db, discord shell, service modules, shared)
 - `src/admin/` — optional internal admin web panel (Fastify, server-rendered)
+- `src/api/` — optional Platform API (Fastify, `/api/v1/…`)
+- `portal/` — optional Player Portal SPA (Vite + React), own package and lockfile
 - `content/` — species/items/tables JSON, validated with Zod at startup
 - `assets/waifumon/<slug>/standard.png` — card art (placeholders for now)
 - `drizzle/` — generated SQL migrations

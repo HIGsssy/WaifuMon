@@ -304,7 +304,7 @@ describe('GuidePage', () => {
     const tables = screen.getAllByRole('table');
     const oddsTable = tables.find((table) => table.textContent?.includes('%'))!;
     expect(within(oddsTable).getByText('50%')).toBeInTheDocument();
-    expect(within(oddsTable).getByLabelText('Rarity: Ultra Rare')).toBeInTheDocument();
+    expect(within(oddsTable).getByText('Rarity: Ultra Rare')).toBeInTheDocument();
   });
 
   it('omits a section entirely when a balance patch removes its tuning key', async () => {

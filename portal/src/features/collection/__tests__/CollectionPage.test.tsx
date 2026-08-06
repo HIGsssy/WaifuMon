@@ -33,8 +33,8 @@ describe('CollectionPage', () => {
     expect(screen.getByRole('link', { name: /Neko Barista/ })).toBeInTheDocument();
 
     // §17: rarity is never colour-alone — the badge carries an accessible name.
-    expect(screen.getByLabelText('Rarity: Ultra Rare')).toBeInTheDocument();
-    expect(screen.getByLabelText('Rarity: Super Rare')).toBeInTheDocument();
+    expect(screen.getByText('Rarity: Ultra Rare')).toBeInTheDocument();
+    expect(screen.getByText('Rarity: Super Rare')).toBeInTheDocument();
   });
 
   it('shows skeleton cards on a cold load', async () => {

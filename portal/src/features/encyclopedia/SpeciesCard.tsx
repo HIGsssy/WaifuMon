@@ -30,7 +30,7 @@ export function SpeciesCard({ species, ownedCount, priority = false }: SpeciesCa
   return (
     <Link
       to={`/encyclopedia/${species.slug}`}
-      className="lift group block rounded-2xl outline-none"
+      className="lift group block rounded-2xl"
       aria-label={
         discovered
           ? `${species.name}, ${rarity.label}, ${ownedCount} owned`

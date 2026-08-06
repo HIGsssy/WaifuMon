@@ -18,7 +18,7 @@ export function DevModeBanner({ className }: { className?: string }) {
     <div
       className={cn(
         'flex items-center justify-center gap-2 border-b border-amber-500/25 bg-amber-500/10 px-4 py-1.5',
-        'text-center text-xs text-amber-700 dark:text-amber-300',
+        'text-center text-xs text-amber-800 dark:text-amber-200',
         className,
       )}
     >
@@ -36,7 +36,7 @@ export function DevModeChip({ className }: { className?: string }) {
     <span
       className={cn(
         'inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5',
-        'text-[0.625rem] font-semibold tracking-wide text-amber-700 uppercase dark:text-amber-300',
+        'text-[0.625rem] font-semibold tracking-wide text-amber-800 uppercase dark:text-amber-200',
         className,
       )}
       title="No authentication — development build"
