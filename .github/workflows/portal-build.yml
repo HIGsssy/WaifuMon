@@ -1,0 +1,58 @@
+# Player Portal CI (plan §20).
+#
+# The repository had no CI configuration when the Portal was added, so this
+# workflow deliberately covers the Portal only. It does not build, test or lint
+# the Discord bot: the Portal project's remit is to add a new client without
+# touching the bot's setup, and inventing a bot pipeline here would be a change
+# nobody reviewed.
+#
+# `portal/` keeps its own lockfile, so `npm ci` here is independent of the root
+# package and cannot perturb the bot's dependency tree.
+name: portal-build
+
+on:
+  pull_request:
+    paths:
+      - 'portal/**'
+      - '.github/workflows/portal-build.yml'
+  push:
+    branches: [master]
+    paths:
+      - 'portal/**'
+      - '.github/workflows/portal-build.yml'
+
+jobs:
+  portal-build:
+    name: typecheck · lint · test · build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: portal
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: portal/package-lock.json
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm run test
+
+      - name: Build
+        run: npm run build
+
+      # Success criterion §24.16: the diagnostics page and telemetry ring
+      # buffer must be absent from a production bundle, not merely unlinked.
+      - name: Verify production bundle excludes dev-only code
+        run: npm run verify:bundle

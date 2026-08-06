@@ -1,5 +1,9 @@
 node_modules/
 dist/
+
+# player portal (own package, own lockfile — see docs/portal.md)
+portal/node_modules/
+portal/dist/
 .env
 .env.*
 !.env.example

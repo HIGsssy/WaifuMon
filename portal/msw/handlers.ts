@@ -1,0 +1,109 @@
+/**
+ * Mocked Platform API (plan §22).
+ *
+ * One handler per endpoint the Portal calls, returning the API's real
+ * envelopes — `{ data, meta }` for singletons, `{ data, page, pageSize, total }`
+ * for the paginated collection, and `{ error: { code, message }, requestId }`
+ * for failures. Tests that need an error path override a single handler with
+ * `server.use(...)` rather than reaching into the client.
+ *
+ * The envelope helpers are exported so per-test overrides stay one line.
+ */
+import { http, HttpResponse } from 'msw';
+
+import * as fixtures from './fixtures';
+
+/** Matches the API's success envelope, `meta.requestId` included. */
+export function data<T>(payload: T) {
+  return HttpResponse.json({ data: payload, meta: { requestId: 'test-request-id' } });
+}
+
+export function page<T>(items: T[], pageNumber = 1, pageSize = 25, total = items.length) {
+  return HttpResponse.json({
+    data: items,
+    page: pageNumber,
+    pageSize,
+    total,
+    meta: { requestId: 'test-request-id' },
+  });
+}
+
+export function apiError(status: number, code: string, message: string) {
+  return HttpResponse.json({ error: { code, message }, requestId: 'test-request-id' }, { status });
+}
+
+const P = String(fixtures.PLAYER_ID);
+
+export const handlers = [
+  // ── Players ───────────────────────────────────────────────────────────────
+  http.get('/api/v1/players/lookup', () => data({ playerId: fixtures.PLAYER_ID })),
+
+  http.get('/api/v1/players/:playerId', ({ params }) =>
+    params.playerId === P
+      ? data(fixtures.player)
+      : apiError(404, 'PLAYER_NOT_FOUND', 'No player with that id.'),
+  ),
+
+  http.get('/api/v1/players/:playerId/profile', () =>
+    data({ player: fixtures.player, currencies: fixtures.currencies }),
+  ),
+
+  // ── Collection ────────────────────────────────────────────────────────────
+  http.get('/api/v1/players/:playerId/collection/stats', () => data(fixtures.dexStats)),
+
+  http.get('/api/v1/players/:playerId/collection/owned', ({ request }) => {
+    const url = new URL(request.url, 'http://localhost');
+    const rarity = url.searchParams.get('rarity');
+    const pageNumber = Number(url.searchParams.get('page') ?? '1');
+    const pageSize = Number(url.searchParams.get('pageSize') ?? '25');
+    const filtered = rarity
+      ? fixtures.ownedEntries.filter((entry) => entry.species.rarity === rarity)
+      : fixtures.ownedEntries;
+    return page(filtered, pageNumber, pageSize, filtered.length);
+  }),
+
+  http.get('/api/v1/players/:playerId/collection/owned/:waifuId', ({ params }) => {
+    const entry = fixtures.ownedEntries.find(
+      (candidate) => String(candidate.waifu.id) === params.waifuId,
+    );
+    return entry ? data(entry) : apiError(404, 'WAIFU_NOT_OWNED', 'You do not own that Waifumon.');
+  }),
+
+  http.get('/api/v1/players/:playerId/collection/buddy', () => data(fixtures.buddyEntry)),
+
+  // ── Care, inventory, shop ─────────────────────────────────────────────────
+  http.get('/api/v1/players/:playerId/care', () => data(fixtures.careState)),
+  http.get('/api/v1/players/:playerId/inventory', () => data(fixtures.inventoryEntries)),
+  http.get('/api/v1/shop/catalog', () => data(fixtures.shopCatalog)),
+
+  // ── Content ───────────────────────────────────────────────────────────────
+  http.get('/api/v1/content/species', () => data(fixtures.contentSpecies)),
+  http.get('/api/v1/content/species/:slug', ({ params }) => {
+    const found = fixtures.contentSpecies.find((s) => s.slug === params.slug);
+    return found ? data(found) : apiError(404, 'SPECIES_NOT_FOUND', 'No species with that slug.');
+  }),
+  http.get('/api/v1/content/items', () => data(fixtures.contentItems)),
+  http.get('/api/v1/content/items/:slug', ({ params }) => {
+    const found = fixtures.contentItems.find((i) => i.slug === params.slug);
+    return found ? data(found) : apiError(404, 'ITEM_NOT_FOUND', 'No item with that slug.');
+  }),
+  http.get('/api/v1/content/tables', () => data(fixtures.tuningTables)),
+  http.get('/api/v1/content/tables/:key', ({ params }) => {
+    const key = String(params.key);
+    return Object.hasOwn(fixtures.tuningTables, key)
+      ? data(fixtures.tuningTables[key])
+      : apiError(404, 'TABLE_NOT_FOUND', 'No tuning table with that key.');
+  }),
+
+  // ── System (root-level, not under /api) ───────────────────────────────────
+  http.get('/ready', () =>
+    HttpResponse.json({
+      status: 'ok',
+      components: {
+        database: { status: 'ok', checkedAt: '2026-08-06T10:00:00.000Z' },
+        content: { status: 'ok', checkedAt: '2026-08-06T10:00:00.000Z' },
+      },
+      checkedAt: '2026-08-06T10:00:00.000Z',
+    }),
+  ),
+];

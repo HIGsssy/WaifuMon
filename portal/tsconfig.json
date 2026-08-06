@@ -1,0 +1,34 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": ["vite/client", "node", "@testing-library/jest-dom"],
+
+    "jsx": "react-jsx",
+    "useDefineForClassFields": true,
+
+    /* Strictness — the Portal holds hand-authored API types, so drift must be loud. */
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "verbatimModuleSyntax": true,
+
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["src", "tests", "msw", "vite.config.ts", "vitest.setup.ts", "eslint.config.js"]
+}
