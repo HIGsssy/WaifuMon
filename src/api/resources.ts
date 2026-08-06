@@ -29,6 +29,7 @@ import type {
 } from '../db/schema';
 import type { ENCOUNTER_STATES } from './schemas/encounter';
 import type { ITEM_CATEGORIES } from './schemas/content';
+import type { PlayerIdentity } from './identity';
 
 type EncounterState = (typeof ENCOUNTER_STATES)[number];
 type ItemCategory = (typeof ITEM_CATEGORIES)[number];
@@ -62,9 +63,16 @@ export function toGuildResource(row: GuildRow) {
   return { ...row, hereThresholdRarity: row.hereThresholdRarity as Rarity };
 }
 
-/** The one genuine shape change: flat care columns → a nested summary. */
-export function toPlayerResource(player: PlayerRow) {
+/**
+ * The one genuine shape change: flat care columns → a nested summary.
+ *
+ * `identity` is not a column — it is presentation data resolved outside the
+ * service layer (`src/api/identity.ts`) and is always nullable. It is attached
+ * here so the two player routes cannot disagree about the resource's shape.
+ */
+export function toPlayerResource(player: PlayerRow, identity: PlayerIdentity | null = null) {
   return {
+    identity,
     id: player.id,
     guildId: player.guildId,
     discordUserId: player.discordUserId,

@@ -1,0 +1,67 @@
+/**
+ * Collection queries (plan §11, §13, §14).
+ *
+ * `placeholderData: keepPreviousData` on the list is the mechanical form of
+ * §14's first rule: turning a page or changing the rarity filter keeps the
+ * previous grid on screen while the next one loads, so the artwork never
+ * flashes away. `isPlaceholderData` is what the toolbar's quiet refetching
+ * indicator reads.
+ */
+import { keepPreviousData, useQuery, type UseQueryResult } from '@tanstack/react-query';
+
+import { PLAYER_POLICY } from '../cachePolicy';
+import {
+  COLLECTION_PAGE_SIZE,
+  getBuddy,
+  getCollection,
+  getCollectionEntry,
+  getCollectionStats,
+} from '../collection';
+import { queryKeys } from '../queryKeys';
+import type { DexStats, OwnedEntry, Page, Rarity } from '../types';
+
+export interface UseCollectionArgs {
+  playerId: number;
+  page: number;
+  rarity?: Rarity | undefined;
+}
+
+export function useCollection({
+  playerId,
+  page,
+  rarity,
+}: UseCollectionArgs): UseQueryResult<Page<OwnedEntry>> {
+  return useQuery({
+    queryKey: queryKeys.collectionList(playerId, page, rarity),
+    queryFn: ({ signal }) =>
+      getCollection({ playerId, page, pageSize: COLLECTION_PAGE_SIZE, rarity }, signal),
+    placeholderData: keepPreviousData,
+    ...PLAYER_POLICY,
+  });
+}
+
+export function useCollectionEntry(playerId: number, waifuId: number): UseQueryResult<OwnedEntry> {
+  return useQuery({
+    queryKey: queryKeys.collectionEntry(playerId, waifuId),
+    queryFn: ({ signal }) => getCollectionEntry(playerId, waifuId, signal),
+    enabled: Number.isInteger(waifuId) && waifuId > 0,
+    ...PLAYER_POLICY,
+  });
+}
+
+export function useCollectionStats(playerId: number): UseQueryResult<DexStats> {
+  return useQuery({
+    queryKey: queryKeys.collectionStats(playerId),
+    queryFn: ({ signal }) => getCollectionStats(playerId, signal),
+    ...PLAYER_POLICY,
+  });
+}
+
+/** `null` is a valid, expected result — the player simply has no buddy (§8.4). */
+export function useBuddy(playerId: number): UseQueryResult<OwnedEntry | null> {
+  return useQuery({
+    queryKey: queryKeys.buddy(playerId),
+    queryFn: ({ signal }) => getBuddy(playerId, signal),
+    ...PLAYER_POLICY,
+  });
+}

@@ -112,3 +112,39 @@ platform API listening on 0.0.0.0:3120 — clients use http://127.0.0.1:3120/api
 
 Both docs routes are public so an operator can read them without a token;
 authorize in Swagger UI with the bearer token before calling any endpoint.
+
+---
+
+## Player identity (`identity` on the player resource)
+
+`GET /api/v1/players/{id}` and `/profile` carry a presentation-only `identity`
+block alongside the player's game state:
+
+```json
+{
+  "identity": {
+    "displayName": "Alice",
+    "avatarUrl": "https://cdn.discordapp.com/avatars/…/….png"
+  }
+}
+```
+
+It exists because HTTP clients have no gateway of their own to render from —
+the Discord handlers resolve names and avatars at send time, so nothing was
+ever stored. The [Player Portal](portal.md) was the first client to need it.
+
+**`identity` is always nullable and clients must treat it that way.** It is
+`null` when the gateway is reconnecting, when the user cannot be resolved, and
+in any process wired without a Discord client at all. No endpoint's behaviour
+depends on it, and no gameplay value is derived from it.
+
+Mechanically it is not a column. The API layer holds no Discord types, so the
+host injects a resolver (`ApiContext.resolveIdentity`) exactly as it injects
+`ReadinessProbes`. `src/api/identity.ts` wraps that resolver with a 5-minute
+TTL, a 60-second negative TTL, in-flight de-duplication and a 500 ms timeout,
+so a slow or broken gateway costs a `null` rather than a slow request. The
+resolver never rejects.
+
+`displayName` is the Discord **global** display name (falling back to the
+username), not a per-guild nickname — a nickname would need a guild-member
+fetch, and the player resource carries only the internal guild id.

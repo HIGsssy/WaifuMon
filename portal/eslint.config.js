@@ -39,7 +39,9 @@ export default tseslint.config(
           allowConstantExport: true,
           // shadcn/ui primitives export their `cva` variant map alongside the
           // component; that is the upstream pattern and is safe for HMR.
-          allowExportNames: ['buttonVariants', 'badgeVariants'],
+          // `heroTransitionName` is the card's view-transition key, which the
+          // detail page must derive identically — it belongs with the card.
+          allowExportNames: ['buttonVariants', 'badgeVariants', 'heroTransitionName'],
         },
       ],
       '@typescript-eslint/no-unused-vars': [

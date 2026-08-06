@@ -16,6 +16,19 @@ export interface AssetId {
   slug: string;
   /** Art variant; `standard` when omitted. */
   variant?: string | undefined;
+  /**
+   * An absolute URL the **Platform API itself supplied** for this asset —
+   * today only `player.identity.avatarUrl`, which points at Discord's CDN.
+   *
+   * This is not a hole in §12's "no physical paths leak" rule; it is the same
+   * rule applied to a different kind of value. `imagePath` is an *internal
+   * detail* the Portal must not turn into a URL, so it never crosses into a
+   * page. An avatar URL is the opposite: it is already the authoritative,
+   * externally-addressable location, and no provider could derive it. Pages
+   * still never construct it — they forward what the API returned, and the
+   * `apiSuppliedUrl` provider decides whether to honour it.
+   */
+  href?: string | null | undefined;
 }
 
 export interface ResolvedImage {
@@ -48,5 +61,7 @@ export const DEFAULT_VARIANT = 'standard';
 
 /** Stable cache key for an asset — also the React key for a resolved image. */
 export function assetKey(id: AssetId): string {
-  return `${id.kind}:${id.slug}:${id.variant ?? DEFAULT_VARIANT}`;
+  // `href` participates: the same avatar slug with a new CDN hash is a
+  // genuinely different image and must not serve the memoised old one.
+  return `${id.kind}:${id.slug}:${id.variant ?? DEFAULT_VARIANT}:${id.href ?? ''}`;
 }

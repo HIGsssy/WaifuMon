@@ -11,16 +11,22 @@
  * a default-order change — no page or component is touched.
  */
 import { portalEnv } from '@/lib/env';
+import { API_SUPPLIED_URL_ID, createApiSuppliedUrlProvider } from './providers/apiSuppliedUrl';
 import { createLocalDevAssetsProvider, LOCAL_DEV_ASSETS_ID } from './providers/localDevAssets';
 import { createSilhouetteProvider, SILHOUETTE_ID } from './providers/silhouette';
 import { assetKey, type AssetId, type ImageProvider, type ResolvedImage } from './types';
 
 const FACTORIES: Record<string, () => ImageProvider> = {
+  [API_SUPPLIED_URL_ID]: () => createApiSuppliedUrlProvider(),
   [LOCAL_DEV_ASSETS_ID]: () => createLocalDevAssetsProvider(),
   [SILHOUETTE_ID]: () => createSilhouetteProvider(),
 };
 
-const DEFAULT_ORDER = [LOCAL_DEV_ASSETS_ID];
+/**
+ * API-supplied URLs win: when the API states where an asset lives, that is
+ * authoritative and nothing derived should override it.
+ */
+const DEFAULT_ORDER = [API_SUPPLIED_URL_ID, LOCAL_DEV_ASSETS_ID];
 
 function buildChain(): ImageProvider[] {
   const requested = portalEnv.imageProviders ?? DEFAULT_ORDER;

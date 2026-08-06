@@ -7,6 +7,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
+import { API_SUPPLIED_URL_ID, createApiSuppliedUrlProvider } from '../providers/apiSuppliedUrl';
 import { createLocalDevAssetsProvider, LOCAL_DEV_ASSETS_ID } from '../providers/localDevAssets';
 import { createSilhouetteProvider, SILHOUETTE_ID, silhouetteUrl } from '../providers/silhouette';
 import { fallbackFor, resolveAsset, setImageProviderChain } from '../provider';
@@ -52,6 +53,52 @@ describe('the silhouette provider', () => {
   it('is deterministic for a given slug', () => {
     expect(silhouetteUrl('neon_kitsune')).toBe(silhouetteUrl('neon_kitsune'));
     expect(silhouetteUrl('neon_kitsune')).not.toBe(silhouetteUrl('void_empress'));
+  });
+});
+
+describe('the API-supplied URL provider', () => {
+  const provider = createApiSuppliedUrlProvider();
+
+  it('honours an absolute https URL the API returned', () => {
+    const url = 'https://cdn.discordapp.com/avatars/1/abc.png';
+    expect(provider.resolve({ kind: 'avatar', slug: 'player_1', href: url })).toEqual({
+      url,
+      isFallback: false,
+      providerId: API_SUPPLIED_URL_ID,
+    });
+  });
+
+  it('declines when no href was supplied, so the chain continues', () => {
+    expect(provider.resolve({ kind: 'avatar', slug: 'player_1' })).toBeNull();
+    expect(provider.resolve({ kind: 'avatar', slug: 'player_1', href: null })).toBeNull();
+    expect(provider.resolve({ kind: 'species', slug: 'neko_barista' })).toBeNull();
+  });
+
+  it('refuses a non-https URL rather than rendering it', () => {
+    for (const href of [
+      'javascript:alert(1)',
+      'data:image/svg+xml,<svg/>',
+      'http://insecure.example/a.png',
+      '/relative/path.png',
+      'not a url',
+    ]) {
+      expect(provider.resolve({ kind: 'avatar', slug: 'player_1', href })).toBeNull();
+    }
+  });
+
+  it('keys the resolver cache on href, so a new avatar hash is a new image', () => {
+    setImageProviderChain([createApiSuppliedUrlProvider(), createSilhouetteProvider()]);
+    const first = resolveAsset({
+      kind: 'avatar',
+      slug: 'player_1',
+      href: 'https://cdn.example/a.png',
+    });
+    const second = resolveAsset({
+      kind: 'avatar',
+      slug: 'player_1',
+      href: 'https://cdn.example/b.png',
+    });
+    expect(first.url).not.toBe(second.url);
   });
 });
 

@@ -13,9 +13,21 @@
  */
 import type { AppServices } from '../discord/types';
 import type { LoadedContent } from '../modules/content/schemas';
+import type { IdentityResolver } from './identity';
 
 export interface ApiContext {
   services: AppServices;
   /** Read at call time, never cached — see the note above. */
   getContent: () => LoadedContent;
+  /**
+   * Optional. Resolves a Discord snowflake to a display name and avatar for
+   * presentation only (`src/api/identity.ts`). Injected by the host, which owns
+   * the gateway client — the same arrangement as `ReadinessProbes`, and for the
+   * same reason: this layer holds no Discord types.
+   *
+   * Omitted in tests and in any process without a Discord client, in which case
+   * every player resource reports `identity: null`. No endpoint's behaviour
+   * depends on it.
+   */
+  resolveIdentity?: IdentityResolver;
 }

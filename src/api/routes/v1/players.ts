@@ -10,6 +10,7 @@ import { dataSchema, ok } from '../../plugins/responseEnvelope';
 import { requirePlayer } from '../../plugins/playerScope';
 import type { FastifyPluginAsyncZod } from '../../plugins/typeProvider';
 import { ApiPlayerNotFoundError } from '../../errors';
+import { noIdentity } from '../../identity';
 import { toPlayerResource } from '../../resources';
 import { commonErrorResponses, notFoundResponse, playerIdParams } from '../../schemas/common';
 import {
@@ -22,6 +23,12 @@ import {
 export const playerRoutes =
   (ctx: ApiContext): FastifyPluginAsyncZod =>
   async (app) => {
+    // Presentation identity is optional infrastructure: a process wired without
+    // a Discord client answers `identity: null` and every other field is
+    // unaffected. The resolver already caches, times out and never rejects
+    // (`src/api/identity.ts`), so calling it on a read path is bounded.
+    const resolveIdentity = ctx.resolveIdentity ?? noIdentity;
+
     app.get(
       '/players/lookup',
       {
@@ -55,7 +62,10 @@ export const playerRoutes =
         schema: {
           tags: ['Players'],
           summary: 'Get a player',
-          description: 'Identity, level/XP, buddy pointer and a Care Mode summary.',
+          description:
+            'Identity, level/XP, buddy pointer and a Care Mode summary. `identity` carries the ' +
+            'Discord display name and avatar for presentation and is null whenever they cannot ' +
+            'be resolved — treat it as optional.',
           params: playerIdParams,
           response: {
             200: dataSchema(playerSchema),
@@ -64,8 +74,12 @@ export const playerRoutes =
           },
         },
       },
-      // Served from the row the player-scope hook already resolved — no second query.
-      async (req) => ok(req, toPlayerResource(requirePlayer(req))),
+      // Served from the row the player-scope hook already resolved — no second
+      // query. The identity lookup is cached and capped, not a database read.
+      async (req) => {
+        const player = requirePlayer(req);
+        return ok(req, toPlayerResource(player, await resolveIdentity(player.discordUserId)));
+      },
     );
 
     app.get(
@@ -90,8 +104,13 @@ export const playerRoutes =
         // re-reads the player row the scope hook already holds. Pairing that
         // row with one balance read is the same two queries, minus one.
         const player = requirePlayer(req);
-        const currencies = await ctx.services.currency.getBalances(player.id);
-        return ok(req, { player: toPlayerResource(player), currencies });
+        // Concurrent: the balance read hits Postgres, the identity lookup hits
+        // an in-process cache (and at worst the gateway). Neither waits.
+        const [currencies, identity] = await Promise.all([
+          ctx.services.currency.getBalances(player.id),
+          resolveIdentity(player.discordUserId),
+        ]);
+        return ok(req, { player: toPlayerResource(player, identity), currencies });
       },
     );
   };

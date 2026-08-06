@@ -226,6 +226,27 @@
   }
 }
 
+/*
+ * View Transitions (§14): the Collection card → detail hero morph.
+ *
+ * The artwork is the only element with a transition name, so the browser
+ * animates it between the two layouts while everything else cross-fades. The
+ * whole feature is progressive — a browser without support simply navigates.
+ */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 220ms;
+  animation-timing-function: cubic-bezier(0.2, 0, 0, 1);
+}
+
+@layer utilities {
+  /* Keeps the morphing artwork above the incoming page during the transition. */
+  ::view-transition-group(*) {
+    animation-duration: 320ms;
+    animation-timing-function: cubic-bezier(0.2, 0, 0, 1);
+  }
+}
+
 /* §14 / §17: reduced motion disables shimmer, lift, and view transitions. */
 @media (prefers-reduced-motion: reduce) {
   *,

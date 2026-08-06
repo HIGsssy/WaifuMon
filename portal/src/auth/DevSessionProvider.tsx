@@ -20,6 +20,7 @@ import { useMemo, type ReactNode } from 'react';
 import { PLAYER_POLICY } from '@/api/cachePolicy';
 import { getPlayer } from '@/api/players';
 import { queryKeys } from '@/api/queryKeys';
+import type { Player } from '@/api/types';
 import { portalEnv } from '@/lib/env';
 import { SessionContext } from './SessionContext';
 import type { PortalSession, SessionState } from './types';
@@ -46,13 +47,13 @@ class InvalidPlayerIdError extends Error {
 }
 
 /**
- * The Platform API models a player by internal id and Discord snowflake; it
- * carries no display name or avatar (the bot renders those from Discord at
- * send time). "Trainer #<id>" is an honest stand-in rather than a fabricated
- * name — a player display-name field is filed as API feedback in docs/portal.md.
+ * The API's `identity` block is presentation-only and documented as nullable —
+ * the gateway may be reconnecting, or the process may run without a Discord
+ * client. `Trainer #<id>` is the honest stand-in when it is absent; the Portal
+ * never fabricates a name.
  */
-function displayNameFor(playerId: number): string {
-  return `Trainer #${playerId}`;
+function displayNameFor(player: Player): string {
+  return player.identity?.displayName ?? `Trainer #${player.id}`;
 }
 
 export function DevSessionProvider({ children }: { children: ReactNode }) {
@@ -78,7 +79,8 @@ export function DevSessionProvider({ children }: { children: ReactNode }) {
       ? {
           playerId: player.id,
           guildDbId: player.guildId,
-          displayName: displayNameFor(player.id),
+          displayName: displayNameFor(player),
+          avatarUrl: player.identity?.avatarUrl ?? null,
           discordUserId: player.discordUserId,
           // The player resource carries the internal guild id, not the
           // snowflake; the env value is the only source when one is wanted.

@@ -566,6 +566,54 @@ describe('response payloads', () => {
     });
   });
 
+  it('reports identity: null when no resolver is wired', async () => {
+    app = await build({ services: basePlayerStubs });
+    const res = await app.inject({ method: 'GET', url: '/api/v1/players/7', headers: AUTH });
+    // A process without a Discord client still answers every other field.
+    expect(res.json().data.identity).toBeNull();
+  });
+
+  it('carries the display name and avatar when a resolver is wired', async () => {
+    app = await build({
+      services: basePlayerStubs,
+      resolveIdentity: async (discordUserId) => ({
+        displayName: `user-${discordUserId}`,
+        avatarUrl: 'https://cdn.discordapp.com/avatars/1234567890/abc.png',
+      }),
+    });
+
+    const res = await app.inject({ method: 'GET', url: '/api/v1/players/7', headers: AUTH });
+    expect(res.json().data.identity).toEqual({
+      displayName: 'user-1234567890',
+      avatarUrl: 'https://cdn.discordapp.com/avatars/1234567890/abc.png',
+    });
+  });
+
+  it('embeds identity in the composite profile too', async () => {
+    app = await build({
+      services: {
+        ...basePlayerStubs,
+        currency: {
+          getBalances: async () => ({
+            playerId: 7,
+            huntEnergy: 10,
+            waifubux: 100,
+            essence: 5,
+            updatedAt: new Date('2026-08-05T10:00:00.000Z'),
+          }),
+        },
+      },
+      resolveIdentity: async () => ({ displayName: 'Alice', avatarUrl: null }),
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/v1/players/7/profile',
+      headers: AUTH,
+    });
+    expect(res.json().data.player.identity).toEqual({ displayName: 'Alice', avatarUrl: null });
+  });
+
   it('drops columns the schema does not declare', async () => {
     app = await build({ services: basePlayerStubs });
     const body = (await app.inject({ method: 'GET', url: '/api/v1/players/7', headers: AUTH })).json();

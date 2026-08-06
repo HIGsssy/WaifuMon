@@ -9,7 +9,8 @@ import { screen } from '@testing-library/react';
 import { http } from 'msw';
 import { describe, expect, it } from 'vitest';
 
-import { apiError } from '../../../msw/handlers';
+import { apiError, data } from '../../../msw/handlers';
+import * as fixtures from '../../../msw/fixtures';
 import { server } from '../../../msw/server';
 import { routes } from '@/app/router';
 import { renderRoutes } from '@/test/renderWithProviders';
@@ -20,9 +21,20 @@ describe('DevSessionProvider', () => {
     expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeInTheDocument();
   });
 
-  it('shows the acting player in the header', async () => {
+  it("shows the API's display name in the header", async () => {
     renderRoutes({ routes, initialEntries: ['/dashboard'] });
-    expect(await screen.findByText('Trainer #1')).toBeInTheDocument();
+    expect(await screen.findAllByText('Mika')).not.toHaveLength(0);
+  });
+
+  it('falls back to Trainer #id when the API resolves no identity', async () => {
+    // `identity` is documented as nullable — a reconnecting gateway, an
+    // unresolvable user, or an API running without a Discord client.
+    server.use(
+      http.get('/api/v1/players/:playerId', () => data({ ...fixtures.player, identity: null })),
+    );
+
+    renderRoutes({ routes, initialEntries: ['/dashboard'] });
+    expect(await screen.findAllByText('Trainer #1')).not.toHaveLength(0);
   });
 
   it('falls back to /select-player when the id does not resolve', async () => {

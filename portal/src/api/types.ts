@@ -148,10 +148,24 @@ export interface QuestCatalog {
 
 // ── Players ──────────────────────────────────────────────────────────────────
 
+/**
+ * Presentation-only Discord identity.
+ *
+ * Nullable by contract — the gateway may be reconnecting, the user may be
+ * unresolvable, or the API may run without a Discord client. Every consumer
+ * falls back to `Trainer #<id>` rather than blocking on it.
+ */
+export interface PlayerIdentity {
+  displayName: string;
+  avatarUrl: string | null;
+}
+
 export interface Player {
   id: number;
   /** Internal guild id, not a Discord snowflake. */
   guildId: number;
+  /** Presentation only. Null whenever the API cannot resolve it. */
+  identity: PlayerIdentity | null;
   discordUserId: string;
   level: number;
   xp: number;

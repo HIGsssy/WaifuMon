@@ -17,7 +17,9 @@ export interface ProgressProps extends ComponentProps<typeof ProgressPrimitive.R
 }
 
 export function Progress({ className, value, indicatorClassName, ...props }: ProgressProps) {
-  const clamped = Math.max(0, Math.min(100, value ?? 0));
+  // Rounded, not just clamped: Radix mirrors this into `aria-valuenow`, and a
+  // screen reader announcing "28.571428 percent" helps nobody.
+  const clamped = Math.round(Math.max(0, Math.min(100, value ?? 0)));
   return (
     <ProgressPrimitive.Root
       className={cn(

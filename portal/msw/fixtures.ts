@@ -25,6 +25,10 @@ export const PLAYER_ID = 1;
 export const player: Player = {
   id: PLAYER_ID,
   guildId: 7,
+  identity: {
+    displayName: 'Mika',
+    avatarUrl: 'https://cdn.discordapp.com/avatars/123456789012345678/abcdef.png',
+  },
   discordUserId: '123456789012345678',
   level: 12,
   xp: 3480,

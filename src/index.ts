@@ -6,6 +6,7 @@
  */
 import { startAdminServer } from './admin/server';
 import { startPlatformApi } from './api/server';
+import { withIdentityCache } from './api/identity';
 import { loadConfig } from './config/config';
 import { connectWithRetry, createDb, createPool } from './db/client';
 import { runMigrations } from './db/migrate';
@@ -257,6 +258,19 @@ async function main(): Promise<void> {
       // Read through `ctx` so an admin-panel content reload is visible to the
       // API immediately, exactly as it is to the Discord handlers.
       getContent: () => ctx.content,
+      // Presentation-only display name + avatar for HTTP clients, which —
+      // unlike the Discord handlers — have no gateway of their own to render
+      // from. The API layer holds no Discord types, so the lookup is injected
+      // here, the one place that owns the client. `withIdentityCache` adds the
+      // TTL, the timeout and the failure handling; see src/api/identity.ts.
+      resolveIdentity: withIdentityCache(async (discordUserId) => {
+        if (!client.isReady()) return null;
+        const user = await client.users.fetch(discordUserId);
+        return {
+          displayName: user.displayName,
+          avatarUrl: user.displayAvatarURL({ size: 256, extension: 'png' }),
+        };
+      }),
     },
     probes: {
       pingDatabase: async () => {

@@ -23,8 +23,13 @@ export interface PortalSession {
   playerId: number;
   /** Internal guild id, resolved once at session start. Not a snowflake. */
   guildDbId: number;
-  /** For the header and avatar. */
+  /**
+   * For the header and avatar. The API's `identity.displayName` when it
+   * resolves, otherwise `Trainer #<id>` — never blank, never fabricated.
+   */
   displayName: string;
+  /** Absolute avatar URL from the API, or null. Fed to the image resolver. */
+  avatarUrl: string | null;
   /** Populated when known; presentation only. */
   discordUserId?: string | undefined;
   /** Populated when known; presentation only. */

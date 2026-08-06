@@ -10,6 +10,7 @@
  */
 import pino from 'pino';
 import type { ApiContext } from '../../src/api/context';
+import type { IdentityResolver } from '../../src/api/identity';
 import type { ReadinessProbes } from '../../src/api/routes/health';
 import type { AppServices } from '../../src/discord/types';
 import type { LoadedContent } from '../../src/modules/content/schemas';
@@ -72,6 +73,12 @@ export type ServiceStubs = {
 export interface ApiContextOverrides {
   services?: ServiceStubs;
   content?: Partial<LoadedContent>;
+  /**
+   * Presentation identity resolver. Omitted by default so the API behaves as a
+   * process with no Discord client does — every player reports
+   * `identity: null` — which is also the shape most route tests want.
+   */
+  resolveIdentity?: IdentityResolver;
 }
 
 const EMPTY_CONTENT: LoadedContent = {
@@ -102,5 +109,11 @@ export function createApiContext(overrides: ApiContextOverrides = {}): ApiContex
   });
 
   const content: LoadedContent = { ...EMPTY_CONTENT, ...overrides.content };
-  return { services, getContent: () => content };
+  return {
+    services,
+    getContent: () => content,
+    // `exactOptionalPropertyTypes` — only set the key when a resolver is given,
+    // so the default context is genuinely "no Discord client wired".
+    ...(overrides.resolveIdentity ? { resolveIdentity: overrides.resolveIdentity } : {}),
+  };
 }
