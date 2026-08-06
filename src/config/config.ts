@@ -50,7 +50,50 @@ const EnvSchema = z.object({
   PLATFORM_API_PORT: z.coerce.number().int().min(1).max(65535).default(3120),
   /** Shared bearer secret. Required when PLATFORM_API_ENABLED — never logged. */
   PLATFORM_API_TOKEN: z.string().optional(),
+  /**
+   * How *clients* reach the API — the base URL advertised in the OpenAPI
+   * document, and therefore the one Swagger UI's "Try it out" calls. Distinct
+   * from PLATFORM_API_HOST, which is only where the process binds: under
+   * Docker that bind is 0.0.0.0, which no browser can route to. Optional; when
+   * unset the URL is derived from the bind (see `resolvePublicUrl`).
+   */
+  PLATFORM_API_PUBLIC_URL: z
+    .string()
+    .trim()
+    .optional()
+    // Blank is the shipped value in .env.example — treat it as "not set"
+    // rather than as an invalid URL.
+    .transform((v) => (v !== undefined && v.length > 0 ? v : undefined))
+    .refine((v) => v === undefined || isAdvertisableUrl(v), {
+      message:
+        'PLATFORM_API_PUBLIC_URL must be an absolute http(s) URL a client can reach ' +
+        '(e.g. http://127.0.0.1:3120), never a wildcard bind like 0.0.0.0',
+    })
+    .transform((v) => (v === undefined ? undefined : stripTrailingSlash(v))),
 });
+
+/** Binds that mean "every interface" — valid to listen on, useless to publish. */
+const WILDCARD_HOSTS = new Set(['0.0.0.0', '::', '[::]', '0.0.0.0:0']);
+
+function stripTrailingSlash(url: string): string {
+  return url.replace(/\/+$/, '');
+}
+
+/**
+ * A URL is advertisable when a client can actually dial it: absolute, http(s),
+ * and pointed at a real host rather than a wildcard bind.
+ */
+function isAdvertisableUrl(value: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
+  if (url.hostname.length === 0) return false;
+  return !WILDCARD_HOSTS.has(url.hostname);
+}
 
 export interface AdminWebConfig {
   enabled: boolean;
@@ -62,10 +105,37 @@ export interface AdminWebConfig {
 
 export interface PlatformApiConfig {
   enabled: boolean;
+  /** Where the process listens. An internal networking concern only. */
   host: string;
   port: number;
   /** Empty string only when disabled — a startup check enforces this. */
   token: string;
+  /**
+   * The base URL clients use, when the operator set one. Absent means "derive
+   * it from the bind" — see `resolvePublicUrl`, which is what callers should
+   * use rather than reading this field directly.
+   */
+  publicUrl?: string | undefined;
+}
+
+/**
+ * The base URL to advertise to clients (OpenAPI `servers`, startup log lines).
+ *
+ * `PLATFORM_API_PUBLIC_URL` wins when set. Otherwise the bind is reused —
+ * except a wildcard bind, which is not routable from a browser and would make
+ * Swagger UI's "Try it out" fail against `http://0.0.0.0:3120`. For that case
+ * loopback is the only safe guess: under Docker the port is published on
+ * `PLATFORM_API_PUBLISH_HOST`, which defaults to 127.0.0.1, and an operator
+ * who publishes anywhere else sets `PLATFORM_API_PUBLIC_URL` to match.
+ */
+export function resolvePublicUrl(
+  config: Pick<PlatformApiConfig, 'host' | 'port' | 'publicUrl'>,
+): string {
+  if (config.publicUrl !== undefined) return config.publicUrl;
+  const host = WILDCARD_HOSTS.has(config.host) ? '127.0.0.1' : config.host;
+  // Bare IPv6 literals need brackets before they can carry a port.
+  const authority = host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
+  return `http://${authority}:${config.port}`;
 }
 
 export interface AppConfig {
@@ -124,6 +194,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       host: e.PLATFORM_API_HOST,
       port: e.PLATFORM_API_PORT,
       token: platformApiToken,
+      publicUrl: e.PLATFORM_API_PUBLIC_URL,
     },
   };
 }

@@ -57,6 +57,32 @@ Edits are schema-validated, backed up to `content/backups/` and written
 atomically; species and items can be re-seeded into Postgres without a restart.
 Do not expose it publicly. See [docs/admin-web.md](docs/admin-web.md).
 
+## Platform API
+
+An optional internal REST surface (`/api/v1/…`) over the game service layer,
+with Swagger UI at `/api/v1/docs`. **Disabled by default.**
+
+```sh
+PLATFORM_API_ENABLED=true
+PLATFORM_API_HOST=127.0.0.1                 # where the process listens
+PLATFORM_API_PORT=3120
+PLATFORM_API_TOKEN=$(openssl rand -hex 32)  # required when enabled
+PLATFORM_API_PUBLIC_URL=http://127.0.0.1:3120   # how clients reach it
+```
+
+Three networking variables that are easy to confuse:
+
+| Variable | Answers |
+| --- | --- |
+| `PLATFORM_API_HOST` | Where the process **listens** — `0.0.0.0` under Docker, loopback otherwise. |
+| `PLATFORM_API_PUBLISH_HOST` | Where **Docker publishes** the port on the host. The real security boundary. |
+| `PLATFORM_API_PUBLIC_URL` | How **clients reach** it — the URL advertised in the OpenAPI `servers` list, so Swagger UI's "Try it out" works. |
+
+`PLATFORM_API_PUBLIC_URL` is optional; when unset the URL is derived from the
+bind, and a wildcard bind falls back to `http://127.0.0.1:$PLATFORM_API_PORT`
+(the API never advertises `0.0.0.0`, which no browser can route to). See
+[docs/platform-api.md](docs/platform-api.md).
+
 ## Layout
 
 - `src/` — bot source (config, db, discord shell, service modules, shared)

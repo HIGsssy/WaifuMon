@@ -12,6 +12,10 @@
  *
  *   ssh -L 3120:127.0.0.1:3120 user@server
  *
+ * The bind is not the address clients use: `PLATFORM_API_PUBLIC_URL` carries
+ * that, and is what the OpenAPI `servers` list (and so Swagger UI's "Try it
+ * out") advertises.
+ *
  * Deliberate omissions in v1: no TLS (loopback/tailnet only), no CORS
  * (browsers are not a v1 client), no rate limiting (§10.7), and no
  * `GameEvent` emission from HTTP handlers (§5) — a documented, temporary gap.
@@ -21,7 +25,7 @@ import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import Fastify, { type FastifyBaseLogger, type FastifyError, type FastifyInstance } from 'fastify';
 import { jsonSchemaTransform, hasZodFastifySchemaValidationErrors } from 'fastify-type-provider-zod';
-import type { PlatformApiConfig } from '../config/config';
+import { resolvePublicUrl, type PlatformApiConfig } from '../config/config';
 import { AppError } from '../shared/errors';
 import type { Logger } from '../shared/logger';
 import { registerAuth } from './auth';
@@ -141,7 +145,15 @@ export async function createPlatformApiServer(deps: PlatformApiDeps): Promise<Zo
           'optional forward-compatible `meta` object. Errors are ' +
           '`{ "error": { "code", "message", "details"? }, "requestId" }`.',
       },
-      servers: [{ url: `http://${deps.config.host}:${deps.config.port}` }],
+      // The bind is deliberately *not* used here: under Docker it is 0.0.0.0,
+      // which is a listening address, not one a browser can dial. Swagger UI
+      // builds its "Try it out" requests from this list.
+      servers: [
+        {
+          url: resolvePublicUrl(deps.config),
+          description: 'Base URL clients use (set PLATFORM_API_PUBLIC_URL to override).',
+        },
+      ],
       components: {
         securitySchemes: {
           bearerAuth: {
@@ -244,10 +256,14 @@ export async function startPlatformApi(deps: PlatformApiDeps): Promise<PlatformA
 
   const app = await createPlatformApiServer(deps);
   await app.listen({ host: deps.config.host, port: deps.config.port });
+  // Two addresses, on purpose: the bind is where we listen, the public URL is
+  // what a client (and Swagger UI) should actually call. They differ under
+  // Docker, where the bind is 0.0.0.0 and a printed link to it would not work.
+  const publicUrl = resolvePublicUrl(deps.config);
   deps.logger.info(
-    { host: deps.config.host, port: deps.config.port },
-    `platform API listening on http://${deps.config.host}:${deps.config.port}/api/v1 ` +
-      `(docs: http://${deps.config.host}:${deps.config.port}/api/v1/docs)`,
+    { host: deps.config.host, port: deps.config.port, publicUrl },
+    `platform API listening on ${deps.config.host}:${deps.config.port} — ` +
+      `clients use ${publicUrl}/api/v1 (docs: ${publicUrl}/api/v1/docs)`,
   );
   if (!isPrivateBind(deps.config.host)) {
     deps.logger.warn(

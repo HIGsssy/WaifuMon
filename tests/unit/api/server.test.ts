@@ -295,6 +295,43 @@ describe('OpenAPI', () => {
     expect(res.statusCode).toBe(200);
     expect(res.headers['content-type']).toContain('text/html');
   });
+
+  it('advertises the configured public URL as the only server', async () => {
+    const configured = await createPlatformApiServer({
+      config: {
+        enabled: true,
+        host: '0.0.0.0',
+        port: 3120,
+        token: TEST_TOKEN,
+        publicUrl: 'https://api.waifumon.com',
+      },
+      logger: createCapturedLogger().logger,
+      probes: createProbes(),
+      ctx: createApiContext(),
+    });
+    try {
+      const spec = (await configured.inject({ method: 'GET', url: '/api/v1/openapi.json' })).json();
+      expect(spec.servers).toHaveLength(1);
+      expect(spec.servers[0].url).toBe('https://api.waifumon.com');
+    } finally {
+      await configured.close();
+    }
+  });
+
+  it('never advertises the wildcard bind — Swagger "Try it out" cannot dial it', async () => {
+    const dockerLike = await createPlatformApiServer({
+      config: { enabled: true, host: '0.0.0.0', port: 3120, token: TEST_TOKEN },
+      logger: createCapturedLogger().logger,
+      probes: createProbes(),
+      ctx: createApiContext(),
+    });
+    try {
+      const spec = (await dockerLike.inject({ method: 'GET', url: '/api/v1/openapi.json' })).json();
+      expect(spec.servers[0].url).toBe('http://127.0.0.1:3120');
+    } finally {
+      await dockerLike.close();
+    }
+  });
 });
 
 describe('isPrivateBind', () => {

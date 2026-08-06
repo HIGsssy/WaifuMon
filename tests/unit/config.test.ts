@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { loadConfig } from '../../src/config/config';
+import { loadConfig, resolvePublicUrl } from '../../src/config/config';
 import { ConfigError } from '../../src/shared/errors';
 
 const validEnv = {
@@ -134,6 +134,42 @@ describe('loadConfig', () => {
     expect(config.platformApi.port).toBe(4100);
   });
 
+  it('accepts a platform API public URL and strips its trailing slash', () => {
+    const config = loadConfig({
+      ...validEnv,
+      PLATFORM_API_ENABLED: 'true',
+      PLATFORM_API_TOKEN: 'a-secret',
+      PLATFORM_API_HOST: '0.0.0.0',
+      PLATFORM_API_PUBLIC_URL: 'https://api.waifumon.com/',
+    });
+    expect(config.platformApi.publicUrl).toBe('https://api.waifumon.com');
+    // The bind is untouched by it — the two are separate concerns.
+    expect(config.platformApi.host).toBe('0.0.0.0');
+  });
+
+  it('treats a blank platform API public URL as unset', () => {
+    const config = loadConfig({
+      ...validEnv,
+      PLATFORM_API_ENABLED: 'true',
+      PLATFORM_API_TOKEN: 'a-secret',
+      PLATFORM_API_PUBLIC_URL: '   ',
+    });
+    expect(config.platformApi.publicUrl).toBeUndefined();
+  });
+
+  it('rejects a platform API public URL clients could not dial', () => {
+    for (const url of ['127.0.0.1:3120', 'ftp://host:3120', 'http://0.0.0.0:3120', 'http://[::]:3120']) {
+      expect(() =>
+        loadConfig({
+          ...validEnv,
+          PLATFORM_API_ENABLED: 'true',
+          PLATFORM_API_TOKEN: 'a-secret',
+          PLATFORM_API_PUBLIC_URL: url,
+        }),
+      ).toThrow(ConfigError);
+    }
+  });
+
   it('rejects an out-of-range platform API port', () => {
     expect(() =>
       loadConfig({
@@ -163,5 +199,36 @@ describe('loadConfig', () => {
     });
     expect(config.dailyTimezone).toBe('America/New_York');
     expect(config.assetsDir).toBe(path.resolve('/srv/assets'));
+  });
+});
+
+describe('resolvePublicUrl', () => {
+  it('prefers the configured public URL over the bind', () => {
+    expect(
+      resolvePublicUrl({ host: '0.0.0.0', port: 3120, publicUrl: 'https://api.waifumon.com' }),
+    ).toBe('https://api.waifumon.com');
+  });
+
+  it('reuses a routable bind when no public URL is set', () => {
+    expect(resolvePublicUrl({ host: '127.0.0.1', port: 3120, publicUrl: undefined })).toBe(
+      'http://127.0.0.1:3120',
+    );
+    expect(resolvePublicUrl({ host: '100.101.102.103', port: 4100, publicUrl: undefined })).toBe(
+      'http://100.101.102.103:4100',
+    );
+  });
+
+  it('never advertises a wildcard bind — that is what breaks Swagger "Try it out"', () => {
+    for (const host of ['0.0.0.0', '::', '[::]']) {
+      expect(resolvePublicUrl({ host, port: 3120, publicUrl: undefined })).toBe(
+        'http://127.0.0.1:3120',
+      );
+    }
+  });
+
+  it('brackets a bare IPv6 bind so the port stays parseable', () => {
+    expect(resolvePublicUrl({ host: 'fd00::1', port: 3120, publicUrl: undefined })).toBe(
+      'http://[fd00::1]:3120',
+    );
   });
 });
