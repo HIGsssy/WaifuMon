@@ -222,8 +222,37 @@ export const careState: CareState = {
   maxEnergy: 50,
 };
 
+/**
+ * Mirrors the *real* shape of `tables.json`, checked against a live Platform
+ * API rather than invented. The Guide reads this defensively either way, but a
+ * fixture that disagreed with production would let a broken path pass tests.
+ */
 export const tuningTables: Record<string, unknown> = {
-  energy: { max: 50, regenMinutes: 6 },
-  hunt: { energyCost: 5, encounterTtlMinutes: 10 },
-  capture: { baseRates: { N: 0.7, R: 0.5, SR: 0.3, SSR: 0.15, UR: 0.07, LR: 0.03, EX: 0.01 } },
+  energy: {
+    baseMax: 25,
+    careMode: {
+      enabled: true,
+      intervalMinutes: 30,
+      energyPerTick: 1,
+      recoveryCap: 20,
+      waifuXpPerTick: 2,
+      affectionPerTick: 1,
+    },
+  },
+  hunt: {
+    cooldownSeconds: 2,
+    encounterExpirySeconds: 120,
+    sessionIdleMinutes: 15,
+    locationFlavors: ['the Whispering Forest', 'the Neon Boardwalk'],
+  },
+  capture: {
+    baseRatesByRarity: { N: 0.5, R: 0.35, SR: 0.22, SSR: 0.12, UR: 0.06, LR: 0.03, EX: 0.03 },
+    minChance: 0.02,
+    maxChance: 0.95,
+  },
+  progression: {
+    levelCurve: { base: 100, growth: 50 },
+    maxLevel: 50,
+    maxEnergy: { cap: 40, levelBonuses: [{ atLevel: 7, delta: 5 }] },
+  },
 };

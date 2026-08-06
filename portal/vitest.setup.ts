@@ -16,6 +16,11 @@ beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
 afterEach(() => {
   cleanup();
   server.resetHandlers();
+  // The theme provider writes to `localStorage` and to the <html> class. Both
+  // outlive `cleanup()`, so reset them or a Settings test would decide what
+  // theme every later test starts in.
+  localStorage.clear();
+  document.documentElement.className = '';
 });
 
 afterAll(() => server.close());
