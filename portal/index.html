@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark light" />
+    <meta
+      name="description"
+      content="Waifumon Player Portal — a read-only companion for your collection."
+    />
+    <title>Waifumon Portal</title>
+    <script>
+      /**
+       * Theme is applied before first paint so a dark-mode user never sees a
+       * white flash. Mirrors the logic in src/app/ThemeProvider.tsx; that file
+       * owns the runtime behaviour, this is only the pre-hydration guess.
+       */
+      (function () {
+        try {
+          var stored = localStorage.getItem('waifumon-portal:theme');
+          var dark =
+            stored === 'dark' ||
+            (stored !== 'light' && !window.matchMedia('(prefers-color-scheme: light)').matches);
+          document.documentElement.classList.toggle('dark', dark);
+        } catch (_) {
+          /* private mode — keep the dark default from the class attribute */
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/app/main.tsx"></script>
+  </body>
+</html>

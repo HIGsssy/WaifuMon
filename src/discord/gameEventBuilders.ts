@@ -6,6 +6,7 @@
  * name lookup) and unit-testable, and they keep every handler's emission
  * block down to "build descriptors, emit descriptors".
  */
+import type { AppearanceUnlockRef } from '../modules/appearance/appearanceService';
 import { crossedAffectionStage } from '../modules/collection/affectionStages';
 import type { CareTickSummary } from '../modules/care/careService';
 import type { CaptureAttemptResult } from '../modules/capture/captureService';
@@ -47,6 +48,35 @@ export function levelUpDescriptors(
 }
 
 /**
+ * `WAIFU_APPEARANCE_UNLOCKED` per newly-earned cosmetic.
+ *
+ * Deliberately generic: the payload is the shared progression-notification
+ * shape (name, requirement, rarity badge, `assetId`), so a future
+ * evolution / achievement / gift toast reuses this exact pattern instead of
+ * growing a parallel pipeline.
+ *
+ * `waifuName` is passed in rather than looked up — every caller already has the
+ * copy in hand, and a cosmetic toast must not cost a query on a hunt path.
+ */
+export function appearanceUnlockDescriptors(
+  unlocks: readonly AppearanceUnlockRef[],
+  waifuName: string,
+): GameEventDescriptor[] {
+  return unlocks.map((unlock) =>
+    gameEvent('WAIFU_APPEARANCE_UNLOCKED', {
+      waifuId: unlock.waifuId,
+      waifuName,
+      speciesSlug: unlock.speciesSlug,
+      appearanceId: unlock.appearanceId,
+      appearanceName: unlock.name,
+      assetId: unlock.assetId,
+      cosmeticRarity: unlock.cosmeticRarity,
+      unlockLabel: unlock.unlockLabel,
+    }),
+  );
+}
+
+/**
  * Buddy XP/affection consequences shared by the hunt and Care Mode paths:
  * a level-up line and, when a named affection threshold was crossed, a
  * milestone line.
@@ -58,6 +88,8 @@ function buddyProgressDescriptors(input: {
   toLevel: number;
   affectionAfter: number;
   affectionGained: number;
+  /** Cosmetic unlocks the same XP produced. Narrated after the level line. */
+  newAppearances?: readonly AppearanceUnlockRef[] | undefined;
 }): GameEventDescriptor[] {
   const out: GameEventDescriptor[] = [];
   if (input.toLevel > input.fromLevel) {
@@ -83,6 +115,7 @@ function buddyProgressDescriptors(input: {
       }),
     );
   }
+  out.push(...appearanceUnlockDescriptors(input.newAppearances ?? [], input.buddyName));
   return out;
 }
 
@@ -113,6 +146,7 @@ export function careTickDescriptors(summary: CareTickSummary): GameEventDescript
         toLevel: summary.toLevel ?? summary.target.waifu.level,
         affectionAfter: summary.target.waifu.affection,
         affectionGained: summary.affectionGained,
+        newAppearances: summary.newAppearances,
       }),
     );
   }
@@ -253,7 +287,12 @@ export async function huntDescriptors(
   out.push(...levelUpDescriptors(result.levelUps));
 
   const award = result.buddyAward;
-  if (award && (award.toLevel > award.fromLevel || award.affectionGranted > 0)) {
+  if (
+    award &&
+    (award.toLevel > award.fromLevel ||
+      award.affectionGranted > 0 ||
+      award.newAppearances.length > 0)
+  ) {
     const buddyName = await ownedWaifuName(ctx, prov.playerId, award.waifu.id);
     out.push(
       ...buddyProgressDescriptors({
@@ -263,6 +302,7 @@ export async function huntDescriptors(
         toLevel: award.toLevel,
         affectionAfter: award.waifu.affection,
         affectionGained: award.affectionGranted,
+        newAppearances: award.newAppearances,
       }),
     );
   }
@@ -315,6 +355,14 @@ export async function captureDescriptors(
   }
 
   out.push(...levelUpDescriptors(result.levelUps));
+
+  // Cosmetics a brand-new copy already qualifies for. Normally empty — the
+  // default appearance is acknowledged silently — so this costs a name lookup
+  // only when a species ships extra day-one artwork.
+  if (result.newAppearances.length > 0 && result.newWaifu) {
+    const name = await ownedWaifuName(ctx, prov.playerId, result.newWaifu.id);
+    out.push(...appearanceUnlockDescriptors(result.newAppearances, name));
+  }
 
   // Collection milestone: only worth a query when this capture was a new dex
   // entry, which is the only way the collection can become complete.

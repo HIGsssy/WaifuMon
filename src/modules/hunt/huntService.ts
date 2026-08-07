@@ -113,6 +113,21 @@ export interface HuntService {
   getActiveEncounter(playerId: number, now?: Date): Promise<EncounterRow | null>;
 
   /**
+   * As {@link getActiveEncounter}, but joined to the species row.
+   *
+   * Added for the Platform API (Phase 2): an encounter carries only a
+   * `species_id`, and the API's content endpoints are slug-addressed and
+   * carry no ids, so a client holding a bare id could not resolve who the
+   * player met. Purely additive — `getActiveEncounter` is untouched and
+   * remains what the Discord handlers call. Same filter, same expiry rule,
+   * one query instead of two.
+   */
+  getActiveEncounterDetail(
+    playerId: number,
+    now?: Date,
+  ): Promise<{ encounter: EncounterRow; species: SpeciesRow } | null>;
+
+  /**
    * Resolve the given active encounter with state='released'. Milestone 2A
    * only supports pre-attempt release; capture attempts land in the next
    * milestone.
@@ -465,6 +480,18 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
         .limit(1);
       if (!row) return null;
       if (row.expiresAt.getTime() <= now.getTime()) return null;
+      return row;
+    },
+
+    async getActiveEncounterDetail(playerId, now = new Date()) {
+      const [row] = await db
+        .select({ encounter: encounters, species })
+        .from(encounters)
+        .innerJoin(species, eq(encounters.speciesId, species.id))
+        .where(and(eq(encounters.playerId, playerId), eq(encounters.state, 'active')))
+        .limit(1);
+      if (!row) return null;
+      if (row.encounter.expiresAt.getTime() <= now.getTime()) return null;
       return row;
     },
 

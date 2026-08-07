@@ -1,12 +1,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { ZodError, ZodType, ZodTypeDef } from 'zod';
+import { defaultAssetId } from '../appearance/appearanceContent';
 import { ContentValidationError } from '../../shared/errors';
 import type { Logger } from '../../shared/logger';
 import {
   ItemsFileSchema,
   SpeciesFileSchema,
   TablesFileSchema,
+  type AppearanceContent,
+  type AssetId,
   type LoadedContent,
   type SpeciesContent,
 } from './schemas';
@@ -50,19 +53,87 @@ export function resolveAssetPath(assetsDir: string, imagePath: string): string {
   return resolved;
 }
 
-/** Missing image = warning + species auto-disabled; never render a broken card. */
+/**
+ * `AssetId → local file`, for the loader's pre-flight existence probe **only**.
+ *
+ * This is the single internal exception to the system's asset-location
+ * agnosticism, and it is deliberately not exported: no service, no API route,
+ * and no client bundle can reach it. Every real consumer (Portal, Discord, a
+ * future CDN or mobile client) ships its own resolver keyed on the same
+ * `AssetId`, which is why swapping storage backends never touches the API.
+ *
+ * The layout it assumes — `assets/waifumon/<slug>/<variant>.png` — is exactly
+ * what existing `imagePath` values already use, so authoring new art is: drop
+ * the PNG in the species folder, add one JSON entry with a matching id.
+ */
+function assetIdToLocalPath(assetId: AssetId): string {
+  return `${assetId.kind}/${assetId.slug}/${assetId.variant}.png`;
+}
+
+/**
+ * Asset pre-flight.
+ *
+ * Two different severities, on purpose:
+ *   - a missing **default** image disables the species (unchanged behavior —
+ *     a species that cannot render at all is worse than one that is absent);
+ *   - a missing **non-default appearance** file drops just that appearance
+ *     with a warning and leaves the species enabled. Half-shipped artwork
+ *     should cost one gallery tile, not a whole Waifumon.
+ *
+ * Species with no authored catalog are untouched: their implicit `standard`
+ * appearance is covered by the `imagePath` probe that already existed.
+ */
 export function validateSpeciesAssets(
   species: SpeciesContent[],
   assetsDir: string,
   logger: Logger,
 ): SpeciesContent[] {
+  const exists = (relative: string): boolean => {
+    try {
+      return fs.existsSync(resolveAssetPath(assetsDir, relative));
+    } catch {
+      // Path traversal — treated as missing rather than fatal, matching the
+      // "never render a broken card" rule. `resolveAssetPath` already logged
+      // the intent by throwing.
+      return false;
+    }
+  };
+
   return species.map((s) => {
     const absolute = resolveAssetPath(assetsDir, s.imagePath);
     if (!fs.existsSync(absolute)) {
       logger.warn({ slug: s.slug, imagePath: s.imagePath }, 'species image missing — disabling');
       return { ...s, enabled: false };
     }
-    return s;
+
+    if (!s.appearances || s.appearances.length === 0) return s;
+
+    const kept: AppearanceContent[] = [];
+    for (const appearance of s.appearances) {
+      const assetId = appearance.assetId ?? defaultAssetId(s.slug, appearance.id);
+      const relative = assetIdToLocalPath(assetId);
+      if (exists(relative)) {
+        kept.push(appearance);
+        continue;
+      }
+      if (appearance.unlock.type === 'owned') {
+        // The default entry has no fallback to degrade to. Rather than disable
+        // a species that has a perfectly good `imagePath`, keep the entry and
+        // let the consumer's resolver fall back (Discord → species card,
+        // Portal → silhouette). Loud, because it is an authoring mistake.
+        logger.warn(
+          { slug: s.slug, appearanceId: appearance.id, assetId },
+          'default appearance artwork missing — consumers will fall back',
+        );
+        kept.push(appearance);
+        continue;
+      }
+      logger.warn(
+        { slug: s.slug, appearanceId: appearance.id, assetId },
+        'appearance artwork missing — appearance disabled',
+      );
+    }
+    return { ...s, appearances: kept };
   });
 }
 
@@ -85,6 +156,24 @@ export function validateContentSet(content: LoadedContent): void {
   if (dupItem) throw new ContentValidationError(`Duplicate item slug: ${dupItem}`);
   const dupSpecies = dupSlug(species.map((s) => s.slug));
   if (dupSpecies) throw new ContentValidationError(`Duplicate species slug: ${dupSpecies}`);
+
+  // Appearance level gates are checked here rather than in the species schema
+  // because the ceiling lives in tables.json — the two files are only both in
+  // hand at this layer. A gate above `maxLevel` is unreachable content, which
+  // is an authoring mistake worth failing on rather than shipping a tile no
+  // player can ever earn.
+  const maxWaifuLevel = tables.waifuProgression.maxLevel;
+  for (const s of species) {
+    for (const appearance of s.appearances ?? []) {
+      if (appearance.unlock.type !== 'level') continue;
+      if (appearance.unlock.atLevel > maxWaifuLevel) {
+        throw new ContentValidationError(
+          `species "${s.slug}": appearance "${appearance.id}" unlocks at level ` +
+            `${appearance.unlock.atLevel}, above waifuProgression.maxLevel (${maxWaifuLevel})`,
+        );
+      }
+    }
+  }
 
   const itemSlugs = new Set(items.map((i) => i.slug));
   for (const slug of Object.keys(tables.dailyPackage.items)) {

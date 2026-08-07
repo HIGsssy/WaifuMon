@@ -51,6 +51,7 @@ import type { CaptureConfig } from './captureMath';
 import { computeCaptureChance } from './captureMath';
 import { normalizeAffinity, resolveBuddyAffinity, type AffinityMatchup } from './affinityMath';
 import type { InventoryService } from '../inventory/inventoryService';
+import type { AppearanceService, AppearanceUnlockRef } from '../appearance/appearanceService';
 import type { CollectionService } from '../collection/collectionService';
 import type {
   LevelUpEvent,
@@ -111,6 +112,13 @@ export interface CaptureAttemptResult {
   affinity: CaptureAffinityInfo;
   /** Consumable capture buff spent on this attempt; null when none applied. */
   effect: CaptureEffectInfo | null;
+  /**
+   * Cosmetic appearances the new copy starts with, acknowledged so they never
+   * re-notify. Presentation only — the default `owned` entry is deliberately
+   * filtered out of this list, so it is normally empty and only fills when a
+   * species ships artwork a brand-new copy already qualifies for.
+   */
+  newAppearances: AppearanceUnlockRef[];
 }
 
 export interface CaptureService {
@@ -141,6 +149,12 @@ export interface CaptureServiceDeps {
   quests: QuestService;
   /** Consumable capture buffs (Microdose). Charges are spent per attempt. */
   effects: PlayerEffectsService;
+  /**
+   * Cosmetic appearance bookkeeping. Optional and strictly downstream: a
+   * freshly-captured copy has its default appearance acknowledged so the
+   * player is never toasted for artwork she arrived wearing.
+   */
+  appearance?: AppearanceService | undefined;
   logger: Logger;
   rng?: Rng;
 }
@@ -158,6 +172,7 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
     effects,
     logger,
   } = deps;
+  const appearance = deps.appearance;
   const rng = deps.rng ?? defaultRng();
 
   return {
@@ -423,6 +438,15 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
           );
         }
 
+        // Cosmetic bookkeeping, last and best-effort in spirit: acknowledge the
+        // appearances a brand-new copy already qualifies for so she is never
+        // toasted for the look she arrived in. Runs after every gameplay write
+        // so it can only ever cost a notification, never a capture.
+        const newAppearances =
+          appearance && newWaifu
+            ? await appearance.syncUnlocks(tx, newWaifu, speciesRow, 'owned')
+            : [];
+
         return {
           kind: 'result',
           value: {
@@ -439,6 +463,7 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
             isNewDex,
             affinity,
             effect,
+            newAppearances,
           },
         };
       });

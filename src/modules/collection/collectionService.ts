@@ -22,6 +22,10 @@ import {
   type Rarity,
   type SpeciesRow,
 } from '../../db/schema';
+import type {
+  AppearanceService,
+  AppearanceUnlockRef,
+} from '../appearance/appearanceService';
 import type { DuplicateConfig, WaifuProgressionConfig } from '../content/schemas';
 import {
   NotADuplicateError,
@@ -96,6 +100,12 @@ export interface WaifuInvestResult {
   fromLevel: number;
   toLevel: number;
   essenceBalanceAfter: number;
+  /**
+   * Cosmetic appearances this level gain unlocked. Presentation only — the
+   * caller renders a toast; nothing downstream branches on it. Empty when the
+   * appearance service is not wired.
+   */
+  newAppearances: AppearanceUnlockRef[];
 }
 
 export interface BuddyAwardResult {
@@ -104,6 +114,8 @@ export interface BuddyAwardResult {
   affectionGranted: number;
   fromLevel: number;
   toLevel: number;
+  /** Cosmetic unlocks the buddy's hunt XP produced. Presentation only. */
+  newAppearances: AppearanceUnlockRef[];
 }
 
 export interface CollectionService {
@@ -184,6 +196,13 @@ export interface CollectionServiceDeps {
   waifuConfig: WaifuProgressionConfig;
   /** Total enabled species in the content set (dex denominator). */
   totalSpeciesCount: number;
+  /**
+   * Cosmetic appearance bookkeeping. **Optional**, and deliberately one-way:
+   * this service calls into it after a level changes so the player is told
+   * about newly-earned artwork, and it never reads anything back that affects
+   * gameplay. Omitting it (as older tests do) simply means no unlock toasts.
+   */
+  appearance?: AppearanceService | undefined;
 }
 
 const DEFAULT_PAGE_SIZE = 10;
@@ -204,6 +223,21 @@ end`;
 
 export function createCollectionService(deps: CollectionServiceDeps): CollectionService {
   const { db, currency, quests, duplicateConfig, waifuConfig, totalSpeciesCount } = deps;
+  const appearance = deps.appearance;
+
+  /**
+   * Cosmetic side effect of a level gain, run inside the caller's transaction.
+   * Never throws outward: a content mistake must not roll back an Essence
+   * investment or a buddy's hunt XP.
+   */
+  async function syncAppearances(
+    tx: DbOrTx,
+    waifu: PlayerWaifuRow,
+    fromLevel: number,
+  ): Promise<AppearanceUnlockRef[]> {
+    if (!appearance || waifu.level <= fromLevel) return [];
+    return appearance.syncUnlocks(tx, waifu, undefined, 'level');
+  }
 
   function essenceForRarity(rarity: string, fraction = 1): number {
     const value = (duplicateConfig.essenceByRarity as Record<string, number>)[rarity] ?? 0;
@@ -584,6 +618,8 @@ export function createCollectionService(deps: CollectionServiceDeps): Collection
           .where(eq(playerWaifus.id, waifuId))
           .returning();
 
+        const newAppearances = await syncAppearances(tx, updated!, fromLevel);
+
         return {
           waifu: updated!,
           essenceSpent: cost,
@@ -591,6 +627,7 @@ export function createCollectionService(deps: CollectionServiceDeps): Collection
           fromLevel,
           toLevel: newLevel,
           essenceBalanceAfter: balance.essence,
+          newAppearances,
         };
       });
     },
@@ -651,12 +688,15 @@ export function createCollectionService(deps: CollectionServiceDeps): Collection
         .set({ xp: newTotalXp, level: newLevel, affection: newAffection })
         .where(eq(playerWaifus.id, buddyId))
         .returning();
+      const newAppearances = await syncAppearances(tx, updated!, fromLevel);
+
       return {
         waifu: updated!,
         xpGranted: xpDelta,
         affectionGranted: affDelta,
         fromLevel,
         toLevel: newLevel,
+        newAppearances,
       };
     },
   };

@@ -1,0 +1,293 @@
+/**
+ * Portal design tokens and base layer.
+ *
+ * The palette follows plan §17: deep neutral with a subtle warm tint so key art
+ * reads as illuminated, rarity as the only accent language, no bright primary
+ * buttons competing with the artwork. Dark is the default; light is a supported
+ * alternative, not an afterthought.
+ *
+ * Structure:
+ *   :root / .dark   raw CSS variables, one set per theme
+ *   @theme inline   maps them into Tailwind's token namespace so utilities like
+ *                   `bg-surface` and `text-ink-muted` exist
+ */
+@import 'tailwindcss';
+
+/* Tailwind v4 defaults to the `prefers-color-scheme` dark variant; the Portal
+   drives the theme from a class on <html> so Settings can override the OS. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  /* ── Neutral surfaces (light theme) ─────────────────────────────────────── */
+  --canvas: oklch(0.985 0.004 300);
+  --canvas-inset: oklch(0.965 0.006 300);
+  --surface: oklch(1 0 0);
+  --surface-raised: oklch(0.985 0.004 300);
+  --surface-sunken: oklch(0.955 0.008 300);
+  --border: oklch(0.9 0.008 300);
+  --border-strong: oklch(0.82 0.012 300);
+
+  /* ── Ink ────────────────────────────────────────────────────────────────── */
+  /* `ink-subtle` is the quietest text in the palette and is used at 12px, so
+     it is the token most likely to fail WCAG AA. Its lightness is set by
+     measurement, not taste: the Playwright accessibility pass runs axe with
+     `color-contrast` enabled against the real stylesheet, and these values are
+     what clear 4.5:1 on the lightest surface each theme puts behind them.
+     §17 calls AA non-negotiable — if the chrome needs to be quieter, it has to
+     get quieter some other way than by dropping contrast. */
+  --ink: oklch(0.22 0.015 300);
+  --ink-muted: oklch(0.46 0.014 300);
+  --ink-subtle: oklch(0.53 0.013 300);
+  --ink-inverse: oklch(0.98 0.004 300);
+
+  /* ── Quiet accent — used for focus rings and the few active states.
+        Deliberately desaturated: rarity owns the loud colours. ─────────────── */
+  /* Every hue below is rendered as *text* somewhere — a rarity badge, a price
+     chip, an error message — often at 12px. On a light background that makes
+     them the binding constraint, so each is dark enough to clear WCAG AA
+     against white and against its own soft tint. The values come from the
+     Playwright contrast pass, not from taste; the hues are unchanged. */
+  --accent: oklch(0.52 0.15 350);
+  --accent-soft: oklch(0.94 0.03 350);
+  --accent-ink: oklch(1 0 0);
+
+  --danger: oklch(0.44 0.19 25);
+  --danger-soft: oklch(0.97 0.015 25);
+
+  /* ── Rarity language (plan §17), mirrored from the Discord embed colours. ── */
+  --rarity-n: oklch(0.4 0.02 265);
+  --rarity-r: oklch(0.4 0.16 250);
+  --rarity-sr: oklch(0.44 0.2 305);
+  --rarity-ssr: oklch(0.4 0.1 85);
+  --rarity-ur: oklch(0.43 0.2 20);
+  --rarity-lr: oklch(0.47 0.11 190);
+  /* EX exists in the game's rarity enum but is absent from the plan's colour
+     list; it gets its own hue rather than silently aliasing another tier. */
+  --rarity-ex: oklch(0.46 0.13 145);
+
+  /* ── Currency accents — small hues on chips only, never on chrome. ───────── */
+  --currency-energy: oklch(0.5 0.13 75);
+  --currency-waifubux: oklch(0.46 0.12 145);
+  --currency-essence: oklch(0.46 0.18 300);
+
+  --shadow-ambient: 0 1px 2px oklch(0.2 0.02 300 / 0.06), 0 8px 24px oklch(0.2 0.02 300 / 0.08);
+  --shadow-lift: 0 2px 4px oklch(0.2 0.02 300 / 0.08), 0 16px 40px oklch(0.2 0.02 300 / 0.14);
+}
+
+.dark {
+  /* Near-black with a warm-violet tint — art reads as illuminated against it. */
+  --canvas: oklch(0.16 0.008 300);
+  --canvas-inset: oklch(0.13 0.008 300);
+  --surface: oklch(0.204 0.009 300);
+  --surface-raised: oklch(0.245 0.01 300);
+  --surface-sunken: oklch(0.175 0.009 300);
+  --border: oklch(0.3 0.011 300);
+  --border-strong: oklch(0.4 0.014 300);
+
+  /* See the note in `:root` — these are measured against the dark surfaces. */
+  --ink: oklch(0.955 0.005 300);
+  --ink-muted: oklch(0.76 0.012 300);
+  --ink-subtle: oklch(0.68 0.012 300);
+  --ink-inverse: oklch(0.18 0.01 300);
+
+  --accent: oklch(0.72 0.13 350);
+  --accent-soft: oklch(0.3 0.05 350);
+  --accent-ink: oklch(0.15 0.01 350);
+
+  --danger: oklch(0.78 0.15 25);
+  --danger-soft: oklch(0.26 0.05 25);
+
+  /* Rarity doubles as text on its own 10% tint, at 12px. That is the hardest
+     contrast case in the palette, so the dark-theme lightness is set high
+     enough to clear 4.5:1 there — verified by the Playwright contrast pass.
+     The hues are unchanged, so the rarity language still matches the Discord
+     embeds; only the value moves. */
+  --rarity-n: oklch(0.8 0.025 265);
+  --rarity-r: oklch(0.8 0.13 250);
+  --rarity-sr: oklch(0.8 0.15 305);
+  --rarity-ssr: oklch(0.85 0.15 85);
+  --rarity-ur: oklch(0.78 0.17 20);
+  --rarity-lr: oklch(0.84 0.14 190);
+  --rarity-ex: oklch(0.83 0.16 145);
+
+  --currency-energy: oklch(0.85 0.14 75);
+  --currency-waifubux: oklch(0.84 0.13 145);
+  --currency-essence: oklch(0.82 0.15 300);
+
+  --shadow-ambient: 0 1px 2px oklch(0 0 0 / 0.4), 0 8px 24px oklch(0 0 0 / 0.36);
+  --shadow-lift: 0 2px 4px oklch(0 0 0 / 0.45), 0 18px 44px oklch(0 0 0 / 0.5);
+}
+
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-canvas-inset: var(--canvas-inset);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-subtle: var(--ink-subtle);
+  --color-ink-inverse: var(--ink-inverse);
+
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-ink: var(--accent-ink);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+
+  --color-rarity-n: var(--rarity-n);
+  --color-rarity-r: var(--rarity-r);
+  --color-rarity-sr: var(--rarity-sr);
+  --color-rarity-ssr: var(--rarity-ssr);
+  --color-rarity-ur: var(--rarity-ur);
+  --color-rarity-lr: var(--rarity-lr);
+  --color-rarity-ex: var(--rarity-ex);
+
+  --color-currency-energy: var(--currency-energy);
+  --color-currency-waifubux: var(--currency-waifubux);
+  --color-currency-essence: var(--currency-essence);
+
+  /* One quiet sans for chrome; one display face for hero names. The display
+     stack is system-safe by design — Further Considerations #1 leaves the
+     licensed face as a later, purely cosmetic swap. */
+  --font-sans:
+    'Inter var', 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, ui-serif, serif;
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Roboto Mono', Menlo, monospace;
+
+  --shadow-ambient: var(--shadow-ambient);
+  --shadow-lift: var(--shadow-lift);
+
+  /* Breakpoints per plan §18 — `xs` is the 375px phone baseline. */
+  --breakpoint-xs: 23.4375rem;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  html {
+    color-scheme: light;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  html.dark {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* Feature routes are lazy chunks; a scrollbar appearing on load would
+       shift the layout, so reserve the gutter up front (§15). */
+    scrollbar-gutter: stable;
+  }
+
+  /* Numbers must not jitter as currencies tick (§17). */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum' 1;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: 0.25rem;
+  }
+
+  /* Radix sets this on the <body> while a modal layer is open. */
+  body[data-scroll-locked] {
+    overflow: hidden;
+  }
+}
+
+@layer utilities {
+  /* Quiet skeleton shimmer — attention-neutral by design (§14). */
+  @keyframes portal-shimmer {
+    0% {
+      background-position: 200% 0;
+    }
+    100% {
+      background-position: -200% 0;
+    }
+  }
+
+  .skeleton {
+    background-image: linear-gradient(
+      90deg,
+      var(--color-surface-sunken) 0%,
+      var(--color-surface-raised) 50%,
+      var(--color-surface-sunken) 100%
+    );
+    background-size: 200% 100%;
+    animation: portal-shimmer 1.8s ease-in-out infinite;
+  }
+
+  /* Cards lift on hover/focus; the lift is the only motion in a grid. */
+  .lift {
+    transition:
+      transform 180ms cubic-bezier(0.2, 0, 0, 1),
+      box-shadow 180ms cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  .lift:hover,
+  .lift:focus-visible {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-lift);
+  }
+}
+
+/*
+ * View Transitions (§14): the Collection card → detail hero morph.
+ *
+ * The artwork is the only element with a transition name, so the browser
+ * animates it between the two layouts while everything else cross-fades. The
+ * whole feature is progressive — a browser without support simply navigates.
+ */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 220ms;
+  animation-timing-function: cubic-bezier(0.2, 0, 0, 1);
+}
+
+@layer utilities {
+  /* Keeps the morphing artwork above the incoming page during the transition. */
+  ::view-transition-group(*) {
+    animation-duration: 320ms;
+    animation-timing-function: cubic-bezier(0.2, 0, 0, 1);
+  }
+}
+
+/* §14 / §17: reduced motion disables shimmer, lift, and view transitions. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .skeleton {
+    animation: none;
+  }
+
+  .lift:hover,
+  .lift:focus-visible {
+    transform: none;
+  }
+
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}

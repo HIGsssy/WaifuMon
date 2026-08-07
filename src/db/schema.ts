@@ -345,8 +345,24 @@ export const playerWaifus = pgTable(
     affection: integer('affection').notNull().default(0),
     nickname: text('nickname'),
     isFavorite: boolean('is_favorite').notNull().default(false),
+    /**
+     * The player's **selected appearance** (Appearance Progression System v1).
+     * Purely cosmetic: it decides which artwork renders and touches nothing
+     * else. Holds an appearance id from the species' content catalog; the
+     * default `'standard'` is the implicit entry every species has.
+     */
     variant: text('variant').notNull().default('standard'),
     cosmetics: jsonb('cosmetics').$type<string[]>().notNull().default([]),
+    /**
+     * Appearance ids this copy has already been *notified* about.
+     *
+     * Not an unlock ledger — V1 unlock state is derived from waifu state
+     * (`owned`, `level`), so retroactively-added artwork unlocks itself with no
+     * backfill. This column answers only "have we toasted this one yet?", which
+     * is what keeps a level-40 copy from spamming six notifications the first
+     * time new milestone art ships.
+     */
+    seenAppearances: jsonb('seen_appearances').$type<string[]>().notNull().default([]),
     caughtAt: timestamp('caught_at', { withTimezone: true }).notNull().defaultNow(),
     releasedAt: timestamp('released_at', { withTimezone: true }),
   },

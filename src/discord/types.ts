@@ -18,6 +18,7 @@ import type { HuntService } from '../modules/hunt/huntService';
 import type { CaptureService } from '../modules/capture/captureService';
 import type { CareService } from '../modules/care/careService';
 import type { CollectionService } from '../modules/collection/collectionService';
+import type { AppearanceService } from '../modules/appearance/appearanceService';
 import type { PlayerEffectsService } from '../modules/effects/playerEffectsService';
 import type { ItemUseService } from '../modules/items/itemUseService';
 import type { ProgressionService } from '../modules/progression/progressionService';
@@ -37,6 +38,11 @@ export interface AppServices {
   capture: CaptureService;
   care: CareService;
   collection: CollectionService;
+  /**
+   * Cosmetic appearance gallery, selection, and unlock bookkeeping. Reads
+   * waifu level; writes only `variant` and `seen_appearances`.
+   */
+  appearance: AppearanceService;
   progression: ProgressionService;
   quests: QuestService;
   session: SessionService;

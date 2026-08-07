@@ -1,0 +1,16 @@
+-- Appearance Progression System v1 — notification bookkeeping.
+--
+-- The *only* schema change the system needs. Unlock state itself is derived
+-- from waifu state (`owned` = the row exists, `level` = `player_waifus.level`),
+-- so there is deliberately no unlock table: shipping new Level-20 artwork
+-- unlocks it retroactively for every copy already past Level 20, with no
+-- backfill job and no migration.
+--
+-- What *is* persisted is "has this copy already been told?". Without it, a
+-- Level-40 copy would fire a notification for every milestone appearance the
+-- first time new art shipped.
+--
+-- Additive and safe: existing rows default to an empty array, and
+-- `player_waifus.variant` (the selected appearance) already exists and already
+-- defaults to 'standard' — the implicit appearance every species has.
+ALTER TABLE "player_waifus" ADD COLUMN IF NOT EXISTS "seen_appearances" jsonb DEFAULT '[]'::jsonb NOT NULL;

@@ -134,7 +134,164 @@ export const ItemContentSchema = ItemBaseSchema.superRefine((item, ctx) => {
 
 export const ItemsFileSchema = z.object({ items: z.array(ItemContentSchema).min(1) });
 
-export const SpeciesContentSchema = z.object({
+// ── Appearances (Appearance Progression System v1) ──────────────────────────
+
+/**
+ * Cosmetic rarity. **Deliberately separate from species rarity** (`N`/`R`/…):
+ * a Rare species may carry a Seasonal appearance, and the two signals must
+ * never be conflated. Presentation only — it drives no gameplay, no drops, and
+ * no unlock. The enum is closed so a client never renders an unknown string;
+ * new values are an additive schema change that older clients tolerate by
+ * falling back to `common`.
+ */
+export const COSMETIC_RARITIES = [
+  'standard',
+  'common',
+  'rare',
+  'seasonal',
+  'limited',
+  'exclusive',
+] as const;
+export type CosmeticRarity = (typeof COSMETIC_RARITIES)[number];
+export const CosmeticRaritySchema = z.enum(COSMETIC_RARITIES);
+
+/**
+ * Unlock sources V1 actually resolves. `owned` and `level` are both *derived*
+ * from waifu state, which is why V1 persists no unlock rows at all — only
+ * "was the player notified?" (`player_waifus.seen_appearances`).
+ */
+export const V1_APPEARANCE_UNLOCK_TYPES = ['owned', 'level'] as const;
+
+/**
+ * Reserved for later versions. Authoring one today is a validation error —
+ * the literals exist so the discriminated union, the API wire format, and the
+ * client renderers are already shaped for them, and shipping the first
+ * grant-driven source is a new `isUnlocked` case plus a grants table, never a
+ * schema migration. See `.ai/appearanceplan.md` § Future Appearance Sources.
+ */
+export const FUTURE_APPEARANCE_UNLOCK_TYPES = [
+  'evolution',
+  'affection',
+  'event',
+  'seasonal',
+  'achievement',
+  'promotion',
+  'admin_grant',
+  'special',
+] as const;
+
+export const APPEARANCE_UNLOCK_TYPES = [
+  ...V1_APPEARANCE_UNLOCK_TYPES,
+  ...FUTURE_APPEARANCE_UNLOCK_TYPES,
+] as const;
+export type AppearanceUnlockType = (typeof APPEARANCE_UNLOCK_TYPES)[number];
+export type V1AppearanceUnlockType = (typeof V1_APPEARANCE_UNLOCK_TYPES)[number];
+export type FutureAppearanceUnlockType = (typeof FUTURE_APPEARANCE_UNLOCK_TYPES)[number];
+
+/**
+ * The **only** asset reference the system stores, transmits, or serializes.
+ *
+ * It names *what* artwork to show, never where it lives: no path, URL, CDN
+ * host, object-storage key, content hash, or file extension. Each consumer
+ * (Portal, Discord, a future mobile client) owns its own `AssetId → physical
+ * resource` resolver, so migrating storage backends is a per-consumer change
+ * with zero API-contract impact.
+ *
+ * `kind` is a literal in V1 and a discriminator later (`card_print`, …).
+ */
+export const AssetIdSchema = z
+  .object({
+    kind: z.literal('waifumon'),
+    slug,
+    variant: slug,
+  })
+  .strict();
+
+export type AssetId = z.infer<typeof AssetIdSchema>;
+
+const OwnedUnlockSchema = z.object({ type: z.literal('owned') }).strict();
+
+const LevelUnlockSchema = z
+  .object({
+    type: z.literal('level'),
+    /** Waifu level (per-copy), not player level. Bounded in `validateContentSet`. */
+    atLevel: z.number().int().positive(),
+  })
+  .strict();
+
+/**
+ * V1 accepts `owned` and `level`. A reserved future type parses far enough to
+ * produce a *named* error rather than a confusing "invalid discriminator", so
+ * an author who tries `{"type":"event"}` is told it is reserved, not that it
+ * does not exist.
+ */
+export const AppearanceUnlockSchema = z.discriminatedUnion('type', [
+  OwnedUnlockSchema,
+  LevelUnlockSchema,
+]);
+
+export type AppearanceUnlock = z.infer<typeof AppearanceUnlockSchema>;
+
+const appearanceUnlockField = z.unknown().superRefine((raw, ctx) => {
+  const type = (raw as { type?: unknown } | null | undefined)?.type;
+  if (typeof type === 'string' && (FUTURE_APPEARANCE_UNLOCK_TYPES as readonly string[]).includes(type)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `unlock.type "${type}" is reserved for a future version and is not implemented yet`,
+      path: ['type'],
+    });
+    return;
+  }
+  const parsed = AppearanceUnlockSchema.safeParse(raw);
+  if (!parsed.success) {
+    for (const issue of parsed.error.issues) {
+      ctx.addIssue({ ...issue, path: issue.path });
+    }
+  }
+}).transform((raw) => AppearanceUnlockSchema.parse(raw));
+
+/**
+ * One appearance a species can wear.
+ *
+ * Every field except `id` and `unlock` is presentation: display name,
+ * subtitle, in-world flavor line, cosmetic rarity badge, and the version the
+ * art shipped in. None of them is readable by gameplay code — appearance is
+ * cosmetic, full stop.
+ *
+ * `assetId` may be omitted; the content resolver defaults it to
+ * `{ kind: 'waifumon', slug: <species slug>, variant: <appearance id> }`.
+ * `unlockLabel` may be omitted; it is synthesized from `unlock`. Both are
+ * always populated by the time anything above the loader sees them.
+ */
+export const AppearanceContentSchema = z
+  .object({
+    /** Unique within the species. Doubles as `player_waifus.variant`. */
+    id: slug,
+    name: z.string().min(1),
+    description: z.string().min(1).optional(),
+    /** In-world caption, e.g. "Prepared for the annual shrine celebration." */
+    flavorText: z.string().min(1).optional(),
+    cosmeticRarity: CosmeticRaritySchema.default('standard'),
+    /** Free-form, e.g. "v1.3". Displayed verbatim; never parsed. */
+    introducedVersion: z.string().min(1).optional(),
+    /** Defaults to the species' rating when omitted. */
+    contentRating: z.enum(CONTENT_RATINGS).optional(),
+    /** Gallery ordering; the implicit `standard` entry sits at 0. */
+    sortOrder: z.number().int().default(100),
+    tags: z.array(z.string()).default([]),
+    assetId: AssetIdSchema.optional(),
+    unlock: appearanceUnlockField,
+    /** Author-supplied requirement text; synthesized when omitted. */
+    unlockLabel: z.string().min(1).optional(),
+  })
+  .strict();
+
+export type AppearanceContent = z.infer<typeof AppearanceContentSchema>;
+
+/** The implicit entry every species has, authored or not. */
+export const DEFAULT_APPEARANCE_ID = 'standard';
+
+const SpeciesBaseSchema = z.object({
   slug,
   name: z.string().min(1),
   rarity: z.enum(RARITIES),
@@ -149,10 +306,69 @@ export const SpeciesContentSchema = z.object({
    * files → `switch`, which is always a neutral matchup.
    */
   affinity: z.enum(AFFINITIES).default(DEFAULT_AFFINITY),
+  /**
+   * The species' default artwork, relative to `ASSETS_DIR`.
+   *
+   * **Loader-private.** It is the pre-flight existence probe for the default
+   * appearance and nothing else: it is not seeded into any appearance, is not
+   * surfaced by the Platform API, and no consumer resolves art from it. Art is
+   * addressed by `AssetId` everywhere above the loader boundary.
+   */
   imagePath: z.string().min(1),
   enabled: z.boolean().default(true),
   eventKey: z.string().nullable().default(null),
   perSpeciesWeight: z.number().int().positive().default(1),
+  /**
+   * Optional appearance catalog. Omitted (the case for every species that
+   * predates this system) means a single implicit `standard` / `owned` entry
+   * is synthesized at read time — see `resolveAppearances`. Nothing is
+   * rewritten on disk, so existing content files stay byte-identical.
+   */
+  appearances: z.array(AppearanceContentSchema).optional(),
+});
+
+export const SpeciesContentSchema = SpeciesBaseSchema.superRefine((s, ctx) => {
+  const list = s.appearances;
+  if (!list || list.length === 0) return;
+
+  const seen = new Set<string>();
+  for (const [i, appearance] of list.entries()) {
+    if (seen.has(appearance.id)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `"${s.slug}": duplicate appearance id "${appearance.id}"`,
+        path: ['appearances', i, 'id'],
+      });
+    }
+    seen.add(appearance.id);
+  }
+
+  // Exactly one default: the entry the player wears the moment they own her.
+  // Zero would leave a freshly-captured copy with nothing to render; two would
+  // make "which one is default" a coin flip.
+  const owned = list.filter((a) => a.unlock.type === 'owned');
+  if (owned.length !== 1) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message:
+        `"${s.slug}": exactly one appearance must have unlock.type "owned" ` +
+        `(found ${owned.length})`,
+      path: ['appearances'],
+    });
+  }
+
+  for (const [i, appearance] of list.entries()) {
+    const asset = appearance.assetId;
+    if (asset && asset.slug !== s.slug) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          `"${s.slug}": appearance "${appearance.id}" has assetId.slug "${asset.slug}" — ` +
+          'an appearance may only reference its own species',
+        path: ['appearances', i, 'assetId', 'slug'],
+      });
+    }
+  }
 });
 
 export const SpeciesFileSchema = z.array(SpeciesContentSchema);
@@ -640,6 +856,8 @@ export const TablesFileSchema = z.object({
 
 export type ItemContent = z.infer<typeof ItemContentSchema>;
 export type SpeciesContent = z.infer<typeof SpeciesContentSchema>;
+/** Input shape (pre-defaults) — what an author actually writes in JSON. */
+export type SpeciesContentInput = z.input<typeof SpeciesContentSchema>;
 export type TablesContent = z.infer<typeof TablesFileSchema>;
 export type DuplicateConfig = z.infer<typeof DuplicateConfigSchema>;
 export type BuddyAffinityConfig = z.infer<typeof BuddyAffinityConfigSchema>;

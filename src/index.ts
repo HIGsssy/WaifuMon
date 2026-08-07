@@ -5,6 +5,8 @@
  * The optional admin web panel starts last, and only when enabled.
  */
 import { startAdminServer } from './admin/server';
+import { startPlatformApi } from './api/server';
+import { withIdentityCache } from './api/identity';
 import { loadConfig } from './config/config';
 import { connectWithRetry, createDb, createPool } from './db/client';
 import { runMigrations } from './db/migrate';
@@ -22,6 +24,7 @@ import { createShopService } from './modules/shop/shopService';
 import { createHuntService } from './modules/hunt/huntService';
 import { createCaptureService } from './modules/capture/captureService';
 import { createCareService } from './modules/care/careService';
+import { createAppearanceService } from './modules/appearance/appearanceService';
 import { createCollectionService } from './modules/collection/collectionService';
 import { createPlayerEffectsService } from './modules/effects/playerEffectsService';
 import { createItemUseService } from './modules/items/itemUseService';
@@ -81,10 +84,17 @@ async function main(): Promise<void> {
     timezone: config.dailyTimezone,
     logger,
   });
+  // Cosmetic appearances. Reads the content snapshot through a getter so an
+  // admin-panel "Save + Reload" makes newly-authored artwork available (and
+  // retroactively unlockable) without a restart — `ctx.content` is reassigned
+  // below, and this closure follows it.
+  let contentSnapshot = content;
+  const appearance = createAppearanceService({ db, getContent: () => contentSnapshot });
   const collection = createCollectionService({
     db,
     currency,
     quests,
+    appearance,
     duplicateConfig: content.tables.duplicate,
     waifuConfig: content.tables.waifuProgression,
     totalSpeciesCount: content.species.filter((s) => s.enabled).length,
@@ -95,6 +105,7 @@ async function main(): Promise<void> {
     collection,
     progression,
     quests,
+    appearance,
     careConfig: content.tables.energy.careMode,
   });
   const effects = createPlayerEffectsService(db);
@@ -155,10 +166,12 @@ async function main(): Promise<void> {
         collection,
         quests,
         effects,
+        appearance,
         logger,
       }),
       care,
       collection,
+      appearance,
       quests,
       effects,
       itemUse: createItemUseService({
@@ -239,13 +252,59 @@ async function main(): Promise<void> {
       reload: async () => {
         const result = await reloadContent();
         ctx.content = result.content;
+        // Keep the appearance service's view in step: newly-authored artwork
+        // must be selectable (and retroactively unlockable) immediately.
+        contentSnapshot = result.content;
         return result;
       },
     }),
   });
 
+  // Platform API: a thin HTTP adapter over the same service layer the Discord
+  // handlers call, on its own port and behind its own token. Silent and
+  // zero-overhead unless PLATFORM_API_ENABLED=true. It reads `ctx` live rather
+  // than capturing it, so a content reload is visible to /ready immediately.
+  const platformApi = await startPlatformApi({
+    config: config.platformApi,
+    logger,
+    ctx: {
+      services: ctx.services,
+      // Read through `ctx` so an admin-panel content reload is visible to the
+      // API immediately, exactly as it is to the Discord handlers.
+      getContent: () => ctx.content,
+      // Presentation-only display name + avatar for HTTP clients, which —
+      // unlike the Discord handlers — have no gateway of their own to render
+      // from. The API layer holds no Discord types, so the lookup is injected
+      // here, the one place that owns the client. `withIdentityCache` adds the
+      // TTL, the timeout and the failure handling; see src/api/identity.ts.
+      resolveIdentity: withIdentityCache(async (discordUserId) => {
+        if (!client.isReady()) return null;
+        const user = await client.users.fetch(discordUserId);
+        return {
+          displayName: user.displayName,
+          avatarUrl: user.displayAvatarURL({ size: 256, extension: 'png' }),
+        };
+      }),
+    },
+    probes: {
+      pingDatabase: async () => {
+        await pool.query('SELECT 1');
+      },
+      describeContent: () => ({
+        species: ctx.content.species.length,
+        items: ctx.content.items.length,
+      }),
+      describeDiscord: () =>
+        client.isReady()
+          ? { status: 'ok', detail: 'gateway connected' }
+          : { status: 'down', detail: 'gateway not connected' },
+      describeBind: () => `listening on ${config.platformApi.host}:${config.platformApi.port}`,
+    },
+  });
+
   const shutdown = async (signal: string): Promise<void> => {
     logger.info({ signal }, 'shutting down');
+    await platformApi?.close();
     await adminServer?.close();
     await client.destroy();
     await pool.end();

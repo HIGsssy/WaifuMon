@@ -57,10 +57,61 @@ Edits are schema-validated, backed up to `content/backups/` and written
 atomically; species and items can be re-seeded into Postgres without a restart.
 Do not expose it publicly. See [docs/admin-web.md](docs/admin-web.md).
 
+## Platform API
+
+An optional internal REST surface (`/api/v1/…`) over the game service layer,
+with Swagger UI at `/api/v1/docs`. **Disabled by default.**
+
+```sh
+PLATFORM_API_ENABLED=true
+PLATFORM_API_HOST=127.0.0.1                 # where the process listens
+PLATFORM_API_PORT=3120
+PLATFORM_API_TOKEN=$(openssl rand -hex 32)  # required when enabled
+PLATFORM_API_PUBLIC_URL=http://127.0.0.1:3120   # how clients reach it
+```
+
+Three networking variables that are easy to confuse:
+
+| Variable | Answers |
+| --- | --- |
+| `PLATFORM_API_HOST` | Where the process **listens** — `0.0.0.0` under Docker, loopback otherwise. |
+| `PLATFORM_API_PUBLISH_HOST` | Where **Docker publishes** the port on the host. The real security boundary. |
+| `PLATFORM_API_PUBLIC_URL` | How **clients reach** it — the URL advertised in the OpenAPI `servers` list, so Swagger UI's "Try it out" works. |
+
+`PLATFORM_API_PUBLIC_URL` is optional; when unset the URL is derived from the
+bind, and a wildcard bind falls back to `http://127.0.0.1:$PLATFORM_API_PORT`
+(the API never advertises `0.0.0.0`, which no browser can route to). See
+[docs/platform-api.md](docs/platform-api.md).
+
+## Player Portal
+
+A **read-only companion web app** over the Platform API — collection, buddy,
+inventory, shop, encyclopedia and a game guide. It is a separate package in
+`portal/` with its own dependencies; the bot neither knows nor cares that it
+exists.
+
+```sh
+cd portal
+cp .env.example .env.local    # set VITE_PLATFORM_API_TOKEN
+npm install
+npm run dev                   # http://127.0.0.1:5173
+```
+
+Requires the Platform API enabled above. On first load it asks which player to
+show — paste a Discord user id and it resolves the internal player itself;
+"Switch player" in the header changes testers without touching `.env.local`.
+
+**Development only:** that screen is a picker, not a sign-in — the Portal has no
+authentication and carries the shared API token in the browser bundle, so keep
+it on loopback. It cannot change game state — every non-GET request is rejected
+before it leaves the client. See [docs/portal.md](docs/portal.md).
+
 ## Layout
 
 - `src/` — bot source (config, db, discord shell, service modules, shared)
 - `src/admin/` — optional internal admin web panel (Fastify, server-rendered)
+- `src/api/` — optional Platform API (Fastify, `/api/v1/…`)
+- `portal/` — optional Player Portal SPA (Vite + React), own package and lockfile
 - `content/` — species/items/tables JSON, validated with Zod at startup
 - `assets/waifumon/<slug>/standard.png` — card art (placeholders for now)
 - `drizzle/` — generated SQL migrations

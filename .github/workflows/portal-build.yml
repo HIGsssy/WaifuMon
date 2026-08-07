@@ -1,0 +1,77 @@
+# Player Portal CI (plan §20).
+#
+# The repository had no CI configuration when the Portal was added, so this
+# workflow deliberately covers the Portal only. It does not build, test or lint
+# the Discord bot: the Portal project's remit is to add a new client without
+# touching the bot's setup, and inventing a bot pipeline here would be a change
+# nobody reviewed.
+#
+# `portal/` keeps its own lockfile, so `npm ci` here is independent of the root
+# package and cannot perturb the bot's dependency tree.
+name: portal-build
+
+on:
+  pull_request:
+    paths:
+      - 'portal/**'
+      - '.github/workflows/portal-build.yml'
+  push:
+    branches: [master]
+    paths:
+      - 'portal/**'
+      - '.github/workflows/portal-build.yml'
+
+jobs:
+  portal-build:
+    name: typecheck · lint · test · build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: portal
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: portal/package-lock.json
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm run test
+
+      - name: Build
+        run: npm run build
+
+      # Success criterion §24.16: the diagnostics page and telemetry ring
+      # buffer must be absent from a production bundle, not merely unlinked.
+      - name: Verify production bundle excludes dev-only code
+        run: npm run verify:bundle
+
+      # The end-to-end suite stubs every API call in the browser, so it needs
+      # no database, no Discord client and no running bot — it builds its own
+      # production bundle and drives it. Covers the smoke journey, the
+      # responsive audit at five breakpoints, and an axe pass with colour
+      # contrast enabled in both themes.
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: End-to-end, responsive and accessibility suite
+        run: npm run e2e
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: portal/playwright-report/
+          retention-days: 7

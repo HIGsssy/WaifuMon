@@ -277,6 +277,32 @@ export class WaifuNicknameTooEarlyError extends AppError {
 }
 
 /**
+ * The species has no appearance with that id — a stale gallery, a hand-typed
+ * id, or artwork that was removed from the content set. A client bug, not a
+ * game state, hence 400 rather than 404 on the HTTP surface.
+ */
+export class AppearanceNotFoundError extends AppError {
+  constructor(appearanceId: string, speciesSlug: string) {
+    super(
+      'APPEARANCE_NOT_FOUND',
+      `Species "${speciesSlug}" has no appearance "${appearanceId}"`,
+      "That look isn't available for her~",
+    );
+  }
+}
+
+/** The appearance exists but this copy has not earned it yet. */
+export class AppearanceLockedError extends AppError {
+  constructor(appearanceId: string, unlockLabel: string) {
+    super(
+      'APPEARANCE_LOCKED',
+      `Appearance "${appearanceId}" is locked (${unlockLabel})`,
+      `That look is still locked — ${unlockLabel}.`,
+    );
+  }
+}
+
+/**
  * Care Mode was started without an explicit target and the player has no
  * buddy set — the UI is expected to prompt for a target.
  */
