@@ -15,7 +15,15 @@ import { API_SUPPLIED_URL_ID, createApiSuppliedUrlProvider } from './providers/a
 import { createLocalDevAssetsProvider, LOCAL_DEV_ASSETS_ID } from './providers/localDevAssets';
 import { createPlatformCdnProvider, PLATFORM_CDN_ID } from './providers/platformCdn';
 import { createSilhouetteProvider, SILHOUETTE_ID } from './providers/silhouette';
-import { assetKey, type AssetId, type ImageProvider, type ResolvedImage } from './types';
+import {
+  assetKey,
+  bucketFor,
+  type AssetId,
+  type ImageProvider,
+  type ImageSizeBucket,
+  type ResolveOptions,
+  type ResolvedImage,
+} from './types';
 
 const FACTORIES: Record<string, () => ImageProvider> = {
   [API_SUPPLIED_URL_ID]: () => createApiSuppliedUrlProvider(),
@@ -94,14 +102,21 @@ const resolutionCache = new Map<string, ResolvedImage>();
 /**
  * Total by construction: the silhouette provider terminates every chain.
  * Results are memoised per asset key so a 25-card grid resolves each URL once.
+ *
+ * `options.displayWidth` is the width the caller will draw the image at, in CSS
+ * pixels. It is a *hint*: the resolver turns it into a size bucket and offers
+ * that to each provider, and a provider with only one rendition ignores it. The
+ * bucket is part of the memo key, so the same asset at grid size and at hero
+ * size are two entries rather than one overwriting the other.
  */
-export function resolveAsset(id: AssetId): ResolvedImage {
-  const key = assetKey(id);
+export function resolveAsset(id: AssetId, options: ResolveOptions = {}): ResolvedImage {
+  const bucket = bucketFor(options.displayWidth);
+  const key = assetKey(id, bucket);
   const cached = resolutionCache.get(key);
   if (cached) return cached;
 
   for (const provider of chain) {
-    const resolved = provider.resolve(id);
+    const resolved = provider.resolve(id, bucket);
     if (resolved) {
       resolutionCache.set(key, resolved);
       resolvedCount += 1;
@@ -121,6 +136,11 @@ export function resolveAsset(id: AssetId): ResolvedImage {
   resolvedCount += 1;
   fallbackCount += 1;
   return emergency;
+}
+
+/** The size bucket a given rendered width resolves to. Exposed for tests. */
+export function bucketForWidth(displayWidth: number | undefined): ImageSizeBucket | null {
+  return bucketFor(displayWidth);
 }
 
 /** The fallback for an asset, used when a resolved URL fails to load. */

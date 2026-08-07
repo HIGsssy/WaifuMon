@@ -19,7 +19,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, type ReactNode } from 'react';
 
-import { PLAYER_POLICY } from '@/api/cachePolicy';
+import { IDENTITY_POLICY } from '@/api/cachePolicy';
 import { getPlayer } from '@/api/players';
 import { queryKeys } from '@/api/queryKeys';
 import type { Player } from '@/api/types';
@@ -71,7 +71,7 @@ export function EnvSessionProvider({ children }: { children: ReactNode }) {
     // Retry behaviour is the client default (`queryClient.ts`), which does not
     // re-attempt a 4xx: an unknown player id is a settled answer, and retrying
     // it only delays the fallback screen a developer is waiting to read.
-    ...PLAYER_POLICY,
+    ...IDENTITY_POLICY,
   });
 
   const value = useMemo<SessionState>(() => {

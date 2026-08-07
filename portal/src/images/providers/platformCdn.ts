@@ -20,7 +20,14 @@
  * fallbacks, edge routing — belongs *here*, inside the resolver. None of it
  * ever appears in an API response.
  */
-import { DEFAULT_VARIANT, WAIFUMON_ASSET_KINDS, type AssetId, type ImageProvider, type ResolvedImage } from '../types';
+import {
+  DEFAULT_VARIANT,
+  WAIFUMON_ASSET_KINDS,
+  type AssetId,
+  type ImageProvider,
+  type ImageSizeBucket,
+  type ResolvedImage,
+} from '../types';
 
 export const PLATFORM_CDN_ID = 'platformCdn';
 
@@ -37,7 +44,7 @@ export function createPlatformCdnProvider(options: PlatformCdnOptions = {}): Ima
 
   return {
     id: PLATFORM_CDN_ID,
-    resolve(id: AssetId): ResolvedImage | null {
+    resolve(id: AssetId, bucket: ImageSizeBucket | null = null): ResolvedImage | null {
       if (baseUrl.length === 0) return null;
       if (!WAIFUMON_ASSET_KINDS.includes(id.kind)) return null;
       if (!SAFE_SLUG.test(id.slug)) return null;
@@ -45,11 +52,14 @@ export function createPlatformCdnProvider(options: PlatformCdnOptions = {}): Ima
       const variant = id.variant ?? DEFAULT_VARIANT;
       if (!SAFE_SLUG.test(variant)) return null;
 
-      return {
-        url: `${baseUrl}/${id.slug}/${variant}.png`,
-        isFallback: false,
-        providerId: PLATFORM_CDN_ID,
-      };
+      // Size lives in the path, not a query string: a CDN caches paths without
+      // configuration, whereas query-string variance is an origin setting
+      // somebody has to remember to turn on.
+      const url = bucket
+        ? `${baseUrl}/${id.slug}/${variant}@${bucket}.webp`
+        : `${baseUrl}/${id.slug}/${variant}.png`;
+
+      return { url, isFallback: false, providerId: PLATFORM_CDN_ID };
     },
   };
 }

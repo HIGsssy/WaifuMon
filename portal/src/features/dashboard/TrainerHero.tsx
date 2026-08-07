@@ -19,6 +19,7 @@ import { displayName } from '@/content/species';
 import { avatarAsset, speciesAsset } from '@/images/assets';
 import { formatDate, formatNumber } from '@/lib/format';
 import { rarityStyle } from '@/lib/rarity';
+import { ARTWORK_WIDTH } from '@/images/sizes';
 
 export interface TrainerHeroProps {
   playerId: number;
@@ -45,6 +46,7 @@ function TrainerIdentity({
       <div className="flex items-center gap-4">
         <Artwork
           asset={avatarAsset(playerId, avatarUrl)}
+          displayWidth={ARTWORK_WIDTH.avatar}
           name={name}
           aspect="aspect-square"
           priority
@@ -122,6 +124,7 @@ function BuddyPanel({
         <div className="relative">
           <Artwork
             asset={speciesAsset(buddy.species, buddy.waifu)}
+            displayWidth={ARTWORK_WIDTH.hero}
             name={buddy.species.name}
             rarityLabel={rarity.label}
             priority

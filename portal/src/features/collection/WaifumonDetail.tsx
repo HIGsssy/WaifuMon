@@ -25,6 +25,7 @@ import { AppearanceGallery } from './AppearanceGallery';
 import { appearanceAsset, speciesAsset } from '@/images/assets';
 import { formatDate, formatNumber, formatRelative } from '@/lib/format';
 import { rarityStyle } from '@/lib/rarity';
+import { ARTWORK_WIDTH } from '@/images/sizes';
 
 /** A reserved slot for data the platform does not model yet (§16). */
 function PlaceholderCard({
@@ -76,6 +77,7 @@ export function WaifumonDetail({ entry, isBuddy, allSpecies }: WaifumonDetailPro
         <RarityGlowRing rarity={species.rarity} glow>
           <Artwork
             asset={appearanceAsset(waifu.selectedAppearance)}
+            displayWidth={ARTWORK_WIDTH.hero}
             name={species.name}
             rarityLabel={rarity.label}
             priority
@@ -162,11 +164,7 @@ export function WaifumonDetail({ entry, isBuddy, allSpecies }: WaifumonDetailPro
           </p>
         </Card>
 
-        <AppearanceGallery
-          playerId={waifu.playerId}
-          waifuId={waifu.id}
-          waifuName={title}
-        />
+        <AppearanceGallery playerId={waifu.playerId} waifuId={waifu.id} waifuName={title} />
 
         <div className="grid gap-4 sm:grid-cols-2">
           <PlaceholderCard
@@ -220,6 +218,7 @@ export function WaifumonDetail({ entry, isBuddy, allSpecies }: WaifumonDetailPro
                   <RarityGlowRing rarity={candidate.rarity}>
                     <Artwork
                       asset={speciesAsset(candidate)}
+                      displayWidth={ARTWORK_WIDTH.strip}
                       name={candidate.name}
                       rarityLabel={rarityStyle(candidate.rarity).label}
                       aspect="aspect-[3/4]"

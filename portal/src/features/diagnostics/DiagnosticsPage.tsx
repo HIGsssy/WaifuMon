@@ -33,6 +33,7 @@ import { SwitchPlayerButton } from '@/features/devLogin/SwitchPlayerButton';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/layout/PageHeader';
+import { imageTransferStats } from '@/images/instrumentation';
 import { getImageProviderChain, imageResolverStats } from '@/images/provider';
 import { describeEnv, portalEnv } from '@/lib/env';
 import { formatDuration, formatPercent } from '@/lib/format';
@@ -66,6 +67,7 @@ export function DiagnosticsPage() {
 
   const lastError = getLastApiError();
   const imageStats = imageResolverStats();
+  const transfer = imageTransferStats();
   const envRows = describeEnv();
 
   return (
@@ -289,6 +291,11 @@ export function DiagnosticsPage() {
               ['Silhouette fallbacks', imageStats.fallbacks],
               ['Fallback rate', formatPercent(imageStats.fallbackRate)],
               ['Load failures', imageStats.loadFailures],
+              ['Images transferred', transfer.images],
+              ['Bytes transferred', `${(transfer.totalBytes / 1024 / 1024).toFixed(1)} MB`],
+              // Anything counted here is source art reaching the browser —
+              // either a missing rendition or a call site with no displayWidth.
+              ['Oversized (>400 KB)', transfer.largeImages],
             ]}
           />
         </DiagnosticsCard>

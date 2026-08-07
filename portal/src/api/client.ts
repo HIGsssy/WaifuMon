@@ -32,20 +32,37 @@ import axios, {
 } from 'axios';
 
 import { portalEnv } from '@/lib/env';
-import { recordRequest } from './telemetry';
+import { noteRequestCompleted, recordRequest } from './telemetry';
 import type { ApiErrorBody, DataEnvelope, Page, PaginatedEnvelope } from './types';
+
+/**
+ * How a request failed, as a thing the UI can branch on.
+ *
+ * `status: 0` used to carry all three of these at once, which meant "the server
+ * is down", "the server is slow" and "React aborted this on unmount" rendered
+ * the same sentence. On a high-latency link — the Portal is developed across
+ * Tailscale — those are three genuinely different problems and only one of them
+ * is worth showing a person.
+ *
+ *   http      the API answered with a 4xx/5xx envelope
+ *   timeout   the request was still outstanding when the client gave up
+ *   network   no response and no timeout: DNS, refused, proxy down, offline
+ *   canceled  *we* aborted it (unmount, key change, StrictMode remount)
+ */
+export type ApiFailureKind = 'http' | 'timeout' | 'network' | 'canceled';
 
 /**
  * The one error type the Portal's UI handles.
  *
  * `code` is the API's stable machine-readable code (`PLAYER_NOT_FOUND`,
  * `BUDDY_NOT_SET`, …); `message` is its `userMessage`, which the API documents
- * as safe to render. `status` is `0` for transport failures, which is what
- * `isNetworkError` keys off.
+ * as safe to render. `status` is `0` for transport failures; `kind` says which
+ * kind of transport failure it was.
  */
 export class PortalApiError extends Error {
   readonly status: number;
   readonly code: string;
+  readonly kind: ApiFailureKind;
   readonly requestId: string | undefined;
   readonly details: Record<string, unknown> | undefined;
 
@@ -53,6 +70,7 @@ export class PortalApiError extends Error {
     status: number;
     code: string;
     message: string;
+    kind?: ApiFailureKind | undefined;
     requestId?: string | undefined;
     details?: Record<string, unknown> | undefined;
   }) {
@@ -60,12 +78,28 @@ export class PortalApiError extends Error {
     this.name = 'PortalApiError';
     this.status = init.status;
     this.code = init.code;
+    this.kind = init.kind ?? (init.status === 0 ? 'network' : 'http');
     this.requestId = init.requestId;
     this.details = init.details;
   }
 
-  /** No response arrived — the API is unreachable, not refusing (§19). */
+  /**
+   * No response arrived and it was not a timeout — the API is unreachable, not
+   * refusing (§19). A timeout is deliberately *excluded*: "can't reach the
+   * server" is the wrong thing to tell someone whose server answered fine but
+   * took too long.
+   */
   get isNetworkError(): boolean {
+    return this.kind === 'network';
+  }
+
+  /** The client gave up waiting. Distinct from unreachable — see `kind`. */
+  get isTimeout(): boolean {
+    return this.kind === 'timeout';
+  }
+
+  /** Transport-level failure of any kind: nothing came back from the API. */
+  get isTransportError(): boolean {
     return this.status === 0;
   }
 
@@ -80,6 +114,23 @@ export class PortalApiError extends Error {
 
 export function isPortalApiError(error: unknown): error is PortalApiError {
   return error instanceof PortalApiError;
+}
+
+/**
+ * A request the Portal itself aborted.
+ *
+ * React Query passes an `AbortSignal` into every `queryFn` and fires it on
+ * unmount, on a query-key change, and — twice per mount in dev — under
+ * `<StrictMode>`. Axios surfaces that as a rejection with no response, which is
+ * indistinguishable from a dead server *unless* you check the code. Treating
+ * one as the other is what produced intermittent "Can't reach the Waifumon
+ * server" banners on a perfectly healthy API.
+ */
+export function isCanceledRequest(error: unknown): boolean {
+  if (error instanceof PortalApiError) return error.kind === 'canceled';
+  if (axios.isCancel(error)) return true;
+  const code = (error as { code?: unknown } | null)?.code;
+  return code === 'ERR_CANCELED';
 }
 
 /** Raised when read-only enforcement trips — a Portal bug, never an API state. */
@@ -123,12 +174,22 @@ function decodeError(error: AxiosError): PortalApiError {
   const response = error.response;
 
   if (!response) {
+    if (isCanceledRequest(error)) {
+      return new PortalApiError({
+        status: 0,
+        code: 'CANCELED',
+        kind: 'canceled',
+        message: 'The request was cancelled.',
+      });
+    }
+
     const timedOut = error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT';
     return new PortalApiError({
       status: 0,
       code: timedOut ? 'TIMEOUT' : 'NETWORK_ERROR',
+      kind: timedOut ? 'timeout' : 'network',
       message: timedOut
-        ? 'The Waifumon server took too long to respond.'
+        ? `The Waifumon server did not answer within ${Math.round(requestTimeoutMs() / 1000)}s.`
         : "Can't reach the Waifumon server.",
     });
   }
@@ -154,6 +215,29 @@ function decodeError(error: AxiosError): PortalApiError {
 
 // ── Instance ────────────────────────────────────────────────────────────────
 
+/**
+ * How long to wait before giving up on a request.
+ *
+ * 30 seconds, not the 15 this used to be. The Portal is developed against an
+ * API reached over Tailscale, where a request can legitimately spend seconds
+ * queued behind artwork on the same HTTP/1.1 origin (see §12 and the dev
+ * server's asset route). A timeout shorter than the worst honest latency does
+ * not protect anyone — it just converts slowness into a false "server is down".
+ *
+ * This is a backstop, **not** the fix for that queueing: the real work is the
+ * thumbnail pipeline and the cache validators that stop artwork monopolising
+ * the connection pool in the first place.
+ */
+const DEFAULT_TIMEOUT_MS = 30_000;
+
+export function requestTimeoutMs(): number {
+  const configured = Number(portalEnv.apiTimeoutMs);
+  return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_TIMEOUT_MS;
+}
+
+/** A request slower than this is worth a dev console line. Never in production. */
+const SLOW_REQUEST_MS = 2_000;
+
 interface TimedConfig extends InternalAxiosRequestConfig {
   /** Stamped on the way out, read on the way back. Dev telemetry only. */
   __startedAt?: number;
@@ -170,7 +254,7 @@ function pathOf(config: { url?: string | undefined; baseURL?: string | undefined
 export function createApiClient(): AxiosInstance {
   const instance = axios.create({
     baseURL: portalEnv.apiUrl,
-    timeout: 15_000,
+    timeout: requestTimeoutMs(),
     headers: { Accept: 'application/json' },
   });
 
@@ -196,15 +280,24 @@ export function createApiClient(): AxiosInstance {
 
       const started = (response.config as TimedConfig).__startedAt;
       if (started !== undefined) {
+        const durationMs = performance.now() - started;
+        const path = pathOf(response.config);
+        noteRequestCompleted(path);
         recordRequest({
           method: (response.config.method ?? 'get').toUpperCase(),
-          path: pathOf(response.config),
+          path,
           status: response.status,
-          durationMs: performance.now() - started,
+          durationMs,
           ...(typeof response.data?.meta?.requestId === 'string'
             ? { requestId: response.data.meta.requestId as string }
             : {}),
         });
+        // `import.meta.env.DEV` rather than `portalEnv.isDev`: the former is a
+        // compile-time constant, so the whole branch — and its string — leaves
+        // the production bundle instead of merely never running.
+        if (import.meta.env.DEV && durationMs >= SLOW_REQUEST_MS) {
+          console.warn(`[portal slow] ${path} took ${Math.round(durationMs)}ms`);
+        }
       }
       return response;
     },
@@ -215,11 +308,21 @@ export function createApiClient(): AxiosInstance {
 
       const axiosError = error as AxiosError;
       const decoded = decodeError(axiosError);
+
+      // A cancellation is the Portal's own doing — an unmount, a query-key
+      // change, a StrictMode remount. It is not a fault, so it must not become
+      // "the last error" on the diagnostics page, must not be logged as one,
+      // and must not sit in the request log looking like a failed call.
+      if (decoded.kind === 'canceled') return Promise.reject(decoded);
+
       lastError = decoded;
 
       const config = axiosError.config as TimedConfig | undefined;
       const started = config?.__startedAt;
       if (started !== undefined && config) {
+        // A settled failure still consumed a round trip, so it counts toward
+        // duplicate detection. Cancellations returned above and never do.
+        noteRequestCompleted(pathOf(config));
         recordRequest({
           method: (config.method ?? 'get').toUpperCase(),
           path: pathOf(config),
@@ -231,7 +334,7 @@ export function createApiClient(): AxiosInstance {
       }
 
       if (portalEnv.isDev) {
-        console.warn('[portal error]', decoded.status, decoded.code, decoded.message);
+        console.warn('[portal error]', decoded.kind, decoded.code, decoded.message);
       }
       return Promise.reject(decoded);
     },

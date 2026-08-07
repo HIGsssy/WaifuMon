@@ -24,6 +24,7 @@ import { displayName, subtitleFor } from '@/content/species';
 import { speciesAsset } from '@/images/assets';
 import { rarityStyle } from '@/lib/rarity';
 import { cn } from '@/lib/cn';
+import { ARTWORK_WIDTH } from '@/images/sizes';
 
 export interface WaifumonCardProps {
   entry: OwnedEntry;
@@ -64,6 +65,7 @@ export function WaifumonCard({
           <div className="relative">
             <Artwork
               asset={speciesAsset(species, waifu)}
+              displayWidth={ARTWORK_WIDTH.gridTile}
               name={species.name}
               rarityLabel={rarity.label}
               priority={priority}

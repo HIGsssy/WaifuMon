@@ -22,6 +22,11 @@ export interface PortalEnv {
   apiUrl: string;
   /** Shared bearer token. Dev-only, and present in the bundle — see §26. */
   apiToken: string | undefined;
+  /**
+   * Request timeout override, in milliseconds. Unset uses the client's own
+   * default; raise it when the API sits behind a slow link (Tailscale, VPN).
+   */
+  apiTimeoutMs: string | undefined;
   /** Raw env value for the acting player, before resolution. */
   defaultPlayerId: string | undefined;
   /** Presentation-only Discord identifiers, when the operator supplies them. */
@@ -46,6 +51,7 @@ const raw = import.meta.env;
 export const portalEnv: PortalEnv = {
   apiUrl: str(raw.VITE_PLATFORM_API_URL) ?? '/api',
   apiToken: str(raw.VITE_PLATFORM_API_TOKEN),
+  apiTimeoutMs: str(raw.VITE_API_TIMEOUT_MS),
   defaultPlayerId: str(raw.VITE_DEFAULT_PLAYER_ID),
   defaultDiscordGuildId: str(raw.VITE_DEFAULT_DISCORD_GUILD_ID),
   defaultDiscordUserId: str(raw.VITE_DEFAULT_DISCORD_USER_ID),
@@ -72,6 +78,7 @@ export function describeEnv(): Array<{ key: string; value: string; secret?: bool
       value: portalEnv.apiToken ? '••••••••' : '(unset)',
       secret: true,
     },
+    { key: 'VITE_API_TIMEOUT_MS', value: portalEnv.apiTimeoutMs ?? '(default)' },
     { key: 'VITE_DEFAULT_PLAYER_ID', value: portalEnv.defaultPlayerId ?? '(unset)' },
     { key: 'VITE_DEFAULT_DISCORD_GUILD_ID', value: portalEnv.defaultDiscordGuildId ?? '(unset)' },
     { key: 'VITE_DEFAULT_DISCORD_USER_ID', value: portalEnv.defaultDiscordUserId ?? '(unset)' },

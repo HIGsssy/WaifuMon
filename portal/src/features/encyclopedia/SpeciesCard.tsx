@@ -15,6 +15,7 @@ import { RarityGlowRing } from '@/components/waifumon/RarityGlowRing';
 import { speciesAsset } from '@/images/assets';
 import { rarityStyle } from '@/lib/rarity';
 import { cn } from '@/lib/cn';
+import { ARTWORK_WIDTH } from '@/images/sizes';
 
 export interface SpeciesCardProps {
   species: ContentSpecies;
@@ -42,6 +43,7 @@ export function SpeciesCard({ species, ownedCount, priority = false }: SpeciesCa
           <div className="relative">
             <Artwork
               asset={speciesAsset(species)}
+              displayWidth={ARTWORK_WIDTH.gridTile}
               name={species.name}
               rarityLabel={rarity.label}
               silhouette={!discovered}

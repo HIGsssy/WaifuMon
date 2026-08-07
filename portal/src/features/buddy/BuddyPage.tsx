@@ -31,6 +31,7 @@ import { displayName, subtitleFor } from '@/content/species';
 import { speciesAsset } from '@/images/assets';
 import { formatNumber } from '@/lib/format';
 import { rarityStyle } from '@/lib/rarity';
+import { ARTWORK_WIDTH } from '@/images/sizes';
 import { CareCard } from './CareCard';
 
 export function BuddyPage() {
@@ -71,6 +72,7 @@ export function BuddyPage() {
               <RarityGlowRing rarity={buddy.data.species.rarity} glow>
                 <Artwork
                   asset={speciesAsset(buddy.data.species, buddy.data.waifu)}
+                  displayWidth={ARTWORK_WIDTH.hero}
                   name={buddy.data.species.name}
                   rarityLabel={rarityStyle(buddy.data.species.rarity).label}
                   priority

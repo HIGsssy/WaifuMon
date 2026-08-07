@@ -56,6 +56,7 @@ the Portal cannot create one, and neither can the lookup endpoint it uses.
 cd portal
 cp .env.example .env.local     # then fill in the token
 npm install
+npm run assets:thumbs          # once — see Performance; skipping it only costs speed
 npm run dev                    # http://127.0.0.1:5173
 ```
 
@@ -101,6 +102,7 @@ source of truth.
 | `VITE_PLATFORM_API_URL` | – | Base URL for API calls. Keep `/api` in dev; the dev server proxies it. |
 | `VITE_PLATFORM_API_PROXY_TARGET` | – | Where the dev server forwards `/api`, `/ready` and `/health`. Default `http://127.0.0.1:3120`. |
 | `VITE_PLATFORM_API_TOKEN` | ✅ | Must equal `PLATFORM_API_TOKEN` on the bot side. **Readable by anyone who loads the page.** |
+| `VITE_API_TIMEOUT_MS` | – | Request timeout. Default `30000`. See [Performance](#performance). |
 | `VITE_DEFAULT_PLAYER_ID` | – | The acting player for a **non-dev** build, as an internal integer id. `npm run dev` ignores it and uses the developer login screen. |
 | `VITE_DEFAULT_DISCORD_GUILD_ID` | – | Pre-fills the developer login's server field; also shown on the diagnostics page. |
 | `VITE_DEFAULT_DISCORD_USER_ID` | – | Pre-fills the developer login's user field on a browser that has never signed in. |
@@ -119,11 +121,120 @@ source of truth.
 | `npm run test` | Vitest + Testing Library + MSW. No bot required. |
 | `npm run build` | Production bundle into `portal/dist/`. |
 | `npm run verify:bundle` | Asserts the dev-only diagnostics page and developer login are absent from `dist/`. |
+| `npm run assets:thumbs` | Generates the artwork renditions the UI actually displays. Run once after cloning, and again when artwork changes. See [Performance](#performance). |
 | `npm run e2e` | Playwright: smoke, responsive audit, accessibility. No bot required. |
 | `npm run e2e:ui` | The same, in Playwright's interactive UI. |
 
 `npm run test` and `npm run e2e` both stub the Platform API, so neither needs a
 database, a Discord client, or a running bot. CI runs the whole set.
+
+---
+
+## Performance
+
+### The problem this section exists for
+
+Source artwork is ~1500×2100 PNG, averaging **4.2 MB** per file and 216 MB
+across the set. A collection grid draws 25 of them at roughly 256 CSS pixels
+wide.
+
+That is not just wasteful. In development the Vite server serves `/dev-assets`
+**and** proxies `/api` on one HTTP/1.1 origin, where a browser opens about six
+connections. Multi-megabyte images take all six; JSON queues behind them. Across
+a link with real latency the queue outlives the request timeout, and the Portal
+reports a network error for an API that never saw the request and logged
+nothing. If you have seen intermittent "can't reach the server" while the
+dashboard loads, that was this.
+
+### Renditions
+
+```sh
+npm run assets:thumbs        # once after cloning; again when artwork changes
+```
+
+Writes `assets/.thumbnails/<width>/…​.webp` at 256, 512 and 1024 px — 10 MB in
+total against 219 MB of sources. The directory is generated, gitignored, and
+never a source of truth.
+
+Components declare how wide they draw (`<Artwork displayWidth>`, from
+`ARTWORK_WIDTH` in `src/images/sizes.ts`) and the resolver picks a bucket,
+applying device pixel ratio itself and capping it at 2×. The dev server serves
+`/dev-assets/t/<width>/<asset>` from the rendition, **falling back to the
+original when one has not been generated** — so the Portal works identically
+before and after the script is run, and a forgotten step costs speed rather than
+correctness.
+
+| View | Rendition | Was | Now |
+|---|---|---|---|
+| Collection / encyclopedia grid tile | 512 | 4.2 MB | ~49 KB |
+| Detail and buddy heroes | 1024 | 4.2 MB | ~127 KB |
+| Appearance strips, related rails | 256 | 4.2 MB | ~18 KB |
+| A 25-card collection page | — | ~106 MB | **~1.2 MB** |
+
+Generation happens once, in the script, never per request.
+
+### HTTP caching
+
+Assets are served with `Cache-Control: public, max-age=300, must-revalidate`
+plus an `ETag` and `Last-Modified`, and the route answers `304` to
+`If-None-Match` / `If-Modified-Since`.
+
+Deliberately **not** `immutable`. These URLs are mutable by design — an artist
+replaces `standard.png` in place and expects to see it — and `immutable` is only
+correct for a content-addressed URL. Revalidation already gets the win that
+matters: a 304 costs one round trip and zero bytes, where the previous headers
+(`no-cache` with no validator at all) meant the browser re-downloaded every
+image on every navigation.
+
+### Request behaviour
+
+- Lazy artwork is `fetchPriority="low"`, so images yield the connection pool to
+  the JSON the page is waiting on. Above-the-fold heroes opt into `priority` and
+  get `eager` + `high`.
+- Layout is reserved by a CSS aspect-ratio box rather than `width`/`height`
+  attributes — the Portal does not know the intrinsic size of source art, and
+  the box is what prevents shift either way.
+- The species catalogue is prefetched on **idle**, not on dashboard mount. It is
+  a large payload no dashboard widget reads.
+- Cancelled requests are classified as cancellations, not network failures. React
+  Query aborts queries on unmount and on key change, and `<StrictMode>` does it
+  once per mount in development.
+- Timeouts are not retried. A timeout means the pool was saturated for the whole
+  window; a second request joins the same queue. 4xx is not retried either.
+  Everything else retries once, with capped and jittered backoff so several
+  failing tiles do not wake together.
+
+### Cache policy
+
+Set in `src/api/cachePolicy.ts` and locked by
+`src/api/__tests__/cachePolicy.test.ts`.
+
+| Policy | Stale | GC | On focus | On reconnect | Applies to |
+|---|---|---|---|---|---|
+| `IDENTITY_POLICY` | 2 min | 30 min | no | yes | session resolution (`/players/lookup`, `/players/{id}`) |
+| `PLAYER_POLICY` | 45 s | 10 min | yes | yes | profile, collection, buddy, stats, care, inventory |
+| `SHOP_POLICY` | 5 min | 30 min | no | yes | shop catalogue |
+| `CONTENT_POLICY` | ∞ | 6 h | no | **no** | species, items, tuning tables, quests |
+
+Two of those are load-bearing rather than cosmetic. Content does not refetch on
+reconnect, because refetching the whole mounted tree is the worst thing to do to
+a link that has just come back. Identity does not refetch on focus, because who
+the Portal is acting as changes only when someone changes it — and the
+dashboard's `/profile` response writes the player row back into the session's
+cache entry, so it stays fresh without a second request.
+
+### Instrumentation (development only)
+
+Console warnings, one line per offender, all stripped from production builds and
+asserted absent by `npm run verify:bundle`:
+
+- `[portal slow]` — an API call over 2 s
+- `[portal duplicate]` — the same path requested twice within 1.5 s, which is
+  how two hooks asking for one resource under different query keys shows up
+- `[portal image]` — an image over 400 KB, meaning source art reached the
+  browser: either a missing rendition or a call site with no `displayWidth`
+
+`/__dev/diagnostics` adds image bytes transferred and an oversized-image count.
 
 ---
 
@@ -376,7 +487,7 @@ for a **Platform API Presentation Enhancements** milestone after the Portal MVP:
 
 | Gap | Impact today |
 |---|---|
-| **Resized image variants** | 4 MB PNGs per card; the single largest performance debt |
+| **Resized image variants** | Worked around locally by `npm run assets:thumbs`; the API still exposes only one size, so every consumer needs its own pipeline |
 | Item artwork | Items carry an emoji and no image path; the Portal renders the emoji |
 | Trainer level progression | `player` has `level` and `xp` but no `xpIntoLevel`/`xpToNext`, so the Dashboard shows a total instead of a bar |
 | Lifetime capture total | `owned` counts active copies only; the Profile says so rather than implying otherwise |
@@ -393,6 +504,33 @@ The rule throughout: **a gap is shown as a placeholder and filed, never
 approximated in the client.** Recomputing an XP curve or a capture rate in React
 would put a second implementation of a game rule in the codebase, which is what
 the whole architecture exists to prevent.
+
+### Artwork hosting
+
+The local pipeline solves the bandwidth problem and leaves one structural issue
+untouched: **artwork and the API share an origin.** In development that is the
+Vite server for both; in any deployment it would be whatever fronts them. On
+HTTP/1.1 that means images and JSON compete for the same six connections, and no
+amount of shrinking images removes the coupling — it only raises the number of
+images needed to trigger it.
+
+Three ways out, cheapest first. None is needed today, and none should be adopted
+without a measurement showing the current setup is the bottleneck:
+
+1. **HTTP/2 on whatever serves the Portal.** Multiplexing removes the
+   six-connection cap outright, which is the actual constraint. This is a
+   server-configuration change and nothing else — no code moves.
+2. **A second origin for assets.** Its own connection budget, and a natural
+   place to set long-lived caching. Costs a CORS entry and a DNS name.
+3. **A CDN or object store.** `src/images/providers/platformCdn.ts` already
+   exists for this: set `VITE_ASSET_CDN_URL`, put `platformCdn` ahead of
+   `localDevAssets` in `VITE_IMAGE_PROVIDERS`, and publish renditions at
+   `<origin>/<slug>/<variant>@<width>.webp`. No API response, route, page or
+   component changes — the size buckets are already in the URL contract.
+
+The Platform API should not grow an image-serving route to solve this. Streaming
+4 MB files from the same process that answers JSON is precisely the coupling
+worth avoiding, and §25.3's image endpoint should return *locations*, not bytes.
 
 ### Also deferred
 
@@ -418,7 +556,15 @@ successful resolution is persisted.
 
 **"Can't reach the Waifumon server."** The bot is not running, or
 `PLATFORM_API_ENABLED` is not `true`, or `VITE_PLATFORM_API_PROXY_TARGET` points
-at the wrong port. The dev server logs its target on startup.
+at the wrong port. The dev server logs its target on startup. This message now
+means *unreachable* specifically — a slow server says something else.
+
+**"The Waifumon server took too long to answer."** The API is reachable and did
+not finish in time. If it happens while the dashboard is loading artwork, the
+cause is almost certainly image traffic occupying the connection pool: run
+`npm run assets:thumbs` and check `/__dev/diagnostics` for an oversized-image
+count above zero. Raising `VITE_API_TIMEOUT_MS` hides that rather than fixing
+it. See [Performance](#performance).
 
 **"The Platform API rejected the token."** `VITE_PLATFORM_API_TOKEN` and
 `PLATFORM_API_TOKEN` differ. They must match exactly.

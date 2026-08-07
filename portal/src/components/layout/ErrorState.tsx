@@ -35,6 +35,9 @@ interface Described {
 
 function describe(error: unknown): Described {
   if (isPortalApiError(error)) {
+    // The offline glyph is for *unreachable*, not for slow: a timeout gets the
+    // ordinary warning icon because the connection is fine and retrying is the
+    // obvious next move.
     return { message: error.message, code: error.code, offline: error.isNetworkError };
   }
   if (error instanceof Error) {

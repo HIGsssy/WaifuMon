@@ -3,9 +3,18 @@
  * game asset (plan §12, §24.13). Feature code names an asset; this renders it.
  *
  * What it guarantees, so no page has to:
- *   - space is reserved before the image loads, so grids never shift (§15)
+ *   - space is reserved before the image loads, so grids never shift (§15).
+ *     The reserved box is a CSS aspect ratio rather than `width`/`height`
+ *     attributes, because the intrinsic size of the source art is not something
+ *     the Portal knows — and the box is what prevents layout shift either way.
  *   - off-screen tiles are `loading="lazy"`; an above-the-fold hero opts into
  *     `priority` and gets `fetchPriority="high"`
+ *   - lazy tiles are additionally `fetchPriority="low"`, so artwork yields the
+ *     connection pool to the JSON the page is waiting on. In dev both share one
+ *     HTTP/1.1 origin, where a handful of multi-megabyte images can otherwise
+ *     hold every socket and starve the API (see §12 and vite.config.ts).
+ *   - `displayWidth` picks a rendition instead of shipping ~4.5 MB source art
+ *     to a 256 px tile
  *   - a failed load degrades to the silhouette rather than a broken glyph
  *   - alt text comes from the resolver, derived from the resource (§12)
  */
@@ -25,6 +34,11 @@ export interface ArtworkProps {
   silhouette?: boolean | undefined;
   /** Above-the-fold hero art: eager, high priority. */
   priority?: boolean | undefined;
+  /**
+   * Width this artwork is actually drawn at, in CSS pixels — the resolver turns
+   * it into a size bucket. Omit only where the original really is wanted.
+   */
+  displayWidth?: number | undefined;
   /** Tailwind aspect-ratio utility for the reserved box. */
   aspect?: string;
   /** `cover` crops to fill; `contain` fits the whole asset (item thumbnails). */
@@ -41,6 +55,7 @@ export const Artwork = memo(function Artwork({
   rarityLabel,
   silhouette,
   priority = false,
+  displayWidth,
   aspect = 'aspect-[3/4]',
   fit = 'cover',
   className,
@@ -51,6 +66,7 @@ export const Artwork = memo(function Artwork({
     name,
     rarityLabel,
     forceSilhouette: silhouette,
+    displayWidth,
   });
 
   return (
@@ -62,11 +78,15 @@ export const Artwork = memo(function Artwork({
     >
       {!image.isLoaded && <div className="skeleton absolute inset-0" aria-hidden="true" />}
       <img
+        // The ref is load-bearing, not diagnostic: an image already in the
+        // browser's cache can be `complete` before React can listen for its
+        // `load` event, and this is what notices (see `useImage`).
+        ref={image.ref}
         src={image.url}
         alt={image.alt}
         loading={priority ? 'eager' : 'lazy'}
         decoding={priority ? 'sync' : 'async'}
-        fetchPriority={priority ? 'high' : 'auto'}
+        fetchPriority={priority ? 'high' : 'low'}
         draggable={false}
         onError={image.onError}
         onLoad={image.onLoad}

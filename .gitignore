@@ -14,6 +14,10 @@ coverage/
 # admin panel content backups (timestamped copies, never source of truth)
 content/backups/
 
+# generated artwork renditions — derived from assets/, rebuilt by
+# `npm run assets:thumbs` in portal/. Never a source of truth.
+assets/.thumbnails/
+
 # local database/data
 data/
 *.db

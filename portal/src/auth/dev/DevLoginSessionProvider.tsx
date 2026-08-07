@@ -21,7 +21,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 
-import { PLAYER_POLICY } from '@/api/cachePolicy';
+import { IDENTITY_POLICY } from '@/api/cachePolicy';
 import { isPortalApiError } from '@/api/client';
 import { getPlayer, getPlayerLookup } from '@/api/players';
 import { queryKeys } from '@/api/queryKeys';
@@ -84,7 +84,10 @@ export function DevLoginSessionProvider({ children }: { children: ReactNode }) {
     queryKey: lookupKey(identity),
     queryFn: ({ signal }) => getPlayerLookup(identity as DevIdentity, signal),
     enabled: identity !== null,
-    ...PLAYER_POLICY,
+    // A Discord id maps to the same internal player for the life of the
+    // session; re-resolving it is pure overhead.
+    ...IDENTITY_POLICY,
+    staleTime: Number.POSITIVE_INFINITY,
   });
 
   const playerId = lookup.data?.playerId ?? null;
@@ -93,7 +96,7 @@ export function DevLoginSessionProvider({ children }: { children: ReactNode }) {
     queryKey: queryKeys.playerRecord(playerId ?? 0),
     queryFn: ({ signal }) => getPlayer(playerId as number, signal),
     enabled: playerId !== null,
-    ...PLAYER_POLICY,
+    ...IDENTITY_POLICY,
   });
 
   const player = record.data;

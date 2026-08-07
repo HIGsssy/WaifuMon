@@ -28,6 +28,7 @@ import { NotFoundPage } from '@/features/notFound/NotFoundPage';
 import { speciesAsset } from '@/images/assets';
 import { formatNumber } from '@/lib/format';
 import { rarityStyle } from '@/lib/rarity';
+import { ARTWORK_WIDTH } from '@/images/sizes';
 
 export function SpeciesDetailPage() {
   const session = useCurrentSession();
@@ -106,6 +107,7 @@ export function SpeciesDetailPage() {
           <RarityGlowRing rarity={species.rarity} glow={discovered}>
             <Artwork
               asset={speciesAsset(species)}
+              displayWidth={ARTWORK_WIDTH.hero}
               name={species.name}
               rarityLabel={rarity.label}
               silhouette={!discovered}
@@ -207,6 +209,7 @@ export function SpeciesDetailPage() {
                       <RarityGlowRing rarity={candidate.rarity}>
                         <Artwork
                           asset={speciesAsset(candidate)}
+                          displayWidth={ARTWORK_WIDTH.strip}
                           name={candidate.name}
                           rarityLabel={rarityStyle(candidate.rarity).label}
                           silhouette={!candidateOwned}
