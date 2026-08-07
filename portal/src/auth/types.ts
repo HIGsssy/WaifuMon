@@ -44,7 +44,11 @@ export interface SessionState {
   session: PortalSession | null;
   /** Why resolution failed, when it did. */
   error: unknown;
-  /** The raw `VITE_DEFAULT_PLAYER_ID` value, for the fallback screen (§8.11). */
+  /**
+   * The raw `VITE_DEFAULT_PLAYER_ID` value, for the fallback screen (§8.11).
+   * Always `undefined` in a dev build, where the acting player comes from the
+   * developer-login screen and no env var is consulted.
+   */
   configuredPlayerId: string | undefined;
   /** Re-attempts resolution without a page reload. */
   retry: () => void;

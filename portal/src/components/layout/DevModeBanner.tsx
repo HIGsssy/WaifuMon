@@ -1,9 +1,9 @@
 /**
  * The persistent "DEV MODE — no authentication" marker (plan §6, §26).
  *
- * This is a risk control, not decoration. The Portal has no login, ships a
- * shared bearer token to the browser, and acts as whichever player
- * `VITE_DEFAULT_PLAYER_ID` names. The banner is always visible so that setup is
+ * This is a risk control, not decoration. The Portal has no login — a dev build
+ * offers a player *picker*, which is not the same thing — and it ships a shared
+ * bearer token to the browser. The banner is always visible so that setup is
  * never mistaken for a production session.
  *
  * Two densities: a full strip under the header on desktop, a compact chip in

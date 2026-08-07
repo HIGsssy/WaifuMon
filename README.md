@@ -92,12 +92,16 @@ exists.
 
 ```sh
 cd portal
-cp .env.example .env.local    # set VITE_PLATFORM_API_TOKEN and VITE_DEFAULT_PLAYER_ID
+cp .env.example .env.local    # set VITE_PLATFORM_API_TOKEN
 npm install
 npm run dev                   # http://127.0.0.1:5173
 ```
 
-Requires the Platform API enabled above. **Development only:** the Portal has no
+Requires the Platform API enabled above. On first load it asks which player to
+show — paste a Discord user id and it resolves the internal player itself;
+"Switch player" in the header changes testers without touching `.env.local`.
+
+**Development only:** that screen is a picker, not a sign-in — the Portal has no
 authentication and carries the shared API token in the browser bundle, so keep
 it on loopback. It cannot change game state — every non-GET request is rejected
 before it leaves the client. See [docs/portal.md](docs/portal.md).

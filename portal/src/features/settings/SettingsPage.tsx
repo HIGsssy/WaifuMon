@@ -17,6 +17,7 @@ import { useCurrentSession } from '@/auth/useSession';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardTitle } from '@/components/ui/card';
+import { SwitchPlayerButton } from '@/features/devLogin/SwitchPlayerButton';
 import { portalEnv } from '@/lib/env';
 import { cn } from '@/lib/cn';
 
@@ -86,15 +87,27 @@ export function SettingsPage() {
             <div className="min-w-0">
               <h2 className="font-medium text-ink">This is a development build</h2>
               <p className="mt-2 text-sm text-ink-muted">
-                The Portal has no authentication. It acts as whichever player{' '}
-                <code className="font-mono text-ink">VITE_DEFAULT_PLAYER_ID</code> names, and it
-                carries the Platform API's shared token in the page itself. Anyone who can reach
-                this address is that player.
+                The Portal has no authentication.{' '}
+                {import.meta.env.DEV ? (
+                  <>
+                    It acts as whichever player you chose on the developer login screen, and it
+                    carries the Platform API's shared token in the page itself.
+                  </>
+                ) : (
+                  <>
+                    It acts as whichever player{' '}
+                    <code className="font-mono text-ink">VITE_DEFAULT_PLAYER_ID</code> names, and it
+                    carries the Platform API's shared token in the page itself.
+                  </>
+                )}{' '}
+                Anyone who can reach this address is that player.
               </p>
               <p className="mt-2 text-sm text-ink-muted">
                 Discord sign-in replaces this before the Portal is ever deployed anywhere. Until
                 then, keep it on your own machine.
               </p>
+              {/* Compile-time constant: a production build drops this entirely. */}
+              {import.meta.env.DEV && <SwitchPlayerButton className="mt-3 -ml-2" />}
             </div>
           </div>
         </Card>

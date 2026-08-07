@@ -13,6 +13,7 @@ import { useTheme } from '@/app/useTheme';
 import { useSession } from '@/auth/useSession';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import { SwitchPlayerButton } from '@/features/devLogin/SwitchPlayerButton';
 import { DevModeChip } from './DevModeBanner';
 import { NavList } from './NavList';
 
@@ -70,6 +71,8 @@ export function Header() {
               {session.displayName}
             </span>
           )}
+          {/* Compile-time constant: a production build drops this entirely. */}
+          {import.meta.env.DEV && <SwitchPlayerButton iconOnly />}
           <ThemeToggle />
         </div>
       </div>

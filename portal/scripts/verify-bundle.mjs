@@ -23,6 +23,15 @@ const FORBIDDEN_MARKERS = [
   'Recent API activity',
   'Silhouette fallbacks',
   'subscribeToRequestLog',
+  // The developer login screen and its player switcher. Guarded by
+  // `import.meta.env.DEV` in `DevSessionProvider.tsx`, `SelectPlayerPage.tsx`,
+  // `Header.tsx` and `SettingsPage.tsx` — a production build authenticates from
+  // `VITE_DEFAULT_PLAYER_ID` and has no way to change players at runtime.
+  'Developer login',
+  'Switch player',
+  'waifumon-portal:dev-identity',
+  'DevPlayerNotFoundError',
+  'useDevAuth',
 ];
 
 function walk(dir) {

@@ -24,6 +24,17 @@ import type {
 
 export const PLAYER_ID = 1;
 
+/**
+ * The Discord pair the developer-login flow resolves to `PLAYER_ID`.
+ *
+ * `vitest.setup.ts` seeds it into `localStorage` before every test, which is
+ * the test-suite equivalent of "already signed in" — the state every page test
+ * assumes. The guild snowflake has no counterpart on the player resource
+ * (which carries the internal `guildId` instead), so it lives only here.
+ */
+export const DISCORD_GUILD_ID = '987654321098765432';
+export const DISCORD_USER_ID = '123456789012345678';
+
 export const player: Player = {
   id: PLAYER_ID,
   guildId: 7,
@@ -31,7 +42,7 @@ export const player: Player = {
     displayName: 'Mika',
     avatarUrl: 'https://cdn.discordapp.com/avatars/123456789012345678/abcdef.png',
   },
-  discordUserId: '123456789012345678',
+  discordUserId: DISCORD_USER_ID,
   level: 12,
   xp: 3480,
   buddyWaifuId: 101,
@@ -142,30 +153,31 @@ function withState(
 }
 
 /** Keyed by owned-waifu id, mirroring `GET …/appearances`. */
-export const appearanceGalleries: Record<number, { appearances: Appearance[]; selected: string }> = {
-  101: {
-    selected: 'standard',
-    appearances: [
-      withState(standardAppearance('void_empress'), { isUnlocked: true, isSelected: true }),
-      withState(levelAppearance('void_empress', 'level_40', 40), {
-        isUnlocked: false,
-        isSelected: false,
-      }),
-    ],
-  },
-  102: {
-    selected: 'standard',
-    appearances: [
-      withState(standardAppearance('neon_kitsune'), { isUnlocked: true, isSelected: true }),
-    ],
-  },
-  103: {
-    selected: 'standard',
-    appearances: [
-      withState(standardAppearance('neko_barista'), { isUnlocked: true, isSelected: true }),
-    ],
-  },
-};
+export const appearanceGalleries: Record<number, { appearances: Appearance[]; selected: string }> =
+  {
+    101: {
+      selected: 'standard',
+      appearances: [
+        withState(standardAppearance('void_empress'), { isUnlocked: true, isSelected: true }),
+        withState(levelAppearance('void_empress', 'level_40', 40), {
+          isUnlocked: false,
+          isSelected: false,
+        }),
+      ],
+    },
+    102: {
+      selected: 'standard',
+      appearances: [
+        withState(standardAppearance('neon_kitsune'), { isUnlocked: true, isSelected: true }),
+      ],
+    },
+    103: {
+      selected: 'standard',
+      appearances: [
+        withState(standardAppearance('neko_barista'), { isUnlocked: true, isSelected: true }),
+      ],
+    },
+  };
 
 /** The content snapshot is the same fields minus the internal id. */
 export const contentSpecies: ContentSpecies[] = speciesRows.map(({ id: _id, ...rest }) => rest);

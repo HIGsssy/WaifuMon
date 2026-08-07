@@ -143,6 +143,9 @@ export default defineConfig(({ mode }) => {
         VITE_PLATFORM_API_URL: '/api',
         VITE_PLATFORM_API_TOKEN: 'test-token',
         VITE_DEFAULT_PLAYER_ID: '1',
+        // Pre-fills the developer-login form's guild field, which is the
+        // behaviour the login tests assert. Matches `msw/fixtures.ts`.
+        VITE_DEFAULT_DISCORD_GUILD_ID: '987654321098765432',
       },
     },
   };

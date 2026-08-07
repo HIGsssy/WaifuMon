@@ -104,9 +104,9 @@ describe('DashboardPage', () => {
   });
 
   it('falls back to Trainer #id when the API cannot resolve an identity', async () => {
-    server.use(
-      http.get('/api/v1/players/:playerId', () => data({ ...fixtures.player, identity: null })),
-    );
+    // Concrete id, not `:playerId` — a param pattern also matches
+    // `/players/lookup`, which the dev session provider needs to keep working.
+    server.use(http.get('/api/v1/players/1', () => data({ ...fixtures.player, identity: null })));
 
     renderDashboard();
 

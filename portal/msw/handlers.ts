@@ -36,7 +36,19 @@ const P = String(fixtures.PLAYER_ID);
 
 export const handlers = [
   // ── Players ───────────────────────────────────────────────────────────────
-  http.get('/api/v1/players/lookup', () => data({ playerId: fixtures.PLAYER_ID })),
+  // The identity bridge the dev-login session provider starts from. It answers
+  // for exactly one pair, so a test can exercise "this account has not played
+  // here" by signing in as anyone else — the API's real behaviour, since this
+  // endpoint never provisions.
+  http.get('/api/v1/players/lookup', ({ request }) => {
+    const query = new URL(request.url, 'http://localhost').searchParams;
+    const known =
+      query.get('discordGuildId') === fixtures.DISCORD_GUILD_ID &&
+      query.get('discordUserId') === fixtures.DISCORD_USER_ID;
+    return known
+      ? data({ playerId: fixtures.PLAYER_ID })
+      : apiError(404, 'PLAYER_NOT_FOUND', 'No player for that Discord identity.');
+  }),
 
   http.get('/api/v1/players/:playerId', ({ params }) =>
     params.playerId === P
@@ -72,15 +84,12 @@ export const handlers = [
   http.get('/api/v1/players/:playerId/collection/buddy', () => data(fixtures.buddyEntry)),
 
   // ── Appearances ───────────────────────────────────────────────────────────
-  http.get(
-    '/api/v1/players/:playerId/collection/owned/:waifuId/appearances',
-    ({ params }) => {
-      const gallery = fixtures.appearanceGalleries[Number(params.waifuId)];
-      return gallery
-        ? data(gallery)
-        : apiError(404, 'WAIFU_NOT_OWNED', 'You do not own that Waifumon.');
-    },
-  ),
+  http.get('/api/v1/players/:playerId/collection/owned/:waifuId/appearances', ({ params }) => {
+    const gallery = fixtures.appearanceGalleries[Number(params.waifuId)];
+    return gallery
+      ? data(gallery)
+      : apiError(404, 'WAIFU_NOT_OWNED', 'You do not own that Waifumon.');
+  }),
 
   // There is deliberately no PUT handler for `…/appearance`: the Portal is
   // read-only and never calls it. A handler here would mock a request the

@@ -43,22 +43,18 @@ PLATFORM_API_PORT=3120
 PLATFORM_API_TOKEN=<a long random secret>    # openssl rand -hex 32
 ```
 
-**2. Find a player id.** The Portal addresses players by internal id, not by
-Discord snowflake. If you know the Discord guild and user ids:
-
-```sh
-curl -H "Authorization: Bearer $PLATFORM_API_TOKEN" \
-  "http://127.0.0.1:3120/api/v1/players/lookup?discordGuildId=…&discordUserId=…"
-```
+**2. Have a Discord user id to hand.** Turn on Discord's developer mode and use
+"Copy User ID" on yourself or a tester, plus "Copy Server ID" on the guild. The
+Portal resolves the pair to an internal player id itself.
 
 A player only exists after they have used a `/waifumon` command at least once —
-the Portal cannot create one, and neither can this endpoint.
+the Portal cannot create one, and neither can the lookup endpoint it uses.
 
 **3. Configure and run the Portal:**
 
 ```sh
 cd portal
-cp .env.example .env.local     # then fill in the token and player id
+cp .env.example .env.local     # then fill in the token
 npm install
 npm run dev                    # http://127.0.0.1:5173
 ```
@@ -71,9 +67,26 @@ misconfigured port is visible immediately:
   portal  /dev-assets -> C:\…\WaifuMon\assets
 ```
 
-If `VITE_DEFAULT_PLAYER_ID` is missing or does not resolve, the Portal shows
-`/select-player`, which reports the exact failure and what to edit. It never
-crashes on a bad configuration.
+**4. Sign in.** The first load shows a **Developer login** screen: paste the
+Discord user id, confirm the server id, and the Portal calls
+`GET /api/v1/players/lookup` to find the internal player. It shows the display
+name and player id it resolved before entering. The choice is remembered in the
+browser, so every later start goes straight to the Dashboard.
+
+If the pair has never played, the screen says so and stops — it does **not**
+create a player. If the API is unreachable or the token is wrong, it says that
+instead. It never crashes on a bad configuration.
+
+### Switching between testers
+
+"Switch player" in the header (and on Settings, and on the diagnostics page)
+returns to the login screen with the current pair pre-filled. No `.env.local`
+edit and no dev-server restart.
+
+**All of this is dev-only.** A production build has no login screen, no player
+switcher and no `localStorage` session: it resolves `VITE_DEFAULT_PLAYER_ID`
+exactly as it always has, and `npm run verify:bundle` fails if a single string
+from the developer-login subtree reaches `dist/`.
 
 ---
 
@@ -88,9 +101,9 @@ source of truth.
 | `VITE_PLATFORM_API_URL` | – | Base URL for API calls. Keep `/api` in dev; the dev server proxies it. |
 | `VITE_PLATFORM_API_PROXY_TARGET` | – | Where the dev server forwards `/api`, `/ready` and `/health`. Default `http://127.0.0.1:3120`. |
 | `VITE_PLATFORM_API_TOKEN` | ✅ | Must equal `PLATFORM_API_TOKEN` on the bot side. **Readable by anyone who loads the page.** |
-| `VITE_DEFAULT_PLAYER_ID` | ✅ | The acting player, as an internal integer id. |
-| `VITE_DEFAULT_DISCORD_GUILD_ID` | – | Presentation only; shown on the diagnostics page. |
-| `VITE_DEFAULT_DISCORD_USER_ID` | – | Presentation only. |
+| `VITE_DEFAULT_PLAYER_ID` | – | The acting player for a **non-dev** build, as an internal integer id. `npm run dev` ignores it and uses the developer login screen. |
+| `VITE_DEFAULT_DISCORD_GUILD_ID` | – | Pre-fills the developer login's server field; also shown on the diagnostics page. |
+| `VITE_DEFAULT_DISCORD_USER_ID` | – | Pre-fills the developer login's user field on a browser that has never signed in. |
 | `VITE_DEV_ASSETS_PATH` | – | Filesystem path served at `/dev-assets/*`. Defaults to the repo's `assets/`. |
 | `VITE_IMAGE_PROVIDERS` | – | Comma-separated image-provider chain. See [Images](#images). |
 
@@ -105,7 +118,7 @@ source of truth.
 | `npm run lint` | ESLint, including the architectural rules below. |
 | `npm run test` | Vitest + Testing Library + MSW. No bot required. |
 | `npm run build` | Production bundle into `portal/dist/`. |
-| `npm run verify:bundle` | Asserts the dev-only diagnostics code is absent from `dist/`. |
+| `npm run verify:bundle` | Asserts the dev-only diagnostics page and developer login are absent from `dist/`. |
 | `npm run e2e` | Playwright: smoke, responsive audit, accessibility. No bot required. |
 | `npm run e2e:ui` | The same, in Playwright's interactive UI. |
 
@@ -118,8 +131,11 @@ database, a Discord client, or a running bot. CI runs the whole set.
 
 This is the part to read before showing the Portal to anyone.
 
-- **There is no authentication.** No login, no session, no cookie. Whoever opens
-  the page is the player named by `VITE_DEFAULT_PLAYER_ID`.
+- **There is no authentication.** The developer login screen asks *which* player
+  to show; it never verifies that you are them, because it cannot — it is a
+  picker, not a sign-in. Anyone who opens the page can type any Discord id and
+  read that player's collection. (A non-dev build has not even that: whoever
+  opens the page is the player `VITE_DEFAULT_PLAYER_ID` names.)
 - **The API token is in the bundle.** `VITE_`-prefixed variables are compiled
   into the JavaScript. Anyone who can load the page can read the token and call
   the Platform API directly with it.
@@ -347,6 +363,11 @@ Discord OAuth  →  Portal-owned callback (new BFF)
 `app/providers.tsx` imports the provider under an alias for exactly this reason
 — the swap is one line there, and no feature page changes.
 
+The dev login already exercises the identity half of that path: it calls the
+same `/players/lookup` with the same `(guild, user)` pair and emits the same
+`PortalSession`. What OAuth adds is *proof* that the pair is yours, plus the
+cookie and callback to carry it. The seam is not speculative — it is in use.
+
 ### API feedback
 
 The Portal is the Platform API's first substantial consumer, and everything it
@@ -375,17 +396,25 @@ the whole architecture exists to prevent.
 
 ### Also deferred
 
-Generated OpenAPI types, a runtime player switcher, composite dashboard
-endpoint, live notifications, gameplay mutations, and production deployment.
-None require a v1 redesign to adopt.
+Generated OpenAPI types, composite dashboard endpoint, live notifications,
+gameplay mutations, and production deployment. None require a v1 redesign to
+adopt. (The runtime player switcher landed as the dev-only developer login
+above; a *production* switcher is a consequence of OAuth, not a feature of its
+own.)
 
 ---
 
 ## Troubleshooting
 
-**`/select-player` on startup.** The screen names the cause. Usually
-`VITE_DEFAULT_PLAYER_ID` is unset, is a Discord snowflake rather than an internal
-id, or names a player who has never used a `/waifumon` command.
+**"This Discord account hasn't played here yet."** The lookup found nobody for
+that `(server, user)` pair. Either the id is wrong, or the account has genuinely
+never run a `/waifumon` command in that server. The Portal will not create a
+player — play once in Discord first.
+
+**The developer login screen on every start.** The choice is kept in
+`localStorage` under `waifumon-portal:dev-identity`. A private window, a cleared
+site data, or a sign-in that never resolved will all start signed out. Only a
+successful resolution is persisted.
 
 **"Can't reach the Waifumon server."** The bot is not running, or
 `PLATFORM_API_ENABLED` is not `true`, or `VITE_PLATFORM_API_PROXY_TARGET` points

@@ -1,66 +1,46 @@
 /**
- * `/select-player` — the dev-only fallback screen (plan §8.11).
+ * `/select-player` — where `RequireSession` sends an unresolved session.
  *
- * Shown when `VITE_DEFAULT_PLAYER_ID` is missing or does not resolve. It is a
- * diagnostic card, not a picker: it reports the current env value and the
- * resolution error, and says what to edit.
+ * One route, two screens, chosen at compile time:
  *
- * **No input field, no runtime picker.** Runtime switching is §25.2 — adding an
- * id box here would quietly become the auth surface the plan says v1 must not
- * grow.
+ *   dev builds   the developer login form — pick a player by Discord id and
+ *                the Portal resolves it through `GET /players/lookup`
+ *   otherwise    the env fallback below: a diagnostic card reporting the
+ *                current `VITE_DEFAULT_PLAYER_ID`, the resolution error, and
+ *                what to edit (plan §8.11)
+ *
+ * `import.meta.env.DEV` is substituted before bundling, so the production build
+ * folds this to the fallback and drops `features/devLogin/` entirely — the
+ * login screen is absent from the output, not merely unlinked.
+ *
+ * The fallback is deliberately **not** a picker: adding an id box there would
+ * quietly become the auth surface the plan says a shipped build must not grow.
+ * Runtime switching is a development convenience, and it lives on the other
+ * side of this branch.
  */
 import { KeyRound, RefreshCw } from 'lucide-react';
 import { Navigate } from 'react-router';
 
-import { isPortalApiError } from '@/api/client';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { describeSessionError } from '@/auth/describeSessionError';
 import { useSession } from '@/auth/useSession';
+import { DevLoginPage } from '@/features/devLogin/DevLoginPage';
 import { portalEnv } from '@/lib/env';
 
-function describeError(error: unknown): { headline: string; detail: string } | null {
-  if (error === null || error === undefined) return null;
-
-  if (isPortalApiError(error)) {
-    if (error.isNetworkError) {
-      return {
-        headline: "Can't reach the Waifumon server",
-        detail:
-          'The Platform API did not answer. Check that the bot is running with ' +
-          'PLATFORM_API_ENABLED=true and that VITE_PLATFORM_API_PROXY_TARGET points at its port.',
-      };
-    }
-    if (error.isUnauthorized) {
-      return {
-        headline: 'The Platform API rejected the token',
-        detail: 'VITE_PLATFORM_API_TOKEN must match PLATFORM_API_TOKEN in the bot’s .env exactly.',
-      };
-    }
-    if (error.isNotFound) {
-      return {
-        headline: 'No player with that id',
-        detail:
-          'The id resolved to nothing. Find a real one with /waifumon in Discord, or query the ' +
-          'API’s GET /api/v1/players/lookup with a Discord guild and user id.',
-      };
-    }
-    return { headline: error.message, detail: `${error.code} (HTTP ${error.status})` };
-  }
-
-  if (error instanceof Error) {
-    return { headline: 'The configured player id is not usable', detail: error.message };
-  }
-  return { headline: 'Session could not be resolved', detail: String(error) };
+export function SelectPlayerPage() {
+  if (import.meta.env.DEV) return <DevLoginPage />;
+  return <EnvFallbackScreen />;
 }
 
-export function SelectPlayerPage() {
+function EnvFallbackScreen() {
   const { status, configuredPlayerId, error, retry } = useSession();
 
   // Arriving here with a working session (a stale bookmark, a resolved retry)
   // should not strand the developer on a diagnostic screen.
   if (status === 'ready') return <Navigate to="/dashboard" replace />;
 
-  const described = describeError(error);
+  const described = describeSessionError(error);
 
   return (
     <div className="mx-auto flex max-w-lg flex-col items-center py-10 sm:py-16">
@@ -110,7 +90,7 @@ export function SelectPlayerPage() {
             <code className="font-mono text-ink">portal/.env.local</code> and reload.
           </p>
           <p className="mt-2 text-xs text-ink-subtle">
-            There is no runtime player switcher in v1 — selecting a player is an env edit plus a
+            This build has no runtime player switcher — selecting a player is an env edit plus a
             reload, by design.
           </p>
         </div>

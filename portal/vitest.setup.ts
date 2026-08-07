@@ -7,11 +7,32 @@
  */
 import '@testing-library/jest-dom/vitest';
 import { cleanup } from '@testing-library/react';
-import { afterAll, afterEach, beforeAll } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach } from 'vitest';
 
+import { DEV_IDENTITY_STORAGE_KEY } from './src/auth/dev/devIdentity';
+import * as fixtures from './msw/fixtures';
 import { server } from './msw/server';
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
+
+/**
+ * Vitest runs with `import.meta.env.DEV === true`, so the session provider is
+ * the developer-login one and resolves from `localStorage`. Seeding the pair is
+ * this suite's "already signed in" — the state every page test assumes, and the
+ * equivalent of what `VITE_DEFAULT_PLAYER_ID` used to do for it.
+ *
+ * A test that wants the login screen clears it first (`localStorage.clear()`)
+ * before rendering.
+ */
+beforeEach(() => {
+  localStorage.setItem(
+    DEV_IDENTITY_STORAGE_KEY,
+    JSON.stringify({
+      discordUserId: fixtures.DISCORD_USER_ID,
+      discordGuildId: fixtures.DISCORD_GUILD_ID,
+    }),
+  );
+});
 
 afterEach(() => {
   cleanup();

@@ -27,7 +27,9 @@ import {
   subscribeToRequestLog,
   summarizeRequests,
 } from '@/api/telemetry';
+import { useDevAuth } from '@/auth/dev/useDevAuth';
 import { useSession } from '@/auth/useSession';
+import { SwitchPlayerButton } from '@/features/devLogin/SwitchPlayerButton';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -42,7 +44,8 @@ function statusTone(status: string): 'default' | 'danger' {
 
 export function DiagnosticsPage() {
   const queryClient = useQueryClient();
-  const { status, session, configuredPlayerId, error } = useSession();
+  const { status, session, error } = useSession();
+  const { identity } = useDevAuth();
 
   const requests = useSyncExternalStore(subscribeToRequestLog, getRequestLog);
   const requestSummary = summarizeRequests();
@@ -142,10 +145,16 @@ export function DiagnosticsPage() {
               ['displayName', session?.displayName ?? '—'],
               ['discordUserId', session?.discordUserId ?? '—'],
               ['discordGuildId', session?.discordGuildId ?? '—'],
-              ['VITE_DEFAULT_PLAYER_ID', configuredPlayerId ?? '(unset)'],
+              // The developer login is the sole source of the acting player in
+              // a dev build; `VITE_DEFAULT_PLAYER_ID` is not read at all here.
+              ['Signed-in user id', identity?.discordUserId ?? '(signed out)'],
+              ['Signed-in guild id', identity?.discordGuildId ?? '(signed out)'],
               ['Resolution error', error instanceof Error ? error.message : '—'],
             ]}
           />
+          <div className="mt-3 flex justify-end">
+            <SwitchPlayerButton className="-mr-2" />
+          </div>
         </DiagnosticsCard>
 
         <DiagnosticsCard

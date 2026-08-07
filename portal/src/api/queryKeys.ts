@@ -49,4 +49,9 @@ export const queryKeys = {
 
   /** Dev-only, diagnostics page. */
   readiness: () => ['system', 'readiness'] as const,
+
+  // The developer login's Discord-identity lookup is the one key not built
+  // here. It belongs to a subtree a production build drops entirely, and a
+  // property on this object would survive that drop as a dead string — see
+  // `auth/dev/DevLoginSessionProvider.tsx`.
 } as const;
