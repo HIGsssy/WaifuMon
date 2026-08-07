@@ -41,6 +41,35 @@ describe('Artwork', () => {
     expect(screen.getByAltText('Neko Barista')).toHaveAttribute('loading', 'eager');
   });
 
+  it('yields the connection pool for lazy art and claims it for a hero', () => {
+    // Artwork and the API share one HTTP/1.1 origin in dev. Grid tiles marked
+    // `low` are what stops twenty images holding every socket while the JSON
+    // the page is actually waiting on queues behind them.
+    const { rerender } = render(
+      <Artwork asset={{ kind: 'species', slug: 'neko_barista' }} name="Neko Barista" />,
+    );
+    expect(screen.getByAltText('Neko Barista')).toHaveAttribute('fetchpriority', 'low');
+
+    rerender(
+      <Artwork asset={{ kind: 'species', slug: 'neko_barista' }} name="Neko Barista" priority />,
+    );
+    expect(screen.getByAltText('Neko Barista')).toHaveAttribute('fetchpriority', 'high');
+  });
+
+  it('requests a rendition when the call site says how wide it draws', () => {
+    render(
+      <Artwork
+        asset={{ kind: 'species', slug: 'neko_barista' }}
+        name="Neko Barista"
+        displayWidth={256}
+      />,
+    );
+    expect(screen.getByAltText('Neko Barista')).toHaveAttribute(
+      'src',
+      '/dev-assets/t/256/waifumon/neko_barista/standard.png',
+    );
+  });
+
   it('swaps to the silhouette when the resolved URL fails to load', () => {
     render(<Artwork asset={{ kind: 'species', slug: 'neon_kitsune' }} name="Neon Kitsune" />);
 

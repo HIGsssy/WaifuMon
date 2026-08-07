@@ -33,6 +33,7 @@ import { Card, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { appearanceAsset } from '@/images/assets';
 import { cn } from '@/lib/cn';
+import { ARTWORK_WIDTH } from '@/images/sizes';
 
 const COSMETIC_RARITY_LABELS: Record<CosmeticRarity, string> = {
   standard: 'Standard',
@@ -102,6 +103,7 @@ function AppearanceTile({ appearance, isActive, revealed, onSelect }: Appearance
       <div className="relative">
         <Artwork
           asset={appearanceAsset(appearance)}
+          displayWidth={ARTWORK_WIDTH.strip}
           name={appearance.name}
           silhouette={locked && !revealed}
           aspect="aspect-[3/4]"
@@ -200,10 +202,7 @@ function AppearanceDetail({ appearance, revealed, onReveal }: AppearanceDetailPr
           // API client would refuse to send.
           <p className="text-sm text-ink-muted">
             Unlocked. Switch to this look in Discord with{' '}
-            <code className="rounded bg-surface-sunken px-1 py-0.5 text-xs">
-              /wm appearance
-            </code>
-            .
+            <code className="rounded bg-surface-sunken px-1 py-0.5 text-xs">/wm appearance</code>.
           </p>
         )}
       </div>
@@ -229,9 +228,7 @@ export function AppearanceGallery({ playerId, waifuId, waifuName }: AppearanceGa
     return (
       <Card>
         <CardTitle>Appearances</CardTitle>
-        <p className="mt-3 text-sm text-ink-muted">
-          Couldn’t load {waifuName}’s appearances.
-        </p>
+        <p className="mt-3 text-sm text-ink-muted">Couldn’t load {waifuName}’s appearances.</p>
         <Button variant="outline" size="sm" className="mt-3" onClick={() => void gallery.refetch()}>
           Try again
         </Button>

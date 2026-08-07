@@ -15,10 +15,11 @@
  */
 import { useQueryClient } from '@tanstack/react-query';
 import { ArrowRight, LibraryBig } from 'lucide-react';
-import { useEffect } from 'react';
+import { useCallback } from 'react';
 import { Link } from 'react-router';
 
 import { useBuddy, useCollectionStats } from '@/api/hooks/useCollection';
+import { useIdleTask } from '@/api/hooks/useIdlePrefetch';
 import { usePlayerProfile } from '@/api/hooks/usePlayer';
 import { getContentSpecies } from '@/api/content';
 import { queryKeys } from '@/api/queryKeys';
@@ -44,15 +45,18 @@ export function DashboardPage() {
   const buddy = useBuddy(session.playerId);
   const stats = useCollectionStats(session.playerId);
 
-  // Prefetch the species snapshot on Dashboard mount (§13): it is effectively
-  // static, and priming it here makes the Collection and Encyclopedia instant.
-  useEffect(() => {
+  // Priority 3. The species snapshot is effectively static (§13) and priming it
+  // makes the Collection and Encyclopedia instant — but no widget on *this*
+  // page reads it, so it waits until the browser is idle rather than competing
+  // with the three queries first paint actually depends on.
+  const prefetchSpecies = useCallback(() => {
     void queryClient.prefetchQuery({
       queryKey: queryKeys.contentSpecies(),
       queryFn: ({ signal }) => getContentSpecies({}, signal),
       ...CONTENT_POLICY,
     });
   }, [queryClient]);
+  useIdleTask(prefetchSpecies);
 
   const currencies = profile.data?.currencies;
 
@@ -64,7 +68,14 @@ export function DashboardPage() {
       />
 
       <div className="space-y-6 sm:space-y-8">
-        {profile.isError && (
+        {/*
+          `&& !profile.data` is the §14 rule made mechanical: a *background*
+          refresh that fails still has last-good data on screen, and replacing a
+          working hero with an error banner because a refetch blipped is worse
+          than showing slightly old numbers. The banner is for the case where
+          there is genuinely nothing to show.
+        */}
+        {profile.isError && !profile.data && (
           <ErrorState
             variant="inline"
             error={profile.error}
@@ -105,7 +116,7 @@ export function DashboardPage() {
 
         <Card>
           <div className="flex flex-col items-center gap-6 sm:flex-row sm:items-center">
-            {stats.isError ? (
+            {stats.isError && !stats.data ? (
               <ErrorState
                 variant="inline"
                 error={stats.error}

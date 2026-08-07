@@ -17,6 +17,17 @@ export function describeSessionError(error: unknown): DescribedSessionError | nu
   if (error === null || error === undefined) return null;
 
   if (isPortalApiError(error)) {
+    // Timeout before network: they are both "no response", and telling someone
+    // their server is unreachable when it is merely slow sends them to check
+    // the wrong thing entirely.
+    if (error.isTimeout) {
+      return {
+        headline: 'The Waifumon server took too long to answer',
+        detail:
+          'The request was still outstanding when the Portal gave up — the server is reachable, ' +
+          'just slow. On a high-latency link raise VITE_API_TIMEOUT_MS.',
+      };
+    }
     if (error.isNetworkError) {
       return {
         headline: "Can't reach the Waifumon server",

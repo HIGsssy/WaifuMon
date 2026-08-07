@@ -54,8 +54,12 @@ export interface ImageProvider {
   /**
    * Returns a URL, or `null` to defer to the next provider in the chain. Only
    * the silhouette provider is required to always answer.
+   *
+   * `bucket` is the size the caller wants, or `null` for the original. A
+   * provider that cannot serve sizes ignores it and answers with what it has —
+   * asking for a thumbnail is a preference, never a precondition.
    */
-  resolve(id: AssetId): ResolvedImage | null;
+  resolve(id: AssetId, bucket?: ImageSizeBucket | null): ResolvedImage | null;
 }
 
 /**
@@ -64,14 +68,71 @@ export interface ImageProvider {
  * assertion at the end of the chain.
  */
 export interface TerminalImageProvider extends ImageProvider {
-  resolve(id: AssetId): ResolvedImage;
+  resolve(id: AssetId, bucket?: ImageSizeBucket | null): ResolvedImage;
 }
 
 export const DEFAULT_VARIANT = 'standard';
 
+// ── Size negotiation ────────────────────────────────────────────────────────
+
+/**
+ * The sizes artwork is published at.
+ *
+ * Source art is ~1500×2100 and 4.5 MB per file. A collection grid renders 25 of
+ * them at roughly 256 CSS px wide, so shipping the original is two orders of
+ * magnitude more pixels than the screen can show — and, because artwork and the
+ * API share one HTTP/1.1 origin in dev, those bytes are what starve JSON
+ * requests of connections.
+ *
+ * Three buckets rather than arbitrary widths, because every distinct width is a
+ * separate file to generate, store and cache. These cover the three things the
+ * Portal actually draws: a grid tile, a card hero, a detail hero.
+ */
+export const IMAGE_SIZE_BUCKETS = [256, 512, 1024] as const;
+
+export type ImageSizeBucket = (typeof IMAGE_SIZE_BUCKETS)[number];
+
+/** Above this, serve the original: no bucket would be an improvement. */
+const LARGEST_BUCKET = IMAGE_SIZE_BUCKETS[IMAGE_SIZE_BUCKETS.length - 1] as ImageSizeBucket;
+
+/**
+ * Cap on the device-pixel-ratio multiplier.
+ *
+ * A 3× phone asking for 3× pixels on a 256 px tile lands in the 1024 bucket,
+ * which is most of the way back to shipping the original. Beyond 2× the return
+ * on a photographic image is not visible, so 2× is where it stops.
+ */
+const MAX_PIXEL_RATIO = 2;
+
+/**
+ * The bucket to serve for a given rendered CSS width, or `null` to serve the
+ * original.
+ *
+ * `displayWidth` is CSS pixels — what the element actually occupies. The device
+ * pixel ratio is applied here rather than at call sites so a component says
+ * "I draw this 256 px wide" and never has to think about screen density.
+ */
+export function bucketFor(displayWidth: number | undefined): ImageSizeBucket | null {
+  if (displayWidth === undefined || !Number.isFinite(displayWidth) || displayWidth <= 0) {
+    return null;
+  }
+
+  const ratio = typeof window === 'undefined' ? 1 : (window.devicePixelRatio ?? 1);
+  const needed = displayWidth * Math.min(Math.max(ratio, 1), MAX_PIXEL_RATIO);
+
+  return IMAGE_SIZE_BUCKETS.find((bucket) => bucket >= needed) ?? LARGEST_BUCKET;
+}
+
+/** What a caller asks the resolver for, beyond the asset's identity. */
+export interface ResolveOptions {
+  /** Rendered width in CSS pixels. Omitted means "give me the original". */
+  displayWidth?: number | undefined;
+}
+
 /** Stable cache key for an asset — also the React key for a resolved image. */
-export function assetKey(id: AssetId): string {
+export function assetKey(id: AssetId, bucket: ImageSizeBucket | null = null): string {
   // `href` participates: the same avatar slug with a new CDN hash is a
   // genuinely different image and must not serve the memoised old one.
-  return `${id.kind}:${id.slug}:${id.variant ?? DEFAULT_VARIANT}:${id.href ?? ''}`;
+  // The bucket participates for the same reason: two sizes are two URLs.
+  return `${id.kind}:${id.slug}:${id.variant ?? DEFAULT_VARIANT}:${id.href ?? ''}:${bucket ?? 'full'}`;
 }

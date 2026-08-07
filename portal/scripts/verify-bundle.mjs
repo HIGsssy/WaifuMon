@@ -32,6 +32,14 @@ const FORBIDDEN_MARKERS = [
   'waifumon-portal:dev-identity',
   'DevPlayerNotFoundError',
   'useDevAuth',
+  // Development instrumentation: the image-transfer observer, the slow-request
+  // timer, and the duplicate-request detector. All three are diagnostics for a
+  // dev server that serves artwork and proxies the API on one origin; none of
+  // them has a job in a shipped bundle.
+  'portal image',
+  'portal slow',
+  'portal duplicate',
+  'installImageInstrumentation',
 ];
 
 function walk(dir) {

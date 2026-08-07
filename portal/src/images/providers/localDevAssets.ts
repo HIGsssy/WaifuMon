@@ -26,6 +26,7 @@ import {
   WAIFUMON_ASSET_KINDS,
   type AssetId,
   type ImageProvider,
+  type ImageSizeBucket,
   type ResolvedImage,
 } from '../types';
 
@@ -34,10 +35,22 @@ export const LOCAL_DEV_ASSETS_ID = 'localDevAssets';
 /** Matches the slug rule the API enforces on content (`^[a-z0-9_]+$`). */
 const SAFE_SLUG = /^[a-z0-9_]+$/;
 
+/**
+ * Path segment the dev server's asset route recognises as a size request.
+ *
+ * `/dev-assets/t/512/waifumon/<slug>/<variant>.png` means "the 512-wide
+ * rendition of this asset". The dev server serves the pre-generated WebP if one
+ * exists and quietly falls back to the original file if not, setting the
+ * Content-Type from whichever it actually sends — so the `.png` in the URL is a
+ * logical name, never a promise about the bytes. That fallback is what lets
+ * this ship before anyone has run the thumbnail script.
+ */
+const SIZE_PREFIX = 't';
+
 export function createLocalDevAssetsProvider(basePath = '/dev-assets'): ImageProvider {
   return {
     id: LOCAL_DEV_ASSETS_ID,
-    resolve(id: AssetId): ResolvedImage | null {
+    resolve(id: AssetId, bucket: ImageSizeBucket | null = null): ResolvedImage | null {
       // Accepts both the Portal's own `species` kind and the API's `waifumon`
       // — they name the same artwork.
       if (!WAIFUMON_ASSET_KINDS.includes(id.kind)) return null;
@@ -46,11 +59,10 @@ export function createLocalDevAssetsProvider(basePath = '/dev-assets'): ImagePro
       const variant = id.variant ?? DEFAULT_VARIANT;
       if (!SAFE_SLUG.test(variant)) return null;
 
-      return {
-        url: `${basePath}/waifumon/${id.slug}/${variant}.png`,
-        isFallback: false,
-        providerId: LOCAL_DEV_ASSETS_ID,
-      };
+      const asset = `waifumon/${id.slug}/${variant}.png`;
+      const url = bucket ? `${basePath}/${SIZE_PREFIX}/${bucket}/${asset}` : `${basePath}/${asset}`;
+
+      return { url, isFallback: false, providerId: LOCAL_DEV_ASSETS_ID };
     },
   };
 }

@@ -94,6 +94,7 @@ exists.
 cd portal
 cp .env.example .env.local    # set VITE_PLATFORM_API_TOKEN
 npm install
+npm run assets:thumbs         # generate artwork renditions (once)
 npm run dev                   # http://127.0.0.1:5173
 ```
 

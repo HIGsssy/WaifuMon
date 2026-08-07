@@ -31,6 +31,7 @@ import { displayName } from '@/content/species';
 import { avatarAsset, speciesAsset } from '@/images/assets';
 import { formatDate, formatNumber, formatRelative } from '@/lib/format';
 import { rarityStyle } from '@/lib/rarity';
+import { ARTWORK_WIDTH } from '@/images/sizes';
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
@@ -68,6 +69,7 @@ export function ProfilePage() {
           <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
             <Artwork
               asset={avatarAsset(session.playerId, session.avatarUrl)}
+              displayWidth={ARTWORK_WIDTH.avatar}
               name={session.displayName}
               aspect="aspect-square"
               priority
@@ -157,6 +159,7 @@ export function ProfilePage() {
                 <RarityGlowRing rarity={buddy.data.species.rarity} className="w-20 shrink-0">
                   <Artwork
                     asset={speciesAsset(buddy.data.species, buddy.data.waifu)}
+                    displayWidth={ARTWORK_WIDTH.strip}
                     name={buddy.data.species.name}
                     rarityLabel={rarityStyle(buddy.data.species.rarity).label}
                     aspect="aspect-[3/4]"
