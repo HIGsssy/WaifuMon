@@ -44,7 +44,14 @@ export const encounterRoutes =
             "She's already gone~",
           );
         }
-        return ok(req, toEncounterResource(detail.encounter, detail.species));
+        return ok(
+          req,
+          toEncounterResource(
+            detail.encounter,
+            detail.species,
+            ctx.services.appearance.catalogFor(detail.species),
+          ),
+        );
       },
     );
   };

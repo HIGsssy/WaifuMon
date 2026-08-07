@@ -11,6 +11,7 @@ import { createGuildService } from '../../src/modules/guilds/guildService';
 import { createHuntService } from '../../src/modules/hunt/huntService';
 import { createCaptureService } from '../../src/modules/capture/captureService';
 import { createCareService } from '../../src/modules/care/careService';
+import { createAppearanceService } from '../../src/modules/appearance/appearanceService';
 import { createCollectionService } from '../../src/modules/collection/collectionService';
 import { createPlayerEffectsService } from '../../src/modules/effects/playerEffectsService';
 import { createItemUseService } from '../../src/modules/items/itemUseService';
@@ -57,6 +58,7 @@ export interface App {
   capture: ReturnType<typeof createCaptureService>;
   care: ReturnType<typeof createCareService>;
   collection: ReturnType<typeof createCollectionService>;
+  appearance: ReturnType<typeof createAppearanceService>;
   progression: ReturnType<typeof createProgressionService>;
   quests: ReturnType<typeof createQuestService>;
   session: ReturnType<typeof createSessionService>;
@@ -121,10 +123,14 @@ export async function bootstrapApp(
     timezone,
     logger: t.logger,
   });
+  // Wired exactly as production does, so integration tests exercise the real
+  // unlock/acknowledge path rather than a stub.
+  const appearance = createAppearanceService({ db: t.db, getContent: () => content });
   const collection = createCollectionService({
     db: t.db,
     currency,
     quests,
+    appearance,
     duplicateConfig: content.tables.duplicate,
     waifuConfig: content.tables.waifuProgression,
     totalSpeciesCount: content.species.filter((s) => s.enabled).length,
@@ -135,6 +141,7 @@ export async function bootstrapApp(
     collection,
     progression,
     quests,
+    appearance,
     careConfig: content.tables.energy.careMode,
   });
   const effects = createPlayerEffectsService(t.db);
@@ -183,11 +190,13 @@ export async function bootstrapApp(
       collection,
       quests,
       effects,
+      appearance,
       logger: t.logger,
       ...(opts.captureRng ? { rng: opts.captureRng } : {}),
     }),
     care,
     collection,
+    appearance,
     quests,
     effects,
     itemUse: createItemUseService({

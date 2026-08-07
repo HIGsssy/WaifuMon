@@ -71,6 +71,22 @@ export const handlers = [
 
   http.get('/api/v1/players/:playerId/collection/buddy', () => data(fixtures.buddyEntry)),
 
+  // ── Appearances ───────────────────────────────────────────────────────────
+  http.get(
+    '/api/v1/players/:playerId/collection/owned/:waifuId/appearances',
+    ({ params }) => {
+      const gallery = fixtures.appearanceGalleries[Number(params.waifuId)];
+      return gallery
+        ? data(gallery)
+        : apiError(404, 'WAIFU_NOT_OWNED', 'You do not own that Waifumon.');
+    },
+  ),
+
+  // There is deliberately no PUT handler for `…/appearance`: the Portal is
+  // read-only and never calls it. A handler here would mock a request the
+  // client refuses to send, which is worse than no coverage — it would suggest
+  // the path exists.
+
   // ── Care, inventory, shop ─────────────────────────────────────────────────
   http.get('/api/v1/players/:playerId/care', () => data(fixtures.careState)),
   http.get('/api/v1/players/:playerId/inventory', () => data(fixtures.inventoryEntries)),

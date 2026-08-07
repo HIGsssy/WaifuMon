@@ -84,8 +84,35 @@ const WAIFU = {
   isFavorite: false,
   variant: 'standard',
   cosmetics: [],
+  seenAppearances: ['standard'],
   caughtAt: new Date('2026-02-02T00:00:00.000Z'),
   releasedAt: null,
+};
+
+/**
+ * The appearance service is a pure content lookup on these routes — no DB, no
+ * I/O — so a small hand-rolled double keeps the route contract test focused on
+ * shapes rather than on wiring a real content snapshot.
+ */
+const STANDARD_APPEARANCE = {
+  id: 'standard',
+  name: 'Standard',
+  description: null,
+  flavorText: null,
+  cosmeticRarity: 'standard' as const,
+  introducedVersion: null,
+  contentRating: 'suggestive' as const,
+  sortOrder: 0,
+  tags: [],
+  assetId: { kind: 'waifumon' as const, slug: 'alley_catgirl', variant: 'standard' },
+  unlock: { type: 'owned' as const },
+  unlockLabel: 'Owned',
+};
+
+const appearanceStub = {
+  catalogFor: () => [STANDARD_APPEARANCE],
+  currentAppearance: () => STANDARD_APPEARANCE,
+  speciesContent: () => null,
 };
 
 const PROGRESS = { level: 2, xp: 40, xpIntoLevel: 10, xpToNext: 30, atMaxLevel: false };
@@ -93,6 +120,7 @@ const PROGRESS = { level: 2, xp: 40, xpIntoLevel: 10, xpToNext: 30, atMaxLevel: 
 /** Services every player-scoped route needs before its own double matters. */
 const basePlayerStubs = {
   players: { getById: async () => PLAYER },
+  appearance: appearanceStub,
 };
 
 let app: ZodFastify;
@@ -761,26 +789,44 @@ describe('OpenAPI registration', () => {
     }
   });
 
-  it('registers no mutation verbs anywhere in v1', async () => {
+  /**
+   * v1 is read-only for **gameplay**. The single documented exception is
+   * choosing a Waifumon's appearance, which is cosmetic by construction: the
+   * handler writes `player_waifus.variant` and nothing else (proved by the
+   * row-diff test in the collection integration suite).
+   *
+   * Pinned as an explicit allowlist rather than relaxed to "any mutation",
+   * so adding a second write verb is a deliberate, reviewable edit here.
+   */
+  it('registers no mutation verbs in v1 beyond the cosmetic appearance write', async () => {
     const spec = (await app.inject({ method: 'GET', url: '/api/v1/openapi.json' })).json();
-    const verbs = new Set<string>();
-    for (const item of Object.values(spec.paths) as Array<Record<string, unknown>>) {
-      for (const verb of Object.keys(item)) verbs.add(verb);
+    const mutations: string[] = [];
+    for (const [path, item] of Object.entries(spec.paths) as Array<
+      [string, Record<string, unknown>]
+    >) {
+      for (const verb of Object.keys(item)) {
+        if (verb !== 'get') mutations.push(`${verb.toUpperCase()} ${path}`);
+      }
     }
-    expect([...verbs].sort()).toEqual(['get']);
+    expect(mutations.sort()).toEqual([
+      'PUT /api/v1/players/{playerId}/collection/owned/{waifuId}/appearance',
+    ]);
   });
 
   it('gives every operation a summary, a tag and the shared error responses', async () => {
     const spec = (await app.inject({ method: 'GET', url: '/api/v1/openapi.json' })).json();
-    for (const [path, item] of Object.entries(spec.paths) as Array<[string, { get: any }]>) {
-      const op = item.get;
-      expect(op.summary, path).toBeTruthy();
-      expect(op.tags?.length, path).toBeGreaterThan(0);
-      // /health and /ready are unauthenticated ops targets outside the
-      // versioned contract — they cannot 401 and take no input to reject.
-      if (!path.startsWith('/api/v1/')) continue;
-      for (const status of ['400', '401', '500']) {
-        expect(Object.keys(op.responses), `${path} ${status}`).toContain(status);
+    for (const [path, item] of Object.entries(spec.paths) as Array<
+      [string, Record<string, { summary?: string; tags?: string[]; responses: object }>]
+    >) {
+      for (const [verb, op] of Object.entries(item)) {
+        expect(op.summary, `${verb} ${path}`).toBeTruthy();
+        expect(op.tags?.length, `${verb} ${path}`).toBeGreaterThan(0);
+        // /health and /ready are unauthenticated ops targets outside the
+        // versioned contract — they cannot 401 and take no input to reject.
+        if (!path.startsWith('/api/v1/')) continue;
+        for (const status of ['400', '401', '500']) {
+          expect(Object.keys(op.responses), `${verb} ${path} ${status}`).toContain(status);
+        }
       }
     }
   });

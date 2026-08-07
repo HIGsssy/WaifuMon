@@ -24,6 +24,7 @@ import { createShopService } from './modules/shop/shopService';
 import { createHuntService } from './modules/hunt/huntService';
 import { createCaptureService } from './modules/capture/captureService';
 import { createCareService } from './modules/care/careService';
+import { createAppearanceService } from './modules/appearance/appearanceService';
 import { createCollectionService } from './modules/collection/collectionService';
 import { createPlayerEffectsService } from './modules/effects/playerEffectsService';
 import { createItemUseService } from './modules/items/itemUseService';
@@ -83,10 +84,17 @@ async function main(): Promise<void> {
     timezone: config.dailyTimezone,
     logger,
   });
+  // Cosmetic appearances. Reads the content snapshot through a getter so an
+  // admin-panel "Save + Reload" makes newly-authored artwork available (and
+  // retroactively unlockable) without a restart — `ctx.content` is reassigned
+  // below, and this closure follows it.
+  let contentSnapshot = content;
+  const appearance = createAppearanceService({ db, getContent: () => contentSnapshot });
   const collection = createCollectionService({
     db,
     currency,
     quests,
+    appearance,
     duplicateConfig: content.tables.duplicate,
     waifuConfig: content.tables.waifuProgression,
     totalSpeciesCount: content.species.filter((s) => s.enabled).length,
@@ -97,6 +105,7 @@ async function main(): Promise<void> {
     collection,
     progression,
     quests,
+    appearance,
     careConfig: content.tables.energy.careMode,
   });
   const effects = createPlayerEffectsService(db);
@@ -157,10 +166,12 @@ async function main(): Promise<void> {
         collection,
         quests,
         effects,
+        appearance,
         logger,
       }),
       care,
       collection,
+      appearance,
       quests,
       effects,
       itemUse: createItemUseService({
@@ -241,6 +252,9 @@ async function main(): Promise<void> {
       reload: async () => {
         const result = await reloadContent();
         ctx.content = result.content;
+        // Keep the appearance service's view in step: newly-authored artwork
+        // must be selectable (and retroactively unlockable) immediately.
+        contentSnapshot = result.content;
         return result;
       },
     }),

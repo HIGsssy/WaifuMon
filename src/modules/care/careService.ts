@@ -37,6 +37,7 @@ import { PlayerNotFoundError, WaifuAlreadyReleasedError, WaifuNotOwnedError } fr
 import type { CareModeConfig } from '../content/schemas';
 import type { CollectionService } from '../collection/collectionService';
 import type { CurrencyService } from '../currency/currencyService';
+import type { AppearanceService, AppearanceUnlockRef } from '../appearance/appearanceService';
 import type { ProgressionService } from '../progression/progressionService';
 import type { QuestService } from '../quests/questService';
 
@@ -60,6 +61,12 @@ export interface CareTickSummary {
   fromLevel: number | null;
   toLevel: number | null;
   leveledUp: boolean;
+  /**
+   * Cosmetic appearances the tick's XP unlocked. Presentation only — the
+   * Trainer Profile and the toast read it; no Care Mode behaviour depends on
+   * it. Always empty when the appearance service is not wired.
+   */
+  newAppearances: AppearanceUnlockRef[];
   /** New value of `care_mode_last_tick_at` after this call. */
   lastTickAt: Date | null;
   /** Estimated timestamp of the next tick, when still active. */
@@ -150,6 +157,12 @@ export interface CareServiceDeps {
   progression: ProgressionService;
   quests: QuestService;
   careConfig: CareModeConfig;
+  /**
+   * Cosmetic appearance bookkeeping. Optional and strictly downstream: a tick
+   * that raises the target's level asks it whether new artwork became
+   * available, and never reads anything back that changes the tick.
+   */
+  appearance?: AppearanceService | undefined;
 }
 
 const INACTIVE_SUMMARY: CareTickSummary = {
@@ -163,12 +176,14 @@ const INACTIVE_SUMMARY: CareTickSummary = {
   fromLevel: null,
   toLevel: null,
   leveledUp: false,
+  newAppearances: [],
   lastTickAt: null,
   nextTickAt: null,
 };
 
 export function createCareService(deps: CareServiceDeps): CareService {
   const { db, currency, collection, progression, quests, careConfig } = deps;
+  const appearance = deps.appearance;
 
   function intervalMs(): number {
     return Math.max(1, careConfig.intervalMinutes) * 60 * 1000;
@@ -269,6 +284,7 @@ export function createCareService(deps: CareServiceDeps): CareService {
         fromLevel: target.waifu.level,
         toLevel: target.waifu.level,
         leveledUp: false,
+        newAppearances: [],
         lastTickAt: lastTick,
         nextTickAt,
       };
@@ -336,6 +352,14 @@ export function createCareService(deps: CareServiceDeps): CareService {
       : target;
     const nextTickAt = alsoExit ? null : new Date(newLastTick.getTime() + interval);
 
+    // Cosmetic only, and last: the tick's gameplay writes are already done, so
+    // an appearance-catalog mistake can surface as a missing toast but never as
+    // a lost tick.
+    const newAppearances =
+      appearance && updatedWaifu && newLevel > fromLevel
+        ? await appearance.syncUnlocks(tx, updatedWaifu, target.species, 'level')
+        : [];
+
     return {
       active: !alsoExit,
       stopped: alsoExit,
@@ -347,6 +371,7 @@ export function createCareService(deps: CareServiceDeps): CareService {
       fromLevel,
       toLevel: newLevel,
       leveledUp: newLevel > fromLevel,
+      newAppearances,
       lastTickAt: alsoExit ? null : newLastTick,
       nextTickAt,
     };
@@ -492,6 +517,7 @@ export function createCareService(deps: CareServiceDeps): CareService {
             fromLevel: preflight.waifu.level,
             toLevel: preflight.waifu.level,
             leveledUp: false,
+            newAppearances: [],
             lastTickAt: now,
             nextTickAt: new Date(now.getTime() + interval),
           };
@@ -518,6 +544,7 @@ export function createCareService(deps: CareServiceDeps): CareService {
           fromLevel: preflight.waifu.level,
           toLevel: preflight.waifu.level,
           leveledUp: false,
+          newAppearances: [],
           lastTickAt: now,
           nextTickAt: new Date(now.getTime() + interval),
         };
@@ -564,6 +591,7 @@ export function createCareService(deps: CareServiceDeps): CareService {
             fromLevel: preflight.waifu.level,
             toLevel: preflight.waifu.level,
             leveledUp: false,
+            newAppearances: [],
             lastTickAt: now,
             nextTickAt: new Date(now.getTime() + interval),
           };
@@ -587,6 +615,7 @@ export function createCareService(deps: CareServiceDeps): CareService {
           fromLevel: preflight.waifu.level,
           toLevel: preflight.waifu.level,
           leveledUp: false,
+          newAppearances: [],
           lastTickAt: now,
           nextTickAt: new Date(now.getTime() + interval),
         };

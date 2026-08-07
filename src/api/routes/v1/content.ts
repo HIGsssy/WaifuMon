@@ -21,6 +21,7 @@ import { ApiSpeciesNotFoundError, ApiTableNotFoundError } from '../../errors';
 // The service layer's ItemNotFoundError already carries a client-safe message,
 // so unlike PLAYER_NOT_FOUND it needs no API-side variant.
 import { ItemNotFoundError } from '../../../shared/errors';
+import { toContentSpeciesResource } from '../../resources';
 import { dataSchema, ok } from '../../plugins/responseEnvelope';
 import type { FastifyPluginAsyncZod } from '../../plugins/typeProvider';
 import { commonErrorResponses, notFoundResponse, slugParam } from '../../schemas/common';
@@ -48,7 +49,10 @@ export const contentRoutes =
           description:
             'The authored species catalog, straight from the in-memory snapshot. Disabled species ' +
             'are included unless filtered out — an operator tool needs to see them. Not paginated: ' +
-            'the catalog is small and static.',
+            'the catalog is small and static.\n\n' +
+            'Each species carries its `appearances` catalog — the authoritative source for the ' +
+            'encyclopedia and for previewing artwork a player has not earned yet. Per-copy state ' +
+            '(`isUnlocked`, `isSelected`) lives on the collection appearance endpoint instead.',
           querystring: speciesQuery,
           response: {
             200: dataSchema(z.array(contentSpeciesSchema)),
@@ -58,13 +62,19 @@ export const contentRoutes =
       },
       async (req) => {
         const { rarity, archetype, enabled } = req.query;
+        const { appearance } = ctx.services;
         const species = ctx.getContent().species.filter((s) => {
           if (rarity && s.rarity !== rarity) return false;
           if (archetype && s.archetype !== archetype) return false;
           if (enabled !== undefined && s.enabled !== (enabled === 'true')) return false;
           return true;
         });
-        return ok(req, species);
+        // Appearance resolution is a pure in-memory transform of the same
+        // snapshot — still no query, still no I/O.
+        return ok(
+          req,
+          species.map((s) => toContentSpeciesResource(s, appearance.catalogFor(s))),
+        );
       },
     );
 
@@ -85,7 +95,10 @@ export const contentRoutes =
       async (req) => {
         const found = ctx.getContent().species.find((s) => s.slug === req.params.slug);
         if (!found) throw new ApiSpeciesNotFoundError(req.params.slug);
-        return ok(req, found);
+        return ok(
+          req,
+          toContentSpeciesResource(found, ctx.services.appearance.catalogFor(found)),
+        );
       },
     );
 

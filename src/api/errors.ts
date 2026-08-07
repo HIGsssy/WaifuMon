@@ -99,6 +99,12 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   NOT_FOUND: 404,
   VALIDATION_ERROR: 400,
   INTERNAL_ERROR: 500,
+  /**
+   * An appearance id the species does not have — a stale gallery or a
+   * hand-typed value, i.e. a malformed request rather than a missing resource.
+   * 400 keeps it distinct from `WAIFU_NOT_OWNED`, which is a genuine 404.
+   */
+  APPEARANCE_NOT_FOUND: 400,
 
   // --- Infrastructure -----------------------------------------------------
   CONFIG_INVALID: 500,
@@ -127,6 +133,8 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   WAIFU_IS_FAVORITE: 409,
   WAIFU_IS_BUDDY: 409,
   CARE_MODE_DISABLED: 409,
+  /** The appearance exists but this copy has not earned it — a state conflict. */
+  APPEARANCE_LOCKED: 409,
 
   // --- Valid shape, business rule refused ---------------------------------
   INSUFFICIENT_FUNDS: 422,

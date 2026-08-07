@@ -126,7 +126,16 @@ export function formatActivityLine(event: GameEvent): ActivityLine | null {
       return line(`🌌 ${event.payload.buddyName} awakened for ${player}.`);
     case 'COLLECTION_COMPLETED':
       return line(`🌟 ${player} completed the collection.`);
+    // Cosmetic, and narrated as such — earning a new look is a milestone, so
+    // the requirement that was met is named. This is the log-level renderer;
+    // the message-level one is `appearanceUnlockedDescriptor` in the bot.
+    case 'WAIFU_APPEARANCE_UNLOCKED':
+      return line(
+        `🎀 ${event.payload.waifuName} unlocked a new look for ${player} — ` +
+          `**${event.payload.appearanceName}** (${event.payload.unlockLabel}).`,
+      );
     // Internal scope — filtered before we get here, listed for exhaustiveness.
+    case 'WAIFU_APPEARANCE_CHANGED':
     case 'CARE_BUDDY_CHANGED':
     case 'CARE_TICK_APPLIED':
     case 'ENERGY_REGENERATED':

@@ -7,6 +7,8 @@
  * typed rather than loose objects.
  */
 import type {
+  Appearance,
+  AppearanceCatalogEntry,
   CareState,
   ContentItem,
   ContentSpecies,
@@ -48,6 +50,45 @@ export const currencies: CurrencyBalances = {
 
 export const dexStats: DexStats = { owned: 23, distinctSpecies: 18, totalSpecies: 58 };
 
+/**
+ * Every species has at least the implicit `standard` / `owned` entry — that is
+ * what makes a species authored before the appearance system still render.
+ */
+export function standardAppearance(slug: string): AppearanceCatalogEntry {
+  return {
+    id: 'standard',
+    name: 'Standard',
+    description: null,
+    flavorText: null,
+    cosmeticRarity: 'standard',
+    introducedVersion: null,
+    assetId: { kind: 'waifumon', slug, variant: 'standard' },
+    unlock: { type: 'owned' },
+    unlockLabel: 'Owned',
+  };
+}
+
+/** A level-gated entry, for exercising the locked half of the gallery. */
+export function levelAppearance(
+  slug: string,
+  id: string,
+  atLevel: number,
+  overrides: Partial<AppearanceCatalogEntry> = {},
+): AppearanceCatalogEntry {
+  return {
+    id,
+    name: 'Midnight Bloom',
+    description: 'A darker cut of her usual silhouette.',
+    flavorText: 'Prepared for the annual shrine celebration.',
+    cosmeticRarity: 'seasonal',
+    introducedVersion: 'v1.3',
+    assetId: { kind: 'waifumon', slug, variant: id },
+    unlock: { type: 'level', atLevel },
+    unlockLabel: `Reach Level ${atLevel}`,
+    ...overrides,
+  };
+}
+
 function makeSpecies(overrides: Partial<Species> & Pick<Species, 'id' | 'slug' | 'name'>): Species {
   return {
     rarity: 'N',
@@ -57,10 +98,10 @@ function makeSpecies(overrides: Partial<Species> & Pick<Species, 'id' | 'slug' |
     description: 'A placeholder description used by the mocked API.',
     tags: ['placeholder'],
     baseCaptureRate: null,
-    imagePath: `waifumon/${overrides.slug}/standard.png`,
     enabled: true,
     eventKey: null,
     perSpeciesWeight: 1,
+    appearances: [standardAppearance(overrides.slug)],
     ...overrides,
   };
 }
@@ -83,8 +124,48 @@ export const speciesRows: Species[] = [
     archetype: 'demon',
     affinity: 'primal',
     contentRating: 'explicit',
+    // Two-entry catalog: the owned default plus a level gate the fixture copy
+    // has *not* reached, so the gallery's locked half is exercised by default.
+    appearances: [
+      standardAppearance('void_empress'),
+      levelAppearance('void_empress', 'level_40', 40),
+    ],
   }),
 ];
+
+/** Catalog metadata + per-copy state, as the gallery endpoint returns it. */
+function withState(
+  entry: AppearanceCatalogEntry,
+  state: { isUnlocked: boolean; isSelected: boolean },
+): Appearance {
+  return { ...entry, ...state };
+}
+
+/** Keyed by owned-waifu id, mirroring `GET …/appearances`. */
+export const appearanceGalleries: Record<number, { appearances: Appearance[]; selected: string }> = {
+  101: {
+    selected: 'standard',
+    appearances: [
+      withState(standardAppearance('void_empress'), { isUnlocked: true, isSelected: true }),
+      withState(levelAppearance('void_empress', 'level_40', 40), {
+        isUnlocked: false,
+        isSelected: false,
+      }),
+    ],
+  },
+  102: {
+    selected: 'standard',
+    appearances: [
+      withState(standardAppearance('neon_kitsune'), { isUnlocked: true, isSelected: true }),
+    ],
+  },
+  103: {
+    selected: 'standard',
+    appearances: [
+      withState(standardAppearance('neko_barista'), { isUnlocked: true, isSelected: true }),
+    ],
+  },
+};
 
 /** The content snapshot is the same fields minus the internal id. */
 export const contentSpecies: ContentSpecies[] = speciesRows.map(({ id: _id, ...rest }) => rest);
@@ -102,6 +183,10 @@ export const ownedEntries: OwnedEntry[] = [
       isFavorite: true,
       variant: 'standard',
       cosmetics: [],
+      selectedAppearance: withState(standardAppearance('void_empress'), {
+        isUnlocked: true,
+        isSelected: true,
+      }),
       caughtAt: '2026-07-02T18:30:00.000Z',
       releasedAt: null,
     },
@@ -120,6 +205,10 @@ export const ownedEntries: OwnedEntry[] = [
       isFavorite: false,
       variant: 'standard',
       cosmetics: [],
+      selectedAppearance: withState(standardAppearance('neon_kitsune'), {
+        isUnlocked: true,
+        isSelected: true,
+      }),
       caughtAt: '2026-07-20T08:05:00.000Z',
       releasedAt: null,
     },
@@ -138,6 +227,10 @@ export const ownedEntries: OwnedEntry[] = [
       isFavorite: false,
       variant: 'standard',
       cosmetics: [],
+      selectedAppearance: withState(standardAppearance('neko_barista'), {
+        isUnlocked: true,
+        isSelected: true,
+      }),
       caughtAt: '2026-08-01T21:40:00.000Z',
       releasedAt: null,
     },

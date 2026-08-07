@@ -73,6 +73,12 @@ export interface TrainerDashboard {
 
 export interface TrainerProfileInput {
   playerName: string;
+  /**
+   * Display name of the look the buddy is currently wearing. Presentation
+   * only, and omitted when the copy wears the species default — a dashboard
+   * line that always said "Standard" would be noise.
+   */
+  buddyAppearanceName?: string | null;
   player: PlayerRow;
   currencies: Pick<PlayerCurrenciesRow, 'huntEnergy' | 'waifubux' | 'essence'>;
   careState: CareState;
@@ -134,6 +140,7 @@ export function buildTrainerProfileView(
       `${target.species.rarity} · Lv ${target.waifu.level}`,
       `${affinityLabel(target.species.affinity)} · 💗 ${target.waifu.affection} affection`,
     ];
+    if (input.buddyAppearanceName) buddyLines.push(`🎀 ${input.buddyAppearanceName}`);
     embed.addFields({ name: '⭐ Buddy', value: buddyLines.join('\n'), inline: true });
   }
 
@@ -194,7 +201,10 @@ export interface TrainerProfileService {
 export type ResolveProfileChannelFn = (channelId: string) => Promise<ProfileChannel | null>;
 
 export interface TrainerProfileDeps {
-  services: Pick<AppServices, 'session' | 'players' | 'care' | 'collection' | 'progression'>;
+  services: Pick<
+    AppServices,
+    'session' | 'players' | 'care' | 'collection' | 'progression' | 'appearance'
+  >;
   resolveChannel: ResolveProfileChannelFn;
   logger: Logger;
 }
@@ -207,13 +217,22 @@ const CREATE_KINDS = new Set<GameEvent['kind']>([
   'TRAINER_PROFILE_REFRESH_REQUESTED',
 ]);
 
-/** Events that refresh the profile's contents without moving it. */
+/**
+ * Events that refresh the profile's contents without moving it.
+ *
+ * The two appearance kinds are here because the dashboard shows the buddy —
+ * unlocking or switching a look changes what that panel should render, and an
+ * in-place edit is the cheapest correct response. Neither event is allowed to
+ * create or remove a profile: cosmetics never change whether Care Mode is on.
+ */
 const EDIT_KINDS = new Set<GameEvent['kind']>([
   'CARE_TICK_APPLIED',
   'BUDDY_LEVEL_UP',
   'AFFECTION_MILESTONE',
   'PLAYER_LEVEL_UP',
   'COLLECTION_COMPLETED',
+  'WAIFU_APPEARANCE_UNLOCKED',
+  'WAIFU_APPEARANCE_CHANGED',
 ]);
 
 /** Events that take the profile down. */
@@ -233,12 +252,20 @@ export function createTrainerProfileService(
       services.care.getState(event.playerId),
       services.collection.getDexStats(event.playerId),
     ]);
+    // Pure content lookup, no query. Suppressed for the default look so the
+    // line only appears when the player actually chose something.
+    const target = careState.target;
+    const worn = target
+      ? services.appearance.currentAppearance(target.species, target.waifu.variant)
+      : null;
     const view = buildTrainerProfileView({
       playerName: event.playerName,
       player,
       currencies,
       careState,
       collectionProgress,
+      buddyAppearanceName:
+        worn && worn.unlock.type !== 'owned' ? worn.name : null,
       maxEnergy: services.progression.computeMaxEnergy(player.level),
       prestigeTitle: services.progression.getPrestigeTitle(player.level),
     });

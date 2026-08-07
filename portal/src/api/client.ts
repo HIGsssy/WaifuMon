@@ -8,6 +8,15 @@
  *  - **Read-only enforcement.** Any non-GET request is rejected before it
  *    leaves the process. v1 is browse-only (§4) and this is what makes success
  *    criterion §24.6 mechanically true rather than a convention.
+ *
+ *    This is deliberately *binary* — there is no allowlist and no per-call
+ *    opt-out. The value of the rule comes from needing no judgment to verify:
+ *    "no non-GET requests" is greppable and unarguable, where "none except
+ *    these" would need a ruling per entry. Cosmetic-looking mutations
+ *    (appearance selection, favourite, nickname) are exactly the cases that
+ *    would erode it one reasonable-sounding step at a time, so they live in
+ *    Discord until the authenticated-Portal milestone gives writes a real
+ *    identity to happen under.
  *  - Error normalisation: the API's `{ error: { code, message }, requestId }`
  *    envelope becomes a `PortalApiError`, and network/timeout failures become
  *    one too so callers only ever handle a single error type.

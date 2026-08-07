@@ -24,9 +24,15 @@ import type {
   GuildRow,
   ItemRow,
   PlayerRow,
+  PlayerWaifuRow,
   Rarity,
   SpeciesRow,
 } from '../db/schema';
+import type {
+  AppearanceSpecies,
+  ResolvedAppearance,
+} from '../modules/appearance/appearanceContent';
+import type { SpeciesContent } from '../modules/content/schemas';
 import type { ENCOUNTER_STATES } from './schemas/encounter';
 import type { ITEM_CATEGORIES } from './schemas/content';
 import type { PlayerIdentity } from './identity';
@@ -34,12 +40,95 @@ import type { PlayerIdentity } from './identity';
 type EncounterState = (typeof ENCOUNTER_STATES)[number];
 type ItemCategory = (typeof ITEM_CATEGORIES)[number];
 
-export function toSpeciesResource(row: SpeciesRow) {
+/**
+ * Authored catalog metadata for one appearance — no per-player state.
+ *
+ * `assetId` is the *only* asset reference: no path, URL, or extension crosses
+ * this boundary. `imagePath` exists on the row and is deliberately dropped —
+ * it is the content loader's private pre-flight probe, not an addressable
+ * location, and surfacing it would couple every client to one storage layout.
+ */
+export function toAppearanceCatalogResource(appearance: ResolvedAppearance) {
   return {
-    ...row,
+    id: appearance.id,
+    name: appearance.name,
+    description: appearance.description,
+    flavorText: appearance.flavorText,
+    cosmeticRarity: appearance.cosmeticRarity,
+    introducedVersion: appearance.introducedVersion,
+    assetId: appearance.assetId,
+    unlock: appearance.unlock,
+    unlockLabel: appearance.unlockLabel,
+  };
+}
+
+/** Catalog metadata plus one owned copy's state. */
+export function toAppearanceResource(
+  appearance: ResolvedAppearance,
+  state: { isUnlocked: boolean; isSelected: boolean },
+) {
+  return { ...toAppearanceCatalogResource(appearance), ...state };
+}
+
+/**
+ * A seeded species row.
+ *
+ * `appearances` is threaded in rather than read off the row because the
+ * catalog is *content*, not database state — the row carries only what the
+ * seeder mirrors. Callers pass the resolved catalog (via
+ * `appearanceService.catalogFor`) so a species resource is complete from one
+ * call. Omitting it is allowed for the handful of embeds where the catalog is
+ * genuinely irrelevant, and yields an empty array rather than a missing field.
+ */
+export function toSpeciesResource(
+  row: SpeciesRow,
+  appearances: readonly ResolvedAppearance[] = [],
+) {
+  const { imagePath: _imagePath, ...rest } = row;
+  return {
+    ...rest,
     rarity: row.rarity as Rarity,
     affinity: row.affinity as Affinity,
     contentRating: row.contentRating as ContentRating,
+    appearances: appearances.map(toAppearanceCatalogResource),
+  };
+}
+
+/** The authored content snapshot's species, same treatment as the row. */
+export function toContentSpeciesResource(
+  species: SpeciesContent,
+  appearances: readonly ResolvedAppearance[],
+) {
+  const { imagePath: _imagePath, appearances: _authored, ...rest } = species;
+  return { ...rest, appearances: appearances.map(toAppearanceCatalogResource) };
+}
+
+/**
+ * An owned copy with its current artwork embedded.
+ *
+ * `selectedAppearance` is resolved from `variant` against the species catalog,
+ * falling back to the default when the stored id names artwork that has since
+ * been removed — a copy must always render.
+ */
+export function toOwnedWaifuResource(
+  waifu: PlayerWaifuRow,
+  species: SpeciesRow | AppearanceSpecies,
+  appearance: {
+    currentAppearance(
+      species: SpeciesRow | AppearanceSpecies,
+      variant: string | null | undefined,
+    ): ResolvedAppearance;
+  },
+) {
+  const current = appearance.currentAppearance(species, waifu.variant);
+  return {
+    ...waifu,
+    // Unlocked by construction: it is what she is wearing. `seenAppearances`
+    // is notification bookkeeping and is dropped by the schema, not here.
+    selectedAppearance: toAppearanceResource(current, {
+      isUnlocked: true,
+      isSelected: true,
+    }),
   };
 }
 
@@ -51,11 +140,15 @@ export function toItemResource(row: ItemRow) {
   };
 }
 
-export function toEncounterResource(encounter: EncounterRow, species: SpeciesRow) {
+export function toEncounterResource(
+  encounter: EncounterRow,
+  species: SpeciesRow,
+  appearances: readonly ResolvedAppearance[] = [],
+) {
   return {
     ...encounter,
     state: encounter.state as EncounterState,
-    species: toSpeciesResource(species),
+    species: toSpeciesResource(species, appearances),
   };
 }
 

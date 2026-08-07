@@ -13,12 +13,16 @@
 import { portalEnv } from '@/lib/env';
 import { API_SUPPLIED_URL_ID, createApiSuppliedUrlProvider } from './providers/apiSuppliedUrl';
 import { createLocalDevAssetsProvider, LOCAL_DEV_ASSETS_ID } from './providers/localDevAssets';
+import { createPlatformCdnProvider, PLATFORM_CDN_ID } from './providers/platformCdn';
 import { createSilhouetteProvider, SILHOUETTE_ID } from './providers/silhouette';
 import { assetKey, type AssetId, type ImageProvider, type ResolvedImage } from './types';
 
 const FACTORIES: Record<string, () => ImageProvider> = {
   [API_SUPPLIED_URL_ID]: () => createApiSuppliedUrlProvider(),
   [LOCAL_DEV_ASSETS_ID]: () => createLocalDevAssetsProvider(),
+  // Present but not in DEFAULT_ORDER: opting in is a config change, and the
+  // provider declines everything until VITE_ASSET_CDN_URL is set anyway.
+  [PLATFORM_CDN_ID]: () => createPlatformCdnProvider({ baseUrl: portalEnv.assetCdnUrl }),
   [SILHOUETTE_ID]: () => createSilhouetteProvider(),
 };
 

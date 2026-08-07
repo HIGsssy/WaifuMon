@@ -5,7 +5,7 @@
  * call these instead of writing `{ kind: 'species', slug: … }` inline, so the
  * mapping stays in one file when a new asset kind or variant convention lands.
  */
-import type { ContentSpecies, OwnedWaifu, Species } from '@/api/types';
+import type { AppearanceCatalogEntry, AssetIdResource, ContentSpecies, OwnedWaifu, Species } from '@/api/types';
 import type { AssetId } from './types';
 
 /**
@@ -21,6 +21,21 @@ export function speciesAsset(
     slug: species.slug,
     ...(waifu?.variant ? { variant: waifu.variant } : {}),
   };
+}
+
+/**
+ * Art named by the Platform API's own `assetId`.
+ *
+ * The API's shape and the Portal's `AssetId` are structurally identical by
+ * design, so this is a pass-through rather than a translation — it exists so
+ * call sites read `appearanceAsset(appearance)` instead of spreading a
+ * response field, and so a future divergence has exactly one place to land.
+ */
+export function appearanceAsset(
+  appearance: Pick<AppearanceCatalogEntry, 'assetId'> | { assetId: AssetIdResource },
+): AssetId {
+  const { kind, slug, variant } = appearance.assetId;
+  return { kind, slug, variant };
 }
 
 /** Art for an item. No provider serves these yet — see docs/portal.md. */

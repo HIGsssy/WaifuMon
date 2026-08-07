@@ -12,13 +12,14 @@ import { keepPreviousData, useQuery, type UseQueryResult } from '@tanstack/react
 import { PLAYER_POLICY } from '../cachePolicy';
 import {
   COLLECTION_PAGE_SIZE,
+  getAppearances,
   getBuddy,
   getCollection,
   getCollectionEntry,
   getCollectionStats,
 } from '../collection';
 import { queryKeys } from '../queryKeys';
-import type { DexStats, OwnedEntry, Page, Rarity } from '../types';
+import type { AppearanceGallery, DexStats, OwnedEntry, Page, Rarity } from '../types';
 
 export interface UseCollectionArgs {
   playerId: number;
@@ -62,6 +63,25 @@ export function useBuddy(playerId: number): UseQueryResult<OwnedEntry | null> {
   return useQuery({
     queryKey: queryKeys.buddy(playerId),
     queryFn: ({ signal }) => getBuddy(playerId, signal),
+    ...PLAYER_POLICY,
+  });
+}
+
+/**
+ * One copy's appearance gallery.
+ *
+ * `isUnlocked` is **always** the server's answer — the Portal never derives it.
+ * That is what keeps Discord and the Portal from ever disagreeing about what a
+ * player has earned, and it is why new unlock sources need no Portal change.
+ */
+export function useWaifuAppearances(
+  playerId: number,
+  waifuId: number,
+): UseQueryResult<AppearanceGallery> {
+  return useQuery({
+    queryKey: queryKeys.waifuAppearances(playerId, waifuId),
+    queryFn: ({ signal }) => getAppearances(playerId, waifuId, signal),
+    enabled: Number.isInteger(waifuId) && waifuId > 0,
     ...PLAYER_POLICY,
   });
 }

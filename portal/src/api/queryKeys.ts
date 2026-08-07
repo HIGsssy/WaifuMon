@@ -29,6 +29,9 @@ export const queryKeys = {
   collectionEntry: (playerId: number, waifuId: number) =>
     ['player', playerId, 'collection', 'entry', waifuId] as const,
   collectionStats: (playerId: number) => ['player', playerId, 'collection', 'stats'] as const,
+  /** One copy's appearance gallery — per-copy, so it carries the waifu id. */
+  waifuAppearances: (playerId: number, waifuId: number) =>
+    ['player', playerId, 'collection', 'appearances', waifuId] as const,
   buddy: (playerId: number) => ['player', playerId, 'collection', 'buddy'] as const,
   /** Every owned page, walked once and cached for the encyclopedia overlay (§8.7). */
   ownedSlugs: (playerId: number) => ['player', playerId, 'collection', 'ownedSlugs'] as const,

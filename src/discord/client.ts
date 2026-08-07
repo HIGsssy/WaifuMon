@@ -27,6 +27,10 @@ import {
 } from './commands/waifumonHunt';
 import {
   handleBuddyAutocomplete,
+  handleAppearanceCommand,
+  handleAppearanceOpen,
+  handleAppearancePick,
+  handleAppearanceSelect,
   handleBuddyCommand,
   handleCollection,
   handleCollectionList,
@@ -98,6 +102,8 @@ export function createDiscordClient(ctx: AppContext): Client {
         handleInspectCommand(ctx, i, prov),
       'wm:buddy': (i: ChatInputCommandInteraction, prov: Provisioned) =>
         handleBuddyCommand(ctx, i, prov),
+      'wm:appearance': (i: ChatInputCommandInteraction, prov: Provisioned) =>
+        handleAppearanceCommand(ctx, i, prov),
       'wm:care': (i: ChatInputCommandInteraction, prov: Provisioned) =>
         handleCareCommand(ctx, i, prov),
       'wm:quests': (i: ChatInputCommandInteraction, prov: Provisioned) =>
@@ -116,6 +122,9 @@ export function createDiscordClient(ctx: AppContext): Client {
         handleInspectAutocomplete(ctx, i, playerId),
       'wm:buddy': (i: AutocompleteInteraction, playerId: number | null) =>
         handleBuddyAutocomplete(ctx, i, playerId),
+      // Same owned-copy search as inspect — one autocomplete, three commands.
+      'wm:appearance': (i: AutocompleteInteraction, playerId: number | null) =>
+        handleInspectAutocomplete(ctx, i, playerId),
       'wm:care': (i: AutocompleteInteraction, playerId: number | null) =>
         handleCareAutocomplete(ctx, i, playerId),
     },
@@ -159,6 +168,13 @@ export function createDiscordClient(ctx: AppContext): Client {
         handleCollectionList(ctx, i, prov),
       'col:pick_id': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleCollectionPickId(ctx, i, prov, args),
+      // Appearance gallery (cosmetic only).
+      'appear:open': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleAppearanceOpen(ctx, i, prov, args),
+      'appear:pick': (i: StringSelectMenuInteraction, prov: Provisioned, args: string[]) =>
+        handleAppearancePick(ctx, i, prov, args),
+      'appear:select': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleAppearanceSelect(ctx, i, prov, args),
       'waifu:fav': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleWaifuFavorite(ctx, i, prov, args),
       'waifu:release': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>

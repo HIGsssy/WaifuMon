@@ -62,6 +62,75 @@ export type ContentRating = 'suggestive' | 'mature' | 'explicit';
 export type ItemCategory = 'capture' | 'material' | 'cosmetic' | 'consumable';
 export type PriceCurrency = 'waifubux' | 'essence';
 
+// ── Appearances (cosmetic progression) ───────────────────────────────────────
+
+/**
+ * Cosmetic rarity — **independent from species rarity**. A Rare species may
+ * wear a Seasonal look; the Portal styles the two differently on purpose.
+ * Descriptive only: it drives nothing.
+ */
+export type CosmeticRarity =
+  | 'standard'
+  | 'common'
+  | 'rare'
+  | 'seasonal'
+  | 'limited'
+  | 'exclusive';
+
+/**
+ * How an appearance is earned. The API publishes reserved future types
+ * (`evolution`, `event`, `achievement`, …) that v1 never emits, so a renderer
+ * written today needs no change when the first of them ships. Prefer
+ * `unlockLabel` for display — the structured form is for filtering and sorting.
+ */
+export interface AppearanceUnlock {
+  type: string;
+  /** Present for `type: "level"`: the per-copy waifu level required. */
+  atLevel?: number;
+}
+
+/** Authored catalog metadata — identical for every player. */
+export interface AppearanceCatalogEntry {
+  id: string;
+  name: string;
+  description: string | null;
+  /** In-world caption, rendered as a quote. */
+  flavorText: string | null;
+  cosmeticRarity: CosmeticRarity;
+  /** Free-form, e.g. "v1.3". Displayed verbatim. */
+  introducedVersion: string | null;
+  assetId: AssetIdResource;
+  unlock: AppearanceUnlock;
+  /**
+   * Always populated by the API. Shown on locked *and* unlocked tiles — the
+   * gallery is a progression journal, not a lock indicator.
+   */
+  unlockLabel: string;
+}
+
+/** Catalog metadata plus one owned copy's state. */
+export interface Appearance extends AppearanceCatalogEntry {
+  isUnlocked: boolean;
+  isSelected: boolean;
+}
+
+export interface AppearanceGallery {
+  appearances: Appearance[];
+  selected: string;
+}
+
+/**
+ * The API's abstract artwork identifier — structurally identical to the
+ * Portal's own `AssetId` (`src/images/types.ts`), so a response field drops
+ * straight into `useImage` with no adapter. It names *what* to render and
+ * never where it lives.
+ */
+export interface AssetIdResource {
+  kind: 'waifumon';
+  slug: string;
+  variant: string;
+}
+
 // ── Content: species ─────────────────────────────────────────────────────────
 
 /** Fields shared by the authored snapshot and the seeded row. */
@@ -76,11 +145,16 @@ export interface SpeciesFields {
   description: string;
   tags: string[];
   baseCaptureRate: number | null;
-  /** Internal asset path. Consumed only by the image resolver (§12). */
-  imagePath: string;
   enabled: boolean;
   eventKey: string | null;
   perSpeciesWeight: number;
+  /**
+   * The species' appearance catalog — the authoritative source for the
+   * encyclopedia and for previewing artwork the player has not earned. Never
+   * empty: a species with no authored catalog carries its implicit `standard`
+   * entry. Per-copy state lives on the collection appearance endpoint.
+   */
+  appearances: AppearanceCatalogEntry[];
 }
 
 /** Authored species from the content snapshot — addressed by slug, no id. */
@@ -205,8 +279,14 @@ export interface OwnedWaifu {
   affection: number;
   nickname: string | null;
   isFavorite: boolean;
+  /**
+   * The selected appearance's id. Cosmetic: it decides which artwork renders
+   * and nothing else. Changed in Discord — the Portal is read-only.
+   */
   variant: string;
   cosmetics: string[];
+  /** The look she is currently wearing, resolved. Never null. */
+  selectedAppearance: Appearance;
   caughtAt: string;
   /** Always null on read endpoints — released copies are filtered out. */
   releasedAt: string | null;

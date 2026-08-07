@@ -23,6 +23,7 @@
  *     public Activity Feed regardless of their visibility.
  */
 import { randomUUID } from 'node:crypto';
+import type { AssetId, CosmeticRarity } from '../content/schemas';
 import type { Rarity } from '../../db/schema';
 import type { Logger } from '../../shared/logger';
 
@@ -77,6 +78,40 @@ export interface GameEventPayloads {
     buddyName: string;
     affection: number;
     stage: string;
+  };
+  /**
+   * A cosmetic appearance became available on one owned copy.
+   *
+   * This is the **shared progression-notification** shape, not an
+   * appearance-specific bus: it carries a display name, an unlock requirement,
+   * a rarity badge and an `assetId`, which is exactly what a future
+   * `EVOLUTION_AVAILABLE`, `ACHIEVEMENT_UNLOCKED`, or `GIFT_AVAILABLE` toast
+   * needs. Adding one of those is a new kind here plus a new case in the
+   * feed's formatter — no new table, no new bus, no new renderer plumbing.
+   *
+   * `assetId` is embedded so the toast, the activity-feed line and any future
+   * Portal notification can render the artwork without a second lookup — and
+   * without ever seeing a path.
+   */
+  WAIFU_APPEARANCE_UNLOCKED: {
+    waifuId: number;
+    /** Nickname when set, species name otherwise. */
+    waifuName: string;
+    speciesSlug: string;
+    appearanceId: string;
+    appearanceName: string;
+    assetId: AssetId;
+    cosmeticRarity: CosmeticRarity;
+    /** The requirement that was met, e.g. "Reach Level 20". */
+    unlockLabel: string;
+  };
+  /** The player pointed an owned copy at a different appearance. Cosmetic. */
+  WAIFU_APPEARANCE_CHANGED: {
+    waifuId: number;
+    waifuName: string;
+    appearanceId: string;
+    appearanceName: string;
+    assetId: AssetId;
   };
   PLAYER_ENTERED_CARE: { waifuId: number; buddyName: string };
   PLAYER_LEFT_CARE: {
@@ -134,6 +169,11 @@ export const EVENT_META: Readonly<Record<GameEventKind, GameEventMeta>> = {
   PLAYER_LEVEL_UP: { visibility: 'major', scope: 'player-visible' },
   BUDDY_LEVEL_UP: { visibility: 'normal', scope: 'player-visible' },
   AFFECTION_MILESTONE: { visibility: 'normal', scope: 'player-visible' },
+  // Worth narrating: earning new artwork is a visible milestone. Merely
+  // *changing* outfits is not — that is a wardrobe click, so it is internal
+  // and only ever refreshes surfaces that already show the copy.
+  WAIFU_APPEARANCE_UNLOCKED: { visibility: 'normal', scope: 'player-visible' },
+  WAIFU_APPEARANCE_CHANGED: { visibility: 'minor', scope: 'internal' },
   PLAYER_ENTERED_CARE: { visibility: 'major', scope: 'player-visible' },
   PLAYER_LEFT_CARE: { visibility: 'normal', scope: 'player-visible' },
   AWAKENING: { visibility: 'major', scope: 'player-visible' },

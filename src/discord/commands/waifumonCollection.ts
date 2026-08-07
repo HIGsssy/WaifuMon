@@ -23,9 +23,17 @@ import {
   type StringSelectMenuInteraction,
 } from 'discord.js';
 import { affinityLabel } from '../../modules/capture/affinityMath';
+import { isAppearanceUnlocked } from '../../modules/appearance/appearanceRules';
+import type { AppearanceView } from '../../modules/appearance/appearanceService';
 import type { OwnedEntry, PaginatedOwned } from '../../modules/collection/collectionService';
-import { resolveAssetPath } from '../../modules/content/loader';
 import {
+  CARD_FILENAME,
+  resolveAppearanceAsset,
+  resolveAppearanceAssetOrPath,
+} from '../assets/resolveAppearanceAsset';
+import {
+  AppearanceLockedError,
+  AppearanceNotFoundError,
   InsufficientEssenceError,
   NotADuplicateError,
   WaifuAlreadyReleasedError,
@@ -36,11 +44,15 @@ import {
 } from '../../shared/errors';
 import type { AppContext, PlayerInteraction, Provisioned } from '../types';
 import { buildCustomId } from '../types';
+import { postAppearanceUnlockToasts } from '../appearanceToast';
+import { emitEvents } from '../gameEventEmitter';
+import { gameEvent } from '../../modules/events/gameEvents';
 import { respondEphemeral } from '../ephemeralSession';
 import { withBackRow } from '../ui';
 
-const CARD_FILENAME = 'card.png';
 const PAGE_SIZE = 10;
+/** Discord select menus cap at 25 options; the gallery paginates past that. */
+const GALLERY_PAGE_SIZE = 25;
 
 const RARITY_COLORS: Record<string, number> = {
   N: 0xb8b8b8,
@@ -56,14 +68,20 @@ function rarityColor(rarity: string): number {
   return RARITY_COLORS[rarity] ?? 0xff6fa5;
 }
 
-function attachCardOr(ctx: AppContext, imagePath: string, slug: string): AttachmentBuilder | null {
-  try {
-    const abs = resolveAssetPath(ctx.config.assetsDir, imagePath);
-    return new AttachmentBuilder(abs, { name: CARD_FILENAME });
-  } catch (err) {
-    ctx.logger.warn({ err, slug }, 'failed to attach species card image');
-    return null;
-  }
+/**
+ * The card image for one owned copy, honouring her **selected appearance**.
+ *
+ * Discord code never touches a path: it asks the appearance service which
+ * `AssetId` this copy is wearing and hands that to the process's own resolver.
+ * `species.imagePath` is passed only as the resolver's private last resort, for
+ * a species whose appearance artwork is missing entirely.
+ */
+function attachCardOr(ctx: AppContext, entry: OwnedEntry): AttachmentBuilder | null {
+  const appearance = ctx.services.appearance.currentAppearance(
+    entry.species,
+    entry.waifu.variant,
+  );
+  return resolveAppearanceAssetOrPath(ctx, appearance.assetId, entry.species.imagePath);
 }
 
 function displayName(entry: OwnedEntry): string {
@@ -283,6 +301,13 @@ function inspectComponents(
     .setLabel('📝 Nickname')
     .setStyle(ButtonStyle.Secondary)
     .setDisabled(entry.waifu.level < ctx.content.tables.waifuProgression.nicknameMinLevel);
+  // Never disabled: every species has at least the implicit `standard` entry,
+  // and the gallery doubles as the place a player *sees what to work toward*,
+  // which is exactly the case where they own nothing else yet.
+  const appearanceBtn = new ButtonBuilder()
+    .setCustomId(buildCustomId('appear', 'open', String(entry.waifu.id), '1'))
+    .setLabel('🎀 Appearance')
+    .setStyle(ButtonStyle.Secondary);
 
   const rows: ActionRowBuilder<ButtonBuilder>[] = [];
   const primary: ButtonBuilder[] = [favBtn, buddyBtn];
@@ -296,7 +321,14 @@ function inspectComponents(
   }
   primary.push(releaseBtn);
   rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(...primary));
-  rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(investBtn, nickBtn, backBtn));
+  rows.push(
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      investBtn,
+      nickBtn,
+      appearanceBtn,
+      backBtn,
+    ),
+  );
   return rows;
 }
 
@@ -333,6 +365,17 @@ async function renderInspect(
     if (waifu.level >= nicknameUnlock) unlockLines.push('📝 Nickname unlocked');
     else unlockLines.push(`🔒 Nickname at Lv ${nicknameUnlock}`);
 
+    // Pure content lookup — no query, and no gameplay reads it.
+    const catalog = ctx.services.appearance.catalogFor(species);
+    const worn = ctx.services.appearance.currentAppearance(species, waifu.variant);
+    const unlockedLooks = catalog.filter((a) =>
+      isAppearanceUnlocked(a, { level: waifu.level }),
+    ).length;
+    const appearanceValue =
+      catalog.length > 1
+        ? `${worn.name} · ${unlockedLooks}/${catalog.length} unlocked`
+        : worn.name;
+
     const embed = new EmbedBuilder()
       .setTitle(`✨ ${displayName(entry)}${isBuddy ? ' · ★ Buddy' : ''}`)
       .setColor(rarityColor(species.rarity))
@@ -341,7 +384,7 @@ async function renderInspect(
         { name: 'Rarity', value: species.rarity, inline: true },
         { name: 'Archetype', value: species.archetype, inline: true },
         { name: 'Affinity', value: affinityLabel(species.affinity), inline: true },
-        { name: 'Variant', value: waifu.variant, inline: true },
+        { name: 'Appearance', value: appearanceValue, inline: true },
         { name: 'Level', value: `${waifu.level}`, inline: true },
         { name: 'XP', value: xpLine, inline: true },
         { name: 'Affection', value: `${waifu.affection}`, inline: true },
@@ -355,7 +398,7 @@ async function renderInspect(
         },
         { name: 'Unlocks', value: unlockLines.join('\n'), inline: true },
       );
-    const card = attachCardOr(ctx, species.imagePath, species.slug);
+    const card = attachCardOr(ctx, entry);
     const files = card ? [card] : [];
     if (card) embed.setImage(`attachment://${CARD_FILENAME}`);
     await respondEphemeral(interaction, {
@@ -370,6 +413,380 @@ async function renderInspect(
     }
     throw err;
   }
+}
+
+// ─────────────────────────── appearance gallery ───────────────────────────
+//
+// The gallery is a **progression journal**, not a picker: every entry shows its
+// requirement whether it is earned or not, so a player browsing a species they
+// just caught can already see what Level 20 and Level 40 hold. Locked entries
+// are listed, described, and explained — never hidden.
+//
+// Purely cosmetic end to end. Selecting a look writes one column and cannot
+// touch level, XP, affection, evolution, or capture odds.
+
+const COSMETIC_RARITY_LABELS: Record<string, string> = {
+  standard: 'Standard',
+  common: 'Common',
+  rare: 'Rare',
+  seasonal: 'Seasonal',
+  limited: 'Limited',
+  exclusive: 'Exclusive',
+};
+
+/**
+ * Cosmetic-rarity tag. Deliberately worded and emoji'd differently from the
+ * species-rarity palette (`[SR]`, the embed colour) so a Rare species wearing a
+ * Seasonal look reads as two independent signals, never one.
+ */
+function cosmeticRarityTag(rarity: string): string {
+  return `✦ ${COSMETIC_RARITY_LABELS[rarity] ?? 'Common'}`;
+}
+
+function galleryPageCount(total: number): number {
+  return Math.max(1, Math.ceil(total / GALLERY_PAGE_SIZE));
+}
+
+/**
+ * The gallery embed: the highlighted entry's artwork and metadata, over a
+ * roster of every appearance with its requirement.
+ */
+function renderGalleryEmbed(
+  entry: OwnedEntry,
+  appearances: AppearanceView[],
+  highlighted: AppearanceView,
+  page: number,
+  totalPages: number,
+): EmbedBuilder {
+  const unlockedCount = appearances.filter((a) => a.isUnlocked).length;
+
+  const roster = appearances
+    .slice((page - 1) * GALLERY_PAGE_SIZE, page * GALLERY_PAGE_SIZE)
+    .map((a) => {
+      const mark = a.isSelected ? '🎀' : a.isUnlocked ? '✅' : '🔒';
+      return `${mark} **${a.name}** — _${a.unlockLabel}_`;
+    })
+    .join('\n');
+
+  const detail: string[] = [];
+  if (highlighted.flavorText) detail.push(`_“${highlighted.flavorText}”_`);
+  if (highlighted.description) detail.push(highlighted.description);
+  detail.push(
+    [
+      cosmeticRarityTag(highlighted.cosmeticRarity),
+      highlighted.introducedVersion ? `Introduced ${highlighted.introducedVersion}` : null,
+      `Unlock: ${highlighted.unlockLabel}`,
+    ]
+      .filter(Boolean)
+      .join(' · '),
+  );
+
+  const embed = new EmbedBuilder()
+    .setTitle(`🎀 ${displayName(entry)} — ${highlighted.name}`)
+    .setColor(rarityColor(entry.species.rarity))
+    .setDescription(detail.join('\n\n'))
+    .addFields({
+      name: `Appearances (${unlockedCount}/${appearances.length} unlocked)`,
+      value: roster || '_None yet._',
+      inline: false,
+    })
+    .setFooter({
+      text:
+        totalPages > 1
+          ? `Page ${page}/${totalPages} · Appearances are cosmetic only.`
+          : 'Appearances are cosmetic only — they never change stats or odds.',
+    });
+  return embed;
+}
+
+function galleryComponents(
+  waifuId: number,
+  appearances: AppearanceView[],
+  highlightedId: string,
+  page: number,
+  totalPages: number,
+): ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>[] {
+  const rows: ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>[] = [];
+  const visible = appearances.slice((page - 1) * GALLERY_PAGE_SIZE, page * GALLERY_PAGE_SIZE);
+
+  if (visible.length > 0) {
+    const select = new StringSelectMenuBuilder()
+      .setCustomId(buildCustomId('appear', 'pick', String(waifuId), String(page)))
+      .setPlaceholder('Choose a look…')
+      .addOptions(
+        visible.map((a) => ({
+          // The requirement rides in the description on *both* states — that is
+          // what makes this a journal rather than a lock indicator.
+          label: `${a.isSelected ? '🎀 ' : a.isUnlocked ? '' : '🔒 '}${a.name}`.slice(0, 100),
+          description: `${a.unlockLabel} · ${cosmeticRarityTag(a.cosmeticRarity)}`.slice(0, 100),
+          value: a.id,
+          default: a.id === highlightedId,
+        })),
+      );
+    rows.push(
+      new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select) as ActionRowBuilder<
+        ButtonBuilder | StringSelectMenuBuilder
+      >,
+    );
+  }
+
+  const nav: ButtonBuilder[] = [];
+  if (totalPages > 1) {
+    nav.push(
+      new ButtonBuilder()
+        .setCustomId(buildCustomId('appear', 'open', String(waifuId), String(page - 1)))
+        .setLabel('◀ Prev')
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(page <= 1),
+      new ButtonBuilder()
+        .setCustomId(buildCustomId('appear', 'open', String(waifuId), String(page + 1)))
+        .setLabel('Next ▶')
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(page >= totalPages),
+    );
+  }
+  nav.push(
+    new ButtonBuilder()
+      .setCustomId(buildCustomId('col', 'pick_id', String(waifuId)))
+      .setLabel('⟵ Back')
+      .setStyle(ButtonStyle.Secondary),
+  );
+  rows.push(
+    new ActionRowBuilder<ButtonBuilder>().addComponents(...nav) as ActionRowBuilder<
+      ButtonBuilder | StringSelectMenuBuilder
+    >,
+  );
+  return rows;
+}
+
+/**
+ * Paint the gallery. `highlightId` is what the detail panel describes —
+ * the selected look by default, or whatever the player just tapped, including
+ * a locked one (previewing what you are working toward is the point).
+ */
+async function renderGallery(
+  ctx: AppContext,
+  interaction: PlayerInteraction,
+  prov: Provisioned,
+  waifuId: number,
+  page = 1,
+  highlightId?: string,
+): Promise<void> {
+  let entry: OwnedEntry;
+  try {
+    entry = await ctx.services.collection.getOwned(prov.playerId, waifuId);
+  } catch (err) {
+    if (err instanceof WaifuNotOwnedError || err instanceof WaifuAlreadyReleasedError) {
+      await respondEphemeral(interaction, { content: err.userMessage, components: withBackRow() });
+      return;
+    }
+    throw err;
+  }
+
+  // Reading the gallery is also what acknowledges retroactively-unlocked
+  // artwork — see `appearanceService.listAppearances`.
+  const gallery = await ctx.services.appearance.listAppearances(prov.playerId, waifuId);
+  const { appearances } = gallery;
+  const totalPages = galleryPageCount(appearances.length);
+  const clampedPage = Math.min(Math.max(1, page), totalPages);
+
+  const highlighted =
+    appearances.find((a) => a.id === highlightId) ??
+    appearances.find((a) => a.isSelected) ??
+    appearances[0];
+  if (!highlighted) {
+    await respondEphemeral(interaction, {
+      content: 'She has no appearances configured yet~',
+      components: withBackRow(),
+    });
+    return;
+  }
+
+  const card = resolveAppearanceAsset(ctx, highlighted.assetId);
+  const embed = renderGalleryEmbed(entry, appearances, highlighted, clampedPage, totalPages);
+  if (card) embed.setImage(`attachment://${CARD_FILENAME}`);
+
+  await respondEphemeral(interaction, {
+    embeds: [embed],
+    components: galleryComponents(
+      waifuId,
+      appearances,
+      highlighted.id,
+      clampedPage,
+      totalPages,
+    ),
+    files: card ? [card] : [],
+  });
+}
+
+/** appear:open — from the inspect card, the toast, or gallery pagination. */
+export async function handleAppearanceOpen(
+  ctx: AppContext,
+  interaction: ButtonInteraction,
+  prov: Provisioned,
+  args: string[],
+): Promise<void> {
+  const waifuId = Number(args[0]);
+  if (!Number.isInteger(waifuId)) {
+    await respondEphemeral(interaction, {
+      content: 'That Waifumon is no longer available.',
+      components: withBackRow(),
+    });
+    return;
+  }
+  await renderGallery(ctx, interaction, prov, waifuId, Number(args[1]) || 1, args[2]);
+}
+
+/**
+ * appear:pick — a select-menu choice.
+ *
+ * Unlocked → apply and re-render with the new artwork. Locked → re-render with
+ * that entry highlighted plus an ephemeral note naming the requirement, so a
+ * curious tap is a *preview*, never a dead end.
+ */
+export async function handleAppearancePick(
+  ctx: AppContext,
+  interaction: StringSelectMenuInteraction,
+  prov: Provisioned,
+  args: string[],
+): Promise<void> {
+  const waifuId = Number(args[0]);
+  const page = Number(args[1]) || 1;
+  const appearanceId = interaction.values[0];
+  if (!Number.isInteger(waifuId) || !appearanceId) {
+    await respondEphemeral(interaction, {
+      content: 'That Waifumon is no longer available.',
+      components: withBackRow(),
+    });
+    return;
+  }
+
+  let selected;
+  try {
+    selected = await ctx.services.appearance.selectAppearance(
+      prov.playerId,
+      waifuId,
+      appearanceId,
+    );
+  } catch (err) {
+    if (err instanceof AppearanceLockedError) {
+      // A locked pick is a *preview*, not a failure: re-render with that entry
+      // highlighted so the player sees the artwork they are working toward,
+      // and explain the requirement alongside it.
+      await renderGallery(ctx, interaction, prov, waifuId, page, appearanceId);
+      await interaction.followUp({ content: `🔒 ${err.userMessage}`, ...EPHEMERAL });
+      return;
+    }
+    if (err instanceof AppearanceNotFoundError) {
+      await respondEphemeral(interaction, { content: err.userMessage, components: withBackRow() });
+      return;
+    }
+    if (err instanceof WaifuNotOwnedError || err instanceof WaifuAlreadyReleasedError) {
+      await respondEphemeral(interaction, { content: err.userMessage, components: withBackRow() });
+      return;
+    }
+    throw err;
+  }
+  await renderGallery(ctx, interaction, prov, waifuId, page, appearanceId);
+  await emitAppearanceChanged(ctx, interaction, prov, waifuId, selected.appearance);
+}
+
+/**
+ * Internal-scope notification that a copy changed looks. Never narrated
+ * publicly — a wardrobe click is not news — but it refreshes any surface that
+ * is already showing this copy (today, the Trainer Profile).
+ */
+async function emitAppearanceChanged(
+  ctx: AppContext,
+  interaction: PlayerInteraction,
+  prov: Provisioned,
+  waifuId: number,
+  appearance: AppearanceView,
+): Promise<void> {
+  let waifuName = 'Your Waifumon';
+  try {
+    waifuName = displayName(await ctx.services.collection.getOwned(prov.playerId, waifuId));
+  } catch {
+    // Presentation only — a name lookup failure must not break the flow.
+  }
+  await emitEvents(ctx, interaction, prov, [
+    gameEvent('WAIFU_APPEARANCE_CHANGED', {
+      waifuId,
+      waifuName,
+      appearanceId: appearance.id,
+      appearanceName: appearance.name,
+      assetId: appearance.assetId,
+    }),
+  ]);
+}
+
+/** appear:select — the "Select Now" button on an unlock toast. */
+export async function handleAppearanceSelect(
+  ctx: AppContext,
+  interaction: ButtonInteraction,
+  prov: Provisioned,
+  args: string[],
+): Promise<void> {
+  const waifuId = Number(args[0]);
+  const appearanceId = args[1];
+  if (!Number.isInteger(waifuId) || !appearanceId) {
+    await respondEphemeral(interaction, {
+      content: 'That Waifumon is no longer available.',
+      components: withBackRow(),
+    });
+    return;
+  }
+  let selected;
+  try {
+    selected = await ctx.services.appearance.selectAppearance(
+      prov.playerId,
+      waifuId,
+      appearanceId,
+    );
+  } catch (err) {
+    if (
+      err instanceof AppearanceLockedError ||
+      err instanceof AppearanceNotFoundError ||
+      err instanceof WaifuNotOwnedError ||
+      err instanceof WaifuAlreadyReleasedError
+    ) {
+      await respondEphemeral(interaction, { content: err.userMessage, components: withBackRow() });
+      return;
+    }
+    throw err;
+  }
+  await renderGallery(ctx, interaction, prov, waifuId, 1, appearanceId);
+  await emitAppearanceChanged(ctx, interaction, prov, waifuId, selected.appearance);
+}
+
+/**
+ * `/wm appearance <name>` — opens the gallery directly.
+ *
+ * Same name-or-id resolution as `/wm inspect`, so the autocomplete handler is
+ * shared. Exists so the feature is discoverable without first knowing the
+ * inspect card has a button on it.
+ */
+export async function handleAppearanceCommand(
+  ctx: AppContext,
+  interaction: PlayerInteraction,
+  prov: Provisioned,
+): Promise<void> {
+  if (!interaction.isChatInputCommand()) return;
+  const raw = interaction.options.getString('name', true).trim();
+  const asId = Number(raw);
+  if (Number.isInteger(asId) && asId > 0) {
+    await renderGallery(ctx, interaction, prov, asId);
+    return;
+  }
+  const matches = await ctx.services.collection.searchByName(prov.playerId, raw, 1);
+  if (matches.length === 0) {
+    await respondEphemeral(interaction, {
+      content: `No Waifumon matching "${raw}" in your collection.`,
+      components: withBackRow(),
+    });
+    return;
+  }
+  await renderGallery(ctx, interaction, prov, matches[0]!.waifu.id);
 }
 
 /** waifu:fav — toggle and re-render inspect. */
@@ -826,6 +1243,7 @@ export async function handleWaifuInvest(
   }
   try {
     const result = await ctx.services.collection.investEssence(prov.playerId, waifuId);
+    const invested = await ctx.services.collection.getOwned(prov.playerId, waifuId);
     if (result.toLevel > result.fromLevel) {
       await interaction.followUp({
         content: `\u2b06\ufe0f **${displayName({ waifu: result.waifu, species: (await ctx.services.collection.getOwned(prov.playerId, waifuId)).species })}** advanced to Lv ${result.toLevel}!`,

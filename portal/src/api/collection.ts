@@ -7,7 +7,7 @@
  * pinned to the ceiling rather than guessed at call sites.
  */
 import { getData, getPage, isPortalApiError } from './client';
-import type { DexStats, OwnedEntry, Page, Rarity } from './types';
+import type { AppearanceGallery, DexStats, OwnedEntry, Page, Rarity } from './types';
 
 /** The service's own ceiling — asking for more is a 400, not a truncated page. */
 export const COLLECTION_PAGE_SIZE = 25;
@@ -44,6 +44,36 @@ export function getCollectionEntry(
 export function getCollectionStats(playerId: number, signal?: AbortSignal): Promise<DexStats> {
   return getData<DexStats>(`/v1/players/${playerId}/collection/stats`, signal ? { signal } : {});
 }
+
+/**
+ * This copy's appearance gallery — locked entries included, each with its
+ * requirement.
+ *
+ * The API acknowledges newly-qualified appearances as a side effect of this
+ * read, which is what makes retroactively-added artwork notify correctly. The
+ * Portal does not (and must not) compute unlock state itself: `isUnlocked`
+ * comes from the server, always.
+ */
+export function getAppearances(
+  playerId: number,
+  waifuId: number,
+  signal?: AbortSignal,
+): Promise<AppearanceGallery> {
+  return getData<AppearanceGallery>(
+    `/v1/players/${playerId}/collection/owned/${waifuId}/appearances`,
+    signal ? { signal } : {},
+  );
+}
+
+/*
+ * There is deliberately no `setAppearance` here.
+ *
+ * The Platform API exposes `PUT …/collection/owned/{id}/appearance`, but the
+ * Portal does not call it: v1 is read-only (§4), and choosing a look happens in
+ * Discord (`/wm appearance`) until the authenticated-Portal milestone gives
+ * writes an identity to happen under. The client would refuse the request
+ * anyway — see `ReadOnlyViolationError`.
+ */
 
 /**
  * The active buddy, or `null` when none is set.

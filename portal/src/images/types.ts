@@ -8,7 +8,17 @@
  * then a change under `src/images/` and nowhere else.
  */
 
-export type AssetKind = 'species' | 'item' | 'avatar' | 'ui';
+/**
+ * `'waifumon'` is the kind the **Platform API** emits on every `assetId`, and
+ * `'species'` is the Portal's own long-standing name for the same artwork.
+ * Both are accepted and resolve identically, which is what lets an API
+ * `assetId` be dropped straight into `useImage` with no adapter — see
+ * `speciesAsset` and the local-assets provider.
+ */
+export type AssetKind = 'species' | 'waifumon' | 'item' | 'avatar' | 'ui';
+
+/** The two kinds that name Waifumon artwork. */
+export const WAIFUMON_ASSET_KINDS: readonly AssetKind[] = ['species', 'waifumon'];
 
 export interface AssetId {
   kind: AssetKind;

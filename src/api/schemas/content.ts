@@ -21,6 +21,7 @@
  * endpoints embed the DB row they already joined.
  */
 import { z } from 'zod';
+import { appearanceCatalogSchema } from './appearance';
 import {
   affinitySchema,
   contentRatingSchema,
@@ -39,10 +40,19 @@ const speciesFields = {
   description: z.string(),
   tags: z.array(z.string()),
   baseCaptureRate: z.number().nullable(),
-  imagePath: z.string(),
   enabled: z.boolean(),
   eventKey: z.string().nullable(),
   perSpeciesWeight: z.number().int(),
+  /**
+   * The species' appearance catalog — the authoritative source for the
+   * encyclopedia and for previewing artwork a player has not earned yet.
+   * Catalog metadata only: `isUnlocked` / `isSelected` are per-copy and come
+   * from the collection's appearance endpoint instead.
+   *
+   * Never empty: a species with no authored catalog resolves to its single
+   * implicit `standard` / `owned` entry.
+   */
+  appearances: z.array(appearanceCatalogSchema),
 };
 
 /** Seeded species row — carries the internal id gameplay resources point at. */

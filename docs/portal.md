@@ -129,6 +129,13 @@ This is the part to read before showing the Portal to anyone.
   request before it leaves the process, and a test asserts all four write verbs
   are refused. A leaked token is still a read of that player's data, but it is
   not a way to modify it *through the Portal*.
+
+  The rule is **binary and has no allowlist**, which is the point: "no non-GET
+  requests" is greppable and needs no judgment, where "none except these" needs
+  a ruling per entry. Cosmetic-looking mutations are exactly what would erode it
+  one reasonable step at a time — appearance selection is genuinely cosmetic and
+  was still declined here, and favourite and nickname would have followed. They
+  live in Discord until authenticated writes exist.
 - **A persistent "DEV MODE" marker** sits in the header on every page, and
   Settings restates the caveat in full. This is deliberate: the risk is that
   someone forgets.
@@ -209,6 +216,25 @@ Providers are tried in order; the first non-null answer wins:
 3. **`silhouette`** — an inline SVG portrait, deterministic per slug. Never
    fails, so `resolveAsset` is total and no page has a "no image" branch.
 
+`platformCdn` also exists but is **not in the default chain**: it is the
+migration path written out in advance. Set `VITE_ASSET_CDN_URL` and list
+`platformCdn` in `VITE_IMAGE_PROVIDERS` to move artwork off local assets. It
+declines every id until an origin is configured, so it is inert otherwise.
+
+### `assetId` from the API drops straight in
+
+The Platform API identifies artwork with `{ kind, slug, variant }` and never a
+path or URL (see [the assetId contract](platform-api.md#artwork-the-assetid-contract)).
+That shape is structurally identical to the Portal's own `AssetId`, so a
+response field needs no adapter:
+
+```ts
+<Artwork asset={appearanceAsset(appearance)} name={species.name} />
+```
+
+`AssetKind` accepts both the API's `'waifumon'` and the Portal's older
+`'species'`; they name the same artwork and resolve identically.
+
 Alt text is generated at the resolver from the resource, never from the URL.
 A URL that 404s at runtime degrades to the silhouette without breaking layout.
 
@@ -216,7 +242,49 @@ A URL that 404s at runtime degrades to the silhouette without breaking layout.
 
 Migrating to a Platform API image endpoint, a CDN, or object storage is a new
 entry in `FACTORIES` and a default-order change in `images/provider.ts`. **No
-page or component is touched.** That is the entire point of the layer.
+page or component is touched, and no API contract changes.** That is the entire
+point of the layer.
+
+---
+
+## Appearances
+
+`/collection/:waifuId` carries an **appearance gallery** — every look the
+species has, with the one she is wearing highlighted.
+
+Three rules the components enforce, each worth preserving through a refactor:
+
+1. **Locked entries are shown, with their requirement.** "Owned", "Reach Level
+   20". A gallery that hid them would be a picker; showing them makes it a
+   progression journal, which is the feature.
+2. **Locked artwork stays a silhouette until asked for.** Tapping a locked tile
+   opens its detail panel with a *Reveal artwork* control — opt-in, so players
+   who want the surprise keep it.
+3. **The Portal never computes unlock state.** `isUnlocked` always comes from
+   the API. That is what keeps Discord and the Portal from ever disagreeing
+   about what a player has earned, and why a new unlock source needs no Portal
+   change at all.
+
+Cosmetic rarity is rendered as a dotted accent chip, deliberately unlike
+`RarityBadge`'s solid rarity-palette pill: a Rare species wearing a Seasonal
+look must read as two independent facts.
+
+### Selection lives in Discord
+
+The gallery is **read-only**. The Platform API does expose
+`PUT …/collection/owned/{id}/appearance`, but the Portal deliberately does not
+call it: v1 is browse-only, and more to the point the Portal has no
+authenticated identity — its actor is whoever opened the page. Writing on behalf
+of that identity is a pattern the Discord OAuth milestone has to revisit
+anyway, so building it now would mean building it twice.
+
+Players change looks with `/wm appearance <name>` in Discord, or from the
+`🎀 Appearance` button on the inspect card. An unlocked-but-unworn tile names
+that command rather than offering a button the API client would refuse to send.
+
+Portal-side selection is the natural first feature to add once authenticated
+writes land — the endpoint, the schema and the gallery are all already in
+place; only the mutation hook is missing.
 
 ### Known limitation
 

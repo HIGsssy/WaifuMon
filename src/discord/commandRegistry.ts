@@ -70,6 +70,18 @@ export function buildCommandDefinitions() {
     )
     .addSubcommand((s) =>
       s
+        .setName('appearance')
+        .setDescription('Browse and choose a Waifumon’s look (cosmetic only)')
+        .addStringOption((o) =>
+          o
+            .setName('name')
+            .setDescription('Nickname or species name')
+            .setRequired(true)
+            .setAutocomplete(true),
+        ),
+    )
+    .addSubcommand((s) =>
+      s
         .setName('care')
         .setDescription('Start Care Mode — recover energy and train a Waifumon over time')
         .addStringOption((o) =>

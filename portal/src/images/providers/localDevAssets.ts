@@ -21,7 +21,13 @@
  * `emoji`, not an `imagePath`), so item ids are declined here and always land
  * on the silhouette. Filed as API feedback — see docs/portal.md.
  */
-import { DEFAULT_VARIANT, type AssetId, type ImageProvider, type ResolvedImage } from '../types';
+import {
+  DEFAULT_VARIANT,
+  WAIFUMON_ASSET_KINDS,
+  type AssetId,
+  type ImageProvider,
+  type ResolvedImage,
+} from '../types';
 
 export const LOCAL_DEV_ASSETS_ID = 'localDevAssets';
 
@@ -32,7 +38,9 @@ export function createLocalDevAssetsProvider(basePath = '/dev-assets'): ImagePro
   return {
     id: LOCAL_DEV_ASSETS_ID,
     resolve(id: AssetId): ResolvedImage | null {
-      if (id.kind !== 'species') return null;
+      // Accepts both the Portal's own `species` kind and the API's `waifumon`
+      // — they name the same artwork.
+      if (!WAIFUMON_ASSET_KINDS.includes(id.kind)) return null;
       if (!SAFE_SLUG.test(id.slug)) return null;
 
       const variant = id.variant ?? DEFAULT_VARIANT;

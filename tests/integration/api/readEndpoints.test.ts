@@ -105,6 +105,7 @@ beforeAll(async () => {
         capture: app.capture,
         care: app.care,
         collection: app.collection,
+        appearance: app.appearance,
         progression: app.progression,
         quests: app.quests,
         session: app.session,

@@ -39,6 +39,7 @@ import {
   resolveBuddyAffinity,
 } from '../../modules/capture/affinityMath';
 import type { CaptureAttemptResult, CaptureOutcome } from '../../modules/capture/captureService';
+import type { HuntResult } from '../../modules/hunt/huntService';
 import { resolveAssetPath } from '../../modules/content/loader';
 import type { ItemContent } from '../../modules/content/schemas';
 import {
@@ -58,6 +59,7 @@ import { buildCustomId } from '../types';
 import { respondEphemeral, type SessionPayload } from '../ephemeralSession';
 import { emitEvents } from '../gameEventEmitter';
 import { captureDescriptors, huntDescriptors } from '../gameEventBuilders';
+import { postAppearanceUnlockToasts } from '../appearanceToast';
 import { withBackRow } from '../ui';
 import { formatCaptureBonus, renderCaptureBonusLine } from './waifumon';
 import { duplicatePromptComponents } from './waifumonCollection';
@@ -292,6 +294,7 @@ export async function handleHunt(
       // Encounter reveal has its own actions (charms + Let Her Go); no Back.
       await respondEphemeral(interaction, view);
       await emitEvents(ctx, interaction, prov, events);
+      await postBuddyAppearanceToasts(ctx, interaction, result);
       return;
     }
     const embed = new EmbedBuilder().setColor(0xff6fa5);
@@ -643,6 +646,32 @@ export async function handleEncounterCharm(
   // Activity Feed suppresses SR+ successes so there is exactly one public
   // announcement per rare catch.
   await emitEvents(ctx, interaction, prov, await captureDescriptors(ctx, prov, result));
+
+  // Cosmetics a brand-new copy already qualifies for. Normally empty (her
+  // default look is acknowledged silently), so this is free on the common path.
+  if (result.newAppearances.length > 0) {
+    await postAppearanceUnlockToasts(
+      ctx,
+      interaction,
+      result.newAppearances,
+      result.species.name,
+    );
+  }
+}
+
+/**
+ * Buddy-earned cosmetics from one hunt. The buddy's display name is taken from
+ * the award the hunt already returned, so no extra query is spent on a toast.
+ */
+async function postBuddyAppearanceToasts(
+  ctx: AppContext,
+  interaction: PlayerInteraction,
+  result: HuntResult,
+): Promise<void> {
+  const award = result.buddyAward;
+  if (!award || award.newAppearances.length === 0) return;
+  const name = award.waifu.nickname?.trim() || 'Your buddy';
+  await postAppearanceUnlockToasts(ctx, interaction, award.newAppearances, name);
 }
 
 /** Use Different Charm — reopens the encounter reveal with fresh quantities. */

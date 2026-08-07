@@ -21,7 +21,8 @@ import { RarityBadge } from '@/components/waifumon/RarityBadge';
 import { RarityGlowRing } from '@/components/waifumon/RarityGlowRing';
 import { heroTransitionName } from '@/components/waifumon/WaifumonCard';
 import { displayName, relatedSpecies, subtitleFor } from '@/content/species';
-import { speciesAsset } from '@/images/assets';
+import { AppearanceGallery } from './AppearanceGallery';
+import { appearanceAsset, speciesAsset } from '@/images/assets';
 import { formatDate, formatNumber, formatRelative } from '@/lib/format';
 import { rarityStyle } from '@/lib/rarity';
 
@@ -74,7 +75,7 @@ export function WaifumonDetail({ entry, isBuddy, allSpecies }: WaifumonDetailPro
       <div className="lg:sticky lg:top-24 lg:self-start">
         <RarityGlowRing rarity={species.rarity} glow>
           <Artwork
-            asset={speciesAsset(species, waifu)}
+            asset={appearanceAsset(waifu.selectedAppearance)}
             name={species.name}
             rarityLabel={rarity.label}
             priority
@@ -151,8 +152,8 @@ export function WaifumonDetail({ entry, isBuddy, allSpecies }: WaifumonDetailPro
               </span>
             </div>
             <div className="flex items-baseline justify-between gap-3">
-              <span className="text-ink-muted">Variant</span>
-              <span className="text-ink">{waifu.variant}</span>
+              <span className="text-ink-muted">Appearance</span>
+              <span className="text-ink">{waifu.selectedAppearance.name}</span>
             </div>
           </div>
           <p className="mt-4 border-t border-border pt-3 text-xs text-ink-subtle">
@@ -160,6 +161,12 @@ export function WaifumonDetail({ entry, isBuddy, allSpecies }: WaifumonDetailPro
             by the Platform API yet.
           </p>
         </Card>
+
+        <AppearanceGallery
+          playerId={waifu.playerId}
+          waifuId={waifu.id}
+          waifuName={title}
+        />
 
         <div className="grid gap-4 sm:grid-cols-2">
           <PlaceholderCard

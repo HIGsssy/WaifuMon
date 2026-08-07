@@ -12,6 +12,7 @@ import pino from 'pino';
 import type { ApiContext } from '../../src/api/context';
 import type { IdentityResolver } from '../../src/api/identity';
 import type { ReadinessProbes } from '../../src/api/routes/health';
+import { createAppearanceService } from '../../src/modules/appearance/appearanceService';
 import type { AppServices } from '../../src/discord/types';
 import type { LoadedContent } from '../../src/modules/content/schemas';
 import type { Logger } from '../../src/shared/logger';
@@ -88,15 +89,36 @@ const EMPTY_CONTENT: LoadedContent = {
 };
 
 export function createApiContext(overrides: ApiContextOverrides = {}): ApiContext {
+  const content: LoadedContent = { ...EMPTY_CONTENT, ...overrides.content };
+
+  /**
+   * `appearance.catalogFor` / `currentAppearance` are pure content lookups —
+   * no database, no I/O — and almost every resource embeds artwork now. A real
+   * service built over the context's own content snapshot is therefore both
+   * more faithful *and* less friction than making every route test hand-stub a
+   * catalog. `db` is never touched by those two methods; a stub can still
+   * override the whole service when a test wants the transactional half.
+   */
+  const defaultAppearance = createAppearanceService({
+    db: null as unknown as Parameters<typeof createAppearanceService>[0]['db'],
+    getContent: () => content,
+  });
+
   const services = new Proxy({} as AppServices, {
     get(_target, serviceName: string) {
       const stub = (overrides.services as Record<string, unknown> | undefined)?.[serviceName];
+      const fallback =
+        serviceName === 'appearance'
+          ? (defaultAppearance as unknown as Record<string, unknown>)
+          : undefined;
       return new Proxy(
         {},
         {
           get(_t, method: string) {
             const impl = (stub as Record<string, unknown> | undefined)?.[method];
             if (typeof impl === 'function') return impl;
+            const inherited = fallback?.[method];
+            if (typeof inherited === 'function') return inherited;
             return () => {
               throw new Error(
                 `test double: services.${serviceName}.${method}() was called but not stubbed`,
@@ -108,7 +130,6 @@ export function createApiContext(overrides: ApiContextOverrides = {}): ApiContex
     },
   });
 
-  const content: LoadedContent = { ...EMPTY_CONTENT, ...overrides.content };
   return {
     services,
     getContent: () => content,

@@ -7,7 +7,7 @@
  */
 import type { ApiContext } from '../../context';
 import { requirePlayer } from '../../plugins/playerScope';
-import { toSpeciesResource } from '../../resources';
+import { toOwnedWaifuResource, toSpeciesResource } from '../../resources';
 import { dataSchema, ok } from '../../plugins/responseEnvelope';
 import type { FastifyPluginAsyncZod } from '../../plugins/typeProvider';
 import { commonErrorResponses, notFoundResponse, playerIdParams } from '../../schemas/common';
@@ -36,11 +36,25 @@ export const careRoutes =
         },
       },
       async (req) => {
+        const { appearance } = ctx.services;
         const state = await ctx.services.care.getState(requirePlayer(req).id);
         return ok(req, {
           ...state,
           target: state.target
-            ? { waifu: state.target.waifu, species: toSpeciesResource(state.target.species) }
+            ? {
+                // Same embedded artwork as every other owned-copy resource, so
+                // a Care Mode dashboard renders the selected appearance rather
+                // than always falling back to the species default.
+                waifu: toOwnedWaifuResource(
+                  state.target.waifu,
+                  state.target.species,
+                  appearance,
+                ),
+                species: toSpeciesResource(
+                  state.target.species,
+                  appearance.catalogFor(state.target.species),
+                ),
+              }
             : null,
         });
       },

@@ -93,6 +93,37 @@ describe('the API client', () => {
       );
     },
   );
+
+  /**
+   * The refusal is unconditional — no path is exempt.
+   *
+   * Asserted separately against the endpoints most likely to tempt an
+   * exception. Appearance selection is the live example: it is genuinely
+   * cosmetic (the API writes one column), which is exactly what makes it the
+   * plausible first crack in a binary rule. The rule stays binary; the action
+   * lives in Discord until the authenticated-Portal milestone.
+   */
+  it.each([
+    ['put', '/v1/players/1/collection/owned/2/appearance'],
+    ['post', '/v1/players/1/collection/owned/2/appearance'],
+    ['patch', '/v1/players/1/collection/owned/2/favorite'],
+    ['post', '/v1/players/1/hunt'],
+    ['delete', '/v1/players/1/collection/owned/2'],
+  ] as const)('refuses %s %s — no endpoint is exempt', async (method, url) => {
+    const client = createApiClient();
+    await expect(client.request({ url, method })).rejects.toBeInstanceOf(
+      ReadOnlyViolationError,
+    );
+  });
+
+  it('refuses a write even when the caller prefixes the API base path', async () => {
+    // Guards the shape an allowlist would have matched on: a `/api`-prefixed
+    // path must not read as a different, permitted route.
+    const client = createApiClient();
+    await expect(
+      client.request({ url: '/api/v1/players/1/collection/owned/2/appearance', method: 'put' }),
+    ).rejects.toBeInstanceOf(ReadOnlyViolationError);
+  });
 });
 
 /** MSW's way of simulating a connection failure. */

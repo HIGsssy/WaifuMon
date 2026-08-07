@@ -29,6 +29,12 @@ export interface PortalEnv {
   defaultDiscordUserId: string | undefined;
   /** Ordered image-provider ids for the resolver chain (§12). */
   imageProviders: string[] | undefined;
+  /**
+   * CDN origin for the (disabled by default) `platformCdn` provider. Set it
+   * *and* list `platformCdn` in `VITE_IMAGE_PROVIDERS` to migrate artwork off
+   * local dev assets — no API change is involved.
+   */
+  assetCdnUrl: string | undefined;
   /** Vite mode + build identity, surfaced on the diagnostics page. */
   mode: string;
   isDev: boolean;
@@ -47,6 +53,7 @@ export const portalEnv: PortalEnv = {
     ?.split(',')
     .map((id) => id.trim())
     .filter((id) => id.length > 0),
+  assetCdnUrl: str(raw.VITE_ASSET_CDN_URL),
   mode: raw.MODE,
   isDev: raw.DEV,
   appVersion: typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : '0.0.0-dev',
@@ -69,5 +76,6 @@ export function describeEnv(): Array<{ key: string; value: string; secret?: bool
     { key: 'VITE_DEFAULT_DISCORD_GUILD_ID', value: portalEnv.defaultDiscordGuildId ?? '(unset)' },
     { key: 'VITE_DEFAULT_DISCORD_USER_ID', value: portalEnv.defaultDiscordUserId ?? '(unset)' },
     { key: 'VITE_IMAGE_PROVIDERS', value: portalEnv.imageProviders?.join(',') ?? '(default)' },
+    { key: 'VITE_ASSET_CDN_URL', value: portalEnv.assetCdnUrl ?? '(unset)' },
   ];
 }

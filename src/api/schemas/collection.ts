@@ -12,6 +12,7 @@
  * release endpoint returns a populated one.
  */
 import { z } from 'zod';
+import { appearanceSchema } from './appearance';
 import { isoDateTime, nullableIsoDateTime } from './common';
 import { speciesSchema } from './content';
 
@@ -32,8 +33,20 @@ export const ownedWaifuSchema = z.object({
   affection: z.number().int(),
   nickname: z.string().nullable(),
   isFavorite: z.boolean(),
+  /**
+   * The selected appearance's id. Retained as the wire format for selection
+   * identity — `PUT …/appearance` takes the same value — so existing clients
+   * keep working unchanged. `selectedAppearance` below is the resolved form.
+   */
   variant: z.string(),
   cosmetics: z.array(z.string()),
+  /**
+   * The appearance this copy is currently wearing, resolved and embedded so a
+   * client can render artwork from one call instead of joining the gallery.
+   * Falls back to the species default when `variant` names artwork that has
+   * since been removed from the content set — this field never 404s.
+   */
+  selectedAppearance: appearanceSchema,
   caughtAt: isoDateTime,
   releasedAt: nullableIsoDateTime,
 });
