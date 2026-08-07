@@ -98,15 +98,39 @@ function formatBytes(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+/**
+ * Loads `sharp`, or explains precisely what to run.
+ *
+ * This is reachable from the repository root via `npm run content:prepare`,
+ * where the likeliest cause is that nobody has installed the Portal's
+ * dependencies at all — `portal/` is a separate package with its own lockfile.
+ * "sharp is not installed" would be true and useless in that case, so the two
+ * situations are distinguished and each names the command that fixes it.
+ *
+ * Nothing is installed automatically. A content-preparation command that
+ * mutates dependency trees behind the author's back is a worse problem than
+ * the one it solves.
+ */
 async function loadSharp() {
   try {
     return (await import('sharp')).default;
   } catch {
+    const portalRoot = path.resolve(here, '..');
+    const hasNodeModules = statSync(path.join(portalRoot, 'node_modules'), {
+      throwIfNoEntry: false,
+    })?.isDirectory();
+
     console.error(
-      'generate-thumbnails: `sharp` is not installed.\n\n' +
-        '  npm install --save-dev sharp\n\n' +
-        'It is optional because it ships native binaries and only this script needs it.\n' +
-        'Until it is installed the Portal serves original artwork, which works but is slow.',
+      hasNodeModules
+        ? 'generate-thumbnails: `sharp` is not installed.\n\n' +
+            `  npm install --prefix ${path.relative(process.cwd(), portalRoot) || '.'}\n\n` +
+            'It is a devDependency of the Portal package and ships native binaries, so only\n' +
+            'this script needs it. Until it is installed the Portal serves original artwork,\n' +
+            'which works but is slow.'
+        : 'generate-thumbnails: the Portal’s dependencies are not installed.\n\n' +
+            `  npm install --prefix ${path.relative(process.cwd(), portalRoot) || '.'}\n\n` +
+            'The Portal is a separate package with its own lockfile; installing at the\n' +
+            'repository root does not install it.',
     );
     return null;
   }

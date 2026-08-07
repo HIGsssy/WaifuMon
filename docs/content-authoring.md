@@ -38,18 +38,46 @@ synchroniser writes them from the artwork.
 ### The workflow
 
 ```text
-Create/finalize card artwork
+Add/finalize artwork
+
+  assets/waifumon/<slug>/level_10.png
+  assets/waifumon/<slug>/level_20.png
+  …
         ↓
-save level_10.png / level_20.png / … under assets/waifumon/<slug>/
+Preview the metadata changes:
+
+  npm run appearances:sync -- --dry-run
         ↓
-npm run appearances:sync -- --dry-run     ← read the report
+Prepare content and web assets:
+
+  npm run content:prepare
         ↓
-npm run appearances:sync                  ← writes the content packs
+Run validation/tests as appropriate:
+
+  npm test
         ↓
-npm run assets:thumbs                     ← in portal/, generates renditions
-        ↓
-npm test                                  ← same rules the bot enforces at boot
+Restart the bot, or hit Save + Reload in the admin panel
 ```
+
+Everything runs from the repository root. `content:prepare` does two things, in
+order:
+
+1. **`appearances:sync`** — writes the appearance metadata into the species
+   pack each species already lives in.
+2. **`assets:thumbs`** — generates the web-ready renditions the Portal serves.
+
+The order matters, and so does the failure behaviour: if synchronisation fails
+— a duplicate slug, content that does not currently load — the pipeline stops
+and rendition generation never runs, so a failed preparation can never look
+like a successful one. Either stage failing exits non-zero.
+
+You can still run the two halves separately (`npm run appearances:sync`,
+`npm run assets:thumbs`) when you only want one of them.
+
+> `assets:thumbs` at the root delegates to the Portal package. The Portal has
+> its own lockfile and its own dependencies, and nothing here installs them for
+> you — if they are missing, the command says so and names the exact command to
+> run (`npm install --prefix portal`).
 
 ### The rule it follows: artwork leads, content follows
 
@@ -84,6 +112,36 @@ Nothing happens, on purpose. A species with no `appearances` array already
 resolves to an implicit `standard` entry at read time, so writing the array out
 would be churn with no behaviour change. The array is materialised — canonical
 `standard` entry included — the first time a level milestone needs to go in it.
+
+### Nothing to register in the Portal
+
+Once the content record exists, the Portal shows the appearance. There is no
+frontend step, and deliberately no place to add one — no appearance enum, no
+allow-list, no image map, no route entry, no `switch` on appearance id. The
+chain is:
+
+```text
+content JSON says the appearance exists
+        ↓
+API publishes it, with an abstract assetId { kind, slug, variant }
+        ↓
+Portal's image provider turns that assetId into a URL
+        ↓
+the rendition route serves the optimised file
+```
+
+Each link only knows about the next one. The Portal never scans
+`assets/waifumon/` to work out which appearances exist — **content is the
+authority for what exists; the filesystem is only consulted during authoring**,
+by the two preparation commands. That separation is what lets artwork move to a
+CDN later without touching content, and lets content add an appearance without
+touching the Portal.
+
+The practical consequence: an appearance id nobody has written code for — a
+`winter_2026` from some future seasonal process — renders correctly the day it
+is authored. `appearances:sync` is the only piece that knows what a "level
+milestone" is; `assets:thumbs` optimises *any* appearance artwork, and the
+Portal renders *any* appearance the API sends.
 
 ### Adding a new content pack
 
@@ -298,17 +356,16 @@ The admin panel's warning list surfaces missing artwork before you save.
 
 ### Commands
 
-| Command | Where | What it does |
-| --- | --- | --- |
-| `npm run appearances:sync -- --dry-run` | repo root | Reports which milestone appearances the artwork implies. Writes nothing. |
-| `npm run appearances:sync` | repo root | Writes them into the pack each species already lives in. |
-| `npm run assets:thumbs` | `portal/` | Generates the display renditions the Portal serves. |
-| `npm test` | repo root | Full validation, including every appearance rule above. |
+All of these run from the repository root.
 
-These stay separate commands on purpose. A single `content:prepare` umbrella is
-the obvious next step and the synchroniser is built to be called from one — its
-logic lives in `src/tools/appearanceSync.ts` as a plain function, not behind a
-CLI that would have to be shelled out to. It is not wired up yet because
-`assets:thumbs` belongs to `portal/`, a separate package with its own
-dependencies, and an umbrella that fails for anyone who has not run
-`npm install` in `portal/` would be worse than typing two commands.
+| Command | What it does |
+| --- | --- |
+| `npm run appearances:sync -- --dry-run` | Reports which milestone appearances the artwork implies. Writes nothing. |
+| `npm run appearances:sync` | Writes them into the pack each species already lives in. |
+| `npm run assets:thumbs` | Generates the Portal's display renditions. Delegates to the `portal` package. |
+| `npm run content:prepare` | Both of the above, in order, stopping if the first fails. |
+| `npm test` | Full validation, including every appearance rule above. |
+
+`assets:thumbs` optimises **any** appearance artwork it finds, not just the
+level milestones — it walks the artwork tree rather than consulting a list, so
+a seasonal or event appearance gets the same renditions with no change to it.

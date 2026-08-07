@@ -11,6 +11,8 @@
     "start": "node dist/index.js",
     "db:generate": "drizzle-kit generate",
     "appearances:sync": "tsx src/tools/syncAppearances.ts",
+    "assets:thumbs": "npm --prefix portal run assets:thumbs",
+    "content:prepare": "npm run appearances:sync && npm run assets:thumbs",
     "test": "vitest run",
     "test:watch": "vitest"
   },
