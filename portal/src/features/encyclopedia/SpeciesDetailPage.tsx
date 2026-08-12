@@ -71,7 +71,10 @@ export function SpeciesDetailPage() {
     );
   }
 
-  if (entry.isPending || !entry.data) {
+  // The ownership overlay gates this page for the same reason it gates the
+  // grid: until it lands, every entry would render as undiscovered, and
+  // silhouetting a species the player already owns is the one wrong answer.
+  if (entry.isPending || !entry.data || owned.isPending) {
     return (
       <>
         {backLink}

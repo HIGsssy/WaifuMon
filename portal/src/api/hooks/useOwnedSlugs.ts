@@ -11,21 +11,43 @@
  *
  * ### Why the cache policy differs from `PLAYER_POLICY`
  *
- * Every other player query is 30-second stale. This one walks the whole
- * collection — one request per 25 owned copies — so re-running it that often
- * would turn a 200-copy collection into eight requests every half minute. Five
- * minutes is the compromise, and it is a compromise the API can retire: §25.5's
+ * Every other player query is 45-second stale and refetches on focus. This one
+ * walks the whole collection — one request per 25 owned copies — so re-running
+ * it that often would turn a 200-copy collection into eight requests every
+ * time the tab regains focus. It is a compromise the API can retire: §25.5's
  * `GET /players/{id}/collection/dex` would make this a single short-lived
  * request and this file would shrink to a `useQuery` call.
  *
+ * ### How a capture reaches the overlay
+ *
+ * A long stale time alone made this query *wrong*, not merely slow. The
+ * overlay is what the Encyclopedia's `discovered` flag reads, so a species
+ * caught in Discord kept rendering as a silhouette — the locked presentation
+ * for something the player now owned — until the timer happened to expire.
+ * Capture happens in Discord, so the Portal has no mutation to invalidate
+ * from; it has to notice.
+ *
+ * `collection/stats.owned` is what it notices with: one cheap request, already
+ * on `PLAYER_POLICY` (45s, refetch on focus), and it moves on exactly the
+ * events that change ownership. Folding it into the query key means the walk
+ * re-runs when — and only when — that count moves, which is both correct and
+ * *fewer* requests than a short stale time would have cost. `keepPreviousData`
+ * keeps the previous overlay on screen while the new walk runs, so tiles never
+ * flash back to silhouettes mid-refresh.
+ *
+ * The stale time stays as a backstop for the one case the count cannot see: a
+ * capture and a release between two reads of `stats` net to the same number
+ * with a different set of slugs.
+ *
  * The walk is bounded so a pagination bug on either side cannot spin forever.
  */
-import { useQuery, type UseQueryResult } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, type UseQueryResult } from '@tanstack/react-query';
 
 import { COLLECTION_PAGE_SIZE, getCollection } from '../collection';
 import { queryKeys } from '../queryKeys';
+import { useCollectionStats } from './useCollection';
 
-/** Long enough to avoid re-walking constantly; short enough to catch new finds. */
+/** Backstop only — the owned count in the key is the primary trigger. */
 const OWNED_SLUGS_STALE_TIME = 5 * 60_000;
 
 /** ~1,000 owned copies at 25 a page. Far past any real collection. */
@@ -78,9 +100,23 @@ async function walkCollection(
 }
 
 export function useOwnedSlugs(playerId: number): UseQueryResult<OwnedSlugSummary> {
+  const stats = useCollectionStats(playerId);
+  const ownedCount = stats.data?.owned;
+
+  // Wait for the count before walking, so the first overlay is already keyed
+  // on it rather than stranded under the `unknown` sentinel. The count is an
+  // optimisation for *when* to walk, never a precondition for walking: if it
+  // fails, the walk still runs under the sentinel and the page behaves exactly
+  // as it did before this key existed — stale-time only.
+  const ready = ownedCount !== undefined || stats.isError;
+
   return useQuery({
-    queryKey: queryKeys.ownedSlugs(playerId),
+    queryKey: queryKeys.ownedSlugs(playerId, ownedCount),
     queryFn: ({ signal }) => walkCollection(playerId, signal),
+    enabled: ready,
+    // The overlay for the previous count stays on screen while the new walk
+    // runs — a refresh must never flash owned species back to silhouettes.
+    placeholderData: keepPreviousData,
     staleTime: OWNED_SLUGS_STALE_TIME,
     gcTime: 30 * 60_000,
     refetchOnWindowFocus: false,
