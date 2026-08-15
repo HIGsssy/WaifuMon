@@ -1,4 +1,12 @@
 README.md
+VERSION
+fonts/Inter-Black.ttf
+fonts/Inter-Bold.ttf
+fonts/Inter-ExtraBold.ttf
+fonts/Inter-OFL.txt
+fonts/Inter-Regular.ttf
+fonts/NotoSerif-Italic.ttf
+fonts/NotoSerif-OFL.txt
 icons/affinities/caregiver.svg
 icons/affinities/dominant.svg
 icons/affinities/primal.svg
@@ -11,6 +19,7 @@ icons/races/demon.svg
 icons/races/human.svg
 icons/races/spirit.svg
 icons/races/valkyrie.svg
+rarities/ex.svg
 rarities/lr.svg
 rarities/normal.svg
 rarities/rare.svg

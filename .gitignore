@@ -18,6 +18,10 @@ content/backups/
 # `npm run assets:thumbs` in portal/. Never a source of truth.
 assets/.thumbnails/
 
+# rendered card images — content-addressed output of src/modules/cards.
+# Regenerated on demand; safe to delete at any time.
+assets/.card-cache/
+
 # local database/data
 data/
 *.db
