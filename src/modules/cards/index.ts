@@ -24,9 +24,32 @@ export {
 export {
   CARD_RENDERER_VERSION,
   CARD_WEBP_QUALITY,
+  CARD_WIDTH_BUCKETS,
+  cardEtag,
   MASTER_HEIGHT,
   MASTER_WIDTH,
+  SUPPORTED_CARD_WIDTHS,
 } from './version';
+
+/** Operational tooling — cache warming and garbage collection. */
+export { warmCardCache } from './warm';
+export type {
+  WarmCardCacheFailure,
+  WarmCardCacheOptions,
+  WarmCardCacheResult,
+} from './warm';
+
+export {
+  collectCardCacheGarbage,
+  DEFAULT_MAX_AGE_DAYS,
+  renderKeyOfCacheFile,
+} from './gc';
+export type {
+  CardCacheGcOptions,
+  CardCacheGcReason,
+  CardCacheGcRemoval,
+  CardCacheGcResult,
+} from './gc';
 
 export {
   CardArtworkMissingError,

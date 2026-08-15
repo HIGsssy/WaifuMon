@@ -41,7 +41,7 @@ import type {
   CardRendererOptions,
   CardRendererStats,
 } from './types';
-import { MASTER_HEIGHT, MASTER_WIDTH } from './version';
+import { cardEtag, MASTER_HEIGHT, MASTER_WIDTH } from './version';
 
 /** Widths the renderer will derive. Wide enough to cover the portal's buckets. */
 export const MIN_OUTPUT_WIDTH = 16;
@@ -215,9 +215,7 @@ class CardRendererImpl implements CardRenderer {
       fromCache,
       width,
       height,
-      // The master identity is width-independent, but two differently-sized
-      // responses are different HTTP entities, so the ETag carries the width.
-      etag: `"${renderKey}${derivativeWidth === undefined ? '' : `@${derivativeWidth}`}"`,
+      etag: cardEtag(renderKey, derivativeWidth),
     };
   }
 }

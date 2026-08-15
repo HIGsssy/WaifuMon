@@ -8,6 +8,15 @@ import {
   PRICE_CURRENCIES,
   RARITIES,
 } from '../../db/schema';
+/**
+ * `RACE_CODES` lives in the cards module because the race set is defined by the
+ * icon files in `assets/cardart/icons/races/` — adding a race means shipping an
+ * icon. Importing it here rather than re-declaring keeps one source of truth;
+ * a second copy would drift the day someone adds a race. The import is a leaf
+ * (`race.ts` pulls in nothing but a type), so nothing heavy comes with it, and
+ * the dependency runs content → cards only.
+ */
+import { RACE_CODES } from '../cards/race';
 
 const slug = z
   .string()
@@ -291,11 +300,88 @@ export type AppearanceContent = z.infer<typeof AppearanceContentSchema>;
 /** The implicit entry every species has, authored or not. */
 export const DEFAULT_APPEARANCE_ID = 'standard';
 
+/**
+ * A card-metadata string: trimmed, non-empty, capped.
+ *
+ * Trim-then-`min(1)` is deliberate — it turns `"   "` into a validation error
+ * rather than a field that passes schema and then silently vanishes at render
+ * time. Authors should omit a field they have nothing to say for, and the
+ * schema says so out loud.
+ */
+const cardText = (max: number): z.ZodString => z.string().trim().min(1).max(max);
+
+/**
+ * Presentation-only species metadata for the card renderer.
+ *
+ * **Nothing here is gameplay.** No capture math, no progression, no affinity
+ * matchup reads any of it; it is what gets printed on the card face. It is also
+ * deliberately *not* in the database — like `appearances`, it lives in the JSON
+ * content and travels in `LoadedContent`, so a card-copy edit is a content
+ * change and never a migration.
+ *
+ * What is **not** here: the generic affinity blurbs. Those describe what an
+ * affinity *category* means, identically on every card that shares it, so they
+ * stay renderer-owned in `AFFINITY_DESCRIPTIONS`. Authoring them per species
+ * would copy one global definition across every entry and let five species
+ * disagree about what "primal" means.
+ */
+export const SpeciesCardMetaSchema = z
+  .object({
+    /** Epithet under the name, e.g. "Curious Companion". */
+    subtitle: cardText(48).optional(),
+    /**
+     * Artwork credit. Supply only when a real attribution is known — an
+     * invented credit is worse than a blank line, and the renderer simply
+     * omits the element when this is absent.
+     */
+    artist: cardText(48).optional(),
+    /**
+     * All-or-nothing: a name with no text is an authoring mistake, not a
+     * half-filled card, so the pair is required together or the block omitted.
+     */
+    ability: z
+      .object({
+        name: cardText(32),
+        text: cardText(160),
+      })
+      .strict()
+      .optional(),
+    flavorQuote: cardText(120).optional(),
+    /**
+     * Free-form collector number. Presentation only — Phase 2 defines **no**
+     * set-numbering system, so this is reserved rather than canonical. Do not
+     * invent numbering to fill it in.
+     */
+    cardNumber: cardText(32).optional(),
+  })
+  .strict();
+
+export type SpeciesCardMeta = z.infer<typeof SpeciesCardMetaSchema>;
+
 const SpeciesBaseSchema = z.object({
   slug,
   name: z.string().min(1),
   rarity: z.enum(RARITIES),
+  /**
+   * Narrative role — free-form and deliberately open: "paladin", "barista",
+   * and "librarian" are all valid. Today's corpus happens to use values that
+   * coincide with {@link RACE_CODES}, which is legacy overlap, not the model.
+   * See `race` for the visual classification.
+   */
   archetype: z.string().min(1),
+  /**
+   * Visual race classification — which frame iconography the card wears.
+   *
+   * Optional during migration: content that omits it falls back to a race
+   * derived from `archetype` (see `resolveRace`), so no existing file needed
+   * editing to ship this field. New content should set it explicitly, because
+   * the fallback only works while archetypes happen to be race words — the
+   * moment someone writes `"archetype": "paladin"`, only an explicit `race`
+   * can say whether she is an angel or a valkyrie.
+   */
+  race: z.enum(RACE_CODES).optional(),
+  /** Card-face presentation metadata. See {@link SpeciesCardMetaSchema}. */
+  card: SpeciesCardMetaSchema.optional(),
   baseCaptureRate: z.number().gt(0).lte(1).nullable().default(null),
   description: z.string().default(''),
   tags: z.array(z.string()).default([]),

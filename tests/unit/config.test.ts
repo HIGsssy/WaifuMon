@@ -97,6 +97,7 @@ describe('loadConfig', () => {
       host: '127.0.0.1',
       port: 3120,
       token: '',
+      cardRendererEnabled: false,
     });
   });
 
@@ -118,7 +119,26 @@ describe('loadConfig', () => {
       host: '127.0.0.1',
       port: 3120,
       token: 'a-secret',
+      cardRendererEnabled: false,
     });
+  });
+
+  it('leaves the card renderer off unless asked, and takes both truthy spellings', () => {
+    // Off by default is the safe direction: rasterizing is the most expensive
+    // thing the process does, and a flag that ships on cannot be rolled out.
+    expect(loadConfig(validEnv).platformApi.cardRendererEnabled).toBe(false);
+    for (const value of ['true', '1']) {
+      expect(
+        loadConfig({ ...validEnv, CARD_RENDERER_ENABLED: value }).platformApi.cardRendererEnabled,
+        value,
+      ).toBe(true);
+    }
+    for (const value of ['false', '0']) {
+      expect(
+        loadConfig({ ...validEnv, CARD_RENDERER_ENABLED: value }).platformApi.cardRendererEnabled,
+        value,
+      ).toBe(false);
+    }
   });
 
   it('accepts an explicit platform API host and port', () => {

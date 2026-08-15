@@ -9,6 +9,7 @@ import { ArrowLeft } from 'lucide-react';
 import { Link, useParams } from 'react-router';
 
 import { isPortalApiError } from '@/api/client';
+import { usePlatformCapabilities } from '@/api/hooks/useCapabilities';
 import { useBuddy, useCollectionEntry } from '@/api/hooks/useCollection';
 import { useContentSpecies } from '@/api/hooks/useContent';
 import { useCurrentSession } from '@/auth/useSession';
@@ -46,6 +47,9 @@ export function WaifumonDetailPage() {
   const entry = useCollectionEntry(session.playerId, waifuId);
   const buddy = useBuddy(session.playerId);
   const species = useContentSpecies();
+  // Whether the backend renders cards at all. Asked once and cached like
+  // content; false while unknown, so no control flashes in and out.
+  const capabilities = usePlatformCapabilities();
 
   const backLink = (
     <Button asChild variant="ghost" size="sm" className="mb-4 -ml-2">
@@ -101,6 +105,7 @@ export function WaifumonDetailPage() {
           entry={entry.data}
           isBuddy={entry.data.waifu.id === buddy.data?.waifu.id}
           allSpecies={species.data}
+          cardsAvailable={capabilities.cards}
         />
       ) : (
         <DetailSkeleton />

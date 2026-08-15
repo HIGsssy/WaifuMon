@@ -51,6 +51,12 @@ export const queryKeys = {
     ['player', playerId, 'collection', 'ownedSlugs', ownedCount ?? 'unknown'] as const,
 
   content: () => ['content'] as const,
+  /**
+   * Which optional backend features exist. Deployment-wide and player-free —
+   * it describes the server, not a game resource.
+   */
+  capabilities: () => ['capabilities'] as const,
+
   contentSpecies: () => ['content', 'species'] as const,
   contentSpeciesEntry: (slug: string) => ['content', 'species', slug] as const,
   contentItems: (category?: ItemCategory | undefined) =>

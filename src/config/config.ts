@@ -57,6 +57,20 @@ const EnvSchema = z.object({
    * Docker that bind is 0.0.0.0, which no browser can route to. Optional; when
    * unset the URL is derived from the bind (see `resolvePublicUrl`).
    */
+  /**
+   * Rendered card images (`/api/v1/cards/…`). Temporary rollout gating for the
+   * SVG card renderer, not permanent architecture — Phase 6 removes it once the
+   * renderer is stable in production.
+   *
+   * Off by default, matching every other optional surface here: a flag that
+   * ships on cannot be *rolled out*, and rasterizing is the most expensive
+   * thing this process does. Development and test environments turn it on
+   * explicitly (`.env`, and the API test fixtures).
+   */
+  CARD_RENDERER_ENABLED: z
+    .enum(['true', 'false', '1', '0'])
+    .default('false')
+    .transform((v) => v === 'true' || v === '1'),
   PLATFORM_API_PUBLIC_URL: z
     .string()
     .trim()
@@ -116,6 +130,18 @@ export interface PlatformApiConfig {
    * use rather than reading this field directly.
    */
   publicUrl?: string | undefined;
+  /**
+   * Whether `/api/v1/cards/…` is registered at all. Gating registration rather
+   * than branching inside handlers means "disabled" is indistinguishable from
+   * "never existed" — the routes 404 through the normal not-found handler and
+   * no card code is reachable.
+   *
+   * Optional so that absent reads as off. `resolveAppConfig` always sets it, so
+   * the running process is never ambiguous; the looseness is for callers that
+   * assemble a config by hand (tests, tools) and should not have to opt out of
+   * a feature they are not exercising.
+   */
+  cardRendererEnabled?: boolean | undefined;
 }
 
 /**
@@ -195,6 +221,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       port: e.PLATFORM_API_PORT,
       token: platformApiToken,
       publicUrl: e.PLATFORM_API_PUBLIC_URL,
+      cardRendererEnabled: e.CARD_RENDERER_ENABLED,
     },
   };
 }

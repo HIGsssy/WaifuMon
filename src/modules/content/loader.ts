@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { ZodError, ZodType, ZodTypeDef } from 'zod';
-import { defaultAssetId } from '../appearance/appearanceContent';
+import { appearanceAssetRelativePath, defaultAssetId } from '../appearance/appearanceContent';
+import { archetypeToRace, DEFAULT_RACE } from '../cards/race';
 import { ContentValidationError } from '../../shared/errors';
 import type { Logger } from '../../shared/logger';
 import {
@@ -54,23 +55,6 @@ export function resolveAssetPath(assetsDir: string, imagePath: string): string {
 }
 
 /**
- * `AssetId → local file`, for the loader's pre-flight existence probe **only**.
- *
- * This is the single internal exception to the system's asset-location
- * agnosticism, and it is deliberately not exported: no service, no API route,
- * and no client bundle can reach it. Every real consumer (Portal, Discord, a
- * future CDN or mobile client) ships its own resolver keyed on the same
- * `AssetId`, which is why swapping storage backends never touches the API.
- *
- * The layout it assumes — `assets/waifumon/<slug>/<variant>.png` — is exactly
- * what existing `imagePath` values already use, so authoring new art is: drop
- * the PNG in the species folder, add one JSON entry with a matching id.
- */
-function assetIdToLocalPath(assetId: AssetId): string {
-  return `${assetId.kind}/${assetId.slug}/${assetId.variant}.png`;
-}
-
-/**
  * Asset pre-flight.
  *
  * Two different severities, on purpose:
@@ -111,7 +95,7 @@ export function validateSpeciesAssets(
     const kept: AppearanceContent[] = [];
     for (const appearance of s.appearances) {
       const assetId = appearance.assetId ?? defaultAssetId(s.slug, appearance.id);
-      const relative = assetIdToLocalPath(assetId);
+      const relative = appearanceAssetRelativePath(assetId);
       if (exists(relative)) {
         kept.push(appearance);
         continue;
@@ -135,6 +119,80 @@ export function validateSpeciesAssets(
     }
     return { ...s, appearances: kept };
   });
+}
+
+/**
+ * Race pre-flight — diagnostics only, never a failure and never a mutation.
+ *
+ * Three cases, one of which is worth a log line:
+ *
+ *   - explicit `race` → nothing to say;
+ *   - no `race`, but `archetype` maps to one → the migration fallback working
+ *     as designed, and silent, because warning on it would fire for nearly
+ *     every species in the corpus and train everyone to ignore the channel;
+ *   - no `race` and `archetype` maps to nothing → warn, because this species
+ *     is now rendering with the `human` frame by default and only an author
+ *     can say whether that is right.
+ *
+ * Deliberately does **not** write the resolved race back onto the species. The
+ * JSON stays the source of truth; the renderer resolves per render. A loader
+ * that quietly filled the field in would make `race` look authored when it was
+ * guessed, and the guess would then survive an admin panel round-trip to disk.
+ */
+export function checkSpeciesRaces(species: SpeciesContent[], logger: Logger): void {
+  for (const offender of findUnresolvableRaces(species)) {
+    logger.warn(
+      {
+        tag: 'card-renderer/race-fallback',
+        slug: offender.slug,
+        archetype: offender.archetype,
+        fallbackRace: DEFAULT_RACE,
+      },
+      unresolvableRaceMessage(offender),
+    );
+  }
+}
+
+/** A species whose race can only be reached by falling back to the default. */
+export interface UnresolvableRace {
+  slug: string;
+  archetype: string;
+}
+
+/**
+ * Every species that would hit the `human` fallback — no explicit `race`, and
+ * an `archetype` that maps to nothing.
+ *
+ * Shared by two callers that want the same answer for opposite reasons, which
+ * is the point of hoisting it out of the warning path:
+ *
+ *   - **Runtime** (`checkSpeciesRaces`) logs and carries on. Bad content
+ *     reaching production must still render a card.
+ *   - **CI** (the content invariant test) fails the build. Shipped content
+ *     should never *rely* on the fallback; the fallback is for content that
+ *     escaped review, not a substitute for authoring `race`.
+ *
+ * Deduped by slug so one offender cannot be reported twice in a single pass.
+ */
+export function findUnresolvableRaces(species: SpeciesContent[]): UnresolvableRace[] {
+  const seen = new Set<string>();
+  const offenders: UnresolvableRace[] = [];
+  for (const s of species) {
+    if (s.race) continue;
+    if (archetypeToRace(s.archetype)) continue;
+    if (seen.has(s.slug)) continue;
+    seen.add(s.slug);
+    offenders.push({ slug: s.slug, archetype: s.archetype });
+  }
+  return offenders;
+}
+
+/** Shared wording so the CI failure reads exactly like the runtime warning. */
+export function unresolvableRaceMessage(offender: UnresolvableRace): string {
+  return (
+    `species "${offender.slug}": archetype "${offender.archetype}" maps to no race — ` +
+    `cards will render as "${DEFAULT_RACE}". Add an explicit "race" field to fix.`
+  );
 }
 
 /**
@@ -266,6 +324,7 @@ export function listSpeciesFiles(speciesDir: string): string[] {
 export function loadContent(contentDir: string, assetsDir: string, logger: Logger): LoadedContent {
   const content = readContentFiles(contentDir);
   validateContentSet(content);
+  checkSpeciesRaces(content.species, logger);
 
   const validatedSpecies = validateSpeciesAssets(content.species, assetsDir, logger);
 

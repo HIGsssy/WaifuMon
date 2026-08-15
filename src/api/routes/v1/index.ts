@@ -11,6 +11,8 @@
 import type { ApiContext } from '../../context';
 import { registerPlayerScope } from '../../plugins/playerScope';
 import type { FastifyPluginAsyncZod } from '../../plugins/typeProvider';
+import { capabilityRoutes } from './capabilities';
+import { cardRoutes } from './cards';
 import { careRoutes } from './care';
 import { collectionRoutes } from './collection';
 import { contentRoutes } from './content';
@@ -25,8 +27,21 @@ import { questRoutes } from './quests';
 import { sessionRoutes } from './session';
 import { shopRoutes } from './shop';
 
+export interface V1RouteOptions {
+  /**
+   * Register the card-rendering routes (`CARD_RENDERER_ENABLED`).
+   *
+   * Gating registration rather than branching inside handlers is deliberate:
+   * with the flag off the paths simply do not exist, so they 404 through the
+   * normal not-found handler, no renderer code is reachable, and the OpenAPI
+   * document does not advertise an endpoint that cannot answer. Removing this
+   * flag in Phase 6 is deleting the condition, not unpicking runtime checks.
+   */
+  cards?: boolean | undefined;
+}
+
 export const v1Routes =
-  (ctx: ApiContext): FastifyPluginAsyncZod =>
+  (ctx: ApiContext, options: V1RouteOptions = {}): FastifyPluginAsyncZod =>
   async (app) => {
     // Served here rather than by Swagger UI's own `/docs/json` so the spec has
     // a stable, version-scoped URL the contract test and clients can pin to.
@@ -49,8 +64,16 @@ export const v1Routes =
     await app.register(questRoutes(ctx));
     await app.register(sessionRoutes(ctx));
 
+    // What this deployment supports. Registered unconditionally and *before*
+    // the optional surfaces it describes, so a client can always ask.
+    await app.register(capabilityRoutes({ cards: options.cards === true }));
+
     // Global resources.
     await app.register(shopRoutes(ctx));
     await app.register(contentRoutes(ctx));
     await app.register(guildRoutes(ctx));
+
+    // Rendered card images. Behind a rollout flag, and the only routes that
+    // answer with bytes rather than the `{ data: … }` envelope.
+    if (options.cards === true) await app.register(cardRoutes(ctx));
   };

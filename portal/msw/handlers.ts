@@ -34,6 +34,24 @@ export function apiError(status: number, code: string, message: string) {
 
 const P = String(fixtures.PLAYER_ID);
 
+/**
+ * A card response. Mirrors the real route's headers — `image/webp`, a strong
+ * ETag and the revalidating cache policy — so tests see the same contract the
+ * API actually serves.
+ */
+function webpResponse(request: Request): Response {
+  const width = new URL(request.url).searchParams.get('width');
+  return new HttpResponse(fixtures.cardWebpBytes(), {
+    headers: {
+      'Content-Type': 'image/webp',
+      ETag: '"testcardkey000000"',
+      'Cache-Control': 'public, max-age=300, must-revalidate',
+      // Test-only: lets a test assert the requested bucket cheaply.
+      'X-Test-Card-Width': width ?? 'master',
+    },
+  });
+}
+
 export const handlers = [
   // ── Players ───────────────────────────────────────────────────────────────
   // The identity bridge the dev-login session provider starts from. It answers
@@ -119,6 +137,23 @@ export const handlers = [
       ? data(fixtures.tuningTables[key])
       : apiError(404, 'TABLE_NOT_FOUND', 'No tuning table with that key.');
   }),
+
+  // ── Capabilities ──────────────────────────────────────────────────────────
+  // Cards on by default, so component tests exercise the feature-present path.
+  // A test that wants the feature absent overrides this with
+  // `server.use(http.get('/api/v1/capabilities', () => data({ cards: false })))`.
+  http.get('/api/v1/capabilities', () => data(fixtures.capabilities)),
+
+  // ── Rendered cards ────────────────────────────────────────────────────────
+  // Real bytes, not JSON: these routes answer `image/webp`. The fixture is a
+  // tiny valid WebP so an <img> can actually decode it and the export flow has
+  // a real Blob to save. `width` is echoed in a header so a test can assert
+  // which size was requested without decoding the image.
+  http.get('/api/v1/cards/species/:slug', ({ request }) => webpResponse(request)),
+  http.get(
+    '/api/v1/players/:playerId/collection/owned/:waifuId/card',
+    ({ request }) => webpResponse(request),
+  ),
 
   // ── System (root-level, not under /api) ───────────────────────────────────
   http.get('/ready', () =>

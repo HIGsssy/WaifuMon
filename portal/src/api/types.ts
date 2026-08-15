@@ -363,6 +363,17 @@ export interface ComponentReport {
   checkedAt: string;
 }
 
+/**
+ * Optional features this deployment has enabled (`GET /v1/capabilities`).
+ *
+ * Additive by contract: a client should tolerate unknown keys, and treat a key
+ * it expects but does not receive as `false`.
+ */
+export interface PlatformCapabilities {
+  /** Rendered card images are available; the card provider knows the routes. */
+  cards: boolean;
+}
+
 export interface ReadinessReport {
   status: ComponentStatus;
   components: Record<string, ComponentReport>;

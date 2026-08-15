@@ -4,6 +4,7 @@
     "name": "Alley Catgirl",
     "rarity": "N",
     "archetype": "demi-human",
+    "race": "demi-human",
     "baseCaptureRate": null,
     "description": "Prowls the fire-escape network at midnight. Trades secrets for tuna and eye contact.",
     "tags": [
@@ -13,6 +14,14 @@
     ],
     "contentRating": "suggestive",
     "affinity": "dominant",
+    "card": {
+      "subtitle": "Fire-Escape Regular",
+      "ability": {
+        "name": "Trade Secrets",
+        "text": "Knows which windows are unlatched and who left them that way. Tells you for the price of tuna."
+      },
+      "flavorQuote": "Look up. She has been there the whole time."
+    },
     "imagePath": "waifumon/alley_catgirl/standard.png",
     "enabled": true,
     "eventKey": null,
@@ -536,6 +545,7 @@
     "name": "Chrome Valkyrie",
     "rarity": "SR",
     "archetype": "valkyrie",
+    "race": "valkyrie",
     "baseCaptureRate": null,
     "description": "Chassis polished to a mirror. Chooses her hunters based on their reflection.",
     "tags": [
@@ -545,6 +555,10 @@
     ],
     "contentRating": "mature",
     "affinity": "primal",
+    "card": {
+      "subtitle": "Mirror Finish",
+      "flavorQuote": "She picked you before you saw her."
+    },
     "imagePath": "waifumon/chrome_valkyrie/standard.png",
     "enabled": true,
     "eventKey": null,
@@ -764,6 +778,7 @@
     "name": "The First Waifu",
     "rarity": "LR",
     "archetype": "angel",
+    "race": "angel",
     "baseCaptureRate": null,
     "description": "The one every other Waifumon remembers a little. Older than the archetypes. Fond of hunters who ask her name twice.",
     "tags": [

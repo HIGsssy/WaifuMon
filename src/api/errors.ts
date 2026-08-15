@@ -62,6 +62,21 @@ export class ApiSpeciesNotFoundError extends AppError {
   }
 }
 
+/**
+ * A card was requested at a level the game cannot reach. The ceiling comes
+ * from `tables.waifuProgression.maxLevel`, so the API and the game can never
+ * disagree about what a valid level is.
+ */
+export class ApiCardLevelError extends AppError {
+  constructor(level: number, maxLevel: number) {
+    super(
+      'VALIDATION_ERROR',
+      `Level ${level} is above the maximum of ${maxLevel}`,
+      `Level must be between 1 and ${maxLevel}.`,
+    );
+  }
+}
+
 export class ApiTableNotFoundError extends AppError {
   constructor(key: string) {
     super('TABLE_NOT_FOUND', `Tuning table "${key}" not found`, 'No tuning table with that key.');
@@ -106,10 +121,20 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
    */
   APPEARANCE_NOT_FOUND: 400,
 
+  /** A card width outside the supported buckets — a malformed request. */
+  CARD_OUTPUT_WIDTH_INVALID: 400,
+
   // --- Infrastructure -----------------------------------------------------
   CONFIG_INVALID: 500,
   CONTENT_INVALID: 500,
   DB_UNAVAILABLE: 503,
+  /**
+   * The card SVG kit is missing a file, or the base template is not the shape
+   * the composer expects. A broken deploy, never caller-triggerable — 500, and
+   * the operator gets the path in the log while the client gets nothing.
+   */
+  CARD_ASSET_MISSING: 500,
+  CARD_TEMPLATE_INVALID: 500,
 
   // --- Unknown resource ---------------------------------------------------
   PLAYER_NOT_FOUND: 404,
@@ -121,6 +146,12 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   TABLE_NOT_FOUND: 404,
   SESSION_NOT_FOUND: 404,
   BUDDY_NOT_SET: 404,
+  /**
+   * The species/appearance exists but its artwork file does not. A content
+   * gap, not a server fault — the resource genuinely is not there, so 404
+   * rather than the 500 an unhandled renderer throw would produce.
+   */
+  CARD_ARTWORK_MISSING: 404,
 
   // --- State conflict -----------------------------------------------------
   ACTIVE_ENCOUNTER: 409,

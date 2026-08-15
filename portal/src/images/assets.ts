@@ -80,6 +80,56 @@ export function appearanceAsset(
   return { kind, slug, variant };
 }
 
+/**
+ * The **rendered card** for a species — frame, rarity overlay, race and
+ * affinity icons, card text — as opposed to {@link speciesAsset}, which is the
+ * raw character artwork.
+ *
+ * A preview: the server renders it at level 1 wearing the species' default
+ * appearance, which is what an encyclopedia-style view should show. For a copy
+ * somebody owns, use {@link ownedCardAsset} instead — it carries her real level
+ * and equipped look.
+ *
+ * Like every other helper here this returns identity only. Which route serves
+ * it, and at what width, is the `cardApi` provider's business.
+ */
+export function speciesCardAsset(
+  species: Pick<Species | ContentSpecies, 'slug' | 'appearances'>,
+  appearance?: Pick<AppearanceCatalogEntry, 'assetId'> | undefined,
+): AssetId {
+  const chosen = appearance ?? defaultAppearanceOf(species as Species | ContentSpecies);
+  const variant = chosen?.assetId.variant;
+  return {
+    kind: 'card',
+    slug: species.slug,
+    ...(variant ? { variant } : {}),
+  };
+}
+
+/**
+ * The rendered card for one **owned copy**.
+ *
+ * Deliberately carries only ids. The card shows her level and her equipped
+ * appearance, and the API already knows both — sending them as query
+ * parameters would mean the Portal reconstructing gameplay state it does not
+ * own, and getting it stale the moment she levels up mid-session.
+ *
+ * `variant` is still recorded because it is what makes the resolver's memo key
+ * change when she is redressed; the server does not read it.
+ */
+export function ownedCardAsset(
+  playerId: number,
+  entry: { waifu: Pick<OwnedWaifu, 'id' | 'selectedAppearance'>; species: Pick<Species, 'slug'> },
+): AssetId {
+  const variant = entry.waifu.selectedAppearance?.assetId.variant;
+  return {
+    kind: 'card',
+    slug: entry.species.slug,
+    ...(variant ? { variant } : {}),
+    owned: { playerId, waifuId: entry.waifu.id },
+  };
+}
+
 /** Art for an item. No provider serves these yet — see docs/portal.md. */
 export function itemAsset(slug: string): AssetId {
   return { kind: 'item', slug };

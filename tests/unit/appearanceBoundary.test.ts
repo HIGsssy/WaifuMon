@@ -44,18 +44,31 @@ const FORBIDDEN_MODULES = [
   'effects',
 ];
 
+/**
+ * Every file the module is allowed to contain.
+ *
+ * The enumeration is the anti-sprawl half of the firewall, and it is also what
+ * keeps the per-file checks below honest: a new file cannot arrive without
+ * being added here, and adding it here immediately subjects it to the same
+ * gameplay-import ban. `assetResolver.ts` joined in Phase 2.5 when generic
+ * artwork lookup moved out of the Discord layer so the card renderer could
+ * share it — cosmetic work, held to the same rules as the rest.
+ */
+const MODULE_FILES = [
+  'appearanceContent.ts',
+  'appearanceRules.ts',
+  'appearanceService.ts',
+  'assetResolver.ts',
+];
+
 describe('appearance module boundaries', () => {
   const files = fs.readdirSync(MODULE_DIR).filter((f) => f.endsWith('.ts'));
 
-  it('has the three modules the design calls for and no more', () => {
-    expect(files.sort()).toEqual([
-      'appearanceContent.ts',
-      'appearanceRules.ts',
-      'appearanceService.ts',
-    ]);
+  it('contains exactly the modules the design calls for and no more', () => {
+    expect(files.sort()).toEqual([...MODULE_FILES].sort());
   });
 
-  it.each(['appearanceContent.ts', 'appearanceRules.ts', 'appearanceService.ts'])(
+  it.each(MODULE_FILES)(
     '%s imports no gameplay service',
     (file) => {
       const imports = importedPaths(sourceOf(file));
@@ -78,6 +91,15 @@ describe('appearance module boundaries', () => {
       expect(source, `${file} must not import drizzle`).not.toMatch(/from 'drizzle-orm'/);
       expect(source, `${file} must not import the db client`).not.toMatch(/db\/client/);
     }
+  });
+
+  it('keeps the shared asset resolver free of the database', () => {
+    // It reads the filesystem, so it is not part of the pure core above — but
+    // resolving artwork must never become a query. The card renderer depends
+    // on being able to call it without a database in the process.
+    const source = sourceOf('assetResolver.ts');
+    expect(source).not.toMatch(/from 'drizzle-orm'/);
+    expect(source).not.toMatch(/db\/client/);
   });
 
   it('writes only the two cosmetic columns', () => {

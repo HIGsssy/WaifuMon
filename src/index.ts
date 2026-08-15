@@ -272,6 +272,10 @@ async function main(): Promise<void> {
       // Read through `ctx` so an admin-panel content reload is visible to the
       // API immediately, exactly as it is to the Discord handlers.
       getContent: () => ctx.content,
+      // Only the card routes use this, and only to hand the shared appearance
+      // resolver a root to look under. No path derived from it ever reaches a
+      // client.
+      assetsDir: config.assetsDir,
       // Presentation-only display name + avatar for HTTP clients, which —
       // unlike the Discord handlers — have no gateway of their own to render
       // from. The API layer holds no Discord types, so the lookup is injected
