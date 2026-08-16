@@ -2,7 +2,7 @@
  * Content-addressed disk cache for rendered cards.
  *
  * ```
- * assets/.card-cache/<slug>/<renderKey>.webp        master, always 1000×1400
+ * assets/.card-cache/<slug>/<renderKey>.webp        master, always full size
  * assets/.card-cache/<slug>/<renderKey>@512.webp    derivative, resized from the master
  * ```
  *

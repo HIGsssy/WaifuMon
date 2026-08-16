@@ -164,7 +164,7 @@ describe('export', () => {
       expect(clicks[0]?.download).toMatch(/^waifumon-void_empress.*\.webp$/);
       expect(clicks[0]?.download).not.toContain('101');
 
-      // The export request carried no width — that is the 1000×1400 master.
+      // The export request carried no width — that is the full-size master.
       const exportUrl = requestedUrls.find((url) => !url.includes('width='));
       expect(exportUrl).toBeDefined();
       expect(URL.revokeObjectURL).toHaveBeenCalled();

@@ -63,7 +63,7 @@ export interface SpeciesCardInputOptions {
   artwork: CardArtworkSource;
   /** Level printed on the card. Defaults to 1, matching a fresh capture. */
   level?: number;
-  /** Requested display width; omitted means the 1000×1400 master. */
+  /** Requested display width; omitted means the full-size master. */
   width?: number;
   /** Per-render metadata overrides. Rare — event skins, previews. */
   overrides?: SpeciesCardMeta;

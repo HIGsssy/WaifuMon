@@ -82,7 +82,7 @@ export function WaifumonHero({ entry, cardsAvailable }: WaifumonHeroProps) {
             name={`${species.name} card`}
             rarityLabel={rarity.label}
             priority
-            // The card's own 1000×1400 proportions, not the artwork's 3:4.
+            // The card's own ~13:19 proportions, not the artwork tile's 3:4.
             aspect="aspect-[5/7]"
             fit="contain"
           />

@@ -13,8 +13,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AFFINITIES, RARITIES } from '../../../src/db/schema';
 import {
   createCardRenderer,
-  MASTER_HEIGHT,
-  MASTER_WIDTH,
+  CARD_MASTER_HEIGHT,
+  CARD_MASTER_WIDTH,
   RACE_CODES,
   type Affinity,
   type CardRenderer,
@@ -69,7 +69,7 @@ describe('representative render matrix', () => {
   for (const combo of COMBOS) {
     const label = `${combo.rarity} / ${combo.race} / ${combo.affinity}`;
 
-    it(`renders ${label} as a 1000×1400 WebP`, async () => {
+    it(`renders ${label} as a full-size WebP`, async () => {
       const result = await renderer.renderCard(
         cardInput(artwork, {
           slug: `fixture_${combo.rarity.toLowerCase()}`,
@@ -83,11 +83,11 @@ describe('representative render matrix', () => {
       expect(isWebp(result.bytes), `${label} is WebP`).toBe(true);
       expect(result.contentType).toBe('image/webp');
       expect(await dimensionsOf(result.bytes)).toEqual({
-        width: MASTER_WIDTH,
-        height: MASTER_HEIGHT,
+        width: CARD_MASTER_WIDTH,
+        height: CARD_MASTER_HEIGHT,
       });
-      expect(result.width).toBe(MASTER_WIDTH);
-      expect(result.height).toBe(MASTER_HEIGHT);
+      expect(result.width).toBe(CARD_MASTER_WIDTH);
+      expect(result.height).toBe(CARD_MASTER_HEIGHT);
     });
   }
 

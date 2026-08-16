@@ -5,7 +5,7 @@
  * ```
  * artwork bytes ─┐
  *                ├─ composed base SVG ─ resvg ─ base PNG ─┐
- * base template ─┘                                        ├─ sharp composite ─ 1000×1400 WebP master
+ * base template ─┘                                        ├─ sharp composite ─ full-size WebP master
  *                   rarity SVG ─ resvg ─ rarity PNG ──────┘                          │
  *                                                                                    └─ sharp resize ─ @<width> derivative
  * ```
@@ -41,7 +41,7 @@ import type {
   CardRendererOptions,
   CardRendererStats,
 } from './types';
-import { cardEtag, MASTER_HEIGHT, MASTER_WIDTH } from './version';
+import { cardEtag, CARD_MASTER_HEIGHT, CARD_MASTER_WIDTH } from './version';
 
 /** Widths the renderer will derive. Wide enough to cover the portal's buckets. */
 export const MIN_OUTPUT_WIDTH = 16;
@@ -107,15 +107,15 @@ class CardRendererImpl implements CardRenderer {
     const renderKey = await this.computeMasterRenderKey(input);
     const slug = input.species.slug;
 
-    if (width === MASTER_WIDTH) {
+    if (width === CARD_MASTER_WIDTH) {
       const masterPath = this.cache.masterPath(slug, renderKey);
       const cached = await this.cache.read(masterPath);
       if (cached) {
         this.stats.cacheHits += 1;
-        return this.result(cached, renderKey, MASTER_WIDTH, MASTER_HEIGHT, true);
+        return this.result(cached, renderKey, CARD_MASTER_WIDTH, CARD_MASTER_HEIGHT, true);
       }
       const bytes = await this.ensureMaster(input, renderKey, masterPath);
-      return this.result(bytes, renderKey, MASTER_WIDTH, MASTER_HEIGHT, false);
+      return this.result(bytes, renderKey, CARD_MASTER_WIDTH, CARD_MASTER_HEIGHT, false);
     }
 
     const derivativePath = this.cache.derivativePath(slug, renderKey, width);
@@ -221,12 +221,12 @@ class CardRendererImpl implements CardRenderer {
 }
 
 function derivedHeight(width: number): number {
-  return Math.round((width * MASTER_HEIGHT) / MASTER_WIDTH);
+  return Math.round((width * CARD_MASTER_HEIGHT) / CARD_MASTER_WIDTH);
 }
 
 function resolveOutputWidth(input: CardRenderInput): number {
   const requested = input.output?.width;
-  if (requested === undefined) return MASTER_WIDTH;
+  if (requested === undefined) return CARD_MASTER_WIDTH;
   if (!Number.isFinite(requested) || !Number.isInteger(requested)) {
     throw new CardOutputWidthError(requested, MIN_OUTPUT_WIDTH, MAX_OUTPUT_WIDTH);
   }

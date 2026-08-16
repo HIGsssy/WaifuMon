@@ -24,7 +24,7 @@
 import { z } from 'zod';
 import {
   CardArtworkMissingError,
-  MASTER_WIDTH,
+  CARD_MASTER_WIDTH,
   SUPPORTED_CARD_WIDTHS,
   cardEtag,
   getCardRenderer,
@@ -61,7 +61,7 @@ const widthQuery = z.coerce
     message: `width must be one of ${SUPPORTED_CARD_WIDTHS.join(', ')}`,
   })
   .optional()
-  .describe(`Display width. One of ${SUPPORTED_CARD_WIDTHS.join(', ')}; default ${MASTER_WIDTH}.`);
+  .describe(`Display width. One of ${SUPPORTED_CARD_WIDTHS.join(', ')}; default ${CARD_MASTER_WIDTH}.`);
 
 const speciesCardQuery = z.object({
   variant: z
@@ -191,7 +191,7 @@ export const cardRoutes =
       input: CardRenderInput,
       context: { slug: string; requestedAppearanceId: string; source: string },
     ): Promise<void> {
-      const width = input.output?.width ?? MASTER_WIDTH;
+      const width = input.output?.width ?? CARD_MASTER_WIDTH;
       const renderKey = await renderer.computeMasterRenderKey(input);
       const etag = cardEtag(renderKey, width);
 

@@ -42,41 +42,43 @@ import {
  * room. Changing any of these changes pixels — bump `CARD_RENDERER_VERSION`.
  */
 const LAYOUT = {
-  /** Name panel is x=220 w=600. */
-  nameMaxWidth: 560,
-  nameTiers: [54, 44, 36] as const,
-  subtitleMaxWidth: 560,
-  subtitleFontSize: 22,
-  /** Race pill is 140 wide. */
-  raceLabelMaxWidth: 128,
-  raceLabelFontSize: 18,
-  /** Affinity label starts at absolute x=150; the description starts at 430. */
-  affinityLabelMaxWidth: 265,
-  affinityLabelFontSize: 24,
-  /** Description runs x=430 to the panel edge at 942. */
-  affinityDescMaxWidth: 496,
-  affinityDescFontSize: 20,
-  /** Ability text runs x=155 to the panel edge at 942. */
-  abilityMaxWidth: 770,
-  abilityNameFontSize: 27,
-  abilityTextFontSize: 19,
-  /** Flavor quote is centred on x=500. */
-  flavorMaxWidth: 860,
-  flavorFontSize: 21,
+  /** Name is centred on a 1500-wide card; keep it clear of the frame. */
+  nameMaxWidth: 1280,
+  nameTiers: [84, 68, 54] as const,
+  subtitleMaxWidth: 1200,
+  subtitleFontSize: 34,
+  /** Race label runs from x=196 to the divider at x=452. */
+  raceLabelMaxWidth: 244,
+  raceLabelFontSize: 32,
+  /** Affinity text runs from x=586 to the panel edge at x=1420. */
+  affinityLabelMaxWidth: 820,
+  affinityLabelFontSize: 30,
+  affinityDescMaxWidth: 820,
+  affinityDescFontSize: 23,
+  /** Ability text runs from x=196 to the panel edge at x=1420. */
+  abilityMaxWidth: 1215,
+  abilityNameFontSize: 38,
+  abilityTextFontSize: 27,
+  /** Flavor quote is centred on x=750. */
+  flavorMaxWidth: 1240,
+  flavorFontSize: 30,
   /**
-   * The credit row is inset to x 190…810 so it clears the rarity overlays'
-   * corner flourishes, and split around the centred WAIFUMON wordmark (which
-   * occupies roughly x 440…560 at its 22px size).
+   * The credit row is split around the centred WAIFUMON wordmark (roughly
+   * x 665..835 at its 32px size) and inset from the corner flourishes.
    */
-  artistMaxWidth: 240,
-  artistFontSize: 16,
-  cardNumberMaxWidth: 230,
-  cardNumberFontSize: 16,
+  artistMaxWidth: 380,
+  artistFontSize: 24,
+  cardNumberMaxWidth: 370,
+  cardNumberFontSize: 24,
 } as const;
 
-/** Icon `currentColor` per slot: race sits on a light disc, affinity on a dark one. */
-const RACE_ICON_COLOR = '#111111';
-const AFFINITY_ICON_COLOR = '#f5f5f5';
+/**
+ * Icon `currentColor` per slot. Both discs are dark on the new canvas, so both
+ * icons are light — the classification panel is a light plate with two dark
+ * roundels punched into it.
+ */
+const RACE_ICON_COLOR = '#f4f4f8';
+const AFFINITY_ICON_COLOR = '#f4f4f8';
 
 export interface ComposeBaseSvgInput {
   baseSvg: string;

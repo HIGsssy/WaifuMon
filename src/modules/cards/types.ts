@@ -61,7 +61,7 @@ export interface CardRenderInput {
   output?:
     | {
         /**
-         * Requested display width in px. Defaults to the master width (1000).
+         * Requested display width in px. Defaults to the master width.
          * Never part of the master render key — derivatives are resized from
          * the master, not re-rasterized.
          */
@@ -76,7 +76,7 @@ export interface CardRenderResult {
   bytes: Buffer;
   contentType: 'image/webp';
   /**
-   * Identity of the canonical 1000×1400 card. Stable across requested widths —
+   * Identity of the canonical full-size card. Stable across requested widths —
    * a 512px request of the same card reports the same `renderKey`.
    */
   renderKey: string;

@@ -13,7 +13,7 @@ import sharp from 'sharp';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createPlatformApiServer } from '../../../src/api/server';
 import type { ApiContext } from '../../../src/api/context';
-import { createCardRenderer, MASTER_HEIGHT, MASTER_WIDTH } from '../../../src/modules/cards';
+import { createCardRenderer, CARD_MASTER_HEIGHT, CARD_MASTER_WIDTH } from '../../../src/modules/cards';
 import { createAppearanceService } from '../../../src/modules/appearance/appearanceService';
 import { SpeciesFileSchema, type LoadedContent } from '../../../src/modules/content/schemas';
 import { WaifuNotOwnedError } from '../../../src/shared/errors';
@@ -233,7 +233,7 @@ describe('GET /capabilities', () => {
 });
 
 describe('GET /cards/species/:slug', () => {
-  it('returns a 1000×1400 WebP with cache headers', async () => {
+  it('returns a full-size WebP with cache headers', async () => {
     const res = await app.inject({ method: 'GET', url: url('/cards/species/card_test_n'), headers: AUTH });
 
     expect(res.statusCode).toBe(200);
@@ -242,8 +242,8 @@ describe('GET /cards/species/:slug', () => {
     expect(res.headers.etag).toMatch(/^"[0-9a-f]{16}"$/);
     expect(isWebp(res.rawPayload)).toBe(true);
     expect(await dimensionsOf(res.rawPayload)).toEqual({
-      width: MASTER_WIDTH,
-      height: MASTER_HEIGHT,
+      width: CARD_MASTER_WIDTH,
+      height: CARD_MASTER_HEIGHT,
     });
   });
 
@@ -304,11 +304,11 @@ describe('GET /cards/species/:slug', () => {
     }
   });
 
-  it('treats an explicit width=1000 as the master', async () => {
+  it('treats an explicit master width as the master', async () => {
     const master = await app.inject({ method: 'GET', url: url('/cards/species/card_test_n'), headers: AUTH });
     const explicit = await app.inject({
       method: 'GET',
-      url: url('/cards/species/card_test_n?width=1000'),
+      url: url(`/cards/species/card_test_n?width=${CARD_MASTER_WIDTH}`),
       headers: AUTH,
     });
     expect(explicit.headers.etag).toBe(master.headers.etag);

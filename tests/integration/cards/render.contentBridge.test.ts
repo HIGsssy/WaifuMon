@@ -15,8 +15,8 @@ import { toCardRenderInput } from '../../../src/modules/content/speciesCardInput
 import type { SpeciesContent } from '../../../src/modules/content/schemas';
 import {
   createCardRenderer,
-  MASTER_HEIGHT,
-  MASTER_WIDTH,
+  CARD_MASTER_HEIGHT,
+  CARD_MASTER_WIDTH,
   type CardRenderer,
 } from '../../../src/modules/cards';
 import { dimensionsOf, isWebp, makeTempDir } from '../../helpers/cardFixtures';
@@ -77,8 +77,8 @@ describe('real content renders', () => {
 
       expect(isWebp(result.bytes)).toBe(true);
       expect(await dimensionsOf(result.bytes)).toEqual({
-        width: MASTER_WIDTH,
-        height: MASTER_HEIGHT,
+        width: CARD_MASTER_WIDTH,
+        height: CARD_MASTER_HEIGHT,
       });
       expect(result.renderKey).toMatch(/^[0-9a-f]{16}$/);
     });
@@ -92,7 +92,7 @@ describe('real content renders', () => {
     const result = await renderer.renderCard(input);
 
     expect(isWebp(result.bytes)).toBe(true);
-    expect(result.width).toBe(MASTER_WIDTH);
+    expect(result.width).toBe(CARD_MASTER_WIDTH);
   });
 
   it('resolves a race for every species in the corpus', () => {

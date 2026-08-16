@@ -191,7 +191,8 @@ describe('optional element removal', () => {
 describe('character-name fitting', () => {
   it('keeps the largest size for a short name', () => {
     const found = findById(parseXml(compose({ name: 'Mika' })), 'character-name');
-    expect(getAttr(found!.node, 'font-size')).toBe('54');
+    // The largest tier in the composer's LAYOUT.nameTiers.
+    expect(getAttr(found!.node, 'font-size')).toBe('84');
   });
 
   it('steps the size down for a long name', () => {
@@ -199,7 +200,7 @@ describe('character-name fitting', () => {
       parseXml(compose({ name: 'Abyssal Shrine Oracle of the Drowned Moon' })),
       'character-name',
     );
-    expect(Number(getAttr(found!.node, 'font-size'))).toBeLessThan(54);
+    expect(Number(getAttr(found!.node, 'font-size'))).toBeLessThan(84);
   });
 
   it('truncates a name no size can fit', () => {
@@ -213,7 +214,8 @@ describe('icon injection', () => {
     const found = findById(parseXml(compose()), 'race-icon');
     expect(found).not.toBeNull();
     expect(childrenOf(found!.node)?.length).toBeGreaterThan(0);
-    expect(getAttr(found!.node, 'color')).toBe('#111111');
+    // Both classification discs are dark on this canvas, so both icons are light.
+    expect(getAttr(found!.node, 'color')).toBe('#f4f4f8');
     // Children are lifted out of the icon document — no nested <svg> root.
     expect(childrenOf(found!.node)?.some((c) => 'svg' in c)).toBe(false);
   });
@@ -221,7 +223,7 @@ describe('icon injection', () => {
   it('injects affinity icon children with a light color for the dark disc', () => {
     const found = findById(parseXml(compose()), 'affinity-icon');
     expect(childrenOf(found!.node)?.length).toBeGreaterThan(0);
-    expect(getAttr(found!.node, 'color')).toBe('#f5f5f5');
+    expect(getAttr(found!.node, 'color')).toBe('#f4f4f8');
   });
 
   it('injects a different icon per race', async () => {

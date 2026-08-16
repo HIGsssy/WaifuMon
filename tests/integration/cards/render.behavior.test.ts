@@ -11,8 +11,8 @@ import {
   CardArtworkMissingError,
   CardOutputWidthError,
   createCardRenderer,
-  MASTER_HEIGHT,
-  MASTER_WIDTH,
+  CARD_MASTER_HEIGHT,
+  CARD_MASTER_WIDTH,
   type CardRenderer,
 } from '../../../src/modules/cards';
 import {
@@ -63,14 +63,14 @@ beforeEach(() => {
 });
 
 describe('master rendering', () => {
-  it('produces a valid 1000×1400 WebP and caches exactly one file', async () => {
+  it('produces a valid full-size WebP and caches exactly one file', async () => {
     const result = await renderer.renderCard(cardInput(artwork));
 
     expect(isWebp(result.bytes)).toBe(true);
     expect(result.contentType).toBe('image/webp');
     expect(await dimensionsOf(result.bytes)).toEqual({
-      width: MASTER_WIDTH,
-      height: MASTER_HEIGHT,
+      width: CARD_MASTER_WIDTH,
+      height: CARD_MASTER_HEIGHT,
     });
     expect(result.fromCache).toBe(false);
     expect(await listFiles(cacheRoot)).toEqual([`alley_catgirl/${result.renderKey}.webp`]);
@@ -112,7 +112,12 @@ describe('derived widths', () => {
     expect(renderer.getStats()).toMatchObject({ masterRenders: 1, derivativeRenders: 1 });
     expect(small.renderKey).toBe(master.renderKey);
     expect(small.width).toBe(512);
-    expect(await dimensionsOf(small.bytes)).toEqual({ width: 512, height: 717 });
+    // Derived from the canvas rather than restated, so a future geometry
+    // change updates this expectation instead of breaking it.
+    expect(await dimensionsOf(small.bytes)).toEqual({
+      width: 512,
+      height: Math.round((512 * CARD_MASTER_HEIGHT) / CARD_MASTER_WIDTH),
+    });
     expect(isWebp(small.bytes)).toBe(true);
   });
 

@@ -13,7 +13,7 @@ import { Resvg, type ResvgRenderOptions } from '@resvg/resvg-js';
 import sharp from 'sharp';
 import { ARTWORK_HREF } from '../composer/artworkHref';
 import { CardTemplateError } from '../errors';
-import { CARD_WEBP_QUALITY, MASTER_HEIGHT, MASTER_WIDTH } from '../version';
+import { CARD_WEBP_QUALITY, CARD_MASTER_HEIGHT, CARD_MASTER_WIDTH } from '../version';
 
 /** Family names the embedded fonts register under, matched to the SVG's stacks. */
 const SANS_FAMILY = 'Inter';
@@ -74,7 +74,7 @@ export function renderOverlayPng(svg: string, fontFiles: string[]): Buffer {
 }
 
 /**
- * Composites the rarity overlay over the base and encodes the 1000×1400 master.
+ * Composites the rarity overlay over the base and encodes the full-size master.
  * WebP quality is a renderer constant, not a request parameter — see
  * `version.ts` for why.
  */
@@ -105,6 +105,6 @@ export async function resizeFromMaster(master: Buffer, width: number): Promise<R
   return {
     bytes,
     width: meta.width ?? width,
-    height: meta.height ?? Math.round((width * MASTER_HEIGHT) / MASTER_WIDTH),
+    height: meta.height ?? Math.round((width * CARD_MASTER_HEIGHT) / CARD_MASTER_WIDTH),
   };
 }

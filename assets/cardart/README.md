@@ -1,7 +1,15 @@
 # WaifuMon SVG Card Kit
 
-Modular card assets using a 1000 x 1400 SVG viewBox. Rendered server-side by
+Modular card assets on a **1500 x 2200** SVG viewBox. Rendered server-side by
 `src/modules/cards/` (see `.ai/SVGPlan.md`).
+
+The canvas is derived from the source artwork, not chosen first. Character art
+is authored at **1248 x 1824** (13:19, ~0.6842); 1500 x 2200 is ~0.6818, within
+0.35% of it. The art is **full bleed** — it fills the whole card and the frame,
+badges and text sit over it — which costs 1.5% of width and **0% of height**.
+An inset art window on this canvas would instead discard ~11% of the height,
+and these compositions put ears against the top edge and boots against the
+bottom, so that 11% is anatomy.
 
 Composition (layered raster — the renderer never merges two SVG documents):
 1. Character artwork (resolved into `#character-art` by the renderer)
@@ -28,20 +36,40 @@ so the renderer can recolor them (it sets `color` on the destination group).
 
 ## Geometry constraints
 
-Rarity overlays draw on top of the base, so the base must keep its content
-inside the band the overlays leave free:
+The base and the overlays share one zone map, so a designer can replace any
+rarity file without re-checking it against seven layouts.
 
-- **Innermost frame line** sits at `y = 1360` (EX: `y = 1358`). Nothing in the
-  base should have ink below `y ≈ 1354`.
-- **Bottom-centre flourish** (SSR, UR, LR, EX) occupies `y 1360…1392`,
-  `x 450…550`.
-- **Corner flourishes** (SR, SSR, UR, LR) sweep inward from the card edge to
-  `x ≈ 175` on the left and `x ≈ 825` on the right below about `y = 1300`; EX's
-  chevrons run along `y = 1372` from `x 60…210` and `x 790…940`. The footer
-  credit row is therefore inset to `x 190…810`.
+**The base owns** (no overlay may draw here):
 
-A new rarity overlay that wants to decorate further inside must come with a
-matching base-template adjustment — and a `VERSION` bump.
+| Zone | Box |
+| --- | --- |
+| Level badge | `x 1244…1466`, `y 84…246` |
+| Name + subtitle | `x 110…1390`, `y 1620…1730` |
+| Classification panel | `x 60…1440`, `y 1742…1874` |
+| Ability panel | `x 60…1440`, `y 1896…2036` |
+| Flavour quote | `x 560…940`, `y 2046…2080` |
+| Credit row | `x 250…1250`, `y 2090…2120` |
+
+**Overlays own**:
+
+| Zone | Box |
+| --- | --- |
+| Rarity badge | `x 76…344`, `y 88…204` |
+| Border rings | the full perimeter |
+| Top-centre crest | `x 400…1240`, `y 4…80` — between the two badges |
+| Bottom-left pocket | `x 34…240`, `y 2044…2166` |
+| Bottom-right pocket | `x 1260…1466`, `y 2044…2166` |
+
+Two rules fall out of this and are worth stating plainly:
+
+1. **Both badges sit inside the inner ring, not in the corners.** A corner badge
+   and a corner flourish cannot share a corner; that collision is what the
+   earlier geometry kept producing.
+2. **Nothing decorative is drawn over the artwork** between `y 200` and
+   `y 1740`. The character is the card.
+
+A new overlay that wants to decorate outside its zones needs a matching
+base-template change — and a `VERSION` bump.
 
 ## `VERSION`
 

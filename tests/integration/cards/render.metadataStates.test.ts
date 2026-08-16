@@ -9,8 +9,8 @@ import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   createCardRenderer,
-  MASTER_HEIGHT,
-  MASTER_WIDTH,
+  CARD_MASTER_HEIGHT,
+  CARD_MASTER_WIDTH,
   type CardRenderer,
 } from '../../../src/modules/cards';
 import {
@@ -104,8 +104,8 @@ describe('metadata states', () => {
       const result = await renderer.renderCard(testCase.input());
       expect(isWebp(result.bytes)).toBe(true);
       expect(await dimensionsOf(result.bytes)).toEqual({
-        width: MASTER_WIDTH,
-        height: MASTER_HEIGHT,
+        width: CARD_MASTER_WIDTH,
+        height: CARD_MASTER_HEIGHT,
       });
     });
   }

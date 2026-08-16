@@ -14,8 +14,9 @@
  * moment she levels up in another tab.
  *
  * **Size.** The resolver's bucket becomes `?width=`, so a 512 px hero downloads
- * the 512 px derivative instead of the 1000 px master. The API derives that by
- * resizing its own cached master — asking for a bucket costs no extra render.
+ * the 512 px derivative instead of the full-resolution master. The API derives
+ * that by resizing its own cached master — asking for a bucket costs no extra
+ * render.
  *
  * **Auth.** These routes need the Platform API's bearer token, which an `<img>`
  * element cannot send. In development the Vite proxy attaches it (see
@@ -49,9 +50,9 @@ export function cardUrlFor(id: AssetId, bucket: ImageSizeBucket | null = null): 
 
   const base = portalEnv.apiUrl;
   const params = new URLSearchParams();
-  // A null bucket means "the original", which for a card is the 1000x1400
-  // master - and omitting `width` is exactly how the API says that. Every
-  // actual bucket (256/512/1024) is a derivative the API resizes from it.
+  // A null bucket means "the original" - the card's full-resolution master -
+  // and omitting `width` is exactly how the API says that. Every bucket
+  // (256/512/1024) is a genuine downscale the API derives from that master.
   if (bucket !== null) params.set('width', String(bucket));
 
   let path: string;

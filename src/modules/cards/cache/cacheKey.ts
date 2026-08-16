@@ -1,5 +1,5 @@
 /**
- * The master render key — the identity of one canonical 1000×1400 card.
+ * The master render key — the identity of one canonical full-size card.
  *
  * Two rules define what belongs in it:
  *
