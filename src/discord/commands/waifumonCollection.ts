@@ -47,6 +47,7 @@ import { buildCustomId } from '../types';
 import { postAppearanceUnlockToasts } from '../appearanceToast';
 import { emitEvents } from '../gameEventEmitter';
 import { gameEvent } from '../../modules/events/gameEvents';
+import { renderOwnedCardAttachment } from '../assets/attachRenderedCard';
 import { respondEphemeral } from '../ephemeralSession';
 import { withBackRow } from '../ui';
 
@@ -89,7 +90,7 @@ function displayName(entry: OwnedEntry): string {
   return nick ? `${nick} (${entry.species.name})` : entry.species.name;
 }
 
-function renderCollectionEmbed(page: PaginatedOwned, dex: {
+export function renderCollectionEmbed(page: PaginatedOwned, dex: {
   owned: number;
   distinctSpecies: number;
   totalSpecies: number;
@@ -398,9 +399,14 @@ async function renderInspect(
         },
         { name: 'Unlocks', value: unlockLines.join('\n'), inline: true },
       );
-    const card = attachCardOr(ctx, entry);
+    // The canonical collectible view: a player looking at one of her own
+    // Waifumon sees the card, carrying her real level, her equipped look and
+    // the CAUGHT badge. Falls back to raw artwork when rendering is off.
+    const owned = await renderOwnedCardAttachment(ctx, entry);
+    const artwork = owned ? null : attachCardOr(ctx, entry);
+    const card = owned?.file ?? artwork;
     const files = card ? [card] : [];
-    if (card) embed.setImage(`attachment://${CARD_FILENAME}`);
+    if (card) embed.setImage(owned ? owned.url : `attachment://${CARD_FILENAME}`);
     await respondEphemeral(interaction, {
       embeds: [embed],
       components: inspectComponents(ctx, entry, isDuplicate, convertEssence, isBuddy),

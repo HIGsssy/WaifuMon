@@ -203,8 +203,16 @@ describe('shipped content', () => {
     expect(allSpecies.filter((s) => s.card).length).toBeGreaterThanOrEqual(2);
   });
 
-  it('seeds an example that omits the card block entirely', () => {
-    expect(allSpecies.some((s) => s.race && !s.card)).toBe(true);
+  /**
+   * `card` is optional, and that is a property of the schema rather than of
+   * whatever the corpus happens to contain. It used to be asserted by finding a
+   * species with no `card` block, which stopped meaning anything the moment
+   * every species gained one to carry its artist credit.
+   */
+  it('accepts a species with a race and no card block at all', () => {
+    const result = parse({ race: 'valkyrie' });
+    expect(result.success).toBe(true);
+    expect(result.success && result.data.card).toBeUndefined();
   });
 
   it('never authors an affinity description into species content', () => {

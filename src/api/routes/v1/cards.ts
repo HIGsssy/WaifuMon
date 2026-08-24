@@ -12,12 +12,16 @@
  * responses still use the standard envelope, so a failure is indistinguishable
  * from any other route's.
  *
- * **2. Cache identity follows the artwork that resolved, not the one asked
- * for.** Artwork lookup falls back (appearance → species default → legacy
- * `imagePath`), and two appearances that both fall back render byte-identical
- * cards. Keying those by the *requested* appearance would mint two master
- * renders of one image. The shared resolver returns the asset it actually
- * used, and that is what reaches the renderer — see `speciesCardInput.ts`.
+ * **2. Which card to draw is not decided here.** Species lookup, appearance
+ * selection, artwork fallback, level and the ownership flag all live in
+ * `modules/appearance/cardPresentation.ts`, because Discord renders the same
+ * cards in-process and a second copy of that chain is how the two would drift.
+ * This route resolves the request, hands it over, and streams the bytes.
+ *
+ * Cache identity still follows the artwork that *resolved* rather than the one
+ * asked for — two appearances that both fall back render byte-identical cards,
+ * and keying them apart would mint two masters of one image. The presentation
+ * service returns the asset it actually used.
  *
  * Registered only when `CARD_RENDERER_ENABLED`; see `routes/v1/index.ts`.
  */
@@ -31,11 +35,13 @@ import {
   type CardRenderInput,
   type CardRenderResult,
 } from '../../../modules/cards';
-import { resolveAppearanceAssetOrLegacyPath } from '../../../modules/appearance/assetResolver';
-import type { ResolvedAppearanceAsset } from '../../../modules/appearance/assetResolver';
-import { toCardRenderInput } from '../../../modules/content/speciesCardInput';
+import {
+  ownedCardRequest,
+  speciesCardRequest,
+  type CardPresentationDeps,
+  type CardRequest,
+} from '../../../modules/appearance/cardPresentation';
 import type { SpeciesContent } from '../../../modules/content/schemas';
-import { AppearanceNotFoundError } from '../../../shared/errors';
 import type { ApiContext } from '../../context';
 import { ApiCardLevelError, ApiSpeciesNotFoundError } from '../../errors';
 import { requirePlayer } from '../../plugins/playerScope';
@@ -127,50 +133,34 @@ export const cardRoutes =
       return species;
     }
 
+    const presentation: CardPresentationDeps = { appearance, assetsDir: assetsRoot };
+
     /**
-     * Turns a requested appearance id into the artwork that will actually be
-     * drawn. Two distinct failures, deliberately different statuses:
-     *
-     *   - an id the species does not have is a malformed request — 400, via
-     *     `APPEARANCE_NOT_FOUND`, matching the convention in `api/errors.ts`;
-     *   - an id that exists but whose file (and every fallback) is missing is a
-     *     content gap — 404, via `CARD_ARTWORK_MISSING`.
+     * Logs when the artwork that supplied the pixels is not the one asked for.
+     * A fallback is a content gap worth seeing, and it is also the reason two
+     * appearances can share one render key.
      */
-    function artworkOr404(
-      species: SpeciesContent,
-      requestedAppearanceId: string | undefined,
+    function logFallback(
+      request: CardRequest,
       log: { debug: (obj: object, msg: string) => void },
-    ): ResolvedAppearanceAsset {
-      const catalog = appearance.catalogFor(species);
-      const chosen =
-        requestedAppearanceId === undefined
-          ? appearance.currentAppearance(species, null)
-          : catalog.find((entry) => entry.id === requestedAppearanceId);
-
-      if (!chosen) throw new AppearanceNotFoundError(requestedAppearanceId ?? '', species.slug);
-
-      const resolved = resolveAppearanceAssetOrLegacyPath(
-        { assetsDir: assetsRoot },
-        chosen.assetId,
-        species.imagePath,
-      );
-      if (!resolved) {
-        throw new CardArtworkMissingError('', species.slug, chosen.id);
-      }
-
-      if (resolved.assetId.variant !== chosen.id || resolved.source !== 'appearance') {
+    ): CardRequest {
+      const resolved = request.artwork;
+      if (
+        resolved.assetId.variant !== request.requestedAppearanceId ||
+        resolved.source !== 'appearance'
+      ) {
         log.debug(
           {
             tag: 'card-renderer/artwork-fallback',
-            slug: species.slug,
-            requestedAppearanceId: chosen.id,
+            slug: request.species.slug,
+            requestedAppearanceId: request.requestedAppearanceId,
             resolvedAppearanceId: resolved.assetId.variant,
             source: resolved.source,
           },
           'card artwork resolved to a fallback asset',
         );
       }
-      return resolved;
+      return request;
     }
 
     /**
@@ -256,18 +246,19 @@ export const cardRoutes =
         const species = speciesOr404(req.params.slug);
         assertLevelInRange(req.query.level, ctx);
 
-        const artwork = artworkOr404(species, req.query.variant, req.log);
-        const input = toCardRenderInput(species, {
-          artwork,
-          ...(req.query.level === undefined ? {} : { level: req.query.level }),
-          ...(req.query.width === undefined ? {} : { width: req.query.width }),
-          logger: req.log as never,
-        });
+        const request = logFallback(
+          speciesCardRequest(presentation, species, {
+            ...(req.query.variant === undefined ? {} : { appearanceId: req.query.variant }),
+            ...(req.query.level === undefined ? {} : { level: req.query.level }),
+            ...(req.query.width === undefined ? {} : { width: req.query.width }),
+          }),
+          req.log,
+        );
 
-        await sendCard(req, reply, input, {
+        await sendCard(req, reply, request.input, {
           slug: species.slug,
-          requestedAppearanceId: req.query.variant ?? artwork.assetId.variant,
-          source: artwork.source,
+          requestedAppearanceId: request.requestedAppearanceId,
+          source: request.artwork.source,
         });
         return reply;
       },
@@ -294,26 +285,22 @@ export const cardRoutes =
         // Ownership is this call: `getOwned` throws WAIFU_NOT_OWNED (→ 404) for
         // a copy that is not this player's. No separate authorization path.
         const entry = await collection.getOwned(requirePlayer(req).id, req.params.waifuId);
-        const species = speciesOr404(entry.species.slug);
+        // Presence check only: `ownedCardRequest` does the content lookup
+        // itself, but a species missing from the snapshot should still read as
+        // a 404 on this route rather than a render failure.
+        speciesOr404(entry.species.slug);
 
-        const worn = appearance.currentAppearance(entry.species, entry.waifu.variant);
-        const artwork = artworkOr404(species, worn.id, req.log);
+        const request = logFallback(
+          ownedCardRequest(presentation, entry, {
+            ...(req.query.width === undefined ? {} : { width: req.query.width }),
+          }),
+          req.log,
+        );
 
-        const input = toCardRenderInput(species, {
-          artwork,
-          level: entry.waifu.level,
-          // The only surface that draws the ownership badge. The species route
-          // deliberately does not: the same card is shown in the encyclopedia
-          // and in hunt encounters, where ownership is not the subject.
-          owned: true,
-          ...(req.query.width === undefined ? {} : { width: req.query.width }),
-          logger: req.log as never,
-        });
-
-        await sendCard(req, reply, input, {
-          slug: species.slug,
-          requestedAppearanceId: worn.id,
-          source: artwork.source,
+        await sendCard(req, reply, request.input, {
+          slug: request.species.slug,
+          requestedAppearanceId: request.requestedAppearanceId,
+          source: request.artwork.source,
         });
         return reply;
       },

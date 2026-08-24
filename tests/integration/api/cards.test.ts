@@ -51,7 +51,7 @@ const SPECIES = SpeciesFileSchema.parse([
     contentRating: 'suggestive',
     affinity: 'dominant',
     imagePath: 'waifumon/card_test_n/standard.png',
-    card: { subtitle: 'Fixture Subtitle' },
+    card: { subtitle: 'Fixture Subtitle', artist: 'Fixture Artist' },
   },
   {
     slug: 'card_test_ex',
@@ -575,6 +575,39 @@ describe('GET /players/:playerId/collection/owned/:waifuId/card', () => {
     });
     expect(res.statusCode).toBe(404);
     expect(res.json()).toMatchObject({ error: { code: 'PLAYER_NOT_FOUND' } });
+  });
+});
+
+describe('artist credit', () => {
+  /**
+   * The credit is drawn from `card.artist`, so it changes the bytes — which
+   * means it has to change the ETag too, or an edited credit would keep serving
+   * the old card from every cache between here and the browser.
+   */
+  it('gives a different entity when the artist changes', async () => {
+    const before = await app.inject({ method: 'GET', url: url('/cards/species/card_test_n'), headers: AUTH });
+    expect(before.statusCode).toBe(200);
+
+    const species = content.species.find((s) => s.slug === 'card_test_n') as {
+      card?: Record<string, unknown> | undefined;
+    };
+    const original = species.card;
+    species.card = { ...original, artist: 'Someone Else Entirely' };
+
+    try {
+      const after = await app.inject({ method: 'GET', url: url('/cards/species/card_test_n'), headers: AUTH });
+      expect(after.statusCode).toBe(200);
+      expect(after.headers.etag).not.toBe(before.headers.etag);
+      expect(after.rawPayload.equals(before.rawPayload)).toBe(false);
+    } finally {
+      species.card = original;
+    }
+  });
+
+  it('serves a card for a species with no artist at all', async () => {
+    const res = await app.inject({ method: 'GET', url: url('/cards/species/fallback_girl'), headers: AUTH });
+    expect(res.statusCode).toBe(200);
+    expect(isWebp(res.rawPayload)).toBe(true);
   });
 });
 

@@ -123,7 +123,6 @@ describe('computeMasterRenderKey', () => {
       ['affinity', mutate({ species: { affinity: 'primal' } })],
       ['description', mutate({ species: { description: 'A different flavour line.' } })],
       ['artist', mutateCard({ artist: 'Someone Else' })],
-      ['card number', mutateCard({ cardNumber: '013/100' })],
       ['level', { ...baseInput, progress: { level: 13 } }],
       ['appearance id', mutate({ variant: { appearanceId: 'level_20' } })],
       ['overrides of a drawn field', { ...baseInput, overrides: { artist: 'Overridden' } }],
@@ -154,8 +153,8 @@ describe('computeMasterRenderKey', () => {
 
   /**
    * The production card face has four text rows — name, two description lines,
-   * and a credit row — so `subtitle`, `ability` and `flavorQuote` have nowhere
-   * to appear. They remain part of the authored content contract, but they
+   * and a credit row carrying the artist and the wordmark — so `subtitle`,
+   * `ability`, `flavorQuote` and `cardNumber` have nowhere to appear. They remain part of the authored content contract, but they
    * cannot change a pixel, and keying on them would fork the cache every time
    * an author edited a line nobody sees. If a later frame draws them again,
    * they go back into the key and `CARD_RENDERER_VERSION` gets bumped.
@@ -163,6 +162,7 @@ describe('computeMasterRenderKey', () => {
   describe('does not change for metadata the card face does not draw', () => {
     const unrendered: [string, CardRenderInput][] = [
       ['subtitle', mutateCard({ subtitle: 'Different' })],
+      ['card number', mutateCard({ cardNumber: '013/100' })],
       ['ability name', mutateCard({ ability: { name: 'Eight Lives', text: 'Ignores the first failed capture attempt.' } })],
       ['ability text', mutateCard({ ability: { name: 'Nine Lives', text: 'Different text.' } })],
       ['flavor quote', mutateCard({ flavorQuote: 'Another quote.' })],

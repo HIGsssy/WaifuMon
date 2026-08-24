@@ -22,8 +22,9 @@ import type { RaceCode } from './race';
 /**
  * Note on what the card face currently *draws*. The production frame's
  * information panel carries four rows — name, two lines of description, and a
- * credit row — so of the fields below only `artist` and `cardNumber` reach the
- * card today. `subtitle`, `ability` and `flavorQuote` remain part of the
+ * credit row of `Artist — <name>` on the left against the wordmark on the
+ * right — so of the fields below only `artist` reaches the card today.
+ * `subtitle`, `ability`, `flavorQuote` and `cardNumber` remain part of the
  * authored content contract (and of the admin panel, and of the API) and are
  * simply not rendered; they are deliberately kept rather than deleted so a
  * later frame with room for them does not need a content migration.
@@ -37,7 +38,11 @@ export interface SpeciesCardMeta {
   ability?: { name: string; text: string } | undefined;
   /** Not currently drawn — the panel shows `species.description` instead. */
   flavorQuote?: string | undefined;
-  /** Free-form collector number, e.g. "012/100". */
+  /**
+   * Free-form collector number. Reserved, **not drawn**: there is no set
+   * numbering system, so every value would be invented. Do not fill it in to
+   * make the card look complete.
+   */
   cardNumber?: string | undefined;
 }
 

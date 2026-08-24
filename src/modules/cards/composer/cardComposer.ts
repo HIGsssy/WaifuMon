@@ -82,6 +82,15 @@ export const LAYOUT = {
     descriptionBaseline1: 0.505,
     descriptionBaseline2: 0.645,
 
+    /**
+     * Credit row: artist on the left, wordmark on the right.
+     *
+     * The collector number used to hold the right edge with the wordmark
+     * centred between them. There is no set-numbering system, so the number was
+     * always a placeholder; dropping it lets the two things that are real take
+     * an edge each and gives the row a balance it never had while a blank
+     * middle column sat between them.
+     */
     creditSize: 0.082,
     creditBaseline: 0.94,
     brandText: 'WAIFUMON',
@@ -237,6 +246,20 @@ export function planOwnedBadge(
  * unreadable over a busy image. The plates are drawn under the frame so its
  * ornate border laps over their edges, which is what makes them read as part
  * of the frame rather than as rectangles dropped on top of it.
+ *
+ * **The shield plate is a plain rectangle on the shield's bounding box**, and
+ * that is the whole trick. `geometry.shield` is the bounding box of the hole,
+ * so a rect on it covers the hole completely by construction — no shield-shaped
+ * mask required, and no rarity can be left with a gap. An earlier ellipse fitted
+ * *inside* that box left 8–12k pixels of each hole bare around the point and the
+ * shoulders, which showed as character artwork ringing the level badge.
+ *
+ * The rect is deliberately not padded. Every frame's shield hole touches its own
+ * bounding box on all four sides, and immediately outside that box lies the
+ * artwork window, so any outward padding would print a dark corner onto the
+ * character. Measured against the shipped frames, an exact-box rect spills at
+ * most 8 pixels (LR, antialiasing at one corner) — invisible, and under the
+ * frame's ornament besides.
  */
 export function buildUnderlaySvg(
   geometry: FrameGeometry,
@@ -253,14 +276,13 @@ export function buildUnderlaySvg(
     '<stop offset="0" stop-color="#120b16" stop-opacity="0.95"/>',
     '<stop offset="1" stop-color="#07050a" stop-opacity="0.98"/>',
     '</linearGradient>',
-    '<radialGradient id="shieldPlate">',
-    '<stop offset="0" stop-color="#1a0d18" stop-opacity="0.95"/>',
-    '<stop offset="1" stop-color="#07050a" stop-opacity="0.92"/>',
-    '</radialGradient>',
+    '<linearGradient id="shieldPlate" x1="0" y1="0" x2="0" y2="1">',
+    '<stop offset="0" stop-color="#1a0d18"/>',
+    '<stop offset="1" stop-color="#07050a"/>',
+    '</linearGradient>',
     '</defs>',
     `<rect x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" rx="${radius}" fill="url(#panelPlate)"/>`,
-    `<ellipse cx="${round(s.x + s.w / 2)}" cy="${round(s.y + s.h * 0.45)}"` +
-      ` rx="${round(s.w * 0.52)}" ry="${round(s.h * 0.46)}" fill="url(#shieldPlate)"/>`,
+    `<rect x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" fill="url(#shieldPlate)"/>`,
     '</svg>',
   ].join('');
 }
@@ -402,19 +424,12 @@ function panelText(input: ComposeCardInput): string[] {
   const creditSize = round(cfg.creditSize * band.h);
   const creditY = round(band.y + cfg.creditBaseline * band.h);
 
-  out.push(
-    text({
-      x: cx,
-      y: creditY,
-      size: creditSize,
-      anchor: 'middle',
-      weight: 700,
-      tracking: cfg.brandTracking,
-      fill: '#c8a35e',
-      content: cfg.brandText,
-    }),
-  );
-
+  /**
+   * The credit label is renderer-owned: content stores the bare name
+   * (`"Whistler"`), the card decides it reads `Artist — Whistler`. An absent or
+   * blank credit drops the element entirely — no `Artist — Unknown`, because an
+   * invented attribution is worse than a blank line.
+   */
   const artist = cleanForPanel(input.card.artist, TEXT_LIMITS.artist);
   if (artist) {
     out.push(
@@ -429,19 +444,18 @@ function panelText(input: ComposeCardInput): string[] {
     );
   }
 
-  const cardNumber = cleanForPanel(input.card.cardNumber, TEXT_LIMITS.cardNumber);
-  if (cardNumber) {
-    out.push(
-      text({
-        x: band.x + band.w,
-        y: creditY,
-        size: creditSize,
-        anchor: 'end',
-        fill: '#a99cb8',
-        content: cardNumber,
-      }),
-    );
-  }
+  out.push(
+    text({
+      x: band.x + band.w,
+      y: creditY,
+      size: creditSize,
+      anchor: 'end',
+      weight: 700,
+      tracking: cfg.brandTracking,
+      fill: '#c8a35e',
+      content: cfg.brandText,
+    }),
+  );
 
   return out;
 }

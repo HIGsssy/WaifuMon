@@ -72,6 +72,7 @@ const CASES: { label: string; input: () => Parameters<CardRenderer['renderCard']
           artist: LONG,
           ability: { name: LONG, text: LONG },
           flavorQuote: LONG,
+          // Not drawn — present to prove an absurd value cannot reach the face.
           cardNumber: LONG,
         },
       }),

@@ -21,17 +21,17 @@ import type { CardRenderInput, SpeciesCardMeta } from '../types';
 /**
  * The card-metadata fields the current card face actually draws.
  *
- * `SpeciesCardMeta` still carries `subtitle`, `ability` and `flavorQuote` for
- * the content contract, but the production frame has no room for them, so they
- * cannot change a single pixel. Keying on them would fork the cache every time
- * an author edited a line that never appears — this narrows the key to what is
- * genuinely drawn. Anything added back to the card face must be added back
- * here, and that is exactly the kind of change `CARD_RENDERER_VERSION` exists
- * to cover.
+ * `SpeciesCardMeta` still carries `subtitle`, `ability`, `flavorQuote` and
+ * `cardNumber` for the content contract, but the production frame draws none of
+ * them, so they cannot change a single pixel. Keying on them would fork the
+ * cache every time an author edited a line that never appears — this narrows
+ * the key to what is genuinely drawn, which today is the artist credit alone.
+ *
+ * Anything added back to the card face must be added back here, and that is
+ * exactly the kind of change `CARD_RENDERER_VERSION` exists to cover.
  */
 export interface RenderedCardMeta {
   artist?: string | undefined;
-  cardNumber?: string | undefined;
 }
 
 /** Hex characters kept from the digest. 64 bits is ample for a filename stem. */
@@ -100,7 +100,7 @@ export function buildMasterKeyMaterial(
 
 /** Narrows a full metadata block to the fields the card face draws. */
 function renderedCardMeta(card: SpeciesCardMeta): RenderedCardMeta {
-  return { artist: card.artist, cardNumber: card.cardNumber };
+  return { artist: card.artist };
 }
 
 /**

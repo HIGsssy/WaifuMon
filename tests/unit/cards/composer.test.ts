@@ -40,7 +40,7 @@ function compose(overrides: Partial<ComposeCardInput> = {}): ComposeCardInput {
     rarity: 'UR',
     level: 50,
     description: 'Reality bends politely out of her way. You should too.',
-    card: { artist: 'Whistler', cardNumber: '004/100' },
+    card: { artist: 'Whistler', cardNumber: '004/100' },  // cardNumber must be ignored
     icons: { race: STUB, affinity: STUB, rarity: STUB },
     ...overrides,
   };
@@ -158,7 +158,58 @@ describe('buildUnderlaySvg', () => {
     const svg = buildUnderlaySvg(geometry, CANVAS);
     expect(svg).toContain(`x="${geometry.panel.x}"`);
     expect(svg).toContain(`width="${geometry.panel.w}"`);
-    expect(svg).toContain('<ellipse');
+  });
+
+  /**
+   * The shield hole must be covered completely — a plate fitted *inside* the
+   * box leaves the point and the shoulders bare, and character artwork rings
+   * the level badge. A rect on the bounding box covers it by construction.
+   */
+  it('covers the whole shield hole on every frame', async () => {
+    for (const rarity of ['N', 'R', 'SR', 'SSR', 'UR', 'LR'] as const) {
+      const g = await loader.frameGeometry(rarity);
+      const svg = buildUnderlaySvg(g, CANVAS);
+
+      const rects = [...svg.matchAll(/<rect ([^>]*)\/>/g)].map((m) => {
+        const attrs = new Map<string, string>(
+          [...(m[1] ?? '').matchAll(/([\w-]+)="([^"]*)"/g)].map((a) => [a[1] as string, a[2] as string]),
+        );
+        const num = (n: string) => Number(attrs.get(n));
+        return { x: num('x'), y: num('y'), w: num('width'), h: num('height') };
+      });
+
+      const covers = rects.some(
+        (r) =>
+          r.x <= g.shield.x &&
+          r.y <= g.shield.y &&
+          r.x + r.w >= g.shield.x + g.shield.w &&
+          r.y + r.h >= g.shield.y + g.shield.h,
+      );
+      expect(covers, `${rarity}: no plate covers the full shield hole`).toBe(true);
+    }
+  });
+
+  /**
+   * Every frame's shield hole touches its own bounding box on all four sides,
+   * and the artwork window lies immediately outside it — so an oversized plate
+   * would print a dark corner onto the character.
+   */
+  it('does not oversize the shield plate past its hole', async () => {
+    for (const rarity of ['N', 'R', 'SR', 'SSR', 'UR', 'LR'] as const) {
+      const g = await loader.frameGeometry(rarity);
+      const svg = buildUnderlaySvg(g, CANVAS);
+      const rect = new RegExp(
+        `<rect x="${g.shield.x}" y="${g.shield.y}" width="${g.shield.w}" height="${g.shield.h}"`,
+      );
+      expect(rect.test(svg), `${rarity}: shield plate is not exactly its hole's box`).toBe(true);
+    }
+  });
+
+  it('makes the shield plate fully opaque — a translucent one still shows artwork', () => {
+    const svg = buildUnderlaySvg(geometry, CANVAS);
+    const gradient = /<linearGradient id="shieldPlate"[^>]*>(.*?)<\/linearGradient>/s.exec(svg)?.[1] ?? '';
+    expect(gradient).not.toBe('');
+    expect(gradient).not.toContain('stop-opacity');
   });
 });
 
@@ -247,11 +298,57 @@ describe('buildOverlaySvg', () => {
     expect(y).toBeLessThan(second);
   });
 
-  it('always carries the branding, and the credits when they exist', () => {
+  it('always carries the branding, and the artist credit when it exists', () => {
     const svg = buildOverlaySvg(compose(), CANVAS);
     expect(svg).toContain('>WAIFUMON<');
     expect(svg).toContain('>Artist — Whistler<');
-    expect(svg).toContain('>004/100<');
+  });
+
+  /**
+   * The label lives in the renderer, not in content: authors store a bare name
+   * so one credit reads the same everywhere it appears.
+   */
+  it('supplies the "Artist —" label itself rather than expecting it in content', () => {
+    const svg = buildOverlaySvg(compose({ card: { artist: 'Gorthig' } }), CANVAS);
+    expect(svg).toContain('>Artist — Gorthig<');
+  });
+
+  it('never renders the collector number, even when content supplies one', () => {
+    const svg = buildOverlaySvg(compose({ card: { artist: 'Whistler', cardNumber: '004/100' } }), CANVAS);
+    expect(svg).not.toContain('004/100');
+    expect(svg).not.toContain('/100');
+  });
+
+  it('renders no placeholder number when content has none', () => {
+    const svg = buildOverlaySvg(compose({ card: { artist: 'Whistler' } }), CANVAS);
+    expect(svg).not.toMatch(/\d{3}\/\d{3}/);
+    expect(svg).not.toContain('000/100');
+  });
+
+  /** Artist holds the left edge, wordmark the right. One row, two anchors. */
+  it('puts the artist on the left and the wordmark on the right', () => {
+    const svg = buildOverlaySvg(compose(), CANVAS);
+    const band = geometry.panelText;
+
+    const artist = /<text ([^>]*)>Artist — Whistler</.exec(svg)?.[1] ?? '';
+    const brand = /<text ([^>]*)>WAIFUMON</.exec(svg)?.[1] ?? '';
+    const attr = (a: string, n: string) => new RegExp(`${n}="([^"]+)"`).exec(a)?.[1];
+
+    expect(attr(artist, 'text-anchor')).toBe('start');
+    expect(Number(attr(artist, 'x'))).toBe(band.x);
+
+    expect(attr(brand, 'text-anchor')).toBe('end');
+    expect(Number(attr(brand, 'x'))).toBe(band.x + band.w);
+
+    // One shared baseline — it is a row, not two stacked lines.
+    expect(attr(artist, 'y')).toBe(attr(brand, 'y'));
+  });
+
+  it('keeps the wordmark on the right even with no artist to balance it', () => {
+    const svg = buildOverlaySvg(compose({ card: {} }), CANVAS);
+    const brand = /<text ([^>]*)>WAIFUMON</.exec(svg)?.[1] ?? '';
+    expect(brand).toContain('text-anchor="end"');
+    expect(Number(/x="(\d+)"/.exec(brand)?.[1])).toBe(geometry.panelText.x + geometry.panelText.w);
   });
 
   it('drops absent credits rather than rendering empty ones', () => {
@@ -259,6 +356,15 @@ describe('buildOverlaySvg', () => {
     expect(svg).toContain('>WAIFUMON<');
     expect(svg).not.toContain('Artist —');
     expect(svg).not.toMatch(/><\/text>/);
+  });
+
+  it('omits the credit entirely for a blank or missing artist — never "Unknown"', () => {
+    for (const card of [{}, { artist: '' }, { artist: '   ' }, { artist: undefined }]) {
+      const svg = buildOverlaySvg(compose({ card }), CANVAS);
+      expect(svg).not.toContain('Artist');
+      expect(svg).not.toContain('Unknown');
+      expect(svg).not.toMatch(/><\/text>/);
+    }
   });
 
   it('drops a blank description rather than reserving space for it', () => {

@@ -84,11 +84,24 @@ describe('real content renders', () => {
     });
   }
 
+  /**
+   * The minimal authored shape: no explicit `race`, no `card` block at all.
+   * Race falls back through the archetype and the credit row loses its artist,
+   * and the card still has to render.
+   *
+   * Built by stripping a real entry rather than hunting the corpus for a gap.
+   * This used to look for an unmigrated species, which quietly stopped testing
+   * anything the moment every species gained a `card` block — coverage of a
+   * fallback path should not depend on the content happening to exercise it.
+   */
   it('renders a species that has neither race nor card metadata', async () => {
-    const legacy = species.find((s) => !s.race && !s.card);
-    expect(legacy, 'corpus should still contain unmigrated species').toBeDefined();
+    const source = bySlug('alley_catgirl');
+    const { race: _race, card: _card, ...minimal } = source;
 
-    const input = toCardRenderInput(legacy!, { artwork: artworkFor(legacy!) });
+    const input = toCardRenderInput(minimal, { artwork: artworkFor(source) });
+    expect(input.species.race, 'race must still resolve from the archetype').toBeTruthy();
+    expect(input.species.card?.artist).toBeUndefined();
+
     const result = await renderer.renderCard(input);
 
     expect(isWebp(result.bytes)).toBe(true);
@@ -109,7 +122,7 @@ describe('real content renders', () => {
     const plain = toCardRenderInput(entry, { artwork: artworkFor(entry) });
     const credited = toCardRenderInput(entry, {
       artwork: artworkFor(entry),
-      overrides: { artist: 'Someone Specific', cardNumber: '042/100' },
+      overrides: { artist: 'Someone Specific' },
     });
 
     const [a, b] = await Promise.all([
@@ -121,16 +134,17 @@ describe('real content renders', () => {
 
   /**
    * The production panel has room for a name, two description lines and a
-   * credit row. `subtitle`, `ability` and `flavorQuote` stay in content — the
-   * admin panel and the API still carry them — but they reach no pixel, so
-   * editing one must not mint a second master of an identical image.
+   * credit row of artist-against-wordmark. `subtitle`, `ability`, `flavorQuote`
+   * and `cardNumber` stay in content — the admin panel and the API still carry
+   * them — but they reach no pixel, so editing one must not mint a second
+   * master of an identical image.
    */
   it('does not re-key on authored metadata the card face does not draw', async () => {
     const entry = bySlug('alley_catgirl');
 
     const withCard = toCardRenderInput(entry, { artwork: artworkFor(entry) });
     const withoutCard = toCardRenderInput(
-      { ...entry, card: { artist: entry.card?.artist, cardNumber: entry.card?.cardNumber } },
+      { ...entry, card: { artist: entry.card?.artist } },
       { artwork: artworkFor(entry) },
     );
 
@@ -139,6 +153,41 @@ describe('real content renders', () => {
       renderer.computeMasterRenderKey(withoutCard),
     ]);
     expect(a).toBe(b);
+  });
+
+  /**
+   * The corpus stores a bare name under `card.artist`; the renderer supplies
+   * the "Artist —" label. This is the wiring that makes the credit real rather
+   * than a value sitting unread in a JSON file — it was, at one point, authored
+   * at the top level, where the non-strict species schema silently dropped it.
+   */
+  it('carries the authored artist through to renderer input', () => {
+    const credited = species.filter((s) => s.card?.artist);
+    expect(credited.length, 'the corpus should have artist attribution').toBeGreaterThan(0);
+
+    for (const entry of credited) {
+      const input = toCardRenderInput(entry, { artwork: artworkFor(entry) });
+      expect(input.species.card?.artist, entry.slug).toBe(entry.card?.artist);
+      expect(input.species.card?.artist, entry.slug).not.toMatch(/^Artist/);
+    }
+  });
+
+  it('leaves no species crediting an artist at the top level', () => {
+    for (const entry of species) {
+      expect((entry as Record<string, unknown>).artist, `${entry.slug} has a stray top-level artist`).toBeUndefined();
+    }
+  });
+
+  it('re-keys on the artist, which the credit row does draw', async () => {
+    const entry = bySlug('alley_catgirl');
+
+    const [a, b] = await Promise.all([
+      renderer.computeMasterRenderKey(toCardRenderInput(entry, { artwork: artworkFor(entry) })),
+      renderer.computeMasterRenderKey(
+        toCardRenderInput(entry, { artwork: artworkFor(entry), overrides: { artist: 'A Different Hand' } }),
+      ),
+    ]);
+    expect(a).not.toBe(b);
   });
 
   it('re-keys on the species description, which the panel does draw', async () => {

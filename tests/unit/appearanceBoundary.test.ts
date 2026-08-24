@@ -53,12 +53,20 @@ const FORBIDDEN_MODULES = [
  * gameplay-import ban. `assetResolver.ts` joined in Phase 2.5 when generic
  * artwork lookup moved out of the Discord layer so the card renderer could
  * share it — cosmetic work, held to the same rules as the rest.
+ *
+ * `cardPresentation.ts` joined for the same reason: deciding which card a
+ * surface should draw is appearance selection plus artwork fallback, and both
+ * the HTTP route and Discord needed one copy of it. It takes an owned copy as a
+ * *structural* `{ waifu: { level, variant }, species: { slug } }` rather than
+ * importing the collection service — which is what keeps it on the cosmetic
+ * side of this firewall while still being able to describe an owned card.
  */
 const MODULE_FILES = [
   'appearanceContent.ts',
   'appearanceRules.ts',
   'appearanceService.ts',
   'assetResolver.ts',
+  'cardPresentation.ts',
 ];
 
 describe('appearance module boundaries', () => {

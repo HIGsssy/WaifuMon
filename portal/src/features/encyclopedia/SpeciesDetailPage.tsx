@@ -8,15 +8,19 @@
  * The "Discovered" panel links to the player's highest-level copy, which comes
  * from the same session-wide walk the encyclopedia grid uses.
  */
+import { useState } from 'react';
 import { ArrowLeft, BookOpen, Lock } from 'lucide-react';
 import { Link, useParams } from 'react-router';
 
 import { isPortalApiError } from '@/api/client';
+import { usePlatformCapabilities } from '@/api/hooks/useCapabilities';
 import { useContentSpecies, useContentSpeciesEntry } from '@/api/hooks/useContent';
 import { useOwnedSlugs } from '@/api/hooks/useOwnedSlugs';
 import { useCurrentSession } from '@/auth/useSession';
 import { ErrorState } from '@/components/layout/ErrorState';
 import { Artwork } from '@/components/media/Artwork';
+import { CardViewer } from '@/components/media/CardViewer';
+import { CardViewToggle, type CardView } from '@/components/media/CardViewToggle';
 import { Button } from '@/components/ui/button';
 import { Card, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -25,7 +29,7 @@ import { RarityBadge } from '@/components/waifumon/RarityBadge';
 import { RarityGlowRing } from '@/components/waifumon/RarityGlowRing';
 import { relatedSpecies } from '@/content/species';
 import { NotFoundPage } from '@/features/notFound/NotFoundPage';
-import { speciesAsset } from '@/images/assets';
+import { speciesAsset, speciesCardAsset } from '@/images/assets';
 import { formatNumber } from '@/lib/format';
 import { rarityStyle } from '@/lib/rarity';
 import { ARTWORK_WIDTH } from '@/images/sizes';
@@ -33,6 +37,9 @@ import { ARTWORK_WIDTH } from '@/images/sizes';
 export function SpeciesDetailPage() {
   const session = useCurrentSession();
   const { slug } = useParams<{ slug: string }>();
+  const capabilities = usePlatformCapabilities();
+  const [view, setView] = useState<CardView>('art');
+  const [viewerOpen, setViewerOpen] = useState(false);
 
   const entry = useContentSpeciesEntry(slug);
   const allSpecies = useContentSpecies();
@@ -101,23 +108,71 @@ export function SpeciesDetailPage() {
   const rarity = rarityStyle(species.rarity);
   const related = allSpecies.data ? relatedSpecies(allSpecies.data, species) : [];
 
+  /**
+   * Card mode is offered only for a species the player has actually
+   * discovered. The encyclopedia hides an undiscovered species behind a
+   * silhouette, and a rendered card would show her artwork in full — the
+   * toggle would become a way to walk around the spoiler.
+   */
+  const cardsOffered = capabilities.cards && discovered;
+  const showingCard = cardsOffered && view === 'card';
+  const cardAsset = speciesCardAsset(species);
+
   return (
     <>
       {backLink}
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,24rem)_1fr] lg:gap-8">
-        <div className="lg:sticky lg:top-24 lg:self-start">
+        <div className="space-y-3 lg:sticky lg:top-24 lg:self-start">
           <RarityGlowRing rarity={species.rarity} glow={discovered}>
-            <Artwork
-              asset={speciesAsset(species)}
-              displayWidth={ARTWORK_WIDTH.hero}
+            {showingCard ? (
+              <button
+                type="button"
+                onClick={() => setViewerOpen(true)}
+                className="block w-full cursor-zoom-in rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                aria-label={`Enlarge ${species.name} card`}
+              >
+                <Artwork
+                  asset={cardAsset}
+                  displayWidth={ARTWORK_WIDTH.hero}
+                  name={`${species.name} card`}
+                  rarityLabel={rarity.label}
+                  priority
+                  // The card's own proportions, not the artwork tile's 3:4.
+                  aspect="aspect-[5/7]"
+                  fit="contain"
+                />
+              </button>
+            ) : (
+              <Artwork
+                asset={speciesAsset(species)}
+                displayWidth={ARTWORK_WIDTH.hero}
+                name={species.name}
+                rarityLabel={rarity.label}
+                silhouette={!discovered}
+                priority
+                aspect="aspect-[3/4]"
+              />
+            )}
+          </RarityGlowRing>
+
+          {cardsOffered && (
+            <CardViewToggle
+              value={showingCard ? 'card' : 'art'}
+              onChange={setView}
+              label="Species image view"
+            />
+          )}
+
+          {showingCard && viewerOpen && (
+            <CardViewer
+              open={viewerOpen}
+              onOpenChange={setViewerOpen}
+              asset={cardAsset}
               name={species.name}
               rarityLabel={rarity.label}
-              silhouette={!discovered}
-              priority
-              aspect="aspect-[3/4]"
             />
-          </RarityGlowRing>
+          )}
         </div>
 
         <div className="space-y-5">

@@ -191,3 +191,59 @@ describe('export', () => {
     expect(screen.getByRole('heading', { name: 'Nyx' })).toBeInTheDocument();
   });
 });
+
+/**
+ * Click-to-enlarge. The card the hero shows is sized for a 24rem column; a
+ * player who wants to read the flavour text or check the level needs it bigger,
+ * and 1024 is the largest derivative worth serving for that.
+ */
+describe('the card viewer', () => {
+  it('opens an enlarged card when the hero is clicked in Card mode', async () => {
+    const user = userEvent.setup();
+    renderDetail();
+    await screen.findByRole('heading', { name: 'Nyx' });
+
+    await user.click(await screen.findByRole('button', { name: 'Card' }));
+    await user.click(await screen.findByRole('button', { name: /enlarge .* card/i }));
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('shows the 1024 derivative inside the viewer, never the master', async () => {
+    const user = userEvent.setup();
+    renderDetail();
+    await screen.findByRole('heading', { name: 'Nyx' });
+
+    await user.click(await screen.findByRole('button', { name: 'Card' }));
+    await user.click(await screen.findByRole('button', { name: /enlarge .* card/i }));
+
+    const dialog = await screen.findByRole('dialog');
+    await waitFor(() => {
+      const img = dialog.querySelector('img');
+      expect(img?.src).toContain('width=1024');
+      // Still the owned route — the enlarge does not change context.
+      expect(img?.src).toContain('/collection/owned/101/card');
+    });
+  });
+
+  it('closes on Escape', async () => {
+    const user = userEvent.setup();
+    renderDetail();
+    await screen.findByRole('heading', { name: 'Nyx' });
+
+    await user.click(await screen.findByRole('button', { name: 'Card' }));
+    await user.click(await screen.findByRole('button', { name: /enlarge .* card/i }));
+    await screen.findByRole('dialog');
+
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it('is not reachable while the hero is showing raw artwork', async () => {
+    renderDetail();
+    await screen.findByRole('heading', { name: 'Nyx' });
+
+    expect(screen.queryByRole('button', { name: /enlarge/i })).not.toBeInTheDocument();
+  });
+});
+

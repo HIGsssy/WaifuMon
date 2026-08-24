@@ -17,10 +17,12 @@
  * lets the card move to a CDN later without this file changing.
  */
 import { useState } from 'react';
-import { Download, Image as ImageIcon, Loader2, Sparkles } from 'lucide-react';
+import { Download, Loader2 } from 'lucide-react';
 
 import type { OwnedEntry } from '@/api/types';
 import { Artwork } from '@/components/media/Artwork';
+import { CardViewer } from '@/components/media/CardViewer';
+import { CardViewToggle, type CardView } from '@/components/media/CardViewToggle';
 import { Button } from '@/components/ui/button';
 import { RarityGlowRing } from '@/components/waifumon/RarityGlowRing';
 import { heroTransitionName } from '@/components/waifumon/WaifumonCard';
@@ -30,8 +32,6 @@ import { ARTWORK_WIDTH } from '@/images/sizes';
 import { cardFilename, downloadAuthenticatedFile } from '@/lib/download';
 import { rarityStyle } from '@/lib/rarity';
 
-type HeroView = 'art' | 'card';
-
 export interface WaifumonHeroProps {
   entry: OwnedEntry;
   /** False when the backend has card rendering switched off. */
@@ -40,7 +40,8 @@ export interface WaifumonHeroProps {
 
 export function WaifumonHero({ entry, cardsAvailable }: WaifumonHeroProps) {
   const { waifu, species } = entry;
-  const [view, setView] = useState<HeroView>('art');
+  const [view, setView] = useState<CardView>('art');
+  const [viewerOpen, setViewerOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportFailed, setExportFailed] = useState(false);
 
@@ -76,16 +77,25 @@ export function WaifumonHero({ entry, cardsAvailable }: WaifumonHeroProps) {
     <div className="space-y-3">
       <RarityGlowRing rarity={species.rarity} glow>
         {showingCard ? (
-          <Artwork
-            asset={cardAsset}
-            displayWidth={ARTWORK_WIDTH.hero}
-            name={`${species.name} card`}
-            rarityLabel={rarity.label}
-            priority
-            // The card's own ~13:19 proportions, not the artwork tile's 3:4.
-            aspect="aspect-[5/7]"
-            fit="contain"
-          />
+          // Only the card is clickable. Raw artwork has no larger version worth
+          // opening — it is already shown at its native proportions.
+          <button
+            type="button"
+            onClick={() => setViewerOpen(true)}
+            className="block w-full cursor-zoom-in rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            aria-label={`Enlarge ${species.name} card`}
+          >
+            <Artwork
+              asset={cardAsset}
+              displayWidth={ARTWORK_WIDTH.hero}
+              name={`${species.name} card`}
+              rarityLabel={rarity.label}
+              priority
+              // The card's own ~13:19 proportions, not the artwork tile's 3:4.
+              aspect="aspect-[5/7]"
+              fit="contain"
+            />
+          </button>
         ) : (
           <Artwork
             asset={appearanceAsset(waifu.selectedAppearance)}
@@ -101,24 +111,11 @@ export function WaifumonHero({ entry, cardsAvailable }: WaifumonHeroProps) {
 
       {cardsAvailable && (
         <div className="space-y-2">
-          <div
-            role="group"
-            aria-label="Hero image view"
-            className="flex items-center gap-1 rounded-xl border border-border bg-surface p-1"
-          >
-            <ViewButton
-              active={!showingCard}
-              onClick={() => setView('art')}
-              icon={<ImageIcon className="size-4" aria-hidden="true" />}
-              label="Art"
-            />
-            <ViewButton
-              active={showingCard}
-              onClick={() => setView('card')}
-              icon={<Sparkles className="size-4" aria-hidden="true" />}
-              label="Card"
-            />
-          </div>
+          <CardViewToggle
+            value={showingCard ? 'card' : 'art'}
+            onChange={setView}
+            label="Hero image view"
+          />
 
           <Button
             variant="ghost"
@@ -142,36 +139,17 @@ export function WaifumonHero({ entry, cardsAvailable }: WaifumonHeroProps) {
           )}
         </div>
       )}
-    </div>
-  );
-}
 
-function ViewButton({
-  active,
-  onClick,
-  icon,
-  label,
-}: {
-  active: boolean;
-  onClick: () => void;
-  icon: React.ReactNode;
-  label: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      // `aria-pressed` rather than a radio group: two toggle buttons is what
-      // the rest of the Portal uses for this shape of control.
-      aria-pressed={active}
-      className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition ${
-        active
-          ? 'bg-surface-raised text-ink shadow-sm'
-          : 'text-ink-muted hover:text-ink'
-      }`}
-    >
-      {icon}
-      {label}
-    </button>
+      {/* Mounted only while open, so a card nobody enlarged is never requested. */}
+      {showingCard && viewerOpen && (
+        <CardViewer
+          open={viewerOpen}
+          onOpenChange={setViewerOpen}
+          asset={cardAsset}
+          name={species.name}
+          rarityLabel={rarity.label}
+        />
+      )}
+    </div>
   );
 }
