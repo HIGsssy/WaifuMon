@@ -102,19 +102,56 @@ describe('real content renders', () => {
     }
   });
 
-  it('gives authored card metadata a different render key than the same species without it', async () => {
+  it('gives authored metadata the card draws a different render key', async () => {
     const entry = bySlug('alley_catgirl');
     expect(entry.card, 'alley_catgirl is a seeded example').toBeDefined();
 
+    const plain = toCardRenderInput(entry, { artwork: artworkFor(entry) });
+    const credited = toCardRenderInput(entry, {
+      artwork: artworkFor(entry),
+      overrides: { artist: 'Someone Specific', cardNumber: '042/100' },
+    });
+
+    const [a, b] = await Promise.all([
+      renderer.computeMasterRenderKey(plain),
+      renderer.computeMasterRenderKey(credited),
+    ]);
+    expect(a).not.toBe(b);
+  });
+
+  /**
+   * The production panel has room for a name, two description lines and a
+   * credit row. `subtitle`, `ability` and `flavorQuote` stay in content — the
+   * admin panel and the API still carry them — but they reach no pixel, so
+   * editing one must not mint a second master of an identical image.
+   */
+  it('does not re-key on authored metadata the card face does not draw', async () => {
+    const entry = bySlug('alley_catgirl');
+
     const withCard = toCardRenderInput(entry, { artwork: artworkFor(entry) });
     const withoutCard = toCardRenderInput(
-      { ...entry, card: undefined },
+      { ...entry, card: { artist: entry.card?.artist, cardNumber: entry.card?.cardNumber } },
       { artwork: artworkFor(entry) },
     );
 
     const [a, b] = await Promise.all([
       renderer.computeMasterRenderKey(withCard),
       renderer.computeMasterRenderKey(withoutCard),
+    ]);
+    expect(a).toBe(b);
+  });
+
+  it('re-keys on the species description, which the panel does draw', async () => {
+    const entry = bySlug('alley_catgirl');
+
+    const [a, b] = await Promise.all([
+      renderer.computeMasterRenderKey(toCardRenderInput(entry, { artwork: artworkFor(entry) })),
+      renderer.computeMasterRenderKey(
+        toCardRenderInput(
+          { ...entry, description: 'A completely different flavour line.' },
+          { artwork: artworkFor(entry) },
+        ),
+      ),
     ]);
     expect(a).not.toBe(b);
   });

@@ -6,6 +6,7 @@
  */
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import sharp from 'sharp';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   CardArtworkMissingError,
@@ -202,12 +203,34 @@ describe('invalidation', () => {
   it('renders a new master when a kit asset itself changes', async () => {
     const kit = await copyAssetKit(path.join(workdir, `kit-asset-${caseIndex}`));
     const scoped = { assetRoot: kit, cacheRoot };
-    const overlay = path.join(kit, 'rarities', 'ssr.svg');
+    const framePath = path.join(kit, 'frames', 'ssr.png');
 
     const before = await createCardRenderer(scoped).renderCard(cardInput(artwork));
 
-    const svg = await fs.readFile(overlay, 'utf8');
-    await fs.writeFile(overlay, svg.replace('</svg>', '<circle cx="500" cy="700" r="200" fill="#0f0"/></svg>'));
+    // A redrawn frame — the real-world case. Scribbling an opaque block onto
+    // the artwork is enough to prove the frame is composited rather than
+    // ignored, without depending on what the ornament happens to look like.
+    const frame = sharp(framePath);
+    const { width = 0, height = 0 } = await frame.metadata();
+    const scribbled = await frame
+      .composite([
+        {
+          input: {
+            create: {
+              width: Math.round(width / 3),
+              height: Math.round(height / 3),
+              channels: 4,
+              background: { r: 0, g: 255, b: 0, alpha: 1 },
+            },
+          },
+          left: Math.round(width / 3),
+          top: Math.round(height / 3),
+        },
+      ])
+      .png()
+      .toBuffer();
+    await fs.writeFile(framePath, scribbled);
+
     // Asset edits are only picked up through a VERSION bump — that is the whole
     // point of VERSION, and this asserts the documented workflow works.
     await bumpKitVersion(kit);

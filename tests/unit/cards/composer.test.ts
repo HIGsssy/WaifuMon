@@ -1,296 +1,305 @@
 /**
- * Base-SVG composition. Everything here is about the composer touching exactly
- * what it should: the base document, structurally, and nothing else — in
- * particular not the rarity overlay, whose gradient and filter ids are only
- * safe because they never share a document with anything.
+ * Composition — the layer plan and the two vector layers.
+ *
+ * Everything the composer produces is decided before a pixel is drawn, so all
+ * of it is testable without rendering: where the artwork is cropped, where the
+ * icons land, and what the SVG layers actually say. The assertions here are
+ * about *invariants* rather than exact pixel values — the coordinates come from
+ * `geometry.json`, which is regenerated whenever a frame is re-exported, and a
+ * test that pinned them would fail on every legitimate art update.
  */
-import fs from 'node:fs/promises';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { DEFAULT_ASSET_ROOT } from '../../../src/modules/cards';
+import { DEFAULT_ASSET_ROOT, LAYOUT, planArtworkCrop, planIconPlacement, planOwnedBadge } from '../../../src/modules/cards';
+import type { FrameGeometry } from '../../../src/modules/cards';
 import { CardAssetLoader } from '../../../src/modules/cards/assets/loader';
-import { composeBaseSvg, type ComposeBaseSvgInput } from '../../../src/modules/cards/composer/baseComposer';
-import { ARTWORK_HREF } from '../../../src/modules/cards/composer/artworkHref';
 import {
-  findById,
-  getAttr,
-  parseXml,
-  childrenOf,
-} from '../../../src/modules/cards/composer/xmlTree';
-import { AFFINITY_DESCRIPTIONS } from '../../../src/modules/cards';
-import { renderOverlayPng } from '../../../src/modules/cards/rasterizer/renderer';
+  buildOverlaySvg,
+  buildUnderlaySvg,
+  type ComposeCardInput,
+} from '../../../src/modules/cards/composer/cardComposer';
+import { CARD_MASTER_HEIGHT, CARD_MASTER_WIDTH } from '../../../src/modules/cards/version';
 
 const loader = new CardAssetLoader(DEFAULT_ASSET_ROOT);
+const CANVAS = { width: CARD_MASTER_WIDTH, height: CARD_MASTER_HEIGHT };
 
-let baseSvg: string;
-let raceIconSvg: string;
-let affinityIconSvg: string;
+/** Icon bytes are never inspected by the composer — only measured and placed. */
+const STUB = Buffer.from('icon');
+
+let geometry: FrameGeometry;
 
 beforeAll(async () => {
-  [baseSvg, raceIconSvg, affinityIconSvg] = await Promise.all([
-    loader.baseTemplate(),
-    loader.raceIcon('demi-human'),
-    loader.affinityIcon('dominant'),
-  ]);
+  geometry = await loader.frameGeometry('UR');
 });
 
-function compose(overrides: Partial<ComposeBaseSvgInput> = {}): string {
-  return composeBaseSvg({
-    baseSvg,
-    raceIconSvg,
-    affinityIconSvg,
-    name: 'Alley Catgirl',
-    race: 'demi-human',
-    affinity: 'dominant',
-    level: 12,
-    card: {
-      subtitle: 'Curious Companion',
-      artist: 'Artist Name',
-      ability: { name: 'Nine Lives', text: 'Ignores the first failed capture attempt each encounter.' },
-      flavorQuote: 'She was here before the city was.',
-      cardNumber: '012/100',
-    },
+function compose(overrides: Partial<ComposeCardInput> = {}): ComposeCardInput {
+  return {
+    geometry,
+    name: 'Void Empress',
+    race: 'demon',
+    affinity: 'primal',
+    rarity: 'UR',
+    level: 50,
+    description: 'Reality bends politely out of her way. You should too.',
+    card: { artist: 'Whistler', cardNumber: '004/100' },
+    icons: { race: STUB, affinity: STUB, rarity: STUB },
     ...overrides,
-  }).svg;
+  };
 }
 
-/** Text content of the element with `id`, or `null` when the element is gone. */
-function textOf(svg: string, id: string): string | null {
-  const found = findById(parseXml(svg), id);
-  if (!found) return null;
-  const children = childrenOf(found.node) ?? [];
-  return children.map((c) => String((c as Record<string, unknown>)['#text'] ?? '')).join('');
-}
+describe('planArtworkCrop', () => {
+  const window = { x: 91, y: 129, w: 1314, h: 1611 };
 
-function has(svg: string, id: string): boolean {
-  return findById(parseXml(svg), id) !== null;
-}
-
-describe('text substitution', () => {
-  it('replaces every dynamic field by element id', () => {
-    const svg = compose();
-    expect(textOf(svg, 'character-name')).toBe('Alley Catgirl');
-    expect(textOf(svg, 'character-subtitle')).toBe('Curious Companion');
-    expect(textOf(svg, 'level')).toBe('12');
-    expect(textOf(svg, 'race-label')).toBe('DEMI-HUMAN');
-    expect(textOf(svg, 'affinity-label')).toBe('DOMINANT');
-    expect(textOf(svg, 'ability-name')).toBe('Nine Lives');
-    expect(textOf(svg, 'artist-credit')).toBe('Artist - Artist Name');
-    expect(textOf(svg, 'card-number')).toBe('012/100');
+  it('covers the window without stretching', () => {
+    const crop = planArtworkCrop({ width: 1248, height: 1824 }, window);
+    // One uniform scale on both axes: the ratio of the scaled size must match
+    // the ratio of the source, or the character has been distorted.
+    expect(crop.scaledWidth / crop.scaledHeight).toBeCloseTo(1248 / 1824, 2);
+    expect(crop.scaledWidth).toBeGreaterThanOrEqual(window.w);
+    expect(crop.scaledHeight).toBeGreaterThanOrEqual(window.h);
   });
 
-  it('leaves the template placeholders behind', () => {
-    const svg = compose();
-    expect(svg).not.toContain('CHARACTER NAME');
-    expect(svg).not.toContain('Subtitle / Epithet');
-    expect(svg).not.toContain('Ability description goes here.');
+  it('crops to exactly the window', () => {
+    const crop = planArtworkCrop({ width: 1248, height: 1824 }, window);
+    expect(crop.width).toBe(window.w);
+    expect(crop.height).toBe(window.h);
   });
 
-  it('quotes the flavor text', () => {
-    expect(textOf(compose(), 'flavor-quote')).toBe('“She was here before the city was.”');
-  });
-
-  it('renders the affinity blurb across the two available lines', () => {
-    const svg = compose({ affinity: 'dominant' });
-    const line1 = textOf(svg, 'affinity-description') ?? '';
-    const line2 = textOf(svg, 'affinity-description-2') ?? '';
-    expect(line1.length).toBeGreaterThan(0);
-    expect(line2.length).toBeGreaterThan(0);
-    const rejoined = `${line1} ${line2}`.trim();
-    expect(rejoined).toBe(AFFINITY_DESCRIPTIONS.dominant);
-  });
-
-  it('wraps long ability text onto the second line', () => {
-    const svg = compose({
-      card: {
-        ability: {
-          name: 'Nine Lives',
-          text: 'Ignores the first failed capture attempt of every encounter, then spends the rest of the night pretending it never happened.',
-        },
-      },
-    });
-    expect((textOf(svg, 'ability-text') ?? '').length).toBeGreaterThan(0);
-    expect((textOf(svg, 'ability-text-2') ?? '').length).toBeGreaterThan(0);
-  });
-});
-
-describe('escaping', () => {
-  it('escapes XML metacharacters in authored text', () => {
-    const svg = compose({ name: 'Tom & Jerry' });
-    expect(svg).toContain('Tom &amp; Jerry');
-    expect(textOf(svg, 'character-name')).toBe('Tom &amp; Jerry');
-  });
-
-  it('cannot be used to inject markup', () => {
-    const svg = compose({
-      card: { subtitle: '</text><rect id="pwned" width="9999" height="9999"/><text>' },
-    });
-    expect(has(svg, 'pwned')).toBe(false);
-    expect(svg).toContain('&lt;rect');
-    // The document still parses to exactly one root <svg>.
-    expect(parseXml(svg)).toHaveLength(1);
-  });
-});
-
-describe('optional element removal', () => {
-  it('removes every optional element when no card metadata is supplied', () => {
-    const svg = compose({ card: {} });
-    for (const id of [
-      'character-subtitle',
-      'ability-block',
-      'ability-name',
-      'ability-text',
-      'flavor-quote',
-      'artist-credit',
-      'card-number',
+  it('never crops outside the scaled image', () => {
+    for (const source of [
+      { width: 1248, height: 1824 },
+      { width: 2000, height: 1000 },
+      { width: 500, height: 4000 },
+      { width: 1314, height: 1611 },
     ]) {
-      expect(has(svg, id), id).toBe(false);
+      const crop = planArtworkCrop(source, window);
+      expect(crop.cropLeft).toBeGreaterThanOrEqual(0);
+      expect(crop.cropTop).toBeGreaterThanOrEqual(0);
+      expect(crop.cropLeft + crop.width).toBeLessThanOrEqual(crop.scaledWidth);
+      expect(crop.cropTop + crop.height).toBeLessThanOrEqual(crop.scaledHeight);
     }
   });
 
-  it('treats blank strings the same as absent ones', () => {
-    const svg = compose({ card: { subtitle: '   ', artist: '', flavorQuote: '\n' } });
-    expect(has(svg, 'character-subtitle')).toBe(false);
-    expect(has(svg, 'artist-credit')).toBe(false);
-    expect(has(svg, 'flavor-quote')).toBe(false);
+  it('biases the vertical crop toward the face', () => {
+    const crop = planArtworkCrop({ width: 1248, height: 1824 }, window);
+    const surplus = crop.scaledHeight - window.h;
+    // Less comes off the top than the bottom, but not zero: hair and ears sit
+    // against the top edge in these compositions.
+    expect(crop.cropTop).toBeGreaterThan(0);
+    expect(crop.cropTop).toBeLessThan(surplus / 2);
+    expect(crop.cropTop).toBe(Math.round(surplus * LAYOUT.artFocusY));
   });
 
-  it('keeps the non-optional elements no matter what', () => {
-    const svg = compose({ card: {} });
-    for (const id of [
-      'card-background',
-      'character-art',
-      'character-name',
-      'level',
-      'race-icon',
-      'race-label',
-      'affinity-icon',
-      'affinity-label',
-    ]) {
-      expect(has(svg, id), id).toBe(true);
+  it('centres the horizontal crop', () => {
+    const crop = planArtworkCrop({ width: 4000, height: 1000 }, window);
+    const left = crop.cropLeft;
+    const right = crop.scaledWidth - crop.width - left;
+    expect(Math.abs(left - right)).toBeLessThanOrEqual(1);
+  });
+});
+
+describe('planIconPlacement', () => {
+  it('centres a square on the holder, larger than the hole', () => {
+    const disc = geometry.circles.race;
+    const placed = planIconPlacement(disc, STUB);
+    expect(placed.width).toBe(placed.height);
+    expect(placed.width).toBe(Math.round(disc.d * LAYOUT.iconFill));
+    expect(placed.left + placed.width / 2).toBeCloseTo(disc.cx, 0);
+    expect(placed.top + placed.height / 2).toBeCloseTo(disc.cy, 0);
+    // Substantially fills the holder — the ring must lap the rim, not float
+    // inside it with artwork showing through the gap.
+    expect(placed.width).toBeGreaterThan(disc.d);
+  });
+
+  it('places the three slots in holder order', () => {
+    const race = planIconPlacement(geometry.circles.race, STUB);
+    const affinity = planIconPlacement(geometry.circles.affinity, STUB);
+    const rarity = planIconPlacement(geometry.circles.rarity, STUB);
+    expect(race.top).toBeLessThan(affinity.top);
+    expect(affinity.top).toBeLessThan(rarity.top);
+  });
+});
+
+describe('planOwnedBadge', () => {
+  it('stays inside the artwork window', () => {
+    const placed = planOwnedBadge(geometry.art, STUB, { width: 1312, height: 1199 });
+    expect(placed.left).toBeGreaterThanOrEqual(geometry.art.x);
+    expect(placed.top).toBeGreaterThanOrEqual(geometry.art.y);
+    expect(placed.left + placed.width).toBeLessThanOrEqual(geometry.art.x + geometry.art.w);
+    expect(placed.top + placed.height).toBeLessThanOrEqual(geometry.art.y + geometry.art.h);
+  });
+
+  it('preserves the badge’s aspect ratio', () => {
+    const placed = planOwnedBadge(geometry.art, STUB, { width: 1312, height: 1199 });
+    expect(placed.width / placed.height).toBeCloseTo(1312 / 1199, 2);
+  });
+
+  it('stays restrained relative to the card', () => {
+    const placed = planOwnedBadge(geometry.art, STUB, { width: 1312, height: 1199 });
+    expect(placed.width).toBeLessThan(CARD_MASTER_WIDTH * 0.4);
+  });
+
+  it('clamps an oversized badge rather than overflowing the frame', () => {
+    const placed = planOwnedBadge(geometry.art, STUB, { width: 100, height: 10_000 });
+    expect(placed.top).toBeGreaterThanOrEqual(geometry.art.y);
+    expect(placed.top + placed.height).toBeLessThanOrEqual(geometry.art.y + geometry.art.h);
+  });
+});
+
+describe('buildUnderlaySvg', () => {
+  it('is a canvas-sized document with no embedded raster', () => {
+    const svg = buildUnderlaySvg(geometry, CANVAS);
+    expect(svg).toContain(`width="${CARD_MASTER_WIDTH}"`);
+    expect(svg).toContain(`height="${CARD_MASTER_HEIGHT}"`);
+    expect(svg).not.toContain('<image');
+    expect(svg).not.toContain('base64');
+  });
+
+  it('plates the two transparent holes text has to sit in', () => {
+    const svg = buildUnderlaySvg(geometry, CANVAS);
+    expect(svg).toContain(`x="${geometry.panel.x}"`);
+    expect(svg).toContain(`width="${geometry.panel.w}"`);
+    expect(svg).toContain('<ellipse');
+  });
+});
+
+describe('buildOverlaySvg', () => {
+  it('is a canvas-sized document with no embedded raster', () => {
+    const svg = buildOverlaySvg(compose(), CANVAS);
+    expect(svg).toContain(`viewBox="0 0 ${CARD_MASTER_WIDTH} ${CARD_MASTER_HEIGHT}"`);
+    expect(svg).not.toContain('<image');
+    expect(svg).not.toContain('base64');
+  });
+
+  it('draws the level as text, never as a baked image', () => {
+    const svg = buildOverlaySvg(compose({ level: 37 }), CANVAS);
+    expect(svg).toContain('>LVL<');
+    expect(svg).toContain('>37<');
+  });
+
+  it('clamps a nonsense level rather than printing it', () => {
+    expect(buildOverlaySvg(compose({ level: 0 }), CANVAS)).toContain('>1<');
+    expect(buildOverlaySvg(compose({ level: 12.7 }), CANVAS)).toContain('>12<');
+  });
+
+  it('centres both shield lines and makes the number dominant', () => {
+    const svg = buildOverlaySvg(compose({ level: 50 }), CANVAS);
+    const label = /<text ([^>]*)>LVL</.exec(svg)?.[1] ?? '';
+    const value = /<text ([^>]*)>50</.exec(svg)?.[1] ?? '';
+    const size = (attrs: string) => Number(/font-size="(\d+)"/.exec(attrs)?.[1] ?? 0);
+    const x = (attrs: string) => Number(/x="(\d+)"/.exec(attrs)?.[1] ?? 0);
+
+    expect(label).toContain('text-anchor="middle"');
+    expect(value).toContain('text-anchor="middle"');
+    expect(x(label)).toBe(x(value));
+    expect(size(value)).toBeGreaterThan(size(label) * 2);
+  });
+
+  it('makes the name the strongest element in the panel', () => {
+    const svg = buildOverlaySvg(compose(), CANVAS);
+    const sizes = [...svg.matchAll(/font-size="(\d+)"[^>]*>([^<]+)</g)].map((m) => ({
+      size: Number(m[1]),
+      content: m[2],
+    }));
+    const name = sizes.find((s) => s.content === 'VOID EMPRESS');
+    expect(name).toBeDefined();
+    const description = sizes.find((s) => s.content?.startsWith('Reality bends'));
+    expect(name?.size).toBeGreaterThan(description?.size ?? Infinity);
+  });
+
+  it('upper-cases the name', () => {
+    expect(buildOverlaySvg(compose({ name: 'Alley Catgirl' }), CANVAS)).toContain(
+      '>ALLEY CATGIRL<',
+    );
+  });
+
+  it('shrinks a long name instead of overflowing the panel', () => {
+    const short = buildOverlaySvg(compose({ name: 'Nyx' }), CANVAS);
+    const long = buildOverlaySvg(
+      compose({ name: 'Archduchess Seraphina Of The Shattered Moon' }),
+      CANVAS,
+    );
+    const nameSize = (svg: string, text: string) =>
+      Number(new RegExp(`font-size="(\\d+)"[^>]*>${text}`).exec(svg)?.[1] ?? 0);
+    expect(nameSize(long, 'ARCHDUCHESS')).toBeLessThan(nameSize(short, 'NYX'));
+  });
+
+  it('wraps a long description to two lines', () => {
+    const svg = buildOverlaySvg(
+      compose({
+        description:
+          'She arrived without announcement and the room rearranged itself around her, ' +
+          'which everyone agreed afterwards had been the only reasonable outcome.',
+      }),
+      CANVAS,
+    );
+    const baselines = [...svg.matchAll(/<text [^>]*y="(\d+)"[^>]*>/g)].map((m) => Number(m[1]));
+    // Two distinct description baselines exist, so the second line has a home.
+    expect(new Set(baselines).size).toBeGreaterThanOrEqual(5);
+  });
+
+  it('centres a one-line description instead of leaving a hole under it', () => {
+    const oneLine = buildOverlaySvg(compose({ description: 'Short.' }), CANVAS);
+    const y = Number(/<text [^>]*y="(\d+)"[^>]*>Short\.</.exec(oneLine)?.[1] ?? 0);
+    const band = geometry.panelText;
+    const first = band.y + LAYOUT.panel.descriptionBaseline1 * band.h;
+    const second = band.y + LAYOUT.panel.descriptionBaseline2 * band.h;
+    expect(y).toBeGreaterThan(first);
+    expect(y).toBeLessThan(second);
+  });
+
+  it('always carries the branding, and the credits when they exist', () => {
+    const svg = buildOverlaySvg(compose(), CANVAS);
+    expect(svg).toContain('>WAIFUMON<');
+    expect(svg).toContain('>Artist — Whistler<');
+    expect(svg).toContain('>004/100<');
+  });
+
+  it('drops absent credits rather than rendering empty ones', () => {
+    const svg = buildOverlaySvg(compose({ card: {} }), CANVAS);
+    expect(svg).toContain('>WAIFUMON<');
+    expect(svg).not.toContain('Artist —');
+    expect(svg).not.toMatch(/><\/text>/);
+  });
+
+  it('drops a blank description rather than reserving space for it', () => {
+    for (const description of [null, '', '   ']) {
+      const svg = buildOverlaySvg(compose({ description }), CANVAS);
+      expect(svg).not.toMatch(/><\/text>/);
     }
   });
 
-  it('drops the whole ability panel when only half the ability is authored', () => {
-    expect(has(compose({ card: { ability: { name: 'Nine Lives', text: '' } } }), 'ability-block')).toBe(
-      false,
+  it('escapes authored text rather than emitting broken markup', () => {
+    const svg = buildOverlaySvg(
+      compose({ name: 'Rock & <Roll>', card: { artist: '"Quo" & Co' } }),
+      CANVAS,
     );
-    expect(has(compose({ card: { ability: { name: '', text: 'Does a thing.' } } }), 'ability-block')).toBe(
-      false,
-    );
+    expect(svg).toContain('&amp;');
+    expect(svg).not.toContain('<Roll>');
+    expect(svg).toContain('&quot;');
   });
 
-  it('drops the unused second line when wrapped text fits on one', () => {
-    const svg = compose({
-      card: { ability: { name: 'Nap', text: 'Short.' } },
-    });
-    expect(has(svg, 'ability-text')).toBe(true);
-    expect(has(svg, 'ability-text-2')).toBe(false);
-  });
-});
-
-describe('character-name fitting', () => {
-  it('keeps the largest size for a short name', () => {
-    const found = findById(parseXml(compose({ name: 'Mika' })), 'character-name');
-    // The largest tier in the composer's LAYOUT.nameTiers.
-    expect(getAttr(found!.node, 'font-size')).toBe('84');
+  it('never labels the icons — the artwork carries them', () => {
+    const svg = buildOverlaySvg(compose(), CANVAS);
+    expect(svg).not.toContain('>DEMON<');
+    expect(svg).not.toContain('>PRIMAL<');
+    expect(svg).not.toContain('>UR<');
   });
 
-  it('steps the size down for a long name', () => {
-    const found = findById(
-      parseXml(compose({ name: 'Abyssal Shrine Oracle of the Drowned Moon' })),
-      'character-name',
-    );
-    expect(Number(getAttr(found!.node, 'font-size'))).toBeLessThan(84);
-  });
+  it('lays out identically across every frame', async () => {
+    for (const rarity of ['N', 'R', 'SR', 'SSR', 'UR', 'LR'] as const) {
+      const frame = await loader.frameGeometry(rarity);
+      const svg = buildOverlaySvg(compose({ geometry: frame, rarity }), CANVAS);
+      expect(svg, rarity).toContain('>LVL<');
+      expect(svg, rarity).toContain('>VOID EMPRESS<');
+      expect(svg, rarity).toContain('>WAIFUMON<');
 
-  it('truncates a name no size can fit', () => {
-    const svg = compose({ name: 'W'.repeat(200) });
-    expect(textOf(svg, 'character-name')?.endsWith('…')).toBe(true);
-  });
-});
-
-describe('icon injection', () => {
-  it('injects race icon children into the placeholder group and sets its color', () => {
-    const found = findById(parseXml(compose()), 'race-icon');
-    expect(found).not.toBeNull();
-    expect(childrenOf(found!.node)?.length).toBeGreaterThan(0);
-    // Both classification discs are dark on this canvas, so both icons are light.
-    expect(getAttr(found!.node, 'color')).toBe('#f4f4f8');
-    // Children are lifted out of the icon document — no nested <svg> root.
-    expect(childrenOf(found!.node)?.some((c) => 'svg' in c)).toBe(false);
-  });
-
-  it('injects affinity icon children with a light color for the dark disc', () => {
-    const found = findById(parseXml(compose()), 'affinity-icon');
-    expect(childrenOf(found!.node)?.length).toBeGreaterThan(0);
-    expect(getAttr(found!.node, 'color')).toBe('#f4f4f8');
-  });
-
-  it('injects a different icon per race', async () => {
-    const angel = await loader.raceIcon('angel');
-    const withAngel = compose({ raceIconSvg: angel, race: 'angel' });
-    const withDemiHuman = compose();
-    expect(withAngel).not.toBe(withDemiHuman);
-  });
-});
-
-describe('artwork wiring', () => {
-  it('rewrites the template placeholder href to the renderer sentinel', () => {
-    const composed = composeBaseSvg({
-      baseSvg,
-      raceIconSvg,
-      affinityIconSvg,
-      name: 'Alley Catgirl',
-      race: 'demi-human',
-      affinity: 'dominant',
-      level: 1,
-      card: {},
-    });
-    const art = findById(parseXml(composed.svg), 'character-art');
-    expect(getAttr(art!.node, 'href')).toBe(ARTWORK_HREF);
-    expect(composed.imageHrefs).toEqual([ARTWORK_HREF]);
-    expect(composed.svg).not.toContain('character-art.png');
-  });
-
-  it('never writes a filesystem path into the document', () => {
-    const svg = compose();
-    expect(svg).not.toContain('file://');
-    expect(svg).not.toContain('assets/');
-    // A drive letter directly after a quote or space, e.g. href="D:/art/…".
-    expect(svg).not.toMatch(/["'\s][A-Za-z]:[\\/]/);
-  });
-
-  it('preserves the template crop behaviour', () => {
-    const art = findById(parseXml(compose()), 'character-art');
-    expect(getAttr(art!.node, 'preserveAspectRatio')).toBe('xMidYMid slice');
-  });
-});
-
-describe('rarity overlays stay independent', () => {
-  it('is never merged into the composed base document', async () => {
-    const svg = compose();
-    for (const rarity of ['EX', 'UR'] as const) {
-      const overlay = await loader.rarityOverlay(rarity);
-      expect(svg).not.toContain('rarity-badge');
-      expect(svg).not.toContain('rarityStroke');
-      expect(overlay).toContain('rarity-badge');
+      // Every drawn baseline lands inside the band it belongs to.
+      for (const [, yAttr] of svg.matchAll(/<text [^>]*y="(\d+)"[^>]*>/g)) {
+        const y = Number(yAttr);
+        const inShield = y >= frame.shield.y && y <= frame.shield.y + frame.shield.h;
+        const inPanel = y >= frame.panel.y && y <= frame.panel.y + frame.panel.h;
+        expect(inShield || inPanel, `${rarity}: baseline ${y} is outside both holes`).toBe(true);
+      }
     }
-  });
-
-  it('is rasterized verbatim, so two rarities produce different pixels', async () => {
-    const fonts = loader.fontPaths();
-    const [ex, ur] = await Promise.all([loader.rarityOverlay('EX'), loader.rarityOverlay('UR')]);
-    const exPng = renderOverlayPng(ex, fonts);
-    const urPng = renderOverlayPng(ur, fonts);
-    expect(exPng.length).toBeGreaterThan(0);
-    expect(exPng.equals(urPng)).toBe(false);
-  });
-
-  it('leaves the overlay file on disk untouched', async () => {
-    const before = await fs.readFile(loader.rarityOverlayPath('EX'), 'utf8');
-    compose();
-    renderOverlayPng(before, loader.fontPaths());
-    const after = await fs.readFile(loader.rarityOverlayPath('EX'), 'utf8');
-    expect(after).toBe(before);
   });
 });

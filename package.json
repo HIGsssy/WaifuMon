@@ -12,6 +12,7 @@
     "db:generate": "drizzle-kit generate",
     "appearances:sync": "tsx src/tools/syncAppearances.ts",
     "cards:warm": "tsx src/tools/warmCards.ts",
+    "cards:geometry": "tsx src/tools/deriveFrameGeometry.ts",
     "cards:gc": "tsx src/tools/gcCards.ts",
     "assets:thumbs": "npm --prefix portal run assets:thumbs",
     "content:prepare": "npm run appearances:sync && npm run assets:thumbs",

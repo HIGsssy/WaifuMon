@@ -1,91 +1,116 @@
-# WaifuMon SVG Card Kit
+# WaifuMon Card Kit
 
-Modular card assets on a **1500 x 2200** SVG viewBox. Rendered server-side by
-`src/modules/cards/` (see `.ai/SVGPlan.md`).
+Production card assets on a **1500 x 2250** canvas. Composed server-side by
+`src/modules/cards/`.
 
-The canvas is derived from the source artwork, not chosen first. Character art
-is authored at **1248 x 1824** (13:19, ~0.6842); 1500 x 2200 is ~0.6818, within
-0.35% of it. The art is **full bleed** — it fills the whole card and the frame,
-badges and text sit over it — which costs 1.5% of width and **0% of height**.
-An inset art window on this canvas would instead discard ~11% of the height,
-and these compositions put ears against the top edge and boots against the
-bottom, so that 11% is anatomy.
+The kit is **raster-first**. The rarity frames, the icons and the ownership
+badge are supplied artwork; nothing in the renderer redraws, recolours or
+approximates them. SVG is used only as the composition layer — two small,
+purely vector documents per card (dark plates, dynamic text) rasterized by
+resvg and composited by sharp between the raster layers.
 
-Composition (layered raster — the renderer never merges two SVG documents):
-1. Character artwork (resolved into `#character-art` by the renderer)
-2. `templates/card-base.svg` — structurally mutated, then rasterized to the base PNG
-3. One rarity overlay from `rarities/` — rasterized on its own, composited on top
-4. One race icon from `icons/races/` — children injected into `<g id="race-icon">`
-5. One affinity icon from `icons/affinities/` — children injected into `<g id="affinity-icon">`
+## Canvas
 
-Rarities: N, R, SR, SSR, UR, LR, EX. Every rarity owns its own overlay file;
-the renderer never substitutes one rarity for another.
-Races: Angel, Demon, Demi-human, Human, Spirit, Valkyrie, Android.
-Affinities: Dominant, Submissive, Switch, Caregiver, Primal.
+1500 x 2250 is exactly 2:3, which is the aspect the frames are drawn at. The
+canvas is **derived from the frames**, not chosen first: the artwork window,
+the information panel, the level shield and the three icon holders are all
+holes punched in the frame artwork, so the frame defines the card's geometry.
 
-Useful element IDs in the base template:
-`card-background`, `character-art`, `character-name`, `character-subtitle`,
-`level`, `race-icon`, `race-label`, `affinity-icon`, `affinity-label`,
-`affinity-description`, `affinity-description-2`, `ability-block`,
-`ability-icon`, `ability-name`, `ability-text`, `ability-text-2`, `flavor-quote`,
-`artist-credit`, `card-number`.
+Character art is authored at 1248 x 1824 (13:19) and is **not** full bleed. It
+is cover-cropped into the frame's artwork window so the decorative border
+visibly encloses it. Windows run 1314–1342 px wide, so the source is upscaled
+only ~5–8% at master resolution before cropping. The vertical crop is biased
+toward the face (`LAYOUT.artFocusY`), because these compositions put hair and
+ears against the top edge.
 
-The rarity SVGs are transparent overlays. Race and affinity icons use `currentColor`
-so the renderer can recolor them (it sets `color` on the destination group).
-`sample-data.json` shows the intended data shape.
+> **Source artwork must be raw character art**, not an already-composed card.
+> Some older entries in `assets/waifumon/` are pre-composed cards complete with
+> their own border and title bar; those render as a card inside a card.
 
-## Geometry constraints
+## Layers
 
-The base and the overlays share one zone map, so a designer can replace any
-rarity file without re-checking it against seven layouts.
+Back to front:
 
-**The base owns** (no overlay may draw here):
+1. Card background
+2. Character artwork — cover-cropped into `art`
+3. Dark plates — `panel` and `shield`, drawn *under* the frame so its ornament
+   laps their edges
+4. Rarity frame PNG
+5. Race icon — top holder
+6. Affinity icon — middle holder
+7. Rarity icon — bottom holder
+8. Dynamic text — name, description, level, artist, card number, branding
+9. Ownership badge — only when the render context asks for it
 
-| Zone | Box |
+Icons are never labelled; the artwork carries the meaning.
+
+## `geometry.json`
+
+Generated, committed, and **the only source of coordinates**. Every rect and
+disc is in canvas pixels, derived from the frame PNGs' alpha channel by
+connected-component analysis:
+
+```
+npm run cards:geometry
+```
+
+Re-run it whenever a frame PNG is added or replaced, or whenever
+`CARD_MASTER_WIDTH`/`CARD_MASTER_HEIGHT` change — the manifest records the
+canvas it was generated for, and the renderer refuses to start if they
+disagree. Then bump `VERSION`.
+
+Element sizes are *fractions of the box they sit in* (`LAYOUT` in
+`composer/cardComposer.ts`), so the six frames — which differ by tens of pixels
+in every dimension — all lay out from one table.
+
+## Rarities
+
+`N`, `R`, `SR`, `SSR`, `UR`, `LR`, `EX`.
+
+**`EX` has no frame artwork yet.** It stays in the rarity ladder and keeps its
+own roundel in `icons/rarity/ex.png`; only `frames/ex.png` is missing. Asking to
+render an `EX` card raises `CardAssetMissingError` naming that exact path. It is
+never aliased to another rarity — a card that advertises the wrong rarity is a
+worse outcome than a card that fails to render. Drop `frames/ex.png` in, re-run
+`cards:geometry`, bump `VERSION`, and it starts working with no code change.
+
+Asset validation deliberately skips `EX` so the other six rarities keep serving.
+
+## Files
+
+| Path | What |
 | --- | --- |
-| Level badge | `x 1244…1466`, `y 84…246` |
-| Name + subtitle | `x 110…1390`, `y 1620…1730` |
-| Classification panel | `x 60…1440`, `y 1742…1874` |
-| Ability panel | `x 60…1440`, `y 1896…2036` |
-| Flavour quote | `x 560…940`, `y 2046…2080` |
-| Credit row | `x 250…1250`, `y 2090…2120` |
+| `frames/{n,r,sr,ssr,ur,lr}.png` | Transparent rarity frames. 1024x1536 (2:3), except `n.png` at 1036x1519. |
+| `icons/races/*.png` | 512x512. Angel, Demon, Demi-human, Human, Spirit, Valkyrie, Android. |
+| `icons/affinities/*.png` | 512x512. Dominant, Submissive, Switch, Caregiver, Primal. |
+| `icons/rarity/*.png` | 512x512, one per rarity including `ex`. |
+| `badges/owned.png` | The "CAUGHT" overlay. Never baked into a species master. |
+| `geometry.json` | Generated frame geometry. See above. |
+| `fonts/` | Embedded Inter + Noto Serif Italic, so output never depends on host fonts. |
 
-**Overlays own**:
+The `n.png` frame is 1036x1519 rather than 2:3 and takes a ~2.3% stretch to fit
+the canvas. That is deliberate: cover-cropping it instead would cut the
+decorative border that defines the card's edge.
 
-| Zone | Box |
-| --- | --- |
-| Rarity badge | `x 76…344`, `y 88…204` |
-| Border rings | the full perimeter |
-| Top-centre crest | `x 400…1240`, `y 4…80` — between the two badges |
-| Bottom-left pocket | `x 34…240`, `y 2044…2166` |
-| Bottom-right pocket | `x 1260…1466`, `y 2044…2166` |
-
-Two rules fall out of this and are worth stating plainly:
-
-1. **Both badges sit inside the inner ring, not in the corners.** A corner badge
-   and a corner flourish cannot share a corner; that collision is what the
-   earlier geometry kept producing.
-2. **Nothing decorative is drawn over the artwork** between `y 200` and
-   `y 1740`. The character is the card.
-
-A new overlay that wants to decorate outside its zones needs a matching
-base-template change — and a `VERSION` bump.
+Icons are drawn at `1.38 x` their holder's diameter, which puts their ~412 px
+ring at ~1.11x the hole so it laps the rim rather than floating inside it.
 
 ## `VERSION`
 
-`VERSION` is a monotonically increasing integer that participates in the render
-cache key. **Bump it whenever any file in this directory changes** — that alone
-invalidates every cached card. Rendering also keys off `CARD_RENDERER_VERSION`
-in `src/modules/cards/version.ts`, which is bumped when renderer code changes
-what pixels come out.
+A monotonically increasing integer that participates in the render cache key.
+**Bump it whenever any file in this directory changes** — that alone invalidates
+every cached card. Rendering also keys off `CARD_RENDERER_VERSION` in
+`src/modules/cards/version.ts`, which is bumped when renderer code changes what
+pixels come out.
 
-## `fonts/`
+## Text
 
-Embedded fonts so rendering never depends on host OS fonts. Inter (OFL) covers
-the `sans-serif` stack, Noto Serif Italic (OFL) covers the `serif` stack used by
-the flavor quote. Licenses ship alongside as `*-OFL.txt`.
+All card text is dynamic and drawn at render time; nothing is baked into a
+raster asset. The embedded font set is Latin-only, so **decorative symbols must
+be vector paths, not characters** — a dingbat such as `✦` (U+2726) has no
+coverage in Inter and renders as a missing-glyph box.
 
-Because the embedded set is Latin-only, **decorative symbols must be vector
-paths, not characters.** A dingbat such as `✦` (U+2726) has no coverage in
-Inter and renders as a missing-glyph box — see `ability-icon` in the base
-template for the pattern to follow.
+The information panel has four rows: name, two description lines, and a credit
+row (artist / `WAIFUMON` / card number). `subtitle`, `ability` and `flavorQuote`
+remain part of the authored content contract but have nowhere to appear on this
+frame, so they are not drawn and not part of the render key.

@@ -302,6 +302,10 @@ export const cardRoutes =
         const input = toCardRenderInput(species, {
           artwork,
           level: entry.waifu.level,
+          // The only surface that draws the ownership badge. The species route
+          // deliberately does not: the same card is shown in the encyclopedia
+          // and in hunt encounters, where ownership is not the subject.
+          owned: true,
           ...(req.query.width === undefined ? {} : { width: req.query.width }),
           logger: req.log as never,
         });

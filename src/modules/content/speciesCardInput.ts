@@ -32,7 +32,7 @@ void _cardMetaIsRenderable;
 /** Everything the bridge needs from a species; a `SpeciesContent` satisfies it. */
 export type CardRenderableSpecies = Pick<
   SpeciesContent,
-  'slug' | 'name' | 'rarity' | 'archetype' | 'affinity'
+  'slug' | 'name' | 'rarity' | 'archetype' | 'affinity' | 'description'
 > &
   Partial<Pick<SpeciesContent, 'race' | 'card'>>;
 
@@ -67,6 +67,12 @@ export interface SpeciesCardInputOptions {
   width?: number;
   /** Per-render metadata overrides. Rare — event skins, previews. */
   overrides?: SpeciesCardMeta;
+  /**
+   * Render the ownership badge. Only true where the surface is genuinely
+   * showing a copy somebody owns — never for an encyclopedia or hunt preview,
+   * which is why it is opt-in rather than inferred.
+   */
+  owned?: boolean;
   /** Receives the race-fallback warning when `race` is absent and unmappable. */
   logger?: Logger;
 }
@@ -98,6 +104,7 @@ export function toCardRenderInput(
       rarity: species.rarity,
       race,
       affinity: species.affinity,
+      description: species.description,
       ...(species.card === undefined ? {} : { card: species.card }),
     },
     variant: {
@@ -110,6 +117,7 @@ export function toCardRenderInput(
 
   return {
     ...input,
+    ...(options.owned === undefined ? {} : { context: { owned: options.owned } }),
     ...(options.width === undefined ? {} : { output: { width: options.width } }),
     ...(options.overrides === undefined ? {} : { overrides: options.overrides }),
   };

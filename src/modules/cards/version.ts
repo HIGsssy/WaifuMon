@@ -10,33 +10,35 @@
  * text fitting, rasterizer options, composite order, WebP encode settings.
  * Refactors that provably cannot move a pixel do not need a bump.
  */
-export const CARD_RENDERER_VERSION = '4';
+export const CARD_RENDERER_VERSION = '5';
 
 /**
  * The canonical card canvas.
  *
- * **Derived from the source artwork, not the other way round.** Character art
- * is authored at 1248×1824 (13:19, ≈0.6842), and it is authored *full frame*:
- * these compositions put ears and hair against the top edge and feet against
- * the bottom, and one pose runs a leg off the top. Vertical crop is therefore
- * the destructive axis — anything that trims height clips anatomy.
+ * **Derived from the frame artwork.** The supplied rarity frames are drawn at
+ * 1024x1536 — exactly 2:3 — and they define the card's whole visual geometry:
+ * the artwork window, the information panel, the level shield and the three
+ * icon holders are all holes punched in them. So the canvas is 2:3, and every
+ * element's position is measured off the frames rather than chosen (see
+ * `frameGeometry.ts`).
  *
- * 1500×2200 is ≈0.6818, within 0.35% of the source ratio. With the art
- * full-bleed behind the frame that costs **1.65% of width and 0% of height** —
- * about five pixels of background off each side. The alternative shape, an
- * inset art *window* with furniture above and below, forces a 1420×1850 window
- * and throws away **10.9% of the height**, which is a head or a pair of boots.
+ * 1500x2250 keeps the width the display buckets and the Portal were already
+ * built around, and upscales the frames by ~1.465x. The one frame that is not
+ * 2:3 (`N`, at 1036x1519) takes a ~2.3% stretch rather than a crop, because
+ * cropping it would cut the decorative border that defines the card's edge.
  *
- * So the art fills the card and the frame, badges and text sit *over* it,
- * weighted to the bottom where these compositions carry legs and background
- * rather than faces.
+ * Character art is authored at 1248x1824 (13:19) and is **not** full bleed: it
+ * is cover-cropped into the frame's artwork window, so the border visibly
+ * encloses it. The windows run 1314-1342px wide, so the source is upscaled only
+ * ~5-8% at master resolution before cropping.
  *
  * Everything downstream derives from these two numbers — derivative sizing,
- * reported dimensions, the composer's layout table. Nothing else should
- * hard-code a card dimension.
+ * reported dimensions, the geometry manifest. Nothing else should hard-code a
+ * card dimension, and changing either of them requires re-running
+ * `npm run cards:geometry`.
  */
 export const CARD_MASTER_WIDTH = 1500;
-export const CARD_MASTER_HEIGHT = 2200;
+export const CARD_MASTER_HEIGHT = 2250;
 
 /** Card aspect ratio, for callers reserving a box before the bytes arrive. */
 export const CARD_ASPECT_RATIO = CARD_MASTER_WIDTH / CARD_MASTER_HEIGHT;

@@ -19,13 +19,23 @@ import type { RaceCode } from './race';
  * explicit `undefined` is what makes the type usable without spread gymnastics
  * at every call site.
  */
+/**
+ * Note on what the card face currently *draws*. The production frame's
+ * information panel carries four rows — name, two lines of description, and a
+ * credit row — so of the fields below only `artist` and `cardNumber` reach the
+ * card today. `subtitle`, `ability` and `flavorQuote` remain part of the
+ * authored content contract (and of the admin panel, and of the API) and are
+ * simply not rendered; they are deliberately kept rather than deleted so a
+ * later frame with room for them does not need a content migration.
+ */
 export interface SpeciesCardMeta {
-  /** Epithet under the name, e.g. "Curious Companion". */
+  /** Epithet under the name, e.g. "Curious Companion". Not currently drawn. */
   subtitle?: string | undefined;
   /** Artwork credit. Rendered as "Artist - <name>"; omitted entirely if absent. */
   artist?: string | undefined;
-  /** Both fields required together, or the whole panel is dropped. */
+  /** Both fields required together, or the whole panel is dropped. Not currently drawn. */
   ability?: { name: string; text: string } | undefined;
+  /** Not currently drawn — the panel shows `species.description` instead. */
   flavorQuote?: string | undefined;
   /** Free-form collector number, e.g. "012/100". */
   cardNumber?: string | undefined;
@@ -39,6 +49,13 @@ export interface CardRenderInput {
     /** Already resolved — use {@link resolveRace} before calling. */
     race: RaceCode;
     affinity: Affinity;
+    /**
+     * Flavour line for the information panel, wrapped to two lines. This is
+     * the species' own `description` — the same sentence the encyclopedia
+     * shows — not a card-specific field, so one character reads the same way
+     * everywhere she appears.
+     */
+    description?: string | undefined;
     card?: SpeciesCardMeta | undefined;
   };
   variant: {
@@ -56,6 +73,21 @@ export interface CardRenderInput {
         level?: number | undefined;
         /** Reserved for owner-personalised cards; unused in v1, not in the key. */
         ownedCopyId?: number | undefined;
+      }
+    | undefined;
+  /**
+   * How this render is being presented, as opposed to what is being rendered.
+   *
+   * Ownership is the only member today. It exists because the same species card
+   * is drawn in contexts where ownership is meaningless — the encyclopedia, a
+   * hunt encounter, an admin preview — and the "CAUGHT" badge must not be baked
+   * into that master. It defaults to off, and it is part of the render key, so
+   * an owned and an unowned card of the same Waifumon are two distinct cached
+   * images rather than one that flickers between states.
+   */
+  context?:
+    | {
+        owned?: boolean | undefined;
       }
     | undefined;
   output?:

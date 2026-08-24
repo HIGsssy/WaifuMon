@@ -3,16 +3,25 @@
  * assembly.
  *
  * ```
- * artwork bytes ─┐
- *                ├─ composed base SVG ─ resvg ─ base PNG ─┐
- * base template ─┘                                        ├─ sharp composite ─ full-size WebP master
- *                   rarity SVG ─ resvg ─ rarity PNG ──────┘                          │
- *                                                                                    └─ sharp resize ─ @<width> derivative
+ *  background ──────────────────────────────────────┐
+ *  artwork ── sharp cover-crop ─────────────────────┤
+ *  plates SVG ── resvg ─────────────────────────────┤
+ *  frame PNG ── sharp resize ───────────────────────┼─ sharp composite ─ WebP master ─┐
+ *  race / affinity / rarity icons ── sharp resize ──┤                                 │
+ *  owned badge (optional) ── sharp resize ──────────┤                                 │
+ *  text SVG ── resvg ───────────────────────────────┘                                 │
+ *                                                                                     │
+ *                                                       sharp resize ─ @<width> ──────┘
  * ```
  *
+ * Supplied artwork is never redrawn and never routed through the SVG
+ * rasterizer: frames, icons and the badge are placed as pixels. resvg draws
+ * only the two vector layers — the dark plates behind the frame's transparent
+ * holes, and the dynamic text over the top.
+ *
  * The master is the card's identity; a requested display width only selects
- * which file derives from it. Asking for 512px never re-runs resvg and never
- * produces a second master.
+ * which file derives from it. Asking for 512px never re-runs the composite and
+ * never produces a second master.
  */
 import { CardAssetLoader } from './assets/loader';
 import { validateCardAssets } from './assets/validation';
@@ -21,17 +30,29 @@ import {
   computeMasterRenderKey as computeKey,
   effectiveCardMeta,
   effectiveLevel,
+  effectiveOwned,
 } from './cache/cacheKey';
 import { CardDiskCache, InFlightMap } from './cache/diskCache';
 import { ArtworkHashMemo } from './cache/hashMemo';
-import { composeBaseSvg } from './composer/baseComposer';
+import {
+  buildOverlaySvg,
+  buildUnderlaySvg,
+  planArtworkCrop,
+  planIconPlacement,
+  planOwnedBadge,
+  type ComposeCardInput,
+  type RasterPlacement,
+} from './composer/cardComposer';
 import { hashArtwork, readArtwork } from './contentHash';
 import { CardOutputWidthError } from './errors';
 import { DEFAULT_ASSET_ROOT, DEFAULT_CACHE_ROOT } from './paths';
 import {
   compositeMasterWebp,
-  renderBasePng,
-  renderOverlayPng,
+  imageSize,
+  renderArtwork,
+  renderFrame,
+  renderPlacement,
+  renderVectorLayer,
   resizeFromMaster,
 } from './rasterizer/renderer';
 import type {
@@ -42,6 +63,8 @@ import type {
   CardRendererStats,
 } from './types';
 import { cardEtag, CARD_MASTER_HEIGHT, CARD_MASTER_WIDTH } from './version';
+
+const CANVAS = { width: CARD_MASTER_WIDTH, height: CARD_MASTER_HEIGHT } as const;
 
 /** Widths the renderer will derive. Wide enough to cover the portal's buckets. */
 export const MIN_OUTPUT_WIDTH = 16;
@@ -159,45 +182,94 @@ class CardRendererImpl implements CardRenderer {
     });
   }
 
+  /**
+   * Draws one card.
+   *
+   * Reads first (all cached in the loader after the first card), then plans
+   * the layout from the frame's geometry, then rasterizes. The plan step is
+   * pure and synchronous — every coordinate is decided before a single pixel
+   * is touched, which is what makes the layout testable without rendering.
+   */
   private async renderMaster(input: CardRenderInput): Promise<Buffer> {
-    const [baseSvg, raceIconSvg, affinityIconSvg, overlaySvg, artwork] = await Promise.all([
-      this.loader.baseTemplate(),
-      this.loader.raceIcon(input.species.race),
-      this.loader.affinityIcon(input.species.affinity),
-      this.loader.rarityOverlay(input.species.rarity),
-      readArtwork(input.variant.artworkAbsolutePath, {
-        speciesSlug: input.species.slug,
-        appearanceId: input.variant.appearanceId,
-      }),
-    ]);
+    const { rarity, race, affinity } = input.species;
+    const owned = effectiveOwned(input);
 
-    const composed = composeBaseSvg({
-      baseSvg,
-      raceIconSvg,
-      affinityIconSvg,
+    const [geometry, frameBytes, raceIcon, affinityIcon, rarityIcon, artwork, ownedBadgeBytes] =
+      await Promise.all([
+        this.loader.frameGeometry(rarity),
+        this.loader.frame(rarity),
+        this.loader.raceIcon(race),
+        this.loader.affinityIcon(affinity),
+        this.loader.rarityIcon(rarity),
+        readArtwork(input.variant.artworkAbsolutePath, {
+          speciesSlug: input.species.slug,
+          appearanceId: input.variant.appearanceId,
+        }),
+        owned ? this.loader.ownedBadge() : Promise.resolve(undefined),
+      ]);
+
+    const card = effectiveCardMeta(input);
+    const composeInput: ComposeCardInput = {
+      geometry,
       name: input.species.name,
-      race: input.species.race,
-      affinity: input.species.affinity,
+      race,
+      affinity,
+      rarity,
       level: effectiveLevel(input),
-      card: effectiveCardMeta(input),
-    });
+      description: input.species.description ?? null,
+      card,
+      icons: { race: raceIcon, affinity: affinityIcon, rarity: rarityIcon },
+      ...(ownedBadgeBytes === undefined ? {} : { ownedBadge: ownedBadgeBytes }),
+    };
+
+    const placements: RasterPlacement[] = [
+      planIconPlacement(geometry.circles.race, raceIcon),
+      planIconPlacement(geometry.circles.affinity, affinityIcon),
+      planIconPlacement(geometry.circles.rarity, rarityIcon),
+    ];
+    if (ownedBadgeBytes !== undefined) {
+      placements.push(
+        planOwnedBadge(geometry.art, ownedBadgeBytes, await imageSize(ownedBadgeBytes)),
+      );
+    }
 
     const fontFiles = this.loader.fontPaths();
-    const base = renderBasePng(composed.svg, artwork, fontFiles);
-    const overlay = renderOverlayPng(overlaySvg, fontFiles);
+    const crop = planArtworkCrop(await imageSize(artwork), geometry.art);
+
+    const [artworkLayer, frameLayer, ...placementLayers] = await Promise.all([
+      renderArtwork(artwork, crop),
+      renderFrame(frameBytes),
+      ...placements.map((placement) => renderPlacement(placement)),
+    ]);
+
+    const master = await compositeMasterWebp({
+      artwork: artworkLayer as Buffer,
+      artWindow: geometry.art,
+      underlay: renderVectorLayer(buildUnderlaySvg(geometry, CANVAS), fontFiles, 'plate'),
+      frame: frameLayer as Buffer,
+      placements: placementLayers.map((bytes, index) => ({
+        bytes: bytes as Buffer,
+        left: (placements[index] as RasterPlacement).left,
+        top: (placements[index] as RasterPlacement).top,
+      })),
+      overlay: renderVectorLayer(buildOverlaySvg(composeInput, CANVAS), fontFiles, 'text'),
+    });
 
     this.logger?.debug(
       {
         tag: 'card-renderer/master',
         slug: input.species.slug,
-        rarity: input.species.rarity,
-        width: base.width,
-        height: base.height,
+        rarity,
+        race,
+        affinity,
+        owned,
+        width: CARD_MASTER_WIDTH,
+        height: CARD_MASTER_HEIGHT,
       },
       'Rendered card master',
     );
 
-    return compositeMasterWebp(base.png, overlay);
+    return master;
   }
 
   private result(

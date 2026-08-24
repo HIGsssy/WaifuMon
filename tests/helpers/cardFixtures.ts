@@ -51,7 +51,9 @@ export interface CardInputOverrides {
   affinity?: Affinity;
   appearanceId?: string;
   level?: number;
+  description?: string;
   card?: CardRenderInput['species']['card'];
+  owned?: boolean;
   width?: number;
 }
 
@@ -64,6 +66,9 @@ export function cardInput(artworkPath: string, overrides: CardInputOverrides = {
       rarity: overrides.rarity ?? 'SSR',
       race: overrides.race ?? 'demi-human',
       affinity: overrides.affinity ?? 'dominant',
+      description:
+        overrides.description ??
+        'Prowls the fire-escape network at midnight. Trades secrets for tuna and eye contact.',
       card:
         overrides.card === undefined
           ? {
@@ -83,6 +88,7 @@ export function cardInput(artworkPath: string, overrides: CardInputOverrides = {
       artworkAbsolutePath: artworkPath,
     },
     progress: { level: overrides.level ?? 12 },
+    ...(overrides.owned === undefined ? {} : { context: { owned: overrides.owned } }),
   };
   return overrides.width === undefined ? input : { ...input, output: { width: overrides.width } };
 }

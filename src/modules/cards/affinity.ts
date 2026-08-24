@@ -8,19 +8,24 @@
  * These blurbs define what an affinity *classification* means, so every card
  * with the same affinity must say the same thing — putting them in species
  * content would duplicate one global definition across every entry and invite
- * five species to disagree about what "primal" is. Phase 2 does not add
- * affinity-description fields to the species schema. If per-character affinity
+ * five species to disagree about what "primal" is. If per-character affinity
  * flavour is ever wanted, that is a separate optional field layered *beside*
  * these definitions, never a replacement for them.
+ *
+ * **Not currently drawn on a card.** The production frame identifies affinity
+ * with an icon in the middle holder and no text label, so these blurbs have no
+ * slot on the card face. They are kept because they are the canonical
+ * definition of each affinity, and because the obvious homes for them — a
+ * tooltip, the encyclopedia, a Discord embed — all want exactly this text.
  */
 import { AFFINITIES, type Affinity } from '../../db/schema';
 
 export const AFFINITY_ICON_FILES: Readonly<Record<Affinity, string>> = {
-  dominant: 'dominant.svg',
-  submissive: 'submissive.svg',
-  caregiver: 'caregiver.svg',
-  primal: 'primal.svg',
-  switch: 'switch.svg',
+  dominant: 'dominant.png',
+  submissive: 'submissive.png',
+  caregiver: 'caregiver.png',
+  primal: 'primal.png',
+  switch: 'switch.png',
 };
 
 /** Icon filename for an affinity, relative to `assets/cardart/icons/affinities/`. */
@@ -32,7 +37,7 @@ export function affinityIconFile(affinity: Affinity): string {
   return file;
 }
 
-/** Two-line blurb shown beside the affinity badge. Wrapped by the composer. */
+/** Canonical one-paragraph definition of each affinity. See the file header. */
 export const AFFINITY_DESCRIPTIONS: Readonly<Record<Affinity, string>> = {
   dominant: 'Takes the lead and sets the pace. Responds best to a partner who yields gracefully.',
   submissive: 'Follows willingly and thrives on direction. Warms fastest to steady, confident hands.',

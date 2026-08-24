@@ -314,10 +314,20 @@ describe('GET /cards/species/:slug', () => {
     expect(explicit.headers.etag).toBe(master.headers.etag);
   });
 
-  it('renders an EX species', async () => {
+  /**
+   * `EX` has no frame artwork yet. It must surface as a server-side asset gap —
+   * never as a card wearing another rarity's frame, and never as a 404, which
+   * would say the species does not exist.
+   */
+  it('fails loudly for a rarity whose frame has not shipped', async () => {
     const res = await app.inject({ method: 'GET', url: url('/cards/species/card_test_ex'), headers: AUTH });
-    expect(res.statusCode).toBe(200);
-    expect(isWebp(res.rawPayload)).toBe(true);
+    // 500, not 404: the species exists, the install is incomplete. The body
+    // reports `INTERNAL_ERROR` because this route family masks every 500-class
+    // code from clients — the specific `CARD_ASSET_MISSING` goes to the log,
+    // which is where an operator reads it.
+    expect(res.statusCode).toBe(500);
+    expect(res.json()).toMatchObject({ error: { code: 'INTERNAL_ERROR' } });
+    expect(logLines().join('\n')).toContain('CARD_ASSET_MISSING');
   });
 
   it('accepts an explicit valid appearance', async () => {
@@ -471,33 +481,48 @@ describe('GET /players/:playerId/collection/owned/:waifuId/card', () => {
     expect(isWebp(res.rawPayload)).toBe(true);
   });
 
+  /**
+   * The owned route draws the ownership badge and the species route does not,
+   * so the two are deliberately different images and their ETags cannot be
+   * compared directly any more. What the level actually drives is asserted two
+   * ways: the serve log reports the level that reached the renderer, and the
+   * species route still re-keys across levels.
+   */
   it('uses the copy’s own level, not the preview default', async () => {
     const owned = await app.inject({ method: 'GET', url: ownedUrl, headers: AUTH });
-    const atLevel22 = await app.inject({
-      method: 'GET',
-      url: url('/cards/species/fallback_girl?level=22'),
-      headers: AUTH,
-    });
-    const atLevel1 = await app.inject({
-      method: 'GET',
-      url: url('/cards/species/fallback_girl'),
-      headers: AUTH,
-    });
+    expect(owned.statusCode).toBe(200);
 
-    expect(owned.headers.etag).toBe(atLevel22.headers.etag);
-    expect(owned.headers.etag).not.toBe(atLevel1.headers.etag);
+    const line = logLines()
+      .filter((l) => l.includes('card-renderer/serve') && l.includes(`/owned/${OWNED_WAIFU.id}/card`) === false)
+      .reverse()
+      .find((l) => l.includes('"slug":"fallback_girl"'));
+    expect(line, 'the owned render logs the level it used').toContain('"level":22');
+
+    const [atLevel22, atLevel1] = await Promise.all([
+      app.inject({ method: 'GET', url: url('/cards/species/fallback_girl?level=22'), headers: AUTH }),
+      app.inject({ method: 'GET', url: url('/cards/species/fallback_girl'), headers: AUTH }),
+    ]);
+    expect(atLevel22.headers.etag).not.toBe(atLevel1.headers.etag);
+
+    // And an owned card is its own image, not a species preview.
+    expect(owned.headers.etag).not.toBe(atLevel22.headers.etag);
   });
 
   it('uses the appearance she is wearing, resolved through the shared resolver', async () => {
-    // She wears `alt_a`, which has no artwork and falls back to `standard` —
-    // so her card is keyed by the resolved asset, exactly like the species route.
+    // She wears `alt_a`, which has no artwork and falls back to `standard` — so
+    // her card is keyed by the asset that actually resolved, exactly like the
+    // species route. The serve log is what records which one that was.
     const owned = await app.inject({ method: 'GET', url: ownedUrl, headers: AUTH });
-    const viaSpecies = await app.inject({
-      method: 'GET',
-      url: url('/cards/species/fallback_girl?variant=alt_a&level=22'),
-      headers: AUTH,
-    });
-    expect(owned.headers.etag).toBe(viaSpecies.headers.etag);
+    expect(owned.statusCode).toBe(200);
+
+    const line = logLines()
+      .reverse()
+      .find((l) => l.includes('card-renderer/serve') && l.includes('"slug":"fallback_girl"'));
+
+    expect(line, 'the owned render logs what it resolved').toBeDefined();
+    expect(line).toContain('"requestedAppearanceId":"alt_a"');
+    expect(line).toContain('"resolvedAppearanceId":"standard"');
+    expect(line).toContain('"resolutionSource":"species-default"');
   });
 
   it('supports width on the owned route too', async () => {
@@ -555,14 +580,14 @@ describe('GET /players/:playerId/collection/owned/:waifuId/card', () => {
 
 describe('observability', () => {
   it('logs slug, resolved appearance, width, key, cache hit and duration', async () => {
-    await app.inject({ method: 'GET', url: url('/cards/species/card_test_ex'), headers: AUTH });
+    await app.inject({ method: 'GET', url: url('/cards/species/card_test_n'), headers: AUTH });
     const line = logLines().find(
-      (l) => l.includes('card-renderer/serve') && l.includes('card_test_ex'),
+      (l) => l.includes('card-renderer/serve') && l.includes('card_test_n'),
     );
 
     expect(line).toBeDefined();
     for (const field of [
-      '"slug":"card_test_ex"',
+      '"slug":"card_test_n"',
       '"resolvedAppearanceId":"standard"',
       '"renderKey"',
       '"fromCache"',
@@ -573,10 +598,23 @@ describe('observability', () => {
     }
   });
 
+  /**
+   * Artwork paths must never reach the log — they are per-species filesystem
+   * detail, and a card is identified by its render key. A missing *kit* asset is
+   * the opposite case: `CardAssetMissingError` names the exact file an operator
+   * has to go and put on disk, so `frames/ex.png` appearing there is correct and
+   * necessary.
+   */
   it('never writes an absolute artwork path to the log', async () => {
     await app.inject({ method: 'GET', url: url('/cards/species/card_test_n'), headers: AUTH });
     const text = logLines().join('\n');
+
     expect(text).not.toContain(assetsDir.replace(/\\/g, '\\\\'));
-    expect(text).not.toContain('.png');
+    expect(text).not.toContain('artworkAbsolutePath');
+
+    // Every .png the log does mention belongs to the card kit, not to content.
+    for (const match of text.matchAll(/[\w\\/.-]*\.png/g)) {
+      expect(match[0], 'only kit assets may be named in logs').toContain('cardart');
+    }
   });
 });

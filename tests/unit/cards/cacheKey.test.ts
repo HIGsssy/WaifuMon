@@ -121,15 +121,13 @@ describe('computeMasterRenderKey', () => {
       ['rarity', mutate({ species: { rarity: 'EX' } })],
       ['race', mutate({ species: { race: 'android' } })],
       ['affinity', mutate({ species: { affinity: 'primal' } })],
-      ['subtitle', mutateCard({ subtitle: 'Different' })],
+      ['description', mutate({ species: { description: 'A different flavour line.' } })],
       ['artist', mutateCard({ artist: 'Someone Else' })],
-      ['ability name', mutateCard({ ability: { name: 'Eight Lives', text: 'Ignores the first failed capture attempt.' } })],
-      ['ability text', mutateCard({ ability: { name: 'Nine Lives', text: 'Different text.' } })],
-      ['flavor quote', mutateCard({ flavorQuote: 'Another quote.' })],
       ['card number', mutateCard({ cardNumber: '013/100' })],
       ['level', { ...baseInput, progress: { level: 13 } }],
       ['appearance id', mutate({ variant: { appearanceId: 'level_20' } })],
-      ['overrides', { ...baseInput, overrides: { subtitle: 'Overridden' } }],
+      ['overrides of a drawn field', { ...baseInput, overrides: { artist: 'Overridden' } }],
+      ['ownership badge', { ...baseInput, context: { owned: true } }],
     ];
 
     for (const [label, input] of mutations) {
@@ -154,7 +152,35 @@ describe('computeMasterRenderKey', () => {
     });
   });
 
+  /**
+   * The production card face has four text rows — name, two description lines,
+   * and a credit row — so `subtitle`, `ability` and `flavorQuote` have nowhere
+   * to appear. They remain part of the authored content contract, but they
+   * cannot change a pixel, and keying on them would fork the cache every time
+   * an author edited a line nobody sees. If a later frame draws them again,
+   * they go back into the key and `CARD_RENDERER_VERSION` gets bumped.
+   */
+  describe('does not change for metadata the card face does not draw', () => {
+    const unrendered: [string, CardRenderInput][] = [
+      ['subtitle', mutateCard({ subtitle: 'Different' })],
+      ['ability name', mutateCard({ ability: { name: 'Eight Lives', text: 'Ignores the first failed capture attempt.' } })],
+      ['ability text', mutateCard({ ability: { name: 'Nine Lives', text: 'Different text.' } })],
+      ['flavor quote', mutateCard({ flavorQuote: 'Another quote.' })],
+    ];
+
+    for (const [label, input] of unrendered) {
+      it(label, () => {
+        expect(keyFor(input), label).toBe(BASE_KEY);
+      });
+    }
+  });
+
   describe('does not change for things that are not the card', () => {
+    it('an unowned render, stated explicitly or left off', () => {
+      expect(keyFor({ ...baseInput, context: { owned: false } })).toBe(BASE_KEY);
+      expect(keyFor({ ...baseInput, context: {} })).toBe(BASE_KEY);
+    });
+
     it('absolute artwork path, when the bytes are the same', () => {
       const moved = mutate({
         variant: { artworkAbsolutePath: '/var/lib/waifumon/somewhere/else.png' },

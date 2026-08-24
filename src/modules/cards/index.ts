@@ -8,8 +8,9 @@
  * swapped (Satori, a headless browser, a render worker) without touching a
  * single caller.
  *
- * Phase 1 ships the renderer only — no HTTP route, no portal provider, no
- * content-schema change. See `.ai/SVGPlan.md`.
+ * The kit is raster-first: the frames, icons and ownership badge are supplied
+ * artwork, and their geometry is derived from them into `geometry.json` rather
+ * than transcribed into a coordinate table here. See `frameGeometry.ts`.
  */
 
 export {
@@ -70,7 +71,41 @@ export {
   type RaceResolvable,
 } from './race';
 
-export { RARITY_OVERLAY_FILES, rarityOverlayFile } from './rarity';
+export {
+  isRenderableRarity,
+  RARITY_FRAME_FILES,
+  RARITY_ICON_FILES,
+  rarityFrameFile,
+  rarityIconFile,
+  RENDERABLE_RARITIES,
+  UNSUPPORTED_RARITIES,
+} from './rarity';
+
+export {
+  frameGeometryFor,
+  parseCardGeometry,
+  GEOMETRY_FILE,
+  GEOMETRY_SCHEMA_VERSION,
+  type CardGeometryFile,
+  type Disc,
+  type FrameGeometry,
+  type Rect,
+} from './frameGeometry';
+
+/**
+ * Layout is exported so a test — or a future preview tool — can assert where an
+ * element lands without rendering a card. The composition functions themselves
+ * stay internal: callers get bytes.
+ */
+export {
+  LAYOUT,
+  planArtworkCrop,
+  planIconPlacement,
+  planOwnedBadge,
+  type ArtworkCrop,
+  type IconSlot,
+  type RasterPlacement,
+} from './composer/cardComposer';
 
 export {
   AFFINITY_DESCRIPTIONS,

@@ -18,6 +18,22 @@ import { sha256Hex } from './hashMemo';
 import { CARD_RENDERER_VERSION } from '../version';
 import type { CardRenderInput, SpeciesCardMeta } from '../types';
 
+/**
+ * The card-metadata fields the current card face actually draws.
+ *
+ * `SpeciesCardMeta` still carries `subtitle`, `ability` and `flavorQuote` for
+ * the content contract, but the production frame has no room for them, so they
+ * cannot change a single pixel. Keying on them would fork the cache every time
+ * an author edited a line that never appears — this narrows the key to what is
+ * genuinely drawn. Anything added back to the card face must be added back
+ * here, and that is exactly the kind of change `CARD_RENDERER_VERSION` exists
+ * to cover.
+ */
+export interface RenderedCardMeta {
+  artist?: string | undefined;
+  cardNumber?: string | undefined;
+}
+
 /** Hex characters kept from the digest. 64 bits is ample for a filename stem. */
 const KEY_LENGTH = 16;
 
@@ -29,7 +45,11 @@ export interface MasterKeyMaterial {
     race: string;
     affinity: string;
   };
-  card: SpeciesCardMeta;
+  card: RenderedCardMeta;
+  /** The flavour line drawn in the information panel. */
+  description: string;
+  /** Whether the ownership badge is composited. */
+  owned: boolean;
   level: number;
   appearanceId: string;
   artworkContentHash: string;
@@ -40,6 +60,11 @@ export interface MasterKeyMaterial {
 /** Merges the species' card block with any per-render overrides. */
 export function effectiveCardMeta(input: CardRenderInput): SpeciesCardMeta {
   return { ...(input.species.card ?? {}), ...(input.overrides ?? {}) };
+}
+
+/** True when this render should composite the ownership badge. */
+export function effectiveOwned(input: CardRenderInput): boolean {
+  return input.context?.owned === true;
 }
 
 /** Level printed on the card. Absent, non-finite, or < 1 all mean level 1. */
@@ -62,13 +87,20 @@ export function buildMasterKeyMaterial(
       race: input.species.race,
       affinity: input.species.affinity,
     },
-    card: effectiveCardMeta(input),
+    card: renderedCardMeta(effectiveCardMeta(input)),
+    description: input.species.description ?? '',
+    owned: effectiveOwned(input),
     level: effectiveLevel(input),
     appearanceId: input.variant.appearanceId,
     artworkContentHash,
     kitVersion,
     rendererVersion: CARD_RENDERER_VERSION,
   };
+}
+
+/** Narrows a full metadata block to the fields the card face draws. */
+function renderedCardMeta(card: SpeciesCardMeta): RenderedCardMeta {
+  return { artist: card.artist, cardNumber: card.cardNumber };
 }
 
 /**
