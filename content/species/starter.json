@@ -2,6 +2,7 @@
   {
     "slug": "alley_catgirl",
     "name": "Alley Catgirl",
+    "artist": "Whistler",
     "rarity": "N",
     "archetype": "demi-human",
     "race": "demi-human",
@@ -83,6 +84,7 @@
   {
     "slug": "shrine_assistant",
     "name": "Shrine Assistant",
+    "artist": "Whistler",
     "rarity": "N",
     "archetype": "demi-human",
     "baseCaptureRate": null,
@@ -155,6 +157,7 @@
   {
     "slug": "cafe_maid",
     "name": "Café Maid",
+    "artist": "Gorthig",
     "rarity": "N",
     "archetype": "human",
     "baseCaptureRate": null,
@@ -172,6 +175,7 @@
   {
     "slug": "neon_school_rebel",
     "name": "Neon School Rebel",
+    "artist": "Whistler",
     "rarity": "N",
     "archetype": "human",
     "baseCaptureRate": null,
@@ -244,6 +248,7 @@
   {
     "slug": "library_goth",
     "name": "Library Goth",
+    "artist": "Whistler",
     "rarity": "N",
     "archetype": "human",
     "baseCaptureRate": null,
@@ -316,6 +321,7 @@
   {
     "slug": "arcade_bunny",
     "name": "Arcade Bunny",
+    "artist": "Whistler",
     "rarity": "N",
     "archetype": "demi-human",
     "baseCaptureRate": null,
@@ -333,6 +339,7 @@
   {
     "slug": "rainy_day_idol",
     "name": "Rainy Day Idol",
+    "artist": "Gorthig",
     "rarity": "N",
     "archetype": "human",
     "baseCaptureRate": null,
@@ -350,6 +357,7 @@
   {
     "slug": "sleepy_succubus_intern",
     "name": "Sleepy Succubus Intern",
+    "artist": "Potato",
     "rarity": "N",
     "archetype": "demon",
     "baseCaptureRate": null,
@@ -367,6 +375,7 @@
   {
     "slug": "nurse_imp",
     "name": "Nurse Imp",
+    "artist": "Potato",
     "rarity": "N",
     "archetype": "demon",
     "baseCaptureRate": null,
@@ -384,6 +393,7 @@
   {
     "slug": "streetwear_oni",
     "name": "Streetwear Oni",
+    "artist": "Gorthig",
     "rarity": "N",
     "archetype": "demon",
     "baseCaptureRate": null,
@@ -401,6 +411,7 @@
   {
     "slug": "moonlit_dancer",
     "name": "Moonlit Dancer",
+    "artist": "Whistler",
     "rarity": "N",
     "archetype": "angel",
     "baseCaptureRate": null,
@@ -473,6 +484,7 @@
   {
     "slug": "cyber_neko",
     "name": "Cyber Neko",
+    "artist": "Gorthig",
     "rarity": "N",
     "archetype": "demi-human",
     "baseCaptureRate": null,
@@ -490,6 +502,7 @@
   {
     "slug": "potion_shop_clerk",
     "name": "Potion Shop Clerk",
+    "artist": "Whistler",
     "rarity": "N",
     "archetype": "human",
     "baseCaptureRate": null,
@@ -562,6 +575,7 @@
   {
     "slug": "velvet_bartender",
     "name": "Velvet Bartender",
+    "artist": "Whistler",
     "rarity": "N",
     "archetype": "demi-human",
     "baseCaptureRate": null,
@@ -634,6 +648,7 @@
   {
     "slug": "demon_hall_monitor",
     "name": "Demon Hall Monitor",
+    "artist": "Whistler",
     "rarity": "N",
     "archetype": "demon",
     "baseCaptureRate": null,
@@ -706,6 +721,7 @@
   {
     "slug": "beachside_siren",
     "name": "Beachside Siren",
+    "artist": "Potato",
     "rarity": "N",
     "archetype": "demon",
     "baseCaptureRate": null,
@@ -723,6 +739,7 @@
   {
     "slug": "neon_kitsune_apprentice",
     "name": "Neon Kitsune Apprentice",
+    "artist": "Whistler",
     "rarity": "R",
     "archetype": "spirit",
     "baseCaptureRate": null,
@@ -795,6 +812,7 @@
   {
     "slug": "crimson_oni_bride",
     "name": "Crimson Oni Bride",
+    "artist": "Gorthig",
     "rarity": "R",
     "archetype": "demon",
     "baseCaptureRate": null,
@@ -812,6 +830,7 @@
   {
     "slug": "cyber_shrine_maiden",
     "name": "Cyber Shrine Maiden",
+    "artist": "Gorthig",
     "rarity": "R",
     "archetype": "android",
     "baseCaptureRate": null,
@@ -829,6 +848,7 @@
   {
     "slug": "latex_paladin",
     "name": "Latex Paladin",
+    "artist": "Gorthig",
     "rarity": "R",
     "archetype": "angel",
     "baseCaptureRate": null,
@@ -901,6 +921,7 @@
   {
     "slug": "gothic_vampire_heiress",
     "name": "Gothic Vampire Heiress",
+    "artist": "Gorthig",
     "rarity": "R",
     "archetype": "demi-human",
     "baseCaptureRate": null,
@@ -918,6 +939,7 @@
   {
     "slug": "hologram_idol",
     "name": "Hologram Idol",
+    "artist": "Whistler",
     "rarity": "R",
     "archetype": "spirit",
     "baseCaptureRate": null,
@@ -990,6 +1012,7 @@
   {
     "slug": "demon_librarian",
     "name": "Demon Librarian",
+    "artist": "Whistler",
     "rarity": "R",
     "archetype": "demon",
     "baseCaptureRate": null,
@@ -1062,6 +1085,7 @@
   {
     "slug": "bunny_dealer",
     "name": "Bunny Dealer",
+    "artist": "Gorthig",
     "rarity": "R",
     "archetype": "human",
     "baseCaptureRate": null,
@@ -1079,6 +1103,7 @@
   {
     "slug": "angelic_delinquent",
     "name": "Angelic Delinquent",
+    "artist": "Gorthig",
     "rarity": "R",
     "archetype": "angel",
     "baseCaptureRate": null,
@@ -1096,6 +1121,7 @@
   {
     "slug": "witchy_mechanic",
     "name": "Witchy Mechanic",
+    "artist": "Potato",
     "rarity": "R",
     "archetype": "human",
     "baseCaptureRate": null,
@@ -1113,6 +1139,7 @@
   {
     "slug": "void_catgirl",
     "name": "Void Catgirl",
+    "artist": "Whistler",
     "rarity": "SR",
     "archetype": "demi-human",
     "baseCaptureRate": null,
@@ -1185,6 +1212,7 @@
   {
     "slug": "royal_succubus",
     "name": "Royal Succubus",
+    "artist": "Gorthig",
     "rarity": "SR",
     "archetype": "demon",
     "baseCaptureRate": null,
@@ -1202,6 +1230,7 @@
   {
     "slug": "chrome_valkyrie",
     "name": "Chrome Valkyrie",
+    "artist": "Whistler",
     "rarity": "SR",
     "archetype": "valkyrie",
     "race": "valkyrie",
@@ -1279,6 +1308,7 @@
   {
     "slug": "blood_moon_priestess",
     "name": "Blood Moon Priestess",
+    "artist": "Gorthig",
     "rarity": "SR",
     "archetype": "human",
     "baseCaptureRate": null,
@@ -1296,6 +1326,7 @@
   {
     "slug": "casino_kitsune",
     "name": "Casino Kitsune",
+    "artist": "Gorthig",
     "rarity": "SR",
     "archetype": "spirit",
     "baseCaptureRate": null,
@@ -1313,6 +1344,7 @@
   {
     "slug": "fallen_angel_nurse",
     "name": "Fallen Angel Nurse",
+    "artist": "Gorthig",
     "rarity": "SR",
     "archetype": "angel",
     "baseCaptureRate": null,
@@ -1330,6 +1362,7 @@
   {
     "slug": "dollhouse_demon",
     "name": "Dollhouse Demon",
+    "artist": "Gorthig",
     "rarity": "SR",
     "archetype": "demon",
     "baseCaptureRate": null,
@@ -1347,6 +1380,7 @@
   {
     "slug": "darkelf_royal",
     "name": "Darkelf Royal",
+    "artist": "Gorthig",
     "rarity": "SR",
     "archetype": "demi-human",
     "baseCaptureRate": null,
@@ -1364,6 +1398,7 @@
   {
     "slug": "queen_of_velvet_chains",
     "name": "Queen of Velvet Chains",
+    "artist": "Gorthig",
     "rarity": "SSR",
     "archetype": "demon",
     "baseCaptureRate": null,
@@ -1436,6 +1471,7 @@
   {
     "slug": "neon_dragon_empress",
     "name": "Neon Dragon Empress",
+    "artist": "Gorthig",
     "rarity": "SSR",
     "archetype": "demi-human",
     "baseCaptureRate": null,
@@ -1453,6 +1489,7 @@
   {
     "slug": "eclipse_idol",
     "name": "Eclipse Idol",
+    "artist": "Potato",
     "rarity": "SSR",
     "archetype": "demon",
     "baseCaptureRate": null,
@@ -1470,6 +1507,7 @@
   {
     "slug": "abyssal_shrine_oracle",
     "name": "Abyssal Shrine Oracle",
+    "artist": "Gorthig",
     "rarity": "SSR",
     "archetype": "demon",
     "baseCaptureRate": null,
@@ -1542,6 +1580,7 @@
   {
     "slug": "afterglow_goddess",
     "name": "Afterglow Goddess",
+    "artist": "Gorthig",
     "rarity": "UR",
     "archetype": "angel",
     "baseCaptureRate": null,
@@ -1559,6 +1598,7 @@
   {
     "slug": "cyber_lilith_prime",
     "name": "Cyber Lilith Prime",
+    "artist": "Whistler",
     "rarity": "UR",
     "archetype": "human",
     "baseCaptureRate": null,
@@ -1631,6 +1671,7 @@
   {
     "slug": "the_first_waifu",
     "name": "The First Waifu",
+    "artist": "Whistler",
     "rarity": "LR",
     "archetype": "angel",
     "race": "angel",
@@ -1704,6 +1745,7 @@
   {
     "slug": "the_waifu_below",
     "name": "The Waifu Below",
+    "artist": "Gorthig",
     "rarity": "LR",
     "archetype": "demon",
     "baseCaptureRate": 1,
@@ -1740,6 +1782,7 @@
   {
     "slug": "neko_barista",
     "name": "Neko Barista",
+    "artist": "Whistler",
     "rarity": "N",
     "archetype": "demi-human",
     "baseCaptureRate": null,
@@ -1812,6 +1855,7 @@
   {
     "slug": "gym_oni",
     "name": "Gym Oni",
+    "artist": "Whistler",
     "rarity": "N",
     "archetype": "demon",
     "baseCaptureRate": null,
@@ -1884,6 +1928,7 @@
   {
     "slug": "library_ghost",
     "name": "Library Ghost",
+    "artist": "Whistler",
     "rarity": "N",
     "archetype": "spirit",
     "baseCaptureRate": null,
@@ -1956,6 +2001,7 @@
   {
     "slug": "arcade_succubus",
     "name": "Arcade Succubus",
+    "artist": "Potato",
     "rarity": "R",
     "archetype": "demon",
     "baseCaptureRate": null,
@@ -2028,6 +2074,7 @@
   {
     "slug": "ramen_android",
     "name": "Ramen Android",
+    "artist": "Potato",
     "rarity": "R",
     "archetype": "android",
     "baseCaptureRate": null,
@@ -2045,6 +2092,7 @@
   {
     "slug": "neon_kitsune",
     "name": "Neon Kitsune",
+    "artist": "Whistler",
     "rarity": "SR",
     "archetype": "spirit",
     "baseCaptureRate": null,
@@ -2117,6 +2165,7 @@
   {
     "slug": "eclipse_valkyrie",
     "name": "Eclipse Valkyrie",
+    "artist": "Gorthig",
     "rarity": "SSR",
     "archetype": "valkyrie",
     "baseCaptureRate": null,
@@ -2134,6 +2183,7 @@
   {
     "slug": "void_empress",
     "name": "Void Empress",
+    "artist": "Gorthig",
     "rarity": "UR",
     "archetype": "demon",
     "baseCaptureRate": null,
@@ -2206,6 +2256,7 @@
   {
     "slug": "ah_caretaker",
     "name": "After Hours Caretaker",
+    "artist": "Potato",
     "rarity": "N",
     "archetype": "human",
     "baseCaptureRate": null,
@@ -2223,6 +2274,7 @@
   {
     "slug": "android_assassin",
     "name": "Android Assassin",
+    "artist": "Potato",
     "rarity": "R",
     "archetype": "android",
     "baseCaptureRate": null,
@@ -2240,6 +2292,7 @@
   {
     "slug": "android_secretary",
     "name": "Android Secretary",
+    "artist": "Potato",
     "rarity": "N",
     "archetype": "android",
     "baseCaptureRate": null,
@@ -2257,6 +2310,7 @@
   {
     "slug": "angelic_judge",
     "name": "Angelic Judge",
+    "artist": "Whistler",
     "rarity": "R",
     "archetype": "angel",
     "baseCaptureRate": null,
@@ -2329,6 +2383,7 @@
   {
     "slug": "archangel_inquisitor",
     "name": "Archangel Inquisitor",
+    "artist": "Whistler",
     "rarity": "R",
     "archetype": "angel",
     "baseCaptureRate": null,
@@ -2392,6 +2447,7 @@
   {
     "slug": "bimbo_valkyrie",
     "name": "Bimbo Valkyrie",
+    "artist": "Whistler",
     "rarity": "N",
     "archetype": "valkyrie",
     "baseCaptureRate": null,
@@ -2464,6 +2520,7 @@
   {
     "slug": "cabaret_star",
     "name": "Cabaret Star",
+    "artist": "Whistler",
     "rarity": "SR",
     "archetype": "human",
     "baseCaptureRate": null,
@@ -2536,6 +2593,7 @@
   {
     "slug": "cat_burglar",
     "name": "Cat Burglar",
+    "artist": "Whistler",
     "rarity": "R",
     "archetype": "demi-human",
     "baseCaptureRate": null,
@@ -2608,6 +2666,7 @@
   {
     "slug": "dragon_casino_queen",
     "name": "Dragon Casino Queen",
+    "artist": "Potato",
     "rarity": "R",
     "archetype": "demi-human",
     "baseCaptureRate": null,
@@ -2625,6 +2684,7 @@
   {
     "slug": "feral_android",
     "name": "Feral Android",
+    "artist": "Potato",
     "rarity": "R",
     "archetype": "android",
     "baseCaptureRate": null,
@@ -2642,6 +2702,7 @@
   {
     "slug": "feral_wood_spirit",
     "name": "Feral Wood Spirit",
+    "artist": "Gorthig",
     "rarity": "SR",
     "archetype": "spirit",
     "baseCaptureRate": null,
@@ -2659,6 +2720,7 @@
   {
     "slug": "heaven_spear_marshal",
     "name": "Heaven's Spear Marshal",
+    "artist": "Potato",
     "rarity": "SSR",
     "archetype": "valkyrie",
     "baseCaptureRate": null,
@@ -2676,6 +2738,7 @@
   {
     "slug": "holy_courtesan",
     "name": "Holy Courtesan",
+    "artist": "Gorthig",
     "rarity": "SR",
     "archetype": "angel",
     "baseCaptureRate": null,
@@ -2693,6 +2756,7 @@
   {
     "slug": "lantern_spirit",
     "name": "Lantern Spirit",
+    "artist": "Gorthig",
     "rarity": "N",
     "archetype": "spirit",
     "baseCaptureRate": null,
@@ -2710,6 +2774,7 @@
   {
     "slug": "leopard_bodyguard",
     "name": "Leopard Bodyguard",
+    "artist": "Whistler",
     "rarity": "N",
     "archetype": "demi-human",
     "baseCaptureRate": null,
@@ -2782,6 +2847,7 @@
   {
     "slug": "neko_tatto_artist",
     "name": "Neko Tattoo Artist",
+    "artist": "Potato",
     "rarity": "N",
     "archetype": "demi-human",
     "baseCaptureRate": null,
@@ -2799,6 +2865,7 @@
   {
     "slug": "owl_detective",
     "name": "Owl Detective",
+    "artist": "Potato",
     "rarity": "N",
     "archetype": "demi-human",
     "baseCaptureRate": null,
@@ -2816,6 +2883,7 @@
   {
     "slug": "phantom_violinist",
     "name": "Phantom Violinist",
+    "artist": "Gorthig",
     "rarity": "R",
     "archetype": "spirit",
     "baseCaptureRate": null,
@@ -2888,6 +2956,7 @@
   {
     "slug": "queen_wild_hunt",
     "name": "Queen of the Wild Hunt",
+    "artist": "Whistler",
     "rarity": "UR",
     "archetype": "spirit",
     "baseCaptureRate": null,
@@ -2960,6 +3029,7 @@
   {
     "slug": "crimson_judge",
     "name": "The Crimson Judge",
+    "artist": "Whistler",
     "rarity": "SSR",
     "archetype": "spirit",
     "baseCaptureRate": null,
@@ -3032,6 +3102,7 @@
   {
     "slug": "crown_humanity",
     "name": "The Crown of Humanity",
+    "artist": "Potato",
     "rarity": "LR",
     "archetype": "human",
     "baseCaptureRate": null,
@@ -3049,6 +3120,7 @@
   {
     "slug": "thot_chat_2",
     "name": "Thot chat 2.0",
+    "artist": "Whistler",
     "rarity": "N",
     "archetype": "android",
     "baseCaptureRate": null,
@@ -3121,6 +3193,7 @@
   {
     "slug": "valkyrie_recruit",
     "name": "Valkyrie Recruit",
+    "artist": "Potato",
     "rarity": "N",
     "archetype": "valkyrie",
     "baseCaptureRate": null,
@@ -3138,6 +3211,7 @@
   {
     "slug": "winged_waitress",
     "name": "Winged Waitress",
+    "artist": "Gorthig",
     "rarity": "N",
     "archetype": "angel",
     "baseCaptureRate": null,
@@ -3155,6 +3229,7 @@
   {
     "slug": "your_fav_girl",
     "name": "Your Favorite Girl",
+    "artist": "Whistler",
     "rarity": "R",
     "archetype": "human",
     "baseCaptureRate": null,
