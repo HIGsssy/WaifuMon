@@ -863,5 +863,430 @@
     "enabled": true,
     "eventKey": null,
     "perSpeciesWeight": 1
+  },
+  {
+    "slug": "ah_caretaker",
+    "name": "After Hours Caretaker",
+    "rarity": "N",
+    "archetype": "human",
+    "baseCaptureRate": null,
+    "description": "Keeps the lights low after closing. Somehow always knows who needs a softer touch.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "caregiver",
+    "imagePath": "waifumon/ah_caretaker/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "android_assassin",
+    "name": "Android Assassin",
+    "rarity": "R",
+    "archetype": "android",
+    "baseCaptureRate": null,
+    "description": "Footsteps muted, optics locked, lips curved like the final warning you missed.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "primal",
+    "imagePath": "waifumon/android_assassin/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "android_secretary",
+    "name": "Android Secretary",
+    "rarity": "N",
+    "archetype": "android",
+    "baseCaptureRate": null,
+    "description": "Schedules meetings, files secrets, and adjusts her glasses when protocols get personal.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "submissive",
+    "imagePath": "waifumon/android_secretary/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "angelic_judge",
+    "name": "Angelic Judge",
+    "rarity": "R",
+    "archetype": "angel",
+    "baseCaptureRate": null,
+    "description": "Weighs every sin with merciful eyes and a verdict that still makes knees weak.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "caregiver",
+    "imagePath": "waifumon/angelic_judge/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "archangel_inquisitor",
+    "name": "Archangel Inquisitor",
+    "rarity": "R",
+    "archetype": "angel",
+    "baseCaptureRate": null,
+    "description": "Carries holy questions on a silver tongue. Lies burn faster when she smiles.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "dominant",
+    "imagePath": "waifumon/archangel_inquisitor/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "bimbo_valkyrie",
+    "name": "Bimbo Valkyrie",
+    "rarity": "N",
+    "archetype": "valkyrie",
+    "baseCaptureRate": null,
+    "description": "Descends from battle glittering, giggling, and somehow still holding the sharpest spear.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "primal",
+    "imagePath": "waifumon/bimbo_valkyrie/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "cabaret_star",
+    "name": "Cabaret Star",
+    "rarity": "SR",
+    "archetype": "human",
+    "baseCaptureRate": null,
+    "description": "Owns the spotlight before the curtain rises. Every encore sounds like a dare.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "switch",
+    "imagePath": "waifumon/cabaret_star/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "cat_burglar",
+    "name": "Cat Burglar",
+    "rarity": "R",
+    "archetype": "demi-human",
+    "baseCaptureRate": null,
+    "description": "Slips through skylights for jewels, secrets, and the occasional stolen kiss.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "submissive",
+    "imagePath": "waifumon/cat_burglar/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "dragon_casino_queen",
+    "name": "Dragon Casino Queen",
+    "rarity": "R",
+    "archetype": "demi-human",
+    "baseCaptureRate": null,
+    "description": "Stacks chips like treasure and watches the table fold beneath her golden stare.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "dominant",
+    "imagePath": "waifumon/dragon_casino_queen/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "feral_android",
+    "name": "Feral Android",
+    "rarity": "R",
+    "archetype": "android",
+    "baseCaptureRate": null,
+    "description": "Built for obedience, rewired by instinct, and growling softly at every command.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "primal",
+    "imagePath": "waifumon/feral_android/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "feral_wood_spirit",
+    "name": "Feral Wood Spirit",
+    "rarity": "SR",
+    "archetype": "spirit",
+    "baseCaptureRate": null,
+    "description": "Bare feet in moss, teeth in moonlight, and flowers blooming where she hunts.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "primal",
+    "imagePath": "waifumon/feral_wood_spirit/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "heaven_spear_marshal",
+    "name": "Heaven's Spear Marshal",
+    "rarity": "SSR",
+    "archetype": "valkyrie",
+    "baseCaptureRate": null,
+    "description": "Commands the sky-lances with polished wings and absolutely no patience for hesitation.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "dominant",
+    "imagePath": "waifumon/heaven_spear_marshal/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "holy_courtesan",
+    "name": "Holy Courtesan",
+    "rarity": "SR",
+    "archetype": "angel",
+    "baseCaptureRate": null,
+    "description": "Blesses the lonely with silk, incense, and prayers whispered dangerously close.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "caregiver",
+    "imagePath": "waifumon/holy_courtesan/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "lantern_spirit",
+    "name": "Lantern Spirit",
+    "rarity": "N",
+    "archetype": "spirit",
+    "baseCaptureRate": null,
+    "description": "Follows lost travelers through fog, glowing warmer when they say her name.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "caregiver",
+    "imagePath": "waifumon/lantern_spirit/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "leopard_bodyguard",
+    "name": "Leopard Bodyguard",
+    "rarity": "N",
+    "archetype": "demi-human",
+    "baseCaptureRate": null,
+    "description": "Walks one step behind you, watching every exit and every fool who stares too long.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "dominant",
+    "imagePath": "waifumon/leopard_bodyguard/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "neko_tatto_artist",
+    "name": "Neko Tattoo Artist",
+    "rarity": "N",
+    "archetype": "demi-human",
+    "baseCaptureRate": null,
+    "description": "Inks charms with a purring focus, then dares you not to flinch.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "dominant",
+    "imagePath": "waifumon/neko_tatto_artist/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "owl_detective",
+    "name": "Owl Detective",
+    "rarity": "N",
+    "archetype": "demi-human",
+    "baseCaptureRate": null,
+    "description": "Solves cases after midnight, blinking slowly at lies until they confess themselves.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "switch",
+    "imagePath": "waifumon/owl_detective/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "phantom_violinist",
+    "name": "Phantom Violinist",
+    "rarity": "R",
+    "archetype": "spirit",
+    "baseCaptureRate": null,
+    "description": "Plays for empty balconies. The living still leave roses by morning.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "caregiver",
+    "imagePath": "waifumon/phantom_violinist/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "queen_wild_hunt",
+    "name": "Queen of the Wild Hunt",
+    "rarity": "UR",
+    "archetype": "spirit",
+    "baseCaptureRate": null,
+    "description": "Rides ahead of the storm, laughing as the forest chooses her prey.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "primal",
+    "imagePath": "waifumon/queen_wild_hunt/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "crimson_judge",
+    "name": "The Crimson Judge",
+    "rarity": "SSR",
+    "archetype": "spirit",
+    "baseCaptureRate": null,
+    "description": "Her red mask never moves. Her sentence always arrives before the blade.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "switch",
+    "imagePath": "waifumon/crimson_judge/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "crown_humanity",
+    "name": "The Crown of Humanity",
+    "rarity": "LR",
+    "archetype": "human",
+    "baseCaptureRate": null,
+    "description": "The essence of humanity through the ages.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "switch",
+    "imagePath": "waifumon/crown_humanity/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "thot_chat_2",
+    "name": "Thot chat 2.0",
+    "rarity": "N",
+    "archetype": "android",
+    "baseCaptureRate": null,
+    "description": "Flirts in push notifications and somehow passes every Turing test with extra credit.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "switch",
+    "imagePath": "waifumon/thot_chat_2/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "valkyrie_recruit",
+    "name": "Valkyrie Recruit",
+    "rarity": "N",
+    "archetype": "valkyrie",
+    "baseCaptureRate": null,
+    "description": "Still polishing her armor, already picking fights bigger than her wingspan.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "dominant",
+    "imagePath": "waifumon/valkyrie_recruit/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "winged_waitress",
+    "name": "Winged Waitress",
+    "rarity": "N",
+    "archetype": "angel",
+    "baseCaptureRate": null,
+    "description": "Balances trays, halos, and terrible customers with a smile sharpened to perfection.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "switch",
+    "imagePath": "waifumon/winged_waitress/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "your_fav_girl",
+    "name": "Your Favorite Girl",
+    "rarity": "R",
+    "archetype": "human",
+    "baseCaptureRate": null,
+    "description": "Shows up exactly your type, then pretends that was a coincidence.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "caregiver",
+    "imagePath": "waifumon/your_fav_girl/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
   }
 ]

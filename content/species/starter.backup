@@ -1,0 +1,867 @@
+[
+  {
+    "slug": "alley_catgirl",
+    "name": "Alley Catgirl",
+    "rarity": "N",
+    "archetype": "demi-human",
+    "race": "demi-human",
+    "baseCaptureRate": null,
+    "description": "Prowls the fire-escape network at midnight. Trades secrets for tuna and eye contact.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "suggestive",
+    "affinity": "dominant",
+    "card": {
+      "subtitle": "Fire-Escape Regular",
+      "ability": {
+        "name": "Trade Secrets",
+        "text": "Knows which windows are unlatched and who left them that way. Tells you for the price of tuna."
+      },
+      "flavorQuote": "Look up. She has been there the whole time."
+    },
+    "imagePath": "waifumon/alley_catgirl/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "shrine_assistant",
+    "name": "Shrine Assistant",
+    "rarity": "N",
+    "archetype": "demi-human",
+    "baseCaptureRate": null,
+    "description": "Sweeps the stone steps at dawn. Bows perfectly. Blushes even more perfectly.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "suggestive",
+    "affinity": "caregiver",
+    "imagePath": "waifumon/shrine_assistant/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "cafe_maid",
+    "name": "Café Maid",
+    "rarity": "N",
+    "archetype": "human",
+    "baseCaptureRate": null,
+    "description": "Draws hearts in your latte foam. Refills are complimentary. Restraint is not.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "suggestive",
+    "affinity": "submissive",
+    "imagePath": "waifumon/cafe_maid/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "neon_school_rebel",
+    "name": "Neon School Rebel",
+    "rarity": "N",
+    "archetype": "human",
+    "baseCaptureRate": null,
+    "description": "Blazer half-unbuttoned, tie loose, LED nails already breaking dress code.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "suggestive",
+    "affinity": "dominant",
+    "imagePath": "waifumon/neon_school_rebel/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "library_goth",
+    "name": "Library Goth",
+    "rarity": "N",
+    "archetype": "human",
+    "baseCaptureRate": null,
+    "description": "Reads forbidden poetry between the shelves. Marks her page with black lace.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "suggestive",
+    "affinity": "submissive",
+    "imagePath": "waifumon/library_goth/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "arcade_bunny",
+    "name": "Arcade Bunny",
+    "rarity": "N",
+    "archetype": "demi-human",
+    "baseCaptureRate": null,
+    "description": "Trades her tickets for winks. The claw machine is never actually rigged for her.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "suggestive",
+    "affinity": "submissive",
+    "imagePath": "waifumon/arcade_bunny/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "rainy_day_idol",
+    "name": "Rainy Day Idol",
+    "rarity": "N",
+    "archetype": "human",
+    "baseCaptureRate": null,
+    "description": "Practices choreography in an empty station platform. Her umbrella is optional.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "suggestive",
+    "affinity": "switch",
+    "imagePath": "waifumon/rainy_day_idol/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "sleepy_succubus_intern",
+    "name": "Sleepy Succubus Intern",
+    "rarity": "N",
+    "archetype": "demon",
+    "baseCaptureRate": null,
+    "description": "First week on the job. Still forgetting to hide her tail during the video call.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "submissive",
+    "imagePath": "waifumon/sleepy_succubus_intern/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "nurse_imp",
+    "name": "Nurse Imp",
+    "rarity": "N",
+    "archetype": "demon",
+    "baseCaptureRate": null,
+    "description": "Prescription: bedrest and hand-holding. She'll administer both personally.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "suggestive",
+    "affinity": "caregiver",
+    "imagePath": "waifumon/nurse_imp/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "streetwear_oni",
+    "name": "Streetwear Oni",
+    "rarity": "N",
+    "archetype": "demon",
+    "baseCaptureRate": null,
+    "description": "Cropped hoodie, single horn poking through a beanie. Skates louder than she talks.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "suggestive",
+    "affinity": "submissive",
+    "imagePath": "waifumon/streetwear_oni/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "moonlit_dancer",
+    "name": "Moonlit Dancer",
+    "rarity": "N",
+    "archetype": "angel",
+    "baseCaptureRate": null,
+    "description": "Bare feet on cool marble. Her wings drift like slow smoke around her.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "suggestive",
+    "affinity": "switch",
+    "imagePath": "waifumon/moonlit_dancer/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "cyber_neko",
+    "name": "Cyber Neko",
+    "rarity": "N",
+    "archetype": "demi-human",
+    "baseCaptureRate": null,
+    "description": "Purr indistinguishable from a cooling fan. Runs firmware updates while she naps on you.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "suggestive",
+    "affinity": "primal",
+    "imagePath": "waifumon/cyber_neko/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "potion_shop_clerk",
+    "name": "Potion Shop Clerk",
+    "rarity": "N",
+    "archetype": "human",
+    "baseCaptureRate": null,
+    "description": "Recommends the 'confidence' tonic. Insists it is definitely not a love potion. Winks.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "suggestive",
+    "affinity": "caregiver",
+    "imagePath": "waifumon/potion_shop_clerk/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "velvet_bartender",
+    "name": "Velvet Bartender",
+    "rarity": "N",
+    "archetype": "demi-human",
+    "baseCaptureRate": null,
+    "description": "Slides you something red that is definitely just wine. Probably. Enjoy the ambiance.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "switch",
+    "imagePath": "waifumon/velvet_bartender/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "demon_hall_monitor",
+    "name": "Demon Hall Monitor",
+    "rarity": "N",
+    "archetype": "demon",
+    "baseCaptureRate": null,
+    "description": "Enforces the dress code with tail flicks and clipboard checks. No running in her hallway.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "suggestive",
+    "affinity": "switch",
+    "imagePath": "waifumon/demon_hall_monitor/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "beachside_siren",
+    "name": "Beachside Siren",
+    "rarity": "N",
+    "archetype": "demon",
+    "baseCaptureRate": null,
+    "description": "Sings quietly to the surf. Sunscreen application is a group activity around her.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "primal",
+    "imagePath": "waifumon/beachside_siren/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "neon_kitsune_apprentice",
+    "name": "Neon Kitsune Apprentice",
+    "rarity": "R",
+    "archetype": "spirit",
+    "baseCaptureRate": null,
+    "description": "Only three tails so far, and each one already causing a small blackout.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "primal",
+    "imagePath": "waifumon/neon_kitsune_apprentice/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "crimson_oni_bride",
+    "name": "Crimson Oni Bride",
+    "rarity": "R",
+    "archetype": "demon",
+    "baseCaptureRate": null,
+    "description": "Kimono soaked in dusk. She has already picked out a ring. It is very heavy.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "primal",
+    "imagePath": "waifumon/crimson_oni_bride/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "cyber_shrine_maiden",
+    "name": "Cyber Shrine Maiden",
+    "rarity": "R",
+    "archetype": "android",
+    "baseCaptureRate": null,
+    "description": "Prays in the server room. The lanterns are LEDs. The blessings are real.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "caregiver",
+    "imagePath": "waifumon/cyber_shrine_maiden/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "latex_paladin",
+    "name": "Latex Paladin",
+    "rarity": "R",
+    "archetype": "angel",
+    "baseCaptureRate": null,
+    "description": "Vows of protection, oiled plate armor. Her halo hums when she means it.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "dominant",
+    "imagePath": "waifumon/latex_paladin/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "gothic_vampire_heiress",
+    "name": "Gothic Vampire Heiress",
+    "rarity": "R",
+    "archetype": "demi-human",
+    "baseCaptureRate": null,
+    "description": "The estate is hers. The nights are longer here. She insists you stay for tea.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "dominant",
+    "imagePath": "waifumon/gothic_vampire_heiress/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "hologram_idol",
+    "name": "Hologram Idol",
+    "rarity": "R",
+    "archetype": "spirit",
+    "baseCaptureRate": null,
+    "description": "Encore performance in a rainy alley, for an audience of one. Signal quality is perfect.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "suggestive",
+    "affinity": "caregiver",
+    "imagePath": "waifumon/hologram_idol/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "demon_librarian",
+    "name": "Demon Librarian",
+    "rarity": "R",
+    "archetype": "demon",
+    "baseCaptureRate": null,
+    "description": "The forbidden section is under her personal supervision. Glasses slip when she leans in.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "switch",
+    "imagePath": "waifumon/demon_librarian/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "bunny_dealer",
+    "name": "Bunny Dealer",
+    "rarity": "R",
+    "archetype": "human",
+    "baseCaptureRate": null,
+    "description": "Shuffles a deck one-handed. The house always wins, but she might lose on purpose.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "submissive",
+    "imagePath": "waifumon/bunny_dealer/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "angelic_delinquent",
+    "name": "Angelic Delinquent",
+    "rarity": "R",
+    "archetype": "angel",
+    "baseCaptureRate": null,
+    "description": "Halo tilted. Skirt shortened. Wing feathers dyed at the tips. Detention forever.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "primal",
+    "imagePath": "waifumon/angelic_delinquent/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "witchy_mechanic",
+    "name": "Witchy Mechanic",
+    "rarity": "R",
+    "archetype": "human",
+    "baseCaptureRate": null,
+    "description": "Tunes engines with sigils and swearing. Her broom has a working exhaust.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "caregiver",
+    "imagePath": "waifumon/witchy_mechanic/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "void_catgirl",
+    "name": "Void Catgirl",
+    "rarity": "SR",
+    "archetype": "demi-human",
+    "baseCaptureRate": null,
+    "description": "Purrs from an empty room. Eyes reflect a sky that isn't yours.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "submissive",
+    "imagePath": "waifumon/void_catgirl/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "royal_succubus",
+    "name": "Royal Succubus",
+    "rarity": "SR",
+    "archetype": "demon",
+    "baseCaptureRate": null,
+    "description": "Kneeling is optional. Bowing is expected. Her court runs on velvet and consent.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "dominant",
+    "imagePath": "waifumon/royal_succubus/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "chrome_valkyrie",
+    "name": "Chrome Valkyrie",
+    "rarity": "SR",
+    "archetype": "valkyrie",
+    "race": "valkyrie",
+    "baseCaptureRate": null,
+    "description": "Chassis polished to a mirror. Chooses her hunters based on their reflection.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "primal",
+    "card": {
+      "subtitle": "Mirror Finish",
+      "flavorQuote": "She picked you before you saw her."
+    },
+    "imagePath": "waifumon/chrome_valkyrie/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "blood_moon_priestess",
+    "name": "Blood Moon Priestess",
+    "rarity": "SR",
+    "archetype": "human",
+    "baseCaptureRate": null,
+    "description": "Chants under a red sky. The offerings are wine. The wine is not wine.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "primal",
+    "imagePath": "waifumon/blood_moon_priestess/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "casino_kitsune",
+    "name": "Casino Kitsune",
+    "rarity": "SR",
+    "archetype": "spirit",
+    "baseCaptureRate": null,
+    "description": "Nine tails, each holding a different chip. The dealer never checks her sleeves.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "submissive",
+    "imagePath": "waifumon/casino_kitsune/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "fallen_angel_nurse",
+    "name": "Fallen Angel Nurse",
+    "rarity": "SR",
+    "archetype": "angel",
+    "baseCaptureRate": null,
+    "description": "Grounded her wings for the graveyard shift. Her bedside manner still saves souls.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "caregiver",
+    "imagePath": "waifumon/fallen_angel_nurse/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "dollhouse_demon",
+    "name": "Dollhouse Demon",
+    "rarity": "SR",
+    "archetype": "demon",
+    "baseCaptureRate": null,
+    "description": "Porcelain smile, silk ribbons, a very tidy shelf of past hunters.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "submissive",
+    "imagePath": "waifumon/dollhouse_demon/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "darkelf_royal",
+    "name": "Darkelf Royal",
+    "rarity": "SR",
+    "archetype": "demi-human",
+    "baseCaptureRate": null,
+    "description": "Royal blood, midnight skin, eyes that pierce through the veil of night.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "switch",
+    "imagePath": "waifumon/darkelf_royal/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "queen_of_velvet_chains",
+    "name": "Queen of Velvet Chains",
+    "rarity": "SSR",
+    "archetype": "demon",
+    "baseCaptureRate": null,
+    "description": "Every chain is negotiable. Every negotiation ends her way. She always leaves the key on the table.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "explicit",
+    "affinity": "submissive",
+    "imagePath": "waifumon/queen_of_velvet_chains/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "neon_dragon_empress",
+    "name": "Neon Dragon Empress",
+    "rarity": "SSR",
+    "archetype": "demi-human",
+    "baseCaptureRate": null,
+    "description": "Scales like circuit boards, breath like a spotlight. Ruled a skyline for a century already.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "primal",
+    "imagePath": "waifumon/neon_dragon_empress/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "eclipse_idol",
+    "name": "Eclipse Idol",
+    "rarity": "SSR",
+    "archetype": "demon",
+    "baseCaptureRate": null,
+    "description": "Only performs when the sun goes dark. The stadium fills with candles and hush.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "switch",
+    "imagePath": "waifumon/eclipse_idol/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "abyssal_shrine_oracle",
+    "name": "Abyssal Shrine Oracle",
+    "rarity": "SSR",
+    "archetype": "demon",
+    "baseCaptureRate": null,
+    "description": "Speaks with something older than the shrine itself. Her sleeves drip when there is no rain.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "caregiver",
+    "imagePath": "waifumon/abyssal_shrine_oracle/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "afterglow_goddess",
+    "name": "Afterglow Goddess",
+    "rarity": "UR",
+    "archetype": "angel",
+    "baseCaptureRate": null,
+    "description": "The light that lingers after the good part is over. Mortals build shrines to a single warm breath.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "explicit",
+    "affinity": "dominant",
+    "imagePath": "waifumon/goddess_of_the_afterglow/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "cyber_lilith_prime",
+    "name": "Cyber Lilith Prime",
+    "rarity": "UR",
+    "archetype": "human",
+    "baseCaptureRate": null,
+    "description": "First of her line. Her firmware wrote itself. Her firewalls flirt back.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "explicit",
+    "affinity": "dominant",
+    "imagePath": "waifumon/cyber_lilith_prime/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "the_first_waifu",
+    "name": "The First Waifu",
+    "rarity": "LR",
+    "archetype": "angel",
+    "race": "angel",
+    "baseCaptureRate": null,
+    "description": "The one every other Waifumon remembers a little. Older than the archetypes. Fond of hunters who ask her name twice.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "explicit",
+    "affinity": "caregiver",
+    "imagePath": "waifumon/the_first_waifu/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "the_waifu_below",
+    "name": "The Waifu Below",
+    "rarity": "LR",
+    "archetype": "demon",
+    "baseCaptureRate": 1,
+    "description": "The dark side of the perfect Waifu. A goddess? maybe. An interesting time, obviously.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "explicit",
+    "affinity": "dominant",
+    "imagePath": "waifumon/the_waifu_below/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "neko_barista",
+    "name": "Neko Barista",
+    "rarity": "N",
+    "archetype": "demi-human",
+    "baseCaptureRate": null,
+    "description": "Serves lattes with a mischievous smile and suspiciously perfect foam art.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "suggestive",
+    "affinity": "submissive",
+    "imagePath": "waifumon/neko_barista/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "gym_oni",
+    "name": "Gym Oni",
+    "rarity": "N",
+    "archetype": "demon",
+    "baseCaptureRate": null,
+    "description": "Will spot your bench press. Will not spot your escape.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "suggestive",
+    "affinity": "dominant",
+    "imagePath": "waifumon/gym_oni/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "library_ghost",
+    "name": "Library Ghost",
+    "rarity": "N",
+    "archetype": "spirit",
+    "baseCaptureRate": null,
+    "description": "Shushes you from between the stacks. Cold hands, warm heart.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "suggestive",
+    "affinity": "switch",
+    "imagePath": "waifumon/library_ghost/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "arcade_succubus",
+    "name": "Arcade Succubus",
+    "rarity": "R",
+    "archetype": "demon",
+    "baseCaptureRate": null,
+    "description": "Holds every high score. Feeds on continues.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "switch",
+    "imagePath": "waifumon/arcade_succubus/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "ramen_android",
+    "name": "Ramen Android",
+    "rarity": "R",
+    "archetype": "android",
+    "baseCaptureRate": null,
+    "description": "Optimized broth algorithms. Steam vents are strictly decorative. Probably.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "suggestive",
+    "affinity": "submissive",
+    "imagePath": "waifumon/ramen_android/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "neon_kitsune",
+    "name": "Neon Kitsune",
+    "rarity": "SR",
+    "archetype": "spirit",
+    "baseCaptureRate": null,
+    "description": "Nine tails, each glowing a different shade of trouble.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "submissive",
+    "imagePath": "waifumon/neon_kitsune/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "eclipse_valkyrie",
+    "name": "Eclipse Valkyrie",
+    "rarity": "SSR",
+    "archetype": "valkyrie",
+    "baseCaptureRate": null,
+    "description": "Descends only when the moon covers the sun. Chooses her hunters carefully.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "primal",
+    "imagePath": "waifumon/eclipse_valkyrie/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  },
+  {
+    "slug": "void_empress",
+    "name": "Void Empress",
+    "rarity": "UR",
+    "archetype": "demon",
+    "baseCaptureRate": null,
+    "description": "Reality bends politely out of her way. You should too.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "explicit",
+    "affinity": "primal",
+    "imagePath": "waifumon/void_empress/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1
+  }
+]
