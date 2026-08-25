@@ -1,0 +1,822 @@
+[
+  {
+    "slug": "starfall_street_dancer",
+    "name": "Starfall Street Dancer",
+    "rarity": "N",
+    "archetype": "human",
+    "race": "human",
+    "baseCaptureRate": null,
+    "description": "Spins for spare change and shooting stars. Their coin cup fills faster when the meteor shower hits.",
+    "tags": [
+      "expansion"
+    ],
+    "contentRating": "suggestive",
+    "affinity": "switch",
+    "card": {
+      "subtitle": "Sidewalk Supernova",
+      "ability": {
+        "name": "Gravity Assist",
+        "text": "Every third backflip pulls coins out of pockets within twenty feet. The hips help."
+      },
+      "flavorQuote": "Make a wish. They already caught it.",
+      "artist": "Whistler"
+    },
+    "imagePath": "waifumon/starfall_street_dancer/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
+  },
+  {
+    "slug": "candy_demon_courier",
+    "name": "Candy Demon Courier",
+    "rarity": "N",
+    "archetype": "demon",
+    "race": "demon",
+    "baseCaptureRate": null,
+    "description": "Guaranteed same-day delivery, no matter which circle you're in. Tips are accepted in chocolate or souls — they'll blush either way.",
+    "tags": [
+      "expansion"
+    ],
+    "contentRating": "suggestive",
+    "affinity": "submissive",
+    "card": {
+      "subtitle": "Express Hell Delivery",
+      "ability": {
+        "name": "Sweet Tooth Tax",
+        "text": "Packages arrive on time. The candy inside may arrive missing one wrapper — and one courier's composure."
+      },
+      "flavorQuote": "Your receipt is in the bag. Their heart is in the box.",
+      "artist": "Whistler"
+    },
+    "imagePath": "waifumon/candy_demon_courier/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
+  },
+  {
+    "slug": "midnight_swamp_witch",
+    "name": "Midnight Swamp Witch",
+    "rarity": "R",
+    "archetype": "human",
+    "race": "human",
+    "baseCaptureRate": null,
+    "description": "Brews fog and grudges in equal measure. The bog pays her rent in lost buttons and old coins.",
+    "tags": [
+      "expansion"
+    ],
+    "contentRating": "mature",
+    "affinity": "primal",
+    "card": {
+      "subtitle": "Bog-Born Hexweaver",
+      "ability": {
+        "name": "Miasma Pact",
+        "text": "Anyone lost in her fog owes her a favor. The fog decides what counts as lost."
+      },
+      "flavorQuote": "The lantern isn't for finding the way out.",
+      "artist": "Whistler"
+    },
+    "imagePath": "waifumon/midnight_swamp_witch/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
+  },
+  {
+    "slug": "clockwork_astronomer",
+    "name": "Clockwork Astronomer",
+    "rarity": "R",
+    "archetype": "android",
+    "race": "android",
+    "baseCaptureRate": null,
+    "description": "Charts the stars with gears instead of eyes. Their telescope is wound so tight it hums in binary.",
+    "tags": [
+      "expansion"
+    ],
+    "contentRating": "suggestive",
+    "affinity": "caregiver",
+    "card": {
+      "subtitle": "Celestial Gearhead",
+      "ability": {
+        "name": "Orbital Forecast",
+        "text": "Predicts eclipses, tides, and exactly when you'll need a second blanket."
+      },
+      "flavorQuote": "The stars don't drift. People do. Their heart ticks in perfect time.",
+      "artist": "Whistler"
+    },
+    "imagePath": "waifumon/clockwork_astronomer/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
+  },
+  {
+    "slug": "aurora_songspirit",
+    "name": "Aurora Songspirit",
+    "rarity": "SR",
+    "archetype": "spirit",
+    "race": "spirit",
+    "baseCaptureRate": null,
+    "description": "Sings the northern lights into being. Their voice leaves afterimages on your eyelids.",
+    "tags": [
+      "expansion"
+    ],
+    "contentRating": "mature",
+    "affinity": "caregiver",
+    "card": {
+      "subtitle": "Skyborn Cantor",
+      "ability": {
+        "name": "Curtain Call",
+        "text": "Once per night, their song parts the sky. What it reveals is never the same twice."
+      },
+      "flavorQuote": "Listen past the melody. That's the part they wrote for you.",
+      "artist": "Whistler"
+    },
+    "imagePath": "waifumon/aurora_songspirit/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
+  },
+  {
+    "slug": "sky_pirate_valkyrie",
+    "name": "Sky Pirate Valkyrie",
+    "rarity": "SR",
+    "archetype": "valkyrie",
+    "race": "valkyrie",
+    "baseCaptureRate": null,
+    "description": "Flies the trade routes between cloud kingdoms. Boarding actions only, insurance fraud never.",
+    "tags": [
+      "expansion"
+    ],
+    "contentRating": "mature",
+    "affinity": "dominant",
+    "card": {
+      "subtitle": "Winged Privateer",
+      "ability": {
+        "name": "Plunder Winds",
+        "text": "When the gale picks up, cargo manifests have a habit of blowing out of other ships' hands."
+      },
+      "flavorQuote": "She doesn't take hostages. She takes the good stuff.",
+      "artist": "Whistler"
+    },
+    "imagePath": "waifumon/sky_pirate_valkyrie/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
+  },
+  {
+    "slug": "dusk_gravekeeper",
+    "name": "Dusk Gravekeeper",
+    "rarity": "SSR",
+    "archetype": "spirit",
+    "race": "spirit",
+    "baseCaptureRate": null,
+    "description": "Tends the wall between dusk and the other side. She knows every name on it by heart.",
+    "tags": [
+      "expansion"
+    ],
+    "contentRating": "mature",
+    "affinity": "switch",
+    "card": {
+      "subtitle": "Warden of the Quiet Gate",
+      "ability": {
+        "name": "Lantern Vigil",
+        "text": "The dead may pass once the lantern is lit. She decides which side of the gate counts as passing."
+      },
+      "flavorQuote": "The wall isn't to keep them in. It's to keep you out.",
+      "artist": "Whistler"
+    },
+    "imagePath": "waifumon/dusk_gravekeeper/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
+  },
+  {
+    "slug": "infernal_circus_ringmaster",
+    "name": "Infernal Circus Ringmaster",
+    "rarity": "SSR",
+    "archetype": "demon",
+    "race": "demon",
+    "baseCaptureRate": null,
+    "description": "Runs the only show where the audience is the main act. Every seat is ringside.",
+    "tags": [
+      "expansion"
+    ],
+    "contentRating": "explicit",
+    "affinity": "dominant",
+    "card": {
+      "subtitle": "Mistress of the Big Top",
+      "ability": {
+        "name": "Three-Ring Charm",
+        "text": "Her whistle decides the tempo, the stakes, and which of the three rings you perform in."
+      },
+      "flavorQuote": "Ladies and gentlemen, boys and girls — sign the waiver on your way in. No refunds on the finale.",
+      "artist": "Whistler"
+    },
+    "imagePath": "waifumon/infernal_circus_ringmaster/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
+  },
+  {
+    "slug": "solar_archangel",
+    "name": "Solar Archangel",
+    "rarity": "UR",
+    "archetype": "angel",
+    "race": "angel",
+    "baseCaptureRate": null,
+    "description": "Dawn made manifest and mildly annoyed at being woken early. Her halo is a small, contained sunrise.",
+    "tags": [
+      "expansion"
+    ],
+    "contentRating": "explicit",
+    "affinity": "caregiver",
+    "card": {
+      "subtitle": "Winged Dawn",
+      "ability": {
+        "name": "First Light",
+        "text": "At daybreak she chooses one soul to forgive. The other forty thousand wait their turn."
+      },
+      "flavorQuote": "She burned the midnight oil. Literally. It was a nice oil.",
+      "artist": "Whistler"
+    },
+    "imagePath": "waifumon/solar_archangel/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
+  },
+  {
+    "slug": "storm_titan_huntress",
+    "name": "Storm Titan Huntress",
+    "rarity": "LR",
+    "archetype": "valkyrie",
+    "race": "valkyrie",
+    "baseCaptureRate": null,
+    "description": "Hunts things that eat gods. The thunder is her footsteps, not the weather.",
+    "tags": [
+      "expansion"
+    ],
+    "contentRating": "explicit",
+    "affinity": "primal",
+    "card": {
+      "subtitle": "Thunder-Chaser",
+      "ability": {
+        "name": "Skyrend Spear",
+        "text": "Her spear hits before the lightning does. The lightning just takes the credit."
+      },
+      "flavorQuote": "You don't hear the storm coming. You hear it running.",
+      "artist": "Whistler"
+    },
+    "imagePath": "waifumon/storm_titan_huntress/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
+  }
+]

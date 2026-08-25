@@ -72,6 +72,7 @@ export function appearanceUnlockDescriptors(
       assetId: unlock.assetId,
       cosmeticRarity: unlock.cosmeticRarity,
       unlockLabel: unlock.unlockLabel,
+      source: unlock.source,
     }),
   );
 }

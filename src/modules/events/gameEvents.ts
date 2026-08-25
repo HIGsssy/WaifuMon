@@ -104,6 +104,13 @@ export interface GameEventPayloads {
     cosmeticRarity: CosmeticRarity;
     /** The requirement that was met, e.g. "Reach Level 20". */
     unlockLabel: string;
+    /**
+     * How the unlock came about. `'owned'` is a fresh-capture default look
+     * (bookkeeping, not a rewarded alternate); `'level'` is the progression
+     * milestone this event exists to celebrate; `'content_add'` is a live
+     * backfill after new artwork ships.
+     */
+    source: import('../appearance/appearanceService').AppearanceUnlockSource;
   };
   /** The player pointed an owned copy at a different appearance. Cosmetic. */
   WAIFU_APPEARANCE_CHANGED: {

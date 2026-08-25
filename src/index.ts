@@ -37,6 +37,8 @@ import { createSessionService } from './modules/session/sessionService';
 import { createGameEventBus } from './modules/events/gameEvents';
 import { createHuntSessionTracker } from './modules/hunt/huntSession';
 import { createActivityFeedService } from './modules/activity/activityFeedService';
+import { resolveAppearanceAsset } from './modules/appearance/assetResolver';
+import { AttachmentBuilder, EmbedBuilder } from 'discord.js';
 import {
   createTrainerProfileService,
   type ProfileChannel,
@@ -248,10 +250,40 @@ async function main(): Promise<void> {
       const guild = await guilds.getByDiscordId(discordGuildId);
       return guild?.announceChannelId ?? null;
     },
-    post: async (channelId, text) => {
+    // Alternate-appearance unlock announcements attach the raw PNG so other
+    // players see the newly-unlocked artwork itself. Missing artwork → null,
+    // and the feed falls back to a plain text line rather than dropping the
+    // announcement.
+    resolveAppearanceArtwork: (assetId) => {
+      const resolved = resolveAppearanceAsset({ assetsDir: config.assetsDir, logger }, assetId);
+      if (!resolved) return null;
+      return {
+        absolutePath: resolved.absolutePath,
+        filename: `${assetId.slug}-${assetId.variant}.png`,
+      };
+    },
+    post: async (channelId, request) => {
       const channel = await client.channels.fetch(channelId);
       if (!channel || !('send' in channel)) return;
-      await channel.send({ content: text, allowedMentions: { parse: [] } });
+      if (request.richEmbed) {
+        const embed = new EmbedBuilder()
+          .setTitle(request.richEmbed.title)
+          .setDescription(request.richEmbed.description)
+          .setColor(0xffb6d1)
+          .setImage(`attachment://${request.richEmbed.image.filename}`);
+        if (request.richEmbed.footer) embed.setFooter({ text: request.richEmbed.footer });
+        await channel.send({
+          embeds: [embed],
+          files: [
+            new AttachmentBuilder(request.richEmbed.image.absolutePath, {
+              name: request.richEmbed.image.filename,
+            }),
+          ],
+          allowedMentions: { parse: [] },
+        });
+        return;
+      }
+      await channel.send({ content: request.text, allowedMentions: { parse: [] } });
     },
   });
   activityFeed.subscribe(gameEventBus);
