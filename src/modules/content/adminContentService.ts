@@ -40,6 +40,34 @@ export const DEFAULT_NEW_SPECIES_FILE = 'custom.json';
 
 const SPECIES_FILE_RE = /^[a-z0-9_-]+\.json$/;
 
+/**
+ * The species fields the admin edit form owns — exactly the inputs rendered by
+ * `src/admin/views/speciesPages.ts`.
+ *
+ * An edit may change these and only these. Every other authored field
+ * (`appearances`, `race`, `card`, and anything added later) is carried through
+ * from the stored entry untouched, because the form has no control for it and
+ * therefore cannot have meant to change it.
+ *
+ * **Adding a field here without adding the matching form control makes that
+ * field deletable by omission.** The two lists move together.
+ */
+export const SPECIES_FORM_FIELDS = [
+  'slug',
+  'name',
+  'rarity',
+  'archetype',
+  'contentRating',
+  'affinity',
+  'baseCaptureRate',
+  'perSpeciesWeight',
+  'eventKey',
+  'imagePath',
+  'description',
+  'tags',
+  'enabled',
+] as const;
+
 /** Top-level tables.json sections the panel exposes as editable blocks. */
 export const TABLE_SECTIONS: readonly string[] = [
   'energy',
@@ -329,6 +357,44 @@ export function createAdminContentService(deps: AdminContentServiceDeps): AdminC
     return parsed.data;
   }
 
+  /**
+   * Merges an edit onto an existing species without losing what the editor
+   * cannot see.
+   *
+   * The species form posts a whitelist ({@link SPECIES_FORM_FIELDS}) and knows
+   * nothing about content-only fields like `appearances`, `race`, or `card`.
+   * Parsing the raw body on its own therefore produced a *complete, valid*
+   * species with those fields simply absent — a silent delete that validated
+   * cleanly and wrote straight to disk.
+   *
+   * So the edit is applied as a patch: take the fields the form owns, lay them
+   * over the stored entry, and validate the result. Two properties fall out,
+   * and both are wanted:
+   *
+   *   - **Authored data survives.** Anything the form does not own is carried
+   *     through untouched, including fields added after this code was written.
+   *   - **Input stays whitelisted.** Keys outside the list are dropped before
+   *     the merge, so a hand-crafted POST cannot reach a field the UI does not
+   *     expose. The whitelist was doing real work; it just needed a base to
+   *     merge onto.
+   *
+   * The corollary is that the form cannot *clear* a field it does not own.
+   * That is the right trade today — losing `appearances` to an unrelated edit
+   * is a far worse failure than being unable to blank `race` from a UI that has
+   * no control for it. Deliberate clearing arrives with the controls for it.
+   */
+  function patchSpeciesInput(existing: SpeciesContent, input: unknown): SpeciesContent {
+    if (input === null || typeof input !== 'object') {
+      throw new AdminValidationError(['(root): expected an object']);
+    }
+    const body = input as Record<string, unknown>;
+    const owned: Record<string, unknown> = {};
+    for (const field of SPECIES_FORM_FIELDS) {
+      if (Object.hasOwn(body, field)) owned[field] = body[field];
+    }
+    return parseSpeciesInput({ ...existing, ...owned });
+  }
+
   function writeSpeciesGroup(raw: RawContent, file: string, next: SpeciesContent[]): SaveResult {
     const known = raw.speciesFiles.some((g) => g.file === file);
     const allSpecies = known
@@ -359,10 +425,12 @@ export function createAdminContentService(deps: AdminContentServiceDeps): AdminC
   }
 
   function updateSpecies(slug: string, input: unknown): SaveResult {
-    const species = parseSpeciesInput(input);
     const raw = readRaw();
     const group = raw.speciesFiles.find((g) => g.species.some((s) => s.slug === slug));
     if (!group) throw new AdminValidationError([`slug: "${slug}" not found`]);
+    const existing = group.species.find((s) => s.slug === slug);
+    if (!existing) throw new AdminValidationError([`slug: "${slug}" not found`]);
+    const species = patchSpeciesInput(existing, input);
     if (species.slug !== slug && raw.species.some((s) => s.slug === species.slug)) {
       throw new AdminValidationError([`slug: "${species.slug}" already exists`]);
     }

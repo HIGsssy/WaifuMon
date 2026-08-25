@@ -40,7 +40,6 @@ import {
 } from '../../modules/capture/affinityMath';
 import type { CaptureAttemptResult, CaptureOutcome } from '../../modules/capture/captureService';
 import type { HuntResult } from '../../modules/hunt/huntService';
-import { resolveAssetPath } from '../../modules/content/loader';
 import type { ItemContent } from '../../modules/content/schemas';
 import {
   ActiveEncounterError,
@@ -56,6 +55,8 @@ import {
 } from '../../shared/errors';
 import type { AppContext, PlayerInteraction, Provisioned } from '../types';
 import { buildCustomId } from '../types';
+import { CARD_FILENAME, resolveAppearanceAssetOrPath } from '../assets/resolveAppearanceAsset';
+import { renderOwnedCardAttachment } from '../assets/attachRenderedCard';
 import { respondEphemeral, type SessionPayload } from '../ephemeralSession';
 import { emitEvents } from '../gameEventEmitter';
 import { captureDescriptors, huntDescriptors } from '../gameEventBuilders';
@@ -63,8 +64,6 @@ import { postAppearanceUnlockToasts } from '../appearanceToast';
 import { withBackRow } from '../ui';
 import { formatCaptureBonus, renderCaptureBonusLine } from './waifumon';
 import { duplicatePromptComponents } from './waifumonCollection';
-
-const CARD_FILENAME = 'card.png';
 
 const RARITY_COLORS: Record<string, number> = {
   N: 0xb8b8b8,
@@ -134,14 +133,18 @@ function encounterButtonRows(
   return rows;
 }
 
-function attachCard(ctx: AppContext, species: SpeciesRow): AttachmentBuilder | null {
-  try {
-    const abs = resolveAssetPath(ctx.config.assetsDir, species.imagePath);
-    return new AttachmentBuilder(abs, { name: CARD_FILENAME });
-  } catch (err) {
-    ctx.logger.warn({ err, slug: species.slug }, 'failed to attach species card image');
-    return null;
-  }
+/**
+ * Raw artwork for a species, as her default appearance.
+ *
+ * Used where there is no owned copy yet — the encounter reveal, and the escape
+ * and resist outcomes. Goes through the appearance service and the shared
+ * resolver like every other surface; it used to read `species.imagePath` off
+ * the filesystem directly, which was a second artwork-resolution path that knew
+ * nothing about appearances or their fallbacks.
+ */
+function attachSpeciesArtwork(ctx: AppContext, species: SpeciesRow): AttachmentBuilder | null {
+  const appearance = ctx.services.appearance.currentAppearance(species, null);
+  return resolveAppearanceAssetOrPath(ctx, appearance.assetId, species.imagePath);
 }
 
 interface EncounterView {
@@ -211,7 +214,7 @@ async function buildEncounterView(
   }
 
   const files: AttachmentBuilder[] = [];
-  const attach = attachCard(ctx, species);
+  const attach = attachSpeciesArtwork(ctx, species);
   if (attach) {
     files.push(attach);
     embed.setImage(`attachment://${CARD_FILENAME}`);
@@ -371,6 +374,7 @@ async function sendRareAnnouncement(
   species: SpeciesRow,
   userMention: string,
   isDuplicate: boolean,
+  newWaifu: CaptureAttemptResult['newWaifu'],
 ): Promise<'skipped' | 'sent' | 'failed'> {
   const config = ctx.content.tables.capture;
   const rarity = species.rarity as Rarity;
@@ -392,9 +396,14 @@ async function sendRareAnnouncement(
     .setDescription(
       `${userMention} just landed a **${rarity}** encounter${isDuplicate ? ' (duplicate)' : ''}!`,
     );
-  const card = attachCard(ctx, species);
+  // The announcement follows a successful capture, so the copy exists and the
+  // collectible card is the honest thing to show off. Falls back to artwork
+  // when rendering is off or fails.
+  const owned = newWaifu ? await renderOwnedCardAttachment(ctx, { waifu: newWaifu, species }) : null;
+  const artwork = owned ? null : attachSpeciesArtwork(ctx, species);
+  const card = owned?.file ?? artwork;
   const files = card ? [card] : [];
-  if (card) embed.setImage(`attachment://${CARD_FILENAME}`);
+  if (card) embed.setImage(owned ? owned.url : `attachment://${CARD_FILENAME}`);
 
   // Announce channel: guild-configured if set, otherwise the capture channel.
   let target: GuildTextBasedChannel | null = null;
@@ -459,14 +468,33 @@ function retryButtonRows(
   return [new ActionRowBuilder<ButtonBuilder>().addComponents(...buttons)];
 }
 
-function buildEphemeralOutcomeMessage(
+/**
+ * The capture outcome embed.
+ *
+ * A **successful** capture shows her rendered card: ownership has just been
+ * established, which is the one moment the collectible presentation is exactly
+ * what happened. Escapes and resists keep the raw artwork — she is not owned,
+ * so an owned card (and its CAUGHT badge) would be a lie.
+ *
+ * The card is best-effort. When rendering is switched off, or fails, this falls
+ * back to the same artwork the failure paths use, and the player sees a capture
+ * result either way.
+ */
+export async function buildEphemeralOutcomeMessage(
   ctx: AppContext,
   result: CaptureAttemptResult,
-): InteractionEditReplyOptions {
+): Promise<InteractionEditReplyOptions> {
   const { outcome, species, item, isDuplicate, attempt, attemptsRemaining, newWaifu } = result;
   const embed = new EmbedBuilder().setColor(rarityColor(species.rarity));
-  const attachName = `attachment://${CARD_FILENAME}`;
-  const card = attachCard(ctx, species);
+
+  const owned =
+    outcome === 'success' && newWaifu
+      ? await renderOwnedCardAttachment(ctx, { waifu: newWaifu, species })
+      : null;
+
+  const artwork = owned ? null : attachSpeciesArtwork(ctx, species);
+  const attachName = owned ? owned.url : `attachment://${CARD_FILENAME}`;
+  const card = owned?.file ?? artwork;
   const files = card ? [card] : [];
 
   if (outcome === 'success') {
@@ -558,7 +586,7 @@ async function buildFailureRetryReply(
   prov: Provisioned,
   result: CaptureAttemptResult,
 ): Promise<InteractionEditReplyOptions> {
-  const base = buildEphemeralOutcomeMessage(ctx, result);
+  const base = await buildEphemeralOutcomeMessage(ctx, result);
   const owned = await ctx.services.inventory.getQuantity(prov.playerId, result.item.id);
   const charm = findItemContent(ctx, result.item.slug);
   return {
@@ -632,6 +660,7 @@ export async function handleEncounterCharm(
       result.species,
       `<@${interaction.user.id}>`,
       result.isDuplicate,
+      result.newWaifu,
     );
   }
 
@@ -639,7 +668,7 @@ export async function handleEncounterCharm(
   const reply =
     result.outcome === 'failure'
       ? await buildFailureRetryReply(ctx, prov, result)
-      : buildEphemeralOutcomeMessage(ctx, result);
+      : await buildEphemeralOutcomeMessage(ctx, result);
   await respondEphemeral(interaction, reply as unknown as SessionPayload);
 
   // Post-commit narration. The rare-embed path above already ran; the

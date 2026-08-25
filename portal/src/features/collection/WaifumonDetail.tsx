@@ -19,10 +19,10 @@ import { AffectionMeter, XpBar } from '@/components/waifumon/Meters';
 import { AffinityPill, ContentRatingPill, TypePill } from '@/components/waifumon/Pills';
 import { RarityBadge } from '@/components/waifumon/RarityBadge';
 import { RarityGlowRing } from '@/components/waifumon/RarityGlowRing';
-import { heroTransitionName } from '@/components/waifumon/WaifumonCard';
 import { displayName, relatedSpecies, subtitleFor } from '@/content/species';
 import { AppearanceGallery } from './AppearanceGallery';
-import { appearanceAsset, speciesAsset } from '@/images/assets';
+import { WaifumonHero } from './WaifumonHero';
+import { speciesAsset } from '@/images/assets';
 import { formatDate, formatNumber, formatRelative } from '@/lib/format';
 import { rarityStyle } from '@/lib/rarity';
 import { ARTWORK_WIDTH } from '@/images/sizes';
@@ -57,11 +57,17 @@ export interface WaifumonDetailProps {
   isBuddy: boolean;
   /** The cached content snapshot, for the related-species strip. */
   allSpecies: ContentSpecies[] | undefined;
+  /** Whether the backend serves rendered cards — gates the Art/Card switch. */
+  cardsAvailable?: boolean | undefined;
 }
 
-export function WaifumonDetail({ entry, isBuddy, allSpecies }: WaifumonDetailProps) {
+export function WaifumonDetail({
+  entry,
+  isBuddy,
+  allSpecies,
+  cardsAvailable = false,
+}: WaifumonDetailProps) {
   const { waifu, species, progress } = entry;
-  const rarity = rarityStyle(species.rarity);
   const title = displayName(entry);
   const subtitle = subtitleFor(entry);
   const related = allSpecies ? relatedSpecies(allSpecies, species) : [];
@@ -74,17 +80,7 @@ export function WaifumonDetail({ entry, isBuddy, allSpecies }: WaifumonDetailPro
         to hero instead of blinking out (§14). Nothing depends on that support.
       */}
       <div className="lg:sticky lg:top-24 lg:self-start">
-        <RarityGlowRing rarity={species.rarity} glow>
-          <Artwork
-            asset={appearanceAsset(waifu.selectedAppearance)}
-            displayWidth={ARTWORK_WIDTH.hero}
-            name={species.name}
-            rarityLabel={rarity.label}
-            priority
-            aspect="aspect-[3/4]"
-            viewTransitionName={heroTransitionName(waifu.id)}
-          />
-        </RarityGlowRing>
+        <WaifumonHero entry={entry} cardsAvailable={cardsAvailable} />
       </div>
 
       <div className="space-y-5">

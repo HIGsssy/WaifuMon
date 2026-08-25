@@ -86,11 +86,32 @@ export const collectionRoutes =
       },
       async (req) => {
         const { page, pageSize, rarity } = req.query;
-        const result = await collection.listOwned(requirePlayer(req).id, {
+        const playerId = requirePlayer(req).id;
+        const result = await collection.listOwned(playerId, {
           page,
           pageSize,
           ...(rarity ? { rarity } : {}),
         });
+
+        /**
+         * Self-healing card warm — a *fallback*, not the warming strategy.
+         *
+         * The card for an owned copy is normally warmed the moment she is
+         * captured, and the back catalogue by `cards:warm --all-players`. This
+         * covers what those miss: a copy that predates the feature, a cache
+         * that was collected, a capture whose follow-up warm was dropped. It
+         * fires on the listing because that is the one request that reliably
+         * precedes a grid of cards.
+         *
+         * **Never awaited, and it cannot be.** `schedulePlayerWarm` starts
+         * detached work and returns a disposition synchronously; it dedupes by
+         * player, so a client polling this route starts one warm rather than
+         * one per request, and it drops the request outright when too many
+         * warms are already in flight. Nothing it does can reach this response,
+         * including its failures.
+         */
+        ctx.cardWarmer?.schedulePlayerWarm(playerId);
+
         // Echo the service's own page/pageSize: it clamps an out-of-range page
         // to the last one, and the client should see where it actually landed.
         return okPage(

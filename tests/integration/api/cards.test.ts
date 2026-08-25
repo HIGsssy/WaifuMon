@@ -1,0 +1,653 @@
+/**
+ * Card routes over HTTP.
+ *
+ * Everything runs against a temp assets root and a temp cache, with fixture
+ * content, so the suite never touches `assets/.card-cache/` and never depends
+ * on shipped artwork. The renderer itself is real — these tests are about the
+ * HTTP contract *and* the identity rules underneath it, and stubbing the
+ * renderer would verify neither.
+ */
+import fs from 'node:fs';
+import path from 'node:path';
+import sharp from 'sharp';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { createPlatformApiServer } from '../../../src/api/server';
+import type { ApiContext } from '../../../src/api/context';
+import { createCardRenderer, CARD_MASTER_HEIGHT, CARD_MASTER_WIDTH } from '../../../src/modules/cards';
+import { createAppearanceService } from '../../../src/modules/appearance/appearanceService';
+import { SpeciesFileSchema, type LoadedContent } from '../../../src/modules/content/schemas';
+import { WaifuNotOwnedError } from '../../../src/shared/errors';
+import type { AppServices } from '../../../src/discord/types';
+import type { ZodFastify } from '../../../src/api/plugins/typeProvider';
+import {
+  createCapturedLogger,
+  createProbes,
+  TEST_TOKEN,
+} from '../../helpers/platformApiFixtures';
+import { dimensionsOf, isWebp, makeTempDir } from '../../helpers/cardFixtures';
+
+const AUTH = { authorization: `Bearer ${TEST_TOKEN}` };
+
+let workdir: string;
+let assetsDir: string;
+let content: LoadedContent;
+let app: ZodFastify;
+/** Log capture for the shared `app` only — `buildApp` returns its own. */
+let logLines: () => string[];
+
+/**
+ * Fixture content. `fallback_girl` is the important one: it declares two
+ * level-gated appearances and ships artwork for **none** of them, so both fall
+ * back to the species default — which is exactly the case where keying by the
+ * requested appearance would mint two masters of one image.
+ */
+const SPECIES = SpeciesFileSchema.parse([
+  {
+    slug: 'card_test_n',
+    name: 'Card Test N',
+    rarity: 'N',
+    archetype: 'demi-human',
+    race: 'demi-human',
+    contentRating: 'suggestive',
+    affinity: 'dominant',
+    imagePath: 'waifumon/card_test_n/standard.png',
+    card: { subtitle: 'Fixture Subtitle', artist: 'Fixture Artist' },
+  },
+  {
+    slug: 'card_test_ex',
+    name: 'Card Test EX',
+    rarity: 'EX',
+    archetype: 'android',
+    race: 'android',
+    contentRating: 'suggestive',
+    affinity: 'primal',
+    imagePath: 'waifumon/card_test_ex/standard.png',
+  },
+  {
+    slug: 'fallback_girl',
+    name: 'Fallback Girl',
+    rarity: 'SR',
+    archetype: 'angel',
+    contentRating: 'suggestive',
+    affinity: 'caregiver',
+    imagePath: 'waifumon/fallback_girl/standard.png',
+    appearances: [
+      { id: 'standard', name: 'Standard', unlock: { type: 'owned' } },
+      { id: 'alt_a', name: 'Alt A', unlock: { type: 'level', atLevel: 10 } },
+      { id: 'alt_b', name: 'Alt B', unlock: { type: 'level', atLevel: 20 } },
+    ],
+  },
+  {
+    slug: 'no_art_girl',
+    name: 'No Art Girl',
+    rarity: 'R',
+    archetype: 'spirit',
+    contentRating: 'suggestive',
+    affinity: 'switch',
+    imagePath: 'waifumon/no_art_girl/standard.png',
+  },
+]);
+
+const TABLES = { waifuProgression: { maxLevel: 50 } } as unknown as LoadedContent['tables'];
+
+/** An owned copy of `fallback_girl` wearing `alt_a`, at level 22. */
+const OWNED_WAIFU = { id: 77, playerId: 1, speciesId: 3, level: 22, variant: 'alt_a' };
+
+async function writeArt(slug: string, variant: string, rgb: { r: number; g: number; b: number }) {
+  const dir = path.join(assetsDir, 'waifumon', slug);
+  fs.mkdirSync(dir, { recursive: true });
+  const png = await sharp({ create: { width: 256, height: 256, channels: 3, background: rgb } })
+    .png()
+    .toBuffer();
+  fs.writeFileSync(path.join(dir, `${variant}.png`), png);
+}
+
+function buildContext(overrides: Partial<ApiContext> = {}): ApiContext {
+  const appearance = createAppearanceService({ db: null as never, getContent: () => content });
+  const services = {
+    appearance,
+    players: {
+      getById: async (id: number) => (id === 1 ? { id: 1, discordUserId: '1' } : null),
+    },
+    collection: {
+      getOwned: async (playerId: number, waifuId: number) => {
+        if (playerId !== 1 || waifuId !== OWNED_WAIFU.id) throw new WaifuNotOwnedError(waifuId);
+        return {
+          waifu: OWNED_WAIFU,
+          species: content.species.find((s) => s.slug === 'fallback_girl'),
+        };
+      },
+    },
+  } as unknown as AppServices;
+
+  return {
+    services,
+    getContent: () => content,
+    assetsDir,
+    cardRenderer: createCardRenderer({ cacheRoot: path.join(workdir, 'cache') }),
+    ...overrides,
+  };
+}
+
+async function buildApp(
+  options: { cards?: boolean; ctx?: ApiContext } = {},
+): Promise<{ app: ZodFastify; lines: () => string[] }> {
+  const captured = createCapturedLogger();
+  const built = await createPlatformApiServer({
+    config: {
+      enabled: true,
+      host: '127.0.0.1',
+      port: 3120,
+      token: TEST_TOKEN,
+      cardRendererEnabled: options.cards ?? true,
+    },
+    logger: captured.logger,
+    probes: createProbes(),
+    ctx: options.ctx ?? buildContext(),
+  });
+  return { app: built, lines: captured.lines };
+}
+
+beforeAll(async () => {
+  workdir = await makeTempDir('api-cards');
+  assetsDir = path.join(workdir, 'assets');
+  content = { items: [], species: SPECIES, tables: TABLES };
+
+  await writeArt('card_test_n', 'standard', { r: 200, g: 40, b: 90 });
+  await writeArt('card_test_ex', 'standard', { r: 40, g: 200, b: 90 });
+  await writeArt('fallback_girl', 'standard', { r: 90, g: 40, b: 200 });
+  // `no_art_girl` deliberately gets nothing.
+
+  const built = await buildApp();
+  app = built.app;
+  logLines = built.lines;
+});
+
+afterAll(async () => {
+  await app?.close();
+  fs.rmSync(workdir, { recursive: true, force: true });
+});
+
+const url = (p: string): string => `/api/v1${p}`;
+
+describe('feature flag', () => {
+  it('does not register the routes when disabled — they 404 like any unknown path', async () => {
+    const { app: off } = await buildApp({ cards: false });
+    const res = await off.inject({ method: 'GET', url: url('/cards/species/card_test_n'), headers: AUTH });
+
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toMatchObject({ error: { code: 'NOT_FOUND' } });
+    await off.close();
+  });
+
+  it('keeps the disabled routes out of the OpenAPI document', async () => {
+    const { app: off } = await buildApp({ cards: false });
+    const spec = (await off.inject({ method: 'GET', url: url('/openapi.json') })).json() as {
+      paths: Record<string, unknown>;
+    };
+
+    expect(Object.keys(spec.paths).some((p) => p.includes('/cards/'))).toBe(false);
+    await off.close();
+  });
+
+  it('registers and documents them when enabled', async () => {
+    const spec = (await app.inject({ method: 'GET', url: url('/openapi.json') })).json() as {
+      paths: Record<string, unknown>;
+    };
+    expect(spec.paths['/api/v1/cards/species/{slug}']).toBeDefined();
+    expect(spec.paths['/api/v1/players/{playerId}/collection/owned/{waifuId}/card']).toBeDefined();
+  });
+
+  it('still requires the bearer token', async () => {
+    const res = await app.inject({ method: 'GET', url: url('/cards/species/card_test_n') });
+    expect(res.statusCode).toBe(401);
+  });
+});
+
+describe('GET /capabilities', () => {
+  /**
+   * The Portal asks this instead of requesting a card and reading the 404 —
+   * a disabled feature and a typo are both 404, and probing cannot tell them
+   * apart. So the flag has to be reported honestly in both directions.
+   */
+  it('reports cards on when the routes are registered', async () => {
+    const res = await app.inject({ method: 'GET', url: url('/capabilities'), headers: AUTH });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ data: { cards: true } });
+  });
+
+  it('reports cards off — and still answers — when they are not', async () => {
+    const { app: off } = await buildApp({ cards: false });
+    const res = await off.inject({ method: 'GET', url: url('/capabilities'), headers: AUTH });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ data: { cards: false } });
+    await off.close();
+  });
+
+  it('requires the bearer token like every other v1 route', async () => {
+    const res = await app.inject({ method: 'GET', url: url('/capabilities') });
+    expect(res.statusCode).toBe(401);
+  });
+});
+
+describe('GET /cards/species/:slug', () => {
+  it('returns a full-size WebP with cache headers', async () => {
+    const res = await app.inject({ method: 'GET', url: url('/cards/species/card_test_n'), headers: AUTH });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toBe('image/webp');
+    expect(res.headers['cache-control']).toBe('public, max-age=300, must-revalidate');
+    expect(res.headers.etag).toMatch(/^"[0-9a-f]{16}"$/);
+    expect(isWebp(res.rawPayload)).toBe(true);
+    expect(await dimensionsOf(res.rawPayload)).toEqual({
+      width: CARD_MASTER_WIDTH,
+      height: CARD_MASTER_HEIGHT,
+    });
+  });
+
+  it('serves the second request from cache with identical bytes and ETag', async () => {
+    const first = await app.inject({ method: 'GET', url: url('/cards/species/card_test_n'), headers: AUTH });
+    const second = await app.inject({ method: 'GET', url: url('/cards/species/card_test_n'), headers: AUTH });
+
+    expect(second.headers.etag).toBe(first.headers.etag);
+    expect(second.rawPayload.equals(first.rawPayload)).toBe(true);
+    expect(logLines().some((l) => l.includes('"fromCache":true'))).toBe(true);
+  });
+
+  it('answers 304 with no body when If-None-Match matches', async () => {
+    const first = await app.inject({ method: 'GET', url: url('/cards/species/card_test_n'), headers: AUTH });
+    const res = await app.inject({
+      method: 'GET',
+      url: url('/cards/species/card_test_n'),
+      headers: { ...AUTH, 'if-none-match': String(first.headers.etag) },
+    });
+
+    expect(res.statusCode).toBe(304);
+    expect(res.rawPayload.length).toBe(0);
+    expect(res.headers.etag).toBe(first.headers.etag);
+  });
+
+  it('honours a wildcard If-None-Match', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: url('/cards/species/card_test_n'),
+      headers: { ...AUTH, 'if-none-match': '*' },
+    });
+    expect(res.statusCode).toBe(304);
+  });
+
+  it('re-sends the body when If-None-Match is stale', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: url('/cards/species/card_test_n'),
+      headers: { ...AUTH, 'if-none-match': '"0000000000000000"' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(isWebp(res.rawPayload)).toBe(true);
+  });
+
+  it('renders every supported width, tagging derivatives distinctly', async () => {
+    const master = await app.inject({ method: 'GET', url: url('/cards/species/card_test_n'), headers: AUTH });
+
+    for (const width of [256, 512, 1024]) {
+      const res = await app.inject({
+        method: 'GET',
+        url: url(`/cards/species/card_test_n?width=${width}`),
+        headers: AUTH,
+      });
+      expect(res.statusCode, `width ${width}`).toBe(200);
+      expect((await dimensionsOf(res.rawPayload)).width, `width ${width}`).toBe(width);
+      // Same card, different entity: the key is shared, the ETag is not.
+      expect(res.headers.etag).toBe(`${String(master.headers.etag).slice(0, -1)}@${width}"`);
+    }
+  });
+
+  it('treats an explicit master width as the master', async () => {
+    const master = await app.inject({ method: 'GET', url: url('/cards/species/card_test_n'), headers: AUTH });
+    const explicit = await app.inject({
+      method: 'GET',
+      url: url(`/cards/species/card_test_n?width=${CARD_MASTER_WIDTH}`),
+      headers: AUTH,
+    });
+    expect(explicit.headers.etag).toBe(master.headers.etag);
+  });
+
+  /**
+   * `EX` has no frame artwork yet. It must surface as a server-side asset gap —
+   * never as a card wearing another rarity's frame, and never as a 404, which
+   * would say the species does not exist.
+   */
+  it('fails loudly for a rarity whose frame has not shipped', async () => {
+    const res = await app.inject({ method: 'GET', url: url('/cards/species/card_test_ex'), headers: AUTH });
+    // 500, not 404: the species exists, the install is incomplete. The body
+    // reports `INTERNAL_ERROR` because this route family masks every 500-class
+    // code from clients — the specific `CARD_ASSET_MISSING` goes to the log,
+    // which is where an operator reads it.
+    expect(res.statusCode).toBe(500);
+    expect(res.json()).toMatchObject({ error: { code: 'INTERNAL_ERROR' } });
+    expect(logLines().join('\n')).toContain('CARD_ASSET_MISSING');
+  });
+
+  it('accepts an explicit valid appearance', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: url('/cards/species/fallback_girl?variant=standard'),
+      headers: AUTH,
+    });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it('prints the requested level on a different card than the default', async () => {
+    const one = await app.inject({ method: 'GET', url: url('/cards/species/card_test_n'), headers: AUTH });
+    const forty = await app.inject({
+      method: 'GET',
+      url: url('/cards/species/card_test_n?level=40'),
+      headers: AUTH,
+    });
+    expect(forty.statusCode).toBe(200);
+    expect(forty.headers.etag).not.toBe(one.headers.etag);
+  });
+});
+
+describe('resolved asset identity', () => {
+  /**
+   * The regression this phase exists for. `alt_a` and `alt_b` have no artwork,
+   * so both resolve to `fallback_girl/standard.png`. They are the same pixels
+   * and must therefore be the same cached card — keying by the *requested*
+   * appearance would produce two masters of one image, and every future
+   * fallback would double the cache again.
+   */
+  it('gives two appearances that fall back to the same artwork one identity', async () => {
+    const [a, b, standard] = await Promise.all(
+      ['alt_a', 'alt_b', 'standard'].map((variant) =>
+        app.inject({
+          method: 'GET',
+          url: url(`/cards/species/fallback_girl?variant=${variant}`),
+          headers: AUTH,
+        }),
+      ),
+    );
+
+    expect(a!.statusCode).toBe(200);
+    expect(a!.headers.etag).toBe(b!.headers.etag);
+    expect(a!.headers.etag).toBe(standard!.headers.etag);
+    expect(a!.rawPayload.equals(b!.rawPayload)).toBe(true);
+  });
+
+  it('writes exactly one master for all three of them', async () => {
+    for (const variant of ['standard', 'alt_a', 'alt_b']) {
+      await app.inject({
+        method: 'GET',
+        url: url(`/cards/species/fallback_girl?variant=${variant}`),
+        headers: AUTH,
+      });
+    }
+    const dir = path.join(workdir, 'cache', 'fallback_girl');
+    const masters = fs.readdirSync(dir).filter((f) => !f.includes('@'));
+    expect(masters).toHaveLength(1);
+  });
+
+  it('logs the fallback so a content gap is diagnosable', async () => {
+    await app.inject({
+      method: 'GET',
+      url: url('/cards/species/fallback_girl?variant=alt_a'),
+      headers: AUTH,
+    });
+    const line = logLines().find((l) => l.includes('card-renderer/artwork-fallback'));
+    expect(line).toBeDefined();
+    expect(line).toContain('"requestedAppearanceId":"alt_a"');
+    expect(line).toContain('"resolvedAppearanceId":"standard"');
+  });
+});
+
+describe('errors', () => {
+  it('404s an unknown species', async () => {
+    const res = await app.inject({ method: 'GET', url: url('/cards/species/nope_not_here'), headers: AUTH });
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toMatchObject({ error: { code: 'SPECIES_NOT_FOUND' } });
+  });
+
+  it('400s an appearance the species does not have', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: url('/cards/species/fallback_girl?variant=not_a_look'),
+      headers: AUTH,
+    });
+    // Matches the established convention in api/errors.ts: a hand-typed or
+    // stale appearance id is a malformed request, not a missing resource.
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({ error: { code: 'APPEARANCE_NOT_FOUND' } });
+  });
+
+  it('404s when no artwork resolves at all', async () => {
+    const res = await app.inject({ method: 'GET', url: url('/cards/species/no_art_girl'), headers: AUTH });
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toMatchObject({ error: { code: 'CARD_ARTWORK_MISSING' } });
+  });
+
+  it('400s an unsupported width', async () => {
+    for (const width of [999, 0, -1, 4096]) {
+      const res = await app.inject({
+        method: 'GET',
+        url: url(`/cards/species/card_test_n?width=${width}`),
+        headers: AUTH,
+      });
+      expect(res.statusCode, `width ${width}`).toBe(400);
+    }
+  });
+
+  it('400s an invalid level', async () => {
+    for (const level of [0, -5]) {
+      const res = await app.inject({
+        method: 'GET',
+        url: url(`/cards/species/card_test_n?level=${level}`),
+        headers: AUTH,
+      });
+      expect(res.statusCode, `level ${level}`).toBe(400);
+    }
+  });
+
+  it('400s a level above the progression ceiling, quoting the real cap', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: url('/cards/species/card_test_n?level=9999'),
+      headers: AUTH,
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({ error: { message: 'Level must be between 1 and 50.' } });
+  });
+
+  it('never leaks a filesystem path in an error body', async () => {
+    for (const target of ['no_art_girl', 'nope_not_here']) {
+      const res = await app.inject({ method: 'GET', url: url(`/cards/species/${target}`), headers: AUTH });
+      const body = res.rawPayload.toString('utf8');
+      expect(body).not.toContain(assetsDir);
+      expect(body).not.toContain('waifumon/');
+      expect(body).not.toContain('.png');
+    }
+  });
+});
+
+describe('GET /players/:playerId/collection/owned/:waifuId/card', () => {
+  const ownedUrl = url(`/players/1/collection/owned/${OWNED_WAIFU.id}/card`);
+
+  it('renders the owned copy for its owner', async () => {
+    const res = await app.inject({ method: 'GET', url: ownedUrl, headers: AUTH });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toBe('image/webp');
+    expect(isWebp(res.rawPayload)).toBe(true);
+  });
+
+  /**
+   * The owned route draws the ownership badge and the species route does not,
+   * so the two are deliberately different images and their ETags cannot be
+   * compared directly any more. What the level actually drives is asserted two
+   * ways: the serve log reports the level that reached the renderer, and the
+   * species route still re-keys across levels.
+   */
+  it('uses the copy’s own level, not the preview default', async () => {
+    const owned = await app.inject({ method: 'GET', url: ownedUrl, headers: AUTH });
+    expect(owned.statusCode).toBe(200);
+
+    const line = logLines()
+      .filter((l) => l.includes('card-renderer/serve') && l.includes(`/owned/${OWNED_WAIFU.id}/card`) === false)
+      .reverse()
+      .find((l) => l.includes('"slug":"fallback_girl"'));
+    expect(line, 'the owned render logs the level it used').toContain('"level":22');
+
+    const [atLevel22, atLevel1] = await Promise.all([
+      app.inject({ method: 'GET', url: url('/cards/species/fallback_girl?level=22'), headers: AUTH }),
+      app.inject({ method: 'GET', url: url('/cards/species/fallback_girl'), headers: AUTH }),
+    ]);
+    expect(atLevel22.headers.etag).not.toBe(atLevel1.headers.etag);
+
+    // And an owned card is its own image, not a species preview.
+    expect(owned.headers.etag).not.toBe(atLevel22.headers.etag);
+  });
+
+  it('uses the appearance she is wearing, resolved through the shared resolver', async () => {
+    // She wears `alt_a`, which has no artwork and falls back to `standard` — so
+    // her card is keyed by the asset that actually resolved, exactly like the
+    // species route. The serve log is what records which one that was.
+    const owned = await app.inject({ method: 'GET', url: ownedUrl, headers: AUTH });
+    expect(owned.statusCode).toBe(200);
+
+    const line = logLines()
+      .reverse()
+      .find((l) => l.includes('card-renderer/serve') && l.includes('"slug":"fallback_girl"'));
+
+    expect(line, 'the owned render logs what it resolved').toBeDefined();
+    expect(line).toContain('"requestedAppearanceId":"alt_a"');
+    expect(line).toContain('"resolvedAppearanceId":"standard"');
+    expect(line).toContain('"resolutionSource":"species-default"');
+  });
+
+  it('supports width on the owned route too', async () => {
+    const res = await app.inject({ method: 'GET', url: `${ownedUrl}?width=512`, headers: AUTH });
+    expect(res.statusCode).toBe(200);
+    expect((await dimensionsOf(res.rawPayload)).width).toBe(512);
+  });
+
+  it('answers 304 on a matching ETag', async () => {
+    const first = await app.inject({ method: 'GET', url: ownedUrl, headers: AUTH });
+    const res = await app.inject({
+      method: 'GET',
+      url: ownedUrl,
+      headers: { ...AUTH, 'if-none-match': String(first.headers.etag) },
+    });
+    expect(res.statusCode).toBe(304);
+  });
+
+  it('401s without a bearer token', async () => {
+    const res = await app.inject({ method: 'GET', url: ownedUrl });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('404s a copy owned by a different player', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: url(`/players/2/collection/owned/${OWNED_WAIFU.id}/card`),
+      headers: AUTH,
+    });
+    // Player 2 does not exist in the fixture, so player-scope 404s first —
+    // either way an outsider learns nothing about someone else's collection.
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('404s a waifu this player does not own', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: url('/players/1/collection/owned/999/card'),
+      headers: AUTH,
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toMatchObject({ error: { code: 'WAIFU_NOT_OWNED' } });
+  });
+
+  it('404s an unknown player', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: url(`/players/4242/collection/owned/${OWNED_WAIFU.id}/card`),
+      headers: AUTH,
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toMatchObject({ error: { code: 'PLAYER_NOT_FOUND' } });
+  });
+});
+
+describe('artist credit', () => {
+  /**
+   * The credit is drawn from `card.artist`, so it changes the bytes — which
+   * means it has to change the ETag too, or an edited credit would keep serving
+   * the old card from every cache between here and the browser.
+   */
+  it('gives a different entity when the artist changes', async () => {
+    const before = await app.inject({ method: 'GET', url: url('/cards/species/card_test_n'), headers: AUTH });
+    expect(before.statusCode).toBe(200);
+
+    const species = content.species.find((s) => s.slug === 'card_test_n') as {
+      card?: Record<string, unknown> | undefined;
+    };
+    const original = species.card;
+    species.card = { ...original, artist: 'Someone Else Entirely' };
+
+    try {
+      const after = await app.inject({ method: 'GET', url: url('/cards/species/card_test_n'), headers: AUTH });
+      expect(after.statusCode).toBe(200);
+      expect(after.headers.etag).not.toBe(before.headers.etag);
+      expect(after.rawPayload.equals(before.rawPayload)).toBe(false);
+    } finally {
+      species.card = original;
+    }
+  });
+
+  it('serves a card for a species with no artist at all', async () => {
+    const res = await app.inject({ method: 'GET', url: url('/cards/species/fallback_girl'), headers: AUTH });
+    expect(res.statusCode).toBe(200);
+    expect(isWebp(res.rawPayload)).toBe(true);
+  });
+});
+
+describe('observability', () => {
+  it('logs slug, resolved appearance, width, key, cache hit and duration', async () => {
+    await app.inject({ method: 'GET', url: url('/cards/species/card_test_n'), headers: AUTH });
+    const line = logLines().find(
+      (l) => l.includes('card-renderer/serve') && l.includes('card_test_n'),
+    );
+
+    expect(line).toBeDefined();
+    for (const field of [
+      '"slug":"card_test_n"',
+      '"resolvedAppearanceId":"standard"',
+      '"renderKey"',
+      '"fromCache"',
+      '"durationMs"',
+      '"width"',
+    ]) {
+      expect(line, field).toContain(field);
+    }
+  });
+
+  /**
+   * Artwork paths must never reach the log — they are per-species filesystem
+   * detail, and a card is identified by its render key. A missing *kit* asset is
+   * the opposite case: `CardAssetMissingError` names the exact file an operator
+   * has to go and put on disk, so `frames/ex.png` appearing there is correct and
+   * necessary.
+   */
+  it('never writes an absolute artwork path to the log', async () => {
+    await app.inject({ method: 'GET', url: url('/cards/species/card_test_n'), headers: AUTH });
+    const text = logLines().join('\n');
+
+    expect(text).not.toContain(assetsDir.replace(/\\/g, '\\\\'));
+    expect(text).not.toContain('artworkAbsolutePath');
+
+    // Every .png the log does mention belongs to the card kit, not to content.
+    for (const match of text.matchAll(/[\w\\/.-]*\.png/g)) {
+      expect(match[0], 'only kit assets may be named in logs').toContain('cardart');
+    }
+  });
+});

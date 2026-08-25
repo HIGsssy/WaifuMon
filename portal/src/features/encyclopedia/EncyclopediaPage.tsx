@@ -7,8 +7,13 @@
  * and no server round trip to save.
  *
  * The ownership overlay is derived by `useOwnedSlugs`, which walks the
- * collection once per session. `GET /players/{id}/collection/dex` (§25.5) would
+ * collection once per distinct owned count — so a capture in Discord shows up
+ * here without a reload. `GET /players/{id}/collection/dex` (§25.5) would
  * replace that walk with a single request.
+ *
+ * The overlay gates the grid rather than decorating it: a species rendered
+ * before it lands would be presented as undiscovered, and that is the one
+ * wrong answer a dex can give about something the player already owns.
  *
  * Disabled species are hidden: they are content an operator has switched off,
  * not content a player has failed to find.
@@ -232,7 +237,14 @@ export function EncyclopediaPage() {
             )}
           </div>
 
-          {species.isPending ? (
+          {/*
+            The ownership overlay is a *precondition* for the grid, not an
+            enhancement of it. Rendering species before it lands presents every
+            entry as undiscovered, which is the locked treatment — a skeleton
+            says "not yet known", a silhouette says "you do not own her", and
+            only one of those is honest while the answer is still in flight.
+          */}
+          {species.isPending || owned.isPending ? (
             <div className={GRID} aria-busy="true" aria-label="Loading the encyclopedia">
               {Array.from({ length: 10 }, (_, index) => (
                 <Skeleton key={index} className="aspect-[3/4] rounded-2xl" />

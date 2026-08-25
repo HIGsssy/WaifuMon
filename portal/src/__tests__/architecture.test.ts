@@ -70,6 +70,24 @@ describe('architectural boundaries', () => {
     expect(offenders.map((f) => f.path)).toEqual([]);
   });
 
+  /**
+   * Cards are the first asset kind served by an API route rather than a file,
+   * which makes hand-writing `/api/v1/cards/...` in a component tempting and
+   * wrong: it would bypass the size negotiation, the memoised resolution and
+   * the swap-the-backend seam that the resolver exists to provide.
+   *
+   * The card route may therefore be named in exactly one place — the provider
+   * that owns it.
+   */
+  it('builds card URLs only inside the card provider', () => {
+    const cardRoute = /\/v1\/(?:cards\/|players\/[^'"`]*\/card)/;
+    const allowed = new Set(['images/providers/cardApi.ts']);
+    const offenders = files.filter(
+      (file) => cardRoute.test(file.contents) && !allowed.has(file.path),
+    );
+    expect(offenders.map((f) => f.path)).toEqual([]);
+  });
+
   it('reaches the Platform API only through the api/ module', () => {
     // `api/system.ts` is the one deliberate exception: /ready and /health live
     // at the API server's root, outside the client's `/api` base URL.

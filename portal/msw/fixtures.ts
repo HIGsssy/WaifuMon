@@ -361,3 +361,22 @@ export const tuningTables: Record<string, unknown> = {
     maxEnergy: { cap: 40, levelBonuses: [{ atLevel: 7, delta: 5 }] },
   },
 };
+
+/** Optional backend features, as `/api/v1/capabilities` reports them. */
+export const capabilities = { cards: true };
+
+/**
+ * A minimal valid WebP — a 1×1 lossy image, 34 bytes.
+ *
+ * Real bytes rather than a JSON stub so an `<img>` can decode it and the export
+ * flow has a genuine `Blob` to save. Base64 because a binary fixture file would
+ * be the only one in this directory.
+ */
+const CARD_WEBP_BASE64 = 'UklGRh4AAABXRUJQVlA4TBEAAAAvAAAAAAfQ//73v/+BiOh/AAA=';
+
+export function cardWebpBytes(): Uint8Array {
+  const binary = atob(CARD_WEBP_BASE64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}

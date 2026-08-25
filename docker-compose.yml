@@ -1,4 +1,22 @@
 services:
+  # One-shot: initialize ownership on the named card-cache volume so the app
+  # can write to it as the `node` user (uid 1000 by default). Named volumes are
+  # created root-owned on first use; this fixes that, and is a no-op on every
+  # subsequent start because the ownership is already correct. Runs as root
+  # because chown requires it — but does nothing except chown and exit, and
+  # never touches the code, the database or the network. See
+  # docs/card-rendering-deployment.md.
+  waifumon-card-cache-init:
+    image: alpine:3
+    user: '0:0'
+    command:
+      - sh
+      - -c
+      - 'chown ${WAIFUMON_UID:-1000}:${WAIFUMON_GID:-1000} /cache && chmod 755 /cache'
+    volumes:
+      - waifumon-card-cache:/cache
+    restart: 'no'
+
   waifumon-bot:
     build: .
     env_file: .env
@@ -9,14 +27,27 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      # Blocks the bot until the cache volume is chowned to the app's uid/gid.
+      # If that step fails, the bot never starts — better than starting into an
+      # unwritable cache and logging EROFS/EACCES on every render.
+      waifumon-card-cache-init:
+        condition: service_completed_successfully
     restart: unless-stopped
     # The image's `node` user is uid/gid 1000, which matches the first login
     # user on most Linux hosts — so the bind-mounted content/ below is writable
     # with no chown. If your deploy user is not 1000, set WAIFUMON_UID and
     # WAIFUMON_GID in .env to `id -u` / `id -g` instead of chowning the repo.
+    # The same values drive waifumon-card-cache-init above, so the card cache
+    # is always writable by whichever uid this container runs as.
     user: '${WAIFUMON_UID:-1000}:${WAIFUMON_GID:-1000}'
     volumes:
       - ./assets:/app/assets:ro
+      # A writable overlay on top of the read-only assets bind. The renderer
+      # only ever writes under this subpath, so the rest of assets/ stays
+      # read-only. Named volume so the WebP cache survives compose down/up and
+      # container recreation without being baked into the image.
+      # docs/card-rendering-deployment.md.
+      - waifumon-card-cache:/app/assets/.card-cache
       # Read-write on purpose: the admin panel writes content edits and
       # timestamped backups here. Mounted rather than baked in so edits survive
       # a rebuild and stay visible to git. Harmless when the panel is disabled.
@@ -66,3 +97,8 @@ services:
 
 volumes:
   waifumon-pgdata:
+  # Card renderer's WebP cache. Overlays /app/assets/.card-cache/ so writes
+  # succeed while the rest of /app/assets stays read-only. Persists across
+  # `docker compose down` / `up`; a `docker compose down -v` (or an explicit
+  # `docker volume rm`) discards it, and the renderer rebuilds it on demand.
+  waifumon-card-cache:

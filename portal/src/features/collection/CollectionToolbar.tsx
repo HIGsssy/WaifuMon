@@ -14,6 +14,7 @@ import { SlidersHorizontal, Search, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import type { Rarity } from '@/api/types';
+import { CardViewToggle, type CardView } from '@/components/media/CardViewToggle';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -161,6 +162,15 @@ export interface CollectionToolbarProps {
   affinities: string[];
   /** Shows the quiet inline indicator while a background refetch runs (§14). */
   refreshing: boolean;
+  /**
+   * Art ↔ Card, when the backend can render cards.
+   *
+   * Both omitted means the control is not shown at all — which is what a
+   * deployment with the renderer switched off gets. There is no second frontend
+   * flag: `/v1/capabilities` is the only authority, and the page reads it.
+   */
+  view?: CardView | undefined;
+  onViewChange?: ((view: CardView) => void) | undefined;
 }
 
 export function CollectionToolbar({
@@ -168,6 +178,8 @@ export function CollectionToolbar({
   archetypes,
   affinities,
   refreshing,
+  view,
+  onViewChange,
 }: CollectionToolbarProps) {
   const { params, setFilter, clearFilters, hasFilters } = api;
 
@@ -233,6 +245,9 @@ export function CollectionToolbar({
               <X aria-hidden="true" />
               Clear
             </Button>
+          )}
+          {view !== undefined && onViewChange !== undefined && (
+            <CardViewToggle value={view} onChange={onViewChange} label="Collection tile view" />
           )}
           <Select
             value={params.sort}

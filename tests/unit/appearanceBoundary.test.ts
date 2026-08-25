@@ -44,18 +44,56 @@ const FORBIDDEN_MODULES = [
   'effects',
 ];
 
+/**
+ * Every file the module is allowed to contain.
+ *
+ * The enumeration is the anti-sprawl half of the firewall, and it is also what
+ * keeps the per-file checks below honest: a new file cannot arrive without
+ * being added here, and adding it here immediately subjects it to the same
+ * gameplay-import ban. `assetResolver.ts` joined in Phase 2.5 when generic
+ * artwork lookup moved out of the Discord layer so the card renderer could
+ * share it — cosmetic work, held to the same rules as the rest.
+ *
+ * `cardPresentation.ts` joined for the same reason: deciding which card a
+ * surface should draw is appearance selection plus artwork fallback, and both
+ * the HTTP route and Discord needed one copy of it. It takes an owned copy as a
+ * *structural* `{ waifu: { level, variant }, species: { slug } }` rather than
+ * importing the collection service — which is what keeps it on the cosmetic
+ * side of this firewall while still being able to describe an owned card.
+ *
+ * `ownedCardWarm.ts` and `ownedCardWarmSubjects.ts` are the owned-card warming
+ * pair, and they sit here because warming is entirely a question of *which
+ * cosmetic card* — the planner is `cardPresentation.ts` applied to a list, and
+ * it takes the same structural owned copy.
+ *
+ * `ownedCardWarmSubjects.ts` is the one file here that reads a gameplay table.
+ * It is a deliberate, narrow exception and it still honours the rule this
+ * firewall actually enforces: two read-only `select`s that project exactly the
+ * columns cosmetic resolution consumes (level, worn variant, species slug), no
+ * gameplay service, no writes, no gameplay logic. The alternative — widening
+ * `CollectionService.listOwned`, whose 25-row page exists for Discord select
+ * menus, so a cache warmer could read a whole collection — would change a
+ * gameplay service for a cosmetic caller's convenience, which is the direction
+ * this test exists to prevent.
+ */
+const MODULE_FILES = [
+  'appearanceContent.ts',
+  'appearanceRules.ts',
+  'appearanceService.ts',
+  'assetResolver.ts',
+  'cardPresentation.ts',
+  'ownedCardWarm.ts',
+  'ownedCardWarmSubjects.ts',
+];
+
 describe('appearance module boundaries', () => {
   const files = fs.readdirSync(MODULE_DIR).filter((f) => f.endsWith('.ts'));
 
-  it('has the three modules the design calls for and no more', () => {
-    expect(files.sort()).toEqual([
-      'appearanceContent.ts',
-      'appearanceRules.ts',
-      'appearanceService.ts',
-    ]);
+  it('contains exactly the modules the design calls for and no more', () => {
+    expect(files.sort()).toEqual([...MODULE_FILES].sort());
   });
 
-  it.each(['appearanceContent.ts', 'appearanceRules.ts', 'appearanceService.ts'])(
+  it.each(MODULE_FILES)(
     '%s imports no gameplay service',
     (file) => {
       const imports = importedPaths(sourceOf(file));
@@ -78,6 +116,15 @@ describe('appearance module boundaries', () => {
       expect(source, `${file} must not import drizzle`).not.toMatch(/from 'drizzle-orm'/);
       expect(source, `${file} must not import the db client`).not.toMatch(/db\/client/);
     }
+  });
+
+  it('keeps the shared asset resolver free of the database', () => {
+    // It reads the filesystem, so it is not part of the pure core above — but
+    // resolving artwork must never become a query. The card renderer depends
+    // on being able to call it without a database in the process.
+    const source = sourceOf('assetResolver.ts');
+    expect(source).not.toMatch(/from 'drizzle-orm'/);
+    expect(source).not.toMatch(/db\/client/);
   });
 
   it('writes only the two cosmetic columns', () => {

@@ -1,23 +1,23 @@
 /**
- * The Discord process's `AssetId → renderable artwork` resolver.
+ * The Discord process's `AssetId → AttachmentBuilder` adapter.
  *
- * **This is the only place Discord code turns artwork identity into storage.**
- * Everything upstream — the appearance service, the Platform API, the game-event
- * bus — speaks `AssetId { kind, slug, variant }` and nothing else. Moving the
- * bot to a CDN or object storage in production is a change to this one file:
- * return a hosted URL instead of an `AttachmentBuilder`, same input signature,
- * no caller touched and no API contract affected.
+ * The *lookup* — which file backs an `AssetId`, and what to fall back to when
+ * it is missing — moved to `src/modules/appearance/assetResolver.ts` so the
+ * card renderer could share it without the API importing from the Discord
+ * layer. What is left here is the only genuinely Discord-shaped part: wrapping
+ * a path in an attachment under a fixed filename, so embeds can reference
+ * `attachment://card.png` regardless of what the file is really called.
  *
- * Defense in depth: a resolution failure falls back to the species' default
- * artwork rather than throwing, because a content mistake in one appearance
- * must never blank out an inspect card. `null` is the last resort and every
- * caller already handles a card-less embed.
+ * Moving the bot to a CDN is still a change to this one file: return a hosted
+ * URL instead of an `AttachmentBuilder`, same signatures, no caller touched.
  */
-import fs from 'node:fs';
 import { AttachmentBuilder } from 'discord.js';
 import type { AssetId } from '../../modules/content/schemas';
-import { defaultAssetId } from '../../modules/appearance/appearanceContent';
-import { resolveAssetPath } from '../../modules/content/loader';
+import {
+  resolveAppearanceAsset as resolveAsset,
+  resolveAppearanceAssetOrLegacyPath,
+  type AppearanceAssetContext as SharedContext,
+} from '../../modules/appearance/assetResolver';
 import type { Logger } from '../../shared/logger';
 
 /** Attachment filename every appearance embed references. */
@@ -28,24 +28,14 @@ export interface AppearanceAssetContext {
   logger: Logger;
 }
 
-/**
- * The local layout this resolver expects: `assets/<kind>/<slug>/<variant>.png`.
- * Private to the Discord process — the identical mapping in the content loader
- * is a separate, equally private copy, and neither is exported upward.
- */
-function toRelativePath(assetId: AssetId): string {
-  return `${assetId.kind}/${assetId.slug}/${assetId.variant}.png`;
+function shared(ctx: AppearanceAssetContext): SharedContext {
+  return { assetsDir: ctx.config.assetsDir, logger: ctx.logger };
 }
 
-function attach(ctx: AppearanceAssetContext, assetId: AssetId): AttachmentBuilder | null {
-  try {
-    const absolute = resolveAssetPath(ctx.config.assetsDir, toRelativePath(assetId));
-    if (!fs.existsSync(absolute)) return null;
-    return new AttachmentBuilder(absolute, { name: CARD_FILENAME });
-  } catch {
-    // Path traversal or an unreadable root. Caller falls back.
-    return null;
-  }
+function attach(absolutePath: string | undefined): AttachmentBuilder | null {
+  return absolutePath === undefined
+    ? null
+    : new AttachmentBuilder(absolutePath, { name: CARD_FILENAME });
 }
 
 /**
@@ -58,23 +48,7 @@ export function resolveAppearanceAsset(
   ctx: AppearanceAssetContext,
   assetId: AssetId,
 ): AttachmentBuilder | null {
-  const direct = attach(ctx, assetId);
-  if (direct) return direct;
-
-  const fallback = defaultAssetId(assetId.slug, 'standard');
-  if (fallback.variant !== assetId.variant) {
-    const standard = attach(ctx, fallback);
-    if (standard) {
-      ctx.logger.warn(
-        { assetId },
-        'appearance artwork missing — fell back to the species default',
-      );
-      return standard;
-    }
-  }
-
-  ctx.logger.warn({ assetId }, 'no artwork resolved for appearance');
-  return null;
+  return attach(resolveAsset(shared(ctx), assetId)?.absolutePath);
 }
 
 /**
@@ -89,13 +63,5 @@ export function resolveAppearanceAssetOrPath(
   assetId: AssetId,
   legacyImagePath: string,
 ): AttachmentBuilder | null {
-  const resolved = resolveAppearanceAsset(ctx, assetId);
-  if (resolved) return resolved;
-  try {
-    const absolute = resolveAssetPath(ctx.config.assetsDir, legacyImagePath);
-    if (!fs.existsSync(absolute)) return null;
-    return new AttachmentBuilder(absolute, { name: CARD_FILENAME });
-  } catch {
-    return null;
-  }
+  return attach(resolveAppearanceAssetOrLegacyPath(shared(ctx), assetId, legacyImagePath)?.absolutePath);
 }

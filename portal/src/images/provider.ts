@@ -12,6 +12,7 @@
  */
 import { portalEnv } from '@/lib/env';
 import { API_SUPPLIED_URL_ID, createApiSuppliedUrlProvider } from './providers/apiSuppliedUrl';
+import { CARD_API_ID, createCardApiProvider } from './providers/cardApi';
 import { createLocalDevAssetsProvider, LOCAL_DEV_ASSETS_ID } from './providers/localDevAssets';
 import { createPlatformCdnProvider, PLATFORM_CDN_ID } from './providers/platformCdn';
 import { createSilhouetteProvider, SILHOUETTE_ID } from './providers/silhouette';
@@ -27,6 +28,7 @@ import {
 
 const FACTORIES: Record<string, () => ImageProvider> = {
   [API_SUPPLIED_URL_ID]: () => createApiSuppliedUrlProvider(),
+  [CARD_API_ID]: () => createCardApiProvider(),
   [LOCAL_DEV_ASSETS_ID]: () => createLocalDevAssetsProvider(),
   // Present but not in DEFAULT_ORDER: opting in is a config change, and the
   // provider declines everything until VITE_ASSET_CDN_URL is set anyway.
@@ -37,8 +39,13 @@ const FACTORIES: Record<string, () => ImageProvider> = {
 /**
  * API-supplied URLs win: when the API states where an asset lives, that is
  * authoritative and nothing derived should override it.
+ *
+ * `cardApi` sits next because it is the only provider that can answer
+ * `kind: 'card'` — those are composed on request, not stored as files, so
+ * falling through to the filesystem provider would be meaningless. It declines
+ * every other kind, so artwork resolution below it is unchanged.
  */
-const DEFAULT_ORDER = [API_SUPPLIED_URL_ID, LOCAL_DEV_ASSETS_ID];
+const DEFAULT_ORDER = [API_SUPPLIED_URL_ID, CARD_API_ID, LOCAL_DEV_ASSETS_ID];
 
 function buildChain(): ImageProvider[] {
   const requested = portalEnv.imageProviders ?? DEFAULT_ORDER;

@@ -63,6 +63,21 @@ export function defaultAssetId(speciesSlug: string, appearanceId: string): Asset
 }
 
 /**
+ * The on-disk layout an `AssetId` maps to: `<kind>/<slug>/<variant>.png`,
+ * relative to the assets root.
+ *
+ * This one line is the *entire* coupling between artwork identity and artwork
+ * storage, which is why it lives here — in the leaf module every consumer
+ * already depends on — rather than being re-typed in the loader, the Discord
+ * resolver, and whatever comes next. Changing the layout is changing this
+ * function. Resolving it to an absolute path (and refusing to escape the assets
+ * root) is a separate concern owned by `resolveAssetPath`.
+ */
+export function appearanceAssetRelativePath(assetId: AssetId): string {
+  return `${assetId.kind}/${assetId.slug}/${assetId.variant}.png`;
+}
+
+/**
  * Requirement text when the author supplied none.
  *
  * These strings are the gallery's spine: every tile shows one whether it is

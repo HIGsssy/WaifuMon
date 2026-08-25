@@ -33,10 +33,30 @@ export const queryKeys = {
   waifuAppearances: (playerId: number, waifuId: number) =>
     ['player', playerId, 'collection', 'appearances', waifuId] as const,
   buddy: (playerId: number) => ['player', playerId, 'collection', 'buddy'] as const,
-  /** Every owned page, walked once and cached for the encyclopedia overlay (§8.7). */
-  ownedSlugs: (playerId: number) => ['player', playerId, 'collection', 'ownedSlugs'] as const,
+  /**
+   * Every owned page, walked once and cached for the encyclopedia overlay
+   * (§8.7).
+   *
+   * `ownedCount` is part of the key on purpose. The walk is the one player
+   * query too expensive to poll, so it cannot rely on a stale time to notice a
+   * capture; instead its cache identity carries the number that changes
+   * exactly when ownership does (`collection/stats.owned`, a single cheap
+   * request under `PLAYER_POLICY`). A capture in Discord moves that number and
+   * the overlay is re-derived rather than serving a stale silhouette.
+   *
+   * The `['player', id, 'collection', 'ownedSlugs']` prefix is still stable, so
+   * a prefix invalidation reaches every count.
+   */
+  ownedSlugs: (playerId: number, ownedCount?: number | undefined) =>
+    ['player', playerId, 'collection', 'ownedSlugs', ownedCount ?? 'unknown'] as const,
 
   content: () => ['content'] as const,
+  /**
+   * Which optional backend features exist. Deployment-wide and player-free —
+   * it describes the server, not a game resource.
+   */
+  capabilities: () => ['capabilities'] as const,
+
   contentSpecies: () => ['content', 'species'] as const,
   contentSpeciesEntry: (slug: string) => ['content', 'species', slug] as const,
   contentItems: (category?: ItemCategory | undefined) =>

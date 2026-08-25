@@ -579,6 +579,97 @@ describe('request validation', () => {
   });
 });
 
+// ── Background card warming ─────────────────────────────────────────────────
+
+/**
+ * The collection listing is the trigger for the self-healing owned-card warm.
+ * Two properties matter, and both are easy to break by "just awaiting it":
+ * the response must not wait, and the trigger must not exist at all in a
+ * deployment without a renderer.
+ */
+describe('owned card warming behind the collection listing', () => {
+  const listStubs = {
+    ...basePlayerStubs,
+    collection: {
+      listOwned: async () => ({
+        entries: [{ waifu: WAIFU, species: SPECIES }],
+        page: 1,
+        pageSize: 25,
+        totalOwned: 1,
+        totalPages: 1,
+      }),
+      waifuProgress: () => PROGRESS,
+    },
+  };
+
+  /** Records the calls and stays pending, like a warm that has not finished. */
+  function recordingWarmer() {
+    const calls: number[] = [];
+    return {
+      calls,
+      warmer: {
+        schedulePlayerWarm: (playerId: number) => {
+          calls.push(playerId);
+          return 'started' as const;
+        },
+      },
+    };
+  }
+
+  it('schedules a warm for the listed player', async () => {
+    const { calls, warmer } = recordingWarmer();
+    app = await build({ services: listStubs, cardWarmer: warmer });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/v1/players/7/collection/owned',
+      headers: AUTH,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(calls).toEqual([7]);
+  });
+
+  /**
+   * A warm that never settles must not hold the response open. If the route
+   * ever awaited it, this test would time out rather than fail — which is
+   * exactly the failure mode worth having a test for.
+   */
+  it('answers without waiting for the warm to finish', async () => {
+    const warmer = {
+      schedulePlayerWarm: () => {
+        // Detached work that outlives the request, and never settles.
+        void new Promise(() => {});
+        return 'started' as const;
+      },
+    };
+    app = await build({ services: listStubs, cardWarmer: warmer });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/v1/players/7/collection/owned',
+      headers: AUTH,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data).toHaveLength(1);
+  });
+
+  it('does not schedule anything when no warmer is wired', async () => {
+    app = await build({ services: listStubs });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/v1/players/7/collection/owned',
+      headers: AUTH,
+    });
+
+    // No warmer, no warm, no error — the route behaves exactly as it did
+    // before warming existed.
+    expect(res.statusCode).toBe(200);
+  });
+});
+
 // ── Payload shape ───────────────────────────────────────────────────────────
 
 describe('response payloads', () => {

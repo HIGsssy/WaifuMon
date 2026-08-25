@@ -15,7 +15,7 @@
  * `assetId` be dropped straight into `useImage` with no adapter — see
  * `speciesAsset` and the local-assets provider.
  */
-export type AssetKind = 'species' | 'waifumon' | 'item' | 'avatar' | 'ui';
+export type AssetKind = 'species' | 'waifumon' | 'item' | 'avatar' | 'ui' | 'card';
 
 /** The two kinds that name Waifumon artwork. */
 export const WAIFUMON_ASSET_KINDS: readonly AssetKind[] = ['species', 'waifumon'];
@@ -39,6 +39,17 @@ export interface AssetId {
    * `apiSuppliedUrl` provider decides whether to honour it.
    */
   href?: string | null | undefined;
+  /**
+   * Owned-copy context. Meaningful only for `kind: 'card'`, where a card is
+   * rendered from a specific copy's level and equipped appearance rather than
+   * from the species alone.
+   *
+   * These are the same logical ids the API addresses its own resources by, not
+   * a location — the provider turns them into a route, exactly as it turns a
+   * slug into one for every other kind. A card with no `owned` is the species
+   * preview: level 1, default appearance.
+   */
+  owned?: { playerId: number; waifuId: number } | undefined;
 }
 
 export interface ResolvedImage {
@@ -131,8 +142,12 @@ export interface ResolveOptions {
 
 /** Stable cache key for an asset — also the React key for a resolved image. */
 export function assetKey(id: AssetId, bucket: ImageSizeBucket | null = null): string {
+  // `owned` participates: two trainers' copies of one species are different
+  // cards (different level, possibly different appearance), and memoising them
+  // under one key would serve the first player's card to the second.
+  const owned = id.owned ? `${id.owned.playerId}/${id.owned.waifuId}` : '';
   // `href` participates: the same avatar slug with a new CDN hash is a
   // genuinely different image and must not serve the memoised old one.
   // The bucket participates for the same reason: two sizes are two URLs.
-  return `${id.kind}:${id.slug}:${id.variant ?? DEFAULT_VARIANT}:${id.href ?? ''}:${bucket ?? 'full'}`;
+  return `${id.kind}:${id.slug}:${id.variant ?? DEFAULT_VARIANT}:${id.href ?? ''}:${owned}:${bucket ?? 'full'}`;
 }

@@ -179,6 +179,12 @@ export async function createPlatformApiServer(deps: PlatformApiDeps): Promise<Zo
         { name: 'Sessions', description: 'Per-channel tallies and Trainer Profile pointers.' },
         { name: 'Content', description: 'Authored species, items, tuning tables and quest pool.' },
         { name: 'Guilds', description: 'Guild configuration (read-only in v1).' },
+        {
+          name: 'Cards',
+          description:
+            'Server-rendered card images (`image/webp`, not JSON). Present only when ' +
+            'CARD_RENDERER_ENABLED.',
+        },
       ],
     },
     transform: jsonSchemaTransform,
@@ -236,7 +242,10 @@ export async function createPlatformApiServer(deps: PlatformApiDeps): Promise<Zo
   });
 
   registerHealthRoutes(app, deps.probes);
-  await app.register(v1Routes(deps.ctx), { prefix: '/api/v1' });
+  await app.register(
+    v1Routes(deps.ctx, { cards: deps.config.cardRendererEnabled === true }),
+    { prefix: '/api/v1' },
+  );
 
   return app;
 }

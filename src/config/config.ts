@@ -57,6 +57,63 @@ const EnvSchema = z.object({
    * Docker that bind is 0.0.0.0, which no browser can route to. Optional; when
    * unset the URL is derived from the bind (see `resolvePublicUrl`).
    */
+  /**
+   * Rendered card images (`/api/v1/cards/…`). Temporary rollout gating for the
+   * SVG card renderer, not permanent architecture — Phase 6 removes it once the
+   * renderer is stable in production.
+   *
+   * Off by default, matching every other optional surface here: a flag that
+   * ships on cannot be *rolled out*, and rasterizing is the most expensive
+   * thing this process does. Development and test environments turn it on
+   * explicitly (`.env`, and the API test fixtures).
+   */
+  CARD_RENDERER_ENABLED: z
+    .enum(['true', 'false', '1', '0'])
+    .default('false')
+    .transform((v) => v === 'true' || v === '1'),
+  /**
+   * Worker threads that draw card masters.
+   *
+   * Drawing one blocks its thread for ~750 ms of synchronous resvg, so it
+   * happens off the main thread — this is how many threads may do so at once,
+   * and therefore the ceiling on concurrent cold renders.
+   *
+   * Two by default, and deliberately *not* derived from `os.cpus()`: each
+   * thread holds a full decoded card, and a container rarely has the core
+   * count the host advertises. `0` renders in-process instead, which is the
+   * escape hatch for an environment without threads — it produces identical
+   * bytes and reinstates the stall.
+   */
+  CARD_RENDER_WORKERS: z.coerce.number().int().min(0).max(8).default(2),
+  /**
+   * Owned cards warmed at once by a background warm.
+   *
+   * Background warming exists so a collection grid is served from cache; the
+   * player who triggered it has already had their response, so this is tuned
+   * for invisibility rather than throughput. One composes correctly with a
+   * single render worker: a cold master someone is actually waiting for queues
+   * behind at most one warm card.
+   *
+   * Capped low on purpose. This is not the knob for making a back-catalogue
+   * warm finish sooner — `cards:warm --concurrency` is, and it is an operator
+   * running a job, not a live process deciding on its own.
+   */
+  CARD_WARM_CONCURRENCY: z.coerce.number().int().min(1).max(4).default(1),
+  /**
+   * Whether a collection listing triggers a background warm of that player's
+   * owned cards.
+   *
+   * On by default, and the switch is here rather than in the Portal because
+   * the cost lands on the backend. It is the self-*healing* path, not the
+   * primary one — turning it off leaves warm-on-capture and the ops CLI intact,
+   * and every card still renders on demand. An operator watching a small node
+   * struggle should be able to take this out of the picture without giving up
+   * card rendering entirely.
+   */
+  CARD_WARM_ON_COLLECTION: z
+    .enum(['true', 'false', '1', '0'])
+    .default('true')
+    .transform((v) => v === 'true' || v === '1'),
   PLATFORM_API_PUBLIC_URL: z
     .string()
     .trim()
@@ -116,6 +173,28 @@ export interface PlatformApiConfig {
    * use rather than reading this field directly.
    */
   publicUrl?: string | undefined;
+  /**
+   * Whether `/api/v1/cards/…` is registered at all. Gating registration rather
+   * than branching inside handlers means "disabled" is indistinguishable from
+   * "never existed" — the routes 404 through the normal not-found handler and
+   * no card code is reachable.
+   *
+   * Optional so that absent reads as off. `resolveAppConfig` always sets it, so
+   * the running process is never ambiguous; the looseness is for callers that
+   * assemble a config by hand (tests, tools) and should not have to opt out of
+   * a feature they are not exercising.
+   */
+  cardRendererEnabled?: boolean | undefined;
+  /** Threads for cold master rendering; see `CARD_RENDER_WORKERS`. */
+  cardRenderWorkers?: number | undefined;
+  /** Owned cards warmed at once in the background; see `CARD_WARM_CONCURRENCY`. */
+  cardWarmConcurrency?: number | undefined;
+  /**
+   * Whether listing a collection triggers a background warm of that player's
+   * owned cards; see `CARD_WARM_ON_COLLECTION`. Absent reads as off, for the
+   * same reason `cardRendererEnabled` does.
+   */
+  cardWarmOnCollection?: boolean | undefined;
 }
 
 /**
@@ -195,6 +274,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       port: e.PLATFORM_API_PORT,
       token: platformApiToken,
       publicUrl: e.PLATFORM_API_PUBLIC_URL,
+      cardRendererEnabled: e.CARD_RENDERER_ENABLED,
+      cardRenderWorkers: e.CARD_RENDER_WORKERS,
+      cardWarmConcurrency: e.CARD_WARM_CONCURRENCY,
+      cardWarmOnCollection: e.CARD_WARM_ON_COLLECTION,
     },
   };
 }

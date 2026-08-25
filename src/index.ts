@@ -25,6 +25,9 @@ import { createHuntService } from './modules/hunt/huntService';
 import { createCaptureService } from './modules/capture/captureService';
 import { createCareService } from './modules/care/careService';
 import { createAppearanceService } from './modules/appearance/appearanceService';
+import { configureCardRenderer, shutdownCardRenderer } from './modules/cards';
+import { OwnedCardWarmer } from './modules/appearance/ownedCardWarm';
+import { listOwnedWarmSubjects } from './modules/appearance/ownedCardWarmSubjects';
 import { createCollectionService } from './modules/collection/collectionService';
 import { createPlayerEffectsService } from './modules/effects/playerEffectsService';
 import { createItemUseService } from './modules/items/itemUseService';
@@ -51,6 +54,16 @@ async function main(): Promise<void> {
   process.on('uncaughtException', (err) => {
     logger.fatal({ err }, 'uncaught exception');
     process.exit(1);
+  });
+
+  // Before anything can draw a card: the shared renderer is built once, and
+  // its worker count is fixed at construction. Threads are still started
+  // lazily, so this costs nothing in a deployment with cards switched off.
+  configureCardRenderer({
+    logger,
+    ...(config.platformApi.cardRenderWorkers === undefined
+      ? {}
+      : { workers: config.platformApi.cardRenderWorkers }),
   });
 
   const pool = createPool(config.databaseUrl);
@@ -117,6 +130,32 @@ async function main(): Promise<void> {
     locations: content.tables.hunt.locationFlavors,
   });
   const guilds = createGuildService(db);
+
+  /**
+   * Owned-card warming, built only when there is a renderer to warm into.
+   *
+   * `undefined` with cards switched off is the whole gate: every caller
+   * optional-chains it, so a deployment without card rendering has no warm
+   * code path at all rather than a warm path that checks a flag.
+   *
+   * Nothing here warms anything at startup, deliberately. Warming every
+   * player's collection on boot would turn a restart into a render job
+   * proportional to the entire player base, on a node that has just come back
+   * up and is being asked to serve Discord. The back catalogue is an operator's
+   * job (`cards:warm --all-players`); the running process only ever warms in
+   * response to something a player just did.
+   */
+  const cardWarmer = config.platformApi.cardRendererEnabled
+    ? new OwnedCardWarmer({
+        presentation: { appearance, assetsDir: config.assetsDir, logger },
+        listSubjects: (playerId) => listOwnedWarmSubjects(db, playerId),
+        logger,
+        ...(config.platformApi.cardWarmConcurrency === undefined
+          ? {}
+          : { concurrency: config.platformApi.cardWarmConcurrency }),
+      })
+    : undefined;
+
   const ctx: AppContext = {
     config,
     logger,
@@ -124,6 +163,7 @@ async function main(): Promise<void> {
     content,
     events: gameEventBus,
     huntSessions,
+    ...(cardWarmer === undefined ? {} : { cardWarmer }),
     services: {
       guilds,
       players: createPlayerService(db, { initialEnergy: content.tables.energy.baseMax }),
@@ -272,6 +312,16 @@ async function main(): Promise<void> {
       // Read through `ctx` so an admin-panel content reload is visible to the
       // API immediately, exactly as it is to the Discord handlers.
       getContent: () => ctx.content,
+      // Only the card routes use this, and only to hand the shared appearance
+      // resolver a root to look under. No path derived from it ever reaches a
+      // client.
+      assetsDir: config.assetsDir,
+      // Self-healing warm behind a collection listing. Wired only when the
+      // renderer exists *and* the operator has left the collection trigger on:
+      // absent means the listing route simply never schedules anything.
+      ...(cardWarmer !== undefined && config.platformApi.cardWarmOnCollection === true
+        ? { cardWarmer }
+        : {}),
       // Presentation-only display name + avatar for HTTP clients, which —
       // unlike the Discord handlers — have no gateway of their own to render
       // from. The API layer holds no Discord types, so the lookup is injected
@@ -307,6 +357,14 @@ async function main(): Promise<void> {
     await platformApi?.close();
     await adminServer?.close();
     await client.destroy();
+    // Background warms are detached, so a shutdown would otherwise terminate a
+    // worker mid-render and leave the queued cards undone. Bounded by the warm
+    // already in flight, and a no-op when none is.
+    await cardWarmer?.whenIdle();
+    // After the servers, so nothing can queue a new render into a pool that is
+    // going away, and before the process exits, so threads are not orphaned.
+    // A no-op unless a card was actually drawn — the pool starts lazily.
+    await shutdownCardRenderer();
     await pool.end();
     process.exit(0);
   };

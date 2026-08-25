@@ -1,6 +1,16 @@
-# Content authoring — appearances
+# Content authoring
 
-How to add new artwork for a Waifumon without reading any code.
+How to add new artwork and card text for a Waifumon without reading any code.
+
+Two things live here:
+
+- **[Appearances](#the-30-second-version)** — the looks a species can wear.
+- **[Card metadata](#card-metadata)** — `race` and the `card` block, which drive
+  the rendered card image.
+
+Neither touches gameplay, and neither needs a database migration.
+
+## Appearances
 
 An **appearance** is one look a species can wear. Every owned copy stores which
 one she is currently wearing. Appearances are **cosmetic**: they change what
@@ -347,12 +357,149 @@ The admin panel's warning list surfaces missing artwork before you save.
 
 ---
 
+# Card metadata
+
+Two optional species fields feed the card renderer: a top-level `race`, and a
+`card` block. Both are presentation only — **nothing here affects capture odds,
+XP, affection, evolution, or any other game system.** Both live in the JSON
+content and never in the database, so editing them is a content change, not a
+migration.
+
+Both are optional. Every species that predates them still loads and still
+renders, unchanged.
+
+## `race`
+
+Which frame iconography the card wears. One of exactly seven values:
+
+```text
+angel   demon   demi-human   human   spirit   valkyrie   android
+```
+
+These are a closed set because each one maps to an icon file in
+`assets/cardart/icons/races/`. Adding an eighth race means shipping an eighth
+icon; it is not something content can invent.
+
+### `race` is not `archetype`
+
+`archetype` is her **narrative role**. It is free-form and always will be:
+
+```json
+"archetype": "paladin",
+"race": "valkyrie"
+```
+
+That pairing is the whole reason the fields are separate. "Paladin" says what
+she *does*; "valkyrie" says which frame she *wears*. A librarian can be a
+spirit, a barista can be a demi-human, and an assassin can be an android.
+
+Today's corpus happens to use archetype values that are all race words
+(`"archetype": "demon"`), which is legacy overlap rather than the intended
+model. Because of that overlap, a species with no `race` falls back to a race
+derived from its archetype, which is why nothing needed editing when this field
+shipped.
+
+**Set `race` explicitly on new content.** The fallback only works while
+archetypes happen to be race words. The moment you write
+`"archetype": "paladin"`, nothing but an explicit `race` can say whether she is
+an angel or a valkyrie — the renderer will log a warning and fall back to
+`human`:
+
+```text
+species "moonlit_paladin": archetype "paladin" maps to no race — cards will
+render as "human". Add an explicit "race" field to fix.
+```
+
+That warning is a nudge, never a failure. Content still loads.
+
+## `card`
+
+```json
+"card": {
+  "subtitle": "Fire-Escape Regular",
+  "artist": "Someone Real",
+  "ability": {
+    "name": "Trade Secrets",
+    "text": "Knows which windows are unlatched and who left them that way."
+  },
+  "flavorQuote": "Look up. She has been there the whole time.",
+  "cardNumber": "012/100"
+}
+```
+
+Every field is optional, and the whole block is optional.
+
+| Field | Limit | Notes |
+| --- | --- | --- |
+| `subtitle` | ≤ 48 | Epithet under her name. |
+| `artist` | ≤ 48 | **Only when a real attribution is known.** Omit it otherwise — do not invent a credit. |
+| `ability.name` | 1–32 | Required *with* `ability.text`. |
+| `ability.text` | 1–160 | Wrapped onto two lines; longer text truncates. |
+| `flavorQuote` | ≤ 120 | Rendered in italic quotes. The renderer adds the quote marks. |
+| `cardNumber` | ≤ 32 | Reserved. See below. |
+
+Rules worth knowing:
+
+- **`ability` is all-or-nothing.** A name with no text is a validation error,
+  not a half-filled card. Omit the block if you have only one half.
+- **Omit rather than blank.** `"subtitle": ""` and `"subtitle": "   "` are
+  validation errors. An omitted field removes its element from the card
+  entirely; it never renders as an empty box or a placeholder.
+- **Unknown keys are rejected**, so `"flavourQuote"` fails loudly instead of
+  being silently ignored.
+- **Long text degrades, it does not break.** The renderer shrinks the name to
+  fit, wraps ability text across two lines, and truncates with an ellipsis past
+  that. Staying under the caps just means you choose where the cut lands.
+
+### Generic affinity text is not authored here
+
+The card shows a short blurb next to the affinity badge ("Takes the lead and
+sets the pace…"). **Do not author that.** It describes what the affinity
+*category* means and is identical on every card that shares it, so it lives in
+the renderer (`AFFINITY_DESCRIPTIONS` in `src/modules/cards/affinity.ts`).
+Fields like `affinityDescription` are rejected by the schema.
+
+### `cardNumber` is reserved
+
+There is no set-numbering system yet. `cardNumber` is free-form presentation
+metadata held for a future one. **Do not invent numbering to fill it in** — a
+made-up `012/100` implies a hundred-card set that does not exist. Leave it out.
+
+## Worked examples
+
+Three shipped species demonstrate the range — copy whichever matches your case:
+
+- **`alley_catgirl`** (`content/species/starter.json`) — explicit `race` plus a
+  full `card` block with subtitle, ability, and flavour quote. No `artist`
+  (none is known) and no `cardNumber`.
+- **`chrome_valkyrie`** — explicit `race` plus a partial block: subtitle and
+  flavour quote, no ability.
+- **`the_first_waifu`** — explicit `race` and **no `card` block at all**. The
+  two fields are independent; adding one does not oblige you to add the other.
+
+## When card visuals change
+
+The rendered card is cached by a content hash that includes the SVG kit's
+version. If you change anything under `assets/cardart/` — a rarity overlay, an
+icon, the base template, a font — **bump `assets/cardart/VERSION` to the next
+integer**. That one edit invalidates every cached card; there is no purge
+command to run and no cache directory to clear by hand.
+
+Editing `race` or `card` in species JSON needs **no** VERSION bump. Content
+changes are already part of the cache key, so a card re-renders on its own.
+
+---
+
 ## Related documentation
 
 - `docs/platform-api.md` — the `assetId` contract and the appearance endpoints.
 - `docs/portal.md` — how the Portal resolves an `assetId` to a URL, and
   `npm run assets:thumbs` (run from `portal/`).
 - `.ai/appearanceplan.md` — the approved design, including future unlock sources.
+- `.ai/SVGPlan.md` — the card rendering system, including how `race` and `card`
+  reach the renderer.
+- `assets/cardart/README.md` — the SVG kit itself: layer order, element IDs, the
+  geometry the base template must stay inside, and the `VERSION` workflow.
 
 ### Commands
 
@@ -363,6 +510,10 @@ All of these run from the repository root.
 | `npm run appearances:sync -- --dry-run` | Reports which milestone appearances the artwork implies. Writes nothing. |
 | `npm run appearances:sync` | Writes them into the pack each species already lives in. |
 | `npm run assets:thumbs` | Generates the Portal's display renditions. Delegates to the `portal` package. |
+| `npm run cards:warm` | Pre-renders the default card for every enabled species, so the first request is a cache hit. Safe to re-run; already-cached cards cost nothing. |
+| `npm run cards:warm -- --player <id>` | Pre-renders the **owned** cards for one player's current collection — her real level, the look she is wearing, the CAUGHT badge — plus the `@256` and `@512` the Portal's collection grid draws. Needs `DATABASE_URL`. |
+| `npm run cards:warm -- --all-players` | The same for every player who owns anything. One player at a time by default; `--player-concurrency N` raises it. |
+| `npm run cards:gc -- --dry-run` | Reports which cached card renders would be reclaimed. Add nothing to actually remove them. |
 | `npm run content:prepare` | Both of the above, in order, stopping if the first fails. |
 | `npm test` | Full validation, including every appearance rule above. |
 

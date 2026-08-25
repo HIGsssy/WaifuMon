@@ -211,7 +211,33 @@ export default defineConfig(({ mode }) => {
       host: '0.0.0.0',
       port: 5173,
       proxy: {
-        '/api': { target: apiTarget, changeOrigin: true },
+        /*
+         * The proxy attaches the bearer token.
+         *
+         * The API accepts exactly one credential — `Authorization: Bearer …` —
+         * and deliberately has no cookie auth (no cookies, no CSRF surface).
+         * That is fine for `fetch`, which sets its own headers, but an `<img>`
+         * element cannot send one. Rendered cards are `<img>` sources, so
+         * without this they would 401 and the whole image abstraction would
+         * have to be bypassed for one asset kind.
+         *
+         * This leaks nothing new: `VITE_PLATFORM_API_TOKEN` is already in the
+         * client bundle by design (dev-only, §26). Attaching it here is
+         * strictly better than the alternatives — a token in the query string
+         * would reach browser history and server logs, and weakening the card
+         * route's auth is not on the table.
+         *
+         * Axios sets the same header itself, and the proxy's value simply
+         * replaces it with an identical one. When no token is configured the
+         * proxy adds nothing and behaves exactly as it did before.
+         */
+        '/api': {
+          target: apiTarget,
+          changeOrigin: true,
+          ...(env.VITE_PLATFORM_API_TOKEN
+            ? { headers: { Authorization: `Bearer ${env.VITE_PLATFORM_API_TOKEN}` } }
+            : {}),
+        },
         // Root-level ops endpoints on the API server — used by §23 diagnostics.
         '/ready': { target: apiTarget, changeOrigin: true },
         '/health': { target: apiTarget, changeOrigin: true },

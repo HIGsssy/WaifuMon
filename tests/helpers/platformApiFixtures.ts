@@ -11,6 +11,7 @@
 import pino from 'pino';
 import type { ApiContext } from '../../src/api/context';
 import type { IdentityResolver } from '../../src/api/identity';
+import type { OwnedCardWarmer } from '../../src/modules/appearance/ownedCardWarm';
 import type { ReadinessProbes } from '../../src/api/routes/health';
 import { createAppearanceService } from '../../src/modules/appearance/appearanceService';
 import type { AppServices } from '../../src/discord/types';
@@ -80,6 +81,12 @@ export interface ApiContextOverrides {
    * `identity: null` — which is also the shape most route tests want.
    */
   resolveIdentity?: IdentityResolver;
+  /**
+   * Background owned-card warmer. Omitted by default, which is what a
+   * deployment with card rendering switched off looks like: the collection
+   * route optional-chains it and schedules nothing.
+   */
+  cardWarmer?: Pick<OwnedCardWarmer, 'schedulePlayerWarm'>;
 }
 
 const EMPTY_CONTENT: LoadedContent = {
@@ -136,5 +143,8 @@ export function createApiContext(overrides: ApiContextOverrides = {}): ApiContex
     // `exactOptionalPropertyTypes` — only set the key when a resolver is given,
     // so the default context is genuinely "no Discord client wired".
     ...(overrides.resolveIdentity ? { resolveIdentity: overrides.resolveIdentity } : {}),
+    ...(overrides.cardWarmer
+      ? { cardWarmer: overrides.cardWarmer as unknown as OwnedCardWarmer }
+      : {}),
   };
 }
