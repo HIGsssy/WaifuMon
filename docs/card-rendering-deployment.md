@@ -41,6 +41,100 @@ Discord.
 
 ---
 
+## The cache directory under Docker
+
+The renderer writes to `/app/assets/.card-cache/` inside the container. Two
+Docker facts make that directory non-obvious:
+
+1. **`/app/assets` is bind-mounted read-only** (`./assets:/app/assets:ro` in
+   [docker-compose.yml](../docker-compose.yml)). Content authoring writes to
+   the host repo and the container never touches assets — a slip in the
+   renderer or a rogue tool can't rewrite artwork.
+2. **`/app/assets/.card-cache/` is a separate writable named volume**
+   (`waifumon-card-cache`) overlaid on top of that read-only bind. Only the
+   cache subpath is writable; everything else under `/app/assets` stays RO.
+
+Without the overlay the renderer's first write returns `EROFS`; the module
+falls back to serving rendered bytes without caching, and every request is
+effectively cold. The overlay makes those writes land, so the second request
+for the same card is a file read.
+
+### Ownership
+
+Named volumes are created root-owned on first use, but the bot runs as
+`${WAIFUMON_UID:-1000}:${WAIFUMON_GID:-1000}`. A one-shot init service —
+`waifumon-card-cache-init` — chowns the volume's root to that uid/gid before
+the bot starts, and Compose blocks the bot on
+`service_completed_successfully`. It runs as root because chown requires it,
+does nothing else, and exits immediately. On every subsequent `up` the chown
+is a no-op (ownership is already correct) but is still cheap enough to keep,
+so a manual `docker volume rm` and a fresh `up` self-heal.
+
+If you deploy under a non-1000 uid, set `WAIFUMON_UID` / `WAIFUMON_GID` in
+`.env` — the same values drive both the init service and the bot, so they
+can never drift.
+
+### Persistence
+
+The volume survives:
+
+- `docker compose down` / `docker compose up -d`
+- `docker compose restart`
+- rebuilding and recreating the bot container
+  (`docker compose up -d --build waifumon-bot`)
+
+It does **not** survive an intentional `docker compose down -v` (or a manual
+`docker volume rm waifumon_waifumon-card-cache`). That's the correct
+behaviour — the cache is content-addressed and rebuilds on demand, so wiping
+it is a supported recovery action, not a data-loss event.
+
+### Verifying the mount on a running container
+
+```sh
+# /app/assets stays read-only — this must fail:
+docker compose exec waifumon-bot sh -c 'touch /app/assets/should-fail'
+#   touch: /app/assets/should-fail: Read-only file system
+
+# /app/assets/.card-cache is writable — this must succeed:
+docker compose exec waifumon-bot sh -c \
+  'touch /app/assets/.card-cache/write-test && rm /app/assets/.card-cache/write-test'
+
+# Trigger a real render, then confirm the master + @512 landed on disk:
+curl -H "Authorization: Bearer $PLATFORM_API_TOKEN" \
+  http://127.0.0.1:3120/api/v1/cards/species/alley_catgirl > /dev/null
+docker compose exec waifumon-bot ls /app/assets/.card-cache/alley_catgirl/
+
+# Second request for the same URL must be served from cache — the API log
+# reports a hit rather than a render, and no new files appear.
+```
+
+Genuine cache-write failures still log
+`tag: 'card-renderer/cache-write-failed'` at warn, unchanged. The deployment
+fix is what makes that log line quiet in normal operation; it is not silencing.
+
+### Warming a single test player
+
+Run inside the container so the process sees the real cache mount, the real
+DB and the real `.env`:
+
+```sh
+docker compose exec waifumon-bot \
+  npm run cards:warm -- --player <test-player-id>
+```
+
+For each owned copy the warm produces:
+
+- one master (`<key>.webp`)
+- one `@256` derivative (`<key>@256.webp`)
+- one `@512` derivative (`<key>@512.webp`)
+
+A second run against the same player should report `masters: 0 rendered` and
+`derivatives: 0 rendered` — every file is already on disk and the worker pool
+never activates. **Do not run `--all-players` until the single-player run has
+been verified.**
+
+---
+
 ## Settings
 
 | Variable | Default | What it controls |
