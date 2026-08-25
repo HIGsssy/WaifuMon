@@ -49,7 +49,7 @@ import { emitEvents } from '../gameEventEmitter';
 import { gameEvent } from '../../modules/events/gameEvents';
 import { renderOwnedCardAttachment } from '../assets/attachRenderedCard';
 import { respondEphemeral } from '../ephemeralSession';
-import { withBackRow } from '../ui';
+import { isStaleInteractionError, withBackRow } from '../ui';
 
 const PAGE_SIZE = 10;
 /** Discord select menus cap at 25 options; the gallery paginates past that. */
@@ -1232,7 +1232,7 @@ export async function handleWaifuSetBuddy(
   await renderInspect(ctx, interaction, prov, waifuId);
 }
 
-/** waifu:invest � spend Essence for waifu XP, re-render inspect with a status. */
+/** waifu:invest — spend Essence for waifu XP, re-render inspect with a status. */
 export async function handleWaifuInvest(
   ctx: AppContext,
   interaction: ButtonInteraction,
@@ -1247,16 +1247,27 @@ export async function handleWaifuInvest(
     });
     return;
   }
+  // ACK the button before the transaction runs. Without this a level-up would
+  // try to followUp() on an interaction the code has not yet replied to or
+  // deferred — after the essence has already been consumed — and the outer
+  // error boundary would tell the player "nothing was consumed" while the
+  // balance had, in fact, already moved.
+  try {
+    await interaction.deferUpdate();
+  } catch (err) {
+    if (isStaleInteractionError(err)) return;
+    throw err;
+  }
   try {
     const result = await ctx.services.collection.investEssence(prov.playerId, waifuId);
-    const invested = await ctx.services.collection.getOwned(prov.playerId, waifuId);
+    await renderInspect(ctx, interaction, prov, waifuId);
     if (result.toLevel > result.fromLevel) {
+      const invested = await ctx.services.collection.getOwned(prov.playerId, waifuId);
       await interaction.followUp({
-        content: `\u2b06\ufe0f **${displayName({ waifu: result.waifu, species: (await ctx.services.collection.getOwned(prov.playerId, waifuId)).species })}** advanced to Lv ${result.toLevel}!`,
+        content: `⬆️ **${displayName(invested)}** advanced to Lv ${result.toLevel}!`,
         ...EPHEMERAL,
       });
     }
-    await renderInspect(ctx, interaction, prov, waifuId);
   } catch (err) {
     if (err instanceof InsufficientEssenceError) {
       await respondEphemeral(interaction, { content: err.userMessage, components: withBackRow() });
