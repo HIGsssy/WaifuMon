@@ -83,16 +83,19 @@ export interface CardRenderInput {
   /**
    * How this render is being presented, as opposed to what is being rendered.
    *
-   * Ownership is the only member today. It exists because the same species card
-   * is drawn in contexts where ownership is meaningless — the encyclopedia, a
-   * hunt encounter, an admin preview — and the "CAUGHT" badge must not be baked
-   * into that master. It defaults to off, and it is part of the render key, so
-   * an owned and an unowned card of the same Waifumon are two distinct cached
-   * images rather than one that flickers between states.
+   * `showCaughtBadge` is the sole member today. It composites the "CAUGHT"
+   * emblem over the artwork — a **duplicate-warning** signal shown before a
+   * player commits charms in a hunt encounter, not a general "this card is
+   * owned" flag. Owned inspect/collection/portal surfaces do not set it: the
+   * badge would be a lie once the copy is already caught.
+   *
+   * Defaults to off, and is part of the render key, so a badge-carrying and a
+   * plain card of the same Waifumon are two distinct cached images rather than
+   * one that flickers between states.
    */
   context?:
     | {
-        owned?: boolean | undefined;
+        showCaughtBadge?: boolean | undefined;
       }
     | undefined;
   output?:

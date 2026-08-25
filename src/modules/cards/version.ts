@@ -10,7 +10,7 @@
  * text fitting, rasterizer options, composite order, WebP encode settings.
  * Refactors that provably cannot move a pixel do not need a bump.
  */
-export const CARD_RENDERER_VERSION = '6';
+export const CARD_RENDERER_VERSION = '7';
 
 /**
  * The canonical card canvas.

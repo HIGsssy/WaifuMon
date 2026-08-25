@@ -127,6 +127,12 @@ export interface CollectionService {
    * of the same species — i.e. the given waifu row is a duplicate. Read-only.
    */
   hasOtherActiveCopies(playerId: number, waifuId: number): Promise<boolean>;
+  /**
+   * True iff the player has at least one active (non-released) copy of the
+   * given species. Read-only — the hunt encounter uses it to decide whether
+   * to show the CAUGHT duplicate-warning badge *before* charms are spent.
+   */
+  hasActiveSpeciesCopy(playerId: number, speciesId: number): Promise<boolean>;
   /** Substring match on nickname/species name, active copies only. */
   searchByName(playerId: number, query: string, limit?: number): Promise<OwnedEntry[]>;
   /**
@@ -463,11 +469,26 @@ export function createCollectionService(deps: CollectionServiceDeps): Collection
     return others.total > 0;
   }
 
+  async function hasActiveSpeciesCopy(playerId: number, speciesId: number): Promise<boolean> {
+    const [row = { total: 0 }] = await db
+      .select({ total: count() })
+      .from(playerWaifus)
+      .where(
+        and(
+          eq(playerWaifus.playerId, playerId),
+          eq(playerWaifus.speciesId, speciesId),
+          isNull(playerWaifus.releasedAt),
+        ),
+      );
+    return row.total > 0;
+  }
+
   return {
     listOwned,
     getDexStats,
     getOwned,
     hasOtherActiveCopies,
+    hasActiveSpeciesCopy,
     searchByName,
     async convertDuplicateToEssence(playerId, waifuId, opts = {}) {
       // Convert to full duplicate-essence value; require the copy to actually

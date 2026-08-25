@@ -400,8 +400,10 @@ async function renderInspect(
         { name: 'Unlocks', value: unlockLines.join('\n'), inline: true },
       );
     // The canonical collectible view: a player looking at one of her own
-    // Waifumon sees the card, carrying her real level, her equipped look and
-    // the CAUGHT badge. Falls back to raw artwork when rendering is off.
+    // Waifumon sees the card, carrying her real level and her equipped look.
+    // The CAUGHT emblem is a *pre-catch* duplicate warning drawn only on the
+    // hunt encounter reveal, so it deliberately does not appear here. Falls
+    // back to raw artwork when rendering is off.
     const owned = await renderOwnedCardAttachment(ctx, entry);
     const artwork = owned ? null : attachCardOr(ctx, entry);
     const card = owned?.file ?? artwork;

@@ -137,7 +137,7 @@ describe('equivalence with in-process rendering', () => {
    * added nothing — no re-encode, no colour shift, no truncation.
    */
   it('produces byte-identical masters either way', async () => {
-    const input = cardInput(artwork, { slug: 'equivalence', level: 47, owned: true });
+    const input = cardInput(artwork, { slug: 'equivalence', level: 47, showCaughtBadge: true });
 
     const inProcess = await makeRenderer({ workers: 0 }).renderCard(input);
     const onWorker = await makeRenderer({ workers: 2 }).renderCard(input);

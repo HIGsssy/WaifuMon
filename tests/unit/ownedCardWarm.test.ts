@@ -77,7 +77,7 @@ function keyOf(input: CardRenderInput): string {
     input.species.slug,
     input.variant.appearanceId,
     `lv${input.progress?.level ?? 1}`,
-    input.context?.owned === true ? 'owned' : 'preview',
+    input.context?.showCaughtBadge === true ? 'caught' : 'plain',
     `w${width}`,
   ].join(':');
 }
@@ -185,9 +185,9 @@ describe('planOwnedCardWarm', () => {
     }
   });
 
-  it('marks every warmed card as owned, so the CAUGHT badge is in the key', () => {
+  it('does not stamp the CAUGHT badge on warmed cards — that flag is a pre-catch warning, not an ownership marker', () => {
     const plan = planOwnedCardWarm(deps, [copy(1, 5, 'standard')]);
-    expect(plan.inputs.every((i) => i.context?.owned === true)).toBe(true);
+    expect(plan.inputs.every((i) => i.context?.showCaughtBadge !== true)).toBe(true);
   });
 
   /**
@@ -201,9 +201,9 @@ describe('planOwnedCardWarm', () => {
     expect(plan.inputs).toHaveLength(1 + OWNED_GRID_WIDTHS.length);
     expect(new Set(plan.inputs.map(keyOf))).toEqual(
       new Set([
-        'warm_subject:level_20:lv25:owned:w1500',
-        'warm_subject:level_20:lv25:owned:w256',
-        'warm_subject:level_20:lv25:owned:w512',
+        'warm_subject:level_20:lv25:plain:w1500',
+        'warm_subject:level_20:lv25:plain:w256',
+        'warm_subject:level_20:lv25:plain:w512',
       ]),
     );
   });
@@ -255,7 +255,7 @@ describe('warmOwnedCards', () => {
   });
 
   it('does not draw a cold master when one is already cached', async () => {
-    renderer.cached.add('warm_subject:standard:lv5:owned:w1500');
+    renderer.cached.add('warm_subject:standard:lv5:plain:w1500');
 
     const result = await warmOwnedCards(deps, [copy(1, 5, 'standard')], { renderer });
 
@@ -265,7 +265,7 @@ describe('warmOwnedCards', () => {
   });
 
   it('does not resize a derivative that is already cached', async () => {
-    renderer.cached.add('warm_subject:standard:lv5:owned:w256');
+    renderer.cached.add('warm_subject:standard:lv5:plain:w256');
 
     const result = await warmOwnedCards(deps, [copy(1, 5, 'standard')], { renderer });
 

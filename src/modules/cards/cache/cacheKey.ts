@@ -48,8 +48,8 @@ export interface MasterKeyMaterial {
   card: RenderedCardMeta;
   /** The flavour line drawn in the information panel. */
   description: string;
-  /** Whether the ownership badge is composited. */
-  owned: boolean;
+  /** Whether the CAUGHT emblem (a pre-catch duplicate warning) is composited. */
+  showCaughtBadge: boolean;
   level: number;
   appearanceId: string;
   artworkContentHash: string;
@@ -62,9 +62,9 @@ export function effectiveCardMeta(input: CardRenderInput): SpeciesCardMeta {
   return { ...(input.species.card ?? {}), ...(input.overrides ?? {}) };
 }
 
-/** True when this render should composite the ownership badge. */
-export function effectiveOwned(input: CardRenderInput): boolean {
-  return input.context?.owned === true;
+/** True when this render should composite the CAUGHT (duplicate-warning) badge. */
+export function effectiveShowCaughtBadge(input: CardRenderInput): boolean {
+  return input.context?.showCaughtBadge === true;
 }
 
 /** Level printed on the card. Absent, non-finite, or < 1 all mean level 1. */
@@ -89,7 +89,7 @@ export function buildMasterKeyMaterial(
     },
     card: renderedCardMeta(effectiveCardMeta(input)),
     description: input.species.description ?? '',
-    owned: effectiveOwned(input),
+    showCaughtBadge: effectiveShowCaughtBadge(input),
     level: effectiveLevel(input),
     appearanceId: input.variant.appearanceId,
     artworkContentHash,

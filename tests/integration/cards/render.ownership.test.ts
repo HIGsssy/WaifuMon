@@ -1,11 +1,13 @@
 /**
- * The ownership overlay.
+ * The CAUGHT-badge overlay.
  *
- * The same species card is drawn in places where ownership is the point (a
- * player's collection) and places where it is meaningless (the encyclopedia, a
- * hunt encounter, an admin preview). So the "CAUGHT" badge is a render-time
- * overlay, never part of a species' card master — and the two states are two
- * distinct cached images rather than one that depends on who asked last.
+ * The same species card is drawn with the badge (in a hunt encounter where the
+ * player already owns ≥1 active copy — the pre-catch duplicate warning) and
+ * without it (everywhere else: encyclopedia, inspect, capture-success, the
+ * Portal owned card, an admin preview). So the badge is a render-time overlay
+ * keyed by an explicit `showCaughtBadge` flag, never inferred from ownership,
+ * and the two states are two distinct cached images rather than one that
+ * depends on who asked last.
  */
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -40,37 +42,38 @@ afterAll(async () => {
 });
 
 const base = () => cardInput(artwork, { slug: 'owned_fixture', name: 'Owned Fixture' });
-const owned = () => cardInput(artwork, { slug: 'owned_fixture', name: 'Owned Fixture', owned: true });
+const stamped = () =>
+  cardInput(artwork, { slug: 'owned_fixture', name: 'Owned Fixture', showCaughtBadge: true });
 
-describe('ownership overlay', () => {
-  it('is off by default — an unowned card is the plain master', async () => {
-    const [plain, explicitlyUnowned] = await Promise.all([
+describe('CAUGHT badge overlay', () => {
+  it('is off by default — a plain render is the plain master', async () => {
+    const [plain, explicitlyOff] = await Promise.all([
       renderer.computeMasterRenderKey(base()),
       renderer.computeMasterRenderKey(
-        cardInput(artwork, { slug: 'owned_fixture', name: 'Owned Fixture', owned: false }),
+        cardInput(artwork, { slug: 'owned_fixture', name: 'Owned Fixture', showCaughtBadge: false }),
       ),
     ]);
-    expect(plain).toBe(explicitlyUnowned);
+    expect(plain).toBe(explicitlyOff);
   });
 
-  it('gives the owned presentation its own render key', async () => {
-    const [plain, stamped] = await Promise.all([
+  it('gives the badged presentation its own render key', async () => {
+    const [plain, badged] = await Promise.all([
       renderer.computeMasterRenderKey(base()),
-      renderer.computeMasterRenderKey(owned()),
+      renderer.computeMasterRenderKey(stamped()),
     ]);
-    expect(plain).not.toBe(stamped);
+    expect(plain).not.toBe(badged);
   });
 
   it('changes the pixels, and only by adding to them', async () => {
-    const [plain, stamped] = await Promise.all([
+    const [plain, badged] = await Promise.all([
       renderer.renderCard(base()),
-      renderer.renderCard(owned()),
+      renderer.renderCard(stamped()),
     ]);
 
-    expect(isWebp(stamped.bytes)).toBe(true);
-    expect(stamped.bytes.equals(plain.bytes)).toBe(false);
+    expect(isWebp(badged.bytes)).toBe(true);
+    expect(badged.bytes.equals(plain.bytes)).toBe(false);
     // Same canvas — the badge is composited onto the card, not beside it.
-    for (const result of [plain, stamped]) {
+    for (const result of [plain, badged]) {
       const meta = await sharp(result.bytes).metadata();
       expect(meta.width).toBe(CARD_MASTER_WIDTH);
       expect(meta.height).toBe(CARD_MASTER_HEIGHT);
@@ -85,13 +88,13 @@ describe('ownership overlay', () => {
    * shield and information panel should change only by encoder noise.
    */
   it('leaves the frame furniture untouched — the badge sits over the artwork', async () => {
-    const [plain, stamped] = await Promise.all([
+    const [plain, badged] = await Promise.all([
       renderer.renderCard(base()).then((r) => sharp(r.bytes).raw().toBuffer({ resolveWithObject: true })),
-      renderer.renderCard(owned()).then((r) => sharp(r.bytes).raw().toBuffer({ resolveWithObject: true })),
+      renderer.renderCard(stamped()).then((r) => sharp(r.bytes).raw().toBuffer({ resolveWithObject: true })),
     ]);
 
     const { data: a, info } = plain;
-    const { data: b } = stamped;
+    const { data: b } = badged;
     const channels = info.channels;
 
     /** Mean absolute per-channel difference over a region, 0–255. */
@@ -127,10 +130,10 @@ describe('ownership overlay', () => {
 
   it('caches the two states separately rather than overwriting one with the other', async () => {
     await renderer.renderCard(base());
-    await renderer.renderCard(owned());
+    await renderer.renderCard(stamped());
 
     const first = await renderer.renderCard(base());
-    const second = await renderer.renderCard(owned());
+    const second = await renderer.renderCard(stamped());
 
     expect(first.fromCache).toBe(true);
     expect(second.fromCache).toBe(true);

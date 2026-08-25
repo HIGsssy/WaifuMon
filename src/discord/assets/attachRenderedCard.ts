@@ -24,7 +24,7 @@
  */
 import { AttachmentBuilder } from 'discord.js';
 import { renderCard } from '../../modules/cards';
-import { ownedCardRequest } from '../../modules/appearance/cardPresentation';
+import { ownedCardRequest, speciesCardRequest } from '../../modules/appearance/cardPresentation';
 import type { OwnedCardSubject } from '../../modules/appearance/cardPresentation';
 import type { AppContext } from '../types';
 
@@ -118,6 +118,47 @@ export async function renderOwnedCardAttachment(
     ctx.logger.warn(
       { err, tag: 'discord/card-render', slug: subject.species.slug, waifuId: subject.waifu.id },
       'card render failed; falling back to raw artwork',
+    );
+    return null;
+  }
+}
+
+/**
+ * A **species-preview** card with the CAUGHT duplicate-warning badge, for the
+ * hunt encounter reveal when the player already owns ≥1 active copy.
+ *
+ * Never invoked for a first encounter of a species: the badge is a warning
+ * only, and painting it on a species the player has not caught would be
+ * meaningless. The caller checks ownership.
+ *
+ * `null` on any failure — renderer off, missing frame, missing content — so
+ * the encounter falls back to raw artwork rather than refusing to reveal.
+ */
+export async function renderEncounterDuplicateCardAttachment(
+  ctx: AppContext,
+  species: { slug: string },
+): Promise<RenderedCardAttachment | null> {
+  if (!cardsEnabled(ctx)) return null;
+
+  const content = ctx.services.appearance.speciesContent(species.slug);
+  if (!content) return null;
+
+  try {
+    const { input } = speciesCardRequest(
+      { appearance: ctx.services.appearance, assetsDir: ctx.config.assetsDir, logger: ctx.logger },
+      content,
+      { width: DISCORD_CARD_WIDTH, showCaughtBadge: true },
+    );
+    const card = await renderCard(input);
+    const name = renderedCardFilename(species.slug);
+    return {
+      file: new AttachmentBuilder(card.bytes, { name }),
+      url: `attachment://${name}`,
+    };
+  } catch (err) {
+    ctx.logger.warn(
+      { err, tag: 'discord/encounter-card-render', slug: species.slug },
+      'encounter duplicate-warning render failed; falling back to raw artwork',
     );
     return null;
   }

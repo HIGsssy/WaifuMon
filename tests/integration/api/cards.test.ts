@@ -482,11 +482,12 @@ describe('GET /players/:playerId/collection/owned/:waifuId/card', () => {
   });
 
   /**
-   * The owned route draws the ownership badge and the species route does not,
-   * so the two are deliberately different images and their ETags cannot be
-   * compared directly any more. What the level actually drives is asserted two
-   * ways: the serve log reports the level that reached the renderer, and the
-   * species route still re-keys across levels.
+   * The owned card and a species preview at the same level with the same
+   * resolved appearance are now the same image — ownership no longer forks the
+   * cache (only an explicit CAUGHT-badge context does, and no owned surface
+   * sets it). What the level actually drives is asserted two ways: the serve
+   * log reports the level that reached the renderer, and the species route
+   * still re-keys across levels.
    */
   it('uses the copy’s own level, not the preview default', async () => {
     const owned = await app.inject({ method: 'GET', url: ownedUrl, headers: AUTH });
@@ -504,8 +505,9 @@ describe('GET /players/:playerId/collection/owned/:waifuId/card', () => {
     ]);
     expect(atLevel22.headers.etag).not.toBe(atLevel1.headers.etag);
 
-    // And an owned card is its own image, not a species preview.
-    expect(owned.headers.etag).not.toBe(atLevel22.headers.etag);
+    // Same species, same worn appearance, same level → same image now that
+    // the CAUGHT badge is opt-in rather than ownership-derived.
+    expect(owned.headers.etag).toBe(atLevel22.headers.etag);
   });
 
   it('uses the appearance she is wearing, resolved through the shared resolver', async () => {

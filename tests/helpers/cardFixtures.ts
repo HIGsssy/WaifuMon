@@ -53,7 +53,7 @@ export interface CardInputOverrides {
   level?: number;
   description?: string;
   card?: CardRenderInput['species']['card'];
-  owned?: boolean;
+  showCaughtBadge?: boolean;
   width?: number;
 }
 
@@ -88,7 +88,9 @@ export function cardInput(artworkPath: string, overrides: CardInputOverrides = {
       artworkAbsolutePath: artworkPath,
     },
     progress: { level: overrides.level ?? 12 },
-    ...(overrides.owned === undefined ? {} : { context: { owned: overrides.owned } }),
+    ...(overrides.showCaughtBadge === undefined
+      ? {}
+      : { context: { showCaughtBadge: overrides.showCaughtBadge } }),
   };
   return overrides.width === undefined ? input : { ...input, output: { width: overrides.width } };
 }
