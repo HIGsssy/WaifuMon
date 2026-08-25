@@ -28,7 +28,9 @@ Three things keep the worst case uncommon, and none of them is a startup job:
    that file — two resizes, no rasterizing. The capture reply never waits for it.
 2. **Ops warming.** `npm run cards:warm -- --player <id>` / `--all-players`
    covers the back catalogue: everything captured before this existed, and
-   anything a cache sweep reclaimed.
+   anything a cache sweep reclaimed. Inside a production container use the
+   `:prod` variant (`cards:warm:prod`) — the runtime image ships without
+   `tsx`, and the `:prod` script runs the compiled JS directly.
 3. **Self-healing warm.** Listing a player's collection schedules a bounded,
    deduped background warm of that player's owned cards. It is the *fallback* —
    it catches what the first two missed — and the HTTP response never waits for
@@ -115,11 +117,13 @@ fix is what makes that log line quiet in normal operation; it is not silencing.
 ### Warming a single test player
 
 Run inside the container so the process sees the real cache mount, the real
-DB and the real `.env`:
+DB and the real `.env`. The runtime image does not ship `tsx`, so use the
+`:prod` script variant — it runs the compiled JS at `dist/tools/warmCards.js`
+and takes the same flags:
 
 ```sh
 docker compose exec waifumon-bot \
-  npm run cards:warm -- --player <test-player-id>
+  npm run cards:warm:prod -- --player <test-player-id>
 ```
 
 For each owned copy the warm produces:
@@ -132,6 +136,27 @@ A second run against the same player should report `masters: 0 rendered` and
 `derivatives: 0 rendered` — every file is already on disk and the worker pool
 never activates. **Do not run `--all-players` until the single-player run has
 been verified.**
+
+### GC on the deployed server
+
+Same reason — use the `:prod` variant, which resolves to
+`node dist/tools/gcCards.js`:
+
+```sh
+# Preview only, writes nothing:
+docker compose exec waifumon-bot \
+  npm run cards:gc:prod -- --dry-run
+
+# Reclaim entries older than the default (see the module for the value):
+docker compose exec waifumon-bot npm run cards:gc:prod
+```
+
+The dev-side `cards:warm` / `cards:gc` scripts continue to use `tsx` and are
+the right commands on a developer machine; they will fail in the runtime
+image with `sh: tsx: not found`, which is deliberate — that image never
+carries a TypeScript loader. `cards:geometry` is a build-time tool that
+derives frame geometry from PNGs; it has no `:prod` variant on purpose
+because it never runs on a deployed server.
 
 ---
 
@@ -168,10 +193,11 @@ happen — while the second thread's cost (a second decoded card in flight, a
 second core taken from Postgres and the gateway during a burst) is paid on the
 machine that is also answering Discord.
 
-Then run the back catalogue once, out of hours:
+Then run the back catalogue once, out of hours (`:prod` variant inside the
+container — the runtime image does not carry `tsx`):
 
 ```
-npm run cards:warm -- --all-players
+docker compose exec waifumon-bot npm run cards:warm:prod -- --all-players
 ```
 
 and check the report. `masters: 0 rendered` on a second run is the steady state
