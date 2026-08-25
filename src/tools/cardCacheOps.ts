@@ -12,15 +12,31 @@
  */
 import { defaultAppearance, resolveAppearances } from '../modules/appearance/appearanceContent';
 import { resolveAppearanceAssetOrLegacyPath } from '../modules/appearance/assetResolver';
+import { createAppearanceService } from '../modules/appearance/appearanceService';
+import type { CardPresentationDeps } from '../modules/appearance/cardPresentation';
+import {
+  OWNED_GRID_WIDTHS,
+  warmOwnedCards,
+  type OwnedCardWarmResult,
+  type OwnedCardWarmSkip,
+} from '../modules/appearance/ownedCardWarm';
+import {
+  listOwnedWarmSubjects,
+  listPlayersWithOwnedCards,
+} from '../modules/appearance/ownedCardWarmSubjects';
 import {
   collectCardCacheGarbage,
   computeCardRenderKey,
+  getCardRenderer,
   warmCardCache,
   type CardCacheGcResult,
   type CardRenderInput,
   type CardRenderer,
+  type CardRenderPoolStats,
+  type WarmCardCacheFailure,
   type WarmCardCacheResult,
 } from '../modules/cards';
+import type { Db } from '../db/client';
 import { readContentFiles } from '../modules/content/loader';
 import { toCardRenderInput } from '../modules/content/speciesCardInput';
 import type { SpeciesContent } from '../modules/content/schemas';
@@ -153,6 +169,175 @@ export function formatWarmReport(report: CardWarmRunReport): string {
   ];
   for (const skip of report.skipped) {
     lines.push(`  skipped ${skip.slug}/${skip.appearanceId}: ${skip.reason}`);
+  }
+  for (const failure of report.failed) {
+    lines.push(`  FAILED ${failure.slug}/${failure.appearanceId}: ${failure.message}`);
+  }
+  return lines.join('\n');
+}
+
+// ── Owned-card warming (`cards:warm --player` / `--all-players`) ────────────
+
+/**
+ * Players warmed at once.
+ *
+ * One, and it is the same reasoning as `DEFAULT_OWNED_WARM_CONCURRENCY`: a
+ * back-catalogue warm is a long operator job on a machine that is also serving
+ * Discord, and finishing it in half the time is worth nothing if the bot goes
+ * unresponsive while it runs. `--player-concurrency` raises it for an operator
+ * who has measured their own node — never `os.cpus()`, which describes the
+ * developer's workstation and not the deployment.
+ */
+export const DEFAULT_OWNED_WARM_PLAYER_CONCURRENCY = 1;
+
+export interface OwnedWarmRunOptions {
+  db: Db;
+  contentDir: string;
+  assetsDir: string;
+  /** Players to warm. Omitted means every player who owns anything. */
+  playerIds?: readonly number[] | undefined;
+  /** Cards in flight per player. Defaults to the owned warm's own default (1). */
+  concurrency?: number | undefined;
+  /** Players in flight at once. {@link DEFAULT_OWNED_WARM_PLAYER_CONCURRENCY}. */
+  playerConcurrency?: number | undefined;
+  /** Derivative widths. Defaults to {@link OWNED_GRID_WIDTHS} (256, 512). */
+  widths?: readonly number[] | undefined;
+  renderer?: CardRenderer | undefined;
+  logger?: Logger | undefined;
+  onPlayer?: ((done: number, total: number, playerId: number) => void) | undefined;
+}
+
+export interface OwnedWarmRunReport {
+  playersProcessed: number;
+  ownedConsidered: number;
+  mastersRendered: number;
+  mastersCached: number;
+  derivativesCreated: number;
+  derivativesCached: number;
+  skipped: OwnedCardWarmSkip[];
+  failed: WarmCardCacheFailure[];
+  durationMs: number;
+  /** Cards in flight per player, as actually used. */
+  concurrency: number;
+  /** Players in flight, as actually used. */
+  playerConcurrency: number;
+  /**
+   * Worker-pool counters, present only once a cold master has been drawn.
+   * Absent is the good outcome: the run was cache hits and no render thread
+   * ever started.
+   */
+  workers?: CardRenderPoolStats | undefined;
+}
+
+/**
+ * Back-catalogue warm for owned cards.
+ *
+ * Uses exactly the same planner the runtime self-heal and the post-capture
+ * follow-up use ({@link warmOwnedCards}), so a card this warms is byte-identical
+ * to the one a request would have produced. A CLI-only construction path would
+ * be a second definition of "which card does this copy have", and the first time
+ * the two disagreed the cache would silently double.
+ */
+export async function runOwnedCardWarm(options: OwnedWarmRunOptions): Promise<OwnedWarmRunReport> {
+  const started = Date.now();
+  const content = readContentFiles(options.contentDir);
+  // Resolved once, and *named*, rather than left to `warmOwnedCards` to default
+  // internally: the report quotes worker-pool counters at the end, and a run
+  // that reached for the shared renderer implicitly would have nothing to quote
+  // and would report "no threads started" after drawing a hundred masters.
+  const renderer: CardRenderer = options.renderer ?? getCardRenderer();
+  const appearance = createAppearanceService({ db: options.db, getContent: () => content });
+  const presentation: CardPresentationDeps = {
+    appearance,
+    assetsDir: options.assetsDir,
+    ...(options.logger === undefined ? {} : { logger: options.logger }),
+  };
+
+  const playerIds = options.playerIds ?? (await listPlayersWithOwnedCards(options.db));
+  const playerConcurrency = Math.max(
+    1,
+    options.playerConcurrency ?? DEFAULT_OWNED_WARM_PLAYER_CONCURRENCY,
+  );
+
+  const report: OwnedWarmRunReport = {
+    playersProcessed: 0,
+    ownedConsidered: 0,
+    mastersRendered: 0,
+    mastersCached: 0,
+    derivativesCreated: 0,
+    derivativesCached: 0,
+    skipped: [],
+    failed: [],
+    durationMs: 0,
+    concurrency: Math.max(1, options.concurrency ?? 1),
+    playerConcurrency,
+  };
+
+  let next = 0;
+  let done = 0;
+
+  async function worker(): Promise<void> {
+    for (;;) {
+      const index = next;
+      next += 1;
+      const playerId = playerIds[index];
+      if (playerId === undefined) return;
+
+      const subjects = await listOwnedWarmSubjects(options.db, playerId);
+      const result: OwnedCardWarmResult = await warmOwnedCards(presentation, subjects, {
+        renderer,
+        widths: options.widths ?? OWNED_GRID_WIDTHS,
+        ...(options.concurrency === undefined ? {} : { concurrency: options.concurrency }),
+        ...(options.logger === undefined ? {} : { logger: options.logger }),
+      });
+
+      report.playersProcessed += 1;
+      report.ownedConsidered += result.ownedConsidered;
+      report.mastersRendered += result.mastersRendered;
+      report.mastersCached += result.mastersCached;
+      report.derivativesCreated += result.derivativesCreated;
+      report.derivativesCached += result.derivativesCached;
+      report.skipped.push(...result.skipped);
+      report.failed.push(...result.failed);
+
+      done += 1;
+      options.onPlayer?.(done, playerIds.length, playerId);
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(playerConcurrency, playerIds.length) }, () => worker()),
+  );
+
+  report.durationMs = Date.now() - started;
+  const workers = renderer.getStats().workers;
+  if (workers !== undefined) report.workers = workers;
+  return report;
+}
+
+export function formatOwnedWarmReport(report: OwnedWarmRunReport): string {
+  const lines = [
+    `Owned cards warmed for ${report.playersProcessed} player(s): ` +
+      `${report.ownedConsidered} owned copies considered`,
+    `  masters:     ${report.mastersRendered} rendered, ${report.mastersCached} already cached`,
+    `  derivatives: ${report.derivativesCreated} created, ${report.derivativesCached} already cached`,
+    `  concurrency: ${report.concurrency} card(s) x ${report.playerConcurrency} player(s)`,
+    `  elapsed:     ${(report.durationMs / 1000).toFixed(1)}s`,
+  ];
+
+  if (report.workers) {
+    lines.push(
+      `  workers:     ${report.workers.workers} thread(s), ` +
+        `peak concurrent ${report.workers.peakConcurrent}, ` +
+        `peak queued ${report.workers.peakQueued}, ` +
+        `dispatched ${report.workers.dispatched}`,
+    );
+  } else {
+    lines.push('  workers:     none started (nothing needed a cold render)');
+  }
+
+  for (const skip of report.skipped) {
+    lines.push(`  skipped waifu ${skip.waifuId} (${skip.slug}): ${skip.reason}`);
   }
   for (const failure of report.failed) {
     lines.push(`  FAILED ${failure.slug}/${failure.appearanceId}: ${failure.message}`);

@@ -92,6 +92,24 @@ export async function renderOwnedCardAttachment(
     const card = await renderCard(input);
     const name = renderedCardFilename(subject.species.slug, subject.waifu.id);
 
+    /**
+     * The grid derivatives, for free, right after the expensive part.
+     *
+     * The render above was at 1024, which means the master now exists on disk.
+     * Producing the @256 and @512 the Portal's collection tiles ask for is
+     * therefore two Sharp resizes off a file already in the cache — no resvg,
+     * no worker thread — and it is the difference between a freshly-captured
+     * Waifumon appearing instantly in the grid and appearing after a cold
+     * render.
+     *
+     * Scheduled, never awaited: the player is waiting on this reply, and a
+     * capture must not spend a millisecond of it on an optimisation for a page
+     * they may not open. `scheduleCopyWarm` dedupes by copy, so the ephemeral
+     * reply and the public announcement — which both render this same card —
+     * produce one warm between them.
+     */
+    ctx.cardWarmer?.scheduleCopyWarm(subject);
+
     return {
       file: new AttachmentBuilder(card.bytes, { name }),
       url: `attachment://${name}`,

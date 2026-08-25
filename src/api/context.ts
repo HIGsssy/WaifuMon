@@ -12,6 +12,7 @@
  * Discord-specific on it.
  */
 import type { AppServices } from '../discord/types';
+import type { OwnedCardWarmer } from '../modules/appearance/ownedCardWarm';
 import type { CardRenderer } from '../modules/cards';
 import type { LoadedContent } from '../modules/content/schemas';
 import type { IdentityResolver } from './identity';
@@ -36,6 +37,17 @@ export interface ApiContext {
    * point at a temp cache root instead of writing into `assets/.card-cache/`.
    */
   cardRenderer?: CardRenderer | undefined;
+  /**
+   * Background warming of a player's owned cards.
+   *
+   * Optional, and absent is the normal state for any deployment with the card
+   * renderer switched off — a context without one simply never warms, which is
+   * exactly right when there is nothing to warm into.
+   *
+   * Nothing in the request path may await it. The collection listing *triggers*
+   * a warm and returns; see the note on that route.
+   */
+  cardWarmer?: OwnedCardWarmer | undefined;
   /**
    * Optional. Resolves a Discord snowflake to a display name and avatar for
    * presentation only (`src/api/identity.ts`). Injected by the host, which owns

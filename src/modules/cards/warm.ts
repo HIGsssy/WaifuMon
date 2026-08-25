@@ -11,10 +11,18 @@
  * Warming is a convenience, not a correctness requirement: every card renders
  * on demand anyway. So a failure warms what it can and reports the rest rather
  * than aborting the run.
+ *
+ * Most of a warm run's work is discovering there is none: a second pass over
+ * the same set is entirely cache hits. So each entry is *probed* first
+ * (`renderer.isCached`, one `stat`) and only rendered on a miss — otherwise a
+ * hot run would read every cached card into memory to immediately discard it.
  */
 import { getCardRenderer } from './renderer';
 import type { CardRenderInput, CardRenderer } from './types';
 import type { Logger } from '../../shared/logger';
+
+/** What one planned card turned out to cost. */
+export type WarmCardOutcome = 'rendered' | 'cached';
 
 /** Rasterizing is CPU-bound; a small pool keeps a warm run off every core. */
 const DEFAULT_CONCURRENCY = 2;
@@ -27,6 +35,16 @@ export interface WarmCardCacheOptions {
   /** Cancels the run between cards — a long warm should be interruptible. */
   signal?: AbortSignal | undefined;
   onProgress?: ((done: number, total: number) => void) | undefined;
+  /**
+   * Called once per entry that did not fail, with what it cost.
+   *
+   * The aggregate counters below cannot say *which* card was a hit, and a
+   * caller warming a master plus its derivatives legitimately wants that split
+   * — "the masters were all cached, only the 256s were drawn" is the difference
+   * between a warm run that did nothing and one that did the useful thing.
+   * Attributing it here beats re-deriving it from widths at every call site.
+   */
+  onCard?: ((input: CardRenderInput, outcome: WarmCardOutcome) => void) | undefined;
 }
 
 export interface WarmCardCacheFailure {
@@ -70,9 +88,17 @@ export async function warmCardCache(
       if (!input) return;
 
       try {
-        const card = await renderer.renderCard(input);
-        if (card.fromCache) result.cached += 1;
-        else result.rendered += 1;
+        // Probe before rendering: on an already-warm set this is the whole
+        // run, and it costs a `stat` per entry rather than a full file read.
+        if (await renderer.isCached(input)) {
+          result.cached += 1;
+          options.onCard?.(input, 'cached');
+        } else {
+          const card = await renderer.renderCard(input);
+          if (card.fromCache) result.cached += 1;
+          else result.rendered += 1;
+          options.onCard?.(input, card.fromCache ? 'cached' : 'rendered');
+        }
       } catch (err) {
         result.failed.push({
           slug: input.species.slug,

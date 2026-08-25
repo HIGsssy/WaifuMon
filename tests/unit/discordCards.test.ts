@@ -176,6 +176,64 @@ describe('owned card attachment', () => {
   }, 60_000);
 });
 
+/**
+ * A capture renders at 1024, which draws the master. The @256/@512 the Portal's
+ * collection grid asks for are then two cheap resizes off that same file — so
+ * the capture schedules them and returns, and the player never waits for an
+ * optimisation aimed at a page they may not open.
+ */
+describe('post-capture derivative warm', () => {
+  /** A warmer double that records what the capture path asked it to do. */
+  function warmingCtx(cardsOn = true) {
+    const warmed: number[] = [];
+    const base = makeCtx(cardsOn);
+    const withWarmer = {
+      ...base,
+      cardWarmer: {
+        scheduleCopyWarm: (subject: { waifu: { id: number } }) => {
+          warmed.push(subject.waifu.id);
+          return 'started' as const;
+        },
+      },
+    } as unknown as AppContext;
+    return { warmed, ctx: withWarmer };
+  }
+
+  it('schedules a grid-derivative warm for the copy it just drew', async () => {
+    const { warmed, ctx: warming } = warmingCtx();
+
+    const attachment = await renderOwnedCardAttachment(warming, {
+      waifu: newWaifu,
+      species: speciesRow,
+    });
+
+    expect(attachment).not.toBeNull();
+    expect(warmed).toEqual([4821]);
+  }, 60_000);
+
+  it('schedules nothing when the card could not be drawn', async () => {
+    const { warmed, ctx: warming } = warmingCtx();
+
+    const attachment = await renderOwnedCardAttachment(warming, {
+      waifu: newWaifu,
+      species: { slug: 'not_in_content' } as never,
+    });
+
+    // Nothing was rendered, so there is no master for a derivative to resize
+    // from — warming would be a guaranteed-cold render, not a cheap follow-up.
+    expect(attachment).toBeNull();
+    expect(warmed).toEqual([]);
+  });
+
+  it('renders exactly as before when no warmer is wired', async () => {
+    const attachment = await renderOwnedCardAttachment(ctx, {
+      waifu: newWaifu,
+      species: speciesRow,
+    });
+    expect(attachment).not.toBeNull();
+  }, 60_000);
+});
+
 describe('capture outcome embed', () => {
   it('shows the rendered owned card on a successful capture', async () => {
     const payload = await buildEphemeralOutcomeMessage(ctx, captureResult('success'));
@@ -249,7 +307,13 @@ describe('render path', () => {
   it('reaches the renderer only through the cards module’s public entry point', () => {
     for (const file of discordSources()) {
       const source = fs.readFileSync(file, 'utf8');
-      for (const internal of ['cards/composer', 'cards/rasterizer', 'cards/cache', 'cards/assets/']) {
+      for (const internal of [
+        'cards/composer',
+        'cards/rasterizer',
+        'cards/cache',
+        'cards/assets/',
+        'cards/worker',
+      ]) {
         expect(source, `${file} imports ${internal}`).not.toContain(internal);
       }
     }

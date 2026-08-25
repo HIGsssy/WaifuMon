@@ -37,6 +37,23 @@ export class CardDiskCache {
     return path.join(this.root, slug, `${renderKey}@${width}.webp`);
   }
 
+  /**
+   * Whether a cache file is present, without reading it.
+   *
+   * A warm run's most common answer is "already there", and for a 25-card
+   * collection that is 75 files it would otherwise read into memory only to
+   * throw the bytes away. `stat` answers the same question for the cost of one
+   * directory lookup.
+   */
+  async exists(filePath: string): Promise<boolean> {
+    try {
+      const stat = await fs.stat(filePath);
+      return stat.isFile() && stat.size > 0;
+    } catch {
+      return false;
+    }
+  }
+
   /** Bytes if present, `null` on any miss. Never throws for a missing file. */
   async read(filePath: string): Promise<Buffer | null> {
     try {

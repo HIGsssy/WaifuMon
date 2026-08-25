@@ -511,6 +511,8 @@ All of these run from the repository root.
 | `npm run appearances:sync` | Writes them into the pack each species already lives in. |
 | `npm run assets:thumbs` | Generates the Portal's display renditions. Delegates to the `portal` package. |
 | `npm run cards:warm` | Pre-renders the default card for every enabled species, so the first request is a cache hit. Safe to re-run; already-cached cards cost nothing. |
+| `npm run cards:warm -- --player <id>` | Pre-renders the **owned** cards for one player's current collection — her real level, the look she is wearing, the CAUGHT badge — plus the `@256` and `@512` the Portal's collection grid draws. Needs `DATABASE_URL`. |
+| `npm run cards:warm -- --all-players` | The same for every player who owns anything. One player at a time by default; `--player-concurrency N` raises it. |
 | `npm run cards:gc -- --dry-run` | Reports which cached card renders would be reclaimed. Add nothing to actually remove them. |
 | `npm run content:prepare` | Both of the above, in order, stopping if the first fails. |
 | `npm test` | Full validation, including every appearance rule above. |

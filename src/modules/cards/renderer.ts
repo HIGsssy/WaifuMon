@@ -22,39 +22,30 @@
  * The master is the card's identity; a requested display width only selects
  * which file derives from it. Asking for 512px never re-runs the composite and
  * never produces a second master.
+ *
+ * ## Where the work happens
+ *
+ * Everything on this page is cheap: hashing artwork, reading the disk cache,
+ * collapsing identical in-flight keys, resizing a derivative. The one expensive
+ * step — drawing the master, which blocks a thread for ~750 ms in synchronous
+ * resvg — is handed to a worker pool (`worker/workerPool.ts`) so it stops
+ * blocking the thread that serves Discord and Fastify.
+ *
+ * The order matters and is load-bearing: **cache first, dedupe second, worker
+ * last**. A warm hit must never queue behind a cold render, and two callers
+ * asking for the same card must produce one job rather than two.
  */
 import { CardAssetLoader } from './assets/loader';
 import { validateCardAssets } from './assets/validation';
-import {
-  buildMasterKeyMaterial,
-  computeMasterRenderKey as computeKey,
-  effectiveCardMeta,
-  effectiveLevel,
-  effectiveOwned,
-} from './cache/cacheKey';
+import { buildMasterKeyMaterial, computeMasterRenderKey as computeKey } from './cache/cacheKey';
 import { CardDiskCache, InFlightMap } from './cache/diskCache';
 import { ArtworkHashMemo } from './cache/hashMemo';
-import {
-  buildOverlaySvg,
-  buildUnderlaySvg,
-  planArtworkCrop,
-  planIconPlacement,
-  planOwnedBadge,
-  type ComposeCardInput,
-  type RasterPlacement,
-} from './composer/cardComposer';
-import { hashArtwork, readArtwork } from './contentHash';
+import { hashArtwork } from './contentHash';
 import { CardOutputWidthError } from './errors';
 import { DEFAULT_ASSET_ROOT, DEFAULT_CACHE_ROOT } from './paths';
-import {
-  compositeMasterWebp,
-  imageSize,
-  renderArtwork,
-  renderFrame,
-  renderPlacement,
-  renderVectorLayer,
-  resizeFromMaster,
-} from './rasterizer/renderer';
+import { renderMasterBytes } from './rasterizer/masterRender';
+import { resizeFromMaster } from './rasterizer/renderer';
+import { CardRenderPool, DEFAULT_CARD_RENDER_WORKERS } from './worker/workerPool';
 import type {
   CardRenderer,
   CardRenderInput,
@@ -63,8 +54,6 @@ import type {
   CardRendererStats,
 } from './types';
 import { cardEtag, CARD_MASTER_HEIGHT, CARD_MASTER_WIDTH } from './version';
-
-const CANVAS = { width: CARD_MASTER_WIDTH, height: CARD_MASTER_HEIGHT } as const;
 
 /** Widths the renderer will derive. Wide enough to cover the portal's buckets. */
 export const MIN_OUTPUT_WIDTH = 16;
@@ -77,6 +66,8 @@ class CardRendererImpl implements CardRenderer {
   private readonly masterRenders = new InFlightMap<Buffer>();
   private readonly derivativeRenders = new InFlightMap<Buffer>();
   private readonly logger: CardRendererOptions['logger'];
+  private readonly workerCount: number;
+  private workerPool: CardRenderPool | undefined;
   private validation: Promise<void> | undefined;
   private readonly stats: CardRendererStats = {
     masterRenders: 0,
@@ -89,6 +80,7 @@ class CardRendererImpl implements CardRenderer {
     this.loader = new CardAssetLoader(options.assetRoot ?? DEFAULT_ASSET_ROOT);
     this.cache = new CardDiskCache(options.cacheRoot ?? DEFAULT_CACHE_ROOT, options.logger);
     this.logger = options.logger;
+    this.workerCount = Math.max(0, options.workers ?? DEFAULT_CARD_RENDER_WORKERS);
   }
 
   /** Runs once per renderer; a broken kit fails the first render, loudly. */
@@ -116,10 +108,34 @@ class CardRendererImpl implements CardRenderer {
     return computeKey(buildMasterKeyMaterial(input, artworkContentHash, kitVersion));
   }
 
+  /**
+   * Whether the exact file a `renderCard` of this input would return is
+   * already on disk — one `stat`, no read, no rasterizing.
+   *
+   * It still hashes the artwork, because the render key *is* the artwork hash
+   * and there is no cheaper way to name the file. That hash is memoised per
+   * path+mtime, so a warm run over a collection pays it once per appearance.
+   *
+   * Deliberately a probe rather than a guarantee: the answer can go stale
+   * between the check and the request (a GC sweep, a content edit). Callers
+   * use it to *skip* work, never to promise a hit — `renderCard` re-checks the
+   * disk itself and simply renders if the file has gone.
+   */
+  async isCached(input: CardRenderInput): Promise<boolean> {
+    const width = resolveOutputWidth(input);
+    const renderKey = await this.computeMasterRenderKey(input);
+    const filePath =
+      width === CARD_MASTER_WIDTH
+        ? this.cache.masterPath(input.species.slug, renderKey)
+        : this.cache.derivativePath(input.species.slug, renderKey, width);
+    return this.cache.exists(filePath);
+  }
+
   getStats(): CardRendererStats {
     return {
       ...this.stats,
       dedupedRenders: this.masterRenders.joined + this.derivativeRenders.joined,
+      ...(this.workerPool === undefined ? {} : { workers: this.workerPool.getStats() }),
     };
   }
 
@@ -183,93 +199,42 @@ class CardRendererImpl implements CardRenderer {
   }
 
   /**
-   * Draws one card.
+   * Draws one card, on a worker thread when the pool is enabled.
    *
-   * Reads first (all cached in the loader after the first card), then plans
-   * the layout from the frame's geometry, then rasterizes. The plan step is
-   * pure and synchronous — every coordinate is decided before a single pixel
-   * is touched, which is what makes the layout testable without rendering.
+   * This is the only expensive step in the renderer, and the only one that
+   * leaves the main thread. `workers: 0` keeps it here instead — same
+   * function, same bytes — which is what makes the in-process path a genuine
+   * fallback rather than a second implementation to keep in step.
    */
-  private async renderMaster(input: CardRenderInput): Promise<Buffer> {
-    const { rarity, race, affinity } = input.species;
-    const owned = effectiveOwned(input);
+  private renderMaster(input: CardRenderInput): Promise<Buffer> {
+    const pool = this.pool();
+    return pool === null
+      ? renderMasterBytes(this.loader, input, this.logger)
+      : pool.render(input);
+  }
 
-    const [geometry, frameBytes, raceIcon, affinityIcon, rarityIcon, artwork, ownedBadgeBytes] =
-      await Promise.all([
-        this.loader.frameGeometry(rarity),
-        this.loader.frame(rarity),
-        this.loader.raceIcon(race),
-        this.loader.affinityIcon(affinity),
-        this.loader.rarityIcon(rarity),
-        readArtwork(input.variant.artworkAbsolutePath, {
-          speciesSlug: input.species.slug,
-          appearanceId: input.variant.appearanceId,
-        }),
-        owned ? this.loader.ownedBadge() : Promise.resolve(undefined),
-      ]);
-
-    const card = effectiveCardMeta(input);
-    const composeInput: ComposeCardInput = {
-      geometry,
-      name: input.species.name,
-      race,
-      affinity,
-      rarity,
-      level: effectiveLevel(input),
-      description: input.species.description ?? null,
-      card,
-      icons: { race: raceIcon, affinity: affinityIcon, rarity: rarityIcon },
-      ...(ownedBadgeBytes === undefined ? {} : { ownedBadge: ownedBadgeBytes }),
-    };
-
-    const placements: RasterPlacement[] = [
-      planIconPlacement(geometry.circles.race, raceIcon),
-      planIconPlacement(geometry.circles.affinity, affinityIcon),
-      planIconPlacement(geometry.circles.rarity, rarityIcon),
-    ];
-    if (ownedBadgeBytes !== undefined) {
-      placements.push(
-        planOwnedBadge(geometry.art, ownedBadgeBytes, await imageSize(ownedBadgeBytes)),
-      );
-    }
-
-    const fontFiles = this.loader.fontPaths();
-    const crop = planArtworkCrop(await imageSize(artwork), geometry.art);
-
-    const [artworkLayer, frameLayer, ...placementLayers] = await Promise.all([
-      renderArtwork(artwork, crop),
-      renderFrame(frameBytes),
-      ...placements.map((placement) => renderPlacement(placement)),
-    ]);
-
-    const master = await compositeMasterWebp({
-      artwork: artworkLayer as Buffer,
-      artWindow: geometry.art,
-      underlay: renderVectorLayer(buildUnderlaySvg(geometry, CANVAS), fontFiles, 'plate'),
-      frame: frameLayer as Buffer,
-      placements: placementLayers.map((bytes, index) => ({
-        bytes: bytes as Buffer,
-        left: (placements[index] as RasterPlacement).left,
-        top: (placements[index] as RasterPlacement).top,
-      })),
-      overlay: renderVectorLayer(buildOverlaySvg(composeInput, CANVAS), fontFiles, 'text'),
+  /**
+   * The pool, started on the first cold master.
+   *
+   * Lazy on purpose: card rendering is off by default, most processes never
+   * draw one, and a test that constructs a renderer to check a cache key
+   * should not pay for two threads to find that out.
+   */
+  private pool(): CardRenderPool | null {
+    if (this.workerCount === 0) return null;
+    this.workerPool ??= new CardRenderPool({
+      assetRoot: this.loader.assetRoot,
+      size: this.workerCount,
+      ...(this.logger === undefined ? {} : { logger: this.logger }),
     });
+    return this.workerPool;
+  }
 
-    this.logger?.debug(
-      {
-        tag: 'card-renderer/master',
-        slug: input.species.slug,
-        rarity,
-        race,
-        affinity,
-        owned,
-        width: CARD_MASTER_WIDTH,
-        height: CARD_MASTER_HEIGHT,
-      },
-      'Rendered card master',
-    );
-
-    return master;
+  /** Releases the worker threads. Safe to call when none were ever started. */
+  async shutdown(): Promise<void> {
+    const pool = this.workerPool;
+    this.workerPool = undefined;
+    if (pool !== undefined) await pool.shutdown();
   }
 
   private result(
@@ -317,16 +282,45 @@ export function createCardRenderer(options: CardRendererOptions = {}): CardRende
 }
 
 let sharedRenderer: CardRenderer | undefined;
+let sharedOptions: CardRendererOptions = {};
+
+/**
+ * Settings for the process-wide renderer — in practice the worker count, which
+ * is deployment configuration (`CARD_RENDER_WORKERS`) rather than something the
+ * cards module can know.
+ *
+ * Must run before the first card, because the singleton is built once and the
+ * worker count is fixed at construction. Called from application startup; a
+ * later call is a wiring bug and says so rather than silently doing nothing.
+ */
+export function configureCardRenderer(options: CardRendererOptions): void {
+  if (sharedRenderer !== undefined) {
+    throw new Error('configureCardRenderer must be called before the first card is rendered');
+  }
+  sharedOptions = options;
+}
 
 /** The process-wide renderer over the shipped kit and the default cache root. */
 export function getCardRenderer(): CardRenderer {
-  sharedRenderer ??= createCardRenderer();
+  sharedRenderer ??= createCardRenderer(sharedOptions);
   return sharedRenderer;
 }
 
 /** Renders one card using the shared renderer. */
 export function renderCard(input: CardRenderInput): Promise<CardRenderResult> {
   return getCardRenderer().renderCard(input);
+}
+
+/**
+ * Releases the shared renderer's worker threads.
+ *
+ * Called from application shutdown. A no-op when no card was ever rendered,
+ * which is the common case — the threads are started lazily.
+ */
+export async function shutdownCardRenderer(): Promise<void> {
+  const renderer = sharedRenderer;
+  sharedRenderer = undefined;
+  await renderer?.shutdown();
 }
 
 /** Master render key for one card, using the shared renderer. */

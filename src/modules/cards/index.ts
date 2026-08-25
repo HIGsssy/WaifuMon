@@ -15,12 +15,29 @@
 
 export {
   computeCardRenderKey,
+  configureCardRenderer,
   createCardRenderer,
   getCardRenderer,
   renderCard,
+  shutdownCardRenderer,
   MAX_OUTPUT_WIDTH,
   MIN_OUTPUT_WIDTH,
 } from './renderer';
+
+/**
+ * Worker isolation. Drawing a master blocks its thread for ~750 ms of
+ * synchronous resvg, so it happens on a small pool rather than on the thread
+ * serving Discord and Fastify. Callers see none of it — `renderCard` is
+ * unchanged — but the pool's size is configuration, and its errors and stats
+ * are things an operator legitimately needs to see.
+ */
+export {
+  CardPoolClosedError,
+  CardWorkerCrashedError,
+  DEFAULT_CARD_RENDER_WORKERS,
+  MAX_CARD_RENDER_WORKERS,
+  type CardRenderPoolStats,
+} from './worker/workerPool';
 
 export {
   CARD_RENDERER_VERSION,
@@ -38,6 +55,7 @@ export type {
   WarmCardCacheFailure,
   WarmCardCacheOptions,
   WarmCardCacheResult,
+  WarmCardOutcome,
 } from './warm';
 
 export {

@@ -26,6 +26,7 @@ import type { QuestService } from '../modules/quests/questService';
 import type { SessionService } from '../modules/session/sessionService';
 import type { GameEventBus } from '../modules/events/gameEvents';
 import type { HuntSessionTracker } from '../modules/hunt/huntSession';
+import type { OwnedCardWarmer } from '../modules/appearance/ownedCardWarm';
 
 export interface AppServices {
   guilds: GuildService;
@@ -75,6 +76,14 @@ export interface AppContext {
    * depends on it, and a restart just re-opens sessions.
    */
   huntSessions: HuntSessionTracker;
+  /**
+   * Background warming of owned card derivatives.
+   *
+   * Present only when card rendering is switched on, and never load-bearing: a
+   * capture must succeed identically whether or not anything is warming behind
+   * it. See `modules/appearance/ownedCardWarm.ts`.
+   */
+  cardWarmer?: OwnedCardWarmer | undefined;
 }
 
 /** Guild + player DB ids resolved after the guard allows the interaction. */

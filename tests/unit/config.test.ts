@@ -98,6 +98,9 @@ describe('loadConfig', () => {
       port: 3120,
       token: '',
       cardRendererEnabled: false,
+      cardRenderWorkers: 2,
+      cardWarmConcurrency: 1,
+      cardWarmOnCollection: true,
     });
   });
 
@@ -120,6 +123,9 @@ describe('loadConfig', () => {
       port: 3120,
       token: 'a-secret',
       cardRendererEnabled: false,
+      cardRenderWorkers: 2,
+      cardWarmConcurrency: 1,
+      cardWarmOnCollection: true,
     });
   });
 
@@ -139,6 +145,59 @@ describe('loadConfig', () => {
         value,
       ).toBe(false);
     }
+  });
+
+  it('defaults card render workers to two, and takes an override', () => {
+    // Two is measured, not derived from the core count: each thread holds a
+    // full decoded card, and a container rarely has the cores the host reports.
+    expect(loadConfig(validEnv).platformApi.cardRenderWorkers).toBe(2);
+    expect(
+      loadConfig({ ...validEnv, CARD_RENDER_WORKERS: '3' }).platformApi.cardRenderWorkers,
+    ).toBe(3);
+  });
+
+  it('allows CARD_RENDER_WORKERS=0 — in-process rendering is a supported mode', () => {
+    // The escape hatch for an environment without worker threads. Identical
+    // output; it just reinstates the event-loop stall workers exist to remove.
+    expect(
+      loadConfig({ ...validEnv, CARD_RENDER_WORKERS: '0' }).platformApi.cardRenderWorkers,
+    ).toBe(0);
+  });
+
+  it('rejects a card worker count that is not a sane thread count', () => {
+    for (const value of ['-1', '99', 'lots']) {
+      expect(() => loadConfig({ ...validEnv, CARD_RENDER_WORKERS: value }), value).toThrow(
+        ConfigError,
+      );
+    }
+  });
+
+  it('defaults background warm concurrency to one, and caps it low', () => {
+    // Background warming is tuned for invisibility, not throughput: one warm
+    // card at a time composes with a single render worker, so a cold master a
+    // player is waiting for never queues behind a burst of warm ones.
+    expect(loadConfig(validEnv).platformApi.cardWarmConcurrency).toBe(1);
+    expect(
+      loadConfig({ ...validEnv, CARD_WARM_CONCURRENCY: '2' }).platformApi.cardWarmConcurrency,
+    ).toBe(2);
+    for (const value of ['0', '8', 'many']) {
+      expect(() => loadConfig({ ...validEnv, CARD_WARM_CONCURRENCY: value }), value).toThrow(
+        ConfigError,
+      );
+    }
+  });
+
+  it('warms on a collection listing by default, and can be switched off', () => {
+    // The self-*healing* path. Off still leaves warm-on-capture and the ops CLI
+    // intact, and every card still renders on demand.
+    expect(loadConfig(validEnv).platformApi.cardWarmOnCollection).toBe(true);
+    expect(
+      loadConfig({ ...validEnv, CARD_WARM_ON_COLLECTION: 'false' }).platformApi
+        .cardWarmOnCollection,
+    ).toBe(false);
+    expect(
+      loadConfig({ ...validEnv, CARD_WARM_ON_COLLECTION: '0' }).platformApi.cardWarmOnCollection,
+    ).toBe(false);
   });
 
   it('accepts an explicit platform API host and port', () => {

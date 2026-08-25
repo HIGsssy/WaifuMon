@@ -138,6 +138,13 @@ export interface CardRendererStats {
   cacheHits: number;
   /** Renders that joined an in-flight identical render instead of starting one. */
   dedupedRenders: number;
+  /**
+   * Worker-pool counters, present once a cold master has actually been drawn
+   * on a thread. Absent when the pool is disabled (`workers: 0`) or when
+   * everything so far was served from cache — which is itself the useful
+   * signal that no expensive work happened.
+   */
+  workers?: import('./worker/workerPool').CardRenderPoolStats | undefined;
 }
 
 export interface CardRendererOptions {
@@ -145,6 +152,18 @@ export interface CardRendererOptions {
   assetRoot?: string;
   /** Root of the disk cache. Defaults to `<repo>/assets/.card-cache`. */
   cacheRoot?: string;
+  /**
+   * Threads used to draw cold masters. Defaults to
+   * {@link DEFAULT_CARD_RENDER_WORKERS} (2), configurable via
+   * `CARD_RENDER_WORKERS`.
+   *
+   * `0` renders in-process instead — the same function on the main thread,
+   * producing identical bytes. That is the escape hatch for an environment
+   * where threads are unavailable or unwanted, and the control case that keeps
+   * the two paths provably equivalent. It is not the default because it
+   * reinstates the ~750 ms event-loop stall this option exists to remove.
+   */
+  workers?: number;
   logger?: import('../../shared/logger').Logger;
 }
 
@@ -152,11 +171,30 @@ export interface CardRenderer {
   renderCard(input: CardRenderInput): Promise<CardRenderResult>;
   /** The canonical master identity for an input, independent of output width. */
   computeMasterRenderKey(input: CardRenderInput): Promise<string>;
+  /**
+   * Whether the file `renderCard(input)` would return is already on disk — a
+   * `stat`, not a read, and never a render.
+   *
+   * It exists for warming, which spends most of its time discovering that
+   * there is nothing to do: probing is what lets a warm run over an already-hot
+   * collection cost a few hundred directory lookups instead of reading every
+   * cached card into memory to throw it away.
+   *
+   * A hint, never a promise. The answer can go stale between the probe and the
+   * request, so it may only be used to *skip* work — `renderCard` re-checks the
+   * disk itself.
+   */
+  isCached(input: CardRenderInput): Promise<boolean>;
   /** SHA-256 (hex) of the artwork bytes at `absolutePath`. */
   hashArtwork(absolutePath: string): Promise<string>;
   /** Throws {@link CardAssetMissingError} for the first missing required asset. */
   validateAssets(): Promise<void>;
   getStats(): CardRendererStats;
+  /**
+   * Releases worker threads. Idempotent, and a no-op when none were started.
+   * Application shutdown calls this; so should any test that renders a card.
+   */
+  shutdown(): Promise<void>;
 }
 
 export type { Affinity, Rarity, RaceCode };

@@ -16,13 +16,24 @@
  * Server-side filtering is `rarity` only; the rest narrows the current page in
  * memory and the caption says so. Widening that is an API change (§25.6), not a
  * cleverer client (§16).
+ *
+ * ## Art / Card
+ *
+ * The grid can draw either raw artwork or the server-rendered collectible card
+ * for each owned copy. **Art is the default and stays the default**: cards are
+ * opt-in for this rollout, so nobody's first page load turns into twenty-five
+ * card requests, and the switch is only offered when `/v1/capabilities` says
+ * the backend can render them. With the renderer off there is no control and no
+ * card request — the grid is exactly what it was before this existed.
  */
 import { LibraryBig, ChevronLeft, ChevronRight } from 'lucide-react';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 
 import { COLLECTION_PAGE_SIZE } from '@/api/collection';
 import { useBuddy, useCollection } from '@/api/hooks/useCollection';
+import { usePlatformCapabilities } from '@/api/hooks/useCapabilities';
 import { useCurrentSession } from '@/auth/useSession';
+import type { CardView } from '@/components/media/CardViewToggle';
 import { EmptyState } from '@/components/layout/EmptyState';
 import { ErrorState } from '@/components/layout/ErrorState';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -42,6 +53,16 @@ export function CollectionPage() {
   const session = useCurrentSession();
   const api = useCollectionParams();
   const { params } = api;
+
+  const capabilities = usePlatformCapabilities();
+  // Art, always, until the player says otherwise. Deliberately component state
+  // rather than URL state: the filters are a view of the collection worth
+  // sharing in a link, and which image style someone prefers is not.
+  const [view, setView] = useState<CardView>('art');
+  // A capability that flips off mid-session (an API restart) takes the grid
+  // back to artwork rather than leaving a page of broken images behind.
+  const cardsAvailable = capabilities.cards;
+  const tileView: CardView = cardsAvailable ? view : 'art';
 
   const collection = useCollection({
     playerId: session.playerId,
@@ -107,6 +128,7 @@ export function CollectionPage() {
         archetypes={archetypes}
         affinities={affinities}
         refreshing={refreshing}
+        {...(cardsAvailable ? { view: tileView, onViewChange: setView } : {})}
       />
 
       {collection.isError ? (
@@ -148,6 +170,7 @@ export function CollectionPage() {
                 entry={entry}
                 isBuddy={entry.waifu.id === buddy.data?.waifu.id}
                 priority={index < EAGER_CARDS}
+                view={tileView}
               />
             ))}
           </div>

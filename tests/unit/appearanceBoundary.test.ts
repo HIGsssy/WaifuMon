@@ -60,6 +60,21 @@ const FORBIDDEN_MODULES = [
  * *structural* `{ waifu: { level, variant }, species: { slug } }` rather than
  * importing the collection service — which is what keeps it on the cosmetic
  * side of this firewall while still being able to describe an owned card.
+ *
+ * `ownedCardWarm.ts` and `ownedCardWarmSubjects.ts` are the owned-card warming
+ * pair, and they sit here because warming is entirely a question of *which
+ * cosmetic card* — the planner is `cardPresentation.ts` applied to a list, and
+ * it takes the same structural owned copy.
+ *
+ * `ownedCardWarmSubjects.ts` is the one file here that reads a gameplay table.
+ * It is a deliberate, narrow exception and it still honours the rule this
+ * firewall actually enforces: two read-only `select`s that project exactly the
+ * columns cosmetic resolution consumes (level, worn variant, species slug), no
+ * gameplay service, no writes, no gameplay logic. The alternative — widening
+ * `CollectionService.listOwned`, whose 25-row page exists for Discord select
+ * menus, so a cache warmer could read a whole collection — would change a
+ * gameplay service for a cosmetic caller's convenience, which is the direction
+ * this test exists to prevent.
  */
 const MODULE_FILES = [
   'appearanceContent.ts',
@@ -67,6 +82,8 @@ const MODULE_FILES = [
   'appearanceService.ts',
   'assetResolver.ts',
   'cardPresentation.ts',
+  'ownedCardWarm.ts',
+  'ownedCardWarmSubjects.ts',
 ];
 
 describe('appearance module boundaries', () => {

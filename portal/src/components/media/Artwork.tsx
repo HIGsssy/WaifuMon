@@ -47,6 +47,18 @@ export interface ArtworkProps {
   imgClassName?: string;
   /** View Transitions name for the card → detail morph (§14). */
   viewTransitionName?: string | undefined;
+  /**
+   * Called when the browser could not load this asset, after the hook has
+   * already swapped in the silhouette.
+   *
+   * The silhouette is the right *default* degradation — it is what a missing
+   * species artwork should look like — but it is not always the best one
+   * available. A collection tile in Card mode has the raw owned artwork sitting
+   * right there, and showing that beats showing a placeholder. This is the
+   * notification that lets a caller make that substitution; ignoring it leaves
+   * the silhouette in place, which is what every other call site wants.
+   */
+  onLoadFailure?: (() => void) | undefined;
 }
 
 export const Artwork = memo(function Artwork({
@@ -61,6 +73,7 @@ export const Artwork = memo(function Artwork({
   className,
   imgClassName,
   viewTransitionName,
+  onLoadFailure,
 }: ArtworkProps) {
   const image = useImage(asset, {
     name,
@@ -68,6 +81,16 @@ export const Artwork = memo(function Artwork({
     forceSilhouette: silhouette,
     displayWidth,
   });
+
+  // Wraps rather than replaces the hook's handler: the silhouette swap and the
+  // failure accounting still happen, and a caller that ignores this prop sees
+  // exactly the old behaviour.
+  const handleError = onLoadFailure
+    ? () => {
+        image.onError();
+        onLoadFailure();
+      }
+    : image.onError;
 
   return (
     <div
@@ -88,7 +111,7 @@ export const Artwork = memo(function Artwork({
         decoding={priority ? 'sync' : 'async'}
         fetchPriority={priority ? 'high' : 'low'}
         draggable={false}
-        onError={image.onError}
+        onError={handleError}
         onLoad={image.onLoad}
         className={cn(
           'h-full w-full transition-opacity duration-500',
