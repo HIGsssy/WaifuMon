@@ -70,6 +70,7 @@ import type { AppContext, PlayerInteraction, Provisioned } from '../types';
 import { buildCustomId } from '../types';
 import { postAppearanceUnlockToasts } from '../appearanceToast';
 import { emitEvents } from '../gameEventEmitter';
+import { appearanceUnlockDescriptors, publicWaifuName } from '../gameEventBuilders';
 import { gameEvent } from '../../modules/events/gameEvents';
 import { renderOwnedCardAttachment } from '../assets/attachRenderedCard';
 import { respondEphemeral } from '../ephemeralSession';
@@ -1792,18 +1793,23 @@ export async function handleWaifuInvest(
 }
 
 /**
- * Post-investment follow-ups: the level-up note, then any cosmetics the level
- * gain earned.
+ * Post-investment follow-ups: the level-up note, the public Waifumon Log
+ * announcement, then the player's own cosmetic toasts.
  *
  * Shared by the tier buttons and the custom modal so both announce identically.
- * Runs after the inspect card is repainted, so the reward lands on top of the
- * thing that caused it — the same ordering the capture and buddy paths use.
+ * Runs after the inspect card is repainted, and emits before it toasts — the
+ * same ordering the capture path uses (screen → events → toasts).
  *
  * `newAppearances` is already only the *newly* acknowledged unlocks:
  * `syncUnlocks` diffs against `seen_appearances` inside the transaction, so a
- * look the player has seen before can never produce a second toast. A batch
- * that crosses several milestones at once reports all of them, and
- * `postAppearanceUnlockToasts` caps the burst with an overflow notice.
+ * look the player has seen before can produce neither a second toast nor a
+ * second log line. A batch that crosses several milestones at once reports all
+ * of them, and each becomes its own `WAIFU_APPEARANCE_UNLOCKED` event exactly
+ * as a capture or a buddy hunt would; `postAppearanceUnlockToasts` caps only
+ * the *ephemeral* burst, never the public record.
+ *
+ * Only unlocks are announced publicly — an ordinary Essence spend, or one that
+ * merely levels her, stays private.
  */
 async function announceInvestOutcome(
   ctx: AppContext,
@@ -1815,18 +1821,34 @@ async function announceInvestOutcome(
   const leveled = result.toLevel > result.fromLevel;
   if (!leveled && result.newAppearances.length === 0) return;
 
-  // One lookup covers both announcements — she is named the same way in each.
+  // One lookup serves all three announcements.
   const invested = await ctx.services.collection.getOwned(prov.playerId, waifuId);
-  const name = displayName(invested);
 
   if (leveled) {
     const batch = result.applications > 1 ? ` (${result.applications}× Essence)` : '';
     await interaction.followUp({
-      content: `⬆️ **${name}** advanced to Lv ${result.toLevel}!${batch}`,
+      content: `⬆️ **${displayName(invested)}** advanced to Lv ${result.toLevel}!${batch}`,
       ...EPHEMERAL,
     });
   }
-  await postAppearanceUnlockToasts(ctx, interaction, result.newAppearances, name);
+
+  if (result.newAppearances.length > 0) {
+    // Public log — `emitEvents` swallows subscriber failures, so a feed problem
+    // can never cost the player their toast below.
+    await emitEvents(
+      ctx,
+      interaction,
+      prov,
+      appearanceUnlockDescriptors(result.newAppearances, publicWaifuName(invested)),
+    );
+  }
+
+  await postAppearanceUnlockToasts(
+    ctx,
+    interaction,
+    result.newAppearances,
+    displayName(invested),
+  );
 }
 
 /** waifu:invest_open — the custom-amount modal. */

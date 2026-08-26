@@ -95,6 +95,7 @@ beforeEach(async () => {
     .update(playerCurrencies)
     .set({ essence: costPer * 500 })
     .where(eq(playerCurrencies.playerId, prov.playerId));
+  harness.reset();
 });
 
 /** XP a copy needs to sit exactly at `level`. */
@@ -309,6 +310,117 @@ describe('no duplicate toasts', () => {
     const descriptions = toastAppearanceNames(second);
     expect(descriptions).toHaveLength(1);
     expect(descriptions[0]).toContain('Level 30');
+  });
+});
+
+/**
+ * The public half: an unlock earned through Essence should reach the Waifumon
+ * Log exactly as one earned by a capture or a buddy hunt does. An ordinary
+ * spend must stay private — this is the one gameplay action a player can
+ * repeat dozens of times in a sitting, so only the unlock itself is public.
+ */
+describe('public Waifumon Log announcements', () => {
+  const unlockEvents = () => harness.ofKind('WAIFU_APPEARANCE_UNLOCKED');
+
+  /** Feed lines that narrate an appearance unlock. */
+  const unlockLines = () => harness.lines.filter((l) => l.text.includes('unlocked a new look'));
+
+  it('emits one public event when a 1× spend crosses a threshold', async () => {
+    const waifuId = await grantAt(9, xpForLevel(10) - xpForLevel(9) - xpPer);
+    const i = fakeButton();
+
+    await handleWaifuInvest(ctx, i as never, prov, [String(waifuId), '1']);
+
+    const events = unlockEvents();
+    expect(events).toHaveLength(1);
+    expect(events[0]!.payload.appearanceName).toContain('Level 10');
+    expect(events[0]!.payload.speciesSlug).toBe(SLUG);
+    expect(unlockLines()).toHaveLength(1);
+  });
+
+  it('emits one public event per unlock a batch produced', async () => {
+    // Landing on 30 reports 10, 20 and 30 — three separate log entries.
+    const waifuId = await grantAt(29, xpForLevel(30) - xpForLevel(29) - xpPer * 5);
+    const i = fakeButton();
+
+    await handleWaifuInvest(ctx, i as never, prov, [String(waifuId), '5']);
+
+    const names = unlockEvents().map((e) => e.payload.appearanceName);
+    expect(names).toHaveLength(3);
+    expect(names.join('\n')).toContain('Level 10');
+    expect(names.join('\n')).toContain('Level 20');
+    expect(names.join('\n')).toContain('Level 30');
+    // The 3-toast cap is an ephemeral nicety; the public record is complete.
+    expect(unlockLines()).toHaveLength(3);
+  });
+
+  it('stays silent when a spend unlocks nothing', async () => {
+    const waifuId = await grantAt(1, xpForLevel(2) - xpPer);
+    const i = fakeButton();
+
+    await handleWaifuInvest(ctx, i as never, prov, [String(waifuId), '1']);
+
+    expect(unlockEvents()).toHaveLength(0);
+    expect(unlockLines()).toHaveLength(0);
+  });
+
+  it('never re-announces a look the copy has already seen', async () => {
+    const waifuId = await grantAt(9, xpForLevel(10) - xpForLevel(9) - xpPer);
+
+    await handleWaifuInvest(ctx, fakeButton() as never, prov, [String(waifuId), '1']);
+    expect(unlockEvents()).toHaveLength(1);
+
+    harness.reset();
+    await handleWaifuInvest(ctx, fakeButton() as never, prov, [String(waifuId), '1']);
+    expect(unlockEvents()).toHaveLength(0);
+    expect(unlockLines()).toHaveLength(0);
+  });
+
+  it('names the player in the public line', async () => {
+    const waifuId = await grantAt(9, xpForLevel(10) - xpForLevel(9) - xpPer);
+    const i = fakeButton();
+
+    await handleWaifuInvest(ctx, i as never, prov, [String(waifuId), '1']);
+
+    const [line] = unlockLines();
+    expect(line!.text).toContain('<@u-1>');
+    expect(line!.text).toContain('Level 10');
+  });
+
+  it('names the copy the way other public producers do', async () => {
+    // Public narration uses the bare nickname, not the collection UI's
+    // "Nickname (Species)" form.
+    const waifuId = await grantAt(9, xpForLevel(10) - xpForLevel(9) - xpPer);
+    await t.db.update(playerWaifus).set({ nickname: 'Mochi' }).where(eq(playerWaifus.id, waifuId));
+
+    await handleWaifuInvest(ctx, fakeButton() as never, prov, [String(waifuId), '1']);
+
+    const [sp] = await t.db.select().from(species).where(eq(species.slug, SLUG));
+    const [event] = unlockEvents();
+    expect(event!.payload.waifuName).toBe('Mochi');
+    // The species name is not appended in parentheses the way the collection
+    // list renders it — the log says "Mochi", not "Mochi (Alley Catgirl)".
+    expect(unlockLines()[0]!.text).not.toContain(`(${sp!.name})`);
+  });
+
+  it('posts the public line and the private toast together', async () => {
+    const waifuId = await grantAt(9, xpForLevel(10) - xpForLevel(9) - xpPer);
+    const i = fakeButton();
+
+    await handleWaifuInvest(ctx, i as never, prov, [String(waifuId), '1']);
+
+    // Both halves fire; neither replaces the other.
+    expect(toasts(i)).toHaveLength(1);
+    expect(unlockLines()).toHaveLength(1);
+  });
+
+  it('announces unlocks from the custom modal too', async () => {
+    const waifuId = await grantAt(19, xpForLevel(20) - xpForLevel(19) - xpPer * 4);
+    const modal = fakeModal({ applications: '4' });
+
+    await handleWaifuInvestSubmit(ctx, modal as never, prov, [String(waifuId)]);
+
+    expect(unlockEvents()).toHaveLength(2);
   });
 });
 

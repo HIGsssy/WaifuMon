@@ -17,11 +17,27 @@ import { rarityAtLeast } from '../modules/capture/captureMath';
 import type { Rarity } from '../db/schema';
 import type { AppContext, Provisioned } from './types';
 
+/**
+ * How a copy is named in **public** narration: her nickname when she has one,
+ * her species name otherwise.
+ *
+ * Deliberately not the collection UI's `displayName`, which renders
+ * "Nickname (Species)" — that parenthetical is useful when a player is
+ * scanning their own list, and noise in a log line someone else is reading.
+ * Every public producer goes through here so the log stays consistent.
+ */
+export function publicWaifuName(entry: {
+  waifu: { nickname: string | null };
+  species: { name: string };
+}): string {
+  return entry.waifu.nickname?.trim() || entry.species.name;
+}
+
 /** Nickname when set, species name otherwise. */
 export function careTargetName(summary: CareTickSummary): string | null {
   const target = summary.target;
   if (!target) return null;
-  return target.waifu.nickname?.trim() || target.species.name;
+  return publicWaifuName(target);
 }
 
 /** Look up a display name for an owned waifu; never throws. */
@@ -31,8 +47,7 @@ async function ownedWaifuName(
   waifuId: number,
 ): Promise<string> {
   try {
-    const entry = await ctx.services.collection.getOwned(playerId, waifuId);
-    return entry.waifu.nickname?.trim() || entry.species.name;
+    return publicWaifuName(await ctx.services.collection.getOwned(playerId, waifuId));
   } catch {
     return 'their Waifumon';
   }
