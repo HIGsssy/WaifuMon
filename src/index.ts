@@ -37,6 +37,7 @@ import { createSessionService } from './modules/session/sessionService';
 import { createGameEventBus } from './modules/events/gameEvents';
 import { createHuntSessionTracker } from './modules/hunt/huntSession';
 import { createCollectionFilterTracker } from './discord/collectionFilterTracker';
+import { createEphemeralRegistry } from './discord/ephemeralCleanup';
 import { createActivityFeedService } from './modules/activity/activityFeedService';
 import { resolveAppearanceAsset } from './modules/appearance/assetResolver';
 import { AttachmentBuilder, EmbedBuilder } from 'discord.js';
@@ -167,6 +168,7 @@ async function main(): Promise<void> {
     events: gameEventBus,
     huntSessions,
     collectionFilters: createCollectionFilterTracker(),
+    ephemerals: createEphemeralRegistry(),
     ...(cardWarmer === undefined ? {} : { cardWarmer }),
     services: {
       guilds,

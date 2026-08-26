@@ -71,7 +71,11 @@ import { buildCustomId } from '../types';
 import { postAppearanceUnlockToasts } from '../appearanceToast';
 import { emitEvents } from '../gameEventEmitter';
 import { appearanceUnlockDescriptors, publicWaifuName } from '../gameEventBuilders';
-import { followUpEphemeralNotice, replyEphemeralNotice } from '../ephemeralCleanup';
+import {
+  followUpEphemeralNotice,
+  registerEphemeral,
+  replyEphemeralNotice,
+} from '../ephemeralCleanup';
 import { gameEvent } from '../../modules/events/gameEvents';
 import { renderOwnedCardAttachment } from '../assets/attachRenderedCard';
 import { respondEphemeral } from '../ephemeralSession';
@@ -317,6 +321,8 @@ export async function handleCollection(
 ): Promise<void> {
   const view = await buildCollectionScreen(ctx, prov.playerId);
   await respondEphemeral(interaction, view);
+  // Tracked, not scheduled — see `renderInspect`.
+  registerEphemeral(ctx, interaction, { playerId: prov.playerId, label: 'collection-list' });
 }
 
 /** col:page button — swap page in place. */
@@ -410,7 +416,7 @@ export async function handleCollectionFilterSubmit(
   );
   if (!parsed.ok) {
     // Filters are left exactly as they were — a rejected form changes nothing.
-    await replyEphemeralNotice(ctx, interaction, parsed.error, 'filter-rejected');
+    await replyEphemeralNotice(ctx, interaction, prov.playerId, parsed.error, 'filter-rejected');
     return;
   }
   filterTracker(ctx).set(prov.playerId, { ...parsed.patch, page: 1 });
@@ -911,6 +917,9 @@ async function renderInspect(
       }),
       files,
     });
+    // Tracked, not scheduled: the card stays until the player navigates away,
+    // but Care Mode may sweep it when the Trainer Profile takes over.
+    registerEphemeral(ctx, interaction, { playerId: prov.playerId, label: 'inspect-card' });
   } catch (err) {
     if (err instanceof WaifuNotOwnedError || err instanceof WaifuAlreadyReleasedError) {
       await respondEphemeral(interaction, { content: err.userMessage, components: withBackRow() });
@@ -1830,6 +1839,7 @@ async function announceInvestOutcome(
     await followUpEphemeralNotice(
       ctx,
       interaction,
+      prov.playerId,
       `⬆️ **${displayName(invested)}** advanced to Lv ${result.toLevel}!${batch}`,
       'invest-level-up',
     );
@@ -1851,6 +1861,7 @@ async function announceInvestOutcome(
     interaction,
     result.newAppearances,
     displayName(invested),
+    prov.playerId,
   );
 }
 
@@ -1917,6 +1928,7 @@ export async function handleWaifuInvestSubmit(
     await replyEphemeralNotice(
       ctx,
       interaction,
+      prov.playerId,
       'That Waifumon is no longer available.',
       'invest-submit-stale',
     );
@@ -1927,7 +1939,7 @@ export async function handleWaifuInvestSubmit(
     entry = await ctx.services.collection.getOwned(prov.playerId, waifuId);
   } catch (err) {
     if (err instanceof WaifuNotOwnedError || err instanceof WaifuAlreadyReleasedError) {
-      await replyEphemeralNotice(ctx, interaction, err.userMessage, 'invest-submit-stale');
+      await replyEphemeralNotice(ctx, interaction, prov.playerId, err.userMessage, 'invest-submit-stale');
       return;
     }
     throw err;
@@ -1939,7 +1951,7 @@ export async function handleWaifuInvestSubmit(
   );
   if (!parsed.ok) {
     // Nothing is spent on a rejected form — the player just gets told why.
-    await replyEphemeralNotice(ctx, interaction, parsed.error, 'invest-amount-rejected');
+    await replyEphemeralNotice(ctx, interaction, prov.playerId, parsed.error, 'invest-amount-rejected');
     return;
   }
   try {
@@ -1957,7 +1969,7 @@ export async function handleWaifuInvestSubmit(
       err instanceof WaifuNotOwnedError ||
       err instanceof WaifuAlreadyReleasedError
     ) {
-      await replyEphemeralNotice(ctx, interaction, err.userMessage, 'invest-refused');
+      await replyEphemeralNotice(ctx, interaction, prov.playerId, err.userMessage, 'invest-refused');
       return;
     }
     throw err;
@@ -2026,6 +2038,7 @@ export async function handleWaifuNicknameSubmit(
     await replyEphemeralNotice(
       ctx,
       interaction,
+      prov.playerId,
       'That Waifumon is no longer available.',
       'nickname-stale',
     );
@@ -2037,6 +2050,7 @@ export async function handleWaifuNicknameSubmit(
     await replyEphemeralNotice(
       ctx,
       interaction,
+      prov.playerId,
       raw.trim().length > 0 ? `Nickname set to **${raw.trim()}**.` : 'Nickname cleared.',
       'nickname-set',
     );
@@ -2046,7 +2060,7 @@ export async function handleWaifuNicknameSubmit(
       err instanceof WaifuNotOwnedError ||
       err instanceof WaifuAlreadyReleasedError
     ) {
-      await replyEphemeralNotice(ctx, interaction, err.userMessage, 'nickname-refused');
+      await replyEphemeralNotice(ctx, interaction, prov.playerId, err.userMessage, 'nickname-refused');
       return;
     }
     throw err;

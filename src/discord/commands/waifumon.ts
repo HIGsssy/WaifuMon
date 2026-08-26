@@ -31,6 +31,7 @@ import type { ItemUseResult } from '../../modules/items/itemUseService';
 import type { AppContext, PlayerInteraction, Provisioned } from '../types';
 import { buildCustomId } from '../types';
 import { respondEphemeral } from '../ephemeralSession';
+import { cleanupPlayerEphemerals } from '../ephemeralCleanup';
 import { emitEvents } from '../gameEventEmitter';
 import {
   careChangedDescriptors,
@@ -811,6 +812,7 @@ export async function handleCareStart(
         ? careChangedDescriptors(summary)
         : [...closeHuntSessionForCare(ctx, prov), ...careEnterDescriptors(summary)],
     );
+    await sweepEphemeralsAfterCareEntry(ctx, interaction, prov);
   } catch (err) {
     if (err instanceof WaifuNotOwnedError || err instanceof WaifuAlreadyReleasedError) {
       await respondEphemeral(interaction, err.userMessage);
@@ -821,6 +823,45 @@ export async function handleCareStart(
       return;
     }
     throw err;
+  }
+}
+
+/**
+ * Sweep the player's tracked ephemerals once Care Mode has taken over.
+ *
+ * Gated on the Trainer Profile actually being on screen: the profile is posted
+ * by the event-bus subscriber, which records its message id, so a non-null id
+ * for this channel is proof the player has something to look at. Without that
+ * check a failed profile post would leave them staring at an empty channel.
+ *
+ * The current interaction is excluded, so the menu this flow just repainted
+ * and its own Care Mode note both survive — only the screens stacked up
+ * *before* Care Mode began are removed.
+ *
+ * Best-effort throughout: Care Mode has already started, and nothing here may
+ * turn a successful entry into an error.
+ */
+async function sweepEphemeralsAfterCareEntry(
+  ctx: AppContext,
+  interaction: PlayerInteraction,
+  prov: Provisioned,
+): Promise<void> {
+  try {
+    const channelId = interaction.channelId;
+    if (!channelId) return;
+    const profileMessageId = await ctx.services.session.getProfileMessageId(
+      prov.playerId,
+      channelId,
+    );
+    if (!profileMessageId) return;
+    await cleanupPlayerEphemerals(ctx, prov.playerId, {
+      excludeInteractionId: interaction.id,
+    });
+  } catch (err) {
+    ctx.logger.debug(
+      { err, tag: 'care/ephemeral-sweep-failed', playerId: prov.playerId },
+      'care-entry ephemeral sweep failed',
+    );
   }
 }
 

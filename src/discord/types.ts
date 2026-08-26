@@ -27,6 +27,7 @@ import type { SessionService } from '../modules/session/sessionService';
 import type { GameEventBus } from '../modules/events/gameEvents';
 import type { HuntSessionTracker } from '../modules/hunt/huntSession';
 import type { CollectionFilterTracker } from './collectionFilterTracker';
+import type { EphemeralRegistry } from './ephemeralCleanup';
 import type { OwnedCardWarmer } from '../modules/appearance/ownedCardWarm';
 
 export interface AppServices {
@@ -86,6 +87,15 @@ export interface AppContext {
    * still get correct (and mutually isolated) filter behaviour.
    */
   collectionFilters?: CollectionFilterTracker | undefined;
+  /**
+   * Tracked ephemeral interaction responses, per player, so Care Mode can
+   * sweep the clutter it replaces. In-memory and best-effort — see
+   * `discord/ephemeralCleanup.ts` for what Discord actually permits here.
+   *
+   * Optional for the same reason as `collectionFilters`: a context without one
+   * gets a lazily-attached registry of its own.
+   */
+  ephemerals?: EphemeralRegistry | undefined;
   /**
    * Background warming of owned card derivatives.
    *

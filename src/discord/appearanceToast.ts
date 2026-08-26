@@ -101,6 +101,8 @@ export async function postAppearanceUnlockToasts(
   interaction: PlayerInteraction,
   unlocks: readonly AppearanceUnlockRef[],
   waifuName: string,
+  /** Owner, so each toast is tracked for later cleanup. */
+  playerId: number,
 ): Promise<void> {
   if (unlocks.length === 0) return;
 
@@ -118,6 +120,7 @@ export async function postAppearanceUnlockToasts(
       // because these carry Select Now / View Gallery.
       scheduleEphemeralCleanup(ctx, interaction, {
         delayMs: EPHEMERAL_UNLOCK_TOAST_TTL_MS,
+        playerId,
         ...(message?.id === undefined ? {} : { messageId: message.id }),
         label: 'appearance-unlock-toast',
       });
@@ -140,6 +143,7 @@ export async function postAppearanceUnlockToasts(
       // schedule as the toasts it summarizes.
       scheduleEphemeralCleanup(ctx, interaction, {
         delayMs: EPHEMERAL_UNLOCK_TOAST_TTL_MS,
+        playerId,
         ...(message?.id === undefined ? {} : { messageId: message.id }),
         label: 'appearance-unlock-overflow',
       });

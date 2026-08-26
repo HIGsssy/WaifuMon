@@ -315,7 +315,7 @@ export async function handleHunt(
       // Encounter reveal has its own actions (charms + Let Her Go); no Back.
       await respondEphemeral(interaction, view);
       await emitEvents(ctx, interaction, prov, events);
-      await postBuddyAppearanceToasts(ctx, interaction, result);
+      await postBuddyAppearanceToasts(ctx, interaction, result, prov.playerId);
       return;
     }
     const embed = new EmbedBuilder().setColor(0xff6fa5);
@@ -704,6 +704,7 @@ export async function handleEncounterCharm(
       interaction,
       result.newAppearances,
       result.species.name,
+      prov.playerId,
     );
   }
 }
@@ -716,11 +717,12 @@ async function postBuddyAppearanceToasts(
   ctx: AppContext,
   interaction: PlayerInteraction,
   result: HuntResult,
+  playerId: number,
 ): Promise<void> {
   const award = result.buddyAward;
   if (!award || award.newAppearances.length === 0) return;
   const name = award.waifu.nickname?.trim() || 'Your buddy';
-  await postAppearanceUnlockToasts(ctx, interaction, award.newAppearances, name);
+  await postAppearanceUnlockToasts(ctx, interaction, award.newAppearances, name, playerId);
 }
 
 /** Use Different Charm — reopens the encounter reveal with fresh quantities. */

@@ -18,6 +18,9 @@ import {
 import { silentLogger } from '../helpers/testDb';
 
 const ctx = { logger: silentLogger() };
+const PLAYER = 1;
+/** Required fields every schedule call now carries. */
+const base = { playerId: PLAYER, label: 'test' };
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -49,7 +52,7 @@ function discordError(code: number): DiscordAPIError {
 describe('scheduleEphemeralCleanup', () => {
   it('deletes the original response after the delay', async () => {
     const i = fakeInteraction();
-    const timer = scheduleEphemeralCleanup(ctx, i, { delayMs: EPHEMERAL_CONFIRM_TTL_MS });
+    const timer = scheduleEphemeralCleanup(ctx, i, { ...base, delayMs: EPHEMERAL_CONFIRM_TTL_MS });
 
     expect(timer).not.toBeNull();
     expect(i.deleteReply).not.toHaveBeenCalled();
@@ -61,7 +64,7 @@ describe('scheduleEphemeralCleanup', () => {
 
   it('does not delete before the delay elapses', async () => {
     const i = fakeInteraction();
-    scheduleEphemeralCleanup(ctx, i, { delayMs: EPHEMERAL_CONFIRM_TTL_MS });
+    scheduleEphemeralCleanup(ctx, i, { ...base, delayMs: EPHEMERAL_CONFIRM_TTL_MS });
 
     await vi.advanceTimersByTimeAsync(EPHEMERAL_CONFIRM_TTL_MS - 1);
     expect(i.deleteReply).not.toHaveBeenCalled();
@@ -69,7 +72,7 @@ describe('scheduleEphemeralCleanup', () => {
 
   it('targets a specific follow-up when given a message id', async () => {
     const i = fakeInteraction();
-    scheduleEphemeralCleanup(ctx, i, { delayMs: 1000, messageId: 'm-42' });
+    scheduleEphemeralCleanup(ctx, i, { ...base, delayMs: 1000, messageId: 'm-42' });
 
     await vi.advanceTimersByTimeAsync(1000);
     expect(i.deleteReply).toHaveBeenCalledWith('m-42');
@@ -84,7 +87,7 @@ describe('scheduleEphemeralCleanup', () => {
       ['inside the final minute', INTERACTION_TOKEN_LIFETIME_MS - 30_000],
     ])('%s', async (_label, delayMs) => {
       const i = fakeInteraction();
-      expect(scheduleEphemeralCleanup(ctx, i, { delayMs })).toBeNull();
+      expect(scheduleEphemeralCleanup(ctx, i, { ...base, delayMs })).toBeNull();
 
       await vi.advanceTimersByTimeAsync(INTERACTION_TOKEN_LIFETIME_MS * 2);
       expect(i.deleteReply).not.toHaveBeenCalled();
@@ -100,7 +103,7 @@ describe('scheduleEphemeralCleanup', () => {
       const i = fakeInteraction(async () => {
         throw discordError(code);
       });
-      scheduleEphemeralCleanup(ctx, i, { delayMs: 1000 });
+      scheduleEphemeralCleanup(ctx, i, { ...base, delayMs: 1000 });
 
       // The rejection is swallowed inside the timer: advancing the clock must
       // neither throw here nor surface an unhandled rejection.
@@ -115,7 +118,7 @@ describe('scheduleEphemeralCleanup', () => {
       const i = fakeInteraction(async () => {
         throw new Error('network down');
       });
-      scheduleEphemeralCleanup(noisyCtx, i, { delayMs: 1000, label: 'test' });
+      scheduleEphemeralCleanup(noisyCtx, i, { ...base, delayMs: 1000 });
 
       await vi.advanceTimersByTimeAsync(1000);
       expect(debug).toHaveBeenCalled();
@@ -125,7 +128,7 @@ describe('scheduleEphemeralCleanup', () => {
 
   it('does not hold the process open', () => {
     const i = fakeInteraction();
-    const timer = scheduleEphemeralCleanup(ctx, i, { delayMs: 1000 });
+    const timer = scheduleEphemeralCleanup(ctx, i, { ...base, delayMs: 1000 });
     // `unref` is what keeps a pending cosmetic delete from blocking shutdown.
     expect(timer).not.toBeNull();
     expect(typeof timer!.unref).toBe('function');
@@ -135,7 +138,7 @@ describe('scheduleEphemeralCleanup', () => {
 describe('replyEphemeralNotice', () => {
   it('replies ephemerally and schedules the confirm TTL', async () => {
     const i = fakeInteraction();
-    await replyEphemeralNotice(ctx, i as never, 'Nickname cleared.');
+    await replyEphemeralNotice(ctx, i as never, PLAYER, 'Nickname cleared.', 'test');
 
     expect(i.reply).toHaveBeenCalledWith(
       expect.objectContaining({ content: 'Nickname cleared.' }),
@@ -149,7 +152,7 @@ describe('replyEphemeralNotice', () => {
 
   it('clears within a minute — the stated confirmation window', async () => {
     const i = fakeInteraction();
-    await replyEphemeralNotice(ctx, i as never, 'done');
+    await replyEphemeralNotice(ctx, i as never, PLAYER, 'done', 'test');
 
     await vi.advanceTimersByTimeAsync(30_000);
     const atThirtySeconds = i.deleteReply.mock.calls.length;
@@ -165,7 +168,7 @@ describe('replyEphemeralNotice', () => {
 describe('followUpEphemeralNotice', () => {
   it('schedules cleanup against the follow-up message id', async () => {
     const i = fakeInteraction();
-    await followUpEphemeralNotice(ctx, i as never, 'levelled up');
+    await followUpEphemeralNotice(ctx, i as never, PLAYER, 'levelled up', 'test');
 
     await vi.advanceTimersByTimeAsync(EPHEMERAL_CONFIRM_TTL_MS);
     expect(i.deleteReply).toHaveBeenCalledWith('m-follow');
@@ -174,7 +177,7 @@ describe('followUpEphemeralNotice', () => {
   it('falls back to the original response when no id comes back', async () => {
     const i = fakeInteraction();
     i.followUp.mockResolvedValue(undefined as never);
-    await followUpEphemeralNotice(ctx, i as never, 'levelled up');
+    await followUpEphemeralNotice(ctx, i as never, PLAYER, 'levelled up', 'test');
 
     await vi.advanceTimersByTimeAsync(EPHEMERAL_CONFIRM_TTL_MS);
     expect(i.deleteReply).toHaveBeenCalledWith(undefined);
