@@ -160,6 +160,9 @@ function makeCtx(overrides: {
         quests: {
           recordQuestEvent: vi.fn(async () => undefined),
         },
+        gifts: {
+          getPendingGift: vi.fn(async () => null),
+        },
         appearance: {
           catalogFor: vi.fn(() => [
             { id: 'standard', name: 'Standard', unlock: { type: 'owned' } },

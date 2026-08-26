@@ -29,11 +29,20 @@ export interface CaptureChanceInput {
    * never multiplies the buff. Defaults to 0 (no active effect).
    */
   captureBonusModifier?: number;
+  /**
+   * Flat bonus contributed by the *committed capture item itself* (Fluffy
+   * Cuffs, Shibari Rope). Additive in probability points and applied after the
+   * charm multiplier, exactly like the other two additive terms — an item is
+   * either multiplicative (a charm) or additive (a restraint), never both.
+   * Defaults to 0.
+   */
+  itemCaptureBonus?: number;
 }
 
 /**
  * chance = clamp(
- *   base_capture_rate × charm_modifier + buddy_affinity + capture_bonus,
+ *   base_capture_rate × charm_modifier
+ *     + buddy_affinity + capture_bonus + item_capture_bonus,
  *   min, max)
  *
  * `base_capture_rate` uses the species override when set, otherwise the rarity
@@ -46,7 +55,10 @@ export function computeCaptureChance(input: CaptureChanceInput): number {
   const base = input.baseCaptureRate ?? input.config.baseRatesByRarity[input.rarity];
   const modifier = input.captureModifier ?? 1;
   const raw =
-    base * modifier + (input.buddyAffinityModifier ?? 0) + (input.captureBonusModifier ?? 0);
+    base * modifier +
+    (input.buddyAffinityModifier ?? 0) +
+    (input.captureBonusModifier ?? 0) +
+    (input.itemCaptureBonus ?? 0);
   return clamp(raw, input.config.minChance, input.config.maxChance);
 }
 

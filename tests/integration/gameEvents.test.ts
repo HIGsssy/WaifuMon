@@ -23,7 +23,7 @@ import {
   handleCareStart,
   handleMenu,
 } from '../../src/discord/commands/waifumon';
-import { handleEncounterCharm, handleHunt } from '../../src/discord/commands/waifumonHunt';
+import { handleEncounterCapture, handleHunt } from '../../src/discord/commands/waifumonHunt';
 import type { AppContext, PlayerInteraction, Provisioned } from '../../src/discord/types';
 import type { GameEvent, GameEventPayloads } from '../../src/modules/events/gameEvents';
 import {
@@ -87,6 +87,7 @@ beforeAll(async () => {
       quests: app.quests,
       effects: app.effects,
       itemUse: app.itemUse,
+      gifts: app.gifts,
       session: app.session,
     },
   };
@@ -122,7 +123,28 @@ function fakeInteraction(): PlayerInteraction {
   } as any;
 }
 
-/** `handleEncounterCharm` needs a button-shaped interaction with a client. */
+/**
+ * Select-then-capture, the way the encounter screen now works: the item is
+ * persisted on the encounter and the Capture button carries the attempt count
+ * it was rendered against. Selection consumes nothing.
+ */
+async function captureWith(
+  button: unknown,
+  encounterId: number,
+  itemSlug: string,
+): Promise<void> {
+  await ctx.services.capture.selectCaptureItem(prov.playerId, encounterId, itemSlug);
+  const active = await ctx.services.hunt.getActiveEncounter(prov.playerId);
+  await handleEncounterCapture(
+    ctx,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    button as any,
+    prov,
+    [String(encounterId), String(active?.attemptCount ?? 0)],
+  );
+}
+
+/** `handleEncounterCapture` needs a button-shaped interaction with a client. */
 function fakeCharmButton(): PlayerInteraction {
   const btn = fakeInteraction();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -284,13 +306,7 @@ describe('capture narration', () => {
     const enc = await activeEncounter(slug);
     await grant('mythic_contract', 1);
 
-    await handleEncounterCharm(
-      ctx,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      fakeCharmButton() as any,
-      prov,
-      [String(enc.id), 'mythic_contract'],
-    );
+    await captureWith(fakeCharmButton(), enc.id, 'mythic_contract');
 
     const payload = payloadOf('PLAYER_CAPTURE_SUCCESS');
     expect(payload.rarity).toBeTruthy();
@@ -305,13 +321,7 @@ describe('capture narration', () => {
     const enc = await activeEncounter(slug);
     await grant('mythic_contract', 1);
 
-    await handleEncounterCharm(
-      ctx,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      fakeCharmButton() as any,
-      prov,
-      [String(enc.id), 'mythic_contract'],
-    );
+    await captureWith(fakeCharmButton(), enc.id, 'mythic_contract');
 
     const success = harness.ofKind('PLAYER_CAPTURE_SUCCESS');
     expect(success).toHaveLength(1);
@@ -323,18 +333,15 @@ describe('capture narration', () => {
     const slug = await anySpeciesSlug(false);
     const enc = await activeEncounter(slug);
     await grant('basic_charm', 5);
-    const args = [String(enc.id), 'basic_charm'];
 
     // Attempts 1 and 2 fail but leave the encounter open — no feed line.
     for (let i = 0; i < 2; i++) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await handleEncounterCharm(ctx, fakeCharmButton() as any, prov, args);
+      await captureWith(fakeCharmButton(), enc.id, 'basic_charm');
     }
     expect(harness.ofKind('PLAYER_CAPTURE_FAILED')).toHaveLength(0);
 
     // The third exhausts the attempts and she's gone for good.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await handleEncounterCharm(ctx, fakeCharmButton() as any, prov, args);
+    await captureWith(fakeCharmButton(), enc.id, 'basic_charm');
     const failed = harness.ofKind('PLAYER_CAPTURE_FAILED');
     expect(failed).toHaveLength(1);
     expect(failed[0]!.payload.attempts).toBe(3);

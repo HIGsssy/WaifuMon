@@ -15,6 +15,7 @@ import { createAppearanceService } from '../../src/modules/appearance/appearance
 import { createCollectionService } from '../../src/modules/collection/collectionService';
 import { createPlayerEffectsService } from '../../src/modules/effects/playerEffectsService';
 import { createItemUseService } from '../../src/modules/items/itemUseService';
+import { createAffectionGiftService } from '../../src/modules/gifts/affectionGiftService';
 import { createProgressionService } from '../../src/modules/progression/progressionService';
 import { createQuestService } from '../../src/modules/quests/questService';
 import { createInventoryService } from '../../src/modules/inventory/inventoryService';
@@ -64,6 +65,7 @@ export interface App {
   session: ReturnType<typeof createSessionService>;
   effects: ReturnType<typeof createPlayerEffectsService>;
   itemUse: ReturnType<typeof createItemUseService>;
+  gifts: ReturnType<typeof createAffectionGiftService>;
 }
 
 export interface BootstrapOptions {
@@ -71,6 +73,8 @@ export interface BootstrapOptions {
   huntRng?: Rng;
   captureRng?: Rng;
   dailyRng?: Rng;
+  /** Drives the affection gift chance roll and its loot pick, in that order. */
+  giftRng?: Rng;
   /**
    * Whether the daily launch splash is enabled for this test app. Defaults
    * to `false` so pre-existing tests continue to exercise the main menu
@@ -145,8 +149,21 @@ export async function bootstrapApp(
     careConfig: content.tables.energy.careMode,
   });
   const effects = createPlayerEffectsService(t.db);
+  // Wired exactly as production does — the daily claim is the authoritative
+  // daily reset, so the gift roll rides inside its transaction.
+  const gifts = createAffectionGiftService({
+    db: t.db,
+    inventory,
+    collection,
+    config: content.tables.affectionGifts,
+    captureCapacity: content.tables.inventory.captureCapacity,
+    timezone,
+    logger: t.logger,
+    ...(opts.giftRng ? { rng: opts.giftRng } : {}),
+  });
   return {
     content,
+    gifts,
     guilds: createGuildService(t.db),
     players: createPlayerService(t.db, { initialEnergy: content.tables.energy.baseMax }),
     currency,
@@ -158,6 +175,7 @@ export async function bootstrapApp(
       inventory,
       progression,
       care,
+      gifts,
       tables: content.tables,
       timezone,
       ...(opts.dailyRng ? { rng: opts.dailyRng } : {}),

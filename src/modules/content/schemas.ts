@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {
+  AFFECTION_GIFT_TIERS,
   AFFINITIES,
   CONTENT_RATINGS,
   DEFAULT_AFFINITY,
@@ -32,6 +33,16 @@ const slug = z
 export const MAX_ITEM_CAPTURE_BONUS = 0.25;
 
 /**
+ * Upper bound on a *direct* capture item's flat bonus (`captureBonus`).
+ *
+ * Deliberately looser than {@link MAX_ITEM_CAPTURE_BONUS}: that one bounds a
+ * buff that rides along with *every* attempt for its charges, whereas this one
+ * is spent on the single attempt that consumes the item, and is rarity-gated
+ * in content on top. Fluffy Cuffs (+0.30 against N–SR) sits under it.
+ */
+export const MAX_CAPTURE_ITEM_BONUS = 0.5;
+
+/**
  * Energy Drink. `restoreToMax` is a literal `true` — a "restore energy but not
  * to max" variant would be a different effect type, not a config flag.
  * `exitCareMode` documents (and lets an admin flip) the Care Mode interaction:
@@ -40,6 +51,21 @@ export const MAX_ITEM_CAPTURE_BONUS = 0.25;
 export const RestoreEnergyEffectSchema = z
   .object({
     restoreToMax: z.literal(true).default(true),
+    exitCareMode: z.boolean().default(true),
+  })
+  .strict();
+
+/**
+ * Quickie Coffee / Reach Around. Adds a fixed amount of Hunt Energy rather
+ * than refilling — the amount-based sibling of `restore_energy_full`, sharing
+ * its Care Mode interaction. The restore always clamps to the player's
+ * *computed* max, so a small top-up at near-full energy is honoured (and
+ * partly wasted) rather than refused: unlike the full refill, there is a
+ * sensible thing to do with 5 energy when 3 fit.
+ */
+export const RestoreEnergyAmountEffectSchema = z
+  .object({
+    amount: z.number().int().positive(),
     exitCareMode: z.boolean().default(true),
   })
   .strict();
@@ -60,16 +86,23 @@ export const CaptureBonusEffectSchema = z
 
 export type ItemEffectType = (typeof ITEM_EFFECT_TYPES)[number];
 export type RestoreEnergyEffect = z.infer<typeof RestoreEnergyEffectSchema>;
+export type RestoreEnergyAmountEffect = z.infer<typeof RestoreEnergyAmountEffectSchema>;
 export type CaptureBonusEffect = z.infer<typeof CaptureBonusEffectSchema>;
-export type ItemEffectConfig = RestoreEnergyEffect | CaptureBonusEffect;
+export type ItemEffectConfig =
+  | RestoreEnergyEffect
+  | RestoreEnergyAmountEffect
+  | CaptureBonusEffect;
+
+export type ItemEffectConfigSchema =
+  | typeof RestoreEnergyEffectSchema
+  | typeof RestoreEnergyAmountEffectSchema
+  | typeof CaptureBonusEffectSchema;
 
 /** The config schema that goes with an `effectType`. */
-export function effectConfigSchemaFor(
-  effectType: ItemEffectType,
-): typeof RestoreEnergyEffectSchema | typeof CaptureBonusEffectSchema {
-  return effectType === 'restore_energy_full'
-    ? RestoreEnergyEffectSchema
-    : CaptureBonusEffectSchema;
+export function effectConfigSchemaFor(effectType: ItemEffectType): ItemEffectConfigSchema {
+  if (effectType === 'restore_energy_full') return RestoreEnergyEffectSchema;
+  if (effectType === 'restore_energy_amount') return RestoreEnergyAmountEffectSchema;
+  return CaptureBonusEffectSchema;
 }
 
 const ItemBaseSchema = z.object({
@@ -77,6 +110,21 @@ const ItemBaseSchema = z.object({
   name: z.string().min(1),
   category: z.enum(ITEM_CATEGORIES),
   captureModifier: z.number().positive().nullable(),
+  /**
+   * Flat additive capture bonus in probability points (0.30 = +30pp), applied
+   * after the `captureModifier` multiply and before the clamp. Null = none.
+   */
+  captureBonus: z.number().gt(0).lte(MAX_CAPTURE_ITEM_BONUS).nullable().default(null),
+  /**
+   * Encounter rarities this capture item is eligible against. Null (or an
+   * empty list, which the admin form produces when the field is cleared) means
+   * "every rarity" — which is what the charms are.
+   */
+  captureRarities: z
+    .array(z.enum(RARITIES))
+    .nullable()
+    .default(null)
+    .transform((v) => (v == null || v.length === 0 ? null : v)),
   isGuaranteedCapture: z.boolean().default(false),
   purchasable: z.boolean().default(false),
   buyPrice: z.number().int().positive().nullable().default(null),
@@ -107,6 +155,45 @@ export const ItemContentSchema = ItemBaseSchema.superRefine((item, ctx) => {
       message: `"${item.slug}": purchasable=true requires buy_price`,
       path: ['buyPrice'],
     });
+  }
+  // The two capture-item fields only mean anything on a capture item, and a
+  // guaranteed item bypasses the chance formula entirely — a flat bonus on one
+  // would be silently inert, which is worse than a rejected edit.
+  if (item.captureBonus != null) {
+    if (item.category !== 'capture') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `"${item.slug}": captureBonus requires category "capture"`,
+        path: ['captureBonus'],
+      });
+    }
+    if (item.isGuaranteedCapture) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `"${item.slug}": captureBonus is meaningless on a guaranteed-capture item`,
+        path: ['captureBonus'],
+      });
+    }
+  }
+  if (item.captureRarities != null && item.captureRarities.length > 0) {
+    if (item.category !== 'capture') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `"${item.slug}": captureRarities requires category "capture"`,
+        path: ['captureRarities'],
+      });
+    }
+    const seen = new Set<string>();
+    for (const rarity of item.captureRarities) {
+      if (seen.has(rarity)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `"${item.slug}": duplicate rarity "${rarity}" in captureRarities`,
+          path: ['captureRarities'],
+        });
+      }
+      seen.add(rarity);
+    }
   }
   if (item.effectType == null) {
     if (item.effectConfig != null && Object.keys(item.effectConfig).length > 0) {
@@ -903,6 +990,111 @@ export const DailyQuestsConfigSchema = z
     }
   });
 
+/**
+ * Affection Gift System.
+ *
+ * At the authoritative daily reset the player's *active buddy* — and only the
+ * active buddy — takes at most one roll. Tiers are matched by the highest
+ * `minAffection` the copy's current affection reaches; below the lowest tier
+ * there is no roll at all, which is what "0% under 500" means.
+ *
+ * `guaranteeAfter` is a pity counter measured in **eligible rolls since her
+ * last gift**: at `7`, the 7th such roll produces a gift even when the chance
+ * roll misses. The counter lives on the owned copy, so changing buddies never
+ * transfers, resets, or double-spends anyone's progress.
+ *
+ * `lootTable` is rolled *at generation time*, never at claim time, so what she
+ * is holding cannot change while it waits. Weights are relative and are
+ * deliberately **not** required to total any particular number — the shipped
+ * table sums to 10,000 purely because that makes the percentages readable.
+ */
+export const AffectionGiftTierSchema = z
+  .object({
+    /** Inclusive affection floor for this tier. */
+    minAffection: z.number().int().nonnegative(),
+    /** Probability in [0, 1] that an eligible roll produces a gift. */
+    dailyChance: z.number().gte(0).lte(1),
+    /** Eligible rolls since the last gift after which one is guaranteed. */
+    guaranteeAfter: z.number().int().positive(),
+    /** Stored on the roll/gift rows so history survives a retune. */
+    tier: z.enum(AFFECTION_GIFT_TIERS),
+  })
+  .strict();
+
+export const AffectionGiftLootEntrySchema = z
+  .object({
+    slug,
+    quantity: z.number().int().positive(),
+    /** Relative weight. Positive integer — no fractional or zero weights. */
+    weight: z.number().int().positive(),
+  })
+  .strict();
+
+export const AffectionGiftsConfigSchema = z
+  .object({
+    enabled: z.boolean().default(true),
+    tiers: z.array(AffectionGiftTierSchema).default([]),
+    lootTable: z.array(AffectionGiftLootEntrySchema).default([]),
+  })
+  .superRefine((cfg, ctx) => {
+    if (!cfg.enabled) return;
+    if (cfg.tiers.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'affectionGifts.tiers must not be empty while enabled',
+        path: ['tiers'],
+      });
+    }
+    if (cfg.lootTable.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'affectionGifts.lootTable must not be empty while enabled',
+        path: ['lootTable'],
+      });
+    }
+    // Ascending, distinct floors: tier resolution takes the highest matching
+    // entry, so an out-of-order or duplicated floor is an authoring mistake
+    // that would silently change which chance a player gets.
+    let previous = -1;
+    for (const [index, tier] of cfg.tiers.entries()) {
+      if (tier.minAffection <= previous) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            `affectionGifts.tiers must be sorted by ascending, distinct minAffection ` +
+            `(entry ${index} has ${tier.minAffection} after ${previous})`,
+          path: ['tiers', index, 'minAffection'],
+        });
+      }
+      previous = tier.minAffection;
+    }
+    const tierNames = cfg.tiers.map((t) => t.tier);
+    const duplicateName = tierNames.find((t, i) => tierNames.indexOf(t) !== i);
+    if (duplicateName) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `affectionGifts.tiers has duplicate tier name: ${duplicateName}`,
+        path: ['tiers'],
+      });
+    }
+    const slugs = cfg.lootTable.map((e) => e.slug);
+    const duplicateSlug = slugs.find((sl, i) => slugs.indexOf(sl) !== i);
+    if (duplicateSlug) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `affectionGifts.lootTable has duplicate item slug: ${duplicateSlug}`,
+        path: ['lootTable'],
+      });
+    }
+  });
+
+/** Gifts switched off — the default when `tables.json` omits the block. */
+const AFFECTION_GIFTS_DEFAULT: z.input<typeof AffectionGiftsConfigSchema> = {
+  enabled: false,
+  tiers: [],
+  lootTable: [],
+};
+
 export const TablesFileSchema = z.object({
   energy: z.object({
     baseMax: z.number().int().positive(),
@@ -928,6 +1120,7 @@ export const TablesFileSchema = z.object({
     questsPerDay: 3,
     pool: [],
   }),
+  affectionGifts: AffectionGiftsConfigSchema.optional().default(AFFECTION_GIFTS_DEFAULT),
   uiFlavor: UiFlavorConfigSchema.optional().default({ mainMenu: [] }),
   uiSplash: UiSplashConfigSchema.optional().default({
     enabled: false,
@@ -951,6 +1144,9 @@ export type ProgressionConfig = z.infer<typeof ProgressionConfigSchema>;
 export type WaifuProgressionConfig = z.infer<typeof WaifuProgressionConfigSchema>;
 export type CareModeConfig = z.infer<typeof CareModeConfigSchema>;
 export type DailyQuestsConfig = z.infer<typeof DailyQuestsConfigSchema>;
+export type AffectionGiftsConfig = z.infer<typeof AffectionGiftsConfigSchema>;
+export type AffectionGiftTierConfig = z.infer<typeof AffectionGiftTierSchema>;
+export type AffectionGiftLootEntry = z.infer<typeof AffectionGiftLootEntrySchema>;
 export type QuestPoolEntry = z.infer<typeof QuestPoolEntrySchema>;
 export type QuestRewards = z.infer<typeof QuestRewardsSchema>;
 export type UiSplashConfig = z.infer<typeof UiSplashConfigSchema>;

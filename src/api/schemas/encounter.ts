@@ -24,6 +24,14 @@ export const encounterSchema = z.object({
   state: z.enum(ENCOUNTER_STATES),
   attemptCount: z.number().int(),
   maxAttempts: z.number().int(),
+  selectedItemId: z
+    .number()
+    .int()
+    .nullable()
+    .describe(
+      'Capture item chosen for this encounter but not yet committed. Nothing is ' +
+        'consumed until a capture attempt resolves.',
+    ),
   createdAt: isoDateTime,
   expiresAt: isoDateTime,
   resolvedAt: nullableIsoDateTime,

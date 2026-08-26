@@ -111,6 +111,7 @@ beforeAll(async () => {
         session: app.session,
         effects: app.effects,
         itemUse: app.itemUse,
+      gifts: app.gifts,
       },
       getContent: () => app.content,
     },

@@ -20,8 +20,9 @@ import {
   handleQuestsClaimAll,
 } from './commands/waifumon';
 import {
-  handleEncounterCharm,
+  handleEncounterCapture,
   handleEncounterPick,
+  handleEncounterPickItem,
   handleEncounterRelease,
   handleHunt,
 } from './commands/waifumonHunt';
@@ -60,6 +61,7 @@ import {
   handleWaifuReleaseConfirm,
   handleWaifuSetBuddy,
 } from './commands/waifumonCollection';
+import { handleGiftClaim } from './commands/waifumonGifts';
 import {
   handleAdminAllowChannelAdd,
   handleAdminAllowChannelList,
@@ -175,10 +177,12 @@ export function createDiscordClient(ctx: AppContext): Client {
         handleCareChangeOpen(ctx, i, prov),
       'care:change_pick': (i: StringSelectMenuInteraction, prov: Provisioned) =>
         handleCareChangePick(ctx, i, prov),
-      'enc:charm': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
-        handleEncounterCharm(ctx, i, prov, args),
+      'enc:capture': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleEncounterCapture(ctx, i, prov, args),
       'enc:pick': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleEncounterPick(ctx, i, prov, args),
+      'enc:pick_item': (i: StringSelectMenuInteraction, prov: Provisioned, args: string[]) =>
+        handleEncounterPickItem(ctx, i, prov, args),
       'enc:release': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleEncounterRelease(ctx, i, prov, args),
       'col:page': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
@@ -232,6 +236,9 @@ export function createDiscordClient(ctx: AppContext): Client {
         handleWaifuNicknameOpen(ctx, i, prov, args),
       'waifu:nick_submit': (i: ModalSubmitInteraction, prov: Provisioned, args: string[]) =>
         handleWaifuNicknameSubmit(ctx, i, prov, args),
+      // Affection gifts — inspect surfaces the indicator, this accepts it.
+      'gift:claim': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleGiftClaim(ctx, i, prov, args),
       'dup:keep': (i: ButtonInteraction, prov: Provisioned) =>
         handleDuplicateKeep(ctx, i, prov),
       'dup:convert': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>

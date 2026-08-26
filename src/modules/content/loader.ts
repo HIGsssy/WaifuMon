@@ -274,6 +274,28 @@ export function validateContentSet(content: LoadedContent): void {
       }
     }
   }
+  // Affection gifts: the loot table is rolled at *generation* time and the
+  // slug is frozen onto the gift row, so a dangling or disabled reference
+  // would mint a gift nobody can ever claim. Both are fatal here rather than
+  // deferred to a warning — a gift that cannot be handed over is worse than a
+  // loud startup failure. (Weight shape is the schema's job; this layer is the
+  // only one holding items.json and tables.json at the same time.)
+  if (tables.affectionGifts.enabled) {
+    const enabledItemSlugs = new Set(items.filter((i) => i.enabled).map((i) => i.slug));
+    for (const entry of tables.affectionGifts.lootTable) {
+      if (!itemSlugs.has(entry.slug)) {
+        throw new ContentValidationError(
+          `affectionGifts.lootTable references unknown item slug: ${entry.slug}`,
+        );
+      }
+      if (!enabledItemSlugs.has(entry.slug)) {
+        throw new ContentValidationError(
+          `affectionGifts.lootTable references disabled item slug: ${entry.slug}`,
+        );
+      }
+    }
+  }
+
   if (tables.dailyQuests.allCompleteBonus) {
     for (const item of tables.dailyQuests.allCompleteBonus.items) {
       if (!itemSlugs.has(item.slug)) {

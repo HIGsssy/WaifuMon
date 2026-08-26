@@ -23,6 +23,8 @@ export async function seedContent(db: Db, content: LoadedContent, logger: Logger
         name: item.name,
         category: item.category,
         captureModifier: item.captureModifier,
+        captureBonus: item.captureBonus,
+        captureRarities: item.captureRarities,
         isGuaranteedCapture: item.isGuaranteedCapture,
         purchasable: item.purchasable,
         buyPrice: item.buyPrice,

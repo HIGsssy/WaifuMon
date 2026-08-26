@@ -203,6 +203,23 @@ async function renderMainMenu(
 
   embed.addFields({ name: '💗 Care Mode', value: renderCareStatusLines(care).join('\n') });
 
+  // Waiting-gift reminder. The menu is the one screen every player passes
+  // through, and it is repainted rather than pushed, so a standing gift is
+  // mentioned exactly once per visit instead of chasing the player with DMs.
+  // Gifts never expire, so this stays until it is accepted.
+  const pendingGifts = await ctx.services.gifts.listPendingGifts(prov.playerId);
+  if (pendingGifts.length > 0) {
+    const names = pendingGifts
+      .map((g) => g.waifu.nickname?.trim() || g.species.name)
+      .slice(0, 3)
+      .join(', ');
+    const more = pendingGifts.length > 3 ? ` and ${pendingGifts.length - 3} more` : '';
+    embed.addFields({
+      name: '🎁 Gift waiting',
+      value: `**${names}**${more} — inspect her to accept.`,
+    });
+  }
+
   // "Today" summary: fold in whatever the daily tally has recorded so far.
   // Read-only — the session row is created/updated by the handlers that
   // actually record events (hunt, daily, capture).
@@ -374,6 +391,15 @@ export async function handleDaily(
       .map(({ item, quantity }) => `${item.emoji ?? '•'} ${item.name} ×${quantity}`)
       .join('\n');
     const rareNote = result.rareItemGranted ? '\n🌟 Rare bonus this time!' : '';
+    // A gift generated at this reset is announced here, without naming the
+    // item - the reveal belongs to Accept Gift on her inspect card.
+    const giftRoll = result.giftRoll;
+    const giftOutcome = giftRoll?.rolled ? giftRoll.outcome : null;
+    const giftNote =
+      giftOutcome?.gift != null
+        ? `\n\n🎁 **${giftName(giftOutcome)} seems unusually excited to see you.**` +
+          `\n_Inspect her to see what she has._`
+        : '';
     const levelUpNote = result.levelUps.length ? `\n\n${formatLevelUps(result.levelUps)}` : '';
     const embed = new EmbedBuilder()
       .setTitle('🎁 Daily Claimed!')
@@ -383,7 +409,8 @@ export async function handleDaily(
           `💰 **+${result.waifubux}** WaifuBux\n${itemLines}` +
           rareNote +
           `\n\n+${result.xp.xpDelta} XP` +
-          levelUpNote,
+          levelUpNote +
+          giftNote,
       )
       .setFooter({ text: 'Come back after the daily reset~' });
     await respondEphemeral(interaction, {
@@ -394,6 +421,19 @@ export async function handleDaily(
     const events: GameEventDescriptor[] = [
       ...(result.careExit ? careLeaveDescriptors(result.careExit, 'daily') : []),
       ...levelUpDescriptors(result.levelUps),
+      // Post-commit: the gift row is already durable, and the feed is told
+      // only that one exists.
+      ...(giftOutcome?.gift
+        ? [
+            gameEvent('WAIFU_GIFT_AVAILABLE', {
+              waifuId: giftOutcome.waifu.id,
+              waifuName: giftName(giftOutcome),
+              affection: giftOutcome.affection,
+              tier: giftOutcome.tier,
+              guaranteed: giftOutcome.source === 'guaranteed',
+            }),
+          ]
+        : []),
     ];
     await emitEvents(ctx, interaction, prov, events);
   } catch (err) {
@@ -405,6 +445,14 @@ export async function handleDaily(
     }
     throw err;
   }
+}
+
+/** Nickname when set, species name otherwise - for gift copy. */
+function giftName(outcome: {
+  waifu: { nickname: string | null };
+  species: { name: string };
+}): string {
+  return outcome.waifu.nickname?.trim() || outcome.species.name;
 }
 
 /** Short currency label used across shop/inventory copy. */
@@ -525,6 +573,12 @@ export function effectSummary(
   effectConfig: Record<string, unknown> | null,
 ): string {
   if (effectType === 'restore_energy_full') return 'restores Hunt Energy to full';
+  if (effectType === 'restore_energy_amount') {
+    const amount = effectConfig && typeof effectConfig.amount === 'number'
+      ? effectConfig.amount
+      : 0;
+    return `restores ${amount} Hunt Energy`;
+  }
   if (effectType === 'capture_bonus_charges') {
     const cfg = effectConfig ?? {};
     const bonus = typeof cfg.captureBonus === 'number' ? cfg.captureBonus : 0;
@@ -545,20 +599,29 @@ export async function handleInventory(
 
 /** Human-readable outcome line for a successful item use. */
 export function formatItemUseResult(result: ItemUseResult): string {
-  if (result.kind === 'restore_energy_full') {
+  if (result.kind === 'capture_bonus_charges') {
+    const verb = result.refreshed ? 'refreshed' : 'active';
+    return (
+      `✅ **${result.item.name}** ${verb}: ${formatCaptureBonus(result.modifier)} capture chance ` +
+      `for your next **${result.chargesRemaining}** capture attempts.`
+    );
+  }
+  {
     const care = result.careModeExited
       ? ` Left Care Mode${result.careEnergyGained > 0 ? ` (+${result.careEnergyGained} ⚡ from pending ticks)` : ''}.`
       : '';
+    // Report what actually landed, not what was promised: at 23/25 a Reach
+    // Around gives 2, and saying "+10" there would simply be untrue.
+    const gained = result.energyAfter - result.energyBefore;
+    const spilled =
+      result.restoreAmount != null && gained < result.restoreAmount
+        ? ' (capped)'
+        : '';
     return (
-      `✅ **${result.item.name}** used: Hunt Energy restored to ` +
+      `✅ **${result.item.name}** used: +${gained} ⚡${spilled} — Hunt Energy now ` +
       `**${result.energyAfter}/${result.maxEnergy}**.${care}`
     );
   }
-  const verb = result.refreshed ? 'refreshed' : 'active';
-  return (
-    `✅ **${result.item.name}** ${verb}: ${formatCaptureBonus(result.modifier)} capture chance ` +
-    `for your next **${result.chargesRemaining}** capture attempts.`
-  );
 }
 
 /**

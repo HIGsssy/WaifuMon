@@ -1,8 +1,15 @@
-import { ITEM_CATEGORIES, ITEM_EFFECT_TYPES, PRICE_CURRENCIES } from '../../db/schema';
 import {
+  ITEM_CATEGORIES,
+  ITEM_EFFECT_TYPES,
+  PRICE_CURRENCIES,
+  RARITIES,
+} from '../../db/schema';
+import {
+  MAX_CAPTURE_ITEM_BONUS,
   MAX_ITEM_CAPTURE_BONUS,
   type CaptureBonusEffect,
   type ItemContent,
+  type RestoreEnergyAmountEffect,
   type RestoreEnergyEffect,
 } from '../../modules/content/schemas';
 import { boolField, esc, layout, numberField, selectField, textField, textareaField } from './html';
@@ -25,7 +32,9 @@ function effectLabel(i: ItemContent): string {
   const detail =
     i.effectType === 'capture_bonus_charges' && cfg && 'captureBonus' in cfg
       ? ` <span class="muted">+${(cfg as CaptureBonusEffect).captureBonus} × ${(cfg as CaptureBonusEffect).charges}</span>`
-      : '';
+      : i.effectType === 'restore_energy_amount' && cfg && 'amount' in cfg
+        ? ` <span class="muted">+${(cfg as RestoreEnergyAmountEffect).amount} ⚡</span>`
+        : '';
   return `<span class="badge">${esc(i.effectType)}</span>${detail}`;
 }
 
@@ -79,6 +88,9 @@ function effectFields(i: ItemContent): string {
   const restore = (i.effectType === 'restore_energy_full'
     ? i.effectConfig
     : null) as RestoreEnergyEffect | null;
+  const restoreAmount = (i.effectType === 'restore_energy_amount'
+    ? i.effectConfig
+    : null) as RestoreEnergyAmountEffect | null;
   const capture = (i.effectType === 'capture_bonus_charges'
     ? i.effectConfig
     : null) as CaptureBonusEffect | null;
@@ -93,6 +105,15 @@ function effectFields(i: ItemContent): string {
 <div data-effect-block="restore_energy_full">
   ${boolField('effectConfig.restoreToMax', 'Restore to computed max energy (required)', restore?.restoreToMax ?? true)}
   ${boolField('effectConfig.exitCareMode', 'Also leave Care Mode when used', restore?.exitCareMode ?? true)}
+</div>
+<div data-effect-block="restore_energy_amount">
+  <div class="row">
+    <div>${numberField('effectConfig.amount', 'Energy restored', restoreAmount?.amount ?? 5, {
+      hint: 'positive integer; clamped to the player’s computed max',
+      step: '1',
+    })}</div>
+  </div>
+  ${boolField('effectConfig.exitCareMode', 'Also leave Care Mode when used', restoreAmount?.exitCareMode ?? true)}
 </div>
 <div data-effect-block="capture_bonus_charges">
   <div class="row">
@@ -138,6 +159,8 @@ export function itemFormPage(item: ItemContent | null, references: string[]): st
     name: '',
     category: 'capture',
     captureModifier: null,
+    captureBonus: null,
+    captureRarities: null,
     isGuaranteedCapture: false,
     purchasable: false,
     buyPrice: null,
@@ -189,10 +212,18 @@ ${refWarning}
   <h2>Capture</h2>
   <div class="row">
     <div>${numberField('captureModifier', 'Capture modifier', i.captureModifier, {
-      hint: '> 0, blank = not a charm',
+      hint: '> 0, blank = not a charm (multiplies the base rate)',
+      step: '0.05',
+    })}</div>
+    <div>${numberField('captureBonus', 'Flat capture bonus', i.captureBonus, {
+      hint: `additive points, 0-${MAX_CAPTURE_ITEM_BONUS} (0.30 = +30pp); blank = none`,
       step: '0.05',
     })}</div>
   </div>
+  ${textField('captureRarities', 'Eligible rarities', (i.captureRarities ?? []).join(', '), {
+    type: 'list',
+    hint: `comma-separated from ${RARITIES.join(', ')}; blank = every rarity`,
+  })}
   ${boolField('isGuaranteedCapture', 'Guarantees capture (never purchasable)', i.isGuaranteedCapture)}
   ${effectFields(i)}
   <h2>Presentation</h2>

@@ -9,6 +9,10 @@ import {
 import { defaultRng, type Rng } from '../../shared/random';
 import { claimDateInTimezone, nextResetAt } from '../../shared/time';
 import type { CareService, CareTickSummary } from '../care/careService';
+import type {
+  AffectionGiftService,
+  GiftRollResult,
+} from '../gifts/affectionGiftService';
 import type { CurrencyService } from '../currency/currencyService';
 import type { InventoryService } from '../inventory/inventoryService';
 import type { TablesContent } from '../content/schemas';
@@ -35,6 +39,14 @@ export interface DailyClaimResult {
    * always exits Care Mode.
    */
   careExit: CareTickSummary | null;
+  /**
+   * Outcome of the affection gift roll performed at this reset.
+   *
+   * `null` only when no gift service is wired (older tests). Otherwise it is
+   * always present and carries either the roll or the reason it was skipped —
+   * the coordinator turns a generated gift into a post-commit event.
+   */
+  giftRoll: GiftRollResult | null;
 }
 
 export interface DailyStatus {
@@ -47,9 +59,17 @@ export interface DailyService {
    * Once per calendar day (configured timezone). One transaction: insert the
    * claim row (unique constraint blocks races), refill Hunt Energy to the
    * level-scaled max, grant WaifuBux + base charm pack + any level-unlocked
-   * bonus items + a rolled rare-item chance, then award daily-claim XP.
+   * bonus items + a rolled rare-item chance, award daily-claim XP, and take
+   * the buddy's affection gift roll.
+   *
+   * The gift roll rides *inside* this transaction because this is the
+   * authoritative daily reset: rolling here means the roll cannot happen
+   * without the reset, and the reset cannot happen twice. The gift ledger
+   * carries its own `(player_id, roll_date)` unique index on top, so the roll
+   * is idempotent even if it is ever driven from somewhere else.
    */
   claim(playerId: number, now?: Date): Promise<DailyClaimResult>;
+
   status(playerId: number, now?: Date): Promise<DailyStatus>;
 }
 
@@ -59,6 +79,12 @@ export interface DailyServiceDeps {
   inventory: InventoryService;
   progression: ProgressionService;
   care: CareService;
+  /**
+   * Affection Gift System. **Optional**: the daily claim is this project's
+   * authoritative daily reset, so the roll belongs in its transaction — but a
+   * deployment (or an older test) without gifts wired simply does not roll.
+   */
+  gifts?: AffectionGiftService | undefined;
   tables: TablesContent;
   timezone: string;
   /** Optional injected RNG for the level-30 daily rare roll. */
@@ -67,6 +93,7 @@ export interface DailyServiceDeps {
 
 export function createDailyService(deps: DailyServiceDeps): DailyService {
   const { db, currency, inventory, progression, care, tables, timezone } = deps;
+  const gifts = deps.gifts;
   const rng = deps.rng ?? defaultRng();
 
   async function claim(playerId: number, now: Date = new Date()): Promise<DailyClaimResult> {
@@ -146,6 +173,11 @@ export function createDailyService(deps: DailyServiceDeps): DailyService {
           metadata: { claimDate, rareItemGranted },
         });
 
+        // Affection gift roll — last, so a gift can never be the reason a
+        // daily claim fails, and always inside this transaction so it shares
+        // the reset's atomicity.
+        const giftRoll = gifts ? await gifts.processDailyRoll(tx, playerId, now) : null;
+
         return {
           claimDate,
           energySetTo,
@@ -159,6 +191,7 @@ export function createDailyService(deps: DailyServiceDeps): DailyService {
             careExit.active || careExit.stopped || careExit.ticksProcessed > 0
               ? careExit
               : null,
+          giftRoll,
         };
       });
     } catch (err) {

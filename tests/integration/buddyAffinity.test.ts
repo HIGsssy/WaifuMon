@@ -24,7 +24,7 @@ import {
 import { createCaptureService } from '../../src/modules/capture/captureService';
 import type { Rng } from '../../src/shared/random';
 import {
-  handleEncounterCharm,
+  handleEncounterCapture,
   handleEncounterPick,
 } from '../../src/discord/commands/waifumonHunt';
 import { handleCollectionPickId } from '../../src/discord/commands/waifumonCollection';
@@ -82,6 +82,7 @@ beforeAll(async () => {
       quests: app.quests,
       effects: app.effects,
       itemUse: app.itemUse,
+      gifts: app.gifts,
       session: app.session,
     },
   } as unknown as AppContext;
@@ -513,6 +514,27 @@ describe('UI — affinity read on the encounter reveal', () => {
   });
 });
 
+/**
+ * Select-then-capture, the way the encounter screen now works: the item is
+ * persisted on the encounter and the Capture button carries the attempt count
+ * it was rendered against. Selection consumes nothing.
+ */
+async function pressCapture(
+  button: unknown,
+  encounterId: number,
+  itemSlug: string,
+): Promise<void> {
+  await ctx.services.capture.selectCaptureItem(prov.playerId, encounterId, itemSlug);
+  const active = await ctx.services.hunt.getActiveEncounter(prov.playerId);
+  await handleEncounterCapture(
+    ctx,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    button as any,
+    prov,
+    [String(encounterId), String(active?.attemptCount ?? 0)],
+  );
+}
+
 describe('UI — buddy bonus on the capture result', () => {
   it('shows the applied bonus and the resulting capture chance', async () => {
     await setAffinity(BUDDY_SLUG, 'dominant');
@@ -522,8 +544,7 @@ describe('UI — buddy bonus on the capture result', () => {
     const enc = await createEncounter(ENCOUNTER_SLUG);
 
     const btn = fakeButton();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await handleEncounterCharm(ctx, btn as any, prov, [String(enc.id), 'basic_charm']);
+    await pressCapture(btn, enc.id, 'basic_charm');
     const text = fieldValues(renderedEmbeds(btn));
     expect(text).toContain('🤝 Buddy Bonus');
     expect(text).toContain('+1% — Dominant beats Submissive');
@@ -536,8 +557,7 @@ describe('UI — buddy bonus on the capture result', () => {
     const enc = await createEncounter(ENCOUNTER_SLUG);
 
     const btn = fakeButton();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await handleEncounterCharm(ctx, btn as any, prov, [String(enc.id), 'basic_charm']);
+    await pressCapture(btn, enc.id, 'basic_charm');
     expect(fieldValues(renderedEmbeds(btn))).not.toContain('Buddy Bonus');
   });
 });

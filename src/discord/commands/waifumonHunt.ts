@@ -20,13 +20,16 @@ import {
   ButtonBuilder,
   ButtonStyle,
   EmbedBuilder,
+  StringSelectMenuBuilder,
   type ButtonInteraction,
   type GuildTextBasedChannel,
   type InteractionEditReplyOptions,
+  type StringSelectMenuInteraction,
 } from 'discord.js';
 import {
   species as speciesTable,
   type EncounterRow,
+  type ItemRow,
   type SpeciesRow,
   type Rarity,
 } from '../../db/schema';
@@ -38,20 +41,26 @@ import {
   normalizeAffinity,
   resolveBuddyAffinity,
 } from '../../modules/capture/affinityMath';
-import type { CaptureAttemptResult, CaptureOutcome } from '../../modules/capture/captureService';
+import type {
+  CaptureAttemptResult,
+  CaptureOutcome,
+  CaptureQuote,
+} from '../../modules/capture/captureService';
 import type { HuntResult } from '../../modules/hunt/huntService';
-import type { ItemContent } from '../../modules/content/schemas';
 import {
   ActiveEncounterError,
   AppError,
+  CaptureItemNotEligibleError,
   EncounterAlreadyResolvedError,
   EncounterExpiredError,
   EncounterNotFoundError,
+  EncounterStaleError,
   HuntCooldownError,
   InsufficientEnergyError,
   InsufficientItemsError,
   ItemNotFoundError,
   ItemNotUsableError,
+  NoCaptureItemSelectedError,
 } from '../../shared/errors';
 import type { AppContext, PlayerInteraction, Provisioned } from '../types';
 import { buildCustomId } from '../types';
@@ -88,52 +97,93 @@ function formatChancePercent(chance: number): string {
   return `${Number.isInteger(pct) ? pct : pct.toFixed(1)}%`;
 }
 
-/** Discord permits max 5 buttons per row; keep Mythic last. */
-function orderCharmItems(items: readonly ItemContent[]): ItemContent[] {
-  return items
-    .filter((i) => i.enabled && i.category === 'capture')
-    .slice()
-    .sort((a, b) => {
-      if (a.isGuaranteedCapture !== b.isGuaranteedCapture) {
-        return a.isGuaranteedCapture ? 1 : -1;
-      }
-      const ap = a.buyPrice ?? Number.POSITIVE_INFINITY;
-      const bp = b.buyPrice ?? Number.POSITIVE_INFINITY;
-      if (ap !== bp) return ap - bp;
-      return a.slug.localeCompare(b.slug);
-    })
-    .slice(0, 5);
+/** 0.21 → "21%", 0.525 → "52.5%". Shared by every chance line on this screen. */
+function formatChance(chance: number): string {
+  const pct = Math.round(chance * 1000) / 10;
+  return `${Number.isInteger(pct) ? pct : pct.toFixed(1)}%`;
 }
 
+/**
+ * Encounter controls.
+ *
+ * Three states, one builder:
+ *   - nothing selected  → Capture (disabled, and says why) · Use Item · Let Her Go
+ *   - item selected     → Capture · Change Item · Let Her Go
+ *   - nothing eligible  → Capture (disabled) · Use Item (disabled) · Let Her Go
+ *
+ * The Capture button embeds the encounter's current `attempt_count`. That is
+ * the stale-interaction guard: the service refuses a commit whose expected
+ * count no longer matches, so a double-clicked Capture resolves exactly one
+ * attempt and consumes exactly one item.
+ */
 function encounterButtonRows(
   encounter: EncounterRow,
-  charms: readonly ItemContent[],
-  ownedBySlug: ReadonlyMap<string, number>,
+  selected: { item: ItemRow; quantity: number } | null,
+  hasEligibleItems: boolean,
 ): ActionRowBuilder<ButtonBuilder>[] {
-  const charmButtons: ButtonBuilder[] = charms.map((item) => {
-    const owned = ownedBySlug.get(item.slug) ?? 0;
-    const label = item.isGuaranteedCapture
-      ? `${item.name} ×${owned} — guaranteed`
-      : `${item.name} ×${owned}`;
-    const btn = new ButtonBuilder()
-      .setCustomId(buildCustomId('enc', 'charm', String(encounter.id), item.slug))
-      .setLabel(label)
-      .setStyle(item.isGuaranteedCapture ? ButtonStyle.Danger : ButtonStyle.Primary)
-      .setDisabled(owned <= 0);
-    if (item.emoji) btn.setEmoji(item.emoji);
-    return btn;
-  });
+  const captureBtn = new ButtonBuilder()
+    .setCustomId(
+      buildCustomId(
+        'enc',
+        'capture',
+        String(encounter.id),
+        String(encounter.attemptCount),
+      ),
+    )
+    .setLabel(selected ? `Capture with ${selected.item.name}` : 'Capture')
+    .setEmoji('💘')
+    .setStyle(ButtonStyle.Success)
+    .setDisabled(selected == null);
+
+  const pickBtn = new ButtonBuilder()
+    .setCustomId(buildCustomId('enc', 'pick', String(encounter.id)))
+    .setLabel(selected ? 'Change Item' : 'Use Item')
+    .setEmoji('🎒')
+    .setStyle(selected ? ButtonStyle.Secondary : ButtonStyle.Primary)
+    .setDisabled(!hasEligibleItems);
+
   const letGo = new ButtonBuilder()
     .setCustomId(buildCustomId('enc', 'release', String(encounter.id)))
     .setLabel('Let Her Go')
     .setStyle(ButtonStyle.Secondary);
 
-  const rows: ActionRowBuilder<ButtonBuilder>[] = [];
-  if (charmButtons.length > 0) {
-    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(...charmButtons));
-  }
-  rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(letGo));
-  return rows;
+  return [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(captureBtn, pickBtn, letGo),
+  ];
+}
+
+/**
+ * The item selector: only capture items the player *owns* and that are
+ * *eligible* against this encounter's rarity. Both filters come from the
+ * capture service, so the menu can never offer something the authoritative
+ * commit would then refuse.
+ *
+ * Each option carries the resulting chance, because that is the whole decision
+ * the player is making — and the number is the service's, not this file's.
+ */
+function itemSelectRow(
+  encounter: EncounterRow,
+  options: ReadonlyArray<{ item: ItemRow; quantity: number; quote: CaptureQuote }>,
+  selectedItemId: number | null,
+): ActionRowBuilder<StringSelectMenuBuilder> {
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId(buildCustomId('enc', 'pick_item', String(encounter.id)))
+    .setPlaceholder('Choose a capture item…')
+    .addOptions(
+      // Discord caps a select at 25 options; the capture catalog is far
+      // smaller, but the slice keeps a future content explosion safe.
+      options.slice(0, 25).map((entry) => ({
+        label: `${entry.item.name} ×${entry.quantity}`.slice(0, 100),
+        value: entry.item.slug,
+        description: (entry.quote.guaranteed
+          ? 'Guaranteed capture'
+          : `Capture chance: ${formatChance(entry.quote.chance)}`
+        ).slice(0, 100),
+        ...(entry.item.emoji ? { emoji: entry.item.emoji } : {}),
+        default: entry.item.id === selectedItemId,
+      })),
+    );
+  return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu);
 }
 
 /**
@@ -150,10 +200,22 @@ function attachSpeciesArtwork(ctx: AppContext, species: SpeciesRow): AttachmentB
   return resolveAppearanceAssetOrPath(ctx, appearance.assetId, species.imagePath);
 }
 
+type EncounterRowComponent =
+  | ActionRowBuilder<ButtonBuilder>
+  | ActionRowBuilder<StringSelectMenuBuilder>;
+
 interface EncounterView {
   embeds: EmbedBuilder[];
-  components: ActionRowBuilder<ButtonBuilder>[];
+  components: EncounterRowComponent[];
   files: AttachmentBuilder[];
+}
+
+interface EncounterViewOptions {
+  energyRemaining?: number;
+  /** Render the item selector open (the Use Item / Change Item click). */
+  showSelector?: boolean;
+  /** Status line above the fields, e.g. after a selection changed. */
+  statusLine?: string;
 }
 
 async function buildEncounterView(
@@ -161,11 +223,19 @@ async function buildEncounterView(
   prov: Provisioned,
   encounter: EncounterRow,
   species: SpeciesRow,
-  energyRemaining?: number,
+  options: EncounterViewOptions = {},
 ): Promise<EncounterView> {
-  const charms = orderCharmItems(ctx.content.items);
-  const inventory = await ctx.services.inventory.getInventory(prov.playerId);
-  const ownedBySlug = new Map(inventory.map((e) => [e.item.slug, e.quantity]));
+  const { energyRemaining, showSelector = false, statusLine } = options;
+  // Eligible items and the selected-item quote both come from the capture
+  // service, so this screen never does capture math of its own.
+  const eligible = await ctx.services.capture.listEligibleCaptureItems(
+    prov.playerId,
+    encounter.id,
+  );
+  const selectedEntry =
+    encounter.selectedItemId != null
+      ? (eligible.find((e) => e.item.id === encounter.selectedItemId) ?? null)
+      : null;
 
   // Affinity read (5D): only meaningful with an active buddy. Read-only here —
   // the authoritative resolution happens inside the capture transaction.
@@ -183,15 +253,22 @@ async function buildEncounterView(
       )
     : null;
 
+  const prompt = selectedEntry
+    ? 'Capture, change your item, or Let Her Go.'
+    : eligible.length > 0
+      ? 'Pick an item to try with, or Let Her Go.'
+      : 'You have nothing that works on her~ Let Her Go, or restock.';
   const footer =
-    energyRemaining != null
-      ? `Pick a charm to try, or Let Her Go. · Energy left: ${energyRemaining}`
-      : 'Pick a charm to try, or Let Her Go.';
+    energyRemaining != null ? `${prompt} · Energy left: ${energyRemaining}` : prompt;
+
+  const description = [statusLine, species.description || '_A mysterious presence…_']
+    .filter(Boolean)
+    .join('\n\n');
 
   const embed = new EmbedBuilder()
     .setTitle(`✨ A wild ${species.name} appears!`)
     .setColor(rarityColor(species.rarity))
-    .setDescription(species.description || '_A mysterious presence…_')
+    .setDescription(description)
     .addFields(
       { name: 'Rarity', value: species.rarity, inline: true },
       { name: 'Archetype', value: species.archetype, inline: true },
@@ -216,6 +293,21 @@ async function buildEncounterView(
     if (line) embed.addFields({ name: '⏳ Active Effect', value: line, inline: false });
   }
 
+  // The chosen item and what it does to her odds — the "6% → 21%" line. Both
+  // numbers come from one `CaptureQuote`, which is the same computation the
+  // commit will run, so the screen can never promise odds the server won't use.
+  if (selectedEntry) {
+    const { quote } = selectedEntry;
+    const value = quote.guaranteed
+      ? 'Capture chance: **Guaranteed**'
+      : `Capture chance: **${formatChance(quote.baselineChance)} → ${formatChance(quote.chance)}**`;
+    embed.addFields({
+      name: `${selectedEntry.item.emoji ?? '•'} ${selectedEntry.item.name} selected`,
+      value: `${value}\nOwned: ×${selectedEntry.quantity} · consumed only when you capture.`,
+      inline: false,
+    });
+  }
+
   const files: AttachmentBuilder[] = [];
   // Pre-catch duplicate warning: if the player already owns ≥1 active copy of
   // this species, reveal her card with the CAUGHT badge composited. Every
@@ -237,7 +329,20 @@ async function buildEncounterView(
       embed.setImage(`attachment://${CARD_FILENAME}`);
     }
   }
-  return { embeds: [embed], components: encounterButtonRows(encounter, charms, ownedBySlug), files };
+  const components: EncounterRowComponent[] = [];
+  if (showSelector && eligible.length > 0) {
+    components.push(itemSelectRow(encounter, eligible, encounter.selectedItemId));
+  }
+  components.push(
+    ...encounterButtonRows(
+      encounter,
+      selectedEntry
+        ? { item: selectedEntry.item, quantity: selectedEntry.quantity }
+        : null,
+      eligible.length > 0,
+    ),
+  );
+  return { embeds: [embed], components, files };
 }
 
 async function loadSpeciesById(ctx: AppContext, speciesId: number): Promise<SpeciesRow | null> {
@@ -305,13 +410,9 @@ export async function handleHunt(
     const events = await huntDescriptors(ctx, prov, result);
 
     if (result.kind === 'encounter') {
-      const view = await buildEncounterView(
-        ctx,
-        prov,
-        result.encounter,
-        result.species,
-        result.energyRemaining,
-      );
+      const view = await buildEncounterView(ctx, prov, result.encounter, result.species, {
+        energyRemaining: result.energyRemaining,
+      });
       // Encounter reveal has its own actions (charms + Let Her Go); no Back.
       await respondEphemeral(interaction, view);
       await emitEvents(ctx, interaction, prov, events);
@@ -382,10 +483,6 @@ function huntAgainRow(): ActionRowBuilder<ButtonBuilder> {
 
 // ─────────────────────────────── capture flow ───────────────────────────────
 
-function findItemContent(ctx: AppContext, slug: string): ItemContent | undefined {
-  return ctx.content.items.find((i) => i.slug === slug);
-}
-
 async function sendRareAnnouncement(
   ctx: AppContext,
   interaction: ButtonInteraction,
@@ -453,28 +550,41 @@ async function sendRareAnnouncement(
   }
 }
 
+/**
+ * Controls after a failed attempt. She is still there and the selection
+ * survived, so "Try Again" is one click — and it carries the *new*
+ * `attempt_count`, so the button that just fired is now stale and a
+ * double-click cannot spend a second item.
+ */
 function retryButtonRows(
   encounter: EncounterRow,
-  charmSlug: string,
-  charm: ItemContent | undefined,
+  item: ItemRow,
   ownedRemaining: number,
 ): ActionRowBuilder<ButtonBuilder>[] {
   const buttons: ButtonBuilder[] = [];
-  if (charm && ownedRemaining > 0) {
-    const label = charm.isGuaranteedCapture
-      ? `Try Again — ${charm.name} ×${ownedRemaining} (guaranteed)`
-      : `Try Again — ${charm.name} ×${ownedRemaining}`;
+  if (ownedRemaining > 0) {
+    const label = item.isGuaranteedCapture
+      ? `Try Again — ${item.name} ×${ownedRemaining} (guaranteed)`
+      : `Try Again — ${item.name} ×${ownedRemaining}`;
     const btn = new ButtonBuilder()
-      .setCustomId(buildCustomId('enc', 'charm', String(encounter.id), charmSlug))
+      .setCustomId(
+        buildCustomId(
+          'enc',
+          'capture',
+          String(encounter.id),
+          String(encounter.attemptCount),
+        ),
+      )
       .setLabel(label)
-      .setStyle(ButtonStyle.Primary);
-    if (charm.emoji) btn.setEmoji(charm.emoji);
+      .setStyle(ButtonStyle.Success);
+    if (item.emoji) btn.setEmoji(item.emoji);
     buttons.push(btn);
   }
   buttons.push(
     new ButtonBuilder()
       .setCustomId(buildCustomId('enc', 'pick', String(encounter.id)))
-      .setLabel('Use Different Charm')
+      .setLabel('Change Item')
+      .setEmoji('🎒')
       .setStyle(ButtonStyle.Secondary),
   );
   buttons.push(
@@ -608,23 +718,29 @@ async function buildFailureRetryReply(
 ): Promise<InteractionEditReplyOptions> {
   const base = await buildEphemeralOutcomeMessage(ctx, result);
   const owned = await ctx.services.inventory.getQuantity(prov.playerId, result.item.id);
-  const charm = findItemContent(ctx, result.item.slug);
   return {
     ...base,
-    components: retryButtonRows(result.encounter, result.item.slug, charm, owned),
+    components: retryButtonRows(result.encounter, result.item, owned),
   };
 }
 
-/** Charm click — real capture attempt. */
-export async function handleEncounterCharm(
+/**
+ * Capture click — the authoritative commit.
+ *
+ * `args` is `[encounterId, expectedAttemptCount]`. The item is deliberately
+ * *not* in the custom id: the service reads the encounter's own selection
+ * under its row lock, so the button cannot assert an item the player never
+ * chose. The attempt count is the stale-click guard.
+ */
+export async function handleEncounterCapture(
   ctx: AppContext,
   interaction: ButtonInteraction,
   prov: Provisioned,
   args: string[],
 ): Promise<void> {
   const encounterId = Number(args[0]);
-  const itemSlug = args[1];
-  if (!Number.isInteger(encounterId) || !itemSlug) {
+  const expectedAttemptCount = Number(args[1]);
+  if (!Number.isInteger(encounterId) || !Number.isInteger(expectedAttemptCount)) {
     await respondEphemeral(interaction, 'That button no longer works.');
     return;
   }
@@ -633,7 +749,9 @@ export async function handleEncounterCharm(
 
   let result: CaptureAttemptResult;
   try {
-    result = await ctx.services.capture.attemptCapture(prov.playerId, encounterId, itemSlug);
+    result = await ctx.services.capture.attemptCapture(prov.playerId, encounterId, null, {
+      expectedAttemptCount,
+    });
   } catch (err) {
     const message = translateCaptureError(err);
     // Non-fatal capture rejections (already resolved, expired, out of items)
@@ -725,7 +843,10 @@ async function postBuddyAppearanceToasts(
   await postAppearanceUnlockToasts(ctx, interaction, award.newAppearances, name, playerId);
 }
 
-/** Use Different Charm — reopens the encounter reveal with fresh quantities. */
+/**
+ * Use Item / Change Item — repaints the encounter with the selector open and
+ * quantities refreshed. Selects nothing and consumes nothing.
+ */
 export async function handleEncounterPick(
   ctx: AppContext,
   interaction: ButtonInteraction,
@@ -747,7 +868,53 @@ export async function handleEncounterPick(
     await respondEphemeral(interaction, 'That encounter is no longer active.');
     return;
   }
-  const view = await buildEncounterView(ctx, prov, active, speciesRow);
+  const view = await buildEncounterView(ctx, prov, active, speciesRow, {
+    showSelector: true,
+  });
+  await respondEphemeral(interaction, view);
+}
+
+/**
+ * A capture item was chosen from the selector.
+ *
+ * Nothing is consumed — the selection is persisted on the encounter and the
+ * screen repaints with the new odds and a Capture button. Changing the choice
+ * (or walking away) costs the player nothing, which is the entire point of
+ * separating selection from commitment.
+ */
+export async function handleEncounterPickItem(
+  ctx: AppContext,
+  interaction: StringSelectMenuInteraction,
+  prov: Provisioned,
+  args: string[],
+): Promise<void> {
+  const encounterId = Number(args[0]);
+  const itemSlug = interaction.values[0];
+  if (!Number.isInteger(encounterId) || !itemSlug) {
+    await respondEphemeral(interaction, 'That encounter is no longer active.');
+    return;
+  }
+
+  let quote: CaptureQuote;
+  try {
+    quote = await ctx.services.capture.selectCaptureItem(
+      prov.playerId,
+      encounterId,
+      itemSlug,
+    );
+  } catch (err) {
+    await respondEphemeral(interaction, translateCaptureError(err));
+    return;
+  }
+
+  const statusLine = quote.guaranteed
+    ? `**${quote.item?.name ?? 'Item'} selected**\nCapture chance: **Guaranteed**`
+    : `**${quote.item?.name ?? 'Item'} selected**\nCapture chance: ` +
+      `**${formatChance(quote.baselineChance)} → ${formatChance(quote.chance)}**`;
+
+  const view = await buildEncounterView(ctx, prov, quote.encounter, quote.species, {
+    statusLine,
+  });
   await respondEphemeral(interaction, view);
 }
 
@@ -785,8 +952,11 @@ function translateCaptureError(err: unknown): string {
   if (err instanceof EncounterNotFoundError) return err.userMessage;
   if (err instanceof EncounterAlreadyResolvedError) return err.userMessage;
   if (err instanceof EncounterExpiredError) return err.userMessage;
+  if (err instanceof EncounterStaleError) return err.userMessage;
+  if (err instanceof NoCaptureItemSelectedError) return err.userMessage;
+  if (err instanceof CaptureItemNotEligibleError) return err.userMessage;
   if (err instanceof InsufficientItemsError) {
-    return "You don't have any of that charm~ Try a different one.";
+    return "You don't have any of that~ Try a different one.";
   }
   if (err instanceof ItemNotFoundError) return err.userMessage;
   if (err instanceof ItemNotUsableError) return err.userMessage;

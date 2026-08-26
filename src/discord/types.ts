@@ -21,6 +21,7 @@ import type { CollectionService } from '../modules/collection/collectionService'
 import type { AppearanceService } from '../modules/appearance/appearanceService';
 import type { PlayerEffectsService } from '../modules/effects/playerEffectsService';
 import type { ItemUseService } from '../modules/items/itemUseService';
+import type { AffectionGiftService } from '../modules/gifts/affectionGiftService';
 import type { ProgressionService } from '../modules/progression/progressionService';
 import type { QuestService } from '../modules/quests/questService';
 import type { SessionService } from '../modules/session/sessionService';
@@ -53,6 +54,8 @@ export interface AppServices {
   effects: PlayerEffectsService;
   /** "Use" an inventory consumable (Energy Drink, Microdose). */
   itemUse: ItemUseService;
+  /** Affection gifts: the daily buddy roll, and accepting what she is holding. */
+  gifts: AffectionGiftService;
 }
 
 export interface AppContext {

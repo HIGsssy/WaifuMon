@@ -10,11 +10,17 @@
  * tunables in `items.effect_config` — both seeded from content/items.json, so
  * an admin can retune (or add) a consumable without a code change.
  *
- *   restore_energy_full   — Energy Drink. Sets Hunt Energy to the player's
- *                           *computed* max (base + level bonuses, capped).
- *                           Refuses at full energy so the drink isn't wasted.
- *                           Exits Care Mode first (config: `exitCareMode`),
- *                           crediting any pending care ticks before the refill.
+ *   restore_energy_full   — Energy Drink, Full Body Massage. Sets Hunt Energy
+ *                           to the player's *computed* max (base + level
+ *                           bonuses, capped). Refuses at full energy so the
+ *                           item isn't wasted. Exits Care Mode first (config:
+ *                           `exitCareMode`), crediting any pending care ticks
+ *                           before the refill.
+ *   restore_energy_amount — Quickie Coffee, Reach Around. Adds a fixed amount,
+ *                           clamped to that same computed max. Refuses only at
+ *                           *full* energy: unlike the refill, a partial top-up
+ *                           still does something useful at 1 below the cap, so
+ *                           the overflow is spilled rather than the use denied.
  *   capture_bonus_charges — Microdose. Grants/refreshes the non-stacking
  *                           capture-bonus buff (see PlayerEffectsService).
  */
@@ -30,6 +36,7 @@ import {
 import type {
   CaptureBonusEffect,
   ItemEffectType,
+  RestoreEnergyAmountEffect,
   RestoreEnergyEffect,
 } from '../content/schemas';
 import { effectConfigSchemaFor } from '../content/schemas';
@@ -40,12 +47,22 @@ import type { PlayerEffectsService } from '../effects/playerEffectsService';
 import type { ProgressionService } from '../progression/progressionService';
 
 export interface RestoreEnergyUseResult {
-  kind: 'restore_energy_full';
+  /**
+   * Both energy consumables report through this one shape — the caller renders
+   * "restored to 25/25" either way, and only the arithmetic differs.
+   */
+  kind: 'restore_energy_full' | 'restore_energy_amount';
   item: ItemRow;
   quantityRemaining: number;
   energyBefore: number;
   energyAfter: number;
   maxEnergy: number;
+  /**
+   * Energy the item was configured to grant. Null for the full refill, which
+   * has no fixed amount. May exceed `energyAfter - energyBefore` when the
+   * clamp spilled the remainder.
+   */
+  restoreAmount: number | null;
   /** True when the use also ended an active Care Mode session. */
   careModeExited: boolean;
   /** Energy credited by pending Care Mode ticks applied during the exit. */
@@ -109,11 +126,18 @@ export function createItemUseService(deps: ItemUseServiceDeps): ItemUseService {
         const effectType = item.effectType as ItemEffectType | null;
         if (effectType == null) throw new ItemHasNoEffectError(itemSlug);
 
-        if (effectType === 'restore_energy_full') {
-          const config = parseEffectConfig<RestoreEnergyEffect>(item, effectType);
+        if (effectType === 'restore_energy_full' || effectType === 'restore_energy_amount') {
+          // One code path for both energy consumables: they differ only in the
+          // *target* energy, so the Care Mode interaction, the full-energy
+          // refusal, and the clamp can never drift between them.
+          const full = effectType === 'restore_energy_full';
+          const config = full
+            ? parseEffectConfig<RestoreEnergyEffect>(item, effectType)
+            : parseEffectConfig<RestoreEnergyAmountEffect>(item, effectType);
+          const restoreAmount = full ? null : (config as RestoreEnergyAmountEffect).amount;
 
           // Care Mode first: it credits pending ticks (which may themselves
-          // raise energy) and clears the care fields, so the refill below is
+          // raise energy) and clears the care fields, so the restore below is
           // computed against the settled state. Same transaction, so a refusal
           // below rolls the exit back too.
           let careModeExited = false;
@@ -134,22 +158,29 @@ export function createItemUseService(deps: ItemUseServiceDeps): ItemUseService {
           const maxEnergy = progression.computeMaxEnergy(player.level);
           const balances = await currency.lockCurrencies(tx, playerId);
           const energyBefore = balances.huntEnergy;
-          // Refuse rather than burn the item — and never exceed the computed
-          // max, which is the whole point of "restore to max".
+          // Refuse rather than burn the item. At the cap there is nothing
+          // either variant can do, so both refuse identically; *below* the cap
+          // an amount-based restore is honoured and its overflow spilled,
+          // which is the clamp doing its job rather than a wasted item.
           if (energyBefore >= maxEnergy) {
             throw new EnergyAlreadyFullError(energyBefore, maxEnergy);
           }
 
+          const target = full
+            ? maxEnergy
+            : Math.min(maxEnergy, energyBefore + (restoreAmount ?? 0));
+
           const quantityRemaining = await inventory.consumeItem(tx, playerId, item.id, 1);
-          const updated = await currency.setHuntEnergy(tx, playerId, maxEnergy);
+          const updated = await currency.setHuntEnergy(tx, playerId, target);
 
           return {
-            kind: 'restore_energy_full',
+            kind: effectType,
             item,
             quantityRemaining,
             energyBefore,
             energyAfter: updated.huntEnergy,
             maxEnergy,
+            restoreAmount,
             careModeExited,
             careEnergyGained,
           };

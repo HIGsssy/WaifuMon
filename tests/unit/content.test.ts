@@ -22,8 +22,12 @@ import { silentLogger } from '../helpers/testDb';
 describe('shipped content', () => {
   it('loads and validates, with every referenced image present', () => {
     const content = loadShippedContent();
-    // 5 capture items + 2 utility consumables (Energy Drink, Microdose).
-    expect(content.items.length).toBe(7);
+    // 7 capture items (5 charms + Fluffy Cuffs + Shibari Rope) and 5 utility
+    // consumables (Energy Drink, Microdose, and the three gift-exclusive
+    // energy items).
+    expect(content.items.length).toBe(12);
+    expect(content.items.filter((i) => i.category === 'capture')).toHaveLength(7);
+    expect(content.items.filter((i) => i.category === 'consumable')).toHaveLength(5);
     expect(content.species.length).toBeGreaterThanOrEqual(5);
     // No shipped species may be auto-disabled by a missing image.
     expect(content.species.filter((s) => !s.enabled)).toEqual([]);

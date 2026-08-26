@@ -179,6 +179,11 @@ export function formatActivityLine(event: GameEvent): ActivityLine | null {
       return line(
         `🌸 ${player} and ${event.payload.buddyName} grew closer (${event.payload.stage}).`,
       );
+    // Names who, never what — the item is revealed to the player on accept.
+    case 'WAIFU_GIFT_AVAILABLE':
+      return line(
+        `🎁 ${event.payload.waifuName} has something for ${player}.`,
+      );
     case 'PLAYER_ENTERED_CARE':
       return line(`❤️ ${player} is spending time with ${event.payload.buddyName}.`);
     case 'PLAYER_LEFT_CARE': {
@@ -203,6 +208,7 @@ export function formatActivityLine(event: GameEvent): ActivityLine | null {
       );
     // Internal scope — filtered before we get here, listed for exhaustiveness.
     case 'WAIFU_APPEARANCE_CHANGED':
+    case 'WAIFU_GIFT_CLAIMED':
     case 'CARE_BUDDY_CHANGED':
     case 'CARE_TICK_APPLIED':
     case 'ENERGY_REGENERATED':

@@ -145,6 +145,12 @@ export function renderCollectionEmbed(
   dex: { owned: number; distinctSpecies: number; totalSpecies: number },
   state: CollectionFilterState,
   essenceBalance?: number,
+  /**
+   * Owned-copy ids holding an unclaimed gift. Optional and defaulted so every
+   * existing caller keeps working; a species with one is marked, and the
+   * marker leads the player down to her inspect card where it can be accepted.
+   */
+  giftWaifuIds: ReadonlySet<number> = new Set(),
 ): EmbedBuilder {
   const embed = new EmbedBuilder().setTitle('🎒 Your Collection').setColor(0xff6fa5);
   const purse = essenceBalance === undefined ? '' : ` · ✨ **${essenceBalance}**`;
@@ -164,8 +170,11 @@ export function renderCollectionEmbed(
   const lines = view.groups.map((group, i) => {
     const num = String(startIdx + i).padStart(2, '0');
     const fav = group.copies.some((copy) => copy.waifu.isFavorite) ? ' 🩷' : '';
+    const gift = group.copies.some((copy) => giftWaifuIds.has(copy.waifu.id))
+      ? ' 🎁'
+      : '';
     const copies = group.totalCopies > 1 ? ` · ×${group.totalCopies}` : '';
-    return `\`${num}\` **[${group.species.rarity}]** ${group.species.name} · Lv ${group.maxLevel}${copies}${fav}`;
+    return `\`${num}\` **[${group.species.rarity}]** ${group.species.name} · Lv ${group.maxLevel}${copies}${fav}${gift}`;
   });
   const tally = `${view.totalGroups} species · ${view.totalCopies} copies`;
   embed.setDescription(
@@ -285,12 +294,14 @@ async function buildCollectionScreen(
   // The view clamps an out-of-range page; write it back so Prev/Next and the
   // next render agree with what the player is actually looking at.
   const settled = view.page === state.page ? state : tracker.set(playerId, { page: view.page });
-  const [dex, balances] = await Promise.all([
+  const [dex, balances, giftWaifuIds] = await Promise.all([
     ctx.services.collection.getDexStats(playerId),
     ctx.services.currency.getBalances(playerId),
+    // One query for the whole page rather than a lookup per group.
+    ctx.services.gifts.pendingWaifuIds(playerId),
   ]);
   return {
-    embeds: [renderCollectionEmbed(view, dex, settled, balances.essence)],
+    embeds: [renderCollectionEmbed(view, dex, settled, balances.essence, giftWaifuIds)],
     components: collectionComponents(view, settled),
   };
 }
@@ -726,6 +737,7 @@ function inspectComponents(
   convertEssence: number,
   isBuddy: boolean,
   essence: { balance: number; maxUseful: number },
+  hasPendingGift: boolean,
 ): ActionRowBuilder<ButtonBuilder>[] {
   const favBtn = new ButtonBuilder()
     .setCustomId(buildCustomId('waifu', 'fav', String(entry.waifu.id)))
@@ -774,6 +786,20 @@ function inspectComponents(
     .setStyle(ButtonStyle.Secondary);
 
   const rows: ActionRowBuilder<ButtonBuilder>[] = [];
+  // Accept Gift leads, and gets its own row, because it is the one control on
+  // this screen that is *time-sensitive in feel* even though the gift never
+  // expires — burying it next to Release would read as decoration.
+  if (hasPendingGift) {
+    rows.push(
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setCustomId(buildCustomId('gift', 'claim', String(entry.waifu.id)))
+          .setLabel('Accept Gift')
+          .setEmoji('🎁')
+          .setStyle(ButtonStyle.Success),
+      ),
+    );
+  }
   const primary: ButtonBuilder[] = [favBtn, buddyBtn];
   if (isDuplicate) {
     primary.push(
@@ -807,10 +833,11 @@ async function renderInspect(
     // Ownership was verified above (getOwned throws WaifuNotOwnedError
     // otherwise), so wrong-user / stale interactions never reach this call.
     await ctx.services.quests.recordQuestEvent(null, prov.playerId, 'inspect_waifu', 1, {});
-    const [isDuplicate, buddy, balances] = await Promise.all([
+    const [isDuplicate, buddy, balances, pendingGift] = await Promise.all([
       ctx.services.collection.hasOtherActiveCopies(prov.playerId, waifuId),
       ctx.services.collection.getBuddy(prov.playerId),
       ctx.services.currency.getBalances(prov.playerId),
+      ctx.services.gifts.getPendingGift(prov.playerId, waifuId),
     ]);
     const isBuddy = buddy?.waifu.id === waifuId;
     const { waifu, species } = entry;
@@ -858,10 +885,26 @@ async function renderInspect(
         ? `${worn.name} · ${unlockedLooks}/${catalog.length} unlocked`
         : worn.name;
 
+    // The gift teaser leads the description so it is the first thing read.
+    // It names *nothing* about the item: the reveal is the reward for tapping
+    // Accept, and this line is the anticipation.
+    const giftTeaser = pendingGift
+      ? `🎁 **Gift waiting**` +
+        '\n' +
+        `**${publicWaifuName(entry)} seems unusually excited to see you.**` +
+        '\n' +
+        `_She may have something for you._`
+      : null;
     const embed = new EmbedBuilder()
-      .setTitle(`✨ ${displayName(entry)}${isBuddy ? ' · ★ Buddy' : ''}`)
+      .setTitle(
+        `✨ ${displayName(entry)}${isBuddy ? ' · ★ Buddy' : ''}${pendingGift ? ' · 🎁' : ''}`,
+      )
       .setColor(rarityColor(species.rarity))
-      .setDescription(species.description || '_A mysterious presence…_')
+      .setDescription(
+        [giftTeaser, species.description || '_A mysterious presence…_']
+          .filter(Boolean)
+          .join('\n' + '\n'),
+      )
       .addFields(
         { name: 'Rarity', value: species.rarity, inline: true },
         { name: 'Archetype', value: species.archetype, inline: true },
@@ -891,10 +934,15 @@ async function renderInspect(
     if (card) embed.setImage(card.url);
     await respondEphemeral(interaction, {
       embeds: [embed],
-      components: inspectComponents(ctx, entry, isDuplicate, convertEssence, isBuddy, {
-        balance: balances.essence,
-        maxUseful,
-      }),
+      components: inspectComponents(
+        ctx,
+        entry,
+        isDuplicate,
+        convertEssence,
+        isBuddy,
+        { balance: balances.essence, maxUseful },
+        pendingGift != null,
+      ),
       files,
     });
     // Tracked, not scheduled: the card stays until the player navigates away,
