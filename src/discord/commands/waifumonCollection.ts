@@ -8,7 +8,6 @@
  */
 import {
   ActionRowBuilder,
-  AttachmentBuilder,
   ButtonBuilder,
   ButtonStyle,
   EmbedBuilder,
@@ -52,7 +51,6 @@ import {
 import {
   CARD_FILENAME,
   resolveAppearanceAsset,
-  resolveAppearanceAssetOrPath,
 } from '../assets/resolveAppearanceAsset';
 import {
   AppearanceLockedError,
@@ -77,7 +75,7 @@ import {
   replyEphemeralNotice,
 } from '../ephemeralCleanup';
 import { gameEvent } from '../../modules/events/gameEvents';
-import { renderOwnedCardAttachment } from '../assets/attachRenderedCard';
+import { ownedCardImage } from '../assets/attachRenderedCard';
 import { respondEphemeral } from '../ephemeralSession';
 import { backButton, isStaleInteractionError, withBackRow } from '../ui';
 
@@ -97,22 +95,6 @@ const RARITY_COLORS: Record<string, number> = {
 
 function rarityColor(rarity: string): number {
   return RARITY_COLORS[rarity] ?? 0xff6fa5;
-}
-
-/**
- * The card image for one owned copy, honouring her **selected appearance**.
- *
- * Discord code never touches a path: it asks the appearance service which
- * `AssetId` this copy is wearing and hands that to the process's own resolver.
- * `species.imagePath` is passed only as the resolver's private last resort, for
- * a species whose appearance artwork is missing entirely.
- */
-function attachCardOr(ctx: AppContext, entry: OwnedEntry): AttachmentBuilder | null {
-  const appearance = ctx.services.appearance.currentAppearance(
-    entry.species,
-    entry.waifu.variant,
-  );
-  return resolveAppearanceAssetOrPath(ctx, appearance.assetId, entry.species.imagePath);
 }
 
 function displayName(entry: OwnedEntry): string {
@@ -904,11 +886,9 @@ async function renderInspect(
     // The CAUGHT emblem is a *pre-catch* duplicate warning drawn only on the
     // hunt encounter reveal, so it deliberately does not appear here. Falls
     // back to raw artwork when rendering is off.
-    const owned = await renderOwnedCardAttachment(ctx, entry);
-    const artwork = owned ? null : attachCardOr(ctx, entry);
-    const card = owned?.file ?? artwork;
-    const files = card ? [card] : [];
-    if (card) embed.setImage(owned ? owned.url : `attachment://${CARD_FILENAME}`);
+    const card = await ownedCardImage(ctx, entry);
+    const files = card ? [card.file] : [];
+    if (card) embed.setImage(card.url);
     await respondEphemeral(interaction, {
       embeds: [embed],
       components: inspectComponents(ctx, entry, isDuplicate, convertEssence, isBuddy, {

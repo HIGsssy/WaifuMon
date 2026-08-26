@@ -24,7 +24,13 @@
  * permission or a hand-deleted message is logged and swallowed, never
  * propagated back toward a gameplay transaction.
  */
-import { DiscordAPIError, EmbedBuilder, type BaseMessageOptions } from 'discord.js';
+import {
+  DiscordAPIError,
+  EmbedBuilder,
+  type AttachmentBuilder,
+  type BaseMessageOptions,
+  type MessageEditOptions,
+} from 'discord.js';
 import { affinityLabel } from '../modules/capture/affinityMath';
 import type { CareState } from '../modules/care/careService';
 import type { DexStats } from '../modules/collection/collectionService';
@@ -49,10 +55,32 @@ export interface ProfileChannel {
   id: string;
   send(payload: BaseMessageOptions): Promise<{ id: string }>;
   messages: {
-    edit(messageId: string, payload: BaseMessageOptions): Promise<unknown>;
+    /**
+     * `MessageEditOptions`, not `BaseMessageOptions`, because the profile
+     * carries the buddy's card: discord.js rebuilds `attachments` from `files`
+     * on every edit, and an edit that supplies none must say `attachments: []`
+     * explicitly or the previous upload lingers under a now-imageless embed.
+     */
+    edit(messageId: string, payload: MessageEditOptions): Promise<unknown>;
     delete(messageId: string): Promise<unknown>;
   };
 }
+
+/**
+ * Draws the buddy's picture — the rendered card, or her raw equipped artwork.
+ *
+ * Injected rather than imported so this module keeps its narrow dependency
+ * surface: it holds `services`, not an `AppContext`, and card rendering needs
+ * `config.assetsDir`, the renderer flag and the card warmer. `index.ts` binds
+ * it to `ownedCardImage`, the same helper the collection inspect card uses, so
+ * the two can never disagree about which look a copy is wearing.
+ *
+ * Optional throughout: a deployment (or a test) that does not wire one gets
+ * exactly today's text-only profile.
+ */
+export type BuddyCardRenderer = (
+  subject: NonNullable<CareState['target']>,
+) => Promise<{ file: AttachmentBuilder; url: string } | null>;
 
 /**
  * Dashboard slots that are designed into the layout now and wired to real
@@ -79,6 +107,11 @@ export interface TrainerProfileInput {
    * line that always said "Standard" would be noise.
    */
   buddyAppearanceName?: string | null;
+  /**
+   * `attachment://…` for the buddy's card, when one could be drawn. Null keeps
+   * the profile exactly as it was before cards: same fields, no image.
+   */
+  buddyCardUrl?: string | null;
   player: PlayerRow;
   currencies: Pick<PlayerCurrenciesRow, 'huntEnergy' | 'waifubux' | 'essence'>;
   careState: CareState;
@@ -142,6 +175,11 @@ export function buildTrainerProfileView(
     ];
     if (input.buddyAppearanceName) buddyLines.push(`🎀 ${input.buddyAppearanceName}`);
     embed.addFields({ name: '⭐ Buddy', value: buddyLines.join('\n'), inline: true });
+    // Below the fields, so the dashboard still reads as a dashboard: the stats
+    // come first and the card is the picture at the bottom of it. Gated on
+    // `target` as well as the URL — an image with no buddy panel to belong to
+    // would be a portrait of nobody.
+    if (input.buddyCardUrl) embed.setImage(input.buddyCardUrl);
   }
 
   // ── Collection ──
@@ -206,6 +244,8 @@ export interface TrainerProfileDeps {
     'session' | 'players' | 'care' | 'collection' | 'progression' | 'appearance'
   >;
   resolveChannel: ResolveProfileChannelFn;
+  /** Omit for a text-only profile — the behaviour before cards existed. */
+  renderBuddyCard?: BuddyCardRenderer | undefined;
   logger: Logger;
 }
 
@@ -243,10 +283,36 @@ export function createTrainerProfileService(
 ): TrainerProfileService {
   const { services, resolveChannel, logger } = deps;
 
+  /**
+   * The buddy's picture, or nothing.
+   *
+   * Belt and braces on top of `ownedCardImage`'s own guard: this must never be
+   * the reason Care Mode fails to show a profile, so a renderer that throws
+   * costs the image and the rest of the dashboard still paints.
+   */
+  async function buddyCard(
+    target: NonNullable<CareState['target']>,
+  ): Promise<{ file: AttachmentBuilder; url: string } | null> {
+    if (!deps.renderBuddyCard) return null;
+    try {
+      return await deps.renderBuddyCard(target);
+    } catch (err) {
+      logger.warn(
+        { err, waifuId: target.waifu.id, slug: target.species.slug },
+        'trainer profile: buddy card render failed; falling back to text only',
+      );
+      return null;
+    }
+  }
+
   /** Everything the view needs, gathered fresh at paint time. */
   async function buildView(
     event: GameEvent,
-  ): Promise<{ embeds: EmbedBuilder[]; careActive: boolean } | null> {
+  ): Promise<{
+    embeds: EmbedBuilder[];
+    files: AttachmentBuilder[];
+    careActive: boolean;
+  } | null> {
     const { player, currencies } = await services.players.getProfile(event.playerId);
     const [careState, collectionProgress] = await Promise.all([
       services.care.getState(event.playerId),
@@ -258,6 +324,10 @@ export function createTrainerProfileService(
     const worn = target
       ? services.appearance.currentAppearance(target.species, target.waifu.variant)
       : null;
+    // Re-drawn on every paint rather than kept from the create. A card carries
+    // her level and her look, both of which the edit path exists to reflect —
+    // and at a 30-minute tick the upload is not worth caching around.
+    const card = target ? await buddyCard(target) : null;
     const view = buildTrainerProfileView({
       playerName: event.playerName,
       player,
@@ -266,10 +336,11 @@ export function createTrainerProfileService(
       collectionProgress,
       buddyAppearanceName:
         worn && worn.unlock.type !== 'owned' ? worn.name : null,
+      buddyCardUrl: card?.url ?? null,
       maxEnergy: services.progression.computeMaxEnergy(player.level),
       prestigeTitle: services.progression.getPrestigeTitle(player.level),
     });
-    return { ...view, careActive: careState.active };
+    return { ...view, files: card ? [card.file] : [], careActive: careState.active };
   }
 
   /** Best-effort delete of whatever profile is currently stored. */
@@ -298,7 +369,7 @@ export function createTrainerProfileService(
     if (!built) return;
 
     await deleteStored(channel, event.playerId, event.channelId);
-    const sent = await channel.send({ embeds: built.embeds });
+    const sent = await channel.send({ embeds: built.embeds, files: built.files });
     await services.session.setProfileMessageId(
       event.guildDbId,
       event.playerId,
@@ -322,11 +393,20 @@ export function createTrainerProfileService(
     if (!built) return;
 
     try {
-      await channel.messages.edit(messageId, { embeds: built.embeds });
+      // `attachments: []` is load-bearing. discord.js rebuilds the attachment
+      // list from `files` on every edit, so supplying the card replaces the
+      // previous upload; supplying none must *clear* it, or a profile whose
+      // card became unavailable would keep an orphaned image below an embed
+      // that no longer points at one.
+      await channel.messages.edit(messageId, {
+        embeds: built.embeds,
+        files: built.files,
+        attachments: [],
+      });
     } catch (err) {
       if (!isUnknownMessage(err)) throw err;
       // Someone deleted the profile by hand — repost it at the bottom.
-      const sent = await channel.send({ embeds: built.embeds });
+      const sent = await channel.send({ embeds: built.embeds, files: built.files });
       await services.session.setProfileMessageId(
         event.guildDbId,
         event.playerId,
