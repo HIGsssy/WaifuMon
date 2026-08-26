@@ -266,6 +266,21 @@ export class WaifuIsBuddyError extends AppError {
   }
 }
 
+/**
+ * Essence investment on a copy that is already at the level cap. Spending
+ * would still consume Essence for XP that can never become a level, so the
+ * batch path refuses rather than quietly burning the balance.
+ */
+export class WaifuAtMaxLevelError extends AppError {
+  constructor(maxLevel: number) {
+    super(
+      'WAIFU_AT_MAX_LEVEL',
+      `Waifu is already at the level cap (${maxLevel})`,
+      `She's already at Lv ${maxLevel} — save your Essence for someone else~`,
+    );
+  }
+}
+
 export class WaifuNicknameTooEarlyError extends AppError {
   constructor(minLevel: number) {
     super(

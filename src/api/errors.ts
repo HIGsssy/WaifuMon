@@ -179,6 +179,9 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   ITEM_HAS_NO_EFFECT: 422,
   NOT_A_DUPLICATE: 422,
   WAIFU_NICKNAME_TOO_EARLY: 422,
+  /** Mirrors ENERGY_ALREADY_FULL: the request is well-formed, but there is
+   *  nothing left to gain, so spending is refused rather than wasted. */
+  WAIFU_AT_MAX_LEVEL: 422,
   CARE_TARGET_REQUIRED: 422,
 };
 

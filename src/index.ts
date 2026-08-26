@@ -37,6 +37,7 @@ import { createSessionService } from './modules/session/sessionService';
 import { createGameEventBus } from './modules/events/gameEvents';
 import { createHuntSessionTracker } from './modules/hunt/huntSession';
 import { createCollectionFilterTracker } from './discord/collectionFilterTracker';
+import { createEphemeralRegistry } from './discord/ephemeralCleanup';
 import { createActivityFeedService } from './modules/activity/activityFeedService';
 import { resolveAppearanceAsset } from './modules/appearance/assetResolver';
 import { AttachmentBuilder, EmbedBuilder } from 'discord.js';
@@ -44,6 +45,7 @@ import {
   createTrainerProfileService,
   type ProfileChannel,
 } from './discord/trainerProfile';
+import { ownedCardImage } from './discord/assets/attachRenderedCard';
 import { createLogger } from './shared/logger';
 
 async function main(): Promise<void> {
@@ -167,6 +169,7 @@ async function main(): Promise<void> {
     events: gameEventBus,
     huntSessions,
     collectionFilters: createCollectionFilterTracker(),
+    ephemerals: createEphemeralRegistry(),
     ...(cardWarmer === undefined ? {} : { cardWarmer }),
     services: {
       guilds,
@@ -306,6 +309,10 @@ async function main(): Promise<void> {
         return null;
       }
     },
+    // The same helper the collection inspect card uses, so the dashboard shows
+    // the buddy exactly as inspecting her would: her real level, and the look
+    // she is actually wearing.
+    renderBuddyCard: (target) => ownedCardImage(ctx, target),
   });
   trainerProfile.subscribe(gameEventBus);
 

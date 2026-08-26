@@ -26,6 +26,8 @@ import { AttachmentBuilder } from 'discord.js';
 import { renderCard } from '../../modules/cards';
 import { ownedCardRequest, speciesCardRequest } from '../../modules/appearance/cardPresentation';
 import type { OwnedCardSubject } from '../../modules/appearance/cardPresentation';
+import { CARD_FILENAME, resolveAppearanceAssetOrPath } from './resolveAppearanceAsset';
+import type { PlayerWaifuRow, SpeciesRow } from '../../db/schema';
 import type { AppContext } from '../types';
 
 /**
@@ -118,6 +120,55 @@ export async function renderOwnedCardAttachment(
     ctx.logger.warn(
       { err, tag: 'discord/card-render', slug: subject.species.slug, waifuId: subject.waifu.id },
       'card render failed; falling back to raw artwork',
+    );
+    return null;
+  }
+}
+
+/** The slice of an owned copy an image needs. Satisfied by `OwnedEntry`. */
+export interface OwnedCardImageSubject {
+  waifu: Pick<PlayerWaifuRow, 'id' | 'level' | 'variant'>;
+  species: SpeciesRow;
+}
+
+/**
+ * The picture of one owned copy, however good a one this deployment can make.
+ *
+ * Three tiers, in descending order of fidelity:
+ *
+ *   1. the rendered card — frame, level, the works;
+ *   2. the raw artwork for the appearance **she is actually wearing**, when the
+ *      renderer is switched off or could not draw her;
+ *   3. `null`, meaning the surface renders text-only.
+ *
+ * Tier 2 goes through `currentAppearance(species, variant)` rather than
+ * `species.imagePath`, so a copy wearing an unlocked look never silently
+ * reverts to the species default just because card rendering is unavailable.
+ * `imagePath` is passed only as the resolver's private last resort, for a
+ * species whose appearance artwork is missing from disk entirely.
+ *
+ * Never throws. Every surface that shows a copy — inspect, and the Care Mode
+ * Trainer Profile — already worked without a picture, so a failure here costs
+ * the image and nothing else.
+ */
+export async function ownedCardImage(
+  ctx: AppContext,
+  subject: OwnedCardImageSubject,
+): Promise<RenderedCardAttachment | null> {
+  try {
+    const rendered = await renderOwnedCardAttachment(ctx, subject);
+    if (rendered) return rendered;
+
+    const worn = ctx.services.appearance.currentAppearance(
+      subject.species,
+      subject.waifu.variant,
+    );
+    const file = resolveAppearanceAssetOrPath(ctx, worn.assetId, subject.species.imagePath);
+    return file === null ? null : { file, url: `attachment://${CARD_FILENAME}` };
+  } catch (err) {
+    ctx.logger.warn(
+      { err, tag: 'discord/owned-card-image', slug: subject.species.slug, waifuId: subject.waifu.id },
+      'owned card image unavailable; falling back to a text-only embed',
     );
     return null;
   }

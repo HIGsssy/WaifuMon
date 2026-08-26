@@ -118,6 +118,24 @@ export interface ActivityFeedDeps {
 const DEFAULT_RICH_EMBED_MIN_RARITY: Rarity = 'SR';
 
 /**
+ * Who to credit in a public appearance-unlock announcement.
+ *
+ * An unlock is a brag-worthy milestone posted in a shared channel, so it names
+ * a specific person rather than "a trainer". The mention is preferred — it
+ * resolves to the right member even when two players share a display name — and
+ * the display name is the fallback for any envelope that lacks one.
+ *
+ * Scoped to the unlock renderers on purpose: every other line keeps narrating
+ * with the plain display name, so the log does not turn into a wall of pings.
+ */
+function unlockActor(event: GameEvent): string {
+  const mention = event.playerMention?.trim();
+  if (mention) return mention;
+  const name = event.playerName?.trim();
+  return name && name.length > 0 ? name : 'A trainer';
+}
+
+/**
  * Canonical narration. Returns `null` for events that are deliberately not
  * narrated (internal scope is filtered before this is reached; reserved
  * kinds return null so adding a producer later is a one-line change here).
@@ -180,7 +198,7 @@ export function formatActivityLine(event: GameEvent): ActivityLine | null {
     // the message-level one is `appearanceUnlockedDescriptor` in the bot.
     case 'WAIFU_APPEARANCE_UNLOCKED':
       return line(
-        `🎀 ${event.payload.waifuName} unlocked a new look for ${player} — ` +
+        `🎀 ${event.payload.waifuName} unlocked a new look for ${unlockActor(event)} — ` +
           `**${event.payload.appearanceName}** (${event.payload.unlockLabel}).`,
       );
     // Internal scope — filtered before we get here, listed for exhaustiveness.
@@ -236,7 +254,7 @@ export function createActivityFeedService(deps: ActivityFeedDeps): ActivityFeedS
     return {
       title: '🎀 New Appearance Unlocked!',
       description:
-        `${event.playerName}'s **${event.payload.waifuName}** unlocked ` +
+        `${unlockActor(event)}'s **${event.payload.waifuName}** unlocked ` +
         `**${event.payload.appearanceName}** — ${event.payload.unlockLabel}.\n\n` +
         `Keep leveling your Waifumon to discover new appearances.`,
       image: artwork,

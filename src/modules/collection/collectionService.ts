@@ -36,6 +36,7 @@ import {
 import {
   NotADuplicateError,
   WaifuAlreadyReleasedError,
+  WaifuAtMaxLevelError,
   WaifuIsBuddyError,
   WaifuIsFavoriteError,
   WaifuNicknameTooEarlyError,
@@ -126,7 +127,11 @@ export interface WaifuProgress {
 
 export interface WaifuInvestResult {
   waifu: PlayerWaifuRow;
+  /** How many applications of the base action this call performed. */
+  applications: number;
+  /** Total Essence consumed: `applications × essenceInvestment.essenceCost`. */
   essenceSpent: number;
+  /** Total XP granted: `applications × essenceInvestment.xpGranted`. */
   xpGranted: number;
   fromLevel: number;
   toLevel: number;
@@ -229,6 +234,29 @@ export interface CollectionService {
    */
   investEssence(playerId: number, waifuId: number, now?: Date): Promise<WaifuInvestResult>;
   /**
+   * Apply the essence investment `applications` times in **one** transaction:
+   * one balance check, one spend, one XP write, one appearance sync. Either
+   * the whole batch lands or none of it does — a 10× can never half-apply.
+   *
+   * Semantics are exactly N applications of `investEssence`, not a new curve:
+   * cost is `applications × essenceCost` and XP is `applications × xpGranted`.
+   * `investEssence` is this method at `applications = 1`.
+   *
+   * Throws `WaifuAtMaxLevelError` when the copy is already capped (the 1× path
+   * historically spent anyway; the UI disables the buttons there), and
+   * `InsufficientEssenceError` when the full batch is unaffordable.
+   */
+  investEssenceBatch(
+    playerId: number,
+    waifuId: number,
+    applications: number,
+  ): Promise<WaifuInvestResult>;
+  /**
+   * How many applications still convert into levels for this copy — 0 once she
+   * is capped. The last application may overshoot, exactly as a 1× does.
+   */
+  maxUsefulApplications(waifu: PlayerWaifuRow): number;
+  /**
    * Set a nickname on the given waifu. Requires the waifu's level to meet
    * `waifuProgression.nicknameMinLevel`. Empty/null clears the nickname.
    */
@@ -258,6 +286,11 @@ export interface CollectionServiceDeps {
 }
 
 const DEFAULT_PAGE_SIZE = 10;
+/**
+ * Ceiling on one batched Essence investment. Not an economy rule — a blast
+ * radius: it bounds what a single mis-typed custom amount can spend.
+ */
+export const MAX_ESSENCE_APPLICATIONS = 100;
 /** Larger cap for select-menu options (Discord permits ≤25). */
 const MAX_SEARCH_LIMIT = 25;
 
@@ -443,6 +476,86 @@ export function createCollectionService(deps: CollectionServiceDeps): Collection
       .innerJoin(species, eq(playerWaifus.speciesId, species.id))
       .where(and(...filters))
       .orderBy(sql`${RARITY_RANK_SQL} desc`, asc(species.name), asc(playerWaifus.id));
+  }
+
+  /**
+   * Applications that still buy levels. The final one may overshoot the cap —
+   * that is what a 1× at the last rung has always done — but a copy already at
+   * the cap returns 0, which is what disables the buttons.
+   */
+  function maxUsefulApplications(waifu: PlayerWaifuRow): number {
+    if (waifu.level >= waifuConfig.maxLevel) return 0;
+    const needed = waifuCumulativeXp(waifuConfig.maxLevel) - waifu.xp;
+    if (needed <= 0) return 0;
+    return Math.ceil(needed / waifuConfig.essenceInvestment.xpGranted);
+  }
+
+  /**
+   * N applications, atomically. The whole batch is priced up front and spent
+   * with a single conditional update, so an unaffordable 10× consumes nothing
+   * rather than applying the 6 the player could afford.
+   *
+   * One `syncAppearances` call covers the entire level jump: unlock detection
+   * compares the *resulting* level against `seen_appearances`, so a batch that
+   * crosses three milestones reports all three, exactly as three separate 1×
+   * clicks would have.
+   */
+  async function investEssenceBatch(
+    playerId: number,
+    waifuId: number,
+    applications: number,
+  ): Promise<WaifuInvestResult> {
+    if (!Number.isInteger(applications) || applications < 1) {
+      throw new RangeError(`Applications must be a positive integer, got ${applications}`);
+    }
+    if (applications > MAX_ESSENCE_APPLICATIONS) {
+      throw new RangeError(
+        `Applications must be at most ${MAX_ESSENCE_APPLICATIONS}, got ${applications}`,
+      );
+    }
+    return db.transaction(async (tx) => {
+      const [locked] = await tx
+        .select()
+        .from(playerWaifus)
+        .where(and(eq(playerWaifus.id, waifuId), eq(playerWaifus.playerId, playerId)))
+        .for('update');
+      if (!locked) throw new WaifuNotOwnedError(waifuId);
+      if (locked.releasedAt != null) throw new WaifuAlreadyReleasedError(waifuId);
+      // Re-checked under the row lock, so a concurrent level-up can't sneak a
+      // spend past the UI's disabled buttons.
+      if (locked.level >= waifuConfig.maxLevel) {
+        throw new WaifuAtMaxLevelError(waifuConfig.maxLevel);
+      }
+
+      const cost = waifuConfig.essenceInvestment.essenceCost * applications;
+      const grant = waifuConfig.essenceInvestment.xpGranted * applications;
+
+      // Lock + conditionally spend the currency row (matches the shop path).
+      await currency.lockCurrencies(tx, playerId);
+      const balance = await currency.spendEssence(tx, playerId, cost);
+
+      const fromLevel = locked.level;
+      const newTotalXp = locked.xp + grant;
+      const newLevel = waifuLevelFromXp(newTotalXp);
+      const [updated] = await tx
+        .update(playerWaifus)
+        .set({ xp: newTotalXp, level: newLevel })
+        .where(eq(playerWaifus.id, waifuId))
+        .returning();
+
+      const newAppearances = await syncAppearances(tx, updated!, fromLevel);
+
+      return {
+        waifu: updated!,
+        applications,
+        essenceSpent: cost,
+        xpGranted: grant,
+        fromLevel,
+        toLevel: newLevel,
+        essenceBalanceAfter: balance.essence,
+        newAppearances,
+      };
+    });
   }
 
   async function listOwnedGrouped(
@@ -715,45 +828,14 @@ export function createCollectionService(deps: CollectionServiceDeps): Collection
     waifuLevelFromXp,
     waifuProgress: waifuProgressPayload,
 
+    maxUsefulApplications,
+
     async investEssence(playerId, waifuId /* now unused */) {
-      return db.transaction(async (tx) => {
-        const [locked] = await tx
-          .select()
-          .from(playerWaifus)
-          .where(and(eq(playerWaifus.id, waifuId), eq(playerWaifus.playerId, playerId)))
-          .for('update');
-        if (!locked) throw new WaifuNotOwnedError(waifuId);
-        if (locked.releasedAt != null) throw new WaifuAlreadyReleasedError(waifuId);
-
-        const cost = waifuConfig.essenceInvestment.essenceCost;
-        const grant = waifuConfig.essenceInvestment.xpGranted;
-
-        // Lock + conditionally spend the currency row (matches the shop path).
-        await currency.lockCurrencies(tx, playerId);
-        const balance = await currency.spendEssence(tx, playerId, cost);
-
-        const fromLevel = locked.level;
-        const newTotalXp = locked.xp + grant;
-        const newLevel = waifuLevelFromXp(newTotalXp);
-        const [updated] = await tx
-          .update(playerWaifus)
-          .set({ xp: newTotalXp, level: newLevel })
-          .where(eq(playerWaifus.id, waifuId))
-          .returning();
-
-        const newAppearances = await syncAppearances(tx, updated!, fromLevel);
-
-        return {
-          waifu: updated!,
-          essenceSpent: cost,
-          xpGranted: grant,
-          fromLevel,
-          toLevel: newLevel,
-          essenceBalanceAfter: balance.essence,
-          newAppearances,
-        };
-      });
+      // 1× is the batch of one — one code path, so the two can never drift.
+      return investEssenceBatch(playerId, waifuId, 1);
     },
+
+    investEssenceBatch,
 
     async setNickname(playerId, waifuId, nickname) {
       return db.transaction(async (tx) => {
