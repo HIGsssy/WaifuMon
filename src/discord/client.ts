@@ -66,6 +66,11 @@ import {
   handleAdminAllowChannelRemove,
   handleAdminSetAnnounceChannel,
 } from './commands/waifumonAdmin';
+import {
+  handleAdminPlayerCharms,
+  handleAdminPlayerEnergy,
+  handleAdminPlayerEssence,
+} from './commands/waifumonAdminPlayer';
 import type {
   AutocompleteInteraction,
   ButtonInteraction,
@@ -125,6 +130,13 @@ export function createDiscordClient(ctx: AppContext): Client {
         handleAdminAllowChannelList(ctx, i),
       'waifumon-admin:set-announce-channel': (i: ChatInputCommandInteraction) =>
         handleAdminSetAnnounceChannel(ctx, i),
+      // Live-testing helpers — ManageGuild, re-checked inside each handler.
+      'waifumon-admin:player:energy': (i: ChatInputCommandInteraction) =>
+        handleAdminPlayerEnergy(ctx, i),
+      'waifumon-admin:player:essence': (i: ChatInputCommandInteraction) =>
+        handleAdminPlayerEssence(ctx, i),
+      'waifumon-admin:player:charms': (i: ChatInputCommandInteraction) =>
+        handleAdminPlayerCharms(ctx, i),
     },
     autocompleteHandlers: {
       'wm:inspect': (i: AutocompleteInteraction, playerId: number | null) =>

@@ -22,6 +22,11 @@ import {
   type GuardChannelInfo,
 } from './playChannelGuard';
 import { parseCustomId, type ParsedCustomId } from './types';
+import {
+  ADMIN_CHARM_CHOICES,
+  ADMIN_MAX_CHARM_GRANT,
+  ADMIN_MAX_ESSENCE_GRANT,
+} from './commands/waifumonAdminPlayer';
 
 export function buildCommandDefinitions() {
   // Bare entry point — no subcommands, so `/waifumon` opens the splash/menu
@@ -130,6 +135,70 @@ export function buildCommandDefinitions() {
             ),
         )
         .addSubcommand((s) => s.setName('list').setDescription('List allowed play channels')),
+    )
+    // Live-testing helpers. Same ManageGuild gate as the rest of this command,
+    // re-checked at runtime in the handlers — Discord's default-permission gate
+    // is server-configurable, and these mutate balances.
+    .addSubcommandGroup((g) =>
+      g
+        .setName('player')
+        .setDescription('Live-testing: prepare a player account for a smoke test')
+        .addSubcommand((s) =>
+          s
+            .setName('energy')
+            .setDescription("Set a player's Hunt Energy (defaults to their max)")
+            .addUserOption((o) =>
+              o.setName('user').setDescription('Target player').setRequired(true),
+            )
+            .addIntegerOption((o) =>
+              o
+                .setName('amount')
+                .setDescription('Energy to set — defaults to their max for level')
+                .setRequired(false)
+                .setMinValue(0),
+            ),
+        )
+        .addSubcommand((s) =>
+          s
+            .setName('essence')
+            .setDescription('Grant Essence to a player')
+            .addUserOption((o) =>
+              o.setName('user').setDescription('Target player').setRequired(true),
+            )
+            .addIntegerOption((o) =>
+              o
+                .setName('amount')
+                .setDescription(`Essence to grant (1–${ADMIN_MAX_ESSENCE_GRANT})`)
+                .setRequired(true)
+                .setMinValue(1)
+                .setMaxValue(ADMIN_MAX_ESSENCE_GRANT),
+            ),
+        )
+        .addSubcommand((s) =>
+          s
+            .setName('charms')
+            .setDescription('Grant capture charms to a player')
+            .addUserOption((o) =>
+              o.setName('user').setDescription('Target player').setRequired(true),
+            )
+            .addStringOption((o) =>
+              o
+                .setName('charm')
+                .setDescription('Which charm to grant')
+                .setRequired(true)
+                .addChoices(
+                  ...ADMIN_CHARM_CHOICES.map((c) => ({ name: c.name, value: c.value })),
+                ),
+            )
+            .addIntegerOption((o) =>
+              o
+                .setName('amount')
+                .setDescription(`How many (1–${ADMIN_MAX_CHARM_GRANT})`)
+                .setRequired(true)
+                .setMinValue(1)
+                .setMaxValue(ADMIN_MAX_CHARM_GRANT),
+            ),
+        ),
     )
     .addSubcommand((s) =>
       s
