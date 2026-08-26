@@ -26,6 +26,7 @@ import {
 } from '../../src/discord/assets/attachRenderedCard';
 import { buildEphemeralOutcomeMessage } from '../../src/discord/commands/waifumonHunt';
 import { renderCollectionEmbed } from '../../src/discord/commands/waifumonCollection';
+import { defaultCollectionFilterState } from '../../src/discord/collectionFilterTracker';
 import { createAppearanceService } from '../../src/modules/appearance/appearanceService';
 import { SpeciesFileSchema } from '../../src/modules/content/schemas';
 import type { AppContext } from '../../src/discord/types';
@@ -268,8 +269,9 @@ describe('capture outcome embed', () => {
 describe('collection list', () => {
   it('stays image-free — a page of cards is not what that surface is for', () => {
     const embed = renderCollectionEmbed(
-      { entries: [], page: 1, pageSize: 10, total: 0, totalPages: 1 } as never,
+      { groups: [], page: 1, pageSize: 10, totalPages: 1, totalGroups: 0, totalCopies: 0 },
       { owned: 0, distinctSpecies: 0, totalSpecies: 10 },
+      defaultCollectionFilterState(),
     );
     expect(embed.data.image).toBeUndefined();
     expect(embed.data.thumbnail).toBeUndefined();

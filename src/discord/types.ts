@@ -26,6 +26,7 @@ import type { QuestService } from '../modules/quests/questService';
 import type { SessionService } from '../modules/session/sessionService';
 import type { GameEventBus } from '../modules/events/gameEvents';
 import type { HuntSessionTracker } from '../modules/hunt/huntSession';
+import type { CollectionFilterTracker } from './collectionFilterTracker';
 import type { OwnedCardWarmer } from '../modules/appearance/ownedCardWarm';
 
 export interface AppServices {
@@ -76,6 +77,15 @@ export interface AppContext {
    * depends on it, and a restart just re-opens sessions.
    */
   huntSessions: HuntSessionTracker;
+  /**
+   * Filter/sort/page state for the grouped collection browser. Pure view
+   * state, never gameplay state — see `discord/collectionFilterTracker.ts`.
+   *
+   * Optional: when absent the collection screen lazily attaches a tracker of
+   * its own scoped to this context, so tests that build a bare `AppContext`
+   * still get correct (and mutually isolated) filter behaviour.
+   */
+  collectionFilters?: CollectionFilterTracker | undefined;
   /**
    * Background warming of owned card derivatives.
    *

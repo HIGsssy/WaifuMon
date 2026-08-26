@@ -25,7 +25,20 @@ import {
 import { affinityLabel } from '../../modules/capture/affinityMath';
 import { isAppearanceUnlocked } from '../../modules/appearance/appearanceRules';
 import type { AppearanceView } from '../../modules/appearance/appearanceService';
-import type { OwnedEntry, PaginatedOwned } from '../../modules/collection/collectionService';
+import type { OwnedEntry, PaginatedGroups } from '../../modules/collection/collectionService';
+import {
+  COLLECTION_SORTS,
+  COLLECTION_SORT_LABELS,
+  isCollectionSortBy,
+} from '../../modules/collection/collectionGrouping';
+import {
+  createCollectionFilterTracker,
+  hasActiveFilters,
+  parseFilterInput,
+  FILTER_NAME_MAX_LENGTH,
+  type CollectionFilterState,
+  type CollectionFilterTracker,
+} from '../collectionFilterTracker';
 import {
   CARD_FILENAME,
   resolveAppearanceAsset,
@@ -49,7 +62,7 @@ import { emitEvents } from '../gameEventEmitter';
 import { gameEvent } from '../../modules/events/gameEvents';
 import { renderOwnedCardAttachment } from '../assets/attachRenderedCard';
 import { respondEphemeral } from '../ephemeralSession';
-import { isStaleInteractionError, withBackRow } from '../ui';
+import { backButton, isStaleInteractionError, withBackRow } from '../ui';
 
 const PAGE_SIZE = 10;
 /** Discord select menus cap at 25 options; the gallery paginates past that. */
@@ -90,44 +103,124 @@ function displayName(entry: OwnedEntry): string {
   return nick ? `${nick} (${entry.species.name})` : entry.species.name;
 }
 
-export function renderCollectionEmbed(page: PaginatedOwned, dex: {
-  owned: number;
-  distinctSpecies: number;
-  totalSpecies: number;
-}): EmbedBuilder {
+/**
+ * Filter state for this context.
+ *
+ * Production wires a tracker onto the context in `index.ts`. When one is
+ * absent (tests building a bare `AppContext`) we attach a per-context tracker
+ * lazily, so each context still gets correct — and mutually isolated — filter
+ * behaviour instead of sharing one process-wide map.
+ */
+const contextFilterTrackers = new WeakMap<AppContext, CollectionFilterTracker>();
+
+function filterTracker(ctx: AppContext): CollectionFilterTracker {
+  if (ctx.collectionFilters) return ctx.collectionFilters;
+  let tracker = contextFilterTrackers.get(ctx);
+  if (!tracker) {
+    tracker = createCollectionFilterTracker();
+    contextFilterTrackers.set(ctx, tracker);
+  }
+  return tracker;
+}
+
+/** One-line summary of what the player is currently looking at. */
+function describeFilters(state: CollectionFilterState): string {
+  const parts: string[] = [];
+  if (state.name != null) parts.push(`“${state.name}”`);
+  if (state.minLevel != null && state.maxLevel != null) {
+    parts.push(`Lv ${state.minLevel}–${state.maxLevel}`);
+  } else if (state.minLevel != null) {
+    parts.push(`Lv ${state.minLevel}+`);
+  } else if (state.maxLevel != null) {
+    parts.push(`Lv ${state.maxLevel} and under`);
+  }
+  if (state.minCopies != null) parts.push(`${state.minCopies}+ copies`);
+  const sort = `Sort: ${COLLECTION_SORT_LABELS[state.sortBy]}`;
+  return parts.length > 0
+    ? `🔎 ${parts.join(' · ')} · ${sort}`
+    : `🔎 No filters · ${sort}`;
+}
+
+export function renderCollectionEmbed(
+  view: PaginatedGroups,
+  dex: { owned: number; distinctSpecies: number; totalSpecies: number },
+  state: CollectionFilterState,
+): EmbedBuilder {
   const embed = new EmbedBuilder().setTitle('🎒 Your Collection').setColor(0xff6fa5);
   const header = `**${dex.owned}** owned · dex **${dex.distinctSpecies}/${dex.totalSpecies}** species`;
-  if (page.entries.length === 0) {
-    embed.setDescription(`${header}\n\n_No Waifumon yet~ Try \`/waifumon hunt\`._`);
+  const summary = describeFilters(state);
+
+  if (view.groups.length === 0) {
+    // Two different empty states: nothing owned at all vs. nothing matching.
+    const body = hasActiveFilters(state)
+      ? '_No Waifumon match these filters._\nTry **Clear Filters**, or widen them.'
+      : '_No Waifumon yet~ Try `/waifumon hunt`._';
+    embed.setDescription(`${header}\n${summary}\n\n${body}`);
     return embed;
   }
-  const startIdx = (page.page - 1) * page.pageSize + 1;
-  const lines = page.entries.map((entry, i) => {
+
+  const startIdx = (view.page - 1) * view.pageSize + 1;
+  const lines = view.groups.map((group, i) => {
     const num = String(startIdx + i).padStart(2, '0');
-    const fav = entry.waifu.isFavorite ? ' 🩷' : '';
-    return `\`${num}\` **[${entry.species.rarity}]** ${displayName(entry)} · Lv ${entry.waifu.level}${fav}`;
+    const fav = group.copies.some((copy) => copy.waifu.isFavorite) ? ' 🩷' : '';
+    const copies = group.totalCopies > 1 ? ` · ×${group.totalCopies}` : '';
+    return `\`${num}\` **[${group.species.rarity}]** ${group.species.name} · Lv ${group.maxLevel}${copies}${fav}`;
   });
+  const tally = `${view.totalGroups} species · ${view.totalCopies} copies`;
   embed.setDescription(
-    `${header}\n_Page ${page.page}/${page.totalPages}_\n\n${lines.join('\n')}`,
+    `${header}\n${summary}\n_Page ${view.page}/${view.totalPages} · ${tally}_\n\n${lines.join('\n')}`,
   );
   return embed;
 }
 
+/** Select options for the species groups on this page. */
+function groupSelectOptions(
+  groups: PaginatedGroups['groups'],
+): { label: string; description: string; value: string }[] {
+  return groups.map((group) => {
+    const copies = group.totalCopies > 1 ? ` · ${group.totalCopies} copies` : '';
+    return {
+      label: group.species.name.slice(0, 100),
+      description: `[${group.species.rarity}] Lv ${group.maxLevel}${copies}`.slice(0, 100),
+      // One copy inspects straight through; several open the copy picker.
+      value:
+        group.totalCopies === 1 && group.copies[0]
+          ? `single:${group.copies[0].waifu.id}`
+          : `dup:${group.speciesId}`,
+    };
+  });
+}
+
+function sortSelectRow(
+  state: CollectionFilterState,
+): ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder> {
+  const select = new StringSelectMenuBuilder()
+    .setCustomId(buildCustomId('col', 'sort'))
+    .setPlaceholder('Sort…')
+    .addOptions(
+      COLLECTION_SORTS.map((sort) => ({
+        label: COLLECTION_SORT_LABELS[sort],
+        value: sort,
+        default: sort === state.sortBy,
+      })),
+    );
+  return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+    select,
+  ) as ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>;
+}
+
 function collectionComponents(
-  page: PaginatedOwned,
+  view: PaginatedGroups,
+  state: CollectionFilterState,
 ): ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>[] {
   const rows: ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>[] = [];
 
-  if (page.entries.length > 0) {
-    const options = page.entries.slice(0, 25).map((entry) => ({
-      label: displayName(entry).slice(0, 100),
-      description: `[${entry.species.rarity}] Lv ${entry.waifu.level}${
-        entry.waifu.isFavorite ? ' · favorite' : ''
-      }`.slice(0, 100),
-      value: String(entry.waifu.id),
-    }));
+  // Discord rejects a select menu with zero options, so an empty result must
+  // omit the row entirely rather than render a disabled placeholder.
+  const options = groupSelectOptions(view.groups);
+  if (options.length > 0) {
     const select = new StringSelectMenuBuilder()
-      .setCustomId(buildCustomId('col', 'pick'))
+      .setCustomId(buildCustomId('col', 'pick_group'))
       .setPlaceholder('Inspect one…')
       .addOptions(options);
     rows.push(
@@ -137,45 +230,64 @@ function collectionComponents(
     );
   }
 
-  const nav: ButtonBuilder[] = [];
-  const prev = new ButtonBuilder()
-    .setCustomId(buildCustomId('col', 'page', String(page.page - 1)))
-    .setLabel('◀ Prev')
-    .setStyle(ButtonStyle.Secondary)
-    .setDisabled(page.page <= 1);
-  const next = new ButtonBuilder()
-    .setCustomId(buildCustomId('col', 'page', String(page.page + 1)))
-    .setLabel('Next ▶')
-    .setStyle(ButtonStyle.Secondary)
-    .setDisabled(page.page >= page.totalPages);
-  nav.push(prev, next);
+  rows.push(sortSelectRow(state));
+
+  const active = hasActiveFilters(state);
+  const nav = [
+    new ButtonBuilder()
+      .setCustomId(buildCustomId('col', 'page', String(view.page - 1)))
+      .setLabel('◀ Prev')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(view.page <= 1),
+    new ButtonBuilder()
+      .setCustomId(buildCustomId('col', 'page', String(view.page + 1)))
+      .setLabel('Next ▶')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(view.page >= view.totalPages),
+    new ButtonBuilder()
+      .setCustomId(buildCustomId('col', 'filter_open'))
+      .setLabel('🔎 Filters')
+      .setStyle(active ? ButtonStyle.Primary : ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId(buildCustomId('col', 'filter_clear'))
+      .setLabel('✕ Clear')
+      .setStyle(active ? ButtonStyle.Primary : ButtonStyle.Secondary)
+      .setDisabled(!active),
+    backButton(),
+  ];
   rows.push(
     new ActionRowBuilder<ButtonBuilder>().addComponents(...nav) as ActionRowBuilder<
       ButtonBuilder | StringSelectMenuBuilder
     >,
   );
-
-  // Back to menu.
-  rows.push(...(withBackRow() as ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>[]));
   return rows;
 }
 
 async function buildCollectionScreen(
   ctx: AppContext,
   playerId: number,
-  pageNum: number,
 ): Promise<{
   embeds: EmbedBuilder[];
   components: ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>[];
 }> {
-  const page = await ctx.services.collection.listOwned(playerId, {
-    page: pageNum,
+  const tracker = filterTracker(ctx);
+  const state = tracker.get(playerId);
+  const view = await ctx.services.collection.listOwnedGrouped(playerId, {
+    name: state.name,
+    minLevel: state.minLevel,
+    maxLevel: state.maxLevel,
+    minCopies: state.minCopies,
+    sortBy: state.sortBy,
+    page: state.page,
     pageSize: PAGE_SIZE,
   });
+  // The view clamps an out-of-range page; write it back so Prev/Next and the
+  // next render agree with what the player is actually looking at.
+  const settled = view.page === state.page ? state : tracker.set(playerId, { page: view.page });
   const dex = await ctx.services.collection.getDexStats(playerId);
   return {
-    embeds: [renderCollectionEmbed(page, dex)],
-    components: collectionComponents(page),
+    embeds: [renderCollectionEmbed(view, dex, settled)],
+    components: collectionComponents(view, settled),
   };
 }
 
@@ -185,7 +297,7 @@ export async function handleCollection(
   interaction: PlayerInteraction,
   prov: Provisioned,
 ): Promise<void> {
-  const view = await buildCollectionScreen(ctx, prov.playerId, 1);
+  const view = await buildCollectionScreen(ctx, prov.playerId);
   await respondEphemeral(interaction, view);
 }
 
@@ -197,12 +309,325 @@ export async function handleCollectionPage(
   args: string[],
 ): Promise<void> {
   const pageNum = Math.max(1, Number(args[0]) || 1);
-  const view = await buildCollectionScreen(ctx, prov.playerId, pageNum);
+  filterTracker(ctx).set(prov.playerId, { page: pageNum });
+  const view = await buildCollectionScreen(ctx, prov.playerId);
   await respondEphemeral(interaction, view);
 }
 
-/** col:pick select — inspect chosen waifu. */
+/** col:sort select — re-sort and jump back to page 1. */
+export async function handleCollectionSort(
+  ctx: AppContext,
+  interaction: StringSelectMenuInteraction,
+  prov: Provisioned,
+): Promise<void> {
+  const picked = interaction.values[0];
+  if (isCollectionSortBy(picked)) {
+    filterTracker(ctx).set(prov.playerId, { sortBy: picked, page: 1 });
+  }
+  const view = await buildCollectionScreen(ctx, prov.playerId);
+  await respondEphemeral(interaction, view);
+}
+
+/** col:filter_clear button — back to an unfiltered page 1. */
+export async function handleCollectionFilterClear(
+  ctx: AppContext,
+  interaction: ButtonInteraction,
+  prov: Provisioned,
+): Promise<void> {
+  filterTracker(ctx).reset(prov.playerId);
+  const view = await buildCollectionScreen(ctx, prov.playerId);
+  await respondEphemeral(interaction, view);
+}
+
+/** col:filter_open button — show the filter modal, prefilled with current state. */
+export async function handleCollectionFilterOpen(
+  ctx: AppContext,
+  interaction: ButtonInteraction,
+  prov: Provisioned,
+): Promise<void> {
+  const state = filterTracker(ctx).get(prov.playerId);
+  const text = (
+    id: string,
+    label: string,
+    value: string,
+    maxLength: number,
+    placeholder: string,
+  ): ActionRowBuilder<TextInputBuilder> =>
+    new ActionRowBuilder<TextInputBuilder>().addComponents(
+      new TextInputBuilder()
+        .setCustomId(id)
+        .setLabel(label)
+        .setStyle(TextInputStyle.Short)
+        .setRequired(false)
+        .setMaxLength(maxLength)
+        .setPlaceholder(placeholder)
+        .setValue(value),
+    );
+  const modal = new ModalBuilder()
+    .setCustomId(buildCustomId('col', 'filter_submit'))
+    .setTitle('Filter your collection')
+    .addComponents(
+      text('name', 'Name (blank = any)', state.name ?? '', FILTER_NAME_MAX_LENGTH, 'e.g. saku'),
+      text('min_level', 'Min level (blank = any)', state.minLevel?.toString() ?? '', 3, 'e.g. 10'),
+      text('max_level', 'Max level (blank = any)', state.maxLevel?.toString() ?? '', 3, 'e.g. 50'),
+      text('min_copies', 'Min copies (blank = any)', state.minCopies?.toString() ?? '', 3, 'e.g. 2'),
+    );
+  await interaction.showModal(modal);
+}
+
+/** col:filter_submit — modal callback. */
+export async function handleCollectionFilterSubmit(
+  ctx: AppContext,
+  interaction: ModalSubmitInteraction,
+  prov: Provisioned,
+): Promise<void> {
+  const parsed = parseFilterInput(
+    {
+      name: interaction.fields.getTextInputValue('name'),
+      minLevel: interaction.fields.getTextInputValue('min_level'),
+      maxLevel: interaction.fields.getTextInputValue('max_level'),
+      minCopies: interaction.fields.getTextInputValue('min_copies'),
+    },
+    ctx.content.tables.waifuProgression.maxLevel,
+  );
+  if (!parsed.ok) {
+    // Filters are left exactly as they were — a rejected form changes nothing.
+    await interaction.reply({ content: parsed.error, ...EPHEMERAL });
+    return;
+  }
+  filterTracker(ctx).set(prov.playerId, { ...parsed.patch, page: 1 });
+  const view = await buildCollectionScreen(ctx, prov.playerId);
+  await respondEphemeral(interaction, view);
+}
+
+/** col:pick_group select — inspect a lone copy, or open the copy picker. */
+export async function handleCollectionPickGroup(
+  ctx: AppContext,
+  interaction: StringSelectMenuInteraction,
+  prov: Provisioned,
+): Promise<void> {
+  const picked = interaction.values[0] ?? '';
+  const [kind, rawId] = picked.split(':');
+  const id = Number(rawId);
+  if (!Number.isInteger(id)) {
+    await respondEphemeral(interaction, {
+      content: 'That Waifumon is no longer available.',
+      components: withBackRow(),
+    });
+    return;
+  }
+  if (kind === 'single') {
+    await renderInspect(ctx, interaction as unknown as PlayerInteraction, prov, id);
+    return;
+  }
+  await renderDuplicateSelector(ctx, interaction as unknown as PlayerInteraction, prov, id, 1);
+}
+
+/** col:pick select — legacy flat picker; kept so older messages still work. */
 export async function handleCollectionPick(
+  ctx: AppContext,
+  interaction: StringSelectMenuInteraction,
+  prov: Provisioned,
+): Promise<void> {
+  const picked = Number(interaction.values[0]);
+  if (!Number.isInteger(picked)) {
+    await respondEphemeral(interaction, {
+      content: 'That Waifumon is no longer available.',
+      components: withBackRow(),
+    });
+    return;
+  }
+  await renderInspect(ctx, interaction as unknown as PlayerInteraction, prov, picked);
+}
+
+// ───────────────────────── duplicate copy selector ─────────────────────────
+
+/**
+ * One species' individual copies, so a player holding several can pick the
+ * exact one they mean. Navigation only: every action still lives on the
+ * inspect screen this leads to.
+ *
+ * The active level filter carries over, so the copies listed here are the same
+ * ones the group line counted.
+ */
+function renderDuplicateEmbed(
+  species: OwnedEntry['species'],
+  copies: OwnedEntry[],
+  buddyId: number | null,
+  page: number,
+  totalPages: number,
+  state: CollectionFilterState,
+): EmbedBuilder {
+  const embed = new EmbedBuilder()
+    .setTitle(`🎒 ${species.name} — your copies`)
+    .setColor(rarityColor(species.rarity));
+  if (copies.length === 0) {
+    embed.setDescription(
+      `**[${species.rarity}]** ${species.name}\n\n_No copies match these filters any more._`,
+    );
+    return embed;
+  }
+  const shown = copies.slice((page - 1) * GALLERY_PAGE_SIZE, page * GALLERY_PAGE_SIZE);
+  const lines = shown.map((copy) => {
+    const marks = [
+      copy.waifu.isFavorite ? '🩷' : '',
+      copy.waifu.id === buddyId ? '★ buddy' : '',
+      copy.waifu.nickname?.trim() ? `“${copy.waifu.nickname.trim()}”` : '',
+    ].filter((mark) => mark.length > 0);
+    const suffix = marks.length > 0 ? ` · ${marks.join(' · ')}` : '';
+    return `\`#${copy.waifu.id}\` Lv ${copy.waifu.level} · 💗 ${copy.waifu.affection}${suffix}`;
+  });
+  const header = `**[${species.rarity}]** ${copies.length} ${
+    copies.length === 1 ? 'copy' : 'copies'
+  }`;
+  const pager = totalPages > 1 ? `\n_Page ${page}/${totalPages}_` : '';
+  // Only the level range is worth repeating here — sort order applies to the
+  // group list, and the name filter already matched to get us to this species.
+  const range =
+    state.minLevel != null && state.maxLevel != null
+      ? `\n_Showing Lv ${state.minLevel}–${state.maxLevel}_`
+      : state.minLevel != null
+        ? `\n_Showing Lv ${state.minLevel}+_`
+        : state.maxLevel != null
+          ? `\n_Showing Lv ${state.maxLevel} and under_`
+          : '';
+  embed.setDescription(`${header}${range}${pager}\n\n${lines.join('\n')}`);
+  return embed;
+}
+
+function duplicateComponents(
+  speciesId: number,
+  copies: OwnedEntry[],
+  page: number,
+  totalPages: number,
+): ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>[] {
+  const rows: ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>[] = [];
+  const shown = copies.slice((page - 1) * GALLERY_PAGE_SIZE, page * GALLERY_PAGE_SIZE);
+
+  // Same rule as the group list: never emit an empty select menu.
+  if (shown.length > 0) {
+    const select = new StringSelectMenuBuilder()
+      .setCustomId(buildCustomId('col', 'pick_copy'))
+      .setPlaceholder('Inspect a copy…')
+      .addOptions(
+        shown.map((copy) => {
+          const nick = copy.waifu.nickname?.trim();
+          const marks = [
+            copy.waifu.isFavorite ? 'favorite' : '',
+            nick ? `“${nick}”` : '',
+          ].filter((mark) => mark.length > 0);
+          return {
+            label: `#${copy.waifu.id} · Lv ${copy.waifu.level}`.slice(0, 100),
+            description: `💗 ${copy.waifu.affection}${
+              marks.length > 0 ? ` · ${marks.join(' · ')}` : ''
+            }`.slice(0, 100),
+            value: String(copy.waifu.id),
+          };
+        }),
+      );
+    rows.push(
+      new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select) as ActionRowBuilder<
+        ButtonBuilder | StringSelectMenuBuilder
+      >,
+    );
+  }
+
+  const nav: ButtonBuilder[] = [];
+  if (totalPages > 1) {
+    nav.push(
+      new ButtonBuilder()
+        .setCustomId(buildCustomId('col', 'dupes', String(speciesId), String(page - 1)))
+        .setLabel('◀ Prev')
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(page <= 1),
+      new ButtonBuilder()
+        .setCustomId(buildCustomId('col', 'dupes', String(speciesId), String(page + 1)))
+        .setLabel('Next ▶')
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(page >= totalPages),
+    );
+  }
+  nav.push(
+    new ButtonBuilder()
+      .setCustomId(buildCustomId('col', 'list'))
+      .setLabel('⟵ Back to collection')
+      .setStyle(ButtonStyle.Secondary),
+  );
+  rows.push(
+    new ActionRowBuilder<ButtonBuilder>().addComponents(...nav) as ActionRowBuilder<
+      ButtonBuilder | StringSelectMenuBuilder
+    >,
+  );
+  return rows;
+}
+
+async function renderDuplicateSelector(
+  ctx: AppContext,
+  interaction: PlayerInteraction,
+  prov: Provisioned,
+  speciesId: number,
+  page: number,
+): Promise<void> {
+  const state = filterTracker(ctx).get(prov.playerId);
+  const copies = await ctx.services.collection.listOwnedCopiesForSpecies(
+    prov.playerId,
+    speciesId,
+    { minLevel: state.minLevel, maxLevel: state.maxLevel },
+  );
+  const first = copies[0];
+  if (!first) {
+    // Every copy was released or filtered out between render and click.
+    await respondEphemeral(interaction, {
+      content: 'No copies of that Waifumon match your filters any more.',
+      components: withBackRow(),
+    });
+    return;
+  }
+  const totalPages = Math.max(1, Math.ceil(copies.length / GALLERY_PAGE_SIZE));
+  const clamped = Math.min(Math.max(1, page), totalPages);
+  const buddy = await ctx.services.collection.getBuddy(prov.playerId);
+  await respondEphemeral(interaction, {
+    embeds: [
+      renderDuplicateEmbed(
+        first.species,
+        copies,
+        buddy?.waifu.id ?? null,
+        clamped,
+        totalPages,
+        state,
+      ),
+    ],
+    components: duplicateComponents(speciesId, copies, clamped, totalPages),
+  });
+}
+
+/** col:dupes button — page the copy list. */
+export async function handleCollectionDuplicates(
+  ctx: AppContext,
+  interaction: ButtonInteraction,
+  prov: Provisioned,
+  args: string[],
+): Promise<void> {
+  const speciesId = Number(args[0]);
+  const page = Math.max(1, Number(args[1]) || 1);
+  if (!Number.isInteger(speciesId)) {
+    await respondEphemeral(interaction, {
+      content: 'That Waifumon is no longer available.',
+      components: withBackRow(),
+    });
+    return;
+  }
+  await renderDuplicateSelector(
+    ctx,
+    interaction as unknown as PlayerInteraction,
+    prov,
+    speciesId,
+    page,
+  );
+}
+
+/** col:pick_copy select — inspect one specific copy. */
+export async function handleCollectionPickCopy(
   ctx: AppContext,
   interaction: StringSelectMenuInteraction,
   prov: Provisioned,
@@ -962,13 +1387,17 @@ export async function handleCollectionPickId(
   await renderInspect(ctx, interaction, prov, waifuId);
 }
 
-/** col:list — return to the paginated collection list from inspect. */
+/**
+ * col:list — return to the collection list from inspect or the copy picker.
+ * Filters, sort and page are whatever the player left them on, so coming back
+ * lands where they were rather than resetting the browse.
+ */
 export async function handleCollectionList(
   ctx: AppContext,
   interaction: ButtonInteraction,
   prov: Provisioned,
 ): Promise<void> {
-  const view = await buildCollectionScreen(ctx, prov.playerId, 1);
+  const view = await buildCollectionScreen(ctx, prov.playerId);
   await respondEphemeral(interaction, view);
 }
 

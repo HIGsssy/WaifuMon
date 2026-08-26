@@ -167,10 +167,10 @@
     "slug": "midnight_swamp_witch",
     "name": "Midnight Swamp Witch",
     "rarity": "R",
-    "archetype": "human",
-    "race": "human",
+    "archetype": "spirit",
+    "race": "spirit",
     "baseCaptureRate": null,
-    "description": "Brews fog and grudges in equal measure. The bog pays her rent in lost buttons and old coins.",
+    "description": "Brews fog and grudges in equal measure. The bog pays their rent in lost buttons and old coins.",
     "tags": [
       "expansion"
     ],
@@ -180,7 +180,7 @@
       "subtitle": "Bog-Born Hexweaver",
       "ability": {
         "name": "Miasma Pact",
-        "text": "Anyone lost in her fog owes her a favor. The fog decides what counts as lost."
+        "text": "Anyone lost in their fog owes them a favor. The fog decides what counts as lost."
       },
       "flavorQuote": "The lantern isn't for finding the way out.",
       "artist": "Whistler"
