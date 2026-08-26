@@ -64,10 +64,23 @@ export interface SpeciesCardOptions {
   level?: number | undefined;
   /** Requested display width; omitted means the full-size master. */
   width?: number | undefined;
+  /**
+   * Composite the CAUGHT emblem — the pre-catch duplicate-warning signal.
+   *
+   * Opt-in, off by default. Currently set only by the hunt encounter reveal
+   * when the player already owns ≥1 active copy of the species.
+   */
+  showCaughtBadge?: boolean | undefined;
 }
 
 export interface OwnedCardOptions {
   width?: number | undefined;
+  /**
+   * Composite the CAUGHT emblem. Off by default even for owned copies: the
+   * badge is a pre-catch warning, not a general ownership marker, so inspect,
+   * capture-success and the Portal owned card all decline it.
+   */
+  showCaughtBadge?: boolean | undefined;
 }
 
 /** The slice of an owned copy a card needs. Satisfied by `OwnedEntry`. */
@@ -80,8 +93,9 @@ export interface OwnedCardSubject {
  * A **species preview** card — the card as a definition, at level 1 by
  * default, wearing whichever appearance was asked for.
  *
- * Never sets the ownership flag: this is the encyclopedia's card, and a CAUGHT
- * badge on it would claim something untrue about the viewer.
+ * The CAUGHT badge stays off unless the caller explicitly asks for it via
+ * {@link SpeciesCardOptions.showCaughtBadge} — the hunt encounter turns it on
+ * for the duplicate-warning path; every other preview surface leaves it off.
  */
 export function speciesCardRequest(
   deps: CardPresentationDeps,
@@ -95,6 +109,9 @@ export function speciesCardRequest(
     artwork,
     ...(options.level === undefined ? {} : { level: options.level }),
     ...(options.width === undefined ? {} : { width: options.width }),
+    ...(options.showCaughtBadge === undefined
+      ? {}
+      : { showCaughtBadge: options.showCaughtBadge }),
     ...(deps.logger === undefined ? {} : { logger: deps.logger }),
   });
 
@@ -103,12 +120,18 @@ export function speciesCardRequest(
 
 /**
  * A card for one **owned copy** — her real level, the look she is actually
- * wearing, and the ownership badge.
+ * wearing.
  *
  * The level and the appearance come off the row, never from the caller. A
  * surface that passed its own copy of either would be reconstructing gameplay
  * state it does not own, and would be wrong the moment she levels up somewhere
  * else.
+ *
+ * The CAUGHT badge is **not** implied by ownership. It is a pre-catch duplicate
+ * warning; on an already-owned copy it would be redundant, and on an inspect
+ * or portal surface it would be a lie about *when* the warning was earned.
+ * Callers turn it on explicitly via {@link OwnedCardOptions.showCaughtBadge},
+ * which no owned surface does today.
  */
 export function ownedCardRequest(
   deps: CardPresentationDeps,
@@ -129,8 +152,10 @@ export function ownedCardRequest(
   const input = toCardRenderInput(species, {
     artwork,
     level: subject.waifu.level,
-    owned: true,
     ...(options.width === undefined ? {} : { width: options.width }),
+    ...(options.showCaughtBadge === undefined
+      ? {}
+      : { showCaughtBadge: options.showCaughtBadge }),
     ...(deps.logger === undefined ? {} : { logger: deps.logger }),
   });
 

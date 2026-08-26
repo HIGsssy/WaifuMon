@@ -19,6 +19,7 @@
 import { rarityAtLeast } from '../capture/captureMath';
 import type { Rarity } from '../../db/schema';
 import type { Logger } from '../../shared/logger';
+import type { AssetId } from '../content/schemas';
 import type {
   EventVisibility,
   GameEvent,
@@ -27,18 +28,60 @@ import type {
 } from '../events/gameEvents';
 
 /**
- * Discord side of the feed. `channelId` is the resolved Waifumon Log
- * channel; `visibility` is passed through so a future implementation can
- * batch or drop `minor` lines without touching this service.
+ * A raw appearance PNG the activity feed wants to attach to an announcement.
  */
-export type PostFn = (
-  channelId: string,
-  text: string,
-  visibility: EventVisibility,
-) => Promise<void>;
+export interface AppearanceArtworkAttachment {
+  /** Absolute path to a PNG that exists at resolution time. */
+  absolutePath: string;
+  /** Filename the Discord attachment will carry (safe, no path). */
+  filename: string;
+}
+
+/**
+ * A rich embed to post alongside the plain-text line. Used today for
+ * alternate-appearance unlock announcements, where the artwork itself is the
+ * point — see the `WAIFU_APPEARANCE_UNLOCKED` branch below.
+ */
+export interface ActivityRichEmbed {
+  title: string;
+  description: string;
+  image: AppearanceArtworkAttachment;
+  /** Optional footer text; the poster is free to ignore. */
+  footer?: string;
+}
+
+/**
+ * What the feed hands the Discord side. A plain `text` is always valid on its
+ * own; `richEmbed` when present is the alternate presentation the poster
+ * SHOULD use (a text-only fallback is fine when the poster cannot).
+ */
+export interface ActivityPostRequest {
+  text: string;
+  visibility: EventVisibility;
+  richEmbed?: ActivityRichEmbed;
+}
+
+/**
+ * Discord side of the feed. `channelId` is the resolved Waifumon Log
+ * channel; the poster decides how to render the request.
+ */
+export type PostFn = (channelId: string, request: ActivityPostRequest) => Promise<void>;
 
 /** Resolves the Waifumon Log channel for a guild, or null when unconfigured. */
 export type ResolveFeedChannelFn = (discordGuildId: string) => Promise<string | null>;
+
+/**
+ * Turns an appearance's abstract `AssetId` into the raw PNG on disk that the
+ * announcement should attach. Returns `null` when the artwork is missing — the
+ * feed then falls back to a text-only line rather than blocking the
+ * announcement.
+ *
+ * Deliberately synchronous: resolution reads the filesystem via existing
+ * shared helpers and never talks to the network.
+ */
+export type ResolveAppearanceArtworkFn = (
+  assetId: AssetId,
+) => AppearanceArtworkAttachment | null;
 
 export interface ActivityLine {
   text: string;
@@ -63,6 +106,12 @@ export interface ActivityFeedDeps {
    * rich-embed announcement. Defaults to `content.tables.capture.announceMinRarity`.
    */
   richEmbedMinRarity: Rarity;
+  /**
+   * Optional. When present, alternate-appearance unlock announcements attach
+   * the raw appearance PNG so other players see the artwork itself. Absent →
+   * the announcement is text-only, exactly as before.
+   */
+  resolveAppearanceArtwork?: ResolveAppearanceArtworkFn | undefined;
 }
 
 /** The rarity at which the existing rich embed takes over from narration. */
@@ -152,7 +201,7 @@ export function formatActivityLine(event: GameEvent): ActivityLine | null {
 }
 
 export function createActivityFeedService(deps: ActivityFeedDeps): ActivityFeedService {
-  const { post, resolveChannel, logger } = deps;
+  const { post, resolveChannel, logger, resolveAppearanceArtwork } = deps;
   const richEmbedMinRarity = deps.richEmbedMinRarity ?? DEFAULT_RICH_EMBED_MIN_RARITY;
 
   /** SR+ successes belong to the rich-embed path — never double-narrate them. */
@@ -161,6 +210,38 @@ export function createActivityFeedService(deps: ActivityFeedDeps): ActivityFeedS
       event.kind === 'PLAYER_CAPTURE_SUCCESS' &&
       rarityAtLeast(event.payload.rarity, richEmbedMinRarity)
     );
+  }
+
+  /**
+   * Alternate-appearance unlocks are the one event today that carries artwork
+   * with its narration. The default `'owned'` appearance is skipped — it is
+   * every fresh capture's `standard` look, and painting it here would double
+   * every catch as an "unlock" that no player earned.
+   */
+  function alternateAppearanceEmbed(event: GameEvent): ActivityRichEmbed | undefined {
+    if (event.kind !== 'WAIFU_APPEARANCE_UNLOCKED') return undefined;
+    if (event.payload.source === 'owned') return undefined;
+    if (!resolveAppearanceArtwork) return undefined;
+    let artwork: AppearanceArtworkAttachment | null;
+    try {
+      artwork = resolveAppearanceArtwork(event.payload.assetId);
+    } catch (err) {
+      logger.warn(
+        { err, tag: 'activity-feed/artwork-resolve-failed', eventId: event.eventId },
+        'appearance-unlock artwork resolution threw; posting text-only',
+      );
+      return undefined;
+    }
+    if (!artwork) return undefined;
+    return {
+      title: '🎀 New Appearance Unlocked!',
+      description:
+        `${event.playerName}'s **${event.payload.waifuName}** unlocked ` +
+        `**${event.payload.appearanceName}** — ${event.payload.unlockLabel}.\n\n` +
+        `Keep leveling your Waifumon to discover new appearances.`,
+      image: artwork,
+      footer: 'Cosmetic only — nothing about her changes.',
+    };
   }
 
   const handler: GameEventHandler = async (event) => {
@@ -178,7 +259,10 @@ export function createActivityFeedService(deps: ActivityFeedDeps): ActivityFeedS
       // deliberately do NOT fall back to the play channel: the play channel
       // is reserved for Trainer Profiles.
       if (!channelId) return;
-      await post(channelId, line.text, line.visibility);
+      const request: ActivityPostRequest = { text: line.text, visibility: line.visibility };
+      const richEmbed = alternateAppearanceEmbed(event);
+      if (richEmbed) request.richEmbed = richEmbed;
+      await post(channelId, request);
     } catch (err) {
       logger.warn(
         { err, kind: event.kind, eventId: event.eventId },

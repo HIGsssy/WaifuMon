@@ -56,7 +56,10 @@ import {
 import type { AppContext, PlayerInteraction, Provisioned } from '../types';
 import { buildCustomId } from '../types';
 import { CARD_FILENAME, resolveAppearanceAssetOrPath } from '../assets/resolveAppearanceAsset';
-import { renderOwnedCardAttachment } from '../assets/attachRenderedCard';
+import {
+  renderEncounterDuplicateCardAttachment,
+  renderOwnedCardAttachment,
+} from '../assets/attachRenderedCard';
 import { respondEphemeral, type SessionPayload } from '../ephemeralSession';
 import { emitEvents } from '../gameEventEmitter';
 import { captureDescriptors, huntDescriptors } from '../gameEventBuilders';
@@ -214,10 +217,25 @@ async function buildEncounterView(
   }
 
   const files: AttachmentBuilder[] = [];
-  const attach = attachSpeciesArtwork(ctx, species);
-  if (attach) {
-    files.push(attach);
-    embed.setImage(`attachment://${CARD_FILENAME}`);
+  // Pre-catch duplicate warning: if the player already owns ≥1 active copy of
+  // this species, reveal her card with the CAUGHT badge composited. Every
+  // failure falls back to raw artwork, so the encounter never fails to reveal.
+  const ownsAlready = await ctx.services.collection.hasActiveSpeciesCopy(
+    prov.playerId,
+    species.id,
+  );
+  const duplicateCard = ownsAlready
+    ? await renderEncounterDuplicateCardAttachment(ctx, species)
+    : null;
+  if (duplicateCard) {
+    files.push(duplicateCard.file);
+    embed.setImage(duplicateCard.url);
+  } else {
+    const attach = attachSpeciesArtwork(ctx, species);
+    if (attach) {
+      files.push(attach);
+      embed.setImage(`attachment://${CARD_FILENAME}`);
+    }
   }
   return { embeds: [embed], components: encounterButtonRows(encounter, charms, ownedBySlug), files };
 }
@@ -471,10 +489,12 @@ function retryButtonRows(
 /**
  * The capture outcome embed.
  *
- * A **successful** capture shows her rendered card: ownership has just been
- * established, which is the one moment the collectible presentation is exactly
- * what happened. Escapes and resists keep the raw artwork — she is not owned,
- * so an owned card (and its CAUGHT badge) would be a lie.
+ * A **successful** capture shows her rendered card at her fresh level and
+ * default look. The CAUGHT emblem is a *pre-catch* duplicate warning drawn on
+ * the encounter reveal, so it deliberately does not appear here — the catch
+ * has already happened, and the warning has already served its purpose.
+ * Escapes and resists keep the raw artwork — there is no copy to render a
+ * card for.
  *
  * The card is best-effort. When rendering is switched off, or fails, this falls
  * back to the same artwork the failure paths use, and the player sees a capture

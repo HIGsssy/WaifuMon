@@ -218,6 +218,12 @@ export interface ActivityLineCapture {
   channelId: string;
   text: string;
   visibility: EventVisibility;
+  richEmbed?: {
+    title: string;
+    description: string;
+    image: { absolutePath: string; filename: string };
+    footer?: string;
+  };
 }
 
 /**
@@ -260,8 +266,13 @@ export function createEventHarness(
     logger,
     richEmbedMinRarity: app.content.tables.capture.announceMinRarity,
     resolveChannel: async () => feedChannelId,
-    post: async (channelId, text, visibility) => {
-      lines.push({ channelId, text, visibility });
+    post: async (channelId, request) => {
+      lines.push({
+        channelId,
+        text: request.text,
+        visibility: request.visibility,
+        ...(request.richEmbed ? { richEmbed: request.richEmbed } : {}),
+      });
     },
   });
   activityFeed.subscribe(bus);

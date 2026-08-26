@@ -156,8 +156,8 @@ describe('formatActivityLine — canonical wording', () => {
 describe('createActivityFeedService', () => {
   function harness(opts: { channelId?: string | null } = {}) {
     const posts: ActivityLineCapture[] = [];
-    const post = vi.fn(async (channelId: string, text: string, visibility) => {
-      posts.push({ channelId, text, visibility });
+    const post = vi.fn(async (channelId: string, request: { text: string; visibility: EventVisibility }) => {
+      posts.push({ channelId, text: request.text, visibility: request.visibility });
     });
     const feed = createActivityFeedService({
       logger: silentLogger(),

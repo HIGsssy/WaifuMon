@@ -126,7 +126,7 @@ describe('computeMasterRenderKey', () => {
       ['level', { ...baseInput, progress: { level: 13 } }],
       ['appearance id', mutate({ variant: { appearanceId: 'level_20' } })],
       ['overrides of a drawn field', { ...baseInput, overrides: { artist: 'Overridden' } }],
-      ['ownership badge', { ...baseInput, context: { owned: true } }],
+      ['CAUGHT badge flag', { ...baseInput, context: { showCaughtBadge: true } }],
     ];
 
     for (const [label, input] of mutations) {
@@ -176,8 +176,8 @@ describe('computeMasterRenderKey', () => {
   });
 
   describe('does not change for things that are not the card', () => {
-    it('an unowned render, stated explicitly or left off', () => {
-      expect(keyFor({ ...baseInput, context: { owned: false } })).toBe(BASE_KEY);
+    it('a render without the CAUGHT badge, stated explicitly or left off', () => {
+      expect(keyFor({ ...baseInput, context: { showCaughtBadge: false } })).toBe(BASE_KEY);
       expect(keyFor({ ...baseInput, context: {} })).toBe(BASE_KEY);
     });
 

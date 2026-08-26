@@ -3,8 +3,10 @@
  *
  * `tools/cardCacheOps.ts` warms the *encyclopedia* set — every enabled species,
  * default look, level 1. That set is small, static, and says nothing about any
- * one trainer: an owned card carries her real level, the appearance she is
- * wearing, and the CAUGHT badge, so none of it is shared with the preview.
+ * one trainer: an owned card carries her real level and the appearance she is
+ * wearing, so none of it is shared with the preview. (The CAUGHT badge is a
+ * pre-catch duplicate warning drawn on the *encounter* card, not on owned
+ * surfaces — see `cardPresentation.ts` — so it never enters here.)
  *
  * This module is the owned counterpart, and it exists so that the collection
  * grid can show rendered cards without a page turn costing twenty-five cold
@@ -13,8 +15,8 @@
  * ## What it warms, and what it deliberately does not
  *
  * **Only her current state.** One card per owned copy: current level, current
- * worn appearance, `owned: true`. Not every level she has passed through, not
- * every appearance she has unlocked, not any state she might reach later.
+ * worn appearance. Not every level she has passed through, not every
+ * appearance she has unlocked, not any state she might reach later.
  * Level and appearance are both in the render key, so warming them all would
  * multiply the cache by the level cap for cards nobody will ever request — and
  * when she does level up, the next request simply mints the new card and warms

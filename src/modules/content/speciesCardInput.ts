@@ -68,11 +68,12 @@ export interface SpeciesCardInputOptions {
   /** Per-render metadata overrides. Rare — event skins, previews. */
   overrides?: SpeciesCardMeta;
   /**
-   * Render the ownership badge. Only true where the surface is genuinely
-   * showing a copy somebody owns — never for an encyclopedia or hunt preview,
-   * which is why it is opt-in rather than inferred.
+   * Composite the CAUGHT emblem. This is a pre-catch duplicate-warning
+   * signal for the hunt encounter, not a general "this card is owned" flag —
+   * inspect, capture-success, and portal owned surfaces deliberately leave it
+   * off.
    */
-  owned?: boolean;
+  showCaughtBadge?: boolean;
   /** Receives the race-fallback warning when `race` is absent and unmappable. */
   logger?: Logger;
 }
@@ -117,7 +118,9 @@ export function toCardRenderInput(
 
   return {
     ...input,
-    ...(options.owned === undefined ? {} : { context: { owned: options.owned } }),
+    ...(options.showCaughtBadge === undefined
+      ? {}
+      : { context: { showCaughtBadge: options.showCaughtBadge } }),
     ...(options.width === undefined ? {} : { output: { width: options.width } }),
     ...(options.overrides === undefined ? {} : { overrides: options.overrides }),
   };

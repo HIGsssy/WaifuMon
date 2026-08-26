@@ -19,7 +19,7 @@
  * pixel is touched, which is what makes the layout testable without rendering.
  */
 import type { CardAssetLoader } from '../assets/loader';
-import { effectiveCardMeta, effectiveLevel, effectiveOwned } from '../cache/cacheKey';
+import { effectiveCardMeta, effectiveLevel, effectiveShowCaughtBadge } from '../cache/cacheKey';
 import {
   buildOverlaySvg,
   buildUnderlaySvg,
@@ -56,7 +56,7 @@ export async function renderMasterBytes(
   logger?: Logger | undefined,
 ): Promise<Buffer> {
   const { rarity, race, affinity } = input.species;
-  const owned = effectiveOwned(input);
+  const showCaughtBadge = effectiveShowCaughtBadge(input);
 
   const [geometry, frameBytes, raceIcon, affinityIcon, rarityIcon, artwork, ownedBadgeBytes] =
     await Promise.all([
@@ -69,7 +69,7 @@ export async function renderMasterBytes(
         speciesSlug: input.species.slug,
         appearanceId: input.variant.appearanceId,
       }),
-      owned ? loader.ownedBadge() : Promise.resolve(undefined),
+      showCaughtBadge ? loader.ownedBadge() : Promise.resolve(undefined),
     ]);
 
   const card = effectiveCardMeta(input);
@@ -124,7 +124,7 @@ export async function renderMasterBytes(
       rarity,
       race,
       affinity,
-      owned,
+      showCaughtBadge,
       width: CARD_MASTER_WIDTH,
       height: CARD_MASTER_HEIGHT,
     },

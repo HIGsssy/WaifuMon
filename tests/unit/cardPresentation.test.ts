@@ -69,9 +69,14 @@ afterAll(() => {
 });
 
 describe('speciesCardRequest', () => {
-  it('never marks a preview as owned', () => {
+  it('never sets the CAUGHT badge on a plain preview', () => {
     const { input } = speciesCardRequest(deps, subject);
-    expect(input.context?.owned).not.toBe(true);
+    expect(input.context?.showCaughtBadge).not.toBe(true);
+  });
+
+  it('passes an explicit showCaughtBadge through to the render input', () => {
+    const { input } = speciesCardRequest(deps, subject, { showCaughtBadge: true });
+    expect(input.context?.showCaughtBadge).toBe(true);
   });
 
   it('previews at level 1 unless asked otherwise', () => {
@@ -145,8 +150,17 @@ describe('ownedCardRequest', () => {
     species: { slug: 'card_subject' },
   });
 
-  it('marks the render as owned', () => {
-    expect(ownedCardRequest(deps, copy(12, 'standard')).input.context?.owned).toBe(true);
+  it('does not set the CAUGHT badge just because the card is owned', () => {
+    expect(ownedCardRequest(deps, copy(12, 'standard')).input.context?.showCaughtBadge).not.toBe(
+      true,
+    );
+  });
+
+  it('accepts an explicit showCaughtBadge for callers that want to override the default', () => {
+    expect(
+      ownedCardRequest(deps, copy(12, 'standard'), { showCaughtBadge: true }).input.context
+        ?.showCaughtBadge,
+    ).toBe(true);
   });
 
   it('uses the copy’s actual level, not a preview default', () => {
@@ -179,13 +193,14 @@ describe('ownedCardRequest', () => {
     expect(() => ownedCardRequest(deps, ghost)).toThrow(CardArtworkMissingError);
   });
 
-  it('differs from the species preview of the same copy only by ownership and level', () => {
+  it('differs from the species preview of the same copy only by level, not by the CAUGHT badge', () => {
     const owned = ownedCardRequest(deps, copy(1, 'standard'));
     const preview = speciesCardRequest(deps, subject);
 
     expect(owned.input.variant).toEqual(preview.input.variant);
     expect(owned.input.species).toEqual(preview.input.species);
-    expect(owned.input.context?.owned).toBe(true);
-    expect(preview.input.context?.owned).not.toBe(true);
+    // Neither surface stamps the badge by default — that is the encounter's job.
+    expect(owned.input.context?.showCaughtBadge).not.toBe(true);
+    expect(preview.input.context?.showCaughtBadge).not.toBe(true);
   });
 });
