@@ -28,6 +28,12 @@ import type {
 } from '../appearance/appearanceService';
 import type { DuplicateConfig, WaifuProgressionConfig } from '../content/schemas';
 import {
+  buildGroupedView,
+  filterCopiesByLevel,
+  type CollectionSortBy,
+  type GroupedView,
+} from './collectionGrouping';
+import {
   NotADuplicateError,
   WaifuAlreadyReleasedError,
   WaifuIsBuddyError,
@@ -71,6 +77,31 @@ export interface ListOptions {
   page?: number;
   pageSize?: number;
   rarity?: Rarity;
+}
+
+/**
+ * Filters for the grouped Discord collection browser. `name` matches species
+ * name *or* nickname (substring, case-insensitive); the level range narrows
+ * individual copies before grouping; `minCopies` is applied to the surviving
+ * copy count after grouping. See `collectionGrouping.buildGroupedView`.
+ */
+export interface GroupedListOptions {
+  name?: string | null;
+  minLevel?: number | null;
+  maxLevel?: number | null;
+  minCopies?: number | null;
+  sortBy?: CollectionSortBy;
+  page?: number;
+  pageSize?: number;
+}
+
+/** A page of species groups, plus the totals needed for the page indicator. */
+export type PaginatedGroups = GroupedView;
+
+/** Level narrowing for a single species' copies (duplicate selector). */
+export interface CopyFilterOptions {
+  minLevel?: number | null;
+  maxLevel?: number | null;
 }
 
 export interface ReleaseOptions {
@@ -135,6 +166,21 @@ export interface CollectionService {
   hasActiveSpeciesCopy(playerId: number, speciesId: number): Promise<boolean>;
   /** Substring match on nickname/species name, active copies only. */
   searchByName(playerId: number, query: string, limit?: number): Promise<OwnedEntry[]>;
+  /**
+   * Grouped, filtered, sorted view of the player's active copies — one entry
+   * per species, carrying its individual copies. Backs the Discord collection
+   * browser; `listOwned` is left alone for the HTTP API's flat contract.
+   */
+  listOwnedGrouped(playerId: number, opts?: GroupedListOptions): Promise<PaginatedGroups>;
+  /**
+   * Every active copy of one species the player owns, for the duplicate
+   * selector. Returns the individual rows — nothing is merged.
+   */
+  listOwnedCopiesForSpecies(
+    playerId: number,
+    speciesId: number,
+    opts?: CopyFilterOptions,
+  ): Promise<OwnedEntry[]>;
   /**
    * Convert this owned copy to Essence. Fails with `NotADuplicateError` when
    * it's the player's only active copy of the species — release instead.
@@ -369,6 +415,60 @@ export function createCollectionService(deps: CollectionServiceDeps): Collection
       .limit(cap);
   }
 
+  /**
+   * Every active copy for one player, narrowed only by the predicates that are
+   * cheap and index-friendly in SQL (player, not released, name, species).
+   *
+   * Deliberately unpaginated: the grouped browser must see *all* matching
+   * copies before it can group them, count duplicates, and sort — a LIMIT here
+   * would silently truncate a group. Collections are bounded (tens to low
+   * hundreds of active copies), so the level/minCopies/sort/page work happens
+   * in `collectionGrouping` rather than in a window-function query.
+   */
+  async function fetchActiveCopies(
+    playerId: number,
+    opts: { name?: string | null; speciesId?: number } = {},
+  ): Promise<OwnedEntry[]> {
+    const filters = [eq(playerWaifus.playerId, playerId), isNull(playerWaifus.releasedAt)];
+    if (opts.speciesId != null) filters.push(eq(playerWaifus.speciesId, opts.speciesId));
+    const q = opts.name?.trim() ?? '';
+    if (q.length > 0) {
+      // Same name-match construction as `searchByName`.
+      const nameMatch = or(ilike(species.name, `%${q}%`), ilike(playerWaifus.nickname, `%${q}%`));
+      if (nameMatch) filters.push(nameMatch);
+    }
+    return db
+      .select({ waifu: playerWaifus, species })
+      .from(playerWaifus)
+      .innerJoin(species, eq(playerWaifus.speciesId, species.id))
+      .where(and(...filters))
+      .orderBy(sql`${RARITY_RANK_SQL} desc`, asc(species.name), asc(playerWaifus.id));
+  }
+
+  async function listOwnedGrouped(
+    playerId: number,
+    opts: GroupedListOptions = {},
+  ): Promise<PaginatedGroups> {
+    const rows = await fetchActiveCopies(playerId, { name: opts.name ?? null });
+    return buildGroupedView(rows, {
+      minLevel: opts.minLevel ?? null,
+      maxLevel: opts.maxLevel ?? null,
+      minCopies: opts.minCopies ?? null,
+      ...(opts.sortBy ? { sortBy: opts.sortBy } : {}),
+      page: opts.page ?? 1,
+      pageSize: opts.pageSize ?? DEFAULT_PAGE_SIZE,
+    });
+  }
+
+  async function listOwnedCopiesForSpecies(
+    playerId: number,
+    speciesId: number,
+    opts: CopyFilterOptions = {},
+  ): Promise<OwnedEntry[]> {
+    const rows = await fetchActiveCopies(playerId, { speciesId });
+    return filterCopiesByLevel(rows, opts.minLevel, opts.maxLevel);
+  }
+
   async function softRelease(
     playerId: number,
     waifuId: number,
@@ -490,6 +590,8 @@ export function createCollectionService(deps: CollectionServiceDeps): Collection
     hasOtherActiveCopies,
     hasActiveSpeciesCopy,
     searchByName,
+    listOwnedGrouped,
+    listOwnedCopiesForSpecies,
     async convertDuplicateToEssence(playerId, waifuId, opts = {}) {
       // Convert to full duplicate-essence value; require the copy to actually
       // be a duplicate (post-capture and post-hoc from inspect both satisfy

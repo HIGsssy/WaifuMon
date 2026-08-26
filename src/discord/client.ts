@@ -33,10 +33,17 @@ import {
   handleAppearanceSelect,
   handleBuddyCommand,
   handleCollection,
+  handleCollectionDuplicates,
+  handleCollectionFilterClear,
+  handleCollectionFilterOpen,
+  handleCollectionFilterSubmit,
   handleCollectionList,
   handleCollectionPage,
   handleCollectionPick,
+  handleCollectionPickCopy,
+  handleCollectionPickGroup,
   handleCollectionPickId,
+  handleCollectionSort,
   handleDuplicateConvert,
   handleDuplicateKeep,
   handleInspectAutocomplete,
@@ -164,6 +171,20 @@ export function createDiscordClient(ctx: AppContext): Client {
         handleCollectionPage(ctx, i, prov, args),
       'col:pick': (i: StringSelectMenuInteraction, prov: Provisioned) =>
         handleCollectionPick(ctx, i, prov),
+      'col:pick_group': (i: StringSelectMenuInteraction, prov: Provisioned) =>
+        handleCollectionPickGroup(ctx, i, prov),
+      'col:pick_copy': (i: StringSelectMenuInteraction, prov: Provisioned) =>
+        handleCollectionPickCopy(ctx, i, prov),
+      'col:dupes': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleCollectionDuplicates(ctx, i, prov, args),
+      'col:sort': (i: StringSelectMenuInteraction, prov: Provisioned) =>
+        handleCollectionSort(ctx, i, prov),
+      'col:filter_open': (i: ButtonInteraction, prov: Provisioned) =>
+        handleCollectionFilterOpen(ctx, i, prov),
+      'col:filter_submit': (i: ModalSubmitInteraction, prov: Provisioned) =>
+        handleCollectionFilterSubmit(ctx, i, prov),
+      'col:filter_clear': (i: ButtonInteraction, prov: Provisioned) =>
+        handleCollectionFilterClear(ctx, i, prov),
       'col:list': (i: ButtonInteraction, prov: Provisioned) =>
         handleCollectionList(ctx, i, prov),
       'col:pick_id': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
