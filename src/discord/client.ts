@@ -52,6 +52,8 @@ import {
   handleWaifuConvertConfirm,
   handleWaifuFavorite,
   handleWaifuInvest,
+  handleWaifuInvestOpen,
+  handleWaifuInvestSubmit,
   handleWaifuNicknameOpen,
   handleWaifuNicknameSubmit,
   handleWaifuRelease,
@@ -210,6 +212,10 @@ export function createDiscordClient(ctx: AppContext): Client {
         handleWaifuSetBuddy(ctx, i, prov, args),
       'waifu:invest': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleWaifuInvest(ctx, i, prov, args),
+      'waifu:invest_open': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleWaifuInvestOpen(ctx, i, prov, args),
+      'waifu:invest_submit': (i: ModalSubmitInteraction, prov: Provisioned, args: string[]) =>
+        handleWaifuInvestSubmit(ctx, i, prov, args),
       'waifu:nick_open': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleWaifuNicknameOpen(ctx, i, prov, args),
       'waifu:nick_submit': (i: ModalSubmitInteraction, prov: Provisioned, args: string[]) =>

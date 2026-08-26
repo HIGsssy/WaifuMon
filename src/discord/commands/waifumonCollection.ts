@@ -25,7 +25,16 @@ import {
 import { affinityLabel } from '../../modules/capture/affinityMath';
 import { isAppearanceUnlocked } from '../../modules/appearance/appearanceRules';
 import type { AppearanceView } from '../../modules/appearance/appearanceService';
-import type { OwnedEntry, PaginatedGroups } from '../../modules/collection/collectionService';
+import {
+  MAX_ESSENCE_APPLICATIONS,
+  type OwnedEntry,
+  type PaginatedGroups,
+} from '../../modules/collection/collectionService';
+import {
+  maxAffordableApplications,
+  parseEssenceApplications,
+  type EssenceBatchLimits,
+} from '../essenceInput';
 import {
   COLLECTION_SORTS,
   COLLECTION_SORT_LABELS,
@@ -50,6 +59,7 @@ import {
   InsufficientEssenceError,
   NotADuplicateError,
   WaifuAlreadyReleasedError,
+  WaifuAtMaxLevelError,
   WaifuIsBuddyError,
   WaifuIsFavoriteError,
   WaifuNicknameTooEarlyError,
@@ -145,9 +155,11 @@ export function renderCollectionEmbed(
   view: PaginatedGroups,
   dex: { owned: number; distinctSpecies: number; totalSpecies: number },
   state: CollectionFilterState,
+  essenceBalance?: number,
 ): EmbedBuilder {
   const embed = new EmbedBuilder().setTitle('🎒 Your Collection').setColor(0xff6fa5);
-  const header = `**${dex.owned}** owned · dex **${dex.distinctSpecies}/${dex.totalSpecies}** species`;
+  const purse = essenceBalance === undefined ? '' : ` · ✨ **${essenceBalance}**`;
+  const header = `**${dex.owned}** owned · dex **${dex.distinctSpecies}/${dex.totalSpecies}** species${purse}`;
   const summary = describeFilters(state);
 
   if (view.groups.length === 0) {
@@ -284,9 +296,12 @@ async function buildCollectionScreen(
   // The view clamps an out-of-range page; write it back so Prev/Next and the
   // next render agree with what the player is actually looking at.
   const settled = view.page === state.page ? state : tracker.set(playerId, { page: view.page });
-  const dex = await ctx.services.collection.getDexStats(playerId);
+  const [dex, balances] = await Promise.all([
+    ctx.services.collection.getDexStats(playerId),
+    ctx.services.currency.getBalances(playerId),
+  ]);
   return {
-    embeds: [renderCollectionEmbed(view, dex, settled)],
+    embeds: [renderCollectionEmbed(view, dex, settled, balances.essence)],
     components: collectionComponents(view, settled),
   };
 }
@@ -692,12 +707,34 @@ export async function handleInspectAutocomplete(
   await interaction.respond(choices);
 }
 
+/** Essence tiers offered as buttons. Custom covers everything else. */
+const ESSENCE_TIERS = [1, 5, 10] as const;
+
+/**
+ * The four numbers every Essence decision needs, gathered in one place so the
+ * buttons, the modal and its validation can't disagree about the limits.
+ */
+async function essenceLimits(
+  ctx: AppContext,
+  playerId: number,
+  entry: OwnedEntry,
+): Promise<EssenceBatchLimits> {
+  const balances = await ctx.services.currency.getBalances(playerId);
+  return {
+    cap: MAX_ESSENCE_APPLICATIONS,
+    costPer: ctx.content.tables.waifuProgression.essenceInvestment.essenceCost,
+    balance: balances.essence,
+    maxUseful: ctx.services.collection.maxUsefulApplications(entry.waifu),
+  };
+}
+
 function inspectComponents(
   ctx: AppContext,
   entry: OwnedEntry,
   isDuplicate: boolean,
   convertEssence: number,
   isBuddy: boolean,
+  essence: { balance: number; maxUseful: number },
 ): ActionRowBuilder<ButtonBuilder>[] {
   const favBtn = new ButtonBuilder()
     .setCustomId(buildCustomId('waifu', 'fav', String(entry.waifu.id)))
@@ -716,12 +753,22 @@ function inspectComponents(
     .setLabel(isBuddy ? '★ Buddy' : '🤝 Set Buddy')
     .setStyle(isBuddy ? ButtonStyle.Success : ButtonStyle.Primary)
     .setDisabled(isBuddy);
-  const investBtn = new ButtonBuilder()
-    .setCustomId(buildCustomId('waifu', 'invest', String(entry.waifu.id)))
-    .setLabel(
-      `✨ Invest ${ctx.content.tables.waifuProgression.essenceInvestment.essenceCost} Essence`,
-    )
-    .setStyle(ButtonStyle.Secondary);
+  const costPer = ctx.content.tables.waifuProgression.essenceInvestment.essenceCost;
+  // A tier is offered only when the player can both afford it and use it, so a
+  // capped or broke copy shows the reason greyed out rather than failing on
+  // click. The service re-checks both under its row lock regardless.
+  const investBtns = ESSENCE_TIERS.map((tier) =>
+    new ButtonBuilder()
+      .setCustomId(buildCustomId('waifu', 'invest', String(entry.waifu.id), String(tier)))
+      .setLabel(`✨ ${tier}× (${tier * costPer})`)
+      .setStyle(tier === 1 ? ButtonStyle.Primary : ButtonStyle.Secondary)
+      .setDisabled(tier > essence.maxUseful || tier * costPer > essence.balance),
+  );
+  const investCustomBtn = new ButtonBuilder()
+    .setCustomId(buildCustomId('waifu', 'invest_open', String(entry.waifu.id)))
+    .setLabel('✨ Custom…')
+    .setStyle(ButtonStyle.Secondary)
+    .setDisabled(essence.maxUseful <= 0 || costPer > essence.balance);
   const nickBtn = new ButtonBuilder()
     .setCustomId(buildCustomId('waifu', 'nick_open', String(entry.waifu.id)))
     .setLabel('📝 Nickname')
@@ -747,13 +794,12 @@ function inspectComponents(
   }
   primary.push(releaseBtn);
   rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(...primary));
+  // Essence gets its own row so the tiers read as one control group.
   rows.push(
-    new ActionRowBuilder<ButtonBuilder>().addComponents(
-      investBtn,
-      nickBtn,
-      appearanceBtn,
-      backBtn,
-    ),
+    new ActionRowBuilder<ButtonBuilder>().addComponents(...investBtns, investCustomBtn),
+  );
+  rows.push(
+    new ActionRowBuilder<ButtonBuilder>().addComponents(nickBtn, appearanceBtn, backBtn),
   );
   return rows;
 }
@@ -770,9 +816,10 @@ async function renderInspect(
     // Ownership was verified above (getOwned throws WaifuNotOwnedError
     // otherwise), so wrong-user / stale interactions never reach this call.
     await ctx.services.quests.recordQuestEvent(null, prov.playerId, 'inspect_waifu', 1, {});
-    const [isDuplicate, buddy] = await Promise.all([
+    const [isDuplicate, buddy, balances] = await Promise.all([
       ctx.services.collection.hasOtherActiveCopies(prov.playerId, waifuId),
       ctx.services.collection.getBuddy(prov.playerId),
+      ctx.services.currency.getBalances(prov.playerId),
     ]);
     const isBuddy = buddy?.waifu.id === waifuId;
     const { waifu, species } = entry;
@@ -785,6 +832,24 @@ async function renderInspect(
     const xpLine = waifuProg.atMaxLevel
       ? `${waifu.xp} XP · **MAX**`
       : `${waifuProg.xpIntoLevel} / ${waifuProg.xpToNext} XP to Lv ${waifu.level + 1}`;
+
+    // Essence panel: what she costs to train, and what the player can spend.
+    // `affordable` is the smallest of balance, level headroom and the batch
+    // ceiling, so the number shown is always one the player can actually press
+    // — the level headroom alone runs to hundreds early on.
+    const costPer = ctx.content.tables.waifuProgression.essenceInvestment.essenceCost;
+    const maxUseful = ctx.services.collection.maxUsefulApplications(waifu);
+    const affordable = maxAffordableApplications({
+      cap: MAX_ESSENCE_APPLICATIONS,
+      costPer,
+      balance: balances.essence,
+      maxUseful,
+    });
+    const essenceValue = waifuProg.atMaxLevel
+      ? `✨ ${balances.essence} · **MAX level**`
+      : affordable <= 0
+        ? `✨ ${balances.essence} · need **${costPer}** per 1×`
+        : `✨ ${balances.essence} · **${costPer}** per 1× · up to **${affordable}×** now`;
 
     const nicknameUnlock = ctx.content.tables.waifuProgression.nicknameMinLevel;
     const unlockLines: string[] = [];
@@ -814,6 +879,7 @@ async function renderInspect(
         { name: 'Level', value: `${waifu.level}`, inline: true },
         { name: 'XP', value: xpLine, inline: true },
         { name: 'Affection', value: `${waifu.affection}`, inline: true },
+        { name: 'Essence', value: essenceValue, inline: true },
         { name: 'Nickname', value: waifu.nickname || '_(none)_', inline: true },
         { name: 'Favorite', value: waifu.isFavorite ? '★ yes' : '☆ no', inline: true },
         { name: 'Captured', value: caught, inline: true },
@@ -836,7 +902,10 @@ async function renderInspect(
     if (card) embed.setImage(owned ? owned.url : `attachment://${CARD_FILENAME}`);
     await respondEphemeral(interaction, {
       embeds: [embed],
-      components: inspectComponents(ctx, entry, isDuplicate, convertEssence, isBuddy),
+      components: inspectComponents(ctx, entry, isDuplicate, convertEssence, isBuddy, {
+        balance: balances.essence,
+        maxUseful,
+      }),
       files,
     });
   } catch (err) {
@@ -1678,6 +1747,16 @@ export async function handleWaifuInvest(
     });
     return;
   }
+  // Tier rides in args[1]; buttons minted before batching (and older messages
+  // still on screen) carry no second arg and mean a single application.
+  const applications = args[1] === undefined ? 1 : Number(args[1]);
+  if (!Number.isInteger(applications) || applications < 1) {
+    await respondEphemeral(interaction, {
+      content: 'That Essence amount is no longer valid — reopen her card.',
+      components: withBackRow(),
+    });
+    return;
+  }
   // ACK the button before the transaction runs. Without this a level-up would
   // try to followUp() on an interaction the code has not yet replied to or
   // deferred — after the essence has already been consumed — and the outer
@@ -1690,22 +1769,139 @@ export async function handleWaifuInvest(
     throw err;
   }
   try {
-    const result = await ctx.services.collection.investEssence(prov.playerId, waifuId);
+    const result = await ctx.services.collection.investEssenceBatch(
+      prov.playerId,
+      waifuId,
+      applications,
+    );
     await renderInspect(ctx, interaction, prov, waifuId);
     if (result.toLevel > result.fromLevel) {
       const invested = await ctx.services.collection.getOwned(prov.playerId, waifuId);
+      const batch = result.applications > 1 ? ` (${result.applications}× Essence)` : '';
       await interaction.followUp({
-        content: `⬆️ **${displayName(invested)}** advanced to Lv ${result.toLevel}!`,
+        content: `⬆️ **${displayName(invested)}** advanced to Lv ${result.toLevel}!${batch}`,
         ...EPHEMERAL,
       });
     }
   } catch (err) {
-    if (err instanceof InsufficientEssenceError) {
+    if (
+      err instanceof InsufficientEssenceError ||
+      err instanceof WaifuAtMaxLevelError ||
+      err instanceof WaifuNotOwnedError ||
+      err instanceof WaifuAlreadyReleasedError
+    ) {
       await respondEphemeral(interaction, { content: err.userMessage, components: withBackRow() });
       return;
     }
+    throw err;
+  }
+}
+
+/** waifu:invest_open — the custom-amount modal. */
+export async function handleWaifuInvestOpen(
+  ctx: AppContext,
+  interaction: ButtonInteraction,
+  prov: Provisioned,
+  args: string[],
+): Promise<void> {
+  const waifuId = Number(args[0]);
+  if (!Number.isInteger(waifuId)) {
+    await respondEphemeral(interaction, {
+      content: 'That Waifumon is no longer available.',
+      components: withBackRow(),
+    });
+    return;
+  }
+  let entry: OwnedEntry;
+  try {
+    entry = await ctx.services.collection.getOwned(prov.playerId, waifuId);
+  } catch (err) {
     if (err instanceof WaifuNotOwnedError || err instanceof WaifuAlreadyReleasedError) {
       await respondEphemeral(interaction, { content: err.userMessage, components: withBackRow() });
+      return;
+    }
+    throw err;
+  }
+  const limits = await essenceLimits(ctx, prov.playerId, entry);
+  if (limits.maxUseful <= 0) {
+    await respondEphemeral(interaction, {
+      content: `**${displayName(entry)}** is already at max level — Essence can't take her further.`,
+      components: withBackRow(),
+    });
+    return;
+  }
+  const affordable = maxAffordableApplications(limits);
+  const modal = new ModalBuilder()
+    .setCustomId(buildCustomId('waifu', 'invest_submit', String(waifuId)))
+    .setTitle(`Invest Essence — ${entry.species.name}`.slice(0, 45))
+    .addComponents(
+      new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new TextInputBuilder()
+          .setCustomId('applications')
+          .setLabel(`How many times? (max ${affordable})`)
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true)
+          .setMaxLength(3)
+          .setPlaceholder(`${limits.costPer} Essence each · you have ${limits.balance}`),
+      ),
+    );
+  await interaction.showModal(modal);
+}
+
+/** waifu:invest_submit — modal callback for the custom amount. */
+export async function handleWaifuInvestSubmit(
+  ctx: AppContext,
+  interaction: ModalSubmitInteraction,
+  prov: Provisioned,
+  args: string[],
+): Promise<void> {
+  const waifuId = Number(args[0]);
+  if (!Number.isInteger(waifuId)) {
+    await interaction.reply({ content: 'That Waifumon is no longer available.', ...EPHEMERAL });
+    return;
+  }
+  let entry: OwnedEntry;
+  try {
+    entry = await ctx.services.collection.getOwned(prov.playerId, waifuId);
+  } catch (err) {
+    if (err instanceof WaifuNotOwnedError || err instanceof WaifuAlreadyReleasedError) {
+      await interaction.reply({ content: err.userMessage, ...EPHEMERAL });
+      return;
+    }
+    throw err;
+  }
+  const limits = await essenceLimits(ctx, prov.playerId, entry);
+  const parsed = parseEssenceApplications(
+    interaction.fields.getTextInputValue('applications'),
+    limits,
+  );
+  if (!parsed.ok) {
+    // Nothing is spent on a rejected form — the player just gets told why.
+    await interaction.reply({ content: parsed.error, ...EPHEMERAL });
+    return;
+  }
+  try {
+    const result = await ctx.services.collection.investEssenceBatch(
+      prov.playerId,
+      waifuId,
+      parsed.applications,
+    );
+    await renderInspect(ctx, interaction, prov, waifuId);
+    if (result.toLevel > result.fromLevel) {
+      const invested = await ctx.services.collection.getOwned(prov.playerId, waifuId);
+      await interaction.followUp({
+        content: `⬆️ **${displayName(invested)}** advanced to Lv ${result.toLevel}! (${result.applications}× Essence)`,
+        ...EPHEMERAL,
+      });
+    }
+  } catch (err) {
+    if (
+      err instanceof InsufficientEssenceError ||
+      err instanceof WaifuAtMaxLevelError ||
+      err instanceof WaifuNotOwnedError ||
+      err instanceof WaifuAlreadyReleasedError
+    ) {
+      await interaction.reply({ content: err.userMessage, ...EPHEMERAL });
       return;
     }
     throw err;
