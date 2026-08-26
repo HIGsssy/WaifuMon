@@ -71,6 +71,7 @@ import { buildCustomId } from '../types';
 import { postAppearanceUnlockToasts } from '../appearanceToast';
 import { emitEvents } from '../gameEventEmitter';
 import { appearanceUnlockDescriptors, publicWaifuName } from '../gameEventBuilders';
+import { followUpEphemeralNotice, replyEphemeralNotice } from '../ephemeralCleanup';
 import { gameEvent } from '../../modules/events/gameEvents';
 import { renderOwnedCardAttachment } from '../assets/attachRenderedCard';
 import { respondEphemeral } from '../ephemeralSession';
@@ -409,7 +410,7 @@ export async function handleCollectionFilterSubmit(
   );
   if (!parsed.ok) {
     // Filters are left exactly as they were — a rejected form changes nothing.
-    await interaction.reply({ content: parsed.error, ...EPHEMERAL });
+    await replyEphemeralNotice(ctx, interaction, parsed.error, 'filter-rejected');
     return;
   }
   filterTracker(ctx).set(prov.playerId, { ...parsed.patch, page: 1 });
@@ -1826,10 +1827,12 @@ async function announceInvestOutcome(
 
   if (leveled) {
     const batch = result.applications > 1 ? ` (${result.applications}× Essence)` : '';
-    await interaction.followUp({
-      content: `⬆️ **${displayName(invested)}** advanced to Lv ${result.toLevel}!${batch}`,
-      ...EPHEMERAL,
-    });
+    await followUpEphemeralNotice(
+      ctx,
+      interaction,
+      `⬆️ **${displayName(invested)}** advanced to Lv ${result.toLevel}!${batch}`,
+      'invest-level-up',
+    );
   }
 
   if (result.newAppearances.length > 0) {
@@ -1911,7 +1914,12 @@ export async function handleWaifuInvestSubmit(
 ): Promise<void> {
   const waifuId = Number(args[0]);
   if (!Number.isInteger(waifuId)) {
-    await interaction.reply({ content: 'That Waifumon is no longer available.', ...EPHEMERAL });
+    await replyEphemeralNotice(
+      ctx,
+      interaction,
+      'That Waifumon is no longer available.',
+      'invest-submit-stale',
+    );
     return;
   }
   let entry: OwnedEntry;
@@ -1919,7 +1927,7 @@ export async function handleWaifuInvestSubmit(
     entry = await ctx.services.collection.getOwned(prov.playerId, waifuId);
   } catch (err) {
     if (err instanceof WaifuNotOwnedError || err instanceof WaifuAlreadyReleasedError) {
-      await interaction.reply({ content: err.userMessage, ...EPHEMERAL });
+      await replyEphemeralNotice(ctx, interaction, err.userMessage, 'invest-submit-stale');
       return;
     }
     throw err;
@@ -1931,7 +1939,7 @@ export async function handleWaifuInvestSubmit(
   );
   if (!parsed.ok) {
     // Nothing is spent on a rejected form — the player just gets told why.
-    await interaction.reply({ content: parsed.error, ...EPHEMERAL });
+    await replyEphemeralNotice(ctx, interaction, parsed.error, 'invest-amount-rejected');
     return;
   }
   try {
@@ -1949,7 +1957,7 @@ export async function handleWaifuInvestSubmit(
       err instanceof WaifuNotOwnedError ||
       err instanceof WaifuAlreadyReleasedError
     ) {
-      await interaction.reply({ content: err.userMessage, ...EPHEMERAL });
+      await replyEphemeralNotice(ctx, interaction, err.userMessage, 'invest-refused');
       return;
     }
     throw err;
@@ -2015,23 +2023,30 @@ export async function handleWaifuNicknameSubmit(
 ): Promise<void> {
   const waifuId = Number(args[0]);
   if (!Number.isInteger(waifuId)) {
-    await interaction.reply({ content: 'That Waifumon is no longer available.', ...EPHEMERAL });
+    await replyEphemeralNotice(
+      ctx,
+      interaction,
+      'That Waifumon is no longer available.',
+      'nickname-stale',
+    );
     return;
   }
   const raw = interaction.fields.getTextInputValue('nickname');
   try {
     await ctx.services.collection.setNickname(prov.playerId, waifuId, raw || null);
-    await interaction.reply({
-      content: raw.trim().length > 0 ? `Nickname set to **${raw.trim()}**.` : 'Nickname cleared.',
-      ...EPHEMERAL,
-    });
+    await replyEphemeralNotice(
+      ctx,
+      interaction,
+      raw.trim().length > 0 ? `Nickname set to **${raw.trim()}**.` : 'Nickname cleared.',
+      'nickname-set',
+    );
   } catch (err) {
-    if (err instanceof WaifuNicknameTooEarlyError) {
-      await interaction.reply({ content: err.userMessage, ...EPHEMERAL });
-      return;
-    }
-    if (err instanceof WaifuNotOwnedError || err instanceof WaifuAlreadyReleasedError) {
-      await interaction.reply({ content: err.userMessage, ...EPHEMERAL });
+    if (
+      err instanceof WaifuNicknameTooEarlyError ||
+      err instanceof WaifuNotOwnedError ||
+      err instanceof WaifuAlreadyReleasedError
+    ) {
+      await replyEphemeralNotice(ctx, interaction, err.userMessage, 'nickname-refused');
       return;
     }
     throw err;

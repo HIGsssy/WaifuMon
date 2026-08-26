@@ -29,6 +29,7 @@ import type { AppearanceUnlockRef } from '../modules/appearance/appearanceServic
 import { CARD_FILENAME, resolveAppearanceAsset } from './assets/resolveAppearanceAsset';
 import type { AppContext, PlayerInteraction } from './types';
 import { buildCustomId } from './types';
+import { EPHEMERAL_UNLOCK_TOAST_TTL_MS, scheduleEphemeralCleanup } from './ephemeralCleanup';
 
 const COSMETIC_RARITY_LABELS: Record<string, string> = {
   standard: 'Standard',
@@ -106,11 +107,19 @@ export async function postAppearanceUnlockToasts(
   for (const unlock of unlocks.slice(0, MAX_TOASTS)) {
     try {
       const { embed, row, card } = buildAppearanceUnlockView(ctx, unlock, waifuName);
-      await interaction.followUp({
+      const message = (await interaction.followUp({
         embeds: [embed],
         components: [row],
         files: card ? [card] : [],
         flags: MessageFlags.Ephemeral,
+      })) as { id?: string } | undefined;
+      // Each toast is scheduled independently — a burst of unlocks clears in
+      // the order it arrived rather than all at once. The window is generous
+      // because these carry Select Now / View Gallery.
+      scheduleEphemeralCleanup(ctx, interaction, {
+        delayMs: EPHEMERAL_UNLOCK_TOAST_TTL_MS,
+        ...(message?.id === undefined ? {} : { messageId: message.id }),
+        label: 'appearance-unlock-toast',
       });
     } catch (err) {
       ctx.logger.warn(
@@ -123,9 +132,16 @@ export async function postAppearanceUnlockToasts(
   const overflow = unlocks.length - MAX_TOASTS;
   if (overflow > 0) {
     try {
-      await interaction.followUp({
+      const message = (await interaction.followUp({
         content: `🎀 …and **${overflow}** more new look${overflow === 1 ? '' : 's'}. Open the gallery to see them.`,
         flags: MessageFlags.Ephemeral,
+      })) as { id?: string } | undefined;
+      // Points at the gallery rather than being one, so it clears on the same
+      // schedule as the toasts it summarizes.
+      scheduleEphemeralCleanup(ctx, interaction, {
+        delayMs: EPHEMERAL_UNLOCK_TOAST_TTL_MS,
+        ...(message?.id === undefined ? {} : { messageId: message.id }),
+        label: 'appearance-unlock-overflow',
       });
     } catch (err) {
       ctx.logger.warn({ err }, 'appearance unlock overflow notice failed');
