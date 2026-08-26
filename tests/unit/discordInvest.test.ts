@@ -84,6 +84,7 @@ function makeCtx(overrides: {
     toLevel: number;
     waifu: { id: number; playerId: number; level: number };
     applications?: number;
+    newAppearances?: unknown[];
   }>;
 }) {
   const speciesRow = {
@@ -116,7 +117,9 @@ function makeCtx(overrides: {
   // stands in for `investEssenceBatch` and defaults `applications` to 1.
   const investEssence = vi.fn(async (playerId: number, waifuId: number, applications = 1) => {
     const result = await overrides.investEssence(playerId, waifuId, applications);
-    return { applications, ...result };
+    // `newAppearances` is part of the result contract; default it to "nothing
+    // unlocked" so these lifecycle tests stay focused on the interaction order.
+    return { applications, newAppearances: [], ...result };
   });
   const getOwned = vi.fn(async () => entry);
 

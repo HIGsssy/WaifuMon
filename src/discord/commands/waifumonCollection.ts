@@ -29,6 +29,7 @@ import {
   MAX_ESSENCE_APPLICATIONS,
   type OwnedEntry,
   type PaginatedGroups,
+  type WaifuInvestResult,
 } from '../../modules/collection/collectionService';
 import {
   maxAffordableApplications,
@@ -1775,14 +1776,7 @@ export async function handleWaifuInvest(
       applications,
     );
     await renderInspect(ctx, interaction, prov, waifuId);
-    if (result.toLevel > result.fromLevel) {
-      const invested = await ctx.services.collection.getOwned(prov.playerId, waifuId);
-      const batch = result.applications > 1 ? ` (${result.applications}× Essence)` : '';
-      await interaction.followUp({
-        content: `⬆️ **${displayName(invested)}** advanced to Lv ${result.toLevel}!${batch}`,
-        ...EPHEMERAL,
-      });
-    }
+    await announceInvestOutcome(ctx, interaction, prov, waifuId, result);
   } catch (err) {
     if (
       err instanceof InsufficientEssenceError ||
@@ -1795,6 +1789,44 @@ export async function handleWaifuInvest(
     }
     throw err;
   }
+}
+
+/**
+ * Post-investment follow-ups: the level-up note, then any cosmetics the level
+ * gain earned.
+ *
+ * Shared by the tier buttons and the custom modal so both announce identically.
+ * Runs after the inspect card is repainted, so the reward lands on top of the
+ * thing that caused it — the same ordering the capture and buddy paths use.
+ *
+ * `newAppearances` is already only the *newly* acknowledged unlocks:
+ * `syncUnlocks` diffs against `seen_appearances` inside the transaction, so a
+ * look the player has seen before can never produce a second toast. A batch
+ * that crosses several milestones at once reports all of them, and
+ * `postAppearanceUnlockToasts` caps the burst with an overflow notice.
+ */
+async function announceInvestOutcome(
+  ctx: AppContext,
+  interaction: PlayerInteraction,
+  prov: Provisioned,
+  waifuId: number,
+  result: WaifuInvestResult,
+): Promise<void> {
+  const leveled = result.toLevel > result.fromLevel;
+  if (!leveled && result.newAppearances.length === 0) return;
+
+  // One lookup covers both announcements — she is named the same way in each.
+  const invested = await ctx.services.collection.getOwned(prov.playerId, waifuId);
+  const name = displayName(invested);
+
+  if (leveled) {
+    const batch = result.applications > 1 ? ` (${result.applications}× Essence)` : '';
+    await interaction.followUp({
+      content: `⬆️ **${name}** advanced to Lv ${result.toLevel}!${batch}`,
+      ...EPHEMERAL,
+    });
+  }
+  await postAppearanceUnlockToasts(ctx, interaction, result.newAppearances, name);
 }
 
 /** waifu:invest_open — the custom-amount modal. */
@@ -1887,13 +1919,7 @@ export async function handleWaifuInvestSubmit(
       parsed.applications,
     );
     await renderInspect(ctx, interaction, prov, waifuId);
-    if (result.toLevel > result.fromLevel) {
-      const invested = await ctx.services.collection.getOwned(prov.playerId, waifuId);
-      await interaction.followUp({
-        content: `⬆️ **${displayName(invested)}** advanced to Lv ${result.toLevel}! (${result.applications}× Essence)`,
-        ...EPHEMERAL,
-      });
-    }
+    await announceInvestOutcome(ctx, interaction, prov, waifuId, result);
   } catch (err) {
     if (
       err instanceof InsufficientEssenceError ||

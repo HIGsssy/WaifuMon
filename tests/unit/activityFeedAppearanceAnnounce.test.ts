@@ -38,6 +38,8 @@ function makeUnlockEvent(overrides: {
   appearanceName?: string;
   unlockLabel?: string;
   source?: 'owned' | 'level' | 'content_add';
+  /** Override the "who did it" envelope, for the attribution tests. */
+  eventSource?: Partial<GameEventSource>;
 }) {
   return buildGameEvent(
     gameEvent('WAIFU_APPEARANCE_UNLOCKED', {
@@ -55,7 +57,7 @@ function makeUnlockEvent(overrides: {
       unlockLabel: overrides.unlockLabel ?? 'Reach Level 20',
       source: overrides.source ?? 'level',
     }),
-    SOURCE,
+    { ...SOURCE, ...overrides.eventSource },
   );
 }
 
@@ -98,7 +100,8 @@ describe('WAIFU_APPEARANCE_UNLOCKED — announcement', () => {
       const { request } = posts[0]!;
       expect(request.richEmbed?.image).toEqual(artwork);
       expect(request.richEmbed?.title).toContain('New Appearance Unlocked');
-      expect(request.richEmbed?.description).toContain('Whistler');
+      // Attribution: the announcement names who earned it, by mention.
+      expect(request.richEmbed?.description).toContain('<@u-1>');
       expect(request.richEmbed?.description).toContain('Luna');
       expect(request.richEmbed?.description).toContain(`Milestone ${level}`);
       expect(request.richEmbed?.description).toContain(`Reach Level ${level}`);
@@ -148,6 +151,52 @@ describe('WAIFU_APPEARANCE_UNLOCKED — announcement', () => {
 
     expect(posts).toHaveLength(1);
     expect(posts[0]!.request.richEmbed).toBeUndefined();
+  });
+
+  /**
+   * A public unlock post is a brag in a shared channel, so it must say *whose*
+   * unlock it was. These lock that in for both the rich embed and the plain
+   * text line, including the degraded envelopes.
+   */
+  describe('player attribution', () => {
+    it('credits the player by mention in both the embed and the text line', async () => {
+      const { feed, posts } = harness({ resolveAppearanceArtwork: () => DEFAULT_ARTWORK });
+      await feed.handle(makeUnlockEvent({}));
+
+      const { request } = posts[0]!;
+      expect(request.richEmbed?.description).toContain('<@u-1>');
+      expect(request.text).toContain('<@u-1>');
+    });
+
+    it('falls back to the display name when no mention is on the envelope', async () => {
+      const { feed, posts } = harness({ resolveAppearanceArtwork: () => DEFAULT_ARTWORK });
+      await feed.handle(makeUnlockEvent({ eventSource: { playerMention: '' } }));
+
+      const { request } = posts[0]!;
+      expect(request.richEmbed?.description).toContain('Whistler');
+      expect(request.text).toContain('Whistler');
+    });
+
+    it('is never unattributed, even with an empty envelope', async () => {
+      const { feed, posts } = harness({ resolveAppearanceArtwork: () => DEFAULT_ARTWORK });
+      await feed.handle(
+        makeUnlockEvent({ eventSource: { playerMention: '', playerName: '' } }),
+      );
+
+      const { request } = posts[0]!;
+      // Degraded, but still a subject — never a bare "A new appearance was
+      // unlocked" with nobody attached to it.
+      expect(request.text).toContain('A trainer');
+      expect(request.richEmbed?.description).toContain('A trainer');
+    });
+
+    it('attributes the text line even when there is no artwork to embed', async () => {
+      const { feed, posts } = harness({ resolveAppearanceArtwork: () => null });
+      await feed.handle(makeUnlockEvent({}));
+
+      expect(posts[0]!.request.richEmbed).toBeUndefined();
+      expect(posts[0]!.request.text).toContain('<@u-1>');
+    });
   });
 
   it('is silent when the log channel is unavailable', async () => {
