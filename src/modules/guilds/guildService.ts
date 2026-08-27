@@ -12,6 +12,18 @@ export interface GuildService {
   addAllowedChannel(discordGuildId: string, channelId: string): Promise<string[]>;
   removeAllowedChannel(discordGuildId: string, channelId: string): Promise<string[]>;
   setAnnounceChannel(discordGuildId: string, channelId: string): Promise<void>;
+  /**
+   * Set — or, with `null`, clear — the dedicated Boss Encounter channel.
+   *
+   * Clearing is a first-class operation rather than an omission: it is how an
+   * admin turns boss encounters off for the server, and the scheduler reads a
+   * null channel as exactly that. Validation that the channel is usable
+   * (NSFW-marked, and the bot can post/embed/attach in it) belongs to the
+   * caller, which is the only layer holding a Discord client.
+   */
+  setBossChannel(discordGuildId: string, channelId: string | null): Promise<void>;
+  /** Read-only lookup for the scheduler and the admin status view. */
+  getBossChannelId(discordGuildId: string): Promise<string | null>;
 }
 
 export function createGuildService(db: Db): GuildService {
@@ -68,6 +80,14 @@ export function createGuildService(db: Db): GuildService {
     async setAnnounceChannel(discordGuildId, channelId) {
       const guild = await ensureGuild(discordGuildId);
       await db.update(guilds).set({ announceChannelId: channelId }).where(eq(guilds.id, guild.id));
+    },
+    async setBossChannel(discordGuildId, channelId) {
+      const guild = await ensureGuild(discordGuildId);
+      await db.update(guilds).set({ bossChannelId: channelId }).where(eq(guilds.id, guild.id));
+    },
+    async getBossChannelId(discordGuildId) {
+      const guild = await getByDiscordId(discordGuildId);
+      return guild?.bossChannelId ?? null;
     },
   };
 }

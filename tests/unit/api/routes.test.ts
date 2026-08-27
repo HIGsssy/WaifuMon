@@ -374,6 +374,7 @@ const ROUTES: Array<{ url: string; overrides: ApiContextOverrides }> = [
             id: 3,
             discordGuildId: '1234',
             announceChannelId: null,
+            bossChannelId: null,
             hereThresholdRarity: 'UR',
             allowedChannelIds: null,
             settings: {},

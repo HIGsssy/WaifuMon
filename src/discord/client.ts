@@ -73,6 +73,23 @@ import {
   handleAdminPlayerEnergy,
   handleAdminPlayerEssence,
 } from './commands/waifumonAdminPlayer';
+import {
+  handleBossCancel,
+  handleBossCommit,
+  handleBossConfirm,
+  handleBossMyResult,
+  handleBossPage,
+} from './commands/waifumonBoss';
+import {
+  handleBossClearChannel,
+  handleBossEnd,
+  handleBossPause,
+  handleBossRepair,
+  handleBossResume,
+  handleBossSetChannel,
+  handleBossSpawn,
+  handleBossStatus,
+} from './commands/waifumonBossAdmin';
 import type {
   AutocompleteInteraction,
   ButtonInteraction,
@@ -90,6 +107,10 @@ export function createDiscordClient(ctx: AppContext): Client {
     logger: ctx.logger,
     lookupAllowlist: (discordGuildId) =>
       ctx.services.guilds.getAllowedChannelIds(discordGuildId),
+    // Exempts the dedicated boss channel from the allowlist rule only — see
+    // `decidePlayChannel`. NSFW is still required there.
+    lookupBossChannelId: (discordGuildId) =>
+      ctx.services.guilds.getBossChannelId(discordGuildId),
     provision: async (discordGuildId, discordUserId) => {
       const guild = await ctx.services.guilds.ensureGuild(discordGuildId);
       const player = await ctx.services.players.ensurePlayer(guild.id, discordUserId);
@@ -139,6 +160,22 @@ export function createDiscordClient(ctx: AppContext): Client {
         handleAdminPlayerEssence(ctx, i),
       'waifumon-admin:player:charms': (i: ChatInputCommandInteraction) =>
         handleAdminPlayerCharms(ctx, i),
+      // Boss encounters — configuration and live operations.
+      'waifumon-admin:boss:set-channel': (i: ChatInputCommandInteraction) =>
+        handleBossSetChannel(ctx, i),
+      'waifumon-admin:boss:clear-channel': (i: ChatInputCommandInteraction) =>
+        handleBossClearChannel(ctx, i),
+      'waifumon-admin:boss:status': (i: ChatInputCommandInteraction) =>
+        handleBossStatus(ctx, i),
+      'waifumon-admin:boss:spawn': (i: ChatInputCommandInteraction) =>
+        handleBossSpawn(ctx, i),
+      'waifumon-admin:boss:end': (i: ChatInputCommandInteraction) => handleBossEnd(ctx, i),
+      'waifumon-admin:boss:repair': (i: ChatInputCommandInteraction) =>
+        handleBossRepair(ctx, i),
+      'waifumon-admin:boss:pause': (i: ChatInputCommandInteraction) =>
+        handleBossPause(ctx, i),
+      'waifumon-admin:boss:resume': (i: ChatInputCommandInteraction) =>
+        handleBossResume(ctx, i),
     },
     autocompleteHandlers: {
       'wm:inspect': (i: AutocompleteInteraction, playerId: number | null) =>
@@ -243,6 +280,18 @@ export function createDiscordClient(ctx: AppContext): Client {
         handleDuplicateKeep(ctx, i, prov),
       'dup:convert': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleDuplicateConvert(ctx, i, prov, args),
+      // Boss encounters. Every one of these lives on a *public* message in the
+      // dedicated channel, unlike the rest of the component surface, so each
+      // handler re-checks that the encounter belongs to this guild.
+      'boss:commit': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleBossCommit(ctx, i, prov, args),
+      'boss:confirm': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleBossConfirm(ctx, i, prov, args),
+      'boss:cancel': (i: ButtonInteraction) => handleBossCancel(ctx, i),
+      'boss:page': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleBossPage(ctx, i, prov, args),
+      'boss:mine': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleBossMyResult(ctx, i, prov, args),
     },
   });
 

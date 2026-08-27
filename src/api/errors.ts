@@ -146,6 +146,14 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   TABLE_NOT_FOUND: 404,
   SESSION_NOT_FOUND: 404,
   BUDDY_NOT_SET: 404,
+  /**
+   * A boss button naming an encounter that does not exist, or that belongs to
+   * another guild. 404 rather than 403: the two are indistinguishable to a
+   * caller by design, so a copied custom id learns nothing from the response.
+   */
+  BOSS_ENCOUNTER_NOT_FOUND: 404,
+  /** No boss channel configured for the guild — the feature is simply off. */
+  BOSS_CHANNEL_NOT_CONFIGURED: 404,
   /** No unclaimed gift on that copy — the resource genuinely is not there. */
   GIFT_NOT_FOUND: 404,
   /**
@@ -202,6 +210,22 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   EFFECT_ALREADY_AT_MAX_CHARGES: 422,
   /** Capture was requested with nothing selected for the encounter. */
   NO_CAPTURE_ITEM_SELECTED: 422,
+  /**
+   * The boss encounter is no longer taking commitments — resolved, cancelled,
+   * or past its deadline. A conflict with server state rather than a bad
+   * request, and the same class as ACTIVE_ENCOUNTER above.
+   */
+  BOSS_ENCOUNTER_NOT_OPEN: 409,
+  /** One buddy per confrontation; this player already has one committed. */
+  BOSS_ALREADY_COMMITTED: 409,
+  /** Well-formed, but there is no active buddy to send. */
+  BOSS_NO_ACTIVE_BUDDY: 422,
+  /**
+   * The configured channel exists but the bot cannot run an encounter in it.
+   * An operator-facing misconfiguration, not a caller error — 422 says the
+   * request was fine and the server's world is not.
+   */
+  BOSS_CHANNEL_UNUSABLE: 422,
 };
 
 /** Every code this layer knows how to classify — used by the contract test. */

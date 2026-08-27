@@ -31,6 +31,7 @@ import { createInventoryService } from '../../src/modules/inventory/inventorySer
 import { createPlayerService } from '../../src/modules/players/playerService';
 import { createShopService } from '../../src/modules/shop/shopService';
 import { createSessionService } from '../../src/modules/session/sessionService';
+import { createBossEncounterService } from '../../src/modules/bosses/bossEncounterService';
 import {
   createGameEventBus,
   type GameEvent,
@@ -75,6 +76,14 @@ export interface App {
   effects: ReturnType<typeof createPlayerEffectsService>;
   itemUse: ReturnType<typeof createItemUseService>;
   gifts: ReturnType<typeof createAffectionGiftService>;
+  /**
+   * Boss encounters, wired exactly as production does.
+   *
+   * Non-optional here even though it is optional on `AppServices`: a test app
+   * always has one, so no boss test has to build a second service by hand and
+   * risk wiring it differently from the real thing.
+   */
+  bosses: ReturnType<typeof createBossEncounterService>;
 }
 
 export interface BootstrapOptions {
@@ -90,6 +99,17 @@ export interface BootstrapOptions {
    * directly on `/waifumon`. Splash-specific tests opt in with `true`.
    */
   splashEnabled?: boolean;
+  /**
+   * Drives the boss shuffle bag and the 2–5 hour downtime pick. Damage and
+   * rewards are *derived*, not rolled, so this never touches them — a test
+   * that wants specific damage changes the snapshot, not the RNG.
+   */
+  bossRng?: Rng;
+  /**
+   * Replaces the shipped `bossEncounters` block. Lets a scheduling test shrink
+   * the window to minutes without editing `content/tables.json`.
+   */
+  bossEncounters?: Partial<LoadedContent['tables']['bossEncounters']>;
 }
 
 /** Wires all services against a test database with the shipped content seeded. */
@@ -118,6 +138,10 @@ export async function bootstrapApp(
           frequency: 'daily',
         }),
         enabled: opts.splashEnabled ?? false,
+      },
+      bossEncounters: {
+        ...loaded.tables.bossEncounters,
+        ...(opts.bossEncounters ?? {}),
       },
     },
   };
@@ -180,9 +204,21 @@ export async function bootstrapApp(
     logger: t.logger,
     ...(opts.giftRng ? { rng: opts.giftRng } : {}),
   });
+  // Reads `content` through a closure, matching production's `contentSnapshot`
+  // pattern — so a test that mutates the snapshot in place is visible to the
+  // service exactly as an admin reload would be.
+  const bosses = createBossEncounterService({
+    db: t.db,
+    inventory,
+    collection,
+    getContent: () => content,
+    logger: t.logger,
+    ...(opts.bossRng ? { rng: opts.bossRng } : {}),
+  });
   return {
     content,
     gifts,
+    bosses,
     guilds: createGuildService(t.db),
     players: createPlayerService(t.db, { initialEnergy: content.tables.energy.baseMax }),
     currency,

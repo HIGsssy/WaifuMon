@@ -175,6 +175,61 @@ export interface GameEventPayloads {
   PLAYER_RETURNED_FROM_INACTIVITY: { awayMinutes: number };
   /** Internal, reserved — explicit "repost my Trainer Profile" request. */
   TRAINER_PROFILE_REFRESH_REQUESTED: Record<string, never>;
+
+  // ── Boss Encounters (Stage 1) ────────────────────────────────────────────
+  //
+  // All four are `internal`. The boss channel is a dedicated venue that already
+  // narrates every one of these moments in full, and routing them to the
+  // Waifumon Log as well would print the same battle twice — once as an event
+  // and once as the announcement it is describing. They exist on the bus so
+  // future subscribers (analytics, a Portal feed, an ops dashboard) have a
+  // seam, not because anything narrates them today.
+
+  /** A boss appeared and the scouting window opened. */
+  BOSS_ENCOUNTER_STARTED: {
+    encounterId: number;
+    bossId: string;
+    bossName: string;
+    bossAffinity: string;
+    region: string;
+    deadlineAt: string;
+  };
+  /** A trainer confirmed a buddy. Carries no damage estimate — see below. */
+  BOSS_BUDDY_COMMITTED: {
+    encounterId: number;
+    bossId: string;
+    waifuId: number;
+    waifuName: string;
+    /**
+     * Deliberately *not* the estimated damage range, the affinity bonus, or
+     * the response bonus. Those are ephemeral-preview details: a public
+     * subscriber that logged them would leak one player's private read on the
+     * matchup into a shared channel.
+     */
+    level: number;
+  };
+  /** The window closed and results were computed. */
+  BOSS_ENCOUNTER_RESOLVED: {
+    encounterId: number;
+    bossId: string;
+    bossName: string;
+    reason: string;
+    participantCount: number;
+    totalDamage: number;
+    totalAttacks: number;
+  };
+  /** Payouts landed. Separate from RESOLVED so a retry is observable. */
+  BOSS_REWARDS_APPLIED: {
+    encounterId: number;
+    participantCount: number;
+    totalXp: number;
+    totalItems: number;
+  };
+  /** Scheduling stopped for a guild and an operator has to intervene. */
+  BOSS_SCHEDULING_SUSPENDED: {
+    reason: string;
+    channelId: string | null;
+  };
 }
 
 export type GameEventKind = keyof GameEventPayloads;
@@ -220,6 +275,13 @@ export const EVENT_META: Readonly<Record<GameEventKind, GameEventMeta>> = {
   ENERGY_REGENERATED: { visibility: 'minor', scope: 'internal' },
   PLAYER_RETURNED_FROM_INACTIVITY: { visibility: 'minor', scope: 'internal' },
   TRAINER_PROFILE_REFRESH_REQUESTED: { visibility: 'minor', scope: 'internal' },
+  // Internal for the reason given on the payload definitions: the boss channel
+  // is these events' narration surface, and the Activity Feed must not echo it.
+  BOSS_ENCOUNTER_STARTED: { visibility: 'major', scope: 'internal' },
+  BOSS_BUDDY_COMMITTED: { visibility: 'normal', scope: 'internal' },
+  BOSS_ENCOUNTER_RESOLVED: { visibility: 'major', scope: 'internal' },
+  BOSS_REWARDS_APPLIED: { visibility: 'normal', scope: 'internal' },
+  BOSS_SCHEDULING_SUSPENDED: { visibility: 'major', scope: 'internal' },
 };
 
 /**

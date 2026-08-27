@@ -214,6 +214,15 @@ export function formatActivityLine(event: GameEvent): ActivityLine | null {
     case 'ENERGY_REGENERATED':
     case 'PLAYER_RETURNED_FROM_INACTIVITY':
     case 'TRAINER_PROFILE_REFRESH_REQUESTED':
+    // Boss encounters narrate themselves, in full, in their own dedicated
+    // channel. Echoing them here would print every battle twice — once as a
+    // log line and once as the announcement it describes — and would also put
+    // boss traffic in a channel reserved for the hunt loop.
+    case 'BOSS_ENCOUNTER_STARTED':
+    case 'BOSS_BUDDY_COMMITTED':
+    case 'BOSS_ENCOUNTER_RESOLVED':
+    case 'BOSS_REWARDS_APPLIED':
+    case 'BOSS_SCHEDULING_SUSPENDED':
       return null;
     default: {
       // Exhaustiveness guard: adding a kind without wording is a compile error.

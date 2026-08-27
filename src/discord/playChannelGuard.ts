@@ -25,10 +25,21 @@ export interface GuardChannelInfo {
  * Pure decision function: guildConfig × channelInfo → allow | deny(reason).
  * Rules in order: (1) guild channel only, (2) NSFW-marked, (3) on the
  * allowlist when one is configured (empty/unset list = any NSFW channel).
+ *
+ * `alwaysAllowedChannelIds` exempts a channel from rule **3 only** — today,
+ * the guild's dedicated Boss Encounter channel. That channel is configured
+ * through its own admin command, is validated as NSFW at configuration time,
+ * and hosts buttons the bot itself posted; requiring an admin to *also* add it
+ * to the play allowlist would turn a working feature into a support ticket.
+ *
+ * It deliberately does not exempt rules 1 and 2: the compliance requirement is
+ * the game's, not this feature's, so an NSFW-unmarked boss channel is still
+ * refused — and refused with the same wording as anywhere else.
  */
 export function decidePlayChannel(
   channel: GuardChannelInfo,
   allowedChannelIds: string[] | null | undefined,
+  alwaysAllowedChannelIds: readonly (string | null | undefined)[] = [],
 ): GuardDecision {
   if (!channel.isGuildChannel || !channel.channelId) {
     return { allow: false, reason: 'dm' };
@@ -37,9 +48,13 @@ export function decidePlayChannel(
     return { allow: false, reason: 'not_nsfw' };
   }
   if (allowedChannelIds && allowedChannelIds.length > 0) {
+    const exempt = new Set(alwaysAllowedChannelIds.filter((id): id is string => Boolean(id)));
     const onList =
       allowedChannelIds.includes(channel.channelId) ||
-      (channel.parentChannelId != null && allowedChannelIds.includes(channel.parentChannelId));
+      exempt.has(channel.channelId) ||
+      (channel.parentChannelId != null &&
+        (allowedChannelIds.includes(channel.parentChannelId) ||
+          exempt.has(channel.parentChannelId)));
     if (!onList) return { allow: false, reason: 'not_allowed' };
   }
   return { allow: true };

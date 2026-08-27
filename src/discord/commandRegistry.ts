@@ -200,6 +200,63 @@ export function buildCommandDefinitions() {
             ),
         ),
     )
+    // Boss Encounters (Stage 1). A subcommand *group* rather than loose
+    // subcommands: six operations that only make sense together, and Discord
+    // renders them as one namespaced set in the picker.
+    .addSubcommandGroup((g) =>
+      g
+        .setName('boss')
+        .setDescription('Configure and operate boss encounters')
+        .addSubcommand((s) =>
+          s
+            .setName('set-channel')
+            .setDescription('Set the dedicated Boss Encounter channel (must be NSFW)')
+            .addChannelOption((o) =>
+              o
+                .setName('channel')
+                .setDescription('NSFW text channel that will host boss encounters')
+                .addChannelTypes(ChannelType.GuildText)
+                .setRequired(true),
+            ),
+        )
+        .addSubcommand((s) =>
+          s
+            .setName('clear-channel')
+            .setDescription('Clear the boss channel — stops scheduling new encounters'),
+        )
+        .addSubcommand((s) =>
+          s
+            .setName('status')
+            .setDescription('Show the current encounter, the next appearance, and any warnings'),
+        )
+        .addSubcommand((s) =>
+          s
+            .setName('spawn')
+            .setDescription('Force-spawn a boss for testing (does not consume the shuffle bag)')
+            .addStringOption((o) =>
+              o
+                .setName('boss')
+                .setDescription('Boss id from bosses.json — random enabled boss when omitted')
+                .setRequired(false),
+            ),
+        )
+        .addSubcommand((s) =>
+          s
+            .setName('end')
+            .setDescription('End the active encounter now — committed trainers are still paid'),
+        )
+        .addSubcommand((s) =>
+          s
+            .setName('repair')
+            .setDescription('Repost a missing announcement without creating a second encounter'),
+        )
+        .addSubcommand((s) =>
+          s.setName('pause').setDescription('Pause boss scheduling for this server'),
+        )
+        .addSubcommand((s) =>
+          s.setName('resume').setDescription('Resume boss scheduling and re-check the channel'),
+        ),
+    )
     .addSubcommand((s) =>
       s
         .setName('set-announce-channel')
@@ -257,6 +314,15 @@ export interface DispatcherDeps {
   logger: Logger;
   /** Read-only: returns the guild's allowlist without creating any rows. */
   lookupAllowlist(discordGuildId: string): Promise<string[] | null>;
+  /**
+   * Read-only: the guild's dedicated Boss Encounter channel, if configured.
+   *
+   * Exempts that one channel from the *allowlist* rule so boss buttons work
+   * without an admin also listing it as a play channel. Optional — a
+   * deployment without bosses simply never supplies it, and the guard behaves
+   * exactly as it did before.
+   */
+  lookupBossChannelId?(discordGuildId: string): Promise<string | null>;
   /** Ensures guild + player rows exist; only called after the guard allows. */
   provision(
     discordGuildId: string,
@@ -364,7 +430,14 @@ export function createDispatcher(deps: DispatcherDeps) {
       const allowlist = interaction.guildId
         ? await deps.lookupAllowlist(interaction.guildId)
         : null;
-      const decision = decidePlayChannel(channelInfo, allowlist);
+      // Only looked up when an allowlist is actually in force — a guild
+      // without one needs no exemption, and this saves a query on every
+      // interaction in the common case.
+      const bossChannelId =
+        interaction.guildId && deps.lookupBossChannelId && allowlist && allowlist.length > 0
+          ? await deps.lookupBossChannelId(interaction.guildId)
+          : null;
+      const decision = decidePlayChannel(channelInfo, allowlist, [bossChannelId]);
       if (!decision.allow) {
         await (interaction as { reply: (o: unknown) => Promise<unknown> }).reply({
           content: blockedMessage(decision.reason, allowlist),

@@ -24,11 +24,13 @@ import type { Logger } from '../../shared/logger';
 import { listSpeciesFiles, readContentFiles, validateContentSet } from './loader';
 import type { ContentReloader, ReloadResult } from './reloadService';
 import {
+  BossesFileSchema,
   ItemContentSchema,
   ItemsFileSchema,
   SpeciesContentSchema,
   SpeciesFileSchema,
   TablesFileSchema,
+  type BossContent,
   type ItemContent,
   type LoadedContent,
   type SpeciesContent,
@@ -97,6 +99,14 @@ export interface RawContent {
   /** All species flattened, in file order. */
   species: SpeciesContent[];
   tables: TablesContent;
+  /**
+   * Boss definitions. The panel has no boss *editor* — bosses are authored by
+   * hand — but it reads them so that editing `tables.json` still validates
+   * against them. Retiring the reward table a boss points at is exactly the
+   * kind of edit the panel must refuse, and it can only see that with both
+   * files in hand.
+   */
+  bosses: BossContent[];
 }
 
 export interface RarityBucketSummary {
@@ -237,6 +247,9 @@ export function createAdminContentService(deps: AdminContentServiceDeps): AdminC
     }
     const items = parseFile(path.join(contentDir, 'items.json'), ItemsFileSchema).items;
     const tables = parseFile(path.join(contentDir, 'tables.json'), TablesFileSchema);
+    // Optional on disk, exactly as it is for the runtime loader.
+    const bossesPath = path.join(contentDir, 'bosses.json');
+    const bosses = fs.existsSync(bossesPath) ? parseFile(bossesPath, BossesFileSchema) : [];
     const speciesFiles = listSpeciesFiles(speciesDir).map((file) => ({
       file,
       species: parseFile(path.join(speciesDir, file), SpeciesFileSchema),
@@ -246,6 +259,7 @@ export function createAdminContentService(deps: AdminContentServiceDeps): AdminC
       speciesFiles,
       species: speciesFiles.flatMap((g) => g.species),
       tables,
+      bosses,
     };
   }
 
@@ -336,6 +350,7 @@ export function createAdminContentService(deps: AdminContentServiceDeps): AdminC
       items: overrides.items ?? raw.items,
       species: overrides.species ?? raw.species,
       tables: overrides.tables ?? raw.tables,
+      bosses: overrides.bosses ?? raw.bosses,
     };
   }
 
@@ -710,6 +725,39 @@ export function createAdminContentService(deps: AdminContentServiceDeps): AdminC
         warnings.push('affectionGifts: enabled but the loot table is empty — no gift can drop');
       }
     }
+    // Boss encounters. Everything here is advisory rather than blocking — the
+    // loader tolerates all of it — but each one is something an operator would
+    // want to know before saving.
+    if (t.bossEncounters.enabled) {
+      for (const [key, table] of Object.entries(t.bossEncounters.rewardTables)) {
+        const referenced = [
+          ...table.minorItems.map((e) => e.slug),
+          ...(table.jackpot ? [table.jackpot.slug] : []),
+        ];
+        for (const slug of referenced) {
+          if (!enabledItems.has(slug)) {
+            warnings.push(
+              `bossEncounters.rewardTables["${key}"]: references disabled item "${slug}" — ` +
+                'it can still be granted, but players cannot obtain it anywhere else',
+            );
+          }
+        }
+      }
+      if (raw.bosses.length === 0) {
+        warnings.push(
+          'bossEncounters: enabled but no bosses are authored — nothing will ever be scheduled',
+        );
+      } else {
+        for (const region of t.bossEncounters.regions) {
+          if (!raw.bosses.some((b) => b.enabled && b.region === region)) {
+            warnings.push(
+              `bossEncounters: region "${region}" is enabled but every boss in it is disabled — ` +
+                'the bot refuses to start until one is re-enabled',
+            );
+          }
+        }
+      }
+    }
     if (t.dailyQuests.enabled && t.dailyQuests.pool.length === 0) {
       warnings.push('dailyQuests: enabled but the pool is empty — no quests can be assigned');
     }
@@ -735,7 +783,12 @@ export function createAdminContentService(deps: AdminContentServiceDeps): AdminC
     }
     const errors: string[] = [];
     try {
-      validateContentSet({ items: raw.items, species: raw.species, tables: raw.tables });
+      validateContentSet({
+        items: raw.items,
+        species: raw.species,
+        tables: raw.tables,
+        bosses: raw.bosses,
+      });
     } catch (err) {
       errors.push((err as Error).message);
     }

@@ -6,11 +6,13 @@ import { archetypeToRace, DEFAULT_RACE } from '../cards/race';
 import { ContentValidationError } from '../../shared/errors';
 import type { Logger } from '../../shared/logger';
 import {
+  BossesFileSchema,
   ItemsFileSchema,
   SpeciesFileSchema,
   TablesFileSchema,
   type AppearanceContent,
   type AssetId,
+  type BossContent,
   type LoadedContent,
   type SpeciesContent,
 } from './schemas';
@@ -196,6 +198,138 @@ export function unresolvableRaceMessage(offender: UnresolvableRace): string {
 }
 
 /**
+ * Boss artwork pre-flight — a **warning**, never a disable.
+ *
+ * Deliberately the opposite severity from a missing species image. A species
+ * that cannot render has nothing to show and is disabled; a boss that cannot
+ * render still has a name, an affinity, a description and three pieces of
+ * prose, which is a complete encounter. Dropping the boss instead would take
+ * a guild's whole scouting window away over a missing file, and — worse — it
+ * would do so *after* an encounter had already been announced and committed
+ * to, since artwork is resolved at post time.
+ *
+ * So the path is nulled out and the announcement degrades to a text/embed
+ * encounter. Resolution, damage and rewards never touch artwork at all.
+ */
+export function validateBossAssets(
+  bosses: BossContent[],
+  assetsDir: string,
+  logger: Logger,
+): BossContent[] {
+  return bosses.map((boss) => {
+    if (!boss.artwork) return boss;
+    let absolute: string;
+    try {
+      absolute = resolveAssetPath(assetsDir, boss.artwork);
+    } catch {
+      // Traversal — the schema should already have rejected it, so this is the
+      // belt to that braces. Treated as missing, loudly.
+      logger.warn(
+        { bossId: boss.id, artwork: boss.artwork },
+        'boss artwork resolves outside the assets directory — encounter will render text-only',
+      );
+      return { ...boss, artwork: null };
+    }
+    if (fs.existsSync(absolute)) return boss;
+    logger.warn(
+      { bossId: boss.id, artwork: boss.artwork },
+      'boss artwork missing — encounter will render text-only',
+    );
+    return { ...boss, artwork: null };
+  });
+}
+
+/**
+ * Boss cross-file invariants.
+ *
+ * Split out of `validateContentSet` only so the shipped-content test can call
+ * it against a hand-built set; the real loader always runs it as part of the
+ * whole-set validation.
+ *
+ * Everything here is fatal rather than a warning, and each for a specific
+ * reason:
+ *
+ *   - **Duplicate ids** would make `bossId` ambiguous on stored encounter rows,
+ *     which is the key a historical result is read back by.
+ *   - **An unknown reward table** mints an encounter nobody can be paid for,
+ *     and it fails at *resolution* — an hour after the announcement, with
+ *     committed participants waiting.
+ *   - **An unknown reward item** is the same failure one level down: a payout
+ *     naming an item that cannot be granted.
+ *   - **No enabled boss for an enabled region** means the scheduler has
+ *     nothing to draw, which would look exactly like a silently broken
+ *     feature.
+ *
+ * A *disabled* reward item is deliberately **not** fatal, unlike the
+ * affection-gift loot table. The distinction is when the item is resolved: a
+ * gift freezes its slug at generation time and can therefore mint something
+ * unclaimable, whereas a boss reward is looked up and granted inside the payout
+ * transaction from the live `items` row — which still exists, and can still be
+ * added to an inventory, while it is disabled. Disabling rather than deleting
+ * is the admin panel's documented affordance, and making it fatal here would
+ * quietly take that away for any item a boss happens to drop. The panel raises
+ * a warning instead.
+ *
+ * Affinity and region identifiers are already closed enums in the schema, so
+ * they need no re-check here.
+ */
+export function validateBossContent(content: LoadedContent): void {
+  const { bosses, items, tables } = content;
+  const config = tables.bossEncounters;
+
+  const ids = bosses.map((b) => b.id);
+  const duplicate = ids.find((id, i) => ids.indexOf(id) !== i);
+  if (duplicate) throw new ContentValidationError(`Duplicate boss id: ${duplicate}`);
+
+  const rewardTables = config.rewardTables;
+  const itemSlugs = new Set(items.map((i) => i.slug));
+
+  for (const boss of bosses) {
+    if (!Object.prototype.hasOwnProperty.call(rewardTables, boss.rewardTable)) {
+      throw new ContentValidationError(
+        `boss "${boss.id}" references unknown reward table: ${boss.rewardTable}`,
+      );
+    }
+  }
+
+  for (const [key, table] of Object.entries(rewardTables)) {
+    const entries = [
+      ...table.minorItems.map((e) => ({ slug: e.slug, where: 'minorItems' })),
+      ...(table.jackpot ? [{ slug: table.jackpot.slug, where: 'jackpot' }] : []),
+    ];
+    for (const entry of entries) {
+      if (!itemSlugs.has(entry.slug)) {
+        throw new ContentValidationError(
+          `bossEncounters.rewardTables["${key}"].${entry.where} references unknown item slug: ${entry.slug}`,
+        );
+      }
+    }
+  }
+
+  // The per-region check guards against boss content that was *mis-authored* —
+  // someone disabling the last Dominant boss, or moving a region's whole roster
+  // elsewhere. It deliberately does not fire on a content set that carries no
+  // boss content at all, because `bosses.json` is optional on disk: a
+  // deployment without it, an appearance-sync working directory, and an admin
+  // panel candidate set are all legitimate boss-free sets, and rejecting them
+  // would make an optional file mandatory by the back door.
+  //
+  // The stronger guarantee — that the *shipped* content always has a drawable
+  // boss for every enabled region — is asserted in `tests/unit/bossContent.ts`,
+  // which is the right place for an invariant about what we ship rather than
+  // about what the loader will accept.
+  if (!config.enabled || bosses.length === 0) return;
+  for (const region of config.regions) {
+    const hasEnabled = bosses.some((b) => b.enabled && b.region === region);
+    if (!hasEnabled) {
+      throw new ContentValidationError(
+        `bossEncounters is enabled for region "${region}" but no enabled boss belongs to it`,
+      );
+    }
+  }
+}
+
+/**
  * Cross-file content invariants: slug uniqueness and every cross-reference
  * (daily package, hunt find tables, progression bonuses, quest rewards)
  * pointing at an item that actually exists.
@@ -305,6 +439,8 @@ export function validateContentSet(content: LoadedContent): void {
       }
     }
   }
+
+  validateBossContent(content);
 }
 
 /**
@@ -328,7 +464,16 @@ export function readContentFiles(contentDir: string): LoadedContent {
     parseJsonFile(path.join(speciesDir, f), SpeciesFileSchema),
   );
 
-  return { items: itemsFile.items, species, tables };
+  /**
+   * Bosses are **optional on disk**. A deployment that predates the feature,
+   * or one that deliberately runs without it, has no `bosses.json` and loads
+   * with an empty list — the scheduler then finds nothing to draw and stays
+   * quiet. A file that *is* present is validated as strictly as every other.
+   */
+  const bossesPath = path.join(contentDir, 'bosses.json');
+  const bosses = fs.existsSync(bossesPath) ? parseJsonFile(bossesPath, BossesFileSchema) : [];
+
+  return { items: itemsFile.items, species, tables, bosses };
 }
 
 /** Sorted list of species JSON filenames (basenames) in a species directory. */
@@ -349,10 +494,15 @@ export function loadContent(contentDir: string, assetsDir: string, logger: Logge
   checkSpeciesRaces(content.species, logger);
 
   const validatedSpecies = validateSpeciesAssets(content.species, assetsDir, logger);
+  const validatedBosses = validateBossAssets(content.bosses, assetsDir, logger);
 
   logger.info(
-    { items: content.items.length, species: validatedSpecies.length },
+    {
+      items: content.items.length,
+      species: validatedSpecies.length,
+      bosses: validatedBosses.length,
+    },
     'content loaded and validated',
   );
-  return { ...content, species: validatedSpecies };
+  return { ...content, species: validatedSpecies, bosses: validatedBosses };
 }
