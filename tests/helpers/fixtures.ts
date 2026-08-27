@@ -1,7 +1,16 @@
 import path from 'node:path';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import type { Db } from '../../src/db/client';
-import { items, type ItemRow } from '../../src/db/schema';
+import {
+  items,
+  playerWaifus,
+  species as speciesTable,
+  type ItemRow,
+  type PlayerWaifuRow,
+} from '../../src/db/schema';
+import {
+  deterministicBaseSeductivePower,
+} from '../../src/modules/power/seductivePowerBackfill';
 import { loadContent } from '../../src/modules/content/loader';
 import type { LoadedContent } from '../../src/modules/content/schemas';
 import { seedContent } from '../../src/modules/content/seeder';
@@ -15,6 +24,7 @@ import { createAppearanceService } from '../../src/modules/appearance/appearance
 import { createCollectionService } from '../../src/modules/collection/collectionService';
 import { createPlayerEffectsService } from '../../src/modules/effects/playerEffectsService';
 import { createItemUseService } from '../../src/modules/items/itemUseService';
+import { createAffectionGiftService } from '../../src/modules/gifts/affectionGiftService';
 import { createProgressionService } from '../../src/modules/progression/progressionService';
 import { createQuestService } from '../../src/modules/quests/questService';
 import { createInventoryService } from '../../src/modules/inventory/inventoryService';
@@ -64,6 +74,7 @@ export interface App {
   session: ReturnType<typeof createSessionService>;
   effects: ReturnType<typeof createPlayerEffectsService>;
   itemUse: ReturnType<typeof createItemUseService>;
+  gifts: ReturnType<typeof createAffectionGiftService>;
 }
 
 export interface BootstrapOptions {
@@ -71,6 +82,8 @@ export interface BootstrapOptions {
   huntRng?: Rng;
   captureRng?: Rng;
   dailyRng?: Rng;
+  /** Drives the affection gift chance roll and its loot pick, in that order. */
+  giftRng?: Rng;
   /**
    * Whether the daily launch splash is enabled for this test app. Defaults
    * to `false` so pre-existing tests continue to exercise the main menu
@@ -145,8 +158,21 @@ export async function bootstrapApp(
     careConfig: content.tables.energy.careMode,
   });
   const effects = createPlayerEffectsService(t.db);
+  // Wired exactly as production does — the daily claim is the authoritative
+  // daily reset, so the gift roll rides inside its transaction.
+  const gifts = createAffectionGiftService({
+    db: t.db,
+    inventory,
+    collection,
+    config: content.tables.affectionGifts,
+    captureCapacity: content.tables.inventory.captureCapacity,
+    timezone,
+    logger: t.logger,
+    ...(opts.giftRng ? { rng: opts.giftRng } : {}),
+  });
   return {
     content,
+    gifts,
     guilds: createGuildService(t.db),
     players: createPlayerService(t.db, { initialEnergy: content.tables.energy.baseMax }),
     currency,
@@ -158,6 +184,7 @@ export async function bootstrapApp(
       inventory,
       progression,
       care,
+      gifts,
       tables: content.tables,
       timezone,
       ...(opts.dailyRng ? { rng: opts.dailyRng } : {}),
@@ -187,6 +214,7 @@ export async function bootstrapApp(
       progressionConfig: content.tables.progression,
       captureConfig: content.tables.capture,
       buddyAffinityConfig: content.tables.buddyAffinity,
+      seductivePowerConfig: content.tables.seductivePower,
       collection,
       quests,
       effects,
@@ -306,6 +334,95 @@ export async function provisionPlayer(
   const guild = await app.guilds.ensureGuild(discordGuildId);
   const player = await app.players.ensurePlayer(guild.id, discordUserId);
   return { guildDbId: guild.id, playerId: player.id };
+}
+
+/**
+ * Values for one directly-inserted owned Waifumon.
+ *
+ * `player_waifus.base_sp` is NOT NULL with no database default — that is the
+ * invariant that stops a copy existing without a Seductive Power roll — so
+ * every test that mints a copy outside the capture path needs a value. This is
+ * the one place that decides it, rather than 25 fixtures each inventing one.
+ */
+export type OwnedWaifuSeed = Omit<typeof playerWaifus.$inferInsert, 'baseSp'> & {
+  /** Explicit Base SP. Omitted, a valid in-band value is derived. */
+  baseSp?: number;
+};
+
+/**
+ * Insert owned Waifumon directly, with a valid Base SP for each one's rarity.
+ *
+ * The derived value reuses the migration's own deterministic function keyed on
+ * a per-call counter, so fixtures are **stable across runs** (no uncontrolled
+ * randomness in a test) while duplicate copies still receive different values —
+ * which is exactly the property the production model has, and therefore the
+ * one fixtures should exhibit too. Pass `baseSp` explicitly whenever a test
+ * asserts on the number itself.
+ */
+let seedCounter = 0;
+
+export async function insertOwnedWaifus(
+  db: Db,
+  seeds: OwnedWaifuSeed[],
+): Promise<PlayerWaifuRow[]> {
+  if (seeds.length === 0) return [];
+  const speciesIds = [...new Set(seeds.map((seed) => seed.speciesId))];
+  const rows = await db
+    .select({ id: speciesTable.id, rarity: speciesTable.rarity })
+    .from(speciesTable)
+    .where(inArray(speciesTable.id, speciesIds));
+  const rarityById = new Map(rows.map((r) => [r.id, r.rarity]));
+
+  const values = seeds.map((seed) => {
+    const rarity = rarityById.get(seed.speciesId);
+    if (!rarity) throw new Error(`insertOwnedWaifus: unknown species id ${seed.speciesId}`);
+    const { baseSp, ...rest } = seed;
+    return {
+      ...rest,
+      baseSp: baseSp ?? deterministicBaseSeductivePower(++seedCounter, rarity),
+    };
+  });
+  return db.insert(playerWaifus).values(values).returning();
+}
+
+/** Single-row convenience over {@link insertOwnedWaifus}. */
+export async function insertOwnedWaifu(
+  db: Db,
+  seed: OwnedWaifuSeed,
+): Promise<PlayerWaifuRow> {
+  const [row] = await insertOwnedWaifus(db, [seed]);
+  return row!;
+}
+
+/**
+ * A deterministic {@link Rng} driven by a fixed script.
+ *
+ * `next()` walks the script and throws once it runs out, so a test that
+ * silently started consuming more randomness than it scripted fails loudly
+ * rather than drifting onto real entropy.
+ *
+ * `intInclusive()` is deliberately *softer*: it consumes the script while
+ * there is script left, then falls back to the bottom of the requested range.
+ * That is what lets a test script the decision it cares about (a capture
+ * chance, a loot pick) without also having to script every incidental integer
+ * draw the same transaction makes — the Base Seductive Power roll being the
+ * one that motivated it. Tests that care about the integer supply a value; the
+ * rest get a stable, in-range default instead of a NaN.
+ */
+export function scriptedRng(nexts: readonly number[]): Rng {
+  let i = 0;
+  return {
+    next: () => {
+      if (i >= nexts.length) throw new Error(`scriptedRng exhausted at ${i}`);
+      return nexts[i++]!;
+    },
+    intInclusive(min, max) {
+      if (max < min) throw new RangeError(`intInclusive: max ${max} < min ${min}`);
+      if (i >= nexts.length) return min;
+      const fraction = nexts[i++]!;
+      return Math.min(max, Math.floor(fraction * (max - min + 1)) + min);
+    },
+  };
 }
 
 export async function getItemBySlug(db: Db, slug: string): Promise<ItemRow> {

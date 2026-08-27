@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { items, shopTransactions } from '../../src/db/schema';
 import {
@@ -22,18 +22,38 @@ afterAll(async () => {
   await t.cleanup();
 });
 
+/**
+ * Every item that exists only as a drop or a reward: enabled (so it can be
+ * generated, stored, claimed and used) but never for sale.
+ */
+const GIFT_ONLY_SLUGS = [
+  'quickie_coffee',
+  'reach_around',
+  'full_body_massage',
+  'fluffy_cuffs',
+  'shibari_rope',
+  'mythic_contract',
+] as const;
+
 describe('shop catalog', () => {
-  it('lists the 5 capture items plus the utility consumables', async () => {
+  it('lists the buyable charms plus the utility consumables', async () => {
     const catalog = await app.shop.getCatalog();
     const bySlug = new Map(catalog.map((e) => [e.item.slug, e]));
-    expect(catalog).toHaveLength(7);
-    for (const slug of ['basic_charm', 'silk_charm', 'velvet_charm']) {
-      expect(bySlug.get(slug)?.available).toBe(true);
+    expect([...bySlug.keys()].sort()).toEqual([
+      'basic_charm',
+      'energy_drink',
+      'microdose',
+      'prismatic_charm',
+      'silk_charm',
+      'velvet_charm',
+    ]);
+    for (const entry of catalog) {
+      expect(entry.available).toBe(true);
+      expect(entry.availabilityNote).toBeNull();
+      expect(entry.item.enabled).toBe(true);
+      expect(entry.item.purchasable).toBe(true);
+      expect(entry.item.buyPrice).not.toBeNull();
     }
-    expect(bySlug.get('prismatic_charm')?.available).toBe(false);
-    expect(bySlug.get('prismatic_charm')?.availabilityNote).toBe('Unavailable');
-    expect(bySlug.get('mythic_contract')?.available).toBe(false);
-    expect(bySlug.get('mythic_contract')?.availabilityNote).toBe('Not for sale');
   });
 
   it('exposes each entry with the currency its price is denominated in', async () => {
@@ -41,6 +61,47 @@ describe('shop catalog', () => {
     expect(bySlug.get('basic_charm')).toMatchObject({ available: true, currency: 'waifubux' });
     expect(bySlug.get('energy_drink')).toMatchObject({ available: true, currency: 'waifubux' });
     expect(bySlug.get('microdose')).toMatchObject({ available: true, currency: 'essence' });
+  });
+
+  it('never lists an enabled-but-non-purchasable item — the gift-only rows', async () => {
+    // Guard the premise: these are all still *enabled*, so the shop is
+    // filtering on `purchasable`, not quietly on `enabled`.
+    const rows = await t.db
+      .select()
+      .from(items)
+      .where(inArray(items.slug, [...GIFT_ONLY_SLUGS]));
+    expect(rows).toHaveLength(GIFT_ONLY_SLUGS.length);
+    for (const row of rows) {
+      expect(row.enabled).toBe(true);
+      expect(row.purchasable).toBe(false);
+    }
+
+    const listed = new Set((await app.shop.getCatalog()).map((e) => e.item.slug));
+    for (const slug of GIFT_ONLY_SLUGS) {
+      expect(listed.has(slug)).toBe(false);
+    }
+  });
+
+  it('drops an item from the catalog the moment it is marked non-purchasable', async () => {
+    await t.db.update(items).set({ purchasable: false }).where(eq(items.slug, 'silk_charm'));
+    try {
+      const listed = new Set((await app.shop.getCatalog()).map((e) => e.item.slug));
+      expect(listed.has('silk_charm')).toBe(false);
+      expect(listed.has('basic_charm')).toBe(true);
+    } finally {
+      await t.db.update(items).set({ purchasable: true }).where(eq(items.slug, 'silk_charm'));
+    }
+  });
+
+  it('does not list disabled items', async () => {
+    await t.db.update(items).set({ enabled: false }).where(eq(items.slug, 'velvet_charm'));
+    try {
+      const listed = new Set((await app.shop.getCatalog()).map((e) => e.item.slug));
+      expect(listed.has('velvet_charm')).toBe(false);
+      expect(listed.has('basic_charm')).toBe(true);
+    } finally {
+      await t.db.update(items).set({ enabled: true }).where(eq(items.slug, 'velvet_charm'));
+    }
   });
 });
 
@@ -115,6 +176,29 @@ describe('shop purchase', () => {
       await t.db.update(items).set({ enabled: true }).where(eq(items.slug, 'velvet_charm'));
     }
   });
+
+  it.each([...GIFT_ONLY_SLUGS])(
+    'rejects a direct purchase of the non-purchasable %s, however rich the player',
+    async (slug) => {
+      const { playerId } = await provisionPlayer(app, 'g-shop', `u-gift-${slug}`);
+      await app.currency.grantWaifubux(t.db, playerId, 1_000_000);
+      await app.currency.grantEssence(t.db, playerId, 1_000_000);
+      await expect(app.shop.purchase(playerId, slug)).rejects.toBeInstanceOf(
+        ItemNotPurchasableError,
+      );
+      // Nothing spent, nothing granted, no audit row.
+      const item = await getItemBySlug(t.db, slug);
+      expect(await app.inventory.getQuantity(playerId, item.id)).toBe(0);
+      const balances = await app.currency.getBalances(playerId);
+      expect(balances.waifubux).toBe(1_000_000);
+      expect(balances.essence).toBe(1_000_000);
+      const audits = await t.db
+        .select()
+        .from(shopTransactions)
+        .where(eq(shopTransactions.playerId, playerId));
+      expect(audits).toHaveLength(0);
+    },
+  );
 
   it('rejects unknown items', async () => {
     const { playerId } = await provisionPlayer(app, 'g-shop', 'u-unknown');

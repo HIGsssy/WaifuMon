@@ -17,9 +17,9 @@ export const shopRoutes =
           tags: ['Shop'],
           summary: 'List the shop catalog',
           description:
-            'Every enabled capture or consumable item, including rows that are listed but not ' +
-            'currently buyable — `available` and `availabilityNote` say which is which. The ' +
-            'catalog is player-independent; affordability is not evaluated here.',
+            'Capture and consumable items that are enabled, purchasable and priced. Items that ' +
+            'exist only as drops or rewards (affection gifts, the Mythic Contract) are never ' +
+            'listed. The catalog is player-independent; affordability is not evaluated here.',
           response: {
             200: dataSchema(z.array(shopCatalogEntrySchema)),
             ...commonErrorResponses,

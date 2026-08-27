@@ -24,7 +24,12 @@ import {
   createAppearanceService,
 } from '../../../src/modules/appearance/appearanceService';
 import type { LoadedContent, SpeciesContent } from '../../../src/modules/content/schemas';
-import { bootstrapApp, provisionPlayer, type App } from '../../helpers/fixtures';
+import {
+  bootstrapApp,
+  insertOwnedWaifu,
+  provisionPlayer,
+  type App,
+} from '../../helpers/fixtures';
 import { createCapturedLogger, createProbes, TEST_TOKEN } from '../../helpers/platformApiFixtures';
 import { createTestDb, type TestDb } from '../../helpers/testDb';
 
@@ -108,10 +113,7 @@ beforeAll(async () => {
 
   const [row] = await t.db.select().from(species).where(eq(species.slug, 'alley_catgirl'));
   subject = row!;
-  const [waifu] = await t.db
-    .insert(playerWaifus)
-    .values({ playerId, speciesId: subject.id, level: 10, xp: 200, affection: 7 })
-    .returning();
+  const waifu = await insertOwnedWaifu(t.db, { playerId, speciesId: subject.id, level: 10, xp: 200, affection: 7 });
   waifuId = waifu!.id;
   await app.collection.setBuddy(playerId, waifuId);
   await app.session.ensureSession(guildDbId, playerId, CHANNEL_ID);

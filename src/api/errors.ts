@@ -146,6 +146,8 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   TABLE_NOT_FOUND: 404,
   SESSION_NOT_FOUND: 404,
   BUDDY_NOT_SET: 404,
+  /** No unclaimed gift on that copy — the resource genuinely is not there. */
+  GIFT_NOT_FOUND: 404,
   /**
    * The species/appearance exists but its artwork file does not. A content
    * gap, not a server fault — the resource genuinely is not there, so 404
@@ -166,6 +168,17 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   CARE_MODE_DISABLED: 409,
   /** The appearance exists but this copy has not earned it — a state conflict. */
   APPEARANCE_LOCKED: 409,
+  /**
+   * The interaction was rendered against an older encounter state (an attempt
+   * has resolved since). The encounter is still live, so this is a conflict to
+   * refresh past — not a 404, and emphatically not a retryable 500.
+   */
+  ENCOUNTER_STALE: 409,
+  /**
+   * A claim that lost the race. Idempotent from the player's point of view —
+   * the reward already landed — so it reads as a conflict, not a failure.
+   */
+  GIFT_ALREADY_CLAIMED: 409,
 
   // --- Valid shape, business rule refused ---------------------------------
   INSUFFICIENT_FUNDS: 422,
@@ -183,6 +196,10 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
    *  nothing left to gain, so spending is refused rather than wasted. */
   WAIFU_AT_MAX_LEVEL: 422,
   CARE_TARGET_REQUIRED: 422,
+  /** Well-formed, but this item may not be committed against this rarity. */
+  CAPTURE_ITEM_NOT_ELIGIBLE: 422,
+  /** Capture was requested with nothing selected for the encounter. */
+  NO_CAPTURE_ITEM_SELECTED: 422,
 };
 
 /** Every code this layer knows how to classify — used by the contract test. */

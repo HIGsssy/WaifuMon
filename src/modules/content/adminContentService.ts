@@ -541,6 +541,11 @@ export function createAdminContentService(deps: AdminContentServiceDeps): AdminC
     if (t.dailyQuests.allCompleteBonus?.items.some((i) => i.slug === slug)) {
       refs.push('dailyQuests.allCompleteBonus');
     }
+    // A gift already generated stores the *slug*, so renaming one out from
+    // under an unclaimed gift would strand it — hence a hard reference.
+    if (t.affectionGifts.lootTable.some((e) => e.slug === slug)) {
+      refs.push('affectionGifts.lootTable');
+    }
     return refs;
   }
 
@@ -690,6 +695,19 @@ export function createAdminContentService(deps: AdminContentServiceDeps): AdminC
     for (const slug of Object.keys(t.dailyPackage.items)) {
       if (!enabledItems.has(slug)) {
         warnings.push(`dailyPackage.items: references disabled item "${slug}"`);
+      }
+    }
+    if (t.affectionGifts.enabled) {
+      for (const entry of t.affectionGifts.lootTable) {
+        if (!enabledItems.has(entry.slug)) {
+          warnings.push(
+            `affectionGifts.lootTable: references disabled item "${entry.slug}" — ` +
+              'the bot refuses to start until it is re-enabled or removed',
+          );
+        }
+      }
+      if (t.affectionGifts.lootTable.length === 0) {
+        warnings.push('affectionGifts: enabled but the loot table is empty — no gift can drop');
       }
     }
     if (t.dailyQuests.enabled && t.dailyQuests.pool.length === 0) {

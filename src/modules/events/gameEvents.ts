@@ -120,6 +120,31 @@ export interface GameEventPayloads {
     appearanceName: string;
     assetId: AssetId;
   };
+  /**
+   * An owned copy has a gift waiting (Affection Gift System).
+   *
+   * Deliberately says *that* a gift exists and nothing about what it is: the
+   * reveal belongs to the player accepting it, and this event is narrated in a
+   * shared channel. Emitted after the daily-reset transaction commits.
+   */
+  WAIFU_GIFT_AVAILABLE: {
+    waifuId: number;
+    /** Nickname when set, species name otherwise. */
+    waifuName: string;
+    affection: number;
+    /** Content tier that produced it — audit colour, not narration. */
+    tier: string;
+    /** True when the pity guarantee fired rather than the chance roll. */
+    guaranteed: boolean;
+  };
+  /** A gift was accepted. The item is named — the surprise is already spent. */
+  WAIFU_GIFT_CLAIMED: {
+    waifuId: number;
+    waifuName: string;
+    itemSlug: string;
+    itemName: string;
+    quantity: number;
+  };
   PLAYER_ENTERED_CARE: { waifuId: number; buddyName: string };
   PLAYER_LEFT_CARE: {
     waifuId: number | null;
@@ -181,6 +206,11 @@ export const EVENT_META: Readonly<Record<GameEventKind, GameEventMeta>> = {
   // and only ever refreshes surfaces that already show the copy.
   WAIFU_APPEARANCE_UNLOCKED: { visibility: 'normal', scope: 'player-visible' },
   WAIFU_APPEARANCE_CHANGED: { visibility: 'minor', scope: 'internal' },
+  // "She has something for you" is a relationship beat worth a log line; the
+  // claim itself is a private moment and stays internal, so the feed does not
+  // read out everyone's inventory.
+  WAIFU_GIFT_AVAILABLE: { visibility: 'normal', scope: 'player-visible' },
+  WAIFU_GIFT_CLAIMED: { visibility: 'minor', scope: 'internal' },
   PLAYER_ENTERED_CARE: { visibility: 'major', scope: 'player-visible' },
   PLAYER_LEFT_CARE: { visibility: 'normal', scope: 'player-visible' },
   AWAKENING: { visibility: 'major', scope: 'player-visible' },

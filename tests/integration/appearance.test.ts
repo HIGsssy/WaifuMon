@@ -32,7 +32,12 @@ import {
   AppearanceNotFoundError,
   WaifuNotOwnedError,
 } from '../../src/shared/errors';
-import { bootstrapApp, provisionPlayer, type App } from '../helpers/fixtures';
+import {
+  bootstrapApp,
+  insertOwnedWaifu,
+  provisionPlayer,
+  type App,
+} from '../helpers/fixtures';
 import { createTestDb, type TestDb } from '../helpers/testDb';
 
 let t: TestDb;
@@ -94,10 +99,7 @@ let liveContent: LoadedContent;
 let appearance: ReturnType<typeof createAppearanceService>;
 
 async function grantWaifu(level = 1): Promise<PlayerWaifuRow> {
-  const [row] = await t.db
-    .insert(playerWaifus)
-    .values({ playerId, speciesId: subject.id, level })
-    .returning();
+  const row = await insertOwnedWaifu(t.db, { playerId, speciesId: subject.id, level });
   return row!;
 }
 

@@ -93,6 +93,7 @@ describe('formatItemUseResult', () => {
       energyBefore: 3,
       energyAfter: 35,
       maxEnergy: 35,
+      restoreAmount: null,
       careModeExited: false,
       careEnergyGained: 0,
     });
@@ -108,6 +109,7 @@ describe('formatItemUseResult', () => {
       energyBefore: 0,
       energyAfter: 10,
       maxEnergy: 10,
+      restoreAmount: null,
       careModeExited: true,
       careEnergyGained: 2,
     });

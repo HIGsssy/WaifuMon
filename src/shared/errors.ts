@@ -341,6 +341,72 @@ export class CareModeDisabledError extends AppError {
   }
 }
 
+/**
+ * The chosen capture item cannot be used against this encounter's rarity.
+ * Content-driven (`items.capture_rarities`), never a slug check in code.
+ */
+export class CaptureItemNotEligibleError extends AppError {
+  constructor(itemName: string, rarity: string) {
+    super(
+      'CAPTURE_ITEM_NOT_ELIGIBLE',
+      `Item "${itemName}" is not eligible against ${rarity} encounters`,
+      `**${itemName}** won't work on a ${rarity}~ Pick something else.`,
+    );
+  }
+}
+
+/** Capture was pressed with nothing selected for this encounter. */
+export class NoCaptureItemSelectedError extends AppError {
+  constructor() {
+    super(
+      'NO_CAPTURE_ITEM_SELECTED',
+      'No capture item is selected for this encounter',
+      'Pick an item first — tap **Use Item**~',
+    );
+  }
+}
+
+/**
+ * The interaction was rendered against an older state of the encounter (an
+ * attempt has resolved since). Distinct from "already resolved": the encounter
+ * is still live, the *button* is stale — which is exactly the double-click
+ * case, and it must never resolve a second attempt.
+ */
+export class EncounterStaleError extends AppError {
+  constructor() {
+    super(
+      'ENCOUNTER_STALE',
+      'Encounter has advanced since this interaction was rendered',
+      'That button is out of date~ Your encounter has already moved on.',
+    );
+  }
+}
+
+/** No unclaimed gift exists for that owned copy (or it was already taken). */
+export class GiftNotFoundError extends AppError {
+  constructor() {
+    super(
+      'GIFT_NOT_FOUND',
+      'No unclaimed affection gift for that Waifumon',
+      'There is no gift waiting there~',
+    );
+  }
+}
+
+/**
+ * A claim raced another and lost. The gift is *not* lost — the winning
+ * transaction already added the item — so this is a refresh, not a failure.
+ */
+export class GiftAlreadyClaimedError extends AppError {
+  constructor() {
+    super(
+      'GIFT_ALREADY_CLAIMED',
+      'Affection gift was already claimed',
+      'You already accepted that gift~ Check your inventory.',
+    );
+  }
+}
+
 /** Detects a Postgres unique-constraint violation (possibly wrapped by drizzle). */
 export function isUniqueViolation(err: unknown): boolean {
   if (err && typeof err === 'object') {

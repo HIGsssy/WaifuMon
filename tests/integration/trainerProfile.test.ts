@@ -33,6 +33,7 @@ import type { GameEventDescriptor, GameEventSource } from '../../src/modules/eve
 import {
   bootstrapApp,
   createEventHarness,
+  insertOwnedWaifu,
   provisionPlayer,
   type App,
   type EventHarness,
@@ -129,6 +130,7 @@ beforeAll(async () => {
       quests: app.quests,
       effects: app.effects,
       itemUse: app.itemUse,
+      gifts: app.gifts,
       session: app.session,
     },
   };
@@ -186,10 +188,7 @@ async function storedProfileId(): Promise<string | null> {
 
 async function makeOwnedWaifu(): Promise<number> {
   const [row] = await t.db.select().from(species).where(eq(species.enabled, true)).limit(1);
-  const [waifu] = await t.db
-    .insert(playerWaifus)
-    .values({ playerId: prov.playerId, speciesId: row!.id, level: 1, xp: 0, affection: 0 })
-    .returning();
+  const waifu = await insertOwnedWaifu(t.db, { playerId: prov.playerId, speciesId: row!.id, level: 1, xp: 0, affection: 0 });
   return waifu!.id;
 }
 

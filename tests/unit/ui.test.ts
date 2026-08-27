@@ -135,6 +135,7 @@ function careState(overrides: Partial<CareState> = {}): CareState {
       nickname: null,
       level: 4,
       affection: 12,
+      baseSp: 122,
     },
     species: { name: 'Luna', rarity: 'SR', affinity: 'dominant' },
   } as unknown as CareState['target'];

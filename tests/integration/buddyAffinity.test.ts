@@ -24,13 +24,23 @@ import {
 import { createCaptureService } from '../../src/modules/capture/captureService';
 import type { Rng } from '../../src/shared/random';
 import {
-  handleEncounterCharm,
+  handleEncounterCapture,
   handleEncounterPick,
 } from '../../src/discord/commands/waifumonHunt';
 import { handleCollectionPickId } from '../../src/discord/commands/waifumonCollection';
 import { handleProfile } from '../../src/discord/commands/waifumon';
 import type { AppContext, Provisioned } from '../../src/discord/types';
-import { ASSETS_DIR, bootstrapApp, getItemBySlug, provisionPlayer, type App, createEventHarness, type EventHarness } from '../helpers/fixtures';
+import {
+  ASSETS_DIR,
+  bootstrapApp,
+  createEventHarness,
+  getItemBySlug,
+  insertOwnedWaifu,
+  provisionPlayer,
+  scriptedRng,
+  type App,
+  type EventHarness,
+} from '../helpers/fixtures';
 import { createTestDb, type TestDb } from '../helpers/testDb';
 
 /** N-rarity buddy species → +1% strong bonus; SR → +3%. */
@@ -82,6 +92,7 @@ beforeAll(async () => {
       quests: app.quests,
       effects: app.effects,
       itemUse: app.itemUse,
+      gifts: app.gifts,
       session: app.session,
     },
   } as unknown as AppContext;
@@ -90,19 +101,6 @@ afterAll(async () => {
   await t.cleanup();
 });
 
-function scriptedRng(nexts: number[]): Rng {
-  let i = 0;
-  return {
-    next: () => {
-      if (i >= nexts.length) throw new Error(`scriptedRng exhausted at ${i}`);
-      return nexts[i++]!;
-    },
-    intInclusive(min, max) {
-      const v = nexts[i++]!;
-      return Math.floor(v * (max - min + 1)) + min;
-    },
-  };
-}
 
 function captureWith(rng?: Rng) {
   return createCaptureService({
@@ -134,10 +132,7 @@ async function speciesBySlug(slug: string): Promise<SpeciesRow> {
 /** Grants an owned copy of `slug` and makes it the active buddy. */
 async function giveBuddy(slug: string): Promise<number> {
   const s = await speciesBySlug(slug);
-  const [row] = await t.db
-    .insert(playerWaifus)
-    .values({ playerId: prov.playerId, speciesId: s.id })
-    .returning();
+  const row = await insertOwnedWaifu(t.db, { playerId: prov.playerId, speciesId: s.id });
   await app.collection.setBuddy(prov.playerId, row!.id);
   return row!.id;
 }
@@ -513,6 +508,27 @@ describe('UI — affinity read on the encounter reveal', () => {
   });
 });
 
+/**
+ * Select-then-capture, the way the encounter screen now works: the item is
+ * persisted on the encounter and the Capture button carries the attempt count
+ * it was rendered against. Selection consumes nothing.
+ */
+async function pressCapture(
+  button: unknown,
+  encounterId: number,
+  itemSlug: string,
+): Promise<void> {
+  await ctx.services.capture.selectCaptureItem(prov.playerId, encounterId, itemSlug);
+  const active = await ctx.services.hunt.getActiveEncounter(prov.playerId);
+  await handleEncounterCapture(
+    ctx,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    button as any,
+    prov,
+    [String(encounterId), String(active?.attemptCount ?? 0)],
+  );
+}
+
 describe('UI — buddy bonus on the capture result', () => {
   it('shows the applied bonus and the resulting capture chance', async () => {
     await setAffinity(BUDDY_SLUG, 'dominant');
@@ -522,8 +538,7 @@ describe('UI — buddy bonus on the capture result', () => {
     const enc = await createEncounter(ENCOUNTER_SLUG);
 
     const btn = fakeButton();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await handleEncounterCharm(ctx, btn as any, prov, [String(enc.id), 'basic_charm']);
+    await pressCapture(btn, enc.id, 'basic_charm');
     const text = fieldValues(renderedEmbeds(btn));
     expect(text).toContain('🤝 Buddy Bonus');
     expect(text).toContain('+1% — Dominant beats Submissive');
@@ -536,8 +551,7 @@ describe('UI — buddy bonus on the capture result', () => {
     const enc = await createEncounter(ENCOUNTER_SLUG);
 
     const btn = fakeButton();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await handleEncounterCharm(ctx, btn as any, prov, [String(enc.id), 'basic_charm']);
+    await pressCapture(btn, enc.id, 'basic_charm');
     expect(fieldValues(renderedEmbeds(btn))).not.toContain('Buddy Bonus');
   });
 });

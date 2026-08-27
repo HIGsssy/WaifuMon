@@ -13,7 +13,12 @@ import {
   WaifuAtMaxLevelError,
   WaifuNotOwnedError,
 } from '../../src/shared/errors';
-import { bootstrapApp, provisionPlayer, type App } from '../helpers/fixtures';
+import {
+  bootstrapApp,
+  insertOwnedWaifu,
+  provisionPlayer,
+  type App,
+} from '../helpers/fixtures';
 import { createTestDb, type TestDb } from '../helpers/testDb';
 
 let t: TestDb;
@@ -60,10 +65,7 @@ async function essenceBalance(): Promise<number> {
 
 async function grantWaifu(slug = 'neko_barista', level = 1, xp = 0): Promise<number> {
   const [sp] = await t.db.select().from(species).where(eq(species.slug, slug));
-  const [row] = await t.db
-    .insert(playerWaifus)
-    .values({ playerId, speciesId: sp!.id, level, xp })
-    .returning();
+  const row = await insertOwnedWaifu(t.db, { playerId, speciesId: sp!.id, level, xp });
   return row!.id;
 }
 

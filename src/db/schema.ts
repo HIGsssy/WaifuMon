@@ -44,10 +44,17 @@ export type ItemCategory = (typeof ITEM_CATEGORIES)[number];
  * `effect_type` can be *used* from the inventory screen; its `effect_config`
  * carries the per-effect tunables (validated by type in content/schemas.ts).
  *
- *   restore_energy_full   — Energy Drink: refill Hunt Energy to computed max.
+ *   restore_energy_full   — Energy Drink / Full Body Massage: refill Hunt
+ *                           Energy to the computed max.
+ *   restore_energy_amount — Quickie Coffee / Reach Around: add a fixed amount,
+ *                           clamped to the computed max.
  *   capture_bonus_charges — Microdose: flat capture bonus for N attempts.
  */
-export const ITEM_EFFECT_TYPES = ['restore_energy_full', 'capture_bonus_charges'] as const;
+export const ITEM_EFFECT_TYPES = [
+  'restore_energy_full',
+  'restore_energy_amount',
+  'capture_bonus_charges',
+] as const;
 export type ItemEffectType = (typeof ITEM_EFFECT_TYPES)[number];
 
 /** Currencies a shop entry can be priced in. */
@@ -168,6 +175,19 @@ export const items = pgTable(
     name: text('name').notNull(),
     category: text('category').notNull(),
     captureModifier: real('capture_modifier'),
+    /**
+     * Flat, additive capture-chance bonus in *probability points* (0.30 =
+     * +30pp), applied after the `capture_modifier` multiply and before the
+     * clamp — exactly like the buddy-affinity and Microdose terms. Null for
+     * charms, which express their strength multiplicatively instead.
+     */
+    captureBonus: real('capture_bonus'),
+    /**
+     * Encounter rarities this capture item may be committed against. Null =
+     * every rarity (the charms). Non-null is what keeps rarity gating in
+     * content instead of hard-coding item slugs into the capture logic.
+     */
+    captureRarities: jsonb('capture_rarities').$type<string[]>(),
     isGuaranteedCapture: boolean('is_guaranteed_capture').notNull().default(false),
     purchasable: boolean('purchasable').notNull().default(false),
     buyPrice: integer('buy_price'),
@@ -188,7 +208,7 @@ export const items = pgTable(
     ),
     check(
       'items_effect_type_check',
-      sql`${t.effectType} is null or ${t.effectType} in ('restore_energy_full','capture_bonus_charges')`,
+      sql`${t.effectType} is null or ${t.effectType} in ('restore_energy_full','restore_energy_amount','capture_bonus_charges')`,
     ),
     check('items_price_currency_check', sql`${t.priceCurrency} in ('waifubux','essence')`),
   ],
@@ -272,6 +292,18 @@ export const encounters = pgTable(
     state: text('state').notNull().default('active'),
     attemptCount: integer('attempt_count').notNull().default(0),
     maxAttempts: integer('max_attempts').notNull().default(3),
+    /**
+     * Capture item the player has *chosen* for this encounter but not yet
+     * committed (encounter-time item selection).
+     *
+     * Selection is deliberately server-side state rather than a value carried
+     * in a Discord custom id: the authoritative capture reads it back under
+     * the same `SELECT … FOR UPDATE` that serializes attempts, so a stale
+     * button cannot smuggle in an item the player never picked. Nothing is
+     * consumed while this is set — changing it, walking away, or letting the
+     * encounter expire all cost the player nothing.
+     */
+    selectedItemId: bigint('selected_item_id', { mode: 'number' }).references(() => items.id),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     resolvedAt: timestamp('resolved_at', { withTimezone: true }),
@@ -363,6 +395,32 @@ export const playerWaifus = pgTable(
      * time new milestone art ships.
      */
     seenAppearances: jsonb('seen_appearances').$type<string[]>().notNull().default([]),
+    /**
+     * **Base Seductive Power** — the Level 1 SP rolled once for this copy at
+     * capture, from her species' rarity band.
+     *
+     * Permanent and per-copy: two captures of the same species routinely carry
+     * different values, and this column is never recomputed — not on read, not
+     * on level-up, not on a content reload. *Current* SP is derived from this
+     * plus `level` by `modules/power/seductivePower.ts` and is deliberately
+     * not stored, because a stored copy of a pure function is just a third
+     * value that can drift.
+     *
+     * `NOT NULL` with **no default**, on purpose: drizzle's inferred insert
+     * type then forces every creation site to supply a rolled value, so a copy
+     * can never quietly come into existence at some neutral midpoint. The
+     * rarity-band invariant itself is application-enforced (CaptureService) —
+     * a CHECK constraint cannot reach across to `species.rarity`.
+     */
+    baseSp: integer('base_sp').notNull(),
+    /**
+     * Eligible daily gift rolls this copy has taken *since her last gift*
+     * (Affection Gift System). Per-copy on purpose: swapping buddies must
+     * neither transfer nor reset anyone's progress toward their guarantee.
+     * Reset to 0 the moment a gift is generated; frozen while a gift sits
+     * unclaimed (a paused copy takes no roll, so it advances nothing).
+     */
+    giftRollCounter: integer('gift_roll_counter').notNull().default(0),
     caughtAt: timestamp('caught_at', { withTimezone: true }).notNull().defaultNow(),
     releasedAt: timestamp('released_at', { withTimezone: true }),
   },
@@ -372,6 +430,8 @@ export const playerWaifus = pgTable(
     check('player_waifus_level_check', sql`${t.level} >= 1`),
     check('player_waifus_xp_check', sql`${t.xp} >= 0`),
     check('player_waifus_affection_check', sql`${t.affection} >= 0`),
+    check('player_waifus_gift_roll_counter_check', sql`${t.giftRollCounter} >= 0`),
+    check('player_waifus_base_sp_check', sql`${t.baseSp} >= 1`),
   ],
 );
 
@@ -546,6 +606,114 @@ export const playerActiveEffects = pgTable(
   ],
 );
 
+/**
+ * Affection Gift System — tiers, and the vocabulary shared by the roll ledger
+ * and the gift rows. Thresholds and chances live in `content/tables.json`;
+ * these are only the *names* the columns store, so an audit query never has to
+ * re-derive which band a historic gift came from.
+ */
+export const AFFECTION_GIFT_TIERS = ['low', 'mid', 'high'] as const;
+export type AffectionGiftTier = (typeof AFFECTION_GIFT_TIERS)[number];
+
+/** Why a gift was generated: the chance roll hit, or the guarantee fired. */
+export const AFFECTION_GIFT_SOURCES = ['random', 'guaranteed'] as const;
+export type AffectionGiftSource = (typeof AFFECTION_GIFT_SOURCES)[number];
+
+/** What one eligible daily roll produced. */
+export const AFFECTION_GIFT_ROLL_RESULTS = ['gift', 'none'] as const;
+export type AffectionGiftRollResult = (typeof AFFECTION_GIFT_ROLL_RESULTS)[number];
+
+/**
+ * One row per player per reset date — the authoritative "this player has
+ * already been rolled today" record.
+ *
+ * The unique `(player_id, roll_date)` index is the whole idempotency story:
+ * the roll inserts here *first*, so a retried daily, a duplicate worker, or
+ * two concurrent transactions produce exactly one roll and at most one gift.
+ * A losing insert is a unique violation, which the service reads as "already
+ * processed" rather than an error.
+ *
+ * Rows are written for *every* eligible roll, gift or not — a `result='none'`
+ * row is what proves the day was spent and the guarantee counter advanced.
+ * Ineligible players (no buddy, affection below the floor) are not rolled and
+ * get no row, so they can be rolled the instant they become eligible.
+ */
+export const affectionGiftRolls = pgTable(
+  'affection_gift_rolls',
+  {
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    playerId: bigint('player_id', { mode: 'number' })
+      .notNull()
+      .references(() => players.id),
+    rollDate: date('roll_date').notNull(),
+    /** The active buddy at roll time — FK-less, matching `buddy_waifu_id`. */
+    waifuId: bigint('waifu_id', { mode: 'number' }).notNull(),
+    /** Affection and tier snapshotted so retuning content can't rewrite history. */
+    affection: integer('affection').notNull(),
+    tier: text('tier').notNull(),
+    result: text('result').notNull(),
+    /** True when the guarantee produced the gift after the chance roll missed. */
+    guaranteed: boolean('guaranteed').notNull().default(false),
+    /** Counter *before* this roll and after it — the audit trail for a guarantee. */
+    counterBefore: integer('counter_before').notNull(),
+    counterAfter: integer('counter_after').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('affection_gift_rolls_player_date_uq').on(t.playerId, t.rollDate),
+    index('affection_gift_rolls_waifu_idx').on(t.waifuId),
+    check('affection_gift_rolls_tier_check', sql`${t.tier} in ('low','mid','high')`),
+    check('affection_gift_rolls_result_check', sql`${t.result} in ('gift','none')`),
+  ],
+);
+
+/**
+ * A gift a specific owned Waifumon is holding for her trainer.
+ *
+ * The item is rolled **when the gift is generated**, never at claim time, so
+ * what she is holding cannot change under the player while it waits. Gifts do
+ * not expire; `claimed_at` is the only lifecycle there is.
+ *
+ * The partial unique index on `waifu_id WHERE claimed_at IS NULL` is what
+ * enforces "at most one unclaimed gift per copy" in the database, and it is
+ * also what makes a double-clicked Accept Gift safe: the claim marks the row
+ * claimed inside the same transaction that adds the item, so the second click
+ * finds nothing left to claim.
+ */
+export const affectionGifts = pgTable(
+  'affection_gifts',
+  {
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    playerId: bigint('player_id', { mode: 'number' })
+      .notNull()
+      .references(() => players.id),
+    /** The owned copy that produced it — FK-less, matching `buddy_waifu_id`. */
+    waifuId: bigint('waifu_id', { mode: 'number' }).notNull(),
+    /** Rolled at generation time and frozen; resolved to an item row on claim. */
+    itemSlug: text('item_slug').notNull(),
+    quantity: integer('quantity').notNull(),
+    affectionAtGeneration: integer('affection_at_generation').notNull(),
+    tierAtGeneration: text('tier_at_generation').notNull(),
+    source: text('source').notNull(),
+    /** Reset date of the roll that produced it (configured timezone). */
+    resetDate: date('reset_date').notNull(),
+    generatedAt: timestamp('generated_at', { withTimezone: true }).notNull().defaultNow(),
+    claimedAt: timestamp('claimed_at', { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex('affection_gifts_waifu_unclaimed_uq')
+      .on(t.waifuId)
+      .where(sql`claimed_at is null`),
+    index('affection_gifts_player_idx').on(t.playerId),
+    index('affection_gifts_player_unclaimed_idx')
+      .on(t.playerId)
+      .where(sql`claimed_at is null`),
+    check('affection_gifts_quantity_check', sql`${t.quantity} > 0`),
+    check('affection_gifts_tier_check', sql`${t.tierAtGeneration} in ('low','mid','high')`),
+    check('affection_gifts_source_check', sql`${t.source} in ('random','guaranteed')`),
+  ],
+);
+
 export type GuildRow = typeof guilds.$inferSelect;
 export type PlayerRow = typeof players.$inferSelect;
 export type PlayerCurrenciesRow = typeof playerCurrencies.$inferSelect;
@@ -562,3 +730,5 @@ export type WaifumonSessionRow = typeof waifumonSessions.$inferSelect;
 export type PlayerDailyQuestRow = typeof playerDailyQuests.$inferSelect;
 export type PlayerDailySplashViewRow = typeof playerDailySplashViews.$inferSelect;
 export type PlayerActiveEffectRow = typeof playerActiveEffects.$inferSelect;
+export type AffectionGiftRollRow = typeof affectionGiftRolls.$inferSelect;
+export type AffectionGiftRow = typeof affectionGifts.$inferSelect;

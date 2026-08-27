@@ -31,6 +31,7 @@ import { listOwnedWarmSubjects } from './modules/appearance/ownedCardWarmSubject
 import { createCollectionService } from './modules/collection/collectionService';
 import { createPlayerEffectsService } from './modules/effects/playerEffectsService';
 import { createItemUseService } from './modules/items/itemUseService';
+import { createAffectionGiftService } from './modules/gifts/affectionGiftService';
 import { createProgressionService } from './modules/progression/progressionService';
 import { createQuestService } from './modules/quests/questService';
 import { createSessionService } from './modules/session/sessionService';
@@ -127,6 +128,17 @@ async function main(): Promise<void> {
     careConfig: content.tables.energy.careMode,
   });
   const effects = createPlayerEffectsService(db);
+  // Affection gifts. Built before the context because DailyService takes it —
+  // the daily claim is the authoritative daily reset the roll rides inside.
+  const gifts = createAffectionGiftService({
+    db,
+    inventory,
+    collection,
+    config: content.tables.affectionGifts,
+    captureCapacity: content.tables.inventory.captureCapacity,
+    timezone: config.dailyTimezone,
+    logger,
+  });
   // Central gameplay-event seam. Handlers emit onto it after their
   // transaction commits; subscribers (Activity Feed today, Trainer Profile
   // next) are strictly downstream and can never fail a gameplay write.
@@ -183,6 +195,7 @@ async function main(): Promise<void> {
         inventory,
         progression,
         care,
+        gifts,
         tables: content.tables,
         timezone: config.dailyTimezone,
       }),
@@ -210,6 +223,7 @@ async function main(): Promise<void> {
         progressionConfig: content.tables.progression,
         captureConfig: content.tables.capture,
         buddyAffinityConfig: content.tables.buddyAffinity,
+        seductivePowerConfig: content.tables.seductivePower,
         collection,
         quests,
         effects,
@@ -229,6 +243,7 @@ async function main(): Promise<void> {
         progression,
         care,
       }),
+      gifts,
       session: createSessionService({
         db,
         timezone: config.dailyTimezone,

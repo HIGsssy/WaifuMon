@@ -11,7 +11,8 @@
  *   otherwise   → chance = clamp(
  *                   baseCaptureRate × captureModifier
  *                     + buddyAffinityModifier
- *                     + captureBonusModifier,
+ *                     + captureBonusModifier
+ *                     + itemCaptureBonus,
  *                   min, max)
  * `baseCaptureRate` uses the species override when set, otherwise the
  * rarity default from content/tables.json. The buddy-affinity term is flat,
@@ -20,10 +21,18 @@
  * consumable buff (Microdose); one charge is spent per *resolved* attempt,
  * inside this same transaction and under the encounter row lock — so a
  * double-clicked charm can never spend two charges for one attempt.
+ * `itemCaptureBonus` is the committed item's own flat bonus (Fluffy Cuffs,
+ * Shibari Rope) — additive rather than multiplicative, and gated by the
+ * item's content-declared `capture_rarities`.
  * Event modifiers remain reserved.
+ *
+ * Encounter-time item selection (see `encounters.selected_item_id`) rides the
+ * same machinery: selecting costs nothing, and the authoritative attempt
+ * re-reads the selection *under the encounter row lock* rather than trusting
+ * the interaction that triggered it.
  */
 import { and, eq, isNull, sql } from 'drizzle-orm';
-import type { Db } from '../../db/client';
+import type { Db, DbOrTx } from '../../db/client';
 import {
   captureAttempts,
   encounters,
@@ -37,13 +46,16 @@ import {
   type SpeciesRow,
 } from '../../db/schema';
 import {
+  CaptureItemNotEligibleError,
   EncounterAlreadyResolvedError,
   EncounterExpiredError,
   EncounterNotFoundError,
+  EncounterStaleError,
   InsufficientItemsError,
   ItemNotFoundError,
   ItemNotUsableError,
   NoAttemptsRemainingError,
+  NoCaptureItemSelectedError,
 } from '../../shared/errors';
 import type { Logger } from '../../shared/logger';
 import { defaultRng, type Rng } from '../../shared/random';
@@ -57,7 +69,12 @@ import type {
   LevelUpEvent,
   ProgressionService,
 } from '../progression/progressionService';
-import type { BuddyAffinityConfig, ProgressionConfig } from '../content/schemas';
+import type {
+  BuddyAffinityConfig,
+  ProgressionConfig,
+  SeductivePowerConfig,
+} from '../content/schemas';
+import { rollBaseSeductivePower } from '../power/seductivePower';
 import type { PlayerEffectsService } from '../effects/playerEffectsService';
 import type { QuestService } from '../quests/questService';
 import type { Affinity, Rarity } from '../../db/schema';
@@ -93,6 +110,51 @@ export interface CaptureEffectInfo {
   cleared: boolean;
 }
 
+/**
+ * Whether a capture item may be committed against a given encounter rarity.
+ *
+ * Eligibility lives in `items.capture_rarities` (null = every rarity), so the
+ * rule set is content, not code: adding a rarity-restricted item is a JSON
+ * edit, and this function is the single place both the selector and the
+ * authoritative attempt ask.
+ */
+export function isCaptureItemEligible(item: ItemRow, rarity: string): boolean {
+  const allowed = item.captureRarities;
+  if (allowed == null || allowed.length === 0) return true;
+  return allowed.includes(rarity);
+}
+
+/**
+ * A read-only capture-chance quote for one encounter.
+ *
+ * Exists so the Discord layer never re-implements the formula: the "6% → 21%"
+ * line and the number the server actually rolls against come out of the same
+ * {@link computeCaptureChance} call with the same inputs. The only difference
+ * between this and a real attempt is that nothing is locked and nothing is
+ * spent — so a quote can be marginally stale, and the attempt re-derives it.
+ */
+export interface CaptureQuote {
+  encounter: EncounterRow;
+  species: SpeciesRow;
+  /** The item this quote is for, or null for the no-item baseline. */
+  item: ItemRow | null;
+  /** True when the item guarantees capture (the formula is bypassed). */
+  guaranteed: boolean;
+  /** Chance with the item applied. 1 when `guaranteed`. */
+  chance: number;
+  /**
+   * Chance with **no** direct capture item — the charm multiplier neutral at
+   * 1, persistent effects still counted. This is the "before" half of the
+   * before → after line the encounter screen shows.
+   */
+  baselineChance: number;
+  /** Whether the item may be used against this encounter's rarity. */
+  eligible: boolean;
+  buddyAffinityModifier: number;
+  captureBonusModifier: number;
+  itemCaptureBonus: number;
+}
+
 export interface CaptureAttemptResult {
   outcome: CaptureOutcome;
   attempt: CaptureAttemptRow;
@@ -113,6 +175,11 @@ export interface CaptureAttemptResult {
   /** Consumable capture buff spent on this attempt; null when none applied. */
   effect: CaptureEffectInfo | null;
   /**
+   * Flat bonus the committed item itself contributed (0 for charms, which are
+   * multiplicative, and for guaranteed captures, which bypass the formula).
+   */
+  itemCaptureBonus: number;
+  /**
    * Cosmetic appearances the new copy starts with, acknowledged so they never
    * re-notify. Presentation only — the default `owned` entry is deliberately
    * filtered out of this list, so it is normally empty and only fills when a
@@ -121,19 +188,72 @@ export interface CaptureAttemptResult {
   newAppearances: AppearanceUnlockRef[];
 }
 
+/** Options for {@link CaptureService.attemptCapture}. */
+export interface AttemptCaptureOptions {
+  now?: Date;
+  /**
+   * Optimistic-concurrency guard: the `attempt_count` the interaction was
+   * rendered against. When supplied and it no longer matches the locked row,
+   * the attempt is refused with `EncounterStaleError` — which is what makes a
+   * double-clicked Capture button resolve exactly once instead of burning a
+   * second item. Omitted (the pre-existing callers, and tests) means no check.
+   */
+  expectedAttemptCount?: number;
+}
+
 export interface CaptureService {
   /**
-   * Resolve one charm click. Atomic: item consumption, attempt row, encounter
-   * state, and any owned-waifu row all commit together. Discord side-effects
-   * (the SR+ rare-capture embed, the Activity Feed line) happen afterwards at
-   * the coordinator layer and can never roll this back.
+   * Resolve one capture commit. Atomic: item consumption, attempt row,
+   * encounter state, and any owned-waifu row all commit together. Discord
+   * side-effects (the SR+ rare-capture embed, the Activity Feed line) happen
+   * afterwards at the coordinator layer and can never roll this back.
+   *
+   * `itemSlug` may be null, meaning "use whatever this encounter has
+   * selected" — the selection is read back **inside** the transaction, under
+   * the encounter row lock, so it is authoritative rather than something the
+   * button asserted.
    */
   attemptCapture(
     playerId: number,
     encounterId: number,
+    itemSlug?: string | null,
+    optionsOrNow?: AttemptCaptureOptions | Date,
+  ): Promise<CaptureAttemptResult>;
+
+  /**
+   * Choose (or change) the capture item for an active encounter. Consumes
+   * nothing — that only happens when Capture is committed — but does validate
+   * ownership and rarity eligibility up front so the player is never shown a
+   * chance they cannot actually take.
+   */
+  selectCaptureItem(
+    playerId: number,
+    encounterId: number,
     itemSlug: string,
     now?: Date,
-  ): Promise<CaptureAttemptResult>;
+  ): Promise<CaptureQuote>;
+
+  /**
+   * Read-only chance quote. `itemSlug` null quotes the bare baseline;
+   * undefined quotes the encounter's current selection (or the baseline when
+   * nothing is selected).
+   */
+  quoteCapture(
+    playerId: number,
+    encounterId: number,
+    itemSlug?: string | null,
+    now?: Date,
+  ): Promise<CaptureQuote>;
+
+  /**
+   * Capture items the player owns that are eligible against this encounter,
+   * in the order the selector should offer them. Read-only.
+   */
+  listEligibleCaptureItems(
+    playerId: number,
+    encounterId: number,
+    now?: Date,
+  ): Promise<Array<{ item: ItemRow; quantity: number; quote: CaptureQuote }>>;
 }
 
 export interface CaptureServiceDeps {
@@ -144,6 +264,12 @@ export interface CaptureServiceDeps {
   captureConfig: CaptureConfig;
   /** Milestone 5D — buddy affinity wheel and rarity-scaled bonuses. */
   buddyAffinityConfig: BuddyAffinityConfig;
+  /**
+   * Seductive Power bands. **Optional** so older wirings keep working: absent
+   * means the shipped ladder from `DEFAULT_SP_RANGES_BY_RARITY`, which is also
+   * what the content schema defaults to — the two can never disagree.
+   */
+  seductivePowerConfig?: SeductivePowerConfig | undefined;
   /** Used to resolve (and self-heal) the player's active buddy in-transaction. */
   collection: CollectionService;
   quests: QuestService;
@@ -172,11 +298,202 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
     effects,
     logger,
   } = deps;
+  const spRanges = deps.seductivePowerConfig?.rangesByRarity;
   const appearance = deps.appearance;
   const rng = deps.rng ?? defaultRng();
 
+  /**
+   * Everything the chance formula needs, gathered once. Shared by the quote
+   * path and the authoritative attempt so the two can never disagree about
+   * what a capture is worth — the attempt simply calls it with a locked
+   * encounter row and a transaction that is about to spend things.
+   */
+  async function gatherChanceInputs(
+    tx: DbOrTx,
+    playerId: number,
+    speciesRow: SpeciesRow,
+  ): Promise<{ buddyAffinityModifier: number; captureBonusModifier: number }> {
+    const buddy = await collection.resolveActiveBuddy(tx, playerId);
+    const resolution = buddy
+      ? resolveBuddyAffinity(
+          {
+            buddyAffinity: buddy.species.affinity,
+            buddyRarity: buddy.species.rarity as Rarity,
+            encounterAffinity: speciesRow.affinity,
+          },
+          buddyAffinityConfig,
+        )
+      : null;
+    const bonus = await effects.getCaptureBonus(playerId);
+    return {
+      buddyAffinityModifier: resolution?.modifier ?? 0,
+      captureBonusModifier: bonus?.modifier ?? 0,
+    };
+  }
+
+  /** Active encounter + species, or a thrown domain error. Read-only. */
+  async function loadActiveEncounter(
+    playerId: number,
+    encounterId: number,
+    now: Date,
+  ): Promise<{ encounter: EncounterRow; species: SpeciesRow }> {
+    const [row] = await db
+      .select({ encounter: encounters, species })
+      .from(encounters)
+      .innerJoin(species, eq(encounters.speciesId, species.id))
+      .where(and(eq(encounters.id, encounterId), eq(encounters.playerId, playerId)))
+      .limit(1);
+    if (!row) throw new EncounterNotFoundError();
+    if (row.encounter.state !== 'active') throw new EncounterAlreadyResolvedError();
+    if (row.encounter.expiresAt.getTime() <= now.getTime()) throw new EncounterExpiredError();
+    return row;
+  }
+
+  async function buildQuote(
+    encounter: EncounterRow,
+    speciesRow: SpeciesRow,
+    item: ItemRow | null,
+    playerId: number,
+  ): Promise<CaptureQuote> {
+    const rarity = speciesRow.rarity as Rarity;
+    const { buddyAffinityModifier, captureBonusModifier } = await gatherChanceInputs(
+      db,
+      playerId,
+      speciesRow,
+    );
+    const baselineChance = computeCaptureChance({
+      guaranteed: false,
+      baseCaptureRate: speciesRow.baseCaptureRate,
+      rarity,
+      captureModifier: null,
+      config: captureConfig,
+      buddyAffinityModifier,
+      captureBonusModifier,
+    });
+    const guaranteed = item?.isGuaranteedCapture ?? false;
+    const itemCaptureBonus = guaranteed ? 0 : (item?.captureBonus ?? 0);
+    const chance = item
+      ? computeCaptureChance({
+          guaranteed,
+          baseCaptureRate: speciesRow.baseCaptureRate,
+          rarity,
+          captureModifier: item.captureModifier,
+          config: captureConfig,
+          buddyAffinityModifier,
+          captureBonusModifier,
+          itemCaptureBonus,
+        })
+      : baselineChance;
+    return {
+      encounter,
+      species: speciesRow,
+      item,
+      guaranteed,
+      chance,
+      baselineChance,
+      eligible: item ? isCaptureItemEligible(item, rarity) : true,
+      buddyAffinityModifier,
+      captureBonusModifier,
+      itemCaptureBonus,
+    };
+  }
+
   return {
-    async attemptCapture(playerId, encounterId, itemSlug, now = new Date()) {
+    async selectCaptureItem(playerId, encounterId, itemSlug, now = new Date()) {
+      const { encounter, species: speciesRow } = await loadActiveEncounter(
+        playerId,
+        encounterId,
+        now,
+      );
+      const [item] = await db.select().from(items).where(eq(items.slug, itemSlug));
+      if (!item || !item.enabled) throw new ItemNotFoundError(itemSlug);
+      if (item.category !== 'capture') throw new ItemNotUsableError(itemSlug);
+      if (!isCaptureItemEligible(item, speciesRow.rarity)) {
+        throw new CaptureItemNotEligibleError(item.name, speciesRow.rarity);
+      }
+      // Ownership is checked here for the player's benefit, but deliberately
+      // *not* trusted: the commit re-checks it while consuming, so an item
+      // sold between selection and Capture is caught there too.
+      const owned = await inventory.getQuantity(playerId, item.id);
+      if (owned <= 0) throw new InsufficientItemsError(item.id, 1);
+
+      // Conditional update: only an encounter that is still this player's and
+      // still active can take a selection, so a stale click cannot revive one.
+      const [updated] = await db
+        .update(encounters)
+        .set({ selectedItemId: item.id })
+        .where(
+          and(
+            eq(encounters.id, encounter.id),
+            eq(encounters.playerId, playerId),
+            eq(encounters.state, 'active'),
+          ),
+        )
+        .returning();
+      if (!updated) throw new EncounterAlreadyResolvedError();
+      return buildQuote(updated, speciesRow, item, playerId);
+    },
+
+    async quoteCapture(playerId, encounterId, itemSlug, now = new Date()) {
+      const { encounter, species: speciesRow } = await loadActiveEncounter(
+        playerId,
+        encounterId,
+        now,
+      );
+      let item: ItemRow | null = null;
+      if (itemSlug === undefined) {
+        if (encounter.selectedItemId != null) {
+          const [row] = await db
+            .select()
+            .from(items)
+            .where(eq(items.id, encounter.selectedItemId));
+          item = row ?? null;
+        }
+      } else if (itemSlug !== null) {
+        const [row] = await db.select().from(items).where(eq(items.slug, itemSlug));
+        if (!row || !row.enabled) throw new ItemNotFoundError(itemSlug);
+        item = row;
+      }
+      return buildQuote(encounter, speciesRow, item, playerId);
+    },
+
+    async listEligibleCaptureItems(playerId, encounterId, now = new Date()) {
+      const { encounter, species: speciesRow } = await loadActiveEncounter(
+        playerId,
+        encounterId,
+        now,
+      );
+      const owned = await inventory.getInventory(playerId);
+      const candidates = owned.filter(
+        (entry) =>
+          entry.item.enabled &&
+          entry.item.category === 'capture' &&
+          entry.quantity > 0 &&
+          isCaptureItemEligible(entry.item, speciesRow.rarity),
+      );
+      const quotes = await Promise.all(
+        candidates.map((entry) => buildQuote(encounter, speciesRow, entry.item, playerId)),
+      );
+      return candidates
+        .map((entry, i) => ({
+          item: entry.item,
+          quantity: entry.quantity,
+          quote: quotes[i]!,
+        }))
+        // Guaranteed last (it is the nuclear option), otherwise best odds
+        // first so the obvious pick is the top of the menu.
+        .sort((a, b) => {
+          if (a.quote.guaranteed !== b.quote.guaranteed) return a.quote.guaranteed ? 1 : -1;
+          if (a.quote.chance !== b.quote.chance) return b.quote.chance - a.quote.chance;
+          return a.item.slug.localeCompare(b.item.slug);
+        });
+    },
+
+    async attemptCapture(playerId, encounterId, itemSlug = null, optionsOrNow) {
+      const options: AttemptCaptureOptions =
+        optionsOrNow instanceof Date ? { now: optionsOrNow } : (optionsOrNow ?? {});
+      const now = options.now ?? new Date();
+      const expectedAttemptCount = options.expectedAttemptCount;
       // Result-or-expiry — throwing inside the transaction would roll back
       // the expiry update, so we signal expiry to the caller instead and
       // throw outside the tx once the state change is committed.
@@ -204,14 +521,15 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
           // CHECK constraint on attempt_count catches this as a last line too.
           throw new NoAttemptsRemainingError();
         }
-
-        const [item] = await tx.select().from(items).where(eq(items.slug, itemSlug));
-        if (!item || !item.enabled) throw new ItemNotFoundError(itemSlug);
-        if (item.category !== 'capture') throw new ItemNotUsableError(itemSlug);
-
-        // Consume the charm. InsufficientItemsError bubbles out with the
-        // transaction rolled back — no attempt row, no state change.
-        await inventory.consumeItem(tx, playerId, item.id, 1);
+        // Stale-interaction guard. Checked under the lock, so a second click
+        // of the *same rendered button* — which is what a double-click is —
+        // finds the count already advanced and resolves nothing.
+        if (
+          expectedAttemptCount !== undefined &&
+          expectedAttemptCount !== encounter.attemptCount
+        ) {
+          throw new EncounterStaleError();
+        }
 
         const [speciesRow] = await tx
           .select()
@@ -222,6 +540,40 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
           // never deletes rows), but treat it defensively.
           throw new EncounterNotFoundError();
         }
+
+        // Resolve *which* item is being committed. An explicit slug is the
+        // legacy/one-click path; otherwise the encounter's own selection is
+        // read back here, under the lock, rather than trusted from the button.
+        let item: ItemRow | undefined;
+        if (itemSlug != null) {
+          [item] = await tx.select().from(items).where(eq(items.slug, itemSlug));
+          if (!item || !item.enabled) throw new ItemNotFoundError(itemSlug);
+        } else {
+          if (encounter.selectedItemId == null) throw new NoCaptureItemSelectedError();
+          [item] = await tx
+            .select()
+            .from(items)
+            .where(eq(items.id, encounter.selectedItemId));
+          if (!item || !item.enabled) {
+            // The selected item was disabled underneath the player. Clear the
+            // dangling selection so the refreshed screen offers a fresh pick.
+            await tx
+              .update(encounters)
+              .set({ selectedItemId: null })
+              .where(eq(encounters.id, encounter.id));
+            throw new NoCaptureItemSelectedError();
+          }
+        }
+        if (item.category !== 'capture') throw new ItemNotUsableError(item.slug);
+        // Rarity eligibility, revalidated authoritatively: content may have
+        // changed since the selection, and the selector is only a convenience.
+        if (!isCaptureItemEligible(item, speciesRow.rarity)) {
+          throw new CaptureItemNotEligibleError(item.name, speciesRow.rarity);
+        }
+
+        // Consume the item. InsufficientItemsError bubbles out with the
+        // transaction rolled back — no attempt row, no state change.
+        await inventory.consumeItem(tx, playerId, item.id, 1);
 
         const guaranteed = item.isGuaranteedCapture;
         const rarity = speciesRow.rarity as keyof typeof captureConfig.baseRatesByRarity;
@@ -261,6 +613,10 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
             }
           : null;
 
+        // The item's own flat bonus. Guaranteed captures bypass the formula,
+        // so it contributes nothing there (and content forbids the pairing).
+        const itemCaptureBonus = guaranteed ? 0 : (item.captureBonus ?? 0);
+
         const chance = computeCaptureChance({
           guaranteed,
           baseCaptureRate: speciesRow.baseCaptureRate,
@@ -269,6 +625,7 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
           config: captureConfig,
           buddyAffinityModifier,
           captureBonusModifier,
+          itemCaptureBonus,
         });
         const affinity: CaptureAffinityInfo = {
           buddyWaifuId: buddy?.waifu.id ?? null,
@@ -310,6 +667,9 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
               attemptCount: attemptNumber,
               state: 'captured',
               resolvedAt: now,
+              // A resolved encounter holds no selection — nothing may be
+              // committed against it again.
+              selectedItemId: null,
             })
             .where(eq(encounters.id, encounter.id))
             .returning();
@@ -328,11 +688,20 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
           isDuplicate = (existing?.count ?? 0) > 0;
           isNewDex = !isDuplicate;
 
+          // Base SP is rolled here — inside the capture transaction, from the
+          // same injectable `rng` the chance roll used, and written in the
+          // same INSERT that creates the copy. A retried transaction re-runs
+          // the whole block, so it cannot half-apply: either a copy exists
+          // with the SP rolled alongside it, or neither does. There is no
+          // second write that could leave a copy without a value, and no read
+          // path that recomputes one.
+          const baseSp = rollBaseSeductivePower(speciesRow.rarity, rng, spRanges);
           const [created] = await tx
             .insert(playerWaifus)
             .values({
               playerId,
               speciesId: speciesRow.id,
+              baseSp,
             })
             .returning();
           newWaifu = created!;
@@ -354,8 +723,10 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
               isDuplicate,
               isNewDex,
               xpDelta,
+              baseSp,
               affinity,
               effect,
+              itemCaptureBonus,
             },
             'capture success',
           );
@@ -366,6 +737,7 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
               attemptCount: attemptNumber,
               state: 'escaped',
               resolvedAt: now,
+              selectedItemId: null,
             })
             .where(eq(encounters.id, encounter.id))
             .returning();
@@ -375,7 +747,9 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
         } else {
           const [row] = await tx
             .update(encounters)
-            .set({ attemptCount: attemptNumber })
+            // Selection deliberately survives a failed attempt: she is still
+            // there, and re-committing the same item should be one click.
+            .set({ attemptCount: attemptNumber, selectedItemId: item.id })
             .where(eq(encounters.id, encounter.id))
             .returning();
           updatedEncounter = row!;
@@ -409,6 +783,9 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
             captureBonusModifier: effect?.captureBonusModifier ?? 0,
             captureBonusSource: effect?.sourceItemSlug ?? null,
             captureBonusChargesRemaining: effect?.chargesRemaining ?? null,
+            // The committed item's own additive term, so one progression row
+            // still explains the whole chance.
+            itemCaptureBonus,
           },
         });
         // "new dex entry" is logged separately for audit clarity.
@@ -463,6 +840,7 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
             isNewDex,
             affinity,
             effect,
+            itemCaptureBonus,
             newAppearances,
           },
         };

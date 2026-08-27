@@ -88,6 +88,14 @@ const itemFields = {
   buyPrice: z.number().int().nullable(),
   priceCurrency: z.enum(['waifubux', 'essence']),
   captureModifier: z.number().nullable(),
+  captureBonus: z
+    .number()
+    .nullable()
+    .describe('Flat additive capture bonus in probability points (0.30 = +30pp).'),
+  captureRarities: z
+    .array(z.string())
+    .nullable()
+    .describe('Encounter rarities this capture item is eligible against; null = all.'),
   isGuaranteedCapture: z.boolean(),
   effectType: z.string().nullable().describe('Non-null makes the item usable from the inventory.'),
   effectConfig: z.record(z.string(), z.unknown()).nullable(),

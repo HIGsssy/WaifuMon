@@ -24,6 +24,7 @@ import type { AppContext, Provisioned } from '../../src/discord/types';
 import {
   bootstrapApp,
   createEventHarness,
+  insertOwnedWaifu,
   provisionPlayer,
   type App,
   type EventHarness,
@@ -83,6 +84,7 @@ beforeAll(async () => {
       quests: app.quests,
       effects: app.effects,
       itemUse: app.itemUse,
+      gifts: app.gifts,
       session: app.session,
     },
   } as AppContext;
@@ -114,10 +116,7 @@ function xpForLevel(level: number): number {
 
 async function grantAt(level: number, xpOffset = 0): Promise<number> {
   const [sp] = await t.db.select().from(species).where(eq(species.slug, SLUG));
-  const [row] = await t.db
-    .insert(playerWaifus)
-    .values({ playerId: prov.playerId, speciesId: sp!.id, level, xp: xpForLevel(level) + xpOffset })
-    .returning();
+  const row = await insertOwnedWaifu(t.db, { playerId: prov.playerId, speciesId: sp!.id, level, xp: xpForLevel(level) + xpOffset });
   return row!.id;
 }
 

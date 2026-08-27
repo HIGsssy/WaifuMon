@@ -413,6 +413,98 @@
       }
     ]
   },
+  "affectionGifts": {
+    "enabled": true,
+    "tiers": [
+      {
+        "minAffection": 500,
+        "dailyChance": 0.1,
+        "guaranteeAfter": 7,
+        "tier": "low"
+      },
+      {
+        "minAffection": 1500,
+        "dailyChance": 0.15,
+        "guaranteeAfter": 6,
+        "tier": "mid"
+      },
+      {
+        "minAffection": 3000,
+        "dailyChance": 0.2,
+        "guaranteeAfter": 5,
+        "tier": "high"
+      }
+    ],
+    "lootTable": [
+      {
+        "slug": "quickie_coffee",
+        "quantity": 1,
+        "weight": 4200
+      },
+      {
+        "slug": "reach_around",
+        "quantity": 1,
+        "weight": 2700
+      },
+      {
+        "slug": "full_body_massage",
+        "quantity": 1,
+        "weight": 1200
+      },
+      {
+        "slug": "fluffy_cuffs",
+        "quantity": 1,
+        "weight": 1000
+      },
+      {
+        "slug": "shibari_rope",
+        "quantity": 1,
+        "weight": 750
+      },
+      {
+        "slug": "prismatic_charm",
+        "quantity": 1,
+        "weight": 140
+      },
+      {
+        "slug": "mythic_contract",
+        "quantity": 1,
+        "weight": 10
+      }
+    ]
+  },
+  "seductivePower": {
+    "rangesByRarity": {
+      "N": {
+        "min": 90,
+        "max": 100
+      },
+      "R": {
+        "min": 105,
+        "max": 115
+      },
+      "SR": {
+        "min": 120,
+        "max": 130
+      },
+      "SSR": {
+        "min": 135,
+        "max": 145
+      },
+      "UR": {
+        "min": 150,
+        "max": 160
+      },
+      "LR": {
+        "min": 165,
+        "max": 175
+      },
+      "EX": {
+        "min": 180,
+        "max": 190
+      }
+    }
+  },
   "uiFlavor": {
     "mainMenu": [
       "The charm compass hums softly. Somewhere nearby, a Waifumon is watching.",

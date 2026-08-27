@@ -20,8 +20,13 @@ import {
 } from '../../src/db/schema';
 import { AlreadyClaimedError, InsufficientEnergyError } from '../../src/shared/errors';
 import { createHuntService } from '../../src/modules/hunt/huntService';
-import type { Rng } from '../../src/shared/random';
-import { bootstrapApp, provisionPlayer, type App } from '../helpers/fixtures';
+import {
+  bootstrapApp,
+  insertOwnedWaifu,
+  provisionPlayer,
+  scriptedRng,
+  type App,
+} from '../helpers/fixtures';
 import { createTestDb, type TestDb } from '../helpers/testDb';
 
 let t: TestDb;
@@ -68,23 +73,10 @@ async function grantWaifu(
   overrides: Partial<PlayerWaifuRow> = {},
 ): Promise<PlayerWaifuRow> {
   const [sp] = await t.db.select().from(species).where(eq(species.slug, slug));
-  const [row] = await t.db
-    .insert(playerWaifus)
-    .values({ playerId, speciesId: sp!.id, ...overrides })
-    .returning();
+  const row = await insertOwnedWaifu(t.db, { playerId, speciesId: sp!.id, ...overrides });
   return row!;
 }
 
-function scriptedRng(nexts: number[]): Rng {
-  let i = 0;
-  return {
-    next: () => nexts[i++]!,
-    intInclusive(min, max) {
-      const v = nexts[i++]!;
-      return Math.floor(v * (max - min + 1)) + min;
-    },
-  };
-}
 
 const INTERVAL_MIN = 30;
 const T0 = new Date('2026-07-15T12:00:00Z');

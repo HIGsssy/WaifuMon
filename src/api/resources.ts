@@ -17,6 +17,7 @@
  * these mappers deliberately do not re-list pass-through fields — a new
  * column cannot leak, and a renamed one fails the typecheck.
  */
+import { seductivePowerView } from '../modules/power/seductivePower';
 import type {
   Affinity,
   ContentRating,
@@ -123,6 +124,10 @@ export function toOwnedWaifuResource(
   const current = appearance.currentAppearance(species, waifu.variant);
   return {
     ...waifu,
+    // Current SP is computed here rather than stored, through the one domain
+    // function every other surface calls — so the API and the inspect embed
+    // cannot round the same copy differently.
+    seductivePower: seductivePowerView(waifu.baseSp, waifu.level),
     // Unlocked by construction: it is what she is wearing. `seenAppearances`
     // is notification bookkeeping and is dropped by the schema, not here.
     selectedAppearance: toAppearanceResource(current, {

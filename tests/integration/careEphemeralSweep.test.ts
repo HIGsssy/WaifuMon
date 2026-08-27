@@ -26,6 +26,7 @@ import type { AppContext, PlayerInteraction, Provisioned } from '../../src/disco
 import {
   bootstrapApp,
   createEventHarness,
+  insertOwnedWaifu,
   provisionPlayer,
   type App,
   type EventHarness,
@@ -96,6 +97,7 @@ beforeAll(async () => {
       quests: app.quests,
       effects: app.effects,
       itemUse: app.itemUse,
+      gifts: app.gifts,
       session: app.session,
     },
   } as unknown as AppContext;
@@ -130,10 +132,7 @@ beforeEach(async () => {
 
 async function grantBuddy(): Promise<number> {
   const [sp] = await t.db.select().from(species).where(eq(species.slug, 'neko_barista'));
-  const [row] = await t.db
-    .insert(playerWaifus)
-    .values({ playerId: prov.playerId, speciesId: sp!.id, level: 5 })
-    .returning();
+  const row = await insertOwnedWaifu(t.db, { playerId: prov.playerId, speciesId: sp!.id, level: 5 });
   await app.collection.setBuddy(prov.playerId, row!.id);
   return row!.id;
 }
