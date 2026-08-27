@@ -382,6 +382,25 @@ export class EncounterStaleError extends AppError {
   }
 }
 
+/**
+ * The buff this item grants is already at its full charge count, so using
+ * another would consume it for nothing.
+ *
+ * Mirrors {@link EnergyAlreadyFullError}: the request is well-formed, but
+ * there is nothing to gain, so the item is refused rather than burned. Scoped
+ * to the **encounter** path — the inventory screen's refresh behaviour is
+ * unchanged, because that is where a player deliberately tops a buff back up.
+ */
+export class EffectAlreadyAtMaxChargesError extends AppError {
+  constructor(itemName: string, charges: number) {
+    super(
+      'EFFECT_ALREADY_AT_MAX_CHARGES',
+      `${itemName} buff already has ${charges} charges`,
+      `Your **${itemName}** is already at **${charges}** charges~ Save it for later.`,
+    );
+  }
+}
+
 /** No unclaimed gift exists for that owned copy (or it was already taken). */
 export class GiftNotFoundError extends AppError {
   constructor() {

@@ -45,6 +45,7 @@ import type {
   CaptureAttemptResult,
   CaptureOutcome,
   CaptureQuote,
+  EncounterItemOption,
 } from '../../modules/capture/captureService';
 import type { HuntResult } from '../../modules/hunt/huntService';
 import {
@@ -54,6 +55,7 @@ import {
   EncounterAlreadyResolvedError,
   EncounterExpiredError,
   EncounterNotFoundError,
+  EffectAlreadyAtMaxChargesError,
   EncounterStaleError,
   HuntCooldownError,
   InsufficientEnergyError,
@@ -153,35 +155,93 @@ function encounterButtonRows(
 }
 
 /**
- * The item selector: only capture items the player *owns* and that are
- * *eligible* against this encounter's rarity. Both filters come from the
- * capture service, so the menu can never offer something the authoritative
- * commit would then refuse.
+ * Option values encode which *kind* of item was chosen, because the two do
+ * very different things: a direct item is stored against the encounter and
+ * spent later, a consumable is spent now.
  *
- * Each option carries the resulting chance, because that is the whole decision
- * the player is making — and the number is the service's, not this file's.
+ * The consumable's value also carries the charge count it was rendered
+ * against. That is the stale-click token — a second submission of the same
+ * rendered menu carries the old count, and the service refuses it.
+ */
+const DIRECT_VALUE_PREFIX = 'd:';
+const CONSUMABLE_VALUE_PREFIX = 'u:';
+
+export type EncounterItemChoice =
+  | { kind: 'direct'; slug: string }
+  | { kind: 'consumable'; slug: string; expectedCharges: number };
+
+export function parseEncounterItemValue(value: string): EncounterItemChoice | null {
+  if (value.startsWith(DIRECT_VALUE_PREFIX)) {
+    const slug = value.slice(DIRECT_VALUE_PREFIX.length);
+    return slug.length > 0 ? { kind: 'direct', slug } : null;
+  }
+  if (value.startsWith(CONSUMABLE_VALUE_PREFIX)) {
+    const rest = value.slice(CONSUMABLE_VALUE_PREFIX.length);
+    const split = rest.lastIndexOf(':');
+    if (split <= 0) return null;
+    const slug = rest.slice(0, split);
+    const charges = Number(rest.slice(split + 1));
+    if (!Number.isInteger(charges) || charges < 0) return null;
+    return { kind: 'consumable', slug, expectedCharges: charges };
+  }
+  return null;
+}
+
+/**
+ * The encounter item selector.
+ *
+ * Everything applicable to *this* encounter, in one menu: eligible direct
+ * capture items, and any persistent consumable whose effect would change the
+ * attempt (Microdose). Availability comes from
+ * `CaptureService.listEncounterItems`, which decides on behaviour rather than
+ * on `category` — the bug this replaced was a `category === 'capture'` filter
+ * that hid Microdose from the one screen where it matters most.
+ *
+ * Each row's description is written so the cost is unmissable *before* the
+ * click: a direct item says when it will be spent, a consumable says it is
+ * spent immediately.
  */
 function itemSelectRow(
   encounter: EncounterRow,
-  options: ReadonlyArray<{ item: ItemRow; quantity: number; quote: CaptureQuote }>,
+  options: ReadonlyArray<EncounterItemOption>,
   selectedItemId: number | null,
 ): ActionRowBuilder<StringSelectMenuBuilder> {
   const menu = new StringSelectMenuBuilder()
-    .setCustomId(buildCustomId('enc', 'pick_item', String(encounter.id)))
-    .setPlaceholder('Choose a capture item…')
+    .setCustomId(
+      buildCustomId('enc', 'pick_item', String(encounter.id), String(encounter.attemptCount)),
+    )
+    .setPlaceholder('Choose an item…')
     .addOptions(
-      // Discord caps a select at 25 options; the capture catalog is far
-      // smaller, but the slice keeps a future content explosion safe.
-      options.slice(0, 25).map((entry) => ({
-        label: `${entry.item.name} ×${entry.quantity}`.slice(0, 100),
-        value: entry.item.slug,
-        description: (entry.quote.guaranteed
-          ? 'Guaranteed capture'
-          : `Capture chance: ${formatChance(entry.quote.chance)}`
-        ).slice(0, 100),
-        ...(entry.item.emoji ? { emoji: entry.item.emoji } : {}),
-        default: entry.item.id === selectedItemId,
-      })),
+      // Discord caps a select at 25 options; the catalog is far smaller, but
+      // the slice keeps a future content explosion safe.
+      options.slice(0, 25).map((entry) => {
+        if (entry.kind === 'consumable') {
+          const remaining = entry.charges?.remaining ?? 0;
+          const max = entry.charges?.max ?? 0;
+          return {
+            label: `${entry.item.name} ×${entry.quantity}`.slice(0, 100),
+            value: `${CONSUMABLE_VALUE_PREFIX}${entry.item.slug}:${remaining}`,
+            // Spelled out because this is the one option that costs the
+            // player something the moment they pick it.
+            description: (remaining > 0
+              ? `Used now · refreshes to ${max} attempts`
+              : `Used now · lasts ${max} attempts`
+            ).slice(0, 100),
+            ...(entry.item.emoji ? { emoji: entry.item.emoji } : {}),
+            default: false,
+          };
+        }
+        return {
+          label: `${entry.item.name} ×${entry.quantity}`.slice(0, 100),
+          value: `${DIRECT_VALUE_PREFIX}${entry.item.slug}`,
+          description: (entry.quote.guaranteed
+            ? 'Guaranteed capture · used on Capture'
+            : `Capture chance: ${formatChance(entry.quote.chance)} · used on Capture`
+          ).slice(0, 100),
+          ...(entry.item.emoji ? { emoji: entry.item.emoji } : {}),
+          default: entry.item.id === selectedItemId,
+        };
+      }),
     );
   return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu);
 }
@@ -226,15 +286,17 @@ async function buildEncounterView(
   options: EncounterViewOptions = {},
 ): Promise<EncounterView> {
   const { energyRemaining, showSelector = false, statusLine } = options;
-  // Eligible items and the selected-item quote both come from the capture
-  // service, so this screen never does capture math of its own.
-  const eligible = await ctx.services.capture.listEligibleCaptureItems(
+  // Applicable items and the selected-item quote both come from the capture
+  // service, so this screen never does capture math of its own — and never
+  // second-guesses which items belong here.
+  const applicable = await ctx.services.capture.listEncounterItems(
     prov.playerId,
     encounter.id,
   );
+  const directItems = applicable.filter((entry) => entry.kind === 'direct');
   const selectedEntry =
     encounter.selectedItemId != null
-      ? (eligible.find((e) => e.item.id === encounter.selectedItemId) ?? null)
+      ? (directItems.find((e) => e.item.id === encounter.selectedItemId) ?? null)
       : null;
 
   // Affinity read (5D): only meaningful with an active buddy. Read-only here —
@@ -255,7 +317,7 @@ async function buildEncounterView(
 
   const prompt = selectedEntry
     ? 'Capture, change your item, or Let Her Go.'
-    : eligible.length > 0
+    : directItems.length > 0
       ? 'Pick an item to try with, or Let Her Go.'
       : 'You have nothing that works on her~ Let Her Go, or restock.';
   const footer =
@@ -330,8 +392,8 @@ async function buildEncounterView(
     }
   }
   const components: EncounterRowComponent[] = [];
-  if (showSelector && eligible.length > 0) {
-    components.push(itemSelectRow(encounter, eligible, encounter.selectedItemId));
+  if (showSelector && applicable.length > 0) {
+    components.push(itemSelectRow(encounter, applicable, encounter.selectedItemId));
   }
   components.push(
     ...encounterButtonRows(
@@ -339,7 +401,9 @@ async function buildEncounterView(
       selectedEntry
         ? { item: selectedEntry.item, quantity: selectedEntry.quantity }
         : null,
-      eligible.length > 0,
+      // Use Item stays live while *anything* applies — a player with no
+      // eligible charm but a Microdose in the bag still has a move to make.
+      applicable.length > 0,
     ),
   );
   return { embeds: [embed], components, files };
@@ -875,12 +939,18 @@ export async function handleEncounterPick(
 }
 
 /**
- * A capture item was chosen from the selector.
+ * An item was chosen from the encounter selector.
  *
- * Nothing is consumed — the selection is persisted on the encounter and the
- * screen repaints with the new odds and a Capture button. Changing the choice
- * (or walking away) costs the player nothing, which is the entire point of
- * separating selection from commitment.
+ * Two outcomes, deliberately kept apart:
+ *
+ *   - a **direct** capture item is *selected* — persisted against the
+ *     encounter, consumed only when Capture is committed, and freely changed;
+ *   - a **consumable** (Microdose) is *used* — spent immediately through the
+ *     authoritative item-use service, applied as a persistent buff, and
+ *     leaving the encounter and its selected direct item untouched.
+ *
+ * Either way the player stays on this screen and the chance is repainted from
+ * the capture service's own quote.
  */
 export async function handleEncounterPickItem(
   ctx: AppContext,
@@ -889,9 +959,27 @@ export async function handleEncounterPickItem(
   args: string[],
 ): Promise<void> {
   const encounterId = Number(args[0]);
-  const itemSlug = interaction.values[0];
-  if (!Number.isInteger(encounterId) || !itemSlug) {
+  const expectedAttemptCount = args[1] === undefined ? undefined : Number(args[1]);
+  const raw = interaction.values[0];
+  if (!Number.isInteger(encounterId) || raw === undefined) {
     await respondEphemeral(interaction, 'That encounter is no longer active.');
+    return;
+  }
+  const choice = parseEncounterItemValue(raw);
+  if (!choice) {
+    await respondEphemeral(interaction, 'That button no longer works~');
+    return;
+  }
+
+  if (choice.kind === 'consumable') {
+    await activateEncounterConsumable(ctx, interaction, prov, {
+      encounterId,
+      slug: choice.slug,
+      expectedCharges: choice.expectedCharges,
+      ...(expectedAttemptCount === undefined || !Number.isInteger(expectedAttemptCount)
+        ? {}
+        : { expectedAttemptCount }),
+    });
     return;
   }
 
@@ -900,7 +988,7 @@ export async function handleEncounterPickItem(
     quote = await ctx.services.capture.selectCaptureItem(
       prov.playerId,
       encounterId,
-      itemSlug,
+      choice.slug,
     );
   } catch (err) {
     await respondEphemeral(interaction, translateCaptureError(err));
@@ -913,6 +1001,64 @@ export async function handleEncounterPickItem(
       `**${formatChance(quote.baselineChance)} → ${formatChance(quote.chance)}**`;
 
   const view = await buildEncounterView(ctx, prov, quote.encounter, quote.species, {
+    statusLine,
+  });
+  await respondEphemeral(interaction, view);
+}
+
+interface ActivateConsumableArgs {
+  encounterId: number;
+  slug: string;
+  expectedCharges: number;
+  expectedAttemptCount?: number;
+}
+
+/**
+ * Spend a persistent consumable against the live encounter, then repaint.
+ *
+ * The service does the whole job in one transaction — encounter lock,
+ * revalidation, the stale-click guard, the inventory decrement, and the
+ * grant/refresh — so this handler only translates the result into a screen.
+ * A refusal leaves the encounter exactly as it was.
+ */
+async function activateEncounterConsumable(
+  ctx: AppContext,
+  interaction: StringSelectMenuInteraction,
+  prov: Provisioned,
+  args: ActivateConsumableArgs,
+): Promise<void> {
+  let result: Awaited<ReturnType<typeof ctx.services.capture.useEncounterConsumable>>;
+  try {
+    result = await ctx.services.capture.useEncounterConsumable(
+      prov.playerId,
+      args.encounterId,
+      args.slug,
+      {
+        expectedCharges: args.expectedCharges,
+        ...(args.expectedAttemptCount === undefined
+          ? {}
+          : { expectedAttemptCount: args.expectedAttemptCount }),
+      },
+    );
+  } catch (err) {
+    await respondEphemeral(interaction, translateCaptureError(err));
+    return;
+  }
+
+  const { use, quoteBefore, quoteAfter, item } = result;
+  const charges = use.kind === 'capture_bonus_charges' ? use.chargesRemaining : 0;
+  const refreshed = use.kind === 'capture_bonus_charges' && use.refreshed;
+  // Guaranteed-capture selections make a percentage meaningless, so the line
+  // says so rather than printing "100% → 100%".
+  const chanceLine = quoteAfter.guaranteed
+    ? 'Capture chance: **Guaranteed**'
+    : `Capture chance: **${formatChance(quoteBefore.chance)} → ${formatChance(quoteAfter.chance)}**`;
+  const statusLine =
+    `**${item.name} ${refreshed ? 'refreshed' : 'used'}**\n` +
+    `Capture bonus active for the next **${charges} attempts**.\n` +
+    chanceLine;
+
+  const view = await buildEncounterView(ctx, prov, result.encounter, result.species, {
     statusLine,
   });
   await respondEphemeral(interaction, view);
@@ -955,6 +1101,7 @@ function translateCaptureError(err: unknown): string {
   if (err instanceof EncounterStaleError) return err.userMessage;
   if (err instanceof NoCaptureItemSelectedError) return err.userMessage;
   if (err instanceof CaptureItemNotEligibleError) return err.userMessage;
+  if (err instanceof EffectAlreadyAtMaxChargesError) return err.userMessage;
   if (err instanceof InsufficientItemsError) {
     return "You don't have any of that~ Try a different one.";
   }

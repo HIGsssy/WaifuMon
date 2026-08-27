@@ -198,6 +198,8 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   CARE_TARGET_REQUIRED: 422,
   /** Well-formed, but this item may not be committed against this rarity. */
   CAPTURE_ITEM_NOT_ELIGIBLE: 422,
+  /** Mirrors ENERGY_ALREADY_FULL: nothing to gain, so nothing is spent. */
+  EFFECT_ALREADY_AT_MAX_CHARGES: 422,
   /** Capture was requested with nothing selected for the encounter. */
   NO_CAPTURE_ITEM_SELECTED: 422,
 };

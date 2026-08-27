@@ -158,6 +158,16 @@ export async function bootstrapApp(
     careConfig: content.tables.energy.careMode,
   });
   const effects = createPlayerEffectsService(t.db);
+  // Wired exactly as production does, so the encounter-consumable path is the
+  // default in tests rather than an opt-in.
+  const itemUse = createItemUseService({
+    db: t.db,
+    currency,
+    inventory,
+    effects,
+    progression,
+    care,
+  });
   // Wired exactly as production does — the daily claim is the authoritative
   // daily reset, so the gift roll rides inside its transaction.
   const gifts = createAffectionGiftService({
@@ -218,6 +228,7 @@ export async function bootstrapApp(
       collection,
       quests,
       effects,
+      itemUse,
       appearance,
       logger: t.logger,
       ...(opts.captureRng ? { rng: opts.captureRng } : {}),
@@ -227,14 +238,7 @@ export async function bootstrapApp(
     appearance,
     quests,
     effects,
-    itemUse: createItemUseService({
-      db: t.db,
-      currency,
-      inventory,
-      effects,
-      progression,
-      care,
-    }),
+    itemUse,
     session: createSessionService({
       db: t.db,
       timezone,
