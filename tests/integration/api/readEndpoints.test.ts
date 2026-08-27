@@ -10,8 +10,13 @@ import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createPlatformApiServer } from '../../../src/api/server';
 import type { ZodFastify } from '../../../src/api/plugins/typeProvider';
-import { encounters, items, playerWaifus, species } from '../../../src/db/schema';
-import { bootstrapApp, provisionPlayer, type App } from '../../helpers/fixtures';
+import { encounters, items, species } from '../../../src/db/schema';
+import {
+  bootstrapApp,
+  insertOwnedWaifus,
+  provisionPlayer,
+  type App,
+} from '../../helpers/fixtures';
 import { createCapturedLogger, createProbes, TEST_TOKEN } from '../../helpers/platformApiFixtures';
 import { createTestDb, type TestDb } from '../../helpers/testDb';
 
@@ -54,13 +59,10 @@ beforeAll(async () => {
     .limit(2);
   const [first, second] = speciesRows;
   firstSpeciesSlug = first!.slug;
-  const inserted = await t.db
-    .insert(playerWaifus)
-    .values([
-      { playerId, speciesId: first!.id, level: 3, xp: 25, affection: 4 },
-      { playerId, speciesId: second!.id, level: 1, xp: 0, affection: 0 },
-    ])
-    .returning();
+  const inserted = await insertOwnedWaifus(t.db, [
+    { playerId, speciesId: first!.id, level: 3, xp: 25, affection: 4 },
+    { playerId, speciesId: second!.id, level: 1, xp: 0, affection: 0 },
+  ]);
   buddyWaifuId = inserted[0]!.id;
   secondWaifuId = inserted[1]!.id;
 

@@ -23,7 +23,14 @@ import {
   InventoryCapacityError,
 } from '../../src/shared/errors';
 import type { Rng } from '../../src/shared/random';
-import { bootstrapApp, getItemBySlug, provisionPlayer, type App } from '../helpers/fixtures';
+import {
+  bootstrapApp,
+  getItemBySlug,
+  insertOwnedWaifu,
+  provisionPlayer,
+  scriptedRng,
+  type App,
+} from '../helpers/fixtures';
 import { createTestDb, type TestDb } from '../helpers/testDb';
 
 let t: TestDb;
@@ -39,22 +46,6 @@ afterAll(async () => {
   await t.cleanup();
 });
 
-/**
- * Scripted RNG. The gift service consumes at most two values per roll: the
- * chance roll first, then the weighted loot pick (only when a gift lands).
- */
-function scriptedRng(nexts: number[]): Rng {
-  let i = 0;
-  return {
-    next: () => {
-      if (i >= nexts.length) throw new Error(`scriptedRng exhausted at ${i}`);
-      return nexts[i++]!;
-    },
-    intInclusive(min, max) {
-      return Math.floor((nexts[i++] ?? 0) * (max - min + 1)) + min;
-    },
-  };
-}
 
 /** A gift service driven by a fixed RNG, wired exactly like production. */
 function giftService(rng: Rng, config = app.content.tables.affectionGifts) {
@@ -72,10 +63,7 @@ function giftService(rng: Rng, config = app.content.tables.affectionGifts) {
 
 async function giveWaifu(affection: number): Promise<PlayerWaifuRow> {
   const [speciesRow] = await t.db.select().from(species).limit(1);
-  const [row] = await t.db
-    .insert(playerWaifus)
-    .values({ playerId, speciesId: speciesRow!.id, affection })
-    .returning();
+  const row = await insertOwnedWaifu(t.db, { playerId, speciesId: speciesRow!.id, affection });
   return row!;
 }
 

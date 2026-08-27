@@ -12,7 +12,6 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   playerCurrencies,
   playerInventory,
-  playerWaifus,
   players,
   species,
 } from '../../src/db/schema';
@@ -21,7 +20,13 @@ import {
   EnergyAlreadyFullError,
   InsufficientItemsError,
 } from '../../src/shared/errors';
-import { bootstrapApp, getItemBySlug, provisionPlayer, type App } from '../helpers/fixtures';
+import {
+  bootstrapApp,
+  getItemBySlug,
+  insertOwnedWaifu,
+  provisionPlayer,
+  type App,
+} from '../helpers/fixtures';
 import { createTestDb, type TestDb } from '../helpers/testDb';
 
 let t: TestDb;
@@ -62,10 +67,7 @@ async function careTarget(): Promise<number> {
   const existing = owned.entries[0]?.waifu.id;
   if (existing != null) return existing;
   const [speciesRow] = await t.db.select().from(species).limit(1);
-  const [row] = await t.db
-    .insert(playerWaifus)
-    .values({ playerId, speciesId: speciesRow!.id })
-    .returning();
+  const row = await insertOwnedWaifu(t.db, { playerId, speciesId: speciesRow!.id });
   return row!.id;
 }
 

@@ -18,6 +18,12 @@ import {
  * the dependency runs content → cards only.
  */
 import { RACE_CODES } from '../cards/race';
+/**
+ * The shipped SP ladder doubles as this schema's default, so content and code
+ * cannot ship disagreeing tables — omitting the block yields exactly the
+ * constant the domain module already uses.
+ */
+import { DEFAULT_SP_RANGES_BY_RARITY } from '../power/seductivePower';
 
 const slug = z
   .string()
@@ -1095,6 +1101,39 @@ const AFFECTION_GIFTS_DEFAULT: z.input<typeof AffectionGiftsConfigSchema> = {
   lootTable: [],
 };
 
+/**
+ * Seductive Power — the Level 1 Base SP band each rarity rolls within.
+ *
+ * Tuning, so it lives in content rather than in code: an operator can widen a
+ * band without a deploy. The *formula* that turns Base SP into Current SP is
+ * not tunable and stays in `modules/power/seductivePower.ts` behind
+ * `SP_FORMULA_VERSION`.
+ *
+ * Defaults to the shipped ladder, so a `tables.json` that omits the block
+ * still rolls correctly instead of failing to find a range. Every rarity must
+ * be present — including `EX`, which has no species in the current roster and
+ * must still be rollable the day one ships.
+ */
+export const SeductivePowerRangeSchema = z
+  .object({
+    min: z.number().int().positive(),
+    max: z.number().int().positive(),
+  })
+  .strict()
+  .refine((r) => r.max >= r.min, {
+    message: 'seductivePower range max must be >= min',
+  });
+
+export const SeductivePowerConfigSchema = z
+  .object({
+    rangesByRarity: z.object(
+      Object.fromEntries(
+        RARITIES.map((r) => [r, SeductivePowerRangeSchema] as const),
+      ) as { [K in (typeof RARITIES)[number]]: typeof SeductivePowerRangeSchema },
+    ),
+  })
+  .default({ rangesByRarity: DEFAULT_SP_RANGES_BY_RARITY });
+
 export const TablesFileSchema = z.object({
   energy: z.object({
     baseMax: z.number().int().positive(),
@@ -1121,6 +1160,9 @@ export const TablesFileSchema = z.object({
     pool: [],
   }),
   affectionGifts: AffectionGiftsConfigSchema.optional().default(AFFECTION_GIFTS_DEFAULT),
+  seductivePower: SeductivePowerConfigSchema.optional().default({
+    rangesByRarity: DEFAULT_SP_RANGES_BY_RARITY,
+  }),
   uiFlavor: UiFlavorConfigSchema.optional().default({ mainMenu: [] }),
   uiSplash: UiSplashConfigSchema.optional().default({
     enabled: false,
@@ -1145,6 +1187,7 @@ export type WaifuProgressionConfig = z.infer<typeof WaifuProgressionConfigSchema
 export type CareModeConfig = z.infer<typeof CareModeConfigSchema>;
 export type DailyQuestsConfig = z.infer<typeof DailyQuestsConfigSchema>;
 export type AffectionGiftsConfig = z.infer<typeof AffectionGiftsConfigSchema>;
+export type SeductivePowerConfig = z.infer<typeof SeductivePowerConfigSchema>;
 export type AffectionGiftTierConfig = z.infer<typeof AffectionGiftTierSchema>;
 export type AffectionGiftLootEntry = z.infer<typeof AffectionGiftLootEntrySchema>;
 export type QuestPoolEntry = z.infer<typeof QuestPoolEntrySchema>;

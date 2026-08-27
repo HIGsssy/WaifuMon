@@ -27,7 +27,13 @@ import {
   NoCaptureItemSelectedError,
 } from '../../src/shared/errors';
 import type { Rng } from '../../src/shared/random';
-import { bootstrapApp, getItemBySlug, provisionPlayer, type App } from '../helpers/fixtures';
+import {
+  bootstrapApp,
+  getItemBySlug,
+  provisionPlayer,
+  scriptedRng,
+  type App,
+} from '../helpers/fixtures';
 import { createTestDb, type TestDb } from '../helpers/testDb';
 
 let t: TestDb;
@@ -43,18 +49,6 @@ afterAll(async () => {
   await t.cleanup();
 });
 
-function scriptedRng(nexts: number[]): Rng {
-  let i = 0;
-  return {
-    next: () => {
-      if (i >= nexts.length) throw new Error(`scriptedRng exhausted at ${i}`);
-      return nexts[i++]!;
-    },
-    intInclusive(min, max) {
-      return Math.floor((nexts[i++] ?? 0) * (max - min + 1)) + min;
-    },
-  };
-}
 
 /** A capture service with a fixed RNG, wired exactly as production does. */
 function captureService(rng: Rng) {

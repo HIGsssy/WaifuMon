@@ -88,6 +88,7 @@ const WAIFU = {
   cosmetics: [],
   seenAppearances: ['standard'],
   giftRollCounter: 0,
+  baseSp: 96,
   caughtAt: new Date('2026-02-02T00:00:00.000Z'),
   releasedAt: null,
 };

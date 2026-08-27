@@ -20,7 +20,12 @@ import {
   WaifuIsFavoriteError,
   WaifuNotOwnedError,
 } from '../../src/shared/errors';
-import { bootstrapApp, provisionPlayer, type App } from '../helpers/fixtures';
+import {
+  bootstrapApp,
+  insertOwnedWaifu,
+  provisionPlayer,
+  type App,
+} from '../helpers/fixtures';
 import { createTestDb, type TestDb } from '../helpers/testDb';
 
 let t: TestDb;
@@ -46,14 +51,11 @@ async function grantWaifus(
     if (!sp) throw new Error(`missing species ${e.slug}`);
     const count = e.count ?? 1;
     for (let i = 0; i < count; i++) {
-      const [row] = await t.db
-        .insert(playerWaifus)
-        .values({
-          playerId,
-          speciesId: sp.id,
-          ...(e.isFavorite ? { isFavorite: true } : {}),
-        })
-        .returning();
+      const row = await insertOwnedWaifu(t.db, {
+        playerId,
+        speciesId: sp.id,
+        ...(e.isFavorite ? { isFavorite: true } : {}),
+      });
       created.push(row!);
     }
   }

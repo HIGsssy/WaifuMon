@@ -26,6 +26,7 @@ import type { LoadedContent, SpeciesContent } from '../../src/modules/content/sc
 import {
   bootstrapApp,
   createEventHarness,
+  insertOwnedWaifu,
   provisionPlayer,
   type App,
   type EventHarness,
@@ -134,10 +135,7 @@ beforeAll(async () => {
 
   const [row] = await t.db.select().from(species).where(eq(species.slug, 'alley_catgirl'));
   subject = row!;
-  const [waifu] = await t.db
-    .insert(playerWaifus)
-    .values({ playerId: prov.playerId, speciesId: subject.id, level: 10 })
-    .returning();
+  const waifu = await insertOwnedWaifu(t.db, { playerId: prov.playerId, speciesId: subject.id, level: 10 });
   waifuId = waifu!.id;
 
   liveContent = withCatalog(app.content, 'alley_catgirl');

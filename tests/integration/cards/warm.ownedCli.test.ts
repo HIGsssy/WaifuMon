@@ -19,7 +19,14 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 
 import { createTestDb, type TestDb } from '../../helpers/testDb';
-import { ASSETS_DIR, bootstrapApp, CONTENT_DIR, provisionPlayer, type App } from '../../helpers/fixtures';
+import {
+  ASSETS_DIR,
+  CONTENT_DIR,
+  bootstrapApp,
+  insertOwnedWaifu,
+  provisionPlayer,
+  type App,
+} from '../../helpers/fixtures';
 import { makeTempDir } from '../../helpers/cardFixtures';
 import { playerWaifus, species as speciesTable } from '../../../src/db/schema';
 import { createCardRenderer, type CardRenderer } from '../../../src/modules/cards';
@@ -59,10 +66,7 @@ async function cacheFiles(): Promise<string[]> {
 async function giveCopy(playerId: number, slug: string, level: number): Promise<number> {
   const [row] = await t.db.select().from(speciesTable).where(eq(speciesTable.slug, slug));
   if (!row) throw new Error(`species ${slug} was not seeded`);
-  const [inserted] = await t.db
-    .insert(playerWaifus)
-    .values({ playerId, speciesId: row.id, level })
-    .returning({ id: playerWaifus.id });
+  const inserted = await insertOwnedWaifu(t.db, { playerId, speciesId: row.id, level });
   return inserted!.id;
 }
 

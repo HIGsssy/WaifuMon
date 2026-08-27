@@ -35,6 +35,7 @@ import { affinityLabel } from '../modules/capture/affinityMath';
 import type { CareState } from '../modules/care/careService';
 import type { DexStats } from '../modules/collection/collectionService';
 import type { LevelProgress } from '../modules/progression/progressionMath';
+import { currentSeductivePower } from '../modules/power/seductivePower';
 import type { GameEvent, GameEventBus, GameEventHandler } from '../modules/events/gameEvents';
 import type { PlayerCurrenciesRow, PlayerRow } from '../db/schema';
 import type { Logger } from '../shared/logger';
@@ -172,6 +173,9 @@ export function buildTrainerProfileView(
       nick ? `**${nick}** (${target.species.name})` : `**${target.species.name}**`,
       `${target.species.rarity} · Lv ${target.waifu.level}`,
       `${affinityLabel(target.species.affinity)} · 💗 ${target.waifu.affection} affection`,
+      // Current SP through the shared domain function - the dashboard shows
+      // the same number inspect and the API do, because it is the same call.
+      `🔥 ${currentSeductivePower(target.waifu.baseSp, target.waifu.level)} SP`,
     ];
     if (input.buddyAppearanceName) buddyLines.push(`🎀 ${input.buddyAppearanceName}`);
     embed.addFields({ name: '⭐ Buddy', value: buddyLines.join('\n'), inline: true });

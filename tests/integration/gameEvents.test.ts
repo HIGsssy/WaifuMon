@@ -30,6 +30,7 @@ import {
   bootstrapApp,
   createEventHarness,
   getItemBySlug,
+  insertOwnedWaifu,
   provisionPlayer,
   type App,
   type EventHarness,
@@ -50,7 +51,13 @@ beforeAll(async () => {
   t = await createTestDb();
   // Always-fail capture rolls, so charm attempts run the encounter to escape.
   // Guaranteed items (Mythic Contract) bypass the roll entirely.
-  app = await bootstrapApp(t, { captureRng: { next: () => 0.999, intInclusive: () => 0 } });
+  // `next: 0.999` fails every chance roll (these tests capture with a
+  // guaranteed item). `intInclusive` must respect its bounds like a real Rng:
+  // the capture transaction also draws the Base Seductive Power roll, and a
+  // bounds-ignoring 0 would be an illegal SP.
+  app = await bootstrapApp(t, {
+    captureRng: { next: () => 0.999, intInclusive: (min) => min },
+  });
   harness = createEventHarness(app, t.logger);
   prov = await provisionPlayer(app, GUILD_ID, USER_ID);
   ctx = {
@@ -355,10 +362,7 @@ describe('Care Mode narration', () => {
   beforeEach(async () => {
     await t.db.delete(playerWaifus).where(eq(playerWaifus.playerId, prov.playerId));
     const [row] = await t.db.select().from(species).where(eq(species.enabled, true)).limit(1);
-    const [waifu] = await t.db
-      .insert(playerWaifus)
-      .values({ playerId: prov.playerId, speciesId: row!.id, level: 1, xp: 0, affection: 0 })
-      .returning();
+    const waifu = await insertOwnedWaifu(t.db, { playerId: prov.playerId, speciesId: row!.id, level: 1, xp: 0, affection: 0 });
     waifuId = waifu!.id;
     await t.db
       .update(players)

@@ -105,6 +105,7 @@ function makeCtx(overrides: {
     xp: 400,
     variant: 'standard',
     affection: 0,
+    baseSp: 96,
     nickname: null,
     isFavorite: false,
     releasedAt: null,

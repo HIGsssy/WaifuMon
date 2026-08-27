@@ -36,6 +36,7 @@ import {
   bootstrapApp,
   createEventHarness,
   getItemBySlug,
+  insertOwnedWaifu,
   provisionPlayer,
   type App,
   type EventHarness,
@@ -194,10 +195,7 @@ function embedText(payload: any): string {
 
 async function grantWaifu(nickname: string | null = null): Promise<number> {
   const [sp] = await t.db.select().from(species).limit(1);
-  const [row] = await t.db
-    .insert(playerWaifus)
-    .values({ playerId: prov.playerId, speciesId: sp!.id, nickname })
-    .returning();
+  const row = await insertOwnedWaifu(t.db, { playerId: prov.playerId, speciesId: sp!.id, nickname });
   return row!.id;
 }
 

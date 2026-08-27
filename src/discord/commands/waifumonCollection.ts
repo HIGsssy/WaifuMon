@@ -22,6 +22,7 @@ import {
   type StringSelectMenuInteraction,
 } from 'discord.js';
 import { affinityLabel } from '../../modules/capture/affinityMath';
+import { seductivePowerView } from '../../modules/power/seductivePower';
 import { isAppearanceUnlocked } from '../../modules/appearance/appearanceRules';
 import type { AppearanceView } from '../../modules/appearance/appearanceService';
 import {
@@ -847,6 +848,13 @@ async function renderInspect(
       0;
 
     const waifuProg = ctx.services.collection.waifuProgress(waifu);
+    // One domain call, not arithmetic in a handler - the API, the trainer
+    // profile and this embed all read the same function.
+    const sp = seductivePowerView(
+      waifu.baseSp,
+      waifu.level,
+      ctx.content.tables.waifuProgression.maxLevel,
+    );
     const xpLine = waifuProg.atMaxLevel
       ? `${waifu.xp} XP · **MAX**`
       : `${waifuProg.xpIntoLevel} / ${waifuProg.xpToNext} XP to Lv ${waifu.level + 1}`;
@@ -913,6 +921,16 @@ async function renderInspect(
         { name: 'Level', value: `${waifu.level}`, inline: true },
         { name: 'XP', value: xpLine, inline: true },
         { name: 'Affection', value: `${waifu.affection}`, inline: true },
+        // Current SP is the headline; the permanent Level 1 roll rides in the
+        // same field because inspect *is* the detail view, and seeing "base
+        // 127" is what makes two copies of one species feel different.
+        {
+          name: '🔥 Seductive Power',
+          value:
+            `**${sp.current} SP**` +
+            (waifu.level > 1 ? ` · base ${sp.base}` : ' · base roll'),
+          inline: true,
+        },
         { name: 'Essence', value: essenceValue, inline: true },
         { name: 'Nickname', value: waifu.nickname || '_(none)_', inline: true },
         { name: 'Favorite', value: waifu.isFavorite ? '★ yes' : '☆ no', inline: true },

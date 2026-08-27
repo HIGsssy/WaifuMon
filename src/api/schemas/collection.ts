@@ -24,6 +24,22 @@ export const waifuProgressSchema = z.object({
   atMaxLevel: z.boolean(),
 });
 
+/**
+ * Seductive Power for one owned copy.
+ *
+ * `current` is the player-facing number and the one every surface shows;
+ * `base` is the permanent Level 1 roll, exposed because an API consumer
+ * building a detail view legitimately wants it. `formulaVersion` lets a client
+ * tell a re-tune from a re-model without diffing numbers.
+ *
+ * Derived, never stored beyond `base` — see `modules/power/seductivePower.ts`.
+ */
+export const seductivePowerSchema = z.object({
+  base: z.number().int().describe('Permanent Level 1 roll, fixed at capture.'),
+  current: z.number().int().describe('Base scaled to the copy’s current level.'),
+  formulaVersion: z.number().int(),
+});
+
 export const ownedWaifuSchema = z.object({
   id: z.number().int(),
   playerId: z.number().int(),
@@ -47,6 +63,8 @@ export const ownedWaifuSchema = z.object({
    * since been removed from the content set — this field never 404s.
    */
   selectedAppearance: appearanceSchema,
+  /** Permanent per-copy Base SP, plus the level-scaled Current SP. */
+  seductivePower: seductivePowerSchema,
   caughtAt: isoDateTime,
   releasedAt: nullableIsoDateTime,
 });

@@ -473,6 +473,38 @@
       }
     ]
   },
+  "seductivePower": {
+    "rangesByRarity": {
+      "N": {
+        "min": 90,
+        "max": 100
+      },
+      "R": {
+        "min": 105,
+        "max": 115
+      },
+      "SR": {
+        "min": 120,
+        "max": 130
+      },
+      "SSR": {
+        "min": 135,
+        "max": 145
+      },
+      "UR": {
+        "min": 150,
+        "max": 160
+      },
+      "LR": {
+        "min": 165,
+        "max": 175
+      },
+      "EX": {
+        "min": 180,
+        "max": 190
+      }
+    }
+  },
   "uiFlavor": {
     "mainMenu": [
       "The charm compass hums softly. Somewhere nearby, a Waifumon is watching.",

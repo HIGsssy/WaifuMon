@@ -33,6 +33,7 @@ import {
   ASSETS_DIR,
   bootstrapApp,
   createEventHarness,
+  insertOwnedWaifu,
   provisionPlayer,
   type App,
   type EventHarness,
@@ -149,15 +150,12 @@ beforeEach(async () => {
 /** An owned `alley_catgirl` — she has authored artwork at every milestone. */
 async function grantBuddy(opts: { variant?: string; level?: number } = {}): Promise<number> {
   const [sp] = await t.db.select().from(species).where(eq(species.slug, 'alley_catgirl'));
-  const [row] = await t.db
-    .insert(playerWaifus)
-    .values({
-      playerId: prov.playerId,
-      speciesId: sp!.id,
-      level: opts.level ?? 20,
-      ...(opts.variant === undefined ? {} : { variant: opts.variant }),
-    })
-    .returning();
+  const row = await insertOwnedWaifu(t.db, {
+    playerId: prov.playerId,
+    speciesId: sp!.id,
+    level: opts.level ?? 20,
+    ...(opts.variant === undefined ? {} : { variant: opts.variant }),
+  });
   await app.collection.setBuddy(prov.playerId, row!.id);
   return row!.id;
 }

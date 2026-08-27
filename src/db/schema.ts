@@ -396,6 +396,24 @@ export const playerWaifus = pgTable(
      */
     seenAppearances: jsonb('seen_appearances').$type<string[]>().notNull().default([]),
     /**
+     * **Base Seductive Power** — the Level 1 SP rolled once for this copy at
+     * capture, from her species' rarity band.
+     *
+     * Permanent and per-copy: two captures of the same species routinely carry
+     * different values, and this column is never recomputed — not on read, not
+     * on level-up, not on a content reload. *Current* SP is derived from this
+     * plus `level` by `modules/power/seductivePower.ts` and is deliberately
+     * not stored, because a stored copy of a pure function is just a third
+     * value that can drift.
+     *
+     * `NOT NULL` with **no default**, on purpose: drizzle's inferred insert
+     * type then forces every creation site to supply a rolled value, so a copy
+     * can never quietly come into existence at some neutral midpoint. The
+     * rarity-band invariant itself is application-enforced (CaptureService) —
+     * a CHECK constraint cannot reach across to `species.rarity`.
+     */
+    baseSp: integer('base_sp').notNull(),
+    /**
      * Eligible daily gift rolls this copy has taken *since her last gift*
      * (Affection Gift System). Per-copy on purpose: swapping buddies must
      * neither transfer nor reset anyone's progress toward their guarantee.
@@ -413,6 +431,7 @@ export const playerWaifus = pgTable(
     check('player_waifus_xp_check', sql`${t.xp} >= 0`),
     check('player_waifus_affection_check', sql`${t.affection} >= 0`),
     check('player_waifus_gift_roll_counter_check', sql`${t.giftRollCounter} >= 0`),
+    check('player_waifus_base_sp_check', sql`${t.baseSp} >= 1`),
   ],
 );
 

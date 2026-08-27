@@ -31,7 +31,14 @@ import {
   ItemNotFoundError,
 } from '../../src/shared/errors';
 import type { Rng } from '../../src/shared/random';
-import { bootstrapApp, getItemBySlug, provisionPlayer, type App } from '../helpers/fixtures';
+import {
+  bootstrapApp,
+  getItemBySlug,
+  insertOwnedWaifu,
+  provisionPlayer,
+  scriptedRng,
+  type App,
+} from '../helpers/fixtures';
 import { createTestDb, type TestDb } from '../helpers/testDb';
 
 let t: TestDb;
@@ -45,19 +52,6 @@ afterAll(async () => {
   await t.cleanup();
 });
 
-function scriptedRng(nexts: number[]): Rng {
-  let i = 0;
-  return {
-    next: () => {
-      if (i >= nexts.length) throw new Error(`scriptedRng exhausted at ${i}`);
-      return nexts[i++]!;
-    },
-    intInclusive(min, max) {
-      const v = nexts[i++]!;
-      return Math.floor(v * (max - min + 1)) + min;
-    },
-  };
-}
 
 async function grantItem(playerId: number, slug: string, qty: number): Promise<void> {
   const item = await getItemBySlug(t.db, slug);
@@ -239,10 +233,7 @@ describe('Energy Drink', () => {
   it('exits Care Mode, crediting pending ticks before the refill', async () => {
     // Own a waifu to care for, then start Care Mode two ticks in the past.
     const [sp] = await t.db.select().from(species).limit(1);
-    const [waifu] = await t.db
-      .insert(playerWaifus)
-      .values({ playerId, speciesId: sp!.id })
-      .returning();
+    const waifu = await insertOwnedWaifu(t.db, { playerId, speciesId: sp!.id });
     const intervalMs = app.care.config.intervalMinutes * 60 * 1000;
     const startedAt = new Date(Date.now() - 2 * intervalMs - 1000);
     await t.db
@@ -270,10 +261,7 @@ describe('Energy Drink', () => {
 
   it('rolls back the Care Mode exit when the use is refused', async () => {
     const [sp] = await t.db.select().from(species).limit(1);
-    const [waifu] = await t.db
-      .insert(playerWaifus)
-      .values({ playerId, speciesId: sp!.id })
-      .returning();
+    const waifu = await insertOwnedWaifu(t.db, { playerId, speciesId: sp!.id });
     const now = new Date();
     await t.db
       .update(players)

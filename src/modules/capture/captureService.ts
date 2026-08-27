@@ -69,7 +69,12 @@ import type {
   LevelUpEvent,
   ProgressionService,
 } from '../progression/progressionService';
-import type { BuddyAffinityConfig, ProgressionConfig } from '../content/schemas';
+import type {
+  BuddyAffinityConfig,
+  ProgressionConfig,
+  SeductivePowerConfig,
+} from '../content/schemas';
+import { rollBaseSeductivePower } from '../power/seductivePower';
 import type { PlayerEffectsService } from '../effects/playerEffectsService';
 import type { QuestService } from '../quests/questService';
 import type { Affinity, Rarity } from '../../db/schema';
@@ -259,6 +264,12 @@ export interface CaptureServiceDeps {
   captureConfig: CaptureConfig;
   /** Milestone 5D — buddy affinity wheel and rarity-scaled bonuses. */
   buddyAffinityConfig: BuddyAffinityConfig;
+  /**
+   * Seductive Power bands. **Optional** so older wirings keep working: absent
+   * means the shipped ladder from `DEFAULT_SP_RANGES_BY_RARITY`, which is also
+   * what the content schema defaults to — the two can never disagree.
+   */
+  seductivePowerConfig?: SeductivePowerConfig | undefined;
   /** Used to resolve (and self-heal) the player's active buddy in-transaction. */
   collection: CollectionService;
   quests: QuestService;
@@ -287,6 +298,7 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
     effects,
     logger,
   } = deps;
+  const spRanges = deps.seductivePowerConfig?.rangesByRarity;
   const appearance = deps.appearance;
   const rng = deps.rng ?? defaultRng();
 
@@ -676,11 +688,20 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
           isDuplicate = (existing?.count ?? 0) > 0;
           isNewDex = !isDuplicate;
 
+          // Base SP is rolled here — inside the capture transaction, from the
+          // same injectable `rng` the chance roll used, and written in the
+          // same INSERT that creates the copy. A retried transaction re-runs
+          // the whole block, so it cannot half-apply: either a copy exists
+          // with the SP rolled alongside it, or neither does. There is no
+          // second write that could leave a copy without a value, and no read
+          // path that recomputes one.
+          const baseSp = rollBaseSeductivePower(speciesRow.rarity, rng, spRanges);
           const [created] = await tx
             .insert(playerWaifus)
             .values({
               playerId,
               speciesId: speciesRow.id,
+              baseSp,
             })
             .returning();
           newWaifu = created!;
@@ -702,6 +723,7 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
               isDuplicate,
               isNewDex,
               xpDelta,
+              baseSp,
               affinity,
               effect,
               itemCaptureBonus,

@@ -21,6 +21,7 @@ import type { AppContext, Provisioned } from '../../src/discord/types';
 import {
   bootstrapApp,
   createEventHarness,
+  insertOwnedWaifu,
   provisionPlayer,
   type App,
   type EventHarness,
@@ -109,10 +110,7 @@ function xpForLevel(level: number): number {
 async function grantAt(level: number, xpOffset = 0): Promise<number> {
   const [sp] = await t.db.select().from(species).where(eq(species.slug, SLUG));
   const xp = xpForLevel(level) + xpOffset;
-  const [row] = await t.db
-    .insert(playerWaifus)
-    .values({ playerId: prov.playerId, speciesId: sp!.id, level, xp })
-    .returning();
+  const row = await insertOwnedWaifu(t.db, { playerId: prov.playerId, speciesId: sp!.id, level, xp });
   return row!.id;
 }
 

@@ -24,8 +24,13 @@ import {
   WaifuNicknameTooEarlyError,
   WaifuNotOwnedError,
 } from '../../src/shared/errors';
-import type { Rng } from '../../src/shared/random';
-import { bootstrapApp, provisionPlayer, type App } from '../helpers/fixtures';
+import {
+  bootstrapApp,
+  insertOwnedWaifu,
+  provisionPlayer,
+  scriptedRng,
+  type App,
+} from '../helpers/fixtures';
 import { createTestDb, type TestDb } from '../helpers/testDb';
 
 let t: TestDb;
@@ -39,19 +44,6 @@ afterAll(async () => {
   await t.cleanup();
 });
 
-function scriptedRng(nexts: number[]): Rng {
-  let i = 0;
-  return {
-    next: () => {
-      if (i >= nexts.length) throw new Error(`scriptedRng exhausted at ${i}`);
-      return nexts[i++]!;
-    },
-    intInclusive(min, max) {
-      const v = nexts[i++]!;
-      return Math.floor(v * (max - min + 1)) + min;
-    },
-  };
-}
 
 async function resetPlayer(playerId: number, essence = 0): Promise<void> {
   await t.db
@@ -77,10 +69,7 @@ async function grantWaifu(
   overrides: Partial<PlayerWaifuRow> = {},
 ): Promise<PlayerWaifuRow> {
   const [sp] = await t.db.select().from(species).where(eq(species.slug, slug));
-  const [row] = await t.db
-    .insert(playerWaifus)
-    .values({ playerId, speciesId: sp!.id, ...overrides })
-    .returning();
+  const row = await insertOwnedWaifu(t.db, { playerId, speciesId: sp!.id, ...overrides });
   return row!;
 }
 

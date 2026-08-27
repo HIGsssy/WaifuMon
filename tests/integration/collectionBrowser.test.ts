@@ -22,6 +22,7 @@ import type { AppContext, Provisioned } from '../../src/discord/types';
 import {
   bootstrapApp,
   createEventHarness,
+  insertOwnedWaifu,
   provisionPlayer,
   type App,
   type EventHarness,
@@ -99,15 +100,12 @@ async function grant(
   if (!sp) throw new Error(`missing species ${slug}`);
   const rows: PlayerWaifuRow[] = [];
   for (const level of levels) {
-    const [row] = await t.db
-      .insert(playerWaifus)
-      .values({
-        playerId: prov.playerId,
-        speciesId: sp.id,
-        level,
-        ...(opts.favorite ? { isFavorite: true } : {}),
-      })
-      .returning();
+    const row = await insertOwnedWaifu(t.db, {
+      playerId: prov.playerId,
+      speciesId: sp.id,
+      level,
+      ...(opts.favorite ? { isFavorite: true } : {}),
+    });
     rows.push(row!);
   }
   return rows;

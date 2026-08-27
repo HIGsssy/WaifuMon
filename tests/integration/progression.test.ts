@@ -16,8 +16,13 @@ import {
   players,
   species,
 } from '../../src/db/schema';
-import type { Rng } from '../../src/shared/random';
-import { bootstrapApp, getItemBySlug, provisionPlayer, type App } from '../helpers/fixtures';
+import {
+  bootstrapApp,
+  getItemBySlug,
+  provisionPlayer,
+  scriptedRng,
+  type App,
+} from '../helpers/fixtures';
 import { createTestDb, type TestDb } from '../helpers/testDb';
 
 let t: TestDb;
@@ -31,19 +36,6 @@ afterAll(async () => {
   await t.cleanup();
 });
 
-function scriptedRng(nexts: number[]): Rng {
-  let i = 0;
-  return {
-    next: () => {
-      if (i >= nexts.length) throw new Error(`scriptedRng exhausted at ${i}`);
-      return nexts[i++]!;
-    },
-    intInclusive(min, max) {
-      const v = nexts[i++]!;
-      return Math.floor(v * (max - min + 1)) + min;
-    },
-  };
-}
 
 async function resetPlayerState(playerId: number, xp = 0, level = 1): Promise<void> {
   await t.db.delete(playerProgressionEvents).where(eq(playerProgressionEvents.playerId, playerId));

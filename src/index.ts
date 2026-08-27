@@ -223,6 +223,7 @@ async function main(): Promise<void> {
         progressionConfig: content.tables.progression,
         captureConfig: content.tables.capture,
         buddyAffinityConfig: content.tables.buddyAffinity,
+        seductivePowerConfig: content.tables.seductivePower,
         collection,
         quests,
         effects,

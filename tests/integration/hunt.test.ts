@@ -10,7 +10,6 @@ import {
   encounters,
   playerCurrencies,
   players,
-  playerWaifus,
   species,
 } from '../../src/db/schema';
 import { createHuntService } from '../../src/modules/hunt/huntService';
@@ -20,7 +19,14 @@ import {
   InsufficientEnergyError,
 } from '../../src/shared/errors';
 import type { Rng } from '../../src/shared/random';
-import { bootstrapApp, getItemBySlug, provisionPlayer, type App } from '../helpers/fixtures';
+import {
+  bootstrapApp,
+  getItemBySlug,
+  insertOwnedWaifu,
+  provisionPlayer,
+  scriptedRng,
+  type App,
+} from '../helpers/fixtures';
 import { createTestDb, type TestDb } from '../helpers/testDb';
 
 let t: TestDb;
@@ -35,22 +41,6 @@ afterAll(async () => {
   await t.cleanup();
 });
 
-/** RNG stub that walks a pre-programmed script of `next()` outputs. */
-function scriptedRng(nexts: number[]): Rng {
-  let i = 0;
-  const next = (): number => {
-    if (i >= nexts.length) {
-      throw new Error(`scriptedRng exhausted at index ${i}`);
-    }
-    return nexts[i++]!;
-  };
-  return {
-    next,
-    intInclusive(min, max) {
-      return Math.floor(next() * (max - min + 1)) + min;
-    },
-  };
-}
 
 async function resetPlayer(playerId: number, energy = 25): Promise<void> {
   await t.db.delete(encounters).where(eq(encounters.playerId, playerId));
@@ -508,10 +498,7 @@ describe('HuntService — hunt-session boundary reporting', () => {
 
   it('opens a fresh session out of Care Mode without re-closing the old one', async () => {
     const [waifu] = await t.db.select().from(species).where(eq(species.enabled, true)).limit(1);
-    const [owned] = await t.db
-      .insert(playerWaifus)
-      .values({ playerId, speciesId: waifu!.id, level: 1, xp: 0, affection: 0 })
-      .returning();
+    const owned = await insertOwnedWaifu(t.db, { playerId, speciesId: waifu!.id, level: 1, xp: 0, affection: 0 });
     await app.care.start(playerId, owned!.id);
     await t.db
       .update(players)

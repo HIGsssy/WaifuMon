@@ -30,7 +30,17 @@ import {
 import { handleCollectionPickId } from '../../src/discord/commands/waifumonCollection';
 import { handleProfile } from '../../src/discord/commands/waifumon';
 import type { AppContext, Provisioned } from '../../src/discord/types';
-import { ASSETS_DIR, bootstrapApp, getItemBySlug, provisionPlayer, type App, createEventHarness, type EventHarness } from '../helpers/fixtures';
+import {
+  ASSETS_DIR,
+  bootstrapApp,
+  createEventHarness,
+  getItemBySlug,
+  insertOwnedWaifu,
+  provisionPlayer,
+  scriptedRng,
+  type App,
+  type EventHarness,
+} from '../helpers/fixtures';
 import { createTestDb, type TestDb } from '../helpers/testDb';
 
 /** N-rarity buddy species → +1% strong bonus; SR → +3%. */
@@ -91,19 +101,6 @@ afterAll(async () => {
   await t.cleanup();
 });
 
-function scriptedRng(nexts: number[]): Rng {
-  let i = 0;
-  return {
-    next: () => {
-      if (i >= nexts.length) throw new Error(`scriptedRng exhausted at ${i}`);
-      return nexts[i++]!;
-    },
-    intInclusive(min, max) {
-      const v = nexts[i++]!;
-      return Math.floor(v * (max - min + 1)) + min;
-    },
-  };
-}
 
 function captureWith(rng?: Rng) {
   return createCaptureService({
@@ -135,10 +132,7 @@ async function speciesBySlug(slug: string): Promise<SpeciesRow> {
 /** Grants an owned copy of `slug` and makes it the active buddy. */
 async function giveBuddy(slug: string): Promise<number> {
   const s = await speciesBySlug(slug);
-  const [row] = await t.db
-    .insert(playerWaifus)
-    .values({ playerId: prov.playerId, speciesId: s.id })
-    .returning();
+  const row = await insertOwnedWaifu(t.db, { playerId: prov.playerId, speciesId: s.id });
   await app.collection.setBuddy(prov.playerId, row!.id);
   return row!.id;
 }
