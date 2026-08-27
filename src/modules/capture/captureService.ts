@@ -47,6 +47,7 @@ import {
 } from '../../db/schema';
 import {
   CaptureItemNotEligibleError,
+  EffectAlreadyAtMaxChargesError,
   EncounterAlreadyResolvedError,
   EncounterExpiredError,
   EncounterNotFoundError,
@@ -76,6 +77,14 @@ import type {
 } from '../content/schemas';
 import { rollBaseSeductivePower } from '../power/seductivePower';
 import type { PlayerEffectsService } from '../effects/playerEffectsService';
+import type { ItemUseResult, ItemUseService } from '../items/itemUseService';
+import {
+  encounterItemKind,
+  isDirectCaptureItem,
+  isEncounterConsumable,
+  type EncounterItemKind,
+} from '../items/encounterUse';
+import { CaptureBonusEffectSchema } from '../content/schemas';
 import type { QuestService } from '../quests/questService';
 import type { Affinity, Rarity } from '../../db/schema';
 
@@ -153,6 +162,58 @@ export interface CaptureQuote {
   buddyAffinityModifier: number;
   captureBonusModifier: number;
   itemCaptureBonus: number;
+}
+
+/**
+ * One row of the encounter item selector.
+ *
+ * Both kinds live in one list because the player is making one decision —
+ * "what do I do about her" — and splitting them across two controls would make
+ * the cheaper option harder to find. They are labelled apart rather than
+ * separated: `direct` is a plan, `consumable` is a purchase.
+ */
+export interface EncounterItemOption {
+  item: ItemRow;
+  quantity: number;
+  kind: EncounterItemKind;
+  /**
+   * For a `direct` item, the chance if it were committed. For a `consumable`,
+   * the chance as things stand *right now* — the projection of what activating
+   * it would do is deliberately not computed here, because the honest
+   * before → after is two real quotes taken either side of the activation.
+   */
+  quote: CaptureQuote;
+  /** `consumable` only: charges live right now, and the configured ceiling. */
+  charges?: { remaining: number; max: number } | undefined;
+}
+
+/** The outcome of activating a persistent consumable during an encounter. */
+export interface EncounterConsumableResult {
+  /** Unchanged and still active — activation never resolves an encounter. */
+  encounter: EncounterRow;
+  species: SpeciesRow;
+  item: ItemRow;
+  /** Verbatim from the authoritative item-use service. */
+  use: ItemUseResult;
+  /** Chance before activation and after it, both from {@link CaptureQuote}. */
+  quoteBefore: CaptureQuote;
+  quoteAfter: CaptureQuote;
+}
+
+export interface UseEncounterConsumableOptions {
+  now?: Date;
+  /** Same stale guard the Capture button uses. */
+  expectedAttemptCount?: number;
+  /**
+   * Charges the interaction was rendered against.
+   *
+   * The attempt count alone cannot guard this action — activating a consumable
+   * does not advance it, so two clicks of one button would carry the same
+   * guard and both succeed. Charges *do* change (they rise to the configured
+   * maximum), so pairing them makes the rendered state a version token: the
+   * second click of a stale button no longer matches and is refused.
+   */
+  expectedCharges?: number;
 }
 
 export interface CaptureAttemptResult {
@@ -246,14 +307,48 @@ export interface CaptureService {
   ): Promise<CaptureQuote>;
 
   /**
-   * Capture items the player owns that are eligible against this encounter,
-   * in the order the selector should offer them. Read-only.
+   * Everything the player owns that is applicable *during this encounter* —
+   * eligible direct capture items, plus persistent consumables whose effect
+   * changes a capture attempt (Microdose) and that would actually accomplish
+   * something right now. Read-only.
+   *
+   * Availability is decided by `modules/items/encounterUse.ts`, on the item's
+   * behaviour rather than its category.
+   */
+  listEncounterItems(
+    playerId: number,
+    encounterId: number,
+    now?: Date,
+  ): Promise<EncounterItemOption[]>;
+
+  /**
+   * The direct-capture subset of {@link listEncounterItems} — the items that
+   * can occupy the encounter's selected-item slot.
    */
   listEligibleCaptureItems(
     playerId: number,
     encounterId: number,
     now?: Date,
   ): Promise<Array<{ item: ItemRow; quantity: number; quote: CaptureQuote }>>;
+
+  /**
+   * Activate a persistent consumable (Microdose) against a live encounter.
+   *
+   * One transaction: the encounter row is locked and revalidated, then the
+   * item is spent through the authoritative {@link ItemUseService} — so the
+   * "is this encounter still mine and still live" check and the inventory
+   * decrement commit together, and neither can happen without the other.
+   *
+   * Deliberately leaves the encounter **untouched**: no state change, no
+   * attempt, and no effect on the selected direct capture item. Activating a
+   * buff is not a move in the encounter, it is a purchase made during one.
+   */
+  useEncounterConsumable(
+    playerId: number,
+    encounterId: number,
+    itemSlug: string,
+    options?: UseEncounterConsumableOptions,
+  ): Promise<EncounterConsumableResult>;
 }
 
 export interface CaptureServiceDeps {
@@ -275,6 +370,15 @@ export interface CaptureServiceDeps {
   quests: QuestService;
   /** Consumable capture buffs (Microdose). Charges are spent per attempt. */
   effects: PlayerEffectsService;
+  /**
+   * The authoritative "use an inventory item" service.
+   *
+   * **Optional** so pre-existing wirings keep working; without it the
+   * encounter offers direct capture items only and
+   * `useEncounterConsumable` refuses. Present in production and in the test
+   * fixture, so the encounter-consumable path is the wired default.
+   */
+  itemUse?: ItemUseService | undefined;
   /**
    * Cosmetic appearance bookkeeping. Optional and strictly downstream: a
    * freshly-captured copy has its default appearance acknowledged so the
@@ -299,6 +403,7 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
     logger,
   } = deps;
   const spRanges = deps.seductivePowerConfig?.rangesByRarity;
+  const itemUse = deps.itemUse;
   const appearance = deps.appearance;
   const rng = deps.rng ?? defaultRng();
 
@@ -329,6 +434,34 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
       buddyAffinityModifier: resolution?.modifier ?? 0,
       captureBonusModifier: bonus?.modifier ?? 0,
     };
+  }
+
+  /**
+   * The charge ceiling this item grants, read from its own effect config so a
+   * retuned Microdose changes both the rule and the label together.
+   */
+  function configuredCharges(item: ItemRow): number {
+    const parsed = CaptureBonusEffectSchema.safeParse(item.effectConfig ?? {});
+    return parsed.success ? parsed.data.charges : 0;
+  }
+
+  /**
+   * Would activating this consumable right now accomplish anything?
+   *
+   * The refresh behaviour itself is untouched — a grant still resets charges
+   * to the configured maximum. What this adds is that the *encounter* will not
+   * offer, or accept, a refresh that is already at that maximum: the player
+   * would spend an item and receive nothing back. (The inventory screen keeps
+   * its existing behaviour, which is where topping a buff back up belongs.)
+   *
+   * It also closes the double-click hole: because a successful activation
+   * always raises charges to the maximum, and activation is only permitted
+   * below it, the charge count is guaranteed to change — which is what makes
+   * it usable as the stale-interaction token.
+   */
+  function isConsumableMeaningfulNow(item: ItemRow, chargesNow: number): boolean {
+    const max = configuredCharges(item);
+    return max > 0 && chargesNow < max;
   }
 
   /** Active encounter + species, or a thrown domain error. Read-only. */
@@ -457,36 +590,171 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
       return buildQuote(encounter, speciesRow, item, playerId);
     },
 
-    async listEligibleCaptureItems(playerId, encounterId, now = new Date()) {
+    async listEncounterItems(playerId, encounterId, now = new Date()) {
       const { encounter, species: speciesRow } = await loadActiveEncounter(
         playerId,
         encounterId,
         now,
       );
       const owned = await inventory.getInventory(playerId);
-      const candidates = owned.filter(
-        (entry) =>
-          entry.item.enabled &&
-          entry.item.category === 'capture' &&
-          entry.quantity > 0 &&
-          isCaptureItemEligible(entry.item, speciesRow.rarity),
-      );
+      const activeBonus = await effects.getCaptureBonus(playerId, now);
+
+      const candidates: Array<{ item: ItemRow; quantity: number; kind: EncounterItemKind }> = [];
+      for (const entry of owned) {
+        if (entry.quantity <= 0) continue;
+        const kind = encounterItemKind(entry.item);
+        if (kind === null) continue;
+        if (kind === 'direct') {
+          // Rarity gating stays exactly where it was: content-declared bands,
+          // never a slug list.
+          if (!isCaptureItemEligible(entry.item, speciesRow.rarity)) continue;
+        } else if (!isConsumableMeaningfulNow(entry.item, activeBonus?.chargesRemaining ?? 0)) {
+          // Offered only while using one would actually change something —
+          // see `isConsumableMeaningfulNow`.
+          continue;
+        }
+        candidates.push({ item: entry.item, quantity: entry.quantity, kind });
+      }
+
       const quotes = await Promise.all(
-        candidates.map((entry) => buildQuote(encounter, speciesRow, entry.item, playerId)),
+        candidates.map((entry) =>
+          buildQuote(
+            encounter,
+            speciesRow,
+            entry.kind === 'direct' ? entry.item : null,
+            playerId,
+          ),
+        ),
       );
+
       return candidates
-        .map((entry, i) => ({
-          item: entry.item,
-          quantity: entry.quantity,
-          quote: quotes[i]!,
-        }))
-        // Guaranteed last (it is the nuclear option), otherwise best odds
-        // first so the obvious pick is the top of the menu.
+        .map((entry, i): EncounterItemOption => {
+          const charges = entry.kind === 'consumable'
+            ? {
+                remaining: activeBonus?.chargesRemaining ?? 0,
+                max: configuredCharges(entry.item),
+              }
+            : undefined;
+          return {
+            item: entry.item,
+            quantity: entry.quantity,
+            kind: entry.kind,
+            quote: quotes[i]!,
+            ...(charges === undefined ? {} : { charges }),
+          };
+        })
         .sort((a, b) => {
+          // Direct items first — they are the decision the screen is asking
+          // for. Guaranteed last within them (the nuclear option), otherwise
+          // best odds first. Consumables trail as an aside.
+          if (a.kind !== b.kind) return a.kind === 'direct' ? -1 : 1;
+          if (a.kind === 'consumable') return a.item.slug.localeCompare(b.item.slug);
           if (a.quote.guaranteed !== b.quote.guaranteed) return a.quote.guaranteed ? 1 : -1;
           if (a.quote.chance !== b.quote.chance) return b.quote.chance - a.quote.chance;
           return a.item.slug.localeCompare(b.item.slug);
         });
+    },
+
+    async listEligibleCaptureItems(playerId, encounterId, now = new Date()) {
+      const options = await this.listEncounterItems(playerId, encounterId, now);
+      return options
+        .filter((option) => option.kind === 'direct')
+        .map(({ item, quantity, quote }) => ({ item, quantity, quote }));
+    },
+
+    async useEncounterConsumable(playerId, encounterId, itemSlug, options = {}) {
+      if (!itemUse) throw new ItemNotUsableError(itemSlug);
+      const now = options.now ?? new Date();
+
+      // Quoted *before* the transaction, so the "before" half of the
+      // before -> after line is a real reading of the pre-activation world
+      // rather than an inference from it.
+      const quoteBefore = await this.quoteCapture(playerId, encounterId, undefined, now);
+
+      type TxResult =
+        | { kind: 'expired' }
+        | { kind: 'used'; encounter: EncounterRow; species: SpeciesRow; item: ItemRow; use: ItemUseResult };
+
+      const outcome = await db.transaction(async (tx): Promise<TxResult> => {
+        // Same lock the capture commit takes: two clicks serialize here, and
+        // the second sees the state the first left behind.
+        const [encounter] = await tx
+          .select()
+          .from(encounters)
+          .where(and(eq(encounters.id, encounterId), eq(encounters.playerId, playerId)))
+          .for('update');
+        if (!encounter) throw new EncounterNotFoundError();
+        if (encounter.state !== 'active') throw new EncounterAlreadyResolvedError();
+        if (encounter.expiresAt.getTime() <= now.getTime()) {
+          await tx
+            .update(encounters)
+            .set({ state: 'expired', resolvedAt: now })
+            .where(eq(encounters.id, encounter.id));
+          return { kind: 'expired' };
+        }
+        if (
+          options.expectedAttemptCount !== undefined &&
+          options.expectedAttemptCount !== encounter.attemptCount
+        ) {
+          throw new EncounterStaleError();
+        }
+
+        const [speciesRow] = await tx
+          .select()
+          .from(species)
+          .where(eq(species.id, encounter.speciesId));
+        if (!speciesRow) throw new EncounterNotFoundError();
+
+        const [item] = await tx.select().from(items).where(eq(items.slug, itemSlug));
+        if (!item || !item.enabled) throw new ItemNotFoundError(itemSlug);
+        // A direct capture item is *selected*, never "used" — routing one here
+        // would spend it outside a capture attempt.
+        if (isDirectCaptureItem(item) || !isEncounterConsumable(item)) {
+          throw new ItemNotUsableError(itemSlug);
+        }
+
+        // Charge state under the lock: both the stale-click guard and the
+        // "would this accomplish anything" rule are decided against it.
+        const live = await effects.getCaptureBonus(playerId, now);
+        const chargesNow = live?.chargesRemaining ?? 0;
+        if (
+          options.expectedCharges !== undefined &&
+          options.expectedCharges !== chargesNow
+        ) {
+          throw new EncounterStaleError();
+        }
+        const max = configuredCharges(item);
+        if (!isConsumableMeaningfulNow(item, chargesNow)) {
+          throw new EffectAlreadyAtMaxChargesError(item.name, max);
+        }
+
+        // The authoritative use: one conditional decrement plus the grant or
+        // refresh, in this transaction. Nothing about the encounter changes.
+        const use = await itemUse.useInTransaction(tx, playerId, itemSlug, now);
+        return { kind: 'used', encounter, species: speciesRow, item, use };
+      });
+
+      if (outcome.kind === 'expired') throw new EncounterExpiredError();
+
+      const quoteAfter = await this.quoteCapture(playerId, encounterId, undefined, now);
+      logger.info(
+        {
+          playerId,
+          encounterId,
+          itemSlug,
+          chanceBefore: quoteBefore.chance,
+          chanceAfter: quoteAfter.chance,
+        },
+        'encounter consumable activated',
+      );
+      return {
+        encounter: outcome.encounter,
+        species: outcome.species,
+        item: outcome.item,
+        use: outcome.use,
+        quoteBefore,
+        quoteAfter,
+      };
     },
 
     async attemptCapture(playerId, encounterId, itemSlug = null, optionsOrNow) {

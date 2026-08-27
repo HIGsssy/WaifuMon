@@ -25,7 +25,7 @@
  *                           capture-bonus buff (see PlayerEffectsService).
  */
 import { eq } from 'drizzle-orm';
-import type { Db } from '../../db/client';
+import type { Db, DbOrTx } from '../../db/client';
 import { items, players, type ItemRow } from '../../db/schema';
 import {
   EnergyAlreadyFullError,
@@ -85,11 +85,30 @@ export type ItemUseResult = RestoreEnergyUseResult | CaptureBonusUseResult;
 
 export interface ItemUseService {
   /**
-   * Use one copy of `itemSlug`. Throws `ItemNotFoundError` (unknown/disabled),
-   * `ItemHasNoEffectError` (not a consumable), `InsufficientItemsError` (none
-   * owned) or `EnergyAlreadyFullError` — in every case nothing is consumed.
+   * Use one copy of `itemSlug` in its own transaction. Throws
+   * `ItemNotFoundError` (unknown/disabled), `ItemHasNoEffectError` (not a
+   * consumable), `InsufficientItemsError` (none owned) or
+   * `EnergyAlreadyFullError` — in every case nothing is consumed.
    */
   use(playerId: number, itemSlug: string, now?: Date): Promise<ItemUseResult>;
+
+  /**
+   * The same use, inside a transaction the caller already owns.
+   *
+   * Exists so a caller that must validate something *else* under a lock can
+   * do so atomically with the item being spent — the encounter-time Microdose
+   * is the case that motivated it: `CaptureService` locks the encounter row,
+   * proves it is still this player's and still active, and only then spends
+   * the item, all in one transaction. Extracting the entry point rather than
+   * reimplementing it is the point: there is exactly one place that knows how
+   * an item is used, and both callers reach it.
+   */
+  useInTransaction(
+    tx: DbOrTx,
+    playerId: number,
+    itemSlug: string,
+    now?: Date,
+  ): Promise<ItemUseResult>;
 }
 
 export interface ItemUseServiceDeps {
@@ -118,97 +137,105 @@ function parseEffectConfig<T>(item: ItemRow, effectType: ItemEffectType): T {
 export function createItemUseService(deps: ItemUseServiceDeps): ItemUseService {
   const { db, currency, inventory, effects, progression, care } = deps;
 
+  async function useInTransaction(
+    tx: DbOrTx,
+    playerId: number,
+    itemSlug: string,
+    now: Date = new Date(),
+  ): Promise<ItemUseResult> {
+    const [item] = await tx.select().from(items).where(eq(items.slug, itemSlug));
+    if (!item || !item.enabled) throw new ItemNotFoundError(itemSlug);
+    const effectType = item.effectType as ItemEffectType | null;
+    if (effectType == null) throw new ItemHasNoEffectError(itemSlug);
+
+    if (effectType === 'restore_energy_full' || effectType === 'restore_energy_amount') {
+      // One code path for both energy consumables: they differ only in the
+      // *target* energy, so the Care Mode interaction, the full-energy
+      // refusal, and the clamp can never drift between them.
+      const full = effectType === 'restore_energy_full';
+      const config = full
+        ? parseEffectConfig<RestoreEnergyEffect>(item, effectType)
+        : parseEffectConfig<RestoreEnergyAmountEffect>(item, effectType);
+      const restoreAmount = full ? null : (config as RestoreEnergyAmountEffect).amount;
+
+      // Care Mode first: it credits pending ticks (which may themselves
+      // raise energy) and clears the care fields, so the restore below is
+      // computed against the settled state. Same transaction, so a refusal
+      // below rolls the exit back too.
+      let careModeExited = false;
+      let careEnergyGained = 0;
+      if (config.exitCareMode) {
+        const summary = await care.applyAndExit(tx, playerId, now);
+        careModeExited = summary.stopped;
+        careEnergyGained = summary.energyGained;
+      }
+
+      const [player] = await tx
+        .select()
+        .from(players)
+        .where(eq(players.id, playerId))
+        .for('update');
+      if (!player) throw new PlayerNotFoundError(playerId);
+
+      const maxEnergy = progression.computeMaxEnergy(player.level);
+      const balances = await currency.lockCurrencies(tx, playerId);
+      const energyBefore = balances.huntEnergy;
+      // Refuse rather than burn the item. At the cap there is nothing
+      // either variant can do, so both refuse identically; *below* the cap
+      // an amount-based restore is honoured and its overflow spilled,
+      // which is the clamp doing its job rather than a wasted item.
+      if (energyBefore >= maxEnergy) {
+        throw new EnergyAlreadyFullError(energyBefore, maxEnergy);
+      }
+
+      const target = full
+        ? maxEnergy
+        : Math.min(maxEnergy, energyBefore + (restoreAmount ?? 0));
+
+      const quantityRemaining = await inventory.consumeItem(tx, playerId, item.id, 1);
+      const updated = await currency.setHuntEnergy(tx, playerId, target);
+
+      return {
+        kind: effectType,
+        item,
+        quantityRemaining,
+        energyBefore,
+        energyAfter: updated.huntEnergy,
+        maxEnergy,
+        restoreAmount,
+        careModeExited,
+        careEnergyGained,
+      };
+    }
+
+    const config = parseEffectConfig<CaptureBonusEffect>(item, effectType);
+    const quantityRemaining = await inventory.consumeItem(tx, playerId, item.id, 1);
+    const granted = await effects.grantCaptureBonus(
+      tx,
+      playerId,
+      {
+        sourceItemSlug: item.slug,
+        modifier: config.captureBonus,
+        charges: config.charges,
+        refreshBehavior: config.refreshBehavior,
+      },
+      now,
+    );
+    return {
+      kind: 'capture_bonus_charges',
+      item,
+      quantityRemaining,
+      modifier: granted.modifier,
+      chargesRemaining: granted.chargesRemaining,
+      refreshed: granted.refreshed,
+      chargesBefore: granted.chargesBefore,
+    };
+  }
+
   return {
+    useInTransaction,
     async use(playerId, itemSlug, now = new Date()) {
-      return db.transaction(async (tx): Promise<ItemUseResult> => {
-        const [item] = await tx.select().from(items).where(eq(items.slug, itemSlug));
-        if (!item || !item.enabled) throw new ItemNotFoundError(itemSlug);
-        const effectType = item.effectType as ItemEffectType | null;
-        if (effectType == null) throw new ItemHasNoEffectError(itemSlug);
-
-        if (effectType === 'restore_energy_full' || effectType === 'restore_energy_amount') {
-          // One code path for both energy consumables: they differ only in the
-          // *target* energy, so the Care Mode interaction, the full-energy
-          // refusal, and the clamp can never drift between them.
-          const full = effectType === 'restore_energy_full';
-          const config = full
-            ? parseEffectConfig<RestoreEnergyEffect>(item, effectType)
-            : parseEffectConfig<RestoreEnergyAmountEffect>(item, effectType);
-          const restoreAmount = full ? null : (config as RestoreEnergyAmountEffect).amount;
-
-          // Care Mode first: it credits pending ticks (which may themselves
-          // raise energy) and clears the care fields, so the restore below is
-          // computed against the settled state. Same transaction, so a refusal
-          // below rolls the exit back too.
-          let careModeExited = false;
-          let careEnergyGained = 0;
-          if (config.exitCareMode) {
-            const summary = await care.applyAndExit(tx, playerId, now);
-            careModeExited = summary.stopped;
-            careEnergyGained = summary.energyGained;
-          }
-
-          const [player] = await tx
-            .select()
-            .from(players)
-            .where(eq(players.id, playerId))
-            .for('update');
-          if (!player) throw new PlayerNotFoundError(playerId);
-
-          const maxEnergy = progression.computeMaxEnergy(player.level);
-          const balances = await currency.lockCurrencies(tx, playerId);
-          const energyBefore = balances.huntEnergy;
-          // Refuse rather than burn the item. At the cap there is nothing
-          // either variant can do, so both refuse identically; *below* the cap
-          // an amount-based restore is honoured and its overflow spilled,
-          // which is the clamp doing its job rather than a wasted item.
-          if (energyBefore >= maxEnergy) {
-            throw new EnergyAlreadyFullError(energyBefore, maxEnergy);
-          }
-
-          const target = full
-            ? maxEnergy
-            : Math.min(maxEnergy, energyBefore + (restoreAmount ?? 0));
-
-          const quantityRemaining = await inventory.consumeItem(tx, playerId, item.id, 1);
-          const updated = await currency.setHuntEnergy(tx, playerId, target);
-
-          return {
-            kind: effectType,
-            item,
-            quantityRemaining,
-            energyBefore,
-            energyAfter: updated.huntEnergy,
-            maxEnergy,
-            restoreAmount,
-            careModeExited,
-            careEnergyGained,
-          };
-        }
-
-        const config = parseEffectConfig<CaptureBonusEffect>(item, effectType);
-        const quantityRemaining = await inventory.consumeItem(tx, playerId, item.id, 1);
-        const granted = await effects.grantCaptureBonus(
-          tx,
-          playerId,
-          {
-            sourceItemSlug: item.slug,
-            modifier: config.captureBonus,
-            charges: config.charges,
-            refreshBehavior: config.refreshBehavior,
-          },
-          now,
-        );
-        return {
-          kind: 'capture_bonus_charges',
-          item,
-          quantityRemaining,
-          modifier: granted.modifier,
-          chargesRemaining: granted.chargesRemaining,
-          refreshed: granted.refreshed,
-          chargesBefore: granted.chargesBefore,
-        };
-      });
+      return db.transaction((tx) => useInTransaction(tx, playerId, itemSlug, now));
     },
   };
 }

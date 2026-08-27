@@ -360,17 +360,20 @@ describe('encounter controls', () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (o: any) => (o.data ? o.data.value : o.value),
     );
-    expect(values).toContain('basic_charm');
-    expect(values).toContain('fluffy_cuffs');
-    expect(values).not.toContain('shibari_rope');
-    expect(values).not.toContain('energy_drink');
+    // Values carry the item kind: `d:` is selected-now-spent-later, `u:` is
+    // spent immediately.
+    expect(values).toContain('d:basic_charm');
+    expect(values).toContain('d:fluffy_cuffs');
+    expect(values).not.toContain('d:shibari_rope');
+    // Energy restoration has no place mid-encounter, whatever its category.
+    expect(values.some((v: string) => v.includes('energy_drink'))).toBe(false);
   });
 
   it('selecting shows the before → after chance and swaps to Change Item', async () => {
     await grantItem('shibari_rope', 1);
     const encounterId = await activeEncounter('UR');
 
-    const i = fakeSelect(['shibari_rope']);
+    const i = fakeSelect(['d:shibari_rope']);
     await handleEncounterPickItem(ctx, i as never, prov, [String(encounterId)]);
     const payload = painted(i);
     const text = embedText(payload);
@@ -395,7 +398,7 @@ describe('encounter controls', () => {
   it('shows Guaranteed for the Mythic Contract instead of a percentage', async () => {
     await grantItem('mythic_contract', 1);
     const encounterId = await activeEncounter('LR');
-    const i = fakeSelect(['mythic_contract']);
+    const i = fakeSelect(['d:mythic_contract']);
     await handleEncounterPickItem(ctx, i as never, prov, [String(encounterId)]);
     const text = embedText(painted(i));
     expect(text).toContain('Mythic Contract selected');
@@ -405,7 +408,7 @@ describe('encounter controls', () => {
   it('refuses an ineligible pick and consumes nothing', async () => {
     await grantItem('fluffy_cuffs', 1);
     const encounterId = await activeEncounter('SSR');
-    const i = fakeSelect(['fluffy_cuffs']);
+    const i = fakeSelect(['d:fluffy_cuffs']);
     await handleEncounterPickItem(ctx, i as never, prov, [String(encounterId)]);
     expect(JSON.stringify(painted(i))).toContain("won't work on a SSR");
     const cuffs = await getItemBySlug(t.db, 'fluffy_cuffs');
@@ -415,8 +418,9 @@ describe('encounter controls', () => {
   it('capture commits the persisted selection and consumes exactly one', async () => {
     await grantItem('mythic_contract', 2);
     const encounterId = await activeEncounter('SR');
-    await handleEncounterPickItem(ctx, fakeSelect(['mythic_contract']) as never, prov, [
+    await handleEncounterPickItem(ctx, fakeSelect(['d:mythic_contract']) as never, prov, [
       String(encounterId),
+      '0',
     ]);
 
     const i = fakeButton();
@@ -430,8 +434,9 @@ describe('encounter controls', () => {
   it('a repeated click on the same stale button consumes nothing extra', async () => {
     await grantItem('basic_charm', 3);
     const encounterId = await activeEncounter('SR');
-    await handleEncounterPickItem(ctx, fakeSelect(['basic_charm']) as never, prov, [
+    await handleEncounterPickItem(ctx, fakeSelect(['d:basic_charm']) as never, prov, [
       String(encounterId),
+      '0',
     ]);
     const charm = await getItemBySlug(t.db, 'basic_charm');
 

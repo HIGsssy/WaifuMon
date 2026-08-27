@@ -128,6 +128,17 @@ async function main(): Promise<void> {
     careConfig: content.tables.energy.careMode,
   });
   const effects = createPlayerEffectsService(db);
+  // Hoisted above the context literal because CaptureService now takes it:
+  // the encounter-time Microdose is spent through this one service, inside
+  // the transaction that locks the encounter.
+  const itemUse = createItemUseService({
+    db,
+    currency,
+    inventory,
+    effects,
+    progression,
+    care,
+  });
   // Affection gifts. Built before the context because DailyService takes it —
   // the daily claim is the authoritative daily reset the roll rides inside.
   const gifts = createAffectionGiftService({
@@ -227,6 +238,7 @@ async function main(): Promise<void> {
         collection,
         quests,
         effects,
+        itemUse,
         appearance,
         logger,
       }),
@@ -235,14 +247,7 @@ async function main(): Promise<void> {
       appearance,
       quests,
       effects,
-      itemUse: createItemUseService({
-        db,
-        currency,
-        inventory,
-        effects,
-        progression,
-        care,
-      }),
+      itemUse,
       gifts,
       session: createSessionService({
         db,
