@@ -682,15 +682,15 @@ async function buildShopView(
   ]);
   const owned = new Map(inventory.map((e) => [e.item.id, e.quantity]));
 
-  const lines = catalog.map(({ item, available, availabilityNote, currency }) => {
+  // The service hands back buyable rows only — non-purchasable items (gifts,
+  // the Mythic Contract) never reach the shop page.
+  const lines = catalog.map(({ item, currency }) => {
     const detail = item.isGuaranteedCapture
       ? 'guarantees capture'
       : item.captureModifier != null
         ? `×${item.captureModifier} capture`
         : effectSummary(item.effectType, item.effectConfig) || item.category;
-    const price = available
-      ? `**${formatPrice(item.buyPrice ?? 0, currency)}**`
-      : `*${availabilityNote}*`;
+    const price = `**${formatPrice(item.buyPrice ?? 0, currency)}**`;
     return `${item.emoji ?? '•'} **${item.name}** (${detail}) — ${price} · owned ×${owned.get(item.id) ?? 0}`;
   });
 

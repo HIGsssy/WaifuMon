@@ -1,4 +1,4 @@
-import { asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull } from 'drizzle-orm';
 import type { Db } from '../../db/client';
 import { items, shopTransactions, type ItemRow, type PriceCurrency } from '../../db/schema';
 import {
@@ -18,9 +18,12 @@ const SHOP_CATEGORIES = ['capture', 'consumable'] as const;
 
 export interface ShopCatalogEntry {
   item: ItemRow;
-  /** True when the item can actually be bought right now. */
+  /**
+   * Always `true`. The catalog only ever contains buyable rows now, but the
+   * field stays on the wire so the API schema and the portal keep working.
+   */
   available: boolean;
-  /** Display label for unavailable rows ("Unavailable", "Not for sale"). */
+  /** Always `null` — see {@link ShopCatalogEntry.available}. */
   availabilityNote: string | null;
   /** Currency `item.buyPrice` is denominated in. */
   currency: PriceCurrency;
@@ -40,9 +43,11 @@ export interface PurchaseResult {
 
 export interface ShopService {
   /**
-   * The catalog: every enabled capture or consumable item. Prismatic is listed
-   * but disabled (`purchasable=false`); Mythic Contract is listed greyed-out
-   * as "Not for sale" (guaranteed capture, never sold).
+   * The catalog: capture and consumable items that are `enabled`, flagged
+   * `purchasable`, and carry a price. Everything else is invisible to the
+   * shop — items that exist only as drops or rewards (the affection gifts,
+   * the Mythic Contract) are still enabled so they can be granted, stored and
+   * used, they are simply never for sale.
    */
   getCatalog(): Promise<ShopCatalogEntry[]>;
   /**
@@ -72,26 +77,27 @@ export function createShopService(deps: ShopServiceDeps): ShopService {
 
   return {
     async getCatalog() {
+      // Purchasability is filtered in the query, not in the presentation
+      // layer, so every consumer (Discord shop page and buttons, the
+      // `/v1/shop/catalog` endpoint) sees the same buyable-only list.
       const rows = await db
         .select()
         .from(items)
-        .where(inArray(items.category, [...SHOP_CATEGORIES]))
-        .orderBy(asc(items.category), sql`${items.buyPrice} asc nulls last`, asc(items.slug));
-      return rows
-        .filter((item) => item.enabled)
-        .map((item) => {
-          const available = item.purchasable && item.buyPrice != null;
-          let availabilityNote: string | null = null;
-          if (!available) {
-            availabilityNote = item.isGuaranteedCapture ? 'Not for sale' : 'Unavailable';
-          }
-          return {
-            item,
-            available,
-            availabilityNote,
-            currency: toPriceCurrency(item.priceCurrency),
-          };
-        });
+        .where(
+          and(
+            inArray(items.category, [...SHOP_CATEGORIES]),
+            eq(items.enabled, true),
+            eq(items.purchasable, true),
+            isNotNull(items.buyPrice),
+          ),
+        )
+        .orderBy(asc(items.category), asc(items.buyPrice), asc(items.slug));
+      return rows.map((item) => ({
+        item,
+        available: true,
+        availabilityNote: null,
+        currency: toPriceCurrency(item.priceCurrency),
+      }));
     },
 
     async purchase(playerId, itemSlug, quantity = 1) {

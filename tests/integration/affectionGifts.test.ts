@@ -10,6 +10,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   affectionGiftRolls,
   affectionGifts,
+  playerCurrencies,
   playerInventory,
   playerWaifus,
   players,
@@ -522,5 +523,36 @@ describe('claiming', () => {
     expect(list[0]!.waifu.id).toBe(waifu.id);
     expect(list[0]!.species.name).toBeTruthy();
     expect(await app.gifts.pendingWaifuIds(playerId)).toEqual(new Set([waifu.id]));
+  });
+
+  /**
+   * Regression guard for the shop fix: the gift items are hidden from the shop
+   * by `purchasable=false`, *not* by `enabled=false`. Everything downstream of
+   * generation — pending, claim, inventory, use — must keep working on a row
+   * the shop will never list.
+   */
+  it('generates, claims and uses a gift item the shop refuses to sell', async () => {
+    const waifu = await generateGift();
+    const pending = await app.gifts.getPendingGift(playerId, waifu.id);
+    expect(pending?.gift.itemSlug).toBe('quickie_coffee');
+
+    const row = await getItemBySlug(t.db, 'quickie_coffee');
+    expect(row.enabled).toBe(true);
+    expect(row.purchasable).toBe(false);
+    const listed = new Set((await app.shop.getCatalog()).map((e) => e.item.slug));
+    expect(listed.has('quickie_coffee')).toBe(false);
+
+    const claim = await app.gifts.claimGift(playerId, waifu.id);
+    expect(claim.item.slug).toBe('quickie_coffee');
+    expect(await app.inventory.getQuantity(playerId, row.id)).toBe(1);
+
+    // And it is spendable from the inventory like any other consumable.
+    await t.db
+      .update(playerCurrencies)
+      .set({ huntEnergy: 0 })
+      .where(eq(playerCurrencies.playerId, playerId));
+    const use = await app.itemUse.use(playerId, 'quickie_coffee');
+    expect(use.item.slug).toBe('quickie_coffee');
+    expect(await app.inventory.getQuantity(playerId, row.id)).toBe(0);
   });
 });
