@@ -31,7 +31,7 @@
     "affinity": "submissive",
     "region": "waifu-valley",
     "enabled": true,
-    "artwork": "bosses/paypig.webp",
+    "artwork": "bosses/pay_pig.png",
     "rewardTable": "standard-scouting-v1",
     "scoutingText": "A man in a soggy business suit grovels toward you, clutching a leather wallet between his shaking hands. 'Please,' he whines, 'humiliate me.'",
     "repelledText": "Overcome with shame and joy at being noticed, he gallops away muttering thanks for the opportunity to endure more.",
