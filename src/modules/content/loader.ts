@@ -7,6 +7,7 @@ import { ContentValidationError } from '../../shared/errors';
 import type { Logger } from '../../shared/logger';
 import {
   BossesFileSchema,
+  BossRewardsFileSchema,
   ItemsFileSchema,
   SpeciesFileSchema,
   TablesFileSchema,
@@ -252,7 +253,7 @@ export function validateBossAssets(
  *   - **Duplicate ids** would make `bossId` ambiguous on stored encounter rows,
  *     which is the key a historical result is read back by.
  *   - **An unknown reward table** mints an encounter nobody can be paid for,
- *     and it fails at *resolution* — an hour after the announcement, with
+ *     and it fails at *resolution* — half an hour after the announcement, with
  *     committed participants waiting.
  *   - **An unknown reward item** is the same failure one level down: a payout
  *     naming an item that cannot be granted.
@@ -265,43 +266,54 @@ export function validateBossAssets(
  * gift freezes its slug at generation time and can therefore mint something
  * unclaimable, whereas a boss reward is looked up and granted inside the payout
  * transaction from the live `items` row — which still exists, and can still be
- * added to an inventory, while it is disabled. Disabling rather than deleting
- * is the admin panel's documented affordance, and making it fatal here would
- * quietly take that away for any item a boss happens to drop. The panel raises
- * a warning instead.
+ * added to an inventory, while it is disabled.
+ *
+ * The `items.enabled` flag is **retirement, not Shop availability** — the Shop
+ * has its own `purchasable` flag, and `items.enabled: false` withdraws an item
+ * from every source at once. A boss table may therefore legitimately be
+ * checked against it, and `adminContentService` does exactly that as a
+ * non-blocking warning, because a boss dropping a retired item is a content
+ * mistake worth hearing about but not one worth refusing to boot over. Nothing
+ * Shop-specific — `purchasable`, `buyPrice` — is consulted here or anywhere
+ * else on the boss path.
+ *
+ * A *disabled reward table* is likewise not fatal on its own — a boss pointing
+ * at one is simply undrawable, and `bossEncounterService` logs an actionable
+ * error when it skips it. It becomes fatal only when it leaves an enabled
+ * region with nothing to draw at all, which is checked below alongside the
+ * disabled-boss case, because from the players' side those are one failure.
  *
  * Affinity and region identifiers are already closed enums in the schema, so
  * they need no re-check here.
  */
 export function validateBossContent(content: LoadedContent): void {
-  const { bosses, items, tables } = content;
+  const { bosses, bossRewards, items, tables } = content;
   const config = tables.bossEncounters;
 
   const ids = bosses.map((b) => b.id);
   const duplicate = ids.find((id, i) => ids.indexOf(id) !== i);
   if (duplicate) throw new ContentValidationError(`Duplicate boss id: ${duplicate}`);
 
-  const rewardTables = config.rewardTables;
+  const rewardTables = new Map(bossRewards.map((t) => [t.id, t]));
   const itemSlugs = new Set(items.map((i) => i.slug));
 
   for (const boss of bosses) {
-    if (!Object.prototype.hasOwnProperty.call(rewardTables, boss.rewardTable)) {
+    if (!rewardTables.has(boss.rewardTable)) {
       throw new ContentValidationError(
-        `boss "${boss.id}" references unknown reward table: ${boss.rewardTable}`,
+        `boss "${boss.id}" references unknown reward table: ${boss.rewardTable}. ` +
+          `Add it to content/bossRewards.json (known tables: ${[...rewardTables.keys()].join(', ') || 'none'}).`,
       );
     }
   }
 
-  for (const [key, table] of Object.entries(rewardTables)) {
-    const entries = [
-      ...table.minorItems.map((e) => ({ slug: e.slug, where: 'minorItems' })),
-      ...(table.jackpot ? [{ slug: table.jackpot.slug, where: 'jackpot' }] : []),
-    ];
-    for (const entry of entries) {
-      if (!itemSlugs.has(entry.slug)) {
-        throw new ContentValidationError(
-          `bossEncounters.rewardTables["${key}"].${entry.where} references unknown item slug: ${entry.slug}`,
-        );
+  for (const table of bossRewards) {
+    for (const group of table.groups) {
+      for (const entry of group.entries) {
+        if (!itemSlugs.has(entry.itemId)) {
+          throw new ContentValidationError(
+            `bossRewards["${table.id}"].groups["${group.id}"] references unknown item slug: ${entry.itemId}`,
+          );
+        }
       }
     }
   }
@@ -320,10 +332,24 @@ export function validateBossContent(content: LoadedContent): void {
   // about what the loader will accept.
   if (!config.enabled || bosses.length === 0) return;
   for (const region of config.regions) {
-    const hasEnabled = bosses.some((b) => b.enabled && b.region === region);
-    if (!hasEnabled) {
+    // "Drawable" is the union of both switches: a boss is only schedulable if
+    // it is itself enabled *and* the table it is paid from is. Checking them
+    // together is what makes disabling the last reward table produce a message
+    // that names the actual problem rather than a silent stop.
+    const drawable = bosses.filter(
+      (b) => b.enabled && b.region === region && rewardTables.get(b.rewardTable)?.enabled,
+    );
+    if (drawable.length === 0) {
+      const enabledInRegion = bosses.filter((b) => b.enabled && b.region === region);
+      const detail =
+        enabledInRegion.length === 0
+          ? 'no enabled boss belongs to it'
+          : `every enabled boss in it points at a disabled reward table ` +
+            `(${[...new Set(enabledInRegion.map((b) => b.rewardTable))].join(', ')}). ` +
+            'Re-enable the table in content/bossRewards.json, or disable ' +
+            'bossEncounters for this region.';
       throw new ContentValidationError(
-        `bossEncounters is enabled for region "${region}" but no enabled boss belongs to it`,
+        `bossEncounters is enabled for region "${region}" but ${detail}`,
       );
     }
   }
@@ -473,7 +499,18 @@ export function readContentFiles(contentDir: string): LoadedContent {
   const bossesPath = path.join(contentDir, 'bosses.json');
   const bosses = fs.existsSync(bossesPath) ? parseJsonFile(bossesPath, BossesFileSchema) : [];
 
-  return { items: itemsFile.items, species, tables, bosses };
+  /**
+   * Boss reward tables are optional on disk for the same reason and under the
+   * same conditions as `bosses.json`. The two are only meaningful together:
+   * `validateBossContent` rejects a boss whose table is absent, so a missing
+   * file can only coexist with an absent roster.
+   */
+  const bossRewardsPath = path.join(contentDir, 'bossRewards.json');
+  const bossRewards = fs.existsSync(bossRewardsPath)
+    ? parseJsonFile(bossRewardsPath, BossRewardsFileSchema)
+    : [];
+
+  return { items: itemsFile.items, species, tables, bosses, bossRewards };
 }
 
 /** Sorted list of species JSON filenames (basenames) in a species directory. */
@@ -501,6 +538,7 @@ export function loadContent(contentDir: string, assetsDir: string, logger: Logge
       items: content.items.length,
       species: validatedSpecies.length,
       bosses: validatedBosses.length,
+      bossRewardTables: content.bossRewards.length,
     },
     'content loaded and validated',
   );

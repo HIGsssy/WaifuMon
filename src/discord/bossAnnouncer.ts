@@ -7,7 +7,7 @@
  *
  * The permission set is checked rather than assumed, because the failure mode
  * of assuming is the worst one available: an encounter that opens, accepts
- * commitments for an hour, and then cannot publish its results. The four
+ * commitments for half an hour, and then cannot publish its results. The four
  * permissions checked are exactly the four an encounter needs —
  *
  *   ViewChannel        — to see the channel at all
@@ -29,11 +29,18 @@ import {
   PermissionFlagsBits,
   type Client,
   type GuildTextBasedChannel,
+  type Message,
 } from 'discord.js';
 import type { BossEncounterRow, BossResolutionReason } from '../db/schema';
 import type { BossEncounterService } from '../modules/bosses/bossEncounterService';
 import type { BossAnnouncer } from '../modules/bosses/bossScheduler';
-import { buildAnnouncement, buildResults, commitRow } from './bossPresenter';
+import {
+  buildAnnouncement,
+  buildCompletedAnnouncement,
+  buildResults,
+  commitRow,
+  matchesEncounterMarker,
+} from './bossPresenter';
 import { resolveBossArtwork } from './bossArtwork';
 import type { AppContext } from './types';
 
@@ -93,20 +100,77 @@ export interface BossAnnouncerDeps {
   encounters: BossEncounterService;
 }
 
+/**
+ * How far back reconciliation looks for an orphaned results message.
+ *
+ * One Discord page. The window this has to cover is "messages posted since the
+ * crash that lost the write", which in a dedicated boss channel is a handful
+ * at most — encounters are ~40–65 minutes apart and nothing else posts there.
+ * A deeper scan would trade a real per-tick cost against a case that cannot
+ * arise: if a hundred messages have landed since, the results message is not
+ * adjacent to its announcement any more and adopting it would be wrong.
+ */
+const RESULTS_SCAN_LIMIT = 100;
+
 export function createBossAnnouncer(deps: BossAnnouncerDeps): BossAnnouncer {
   const { ctx, client, encounters } = deps;
+
+  /** A text channel we can post to and read history from, or null when gone. */
+  async function fetchTextChannel(channelId: string) {
+    try {
+      const channel = await client.channels.fetch(channelId);
+      if (!channel || !('messages' in channel) || !('send' in channel)) return null;
+      return channel as GuildTextBasedChannel;
+    } catch (err) {
+      if (isGoneError(err)) return null;
+      throw err;
+    }
+  }
 
   /** The live announcement message, or null when it is gone. */
   async function fetchAnnouncement(encounter: BossEncounterRow) {
     if (!encounter.channelId || !encounter.messageId) return null;
     try {
-      const channel = await client.channels.fetch(encounter.channelId);
-      if (!channel || !('messages' in channel)) return null;
+      const channel = await fetchTextChannel(encounter.channelId);
+      if (!channel) return null;
       return await channel.messages.fetch(encounter.messageId);
     } catch (err) {
       if (isGoneError(err)) return null;
       throw err;
     }
+  }
+
+  /**
+   * Locate a results message this bot already sent for `encounterId`.
+   *
+   * The deterministic marker in the results footer is the whole mechanism:
+   * Discord's send and our `UPDATE` cannot share a transaction, so the only
+   * way to distinguish "never sent" from "sent, then crashed" is to go and
+   * look. Matching is narrowed to our own messages and to the *results*
+   * footer specifically, so the encounter's own announcement — which carries
+   * the same marker — can never be mistaken for its results.
+   */
+  async function findResultsMessage(
+    channel: GuildTextBasedChannel,
+    encounterId: number,
+  ): Promise<Message | null> {
+    let recent;
+    try {
+      recent = await channel.messages.fetch({ limit: RESULTS_SCAN_LIMIT });
+    } catch (err) {
+      if (isGoneError(err)) return null;
+      throw err;
+    }
+    for (const message of recent.values()) {
+      if (message.author.id !== client.user?.id) continue;
+      const footer = message.embeds[0]?.footer?.text;
+      if (!matchesEncounterMarker(footer, encounterId)) continue;
+      // The announcement carries the marker too. Titles are the discriminator
+      // and they are built one place, in `bossPresenter`.
+      if (!message.embeds[0]?.title?.startsWith('Boss Results —')) continue;
+      return message;
+    }
+    return null;
   }
 
   return {
@@ -161,39 +225,124 @@ export function createBossAnnouncer(deps: BossAnnouncerDeps): BossAnnouncer {
       );
     },
 
+    /**
+     * Close an encounter out in Discord: edit the announcement into its
+     * terminal form, then post the results **beneath** it as a second message.
+     *
+     * Two steps, each independently stamped in the database, so this whole
+     * method is a resumable repair rather than a one-shot. Called on every
+     * resolve and again on any later tick that finds work outstanding — it is
+     * safe to call any number of times.
+     *
+     * Ordering is deliberate. The completion edit comes first because it is
+     * the *reversible-looking* half: a reader who sees a still-open-looking
+     * boss with results already below it would reasonably try to commit. The
+     * reverse — an encounter that visibly ended a moment before its results
+     * arrive — reads correctly at every instant.
+     *
+     * Duplicate results are prevented in three layers, weakest last:
+     *
+     *   1. `resultsMessageId` is set → nothing to do.
+     *   2. `resultsPublishedAt` is set but the id is not (a pre-split
+     *      encounter, or a crash between send and write) → the channel tail is
+     *      scanned for the encounter's marker before anything is sent.
+     *   3. Only then is a message sent, and its id is persisted immediately.
+     */
     async publishResults(encounterId) {
       const encounter = await encounters.getEncounter(encounterId);
       if (!encounter) return;
-      const listing = await encounters.listParticipations(encounterId, { page: 1 });
-      // The earliest commitment, not the top of the damage-sorted page.
-      const firstOnScene = await encounters.getFirstOnScene(encounterId);
-
-      const payload = buildResults({
-        encounter,
-        reason: (encounter.resolutionReason ?? 'unchallenged') as BossResolutionReason,
-        boss: encounters.bossFor(encounter),
-        entries: listing.entries,
-        page: listing.page,
-        totalPages: listing.totalPages,
-        totalParticipants: listing.total,
-        totalDamage: encounter.totalDamage,
-        totalAttacks: encounter.participantCount * ctx.content.tables.bossEncounters.attacksPerParticipation,
-        firstOnScene,
-        ...resolveBossArtwork(ctx, encounter),
-      });
-
-      const message = await fetchAnnouncement(encounter);
-      if (!message) {
-        // Rewards are already committed at this point, so a missing message is
-        // a presentation loss and nothing more. Logged at error level because
-        // the players lost their results readout, which an admin can restore.
+      if (!encounter.channelId) {
         ctx.logger.error(
           { tag: 'boss/results-unpublished', encounterId },
-          'boss results computed but the announcement message is gone — rewards were still applied',
+          'boss results computed but the encounter never had a channel — rewards were still applied',
         );
         return;
       }
-      await message.edit(payload);
+
+      // ── Step 1: the completion edit on the original message ──────────────
+      if (!encounter.completionEditedAt) {
+        const message = await fetchAnnouncement(encounter);
+        if (message) {
+          await message.edit(
+            buildCompletedAnnouncement({
+              encounter,
+              reason: (encounter.resolutionReason ?? 'unchallenged') as BossResolutionReason,
+              boss: encounters.bossFor(encounter),
+              participantCount: encounter.participantCount,
+              totalDamage: encounter.totalDamage,
+              totalAttacks:
+                encounter.participantCount *
+                ctx.content.tables.bossEncounters.attacksPerParticipation,
+              ...resolveBossArtwork(ctx, encounter),
+            }),
+          );
+          await encounters.markCompletionEdited(encounterId, new Date());
+        } else {
+          // An admin deleted it. Stamped anyway: there is no message left to
+          // repair, and leaving it unstamped would make every future tick
+          // re-attempt a fetch that can only fail. The results still publish.
+          ctx.logger.warn(
+            { tag: 'boss/announcement-gone', encounterId },
+            'boss announcement message is gone — completion edit skipped, results still publish',
+          );
+          await encounters.markCompletionEdited(encounterId, new Date());
+        }
+      }
+
+      // ── Step 2: the separate results message ─────────────────────────────
+      if (encounter.resultsMessageId) return;
+
+      const channel = await fetchTextChannel(encounter.channelId);
+      if (!channel) {
+        ctx.logger.error(
+          { tag: 'boss/results-unpublished', encounterId },
+          'boss results computed but the boss channel is gone — rewards were still applied',
+        );
+        return;
+      }
+
+      // A results message may already exist that no row points at: this
+      // process (or a previous one) sent it and died before the write landed.
+      // Adopting it is what makes the send-then-persist gap safe.
+      const orphan = await findResultsMessage(channel, encounterId);
+      if (orphan) {
+        ctx.logger.warn(
+          { tag: 'boss/results-adopted', encounterId, messageId: orphan.id },
+          'found an unrecorded boss results message and adopted it rather than posting a second',
+        );
+        await encounters.markResultsPublished(encounterId, orphan.id, null, new Date());
+        return;
+      }
+
+      // Pre-split encounters were stamped by migration 0018 with no results
+      // message id, because their results were published by overwriting the
+      // announcement. Re-posting one now would append a stray result under an
+      // announcement that no longer says what it was.
+      if (encounter.resultsPublishedAt) return;
+
+      const pageSize = ctx.content.tables.bossEncounters.resultsPageSize;
+      const listing = await encounters.listParticipations(encounterId, { page: 1, pageSize });
+      // The earliest commitment, not the top of the damage-sorted page.
+      const firstOnScene = await encounters.getFirstOnScene(encounterId);
+
+      const sent = await channel.send(
+        buildResults({
+          encounter,
+          reason: (encounter.resolutionReason ?? 'unchallenged') as BossResolutionReason,
+          boss: encounters.bossFor(encounter),
+          entries: listing.entries,
+          page: listing.page,
+          totalPages: listing.totalPages,
+          totalParticipants: listing.total,
+          totalDamage: encounter.totalDamage,
+          totalAttacks:
+            encounter.participantCount *
+            ctx.content.tables.bossEncounters.attacksPerParticipation,
+          firstOnScene,
+          ...resolveBossArtwork(ctx, encounter),
+        }),
+      );
+      await encounters.markResultsPublished(encounterId, sent.id, listing.pageSize, new Date());
     },
   };
 }

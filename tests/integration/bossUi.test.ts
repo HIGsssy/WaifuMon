@@ -7,6 +7,13 @@
  * stale button is refused safely, that a preview writes nothing, that Confirm
  * is the only mutation, and that pagination reads back from stored rows rather
  * than from anything held in memory.
+ *
+ * The other half of this file exists because of a live-testing regression:
+ * **Commit Buddy lives on a public message**, so answering it with
+ * `interaction.update()` replaced the boss embed with one player's private
+ * preview, publicly and permanently. Every assertion that says `update` was
+ * *not* called is guarding that specific failure — the public encounter
+ * message is history, and no player interaction may consume it.
  */
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -27,6 +34,7 @@ import {
   handleBossMyResult,
   handleBossPage,
 } from '../../src/discord/commands/waifumonBoss';
+import { buildAnnouncement } from '../../src/discord/bossPresenter';
 import type { AppContext, Provisioned } from '../../src/discord/types';
 import { seededRng } from '../../src/shared/random';
 import {
@@ -195,7 +203,7 @@ async function openEncounter(
       status: 'scouting',
       scheduledAt: now,
       scoutingStartedAt: now,
-      deadlineAt: new Date(now.getTime() + 60 * MINUTE),
+      deadlineAt: new Date(now.getTime() + 30 * MINUTE),
       ...overrides,
     })
     .returning();
@@ -261,13 +269,213 @@ describe('Commit Buddy', () => {
   it('refuses once the window has closed', async () => {
     const past = new Date(Date.now() - MINUTE);
     const encounter = await openEncounter({
-      scoutingStartedAt: new Date(past.getTime() - 60 * MINUTE),
+      scoutingStartedAt: new Date(past.getTime() - 30 * MINUTE),
       deadlineAt: past,
     });
     await giveBuddy(prov.playerId);
     const interaction = fakeButton();
     await handleBossCommit(ctx, interaction as never, prov, [String(encounter.id)]);
     expect(painted(interaction).content).toContain('already over');
+  });
+});
+
+// ── the public encounter message is never consumed ──────────────────────────
+
+describe('Commit Buddy never replaces the public boss message', () => {
+  it('replies with a NEW ephemeral rather than updating the message it sits on', async () => {
+    const encounter = await openEncounter();
+    await giveBuddy(prov.playerId);
+    const interaction = fakeButton();
+    await handleBossCommit(ctx, interaction as never, prov, [String(encounter.id)]);
+
+    // The whole regression, in one assertion: `update()` here would edit the
+    // public announcement.
+    expect(interaction.update).not.toHaveBeenCalled();
+    expect(interaction.reply).toHaveBeenCalledTimes(1);
+  });
+
+  it('marks that reply ephemeral so the preview stays private', async () => {
+    const encounter = await openEncounter();
+    await giveBuddy(prov.playerId);
+    const interaction = fakeButton();
+    await handleBossCommit(ctx, interaction as never, prov, [String(encounter.id)]);
+    expect(replied(interaction).flags).toBeTruthy();
+  });
+
+  it('replies rather than updating when the player has no buddy', async () => {
+    const encounter = await openEncounter();
+    const interaction = fakeButton();
+    await handleBossCommit(ctx, interaction as never, prov, [String(encounter.id)]);
+    // A refusal is still an answer to a public button.
+    expect(interaction.update).not.toHaveBeenCalled();
+    expect(interaction.reply).toHaveBeenCalledTimes(1);
+  });
+
+  it('replies rather than updating when the window has closed', async () => {
+    const past = new Date(Date.now() - MINUTE);
+    const encounter = await openEncounter({
+      scoutingStartedAt: new Date(past.getTime() - 30 * MINUTE),
+      deadlineAt: past,
+    });
+    await giveBuddy(prov.playerId);
+    const interaction = fakeButton();
+    await handleBossCommit(ctx, interaction as never, prov, [String(encounter.id)]);
+    expect(interaction.update).not.toHaveBeenCalled();
+    expect(interaction.reply).toHaveBeenCalledTimes(1);
+  });
+
+  it('replies rather than updating for a stale encounter id', async () => {
+    const interaction = fakeButton();
+    await handleBossCommit(ctx, interaction as never, prov, ['999999']);
+    expect(interaction.update).not.toHaveBeenCalled();
+    expect(interaction.reply).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers the two-step confirmation, so the preview alone commits nothing', async () => {
+    const encounter = await openEncounter();
+    await giveBuddy(prov.playerId);
+    const interaction = fakeButton();
+    await handleBossCommit(ctx, interaction as never, prov, [String(encounter.id)]);
+
+    const payload = replied(interaction);
+    expect(buttons(payload).map((b) => b.data.label)).toEqual(['Confirm', 'Cancel']);
+    expect(buttons(payload)[0].data.custom_id).toContain('boss|confirm');
+    expect(await t.db.select().from(bossParticipations)).toHaveLength(0);
+  });
+
+  it('updates the ephemeral preview on Confirm — that message IS the player\'s', async () => {
+    const encounter = await openEncounter();
+    const waifuId = await giveBuddy(prov.playerId);
+    const interaction = fakeButton();
+    await handleBossConfirm(ctx, interaction as never, prov, [
+      String(encounter.id),
+      String(waifuId),
+    ]);
+    // Confirm's button lives on the private preview, so `update` is correct
+    // here — the asymmetry with Commit is the point.
+    expect(interaction.update).toHaveBeenCalledTimes(1);
+  });
+
+  it('updates the ephemeral preview on Cancel too', async () => {
+    const interaction = fakeButton();
+    await handleBossCancel(ctx, interaction as never);
+    expect(interaction.update).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── the participant-count edit ──────────────────────────────────────────────
+
+describe('committing refreshes the public count without disturbing the message', () => {
+  /** A recording announcer, standing in for the Discord half. */
+  function recordingAnnouncer() {
+    const refreshed: number[] = [];
+    return {
+      refreshed,
+      announcer: {
+        verifyChannel: vi.fn(async () => ({ missing: [] })),
+        postAnnouncement: vi.fn(async () => 'm-new'),
+        refreshAnnouncement: vi.fn(async (e: BossEncounterRow) => {
+          refreshed.push(e.id);
+        }),
+        publishResults: vi.fn(async () => {}),
+      },
+    };
+  }
+
+  it('edits the announcement through the announcer, not through the interaction', async () => {
+    const encounter = await openEncounter();
+    const waifuId = await giveBuddy(prov.playerId);
+    const { refreshed, announcer } = recordingAnnouncer();
+    const interaction = fakeButton();
+
+    await handleBossConfirm(
+      { ...ctx, bossAnnouncer: announcer } as never,
+      interaction as never,
+      prov,
+      [String(encounter.id), String(waifuId)],
+    );
+
+    // An ordinary message edit of the announcement, keyed to this encounter.
+    expect(refreshed).toEqual([encounter.id]);
+    // And exactly one interaction paint — the private confirmation.
+    expect(interaction.update).toHaveBeenCalledTimes(1);
+    expect(interaction.reply).not.toHaveBeenCalled();
+  });
+
+  it('re-renders the announcement with the boss embed and Commit Buddy intact', async () => {
+    const encounter = await openEncounter();
+    const waifuId = await giveBuddy(prov.playerId);
+    await handleBossConfirm(ctx, fakeButton() as never, prov, [
+      String(encounter.id),
+      String(waifuId),
+    ]);
+
+    // The refresh renders `buildAnnouncement`, so assert on what that produces
+    // for the now-committed count: the embed and the button both survive.
+    const refreshedRow = (await app.bosses.getEncounter(encounter.id))!;
+    const payload = buildAnnouncement({
+      encounter: refreshedRow,
+      boss: app.bosses.bossFor(refreshedRow),
+      config: app.content.tables.bossEncounters,
+      participantCount: await app.bosses.countParticipants(encounter.id),
+      now: new Date(),
+    });
+    const fields = payload.embeds![0] as unknown as { data: { fields: { name: string; value: string }[] } };
+    expect(fields.data.fields.find((f) => f.name === 'Trainers Committed')!.value).toBe('1');
+    expect(buttons(payload).map((b) => b.data.label)).toEqual(['Commit Buddy']);
+  });
+
+  it('still commits when there is no announcer wired — the edit is best-effort', async () => {
+    const encounter = await openEncounter();
+    const waifuId = await giveBuddy(prov.playerId);
+    await handleBossConfirm(ctx, fakeButton() as never, prov, [
+      String(encounter.id),
+      String(waifuId),
+    ]);
+    expect(await t.db.select().from(bossParticipations)).toHaveLength(1);
+  });
+
+  it('does not fail the commit when the announcement edit throws', async () => {
+    const encounter = await openEncounter();
+    const waifuId = await giveBuddy(prov.playerId);
+    const announcer = {
+      verifyChannel: vi.fn(async () => ({ missing: [] })),
+      postAnnouncement: vi.fn(async () => 'm-new'),
+      refreshAnnouncement: vi.fn(async () => {
+        throw new Error('discord is down');
+      }),
+      publishResults: vi.fn(async () => {}),
+    };
+    const interaction = fakeButton();
+    await handleBossConfirm(
+      { ...ctx, bossAnnouncer: announcer } as never,
+      interaction as never,
+      prov,
+      [String(encounter.id), String(waifuId)],
+    );
+    // The participation is durable; only the count is momentarily stale.
+    expect(await t.db.select().from(bossParticipations)).toHaveLength(1);
+    expect(painted(interaction).content).toContain('is committed to');
+  });
+
+  it('never repaints a resolved encounter back into its live form', async () => {
+    const encounter = await openEncounter();
+    const waifuId = await giveBuddy(prov.playerId);
+    await app.bosses.commit(encounter.id, prov.guildDbId, prov.playerId, {
+      discordUserId: 'u-1',
+      trainerName: 'Whistler',
+    });
+    await app.bosses.resolve(encounter.id);
+
+    const { refreshed, announcer } = recordingAnnouncer();
+    // A late Confirm against a finished encounter must not reopen its message.
+    await handleBossConfirm(
+      { ...ctx, bossAnnouncer: announcer } as never,
+      fakeButton() as never,
+      prov,
+      [String(encounter.id), String(waifuId)],
+    );
+    expect(refreshed).toEqual([]);
   });
 });
 
@@ -404,12 +612,48 @@ describe('results and pagination', () => {
     expect(painted(interaction).embeds[0].data.fields.length).toBeGreaterThan(0);
   });
 
-  it('edits the public message in place rather than posting a page', async () => {
+  it('edits the results message in place rather than posting a page', async () => {
     const encounter = await resolvedWith(12);
     const interaction = fakeButton();
     await handleBossPage(ctx, interaction as never, prov, [String(encounter.id), '2']);
     expect(interaction.update).toHaveBeenCalledTimes(1);
     expect(interaction.reply).not.toHaveBeenCalled();
+  });
+
+  it('pages with the size the results were published at, not the current tuning', async () => {
+    const encounter = await resolvedWith(14);
+    // Someone retunes `resultsPageSize` after publication. The message on
+    // Discord was built at the old size, so its page boundaries must not move.
+    await t.db
+      .update(bossEncounters)
+      .set({ resultsPageSize: 5 })
+      .where(eq(bossEncounters.id, encounter.id));
+
+    const interaction = fakeButton();
+    await handleBossPage(ctx, interaction as never, prov, [String(encounter.id), '1']);
+    const payload = painted(interaction);
+    expect(payload.embeds[0].data.fields.filter((f: { name: string }) => f.name === '\u200b'))
+      .toHaveLength(5);
+    expect(payload.embeds[0].data.footer.text).toContain('Page 1 of 3');
+  });
+
+  it('keeps My Result on the results message after a restart', async () => {
+    const encounter = await resolvedWith(3);
+    // A restart holds nothing in memory; the button renders from the row.
+    const interaction = fakeButton();
+    await handleBossPage(ctx, interaction as never, prov, [String(encounter.id), '1']);
+    expect(buttons(painted(interaction)).map((b) => b.data.label)).toContain('My Result');
+  });
+
+  it('carries the encounter marker on every rendered page', async () => {
+    const encounter = await resolvedWith(14);
+    for (const page of ['1', '2']) {
+      const interaction = fakeButton();
+      await handleBossPage(ctx, interaction as never, prov, [String(encounter.id), page]);
+      expect(painted(interaction).embeds[0].data.footer.text).toContain(
+        `Boss Encounter #${encounter.id}`,
+      );
+    }
   });
 
   it('refuses pagination for another guild encounter', async () => {

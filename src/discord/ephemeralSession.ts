@@ -109,3 +109,46 @@ export async function respondEphemeral(
     if (!isStaleInteractionError(err)) throw err;
   }
 }
+
+/**
+ * Paint `view` privately as a **new** ephemeral message, never as an edit of
+ * the message the control lives on.
+ *
+ * This is the variant for a button that sits on a **public** message.
+ * {@link respondEphemeral} answers an un-replied component with
+ * `interaction.update()`, which is right for the whole rest of the game —
+ * every other button in Waifumon lives on an already-ephemeral screen, and
+ * updating navigates it in place instead of stacking a new one. On a public
+ * message that same call edits the *public* message, replacing it with
+ * player-specific content for everybody.
+ *
+ * The Boss Encounter announcement's **Commit Buddy** button is the one control
+ * in the game that lives in public, so it is the one caller that needs this.
+ * Anything else that grows a public button needs it too — reach for this
+ * whenever the answer to "whose message is this control on?" is "the
+ * channel's".
+ *
+ * Stale tokens are swallowed on the same reasoning as `respondEphemeral`: by
+ * the time we paint, the gameplay write has already committed.
+ */
+export async function replyEphemeral(
+  interaction: SessionInteraction,
+  view: SessionPayload | string,
+): Promise<void> {
+  const body = typeof view === 'string' ? normalize({ content: view }) : normalize(view);
+  try {
+    if (interaction.replied || interaction.deferred) {
+      await (interaction as ChatInputCommandInteraction).followUp({
+        ...(body as InteractionReplyOptions),
+        ...EPHEMERAL_FLAG,
+      });
+      return;
+    }
+    await (interaction as ChatInputCommandInteraction).reply({
+      ...(body as InteractionReplyOptions),
+      ...EPHEMERAL_FLAG,
+    });
+  } catch (err) {
+    if (!isStaleInteractionError(err)) throw err;
+  }
+}

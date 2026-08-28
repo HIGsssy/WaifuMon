@@ -1,0 +1,61 @@
+[
+  {
+    "id": "standard-scouting-v1",
+    "enabled": true,
+    "buddyXp": 70,
+    "groups": [
+      {
+        "id": "standard-item",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 10000,
+        "entries": [
+          {
+            "itemId": "basic_charm",
+            "enabled": true,
+            "weight": 4500,
+            "quantity": 2
+          },
+          {
+            "itemId": "silk_charm",
+            "enabled": true,
+            "weight": 2500,
+            "quantity": 1
+          },
+          {
+            "itemId": "basic_charm",
+            "enabled": true,
+            "weight": 2000,
+            "quantity": 3
+          },
+          {
+            "itemId": "velvet_charm",
+            "enabled": true,
+            "weight": 900,
+            "quantity": 1
+          },
+          {
+            "itemId": "energy_drink",
+            "enabled": true,
+            "weight": 100,
+            "quantity": 1
+          }
+        ]
+      },
+      {
+        "id": "rare-bonus",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 25,
+        "entries": [
+          {
+            "itemId": "mythic_contract",
+            "enabled": true,
+            "weight": 1,
+            "quantity": 1
+          }
+        ]
+      }
+    ]
+  }
+]

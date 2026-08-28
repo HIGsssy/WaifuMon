@@ -10,11 +10,14 @@ import {
   bossArtworkFilename,
   buildAnnouncement,
   buildCommitPreview,
+  buildCompletedAnnouncement,
   buildMyResult,
   buildResults,
   commitRow,
   currentBracketLabel,
   discordRelative,
+  encounterMarker,
+  matchesEncounterMarker,
   resultLine,
   resultTitle,
 } from '../../src/discord/bossPresenter';
@@ -48,11 +51,15 @@ function encounter(overrides: Partial<BossEncounterRow> = {}): BossEncounterRow 
     affinityVersion: 1,
     channelId: 'c-boss',
     messageId: 'm-1',
+    resultsMessageId: null,
+    completionEditedAt: null,
+    resultsPublishedAt: null,
+    resultsPageSize: null,
     status: 'scouting',
     forced: false,
     scheduledAt: START,
     scoutingStartedAt: START,
-    deadlineAt: new Date(START.getTime() + 60 * MINUTE),
+    deadlineAt: new Date(START.getTime() + 30 * MINUTE),
     resolvingAt: null,
     resolvedAt: null,
     nextSpawnAt: null,
@@ -138,7 +145,7 @@ describe('announcement', () => {
   });
 
   it('shows the current rapid-response bracket', () => {
-    expect(field(payload, 'Rapid Response')).toBe('+5% (first 15 minutes)');
+    expect(field(payload, 'Rapid Response')).toBe('+5% (first 10 minutes)');
   });
 
   it('uses a Discord timestamp for the deadline rather than rendered text', () => {
@@ -186,16 +193,133 @@ describe('announcement', () => {
   it('suppresses every mention', () => {
     expect(payload.allowedMentions).toEqual({ parse: [] });
   });
+
+  it('stamps the encounter marker in the footer for reconciliation', () => {
+    expect(embed(payload).footer.text).toContain('Boss Encounter #7');
+    // Still readable copy first — the marker is appended, not the whole footer.
+    expect(embed(payload).footer.text).toContain('10 attacks');
+  });
+});
+
+// ── the completed encounter message ────────────────────────────────────────
+
+describe('completed announcement', () => {
+  const resolved = encounter({
+    status: 'resolved',
+    resolutionReason: 'repelled',
+    participantCount: 8,
+    totalDamage: 17342,
+  });
+  const payload = buildCompletedAnnouncement({
+    encounter: resolved,
+    reason: 'repelled',
+    boss,
+    participantCount: 8,
+    totalDamage: 17342,
+    totalAttacks: 80,
+  });
+
+  it('keeps the boss identity', () => {
+    expect(embed(payload).title).toContain('Oh Pwincess');
+    expect(field(payload, 'Boss Affinity')).toBe('Dominant');
+  });
+
+  it('keeps the artwork', () => {
+    const withArt = buildCompletedAnnouncement({
+      encounter: encounter({ bossArtwork: 'bosses/oh_pwincess_boss.webp' }),
+      reason: 'repelled',
+      boss,
+      participantCount: 1,
+      totalDamage: 10,
+      totalAttacks: 10,
+      artworkPath: '/tmp/boss.webp',
+    });
+    expect(withArt.files).toHaveLength(1);
+    expect(embed(withArt).image.url).toBe('attachment://boss-oh_pwincess.webp');
+  });
+
+  it('replaces the scouting language with the repelled text', () => {
+    expect(embed(payload).description).toContain(boss.repelledText);
+    expect(embed(payload).description).not.toContain(boss.scoutingText);
+  });
+
+  it('uses the unchallenged text when nobody committed', () => {
+    const empty = buildCompletedAnnouncement({
+      encounter: encounter({ status: 'resolved', resolutionReason: 'unchallenged' }),
+      reason: 'unchallenged',
+      boss,
+      participantCount: 0,
+      totalDamage: 0,
+      totalAttacks: 0,
+    });
+    expect(embed(empty).description).toContain(boss.unchallengedText);
+    expect(embed(empty).description).not.toContain(boss.scoutingText);
+  });
+
+  it('says plainly that the encounter has ended', () => {
+    expect(embed(payload).description).toContain('This encounter has ended');
+    expect(embed(payload).footer.text).toContain('Encounter ended');
+  });
+
+  it('shows participant count, combined damage and total attacks', () => {
+    expect(field(payload, 'Trainers Committed')).toBe('8');
+    expect(field(payload, 'Combined Damage')).toBe('17,342');
+    expect(field(payload, 'Total Attacks')).toBe('80');
+  });
+
+  it('omits damage and attacks when nobody committed', () => {
+    const empty = buildCompletedAnnouncement({
+      encounter: encounter({ status: 'resolved', resolutionReason: 'unchallenged' }),
+      reason: 'unchallenged',
+      boss,
+      participantCount: 0,
+      totalDamage: 0,
+      totalAttacks: 0,
+    });
+    expect(field(empty, 'Trainers Committed')).toBe('0');
+    // Zeroes would read as a failed battle rather than an absent one.
+    expect(field(empty, 'Combined Damage')).toBeUndefined();
+    expect(field(empty, 'Total Attacks')).toBeUndefined();
+  });
+
+  it('removes every participation component rather than disabling it', () => {
+    expect(payload.components).toEqual([]);
+  });
+
+  it('carries no result controls — those belong to the results message', () => {
+    expect(buttons(payload)).toHaveLength(0);
+  });
+
+  it('stamps the encounter marker for reconciliation', () => {
+    expect(embed(payload).footer.text).toContain('Boss Encounter #7');
+  });
+});
+
+describe('the encounter marker', () => {
+  it('renders a readable, quotable id', () => {
+    expect(encounterMarker(128)).toBe('Boss Encounter #128');
+  });
+
+  it('matches only its own encounter', () => {
+    expect(matchesEncounterMarker('Boss Encounter #12', 12)).toBe(true);
+    expect(matchesEncounterMarker('Page 1 of 2 · Boss Encounter #12', 12)).toBe(true);
+    expect(matchesEncounterMarker('Boss Encounter #12', 1)).toBe(false);
+    // The trap this guards: #12 must not match inside #128.
+    expect(matchesEncounterMarker('Boss Encounter #128', 12)).toBe(false);
+    expect(matchesEncounterMarker(null, 12)).toBe(false);
+    expect(matchesEncounterMarker(undefined, 12)).toBe(false);
+    expect(matchesEncounterMarker('', 12)).toBe(false);
+  });
 });
 
 describe('the rapid-response bracket label tracks the clock', () => {
   it.each([
-    [0, '+5% (first 15 minutes)'],
-    [14, '+5% (first 15 minutes)'],
-    [15, '+2% (first 30 minutes)'],
-    [29, '+2% (first 30 minutes)'],
-    [30, 'no bonus remaining'],
-    [59, 'no bonus remaining'],
+    [0, '+5% (first 10 minutes)'],
+    [9, '+5% (first 10 minutes)'],
+    [10, '+2% (first 20 minutes)'],
+    [19, '+2% (first 20 minutes)'],
+    [20, 'no bonus remaining'],
+    [29, 'no bonus remaining'],
   ])('at %i minutes elapsed reads "%s"', (minutes, expected) => {
     expect(
       currentBracketLabel(encounter(), CONFIG, new Date(START.getTime() + minutes * MINUTE)),
@@ -295,12 +419,19 @@ describe('results', () => {
     firstOnScene: entries[0]!.participation,
   });
 
-  it('announces the outcome with the repelled title', () => {
-    expect(embed(payload).title).toBe('Oh Pwincess Was Driven Away!');
+  it('names the boss so the message stands alone', () => {
+    // A reader can meet this via a jump link, without the encounter message in
+    // view above it.
+    expect(embed(payload).title).toBe('Boss Results — Oh Pwincess');
   });
 
-  it('carries the repelledText', () => {
-    expect(embed(payload).description).toContain(boss.repelledText);
+  it('does not repeat the outcome prose already on the message above', () => {
+    expect(embed(payload).description).not.toContain(boss.repelledText);
+  });
+
+  it('stamps the encounter marker so a crashed publish can be reconciled', () => {
+    expect(embed(payload).footer.text).toBe('Boss Encounter #7');
+    expect(matchesEncounterMarker(embed(payload).footer.text, 7)).toBe(true);
   });
 
   it('summarizes participants, attacks and combined damage', () => {
@@ -344,7 +475,9 @@ describe('results', () => {
     // Both directions are live in the middle of a run.
     expect(buttons(paged)[0].data.disabled).toBe(false);
     expect(buttons(paged)[1].data.disabled).toBe(false);
-    expect(embed(paged).footer.text).toBe('Page 2 of 3');
+    // The marker survives alongside the page counter, so reconciliation works
+    // for a paginated result too.
+    expect(embed(paged).footer.text).toBe('Page 2 of 3 · Boss Encounter #7');
   });
 
   it('carries page numbers in the custom ids so pagination survives a restart', () => {
@@ -377,9 +510,11 @@ describe('results', () => {
       totalAttacks: 0,
       firstOnScene: null,
     });
-    expect(embed(empty).title).toBe('Oh Pwincess Left Unchallenged');
-    expect(embed(empty).description).toContain(boss.unchallengedText);
-    expect(embed(empty).description).toContain('No trainer answered the call');
+    expect(embed(empty).title).toBe('Boss Results — Oh Pwincess');
+    // A zero-participant encounter still gets a results message; silence would
+    // be indistinguishable from a crashed bot.
+    expect(embed(empty).description).toContain('Nobody confronted **Oh Pwincess**');
+    expect(embed(empty).description).toContain('No rewards were distributed');
     expect(buttons(empty)).toHaveLength(0);
   });
 

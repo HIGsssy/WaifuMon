@@ -14,7 +14,7 @@
  *      guild and one participation per player.
  */
 import { and, eq, sql } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   bossEncounters,
   bossParticipations,
@@ -732,8 +732,8 @@ describe('resolution', () => {
 
     const nextSpawnAt = result!.encounter.nextSpawnAt!;
     const gapMinutes = (nextSpawnAt.getTime() - before) / MINUTE;
-    expect(gapMinutes).toBeGreaterThanOrEqual(120 - 1);
-    expect(gapMinutes).toBeLessThanOrEqual(300 + 1);
+    expect(gapMinutes).toBeGreaterThanOrEqual(10 - 1);
+    expect(gapMinutes).toBeLessThanOrEqual(35 + 1);
 
     // Persisted on the guild state too — that is the row `spawnIfDue` reads.
     const [state] = await t.db
@@ -842,6 +842,214 @@ describe('resolution', () => {
 });
 
 // ── results reading ─────────────────────────────────────────────────────────
+
+describe('boss loot is configured independently of the Shop', () => {
+  /**
+   * Swap the live reward tables for the duration of one test.
+   *
+   * `bootstrapApp` hands the service a closure over the same `content` object
+   * this returns, so an in-place edit is visible exactly as an admin panel
+   * Reload Content would be.
+   */
+  function withRewardTables<T>(mutate: (tables: App['content']['bossRewards']) => void): void {
+    void (0 as unknown as T);
+    mutate(app.content.bossRewards);
+  }
+
+  const original = () => JSON.parse(JSON.stringify(app.content.bossRewards));
+  let snapshot: unknown;
+
+  beforeEach(() => {
+    snapshot = original();
+  });
+
+  afterEach(() => {
+    app.content.bossRewards.length = 0;
+    app.content.bossRewards.push(...(snapshot as App['content']['bossRewards']));
+  });
+
+  it('does not spawn a boss whose reward table is disabled', async () => {
+    withRewardTables((tables) => {
+      for (const table of tables) table.enabled = false;
+    });
+    await t.db
+      .insert(guildBossState)
+      .values({ guildId: guildDbId, region: 'waifu-valley', nextSpawnAt: null })
+      .onConflictDoNothing();
+    await t.db
+      .update(guildBossState)
+      .set({ nextSpawnAt: null, paused: false, suspendedReason: null })
+      .where(eq(guildBossState.guildId, guildDbId));
+
+    // A boss that appears and pays nothing is worse than one that stays away.
+    expect(await app.bosses.spawnIfDue(guildDbId)).toBeNull();
+    expect(await app.bosses.getActive(guildDbId)).toBeUndefined();
+  });
+
+  it('spawns again the moment the table is re-enabled', async () => {
+    withRewardTables((tables) => {
+      for (const table of tables) table.enabled = false;
+    });
+    await t.db
+      .update(guildBossState)
+      .set({ nextSpawnAt: null, paused: false, suspendedReason: null })
+      .where(eq(guildBossState.guildId, guildDbId));
+    expect(await app.bosses.spawnIfDue(guildDbId)).toBeNull();
+
+    withRewardTables((tables) => {
+      for (const table of tables) table.enabled = true;
+    });
+    const spawned = await app.bosses.spawnIfDue(guildDbId);
+    expect(spawned).not.toBeNull();
+  });
+
+  it('still pays an encounter whose table was disabled after it opened', async () => {
+    // Disabling a table governs *spawning*, never paying: participants who
+    // committed while it was live must not be stranded.
+    const encounter = await openEncounter();
+    await giveBuddy(playerId);
+    await app.bosses.commit(encounter.id, guildDbId, playerId, IDENTITY);
+
+    withRewardTables((tables) => {
+      for (const table of tables) table.enabled = false;
+    });
+
+    const result = await app.bosses.resolve(encounter.id);
+    expect(result!.applied).toBe(true);
+    const [row] = await t.db
+      .select()
+      .from(bossParticipations)
+      .where(eq(bossParticipations.encounterId, encounter.id));
+    expect(row!.rewardStatus).toBe('applied');
+    expect(row!.xpAwarded).toBe(15);
+  });
+
+  it('grants items without consulting Shop availability', async () => {
+    // Un-list every item from the Shop. A boss payout reads only the reward
+    // table and the live `items` row, so this must change nothing.
+    await t.db.update(items).set({ purchasable: false, buyPrice: null });
+
+    const encounter = await openEncounter();
+    await giveBuddy(playerId);
+    await app.bosses.commit(encounter.id, guildDbId, playerId, IDENTITY);
+    await app.bosses.resolve(encounter.id);
+
+    const inventory = await t.db
+      .select()
+      .from(playerInventory)
+      .where(eq(playerInventory.playerId, playerId));
+    expect(inventory.length).toBeGreaterThan(0);
+    expect(inventory.reduce((sum, r) => sum + r.quantity, 0)).toBeGreaterThan(0);
+  });
+
+  it('grants an item the Shop never sells', async () => {
+    // Mythic Contract is boss-and-hunt-only. Force the rare group to certainty
+    // so the assertion is about eligibility rather than about luck.
+    withRewardTables((tables) => {
+      const rare = tables[0]!.groups.find((g) => g.id === 'rare-bonus')!;
+      rare.chanceBasisPoints = 10_000;
+    });
+    const [mythic] = await t.db.select().from(items).where(eq(items.slug, 'mythic_contract'));
+    expect(mythic!.purchasable).toBe(false);
+
+    const encounter = await openEncounter();
+    await giveBuddy(playerId);
+    await app.bosses.commit(encounter.id, guildDbId, playerId, IDENTITY);
+    await app.bosses.resolve(encounter.id);
+
+    const [held] = await t.db
+      .select()
+      .from(playerInventory)
+      .where(
+        and(eq(playerInventory.playerId, playerId), eq(playerInventory.itemId, mythic!.id)),
+      );
+    expect(held!.quantity).toBe(1);
+  });
+
+  it('excludes a disabled entry from the payout', async () => {
+    withRewardTables((tables) => {
+      const standard = tables[0]!.groups.find((g) => g.id === 'standard-item')!;
+      // Leave only the Energy Drink enabled, so the payout is deterministic
+      // without depending on which way the weighted draw fell.
+      for (const entry of standard.entries) entry.enabled = entry.itemId === 'energy_drink';
+    });
+
+    const encounter = await openEncounter();
+    await giveBuddy(playerId);
+    await app.bosses.commit(encounter.id, guildDbId, playerId, IDENTITY);
+    await app.bosses.resolve(encounter.id);
+
+    const [row] = await t.db
+      .select()
+      .from(bossParticipations)
+      .where(eq(bossParticipations.encounterId, encounter.id));
+    const slugs = (row!.rewardItems as { slug: string }[]).map((r) => r.slug);
+    expect(slugs).toContain('energy_drink');
+    expect(slugs).not.toContain('basic_charm');
+    expect(slugs).not.toContain('silk_charm');
+  });
+
+  it('skips a group whose entries are all disabled, and still pays the XP', async () => {
+    withRewardTables((tables) => {
+      const standard = tables[0]!.groups.find((g) => g.id === 'standard-item')!;
+      for (const entry of standard.entries) entry.enabled = false;
+    });
+
+    const encounter = await openEncounter();
+    await giveBuddy(playerId);
+    await app.bosses.commit(encounter.id, guildDbId, playerId, IDENTITY);
+    await app.bosses.resolve(encounter.id);
+
+    const [row] = await t.db
+      .select()
+      .from(bossParticipations)
+      .where(eq(bossParticipations.encounterId, encounter.id));
+    // The empty group drops nothing; the guaranteed XP is untouched.
+    expect(row!.xpAwarded).toBe(15);
+    expect(row!.rewardStatus).toBe('applied');
+  });
+
+  it('keeps a reward snapshot payable and unchanged after the table is edited', async () => {
+    const encounter = await openEncounter();
+    await giveBuddy(playerId);
+    await app.bosses.commit(encounter.id, guildDbId, playerId, IDENTITY);
+    await app.bosses.resolve(encounter.id);
+
+    const [before] = await t.db
+      .select()
+      .from(bossParticipations)
+      .where(eq(bossParticipations.encounterId, encounter.id));
+
+    // Retune the table out from under the finished encounter.
+    withRewardTables((tables) => {
+      tables[0]!.buddyXp = 500;
+      const standard = tables[0]!.groups.find((g) => g.id === 'standard-item')!;
+      for (const entry of standard.entries) entry.enabled = false;
+    });
+    // A retry must find the work done and change nothing.
+    await app.bosses.resolve(encounter.id);
+
+    const [after] = await t.db
+      .select()
+      .from(bossParticipations)
+      .where(eq(bossParticipations.encounterId, encounter.id));
+    expect(after!.rewardItems).toEqual(before!.rewardItems);
+    expect(after!.xpAwarded).toBe(before!.xpAwarded);
+    expect(after!.xpAwarded).not.toBe(500);
+  });
+
+  it('records the table version the encounter spawned under', async () => {
+    await t.db
+      .update(guildBossState)
+      .set({ nextSpawnAt: null, paused: false, suspendedReason: null })
+      .where(eq(guildBossState.guildId, guildDbId));
+    const spawned = await app.bosses.spawnIfDue(guildDbId);
+    expect(spawned!.encounter.rewardTable).toBe('standard-scouting-v1');
+    // No explicit `version` in shipped content, so it falls back to the id
+    // rather than to an empty string.
+    expect(spawned!.encounter.rewardTableVersion).toBe('standard-scouting-v1');
+  });
+});
 
 describe('reading results', () => {
   it('paginates deterministically by damage, then by arrival', async () => {

@@ -165,22 +165,44 @@ describe('damage formula', () => {
 });
 
 describe('rapid-response brackets', () => {
-  it('pays +5% for a commitment inside the first fifteen minutes', () => {
+  /** `m:ss` as milliseconds elapsed — the boundaries are read off a clock. */
+  const elapsed = (minutes: number, seconds = 0, millis = 0) =>
+    minutes * MINUTE + seconds * 1000 + millis;
+
+  it('pays +5% for a commitment inside the first ten minutes', () => {
     expect(responseBonusFor(START, at(0))).toBe(0.05);
-    expect(responseBonusFor(START, at(14 * MINUTE))).toBe(0.05);
-    expect(responseBonusFor(START, at(15 * MINUTE - 1))).toBe(0.05);
+    expect(responseBonusFor(START, at(elapsed(9)))).toBe(0.05);
+    expect(responseBonusFor(START, at(elapsed(9, 59)))).toBe(0.05);
+    expect(responseBonusFor(START, at(elapsed(9, 59, 999)))).toBe(0.05);
   });
 
-  it('drops to +2% at exactly fifteen minutes — the boundary is strict', () => {
-    expect(responseBonusFor(START, at(15 * MINUTE))).toBe(0.02);
-    expect(responseBonusFor(START, at(29 * MINUTE))).toBe(0.02);
-    expect(responseBonusFor(START, at(30 * MINUTE - 1))).toBe(0.02);
+  it('drops to +2% at exactly ten minutes — the boundary is strict', () => {
+    expect(responseBonusFor(START, at(elapsed(10)))).toBe(0.02);
+    expect(responseBonusFor(START, at(elapsed(10, 0, 1)))).toBe(0.02);
+    expect(responseBonusFor(START, at(elapsed(19)))).toBe(0.02);
+    expect(responseBonusFor(START, at(elapsed(19, 59)))).toBe(0.02);
+    expect(responseBonusFor(START, at(elapsed(19, 59, 999)))).toBe(0.02);
   });
 
-  it('pays nothing from exactly thirty minutes onward', () => {
-    expect(responseBonusFor(START, at(30 * MINUTE))).toBe(0);
-    expect(responseBonusFor(START, at(45 * MINUTE))).toBe(0);
-    expect(responseBonusFor(START, at(60 * MINUTE))).toBe(0);
+  it('pays nothing from exactly twenty minutes to the deadline', () => {
+    expect(responseBonusFor(START, at(elapsed(20)))).toBe(0);
+    expect(responseBonusFor(START, at(elapsed(25)))).toBe(0);
+    expect(responseBonusFor(START, at(elapsed(29, 59)))).toBe(0);
+    expect(responseBonusFor(START, at(elapsed(29, 59, 999)))).toBe(0);
+    // The deadline itself. Commitment is refused at this point (see the
+    // encounter-service tests); the bracket is zero either way.
+    expect(responseBonusFor(START, at(elapsed(30)))).toBe(0);
+  });
+
+  it.each([
+    ['9:59', elapsed(9, 59), 0.05],
+    ['10:00', elapsed(10), 0.02],
+    ['19:59', elapsed(19, 59), 0.02],
+    ['20:00', elapsed(20), 0],
+    ['29:59', elapsed(29, 59), 0],
+    ['30:00 (deadline)', elapsed(30), 0],
+  ])('at %s the bonus is %d', (_label, ms, expected) => {
+    expect(responseBonusFor(START, at(ms))).toBe(expected);
   });
 
   it('treats a commitment before the start as elapsed zero', () => {
@@ -199,10 +221,10 @@ describe('rapid-response brackets', () => {
     expect(responseBonusFor(START, at(11 * MINUTE), custom)).toBe(0);
   });
 
-  it('ships the two documented tiers', () => {
+  it('ships the two documented tiers, sized to the 30-minute window', () => {
     expect(DEFAULT_RESPONSE_BRACKETS).toEqual([
-      { withinMinutes: 15, bonus: 0.05 },
-      { withinMinutes: 30, bonus: 0.02 },
+      { withinMinutes: 10, bonus: 0.05 },
+      { withinMinutes: 20, bonus: 0.02 },
     ]);
   });
 });

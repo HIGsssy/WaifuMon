@@ -17,6 +17,21 @@
  * as often as they like. Only Confirm is a decision, and after it the snapshot
  * is locked: the participation row holds the stats the battle will use, so
  * switching buddies afterwards changes nothing.
+ *
+ * **Which buttons live on which message** — the distinction every handler here
+ * turns on, because it decides whether answering with `update()` is correct or
+ * catastrophic:
+ *
+ *   Commit Buddy   → the **public** announcement. Must answer with a *new*
+ *                    ephemeral reply. `update()` here would edit the public
+ *                    encounter message and replace the boss embed with one
+ *                    player's private preview.
+ *   Confirm/Cancel → the player's own ephemeral preview. `update()` is right:
+ *                    it replaces that private screen in place.
+ *   ◀ / All Results▶ → the **public results message**, which is the one
+ *                    message that is *meant* to repaint for everyone.
+ *   My Result      → the public results message, answered privately with a
+ *                    fresh ephemeral reply for the same reason as Commit.
  */
 import { MessageFlags, type ButtonInteraction } from 'discord.js';
 import type { BossResolutionReason } from '../../db/schema';
@@ -28,7 +43,7 @@ import {
   buildMyResult,
   buildResults,
 } from '../bossPresenter';
-import { respondEphemeral } from '../ephemeralSession';
+import { replyEphemeral, respondEphemeral } from '../ephemeralSession';
 import { emitEvents } from '../gameEventEmitter';
 import type { AppContext, Provisioned } from '../types';
 import { ownerFromInteraction } from '../userDisplay';
@@ -53,9 +68,15 @@ function bossService(ctx: AppContext): BossEncounterService | null {
   return ctx.services.bosses ?? null;
 }
 
-/** Shared refusal for a button that no longer points anywhere. */
+/**
+ * Shared refusal for a button that no longer points anywhere.
+ *
+ * `replyEphemeral`, not `respondEphemeral`: a stale button is most likely a
+ * **Commit Buddy** on an old public announcement, and refusing it with an
+ * `update()` would blank that encounter's permanent history to say so.
+ */
 async function rejectStale(interaction: ButtonInteraction): Promise<void> {
-  await respondEphemeral(
+  await replyEphemeral(
     interaction,
     'That boss encounter is over~ Watch the boss channel for the next arrival.',
   );
@@ -71,15 +92,31 @@ async function rejectStale(interaction: ButtonInteraction): Promise<void> {
 async function replyDomainError(
   interaction: ButtonInteraction,
   err: unknown,
+  /**
+   * Whether the pressed button lives on a public message. Commit Buddy does;
+   * Confirm does not. Defaulting to the safe answer would be worse than an
+   * explicit one — the unsafe case is silent and public.
+   */
+  onPublicMessage: boolean,
 ): Promise<void> {
   if (err instanceof AppError) {
-    await respondEphemeral(interaction, err.userMessage);
+    if (onPublicMessage) await replyEphemeral(interaction, err.userMessage);
+    else await respondEphemeral(interaction, err.userMessage);
     return;
   }
   throw err;
 }
 
-/** Commit Buddy → the ephemeral preview. Writes nothing. */
+/**
+ * Commit Buddy → the ephemeral preview. Writes nothing.
+ *
+ * **This button lives on the public announcement**, so the reply must be a new
+ * ephemeral message. `respondEphemeral` would answer an un-replied component
+ * with `interaction.update()`, which edits the message the button is attached
+ * to — replacing the boss embed, the artwork and the button itself with one
+ * player's private preview, publicly, for the rest of the encounter's life.
+ * That is exactly the regression this handler exists to not have.
+ */
 export async function handleBossCommit(
   ctx: AppContext,
   interaction: ButtonInteraction,
@@ -92,9 +129,9 @@ export async function handleBossCommit(
 
   try {
     const preview = await service.preview(encounterId, prov.guildDbId, prov.playerId);
-    await respondEphemeral(interaction, buildCommitPreview(preview));
+    await replyEphemeral(interaction, buildCommitPreview(preview));
   } catch (err) {
-    await replyDomainError(interaction, err);
+    await replyDomainError(interaction, err, true);
   }
 }
 
@@ -153,6 +190,20 @@ export async function handleBossConfirm(
         'Rewards arrive when the battle resolves.',
     );
 
+    // Push the new participant count to the public announcement.
+    //
+    // An ordinary message *edit*, made through the announcer, not an
+    // `interaction.update()`: the announcement is not this interaction's
+    // message, and the edit re-renders the same `buildAnnouncement` payload —
+    // boss embed, artwork and Commit Buddy button all preserved — with the
+    // count refreshed. Nothing player-specific goes near it.
+    //
+    // Best-effort, and deliberately after the ephemeral confirmation: the
+    // participation is already committed and durable, so a failed edit costs a
+    // count that is stale until the scheduler's next refresh a minute later.
+    // It must never turn a successful commit into an error.
+    await refreshPublicCount(ctx, encounterId);
+
     // Post-commit, never inside the transaction — and carrying none of the
     // preview's private numbers. See the payload's own comment.
     await emitEvents(ctx, interaction, prov, [
@@ -165,17 +216,53 @@ export async function handleBossConfirm(
       }),
     ]);
   } catch (err) {
-    await replyDomainError(interaction, err);
+    // Confirm lives on the player's own ephemeral preview, so an `update()`
+    // reply is correct here — it replaces that private screen.
+    await replyDomainError(interaction, err, false);
+  }
+}
+
+/**
+ * Re-render the public announcement so its "Trainers Committed" field is
+ * current, without disturbing anything else on it.
+ *
+ * Routed through `ctx.bossAnnouncer.refreshAnnouncement`, the same call the
+ * scheduler makes every minute, so there is exactly one definition of what a
+ * live announcement looks like and a commit-time edit cannot drift from a
+ * tick-time one.
+ */
+async function refreshPublicCount(ctx: AppContext, encounterId: number): Promise<void> {
+  const announcer = ctx.bossAnnouncer;
+  const service = bossService(ctx);
+  if (!announcer || !service) return;
+  try {
+    const encounter = await service.getEncounter(encounterId);
+    // Only while the window is open. A resolved encounter's message is
+    // permanent history and must never be repainted back into its live form.
+    if (!encounter || encounter.status !== 'scouting') return;
+    await announcer.refreshAnnouncement(encounter);
+  } catch (err) {
+    ctx.logger.warn(
+      { tag: 'boss/commit-refresh-failed', encounterId, err },
+      'boss participant-count refresh failed after a commit — the next tick will correct it',
+    );
   }
 }
 
 /**
  * All Results pagination.
  *
- * Edits the public message in place rather than posting a page. The page
- * number lives in the custom id, so this survives a restart with no
+ * Edits the **results** message in place rather than posting a page. That is
+ * the one public boss message that is meant to repaint: the encounter
+ * announcement above it is permanent history and carries no controls at all,
+ * so a reader turning pages cannot reach it.
+ *
+ * The page number lives in the custom id, so this survives a restart with no
  * server-side cursor to lose — a button pressed tomorrow renders correctly
- * from the stored participations.
+ * from the stored participations. The page *size* is read back from the
+ * encounter row when it was recorded at publication, so the boundaries a
+ * reader pages through are the ones the message was built with even if the
+ * tuning value has since moved.
  */
 export async function handleBossPage(
   ctx: AppContext,
@@ -191,7 +278,10 @@ export async function handleBossPage(
   const encounter = await service.getEncounter(encounterId);
   if (!encounter || encounter.guildId !== prov.guildDbId) return rejectStale(interaction);
 
-  const listing = await service.listParticipations(encounterId, { page });
+  const listing = await service.listParticipations(encounterId, {
+    page,
+    ...(encounter.resultsPageSize ? { pageSize: encounter.resultsPageSize } : {}),
+  });
   const payload = buildResults({
     encounter,
     reason: (encounter.resolutionReason ?? 'repelled') as BossResolutionReason,
@@ -208,8 +298,8 @@ export async function handleBossPage(
     firstOnScene: await service.getFirstOnScene(encounterId),
     ...resolveBossArtwork(ctx, encounter),
   });
-  // `update` keeps the results on the one message the encounter owns. Files
-  // are re-sent because an edit that omits them drops the attachment.
+  // `update` keeps the results on the results message the encounter owns.
+  // Files are re-sent because an edit that omits them drops the attachment.
   await interaction.update(payload);
 }
 
@@ -228,9 +318,9 @@ export async function handleBossMyResult(
   if (!encounter || encounter.guildId !== prov.guildDbId) return rejectStale(interaction);
 
   const entry = await service.getParticipation(encounterId, prov.playerId);
-  // A followUp rather than an update: the public results message belongs to
-  // the encounter, and one player asking for their own line must not repaint
-  // it for everybody else.
+  // A fresh ephemeral reply rather than an update: this button lives on the
+  // public results message, and one player asking for their own line must not
+  // repaint it for everybody else.
   await interaction.reply({
     content: buildMyResult(encounter, entry),
     flags: MessageFlags.Ephemeral,

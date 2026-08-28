@@ -134,8 +134,8 @@ export function estimateDamageRange(
  * scouting start and earn `bonus`.
  *
  * The comparison is **strict**, which settles the boundary the shipped table
- * leaves ambiguous ("First 15 minutes" / "15–30 minutes"): a commitment at
- * exactly 15:00.000 falls into the *second* tier, not the first. Brackets are
+ * leaves ambiguous ("First 10 minutes" / "10–20 minutes"): a commitment at
+ * exactly 10:00.000 falls into the *second* tier, not the first. Brackets are
  * evaluated in order, so they must be authored ascending.
  */
 export interface ResponseBracket {
@@ -143,10 +143,19 @@ export interface ResponseBracket {
   bonus: number;
 }
 
-/** Shipped brackets: +5% inside 15 minutes, +2% inside 30, nothing after. */
+/**
+ * Shipped brackets, sized to the 30-minute scouting window: +5% inside the
+ * first 10 minutes, +2% inside 20, nothing in the final 10.
+ *
+ * Kept proportional to the window rather than absolute — a third of it at the
+ * top rate, a third reduced, a third flat — so the incentive to show up early
+ * reads the same whatever `scoutingMinutes` is set to. Content overrides these
+ * via `bossEncounters.responseBrackets`; the schema refuses a bracket that
+ * reaches past the window.
+ */
 export const DEFAULT_RESPONSE_BRACKETS: readonly ResponseBracket[] = Object.freeze([
-  Object.freeze({ withinMinutes: 15, bonus: 0.05 }),
-  Object.freeze({ withinMinutes: 30, bonus: 0.02 }),
+  Object.freeze({ withinMinutes: 10, bonus: 0.05 }),
+  Object.freeze({ withinMinutes: 20, bonus: 0.02 }),
 ]) as readonly ResponseBracket[];
 
 const MS_PER_MINUTE = 60_000;
@@ -156,7 +165,8 @@ const MS_PER_MINUTE = 60_000;
  * scouting start and the confirmed commitment.
  *
  * Computed in milliseconds rather than in whole minutes so the boundary is the
- * real instant rather than a floor: 14:59.999 earns +5%, 15:00.000 earns +2%.
+ * real instant rather than a floor: 9:59.999 earns +5%, 10:00.000 earns +2%,
+ * 19:59.999 earns +2%, and 20:00.000 onward earns nothing.
  *
  * A commitment timestamped *before* the scouting start (clock skew between
  * processes, a hand-written admin fixture) reads as elapsed zero rather than

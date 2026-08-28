@@ -6,17 +6,26 @@
  * module is not reachable from the commit path, and the commit path has
  * nothing to call.
  *
- * Three payouts, deliberately different in kind:
+ * Two payouts, deliberately different in kind:
  *
  *   - **Guaranteed buddy XP.** Not a roll. A max-level buddy gets zero and the
  *     XP is *not* redirected anywhere — see {@link applicableBuddyXp}.
- *   - **One weighted minor-item roll.** Conservative by design: a boss appears
- *     several times a day and one participation is free, so this sits at the
- *     scale of a hunt find rather than a daily package.
- *   - **A separate jackpot check.** Kept out of the weighted table so that
- *     retuning the minor pool cannot move the jackpot's odds, and so the
- *     jackpot never *displaces* an ordinary reward — a lucky participant gets
- *     both.
+ *   - **One draw per roll of every enabled group** in the table. A group is a
+ *     probability gate (`chanceBasisPoints`) in front of a weighted pick, and
+ *     groups are independent of one another. That is what lets the shipped
+ *     table hand out a guaranteed ordinary item and, separately and rarely, a
+ *     Mythic Contract *in addition to* it rather than instead of it.
+ *
+ * **Weights are normalized over what is enabled, not over what is written.**
+ * `rollWeighted` divides by the total of the entries it is handed, and only
+ * enabled entries are handed to it, so disabling one redistributes its share
+ * across the rest in proportion. There is no hole in the distribution and no
+ * second number to keep in sync.
+ *
+ * **Nothing here consults the Shop.** Not `purchasable`, not `buyPrice`, not
+ * `items.enabled`. A boss table is the complete statement of what a boss
+ * drops; the Shop is a different acquisition source for the same items and has
+ * no vote. See `BossRewardTableSchema` for why the two are separate files.
  *
  * Every draw goes through `bossRandom`, so a resolution that is retried after
  * a crash reproduces the same rewards rather than rolling fresh ones. Nothing
@@ -30,11 +39,17 @@ import { bossDrawFraction, bossDrawRng } from './bossRandom';
  * Version of the reward *derivation*.
  *
  * Bumped when the way a payout is computed changes — a second roll, a
- * different independence structure between the minor and jackpot draws. The
- * reward table's own `version` string covers retuning the numbers; this covers
- * changing what the numbers mean.
+ * different independence structure between draws. The reward table's own
+ * `version` covers retuning the numbers; this covers changing what the numbers
+ * mean.
+ *
+ * `2`: the flat `minorItems` + `jackpot` pair became an arbitrary list of
+ * independent groups, and the draw keys changed with it.
  */
-export const BOSS_REWARD_LOGIC_VERSION = 1;
+export const BOSS_REWARD_LOGIC_VERSION = 2;
+
+/** Basis-point denominator. 10000 bp = certainty. */
+const BASIS_POINTS = 10_000;
 
 /** One granted stack, as stored on the participation row and printed in results. */
 export interface BossRewardItemGrant {
@@ -42,13 +57,28 @@ export interface BossRewardItemGrant {
   quantity: number;
 }
 
+/**
+ * A configuration problem found while rolling.
+ *
+ * Returned rather than logged, because this module is pure and its caller owns
+ * the logger. The caller logs these at resolution time, which is exactly when
+ * an operator needs to hear about them: a group that can never produce
+ * anything is silently paying nobody.
+ */
+export interface BossRewardWarning {
+  groupId: string;
+  message: string;
+}
+
 export interface BossRewardRoll {
   /** XP the buddy will actually receive — already zeroed for a capped copy. */
   buddyXp: number;
-  /** Minor roll plus, when it hits, the jackpot. Never empty in shipped content. */
+  /** Every stack won across every group. Empty is possible, if unusual. */
   items: BossRewardItemGrant[];
-  /** Whether the jackpot fired. Surfaced for logging and the result callout. */
-  jackpotHit: boolean;
+  /** Ids of the groups that produced a drop. Surfaced for logging and audit. */
+  hitGroupIds: string[];
+  /** Groups that were skipped because nothing in them could be drawn. */
+  warnings: BossRewardWarning[];
 }
 
 /**
@@ -73,7 +103,10 @@ export function applicableBuddyXp(
  *
  * `encounterId` and `participationId` are the stable identity the draws key
  * on — both exist by the time this is called, because a participation row is
- * written at commitment and resolution only ever reads it back.
+ * written at commitment and resolution only ever reads it back. The group id
+ * and roll index join them, which is what makes every group (and every roll
+ * within a group) an independent quantity rather than another view of one
+ * number.
  */
 export function rollBossRewards(input: {
   table: BossRewardTable;
@@ -84,37 +117,72 @@ export function rollBossRewards(input: {
 }): BossRewardRoll {
   const { table, encounterId, participationId, buddyLevel, maxLevel } = input;
 
-  const minor = rollWeighted(
-    table.minorItems.map((entry) => ({ weight: entry.weight, value: entry })),
-    bossDrawRng(encounterId, participationId, 'minor-item'),
-  );
+  const items: BossRewardItemGrant[] = [];
+  const hitGroupIds: string[] = [];
+  const warnings: BossRewardWarning[] = [];
 
-  const items: BossRewardItemGrant[] = [{ slug: minor.slug, quantity: minor.quantity }];
+  for (const group of table.groups) {
+    if (!group.enabled) continue;
 
-  // Independent of the minor roll: its own purpose, therefore its own draw.
-  let jackpotHit = false;
-  if (table.jackpot && table.jackpot.chance > 0) {
-    const roll = bossDrawFraction(encounterId, participationId, 'mythic');
-    if (roll < table.jackpot.chance) {
-      jackpotHit = true;
-      items.push({ slug: table.jackpot.slug, quantity: table.jackpot.quantity });
+    // Only enabled entries reach `rollWeighted`, which is where normalization
+    // happens: the remaining weights are divided by their own total.
+    const eligible = group.entries.filter((entry) => entry.enabled);
+    if (eligible.length === 0) {
+      warnings.push({
+        groupId: group.id,
+        message:
+          `boss reward group "${group.id}" in table "${table.id}" has no enabled entries — ` +
+          'skipped. Re-enable an entry or disable the group.',
+      });
+      continue;
+    }
+    if (group.chanceBasisPoints === 0) {
+      warnings.push({
+        groupId: group.id,
+        message:
+          `boss reward group "${group.id}" in table "${table.id}" has chanceBasisPoints 0 — ` +
+          'it can never drop. Raise it or disable the group.',
+      });
+      continue;
+    }
+
+    for (let roll = 0; roll < group.rolls; roll += 1) {
+      // A certain group skips the gate entirely rather than drawing a fraction
+      // and comparing it to 1 — `bossDrawFraction` is in [0, 1), so the
+      // comparison would always pass, but not drawing at all makes that
+      // obvious instead of incidental.
+      if (group.chanceBasisPoints < BASIS_POINTS) {
+        const gate = bossDrawFraction(
+          encounterId,
+          participationId,
+          `reward:${group.id}:${roll}:gate`,
+        );
+        if (gate >= group.chanceBasisPoints / BASIS_POINTS) continue;
+      }
+      const picked = rollWeighted(
+        eligible.map((entry) => ({ weight: entry.weight, value: entry })),
+        bossDrawRng(encounterId, participationId, `reward:${group.id}:${roll}:pick`),
+      );
+      items.push({ slug: picked.itemId, quantity: picked.quantity });
+      hitGroupIds.push(group.id);
     }
   }
 
   return {
     buddyXp: applicableBuddyXp(table.buddyXp, buddyLevel, maxLevel),
     items,
-    jackpotHit,
+    hitGroupIds,
+    warnings,
   };
 }
 
 /**
  * Merge stacks of the same item before they are handed over.
  *
- * Only reachable when a reward table lists its jackpot slug in the minor pool
- * too, which shipped content does not — but a single `+2` inventory write is
- * both cheaper and easier to read in a result line than two `+1`s, and the
- * caller should not have to care whether the table happens to overlap.
+ * Reachable whenever two groups name the same item, or one group's repeated
+ * rolls land on it twice. A single `+2` inventory write is both cheaper and
+ * easier to read in a result line than two `+1`s, and the caller should not
+ * have to care whether the table happens to overlap.
  */
 export function mergeGrants(
   grants: readonly BossRewardItemGrant[],

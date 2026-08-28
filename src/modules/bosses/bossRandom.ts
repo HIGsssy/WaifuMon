@@ -1,8 +1,8 @@
 /**
  * Deterministic draws for boss encounters.
  *
- * Every random quantity a resolution produces — the performance modifier, the
- * minor-item pick, the Mythic Contract roll — is derived rather than rolled,
+ * Every random quantity a resolution produces — the performance modifier and
+ * every boss reward group's gate and pick — is derived rather than rolled,
  * from identifiers that never change plus a versioned salt. This is the same
  * technique the Seductive Power backfill uses, and it is here for the same
  * reason: **resolution must be retryable**. A process that dies halfway
@@ -17,8 +17,11 @@
  * cannot diverge even if nothing at all was written.
  *
  * `participationId` is in the key so two players in one encounter draw
- * independently, and `purpose` is in it so the damage roll and the two reward
- * rolls are independent of each other rather than three views of one number.
+ * independently, and `purpose` is in it so the damage roll and every reward
+ * draw are independent of each other rather than several views of one number.
+ * A reward purpose carries its group id and roll index for the same reason —
+ * `reward:rare-bonus:0:gate` and `reward:rare-bonus:0:pick` are two separate
+ * quantities about the same group.
  *
  * md5 is a distribution function here, not a security primitive.
  */
@@ -33,8 +36,16 @@ import { createHash } from 'node:crypto';
  */
 export const BOSS_RANDOM_SALT = 'waifumon.boss.roll.v1';
 
-/** What a draw is *for* — keeps independent quantities independent. */
-export type BossDrawPurpose = 'performance' | 'minor-item' | 'mythic';
+/**
+ * What a draw is *for* — keeps independent quantities independent.
+ *
+ * The reward variants are open-ended because reward groups are authored in
+ * content: a table may declare any number of them, and each group's every roll
+ * needs its own key or two groups would draw the same number. The template
+ * literal keeps the namespace closed at the top level (a bare typo is still a
+ * type error) while letting the group id and roll index vary.
+ */
+export type BossDrawPurpose = 'performance' | `reward:${string}`;
 
 /** Hex digits taken from the digest — 8 = 32 bits. */
 const HASH_HEX_DIGITS = 8;

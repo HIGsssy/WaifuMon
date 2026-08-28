@@ -19,7 +19,9 @@ import {
 import {
   BossContentSchema,
   BossEncountersConfigSchema,
+  BossRewardsFileSchema,
   type BossContent,
+  type BossRewardTable,
 } from '../../src/modules/content/schemas';
 import { ContentValidationError } from '../../src/shared/errors';
 import { AFFINITIES } from '../../src/db/schema';
@@ -44,7 +46,7 @@ function contentCopy(): { contentDir: string; assetsDir: string } {
   const assetsDir = path.join(root, 'assets');
   fs.mkdirSync(path.join(contentDir, 'species'), { recursive: true });
   fs.mkdirSync(assetsDir, { recursive: true });
-  for (const file of ['items.json', 'tables.json', 'bosses.json']) {
+  for (const file of ['items.json', 'tables.json', 'bosses.json', 'bossRewards.json']) {
     fs.copyFileSync(path.join(CONTENT_DIR, file), path.join(contentDir, file));
   }
   for (const file of fs.readdirSync(path.join(CONTENT_DIR, 'species'))) {
@@ -62,6 +64,18 @@ function writeBosses(contentDir: string, bosses: unknown): void {
   fs.writeFileSync(
     path.join(contentDir, 'bosses.json'),
     `${JSON.stringify(bosses, null, 2)}\n`,
+    'utf8',
+  );
+}
+
+function readRewards(contentDir: string): BossRewardTable[] {
+  return JSON.parse(fs.readFileSync(path.join(contentDir, 'bossRewards.json'), 'utf8'));
+}
+
+function writeRewards(contentDir: string, tables: unknown): void {
+  fs.writeFileSync(
+    path.join(contentDir, 'bossRewards.json'),
+    `${JSON.stringify(tables, null, 2)}\n`,
     'utf8',
   );
 }
@@ -124,47 +138,67 @@ describe('shipped bosses', () => {
     }
   });
 
-  it('points every boss at a reward table that exists', () => {
-    const tables = content.tables.bossEncounters.rewardTables;
+  it('points every boss at a reward table that exists in bossRewards.json', () => {
+    const ids = content.bossRewards.map((t) => t.id);
     for (const boss of content.bosses) {
-      expect(Object.keys(tables), boss.id).toContain(boss.rewardTable);
+      expect(ids, boss.id).toContain(boss.rewardTable);
     }
   });
 
-  it('ships standard-scouting-v1 with the documented payouts', () => {
-    const table = content.tables.bossEncounters.rewardTables['standard-scouting-v1'];
-    expect(table).toBeDefined();
-    expect(table!.buddyXp).toBe(15);
-    expect(table!.jackpot).toEqual({ slug: 'mythic_contract', quantity: 1, chance: 0.0025 });
-    // Weights sum to 10,000 so each one reads directly as a basis-point share —
-    // the same convention `affectionGifts.lootTable` uses.
-    expect(table!.minorItems.reduce((sum, e) => sum + e.weight, 0)).toBe(10_000);
+  it('keeps reward tables out of tables.json entirely', () => {
+    // Boss loot is independently editable in its own file. A `rewardTables`
+    // key surviving in `tables.json` would be silently ignored, which is worse
+    // than absent — an operator would edit it and see nothing change.
+    expect(content.tables.bossEncounters).not.toHaveProperty('rewardTables');
   });
 
   it('names only canonical, enabled items in every shipped reward table', () => {
-    // The loader *tolerates* a disabled reward item; shipped content should
+    // The loader *tolerates* a retired reward item; shipped content should
     // never lean on that tolerance, which is what this asserts.
     const enabled = new Set(content.items.filter((i) => i.enabled).map((i) => i.slug));
-    for (const table of Object.values(content.tables.bossEncounters.rewardTables)) {
-      for (const entry of table.minorItems) expect(enabled).toContain(entry.slug);
-      if (table.jackpot) expect(enabled).toContain(table.jackpot.slug);
+    for (const table of content.bossRewards) {
+      for (const group of table.groups) {
+        for (const entry of group.entries) expect(enabled).toContain(entry.itemId);
+      }
     }
   });
 
-  it('has at least one enabled boss for every enabled region', () => {
+  it('has at least one drawable boss for every enabled region', () => {
+    const tables = new Map(content.bossRewards.map((t) => [t.id, t]));
     for (const region of content.tables.bossEncounters.regions) {
-      expect(content.bosses.some((b) => b.enabled && b.region === region)).toBe(true);
+      expect(
+        content.bosses.some(
+          (b) => b.enabled && b.region === region && tables.get(b.rewardTable)?.enabled,
+        ),
+      ).toBe(true);
     }
   });
 
   it('ships the documented timings', () => {
     const cfg = content.tables.bossEncounters;
-    expect(cfg.scoutingMinutes).toBe(60);
-    expect(cfg.downtimeMinutesMin).toBe(120);
-    expect(cfg.downtimeMinutesMax).toBe(300);
+    expect(cfg.scoutingMinutes).toBe(30);
+    expect(cfg.downtimeMinutesMin).toBe(10);
+    expect(cfg.downtimeMinutesMax).toBe(35);
     expect(cfg.attacksPerParticipation).toBe(10);
     expect(cfg.performanceMinPercent).toBe(85);
     expect(cfg.performanceMaxPercent).toBe(115);
+  });
+
+  it('ships the documented rapid-response brackets, sized to the window', () => {
+    const cfg = content.tables.bossEncounters;
+    expect(cfg.responseBrackets).toEqual([
+      { withinMinutes: 10, bonus: 0.05 },
+      { withinMinutes: 20, bonus: 0.02 },
+    ]);
+    // The last bracket must land inside the window, or the final tier is dead
+    // configuration.
+    expect(cfg.responseBrackets.at(-1)!.withinMinutes).toBeLessThan(cfg.scoutingMinutes);
+  });
+
+  it('ships a cycle of roughly 40-65 minutes', () => {
+    const cfg = content.tables.bossEncounters;
+    expect(cfg.scoutingMinutes + cfg.downtimeMinutesMin).toBe(40);
+    expect(cfg.scoutingMinutes + cfg.downtimeMinutesMax).toBe(65);
   });
 });
 
@@ -228,21 +262,20 @@ describe('boss definition schema', () => {
 // ── tuning block ────────────────────────────────────────────────────────────
 
 describe('bossEncounters config schema', () => {
-  const minimal = {
-    rewardTables: {
-      't1': {
-        version: 'v1',
-        buddyXp: 10,
-        minorItems: [{ slug: 'basic_charm', quantity: 1, weight: 1 }],
-      },
-    },
-  };
+  // Everything is defaulted now that payouts live in their own file, so the
+  // minimal tuning block is genuinely empty.
+  const minimal = {};
 
   it('defaults the wheel, timings and brackets to the shipped values', () => {
     const parsed = BossEncountersConfigSchema.parse(minimal);
-    expect(parsed.scoutingMinutes).toBe(60);
+    expect(parsed.scoutingMinutes).toBe(30);
+    expect(parsed.downtimeMinutesMin).toBe(10);
+    expect(parsed.downtimeMinutesMax).toBe(35);
     expect(parsed.affinityWheel.dominant).toBe('switch');
-    expect(parsed.responseBrackets).toHaveLength(2);
+    expect(parsed.responseBrackets).toEqual([
+      { withinMinutes: 10, bonus: 0.05 },
+      { withinMinutes: 20, bonus: 0.02 },
+    ]);
   });
 
   it('rejects a downtime band whose max is below its min', () => {
@@ -277,56 +310,15 @@ describe('bossEncounters config schema', () => {
     ).toThrow();
   });
 
-  it('rejects an empty reward-table map while enabled', () => {
-    expect(() => BossEncountersConfigSchema.parse({ enabled: true, rewardTables: {} })).toThrow();
+  it('ignores a stray rewardTables key rather than accepting it as config', () => {
+    // Payouts moved to `content/bossRewards.json`. The tuning block strips the
+    // key, which is what the shipped-content test above asserts is gone.
+    const parsed = BossEncountersConfigSchema.parse({ ...minimal, rewardTables: { t1: {} } });
+    expect(parsed).not.toHaveProperty('rewardTables');
   });
 
-  it('rejects a jackpot chance above the hard cap', () => {
-    expect(() =>
-      BossEncountersConfigSchema.parse({
-        rewardTables: {
-          t1: {
-            ...minimal.rewardTables.t1,
-            jackpot: { slug: 'mythic_contract', chance: 0.5 },
-          },
-        },
-      }),
-    ).toThrow();
-  });
-
-  it('allows the same item at two different quantities', () => {
-    // "2× Basic Charm" and "3× Basic Charm" are two drops, not a duplicate.
-    expect(() =>
-      BossEncountersConfigSchema.parse({
-        rewardTables: {
-          t1: {
-            version: 'v1',
-            buddyXp: 0,
-            minorItems: [
-              { slug: 'basic_charm', quantity: 2, weight: 1 },
-              { slug: 'basic_charm', quantity: 3, weight: 1 },
-            ],
-          },
-        },
-      }),
-    ).not.toThrow();
-  });
-
-  it('rejects the identical drop listed twice', () => {
-    expect(() =>
-      BossEncountersConfigSchema.parse({
-        rewardTables: {
-          t1: {
-            version: 'v1',
-            buddyXp: 0,
-            minorItems: [
-              { slug: 'basic_charm', quantity: 2, weight: 1 },
-              { slug: 'basic_charm', quantity: 2, weight: 5 },
-            ],
-          },
-        },
-      }),
-    ).toThrow();
+  it('accepts an enabled config with no reward map, because there is no map', () => {
+    expect(() => BossEncountersConfigSchema.parse({ enabled: true })).not.toThrow();
   });
 });
 
@@ -357,15 +349,78 @@ describe('cross-file boss validation', () => {
     expect(() => validateCopy(contentDir)).toThrow(/unknown reward table: legendary-scouting-v9/);
   });
 
-  it('rejects a reward table naming an item that does not exist', () => {
+  it('rejects a reward entry naming an item that does not exist', () => {
     const { contentDir } = contentCopy();
-    const tables = readTables(contentDir);
-    const boss = tables.bossEncounters as Record<string, unknown>;
-    (boss.rewardTables as Record<string, { minorItems: { slug: string }[] }>)[
-      'standard-scouting-v1'
-    ]!.minorItems[0]!.slug = 'cherries';
-    writeTables(contentDir, tables);
+    const rewards = readRewards(contentDir);
+    rewards[0]!.groups[0]!.entries[0]!.itemId = 'cherries';
+    writeRewards(contentDir, rewards);
     expect(() => validateCopy(contentDir)).toThrow(/unknown item slug: cherries/);
+  });
+
+  it('names the group and table when a reward entry is invalid', () => {
+    const { contentDir } = contentCopy();
+    const rewards = readRewards(contentDir);
+    rewards[0]!.groups[1]!.entries[0]!.itemId = 'legendary_contract';
+    writeRewards(contentDir, rewards);
+    expect(() => validateCopy(contentDir)).toThrow(
+      /bossRewards\["standard-scouting-v1"\]\.groups\["rare-bonus"\]/,
+    );
+  });
+
+  it('names the known tables when a boss points at a missing one', () => {
+    const { contentDir } = contentCopy();
+    const bosses = JSON.parse(
+      fs.readFileSync(path.join(contentDir, 'bosses.json'), 'utf8'),
+    ) as BossContent[];
+    bosses[0]!.rewardTable = 'nope-v1';
+    writeBosses(contentDir, bosses);
+    // Actionable: the message says where to add it and what already exists.
+    expect(() => validateCopy(contentDir)).toThrow(/content\/bossRewards\.json/);
+    expect(() => validateCopy(contentDir)).toThrow(/standard-scouting-v1/);
+  });
+
+  it('rejects a disabled reward table that leaves a region undrawable', () => {
+    const { contentDir } = contentCopy();
+    const rewards = readRewards(contentDir);
+    rewards[0]!.enabled = false;
+    writeRewards(contentDir, rewards);
+    expect(() => validateCopy(contentDir)).toThrow(
+      /points at a disabled reward table|disabled reward table/,
+    );
+    // And it names the table to re-enable, not just the region.
+    expect(() => validateCopy(contentDir)).toThrow(/standard-scouting-v1/);
+  });
+
+  it('accepts a disabled reward table while another keeps the region drawable', () => {
+    const { contentDir } = contentCopy();
+    const rewards = readRewards(contentDir);
+    // A second, enabled table; move one boss onto it, then switch the first off.
+    rewards.push({ ...rewards[0]!, id: 'backup-v1', enabled: true });
+    rewards[0]!.enabled = false;
+    writeRewards(contentDir, rewards);
+    const bosses = JSON.parse(
+      fs.readFileSync(path.join(contentDir, 'bosses.json'), 'utf8'),
+    ) as BossContent[];
+    bosses[0]!.rewardTable = 'backup-v1';
+    writeBosses(contentDir, bosses);
+    expect(() => validateCopy(contentDir)).not.toThrow();
+  });
+
+  it('rejects a bossRewards file with duplicate table ids', () => {
+    const { contentDir } = contentCopy();
+    const rewards = readRewards(contentDir);
+    writeRewards(contentDir, [...rewards, rewards[0]]);
+    expect(() => validateCopy(contentDir)).toThrow(/two tables with id/);
+  });
+
+  it('loads an empty reward list when bossRewards.json is absent', () => {
+    const { contentDir } = contentCopy();
+    fs.rmSync(path.join(contentDir, 'bossRewards.json'));
+    writeBosses(contentDir, []);
+    const tables = readTables(contentDir);
+    (tables.bossEncounters as Record<string, unknown>).enabled = false;
+    writeTables(contentDir, tables);
+    expect(readContentFiles(contentDir).bossRewards).toEqual([]);
   });
 
   it('allows a reward table naming a disabled item', () => {
@@ -426,15 +481,37 @@ describe('cross-file boss validation', () => {
     expect(readContentFiles(contentDir).bosses).toEqual([]);
   });
 
-  it('rejects a jackpot slug that does not exist', () => {
+  it('picks up an on-disk reward edit on the next load, with no restart needed', () => {
+    // `bossRewards.json` is read by `readContentFiles`, which is what the admin
+    // panel's Reload Content calls — the same rule `bosses.json` follows, and
+    // the reason payouts do not live in `tables.json` (whose values are
+    // captured by service closures at construction).
     const { contentDir } = contentCopy();
-    const tables = readTables(contentDir);
-    const cfg = tables.bossEncounters as Record<string, unknown>;
-    (cfg.rewardTables as Record<string, { jackpot: { slug: string } }>)[
-      'standard-scouting-v1'
-    ]!.jackpot.slug = 'legendary_contract';
-    writeTables(contentDir, tables);
-    expect(() => validateCopy(contentDir)).toThrow(/jackpot references unknown item slug/);
+    const before = readContentFiles(contentDir).bossRewards[0]!;
+    expect(before.groups[0]!.entries[0]!.enabled).toBe(true);
+
+    const rewards = readRewards(contentDir);
+    rewards[0]!.groups[0]!.entries[0]!.enabled = false;
+    rewards[0]!.buddyXp = 99;
+    writeRewards(contentDir, rewards);
+
+    const after = readContentFiles(contentDir).bossRewards[0]!;
+    expect(after.groups[0]!.entries[0]!.enabled).toBe(false);
+    expect(after.buddyXp).toBe(99);
+  });
+
+  it('rejects an invalid reward edit so a bad reload cannot land', () => {
+    const { contentDir } = contentCopy();
+    const rewards = readRewards(contentDir);
+    rewards[0]!.groups[0]!.entries[0]!.weight = 0;
+    writeRewards(contentDir, rewards);
+    expect(() => readContentFiles(contentDir)).toThrow(/bossRewards\.json/);
+  });
+
+  it('parses the shipped bossRewards.json against its own schema', () => {
+    const { contentDir } = contentCopy();
+    const result = BossRewardsFileSchema.safeParse(readRewards(contentDir));
+    expect(result.success).toBe(true);
   });
 
   it('is callable on its own for a candidate set', () => {

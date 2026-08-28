@@ -8,7 +8,8 @@
  * and makes sure a failure in one guild cannot stop the next.
  *
  * **Why a tick rather than a timer per encounter.** A `setTimeout` scheduled
- * for a deadline an hour away is state that exists only in one process's
+ * for a deadline half an hour away is state that exists only in one
+ * process's
  * memory: a restart forgets it, and a second process would duplicate it. A
  * tick that re-derives what is due from the database is stateless by
  * construction, which is what makes restart recovery and multi-process
@@ -20,11 +21,17 @@
  *      whose owner died, which the service re-claims after a timeout. Resolving
  *      first means a guild whose window just closed gets its results before
  *      the next boss is considered, and frees the one-active slot.
- *   2. **Refresh live announcements** — participant count and countdown.
- *   3. **Draw the next appearance** if the guild is due one. Resolution has
- *      already pushed `next_spawn_at` hours out, so freeing the slot in step 1
- *      cannot cause an immediate re-spawn.
- *   4. **Announce anything `scheduled`** — both what step 3 just drew and what
+ *   2. **Deliver what resolution still owes Discord** — the completion edit on
+ *      an encounter message and the separate results message beneath it. Step 1
+ *      already attempts both; this step is what makes a Discord outage, or a
+ *      crash between the two calls, self-healing rather than permanent. Both
+ *      halves are stamped in the database when they land, so this is a no-op
+ *      on every tick where there is nothing outstanding.
+ *   3. **Refresh live announcements** — participant count and countdown.
+ *   4. **Draw the next appearance** if the guild is due one. Resolution has
+ *      already pushed `next_spawn_at` out past the downtime band, so freeing
+ *      the slot in step 1 cannot cause an immediate re-spawn.
+ *   5. **Announce anything `scheduled`** — both what step 4 just drew and what
  *      a crash between a draw and its announcement left behind. Announcing
  *      last is what lets one pass take a boss all the way from drawn to live,
  *      rather than making every appearance wait a full tick. The persisted
@@ -55,7 +62,15 @@ export interface BossAnnouncer {
   postAnnouncement(encounter: BossEncounterRow, channelId: string): Promise<string>;
   /** Edit the live announcement in place. Never posts a replacement. */
   refreshAnnouncement(encounter: BossEncounterRow): Promise<void>;
-  /** Edit the announcement into its final results form. */
+  /**
+   * Close the encounter out in Discord: edit the original announcement into
+   * its terminal form, then post a **separate** results message beneath it.
+   *
+   * Resumable and idempotent — each half is stamped in the database once it
+   * lands, so calling this on an encounter that is already fully published
+   * does nothing, and calling it on one that got halfway finishes the job.
+   * That is what lets the scheduler treat recovery as an ordinary step.
+   */
   publishResults(encounterId: number): Promise<void>;
 }
 
@@ -176,9 +191,17 @@ export function createBossScheduler(deps: BossSchedulerDeps): BossScheduler {
     return channelId;
   }
 
-  /** Step 1 — close every window that is due, including stale claims. */
-  async function resolveDue(): Promise<void> {
+  /**
+   * Step 1 — close every window that is due, including stale claims.
+   *
+   * Returns the encounter ids this pass already attempted to publish, so step 2
+   * can leave them alone. Retrying a publish microseconds after it failed is
+   * strictly worse than waiting for the next tick — the usual reason it failed
+   * is a rate limit, and an immediate second call feeds it.
+   */
+  async function resolveDue(): Promise<Set<number>> {
     const now = clock();
+    const attempted = new Set<number>();
     for (const encounter of await encounters.findResolvable(now)) {
       try {
         const result = await encounters.resolve(encounter.id, now);
@@ -217,6 +240,7 @@ export function createBossScheduler(deps: BossSchedulerDeps): BossScheduler {
         // items that have already been granted. The results are stored, so a
         // later pass — or an admin repair — can publish them without repaying.
         try {
+          attempted.add(encounter.id);
           await announcer.publishResults(encounter.id);
         } catch (err) {
           logger.error(
@@ -236,10 +260,43 @@ export function createBossScheduler(deps: BossSchedulerDeps): BossScheduler {
         );
       }
     }
+    return attempted;
   }
 
   /**
-   * Step 2 — announce anything drawn but never posted.
+   * Step 2 — finish any Discord delivery a resolution left outstanding.
+   *
+   * The completion edit and the results message are both stamped in the
+   * database only after Discord accepts them, so "outstanding" is a query
+   * rather than a memory of what this process tried. That makes three cases
+   * one code path: a crash between the two calls, a Discord outage during
+   * `resolveDue`, and a restart hours later.
+   *
+   * `publishResults` is itself idempotent and resumable, so this step does not
+   * need to know *which* half is missing — it just asks again.
+   *
+   * `justAttempted` carries the ids step 1 already tried this pass. Skipping
+   * them is what keeps this a *recovery* step rather than an instant retry
+   * loop: a publish that just failed is left for the next tick, a minute away.
+   */
+  async function deliverPending(justAttempted: ReadonlySet<number>): Promise<void> {
+    for (const encounter of await encounters.findUndelivered()) {
+      if (justAttempted.has(encounter.id)) continue;
+      try {
+        await announcer.publishResults(encounter.id);
+      } catch (err) {
+        // Never fatal. Rewards were applied inside `resolve`; everything
+        // outstanding here is presentation, and the row still says so.
+        logger.warn(
+          { tag: 'boss/deliver-failed', encounterId: encounter.id, err },
+          'boss results delivery repair failed — will retry on the next pass',
+        );
+      }
+    }
+  }
+
+  /**
+   * Step 3 — announce anything drawn but never posted.
    *
    * The order here is what makes a crash safe in both directions: the message
    * is posted *first*, then `beginScouting` records its id and stamps the
@@ -273,7 +330,7 @@ export function createBossScheduler(deps: BossSchedulerDeps): BossScheduler {
     }
   }
 
-  /** Step 3 — keep the countdown and participant count current. */
+  /** Step 4 — keep the countdown and participant count current. */
   async function refreshLive(): Promise<void> {
     for (const encounter of await encounters.findScouting()) {
       try {
@@ -289,7 +346,7 @@ export function createBossScheduler(deps: BossSchedulerDeps): BossScheduler {
     }
   }
 
-  /** Step 4 — draw the next appearance where one is due. */
+  /** Step 5 — draw the next appearance where one is due. */
   async function spawnDue(guildIds: readonly number[]): Promise<void> {
     const now = clock();
     for (const guildId of guildIds) {
@@ -321,12 +378,18 @@ export function createBossScheduler(deps: BossSchedulerDeps): BossScheduler {
 
       // Order matters, and each step touches a disjoint set of encounters:
       //   resolve  — windows that are past their deadline (frees the slot)
+      //   deliver  — finish the completion edit / results message for anything
+      //              already resolved that Discord has not received yet
       //   refresh  — windows that are still open (countdown, participant count)
       //   spawn    — draw the next appearance where one is due
       //   announce — post for anything `scheduled`, including what spawn just
       //              drew, so a boss appears in the *same* pass rather than up
       //              to a minute later
-      await resolveDue();
+      //
+      // `deliver` runs before `announce` so a channel never shows the next
+      // boss above the previous encounter's results.
+      const justResolved = await resolveDue();
+      await deliverPending(justResolved);
       await refreshLive();
       await spawnDue([...channelByGuild.keys()]);
       await announceScheduled(channelByGuild);

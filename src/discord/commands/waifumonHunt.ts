@@ -523,11 +523,21 @@ export async function handleHunt(
           return;
         }
       }
-      await respondEphemeral(interaction, err.userMessage);
+      // Fallback (encounter row vanished mid-flight): keep navigation alive
+      // so the player can return to the menu instead of dead-ending.
+      await respondEphemeral(interaction, {
+        content: err.userMessage,
+        components: withBackRow(),
+      });
       return;
     }
     if (err instanceof HuntCooldownError || err instanceof InsufficientEnergyError) {
-      await respondEphemeral(interaction, err.userMessage);
+      // Pre-Hunt validation failures: no state was mutated, so keep the
+      // player's active `/waifumon` flow alive with a Back button to the menu.
+      await respondEphemeral(interaction, {
+        content: err.userMessage,
+        components: withBackRow(),
+      });
       return;
     }
     throw err;

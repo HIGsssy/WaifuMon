@@ -134,9 +134,9 @@ describe('a first pass opens an encounter', () => {
     expect(encounter!.messageId).toBe('m-1');
     expect(announcer.postAnnouncement).toHaveBeenCalledTimes(1);
 
-    // Sixty minutes, set once at the scouting start.
+    // Thirty minutes, set once at the scouting start.
     const window = (encounter!.deadlineAt!.getTime() - encounter!.scoutingStartedAt!.getTime()) / MINUTE;
-    expect(window).toBe(60);
+    expect(window).toBe(30);
   });
 
   it('does nothing for a guild with no boss channel configured', async () => {
@@ -281,8 +281,8 @@ describe('the deadline closes the window', () => {
       trainerName: 'Whistler',
     });
 
-    // Sixty-one minutes later.
-    const later = new Date(Date.now() + 61 * MINUTE);
+    // Thirty-one minutes later.
+    const later = new Date(Date.now() + 31 * MINUTE);
     await scheduler(announcer, () => later).tick();
 
     const [row] = await t.db
@@ -292,14 +292,52 @@ describe('the deadline closes the window', () => {
     expect(row!.status).toBe('resolved');
     expect(row!.participantCount).toBe(1);
     expect(announcer.publishResults).toHaveBeenCalledWith(encounter.id);
-    // The results are an *edit* of the original message, never a new post.
+    // Results are a *second* message, so the announcement is still posted
+    // exactly once — never re-posted, never replaced.
     expect(announcer.postAnnouncement).toHaveBeenCalledTimes(1);
   });
 
-  it('persists a 2–5 hour downtime and does not spawn again inside it', async () => {
+  it('does not resolve a hair before the deadline', async () => {
     const announcer = fakeAnnouncer();
     await scheduler(announcer).tick();
-    const later = new Date(Date.now() + 61 * MINUTE);
+    const encounter = (await activeEncounter())!;
+    const justBefore = new Date(encounter.deadlineAt!.getTime() - 1000);
+    await scheduler(announcer, () => justBefore).tick();
+    expect((await app.bosses.getEncounter(encounter.id))!.status).toBe('scouting');
+    expect(announcer.publishResults).not.toHaveBeenCalled();
+  });
+
+  it('refuses a commitment at or after the deadline', async () => {
+    const announcer = fakeAnnouncer();
+    await scheduler(announcer).tick();
+    const encounter = (await activeEncounter())!;
+    await giveBuddy();
+    // Exactly the deadline, and past it. Both are closed.
+    await expect(
+      app.bosses.commit(
+        encounter.id,
+        guildDbId,
+        playerId,
+        { discordUserId: 'u-1', trainerName: 'Whistler' },
+        encounter.deadlineAt!,
+      ),
+    ).rejects.toThrow();
+    await expect(
+      app.bosses.commit(
+        encounter.id,
+        guildDbId,
+        playerId,
+        { discordUserId: 'u-1', trainerName: 'Whistler' },
+        new Date(encounter.deadlineAt!.getTime() + 1),
+      ),
+    ).rejects.toThrow();
+    expect(await t.db.select().from(bossParticipations)).toHaveLength(0);
+  });
+
+  it('persists a 10-35 minute downtime and does not spawn again inside it', async () => {
+    const announcer = fakeAnnouncer();
+    await scheduler(announcer).tick();
+    const later = new Date(Date.now() + 31 * MINUTE);
     await scheduler(announcer, () => later).tick();
 
     const [state] = await t.db
@@ -307,19 +345,59 @@ describe('the deadline closes the window', () => {
       .from(guildBossState)
       .where(eq(guildBossState.guildId, guildDbId));
     const downtimeMinutes = (state!.nextSpawnAt!.getTime() - later.getTime()) / MINUTE;
-    expect(downtimeMinutes).toBeGreaterThanOrEqual(120);
-    expect(downtimeMinutes).toBeLessThanOrEqual(300);
+    expect(downtimeMinutes).toBeGreaterThanOrEqual(10);
+    expect(downtimeMinutes).toBeLessThanOrEqual(35);
 
-    // A pass one hour into the downtime must not open anything.
-    const inside = new Date(later.getTime() + 60 * MINUTE);
+    // A pass nine minutes into the downtime — inside even the shortest band —
+    // must not open anything.
+    const inside = new Date(later.getTime() + 9 * MINUTE);
     await scheduler(announcer, () => inside).tick();
     expect(await activeEncounter()).toBeUndefined();
+  });
+
+  it('reaches both endpoints of the downtime band across many draws', async () => {
+    // The band's endpoints are what an operator tunes, so they have to be
+    // actually reachable rather than approached asymptotically.
+    const seen = new Set<number>();
+    for (let seed = 0; seed < 300; seed += 1) {
+      await t.db.delete(bossParticipations);
+      await t.db.delete(bossEncounters);
+      await t.db.delete(guildBossState);
+      const isolated = await bootstrapApp(t, { bossRng: seededRng(seed) });
+      const announcer = fakeAnnouncer();
+      const s = createBossScheduler({
+        db: t.db,
+        encounters: isolated.bosses,
+        announcer,
+        logger: t.logger,
+      });
+      await s.tick();
+      const later = new Date(Date.now() + 31 * MINUTE);
+      const s2 = createBossScheduler({
+        db: t.db,
+        encounters: isolated.bosses,
+        announcer,
+        logger: t.logger,
+        now: () => later,
+      });
+      await s2.tick();
+      const [state] = await t.db
+        .select()
+        .from(guildBossState)
+        .where(eq(guildBossState.guildId, guildDbId));
+      seen.add(Math.round((state!.nextSpawnAt!.getTime() - later.getTime()) / MINUTE));
+      if (seen.has(10) && seen.has(35)) break;
+    }
+    expect(seen.has(10), `saw ${[...seen].sort((a, b) => a - b).join(',')}`).toBe(true);
+    expect(seen.has(35), `saw ${[...seen].sort((a, b) => a - b).join(',')}`).toBe(true);
+    expect(Math.min(...seen)).toBeGreaterThanOrEqual(10);
+    expect(Math.max(...seen)).toBeLessThanOrEqual(35);
   });
 
   it('does not reroll the next appearance across a restart', async () => {
     const announcer = fakeAnnouncer();
     await scheduler(announcer).tick();
-    const later = new Date(Date.now() + 61 * MINUTE);
+    const later = new Date(Date.now() + 31 * MINUTE);
     await scheduler(announcer, () => later).tick();
     const [before] = await t.db
       .select()
@@ -339,7 +417,7 @@ describe('the deadline closes the window', () => {
     await scheduler(announcer).tick();
     const firstBossId = (await activeEncounter())!.bossId;
 
-    const closed = new Date(Date.now() + 61 * MINUTE);
+    const closed = new Date(Date.now() + 31 * MINUTE);
     await scheduler(announcer, () => closed).tick();
     const [state] = await t.db
       .select()
@@ -530,6 +608,181 @@ describe('a Discord failure never costs a reward', () => {
       }),
     });
     await expect(scheduler(flaky).tick()).resolves.toBeUndefined();
+  });
+});
+
+describe('the two-message delivery survives a restart', () => {
+  /**
+   * Run a full encounter to resolution with a *broken* publisher, so the row
+   * lands `resolved` with neither Discord step stamped — which is exactly what
+   * a crash between resolving and publishing leaves behind.
+   */
+  async function resolvedButUnpublished(): Promise<BossEncounterRow> {
+    await scheduler(fakeAnnouncer()).tick();
+    const encounter = (await activeEncounter())!;
+    await giveBuddy();
+    await app.bosses.commit(encounter.id, guildDbId, playerId, {
+      discordUserId: 'u-1',
+      trainerName: 'Whistler',
+    });
+    const broken = fakeAnnouncer({
+      publishResults: vi.fn(async () => {
+        throw new Error('rate limited');
+      }),
+    });
+    await scheduler(broken, () => new Date(Date.now() + 31 * MINUTE)).tick();
+    return (await app.bosses.getEncounter(encounter.id))!;
+  }
+
+  it('leaves both delivery stamps null when publishing never succeeded', async () => {
+    const row = await resolvedButUnpublished();
+    expect(row.status).toBe('resolved');
+    expect(row.completionEditedAt).toBeNull();
+    expect(row.resultsPublishedAt).toBeNull();
+    expect(row.resultsMessageId).toBeNull();
+    // The announcement message id is untouched — the encounter still owns it.
+    expect(row.messageId).toBe('m-1');
+  });
+
+  it('reports the encounter as owing Discord work', async () => {
+    const row = await resolvedButUnpublished();
+    const pending = await app.bosses.findUndelivered();
+    expect(pending.map((e) => e.id)).toContain(row.id);
+  });
+
+  it('a restart re-attempts delivery for it', async () => {
+    const row = await resolvedButUnpublished();
+    const recovered = fakeAnnouncer();
+    await scheduler(recovered, () => new Date(Date.now() + 32 * MINUTE)).tick();
+    expect(recovered.publishResults).toHaveBeenCalledWith(row.id);
+    // And it does not re-announce or re-pay anything to do it.
+    expect(recovered.postAnnouncement).not.toHaveBeenCalled();
+  });
+
+  it('stops re-attempting once both stamps land', async () => {
+    const row = await resolvedButUnpublished();
+    // Stand in for a successful publish.
+    await app.bosses.markCompletionEdited(row.id);
+    await app.bosses.markResultsPublished(row.id, 'm-results', 10);
+
+    expect((await app.bosses.findUndelivered()).map((e) => e.id)).not.toContain(row.id);
+    const later = fakeAnnouncer();
+    await scheduler(later, () => new Date(Date.now() + 33 * MINUTE)).tick();
+    expect(later.publishResults).not.toHaveBeenCalledWith(row.id);
+  });
+
+  it('still owes work when only the completion edit landed', async () => {
+    const row = await resolvedButUnpublished();
+    await app.bosses.markCompletionEdited(row.id);
+    expect((await app.bosses.findUndelivered()).map((e) => e.id)).toContain(row.id);
+  });
+
+  it('never overwrites a results message id that is already recorded', async () => {
+    const row = await resolvedButUnpublished();
+    const first = await app.bosses.markResultsPublished(row.id, 'm-first', 10);
+    expect(first!.resultsMessageId).toBe('m-first');
+    // A racing second publisher loses, and the original stands.
+    const second = await app.bosses.markResultsPublished(row.id, 'm-second', 10);
+    expect(second).toBeUndefined();
+    expect((await app.bosses.getEncounter(row.id))!.resultsMessageId).toBe('m-first');
+  });
+
+  it('never moves the completion stamp once set', async () => {
+    const row = await resolvedButUnpublished();
+    const at = new Date('2026-01-01T00:00:00.000Z');
+    await app.bosses.markCompletionEdited(row.id, at);
+    await app.bosses.markCompletionEdited(row.id, new Date('2027-01-01T00:00:00.000Z'));
+    expect((await app.bosses.getEncounter(row.id))!.completionEditedAt!.toISOString()).toBe(
+      at.toISOString(),
+    );
+  });
+
+  it('does not treat an encounter that was never announced as undelivered', async () => {
+    // Nothing to edit and nowhere to publish — a `scheduled` row that got
+    // cancelled has no message of its own.
+    const [orphan] = await t.db
+      .insert(bossEncounters)
+      .values({
+        guildId: guildDbId,
+        region: 'waifu-valley',
+        bossId: 'x',
+        bossName: 'X',
+        bossAffinity: 'dominant',
+        rewardTable: 'standard-scouting-v1',
+        rewardTableVersion: 'standard-scouting-v1',
+        calcVersion: 1,
+        affinityVersion: 1,
+        status: 'cancelled',
+        scheduledAt: new Date(),
+        resolvedAt: new Date(),
+      })
+      .returning();
+    expect((await app.bosses.findUndelivered()).map((e) => e.id)).not.toContain(orphan!.id);
+  });
+
+  it('leaves an older encounter untouched while the next one runs', async () => {
+    const first = await resolvedButUnpublished();
+    await app.bosses.markCompletionEdited(first.id);
+    await app.bosses.markResultsPublished(first.id, 'm-results-1', 10);
+    const before = (await app.bosses.getEncounter(first.id))!;
+
+    // Open and finish a second encounter on top of it.
+    const [state] = await t.db
+      .select()
+      .from(guildBossState)
+      .where(eq(guildBossState.guildId, guildDbId));
+    const due = new Date(state!.nextSpawnAt!.getTime() + MINUTE);
+    const announcer = fakeAnnouncer();
+    await scheduler(announcer, () => due).tick();
+    const second = (await activeEncounter())!;
+    expect(second.id).not.toBe(first.id);
+    // The next encounter posts its *own* announcement rather than reusing the
+    // previous one's message. (That the ids differ on real Discord is asserted
+    // against a shared channel in `bossAnnouncer.test.ts`; this double numbers
+    // messages per announcer instance, so id inequality would prove nothing.)
+    expect(announcer.postAnnouncement).toHaveBeenCalledTimes(1);
+    const posted = (
+      announcer.postAnnouncement as unknown as { mock: { calls: [BossEncounterRow][] } }
+    ).mock.calls;
+    expect(posted[0]![0].id).toBe(second.id);
+    await scheduler(announcer, () => new Date(due.getTime() + 31 * MINUTE)).tick();
+
+    const after = (await app.bosses.getEncounter(first.id))!;
+    expect(after.messageId).toBe(before.messageId);
+    expect(after.resultsMessageId).toBe('m-results-1');
+    expect(after.completionEditedAt!.getTime()).toBe(before.completionEditedAt!.getTime());
+    expect(after.resultsPublishedAt!.getTime()).toBe(before.resultsPublishedAt!.getTime());
+    expect(after.status).toBe('resolved');
+  });
+
+  it('publishes at most once per encounter across repeated passes', async () => {
+    await scheduler(fakeAnnouncer()).tick();
+    const encounter = (await activeEncounter())!;
+    await giveBuddy();
+    await app.bosses.commit(encounter.id, guildDbId, playerId, {
+      discordUserId: 'u-1',
+      trainerName: 'Whistler',
+    });
+
+    // A publisher that records its own success the way the real one does.
+    const announcer = fakeAnnouncer({
+      publishResults: vi.fn(async (encounterId: number) => {
+        await app.bosses.markCompletionEdited(encounterId);
+        await app.bosses.markResultsPublished(encounterId, `m-results-${encounterId}`, 10);
+      }),
+    });
+    for (let i = 0; i < 4; i += 1) {
+      await scheduler(announcer, () => new Date(Date.now() + (31 + i) * MINUTE)).tick();
+    }
+    const calls = (announcer.publishResults as unknown as { mock: { calls: [number][] } })
+      .mock.calls;
+    const published = calls.filter(([id]) => id === encounter.id);
+    // Resolution calls it once; every later pass finds both stamps set and
+    // skips it entirely.
+    expect(published).toHaveLength(1);
+    expect((await app.bosses.getEncounter(encounter.id))!.resultsMessageId).toBe(
+      `m-results-${encounter.id}`,
+    );
   });
 });
 
