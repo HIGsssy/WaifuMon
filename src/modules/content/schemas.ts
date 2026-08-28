@@ -19,6 +19,14 @@ import {
  */
 import { RACE_CODES } from '../cards/race';
 /**
+ * The boss affinity wheel's shipped contents double as this schema's default,
+ * so `tables.json` omitting the block yields exactly the cycle the domain
+ * module already uses. Same reasoning as `DEFAULT_SP_RANGES_BY_RARITY` below.
+ */
+import { DEFAULT_BOSS_AFFINITY_WHEEL } from '../bosses/bossAffinity';
+/** Canonical region ids — the closed set a boss definition must name. */
+import { REGIONS } from '../bosses/regions';
+/**
  * The shipped SP ladder doubles as this schema's default, so content and code
  * cannot ship disagreeing tables — omitting the block yields exactly the
  * constant the domain module already uses.
@@ -1134,6 +1142,279 @@ export const SeductivePowerConfigSchema = z
   })
   .default({ rangesByRarity: DEFAULT_SP_RANGES_BY_RARITY });
 
+/**
+ * Boss Encounters — Stage 1.
+ *
+ * Two blocks live here: the shape of `content/bosses.json` (one entry per
+ * boss), and the `bossEncounters` tuning block in `tables.json` (timings,
+ * bonuses, and the named reward tables bosses point at). They are separate
+ * files for the same reason species and tables are: a writer adds a boss
+ * without touching numbers, and an operator retunes numbers without touching
+ * prose.
+ *
+ * Cross-file checks — that a `rewardTable` names a table that exists, and that
+ * every reward slug names an item that exists and is enabled — belong in
+ * `loader.validateContentSet`, which is the only layer holding all three files
+ * at once.
+ */
+
+/**
+ * A relative artwork path under the assets root.
+ *
+ * Deliberately stricter than "a string": rejects absolute paths, drive
+ * letters, backslashes and any `..` segment *before* the loader ever resolves
+ * it. `resolveAssetPath` is the second line of defence and would catch an
+ * escape anyway, but a content author deserves the error at the field rather
+ * than as a startup crash, and a path that never reaches the filesystem cannot
+ * be a traversal.
+ */
+const relativeAssetPath = z
+  .string()
+  .min(1)
+  .refine((p) => !p.startsWith('/') && !p.startsWith('\\'), {
+    message: 'artwork must be a relative path, not absolute',
+  })
+  .refine((p) => !/^[a-zA-Z]:/.test(p), {
+    message: 'artwork must not start with a drive letter',
+  })
+  .refine((p) => !p.includes('\\'), {
+    message: 'artwork must use forward slashes',
+  })
+  .refine((p) => !p.split('/').includes('..'), {
+    message: 'artwork must not contain ".." path segments',
+  });
+
+/** Player-facing prose. Required, because a boss with no copy has no encounter. */
+const bossProse = z.string().trim().min(1);
+
+/**
+ * One boss definition.
+ *
+ * `.strict()` so a typo'd key is an error rather than a silently-ignored
+ * field — boss entries are hand-authored and small, and a misspelled
+ * `repelledText` would otherwise ship as a missing announcement.
+ */
+export const BossContentSchema = z
+  .object({
+    /** Stable identity. Snapshotted onto every encounter row, so never reused. */
+    id: slug,
+    name: z.string().min(1),
+    /** Drives the advantage wheel; `switch` is a full participant here. */
+    affinity: z.enum(AFFINITIES),
+    region: z.enum(REGIONS),
+    enabled: z.boolean().default(true),
+    /**
+     * Relative to the assets root. Optional — and when the file is missing the
+     * encounter degrades to a text/embed announcement rather than failing to
+     * resolve. Artwork is presentation; damage and rewards are not.
+     */
+    artwork: relativeAssetPath.nullable().default(null),
+    /** Names an entry in `tables.json` → `bossEncounters.rewardTables`. */
+    rewardTable: z.string().min(1),
+    /** Shown while the scouting window is open. */
+    scoutingText: bossProse,
+    /** Shown when at least one trainer committed a buddy. */
+    repelledText: bossProse,
+    /** Shown when nobody did. */
+    unchallengedText: bossProse,
+    description: bossProse,
+  })
+  .strict();
+
+export const BossesFileSchema = z.array(BossContentSchema);
+
+export type BossContent = z.infer<typeof BossContentSchema>;
+export type BossContentInput = z.input<typeof BossContentSchema>;
+
+/**
+ * One weighted minor-item entry in a boss reward table. Same shape as the
+ * affection-gift loot entry, on purpose — one mental model for every weighted
+ * item table in the game.
+ */
+export const BossRewardItemSchema = z
+  .object({
+    slug,
+    quantity: z.number().int().positive(),
+    /** Relative weight. Positive integer — no fractional or zero weights. */
+    weight: z.number().int().positive(),
+  })
+  .strict();
+
+/**
+ * The separate, extremely rare roll.
+ *
+ * Kept out of the weighted table rather than added to it as another entry:
+ * a jackpot expressed as a weight silently *displaces* ordinary rewards when
+ * the table is retuned, whereas an independent probability composes with any
+ * weighting. `chance` is hard-capped well below anything that could be typoed
+ * into a faucet.
+ */
+export const BossJackpotRewardSchema = z
+  .object({
+    slug,
+    quantity: z.number().int().positive().default(1),
+    /** Probability in [0, 0.05] per participation. */
+    chance: z.number().gte(0).lte(0.05),
+  })
+  .strict();
+
+/**
+ * A named reward table. Bosses reference these by key, so retuning payouts for
+ * every boss at once is one edit, and giving one boss its own economy later is
+ * a new key rather than a schema change.
+ *
+ * `version` is stored on each encounter, so a historical result records which
+ * payout rules produced it even after the table is edited underneath.
+ */
+export const BossRewardTableSchema = z
+  .object({
+    version: z.string().min(1),
+    /** Guaranteed buddy XP. Zero is legal; a max-level buddy still gets items. */
+    buddyXp: z.number().int().nonnegative(),
+    minorItems: z.array(BossRewardItemSchema).min(1),
+    jackpot: BossJackpotRewardSchema.nullable().default(null),
+  })
+  .strict();
+
+/**
+ * Boss encounter tuning.
+ *
+ * Everything a live operator might reasonably move — window length, downtime
+ * band, attack count, bonus magnitudes, bracket boundaries, payouts — is here.
+ * The two things that are *not* here are the damage formula and the affinity
+ * wheel's shape, which live in code behind version constants because changing
+ * them re-models the system rather than re-tuning it. The wheel's *contents*
+ * are configurable so the cycle can be rotated without a deploy.
+ */
+export const BossEncountersConfigSchema = z
+  .object({
+    enabled: z.boolean().default(true),
+    /** Regions that may spawn bosses. Empty = every canonical region. */
+    regions: z.array(z.enum(REGIONS)).default([...REGIONS]),
+    /** How long trainers have to commit, from the announcement. */
+    scoutingMinutes: z.number().int().positive().default(60),
+    /** Inclusive quiet band after a resolution, before the next appearance. */
+    downtimeMinutesMin: z.number().int().positive().default(120),
+    downtimeMinutesMax: z.number().int().positive().default(300),
+    /** Attacks one committed buddy represents. Scaling, not simulation. */
+    attacksPerParticipation: z.number().int().positive().default(10),
+    /** Inclusive performance-modifier bounds, in hundredths. */
+    performanceMinPercent: z.number().int().positive().default(85),
+    performanceMaxPercent: z.number().int().positive().default(115),
+    /**
+     * Boss affinity → the buddy affinity that beats it. Defaults to the
+     * shipped cycle in `modules/bosses/bossAffinity.ts`, so content that omits
+     * the block cannot disagree with code.
+     */
+    affinityWheel: z
+      .record(z.enum(AFFINITIES), z.enum(AFFINITIES))
+      .default({ ...DEFAULT_BOSS_AFFINITY_WHEEL }),
+    /** Additive damage bonus for the superior affinity. */
+    affinityAdvantageBonus: z.number().gte(0).lte(1).default(0.1),
+    /**
+     * Rapid-response tiers, ascending by `withinMinutes`. The comparison is
+     * strict, so a commitment at exactly the boundary falls into the next tier.
+     */
+    responseBrackets: z
+      .array(
+        z
+          .object({
+            withinMinutes: z.number().int().positive(),
+            bonus: z.number().gte(0).lte(1),
+          })
+          .strict(),
+      )
+      .default([
+        { withinMinutes: 15, bonus: 0.05 },
+        { withinMinutes: 30, bonus: 0.02 },
+      ]),
+    /** Named payout tables, keyed by the id bosses reference. */
+    rewardTables: z.record(z.string().min(1), BossRewardTableSchema).default({}),
+    /** Participants shown on the first page of the public result. */
+    resultsPageSize: z.number().int().positive().max(25).default(10),
+    /**
+     * How long a `resolving` claim may sit before another process may take it
+     * over. The safety net for a worker that died mid-payout; every payout is
+     * individually idempotent, so a takeover finishes rather than duplicates.
+     */
+    resolveClaimTimeoutMinutes: z.number().int().positive().default(10),
+  })
+  .superRefine((cfg, ctx) => {
+    if (cfg.downtimeMinutesMax < cfg.downtimeMinutesMin) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'bossEncounters.downtimeMinutesMax must be >= downtimeMinutesMin',
+        path: ['downtimeMinutesMax'],
+      });
+    }
+    if (cfg.performanceMaxPercent < cfg.performanceMinPercent) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'bossEncounters.performanceMaxPercent must be >= performanceMinPercent',
+        path: ['performanceMaxPercent'],
+      });
+    }
+    // Ascending, distinct boundaries: brackets resolve first-match, so an
+    // out-of-order entry would make a later tier unreachable.
+    let previous = 0;
+    for (const [index, bracket] of cfg.responseBrackets.entries()) {
+      if (bracket.withinMinutes <= previous) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            'bossEncounters.responseBrackets must be sorted by ascending, distinct ' +
+            `withinMinutes (entry ${index} has ${bracket.withinMinutes} after ${previous})`,
+          path: ['responseBrackets', index, 'withinMinutes'],
+        });
+      }
+      previous = bracket.withinMinutes;
+    }
+    // A bracket that reaches past the window is dead configuration; a bracket
+    // that exactly matches it is the legal "everyone gets something" case.
+    const last = cfg.responseBrackets.at(-1);
+    if (last && last.withinMinutes > cfg.scoutingMinutes) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          `bossEncounters.responseBrackets extends to ${last.withinMinutes} minutes, ` +
+          `past the ${cfg.scoutingMinutes}-minute scouting window`,
+        path: ['responseBrackets'],
+      });
+    }
+    if (cfg.enabled && Object.keys(cfg.rewardTables).length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'bossEncounters.rewardTables must not be empty while enabled',
+        path: ['rewardTables'],
+      });
+    }
+    for (const [key, table] of Object.entries(cfg.rewardTables)) {
+      // Keyed on slug *and* quantity, not slug alone: "2× Basic Charm" and
+      // "3× Basic Charm" are two legitimate drops of different sizes, whereas
+      // the same slug at the same quantity listed twice is the authoring
+      // mistake worth catching (it silently doubles that drop's weight).
+      const drops = table.minorItems.map((e) => `${e.slug}x${e.quantity}`);
+      const duplicate = drops.find((d, i) => drops.indexOf(d) !== i);
+      if (duplicate) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `bossEncounters.rewardTables["${key}"] lists the same drop twice: ${duplicate}`,
+          path: ['rewardTables', key, 'minorItems'],
+        });
+      }
+    }
+  });
+
+export type BossEncountersConfig = z.infer<typeof BossEncountersConfigSchema>;
+export type BossRewardTable = z.infer<typeof BossRewardTableSchema>;
+export type BossRewardItem = z.infer<typeof BossRewardItemSchema>;
+
+/** Bosses switched off — the default when `tables.json` omits the block. */
+const BOSS_ENCOUNTERS_DEFAULT: z.input<typeof BossEncountersConfigSchema> = {
+  enabled: false,
+  rewardTables: {},
+};
+
 export const TablesFileSchema = z.object({
   energy: z.object({
     baseMax: z.number().int().positive(),
@@ -1160,6 +1441,7 @@ export const TablesFileSchema = z.object({
     pool: [],
   }),
   affectionGifts: AffectionGiftsConfigSchema.optional().default(AFFECTION_GIFTS_DEFAULT),
+  bossEncounters: BossEncountersConfigSchema.optional().default(BOSS_ENCOUNTERS_DEFAULT),
   seductivePower: SeductivePowerConfigSchema.optional().default({
     rangesByRarity: DEFAULT_SP_RANGES_BY_RARITY,
   }),
@@ -1198,4 +1480,12 @@ export interface LoadedContent {
   items: ItemContent[];
   species: SpeciesContent[];
   tables: TablesContent;
+  /**
+   * Boss definitions from `content/bosses.json`.
+   *
+   * Non-optional so every consumer sees the same shape, but legitimately empty:
+   * a deployment with no `bosses.json` loads with `[]` and the scheduler simply
+   * finds nothing to draw. That is a supported configuration, not a broken one.
+   */
+  bosses: BossContent[];
 }

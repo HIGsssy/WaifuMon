@@ -110,3 +110,61 @@ describe('/waifumon-admin player', () => {
     expect(amount.min_value).toBe(0);
   });
 });
+
+describe('boss encounter admin surface', () => {
+  const group = () => {
+    const admin = commandNamed('waifumon-admin');
+    const found = optionNamed(admin.options, 'boss');
+    expect(found, 'the /waifumon-admin boss group is missing').toBeDefined();
+    expect(found.type).toBe(SUB_COMMAND_GROUP);
+    return found;
+  };
+
+  it('registers every documented operation', () => {
+    // Configure, inspect, test-spawn, end, repair, and pause/resume — the full
+    // set an operator needs to run the feature without a database client.
+    expect(group().options.map((o: any) => o.name).sort()).toEqual([
+      'clear-channel',
+      'end',
+      'pause',
+      'repair',
+      'resume',
+      'set-channel',
+      'spawn',
+      'status',
+    ]);
+  });
+
+  it('makes every entry a subcommand', () => {
+    for (const option of group().options) {
+      expect(option.type, option.name).toBe(SUB_COMMAND);
+    }
+  });
+
+  it('requires a text channel on set-channel', () => {
+    const sub = optionNamed(group().options, 'set-channel');
+    const channel = optionNamed(sub.options, 'channel');
+    expect(channel.required).toBe(true);
+    // ChannelType.GuildText === 0.
+    expect(channel.channel_types).toEqual([0]);
+  });
+
+  it('makes the boss argument on spawn optional', () => {
+    // Omitting it draws a random enabled boss, which is the common case for a
+    // smoke test.
+    const sub = optionNamed(group().options, 'spawn');
+    expect(optionNamed(sub.options, 'boss').required).toBeFalsy();
+  });
+
+  it('takes no arguments on the operations that act on the active encounter', () => {
+    for (const name of ['status', 'end', 'repair', 'pause', 'resume', 'clear-channel']) {
+      const sub = optionNamed(group().options, name);
+      expect(sub.options ?? [], name).toHaveLength(0);
+    }
+  });
+
+  it('inherits the ManageGuild gate from the parent command', () => {
+    // The runtime handlers re-check this, but the gate should be right too.
+    expect(commandNamed('waifumon-admin').default_member_permissions).toBeTruthy();
+  });
+});

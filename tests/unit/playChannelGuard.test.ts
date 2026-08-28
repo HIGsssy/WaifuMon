@@ -95,6 +95,54 @@ describe('decidePlayChannel — NSFW × allowlist × thread × DM matrix', () =>
   });
 });
 
+describe('boss-channel exemption', () => {
+  it('lets the configured boss channel through an allowlist it is not on', () => {
+    // A boss encounter runs in a dedicated channel configured by its own admin
+    // command. Requiring an admin to *also* list it as a play channel would
+    // make working buttons look broken.
+    expect(
+      decidePlayChannel(channel({ channelId: 'boss-1' }), ['chan-1'], ['boss-1']),
+    ).toEqual({ allow: true });
+  });
+
+  it('still requires the boss channel to be NSFW-marked', () => {
+    // The compliance rule is the game's, not this feature's — the exemption
+    // covers the allowlist and nothing else.
+    expect(
+      decidePlayChannel(
+        channel({ channelId: 'boss-1', isNsfw: false }),
+        ['chan-1'],
+        ['boss-1'],
+      ),
+    ).toEqual({ allow: false, reason: 'not_nsfw' });
+  });
+
+  it('exempts a thread whose parent is the boss channel', () => {
+    expect(
+      decidePlayChannel(
+        channel({ channelId: 'thread-9', parentChannelId: 'boss-1' }),
+        ['chan-1'],
+        ['boss-1'],
+      ),
+    ).toEqual({ allow: true });
+  });
+
+  it('exempts nothing when no boss channel is configured', () => {
+    expect(
+      decidePlayChannel(channel({ channelId: 'boss-1' }), ['chan-1'], [null]),
+    ).toEqual({ allow: false, reason: 'not_allowed' });
+    expect(
+      decidePlayChannel(channel({ channelId: 'boss-1' }), ['chan-1'], [undefined]),
+    ).toEqual({ allow: false, reason: 'not_allowed' });
+  });
+
+  it('changes nothing for a guild with no allowlist at all', () => {
+    expect(decidePlayChannel(channel({ channelId: 'any' }), null, ['boss-1'])).toEqual({
+      allow: true,
+    });
+  });
+});
+
 describe('blockedMessage', () => {
   it('names the first allowed channel when a list is configured', () => {
     expect(blockedMessage('not_allowed', ['123'])).toContain('<#123>');

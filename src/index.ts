@@ -35,7 +35,10 @@ import { createAffectionGiftService } from './modules/gifts/affectionGiftService
 import { createProgressionService } from './modules/progression/progressionService';
 import { createQuestService } from './modules/quests/questService';
 import { createSessionService } from './modules/session/sessionService';
-import { createGameEventBus } from './modules/events/gameEvents';
+import { createGameEventBus, emitGameEvents, gameEvent } from './modules/events/gameEvents';
+import { createBossEncounterService } from './modules/bosses/bossEncounterService';
+import { createBossScheduler } from './modules/bosses/bossScheduler';
+import { createBossAnnouncer } from './discord/bossAnnouncer';
 import { createHuntSessionTracker } from './modules/hunt/huntSession';
 import { createCollectionFilterTracker } from './discord/collectionFilterTracker';
 import { createEphemeralRegistry } from './discord/ephemeralCleanup';
@@ -150,6 +153,29 @@ async function main(): Promise<void> {
     timezone: config.dailyTimezone,
     logger,
   });
+  /**
+   * Boss encounters (Stage 1).
+   *
+   * Built only when content actually enables them, and left `undefined`
+   * otherwise. That is the whole feature gate: with no service on the context,
+   * the admin commands say the feature is not enabled, the buttons read as
+   * stale, and no scheduler ever starts — rather than a live scheduler that
+   * checks a flag on every pass.
+   *
+   * Reads content through the same `contentSnapshot` closure the appearance
+   * service uses, so an admin "Save + Reload" makes a newly-authored boss
+   * drawable without a restart.
+   */
+  const bosses = content.tables.bossEncounters.enabled
+    ? createBossEncounterService({
+        db,
+        inventory,
+        collection,
+        getContent: () => contentSnapshot,
+        logger,
+      })
+    : undefined;
+
   // Central gameplay-event seam. Handlers emit onto it after their
   // transaction commits; subscribers (Activity Feed today, Trainer Profile
   // next) are strictly downstream and can never fail a gameplay write.
@@ -253,6 +279,7 @@ async function main(): Promise<void> {
         db,
         timezone: config.dailyTimezone,
       }),
+      ...(bosses === undefined ? {} : { bosses }),
     },
   };
 
@@ -338,6 +365,73 @@ async function main(): Promise<void> {
 
   await client.login(config.discordToken);
 
+  /**
+   * Boss scheduler. Started **after** login, because its very first pass
+   * verifies channel permissions and posts announcements — both of which need
+   * a connected gateway. The first pass also *is* restart recovery: it resumes
+   * a live scouting window, re-attempts an announcement that never went up,
+   * and finishes a resolution a previous process died partway through.
+   */
+  const bossScheduler = bosses
+    ? (() => {
+        const announcer = createBossAnnouncer({ ctx, client, encounters: bosses });
+        // Parked on the context so `/waifumon-admin boss end` can republish an
+        // encounter's results without reaching into the scheduler.
+        ctx.bossAnnouncer = announcer;
+        /**
+         * Guild-scoped event envelope. Boss events belong to a *server*, not
+         * to a player, so the player fields carry the sentinel values the bus
+         * requires rather than a fabricated identity — every boss event is
+         * `internal` scope and nothing narrates them under a player's name.
+         */
+        const guildSource = (guildDbId: number, channelId: string | null) => ({
+          guildId: '',
+          guildDbId,
+          playerId: 0,
+          playerName: 'Waifu Valley',
+          playerMention: '',
+          channelId,
+        });
+        return createBossScheduler({
+          db,
+          encounters: bosses,
+          announcer,
+          logger,
+          events: {
+            encounterStarted: (encounter) =>
+              emitGameEvents(gameEventBus, guildSource(encounter.guildId, encounter.channelId), [
+                gameEvent('BOSS_ENCOUNTER_STARTED', {
+                  encounterId: encounter.id,
+                  bossId: encounter.bossId,
+                  bossName: encounter.bossName,
+                  bossAffinity: encounter.bossAffinity,
+                  region: encounter.region,
+                  deadlineAt: encounter.deadlineAt?.toISOString() ?? '',
+                }),
+              ]),
+            encounterResolved: (encounter, summary) =>
+              emitGameEvents(gameEventBus, guildSource(encounter.guildId, encounter.channelId), [
+                gameEvent('BOSS_ENCOUNTER_RESOLVED', {
+                  encounterId: encounter.id,
+                  bossId: encounter.bossId,
+                  bossName: encounter.bossName,
+                  ...summary,
+                }),
+              ]),
+            rewardsApplied: (encounter, summary) =>
+              emitGameEvents(gameEventBus, guildSource(encounter.guildId, encounter.channelId), [
+                gameEvent('BOSS_REWARDS_APPLIED', { encounterId: encounter.id, ...summary }),
+              ]),
+            schedulingSuspended: (guildDbId, reason, channelId) =>
+              emitGameEvents(gameEventBus, guildSource(guildDbId, channelId), [
+                gameEvent('BOSS_SCHEDULING_SUSPENDED', { reason, channelId }),
+              ]),
+          },
+        });
+      })()
+    : undefined;
+  bossScheduler?.start();
+
   // Admin "Save + Reload" re-seeds Postgres *and* republishes the in-memory
   // content snapshot, so item/species metadata rendered from `ctx.content`
   // (shop rows, charm buttons, effect labels) goes live without a restart.
@@ -415,6 +509,8 @@ async function main(): Promise<void> {
 
   const shutdown = async (signal: string): Promise<void> => {
     logger.info({ signal }, 'shutting down');
+    // First, so no new pass can start posting into a client that is closing.
+    bossScheduler?.stop();
     await platformApi?.close();
     await adminServer?.close();
     await client.destroy();

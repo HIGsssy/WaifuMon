@@ -473,6 +473,76 @@
       }
     ]
   },
+  "bossEncounters": {
+    "enabled": true,
+    "regions": [
+      "waifu-valley"
+    ],
+    "scoutingMinutes": 60,
+    "downtimeMinutesMin": 120,
+    "downtimeMinutesMax": 300,
+    "attacksPerParticipation": 10,
+    "performanceMinPercent": 85,
+    "performanceMaxPercent": 115,
+    "affinityWheel": {
+      "dominant": "switch",
+      "submissive": "dominant",
+      "caregiver": "submissive",
+      "primal": "caregiver",
+      "switch": "primal"
+    },
+    "affinityAdvantageBonus": 0.1,
+    "responseBrackets": [
+      {
+        "withinMinutes": 15,
+        "bonus": 0.05
+      },
+      {
+        "withinMinutes": 30,
+        "bonus": 0.02
+      }
+    ],
+    "resultsPageSize": 10,
+    "resolveClaimTimeoutMinutes": 10,
+    "rewardTables": {
+      "standard-scouting-v1": {
+        "version": "standard-scouting-v1",
+        "buddyXp": 15,
+        "minorItems": [
+          {
+            "slug": "basic_charm",
+            "quantity": 2,
+            "weight": 4500
+          },
+          {
+            "slug": "silk_charm",
+            "quantity": 1,
+            "weight": 2500
+          },
+          {
+            "slug": "basic_charm",
+            "quantity": 3,
+            "weight": 2000
+          },
+          {
+            "slug": "velvet_charm",
+            "quantity": 1,
+            "weight": 900
+          },
+          {
+            "slug": "energy_drink",
+            "quantity": 1,
+            "weight": 100
+          }
+        ],
+        "jackpot": {
+          "slug": "mythic_contract",
+          "quantity": 1,
+          "chance": 0.0025
+        }
+      }
+    }
+  },
   "seductivePower": {
     "rangesByRarity": {
       "N": {

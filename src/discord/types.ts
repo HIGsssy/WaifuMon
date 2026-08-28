@@ -30,6 +30,8 @@ import type { HuntSessionTracker } from '../modules/hunt/huntSession';
 import type { CollectionFilterTracker } from './collectionFilterTracker';
 import type { EphemeralRegistry } from './ephemeralCleanup';
 import type { OwnedCardWarmer } from '../modules/appearance/ownedCardWarm';
+import type { BossEncounterService } from '../modules/bosses/bossEncounterService';
+import type { BossAnnouncer } from '../modules/bosses/bossScheduler';
 
 export interface AppServices {
   guilds: GuildService;
@@ -56,6 +58,16 @@ export interface AppServices {
   itemUse: ItemUseService;
   /** Affection gifts: the daily buddy roll, and accepting what she is holding. */
   gifts: AffectionGiftService;
+  /**
+   * Boss encounters (Stage 1).
+   *
+   * **Optional**, matching the feature's own content gate: a deployment with
+   * `bossEncounters.enabled = false` (or no `bosses.json`) wires nothing, and
+   * every boss handler treats an absent service as "that button is stale".
+   * Absent therefore means the feature does not exist rather than that it is
+   * switched off behind a flag the handlers have to keep checking.
+   */
+  bosses?: BossEncounterService | undefined;
 }
 
 export interface AppContext {
@@ -107,6 +119,12 @@ export interface AppContext {
    * it. See `modules/appearance/ownedCardWarm.ts`.
    */
   cardWarmer?: OwnedCardWarmer | undefined;
+  /**
+   * The Discord side of boss encounters, so an admin command can republish an
+   * encounter's results without reaching for the scheduler. Present exactly
+   * when `services.bosses` is.
+   */
+  bossAnnouncer?: BossAnnouncer | undefined;
 }
 
 /** Guild + player DB ids resolved after the guard allows the interaction. */

@@ -266,6 +266,30 @@ export interface CollectionService {
    * active buddy, grant per-hunt XP + affection. Returns null when no buddy.
    */
   awardBuddyOnHunt(tx: DbOrTx, playerId: number): Promise<BuddyAwardResult | null>;
+  /**
+   * Grant XP to **one named owned copy**, inside the caller's transaction.
+   *
+   * The buddy-agnostic sibling of {@link awardBuddyOnHunt}, added for boss
+   * encounters: a participation names the exact copy that fought at commitment
+   * time, and she must receive the XP even if the player has since pointed
+   * `buddy_waifu_id` at somebody else. Reading the *current* buddy here would
+   * pay the wrong Waifumon an hour later.
+   *
+   * Returns `null` when the copy is missing or soft-released — a caller
+   * records zero XP rather than treating it as an error, because a released
+   * copy is gone and the participation's other rewards are still owed. Never
+   * clears any buddy pointer: this function has no opinion about who the buddy
+   * is, so it must not touch that field.
+   *
+   * `xpDelta` of 0 is a legal no-op (a max-level buddy), and returns null
+   * without locking anything.
+   */
+  awardWaifuXp(
+    tx: DbOrTx,
+    playerId: number,
+    waifuId: number,
+    xpDelta: number,
+  ): Promise<BuddyAwardResult | null>;
 }
 
 export interface CollectionServiceDeps {
@@ -899,6 +923,38 @@ export function createCollectionService(deps: CollectionServiceDeps): Collection
         waifu: updated!,
         xpGranted: xpDelta,
         affectionGranted: affDelta,
+        fromLevel,
+        toLevel: newLevel,
+        newAppearances,
+      };
+    },
+
+    async awardWaifuXp(tx, playerId, waifuId, xpDelta) {
+      if (xpDelta <= 0) return null;
+      const [locked] = await tx
+        .select()
+        .from(playerWaifus)
+        .where(and(eq(playerWaifus.id, waifuId), eq(playerWaifus.playerId, playerId)))
+        .for('update');
+      // Released or never owned by this player: nothing to award. Deliberately
+      // silent rather than throwing — the caller has other rewards to hand
+      // over and a vanished copy is a normal outcome, not a fault.
+      if (!locked || locked.releasedAt != null) return null;
+
+      const fromLevel = locked.level;
+      const newTotalXp = locked.xp + xpDelta;
+      const newLevel = waifuLevelFromXp(newTotalXp);
+      const [updated] = await tx
+        .update(playerWaifus)
+        .set({ xp: newTotalXp, level: newLevel })
+        .where(eq(playerWaifus.id, waifuId))
+        .returning();
+      const newAppearances = await syncAppearances(tx, updated!, fromLevel);
+
+      return {
+        waifu: updated!,
+        xpGranted: xpDelta,
+        affectionGranted: 0,
         fromLevel,
         toLevel: newLevel,
         newAppearances,

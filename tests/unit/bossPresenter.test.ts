@@ -1,0 +1,477 @@
+/**
+ * Boss encounter copy and components — pure rendering, no database, no client.
+ *
+ * The preview's shape is pinned literally against the specification's example,
+ * because that block is the one piece of this feature a player reads before
+ * making an irreversible decision.
+ */
+import { describe, expect, it } from 'vitest';
+import {
+  bossArtworkFilename,
+  buildAnnouncement,
+  buildCommitPreview,
+  buildMyResult,
+  buildResults,
+  commitRow,
+  currentBracketLabel,
+  discordRelative,
+  resultLine,
+  resultTitle,
+} from '../../src/discord/bossPresenter';
+import type {
+  BossEncounterRow,
+  BossParticipationRow,
+} from '../../src/db/schema';
+import type {
+  BossCommitPreview,
+  BossParticipationResult,
+} from '../../src/modules/bosses/bossEncounterService';
+import type { BossContent } from '../../src/modules/content/schemas';
+import { loadShippedContent } from '../helpers/fixtures';
+
+const CONFIG = loadShippedContent().tables.bossEncounters;
+const MINUTE = 60_000;
+const START = new Date('2026-08-26T12:00:00.000Z');
+
+function encounter(overrides: Partial<BossEncounterRow> = {}): BossEncounterRow {
+  return {
+    id: 7,
+    guildId: 1,
+    region: 'waifu-valley',
+    bossId: 'oh_pwincess',
+    bossName: 'Oh Pwincess',
+    bossAffinity: 'dominant',
+    bossArtwork: null,
+    rewardTable: 'standard-scouting-v1',
+    rewardTableVersion: 'standard-scouting-v1',
+    calcVersion: 1,
+    affinityVersion: 1,
+    channelId: 'c-boss',
+    messageId: 'm-1',
+    status: 'scouting',
+    forced: false,
+    scheduledAt: START,
+    scoutingStartedAt: START,
+    deadlineAt: new Date(START.getTime() + 60 * MINUTE),
+    resolvingAt: null,
+    resolvedAt: null,
+    nextSpawnAt: null,
+    participantCount: 0,
+    totalDamage: 0,
+    resolutionReason: null,
+    createdAt: START,
+    ...overrides,
+  } as BossEncounterRow;
+}
+
+function participation(overrides: Partial<BossParticipationRow> = {}): BossParticipationRow {
+  return {
+    id: 1,
+    encounterId: 7,
+    playerId: 1,
+    discordUserId: 'u-1',
+    trainerName: 'Whistler',
+    waifuId: 100,
+    speciesId: 5,
+    speciesSlug: 'ruby_succubus',
+    waifuName: 'Ruby Succubus',
+    level: 24,
+    baseSp: 150,
+    currentSp: 200,
+    rarity: 'UR',
+    affinity: 'switch',
+    race: 'demon',
+    affection: 40,
+    committedAt: START,
+    responseBonus: 0.05,
+    affinityBonus: 0.1,
+    performancePercent: 100,
+    attackCount: 10,
+    totalDamage: 2001,
+    xpAwarded: 15,
+    rewardItems: [],
+    rewardStatus: 'applied',
+    resolvedAt: START,
+    ...overrides,
+  } as BossParticipationRow;
+}
+
+const boss: BossContent = loadShippedContent().bosses.find((b) => b.id === 'oh_pwincess')!;
+
+/** All buttons on a payload, flattened. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const buttons = (payload: any): any[] =>
+  (payload.components ?? []).flatMap((row: { components?: unknown[] }) => row.components ?? []);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const embed = (payload: any) => payload.embeds[0].data;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const field = (payload: any, name: string) =>
+  embed(payload).fields?.find((f: { name: string }) => f.name === name)?.value;
+
+describe('announcement', () => {
+  const payload = buildAnnouncement({
+    encounter: encounter(),
+    boss,
+    config: CONFIG,
+    participantCount: 3,
+    now: START,
+  });
+
+  it('names the boss and the region it is scouting', () => {
+    expect(embed(payload).title).toContain('Oh Pwincess');
+    expect(embed(payload).title).toContain('Waifu Valley');
+  });
+
+  it('carries the description and the scouting text', () => {
+    expect(embed(payload).description).toContain(boss.description);
+    expect(embed(payload).description).toContain(boss.scoutingText);
+  });
+
+  it('states the boss affinity and the affinity that has the advantage', () => {
+    expect(field(payload, 'Boss Affinity')).toBe('Dominant');
+    // Dominant is beaten by Switch — the Stage 1 wheel, not the capture one.
+    expect(field(payload, 'Affinity Advantage')).toBe('Switch (+10%)');
+  });
+
+  it('shows the committed trainer count', () => {
+    expect(field(payload, 'Trainers Committed')).toBe('3');
+  });
+
+  it('shows the current rapid-response bracket', () => {
+    expect(field(payload, 'Rapid Response')).toBe('+5% (first 15 minutes)');
+  });
+
+  it('uses a Discord timestamp for the deadline rather than rendered text', () => {
+    // A rendered "in 42 minutes" would be wrong the moment the message is read.
+    expect(field(payload, 'Window Closes')).toContain('<t:');
+    expect(field(payload, 'Window Closes')).toContain(':R>');
+  });
+
+  it('carries exactly one Commit Buddy button, keyed to this encounter', () => {
+    expect(buttons(payload)).toHaveLength(1);
+    expect(buttons(payload)[0].data.custom_id).toBe('wm|v1|boss|commit|7');
+    expect(buttons(payload)[0].data.label).toBe('Commit Buddy');
+  });
+
+  it('attaches no file and still renders when artwork is missing', () => {
+    expect(payload.files).toHaveLength(0);
+    expect(embed(payload).image).toBeUndefined();
+  });
+
+  it('attaches the artwork when the boss has some', () => {
+    const withArt = buildAnnouncement({
+      encounter: encounter({ bossArtwork: 'bosses/oh_pwincess_boss.webp' }),
+      boss,
+      config: CONFIG,
+      participantCount: 0,
+      now: START,
+      artworkPath: '/tmp/boss.webp',
+    });
+    expect(withArt.files).toHaveLength(1);
+    expect(embed(withArt).image.url).toBe('attachment://boss-oh_pwincess.webp');
+  });
+
+  it('renders even when the boss has been retired from content mid-window', () => {
+    const orphan = buildAnnouncement({
+      encounter: encounter(),
+      boss: undefined,
+      config: CONFIG,
+      participantCount: 1,
+      now: START,
+    });
+    expect(embed(orphan).title).toContain('Oh Pwincess');
+    expect(embed(orphan).description.length).toBeGreaterThan(0);
+  });
+
+  it('suppresses every mention', () => {
+    expect(payload.allowedMentions).toEqual({ parse: [] });
+  });
+});
+
+describe('the rapid-response bracket label tracks the clock', () => {
+  it.each([
+    [0, '+5% (first 15 minutes)'],
+    [14, '+5% (first 15 minutes)'],
+    [15, '+2% (first 30 minutes)'],
+    [29, '+2% (first 30 minutes)'],
+    [30, 'no bonus remaining'],
+    [59, 'no bonus remaining'],
+  ])('at %i minutes elapsed reads "%s"', (minutes, expected) => {
+    expect(
+      currentBracketLabel(encounter(), CONFIG, new Date(START.getTime() + minutes * MINUTE)),
+    ).toBe(expected);
+  });
+});
+
+describe('commit preview', () => {
+  const preview: BossCommitPreview = {
+    encounter: encounter(),
+    waifuId: 100,
+    waifuName: 'Ruby Succubus',
+    speciesName: 'Ruby Succubus',
+    level: 24,
+    currentSp: 200,
+    buddyAffinity: 'switch',
+    bossAffinity: 'dominant',
+    affinityBonus: 0.1,
+    responseBonus: 0.05,
+    estimate: { min: 1955, max: 2645 },
+    hasDuplicates: false,
+  };
+  const payload = buildCommitPreview(preview);
+
+  it('matches the specification example line for line', () => {
+    expect(payload.content).toContain('**Ruby Succubus** — Level 24 — 200 SP');
+    expect(payload.content).toContain('Affinity Advantage: +10%');
+    expect(payload.content).toContain('Rapid Response: +5%');
+    expect(payload.content).toContain('Estimated Damage: 1,955–2,645');
+    expect(payload.content).toContain('Commit **Ruby Succubus** to this battle?');
+  });
+
+  it('states that rewards come only after the battle resolves', () => {
+    expect(payload.content).toContain('Rewards are delivered only after the battle resolves');
+  });
+
+  it('names both affinities so the matchup is legible', () => {
+    expect(payload.content).toContain('Buddy Affinity: Switch');
+    expect(payload.content).toContain('Boss Affinity: Dominant');
+  });
+
+  it('offers Confirm and Cancel, and nothing else', () => {
+    const labels = buttons(payload).map((b) => b.data.label);
+    expect(labels).toEqual(['Confirm', 'Cancel']);
+  });
+
+  it('carries the previewed buddy id on Confirm so a swap is detectable', () => {
+    expect(buttons(payload)[0].data.custom_id).toBe('wm|v1|boss|confirm|7|100');
+  });
+
+  it('omits a bonus line rather than printing +0%', () => {
+    const plain = buildCommitPreview({
+      ...preview,
+      affinityBonus: 0,
+      responseBonus: 0,
+      estimate: { min: 1700, max: 2300 },
+    });
+    expect(plain.content).not.toContain('Affinity Advantage');
+    expect(plain.content).not.toContain('Rapid Response');
+    expect(plain.content).toContain('Estimated Damage: 1,700–2,300');
+  });
+
+  it('identifies the copy only when the player owns more than one', () => {
+    expect(payload.content).not.toContain('Copy #');
+    const ambiguous = buildCommitPreview({ ...preview, hasDuplicates: true });
+    expect(ambiguous.content).toContain('Copy #100');
+  });
+});
+
+describe('results', () => {
+  const entries: BossParticipationResult[] = [
+    {
+      participation: participation({ id: 1, trainerName: 'Whistler', totalDamage: 2001 }),
+      rewards: [{ slug: 'energy_drink', name: 'Energy Drink', quantity: 1 }],
+    },
+    {
+      participation: participation({
+        id: 2,
+        trainerName: 'Ian',
+        waifuName: 'Alley Catgirl',
+        totalDamage: 1436,
+      }),
+      rewards: [{ slug: 'basic_charm', name: 'Basic Charm', quantity: 2 }],
+    },
+  ];
+
+  const payload = buildResults({
+    encounter: encounter({ status: 'resolved', resolutionReason: 'repelled', totalDamage: 17342 }),
+    reason: 'repelled',
+    boss,
+    entries,
+    page: 1,
+    totalPages: 1,
+    totalParticipants: 8,
+    totalDamage: 17342,
+    totalAttacks: 80,
+    firstOnScene: entries[0]!.participation,
+  });
+
+  it('announces the outcome with the repelled title', () => {
+    expect(embed(payload).title).toBe('Oh Pwincess Was Driven Away!');
+  });
+
+  it('carries the repelledText', () => {
+    expect(embed(payload).description).toContain(boss.repelledText);
+  });
+
+  it('summarizes participants, attacks and combined damage', () => {
+    expect(embed(payload).description).toContain('**8** trainers joined the battle');
+    expect(embed(payload).description).toContain('**80** attacks');
+    expect(embed(payload).description).toContain('**17,342** total damage');
+  });
+
+  it('calls out First on the Scene', () => {
+    expect(field(payload, 'First on the Scene')).toBe('Whistler — Ruby Succubus');
+  });
+
+  it('prints each participant with their buddy, damage, XP and items', () => {
+    const text = JSON.stringify(embed(payload).fields);
+    expect(text).toContain('**Whistler** — Ruby Succubus — 2,001 DMG');
+    expect(text).toContain('+15 XP');
+    expect(text).toContain('Energy Drink');
+    expect(text).toContain('**Ian** — Alley Catgirl — 1,436 DMG');
+    expect(text).toContain('2× Basic Charm');
+  });
+
+  it('offers My Result but no pagination on a single page', () => {
+    expect(buttons(payload).map((b) => b.data.label)).toEqual(['My Result']);
+  });
+
+  it('adds All Results controls once there is a second page', () => {
+    const paged = buildResults({
+      encounter: encounter({ status: 'resolved', resolutionReason: 'repelled' }),
+      reason: 'repelled',
+      boss,
+      entries,
+      page: 2,
+      totalPages: 3,
+      totalParticipants: 25,
+      totalDamage: 40000,
+      totalAttacks: 250,
+      firstOnScene: null,
+    });
+    const labels = buttons(paged).map((b) => b.data.label);
+    expect(labels).toEqual(['◀ Previous', 'All Results ▶', 'My Result']);
+    // Both directions are live in the middle of a run.
+    expect(buttons(paged)[0].data.disabled).toBe(false);
+    expect(buttons(paged)[1].data.disabled).toBe(false);
+    expect(embed(paged).footer.text).toBe('Page 2 of 3');
+  });
+
+  it('carries page numbers in the custom ids so pagination survives a restart', () => {
+    const paged = buildResults({
+      encounter: encounter(),
+      reason: 'repelled',
+      boss,
+      entries,
+      page: 2,
+      totalPages: 3,
+      totalParticipants: 25,
+      totalDamage: 1,
+      totalAttacks: 1,
+      firstOnScene: null,
+    });
+    expect(buttons(paged)[0].data.custom_id).toBe('wm|v1|boss|page|7|1');
+    expect(buttons(paged)[1].data.custom_id).toBe('wm|v1|boss|page|7|3');
+  });
+
+  it('renders the unchallenged outcome with no participant controls', () => {
+    const empty = buildResults({
+      encounter: encounter({ status: 'resolved', resolutionReason: 'unchallenged' }),
+      reason: 'unchallenged',
+      boss,
+      entries: [],
+      page: 1,
+      totalPages: 1,
+      totalParticipants: 0,
+      totalDamage: 0,
+      totalAttacks: 0,
+      firstOnScene: null,
+    });
+    expect(embed(empty).title).toBe('Oh Pwincess Left Unchallenged');
+    expect(embed(empty).description).toContain(boss.unchallengedText);
+    expect(embed(empty).description).toContain('No trainer answered the call');
+    expect(buttons(empty)).toHaveLength(0);
+  });
+
+  it.each([
+    ['repelled', 'Oh Pwincess Was Driven Away!'],
+    ['unchallenged', 'Oh Pwincess Left Unchallenged'],
+    ['cancelled_admin', 'Oh Pwincess Withdrew'],
+    ['channel_lost', 'Oh Pwincess Slipped Away'],
+  ] as const)('titles a %s outcome as "%s"', (reason, expected) => {
+    expect(resultTitle(encounter(), reason)).toBe(expected);
+  });
+});
+
+describe('result lines', () => {
+  it('omits the XP clause entirely for a max-level buddy', () => {
+    // "+0 XP" would read as a bug rather than as the level cap working.
+    const line = resultLine(
+      { participation: participation({ xpAwarded: 0 }), rewards: [] },
+      false,
+    );
+    expect(line).not.toContain('XP');
+    expect(line).toContain('_no rewards recorded_');
+  });
+
+  it('crowns only the first arrival', () => {
+    const entry = { participation: participation(), rewards: [] };
+    expect(resultLine(entry, true)).toContain('🥇');
+    expect(resultLine(entry, false)).not.toContain('🥇');
+  });
+
+  it('pluralizes an item stack only above one', () => {
+    const line = resultLine(
+      {
+        participation: participation(),
+        rewards: [
+          { slug: 'basic_charm', name: 'Basic Charm', quantity: 1 },
+          { slug: 'silk_charm', name: 'Silk Charm', quantity: 3 },
+        ],
+      },
+      false,
+    );
+    expect(line).toContain('Basic Charm · 3× Silk Charm');
+  });
+});
+
+describe('my result', () => {
+  it('reports the full record once rewards are applied', () => {
+    const text = buildMyResult(encounter(), {
+      participation: participation(),
+      rewards: [{ slug: 'basic_charm', name: 'Basic Charm', quantity: 2 }],
+    });
+    expect(text).toContain('dealt **2,001** damage');
+    expect(text).toContain('across 10 attacks');
+    expect(text).toContain('Affinity Advantage: +10%');
+    expect(text).toContain('Rapid Response: +5%');
+    expect(text).toContain('**+15 XP** to Ruby Succubus');
+    expect(text).toContain('2× Basic Charm');
+  });
+
+  it('says rewards are still pending before resolution', () => {
+    const text = buildMyResult(encounter(), {
+      participation: participation({ rewardStatus: 'pending', totalDamage: null }),
+      rewards: [],
+    });
+    expect(text).toContain('is committed to');
+    expect(text).toContain('Rewards are delivered when the battle resolves');
+    expect(text).not.toContain('damage');
+  });
+
+  it('explains the level cap rather than printing +0 XP', () => {
+    const text = buildMyResult(encounter(), {
+      participation: participation({ xpAwarded: 0 }),
+      rewards: [],
+    });
+    expect(text).toContain('is at max level — no XP was gained');
+  });
+
+  it('says so plainly when the player never joined', () => {
+    expect(buildMyResult(encounter(), null)).toContain('did not commit a buddy');
+  });
+});
+
+describe('helpers', () => {
+  it('derives a safe attachment filename from the boss id', () => {
+    expect(bossArtworkFilename('oh_pwincess')).toBe('boss-oh_pwincess.webp');
+  });
+
+  it('renders a Discord relative timestamp in seconds', () => {
+    expect(discordRelative(new Date(1_700_000_000_000))).toBe('<t:1700000000:R>');
+  });
+
+  it('can disable the commit button once the window closes', () => {
+    expect(commitRow(7, true).components[0]!.data.disabled).toBe(true);
+  });
+});

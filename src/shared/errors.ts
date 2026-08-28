@@ -426,6 +426,98 @@ export class GiftAlreadyClaimedError extends AppError {
   }
 }
 
+// ── Boss Encounters (Stage 1) ───────────────────────────────────────────────
+
+/**
+ * The button belongs to an encounter that is no longer accepting commitments —
+ * it resolved, it was cancelled, or the player is holding a message from a
+ * previous appearance. Not a failure the player caused, so the copy points
+ * forward rather than apologising.
+ */
+export class BossEncounterNotOpenError extends AppError {
+  constructor() {
+    super(
+      'BOSS_ENCOUNTER_NOT_OPEN',
+      'Boss encounter is not accepting commitments',
+      'That confrontation is already over~ Watch for the next boss to arrive.',
+    );
+  }
+}
+
+/** The interaction named an encounter that does not exist, or belongs elsewhere. */
+export class BossEncounterNotFoundError extends AppError {
+  constructor() {
+    super(
+      'BOSS_ENCOUNTER_NOT_FOUND',
+      'Boss encounter not found for this guild',
+      'That boss is long gone~ Re-open the boss channel for the current one.',
+    );
+  }
+}
+
+/**
+ * The player has already confirmed a buddy for this encounter. Reached by a
+ * double-clicked Confirm, which the unique index turns into this rather than
+ * into a second participation.
+ */
+export class BossAlreadyCommittedError extends AppError {
+  constructor(waifuName: string) {
+    super(
+      'BOSS_ALREADY_COMMITTED',
+      'Player already committed a buddy to this encounter',
+      `**${waifuName}** is already committed to this battle~ One buddy per confrontation.`,
+    );
+  }
+}
+
+/** No active buddy to commit. The message explains how to get one. */
+export class BossNoActiveBuddyError extends AppError {
+  constructor() {
+    super(
+      'BOSS_NO_ACTIVE_BUDDY',
+      'Player has no active buddy to commit',
+      'You have no active buddy to send~ Pick one with `/wm buddy <name>`, then come back.',
+    );
+  }
+}
+
+/**
+ * The guild has no boss channel configured, so nothing may be scheduled.
+ * Surfaced to admins only — players never reach a path that can raise it.
+ */
+export class BossChannelNotConfiguredError extends AppError {
+  constructor() {
+    super(
+      'BOSS_CHANNEL_NOT_CONFIGURED',
+      'Guild has no boss encounter channel configured',
+      'No Boss Encounter channel is set for this server yet.',
+    );
+  }
+}
+
+/**
+ * The configured channel exists but the bot cannot run an encounter in it.
+ * Carries the missing permissions so the admin reply can name them rather
+ * than saying "check permissions".
+ */
+export class BossChannelUnusableError extends AppError {
+  readonly missing: readonly string[];
+
+  constructor(channelId: string, missing: readonly string[] = []) {
+    // Defaulted so the constructor is total: the API's contract test builds
+    // every AppError subclass with throwaway arguments, and an error type that
+    // can only be constructed with exactly the right shape is one that will
+    // eventually be constructed wrongly on a failure path.
+    const list = missing.length > 0 ? missing.join(', ') : 'required permissions';
+    super(
+      'BOSS_CHANNEL_UNUSABLE',
+      `Boss channel ${channelId} is unusable — missing: ${list}`,
+      `I can't run boss encounters in <#${channelId}> — missing permission${missing.length === 1 ? '' : 's'}: ${list}.`,
+    );
+    this.missing = missing;
+  }
+}
+
 /** Detects a Postgres unique-constraint violation (possibly wrapped by drizzle). */
 export function isUniqueViolation(err: unknown): boolean {
   if (err && typeof err === 'object') {

@@ -93,6 +93,7 @@ const EMPTY_CONTENT: LoadedContent = {
   items: [],
   species: [],
   tables: {} as LoadedContent['tables'],
+  bosses: [],
 };
 
 export function createApiContext(overrides: ApiContextOverrides = {}): ApiContext {

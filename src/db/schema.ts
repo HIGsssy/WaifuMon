@@ -73,6 +73,17 @@ export const guilds = pgTable('guilds', {
   id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
   discordGuildId: text('discord_guild_id').notNull().unique(),
   announceChannelId: text('announce_channel_id'),
+  /**
+   * Dedicated Boss Encounter channel (Boss Encounters, Stage 1).
+   *
+   * Deliberately its own column rather than a key in `settings`: encounters do
+   * not schedule at all until it is set, so it is a gate the scheduler reads on
+   * every tick, not a preference. Null means bosses are off for this guild.
+   * Kept separate from `announce_channel_id` because the Waifumon Log is a
+   * narration feed and this is a live event venue — sharing one would bury a
+   * countdown under capture lines.
+   */
+  bossChannelId: text('boss_channel_id'),
   hereThresholdRarity: text('here_threshold_rarity').notNull().default('UR'),
   /** Optional admin allowlist of play channel ids; null/empty = any NSFW channel. */
   allowedChannelIds: jsonb('allowed_channel_ids').$type<string[]>(),
@@ -714,6 +725,300 @@ export const affectionGifts = pgTable(
   ],
 );
 
+/**
+ * Boss Encounters (Stage 1) — three tables and one guild column.
+ *
+ * `guild_boss_state` is per-guild scheduler state: the persistent shuffle bag,
+ * when the next boss is due, and whether scheduling is paused or suspended.
+ * `boss_encounters` is one row per appearance. `boss_participations` is one row
+ * per committed buddy, and is the immutable record a historical result is
+ * rendered from.
+ *
+ * Two invariants are enforced by the database rather than by code, because
+ * both of them are races that code alone loses:
+ *
+ *   - **One active encounter per guild** — a partial unique index over the
+ *     three live statuses, the same technique `encounters_active_player_uq`
+ *     already uses for hunt encounters.
+ *   - **One participation per player per encounter** — a plain unique index,
+ *     which is what makes a double-clicked Commit button safe: the second
+ *     insert loses and is read as "already committed" rather than as an error.
+ */
+
+/**
+ * Encounter lifecycle.
+ *
+ *   scheduled  — drawn and persisted, not yet announced. A restart in this
+ *                state re-attempts the announcement; it never re-draws.
+ *   scouting   — announced, accepting commitments until `deadline_at`.
+ *   resolving  — claimed by exactly one process for payout. Retryable: a
+ *                claim that goes stale may be taken over, and every payout is
+ *                individually idempotent.
+ *   resolved   — terminal. Results are immutable from here.
+ *   cancelled  — terminal. An admin ended it, or the channel disappeared.
+ */
+export const BOSS_ENCOUNTER_STATUSES = [
+  'scheduled',
+  'scouting',
+  'resolving',
+  'resolved',
+  'cancelled',
+] as const;
+export type BossEncounterStatus = (typeof BOSS_ENCOUNTER_STATUSES)[number];
+
+/** Statuses that occupy the guild's one active-encounter slot. */
+export const BOSS_ACTIVE_STATUSES: readonly BossEncounterStatus[] = [
+  'scheduled',
+  'scouting',
+  'resolving',
+];
+
+/**
+ * Why an encounter ended. Recorded rather than derived, because "nobody came"
+ * and "an admin cancelled it" both leave zero participations behind and a
+ * later audit needs to tell them apart.
+ */
+export const BOSS_RESOLUTION_REASONS = [
+  /** At least one trainer committed; the boss was driven away. */
+  'repelled',
+  /** Nobody committed; the boss left unchallenged. Rewards: none. */
+  'unchallenged',
+  /** An admin ended it early. Committed participants are still paid. */
+  'cancelled_admin',
+  /** The configured channel vanished mid-encounter. */
+  'channel_lost',
+] as const;
+export type BossResolutionReason = (typeof BOSS_RESOLUTION_REASONS)[number];
+
+/** Whether a participation's rewards have actually been handed over. */
+export const BOSS_REWARD_STATUSES = ['pending', 'applied'] as const;
+export type BossRewardStatus = (typeof BOSS_REWARD_STATUSES)[number];
+
+/**
+ * Per-guild boss scheduler state. One row per guild, created lazily the first
+ * time a boss channel is configured.
+ *
+ * Separate from `guilds` on purpose: this row is written on every scheduler
+ * tick and locked `FOR UPDATE` while a bag is drawn from, and putting that
+ * traffic on the guild row would serialize it against every unrelated guild
+ * setting read.
+ */
+export const guildBossState = pgTable(
+  'guild_boss_state',
+  {
+    guildId: bigint('guild_id', { mode: 'number' })
+      .primaryKey()
+      .references(() => guilds.id),
+    /** Which region this guild is currently scouting. */
+    region: text('region').notNull().default('waifu-valley'),
+    /**
+     * The persistent shuffle bag — remaining ids in draw order, plus the last
+     * boss drawn. Shape owned by `modules/bosses/bossShuffleBag.ts`, which
+     * normalizes anything unexpected rather than trusting the column.
+     */
+    bagState: jsonb('bag_state').$type<Record<string, unknown>>(),
+    /**
+     * When the next boss may appear. Chosen and persisted **when the previous
+     * encounter resolves**, so a restart cannot reroll it. Null means "as soon
+     * as possible" — the state a guild is in the moment it is first configured.
+     */
+    nextSpawnAt: timestamp('next_spawn_at', { withTimezone: true }),
+    /** Admin pause. Nothing new is scheduled; a live encounter still resolves. */
+    paused: boolean('paused').notNull().default(false),
+    /**
+     * Non-null when scheduling has been suspended by a failure rather than by
+     * an admin — a deleted channel, a missing permission. Carries the operator
+     * -facing reason so `/waifumon-admin boss status` can say what to fix.
+     * Cleared automatically the next time the channel checks out.
+     */
+    suspendedReason: text('suspended_reason'),
+    suspendedAt: timestamp('suspended_at', { withTimezone: true }),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [check('guild_boss_state_region_check', sql`${t.region} in ('waifu-valley')`)],
+);
+
+/**
+ * One boss appearance.
+ *
+ * Content is **snapshotted** onto the row (name, affinity, artwork, reward
+ * table and its version, the calculation version). A boss renamed, retuned or
+ * retired in content must not rewrite an encounter that already happened, and
+ * a result rendered a month later must read exactly as it did on the day.
+ */
+export const bossEncounters = pgTable(
+  'boss_encounters',
+  {
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    guildId: bigint('guild_id', { mode: 'number' })
+      .notNull()
+      .references(() => guilds.id),
+    region: text('region').notNull(),
+    /** Content id from `bosses.json` — the join key for a historical audit. */
+    bossId: text('boss_id').notNull(),
+    bossName: text('boss_name').notNull(),
+    bossAffinity: text('boss_affinity').notNull(),
+    /** Relative artwork path at announcement time; null = text-only encounter. */
+    bossArtwork: text('boss_artwork'),
+    rewardTable: text('reward_table').notNull(),
+    /** `rewardTables[key].version` as it stood when the encounter opened. */
+    rewardTableVersion: text('reward_table_version').notNull(),
+    /** `BOSS_DAMAGE_FORMULA_VERSION` — which formula produced these numbers. */
+    calcVersion: integer('calc_version').notNull(),
+    /** `BOSS_AFFINITY_VERSION` — which advantage table applied. */
+    affinityVersion: integer('affinity_version').notNull(),
+    /** Where the announcement lives. Null until the announcement is posted. */
+    channelId: text('channel_id'),
+    /**
+     * The announcement message. Persisted so the original can be edited after
+     * a restart — and so a restart cannot post a second one: a non-null value
+     * is the "already announced" flag.
+     */
+    messageId: text('message_id'),
+    status: text('status').notNull().default('scheduled'),
+    /**
+     * True for an admin force-spawn. Recorded so a test spawn is visibly not
+     * ordinary shuffle-bag consumption in any later audit — and so the bag is
+     * left alone, which is what makes forcing a specific boss repeatable
+     * without derailing the rotation.
+     */
+    forced: boolean('forced').notNull().default(false),
+    /** When the boss was due to appear. */
+    scheduledAt: timestamp('scheduled_at', { withTimezone: true }).notNull(),
+    /** When the announcement actually went up; the response-bracket origin. */
+    scoutingStartedAt: timestamp('scouting_started_at', { withTimezone: true }),
+    /** Participation deadline. Set once, at scouting start, and never moved. */
+    deadlineAt: timestamp('deadline_at', { withTimezone: true }),
+    /** When a process claimed resolution — the staleness clock for a takeover. */
+    resolvingAt: timestamp('resolving_at', { withTimezone: true }),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+    /** The next appearance, chosen here so a restart cannot reroll it. */
+    nextSpawnAt: timestamp('next_spawn_at', { withTimezone: true }),
+    participantCount: integer('participant_count').notNull().default(0),
+    /** `bigint` in `number` mode: totals stay far inside 2^53. */
+    totalDamage: bigint('total_damage', { mode: 'number' }).notNull().default(0),
+    resolutionReason: text('resolution_reason'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check(
+      'boss_encounters_status_check',
+      sql`${t.status} in ('scheduled','scouting','resolving','resolved','cancelled')`,
+    ),
+    check(
+      'boss_encounters_reason_check',
+      sql`${t.resolutionReason} is null or ${t.resolutionReason} in ('repelled','unchallenged','cancelled_admin','channel_lost')`,
+    ),
+    check('boss_encounters_participants_check', sql`${t.participantCount} >= 0`),
+    check('boss_encounters_damage_check', sql`${t.totalDamage} >= 0`),
+    // One active encounter per guild — the database's job, not the scheduler's.
+    // Two processes ticking at once both try to insert; exactly one wins.
+    uniqueIndex('boss_encounters_active_guild_uq')
+      .on(t.guildId)
+      .where(sql`status in ('scheduled','scouting','resolving')`),
+    index('boss_encounters_guild_status_idx').on(t.guildId, t.status),
+    index('boss_encounters_deadline_idx')
+      .on(t.deadlineAt)
+      .where(sql`status = 'scouting'`),
+    index('boss_encounters_message_idx').on(t.messageId),
+  ],
+);
+
+/**
+ * One committed buddy.
+ *
+ * Every stat the damage formula reads is **snapshotted at commitment**, not
+ * looked up at resolution. Three consequences that are all deliberate: the
+ * number a player was quoted in their preview is the number they are paid on;
+ * switching buddies afterwards changes nothing about this participation; and
+ * the row survives the owned copy being released, so a historical result never
+ * develops holes.
+ *
+ * `waifu_id` carries no foreign key, matching `players.buddy_waifu_id` and the
+ * affection-gift rows — a released copy must not take an encounter result with
+ * it.
+ */
+export const bossParticipations = pgTable(
+  'boss_participations',
+  {
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    encounterId: bigint('encounter_id', { mode: 'number' })
+      .notNull()
+      .references(() => bossEncounters.id),
+    playerId: bigint('player_id', { mode: 'number' })
+      .notNull()
+      .references(() => players.id),
+    /**
+     * Discord identity, snapshotted. A public result must render correctly
+     * years later without resolving a member who may have left, been renamed,
+     * or never been fetchable in the first place.
+     */
+    discordUserId: text('discord_user_id').notNull(),
+    trainerName: text('trainer_name').notNull(),
+
+    /** The exact owned copy. FK-less on purpose — see the table comment. */
+    waifuId: bigint('waifu_id', { mode: 'number' }).notNull(),
+    speciesId: bigint('species_id', { mode: 'number' }).notNull(),
+    speciesSlug: text('species_slug').notNull(),
+    /** Nickname when set, species name otherwise — what the result prints. */
+    waifuName: text('waifu_name').notNull(),
+    level: integer('level').notNull(),
+    baseSp: integer('base_sp').notNull(),
+    /**
+     * **Current** SP at commitment — the value the formula multiplies.
+     * Snapshotted rather than re-derived so a later level-up (or a change to
+     * the SP formula) cannot rewrite a battle that already happened.
+     */
+    currentSp: integer('current_sp').notNull(),
+    rarity: text('rarity').notNull(),
+    affinity: text('affinity').notNull(),
+    race: text('race').notNull(),
+    affection: integer('affection').notNull(),
+
+    committedAt: timestamp('committed_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Frozen at commitment so a later retune cannot alter this participation. */
+    responseBonus: real('response_bonus').notNull().default(0),
+    /** Also frozen at commitment — both affinities are known by then. */
+    affinityBonus: real('affinity_bonus').notNull().default(0),
+
+    // ── Filled at resolution ────────────────────────────────────────────────
+    /** Integer 85–115, interpreted as hundredths. Derived, so a retry matches. */
+    performancePercent: integer('performance_percent'),
+    attackCount: integer('attack_count'),
+    totalDamage: bigint('total_damage', { mode: 'number' }),
+    /** XP actually applied — 0 for a max-level buddy, never redirected. */
+    xpAwarded: integer('xp_awarded'),
+    /** What was granted, as `[{ slug, name, quantity }]`. Empty array is valid. */
+    rewardItems: jsonb('reward_items').$type<Record<string, unknown>[]>(),
+    /**
+     * The idempotency flag. Flipped to `applied` inside the *same* transaction
+     * that writes the XP and the inventory rows, so a resolution retry — or a
+     * second process taking over a stale claim — pays nobody twice.
+     */
+    rewardStatus: text('reward_status').notNull().default('pending'),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  },
+  (t) => [
+    // One participation per player per encounter. This is what makes a
+    // double-clicked Commit safe rather than merely unlikely.
+    uniqueIndex('boss_participations_encounter_player_uq').on(t.encounterId, t.playerId),
+    index('boss_participations_encounter_idx').on(t.encounterId, t.id),
+    index('boss_participations_player_idx').on(t.playerId),
+    index('boss_participations_waifu_idx').on(t.waifuId),
+    index('boss_participations_pending_idx')
+      .on(t.encounterId)
+      .where(sql`reward_status = 'pending'`),
+    check('boss_participations_level_check', sql`${t.level} >= 1`),
+    check('boss_participations_sp_check', sql`${t.currentSp} >= 0 and ${t.baseSp} >= 1`),
+    check('boss_participations_damage_check', sql`${t.totalDamage} is null or ${t.totalDamage} >= 0`),
+    check('boss_participations_xp_check', sql`${t.xpAwarded} is null or ${t.xpAwarded} >= 0`),
+    check(
+      'boss_participations_reward_status_check',
+      sql`${t.rewardStatus} in ('pending','applied')`,
+    ),
+  ],
+);
+
 export type GuildRow = typeof guilds.$inferSelect;
 export type PlayerRow = typeof players.$inferSelect;
 export type PlayerCurrenciesRow = typeof playerCurrencies.$inferSelect;
@@ -732,3 +1037,6 @@ export type PlayerDailySplashViewRow = typeof playerDailySplashViews.$inferSelec
 export type PlayerActiveEffectRow = typeof playerActiveEffects.$inferSelect;
 export type AffectionGiftRollRow = typeof affectionGiftRolls.$inferSelect;
 export type AffectionGiftRow = typeof affectionGifts.$inferSelect;
+export type GuildBossStateRow = typeof guildBossState.$inferSelect;
+export type BossEncounterRow = typeof bossEncounters.$inferSelect;
+export type BossParticipationRow = typeof bossParticipations.$inferSelect;
