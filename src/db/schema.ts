@@ -873,8 +873,41 @@ export const bossEncounters = pgTable(
      * The announcement message. Persisted so the original can be edited after
      * a restart — and so a restart cannot post a second one: a non-null value
      * is the "already announced" flag.
+     *
+     * This message is **permanent**. It is edited in place — participant count
+     * while the window is open, terminal outcome prose when it closes — and it
+     * is never deleted, never replaced, and never repurposed into the results.
      */
     messageId: text('message_id'),
+    /**
+     * The separate public results message, posted immediately below the
+     * announcement when the encounter ends. Null until it exists.
+     *
+     * Deliberately its own column rather than a second use of `message_id`:
+     * the channel's permanent history is the *pair*, so a repair that repoints
+     * one must not be able to lose the other.
+     */
+    resultsMessageId: text('results_message_id'),
+    /**
+     * Delivery state, one stamp per Discord step that resolution owes.
+     *
+     * Null means "still owed", which is what makes recovery a query rather
+     * than a guess: a restart repairs the completion edit when
+     * `completionEditedAt` is null and publishes results when
+     * `resultsPublishedAt` is null, and a retry that finds both stamped does
+     * nothing. Timestamps rather than booleans, matching `resolvedAt` and
+     * `resolvingAt` — an operator debugging a stuck encounter gets a *when*.
+     */
+    completionEditedAt: timestamp('completion_edited_at', { withTimezone: true }),
+    resultsPublishedAt: timestamp('results_published_at', { withTimezone: true }),
+    /**
+     * The page size the results message was rendered with, frozen at
+     * publication. Pagination after a restart then pages the encounter exactly
+     * as it was published even if `resultsPageSize` has since been retuned —
+     * otherwise a reader could press "All Results" and find the page
+     * boundaries had moved under a message that is already history.
+     */
+    resultsPageSize: integer('results_page_size'),
     status: text('status').notNull().default('scheduled'),
     /**
      * True for an admin force-spawn. Recorded so a test spawn is visibly not

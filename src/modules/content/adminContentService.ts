@@ -25,12 +25,14 @@ import { listSpeciesFiles, readContentFiles, validateContentSet } from './loader
 import type { ContentReloader, ReloadResult } from './reloadService';
 import {
   BossesFileSchema,
+  BossRewardsFileSchema,
   ItemContentSchema,
   ItemsFileSchema,
   SpeciesContentSchema,
   SpeciesFileSchema,
   TablesFileSchema,
   type BossContent,
+  type BossRewardTable,
   type ItemContent,
   type LoadedContent,
   type SpeciesContent,
@@ -107,6 +109,16 @@ export interface RawContent {
    * files in hand.
    */
   bosses: BossContent[];
+  /**
+   * Boss reward tables from `content/bossRewards.json`.
+   *
+   * Read for the same reason as `bosses` and with the same caveat: the panel
+   * has no boss-loot *editor* — the file is hand-authored — but every
+   * `tables.json` save is validated against it, and disabling the last table a
+   * region's bosses point at is exactly the kind of edit that has to be caught
+   * with both files in hand.
+   */
+  bossRewards: BossRewardTable[];
 }
 
 export interface RarityBucketSummary {
@@ -250,6 +262,10 @@ export function createAdminContentService(deps: AdminContentServiceDeps): AdminC
     // Optional on disk, exactly as it is for the runtime loader.
     const bossesPath = path.join(contentDir, 'bosses.json');
     const bosses = fs.existsSync(bossesPath) ? parseFile(bossesPath, BossesFileSchema) : [];
+    const bossRewardsPath = path.join(contentDir, 'bossRewards.json');
+    const bossRewards = fs.existsSync(bossRewardsPath)
+      ? parseFile(bossRewardsPath, BossRewardsFileSchema)
+      : [];
     const speciesFiles = listSpeciesFiles(speciesDir).map((file) => ({
       file,
       species: parseFile(path.join(speciesDir, file), SpeciesFileSchema),
@@ -260,6 +276,7 @@ export function createAdminContentService(deps: AdminContentServiceDeps): AdminC
       species: speciesFiles.flatMap((g) => g.species),
       tables,
       bosses,
+      bossRewards,
     };
   }
 
@@ -351,6 +368,7 @@ export function createAdminContentService(deps: AdminContentServiceDeps): AdminC
       species: overrides.species ?? raw.species,
       tables: overrides.tables ?? raw.tables,
       bosses: overrides.bosses ?? raw.bosses,
+      bossRewards: overrides.bossRewards ?? raw.bossRewards,
     };
   }
 
@@ -729,17 +747,28 @@ export function createAdminContentService(deps: AdminContentServiceDeps): AdminC
     // loader tolerates all of it — but each one is something an operator would
     // want to know before saving.
     if (t.bossEncounters.enabled) {
-      for (const [key, table] of Object.entries(t.bossEncounters.rewardTables)) {
-        const referenced = [
-          ...table.minorItems.map((e) => e.slug),
-          ...(table.jackpot ? [table.jackpot.slug] : []),
-        ];
-        for (const slug of referenced) {
-          if (!enabledItems.has(slug)) {
+      const rewardTables = new Map(raw.bossRewards.map((table) => [table.id, table]));
+      for (const table of raw.bossRewards) {
+        for (const group of table.groups) {
+          const enabledEntries = group.entries.filter((e) => e.enabled);
+          if (group.enabled && enabledEntries.length === 0) {
             warnings.push(
-              `bossEncounters.rewardTables["${key}"]: references disabled item "${slug}" — ` +
-                'it can still be granted, but players cannot obtain it anywhere else',
+              `bossRewards["${table.id}"].groups["${group.id}"]: every entry is disabled — ` +
+                'the group is skipped at payout time and drops nothing',
             );
+          }
+          for (const entry of group.entries) {
+            // `items.enabled` is retirement, not Shop availability: a disabled
+            // item is withdrawn from every source. Still grantable, so this is
+            // advisory — but a boss handing out something unobtainable
+            // elsewhere is worth a second look before saving.
+            if (entry.enabled && !enabledItems.has(entry.itemId)) {
+              warnings.push(
+                `bossRewards["${table.id}"].groups["${group.id}"]: references retired item ` +
+                  `"${entry.itemId}" — it can still be granted, but players cannot obtain it ` +
+                  'anywhere else',
+              );
+            }
           }
         }
       }
@@ -749,9 +778,16 @@ export function createAdminContentService(deps: AdminContentServiceDeps): AdminC
         );
       } else {
         for (const region of t.bossEncounters.regions) {
-          if (!raw.bosses.some((b) => b.enabled && b.region === region)) {
+          const inRegion = raw.bosses.filter((b) => b.enabled && b.region === region);
+          if (inRegion.length === 0) {
             warnings.push(
               `bossEncounters: region "${region}" is enabled but every boss in it is disabled — ` +
+                'the bot refuses to start until one is re-enabled',
+            );
+          } else if (!inRegion.some((b) => rewardTables.get(b.rewardTable)?.enabled)) {
+            warnings.push(
+              `bossEncounters: region "${region}" is enabled but every enabled boss in it ` +
+                'points at a disabled or missing reward table in content/bossRewards.json — ' +
                 'the bot refuses to start until one is re-enabled',
             );
           }
@@ -788,6 +824,7 @@ export function createAdminContentService(deps: AdminContentServiceDeps): AdminC
         species: raw.species,
         tables: raw.tables,
         bosses: raw.bosses,
+        bossRewards: raw.bossRewards,
       });
     } catch (err) {
       errors.push((err as Error).message);

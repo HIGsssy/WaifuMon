@@ -12,10 +12,21 @@
  *   - **Countdowns are Discord timestamps, never rendered text.** `<t:…:R>`
  *     re-renders in the reader's own locale and keeps counting down between
  *     our edits, so a minute-resolution refresh loop still looks live.
- *   - **The announcement is edited, never re-posted.** There is one message per
- *     encounter and every state — open, updated, resolved — is a revision of
- *     it. That is what keeps a busy hour from becoming a wall of damage
- *     numbers.
+ *   - **The announcement is edited, never re-posted and never repurposed.**
+ *     One encounter owns exactly two public messages: the announcement, which
+ *     is edited in place from open → live → *completed*, and a separate
+ *     results message posted beneath it when the window closes. The channel
+ *     therefore reads chronologically as encounter/result, encounter/result,
+ *     permanently.
+ *
+ * Three builders, one per public state:
+ *
+ *   {@link buildAnnouncement}           — the live scouting message.
+ *   {@link buildCompletedAnnouncement}  — the same message, terminal. Keeps
+ *     the artwork and identity, swaps the scouting prose for the outcome, and
+ *     carries **no components at all**.
+ *   {@link buildResults}                — the second message. Owns every
+ *     result control, including pagination and My Result.
  */
 import {
   ActionRowBuilder,
@@ -58,6 +69,34 @@ export function discordRelative(at: Date): string {
 /** `<t:…:t>` — a wall-clock time, for the "closes at" line. */
 export function discordTime(at: Date): string {
   return `<t:${Math.floor(at.getTime() / 1000)}:t>`;
+}
+
+/**
+ * The reconciliation marker stamped into every public boss message's footer.
+ *
+ * Discord's send and our database write cannot be one transaction, so a crash
+ * in between leaves a message on Discord that no row points at. This marker is
+ * what lets recovery *find* that message instead of posting a second one:
+ * `publishResults` scans the tail of the channel for a footer carrying the
+ * encounter's marker before it sends anything.
+ *
+ * Deliberately readable rather than an opaque token — a reader sees
+ * "Boss Encounter #128", which is meaningful context, and an operator
+ * reporting a problem can quote it. `#` plus a bare integer is unambiguous
+ * enough to match on without ever colliding with the prose above it.
+ */
+export function encounterMarker(encounterId: number): string {
+  return `Boss Encounter #${encounterId}`;
+}
+
+/** True when `footerText` was stamped by {@link encounterMarker} for this id. */
+export function matchesEncounterMarker(
+  footerText: string | null | undefined,
+  encounterId: number,
+): boolean {
+  if (!footerText) return false;
+  // Anchored on both sides so #12 cannot match #128.
+  return new RegExp(`Boss Encounter #${encounterId}(?!\\d)`).test(footerText);
 }
 
 /**
@@ -164,7 +203,9 @@ export function buildAnnouncement(input: AnnouncementInput): BaseMessageOptions 
     });
   }
   embed.setFooter({
-    text: `Each committed buddy launches ${config.attacksPerParticipation} attacks. One buddy per trainer.`,
+    text:
+      `Each committed buddy launches ${config.attacksPerParticipation} attacks. ` +
+      `One buddy per trainer. · ${encounterMarker(encounter.id)}`,
   });
 
   const files: AttachmentBuilder[] = [];
@@ -177,6 +218,111 @@ export function buildAnnouncement(input: AnnouncementInput): BaseMessageOptions 
   return {
     embeds: [embed],
     components: [commitRow(encounter.id)],
+    files,
+    allowedMentions: { parse: [] },
+  };
+}
+
+export interface CompletedAnnouncementInput {
+  encounter: BossEncounterRow;
+  reason: BossResolutionReason;
+  boss: BossContent | undefined;
+  participantCount: number;
+  totalDamage: number;
+  totalAttacks: number;
+  artworkPath?: string | undefined;
+}
+
+/**
+ * The announcement's terminal form — the *same* message, edited in place.
+ *
+ * This is what an encounter looks like in the channel forever after. It keeps
+ * the boss's artwork and identity, because the history is meant to be
+ * browsable: scrolling back should show the boss that appeared, not a stub.
+ * What changes is the prose (scouting copy → `repelledText` or
+ * `unchallengedText`), the colour, and the fact that it is unmistakably over.
+ *
+ * `components: []` is the load-bearing line. Every participation control is
+ * removed rather than disabled — a greyed-out Commit Buddy on a months-old
+ * message is visual noise that still invites a click — and **no result control
+ * is added here**, because result controls belong to the results message. That
+ * separation is what stops a paginating reader from repainting a completed
+ * encounter's message.
+ */
+export function buildCompletedAnnouncement(
+  input: CompletedAnnouncementInput,
+): BaseMessageOptions {
+  const { encounter, reason, boss, participantCount } = input;
+  const repelled = reason !== 'unchallenged';
+  const outcomeText = repelled
+    ? (boss?.repelledText ?? '')
+    : (boss?.unchallengedText ?? '');
+
+  const embed = new EmbedBuilder()
+    .setTitle(resultTitle(encounter, reason))
+    .setColor(repelled ? REPELLED_COLOR : UNCHALLENGED_COLOR)
+    .setDescription(
+      [
+        outcomeText,
+        `**${encounter.bossName}** scouted ${regionLabel(encounter.region)}. This encounter has ended.`,
+      ]
+        .filter((s) => s.length > 0)
+        .join('\n\n'),
+    )
+    .addFields(
+      {
+        name: 'Boss Affinity',
+        value: affinityLabel(encounter.bossAffinity),
+        inline: true,
+      },
+      {
+        name: 'Trainers Committed',
+        value: String(participantCount),
+        inline: true,
+      },
+    );
+
+  // Damage and attacks are meaningless on an unchallenged encounter and the
+  // fields are omitted rather than printed as zeroes, which would read as a
+  // failed battle rather than an absent one.
+  if (participantCount > 0) {
+    embed.addFields(
+      {
+        name: 'Combined Damage',
+        value: formatDamage(input.totalDamage),
+        inline: true,
+      },
+      {
+        name: 'Total Attacks',
+        value: formatDamage(input.totalAttacks),
+        inline: true,
+      },
+    );
+  }
+
+  if (encounter.deadlineAt) {
+    embed.addFields({
+      name: 'Window Closed',
+      value: discordRelative(encounter.deadlineAt),
+      inline: true,
+    });
+  }
+
+  embed.setFooter({
+    text: `Encounter ended · Results below · ${encounterMarker(encounter.id)}`,
+  });
+
+  const files: AttachmentBuilder[] = [];
+  if (input.artworkPath) {
+    const filename = bossArtworkFilename(encounter.bossId);
+    files.push(new AttachmentBuilder(input.artworkPath, { name: filename }));
+    embed.setImage(`attachment://${filename}`);
+  }
+
+  return {
+    embeds: [embed],
+    // Not `[commitRow(id, true)]`. See the doc comment: removed, not disabled.
+    components: [],
     files,
     allowedMentions: { parse: [] },
   };
@@ -281,6 +427,12 @@ export function resultLine(entry: BossParticipationResult, isFirst: boolean): st
 export interface ResultsInput {
   encounter: BossEncounterRow;
   reason: BossResolutionReason;
+  /**
+   * Kept on the input for symmetry with {@link CompletedAnnouncementInput}, and
+   * so a future results layout can reach for boss prose without every caller
+   * changing. The outcome text itself is deliberately *not* printed here — it
+   * is already on the completed announcement immediately above.
+   */
   boss: BossContent | undefined;
   entries: BossParticipationResult[];
   page: number;
@@ -293,7 +445,11 @@ export interface ResultsInput {
 }
 
 /**
- * Result controls.
+ * Result controls — attached to the **results message only**.
+ *
+ * Never to the completed announcement. Pagination repaints the message its
+ * button lives on, so hanging these on the encounter message would let one
+ * reader turning a page overwrite the permanent history for everyone.
  *
  * `All Results` pagination appears only when there is a second page — a
  * six-person encounter should not carry dead buttons. Every control encodes
@@ -333,25 +489,27 @@ export function resultComponents(
 }
 
 export function buildResults(input: ResultsInput): BaseMessageOptions {
-  const { encounter, reason, boss, entries, totalParticipants } = input;
+  const { encounter, reason, entries, totalParticipants } = input;
   const repelled = reason !== 'unchallenged';
 
-  const outcomeText = repelled
-    ? (boss?.repelledText ?? '')
-    : (boss?.unchallengedText ?? '');
-
   const embed = new EmbedBuilder()
-    .setTitle(resultTitle(encounter, reason))
+    // Names the boss explicitly: this is a standalone message that a reader may
+    // meet on its own in a search result or a jump link, without the
+    // announcement above it in view.
+    .setTitle(`Boss Results — ${encounter.bossName}`)
     .setColor(repelled ? REPELLED_COLOR : UNCHALLENGED_COLOR);
 
+  // The outcome *prose* has already been said on the completed announcement
+  // directly above; repeating it here would make the pair read as a stutter.
+  // The results message carries the numbers and the payouts instead.
   const summary =
     totalParticipants > 0
       ? `**${totalParticipants}** trainer${totalParticipants === 1 ? '' : 's'} joined the battle, ` +
         `launched **${formatDamage(input.totalAttacks)}** attacks, and dealt ` +
         `**${formatDamage(input.totalDamage)}** total damage.`
-      : 'No trainer answered the call.';
+      : `Nobody confronted **${encounter.bossName}**. No rewards were distributed.`;
 
-  embed.setDescription([outcomeText, summary].filter((s) => s.length > 0).join('\n\n'));
+  embed.setDescription(summary);
 
   if (input.firstOnScene) {
     embed.addFields({
@@ -371,9 +529,14 @@ export function buildResults(input: ResultsInput): BaseMessageOptions {
     });
   }
 
-  if (input.totalPages > 1) {
-    embed.setFooter({ text: `Page ${input.page} of ${input.totalPages}` });
-  }
+  // The marker is unconditional — reconciliation has to be able to find a
+  // single-page results message just as reliably as a paginated one.
+  embed.setFooter({
+    text:
+      input.totalPages > 1
+        ? `Page ${input.page} of ${input.totalPages} · ${encounterMarker(encounter.id)}`
+        : encounterMarker(encounter.id),
+  });
 
   const files: AttachmentBuilder[] = [];
   if (input.artworkPath) {

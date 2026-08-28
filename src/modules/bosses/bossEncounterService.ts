@@ -27,7 +27,7 @@
  *   5. **Rewards at resolution only.** There is no code path from `commit` to
  *      `rollBossRewards`. Committing writes a row and nothing else.
  */
-import { and, asc, count, desc, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
 import type { Db, DbOrTx } from '../../db/client';
 import {
   BOSS_ACTIVE_STATUSES,
@@ -54,7 +54,13 @@ import type { Logger } from '../../shared/logger';
 import { defaultRng, type Rng } from '../../shared/random';
 import { resolveRace } from '../cards/race';
 import type { CollectionService } from '../collection/collectionService';
-import type { BossContent, BossEncountersConfig, LoadedContent } from '../content/schemas';
+import {
+  bossRewardTableVersion,
+  type BossContent,
+  type BossEncountersConfig,
+  type BossRewardTable,
+  type LoadedContent,
+} from '../content/schemas';
 import type { InventoryService } from '../inventory/inventoryService';
 import { currentSeductivePower } from '../power/seductivePower';
 import { BOSS_AFFINITY_VERSION, bossAffinityBonus } from './bossAffinity';
@@ -207,6 +213,40 @@ export interface BossEncounterService {
     channelId: string,
     messageId: string,
   ): Promise<BossEncounterRow>;
+
+  // ── Discord delivery state ───────────────────────────────────────────────
+  //
+  // An encounter owes Discord two things when it ends: the completion edit on
+  // its original announcement, and a separate results message beneath it.
+  // Neither can share a transaction with the Discord call that performs it, so
+  // each is stamped *after* the call succeeds and every stamp is idempotent.
+  // A restart repairs whatever is unstamped; a retry that finds a stamp does
+  // nothing. See `boss_encounters.completion_edited_at` / `results_*`.
+
+  /** Record that the announcement has been edited into its terminal form. */
+  markCompletionEdited(encounterId: number, now?: Date): Promise<BossEncounterRow | undefined>;
+  /**
+   * Record the published results message.
+   *
+   * Conditional on `results_message_id` still being null, so two processes
+   * racing to publish cannot both claim it — the loser's row read tells it a
+   * results message already exists. `pageSize` is frozen alongside the id so
+   * pagination pages the encounter the way it was published.
+   */
+  markResultsPublished(
+    encounterId: number,
+    messageId: string,
+    pageSize: number | null,
+    now?: Date,
+  ): Promise<BossEncounterRow | undefined>;
+  /**
+   * Finished encounters that still owe Discord something.
+   *
+   * The restart-recovery query for presentation, mirroring `findUnannounced`
+   * for the opening half of the lifecycle. Ordered oldest-first so a backlog
+   * is published in the order it happened rather than in reverse.
+   */
+  findUndelivered(limit?: number): Promise<BossEncounterRow[]>;
   /** Encounters whose window has closed, plus stale `resolving` claims. */
   findResolvable(now?: Date): Promise<BossEncounterRow[]>;
   /** Encounters drawn but not yet announced — the restart-recovery path. */
@@ -279,17 +319,62 @@ export function createBossEncounterService(
 
   const config = (): BossEncountersConfig => getContent().tables.bossEncounters;
 
-  /** Enabled bosses for a region, in content order. */
+  /**
+   * Bosses that may actually be drawn for a region, in content order.
+   *
+   * Two switches, not one: the boss's own `enabled`, and the `enabled` of the
+   * reward table it is paid from. A boss whose table is switched off is
+   * **not** spawned — appearing and then handing out nothing is a worse
+   * failure than not appearing, and it would only be discovered at resolution
+   * by the players who committed.
+   *
+   * The skip is logged at error level with the fix in the message, because
+   * from the outside a boss that quietly stops rotating is indistinguishable
+   * from a broken scheduler.
+   */
   function candidatesFor(region: string): BossContent[] {
-    return getContent().bosses.filter((b) => b.enabled && b.region === region);
+    const content = getContent();
+    const tables = new Map(content.bossRewards.map((t) => [t.id, t]));
+    return content.bosses.filter((b) => {
+      if (!b.enabled || b.region !== region) return false;
+      const table = tables.get(b.rewardTable);
+      if (!table) {
+        // The loader rejects this at boot, so reaching it means content was
+        // reloaded with a table removed while the process was running.
+        logger.error(
+          { tag: 'boss/reward-table-missing', bossId: b.id, rewardTable: b.rewardTable },
+          `boss "${b.id}" references reward table "${b.rewardTable}", which is not in ` +
+            'content/bossRewards.json — the boss will not spawn until it is added',
+        );
+        return false;
+      }
+      if (!table.enabled) {
+        logger.error(
+          { tag: 'boss/reward-table-disabled', bossId: b.id, rewardTable: b.rewardTable },
+          `boss "${b.id}" will not spawn: its reward table "${b.rewardTable}" is disabled. ` +
+            `Set "enabled": true on that table in content/bossRewards.json, or disable the ` +
+            'boss itself to stop this message.',
+        );
+        return false;
+      }
+      return true;
+    });
   }
 
   function bagCandidates(region: string): ShuffleBagCandidate[] {
     return candidatesFor(region).map((b) => ({ id: b.id, affinity: b.affinity }));
   }
 
-  function rewardTableFor(key: string) {
-    const table = config().rewardTables[key];
+  /**
+   * The reward table an encounter is paid from, by id.
+   *
+   * Deliberately does **not** check `enabled`: that switch governs whether new
+   * encounters may *spawn* against the table (see `candidatesFor`), not
+   * whether an encounter that already happened may be paid. Disabling a table
+   * must never strand participants who committed while it was live.
+   */
+  function rewardTableFor(key: string): BossRewardTable {
+    const table = getContent().bossRewards.find((t) => t.id === key);
     if (!table) {
       // Reachable only if content was edited between the announcement and the
       // resolution. Loud, because the alternative is paying an arbitrary table.
@@ -361,7 +446,7 @@ export function createBossEncounterService(
       bossAffinity: boss.affinity,
       bossArtwork: boss.artwork,
       rewardTable: boss.rewardTable,
-      rewardTableVersion: table.version,
+      rewardTableVersion: bossRewardTableVersion(table),
       calcVersion: BOSS_DAMAGE_FORMULA_VERSION,
       affinityVersion: BOSS_AFFINITY_VERSION,
       status: 'scheduled',
@@ -582,6 +667,21 @@ export function createBossEncounterService(
       buddyLevel: participation.level,
       maxLevel,
     });
+    // Configuration problems the pure roller found. Logged here, once per
+    // participation, because this is the moment they cost a player something —
+    // an empty group pays nobody, silently, until someone says so.
+    for (const warning of roll.warnings) {
+      logger.error(
+        {
+          tag: 'boss/reward-group-skipped',
+          encounterId: encounter.id,
+          participationId: participation.id,
+          rewardTable: encounter.rewardTable,
+          groupId: warning.groupId,
+        },
+        warning.message,
+      );
+    }
     const grants = mergeGrants(roll.items);
 
     return db.transaction(async (tx) => {
@@ -964,6 +1064,69 @@ export function createBossEncounterService(
         'boss announcement message repointed',
       );
       return row;
+    },
+
+    async markCompletionEdited(encounterId, now = new Date()) {
+      // Conditional on the stamp still being null so a slow retry cannot
+      // overwrite the moment the edit actually landed with a later one.
+      const [row] = await db
+        .update(bossEncounters)
+        .set({ completionEditedAt: now })
+        .where(
+          and(
+            eq(bossEncounters.id, encounterId),
+            isNull(bossEncounters.completionEditedAt),
+          ),
+        )
+        .returning();
+      return row;
+    },
+
+    async markResultsPublished(encounterId, messageId, pageSize, now = new Date()) {
+      const [row] = await db
+        .update(bossEncounters)
+        .set({
+          resultsMessageId: messageId,
+          resultsPublishedAt: now,
+          resultsPageSize: pageSize,
+        })
+        // The guard that makes concurrent publication safe: whoever writes
+        // first owns the results message, and the loser simply finds it set.
+        .where(
+          and(
+            eq(bossEncounters.id, encounterId),
+            isNull(bossEncounters.resultsMessageId),
+          ),
+        )
+        .returning();
+      if (!row) {
+        logger.warn(
+          { tag: 'boss/results-already-published', encounterId, messageId },
+          'a results message was already recorded for this encounter — not overwriting',
+        );
+      }
+      return row;
+    },
+
+    async findUndelivered(limit = 25) {
+      return db
+        .select()
+        .from(bossEncounters)
+        .where(
+          and(
+            inArray(bossEncounters.status, ['resolved', 'cancelled']),
+            // A message id is required for either repair to mean anything: an
+            // encounter that never got announced has nothing to edit and no
+            // place to put results.
+            isNotNull(bossEncounters.messageId),
+            or(
+              isNull(bossEncounters.completionEditedAt),
+              isNull(bossEncounters.resultsPublishedAt),
+            ),
+          ),
+        )
+        .orderBy(asc(bossEncounters.resolvedAt), asc(bossEncounters.id))
+        .limit(limit);
     },
 
     async findResolvable(now = new Date()) {

@@ -514,3 +514,102 @@ describe('main menu flavor text', () => {
     expect(pool.some((line) => embed.description?.includes(line))).toBe(true);
   });
 });
+
+describe('hunt validation failures keep navigation alive', () => {
+  interface UpdatePayload {
+    content?: string;
+    embeds?: unknown[];
+    components?: { toJSON(): { components: Array<{ custom_id?: string }> } }[];
+  }
+  function customIds(payload: UpdatePayload): string[] {
+    return (payload.components ?? []).flatMap((row) =>
+      row.toJSON().components.map((c) => c.custom_id ?? ''),
+    );
+  }
+
+  it('insufficient energy shows the correct message with a Back button and does not consume energy', async () => {
+    const p = await provisionPlayer(app, 'g-hunt-nav-1', 'u-hunt-nav-1');
+    await app.currency.setHuntEnergy(t.db, p.playerId, 0);
+    await t.db.delete(encounters).where(eq(encounters.playerId, p.playerId));
+    await t.db.update(players).set({ lastHuntAt: null }).where(eq(players.id, p.playerId));
+
+    const btn = fakeButton('u-hunt-nav-1', fakeChannel('c-hunt-nav-1'));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleHunt(ctx, btn as any, p);
+
+    expect(btn.update).toHaveBeenCalledOnce();
+    const payload = btn.update.mock.calls[0]![0] as UpdatePayload;
+    expect(payload.content).toContain("out of Hunt Energy");
+    expect(customIds(payload)).toContain('wm|v1|menu|back');
+    // No public post, no channel edit — dead-end recovery would have used those.
+    expect(btn.channel.send).not.toHaveBeenCalled();
+    expect(btn.channel.messages.edit).not.toHaveBeenCalled();
+    // No state mutation: energy still zero, no encounter row created.
+    expect((await app.currency.getBalances(p.playerId)).huntEnergy).toBe(0);
+    const rows = await t.db.select().from(encounters).where(eq(encounters.playerId, p.playerId));
+    expect(rows).toHaveLength(0);
+  });
+
+  it('hunt cooldown shows the correct message with a Back button and does not consume energy', async () => {
+    const p = await provisionPlayer(app, 'g-hunt-nav-2', 'u-hunt-nav-2');
+    const startingEnergy = app.content.tables.energy.baseMax;
+    await app.currency.setHuntEnergy(t.db, p.playerId, startingEnergy);
+    await t.db.delete(encounters).where(eq(encounters.playerId, p.playerId));
+    // Cooldown is active when lastHuntAt is recent.
+    await t.db.update(players).set({ lastHuntAt: new Date() }).where(eq(players.id, p.playerId));
+
+    const btn = fakeButton('u-hunt-nav-2', fakeChannel('c-hunt-nav-2'));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleHunt(ctx, btn as any, p);
+
+    expect(btn.update).toHaveBeenCalledOnce();
+    const payload = btn.update.mock.calls[0]![0] as UpdatePayload;
+    expect(payload.content).toContain('Slow down');
+    expect(customIds(payload)).toContain('wm|v1|menu|back');
+    expect(btn.channel.send).not.toHaveBeenCalled();
+    // No state mutation.
+    expect((await app.currency.getBalances(p.playerId)).huntEnergy).toBe(startingEnergy);
+    const rows = await t.db.select().from(encounters).where(eq(encounters.playerId, p.playerId));
+    expect(rows).toHaveLength(0);
+  });
+
+  it('pressing Back after a validation failure restores the main Waifumon menu via the shared handler', async () => {
+    const p = await provisionPlayer(app, 'g-hunt-nav-3', 'u-hunt-nav-3');
+    await app.currency.setHuntEnergy(t.db, p.playerId, 0);
+    await t.db.delete(encounters).where(eq(encounters.playerId, p.playerId));
+    await t.db.update(players).set({ lastHuntAt: null }).where(eq(players.id, p.playerId));
+
+    const failBtn = fakeButton('u-hunt-nav-3', fakeChannel('c-hunt-nav-3'));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleHunt(ctx, failBtn as any, p);
+
+    // The Back button published on the error screen is the shared menu:back
+    // control. Clicking it is dispatched to handleMenu (see client.ts wiring).
+    const backBtn = fakeButton('u-hunt-nav-3', fakeChannel('c-hunt-nav-3'));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleMenu(ctx, backBtn as any, p);
+
+    expect(backBtn.update).toHaveBeenCalledOnce();
+    const payload = backBtn.update.mock.calls[0]![0] as { embeds: { toJSON: () => { title?: string } }[] };
+    const embed = payload.embeds[0]!.toJSON();
+    expect(embed.title).toBe('💖 Waifumon');
+    expect(backBtn.channel.send).not.toHaveBeenCalled();
+  });
+
+  it('a valid hunt still resolves without a Back button on the encounter reveal (unchanged behavior)', async () => {
+    const p = await provisionPlayer(app, 'g-hunt-nav-4', 'u-hunt-nav-4');
+    await app.currency.setHuntEnergy(t.db, p.playerId, app.content.tables.energy.baseMax);
+    await t.db.delete(encounters).where(eq(encounters.playerId, p.playerId));
+    await t.db.update(players).set({ lastHuntAt: null }).where(eq(players.id, p.playerId));
+
+    const btn = fakeButton('u-hunt-nav-4', fakeChannel('c-hunt-nav-4'));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleHunt(ctx, btn as any, p);
+
+    expect(btn.update).toHaveBeenCalledOnce();
+    // Energy was actually spent — no validation short-circuit ran.
+    expect((await app.currency.getBalances(p.playerId)).huntEnergy).toBeLessThan(
+      app.content.tables.energy.baseMax,
+    );
+  });
+});

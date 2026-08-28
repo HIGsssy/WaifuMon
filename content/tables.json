@@ -478,9 +478,9 @@
     "regions": [
       "waifu-valley"
     ],
-    "scoutingMinutes": 60,
-    "downtimeMinutesMin": 120,
-    "downtimeMinutesMax": 300,
+    "scoutingMinutes": 30,
+    "downtimeMinutesMin": 11,
+    "downtimeMinutesMax": 24,
     "attacksPerParticipation": 10,
     "performanceMinPercent": 85,
     "performanceMaxPercent": 115,
@@ -494,11 +494,11 @@
     "affinityAdvantageBonus": 0.1,
     "responseBrackets": [
       {
-        "withinMinutes": 15,
+        "withinMinutes": 5,
         "bonus": 0.05
       },
       {
-        "withinMinutes": 30,
+        "withinMinutes": 15,
         "bonus": 0.02
       }
     ],
@@ -507,11 +507,11 @@
     "rewardTables": {
       "standard-scouting-v1": {
         "version": "standard-scouting-v1",
-        "buddyXp": 15,
+        "buddyXp": 75,
         "minorItems": [
           {
             "slug": "basic_charm",
-            "quantity": 2,
+            "quantity": 1,
             "weight": 4500
           },
           {

@@ -1227,54 +1227,199 @@ export type BossContent = z.infer<typeof BossContentSchema>;
 export type BossContentInput = z.input<typeof BossContentSchema>;
 
 /**
- * One weighted minor-item entry in a boss reward table. Same shape as the
- * affection-gift loot entry, on purpose — one mental model for every weighted
- * item table in the game.
+ * Boss loot lives in its own file: `content/bossRewards.json`.
+ *
+ * **Why not in `tables.json` beside the rest of the boss tuning, and why not in
+ * `items.json` beside the items themselves.** An item has one identity and
+ * several independent *acquisition sources*, and the sources have nothing to
+ * say to each other:
+ *
+ *   `items.json`        — what the item **is**: name, category, behaviour, and
+ *                         `enabled`, which is retirement, not availability.
+ *   shop fields on it   — whether it is **purchasable** and for how much
+ *                         (`purchasable`, `buyPrice`, `priceCurrency`).
+ *   `bossRewards.json`  — whether it **drops from a boss**, how many, and how
+ *                         often. This file.
+ *   (future) scavenge   — separate again, for the same reason.
+ *
+ * Consequences an operator can rely on, and which the tests pin: un-listing an
+ * item from the Shop does not stop it dropping from a boss; disabling a boss
+ * entry does not remove the item from the Shop; and nothing in the Shop's
+ * availability or pricing is consulted when a boss pays out.
+ *
+ * The structure is groups-of-entries rather than one flat weighted list,
+ * because the two things a boss table needs to express are different in kind:
+ *
+ *   - *Which* ordinary item, chosen among alternatives → **weights inside one
+ *     group**. Weights are relative and normalized over whatever is enabled, so
+ *     disabling an entry redistributes its share rather than leaving a hole.
+ *   - *Whether* a rare extra fires at all → **a separate group** with its own
+ *     `chanceBasisPoints`. Independent by construction: retuning the ordinary
+ *     pool cannot move the rare group's odds, and the rare group never
+ *     *displaces* an ordinary drop — a lucky participant receives both.
  */
-export const BossRewardItemSchema = z
+
+/**
+ * Identifier for a reward table's group.
+ *
+ * Kebab **or** snake, unlike the repository's `slug` (snake only). Item slugs
+ * are snake_case because they name database rows; a reward group id names a
+ * concept inside one JSON file and reads better hyphenated — `standard-item`,
+ * `rare-bonus` — matching the table ids these groups live under
+ * (`standard-scouting-v1`). Both are accepted so neither convention is a trap.
+ */
+const rewardId = z
+  .string()
+  .min(1)
+  .regex(/^[a-z0-9]+(?:[-_][a-z0-9]+)*$/, 'id must be lowercase kebab-case or snake_case');
+
+/** One weighted drop inside a group. */
+export const BossRewardEntrySchema = z
   .object({
-    slug,
-    quantity: z.number().int().positive(),
-    /** Relative weight. Positive integer — no fractional or zero weights. */
+    /**
+     * An item slug from `items.json`. Named `itemId` rather than `slug` because
+     * this file *references* an item rather than defining one, and the
+     * asymmetry is worth seeing at the call site.
+     */
+    itemId: slug,
+    /**
+     * Per-entry switch. A disabled entry is excluded from future boss rolls and
+     * from nothing else — it stays in the Shop, stays in the file, and stays
+     * payable on any reward snapshot already taken.
+     */
+    enabled: z.boolean().default(true),
+    /**
+     * Relative weight within its group. Positive integer — no zero weights,
+     * because a zero-weight entry is a disabled one written unclearly, and
+     * `enabled: false` says it out loud.
+     */
     weight: z.number().int().positive(),
+    /** Stack size granted when this entry is picked. */
+    quantity: z.number().int().positive(),
   })
   .strict();
 
 /**
- * The separate, extremely rare roll.
+ * One independent draw against a pool.
  *
- * Kept out of the weighted table rather than added to it as another entry:
- * a jackpot expressed as a weight silently *displaces* ordinary rewards when
- * the table is retuned, whereas an independent probability composes with any
- * weighting. `chance` is hard-capped well below anything that could be typoed
- * into a faucet.
+ * `rolls` and `chanceBasisPoints` compose: a group with `rolls: 2` and
+ * `chanceBasisPoints: 5000` performs two *independent* 50% checks, each of
+ * which — when it fires — picks one entry by weight.
  */
-export const BossJackpotRewardSchema = z
+export const BossRewardGroupSchema = z
   .object({
-    slug,
-    quantity: z.number().int().positive().default(1),
-    /** Probability in [0, 0.05] per participation. */
-    chance: z.number().gte(0).lte(0.05),
+    /**
+     * Stable within its table. Part of the deterministic draw key, so renaming
+     * a group re-rolls any encounter that has not yet resolved. Deliberate: a
+     * renamed group is a different group.
+     */
+    id: rewardId,
+    /** Group switch. A disabled group is skipped entirely, rolls and all. */
+    enabled: z.boolean().default(true),
+    /** Independent draws against this group per participation. */
+    rolls: z.number().int().positive().default(1),
+    /**
+     * Probability this group produces anything on a given roll, in basis
+     * points: 10000 = always, 25 = 0.25%.
+     *
+     * Basis points rather than a float so a rare chance is written exactly and
+     * read at a glance — `0.0025` invites a misplaced zero in a way that `25`
+     * out of `10000` does not.
+     */
+    chanceBasisPoints: z.number().int().gte(0).lte(10_000).default(10_000),
+    entries: z.array(BossRewardEntrySchema).min(1),
   })
   .strict();
 
 /**
- * A named reward table. Bosses reference these by key, so retuning payouts for
- * every boss at once is one edit, and giving one boss its own economy later is
- * a new key rather than a schema change.
+ * A named boss reward table. Bosses reference it by `id` from `bosses.json`.
  *
- * `version` is stored on each encounter, so a historical result records which
- * payout rules produced it even after the table is edited underneath.
+ * Retuning payouts for every boss at once is one edit here; giving one boss its
+ * own economy later is a new entry in this array rather than a schema change.
  */
 export const BossRewardTableSchema = z
   .object({
-    version: z.string().min(1),
+    /** The id `bosses.json`'s `rewardTable` names. */
+    id: z.string().min(1),
+    /**
+     * Table switch. Disabling it makes every boss pointing at it undrawable —
+     * with a logged, actionable error — rather than making them pay out
+     * nothing. A boss that appears and hands out an empty result is worse than
+     * a boss that does not appear.
+     */
+    enabled: z.boolean().default(true),
+    /**
+     * Recorded on every encounter at spawn, so a historical result says which
+     * payout rules produced it even after this file is edited underneath.
+     * Defaults to the table's `id`; set it explicitly when you retune and want
+     * old and new results to be distinguishable in an audit.
+     */
+    version: z.string().min(1).optional(),
     /** Guaranteed buddy XP. Zero is legal; a max-level buddy still gets items. */
     buddyXp: z.number().int().nonnegative(),
-    minorItems: z.array(BossRewardItemSchema).min(1),
-    jackpot: BossJackpotRewardSchema.nullable().default(null),
+    groups: z.array(BossRewardGroupSchema).min(1),
   })
-  .strict();
+  .strict()
+  .superRefine((table, ctx) => {
+    const groupIds = table.groups.map((g) => g.id);
+    const duplicateGroup = groupIds.find((id, i) => groupIds.indexOf(id) !== i);
+    if (duplicateGroup) {
+      // Group ids key the deterministic draw, so two groups sharing one id
+      // would draw *identically* rather than independently.
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `bossRewards["${table.id}"] has two groups with id "${duplicateGroup}"`,
+        path: ['groups'],
+      });
+    }
+    for (const [index, group] of table.groups.entries()) {
+      // Keyed on item *and* quantity: "2x Basic Charm" and "3x Basic Charm" are
+      // two legitimate drops of different sizes, whereas the same item at the
+      // same quantity listed twice is the authoring mistake worth catching — it
+      // silently doubles that drop's weight.
+      const drops = group.entries.map((e) => `${e.itemId}x${e.quantity}`);
+      const duplicate = drops.find((d, i) => drops.indexOf(d) !== i);
+      if (duplicate) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `bossRewards["${table.id}"].groups["${group.id}"] lists the same drop twice: ${duplicate}`,
+          path: ['groups', index, 'entries'],
+        });
+      }
+    }
+  });
+
+/** `content/bossRewards.json` — an array of tables. */
+export const BossRewardsFileSchema = z
+  .array(BossRewardTableSchema)
+  .superRefine((tables, ctx) => {
+    const ids = tables.map((t) => t.id);
+    const duplicate = ids.find((id, i) => ids.indexOf(id) !== i);
+    if (duplicate) {
+      // A duplicate id makes `bosses.json`'s `rewardTable` ambiguous, and an
+      // encounter row records only the id — so the ambiguity would outlive the
+      // file it came from.
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `bossRewards has two tables with id "${duplicate}"`,
+      });
+    }
+  });
+
+export type BossRewardTable = z.infer<typeof BossRewardTableSchema>;
+export type BossRewardGroup = z.infer<typeof BossRewardGroupSchema>;
+export type BossRewardEntry = z.infer<typeof BossRewardEntrySchema>;
+
+/**
+ * The version string stamped onto an encounter at spawn.
+ *
+ * `version` when the author set one, the table's `id` otherwise — so a table
+ * that has never been retuned still records something meaningful rather than an
+ * empty string.
+ */
+export function bossRewardTableVersion(table: BossRewardTable): string {
+  return table.version ?? table.id;
+}
 
 /**
  * Boss encounter tuning.
@@ -1291,11 +1436,28 @@ export const BossEncountersConfigSchema = z
     enabled: z.boolean().default(true),
     /** Regions that may spawn bosses. Empty = every canonical region. */
     regions: z.array(z.enum(REGIONS)).default([...REGIONS]),
-    /** How long trainers have to commit, from the announcement. */
-    scoutingMinutes: z.number().int().positive().default(60),
-    /** Inclusive quiet band after a resolution, before the next appearance. */
-    downtimeMinutesMin: z.number().int().positive().default(120),
-    downtimeMinutesMax: z.number().int().positive().default(300),
+    /**
+     * How long trainers have to commit, from the announcement.
+     *
+     * Thirty minutes: long enough that someone who checks Discord a couple of
+     * times an hour still catches most encounters, short enough that the whole
+     * cycle stays inside an hour. Every countdown, deadline and rapid-response
+     * boundary derives from this one number.
+     */
+    scoutingMinutes: z.number().int().positive().default(30),
+    /**
+     * Inclusive quiet band after a resolution, before the next appearance.
+     *
+     * Randomised rather than fixed so bosses do not become a clock players can
+     * set a timer against, and drawn **once** at resolution and persisted, so a
+     * restart cannot reroll it into an earlier or later slot.
+     *
+     * With a 30-minute window this gives a 40–65 minute cycle: roughly 22–36
+     * encounters a day. See `docs/boss-encounters.md` for what that implies for
+     * the reward economy.
+     */
+    downtimeMinutesMin: z.number().int().positive().default(10),
+    downtimeMinutesMax: z.number().int().positive().default(35),
     /** Attacks one committed buddy represents. Scaling, not simulation. */
     attacksPerParticipation: z.number().int().positive().default(10),
     /** Inclusive performance-modifier bounds, in hundredths. */
@@ -1313,7 +1475,11 @@ export const BossEncountersConfigSchema = z
     affinityAdvantageBonus: z.number().gte(0).lte(1).default(0.1),
     /**
      * Rapid-response tiers, ascending by `withinMinutes`. The comparison is
-     * strict, so a commitment at exactly the boundary falls into the next tier.
+     * strict, so a commitment at exactly the boundary falls into the next tier:
+     * at 9:59 into a 30-minute window a player gets +5%, at exactly 10:00 they
+     * get +2%, at exactly 20:00 they get nothing. Elapsed time is measured
+     * from `scoutingStartedAt`, and anything past the last bracket — the final
+     * ten minutes here — earns no bonus at all.
      */
     responseBrackets: z
       .array(
@@ -1325,11 +1491,16 @@ export const BossEncountersConfigSchema = z
           .strict(),
       )
       .default([
-        { withinMinutes: 15, bonus: 0.05 },
-        { withinMinutes: 30, bonus: 0.02 },
+        { withinMinutes: 10, bonus: 0.05 },
+        { withinMinutes: 20, bonus: 0.02 },
       ]),
-    /** Named payout tables, keyed by the id bosses reference. */
-    rewardTables: z.record(z.string().min(1), BossRewardTableSchema).default({}),
+    /**
+     * Payout tables are **not** here. They live in `content/bossRewards.json`
+     * so that a writer retuning loot never has to open the file that also
+     * carries window lengths and damage bounds, and so boss acquisition stays
+     * independently editable from Shop availability. See
+     * {@link BossRewardTableSchema}.
+     */
     /** Participants shown on the first page of the public result. */
     resultsPageSize: z.number().int().positive().max(25).default(10),
     /**
@@ -1381,38 +1552,17 @@ export const BossEncountersConfigSchema = z
         path: ['responseBrackets'],
       });
     }
-    if (cfg.enabled && Object.keys(cfg.rewardTables).length === 0) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'bossEncounters.rewardTables must not be empty while enabled',
-        path: ['rewardTables'],
-      });
-    }
-    for (const [key, table] of Object.entries(cfg.rewardTables)) {
-      // Keyed on slug *and* quantity, not slug alone: "2× Basic Charm" and
-      // "3× Basic Charm" are two legitimate drops of different sizes, whereas
-      // the same slug at the same quantity listed twice is the authoring
-      // mistake worth catching (it silently doubles that drop's weight).
-      const drops = table.minorItems.map((e) => `${e.slug}x${e.quantity}`);
-      const duplicate = drops.find((d, i) => drops.indexOf(d) !== i);
-      if (duplicate) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `bossEncounters.rewardTables["${key}"] lists the same drop twice: ${duplicate}`,
-          path: ['rewardTables', key, 'minorItems'],
-        });
-      }
-    }
+    // Reward-table invariants moved to `BossRewardsFileSchema` along with the
+    // data. Cross-file checks — that a boss names a table that exists, that a
+    // table names items that exist — stay in `loader.validateBossContent`,
+    // which is the only layer holding every file at once.
   });
 
 export type BossEncountersConfig = z.infer<typeof BossEncountersConfigSchema>;
-export type BossRewardTable = z.infer<typeof BossRewardTableSchema>;
-export type BossRewardItem = z.infer<typeof BossRewardItemSchema>;
 
 /** Bosses switched off — the default when `tables.json` omits the block. */
 const BOSS_ENCOUNTERS_DEFAULT: z.input<typeof BossEncountersConfigSchema> = {
   enabled: false,
-  rewardTables: {},
 };
 
 export const TablesFileSchema = z.object({
@@ -1480,6 +1630,15 @@ export interface LoadedContent {
   items: ItemContent[];
   species: SpeciesContent[];
   tables: TablesContent;
+  /**
+   * Boss reward tables from `content/bossRewards.json`.
+   *
+   * Optional on disk and legitimately empty for the same reason as `bosses`:
+   * a deployment without boss encounters has neither file. An enabled boss
+   * whose table is missing is caught by `loader.validateBossContent`, so an
+   * empty list here can only coexist with an empty `bosses` list.
+   */
+  bossRewards: BossRewardTable[];
   /**
    * Boss definitions from `content/bosses.json`.
    *
