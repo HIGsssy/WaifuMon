@@ -2,7 +2,7 @@
   {
     "id": "standard-scouting-v1",
     "enabled": true,
-    "buddyXp": 15,
+    "buddyXp": 70,
     "groups": [
       {
         "id": "standard-item",
