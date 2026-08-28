@@ -44,7 +44,7 @@
     "affinity": "submissive",
     "region": "waifu-valley",
     "enabled": true,
-    "artwork": "bosses/tier_three.webp",
+    "artwork": "bosses/tier3_parasocial_boss_r1.webp",
     "rewardTable": "standard-scouting-v1",
     "scoutingText": "A wide-eyed young man hustles into view, clutching a stack of printed chat logs. 'I'm your special friend,' he declares.",
     "repelledText": "His face falls when he realizes his subscription status grants him no access here. He wanders off, clutching the papers against his chest for warmth.",
