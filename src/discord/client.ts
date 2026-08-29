@@ -10,6 +10,8 @@ import {
   handleProfile,
   handleShop,
   handleShopBuy,
+  handleShopExchange,
+  handleShopConvert,
   handleCareAutocomplete,
   handleCareChangeOpen,
   handleCareChangePick,
@@ -202,6 +204,10 @@ export function createDiscordClient(ctx: AppContext): Client {
       'menu:start': (i: ButtonInteraction, prov: Provisioned) => handleMenuStart(ctx, i, prov),
       'shop:buy': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleShopBuy(ctx, i, prov, args[0] ?? ''),
+      'shop:exchange': (i: ButtonInteraction, prov: Provisioned) =>
+        handleShopExchange(ctx, i, prov),
+      'shop:convert': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleShopConvert(ctx, i, prov, args[0] ?? '', args[1] ?? ''),
       'item:use': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleItemUse(ctx, i, prov, args[0] ?? ''),
       'quests:claim_all': (i: ButtonInteraction, prov: Provisioned) =>

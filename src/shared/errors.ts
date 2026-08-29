@@ -85,6 +85,26 @@ export class InsufficientItemsError extends AppError {
   }
 }
 
+export class InsufficientCharmsError extends AppError {
+  constructor(charmName: string, needed: number) {
+    super(
+      'INSUFFICIENT_CHARMS',
+      `Need ${needed} more ${charmName} to convert`,
+      `You need ${needed} more ${charmName} to convert.`,
+    );
+  }
+}
+
+export class CharmRecipeNotFoundError extends AppError {
+  constructor(recipeId: string) {
+    super(
+      'CHARM_RECIPE_NOT_FOUND',
+      `Charm exchange recipe "${recipeId}" not found`,
+      'That charm conversion is no longer available.',
+    );
+  }
+}
+
 export class InventoryCapacityError extends AppError {
   constructor(capacity: number) {
     super(
