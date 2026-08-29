@@ -2,6 +2,8 @@ import { eq, inArray } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { items, shopTransactions } from '../../src/db/schema';
 import {
+  CharmRecipeNotFoundError,
+  InsufficientCharmsError,
   InsufficientEssenceError,
   InsufficientFundsError,
   InventoryCapacityError,
@@ -311,5 +313,148 @@ describe('shop purchase', () => {
       .from(shopTransactions)
       .where(eq(shopTransactions.playerId, playerId));
     expect(audits).toHaveLength(4);
+  });
+});
+
+/**
+ * Charm Exchange: the shop's inventory sink. A fixed 10:1 ladder that trades
+ * lower-tier charms one tier up, with no currency cost and no cascading.
+ */
+describe('charm exchange', () => {
+  async function grantCharm(playerId: number, slug: string, quantity: number): Promise<number> {
+    const item = await getItemBySlug(t.db, slug);
+    return app.inventory.addItem(t.db, playerId, item.id, quantity);
+  }
+  async function ownedCharm(playerId: number, slug: string): Promise<number> {
+    const item = await getItemBySlug(t.db, slug);
+    return app.inventory.getQuantity(playerId, item.id);
+  }
+
+  it('exposes exactly the three upward-tier recipes with live standings', async () => {
+    const { playerId } = await provisionPlayer(app, 'g-exch', 'u-catalog');
+    await grantCharm(playerId, 'basic_charm', 47);
+    await grantCharm(playerId, 'silk_charm', 3);
+
+    const rows = await app.shop.getCharmExchange(playerId);
+    expect(rows.map((r) => r.recipe.id)).toEqual(['basic_silk', 'silk_velvet', 'velvet_prismatic']);
+
+    const basicRow = rows.find((r) => r.recipe.id === 'basic_silk')!;
+    expect(basicRow.inputItem.slug).toBe('basic_charm');
+    expect(basicRow.outputItem.slug).toBe('silk_charm');
+    expect(basicRow.recipe.inputQuantity).toBe(10);
+    expect(basicRow.recipe.outputQuantity).toBe(1);
+    expect(basicRow.ownedInput).toBe(47);
+    expect(basicRow.conversionsPossible).toBe(4);
+
+    const silkRow = rows.find((r) => r.recipe.id === 'silk_velvet')!;
+    expect(silkRow.ownedInput).toBe(3);
+    expect(silkRow.conversionsPossible).toBe(0);
+
+    // Prismatic is the end of the ladder — it is never an input.
+    expect(rows.some((r) => r.recipe.inputSlug === 'prismatic_charm')).toBe(false);
+  });
+
+  it('converts 10 Basic Charms into 1 Silk Charm (Convert 1)', async () => {
+    const { playerId } = await provisionPlayer(app, 'g-exch', 'u-basic-one');
+    await grantCharm(playerId, 'basic_charm', 10);
+
+    const result = await app.shop.convertCharms(playerId, 'basic_silk', 'one');
+    expect(result).toMatchObject({
+      conversions: 1,
+      inputConsumed: 10,
+      outputGranted: 1,
+      ownedInputAfter: 0,
+      ownedOutputAfter: 1,
+    });
+    expect(await ownedCharm(playerId, 'basic_charm')).toBe(0);
+    expect(await ownedCharm(playerId, 'silk_charm')).toBe(1);
+  });
+
+  it('converts 10 Silk Charms into 1 Velvet Charm', async () => {
+    const { playerId } = await provisionPlayer(app, 'g-exch', 'u-silk-one');
+    await grantCharm(playerId, 'silk_charm', 10);
+
+    await app.shop.convertCharms(playerId, 'silk_velvet', 'one');
+    expect(await ownedCharm(playerId, 'silk_charm')).toBe(0);
+    expect(await ownedCharm(playerId, 'velvet_charm')).toBe(1);
+  });
+
+  it('converts 10 Velvet Charms into 1 Prismatic Charm', async () => {
+    const { playerId } = await provisionPlayer(app, 'g-exch', 'u-velvet-one');
+    await grantCharm(playerId, 'velvet_charm', 10);
+
+    await app.shop.convertCharms(playerId, 'velvet_prismatic', 'one');
+    expect(await ownedCharm(playerId, 'velvet_charm')).toBe(0);
+    expect(await ownedCharm(playerId, 'prismatic_charm')).toBe(1);
+  });
+
+  it('Convert 1 consumes exactly 10 and grants exactly 1, leaving the rest', async () => {
+    const { playerId } = await provisionPlayer(app, 'g-exch', 'u-basic-one-rest');
+    await grantCharm(playerId, 'basic_charm', 25);
+
+    const result = await app.shop.convertCharms(playerId, 'basic_silk', 'one');
+    expect(result.inputConsumed).toBe(10);
+    expect(result.outputGranted).toBe(1);
+    expect(await ownedCharm(playerId, 'basic_charm')).toBe(15);
+    expect(await ownedCharm(playerId, 'silk_charm')).toBe(1);
+  });
+
+  it('Convert Max converts floor(quantity / 10) and leaves the remainder', async () => {
+    const { playerId } = await provisionPlayer(app, 'g-exch', 'u-basic-max');
+    await grantCharm(playerId, 'basic_charm', 47);
+
+    const result = await app.shop.convertCharms(playerId, 'basic_silk', 'max');
+    expect(result).toMatchObject({ conversions: 4, inputConsumed: 40, outputGranted: 4 });
+    expect(await ownedCharm(playerId, 'basic_charm')).toBe(7);
+    expect(await ownedCharm(playerId, 'silk_charm')).toBe(4);
+  });
+
+  it('Convert Max applies to one recipe only — it never cascades to the next tier', async () => {
+    const { playerId } = await provisionPlayer(app, 'g-exch', 'u-no-cascade');
+    await grantCharm(playerId, 'basic_charm', 100);
+
+    const result = await app.shop.convertCharms(playerId, 'basic_silk', 'max');
+    expect(result.outputGranted).toBe(10);
+    // The 10 new Silk Charms are NOT rolled up into a Velvet Charm.
+    expect(await ownedCharm(playerId, 'basic_charm')).toBe(0);
+    expect(await ownedCharm(playerId, 'silk_charm')).toBe(10);
+    expect(await ownedCharm(playerId, 'velvet_charm')).toBe(0);
+  });
+
+  it('rejects a conversion with insufficient input and mutates nothing', async () => {
+    const { playerId } = await provisionPlayer(app, 'g-exch', 'u-insufficient');
+    await grantCharm(playerId, 'basic_charm', 5);
+
+    await expect(app.shop.convertCharms(playerId, 'basic_silk', 'one')).rejects.toBeInstanceOf(
+      InsufficientCharmsError,
+    );
+    await expect(app.shop.convertCharms(playerId, 'basic_silk', 'max')).rejects.toBeInstanceOf(
+      InsufficientCharmsError,
+    );
+    // Nothing consumed, nothing granted.
+    expect(await ownedCharm(playerId, 'basic_charm')).toBe(5);
+    expect(await ownedCharm(playerId, 'silk_charm')).toBe(0);
+  });
+
+  it('rejects an unknown recipe id', async () => {
+    const { playerId } = await provisionPlayer(app, 'g-exch', 'u-bad-recipe');
+    await grantCharm(playerId, 'basic_charm', 100);
+    await expect(
+      app.shop.convertCharms(playerId, 'basic_prismatic', 'max'),
+    ).rejects.toBeInstanceOf(CharmRecipeNotFoundError);
+    expect(await ownedCharm(playerId, 'basic_charm')).toBe(100);
+  });
+
+  it('concurrent Convert 1 clicks never duplicate the output or overdraw the input', async () => {
+    const { playerId } = await provisionPlayer(app, 'g-exch', 'u-exch-race');
+    await grantCharm(playerId, 'basic_charm', 10); // enough for exactly one conversion
+
+    const results = await Promise.allSettled(
+      Array.from({ length: 6 }, () => app.shop.convertCharms(playerId, 'basic_silk', 'one')),
+    );
+    const succeeded = results.filter((r) => r.status === 'fulfilled');
+    expect(succeeded).toHaveLength(1);
+    expect(await ownedCharm(playerId, 'basic_charm')).toBe(0);
+    expect(await ownedCharm(playerId, 'silk_charm')).toBe(1);
   });
 });

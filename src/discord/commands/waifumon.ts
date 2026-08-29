@@ -709,7 +709,18 @@ async function buildShopView(
         .setLabel(`Buy ${item.name} — ${formatPrice(item.buyPrice ?? 0, currency)}`)
         .setStyle(ButtonStyle.Success),
     );
-  return { embeds: [embed], components: withBackRow(chunkButtonRows(buyButtons)) };
+  // One entry point to the conversion sub-menu — the individual recipe buttons
+  // live there, never on this screen.
+  const exchangeRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(buildCustomId('shop', 'exchange'))
+      .setLabel('✨ Charm Exchange')
+      .setStyle(ButtonStyle.Primary),
+  );
+  return {
+    embeds: [embed],
+    components: withBackRow([...chunkButtonRows(buyButtons), exchangeRow]),
+  };
 }
 
 export async function handleShop(
@@ -735,6 +746,119 @@ export async function handleShopBuy(
   const status = `✅ Bought **${result.item.name}** for **${formatPrice(result.totalPrice, result.currency)}** — you now own ×${result.ownedAfter}.`;
   const view = await buildShopView(ctx, prov, status);
   await respondEphemeral(interaction, view);
+}
+
+// ─────────────────────── Charm Exchange (Shop sub-menu) ───────────────────────
+
+/** "Basic Charm" ×n → "Basic Charms" / "1 Basic Charm". */
+function charmCount(name: string, quantity: number): string {
+  return `${quantity} ${name}${quantity === 1 ? '' : 's'}`;
+}
+
+/**
+ * The Charm Exchange sub-screen: three fixed 10:1 conversion rows, each with a
+ * live owned count and its own Convert 1 / Convert Max buttons. Back routes
+ * through `menu:shop` → {@link handleShop}, so it returns to the Shop screen
+ * rather than the main menu.
+ */
+async function buildCharmExchangeView(
+  ctx: AppContext,
+  prov: Provisioned,
+  statusLine?: string,
+): Promise<ScreenView> {
+  const rows = await ctx.services.shop.getCharmExchange(prov.playerId);
+
+  const embed = new EmbedBuilder().setTitle('✨ Charm Exchange').setColor(0xffc46f);
+  const status = statusLine ? `${statusLine}\n\n` : '';
+  embed.setDescription(`${status}Trade excess charms for higher-quality charms.`);
+
+  const buttonRows: ActionRowBuilder<ButtonBuilder>[] = [];
+  for (const row of rows) {
+    const { recipe, inputItem, outputItem, ownedInput, conversionsPossible } = row;
+    const inEmoji = inputItem.emoji ?? '•';
+    const outEmoji = outputItem.emoji ?? '•';
+    const lines = [
+      `**${inEmoji} ${inputItem.name} → ${outEmoji} ${outputItem.name}**`,
+      `${charmCount(inputItem.name, recipe.inputQuantity)} → ${charmCount(outputItem.name, recipe.outputQuantity)}`,
+      `You have: ${charmCount(inputItem.name, ownedInput)}`,
+    ];
+    if (conversionsPossible > 0) {
+      lines.push(`Can convert: **${conversionsPossible}**`);
+    } else {
+      const needed = recipe.inputQuantity - ownedInput;
+      lines.push(`Need **${needed}** more.`);
+    }
+    embed.addFields({ name: '\u200b', value: lines.join('\n') });
+
+    const eligible = conversionsPossible > 0;
+    const convertOne = new ButtonBuilder()
+      .setCustomId(buildCustomId('shop', 'convert', recipe.id, 'one'))
+      .setLabel(`Convert 1 (${inputItem.name})`)
+      .setStyle(ButtonStyle.Success)
+      .setDisabled(!eligible);
+    const convertMax = new ButtonBuilder()
+      .setCustomId(buildCustomId('shop', 'convert', recipe.id, 'max'))
+      .setLabel(`Convert Max (${conversionsPossible})`)
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(!eligible);
+    buttonRows.push(
+      new ActionRowBuilder<ButtonBuilder>().addComponents(convertOne, convertMax),
+    );
+  }
+
+  // Back to the Shop screen (not the main menu): `menu:shop` → handleShop.
+  const backRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(buildCustomId('menu', 'shop'))
+      .setLabel('⟵ Back to Shop')
+      .setStyle(ButtonStyle.Secondary),
+  );
+  return { embeds: [embed], components: [...buttonRows, backRow] };
+}
+
+/** Open the Charm Exchange sub-menu from the Shop screen. */
+export async function handleShopExchange(
+  ctx: AppContext,
+  interaction: PlayerInteraction,
+  prov: Provisioned,
+): Promise<void> {
+  const view = await buildCharmExchangeView(ctx, prov);
+  await respondEphemeral(interaction, view);
+}
+
+/**
+ * Convert charms one tier up and stay on the Charm Exchange screen. On success
+ * the screen re-renders with updated counts and a confirmation line; on failure
+ * (e.g. a double-click that already spent the charms) it re-renders with the
+ * error message and no mutation.
+ */
+export async function handleShopConvert(
+  ctx: AppContext,
+  interaction: ButtonInteraction,
+  prov: Provisioned,
+  recipeId: string,
+  mode: string,
+): Promise<void> {
+  const conversionMode = mode === 'max' ? 'max' : 'one';
+  try {
+    const result = await ctx.services.shop.convertCharms(
+      prov.playerId,
+      recipeId,
+      conversionMode,
+    );
+    const status =
+      `✅ Converted ${charmCount(result.inputItem.name, result.inputConsumed)} ` +
+      `into ${charmCount(result.outputItem.name, result.outputGranted)}.`;
+    const view = await buildCharmExchangeView(ctx, prov, status);
+    await respondEphemeral(interaction, view);
+  } catch (err) {
+    if (err instanceof AppError) {
+      const view = await buildCharmExchangeView(ctx, prov, `⚠️ ${err.userMessage}`);
+      await respondEphemeral(interaction, view);
+      return;
+    }
+    throw err;
+  }
 }
 
 // ─────────────────────────── Care Mode ───────────────────────────

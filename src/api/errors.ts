@@ -156,6 +156,8 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   BOSS_CHANNEL_NOT_CONFIGURED: 404,
   /** No unclaimed gift on that copy — the resource genuinely is not there. */
   GIFT_NOT_FOUND: 404,
+  /** A charm-exchange custom id naming a recipe that no longer exists. */
+  CHARM_RECIPE_NOT_FOUND: 404,
   /**
    * The species/appearance exists but its artwork file does not. A content
    * gap, not a server fault — the resource genuinely is not there, so 404
@@ -192,6 +194,8 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   INSUFFICIENT_FUNDS: 422,
   INSUFFICIENT_ESSENCE: 422,
   INSUFFICIENT_ITEMS: 422,
+  /** Not enough of the input charm to run even one 10:1 exchange conversion. */
+  INSUFFICIENT_CHARMS: 422,
   INSUFFICIENT_ENERGY: 422,
   INVENTORY_CAPACITY: 422,
   ENERGY_ALREADY_FULL: 422,

@@ -1,7 +1,15 @@
 import { and, asc, eq, inArray, isNotNull } from 'drizzle-orm';
 import type { Db } from '../../db/client';
-import { items, shopTransactions, type ItemRow, type PriceCurrency } from '../../db/schema';
 import {
+  items,
+  playerInventory,
+  shopTransactions,
+  type ItemRow,
+  type PriceCurrency,
+} from '../../db/schema';
+import {
+  CharmRecipeNotFoundError,
+  InsufficientCharmsError,
   InventoryCapacityError,
   ItemNotFoundError,
   ItemNotPurchasableError,
@@ -15,6 +23,76 @@ import type { InventoryService } from '../inventory/inventoryService';
  * and cosmetic items stay out of the shop entirely.
  */
 const SHOP_CATEGORIES = ['capture', 'consumable'] as const;
+
+/**
+ * The charm-exchange ladder. This is the *only* place conversions are defined:
+ * a fixed, explicit, upward-one-tier-at-a-time list. Never inferred from price,
+ * rarity, or item order. Each recipe is a hard 10:1 trade with no currency or
+ * essence cost, and Prismatic is the end of the ladder (never an input).
+ */
+export interface CharmExchangeRecipe {
+  /** Stable id used in custom ids and lookups. */
+  id: string;
+  inputSlug: string;
+  inputQuantity: number;
+  outputSlug: string;
+  outputQuantity: number;
+  enabled: boolean;
+}
+
+export const CHARM_EXCHANGE_RECIPES: readonly CharmExchangeRecipe[] = [
+  {
+    id: 'basic_silk',
+    inputSlug: 'basic_charm',
+    inputQuantity: 10,
+    outputSlug: 'silk_charm',
+    outputQuantity: 1,
+    enabled: true,
+  },
+  {
+    id: 'silk_velvet',
+    inputSlug: 'silk_charm',
+    inputQuantity: 10,
+    outputSlug: 'velvet_charm',
+    outputQuantity: 1,
+    enabled: true,
+  },
+  {
+    id: 'velvet_prismatic',
+    inputSlug: 'velvet_charm',
+    inputQuantity: 10,
+    outputSlug: 'prismatic_charm',
+    outputQuantity: 1,
+    enabled: true,
+  },
+] as const;
+
+/** One conversion mode: a single 10:1 trade, or as many as the input allows. */
+export type CharmConversionMode = 'one' | 'max';
+
+/** A rendered exchange row: the recipe plus the player's live standing on it. */
+export interface CharmExchangeRow {
+  recipe: CharmExchangeRecipe;
+  inputItem: ItemRow;
+  outputItem: ItemRow;
+  /** How many of the input charm the player currently owns. */
+  ownedInput: number;
+  /** floor(ownedInput / inputQuantity) — how many conversions are possible now. */
+  conversionsPossible: number;
+}
+
+export interface CharmConversionResult {
+  recipe: CharmExchangeRecipe;
+  inputItem: ItemRow;
+  outputItem: ItemRow;
+  /** Number of 10:1 conversions actually applied. */
+  conversions: number;
+  inputConsumed: number;
+  outputGranted: number;
+  ownedInputAfter: number;
+  ownedOutputAfter: number;
+}
+
 
 export interface ShopCatalogEntry {
   item: ItemRow;
@@ -57,6 +135,24 @@ export interface ShopService {
    * applied.
    */
   purchase(playerId: number, itemSlug: string, quantity?: number): Promise<PurchaseResult>;
+  /**
+   * The charm-exchange ladder for a player: each enabled recipe paired with the
+   * live owned quantity of its input charm and how many conversions are
+   * currently possible. Read-only — nothing is mutated.
+   */
+  getCharmExchange(playerId: number): Promise<CharmExchangeRow[]>;
+  /**
+   * Convert charms one tier up in a single transaction. `mode: 'one'` applies a
+   * single 10:1 trade; `mode: 'max'` applies floor(owned / 10) trades and
+   * leaves the remainder. Consume and grant are atomic — a concurrent or
+   * double-clicked call can never duplicate the output or lose the input, and a
+   * failed validation mutates nothing.
+   */
+  convertCharms(
+    playerId: number,
+    recipeId: string,
+    mode: CharmConversionMode,
+  ): Promise<CharmConversionResult>;
 }
 
 /** Normalizes a possibly-legacy column value to a known currency. */
@@ -157,6 +253,117 @@ export function createShopService(deps: ShopServiceDeps): ShopService {
           currency: priceCurrency,
           balanceAfter,
           ownedAfter,
+        };
+      });
+    },
+
+    async getCharmExchange(playerId) {
+      const recipes = CHARM_EXCHANGE_RECIPES.filter((r) => r.enabled);
+      const slugs = [
+        ...new Set(recipes.flatMap((r) => [r.inputSlug, r.outputSlug])),
+      ];
+      const rows = await db.select().from(items).where(inArray(items.slug, slugs));
+      const itemBySlug = new Map(rows.map((row) => [row.slug, row]));
+
+      const owned = new Map<number, number>();
+      const itemIds = rows.map((row) => row.id);
+      if (itemIds.length > 0) {
+        const invRows = await db
+          .select({ itemId: playerInventory.itemId, quantity: playerInventory.quantity })
+          .from(playerInventory)
+          .where(
+            and(
+              eq(playerInventory.playerId, playerId),
+              inArray(playerInventory.itemId, itemIds),
+            ),
+          );
+        for (const row of invRows) owned.set(row.itemId, row.quantity);
+      }
+
+      const result: CharmExchangeRow[] = [];
+      for (const recipe of recipes) {
+        const inputItem = itemBySlug.get(recipe.inputSlug);
+        const outputItem = itemBySlug.get(recipe.outputSlug);
+        // A recipe whose items were disabled/removed from content simply drops
+        // out of the ladder rather than rendering a broken row.
+        if (!inputItem || !inputItem.enabled || !outputItem || !outputItem.enabled) continue;
+        const ownedInput = owned.get(inputItem.id) ?? 0;
+        result.push({
+          recipe,
+          inputItem,
+          outputItem,
+          ownedInput,
+          conversionsPossible: Math.floor(ownedInput / recipe.inputQuantity),
+        });
+      }
+      return result;
+    },
+
+    async convertCharms(playerId, recipeId, mode) {
+      const recipe = CHARM_EXCHANGE_RECIPES.find((r) => r.id === recipeId && r.enabled);
+      if (!recipe) throw new CharmRecipeNotFoundError(recipeId);
+
+      return db.transaction(async (tx) => {
+        const [inputItem] = await tx
+          .select()
+          .from(items)
+          .where(eq(items.slug, recipe.inputSlug));
+        if (!inputItem || !inputItem.enabled) throw new ItemNotFoundError(recipe.inputSlug);
+        const [outputItem] = await tx
+          .select()
+          .from(items)
+          .where(eq(items.slug, recipe.outputSlug));
+        if (!outputItem || !outputItem.enabled) throw new ItemNotFoundError(recipe.outputSlug);
+
+        // Lock the input inventory row for the duration of the transaction so
+        // concurrent conversions of the same charm serialize — the Max count is
+        // computed from a value nobody else can change underneath us.
+        const [invRow] = await tx
+          .select({ quantity: playerInventory.quantity })
+          .from(playerInventory)
+          .where(
+            and(
+              eq(playerInventory.playerId, playerId),
+              eq(playerInventory.itemId, inputItem.id),
+            ),
+          )
+          .for('update');
+        const ownedInput = invRow?.quantity ?? 0;
+
+        const conversions =
+          mode === 'max' ? Math.floor(ownedInput / recipe.inputQuantity) : 1;
+        if (conversions < 1 || ownedInput < recipe.inputQuantity) {
+          const needed = recipe.inputQuantity - ownedInput;
+          throw new InsufficientCharmsError(inputItem.name, Math.max(needed, 1));
+        }
+
+        const inputConsumed = conversions * recipe.inputQuantity;
+        const outputGranted = conversions * recipe.outputQuantity;
+
+        // Conditional decrement (WHERE quantity >= n): even if the row lock were
+        // somehow bypassed, this can never overdraw, so the input is never lost.
+        const ownedInputAfter = await inventory.consumeItem(
+          tx,
+          playerId,
+          inputItem.id,
+          inputConsumed,
+        );
+        const ownedOutputAfter = await inventory.addItem(
+          tx,
+          playerId,
+          outputItem.id,
+          outputGranted,
+        );
+
+        return {
+          recipe,
+          inputItem,
+          outputItem,
+          conversions,
+          inputConsumed,
+          outputGranted,
+          ownedInputAfter,
+          ownedOutputAfter,
         };
       });
     },
