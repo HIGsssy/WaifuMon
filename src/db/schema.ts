@@ -85,7 +85,7 @@ export const guilds = pgTable('guilds', {
    */
   bossChannelId: text('boss_channel_id'),
   hereThresholdRarity: text('here_threshold_rarity').notNull().default('UR'),
-  /** Optional admin allowlist of play channel ids; null/empty = any NSFW channel. */
+  /** Optional admin allowlist of play channel ids; null/empty = any guild channel. */
   allowedChannelIds: jsonb('allowed_channel_ids').$type<string[]>(),
   settings: jsonb('settings').$type<Record<string, unknown>>().notNull().default({}),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

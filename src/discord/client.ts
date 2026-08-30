@@ -80,7 +80,6 @@ import {
   handleBossCommit,
   handleBossConfirm,
   handleBossMyResult,
-  handleBossPage,
 } from './commands/waifumonBoss';
 import {
   handleBossClearChannel,
@@ -294,8 +293,6 @@ export function createDiscordClient(ctx: AppContext): Client {
       'boss:confirm': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleBossConfirm(ctx, i, prov, args),
       'boss:cancel': (i: ButtonInteraction) => handleBossCancel(ctx, i),
-      'boss:page': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
-        handleBossPage(ctx, i, prov, args),
       'boss:mine': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleBossMyResult(ctx, i, prov, args),
     },

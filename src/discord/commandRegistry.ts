@@ -260,11 +260,11 @@ export function buildCommandDefinitions() {
     .addSubcommand((s) =>
       s
         .setName('set-announce-channel')
-        .setDescription('Set the rare-capture announcement channel (must be NSFW)')
+        .setDescription('Set the rare-capture announcement channel')
         .addChannelOption((o) =>
           o
             .setName('channel')
-            .setDescription('NSFW text channel for announcements')
+            .setDescription('Text channel for announcements')
             .addChannelTypes(ChannelType.GuildText)
             .setRequired(true),
         ),

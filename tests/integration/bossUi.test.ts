@@ -32,7 +32,6 @@ import {
   handleBossCommit,
   handleBossConfirm,
   handleBossMyResult,
-  handleBossPage,
 } from '../../src/discord/commands/waifumonBoss';
 import { buildAnnouncement } from '../../src/discord/bossPresenter';
 import type { AppContext, Provisioned } from '../../src/discord/types';
@@ -577,7 +576,7 @@ describe('Confirm', () => {
 
 // ── Results ─────────────────────────────────────────────────────────────────
 
-describe('results and pagination', () => {
+describe('results: View My Rewards is private, DB-backed and read-only', () => {
   /** Resolve an encounter with `count` committed trainers. */
   async function resolvedWith(count: number): Promise<BossEncounterRow> {
     const encounter = await openEncounter();
@@ -593,81 +592,7 @@ describe('results and pagination', () => {
     return (await app.bosses.getEncounter(encounter.id))!;
   }
 
-  it('paginates from stored rows, with no in-memory cursor to lose', async () => {
-    const encounter = await resolvedWith(14);
-    const interaction = fakeButton();
-    await handleBossPage(ctx, interaction as never, prov, [String(encounter.id), '2']);
-
-    const payload = painted(interaction);
-    expect(payload.embeds[0].data.footer.text).toContain('Page 2');
-    // The header totals are encounter-level and must not change per page.
-    expect(payload.embeds[0].data.description).toContain('**14** trainers');
-    expect(payload.embeds[0].data.description).toContain('**140** attacks');
-  });
-
-  it('clamps a page number past the end rather than rendering nothing', async () => {
-    const encounter = await resolvedWith(3);
-    const interaction = fakeButton();
-    await handleBossPage(ctx, interaction as never, prov, [String(encounter.id), '99']);
-    expect(painted(interaction).embeds[0].data.fields.length).toBeGreaterThan(0);
-  });
-
-  it('edits the results message in place rather than posting a page', async () => {
-    const encounter = await resolvedWith(12);
-    const interaction = fakeButton();
-    await handleBossPage(ctx, interaction as never, prov, [String(encounter.id), '2']);
-    expect(interaction.update).toHaveBeenCalledTimes(1);
-    expect(interaction.reply).not.toHaveBeenCalled();
-  });
-
-  it('pages with the size the results were published at, not the current tuning', async () => {
-    const encounter = await resolvedWith(14);
-    // Someone retunes `resultsPageSize` after publication. The message on
-    // Discord was built at the old size, so its page boundaries must not move.
-    await t.db
-      .update(bossEncounters)
-      .set({ resultsPageSize: 5 })
-      .where(eq(bossEncounters.id, encounter.id));
-
-    const interaction = fakeButton();
-    await handleBossPage(ctx, interaction as never, prov, [String(encounter.id), '1']);
-    const payload = painted(interaction);
-    expect(payload.embeds[0].data.fields.filter((f: { name: string }) => f.name === '\u200b'))
-      .toHaveLength(5);
-    expect(payload.embeds[0].data.footer.text).toContain('Page 1 of 3');
-  });
-
-  it('keeps My Result on the results message after a restart', async () => {
-    const encounter = await resolvedWith(3);
-    // A restart holds nothing in memory; the button renders from the row.
-    const interaction = fakeButton();
-    await handleBossPage(ctx, interaction as never, prov, [String(encounter.id), '1']);
-    expect(buttons(painted(interaction)).map((b) => b.data.label)).toContain('My Result');
-  });
-
-  it('carries the encounter marker on every rendered page', async () => {
-    const encounter = await resolvedWith(14);
-    for (const page of ['1', '2']) {
-      const interaction = fakeButton();
-      await handleBossPage(ctx, interaction as never, prov, [String(encounter.id), page]);
-      expect(painted(interaction).embeds[0].data.footer.text).toContain(
-        `Boss Encounter #${encounter.id}`,
-      );
-    }
-  });
-
-  it('refuses pagination for another guild encounter', async () => {
-    const other = await provisionPlayer(app, 'g-boss-ui-3', 'u-y');
-    const encounter = await resolvedWith(2);
-    const interaction = fakeButton('u-y', 'Stranger');
-    await handleBossPage(ctx, interaction as never, other, [String(encounter.id), '1']);
-    // Refused as a stale button rather than as an error — a copied custom id
-    // from another server must be inert, not informative.
-    expect(painted(interaction).content).toContain('over');
-    expect(painted(interaction).embeds ?? []).toHaveLength(0);
-  });
-
-  it('returns My Result ephemerally without repainting the public message', async () => {
+  it('returns the clicking player their own rewards ephemerally, never repainting the public message', async () => {
     const encounter = await openEncounter();
     const waifuId = await giveBuddy(prov.playerId);
     await app.bosses.commit(encounter.id, prov.guildDbId, prov.playerId, {
@@ -689,12 +614,14 @@ describe('results and pagination', () => {
     void waifuId;
   });
 
-  it('tells a non-participant plainly that they did not join', async () => {
+  it('tells a non-participant they earned nothing, ephemerally', async () => {
     const encounter = await resolvedWith(2);
     const interaction = fakeButton('u-2', 'Ian');
     await handleBossMyResult(ctx, interaction as never, otherProv, [String(encounter.id)]);
     const payload = replied(interaction);
-    expect(payload.content).toContain('did not commit a buddy');
+    expect(payload.content).toBe("You didn't earn rewards from this boss encounter.");
+    expect(payload.flags).toBeTruthy();
+    expect(interaction.update).not.toHaveBeenCalled();
   });
 
   it('says rewards are pending for a still-open encounter', async () => {
@@ -708,6 +635,80 @@ describe('results and pagination', () => {
     await handleBossMyResult(ctx, interaction as never, prov, [String(encounter.id)]);
     const payload = replied(interaction);
     expect(payload.content).toContain('when the battle resolves');
+  });
+
+  it('shows only the clicking player their own line, never another player’s', async () => {
+    const encounter = await openEncounter();
+    // Two distinct participants with distinct trainer names.
+    await giveBuddy(prov.playerId);
+    await app.bosses.commit(encounter.id, prov.guildDbId, prov.playerId, {
+      discordUserId: 'u-1',
+      trainerName: 'Whistler',
+    });
+    await giveBuddy(otherProv.playerId);
+    await app.bosses.commit(encounter.id, otherProv.guildDbId, otherProv.playerId, {
+      discordUserId: 'u-2',
+      trainerName: 'Ian',
+    });
+    await app.bosses.resolve(encounter.id);
+
+    const mine = fakeButton('u-1', 'Whistler');
+    await handleBossMyResult(ctx, mine as never, prov, [String(encounter.id)]);
+    const theirs = fakeButton('u-2', 'Ian');
+    await handleBossMyResult(ctx, theirs as never, otherProv, [String(encounter.id)]);
+
+    // Each ephemeral view is scoped to its own clicking player: neither carries
+    // the other participant's identity.
+    expect(replied(mine).content).not.toContain('Ian');
+    expect(replied(theirs).content).not.toContain('Whistler');
+  });
+
+  it('is idempotent: repeated clicks never mutate inventory, XP or reward records', async () => {
+    const encounter = await openEncounter();
+    const waifuId = await giveBuddy(prov.playerId);
+    await app.bosses.commit(encounter.id, prov.guildDbId, prov.playerId, {
+      discordUserId: 'u-1',
+      trainerName: 'Whistler',
+    });
+    await app.bosses.resolve(encounter.id);
+
+    const snapshot = async () => ({
+      participation: await t.db
+        .select()
+        .from(bossParticipations)
+        .where(eq(bossParticipations.encounterId, encounter.id)),
+      inventory: await t.db
+        .select()
+        .from(playerInventory)
+        .where(eq(playerInventory.playerId, prov.playerId)),
+      waifu: await t.db.select().from(playerWaifus).where(eq(playerWaifus.id, waifuId)),
+    });
+
+    const before = await snapshot();
+    for (let i = 0; i < 3; i++) {
+      await handleBossMyResult(ctx, fakeButton() as never, prov, [String(encounter.id)]);
+    }
+    const after = await snapshot();
+    expect(after).toEqual(before);
+  });
+
+  it('shows a graceful ephemeral error for an unknown/expired encounter id', async () => {
+    const interaction = fakeButton();
+    await handleBossMyResult(ctx, interaction as never, prov, ['9999999']);
+    // A fresh ephemeral note, not an update that could touch a public message.
+    expect(interaction.update).not.toHaveBeenCalled();
+    expect(replied(interaction).content).toContain('over');
+  });
+
+  it('refuses a rewards lookup for another guild’s encounter', async () => {
+    const other = await provisionPlayer(app, 'g-boss-ui-3', 'u-y');
+    const encounter = await resolvedWith(2);
+    const interaction = fakeButton('u-y', 'Stranger');
+    await handleBossMyResult(ctx, interaction as never, other, [String(encounter.id)]);
+    // Refused as a stale button rather than as an error — a copied custom id
+    // from another server must be inert, not informative.
+    expect(replied(interaction).content).toContain('over');
+    expect(interaction.update).not.toHaveBeenCalled();
   });
 });
 

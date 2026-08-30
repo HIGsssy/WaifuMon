@@ -18,7 +18,6 @@ import {
   discordRelative,
   encounterMarker,
   matchesEncounterMarker,
-  resultLine,
   resultTitle,
 } from '../../src/discord/bossPresenter';
 import type {
@@ -27,7 +26,6 @@ import type {
 } from '../../src/db/schema';
 import type {
   BossCommitPreview,
-  BossParticipationResult,
 } from '../../src/modules/bosses/bossEncounterService';
 import type { BossContent } from '../../src/modules/content/schemas';
 import { loadShippedContent } from '../helpers/fixtures';
@@ -390,33 +388,16 @@ describe('commit preview', () => {
 });
 
 describe('results', () => {
-  const entries: BossParticipationResult[] = [
-    {
-      participation: participation({ id: 1, trainerName: 'Whistler', totalDamage: 2001 }),
-      rewards: [{ slug: 'energy_drink', name: 'Energy Drink', quantity: 1 }],
-    },
-    {
-      participation: participation({
-        id: 2,
-        trainerName: 'Ian',
-        waifuName: 'Alley Catgirl',
-        totalDamage: 1436,
-      }),
-      rewards: [{ slug: 'basic_charm', name: 'Basic Charm', quantity: 2 }],
-    },
-  ];
+  const firstEntry = participation({ id: 1, trainerName: 'Whistler', totalDamage: 2001 });
 
   const payload = buildResults({
     encounter: encounter({ status: 'resolved', resolutionReason: 'repelled', totalDamage: 17342 }),
     reason: 'repelled',
     boss,
-    entries,
-    page: 1,
-    totalPages: 1,
     totalParticipants: 8,
     totalDamage: 17342,
     totalAttacks: 80,
-    firstOnScene: entries[0]!.participation,
+    firstOnScene: firstEntry,
   });
 
   it('names the boss so the message stands alone', () => {
@@ -444,57 +425,25 @@ describe('results', () => {
     expect(field(payload, 'First on the Scene')).toBe('Whistler — Ruby Succubus');
   });
 
-  it('prints each participant with their buddy, damage, XP and items', () => {
+  it('shows a reward-distribution note instead of a public per-participant list', () => {
+    const note = field(payload, '🎁 Rewards');
+    expect(note).toContain('Rewards have been distributed');
+    expect(note).toContain('View My Rewards');
+    // No per-participant reward detail leaks onto the public message.
     const text = JSON.stringify(embed(payload).fields);
-    expect(text).toContain('**Whistler** — Ruby Succubus — 2,001 DMG');
-    expect(text).toContain('+15 XP');
-    expect(text).toContain('Energy Drink');
-    expect(text).toContain('**Ian** — Alley Catgirl — 1,436 DMG');
-    expect(text).toContain('2× Basic Charm');
+    expect(text).not.toContain('DMG');
+    expect(text).not.toContain('+15 XP');
   });
 
-  it('offers My Result but no pagination on a single page', () => {
-    expect(buttons(payload).map((b) => b.data.label)).toEqual(['My Result']);
+  it('offers a single View My Rewards button keyed on the encounter', () => {
+    expect(buttons(payload).map((b) => b.data.label)).toEqual(['View My Rewards']);
+    expect(buttons(payload)[0].data.custom_id).toBe('wm|v1|boss|mine|7');
   });
 
-  it('adds All Results controls once there is a second page', () => {
-    const paged = buildResults({
-      encounter: encounter({ status: 'resolved', resolutionReason: 'repelled' }),
-      reason: 'repelled',
-      boss,
-      entries,
-      page: 2,
-      totalPages: 3,
-      totalParticipants: 25,
-      totalDamage: 40000,
-      totalAttacks: 250,
-      firstOnScene: null,
-    });
-    const labels = buttons(paged).map((b) => b.data.label);
-    expect(labels).toEqual(['◀ Previous', 'All Results ▶', 'My Result']);
-    // Both directions are live in the middle of a run.
-    expect(buttons(paged)[0].data.disabled).toBe(false);
-    expect(buttons(paged)[1].data.disabled).toBe(false);
-    // The marker survives alongside the page counter, so reconciliation works
-    // for a paginated result too.
-    expect(embed(paged).footer.text).toBe('Page 2 of 3 · Boss Encounter #7');
-  });
-
-  it('carries page numbers in the custom ids so pagination survives a restart', () => {
-    const paged = buildResults({
-      encounter: encounter(),
-      reason: 'repelled',
-      boss,
-      entries,
-      page: 2,
-      totalPages: 3,
-      totalParticipants: 25,
-      totalDamage: 1,
-      totalAttacks: 1,
-      firstOnScene: null,
-    });
-    expect(buttons(paged)[0].data.custom_id).toBe('wm|v1|boss|page|7|1');
-    expect(buttons(paged)[1].data.custom_id).toBe('wm|v1|boss|page|7|3');
+  it('carries no shared pagination controls on the public message', () => {
+    const ids = buttons(payload).map((b) => b.data.custom_id as string);
+    expect(ids.some((id) => id.includes('|page|'))).toBe(false);
+    expect(embed(payload).footer.text).not.toContain('Page');
   });
 
   it('renders the unchallenged outcome with no participant controls', () => {
@@ -502,9 +451,6 @@ describe('results', () => {
       encounter: encounter({ status: 'resolved', resolutionReason: 'unchallenged' }),
       reason: 'unchallenged',
       boss,
-      entries: [],
-      page: 1,
-      totalPages: 1,
       totalParticipants: 0,
       totalDamage: 0,
       totalAttacks: 0,
@@ -525,38 +471,6 @@ describe('results', () => {
     ['channel_lost', 'Oh Pwincess Slipped Away'],
   ] as const)('titles a %s outcome as "%s"', (reason, expected) => {
     expect(resultTitle(encounter(), reason)).toBe(expected);
-  });
-});
-
-describe('result lines', () => {
-  it('omits the XP clause entirely for a max-level buddy', () => {
-    // "+0 XP" would read as a bug rather than as the level cap working.
-    const line = resultLine(
-      { participation: participation({ xpAwarded: 0 }), rewards: [] },
-      false,
-    );
-    expect(line).not.toContain('XP');
-    expect(line).toContain('_no rewards recorded_');
-  });
-
-  it('crowns only the first arrival', () => {
-    const entry = { participation: participation(), rewards: [] };
-    expect(resultLine(entry, true)).toContain('🥇');
-    expect(resultLine(entry, false)).not.toContain('🥇');
-  });
-
-  it('pluralizes an item stack only above one', () => {
-    const line = resultLine(
-      {
-        participation: participation(),
-        rewards: [
-          { slug: 'basic_charm', name: 'Basic Charm', quantity: 1 },
-          { slug: 'silk_charm', name: 'Silk Charm', quantity: 3 },
-        ],
-      },
-      false,
-    );
-    expect(line).toContain('Basic Charm · 3× Silk Charm');
   });
 });
 
@@ -593,7 +507,9 @@ describe('my result', () => {
   });
 
   it('says so plainly when the player never joined', () => {
-    expect(buildMyResult(encounter(), null)).toContain('did not commit a buddy');
+    expect(buildMyResult(encounter(), null)).toBe(
+      "You didn't earn rewards from this boss encounter.",
+    );
   });
 });
 
