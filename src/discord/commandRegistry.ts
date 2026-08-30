@@ -210,11 +210,11 @@ export function buildCommandDefinitions() {
         .addSubcommand((s) =>
           s
             .setName('set-channel')
-            .setDescription('Set the dedicated Boss Encounter channel (must be NSFW)')
+            .setDescription('Set the dedicated Boss Encounter channel')
             .addChannelOption((o) =>
               o
                 .setName('channel')
-                .setDescription('NSFW text channel that will host boss encounters')
+                .setDescription('Text channel that will host boss encounters')
                 .addChannelTypes(ChannelType.GuildText)
                 .setRequired(true),
             ),

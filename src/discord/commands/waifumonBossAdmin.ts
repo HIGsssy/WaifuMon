@@ -92,16 +92,6 @@ export async function handleBossSetChannel(
     });
     return;
   }
-  // Same NSFW requirement as every other Waifumon channel — the compliance
-  // rule is the game's, not this feature's, and a boss channel is a play
-  // surface like any other.
-  if (resolved.nsfw !== true) {
-    await interaction.reply({
-      content: `<#${channel.id}> must be an NSFW-marked text channel.`,
-      ...EPHEMERAL,
-    });
-    return;
-  }
 
   const verdict = await verifyBossChannel(interaction.client, channel.id);
   if (!verdict) {
