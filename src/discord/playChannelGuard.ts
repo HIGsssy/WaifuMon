@@ -5,7 +5,7 @@
  * The guard runs before every command and component handler, and before any
  * service call — blocked interactions consume nothing and write no rows.
  */
-import { ChannelType, type Interaction } from 'discord.js';
+import { type GuildBasedChannel, type Interaction } from 'discord.js';
 
 export type DenyReason = 'dm' | 'not_nsfw' | 'not_allowed';
 
@@ -60,24 +60,49 @@ export function decidePlayChannel(
   return { allow: true };
 }
 
+/**
+ * Context-aware NSFW check — the single source of truth for "is this an
+ * age-restricted context?".
+ *
+ * A channel counts as NSFW when it carries the flag itself (text / forum /
+ * announcement / voice channels all expose `nsfw`), **or** when it is a child
+ * context — a thread or forum post — whose parent carries the flag. Discord
+ * does not mark the child channel itself, so checking only the immediate
+ * channel wrongly rejects valid threads and forum posts beneath an NSFW parent.
+ *
+ * Fails closed: a null channel, a thread whose parent is uncached/unresolved,
+ * or any context we cannot positively confirm as NSFW returns `false`.
+ */
+export function isNsfwContext(channel: GuildBasedChannel | null | undefined): boolean {
+  if (!channel) return false;
+
+  if ('nsfw' in channel && channel.nsfw === true) {
+    return true;
+  }
+
+  if (channel.isThread()) {
+    const parent = channel.parent;
+    if (parent && 'nsfw' in parent && parent.nsfw === true) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 /** Extracts GuardChannelInfo from a live discord.js interaction. */
 export function extractChannelInfo(interaction: Interaction): GuardChannelInfo {
   const channel = interaction.channel;
   if (!interaction.inGuild() || !channel) {
     return { isGuildChannel: false, isNsfw: false, channelId: null, parentChannelId: null };
   }
-  let isNsfw = false;
-  let parentChannelId: string | null = null;
-  if (channel.isThread()) {
-    parentChannelId = channel.parentId;
-    const parent = channel.parent;
-    isNsfw = parent != null && 'nsfw' in parent ? Boolean(parent.nsfw) : false;
-  } else if (channel.type === ChannelType.GuildText && 'nsfw' in channel) {
-    isNsfw = Boolean(channel.nsfw);
-  } else if ('nsfw' in channel) {
-    isNsfw = Boolean((channel as { nsfw?: boolean }).nsfw);
-  }
-  return { isGuildChannel: true, isNsfw, channelId: channel.id, parentChannelId };
+  const guildChannel = channel as GuildBasedChannel;
+  return {
+    isGuildChannel: true,
+    isNsfw: isNsfwContext(guildChannel),
+    channelId: guildChannel.id,
+    parentChannelId: guildChannel.isThread() ? guildChannel.parentId : null,
+  };
 }
 
 /** Friendly ephemeral copy for a blocked interaction. */
