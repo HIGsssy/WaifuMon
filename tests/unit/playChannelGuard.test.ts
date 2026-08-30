@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   blockedMessage,
   decidePlayChannel,
+  isNsfwContext,
   type GuardChannelInfo,
 } from '../../src/discord/playChannelGuard';
 
@@ -154,5 +155,56 @@ describe('blockedMessage', () => {
 
   it('has a DM-specific message', () => {
     expect(blockedMessage('dm', null)).toMatch(/DM/i);
+  });
+});
+
+/**
+ * Context-aware NSFW detection against live-channel-shaped fakes. Only the
+ * fields the helper reads are populated; the cast keeps the fakes minimal
+ * without dragging in the full discord.js channel surface.
+ */
+describe('isNsfwContext — direct flag and parent inheritance, fail-closed', () => {
+  type FakeChannel = {
+    nsfw?: boolean;
+    isThread: () => boolean;
+    parent?: { nsfw?: boolean } | null;
+  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const asChannel = (c: FakeChannel) => c as any;
+
+  const textChannel = (nsfw: boolean): FakeChannel => ({ nsfw, isThread: () => false });
+  const thread = (parent: { nsfw?: boolean } | null): FakeChannel => ({
+    isThread: () => true,
+    parent,
+  });
+
+  it('direct channel nsfw=true -> true', () => {
+    expect(isNsfwContext(asChannel(textChannel(true)))).toBe(true);
+  });
+
+  it('direct channel nsfw=false -> false', () => {
+    expect(isNsfwContext(asChannel(textChannel(false)))).toBe(false);
+  });
+
+  it('thread + parent nsfw=true -> true', () => {
+    expect(isNsfwContext(asChannel(thread({ nsfw: true })))).toBe(true);
+  });
+
+  it('thread + parent nsfw=false -> false', () => {
+    expect(isNsfwContext(asChannel(thread({ nsfw: false })))).toBe(false);
+  });
+
+  it('thread with no parent -> false (fail closed)', () => {
+    expect(isNsfwContext(asChannel(thread(null)))).toBe(false);
+  });
+
+  it('forum post beneath an NSFW forum -> true', () => {
+    // A forum post is a thread whose parent is the forum channel.
+    expect(isNsfwContext(asChannel(thread({ nsfw: true })))).toBe(true);
+  });
+
+  it('null / unknown channel -> false (fail closed)', () => {
+    expect(isNsfwContext(null)).toBe(false);
+    expect(isNsfwContext(undefined)).toBe(false);
   });
 });
