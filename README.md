@@ -35,7 +35,7 @@ npm test               # Vitest; DB tests use Testcontainers (Docker required),
   control access via Discord permissions.
 - `/waifumon-admin allow-channel add|remove|list` — optional play-channel
   allowlist (empty = any guild channel).
-- `/waifumon-admin set-announce-channel` — must target an NSFW text channel.
+- `/waifumon-admin set-announce-channel` — must target a guild text channel.
 
 ## Admin web panel
 

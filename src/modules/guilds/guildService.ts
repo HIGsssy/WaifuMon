@@ -18,7 +18,7 @@ export interface GuildService {
    * Clearing is a first-class operation rather than an omission: it is how an
    * admin turns boss encounters off for the server, and the scheduler reads a
    * null channel as exactly that. Validation that the channel is usable
-   * (NSFW-marked, and the bot can post/embed/attach in it) belongs to the
+   * (a guild text channel the bot can post/embed/attach in) belongs to the
    * caller, which is the only layer holding a Discord client.
    */
   setBossChannel(discordGuildId: string, channelId: string | null): Promise<void>;

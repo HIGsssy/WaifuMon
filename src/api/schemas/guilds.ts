@@ -24,7 +24,7 @@ export const guildChannelsSchema = z.object({
   allowedChannelIds: z
     .array(z.string())
     .nullable()
-    .describe('Admin play-channel allowlist. Null means "any NSFW channel is allowed".'),
+    .describe('Admin play-channel allowlist. Null means "any guild channel is allowed".'),
 });
 
 export const guildParams = z.object({ discordGuildId: snowflakeParam });

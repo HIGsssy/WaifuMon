@@ -49,7 +49,7 @@ export const guildRoutes =
           summary: 'Get a guild\'s channel configuration',
           description:
             'The Activity Feed channel and the play-channel allowlist. A null `allowedChannelIds` ' +
-            'means no allowlist is configured, which permits any NSFW channel — it is not the ' +
+            'means no allowlist is configured, which permits any guild channel — it is not the ' +
             'same as an empty array, which permits none.',
           params: guildParams,
           response: {

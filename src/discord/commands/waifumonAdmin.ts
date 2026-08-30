@@ -1,7 +1,7 @@
 /**
  * /waifumon-admin (Milestone 1): allow-channel add|remove|list and
- * set-announce-channel (validates the target is NSFW). Guild admins only —
- * gated by default member permissions on the command definition.
+ * set-announce-channel (validates the target is a guild text channel). Guild
+ * admins only — gated by default member permissions on the command definition.
  */
 import {
   ChannelType,
@@ -32,7 +32,7 @@ export async function handleAdminAllowChannelRemove(
   const list = await ctx.services.guilds.removeAllowedChannel(interaction.guildId!, channel.id);
   const suffix =
     list.length === 0
-      ? ' Allowlist is now empty — any NSFW channel works.'
+      ? ' Allowlist is now empty — any guild channel works.'
       : ` (${list.length} remaining).`;
   await interaction.reply({
     content: `Removed <#${channel.id}> from the play-channel allowlist.${suffix}`,
@@ -47,7 +47,7 @@ export async function handleAdminAllowChannelList(
   const list = await ctx.services.guilds.getAllowedChannelIds(interaction.guildId!);
   const content =
     !list || list.length === 0
-      ? 'No allowlist configured — Waifumon plays in any NSFW-marked channel.'
+      ? 'No allowlist configured — Waifumon plays in any guild channel.'
       : `Allowed play channels:\n${list.map((id) => `• <#${id}>`).join('\n')}`;
   await interaction.reply({ content, ...EPHEMERAL });
 }
@@ -58,11 +58,10 @@ export async function handleAdminSetAnnounceChannel(
 ): Promise<void> {
   const channel = interaction.options.getChannel('channel', true);
   const resolved = await interaction.guild?.channels.fetch(channel.id);
-  const isNsfwText =
-    resolved != null && resolved.type === ChannelType.GuildText && resolved.nsfw === true;
-  if (!isNsfwText) {
+  const isTextChannel = resolved != null && resolved.type === ChannelType.GuildText;
+  if (!isTextChannel) {
     await interaction.reply({
-      content: `<#${channel.id}> must be an NSFW-marked text channel to receive announcements.`,
+      content: `<#${channel.id}> must be a text channel to receive announcements.`,
       ...EPHEMERAL,
     });
     return;
