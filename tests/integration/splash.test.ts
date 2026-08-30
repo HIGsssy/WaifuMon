@@ -413,7 +413,6 @@ describe('splash button — dispatched directly now that views are ephemeral', (
       componentHandlers: { 'menu:start': handler },
       extractChannelInfo: () => ({
         isGuildChannel: true,
-        isNsfw: true,
         channelId: 'c-splash-wrong',
         parentChannelId: null,
       }),
