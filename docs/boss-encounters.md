@@ -66,7 +66,7 @@ encounter message is history.
 /waifumon-admin boss set-channel #boss-arena
 ```
 
-The channel must be an **NSFW-marked text channel**, and the bot must hold
+The channel must be a **guild text channel**, and the bot must hold
 **View Channel**, **Send Messages**, **Embed Links**, **Attach Files** and
 **Read Message History** in it. The command checks all of that before saving —
 if something is missing it names it rather than saving a channel that will fail
@@ -76,7 +76,7 @@ Until a channel is configured, **nothing is scheduled**. That is the entire
 feature gate: a server with no boss channel simply never sees a boss.
 
 The boss channel does not need to be on the play-channel allowlist. It is
-exempted from that rule automatically (but not from the NSFW rule).
+exempted from that rule automatically.
 
 ### The rest of the admin surface
 
