@@ -24,7 +24,10 @@ import {
 import { affinityLabel } from '../../modules/capture/affinityMath';
 import { seductivePowerView } from '../../modules/power/seductivePower';
 import { isAppearanceUnlocked } from '../../modules/appearance/appearanceRules';
-import type { AppearanceView } from '../../modules/appearance/appearanceService';
+import type {
+  AppearanceView,
+  UnlockedAppearanceView,
+} from '../../modules/appearance/appearanceService';
 import {
   MAX_ESSENCE_APPLICATIONS,
   type OwnedEntry,
@@ -884,7 +887,9 @@ async function renderInspect(
 
     // Pure content lookup — no query, and no gameplay reads it.
     const catalog = ctx.services.appearance.catalogFor(species);
-    const worn = ctx.services.appearance.currentAppearance(species, waifu.variant);
+    const worn = ctx.services.appearance.currentAppearance(species, waifu.variant, {
+      level: waifu.level,
+    });
     const unlockedLooks = catalog.filter((a) =>
       isAppearanceUnlocked(a, { level: waifu.level }),
     ).length;
@@ -979,8 +984,15 @@ async function renderInspect(
 //
 // The gallery is a **progression journal**, not a picker: every entry shows its
 // requirement whether it is earned or not, so a player browsing a species they
-// just caught can already see what Level 20 and Level 40 hold. Locked entries
-// are listed, described, and explained — never hidden.
+// just caught can already see that Level 20 and Level 40 hold *something*.
+// Locked entries are listed, named, and explained — never hidden.
+//
+// **What a locked entry never shows is the artwork.** The picture is the
+// reward for reaching the level, so a locked slot is text: a name, a
+// requirement, a lock. That is not a UI choice this file gets to make on its
+// own — `appearanceService.listAppearances` withholds `assetId` for anything
+// locked, so there is no identifier here to resolve even if a future edit tried
+// to. The check below is the belt to that braces.
 //
 // Purely cosmetic end to end. Selecting a look writes one column and cannot
 // touch level, XP, affection, evolution, or capture odds.
@@ -1028,9 +1040,20 @@ function renderGalleryEmbed(
     })
     .join('\n');
 
+  const locked = !highlighted.isUnlocked;
+
   const detail: string[] = [];
-  if (highlighted.flavorText) detail.push(`_“${highlighted.flavorText}”_`);
-  if (highlighted.description) detail.push(highlighted.description);
+  if (locked) {
+    // The locked detail panel, in place of the artwork: what it is called, that
+    // it exists, and exactly what earns it. Flavour text and description are
+    // held back with the picture — they describe the look, and describing a
+    // surprise is a smaller version of spoiling it.
+    detail.push(`🔒 **Locked** — ${highlighted.unlockLabel}.`);
+    detail.push(`_The artwork stays hidden until you earn it._`);
+  } else {
+    if (highlighted.flavorText) detail.push(`_“${highlighted.flavorText}”_`);
+    if (highlighted.description) detail.push(highlighted.description);
+  }
   detail.push(
     [
       cosmeticRarityTag(highlighted.cosmeticRarity),
@@ -1042,7 +1065,7 @@ function renderGalleryEmbed(
   );
 
   const embed = new EmbedBuilder()
-    .setTitle(`🎀 ${displayName(entry)} — ${highlighted.name}`)
+    .setTitle(`${locked ? '🔒' : '🎀'} ${displayName(entry)} — ${highlighted.name}`)
     .setColor(rarityColor(entry.species.rarity))
     .setDescription(detail.join('\n\n'))
     .addFields({
@@ -1120,9 +1143,12 @@ function galleryComponents(
 }
 
 /**
- * Paint the gallery. `highlightId` is what the detail panel describes —
- * the selected look by default, or whatever the player just tapped, including
- * a locked one (previewing what you are working toward is the point).
+ * Paint the gallery. `highlightId` is what the detail panel describes — the
+ * selected look by default, or whatever the player just tapped.
+ *
+ * Tapping a locked entry is still allowed and still opens its panel: knowing a
+ * Level 20 look exists, and what it is called, is the progression hook. The
+ * panel just has no picture in it.
  */
 async function renderGallery(
   ctx: AppContext,
@@ -1162,7 +1188,13 @@ async function renderGallery(
     return;
   }
 
-  const card = resolveAppearanceAsset(ctx, highlighted.assetId);
+  // Two independent reasons a locked entry attaches nothing: its `assetId` is
+  // already `null` from the service, and this guard would refuse it anyway.
+  // Belt and braces, because the failure mode is "the reward was given away"
+  // and neither line is expensive.
+  const card = highlighted.isUnlocked
+    ? resolveAppearanceAsset(ctx, highlighted.assetId)
+    : null;
   const embed = renderGalleryEmbed(entry, appearances, highlighted, clampedPage, totalPages);
   if (card) embed.setImage(`attachment://${CARD_FILENAME}`);
 
@@ -1201,8 +1233,10 @@ export async function handleAppearanceOpen(
  * appear:pick — a select-menu choice.
  *
  * Unlocked → apply and re-render with the new artwork. Locked → re-render with
- * that entry highlighted plus an ephemeral note naming the requirement, so a
- * curious tap is a *preview*, never a dead end.
+ * that entry highlighted (as a locked slot, artwork withheld) plus an ephemeral
+ * note naming the requirement, so a curious tap explains itself rather than
+ * dead-ending. It is not a preview: the whole point is that the picture is
+ * still ahead of them.
  */
 export async function handleAppearancePick(
   ctx: AppContext,
@@ -1230,9 +1264,10 @@ export async function handleAppearancePick(
     );
   } catch (err) {
     if (err instanceof AppearanceLockedError) {
-      // A locked pick is a *preview*, not a failure: re-render with that entry
-      // highlighted so the player sees the artwork they are working toward,
-      // and explain the requirement alongside it.
+      // A locked pick is not a failure: re-render with that entry highlighted
+      // so the player sees *that* there is something at Level 20 and what
+      // earns it, and explain the requirement alongside. `renderGallery`
+      // attaches no artwork for a locked highlight.
       await renderGallery(ctx, interaction, prov, waifuId, page, appearanceId);
       await interaction.followUp({ content: `🔒 ${err.userMessage}`, ...EPHEMERAL });
       return;
@@ -1261,7 +1296,9 @@ async function emitAppearanceChanged(
   interaction: PlayerInteraction,
   prov: Provisioned,
   waifuId: number,
-  appearance: AppearanceView,
+  // Only ever called after a successful selection, so the artwork is earned —
+  // the type says so rather than the call site checking.
+  appearance: UnlockedAppearanceView,
 ): Promise<void> {
   let waifuName = 'Your Waifumon';
   try {

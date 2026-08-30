@@ -178,8 +178,8 @@ describe('listAppearances', () => {
     ]);
   });
 
-  it('carries the full cosmetic metadata set', async () => {
-    const waifu = await grantWaifu(1);
+  it('carries the full cosmetic metadata set once the look is earned', async () => {
+    const waifu = await grantWaifu(5);
     const gallery = await appearance.listAppearances(playerId, waifu.id);
     expect(gallery.appearances[1]).toMatchObject({
       name: 'Midnight Bloom',
@@ -187,8 +187,99 @@ describe('listAppearances', () => {
       flavorText: 'Prepared for the annual shrine celebration.',
       cosmeticRarity: 'seasonal',
       introducedVersion: 'v1.3',
+      isUnlocked: true,
       assetId: { kind: 'waifumon', slug: 'alley_catgirl', variant: 'level_5' },
     });
+  });
+
+  /**
+   * The access control, at its source.
+   *
+   * `assetId` is not a label — every consumer resolves it to artwork
+   * (`waifumon/<slug>/<variant>.png` on disk, a card route on the wire), so
+   * emitting one for a locked look publishes the reward regardless of what
+   * `isUnlocked` says or what any client does with it. Withholding it is
+   * therefore the fence, and `isUnlocked` is only the rendering hint.
+   */
+  it('withholds the artwork identifier for locked entries', async () => {
+    const waifu = await grantWaifu(1);
+    const gallery = await appearance.listAppearances(playerId, waifu.id);
+
+    const locked = gallery.appearances.filter((a) => !a.isUnlocked);
+    expect(locked).toHaveLength(2);
+    for (const entry of locked) {
+      expect(entry.assetId).toBeNull();
+    }
+  });
+
+  it('still names the locked slot and how to earn it', async () => {
+    const waifu = await grantWaifu(1);
+    const gallery = await appearance.listAppearances(playerId, waifu.id);
+
+    // A locked entry is a slot, not a hole: the gallery stays a progression
+    // journal, it just has no picture in the frame.
+    expect(gallery.appearances[1]).toMatchObject({
+      id: 'level_5',
+      name: 'Midnight Bloom',
+      unlockLabel: 'Reach Level 5',
+      isUnlocked: false,
+      assetId: null,
+    });
+  });
+
+  it('reveals the artwork identifier the moment the level is reached', async () => {
+    const below = await appearance.listAppearances(playerId, (await grantWaifu(4)).id);
+    const at = await appearance.listAppearances(playerId, (await grantWaifu(5)).id);
+
+    expect(below.appearances.find((a) => a.id === 'level_5')?.assetId).toBeNull();
+    expect(at.appearances.find((a) => a.id === 'level_5')?.assetId).toEqual({
+      kind: 'waifumon',
+      slug: 'alley_catgirl',
+      variant: 'level_5',
+    });
+  });
+
+  /**
+   * Nothing about a locked entry may hint at where its artwork lives — not the
+   * id, not a partial, not a differently-shaped field someone adds later. The
+   * serialized gallery for a Level 1 copy must contain the *string* `level_20`
+   * only as an appearance id, never inside an asset reference.
+   */
+  it('names no asset reference anywhere in a locked entry', async () => {
+    const waifu = await grantWaifu(1);
+    const gallery = await appearance.listAppearances(playerId, waifu.id);
+
+    for (const entry of gallery.appearances.filter((a) => !a.isUnlocked)) {
+      const json = JSON.stringify(entry);
+      expect(json).not.toContain('"kind"');
+      expect(json).not.toContain('waifumon');
+      expect(json).not.toMatch(/\.(png|jpe?g|webp)/i);
+    }
+  });
+
+  /**
+   * The stale-equipped case. A copy can be left pointing at a look she has
+   * stopped qualifying for — an admin rolls a level back, a restore runs, an
+   * author raises `atLevel` after copies already wear it. `selected` is what
+   * every surface renders, so it must not be allowed to name a locked entry.
+   */
+  it('reports a stale locked variant as her default, not as selected', async () => {
+    const waifu = await grantWaifu(1);
+    await t.db
+      .update(playerWaifus)
+      .set({ variant: 'level_20' })
+      .where(eq(playerWaifus.id, waifu.id));
+
+    const gallery = await appearance.listAppearances(playerId, waifu.id);
+
+    expect(gallery.selected).toBe('standard');
+    const stale = gallery.appearances.find((a) => a.id === 'level_20');
+    expect(stale).toMatchObject({ isSelected: false, isUnlocked: false, assetId: null });
+    // And the entry that *is* selected is one she has earned, so it is the one
+    // carrying artwork.
+    const selected = gallery.appearances.find((a) => a.isSelected);
+    expect(selected?.isUnlocked).toBe(true);
+    expect(selected?.assetId).not.toBeNull();
   });
 
   it('never returns a path, URL, or file extension', async () => {

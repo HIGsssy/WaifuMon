@@ -16,7 +16,7 @@ import {
   type CardPresentationDeps,
 } from '../../src/modules/appearance/cardPresentation';
 import { CardArtworkMissingError } from '../../src/modules/cards';
-import { AppearanceNotFoundError } from '../../src/shared/errors';
+import { AppearanceLockedError, AppearanceNotFoundError } from '../../src/shared/errors';
 import { SpeciesFileSchema, type SpeciesContent } from '../../src/modules/content/schemas';
 import { createAppearanceService } from '../../src/modules/appearance/appearanceService';
 
@@ -90,8 +90,11 @@ describe('speciesCardRequest', () => {
     expect(request.input.variant.appearanceId).toBe('standard');
   });
 
-  it('wears an explicitly named appearance', () => {
-    const request = speciesCardRequest(deps, subject, { appearanceId: 'level_20' });
+  it('wears an explicitly named appearance the caller has earned', () => {
+    const request = speciesCardRequest(deps, subject, {
+      appearanceId: 'level_20',
+      unlockContext: { level: 20 },
+    });
     expect(request.requestedAppearanceId).toBe('level_20');
     expect(request.input.variant.appearanceId).toBe('level_20');
     expect(request.input.variant.artworkAbsolutePath).toContain('level_20.png');
@@ -101,6 +104,50 @@ describe('speciesCardRequest', () => {
     expect(() => speciesCardRequest(deps, subject, { appearanceId: 'nope' })).toThrow(
       AppearanceNotFoundError,
     );
+  });
+
+  /**
+   * The render-side unlock fence.
+   *
+   * Naming an appearance by id is the one way to make this module draw artwork
+   * nobody has earned, and it is reachable from the public species-card route.
+   * Without a context there is no owned copy in scope, so nothing but the
+   * ungated `owned` entry can be justified — and a level too low is refused for
+   * the same reason.
+   */
+  it('refuses a gated appearance when no unlock context is supplied', () => {
+    expect(() => speciesCardRequest(deps, subject, { appearanceId: 'level_20' })).toThrow(
+      AppearanceLockedError,
+    );
+  });
+
+  it('refuses a gated appearance the supplied context has not earned', () => {
+    expect(() =>
+      speciesCardRequest(deps, subject, {
+        appearanceId: 'level_40',
+        unlockContext: { level: 39 },
+      }),
+    ).toThrow(AppearanceLockedError);
+  });
+
+  it('still allows the ungated default with no unlock context', () => {
+    const request = speciesCardRequest(deps, subject, { appearanceId: 'standard' });
+    expect(request.input.variant.appearanceId).toBe('standard');
+  });
+
+  /**
+   * The refusal must not double as an oracle. `level_40` has no artwork on
+   * disk, so an unguarded request for it falls back to `standard` and answers
+   * 200 — while `level_20`, which *does* have artwork, would answer with its
+   * own. Refusing both identically means a locked id tells an attacker nothing
+   * about whether the artwork behind it exists yet.
+   */
+  it('refuses gated ids identically whether or not their artwork exists', () => {
+    const withArt = () => speciesCardRequest(deps, subject, { appearanceId: 'level_20' });
+    const withoutArt = () => speciesCardRequest(deps, subject, { appearanceId: 'level_40' });
+
+    expect(withArt).toThrow(AppearanceLockedError);
+    expect(withoutArt).toThrow(AppearanceLockedError);
   });
 
   it('carries the requested width through, and omits it for the master', () => {
@@ -120,7 +167,10 @@ describe('artwork fallback', () => {
    * would mint two masters of one identical image.
    */
   it('falls back to the species default and keys by what resolved', () => {
-    const request = speciesCardRequest(deps, subject, { appearanceId: 'level_40' });
+    const request = speciesCardRequest(deps, subject, {
+      appearanceId: 'level_40',
+      unlockContext: { level: 40 },
+    });
 
     expect(request.requestedAppearanceId).toBe('level_40');
     expect(request.artwork.source).toBe('species-default');
@@ -131,7 +181,10 @@ describe('artwork fallback', () => {
   });
 
   it('gives two appearances that both fall back the same render identity', () => {
-    const a = speciesCardRequest(deps, subject, { appearanceId: 'level_40' });
+    const a = speciesCardRequest(deps, subject, {
+      appearanceId: 'level_40',
+      unlockContext: { level: 40 },
+    });
     const b = speciesCardRequest(deps, subject);
     expect(a.input.variant).toEqual(b.input.variant);
   });
@@ -177,11 +230,38 @@ describe('ownedCardRequest', () => {
 
   it('falls back exactly like the species route when her look has no artwork', () => {
     const owned = ownedCardRequest(deps, copy(45, 'level_40'));
-    const preview = speciesCardRequest(deps, subject, { appearanceId: 'level_40' });
+    const preview = speciesCardRequest(deps, subject, {
+      appearanceId: 'level_40',
+      unlockContext: { level: 45 },
+    });
 
     expect(owned.artwork.source).toBe('species-default');
     expect(owned.artwork.absolutePath).toBe(preview.artwork.absolutePath);
     expect(owned.input.variant.appearanceId).toBe(preview.input.variant.appearanceId);
+  });
+
+  /**
+   * The stale-equipped case. `variant` is a stored id, and a copy can stop
+   * qualifying for it — a rolled-back level, a restore, an author raising
+   * `atLevel` after the fact. The old lookup trusted the id and printed Level
+   * 20 artwork onto a Level 5 card; it now degrades to her default, the same
+   * way a *deleted* variant always has.
+   */
+  it('degrades a look she no longer qualifies for to her default', () => {
+    const request = ownedCardRequest(deps, copy(5, 'level_20'));
+
+    expect(request.requestedAppearanceId).toBe('standard');
+    expect(request.input.variant.appearanceId).toBe('standard');
+    expect(request.input.variant.artworkAbsolutePath).toContain('standard.png');
+    expect(request.input.variant.artworkAbsolutePath).not.toContain('level_20');
+  });
+
+  it('renders the identical card for a stale look and for no look at all', () => {
+    // Nothing about the stored id survives into the render, so a stale
+    // `variant` cannot even be *distinguished* from the default downstream.
+    expect(ownedCardRequest(deps, copy(5, 'level_20')).input.variant).toEqual(
+      ownedCardRequest(deps, copy(5, null)).input.variant,
+    );
   });
 
   it('treats a null variant as her default look', () => {

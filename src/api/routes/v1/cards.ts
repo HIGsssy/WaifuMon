@@ -75,7 +75,14 @@ const speciesCardQuery = z.object({
     .min(1)
     .max(64)
     .optional()
-    .describe('Appearance id. Defaults to the species’ default appearance.'),
+    .describe(
+      'Appearance id. Defaults to the species’ default appearance.\n\n' +
+        'Only **ungated** appearances (`unlock.type: "owned"`) may be named here — this route ' +
+        'is a species preview with no owned copy in scope, so it cannot establish that anyone ' +
+        'has earned a level-gated look. A gated id answers `409 APPEARANCE_LOCKED`. To see a ' +
+        'look you have unlocked, render your own copy: ' +
+        '`GET /v1/players/{playerId}/collection/owned/{waifuId}/card`.',
+    ),
   level: z.coerce
     .number()
     .int()
@@ -100,6 +107,14 @@ const cardResponses = {
   304: z.null().describe('The card is unchanged — the ETag matched `If-None-Match`.'),
   ...notFoundResponse,
   ...commonErrorResponses,
+} as const;
+
+/** The species route additionally refuses to render a gated appearance. */
+const speciesCardResponses = {
+  ...cardResponses,
+  409: commonErrorResponses[400].describe(
+    'The named appearance is level-gated and cannot be previewed on the species route.',
+  ),
 } as const;
 
 /** The slice of the typed reply the shared sender needs. */
@@ -236,10 +251,11 @@ export const cardRoutes =
             'cached on disk; repeat requests are served from cache and revalidate cheaply via ' +
             '`ETag` / `If-None-Match`.\n\n' +
             'Artwork falls back (appearance → species default) when a file is missing, and the ' +
-            'cache identity follows the artwork that actually resolved.',
+            'cache identity follows the artwork that actually resolved.\n\n' +
+            'Level-gated appearances are **not** renderable here — see `variant`.',
           params: z.object({ slug: slugParam }),
           querystring: speciesCardQuery,
-          response: cardResponses,
+          response: speciesCardResponses,
         },
       },
       async (req, reply) => {

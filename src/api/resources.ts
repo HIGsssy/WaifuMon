@@ -48,8 +48,24 @@ type ItemCategory = (typeof ITEM_CATEGORIES)[number];
  * this boundary. `imagePath` exists on the row and is deliberately dropped —
  * it is the content loader's private pre-flight probe, not an addressable
  * location, and surfacing it would couple every client to one storage layout.
+ *
+ * **`assetId` is `null` unless the caller has established the artwork may be
+ * seen.** An `AssetId` resolves deterministically to a picture on every
+ * consumer, so emitting one for artwork a player has not earned publishes the
+ * reward. `revealArtwork` defaults to `false`, which is what makes the default
+ * safe: a new call site that forgets to think about unlock state withholds the
+ * identifier rather than leaking it.
+ *
+ * The species catalog has **no player in scope**, so it can only justify the
+ * one entry that is unlocked for everybody who owns her — the `owned` default.
+ * Level-gated entries appear there as slots with their `unlockLabel` and no
+ * artwork, which is enough for an encyclopedia to say "there is more at Level
+ * 20" without saying what it looks like.
  */
-export function toAppearanceCatalogResource(appearance: ResolvedAppearance) {
+export function toAppearanceCatalogResource(
+  appearance: ResolvedAppearance,
+  { revealArtwork = false }: { revealArtwork?: boolean } = {},
+) {
   return {
     id: appearance.id,
     name: appearance.name,
@@ -57,18 +73,43 @@ export function toAppearanceCatalogResource(appearance: ResolvedAppearance) {
     flavorText: appearance.flavorText,
     cosmeticRarity: appearance.cosmeticRarity,
     introducedVersion: appearance.introducedVersion,
-    assetId: appearance.assetId,
+    assetId: revealArtwork ? appearance.assetId : null,
     unlock: appearance.unlock,
     unlockLabel: appearance.unlockLabel,
   };
 }
 
-/** Catalog metadata plus one owned copy's state. */
+/**
+ * Whether an appearance is unlocked for *anyone* who owns the species.
+ *
+ * The `owned` entry is: owning her is the only requirement, and every response
+ * carrying a catalog is already about a species the caller can see. Everything
+ * else is earned per copy and is decided by the collection gallery, which has
+ * the level to decide it with.
+ */
+function isUngated(appearance: ResolvedAppearance): boolean {
+  return appearance.unlock.type === 'owned';
+}
+
+/** A species catalog, with artwork revealed only for the ungated default. */
+export function toAppearanceCatalogResources(appearances: readonly ResolvedAppearance[]) {
+  return appearances.map((a) => toAppearanceCatalogResource(a, { revealArtwork: isUngated(a) }));
+}
+
+/**
+ * Catalog metadata plus one owned copy's state.
+ *
+ * `isUnlocked` is the reveal decision — the two travel together so a caller
+ * cannot set one without the other.
+ */
 export function toAppearanceResource(
   appearance: ResolvedAppearance,
   state: { isUnlocked: boolean; isSelected: boolean },
 ) {
-  return { ...toAppearanceCatalogResource(appearance), ...state };
+  return {
+    ...toAppearanceCatalogResource(appearance, { revealArtwork: state.isUnlocked }),
+    ...state,
+  };
 }
 
 /**
@@ -91,7 +132,7 @@ export function toSpeciesResource(
     rarity: row.rarity as Rarity,
     affinity: row.affinity as Affinity,
     contentRating: row.contentRating as ContentRating,
-    appearances: appearances.map(toAppearanceCatalogResource),
+    appearances: toAppearanceCatalogResources(appearances),
   };
 }
 
@@ -101,7 +142,7 @@ export function toContentSpeciesResource(
   appearances: readonly ResolvedAppearance[],
 ) {
   const { imagePath: _imagePath, appearances: _authored, ...rest } = species;
-  return { ...rest, appearances: appearances.map(toAppearanceCatalogResource) };
+  return { ...rest, appearances: toAppearanceCatalogResources(appearances) };
 }
 
 /**
@@ -109,7 +150,11 @@ export function toContentSpeciesResource(
  *
  * `selectedAppearance` is resolved from `variant` against the species catalog,
  * falling back to the default when the stored id names artwork that has since
- * been removed — a copy must always render.
+ * been removed **or that this copy no longer qualifies for** — a rolled-back
+ * level or a raised `unlock.atLevel` can strand a `variant` on a look that is
+ * locked again, and the embedded appearance is what every client draws from.
+ * Passing the copy's level makes that fallback automatic, so the resource can
+ * never carry an `assetId` for artwork this copy has not earned.
  */
 export function toOwnedWaifuResource(
   waifu: PlayerWaifuRow,
@@ -118,10 +163,13 @@ export function toOwnedWaifuResource(
     currentAppearance(
       species: SpeciesRow | AppearanceSpecies,
       variant: string | null | undefined,
+      unlockCtx?: { level: number } | undefined,
     ): ResolvedAppearance;
   },
 ) {
-  const current = appearance.currentAppearance(species, waifu.variant);
+  const current = appearance.currentAppearance(species, waifu.variant, {
+    level: waifu.level,
+  });
   return {
     ...waifu,
     // Current SP is computed here rather than stored, through the one domain

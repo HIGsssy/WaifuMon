@@ -326,7 +326,12 @@ export function createTrainerProfileService(
     // line only appears when the player actually chose something.
     const target = careState.target;
     const worn = target
-      ? services.appearance.currentAppearance(target.species, target.waifu.variant)
+      ? services.appearance.currentAppearance(target.species, target.waifu.variant, {
+          // Unlock-aware, so the profile cannot name a look she has stopped
+          // qualifying for — the card beside it already falls back to the
+          // default, and the two must agree.
+          level: target.waifu.level,
+        })
       : null;
     // Re-drawn on every paint rather than kept from the create. A card carries
     // her level and her look, both of which the edit path exists to reflect —

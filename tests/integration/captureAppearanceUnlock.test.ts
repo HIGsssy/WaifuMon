@@ -265,7 +265,12 @@ describe('the owned-copy resource names artwork that exists', () => {
       const resource = toOwnedWaifuResource(newWaifu!, speciesRow, appearance);
       const catalogIds = appearance.catalogFor(speciesRow).map((a) => a.id);
 
-      expect(catalogIds).toContain(resource.selectedAppearance.assetId.variant);
+      // Non-null, and that is itself the assertion: `assetId` is withheld for
+      // locked artwork, and the look a freshly-captured copy is wearing is her
+      // ungated `owned` entry — so a null here would mean the default appearance
+      // had somehow become unearned.
+      expect(resource.selectedAppearance.assetId).not.toBeNull();
+      expect(catalogIds).toContain(resource.selectedAppearance.assetId?.variant);
     }
   });
 });

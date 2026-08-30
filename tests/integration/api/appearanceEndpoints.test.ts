@@ -169,7 +169,7 @@ describe('GET …/appearances', () => {
     ]);
   });
 
-  it('carries assetId and the cosmetic metadata set', async () => {
+  it('carries assetId and the cosmetic metadata set for an unlocked entry', async () => {
     const body = await get(
       `/api/v1/players/${playerId}/collection/owned/${waifuId}/appearances`,
     );
@@ -179,6 +179,51 @@ describe('GET …/appearances', () => {
       flavorText: 'Prepared for the annual shrine celebration.',
       introducedVersion: 'v1.3',
     });
+  });
+
+  /**
+   * The API half of the locked-artwork fix.
+   *
+   * A client that received `assetId` for a locked entry had the artwork —
+   * `waifumon/<slug>/<variant>.png` on disk, `?variant=` on the card route —
+   * and the only thing standing between a player and the reward was whether
+   * the client chose to render it. The Portal literally offered a "Reveal
+   * artwork" button over the top. So the identifier is withheld, and
+   * `isUnlocked: false` became a rendering hint rather than the fence.
+   */
+  it('withholds assetId for a locked entry while keeping it a named slot', async () => {
+    const body = await get(
+      `/api/v1/players/${playerId}/collection/owned/${waifuId}/appearances`,
+    );
+    const locked = body.data.appearances.find((a: any) => a.id === 'level_40');
+
+    expect(locked).toMatchObject({
+      id: 'level_40',
+      name: 'Eclipse',
+      unlockLabel: 'Reach Level 40',
+      isUnlocked: false,
+      assetId: null,
+    });
+  });
+
+  it('ties assetId to isUnlocked on every entry, with no exceptions', async () => {
+    const body = await get(
+      `/api/v1/players/${playerId}/collection/owned/${waifuId}/appearances`,
+    );
+    for (const entry of body.data.appearances) {
+      expect(entry.assetId === null).toBe(!entry.isUnlocked);
+    }
+  });
+
+  it('names no asset reference inside a locked entry', async () => {
+    const body = await get(
+      `/api/v1/players/${playerId}/collection/owned/${waifuId}/appearances`,
+    );
+    for (const entry of body.data.appearances.filter((a: any) => !a.isUnlocked)) {
+      const json = JSON.stringify(entry);
+      expect(json).not.toContain('"kind"');
+      expect(json).not.toContain('waifumon');
+    }
   });
 
   it('acknowledges retroactive unlocks on read and audits them', async () => {
@@ -275,6 +320,54 @@ describe('species catalog on the content endpoint', () => {
     // endpoint's job, and mixing the two would make this cacheable-per-player.
     expect(body.data.appearances[0]).not.toHaveProperty('isUnlocked');
     expect(body.data.appearances[0]).not.toHaveProperty('isSelected');
+  });
+
+  /**
+   * The catalog has **no player in scope**, which is exactly why it cannot hand
+   * out gated artwork: there is nobody here whose level could justify it. It
+   * was the quiet leak — a public encyclopedia response carrying an `assetId`
+   * for every level-gated look in the game, no ownership required.
+   *
+   * The ungated `owned` entry still carries one: everyone who can see the
+   * species has earned it by definition, and the encyclopedia would be blank
+   * without it.
+   */
+  it('reveals artwork only for the ungated default', async () => {
+    const body = await get('/api/v1/content/species/alley_catgirl');
+    const byId = Object.fromEntries(body.data.appearances.map((a: any) => [a.id, a]));
+
+    expect(byId['standard'].assetId).toMatchObject({ kind: 'waifumon', variant: 'standard' });
+    expect(byId['level_5'].assetId).toBeNull();
+    expect(byId['level_40'].assetId).toBeNull();
+  });
+
+  it('still lists gated entries as slots with their requirement', async () => {
+    const body = await get('/api/v1/content/species/alley_catgirl');
+    const gated = body.data.appearances.find((a: any) => a.id === 'level_40');
+
+    // The encyclopedia can still say "there is more at Level 40" — it just
+    // cannot say what it looks like.
+    expect(gated).toMatchObject({ name: 'Eclipse', unlockLabel: 'Reach Level 40' });
+  });
+
+  /**
+   * A copy at level 5 has earned `level_5`, and the collection gallery says so
+   * with an `assetId`. The catalog embedded in the *same* payload set must
+   * still withhold it — the two answer different questions, and conflating
+   * them is how a per-player reveal turns into a public one.
+   */
+  it('does not inherit a reveal from the player’s own gallery', async () => {
+    const gallery = await get(
+      `/api/v1/players/${playerId}/collection/owned/${waifuId}/appearances`,
+    );
+    const catalog = await get('/api/v1/content/species/alley_catgirl');
+
+    const mine = gallery.data.appearances.find((a: any) => a.id === 'level_5');
+    const public_ = catalog.data.appearances.find((a: any) => a.id === 'level_5');
+
+    expect(mine.isUnlocked).toBe(true);
+    expect(mine.assetId).not.toBeNull();
+    expect(public_.assetId).toBeNull();
   });
 
   it('gives a species with no authored catalog its implicit standard entry', async () => {

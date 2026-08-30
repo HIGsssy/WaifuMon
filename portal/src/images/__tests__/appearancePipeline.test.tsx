@@ -26,6 +26,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import type { Appearance } from '@/api/types';
 import { Artwork } from '@/components/media/Artwork';
 import { appearanceAsset } from '@/images/assets';
+import type { AssetId } from '@/images/types';
 import { createLocalDevAssetsProvider } from '../providers/localDevAssets';
 import { createSilhouetteProvider } from '../providers/silhouette';
 import { resolveAsset, setImageProviderChain } from '../provider';
@@ -33,6 +34,19 @@ import { ARTWORK_WIDTH } from '../sizes';
 
 const SLUG = 'test_species';
 const portalRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
+
+/**
+ * `appearanceAsset` for an entry this file has already declared unlocked.
+ *
+ * It returns `AssetId | null` because a locked entry arrives with no `assetId`
+ * — that is the access control. Every appearance here is unlocked, so the
+ * assertion is a statement about the fixture rather than a hope about the code.
+ */
+function assetOf(appearance: Appearance): AssetId {
+  const asset = appearanceAsset(appearance);
+  if (asset === null) throw new Error(`fixture ${appearance.id} has no assetId`);
+  return asset;
+}
 
 beforeEach(() => {
   setImageProviderChain([createLocalDevAssetsProvider(), createSilhouetteProvider()]);
@@ -52,6 +66,10 @@ function apiAppearance(id: string, overrides: Partial<Appearance> = {}): Appeara
     assetId: { kind: 'waifumon', slug: SLUG, variant: id },
     unlock: { type: 'owned' },
     unlockLabel: 'Owned',
+    // Unlocked throughout: this file is about *resolution*, not about access
+    // control. `appearanceAsset` returns `null` for a locked entry — that path
+    // is covered in `AppearanceGallery.test.tsx`, where the rendering decision
+    // it drives actually lives.
     isUnlocked: true,
     isSelected: false,
     ...overrides,
@@ -60,7 +78,7 @@ function apiAppearance(id: string, overrides: Partial<Appearance> = {}): Appeara
 
 describe('appearance identity → image URL', () => {
   it('resolves a level appearance to its own artwork, not the species default', () => {
-    const resolved = resolveAsset(appearanceAsset(apiAppearance('level_20')), {
+    const resolved = resolveAsset(assetOf(apiAppearance('level_20')), {
       displayWidth: ARTWORK_WIDTH.gridTile,
     });
 
@@ -70,10 +88,10 @@ describe('appearance identity → image URL', () => {
   });
 
   it('asks for a rendition sized to what is being drawn', () => {
-    const tile = resolveAsset(appearanceAsset(apiAppearance('level_20')), {
+    const tile = resolveAsset(assetOf(apiAppearance('level_20')), {
       displayWidth: ARTWORK_WIDTH.gridTile,
     });
-    const hero = resolveAsset(appearanceAsset(apiAppearance('level_20')), {
+    const hero = resolveAsset(assetOf(apiAppearance('level_20')), {
       displayWidth: ARTWORK_WIDTH.hero,
     });
 
@@ -84,7 +102,7 @@ describe('appearance identity → image URL', () => {
 
   it('resolves an appearance id this codebase has never heard of', () => {
     // If this needed a code change, every seasonal drop would need one too.
-    const resolved = resolveAsset(appearanceAsset(apiAppearance('winter_2026')), {
+    const resolved = resolveAsset(assetOf(apiAppearance('winter_2026')), {
       displayWidth: ARTWORK_WIDTH.gridTile,
     });
 
@@ -94,7 +112,7 @@ describe('appearance identity → image URL', () => {
   it('keeps each appearance of one species distinct', () => {
     const urls = ['standard', 'level_10', 'level_50', 'winter_2026'].map(
       (id) =>
-        resolveAsset(appearanceAsset(apiAppearance(id)), {
+        resolveAsset(assetOf(apiAppearance(id)), {
           displayWidth: ARTWORK_WIDTH.gridTile,
         }).url,
     );
@@ -240,7 +258,7 @@ describe('rendering an appearance', () => {
   function renderAppearance(id: string) {
     return render(
       <Artwork
-        asset={appearanceAsset(apiAppearance(id))}
+        asset={assetOf(apiAppearance(id))}
         name={id}
         displayWidth={ARTWORK_WIDTH.gridTile}
       />,
@@ -264,7 +282,7 @@ describe('rendering an appearance', () => {
 
     rerender(
       <Artwork
-        asset={appearanceAsset(apiAppearance('level_20'))}
+        asset={assetOf(apiAppearance('level_20'))}
         name="level_20"
         displayWidth={ARTWORK_WIDTH.gridTile}
       />,
@@ -273,7 +291,7 @@ describe('rendering an appearance', () => {
 
     rerender(
       <Artwork
-        asset={appearanceAsset(apiAppearance('standard'))}
+        asset={assetOf(apiAppearance('standard'))}
         name="standard"
         displayWidth={ARTWORK_WIDTH.gridTile}
       />,

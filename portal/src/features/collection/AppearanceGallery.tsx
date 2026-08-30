@@ -7,22 +7,28 @@
  *      Level 20", "Winter Festival 2027" — the label is the point, so a player
  *      opening a species they just caught can already read what is ahead.
  *      Hiding locked entries would turn a journal back into a picker.
- *   2. **Locked artwork stays a silhouette until asked for.** Tapping a locked
- *      tile opens its detail panel with a "Reveal artwork" control rather than
- *      spoiling the grid — players who want the surprise keep it.
+ *   2. **Locked artwork is never shown, and there is no way to ask for it.**
+ *      The picture *is* the reward for reaching the level, so a locked tile is
+ *      a named slot with its requirement and nothing else. This used to be a
+ *      silhouette with a "Reveal artwork" button, which was a client-side
+ *      curtain over art the API had already sent — the reward was one click
+ *      away for anyone who wanted it, and zero clicks away for anyone reading
+ *      the network tab. The API now withholds `assetId` for locked entries, so
+ *      the curtain is gone along with the thing it was hiding.
  *   3. **Cosmetic rarity is styled unlike species rarity.** A dotted chip in
  *      the accent colour, never the rarity palette, so a Rare species wearing a
  *      Seasonal look reads as two independent facts.
  *
  * Unlock state is never computed here. `isUnlocked` comes from the Platform
- * API, so this component needs no change when a new unlock source ships.
+ * API, so this component needs no change when a new unlock source ships — and
+ * it is a *rendering* hint, not the fence: the fence is the missing `assetId`.
  *
  * **Read-only, deliberately.** The Portal browses; Discord acts (§4). Choosing
  * a look is `/wm appearance` until the authenticated-Portal milestone gives
  * writes a real identity to happen under — so the panel names that command
  * rather than offering a button the client would refuse to send.
  */
-import { Check, Eye, Lock, Sparkles } from 'lucide-react';
+import { Check, Lock, Sparkles } from 'lucide-react';
 import { useState } from 'react';
 
 import { useWaifuAppearances } from '@/api/hooks/useCollection';
@@ -65,16 +71,43 @@ function CosmeticRarityChip({ rarity }: { rarity: string }) {
   );
 }
 
+/**
+ * The stand-in for a locked tile's artwork.
+ *
+ * Deliberately not a silhouette of the real thing and not a blur of it — both
+ * would need the artwork in the browser to produce. It is drawn from nothing
+ * but a lock glyph and the requirement text, which is all the client has for a
+ * locked entry and all it should have.
+ */
+function LockedArtworkSlot({ unlockLabel, aspect }: { unlockLabel: string; aspect: string }) {
+  return (
+    <div
+      className={cn(
+        'flex flex-col items-center justify-center gap-2 border-b border-border border-dashed bg-surface-sunken px-3 text-center',
+        aspect,
+      )}
+      // Decorative: the tile's own `aria-label` already announces the name,
+      // the locked state and the requirement, and repeating them here would
+      // make a screen reader read the tile twice.
+      aria-hidden="true"
+    >
+      <Lock className="size-5 text-ink-subtle" />
+      <span className="text-[0.7rem] leading-tight font-medium text-ink-subtle">
+        {unlockLabel}
+      </span>
+    </div>
+  );
+}
+
 interface AppearanceTileProps {
   appearance: Appearance;
   isActive: boolean;
-  /** True once the player has explicitly asked to see locked artwork. */
-  revealed: boolean;
   onSelect: () => void;
 }
 
-function AppearanceTile({ appearance, isActive, revealed, onSelect }: AppearanceTileProps) {
+function AppearanceTile({ appearance, isActive, onSelect }: AppearanceTileProps) {
   const locked = !appearance.isUnlocked;
+  const asset = appearanceAsset(appearance);
   const stateLabel = appearance.isSelected
     ? 'currently worn'
     : locked
@@ -101,13 +134,19 @@ function AppearanceTile({ appearance, isActive, revealed, onSelect }: Appearance
       )}
     >
       <div className="relative">
-        <Artwork
-          asset={appearanceAsset(appearance)}
-          displayWidth={ARTWORK_WIDTH.strip}
-          name={appearance.name}
-          silhouette={locked && !revealed}
-          aspect="aspect-[3/4]"
-        />
+        {/* `asset` is null exactly when the API withheld the artwork. Testing
+            it rather than `locked` means the placeholder is driven by what we
+            actually have, so no future prop can put a picture here. */}
+        {asset === null ? (
+          <LockedArtworkSlot unlockLabel={appearance.unlockLabel} aspect="aspect-[3/4]" />
+        ) : (
+          <Artwork
+            asset={asset}
+            displayWidth={ARTWORK_WIDTH.strip}
+            name={appearance.name}
+            aspect="aspect-[3/4]"
+          />
+        )}
         {appearance.isSelected && (
           <span className="absolute top-2 right-2 inline-flex items-center gap-1 rounded-full bg-accent px-2 py-0.5 text-[0.65rem] font-semibold text-white shadow">
             <Check className="size-3" aria-hidden="true" />
@@ -142,11 +181,9 @@ function AppearanceTile({ appearance, isActive, revealed, onSelect }: Appearance
 
 interface AppearanceDetailProps {
   appearance: Appearance;
-  revealed: boolean;
-  onReveal: () => void;
 }
 
-function AppearanceDetail({ appearance, revealed, onReveal }: AppearanceDetailProps) {
+function AppearanceDetail({ appearance }: AppearanceDetailProps) {
   const locked = !appearance.isUnlocked;
 
   return (
@@ -156,10 +193,13 @@ function AppearanceDetail({ appearance, revealed, onReveal }: AppearanceDetailPr
         <CosmeticRarityChip rarity={appearance.cosmeticRarity} />
       </div>
 
-      {appearance.flavorText && (
+      {/* Flavour text and description are held back with the artwork. They
+          describe the look, and describing a surprise is a smaller version of
+          spoiling it — the unlock label is what a locked entry is *for*. */}
+      {!locked && appearance.flavorText && (
         <p className="mt-2 text-sm text-ink-muted italic">“{appearance.flavorText}”</p>
       )}
-      {appearance.description && (
+      {!locked && appearance.description && (
         <p className="mt-2 text-sm text-ink-muted">{appearance.description}</p>
       )}
 
@@ -182,18 +222,12 @@ function AppearanceDetail({ appearance, revealed, onReveal }: AppearanceDetailPr
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
         {locked ? (
-          <>
-            {/* Rule 2: revealing locked art is opt-in, one player at a time. */}
-            {!revealed && (
-              <Button variant="outline" size="sm" onClick={onReveal}>
-                <Eye aria-hidden="true" />
-                Reveal artwork
-              </Button>
-            )}
-            <p className="self-center text-sm text-ink-subtle">
-              Locked — {appearance.unlockLabel}.
-            </p>
-          </>
+          // Rule 2: no reveal control, because there is nothing to reveal — the
+          // API sent no artwork for this entry. The requirement is the panel.
+          <p className="self-center text-sm text-ink-subtle">
+            <Lock className="mr-1 inline size-3.5 align-[-2px]" aria-hidden="true" />
+            Locked — {appearance.unlockLabel}. The artwork stays hidden until you earn it.
+          </p>
         ) : appearance.isSelected ? (
           <p className="text-sm text-ink-muted">She’s wearing this one.</p>
         ) : (
@@ -221,8 +255,6 @@ export function AppearanceGallery({ playerId, waifuId, waifuName }: AppearanceGa
   const gallery = useWaifuAppearances(playerId, waifuId);
 
   const [activeId, setActiveId] = useState<string | null>(null);
-  /** Ids whose locked artwork the player has explicitly asked to see. */
-  const [revealedIds, setRevealedIds] = useState<ReadonlySet<string>>(new Set());
 
   if (gallery.isError) {
     return (
@@ -279,19 +311,12 @@ export function AppearanceGallery({ playerId, waifuId, waifuName }: AppearanceGa
             key={appearance.id}
             appearance={appearance}
             isActive={appearance.id === active?.id}
-            revealed={revealedIds.has(appearance.id)}
             onSelect={() => setActiveId(appearance.id)}
           />
         ))}
       </div>
 
-      {active && (
-        <AppearanceDetail
-          appearance={active}
-          revealed={revealedIds.has(active.id)}
-          onReveal={() => setRevealedIds((prev) => new Set(prev).add(active.id))}
-        />
-      )}
+      {active && <AppearanceDetail appearance={active} />}
     </Card>
   );
 }

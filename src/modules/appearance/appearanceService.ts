@@ -48,7 +48,11 @@ import {
   type AppearanceSpecies,
   type ResolvedAppearance,
 } from './appearanceContent';
-import { detectNewlyUnlocked, isAppearanceUnlocked } from './appearanceRules';
+import {
+  detectNewlyUnlocked,
+  isAppearanceUnlocked,
+  type AppearanceUnlockContext,
+} from './appearanceRules';
 
 /** Audit vocabulary for `player_progression_events.event_type`. */
 export const APPEARANCE_UNLOCK_EVENT = 'appearance_unlock';
@@ -63,6 +67,18 @@ export type AppearanceUnlockSource = 'owned' | 'level' | 'content_add';
 /**
  * One appearance as a *player* sees it: the authored metadata plus this
  * copy's state. Never carries a path, URL, or file extension.
+ *
+ * **`assetId` is `null` while the appearance is locked, and that is the whole
+ * access control.** An `AssetId` is not merely a label — every consumer
+ * resolves it deterministically to artwork (`waifumon/<slug>/<variant>.png` on
+ * disk, a card route on the wire), so handing one out *is* handing out the
+ * picture. The artwork is the reward for reaching the level; a client that
+ * never receives the identifier has nothing to fetch, blur, or "reveal", and no
+ * amount of client-side tampering conjures it back.
+ *
+ * Text metadata stays: the gallery is still a progression journal, and `name`
+ * plus `unlockLabel` are what make a locked slot legible ("Midnight Shrine —
+ * Reach Level 20"). Only the picture is withheld.
  */
 export interface AppearanceView {
   id: string;
@@ -71,7 +87,8 @@ export interface AppearanceView {
   flavorText: string | null;
   cosmeticRarity: CosmeticRarity;
   introducedVersion: string | null;
-  assetId: AssetId;
+  /** The artwork identifier — `null` while `isUnlocked` is false. */
+  assetId: AssetId | null;
   /** Structured requirement, for clients that want to render it themselves. */
   unlock: ResolvedAppearance['unlock'];
   /** Human-readable requirement — shown on locked *and* unlocked tiles. */
@@ -102,9 +119,23 @@ export interface AppearanceUnlockRef {
   source: AppearanceUnlockSource;
 }
 
+/**
+ * An appearance that is unlocked *by construction* — you cannot hold one of
+ * these without having earned it, so `assetId` is guaranteed present.
+ *
+ * This is what lets a surface that has just applied a look (the toast, the
+ * `WAIFU_APPEARANCE_CHANGED` event) use its artwork without a null check, while
+ * the general {@link AppearanceView} keeps forcing every *gallery* surface to
+ * decide what to do about a withheld one. The type does the arguing.
+ */
+export type UnlockedAppearanceView = AppearanceView & {
+  assetId: AssetId;
+  isUnlocked: true;
+};
+
 export interface SelectAppearanceResult {
   waifu: PlayerWaifuRow;
-  appearance: AppearanceView;
+  appearance: UnlockedAppearanceView;
 }
 
 export interface AppearanceService {
@@ -147,10 +178,30 @@ export interface AppearanceService {
     appearances: readonly ResolvedAppearance[],
     source: AppearanceUnlockSource,
   ): Promise<AppearanceUnlockRef[]>;
-  /** The appearance a copy is currently wearing. Pure lookup, no query. */
+  /**
+   * The appearance a copy is currently wearing. Pure lookup, no query.
+   *
+   * Pass `unlockCtx` whenever the copy's level is in hand: a `variant` naming
+   * a look this copy has *stopped* qualifying for degrades to the default
+   * rather than rendering locked artwork. See `appearanceForVariant`.
+   */
   currentAppearance(
     species: SpeciesRow | AppearanceSpecies,
     variant: string | null | undefined,
+    unlockCtx?: AppearanceUnlockContext | undefined,
+  ): ResolvedAppearance;
+  /**
+   * Throw unless this copy has earned the named appearance. The one guard
+   * every player-facing render path calls before it draws artwork by id.
+   *
+   * Throws `AppearanceNotFoundError` for an id the species does not have and
+   * `AppearanceLockedError` for one it has not earned — the same two errors
+   * `selectAppearance` raises, so a caller maps one pair of status codes.
+   */
+  assertUnlocked(
+    species: SpeciesRow | AppearanceSpecies,
+    appearanceId: string,
+    unlockCtx: AppearanceUnlockContext,
   ): ResolvedAppearance;
   /** The species' catalog, resolved and ordered. Pure lookup, no query. */
   catalogFor(species: SpeciesRow | AppearanceSpecies): ResolvedAppearance[];
@@ -206,7 +257,23 @@ export function createAppearanceService(deps: AppearanceServiceDeps): Appearance
   const currentAppearance = (
     species: SpeciesRow | AppearanceSpecies,
     variant: string | null | undefined,
-  ): ResolvedAppearance => appearanceForVariant(asAppearanceSpecies(species), variant);
+    unlockCtx?: AppearanceUnlockContext | undefined,
+  ): ResolvedAppearance =>
+    appearanceForVariant(asAppearanceSpecies(species), variant, unlockCtx);
+
+  const assertUnlocked = (
+    species: SpeciesRow | AppearanceSpecies,
+    appearanceId: string,
+    unlockCtx: AppearanceUnlockContext,
+  ): ResolvedAppearance => {
+    const appearanceSpecies = asAppearanceSpecies(species);
+    const target = resolveAppearances(appearanceSpecies).find((a) => a.id === appearanceId);
+    if (!target) throw new AppearanceNotFoundError(appearanceId, appearanceSpecies.slug);
+    if (!isAppearanceUnlocked(target, unlockCtx)) {
+      throw new AppearanceLockedError(appearanceId, target.unlockLabel);
+    }
+    return target;
+  };
 
   function toRef(
     waifuId: number,
@@ -343,6 +410,7 @@ export function createAppearanceService(deps: AppearanceServiceDeps): Appearance
     speciesContent,
     catalogFor,
     currentAppearance,
+    assertUnlocked,
     acknowledgeUnlocks,
     syncUnlocks,
 
@@ -383,22 +451,31 @@ export function createAppearanceService(deps: AppearanceServiceDeps): Appearance
         });
       }
 
-      const selected = currentAppearance(species, waifu.variant).id;
+      // Unlock-aware: a `variant` this copy no longer qualifies for reads as
+      // the default here, so `selected` can never name a locked entry — and
+      // therefore can never be the one entry that carries an `assetId` it
+      // should not.
+      const selected = currentAppearance(species, waifu.variant, ctx).id;
       return {
         selected,
-        appearances: catalog.map((appearance) => ({
-          id: appearance.id,
-          name: appearance.name,
-          description: appearance.description,
-          flavorText: appearance.flavorText,
-          cosmeticRarity: appearance.cosmeticRarity,
-          introducedVersion: appearance.introducedVersion,
-          assetId: appearance.assetId,
-          unlock: appearance.unlock,
-          unlockLabel: appearance.unlockLabel,
-          isUnlocked: isAppearanceUnlocked(appearance, ctx),
-          isSelected: appearance.id === selected,
-        })),
+        appearances: catalog.map((appearance) => {
+          const isUnlocked = isAppearanceUnlocked(appearance, ctx);
+          return {
+            id: appearance.id,
+            name: appearance.name,
+            description: appearance.description,
+            flavorText: appearance.flavorText,
+            cosmeticRarity: appearance.cosmeticRarity,
+            introducedVersion: appearance.introducedVersion,
+            // The access control, in one ternary. A locked entry is a slot
+            // with a requirement on it, never a picture — see `AppearanceView`.
+            assetId: isUnlocked ? appearance.assetId : null,
+            unlock: appearance.unlock,
+            unlockLabel: appearance.unlockLabel,
+            isUnlocked,
+            isSelected: appearance.id === selected,
+          };
+        }),
       };
     },
 
@@ -434,7 +511,8 @@ export function createAppearanceService(deps: AppearanceServiceDeps): Appearance
             assetId: target.assetId,
             unlock: target.unlock,
             unlockLabel: target.unlockLabel,
-            isUnlocked: true,
+            // `true` and not `boolean`: the lines above threw unless it was.
+            isUnlocked: true as const,
             isSelected: true,
           },
         };
