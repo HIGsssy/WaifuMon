@@ -1,0 +1,615 @@
+{
+  "energy": {
+    "baseMax": 25,
+    "careMode": {
+      "enabled": true,
+      "intervalMinutes": 30,
+      "energyPerTick": 1,
+      "recoveryCap": 20,
+      "waifuXpPerTick": 2,
+      "affectionPerTick": 1
+    }
+  },
+  "inventory": {
+    "captureCapacity": 100
+  },
+  "dailyPackage": {
+    "waifubux": 100,
+    "items": {
+      "basic_charm": 5,
+      "silk_charm": 2,
+      "velvet_charm": 1
+    }
+  },
+  "hunt": {
+    "cooldownSeconds": 2,
+    "encounterExpirySeconds": 120,
+    "sessionIdleMinutes": 15,
+    "locationFlavors": [
+      "the Whispering Forest",
+      "the Neon Boardwalk",
+      "the Velvet Grove",
+      "the Moonlit Docks"
+    ],
+    "resultTable": [
+      {
+        "kind": "encounter",
+        "weight": 70
+      },
+      {
+        "kind": "item_find",
+        "weight": 12
+      },
+      {
+        "kind": "waifubux_find",
+        "weight": 8
+      },
+      {
+        "kind": "essence_find",
+        "weight": 5
+      },
+      {
+        "kind": "rare_item_find",
+        "weight": 3
+      },
+      {
+        "kind": "flavor",
+        "weight": 2
+      }
+    ],
+    "rarityTable": [
+      {
+        "rarity": "N",
+        "weight": 60
+      },
+      {
+        "rarity": "R",
+        "weight": 25
+      },
+      {
+        "rarity": "SR",
+        "weight": 10
+      },
+      {
+        "rarity": "SSR",
+        "weight": 4
+      },
+      {
+        "rarity": "UR",
+        "weight": 0.9
+      },
+      {
+        "rarity": "LR",
+        "weight": 0.1
+      }
+    ],
+    "itemFind": {
+      "sub": [
+        {
+          "slug": "basic_charm",
+          "weight": 70,
+          "minQty": 1,
+          "maxQty": 3
+        },
+        {
+          "slug": "silk_charm",
+          "weight": 30,
+          "minQty": 1,
+          "maxQty": 2
+        }
+      ]
+    },
+    "rareItemFind": {
+      "sub": [
+        {
+          "slug": "velvet_charm",
+          "weight": 60,
+          "minQty": 1,
+          "maxQty": 1
+        },
+        {
+          "slug": "prismatic_charm",
+          "weight": 39,
+          "minQty": 1,
+          "maxQty": 1
+        },
+        {
+          "slug": "mythic_contract",
+          "weight": 1,
+          "minQty": 1,
+          "maxQty": 1
+        }
+      ]
+    },
+    "waifubuxFind": {
+      "min": 25,
+      "max": 75
+    },
+    "essenceFind": {
+      "min": 3,
+      "max": 10
+    },
+    "flavor": [
+      "You found a suspiciously heart-shaped rock.",
+      "The wind carried a faint giggle. Nothing else.",
+      "A single silk ribbon flutters by, ownerless.",
+      "You catch a whiff of perfume — then it's gone."
+    ]
+  },
+  "capture": {
+    "baseRatesByRarity": {
+      "N": 0.5,
+      "R": 0.35,
+      "SR": 0.22,
+      "SSR": 0.12,
+      "UR": 0.06,
+      "LR": 0.03,
+      "EX": 0.03
+    },
+    "minChance": 0.02,
+    "maxChance": 0.95,
+    "announceMinRarity": "SR",
+    "hereMentionMinRarity": "UR"
+  },
+  "buddyAffinity": {
+    "styles": [
+      "dominant",
+      "submissive",
+      "caregiver",
+      "primal",
+      "switch"
+    ],
+    "wheel": {
+      "dominant": "submissive",
+      "submissive": "caregiver",
+      "caregiver": "primal",
+      "primal": "dominant"
+    },
+    "neutralStyles": [
+      "switch"
+    ],
+    "strongBonusByRarity": {
+      "N": 0.01,
+      "R": 0.02,
+      "SR": 0.03,
+      "SSR": 0.04,
+      "UR": 0.05,
+      "LR": 0.06,
+      "EX": 0.06
+    },
+    "weakPenaltyByRarity": {
+      "N": 0,
+      "R": 0,
+      "SR": 0,
+      "SSR": 0,
+      "UR": 0,
+      "LR": 0,
+      "EX": 0
+    }
+  },
+  "duplicate": {
+    "essenceByRarity": {
+      "N": 5,
+      "R": 15,
+      "SR": 40,
+      "SSR": 100,
+      "UR": 250,
+      "LR": 600,
+      "EX": 1000
+    },
+    "releaseFraction": 0.5,
+    "keepOnTimeoutSeconds": 300
+  },
+  "progression": {
+    "levelCurve": {
+      "base": 100,
+      "growth": 50
+    },
+    "maxLevel": 50,
+    "maxEnergy": {
+      "cap": 40,
+      "levelBonuses": [
+        {
+          "atLevel": 7,
+          "delta": 5
+        },
+        {
+          "atLevel": 20,
+          "delta": 5
+        }
+      ]
+    },
+    "xp": {
+      "hunt": 5,
+      "captureFailed": 2,
+      "captureSuccessByRarity": {
+        "N": 10,
+        "R": 15,
+        "SR": 25,
+        "SSR": 50,
+        "UR": 100,
+        "LR": 200,
+        "EX": 100
+      },
+      "newDexEntry": 25,
+      "dailyClaim": 20
+    },
+    "rareEncounterShift": {
+      "atLevel": 40,
+      "fromRarity": "N",
+      "toRarity": "R",
+      "weightUnits": 1
+    },
+    "dailyBonusItems": [
+      {
+        "atLevel": 12,
+        "slug": "silk_charm",
+        "quantity": 1
+      }
+    ],
+    "dailyRareItemChance": {
+      "atLevel": 30,
+      "chance": 0.15,
+      "slug": "velvet_charm",
+      "quantity": 1
+    },
+    "prestigeTitles": [
+      {
+        "atLevel": 50,
+        "label": "Prestige Hunter"
+      }
+    ]
+  },
+  "waifuProgression": {
+    "levelCurve": {
+      "base": 30,
+      "growth": 10
+    },
+    "maxLevel": 50,
+    "buddy": {
+      "xpPerHunt": 2,
+      "affectionPerHunt": 1
+    },
+    "essenceInvestment": {
+      "essenceCost": 10,
+      "xpGranted": 25
+    },
+    "nicknameMinLevel": 5
+  },
+  "dailyQuests": {
+    "enabled": true,
+    "questsPerDay": 3,
+    "allCompleteBonus": {
+      "waifubux": 50,
+      "items": [
+        {
+          "slug": "silk_charm",
+          "quantity": 1
+        }
+      ]
+    },
+    "pool": [
+      {
+        "slug": "spend_5_energy",
+        "title": "Warm-Up Hunt",
+        "description": "Spend 5 Hunt Energy.",
+        "type": "hunt_energy_spent",
+        "target": 5,
+        "weight": 100,
+        "difficulty": "easy",
+        "rewards": {
+          "waifubux": 25,
+          "items": [
+            {
+              "slug": "basic_charm",
+              "quantity": 1
+            }
+          ]
+        }
+      },
+      {
+        "slug": "attempt_3_captures",
+        "title": "Take Your Shot",
+        "description": "Attempt 3 captures.",
+        "type": "capture_attempts",
+        "target": 3,
+        "weight": 100,
+        "difficulty": "easy",
+        "rewards": {
+          "essence": 5,
+          "items": [
+            {
+              "slug": "basic_charm",
+              "quantity": 1
+            }
+          ]
+        }
+      },
+      {
+        "slug": "catch_1_waifumon",
+        "title": "New Company",
+        "description": "Catch 1 Waifumon.",
+        "type": "capture_success",
+        "target": 1,
+        "weight": 100,
+        "difficulty": "easy",
+        "rewards": {
+          "waifubux": 30,
+          "essence": 5
+        }
+      },
+      {
+        "slug": "catch_1_rare_plus",
+        "title": "A Little Sparkle",
+        "description": "Catch 1 Rare or higher Waifumon.",
+        "type": "capture_success_rarity_at_least",
+        "rarityAtLeast": "R",
+        "target": 1,
+        "weight": 70,
+        "difficulty": "medium",
+        "rewards": {
+          "items": [
+            {
+              "slug": "silk_charm",
+              "quantity": 1
+            }
+          ]
+        }
+      },
+      {
+        "slug": "gain_10_affection",
+        "title": "Soft Hands, Sharp Instincts",
+        "description": "Gain 10 affection with any Waifumon.",
+        "type": "waifu_affection_gained",
+        "target": 10,
+        "weight": 80,
+        "difficulty": "easy",
+        "rewards": {
+          "essence": 10
+        }
+      },
+      {
+        "slug": "care_mode_tick",
+        "title": "Quiet Care",
+        "description": "Process 1 Care Mode tick.",
+        "type": "care_mode_ticks",
+        "target": 1,
+        "weight": 80,
+        "difficulty": "easy",
+        "rewards": {
+          "waifubux": 20,
+          "essence": 5
+        }
+      },
+      {
+        "slug": "convert_1_duplicate",
+        "title": "No Waste",
+        "description": "Convert 1 duplicate to Essence.",
+        "type": "duplicate_converted",
+        "target": 1,
+        "weight": 40,
+        "difficulty": "medium",
+        "rewards": {
+          "items": [
+            {
+              "slug": "silk_charm",
+              "quantity": 1
+            }
+          ],
+          "essence": 10
+        }
+      },
+      {
+        "slug": "inspect_collection",
+        "title": "Admire the Collection",
+        "description": "Inspect one owned Waifumon.",
+        "type": "inspect_waifu",
+        "target": 1,
+        "weight": 60,
+        "difficulty": "easy",
+        "rewards": {
+          "waifubux": 15
+        }
+      }
+    ]
+  },
+  "affectionGifts": {
+    "enabled": true,
+    "tiers": [
+      {
+        "minAffection": 500,
+        "dailyChance": 0.1,
+        "guaranteeAfter": 7,
+        "tier": "low"
+      },
+      {
+        "minAffection": 1500,
+        "dailyChance": 0.15,
+        "guaranteeAfter": 6,
+        "tier": "mid"
+      },
+      {
+        "minAffection": 3000,
+        "dailyChance": 0.2,
+        "guaranteeAfter": 5,
+        "tier": "high"
+      }
+    ],
+    "lootTable": [
+      {
+        "slug": "quickie_coffee",
+        "quantity": 1,
+        "weight": 4200
+      },
+      {
+        "slug": "reach_around",
+        "quantity": 1,
+        "weight": 2700
+      },
+      {
+        "slug": "full_body_massage",
+        "quantity": 1,
+        "weight": 1200
+      },
+      {
+        "slug": "fluffy_cuffs",
+        "quantity": 1,
+        "weight": 1000
+      },
+      {
+        "slug": "shibari_rope",
+        "quantity": 1,
+        "weight": 750
+      },
+      {
+        "slug": "prismatic_charm",
+        "quantity": 1,
+        "weight": 140
+      },
+      {
+        "slug": "mythic_contract",
+        "quantity": 1,
+        "weight": 10
+      }
+    ]
+  },
+  "bossEncounters": {
+    "enabled": true,
+    "regions": [
+      "waifu-valley"
+    ],
+    "scoutingMinutes": 30,
+    "downtimeMinutesMin": 11,
+    "downtimeMinutesMax": 24,
+    "attacksPerParticipation": 10,
+    "performanceMinPercent": 85,
+    "performanceMaxPercent": 115,
+    "affinityWheel": {
+      "dominant": "switch",
+      "submissive": "dominant",
+      "caregiver": "submissive",
+      "primal": "caregiver",
+      "switch": "primal"
+    },
+    "affinityAdvantageBonus": 0.1,
+    "responseBrackets": [
+      {
+        "withinMinutes": 5,
+        "bonus": 0.05
+      },
+      {
+        "withinMinutes": 15,
+        "bonus": 0.02
+      }
+    ],
+    "resultsPageSize": 10,
+    "resolveClaimTimeoutMinutes": 10,
+    "rewardTables": {
+      "standard-scouting-v1": {
+        "version": "standard-scouting-v1",
+        "buddyXp": 75,
+        "minorItems": [
+          {
+            "slug": "basic_charm",
+            "quantity": 1,
+            "weight": 4500
+          },
+          {
+            "slug": "silk_charm",
+            "quantity": 1,
+            "weight": 2500
+          },
+          {
+            "slug": "basic_charm",
+            "quantity": 3,
+            "weight": 2000
+          },
+          {
+            "slug": "velvet_charm",
+            "quantity": 1,
+            "weight": 900
+          },
+          {
+            "slug": "energy_drink",
+            "quantity": 1,
+            "weight": 100
+          }
+        ],
+        "jackpot": {
+          "slug": "mythic_contract",
+          "quantity": 1,
+          "chance": 0.0025
+        }
+      }
+    }
+  },
+  "seductivePower": {
+    "rangesByRarity": {
+      "N": {
+        "min": 90,
+        "max": 100
+      },
+      "R": {
+        "min": 105,
+        "max": 115
+      },
+      "SR": {
+        "min": 120,
+        "max": 130
+      },
+      "SSR": {
+        "min": 135,
+        "max": 145
+      },
+      "UR": {
+        "min": 150,
+        "max": 160
+      },
+      "LR": {
+        "min": 165,
+        "max": 175
+      },
+      "EX": {
+        "min": 180,
+        "max": 190
+      }
+    }
+  },
+  "uiFlavor": {
+    "mainMenu": [
+      "The charm compass hums softly. Somewhere nearby, a Waifumon is watching.",
+      "Neon mist coils around the alley as your next hunt comes into focus.",
+      "Your charms rattle at your belt. The hunt is ready.",
+      "A distant laugh echoes through the district, gone before you can place it.",
+      "The radar flickers once. Something rare may be close.",
+      "Another hunt begins beneath the glow of the Waifumon skyline.",
+      "The air feels charged, like a capture waiting to happen.",
+      "Your buddy watches the shadows, waiting for the next signal."
+    ]
+  },
+  "uiSplash": {
+    "enabled": true,
+    "title": "Welcome to Waifumon",
+    "body": [
+      "Step into the neon district and begin your hunt.",
+      "Catch, train, favorite, and care for your Waifumon collection.",
+      "Use your charms wisely — some encounters will not wait around forever.",
+      "__________________________________________________________________",
+      "Daily Quests are available to help you earn extra rewards.",
+      "Care Mode can help you recover energy and gain affection over time.",
+      "Don't forget to claim your daily package for free charms and Waifubux.",
+      "__________________________________________________________________",
+      "The Waifumon world is always changing, so check back often for new content.",
+      "Brought to you by the Waifumon team",
+      "Whistler",
+      "Gorthig",
+      "Potato"
+    ],
+    "imagePath": "ui/splash.png",
+    "buttonLabel": "Start Hunt",
+    "frequency": "daily"
+  },
+  "session": {
+    "inactiveTimeoutMinutes": 45
+  }
+}
