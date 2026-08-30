@@ -29,10 +29,12 @@ npm test               # Vitest; DB tests use Testcontainers (Docker required),
 
 ## Commands
 
-- `/waifumon menu | profile | daily | inventory | shop` — all ephemeral,
-  NSFW-marked channels only (PlayChannelGuard).
+- `/waifumon menu | profile | daily | inventory | shop` — all ephemeral;
+  guild channels only, honoring the optional per-guild play-channel allowlist
+  (PlayChannelGuard). Channel NSFW metadata is not enforced — server admins
+  control access via Discord permissions.
 - `/waifumon-admin allow-channel add|remove|list` — optional play-channel
-  allowlist (empty = any NSFW channel).
+  allowlist (empty = any guild channel).
 - `/waifumon-admin set-announce-channel` — must target an NSFW text channel.
 
 ## Admin web panel

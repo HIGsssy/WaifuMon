@@ -1,21 +1,23 @@
 /**
- * PlayChannelGuard — the single compliance choke point (plan §11).
- * The whole game only functions in NSFW-marked guild channels; if the guild
- * configured an allowed-channel list, the channel must also be on it.
- * The guard runs before every command and component handler, and before any
- * service call — blocked interactions consume nothing and write no rows.
+ * PlayChannelGuard — the single access-control choke point (plan §11).
+ * Waifumon runs in guild channels only; if the guild configured an
+ * allowed-channel list, the channel must also be on it. The guard runs before
+ * every command and component handler, and before any service call — blocked
+ * interactions consume nothing and write no rows.
+ *
+ * Channel-level NSFW gating is intentionally NOT enforced here: server
+ * administrators decide, via Discord permissions and the optional per-guild
+ * allowlist, where the bot may be used.
  */
 import { type GuildBasedChannel, type Interaction } from 'discord.js';
 
-export type DenyReason = 'dm' | 'not_nsfw' | 'not_allowed';
+export type DenyReason = 'dm' | 'not_allowed';
 
 export type GuardDecision = { allow: true } | { allow: false; reason: DenyReason };
 
 export interface GuardChannelInfo {
   /** False for DMs / non-guild contexts. */
   isGuildChannel: boolean;
-  /** Effective NSFW flag — threads inherit their parent's flag. */
-  isNsfw: boolean;
   channelId: string | null;
   /** Parent channel id when the interaction is inside a thread. */
   parentChannelId: string | null;
@@ -23,18 +25,16 @@ export interface GuardChannelInfo {
 
 /**
  * Pure decision function: guildConfig × channelInfo → allow | deny(reason).
- * Rules in order: (1) guild channel only, (2) NSFW-marked, (3) on the
- * allowlist when one is configured (empty/unset list = any NSFW channel).
+ * Rules in order: (1) guild channel only, (2) on the allowlist when one is
+ * configured (empty/unset list = any guild channel).
  *
- * `alwaysAllowedChannelIds` exempts a channel from rule **3 only** — today,
+ * `alwaysAllowedChannelIds` exempts a channel from rule **2 only** — today,
  * the guild's dedicated Boss Encounter channel. That channel is configured
- * through its own admin command, is validated as NSFW at configuration time,
- * and hosts buttons the bot itself posted; requiring an admin to *also* add it
- * to the play allowlist would turn a working feature into a support ticket.
+ * through its own admin command and hosts buttons the bot itself posted;
+ * requiring an admin to *also* add it to the play allowlist would turn a
+ * working feature into a support ticket.
  *
- * It deliberately does not exempt rules 1 and 2: the compliance requirement is
- * the game's, not this feature's, so an NSFW-unmarked boss channel is still
- * refused — and refused with the same wording as anywhere else.
+ * It deliberately does not exempt rule 1: a DM is still a DM.
  */
 export function decidePlayChannel(
   channel: GuardChannelInfo,
@@ -43,9 +43,6 @@ export function decidePlayChannel(
 ): GuardDecision {
   if (!channel.isGuildChannel || !channel.channelId) {
     return { allow: false, reason: 'dm' };
-  }
-  if (!channel.isNsfw) {
-    return { allow: false, reason: 'not_nsfw' };
   }
   if (allowedChannelIds && allowedChannelIds.length > 0) {
     const exempt = new Set(alwaysAllowedChannelIds.filter((id): id is string => Boolean(id)));
@@ -60,46 +57,15 @@ export function decidePlayChannel(
   return { allow: true };
 }
 
-/**
- * Context-aware NSFW check — the single source of truth for "is this an
- * age-restricted context?".
- *
- * A channel counts as NSFW when it carries the flag itself (text / forum /
- * announcement / voice channels all expose `nsfw`), **or** when it is a child
- * context — a thread or forum post — whose parent carries the flag. Discord
- * does not mark the child channel itself, so checking only the immediate
- * channel wrongly rejects valid threads and forum posts beneath an NSFW parent.
- *
- * Fails closed: a null channel, a thread whose parent is uncached/unresolved,
- * or any context we cannot positively confirm as NSFW returns `false`.
- */
-export function isNsfwContext(channel: GuildBasedChannel | null | undefined): boolean {
-  if (!channel) return false;
-
-  if ('nsfw' in channel && channel.nsfw === true) {
-    return true;
-  }
-
-  if (channel.isThread()) {
-    const parent = channel.parent;
-    if (parent && 'nsfw' in parent && parent.nsfw === true) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
 /** Extracts GuardChannelInfo from a live discord.js interaction. */
 export function extractChannelInfo(interaction: Interaction): GuardChannelInfo {
   const channel = interaction.channel;
   if (!interaction.inGuild() || !channel) {
-    return { isGuildChannel: false, isNsfw: false, channelId: null, parentChannelId: null };
+    return { isGuildChannel: false, channelId: null, parentChannelId: null };
   }
   const guildChannel = channel as GuildBasedChannel;
   return {
     isGuildChannel: true,
-    isNsfw: isNsfwContext(guildChannel),
     channelId: guildChannel.id,
     parentChannelId: guildChannel.isThread() ? guildChannel.parentId : null,
   };
@@ -115,8 +81,5 @@ export function blockedMessage(
   }
   const firstAllowed = allowedChannelIds?.[0];
   const hint = firstAllowed ? ` Head to <#${firstAllowed}>.` : '';
-  if (reason === 'not_allowed') {
-    return `Waifumon doesn't play in this channel~${hint}`;
-  }
-  return `Waifumon plays in NSFW-marked channels only~${hint}`;
+  return `Waifumon doesn't play in this channel~${hint}`;
 }

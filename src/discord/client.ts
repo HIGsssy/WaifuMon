@@ -110,7 +110,7 @@ export function createDiscordClient(ctx: AppContext): Client {
     lookupAllowlist: (discordGuildId) =>
       ctx.services.guilds.getAllowedChannelIds(discordGuildId),
     // Exempts the dedicated boss channel from the allowlist rule only — see
-    // `decidePlayChannel`. NSFW is still required there.
+    // `decidePlayChannel`.
     lookupBossChannelId: (discordGuildId) =>
       ctx.services.guilds.getBossChannelId(discordGuildId),
     provision: async (discordGuildId, discordUserId) => {

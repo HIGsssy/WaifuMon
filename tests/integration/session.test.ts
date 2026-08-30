@@ -411,7 +411,6 @@ describe('dispatcher — no session-ownership gate remains', () => {
       componentHandlers: { 'menu:profile': handler },
       extractChannelInfo: () => ({
         isGuildChannel: true,
-        isNsfw: true,
         channelId: CHANNEL_ID,
         parentChannelId: null,
       }),
@@ -440,18 +439,18 @@ describe('dispatcher — no session-ownership gate remains', () => {
 });
 
 describe('PlayChannelGuard still runs first', () => {
-  it('a click in a non-NSFW channel never creates a session row', async () => {
+  it('a click in a channel off the guild allowlist never creates a session row', async () => {
     const handler = vi.fn(async () => {});
     const dispatch = createDispatcher({
       logger: t.logger,
-      lookupAllowlist: async () => null,
+      // Access control is retained: an allowlist that this channel is not on.
+      lookupAllowlist: async () => ['some-allowed-channel'],
       provision: async () => ({ guildDbId: 999, playerId: 999 }),
       commandHandlers: { 'waifumon:menu': handler },
       componentHandlers: {},
       extractChannelInfo: () => ({
         isGuildChannel: true,
-        isNsfw: false,
-        channelId: 'c-not-nsfw',
+        channelId: 'c-off-allowlist',
         parentChannelId: null,
       }),
     });
@@ -477,7 +476,7 @@ describe('PlayChannelGuard still runs first', () => {
     const [row] = await t.db
       .select()
       .from(waifumonSessions)
-      .where(eq(waifumonSessions.channelId, 'c-not-nsfw'))
+      .where(eq(waifumonSessions.channelId, 'c-off-allowlist'))
       .limit(1);
     expect(row).toBeUndefined();
   });

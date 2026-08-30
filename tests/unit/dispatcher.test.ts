@@ -62,40 +62,35 @@ function makeDeps(channelInfo: GuardChannelInfo, allowlist: string[] | null = nu
   return { deps, provision, handler, componentHandler };
 }
 
-const nsfwChannel: GuardChannelInfo = {
+const guildChannel: GuardChannelInfo = {
   isGuildChannel: true,
-  isNsfw: true,
   channelId: 'chan-1',
   parentChannelId: null,
 };
-const sfwChannel: GuardChannelInfo = { ...nsfwChannel, isNsfw: false };
 const dmChannel: GuardChannelInfo = {
   isGuildChannel: false,
-  isNsfw: false,
   channelId: null,
   parentChannelId: null,
 };
 
 describe('dispatcher — guard before everything', () => {
-  it('allows an NSFW guild channel: provisions then calls the handler', async () => {
-    const { deps, provision, handler } = makeDeps(nsfwChannel);
+  it('allows a guild channel: provisions then calls the handler', async () => {
+    const { deps, provision, handler } = makeDeps(guildChannel);
     const dispatch = createDispatcher(deps);
     await dispatch(fakeInteraction({ kind: 'command' }) as never);
     expect(provision).toHaveBeenCalledWith('g-1', 'u-1');
     expect(handler).toHaveBeenCalledOnce();
   });
 
-  it('blocks a non-NSFW channel: no provisioning, no handler, ephemeral message', async () => {
-    const { deps, provision, handler } = makeDeps(sfwChannel);
+  it('ignores NSFW channel metadata: a guild channel executes regardless', async () => {
+    // The NSFW gate is gone — server admins decide where the bot runs.
+    const { deps, provision, handler } = makeDeps(guildChannel);
     const dispatch = createDispatcher(deps);
     const interaction = fakeInteraction({ kind: 'command' });
     await dispatch(interaction as never);
-    expect(provision).not.toHaveBeenCalled();
-    expect(handler).not.toHaveBeenCalled();
-    expect(interaction.reply).toHaveBeenCalledOnce();
-    expect(String((interaction.reply.mock.calls[0]![0] as { content: string }).content)).toMatch(
-      /NSFW/,
-    );
+    expect(provision).toHaveBeenCalledOnce();
+    expect(handler).toHaveBeenCalledOnce();
+    expect(interaction.reply).not.toHaveBeenCalled();
   });
 
   it('blocks DMs before any lookup side effects', async () => {
@@ -107,8 +102,8 @@ describe('dispatcher — guard before everything', () => {
     expect(handler).not.toHaveBeenCalled();
   });
 
-  it('blocks NSFW channels off a configured allowlist', async () => {
-    const { deps, provision } = makeDeps(nsfwChannel, ['some-other-channel']);
+  it('blocks channels off a configured allowlist', async () => {
+    const { deps, provision } = makeDeps(guildChannel, ['some-other-channel']);
     const dispatch = createDispatcher(deps);
     const interaction = fakeInteraction({ kind: 'command' });
     await dispatch(interaction as never);
@@ -118,12 +113,13 @@ describe('dispatcher — guard before everything', () => {
     );
   });
 
-  it('guards buttons exactly like commands', async () => {
-    const { deps, provision, componentHandler } = makeDeps(sfwChannel);
+  it('guards buttons exactly like commands (DM blocked)', async () => {
+    const { deps, provision, componentHandler } = makeDeps(dmChannel);
     const dispatch = createDispatcher(deps);
     const interaction = fakeInteraction({
       kind: 'button',
       customId: buildCustomId('menu', 'daily'),
+      guildId: null,
     });
     await dispatch(interaction as never);
     expect(provision).not.toHaveBeenCalled();
@@ -131,7 +127,7 @@ describe('dispatcher — guard before everything', () => {
   });
 
   it('routes allowed buttons through provision to the component handler', async () => {
-    const { deps, provision, componentHandler } = makeDeps(nsfwChannel);
+    const { deps, provision, componentHandler } = makeDeps(guildChannel);
     const dispatch = createDispatcher(deps);
     await dispatch(
       fakeInteraction({ kind: 'button', customId: buildCustomId('menu', 'daily') }) as never,
@@ -141,7 +137,7 @@ describe('dispatcher — guard before everything', () => {
   });
 
   it('ignores foreign custom ids entirely', async () => {
-    const { deps, provision } = makeDeps(nsfwChannel);
+    const { deps, provision } = makeDeps(guildChannel);
     const dispatch = createDispatcher(deps);
     const interaction = fakeInteraction({ kind: 'button', customId: 'other-bot|thing' });
     await dispatch(interaction as never);
@@ -150,7 +146,7 @@ describe('dispatcher — guard before everything', () => {
   });
 
   it('rejects unknown custom-id versions gracefully', async () => {
-    const { deps, provision } = makeDeps(nsfwChannel);
+    const { deps, provision } = makeDeps(guildChannel);
     const dispatch = createDispatcher(deps);
     const interaction = fakeInteraction({ kind: 'button', customId: 'wm|v99|menu|daily' });
     await dispatch(interaction as never);
@@ -210,7 +206,7 @@ describe('dispatcher — select menus and autocomplete', () => {
       provision,
       commandHandlers: {},
       componentHandlers: { 'col:pick': componentHandler },
-      extractChannelInfo: () => nsfwChannel,
+      extractChannelInfo: () => guildChannel,
     };
     const dispatch = createDispatcher(deps);
     await dispatch(fakeSelectInteraction(buildCustomId('col', 'pick')) as never);
@@ -232,7 +228,7 @@ describe('dispatcher — select menus and autocomplete', () => {
       commandHandlers: {},
       componentHandlers: {},
       autocompleteHandlers: { 'waifumon:inspect': autocompleteHandler },
-      extractChannelInfo: () => nsfwChannel,
+      extractChannelInfo: () => guildChannel,
     };
     const dispatch = createDispatcher(deps);
     const interaction = fakeAutocompleteInteraction();
@@ -251,7 +247,7 @@ describe('dispatcher — select menus and autocomplete', () => {
       provision,
       commandHandlers: {},
       componentHandlers: {},
-      extractChannelInfo: () => nsfwChannel,
+      extractChannelInfo: () => guildChannel,
     };
     const dispatch = createDispatcher(deps);
     const interaction = fakeAutocompleteInteraction();
