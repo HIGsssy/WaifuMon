@@ -134,6 +134,13 @@
       "when": 1817330400000,
       "tag": "0018_boss_results_message",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1817416800000,
+      "tag": "0019_locations_travel",
+      "breakpoints": true
     }
   ]
 }

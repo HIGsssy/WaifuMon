@@ -1,0 +1,8 @@
+{
+  "id": "twin_peaks",
+  "name": "Twin Peeks",
+  "description": "The first travel destination. Ships the Twin Peeks region and its encounter pool; the region's exclusive species are authored separately.",
+  "enabled": true,
+  "order": 1,
+  "regionId": "twin-peeks"
+}

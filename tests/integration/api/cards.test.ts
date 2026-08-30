@@ -171,8 +171,16 @@ async function buildApp(
 beforeAll(async () => {
   workdir = await makeTempDir('api-cards');
   assetsDir = path.join(workdir, 'assets');
-  content = { items: [], species: SPECIES, tables: TABLES, bosses: [],
-    bossRewards: [] };
+  content = {
+    items: [],
+    species: SPECIES,
+    tables: TABLES,
+    bosses: [],
+    bossRewards: [],
+    regions: [],
+    expansions: [],
+    speciesOrigin: {},
+  };
 
   await writeArt('card_test_n', 'standard', { r: 200, g: 40, b: 90 });
   await writeArt('card_test_ex', 'standard', { r: 40, g: 200, b: 90 });

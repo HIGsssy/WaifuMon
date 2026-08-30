@@ -21,7 +21,12 @@ import { z, type ZodType, type ZodTypeDef } from 'zod';
 import { AFFINITIES, RARITIES, type Rarity } from '../../db/schema';
 import { ContentValidationError } from '../../shared/errors';
 import type { Logger } from '../../shared/logger';
-import { listSpeciesFiles, readContentFiles, validateContentSet } from './loader';
+import {
+  listSpeciesFiles,
+  readContentFiles,
+  readExpansionPacks,
+  validateContentSet,
+} from './loader';
 import type { ContentReloader, ReloadResult } from './reloadService';
 import {
   BossesFileSchema,
@@ -362,13 +367,29 @@ export function createAdminContentService(deps: AdminContentServiceDeps): AdminC
     return { file: relative, backup };
   }
 
+  /**
+   * Builds the candidate content set the admin panel validates against.
+   *
+   * Regions and expansion packs are read straight from disk rather than taken
+   * from `raw`, because the panel does not edit them — but they must still be
+   * *in* the candidate, for two reasons that both bite the moment they are
+   * left out: an enabled pack's species belong to the registry a region pool
+   * is checked against, and deleting a core species that a region pool
+   * references has to fail validation rather than sail through and strip the
+   * pool at the next seed.
+   */
   function candidateFrom(raw: RawContent, overrides: Partial<LoadedContent>): LoadedContent {
+    const packs = readExpansionPacks(contentDir);
+    const species = overrides.species ?? raw.species;
     return {
       items: overrides.items ?? raw.items,
-      species: overrides.species ?? raw.species,
+      species: [...species, ...packs.expansionSpecies],
       tables: overrides.tables ?? raw.tables,
       bosses: overrides.bosses ?? raw.bosses,
       bossRewards: overrides.bossRewards ?? raw.bossRewards,
+      regions: overrides.regions ?? packs.regions,
+      expansions: overrides.expansions ?? packs.expansions,
+      speciesOrigin: overrides.speciesOrigin ?? packs.speciesOrigin,
     };
   }
 
@@ -819,13 +840,7 @@ export function createAdminContentService(deps: AdminContentServiceDeps): AdminC
     }
     const errors: string[] = [];
     try {
-      validateContentSet({
-        items: raw.items,
-        species: raw.species,
-        tables: raw.tables,
-        bosses: raw.bosses,
-        bossRewards: raw.bossRewards,
-      });
+      validateContentSet(candidateFrom(raw, {}));
     } catch (err) {
       errors.push((err as Error).message);
     }

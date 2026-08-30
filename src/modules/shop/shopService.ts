@@ -1,8 +1,10 @@
-import { and, asc, eq, inArray, isNotNull } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, notExists, sql } from 'drizzle-orm';
 import type { Db } from '../../db/client';
 import {
   items,
   playerInventory,
+  players,
+  regionShopItems,
   shopTransactions,
   type ItemRow,
   type PriceCurrency,
@@ -13,6 +15,7 @@ import {
   InventoryCapacityError,
   ItemNotFoundError,
   ItemNotPurchasableError,
+  ItemNotSoldHereError,
 } from '../../shared/errors';
 import type { CurrencyService } from '../currency/currencyService';
 import type { InventoryService } from '../inventory/inventoryService';
@@ -129,6 +132,15 @@ export interface ShopService {
    */
   getCatalog(): Promise<ShopCatalogEntry[]>;
   /**
+   * The catalog for one region's shop: the buyable items that region stocks.
+   *
+   * Complements rather than replaces {@link ShopService.getCatalog} — core
+   * stock is sold everywhere and lives there; this is a region's *own* shelf.
+   * Empty for a region that stocks nothing, which is every shipped region
+   * today, and the Locations screen hides the shop entry when it is.
+   */
+  getRegionalCatalog(regionId: string): Promise<ShopCatalogEntry[]>;
+  /**
    * Single transaction: verify enabled+purchasable → lock currency row →
    * capacity check (reject before charging) → conditional deduct of the item's
    * own currency → upsert inventory → audit row. Nothing is ever partially
@@ -185,10 +197,44 @@ export function createShopService(deps: ShopServiceDeps): ShopService {
             eq(items.enabled, true),
             eq(items.purchasable, true),
             isNotNull(items.buyPrice),
+            // Regionally-scoped stock is withdrawn from the global shelf: an
+            // item a region file claims is sold *there*, not everywhere plus
+            // there. An item no region claims is core stock, which is every
+            // item shipped today — so with `region_shop_items` empty this
+            // clause matches everything and the catalog is byte-for-byte the
+            // pre-travel catalog.
+            notExists(
+              db
+                .select({ one: sql`1` })
+                .from(regionShopItems)
+                .where(eq(regionShopItems.itemId, items.id)),
+            ),
           ),
         )
         .orderBy(asc(items.category), asc(items.buyPrice), asc(items.slug));
       return rows.map((item) => ({
+        item,
+        available: true,
+        availabilityNote: null,
+        currency: toPriceCurrency(item.priceCurrency),
+      }));
+    },
+
+    async getRegionalCatalog(regionId) {
+      const rows = await db
+        .select({ item: items })
+        .from(regionShopItems)
+        .innerJoin(items, eq(regionShopItems.itemId, items.id))
+        .where(
+          and(
+            eq(regionShopItems.regionId, regionId),
+            eq(items.enabled, true),
+            eq(items.purchasable, true),
+            isNotNull(items.buyPrice),
+          ),
+        )
+        .orderBy(asc(items.category), asc(items.buyPrice), asc(items.slug));
+      return rows.map(({ item }) => ({
         item,
         available: true,
         availabilityNote: null,
@@ -205,6 +251,32 @@ export function createShopService(deps: ShopServiceDeps): ShopService {
         if (!item || !item.enabled) throw new ItemNotFoundError(itemSlug);
         if (!item.purchasable || item.buyPrice == null) {
           throw new ItemNotPurchasableError(itemSlug);
+        }
+
+        // Regional stock is sold *where it is stocked*. `getCatalog` hides
+        // these items from the global shelf, but hiding a button is not a
+        // rule: a custom id is a string that outlives the screen that painted
+        // it, and the Platform API reaches this method with no screen at all.
+        // An item in no `region_shop_items` row is core stock and skips this
+        // entirely — which is every item shipped today, so the common path
+        // costs one indexed lookup and behaves exactly as it did before.
+        const scopes = await tx
+          .select({ regionId: regionShopItems.regionId })
+          .from(regionShopItems)
+          .where(eq(regionShopItems.itemId, item.id));
+        if (scopes.length > 0) {
+          const [player] = await tx
+            .select({ currentRegion: players.currentRegion })
+            .from(players)
+            .where(eq(players.id, playerId));
+          const here = player?.currentRegion ?? null;
+          if (!scopes.some((s) => s.regionId === here)) {
+            throw new ItemNotSoldHereError(
+              itemSlug,
+              item.name,
+              scopes.map((s) => s.regionId),
+            );
+          }
         }
 
         const unitPrice = item.buyPrice;

@@ -538,6 +538,166 @@ export class BossChannelUnusableError extends AppError {
   }
 }
 
+/* ───────────────────────── Locations & Travel ───────────────────────── */
+
+/** A region id that no enabled region file defines — a stale button, usually. */
+export class RegionNotFoundError extends AppError {
+  readonly regionId: string;
+
+  constructor(regionId: string) {
+    super(
+      'REGION_NOT_FOUND',
+      `Unknown or unreleased region: ${regionId}`,
+      "There's nowhere by that name on the map~",
+    );
+    this.regionId = regionId;
+  }
+}
+
+/** The player has no route to this destination yet. */
+export class RegionLockedError extends AppError {
+  readonly regionId: string;
+
+  constructor(regionId: string, label: string) {
+    super(
+      'REGION_LOCKED',
+      `Player has not unlocked region ${regionId}`,
+      `You haven't unlocked the road to **${label}** yet~`,
+    );
+    this.regionId = regionId;
+  }
+}
+
+/** A route unlock was attempted without owning the pass it stamps onto. */
+export class TravelPassRequiredError extends AppError {
+  readonly passId: string;
+
+  constructor(passId: string, label: string) {
+    super(
+      'TRAVEL_PASS_REQUIRED',
+      `Player does not own travel pass ${passId}`,
+      `You'll need the **${label}** before you can add destinations to it~`,
+    );
+    this.passId = passId;
+  }
+}
+
+/**
+ * The pass is already owned.
+ *
+ * Also the shape a *lost* concurrent purchase takes: the duplicate-key
+ * violation on `player_travel_passes` is caught and rethrown as this, so two
+ * simultaneous clicks produce one purchase and one friendly "you already have
+ * it" rather than one purchase and one raw Postgres error.
+ */
+export class TravelPassAlreadyOwnedError extends AppError {
+  readonly passId: string;
+
+  constructor(passId: string, label: string) {
+    super(
+      'TRAVEL_PASS_ALREADY_OWNED',
+      `Player already owns travel pass ${passId}`,
+      `You already have the **${label}**~`,
+    );
+    this.passId = passId;
+  }
+}
+
+/** The destination is already unlocked. Same double-click role as above. */
+export class RouteAlreadyUnlockedError extends AppError {
+  readonly regionId: string;
+
+  constructor(regionId: string, label: string) {
+    super(
+      'ROUTE_ALREADY_UNLOCKED',
+      `Player already unlocked route to ${regionId}`,
+      `The road to **${label}** is already open to you~`,
+    );
+    this.regionId = regionId;
+  }
+}
+
+/** Trainer level is below the configured gate for a pass or route. */
+export class TravelLevelRequiredError extends AppError {
+  readonly requiredLevel: number;
+  readonly currentLevel: number;
+
+  constructor(requiredLevel: number, currentLevel: number) {
+    super(
+      'TRAVEL_LEVEL_REQUIRED',
+      `Requires trainer level ${requiredLevel}, player is ${currentLevel}`,
+      `You need to be **Trainer Level ${requiredLevel}** for that — you're ${currentLevel}.`,
+    );
+    this.requiredLevel = requiredLevel;
+    this.currentLevel = currentLevel;
+  }
+}
+
+/** Travel to the region the player is already standing in. */
+export class AlreadyInRegionError extends AppError {
+  readonly regionId: string;
+
+  constructor(regionId: string, label: string) {
+    super('ALREADY_IN_REGION', `Player already in region ${regionId}`, `You're already in **${label}**~`);
+    this.regionId = regionId;
+  }
+}
+
+/**
+ * Travel refused because an encounter is still open.
+ *
+ * Deliberately a hard block rather than an auto-release: walking away from a
+ * Waifumon should be a decision the player makes on her screen, not a side
+ * effect of opening the map. It also keeps `encounters.region_id` honest —
+ * an encounter cannot be rolled in one region and resolved after the player
+ * has quietly been moved to another.
+ */
+export class TravelBlockedByEncounterError extends AppError {
+  readonly encounterId: number;
+
+  constructor(encounterId: number) {
+    super(
+      'TRAVEL_BLOCKED_BY_ENCOUNTER',
+      `Cannot travel with active encounter ${encounterId}`,
+      "You can't just walk off — someone's still waiting on you~ Finish or release your encounter first.",
+    );
+    this.encounterId = encounterId;
+  }
+}
+
+/**
+ * A regionally-stocked item bought from outside the regions that stock it.
+ *
+ * Distinct from {@link ItemNotPurchasableError}, which means "this is never
+ * for sale". This one means "not *here*", which is a different instruction to
+ * the player and a different fix. It exists because hiding regional stock from
+ * the global catalog is only half the rule — the other half has to be enforced
+ * where the currency is actually spent, since a `shop:buy` custom id is just a
+ * string and a stale one outlives the screen that painted it.
+ */
+export class ItemNotSoldHereError extends AppError {
+  readonly itemSlug: string;
+  readonly soldIn: readonly string[];
+
+  constructor(itemSlug: string, itemName: string, soldIn: readonly string[] = []) {
+    const where = soldIn.length > 0 ? soldIn.join(', ') : 'another region';
+    super(
+      'ITEM_NOT_SOLD_HERE',
+      `Item "${itemSlug}" is stocked only in: ${where}`,
+      `**${itemName}** isn't stocked around here~ You'll need to travel to buy it.`,
+    );
+    this.itemSlug = itemSlug;
+    this.soldIn = soldIn;
+  }
+}
+
+/** Travel is switched off in content (`tables.travel.enabled = false`). */
+export class TravelDisabledError extends AppError {
+  constructor() {
+    super('TRAVEL_DISABLED', 'Travel is disabled in content', 'The caravans are not running right now~');
+  }
+}
+
 /** Detects a Postgres unique-constraint violation (possibly wrapped by drizzle). */
 export function isUniqueViolation(err: unknown): boolean {
   if (err && typeof err === 'object') {

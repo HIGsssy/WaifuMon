@@ -15,6 +15,7 @@ import {
   items,
   playerCurrencies,
   players,
+  regionEncounterPools,
   species,
   type EncounterRow,
   type ItemRow,
@@ -41,6 +42,8 @@ import type { BuddyAwardResult, CollectionService } from '../collection/collecti
 import type { CareService, CareTickSummary } from '../care/careService';
 import type { QuestService } from '../quests/questService';
 import { resolveHuntSessionBoundary, type HuntSessionBoundary } from './huntSession';
+import { DEFAULT_REGION } from '../locations/regions';
+import { toRegion } from '../travel/travelCatalog';
 
 interface WithXp {
   levelUps: LevelUpEvent[];
@@ -185,31 +188,125 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
     });
   }
 
+  /**
+   * One region's bucket at one rarity: every enabled species the region's pool
+   * lists, carrying that pool's **region-local** weight.
+   *
+   * The weight comes from `region_encounter_pools`, not `species`, which is the
+   * entire point of the junction table — a species can be a rarity in Waifu
+   * Valley and a local fixture in Twin Peeks without being two rows in
+   * `species`. `Math.max(1, …)` mirrors the pre-region code's defensiveness;
+   * the column's CHECK already forbids anything lower.
+   */
+  async function regionBucket(
+    tx: Parameters<Parameters<Db['transaction']>[0]>[0],
+    regionId: string,
+    rarity: Rarity,
+  ): Promise<Array<WeightedEntry<SpeciesRow>>> {
+    const rows = await tx
+      .select({ species, weight: regionEncounterPools.weight })
+      .from(regionEncounterPools)
+      .innerJoin(species, eq(regionEncounterPools.speciesId, species.id))
+      .where(
+        and(
+          eq(regionEncounterPools.regionId, regionId),
+          eq(species.rarity, rarity),
+          eq(species.enabled, true),
+        ),
+      );
+    return rows.map((r) => ({ weight: Math.max(1, r.weight), value: r.species }));
+  }
+
+  /**
+   * Picks who the player meets, in the region they are standing in.
+   *
+   * The **only** thing region changes about a hunt. Everything upstream —
+   * energy, cooldown, the one-active-encounter invariant, and crucially the
+   * level-adjusted rarity roll — is untouched, and everything downstream
+   * (capture chance, rarity value, XP) never learns a region existed. A
+   * player who travels meets different Waifumon; she does not catch them at
+   * different odds.
+   *
+   * Four tiers, each giving up one more piece of content's intent:
+   *
+   *   1. the player's region at the rolled rarity — the normal path;
+   *   2. **Waifu Valley's explicit pool** at that rarity, when the player's
+   *      region has nobody in that bucket. Preferred over the global fallback
+   *      because the starting region is a curated set: a Twin Peeks trainer who
+   *      rolls a rarity Twin Peeks has no entry for should meet a valley
+   *      regular, not an arbitrary row from the species table;
+   *   3. the **pre-region global query** — every enabled species at that
+   *      rarity, weighted by `species.per_species_weight`. This is the exact
+   *      behavior the hunt had before regions existed, and it is retained
+   *      rather than dropped because it is the difference between "no pools
+   *      are seeded" degrading into *the old game* and degrading into a single
+   *      fixed species. A content set with no `content/regions/` directory at
+   *      all is a supported configuration (see `validateRegionContent`), and it
+   *      lands here on every draw;
+   *   4. after the rarity rerolls are exhausted, an arbitrary enabled species,
+   *      preferring the starting region's pool. Reachable only when every
+   *      rarity bucket in the whole species table is empty, and kept so that
+   *      broken content still produces an encounter rather than a crash.
+   */
   async function pickEncounterSpecies(
     tx: Parameters<Parameters<Db['transaction']>[0]>[0],
     level: number,
+    regionId: string,
   ): Promise<SpeciesRow | null> {
     const rarityEntries = rarityEntriesFor(level);
     for (let attempt = 0; attempt < MAX_RARITY_REROLLS; attempt++) {
       const rarity = rollWeighted(rarityEntries, rng);
-      const rows = await tx
-        .select()
-        .from(species)
-        .where(and(eq(species.rarity, rarity), eq(species.enabled, true)));
-      if (rows.length === 0) {
-        logger.warn({ rarity, attempt }, 'no enabled species in rarity bucket, rerolling');
+      let entries = await regionBucket(tx, regionId, rarity);
+      if (entries.length === 0 && regionId !== DEFAULT_REGION) {
+        entries = await regionBucket(tx, DEFAULT_REGION, rarity);
+        if (entries.length > 0) {
+          logger.warn(
+            { rarity, regionId, attempt },
+            'region has no species at this rarity, falling back to the starting region pool',
+          );
+        }
+      }
+      if (entries.length === 0) {
+        // Neither pool has this rarity. Before rerolling, fall back to the
+        // region-blind query the hunt used before pools existed — otherwise a
+        // deployment whose pools are empty (or absent) would reroll six times
+        // and then hand every player the same arbitrary species forever.
+        const global = await tx
+          .select()
+          .from(species)
+          .where(and(eq(species.rarity, rarity), eq(species.enabled, true)));
+        if (global.length > 0) {
+          logger.warn(
+            { rarity, regionId, attempt },
+            'no region pool covers this rarity, falling back to the global species table',
+          );
+          entries = global.map((s) => ({ weight: Math.max(1, s.perSpeciesWeight), value: s }));
+        }
+      }
+      if (entries.length === 0) {
+        logger.warn({ rarity, regionId, attempt }, 'no enabled species in rarity bucket, rerolling');
         continue;
       }
-      const picked = rollWeighted(
-        rows.map((s) => ({ weight: Math.max(1, s.perSpeciesWeight), value: s })),
-        rng,
-      );
-      return picked;
+      return rollWeighted(entries, rng);
     }
-    // Absolute fallback: any enabled species at all.
+
+    // Absolute fallbacks, in order of how much they still respect content.
+    const valleyRow = await tx
+      .select({ species })
+      .from(regionEncounterPools)
+      .innerJoin(species, eq(regionEncounterPools.speciesId, species.id))
+      .where(and(eq(regionEncounterPools.regionId, DEFAULT_REGION), eq(species.enabled, true)))
+      .limit(1);
+    if (valleyRow[0]) {
+      logger.warn(
+        { regionId },
+        'rarity reroll exhausted, using arbitrary species from the starting region pool',
+      );
+      return valleyRow[0].species;
+    }
     const anyRow = await tx.select().from(species).where(eq(species.enabled, true)).limit(1);
     if (anyRow[0]) {
-      logger.warn('rarity reroll exhausted, using arbitrary enabled species');
+      logger.warn('rarity reroll exhausted and no region pools seeded, using any enabled species');
       return anyRow[0];
     }
     return null;
@@ -349,7 +446,10 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
         );
 
         if (kind === 'encounter') {
-          const picked = await pickEncounterSpecies(tx, player.level);
+          // Resolved from the player row already locked above, so a travel
+          // committing mid-hunt cannot change which pool this draw reads.
+          const huntRegion = toRegion(player.currentRegion);
+          const picked = await pickEncounterSpecies(tx, player.level, huntRegion);
           if (!picked) {
             // No species at all — degrade to flavor rather than crash.
             logger.error('no enabled species available; degrading encounter to flavor');
@@ -375,6 +475,10 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
                 attemptCount: 0,
                 maxAttempts: 3,
                 expiresAt,
+                // Snapshot only. Nothing reads it back to make a decision —
+                // capture stays region-agnostic — it records where she was met
+                // so the row is still honest after the player travels away.
+                regionId: huntRegion,
               })
               .returning();
             return {

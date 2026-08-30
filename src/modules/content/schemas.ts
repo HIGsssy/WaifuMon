@@ -24,8 +24,14 @@ import { RACE_CODES } from '../cards/race';
  * module already uses. Same reasoning as `DEFAULT_SP_RANGES_BY_RARITY` below.
  */
 import { DEFAULT_BOSS_AFFINITY_WHEEL } from '../bosses/bossAffinity';
-/** Canonical region ids — the closed set a boss definition must name. */
+/** The narrower set of regions a *boss* definition may name. */
 import { REGIONS } from '../bosses/regions';
+/**
+ * Every region a player can stand in — the closed set region files, encounter
+ * pools, travel routes and regional shops must name. Wider than the boss list
+ * on purpose: a travel destination need not host a boss.
+ */
+import { REGIONS as ALL_REGIONS, DEFAULT_REGION } from '../locations/regions';
 /**
  * The shipped SP ladder doubles as this schema's default, so content and code
  * cannot ship disagreeing tables — omitting the block yields exactly the
@@ -1565,6 +1571,228 @@ const BOSS_ENCOUNTERS_DEFAULT: z.input<typeof BossEncountersConfigSchema> = {
   enabled: false,
 };
 
+
+/* ─────────────────────── Locations, Travel & Expansions ─────────────────── */
+
+/**
+ * One species' membership in one region's encounter pool.
+ *
+ * `weight` is region-local and is what the hunt actually rolls on — it fully
+ * replaces `species.perSpeciesWeight` for the regional draw. Omitting it
+ * inherits the species' own weight at seed time, so a region that just wants
+ * "the usual rates" lists slugs and says nothing about numbers, while a region
+ * that wants a species to be *its* speciality names a bigger number. That is
+ * the whole reason pools are a table rather than a `species.region` column.
+ *
+ * Non-positive weights are rejected here rather than clamped: a zero weight
+ * reads as "she is in this pool" while meaning "she can never be drawn", and
+ * silently repairing it would hide the authoring mistake behind a species
+ * nobody ever meets.
+ */
+export const RegionEncounterEntrySchema = z
+  .object({
+    species: slug,
+    weight: z.number().int().positive().optional(),
+  })
+  .strict();
+
+/**
+ * A region definition: what the place is called, whether it is open, and what
+ * lives there.
+ *
+ * Core regions live in `content/regions/*.json`; an expansion pack ships its
+ * own as `content/expansions/<pack>/region.json`. Same schema either way —
+ * where the file sits decides which pack's enabled flag gates it, not what it
+ * is allowed to say.
+ *
+ * `starting` marks the region every player begins in, and **exactly one**
+ * region across the whole content set may set it (enforced in the loader,
+ * which is the only layer holding every region file at once). It must also
+ * agree with `DEFAULT_REGION`, because that constant is baked into the
+ * `players.current_region` column default — content and schema disagreeing
+ * there would mean new players spawn somewhere the game does not think they
+ * are.
+ */
+export const RegionContentSchema = z
+  .object({
+    id: z.enum(ALL_REGIONS),
+    name: z.string().min(1),
+    description: z.string().default(''),
+    emoji: z.string().nullable().default(null),
+    /**
+     * A disabled region is **hidden**, not merely locked: it does not appear
+     * in the Locations list at all, cannot be travelled to, and its pool is
+     * not seeded. This is the "unreleased content sitting on disk" switch.
+     */
+    enabled: z.boolean().default(true),
+    /** Exactly one region in the content set is the starting region. */
+    starting: z.boolean().default(false),
+    /** Display order in the Locations list. Ties break on id. */
+    order: z.number().int().nonnegative().default(0),
+    /** Flavor shown on the destination detail screen. */
+    flavor: z.array(z.string()).default([]),
+    encounterPool: z.array(RegionEncounterEntrySchema).default([]),
+    /**
+     * Item slugs this region's shop stocks. Listing an item here makes it
+     * *regionally scoped* — it leaves the global catalog and is sold only in
+     * the regions that name it.
+     */
+    shopItems: z.array(slug).default([]),
+  })
+  .strict();
+
+export type RegionContent = z.infer<typeof RegionContentSchema>;
+export type RegionEncounterEntry = z.infer<typeof RegionEncounterEntrySchema>;
+
+/**
+ * An expansion pack's manifest — `content/expansions/<pack>/expansion.json`.
+ *
+ * Its presence is what makes a directory under `content/expansions/` a pack.
+ * A directory *without* one is not silently scanned for species: the loader
+ * refuses to boot and names it. That rule exists because this repository
+ * already had an orphaned pack sitting on disk that nothing loaded, and the
+ * moment expansion discovery landed, "a folder full of species JSON" would
+ * have quietly become live content. Requiring an explicit manifest makes
+ * activation a decision somebody wrote down.
+ *
+ * `enabled: false` is a complete withdrawal: the pack's species are not merged
+ * into the registry, not seeded, and may not be referenced by any enabled
+ * region's pool. The files stay on disk and stay valid.
+ */
+export const ExpansionContentSchema = z
+  .object({
+    id: slug,
+    name: z.string().min(1),
+    description: z.string().default(''),
+    enabled: z.boolean().default(false),
+    order: z.number().int().nonnegative().default(0),
+    /**
+     * The region this pack introduces, if any. Metadata about *origin* — it
+     * says which pack authored the place, and says nothing about where the
+     * pack's species may be encountered. Availability is region-pool
+     * membership and only region-pool membership.
+     */
+    regionId: z.enum(ALL_REGIONS).nullable().default(null),
+  })
+  .strict();
+
+export type ExpansionContent = z.infer<typeof ExpansionContentSchema>;
+
+/**
+ * A travel pass — the container a player buys once.
+ *
+ * Deliberately not an inventory item: a pass is a permanent, non-stackable
+ * entitlement with a level gate, and the shop's quantity/capacity machinery
+ * models none of that. It lives in `player_travel_passes`, keyed so the
+ * database refuses a second copy.
+ */
+export const TravelPassSchema = z
+  .object({
+    id: slug,
+    name: z.string().min(1),
+    description: z.string().default(''),
+    emoji: z.string().nullable().default(null),
+    price: z.number().int().nonnegative(),
+    currency: z.enum(PRICE_CURRENCIES).default('waifubux'),
+    /** Trainer level required to buy. */
+    requiredLevel: z.number().int().positive().default(1),
+    /**
+     * Destinations stamped onto the pass by the initial purchase, granted in
+     * the same transaction that grants the pass. Every later destination is a
+     * separate route unlock against the same pass — which is why this is a
+     * list rather than a single field, and why routes exist independently.
+     */
+    grantsRoutes: z.array(z.enum(ALL_REGIONS)).default([]),
+  })
+  .strict();
+
+/** One purchasable destination, stamped onto a pass the player already owns. */
+export const TravelRouteSchema = z
+  .object({
+    regionId: z.enum(ALL_REGIONS),
+    passId: slug,
+    /** Zero for a destination the pass itself already covers. */
+    price: z.number().int().nonnegative().default(0),
+    currency: z.enum(PRICE_CURRENCIES).default('waifubux'),
+    requiredLevel: z.number().int().positive().default(1),
+  })
+  .strict();
+
+/**
+ * Travel tuning. Every number a live operator might move — the pass price, the
+ * level gate, per-route fees — is content, never a constant in a service.
+ */
+export const TravelConfigSchema = z
+  .object({
+    enabled: z.boolean().default(true),
+    passes: z.array(TravelPassSchema).default([]),
+    routes: z.array(TravelRouteSchema).default([]),
+  })
+  .superRefine((cfg, ctx) => {
+    const passIds = new Set(cfg.passes.map((p) => p.id));
+    const dupPass = cfg.passes.map((p) => p.id).find((id, i, a) => a.indexOf(id) !== i);
+    if (dupPass) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `travel.passes contains duplicate pass id "${dupPass}"`,
+        path: ['passes'],
+      });
+    }
+    const routeRegions = new Set(cfg.routes.map((r) => r.regionId));
+    const dupRoute = cfg.routes.map((r) => r.regionId).find((id, i, a) => a.indexOf(id) !== i);
+    if (dupRoute) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `travel.routes defines region "${dupRoute}" more than once`,
+        path: ['routes'],
+      });
+    }
+    for (const [i, route] of cfg.routes.entries()) {
+      if (!passIds.has(route.passId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            `travel.routes["${route.regionId}"] references unknown pass "${route.passId}" ` +
+            `(known passes: ${[...passIds].join(', ') || 'none'})`,
+          path: ['routes', i, 'passId'],
+        });
+      }
+      // The starting region is reachable by rule, never by purchase. A route
+      // to it would render a "buy" button for somewhere the player already is.
+      if (route.regionId === DEFAULT_REGION) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            `travel.routes must not define a route to the starting region ` +
+            `"${DEFAULT_REGION}" — it is always reachable`,
+          path: ['routes', i, 'regionId'],
+        });
+      }
+    }
+    // A pass that grants a destination nobody declared would unlock a region
+    // the Locations screen has no price, gate or detail copy for.
+    for (const [i, pass] of cfg.passes.entries()) {
+      for (const [j, regionId] of pass.grantsRoutes.entries()) {
+        if (!routeRegions.has(regionId)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message:
+              `travel.passes["${pass.id}"].grantsRoutes names region "${regionId}", ` +
+              'which has no entry in travel.routes',
+            path: ['passes', i, 'grantsRoutes', j],
+          });
+        }
+      }
+    }
+  });
+
+export type TravelConfig = z.infer<typeof TravelConfigSchema>;
+export type TravelPassConfig = z.infer<typeof TravelPassSchema>;
+export type TravelRouteConfig = z.infer<typeof TravelRouteSchema>;
+
+/** Travel switched off — the default when `tables.json` omits the block. */
+const TRAVEL_DEFAULT: z.input<typeof TravelConfigSchema> = { enabled: false };
+
 export const TablesFileSchema = z.object({
   energy: z.object({
     baseMax: z.number().int().positive(),
@@ -1605,6 +1833,7 @@ export const TablesFileSchema = z.object({
     frequency: 'daily',
   }),
   session: SessionConfigSchema.optional().default({ inactiveTimeoutMinutes: 45 }),
+  travel: TravelConfigSchema.optional().default(TRAVEL_DEFAULT),
 });
 
 export type ItemContent = z.infer<typeof ItemContentSchema>;
@@ -1647,4 +1876,31 @@ export interface LoadedContent {
    * finds nothing to draw. That is a supported configuration, not a broken one.
    */
   bosses: BossContent[];
+  /**
+   * Every region definition in the content set — core files from
+   * `content/regions/` plus one per enabled expansion pack that ships a
+   * region. Disabled packs contribute nothing here, so a region that only
+   * exists inside a switched-off expansion is simply absent rather than
+   * present-and-hidden.
+   *
+   * Legitimately empty: a deployment with no `content/regions/` directory
+   * loads with `[]` and travel stays inert (`tables.travel.enabled` defaults
+   * to false), which is exactly the pre-travel behavior.
+   */
+  regions: RegionContent[];
+  /**
+   * Expansion pack manifests, **including disabled ones**.
+   *
+   * Disabled packs are kept in the list on purpose: their species are excluded
+   * from `species`, but validation still needs to know they exist so that a
+   * region pool naming one can say "that species belongs to disabled expansion
+   * X" instead of the much worse "unknown species".
+   */
+  expansions: ExpansionContent[];
+  /**
+   * Slug → the expansion that authored it, for species that came from a pack.
+   * Core species are absent. Origin metadata only: it records where a species
+   * was written, never where she may be encountered.
+   */
+  speciesOrigin: Record<string, string>;
 }

@@ -1,0 +1,76 @@
+{
+  "id": "twin-peeks",
+  "name": "Twin Peeks",
+  "description": "Two ridges, one fog bank, and a town between them that keeps its curtains shut. The first place the Caravan Pass will take you.",
+  "emoji": "⛰️",
+  "enabled": true,
+  "starting": false,
+  "order": 1,
+  "flavor": [
+    "The fog here does not lift so much as change its mind.",
+    "Every diner on the ridge road serves the same pie. Nobody agrees which one is best."
+  ],
+  "encounterPool": [
+    {
+      "species": "neon_school_rebel",
+      "weight": 12
+    },
+    {
+      "species": "arcade_bunny",
+      "weight": 10
+    },
+    {
+      "species": "library_goth",
+      "weight": 8
+    },
+    {
+      "species": "alley_catgirl",
+      "weight": 6
+    },
+    {
+      "species": "neon_kitsune_apprentice",
+      "weight": 10
+    },
+    {
+      "species": "hologram_idol",
+      "weight": 8
+    },
+    {
+      "species": "cyber_shrine_maiden",
+      "weight": 6
+    },
+    {
+      "species": "chrome_valkyrie",
+      "weight": 8
+    },
+    {
+      "species": "void_catgirl",
+      "weight": 6
+    },
+    {
+      "species": "casino_kitsune",
+      "weight": 5
+    },
+    {
+      "species": "neon_dragon_empress",
+      "weight": 6
+    },
+    {
+      "species": "eclipse_valkyrie",
+      "weight": 4
+    },
+    {
+      "species": "cyber_lilith_prime",
+      "weight": 3
+    },
+    {
+      "species": "void_empress",
+      "weight": 2
+    },
+    {
+      "species": "the_waifu_below",
+      "weight": 1
+    }
+  ],
+  "shopItems": []
+}
