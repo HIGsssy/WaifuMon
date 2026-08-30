@@ -28,26 +28,23 @@
  *                    player's private preview.
  *   Confirm/Cancel → the player's own ephemeral preview. `update()` is right:
  *                    it replaces that private screen in place.
- *   ◀ / All Results▶ → the **public results message**, which is the one
- *                    message that is *meant* to repaint for everyone.
- *   My Result      → the public results message, answered privately with a
- *                    fresh ephemeral reply for the same reason as Commit.
+ *   View My Rewards → the **public results message**, answered privately with a
+ *                    fresh ephemeral reply for the same reason as Commit. The
+ *                    public results message is static — it carries no other
+ *                    controls, so no player interaction can repaint it.
  */
 import { MessageFlags, type ButtonInteraction } from 'discord.js';
-import type { BossResolutionReason } from '../../db/schema';
 import type { BossEncounterService } from '../../modules/bosses/bossEncounterService';
 import { gameEvent } from '../../modules/events/gameEvents';
 import { AppError } from '../../shared/errors';
 import {
   buildCommitPreview,
   buildMyResult,
-  buildResults,
 } from '../bossPresenter';
 import { replyEphemeral, respondEphemeral } from '../ephemeralSession';
 import { emitEvents } from '../gameEventEmitter';
 import type { AppContext, Provisioned } from '../types';
 import { ownerFromInteraction } from '../userDisplay';
-import { resolveBossArtwork } from '../bossArtwork';
 
 /** Every boss button carries the encounter id first. Non-numeric = a stale id. */
 function parseEncounterId(args: readonly string[]): number | null {
@@ -250,60 +247,7 @@ async function refreshPublicCount(ctx: AppContext, encounterId: number): Promise
 }
 
 /**
- * All Results pagination.
- *
- * Edits the **results** message in place rather than posting a page. That is
- * the one public boss message that is meant to repaint: the encounter
- * announcement above it is permanent history and carries no controls at all,
- * so a reader turning pages cannot reach it.
- *
- * The page number lives in the custom id, so this survives a restart with no
- * server-side cursor to lose — a button pressed tomorrow renders correctly
- * from the stored participations. The page *size* is read back from the
- * encounter row when it was recorded at publication, so the boundaries a
- * reader pages through are the ones the message was built with even if the
- * tuning value has since moved.
- */
-export async function handleBossPage(
-  ctx: AppContext,
-  interaction: ButtonInteraction,
-  prov: Provisioned,
-  args: string[],
-): Promise<void> {
-  const service = bossService(ctx);
-  const encounterId = parseEncounterId(args);
-  if (!service || encounterId === null) return rejectStale(interaction);
-  const page = Math.max(1, Number.parseInt(args[1] ?? '1', 10) || 1);
-
-  const encounter = await service.getEncounter(encounterId);
-  if (!encounter || encounter.guildId !== prov.guildDbId) return rejectStale(interaction);
-
-  const listing = await service.listParticipations(encounterId, {
-    page,
-    ...(encounter.resultsPageSize ? { pageSize: encounter.resultsPageSize } : {}),
-  });
-  const payload = buildResults({
-    encounter,
-    reason: (encounter.resolutionReason ?? 'repelled') as BossResolutionReason,
-    boss: service.bossFor(encounter),
-    entries: listing.entries,
-    page: listing.page,
-    totalPages: listing.totalPages,
-    totalParticipants: listing.total,
-    // Encounter-level totals, not page-level: the header says what the whole
-    // battle did, and it must not change as a reader turns pages.
-    totalDamage: encounter.totalDamage,
-    totalAttacks:
-      encounter.participantCount * ctx.content.tables.bossEncounters.attacksPerParticipation,
-    firstOnScene: await service.getFirstOnScene(encounterId),
-    ...resolveBossArtwork(ctx, encounter),
-  });
-  // `update` keeps the results on the results message the encounter owns.
-  // Files are re-sent because an edit that omits them drops the attachment.
-  await interaction.update(payload);
-}
-
-/** My Result — the requesting player's full record, privately. */
+ * My Result — the requesting player's full record, privately. */
 export async function handleBossMyResult(
   ctx: AppContext,
   interaction: ButtonInteraction,

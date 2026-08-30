@@ -404,26 +404,6 @@ export function resultTitle(encounter: BossEncounterRow, reason: BossResolutionR
   return `${encounter.bossName} Was Driven Away!`;
 }
 
-/** One participant's block: name, buddy, damage, then what they earned. */
-export function resultLine(entry: BossParticipationResult, isFirst: boolean): string {
-  const p = entry.participation;
-  const rewards = entry.rewards
-    .map((r) => (r.quantity > 1 ? `${r.quantity}× ${r.name}` : r.name))
-    .join(' · ');
-  const earned = [
-    p.xpAwarded && p.xpAwarded > 0 ? `+${p.xpAwarded} XP` : null,
-    rewards.length > 0 ? rewards : null,
-  ]
-    .filter((s): s is string => s !== null)
-    .join(' · ');
-
-  const head = `**${p.trainerName}** — ${p.waifuName} — ${formatDamage(p.totalDamage ?? 0)} DMG`;
-  const crown = isFirst ? ' 🥇' : '';
-  // A max-level buddy earns no XP and the line simply omits it rather than
-  // printing "+0 XP", which would read as a bug.
-  return `${head}${crown}\n${earned.length > 0 ? earned : '_no rewards recorded_'}`;
-}
-
 export interface ResultsInput {
   encounter: BossEncounterRow;
   reason: BossResolutionReason;
@@ -434,9 +414,6 @@ export interface ResultsInput {
    * is already on the completed announcement immediately above.
    */
   boss: BossContent | undefined;
-  entries: BossParticipationResult[];
-  page: number;
-  totalPages: number;
   totalParticipants: number;
   totalDamage: number;
   totalAttacks: number;
@@ -447,49 +424,39 @@ export interface ResultsInput {
 /**
  * Result controls — attached to the **results message only**.
  *
- * Never to the completed announcement. Pagination repaints the message its
- * button lives on, so hanging these on the encounter message would let one
- * reader turning a page overwrite the permanent history for everyone.
- *
- * `All Results` pagination appears only when there is a second page — a
- * six-person encounter should not carry dead buttons. Every control encodes
- * the encounter id and the page, so the pagination keeps working after a
- * restart: there is no in-memory cursor to lose.
+ * A single **View My Rewards** button. It opens each player's own rewards
+ * privately (an ephemeral reply), so the public results message is otherwise
+ * static: it carries no pagination and nothing any reader can press to change
+ * what everyone else sees. The button encodes the encounter id, so it keeps
+ * working after a restart with no in-memory state to lose.
  */
 export function resultComponents(
   encounterId: number,
-  page: number,
-  totalPages: number,
   hasParticipants: boolean,
 ): ActionRowBuilder<ButtonBuilder>[] {
   if (!hasParticipants) return [];
-  const row = new ActionRowBuilder<ButtonBuilder>();
-  if (totalPages > 1) {
-    row.addComponents(
+  return [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
-        .setCustomId(buildCustomId('boss', 'page', String(encounterId), String(page - 1)))
-        .setLabel('◀ Previous')
-        .setStyle(ButtonStyle.Secondary)
-        .setDisabled(page <= 1),
-      new ButtonBuilder()
-        .setCustomId(buildCustomId('boss', 'page', String(encounterId), String(page + 1)))
-        .setLabel('All Results ▶')
-        .setStyle(ButtonStyle.Secondary)
-        .setDisabled(page >= totalPages),
-    );
-  }
-  row.addComponents(
-    new ButtonBuilder()
-      .setCustomId(buildCustomId('boss', 'mine', String(encounterId)))
-      .setLabel('My Result')
-      .setEmoji('🎁')
-      .setStyle(ButtonStyle.Primary),
-  );
-  return [row];
+        .setCustomId(buildCustomId('boss', 'mine', String(encounterId)))
+        .setLabel('View My Rewards')
+        .setEmoji('🎁')
+        .setStyle(ButtonStyle.Primary),
+    ),
+  ];
 }
 
+/**
+ * The public results message: a static, non-interactive announcement.
+ *
+ * It shows the boss name, the overall battle summary and the First-on-Scene
+ * callout, then a note pointing each player to the ephemeral **View My Rewards**
+ * button for their own payout. It deliberately lists no per-participant reward
+ * detail and carries no pagination — a busy channel must not be able to fight
+ * over a shared reward screen.
+ */
 export function buildResults(input: ResultsInput): BaseMessageOptions {
-  const { encounter, reason, entries, totalParticipants } = input;
+  const { encounter, reason, totalParticipants } = input;
   const repelled = reason !== 'unchallenged';
 
   const embed = new EmbedBuilder()
@@ -501,7 +468,7 @@ export function buildResults(input: ResultsInput): BaseMessageOptions {
 
   // The outcome *prose* has already been said on the completed announcement
   // directly above; repeating it here would make the pair read as a stutter.
-  // The results message carries the numbers and the payouts instead.
+  // The results message carries the numbers instead.
   const summary =
     totalParticipants > 0
       ? `**${totalParticipants}** trainer${totalParticipants === 1 ? '' : 's'} joined the battle, ` +
@@ -520,23 +487,19 @@ export function buildResults(input: ResultsInput): BaseMessageOptions {
     });
   }
 
-  for (const entry of entries) {
+  // Per-participant payouts are private now: the note replaces the old public
+  // leaderboard and points each player at their own ephemeral view.
+  if (totalParticipants > 0) {
     embed.addFields({
-      // A zero-width space: Discord requires a field name, and the blocks read
-      // better as an unlabelled list than as a column of repeated headings.
-      name: '​',
-      value: resultLine(entry, input.firstOnScene?.id === entry.participation.id),
+      name: '🎁 Rewards',
+      value:
+        'Rewards have been distributed. Press **View My Rewards** to see your personal results.',
     });
   }
 
-  // The marker is unconditional — reconciliation has to be able to find a
-  // single-page results message just as reliably as a paginated one.
-  embed.setFooter({
-    text:
-      input.totalPages > 1
-        ? `Page ${input.page} of ${input.totalPages} · ${encounterMarker(encounter.id)}`
-        : encounterMarker(encounter.id),
-  });
+  // The marker is unconditional — reconciliation has to be able to find the
+  // results message reliably. No page counter: the message never paginates.
+  embed.setFooter({ text: encounterMarker(encounter.id) });
 
   const files: AttachmentBuilder[] = [];
   if (input.artworkPath) {
@@ -547,12 +510,7 @@ export function buildResults(input: ResultsInput): BaseMessageOptions {
 
   return {
     embeds: [embed],
-    components: resultComponents(
-      encounter.id,
-      input.page,
-      input.totalPages,
-      totalParticipants > 0,
-    ),
+    components: resultComponents(encounter.id, totalParticipants > 0),
     files,
     allowedMentions: { parse: [] },
   };
@@ -564,7 +522,7 @@ export function buildMyResult(
   entry: BossParticipationResult | null,
 ): string {
   if (!entry) {
-    return `You did not commit a buddy to **${encounter.bossName}**~`;
+    return "You didn't earn rewards from this boss encounter.";
   }
   const p = entry.participation;
   if (p.rewardStatus !== 'applied') {

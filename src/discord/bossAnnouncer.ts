@@ -321,6 +321,8 @@ export function createBossAnnouncer(deps: BossAnnouncerDeps): BossAnnouncer {
       if (encounter.resultsPublishedAt) return;
 
       const pageSize = ctx.content.tables.bossEncounters.resultsPageSize;
+      // Only the participant total and the published page size are needed now —
+      // the public results message no longer renders a paginated leaderboard.
       const listing = await encounters.listParticipations(encounterId, { page: 1, pageSize });
       // The earliest commitment, not the top of the damage-sorted page.
       const firstOnScene = await encounters.getFirstOnScene(encounterId);
@@ -330,9 +332,6 @@ export function createBossAnnouncer(deps: BossAnnouncerDeps): BossAnnouncer {
           encounter,
           reason: (encounter.resolutionReason ?? 'unchallenged') as BossResolutionReason,
           boss: encounters.bossFor(encounter),
-          entries: listing.entries,
-          page: listing.page,
-          totalPages: listing.totalPages,
           totalParticipants: listing.total,
           totalDamage: encounter.totalDamage,
           totalAttacks:
