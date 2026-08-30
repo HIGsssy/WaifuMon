@@ -29,7 +29,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { Appearance, AppearanceCatalogEntry, ContentSpecies, OwnedWaifu } from '@/api/types';
 import { routes } from '@/app/router';
 import { Artwork } from '@/components/media/Artwork';
-import { speciesAsset } from '@/images/assets';
+import { appearanceAsset, speciesAsset } from '@/images/assets';
 import { resolveAsset, setImageProviderChain } from '@/images/provider';
 import { createLocalDevAssetsProvider } from '@/images/providers/localDevAssets';
 import { createSilhouetteProvider } from '@/images/providers/silhouette';
@@ -57,7 +57,10 @@ function catalogEntry(
     flavorText: null,
     cosmeticRarity: 'standard',
     introducedVersion: null,
-    assetId: { kind: 'waifumon', slug, variant: id },
+    // Mirrors the catalog endpoint: it has no player in scope, so it reveals
+    // artwork only for the ungated `owned` entry. A gated entry travels as a
+    // named slot with `assetId: null`.
+    assetId: unlock.type === 'owned' ? { kind: 'waifumon', slug, variant: id } : null,
     unlock,
     unlockLabel: unlock.type === 'owned' ? 'Owned' : `Reach Level ${unlock.atLevel}`,
   };
@@ -195,19 +198,24 @@ describe('unowned artwork stays hidden', () => {
     );
     expect(screen.getByAltText('owned').getAttribute('src')).toContain('base_look.png');
 
-    // The gallery draws a locked entry from the server's `isUnlocked: false`,
-    // and that entry is still masked.
-    render(
-      <Artwork
-        asset={{ kind: 'waifumon', slug: gated.assetId.slug, variant: gated.assetId.variant }}
-        name="gated"
-        silhouette
-        displayWidth={ARTWORK_WIDTH.gridTile}
-      />,
-    );
-    expect(
-      screen.getByAltText('Undiscovered Waifumon silhouette').getAttribute('src'),
-    ).toContain('data:image/svg+xml');
+    // And the gated entry cannot be drawn at all: the API sent no `assetId`
+    // for it, so there is nothing for the Portal to resolve — no silhouette to
+    // un-mask, no variant to reconstruct from the id.
+    expect(gated.assetId).toBeNull();
+    expect(appearanceAsset(gated)).toBeNull();
+  });
+
+  it('does not reconstruct a locked variant from its appearance id', () => {
+    // The tempting shortcut, and the reason `appearanceAsset` refuses to take
+    // it: `{ slug, variant: entry.id }` reproduces exactly the artwork the
+    // server declined to name, turning a server-side control back into a
+    // client-side one.
+    const gated = explicitNonStandard.appearances.find((entry) => entry.id === 'level_20')!;
+
+    expect(appearanceAsset(gated)).toBeNull();
+    // The species-level helper falls through to the ungated default rather
+    // than to the gated entry, even when asked about a species that has one.
+    expect(urlFor(explicitNonStandard)).not.toContain('level_20');
   });
 });
 

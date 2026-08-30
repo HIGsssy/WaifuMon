@@ -99,11 +99,25 @@ export interface AppearanceCatalogEntry {
   cosmeticRarity: CosmeticRarity;
   /** Free-form, e.g. "v1.3". Displayed verbatim. */
   introducedVersion: string | null;
-  assetId: AssetIdResource;
+  /**
+   * The artwork identifier — **`null` when the artwork is not ours to show**.
+   *
+   * The API withholds it for locked appearances rather than flagging them,
+   * because resolving an `assetId` is what produces the picture and the picture
+   * is the reward for reaching the level. So there is nothing here to blur,
+   * gate behind a "reveal" control, or recover by editing client state: a
+   * locked entry simply arrives without its art. On a species catalog only the
+   * `owned` entry carries one; on a gallery it tracks `isUnlocked` exactly.
+   *
+   * Render `null` as the silhouette — {@link appearanceAsset} returns `null`
+   * for it and `Artwork` already draws that as the placeholder.
+   */
+  assetId: AssetIdResource | null;
   unlock: AppearanceUnlock;
   /**
    * Always populated by the API. Shown on locked *and* unlocked tiles — the
-   * gallery is a progression journal, not a lock indicator.
+   * gallery is a progression journal, not a lock indicator. With the artwork
+   * withheld this label carries the whole locked tile.
    */
   unlockLabel: string;
 }

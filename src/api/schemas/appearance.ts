@@ -15,6 +15,12 @@
  * Everything here is presentation. `name`, `description`, `flavorText`,
  * `cosmeticRarity`, `introducedVersion`, and `unlockLabel` render on the client
  * and never influence stats, XP, affection, evolution, capture odds, or drops.
+ *
+ * **Locked artwork is withheld, not merely flagged.** `assetId` is nullable and
+ * is populated only for artwork the caller has earned — see its description
+ * below. Because `assetId` is the single asset reference, withholding it here
+ * is the whole access control: a client that never receives one has nothing to
+ * resolve, and `isUnlocked: false` is a rendering hint rather than the fence.
  */
 import { z } from 'zod';
 import {
@@ -79,7 +85,18 @@ export const appearanceCatalogSchema = z.object({
   flavorText: z.string().nullable().describe('In-world caption, rendered as a quote.'),
   cosmeticRarity: cosmeticRaritySchema,
   introducedVersion: z.string().nullable().describe('Free-form, e.g. "v1.3". Never parsed.'),
-  assetId: assetIdSchema,
+  assetId: assetIdSchema
+    .nullable()
+    .describe(
+      'The artwork identifier, or `null` when this client may not see the artwork yet.\n\n' +
+        'Locked appearances are returned as **slots**: id, name, `unlock`, `unlockLabel` — ' +
+        'everything needed to render "Reach Level 20" — but no `assetId`, because resolving one ' +
+        'is what produces the picture, and the picture is the reward. On the species catalog ' +
+        '(no player in scope) only the `owned` entry carries an id; on a collection gallery it ' +
+        'follows `isUnlocked` exactly.\n\n' +
+        'This is enforced server-side. There is no parameter, header, or client state that ' +
+        'returns an id for artwork the copy has not earned.',
+    ),
   unlock: appearanceUnlockSchema,
   unlockLabel: z
     .string()

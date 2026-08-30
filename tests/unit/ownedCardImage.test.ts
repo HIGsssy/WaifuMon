@@ -63,11 +63,32 @@ describe('the appearance she is wearing', () => {
     expect(attachedPath(image!.file)).not.toContain('standard.png');
   });
 
-  it.each(['standard', 'level_10', 'level_50'])(
+  it.each(['standard', 'level_10', 'level_20'])(
     'follows the copy from look to look (%s)',
     async (variant) => {
       const image = await ownedCardImage(ctxFor(), subject(variant));
       expect(path.basename(attachedPath(image!.file))).toBe(`${variant}.png`);
+    },
+  );
+
+  /**
+   * The stale-equipped case, and the reason this tier takes her level.
+   *
+   * A `variant` can name a look she has *stopped* qualifying for — an admin
+   * rolled her level back, a restore ran, an author raised `atLevel` after
+   * copies were already wearing it. The id is still valid content, so the old
+   * lookup happily resolved it and this tier painted Level 50 artwork onto a
+   * Level 20 copy: the reward, handed over by a data accident.
+   *
+   * It degrades to the default instead, exactly as a *deleted* variant does.
+   */
+  it.each(['level_30', 'level_50'])(
+    'degrades a look she no longer qualifies for to the default (%s)',
+    async (variant) => {
+      const image = await ownedCardImage(ctxFor(), subject(variant));
+
+      expect(path.basename(attachedPath(image!.file))).toBe('standard.png');
+      expect(attachedPath(image!.file)).not.toContain(variant);
     },
   );
 

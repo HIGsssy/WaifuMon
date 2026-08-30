@@ -171,13 +171,48 @@ export function defaultAppearance(species: AppearanceSpecies): ResolvedAppearanc
  * that no longer exists — an author can delete artwork, and a copy pointing at
  * a deleted entry must still render rather than 404. Deliberately read-only:
  * the fallback is a *display* decision and never writes `variant` back.
+ *
+ * **Pass `unlockCtx` wherever the copy's level is in hand.** Without it this
+ * function trusts `variant`, and a stored id can be stale in the one direction
+ * that matters: the appearance still exists but is no longer earned — a level
+ * was rolled back by an admin, a save was restored, or an author raised
+ * `unlock.atLevel` after copies were already wearing the look. Trusting it then
+ * paints locked artwork onto an inspect card, which is exactly the leak the
+ * gallery is careful to avoid. With the context, a now-locked `variant`
+ * degrades to the default the same way a deleted one does.
  */
 export function appearanceForVariant(
   species: AppearanceSpecies,
   variant: string | null | undefined,
+  unlockCtx?: { level: number } | undefined,
 ): ResolvedAppearance {
   if (!variant) return defaultAppearance(species);
-  return (
-    resolveAppearances(species).find((a) => a.id === variant) ?? defaultAppearance(species)
-  );
+  const worn = resolveAppearances(species).find((a) => a.id === variant);
+  if (!worn) return defaultAppearance(species);
+  if (unlockCtx && !isAppearanceEarned(worn, unlockCtx)) return defaultAppearance(species);
+  return worn;
+}
+
+/**
+ * Whether a copy at this level has earned the look.
+ *
+ * A duplicate of `appearanceRules.isUnlocked` in miniature, and deliberately
+ * so: `appearanceRules` imports *from* this module, and the display-side
+ * fallback above cannot reach back across that edge without a cycle. Both
+ * spellings are pinned to the same truth table by
+ * `tests/unit/appearanceRules.test.ts`.
+ */
+function isAppearanceEarned(
+  appearance: ResolvedAppearance,
+  ctx: { level: number },
+): boolean {
+  switch (appearance.unlock.type) {
+    case 'owned':
+      return true;
+    case 'level':
+      return ctx.level >= appearance.unlock.atLevel;
+    default:
+      // An unimplemented source must never hand out artwork by accident.
+      return false;
+  }
 }

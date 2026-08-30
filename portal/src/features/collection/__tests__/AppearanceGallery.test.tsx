@@ -6,14 +6,21 @@
  * quietly undo:
  *
  *   1. locked entries are **shown**, with their requirement, not filtered out;
- *   2. locked artwork stays a silhouette until the player opts in;
+ *   2. locked artwork is **never** shown, and nothing offers to show it;
  *   3. the Portal never computes unlock state — it renders the server's.
+ *
+ * Rule 2 used to read "locked artwork stays a silhouette until the player opts
+ * in", implemented as a "Reveal artwork" button. That was a curtain, not a
+ * fence: the API had already sent `assetId` for every locked entry, so the
+ * reward was one click away for anyone who wanted it and zero clicks away for
+ * anyone reading the network tab. The API withholds the identifier now, so
+ * these tests assert there is nothing to reveal *and* no control offering to.
  *
  * There is no mutation path to test: the Portal is read-only (§4) and selection
  * happens in Discord until the authenticated-Portal milestone. The gallery's
- * job here is the journal — browsing, previewing, and stating requirements.
+ * job here is the journal — browsing and stating requirements.
  */
-import { screen, waitFor, within } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http } from 'msw';
 import { describe, expect, it } from 'vitest';
@@ -73,38 +80,70 @@ describe('AppearanceGallery', () => {
     expect(within(group).getByText('v1.3')).toBeInTheDocument();
   });
 
-  it('keeps locked artwork a silhouette until the player asks to see it', async () => {
-    const user = userEvent.setup();
+  it('renders no image at all for a locked tile', async () => {
     renderDetail(101);
     const group = await galleryGroup();
 
-    // Rule 2: silhouette by default — players who want the surprise keep it.
+    // Rule 2. Not a silhouette of the real art, not a blurred copy — both would
+    // need the artwork in the browser to produce. There is simply no <img>.
     const lockedTile = within(group).getByRole('button', { name: /Midnight Bloom/ });
-    expect(within(lockedTile).getByAltText(/Undiscovered Waifumon silhouette/i)).toBeInTheDocument();
+    expect(within(lockedTile).queryByRole('img')).not.toBeInTheDocument();
+    expect(lockedTile.querySelector('img')).toBeNull();
 
-    await user.click(lockedTile);
-    await user.click(await screen.findByRole('button', { name: /Reveal artwork/i }));
-
-    await waitFor(() => {
-      expect(
-        within(lockedTile).queryByAltText(/Undiscovered Waifumon silhouette/i),
-      ).not.toBeInTheDocument();
-    });
+    // The unlocked tile beside it still has one — the regression guard.
+    const wornTile = within(group).getByRole('button', { name: /Standard/ });
+    expect(wornTile.querySelector('img')).not.toBeNull();
   });
 
-  it('opens a detail panel with flavor text, description and the requirement', async () => {
+  it('names no artwork URL anywhere in a locked tile', async () => {
+    renderDetail(101);
+    const group = await galleryGroup();
+    const lockedTile = within(group).getByRole('button', { name: /Midnight Bloom/ });
+
+    // Belt to the braces above: no attribute anywhere under the tile resolves
+    // to an asset, however it might have got there.
+    expect(lockedTile.innerHTML).not.toMatch(/\.(png|jpe?g|webp)/i);
+    expect(lockedTile.innerHTML).not.toContain('dev-assets');
+    expect(lockedTile.innerHTML).not.toContain('/cards/');
+  });
+
+  it('puts the unlock requirement where the artwork would have been', async () => {
+    renderDetail(101);
+    const group = await galleryGroup();
+    const lockedTile = within(group).getByRole('button', { name: /Midnight Bloom/ });
+
+    // The slot is legible rather than blank: a lock and what earns it.
+    expect(within(lockedTile).getAllByText(/Reach Level 40/i).length).toBeGreaterThan(0);
+  });
+
+  it('offers no control that would reveal locked artwork', async () => {
     const user = userEvent.setup();
     renderDetail(101);
     const group = await galleryGroup();
 
     await user.click(within(group).getByRole('button', { name: /Midnight Bloom/ }));
 
+    // The button this bug was hiding behind. It is gone, and nothing replaced
+    // it — there is no client-side path to artwork the server did not send.
+    expect(screen.queryByRole('button', { name: /Reveal/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Show artwork/i })).not.toBeInTheDocument();
+  });
+
+  it('opens a locked detail panel with the requirement and no spoilers', async () => {
+    const user = userEvent.setup();
+    renderDetail(101);
+    const group = await galleryGroup();
+
+    await user.click(within(group).getByRole('button', { name: /Midnight Bloom/ }));
+
+    expect(await screen.findByText(/Locked — Reach Level 40/i)).toBeInTheDocument();
+    // Flavour text and description describe the look, so they are held back
+    // with it — describing a surprise is a smaller version of spoiling it.
     expect(
-      await screen.findByText(/Prepared for the annual shrine celebration/i),
-    ).toBeInTheDocument();
-    expect(screen.getByText(/A darker cut of her usual silhouette/i)).toBeInTheDocument();
-    expect(screen.getByText(/Locked — Reach Level 40/i)).toBeInTheDocument();
-    // A locked entry offers no way to wear it.
+      screen.queryByText(/Prepared for the annual shrine celebration/i),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/A darker cut of her usual silhouette/i)).not.toBeInTheDocument();
+    // And still no way to wear it.
     expect(screen.queryByRole('button', { name: /Wear this look/i })).not.toBeInTheDocument();
   });
 
@@ -165,7 +204,14 @@ describe('AppearanceGallery', () => {
 
     renderDetail(101);
     const group = await galleryGroup();
-    await user.click(within(group).getByRole('button', { name: /Midnight Bloom/ }));
+    const tile = within(group).getByRole('button', { name: /Midnight Bloom/ });
+
+    // The other half of the fix: a gated look the player *has* earned renders
+    // exactly as it always did, artwork and all. Hiding it too would be the
+    // same bug pointed the other way.
+    expect(tile.querySelector('img')).not.toBeNull();
+
+    await user.click(tile);
 
     expect(await screen.findByText(/Switch to this look in Discord/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Wear this look/i })).not.toBeInTheDocument();

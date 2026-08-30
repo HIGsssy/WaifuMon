@@ -24,6 +24,7 @@ import {
 import { createAppearanceService } from '../../src/modules/appearance/appearanceService';
 import type { LoadedContent, SpeciesContent } from '../../src/modules/content/schemas';
 import {
+  ASSETS_DIR,
   bootstrapApp,
   createEventHarness,
   insertOwnedWaifu,
@@ -72,6 +73,11 @@ function withCatalog(base: LoadedContent, slug: string): LoadedContent {
               {
                 id: 'level_40',
                 name: 'Eclipse',
+                // Deliberately given prose of its own: the locked-artwork tests
+                // assert this text is withheld, and an entry with none would
+                // pass those assertions without proving anything.
+                description: 'Eclipse falls across her shoulders.',
+                flavorText: 'Eclipse falls, and she does not look away.',
                 cosmeticRarity: 'limited',
                 sortOrder: 2,
                 tags: [],
@@ -143,7 +149,10 @@ beforeAll(async () => {
 
   ctx = {
     config: {
-      assetsDir: process.cwd(),
+      // The real assets root, not a stub. `alley_catgirl/level_40.png` genuinely
+      // exists on disk, so the locked-artwork assertions below are about the
+      // guard refusing to attach it rather than about a missing file.
+      assetsDir: ASSETS_DIR,
       contentDir: process.cwd(),
       dailyTimezone: 'UTC',
       discordToken: 'x',
@@ -258,19 +267,106 @@ describe('appear:pick — choosing a look', () => {
     expect(harness.lines).toHaveLength(0);
   });
 
-  it('previews a locked pick and explains the requirement instead of dead-ending', async () => {
+  it('explains a locked pick instead of dead-ending, without showing the art', async () => {
     const interaction = fakeInteraction();
     interaction.values = ['level_40'];
     await handleAppearancePick(ctx, interaction as never, prov, [String(waifuId), '1']);
 
     // The gallery is repainted with the locked entry highlighted…
-    expect(embedText(paintedView(interaction))).toContain('Eclipse');
+    const view = paintedView(interaction);
+    expect(embedText(view)).toContain('Eclipse');
+    // …as a locked slot, carrying nothing but its requirement.
+    expect(embedText(view)).toMatch(/Locked/i);
+    expect(view.files ?? []).toHaveLength(0);
     // …and the reason arrives separately, ephemerally.
     const followUp = interaction.followUp.mock.calls[0]?.[0] as { content: string } | undefined;
     expect(followUp?.content).toMatch(/Reach Level 40/);
 
     const [after] = await t.db.select().from(playerWaifus).where(eq(playerWaifus.id, waifuId));
     expect(after?.variant).toBe('standard');
+  });
+});
+
+/**
+ * The bug this section exists for.
+ *
+ * The gallery used to treat a locked tap as a *preview*: it highlighted the
+ * entry and attached the real artwork, on the reasoning that seeing what you
+ * are working toward is motivating. But the artwork **is** the reward for
+ * reaching the level, so previewing it is spending the reward early — and
+ * because the attachment is a real Discord upload, "previewed" meant
+ * permanently hosted on a CDN URL anyone could keep.
+ *
+ * A locked entry is now a named slot with its requirement, and nothing else.
+ */
+describe('locked appearances never reveal their artwork', () => {
+  /** Open the gallery with `appearanceId` highlighted. */
+  async function openHighlighting(appearanceId: string) {
+    const interaction = fakeInteraction();
+    await handleAppearanceOpen(ctx, interaction as never, prov, [
+      String(waifuId),
+      '1',
+      appearanceId,
+    ]);
+    return { interaction, view: paintedView(interaction) };
+  }
+
+  it('attaches no file when the highlighted entry is locked', async () => {
+    const { view } = await openHighlighting('level_40');
+
+    expect(view.files ?? []).toHaveLength(0);
+    // The embed must not point at an attachment that is not there either — a
+    // dangling `attachment://` renders as a broken image, not as nothing.
+    expect(embedText(view)).not.toContain('attachment://');
+  });
+
+  it('still attaches the artwork when the highlighted entry is unlocked', async () => {
+    // The regression guard for the fix: `level_5` is earned at level 10, and
+    // suppressing *its* artwork would be a different bug of the same size.
+    const { view } = await openHighlighting('level_5');
+
+    expect(view.files ?? []).toHaveLength(1);
+    expect(embedText(view)).toContain('attachment://');
+  });
+
+  it('names the locked entry and its requirement in place of the picture', async () => {
+    const { view } = await openHighlighting('level_40');
+    const text = embedText(view);
+
+    expect(text).toContain('Eclipse');
+    expect(text).toMatch(/Reach Level 40/);
+    expect(text).toMatch(/Locked/i);
+  });
+
+  it('withholds the flavour text that describes the locked look', async () => {
+    const locked = await openHighlighting('level_40');
+    const unlocked = await openHighlighting('level_5');
+
+    // `level_5`'s flavour text renders; the locked entry's does not. Describing
+    // a surprise is a smaller version of spoiling it.
+    expect(embedText(unlocked.view)).toContain('Prepared for the annual shrine celebration');
+    expect(embedText(locked.view)).not.toContain('Eclipse falls');
+  });
+
+  it('leaks no asset path or filename anywhere in the painted view', async () => {
+    const { view } = await openHighlighting('level_40');
+    const json = JSON.stringify({ embeds: view.embeds, components: view.components });
+
+    expect(json).not.toMatch(/\.(png|jpe?g|webp)/i);
+    expect(json).not.toContain('assets/');
+    expect(json).not.toContain('waifumon/');
+  });
+
+  it('shows the locked roster entry without its artwork', async () => {
+    // The roster lists every appearance — that is the journal — but a locked
+    // row is a name and a requirement, never a thumbnail.
+    const { view } = await openHighlighting('standard');
+    const text = embedText(view);
+
+    expect(text).toContain('Eclipse');
+    expect(text).toContain('Reach Level 40');
+    // One file: the *highlighted* unlocked entry's artwork, and no more.
+    expect(view.files ?? []).toHaveLength(1);
   });
 });
 

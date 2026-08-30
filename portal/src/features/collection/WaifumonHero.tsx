@@ -26,7 +26,7 @@ import { CardViewToggle, type CardView } from '@/components/media/CardViewToggle
 import { Button } from '@/components/ui/button';
 import { RarityGlowRing } from '@/components/waifumon/RarityGlowRing';
 import { heroTransitionName } from '@/components/waifumon/WaifumonCard';
-import { appearanceAsset, ownedCardAsset } from '@/images/assets';
+import { ownedCardAsset, speciesAsset } from '@/images/assets';
 import { cardUrlFor } from '@/images/providers/cardApi';
 import { ARTWORK_WIDTH } from '@/images/sizes';
 import { cardFilename, downloadAuthenticatedFile } from '@/lib/download';
@@ -62,7 +62,7 @@ export function WaifumonHero({ entry, cardsAvailable }: WaifumonHeroProps) {
     try {
       await downloadAuthenticatedFile(
         url,
-        cardFilename(species.slug, waifu.selectedAppearance?.assetId.variant),
+        cardFilename(species.slug, waifu.selectedAppearance?.assetId?.variant),
       );
     } catch {
       // No backend detail on screen: the user can retry, and the request id is
@@ -98,7 +98,11 @@ export function WaifumonHero({ entry, cardsAvailable }: WaifumonHeroProps) {
           </button>
         ) : (
           <Artwork
-            asset={appearanceAsset(waifu.selectedAppearance)}
+            // `speciesAsset` rather than `appearanceAsset` directly: the look
+            // she is wearing is unlocked by construction and always carries an
+            // `assetId`, but this keeps the null-handling in the one helper
+            // that owns it rather than asserting it here.
+            asset={speciesAsset(species, waifu)}
             displayWidth={ARTWORK_WIDTH.hero}
             name={species.name}
             rarityLabel={rarity.label}

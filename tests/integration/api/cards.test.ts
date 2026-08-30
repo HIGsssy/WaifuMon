@@ -86,6 +86,26 @@ const SPECIES = SpeciesFileSchema.parse([
     affinity: 'switch',
     imagePath: 'waifumon/no_art_girl/standard.png',
   },
+  /**
+   * The species the unlock fence is tested against. Unlike `fallback_girl`,
+   * her gated appearance **ships real artwork** — so a request for it would
+   * genuinely serve the reward if nothing stopped it, and a 409 here is the
+   * fence working rather than a missing file quietly saving us.
+   */
+  {
+    slug: 'gated_girl',
+    name: 'Gated Girl',
+    rarity: 'SR',
+    archetype: 'demon',
+    race: 'demon',
+    contentRating: 'suggestive',
+    affinity: 'primal',
+    imagePath: 'waifumon/gated_girl/standard.png',
+    appearances: [
+      { id: 'standard', name: 'Standard', unlock: { type: 'owned' } },
+      { id: 'secret', name: 'Secret', unlock: { type: 'level', atLevel: 30 } },
+    ],
+  },
 ]);
 
 const TABLES = { waifuProgression: { maxLevel: 50 } } as unknown as LoadedContent['tables'];
@@ -157,6 +177,10 @@ beforeAll(async () => {
   await writeArt('card_test_n', 'standard', { r: 200, g: 40, b: 90 });
   await writeArt('card_test_ex', 'standard', { r: 40, g: 200, b: 90 });
   await writeArt('fallback_girl', 'standard', { r: 90, g: 40, b: 200 });
+  await writeArt('gated_girl', 'standard', { r: 10, g: 10, b: 10 });
+  // The reward itself: on disk, renderable, and unreachable through the
+  // species route. Distinctly coloured so a leak would be unmistakable.
+  await writeArt('gated_girl', 'secret', { r: 250, g: 250, b: 250 });
   // `no_art_girl` deliberately gets nothing.
 
   const built = await buildApp();
@@ -170,6 +194,20 @@ afterAll(async () => {
 });
 
 const url = (p: string): string => `/api/v1${p}`;
+
+/**
+ * The owned copy's card. Module-scoped because it is now the route that
+ * exercises appearance *fallback* — the species route refuses gated ids, so
+ * "she wears a look whose artwork is missing" only happens on an owned copy.
+ */
+const ownedUrl = url(`/players/1/collection/owned/${OWNED_WAIFU.id}/card`);
+
+/** The full-size masters cached for a species, sorted. `@` marks a rendition. */
+function mastersOf(slug: string): string[] {
+  const dir = path.join(workdir, 'cache', slug);
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir).filter((f) => !f.includes('@')).sort();
+}
 
 describe('feature flag', () => {
   it('does not register the routes when disabled — they 404 like any unknown path', async () => {
@@ -354,52 +392,124 @@ describe('GET /cards/species/:slug', () => {
 
 describe('resolved asset identity', () => {
   /**
-   * The regression this phase exists for. `alt_a` and `alt_b` have no artwork,
-   * so both resolve to `fallback_girl/standard.png`. They are the same pixels
-   * and must therefore be the same cached card — keying by the *requested*
-   * appearance would produce two masters of one image, and every future
-   * fallback would double the cache again.
+   * The regression this phase exists for. `alt_a` has no artwork, so a copy
+   * wearing it resolves to `fallback_girl/standard.png` — the same pixels as
+   * the plain species card at the same level, and therefore the same cached
+   * master. Keying by the *requested* appearance would mint two masters of one
+   * image, and every future fallback would double the cache again.
+   *
+   * This used to be asserted by naming `alt_a`/`alt_b` on the species route.
+   * That route no longer renders gated appearances at all (see the fence
+   * below), so the fallback is now exercised where it actually happens in
+   * production: an owned copy who has *earned* the look wearing it.
    */
-  it('gives two appearances that fall back to the same artwork one identity', async () => {
-    const [a, b, standard] = await Promise.all(
-      ['alt_a', 'alt_b', 'standard'].map((variant) =>
-        app.inject({
-          method: 'GET',
-          url: url(`/cards/species/fallback_girl?variant=${variant}`),
-          headers: AUTH,
-        }),
-      ),
-    );
+  it('gives a copy whose look falls back the same identity as the species default', async () => {
+    const [owned, standard] = await Promise.all([
+      app.inject({ method: 'GET', url: ownedUrl, headers: AUTH }),
+      app.inject({
+        method: 'GET',
+        url: url(`/cards/species/fallback_girl?level=${OWNED_WAIFU.level}`),
+        headers: AUTH,
+      }),
+    ]);
 
-    expect(a!.statusCode).toBe(200);
-    expect(a!.headers.etag).toBe(b!.headers.etag);
-    expect(a!.headers.etag).toBe(standard!.headers.etag);
-    expect(a!.rawPayload.equals(b!.rawPayload)).toBe(true);
+    expect(owned!.statusCode).toBe(200);
+    expect(owned!.headers.etag).toBe(standard!.headers.etag);
+    expect(owned!.rawPayload.equals(standard!.rawPayload)).toBe(true);
   });
 
-  it('writes exactly one master for all three of them', async () => {
-    for (const variant of ['standard', 'alt_a', 'alt_b']) {
-      await app.inject({
-        method: 'GET',
-        url: url(`/cards/species/fallback_girl?variant=${variant}`),
-        headers: AUTH,
-      });
-    }
-    const dir = path.join(workdir, 'cache', 'fallback_girl');
-    const masters = fs.readdirSync(dir).filter((f) => !f.includes('@'));
-    expect(masters).toHaveLength(1);
+  it('mints no extra master for the look that fell back', async () => {
+    await app.inject({
+      method: 'GET',
+      url: url(`/cards/species/fallback_girl?level=${OWNED_WAIFU.level}`),
+      headers: AUTH,
+    });
+    // Snapshot rather than count: other tests in this file legitimately render
+    // her at other levels, and the invariant is "the fallback added nothing",
+    // not "this species has exactly one card".
+    const before = mastersOf('fallback_girl');
+
+    await app.inject({ method: 'GET', url: ownedUrl, headers: AUTH });
+
+    expect(mastersOf('fallback_girl')).toEqual(before);
   });
 
   it('logs the fallback so a content gap is diagnosable', async () => {
-    await app.inject({
-      method: 'GET',
-      url: url('/cards/species/fallback_girl?variant=alt_a'),
-      headers: AUTH,
-    });
+    await app.inject({ method: 'GET', url: ownedUrl, headers: AUTH });
     const line = logLines().find((l) => l.includes('card-renderer/artwork-fallback'));
     expect(line).toBeDefined();
     expect(line).toContain('"requestedAppearanceId":"alt_a"');
     expect(line).toContain('"resolvedAppearanceId":"standard"');
+  });
+});
+
+/**
+ * The species card route is public in the sense that matters here: it takes a
+ * slug and an appearance id, and no owned copy is in scope to establish that
+ * anyone has earned the look. It was therefore a complete bypass of the
+ * appearance gate — `?variant=level_20` rendered and streamed Level 20 artwork
+ * to a Level 1 player, which is the whole reward handed over by query string.
+ *
+ * `gated_girl/secret` exists on disk specifically so these assertions are about
+ * refusal rather than about a missing file.
+ */
+describe('gated appearances are not renderable on the species route', () => {
+  const secretUrl = url('/cards/species/gated_girl?variant=secret');
+
+  it('409s a gated appearance instead of rendering it', async () => {
+    const res = await app.inject({ method: 'GET', url: secretUrl, headers: AUTH });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({ error: { code: 'APPEARANCE_LOCKED' } });
+  });
+
+  it('returns no image bytes and names no asset location in the refusal', async () => {
+    const res = await app.inject({ method: 'GET', url: secretUrl, headers: AUTH });
+
+    expect(res.headers['content-type']).not.toContain('image/');
+    // The refusal is a JSON envelope, and it must not describe the artwork it
+    // is refusing — no path, no filename, no extension.
+    expect(res.payload).not.toMatch(/\.(png|webp|jpe?g)\b/i);
+    expect(res.payload).not.toContain('assets/');
+    expect(res.payload).not.toContain('waifumon/');
+  });
+
+  it('renders nothing, so no master for the locked artwork is ever written', async () => {
+    // Render her default first so the cache directory is populated, then take
+    // the snapshot: a refusal must add nothing to it.
+    await app.inject({
+      method: 'GET',
+      url: url('/cards/species/gated_girl'),
+      headers: AUTH,
+    });
+    const before = mastersOf('gated_girl');
+
+    await app.inject({ method: 'GET', url: secretUrl, headers: AUTH });
+
+    expect(mastersOf('gated_girl')).toEqual(before);
+  });
+
+  it('still renders her ungated default', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: url('/cards/species/gated_girl?variant=standard'),
+      headers: AUTH,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toContain('image/');
+  });
+
+  it('cannot be reached with a conditional GET either', async () => {
+    // The 304 short-circuit runs before rendering, so a fence placed after it
+    // would let `If-None-Match: *` confirm the card exists. It runs after.
+    const res = await app.inject({
+      method: 'GET',
+      url: secretUrl,
+      headers: { ...AUTH, 'if-none-match': '*' },
+    });
+
+    expect(res.statusCode).toBe(409);
   });
 });
 
@@ -472,8 +582,6 @@ describe('errors', () => {
 });
 
 describe('GET /players/:playerId/collection/owned/:waifuId/card', () => {
-  const ownedUrl = url(`/players/1/collection/owned/${OWNED_WAIFU.id}/card`);
-
   it('renders the owned copy for its owner', async () => {
     const res = await app.inject({ method: 'GET', url: ownedUrl, headers: AUTH });
 

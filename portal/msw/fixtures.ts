@@ -79,9 +79,20 @@ export function standardAppearance(slug: string): AppearanceCatalogEntry {
   };
 }
 
-/** A level-gated entry, for exercising the locked half of the gallery. */
+/**
+ * A level-gated entry, for exercising the locked half of the gallery.
+ *
+ * **`assetId` is `null`, mirroring the real catalog endpoint.** A species
+ * catalog has no player in scope, so it can only reveal artwork for the ungated
+ * `owned` entry; a gated entry travels as a named slot with its requirement and
+ * nothing to resolve. `withState` puts the identifier back for a copy that has
+ * actually earned it — which is the only place the real API ever does.
+ *
+ * It therefore takes no `slug`: there is no asset to address until something
+ * grants one, and accepting a slug here would invite exactly the reconstruction
+ * (`{ slug, variant: id }`) the fix exists to prevent.
+ */
 export function levelAppearance(
-  slug: string,
   id: string,
   atLevel: number,
   overrides: Partial<AppearanceCatalogEntry> = {},
@@ -93,11 +104,16 @@ export function levelAppearance(
     flavorText: 'Prepared for the annual shrine celebration.',
     cosmeticRarity: 'seasonal',
     introducedVersion: 'v1.3',
-    assetId: { kind: 'waifumon', slug, variant: id },
+    assetId: null,
     unlock: { type: 'level', atLevel },
     unlockLabel: `Reach Level ${atLevel}`,
     ...overrides,
   };
+}
+
+/** The artwork identifier a gated entry carries *once earned*. */
+export function unlockedAssetId(slug: string, variant: string) {
+  return { kind: 'waifumon' as const, slug, variant };
 }
 
 function makeSpecies(overrides: Partial<Species> & Pick<Species, 'id' | 'slug' | 'name'>): Species {
@@ -139,17 +155,30 @@ export const speciesRows: Species[] = [
     // has *not* reached, so the gallery's locked half is exercised by default.
     appearances: [
       standardAppearance('void_empress'),
-      levelAppearance('void_empress', 'level_40', 40),
+      levelAppearance('level_40', 40),
     ],
   }),
 ];
 
-/** Catalog metadata + per-copy state, as the gallery endpoint returns it. */
+/**
+ * Catalog metadata + per-copy state, as the gallery endpoint returns it.
+ *
+ * Enforces the API's own invariant so no fixture can drift from it: `assetId`
+ * is present exactly when `isUnlocked` is true. A locked entry has its
+ * identifier stripped no matter what was passed in, and an unlocked gated entry
+ * gets one back — that reveal is the *only* place the real API grants one for
+ * gated artwork.
+ */
 function withState(
   entry: AppearanceCatalogEntry,
   state: { isUnlocked: boolean; isSelected: boolean },
+  revealed?: { kind: 'waifumon'; slug: string; variant: string },
 ): Appearance {
-  return { ...entry, ...state };
+  return {
+    ...entry,
+    ...state,
+    assetId: state.isUnlocked ? (revealed ?? entry.assetId) : null,
+  };
 }
 
 /** Keyed by owned-waifu id, mirroring `GET …/appearances`. */
@@ -159,7 +188,7 @@ export const appearanceGalleries: Record<number, { appearances: Appearance[]; se
       selected: 'standard',
       appearances: [
         withState(standardAppearance('void_empress'), { isUnlocked: true, isSelected: true }),
-        withState(levelAppearance('void_empress', 'level_40', 40), {
+        withState(levelAppearance('level_40', 40), {
           isUnlocked: false,
           isSelected: false,
         }),

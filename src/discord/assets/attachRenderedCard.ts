@@ -159,9 +159,14 @@ export async function ownedCardImage(
     const rendered = await renderOwnedCardAttachment(ctx, subject);
     if (rendered) return rendered;
 
+    // Her level rides along so a `variant` she has stopped qualifying for
+    // degrades to the default. Tier 2 is the *fallback* path — the one that
+    // runs when card rendering is off — and it must not be the one surface
+    // that still paints locked artwork.
     const worn = ctx.services.appearance.currentAppearance(
       subject.species,
       subject.waifu.variant,
+      { level: subject.waifu.level },
     );
     const file = resolveAppearanceAssetOrPath(ctx, worn.assetId, subject.species.imagePath);
     return file === null ? null : { file, url: `attachment://${CARD_FILENAME}` };

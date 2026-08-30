@@ -41,13 +41,19 @@ function attach(absolutePath: string | undefined): AttachmentBuilder | null {
 /**
  * Artwork for one appearance, falling back to the species default.
  *
- * Returns `null` only when neither exists, which callers render as a
- * text-only embed.
+ * Returns `null` when neither exists — and, deliberately, when `assetId` is
+ * `null`. A withheld identifier is how a locked appearance travels (see
+ * `AppearanceView.assetId`), and the whole point is that there is nothing to
+ * resolve; accepting it here and answering `null` means a caller that forgets
+ * to check `isUnlocked` degrades to the text-only embed instead of type-erroring
+ * its way into `undefined` and attaching whatever falls out. Callers render
+ * `null` as a text-only embed either way.
  */
 export function resolveAppearanceAsset(
   ctx: AppearanceAssetContext,
-  assetId: AssetId,
+  assetId: AssetId | null | undefined,
 ): AttachmentBuilder | null {
+  if (!assetId) return null;
   return attach(resolveAsset(shared(ctx), assetId)?.absolutePath);
 }
 

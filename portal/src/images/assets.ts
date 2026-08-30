@@ -53,10 +53,18 @@ export function speciesAsset(
   species: Species | ContentSpecies,
   waifu?: Pick<OwnedWaifu, 'variant' | 'selectedAppearance'>,
 ): AssetId {
-  if (waifu?.selectedAppearance) return appearanceAsset(waifu.selectedAppearance);
+  // Both of these carry an `assetId` in practice — `selectedAppearance` is
+  // what she is wearing (unlocked by construction, and unlock-aware on the
+  // server so a stale `variant` degrades to the default), and the `owned`
+  // catalog entry is ungated. The `??` chain is for the shapes the type still
+  // permits, and falls through to the bare species identity rather than
+  // guessing a variant filename.
+  const worn = waifu?.selectedAppearance ? appearanceAsset(waifu.selectedAppearance) : null;
+  if (worn) return worn;
 
   const fallback = defaultAppearanceOf(species);
-  if (fallback) return appearanceAsset(fallback);
+  const fallbackAsset = fallback ? appearanceAsset(fallback) : null;
+  if (fallbackAsset) return fallbackAsset;
 
   return {
     kind: 'species',
@@ -66,16 +74,27 @@ export function speciesAsset(
 }
 
 /**
- * Art named by the Platform API's own `assetId`.
+ * Art named by the Platform API's own `assetId`, or `null` when the API
+ * withheld it.
  *
  * The API's shape and the Portal's `AssetId` are structurally identical by
  * design, so this is a pass-through rather than a translation — it exists so
  * call sites read `appearanceAsset(appearance)` instead of spreading a
  * response field, and so a future divergence has exactly one place to land.
+ *
+ * **`null` in means `null` out, and that is the point.** A locked appearance
+ * arrives with no `assetId` (see `AppearanceCatalogEntry.assetId`), and the
+ * Portal must not invent one — deriving `<slug>/<variant>.png` from the
+ * appearance's id would reconstruct exactly the artwork the server declined to
+ * name, turning a server-side access control back into a client-side one.
+ * `Artwork` renders a `null` asset as the silhouette.
  */
 export function appearanceAsset(
-  appearance: Pick<AppearanceCatalogEntry, 'assetId'> | { assetId: AssetIdResource },
-): AssetId {
+  appearance:
+    | Pick<AppearanceCatalogEntry, 'assetId'>
+    | { assetId: AssetIdResource | null },
+): AssetId | null {
+  if (!appearance.assetId) return null;
   const { kind, slug, variant } = appearance.assetId;
   return { kind, slug, variant };
 }
@@ -98,7 +117,10 @@ export function speciesCardAsset(
   appearance?: Pick<AppearanceCatalogEntry, 'assetId'> | undefined,
 ): AssetId {
   const chosen = appearance ?? defaultAppearanceOf(species as Species | ContentSpecies);
-  const variant = chosen?.assetId.variant;
+  // No `assetId` means the API withheld the artwork — omit `variant` so the
+  // card route renders her default rather than being asked for a locked look
+  // it would refuse with 409 anyway.
+  const variant = chosen?.assetId?.variant;
   return {
     kind: 'card',
     slug: species.slug,
@@ -121,7 +143,7 @@ export function ownedCardAsset(
   playerId: number,
   entry: { waifu: Pick<OwnedWaifu, 'id' | 'selectedAppearance'>; species: Pick<Species, 'slug'> },
 ): AssetId {
-  const variant = entry.waifu.selectedAppearance?.assetId.variant;
+  const variant = entry.waifu.selectedAppearance?.assetId?.variant;
   return {
     kind: 'card',
     slug: entry.species.slug,

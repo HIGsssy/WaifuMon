@@ -23,6 +23,12 @@
  *
  * Failures are the existing typed errors, unchanged, so the HTTP layer keeps
  * mapping them to the same status codes it always did.
+ *
+ * **Unlock enforcement lives here.** Every path that turns an appearance into
+ * pixels runs through `pickAppearance` (by id) or `currentAppearance` (off the
+ * row), and both refuse artwork the subject has not earned. Putting the fence
+ * at the chokepoint rather than in each caller is what makes "a new surface
+ * cannot leak locked artwork" true by construction instead of by review.
  */
 import { resolveAppearanceAssetOrLegacyPath } from './assetResolver';
 import type { ResolvedAppearanceAsset } from './assetResolver';
@@ -31,7 +37,8 @@ import type { AppearanceService } from './appearanceService';
 import { CardArtworkMissingError, type CardRenderInput } from '../cards';
 import type { SpeciesContent } from '../content/schemas';
 import { toCardRenderInput } from '../content/speciesCardInput';
-import { AppearanceNotFoundError } from '../../shared/errors';
+import { isUnlocked } from './appearanceRules';
+import { AppearanceLockedError, AppearanceNotFoundError } from '../../shared/errors';
 import type { Logger } from '../../shared/logger';
 
 /** Everything a card request needs from the application around it. */
@@ -60,6 +67,17 @@ export interface CardRequest {
 export interface SpeciesCardOptions {
   /** Appearance id. Omitted means the species' current default. */
   appearanceId?: string | undefined;
+  /**
+   * Unlock state to validate {@link appearanceId} against.
+   *
+   * **Omitting it means "no owned copy is in scope", and only the ungated
+   * `owned` appearance may then be named.** That is the safe default on
+   * purpose: a species preview is a public surface with no player behind it,
+   * so it cannot justify drawing artwork that some copy somewhere has earned.
+   * A surface that *does* hold an owned copy passes her level and gets the
+   * looks she has actually unlocked.
+   */
+  unlockContext?: { level: number } | undefined;
   /** Level printed on the card. Defaults to 1 — a preview, not a copy. */
   level?: number | undefined;
   /** Requested display width; omitted means the full-size master. */
@@ -102,7 +120,7 @@ export function speciesCardRequest(
   species: SpeciesContent,
   options: SpeciesCardOptions = {},
 ): CardRequest {
-  const chosen = pickAppearance(deps, species, options.appearanceId);
+  const chosen = pickAppearance(deps, species, options.appearanceId, options.unlockContext);
   const artwork = resolveArtwork(deps, species, chosen);
 
   const input = toCardRenderInput(species, {
@@ -146,7 +164,12 @@ export function ownedCardRequest(
     throw new CardArtworkMissingError('', subject.species.slug, 'standard');
   }
 
-  const worn = deps.appearance.currentAppearance(species, subject.waifu.variant);
+  // Her level is passed, not just read: a `variant` naming a look she has
+  // stopped qualifying for (a rolled-back level, a raised `atLevel`) degrades
+  // to the default here rather than printing locked artwork onto her card.
+  const worn = deps.appearance.currentAppearance(species, subject.waifu.variant, {
+    level: subject.waifu.level,
+  });
   const artwork = resolveArtwork(deps, species, worn);
 
   const input = toCardRenderInput(species, {
@@ -165,14 +188,24 @@ export function ownedCardRequest(
 /**
  * The appearance a species-preview card should wear.
  *
+ * **This is the render-side unlock fence, and it sits here rather than in the
+ * HTTP route on purpose.** Naming an appearance by id is the one way to make
+ * this module draw artwork nobody has earned, and it is reachable from two
+ * callers (the card route and Discord). A guard in either one is a guard the
+ * other can forget; a guard at the single point where an id becomes a picture
+ * cannot be bypassed by adding a third caller.
+ *
  * An unknown id is a malformed request, not a missing asset — the API answers
  * it with 400 via `APPEARANCE_NOT_FOUND`, and that distinction is preserved by
- * throwing the same error here.
+ * throwing the same error here. A *locked* id is neither: it is a real
+ * appearance the caller may not see, and `APPEARANCE_LOCKED` (409) says so
+ * without confirming or denying anything about the artwork behind it.
  */
 function pickAppearance(
   deps: CardPresentationDeps,
   species: SpeciesContent,
   appearanceId: string | undefined,
+  unlockContext: { level: number } | undefined,
 ): ResolvedAppearance {
   if (appearanceId === undefined) {
     return deps.appearance.currentAppearance(species, null);
@@ -181,6 +214,10 @@ function pickAppearance(
     .catalogFor(species)
     .find((entry) => entry.id === appearanceId);
   if (!chosen) throw new AppearanceNotFoundError(appearanceId, species.slug);
+  // No context ⇒ no owned copy ⇒ level 0, which only the `owned` entry clears.
+  if (!isUnlocked(chosen.unlock, unlockContext ?? { level: 0 })) {
+    throw new AppearanceLockedError(chosen.id, chosen.unlockLabel);
+  }
   return chosen;
 }
 
