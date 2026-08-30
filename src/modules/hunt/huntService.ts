@@ -42,7 +42,11 @@ import type { BuddyAwardResult, CollectionService } from '../collection/collecti
 import type { CareService, CareTickSummary } from '../care/careService';
 import type { QuestService } from '../quests/questService';
 import { resolveHuntSessionBoundary, type HuntSessionBoundary } from './huntSession';
-import { DEFAULT_REGION } from '../locations/regions';
+import {
+  DEFAULT_REGION,
+  REGION_EXCLUSIVE_TAG,
+  REGION_EXCLUSIVE_TAG_JSON,
+} from '../locations/regions';
 import { toRegion } from '../travel/travelCatalog';
 
 interface WithXp {
@@ -198,6 +202,17 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
    * `species`. `Math.max(1, …)` mirrors the pre-region code's defensiveness;
    * the column's CHECK already forbids anything lower.
    */
+  /**
+   * `species.tags` does not contain `region_exclusive`.
+   *
+   * A jsonb containment test rather than a scan, so it stays a single indexed
+   * -friendly predicate the planner can fold into the existing rarity filter.
+   * `tags` is NOT NULL with a `[]` default, so there is no null case to guard.
+   */
+  function notRegionExclusive() {
+    return sql`not (${species.tags} @> ${REGION_EXCLUSIVE_TAG_JSON}::jsonb)`;
+  }
+
   async function regionBucket(
     tx: Parameters<Parameters<Db['transaction']>[0]>[0],
     regionId: string,
@@ -236,17 +251,23 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
    *      rolls a rarity Twin Peeks has no entry for should meet a valley
    *      regular, not an arbitrary row from the species table;
    *   3. the **pre-region global query** — every enabled species at that
-   *      rarity, weighted by `species.per_species_weight`. This is the exact
-   *      behavior the hunt had before regions existed, and it is retained
-   *      rather than dropped because it is the difference between "no pools
-   *      are seeded" degrading into *the old game* and degrading into a single
-   *      fixed species. A content set with no `content/regions/` directory at
-   *      all is a supported configuration (see `validateRegionContent`), and it
-   *      lands here on every draw;
-   *   4. after the rarity rerolls are exhausted, an arbitrary enabled species,
-   *      preferring the starting region's pool. Reachable only when every
-   *      rarity bucket in the whole species table is empty, and kept so that
-   *      broken content still produces an encounter rather than a crash.
+   *      rarity, weighted by `species.per_species_weight`, *minus* anything
+   *      tagged `region_exclusive`. This is the behavior the hunt had before
+   *      regions existed, and it is retained rather than dropped because it is
+   *      the difference between "no pools are seeded" degrading into *the old
+   *      game* and degrading into a single fixed species. A content set with no
+   *      `content/regions/` directory at all is a supported configuration (see
+   *      `validateRegionContent`) and lands here on every draw. The exclusion
+   *      is what keeps "exclusive" from meaning "usually": a species whose
+   *      whole design is that you must travel to meet her must not be
+   *      reachable by a query that has stopped consulting regions;
+   *   4. an absolute emergency — any enabled species at all, exclusives
+   *      included — reached only when tiers 1–3 have found nothing across
+   *      every reroll. That means either an empty species table or a corpus in
+   *      which *every* enabled species is region-exclusive and none of them is
+   *      pooled, both of which are broken content rather than a configuration.
+   *      Logged at error level, because handing out an exclusive is a promise
+   *      broken and someone needs to know it happened.
    */
   async function pickEncounterSpecies(
     tx: Parameters<Parameters<Db['transaction']>[0]>[0],
@@ -271,10 +292,17 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
         // region-blind query the hunt used before pools existed — otherwise a
         // deployment whose pools are empty (or absent) would reroll six times
         // and then hand every player the same arbitrary species forever.
+        //
+        // Region-exclusive species are excluded here, and that exclusion is
+        // the point: this query has stopped consulting regions, so anything it
+        // can reach is by definition meetable without travelling. A pool is
+        // the *only* way to meet an exclusive.
         const global = await tx
           .select()
           .from(species)
-          .where(and(eq(species.rarity, rarity), eq(species.enabled, true)));
+          .where(
+            and(eq(species.rarity, rarity), eq(species.enabled, true), notRegionExclusive()),
+          );
         if (global.length > 0) {
           logger.warn(
             { rarity, regionId, attempt },
@@ -290,7 +318,9 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
       return rollWeighted(entries, rng);
     }
 
-    // Absolute fallbacks, in order of how much they still respect content.
+    // Rerolls exhausted. Give up on rarity, but keep giving up in the same
+    // order: pooled content first, then non-exclusive content, and only then
+    // the emergency.
     const valleyRow = await tx
       .select({ species })
       .from(regionEncounterPools)
@@ -304,9 +334,38 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
       );
       return valleyRow[0].species;
     }
+
+    const openRow = await tx
+      .select()
+      .from(species)
+      .where(and(eq(species.enabled, true), notRegionExclusive()))
+      .limit(1);
+    if (openRow[0]) {
+      logger.warn(
+        { regionId },
+        'rarity reroll exhausted and no region pools seeded, using an arbitrary non-exclusive species',
+      );
+      return openRow[0];
+    }
+
+    // Tier 4. Every enabled species is region-exclusive and none of them is
+    // pooled — there is no honest answer left, only the choice between handing
+    // out an exclusive and handing out nothing. An encounter beats a crash, so
+    // the exclusive goes out and the log says so at error level: this is a
+    // content emergency, not a fallback anyone should see in normal operation.
     const anyRow = await tx.select().from(species).where(eq(species.enabled, true)).limit(1);
     if (anyRow[0]) {
-      logger.warn('rarity reroll exhausted and no region pools seeded, using any enabled species');
+      logger.error(
+        {
+          tag: 'hunt/exclusive-emergency-fallback',
+          regionId,
+          slug: anyRow[0].slug,
+          exclusiveTag: REGION_EXCLUSIVE_TAG,
+        },
+        'EMERGENCY: no pooled or non-exclusive species exist anywhere — handing out the ' +
+          `region-exclusive "${anyRow[0].slug}" outside any region pool. Seed region ` +
+          'encounter pools, or untag species that are not meant to be region-locked.',
+      );
       return anyRow[0];
     }
     return null;

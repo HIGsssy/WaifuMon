@@ -184,28 +184,6 @@ describe('region gates which species can be met', () => {
     expect(peaks.filter((s) => s === PEAKS_ONLY)).toHaveLength(2);
   });
 
-  it('falls back to the global species table, by rarity, when no pool covers it', async () => {
-    // The regression guard for a content set with no `content/regions/` at
-    // all — a supported configuration. Without this tier the reroll loop
-    // exhausts and every hunt hands back one fixed species, ignoring rarity
-    // and weight entirely. With it, the hunt degrades to exactly the game it
-    // was before regions existed.
-    const pools = await t.db.select().from(regionEncounterPools);
-    await t.db.delete(regionEncounterPools);
-    try {
-      await resetPlayer(playerId, 'twin-peeks');
-      // 0.0 → 'encounter'; 0.0 → rarity N; 0.0 → first weighted entry.
-      const result = await huntWith([0, 0, 0]).hunt(playerId, CHANNEL_ID);
-      expect(result.kind).toBe('encounter');
-      // Rarity is still honoured: only the three N species are enabled here.
-      const picked = (result as { species: { slug: string; rarity: string } }).species;
-      expect(picked.rarity).toBe('N');
-      expect([VALLEY_ONLY, PEAKS_ONLY, SHARED]).toContain(picked.slug);
-    } finally {
-      await t.db.insert(regionEncounterPools).values(pools);
-    }
-  });
-
   it('prefers the starting region pool over the global table', async () => {
     // Ordering matters: tier 2 (Waifu Valley's curated pool) must win over
     // tier 3 (anything enabled at that rarity), or travelling would quietly
@@ -367,5 +345,203 @@ describe('capture math is region-agnostic', () => {
       .where(eq(captureAttempts.playerId, playerId))
       .limit(1);
     expect(Object.keys(attempt!)).not.toContain('regionId');
+  });
+});
+
+/**
+ * The global fallback (tier 3) and the emergency below it (tier 4).
+ *
+ * These run against a deliberately pool-less database, because that is the one
+ * configuration that reaches them: a content set with no `content/regions/`
+ * directory is supported, and every draw in such a deployment lands here.
+ * Its own species are minted so the corpus is small enough to reason about
+ * exhaustively rather than statistically.
+ */
+describe('global fallback excludes region-exclusive species', () => {
+  const OPEN_A = 'test_fallback_open_a';
+  const OPEN_B = 'test_fallback_open_b';
+  const EXCLUSIVE = 'test_fallback_exclusive';
+
+  let playerId: number;
+  let savedPools: (typeof regionEncounterPools.$inferSelect)[];
+  let openAId: number;
+  let openBId: number;
+  let exclusiveId: number;
+
+  beforeAll(async () => {
+    ({ playerId } = await provisionPlayer(app, 'g-region-fallback', 'u-region-fallback'));
+
+    const rows = await t.db
+      .insert(species)
+      .values([
+        // Weighted 9:1 against each other, so "old-game behaviour" can be
+        // asserted as an exact split rather than a vague membership check.
+        { slug: OPEN_A, weight: 9, tags: [] as string[] },
+        { slug: OPEN_B, weight: 1, tags: [] as string[] },
+        { slug: EXCLUSIVE, weight: 1, tags: ['region_exclusive'] },
+      ].map(({ slug, weight, tags }) => ({
+        slug,
+        name: slug,
+        rarity: 'N',
+        archetype: 'human',
+        contentRating: 'suggestive',
+        affinity: 'switch',
+        imagePath: `waifumon/${slug}/standard.png`,
+        enabled: true,
+        perSpeciesWeight: weight,
+        tags,
+      })))
+      .returning({ id: species.id, slug: species.slug });
+    const idOf = (slug: string): number => rows.find((r) => r.slug === slug)!.id;
+    openAId = idOf(OPEN_A);
+    openBId = idOf(OPEN_B);
+    exclusiveId = idOf(EXCLUSIVE);
+  });
+
+  beforeEach(async () => {
+    // Pool-less: the only configuration that reaches tier 3 at all.
+    savedPools = await t.db.select().from(regionEncounterPools);
+    await t.db.delete(regionEncounterPools);
+    // Only this block's three species are drawable.
+    await t.db.update(species).set({ enabled: false });
+    await t.db
+      .update(species)
+      .set({ enabled: true })
+      .where(inArray(species.id, [openAId, openBId, exclusiveId]));
+    await resetPlayer(playerId, 'waifu-valley');
+  });
+
+  afterAll(async () => {
+    await t.db.update(species).set({ enabled: false });
+    await t.db
+      .update(species)
+      .set({ enabled: true })
+      .where(inArray(species.id, [valleyOnlyId, peaksOnlyId, sharedId]));
+  });
+
+  async function restorePools(): Promise<void> {
+    await t.db.delete(regionEncounterPools);
+    if (savedPools.length > 0) await t.db.insert(regionEncounterPools).values(savedPools);
+  }
+
+  it('never draws a region-exclusive species through the global fallback', async () => {
+    // The hardening this block exists for. `test_fallback_exclusive` is
+    // enabled, is the right rarity, and is in no pool — before the exclusion
+    // she was a third of every fallback draw from Waifu Valley.
+    try {
+      const drawn = await sampleSpecies(playerId, 24);
+      expect(drawn).not.toContain(EXCLUSIVE);
+      expect(new Set(drawn)).toEqual(new Set([OPEN_A, OPEN_B]));
+    } finally {
+      await restorePools();
+    }
+  });
+
+  it('preserves old-game weighting for non-exclusive species when no pools exist', async () => {
+    // Tier 3 is the pre-region query, so it must still honour
+    // `species.per_species_weight` — 9:1 here — and still respect rarity.
+    // The exclusive is simply absent from the denominator.
+    try {
+      const drawn = await sampleSpecies(playerId, 20);
+      expect(drawn.filter((s) => s === OPEN_A)).toHaveLength(18);
+      expect(drawn.filter((s) => s === OPEN_B)).toHaveLength(2);
+    } finally {
+      await restorePools();
+    }
+  });
+
+  it('still reaches an exclusive through her region pool', async () => {
+    // The exclusion must gate the *fallback*, not the species. An explicit
+    // pool entry is, and remains, the way to meet her.
+    try {
+      await t.db
+        .insert(regionEncounterPools)
+        .values({ regionId: 'twin-peeks', speciesId: exclusiveId, weight: 1 });
+      await resetPlayer(playerId, 'twin-peeks');
+      const drawn = await sampleSpecies(playerId, 8);
+      expect(new Set(drawn)).toEqual(new Set([EXCLUSIVE]));
+    } finally {
+      await restorePools();
+    }
+  });
+
+  it('uses the emergency fallback only when every enabled species is exclusive', async () => {
+    // Tier 4. With the two open species retired there is no honest answer
+    // left, so the exclusive goes out rather than nothing — and the log has to
+    // say so at error level, because a broken promise nobody hears about is
+    // the failure mode this tier is designed around.
+    const logged: { level: string; msg: string; obj: unknown }[] = [];
+    const capturing = {
+      ...t.logger,
+      warn: (obj: unknown, msg?: string) => logged.push({ level: 'warn', msg: msg ?? '', obj }),
+      error: (obj: unknown, msg?: string) => logged.push({ level: 'error', msg: msg ?? '', obj }),
+    } as unknown as typeof t.logger;
+
+    try {
+      await t.db
+        .update(species)
+        .set({ enabled: false })
+        .where(inArray(species.id, [openAId, openBId]));
+
+      const hunt = createHuntService({
+        db: t.db,
+        currency: app.currency,
+        inventory: app.inventory,
+        progression: app.progression,
+        collection: app.collection,
+        care: app.care,
+        quests: app.quests,
+        tables: app.content.tables,
+        logger: capturing,
+        // Six rerolls to exhaust, plus the result-kind roll.
+        rng: scriptedRng([0, 0, 0, 0, 0, 0, 0, 0]),
+      });
+      const result = await hunt.hunt(playerId, CHANNEL_ID);
+      expect(result.kind).toBe('encounter');
+      expect((result as { species: { slug: string } }).species.slug).toBe(EXCLUSIVE);
+
+      const emergency = logged.find(
+        (l) => (l.obj as { tag?: string })?.tag === 'hunt/exclusive-emergency-fallback',
+      );
+      expect(emergency).toBeDefined();
+      expect(emergency!.level).toBe('error');
+      expect(emergency!.msg).toContain('EMERGENCY');
+      expect(emergency!.msg).toContain(EXCLUSIVE);
+    } finally {
+      await restorePools();
+    }
+  });
+
+  it('does not reach the emergency while any non-exclusive species survives', async () => {
+    const logged: { obj: unknown }[] = [];
+    const capturing = {
+      ...t.logger,
+      warn: (obj: unknown) => logged.push({ obj }),
+      error: (obj: unknown) => logged.push({ obj }),
+    } as unknown as typeof t.logger;
+
+    try {
+      const hunt = createHuntService({
+        db: t.db,
+        currency: app.currency,
+        inventory: app.inventory,
+        progression: app.progression,
+        collection: app.collection,
+        care: app.care,
+        quests: app.quests,
+        tables: app.content.tables,
+        logger: capturing,
+        rng: scriptedRng([0, 0, 0]),
+      });
+      const result = await hunt.hunt(playerId, CHANNEL_ID);
+      expect((result as { species: { slug: string } }).species.slug).not.toBe(EXCLUSIVE);
+      expect(
+        logged.some(
+          (l) => (l.obj as { tag?: string })?.tag === 'hunt/exclusive-emergency-fallback',
+        ),
+      ).toBe(false);
+    } finally {
+      await restorePools();
+    }
   });
 });

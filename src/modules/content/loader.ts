@@ -5,7 +5,7 @@ import { appearanceAssetRelativePath, defaultAssetId } from '../appearance/appea
 import { archetypeToRace, DEFAULT_RACE } from '../cards/race';
 import { ContentValidationError } from '../../shared/errors';
 import type { Logger } from '../../shared/logger';
-import { DEFAULT_REGION, isRegion } from '../locations/regions';
+import { DEFAULT_REGION, isRegion, REGION_EXCLUSIVE_TAG } from '../locations/regions';
 import {
   BossesFileSchema,
   BossRewardsFileSchema,
@@ -430,13 +430,9 @@ export function validateRegionContent(content: LoadedContent): void {
   const expansionById = new Map(expansions.map((e) => [e.id, e]));
   const itemSlugs = new Set(items.map((i) => i.slug));
 
-  /**
-   * A species is region-exclusive when she carries the `region_exclusive` tag.
-   * A tag rather than a new species column on purpose: tags already round-trip
-   * through the schema, the DB and the admin panel, so this costs no migration
-   * and no new field on every species file that does not care.
-   */
-  const REGION_EXCLUSIVE_TAG = 'region_exclusive';
+  // `REGION_EXCLUSIVE_TAG` is shared with the hunt's global fallback, which
+  // refuses to draw a tagged species. The two enforcement points have to name
+  // the same string, so neither owns it — see `modules/locations/regions.ts`.
   const exclusiveAppearances = new Map<string, string[]>();
 
   for (const region of regions) {

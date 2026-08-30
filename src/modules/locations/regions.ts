@@ -43,5 +43,29 @@ export function regionLabel(value: Region | string): string {
     .join(' ');
 }
 
+/**
+ * Species tag marking a Waifumon as belonging to exactly one region.
+ *
+ * A tag rather than a species column: tags already round-trip through the
+ * content schema, the `species` table and the admin panel, so exclusivity
+ * costs no migration and no new field on the many species that do not care.
+ *
+ * It carries two enforcement points that must agree, which is why the string
+ * lives here rather than in either of them:
+ *
+ *   - **content validation** rejects a tagged species that appears in more
+ *     than one enabled region's encounter pool;
+ *   - **the hunt's global fallback** refuses to draw a tagged species at all,
+ *     so the one way to meet her stays an explicit region pool.
+ *
+ * Without the second, the first would be decorative: a fallback that reached
+ * past the pools could hand a Twin Peeks exclusive to someone who never left
+ * the valley, and "exclusive" would mean "usually".
+ */
+export const REGION_EXCLUSIVE_TAG = 'region_exclusive';
+
+/** `["region_exclusive"]` — the containment operand for a jsonb `@>` test. */
+export const REGION_EXCLUSIVE_TAG_JSON = JSON.stringify([REGION_EXCLUSIVE_TAG]);
+
 /** SQL fragment listing every region id, for CHECK constraints in schema.ts. */
 export const REGION_SQL_LIST = REGIONS.map((r) => `'${r}'`).join(',');
