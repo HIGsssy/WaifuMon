@@ -5,16 +5,21 @@ import { appearanceAssetRelativePath, defaultAssetId } from '../appearance/appea
 import { archetypeToRace, DEFAULT_RACE } from '../cards/race';
 import { ContentValidationError } from '../../shared/errors';
 import type { Logger } from '../../shared/logger';
+import { DEFAULT_REGION, isRegion, REGION_EXCLUSIVE_TAG } from '../locations/regions';
 import {
   BossesFileSchema,
   BossRewardsFileSchema,
+  ExpansionContentSchema,
   ItemsFileSchema,
+  RegionContentSchema,
   SpeciesFileSchema,
   TablesFileSchema,
   type AppearanceContent,
   type AssetId,
   type BossContent,
+  type ExpansionContent,
   type LoadedContent,
+  type RegionContent,
   type SpeciesContent,
 } from './schemas';
 
@@ -356,6 +361,190 @@ export function validateBossContent(content: LoadedContent): void {
 }
 
 /**
+ * Region, encounter-pool and travel invariants.
+ *
+ * Split out of `validateContentSet` for the same reason `validateBossContent`
+ * is: the admin panel validates a *candidate* content set held in memory with
+ * exactly the rules the bot enforces at boot, and a focused function is what a
+ * per-rule test can aim at.
+ *
+ * Every check here is fatal. The theme is that a region pool is the only thing
+ * standing between a player and an empty hunt, so anything that could make one
+ * silently under-deliver — a typo'd slug, a species withdrawn with its pack, a
+ * weight of zero — has to stop the boot rather than shrink a bucket nobody
+ * notices for a week.
+ */
+export function validateRegionContent(content: LoadedContent): void {
+  const { regions, expansions, species, items, tables, speciesOrigin } = content;
+  const travel = tables.travel;
+
+  // A content set with **no** region files at all is legitimate, not broken.
+  // It is the pre-travel deployment, the appearance-sync tool's working
+  // directory, and any partial candidate the admin panel assembles — the same
+  // reasoning that makes `bosses.json` optional on disk. Travel is simply
+  // inert: `buildTravelCatalog` finds no destinations and the Locations screen
+  // has nothing to show. Every rule below is about the *shape of a region set*
+  // and has nothing to say about a set that does not exist, so requiring a
+  // starting region here would turn an optional directory into a mandatory one
+  // by the back door. That the *shipped* content always has its regions is
+  // asserted in `tests/unit/regionContent.test.ts`, which is the right place
+  // for an invariant about what we ship rather than what the loader accepts.
+  if (regions.length === 0) return;
+
+  const duplicateRegion = regions.map((r) => r.id).find((id, i, a) => a.indexOf(id) !== i);
+  if (duplicateRegion) {
+    throw new ContentValidationError(
+      `Duplicate region id: ${duplicateRegion}. Each region may be defined by exactly ` +
+        'one file (a core file in content/regions/ or one expansion pack).',
+    );
+  }
+
+  // Rule 5: exactly one starting region, and it must be the one the database
+  // column defaults to. Two sources of truth are fine as long as they agree;
+  // silently disagreeing would spawn players outside the region the game
+  // believes they are in.
+  const starting = regions.filter((r) => r.starting);
+  if (starting.length !== 1) {
+    throw new ContentValidationError(
+      `Exactly one region must be marked "starting": true (found ${starting.length}` +
+        `${starting.length > 0 ? `: ${starting.map((r) => r.id).join(', ')}` : ''}). ` +
+        `It is where every new player begins and where travel always returns to.`,
+    );
+  }
+  const startingRegion = starting[0]!;
+  if (startingRegion.id !== DEFAULT_REGION) {
+    throw new ContentValidationError(
+      `Region "${startingRegion.id}" is marked as the starting region, but the ` +
+        `players.current_region column defaults to "${DEFAULT_REGION}". Change ` +
+        'DEFAULT_REGION in src/modules/locations/regions.ts and add a migration, ' +
+        'or move the "starting" flag.',
+    );
+  }
+  if (!startingRegion.enabled) {
+    throw new ContentValidationError(
+      `The starting region "${startingRegion.id}" must be enabled — every player is in it.`,
+    );
+  }
+
+  const speciesBySlug = new Map(species.map((s) => [s.slug, s]));
+  const expansionById = new Map(expansions.map((e) => [e.id, e]));
+  const itemSlugs = new Set(items.map((i) => i.slug));
+
+  // `REGION_EXCLUSIVE_TAG` is shared with the hunt's global fallback, which
+  // refuses to draw a tagged species. The two enforcement points have to name
+  // the same string, so neither owns it — see `modules/locations/regions.ts`.
+  const exclusiveAppearances = new Map<string, string[]>();
+
+  for (const region of regions) {
+    // Rule: an enabled region must actually have somewhere to draw from. A
+    // region with no pool is a destination a player pays to reach and then
+    // hunts nothing in, which looks exactly like a broken feature.
+    if (region.enabled && region.encounterPool.length === 0) {
+      throw new ContentValidationError(
+        `Region "${region.id}" is enabled but defines no encounterPool. An enabled ` +
+          'region must list at least one species, or be disabled until it has content.',
+      );
+    }
+
+    const seen = new Set<string>();
+    for (const entry of region.encounterPool) {
+      if (seen.has(entry.species)) {
+        throw new ContentValidationError(
+          `Region "${region.id}" lists species "${entry.species}" in its encounterPool twice.`,
+        );
+      }
+      seen.add(entry.species);
+
+      // Rule 3: weights. The schema already rejects zero, negative and
+      // fractional values; this catches the one case it cannot see, which is
+      // an entry that inherits a species whose own weight is somehow unusable.
+      if (entry.weight !== undefined && (!Number.isInteger(entry.weight) || entry.weight <= 0)) {
+        throw new ContentValidationError(
+          `Region "${region.id}" gives species "${entry.species}" a weight of ` +
+            `${entry.weight}; encounter weights must be positive integers.`,
+        );
+      }
+
+      const found = speciesBySlug.get(entry.species);
+      if (!found) {
+        // Rule 7: distinguish "you typed it wrong" from "that pack is off".
+        // Same fatal outcome, very different fix, so the message must say which.
+        const origin = speciesOrigin[entry.species];
+        const pack = origin ? expansionById.get(origin) : undefined;
+        if (pack && !pack.enabled) {
+          throw new ContentValidationError(
+            `Region "${region.id}" references species "${entry.species}", which belongs ` +
+              `to the disabled expansion "${pack.id}". Enable the expansion in ` +
+              `content/expansions/${pack.id}/expansion.json, or remove her from the pool.`,
+          );
+        }
+        // Rule 1: unknown species reference.
+        throw new ContentValidationError(
+          `Region "${region.id}" references unknown species slug: ${entry.species}`,
+        );
+      }
+
+      if (region.enabled && found.tags.includes(REGION_EXCLUSIVE_TAG)) {
+        const list = exclusiveAppearances.get(entry.species) ?? [];
+        list.push(region.id);
+        exclusiveAppearances.set(entry.species, list);
+      }
+    }
+
+    for (const itemSlug of region.shopItems) {
+      if (!itemSlugs.has(itemSlug)) {
+        throw new ContentValidationError(
+          `Region "${region.id}".shopItems references unknown item slug: ${itemSlug}`,
+        );
+      }
+    }
+  }
+
+  // Rule 6: a region-exclusive species belongs to exactly one place. Counted
+  // across *enabled* regions only, because a disabled region is not a place a
+  // player can be — a species listed in one live region and one unreleased one
+  // is not yet in two places.
+  for (const [slug, regionIds] of exclusiveAppearances) {
+    if (regionIds.length > 1) {
+      throw new ContentValidationError(
+        `Species "${slug}" is tagged "${REGION_EXCLUSIVE_TAG}" but appears in the ` +
+          `encounter pools of ${regionIds.length} enabled regions ` +
+          `(${regionIds.join(', ')}). Drop the tag if she is meant to be shared, ` +
+          'or remove her from all but one pool.',
+      );
+    }
+  }
+
+  if (!travel.enabled) return;
+
+  // Rule 4: pass/route → region references. The schemas already close the
+  // region ids to the canonical set and tie routes to declared passes; what
+  // only this layer can see is whether the *content set* actually defines the
+  // regions those routes sell.
+  const regionById = new Map(regions.map((r) => [r.id, r]));
+  for (const route of travel.routes) {
+    const region = regionById.get(route.regionId);
+    if (!region) {
+      throw new ContentValidationError(
+        `travel.routes defines a route to region "${route.regionId}", which no region ` +
+          'file defines. Add content/regions/<id>.json, or ship the expansion that ' +
+          'introduces it.',
+      );
+    }
+  }
+  for (const pass of travel.passes) {
+    for (const regionId of pass.grantsRoutes) {
+      if (!regionById.has(regionId)) {
+        throw new ContentValidationError(
+          `travel.passes["${pass.id}"] grants a route to region "${regionId}", which ` +
+            'no region file defines.',
+        );
+      }
+    }
+  }
+}
+
+/**
  * Cross-file content invariants: slug uniqueness and every cross-reference
  * (daily package, hunt find tables, progression bonuses, quest rewards)
  * pointing at an item that actually exists.
@@ -374,6 +563,29 @@ export function validateContentSet(content: LoadedContent): void {
   if (dupItem) throw new ContentValidationError(`Duplicate item slug: ${dupItem}`);
   const dupSpecies = dupSlug(species.map((s) => s.slug));
   if (dupSpecies) throw new ContentValidationError(`Duplicate species slug: ${dupSpecies}`);
+
+  // The check above sees only the *loaded* registry — core plus every enabled
+  // pack — so it already catches an enabled pack colliding with anything. The
+  // gap it cannot see is a **disabled** pack, whose species are deliberately
+  // absent from that list. `speciesOrigin` carries them anyway, precisely so
+  // this check is possible: a collision hiding inside a switched-off pack
+  // validates clean for months and then fails, or silently overwrites, on the
+  // day somebody flips `enabled`.
+  const loadedSlugs = new Set(species.map((s) => s.slug));
+  const disabledExpansions = new Set(
+    content.expansions.filter((e) => !e.enabled).map((e) => e.id),
+  );
+  for (const [packSlug, expansionId] of Object.entries(content.speciesOrigin)) {
+    if (!disabledExpansions.has(expansionId)) continue;
+    if (loadedSlugs.has(packSlug)) {
+      throw new ContentValidationError(
+        `Duplicate species slug "${packSlug}": defined by the disabled expansion ` +
+          `"${expansionId}" and also by loaded content. Species ids are globally unique ` +
+          'across core and every expansion, enabled or not — enabling that pack would ' +
+          'collide.',
+      );
+    }
+  }
 
   // Appearance level gates are checked here rather than in the species schema
   // because the ceiling lives in tables.json — the two files are only both in
@@ -466,6 +678,7 @@ export function validateContentSet(content: LoadedContent): void {
     }
   }
 
+  validateRegionContent(content);
   validateBossContent(content);
 }
 
@@ -510,15 +723,243 @@ export function readContentFiles(contentDir: string): LoadedContent {
     ? parseJsonFile(bossRewardsPath, BossRewardsFileSchema)
     : [];
 
-  return { items: itemsFile.items, species, tables, bosses, bossRewards };
+  const { regions, expansions, expansionSpecies, speciesOrigin } = readExpansionPacks(contentDir);
+
+  return {
+    items: itemsFile.items,
+    species: [...species, ...expansionSpecies],
+    tables,
+    bosses,
+    bossRewards,
+    regions,
+    expansions,
+    speciesOrigin,
+  };
+}
+
+/**
+ * One file that holds authored species, and where it came from.
+ *
+ * The `file` key is **relative to the content directory**, POSIX-separated —
+ * `species/starter.json`, `expansions/twin_peaks/species/locals.json` — rather
+ * than the bare basename the pipeline used before expansions existed. Two packs
+ * may legitimately name a file `locals.json`, so a basename stopped being an
+ * identifier the moment species could live outside `content/species/`.
+ */
+export interface SpeciesSource {
+  /** Content-relative POSIX path. Stable identity for a species file. */
+  file: string;
+  absolutePath: string;
+  /** Null for core files under `content/species/`. */
+  expansionId: string | null;
+  /** False only for files inside a pack whose manifest is switched off. */
+  enabled: boolean;
+}
+
+/** What one discovery pass over `content/regions/` + `content/expansions/` found. */
+export interface ExpansionScan {
+  regions: RegionContent[];
+  expansions: ExpansionContent[];
+  /** Species from *enabled* packs only, ready to merge into the registry. */
+  expansionSpecies: SpeciesContent[];
+  /** Every expansion species' origin, disabled packs included. */
+  speciesOrigin: Record<string, string>;
+  /**
+   * Every species file found under `content/expansions/`, disabled packs
+   * included and flagged as such. Surfaced so the admin panel and the
+   * appearance synchroniser discover packs through this one scan rather than
+   * globbing the tree themselves — three scanners with three ideas about what
+   * counts as a pack is exactly how a disabled pack ends up half-live.
+   */
+  sources: SpeciesSource[];
+}
+
+/**
+ * Discovers core region files and expansion packs, and folds enabled packs'
+ * species into the registry.
+ *
+ * Two directories, one shape of answer:
+ *
+ *   - `content/regions/*.json` — core regions. Waifu Valley is a real file
+ *     here with a real, explicitly listed encounter pool, not an implicit
+ *     "everything that isn't somewhere else". Modelling the starting region
+ *     the same way as every other one is what lets the hunt fall back to a
+ *     *curated* pool instead of to the whole species table.
+ *   - `content/expansions/<pack>/` — packs. A directory is only a pack if it
+ *     contains `expansion.json`; anything else is a hard error naming the
+ *     folder, which is what stops content that was sitting on disk unloaded
+ *     from becoming live the moment discovery shipped.
+ *
+ * A **disabled** pack contributes its manifest and nothing else: no species,
+ * no region, no shop rows. Its species slugs are still recorded in
+ * `speciesOrigin` so validation can tell "that pack is off" from "you typed
+ * the slug wrong", which are the same failure with completely different fixes.
+ *
+ * Both directories are optional on disk. A deployment with neither loads with
+ * empty lists and travel stays inert — the pre-travel behavior, preserved.
+ */
+export function readExpansionPacks(contentDir: string): ExpansionScan {
+  const regions: RegionContent[] = [];
+  const expansions: ExpansionContent[] = [];
+  const expansionSpecies: SpeciesContent[] = [];
+  const speciesOrigin: Record<string, string> = {};
+  const sources: SpeciesSource[] = [];
+
+  const regionsDir = path.join(contentDir, 'regions');
+  if (fs.existsSync(regionsDir)) {
+    for (const file of listJsonFiles(regionsDir)) {
+      regions.push(parseJsonFile(path.join(regionsDir, file), RegionContentSchema));
+    }
+  }
+
+  const expansionsDir = path.join(contentDir, 'expansions');
+  if (!fs.existsSync(expansionsDir)) {
+    return { regions, expansions, expansionSpecies, speciesOrigin, sources };
+  }
+
+  const packDirs = fs
+    .readdirSync(expansionsDir, { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .map((e) => e.name)
+    .sort();
+
+  for (const dirName of packDirs) {
+    const packDir = path.join(expansionsDir, dirName);
+    const manifestPath = path.join(packDir, 'expansion.json');
+    if (!fs.existsSync(manifestPath)) {
+      throw new ContentValidationError(
+        `content/expansions/${dirName}/ has no expansion.json. Every directory under ` +
+          'content/expansions/ must declare itself with a manifest — add one with ' +
+          '"enabled": false to keep the pack on disk without activating it.',
+      );
+    }
+    const manifest = parseJsonFile(manifestPath, ExpansionContentSchema);
+    expansions.push(manifest);
+
+    // Species are read from a *disabled* pack too, but only so their slugs can
+    // be recorded. Reading them also means a disabled pack's files stay
+    // schema-validated, so re-enabling it is never a leap into the dark.
+    const packSpeciesDir = path.join(packDir, 'species');
+    const packSources: SpeciesSource[] = fs.existsSync(packSpeciesDir)
+      ? listJsonFiles(packSpeciesDir).map((f) => ({
+          file: ['expansions', dirName, 'species', f].join('/'),
+          absolutePath: path.join(packSpeciesDir, f),
+          expansionId: manifest.id,
+          enabled: manifest.enabled,
+        }))
+      : [];
+    sources.push(...packSources);
+    const packSpecies = packSources.flatMap((source) =>
+      parseJsonFile(source.absolutePath, SpeciesFileSchema),
+    );
+    for (const s of packSpecies) {
+      // Checked across *every* pack, enabled or not. Species ids are globally
+      // unique by rule, and a collision hiding inside a switched-off pack is
+      // the worst kind: it validates clean for months and then fails — or
+      // worse, silently overwrites — on the day somebody flips `enabled`.
+      const owner = speciesOrigin[s.slug];
+      if (owner) {
+        throw new ContentValidationError(
+          `Duplicate species slug "${s.slug}": defined by both expansion "${owner}" and ` +
+            `expansion "${manifest.id}". Species ids are globally unique across core and ` +
+            'every expansion, enabled or not.',
+        );
+      }
+      speciesOrigin[s.slug] = manifest.id;
+    }
+
+    if (!manifest.enabled) continue;
+
+    expansionSpecies.push(...packSpecies);
+
+    const regionPath = path.join(packDir, 'region.json');
+    if (fs.existsSync(regionPath)) {
+      regions.push(parseJsonFile(regionPath, RegionContentSchema));
+    } else if (manifest.regionId) {
+      throw new ContentValidationError(
+        `Expansion "${manifest.id}" declares regionId "${manifest.regionId}" but ships ` +
+          `no region.json. Add content/expansions/${dirName}/region.json.`,
+      );
+    }
+  }
+
+  return { regions, expansions, expansionSpecies, speciesOrigin, sources };
+}
+
+/**
+ * Every species file the runtime will actually load, in load order.
+ *
+ * Core files under `content/species/` first, then the files of each **enabled**
+ * expansion pack. A disabled pack contributes nothing: its files are discovered
+ * (so `readExpansionPacks` can still record their slugs for validation) but they
+ * are filtered out here, which is what keeps a switched-off pack invisible to
+ * every tool that edits or synchronises species.
+ *
+ * This is the one discovery the admin panel and the appearance synchroniser
+ * share with the loader, so a pack that is live for the bot is live for the
+ * tools on identical terms — and one that is not, is not.
+ */
+export function listSpeciesSources(contentDir: string): SpeciesSource[] {
+  const speciesDir = path.join(contentDir, 'species');
+  const core: SpeciesSource[] = fs.existsSync(speciesDir)
+    ? listJsonFiles(speciesDir).map((file) => ({
+        file: `species/${file}`,
+        absolutePath: path.join(speciesDir, file),
+        expansionId: null,
+        enabled: true,
+      }))
+    : [];
+  return [...core, ...readExpansionPacks(contentDir).sources.filter((s) => s.enabled)];
 }
 
 /** Sorted list of species JSON filenames (basenames) in a species directory. */
 export function listSpeciesFiles(speciesDir: string): string[] {
+  return listJsonFiles(speciesDir);
+}
+
+/** Sorted `.json` basenames in a directory. Sorted so loads are reproducible. */
+function listJsonFiles(dir: string): string[] {
   return fs
-    .readdirSync(speciesDir)
+    .readdirSync(dir)
     .filter((f) => f.endsWith('.json'))
     .sort();
+}
+
+/**
+ * Warns about enabled species that no enabled region's pool lists.
+ *
+ * Be precise about what this means, because it is worse than it sounds: such a
+ * species is, for practical purposes, **unobtainable**. The hunt only reaches
+ * the global species table when *no* region pool covers the rolled rarity at
+ * all, and the shipped Waifu Valley pool covers every rarity — so an unpooled
+ * species is not "rarer", she simply never appears. That is almost always what
+ * has happened when someone adds a species to `content/species/` and forgets
+ * the region file.
+ *
+ * Still a warning rather than a failure, and deliberately so: failing the boot
+ * would mean a content author cannot land a Waifumon and her artwork in one
+ * commit and her pool entry in the next, turning a five-second fix into a
+ * production outage. The message therefore has to carry the weight the
+ * severity does not — it names the count, lists the slugs, and says the word
+ * "unobtainable" rather than the reassuring "fallback".
+ */
+function warnOnUnpooledSpecies(
+  species: SpeciesContent[],
+  regions: RegionContent[],
+  logger: Logger,
+): void {
+  if (regions.length === 0) return;
+  const pooled = new Set(
+    regions.filter((r) => r.enabled).flatMap((r) => r.encounterPool.map((e) => e.species)),
+  );
+  const orphans = species.filter((s) => s.enabled && !pooled.has(s.slug)).map((s) => s.slug);
+  if (orphans.length === 0) return;
+  logger.warn(
+    { tag: 'regions/unpooled-species', count: orphans.length, slugs: orphans },
+    `${orphans.length} enabled species are in no enabled region's encounter pool and are ` +
+      'therefore UNOBTAINABLE — no hunt can draw them. Add them to a region file in ' +
+      `content/regions/ or to an expansion's region.json. Affected: ${orphans.join(', ')}`,
+  );
 }
 
 /**
@@ -532,6 +973,7 @@ export function loadContent(contentDir: string, assetsDir: string, logger: Logge
 
   const validatedSpecies = validateSpeciesAssets(content.species, assetsDir, logger);
   const validatedBosses = validateBossAssets(content.bosses, assetsDir, logger);
+  warnOnUnpooledSpecies(validatedSpecies, content.regions, logger);
 
   logger.info(
     {
@@ -539,6 +981,8 @@ export function loadContent(contentDir: string, assetsDir: string, logger: Logge
       species: validatedSpecies.length,
       bosses: validatedBosses.length,
       bossRewardTables: content.bossRewards.length,
+      regions: content.regions.filter((r) => r.enabled).length,
+      expansions: content.expansions.filter((e) => e.enabled).length,
     },
     'content loaded and validated',
   );

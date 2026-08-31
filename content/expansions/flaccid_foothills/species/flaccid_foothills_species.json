@@ -8,7 +8,8 @@
     "baseCaptureRate": null,
     "description": "Spins for spare change and shooting stars. Their coin cup fills faster when the meteor shower hits.",
     "tags": [
-      "expansion"
+      "expansion",
+      "region_exclusive"
     ],
     "contentRating": "suggestive",
     "affinity": "switch",
@@ -21,7 +22,7 @@
       "flavorQuote": "Make a wish. They already caught it.",
       "artist": "Whistler"
     },
-    "imagePath": "waifumon/starfall_street_dancer/standard.png",
+    "imagePath": "expansions/flaccid_foothills/starfall_street_dancer/standard.png",
     "enabled": true,
     "eventKey": null,
     "perSpeciesWeight": 1,
@@ -90,7 +91,8 @@
     "baseCaptureRate": null,
     "description": "Guaranteed same-day delivery, no matter which circle you're in. Tips are accepted in chocolate or souls — they'll blush either way.",
     "tags": [
-      "expansion"
+      "expansion",
+      "region_exclusive"
     ],
     "contentRating": "suggestive",
     "affinity": "submissive",
@@ -103,7 +105,7 @@
       "flavorQuote": "Your receipt is in the bag. Their heart is in the box.",
       "artist": "Whistler"
     },
-    "imagePath": "waifumon/candy_demon_courier/standard.png",
+    "imagePath": "expansions/flaccid_foothills/candy_demon_courier/standard.png",
     "enabled": true,
     "eventKey": null,
     "perSpeciesWeight": 1,
@@ -172,7 +174,8 @@
     "baseCaptureRate": null,
     "description": "Brews fog and grudges in equal measure. The bog pays their rent in lost buttons and old coins.",
     "tags": [
-      "expansion"
+      "expansion",
+      "region_exclusive"
     ],
     "contentRating": "mature",
     "affinity": "primal",
@@ -185,7 +188,7 @@
       "flavorQuote": "The lantern isn't for finding the way out.",
       "artist": "Whistler"
     },
-    "imagePath": "waifumon/midnight_swamp_witch/standard.png",
+    "imagePath": "expansions/flaccid_foothills/midnight_swamp_witch/standard.png",
     "enabled": true,
     "eventKey": null,
     "perSpeciesWeight": 1,
@@ -254,7 +257,8 @@
     "baseCaptureRate": null,
     "description": "Charts the stars with gears instead of eyes. Their telescope is wound so tight it hums in binary.",
     "tags": [
-      "expansion"
+      "expansion",
+      "region_exclusive"
     ],
     "contentRating": "suggestive",
     "affinity": "caregiver",
@@ -267,7 +271,7 @@
       "flavorQuote": "The stars don't drift. People do. Their heart ticks in perfect time.",
       "artist": "Whistler"
     },
-    "imagePath": "waifumon/clockwork_astronomer/standard.png",
+    "imagePath": "expansions/flaccid_foothills/clockwork_astronomer/standard.png",
     "enabled": true,
     "eventKey": null,
     "perSpeciesWeight": 1,
@@ -336,7 +340,8 @@
     "baseCaptureRate": null,
     "description": "Sings the northern lights into being. Their voice leaves afterimages on your eyelids.",
     "tags": [
-      "expansion"
+      "expansion",
+      "region_exclusive"
     ],
     "contentRating": "mature",
     "affinity": "caregiver",
@@ -349,7 +354,7 @@
       "flavorQuote": "Listen past the melody. That's the part they wrote for you.",
       "artist": "Whistler"
     },
-    "imagePath": "waifumon/aurora_songspirit/standard.png",
+    "imagePath": "expansions/flaccid_foothills/aurora_songspirit/standard.png",
     "enabled": true,
     "eventKey": null,
     "perSpeciesWeight": 1,
@@ -418,7 +423,8 @@
     "baseCaptureRate": null,
     "description": "Flies the trade routes between cloud kingdoms. Boarding actions only, insurance fraud never.",
     "tags": [
-      "expansion"
+      "expansion",
+      "region_exclusive"
     ],
     "contentRating": "mature",
     "affinity": "dominant",
@@ -431,7 +437,7 @@
       "flavorQuote": "She doesn't take hostages. She takes the good stuff.",
       "artist": "Whistler"
     },
-    "imagePath": "waifumon/sky_pirate_valkyrie/standard.png",
+    "imagePath": "expansions/flaccid_foothills/sky_pirate_valkyrie/standard.png",
     "enabled": true,
     "eventKey": null,
     "perSpeciesWeight": 1,
@@ -500,7 +506,8 @@
     "baseCaptureRate": null,
     "description": "Tends the wall between dusk and the other side. She knows every name on it by heart.",
     "tags": [
-      "expansion"
+      "expansion",
+      "region_exclusive"
     ],
     "contentRating": "mature",
     "affinity": "switch",
@@ -513,7 +520,7 @@
       "flavorQuote": "The wall isn't to keep them in. It's to keep you out.",
       "artist": "Whistler"
     },
-    "imagePath": "waifumon/dusk_gravekeeper/standard.png",
+    "imagePath": "expansions/flaccid_foothills/dusk_gravekeeper/standard.png",
     "enabled": true,
     "eventKey": null,
     "perSpeciesWeight": 1,
@@ -582,7 +589,8 @@
     "baseCaptureRate": null,
     "description": "Runs the only show where the audience is the main act. Every seat is ringside.",
     "tags": [
-      "expansion"
+      "expansion",
+      "region_exclusive"
     ],
     "contentRating": "explicit",
     "affinity": "dominant",
@@ -595,7 +603,7 @@
       "flavorQuote": "Ladies and gentlemen, boys and girls — sign the waiver on your way in. No refunds on the finale.",
       "artist": "Whistler"
     },
-    "imagePath": "waifumon/infernal_circus_ringmaster/standard.png",
+    "imagePath": "expansions/flaccid_foothills/infernal_circus_ringmaster/standard.png",
     "enabled": true,
     "eventKey": null,
     "perSpeciesWeight": 1,
@@ -664,7 +672,8 @@
     "baseCaptureRate": null,
     "description": "Dawn made manifest and mildly annoyed at being woken early. Her halo is a small, contained sunrise.",
     "tags": [
-      "expansion"
+      "expansion",
+      "region_exclusive"
     ],
     "contentRating": "explicit",
     "affinity": "caregiver",
@@ -677,7 +686,7 @@
       "flavorQuote": "She burned the midnight oil. Literally. It was a nice oil.",
       "artist": "Whistler"
     },
-    "imagePath": "waifumon/solar_archangel/standard.png",
+    "imagePath": "expansions/flaccid_foothills/solar_archangel/standard.png",
     "enabled": true,
     "eventKey": null,
     "perSpeciesWeight": 1,
@@ -746,7 +755,8 @@
     "baseCaptureRate": null,
     "description": "Hunts things that eat gods. The thunder is her footsteps, not the weather.",
     "tags": [
-      "expansion"
+      "expansion",
+      "region_exclusive"
     ],
     "contentRating": "explicit",
     "affinity": "primal",
@@ -759,7 +769,7 @@
       "flavorQuote": "You don't hear the storm coming. You hear it running.",
       "artist": "Whistler"
     },
-    "imagePath": "waifumon/storm_titan_huntress/standard.png",
+    "imagePath": "expansions/flaccid_foothills/storm_titan_huntress/standard.png",
     "enabled": true,
     "eventKey": null,
     "perSpeciesWeight": 1,

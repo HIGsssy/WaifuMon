@@ -31,7 +31,7 @@ describe('reading content', () => {
   it('reads every species file without applying the loader’s auto-disable', () => {
     const raw = f.service.readRaw();
     expect(raw.species.length).toBeGreaterThan(40);
-    expect(raw.speciesFiles.map((g) => g.file)).toContain('starter.json');
+    expect(raw.speciesFiles.map((g) => g.file)).toContain('species/starter.json');
     // The fixture has art for exactly one species, yet nothing is disabled on
     // read — auto-disable is a load-time projection, not a content edit.
     expect(raw.species.every((s) => s.enabled)).toBe(true);
@@ -91,7 +91,7 @@ describe('species writes', () => {
     expect(result.file).toBe('species/custom.json');
     expect(result.backup).toBeNull();
     expect(f.readSpecies('custom.json')).toHaveLength(1);
-    expect(f.service.findSpecies('test_admin_waifu')?.file).toBe('custom.json');
+    expect(f.service.findSpecies('test_admin_waifu')?.file).toBe('species/custom.json');
   });
 
   it('rejects a duplicate slug and writes nothing', () => {
@@ -281,5 +281,115 @@ describe('path safety helpers', () => {
     expect(resolveWithinRoot(f.assetsDir, 'waifumon/x.png')).toContain('waifumon');
     expect(resolveWithinRoot(f.assetsDir, '../secret.txt')).toBeNull();
     expect(resolveWithinRoot(f.assetsDir, '..')).toBeNull();
+  });
+});
+
+/**
+ * The admin panel edits the species the bot actually loads — which, since
+ * expansion packs landed, means core content *plus* every enabled pack. The
+ * two halves of that have to hold together: a pack that is live must be
+ * editable, and a pack that is switched off must be invisible, or the panel
+ * becomes a way to arm content nobody decided to ship.
+ */
+describe('expansion pack species', () => {
+  function writeExpansion(
+    id: string,
+    opts: { enabled: boolean; slug: string; file?: string },
+  ): string {
+    const dir = path.join(f.contentDir, 'expansions', id);
+    fs.mkdirSync(path.join(dir, 'species'), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, 'expansion.json'),
+      JSON.stringify({ id, name: id, enabled: opts.enabled }, null, 2),
+    );
+    const file = opts.file ?? 'locals.json';
+    fs.writeFileSync(
+      path.join(dir, 'species', file),
+      JSON.stringify([validSpeciesInput({ slug: opts.slug })], null, 2),
+    );
+    return `expansions/${id}/species/${file}`;
+  }
+
+  it('reads species from an enabled pack, keyed by content-relative path', () => {
+    const key = writeExpansion('twin_peaks', { enabled: true, slug: 'ridge_waitress' });
+    const raw = f.service.readRaw();
+
+    expect(raw.speciesFiles.map((g) => g.file)).toContain(key);
+    expect(raw.species.map((s) => s.slug)).toContain('ridge_waitress');
+    const group = raw.speciesFiles.find((g) => g.file === key)!;
+    expect(group.expansionId).toBe('twin_peaks');
+  });
+
+  it('hides species from a disabled pack entirely', () => {
+    const key = writeExpansion('shelved', { enabled: false, slug: 'shelved_girl' });
+    const raw = f.service.readRaw();
+
+    expect(raw.speciesFiles.map((g) => g.file)).not.toContain(key);
+    expect(raw.species.map((s) => s.slug)).not.toContain('shelved_girl');
+    expect(f.service.findSpecies('shelved_girl')).toBeUndefined();
+    expect(f.service.listSpeciesFileNames()).not.toContain(key);
+  });
+
+  it('edits a pack species back into its own file, not into core content', () => {
+    const key = writeExpansion('twin_peaks', { enabled: true, slug: 'ridge_waitress' });
+    const found = f.service.findSpecies('ridge_waitress');
+    expect(found?.file).toBe(key);
+
+    const result = f.service.updateSpecies('ridge_waitress', {
+      ...found!.species,
+      name: 'Renamed In Pack',
+    });
+    expect(result.file).toBe(key);
+
+    const onDisk = JSON.parse(
+      fs.readFileSync(path.join(f.contentDir, key), 'utf8'),
+    ) as Array<{ slug: string; name: string }>;
+    expect(onDisk).toHaveLength(1);
+    expect(onDisk[0]!.name).toBe('Renamed In Pack');
+    expect(f.readSpecies('starter.json').length).toBeGreaterThan(0);
+  });
+
+  it('validates a pack edit against the whole merged registry', () => {
+    // A pack species renamed onto a core slug must be refused — the panel now
+    // holds both halves of the registry, so it is the layer that can see it.
+    writeExpansion('twin_peaks', { enabled: true, slug: 'ridge_waitress' });
+    const found = f.service.findSpecies('ridge_waitress')!;
+    expect(() =>
+      f.service.updateSpecies('ridge_waitress', { ...found.species, slug: 'alley_catgirl' }),
+    ).toThrow(AdminValidationError);
+  });
+
+  it('appends a new species into an existing enabled pack file', () => {
+    const key = writeExpansion('twin_peaks', { enabled: true, slug: 'ridge_waitress' });
+    f.service.createSpecies(validSpeciesInput({ slug: 'ridge_mechanic' }), key);
+
+    const onDisk = JSON.parse(
+      fs.readFileSync(path.join(f.contentDir, key), 'utf8'),
+    ) as Array<{ slug: string }>;
+    expect(onDisk.map((s) => s.slug)).toEqual(['ridge_waitress', 'ridge_mechanic']);
+  });
+
+  it('refuses to create into a disabled pack', () => {
+    // The orphan guard, at the write end: a crafted `__file` must not be able
+    // to drop a species into content that is switched off.
+    const key = writeExpansion('shelved', { enabled: false, slug: 'shelved_girl' });
+    expect(() => f.service.createSpecies(validSpeciesInput({ slug: 'sneaky' }), key)).toThrow(
+      AdminValidationError,
+    );
+    const onDisk = JSON.parse(
+      fs.readFileSync(path.join(f.contentDir, key), 'utf8'),
+    ) as Array<{ slug: string }>;
+    expect(onDisk.map((s) => s.slug)).toEqual(['shelved_girl']);
+  });
+
+  it.each([
+    ['../escape.json'],
+    ['species/../../escape.json'],
+    ['/etc/passwd.json'],
+    ['expansions/nonexistent/species/x.json'],
+  ])('refuses the out-of-bounds create target %s', (target) => {
+    expect(() => f.service.createSpecies(validSpeciesInput({ slug: 'sneaky' }), target)).toThrow(
+      AdminValidationError,
+    );
   });
 });

@@ -53,6 +53,7 @@ beforeAll(async () => {
     huntSessions: harness.huntSessions,
     services: {
       guilds: app.guilds,
+      travel: app.travel,
       players: app.players,
       currency: app.currency,
       inventory: app.inventory,

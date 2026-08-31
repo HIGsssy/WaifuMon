@@ -230,6 +230,38 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
    * request was fine and the server's world is not.
    */
   BOSS_CHANNEL_UNUSABLE: 422,
+
+  // --- Locations & Travel -------------------------------------------------
+  /** No enabled region by that id — indistinguishable from a typo, so 404. */
+  REGION_NOT_FOUND: 404,
+  /**
+   * The region exists and the request is well-formed; the player simply has
+   * not unlocked the road. 422 rather than 403, matching every other
+   * "you have not earned this yet" refusal in this table.
+   */
+  REGION_LOCKED: 422,
+  /** A route unlock without the pass it stamps onto. Same class as above. */
+  TRAVEL_PASS_REQUIRED: 422,
+  /** Below the configured trainer-level gate. */
+  TRAVEL_LEVEL_REQUIRED: 422,
+  /**
+   * Already owned. Idempotent from the player's point of view — the
+   * entitlement is there — so a conflict to refresh past, not a failure. Also
+   * the shape the losing half of a concurrent purchase takes.
+   */
+  TRAVEL_PASS_ALREADY_OWNED: 409,
+  ROUTE_ALREADY_UNLOCKED: 409,
+  /** Travelling to where you already are. */
+  ALREADY_IN_REGION: 409,
+  /** An open encounter holds the player in place until it resolves. */
+  TRAVEL_BLOCKED_BY_ENCOUNTER: 409,
+  /** The whole feature is switched off in content. */
+  TRAVEL_DISABLED: 422,
+  /**
+   * Regionally-stocked item bought from the wrong region. Well-formed request,
+   * business rule refused — the same class as ITEM_NOT_PURCHASABLE above.
+   */
+  ITEM_NOT_SOLD_HERE: 422,
 };
 
 /** Every code this layer knows how to classify — used by the contract test. */

@@ -1,0 +1,241 @@
+{
+  "id": "waifu-valley",
+  "name": "Waifu Valley",
+  "description": "The sunlit stretch of hills, arcades and shrine steps where every trainer's compass first points. Home ground, and the only place you can always get back to.",
+  "emoji": "🏕️",
+  "enabled": true,
+  "starting": true,
+  "order": 0,
+  "flavor": [
+    "The valley air smells of vending-machine coffee and cherry blossom.",
+    "Somewhere down the hill, an arcade cabinet is losing an argument."
+  ],
+  "encounterPool": [
+    {
+      "species": "alley_catgirl"
+    },
+    {
+      "species": "shrine_assistant"
+    },
+    {
+      "species": "cafe_maid"
+    },
+    {
+      "species": "neon_school_rebel"
+    },
+    {
+      "species": "library_goth"
+    },
+    {
+      "species": "arcade_bunny"
+    },
+    {
+      "species": "rainy_day_idol"
+    },
+    {
+      "species": "sleepy_succubus_intern"
+    },
+    {
+      "species": "nurse_imp"
+    },
+    {
+      "species": "streetwear_oni"
+    },
+    {
+      "species": "moonlit_dancer"
+    },
+    {
+      "species": "cyber_neko"
+    },
+    {
+      "species": "potion_shop_clerk"
+    },
+    {
+      "species": "velvet_bartender"
+    },
+    {
+      "species": "demon_hall_monitor"
+    },
+    {
+      "species": "beachside_siren"
+    },
+    {
+      "species": "neon_kitsune_apprentice"
+    },
+    {
+      "species": "crimson_oni_bride"
+    },
+    {
+      "species": "cyber_shrine_maiden"
+    },
+    {
+      "species": "latex_paladin"
+    },
+    {
+      "species": "gothic_vampire_heiress"
+    },
+    {
+      "species": "hologram_idol"
+    },
+    {
+      "species": "demon_librarian"
+    },
+    {
+      "species": "bunny_dealer"
+    },
+    {
+      "species": "angelic_delinquent"
+    },
+    {
+      "species": "witchy_mechanic"
+    },
+    {
+      "species": "void_catgirl"
+    },
+    {
+      "species": "royal_succubus"
+    },
+    {
+      "species": "chrome_valkyrie"
+    },
+    {
+      "species": "blood_moon_priestess"
+    },
+    {
+      "species": "casino_kitsune"
+    },
+    {
+      "species": "fallen_angel_nurse"
+    },
+    {
+      "species": "dollhouse_demon"
+    },
+    {
+      "species": "darkelf_royal"
+    },
+    {
+      "species": "queen_of_velvet_chains"
+    },
+    {
+      "species": "neon_dragon_empress"
+    },
+    {
+      "species": "eclipse_idol"
+    },
+    {
+      "species": "abyssal_shrine_oracle"
+    },
+    {
+      "species": "afterglow_goddess"
+    },
+    {
+      "species": "cyber_lilith_prime"
+    },
+    {
+      "species": "the_first_waifu"
+    },
+    {
+      "species": "the_waifu_below"
+    },
+    {
+      "species": "neko_barista"
+    },
+    {
+      "species": "gym_oni"
+    },
+    {
+      "species": "library_ghost"
+    },
+    {
+      "species": "arcade_succubus"
+    },
+    {
+      "species": "ramen_android"
+    },
+    {
+      "species": "neon_kitsune"
+    },
+    {
+      "species": "eclipse_valkyrie"
+    },
+    {
+      "species": "void_empress"
+    },
+    {
+      "species": "ah_caretaker"
+    },
+    {
+      "species": "android_assassin"
+    },
+    {
+      "species": "android_secretary"
+    },
+    {
+      "species": "angelic_judge"
+    },
+    {
+      "species": "archangel_inquisitor"
+    },
+    {
+      "species": "bimbo_valkyrie"
+    },
+    {
+      "species": "cabaret_star"
+    },
+    {
+      "species": "cat_burglar"
+    },
+    {
+      "species": "dragon_casino_queen"
+    },
+    {
+      "species": "feral_android"
+    },
+    {
+      "species": "feral_wood_spirit"
+    },
+    {
+      "species": "heaven_spear_marshal"
+    },
+    {
+      "species": "holy_courtesan"
+    },
+    {
+      "species": "lantern_spirit"
+    },
+    {
+      "species": "leopard_bodyguard"
+    },
+    {
+      "species": "neko_tatto_artist"
+    },
+    {
+      "species": "owl_detective"
+    },
+    {
+      "species": "phantom_violinist"
+    },
+    {
+      "species": "queen_wild_hunt"
+    },
+    {
+      "species": "crimson_judge"
+    },
+    {
+      "species": "crown_humanity"
+    },
+    {
+      "species": "thot_chat_2"
+    },
+    {
+      "species": "valkyrie_recruit"
+    },
+    {
+      "species": "winged_waitress"
+    },
+    {
+      "species": "your_fav_girl"
+    }
+  ],
+  "shopItems": []
+}

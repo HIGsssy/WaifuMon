@@ -1,33 +1,28 @@
 /**
- * Canonical region identifiers.
+ * Boss-side view of the shared region primitive.
  *
- * Regions are the first piece of the location system to become load-bearing:
- * a boss belongs to exactly one, and a guild scouts exactly one at a time.
- * Nothing *travels* between them yet (that is explicitly out of Stage 1
- * scope), so the whole system is a single-entry list today — but boss content
- * already names its region, and validating that name against a closed set is
- * what stops a typo from producing a boss no guild can ever draw.
+ * The canonical list now lives in `modules/locations/regions.ts` — a region is
+ * a player-facing place, not a boss-scheduling detail, so travel owns it. This
+ * module stays as the boss subsystem's import site and narrows one thing:
  *
- * Kebab-case rather than the snake_case used by item/species slugs, because
- * the shipped `bosses.json` authors it that way and a region id is a content
- * identifier that also reads in player-facing copy ("Waifu Valley").
+ * `REGIONS` here is the set of regions that may **host bosses**, which is not
+ * the same question as which regions a player may stand in. Twin Peeks is a
+ * travel destination with its own encounter pool and no boss roster; widening
+ * this list to include it would make `bossEncounters.regions` default to a
+ * region with no drawable boss, and `validateBossContent` would (correctly)
+ * refuse to boot. Boss content and boss scheduling therefore keep exactly the
+ * behavior they had before travel existed, and this list widens the day a
+ * Twin Peeks boss is authored.
  */
+import { REGIONS as ALL_REGIONS } from '../locations/regions';
+
+export { DEFAULT_REGION, isRegion, regionLabel } from '../locations/regions';
+export type { Region } from '../locations/regions';
+
+/** Every region a player can be in — the superset this module narrows from. */
+export { ALL_REGIONS };
+
+/** Regions that may schedule and host bosses. Deliberately narrower. */
 export const REGIONS = ['waifu-valley'] as const;
-export type Region = (typeof REGIONS)[number];
-
-/** The only region that exists today, and the fallback for unset config. */
-export const DEFAULT_REGION: Region = 'waifu-valley';
-
-const REGION_SET = new Set<string>(REGIONS);
-
-export function isRegion(value: unknown): value is Region {
-  return typeof value === 'string' && REGION_SET.has(value);
-}
-
-/** "waifu-valley" → "Waifu Valley". One wording, every surface. */
-export function regionLabel(value: Region | string): string {
-  return String(value)
-    .split('-')
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ');
-}
+/** A region that boss content may name. */
+export type BossRegion = (typeof REGIONS)[number];

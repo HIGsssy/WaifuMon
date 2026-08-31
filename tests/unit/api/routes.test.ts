@@ -34,6 +34,7 @@ const PLAYER = {
   careModeStartedAt: null,
   careModeLastTickAt: null,
   careModeWaifuId: null,
+  currentRegion: 'waifu-valley',
   settings: {},
   createdAt: new Date('2026-01-01T00:00:00.000Z'),
 };
@@ -294,6 +295,7 @@ const ROUTES: Array<{ url: string; overrides: ApiContextOverrides }> = [
               attemptCount: 0,
               maxAttempts: 3,
               selectedItemId: null,
+              regionId: 'waifu-valley',
               createdAt: new Date(),
               expiresAt: new Date(Date.now() + 60_000),
               resolvedAt: null,

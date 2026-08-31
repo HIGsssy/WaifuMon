@@ -21,6 +21,7 @@ import { createGuildService } from './modules/guilds/guildService';
 import { createInventoryService } from './modules/inventory/inventoryService';
 import { createPlayerService } from './modules/players/playerService';
 import { createShopService } from './modules/shop/shopService';
+import { createTravelService } from './modules/travel/travelService';
 import { createHuntService } from './modules/hunt/huntService';
 import { createCaptureService } from './modules/capture/captureService';
 import { createCareService } from './modules/care/careService';
@@ -235,6 +236,14 @@ async function main(): Promise<void> {
         gifts,
         tables: content.tables,
         timezone: config.dailyTimezone,
+      }),
+      travel: createTravelService({
+        db,
+        currency,
+        // Same `contentSnapshot` closure the appearance and boss services use,
+        // so an admin Reload Content republishes prices and destinations
+        // without a restart.
+        getContent: () => contentSnapshot,
       }),
       shop: createShopService({
         db,

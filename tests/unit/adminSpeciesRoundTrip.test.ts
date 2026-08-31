@@ -124,7 +124,7 @@ describe('an admin edit preserves content-only fields', () => {
 
     const file = f.service.findSpecies(SLUG)!.file;
     const onDisk = JSON.parse(
-      fs.readFileSync(path.join(f.service.contentDir, 'species', file), 'utf8'),
+      fs.readFileSync(path.join(f.service.contentDir, file), 'utf8'),
     ) as Record<string, unknown>[];
     const entry = onDisk.find((s) => s.slug === SLUG);
 

@@ -22,6 +22,14 @@ import {
   handleQuestsClaimAll,
 } from './commands/waifumon';
 import {
+  handleLocationBuy,
+  handleLocationConfirm,
+  handleLocationDetail,
+  handleLocationShop,
+  handleLocationTravel,
+  handleLocationsHome,
+} from './commands/waifumonLocations';
+import {
   handleEncounterCapture,
   handleEncounterPick,
   handleEncounterPickItem,
@@ -203,6 +211,21 @@ export function createDiscordClient(ctx: AppContext): Client {
       'menu:start': (i: ButtonInteraction, prov: Provisioned) => handleMenuStart(ctx, i, prov),
       'shop:buy': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleShopBuy(ctx, i, prov, args[0] ?? ''),
+      // Locations & Travel. Same scope/action custom-id scheme as every other
+      // screen, so the dispatcher's stale-button and version handling covers
+      // these for free.
+      'loc:home': (i: ButtonInteraction, prov: Provisioned) =>
+        handleLocationsHome(ctx, i, prov),
+      'loc:detail': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleLocationDetail(ctx, i, prov, args[0] ?? ''),
+      'loc:confirm': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleLocationConfirm(ctx, i, prov, args[0] ?? ''),
+      'loc:buy': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleLocationBuy(ctx, i, prov, args[0] ?? ''),
+      'loc:travel': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleLocationTravel(ctx, i, prov, args[0] ?? ''),
+      'loc:shop': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleLocationShop(ctx, i, prov, args[0] ?? ''),
       'shop:exchange': (i: ButtonInteraction, prov: Provisioned) =>
         handleShopExchange(ctx, i, prov),
       'shop:convert': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>

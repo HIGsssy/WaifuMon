@@ -59,6 +59,7 @@ function buildCtx(): AppContext {
     huntSessions: harness.huntSessions,
     services: {
       guilds: app.guilds,
+      travel: app.travel,
       players: app.players,
       currency: app.currency,
       inventory: app.inventory,
@@ -321,6 +322,7 @@ describe('disabled splash config — /waifumon goes directly to the main menu', 
       logger: t2.logger,
       content: app2.content,
       services: {
+        travel: app2.travel,
         guilds: app2.guilds,
         players: app2.players,
         currency: app2.currency,

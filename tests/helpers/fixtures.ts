@@ -4,6 +4,7 @@ import type { Db } from '../../src/db/client';
 import {
   items,
   playerWaifus,
+  players as playersTable,
   species as speciesTable,
   type ItemRow,
   type PlayerWaifuRow,
@@ -32,6 +33,7 @@ import { createPlayerService } from '../../src/modules/players/playerService';
 import { createShopService } from '../../src/modules/shop/shopService';
 import { createSessionService } from '../../src/modules/session/sessionService';
 import { createBossEncounterService } from '../../src/modules/bosses/bossEncounterService';
+import { createTravelService } from '../../src/modules/travel/travelService';
 import {
   createGameEventBus,
   type GameEvent,
@@ -84,6 +86,13 @@ export interface App {
    * risk wiring it differently from the real thing.
    */
   bosses: ReturnType<typeof createBossEncounterService>;
+  /**
+   * Locations & Travel, wired exactly as production does — including the
+   * `getContent()` closure, so a test that edits the snapshot in place (to
+   * change a price or disable a region) is seen by the service the way an
+   * admin reload would be.
+   */
+  travel: ReturnType<typeof createTravelService>;
 }
 
 export interface BootstrapOptions {
@@ -215,10 +224,12 @@ export async function bootstrapApp(
     logger: t.logger,
     ...(opts.bossRng ? { rng: opts.bossRng } : {}),
   });
+  const travel = createTravelService({ db: t.db, currency, getContent: () => content });
   return {
     content,
     gifts,
     bosses,
+    travel,
     guilds: createGuildService(t.db),
     players: createPlayerService(t.db, { initialEnergy: content.tables.energy.baseMax }),
     currency,
@@ -463,6 +474,27 @@ export function scriptedRng(nexts: readonly number[]): Rng {
       return Math.min(max, Math.floor(fraction * (max - min + 1)) + min);
     },
   };
+}
+
+/**
+ * Grants a travel pass (and the routes it stamps) without spending anything.
+ *
+ * Goes through the service's admin path rather than inserting rows directly,
+ * so a test that sets a player up as "already has the Caravan Pass" gets
+ * exactly the row shape a real purchase produces, minus the charge.
+ */
+export async function grantPass(app: App, playerId: number, passId = 'caravan_pass'): Promise<void> {
+  await app.travel.grantPass(playerId, passId);
+}
+
+/** Unlocks one destination with no pass check and no charge. */
+export async function unlockRoute(app: App, playerId: number, regionId: string): Promise<void> {
+  await app.travel.grantRoute(playerId, regionId);
+}
+
+/** Moves a player without going through the travel rules (level, pass, encounter). */
+export async function forceRegion(db: Db, playerId: number, regionId: string): Promise<void> {
+  await db.update(playersTable).set({ currentRegion: regionId }).where(eq(playersTable.id, playerId));
 }
 
 export async function getItemBySlug(db: Db, slug: string): Promise<ItemRow> {

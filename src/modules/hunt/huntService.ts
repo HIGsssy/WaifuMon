@@ -15,6 +15,7 @@ import {
   items,
   playerCurrencies,
   players,
+  regionEncounterPools,
   species,
   type EncounterRow,
   type ItemRow,
@@ -41,6 +42,12 @@ import type { BuddyAwardResult, CollectionService } from '../collection/collecti
 import type { CareService, CareTickSummary } from '../care/careService';
 import type { QuestService } from '../quests/questService';
 import { resolveHuntSessionBoundary, type HuntSessionBoundary } from './huntSession';
+import {
+  DEFAULT_REGION,
+  REGION_EXCLUSIVE_TAG,
+  REGION_EXCLUSIVE_TAG_JSON,
+} from '../locations/regions';
+import { toRegion } from '../travel/travelCatalog';
 
 interface WithXp {
   levelUps: LevelUpEvent[];
@@ -185,31 +192,180 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
     });
   }
 
+  /**
+   * One region's bucket at one rarity: every enabled species the region's pool
+   * lists, carrying that pool's **region-local** weight.
+   *
+   * The weight comes from `region_encounter_pools`, not `species`, which is the
+   * entire point of the junction table — a species can be a rarity in Waifu
+   * Valley and a local fixture in Twin Peeks without being two rows in
+   * `species`. `Math.max(1, …)` mirrors the pre-region code's defensiveness;
+   * the column's CHECK already forbids anything lower.
+   */
+  /**
+   * `species.tags` does not contain `region_exclusive`.
+   *
+   * A jsonb containment test rather than a scan, so it stays a single indexed
+   * -friendly predicate the planner can fold into the existing rarity filter.
+   * `tags` is NOT NULL with a `[]` default, so there is no null case to guard.
+   */
+  function notRegionExclusive() {
+    return sql`not (${species.tags} @> ${REGION_EXCLUSIVE_TAG_JSON}::jsonb)`;
+  }
+
+  async function regionBucket(
+    tx: Parameters<Parameters<Db['transaction']>[0]>[0],
+    regionId: string,
+    rarity: Rarity,
+  ): Promise<Array<WeightedEntry<SpeciesRow>>> {
+    const rows = await tx
+      .select({ species, weight: regionEncounterPools.weight })
+      .from(regionEncounterPools)
+      .innerJoin(species, eq(regionEncounterPools.speciesId, species.id))
+      .where(
+        and(
+          eq(regionEncounterPools.regionId, regionId),
+          eq(species.rarity, rarity),
+          eq(species.enabled, true),
+        ),
+      );
+    return rows.map((r) => ({ weight: Math.max(1, r.weight), value: r.species }));
+  }
+
+  /**
+   * Picks who the player meets, in the region they are standing in.
+   *
+   * The **only** thing region changes about a hunt. Everything upstream —
+   * energy, cooldown, the one-active-encounter invariant, and crucially the
+   * level-adjusted rarity roll — is untouched, and everything downstream
+   * (capture chance, rarity value, XP) never learns a region existed. A
+   * player who travels meets different Waifumon; she does not catch them at
+   * different odds.
+   *
+   * Four tiers, each giving up one more piece of content's intent:
+   *
+   *   1. the player's region at the rolled rarity — the normal path;
+   *   2. **Waifu Valley's explicit pool** at that rarity, when the player's
+   *      region has nobody in that bucket. Preferred over the global fallback
+   *      because the starting region is a curated set: a Twin Peeks trainer who
+   *      rolls a rarity Twin Peeks has no entry for should meet a valley
+   *      regular, not an arbitrary row from the species table;
+   *   3. the **pre-region global query** — every enabled species at that
+   *      rarity, weighted by `species.per_species_weight`, *minus* anything
+   *      tagged `region_exclusive`. This is the behavior the hunt had before
+   *      regions existed, and it is retained rather than dropped because it is
+   *      the difference between "no pools are seeded" degrading into *the old
+   *      game* and degrading into a single fixed species. A content set with no
+   *      `content/regions/` directory at all is a supported configuration (see
+   *      `validateRegionContent`) and lands here on every draw. The exclusion
+   *      is what keeps "exclusive" from meaning "usually": a species whose
+   *      whole design is that you must travel to meet her must not be
+   *      reachable by a query that has stopped consulting regions;
+   *   4. an absolute emergency — any enabled species at all, exclusives
+   *      included — reached only when tiers 1–3 have found nothing across
+   *      every reroll. That means either an empty species table or a corpus in
+   *      which *every* enabled species is region-exclusive and none of them is
+   *      pooled, both of which are broken content rather than a configuration.
+   *      Logged at error level, because handing out an exclusive is a promise
+   *      broken and someone needs to know it happened.
+   */
   async function pickEncounterSpecies(
     tx: Parameters<Parameters<Db['transaction']>[0]>[0],
     level: number,
+    regionId: string,
   ): Promise<SpeciesRow | null> {
     const rarityEntries = rarityEntriesFor(level);
     for (let attempt = 0; attempt < MAX_RARITY_REROLLS; attempt++) {
       const rarity = rollWeighted(rarityEntries, rng);
-      const rows = await tx
-        .select()
-        .from(species)
-        .where(and(eq(species.rarity, rarity), eq(species.enabled, true)));
-      if (rows.length === 0) {
-        logger.warn({ rarity, attempt }, 'no enabled species in rarity bucket, rerolling');
+      let entries = await regionBucket(tx, regionId, rarity);
+      if (entries.length === 0 && regionId !== DEFAULT_REGION) {
+        entries = await regionBucket(tx, DEFAULT_REGION, rarity);
+        if (entries.length > 0) {
+          logger.warn(
+            { rarity, regionId, attempt },
+            'region has no species at this rarity, falling back to the starting region pool',
+          );
+        }
+      }
+      if (entries.length === 0) {
+        // Neither pool has this rarity. Before rerolling, fall back to the
+        // region-blind query the hunt used before pools existed — otherwise a
+        // deployment whose pools are empty (or absent) would reroll six times
+        // and then hand every player the same arbitrary species forever.
+        //
+        // Region-exclusive species are excluded here, and that exclusion is
+        // the point: this query has stopped consulting regions, so anything it
+        // can reach is by definition meetable without travelling. A pool is
+        // the *only* way to meet an exclusive.
+        const global = await tx
+          .select()
+          .from(species)
+          .where(
+            and(eq(species.rarity, rarity), eq(species.enabled, true), notRegionExclusive()),
+          );
+        if (global.length > 0) {
+          logger.warn(
+            { rarity, regionId, attempt },
+            'no region pool covers this rarity, falling back to the global species table',
+          );
+          entries = global.map((s) => ({ weight: Math.max(1, s.perSpeciesWeight), value: s }));
+        }
+      }
+      if (entries.length === 0) {
+        logger.warn({ rarity, regionId, attempt }, 'no enabled species in rarity bucket, rerolling');
         continue;
       }
-      const picked = rollWeighted(
-        rows.map((s) => ({ weight: Math.max(1, s.perSpeciesWeight), value: s })),
-        rng,
-      );
-      return picked;
+      return rollWeighted(entries, rng);
     }
-    // Absolute fallback: any enabled species at all.
+
+    // Rerolls exhausted. Give up on rarity, but keep giving up in the same
+    // order: pooled content first, then non-exclusive content, and only then
+    // the emergency.
+    const valleyRow = await tx
+      .select({ species })
+      .from(regionEncounterPools)
+      .innerJoin(species, eq(regionEncounterPools.speciesId, species.id))
+      .where(and(eq(regionEncounterPools.regionId, DEFAULT_REGION), eq(species.enabled, true)))
+      .limit(1);
+    if (valleyRow[0]) {
+      logger.warn(
+        { regionId },
+        'rarity reroll exhausted, using arbitrary species from the starting region pool',
+      );
+      return valleyRow[0].species;
+    }
+
+    const openRow = await tx
+      .select()
+      .from(species)
+      .where(and(eq(species.enabled, true), notRegionExclusive()))
+      .limit(1);
+    if (openRow[0]) {
+      logger.warn(
+        { regionId },
+        'rarity reroll exhausted and no region pools seeded, using an arbitrary non-exclusive species',
+      );
+      return openRow[0];
+    }
+
+    // Tier 4. Every enabled species is region-exclusive and none of them is
+    // pooled — there is no honest answer left, only the choice between handing
+    // out an exclusive and handing out nothing. An encounter beats a crash, so
+    // the exclusive goes out and the log says so at error level: this is a
+    // content emergency, not a fallback anyone should see in normal operation.
     const anyRow = await tx.select().from(species).where(eq(species.enabled, true)).limit(1);
     if (anyRow[0]) {
-      logger.warn('rarity reroll exhausted, using arbitrary enabled species');
+      logger.error(
+        {
+          tag: 'hunt/exclusive-emergency-fallback',
+          regionId,
+          slug: anyRow[0].slug,
+          exclusiveTag: REGION_EXCLUSIVE_TAG,
+        },
+        'EMERGENCY: no pooled or non-exclusive species exist anywhere — handing out the ' +
+          `region-exclusive "${anyRow[0].slug}" outside any region pool. Seed region ` +
+          'encounter pools, or untag species that are not meant to be region-locked.',
+      );
       return anyRow[0];
     }
     return null;
@@ -349,7 +505,10 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
         );
 
         if (kind === 'encounter') {
-          const picked = await pickEncounterSpecies(tx, player.level);
+          // Resolved from the player row already locked above, so a travel
+          // committing mid-hunt cannot change which pool this draw reads.
+          const huntRegion = toRegion(player.currentRegion);
+          const picked = await pickEncounterSpecies(tx, player.level, huntRegion);
           if (!picked) {
             // No species at all — degrade to flavor rather than crash.
             logger.error('no enabled species available; degrading encounter to flavor');
@@ -375,6 +534,10 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
                 attemptCount: 0,
                 maxAttempts: 3,
                 expiresAt,
+                // Snapshot only. Nothing reads it back to make a decision —
+                // capture stays region-agnostic — it records where she was met
+                // so the row is still honest after the player travels away.
+                regionId: huntRegion,
               })
               .returning();
             return {

@@ -99,7 +99,16 @@ function menuComponents(care: CareState, questsEnabled: boolean): ActionRowBuild
       careButton,
     ),
   ];
-  const bottomRow: ButtonBuilder[] = [];
+  const bottomRow: ButtonBuilder[] = [
+    // Locations lives on the menu rather than behind its own slash command:
+    // travel is a gameplay screen like Shop or Collection, and every gameplay
+    // screen in this bot is reached from the one ephemeral menu.
+    new ButtonBuilder()
+      .setCustomId(buildCustomId('loc', 'home'))
+      .setLabel('Locations')
+      .setEmoji('🗺️')
+      .setStyle(ButtonStyle.Secondary),
+  ];
   if (questsEnabled) {
     bottomRow.push(
       new ButtonBuilder()
@@ -118,9 +127,7 @@ function menuComponents(care: CareState, questsEnabled: boolean): ActionRowBuild
         .setStyle(ButtonStyle.Secondary),
     );
   }
-  if (bottomRow.length > 0) {
-    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(...bottomRow));
-  }
+  rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(...bottomRow));
   return rows;
 }
 
@@ -506,9 +513,16 @@ function chunkButtonRows(
   return rows;
 }
 
-interface ScreenView {
+export interface ScreenView {
   embeds: EmbedBuilder[];
   components: ActionRowBuilder<ButtonBuilder>[];
+}
+
+/** Discord allows 5 buttons per action row. Shared with the Locations screens. */
+export function buttonRows(
+  buttons: readonly ButtonBuilder[],
+): ActionRowBuilder<ButtonBuilder>[] {
+  return chunkButtonRows(buttons);
 }
 
 async function buildInventoryView(

@@ -31,6 +31,7 @@ import type { CollectionFilterTracker } from './collectionFilterTracker';
 import type { EphemeralRegistry } from './ephemeralCleanup';
 import type { OwnedCardWarmer } from '../modules/appearance/ownedCardWarm';
 import type { BossEncounterService } from '../modules/bosses/bossEncounterService';
+import type { TravelService } from '../modules/travel/travelService';
 import type { BossAnnouncer } from '../modules/bosses/bossScheduler';
 
 export interface AppServices {
@@ -68,6 +69,13 @@ export interface AppServices {
    * switched off behind a flag the handlers have to keep checking.
    */
   bosses?: BossEncounterService | undefined;
+  /**
+   * Locations & Travel. Always wired — the feature's own gate is
+   * `tables.travel.enabled`, which the service reads from the live content
+   * snapshot, so switching travel off in content is a content decision rather
+   * than a different service graph.
+   */
+  travel: TravelService;
 }
 
 export interface AppContext {

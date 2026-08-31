@@ -611,5 +611,31 @@
   },
   "session": {
     "inactiveTimeoutMinutes": 45
+  },
+  "travel": {
+    "enabled": true,
+    "passes": [
+      {
+        "id": "caravan_pass",
+        "name": "Caravan Pass",
+        "description": "A standing seat with the valley caravans. Buy it once; every destination you unlock afterwards is stamped onto the same pass.",
+        "emoji": "🎫",
+        "price": 1000,
+        "currency": "waifubux",
+        "requiredLevel": 15,
+        "grantsRoutes": [
+          "twin-peeks"
+        ]
+      }
+    ],
+    "routes": [
+      {
+        "regionId": "twin-peeks",
+        "passId": "caravan_pass",
+        "price": 0,
+        "currency": "waifubux",
+        "requiredLevel": 15
+      }
+    ]
   }
 }

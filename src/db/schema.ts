@@ -4,6 +4,7 @@
  * (encounters, capture_attempts, player_waifus, progression events land in M2+.)
  */
 import { sql } from 'drizzle-orm';
+import { REGION_SQL_LIST } from '../modules/locations/regions';
 import {
   bigint,
   boolean,
@@ -121,10 +122,28 @@ export const players = pgTable(
     careModeStartedAt: timestamp('care_mode_started_at', { withTimezone: true }),
     careModeLastTickAt: timestamp('care_mode_last_tick_at', { withTimezone: true }),
     careModeWaifuId: bigint('care_mode_waifu_id', { mode: 'number' }),
+    /**
+     * Where this trainer currently stands (Locations & Travel).
+     *
+     * Persistent, not per-session: a player who travels to Twin Peeks is still
+     * there next week. Defaults to Waifu Valley so every pre-existing row —
+     * and every future player — starts in the region the game opens in,
+     * without a backfill. The CHECK is generated from
+     * `modules/locations/regions.ts`, so a typo cannot be stored and adding a
+     * region needs a migration that widens it.
+     *
+     * Read by exactly one gameplay path: which species the hunt may draw. It
+     * does **not** reach capture math, rarity, energy, cooldown, care, gifts
+     * or boss participation, and nothing downstream should start reading it.
+     */
+    currentRegion: text('current_region').notNull().default('waifu-valley'),
     settings: jsonb('settings').$type<Record<string, unknown>>().notNull().default({}),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex('players_guild_user_uq').on(t.guildId, t.discordUserId)],
+  (t) => [
+    uniqueIndex('players_guild_user_uq').on(t.guildId, t.discordUserId),
+    check('players_current_region_check', sql`${t.currentRegion} in (${sql.raw(REGION_SQL_LIST)})`),
+  ],
 );
 
 export const playerCurrencies = pgTable(
@@ -315,6 +334,16 @@ export const encounters = pgTable(
      * encounter expire all cost the player nothing.
      */
     selectedItemId: bigint('selected_item_id', { mode: 'number' }).references(() => items.id),
+    /**
+     * The region the player was standing in when this encounter was rolled.
+     *
+     * A **snapshot**, deliberately: it records where she was met, and nothing
+     * reads it back to make a decision. Capture math is region-agnostic and
+     * must stay that way, so this column exists for analytics and for keeping
+     * an encounter's origin auditable after the player travels away. Nullable
+     * because rows that predate travel have no answer.
+     */
+    regionId: text('region_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     resolvedAt: timestamp('resolved_at', { withTimezone: true }),
@@ -1052,6 +1081,178 @@ export const bossParticipations = pgTable(
   ],
 );
 
+/* ───────────────────────── Locations & Travel ───────────────────────── */
+
+/**
+ * Which species may be encountered in which region, and how often.
+ *
+ * A junction table rather than a `species.region` scalar, and the reason is a
+ * product requirement rather than taste: the same Waifumon appears in more
+ * than one region at *different* rates (a Waifu Valley regular showing up in
+ * Twin Peeks at a boosted weight), which a scalar column cannot express.
+ *
+ * `weight` is region-local and completely replaces `species.per_species_weight`
+ * for the regional draw — the global column stays as the authoring default and
+ * as the seeder's fallback when a pool entry omits a weight. Waifu Valley is a
+ * real row-set here, not an implicit "everything else": modelling the starting
+ * region explicitly is what lets the hunt fall back to a *curated* pool rather
+ * than to the whole species table.
+ *
+ * Seeded from region content on every content load, so JSON stays canonical.
+ */
+export const regionEncounterPools = pgTable(
+  'region_encounter_pools',
+  {
+    regionId: text('region_id').notNull(),
+    speciesId: bigint('species_id', { mode: 'number' })
+      .notNull()
+      .references(() => species.id),
+    weight: integer('weight').notNull().default(1),
+  },
+  (t) => [
+    primaryKey({ columns: [t.regionId, t.speciesId] }),
+    check('region_encounter_pools_weight_check', sql`${t.weight} > 0`),
+    check(
+      'region_encounter_pools_region_check',
+      sql`${t.regionId} in (${sql.raw(REGION_SQL_LIST)})`,
+    ),
+    // The hunt query filters (region_id, rarity) and joins species; region is
+    // the selective half and the only one that lives on this table.
+    index('region_encounter_pools_region_idx').on(t.regionId),
+  ],
+);
+
+/** How a pass or route came to be owned. Purchases are audited; grants are not. */
+export const TRAVEL_GRANT_SOURCES = ['purchase', 'admin'] as const;
+export type TravelGrantSource = (typeof TRAVEL_GRANT_SOURCES)[number];
+
+/**
+ * Travel passes a player owns.
+ *
+ * Explicitly **not** inventory: a pass is a permanent, non-stackable
+ * entitlement, and putting it in `player_inventory` would make it a quantity
+ * someone could hold two of, sell, or lose to a capacity cap. The composite
+ * primary key is the real anti-double-purchase backstop — two concurrent buy
+ * clicks race to the same key and exactly one insert survives, so the loser
+ * rolls back with its currency deduction intact-and-undone rather than
+ * charging twice.
+ *
+ * Owning the pass and owning a given route are independent facts (see
+ * {@link playerUnlockedRoutes}); the pass is the container, routes are the
+ * destinations it has been stamped for.
+ */
+export const playerTravelPasses = pgTable(
+  'player_travel_passes',
+  {
+    playerId: bigint('player_id', { mode: 'number' })
+      .notNull()
+      .references(() => players.id),
+    /** Content id from `tables.travel.passes[]` — 'caravan_pass' today. */
+    passId: text('pass_id').notNull(),
+    source: text('source').notNull().default('purchase'),
+    grantedAt: timestamp('granted_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.playerId, t.passId] }),
+    check('player_travel_passes_source_check', sql`${t.source} in ('purchase','admin')`),
+  ],
+);
+
+/**
+ * Destinations a player has unlocked.
+ *
+ * Separate from the pass so the first purchase (pass + Twin Peeks, atomically)
+ * and every later destination (a route unlock stamped onto the same pass) are
+ * the same shape of row. The starting region is deliberately **absent** from
+ * this table — Waifu Valley is always reachable, and storing a row for it
+ * would invite code that checks the row instead of the rule.
+ */
+export const playerUnlockedRoutes = pgTable(
+  'player_unlocked_routes',
+  {
+    playerId: bigint('player_id', { mode: 'number' })
+      .notNull()
+      .references(() => players.id),
+    regionId: text('region_id').notNull(),
+    source: text('source').notNull().default('purchase'),
+    unlockedAt: timestamp('unlocked_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.playerId, t.regionId] }),
+    check(
+      'player_unlocked_routes_region_check',
+      sql`${t.regionId} in (${sql.raw(REGION_SQL_LIST)})`,
+    ),
+    check('player_unlocked_routes_source_check', sql`${t.source} in ('purchase','admin')`),
+  ],
+);
+
+/** What a travel purchase bought. */
+export const TRAVEL_TRANSACTION_KINDS = ['pass', 'route'] as const;
+export type TravelTransactionKind = (typeof TRAVEL_TRANSACTION_KINDS)[number];
+
+/**
+ * Audit trail for pass and route purchases.
+ *
+ * A dedicated table rather than a reuse of `shop_transactions`, because that
+ * table's `item_id` is `NOT NULL` and foreign-keyed to `items` — a pass is not
+ * an item and never will be, so reusing it would mean either minting a fake
+ * item row or dropping a constraint that protects every existing shop row.
+ * Same shape and same discipline (written inside the purchase transaction),
+ * different subject.
+ */
+export const travelTransactions = pgTable(
+  'travel_transactions',
+  {
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    playerId: bigint('player_id', { mode: 'number' })
+      .notNull()
+      .references(() => players.id),
+    kind: text('kind').notNull(),
+    /** Pass purchased, or the pass a route was stamped onto. */
+    passId: text('pass_id'),
+    /** Destination unlocked. Null only for a pass that grants no route. */
+    regionId: text('region_id'),
+    amount: integer('amount').notNull(),
+    currency: text('currency').notNull().default('waifubux'),
+    balanceAfter: integer('balance_after').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('travel_transactions_player_created_idx').on(t.playerId, t.createdAt),
+    check('travel_transactions_kind_check', sql`${t.kind} in ('pass','route')`),
+    check('travel_transactions_currency_check', sql`${t.currency} in ('waifubux','essence')`),
+  ],
+);
+
+/**
+ * Which items a region's shop stocks.
+ *
+ * A junction rather than an `items.region_id` scalar for the same reason
+ * {@link regionEncounterPools} is one: a regional item may legitimately be
+ * stocked in several regions, and the two region-membership tables reading the
+ * same way is worth more than the column it saves.
+ *
+ * Membership here makes an item **regionally scoped**: it leaves the global
+ * shop catalog and appears only in the shops of the regions listed. An item in
+ * no row at all is core stock, sold everywhere — which is every item shipped
+ * today, so this table being empty is exactly the pre-travel behavior.
+ */
+export const regionShopItems = pgTable(
+  'region_shop_items',
+  {
+    regionId: text('region_id').notNull(),
+    itemId: bigint('item_id', { mode: 'number' })
+      .notNull()
+      .references(() => items.id),
+  },
+  (t) => [
+    primaryKey({ columns: [t.regionId, t.itemId] }),
+    check('region_shop_items_region_check', sql`${t.regionId} in (${sql.raw(REGION_SQL_LIST)})`),
+    index('region_shop_items_region_idx').on(t.regionId),
+  ],
+);
+
 export type GuildRow = typeof guilds.$inferSelect;
 export type PlayerRow = typeof players.$inferSelect;
 export type PlayerCurrenciesRow = typeof playerCurrencies.$inferSelect;
@@ -1073,3 +1274,8 @@ export type AffectionGiftRow = typeof affectionGifts.$inferSelect;
 export type GuildBossStateRow = typeof guildBossState.$inferSelect;
 export type BossEncounterRow = typeof bossEncounters.$inferSelect;
 export type BossParticipationRow = typeof bossParticipations.$inferSelect;
+export type RegionEncounterPoolRow = typeof regionEncounterPools.$inferSelect;
+export type PlayerTravelPassRow = typeof playerTravelPasses.$inferSelect;
+export type PlayerUnlockedRouteRow = typeof playerUnlockedRoutes.$inferSelect;
+export type TravelTransactionRow = typeof travelTransactions.$inferSelect;
+export type RegionShopItemRow = typeof regionShopItems.$inferSelect;

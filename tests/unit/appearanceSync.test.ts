@@ -107,7 +107,10 @@ describe('content pack discovery', () => {
 
     const plan = sync();
 
-    expect(plan.files.map((f) => f.file).sort()).toEqual(['placeholders.json', 'starter.json']);
+    expect(plan.files.map((f) => f.file).sort()).toEqual([
+      'species/placeholders.json',
+      'species/starter.json',
+    ]);
   });
 
   it('picks up a content pack whose name it has never seen', () => {
@@ -119,7 +122,7 @@ describe('content pack discovery', () => {
     const plan = sync();
 
     expect(plan.files).toHaveLength(1);
-    expect(plan.files[0]?.file).toBe('winterexpansion.json');
+    expect(plan.files[0]?.file).toBe('species/winterexpansion.json');
     expect(appearancesOf('winterexpansion.json', 'frost_valkyrie')?.map((a) => a.id)).toEqual([
       'standard',
       'level_10',
@@ -412,5 +415,109 @@ describe('reporting', () => {
     art('alley_catgirl', 'standard');
 
     expect(formatSyncReport(sync())).toBe('No appearance changes needed.');
+  });
+});
+
+/**
+ * Expansion packs are species content like any other, so the synchroniser has
+ * to reach them — but only the *enabled* ones. Writing milestone appearances
+ * into a switched-off pack would be worse than not reaching it at all: it
+ * leaves the pack looking maintained while none of it is live, and it edits
+ * content nobody has decided to ship.
+ */
+describe('expansion pack discovery', () => {
+  /** Writes a pack manifest plus one species file under content/expansions/. */
+  function writeExpansion(
+    id: string,
+    opts: { enabled: boolean; file?: string; entries: unknown[] },
+  ): void {
+    const dir = path.join(contentDir, 'expansions', id);
+    fs.mkdirSync(path.join(dir, 'species'), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, 'expansion.json'),
+      `${JSON.stringify({ id, name: id, enabled: opts.enabled }, null, 2)}\n`,
+    );
+    fs.writeFileSync(
+      path.join(dir, 'species', opts.file ?? 'locals.json'),
+      `${JSON.stringify(opts.entries, null, 2)}\n`,
+    );
+  }
+
+  it('syncs species inside an enabled pack', () => {
+    writePack('starter.json', [species('alley_catgirl')]);
+    art('alley_catgirl', 'standard', 'level_10');
+    writeExpansion('twin_peaks', { enabled: true, entries: [species('ridge_diner_waitress')] });
+    art('ridge_diner_waitress', 'standard', 'level_10', 'level_20');
+
+    const plan = sync();
+
+    expect(plan.files.map((f) => f.file).sort()).toEqual([
+      'expansions/twin_peaks/species/locals.json',
+      'species/starter.json',
+    ]);
+    const written = JSON.parse(
+      fs.readFileSync(
+        path.join(contentDir, 'expansions', 'twin_peaks', 'species', 'locals.json'),
+        'utf8',
+      ),
+    ) as Array<{ slug: string; appearances?: Array<{ id: string }> }>;
+    expect(written[0]!.appearances?.map((a) => a.id)).toEqual([
+      'standard',
+      'level_10',
+      'level_20',
+    ]);
+  });
+
+  it('does not touch a disabled pack', () => {
+    writePack('starter.json', [species('alley_catgirl')]);
+    art('alley_catgirl', 'standard', 'level_10');
+    writeExpansion('shelved', { enabled: false, entries: [species('shelved_girl')] });
+    art('shelved_girl', 'standard', 'level_10', 'level_20');
+    const before = fs.readFileSync(
+      path.join(contentDir, 'expansions', 'shelved', 'species', 'locals.json'),
+      'utf8',
+    );
+
+    const plan = sync();
+
+    expect(plan.files.map((f) => f.file)).toEqual(['species/starter.json']);
+    expect(
+      fs.readFileSync(
+        path.join(contentDir, 'expansions', 'shelved', 'species', 'locals.json'),
+        'utf8',
+      ),
+    ).toBe(before);
+  });
+
+  it('keeps same-named files in different packs apart', () => {
+    // The reason the plan key is a path and not a basename: two packs may each
+    // ship a `locals.json`, and a basename key would collapse them into one
+    // plan entry and write one pack's species into the other.
+    writePack('starter.json', [species('alley_catgirl')]);
+    art('alley_catgirl', 'standard', 'level_10');
+    writeExpansion('pack_a', { enabled: true, entries: [species('girl_a')] });
+    writeExpansion('pack_b', { enabled: true, entries: [species('girl_b')] });
+    art('girl_a', 'standard', 'level_10');
+    art('girl_b', 'standard', 'level_10');
+
+    const plan = sync();
+
+    expect(plan.files.map((f) => f.file).sort()).toEqual([
+      'expansions/pack_a/species/locals.json',
+      'expansions/pack_b/species/locals.json',
+      'species/starter.json',
+    ]);
+    for (const [pack, slug] of [
+      ['pack_a', 'girl_a'],
+      ['pack_b', 'girl_b'],
+    ] as const) {
+      const written = JSON.parse(
+        fs.readFileSync(
+          path.join(contentDir, 'expansions', pack, 'species', 'locals.json'),
+          'utf8',
+        ),
+      ) as Array<{ slug: string }>;
+      expect(written.map((w) => w.slug)).toEqual([slug]);
+    }
   });
 });
