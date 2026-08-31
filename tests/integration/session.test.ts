@@ -515,6 +515,93 @@ describe('main menu flavor text', () => {
   });
 });
 
+describe('main menu redesign — Today off, region on', () => {
+  interface ComponentsPayload {
+    components?: { toJSON(): { components: Array<{ custom_id?: string }> } }[];
+  }
+  function customIdsOf(spy: ReturnType<typeof vi.fn>): string[] {
+    const payload = spy.mock.calls[0]![0] as ComponentsPayload;
+    return (payload.components ?? []).flatMap((row) =>
+      row.toJSON().components.map((c) => c.custom_id ?? ''),
+    );
+  }
+
+  it('the main menu embed no longer carries a "Today" recap field', async () => {
+    const p = await provisionPlayer(app, 'g-redesign-1', 'u-redesign-1');
+    const cmd = fakeCommand('u-redesign-1', fakeChannel('c-redesign-1'));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleMenu(ctx, cmd as any, p);
+
+    const embed = firstEmbedJson(cmd.reply);
+    const names = (embed.fields ?? []).map((f) => f.name);
+    expect(names).not.toContain('📅 Today');
+  });
+
+  it('the main menu description shows the current region near the top', async () => {
+    const p = await provisionPlayer(app, 'g-redesign-2', 'u-redesign-2');
+    const cmd = fakeCommand('u-redesign-2', fakeChannel('c-redesign-2'));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleMenu(ctx, cmd as any, p);
+
+    // Fresh players start in the default region (Waifu Valley).
+    const embed = firstEmbedJson(cmd.reply);
+    expect(embed.description ?? '').toContain('📍 Current Location:');
+    expect(embed.description ?? '').toContain('Waifu Valley');
+    // The region line sits above the action legend so it reads as a header,
+    // not a footer.
+    const desc = embed.description ?? '';
+    expect(desc.indexOf('📍 Current Location:')).toBeLessThan(desc.indexOf('🏹 **Hunt**'));
+  });
+
+  it('the main menu still exposes every navigation button', async () => {
+    const p = await provisionPlayer(app, 'g-redesign-3', 'u-redesign-3');
+    const cmd = fakeCommand('u-redesign-3', fakeChannel('c-redesign-3'));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleMenu(ctx, cmd as any, p);
+
+    const ids = customIdsOf(cmd.reply);
+    for (const expected of [
+      'wm|v1|menu|hunt',
+      'wm|v1|menu|daily',
+      'wm|v1|menu|shop',
+      'wm|v1|menu|collection',
+      'wm|v1|menu|profile',
+      'wm|v1|menu|inventory',
+      'wm|v1|care|start',
+      'wm|v1|loc|home',
+    ]) {
+      expect(ids).toContain(expected);
+    }
+  });
+
+  it('the main menu still renders a Care Mode status field', async () => {
+    const p = await provisionPlayer(app, 'g-redesign-4', 'u-redesign-4');
+    const cmd = fakeCommand('u-redesign-4', fakeChannel('c-redesign-4'));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleMenu(ctx, cmd as any, p);
+
+    const embed = firstEmbedJson(cmd.reply);
+    const names = (embed.fields ?? []).map((f) => f.name);
+    expect(names).toContain('💗 Care Mode');
+    // Fresh player: not in Care Mode, so the field explains what Care Mode
+    // offers — a concrete, non-empty status.
+    const value = (embed.fields ?? []).find((f) => f.name === '💗 Care Mode')?.value ?? '';
+    expect(value.length).toBeGreaterThan(0);
+    expect(value).toContain('energy');
+  });
+
+  it('the Profile screen picks up the "Today" recap that the menu shed', async () => {
+    const p = await provisionPlayer(app, 'g-redesign-5', 'u-redesign-5');
+    const cmd = fakeCommand('u-redesign-5', fakeChannel('c-redesign-5'));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleProfile(ctx, cmd as any, p);
+
+    const embed = firstEmbedJson(cmd.reply);
+    const names = (embed.fields ?? []).map((f) => f.name);
+    expect(names).toContain('📅 Today');
+  });
+});
+
 describe('hunt validation failures keep navigation alive', () => {
   interface UpdatePayload {
     content?: string;

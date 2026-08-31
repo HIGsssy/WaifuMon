@@ -42,6 +42,7 @@ import {
 } from '../gameEventBuilders';
 import { gameEvent, type GameEventDescriptor } from '../../modules/events/gameEvents';
 import { renderSummaryLines } from '../../modules/session/sessionService';
+import { regionLabel } from '../../modules/locations/regions';
 import { affinityLabel } from '../../modules/capture/affinityMath';
 import type { CareState, CareTickSummary } from '../../modules/care/careService';
 import { ownerFromInteraction } from '../userDisplay';
@@ -195,9 +196,13 @@ async function renderMainMenu(
   // paint so the Trainer Profile refreshes.
   const ticks = await ctx.services.care.applyPending(prov.playerId);
   const care = await ctx.services.care.getState(prov.playerId);
+  // Region banner is intentionally text-only here: the full location banner
+  // belongs on the Locations detail / travel-success screens.
+  const currentRegion = await ctx.services.travel.getCurrentRegion(prov.playerId);
   const flavor = pickMainMenuFlavor(ctx.content.tables.uiFlavor?.mainMenu);
   const description =
     `_${flavor}_\n\n` +
+    `📍 Current Location: **${regionLabel(currentRegion)}**\n\n` +
     '🏹 **Hunt** — spend 1 energy to find someone\n' +
     '🎁 **Claim Daily** — energy refill, WaifuBux, and charms\n' +
     '🛍️ **Shop** — spend WaifuBux on capture charms\n' +
@@ -227,23 +232,10 @@ async function renderMainMenu(
     });
   }
 
-  // "Today" summary: fold in whatever the daily tally has recorded so far.
-  // Read-only — the session row is created/updated by the handlers that
-  // actually record events (hunt, daily, capture).
-  const channelId = interaction.channelId;
-  if (channelId) {
-    const existing = await ctx.services.session.findByPlayerAndChannel(
-      prov.playerId,
-      channelId,
-    );
-    const summary =
-      existing && ctx.services.session.isSummaryFresh(existing)
-        ? ctx.services.session.readSummary(existing)
-        : ctx.services.session.readSummary({
-            summaryJson: {},
-          } as never);
-    embed.addFields({ name: '📅 Today', value: renderSummaryLines(summary).join('\n') });
-  }
+  // The daily "Today" recap has moved off the main menu (which now stays
+  // focused on navigation + current care status) and onto the Profile and
+  // Care Mode Trainer Profile screens, where the trainer/buddy status is
+  // the reason the player is there.
   await respondEphemeral(interaction, {
     embeds: [embed],
     components: menuComponents(care, ctx.services.quests.config.enabled),
@@ -360,6 +352,22 @@ export async function handleProfile(
       { name: '★ Buddy', value: buddyLine, inline: false },
     )
     .setFooter({ text: `Hunter since ${player.createdAt.toDateString()}` });
+
+  // "Today" recap moved off the main menu and onto the Profile screen, where
+  // trainer/buddy status is the reason the player is looking. Read-only —
+  // the session row is written by the handlers that actually record events.
+  const channelId = interaction.channelId;
+  if (channelId) {
+    const existing = await ctx.services.session.findByPlayerAndChannel(
+      prov.playerId,
+      channelId,
+    );
+    const summary =
+      existing && ctx.services.session.isSummaryFresh(existing)
+        ? ctx.services.session.readSummary(existing)
+        : ctx.services.session.readSummary({ summaryJson: {} } as never);
+    embed.addFields({ name: '📅 Today', value: renderSummaryLines(summary).join('\n') });
+  }
   await respondEphemeral(interaction, { embeds: [embed], components: withBackRow() });
 }
 

@@ -18,6 +18,7 @@ import {
   formatCountdown,
   type TrainerProfileInput,
 } from '../../src/discord/trainerProfile';
+import { renderCareStatusLines } from '../../src/discord/commands/waifumon';
 import type { CareState } from '../../src/modules/care/careService';
 
 function fakeButtonInteraction(overrides: Partial<Record<string, unknown>> = {}) {
@@ -284,5 +285,67 @@ describe('buildTrainerProfileView', () => {
     expect(fields.get('💗 Activity')).toContain('📜 Spend 5 Hunt Energy (3/5)');
     // The four MVP blocks are still present and in order.
     expect([...fields.keys()]).toEqual(['👤 Trainer', '⭐ Buddy', '🎒 Collection', '💗 Activity']);
+  });
+});
+
+// ─────────────────────────── main-menu Care Mode status ───────────────────────────
+
+describe('renderCareStatusLines — main menu keeps a clear care status', () => {
+  it('spells out cared-for buddy, energy, next tick and per-tick gains when Care Mode is active', () => {
+    const state: CareState = {
+      active: true,
+      startedAt: new Date('2026-01-01T00:00:00Z'),
+      lastTickAt: new Date('2026-01-01T00:00:00Z'),
+      nextTickAt: new Date('2026-01-01T00:30:00Z'),
+      target: {
+        waifu: { id: 1, nickname: 'Nova', level: 3, affection: 4, baseSp: 100 },
+        species: { name: 'Luna', rarity: 'SR', affinity: 'dominant' },
+      } as unknown as CareState['target'],
+      pendingTicks: 0,
+      intervalMinutes: 30,
+      energyPerTick: 1,
+      waifuXpPerTick: 2,
+      affectionPerTick: 1,
+      recoveryCap: 20,
+      effectiveEnergyCap: 20,
+      currentEnergy: 8,
+      maxEnergy: 25,
+      enabled: true,
+    };
+    const lines = renderCareStatusLines(state);
+    const text = lines.join('\n');
+    // Buddy line names the nickname AND the species so both are legible.
+    expect(text).toContain('Nova');
+    expect(text).toContain('Luna');
+    // Energy and next-tick countdown live on a single line.
+    expect(text).toContain('8/25');
+    expect(text).toMatch(/next tick/);
+    // Per-tick gains are itemised.
+    expect(text).toContain('+1 Energy');
+    expect(text).toContain('+2 XP');
+    expect(text).toContain('+1 Affection');
+  });
+
+  it('still gives an inactive player a non-empty, energy-focused status', () => {
+    const state: CareState = {
+      active: false,
+      startedAt: null as unknown as Date,
+      lastTickAt: null as unknown as Date,
+      nextTickAt: null,
+      target: null,
+      pendingTicks: 0,
+      intervalMinutes: 30,
+      energyPerTick: 1,
+      waifuXpPerTick: 2,
+      affectionPerTick: 1,
+      recoveryCap: 20,
+      effectiveEnergyCap: 20,
+      currentEnergy: 5,
+      maxEnergy: 25,
+      enabled: true,
+    };
+    const lines = renderCareStatusLines(state);
+    expect(lines.length).toBeGreaterThan(0);
+    expect(lines.join('\n')).toContain('5');
   });
 });
