@@ -274,6 +274,62 @@ describe('create — entering Care Mode', () => {
     expect(channel.calls[1]).toMatch(/^send:/);
     expect(await storedProfileId()).not.toBe(firstId);
   });
+
+  it('renders a compact "📅 Today" recap with zeros on a fresh day', async () => {
+    await handleCareStart(ctx, fakeInteraction(), prov);
+
+    const payload = channel.send.mock.calls[0]![0] as {
+      embeds: { toJSON: () => { fields?: { name: string; value: string }[] } }[];
+    };
+    const fields = payload.embeds[0]!.toJSON().fields ?? [];
+    const today = fields.find((f) => f.name === '📅 Today');
+    expect(today).toBeDefined();
+    expect(today!.value).toBe(
+      '🏹 0 hunts · 💖 0 caught · 💨 0 escaped · ✨ 0 SR+ · ⬆️ 0 level-ups',
+    );
+  });
+
+  it('the "📅 Today" recap reflects hunts and captures already recorded today', async () => {
+    // Seed a couple of events into the same session row the profile reads.
+    const session = await app.session.ensureSession(prov.guildDbId, prov.playerId, CHANNEL_ID);
+    await app.session.recordEvent(session.id, { type: 'hunt' });
+    await app.session.recordEvent(session.id, { type: 'hunt' });
+    await app.session.recordEvent(session.id, {
+      type: 'capture',
+      rarity: 'SR',
+      speciesName: 'Luna',
+    });
+
+    await handleCareStart(ctx, fakeInteraction(), prov);
+
+    const payload = channel.send.mock.calls[0]![0] as {
+      embeds: { toJSON: () => { fields?: { name: string; value: string }[] } }[];
+    };
+    const fields = payload.embeds[0]!.toJSON().fields ?? [];
+    const today = fields.find((f) => f.name === '📅 Today');
+    expect(today).toBeDefined();
+    expect(today!.value).toContain('🏹 2 hunts');
+    expect(today!.value).toContain('💖 1 caught');
+    expect(today!.value).toContain('✨ 1 SR+');
+  });
+
+  it('the Care Mode entry post still carries the buddy card, no components, and the care blocks', async () => {
+    await handleCareStart(ctx, fakeInteraction(), prov);
+
+    const payload = channel.send.mock.calls[0]![0] as {
+      embeds: { toJSON: () => { fields?: { name: string; value: string }[]; image?: unknown } }[];
+      components?: unknown[];
+      files?: unknown[];
+    };
+    // The profile is informational — no rows of buttons on the public post.
+    expect(payload.components ?? []).toHaveLength(0);
+    // The trainer / buddy / collection / activity core blocks are still there
+    // alongside the new Today field.
+    const names = (payload.embeds[0]!.toJSON().fields ?? []).map((f) => f.name);
+    for (const expected of ['👤 Trainer', '⭐ Buddy', '🎒 Collection', '💗 Activity', '📅 Today']) {
+      expect(names).toContain(expected);
+    }
+  });
 });
 
 describe('edit — value changes refresh in place', () => {

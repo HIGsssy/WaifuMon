@@ -256,7 +256,7 @@ describe('buildTrainerProfileView', () => {
     const fields = fieldsOf(buildTrainerProfileView(profileInput()));
     expect(fields.get('👤 Trainer')).not.toContain('XP to Lv');
     expect(fields.get('👤 Trainer')).not.toContain('🗺️');
-    expect(fields.get('💗 Activity')).not.toContain('Today:');
+    expect(fields.has('📅 Today')).toBe(false);
     expect(fields.get('💗 Activity')).not.toContain('📜');
   });
 
@@ -266,8 +266,18 @@ describe('buildTrainerProfileView', () => {
         profileInput({
           dashboard: {
             currentRegion: 'the Velvet Grove',
-            todaysHunts: 4,
-            todaysCaptures: 2,
+            todaySummary: {
+              hunts: 4,
+              caught: 2,
+              escaped: 1,
+              srPlus: 1,
+              levelUps: 0,
+              caughtNames: [],
+              escapedNames: [],
+              notableFinds: [],
+              buddyXp: 0,
+              buddyAffection: 0,
+            },
             currentDailyObjective: 'Spend 5 Hunt Energy (3/5)',
             nextLevelProgress: {
               level: 12,
@@ -281,10 +291,45 @@ describe('buildTrainerProfileView', () => {
     );
     expect(fields.get('👤 Trainer')).toContain('40 / 150 XP to Lv 13');
     expect(fields.get('👤 Trainer')).toContain('🗺️ the Velvet Grove');
-    expect(fields.get('💗 Activity')).toContain('Today: 4 hunts · 2 caught');
+    expect(fields.get('📅 Today')).toBe(
+      '🏹 4 hunts · 💖 2 caught · 💨 1 escaped · ✨ 1 SR+ · ⬆️ 0 level-ups',
+    );
     expect(fields.get('💗 Activity')).toContain('📜 Spend 5 Hunt Energy (3/5)');
-    // The four MVP blocks are still present and in order.
-    expect([...fields.keys()]).toEqual(['👤 Trainer', '⭐ Buddy', '🎒 Collection', '💗 Activity']);
+    // The four MVP blocks are still present and in order; the Today recap
+    // sits at the bottom as its own field.
+    expect([...fields.keys()]).toEqual([
+      '👤 Trainer',
+      '⭐ Buddy',
+      '🎒 Collection',
+      '💗 Activity',
+      '📅 Today',
+    ]);
+  });
+
+  it('renders the Today field with zeros on a fresh, empty day', () => {
+    const fields = fieldsOf(
+      buildTrainerProfileView(
+        profileInput({
+          dashboard: {
+            todaySummary: {
+              hunts: 0,
+              caught: 0,
+              escaped: 0,
+              srPlus: 0,
+              levelUps: 0,
+              caughtNames: [],
+              escapedNames: [],
+              notableFinds: [],
+              buddyXp: 0,
+              buddyAffection: 0,
+            },
+          },
+        }),
+      ),
+    );
+    expect(fields.get('📅 Today')).toBe(
+      '🏹 0 hunts · 💖 0 caught · 💨 0 escaped · ✨ 0 SR+ · ⬆️ 0 level-ups',
+    );
   });
 });
 

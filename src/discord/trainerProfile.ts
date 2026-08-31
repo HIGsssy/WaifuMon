@@ -35,6 +35,7 @@ import { affinityLabel } from '../modules/capture/affinityMath';
 import type { CareState } from '../modules/care/careService';
 import type { DexStats } from '../modules/collection/collectionService';
 import type { LevelProgress } from '../modules/progression/progressionMath';
+import type { SessionSummary } from '../modules/session/sessionService';
 import { currentSeductivePower } from '../modules/power/seductivePower';
 import type { GameEvent, GameEventBus, GameEventHandler } from '../modules/events/gameEvents';
 import type { PlayerCurrenciesRow, PlayerRow } from '../db/schema';
@@ -91,9 +92,12 @@ export type BuddyCardRenderer = (
 export interface TrainerDashboard {
   /** Once the region system exists. */
   currentRegion?: string | null;
-  /** Daily session summary — available today via `summary_json`. */
-  todaysHunts?: number | null;
-  todaysCaptures?: number | null;
+  /**
+   * Today's session tally. Rendered as a compact `📅 Today` field showing
+   * hunts / caught / escaped / SR+ / level-ups; zeros are shown rather than
+   * omitted so the player always sees where the day stands.
+   */
+  todaySummary?: SessionSummary | null;
   /** `xpIntoLevel` / `xpToNext` — data is ready, slot reserved. */
   nextLevelProgress?: LevelProgress | null;
   /** One-line summary from the quests module. */
@@ -212,15 +216,32 @@ export function buildTrainerProfileView(
       `⚠️ Energy at the Care Mode cap (**${careState.effectiveEnergyCap}**) — training continues.`,
     );
   }
-  if (dash.todaysHunts != null || dash.todaysCaptures != null) {
-    activityLines.push(
-      `Today: ${dash.todaysHunts ?? 0} hunts · ${dash.todaysCaptures ?? 0} caught`,
-    );
-  }
   if (dash.currentDailyObjective) activityLines.push(`📜 ${dash.currentDailyObjective}`);
   embed.addFields({ name: '💗 Activity', value: activityLines.join('\n'), inline: false });
 
+  // Compact daily recap. Rendered whenever a summary was supplied — even a
+  // zero-activity day gets the field, so the player never has to wonder
+  // whether the tally is off or just empty.
+  if (dash.todaySummary) {
+    embed.addFields({
+      name: '📅 Today',
+      value: renderCompactTodayLine(dash.todaySummary),
+      inline: false,
+    });
+  }
+
   return { embeds: [embed] };
+}
+
+/** One-line `🏹 X hunts · 💖 X caught · 💨 X escaped · ✨ X SR+ · ⬆️ X level-ups`. */
+export function renderCompactTodayLine(summary: SessionSummary): string {
+  return (
+    `🏹 ${summary.hunts} hunts · ` +
+    `💖 ${summary.caught} caught · ` +
+    `💨 ${summary.escaped} escaped · ` +
+    `✨ ${summary.srPlus} SR+ · ` +
+    `⬆️ ${summary.levelUps} level-ups`
+  );
 }
 
 // ─────────────────────────────── lifecycle ───────────────────────────────
@@ -337,6 +358,22 @@ export function createTrainerProfileService(
     // her level and her look, both of which the edit path exists to reflect —
     // and at a 30-minute tick the upload is not worth caching around.
     const card = target ? await buddyCard(target) : null;
+
+    // Compact `📅 Today` recap — the main menu deliberately no longer carries
+    // it, so the Care Mode Trainer Profile is where players see it. Read from
+    // the same session row the ephemeral Profile screen reads, so both agree.
+    let todaySummary: SessionSummary | null = null;
+    if (event.channelId) {
+      const existing = await services.session.findByPlayerAndChannel(
+        event.playerId,
+        event.channelId,
+      );
+      todaySummary =
+        existing && services.session.isSummaryFresh(existing)
+          ? services.session.readSummary(existing)
+          : services.session.readSummary({ summaryJson: {} } as never);
+    }
+
     const view = buildTrainerProfileView({
       playerName: event.playerName,
       player,
@@ -348,6 +385,7 @@ export function createTrainerProfileService(
       buddyCardUrl: card?.url ?? null,
       maxEnergy: services.progression.computeMaxEnergy(player.level),
       prestigeTitle: services.progression.getPrestigeTitle(player.level),
+      dashboard: { todaySummary },
     });
     return { ...view, files: card ? [card.file] : [], careActive: careState.active };
   }
