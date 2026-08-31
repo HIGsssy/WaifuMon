@@ -534,7 +534,7 @@ describe('shipped content', () => {
   });
 });
 
-describe('bannerImagePath — optional, safe local asset only', () => {
+describe('bannerImagePath ï¿½ optional, safe local asset only', () => {
   it('accepts a safe relative asset path', () => {
     const parsed = RegionContentSchema.safeParse({
       id: 'twin-peeks',
