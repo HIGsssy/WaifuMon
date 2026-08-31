@@ -31,13 +31,13 @@
           {
             "itemId": "velvet_charm",
             "enabled": true,
-            "weight": 900,
+            "weight": 1400,
             "quantity": 1
           },
           {
             "itemId": "energy_drink",
             "enabled": true,
-            "weight": 100,
+            "weight": 1000,
             "quantity": 1
           }
         ]
