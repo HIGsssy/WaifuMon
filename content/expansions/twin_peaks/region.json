@@ -6,6 +6,7 @@
   "enabled": true,
   "starting": false,
   "order": 1,
+  "bannerImagePath": "locations/twin-peeks/banner.png",
   "flavor": [
     "The fog here does not lift so much as change its mind.",
     "Every diner on the ridge road serves the same pie. Nobody agrees which one is best."

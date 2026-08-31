@@ -35,6 +35,7 @@ import { buildCustomId } from '../types';
 import { respondEphemeral } from '../ephemeralSession';
 import { withBackRow } from '../ui';
 import { formatPrice, buttonRows, type ScreenView } from './waifumon';
+import { resolveRegionBanner } from '../regionBanner';
 import type { DestinationView, TravelStatus } from '../../modules/travel/travelService';
 
 const LOCATIONS_COLOR = 0x7fb2e5;
@@ -69,7 +70,11 @@ function destinationLine(destination: DestinationView): string {
   }
 }
 
-function buildHomeView(status: TravelStatus, statusLine?: string): ScreenView {
+function buildHomeView(
+  ctx: AppContext,
+  status: TravelStatus,
+  statusLine?: string,
+): ScreenView {
   if (!status.enabled) {
     return {
       embeds: [
@@ -94,10 +99,18 @@ function buildHomeView(status: TravelStatus, statusLine?: string): ScreenView {
   const note = statusLine ? `\n\n${statusLine}` : '';
   const lines = status.destinations.map(destinationLine).join('\n');
 
+  const current = status.destinations.find((d) => d.state === 'current');
+  const banner = resolveRegionBanner(
+    ctx,
+    current?.regionId ?? status.currentRegion,
+    current?.bannerImagePath ?? null,
+  );
+
   const embed = new EmbedBuilder()
     .setTitle('🗺️ Locations')
     .setColor(LOCATIONS_COLOR)
     .setDescription(`${header}${blocked}${note}\n\n${lines}`);
+  if (banner) embed.setImage(banner.url);
 
   // One button per destination, opening its detail screen. The detail screen
   // owns the actions, so the list never has to fit a Buy and a Travel button
@@ -117,7 +130,11 @@ function buildHomeView(status: TravelStatus, statusLine?: string): ScreenView {
       ),
   );
 
-  return { embeds: [embed], components: withBackRow(buttonRows(buttons)) };
+  return {
+    embeds: [embed],
+    components: withBackRow(buttonRows(buttons)),
+    files: banner ? [banner.file] : [],
+  };
 }
 
 /**
@@ -130,6 +147,7 @@ function buildHomeView(status: TravelStatus, statusLine?: string): ScreenView {
  *   ineligible   → requirements listed, no action offered at all.
  */
 function buildDetailView(
+  ctx: AppContext,
   destination: DestinationView,
   status: TravelStatus,
   statusLine?: string,
@@ -153,10 +171,13 @@ function buildDetailView(
   }
   if (statusLine) parts.push(`\n${statusLine}`);
 
+  const banner = resolveRegionBanner(ctx, destination.regionId, destination.bannerImagePath);
+
   const embed = new EmbedBuilder()
     .setTitle(`${destinationEmoji(destination)} ${destination.name}`)
     .setColor(LOCATIONS_COLOR)
     .setDescription(parts.join('\n'));
+  if (banner) embed.setImage(banner.url);
 
   const actions: ButtonBuilder[] = [];
   if (destination.state === 'unlocked' || destination.state === 'current') {
@@ -199,7 +220,11 @@ function buildDetailView(
       .setStyle(ButtonStyle.Secondary),
   );
 
-  return { embeds: [embed], components: buttonRows(actions) };
+  return {
+    embeds: [embed],
+    components: buttonRows(actions),
+    files: banner ? [banner.file] : [],
+  };
 }
 
 /**
@@ -259,7 +284,7 @@ export async function handleLocationsHome(
   statusLine?: string,
 ): Promise<void> {
   const status = await ctx.services.travel.getStatus(prov.playerId);
-  await respondEphemeral(interaction, buildHomeView(status, statusLine));
+  await respondEphemeral(interaction, buildHomeView(ctx, status, statusLine));
 }
 
 export async function handleLocationDetail(
@@ -273,7 +298,7 @@ export async function handleLocationDetail(
     await respondEphemeral(interaction, STALE);
     return;
   }
-  await respondEphemeral(interaction, buildDetailView(loaded.destination, loaded.status));
+  await respondEphemeral(interaction, buildDetailView(ctx, loaded.destination, loaded.status));
 }
 
 export async function handleLocationConfirm(
@@ -291,7 +316,7 @@ export async function handleLocationConfirm(
   // (already bought in another window, or a level lost to an admin edit) falls
   // back to the detail screen, which will explain the current state.
   if (loaded.destination.state !== 'purchasable') {
-    await respondEphemeral(interaction, buildDetailView(loaded.destination, loaded.status));
+    await respondEphemeral(interaction, buildDetailView(ctx, loaded.destination, loaded.status));
     return;
   }
   await respondEphemeral(interaction, buildConfirmView(loaded.destination, loaded.status));
@@ -326,7 +351,7 @@ export async function handleLocationBuy(
   }
   await respondEphemeral(
     interaction,
-    buildDetailView(loaded.destination, loaded.status, statusLine),
+    buildDetailView(ctx, loaded.destination, loaded.status, statusLine),
   );
 }
 

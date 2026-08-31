@@ -54,6 +54,7 @@ function region(over: Partial<RegionContent> & Pick<RegionContent, 'id' | 'name'
     flavor: [],
     encounterPool: [],
     shopItems: [],
+    bannerImagePath: null,
     ...over,
   };
 }
@@ -530,5 +531,49 @@ describe('shipped content', () => {
     // Twin Peeks is a curated slice at its own rates, not a copy of the valley.
     expect(twin.encounterPool.length).toBeLessThan(valley.encounterPool.length);
     expect(twin.encounterPool.every((e) => typeof e.weight === 'number')).toBe(true);
+  });
+});
+
+describe('bannerImagePath — optional, safe local asset only', () => {
+  it('accepts a safe relative asset path', () => {
+    const parsed = RegionContentSchema.safeParse({
+      id: 'twin-peeks',
+      name: 'Twin Peeks',
+      bannerImagePath: 'locations/twin-peeks/banner.png',
+    });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.bannerImagePath).toBe('locations/twin-peeks/banner.png');
+    }
+  });
+
+  it('defaults to null when omitted', () => {
+    const parsed = RegionContentSchema.safeParse({
+      id: 'waifu-valley',
+      name: 'Waifu Valley',
+    });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.bannerImagePath).toBeNull();
+  });
+
+  it.each([
+    ['http://evil.example/banner.png', /URL/i],
+    ['https://cdn.discordapp.com/banner.png', /URL/i],
+    ['/etc/passwd', /absolute/i],
+    ['C:/Windows/banner.png', /drive letter/i],
+    ['locations\\twin-peeks\\banner.png', /forward slashes/i],
+    ['../../secrets/banner.png', /"\.\."/],
+    ['', /at least 1/i],
+  ])('rejects unsafe banner path %j', (bad, message) => {
+    const parsed = RegionContentSchema.safeParse({
+      id: 'twin-peeks',
+      name: 'Twin Peeks',
+      bannerImagePath: bad,
+    });
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) {
+      const joined = parsed.error.issues.map((i) => i.message).join(' | ');
+      expect(joined).toMatch(message);
+    }
   });
 });

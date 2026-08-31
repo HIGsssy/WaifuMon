@@ -6,6 +6,7 @@
   "enabled": true,
   "starting": true,
   "order": 0,
+  "bannerImagePath": "locations/waifu-valley/banner.png",
   "flavor": [
     "The valley air smells of vending-machine coffee and cherry blossom.",
     "Somewhere down the hill, an arcade cabinet is losing an argument."

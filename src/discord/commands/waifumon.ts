@@ -43,6 +43,7 @@ import {
 import { gameEvent, type GameEventDescriptor } from '../../modules/events/gameEvents';
 import { renderSummaryLines } from '../../modules/session/sessionService';
 import { regionLabel } from '../../modules/locations/regions';
+import { resolveRegionBanner } from '../regionBanner';
 import { affinityLabel } from '../../modules/capture/affinityMath';
 import type { CareState, CareTickSummary } from '../../modules/care/careService';
 import { ownerFromInteraction } from '../userDisplay';
@@ -196,22 +197,35 @@ async function renderMainMenu(
   // paint so the Trainer Profile refreshes.
   const ticks = await ctx.services.care.applyPending(prov.playerId);
   const care = await ctx.services.care.getState(prov.playerId);
-  // Region banner is intentionally text-only here: the full location banner
-  // belongs on the Locations detail / travel-success screens.
   const currentRegion = await ctx.services.travel.getCurrentRegion(prov.playerId);
+  // Look up the region's banner directly from the loaded content — the travel
+  // service already normalised the id, and pulling the raw region row keeps
+  // banner authoring a content concern rather than a service one.
+  const regionContent = ctx.content.regions.find((r) => r.id === currentRegion);
+  const banner = resolveRegionBanner(ctx, currentRegion, regionContent?.bannerImagePath ?? null);
+
   const flavor = pickMainMenuFlavor(ctx.content.tables.uiFlavor?.mainMenu);
+  // Description stays deliberately short: Discord renders the embed image
+  // *after* the description, so anything that lives here (flavor + location)
+  // sits above the banner. The action legend moves to a field below.
   const description =
     `_${flavor}_\n\n` +
-    `📍 Current Location: **${regionLabel(currentRegion)}**\n\n` +
-    '🏹 **Hunt** — spend 1 energy to find someone\n' +
-    '🎁 **Claim Daily** — energy refill, WaifuBux, and charms\n' +
-    '🛍️ **Shop** — spend WaifuBux on capture charms\n' +
-    '🎒 **Collection** — browse your captured Waifumon\n' +
-    '👤 **Profile** · 🎒 **Inventory** · 💗 **Care Mode**';
+    `📍 Current Location: **${regionLabel(currentRegion)}**`;
   const embed = new EmbedBuilder()
     .setTitle('💖 Waifumon')
     .setDescription(description)
     .setColor(care.active ? 0xffb6d1 : 0xff6fa5);
+  if (banner) embed.setImage(banner.url);
+
+  embed.addFields({
+    name: '🎮 Actions',
+    value:
+      '🏹 **Hunt** — spend 1 energy to find someone\n' +
+      '🎁 **Claim Daily** — energy refill, WaifuBux, and charms\n' +
+      '🛍️ **Shop** — spend WaifuBux on capture charms\n' +
+      '🎒 **Collection** — browse your captured Waifumon\n' +
+      '👤 **Profile** · 🎒 **Inventory** · 💗 **Care Mode**',
+  });
 
   embed.addFields({ name: '💗 Care Mode', value: renderCareStatusLines(care).join('\n') });
 
@@ -239,6 +253,7 @@ async function renderMainMenu(
   await respondEphemeral(interaction, {
     embeds: [embed],
     components: menuComponents(care, ctx.services.quests.config.enabled),
+    files: banner ? [banner.file] : [],
   });
   await emitEvents(ctx, interaction, prov, carePendingDescriptors(ticks));
 }
@@ -524,6 +539,7 @@ function chunkButtonRows(
 export interface ScreenView {
   embeds: EmbedBuilder[];
   components: ActionRowBuilder<ButtonBuilder>[];
+  files?: AttachmentBuilder[];
 }
 
 /** Discord allows 5 buttons per action row. Shared with the Locations screens. */

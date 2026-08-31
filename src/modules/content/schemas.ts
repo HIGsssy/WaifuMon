@@ -1188,6 +1188,9 @@ const relativeAssetPath = z
   })
   .refine((p) => !p.split('/').includes('..'), {
     message: 'artwork must not contain ".." path segments',
+  })
+  .refine((p) => !/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(p), {
+    message: 'artwork must be a local asset path, not a URL',
   });
 
 /** Player-facing prose. Required, because a boss with no copy has no encounter. */
@@ -1638,6 +1641,12 @@ export const RegionContentSchema = z
      * the regions that name it.
      */
     shopItems: z.array(slug).default([]),
+    /**
+     * Optional shallow/wide banner (recommended 1200×300, 4:1) shown on the
+     * main menu and Locations screens. Missing file degrades to text-only at
+     * render time; the schema only ensures the path is a safe local asset.
+     */
+    bannerImagePath: relativeAssetPath.nullable().default(null),
   })
   .strict();
 

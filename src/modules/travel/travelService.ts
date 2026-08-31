@@ -95,6 +95,12 @@ export interface DestinationView {
   purchaseGrantsPass: boolean;
   /** Number of items this region's shop stocks. Zero hides the shop entry. */
   shopItemCount: number;
+  /**
+   * Relative path (under `assetsDir`) to the region's shallow/wide banner, if
+   * one is authored. The UI layer is responsible for resolving to a file and
+   * degrading to text when the file is missing.
+   */
+  bannerImagePath: string | null;
 }
 
 export interface TravelStatus {
@@ -280,6 +286,7 @@ export function createTravelService(deps: TravelServiceDeps): TravelService {
         passName: destination.pass?.name ?? null,
         purchaseGrantsPass: destination.grantedByPassPurchase && !passOwned,
         shopItemCount: destination.region.shopItems.length,
+        bannerImagePath: destination.region.bannerImagePath ?? null,
       };
     });
   }

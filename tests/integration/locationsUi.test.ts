@@ -323,3 +323,24 @@ describe('regional shop', () => {
     expect(buttonsOf(payload).map((b) => b.customId)).toContain('wm|v1|loc|detail|twin-peeks');
   });
 });
+
+describe('region banner', () => {
+  it('locations home degrades cleanly when no banner file resolves', async () => {
+    const btn = fakeButton();
+    await handleLocationsHome(ctx, btn as never, prov);
+    const payload = painted(btn);
+    // No assetsDir wired in this ctx, so the banner path in shipped content
+    // does not resolve to a file - the paint still succeeds and simply
+    // ships no attachment.
+    expect((payload.files ?? []).length).toBe(0);
+    expect(embedOf(payload).title).toBe('🗺️ Locations');
+  });
+
+  it('destination detail degrades cleanly when no banner file resolves', async () => {
+    const btn = fakeButton();
+    await handleLocationDetail(ctx, btn as never, prov, 'twin-peeks');
+    const payload = painted(btn);
+    expect((payload.files ?? []).length).toBe(0);
+    expect(embedOf(payload).title).toContain('Twin Peeks');
+  });
+});

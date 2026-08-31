@@ -17,6 +17,9 @@
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { MessageFlags } from 'discord.js';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import {
   handleDaily,
   handleInventory,
@@ -202,6 +205,7 @@ function firstEmbedJson(spy: ReturnType<typeof vi.fn>): {
   description?: string;
   footer?: { text?: string };
   fields?: { name: string; value: string }[];
+  image?: { url?: string };
 } {
   const call = spy.mock.calls[0];
   if (!call) throw new Error('spy was not called');
@@ -547,10 +551,81 @@ describe('main menu redesign — Today off, region on', () => {
     const embed = firstEmbedJson(cmd.reply);
     expect(embed.description ?? '').toContain('📍 Current Location:');
     expect(embed.description ?? '').toContain('Waifu Valley');
-    // The region line sits above the action legend so it reads as a header,
-    // not a footer.
-    const desc = embed.description ?? '';
-    expect(desc.indexOf('📍 Current Location:')).toBeLessThan(desc.indexOf('🏹 **Hunt**'));
+  });
+
+  it('the action legend has moved out of the description and into its own field', async () => {
+    const p = await provisionPlayer(app, 'g-redesign-legend', 'u-redesign-legend');
+    const cmd = fakeCommand('u-redesign-legend', fakeChannel('c-redesign-legend'));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleMenu(ctx, cmd as any, p);
+
+    const embed = firstEmbedJson(cmd.reply);
+    // The action legend must not sit in the description any more, because the
+    // embed image renders *after* the description and would push the banner
+    // below every action line otherwise.
+    expect(embed.description ?? '').not.toContain('🏹 **Hunt**');
+    expect(embed.description ?? '').not.toContain('Claim Daily');
+    const actions = (embed.fields ?? []).find((f) => f.name === '🎮 Actions');
+    expect(actions).toBeDefined();
+    expect(actions!.value).toContain('🏹 **Hunt**');
+    expect(actions!.value).toContain('🎁 **Claim Daily**');
+    expect(actions!.value).toContain('🛍️ **Shop**');
+    expect(actions!.value).toContain('🎒 **Collection**');
+  });
+
+  it('the actions field sits above the care/gift/status fields', async () => {
+    const p = await provisionPlayer(app, 'g-redesign-order', 'u-redesign-order');
+    const cmd = fakeCommand('u-redesign-order', fakeChannel('c-redesign-order'));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleMenu(ctx, cmd as any, p);
+
+    const embed = firstEmbedJson(cmd.reply);
+    const names = (embed.fields ?? []).map((f) => f.name);
+    expect(names.indexOf('🎮 Actions')).toBeLessThan(names.indexOf('💗 Care Mode'));
+  });
+
+  it('the main menu renders cleanly when the region has no banner configured or its file is missing', async () => {
+    const p = await provisionPlayer(app, 'g-redesign-noban', 'u-redesign-noban');
+    const cmd = fakeCommand('u-redesign-noban', fakeChannel('c-redesign-noban'));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleMenu(ctx, cmd as any, p);
+
+    const payload = cmd.reply.mock.calls[0]![0] as { files?: unknown[]; embeds: unknown[] };
+    // Fresh install: the banner PNGs are referenced in content but the files
+    // are not present on disk under this test's assetsDir. The paint must
+    // still succeed and skip the attachment rather than crash.
+    expect(payload.embeds).toHaveLength(1);
+    expect(payload.files ?? []).toHaveLength(0);
+    const embed = firstEmbedJson(cmd.reply);
+    expect(embed.description ?? '').toContain('📍 Current Location:');
+  });
+
+  it('the main menu attaches the current region banner when the file resolves', async () => {
+    // Point ctx.config.assetsDir at a temp dir that actually contains the
+    // banner file expected by shipped content, then repaint.
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'waifumon-banner-'));
+    try {
+      const rel = 'locations/waifu-valley/banner.png';
+      const abs = path.join(tmp, rel);
+      fs.mkdirSync(path.dirname(abs), { recursive: true });
+      fs.writeFileSync(abs, Buffer.from([0x89, 0x50, 0x4e, 0x47])); // PNG magic
+
+      const bannerCtx: AppContext = {
+        ...ctx,
+        config: { ...ctx.config, assetsDir: tmp },
+      };
+      const p = await provisionPlayer(app, 'g-redesign-banner', 'u-redesign-banner');
+      const cmd = fakeCommand('u-redesign-banner', fakeChannel('c-redesign-banner'));
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await handleMenu(bannerCtx, cmd as any, p);
+
+      const payload = cmd.reply.mock.calls[0]![0] as { files?: unknown[] };
+      expect((payload.files ?? []).length).toBe(1);
+      const embed = firstEmbedJson(cmd.reply);
+      expect(embed.image?.url ?? '').toMatch(/^attachment:\/\/region-waifu-valley-banner/);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
   });
 
   it('the main menu still exposes every navigation button', async () => {
