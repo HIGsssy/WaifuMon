@@ -35,7 +35,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {
-  listSpeciesFiles,
+  listSpeciesSources,
   readContentFiles,
   resolveAssetPath,
   validateContentSet,
@@ -108,7 +108,12 @@ export interface SpeciesPlan {
 }
 
 export interface FilePlan {
-  /** Basename, e.g. `starter.json` — species never move between packs. */
+  /**
+   * Content-relative path, e.g. `species/starter.json` or
+   * `expansions/twin_peaks/species/locals.json`. Species never move between
+   * files, so this is a stable identity — and it has to be a path rather than
+   * a basename, because two expansion packs may each ship a `locals.json`.
+   */
   file: string;
   species: SpeciesPlan[];
   /**
@@ -147,8 +152,8 @@ interface RawPack {
   original: string;
 }
 
-function readPack(speciesDir: string, file: string): RawPack {
-  const absolutePath = path.join(speciesDir, file);
+function readPack(source: { file: string; absolutePath: string }): RawPack {
+  const { file, absolutePath } = source;
   const original = fs.readFileSync(absolutePath, 'utf8');
   let parsed: unknown;
   try {
@@ -163,23 +168,29 @@ function readPack(speciesDir: string, file: string): RawPack {
 }
 
 /**
- * Every `.json` under `content/species/`, discovered at run time.
+ * Every species file the bot would load: `content/species/` plus the species
+ * directory of each **enabled** expansion pack.
  *
- * Delegates to the loader's own directory scan rather than globbing again, so a
- * new content pack is picked up by the tool and the bot on identical terms and
- * neither can drift from the other. Adding `winterexpansion.json` requires no
- * change here and no configuration anywhere.
+ * Delegates to the loader's own scan rather than globbing again, so a pack is
+ * picked up by the tool and the bot on identical terms and neither can drift.
+ * That shared scan is also what keeps a *disabled* pack out: its files are
+ * discovered but filtered, so the synchroniser will not write milestone
+ * appearances into content that is switched off — and will not quietly arm it
+ * by leaving the pack looking maintained.
+ *
+ * Adding `winterexpansion.json`, or a whole new pack, requires no change here
+ * and no configuration anywhere.
  */
 function readAllPacks(contentDir: string): RawPack[] {
   const speciesDir = path.join(contentDir, 'species');
   if (!fs.existsSync(speciesDir)) {
     throw new ContentValidationError(`Species content directory missing: ${speciesDir}`);
   }
-  const files = listSpeciesFiles(speciesDir);
-  if (files.length === 0) {
+  const sources = listSpeciesSources(contentDir);
+  if (sources.length === 0) {
     throw new ContentValidationError(`No species JSON files found in ${speciesDir}`);
   }
-  return files.map((file) => readPack(speciesDir, file));
+  return sources.map(readPack);
 }
 
 /**

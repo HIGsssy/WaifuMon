@@ -22,7 +22,7 @@ import { AFFINITIES, RARITIES, type Rarity } from '../../db/schema';
 import { ContentValidationError } from '../../shared/errors';
 import type { Logger } from '../../shared/logger';
 import {
-  listSpeciesFiles,
+  listSpeciesSources,
   readContentFiles,
   readExpansionPacks,
   validateContentSet,
@@ -45,9 +45,20 @@ import {
 } from './schemas';
 
 /** Species JSON file new cards land in when the admin does not pick one. */
-export const DEFAULT_NEW_SPECIES_FILE = 'custom.json';
+export const DEFAULT_NEW_SPECIES_FILE = 'species/custom.json';
 
-const SPECIES_FILE_RE = /^[a-z0-9_-]+\.json$/;
+/**
+ * A *new* species file the panel may create: a plain basename directly under
+ * `content/species/`.
+ *
+ * Deliberately narrower than the set of files the panel can **edit**. Appending
+ * to an existing expansion file is fine — it is already live content the tools
+ * discovered — but conjuring a new file inside a pack is not, because a pack's
+ * shape (its manifest, its region, which files belong to it) is authored by
+ * hand and a panel that could scatter new files into it would be editing a
+ * structure it does not model. Creating into a pack stays a filesystem job.
+ */
+const NEW_SPECIES_FILE_RE = /^(?:species\/)?[a-z0-9_-]+\.json$/;
 
 /**
  * The species fields the admin edit form owns — exactly the inputs rendered by
@@ -95,8 +106,10 @@ export const TABLE_SECTIONS: readonly string[] = [
 ];
 
 export interface SpeciesFileGroup {
-  /** Basename inside `content/species/`, e.g. `starter.json`. */
+  /** Content-relative POSIX path, e.g. `species/starter.json`. */
   file: string;
+  /** The expansion pack this file belongs to; null for core content. */
+  expansionId: string | null;
   species: SpeciesContent[];
 }
 
@@ -271,9 +284,14 @@ export function createAdminContentService(deps: AdminContentServiceDeps): AdminC
     const bossRewards = fs.existsSync(bossRewardsPath)
       ? parseFile(bossRewardsPath, BossRewardsFileSchema)
       : [];
-    const speciesFiles = listSpeciesFiles(speciesDir).map((file) => ({
-      file,
-      species: parseFile(path.join(speciesDir, file), SpeciesFileSchema),
+    // Core files plus every *enabled* expansion pack's files, discovered
+    // through the loader's own scan so the panel and the bot can never
+    // disagree about which packs are live. Keyed by content-relative path,
+    // because two packs may each ship a `locals.json`.
+    const speciesFiles = listSpeciesSources(contentDir).map((source) => ({
+      file: source.file,
+      expansionId: source.expansionId,
+      species: parseFile(source.absolutePath, SpeciesFileSchema),
     }));
     return {
       items,
@@ -370,20 +388,20 @@ export function createAdminContentService(deps: AdminContentServiceDeps): AdminC
   /**
    * Builds the candidate content set the admin panel validates against.
    *
-   * Regions and expansion packs are read straight from disk rather than taken
-   * from `raw`, because the panel does not edit them — but they must still be
-   * *in* the candidate, for two reasons that both bite the moment they are
-   * left out: an enabled pack's species belong to the registry a region pool
-   * is checked against, and deleting a core species that a region pool
-   * references has to fail validation rather than sail through and strip the
-   * pool at the next seed.
+   * `raw.species` now already spans core *and* every enabled pack, because
+   * `readRaw` discovers files through the loader's own scan — so this must
+   * **not** re-append `packs.expansionSpecies`, which would double every
+   * expansion species and fail its own duplicate-slug check. Region and
+   * manifest data still comes from disk, because the panel edits neither but
+   * every save has to validate against both: deleting a species a region pool
+   * references must fail here rather than sail through and strip the pool at
+   * the next seed.
    */
   function candidateFrom(raw: RawContent, overrides: Partial<LoadedContent>): LoadedContent {
     const packs = readExpansionPacks(contentDir);
-    const species = overrides.species ?? raw.species;
     return {
       items: overrides.items ?? raw.items,
-      species: [...species, ...packs.expansionSpecies],
+      species: overrides.species ?? raw.species,
       tables: overrides.tables ?? raw.tables,
       bosses: overrides.bosses ?? raw.bosses,
       bossRewards: overrides.bossRewards ?? raw.bossRewards,
@@ -449,14 +467,36 @@ export function createAdminContentService(deps: AdminContentServiceDeps): AdminC
     return parseSpeciesInput({ ...existing, ...owned });
   }
 
+  /**
+   * Resolves a content-relative species-file key to an absolute path, refusing
+   * anything that escapes the content directory.
+   *
+   * The keys now come from a scan rather than from a fixed directory, and one
+   * of them (`createSpecies`'s target) arrives from an HTTP body — so the
+   * containment check is load-bearing, not ceremony.
+   */
+  function resolveSpeciesFile(file: string): string {
+    const absolute = path.resolve(contentDir, file);
+    const root = path.resolve(contentDir);
+    if (absolute !== root && !absolute.startsWith(root + path.sep)) {
+      throw new AdminValidationError([`file: "${file}" resolves outside the content directory`]);
+    }
+    return absolute;
+  }
+
+  /** `species/starter.json` → `species-starter`; pack files keep their pack. */
+  function backupLabel(file: string): string {
+    return file.replace(/\.json$/, '').replace(/[^a-z0-9_-]+/gi, '-');
+  }
+
   function writeSpeciesGroup(raw: RawContent, file: string, next: SpeciesContent[]): SaveResult {
     const known = raw.speciesFiles.some((g) => g.file === file);
     const allSpecies = known
       ? raw.speciesFiles.flatMap((g) => (g.file === file ? next : g.species))
       : [...raw.species, ...next];
     return writeFileAtomic(
-      path.join(speciesDir, file),
-      `species-${path.basename(file, '.json')}`,
+      resolveSpeciesFile(file),
+      backupLabel(file),
       next,
       SpeciesFileSchema,
       candidateFrom(raw, { species: allSpecies }),
@@ -464,18 +504,27 @@ export function createAdminContentService(deps: AdminContentServiceDeps): AdminC
   }
 
   function createSpecies(input: unknown, file = DEFAULT_NEW_SPECIES_FILE): SaveResult {
-    if (!SPECIES_FILE_RE.test(file)) {
+    const raw = readRaw();
+    // Two legal targets, and the distinction matters: an **existing** file the
+    // scan already found — core or enabled pack — may be appended to, because
+    // it is live content the panel is allowed to edit. Anything else must be a
+    // new basename under `content/species/`. That is what stops a crafted
+    // `__file` from creating a species inside a disabled pack (silently
+    // arming it) or anywhere else on disk.
+    const known = raw.speciesFiles.some((g) => g.file === file);
+    if (!known && !NEW_SPECIES_FILE_RE.test(file)) {
       throw new AdminValidationError([
-        `file: "${file}" is not a valid species filename (lowercase, ending in .json)`,
+        `file: "${file}" is not an existing species file, and new files may only be ` +
+          'created directly under content/species/ (lowercase, ending in .json)',
       ]);
     }
+    const normalized = known || file.startsWith('species/') ? file : `species/${file}`;
     const species = parseSpeciesInput(input);
-    const raw = readRaw();
     if (raw.species.some((s) => s.slug === species.slug)) {
       throw new AdminValidationError([`slug: "${species.slug}" already exists`]);
     }
-    const group = raw.speciesFiles.find((g) => g.file === file);
-    return writeSpeciesGroup(raw, file, [...(group?.species ?? []), species]);
+    const group = raw.speciesFiles.find((g) => g.file === normalized);
+    return writeSpeciesGroup(raw, normalized, [...(group?.species ?? []), species]);
   }
 
   function updateSpecies(slug: string, input: unknown): SaveResult {
@@ -861,7 +910,7 @@ export function createAdminContentService(deps: AdminContentServiceDeps): AdminC
     validateContent,
     getContentSummary: () => getContentSummary(),
     listSpeciesFileNames: () =>
-      fs.existsSync(speciesDir) ? listSpeciesFiles(speciesDir) : [],
+      listSpeciesSources(contentDir).map((source) => source.file),
     findSpecies,
     createSpecies,
     updateSpecies,

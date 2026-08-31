@@ -737,6 +737,25 @@ export function readContentFiles(contentDir: string): LoadedContent {
   };
 }
 
+/**
+ * One file that holds authored species, and where it came from.
+ *
+ * The `file` key is **relative to the content directory**, POSIX-separated —
+ * `species/starter.json`, `expansions/twin_peaks/species/locals.json` — rather
+ * than the bare basename the pipeline used before expansions existed. Two packs
+ * may legitimately name a file `locals.json`, so a basename stopped being an
+ * identifier the moment species could live outside `content/species/`.
+ */
+export interface SpeciesSource {
+  /** Content-relative POSIX path. Stable identity for a species file. */
+  file: string;
+  absolutePath: string;
+  /** Null for core files under `content/species/`. */
+  expansionId: string | null;
+  /** False only for files inside a pack whose manifest is switched off. */
+  enabled: boolean;
+}
+
 /** What one discovery pass over `content/regions/` + `content/expansions/` found. */
 export interface ExpansionScan {
   regions: RegionContent[];
@@ -745,6 +764,14 @@ export interface ExpansionScan {
   expansionSpecies: SpeciesContent[];
   /** Every expansion species' origin, disabled packs included. */
   speciesOrigin: Record<string, string>;
+  /**
+   * Every species file found under `content/expansions/`, disabled packs
+   * included and flagged as such. Surfaced so the admin panel and the
+   * appearance synchroniser discover packs through this one scan rather than
+   * globbing the tree themselves — three scanners with three ideas about what
+   * counts as a pack is exactly how a disabled pack ends up half-live.
+   */
+  sources: SpeciesSource[];
 }
 
 /**
@@ -776,6 +803,7 @@ export function readExpansionPacks(contentDir: string): ExpansionScan {
   const expansions: ExpansionContent[] = [];
   const expansionSpecies: SpeciesContent[] = [];
   const speciesOrigin: Record<string, string> = {};
+  const sources: SpeciesSource[] = [];
 
   const regionsDir = path.join(contentDir, 'regions');
   if (fs.existsSync(regionsDir)) {
@@ -786,7 +814,7 @@ export function readExpansionPacks(contentDir: string): ExpansionScan {
 
   const expansionsDir = path.join(contentDir, 'expansions');
   if (!fs.existsSync(expansionsDir)) {
-    return { regions, expansions, expansionSpecies, speciesOrigin };
+    return { regions, expansions, expansionSpecies, speciesOrigin, sources };
   }
 
   const packDirs = fs
@@ -812,11 +840,18 @@ export function readExpansionPacks(contentDir: string): ExpansionScan {
     // be recorded. Reading them also means a disabled pack's files stay
     // schema-validated, so re-enabling it is never a leap into the dark.
     const packSpeciesDir = path.join(packDir, 'species');
-    const packSpecies = fs.existsSync(packSpeciesDir)
-      ? listJsonFiles(packSpeciesDir).flatMap((f) =>
-          parseJsonFile(path.join(packSpeciesDir, f), SpeciesFileSchema),
-        )
+    const packSources: SpeciesSource[] = fs.existsSync(packSpeciesDir)
+      ? listJsonFiles(packSpeciesDir).map((f) => ({
+          file: ['expansions', dirName, 'species', f].join('/'),
+          absolutePath: path.join(packSpeciesDir, f),
+          expansionId: manifest.id,
+          enabled: manifest.enabled,
+        }))
       : [];
+    sources.push(...packSources);
+    const packSpecies = packSources.flatMap((source) =>
+      parseJsonFile(source.absolutePath, SpeciesFileSchema),
+    );
     for (const s of packSpecies) {
       // Checked across *every* pack, enabled or not. Species ids are globally
       // unique by rule, and a collision hiding inside a switched-off pack is
@@ -848,7 +883,33 @@ export function readExpansionPacks(contentDir: string): ExpansionScan {
     }
   }
 
-  return { regions, expansions, expansionSpecies, speciesOrigin };
+  return { regions, expansions, expansionSpecies, speciesOrigin, sources };
+}
+
+/**
+ * Every species file the runtime will actually load, in load order.
+ *
+ * Core files under `content/species/` first, then the files of each **enabled**
+ * expansion pack. A disabled pack contributes nothing: its files are discovered
+ * (so `readExpansionPacks` can still record their slugs for validation) but they
+ * are filtered out here, which is what keeps a switched-off pack invisible to
+ * every tool that edits or synchronises species.
+ *
+ * This is the one discovery the admin panel and the appearance synchroniser
+ * share with the loader, so a pack that is live for the bot is live for the
+ * tools on identical terms — and one that is not, is not.
+ */
+export function listSpeciesSources(contentDir: string): SpeciesSource[] {
+  const speciesDir = path.join(contentDir, 'species');
+  const core: SpeciesSource[] = fs.existsSync(speciesDir)
+    ? listJsonFiles(speciesDir).map((file) => ({
+        file: `species/${file}`,
+        absolutePath: path.join(speciesDir, file),
+        expansionId: null,
+        enabled: true,
+      }))
+    : [];
+  return [...core, ...readExpansionPacks(contentDir).sources.filter((s) => s.enabled)];
 }
 
 /** Sorted list of species JSON filenames (basenames) in a species directory. */
