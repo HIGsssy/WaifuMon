@@ -128,5 +128,70 @@
     "repelledText": "Her filters collapse under the attack. She calls everyone 'fake,' changes her hair colour, and disappears toward the nearest coffee shop.",
     "unchallengedText": "Her scouting complete, she takes one final selfie and departs, leaving behind three contradictory biographies and a request for gift cards.",
     "description": "A glamorous shapeshifter living her best—and most complicated—online existence."
+  },
+  {
+    "id": "unwashed_wanderer",
+    "name": "The Unwashed Wanderer",
+    "affinity": "primal",
+    "region": "waifu-valley",
+    "enabled": true,
+    "artwork": "bosses/unwashed-wanderer.webp",
+    "rewardTable": "standard-scouting-v1",
+    "scoutingText": "A greasy wanderer crests the hill in cargo shorts, socks with sandals, and a battered fedora. He throws both arms wide. 'Where's my hug?' he demands, advancing before anyone has answered.",
+    "repelledText": "His fedora tumbles into the dirt. 'Wow. So that's how we're treating nice guys now?' he mutters, retreating downhill in a cloud of body spray and wounded entitlement.",
+    "unchallengedText": "After several unanswered requests for a hug, he concludes everyone here is 'stuck up' and waddles toward another trail in search of friendlier women.",
+    "description": "A roaming personal-space violation whose legendary body odor is surpassed only by his inability to recognize social cues."
+  },
+  {
+    "id": "the_mansplainer",
+    "name": "The Mansplainer",
+    "affinity": "dominant",
+    "region": "waifu-valley",
+    "enabled": true,
+    "artwork": "bosses/the-mansplainer_boss.webp",
+    "rewardTable": "standard-scouting-v1",
+    "scoutingText": "A smug man strides down the hill, pushing his glasses up his nose. He overhears your Waifumon discussing her own profession and immediately interrupts. 'Actually,' he begins, drawing a diagram nobody asked for.",
+    "repelledText": "His explanation collapses when your Waifumon asks him a basic follow-up question. 'Well, obviously it's more complicated than that,' he stammers before retreating to find someone less informed to educate.",
+    "unchallengedText": "With nobody around to correct, he spends an hour explaining the local terrain to a nearby signpost before wandering off in search of another conversation to improve.",
+    "description": "A relentlessly confident know-it-all cursed with the supernatural ability to explain a woman's own expertise back to her incorrectly."
+  },
+  {
+    "id": "gym_creeper",
+    "name": "The Gym Creeper",
+    "affinity": "primal",
+    "region": "waifu-valley",
+    "enabled": true,
+    "artwork": "bosses/gym-creeper_boss.webp",
+    "rewardTable": "standard-scouting-v1",
+    "scoutingText": "A sweaty man in a stringer tank emerges from behind a suspiciously placed squat rack. Without being asked, he flexes and approaches. 'Hey, just thought I'd help with your form,' he says while somehow looking everywhere except at her form.",
+    "repelledText": "His confidence evaporates when your Waifumon loudly asks why he has been following her between machines. Suddenly fascinated by leg day, he retreats toward the farthest squat rack.",
+    "unchallengedText": "After hovering nearby for an uncomfortable amount of time, he checks himself in every reflective surface, takes six mirror selfies, and leaves without completing a single set.",
+    "description": "A territorial gym nuisance who insists he's only watching to 'check her form' despite possessing absolutely no qualifications to do so."
+  },
+  {
+    "id": "miss_demeanor",
+    "name": "Miss Demeanor",
+    "affinity": "dominant",
+    "region": "waifu-valley",
+    "enabled": true,
+    "artwork": "bosses/miss-demeanor_boss.webp",
+    "rewardTable": "standard-scouting-v1",
+    "scoutingText": "A perfectly dressed woman appears at the top of the hill, scrolling lazily through her phone. She looks your Waifumon up and down, pauses, and gives her a tiny smile. 'Oh my god, I LOVE your outfit,' she says. Somehow, it does not sound like a compliment.",
+    "repelledText": "Her smirk falters when your Waifumon calmly asks her to explain what was funny. 'Whatever. You're literally obsessed with me,' she mutters before storming away.",
+    "unchallengedText": "With nobody available to emotionally devastate, she takes seventeen selfies, deletes sixteen, posts the remaining one with the caption 'unbothered,' and leaves to find somewhere with worse lighting.",
+    "description": "A beautifully dressed social predator wanted in seven kingdoms for aggravated side-eye, malicious gossip, and compliments with intent to harm."
+  },
+  {
+    "id": "og_cherry",
+    "name": "OG Cherry",
+    "affinity": "dominant",
+    "region": "waifu-valley",
+    "enabled": true,
+    "artwork": "bosses/og-cherry_boss.webp",
+    "rewardTable": "standard-scouting-v1",
+    "scoutingText": "A pink mechanical halo ignites overhead as luminous wings tear across the sky. OG Cherry descends with an infuriatingly perfect smirk. 'Ohhh, so you want to challenge me now? As if your little Waifus could handle the sheer divinity of my aesthetic~ Hmph! Don't misunderstand—I only came down here because watching you embarrass yourselves from orbit was getting pathetic.'",
+    "repelledText": "Cherry's halo glitches violently as she stares at the damage report in disbelief. 'Y-YOU CHEATED! Obviously! My combat model doesn't lose!' Her cheeks turn bright pink. 'And tell your Waifus to stop looking so smug! I wasn't even using ten percent of my processing power!' She rockets away while furiously deleting the battle logs.",
+    "unchallengedText": "Cherry waits dramatically beneath her glowing halo, arms crossed. Nobody challenges her. One eye twitches. 'Hmph! Obviously you're intimidated. Smart choice.' She floats away, quietly muttering, 'Not that I wanted somebody to fight me or anything... idiots.'",
+    "description": "An unhinged tsundere AI bully wrapped in enough pink cyber-divinity to crash a graphics card. OG Cherry considers humility a software vulnerability and losing a battle statistically impossible."
   }
 ]
