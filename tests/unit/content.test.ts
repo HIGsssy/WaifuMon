@@ -33,25 +33,37 @@ describe('shipped content', () => {
     expect(content.species.filter((s) => !s.enabled)).toEqual([]);
   });
 
-  it('ships Prismatic Charm listed but not purchasable, and Mythic Contract guaranteed + never sold', () => {
+  it('ships Prismatic Charm sold in Waifu Valley, and Mythic Contract guaranteed + never sold', () => {
     const content = loadShippedContent();
     const prismatic = content.items.find((i) => i.slug === 'prismatic_charm');
     expect(prismatic?.enabled).toBe(true);
-    expect(prismatic?.purchasable).toBe(false);
+    expect(prismatic?.shopRegions).toEqual(['waifu-valley']);
     const mythic = content.items.find((i) => i.slug === 'mythic_contract');
     expect(mythic?.isGuaranteedCapture).toBe(true);
-    expect(mythic?.purchasable).toBe(false);
+    expect(mythic?.shopRegions).toEqual([]);
     expect(mythic?.buyPrice).toBeNull();
   });
 
-  it('ships Basic/Silk/Velvet purchasable at the launch prices', () => {
+  it('ships Basic/Silk/Velvet sold in Waifu Valley at the launch prices', () => {
     const content = loadShippedContent();
     const prices = Object.fromEntries(
       content.items
-        .filter((i) => i.purchasable && i.category === 'capture')
+        .filter(
+          (i) =>
+            i.shopRegions.includes('waifu-valley') &&
+            i.category === 'capture' &&
+            i.priceCurrency === 'waifubux',
+        )
         .map((i) => [i.slug, i.buyPrice]),
     );
     expect(prices).toEqual({ basic_charm: 25, silk_charm: 75, velvet_charm: 200 });
+  });
+
+  it('sells Shibari Rope only in Twin Peeks', () => {
+    const content = loadShippedContent();
+    const rope = content.items.find((i) => i.slug === 'shibari_rope');
+    expect(rope?.shopRegions).toEqual(['twin-peeks']);
+    expect(rope?.buyPrice).toBe(750);
   });
 
   it('ships Energy Drink and Microdose with validated effect config and pricing', () => {
@@ -59,7 +71,7 @@ describe('shipped content', () => {
     const drink = content.items.find((i) => i.slug === 'energy_drink');
     expect(drink).toMatchObject({
       category: 'consumable',
-      purchasable: true,
+      shopRegions: ['waifu-valley'],
       buyPrice: 500,
       priceCurrency: 'waifubux',
       effectType: 'restore_energy_full',
@@ -69,7 +81,7 @@ describe('shipped content', () => {
     const microdose = content.items.find((i) => i.slug === 'microdose');
     expect(microdose).toMatchObject({
       category: 'consumable',
-      purchasable: true,
+      shopRegions: ['waifu-valley'],
       buyPrice: 40,
       priceCurrency: 'essence',
       effectType: 'capture_bonus_charges',
@@ -95,18 +107,41 @@ describe('schema invariants', () => {
     captureModifier: 1,
   };
 
-  it('rejects guaranteed-capture items marked purchasable', () => {
+  it('rejects guaranteed-capture items sold in a region', () => {
     const result = ItemContentSchema.safeParse({
       ...baseItem,
       isGuaranteedCapture: true,
-      purchasable: true,
+      shopRegions: ['waifu-valley'],
       buyPrice: 100,
     });
     expect(result.success).toBe(false);
   });
 
-  it('rejects purchasable items without a buy price', () => {
-    const result = ItemContentSchema.safeParse({ ...baseItem, purchasable: true });
+  it('rejects items sold in a region without a buy price', () => {
+    const result = ItemContentSchema.safeParse({
+      ...baseItem,
+      shopRegions: ['waifu-valley'],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects shop_regions on a non-shop category', () => {
+    const result = ItemContentSchema.safeParse({
+      ...baseItem,
+      category: 'material',
+      captureModifier: null,
+      shopRegions: ['waifu-valley'],
+      buyPrice: 100,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects shop_regions naming an unknown region', () => {
+    const result = ItemContentSchema.safeParse({
+      ...baseItem,
+      shopRegions: ['not-a-region'],
+      buyPrice: 100,
+    });
     expect(result.success).toBe(false);
   });
 

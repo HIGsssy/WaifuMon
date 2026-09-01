@@ -383,7 +383,11 @@ describe('item routes', () => {
       method: 'POST',
       url: '/admin/items/test_admin_item',
       headers: bearer,
-      payload: validItemInput({ purchasable: true, buyPrice: null }),
+      payload: validItemInput({
+        category: 'capture',
+        shopRegions: ['waifu-valley'],
+        buyPrice: null,
+      }),
     });
     expect(invalid.statusCode).toBe(400);
     expect(invalid.json().errors.join(' ')).toContain('buy_price');
@@ -449,7 +453,7 @@ describe('item effect editing', () => {
       slug: 'test_energy_drink',
       name: 'Test Energy Drink',
       category: 'consumable',
-      purchasable: true,
+      shopRegions: ['waifu-valley'],
       buyPrice: 500,
       priceCurrency: 'waifubux',
       effectType: 'restore_energy_full',
@@ -462,7 +466,7 @@ describe('item effect editing', () => {
       slug: 'test_microdose',
       name: 'Test Microdose',
       category: 'consumable',
-      purchasable: true,
+      shopRegions: ['waifu-valley'],
       buyPrice: 40,
       priceCurrency: 'essence',
       effectType: 'capture_bonus_charges',
@@ -571,7 +575,7 @@ describe('item effect editing', () => {
     });
   });
 
-  it('warns when a purchasable item is disabled', async () => {
+  it('warns when an item sold in a region is disabled', async () => {
     await app.inject({
       method: 'POST',
       url: '/admin/items/energy_drink/toggle-enabled',

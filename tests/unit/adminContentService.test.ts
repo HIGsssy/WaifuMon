@@ -187,9 +187,11 @@ describe('item writes', () => {
     expect(() => f.service.createItem(validItemInput({ slug: 'basic_charm' }))).toThrow(
       AdminValidationError,
     );
-    // purchasable without a price violates the item schema's own invariant.
+    // shop_regions on an item with no price violates the item schema's invariant.
     expect(() =>
-      f.service.createItem(validItemInput({ purchasable: true, buyPrice: null })),
+      f.service.createItem(
+        validItemInput({ category: 'capture', shopRegions: ['waifu-valley'], buyPrice: null }),
+      ),
     ).toThrow(AdminValidationError);
     expect(() => f.service.createItem(validItemInput({ category: 'weapon' }))).toThrow(
       AdminValidationError,

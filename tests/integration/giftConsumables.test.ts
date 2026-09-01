@@ -85,7 +85,7 @@ describe('content + seeding', () => {
     expect(await getItemBySlug(t.db, 'quickie_coffee')).toMatchObject({
       category: 'consumable',
       effectType: 'restore_energy_amount',
-      purchasable: false,
+      shopRegions: [],
       emoji: '☕',
     });
     expect((await getItemBySlug(t.db, 'quickie_coffee')).effectConfig).toMatchObject({

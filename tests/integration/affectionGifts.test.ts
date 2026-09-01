@@ -527,8 +527,8 @@ describe('claiming', () => {
 
   /**
    * Regression guard for the shop fix: the gift items are hidden from the shop
-   * by `purchasable=false`, *not* by `enabled=false`. Everything downstream of
-   * generation — pending, claim, inventory, use — must keep working on a row
+   * by an empty `shopRegions`, *not* by `enabled=false`. Everything downstream
+   * of generation — pending, claim, inventory, use — must keep working on a row
    * the shop will never list.
    */
   it('generates, claims and uses a gift item the shop refuses to sell', async () => {
@@ -538,7 +538,7 @@ describe('claiming', () => {
 
     const row = await getItemBySlug(t.db, 'quickie_coffee');
     expect(row.enabled).toBe(true);
-    expect(row.purchasable).toBe(false);
+    expect(row.shopRegions).toEqual([]);
     const listed = new Set((await app.shop.getCatalog()).map((e) => e.item.slug));
     expect(listed.has('quickie_coffee')).toBe(false);
 

@@ -8,6 +8,7 @@ import {
   ITEM_EFFECT_TYPES,
   PRICE_CURRENCIES,
   RARITIES,
+  SHOP_ITEM_CATEGORIES,
 } from '../../db/schema';
 /**
  * `RACE_CODES` lives in the cards module because the race set is defined by the
@@ -160,7 +161,15 @@ const ItemBaseSchema = z.object({
     .default(null)
     .transform((v) => (v == null || v.length === 0 ? null : v)),
   isGuaranteedCapture: z.boolean().default(false),
-  purchasable: z.boolean().default(false),
+  /**
+   * The regions whose shops stock this item. Empty (the default) means the item
+   * is sold nowhere — it exists only as a drop, reward or crafting input. There
+   * is no global shop: an item is buyable exactly in the regions it names here,
+   * always at its own `buyPrice`/`priceCurrency`/`dailyStockLimit`. Ids are
+   * closed to the canonical region set; the loader additionally checks each is a
+   * region the content set actually defines.
+   */
+  shopRegions: z.array(z.enum(ALL_REGIONS)).default([]),
   buyPrice: z.number().int().positive().nullable().default(null),
   /** Which currency `buyPrice` is denominated in; defaults to WaifuBux. */
   priceCurrency: z.enum(PRICE_CURRENCIES).default('waifubux'),
@@ -175,20 +184,43 @@ const ItemBaseSchema = z.object({
 });
 
 export const ItemContentSchema = ItemBaseSchema.superRefine((item, ctx) => {
-  // Schema-level invariants from the plan (§21).
-  if (item.isGuaranteedCapture && item.purchasable) {
+  // A guaranteed-capture item bypasses every purchase path — it is a reward,
+  // never stock. Selling one would let a player buy a 100% capture.
+  if (item.isGuaranteedCapture && item.shopRegions.length > 0) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      message: `"${item.slug}": is_guaranteed_capture=true requires purchasable=false`,
-      path: ['purchasable'],
+      message: `"${item.slug}": is_guaranteed_capture=true requires empty shop_regions`,
+      path: ['shopRegions'],
     });
   }
-  if (item.purchasable && item.buyPrice == null) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: `"${item.slug}": purchasable=true requires buy_price`,
-      path: ['buyPrice'],
-    });
+  // Being stocked somewhere is the whole of "for sale", so it must carry a price
+  // and belong to a category a shop actually lists.
+  if (item.shopRegions.length > 0) {
+    if (item.buyPrice == null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `"${item.slug}": shop_regions requires buy_price`,
+        path: ['buyPrice'],
+      });
+    }
+    if (!(SHOP_ITEM_CATEGORIES as readonly string[]).includes(item.category)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `"${item.slug}": shop_regions requires category ${SHOP_ITEM_CATEGORIES.join(' or ')}`,
+        path: ['shopRegions'],
+      });
+    }
+    const seenRegion = new Set<string>();
+    for (const regionId of item.shopRegions) {
+      if (seenRegion.has(regionId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `"${item.slug}": duplicate region "${regionId}" in shop_regions`,
+          path: ['shopRegions'],
+        });
+      }
+      seenRegion.add(regionId);
+    }
   }
   // The two capture-item fields only mean anything on a capture item, and a
   // guaranteed item bypasses the chance formula entirely — a flat bonus on one
@@ -1345,8 +1377,8 @@ export type BossContentInput = z.input<typeof BossContentSchema>;
  *
  *   `items.json`        — what the item **is**: name, category, behaviour, and
  *                         `enabled`, which is retirement, not availability.
- *   shop fields on it   — whether it is **purchasable** and for how much
- *                         (`purchasable`, `buyPrice`, `priceCurrency`).
+ *   shop fields on it   — **which region shops sell it** and for how much
+ *                         (`shopRegions`, `buyPrice`, `priceCurrency`).
  *   `bossRewards.json`  — whether it **drops from a boss**, how many, and how
  *                         often. This file.
  *   (future) scavenge   — separate again, for the same reason.
@@ -1735,12 +1767,6 @@ export const RegionContentSchema = z
     /** Flavor shown on the destination detail screen. */
     flavor: z.array(z.string()).default([]),
     encounterPool: z.array(RegionEncounterEntrySchema).default([]),
-    /**
-     * Item slugs this region's shop stocks. Listing an item here makes it
-     * *regionally scoped* — it leaves the global catalog and is sold only in
-     * the regions that name it.
-     */
-    shopItems: z.array(slug).default([]),
     /**
      * Optional shallow/wide banner (recommended 1200×300, 4:1) shown on the
      * main menu and Locations screens. Missing file degrades to text-only at

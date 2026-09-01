@@ -20,7 +20,6 @@ function region(over: Partial<RegionContent> & Pick<RegionContent, 'id' | 'name'
     order: 0,
     flavor: [],
     encounterPool: [],
-    shopItems: [],
     bannerImagePath: null,
     ...over,
   };

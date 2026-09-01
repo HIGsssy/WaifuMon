@@ -8,7 +8,9 @@
       "captureBonus": null,
       "captureRarities": null,
       "isGuaranteedCapture": false,
-      "purchasable": true,
+      "shopRegions": [
+        "waifu-valley"
+      ],
       "buyPrice": 25,
       "priceCurrency": "waifubux",
       "dailyStockLimit": null,
@@ -26,7 +28,9 @@
       "captureBonus": null,
       "captureRarities": null,
       "isGuaranteedCapture": false,
-      "purchasable": true,
+      "shopRegions": [
+        "waifu-valley"
+      ],
       "buyPrice": 75,
       "priceCurrency": "waifubux",
       "dailyStockLimit": null,
@@ -44,7 +48,9 @@
       "captureBonus": null,
       "captureRarities": null,
       "isGuaranteedCapture": false,
-      "purchasable": true,
+      "shopRegions": [
+        "waifu-valley"
+      ],
       "buyPrice": 200,
       "priceCurrency": "waifubux",
       "dailyStockLimit": null,
@@ -62,7 +68,9 @@
       "captureBonus": null,
       "captureRarities": null,
       "isGuaranteedCapture": false,
-      "purchasable": true,
+      "shopRegions": [
+        "waifu-valley"
+      ],
       "buyPrice": 1750,
       "priceCurrency": "essence",
       "dailyStockLimit": null,
@@ -80,7 +88,7 @@
       "captureBonus": null,
       "captureRarities": null,
       "isGuaranteedCapture": true,
-      "purchasable": false,
+      "shopRegions": [],
       "buyPrice": null,
       "priceCurrency": "waifubux",
       "dailyStockLimit": null,
@@ -98,7 +106,9 @@
       "captureBonus": null,
       "captureRarities": null,
       "isGuaranteedCapture": false,
-      "purchasable": true,
+      "shopRegions": [
+        "waifu-valley"
+      ],
       "buyPrice": 500,
       "priceCurrency": "waifubux",
       "dailyStockLimit": null,
@@ -119,7 +129,9 @@
       "captureBonus": null,
       "captureRarities": null,
       "isGuaranteedCapture": false,
-      "purchasable": true,
+      "shopRegions": [
+        "waifu-valley"
+      ],
       "buyPrice": 40,
       "priceCurrency": "essence",
       "dailyStockLimit": null,
@@ -141,7 +153,7 @@
       "captureBonus": null,
       "captureRarities": null,
       "isGuaranteedCapture": false,
-      "purchasable": false,
+      "shopRegions": [],
       "buyPrice": null,
       "priceCurrency": "waifubux",
       "dailyStockLimit": null,
@@ -162,7 +174,7 @@
       "captureBonus": null,
       "captureRarities": null,
       "isGuaranteedCapture": false,
-      "purchasable": false,
+      "shopRegions": [],
       "buyPrice": null,
       "priceCurrency": "waifubux",
       "dailyStockLimit": null,
@@ -183,7 +195,7 @@
       "captureBonus": null,
       "captureRarities": null,
       "isGuaranteedCapture": false,
-      "purchasable": false,
+      "shopRegions": [],
       "buyPrice": null,
       "priceCurrency": "waifubux",
       "dailyStockLimit": null,
@@ -208,7 +220,7 @@
         "SR"
       ],
       "isGuaranteedCapture": false,
-      "purchasable": false,
+      "shopRegions": [],
       "buyPrice": null,
       "priceCurrency": "waifubux",
       "dailyStockLimit": null,
@@ -231,8 +243,10 @@
         "EX"
       ],
       "isGuaranteedCapture": false,
-      "purchasable": false,
-      "buyPrice": null,
+      "shopRegions": [
+        "twin-peeks"
+      ],
+      "buyPrice": 750,
       "priceCurrency": "waifubux",
       "dailyStockLimit": null,
       "effectType": null,

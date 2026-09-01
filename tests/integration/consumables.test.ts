@@ -123,7 +123,7 @@ describe('content + seeding', () => {
     expect(drink).toMatchObject({
       category: 'consumable',
       effectType: 'restore_energy_full',
-      purchasable: true,
+      shopRegions: ['waifu-valley'],
       buyPrice: 500,
       priceCurrency: 'waifubux',
     });
@@ -133,7 +133,7 @@ describe('content + seeding', () => {
     expect(microdose).toMatchObject({
       category: 'consumable',
       effectType: 'capture_bonus_charges',
-      purchasable: true,
+      shopRegions: ['waifu-valley'],
       buyPrice: 40,
       priceCurrency: 'essence',
     });

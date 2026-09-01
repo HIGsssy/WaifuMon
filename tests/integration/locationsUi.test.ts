@@ -321,9 +321,11 @@ describe('regional shop', () => {
     await handleLocationShop(ctx, btn as never, prov, 'twin-peeks');
     const payload = painted(btn);
     expect(embedOf(payload).title).toBe('🛍️ Twin Peeks Shop');
-    // Nothing regional ships yet, so the shelf is empty and says so.
-    expect(embedOf(payload).description).toContain('The stalls are empty today.');
-    expect(buttonsOf(payload).map((b) => b.customId)).toContain('wm|v1|loc|detail|twin-peeks');
+    // Twin Peeks stocks the region-exclusive Shibari Rope.
+    expect(embedOf(payload).description).toContain('Shibari Rope');
+    const customIds = buttonsOf(payload).map((b) => b.customId);
+    expect(customIds).toContain('wm|v1|shop|buy|shibari_rope');
+    expect(customIds).toContain('wm|v1|loc|detail|twin-peeks');
   });
 });
 

@@ -370,17 +370,20 @@ describe('boss loot is independent of the Shop', () => {
   );
 
   it('drops items regardless of whether the Shop sells them', () => {
-    // Mythic Contract is a boss drop and is deliberately never purchasable.
+    // Mythic Contract is a boss drop and is deliberately sold in no region.
     const mythic = items.get('mythic_contract')!;
-    expect(mythic.purchasable).toBe(false);
+    expect(mythic.shopRegions).toEqual([]);
     expect(bossItemIds).toContain('mythic_contract');
   });
 
   it('covers a boss-only, a both-source, and a neither-source item', () => {
-    const bossOnly = [...bossItemIds].filter((id) => !items.get(id)!.purchasable);
-    const bothSources = [...bossItemIds].filter((id) => items.get(id)!.purchasable);
-    const shopOnly = content.items.filter((i) => i.purchasable && !bossItemIds.has(i.slug));
-    const neither = content.items.filter((i) => !i.purchasable && !bossItemIds.has(i.slug));
+    const sold = (slug: string): boolean => (items.get(slug)?.shopRegions.length ?? 0) > 0;
+    const bossOnly = [...bossItemIds].filter((id) => !sold(id));
+    const bothSources = [...bossItemIds].filter((id) => sold(id));
+    const shopOnly = content.items.filter((i) => i.shopRegions.length > 0 && !bossItemIds.has(i.slug));
+    const neither = content.items.filter(
+      (i) => i.shopRegions.length === 0 && !bossItemIds.has(i.slug),
+    );
 
     expect(bossOnly.length).toBeGreaterThan(0);
     expect(bothSources.length).toBeGreaterThan(0);
@@ -394,7 +397,7 @@ describe('boss loot is independent of the Shop', () => {
     // Boss rolls read the reward table only, so a Shop edit is not even
     // expressible as an input here — which is the guarantee. Prove it by
     // showing the roll depends on nothing but the table.
-    const shopless = content.items.map((i) => ({ ...i, purchasable: false, buyPrice: null }));
+    const shopless = content.items.map((i) => ({ ...i, shopRegions: [], buyPrice: null }));
     expect(shopless.length).toBeGreaterThan(0);
     const before = rollBossRewards({
       table: shipped,
@@ -428,7 +431,7 @@ describe('boss loot is independent of the Shop', () => {
       for (const item of result.items) expect(item.slug).not.toBe('velvet_charm');
     }
     // The Shop's own view of the item is untouched by that edit.
-    expect(items.get('velvet_charm')!.purchasable).toBe(true);
+    expect(items.get('velvet_charm')!.shopRegions).toContain('waifu-valley');
     expect(items.get('velvet_charm')!.buyPrice).toBeGreaterThan(0);
   });
 });

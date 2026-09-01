@@ -17,7 +17,6 @@ import {
   playerUnlockedRoutes,
   players,
   regionEncounterPools,
-  regionShopItems,
   species,
   travelTransactions,
 } from '../../src/db/schema';
@@ -413,34 +412,40 @@ describe('admin grants', () => {
 
 describe('regional shop stock', () => {
   let playerId: number;
-  let charmId: number;
 
   beforeAll(async () => {
     ({ playerId } = await provisionPlayer(app, 'g-travel-shop', 'u-travel-shop'));
-    const [charm] = await t.db.select().from(items).where(eq(items.slug, 'basic_charm'));
-    charmId = charm!.id;
   });
   beforeEach(async () => {
     await resetPlayer(playerId);
-    await t.db.delete(regionShopItems);
+    await restoreStock();
   });
   afterAll(async () => {
-    await t.db.delete(regionShopItems);
+    await restoreStock();
   });
 
-  /** Scopes an ordinary shipped item to one region, as a region file would. */
-  async function stockOnlyIn(regionId: string): Promise<void> {
-    await t.db.insert(regionShopItems).values({ regionId, itemId: charmId });
+  /** Puts basic_charm back on its shipped shelf (Waifu Valley). */
+  async function restoreStock(): Promise<void> {
+    await t.db
+      .update(items)
+      .set({ shopRegions: ['waifu-valley'] })
+      .where(eq(items.slug, 'basic_charm'));
   }
 
-  it('withdraws regionally-scoped stock from the global catalog', async () => {
-    const before = await app.shop.getCatalog();
+  /** Scopes basic_charm to one region, as an item's `shopRegions` would. */
+  async function stockOnlyIn(regionId: string): Promise<void> {
+    await t.db.update(items).set({ shopRegions: [regionId] }).where(eq(items.slug, 'basic_charm'));
+  }
+
+  it('lists an item only on the shelves of the regions it names', async () => {
+    const before = await app.shop.getRegionalCatalog('waifu-valley');
     expect(before.some((e) => e.item.slug === 'basic_charm')).toBe(true);
     await stockOnlyIn('twin-peeks');
-    const after = await app.shop.getCatalog();
-    expect(after.some((e) => e.item.slug === 'basic_charm')).toBe(false);
+    const afterHome = await app.shop.getRegionalCatalog('waifu-valley');
+    expect(afterHome.some((e) => e.item.slug === 'basic_charm')).toBe(false);
+    // Twin Peeks now stocks the newly-scoped charm alongside its shipped rope.
     const regional = await app.shop.getRegionalCatalog('twin-peeks');
-    expect(regional.map((e) => e.item.slug)).toEqual(['basic_charm']);
+    expect(regional.map((e) => e.item.slug)).toEqual(['basic_charm', 'shibari_rope']);
   });
 
   it('refuses to sell regional stock to a player standing elsewhere', async () => {
@@ -463,9 +468,9 @@ describe('regional shop stock', () => {
     expect(result.item.slug).toBe('basic_charm');
   });
 
-  it('leaves unscoped core stock buyable from anywhere', async () => {
-    // The regression that matters most: with `region_shop_items` empty — the
-    // shipped state — purchase() must behave exactly as it did before travel.
+  it('leaves other regions’ stock buyable at home while one item is scoped away', async () => {
+    // Scoping basic_charm to Twin Peeks must not touch silk_charm, which is
+    // still sold in Waifu Valley where the player stands.
     await stockOnlyIn('twin-peeks');
     const result = await app.shop.purchase(playerId, 'silk_charm', 1);
     expect(result.item.slug).toBe('silk_charm');

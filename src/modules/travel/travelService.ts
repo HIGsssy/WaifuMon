@@ -259,6 +259,16 @@ export function createTravelService(deps: TravelServiceDeps): TravelService {
     currentRegion: string,
   ): Promise<DestinationView[]> {
     const cat = catalog();
+    // Shop membership lives on the item now, so a region's stock count is
+    // derived: enabled, priced items that name the region. Zero hides the shop
+    // entry on the Locations detail.
+    const shopCountByRegion = new Map<string, number>();
+    for (const item of deps.getContent().items) {
+      if (!item.enabled || item.buyPrice == null) continue;
+      for (const regionId of item.shopRegions) {
+        shopCountByRegion.set(regionId, (shopCountByRegion.get(regionId) ?? 0) + 1);
+      }
+    }
     const [passIds, unlocked] = await Promise.all([
       ownedPassIds(playerId),
       unlockedRegionIds(playerId),
@@ -285,7 +295,7 @@ export function createTravelService(deps: TravelServiceDeps): TravelService {
         passOwned,
         passName: destination.pass?.name ?? null,
         purchaseGrantsPass: destination.grantedByPassPurchase && !passOwned,
-        shopItemCount: destination.region.shopItems.length,
+        shopItemCount: shopCountByRegion.get(destination.region.id) ?? 0,
         bannerImagePath: destination.region.bannerImagePath ?? null,
       };
     });

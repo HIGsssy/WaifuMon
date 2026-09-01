@@ -9,8 +9,15 @@ import {
   InventoryCapacityError,
   ItemNotFoundError,
   ItemNotPurchasableError,
+  ItemNotSoldHereError,
 } from '../../src/shared/errors';
-import { bootstrapApp, getItemBySlug, provisionPlayer, type App } from '../helpers/fixtures';
+import {
+  bootstrapApp,
+  forceRegion,
+  getItemBySlug,
+  provisionPlayer,
+  type App,
+} from '../helpers/fixtures';
 import { createTestDb, type TestDb } from '../helpers/testDb';
 
 let t: TestDb;
@@ -26,19 +33,19 @@ afterAll(async () => {
 
 /**
  * Every item that exists only as a drop or a reward: enabled (so it can be
- * generated, stored, claimed and used) but never for sale.
+ * generated, stored, claimed and used) but sold in no region. Shibari Rope is
+ * *not* here — it is sold exclusively in Twin Peeks.
  */
 const GIFT_ONLY_SLUGS = [
   'quickie_coffee',
   'reach_around',
   'full_body_massage',
   'fluffy_cuffs',
-  'shibari_rope',
   'mythic_contract',
 ] as const;
 
 describe('shop catalog', () => {
-  it('lists the buyable charms plus the utility consumables', async () => {
+  it('lists the union of every region shop — the sold-somewhere items', async () => {
     const catalog = await app.shop.getCatalog();
     const bySlug = new Map(catalog.map((e) => [e.item.slug, e]));
     expect([...bySlug.keys()].sort()).toEqual([
@@ -46,6 +53,7 @@ describe('shop catalog', () => {
       'energy_drink',
       'microdose',
       'prismatic_charm',
+      'shibari_rope',
       'silk_charm',
       'velvet_charm',
     ]);
@@ -53,7 +61,7 @@ describe('shop catalog', () => {
       expect(entry.available).toBe(true);
       expect(entry.availabilityNote).toBeNull();
       expect(entry.item.enabled).toBe(true);
-      expect(entry.item.purchasable).toBe(true);
+      expect(entry.item.shopRegions.length).toBeGreaterThan(0);
       expect(entry.item.buyPrice).not.toBeNull();
     }
   });
@@ -65,9 +73,29 @@ describe('shop catalog', () => {
     expect(bySlug.get('microdose')).toMatchObject({ available: true, currency: 'essence' });
   });
 
-  it('never lists an enabled-but-non-purchasable item — the gift-only rows', async () => {
+  it("lists Waifu Valley's shelf but not the Twin Peeks-exclusive rope", async () => {
+    const listed = new Set(
+      (await app.shop.getRegionalCatalog('waifu-valley')).map((e) => e.item.slug),
+    );
+    expect(listed).toEqual(
+      new Set(['basic_charm', 'silk_charm', 'velvet_charm', 'prismatic_charm', 'energy_drink', 'microdose']),
+    );
+    expect(listed.has('shibari_rope')).toBe(false);
+  });
+
+  it('sells Shibari Rope only from the Twin Peeks shelf', async () => {
+    const twinPeeks = await app.shop.getRegionalCatalog('twin-peeks');
+    expect(twinPeeks.map((e) => e.item.slug)).toEqual(['shibari_rope']);
+    expect(twinPeeks[0]?.item.buyPrice).toBe(750);
+  });
+
+  it('leaves a region no item names with an empty shelf', async () => {
+    expect(await app.shop.getRegionalCatalog('flaccid-foothills')).toEqual([]);
+  });
+
+  it('never lists an item sold in no region — the gift-only rows', async () => {
     // Guard the premise: these are all still *enabled*, so the shop is
-    // filtering on `purchasable`, not quietly on `enabled`.
+    // filtering on `shopRegions`, not quietly on `enabled`.
     const rows = await t.db
       .select()
       .from(items)
@@ -75,7 +103,7 @@ describe('shop catalog', () => {
     expect(rows).toHaveLength(GIFT_ONLY_SLUGS.length);
     for (const row of rows) {
       expect(row.enabled).toBe(true);
-      expect(row.purchasable).toBe(false);
+      expect(row.shopRegions).toEqual([]);
     }
 
     const listed = new Set((await app.shop.getCatalog()).map((e) => e.item.slug));
@@ -84,14 +112,17 @@ describe('shop catalog', () => {
     }
   });
 
-  it('drops an item from the catalog the moment it is marked non-purchasable', async () => {
-    await t.db.update(items).set({ purchasable: false }).where(eq(items.slug, 'silk_charm'));
+  it('drops an item from the catalog the moment its shop_regions are cleared', async () => {
+    await t.db.update(items).set({ shopRegions: [] }).where(eq(items.slug, 'silk_charm'));
     try {
       const listed = new Set((await app.shop.getCatalog()).map((e) => e.item.slug));
       expect(listed.has('silk_charm')).toBe(false);
       expect(listed.has('basic_charm')).toBe(true);
     } finally {
-      await t.db.update(items).set({ purchasable: true }).where(eq(items.slug, 'silk_charm'));
+      await t.db
+        .update(items)
+        .set({ shopRegions: ['waifu-valley'] })
+        .where(eq(items.slug, 'silk_charm'));
     }
   });
 
@@ -149,13 +180,13 @@ describe('shop purchase', () => {
     expect(audits).toHaveLength(0);
   });
 
-  it('rejects the Prismatic Charm (listed but disabled at launch)', async () => {
+  it('sells the Prismatic Charm in Waifu Valley for Essence', async () => {
     const { playerId } = await provisionPlayer(app, 'g-shop', 'u-prism');
-    await app.currency.grantWaifubux(t.db, playerId, 10_000);
-    await expect(app.shop.purchase(playerId, 'prismatic_charm')).rejects.toBeInstanceOf(
-      ItemNotPurchasableError,
-    );
-    expect((await app.currency.getBalances(playerId)).waifubux).toBe(10_000);
+    await app.currency.grantEssence(t.db, playerId, 2_000);
+    const bought = await app.shop.purchase(playerId, 'prismatic_charm');
+    expect(bought.currency).toBe('essence');
+    expect(bought.totalPrice).toBe(1750);
+    expect((await app.currency.getBalances(playerId)).essence).toBe(250);
   });
 
   it('rejects the Mythic Contract (never sold), regardless of balance', async () => {
@@ -164,6 +195,29 @@ describe('shop purchase', () => {
     await expect(app.shop.purchase(playerId, 'mythic_contract')).rejects.toBeInstanceOf(
       ItemNotPurchasableError,
     );
+  });
+
+  it('refuses the Twin Peeks-exclusive rope while the player is in Waifu Valley', async () => {
+    const { playerId } = await provisionPlayer(app, 'g-shop', 'u-rope-here');
+    await app.currency.grantWaifubux(t.db, playerId, 10_000);
+    await expect(app.shop.purchase(playerId, 'shibari_rope')).rejects.toBeInstanceOf(
+      ItemNotSoldHereError,
+    );
+    // Nothing spent.
+    expect((await app.currency.getBalances(playerId)).waifubux).toBe(10_000);
+    const rope = await getItemBySlug(t.db, 'shibari_rope');
+    expect(await app.inventory.getQuantity(playerId, rope.id)).toBe(0);
+  });
+
+  it('sells the rope once the player is standing in Twin Peeks', async () => {
+    const { playerId } = await provisionPlayer(app, 'g-shop', 'u-rope-there');
+    await app.currency.grantWaifubux(t.db, playerId, 10_000);
+    await forceRegion(t.db, playerId, 'twin-peeks');
+    const bought = await app.shop.purchase(playerId, 'shibari_rope');
+    expect(bought.totalPrice).toBe(750);
+    expect((await app.currency.getBalances(playerId)).waifubux).toBe(9_250);
+    const rope = await getItemBySlug(t.db, 'shibari_rope');
+    expect(await app.inventory.getQuantity(playerId, rope.id)).toBe(1);
   });
 
   it('rejects disabled items', async () => {
@@ -180,7 +234,7 @@ describe('shop purchase', () => {
   });
 
   it.each([...GIFT_ONLY_SLUGS])(
-    'rejects a direct purchase of the non-purchasable %s, however rich the player',
+    'rejects a direct purchase of the sold-nowhere %s, however rich the player',
     async (slug) => {
       const { playerId } = await provisionPlayer(app, 'g-shop', `u-gift-${slug}`);
       await app.currency.grantWaifubux(t.db, playerId, 1_000_000);

@@ -285,13 +285,13 @@ export function validateBossAssets(
  * added to an inventory, while it is disabled.
  *
  * The `items.enabled` flag is **retirement, not Shop availability** — the Shop
- * has its own `purchasable` flag, and `items.enabled: false` withdraws an item
- * from every source at once. A boss table may therefore legitimately be
- * checked against it, and `adminContentService` does exactly that as a
- * non-blocking warning, because a boss dropping a retired item is a content
- * mistake worth hearing about but not one worth refusing to boot over. Nothing
- * Shop-specific — `purchasable`, `buyPrice` — is consulted here or anywhere
- * else on the boss path.
+ * decides stock from an item's `shopRegions` and price, and `items.enabled:
+ * false` withdraws an item from every source at once. A boss table may
+ * therefore legitimately be checked against it, and `adminContentService` does
+ * exactly that as a non-blocking warning, because a boss dropping a retired
+ * item is a content mistake worth hearing about but not one worth refusing to
+ * boot over. Nothing Shop-specific — `shopRegions`, `buyPrice` — is consulted
+ * here or anywhere else on the boss path.
  *
  * A *disabled reward table* is likewise not fatal on its own — a boss pointing
  * at one is simply undrawable, and `bossEncounterService` logs an actionable
@@ -439,7 +439,6 @@ export function validateRegionContent(content: LoadedContent): void {
 
   const speciesBySlug = new Map(species.map((s) => [s.slug, s]));
   const expansionById = new Map(expansions.map((e) => [e.id, e]));
-  const itemSlugs = new Set(items.map((i) => i.slug));
 
   // `REGION_EXCLUSIVE_TAG` is shared with the hunt's global fallback, which
   // refuses to draw a tagged species. The two enforcement points have to name
@@ -501,11 +500,19 @@ export function validateRegionContent(content: LoadedContent): void {
         exclusiveAppearances.set(entry.species, list);
       }
     }
+  }
 
-    for (const itemSlug of region.shopItems) {
-      if (!itemSlugs.has(itemSlug)) {
+  // Shop membership lives on the item now: each `shopRegions` entry must name a
+  // region this content set actually defines. The schema already closes the ids
+  // to the canonical region enum; only this layer, holding every region file at
+  // once, can tell a *typo'd-but-canonical* id from one a region file backs.
+  const definedRegionIds = new Set(regions.map((r) => r.id));
+  for (const item of items) {
+    for (const regionId of item.shopRegions) {
+      if (!definedRegionIds.has(regionId)) {
         throw new ContentValidationError(
-          `Region "${region.id}".shopItems references unknown item slug: ${itemSlug}`,
+          `Item "${item.slug}".shopRegions references region "${regionId}", which no ` +
+            'region file defines. Add the region, or remove it from the item.',
         );
       }
     }

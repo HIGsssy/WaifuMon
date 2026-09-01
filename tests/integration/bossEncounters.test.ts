@@ -927,7 +927,7 @@ describe('boss loot is configured independently of the Shop', () => {
   it('grants items without consulting Shop availability', async () => {
     // Un-list every item from the Shop. A boss payout reads only the reward
     // table and the live `items` row, so this must change nothing.
-    await t.db.update(items).set({ purchasable: false, buyPrice: null });
+    await t.db.update(items).set({ shopRegions: [], buyPrice: null });
 
     const encounter = await openEncounter();
     await giveBuddy(playerId);
@@ -950,7 +950,7 @@ describe('boss loot is configured independently of the Shop', () => {
       rare.chanceBasisPoints = 10_000;
     });
     const [mythic] = await t.db.select().from(items).where(eq(items.slug, 'mythic_contract'));
-    expect(mythic!.purchasable).toBe(false);
+    expect(mythic!.shopRegions).toEqual([]);
 
     const encounter = await openEncounter();
     await giveBuddy(playerId);

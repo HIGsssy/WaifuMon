@@ -21,7 +21,7 @@ const item = (overrides: Partial<ItemRow> = {}): ItemRow =>
     category: 'consumable',
     captureModifier: null,
     isGuaranteedCapture: false,
-    purchasable: true,
+    shopRegions: ['waifu-valley'],
     buyPrice: 500,
     priceCurrency: 'waifubux',
     dailyStockLimit: null,

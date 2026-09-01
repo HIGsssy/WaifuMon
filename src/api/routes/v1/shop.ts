@@ -17,9 +17,10 @@ export const shopRoutes =
           tags: ['Shop'],
           summary: 'List the shop catalog',
           description:
-            'Capture and consumable items that are enabled, purchasable and priced. Items that ' +
-            'exist only as drops or rewards (affection gifts, the Mythic Contract) are never ' +
-            'listed. The catalog is player-independent; affordability is not evaluated here.',
+            'The union of every region shop: enabled, priced capture and consumable items ' +
+            'that are sold in at least one region. Items that exist only as drops or rewards ' +
+            '(affection gifts, the Mythic Contract) are never listed. The catalog is ' +
+            'player- and region-independent; affordability is not evaluated here.',
           response: {
             200: dataSchema(z.array(shopCatalogEntrySchema)),
             ...commonErrorResponses,

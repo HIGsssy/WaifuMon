@@ -65,7 +65,7 @@ const ITEM = {
   captureBonus: null,
   captureRarities: null,
   isGuaranteedCapture: false,
-  purchasable: true,
+  shopRegions: ['waifu-valley'],
   buyPrice: 50,
   priceCurrency: 'waifubux',
   dailyStockLimit: null,

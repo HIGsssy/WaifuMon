@@ -754,9 +754,9 @@ export function createAdminContentService(deps: AdminContentServiceDeps): AdminC
     // Shop-facing item problems: a disabled item never reaches the shop, and a
     // usable item nobody can obtain is almost always an editing mistake.
     for (const item of raw.items) {
-      if (item.purchasable && !item.enabled) {
+      if (item.shopRegions.length > 0 && !item.enabled) {
         warnings.push(
-          `items: "${item.slug}" is purchasable but disabled — it will not appear in the shop`,
+          `items: "${item.slug}" lists shop_regions but is disabled — it will not appear in any shop`,
         );
       }
       if (item.effectType != null && !['capture', 'consumable'].includes(item.category)) {

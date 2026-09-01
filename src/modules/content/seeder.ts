@@ -1,6 +1,6 @@
 import { notInArray } from 'drizzle-orm';
 import type { Db } from '../../db/client';
-import { items, regionEncounterPools, regionShopItems, species } from '../../db/schema';
+import { items, regionEncounterPools, species } from '../../db/schema';
 import type { Logger } from '../../shared/logger';
 import type { LoadedContent } from './schemas';
 
@@ -11,8 +11,6 @@ export interface SeedSummary {
   disabledSpecies: number;
   /** Region → species rows written for enabled regions. */
   regionPoolEntries: number;
-  /** Region → item rows written for enabled regions. */
-  regionShopEntries: number;
 }
 
 /**
@@ -30,7 +28,7 @@ export async function seedContent(db: Db, content: LoadedContent, logger: Logger
         captureBonus: item.captureBonus,
         captureRarities: item.captureRarities,
         isGuaranteedCapture: item.isGuaranteedCapture,
-        purchasable: item.purchasable,
+        shopRegions: item.shopRegions,
         buyPrice: item.buyPrice,
         priceCurrency: item.priceCurrency,
         dailyStockLimit: item.dailyStockLimit,
@@ -99,13 +97,15 @@ export async function seedContent(db: Db, content: LoadedContent, logger: Logger
 
     // ── Region membership ──────────────────────────────────────────────
     //
-    // Both region tables are rebuilt from scratch on every seed rather than
-    // upserted, and that is deliberate. They hold no player state whatsoever —
-    // every row is a pure projection of the region files — so "delete and
-    // re-insert" is both correct and the only way removals propagate. Species
-    // and items get the opposite treatment (upsert, then disable the missing)
-    // precisely because rows there are pointed at by owned waifus and
-    // inventories and must never disappear.
+    // The region-encounter table is rebuilt from scratch on every seed rather
+    // than upserted, and that is deliberate. It holds no player state
+    // whatsoever — every row is a pure projection of the region files — so
+    // "delete and re-insert" is both correct and the only way removals
+    // propagate. Species and items get the opposite treatment (upsert, then
+    // disable the missing) precisely because rows there are pointed at by owned
+    // waifus and inventories and must never disappear. Shop membership now
+    // lives on the item itself (`items.shop_regions`, upserted above), so there
+    // is no separate junction to rebuild.
     //
     // Inside the same transaction as the species upserts, so a pool can
     // reference a species this very seed introduced, and so a reader never
@@ -116,18 +116,10 @@ export async function seedContent(db: Db, content: LoadedContent, logger: Logger
         r.id,
       ]),
     );
-    const itemIdBySlug = new Map(
-      (await tx.select({ id: items.id, slug: items.slug }).from(items)).map((r) => [
-        r.slug,
-        r.id,
-      ]),
-    );
 
     await tx.delete(regionEncounterPools);
-    await tx.delete(regionShopItems);
 
     let regionPoolEntries = 0;
-    let regionShopEntries = 0;
     for (const region of content.regions) {
       // A disabled region is unreleased content: seeding its pool would let a
       // hunt query reach a place the Locations screen refuses to show.
@@ -146,15 +138,6 @@ export async function seedContent(db: Db, content: LoadedContent, logger: Logger
         await tx.insert(regionEncounterPools).values(poolRows);
         regionPoolEntries += poolRows.length;
       }
-
-      const shopRows = region.shopItems.flatMap((itemSlug) => {
-        const itemId = itemIdBySlug.get(itemSlug);
-        return itemId === undefined ? [] : [{ regionId: region.id, itemId }];
-      });
-      if (shopRows.length > 0) {
-        await tx.insert(regionShopItems).values(shopRows);
-        regionShopEntries += shopRows.length;
-      }
     }
 
     const summary: SeedSummary = {
@@ -163,7 +146,6 @@ export async function seedContent(db: Db, content: LoadedContent, logger: Logger
       disabledItems: disabledItems.length,
       disabledSpecies: disabledSpecies.length,
       regionPoolEntries,
-      regionShopEntries,
     };
     logger.info(summary, 'content seeded');
     return summary;

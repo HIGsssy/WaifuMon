@@ -714,15 +714,17 @@ async function buildShopView(
   prov: Provisioned,
   statusLine?: string,
 ): Promise<ScreenView> {
+  const currentRegion = await ctx.services.travel.getCurrentRegion(prov.playerId);
   const [catalog, balances, inventory] = await Promise.all([
-    ctx.services.shop.getCatalog(),
+    ctx.services.shop.getRegionalCatalog(currentRegion),
     ctx.services.currency.getBalances(prov.playerId),
     ctx.services.inventory.getInventory(prov.playerId),
   ]);
   const owned = new Map(inventory.map((e) => [e.item.id, e.quantity]));
 
-  // The service hands back buyable rows only — non-purchasable items (gifts,
-  // the Mythic Contract) never reach the shop page.
+  // The shop is the player's current region shelf — there is no global shop.
+  // The service hands back buyable rows only; items sold in other regions (or
+  // nowhere) never reach this page.
   const lines = catalog.map(({ item, currency }) => {
     const detail = item.isGuaranteedCapture
       ? 'guarantees capture'
@@ -732,13 +734,14 @@ async function buildShopView(
     const price = `**${formatPrice(item.buyPrice ?? 0, currency)}**`;
     return `${item.emoji ?? '•'} **${item.name}** (${detail}) — ${price} · owned ×${owned.get(item.id) ?? 0}`;
   });
+  const body = lines.length > 0 ? lines.join('\n') : '*The stalls here are empty today.*';
 
   const header = `💰 **${balances.waifubux}** WaifuBux · ✨ **${balances.essence}** Essence`;
   const status = statusLine ? `\n\n${statusLine}` : '';
   const embed = new EmbedBuilder()
-    .setTitle('🛍️ Shop')
+    .setTitle(`🛍️ ${regionLabel(currentRegion)} Shop`)
     .setColor(0xffc46f)
-    .setDescription(`${header}${status}\n\n${lines.join('\n')}`);
+    .setDescription(`${header}${status}\n\n${body}`);
 
   const buyButtons = catalog
     .filter((entry) => entry.available)

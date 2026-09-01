@@ -25,10 +25,10 @@ describe('migrations + seeder', () => {
     expect(itemRows).toHaveLength(content.items.length);
     const mythic = itemRows.find((i) => i.slug === 'mythic_contract');
     expect(mythic?.isGuaranteedCapture).toBe(true);
-    expect(mythic?.purchasable).toBe(false);
+    expect(mythic?.shopRegions).toEqual([]);
     const prismatic = itemRows.find((i) => i.slug === 'prismatic_charm');
     expect(prismatic?.enabled).toBe(true);
-    expect(prismatic?.purchasable).toBe(false);
+    expect(prismatic?.shopRegions).toEqual(['waifu-valley']);
 
     // Effect columns round-trip through the seeder as jsonb.
     const microdose = itemRows.find((i) => i.slug === 'microdose');

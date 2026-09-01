@@ -118,7 +118,9 @@ const itemFields = {
   description: z.string(),
   emoji: z.string().nullable(),
   enabled: z.boolean(),
-  purchasable: z.boolean(),
+  shopRegions: z
+    .array(z.string())
+    .describe('Region ids whose shops sell this item; empty means sold nowhere.'),
   buyPrice: z.number().int().nullable(),
   priceCurrency: z.enum(['waifubux', 'essence']),
   captureModifier: z.number().nullable(),

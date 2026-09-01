@@ -56,7 +56,6 @@ function region(over: Partial<RegionContent> & Pick<RegionContent, 'id' | 'name'
     order: 0,
     flavor: [],
     encounterPool: [],
-    shopItems: [],
     bannerImagePath: null,
     ...over,
   };
@@ -419,11 +418,13 @@ describe('rule 7 — disabled expansion species cannot be referenced', () => {
 });
 
 describe('shop membership references', () => {
-  it('rejects an unknown item slug in a region shop', () => {
+  it('rejects an item whose shopRegions names an undefined region', () => {
     const bad = content();
-    bad.regions[0]!.shopItems = ['no_such_item'];
+    bad.items = [
+      { slug: 'lonely_charm', shopRegions: ['twin-peeks'] } as unknown as LoadedContent['items'][number],
+    ];
     expect(() => validateRegionContent(bad)).toThrow(
-      /shopItems references unknown item slug: no_such_item/,
+      /Item "lonely_charm".shopRegions references region "twin-peeks", which no region file defines/,
     );
   });
 });

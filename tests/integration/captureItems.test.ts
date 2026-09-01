@@ -143,7 +143,7 @@ describe('new capture items', () => {
       captureBonus: 0.3,
       captureRarities: ['N', 'R', 'SR'],
       isGuaranteedCapture: false,
-      purchasable: false,
+      shopRegions: [],
       enabled: true,
     });
     expect(await getItemBySlug(t.db, 'shibari_rope')).toMatchObject({
@@ -151,28 +151,33 @@ describe('new capture items', () => {
       captureModifier: 1,
       captureBonus: 0.15,
       captureRarities: ['SSR', 'UR', 'LR', 'EX'],
-      purchasable: false,
+      shopRegions: ['twin-peeks'],
       enabled: true,
     });
   });
 
-  it('are absent from the shop, the hunt tables, and the daily package', () => {
+  it('are absent from the hunt tables and the daily package', () => {
     const tables = app.content.tables;
-    const giftOnly = [
+    const notFound = [
       'fluffy_cuffs',
       'shibari_rope',
       'quickie_coffee',
       'reach_around',
       'full_body_massage',
     ];
-    for (const slug of giftOnly) {
-      const item = app.content.items.find((i) => i.slug === slug);
-      expect(item?.purchasable, slug).toBe(false);
+    for (const slug of notFound) {
       expect(Object.keys(tables.dailyPackage.items)).not.toContain(slug);
       expect(tables.hunt.itemFind.sub.map((s) => s.slug)).not.toContain(slug);
       expect(tables.hunt.rareItemFind.sub.map((s) => s.slug)).not.toContain(slug);
       expect(tables.progression.dailyBonusItems.map((b) => b.slug)).not.toContain(slug);
     }
+    // Sold-nowhere gifts name no region; Shibari Rope is sold only in Twin Peeks.
+    for (const slug of ['fluffy_cuffs', 'quickie_coffee', 'reach_around', 'full_body_massage']) {
+      expect(app.content.items.find((i) => i.slug === slug)?.shopRegions, slug).toEqual([]);
+    }
+    expect(app.content.items.find((i) => i.slug === 'shibari_rope')?.shopRegions).toEqual([
+      'twin-peeks',
+    ]);
   });
 });
 

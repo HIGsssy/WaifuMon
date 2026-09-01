@@ -41,6 +41,14 @@ export const ITEM_CATEGORIES = ['capture', 'material', 'cosmetic', 'consumable']
 export type ItemCategory = (typeof ITEM_CATEGORIES)[number];
 
 /**
+ * The categories a shop ever lists. `capture` is the charm catalog; `consumable`
+ * covers the utility items. Material and cosmetic items are never sold, so a
+ * `shopRegions` assignment on one is a content error, not a hidden shelf.
+ */
+export const SHOP_ITEM_CATEGORIES = ['capture', 'consumable'] as const;
+export type ShopItemCategory = (typeof SHOP_ITEM_CATEGORIES)[number];
+
+/**
  * Active-use item effects (shop/items expansion). An item with a non-null
  * `effect_type` can be *used* from the inventory screen; its `effect_config`
  * carries the per-effect tunables (validated by type in content/schemas.ts).
@@ -219,7 +227,15 @@ export const items = pgTable(
      */
     captureRarities: jsonb('capture_rarities').$type<string[]>(),
     isGuaranteedCapture: boolean('is_guaranteed_capture').notNull().default(false),
-    purchasable: boolean('purchasable').notNull().default(false),
+    /**
+     * The regions whose shops sell this item. Empty means sold nowhere — there
+     * is no global shop. An item is buyable exactly in the regions listed here,
+     * always at its own `buy_price`/`price_currency`/`daily_stock_limit`.
+     */
+    shopRegions: text('shop_regions')
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
     buyPrice: integer('buy_price'),
     /** Which currency `buy_price` is denominated in. */
     priceCurrency: text('price_currency').notNull().default('waifubux'),
@@ -1225,34 +1241,6 @@ export const travelTransactions = pgTable(
   ],
 );
 
-/**
- * Which items a region's shop stocks.
- *
- * A junction rather than an `items.region_id` scalar for the same reason
- * {@link regionEncounterPools} is one: a regional item may legitimately be
- * stocked in several regions, and the two region-membership tables reading the
- * same way is worth more than the column it saves.
- *
- * Membership here makes an item **regionally scoped**: it leaves the global
- * shop catalog and appears only in the shops of the regions listed. An item in
- * no row at all is core stock, sold everywhere — which is every item shipped
- * today, so this table being empty is exactly the pre-travel behavior.
- */
-export const regionShopItems = pgTable(
-  'region_shop_items',
-  {
-    regionId: text('region_id').notNull(),
-    itemId: bigint('item_id', { mode: 'number' })
-      .notNull()
-      .references(() => items.id),
-  },
-  (t) => [
-    primaryKey({ columns: [t.regionId, t.itemId] }),
-    check('region_shop_items_region_check', sql`${t.regionId} in (${sql.raw(REGION_SQL_LIST)})`),
-    index('region_shop_items_region_idx').on(t.regionId),
-  ],
-);
-
 export type GuildRow = typeof guilds.$inferSelect;
 export type PlayerRow = typeof players.$inferSelect;
 export type PlayerCurrenciesRow = typeof playerCurrencies.$inferSelect;
@@ -1278,4 +1266,3 @@ export type RegionEncounterPoolRow = typeof regionEncounterPools.$inferSelect;
 export type PlayerTravelPassRow = typeof playerTravelPasses.$inferSelect;
 export type PlayerUnlockedRouteRow = typeof playerUnlockedRoutes.$inferSelect;
 export type TravelTransactionRow = typeof travelTransactions.$inferSelect;
-export type RegionShopItemRow = typeof regionShopItems.$inferSelect;

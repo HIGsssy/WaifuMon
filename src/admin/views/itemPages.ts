@@ -4,6 +4,7 @@ import {
   PRICE_CURRENCIES,
   RARITIES,
 } from '../../db/schema';
+import { REGIONS } from '../../modules/locations/regions';
 import {
   MAX_CAPTURE_ITEM_BONUS,
   MAX_ITEM_CAPTURE_BONUS,
@@ -21,7 +22,9 @@ export interface ItemRow {
 
 /** "40 Essence" / "25 WB" — shop column in the list. */
 function priceLabel(i: ItemContent): string {
-  if (!i.purchasable || i.buyPrice == null) return '<span class="muted">not sold</span>';
+  if (i.buyPrice == null || i.shopRegions.length === 0) {
+    return '<span class="muted">not sold</span>';
+  }
   return `${i.buyPrice} ${i.priceCurrency === 'essence' ? 'Essence' : 'WB'}`;
 }
 
@@ -162,7 +165,7 @@ export function itemFormPage(item: ItemContent | null, references: string[]): st
     captureBonus: null,
     captureRarities: null,
     isGuaranteedCapture: false,
-    purchasable: false,
+    shopRegions: [],
     buyPrice: null,
     priceCurrency: 'waifubux',
     dailyStockLimit: null,
@@ -197,7 +200,7 @@ ${refWarning}
   <h2>Shop</h2>
   <div class="row">
     <div>${numberField('buyPrice', 'Buy price', i.buyPrice, {
-      hint: 'required when purchasable; positive integer',
+      hint: 'required when sold in any region; positive integer',
       step: '1',
     })}</div>
     <div>${selectField('priceCurrency', 'Price currency', i.priceCurrency, PRICE_CURRENCIES, {
@@ -208,7 +211,10 @@ ${refWarning}
       step: '1',
     })}</div>
   </div>
-  ${boolField('purchasable', 'Purchasable in the shop', i.purchasable)}
+  ${textField('shopRegions', 'Sold in regions', i.shopRegions.join(', '), {
+    type: 'list',
+    hint: `comma-separated region ids from ${REGIONS.join(', ')}; blank = sold nowhere`,
+  })}
   <h2>Capture</h2>
   <div class="row">
     <div>${numberField('captureModifier', 'Capture modifier', i.captureModifier, {
@@ -224,7 +230,7 @@ ${refWarning}
     type: 'list',
     hint: `comma-separated from ${RARITIES.join(', ')}; blank = every rarity`,
   })}
-  ${boolField('isGuaranteedCapture', 'Guarantees capture (never purchasable)', i.isGuaranteedCapture)}
+  ${boolField('isGuaranteedCapture', 'Guarantees capture (never sold)', i.isGuaranteedCapture)}
   ${effectFields(i)}
   <h2>Presentation</h2>
   ${textareaField('description', 'Description', i.description, { rows: 3 })}

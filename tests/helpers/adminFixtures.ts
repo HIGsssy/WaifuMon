@@ -124,7 +124,7 @@ export function validItemInput(overrides: Record<string, unknown> = {}): Record<
     category: 'material',
     captureModifier: null,
     isGuaranteedCapture: false,
-    purchasable: false,
+    shopRegions: [],
     buyPrice: null,
     priceCurrency: 'waifubux',
     dailyStockLimit: null,
