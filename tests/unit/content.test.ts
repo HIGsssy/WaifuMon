@@ -418,6 +418,49 @@ describe('asset validation', () => {
     expect(result[0]?.enabled).toBe(false);
   });
 
+  it('keeps expansion milestone appearances whose art lives beside the pack imagePath', () => {
+    // onsen_maid ships standard + level_10..50 under expansions/twin_peaks/, not
+    // under waifumon/. Appearances must resolve from beside the species imagePath.
+    const packSpecies = SpeciesContentSchema.parse({
+      slug: 'onsen_maid',
+      name: 'Onsen Maid',
+      rarity: 'R',
+      archetype: 'spirit',
+      contentRating: 'suggestive',
+      imagePath: 'expansions/twin_peaks/onsen_maid/standard.png',
+      appearances: [
+        { id: 'standard', name: 'Standard', sortOrder: 0, unlock: { type: 'owned' } },
+        { id: 'level_20', name: 'Level 20', sortOrder: 20, unlock: { type: 'level', atLevel: 20 } },
+      ],
+    });
+    const result = validateSpeciesAssets([packSpecies], ASSETS_DIR, silentLogger());
+    expect(result[0]?.enabled).toBe(true);
+    expect(result[0]?.appearances?.map((a) => a.id)).toEqual(['standard', 'level_20']);
+  });
+
+  it('drops an expansion appearance whose art is absent, leaving the species enabled', () => {
+    const packSpecies = SpeciesContentSchema.parse({
+      slug: 'onsen_maid',
+      name: 'Onsen Maid',
+      rarity: 'R',
+      archetype: 'spirit',
+      contentRating: 'suggestive',
+      imagePath: 'expansions/twin_peaks/onsen_maid/standard.png',
+      appearances: [
+        { id: 'standard', name: 'Standard', sortOrder: 0, unlock: { type: 'owned' } },
+        {
+          id: 'never_authored',
+          name: 'Missing',
+          sortOrder: 99,
+          unlock: { type: 'level', atLevel: 20 },
+        },
+      ],
+    });
+    const result = validateSpeciesAssets([packSpecies], ASSETS_DIR, silentLogger());
+    expect(result[0]?.enabled).toBe(true);
+    expect(result[0]?.appearances?.map((a) => a.id)).toEqual(['standard']);
+  });
+
   it('fails startup loudly on a dailyPackage slug that is not an item', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wm-content-'));
     tmpDirs.push(dir);

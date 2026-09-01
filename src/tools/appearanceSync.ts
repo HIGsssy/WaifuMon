@@ -40,7 +40,7 @@ import {
   resolveAssetPath,
   validateContentSet,
 } from '../modules/content/loader';
-import { defaultAssetId } from '../modules/appearance/appearanceContent';
+import { appearanceRelativePathForSpecies, defaultAssetId } from '../modules/appearance/appearanceContent';
 import {
   DEFAULT_APPEARANCE_ID,
   SpeciesFileSchema,
@@ -224,10 +224,22 @@ function assertNoDuplicateSlugs(packs: RawPack[]): void {
   );
 }
 
-/** Does `assets/waifumon/<slug>/<appearanceId>.png` exist? */
-function artworkExists(assetsDir: string, slug: string, appearanceId: string): boolean {
-  const assetId = defaultAssetId(slug, appearanceId);
-  const relative = `${assetId.kind}/${assetId.slug}/${assetId.variant}.png`;
+/** Does the appearance PNG exist beside the species' own image on disk? */
+function artworkExists(
+  assetsDir: string,
+  imagePath: string | null,
+  slug: string,
+  appearanceId: string,
+): boolean {
+  // Art lives beside the species' `imagePath` — the same convention the loader
+  // and the runtime resolver use, so a pack keeps its artwork organised under
+  // `expansions/<pack>/<slug>/` while core species stay under `waifumon/<slug>/`.
+  // Falls back to the canonical `waifumon/<slug>/` only when a species has no
+  // usable `imagePath` yet (malformed draft content the loader would reject).
+  const relative =
+    imagePath !== null
+      ? appearanceRelativePathForSpecies(imagePath, appearanceId)
+      : `${defaultAssetId(slug, appearanceId).kind}/${slug}/${appearanceId}.png`;
   try {
     return fs.existsSync(resolveAssetPath(assetsDir, relative));
   } catch {
@@ -297,13 +309,14 @@ export function planAppearanceSync(options: SyncOptions): {
           .map((a) => a.id)
           .filter((id): id is string => typeof id === 'string'),
       );
+      const imagePath = typeof species.imagePath === 'string' ? species.imagePath : null;
 
       const skippedHere: string[] = [];
       const toAdd: MilestoneDefinition[] = [];
 
       for (const milestone of milestones) {
         if (authoredIds.has(milestone.id)) continue;
-        if (!artworkExists(assetsDir, slug, milestone.id)) continue;
+        if (!artworkExists(assetsDir, imagePath, slug, milestone.id)) continue;
 
         // The ceiling is a balance value, so it is checked rather than assumed.
         // Writing an unreachable gate would fail `validateContentSet` on the

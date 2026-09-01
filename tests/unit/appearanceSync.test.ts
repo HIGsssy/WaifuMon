@@ -468,6 +468,52 @@ describe('expansion pack discovery', () => {
     ]);
   });
 
+  /** Creates `assets/expansions/<pack>/<slug>/<id>.png` for each id. */
+  function packArt(pack: string, slug: string, ...ids: string[]): void {
+    const dir = path.join(assetsDir, 'expansions', pack, slug);
+    fs.mkdirSync(dir, { recursive: true });
+    for (const id of ids) fs.writeFileSync(path.join(dir, `${id}.png`), 'png');
+  }
+
+  it('discovers milestone art stored beside the pack imagePath, not under waifumon/', () => {
+    writePack('starter.json', [species('alley_catgirl')]);
+    art('alley_catgirl', 'standard');
+    // A pack species whose artwork stays organised inside the pack directory.
+    const packSpecies = species('onsen_maid', {
+      imagePath: 'expansions/twin_peaks/onsen_maid/standard.png',
+    });
+    writeExpansion('twin_peaks', { enabled: true, entries: [packSpecies] });
+    packArt('twin_peaks', 'onsen_maid', 'standard', 'level_10', 'level_20');
+
+    sync();
+
+    const written = JSON.parse(
+      fs.readFileSync(
+        path.join(contentDir, 'expansions', 'twin_peaks', 'species', 'locals.json'),
+        'utf8',
+      ),
+    ) as Array<{ slug: string; appearances?: Array<{ id: string }> }>;
+    expect(written[0]!.appearances?.map((a) => a.id)).toEqual(['standard', 'level_10', 'level_20']);
+  });
+
+  it('ignores art under waifumon/<slug>/ for a pack species whose imagePath is in the pack dir', () => {
+    // Guards the single convention: appearance art is found beside the species'
+    // imagePath. Milestone art misfiled under waifumon/<slug>/ must not be picked
+    // up for a species that actually lives under expansions/<pack>/<slug>/.
+    writePack('starter.json', [species('alley_catgirl')]);
+    art('alley_catgirl', 'standard');
+    const packSpecies = species('onsen_maid', {
+      imagePath: 'expansions/twin_peaks/onsen_maid/standard.png',
+    });
+    writeExpansion('twin_peaks', { enabled: true, entries: [packSpecies] });
+    packArt('twin_peaks', 'onsen_maid', 'standard');
+    art('onsen_maid', 'standard', 'level_10', 'level_20'); // wrong location for this species
+
+    const plan = sync();
+
+    expect(plan.files).toHaveLength(0);
+  });
+
   it('does not touch a disabled pack', () => {
     writePack('starter.json', [species('alley_catgirl')]);
     art('alley_catgirl', 'standard', 'level_10');

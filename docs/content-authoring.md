@@ -294,13 +294,33 @@ gameplay — it is a badge.
 
 ## Artwork
 
-The default resolver expects:
+The default resolver expects an appearance PNG to sit **beside the species'
+own image**, named after the appearance id:
+
+```
+<directory of the species imagePath>/<appearance id>.png
+```
+
+For a core species — whose `imagePath` is `waifumon/<slug>/standard.png` — that
+is:
 
 ```
 assets/waifumon/<species slug>/<appearance id>.png
 ```
 
 So `id: "level_20"` on `alley_catgirl` → `assets/waifumon/alley_catgirl/level_20.png`.
+
+An **expansion pack** keeps its artwork organised under its own directory
+instead of `waifumon/`. Because its species' `imagePath` points there, its
+appearances resolve there too — one convention, no special case:
+
+```
+assets/expansions/<pack>/<slug>/<appearance id>.png
+```
+
+The loader, the runtime resolver, and `appearances:sync` all use this same
+rule, so a pack that ships art beside its `imagePath` is picked up everywhere on
+identical terms.
 
 That layout is a **consumer** convention, not part of the data model. The
 Platform API only ever emits an abstract `assetId`; the bot and the Portal each

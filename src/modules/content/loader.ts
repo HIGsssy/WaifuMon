@@ -1,7 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { ZodError, ZodType, ZodTypeDef } from 'zod';
-import { appearanceAssetRelativePath, defaultAssetId } from '../appearance/appearanceContent';
+import {
+  appearanceAssetRelativePath,
+  appearanceRelativePathForSpecies,
+  defaultAssetId,
+} from '../appearance/appearanceContent';
 import { archetypeToRace, DEFAULT_RACE } from '../cards/race';
 import { ContentValidationError } from '../../shared/errors';
 import type { Logger } from '../../shared/logger';
@@ -103,7 +107,14 @@ export function validateSpeciesAssets(
     const kept: AppearanceContent[] = [];
     for (const appearance of s.appearances) {
       const assetId = appearance.assetId ?? defaultAssetId(s.slug, appearance.id);
-      const relative = appearanceAssetRelativePath(assetId);
+      // An explicit `assetId` is an author override (e.g. reusing another
+      // species' art) and is honoured literally. Otherwise the file is expected
+      // beside the species' own image — `waifumon/<slug>/` for core species,
+      // `expansions/<pack>/<slug>/` for an expansion pack — which is the one
+      // convention the loader, the resolver, and `appearances:sync` all share.
+      const relative = appearance.assetId
+        ? appearanceAssetRelativePath(appearance.assetId)
+        : appearanceRelativePathForSpecies(s.imagePath, appearance.id);
       if (exists(relative)) {
         kept.push(appearance);
         continue;
