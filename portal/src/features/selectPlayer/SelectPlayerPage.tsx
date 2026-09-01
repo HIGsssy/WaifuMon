@@ -18,7 +18,7 @@
  * Runtime switching is a development convenience, and it lives on the other
  * side of this branch.
  */
-import { KeyRound, RefreshCw } from 'lucide-react';
+import { KeyRound, LogIn, RefreshCw } from 'lucide-react';
 import { Navigate } from 'react-router';
 
 import { Button } from '@/components/ui/button';
@@ -26,7 +26,6 @@ import { Card } from '@/components/ui/card';
 import { describeSessionError } from '@/auth/describeSessionError';
 import { useSession } from '@/auth/useSession';
 import { DevLoginPage } from '@/features/devLogin/DevLoginPage';
-import { portalEnv } from '@/lib/env';
 
 export function SelectPlayerPage() {
   if (import.meta.env.DEV) return <DevLoginPage />;
@@ -34,13 +33,14 @@ export function SelectPlayerPage() {
 }
 
 function EnvFallbackScreen() {
-  const { status, configuredPlayerId, error, retry } = useSession();
+  const { status, error, retry, eligibleGuilds, noProfile, selectGuild } = useSession();
 
   // Arriving here with a working session (a stale bookmark, a resolved retry)
   // should not strand the developer on a diagnostic screen.
   if (status === 'ready') return <Navigate to="/dashboard" replace />;
 
   const described = describeSessionError(error);
+  const hasGuildChoices = (eligibleGuilds?.length ?? 0) > 1;
 
   return (
     <div className="mx-auto flex max-w-lg flex-col items-center py-10 sm:py-16">
@@ -50,29 +50,33 @@ function EnvFallbackScreen() {
             <KeyRound className="size-5" aria-hidden="true" />
           </div>
           <div>
-            <h1 className="font-display text-xl text-ink">No player selected</h1>
-            <p className="text-sm text-ink-muted">The Portal needs to know who it is showing.</p>
+            <h1 className="font-display text-xl text-ink">
+              {noProfile ? 'No Waifumon profile found' : hasGuildChoices ? 'Choose a server' : 'Sign in'}
+            </h1>
+            <p className="text-sm text-ink-muted">
+              {noProfile
+                ? 'Play Waifumon in Discord first, then come back here.'
+                : hasGuildChoices
+                  ? 'Pick which Waifumon server to view.'
+                  : 'Use Discord to open your Waifumon Portal.'}
+            </p>
           </div>
         </div>
 
-        <dl className="space-y-3 rounded-xl border border-border bg-surface-sunken p-4 text-sm">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <dt className="text-ink-muted">VITE_DEFAULT_PLAYER_ID</dt>
-            <dd className="font-mono text-ink">
-              {configuredPlayerId ?? <span className="text-ink-subtle">unset</span>}
-            </dd>
+        {hasGuildChoices && (
+          <div className="space-y-2">
+            {eligibleGuilds?.map((guild) => (
+              <Button
+                key={guild.discordGuildId}
+                variant="outline"
+                className="w-full justify-start"
+                onClick={() => void selectGuild?.(guild.discordGuildId)}
+              >
+                {guild.name ?? `Discord server ${guild.discordGuildId}`}
+              </Button>
+            ))}
           </div>
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <dt className="text-ink-muted">VITE_PLATFORM_API_URL</dt>
-            <dd className="font-mono text-ink">{portalEnv.apiUrl}</dd>
-          </div>
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <dt className="text-ink-muted">VITE_PLATFORM_API_TOKEN</dt>
-            <dd className="font-mono text-ink">
-              {portalEnv.apiToken ? '••••••••' : <span className="text-ink-subtle">unset</span>}
-            </dd>
-          </div>
-        </dl>
+        )}
 
         {described && (
           <div
@@ -84,19 +88,16 @@ function EnvFallbackScreen() {
           </div>
         )}
 
-        <div className="mt-6 rounded-xl border border-border p-4 text-sm text-ink-muted">
-          <p>
-            Set <code className="font-mono text-ink">VITE_DEFAULT_PLAYER_ID</code> in{' '}
-            <code className="font-mono text-ink">portal/.env.local</code> and reload.
-          </p>
-          <p className="mt-2 text-xs text-ink-subtle">
-            This build has no runtime player switcher — selecting a player is an env edit plus a
-            reload, by design.
-          </p>
-        </div>
-
         <div className="mt-5 flex justify-end">
-          <Button variant="outline" onClick={retry}>
+          {!hasGuildChoices && !noProfile && (
+            <Button asChild>
+              <a href="/auth/discord">
+                <LogIn aria-hidden="true" />
+                Sign in with Discord
+              </a>
+            </Button>
+          )}
+          <Button variant="outline" onClick={retry} className="ml-2">
             <RefreshCw aria-hidden="true" />
             Try again
           </Button>

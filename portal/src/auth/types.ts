@@ -36,6 +36,29 @@ export interface PortalSession {
   discordGuildId?: string | undefined;
 }
 
+export interface PortalEligibleGuild {
+  discordGuildId: string;
+  guildDbId: number;
+  playerId: number;
+  name: string | null;
+  iconUrl: string | null;
+}
+
+export interface PortalSessionPayload {
+  authenticated: boolean;
+  discordUser?: {
+    id: string;
+    displayName: string;
+    avatarUrl: string | null;
+  };
+  selectedGuild?: PortalEligibleGuild | null;
+  playerId?: number | null;
+  eligibleGuilds?: PortalEligibleGuild[];
+  needsGuildSelection?: boolean;
+  noProfile?: boolean;
+  csrfToken?: string;
+}
+
 export type SessionStatus = 'loading' | 'ready' | 'unresolved';
 
 export interface SessionState {
@@ -52,4 +75,8 @@ export interface SessionState {
   configuredPlayerId: string | undefined;
   /** Re-attempts resolution without a page reload. */
   retry: () => void;
+  logout?: (() => Promise<void>) | undefined;
+  selectGuild?: ((discordGuildId: string) => Promise<void>) | undefined;
+  eligibleGuilds?: PortalEligibleGuild[] | undefined;
+  noProfile?: boolean | undefined;
 }

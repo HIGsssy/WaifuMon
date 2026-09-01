@@ -4,12 +4,9 @@ A **read-only companion web app** for Waifumon. It shows a player their
 collection, buddy, inventory, shop and encyclopedia — and nothing else. Every
 action in the game still happens through the Discord bot.
 
-> ⚠️ **Public serving path, not public auth yet.** The repo now ships a
-> production web layer that serves `portal/dist` and reverse-proxies API probes
-> without exposing the Platform API directly. It deliberately does **not**
-> inject the Platform API master bearer token, so authenticated player/card
-> routes still need the Discord OAuth/session gateway described in
-> [Future work](#discord-oauth-replaces-dev-auth).
+Production authentication uses Discord OAuth2 and an opaque server-side Portal
+session stored in Postgres. The browser never receives the Platform API master
+bearer token.
 
 ---
 
@@ -111,10 +108,14 @@ cp .env.example .env
 # Fill Discord/Postgres values, then:
 PLATFORM_API_ENABLED=true
 PLATFORM_API_TOKEN=$(openssl rand -hex 32)
+PORTAL_PUBLIC_URL=https://portal.playwaifumon.online
+DISCORD_CLIENT_SECRET=<from Discord Developer Portal>
+PORTAL_SESSION_SECRET=$(openssl rand -hex 32)
+PORTAL_SESSION_TTL_SECONDS=604800
 CARD_RENDERER_ENABLED=true              # optional, needed for card routes
 PORTAL_WEB_PUBLISH_HOST=127.0.0.1
 PORTAL_WEB_PORT=3130
-PORTAL_FORWARDED_PROTO=http
+PORTAL_FORWARDED_PROTO=https
 docker compose up --build waifumon-portal
 ```
 
@@ -124,9 +125,17 @@ build cannot block the bot and Platform API from starting — an unqualified
 as above, activates its profile and builds it; `docker compose --profile portal
 up -d --build` brings up the whole stack together.
 
-Open `http://127.0.0.1:3130`. For Cloudflare Tunnel, point the tunnel service
-at `http://127.0.0.1:3130` and set `PORTAL_FORWARDED_PROTO=https` before
-rebuilding/restarting the Portal web container.
+For Cloudflare Tunnel, point the tunnel service at `http://127.0.0.1:3130`.
+The public Portal URL is `https://portal.playwaifumon.online`.
+
+Discord Developer Portal settings:
+
+| Setting | Value |
+|---|---|
+| OAuth2 redirect URI | `https://portal.playwaifumon.online/auth/discord/callback` |
+| Scopes | `identify`, `guilds` |
+| Client ID | same value as `DISCORD_CLIENT_ID` |
+| Client secret | stored only as `DISCORD_CLIENT_SECRET` in the root `.env` |
 
 ### Why `/ready` is not public
 
@@ -199,7 +208,8 @@ published API port remains loopback by default.
 - `portal/dist` as static files.
 - `/assets/*` with `Cache-Control: public, max-age=31536000, immutable`.
 - `index.html` and SPA fallback with `Cache-Control: no-cache`.
-- `/api/*` and `/health` proxied to the Platform API. `/health` is liveness
+- `/auth/*`, `/api/*` and `/health` proxied to the Platform API. `/auth/*`
+  handles Discord OAuth, session lookup, guild selection and logout. `/health` is liveness
   only — `{"status":"ok"}`, no component detail — so it is safe to answer
   anonymously and is the right target for a tunnel health check.
 - `/ready` is **not** proxied; it returns 404 at the edge. See "Why /ready is
@@ -228,19 +238,24 @@ of trusting a client-supplied chain; `X-Forwarded-Proto` is an operator-set
 value (`PORTAL_FORWARDED_PROTO`) so Cloudflare TLS termination can be represented
 as `https` without accepting arbitrary request headers.
 
-### Authentication limitation
+### Portal authentication
 
-The Vite dev server injects `Authorization: Bearer $VITE_PLATFORM_API_TOKEN`
-because dev card/image URLs are loaded through `<img>`, which cannot set
-headers. The production Nginx layer does **not** copy that behaviour. Doing so
-would turn one shared master API token into a public ambient credential for
-every browser request.
+`GET /auth/discord` creates a short-lived OAuth state server-side and redirects
+to Discord with `identify guilds`. The callback validates and consumes that
+state, exchanges the code server-side, fetches the Discord user and guild list,
+and intersects those guilds with existing Waifumon `(discordGuildId,
+discordUserId)` players.
 
-Until the Discord OAuth/session gateway exists, a production-served Portal can
-load the SPA and unauthenticated ops endpoints, but authenticated player JSON,
-owned artwork and card images will return 401 unless the browser has some
-future session mechanism. That is intentional: production serving is ready for
-Cloudflare, production identity is the next milestone.
+One matching guild is selected automatically. Multiple matches require the
+browser to choose from the server-derived eligible list via `POST /auth/guild`.
+Zero matches show a no-profile state; the Portal does not create players.
+
+The session cookie is opaque, `HttpOnly`, `SameSite=Lax`, `Path=/`, and `Secure`
+when `PORTAL_FORWARDED_PROTO=https`. The database stores only an HMAC digest of
+the session id, user/profile display metadata, eligible guilds, selected guild
+and player id, CSRF token, creation/expiration timestamps and optional
+revocation time. Cookie-authenticated non-GET routes must echo the readable
+`wm_portal_csrf` cookie in `x-portal-csrf`.
 
 ---
 

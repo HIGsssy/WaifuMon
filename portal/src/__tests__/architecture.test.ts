@@ -61,11 +61,11 @@ describe('architectural boundaries', () => {
     expect(offenders.map((f) => f.path)).toEqual([]);
   });
 
-  it('never issues a write against the Platform API', () => {
+  it('only auth helpers issue browser-authenticated writes', () => {
     const writeCall = /apiClient\.(post|put|patch|delete)\s*[(<]/;
+    const allowed = new Set(['api/auth.ts']);
     const offenders = files
-      // The client itself names the methods it refuses.
-      .filter((file) => file.path !== 'api/client.ts')
+      .filter((file) => file.path !== 'api/client.ts' && !allowed.has(file.path))
       .filter((file) => writeCall.test(file.contents));
     expect(offenders.map((f) => f.path)).toEqual([]);
   });

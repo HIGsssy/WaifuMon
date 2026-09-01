@@ -104,6 +104,34 @@ describe('loadConfig', () => {
     });
   });
 
+  it('enables Portal auth when PORTAL_PUBLIC_URL is set and requires server-only secrets', () => {
+    expect(() =>
+      loadConfig({ ...validEnv, PORTAL_PUBLIC_URL: 'https://portal.playwaifumon.online' }),
+    ).toThrow(/DISCORD_CLIENT_SECRET/);
+    expect(() =>
+      loadConfig({
+        ...validEnv,
+        PORTAL_PUBLIC_URL: 'https://portal.playwaifumon.online',
+        DISCORD_CLIENT_SECRET: 'oauth-secret',
+        PORTAL_SESSION_SECRET: 'too-short',
+      }),
+    ).toThrow(/PORTAL_SESSION_SECRET/);
+
+    const config = loadConfig({
+      ...validEnv,
+      PORTAL_PUBLIC_URL: 'https://portal.playwaifumon.online/',
+      PORTAL_FORWARDED_PROTO: 'https',
+      DISCORD_CLIENT_SECRET: 'oauth-secret',
+      PORTAL_SESSION_SECRET: 'x'.repeat(64),
+    });
+    expect(config.portalAuth).toMatchObject({
+      enabled: true,
+      publicUrl: 'https://portal.playwaifumon.online',
+      forwardedProto: 'https',
+      sessionTtlSeconds: 604800,
+    });
+  });
+
   it('rejects PLATFORM_API_ENABLED=true without a token', () => {
     expect(() => loadConfig({ ...validEnv, PLATFORM_API_ENABLED: 'true' })).toThrow(ConfigError);
     expect(() =>

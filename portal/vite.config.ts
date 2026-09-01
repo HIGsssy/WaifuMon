@@ -238,6 +238,7 @@ export default defineConfig(({ mode }) => {
             ? { headers: { Authorization: `Bearer ${env.VITE_PLATFORM_API_TOKEN}` } }
             : {}),
         },
+        '/auth': { target: apiTarget, changeOrigin: true },
         // Root-level ops endpoints on the API server — used by §23 diagnostics.
         '/ready': { target: apiTarget, changeOrigin: true },
         '/health': { target: apiTarget, changeOrigin: true },

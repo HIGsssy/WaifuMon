@@ -111,6 +111,10 @@ export class ApiNoActiveResourceError extends AppError {
 const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   // --- Request-level (raised by this layer) -------------------------------
   UNAUTHORIZED: 401,
+  PORTAL_FORBIDDEN: 403,
+  PORTAL_CSRF_INVALID: 403,
+  PORTAL_GUILD_FORBIDDEN: 403,
+  OAUTH_STATE_INVALID: 400,
   NOT_FOUND: 404,
   VALIDATION_ERROR: 400,
   INTERNAL_ERROR: 500,

@@ -22,12 +22,12 @@
 import type { ReactNode } from 'react';
 
 import { DevLoginSessionProvider } from './dev/DevLoginSessionProvider';
-import { EnvSessionProvider } from './EnvSessionProvider';
+import { OAuthSessionProvider } from './OAuthSessionProvider';
 
 export function DevSessionProvider({ children }: { children: ReactNode }) {
   return import.meta.env.DEV ? (
     <DevLoginSessionProvider>{children}</DevLoginSessionProvider>
   ) : (
-    <EnvSessionProvider>{children}</EnvSessionProvider>
+    <OAuthSessionProvider>{children}</OAuthSessionProvider>
   );
 }

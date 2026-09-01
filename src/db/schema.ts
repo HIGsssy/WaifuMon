@@ -154,6 +154,48 @@ export const players = pgTable(
   ],
 );
 
+export interface PortalEligibleGuild {
+  discordGuildId: string;
+  guildDbId: number;
+  playerId: number;
+  name: string | null;
+  iconUrl: string | null;
+}
+
+export const portalOauthStates = pgTable(
+  'portal_oauth_states',
+  {
+    stateDigest: text('state_digest').primaryKey(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    consumedAt: timestamp('consumed_at', { withTimezone: true }),
+  },
+  (t) => [index('portal_oauth_states_expires_idx').on(t.expiresAt)],
+);
+
+export const portalSessions = pgTable(
+  'portal_sessions',
+  {
+    sessionDigest: text('session_digest').primaryKey(),
+    discordUserId: text('discord_user_id').notNull(),
+    discordUsername: text('discord_username'),
+    discordAvatarUrl: text('discord_avatar_url'),
+    selectedDiscordGuildId: text('selected_discord_guild_id'),
+    selectedGuildDbId: bigint('selected_guild_db_id', { mode: 'number' }).references(() => guilds.id),
+    playerId: bigint('player_id', { mode: 'number' }).references(() => players.id),
+    eligibleGuilds: jsonb('eligible_guilds').$type<PortalEligibleGuild[]>().notNull().default([]),
+    csrfToken: text('csrf_token').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  },
+  (t) => [
+    index('portal_sessions_expires_idx').on(t.expiresAt),
+    index('portal_sessions_discord_user_idx').on(t.discordUserId),
+    index('portal_sessions_player_idx').on(t.playerId),
+  ],
+);
+
 export const playerCurrencies = pgTable(
   'player_currencies',
   {

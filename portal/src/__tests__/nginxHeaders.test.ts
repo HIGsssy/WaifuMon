@@ -99,7 +99,7 @@ describe('proxied responses carry exactly one copy of each header', () => {
   const proxied = blocks.filter((b) => b.body.includes('proxy_pass'));
 
   it('proxies the two endpoints it should, and no others', () => {
-    expect(proxied.map((b) => b.selector).sort()).toEqual(['= /health', '^~ /api']);
+    expect(proxied.map((b) => b.selector).sort()).toEqual(['= /health', '^~ /api', '^~ /auth/']);
   });
 
   it.each(proxied.map((b) => [b.selector, b] as const))(

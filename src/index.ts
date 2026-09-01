@@ -7,6 +7,7 @@
 import { startAdminServer } from './admin/server';
 import { startPlatformApi } from './api/server';
 import { withIdentityCache } from './api/identity';
+import { createPortalSessionService } from './api/portalSession';
 import { loadConfig } from './config/config';
 import { connectWithRetry, createDb, createPool } from './db/client';
 import { runMigrations } from './db/migrate';
@@ -487,6 +488,9 @@ async function main(): Promise<void> {
   // than capturing it, so a content reload is visible to /ready immediately.
   const platformApi = await startPlatformApi({
     config: config.platformApi,
+    ...(config.portalAuth?.enabled
+      ? { portalAuth: { config: config.portalAuth, sessions: createPortalSessionService(db, config.portalAuth) } }
+      : {}),
     logger,
     ctx: {
       services: ctx.services,

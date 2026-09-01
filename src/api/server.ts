@@ -21,6 +21,7 @@
  * `GameEvent` emission from HTTP handlers (§5) — a documented, temporary gap.
  */
 import helmet from '@fastify/helmet';
+import cookie from '@fastify/cookie';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import Fastify, { type FastifyBaseLogger, type FastifyError, type FastifyInstance } from 'fastify';
@@ -39,6 +40,8 @@ import {
 import { API_VERSION, genRequestId, registerRequestId } from './plugins/requestId';
 import { registerTypeProvider, type ZodFastify } from './plugins/typeProvider';
 import { registerHealthRoutes, type ReadinessProbes } from './routes/health';
+import { registerPortalAuthRoutes } from './routes/auth';
+import type { PortalSessionConfig, PortalSessionService } from './portalSession';
 import { v1Routes } from './routes/v1/index';
 
 /** No v1 endpoint needs a large body; a small cap is free DoS hygiene. */
@@ -46,6 +49,7 @@ const BODY_LIMIT_BYTES = 64 * 1024;
 
 export interface PlatformApiDeps {
   config: PlatformApiConfig;
+  portalAuth?: { config: PortalSessionConfig; sessions: PortalSessionService } | undefined;
   logger: Logger;
   probes: ReadinessProbes;
   /** Services + content snapshot the v1 routes adapt. */
@@ -122,11 +126,12 @@ export async function createPlatformApiServer(deps: PlatformApiDeps): Promise<Zo
     // buy nothing and break the docs page.
     contentSecurityPolicy: false,
   });
+  await app.register(cookie);
 
   // Auth before every route registration below: Fastify hooks apply to routes
   // registered after them in the same encapsulation context. Public paths
   // (health, ready, docs, spec) are allow-listed inside the hook.
-  registerAuth(app, { token: deps.config.token });
+  registerAuth(app, { token: deps.config.token, portalSessions: deps.portalAuth?.sessions });
 
   await app.register(swagger, {
     openapi: {
@@ -240,6 +245,10 @@ export async function createPlatformApiServer(deps: PlatformApiDeps): Promise<Zo
     );
     return reply.code(status).send(toErrorBody(wrapped, status, requestId));
   });
+
+  if (deps.portalAuth !== undefined) {
+    registerPortalAuthRoutes(app, deps.portalAuth);
+  }
 
   registerHealthRoutes(app, deps.probes);
   await app.register(

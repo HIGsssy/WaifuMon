@@ -23,7 +23,15 @@
  */
 import { timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
+import { AppError } from '../shared/errors';
 import { UnauthorizedError, mapAppErrorToStatus, toErrorBody } from './errors';
+import {
+  PORTAL_CSRF_COOKIE,
+  PORTAL_CSRF_HEADER,
+  PORTAL_SESSION_COOKIE,
+  type PortalSession,
+  type PortalSessionService,
+} from './portalSession';
 
 /**
  * Reachable without a token (plan §9). `/health` and `/ready` are ops targets;
@@ -37,6 +45,10 @@ const PUBLIC_PATHS: ReadonlySet<string> = new Set([
   '/health',
   '/ready',
   '/api/v1/openapi.json',
+  '/auth/discord',
+  '/auth/discord/callback',
+  '/auth/session',
+  '/auth/logout',
 ]);
 
 /** Swagger UI serves its own JS/CSS beneath this prefix. */
@@ -56,6 +68,14 @@ export function constantTimeEquals(a: string, b: string): boolean {
 
 export interface ApiAuthDeps {
   token: string;
+  portalSessions?: PortalSessionService | undefined;
+}
+
+declare module 'fastify' {
+  interface FastifyRequest {
+    portalSession?: PortalSession;
+    apiAuth?: 'bearer' | 'portal';
+  }
 }
 
 export function registerAuth(app: FastifyInstance, deps: ApiAuthDeps): void {
@@ -65,6 +85,31 @@ export function registerAuth(app: FastifyInstance, deps: ApiAuthDeps): void {
 
     const header = String(req.headers.authorization ?? '');
     if (header.startsWith('Bearer ') && constantTimeEquals(header.slice(7).trim(), deps.token)) {
+      req.apiAuth = 'bearer';
+      return;
+    }
+
+    const session = await deps.portalSessions?.getSession(req.cookies[PORTAL_SESSION_COOKIE]);
+    if (session) {
+      req.portalSession = session;
+      req.apiAuth = 'portal';
+
+      if (req.method !== 'GET' && req.method !== 'HEAD') {
+        const csrfHeader = String(req.headers[PORTAL_CSRF_HEADER] ?? '');
+        const csrfCookie = req.cookies[PORTAL_CSRF_COOKIE] ?? '';
+        if (
+          !csrfHeader ||
+          !csrfCookie ||
+          !constantTimeEquals(csrfHeader, session.csrfToken) ||
+          !constantTimeEquals(csrfCookie, session.csrfToken)
+        ) {
+          const err = new AppError('PORTAL_CSRF_INVALID', 'Portal CSRF token mismatch', 'Request rejected.');
+          await reply
+            .code(mapAppErrorToStatus(err))
+            .send(toErrorBody(err, mapAppErrorToStatus(err), String(req.id)));
+          return;
+        }
+      }
       return;
     }
 

@@ -20,6 +20,7 @@ import type { FastifyInstance } from 'fastify';
 import type { PlayerRow } from '../../db/schema';
 import type { ApiContext } from '../context';
 import { ApiPlayerNotFoundError } from '../errors';
+import { AppError } from '../../shared/errors';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -42,6 +43,10 @@ export function registerPlayerScope(app: FastifyInstance, ctx: ApiContext): void
 
     const player = await ctx.services.players.getById(playerId);
     if (!player) throw new ApiPlayerNotFoundError(playerId);
+
+    if (req.apiAuth === 'portal' && req.portalSession?.playerId !== player.id) {
+      throw new AppError('PORTAL_FORBIDDEN', 'Portal session tried to access another player', 'Not found.');
+    }
     req.player = player;
   });
 }

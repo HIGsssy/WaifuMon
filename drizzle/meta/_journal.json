@@ -162,6 +162,13 @@
       "when": 1817676000000,
       "tag": "0022_item_shop_regions",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1817762400000,
+      "tag": "0023_portal_oauth_sessions",
+      "breakpoints": true
     }
   ]
 }

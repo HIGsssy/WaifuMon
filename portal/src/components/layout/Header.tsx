@@ -5,7 +5,7 @@
  * Kept deliberately thin — §17 wants the chrome quiet enough that the artwork
  * on the page below it is the loudest thing on screen.
  */
-import { Menu, Moon, Sun } from 'lucide-react';
+import { LogOut, Menu, Moon, Sun } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router';
 
@@ -35,7 +35,7 @@ function ThemeToggle() {
 
 export function Header() {
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const { session } = useSession();
+  const { session, logout } = useSession();
 
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-canvas/85 backdrop-blur-md">
@@ -70,6 +70,11 @@ export function Header() {
             <span className="hidden text-sm text-ink-muted sm:inline" title="Acting player">
               {session.displayName}
             </span>
+          )}
+          {session && logout && (
+            <Button variant="ghost" size="icon" onClick={() => void logout()} aria-label="Log out">
+              <LogOut aria-hidden="true" />
+            </Button>
           )}
           {/* Compile-time constant: a production build drops this entirely. */}
           {import.meta.env.DEV && <SwitchPlayerButton iconOnly />}

@@ -5,18 +5,8 @@
  * them:
  *
  *  - Base URL and the `Authorization: Bearer …` header.
- *  - **Read-only enforcement.** Any non-GET request is rejected before it
- *    leaves the process. v1 is browse-only (§4) and this is what makes success
- *    criterion §24.6 mechanically true rather than a convention.
- *
- *    This is deliberately *binary* — there is no allowlist and no per-call
- *    opt-out. The value of the rule comes from needing no judgment to verify:
- *    "no non-GET requests" is greppable and unarguable, where "none except
- *    these" would need a ruling per entry. Cosmetic-looking mutations
- *    (appearance selection, favourite, nickname) are exactly the cases that
- *    would erode it one reasonable-sounding step at a time, so they live in
- *    Discord until the authenticated-Portal milestone gives writes a real
- *    identity to happen under.
+ *  - Credentials. Dev builds may attach the shared bearer token; production
+ *    sends only same-origin cookies and CSRF for writes.
  *  - Error normalisation: the API's `{ error: { code, message }, requestId }`
  *    envelope becomes a `PortalApiError`, and network/timeout failures become
  *    one too so callers only ever handle a single error type.
@@ -133,15 +123,15 @@ export function isCanceledRequest(error: unknown): boolean {
   return code === 'ERR_CANCELED';
 }
 
-/** Raised when read-only enforcement trips — a Portal bug, never an API state. */
-export class ReadOnlyViolationError extends Error {
-  constructor(method: string, url: string) {
-    super(
-      `The Portal is read-only (plan §4): refusing ${method.toUpperCase()} ${url}. ` +
-        'Gameplay actions belong in Discord.',
-    );
-    this.name = 'ReadOnlyViolationError';
-  }
+const CSRF_COOKIE = 'wm_portal_csrf';
+const CSRF_HEADER = 'x-portal-csrf';
+
+function csrfTokenFromCookie(): string | undefined {
+  const cookie = document.cookie
+    .split(';')
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${CSRF_COOKIE}=`));
+  return cookie ? decodeURIComponent(cookie.slice(CSRF_COOKIE.length + 1)) : undefined;
 }
 
 // ── Diagnostics-facing observations ─────────────────────────────────────────
@@ -256,16 +246,20 @@ export function createApiClient(): AxiosInstance {
     baseURL: portalEnv.apiUrl,
     timeout: requestTimeoutMs(),
     headers: { Accept: 'application/json' },
+    withCredentials: true,
   });
 
   instance.interceptors.request.use((config: TimedConfig) => {
     const method = (config.method ?? 'get').toLowerCase();
-    if (method !== 'get') {
-      throw new ReadOnlyViolationError(method, pathOf(config));
+    if (config.url?.startsWith('/auth/')) {
+      config.baseURL = '';
     }
 
     if (portalEnv.apiToken) {
       config.headers.set('Authorization', `Bearer ${portalEnv.apiToken}`);
+    } else if (method !== 'get' && method !== 'head') {
+      const csrf = csrfTokenFromCookie();
+      if (csrf) config.headers.set(CSRF_HEADER, csrf);
     }
     if (portalEnv.isDev) {
       config.__startedAt = performance.now();
@@ -302,10 +296,6 @@ export function createApiClient(): AxiosInstance {
       return response;
     },
     (error: unknown) => {
-      // A read-only violation never reached the network — surface it as-is so
-      // the stack points at the offending call site rather than at Axios.
-      if (error instanceof ReadOnlyViolationError) return Promise.reject(error);
-
       const axiosError = error as AxiosError;
       const decoded = decodeError(axiosError);
 

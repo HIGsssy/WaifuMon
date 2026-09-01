@@ -1,9 +1,5 @@
 /**
- * API wrapper contract (plan §22.8) plus the read-only guarantee (§24.6).
- *
- * The read-only assertions matter more than they look: v1's entire safety story
- * is "the Portal cannot change game state". Enforcing it in the client and
- * testing it here makes that a property of the code, not a code-review habit.
+ * API wrapper contract (plan §22.8) plus Portal cookie/CSRF credentials.
  */
 import { describe, expect, it } from 'vitest';
 
@@ -16,9 +12,9 @@ import {
   getLastApiError,
   isPortalApiError,
   PortalApiError,
-  ReadOnlyViolationError,
 } from '../client';
 import { getPlayerProfile } from '../players';
+import { portalEnv } from '@/lib/env';
 
 describe('the API client', () => {
   it('attaches the bearer token to every request', async () => {
@@ -84,45 +80,34 @@ describe('the API client', () => {
     expect(error.status).toBe(0);
   });
 
-  it.each(['post', 'patch', 'put', 'delete'] as const)(
-    'refuses to issue a %s request — the Portal is read-only',
-    async (method) => {
-      const client = createApiClient();
-      await expect(client.request({ url: '/v1/players/1', method })).rejects.toBeInstanceOf(
-        ReadOnlyViolationError,
-      );
-    },
-  );
-
-  /**
-   * The refusal is unconditional — no path is exempt.
-   *
-   * Asserted separately against the endpoints most likely to tempt an
-   * exception. Appearance selection is the live example: it is genuinely
-   * cosmetic (the API writes one column), which is exactly what makes it the
-   * plausible first crack in a binary rule. The rule stays binary; the action
-   * lives in Discord until the authenticated-Portal milestone.
-   */
-  it.each([
-    ['put', '/v1/players/1/collection/owned/2/appearance'],
-    ['post', '/v1/players/1/collection/owned/2/appearance'],
-    ['patch', '/v1/players/1/collection/owned/2/favorite'],
-    ['post', '/v1/players/1/hunt'],
-    ['delete', '/v1/players/1/collection/owned/2'],
-  ] as const)('refuses %s %s — no endpoint is exempt', async (method, url) => {
-    const client = createApiClient();
-    await expect(client.request({ url, method })).rejects.toBeInstanceOf(
-      ReadOnlyViolationError,
+  it('sends the Portal CSRF header on cookie-authenticated writes', async () => {
+    const oldToken = portalEnv.apiToken;
+    portalEnv.apiToken = undefined;
+    document.cookie = 'wm_portal_csrf=csrf-token; path=/';
+    let seen: string | null = null;
+    server.use(
+      http.put('/api/v1/players/:playerId/collection/owned/:waifuId/appearance', ({ request }) => {
+        seen = request.headers.get('x-portal-csrf');
+        return data({});
+      }),
     );
+    const client = createApiClient();
+    await client.put('/v1/players/1/collection/owned/2/appearance', { appearanceId: 'standard' });
+    expect(seen).toBe('csrf-token');
+    portalEnv.apiToken = oldToken;
   });
 
-  it('refuses a write even when the caller prefixes the API base path', async () => {
-    // Guards the shape an allowlist would have matched on: a `/api`-prefixed
-    // path must not read as a different, permitted route.
+  it('routes auth requests outside the /api base URL', async () => {
+    let path: string | null = null;
+    server.use(
+      http.post('/auth/logout', ({ request }) => {
+        path = new URL(request.url).pathname;
+        return data({ ok: true });
+      }),
+    );
     const client = createApiClient();
-    await expect(
-      client.request({ url: '/api/v1/players/1/collection/owned/2/appearance', method: 'put' }),
-    ).rejects.toBeInstanceOf(ReadOnlyViolationError);
+    await client.post('/auth/logout', {});
+    expect(path).toBe('/auth/logout');
   });
 });
 

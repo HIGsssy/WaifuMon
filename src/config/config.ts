@@ -127,6 +127,18 @@ const EnvSchema = z.object({
         '(e.g. http://127.0.0.1:3120), never a wildcard bind like 0.0.0.0',
     })
     .transform((v) => (v === undefined ? undefined : stripTrailingSlash(v))),
+  PORTAL_PUBLIC_URL: z
+    .string()
+    .trim()
+    .optional()
+    .transform((v) => (v !== undefined && v.length > 0 ? stripTrailingSlash(v) : undefined))
+    .refine((v) => v === undefined || isAdvertisableUrl(v), {
+      message: 'PORTAL_PUBLIC_URL must be an absolute http(s) URL',
+    }),
+  PORTAL_FORWARDED_PROTO: z.enum(['http', 'https']).default('http'),
+  DISCORD_CLIENT_SECRET: z.string().optional(),
+  PORTAL_SESSION_SECRET: z.string().optional(),
+  PORTAL_SESSION_TTL_SECONDS: z.coerce.number().int().min(300).max(60 * 60 * 24 * 30).default(60 * 60 * 24 * 7),
 });
 
 /** Binds that mean "every interface" — valid to listen on, useless to publish. */
@@ -197,6 +209,16 @@ export interface PlatformApiConfig {
   cardWarmOnCollection?: boolean | undefined;
 }
 
+export interface PortalAuthConfig {
+  enabled: boolean;
+  publicUrl: string;
+  forwardedProto: 'http' | 'https';
+  discordClientId: string;
+  discordClientSecret: string;
+  sessionSecret: string;
+  sessionTtlSeconds: number;
+}
+
 /**
  * The base URL to advertise to clients (OpenAPI `servers`, startup log lines).
  *
@@ -230,6 +252,7 @@ export interface AppConfig {
   logLevel: string;
   adminWeb: AdminWebConfig;
   platformApi: PlatformApiConfig;
+  portalAuth?: PortalAuthConfig | undefined;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -251,6 +274,20 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   if (e.PLATFORM_API_ENABLED && platformApiToken.length === 0) {
     throw new ConfigError(
       'Invalid environment configuration — PLATFORM_API_TOKEN is required when PLATFORM_API_ENABLED=true',
+    );
+  }
+  const portalPublicUrl = e.PORTAL_PUBLIC_URL ?? '';
+  const discordClientSecret = (e.DISCORD_CLIENT_SECRET ?? '').trim();
+  const portalSessionSecret = (e.PORTAL_SESSION_SECRET ?? '').trim();
+  const portalAuthEnabled = portalPublicUrl.length > 0;
+  if (portalAuthEnabled && discordClientSecret.length === 0) {
+    throw new ConfigError(
+      'Invalid environment configuration — DISCORD_CLIENT_SECRET is required when PORTAL_PUBLIC_URL is set',
+    );
+  }
+  if (portalAuthEnabled && portalSessionSecret.length < 32) {
+    throw new ConfigError(
+      'Invalid environment configuration — PORTAL_SESSION_SECRET must be at least 32 characters when PORTAL_PUBLIC_URL is set',
     );
   }
   return {
@@ -278,6 +315,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       cardRenderWorkers: e.CARD_RENDER_WORKERS,
       cardWarmConcurrency: e.CARD_WARM_CONCURRENCY,
       cardWarmOnCollection: e.CARD_WARM_ON_COLLECTION,
+    },
+    portalAuth: {
+      enabled: portalAuthEnabled,
+      publicUrl: portalPublicUrl,
+      forwardedProto: e.PORTAL_FORWARDED_PROTO,
+      discordClientId: e.DISCORD_CLIENT_ID,
+      discordClientSecret,
+      sessionSecret: portalSessionSecret,
+      sessionTtlSeconds: e.PORTAL_SESSION_TTL_SECONDS,
     },
   };
 }
