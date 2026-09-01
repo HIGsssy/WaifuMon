@@ -465,6 +465,68 @@ There is no set-numbering system yet. `cardNumber` is free-form presentation
 metadata held for a future one. **Do not invent numbering to fill it in** — a
 made-up `012/100` implies a hundred-card set that does not exist. Leave it out.
 
+## Buddy Bonus
+
+A species may author a **Buddy Bonus** — a passive effect the player gets while
+one of their copies of her is the equipped Buddy. It is entirely a content
+decision: no code names a species, and a new species using an effect that
+already exists works the moment it loads.
+
+```json
+"buddyBonus": {
+  "name": "After Bell",
+  "flavorText": "After Bell: +5% capture chance against SR and below Waifumon.",
+  "effectId": "capture_chance",
+  "value": 5,
+  "target": { "type": "rarity_max", "value": "SR" }
+}
+```
+
+`name` and `flavorText` are **display only** — nothing in the game reads them.
+Behaviour is `effectId`, `value` and the optional `target`, and nothing else.
+`value` is a percentage, and it is **relative**: `+10%` on a weight of 100 is
+110, and `100` doubles whatever it applies to. For `energy_save_chance` it is
+instead the probability of the proc.
+
+| `effectId` | What it changes | Target |
+| --- | --- | --- |
+| `capture_chance` | The chance of capturing the Waifumon you are facing | optional — `race`, `affinity`, `rarity_min`, `rarity_max`, `ownership`. No target means every species |
+| `encounter_weight` | How likely a Waifumon is to be the one you meet | **required** — `race`, `affinity`, `rarity`, `rarity_min`, `rarity_max`, `ownership` |
+| `energy_save_chance` | Chance a hunt costs no Energy | none |
+| `care_energy_gain` | Energy recovered in Care Mode | none |
+| `player_xp_gain` | Player XP awards | none |
+| `buddy_xp_gain` | XP awarded to the active Buddy | none |
+| `essence_gain` | Essence awards | none |
+| `hunt_item_find_chance` | How often a hunt finds an item | none |
+| `affection_gain` | Affection awards | none |
+| `boss_reward_gain` | The payout from a Boss Encounter | none |
+
+A bonus is granted by the copy the player has **equipped as their Buddy**, with
+one deliberate exception: `boss_reward_gain` is resolved from the copy that was
+*committed* to that Boss Encounter. A participation snapshots the committed
+Waifumon — her level, SP, rarity, affinity and race — and her bonus is part of
+that snapshot, so swapping Buddy between committing and resolution changes
+nothing about that encounter's payout, in either direction.
+
+`affection_gain` is the mirror case, also deliberate: it scales **any**
+Affection award the player earns, including Affection earned by a different
+Waifumon being cared for in Care Mode. `buddy_xp_gain` does not work that way —
+it applies only to XP awarded to the active Buddy herself.
+
+Target values are closed sets: races are the `race` codes above, affinities are
+`dominant` / `submissive` / `switch` / `caregiver` / `primal`, rarities are
+`N` … `EX`, and ownership is `owned` / `unowned`.
+
+Anything outside those sets — a target on an effect that takes none, a missing
+target on `encounter_weight`, an unknown `effectId` — **fails content
+validation** rather than loading as a bonus that quietly never fires.
+`content/bonus.json` is the same table in machine-readable form, and a test
+keeps it in step with the code.
+
+Adding a *new kind* of effect is the one case that needs code: the effect id
+has to be added to `src/modules/buddyBonus/buddyBonusEffects.ts` and applied
+wherever it belongs.
+
 ## Worked examples
 
 Three shipped species demonstrate the range — copy whichever matches your case:

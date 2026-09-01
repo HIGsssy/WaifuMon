@@ -34,3 +34,12 @@ logs/
 
 # optional: keep assets out of git if they will be mounted separately
 # assets/
+.hermes/scripts/apply_buddy_bonuses.py
+.hermes/reports/buddy_bonus_apply_audit.json
+.hermes/backups/starter.before_buddy_bonus.json
+.hermes/reports/buddy_bonus_final_mapping.json
+.hermes/reports/buddy_bonus_proposed_one_object.json
+.gitignore
+.gitignore
+.hermes/reports/buddy_bonus_review.csv
+.hermes/reports/buddy_bonus_review.json

@@ -19,6 +19,20 @@ import {
  */
 import { RACE_CODES } from '../cards/race';
 /**
+ * The Buddy Bonus effect registry. Same reasoning as `RACE_CODES` above: the
+ * closed set of effects is owned by the module that *applies* them, and is
+ * imported here rather than restated, so a new effect cannot exist in one
+ * place and not the other. The import is a leaf (constants and pure
+ * predicates only).
+ */
+import {
+  BUDDY_BONUS_EFFECT_IDS,
+  BUDDY_BONUS_EFFECTS,
+  BUDDY_BONUS_TARGET_TYPES,
+  BUDDY_BONUS_TARGET_VALUES,
+  effectRequiresTarget,
+} from '../buddyBonus/buddyBonusEffects';
+/**
  * The boss affinity wheel's shipped contents double as this schema's default,
  * so `tables.json` omitting the block yields exactly the cycle the domain
  * module already uses. Same reasoning as `DEFAULT_SP_RANGES_BY_RARITY` below.
@@ -465,6 +479,86 @@ export const SpeciesCardMetaSchema = z
 
 export type SpeciesCardMeta = z.infer<typeof SpeciesCardMetaSchema>;
 
+/**
+ * Buddy Bonus — the passive effect an owned copy grants while she is the
+ * player's equipped Buddy.
+ *
+ * Wholly content-driven: the gameplay layer knows the closed set of
+ * `effectId`s in {@link BUDDY_BONUS_EFFECTS} and nothing else. A new species
+ * file naming an existing effect works with no code change, which is exactly
+ * why the validation below is strict — a typo'd effect id or a target on an
+ * effect that takes none is a content bug that must fail the load rather than
+ * become a bonus that silently never fires.
+ *
+ * `name` and `flavorText` are display copy. Nothing branches on them.
+ */
+export const BuddyBonusSchema = z
+  .object({
+    name: cardText(48),
+    flavorText: cardText(200),
+    effectId: z.enum(BUDDY_BONUS_EFFECT_IDS),
+    /** A percentage, read relative: `100` doubles, `5` adds a twentieth. */
+    value: z.number().finite(),
+    target: z
+      .object({
+        type: z.enum(BUDDY_BONUS_TARGET_TYPES),
+        value: z.string().min(1),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict()
+  .superRefine((bonus, ctx) => {
+    const rule = BUDDY_BONUS_EFFECTS[bonus.effectId];
+    const target = bonus.target;
+
+    if (!target) {
+      if (effectRequiresTarget(bonus.effectId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `buddyBonus effect "${bonus.effectId}" requires a target`,
+          path: ['target'],
+        });
+      }
+      return;
+    }
+
+    if (rule.allowedTargetTypes.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `buddyBonus effect "${bonus.effectId}" does not take a target`,
+        path: ['target'],
+      });
+      return;
+    }
+
+    if (!rule.allowedTargetTypes.includes(target.type)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          `buddyBonus effect "${bonus.effectId}" does not support target type ` +
+          `"${target.type}" (allowed: ${rule.allowedTargetTypes.join(', ')})`,
+        path: ['target', 'type'],
+      });
+      return;
+    }
+
+    // Values are closed sets, not free text: an unknown race or rarity would
+    // match nothing at runtime, so it fails the load instead.
+    const allowed = BUDDY_BONUS_TARGET_VALUES[target.type];
+    if (!allowed.includes(target.value)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          `buddyBonus target "${target.type}" value "${target.value}" is not one of: ` +
+          allowed.join(', '),
+        path: ['target', 'value'],
+      });
+    }
+  });
+
+export type BuddyBonusContent = z.infer<typeof BuddyBonusSchema>;
+
 const SpeciesBaseSchema = z.object({
   slug,
   name: z.string().min(1),
@@ -518,6 +612,12 @@ const SpeciesBaseSchema = z.object({
    * rewritten on disk, so existing content files stay byte-identical.
    */
   appearances: z.array(AppearanceContentSchema).optional(),
+  /**
+   * Optional Buddy Bonus. Present → this species grants that effect whenever
+   * one of the player's copies of her is the equipped Buddy. Absent → she
+   * simply grants nothing, which is a perfectly ordinary species.
+   */
+  buddyBonus: BuddyBonusSchema.optional(),
 });
 
 export const SpeciesContentSchema = SpeciesBaseSchema.superRefine((s, ctx) => {

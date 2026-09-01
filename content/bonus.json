@@ -3,90 +3,76 @@
     "capture_chance": {
       "operation": "percent_modifier",
       "appliesTo": "capture",
-      "allowedTargets": [
-        "any",
+      "allowedTargetTypes": [
         "race",
         "affinity",
         "rarity_min",
         "rarity_max",
         "ownership"
-      ]
+      ],
+      "targetOptional": true
     },
 
     "encounter_weight": {
       "operation": "percent_modifier",
       "appliesTo": "encounter_selection",
-      "allowedTargets": [
+      "allowedTargetTypes": [
         "race",
         "affinity",
         "rarity",
         "rarity_min",
+        "rarity_max",
         "ownership"
-      ]
+      ],
+      "targetOptional": false
     },
 
     "energy_save_chance": {
       "operation": "proc_chance",
       "appliesTo": "hunt_energy_cost",
-      "allowedTargets": [
-        "hunt"
-      ]
+      "allowedTargetTypes": []
     },
 
     "care_energy_gain": {
       "operation": "percent_modifier",
       "appliesTo": "care_energy_gain",
-      "allowedTargets": [
-        "care"
-      ]
+      "allowedTargetTypes": []
     },
 
     "player_xp_gain": {
       "operation": "percent_modifier",
       "appliesTo": "player_xp_gain",
-      "allowedTargets": [
-        "any"
-      ]
+      "allowedTargetTypes": []
     },
 
     "buddy_xp_gain": {
       "operation": "percent_modifier",
       "appliesTo": "buddy_xp_gain",
-      "allowedTargets": [
-        "any"
-      ]
+      "allowedTargetTypes": []
     },
 
     "essence_gain": {
       "operation": "percent_modifier",
       "appliesTo": "essence_gain",
-      "allowedTargets": [
-        "any"
-      ]
+      "allowedTargetTypes": []
     },
 
     "hunt_item_find_chance": {
       "operation": "percent_modifier",
       "appliesTo": "hunt_item_find_chance",
-      "allowedTargets": [
-        "hunt"
-      ]
+      "allowedTargetTypes": []
     },
 
     "affection_gain": {
       "operation": "percent_modifier",
       "appliesTo": "affection_gain",
-      "allowedTargets": [
-        "any"
-      ]
+      "allowedTargetTypes": []
     },
 
     "boss_reward_gain": {
       "operation": "percent_modifier",
       "appliesTo": "boss_encounter_rewards",
-      "allowedTargets": [
-        "boss_encounter"
-      ]
+      "allowedTargetTypes": []
     }
   },
 
@@ -110,8 +96,8 @@
     ],
 
     "rarity": [
-      "Normal",
-      "Rare",
+      "N",
+      "R",
       "SR",
       "SSR",
       "UR",

@@ -2,6 +2,7 @@
  * Pure capture-chance math. No DB, no Discord — testable in isolation.
  */
 import type { Rarity } from '../../db/schema';
+import { applyPercentModifier } from '../buddyBonus/buddyBonusEffects';
 
 export interface CaptureConfig {
   baseRatesByRarity: Record<Rarity, number>;
@@ -37,12 +38,22 @@ export interface CaptureChanceInput {
    * Defaults to 0.
    */
   itemCaptureBonus?: number;
+  /**
+   * Active Buddy Bonus contribution, as a **relative percentage** (`10` = +10%
+   * of the chance, not +10 points). Unlike the three additive terms it scales
+   * the whole assembled chance, which is what "increase capture chance by X%"
+   * means, and it lands before the clamp so the clamp stays the single source
+   * of truth for the achievable range. 0 with no Buddy, a Buddy whose bonus is
+   * a different effect, or a targeted bonus that does not match this species.
+   */
+  buddyBonusPercent?: number;
 }
 
 /**
  * chance = clamp(
- *   base_capture_rate × charm_modifier
- *     + buddy_affinity + capture_bonus + item_capture_bonus,
+ *   (base_capture_rate × charm_modifier
+ *      + buddy_affinity + capture_bonus + item_capture_bonus)
+ *     × (1 + buddy_bonus_percent / 100),
  *   min, max)
  *
  * `base_capture_rate` uses the species override when set, otherwise the rarity
@@ -59,7 +70,8 @@ export function computeCaptureChance(input: CaptureChanceInput): number {
     (input.buddyAffinityModifier ?? 0) +
     (input.captureBonusModifier ?? 0) +
     (input.itemCaptureBonus ?? 0);
-  return clamp(raw, input.config.minChance, input.config.maxChance);
+  const withBuddyBonus = applyPercentModifier(raw, input.buddyBonusPercent ?? 0);
+  return clamp(withBuddyBonus, input.config.minChance, input.config.maxChance);
 }
 
 export function clamp(value: number, min: number, max: number): number {

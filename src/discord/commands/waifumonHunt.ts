@@ -106,6 +106,16 @@ function formatChance(chance: number): string {
 }
 
 /**
+ * The [0, 1) unit value the capture attempt actually rolled, shown on the
+ * result screen in human-friendly 0–100 form with a single decimal place
+ * (0.734 → "73.4"). This is the *same* number the server compared against the
+ * capture chance — a capture succeeds when this roll lands within the chance.
+ */
+function formatRoll(roll: number): string {
+  return (roll * 100).toFixed(1);
+}
+
+/**
  * Encounter controls.
  *
  * Three states, one builder:
@@ -476,6 +486,7 @@ export async function handleHunt(
     if (result.kind === 'encounter') {
       const view = await buildEncounterView(ctx, prov, result.encounter, result.species, {
         energyRemaining: result.energyRemaining,
+        ...(result.energySaved ? { statusLine: '✨ Buddy Bonus: no Energy spent' } : {}),
       });
       // Encounter reveal has its own actions (charms + Let Her Go); no Back.
       await respondEphemeral(interaction, view);
@@ -506,7 +517,12 @@ export async function handleHunt(
         .join('\n');
       embed.setDescription(`${embed.data.description ?? ''}\n\n${lu}`.trim());
     }
-    embed.setFooter({ text: `Energy left: ${result.energyRemaining}` });
+    // "No Energy spent" is the only visible sign an `energy_save_chance` Buddy
+    // Bonus procced, so the footer says so rather than leaving the player to
+    // notice a number that did not move.
+    embed.setFooter({
+      text: `Energy left: ${result.energyRemaining}${result.energySaved ? ' · ✨ Buddy Bonus: no Energy spent' : ''}`,
+    });
     await respondEphemeral(interaction, {
       embeds: [embed],
       components: withBackRow([huntAgainRow()]),
@@ -722,6 +738,22 @@ export async function buildEphemeralOutcomeMessage(
       );
   }
   if (card) embed.setImage(attachName);
+  // The actual roll behind this attempt, on every non-guaranteed result
+  // (success and failure alike). It reuses `attempt.roll` — the exact RNG value
+  // the server compared against the chance — so the player can see the rule for
+  // themselves: the capture succeeds when the roll lands within the chance.
+  // Guaranteed captures bypass the formula and never roll, so they skip it.
+  if (!attempt.guaranteed) {
+    const resultLabel = outcome === 'success' ? 'Captured!' : 'Failed';
+    embed.addFields({
+      name: '🎲 Capture Roll',
+      value:
+        `Capture chance: **${(result.affinity.finalChance * 100).toFixed(1)}%**\n` +
+        `🎲 Roll: **${formatRoll(attempt.roll)}**\n` +
+        `Result: **${resultLabel}**`,
+      inline: false,
+    });
+  }
   // Buddy affinity (5D) — show what the buddy actually contributed to this
   // attempt's chance. Guaranteed captures bypass the formula, so no bonus line.
   if (result.affinity.buddyWaifuId != null && !attempt.guaranteed) {

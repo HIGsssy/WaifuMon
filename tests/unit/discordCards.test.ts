@@ -70,22 +70,31 @@ function makeCtx(cardsOn: boolean): AppContext {
 }
 
 /** The capture result shape the outcome builder reads. */
-function captureResult(outcome: 'success' | 'escape' | 'failure', withCopy = true) {
+function captureResult(
+  outcome: 'success' | 'escape' | 'failure',
+  withCopy = true,
+  overrides: { roll?: number; finalChance?: number; guaranteed?: boolean } = {},
+) {
+  const { roll = outcome === 'success' ? 0.217 : 0.734, finalChance = 0.5, guaranteed = false } =
+    overrides;
   return {
     outcome,
     species: speciesRow,
     item: { id: 1, slug: 'basic_charm', name: 'Basic Charm', emoji: '💗' },
     isDuplicate: false,
-    attempt: { attemptNumber: 1, guaranteed: false },
+    attempt: { attemptNumber: 1, guaranteed, roll },
     attemptsRemaining: 2,
     newWaifu: outcome === 'success' && withCopy ? newWaifu : null,
-    affinity: { buddyWaifuId: null, finalChance: 0.5 },
+    affinity: { buddyWaifuId: null, finalChance },
     effect: null,
     xpGranted: 0,
     levelUps: [],
     isNewDex: false,
   } as never;
 }
+
+const embedFieldValues = (payload: { embeds?: readonly unknown[] | undefined }): string[] =>
+  ((payload.embeds?.[0] as EmbedBuilder | undefined)?.data.fields ?? []).map((f) => f.value);
 
 const imageUrl = (payload: { embeds?: readonly unknown[] | undefined }): string | undefined =>
   (payload.embeds?.[0] as EmbedBuilder | undefined)?.data.image?.url;
@@ -263,6 +272,41 @@ describe('capture outcome embed', () => {
   it('keeps raw artwork on a success that somehow produced no copy', async () => {
     const payload = await buildEphemeralOutcomeMessage(ctx, captureResult('success', false));
     expect(fileNames(payload)).toEqual(['card.png']);
+  });
+
+  it('shows the winning roll against the chance on a successful capture', async () => {
+    const payload = await buildEphemeralOutcomeMessage(
+      ctx,
+      captureResult('success', true, { roll: 0.217, finalChance: 0.5 }),
+    );
+    const rollField = embedFieldValues(payload).find((v) => v.includes('🎲 Roll:'));
+    expect(rollField).toBe('Capture chance: **50.0%**\n🎲 Roll: **21.7**\nResult: **Captured!**');
+  });
+
+  it('shows the losing roll against the chance on a failed attempt', async () => {
+    const payload = await buildEphemeralOutcomeMessage(
+      ctx,
+      captureResult('failure', true, { roll: 0.734, finalChance: 0.5 }),
+    );
+    const rollField = embedFieldValues(payload).find((v) => v.includes('🎲 Roll:'));
+    expect(rollField).toBe('Capture chance: **50.0%**\n🎲 Roll: **73.4**\nResult: **Failed**');
+  });
+
+  it('shows the losing roll on an escape too', async () => {
+    const payload = await buildEphemeralOutcomeMessage(
+      ctx,
+      captureResult('escape', false, { roll: 0.9, finalChance: 0.25 }),
+    );
+    const rollField = embedFieldValues(payload).find((v) => v.includes('🎲 Roll:'));
+    expect(rollField).toBe('Capture chance: **25.0%**\n🎲 Roll: **90.0**\nResult: **Failed**');
+  });
+
+  it('omits the roll line for a guaranteed capture, which never rolls', async () => {
+    const payload = await buildEphemeralOutcomeMessage(
+      ctx,
+      captureResult('success', true, { guaranteed: true, roll: 0 }),
+    );
+    expect(embedFieldValues(payload).some((v) => v.includes('🎲 Roll:'))).toBe(false);
   });
 });
 

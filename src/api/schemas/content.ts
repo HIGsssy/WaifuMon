@@ -21,12 +21,38 @@
  * endpoints embed the DB row they already joined.
  */
 import { z } from 'zod';
+import {
+  BUDDY_BONUS_EFFECT_IDS,
+  BUDDY_BONUS_TARGET_TYPES,
+} from '../../modules/buddyBonus/buddyBonusEffects';
 import { appearanceCatalogSchema } from './appearance';
 import {
   affinitySchema,
   contentRatingSchema,
   raritySchema,
 } from './common';
+
+/**
+ * A species' authored Buddy Bonus — the passive effect she grants while
+ * equipped as the player's Buddy.
+ *
+ * `name` and `flavorText` are display copy; `effectId`, `value` and the
+ * optional `target` are the whole of the behavior, so a client can render the
+ * rule as well as the prose without knowing anything species-specific.
+ */
+export const buddyBonusSchema = z.object({
+  name: z.string(),
+  flavorText: z.string(),
+  effectId: z.enum(BUDDY_BONUS_EFFECT_IDS),
+  value: z.number().describe('Percentage. Relative for modifiers, a probability for procs.'),
+  target: z
+    .object({
+      type: z.enum(BUDDY_BONUS_TARGET_TYPES),
+      value: z.string(),
+    })
+    .optional()
+    .describe('Which Waifumon the bonus applies against. Absent means all of them.'),
+});
 
 // ── Species ─────────────────────────────────────────────────────────────────
 
@@ -61,8 +87,16 @@ export const speciesSchema = z.object({
   ...speciesFields,
 });
 
-/** Authored species from the content snapshot; addressed by slug. */
-export const contentSpeciesSchema = z.object(speciesFields);
+/**
+ * Authored species from the content snapshot; addressed by slug.
+ *
+ * Carries `buddyBonus`, which the seeded-row resource cannot: the bonus lives
+ * in content and is deliberately not copied into the database.
+ */
+export const contentSpeciesSchema = z.object({
+  ...speciesFields,
+  buddyBonus: buddyBonusSchema.optional(),
+});
 
 export const speciesQuery = z.object({
   rarity: raritySchema.optional(),

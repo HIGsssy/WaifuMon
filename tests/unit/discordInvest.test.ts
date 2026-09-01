@@ -132,6 +132,9 @@ function makeCtx(overrides: {
       },
       logger: silentLogger(),
       content: {
+        // The inspect panel reads the species catalog for the Buddy Bonus
+        // line; an empty list is "this species authors none".
+        species: [],
         tables: {
           duplicate: { essenceByRarity: { SR: 5 } },
           waifuProgression: {

@@ -77,6 +77,10 @@ import type {
 } from '../content/schemas';
 import { rollBaseSeductivePower } from '../power/seductivePower';
 import type { PlayerEffectsService } from '../effects/playerEffectsService';
+import {
+  speciesRefFromRow,
+  type BuddyBonusService,
+} from '../buddyBonus/buddyBonusService';
 import type { ItemUseResult, ItemUseService } from '../items/itemUseService';
 import {
   encounterItemKind,
@@ -161,6 +165,8 @@ export interface CaptureQuote {
   eligible: boolean;
   buddyAffinityModifier: number;
   captureBonusModifier: number;
+  /** Active Buddy Bonus percentage folded into `chance`. 0 when none applies. */
+  buddyBonusPercent: number;
   itemCaptureBonus: number;
 }
 
@@ -385,6 +391,12 @@ export interface CaptureServiceDeps {
    * player is never toasted for artwork she arrived wearing.
    */
   appearance?: AppearanceService | undefined;
+  /**
+   * Active Buddy Bonus lookup. Optional so existing wiring keeps working: with
+   * no service the `capture_chance` term is simply 0 and the formula is exactly
+   * what it was before Buddy Bonuses existed.
+   */
+  buddyBonus?: BuddyBonusService | undefined;
   logger: Logger;
   rng?: Rng;
 }
@@ -403,6 +415,7 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
     logger,
   } = deps;
   const spRanges = deps.seductivePowerConfig?.rangesByRarity;
+  const buddyBonus = deps.buddyBonus;
   const itemUse = deps.itemUse;
   const appearance = deps.appearance;
   const rng = deps.rng ?? defaultRng();
@@ -417,7 +430,11 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
     tx: DbOrTx,
     playerId: number,
     speciesRow: SpeciesRow,
-  ): Promise<{ buddyAffinityModifier: number; captureBonusModifier: number }> {
+  ): Promise<{
+    buddyAffinityModifier: number;
+    captureBonusModifier: number;
+    buddyBonusPercent: number;
+  }> {
     const buddy = await collection.resolveActiveBuddy(tx, playerId);
     const resolution = buddy
       ? resolveBuddyAffinity(
@@ -430,9 +447,19 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
         )
       : null;
     const bonus = await effects.getCaptureBonus(playerId);
+    // The Buddy Bonus is a second, unrelated contribution from the same copy:
+    // affinity is the matchup wheel, this is whatever her species authors.
+    const buddyBonusPercent =
+      (await buddyBonus?.percentForSpecies(
+        tx,
+        playerId,
+        'capture_chance',
+        speciesRefFromRow(speciesRow),
+      )) ?? 0;
     return {
       buddyAffinityModifier: resolution?.modifier ?? 0,
       captureBonusModifier: bonus?.modifier ?? 0,
+      buddyBonusPercent,
     };
   }
 
@@ -489,11 +516,8 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
     playerId: number,
   ): Promise<CaptureQuote> {
     const rarity = speciesRow.rarity as Rarity;
-    const { buddyAffinityModifier, captureBonusModifier } = await gatherChanceInputs(
-      db,
-      playerId,
-      speciesRow,
-    );
+    const { buddyAffinityModifier, captureBonusModifier, buddyBonusPercent } =
+      await gatherChanceInputs(db, playerId, speciesRow);
     const baselineChance = computeCaptureChance({
       guaranteed: false,
       baseCaptureRate: speciesRow.baseCaptureRate,
@@ -502,6 +526,7 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
       config: captureConfig,
       buddyAffinityModifier,
       captureBonusModifier,
+      buddyBonusPercent,
     });
     const guaranteed = item?.isGuaranteedCapture ?? false;
     const itemCaptureBonus = guaranteed ? 0 : (item?.captureBonus ?? 0);
@@ -514,6 +539,7 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
           config: captureConfig,
           buddyAffinityModifier,
           captureBonusModifier,
+          buddyBonusPercent,
           itemCaptureBonus,
         })
       : baselineChance;
@@ -527,6 +553,7 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
       eligible: item ? isCaptureItemEligible(item, rarity) : true,
       buddyAffinityModifier,
       captureBonusModifier,
+      buddyBonusPercent,
       itemCaptureBonus,
     };
   }
@@ -885,6 +912,17 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
         // so it contributes nothing there (and content forbids the pairing).
         const itemCaptureBonus = guaranteed ? 0 : (item.captureBonus ?? 0);
 
+        // Re-derived under the encounter lock rather than trusted from the
+        // quote, exactly like the affinity term above: the player may have
+        // swapped Buddy between opening the screen and pressing the button.
+        const buddyBonusPercent =
+          (await buddyBonus?.percentForSpecies(
+            tx,
+            playerId,
+            'capture_chance',
+            speciesRefFromRow(speciesRow),
+          )) ?? 0;
+
         const chance = computeCaptureChance({
           guaranteed,
           baseCaptureRate: speciesRow.baseCaptureRate,
@@ -893,6 +931,7 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
           config: captureConfig,
           buddyAffinityModifier,
           captureBonusModifier,
+          buddyBonusPercent,
           itemCaptureBonus,
         });
         const affinity: CaptureAffinityInfo = {

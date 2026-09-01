@@ -289,3 +289,70 @@ describe('rarity ordering', () => {
     expect(rarityAtLeast('EX', 'UR')).toBe(true);
   });
 });
+
+describe('Buddy Bonus capture term', () => {
+  it('scales the assembled chance relatively, not in percentage points', () => {
+    expect(
+      computeCaptureChance({
+        guaranteed: false,
+        baseCaptureRate: 0.5,
+        rarity: 'N',
+        captureModifier: 1,
+        config,
+        buddyBonusPercent: 10,
+      }),
+    ).toBeCloseTo(0.55, 6);
+  });
+
+  it('scales the whole chance, additive terms included', () => {
+    expect(
+      computeCaptureChance({
+        guaranteed: false,
+        baseCaptureRate: 0.4,
+        rarity: 'N',
+        captureModifier: 1,
+        config,
+        buddyAffinityModifier: 0.1,
+        buddyBonusPercent: 100,
+      }),
+    ).toBeCloseTo(0.95, 6); // (0.4 + 0.1) × 2, then clamped at max 0.95
+  });
+
+  it('changes nothing at 0, or when omitted', () => {
+    const base = {
+      guaranteed: false,
+      baseCaptureRate: 0.3,
+      rarity: 'R' as const,
+      captureModifier: 1,
+      config,
+    };
+    expect(computeCaptureChance({ ...base, buddyBonusPercent: 0 })).toBeCloseTo(0.3, 10);
+    expect(computeCaptureChance(base)).toBeCloseTo(0.3, 10);
+  });
+
+  it('never escapes the configured clamp', () => {
+    expect(
+      computeCaptureChance({
+        guaranteed: false,
+        baseCaptureRate: 0.9,
+        rarity: 'N',
+        captureModifier: 1,
+        config,
+        buddyBonusPercent: 500,
+      }),
+    ).toBe(config.maxChance);
+  });
+
+  it('is bypassed entirely by a guaranteed capture', () => {
+    expect(
+      computeCaptureChance({
+        guaranteed: true,
+        baseCaptureRate: 0.1,
+        rarity: 'LR',
+        captureModifier: 1,
+        config,
+        buddyBonusPercent: 100,
+      }),
+    ).toBe(1);
+  });
+});

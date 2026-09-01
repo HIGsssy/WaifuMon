@@ -73,6 +73,8 @@ import {
 } from './bossDamage';
 import { bossDrawInt } from './bossRandom';
 import { mergeGrants, rollBossRewards } from './bossRewards';
+import { applyPercentModifierInt, buddyBonusPercent } from '../buddyBonus/buddyBonusEffects';
+import type { BuddyBonusService } from '../buddyBonus/buddyBonusService';
 import {
   drawFromBag,
   parseShuffleBagState,
@@ -160,6 +162,16 @@ export interface BossEncounterServiceDeps {
    * pattern `AppearanceService` uses.
    */
   getContent: () => LoadedContent;
+  /**
+   * Buddy Bonus lookup. Optional — without it a payout is exactly what the
+   * reward table rolled.
+   *
+   * Only its content-reading side is used here: a boss payout resolves
+   * `boss_reward_gain` from the **committed** participation's species, never
+   * from the player's currently-equipped Buddy. See
+   * `applyParticipationRewards`.
+   */
+  buddyBonus?: BuddyBonusService | undefined;
   logger: Logger;
   /**
    * Drives the shuffle and the downtime pick. Injected so a test can make the
@@ -316,6 +328,7 @@ export function createBossEncounterService(
 ): BossEncounterService {
   const { db, inventory, collection, getContent, logger } = deps;
   const rng = deps.rng ?? defaultRng();
+  const buddyBonus = deps.buddyBonus;
 
   const config = (): BossEncountersConfig => getContent().tables.bossEncounters;
 
@@ -682,7 +695,37 @@ export function createBossEncounterService(
         warning.message,
       );
     }
-    const grants = mergeGrants(roll.items);
+    /**
+     * `boss_reward_gain` — applied to the payout, never to the draw.
+     *
+     * The table, the group gates and the weighted picks are all untouched, so
+     * *what* a participation wins is exactly what it would have won without a
+     * Buddy; only the size of the eligible outcome moves. Cosmetic battle
+     * damage above is deliberately left alone — it is narration, not a reward.
+     *
+     * **Read from the committed copy, not from whoever is Buddy now.** This is
+     * the one place in the game where a Buddy Bonus is *not* resolved from the
+     * live Buddy slot, and it is deliberate: a participation already snapshots
+     * the copy that was committed — her level, SP, rarity, affinity and race
+     * all come from that snapshot and none of them follow a later swap — so
+     * her bonus must not either. Committing A and swapping to B before
+     * resolution pays A's bonus and not B's, in both directions.
+     *
+     * `speciesSlug` is that snapshot's record of *which species* was
+     * committed (the same copy `waifuId` names), so this is a pure content
+     * read: no query, and it still answers correctly if the committed copy has
+     * since been released. Merged first, so a stack that two groups both
+     * contributed to is scaled once.
+     */
+    const rewardPercent = buddyBonusPercent(
+      buddyBonus?.bonusForSpeciesSlug(participation.speciesSlug),
+      'boss_reward_gain',
+    );
+    const grants = mergeGrants(roll.items).map((grant) => ({
+      ...grant,
+      quantity: applyPercentModifierInt(grant.quantity, rewardPercent),
+    }));
+    const buddyXp = applyPercentModifierInt(roll.buddyXp, rewardPercent);
 
     return db.transaction(async (tx) => {
       // Re-read under the transaction: another process may have finished this
@@ -719,7 +762,7 @@ export function createBossEncounterService(
         tx,
         participation.playerId,
         participation.waifuId,
-        roll.buddyXp,
+        buddyXp,
       );
       const xpAwarded = award?.xpGranted ?? 0;
 

@@ -40,6 +40,8 @@ import type { CurrencyService } from '../currency/currencyService';
 import type { AppearanceService, AppearanceUnlockRef } from '../appearance/appearanceService';
 import type { ProgressionService } from '../progression/progressionService';
 import type { QuestService } from '../quests/questService';
+import { applyPercentModifierInt, buddyBonusPercent } from '../buddyBonus/buddyBonusEffects';
+import type { BuddyBonusService } from '../buddyBonus/buddyBonusService';
 
 /**
  * Summary of applying pending Care Mode ticks. `active` reflects the state
@@ -163,6 +165,11 @@ export interface CareServiceDeps {
    * available, and never reads anything back that changes the tick.
    */
   appearance?: AppearanceService | undefined;
+  /**
+   * Active Buddy Bonus lookup. Optional — without it a tick grants exactly
+   * what `careMode` configures.
+   */
+  buddyBonus?: BuddyBonusService | undefined;
 }
 
 const INACTIVE_SUMMARY: CareTickSummary = {
@@ -184,6 +191,7 @@ const INACTIVE_SUMMARY: CareTickSummary = {
 export function createCareService(deps: CareServiceDeps): CareService {
   const { db, currency, collection, progression, quests, careConfig } = deps;
   const appearance = deps.appearance;
+  const buddyBonus = deps.buddyBonus;
 
   function intervalMs(): number {
     return Math.max(1, careConfig.intervalMinutes) * 60 * 1000;
@@ -290,17 +298,45 @@ export function createCareService(deps: CareServiceDeps): CareService {
       };
     }
 
+    /**
+     * The active Buddy Bonus, read once for this tick batch.
+     *
+     * `care_energy_gain` scales what the ticks are *worth*, before the cap:
+     * the recovery cap and the player's max Energy still bound the result, so
+     * a bonus cannot recover past a ceiling — it reaches the ceiling sooner.
+     *
+     * `buddy_xp_gain` applies only when the copy being cared for **is** the
+     * equipped Buddy — the effect is defined as XP awarded to the Buddy.
+     *
+     * `affection_gain` deliberately does *not* carry that condition. It is
+     * defined over Affection **awards**, not over one recipient, so an equipped
+     * Buddy who grants it raises the Affection another Waifumon earns while
+     * she is the one being cared for. That asymmetry with `buddy_xp_gain` is
+     * intended, not an oversight.
+     */
+    const activeBonus = await buddyBonus?.getActiveBuddyBonus(tx, playerId);
+    const targetIsBuddy = activeBonus?.buddyWaifuId === targetId;
+
     // Compute energy grant (bounded by recoveryCap AND max energy).
     const currencies = await currency.lockCurrencies(tx, playerId);
     const cap = effectiveEnergyCap(player.level);
-    const potentialEnergy = ticks * careConfig.energyPerTick;
+    const potentialEnergy = applyPercentModifierInt(
+      ticks * careConfig.energyPerTick,
+      buddyBonusPercent(activeBonus?.bonus, 'care_energy_gain'),
+    );
     const energyRoom = Math.max(0, cap - currencies.huntEnergy);
     const energyGained = Math.max(0, Math.min(potentialEnergy, energyRoom));
 
     // Waifu XP/affection is granted for every elapsed tick — never bounded
     // by the energy cap.
-    const waifuXpGained = ticks * careConfig.waifuXpPerTick;
-    const affectionGained = ticks * careConfig.affectionPerTick;
+    const waifuXpGained = applyPercentModifierInt(
+      ticks * careConfig.waifuXpPerTick,
+      targetIsBuddy ? buddyBonusPercent(activeBonus?.bonus, 'buddy_xp_gain') : 0,
+    );
+    const affectionGained = applyPercentModifierInt(
+      ticks * careConfig.affectionPerTick,
+      buddyBonusPercent(activeBonus?.bonus, 'affection_gain'),
+    );
 
     if (energyGained > 0) {
       await tx

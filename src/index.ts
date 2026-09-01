@@ -34,6 +34,7 @@ import { createPlayerEffectsService } from './modules/effects/playerEffectsServi
 import { createItemUseService } from './modules/items/itemUseService';
 import { createAffectionGiftService } from './modules/gifts/affectionGiftService';
 import { createProgressionService } from './modules/progression/progressionService';
+import { createBuddyBonusService } from './modules/buddyBonus/buddyBonusService';
 import { createQuestService } from './modules/quests/questService';
 import { createSessionService } from './modules/session/sessionService';
 import { createGameEventBus, emitGameEvents, gameEvent } from './modules/events/gameEvents';
@@ -95,9 +96,22 @@ async function main(): Promise<void> {
 
   const currency = createCurrencyService(db);
   const inventory = createInventoryService(db);
+  /**
+   * Buddy Bonuses. Reads the live content snapshot through the same closure
+   * the appearance / boss / travel services use, so a retuned bonus ships with
+   * an admin "Save + Reload" rather than a restart. Declared before the
+   * gameplay services because every one of them takes it.
+   *
+   * `contentSnapshot` is the one mutable content handle every getter-based
+   * service reads through; the admin panel's Reload Content action reassigns
+   * it and every closure follows.
+   */
+  let contentSnapshot = content;
+  const buddyBonus = createBuddyBonusService({ getContent: () => contentSnapshot });
   const progression = createProgressionService({
     config: content.tables.progression,
     baseMaxEnergy: content.tables.energy.baseMax,
+    buddyBonus,
   });
   const quests = createQuestService({
     db,
@@ -111,7 +125,6 @@ async function main(): Promise<void> {
   // admin-panel "Save + Reload" makes newly-authored artwork available (and
   // retroactively unlockable) without a restart — `ctx.content` is reassigned
   // below, and this closure follows it.
-  let contentSnapshot = content;
   const appearance = createAppearanceService({ db, getContent: () => contentSnapshot });
   const collection = createCollectionService({
     db,
@@ -121,6 +134,7 @@ async function main(): Promise<void> {
     duplicateConfig: content.tables.duplicate,
     waifuConfig: content.tables.waifuProgression,
     totalSpeciesCount: content.species.filter((s) => s.enabled).length,
+    buddyBonus,
   });
   const care = createCareService({
     db,
@@ -130,6 +144,7 @@ async function main(): Promise<void> {
     quests,
     appearance,
     careConfig: content.tables.energy.careMode,
+    buddyBonus,
   });
   const effects = createPlayerEffectsService(db);
   // Hoisted above the context literal because CaptureService now takes it:
@@ -173,6 +188,7 @@ async function main(): Promise<void> {
         inventory,
         collection,
         getContent: () => contentSnapshot,
+        buddyBonus,
         logger,
       })
     : undefined;
@@ -260,6 +276,7 @@ async function main(): Promise<void> {
         care,
         quests,
         tables: content.tables,
+        buddyBonus,
         logger,
       }),
       capture: createCaptureService({
@@ -275,6 +292,7 @@ async function main(): Promise<void> {
         effects,
         itemUse,
         appearance,
+        buddyBonus,
         logger,
       }),
       care,

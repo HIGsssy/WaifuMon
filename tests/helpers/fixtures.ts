@@ -27,6 +27,7 @@ import { createPlayerEffectsService } from '../../src/modules/effects/playerEffe
 import { createItemUseService } from '../../src/modules/items/itemUseService';
 import { createAffectionGiftService } from '../../src/modules/gifts/affectionGiftService';
 import { createProgressionService } from '../../src/modules/progression/progressionService';
+import { createBuddyBonusService } from '../../src/modules/buddyBonus/buddyBonusService';
 import { createQuestService } from '../../src/modules/quests/questService';
 import { createInventoryService } from '../../src/modules/inventory/inventoryService';
 import { createPlayerService } from '../../src/modules/players/playerService';
@@ -61,6 +62,8 @@ export function loadShippedContent(logger: Logger = silentLogger()): LoadedConte
 
 export interface App {
   content: LoadedContent;
+  /** Active Buddy Bonus resolver, wired into every service that reads it. */
+  buddyBonus: ReturnType<typeof createBuddyBonusService>;
   guilds: ReturnType<typeof createGuildService>;
   players: ReturnType<typeof createPlayerService>;
   currency: ReturnType<typeof createCurrencyService>;
@@ -157,9 +160,13 @@ export async function bootstrapApp(
   await seedContent(t.db, content, t.logger);
   const currency = createCurrencyService(t.db);
   const inventory = createInventoryService(t.db);
+  // Wired exactly as production does, so integration tests exercise real Buddy
+  // Bonuses rather than an unbonused game.
+  const buddyBonus = createBuddyBonusService({ getContent: () => content });
   const progression = createProgressionService({
     config: content.tables.progression,
     baseMaxEnergy: content.tables.energy.baseMax,
+    buddyBonus,
   });
   const quests = createQuestService({
     db: t.db,
@@ -180,6 +187,7 @@ export async function bootstrapApp(
     duplicateConfig: content.tables.duplicate,
     waifuConfig: content.tables.waifuProgression,
     totalSpeciesCount: content.species.filter((s) => s.enabled).length,
+    buddyBonus,
   });
   const care = createCareService({
     db: t.db,
@@ -189,6 +197,7 @@ export async function bootstrapApp(
     quests,
     appearance,
     careConfig: content.tables.energy.careMode,
+    buddyBonus,
   });
   const effects = createPlayerEffectsService(t.db);
   // Wired exactly as production does, so the encounter-consumable path is the
@@ -221,12 +230,14 @@ export async function bootstrapApp(
     inventory,
     collection,
     getContent: () => content,
+    buddyBonus,
     logger: t.logger,
     ...(opts.bossRng ? { rng: opts.bossRng } : {}),
   });
   const travel = createTravelService({ db: t.db, currency, getContent: () => content });
   return {
     content,
+    buddyBonus,
     gifts,
     bosses,
     travel,
@@ -261,6 +272,7 @@ export async function bootstrapApp(
       care,
       quests,
       tables: content.tables,
+      buddyBonus,
       logger: t.logger,
       ...(opts.huntRng ? { rng: opts.huntRng } : {}),
     }),
@@ -277,6 +289,7 @@ export async function bootstrapApp(
       effects,
       itemUse,
       appearance,
+      buddyBonus,
       logger: t.logger,
       ...(opts.captureRng ? { rng: opts.captureRng } : {}),
     }),

@@ -15,6 +15,8 @@ import {
 } from '../../db/schema';
 import { PlayerNotFoundError } from '../../shared/errors';
 import type { ProgressionConfig } from '../content/schemas';
+import { applyPercentModifierInt } from '../buddyBonus/buddyBonusEffects';
+import type { BuddyBonusService } from '../buddyBonus/buddyBonusService';
 import {
   cumulativeXpForLevel,
   dailyBonusItemsForLevel,
@@ -44,7 +46,12 @@ export interface GrantXpOptions {
 }
 
 export interface GrantXpResult {
+  /** XP actually applied — already carrying any Buddy Bonus uplift. */
   xpDelta: number;
+  /** XP the caller asked for, before the Buddy Bonus. Equal to `xpDelta` when none applied. */
+  baseXpDelta: number;
+  /** The `player_xp_gain` percentage folded into `xpDelta`. 0 when none applied. */
+  buddyBonusPercent: number;
   totalXp: number;
   fromLevel: number;
   toLevel: number;
@@ -88,10 +95,21 @@ export interface ProgressionServiceDeps {
    * separate so `computeMaxEnergy` can layer bonuses additively on top.
    */
   baseMaxEnergy: number;
+  /**
+   * Active Buddy Bonus lookup. Optional — without it `player_xp_gain` simply
+   * never applies and every grant is exactly what the caller asked for.
+   *
+   * Hooked here rather than at each call site on purpose: `grantXp` is the one
+   * authoritative path every Player XP award already goes through (hunt,
+   * capture, daily, quests), so one integration covers all of them and a new
+   * XP source is covered the day it is written.
+   */
+  buddyBonus?: BuddyBonusService | undefined;
 }
 
 export function createProgressionService(deps: ProgressionServiceDeps): ProgressionService {
   const { config, baseMaxEnergy } = deps;
+  const buddyBonus = deps.buddyBonus;
 
   const svc: ProgressionService = {
     levelFromXp: (xp) => levelFromTotalXp(xp, config),
@@ -111,8 +129,17 @@ export function createProgressionService(deps: ProgressionServiceDeps): Progress
         .for('update');
       if (!locked) throw new PlayerNotFoundError(playerId);
 
+      // Only *awards* are boosted. A zero or negative delta (an admin
+      // correction, a bookkeeping row) is left exactly as the caller wrote it —
+      // a bonus that also deepened a penalty would be a surprise, not a bonus.
+      const buddyBonusPercent =
+        opts.xpDelta > 0
+          ? ((await buddyBonus?.percentFor(tx, playerId, 'player_xp_gain')) ?? 0)
+          : 0;
+      const xpDelta = applyPercentModifierInt(opts.xpDelta, buddyBonusPercent);
+
       const fromLevel = locked.level;
-      const nextTotalXp = Math.max(0, locked.xp + opts.xpDelta);
+      const nextTotalXp = Math.max(0, locked.xp + xpDelta);
       const toLevel = svc.levelFromXp(nextTotalXp);
 
       const levelUps: LevelUpEvent[] = [];
@@ -131,7 +158,7 @@ export function createProgressionService(deps: ProgressionServiceDeps): Progress
       void cumulAtLevel; // referenced for readers; TS won't dead-code the call
 
       const setPayload: Partial<PlayerRow> = {};
-      if (opts.xpDelta !== 0) setPayload.xp = nextTotalXp;
+      if (xpDelta !== 0) setPayload.xp = nextTotalXp;
       if (toLevel !== fromLevel) setPayload.level = toLevel;
 
       let updated: PlayerRow = locked;
@@ -147,13 +174,21 @@ export function createProgressionService(deps: ProgressionServiceDeps): Progress
       await tx.insert(playerProgressionEvents).values({
         playerId,
         eventType: opts.eventType,
-        xpDelta: opts.xpDelta,
+        // The audit row records what was actually granted, with the bonus that
+        // produced it alongside — so a boosted grant reconciles against the
+        // player's XP total rather than looking like a discrepancy.
+        xpDelta,
         refId: opts.refId ?? null,
-        metadata: opts.metadata ?? {},
+        metadata: {
+          ...(opts.metadata ?? {}),
+          ...(buddyBonusPercent ? { buddyBonusPercent, baseXpDelta: opts.xpDelta } : {}),
+        },
       });
 
       return {
-        xpDelta: opts.xpDelta,
+        xpDelta,
+        baseXpDelta: opts.xpDelta,
+        buddyBonusPercent,
         totalXp: nextTotalXp,
         fromLevel,
         toLevel,

@@ -48,6 +48,16 @@ import {
   REGION_EXCLUSIVE_TAG_JSON,
 } from '../locations/regions';
 import { toRegion } from '../travel/travelCatalog';
+import {
+  applyPercentModifier,
+  applyPercentModifierInt,
+  buddyBonusPercent,
+  encounterRarityWeightPercent,
+  encounterSpeciesWeightPercent,
+  rollBuddyBonusProc,
+  type BuddyBonus,
+} from '../buddyBonus/buddyBonusEffects';
+import { speciesRefFromRow, type BuddyBonusService } from '../buddyBonus/buddyBonusService';
 
 interface WithXp {
   levelUps: LevelUpEvent[];
@@ -65,6 +75,12 @@ interface WithXp {
    * `PLAYER_COMPLETED_HUNT` narration. No gameplay branches on it.
    */
   session: HuntSessionBoundary;
+  /**
+   * True when the active Buddy's `energy_save_chance` bonus procced and this
+   * hunt cost no Energy. Presentation only — the spend already happened (or
+   * did not) before this was reported.
+   */
+  energySaved: boolean;
 }
 
 export interface HuntEncounterResult extends WithXp {
@@ -157,6 +173,11 @@ export interface HuntServiceDeps {
   care: CareService;
   quests: QuestService;
   tables: TablesContent;
+  /**
+   * Active Buddy Bonus lookup. Optional: without it every Buddy Bonus term
+   * below is 0 or absent and the hunt behaves exactly as it did before.
+   */
+  buddyBonus?: BuddyBonusService | undefined;
   logger: Logger;
   rng?: Rng;
 }
@@ -167,6 +188,7 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
   const { db, currency, inventory, progression, collection, care, quests, tables, logger } =
     deps;
   const rng = deps.rng ?? defaultRng();
+  const buddyBonus = deps.buddyBonus;
   const hunt = tables.hunt;
 
   /**
@@ -174,9 +196,15 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
    * from `fromRarity` (floored at 0) and adds it to `toRarity`. Total weight
    * is preserved so the roll stays uniform.
    */
-  function rarityEntriesFor(level: number): Array<WeightedEntry<Rarity>> {
+  function rarityEntriesFor(
+    level: number,
+    bonus: BuddyBonus | null,
+  ): Array<WeightedEntry<Rarity>> {
+    // A rarity-shaped `encounter_weight` bonus moves *this* table: inside a
+    // single rarity bucket every candidate shares a rarity, so scaling them
+    // there would cancel out. Relative, so a +10% on a weight of 100 is 110.
     const entries: Array<WeightedEntry<Rarity>> = hunt.rarityTable.map((r) => ({
-      weight: r.weight,
+      weight: applyPercentModifier(r.weight, encounterRarityWeightPercent(bonus, r.rarity)),
       value: r.rarity,
     }));
     const shift = progression.computeRareShift(level);
@@ -271,10 +299,50 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
    */
   async function pickEncounterSpecies(
     tx: Parameters<Parameters<Db['transaction']>[0]>[0],
+    playerId: number,
     level: number,
     regionId: string,
+    bonus: BuddyBonus | null,
   ): Promise<SpeciesRow | null> {
-    const rarityEntries = rarityEntriesFor(level);
+    /**
+     * Species-shaped `encounter_weight` (race / affinity / ownership) applied
+     * to one bucket of candidates, as a **relative** weight modifier: a
+     * baseline weight of 100 with a +10% bonus becomes 110. Nothing is added
+     * to or removed from the pool — only the odds between its members move.
+     *
+     * Ownership is resolved with one query for the whole bucket, and only when
+     * the bonus actually targets ownership.
+     */
+    const applyEncounterWeights = async (
+      entries: Array<WeightedEntry<SpeciesRow>>,
+    ): Promise<Array<WeightedEntry<SpeciesRow>>> => {
+      if (entries.length === 0 || !bonus || !buddyBonus) return entries;
+      if (bonus.effectId !== 'encounter_weight') return entries;
+      const owned =
+        bonus.target?.type === 'ownership'
+          ? await buddyBonus.ownedSpeciesIds(
+              tx,
+              playerId,
+              entries.map((e) => e.value.id),
+            )
+          : new Set<number>();
+      const out: Array<WeightedEntry<SpeciesRow>> = [];
+      for (const entry of entries) {
+        const ref = speciesRefFromRow(entry.value);
+        // `subjectFor` resolves race from authored content (the `species` table
+        // carries only `archetype`); ownership is filled in from the bulk read
+        // above rather than a query per candidate.
+        const subject = {
+          ...(await buddyBonus.subjectFor(tx, playerId, ref)),
+          owned: owned.has(entry.value.id),
+        };
+        const percent = encounterSpeciesWeightPercent(bonus, subject);
+        out.push({ weight: applyPercentModifier(entry.weight, percent), value: entry.value });
+      }
+      return out;
+    };
+
+    const rarityEntries = rarityEntriesFor(level, bonus);
     for (let attempt = 0; attempt < MAX_RARITY_REROLLS; attempt++) {
       const rarity = rollWeighted(rarityEntries, rng);
       let entries = await regionBucket(tx, regionId, rarity);
@@ -315,7 +383,7 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
         logger.warn({ rarity, regionId, attempt }, 'no enabled species in rarity bucket, rerolling');
         continue;
       }
-      return rollWeighted(entries, rng);
+      return rollWeighted(await applyEncounterWeights(entries), rng);
     }
 
     // Rerolls exhausted. Give up on rarity, but keep giving up in the same
@@ -433,6 +501,12 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
           throw new InsufficientEnergyError();
         }
 
+        // The active Buddy Bonus, resolved **once** per hunt and reused by
+        // every step below, so a single hunt can never see two different
+        // answers to "who is the buddy". Null with no buddy equipped, or when
+        // her species authors no bonus.
+        const activeBonus = (await buddyBonus?.getActiveBuddyBonus(tx, playerId))?.bonus ?? null;
+
         // Hunt-session boundary (narration only). Computed from the locked
         // player row *before* `applyAndExit` clears the Care Mode fields, so
         // "was the player resting?" is answered against pre-hunt state.
@@ -459,10 +533,20 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
           : null;
 
         // Spend energy + stamp lastHuntAt.
+        //
+        // `energy_save_chance` is rolled here, at the one moment the hunt would
+        // consume Energy. A proc does not skip or cheapen anything else: the
+        // hunt runs in full, the cooldown is stamped, the tables roll — the
+        // decrement simply does not happen. The energy check above still ran,
+        // so a player at 0 Energy cannot hunt on a lucky roll.
+        const energySaved = rollBuddyBonusProc(
+          buddyBonusPercent(activeBonus, 'energy_save_chance'),
+          rng.next(),
+        );
         const [updatedCur] = await tx
           .update(playerCurrencies)
           .set({
-            huntEnergy: sql`${playerCurrencies.huntEnergy} - 1`,
+            ...(energySaved ? {} : { huntEnergy: sql`${playerCurrencies.huntEnergy} - 1` }),
             updatedAt: sql`now()`,
           })
           .where(eq(playerCurrencies.playerId, playerId))
@@ -499,8 +583,21 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
         }
 
         // Roll the result table.
+        //
+        // `hunt_item_find_chance` scales the two item-finding outcomes' weights
+        // relatively (+10% on a weight of 100 → 110) rather than adding a
+        // second, independent item roll: the shipped table stays the single
+        // statement of what a hunt can produce, and every other outcome keeps
+        // its own weight and simply loses a proportional share of the total.
+        const itemFindPercent = buddyBonusPercent(activeBonus, 'hunt_item_find_chance');
         const kind: HuntResultKind = rollWeighted(
-          hunt.resultTable.map((r) => ({ weight: r.weight, value: r.kind })),
+          hunt.resultTable.map((r) => ({
+            weight:
+              r.kind === 'item_find' || r.kind === 'rare_item_find'
+                ? applyPercentModifier(r.weight, itemFindPercent)
+                : r.weight,
+            value: r.kind,
+          })),
           rng,
         );
 
@@ -508,7 +605,13 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
           // Resolved from the player row already locked above, so a travel
           // committing mid-hunt cannot change which pool this draw reads.
           const huntRegion = toRegion(player.currentRegion);
-          const picked = await pickEncounterSpecies(tx, player.level, huntRegion);
+          const picked = await pickEncounterSpecies(
+            tx,
+            playerId,
+            player.level,
+            huntRegion,
+            activeBonus,
+          );
           if (!picked) {
             // No species at all — degrade to flavor rather than crash.
             logger.error('no enabled species available; degrading encounter to flavor');
@@ -519,6 +622,7 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
               levelUps,
               buddyAward,
               careExit: careForResult,
+              energySaved,
               session,
             } satisfies HuntFlavorResult;
           }
@@ -548,6 +652,7 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
               levelUps,
               buddyAward,
               careExit: careForResult,
+              energySaved,
               session,
             } satisfies HuntEncounterResult;
           } catch (err) {
@@ -574,6 +679,7 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
               levelUps,
               buddyAward,
               careExit: careForResult,
+              energySaved,
               session,
             } satisfies HuntFlavorResult;
           }
@@ -587,6 +693,7 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
             levelUps,
             buddyAward,
             careExit: careForResult,
+            energySaved,
             session,
           } satisfies HuntItemResult;
         }
@@ -602,12 +709,18 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
             levelUps,
             buddyAward,
             careExit: careForResult,
+            energySaved,
             session,
           } satisfies HuntWaifubuxResult;
         }
 
         if (kind === 'essence_find') {
-          const amount = rng.intInclusive(hunt.essenceFind.min, hunt.essenceFind.max);
+          // `essence_gain` scales the award, not the range: the table still
+          // decides how much a find is worth, the bonus decides what it becomes.
+          const amount = applyPercentModifierInt(
+            rng.intInclusive(hunt.essenceFind.min, hunt.essenceFind.max),
+            buddyBonusPercent(activeBonus, 'essence_gain'),
+          );
           const row = await currency.grantEssence(tx, playerId, amount);
           return {
             kind: 'essence_find',
@@ -617,6 +730,7 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
             levelUps,
             buddyAward,
             careExit: careForResult,
+            energySaved,
             session,
           } satisfies HuntEssenceResult;
         }
@@ -630,6 +744,7 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
           levelUps,
           buddyAward,
           careExit: careForResult,
+          energySaved,
           session,
         } satisfies HuntFlavorResult;
       });

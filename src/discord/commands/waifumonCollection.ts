@@ -24,6 +24,8 @@ import {
 import { affinityLabel } from '../../modules/capture/affinityMath';
 import { seductivePowerView } from '../../modules/power/seductivePower';
 import { isAppearanceUnlocked } from '../../modules/appearance/appearanceRules';
+import { buddyBonusView } from '../../modules/buddyBonus/buddyBonusEffects';
+import { findBuddyBonus } from '../../modules/buddyBonus/buddyBonusService';
 import type {
   AppearanceView,
   UnlockedAppearanceView,
@@ -947,6 +949,21 @@ async function renderInspect(
         },
         { name: 'Unlocks', value: unlockLines.join('\n'), inline: true },
       );
+    // Buddy Bonus — content-authored, display-only here. Shown on every copy
+    // whose species grants one, labelled by whether it is actually in force:
+    // the point of the panel is to answer "what would equipping her do?".
+    const bonus = findBuddyBonus(ctx.content, species.slug);
+    if (bonus) {
+      const view = buddyBonusView(bonus);
+      embed.addFields({
+        name: `${isBuddy ? '✨' : '💤'} Buddy Bonus · ${view.name}`,
+        value:
+          `${view.flavorText}\n` +
+          `**+${view.value}%**${view.targetLabel ? ` · ${view.targetLabel}` : ''}` +
+          (isBuddy ? ' · **active**' : ' · _set her as Buddy to activate_'),
+        inline: false,
+      });
+    }
     // The canonical collectible view: a player looking at one of her own
     // Waifumon sees the card, carrying her real level and her equipped look.
     // The CAUGHT emblem is a *pre-catch* duplicate warning drawn only on the

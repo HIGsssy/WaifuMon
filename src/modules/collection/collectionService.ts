@@ -44,6 +44,8 @@ import {
 } from '../../shared/errors';
 import type { CurrencyService } from '../currency/currencyService';
 import type { QuestService } from '../quests/questService';
+import { applyPercentModifierInt, buddyBonusPercent } from '../buddyBonus/buddyBonusEffects';
+import type { BuddyBonusService } from '../buddyBonus/buddyBonusService';
 
 export interface OwnedEntry {
   waifu: PlayerWaifuRow;
@@ -307,6 +309,11 @@ export interface CollectionServiceDeps {
    * gameplay. Omitting it (as older tests do) simply means no unlock toasts.
    */
   appearance?: AppearanceService | undefined;
+  /**
+   * Active Buddy Bonus lookup. Optional — without it the buddy's hunt award and
+   * the release/convert Essence payout are exactly what content configures.
+   */
+  buddyBonus?: BuddyBonusService | undefined;
 }
 
 const DEFAULT_PAGE_SIZE = 10;
@@ -333,6 +340,7 @@ end`;
 export function createCollectionService(deps: CollectionServiceDeps): CollectionService {
   const { db, currency, quests, duplicateConfig, waifuConfig, totalSpeciesCount } = deps;
   const appearance = deps.appearance;
+  const buddyBonus = deps.buddyBonus;
 
   /**
    * Cosmetic side effect of a level gain, run inside the caller's transaction.
@@ -655,7 +663,13 @@ export function createCollectionService(deps: CollectionServiceDeps): Collection
         .where(eq(species.id, locked.speciesId));
       if (!speciesRow) throw new WaifuNotOwnedError(waifuId);
 
-      const essence = essenceForRarity(speciesRow.rarity, fraction);
+      // `essence_gain` scales the payout, never the rarity table it comes
+      // from: content still decides what a copy is worth, the Buddy decides
+      // what the player walks away with.
+      const essence = applyPercentModifierInt(
+        essenceForRarity(speciesRow.rarity, fraction),
+        (await buddyBonus?.percentFor(tx, playerId, 'essence_gain')) ?? 0,
+      );
 
       // Serialize with concurrent shop/daily spends on the same player.
       const currencyRow = await currency.lockCurrencies(tx, playerId);
@@ -885,8 +899,18 @@ export function createCollectionService(deps: CollectionServiceDeps): Collection
     },
 
     async awardBuddyOnHunt(tx, playerId) {
-      const xpDelta = waifuConfig.buddy.xpPerHunt;
-      const affDelta = waifuConfig.buddy.affectionPerHunt;
+      // The buddy's own bonus applies to her own award: `buddy_xp_gain` and
+      // `affection_gain` are read from whoever is equipped, which is by
+      // definition the copy being paid here.
+      const active = await buddyBonus?.getActiveBuddyBonus(tx, playerId);
+      const xpDelta = applyPercentModifierInt(
+        waifuConfig.buddy.xpPerHunt,
+        buddyBonusPercent(active?.bonus, 'buddy_xp_gain'),
+      );
+      const affDelta = applyPercentModifierInt(
+        waifuConfig.buddy.affectionPerHunt,
+        buddyBonusPercent(active?.bonus, 'affection_gain'),
+      );
       if (xpDelta <= 0 && affDelta <= 0) return null;
       const [player] = await tx
         .select({ buddyWaifuId: players.buddyWaifuId })

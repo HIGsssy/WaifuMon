@@ -79,7 +79,13 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Trash Treasure",
+      "flavorText": "Trash Treasure: +5% chance to find items from Hunting.",
+      "effectId": "hunt_item_find_chance",
+      "value": 5
+    }
   },
   {
     "slug": "shrine_assistant",
@@ -154,7 +160,13 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Offering Bowl",
+      "flavorText": "Offering Bowl: +100% Affection gained.",
+      "effectId": "affection_gain",
+      "value": 100
+    }
   },
   {
     "slug": "cafe_maid",
@@ -174,7 +186,13 @@
     "imagePath": "waifumon/cafe_maid/standard.png",
     "enabled": true,
     "eventKey": null,
-    "perSpeciesWeight": 1
+    "perSpeciesWeight": 1,
+    "buddyBonus": {
+      "name": "Second Cup",
+      "flavorText": "Second Cup: +100% Energy gained in Care mode.",
+      "effectId": "care_energy_gain",
+      "value": 100
+    }
   },
   {
     "slug": "neon_school_rebel",
@@ -249,7 +267,17 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "After Bell",
+      "flavorText": "After Bell: +5% capture chance against SR and below Waifumon.",
+      "effectId": "capture_chance",
+      "value": 5,
+      "target": {
+        "type": "rarity_max",
+        "value": "SR"
+      }
+    }
   },
   {
     "slug": "library_goth",
@@ -324,7 +352,13 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Quiet Study",
+      "flavorText": "Quiet Study: +100% Essence gained.",
+      "effectId": "essence_gain",
+      "value": 100
+    }
   },
   {
     "slug": "arcade_bunny",
@@ -344,7 +378,13 @@
     "imagePath": "waifumon/arcade_bunny/standard.png",
     "enabled": true,
     "eventKey": null,
-    "perSpeciesWeight": 1
+    "perSpeciesWeight": 1,
+    "buddyBonus": {
+      "name": "Free Play",
+      "flavorText": "Free Play: 25% chance Hunting does not consume Energy.",
+      "effectId": "energy_save_chance",
+      "value": 25
+    }
   },
   {
     "slug": "rainy_day_idol",
@@ -364,7 +404,17 @@
     "imagePath": "waifumon/rainy_day_idol/standard.png",
     "enabled": true,
     "eventKey": null,
-    "perSpeciesWeight": 1
+    "perSpeciesWeight": 1,
+    "buddyBonus": {
+      "name": "Soft Spotlight",
+      "flavorText": "Soft Spotlight: +5% encounter weight for human Waifumon.",
+      "effectId": "encounter_weight",
+      "value": 5,
+      "target": {
+        "type": "race",
+        "value": "human"
+      }
+    }
   },
   {
     "slug": "sleepy_succubus_intern",
@@ -384,7 +434,13 @@
     "imagePath": "waifumon/sleepy_succubus_intern/standard.png",
     "enabled": true,
     "eventKey": null,
-    "perSpeciesWeight": 1
+    "perSpeciesWeight": 1,
+    "buddyBonus": {
+      "name": "Power Nap",
+      "flavorText": "Power Nap: +100% Affection gained.",
+      "effectId": "affection_gain",
+      "value": 100
+    }
   },
   {
     "slug": "nurse_imp",
@@ -404,7 +460,13 @@
     "imagePath": "waifumon/nurse_imp/standard.png",
     "enabled": true,
     "eventKey": null,
-    "perSpeciesWeight": 1
+    "perSpeciesWeight": 1,
+    "buddyBonus": {
+      "name": "\"What's in tha-...OW!\"",
+      "flavorText": "\"What's in tha-...OW!\": 25% chance Hunting does not consume Energy.",
+      "effectId": "energy_save_chance",
+      "value": 25
+    }
   },
   {
     "slug": "streetwear_oni",
@@ -424,7 +486,13 @@
     "imagePath": "waifumon/streetwear_oni/standard.png",
     "enabled": true,
     "eventKey": null,
-    "perSpeciesWeight": 1
+    "perSpeciesWeight": 1,
+    "buddyBonus": {
+      "name": "\"Do a Kickflip!\"",
+      "flavorText": "\"Do a Kickflip!\": +100% Essence gained.",
+      "effectId": "essence_gain",
+      "value": 100
+    }
   },
   {
     "slug": "moonlit_dancer",
@@ -499,7 +567,17 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Night Floor",
+      "flavorText": "Night Floor: +5% encounter weight for angel Waifumon.",
+      "effectId": "encounter_weight",
+      "value": 5,
+      "target": {
+        "type": "race",
+        "value": "angel"
+      }
+    }
   },
   {
     "slug": "cyber_neko",
@@ -519,7 +597,17 @@
     "imagePath": "waifumon/cyber_neko/standard.png",
     "enabled": true,
     "eventKey": null,
-    "perSpeciesWeight": 1
+    "perSpeciesWeight": 1,
+    "buddyBonus": {
+      "name": "Street Pounce",
+      "flavorText": "Street Pounce: +5% encounter weight for demi-human Waifumon.",
+      "effectId": "encounter_weight",
+      "value": 5,
+      "target": {
+        "type": "race",
+        "value": "demi-human"
+      }
+    }
   },
   {
     "slug": "potion_shop_clerk",
@@ -594,7 +682,13 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Under the Counter",
+      "flavorText": "Under the Counter: +100% Essence gained.",
+      "effectId": "essence_gain",
+      "value": 100
+    }
   },
   {
     "slug": "velvet_bartender",
@@ -669,7 +763,13 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Last Call",
+      "flavorText": "Last Call: +100% Essence gained.",
+      "effectId": "essence_gain",
+      "value": 100
+    }
   },
   {
     "slug": "demon_hall_monitor",
@@ -744,7 +844,17 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Detention List",
+      "flavorText": "Detention List: +5% encounter weight for dominant affinity Waifumon.",
+      "effectId": "encounter_weight",
+      "value": 5,
+      "target": {
+        "type": "affinity",
+        "value": "dominant"
+      }
+    }
   },
   {
     "slug": "beachside_siren",
@@ -764,7 +874,17 @@
     "imagePath": "waifumon/beachside_siren/standard.png",
     "enabled": true,
     "eventKey": null,
-    "perSpeciesWeight": 1
+    "perSpeciesWeight": 1,
+    "buddyBonus": {
+      "name": "Luring Song",
+      "flavorText": "Luring Song: +5% capture chance against SR and below Waifumon.",
+      "effectId": "capture_chance",
+      "value": 5,
+      "target": {
+        "type": "rarity_max",
+        "value": "SR"
+      }
+    }
   },
   {
     "slug": "neon_kitsune_apprentice",
@@ -839,7 +959,17 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "First Trick",
+      "flavorText": "First Trick: +7% encounter weight for spirit Waifumon.",
+      "effectId": "encounter_weight",
+      "value": 7,
+      "target": {
+        "type": "race",
+        "value": "spirit"
+      }
+    }
   },
   {
     "slug": "crimson_oni_bride",
@@ -859,7 +989,13 @@
     "imagePath": "waifumon/crimson_oni_bride/standard.png",
     "enabled": true,
     "eventKey": null,
-    "perSpeciesWeight": 1
+    "perSpeciesWeight": 1,
+    "buddyBonus": {
+      "name": "Bride's Claim",
+      "flavorText": "Bride's Claim: +7% Player XP gained.",
+      "effectId": "player_xp_gain",
+      "value": 7
+    }
   },
   {
     "slug": "cyber_shrine_maiden",
@@ -879,7 +1015,13 @@
     "imagePath": "waifumon/cyber_shrine_maiden/standard.png",
     "enabled": true,
     "eventKey": null,
-    "perSpeciesWeight": 1
+    "perSpeciesWeight": 1,
+    "buddyBonus": {
+      "name": "Sacred Maintenance",
+      "flavorText": "Sacred Maintenance: +100% Energy gained in Care mode.",
+      "effectId": "care_energy_gain",
+      "value": 100
+    }
   },
   {
     "slug": "latex_paladin",
@@ -954,7 +1096,17 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Oathbound",
+      "flavorText": "Oathbound: +7% capture chance against demon Waifumon.",
+      "effectId": "capture_chance",
+      "value": 7,
+      "target": {
+        "type": "race",
+        "value": "demon"
+      }
+    }
   },
   {
     "slug": "gothic_vampire_heiress",
@@ -974,7 +1126,13 @@
     "imagePath": "waifumon/gothic_vampire_heiress/standard.png",
     "enabled": true,
     "eventKey": null,
-    "perSpeciesWeight": 1
+    "perSpeciesWeight": 1,
+    "buddyBonus": {
+      "name": "Eternal Mark",
+      "flavorText": "Eternal Mark: +100% Affection gained.",
+      "effectId": "affection_gain",
+      "value": 100
+    }
   },
   {
     "slug": "hologram_idol",
@@ -1049,7 +1207,13 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Fan Light",
+      "flavorText": "Fan Light: +100% Affection gained.",
+      "effectId": "affection_gain",
+      "value": 100
+    }
   },
   {
     "slug": "demon_librarian",
@@ -1124,7 +1288,17 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Demonic Rolodex",
+      "flavorText": "Demonic Rolodex: +7% encounter weight for demon Waifumon.",
+      "effectId": "encounter_weight",
+      "value": 7,
+      "target": {
+        "type": "race",
+        "value": "demon"
+      }
+    }
   },
   {
     "slug": "bunny_dealer",
@@ -1144,7 +1318,17 @@
     "imagePath": "waifumon/bunny_dealer/standard.png",
     "enabled": true,
     "eventKey": null,
-    "perSpeciesWeight": 1
+    "perSpeciesWeight": 1,
+    "buddyBonus": {
+      "name": "Gambler",
+      "flavorText": "Gambler: +7% capture chance against unowned species.",
+      "effectId": "capture_chance",
+      "value": 7,
+      "target": {
+        "type": "ownership",
+        "value": "unowned"
+      }
+    }
   },
   {
     "slug": "angelic_delinquent",
@@ -1219,7 +1403,17 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Tough Love",
+      "flavorText": "Tough Love: +7% encounter weight for submissive affinity Waifumon.",
+      "effectId": "encounter_weight",
+      "value": 7,
+      "target": {
+        "type": "affinity",
+        "value": "submissive"
+      }
+    }
   },
   {
     "slug": "witchy_mechanic",
@@ -1294,7 +1488,17 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Big Wrench",
+      "flavorText": "Big Wrench: +7% capture chance against android Waifumon.",
+      "effectId": "capture_chance",
+      "value": 7,
+      "target": {
+        "type": "race",
+        "value": "android"
+      }
+    }
   },
   {
     "slug": "void_catgirl",
@@ -1369,7 +1573,13 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "\"Swipe!\"",
+      "flavorText": "\"Swipe!\": +50% eligible rewards from Boss Encounters.",
+      "effectId": "boss_reward_gain",
+      "value": 50
+    }
   },
   {
     "slug": "royal_succubus",
@@ -1389,7 +1599,13 @@
     "imagePath": "waifumon/royal_succubus/standard.png",
     "enabled": true,
     "eventKey": null,
-    "perSpeciesWeight": 1
+    "perSpeciesWeight": 1,
+    "buddyBonus": {
+      "name": "Royal Privilege",
+      "flavorText": "Royal Privilege: 25% chance Hunting does not consume Energy.",
+      "effectId": "energy_save_chance",
+      "value": 25
+    }
   },
   {
     "slug": "chrome_valkyrie",
@@ -1467,7 +1683,13 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Overclock",
+      "flavorText": "Overclock: 25% chance Hunting does not consume Energy.",
+      "effectId": "energy_save_chance",
+      "value": 25
+    }
   },
   {
     "slug": "blood_moon_priestess",
@@ -1542,7 +1764,13 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Blood Offering",
+      "flavorText": "Blood Offering: +10% XP gained by the active Buddy.",
+      "effectId": "buddy_xp_gain",
+      "value": 10
+    }
   },
   {
     "slug": "casino_kitsune",
@@ -1562,7 +1790,17 @@
     "imagePath": "waifumon/casino_kitsune/standard.png",
     "enabled": true,
     "eventKey": null,
-    "perSpeciesWeight": 1
+    "perSpeciesWeight": 1,
+    "buddyBonus": {
+      "name": "High Roller",
+      "flavorText": "High Roller: +10% encounter weight for unowned species.",
+      "effectId": "encounter_weight",
+      "value": 10,
+      "target": {
+        "type": "ownership",
+        "value": "unowned"
+      }
+    }
   },
   {
     "slug": "fallen_angel_nurse",
@@ -1582,7 +1820,13 @@
     "imagePath": "waifumon/fallen_angel_nurse/standard.png",
     "enabled": true,
     "eventKey": null,
-    "perSpeciesWeight": 1
+    "perSpeciesWeight": 1,
+    "buddyBonus": {
+      "name": "Night shift",
+      "flavorText": "Night shift: +100% Energy gained in Care mode.",
+      "effectId": "care_energy_gain",
+      "value": 100
+    }
   },
   {
     "slug": "dollhouse_demon",
@@ -1602,7 +1846,13 @@
     "imagePath": "waifumon/dollhouse_demon/standard.png",
     "enabled": true,
     "eventKey": null,
-    "perSpeciesWeight": 1
+    "perSpeciesWeight": 1,
+    "buddyBonus": {
+      "name": "Wind up",
+      "flavorText": "Wind up: +100% Energy gained in Care mode.",
+      "effectId": "care_energy_gain",
+      "value": 100
+    }
   },
   {
     "slug": "darkelf_royal",
@@ -1622,7 +1872,17 @@
     "imagePath": "waifumon/darkelf_royal/standard.png",
     "enabled": true,
     "eventKey": null,
-    "perSpeciesWeight": 1
+    "perSpeciesWeight": 1,
+    "buddyBonus": {
+      "name": "Royal Favor",
+      "flavorText": "Royal Favor: +10% capture chance against SSR+ Waifumon.",
+      "effectId": "capture_chance",
+      "value": 10,
+      "target": {
+        "type": "rarity_min",
+        "value": "SSR"
+      }
+    }
   },
   {
     "slug": "queen_of_velvet_chains",
@@ -1697,7 +1957,17 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Willing Chains",
+      "flavorText": "Willing Chains: +12% capture chance against dominant affinity Waifumon.",
+      "effectId": "capture_chance",
+      "value": 12,
+      "target": {
+        "type": "affinity",
+        "value": "dominant"
+      }
+    }
   },
   {
     "slug": "neon_dragon_empress",
@@ -1717,7 +1987,13 @@
     "imagePath": "waifumon/neon_dragon_empress/standard.png",
     "enabled": true,
     "eventKey": null,
-    "perSpeciesWeight": 1
+    "perSpeciesWeight": 1,
+    "buddyBonus": {
+      "name": "Digital Hoard",
+      "flavorText": "Digital Hoard: +12% chance to find items from Hunting.",
+      "effectId": "hunt_item_find_chance",
+      "value": 12
+    }
   },
   {
     "slug": "eclipse_idol",
@@ -1792,7 +2068,17 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Encore",
+      "flavorText": "Encore: +12% encounter weight for owned species.",
+      "effectId": "encounter_weight",
+      "value": 12,
+      "target": {
+        "type": "ownership",
+        "value": "owned"
+      }
+    }
   },
   {
     "slug": "abyssal_shrine_oracle",
@@ -1867,7 +2153,17 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Twisted Blessing",
+      "flavorText": "Twisted Blessing: +12% capture chance against primal affinity Waifumon.",
+      "effectId": "capture_chance",
+      "value": 12,
+      "target": {
+        "type": "affinity",
+        "value": "primal"
+      }
+    }
   },
   {
     "slug": "afterglow_goddess",
@@ -1887,7 +2183,13 @@
     "imagePath": "waifumon/goddess_of_the_afterglow/standard.png",
     "enabled": true,
     "eventKey": null,
-    "perSpeciesWeight": 1
+    "perSpeciesWeight": 1,
+    "buddyBonus": {
+      "name": "Aftercare",
+      "flavorText": "Aftercare: +100% Energy gained in Care mode.",
+      "effectId": "care_energy_gain",
+      "value": 100
+    }
   },
   {
     "slug": "cyber_lilith_prime",
@@ -1962,7 +2264,17 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Hijack",
+      "flavorText": "Hijack: +15% capture chance against android Waifumon.",
+      "effectId": "capture_chance",
+      "value": 15,
+      "target": {
+        "type": "race",
+        "value": "android"
+      }
+    }
   },
   {
     "slug": "the_first_waifu",
@@ -2038,7 +2350,13 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Unconditional Love",
+      "flavorText": "Unconditional Love: +100% Affection gained.",
+      "effectId": "affection_gain",
+      "value": 100
+    }
   },
   {
     "slug": "the_waifu_below",
@@ -2077,7 +2395,17 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Soul Claim",
+      "flavorText": "Soul Claim: +20% encounter weight for SSR+ Waifumon.",
+      "effectId": "encounter_weight",
+      "value": 20,
+      "target": {
+        "type": "rarity_min",
+        "value": "SSR"
+      }
+    }
   },
   {
     "slug": "neko_barista",
@@ -2152,7 +2480,13 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Warm Refill",
+      "flavorText": "Warm Refill: 25% chance Hunting does not consume Energy.",
+      "effectId": "energy_save_chance",
+      "value": 25
+    }
   },
   {
     "slug": "gym_oni",
@@ -2227,7 +2561,13 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Spotter",
+      "flavorText": "Spotter: +5% XP gained by the active Buddy.",
+      "effectId": "buddy_xp_gain",
+      "value": 5
+    }
   },
   {
     "slug": "library_ghost",
@@ -2302,7 +2642,17 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Unlisted Title",
+      "flavorText": "Unlisted Title: +5% encounter weight for unowned species.",
+      "effectId": "encounter_weight",
+      "value": 5,
+      "target": {
+        "type": "ownership",
+        "value": "unowned"
+      }
+    }
   },
   {
     "slug": "arcade_succubus",
@@ -2377,7 +2727,13 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Free Play",
+      "flavorText": "Free Play: +7% capture chance against any Waifumon.",
+      "effectId": "capture_chance",
+      "value": 7
+    }
   },
   {
     "slug": "ramen_android",
@@ -2397,7 +2753,13 @@
     "imagePath": "waifumon/ramen_android/standard.png",
     "enabled": true,
     "eventKey": null,
-    "perSpeciesWeight": 1
+    "perSpeciesWeight": 1,
+    "buddyBonus": {
+      "name": "Extra Serving",
+      "flavorText": "Extra Serving: +100% Essence gained.",
+      "effectId": "essence_gain",
+      "value": 100
+    }
   },
   {
     "slug": "neon_kitsune",
@@ -2472,7 +2834,17 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "FoxFire",
+      "flavorText": "FoxFire: +10% encounter weight for unowned species.",
+      "effectId": "encounter_weight",
+      "value": 10,
+      "target": {
+        "type": "ownership",
+        "value": "unowned"
+      }
+    }
   },
   {
     "slug": "eclipse_valkyrie",
@@ -2492,7 +2864,13 @@
     "imagePath": "waifumon/eclipse_valkyrie/standard.png",
     "enabled": true,
     "eventKey": null,
-    "perSpeciesWeight": 1
+    "perSpeciesWeight": 1,
+    "buddyBonus": {
+      "name": "Warpath",
+      "flavorText": "Warpath: +12% Player XP gained.",
+      "effectId": "player_xp_gain",
+      "value": 12
+    }
   },
   {
     "slug": "void_empress",
@@ -2567,7 +2945,13 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Inevitability",
+      "flavorText": "Inevitability: +100% Affection gained.",
+      "effectId": "affection_gain",
+      "value": 100
+    }
   },
   {
     "slug": "ah_caretaker",
@@ -2642,7 +3026,13 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "The Naughty Shift",
+      "flavorText": "The Naughty Shift: +100% Energy gained in Care mode.",
+      "effectId": "care_energy_gain",
+      "value": 100
+    }
   },
   {
     "slug": "android_assassin",
@@ -2662,7 +3052,13 @@
     "imagePath": "waifumon/android_assassin/standard.png",
     "enabled": true,
     "eventKey": null,
-    "perSpeciesWeight": 1
+    "perSpeciesWeight": 1,
+    "buddyBonus": {
+      "name": "Clean Kill",
+      "flavorText": "Clean Kill: +7% capture chance against any Waifumon.",
+      "effectId": "capture_chance",
+      "value": 7
+    }
   },
   {
     "slug": "android_secretary",
@@ -2737,7 +3133,17 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Filed Under \"You\"",
+      "flavorText": "Filed Under \"You\": +5% encounter weight for owned species.",
+      "effectId": "encounter_weight",
+      "value": 5,
+      "target": {
+        "type": "ownership",
+        "value": "owned"
+      }
+    }
   },
   {
     "slug": "angelic_judge",
@@ -2812,7 +3218,13 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Verdict",
+      "flavorText": "Verdict: +50% eligible rewards from Boss Encounters.",
+      "effectId": "boss_reward_gain",
+      "value": 50
+    }
   },
   {
     "slug": "archangel_inquisitor",
@@ -2878,7 +3290,17 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Holy Audit",
+      "flavorText": "Holy Audit: +7% capture chance against SSR+ Waifumon.",
+      "effectId": "capture_chance",
+      "value": 7,
+      "target": {
+        "type": "rarity_min",
+        "value": "SSR"
+      }
+    }
   },
   {
     "slug": "bimbo_valkyrie",
@@ -2953,7 +3375,17 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Pretty Spear",
+      "flavorText": "Pretty Spear: +5% encounter weight for SR Waifumon.",
+      "effectId": "encounter_weight",
+      "value": 5,
+      "target": {
+        "type": "rarity",
+        "value": "SR"
+      }
+    }
   },
   {
     "slug": "cabaret_star",
@@ -3028,7 +3460,17 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Encore Crowd",
+      "flavorText": "Encore Crowd: +10% capture chance against SR and below Waifumon.",
+      "effectId": "capture_chance",
+      "value": 10,
+      "target": {
+        "type": "rarity_max",
+        "value": "SR"
+      }
+    }
   },
   {
     "slug": "cat_burglar",
@@ -3103,7 +3545,13 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Quiet Hands",
+      "flavorText": "Quiet Hands: +7% chance to find items from Hunting.",
+      "effectId": "hunt_item_find_chance",
+      "value": 7
+    }
   },
   {
     "slug": "dragon_casino_queen",
@@ -3123,7 +3571,13 @@
     "imagePath": "waifumon/dragon_casino_queen/standard.png",
     "enabled": true,
     "eventKey": null,
-    "perSpeciesWeight": 1
+    "perSpeciesWeight": 1,
+    "buddyBonus": {
+      "name": "House Edge",
+      "flavorText": "House Edge: +7% chance to find items from Hunting.",
+      "effectId": "hunt_item_find_chance",
+      "value": 7
+    }
   },
   {
     "slug": "feral_android",
@@ -3198,7 +3652,17 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Broken Protocol",
+      "flavorText": "Broken Protocol: +7% capture chance against android Waifumon.",
+      "effectId": "capture_chance",
+      "value": 7,
+      "target": {
+        "type": "race",
+        "value": "android"
+      }
+    }
   },
   {
     "slug": "feral_wood_spirit",
@@ -3218,7 +3682,17 @@
     "imagePath": "waifumon/feral_wood_spirit/standard.png",
     "enabled": true,
     "eventKey": null,
-    "perSpeciesWeight": 1
+    "perSpeciesWeight": 1,
+    "buddyBonus": {
+      "name": "Wildpath",
+      "flavorText": "Wildpath: +10% encounter weight for spirit Waifumon.",
+      "effectId": "encounter_weight",
+      "value": 10,
+      "target": {
+        "type": "race",
+        "value": "spirit"
+      }
+    }
   },
   {
     "slug": "heaven_spear_marshal",
@@ -3293,7 +3767,17 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Divine Mandate",
+      "flavorText": "Divine Mandate: +12% encounter weight for demon Waifumon.",
+      "effectId": "encounter_weight",
+      "value": 12,
+      "target": {
+        "type": "race",
+        "value": "demon"
+      }
+    }
   },
   {
     "slug": "holy_courtesan",
@@ -3313,7 +3797,13 @@
     "imagePath": "waifumon/holy_courtesan/standard.png",
     "enabled": true,
     "eventKey": null,
-    "perSpeciesWeight": 1
+    "perSpeciesWeight": 1,
+    "buddyBonus": {
+      "name": "Sacred Softness",
+      "flavorText": "Sacred Softness: +100% Affection gained.",
+      "effectId": "affection_gain",
+      "value": 100
+    }
   },
   {
     "slug": "lantern_spirit",
@@ -3333,7 +3823,13 @@
     "imagePath": "waifumon/lantern_spirit/standard.png",
     "enabled": true,
     "eventKey": null,
-    "perSpeciesWeight": 1
+    "perSpeciesWeight": 1,
+    "buddyBonus": {
+      "name": "Light the way",
+      "flavorText": "Light the way: +5% chance to find items from Hunting.",
+      "effectId": "hunt_item_find_chance",
+      "value": 5
+    }
   },
   {
     "slug": "leopard_bodyguard",
@@ -3408,7 +3904,13 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Escort Duty",
+      "flavorText": "Escort Duty: +50% eligible rewards from Boss Encounters.",
+      "effectId": "boss_reward_gain",
+      "value": 50
+    }
   },
   {
     "slug": "neko_tatto_artist",
@@ -3483,7 +3985,17 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Returning Customer",
+      "flavorText": "Returning Customer: +5% capture chance against owned species.",
+      "effectId": "capture_chance",
+      "value": 5,
+      "target": {
+        "type": "ownership",
+        "value": "owned"
+      }
+    }
   },
   {
     "slug": "owl_detective",
@@ -3558,7 +4070,17 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Investigator",
+      "flavorText": "Investigator: +5% encounter weight for SR Waifumon.",
+      "effectId": "encounter_weight",
+      "value": 5,
+      "target": {
+        "type": "rarity",
+        "value": "SR"
+      }
+    }
   },
   {
     "slug": "phantom_violinist",
@@ -3633,7 +4155,13 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Lingering Note",
+      "flavorText": "Lingering Note: +7% Player XP gained.",
+      "effectId": "player_xp_gain",
+      "value": 7
+    }
   },
   {
     "slug": "queen_wild_hunt",
@@ -3708,7 +4236,17 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Horn Call",
+      "flavorText": "Horn Call: +15% encounter weight for SSR+ Waifumon.",
+      "effectId": "encounter_weight",
+      "value": 15,
+      "target": {
+        "type": "rarity_min",
+        "value": "SSR"
+      }
+    }
   },
   {
     "slug": "crimson_judge",
@@ -3783,7 +4321,13 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Blood Docket",
+      "flavorText": "Blood Docket: +50% eligible rewards from Boss Encounters.",
+      "effectId": "boss_reward_gain",
+      "value": 50
+    }
   },
   {
     "slug": "crown_humanity",
@@ -3858,7 +4402,17 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Magnetism",
+      "flavorText": "Magnetism: +20% encounter weight for human Waifumon.",
+      "effectId": "encounter_weight",
+      "value": 20,
+      "target": {
+        "type": "race",
+        "value": "human"
+      }
+    }
   },
   {
     "slug": "thot_chat_2",
@@ -3933,7 +4487,17 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Suggested for you",
+      "flavorText": "Suggested for you: +5% encounter weight for android Waifumon.",
+      "effectId": "encounter_weight",
+      "value": 5,
+      "target": {
+        "type": "race",
+        "value": "android"
+      }
+    }
   },
   {
     "slug": "valkyrie_recruit",
@@ -4008,7 +4572,13 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Prove Yourself",
+      "flavorText": "Prove Yourself: +5% XP gained by the active Buddy.",
+      "effectId": "buddy_xp_gain",
+      "value": 5
+    }
   },
   {
     "slug": "winged_waitress",
@@ -4028,7 +4598,13 @@
     "imagePath": "waifumon/winged_waitress/standard.png",
     "enabled": true,
     "eventKey": null,
-    "perSpeciesWeight": 1
+    "perSpeciesWeight": 1,
+    "buddyBonus": {
+      "name": "\"On the House\"",
+      "flavorText": "\"On the House\": +50% eligible rewards from Boss Encounters.",
+      "effectId": "boss_reward_gain",
+      "value": 50
+    }
   },
   {
     "slug": "your_fav_girl",
@@ -4103,6 +4679,16 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Already Yours",
+      "flavorText": "Already Yours: +7% capture chance against owned species.",
+      "effectId": "capture_chance",
+      "value": 7,
+      "target": {
+        "type": "ownership",
+        "value": "owned"
+      }
+    }
   }
 ]

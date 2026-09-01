@@ -17,6 +17,18 @@
       "weight": 12
     },
     {
+      "species": "onsen_maid",
+      "weight": 10
+    },
+    {
+      "species": "hot_spring_intern",
+      "weight": 10
+    },
+    {
+      "species": "clawfoot_bather",
+      "weight": 10
+    },
+    {
       "species": "arcade_bunny",
       "weight": 10
     },
