@@ -750,40 +750,82 @@
     "slug": "bathhouse_mistress",
     "name": "Bathhouse Mistress",
     "rarity": "SR",
+    "archetype": "demon",
     "race": "demon",
-    "affinity": "dominant",
-    "contentRating": "explicit",
-    "subtitle": "Keeper of the Old Soak",
-    "abilityName": "Rule and Consequence",
-    "abilityDescription": "Every guest is read the rules once, at the door, by her. Breaking them earns a private appointment she always keeps.",
+    "baseCaptureRate": null,
     "description": "Runs the oldest bathhouse on the ridge; sets the temperature, the rules, and the penalty for breaking them, and enforces all three personally.",
-    "flavorQuote": "The water is for healing. The rules are for the ones who come here to misbehave.",
-    "artist": "Whistler",
+    "tags": [
+      "expansion",
+      "region_exclusive"
+    ],
+    "contentRating": "explicit",
+    "affinity": "dominant",
+    "card": {
+      "subtitle": "Keeper of the Old Soak",
+      "ability": {
+        "name": "Rule and Consequence",
+        "text": "Every guest is read the rules once, at the door, by her. Breaking them earns a private appointment she always keeps. Commands the target's attention, and holds it."
+      },
+      "flavorQuote": "The water is for healing. The rules are for the ones who come here to misbehave.",
+      "artist": "Whistler"
+    },
     "imagePath": "waifumon/bathhouse_mistress/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
     "appearances": [
       {
-        "level": 0,
-        "image": "waifumon/bathhouse_mistress/standard.png"
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
       },
       {
-        "level": 10,
-        "image": "waifumon/bathhouse_mistress/level_10.png"
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
       },
       {
-        "level": 20,
-        "image": "waifumon/bathhouse_mistress/level_20.png"
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
       },
       {
-        "level": 30,
-        "image": "waifumon/bathhouse_mistress/level_30.png"
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
       },
       {
-        "level": 40,
-        "image": "waifumon/bathhouse_mistress/level_40.png"
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
       },
       {
-        "level": 50,
-        "image": "waifumon/bathhouse_mistress/level_50.png"
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
       }
     ]
   },
