@@ -662,5 +662,88 @@
         }
       }
     ]
+  },
+  {
+    "slug": "summit_surveyor",
+    "name": "Summit Surveyor",
+    "rarity": "SSR",
+    "archetype": "android",
+    "race": "android",
+    "baseCaptureRate": null,
+    "description": "Rugged exploration android built for scaling sheer cliffs and mapping the mountains' frozen caves.",
+    "tags": [
+      "expansion",
+      "region_exclusive"
+    ],
+    "contentRating": "explicit",
+    "affinity": "primal",
+    "card": {
+      "subtitle": "Range Surveyor",
+      "ability": {
+        "name": "Feral Ascent",
+        "text": "Built to scale sheer cliffs and map frozen caves. Scales any vertical surface, and the map comes back glowing ice-blue."
+      },
+      "flavorQuote": "She doesn't survey the mountain. She hunts it.",
+      "artist": "Gorthig"
+    },
+    "imagePath": "waifumon/summit_surveyor/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
   }
 ]

@@ -109,6 +109,18 @@ authentication and carries the shared API token in the browser bundle, so keep
 it on loopback. It cannot change game state — every non-GET request is rejected
 before it leaves the client. See [docs/portal.md](docs/portal.md).
 
+For production serving, compose also provides `waifumon-portal`: an Nginx image
+that serves the compiled Vite bundle and proxies `/api/*`, `/ready` and
+`/health` to the loopback/internal Platform API. It publishes only
+`127.0.0.1:3130` by default so Cloudflare Tunnel can target one local endpoint:
+
+```sh
+PORTAL_FORWARDED_PROTO=https docker compose up --build waifumon-portal
+```
+
+This does not add public player authentication yet. The production proxy does
+not inject `PLATFORM_API_TOKEN`; Discord OAuth/session auth is the next step.
+
 ## Layout
 
 - `src/` — bot source (config, db, discord shell, service modules, shared)

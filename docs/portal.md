@@ -4,10 +4,12 @@ A **read-only companion web app** for Waifumon. It shows a player their
 collection, buddy, inventory, shop and encyclopedia — and nothing else. Every
 action in the game still happens through the Discord bot.
 
-> ⚠️ **Development build only.** The Portal has no authentication, ships the
-> Platform API's shared token to the browser, and acts as whichever player an
-> environment variable names. There is no production deployment path in v1.
-> See [Security posture](#security-posture).
+> ⚠️ **Public serving path, not public auth yet.** The repo now ships a
+> production web layer that serves `portal/dist` and reverse-proxies API probes
+> without exposing the Platform API directly. It deliberately does **not**
+> inject the Platform API master bearer token, so authenticated player/card
+> routes still need the Discord OAuth/session gateway described in
+> [Future work](#discord-oauth-replaces-dev-auth).
 
 ---
 
@@ -30,7 +32,7 @@ the admin panel, or the API.
 
 ---
 
-## Quick start
+## Local Development
 
 You need the bot running with the Platform API enabled, and a player who has
 played at least once.
@@ -89,6 +91,80 @@ switcher and no `localStorage` session: it resolves `VITE_DEFAULT_PLAYER_ID`
 exactly as it always has, and `npm run verify:bundle` fails if a single string
 from the developer-login subtree reaches `dist/`.
 
+## Production Serving
+
+Production is a Docker/Nginx path, not `vite preview`:
+
+```
+Internet later
+  -> Cloudflare Tunnel
+  -> http://127.0.0.1:3130
+  -> waifumon-portal (Nginx, static SPA + reverse proxy)
+  -> waifumon-bot:3120 (Platform API, Docker-internal)
+  -> Postgres (Docker-internal)
+```
+
+Build and run locally:
+
+```sh
+cp .env.example .env
+# Fill Discord/Postgres values, then:
+PLATFORM_API_ENABLED=true
+PLATFORM_API_TOKEN=$(openssl rand -hex 32)
+CARD_RENDERER_ENABLED=true              # optional, needed for card routes
+PORTAL_WEB_PUBLISH_HOST=127.0.0.1
+PORTAL_WEB_PORT=3130
+PORTAL_FORWARDED_PROTO=http
+docker compose up --build waifumon-portal
+```
+
+Open `http://127.0.0.1:3130`. For Cloudflare Tunnel, point the tunnel service
+at `http://127.0.0.1:3130` and set `PORTAL_FORWARDED_PROTO=https` before
+rebuilding/restarting the Portal web container.
+
+### Production ports and binds
+
+| Surface | Compose service | Host bind | Public? |
+|---|---|---|---|
+| Portal web | `waifumon-portal` | `${PORTAL_WEB_PUBLISH_HOST:-127.0.0.1}:${PORTAL_WEB_PORT:-3130}` | Only through Cloudflare Tunnel |
+| Platform API | `waifumon-bot` | `${PLATFORM_API_PUBLISH_HOST:-127.0.0.1}:${PLATFORM_API_PORT:-3120}` | No |
+| Admin web | `waifumon-bot` | `${ADMIN_WEB_PUBLISH_HOST:-127.0.0.1}:${ADMIN_WEB_PORT:-3111}` | No |
+| Postgres | `postgres` | none | No |
+
+Inside Docker, compose sets `PLATFORM_API_HOST=0.0.0.0` so Nginx can reach the
+API at `http://waifumon-bot:3120`. That is not the public boundary; the host
+published API port remains loopback by default.
+
+### What Nginx serves
+
+- `portal/dist` as static files.
+- `/assets/*` with `Cache-Control: public, max-age=31536000, immutable`.
+- `index.html` and SPA fallback with `Cache-Control: no-cache`.
+- `/api/*`, `/ready` and `/health` proxied to the Platform API.
+- SPA history fallback for browser routes, but not for `/api`, `/ready` or
+  `/health`; proxy failures stay failures.
+- Dotfiles and source maps are denied.
+
+The proxy forwards `Host`, `X-Real-IP`, `X-Forwarded-For` and
+`X-Forwarded-Proto`. `X-Forwarded-For` is set from Nginx's direct peer instead
+of trusting a client-supplied chain; `X-Forwarded-Proto` is an operator-set
+value (`PORTAL_FORWARDED_PROTO`) so Cloudflare TLS termination can be represented
+as `https` without accepting arbitrary request headers.
+
+### Authentication limitation
+
+The Vite dev server injects `Authorization: Bearer $VITE_PLATFORM_API_TOKEN`
+because dev card/image URLs are loaded through `<img>`, which cannot set
+headers. The production Nginx layer does **not** copy that behaviour. Doing so
+would turn one shared master API token into a public ambient credential for
+every browser request.
+
+Until the Discord OAuth/session gateway exists, a production-served Portal can
+load the SPA and unauthenticated ops endpoints, but authenticated player JSON,
+owned artwork and card images will return 401 unless the browser has some
+future session mechanism. That is intentional: production serving is ready for
+Cloudflare, production identity is the next milestone.
+
 ---
 
 ## Configuration
@@ -101,7 +177,7 @@ source of truth.
 |---|---|---|
 | `VITE_PLATFORM_API_URL` | – | Base URL for API calls. Keep `/api` in dev; the dev server proxies it. |
 | `VITE_PLATFORM_API_PROXY_TARGET` | – | Where the dev server forwards `/api`, `/ready` and `/health`. Default `http://127.0.0.1:3120`. |
-| `VITE_PLATFORM_API_TOKEN` | ✅ | Must equal `PLATFORM_API_TOKEN` on the bot side. **Readable by anyone who loads the page.** |
+| `VITE_PLATFORM_API_TOKEN` | Dev only | Must equal `PLATFORM_API_TOKEN` on the bot side for local Vite proxy use. **Do not set it for production builds.** |
 | `VITE_API_TIMEOUT_MS` | – | Request timeout. Default `30000`. See [Performance](#performance). |
 | `VITE_DEFAULT_PLAYER_ID` | – | The acting player for a **non-dev** build, as an internal integer id. `npm run dev` ignores it and uses the developer login screen. |
 | `VITE_DEFAULT_DISCORD_GUILD_ID` | – | Pre-fills the developer login's server field; also shown on the diagnostics page. |
@@ -267,8 +343,10 @@ This is the part to read before showing the Portal to anyone.
   Settings restates the caveat in full. This is deliberate: the risk is that
   someone forgets.
 
-None of this is acceptable for a deployment, which is why v1 has no deployment
-path. Discord OAuth (below) is the prerequisite.
+None of this is acceptable for a public user session. The production web layer
+therefore serves and proxies safely, but does not make private Platform API data
+publicly usable by smuggling the shared bearer token through Nginx. Discord
+OAuth (below) is the prerequisite for real public player access.
 
 ---
 
@@ -541,11 +619,10 @@ asset contract does not change.
 
 ### Also deferred
 
-Generated OpenAPI types, composite dashboard endpoint, live notifications,
-gameplay mutations, and production deployment. None require a v1 redesign to
-adopt. (The runtime player switcher landed as the dev-only developer login
-above; a *production* switcher is a consequence of OAuth, not a feature of its
-own.)
+Generated OpenAPI types, composite dashboard endpoint, live notifications and
+gameplay mutations. None require a v1 redesign to adopt. (The runtime player
+switcher landed as the dev-only developer login above; a *production* switcher
+is a consequence of OAuth, not a feature of its own.)
 
 ---
 

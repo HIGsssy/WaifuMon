@@ -24,6 +24,9 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       ASSETS_DIR: /app/assets
       CONTENT_DIR: /app/content
+      # Docker-internal bind. Host publication below remains loopback by
+      # default; this only lets the Portal web container reach the API.
+      PLATFORM_API_HOST: 0.0.0.0
     depends_on:
       postgres:
         condition: service_healthy
@@ -78,6 +81,29 @@ services:
     ports:
       - '${ADMIN_WEB_PUBLISH_HOST:-127.0.0.1}:${ADMIN_WEB_PORT:-3111}:${ADMIN_WEB_PORT:-3111}'
       - '${PLATFORM_API_PUBLISH_HOST:-127.0.0.1}:${PLATFORM_API_PORT:-3120}:${PLATFORM_API_PORT:-3120}'
+
+  waifumon-portal:
+    build:
+      context: .
+      dockerfile: portal/Dockerfile
+      args:
+        VITE_PLATFORM_API_URL: /api
+        VITE_API_TIMEOUT_MS: ${VITE_API_TIMEOUT_MS:-}
+        VITE_DEFAULT_PLAYER_ID: ${VITE_DEFAULT_PLAYER_ID:-}
+        VITE_DEFAULT_DISCORD_GUILD_ID: ${VITE_DEFAULT_DISCORD_GUILD_ID:-}
+        VITE_DEFAULT_DISCORD_USER_ID: ${VITE_DEFAULT_DISCORD_USER_ID:-}
+        VITE_IMAGE_PROVIDERS: ${VITE_IMAGE_PROVIDERS:-}
+        VITE_ASSET_CDN_URL: ${VITE_ASSET_CDN_URL:-}
+    environment:
+      PORTAL_API_UPSTREAM: http://waifumon-bot:${PLATFORM_API_PORT:-3120}
+      # Set to https when Cloudflare terminates TLS in front of the tunnel.
+      PORTAL_FORWARDED_PROTO: ${PORTAL_FORWARDED_PROTO:-http}
+    depends_on:
+      waifumon-bot:
+        condition: service_started
+    restart: unless-stopped
+    ports:
+      - '${PORTAL_WEB_PUBLISH_HOST:-127.0.0.1}:${PORTAL_WEB_PORT:-3130}:8080'
 
   postgres:
     image: postgres:16-alpine

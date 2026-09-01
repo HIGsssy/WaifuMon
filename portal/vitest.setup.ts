@@ -13,6 +13,25 @@ import { DEV_IDENTITY_STORAGE_KEY } from './src/auth/dev/devIdentity';
 import * as fixtures from './msw/fixtures';
 import { server } from './msw/server';
 
+const localStorageValues = new Map<string, string>();
+Object.defineProperty(globalThis, 'localStorage', {
+  configurable: true,
+  value: {
+    get length() {
+      return localStorageValues.size;
+    },
+    clear: () => localStorageValues.clear(),
+    getItem: (key: string) => localStorageValues.get(key) ?? null,
+    key: (index: number) => Array.from(localStorageValues.keys())[index] ?? null,
+    removeItem: (key: string) => {
+      localStorageValues.delete(key);
+    },
+    setItem: (key: string, value: string) => {
+      localStorageValues.set(key, String(value));
+    },
+  } as Storage,
+});
+
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
 
 /**
