@@ -106,6 +106,17 @@ const SPECIES = SpeciesFileSchema.parse([
       { id: 'secret', name: 'Secret', unlock: { type: 'level', atLevel: 30 } },
     ],
   },
+  {
+    // Expansion provenance changes where content is authored, never where its
+    // runtime artwork lives or how the API serves it.
+    slug: 'onsen_maid',
+    name: 'Onsen Maid',
+    rarity: 'R',
+    archetype: 'spirit',
+    contentRating: 'suggestive',
+    affinity: 'switch',
+    imagePath: 'waifumon/onsen_maid/standard.png',
+  },
 ]);
 
 const TABLES = { waifuProgression: { maxLevel: 50 } } as unknown as LoadedContent['tables'];
@@ -189,6 +200,7 @@ beforeAll(async () => {
   // The reward itself: on disk, renderable, and unreachable through the
   // species route. Distinctly coloured so a leak would be unmistakable.
   await writeArt('gated_girl', 'secret', { r: 250, g: 250, b: 250 });
+  await writeArt('onsen_maid', 'standard', { r: 80, g: 160, b: 220 });
   // `no_art_girl` deliberately gets nothing.
 
   const built = await buildApp();
@@ -275,6 +287,72 @@ describe('GET /capabilities', () => {
 
   it('requires the bearer token like every other v1 route', async () => {
     const res = await app.inject({ method: 'GET', url: url('/capabilities') });
+    expect(res.statusCode).toBe(401);
+  });
+});
+
+describe('GET canonical artwork', () => {
+  it('serves starter and expansion base artwork through the same API route', async () => {
+    for (const slug of ['card_test_n', 'onsen_maid']) {
+      const res = await app.inject({
+        method: 'GET',
+        url: url(`/assets/waifumon/${slug}`),
+        headers: AUTH,
+      });
+      expect(res.statusCode, slug).toBe(200);
+      expect(res.headers['content-type'], slug).toBe('image/png');
+      expect(res.rawPayload.length, slug).toBeGreaterThan(0);
+    }
+  });
+
+  it('answers 304 when the base-art ETag matches', async () => {
+    const first = await app.inject({
+      method: 'GET',
+      url: url('/assets/waifumon/onsen_maid'),
+      headers: AUTH,
+    });
+    const second = await app.inject({
+      method: 'GET',
+      url: url('/assets/waifumon/onsen_maid'),
+      headers: { ...AUTH, 'if-none-match': first.headers.etag! },
+    });
+
+    expect(first.statusCode).toBe(200);
+    expect(second.statusCode).toBe(304);
+    expect(second.rawPayload).toHaveLength(0);
+  });
+
+  it('serves owned artwork only after the existing ownership and level checks', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: url(`/players/1/collection/owned/${OWNED_WAIFU.id}/artwork`),
+      headers: AUTH,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toBe('image/png');
+    expect(res.headers['cache-control']).toBe('private, max-age=300, must-revalidate');
+  });
+
+  it('does not expose a route or query parameter for guessing gated variants', async () => {
+    const pathGuess = await app.inject({
+      method: 'GET',
+      url: url('/assets/waifumon/gated_girl/secret'),
+      headers: AUTH,
+    });
+    const queryGuess = await app.inject({
+      method: 'GET',
+      url: url('/assets/waifumon/gated_girl?variant=secret'),
+      headers: AUTH,
+    });
+    expect(pathGuess.statusCode).toBe(404);
+    expect(queryGuess.statusCode).toBe(400);
+  });
+
+  it('requires the same bearer-token proxy as rendered cards', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: url('/assets/waifumon/onsen_maid'),
+    });
     expect(res.statusCode).toBe(401);
   });
 });

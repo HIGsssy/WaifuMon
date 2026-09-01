@@ -10,7 +10,7 @@
  *
  * Enabling it is two steps, both outside this file:
  *   1. set `VITE_ASSET_CDN_URL` to the CDN origin;
- *   2. put `platformCdn` ahead of `localDevAssets` in `VITE_IMAGE_PROVIDERS`.
+ *   2. put `platformCdn` ahead of `artworkApi` in `VITE_IMAGE_PROVIDERS`.
  *
  * Without a configured origin it declines every id, so leaving it in the
  * default chain would be harmless — it is simply not there yet, because v1 has

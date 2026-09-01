@@ -29,8 +29,9 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { Appearance, AppearanceCatalogEntry, ContentSpecies, OwnedWaifu } from '@/api/types';
 import { routes } from '@/app/router';
 import { Artwork } from '@/components/media/Artwork';
-import { appearanceAsset, speciesAsset } from '@/images/assets';
+import { appearanceAsset, defaultAppearanceOf, speciesAsset } from '@/images/assets';
 import { resolveAsset, setImageProviderChain } from '@/images/provider';
+import { createArtworkApiProvider } from '@/images/providers/artworkApi';
 import { createLocalDevAssetsProvider } from '@/images/providers/localDevAssets';
 import { createSilhouetteProvider } from '@/images/providers/silhouette';
 import { ARTWORK_WIDTH } from '@/images/sizes';
@@ -40,7 +41,11 @@ import { apiError, data, page } from '../../../msw/handlers';
 import { server } from '../../../msw/server';
 
 beforeEach(() => {
-  setImageProviderChain([createLocalDevAssetsProvider(), createSilhouetteProvider()]);
+  setImageProviderChain([
+    createArtworkApiProvider(),
+    createLocalDevAssetsProvider(),
+    createSilhouetteProvider(),
+  ]);
 });
 
 // ── Species shapes ──────────────────────────────────────────────────────────
@@ -108,9 +113,13 @@ const explicitNonStandard = species('explicit_two', [
 ]);
 
 /** The copy as the API returns it the moment a capture commits. */
-function freshlyCaptured(subject: ContentSpecies): Pick<OwnedWaifu, 'variant' | 'selectedAppearance'> {
+function freshlyCaptured(
+  subject: ContentSpecies,
+): Pick<OwnedWaifu, 'id' | 'playerId' | 'variant' | 'selectedAppearance'> {
   const owned = subject.appearances.find((entry) => entry.unlock.type === 'owned')!;
   return {
+    id: 101,
+    playerId: 1,
     // `player_waifus.variant` defaults to the literal string 'standard' on
     // insert whatever the catalog calls its default — which is precisely why
     // the Portal must not render from this column.
@@ -128,13 +137,13 @@ function urlFor(...args: Parameters<typeof speciesAsset>): string {
 describe('a newly captured species is visually unlocked', () => {
   it('renders the implicit standard appearance', () => {
     expect(urlFor(implicitStandard, freshlyCaptured(implicitStandard))).toContain(
-      'waifumon/implicit_one/standard.png',
+      '/players/1/collection/owned/101/artwork',
     );
   });
 
   it('renders an explicit catalog’s canonical standard appearance', () => {
     expect(urlFor(explicitStandard, freshlyCaptured(explicitStandard))).toContain(
-      'waifumon/explicit_one/standard.png',
+      '/players/1/collection/owned/101/artwork',
     );
   });
 
@@ -143,15 +152,15 @@ describe('a newly captured species is visually unlocked', () => {
     // resolved `selectedAppearance` is the answer, and it says `base_look`.
     const url = urlFor(explicitNonStandard, freshlyCaptured(explicitNonStandard));
 
-    expect(url).toContain('waifumon/explicit_two/base_look.png');
-    expect(url).not.toContain('standard.png');
+    expect(url).toContain('/players/1/collection/owned/101/artwork');
+    expect(url).not.toContain('variant');
   });
 
   it('renders the species’ own default when no copy is in hand', () => {
     // The Encyclopedia path: a species resource with no owned copy attached
     // still has exactly one `owned` catalog entry to render from.
-    expect(urlFor(explicitNonStandard)).toContain('waifumon/explicit_two/base_look.png');
-    expect(urlFor(implicitStandard)).toContain('waifumon/implicit_one/standard.png');
+    expect(urlFor(explicitNonStandard)).toContain('/assets/waifumon/explicit_two');
+    expect(urlFor(implicitStandard)).toContain('/assets/waifumon/implicit_one');
   });
 
   it('never falls back to a guessed filename while a catalog is present', () => {
@@ -159,8 +168,8 @@ describe('a newly captured species is visually unlocked', () => {
     // appearance the catalog does not contain.
     for (const subject of [implicitStandard, explicitStandard, explicitNonStandard]) {
       const ids = subject.appearances.map((entry) => entry.id);
-      const variant = urlFor(subject).split('/').pop()?.replace('.png', '');
-      expect(ids).toContain(variant);
+      expect(ids).toContain(defaultAppearanceOf(subject)?.id);
+      expect(urlFor(subject)).not.toContain('variant=');
     }
   });
 });
@@ -196,7 +205,9 @@ describe('unowned artwork stays hidden', () => {
         displayWidth={ARTWORK_WIDTH.gridTile}
       />,
     );
-    expect(screen.getByAltText('owned').getAttribute('src')).toContain('base_look.png');
+    expect(screen.getByAltText('owned').getAttribute('src')).toContain(
+      '/players/1/collection/owned/101/artwork',
+    );
 
     // And the gated entry cannot be drawn at all: the API sent no `assetId`
     // for it, so there is nothing for the Portal to resolve — no silhouette to

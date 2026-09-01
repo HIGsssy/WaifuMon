@@ -12,6 +12,7 @@ import type { ApiContext } from '../../context';
 import { registerPlayerScope } from '../../plugins/playerScope';
 import type { FastifyPluginAsyncZod } from '../../plugins/typeProvider';
 import { capabilityRoutes } from './capabilities';
+import { artworkRoutes } from './artwork';
 import { cardRoutes } from './cards';
 import { careRoutes } from './care';
 import { collectionRoutes } from './collection';
@@ -72,6 +73,10 @@ export const v1Routes =
     await app.register(shopRoutes(ctx));
     await app.register(contentRoutes(ctx));
     await app.register(guildRoutes(ctx));
+
+    // Raw artwork uses the same authenticated API origin as rendered cards.
+    // Test/API-only contexts without an assets root simply do not expose it.
+    if (ctx.assetsDir !== undefined) await app.register(artworkRoutes(ctx));
 
     // Rendered card images. Behind a rollout flag, and the only routes that
     // answer with bytes rather than the `{ data: … }` envelope.

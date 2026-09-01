@@ -52,7 +52,7 @@ function tileImages(): HTMLImageElement[] {
 function cardSrcs(): string[] {
   return tileImages()
     .map((img) => img.src)
-    .filter((src) => src.includes('/collection/owned/'));
+    .filter((src) => src.includes('/collection/owned/') && src.includes('/card'));
 }
 
 async function switchToCards(): Promise<void> {
@@ -104,8 +104,8 @@ describe('Art mode (the default)', () => {
     await screen.findByRole('link', { name: /Nyx/ });
 
     expect(cardSrcs()).toEqual([]);
-    // Artwork still comes from the asset provider, exactly as before.
-    expect(tileImages()[0]?.src).toContain('/dev-assets/');
+    // Artwork uses the same authenticated API origin as rendered cards.
+    expect(tileImages()[0]?.src).toContain('/collection/owned/101/artwork');
     expect(requested).toEqual([]);
   });
 });
@@ -240,7 +240,7 @@ describe('a card that will not load', () => {
     await waitFor(() => expect(cardSrcs()).toHaveLength(before - 1));
     // The failed tile shows real artwork — not a silhouette, and not a broken
     // image. The rest of the grid is still in Card mode.
-    expect(tileImages()[0]!.src).toContain('/dev-assets/');
+    expect(tileImages()[0]!.src).toContain('/collection/owned/101/artwork');
     expect(tileImages()[0]!.src).not.toContain('silhouette');
     expect(tileImages()[1]!.src).toContain('/collection/owned/');
   });
@@ -252,7 +252,7 @@ describe('a card that will not load', () => {
     await switchToCards();
 
     fireEvent.error(tileImages()[0]!);
-    await waitFor(() => expect(tileImages()[0]!.src).toContain('/dev-assets/'));
+    await waitFor(() => expect(tileImages()[0]!.src).toContain('/collection/owned/101/artwork'));
 
     const toggle = screen.getByRole('group', { name: 'Collection tile view' });
     await user.click(within(toggle).getByRole('button', { name: 'Art' }));
@@ -261,7 +261,7 @@ describe('a card that will not load', () => {
     // A card that 404'd once will 404 again; asking a second time buys a
     // guaranteed-failing request.
     await waitFor(() => expect(cardSrcs()).toHaveLength(fixtures.ownedEntries.length - 1));
-    expect(tileImages()[0]!.src).toContain('/dev-assets/');
+    expect(tileImages()[0]!.src).toContain('/collection/owned/101/artwork');
   });
 });
 
@@ -287,7 +287,7 @@ describe('when the renderer is unavailable', () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
 
     expect(cardSrcs()).toEqual([]);
-    expect(tileImages()[0]?.src).toContain('/dev-assets/');
+    expect(tileImages()[0]?.src).toContain('/collection/owned/101/artwork');
     expect(requested).toEqual([]);
   });
 });

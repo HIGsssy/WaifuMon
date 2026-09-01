@@ -82,9 +82,9 @@
     ],
     "buddyBonus": {
       "name": "Trash Treasure",
-      "flavorText": "Trash Treasure: +10% chance to find items from Hunting.",
+      "flavorText": "Trash Treasure: +5% chance to find items from Hunting.",
       "effectId": "hunt_item_find_chance",
-      "value": 10
+      "value": 5
     }
   },
   {
@@ -163,9 +163,9 @@
     ],
     "buddyBonus": {
       "name": "Offering Bowl",
-      "flavorText": "Offering Bowl: +50% Affection gained.",
+      "flavorText": "Offering Bowl: +100% Affection gained.",
       "effectId": "affection_gain",
-      "value": 50
+      "value": 100
     }
   },
   {
@@ -189,9 +189,9 @@
     "perSpeciesWeight": 1,
     "buddyBonus": {
       "name": "Second Cup",
-      "flavorText": "Second Cup: +50% Energy gained in Care mode.",
+      "flavorText": "Second Cup: +100% Energy gained in Care mode.",
       "effectId": "care_energy_gain",
-      "value": 50
+      "value": 100
     },
     "appearances": [
       {
@@ -325,9 +325,9 @@
     ],
     "buddyBonus": {
       "name": "After Bell",
-      "flavorText": "After Bell: +8% capture chance against SR and below Waifumon.",
+      "flavorText": "After Bell: +5% capture chance against SR and below Waifumon.",
       "effectId": "capture_chance",
-      "value": 8,
+      "value": 5,
       "target": {
         "type": "rarity_max",
         "value": "SR"
@@ -410,9 +410,9 @@
     ],
     "buddyBonus": {
       "name": "Quiet Study",
-      "flavorText": "Quiet Study: +25% Essence gained.",
+      "flavorText": "Quiet Study: +100% Essence gained.",
       "effectId": "essence_gain",
-      "value": 25
+      "value": 100
     }
   },
   {
@@ -436,9 +436,9 @@
     "perSpeciesWeight": 1,
     "buddyBonus": {
       "name": "Free Play",
-      "flavorText": "Free Play: 5% chance Hunting does not consume Energy.",
+      "flavorText": "Free Play: 25% chance Hunting does not consume Energy.",
       "effectId": "energy_save_chance",
-      "value": 5
+      "value": 25
     },
     "appearances": [
       {
@@ -517,9 +517,9 @@
     "perSpeciesWeight": 1,
     "buddyBonus": {
       "name": "Soft Spotlight",
-      "flavorText": "Soft Spotlight: +10% encounter weight for human Waifumon.",
+      "flavorText": "Soft Spotlight: +5% encounter weight for human Waifumon.",
       "effectId": "encounter_weight",
-      "value": 10,
+      "value": 5,
       "target": {
         "type": "race",
         "value": "human"
@@ -602,9 +602,9 @@
     "perSpeciesWeight": 1,
     "buddyBonus": {
       "name": "Power Nap",
-      "flavorText": "Power Nap: +50% Affection gained.",
+      "flavorText": "Power Nap: +100% Affection gained.",
       "effectId": "affection_gain",
-      "value": 50
+      "value": 100
     },
     "appearances": [
       {
@@ -683,9 +683,9 @@
     "perSpeciesWeight": 1,
     "buddyBonus": {
       "name": "\"What's in tha-...OW!\"",
-      "flavorText": "\"What's in tha-...OW!\": 5% chance Hunting does not consume Energy.",
+      "flavorText": "\"What's in tha-...OW!\": 25% chance Hunting does not consume Energy.",
       "effectId": "energy_save_chance",
-      "value": 5
+      "value": 25
     },
     "appearances": [
       {
@@ -764,9 +764,9 @@
     "perSpeciesWeight": 1,
     "buddyBonus": {
       "name": "\"Do a Kickflip!\"",
-      "flavorText": "\"Do a Kickflip!\": +25% Essence gained.",
+      "flavorText": "\"Do a Kickflip!\": +100% Essence gained.",
       "effectId": "essence_gain",
-      "value": 25
+      "value": 100
     },
     "appearances": [
       {
@@ -900,9 +900,9 @@
     ],
     "buddyBonus": {
       "name": "Night Floor",
-      "flavorText": "Night Floor: +10% encounter weight for angel Waifumon.",
+      "flavorText": "Night Floor: +5% encounter weight for angel Waifumon.",
       "effectId": "encounter_weight",
-      "value": 10,
+      "value": 5,
       "target": {
         "type": "race",
         "value": "angel"
@@ -930,9 +930,9 @@
     "perSpeciesWeight": 1,
     "buddyBonus": {
       "name": "Street Pounce",
-      "flavorText": "Street Pounce: +10% encounter weight for demi-human Waifumon.",
+      "flavorText": "Street Pounce: +5% encounter weight for demi-human Waifumon.",
       "effectId": "encounter_weight",
-      "value": 10,
+      "value": 5,
       "target": {
         "type": "race",
         "value": "demi-human"
@@ -1070,9 +1070,9 @@
     ],
     "buddyBonus": {
       "name": "Under the Counter",
-      "flavorText": "Under the Counter: +25% Essence gained.",
+      "flavorText": "Under the Counter: +100% Essence gained.",
       "effectId": "essence_gain",
-      "value": 25
+      "value": 100
     }
   },
   {
@@ -1151,9 +1151,9 @@
     ],
     "buddyBonus": {
       "name": "Last Call",
-      "flavorText": "Last Call: +25% Essence gained.",
+      "flavorText": "Last Call: +100% Essence gained.",
       "effectId": "essence_gain",
-      "value": 25
+      "value": 100
     }
   },
   {
@@ -1232,9 +1232,9 @@
     ],
     "buddyBonus": {
       "name": "Detention List",
-      "flavorText": "Detention List: +10% encounter weight for dominant affinity Waifumon.",
+      "flavorText": "Detention List: +5% encounter weight for dominant affinity Waifumon.",
       "effectId": "encounter_weight",
-      "value": 10,
+      "value": 5,
       "target": {
         "type": "affinity",
         "value": "dominant"
@@ -1262,9 +1262,9 @@
     "perSpeciesWeight": 1,
     "buddyBonus": {
       "name": "Luring Song",
-      "flavorText": "Luring Song: +8% capture chance against SR and below Waifumon.",
+      "flavorText": "Luring Song: +5% capture chance against SR and below Waifumon.",
       "effectId": "capture_chance",
-      "value": 8,
+      "value": 5,
       "target": {
         "type": "rarity_max",
         "value": "SR"
@@ -1402,9 +1402,9 @@
     ],
     "buddyBonus": {
       "name": "First Trick",
-      "flavorText": "First Trick: +12% encounter weight for spirit Waifumon.",
+      "flavorText": "First Trick: +7% encounter weight for spirit Waifumon.",
       "effectId": "encounter_weight",
-      "value": 12,
+      "value": 7,
       "target": {
         "type": "race",
         "value": "spirit"
@@ -1432,9 +1432,9 @@
     "perSpeciesWeight": 1,
     "buddyBonus": {
       "name": "Bride's Claim",
-      "flavorText": "Bride's Claim: +12% Player XP gained.",
+      "flavorText": "Bride's Claim: +7% Player XP gained.",
       "effectId": "player_xp_gain",
-      "value": 12
+      "value": 7
     },
     "appearances": [
       {
@@ -1513,9 +1513,9 @@
     "perSpeciesWeight": 1,
     "buddyBonus": {
       "name": "Sacred Maintenance",
-      "flavorText": "Sacred Maintenance: +50% Energy gained in Care mode.",
+      "flavorText": "Sacred Maintenance: +100% Energy gained in Care mode.",
       "effectId": "care_energy_gain",
-      "value": 50
+      "value": 100
     },
     "appearances": [
       {
@@ -1649,9 +1649,9 @@
     ],
     "buddyBonus": {
       "name": "Oathbound",
-      "flavorText": "Oathbound: +10% capture chance against demon Waifumon.",
+      "flavorText": "Oathbound: +7% capture chance against demon Waifumon.",
       "effectId": "capture_chance",
-      "value": 10,
+      "value": 7,
       "target": {
         "type": "race",
         "value": "demon"
@@ -1679,9 +1679,9 @@
     "perSpeciesWeight": 1,
     "buddyBonus": {
       "name": "Eternal Mark",
-      "flavorText": "Eternal Mark: +50% Affection gained.",
+      "flavorText": "Eternal Mark: +100% Affection gained.",
       "effectId": "affection_gain",
-      "value": 50
+      "value": 100
     },
     "appearances": [
       {
@@ -1815,9 +1815,9 @@
     ],
     "buddyBonus": {
       "name": "Fan Light",
-      "flavorText": "Fan Light: +50% Affection gained.",
+      "flavorText": "Fan Light: +100% Affection gained.",
       "effectId": "affection_gain",
-      "value": 50
+      "value": 100
     }
   },
   {
@@ -1896,9 +1896,9 @@
     ],
     "buddyBonus": {
       "name": "Demonic Rolodex",
-      "flavorText": "Demonic Rolodex: +12% encounter weight for demon Waifumon.",
+      "flavorText": "Demonic Rolodex: +7% encounter weight for demon Waifumon.",
       "effectId": "encounter_weight",
-      "value": 12,
+      "value": 7,
       "target": {
         "type": "race",
         "value": "demon"
@@ -1926,9 +1926,9 @@
     "perSpeciesWeight": 1,
     "buddyBonus": {
       "name": "Gambler",
-      "flavorText": "Gambler: +10% capture chance against unowned species.",
+      "flavorText": "Gambler: +7% capture chance against unowned species.",
       "effectId": "capture_chance",
-      "value": 10,
+      "value": 7,
       "target": {
         "type": "ownership",
         "value": "unowned"
@@ -2066,9 +2066,9 @@
     ],
     "buddyBonus": {
       "name": "Tough Love",
-      "flavorText": "Tough Love: +12% encounter weight for submissive affinity Waifumon.",
+      "flavorText": "Tough Love: +7% encounter weight for submissive affinity Waifumon.",
       "effectId": "encounter_weight",
-      "value": 12,
+      "value": 7,
       "target": {
         "type": "affinity",
         "value": "submissive"
@@ -2151,9 +2151,9 @@
     ],
     "buddyBonus": {
       "name": "Big Wrench",
-      "flavorText": "Big Wrench: +10% capture chance against android Waifumon.",
+      "flavorText": "Big Wrench: +7% capture chance against android Waifumon.",
       "effectId": "capture_chance",
-      "value": 10,
+      "value": 7,
       "target": {
         "type": "race",
         "value": "android"
@@ -2236,9 +2236,9 @@
     ],
     "buddyBonus": {
       "name": "\"Swipe!\"",
-      "flavorText": "\"Swipe!\": +40% eligible rewards from Boss Encounters.",
+      "flavorText": "\"Swipe!\": +50% eligible rewards from Boss Encounters.",
       "effectId": "boss_reward_gain",
-      "value": 40
+      "value": 50
     }
   },
   {
@@ -2262,9 +2262,9 @@
     "perSpeciesWeight": 1,
     "buddyBonus": {
       "name": "Royal Privilege",
-      "flavorText": "Royal Privilege: 8% chance Hunting does not consume Energy.",
+      "flavorText": "Royal Privilege: 25% chance Hunting does not consume Energy.",
       "effectId": "energy_save_chance",
-      "value": 8
+      "value": 25
     },
     "appearances": [
       {
@@ -2401,9 +2401,9 @@
     ],
     "buddyBonus": {
       "name": "Overclock",
-      "flavorText": "Overclock: 8% chance Hunting does not consume Energy.",
+      "flavorText": "Overclock: 25% chance Hunting does not consume Energy.",
       "effectId": "energy_save_chance",
-      "value": 8
+      "value": 25
     }
   },
   {
@@ -2482,9 +2482,9 @@
     ],
     "buddyBonus": {
       "name": "Blood Offering",
-      "flavorText": "Blood Offering: +40% XP gained by the active Buddy.",
+      "flavorText": "Blood Offering: +10% XP gained by the active Buddy.",
       "effectId": "buddy_xp_gain",
-      "value": 40
+      "value": 10
     }
   },
   {
@@ -2508,9 +2508,9 @@
     "perSpeciesWeight": 1,
     "buddyBonus": {
       "name": "High Roller",
-      "flavorText": "High Roller: +15% encounter weight for unowned species.",
+      "flavorText": "High Roller: +10% encounter weight for unowned species.",
       "effectId": "encounter_weight",
-      "value": 15,
+      "value": 10,
       "target": {
         "type": "ownership",
         "value": "unowned"
@@ -2593,9 +2593,9 @@
     "perSpeciesWeight": 1,
     "buddyBonus": {
       "name": "Night shift",
-      "flavorText": "Night shift: +50% Energy gained in Care mode.",
+      "flavorText": "Night shift: +100% Energy gained in Care mode.",
       "effectId": "care_energy_gain",
-      "value": 50
+      "value": 100
     },
     "appearances": [
       {
@@ -2674,9 +2674,9 @@
     "perSpeciesWeight": 1,
     "buddyBonus": {
       "name": "Wind up",
-      "flavorText": "Wind up: +50% Energy gained in Care mode.",
+      "flavorText": "Wind up: +100% Energy gained in Care mode.",
       "effectId": "care_energy_gain",
-      "value": 50
+      "value": 100
     },
     "appearances": [
       {
@@ -2755,9 +2755,9 @@
     "perSpeciesWeight": 1,
     "buddyBonus": {
       "name": "Royal Favor",
-      "flavorText": "Royal Favor: +12% capture chance against SSR+ Waifumon.",
+      "flavorText": "Royal Favor: +10% capture chance against SSR+ Waifumon.",
       "effectId": "capture_chance",
-      "value": 12,
+      "value": 10,
       "target": {
         "type": "rarity_min",
         "value": "SSR"
@@ -2895,9 +2895,9 @@
     ],
     "buddyBonus": {
       "name": "Willing Chains",
-      "flavorText": "Willing Chains: +15% capture chance against dominant affinity Waifumon.",
+      "flavorText": "Willing Chains: +12% capture chance against dominant affinity Waifumon.",
       "effectId": "capture_chance",
-      "value": 15,
+      "value": 12,
       "target": {
         "type": "affinity",
         "value": "dominant"
@@ -2925,9 +2925,9 @@
     "perSpeciesWeight": 1,
     "buddyBonus": {
       "name": "Digital Hoard",
-      "flavorText": "Digital Hoard: +18% chance to find items from Hunting.",
+      "flavorText": "Digital Hoard: +12% chance to find items from Hunting.",
       "effectId": "hunt_item_find_chance",
-      "value": 18
+      "value": 12
     },
     "appearances": [
       {
@@ -3061,9 +3061,9 @@
     ],
     "buddyBonus": {
       "name": "Encore",
-      "flavorText": "Encore: +18% encounter weight for owned species.",
+      "flavorText": "Encore: +12% encounter weight for owned species.",
       "effectId": "encounter_weight",
-      "value": 18,
+      "value": 12,
       "target": {
         "type": "ownership",
         "value": "owned"
@@ -3146,9 +3146,9 @@
     ],
     "buddyBonus": {
       "name": "Twisted Blessing",
-      "flavorText": "Twisted Blessing: +15% capture chance against primal affinity Waifumon.",
+      "flavorText": "Twisted Blessing: +12% capture chance against primal affinity Waifumon.",
       "effectId": "capture_chance",
-      "value": 15,
+      "value": 12,
       "target": {
         "type": "affinity",
         "value": "primal"
@@ -3176,9 +3176,9 @@
     "perSpeciesWeight": 1,
     "buddyBonus": {
       "name": "Aftercare",
-      "flavorText": "Aftercare: +75% Energy gained in Care mode.",
+      "flavorText": "Aftercare: +100% Energy gained in Care mode.",
       "effectId": "care_energy_gain",
-      "value": 75
+      "value": 100
     },
     "appearances": [
       {
@@ -3312,9 +3312,13 @@
     ],
     "buddyBonus": {
       "name": "Hijack",
-      "flavorText": "Hijack: +18% capture chance against any Waifumon.",
+      "flavorText": "Hijack: +15% capture chance against android Waifumon.",
       "effectId": "capture_chance",
-      "value": 18
+      "value": 15,
+      "target": {
+        "type": "race",
+        "value": "android"
+      }
     }
   },
   {
@@ -3475,9 +3479,9 @@
     ],
     "buddyBonus": {
       "name": "Soul Claim",
-      "flavorText": "Soul Claim: +25% encounter weight for SSR+ Waifumon.",
+      "flavorText": "Soul Claim: +20% encounter weight for SSR+ Waifumon.",
       "effectId": "encounter_weight",
-      "value": 25,
+      "value": 20,
       "target": {
         "type": "rarity_min",
         "value": "SSR"
@@ -3560,9 +3564,9 @@
     ],
     "buddyBonus": {
       "name": "Warm Refill",
-      "flavorText": "Warm Refill: 5% chance Hunting does not consume Energy.",
+      "flavorText": "Warm Refill: 25% chance Hunting does not consume Energy.",
       "effectId": "energy_save_chance",
-      "value": 5
+      "value": 25
     }
   },
   {
@@ -3641,9 +3645,9 @@
     ],
     "buddyBonus": {
       "name": "Spotter",
-      "flavorText": "Spotter: +25% XP gained by the active Buddy.",
+      "flavorText": "Spotter: +5% XP gained by the active Buddy.",
       "effectId": "buddy_xp_gain",
-      "value": 25
+      "value": 5
     }
   },
   {
@@ -3722,9 +3726,9 @@
     ],
     "buddyBonus": {
       "name": "Unlisted Title",
-      "flavorText": "Unlisted Title: +10% encounter weight for unowned species.",
+      "flavorText": "Unlisted Title: +5% encounter weight for unowned species.",
       "effectId": "encounter_weight",
-      "value": 10,
+      "value": 5,
       "target": {
         "type": "ownership",
         "value": "unowned"
@@ -3807,9 +3811,9 @@
     ],
     "buddyBonus": {
       "name": "Free Play",
-      "flavorText": "Free Play: +10% capture chance against any Waifumon.",
+      "flavorText": "Free Play: +7% capture chance against any Waifumon.",
       "effectId": "capture_chance",
-      "value": 10
+      "value": 7
     }
   },
   {
@@ -3833,9 +3837,9 @@
     "perSpeciesWeight": 1,
     "buddyBonus": {
       "name": "Extra Serving",
-      "flavorText": "Extra Serving: +30% Essence gained.",
+      "flavorText": "Extra Serving: +100% Essence gained.",
       "effectId": "essence_gain",
-      "value": 30
+      "value": 100
     },
     "appearances": [
       {
@@ -3969,9 +3973,9 @@
     ],
     "buddyBonus": {
       "name": "FoxFire",
-      "flavorText": "FoxFire: +15% encounter weight for unowned species.",
+      "flavorText": "FoxFire: +10% encounter weight for unowned species.",
       "effectId": "encounter_weight",
-      "value": 15,
+      "value": 10,
       "target": {
         "type": "ownership",
         "value": "unowned"
@@ -3999,9 +4003,9 @@
     "perSpeciesWeight": 1,
     "buddyBonus": {
       "name": "Warpath",
-      "flavorText": "Warpath: +18% Player XP gained.",
+      "flavorText": "Warpath: +12% Player XP gained.",
       "effectId": "player_xp_gain",
-      "value": 18
+      "value": 12
     },
     "appearances": [
       {
@@ -4135,9 +4139,9 @@
     ],
     "buddyBonus": {
       "name": "Inevitability",
-      "flavorText": "Inevitability: +75% Affection gained.",
+      "flavorText": "Inevitability: +100% Affection gained.",
       "effectId": "affection_gain",
-      "value": 75
+      "value": 100
     }
   },
   {
@@ -4216,9 +4220,9 @@
     ],
     "buddyBonus": {
       "name": "The Naughty Shift",
-      "flavorText": "The Naughty Shift: +50% Energy gained in Care mode.",
+      "flavorText": "The Naughty Shift: +100% Energy gained in Care mode.",
       "effectId": "care_energy_gain",
-      "value": 50
+      "value": 100
     }
   },
   {
@@ -4242,9 +4246,9 @@
     "perSpeciesWeight": 1,
     "buddyBonus": {
       "name": "Clean Kill",
-      "flavorText": "Clean Kill: +10% capture chance against any Waifumon.",
+      "flavorText": "Clean Kill: +7% capture chance against any Waifumon.",
       "effectId": "capture_chance",
-      "value": 10
+      "value": 7
     },
     "appearances": [
       {
@@ -4378,9 +4382,9 @@
     ],
     "buddyBonus": {
       "name": "Filed Under \"You\"",
-      "flavorText": "Filed Under \"You\": +10% encounter weight for owned species.",
+      "flavorText": "Filed Under \"You\": +5% encounter weight for owned species.",
       "effectId": "encounter_weight",
-      "value": 10,
+      "value": 5,
       "target": {
         "type": "ownership",
         "value": "owned"
@@ -4463,9 +4467,9 @@
     ],
     "buddyBonus": {
       "name": "Verdict",
-      "flavorText": "Verdict: +30% eligible rewards from Boss Encounters.",
+      "flavorText": "Verdict: +50% eligible rewards from Boss Encounters.",
       "effectId": "boss_reward_gain",
-      "value": 30
+      "value": 50
     }
   },
   {
@@ -4535,9 +4539,9 @@
     ],
     "buddyBonus": {
       "name": "Holy Audit",
-      "flavorText": "Holy Audit: +10% capture chance against SSR+ Waifumon.",
+      "flavorText": "Holy Audit: +7% capture chance against SSR+ Waifumon.",
       "effectId": "capture_chance",
-      "value": 10,
+      "value": 7,
       "target": {
         "type": "rarity_min",
         "value": "SSR"
@@ -4620,9 +4624,9 @@
     ],
     "buddyBonus": {
       "name": "Pretty Spear",
-      "flavorText": "Pretty Spear: +10% encounter weight for SR Waifumon.",
+      "flavorText": "Pretty Spear: +5% encounter weight for SR Waifumon.",
       "effectId": "encounter_weight",
-      "value": 10,
+      "value": 5,
       "target": {
         "type": "rarity",
         "value": "SR"
@@ -4705,9 +4709,9 @@
     ],
     "buddyBonus": {
       "name": "Encore Crowd",
-      "flavorText": "Encore Crowd: +12% capture chance against SR and below Waifumon.",
+      "flavorText": "Encore Crowd: +10% capture chance against SR and below Waifumon.",
       "effectId": "capture_chance",
-      "value": 12,
+      "value": 10,
       "target": {
         "type": "rarity_max",
         "value": "SR"
@@ -4790,9 +4794,9 @@
     ],
     "buddyBonus": {
       "name": "Quiet Hands",
-      "flavorText": "Quiet Hands: +12% chance to find items from Hunting.",
+      "flavorText": "Quiet Hands: +7% chance to find items from Hunting.",
       "effectId": "hunt_item_find_chance",
-      "value": 12
+      "value": 7
     }
   },
   {
@@ -4816,9 +4820,9 @@
     "perSpeciesWeight": 1,
     "buddyBonus": {
       "name": "House Edge",
-      "flavorText": "House Edge: +12% chance to find items from Hunting.",
+      "flavorText": "House Edge: +7% chance to find items from Hunting.",
       "effectId": "hunt_item_find_chance",
-      "value": 12
+      "value": 7
     },
     "appearances": [
       {
@@ -4952,9 +4956,9 @@
     ],
     "buddyBonus": {
       "name": "Broken Protocol",
-      "flavorText": "Broken Protocol: +10% capture chance against android Waifumon.",
+      "flavorText": "Broken Protocol: +7% capture chance against android Waifumon.",
       "effectId": "capture_chance",
-      "value": 10,
+      "value": 7,
       "target": {
         "type": "race",
         "value": "android"
@@ -4982,9 +4986,9 @@
     "perSpeciesWeight": 1,
     "buddyBonus": {
       "name": "Wildpath",
-      "flavorText": "Wildpath: +15% encounter weight for spirit Waifumon.",
+      "flavorText": "Wildpath: +10% encounter weight for spirit Waifumon.",
       "effectId": "encounter_weight",
-      "value": 15,
+      "value": 10,
       "target": {
         "type": "race",
         "value": "spirit"
@@ -5122,9 +5126,9 @@
     ],
     "buddyBonus": {
       "name": "Divine Mandate",
-      "flavorText": "Divine Mandate: +18% encounter weight for demon Waifumon.",
+      "flavorText": "Divine Mandate: +12% encounter weight for demon Waifumon.",
       "effectId": "encounter_weight",
-      "value": 18,
+      "value": 12,
       "target": {
         "type": "race",
         "value": "demon"
@@ -5152,9 +5156,9 @@
     "perSpeciesWeight": 1,
     "buddyBonus": {
       "name": "Sacred Softness",
-      "flavorText": "Sacred Softness: +50% Affection gained.",
+      "flavorText": "Sacred Softness: +100% Affection gained.",
       "effectId": "affection_gain",
-      "value": 50
+      "value": 100
     },
     "appearances": [
       {
@@ -5233,9 +5237,9 @@
     "perSpeciesWeight": 1,
     "buddyBonus": {
       "name": "Light the way",
-      "flavorText": "Light the way: +10% chance to find items from Hunting.",
+      "flavorText": "Light the way: +5% chance to find items from Hunting.",
       "effectId": "hunt_item_find_chance",
-      "value": 10
+      "value": 5
     },
     "appearances": [
       {
@@ -5369,9 +5373,9 @@
     ],
     "buddyBonus": {
       "name": "Escort Duty",
-      "flavorText": "Escort Duty: +25% eligible rewards from Boss Encounters.",
+      "flavorText": "Escort Duty: +50% eligible rewards from Boss Encounters.",
       "effectId": "boss_reward_gain",
-      "value": 25
+      "value": 50
     }
   },
   {
@@ -5450,9 +5454,9 @@
     ],
     "buddyBonus": {
       "name": "Returning Customer",
-      "flavorText": "Returning Customer: +8% capture chance against owned species.",
+      "flavorText": "Returning Customer: +5% capture chance against owned species.",
       "effectId": "capture_chance",
-      "value": 8,
+      "value": 5,
       "target": {
         "type": "ownership",
         "value": "owned"
@@ -5535,9 +5539,9 @@
     ],
     "buddyBonus": {
       "name": "Investigator",
-      "flavorText": "Investigator: +10% encounter weight for SR Waifumon.",
+      "flavorText": "Investigator: +5% encounter weight for SR Waifumon.",
       "effectId": "encounter_weight",
-      "value": 10,
+      "value": 5,
       "target": {
         "type": "rarity",
         "value": "SR"
@@ -5620,9 +5624,9 @@
     ],
     "buddyBonus": {
       "name": "Lingering Note",
-      "flavorText": "Lingering Note: +12% Player XP gained.",
+      "flavorText": "Lingering Note: +7% Player XP gained.",
       "effectId": "player_xp_gain",
-      "value": 12
+      "value": 7
     }
   },
   {
@@ -5701,9 +5705,9 @@
     ],
     "buddyBonus": {
       "name": "Horn Call",
-      "flavorText": "Horn Call: +20% encounter weight for SSR+ Waifumon.",
+      "flavorText": "Horn Call: +15% encounter weight for SSR+ Waifumon.",
       "effectId": "encounter_weight",
-      "value": 20,
+      "value": 15,
       "target": {
         "type": "rarity_min",
         "value": "SSR"
@@ -5867,9 +5871,9 @@
     ],
     "buddyBonus": {
       "name": "Magnetism",
-      "flavorText": "Magnetism: +25% encounter weight for human Waifumon.",
+      "flavorText": "Magnetism: +20% encounter weight for human Waifumon.",
       "effectId": "encounter_weight",
-      "value": 25,
+      "value": 20,
       "target": {
         "type": "race",
         "value": "human"
@@ -5952,9 +5956,9 @@
     ],
     "buddyBonus": {
       "name": "Suggested for you",
-      "flavorText": "Suggested for you: +10% encounter weight for android Waifumon.",
+      "flavorText": "Suggested for you: +5% encounter weight for android Waifumon.",
       "effectId": "encounter_weight",
-      "value": 10,
+      "value": 5,
       "target": {
         "type": "race",
         "value": "android"
@@ -6037,9 +6041,9 @@
     ],
     "buddyBonus": {
       "name": "Prove Yourself",
-      "flavorText": "Prove Yourself: +25% XP gained by the active Buddy.",
+      "flavorText": "Prove Yourself: +5% XP gained by the active Buddy.",
       "effectId": "buddy_xp_gain",
-      "value": 25
+      "value": 5
     }
   },
   {
@@ -6063,9 +6067,9 @@
     "perSpeciesWeight": 1,
     "buddyBonus": {
       "name": "\"On the House\"",
-      "flavorText": "\"On the House\": +25% eligible rewards from Boss Encounters.",
+      "flavorText": "\"On the House\": +50% eligible rewards from Boss Encounters.",
       "effectId": "boss_reward_gain",
-      "value": 25
+      "value": 50
     },
     "appearances": [
       {
@@ -6199,9 +6203,9 @@
     ],
     "buddyBonus": {
       "name": "Already Yours",
-      "flavorText": "Already Yours: +10% capture chance against owned species.",
+      "flavorText": "Already Yours: +7% capture chance against owned species.",
       "effectId": "capture_chance",
-      "value": 10,
+      "value": 7,
       "target": {
         "type": "ownership",
         "value": "owned"

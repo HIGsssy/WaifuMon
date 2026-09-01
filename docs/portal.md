@@ -338,9 +338,15 @@ Providers are tried in order; the first non-null answer wins:
 
 1. **`apiSuppliedUrl`** — honours an absolute `https:` URL the API itself
    returned. Today that is only the player avatar.
-2. **`localDevAssets`** — derives `/dev-assets/waifumon/<slug>/<variant>.png`,
+2. **`cardApi`** — resolves rendered cards through the authenticated
+   `/api/v1/cards/...` routes.
+3. **`artworkApi`** — resolves species base artwork through
+   `/api/v1/assets/waifumon/<slug>` and owned-copy artwork through the
+   ownership-checked `/api/v1/players/<playerId>/collection/owned/<waifuId>/artwork`
+   route. Both use the same `/api` proxy as JSON and rendered cards.
+4. **`localDevAssets`** — derives `/dev-assets/waifumon/<slug>/<variant>.png`,
    served by the dev server from the repo's `assets/` directory. Dev only.
-3. **`silhouette`** — an inline SVG portrait, deterministic per slug. Never
+5. **`silhouette`** — an inline SVG portrait, deterministic per slug. Never
    fails, so `resolveAsset` is total and no page has a "no image" branch.
 
 `platformCdn` also exists but is **not in the default chain**: it is the
@@ -524,13 +530,14 @@ without a measurement showing the current setup is the bottleneck:
    place to set long-lived caching. Costs a CORS entry and a DNS name.
 3. **A CDN or object store.** `src/images/providers/platformCdn.ts` already
    exists for this: set `VITE_ASSET_CDN_URL`, put `platformCdn` ahead of
-   `localDevAssets` in `VITE_IMAGE_PROVIDERS`, and publish renditions at
+   `artworkApi` in `VITE_IMAGE_PROVIDERS`, and publish renditions at
    `<origin>/<slug>/<variant>@<width>.webp`. No API response, route, page or
    component changes — the size buckets are already in the URL contract.
 
-The Platform API should not grow an image-serving route to solve this. Streaming
-4 MB files from the same process that answers JSON is precisely the coupling
-worth avoiding, and §25.3's image endpoint should return *locations*, not bytes.
+The authenticated artwork routes make base artwork deployment-safe today and
+prefer generated WebP thumbnails when available. A future CDN can replace that
+transport by moving `platformCdn` ahead of `artworkApi`; the Portal's logical
+asset contract does not change.
 
 ### Also deferred
 

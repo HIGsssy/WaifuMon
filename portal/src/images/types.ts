@@ -27,6 +27,14 @@ export interface AssetId {
   /** Art variant; `standard` when omitted. */
   variant?: string | undefined;
   /**
+   * This identity is being used as the species/copy's primary artwork.
+   *
+   * The API-backed provider claims only this form. A gallery appearance has no
+   * such marker, so locked entries cannot be converted into a guessable API
+   * URL and unlocked appearance tiles keep using their existing provider.
+   */
+  baseArtwork?: boolean | undefined;
+  /**
    * An absolute URL the **Platform API itself supplied** for this asset —
    * today only `player.identity.avatarUrl`, which points at Discord's CDN.
    *
@@ -40,9 +48,9 @@ export interface AssetId {
    */
   href?: string | null | undefined;
   /**
-   * Owned-copy context. Meaningful only for `kind: 'card'`, where a card is
-   * rendered from a specific copy's level and equipped appearance rather than
-   * from the species alone.
+   * Owned-copy context for server-resolved cards or raw artwork. The server
+   * reads the copy's current level and selected appearance rather than trusting
+   * client-supplied gameplay state.
    *
    * These are the same logical ids the API addresses its own resources by, not
    * a location — the provider turns them into a route, exactly as it turns a
@@ -149,5 +157,5 @@ export function assetKey(id: AssetId, bucket: ImageSizeBucket | null = null): st
   // `href` participates: the same avatar slug with a new CDN hash is a
   // genuinely different image and must not serve the memoised old one.
   // The bucket participates for the same reason: two sizes are two URLs.
-  return `${id.kind}:${id.slug}:${id.variant ?? DEFAULT_VARIANT}:${id.href ?? ''}:${owned}:${bucket ?? 'full'}`;
+  return `${id.kind}:${id.slug}:${id.variant ?? DEFAULT_VARIANT}:${id.baseArtwork === true ? 'base' : ''}:${id.href ?? ''}:${owned}:${bucket ?? 'full'}`;
 }

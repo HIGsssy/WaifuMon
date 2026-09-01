@@ -51,7 +51,7 @@ export function defaultAppearanceOf(
  */
 export function speciesAsset(
   species: Species | ContentSpecies,
-  waifu?: Pick<OwnedWaifu, 'variant' | 'selectedAppearance'>,
+  waifu?: Pick<OwnedWaifu, 'id' | 'playerId' | 'variant' | 'selectedAppearance'>,
 ): AssetId {
   // Both of these carry an `assetId` in practice — `selectedAppearance` is
   // what she is wearing (unlocked by construction, and unlock-aware on the
@@ -60,15 +60,22 @@ export function speciesAsset(
   // permits, and falls through to the bare species identity rather than
   // guessing a variant filename.
   const worn = waifu?.selectedAppearance ? appearanceAsset(waifu.selectedAppearance) : null;
-  if (worn) return worn;
+  if (worn) {
+    return {
+      ...worn,
+      baseArtwork: true,
+      ...(waifu ? { owned: { playerId: waifu.playerId, waifuId: waifu.id } } : {}),
+    };
+  }
 
   const fallback = defaultAppearanceOf(species);
   const fallbackAsset = fallback ? appearanceAsset(fallback) : null;
-  if (fallbackAsset) return fallbackAsset;
+  if (fallbackAsset) return { ...fallbackAsset, baseArtwork: true };
 
   return {
     kind: 'species',
     slug: species.slug,
+    baseArtwork: true,
     ...(waifu?.variant ? { variant: waifu.variant } : {}),
   };
 }

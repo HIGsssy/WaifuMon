@@ -1,5 +1,5 @@
 /**
- * Local dev-assets provider — v1's only source of real artwork (plan §12).
+ * Local dev-assets provider — development-only filesystem fallback (plan §12).
  *
  * The Vite dev server mounts the bot repo's `assets/` directory at
  * `/dev-assets/*` (see vite.config.ts), so a species resolves to

@@ -5,13 +5,13 @@
  * silhouette provider is appended unconditionally, so `resolveAsset` is total —
  * there is no "image failed to resolve" branch for a page to handle.
  *
- * The chain is env-driven (`VITE_IMAGE_PROVIDERS`) purely so a developer can
- * force the silhouette path while working on empty states. Adding the §25.3 API
- * endpoint provider or a §25.10 CDN provider is a new entry in `FACTORIES` plus
- * a default-order change — no page or component is touched.
+ * The chain is env-driven (`VITE_IMAGE_PROVIDERS`) so a developer can force
+ * the silhouette path while working on empty states, or opt into a CDN without
+ * changing pages and components.
  */
 import { portalEnv } from '@/lib/env';
 import { API_SUPPLIED_URL_ID, createApiSuppliedUrlProvider } from './providers/apiSuppliedUrl';
+import { ARTWORK_API_ID, createArtworkApiProvider } from './providers/artworkApi';
 import { CARD_API_ID, createCardApiProvider } from './providers/cardApi';
 import { createLocalDevAssetsProvider, LOCAL_DEV_ASSETS_ID } from './providers/localDevAssets';
 import { createPlatformCdnProvider, PLATFORM_CDN_ID } from './providers/platformCdn';
@@ -28,6 +28,7 @@ import {
 
 const FACTORIES: Record<string, () => ImageProvider> = {
   [API_SUPPLIED_URL_ID]: () => createApiSuppliedUrlProvider(),
+  [ARTWORK_API_ID]: () => createArtworkApiProvider(),
   [CARD_API_ID]: () => createCardApiProvider(),
   [LOCAL_DEV_ASSETS_ID]: () => createLocalDevAssetsProvider(),
   // Present but not in DEFAULT_ORDER: opting in is a config change, and the
@@ -42,10 +43,11 @@ const FACTORIES: Record<string, () => ImageProvider> = {
  *
  * `cardApi` sits next because it is the only provider that can answer
  * `kind: 'card'` — those are composed on request, not stored as files, so
- * falling through to the filesystem provider would be meaningless. It declines
- * every other kind, so artwork resolution below it is unchanged.
+ * falling through to the filesystem provider would be meaningless.
+ * `artworkApi` then serves raw base artwork through the authenticated Platform
+ * API. `localDevAssets` remains a development-only fallback for other assets.
  */
-const DEFAULT_ORDER = [API_SUPPLIED_URL_ID, CARD_API_ID, LOCAL_DEV_ASSETS_ID];
+const DEFAULT_ORDER = [API_SUPPLIED_URL_ID, CARD_API_ID, ARTWORK_API_ID, LOCAL_DEV_ASSETS_ID];
 
 function buildChain(): ImageProvider[] {
   const requested = portalEnv.imageProviders ?? DEFAULT_ORDER;

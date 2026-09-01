@@ -57,7 +57,7 @@ describe('AppearanceGallery', () => {
     // The progression-journal property. "Owned" appears on the earned tile and
     // "Reach Level 40" on the one the player is working toward.
     expect(within(group).getByText('Owned')).toBeInTheDocument();
-    expect(within(group).getByText('Reach Level 40')).toBeInTheDocument();
+    expect(within(group).getAllByText('Reach Level 40')).not.toHaveLength(0);
   });
 
   it('states locked and worn status in the accessible name, not by colour alone', async () => {

@@ -22,9 +22,8 @@ export interface ApiContext {
   /** Read at call time, never cached — see the note above. */
   getContent: () => LoadedContent;
   /**
-   * Assets root, for the one surface that serves bytes rather than JSON: the
-   * card routes resolve artwork through the shared appearance resolver, which
-   * needs to know where artwork lives.
+   * Assets root for byte-serving surfaces: card rendering and canonical raw
+   * artwork both resolve through the shared appearance resolver.
    *
    * Optional because every other route is path-free by design — the API never
    * leaks a filesystem location, and a context without this simply cannot

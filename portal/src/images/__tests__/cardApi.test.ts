@@ -62,6 +62,12 @@ describe('species preview route', () => {
     expect(cardUrlFor(speciesCard)).toBe('/api/v1/cards/species/alley_catgirl');
   });
 
+  it('keeps expansion species cards on the working card endpoint', () => {
+    expect(cardUrlFor({ kind: 'card', slug: 'onsen_maid', variant: 'standard' }, 512)).toBe(
+      '/api/v1/cards/species/onsen_maid?width=512&variant=standard',
+    );
+  });
+
   it('passes the appearance through as variant', () => {
     expect(cardUrlFor(withVariant)).toBe(
       '/api/v1/cards/species/alley_catgirl?variant=level_20',
