@@ -29,6 +29,11 @@ RUN npm run build && npm run verify:bundle
 FROM nginx:1.27-alpine AS runtime
 
 COPY portal/nginx.conf.template /etc/nginx/templates/default.conf.template
+# Not under /etc/nginx/templates: files there are envsubst'd into
+# /etc/nginx/conf.d/ at boot, which would both mangle this one and load it as a
+# standalone config. It carries no ${VARS}, so it is copied to its final path
+# and pulled in by `include` from the rendered template.
+COPY portal/security-headers.conf /etc/nginx/security-headers.conf
 COPY --from=build /app/portal/dist /usr/share/nginx/html
 
 EXPOSE 8080

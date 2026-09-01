@@ -5,10 +5,9 @@ server {
   index index.html;
   server_tokens off;
 
-  add_header X-Content-Type-Options "nosniff" always;
-  add_header X-Frame-Options "DENY" always;
-  add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-  add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+  # No `add_header` at this level on purpose — see security-headers.conf. A
+  # server-level set here would be silently dropped by every location that
+  # defines any add_header of its own, which is most of them.
 
   location ~ /\.(?!well-known(?:/|$)) {
     deny all;
@@ -20,7 +19,14 @@ server {
     return 404;
   }
 
+  # Liveness only. The handler returns `{"status":"ok"}` and probes nothing —
+  # no component names, no versions, no bind. Safe to answer anonymously, and
+  # it is what a tunnel health check in front of the Portal should target.
   location = /health {
+    include /etc/nginx/security-headers.conf;
+    proxy_hide_header X-Content-Type-Options;
+    proxy_hide_header X-Frame-Options;
+    proxy_hide_header Referrer-Policy;
     proxy_pass ${PORTAL_API_UPSTREAM};
     proxy_http_version 1.1;
     proxy_set_header Host $host;
@@ -29,16 +35,42 @@ server {
     proxy_set_header X-Forwarded-Proto ${PORTAL_FORWARDED_PROTO};
   }
 
+  # /ready is deliberately NOT proxied.
+  #
+  # Its body names internal components and their failure detail: the database
+  # ping result (including the driver's error message), the Discord gateway
+  # state, the loaded content counts, and the Platform API's effective bind and
+  # port. That is a diagnostic report for an operator, not something to hand an
+  # anonymous visitor on a tunnel-exposed origin — it maps the deployment and
+  # turns a database outage into a public signal.
+  #
+  # It is not removed, only unpublished. `/ready` still answers, unauthenticated
+  # and unchanged, everywhere it is actually used:
+  #   - container-internally at http://waifumon-bot:3120/ready
+  #   - on the host at http://127.0.0.1:3120/ready (loopback publication)
+  #   - in dev, through Vite's own proxy entry, which is what the developer
+  #     diagnostics page uses — that page is dev-only and Vite drops it from
+  #     production builds, so nothing in the shipped bundle asks for this.
+  #
+  # An explicit 404 rather than falling through to the SPA: a fallthrough would
+  # answer 200 with index.html and make a broken probe look like a healthy one.
   location = /ready {
-    proxy_pass ${PORTAL_API_UPSTREAM};
-    proxy_http_version 1.1;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $remote_addr;
-    proxy_set_header X-Forwarded-Proto ${PORTAL_FORWARDED_PROTO};
+    include /etc/nginx/security-headers.conf;
+    return 404;
   }
 
   location ^~ /api {
+    include /etc/nginx/security-headers.conf;
+    # Strip the upstream's copies before adding ours. @fastify/helmet sends
+    # X-Frame-Options: SAMEORIGIN and Referrer-Policy: no-referrer, which
+    # conflict with the values above; without this the browser receives two of
+    # each and resolves them by its own rules rather than ours (Referrer-Policy
+    # takes the last valid token, so the upstream would silently win).
+    # X-Content-Type-Options agrees on `nosniff` and is stripped only so the
+    # header is not sent twice.
+    proxy_hide_header X-Content-Type-Options;
+    proxy_hide_header X-Frame-Options;
+    proxy_hide_header Referrer-Policy;
     proxy_pass ${PORTAL_API_UPSTREAM};
     proxy_http_version 1.1;
     proxy_set_header Host $host;
@@ -48,16 +80,19 @@ server {
   }
 
   location /assets/ {
+    include /etc/nginx/security-headers.conf;
     try_files $uri =404;
     add_header Cache-Control "public, max-age=31536000, immutable" always;
   }
 
   location = /index.html {
+    include /etc/nginx/security-headers.conf;
     try_files $uri =404;
     add_header Cache-Control "no-cache" always;
   }
 
   location / {
+    include /etc/nginx/security-headers.conf;
     try_files $uri $uri/ /index.html;
     add_header Cache-Control "no-cache" always;
   }

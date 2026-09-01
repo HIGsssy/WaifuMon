@@ -108,7 +108,7 @@ platform API listening on 0.0.0.0:3120 — clients use http://127.0.0.1:3120/api
 | `/api/v1/docs` | Swagger UI |
 | `/api/v1/openapi.json` | The OpenAPI 3.1 document |
 | `/health` | Liveness — never touches the database |
-| `/ready` | Readiness — database, content and Discord client probes |
+| `/ready` | Readiness — database, content and Discord client probes. Unauthenticated, but **not** proxied by the production Portal: the report names internal components and the effective bind, so it stays a loopback/container diagnostic. See [portal.md](portal.md). |
 
 Both docs routes are public so an operator can read them without a token;
 authorize in Swagger UI with the bearer token before calling any endpoint.

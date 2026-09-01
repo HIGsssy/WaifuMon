@@ -110,13 +110,20 @@ it on loopback. It cannot change game state — every non-GET request is rejecte
 before it leaves the client. See [docs/portal.md](docs/portal.md).
 
 For production serving, compose also provides `waifumon-portal`: an Nginx image
-that serves the compiled Vite bundle and proxies `/api/*`, `/ready` and
-`/health` to the loopback/internal Platform API. It publishes only
+that serves the compiled Vite bundle and proxies `/api/*` and `/health` to the
+loopback/internal Platform API. `/ready` is deliberately not proxied — it
+reports internal component detail and stays a loopback/container diagnostic
+(see [docs/portal.md](docs/portal.md)). It publishes only
 `127.0.0.1:3130` by default so Cloudflare Tunnel can target one local endpoint:
 
 ```sh
 PORTAL_FORWARDED_PROTO=https docker compose up --build waifumon-portal
 ```
+
+The service sits behind a `portal` compose profile, so a Portal build failure
+can never stop the bot from starting — plain `docker compose up --build` does
+not build it. Naming it, as above, builds and starts it anyway; to bring up the
+whole stack at once, use `docker compose --profile portal up -d --build`.
 
 This does not add public player authentication yet. The production proxy does
 not inject `PLATFORM_API_TOKEN`; Discord OAuth/session auth is the next step.

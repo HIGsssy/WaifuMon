@@ -83,6 +83,24 @@ services:
       - '${PLATFORM_API_PUBLISH_HOST:-127.0.0.1}:${PLATFORM_API_PORT:-3120}:${PLATFORM_API_PORT:-3120}'
 
   waifumon-portal:
+    # Opt-in, and the opt-in is about the *build*, not the run.
+    #
+    # `docker compose up --build` with no service named builds every service
+    # that has a `build:` section before it starts anything. The Portal's build
+    # runs `npm ci`, `npm run build` and `npm run verify:bundle` (portal/
+    # Dockerfile), so a TypeScript error in the SPA, a lockfile drift, a
+    # registry blip or a verify:bundle rejection would abort the whole `up` —
+    # and the bot and Postgres, which have nothing to do with any of it, would
+    # never start. A profile takes this service out of every unqualified
+    # compose command, build included, which is the only thing that actually
+    # decouples the two. `depends_on` cannot: it orders startup, and by then
+    # the build has already failed.
+    #
+    # Naming the service still works and still builds it — Compose activates a
+    # profile automatically when you target its service, so
+    # `docker compose up --build waifumon-portal` and
+    # `docker compose --profile portal up -d --build` both bring it up.
+    profiles: ['portal']
     build:
       context: .
       dockerfile: portal/Dockerfile
@@ -98,9 +116,20 @@ services:
       PORTAL_API_UPSTREAM: http://waifumon-bot:${PLATFORM_API_PORT:-3120}
       # Set to https when Cloudflare terminates TLS in front of the tunnel.
       PORTAL_FORWARDED_PROTO: ${PORTAL_FORWARDED_PROTO:-http}
+    # Load-bearing, and deliberately the weakest condition that works.
+    # nginx.conf.template proxies to a literal `${PORTAL_API_UPSTREAM}` host
+    # with no `resolver` directive, so Nginx resolves `waifumon-bot` when it
+    # loads its config and exits with "host not found in upstream" if the name
+    # does not exist yet. This edge is what guarantees the container is there
+    # to resolve. `service_started` rather than `service_healthy` on purpose:
+    # the Portal needs the name, not a ready API — it serves the static SPA
+    # immediately and returns 502 on /api until the bot finishes booting.
     depends_on:
       waifumon-bot:
         condition: service_started
+    # One-way: nothing in the bot/postgres/card-cache graph depends on this
+    # service, so a Portal that crash-loops or never builds cannot stop, block
+    # or restart the bot.
     restart: unless-stopped
     ports:
       - '${PORTAL_WEB_PUBLISH_HOST:-127.0.0.1}:${PORTAL_WEB_PORT:-3130}:8080'

@@ -118,9 +118,43 @@ PORTAL_FORWARDED_PROTO=http
 docker compose up --build waifumon-portal
 ```
 
+`waifumon-portal` is behind a `portal` compose profile so that a failed Portal
+build cannot block the bot and Platform API from starting — an unqualified
+`docker compose up --build` skips it entirely. Targeting the service by name,
+as above, activates its profile and builds it; `docker compose --profile portal
+up -d --build` brings up the whole stack together.
+
 Open `http://127.0.0.1:3130`. For Cloudflare Tunnel, point the tunnel service
 at `http://127.0.0.1:3130` and set `PORTAL_FORWARDED_PROTO=https` before
 rebuilding/restarting the Portal web container.
+
+### Why `/ready` is not public
+
+`/ready` returns a component-level report: the database ping result including
+the driver's error text, the Discord gateway state, the loaded content counts,
+and the Platform API's effective bind and port. That is an operator diagnostic.
+On a tunnel-exposed origin it maps the deployment to anyone who asks and turns
+a database outage into a public signal, so the production Nginx answers 404 for
+it rather than proxying it.
+
+Nothing about the endpoint itself changed — it is unpublished, not removed, and
+still answers unauthenticated everywhere it is actually used:
+
+| Consumer | Path | Still works |
+|---|---|---|
+| Container-internal ops, healthchecks | `http://waifumon-bot:3120/ready` | yes |
+| Host operator (loopback publication) | `http://127.0.0.1:3120/ready` | yes |
+| Developer diagnostics page | Vite dev-server proxy (`vite.config.ts`) | yes |
+| Production Portal bundle | — | never used it |
+
+The last row is why this transition costs nothing: `/__dev/diagnostics` is the
+only Portal consumer of `/ready`, it is registered only under
+`import.meta.env.DEV`, and `npm run verify:bundle` already asserts the whole
+subtree is absent from a production build. In dev it reaches `/ready` through
+Vite's proxy, never through this Nginx config.
+
+If a future public status surface is wanted, add a *new* endpoint that returns
+an aggregate status and no component detail, rather than re-publishing this one.
 
 ### Production ports and binds
 
@@ -140,7 +174,18 @@ published API port remains loopback by default.
 - `portal/dist` as static files.
 - `/assets/*` with `Cache-Control: public, max-age=31536000, immutable`.
 - `index.html` and SPA fallback with `Cache-Control: no-cache`.
-- `/api/*`, `/ready` and `/health` proxied to the Platform API.
+- `/api/*` and `/health` proxied to the Platform API. `/health` is liveness
+  only — `{"status":"ok"}`, no component detail — so it is safe to answer
+  anonymously and is the right target for a tunnel health check.
+- `/ready` is **not** proxied; it returns 404 at the edge. See "Why /ready is
+  not public" below.
+- One set of browser security headers, owned by Nginx, identical on every
+  route. `portal/security-headers.conf` is `include`d per location rather than
+  set once at server level, because nginx drops inherited `add_header`s in any
+  location that defines its own. The proxied locations additionally
+  `proxy_hide_header` the three names `@fastify/helmet` also sends
+  (`X-Frame-Options`, `Referrer-Policy`, `X-Content-Type-Options`), so exactly
+  one value reaches the browser instead of two conflicting ones.
 - SPA history fallback for browser routes, but not for `/api`, `/ready` or
   `/health`; proxy failures stay failures.
 - Dotfiles and source maps are denied.
