@@ -330,5 +330,171 @@
         }
       }
     ]
+  },
+  {
+    "slug": "avalanche_huntress",
+    "name": "Avalanche Huntress",
+    "rarity": "R",
+    "archetype": "demi-human",
+    "race": "demi-human",
+    "baseCaptureRate": null,
+    "description": "Submissive snow leopard woman who chases snowstorms. Thrill-hunts the biggest blizzards, then melts the moment she's praised.",
+    "tags": [
+      "expansion",
+      "region_exclusive"
+    ],
+    "contentRating": "explicit",
+    "affinity": "submissive",
+    "card": {
+      "subtitle": "Storm Chaser",
+      "ability": {
+        "name": "Avalanche Rush",
+        "text": "Chases the biggest storms on the mountain and submits the moment she's caught. Boosts the target and leaves them breathless."
+      },
+      "flavorQuote": "She chased the storm. You caught her.",
+      "artist": "Gorthig"
+    },
+    "imagePath": "expansions/twin_peaks/avalanche_huntress/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
+  },
+  {
+    "slug": "yuki_onna_bartender",
+    "name": "Yuki-onna Bartender",
+    "rarity": "SR",
+    "archetype": "spirit",
+    "race": "spirit",
+    "baseCaptureRate": null,
+    "description": "Japanese frost spirit working the resort bar. Every glass she touches comes out frosted; her cocktails are legendary.",
+    "tags": [
+      "expansion",
+      "region_exclusive"
+    ],
+    "contentRating": "explicit",
+    "affinity": "switch",
+    "card": {
+      "subtitle": "The Frosted Pour",
+      "ability": {
+        "name": "Cold Service",
+        "text": "Every glass she touches comes out frosted. Cools the target's temper and leaves them utterly relaxed."
+      },
+      "flavorQuote": "Compliment the drink. She'll thaw.",
+      "artist": "Gorthig"
+    },
+    "imagePath": "expansions/twin_peaks/yuki_onna_bartender/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
   }
 ]
