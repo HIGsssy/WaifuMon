@@ -38,6 +38,14 @@
     {
       "species": "gym_oni",
       "weight": 10
-    }     
+    },
+    {
+      "species": "clover_field_dryad",
+      "weight": 10
+    },
+    {
+      "species": "orchard_dawn_angel",
+      "weight": 10
+    }
   ]
 }
