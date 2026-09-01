@@ -22,7 +22,23 @@
     { "species": "dusk_gravekeeper", "weight": 5 },
     { "species": "infernal_circus_ringmaster", "weight": 5 },
     { "species": "solar_archangel", "weight": 3 },
-    { "species": "storm_titan_huntress", "weight": 1 }
+    { "species": "storm_titan_huntress", "weight": 1 },
+    {
+      "species": "the_first_waifu",
+      "weight": 1
+    },
+    {
+      "species": "the_waifu_below",
+      "weight": 1
+    },
+    {
+      "species": "neko_barista",
+      "weight": 10
+    },
+    {
+      "species": "gym_oni",
+      "weight": 10
+    }     
   ],
   "shopItems": []
 }
