@@ -162,5 +162,87 @@
     }
    }
   ]
+ },
+ {
+  "slug": "kobold_cave_surveyor",
+  "name": "Kobold Cave Surveyor",
+  "rarity": "N",
+  "archetype": "cavern cartographer",
+  "race": "demi-human",
+  "baseCaptureRate": null,
+  "description": "Maps the Thirstlands caverns with too much equipment and not enough caution. Every echo is a discovery, every dead end a detour worth taking.",
+  "tags": [
+   "expansion",
+   "region_exclusive"
+  ],
+  "contentRating": "mature",
+  "affinity": "switch",
+  "card": {
+   "subtitle": "Too Much Gear",
+   "ability": {
+    "name": "Cartographic Frenzy",
+    "text": "Each cave she maps makes her faster and less careful. By the third cavern she's forgotten the rope entirely and is improvising with maps."
+   },
+   "flavorQuote": "I've mapped this cavern three times! ...Wait. This is a different cavern.",
+   "artist": "Whistler"
+  },
+  "imagePath": "waifumon/kobold_cave_surveyor/standard.png",
+  "eventKey": null,
+  "perSpeciesWeight": 1,
+  "appearances": [
+   {
+    "id": "standard",
+    "name": "Standard",
+    "sortOrder": 0,
+    "unlock": {
+     "type": "owned"
+    }
+   },
+   {
+    "id": "level_10",
+    "name": "Level 10",
+    "sortOrder": 10,
+    "unlock": {
+     "type": "level",
+     "atLevel": 10
+    }
+   },
+   {
+    "id": "level_20",
+    "name": "Level 20",
+    "sortOrder": 20,
+    "unlock": {
+     "type": "level",
+     "atLevel": 20
+    }
+   },
+   {
+    "id": "level_30",
+    "name": "Level 30",
+    "sortOrder": 30,
+    "unlock": {
+     "type": "level",
+     "atLevel": 30
+    }
+   },
+   {
+    "id": "level_40",
+    "name": "Level 40",
+    "sortOrder": 40,
+    "unlock": {
+     "type": "level",
+     "atLevel": 40
+    }
+   },
+   {
+    "id": "level_50",
+    "name": "Level 50",
+    "sortOrder": 50,
+    "unlock": {
+     "type": "level",
+     "atLevel": 50
+    }
+   }
+  ]
  }
 ]

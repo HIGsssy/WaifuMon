@@ -994,5 +994,88 @@
         }
       }
     ]
+  },
+  {
+    "slug": "orchard_dawn_angel",
+    "name": "Orchard-Dawn",
+    "rarity": "R",
+    "archetype": "angel",
+    "race": "angel",
+    "baseCaptureRate": null,
+    "description": "The first light to rise over the valley orchards. The apples ripen toward her before she's even awake.",
+    "tags": [
+      "expansion",
+      "region_exclusive"
+    ],
+    "contentRating": "mature",
+    "affinity": "primal",
+    "card": {
+      "subtitle": "Row-Born Dawn",
+      "ability": {
+        "name": "First Ripeness",
+        "text": "Whatever she lingers beside comes early and comes sweet, and the nearest tree leans to hold her."
+      },
+      "flavorQuote": "Dawn doesn't wait for a reason. Neither do I.",
+      "artist": "Whistler"
+    },
+    "imagePath": "expansions/flaccid_foothills/orchard_dawn_angel/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
   }
 ]
