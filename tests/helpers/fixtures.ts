@@ -186,7 +186,6 @@ export async function bootstrapApp(
     appearance,
     duplicateConfig: content.tables.duplicate,
     waifuConfig: content.tables.waifuProgression,
-    totalSpeciesCount: content.species.filter((s) => s.enabled).length,
     buddyBonus,
   });
   const care = createCareService({

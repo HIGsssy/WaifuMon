@@ -133,7 +133,6 @@ async function main(): Promise<void> {
     appearance,
     duplicateConfig: content.tables.duplicate,
     waifuConfig: content.tables.waifuProgression,
-    totalSpeciesCount: content.species.filter((s) => s.enabled).length,
     buddyBonus,
   });
   const care = createCareService({

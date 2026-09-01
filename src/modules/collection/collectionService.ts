@@ -68,9 +68,13 @@ export interface PaginatedOwned {
 export interface DexStats {
   /** Number of active (non-released) owned Waifumon. */
   owned: number;
-  /** Distinct species among active owned Waifumon. */
+  /** Distinct species among active owned Waifumon — duplicates count once. */
   distinctSpecies: number;
-  /** Total enabled species in the content set. */
+  /**
+   * Every enabled species in the database right now: the base set plus every
+   * enabled expansion pack, minus anything disabled. Read live, so enabling a
+   * pack moves it without a restart.
+   */
   totalSpecies: number;
 }
 
@@ -311,8 +315,6 @@ export interface CollectionServiceDeps {
   quests: QuestService;
   duplicateConfig: DuplicateConfig;
   waifuConfig: WaifuProgressionConfig;
-  /** Total enabled species in the content set (dex denominator). */
-  totalSpeciesCount: number;
   /**
    * Cosmetic appearance bookkeeping. **Optional**, and deliberately one-way:
    * this service calls into it after a level changes so the player is told
@@ -349,7 +351,7 @@ const RARITY_RANK_SQL = sql`case ${species.rarity}
 end`;
 
 export function createCollectionService(deps: CollectionServiceDeps): CollectionService {
-  const { db, currency, quests, duplicateConfig, waifuConfig, totalSpeciesCount } = deps;
+  const { db, currency, quests, duplicateConfig, waifuConfig } = deps;
   const appearance = deps.appearance;
   const buddyBonus = deps.buddyBonus;
 
@@ -440,19 +442,47 @@ export function createCollectionService(deps: CollectionServiceDeps): Collection
     };
   }
 
+  /**
+   * Dex progress: copies held, unique species held, and the denominator.
+   *
+   * **The denominator is counted live, from `species`.** It used to be a number
+   * handed in at construction, computed once from the content snapshot the
+   * process booted with — so a pack enabled by an admin Reload Content, or any
+   * species added after boot, was collectable but never counted, and every
+   * profile showed the launch total until someone restarted the bot.
+   *
+   * `species.enabled` is the right predicate because the seeder keeps it
+   * honest in both directions: a species authored `enabled: false`, one whose
+   * artwork went missing, and every species belonging to a pack that is
+   * switched off (dropped from the content set, then disabled by slug) all
+   * land as disabled rows. So "enabled row" means exactly "canonical species a
+   * player can currently obtain".
+   *
+   * Counted from `species`, never from `region_encounter_pools`: a species may
+   * be pooled in several regions, and counting membership rows would inflate
+   * the denominator by however many places she can be met.
+   *
+   * The numerator is `countDistinct(species_id)` over unreleased copies — the
+   * dex is about *who* you have caught, so a shelf of duplicates counts once.
+   */
   async function getDexStats(playerId: number): Promise<DexStats> {
-    const [owned = { total: 0 }] = await db
-      .select({ total: count() })
-      .from(playerWaifus)
-      .where(and(eq(playerWaifus.playerId, playerId), isNull(playerWaifus.releasedAt)));
-    const [distinct = { total: 0 }] = await db
-      .select({ total: countDistinct(playerWaifus.speciesId) })
-      .from(playerWaifus)
-      .where(and(eq(playerWaifus.playerId, playerId), isNull(playerWaifus.releasedAt)));
+    const ownedFilter = and(
+      eq(playerWaifus.playerId, playerId),
+      isNull(playerWaifus.releasedAt),
+    );
+    const [[owned = { total: 0 }], [distinct = { total: 0 }], [available = { total: 0 }]] =
+      await Promise.all([
+        db.select({ total: count() }).from(playerWaifus).where(ownedFilter),
+        db
+          .select({ total: countDistinct(playerWaifus.speciesId) })
+          .from(playerWaifus)
+          .where(ownedFilter),
+        db.select({ total: count() }).from(species).where(eq(species.enabled, true)),
+      ]);
     return {
       owned: owned.total,
       distinctSpecies: distinct.total,
-      totalSpecies: totalSpeciesCount,
+      totalSpecies: available.total,
     };
   }
 
