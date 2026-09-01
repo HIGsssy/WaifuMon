@@ -1,8 +1,8 @@
 {
   "id": "thirstlands",
   "name": "Thirstlands",
-  "description": "Ships the Thirstlands region, unreleased. The pack is enabled so the region definition and its Caravan Pass route load and stay validated; the region itself ships disabled, which is what keeps the place hidden.",
+  "description": "The third paid destination. Ships the Thirstlands region and its region-exclusive Waifumon, reachable only by stamping the route onto a Caravan Pass the player already holds.",
   "enabled": true,
-  "order": 2,
+  "order": 4,
   "regionId": "thirstlands"
 }

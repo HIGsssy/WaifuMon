@@ -80,38 +80,41 @@ describe('shipped travel content', () => {
     expect(twinPeeks.grantedByPassPurchase).toBe(true);
   });
 
-  it('hides the unreleased Thirstlands entirely — route authored, region off', () => {
-    // The route exists in `tables.json` against the same Caravan Pass, so the
-    // day the region is switched on nothing else has to change. Until then the
-    // disabled region keeps it out of the catalog, out of `getStatus`, and out
-    // of the seeded pools — a player cannot see it, buy it or travel to it.
+  it('lists Thirstlands as the fourth destination, priced and gated', () => {
+    // The route was authored against the Caravan Pass long before the region
+    // was switched on, which is exactly why releasing it was a content edit:
+    // the catalog is what turns an enabled region into a sellable destination.
     const catalog = app.travel.catalog();
-    expect(catalog.get('thirstlands')).toBeNull();
     expect(catalog.destinations.map((d) => d.region.id)).toEqual([
       'waifu-valley',
       'twin-peeks',
       'flaccid-foothills',
+      'thirstlands',
     ]);
-    expect(
-      app.content.tables.travel.routes.some((r) => r.regionId === 'thirstlands'),
-    ).toBe(true);
+    const thirstlands = catalog.get('thirstlands')!;
+    expect(thirstlands.pass!.id).toBe('caravan_pass');
+    // Not bundled into the pass: the Caravan Pass still buys Twin Peeks only.
+    expect(thirstlands.grantedByPassPurchase).toBe(false);
+    expect(thirstlands.price).toBe(2000);
+    expect(thirstlands.requiredLevel).toBe(25);
   });
 
-  it('seeds no encounter pool for a disabled region', async () => {
+  it('seeds an encounter pool for every enabled region', async () => {
     const pooled = await t.db
       .selectDistinct({ regionId: regionEncounterPools.regionId })
       .from(regionEncounterPools);
     expect(pooled.map((r) => r.regionId).sort()).toEqual([
       'flaccid-foothills',
+      'thirstlands',
       'twin-peeks',
       'waifu-valley',
     ]);
   });
 
-  it('refuses to travel to it by name', async () => {
+  it('refuses to travel to it before the route is bought', async () => {
     const { playerId } = await provisionPlayer(app, 'g-travel-hidden', 'u-hidden');
     await expect(app.travel.travel(playerId, 'thirstlands')).rejects.toThrow(
-      RegionNotFoundError,
+      RegionLockedError,
     );
   });
 });

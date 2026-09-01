@@ -598,7 +598,7 @@
       "subtitle": "Cliffside Recluse",
       "ability": {
         "name": "Open Invitation",
-        "text": "Rents the exclusive cliffside pool and wants no company, yet keeps returning your towel with an invitation folded inside. Commands the target's attention and leaves them unwilling to leave."
+        "text": "Rents the cliffside pool and wants no company, yet keeps returning your towel with an invitation folded inside. Commands attention, and holds it."
       },
       "flavorQuote": "She wanted no company. She folded the invitation anyway.",
       "artist": "MagicMonday"

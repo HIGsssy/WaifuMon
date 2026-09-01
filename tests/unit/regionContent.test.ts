@@ -560,7 +560,10 @@ describe('shipped content', () => {
     const foothills = scan.regions.find((r) => r.id === 'flaccid-foothills')!;
     // Every resident is reachable: an exclusive missing from her own pool
     // would be unobtainable content, which is worse than absent content.
-    expect(new Set(foothills.encounterPool.map((e) => e.species))).toEqual(packSlugs);
+    // The pool is a superset — it also stocks shared, non-exclusive species —
+    // so this asserts coverage, not equality.
+    const foothillsPool = new Set(foothills.encounterPool.map((e) => e.species));
+    for (const slug of packSlugs) expect(foothillsPool).toContain(slug);
     for (const other of scan.regions.filter((r) => r.id !== 'flaccid-foothills')) {
       expect(other.encounterPool.filter((e) => packSlugs.has(e.species))).toEqual([]);
     }
@@ -583,6 +586,7 @@ describe('shipped content', () => {
       'waifu-valley',
       'twin-peeks',
       'flaccid-foothills',
+      'thirstlands',
     ]);
   });
 
@@ -600,74 +604,101 @@ describe('shipped content', () => {
   });
 });
 
-describe('shipped content — Thirstlands ships disabled', () => {
+describe('shipped content — Thirstlands, the third destination', () => {
   const CONTENT_DIR = path.resolve(__dirname, '..', '..', 'content');
 
-  it('defines the region, switched off, with a banner and no pool', () => {
-    // Unreleased content sitting on disk: valid, loaded, validated — and
-    // hidden. The empty pool is legal *because* the region is disabled; the
-    // "enabled regions require encounter pools" rule above is what would catch
-    // it the moment somebody flips the flag without authoring content.
+  it('ships the region enabled, non-starting, with a banner and a pool', () => {
     const scan = readExpansionPacks(CONTENT_DIR);
     const thirstlands = scan.regions.find((r) => r.id === 'thirstlands');
     expect(thirstlands).toBeDefined();
-    expect(thirstlands!.enabled).toBe(false);
+    expect(thirstlands!.enabled).toBe(true);
+    // Only Waifu Valley may claim this, and releasing a destination must never
+    // be the edit that moves where new players spawn.
     expect(thirstlands!.starting).toBe(false);
     expect(thirstlands!.name).toBe('Thirstlands');
-    expect(thirstlands!.encounterPool).toEqual([]);
     expect(thirstlands!.bannerImagePath).toBe('locations/thirstlands/banner.png');
+    expect(thirstlands!.encounterPool.length).toBeGreaterThan(0);
+    expect(thirstlands!.encounterPool.every((e) => typeof e.weight === 'number')).toBe(true);
   });
 
   it('validates as part of the shipped content set', () => {
-    // The whole point of shipping it disabled rather than not shipping it: the
-    // file is exercised by every load, so it cannot rot between now and release.
+    // An enabled region with an empty pool, a pool naming a species no pack
+    // ships, or an exclusive claimed by two live regions are all fatal here —
+    // so a clean load is the release checklist, not a formality.
     expect(() => loadContent(CONTENT_DIR, ASSETS_DIR, silentLogger())).not.toThrow();
   });
 
-  it('ships no species of its own yet', () => {
-    // The pack is enabled — that is what loads the region file and keeps the
-    // route valid — so anything in its `species/` directory would be live
-    // content. There is nothing there: the region is a place with no residents
-    // until its roster is authored.
+  it('ships its residents tagged as expansion region-exclusives', () => {
     const scan = readExpansionPacks(CONTENT_DIR);
-    expect(Object.entries(scan.speciesOrigin).filter(([, id]) => id === 'thirstlands')).toEqual([]);
-    expect(scan.expansionSpecies.some((s) => s.slug === 'pickaxe_goblin')).toBe(false);
+    const pack = scan.expansionSpecies.filter(
+      (s) => scan.speciesOrigin[s.slug] === 'thirstlands',
+    );
+    expect(pack.length).toBeGreaterThan(0);
+    for (const s of pack) {
+      expect(s.tags).toContain('expansion');
+      expect(s.tags).toContain('region_exclusive');
+      // Canonical runtime artwork only: `assets/waifumon/<slug>/<variant>.png`.
+      // An `expansions/…` path would resolve nowhere the bot or the Portal look.
+      expect(s.imagePath).toBe(`waifumon/${s.slug}/standard.png`);
+    }
   });
 
-  it('sells no route to it: the destination does not exist while it is disabled', () => {
+  it('pools every Thirstlands species in the Thirstlands, and nowhere else', () => {
+    const scan = readExpansionPacks(CONTENT_DIR);
+    const packSlugs = new Set(
+      scan.expansionSpecies
+        .filter((s) => scan.speciesOrigin[s.slug] === 'thirstlands')
+        .map((s) => s.slug),
+    );
+    const thirstlands = scan.regions.find((r) => r.id === 'thirstlands')!;
+    // An exclusive missing from her own pool is unobtainable content.
+    expect(new Set(thirstlands.encounterPool.map((e) => e.species))).toEqual(packSlugs);
+    for (const other of scan.regions.filter((r) => r.id !== 'thirstlands')) {
+      expect(other.encounterPool.filter((e) => packSlugs.has(e.species))).toEqual([]);
+    }
+  });
+
+  it('sells it as a Caravan Pass route at level 25 for 2,000', () => {
     const content = loadContent(CONTENT_DIR, ASSETS_DIR, silentLogger());
     const catalog = buildTravelCatalog(content);
-    // The route is authored against the Caravan Pass, exactly like Twin Peeks…
-    const route = content.tables.travel.routes.find((r) => r.regionId === 'thirstlands');
-    expect(route).toBeDefined();
-    expect(route!.passId).toBe('caravan_pass');
-    // …and the disabled region keeps it entirely out of the catalog, so the
-    // Locations screen has nothing to list and nothing to sell.
-    expect(catalog.get('thirstlands')).toBeNull();
-    expect(catalog.destinations.map((d) => d.region.id)).not.toContain('thirstlands');
-    // A pass purchase must not quietly stamp it, either.
+    const thirstlands = catalog.get('thirstlands')!;
+    expect(thirstlands.access).toBe('route');
+    expect(thirstlands.pass!.id).toBe('caravan_pass');
+    // Stamped onto a pass the player must already hold: buying the Caravan
+    // Pass for Twin Peeks must not quietly hand this one over too.
+    expect(thirstlands.grantedByPassPurchase).toBe(false);
     expect(
       content.tables.travel.passes.every((p) => !p.grantsRoutes.includes('thirstlands')),
     ).toBe(true);
+    expect(thirstlands.price).toBe(2000);
+    expect(thirstlands.currency).toBe('waifubux');
+    // The stricter of the pass gate (15) and the route gate (25).
+    expect(thirstlands.requiredLevel).toBe(25);
   });
 
-  it('leaves Waifu Valley and Twin Peeks exactly as they were', () => {
-    const catalog = buildTravelCatalog(loadContent(CONTENT_DIR, ASSETS_DIR, silentLogger()));
-    // Thirstlands is absent because it is disabled; the Foothills are present
-    // because they are released. Neither changes the two that came before.
-    expect(catalog.destinations.map((d) => d.region.id)).not.toContain('thirstlands');
-    expect(catalog.destinations.map((d) => d.region.id).slice(0, 2)).toEqual([
+  it('lists last, and leaves the three destinations before it alone', () => {
+    const content = loadContent(CONTENT_DIR, ASSETS_DIR, silentLogger());
+    const catalog = buildTravelCatalog(content);
+    expect(catalog.destinations.map((d) => d.region.id)).toEqual([
       'waifu-valley',
       'twin-peeks',
+      'flaccid-foothills',
+      'thirstlands',
     ]);
     const twin = catalog.get('twin-peeks')!;
-    expect(twin.access).toBe('route');
     expect(twin.grantedByPassPurchase).toBe(true);
     expect(twin.price).toBe(1000);
     expect(twin.requiredLevel).toBe(15);
+    const foothills = catalog.get('flaccid-foothills')!;
+    expect(foothills.grantedByPassPurchase).toBe(false);
+    expect(foothills.price).toBe(1500);
+    expect(foothills.requiredLevel).toBe(20);
   });
 
-  it('refuses to release the region without a pool, if someone flips only the flag', () => {
+  it('would refuse the release if the pool were emptied', () => {
+    // The rule that protected Thirstlands while it was unreleased still
+    // protects the next region: enabled and empty is a destination players pay
+    // to reach and then find nothing in.
     const scan = readExpansionPacks(CONTENT_DIR);
     const thirstlands = scan.regions.find((r) => r.id === 'thirstlands')!;
     const bad = content({
@@ -678,7 +709,7 @@ describe('shipped content — Thirstlands ships disabled', () => {
           starting: true,
           encounterPool: [{ species: 'valley_girl' }],
         }),
-        { ...thirstlands, enabled: true },
+        { ...thirstlands, encounterPool: [] },
       ],
     });
     expect(() => validateRegionContent(bad)).toThrow(
