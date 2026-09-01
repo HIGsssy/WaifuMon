@@ -400,6 +400,24 @@ describe('asset validation', () => {
     expect(() => resolveAssetPath(ASSETS_DIR, '../secrets.txt')).toThrow(ContentValidationError);
   });
 
+  it('keeps an expansion species enabled when imagePath is stored relative to assetsDir', () => {
+    const relative = 'expansions/flaccid_foothills/starfall_street_dancer/standard.png';
+    // imagePath is resolved relative to assetsDir, so the stored value must not
+    // repeat the "assets/" prefix or the loader looks under assets/assets/...
+    expect(resolveAssetPath(ASSETS_DIR, relative)).toBe(path.join(ASSETS_DIR, relative));
+    const result = validateSpeciesAssets([species(relative)], ASSETS_DIR, silentLogger());
+    expect(result[0]?.enabled).toBe(true);
+  });
+
+  it('disables an expansion species when imagePath double-prefixes "assets/"', () => {
+    const result = validateSpeciesAssets(
+      [species('assets/expansions/flaccid_foothills/starfall_street_dancer/standard.png')],
+      ASSETS_DIR,
+      silentLogger(),
+    );
+    expect(result[0]?.enabled).toBe(false);
+  });
+
   it('fails startup loudly on a dailyPackage slug that is not an item', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wm-content-'));
     tmpDirs.push(dir);
