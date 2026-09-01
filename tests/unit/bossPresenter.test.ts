@@ -479,6 +479,7 @@ describe('my result', () => {
     const text = buildMyResult(encounter(), {
       participation: participation(),
       rewards: [{ slug: 'basic_charm', name: 'Basic Charm', quantity: 2 }],
+      rewardBonus: null,
     });
     expect(text).toContain('dealt **2,001** damage');
     expect(text).toContain('across 10 attacks');
@@ -492,6 +493,7 @@ describe('my result', () => {
     const text = buildMyResult(encounter(), {
       participation: participation({ rewardStatus: 'pending', totalDamage: null }),
       rewards: [],
+      rewardBonus: null,
     });
     expect(text).toContain('is committed to');
     expect(text).toContain('Rewards are delivered when the battle resolves');
@@ -502,6 +504,7 @@ describe('my result', () => {
     const text = buildMyResult(encounter(), {
       participation: participation({ xpAwarded: 0 }),
       rewards: [],
+      rewardBonus: null,
     });
     expect(text).toContain('is at max level — no XP was gained');
   });

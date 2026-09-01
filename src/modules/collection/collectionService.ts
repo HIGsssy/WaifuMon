@@ -44,7 +44,12 @@ import {
 } from '../../shared/errors';
 import type { CurrencyService } from '../currency/currencyService';
 import type { QuestService } from '../quests/questService';
-import { applyPercentModifierInt, buddyBonusPercent } from '../buddyBonus/buddyBonusEffects';
+import {
+  appliedBuddyBonus,
+  applyPercentModifierInt,
+  buddyBonusPercent,
+  type AppliedBuddyBonus,
+} from '../buddyBonus/buddyBonusEffects';
 import type { BuddyBonusService } from '../buddyBonus/buddyBonusService';
 
 export interface OwnedEntry {
@@ -73,6 +78,8 @@ export interface ReleaseResult {
   waifu: PlayerWaifuRow;
   species: SpeciesRow;
   essenceGranted: number;
+  /** Set only when `essence_gain` actually raised `essenceGranted`. */
+  essenceBonus: AppliedBuddyBonus | null;
   balanceAfter: number;
 }
 
@@ -154,6 +161,10 @@ export interface BuddyAwardResult {
   toLevel: number;
   /** Cosmetic unlocks the buddy's hunt XP produced. Presentation only. */
   newAppearances: AppearanceUnlockRef[];
+  /** Set only when `buddy_xp_gain` actually raised `xpGranted`. */
+  xpBonus: AppliedBuddyBonus | null;
+  /** Set only when `affection_gain` actually raised `affectionGranted`. */
+  affectionBonus: AppliedBuddyBonus | null;
 }
 
 export interface CollectionService {
@@ -666,10 +677,16 @@ export function createCollectionService(deps: CollectionServiceDeps): Collection
       // `essence_gain` scales the payout, never the rarity table it comes
       // from: content still decides what a copy is worth, the Buddy decides
       // what the player walks away with.
+      const baseEssence = essenceForRarity(speciesRow.rarity, fraction);
+      const essenceActive = await buddyBonus?.getActiveBuddyBonus(tx, playerId);
       const essence = applyPercentModifierInt(
-        essenceForRarity(speciesRow.rarity, fraction),
-        (await buddyBonus?.percentFor(tx, playerId, 'essence_gain')) ?? 0,
+        baseEssence,
+        buddyBonusPercent(essenceActive?.bonus, 'essence_gain'),
       );
+      const essenceBonus =
+        essenceActive && essence > baseEssence
+          ? appliedBuddyBonus(essenceActive.bonus, { base: baseEssence, final: essence })
+          : null;
 
       // Serialize with concurrent shop/daily spends on the same player.
       const currencyRow = await currency.lockCurrencies(tx, playerId);
@@ -694,6 +711,7 @@ export function createCollectionService(deps: CollectionServiceDeps): Collection
         waifu: updatedWaifu!,
         species: speciesRow,
         essenceGranted: essence,
+        essenceBonus,
         balanceAfter,
       };
     });
@@ -903,14 +921,26 @@ export function createCollectionService(deps: CollectionServiceDeps): Collection
       // `affection_gain` are read from whoever is equipped, which is by
       // definition the copy being paid here.
       const active = await buddyBonus?.getActiveBuddyBonus(tx, playerId);
+      const baseXp = waifuConfig.buddy.xpPerHunt;
+      const baseAffection = waifuConfig.buddy.affectionPerHunt;
       const xpDelta = applyPercentModifierInt(
-        waifuConfig.buddy.xpPerHunt,
+        baseXp,
         buddyBonusPercent(active?.bonus, 'buddy_xp_gain'),
       );
       const affDelta = applyPercentModifierInt(
-        waifuConfig.buddy.affectionPerHunt,
+        baseAffection,
         buddyBonusPercent(active?.bonus, 'affection_gain'),
       );
+      // Reported only where the number actually moved, so a bonus is never
+      // announced next to an award it did not change.
+      const xpBonus =
+        active && xpDelta > baseXp
+          ? appliedBuddyBonus(active.bonus, { base: baseXp, final: xpDelta })
+          : null;
+      const affectionBonus =
+        active && affDelta > baseAffection
+          ? appliedBuddyBonus(active.bonus, { base: baseAffection, final: affDelta })
+          : null;
       if (xpDelta <= 0 && affDelta <= 0) return null;
       const [player] = await tx
         .select({ buddyWaifuId: players.buddyWaifuId })
@@ -950,6 +980,8 @@ export function createCollectionService(deps: CollectionServiceDeps): Collection
         fromLevel,
         toLevel: newLevel,
         newAppearances,
+        xpBonus,
+        affectionBonus,
       };
     },
 
@@ -982,6 +1014,10 @@ export function createCollectionService(deps: CollectionServiceDeps): Collection
         fromLevel,
         toLevel: newLevel,
         newAppearances,
+        // Boss XP and other direct awards do not go through `buddy_xp_gain` —
+        // see `awardBuddyOnHunt`, which is the only path that does.
+        xpBonus: null,
+        affectionBonus: null,
       };
     },
   };

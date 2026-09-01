@@ -65,6 +65,12 @@ import {
   NoCaptureItemSelectedError,
 } from '../../shared/errors';
 import type { AppContext, PlayerInteraction, Provisioned } from '../types';
+import {
+  buddyAwardFeedbackLines,
+  buddyBonusFeedbackLines,
+  buddyBonusValueLine,
+} from '../buddyBonusFeedback';
+import { buddyBonusLine } from '../../modules/buddyBonus/buddyBonusEffects';
 import { buildCustomId } from '../types';
 import { CARD_FILENAME, resolveAppearanceAssetOrPath } from '../assets/resolveAppearanceAsset';
 import {
@@ -312,6 +318,17 @@ async function buildEncounterView(
   // Affinity read (5D): only meaningful with an active buddy. Read-only here —
   // the authoritative resolution happens inside the capture transaction.
   const buddy = await ctx.services.collection.getBuddy(prov.playerId);
+  // The baseline quote is the authority on whether a `capture_chance` bonus
+  // applies to *this* species: it carries the bonus only when the percentage it
+  // folded into the chance was non-zero, so a targeted bonus that does not
+  // match this encounter is simply absent. Re-read on every repaint, so a Buddy
+  // swap between clicks is reflected the moment the screen redraws.
+  // Read defensively: the quote throws for an encounter that expired between
+  // the click and this repaint, and a missing bonus line must never be the
+  // thing that fails the whole screen.
+  const baselineQuote = await ctx.services.capture
+    .quoteCapture(prov.playerId, encounter.id, null)
+    .catch(() => null);
   const affinityRead = buddy
     ? formatAffinityRead(
         resolveBuddyAffinity(
@@ -352,8 +369,12 @@ async function buildEncounterView(
       },
     )
     .setFooter({ text: footer });
-  if (affinityRead) {
-    embed.addFields({ name: '🤝 Buddy', value: affinityRead, inline: false });
+  const buddyLines = [
+    affinityRead,
+    baselineQuote?.buddyBonus ? buddyBonusLine(baselineQuote.buddyBonus) : null,
+  ].filter((line): line is string => Boolean(line));
+  if (buddyLines.length > 0) {
+    embed.addFields({ name: '🤝 Buddy', value: buddyLines.join('\n'), inline: false });
   }
 
   // Active consumable buff (Microdose): show the bonus and charges *before*
@@ -484,9 +505,17 @@ export async function handleHunt(
     const events = await huntDescriptors(ctx, prov, result);
 
     if (result.kind === 'encounter') {
+      // Everything a Buddy Bonus did for this hunt, above the encounter blurb:
+      // the saved Energy, and an `encounter_weight` bonus when *this* species
+      // is one it applies to. The encounter panel then adds the capture-side
+      // read of its own.
+      const huntBonusLines = [
+        ...buddyBonusFeedbackLines(result.buddyBonuses),
+        ...buddyAwardFeedbackLines(result.buddyAward),
+      ];
       const view = await buildEncounterView(ctx, prov, result.encounter, result.species, {
         energyRemaining: result.energyRemaining,
-        ...(result.energySaved ? { statusLine: '✨ Buddy Bonus: no Energy spent' } : {}),
+        ...(huntBonusLines.length > 0 ? { statusLine: huntBonusLines.join('\n') } : {}),
       });
       // Encounter reveal has its own actions (charms + Let Her Go); no Back.
       await respondEphemeral(interaction, view);
@@ -520,9 +549,17 @@ export async function handleHunt(
     // "No Energy spent" is the only visible sign an `energy_save_chance` Buddy
     // Bonus procced, so the footer says so rather than leaving the player to
     // notice a number that did not move.
-    embed.setFooter({
-      text: `Energy left: ${result.energyRemaining}${result.energySaved ? ' · ✨ Buddy Bonus: no Energy spent' : ''}`,
-    });
+    // Applied Buddy Bonuses for this hunt: the Energy save that fired, the
+    // item-find bonus that improved the odds of the find just reported, the
+    // Essence uplift. Never a bonus that did not affect this result.
+    const bonusLines = [
+      ...buddyBonusFeedbackLines(result.buddyBonuses),
+      ...buddyAwardFeedbackLines(result.buddyAward),
+    ];
+    if (bonusLines.length > 0) {
+      embed.setDescription(`${embed.data.description ?? ''}\n\n${bonusLines.join('\n')}`.trim());
+    }
+    embed.setFooter({ text: `Energy left: ${result.energyRemaining}` });
     await respondEphemeral(interaction, {
       embeds: [embed],
       components: withBackRow([huntAgainRow()]),
@@ -766,7 +803,15 @@ export async function buildEphemeralOutcomeMessage(
           : `${formatAffinityBonus(buddyAffinityModifier)} — no clear advantage`;
     embed.addFields({
       name: '🤝 Buddy Bonus',
-      value: `${detail}\nCapture chance: **${formatChancePercent(result.affinity.finalChance)}**`,
+      value: [
+        detail,
+        // The content-authored bonus, when it applied to this species. Present
+        // on the result only if the capture math actually used it.
+        result.affinity.buddyBonus ? buddyBonusLine(result.affinity.buddyBonus) : null,
+        `Capture chance: **${formatChancePercent(result.affinity.finalChance)}**`,
+      ]
+        .filter((line): line is string => Boolean(line))
+        .join('\n'),
       inline: false,
     });
   }
@@ -788,8 +833,13 @@ export async function buildEphemeralOutcomeMessage(
     });
   }
   if (result.xpGranted > 0 || result.levelUps.length > 0) {
+    // `xpGranted` is what the player actually received — a `player_xp_gain`
+    // Buddy Bonus is already inside it, and the compact line names the bonus
+    // that raised it rather than restating a number.
+    const bonusLine = buddyBonusValueLine(result.xpBonus);
     const xpLine = result.xpGranted > 0
-      ? `+${result.xpGranted} XP${result.isNewDex ? ' (incl. new dex)' : ''}`
+      ? `+${result.xpGranted} XP${result.isNewDex ? ' (incl. new dex)' : ''}` +
+        (bonusLine ? `\n${bonusLine}` : '')
       : '';
     const luLine = result.levelUps
       .map((l) => `⬆️ **Level ${l.toLevel}!**${l.rewardLabels.length ? ` — ${l.rewardLabels.join(', ')}` : ''}`)

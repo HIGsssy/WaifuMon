@@ -15,7 +15,12 @@ import {
 } from '../../db/schema';
 import { PlayerNotFoundError } from '../../shared/errors';
 import type { ProgressionConfig } from '../content/schemas';
-import { applyPercentModifierInt } from '../buddyBonus/buddyBonusEffects';
+import {
+  appliedBuddyBonus,
+  applyPercentModifierInt,
+  buddyBonusPercent,
+  type AppliedBuddyBonus,
+} from '../buddyBonus/buddyBonusEffects';
 import type { BuddyBonusService } from '../buddyBonus/buddyBonusService';
 import {
   cumulativeXpForLevel,
@@ -52,6 +57,11 @@ export interface GrantXpResult {
   baseXpDelta: number;
   /** The `player_xp_gain` percentage folded into `xpDelta`. 0 when none applied. */
   buddyBonusPercent: number;
+  /**
+   * The bonus that produced the uplift, for result screens — `null` whenever
+   * none applied, so a caller never has to decide whether to mention one.
+   */
+  buddyBonus: AppliedBuddyBonus | null;
   totalXp: number;
   fromLevel: number;
   toLevel: number;
@@ -132,11 +142,16 @@ export function createProgressionService(deps: ProgressionServiceDeps): Progress
       // Only *awards* are boosted. A zero or negative delta (an admin
       // correction, a bookkeeping row) is left exactly as the caller wrote it —
       // a bonus that also deepened a penalty would be a surprise, not a bonus.
-      const buddyBonusPercent =
-        opts.xpDelta > 0
-          ? ((await buddyBonus?.percentFor(tx, playerId, 'player_xp_gain')) ?? 0)
-          : 0;
-      const xpDelta = applyPercentModifierInt(opts.xpDelta, buddyBonusPercent);
+      const active = opts.xpDelta > 0 ? await buddyBonus?.getActiveBuddyBonus(tx, playerId) : null;
+      const percent = buddyBonusPercent(active?.bonus, 'player_xp_gain');
+      const xpDelta = applyPercentModifierInt(opts.xpDelta, percent);
+      // Reported only when it actually moved the award — a 0% or rounding-neutral
+      // bonus has nothing to tell the player.
+      const applied =
+        active && percent !== 0 && xpDelta !== opts.xpDelta
+          ? appliedBuddyBonus(active.bonus, { base: opts.xpDelta, final: xpDelta })
+          : null;
+      const buddyBonusPercentApplied = applied ? percent : 0;
 
       const fromLevel = locked.level;
       const nextTotalXp = Math.max(0, locked.xp + xpDelta);
@@ -181,14 +196,17 @@ export function createProgressionService(deps: ProgressionServiceDeps): Progress
         refId: opts.refId ?? null,
         metadata: {
           ...(opts.metadata ?? {}),
-          ...(buddyBonusPercent ? { buddyBonusPercent, baseXpDelta: opts.xpDelta } : {}),
+          ...(buddyBonusPercentApplied
+            ? { buddyBonusPercent: buddyBonusPercentApplied, baseXpDelta: opts.xpDelta }
+            : {}),
         },
       });
 
       return {
         xpDelta,
         baseXpDelta: opts.xpDelta,
-        buddyBonusPercent,
+        buddyBonusPercent: buddyBonusPercentApplied,
+        buddyBonus: applied,
         totalXp: nextTotalXp,
         fromLevel,
         toLevel,

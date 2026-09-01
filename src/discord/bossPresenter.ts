@@ -49,6 +49,7 @@ import { advantageLabelFor, affinityLabel } from '../modules/bosses/bossAffinity
 import { formatBonusPercent, formatDamage } from '../modules/bosses/bossDamage';
 import type { BossContent, BossEncountersConfig } from '../modules/content/schemas';
 import { regionLabel } from '../modules/bosses/regions';
+import { buddyBonusLine } from '../modules/buddyBonus/buddyBonusEffects';
 import { buildCustomId } from './types';
 
 /** Boss-channel accent. Distinct from the rarity palette on purpose. */
@@ -545,6 +546,10 @@ export function buildMyResult(
       ? `**+${p.xpAwarded} XP** to ${p.waifuName}`
       : `${p.waifuName} is at max level — no XP was gained.`,
     entry.rewards.length > 0 ? `**Items**\n• ${rewards}` : '_No items this time._',
+    // The committed copy's own bonus, when it scaled this payout. Resolved
+    // from the participation snapshot by the encounter service — a Buddy swap
+    // after committing never changes what is reported here.
+    entry.rewardBonus ? `\n${buddyBonusLine(entry.rewardBonus)}` : null,
   ]
     .filter((s): s is string => s !== null)
     .join('\n');

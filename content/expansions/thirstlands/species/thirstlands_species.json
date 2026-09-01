@@ -1,0 +1,85 @@
+[
+  {
+    "slug": "pickaxe_goblin",
+    "name": "Pickaxe Goblin",
+    "rarity": "R",
+    "archetype": "goblin miner",
+    "race": "demi-human",
+    "baseCaptureRate": null,
+    "description": "Scrappy goblin miner who works the Thirstlands canyon claims. Digs for ore, water, and anything shiny — her pickaxe has outlived three employers and she's prouder of it than of her own name.",
+    "tags": [
+      "expansion",
+      "region_exclusive"
+    ],
+    "contentRating": "mature",
+    "affinity": "switch",
+    "card": {
+      "subtitle": "Canyon Claim Jumper",
+      "ability": {
+        "name": "Ore Sense",
+        "text": "Her pickaxe always swings toward the richest vein — and, just as often, straight past it toward whatever glints hardest in your pocket."
+      },
+      "flavorQuote": "First rule of the Thirstlands: don't grab her pickaxe. Second rule: it's mine now.",
+      "artist": "Whistler"
+    },
+    "imagePath": "expansions/thirstlands/pickaxe_goblin/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
+  }
+]

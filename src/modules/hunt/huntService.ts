@@ -49,9 +49,11 @@ import {
 } from '../locations/regions';
 import { toRegion } from '../travel/travelCatalog';
 import {
+  appliedBuddyBonus,
   applyPercentModifier,
   applyPercentModifierInt,
   buddyBonusPercent,
+  type AppliedBuddyBonus,
   encounterRarityWeightPercent,
   encounterSpeciesWeightPercent,
   rollBuddyBonusProc,
@@ -81,6 +83,14 @@ interface WithXp {
    * did not) before this was reported.
    */
   energySaved: boolean;
+  /**
+   * Every Buddy Bonus that actually affected *this* hunt — a proc that fired,
+   * an award that grew, a targeted bonus whose target the encountered species
+   * met. Empty with no buddy, and empty when the equipped buddy's bonus had
+   * nothing to do with what happened, so a caller can render the list without
+   * deciding what is relevant.
+   */
+  buddyBonuses: AppliedBuddyBonus[];
 }
 
 export interface HuntEncounterResult extends WithXp {
@@ -543,6 +553,16 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
           buddyBonusPercent(activeBonus, 'energy_save_chance'),
           rng.next(),
         );
+        /**
+         * What this hunt will report. A bonus joins the list only at the moment
+         * it changed something: the proc that fired, the award that grew, the
+         * targeted bonus the encounter matched. A failed proc adds nothing —
+         * there is no "your bonus did not fire" to tell.
+         */
+        const buddyBonuses: AppliedBuddyBonus[] = [];
+        if (energySaved && activeBonus) {
+          buddyBonuses.push(appliedBuddyBonus(activeBonus, { base: 1, final: 0 }));
+        }
         const [updatedCur] = await tx
           .update(playerCurrencies)
           .set({
@@ -623,9 +643,22 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
               buddyAward,
               careExit: careForResult,
               energySaved,
+              buddyBonuses,
               session,
             } satisfies HuntFlavorResult;
           }
+          // Did an `encounter_weight` bonus actually apply to *this* species?
+          // Asked of the service rather than re-derived here, so the answer is
+          // the same match the weighting used — including ownership.
+          const encounterPercent =
+            (await buddyBonus?.percentForSpecies(
+              tx,
+              playerId,
+              'encounter_weight',
+              speciesRefFromRow(picked),
+            )) ?? 0;
+          if (encounterPercent !== 0 && activeBonus) buddyBonuses.push(appliedBuddyBonus(activeBonus));
+
           const expiresAt = new Date(now.getTime() + hunt.encounterExpirySeconds * 1000);
           try {
             const [encounter] = await tx
@@ -653,6 +686,7 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
               buddyAward,
               careExit: careForResult,
               energySaved,
+              buddyBonuses,
               session,
             } satisfies HuntEncounterResult;
           } catch (err) {
@@ -664,6 +698,10 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
         }
 
         if (kind === 'item_find' || kind === 'rare_item_find') {
+          // Reported on the find itself, and phrased as a chance: the bonus
+          // improved the odds of reaching this outcome, it did not hand over
+          // the item and it did not change the stack size.
+          if (itemFindPercent !== 0 && activeBonus) buddyBonuses.push(appliedBuddyBonus(activeBonus));
           const table = kind === 'item_find' ? hunt.itemFind : hunt.rareItemFind;
           const sub = rollWeighted(
             table.sub.map((s) => ({ weight: s.weight, value: s })),
@@ -680,6 +718,7 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
               buddyAward,
               careExit: careForResult,
               energySaved,
+              buddyBonuses,
               session,
             } satisfies HuntFlavorResult;
           }
@@ -694,6 +733,7 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
             buddyAward,
             careExit: careForResult,
             energySaved,
+            buddyBonuses,
             session,
           } satisfies HuntItemResult;
         }
@@ -710,6 +750,7 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
             buddyAward,
             careExit: careForResult,
             energySaved,
+            buddyBonuses,
             session,
           } satisfies HuntWaifubuxResult;
         }
@@ -717,10 +758,14 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
         if (kind === 'essence_find') {
           // `essence_gain` scales the award, not the range: the table still
           // decides how much a find is worth, the bonus decides what it becomes.
+          const baseAmount = rng.intInclusive(hunt.essenceFind.min, hunt.essenceFind.max);
           const amount = applyPercentModifierInt(
-            rng.intInclusive(hunt.essenceFind.min, hunt.essenceFind.max),
+            baseAmount,
             buddyBonusPercent(activeBonus, 'essence_gain'),
           );
+          if (activeBonus && amount > baseAmount) {
+            buddyBonuses.push(appliedBuddyBonus(activeBonus, { base: baseAmount, final: amount }));
+          }
           const row = await currency.grantEssence(tx, playerId, amount);
           return {
             kind: 'essence_find',
@@ -731,6 +776,7 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
             buddyAward,
             careExit: careForResult,
             energySaved,
+            buddyBonuses,
             session,
           } satisfies HuntEssenceResult;
         }
@@ -745,6 +791,7 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
           buddyAward,
           careExit: careForResult,
           energySaved,
+          buddyBonuses,
           session,
         } satisfies HuntFlavorResult;
       });

@@ -25,6 +25,7 @@ import { affinityLabel } from '../../modules/capture/affinityMath';
 import { seductivePowerView } from '../../modules/power/seductivePower';
 import { isAppearanceUnlocked } from '../../modules/appearance/appearanceRules';
 import { buddyBonusView } from '../../modules/buddyBonus/buddyBonusEffects';
+import { buddyBonusValueLine } from '../buddyBonusFeedback';
 import { findBuddyBonus } from '../../modules/buddyBonus/buddyBonusService';
 import type {
   AppearanceView,
@@ -1511,7 +1512,12 @@ export async function handleWaifuReleaseConfirm(
       .setTitle(`🕊️ Released ${displayName({ waifu: result.waifu, species: result.species })}`)
       .setColor(0x7ce68a)
       .setDescription(
-        `+**${result.essenceGranted}** Essence (balance: ${result.balanceAfter}).`,
+        `+**${result.essenceGranted}** Essence (balance: ${result.balanceAfter}).` +
+          // Named only when `essence_gain` actually raised the payout — the
+          // service sets `essenceBonus` at the moment it does.
+          (buddyBonusValueLine(result.essenceBonus)
+            ? `\n${buddyBonusValueLine(result.essenceBonus)}`
+            : ''),
       );
     await respondEphemeral(interaction, {
       embeds: [embed],
@@ -1643,7 +1649,12 @@ export async function handleDuplicateConvert(
       .setTitle(`✨ Converted ${result.species.name} to Essence`)
       .setColor(0x7ce68a)
       .setDescription(
-        `+**${result.essenceGranted}** Essence (balance: ${result.balanceAfter}).`,
+        `+**${result.essenceGranted}** Essence (balance: ${result.balanceAfter}).` +
+          // Named only when `essence_gain` actually raised the payout — the
+          // service sets `essenceBonus` at the moment it does.
+          (buddyBonusValueLine(result.essenceBonus)
+            ? `\n${buddyBonusValueLine(result.essenceBonus)}`
+            : ''),
       );
     await respondEphemeral(interaction, {
       embeds: [embed],
@@ -1767,7 +1778,12 @@ async function performConvertFromInspect(
       )
       .setColor(0x7ce68a)
       .setDescription(
-        `+**${result.essenceGranted}** Essence (balance: ${result.balanceAfter}).`,
+        `+**${result.essenceGranted}** Essence (balance: ${result.balanceAfter}).` +
+          // Named only when `essence_gain` actually raised the payout — the
+          // service sets `essenceBonus` at the moment it does.
+          (buddyBonusValueLine(result.essenceBonus)
+            ? `\n${buddyBonusValueLine(result.essenceBonus)}`
+            : ''),
       );
     await respondEphemeral(interaction, {
       embeds: [embed],

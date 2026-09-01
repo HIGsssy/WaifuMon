@@ -40,7 +40,12 @@ import type { CurrencyService } from '../currency/currencyService';
 import type { AppearanceService, AppearanceUnlockRef } from '../appearance/appearanceService';
 import type { ProgressionService } from '../progression/progressionService';
 import type { QuestService } from '../quests/questService';
-import { applyPercentModifierInt, buddyBonusPercent } from '../buddyBonus/buddyBonusEffects';
+import {
+  appliedBuddyBonus,
+  applyPercentModifierInt,
+  buddyBonusPercent,
+  type AppliedBuddyBonus,
+} from '../buddyBonus/buddyBonusEffects';
 import type { BuddyBonusService } from '../buddyBonus/buddyBonusService';
 
 /**
@@ -73,6 +78,15 @@ export interface CareTickSummary {
   lastTickAt: Date | null;
   /** Estimated timestamp of the next tick, when still active. */
   nextTickAt: Date | null;
+  /**
+   * Buddy Bonuses that actually changed this tick batch. Each is `null` unless
+   * the corresponding number came out higher than the configured rate — the
+   * energy one accounts for the recovery cap, so a bonus that only pushed
+   * against a ceiling is not announced as though it paid out.
+   */
+  energyBonus: AppliedBuddyBonus | null;
+  xpBonus: AppliedBuddyBonus | null;
+  affectionBonus: AppliedBuddyBonus | null;
 }
 
 /**
@@ -186,6 +200,9 @@ const INACTIVE_SUMMARY: CareTickSummary = {
   newAppearances: [],
   lastTickAt: null,
   nextTickAt: null,
+  energyBonus: null,
+  xpBonus: null,
+  affectionBonus: null,
 };
 
 export function createCareService(deps: CareServiceDeps): CareService {
@@ -295,6 +312,9 @@ export function createCareService(deps: CareServiceDeps): CareService {
         newAppearances: [],
         lastTickAt: lastTick,
         nextTickAt,
+        energyBonus: null,
+        xpBonus: null,
+        affectionBonus: null,
       };
     }
 
@@ -320,23 +340,41 @@ export function createCareService(deps: CareServiceDeps): CareService {
     // Compute energy grant (bounded by recoveryCap AND max energy).
     const currencies = await currency.lockCurrencies(tx, playerId);
     const cap = effectiveEnergyCap(player.level);
+    const baseEnergy = ticks * careConfig.energyPerTick;
     const potentialEnergy = applyPercentModifierInt(
-      ticks * careConfig.energyPerTick,
+      baseEnergy,
       buddyBonusPercent(activeBonus?.bonus, 'care_energy_gain'),
     );
     const energyRoom = Math.max(0, cap - currencies.huntEnergy);
     const energyGained = Math.max(0, Math.min(potentialEnergy, energyRoom));
+    // What the player *would* have recovered without the bonus, capped the same
+    // way — so the bonus is only reported when it put real energy in the tank.
+    const baseEnergyGained = Math.max(0, Math.min(baseEnergy, energyRoom));
+    const energyBonus =
+      activeBonus && energyGained > baseEnergyGained
+        ? appliedBuddyBonus(activeBonus.bonus, { base: baseEnergyGained, final: energyGained })
+        : null;
 
     // Waifu XP/affection is granted for every elapsed tick — never bounded
     // by the energy cap.
+    const baseWaifuXp = ticks * careConfig.waifuXpPerTick;
+    const baseAffection = ticks * careConfig.affectionPerTick;
     const waifuXpGained = applyPercentModifierInt(
-      ticks * careConfig.waifuXpPerTick,
+      baseWaifuXp,
       targetIsBuddy ? buddyBonusPercent(activeBonus?.bonus, 'buddy_xp_gain') : 0,
     );
     const affectionGained = applyPercentModifierInt(
-      ticks * careConfig.affectionPerTick,
+      baseAffection,
       buddyBonusPercent(activeBonus?.bonus, 'affection_gain'),
     );
+    const xpBonus =
+      activeBonus && waifuXpGained > baseWaifuXp
+        ? appliedBuddyBonus(activeBonus.bonus, { base: baseWaifuXp, final: waifuXpGained })
+        : null;
+    const affectionBonus =
+      activeBonus && affectionGained > baseAffection
+        ? appliedBuddyBonus(activeBonus.bonus, { base: baseAffection, final: affectionGained })
+        : null;
 
     if (energyGained > 0) {
       await tx
@@ -410,6 +448,9 @@ export function createCareService(deps: CareServiceDeps): CareService {
       newAppearances,
       lastTickAt: alsoExit ? null : newLastTick,
       nextTickAt,
+      energyBonus,
+      xpBonus,
+      affectionBonus,
     };
   }
 
@@ -583,6 +624,9 @@ export function createCareService(deps: CareServiceDeps): CareService {
           newAppearances: [],
           lastTickAt: now,
           nextTickAt: new Date(now.getTime() + interval),
+          energyBonus: null,
+          xpBonus: null,
+          affectionBonus: null,
         };
       });
     },
@@ -630,6 +674,9 @@ export function createCareService(deps: CareServiceDeps): CareService {
             newAppearances: [],
             lastTickAt: now,
             nextTickAt: new Date(now.getTime() + interval),
+            energyBonus: null,
+            xpBonus: null,
+            affectionBonus: null,
           };
         }
         if (player.careModeWaifuId === targetWaifuId) {

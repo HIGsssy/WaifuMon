@@ -508,6 +508,15 @@ Waifumon — her level, SP, rarity, affinity and race — and her bonus is part 
 that snapshot, so swapping Buddy between committing and resolution changes
 nothing about that encounter's payout, in either direction.
 
+Bonuses are also **surfaced to the player at the moment they act**: the
+encounter screen names a matching `capture_chance` bonus, a hunt result names
+the Energy save that fired, the item-find bonus behind a find, and the Essence
+or Affection uplift it produced, and the Care summary and Boss reward summary do
+the same for theirs. A bonus that did not change the outcome — a failed proc, a
+target the encountered species does not match — is never mentioned. Gameplay
+screens print a short mechanical summary derived from `effectId`, `value` and
+`target`; the authored `flavorText` appears only in Collection / Inspect.
+
 `affection_gain` is the mirror case, also deliberate: it scales **any**
 Affection award the player earns, including Affection earned by a different
 Waifumon being cared for in Care Mode. `buddy_xp_gain` does not work that way —

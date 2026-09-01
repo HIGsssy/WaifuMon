@@ -81,6 +81,7 @@ import {
   speciesRefFromRow,
   type BuddyBonusService,
 } from '../buddyBonus/buddyBonusService';
+import { appliedBuddyBonus, type AppliedBuddyBonus } from '../buddyBonus/buddyBonusEffects';
 import type { ItemUseResult, ItemUseService } from '../items/itemUseService';
 import {
   encounterItemKind,
@@ -106,6 +107,12 @@ export interface CaptureAffinityInfo {
   matchup: AffinityMatchup;
   buddyAffinityModifier: number;
   finalChance: number;
+  /**
+   * The buddy's *content-authored* bonus, when it applied to this attempt —
+   * a separate thing from the affinity matchup above, and `null` whenever the
+   * bonus is a different effect or its target did not match this species.
+   */
+  buddyBonus: AppliedBuddyBonus | null;
 }
 
 /**
@@ -167,6 +174,12 @@ export interface CaptureQuote {
   captureBonusModifier: number;
   /** Active Buddy Bonus percentage folded into `chance`. 0 when none applies. */
   buddyBonusPercent: number;
+  /**
+   * The bonus behind that percentage, for the encounter screen. `null`
+   * whenever none applies — including a targeted bonus this species does not
+   * match — so the UI never has to test a target itself.
+   */
+  buddyBonus: AppliedBuddyBonus | null;
   itemCaptureBonus: number;
 }
 
@@ -238,6 +251,8 @@ export interface CaptureAttemptResult {
   /** True when this success was the first time the player caught this species. */
   isNewDex: boolean;
   /** Buddy-affinity read applied to this attempt (Milestone 5D). */
+  /** Set only when `player_xp_gain` actually raised `xpGranted`. */
+  xpBonus: AppliedBuddyBonus | null;
   affinity: CaptureAffinityInfo;
   /** Consumable capture buff spent on this attempt; null when none applied. */
   effect: CaptureEffectInfo | null;
@@ -434,6 +449,7 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
     buddyAffinityModifier: number;
     captureBonusModifier: number;
     buddyBonusPercent: number;
+    buddyBonusApplied: AppliedBuddyBonus | null;
   }> {
     const buddy = await collection.resolveActiveBuddy(tx, playerId);
     const resolution = buddy
@@ -456,10 +472,14 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
         'capture_chance',
         speciesRefFromRow(speciesRow),
       )) ?? 0;
+    // The percentage is the authority: it is already 0 for a non-matching
+    // target, so the display record exists exactly when the bonus applies.
+    const active = buddyBonusPercent !== 0 ? await buddyBonus?.getActiveBuddyBonus(tx, playerId) : null;
     return {
       buddyAffinityModifier: resolution?.modifier ?? 0,
       captureBonusModifier: bonus?.modifier ?? 0,
       buddyBonusPercent,
+      buddyBonusApplied: active ? appliedBuddyBonus(active.bonus) : null,
     };
   }
 
@@ -516,7 +536,7 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
     playerId: number,
   ): Promise<CaptureQuote> {
     const rarity = speciesRow.rarity as Rarity;
-    const { buddyAffinityModifier, captureBonusModifier, buddyBonusPercent } =
+    const { buddyAffinityModifier, captureBonusModifier, buddyBonusPercent, buddyBonusApplied } =
       await gatherChanceInputs(db, playerId, speciesRow);
     const baselineChance = computeCaptureChance({
       guaranteed: false,
@@ -554,6 +574,7 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
       buddyAffinityModifier,
       captureBonusModifier,
       buddyBonusPercent,
+      buddyBonus: buddyBonusApplied,
       itemCaptureBonus,
     };
   }
@@ -934,6 +955,10 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
           buddyBonusPercent,
           itemCaptureBonus,
         });
+        const buddyBonusApplied =
+          buddyBonusPercent !== 0
+            ? ((await buddyBonus?.getActiveBuddyBonus(tx, playerId)) ?? null)
+            : null;
         const affinity: CaptureAffinityInfo = {
           buddyWaifuId: buddy?.waifu.id ?? null,
           buddyAffinity: resolution?.buddyAffinity ?? null,
@@ -941,6 +966,7 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
           matchup: resolution?.matchup ?? 'neutral',
           buddyAffinityModifier,
           finalChance: chance,
+          buddyBonus: buddyBonusApplied ? appliedBuddyBonus(buddyBonusApplied.bonus) : null,
         };
         const roll = guaranteed ? 0 : rng.next();
         const success = guaranteed || roll < chance;
@@ -1142,7 +1168,11 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
             attemptsRemaining: Math.max(0, encounter.maxAttempts - attemptNumber),
             newWaifu,
             isDuplicate,
-            xpGranted: xpDelta,
+            // What the player actually received: `grantXp` may have raised it
+            // through a `player_xp_gain` Buddy Bonus, and the result screen
+            // prints this number.
+            xpGranted: xpResult.xpDelta,
+            xpBonus: xpResult.buddyBonus,
             levelUps: xpResult.levelUps,
             isNewDex,
             affinity,

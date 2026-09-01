@@ -1,0 +1,8 @@
+{
+  "id": "thirstlands",
+  "name": "The Thirstlands",
+  "description": "The second travel destination. Ships the Thirstlands region and its encounter pool; the region's exclusive species are authored separately.",
+  "enabled": true,
+  "order": 2,
+  "regionId": "thirstlands"
+}

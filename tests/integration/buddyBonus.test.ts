@@ -33,6 +33,7 @@ import type { BuddyBonus } from '../../src/modules/buddyBonus/buddyBonusEffects'
 import type { Rng } from '../../src/shared/random';
 import {
   bootstrapApp,
+  getItemBySlug,
   insertOwnedWaifu,
   provisionPlayer,
   scriptedRng,
@@ -273,6 +274,47 @@ describe('capture_chance', () => {
     expect((await app.capture.quoteCapture(playerId, rareAgain.id, null)).buddyBonusPercent).toBe(0);
   });
 
+  it('carries the applied bonus on the quote only when it matches the species', async () => {
+    // The quote is what the encounter screen reads. A matching target puts the
+    // display record on it; a non-matching one leaves it null, so the UI has
+    // nothing to decide.
+    authorBonus(
+      buddySlug,
+      captureBonus({ name: 'Hijack', value: 15, target: { type: 'rarity_max', value: 'SR' } }),
+    );
+    await giveBuddy(buddySlug);
+
+    const matching = await createEncounter(targetSlug); // N
+    const quoteMatching = await app.capture.quoteCapture(playerId, matching.id, null);
+    expect(quoteMatching.buddyBonus).toMatchObject({
+      name: 'Hijack',
+      effectId: 'capture_chance',
+      value: 15,
+      target: { type: 'rarity_max', value: 'SR' },
+      targetLabel: 'SR and below',
+    });
+
+    const rareSlug = contentSlugOf((s) => s.rarity === 'SSR');
+    const missing = await createEncounter(rareSlug); // SSR — above the cap
+    expect((await app.capture.quoteCapture(playerId, missing.id, null)).buddyBonus).toBeNull();
+  });
+
+  it('reports the bonus on the resolved attempt, and nothing when none applied', async () => {
+    authorBonus(buddySlug, captureBonus({ name: 'Hijack', value: 20 }));
+    await giveBuddy(buddySlug);
+    const item = await getItemBySlug(t.db, 'basic_charm');
+    await app.inventory.addItem(t.db, playerId, item.id, 2);
+
+    const enc = await createEncounter(targetSlug);
+    const applied = await app.capture.attemptCapture(playerId, enc.id, 'basic_charm');
+    expect(applied.affinity.buddyBonus).toMatchObject({ name: 'Hijack', value: 20 });
+
+    authorBonus(buddySlug, captureBonus({ value: 20, target: { type: 'race', value: 'valkyrie' } }));
+    const enc2 = await createEncounter(targetSlug);
+    const unmatched = await app.capture.attemptCapture(playerId, enc2.id, 'basic_charm');
+    expect(unmatched.affinity.buddyBonus).toBeNull();
+  });
+
   it('matches ownership in both directions', async () => {
     authorBonus(
       buddySlug,
@@ -315,6 +357,10 @@ describe('energy_save_chance', () => {
     expect(result.energySaved).toBe(true);
     expect(await energy()).toBe(before);
     expect(result.energyRemaining).toBe(before);
+    // Reported on the result, so the hunt screen can say so without re-rolling.
+    expect(result.buddyBonuses).toContainEqual(
+      expect.objectContaining({ name: 'Free Round', effectId: 'energy_save_chance' }),
+    );
   });
 
   it('spends Energy as usual at 0%, and with no buddy at all', async () => {
@@ -330,10 +376,13 @@ describe('energy_save_chance', () => {
     const result = await app.hunt.hunt(playerId, CHANNEL, new Date());
     expect(result.energySaved).toBe(false);
     expect(await energy()).toBe(before - 1);
+    // A proc that did not fire has nothing to announce.
+    expect(result.buddyBonuses).toEqual([]);
 
     await t.db.update(players).set({ buddyWaifuId: null }).where(eq(players.id, playerId));
     const noBuddy = await app.hunt.hunt(playerId, CHANNEL, new Date(Date.now() + 10_000));
     expect(noBuddy.energySaved).toBe(false);
+    expect(noBuddy.buddyBonuses).toEqual([]);
     expect(await energy()).toBe(before - 2);
   });
 });
@@ -377,6 +426,12 @@ describe('hunt_item_find_chance', () => {
       new Date(Date.now() + 60_000),
     );
     expect(boosted.kind).toBe('item_find');
+    // Reported on the find, as a chance — never as a quantity, and never as
+    // the reason this particular item appeared.
+    expect(boosted.buddyBonuses).toContainEqual(
+      expect.objectContaining({ name: 'Sticky Fingers', effectId: 'hunt_item_find_chance' }),
+    );
+    expect(baseline.buddyBonuses).toEqual([]);
   });
 });
 
@@ -420,6 +475,33 @@ describe('encounter_weight', () => {
     expect(boosted.kind).toBe('encounter');
     if (boosted.kind !== 'encounter') return;
     expect(boosted.species.rarity).toBe('SSR');
+    // The encountered species matches the target, so the encounter reports it.
+    expect(boosted.buddyBonuses).toContainEqual(
+      expect.objectContaining({ name: 'Rare Sense', effectId: 'encounter_weight' }),
+    );
+  });
+
+  it('does not report an encounter-weight bonus the encountered species does not match', async () => {
+    const slug = contentSlugOf((s) => s.rarity === 'N');
+    authorBonus(slug, {
+      name: 'Rare Sense',
+      flavorText: '+100% encounter weight for SSR and above.',
+      effectId: 'encounter_weight',
+      value: 100,
+      target: { type: 'rarity_min', value: 'SSR' },
+    });
+    await giveBuddy(slug);
+    // 0.92 with the boost lands on SSR; 0.10 lands on N, which the target
+    // excludes — so the same active bonus must stay silent.
+    const common = await huntWith(scriptedRng([0.99, 0.1, 0.1, 0.5])).hunt(
+      playerId,
+      CHANNEL,
+      new Date(),
+    );
+    expect(common.kind).toBe('encounter');
+    if (common.kind !== 'encounter') return;
+    expect(common.species.rarity).toBe('N');
+    expect(common.buddyBonuses).toEqual([]);
   });
 });
 
@@ -463,6 +545,41 @@ describe('care_energy_gain', () => {
     );
     expect(boosted.ticksProcessed).toBe(2);
     expect(boosted.energyGained).toBe(4 * perTick);
+    expect(boosted.energyBonus).toMatchObject({
+      name: 'Second Cup',
+      effectId: 'care_energy_gain',
+      value: 100,
+      baseValue: 2 * perTick,
+      finalValue: 4 * perTick,
+    });
+    expect(plain.energyBonus).toBeNull();
+  });
+
+  it('reports an Affection bonus earned while caring for a Waifumon who is not the Buddy', async () => {
+    // Deliberate asymmetry: `affection_gain` covers Affection awards, so it
+    // applies to the copy being cared for. `buddy_xp_gain` does not.
+    const buddySlug = contentSlugOf((s) => s.rarity === 'N');
+    const otherSlug = contentSlugOf((s) => s.rarity === 'R');
+    authorBonus(buddySlug, {
+      name: 'Social Butterfly',
+      flavorText: '+100% Affection gained.',
+      effectId: 'affection_gain',
+      value: 100,
+    });
+    await giveBuddy(buddySlug);
+    const other = await speciesBySlug(otherSlug);
+    const otherCopy = await insertOwnedWaifu(t.db, { playerId, speciesId: other.id });
+
+    const interval = app.content.tables.energy.careMode.intervalMinutes * MINUTE;
+    const start = new Date('2030-02-01T00:00:00Z');
+    await app.care.start(playerId, otherCopy.id, start);
+    const summary = await app.care.applyPending(playerId, new Date(start.getTime() + interval));
+    expect(summary.target?.waifu.id).toBe(otherCopy.id);
+    expect(summary.affectionGained).toBe(app.content.tables.energy.careMode.affectionPerTick * 2);
+    expect(summary.affectionBonus).toMatchObject({ name: 'Social Butterfly', value: 100 });
+    // …and the XP of a non-Buddy target is untouched, so nothing is reported.
+    expect(summary.xpBonus).toBeNull();
+    await app.care.leave(playerId, new Date(start.getTime() + interval));
   });
 });
 
@@ -484,6 +601,13 @@ describe('player_xp_gain', () => {
     expect(granted.buddyBonusPercent).toBe(50);
     expect(granted.xpDelta).toBe(15);
     expect(granted.player.xp).toBe(15);
+    expect(granted.buddyBonus).toMatchObject({
+      name: 'Quick Study',
+      effectId: 'player_xp_gain',
+      value: 50,
+      baseValue: 10,
+      finalValue: 15,
+    });
   });
 
   it('leaves a correction alone, and applies nothing with no buddy', async () => {
@@ -493,6 +617,7 @@ describe('player_xp_gain', () => {
     );
     expect(negative.xpDelta).toBe(-5);
     expect(negative.buddyBonusPercent).toBe(0);
+    expect(negative.buddyBonus).toBeNull();
   });
 });
 
@@ -510,6 +635,12 @@ describe('buddy_xp_gain and affection_gain', () => {
     const xpAward = await t.db.transaction((tx) => app.collection.awardBuddyOnHunt(tx, playerId));
     expect(xpAward!.xpGranted).toBe(cfg.xpPerHunt * 2);
     expect(xpAward!.affectionGranted).toBe(cfg.affectionPerHunt);
+    expect(xpAward!.xpBonus).toMatchObject({
+      name: 'Training Montage',
+      baseValue: cfg.xpPerHunt,
+      finalValue: cfg.xpPerHunt * 2,
+    });
+    expect(xpAward!.affectionBonus).toBeNull();
 
     authorBonus(slug, {
       name: 'Offering Bowl',
@@ -520,6 +651,8 @@ describe('buddy_xp_gain and affection_gain', () => {
     const affAward = await t.db.transaction((tx) => app.collection.awardBuddyOnHunt(tx, playerId));
     expect(affAward!.xpGranted).toBe(cfg.xpPerHunt);
     expect(affAward!.affectionGranted).toBe(cfg.affectionPerHunt * 2);
+    expect(affAward!.affectionBonus).toMatchObject({ name: 'Offering Bowl', value: 100 });
+    expect(affAward!.xpBonus).toBeNull();
   });
 });
 
@@ -544,6 +677,12 @@ describe('essence_gain', () => {
 
     const result = await app.collection.convertDuplicateToEssence(playerId, extra.id);
     expect(result.essenceGranted).toBe(base * 2);
+    expect(result.essenceBonus).toMatchObject({
+      name: 'Quiet Study',
+      effectId: 'essence_gain',
+      baseValue: base,
+      finalValue: base * 2,
+    });
   });
 });
 
@@ -608,13 +747,15 @@ describe('boss_reward_gain', () => {
   async function resolveOnce(bonus: BuddyBonus | null): Promise<{
     xpAwarded: number | null;
     items: Array<{ slug: string; quantity: number }>;
+    /** What the reward summary will print, straight off the resolution view. */
+    rewardBonus: { name: string; value: number } | null;
   }> {
     const slug = contentSlugOf((s) => s.rarity === 'N');
     authorBonus(slug, bonus);
     await giveBuddy(slug, 10);
     const encounter = await openEncounter();
     await app.bosses.commit(encounter.id, guildDbId, playerId, IDENTITY);
-    await app.bosses.resolve(encounter.id);
+    const resolution = await app.bosses.resolve(encounter.id);
     const [row] = await t.db
       .select()
       .from(bossParticipations)
@@ -622,6 +763,7 @@ describe('boss_reward_gain', () => {
     return {
       xpAwarded: row!.xpAwarded,
       items: (row!.rewardItems ?? []) as Array<{ slug: string; quantity: number }>,
+      rewardBonus: resolution!.participants[0]?.rewardBonus ?? null,
     };
   }
 
@@ -630,6 +772,7 @@ describe('boss_reward_gain', () => {
     const plain = await resolveOnce(null);
     expect(plain.xpAwarded).toBe(pinned.buddyXp);
     expect(plain.items).toEqual([{ slug: pinned.slug, quantity: pinned.quantity }]);
+    expect(plain.rewardBonus).toBeNull();
   });
 
   it('scales the eligible outcome without changing what was drawn', async () => {
@@ -643,6 +786,7 @@ describe('boss_reward_gain', () => {
     // Same item, twice as much of it — the draw is untouched.
     expect(boosted.items).toEqual([{ slug: pinned.slug, quantity: pinned.quantity * 2 }]);
     expect(boosted.xpAwarded).toBe(pinned.buddyXp * 2);
+    expect(boosted.rewardBonus).toMatchObject({ name: 'Spoils', value: 100 });
   });
 
   /**
@@ -672,14 +816,18 @@ describe('boss_reward_gain', () => {
     async function payout(encounterId: number): Promise<{
       xpAwarded: number | null;
       items: Array<{ slug: string; quantity: number }>;
+      rewardBonus: { name: string } | null;
     }> {
       const [row] = await t.db
         .select()
         .from(bossParticipations)
         .where(eq(bossParticipations.encounterId, encounterId));
+      // The same view the results screen renders from.
+      const listed = await app.bosses.listParticipations(encounterId);
       return {
         xpAwarded: row!.xpAwarded,
         items: (row!.rewardItems ?? []) as Array<{ slug: string; quantity: number }>,
+        rewardBonus: listed.entries[0]?.rewardBonus ?? null,
       };
     }
 
@@ -703,6 +851,8 @@ describe('boss_reward_gain', () => {
       const paid = await payout(encounter.id);
       expect(paid.items).toEqual([{ slug: pinned.slug, quantity: pinned.quantity }]);
       expect(paid.xpAwarded).toBe(pinned.buddyXp);
+      // …and the summary must not advertise the bonus of the Buddy worn now.
+      expect(paid.rewardBonus).toBeNull();
     });
 
     it('still pays the committed copy’s bonus after the player swaps away', async () => {
@@ -725,6 +875,7 @@ describe('boss_reward_gain', () => {
       const paid = await payout(encounter.id);
       expect(paid.items).toEqual([{ slug: pinned.slug, quantity: pinned.quantity * 2 }]);
       expect(paid.xpAwarded).toBe(pinned.buddyXp * 2);
+      expect(paid.rewardBonus).toMatchObject({ name: 'Spoils', value: 100 });
     });
   });
 });

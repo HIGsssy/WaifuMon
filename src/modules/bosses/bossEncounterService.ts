@@ -73,7 +73,12 @@ import {
 } from './bossDamage';
 import { bossDrawInt } from './bossRandom';
 import { mergeGrants, rollBossRewards } from './bossRewards';
-import { applyPercentModifierInt, buddyBonusPercent } from '../buddyBonus/buddyBonusEffects';
+import {
+  appliedBuddyBonus,
+  applyPercentModifierInt,
+  buddyBonusPercent,
+  type AppliedBuddyBonus,
+} from '../buddyBonus/buddyBonusEffects';
 import type { BuddyBonusService } from '../buddyBonus/buddyBonusService';
 import {
   drawFromBag,
@@ -129,6 +134,14 @@ export interface BossCommitPreview {
 export interface BossParticipationResult {
   participation: BossParticipationRow;
   rewards: BossRewardGrantView[];
+  /**
+   * The `boss_reward_gain` bonus that scaled this payout, or `null`.
+   *
+   * Resolved from the **committed** copy's species — the same snapshot the
+   * payout itself used — so a player who swapped Buddy after committing sees
+   * the bonus that actually paid, not the one they are wearing now.
+   */
+  rewardBonus: AppliedBuddyBonus | null;
 }
 
 export interface BossResolutionResult {
@@ -886,6 +899,19 @@ export function createBossEncounterService(
    * looked up, so renaming an item updates old results' wording without
    * changing what was actually granted.
    */
+  /**
+   * The bonus a participation's payout was scaled by, for its result line.
+   *
+   * Reads the committed species from the participation snapshot — never the
+   * player's live Buddy — so this reports exactly what `applyParticipationRewards`
+   * applied. `null` when the committed copy grants no `boss_reward_gain`.
+   */
+  function rewardBonusFor(participation: BossParticipationRow): AppliedBuddyBonus | null {
+    const bonus = buddyBonus?.bonusForSpeciesSlug(participation.speciesSlug);
+    if (!bonus || buddyBonusPercent(bonus, 'boss_reward_gain') === 0) return null;
+    return appliedBuddyBonus(bonus);
+  }
+
   async function hydrateRewards(
     rows: readonly BossParticipationRow[],
   ): Promise<BossParticipationResult[]> {
@@ -898,6 +924,7 @@ export function createBossEncounterService(
     const byslug = await itemsBySlug(db, [...slugs]);
     return rows.map((participation) => ({
       participation,
+      rewardBonus: rewardBonusFor(participation),
       rewards: ((participation.rewardItems ?? []) as {
         slug?: string;
         name?: string;

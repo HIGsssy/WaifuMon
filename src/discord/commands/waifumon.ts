@@ -46,6 +46,7 @@ import { regionLabel } from '../../modules/locations/regions';
 import { resolveRegionBanner } from '../regionBanner';
 import { affinityLabel } from '../../modules/capture/affinityMath';
 import type { CareState, CareTickSummary } from '../../modules/care/careService';
+import { buddyBonusValueLine } from '../buddyBonusFeedback';
 import { ownerFromInteraction } from '../userDisplay';
 import { withBackRow } from '../ui';
 import { resolveAssetPath } from '../../modules/content/loader';
@@ -937,8 +938,16 @@ export function renderCareStatusLines(care: CareState): string[] {
   return lines;
 }
 
-/** Short summary line after a start/leave/change that had ticks. */
-function formatCareSummary(summary: CareTickSummary): string | null {
+/**
+ * Short summary line after a start/leave/change that had ticks.
+ *
+ * Any Buddy Bonus that actually raised one of these numbers is named on its own
+ * line underneath. The service decides that: each `*Bonus` field is set only
+ * when the corresponding award came out higher than the configured rate — the
+ * Energy one already accounts for the recovery cap, so a bonus that only pushed
+ * against a ceiling is never announced as though it paid out.
+ */
+export function formatCareSummary(summary: CareTickSummary): string | null {
   if (summary.ticksProcessed <= 0) return null;
   const parts = [
     `${summary.ticksProcessed} tick${summary.ticksProcessed === 1 ? '' : 's'} applied`,
@@ -947,9 +956,16 @@ function formatCareSummary(summary: CareTickSummary): string | null {
     `+${summary.affectionGained} affection`,
   ];
   const line = parts.join(' · ');
-  return summary.leveledUp && summary.toLevel != null
-    ? `${line} · ⬆️ Waifu now Lv ${summary.toLevel}`
-    : line;
+  const head =
+    summary.leveledUp && summary.toLevel != null
+      ? `${line} · ⬆️ Waifu now Lv ${summary.toLevel}`
+      : line;
+  const bonuses = [
+    buddyBonusValueLine(summary.energyBonus),
+    buddyBonusValueLine(summary.xpBonus),
+    buddyBonusValueLine(summary.affectionBonus),
+  ].filter((l): l is string => l !== null);
+  return bonuses.length > 0 ? `${head}\n${bonuses.join('\n')}` : head;
 }
 
 /** Build the target-picker select menu (owned, non-released copies). */

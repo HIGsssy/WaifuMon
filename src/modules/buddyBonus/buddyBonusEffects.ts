@@ -337,6 +337,110 @@ export function encounterSpeciesWeightPercent(
   return matchesBuddyBonusTarget(bonus.target, subject) ? bonus.value : 0;
 }
 
+/**
+ * One bonus that **actually affected** an outcome, as a result model carries it
+ * back to a presentation layer.
+ *
+ * The existence of this object is the signal: a system only attaches one when
+ * the bonus really applied — a proc that fired, an award that grew, a targeted
+ * bonus whose target matched. A UI therefore never decides whether a bonus was
+ * relevant, and never recomputes a percentage to find out.
+ */
+export interface AppliedBuddyBonus {
+  /** Content's display name. Never read by gameplay. */
+  name: string;
+  effectId: BuddyBonusEffectId;
+  value: number;
+  target: BuddyBonusTarget | null;
+  targetLabel: string | null;
+  /** The award before the bonus, when the applying system knows it. */
+  baseValue?: number | undefined;
+  /** The award after the bonus, when the applying system knows it. */
+  finalValue?: number | undefined;
+}
+
+/**
+ * Builds the result-model record for a bonus that applied. `amounts` is
+ * optional because some effects change a *chance* rather than a quantity —
+ * there is no before-and-after to report for an item-find roll.
+ */
+export function appliedBuddyBonus(
+  bonus: BuddyBonus,
+  amounts?: { base?: number | undefined; final?: number | undefined },
+): AppliedBuddyBonus {
+  return {
+    name: bonus.name,
+    effectId: bonus.effectId,
+    value: bonus.value,
+    target: bonus.target ?? null,
+    targetLabel: buddyBonusTargetLabel(bonus.target),
+    ...(amounts?.base === undefined ? {} : { baseValue: amounts.base }),
+    ...(amounts?.final === undefined ? {} : { finalValue: amounts.final }),
+  };
+}
+
+/** `+15%`, or `25%` for a proc chance — which is not an increase of anything. */
+function percentLabel(applied: AppliedBuddyBonus): string {
+  if (BUDDY_BONUS_EFFECTS[applied.effectId].operation === 'proc_chance') {
+    return `${applied.value}%`;
+  }
+  return `${applied.value > 0 ? '+' : ''}${applied.value}%`;
+}
+
+/**
+ * A short **mechanical** summary of what the bonus did — `+15% capture chance
+ * against android Waifumon`.
+ *
+ * Deliberately not `flavorText`: the authored line is prose written for a
+ * collection screen and is far too long to repeat on every gameplay result.
+ * This is derived from `effectId`, `value` and `target` only, so a new species
+ * using an existing effect needs no new copy anywhere.
+ */
+export function buddyBonusEffectSummary(applied: AppliedBuddyBonus): string {
+  const pct = percentLabel(applied);
+  const against = applied.targetLabel ? ` against ${applied.targetLabel}` : '';
+  switch (applied.effectId) {
+    case 'capture_chance':
+      return `${pct} capture chance${against}`;
+    case 'encounter_weight':
+      return `${pct} chance to encounter ${applied.targetLabel ?? 'Waifumon'}`;
+    case 'energy_save_chance':
+      return `${pct} chance Hunting costs no Energy`;
+    case 'care_energy_gain':
+      return `${pct} Care Energy`;
+    case 'player_xp_gain':
+      return `${pct} Trainer XP`;
+    case 'buddy_xp_gain':
+      return `${pct} Buddy XP`;
+    case 'essence_gain':
+      return `${pct} Essence`;
+    case 'hunt_item_find_chance':
+      return `${pct} item-find chance`;
+    case 'affection_gain':
+      return `${pct} Affection`;
+    case 'boss_reward_gain':
+      return `${pct} Boss rewards`;
+    default:
+      return pct;
+  }
+}
+
+/**
+ * The one gameplay-feedback format, used everywhere a bonus is reported:
+ * `✨ Buddy Bonus — Trash Treasure: +5% item-find chance`.
+ */
+export function buddyBonusLine(applied: AppliedBuddyBonus): string {
+  return `✨ Buddy Bonus — ${applied.name}: ${buddyBonusEffectSummary(applied)}`;
+}
+
+/**
+ * The compact variant, for a result line that already prints the modified
+ * number: `✨ Soul Collector: +100%`.
+ */
+export function buddyBonusShortLine(applied: AppliedBuddyBonus): string {
+  return `✨ ${applied.name}: ${percentLabel(applied)}`;
+}
+
 /** Human-readable target phrase for UI surfaces, e.g. `SSR and above`. */
 export function buddyBonusTargetLabel(target: BuddyBonusTarget | undefined | null): string | null {
   if (!target) return null;
