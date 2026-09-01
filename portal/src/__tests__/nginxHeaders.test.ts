@@ -37,17 +37,22 @@ const HELMET_DUPLICATES = ['X-Content-Type-Options', 'X-Frame-Options', 'Referre
  */
 function locations(config: string): Array<{ selector: string; body: string }> {
   const out: Array<{ selector: string; body: string }> = [];
+  // Comments first. The word "location" occurs in the explanatory prose above
+  // several rules, and without this the opener below happily matches a
+  // sentence and reports the following block under a garbage selector — a
+  // silent mis-parse that makes assertions pass against nothing.
+  const stripped = config.replace(/#[^\n]*/g, '');
   const opener = /location\s+([^{]+?)\s*\{/g;
   let match: RegExpExecArray | null;
-  while ((match = opener.exec(config))) {
+  while ((match = opener.exec(stripped))) {
     let depth = 1;
     let i = opener.lastIndex;
-    while (i < config.length && depth > 0) {
-      if (config[i] === '{') depth++;
-      else if (config[i] === '}') depth--;
+    while (i < stripped.length && depth > 0) {
+      if (stripped[i] === '{') depth++;
+      else if (stripped[i] === '}') depth--;
       i++;
     }
-    out.push({ selector: match[1]!.trim(), body: config.slice(opener.lastIndex, i - 1) });
+    out.push({ selector: match[1]!.trim(), body: stripped.slice(opener.lastIndex, i - 1) });
   }
   return out;
 }
@@ -108,6 +113,45 @@ describe('proxied responses carry exactly one copy of each header', () => {
       }
     },
   );
+});
+
+describe('the API documentation surface is not exposed at the public edge', () => {
+  const openapi = blocks.find((b) => b.selector === '= /api/v1/openapi.json');
+  const docs = blocks.find((b) => b.selector === '^~ /api/v1/docs');
+
+  it('blocks both the spec and the Swagger UI subtree', () => {
+    expect(openapi).toBeDefined();
+    expect(docs).toBeDefined();
+    for (const block of [openapi!, docs!]) {
+      expect(block.body).toContain('return 404;');
+      expect(block.body).not.toContain('proxy_pass');
+    }
+  });
+
+  it('uses selectors that outrank the catch-all /api proxy', () => {
+    // `location ^~ /api` suppresses regex-location evaluation for everything
+    // beneath it, so a `~` rule here would never be consulted. These two win on
+    // nginx's own precedence instead: an exact `=` beats every prefix, and
+    // `^~ /api/v1/docs` is a longer prefix than `^~ /api`. Asserting the
+    // selectors is asserting the reachability.
+    expect(openapi!.selector.startsWith('= ')).toBe(true);
+    expect(docs!.selector.startsWith('^~ ')).toBe(true);
+    expect(docs!.selector.length).toBeGreaterThan('^~ /api'.length);
+  });
+
+  it('declares them before the /api proxy in the file', () => {
+    // Order is not what decides an exact or longer-prefix match, but keeping
+    // them above the rule they override is what makes the intent readable.
+    const apiAt = template.indexOf('location ^~ /api {');
+    expect(template.indexOf('location = /api/v1/openapi.json')).toBeLessThan(apiAt);
+    expect(template.indexOf('location ^~ /api/v1/docs')).toBeLessThan(apiAt);
+  });
+
+  it('still carries the shared security headers', () => {
+    for (const block of [openapi!, docs!]) {
+      expect(block.body).toContain('include /etc/nginx/security-headers.conf;');
+    }
+  });
 });
 
 describe('/ready is not exposed at the public edge', () => {

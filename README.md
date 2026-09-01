@@ -9,6 +9,7 @@ claim, and the MVP shop. No hunt/capture logic yet (Milestone 2).
 
 ```sh
 cp .env.example .env   # fill in DISCORD_TOKEN, DISCORD_CLIENT_ID, POSTGRES_PASSWORD
+chmod 600 .env         # secrets: owner read/write only
 docker compose up --build
 ```
 

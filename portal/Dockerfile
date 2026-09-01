@@ -7,6 +7,27 @@ RUN npm ci
 
 COPY portal ./
 
+# Defence in depth: make a stray Vite env file structurally impossible to read.
+#
+# `.dockerignore` should already have kept these out of the build context, and
+# it is verified to. This line is the second lock, for the day that file is
+# edited by someone who does not know why those entries are there.
+#
+# It matters because Vite's env loading sits *beneath* the ARG/ENV allowlist
+# below: `vite build` reads `.env`, `.env.local`, `.env.<mode>` and
+# `.env.<mode>.local` off disk on its own and merges them in, so a file the
+# Dockerfile never mentions can still put `VITE_PLATFORM_API_TOKEN` — a shared
+# Platform API credential — into a public browser bundle. The ARGs below are
+# the only supported way to configure this build; nothing here needs an env
+# file, so removing all of them costs the build nothing.
+#
+# `.env.example` is documentation and is excluded from the context anyway; this
+# does not touch the committed copy in the repo.
+RUN rm -f .env .env.local \
+          .env.production .env.production.local \
+          .env.development .env.development.local \
+          .env.e2e .env.e2e.local
+
 ARG VITE_PLATFORM_API_URL=/api
 ARG VITE_API_TIMEOUT_MS=
 ARG VITE_DEFAULT_PLAYER_ID=

@@ -33,6 +33,14 @@ PLATFORM_API_TOKEN=<a long random secret>    # openssl rand -hex 32
 Every request needs `Authorization: Bearer $PLATFORM_API_TOKEN`, except
 `/health`, `/ready`, `/api/v1/docs` and `/api/v1/openapi.json`.
 
+Those four are unauthenticated **on this loopback port**, which is where
+administration and development reach them. Three of them are blocked at the
+public Portal edge — the production Nginx returns 404 for `/ready`,
+`/api/v1/docs` and `/api/v1/openapi.json`, so a Cloudflare-fronted origin
+publishes neither the readiness report nor the API's own surface map. Only
+`/health` (liveness, `{"status":"ok"}`) is proxied publicly. See
+[portal.md](portal.md).
+
 ---
 
 ## Networking: three different concepts

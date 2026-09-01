@@ -8,3 +8,23 @@ assets
 tests
 coverage
 *.log
+
+# Portal env files must never reach a build context.
+#
+# The bare `.env` / `.env.*` patterns above do NOT cover `portal/.env` — a
+# dockerignore pattern without a slash is not applied at every depth, which was
+# verified against this exact context rather than assumed. Without the explicit
+# paths below, `COPY portal ./` in portal/Dockerfile lands a developer's
+# `portal/.env` in the image, and Vite loads it automatically during
+# `npm run build` — beneath and regardless of the Dockerfile's ARG/ENV
+# allowlist. That is how a shared Platform API bearer token reaches a public
+# browser bundle.
+#
+# No exception for `.env.example` or `.env.e2e`. Neither is an input to the
+# production build: the Dockerfile runs `npm run build` (default/production
+# mode), which never reads `.env.e2e` — only `vite build --mode e2e` does, and
+# that runs from a repo checkout on a dev/CI machine, never inside this image.
+# Both files stay committed in the repo; they are simply not shipped into the
+# build context.
+portal/.env
+portal/.env.*

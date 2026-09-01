@@ -156,6 +156,31 @@ Vite's proxy, never through this Nginx config.
 If a future public status surface is wanted, add a *new* endpoint that returns
 an aggregate status and no component detail, rather than re-publishing this one.
 
+### Securing the environment files
+
+`.env` holds four production secrets — the Discord bot token, the Postgres
+password, the admin token and the Platform API token. On the production host:
+
+```sh
+chmod 600 .env
+```
+
+Owner read/write only. Docker Compose reads the file as the user invoking it,
+so no group or world access is ever needed. `644`/`664`/`777` all let every
+local account read the secrets, and the writable variants let an unrelated
+process rewrite `DATABASE_URL` or blank `PLATFORM_API_TOKEN`.
+
+**`portal/.env` should not exist on a production or build host at all.** It is a
+local development file holding a dev copy of the Platform API bearer token, and
+Vite auto-loads it during `vite build` — beneath any ARG/ENV allowlist the
+Dockerfile declares. That is the exact path by which a shared master credential
+reaches a public browser bundle. Two mechanisms now block it (`.dockerignore`
+excludes it from the build context; `portal/scripts/verify-build-env.mjs` fails
+the production build while it is present), but the safest state is absence. On
+a development machine where you do keep it: `chmod 600 portal/.env`.
+
+Neither file is tracked by git.
+
 ### Production ports and binds
 
 | Surface | Compose service | Host bind | Public? |
@@ -179,6 +204,13 @@ published API port remains loopback by default.
   anonymously and is the right target for a tunnel health check.
 - `/ready` is **not** proxied; it returns 404 at the edge. See "Why /ready is
   not public" below.
+- `/api/v1/docs` (Swagger UI, including its asset subtree) and
+  `/api/v1/openapi.json` return 404 at the edge for the same reason: the
+  Platform API allow-lists both without a token, which is right for a loopback
+  port and wrong for a tunnel-exposed origin. Both still answer on
+  `127.0.0.1:3120`. The rules sit above `location ^~ /api` and win on nginx's
+  own precedence (exact `=`, and a longer `^~` prefix), which also closes the
+  encoded/dot-segment/duplicate-slash variants into them.
 - One set of browser security headers, owned by Nginx, identical on every
   route. `portal/security-headers.conf` is `include`d per location rather than
   set once at server level, because nginx drops inherited `add_header`s in any

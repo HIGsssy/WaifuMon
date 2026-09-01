@@ -6,7 +6,7 @@
   "description": "Waifumon Player Portal — read-only companion SPA over the Platform API",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "node scripts/verify-build-env.mjs && tsc --noEmit && vite build",
     "build:e2e": "vite build --mode e2e",
     "verify:bundle": "node scripts/verify-bundle.mjs",
     "assets:thumbs": "node scripts/generate-thumbnails.mjs",

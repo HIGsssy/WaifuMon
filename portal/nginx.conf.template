@@ -59,6 +59,41 @@ server {
     return 404;
   }
 
+  # The API's own documentation surface is not published to the internet.
+  #
+  # `@fastify/swagger` puts Swagger UI at /api/v1/docs and the spec at
+  # /api/v1/openapi.json, and the Platform API's auth hook allow-lists both so
+  # an operator can read them without a token. That is right for a loopback
+  # port and wrong for a Cloudflare-fronted origin: together they publish every
+  # route, parameter and schema the backend has, which is a map for anyone
+  # deciding where to push. No credential leaks — calling an operation still
+  # needs the bearer token — but the reconnaissance value is free, and nothing
+  # in the Portal reads either path.
+  #
+  # Same treatment as /ready, and unpublished rather than removed: both still
+  # answer on the loopback Platform API (127.0.0.1:3120) and container-side,
+  # which is where administration and development already reach them.
+  #
+  # Placement matters more than it looks. `location ^~ /api` below suppresses
+  # regex-location evaluation for everything under /api, so a `~` rule could
+  # never fire here. These two win on nginx's own precedence instead: an exact
+  # `=` match outranks every prefix, and `^~ /api/v1/docs` is a longer prefix
+  # than `^~ /api`. That also closes the path-variation routes into them —
+  # nginx decodes %XX, collapses `.`/`..` and merges duplicate slashes before
+  # it matches a location, so /api/v1/%64ocs, /api/v1/./docs and /api//v1/docs
+  # all normalise into these rules rather than around them. The prefix form
+  # covers the whole Swagger UI asset subtree (/api/v1/docs/*), not just the
+  # entry point; no real endpoint begins with "doc", so it shadows nothing.
+  location = /api/v1/openapi.json {
+    include /etc/nginx/security-headers.conf;
+    return 404;
+  }
+
+  location ^~ /api/v1/docs {
+    include /etc/nginx/security-headers.conf;
+    return 404;
+  }
+
   location ^~ /api {
     include /etc/nginx/security-headers.conf;
     # Strip the upstream's copies before adding ours. @fastify/helmet sends
