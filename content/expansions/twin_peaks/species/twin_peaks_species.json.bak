@@ -19,7 +19,7 @@
         "name": "Attentive Service",
         "text": "Fills your bath and your heart. Restores the target and leaves them far too relaxed to argue."
       },
-      "flavorQuote": "The water's perfect, guest. Now \u2014 is there anything else you need?",
+      "flavorQuote": "The water's perfect, guest. Now — is there anything else you need?",
       "artist": "Gorthig"
     },
     "imagePath": "waifumon/onsen_maid/standard.png",
@@ -504,7 +504,7 @@
     "archetype": "demon",
     "race": "demon",
     "baseCaptureRate": null,
-    "description": "Fire demon who runs the resort sauna and considers anything below 200\u00b0F cowardice.",
+    "description": "Fire demon who runs the resort sauna and considers anything below 200°F cowardice.",
     "tags": [
       "expansion",
       "region_exclusive"
@@ -515,9 +515,9 @@
       "subtitle": "The Boiling Throne",
       "ability": {
         "name": "Mistress's Heat",
-        "text": "Runs the resort sauna and considers anything below 200\u00b0F cowardice. Sets the target's temperature and commands absolute submission."
+        "text": "Runs the resort sauna and considers anything below 200°F cowardice. Sets the target's temperature and commands absolute submission."
       },
-      "flavorQuote": "Below 200\u00b0F? Cowardice.",
+      "flavorQuote": "Below 200°F? Cowardice.",
       "artist": "Gorthig"
     },
     "imagePath": "waifumon/infernal_sauna_mistress/standard.png",
@@ -587,7 +587,7 @@
     "archetype": "demon",
     "race": "demon",
     "baseCaptureRate": null,
-    "description": "Rents the exclusive cliffside pool and wants no company \u2014 which is why she keeps returning his towel with an open invitation folded inside.",
+    "description": "Rents the exclusive cliffside pool and wants no company — which is why she keeps returning his towel with an open invitation folded inside.",
     "tags": [
       "expansion",
       "region_exclusive"
@@ -743,47 +743,6 @@
           "type": "level",
           "atLevel": 50
         }
-      }
-    ]
-  },
-  {
-    "slug": "bathhouse_mistress",
-    "name": "Bathhouse Mistress",
-    "rarity": "SR",
-    "race": "demon",
-    "affinity": "dominant",
-    "contentRating": "explicit",
-    "subtitle": "Keeper of the Old Soak",
-    "abilityName": "Rule and Consequence",
-    "abilityDescription": "Every guest is read the rules once, at the door, by her. Breaking them earns a private appointment she always keeps.",
-    "description": "Runs the oldest bathhouse on the ridge; sets the temperature, the rules, and the penalty for breaking them, and enforces all three personally.",
-    "flavorQuote": "The water is for healing. The rules are for the ones who come here to misbehave.",
-    "artist": "Whistler",
-    "imagePath": "waifumon/bathhouse_mistress/standard.png",
-    "appearances": [
-      {
-        "level": 0,
-        "image": "waifumon/bathhouse_mistress/standard.png"
-      },
-      {
-        "level": 10,
-        "image": "waifumon/bathhouse_mistress/level_10.png"
-      },
-      {
-        "level": 20,
-        "image": "waifumon/bathhouse_mistress/level_20.png"
-      },
-      {
-        "level": 30,
-        "image": "waifumon/bathhouse_mistress/level_30.png"
-      },
-      {
-        "level": 40,
-        "image": "waifumon/bathhouse_mistress/level_40.png"
-      },
-      {
-        "level": 50,
-        "image": "waifumon/bathhouse_mistress/level_50.png"
       }
     ]
   }
