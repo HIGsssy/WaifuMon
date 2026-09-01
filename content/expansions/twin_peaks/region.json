@@ -45,6 +45,10 @@
       "weight": 2
     },
     {
+      "species": "private_onsen_beauty",
+      "weight": 3
+    },
+    {
       "species": "arcade_bunny",
       "weight": 10
     },
@@ -99,6 +103,16 @@
     {
       "species": "the_waifu_below",
       "weight": 1
-    }
+    },
+    { "species": "arcade_succubus", "weight": 4 },
+    { "species": "bunny_dealer", "weight": 4 },
+    { "species": "dragon_casino_queen", "weight": 4 },
+    { "species": "cat_burglar", "weight": 4 },
+    { "species": "demon_librarian", "weight": 4 },
+    { "species": "library_ghost", "weight": 6 },
+    { "species": "rainy_day_idol", "weight": 6 },
+    { "species": "streetwear_oni", "weight": 6 },
+    { "species": "cyber_neko", "weight": 6 },
+    { "species": "eclipse_idol", "weight": 2 }
   ]
 }

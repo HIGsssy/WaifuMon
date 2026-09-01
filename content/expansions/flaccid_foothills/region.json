@@ -2,7 +2,7 @@
   "id": "flaccid-foothills",
   "name": "Flaccid Foothills",
   "description": "Low hills that never quite commit to being mountains. The switchbacks go on longer than the map admits, and everyone you meet up here is heading somewhere they will not name.",
-  "emoji": "🌄",
+  "emoji": "\ud83c\udf04",
   "enabled": true,
   "starting": false,
   "order": 3,
@@ -12,17 +12,50 @@
     "Every ridge here looks like the last one. The locals navigate by which cairn is leaning."
   ],
   "encounterPool": [
-    { "species": "starfall_street_dancer", "weight": 12 },
-    { "species": "candy_demon_courier", "weight": 12 },
-    { "species": "midnight_swamp_witch", "weight": 10 },
-    { "species": "clockwork_astronomer", "weight": 10 },
-    { "species": "gravel_harvester", "weight": 10 },
-    { "species": "aurora_songspirit", "weight": 8 },
-    { "species": "sky_pirate_valkyrie", "weight": 8 },
-    { "species": "dusk_gravekeeper", "weight": 5 },
-    { "species": "infernal_circus_ringmaster", "weight": 5 },
-    { "species": "solar_archangel", "weight": 3 },
-    { "species": "storm_titan_huntress", "weight": 1 },
+    {
+      "species": "starfall_street_dancer",
+      "weight": 12
+    },
+    {
+      "species": "candy_demon_courier",
+      "weight": 12
+    },
+    {
+      "species": "midnight_swamp_witch",
+      "weight": 10
+    },
+    {
+      "species": "clockwork_astronomer",
+      "weight": 10
+    },
+    {
+      "species": "gravel_harvester",
+      "weight": 10
+    },
+    {
+      "species": "aurora_songspirit",
+      "weight": 8
+    },
+    {
+      "species": "sky_pirate_valkyrie",
+      "weight": 8
+    },
+    {
+      "species": "dusk_gravekeeper",
+      "weight": 5
+    },
+    {
+      "species": "infernal_circus_ringmaster",
+      "weight": 5
+    },
+    {
+      "species": "solar_archangel",
+      "weight": 3
+    },
+    {
+      "species": "storm_titan_huntress",
+      "weight": 1
+    },
     {
       "species": "the_first_waifu",
       "weight": 1
@@ -46,6 +79,94 @@
     {
       "species": "orchard_dawn_angel",
       "weight": 10
+    },
+    {
+      "species": "lantern_spirit",
+      "weight": 6
+    },
+    {
+      "species": "shrine_assistant",
+      "weight": 6
+    },
+    {
+      "species": "potion_shop_clerk",
+      "weight": 6
+    },
+    {
+      "species": "winged_waitress",
+      "weight": 6
+    },
+    {
+      "species": "velvet_bartender",
+      "weight": 5
+    },
+    {
+      "species": "moonlit_dancer",
+      "weight": 5
+    },
+    {
+      "species": "neko_tatto_artist",
+      "weight": 5
+    },
+    {
+      "species": "owl_detective",
+      "weight": 5
+    },
+    {
+      "species": "valkyrie_recruit",
+      "weight": 5
+    },
+    {
+      "species": "witchy_mechanic",
+      "weight": 5
+    },
+    {
+      "species": "phantom_violinist",
+      "weight": 4
+    },
+    {
+      "species": "crimson_oni_bride",
+      "weight": 4
+    },
+    {
+      "species": "gothic_vampire_heiress",
+      "weight": 3
+    },
+    {
+      "species": "feral_wood_spirit",
+      "weight": 3
+    },
+    {
+      "species": "blood_moon_priestess",
+      "weight": 2
+    },
+    {
+      "species": "fallen_angel_nurse",
+      "weight": 2
+    },
+    {
+      "species": "holy_courtesan",
+      "weight": 2
+    },
+    {
+      "species": "abyssal_shrine_oracle",
+      "weight": 2
+    },
+    {
+      "species": "queen_wild_hunt",
+      "weight": 1
+    },
+    {
+      "species": "afterglow_goddess",
+      "weight": 1
+    },
+    {
+      "species": "cafe_maid",
+      "weight": 5
+    },
+    {
+      "species": "long_grass_valkyrie",
+      "weight": 8
     }
   ]
 }
