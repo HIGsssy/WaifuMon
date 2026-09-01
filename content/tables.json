@@ -635,6 +635,20 @@
         "price": 0,
         "currency": "waifubux",
         "requiredLevel": 15
+      },
+      {
+        "regionId": "flaccid-foothills",
+        "passId": "caravan_pass",
+        "price": 1500,
+        "currency": "waifubux",
+        "requiredLevel": 20
+      },
+      {
+        "regionId": "thirstlands",
+        "passId": "caravan_pass",
+        "price": 1500,
+        "currency": "waifubux",
+        "requiredLevel": 25
       }
     ]
   }

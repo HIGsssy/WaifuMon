@@ -1,0 +1,28 @@
+{
+  "id": "flaccid-foothills",
+  "name": "Flaccid Foothills",
+  "description": "Low hills that never quite commit to being mountains. The switchbacks go on longer than the map admits, and everyone you meet up here is heading somewhere they will not name.",
+  "emoji": "🌄",
+  "enabled": true,
+  "starting": false,
+  "order": 3,
+  "bannerImagePath": "locations/flaccid-foothills/banner.png",
+  "flavor": [
+    "The road up is gentle and the road down is not. Nobody warns you in that order.",
+    "Every ridge here looks like the last one. The locals navigate by which cairn is leaning."
+  ],
+  "encounterPool": [
+    { "species": "starfall_street_dancer", "weight": 12 },
+    { "species": "candy_demon_courier", "weight": 12 },
+    { "species": "midnight_swamp_witch", "weight": 10 },
+    { "species": "clockwork_astronomer", "weight": 10 },
+    { "species": "gravel_harvester", "weight": 10 },
+    { "species": "aurora_songspirit", "weight": 8 },
+    { "species": "sky_pirate_valkyrie", "weight": 8 },
+    { "species": "dusk_gravekeeper", "weight": 5 },
+    { "species": "infernal_circus_ringmaster", "weight": 5 },
+    { "species": "solar_archangel", "weight": 3 },
+    { "species": "storm_titan_huntress", "weight": 1 }
+  ],
+  "shopItems": []
+}

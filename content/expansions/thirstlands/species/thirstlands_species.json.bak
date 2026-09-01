@@ -23,7 +23,6 @@
       "artist": "Whistler"
     },
     "imagePath": "expansions/thirstlands/pickaxe_goblin/standard.png",
-    "enabled": true,
     "eventKey": null,
     "perSpeciesWeight": 1,
     "appearances": [

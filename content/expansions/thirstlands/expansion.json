@@ -1,7 +1,7 @@
 {
   "id": "thirstlands",
-  "name": "The Thirstlands",
-  "description": "The second travel destination. Ships the Thirstlands region and its encounter pool; the region's exclusive species are authored separately.",
+  "name": "Thirstlands",
+  "description": "Ships the Thirstlands region, unreleased. The pack is enabled so the region definition and its Caravan Pass route load and stay validated; the region itself ships disabled, which is what keeps the place hidden.",
   "enabled": true,
   "order": 2,
   "regionId": "thirstlands"

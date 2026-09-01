@@ -14,10 +14,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  loadContent,
   readExpansionPacks,
   validateContentSet,
   validateRegionContent,
 } from '../../src/modules/content/loader';
+import { buildTravelCatalog } from '../../src/modules/travel/travelCatalog';
+import { silentLogger } from '../helpers/testDb';
 import {
   RegionContentSchema,
   TravelConfigSchema,
@@ -60,6 +63,8 @@ function region(over: Partial<RegionContent> & Pick<RegionContent, 'id' | 'name'
 }
 
 const TRAVEL_OFF = { enabled: false, passes: [], routes: [] };
+const ASSETS_DIR = path.resolve(__dirname, '..', '..', 'assets');
+const CONTENT_DIR_SHIPPED = path.resolve(__dirname, '..', '..', 'content');
 
 function content(over: Partial<LoadedContent> = {}): LoadedContent {
   return {
@@ -510,14 +515,74 @@ describe('expansion discovery', () => {
 });
 
 describe('shipped content', () => {
-  it('keeps the flaccid_foothills pack switched off', () => {
-    // It has never been wired to anything; this is the test that stops it
-    // becoming live by accident now that discovery exists.
+  it('ships Flaccid Foothills as a released pack introducing its own region', () => {
+    // The pack that spent its life switched off is now live content: the
+    // manifest names the region it introduces, and the discovery layer merges
+    // its species instead of skipping them.
     const scan = readExpansionPacks(path.resolve(__dirname, '..', '..', 'content'));
     const foothills = scan.expansions.find((e) => e.id === 'flaccid_foothills');
     expect(foothills).toBeDefined();
-    expect(foothills!.enabled).toBe(false);
-    expect(scan.expansionSpecies.some((s) => s.slug === 'starfall_street_dancer')).toBe(false);
+    expect(foothills!.enabled).toBe(true);
+    expect(foothills!.regionId).toBe('flaccid-foothills');
+    expect(scan.expansionSpecies.some((s) => s.slug === 'starfall_street_dancer')).toBe(true);
+
+    const region = scan.regions.find((r) => r.id === 'flaccid-foothills');
+    expect(region).toBeDefined();
+    expect(region!.enabled).toBe(true);
+    expect(region!.starting).toBe(false);
+    expect(region!.name).toBe('Flaccid Foothills');
+    expect(region!.bannerImagePath).toBe('locations/flaccid-foothills/banner.png');
+  });
+
+  it('tags every Foothills species as an exclusive of that expansion', () => {
+    const scan = readExpansionPacks(path.resolve(__dirname, '..', '..', 'content'));
+    const pack = scan.expansionSpecies.filter(
+      (s) => scan.speciesOrigin[s.slug] === 'flaccid_foothills',
+    );
+    expect(pack.length).toBeGreaterThan(0);
+    for (const s of pack) {
+      // Both tags, and nothing lost: `region_exclusive` is what stops the
+      // hunt's global fallback ever handing her out to someone who never
+      // travelled, and `expansion` is the provenance marker the pack uses.
+      expect(s.tags).toContain('expansion');
+      expect(s.tags).toContain('region_exclusive');
+    }
+  });
+
+  it('pools every Foothills species in the Foothills, and nowhere else', () => {
+    const scan = readExpansionPacks(path.resolve(__dirname, '..', '..', 'content'));
+    const packSlugs = new Set(
+      scan.expansionSpecies
+        .filter((s) => scan.speciesOrigin[s.slug] === 'flaccid_foothills')
+        .map((s) => s.slug),
+    );
+    const foothills = scan.regions.find((r) => r.id === 'flaccid-foothills')!;
+    // Every resident is reachable: an exclusive missing from her own pool
+    // would be unobtainable content, which is worse than absent content.
+    expect(new Set(foothills.encounterPool.map((e) => e.species))).toEqual(packSlugs);
+    for (const other of scan.regions.filter((r) => r.id !== 'flaccid-foothills')) {
+      expect(other.encounterPool.filter((e) => packSlugs.has(e.species))).toEqual([]);
+    }
+  });
+
+  it('sells the Foothills as a Caravan Pass route at level 20 for 1,500', () => {
+    const content = loadContent(CONTENT_DIR_SHIPPED, ASSETS_DIR, silentLogger());
+    const catalog = buildTravelCatalog(content);
+    const foothills = catalog.get('flaccid-foothills')!;
+    expect(foothills.access).toBe('route');
+    expect(foothills.pass!.id).toBe('caravan_pass');
+    // Stamped onto the pass rather than included in it: buying the pass for
+    // Twin Peeks must not quietly hand this one over too.
+    expect(foothills.grantedByPassPurchase).toBe(false);
+    expect(foothills.price).toBe(1500);
+    expect(foothills.currency).toBe('waifubux');
+    // The stricter of the pass gate (15) and the route gate (20).
+    expect(foothills.requiredLevel).toBe(20);
+    expect(catalog.destinations.map((d) => d.region.id)).toEqual([
+      'waifu-valley',
+      'twin-peeks',
+      'flaccid-foothills',
+    ]);
   });
 
   it('ships Waifu Valley as an explicit starting pool and Twin Peeks as a destination', () => {
@@ -534,6 +599,93 @@ describe('shipped content', () => {
   });
 });
 
+describe('shipped content — Thirstlands ships disabled', () => {
+  const CONTENT_DIR = path.resolve(__dirname, '..', '..', 'content');
+
+  it('defines the region, switched off, with a banner and no pool', () => {
+    // Unreleased content sitting on disk: valid, loaded, validated — and
+    // hidden. The empty pool is legal *because* the region is disabled; the
+    // "enabled regions require encounter pools" rule above is what would catch
+    // it the moment somebody flips the flag without authoring content.
+    const scan = readExpansionPacks(CONTENT_DIR);
+    const thirstlands = scan.regions.find((r) => r.id === 'thirstlands');
+    expect(thirstlands).toBeDefined();
+    expect(thirstlands!.enabled).toBe(false);
+    expect(thirstlands!.starting).toBe(false);
+    expect(thirstlands!.name).toBe('Thirstlands');
+    expect(thirstlands!.encounterPool).toEqual([]);
+    expect(thirstlands!.bannerImagePath).toBe('locations/thirstlands/banner.png');
+  });
+
+  it('validates as part of the shipped content set', () => {
+    // The whole point of shipping it disabled rather than not shipping it: the
+    // file is exercised by every load, so it cannot rot between now and release.
+    expect(() => loadContent(CONTENT_DIR, ASSETS_DIR, silentLogger())).not.toThrow();
+  });
+
+  it('ships no species of its own yet', () => {
+    // The pack is enabled — that is what loads the region file and keeps the
+    // route valid — so anything in its `species/` directory would be live
+    // content. There is nothing there: the region is a place with no residents
+    // until its roster is authored.
+    const scan = readExpansionPacks(CONTENT_DIR);
+    expect(Object.entries(scan.speciesOrigin).filter(([, id]) => id === 'thirstlands')).toEqual([]);
+    expect(scan.expansionSpecies.some((s) => s.slug === 'pickaxe_goblin')).toBe(false);
+  });
+
+  it('sells no route to it: the destination does not exist while it is disabled', () => {
+    const content = loadContent(CONTENT_DIR, ASSETS_DIR, silentLogger());
+    const catalog = buildTravelCatalog(content);
+    // The route is authored against the Caravan Pass, exactly like Twin Peeks…
+    const route = content.tables.travel.routes.find((r) => r.regionId === 'thirstlands');
+    expect(route).toBeDefined();
+    expect(route!.passId).toBe('caravan_pass');
+    // …and the disabled region keeps it entirely out of the catalog, so the
+    // Locations screen has nothing to list and nothing to sell.
+    expect(catalog.get('thirstlands')).toBeNull();
+    expect(catalog.destinations.map((d) => d.region.id)).not.toContain('thirstlands');
+    // A pass purchase must not quietly stamp it, either.
+    expect(
+      content.tables.travel.passes.every((p) => !p.grantsRoutes.includes('thirstlands')),
+    ).toBe(true);
+  });
+
+  it('leaves Waifu Valley and Twin Peeks exactly as they were', () => {
+    const catalog = buildTravelCatalog(loadContent(CONTENT_DIR, ASSETS_DIR, silentLogger()));
+    // Thirstlands is absent because it is disabled; the Foothills are present
+    // because they are released. Neither changes the two that came before.
+    expect(catalog.destinations.map((d) => d.region.id)).not.toContain('thirstlands');
+    expect(catalog.destinations.map((d) => d.region.id).slice(0, 2)).toEqual([
+      'waifu-valley',
+      'twin-peeks',
+    ]);
+    const twin = catalog.get('twin-peeks')!;
+    expect(twin.access).toBe('route');
+    expect(twin.grantedByPassPurchase).toBe(true);
+    expect(twin.price).toBe(1000);
+    expect(twin.requiredLevel).toBe(15);
+  });
+
+  it('refuses to release the region without a pool, if someone flips only the flag', () => {
+    const scan = readExpansionPacks(CONTENT_DIR);
+    const thirstlands = scan.regions.find((r) => r.id === 'thirstlands')!;
+    const bad = content({
+      regions: [
+        region({
+          id: 'waifu-valley',
+          name: 'Waifu Valley',
+          starting: true,
+          encounterPool: [{ species: 'valley_girl' }],
+        }),
+        { ...thirstlands, enabled: true },
+      ],
+    });
+    expect(() => validateRegionContent(bad)).toThrow(
+      /Region "thirstlands" is enabled but defines no encounterPool/,
+    );
+  });
+});
+
 describe('bannerImagePath � optional, safe local asset only', () => {
   it('accepts a safe relative asset path', () => {
     const parsed = RegionContentSchema.safeParse({
@@ -544,6 +696,18 @@ describe('bannerImagePath � optional, safe local asset only', () => {
     expect(parsed.success).toBe(true);
     if (parsed.success) {
       expect(parsed.data.bannerImagePath).toBe('locations/twin-peeks/banner.png');
+    }
+  });
+
+  it('accepts the Flaccid Foothills banner path as authored', () => {
+    const parsed = RegionContentSchema.safeParse({
+      id: 'flaccid-foothills',
+      name: 'Flaccid Foothills',
+      bannerImagePath: 'locations/flaccid-foothills/banner.png',
+    });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.bannerImagePath).toBe('locations/flaccid-foothills/banner.png');
     }
   });
 

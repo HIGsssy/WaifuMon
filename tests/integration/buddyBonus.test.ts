@@ -395,15 +395,15 @@ describe('hunt_item_find_chance', () => {
    * draw into the item band — which is the whole claim: the existing table is
    * reweighted, not supplemented with a second roll.
    *
-   * The first scripted value is the `energy_save_chance` proc, which is rolled
-   * on every hunt whether or not a bonus can use it.
+   * No `energy_save_chance` bonus is equipped in these cases, so no proc draw
+   * is taken and the script starts at the result-table roll.
    */
   it('reweights the shipped result table rather than adding a second roll', async () => {
     const slug = contentSlugOf((s) => s.rarity === 'N');
     authorBonus(slug, null);
     await giveBuddy(slug);
 
-    const baseline = await huntWith(scriptedRng([0.99, 0.6, 0.3, 0.3])).hunt(
+    const baseline = await huntWith(scriptedRng([0.6, 0.3, 0.3])).hunt(
       playerId,
       CHANNEL,
       new Date(),
@@ -420,7 +420,7 @@ describe('hunt_item_find_chance', () => {
       .update(encounters)
       .set({ state: 'expired', resolvedAt: new Date() })
       .where(and(eq(encounters.playerId, playerId), eq(encounters.state, 'active')));
-    const boosted = await huntWith(scriptedRng([0.99, 0.6, 0.1])).hunt(
+    const boosted = await huntWith(scriptedRng([0.6, 0.1])).hunt(
       playerId,
       CHANNEL,
       new Date(Date.now() + 60_000),
@@ -447,7 +447,7 @@ describe('encounter_weight', () => {
     authorBonus(slug, null);
     await giveBuddy(slug);
 
-    const baseline = await huntWith(scriptedRng([0.99, 0.1, 0.92, 0.5])).hunt(
+    const baseline = await huntWith(scriptedRng([0.1, 0.92, 0.5])).hunt(
       playerId,
       CHANNEL,
       new Date(),
@@ -467,7 +467,7 @@ describe('encounter_weight', () => {
       .update(encounters)
       .set({ state: 'expired', resolvedAt: new Date() })
       .where(and(eq(encounters.playerId, playerId), eq(encounters.state, 'active')));
-    const boosted = await huntWith(scriptedRng([0.99, 0.1, 0.92, 0.5])).hunt(
+    const boosted = await huntWith(scriptedRng([0.1, 0.92, 0.5])).hunt(
       playerId,
       CHANNEL,
       new Date(Date.now() + 60_000),
@@ -493,7 +493,7 @@ describe('encounter_weight', () => {
     await giveBuddy(slug);
     // 0.92 with the boost lands on SSR; 0.10 lands on N, which the target
     // excludes — so the same active bonus must stay silent.
-    const common = await huntWith(scriptedRng([0.99, 0.1, 0.1, 0.5])).hunt(
+    const common = await huntWith(scriptedRng([0.1, 0.1, 0.5])).hunt(
       playerId,
       CHANNEL,
       new Date(),

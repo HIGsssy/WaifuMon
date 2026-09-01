@@ -1,9 +1,9 @@
 {
   "id": "thirstlands",
-  "name": "The Thirstlands",
+  "name": "Thirstlands",
   "description": "Caverns, canyons and a desert that drank its own rivers. Every claim here is staked in sweat, and the shade always costs more than it gives.",
   "emoji": "🏜️",
-  "enabled": true,
+  "enabled": false,
   "starting": false,
   "order": 2,
   "bannerImagePath": "locations/thirstlands/banner.png",
@@ -11,11 +11,6 @@
     "The canyon walls remember every creek that used to run through here. They don't talk about it.",
     "Water is worth more than ore in the Thirstlands. The goblins figured that out first."
   ],
-  "encounterPool": [
-    {
-      "species": "pickaxe_goblin",
-      "weight": 10
-    }
-  ],
+  "encounterPool": [],
   "shopItems": []
 }

@@ -163,6 +163,9 @@ describe('locations home', () => {
     const ids = buttonsOf(payload).map((b) => b.customId);
     expect(ids).toContain('wm|v1|loc|detail|waifu-valley');
     expect(ids).toContain('wm|v1|loc|detail|twin-peeks');
+    // Released packs show up here with no UI change of their own — the list is
+    // one button per enabled destination, and the Foothills are now one.
+    expect(ids).toContain('wm|v1|loc|detail|flaccid-foothills');
   });
 
   it('warns on the list when an encounter is blocking travel', async () => {

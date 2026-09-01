@@ -16,6 +16,7 @@ import {
   playerTravelPasses,
   playerUnlockedRoutes,
   players,
+  regionEncounterPools,
   regionShopItems,
   species,
   travelTransactions,
@@ -78,6 +79,41 @@ describe('shipped travel content', () => {
     expect(twinPeeks.requiredLevel).toBe(PASS_LEVEL);
     expect(twinPeeks.pass!.id).toBe('caravan_pass');
     expect(twinPeeks.grantedByPassPurchase).toBe(true);
+  });
+
+  it('hides the unreleased Thirstlands entirely — route authored, region off', () => {
+    // The route exists in `tables.json` against the same Caravan Pass, so the
+    // day the region is switched on nothing else has to change. Until then the
+    // disabled region keeps it out of the catalog, out of `getStatus`, and out
+    // of the seeded pools — a player cannot see it, buy it or travel to it.
+    const catalog = app.travel.catalog();
+    expect(catalog.get('thirstlands')).toBeNull();
+    expect(catalog.destinations.map((d) => d.region.id)).toEqual([
+      'waifu-valley',
+      'twin-peeks',
+      'flaccid-foothills',
+    ]);
+    expect(
+      app.content.tables.travel.routes.some((r) => r.regionId === 'thirstlands'),
+    ).toBe(true);
+  });
+
+  it('seeds no encounter pool for a disabled region', async () => {
+    const pooled = await t.db
+      .selectDistinct({ regionId: regionEncounterPools.regionId })
+      .from(regionEncounterPools);
+    expect(pooled.map((r) => r.regionId).sort()).toEqual([
+      'flaccid-foothills',
+      'twin-peeks',
+      'waifu-valley',
+    ]);
+  });
+
+  it('refuses to travel to it by name', async () => {
+    const { playerId } = await provisionPlayer(app, 'g-travel-hidden', 'u-hidden');
+    await expect(app.travel.travel(playerId, 'thirstlands')).rejects.toThrow(
+      RegionNotFoundError,
+    );
   });
 });
 

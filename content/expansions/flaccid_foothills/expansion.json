@@ -1,8 +1,8 @@
 {
   "id": "flaccid_foothills",
   "name": "Flaccid Foothills",
-  "description": "Authored ahead of the travel framework and never wired to anything. Kept on disk, explicitly switched off: it introduces no region, and none of its species are loaded, seeded or encounterable while enabled is false.",
-  "enabled": false,
-  "order": 99,
-  "regionId": null
+  "description": "The second paid destination. Ships the Flaccid Foothills region and its eleven region-exclusive Waifumon, reachable only by stamping the route onto a Caravan Pass.",
+  "enabled": true,
+  "order": 3,
+  "regionId": "flaccid-foothills"
 }

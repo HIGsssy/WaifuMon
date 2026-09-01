@@ -549,10 +549,13 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
         // hunt runs in full, the cooldown is stamped, the tables roll — the
         // decrement simply does not happen. The energy check above still ran,
         // so a player at 0 Energy cannot hunt on a lucky roll.
-        const energySaved = rollBuddyBonusProc(
-          buddyBonusPercent(activeBonus, 'energy_save_chance'),
-          rng.next(),
-        );
+        // The draw is taken **only** when there is a chance to win: with no
+        // `energy_save_chance` bonus equipped — every hunt in the game before
+        // this feature, and most of them after — the RNG stream is untouched
+        // and every downstream roll lands exactly where it always did.
+        const energySavePercent = buddyBonusPercent(activeBonus, 'energy_save_chance');
+        const energySaved =
+          energySavePercent > 0 && rollBuddyBonusProc(energySavePercent, rng.next());
         /**
          * What this hunt will report. A bonus joins the list only at the moment
          * it changed something: the proc that fired, the award that grew, the

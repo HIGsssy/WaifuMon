@@ -15,8 +15,19 @@
  * `players.current_region`, `guild_boss_state.region` and friends carry CHECK
  * constraints against this list, so a new region needs a migration to widen
  * them. That coupling is the price of the database refusing to store a typo.
+ *
+ * Listing a region here does **not** release it — that is the region file's
+ * `enabled` flag, which is what keeps a place out of the Locations list, out of
+ * travel and out of the seeded encounter pools. Widening the column and
+ * releasing the place are two separate decisions, and this list is only the
+ * first. `thirstlands` is the current example: storable, and switched off.
  */
-export const REGIONS = ['waifu-valley', 'twin-peeks'] as const;
+export const REGIONS = [
+  'waifu-valley',
+  'twin-peeks',
+  'flaccid-foothills',
+  'thirstlands',
+] as const;
 export type Region = (typeof REGIONS)[number];
 
 /**
