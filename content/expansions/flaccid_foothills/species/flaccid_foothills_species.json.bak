@@ -22,7 +22,7 @@
       "flavorQuote": "Make a wish. They already caught it.",
       "artist": "Whistler"
     },
-    "imagePath": "expansions/flaccid_foothills/starfall_street_dancer/standard.png",
+    "imagePath": "waifumon/starfall_street_dancer/standard.png",
     "enabled": true,
     "eventKey": null,
     "perSpeciesWeight": 1,
@@ -105,7 +105,7 @@
       "flavorQuote": "Your receipt is in the bag. Their heart is in the box.",
       "artist": "Whistler"
     },
-    "imagePath": "expansions/flaccid_foothills/candy_demon_courier/standard.png",
+    "imagePath": "waifumon/candy_demon_courier/standard.png",
     "enabled": true,
     "eventKey": null,
     "perSpeciesWeight": 1,
@@ -188,7 +188,7 @@
       "flavorQuote": "The lantern isn't for finding the way out.",
       "artist": "Whistler"
     },
-    "imagePath": "expansions/flaccid_foothills/midnight_swamp_witch/standard.png",
+    "imagePath": "waifumon/midnight_swamp_witch/standard.png",
     "enabled": true,
     "eventKey": null,
     "perSpeciesWeight": 1,
@@ -271,7 +271,7 @@
       "flavorQuote": "The stars don't drift. People do. Their heart ticks in perfect time.",
       "artist": "Whistler"
     },
-    "imagePath": "expansions/flaccid_foothills/clockwork_astronomer/standard.png",
+    "imagePath": "waifumon/clockwork_astronomer/standard.png",
     "enabled": true,
     "eventKey": null,
     "perSpeciesWeight": 1,
@@ -354,7 +354,7 @@
       "flavorQuote": "Listen past the melody. That's the part they wrote for you.",
       "artist": "Whistler"
     },
-    "imagePath": "expansions/flaccid_foothills/aurora_songspirit/standard.png",
+    "imagePath": "waifumon/aurora_songspirit/standard.png",
     "enabled": true,
     "eventKey": null,
     "perSpeciesWeight": 1,
@@ -437,7 +437,7 @@
       "flavorQuote": "She doesn't take hostages. She takes the good stuff.",
       "artist": "Whistler"
     },
-    "imagePath": "expansions/flaccid_foothills/sky_pirate_valkyrie/standard.png",
+    "imagePath": "waifumon/sky_pirate_valkyrie/standard.png",
     "enabled": true,
     "eventKey": null,
     "perSpeciesWeight": 1,
@@ -520,7 +520,7 @@
       "flavorQuote": "The wall isn't to keep them in. It's to keep you out.",
       "artist": "Whistler"
     },
-    "imagePath": "expansions/flaccid_foothills/dusk_gravekeeper/standard.png",
+    "imagePath": "waifumon/dusk_gravekeeper/standard.png",
     "enabled": true,
     "eventKey": null,
     "perSpeciesWeight": 1,
@@ -603,7 +603,7 @@
       "flavorQuote": "Ladies and gentlemen, boys and girls \u2014 sign the waiver on your way in. No refunds on the finale.",
       "artist": "Whistler"
     },
-    "imagePath": "expansions/flaccid_foothills/infernal_circus_ringmaster/standard.png",
+    "imagePath": "waifumon/infernal_circus_ringmaster/standard.png",
     "enabled": true,
     "eventKey": null,
     "perSpeciesWeight": 1,
@@ -686,7 +686,7 @@
       "flavorQuote": "She burned the midnight oil. Literally. It was a nice oil.",
       "artist": "Whistler"
     },
-    "imagePath": "expansions/flaccid_foothills/solar_archangel/standard.png",
+    "imagePath": "waifumon/solar_archangel/standard.png",
     "enabled": true,
     "eventKey": null,
     "perSpeciesWeight": 1,
@@ -769,7 +769,7 @@
       "flavorQuote": "You don't hear the storm coming. You hear it running.",
       "artist": "Whistler"
     },
-    "imagePath": "expansions/flaccid_foothills/storm_titan_huntress/standard.png",
+    "imagePath": "waifumon/storm_titan_huntress/standard.png",
     "enabled": true,
     "eventKey": null,
     "perSpeciesWeight": 1,
@@ -852,7 +852,7 @@
       "flavorQuote": "I don't crush what I'm asked to keep.",
       "artist": "Whistler"
     },
-    "imagePath": "expansions/flaccid_foothills/gravel_harvester/standard.png",
+    "imagePath": "waifumon/gravel_harvester/standard.png",
     "enabled": true,
     "eventKey": null,
     "perSpeciesWeight": 1,
@@ -935,7 +935,7 @@
       "flavorQuote": "The meadow asked me to keep you. It didn't say for how long.",
       "artist": "Whistler"
     },
-    "imagePath": "expansions/flaccid_foothills/clover_field_dryad/standard.png",
+    "imagePath": "waifumon/clover_field_dryad/standard.png",
     "enabled": true,
     "eventKey": null,
     "perSpeciesWeight": 1,

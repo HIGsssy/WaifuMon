@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   loadContent,
   resolveAssetPath,
@@ -418,8 +418,17 @@ describe('asset validation', () => {
     });
 
   it('disables species whose image is missing (never renders a broken card)', () => {
-    const result = validateSpeciesAssets([species('waifumon/nope/standard.png')], ASSETS_DIR, silentLogger());
+    const logger = { ...silentLogger(), warn: vi.fn() };
+    const result = validateSpeciesAssets(
+      [species('waifumon/nope/standard.png')],
+      ASSETS_DIR,
+      logger,
+    );
     expect(result[0]?.enabled).toBe(false);
+    expect(logger.warn).toHaveBeenCalledWith(
+      { slug: 'ghost', imagePath: 'waifumon/nope/standard.png' },
+      'species image missing — disabling',
+    );
   });
 
   it('keeps species whose image exists enabled', () => {
@@ -435,34 +444,30 @@ describe('asset validation', () => {
     expect(() => resolveAssetPath(ASSETS_DIR, '../secrets.txt')).toThrow(ContentValidationError);
   });
 
-  it('keeps an expansion species enabled when imagePath is stored relative to assetsDir', () => {
-    const relative = 'expansions/flaccid_foothills/starfall_street_dancer/standard.png';
-    // imagePath is resolved relative to assetsDir, so the stored value must not
-    // repeat the "assets/" prefix or the loader looks under assets/assets/...
+  it('keeps an expansion species enabled through the canonical waifumon imagePath', () => {
+    const relative = 'waifumon/starfall_street_dancer/standard.png';
     expect(resolveAssetPath(ASSETS_DIR, relative)).toBe(path.join(ASSETS_DIR, relative));
     const result = validateSpeciesAssets([species(relative)], ASSETS_DIR, silentLogger());
     expect(result[0]?.enabled).toBe(true);
   });
 
-  it('disables an expansion species when imagePath double-prefixes "assets/"', () => {
+  it('disables a species when imagePath double-prefixes "assets/"', () => {
     const result = validateSpeciesAssets(
-      [species('assets/expansions/flaccid_foothills/starfall_street_dancer/standard.png')],
+      [species('assets/waifumon/starfall_street_dancer/standard.png')],
       ASSETS_DIR,
       silentLogger(),
     );
     expect(result[0]?.enabled).toBe(false);
   });
 
-  it('keeps expansion milestone appearances whose art lives beside the pack imagePath', () => {
-    // onsen_maid ships standard + level_10..50 under expansions/twin_peaks/, not
-    // under waifumon/. Appearances must resolve from beside the species imagePath.
+  it('keeps expansion milestone appearances from the canonical global artwork tree', () => {
     const packSpecies = SpeciesContentSchema.parse({
       slug: 'onsen_maid',
       name: 'Onsen Maid',
       rarity: 'R',
       archetype: 'spirit',
       contentRating: 'suggestive',
-      imagePath: 'expansions/twin_peaks/onsen_maid/standard.png',
+      imagePath: 'waifumon/onsen_maid/standard.png',
       appearances: [
         { id: 'standard', name: 'Standard', sortOrder: 0, unlock: { type: 'owned' } },
         { id: 'level_20', name: 'Level 20', sortOrder: 20, unlock: { type: 'level', atLevel: 20 } },
@@ -480,7 +485,7 @@ describe('asset validation', () => {
       rarity: 'R',
       archetype: 'spirit',
       contentRating: 'suggestive',
-      imagePath: 'expansions/twin_peaks/onsen_maid/standard.png',
+      imagePath: 'waifumon/onsen_maid/standard.png',
       appearances: [
         { id: 'standard', name: 'Standard', sortOrder: 0, unlock: { type: 'owned' } },
         {

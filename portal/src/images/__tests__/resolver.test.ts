@@ -29,6 +29,12 @@ describe('the local dev-assets provider', () => {
     );
   });
 
+  it('uses the same canonical URL for an expansion species', () => {
+    expect(provider.resolve({ kind: 'waifumon', slug: 'onsen_maid', variant: 'standard' })?.url).toBe(
+      '/dev-assets/waifumon/onsen_maid/standard.png',
+    );
+  });
+
   it('declines kinds it has no artwork for, so the chain continues', () => {
     // Items carry an emoji, not an image path — see docs/portal.md API feedback.
     expect(provider.resolve({ kind: 'item', slug: 'basic_charm' })).toBeNull();

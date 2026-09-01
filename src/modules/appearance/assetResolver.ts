@@ -22,7 +22,7 @@
  * returns `null` when nothing at all exists. Callers already handle `null`.
  */
 import fs from 'node:fs';
-import { appearanceAssetRelativePath, appearanceRelativePathForSpecies, defaultAssetId } from './appearanceContent';
+import { appearanceAssetRelativePath, defaultAssetId } from './appearanceContent';
 import { DEFAULT_APPEARANCE_ID, type AssetId } from '../content/schemas';
 import { resolveAssetPath } from '../content/loader';
 import type { Logger } from '../../shared/logger';
@@ -97,33 +97,12 @@ export function resolveAppearanceAssetOrLegacyPath(
   assetId: AssetId,
   legacyImagePath: string,
 ): ResolvedAppearanceAsset | null {
-  // First, the artwork that sits **beside** the species' own image: the one
-  // convention shared by core (`waifumon/<slug>/`) and expansion packs
-  // (`expansions/<pack>/<slug>/`). For a core species this path is identical to
-  // the canonical `waifumon/<slug>/<variant>.png` the assetId already maps to,
-  // so core resolution is byte-for-byte unchanged; for an expansion species it
-  // is where the pack keeps its milestone art. `assetId.variant` is the
-  // appearance id.
-  const beside = existingPath(ctx, appearanceRelativePathForSpecies(legacyImagePath, assetId.variant));
-  if (beside) return { absolutePath: beside, assetId, source: 'appearance' };
-
   const resolved = resolveAppearanceAsset(ctx, assetId);
   if (resolved) return resolved;
 
-  // The species' default look, again taken from beside its own image, so an
-  // expansion species that only shipped `standard.png` still renders.
-  const besideStandard = existingPath(
-    ctx,
-    appearanceRelativePathForSpecies(legacyImagePath, DEFAULT_APPEARANCE_ID),
-  );
-  if (besideStandard) {
-    return {
-      absolutePath: besideStandard,
-      assetId: defaultAssetId(assetId.slug, DEFAULT_APPEARANCE_ID),
-      source: 'species-default',
-    };
-  }
-
+  // Compatibility only for an unusual pre-AssetId default path. Expansion
+  // directories are intentionally not derived or probed here: all live
+  // species art uses the canonical AssetId layout.
   const legacy = existingPath(ctx, legacyImagePath);
   return legacy ? { absolutePath: legacy, assetId, source: 'legacy-image-path' } : null;
 }

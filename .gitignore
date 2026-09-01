@@ -43,3 +43,6 @@ logs/
 .gitignore
 .hermes/reports/buddy_bonus_review.csv
 .hermes/reports/buddy_bonus_review.json
+portal/src/images/__tests__/appearancePipeline.test.tsx
+portal/src/images/__tests__/appearancePipeline.test.tsx
+portal/src/images/__tests__/resolver.test.ts

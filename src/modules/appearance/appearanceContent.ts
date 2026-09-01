@@ -78,33 +78,6 @@ export function appearanceAssetRelativePath(assetId: AssetId): string {
 }
 
 /**
- * The relative path of an appearance PNG, derived from the species' own
- * `imagePath` — the single convention shared by core and expansion species.
- *
- * Appearance art always sits **beside** the species' standard image, named
- * `<appearance-id>.png`. That one rule spans both layouts without a second
- * convention:
- *
- *   - core:      `waifumon/<slug>/standard.png`            → `waifumon/<slug>/<id>.png`
- *   - expansion: `expansions/<pack>/<slug>/standard.png`   → `expansions/<pack>/<slug>/<id>.png`
- *
- * For a core species this is byte-for-byte the canonical
- * `waifumon/<slug>/<variant>.png` that {@link appearanceAssetRelativePath}
- * produces, so nothing about core resolution changes. Expansion packs keep
- * their artwork organised under their own directory instead of being forced
- * into `waifumon/`.
- *
- * `imagePath` is always a repo-relative POSIX path (validated by the schema),
- * so directory extraction is a plain last-slash split — no `node:path`, which
- * keeps this module filesystem-free and usable from any consumer.
- */
-export function appearanceRelativePathForSpecies(imagePath: string, appearanceId: string): string {
-  const lastSlash = imagePath.lastIndexOf('/');
-  const dir = lastSlash >= 0 ? imagePath.slice(0, lastSlash) : '';
-  return dir ? `${dir}/${appearanceId}.png` : `${appearanceId}.png`;
-}
-
-/**
  * Requirement text when the author supplied none.
  *
  * These strings are the gallery's spine: every tile shows one whether it is

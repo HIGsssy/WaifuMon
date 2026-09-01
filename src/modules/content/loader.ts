@@ -3,7 +3,6 @@ import path from 'node:path';
 import type { ZodError, ZodType, ZodTypeDef } from 'zod';
 import {
   appearanceAssetRelativePath,
-  appearanceRelativePathForSpecies,
   defaultAssetId,
 } from '../appearance/appearanceContent';
 import { archetypeToRace, DEFAULT_RACE } from '../cards/race';
@@ -107,14 +106,10 @@ export function validateSpeciesAssets(
     const kept: AppearanceContent[] = [];
     for (const appearance of s.appearances) {
       const assetId = appearance.assetId ?? defaultAssetId(s.slug, appearance.id);
-      // An explicit `assetId` is an author override (e.g. reusing another
-      // species' art) and is honoured literally. Otherwise the file is expected
-      // beside the species' own image — `waifumon/<slug>/` for core species,
-      // `expansions/<pack>/<slug>/` for an expansion pack — which is the one
-      // convention the loader, the resolver, and `appearances:sync` all share.
-      const relative = appearance.assetId
-        ? appearanceAssetRelativePath(appearance.assetId)
-        : appearanceRelativePathForSpecies(s.imagePath, appearance.id);
+      // AssetId is the only artwork identity, for core and expansion species
+      // alike. It always maps to `waifumon/<slug>/<variant>.png`; imagePath is
+      // retained only as the loader's standard-image existence probe.
+      const relative = appearanceAssetRelativePath(assetId);
       if (exists(relative)) {
         kept.push(appearance);
         continue;

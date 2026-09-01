@@ -153,10 +153,14 @@ describe.skipIf(!hasSharp)('rendition generation', () => {
     fs.rmSync(assetsDir, { recursive: true, force: true });
   });
 
-  function addArtwork(...appearanceIds: string[]): void {
-    const dir = path.join(assetsDir, 'waifumon', SLUG);
+  function addArtworkFor(slug: string, ...appearanceIds: string[]): void {
+    const dir = path.join(assetsDir, 'waifumon', slug);
     fs.mkdirSync(dir, { recursive: true });
     for (const id of appearanceIds) fs.writeFileSync(path.join(dir, `${id}.png`), pngFixture);
+  }
+
+  function addArtwork(...appearanceIds: string[]): void {
+    addArtworkFor(SLUG, ...appearanceIds);
   }
 
   function generate(): string {
@@ -167,8 +171,8 @@ describe.skipIf(!hasSharp)('rendition generation', () => {
     );
   }
 
-  function rendition(width: number, appearanceId: string): string {
-    return path.join(assetsDir, '.thumbnails', String(width), 'waifumon', SLUG, `${appearanceId}.webp`);
+  function rendition(width: number, appearanceId: string, slug = SLUG): string {
+    return path.join(assetsDir, '.thumbnails', String(width), 'waifumon', slug, `${appearanceId}.webp`);
   }
 
   it('renders the same set for an appearance as for the default artwork', () => {
@@ -180,6 +184,16 @@ describe.skipIf(!hasSharp)('rendition generation', () => {
       expect(fs.existsSync(rendition(width, 'standard')), `standard @${width}`).toBe(true);
       expect(fs.existsSync(rendition(width, 'level_10')), `level_10 @${width}`).toBe(true);
     }
+  });
+
+  it('generates canonical renditions for expansion species artwork', () => {
+    const expansionSlug = 'onsen_maid';
+    addArtworkFor(expansionSlug, 'standard', 'level_20');
+
+    generate();
+
+    expect(fs.existsSync(rendition(256, 'standard', expansionSlug))).toBe(true);
+    expect(fs.existsSync(rendition(512, 'level_20', expansionSlug))).toBe(true);
   });
 
   it('renders an appearance id it was never told about', () => {

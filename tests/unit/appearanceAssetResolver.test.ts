@@ -18,7 +18,6 @@ import {
 } from '../../src/modules/appearance/assetResolver';
 import {
   appearanceAssetRelativePath,
-  appearanceRelativePathForSpecies,
   defaultAssetId,
 } from '../../src/modules/appearance/appearanceContent';
 
@@ -141,62 +140,41 @@ describe('resolveAppearanceAssetOrLegacyPath', () => {
   });
 });
 
-describe('appearanceRelativePathForSpecies', () => {
-  it('places core appearance art beside the species image, matching the canonical layout', () => {
-    // For a core species (imagePath under waifumon/<slug>/) this is byte-for-byte
-    // the same path the assetId maps to — so core resolution never changes.
-    expect(appearanceRelativePathForSpecies('waifumon/test_species/standard.png', 'level_20')).toBe(
-      'waifumon/test_species/level_20.png',
-    );
-    expect(appearanceRelativePathForSpecies('waifumon/test_species/standard.png', 'level_20')).toBe(
-      appearanceAssetRelativePath(level20),
-    );
-  });
-
-  it('keeps expansion appearance art under the pack directory, not forced into waifumon/', () => {
-    expect(
-      appearanceRelativePathForSpecies('expansions/twin_peaks/onsen_maid/standard.png', 'level_20'),
-    ).toBe('expansions/twin_peaks/onsen_maid/level_20.png');
-  });
-});
-
-describe('resolveAppearanceAssetOrLegacyPath — artwork beside the species image', () => {
+describe('resolveAppearanceAssetOrLegacyPath — expansion species', () => {
   const PACK_SLUG = 'expo_species';
-  const packImagePath = `expansions/pack/${PACK_SLUG}/standard.png`;
+  const packImagePath = `waifumon/${PACK_SLUG}/standard.png`;
 
   beforeAll(() => {
-    fs.mkdirSync(path.join(assetsDir, 'expansions', 'pack', PACK_SLUG), { recursive: true });
+    fs.mkdirSync(path.join(assetsDir, 'waifumon', PACK_SLUG), { recursive: true });
     for (const variant of ['standard', 'level_20']) {
       fs.writeFileSync(
-        path.join(assetsDir, 'expansions', 'pack', PACK_SLUG, `${variant}.png`),
+        path.join(assetsDir, 'waifumon', PACK_SLUG, `${variant}.png`),
         'png',
       );
     }
   });
 
-  it('resolves an expansion milestone from its pack directory, not from waifumon/', () => {
-    // The assetId maps canonically to waifumon/<slug>/level_20.png, which does
-    // not exist for a pack species — the file is beside the species imagePath.
+  it('resolves an expansion milestone from the canonical AssetId path', () => {
     const resolved = resolveAppearanceAssetOrLegacyPath(
       ctx(),
       defaultAssetId(PACK_SLUG, 'level_20'),
       packImagePath,
     );
     expect(resolved).toEqual({
-      absolutePath: path.resolve(assetsDir, 'expansions', 'pack', PACK_SLUG, 'level_20.png'),
+      absolutePath: path.resolve(assetsDir, 'waifumon', PACK_SLUG, 'level_20.png'),
       assetId: defaultAssetId(PACK_SLUG, 'level_20'),
       source: 'appearance',
     });
   });
 
-  it('falls back to the pack standard image when a milestone has no art', () => {
+  it('falls back to the canonical standard image when a milestone has no art', () => {
     const resolved = resolveAppearanceAssetOrLegacyPath(
       ctx(),
       defaultAssetId(PACK_SLUG, 'level_50'),
       packImagePath,
     );
     expect(resolved).toEqual({
-      absolutePath: path.resolve(assetsDir, 'expansions', 'pack', PACK_SLUG, 'standard.png'),
+      absolutePath: path.resolve(assetsDir, 'waifumon', PACK_SLUG, 'standard.png'),
       assetId: defaultAssetId(PACK_SLUG, 'standard'),
       source: 'species-default',
     });

@@ -306,6 +306,19 @@ describe('content', () => {
     expect(one.data.slug).toBe(firstSpeciesSlug);
   });
 
+  it('publishes canonical AssetIds for expansion species artwork', async () => {
+    const body = await get('/api/v1/content/species/onsen_maid');
+    const standard = body.data.appearances.find((entry: any) => entry.id === 'standard');
+
+    expect(standard.assetId).toEqual({
+      kind: 'waifumon',
+      slug: 'onsen_maid',
+      variant: 'standard',
+    });
+    expect(JSON.stringify(body.data)).not.toContain('expansions/');
+    expect(body.data).not.toHaveProperty('imagePath');
+  });
+
   it('filters species by rarity, archetype and enabled', async () => {
     const enabled = await get('/api/v1/content/species?enabled=true');
     expect(enabled.data.every((s: any) => s.enabled)).toBe(true);

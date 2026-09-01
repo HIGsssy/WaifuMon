@@ -22,7 +22,7 @@
       "flavorQuote": "The water's perfect, guest. Now — is there anything else you need?",
       "artist": "Gorthig"
     },
-    "imagePath": "expansions/twin_peaks/onsen_maid/standard.png",
+    "imagePath": "waifumon/onsen_maid/standard.png",
     "enabled": true,
     "eventKey": null,
     "perSpeciesWeight": 1,
@@ -105,7 +105,7 @@
       "flavorQuote": "The towels are right there. She'll get to them. Eventually.",
       "artist": "Gorthig"
     },
-    "imagePath": "expansions/twin_peaks/hot_spring_intern/standard.png",
+    "imagePath": "waifumon/hot_spring_intern/standard.png",
     "enabled": true,
     "eventKey": null,
     "perSpeciesWeight": 1,
@@ -188,7 +188,7 @@
       "flavorQuote": "The water's warm. Stay a while.",
       "artist": "Gorthig"
     },
-    "imagePath": "expansions/twin_peaks/clawfoot_bather/standard.png",
+    "imagePath": "waifumon/clawfoot_bather/standard.png",
     "enabled": true,
     "eventKey": null,
     "perSpeciesWeight": 1,
@@ -271,7 +271,7 @@
       "flavorQuote": "Rescued by an angel who looks like a pop concert.",
       "artist": "Gorthig"
     },
-    "imagePath": "expansions/twin_peaks/mountain_rescue_angel/standard.png",
+    "imagePath": "waifumon/mountain_rescue_angel/standard.png",
     "enabled": true,
     "eventKey": null,
     "perSpeciesWeight": 1,
@@ -354,7 +354,7 @@
       "flavorQuote": "She chased the storm. You caught her.",
       "artist": "Gorthig"
     },
-    "imagePath": "expansions/twin_peaks/avalanche_huntress/standard.png",
+    "imagePath": "waifumon/avalanche_huntress/standard.png",
     "enabled": true,
     "eventKey": null,
     "perSpeciesWeight": 1,
@@ -437,7 +437,7 @@
       "flavorQuote": "Compliment the drink. She'll thaw.",
       "artist": "Gorthig"
     },
-    "imagePath": "expansions/twin_peaks/yuki_onna_bartender/standard.png",
+    "imagePath": "waifumon/yuki_onna_bartender/standard.png",
     "enabled": true,
     "eventKey": null,
     "perSpeciesWeight": 1,
