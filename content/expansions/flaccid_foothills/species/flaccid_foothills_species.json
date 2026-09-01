@@ -911,5 +911,88 @@
         }
       }
     ]
+  },
+  {
+    "slug": "clover_field_dryad",
+    "name": "Clover-Field Dryad",
+    "rarity": "N",
+    "archetype": "demi-human",
+    "race": "demi-human",
+    "baseCaptureRate": null,
+    "description": "Tends the clover flats at the base of the slopes. The bees stay calm when she's near.",
+    "tags": [
+      "expansion",
+      "region_exclusive"
+    ],
+    "contentRating": "suggestive",
+    "affinity": "submissive",
+    "card": {
+      "subtitle": "Bloom-Kept Daughter",
+      "ability": {
+        "name": "Clover Thirst",
+        "text": "Every patch she beds down in flowers by morning. She blushes like it's a secret."
+      },
+      "flavorQuote": "The meadow asked me to keep you. It didn't say for how long.",
+      "artist": "Whistler"
+    },
+    "imagePath": "expansions/flaccid_foothills/clover_field_dryad/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
   }
 ]
