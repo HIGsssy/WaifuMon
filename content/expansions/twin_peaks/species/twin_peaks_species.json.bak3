@@ -1085,7 +1085,7 @@
     "archetype": "spirit",
     "race": "spirit",
     "baseCaptureRate": null,
-    "description": "Reads the mineral content of every source and declares which pool truly healed your soul \u2014 never says which one's purely for the view.",
+    "description": "Reads the mineral content of every source and declares which pool truly healed your soul — never says which one's purely for the view.",
     "tags": [
       "expansion",
       "region_exclusive"
@@ -1096,95 +1096,12 @@
       "subtitle": "The True Spring",
       "ability": {
         "name": "Mineral Reading",
-        "text": "Reads the mineral content of every source and declares which pool truly healed your soul \u2014 never says which one's purely for the view."
+        "text": "Reads the mineral content of every source and declares which pool truly healed your soul — never says which one's purely for the view."
       },
       "flavorQuote": "That one's for the view.",
       "artist": "Gorthig"
     },
     "imagePath": "waifumon/mineral_spring_divine/standard.png",
-    "enabled": true,
-    "eventKey": null,
-    "perSpeciesWeight": 1,
-    "appearances": [
-      {
-        "id": "standard",
-        "name": "Standard",
-        "sortOrder": 0,
-        "unlock": {
-          "type": "owned"
-        }
-      },
-      {
-        "id": "level_10",
-        "name": "Level 10",
-        "sortOrder": 10,
-        "unlock": {
-          "type": "level",
-          "atLevel": 10
-        }
-      },
-      {
-        "id": "level_20",
-        "name": "Level 20",
-        "sortOrder": 20,
-        "unlock": {
-          "type": "level",
-          "atLevel": 20
-        }
-      },
-      {
-        "id": "level_30",
-        "name": "Level 30",
-        "sortOrder": 30,
-        "unlock": {
-          "type": "level",
-          "atLevel": 30
-        }
-      },
-      {
-        "id": "level_40",
-        "name": "Level 40",
-        "sortOrder": 40,
-        "unlock": {
-          "type": "level",
-          "atLevel": 40
-        }
-      },
-      {
-        "id": "level_50",
-        "name": "Level 50",
-        "sortOrder": 50,
-        "unlock": {
-          "type": "level",
-          "atLevel": 50
-        }
-      }
-    ]
-  },
-  {
-    "slug": "primordial_onsen_goddess",
-    "name": "Primordial Onsen Goddess",
-    "rarity": "LR",
-    "archetype": "demon",
-    "race": "demon",
-    "baseCaptureRate": null,
-    "description": "The volcano-heated water that fills every pool, given form to thank you for soaking in her. Bathes with you whether the pool is private or not.",
-    "tags": [
-      "expansion",
-      "region_exclusive"
-    ],
-    "contentRating": "explicit",
-    "affinity": "caregiver",
-    "card": {
-      "subtitle": "Primordial Heat",
-      "ability": {
-        "name": "Always-Tended Water",
-        "text": "Refills every pool from her own body-temperature stream and refuses to let a single guest soak alone."
-      },
-      "flavorQuote": "You came all this way to bathe in me. The least I can do is stay in the water too.",
-      "artist": "Whistler"
-    },
-    "imagePath": "waifumon/primordial_onsen_goddess/standard.png",
     "enabled": true,
     "eventKey": null,
     "perSpeciesWeight": 1,

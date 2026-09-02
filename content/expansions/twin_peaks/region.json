@@ -167,6 +167,10 @@
     {
       "species": "towel_house_spirit",
       "weight": 10
+    },
+    {
+      "species": "primordial_onsen_goddess",
+      "weight": 1
     }
   ]
 }
