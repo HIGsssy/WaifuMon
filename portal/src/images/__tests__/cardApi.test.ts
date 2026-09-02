@@ -52,7 +52,10 @@ describe('claiming', () => {
       { playerId: 1, waifuId: -3 },
       { playerId: 1.5, waifuId: 2 },
     ]) {
-      expect(provider.resolve({ kind: 'card', slug: 'ok_slug', owned }), JSON.stringify(owned)).toBeNull();
+      expect(
+        provider.resolve({ kind: 'card', slug: 'ok_slug', owned }),
+        JSON.stringify(owned),
+      ).toBeNull();
     }
   });
 });
@@ -69,9 +72,7 @@ describe('species preview route', () => {
   });
 
   it('passes the appearance through as variant', () => {
-    expect(cardUrlFor(withVariant)).toBe(
-      '/api/v1/cards/species/alley_catgirl?variant=level_20',
-    );
+    expect(cardUrlFor(withVariant)).toBe('/api/v1/cards/species/alley_catgirl?variant=level_20');
   });
 
   it('turns a size bucket into width', () => {
@@ -94,14 +95,23 @@ describe('species preview route', () => {
 
 describe('owned copy route', () => {
   it('addresses the owned card endpoint', () => {
-    expect(cardUrlFor(ownedCard)).toBe('/api/v1/players/1/collection/owned/77/card');
+    expect(cardUrlFor({ ...ownedCard, variant: undefined })).toBe(
+      '/api/v1/players/1/collection/owned/77/card',
+    );
   });
 
   it('sends no level or variant — the server owns both', () => {
     const url = cardUrlFor(ownedCard, 512) ?? '';
+    const params = new URLSearchParams(url.split('?')[1] ?? '');
     expect(url).toContain('width=512');
-    expect(url).not.toContain('variant');
-    expect(url).not.toContain('level');
+    expect(params.has('variant')).toBe(false);
+    expect(params.has('level')).toBe(false);
+  });
+
+  it('uses the selected appearance only as an owned-card cache discriminator', () => {
+    expect(cardUrlFor(ownedCard, 512)).toBe(
+      '/api/v1/players/1/collection/owned/77/card?width=512&selected=level_20',
+    );
   });
 
   it('is a different URL per player and per copy', () => {
@@ -156,6 +166,6 @@ describe('the asset helpers feed it correctly', () => {
     } as never);
 
     expect(asset.owned).toEqual({ playerId: 1, waifuId: 77 });
-    expect(cardUrlFor(asset)).toBe('/api/v1/players/1/collection/owned/77/card');
+    expect(cardUrlFor(asset)).toBe('/api/v1/players/1/collection/owned/77/card?selected=level_20');
   });
 });

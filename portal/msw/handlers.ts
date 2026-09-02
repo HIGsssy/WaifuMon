@@ -109,10 +109,36 @@ export const handlers = [
       : apiError(404, 'WAIFU_NOT_OWNED', 'You do not own that Waifumon.');
   }),
 
-  // There is deliberately no PUT handler for `…/appearance`: the Portal is
-  // read-only and never calls it. A handler here would mock a request the
-  // client refuses to send, which is worse than no coverage — it would suggest
-  // the path exists.
+  http.put(
+    '/api/v1/players/:playerId/collection/owned/:waifuId/appearance',
+    async ({ params, request }) => {
+      const waifuId = Number(params.waifuId);
+      const entry = fixtures.ownedEntries.find((candidate) => candidate.waifu.id === waifuId);
+      const gallery = fixtures.appearanceGalleries[waifuId];
+      if (!entry || !gallery) {
+        return apiError(404, 'WAIFU_NOT_OWNED', 'You do not own that Waifumon.');
+      }
+
+      const body = (await request.json()) as { appearanceId?: unknown };
+      const appearanceId = typeof body.appearanceId === 'string' ? body.appearanceId : '';
+      const appearance = gallery.appearances.find((candidate) => candidate.id === appearanceId);
+      if (!appearance) {
+        return apiError(400, 'APPEARANCE_NOT_FOUND', 'That appearance does not exist.');
+      }
+      if (!appearance.isUnlocked || !appearance.assetId) {
+        return apiError(409, 'APPEARANCE_LOCKED', 'That appearance is not unlocked yet.');
+      }
+
+      return data({
+        ...entry,
+        waifu: {
+          ...entry.waifu,
+          variant: appearance.id,
+          selectedAppearance: { ...appearance, isSelected: true },
+        },
+      });
+    },
+  ),
 
   // ── Care, inventory, shop ─────────────────────────────────────────────────
   http.get('/api/v1/players/:playerId/care', () => data(fixtures.careState)),
@@ -150,9 +176,8 @@ export const handlers = [
   // a real Blob to save. `width` is echoed in a header so a test can assert
   // which size was requested without decoding the image.
   http.get('/api/v1/cards/species/:slug', ({ request }) => webpResponse(request)),
-  http.get(
-    '/api/v1/players/:playerId/collection/owned/:waifuId/card',
-    ({ request }) => webpResponse(request),
+  http.get('/api/v1/players/:playerId/collection/owned/:waifuId/card', ({ request }) =>
+    webpResponse(request),
   ),
 
   // ── System (root-level, not under /api) ───────────────────────────────────

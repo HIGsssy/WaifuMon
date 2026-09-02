@@ -58,10 +58,35 @@ describe('API-backed base artwork', () => {
       isUnlocked: true,
       isSelected: true,
     };
-    const waifu = { id: 77, playerId: 3, variant: 'standard', selectedAppearance: selected } as OwnedWaifu;
+    const waifu = {
+      id: 77,
+      playerId: 3,
+      variant: 'standard',
+      selectedAppearance: selected,
+    } as OwnedWaifu;
 
     expect(artworkUrlFor(speciesAsset(subject, waifu), 256)).toBe(
-      '/api/v1/players/3/collection/owned/77/artwork?width=256',
+      '/api/v1/players/3/collection/owned/77/artwork?width=256&selected=standard',
+    );
+  });
+
+  it('uses the selected appearance only as an owned-artwork cache discriminator', () => {
+    const subject = species('onsen_maid');
+    const selected = {
+      ...subject.appearances[0]!,
+      assetId: { kind: 'waifumon' as const, slug: 'onsen_maid', variant: 'level_20' },
+      isUnlocked: true,
+      isSelected: true,
+    };
+    const waifu = {
+      id: 77,
+      playerId: 3,
+      variant: 'level_20',
+      selectedAppearance: selected,
+    } as OwnedWaifu;
+
+    expect(artworkUrlFor(speciesAsset(subject, waifu), 512)).toBe(
+      '/api/v1/players/3/collection/owned/77/artwork?width=512&selected=level_20',
     );
   });
 

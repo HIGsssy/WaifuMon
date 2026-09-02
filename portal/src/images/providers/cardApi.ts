@@ -59,6 +59,10 @@ export function cardUrlFor(id: AssetId, bucket: ImageSizeBucket | null = null): 
   if (id.owned) {
     const { playerId, waifuId } = id.owned;
     if (!isPositiveInt(playerId) || !isPositiveInt(waifuId)) return null;
+    if (id.variant !== undefined) {
+      if (!SAFE_VARIANT.test(id.variant)) return null;
+      params.set('selected', id.variant);
+    }
     path = `${base}/v1/players/${playerId}/collection/owned/${waifuId}/card`;
   } else {
     // The species preview may name an appearance; the owned route may not,

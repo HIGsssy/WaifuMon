@@ -295,7 +295,7 @@ export interface OwnedWaifu {
   isFavorite: boolean;
   /**
    * The selected appearance's id. Cosmetic: it decides which artwork renders
-   * and nothing else. Changed in Discord — the Portal is read-only.
+   * and nothing else.
    */
   variant: string;
   cosmetics: string[];

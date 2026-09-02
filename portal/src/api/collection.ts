@@ -6,7 +6,7 @@
  * menus) and the API returns a 400 above that, so the Portal's page size is
  * pinned to the ceiling rather than guessed at call sites.
  */
-import { getData, getPage, isPortalApiError } from './client';
+import { apiClient, getData, getPage, isPortalApiError } from './client';
 import type { AppearanceGallery, DexStats, OwnedEntry, Page, Rarity } from './types';
 
 /** The service's own ceiling — asking for more is a 400, not a truncated page. */
@@ -65,15 +65,18 @@ export function getAppearances(
   );
 }
 
-/*
- * There is deliberately no `setAppearance` here.
- *
- * The Platform API exposes `PUT …/collection/owned/{id}/appearance`, but the
- * Portal does not call it: v1 is read-only (§4), and choosing a look happens in
- * Discord (`/wm appearance`) until the authenticated-Portal milestone gives
- * writes an identity to happen under. The client would refuse the request
- * anyway — see `ReadOnlyViolationError`.
- */
+/** Select an unlocked appearance for this owned copy. */
+export async function setAppearance(
+  playerId: number,
+  waifuId: number,
+  appearanceId: string,
+): Promise<OwnedEntry> {
+  const response = await apiClient.put<{ data: OwnedEntry }>(
+    `/v1/players/${playerId}/collection/owned/${waifuId}/appearance`,
+    { appearanceId },
+  );
+  return response.data.data;
+}
 
 /**
  * The active buddy, or `null` when none is set.

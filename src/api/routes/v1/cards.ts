@@ -92,7 +92,18 @@ const speciesCardQuery = z.object({
   width: widthQuery,
 });
 
-const ownedCardQuery = z.object({ width: widthQuery });
+const ownedCardQuery = z.object({
+  width: widthQuery,
+  selected: z
+    .string()
+    .min(1)
+    .max(120)
+    .regex(/^[a-z0-9_]+$/)
+    .optional()
+    .describe(
+      'Client cache discriminator only. The server ignores it and resolves the selected appearance from the owned copy.',
+    ),
+});
 
 /**
  * `304` is declared, not just returned: a conditional GET is part of this

@@ -12,20 +12,25 @@ import type { AssetId, ImageProvider, ImageSizeBucket, ResolvedImage } from '../
 export const ARTWORK_API_ID = 'artworkApi';
 
 const SAFE_SLUG = /^[a-z0-9_]+$/;
+const SAFE_VARIANT = /^[a-z0-9_]+$/;
 
-export function artworkUrlFor(
-  id: AssetId,
-  bucket: ImageSizeBucket | null = null,
-): string | null {
+export function artworkUrlFor(id: AssetId, bucket: ImageSizeBucket | null = null): string | null {
   if (!id.baseArtwork) return null;
   if (id.kind !== 'species' && id.kind !== 'waifumon') return null;
   if (!SAFE_SLUG.test(id.slug)) return null;
 
   const base = portalEnv.apiUrl;
+  const params = new URLSearchParams();
+  if (bucket !== null) params.set('width', String(bucket));
+  if (id.owned && id.variant && SAFE_VARIANT.test(id.variant)) {
+    params.set('selected', id.variant);
+  }
+
   const path = id.owned
     ? `${base}/v1/players/${id.owned.playerId}/collection/owned/${id.owned.waifuId}/artwork`
     : `${base}/v1/assets/waifumon/${id.slug}`;
-  return bucket === null ? path : `${path}?width=${bucket}`;
+  const query = params.toString();
+  return query.length > 0 ? `${path}?${query}` : path;
 }
 
 export function createArtworkApiProvider(): ImageProvider {

@@ -7,7 +7,14 @@
  * flashes away. `isPlaceholderData` is what the toolbar's quiet refetching
  * indicator reads.
  */
-import { keepPreviousData, useQuery, type UseQueryResult } from '@tanstack/react-query';
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type UseMutationResult,
+  type UseQueryResult,
+} from '@tanstack/react-query';
 
 import { PLAYER_POLICY } from '../cachePolicy';
 import {
@@ -17,6 +24,7 @@ import {
   getCollection,
   getCollectionEntry,
   getCollectionStats,
+  setAppearance,
 } from '../collection';
 import { queryKeys } from '../queryKeys';
 import type { AppearanceGallery, DexStats, OwnedEntry, Page, Rarity } from '../types';
@@ -83,5 +91,37 @@ export function useWaifuAppearances(
     queryFn: ({ signal }) => getAppearances(playerId, waifuId, signal),
     enabled: Number.isInteger(waifuId) && waifuId > 0,
     ...PLAYER_POLICY,
+  });
+}
+
+export function useSetWaifuAppearance(
+  playerId: number,
+  waifuId: number,
+): UseMutationResult<OwnedEntry, Error, string> {
+  const client = useQueryClient();
+
+  return useMutation({
+    mutationFn: (appearanceId) => setAppearance(playerId, waifuId, appearanceId),
+    onSuccess: (entry, appearanceId) => {
+      client.setQueryData(queryKeys.collectionEntry(playerId, waifuId), entry);
+      client.setQueryData<AppearanceGallery>(
+        queryKeys.waifuAppearances(playerId, waifuId),
+        (current) =>
+          current
+            ? {
+                ...current,
+                selected: appearanceId,
+                appearances: current.appearances.map((appearance) => ({
+                  ...appearance,
+                  isSelected: appearance.id === appearanceId,
+                })),
+              }
+            : current,
+      );
+      void client.invalidateQueries({
+        queryKey: queryKeys.collection(playerId),
+        refetchType: 'inactive',
+      });
+    },
   });
 }

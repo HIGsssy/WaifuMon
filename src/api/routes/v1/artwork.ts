@@ -38,6 +38,15 @@ const artworkQuery = z.object({
       message: `width must be one of ${SUPPORTED_WIDTHS.join(', ')}`,
     })
     .optional(),
+  selected: z
+    .string()
+    .min(1)
+    .max(120)
+    .regex(/^[a-z0-9_]+$/)
+    .optional()
+    .describe(
+      'Client cache discriminator only. The server ignores it and resolves the selected appearance from the owned copy.',
+    ),
 }).strict();
 
 const artworkResponses = {

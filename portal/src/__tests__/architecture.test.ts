@@ -7,8 +7,8 @@
  *   §24.4   nothing under `portal/` imports the bot's source
  *   §24.13  no feature renders a raw `<img src>` — artwork goes through the
  *           image resolver so the asset source stays swappable (§12)
- *   §24.6   no helper issues a write; the client refuses one at runtime, and
- *           this catches an `apiClient.post(...)` at author time
+ *   §24.6   browser-authenticated writes stay in explicit API helpers, and
+ *           this catches a stray `apiClient.post(...)` at author time
  *
  * A lint rule covers the first two as well, but lint is opt-in and this is not:
  * `npm test` fails.
@@ -61,9 +61,9 @@ describe('architectural boundaries', () => {
     expect(offenders.map((f) => f.path)).toEqual([]);
   });
 
-  it('only auth helpers issue browser-authenticated writes', () => {
+  it('only explicit API helpers issue browser-authenticated writes', () => {
     const writeCall = /apiClient\.(post|put|patch|delete)\s*[(<]/;
-    const allowed = new Set(['api/auth.ts']);
+    const allowed = new Set(['api/auth.ts', 'api/collection.ts']);
     const offenders = files
       .filter((file) => file.path !== 'api/client.ts' && !allowed.has(file.path))
       .filter((file) => writeCall.test(file.contents));
