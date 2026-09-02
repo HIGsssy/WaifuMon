@@ -22,7 +22,13 @@ export function artworkUrlFor(id: AssetId, bucket: ImageSizeBucket | null = null
   const base = portalEnv.apiUrl;
   const params = new URLSearchParams();
   if (bucket !== null) params.set('width', String(bucket));
-  if (id.owned && id.variant && SAFE_VARIANT.test(id.variant)) {
+  if (id.owned && id.appearanceId && SAFE_VARIANT.test(id.appearanceId)) {
+    // A gallery tile: the appearance id names which unlocked look to render,
+    // and the server re-validates it against the copy before serving. This
+    // also differentiates the URL per tile, so no `selected` discriminator is
+    // needed alongside it.
+    params.set('appearance', id.appearanceId);
+  } else if (id.owned && id.variant && SAFE_VARIANT.test(id.variant)) {
     params.set('selected', id.variant);
   }
 

@@ -124,6 +124,15 @@ const TABLES = { waifuProgression: { maxLevel: 50 } } as unknown as LoadedConten
 /** An owned copy of `fallback_girl` wearing `alt_a`, at level 22. */
 const OWNED_WAIFU = { id: 77, playerId: 1, speciesId: 3, level: 22, variant: 'alt_a' };
 
+/**
+ * Two copies of `gated_girl` for the gallery's per-appearance artwork route.
+ * `secret` unlocks at level 30 and ships real (distinct) art, so `GATED_HIGH`
+ * has earned it and `GATED_LOW` has not — the difference the unlock fence and
+ * the reward test both hinge on.
+ */
+const GATED_HIGH = { id: 88, playerId: 1, speciesId: 5, level: 30, variant: 'standard' };
+const GATED_LOW = { id: 89, playerId: 1, speciesId: 5, level: 10, variant: 'standard' };
+
 async function writeArt(slug: string, variant: string, rgb: { r: number; g: number; b: number }) {
   const dir = path.join(assetsDir, 'waifumon', slug);
   fs.mkdirSync(dir, { recursive: true });
@@ -142,11 +151,20 @@ function buildContext(overrides: Partial<ApiContext> = {}): ApiContext {
     },
     collection: {
       getOwned: async (playerId: number, waifuId: number) => {
-        if (playerId !== 1 || waifuId !== OWNED_WAIFU.id) throw new WaifuNotOwnedError(waifuId);
-        return {
-          waifu: OWNED_WAIFU,
-          species: content.species.find((s) => s.slug === 'fallback_girl'),
-        };
+        if (playerId !== 1) throw new WaifuNotOwnedError(waifuId);
+        if (waifuId === OWNED_WAIFU.id) {
+          return {
+            waifu: OWNED_WAIFU,
+            species: content.species.find((s) => s.slug === 'fallback_girl'),
+          };
+        }
+        if (waifuId === GATED_HIGH.id || waifuId === GATED_LOW.id) {
+          return {
+            waifu: waifuId === GATED_HIGH.id ? GATED_HIGH : GATED_LOW,
+            species: content.species.find((s) => s.slug === 'gated_girl'),
+          };
+        }
+        throw new WaifuNotOwnedError(waifuId);
       },
     },
   } as unknown as AppServices;
@@ -346,6 +364,69 @@ describe('GET canonical artwork', () => {
     });
     expect(pathGuess.statusCode).toBe(404);
     expect(queryGuess.statusCode).toBe(400);
+  });
+
+  /**
+   * The gallery's per-tile artwork route: `?appearance=<id>` serves a *specific*
+   * unlocked look of an owned copy, so each tile can show its own art rather
+   * than the worn one. The id is a selector, re-validated against the copy —
+   * never an authorization input.
+   */
+  describe('per-appearance selector (?appearance=)', () => {
+    it('serves a specific unlocked look, distinct from the copy’s default', async () => {
+      const secret = await app.inject({
+        method: 'GET',
+        url: url(`/players/1/collection/owned/${GATED_HIGH.id}/artwork?appearance=secret`),
+        headers: AUTH,
+      });
+      const standard = await app.inject({
+        method: 'GET',
+        url: url(`/players/1/collection/owned/${GATED_HIGH.id}/artwork?appearance=standard`),
+        headers: AUTH,
+      });
+
+      expect(secret.statusCode).toBe(200);
+      expect(secret.headers['content-type']).toBe('image/png');
+      expect(secret.headers['cache-control']).toBe('private, max-age=300, must-revalidate');
+      expect(standard.statusCode).toBe(200);
+      // The reward is the reward: `secret` is the white fixture, `standard` the
+      // black one, so the two responses are genuinely different bytes — the
+      // tile is not just being handed the worn look under a different URL.
+      expect(secret.rawPayload.equals(standard.rawPayload)).toBe(false);
+    });
+
+    it('refuses a locked look for a copy that has not earned it — 409, not the art', async () => {
+      const res = await app.inject({
+        method: 'GET',
+        url: url(`/players/1/collection/owned/${GATED_LOW.id}/artwork?appearance=secret`),
+        headers: AUTH,
+      });
+      expect(res.statusCode).toBe(409);
+      expect(res.json()).toMatchObject({ error: { code: 'APPEARANCE_LOCKED' } });
+      // The refusal is a JSON envelope, never the withheld artwork.
+      expect(res.headers['content-type']).toContain('application/json');
+    });
+
+    it('answers 400 for an appearance id the species does not have', async () => {
+      const res = await app.inject({
+        method: 'GET',
+        url: url(`/players/1/collection/owned/${GATED_HIGH.id}/artwork?appearance=nonesuch`),
+        headers: AUTH,
+      });
+      expect(res.statusCode).toBe(400);
+      expect(res.json()).toMatchObject({ error: { code: 'APPEARANCE_NOT_FOUND' } });
+    });
+
+    it('does not serve another player’s copy through the selector', async () => {
+      const res = await app.inject({
+        method: 'GET',
+        url: url(`/players/2/collection/owned/${GATED_HIGH.id}/artwork?appearance=secret`),
+        headers: AUTH,
+      });
+      // Player 2 does not resolve in this harness, so the copy is unreachable —
+      // the route is scoped to the authenticated player, never the path guess.
+      expect(res.statusCode).toBe(404);
+    });
   });
 
   it('requires the same bearer-token proxy as rendered cards', async () => {

@@ -6,7 +6,7 @@
  * menus) and the API returns a 400 above that, so the Portal's page size is
  * pinned to the ceiling rather than guessed at call sites.
  */
-import { apiClient, getData, getPage, isPortalApiError } from './client';
+import { getData, getPage, isPortalApiError } from './client';
 import type { AppearanceGallery, DexStats, OwnedEntry, Page, Rarity } from './types';
 
 /** The service's own ceiling — asking for more is a 400, not a truncated page. */
@@ -63,19 +63,6 @@ export function getAppearances(
     `/v1/players/${playerId}/collection/owned/${waifuId}/appearances`,
     signal ? { signal } : {},
   );
-}
-
-/** Select an unlocked appearance for this owned copy. */
-export async function setAppearance(
-  playerId: number,
-  waifuId: number,
-  appearanceId: string,
-): Promise<OwnedEntry> {
-  const response = await apiClient.put<{ data: OwnedEntry }>(
-    `/v1/players/${playerId}/collection/owned/${waifuId}/appearance`,
-    { appearanceId },
-  );
-  return response.data.data;
 }
 
 /**

@@ -23,20 +23,21 @@
  * API, so this component needs no change when a new unlock source ships — and
  * it is a *rendering* hint, not the fence: the fence is the missing `assetId`.
  *
- * Selection is a write, but still not an unlock check. The button appears only
- * for an unlocked entry whose `assetId` the API already sent, and the mutation
- * is validated again by the server before anything persists.
+ * The gallery is **read-only**. Each unlocked tile shows that appearance's own
+ * artwork, fetched through the authenticated owned-artwork endpoint keyed by the
+ * tile's appearance id; there is no "wear this look" control and no mutation.
+ * Changing the equipped appearance is a game action that lives in Discord.
  */
 import { Check, Lock, Sparkles } from 'lucide-react';
 import { useState } from 'react';
 
-import { useSetWaifuAppearance, useWaifuAppearances } from '@/api/hooks/useCollection';
+import { useWaifuAppearances } from '@/api/hooks/useCollection';
 import type { Appearance, CosmeticRarity } from '@/api/types';
 import { Artwork } from '@/components/media/Artwork';
 import { Button } from '@/components/ui/button';
 import { Card, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { appearanceAsset } from '@/images/assets';
+import { appearanceArtworkAsset } from '@/images/assets';
 import { cn } from '@/lib/cn';
 import { ARTWORK_WIDTH } from '@/images/sizes';
 
@@ -98,13 +99,18 @@ function LockedArtworkSlot({ unlockLabel, aspect }: { unlockLabel: string; aspec
 
 interface AppearanceTileProps {
   appearance: Appearance;
+  playerId: number;
+  waifuId: number;
   isActive: boolean;
   onSelect: () => void;
 }
 
-function AppearanceTile({ appearance, isActive, onSelect }: AppearanceTileProps) {
+function AppearanceTile({ appearance, playerId, waifuId, isActive, onSelect }: AppearanceTileProps) {
   const locked = !appearance.isUnlocked;
-  const asset = appearanceAsset(appearance);
+  // The tile's own appearance drives its artwork — never the copy's worn look.
+  // `null` exactly when the API withheld the asset for a locked entry, so the
+  // placeholder is driven by what we actually have rather than by `locked`.
+  const asset = appearanceArtworkAsset(playerId, waifuId, appearance);
   const stateLabel = appearance.isSelected
     ? 'currently worn'
     : locked
@@ -178,14 +184,19 @@ function AppearanceTile({ appearance, isActive, onSelect }: AppearanceTileProps)
 
 interface AppearanceDetailProps {
   appearance: Appearance;
-  isPending: boolean;
-  errorMessage: string | null;
-  onWear: () => void;
 }
 
-function AppearanceDetail({ appearance, isPending, errorMessage, onWear }: AppearanceDetailProps) {
+/**
+ * The read-only detail panel for the highlighted tile.
+ *
+ * Informational only: it states the look, its requirement and rarity, and
+ * whether she is wearing it. There is **no** control to equip an appearance —
+ * the Portal never mutates the equipped look. Locked entries still withhold
+ * their flavour text and description, because describing a surprise is a smaller
+ * version of spoiling it.
+ */
+function AppearanceDetail({ appearance }: AppearanceDetailProps) {
   const locked = !appearance.isUnlocked;
-  const canWear = !locked && appearance.assetId !== null && !appearance.isSelected;
 
   return (
     <div className="mt-4 rounded-2xl border border-border bg-surface-sunken/60 p-4">
@@ -223,29 +234,21 @@ function AppearanceDetail({ appearance, isPending, errorMessage, onWear }: Appea
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
         {locked ? (
-          // Rule 2: no reveal control, because there is nothing to reveal — the
-          // API sent no artwork for this entry. The requirement is the panel.
+          // No reveal control, because there is nothing to reveal — the API
+          // sent no artwork for this entry. The requirement is the panel.
           <p className="self-center text-sm text-ink-subtle">
             <Lock className="mr-1 inline size-3.5 align-[-2px]" aria-hidden="true" />
             Locked — {appearance.unlockLabel}. The artwork stays hidden until you earn it.
           </p>
         ) : appearance.isSelected ? (
-          <p className="text-sm text-ink-muted">She’s wearing this one.</p>
-        ) : canWear ? (
-          <Button size="sm" onClick={onWear} disabled={isPending}>
-            <Check className="size-4" aria-hidden="true" />
-            {isPending ? 'Saving…' : 'Wear this look'}
-          </Button>
+          <p className="text-sm text-ink-muted">
+            <Check className="mr-1 inline size-3.5 align-[-2px]" aria-hidden="true" />
+            She’s wearing this one.
+          </p>
         ) : (
-          <p className="text-sm text-ink-muted">Unlocked, but the artwork is not available here.</p>
+          <p className="text-sm text-ink-muted">Unlocked. Equip it from the Discord bot.</p>
         )}
       </div>
-
-      {errorMessage && (
-        <p role="status" className="mt-3 text-sm text-rose-700 dark:text-rose-200">
-          {errorMessage}
-        </p>
-      )}
     </div>
   );
 }
@@ -259,7 +262,6 @@ export interface AppearanceGalleryProps {
 
 export function AppearanceGallery({ playerId, waifuId, waifuName }: AppearanceGalleryProps) {
   const gallery = useWaifuAppearances(playerId, waifuId);
-  const selection = useSetWaifuAppearance(playerId, waifuId);
 
   const [activeId, setActiveId] = useState<string | null>(null);
 
@@ -316,20 +318,15 @@ export function AppearanceGallery({ playerId, waifuId, waifuName }: AppearanceGa
           <AppearanceTile
             key={appearance.id}
             appearance={appearance}
+            playerId={playerId}
+            waifuId={waifuId}
             isActive={appearance.id === active?.id}
             onSelect={() => setActiveId(appearance.id)}
           />
         ))}
       </div>
 
-      {active && (
-        <AppearanceDetail
-          appearance={active}
-          isPending={selection.isPending}
-          errorMessage={selection.isError ? selection.error.message : null}
-          onWear={() => selection.mutate(active.id)}
-        />
-      )}
+      {active && <AppearanceDetail appearance={active} />}
     </Card>
   );
 }

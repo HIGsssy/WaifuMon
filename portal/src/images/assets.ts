@@ -107,6 +107,36 @@ export function appearanceAsset(
 }
 
 /**
+ * Raw artwork for **one gallery appearance of an owned copy**, or `null` when
+ * the API withheld it (a locked entry).
+ *
+ * Unlike {@link speciesAsset}, which resolves the look she is *wearing*, this
+ * names a specific appearance so a gallery tile shows its *own* art rather than
+ * the worn one. It routes through the same authenticated owned-artwork endpoint
+ * as the hero — `baseArtwork` + `owned` are what the API-backed provider claims
+ * — with `appearanceId` naming which unlocked look to serve. The server
+ * re-validates that id against the copy, so this is a *selector*, never a way to
+ * ask for artwork the copy has not earned.
+ *
+ * **`null` in means `null` out**, exactly as {@link appearanceAsset}: a locked
+ * entry arrives without an `assetId`, and the Portal must never invent one.
+ */
+export function appearanceArtworkAsset(
+  playerId: number,
+  waifuId: number,
+  appearance: { id: string; assetId: AssetIdResource | null },
+): AssetId | null {
+  const base = appearanceAsset(appearance);
+  if (!base) return null;
+  return {
+    ...base,
+    baseArtwork: true,
+    owned: { playerId, waifuId },
+    appearanceId: appearance.id,
+  };
+}
+
+/**
  * The **rendered card** for a species — frame, rarity overlay, race and
  * affinity icons, card text — as opposed to {@link speciesAsset}, which is the
  * raw character artwork.

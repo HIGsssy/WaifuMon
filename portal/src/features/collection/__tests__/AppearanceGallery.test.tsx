@@ -20,7 +20,7 @@
  * an unlocked entry may be worn because the API already sent its `assetId`;
  * a locked entry still has neither an image nor a wear control.
  */
-import { screen, waitFor, within } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http } from 'msw';
 import { describe, expect, it } from 'vitest';
@@ -37,10 +37,6 @@ function renderDetail(waifuId: number) {
 
 async function galleryGroup() {
   return screen.findByRole('group', { name: /Appearances for Nyx/i });
-}
-
-function heroImage(): HTMLImageElement {
-  return screen.getAllByRole('img')[0] as HTMLImageElement;
 }
 
 describe('AppearanceGallery', () => {
@@ -151,7 +147,7 @@ describe('AppearanceGallery', () => {
     expect(screen.queryByRole('button', { name: /Wear this look/i })).not.toBeInTheDocument();
   });
 
-  it('does not offer a wear action for the already selected look', async () => {
+  it('states the worn look read-only, offering no control to change it', async () => {
     const user = userEvent.setup();
     renderDetail(101);
     const group = await galleryGroup();
@@ -161,232 +157,142 @@ describe('AppearanceGallery', () => {
     expect(screen.getByText(/wearing this one/i)).toBeInTheDocument();
   });
 
-  it('persists an unlocked alternate and updates the selected artwork', async () => {
-    const user = userEvent.setup();
-    let requestedAppearance: string | undefined;
-    const selectedEntry = {
-      id: 'level_20',
-      name: 'Midnight Bloom',
+  /**
+   * The regression this fix exists for. Four unlocked looks of one copy, each
+   * of which must render *its own* artwork rather than the generic silhouette
+   * or the worn look repeated. Mirrors the `bimbo_valkyrie` report: `standard`,
+   * `level_10`, `level_20`, `level_30` unlocked; `level_40` locked.
+   */
+  function multiLookGallery() {
+    const unlocked = (id: string, atLevel: number | null) => ({
+      id,
+      name: id === 'standard' ? 'Standard' : `Level ${atLevel}`,
       description: null,
       flavorText: null,
-      cosmeticRarity: 'seasonal' as const,
+      cosmeticRarity: 'standard' as const,
       introducedVersion: null,
-      assetId: { kind: 'waifumon' as const, slug: 'void_empress', variant: 'level_20' },
-      unlock: { type: 'level', atLevel: 20 },
-      unlockLabel: 'Reach Level 20',
+      assetId: { kind: 'waifumon' as const, slug: 'void_empress', variant: id },
+      unlock: atLevel === null ? { type: 'owned' as const } : { type: 'level' as const, atLevel },
+      unlockLabel: atLevel === null ? 'Owned' : `Reach Level ${atLevel}`,
       isUnlocked: true,
-      isSelected: true,
-    };
+      isSelected: id === 'level_30',
+    });
 
+    return {
+      selected: 'level_30',
+      appearances: [
+        unlocked('standard', null),
+        unlocked('level_10', 10),
+        unlocked('level_20', 20),
+        unlocked('level_30', 30),
+        {
+          id: 'level_40',
+          name: 'Level 40',
+          description: null,
+          flavorText: null,
+          cosmeticRarity: 'standard' as const,
+          introducedVersion: null,
+          assetId: null,
+          unlock: { type: 'level' as const, atLevel: 40 },
+          unlockLabel: 'Reach Level 40',
+          isUnlocked: false,
+          isSelected: false,
+        },
+      ],
+    };
+  }
+
+  function tileImage(group: HTMLElement, name: RegExp): HTMLImageElement | null {
+    const tile = within(group).getByRole('button', { name });
+    return tile.querySelector('img');
+  }
+
+  it('renders each unlocked tile’s own artwork through the authenticated owned route', async () => {
     server.use(
       http.get('/api/v1/players/:playerId/collection/owned/:waifuId/appearances', () =>
-        data({
-          selected: 'standard',
-          appearances: [
-            {
-              id: 'standard',
-              name: 'Standard',
-              description: null,
-              flavorText: null,
-              cosmeticRarity: 'standard',
-              introducedVersion: null,
-              assetId: { kind: 'waifumon', slug: 'void_empress', variant: 'standard' },
-              unlock: { type: 'owned' },
-              unlockLabel: 'Owned',
-              isUnlocked: true,
-              isSelected: true,
-            },
-            {
-              ...selectedEntry,
-              isSelected: false,
-            },
-          ],
-        }),
-      ),
-      http.put(
-        '/api/v1/players/:playerId/collection/owned/:waifuId/appearance',
-        async ({ request }) => {
-          requestedAppearance = ((await request.json()) as { appearanceId?: string }).appearanceId;
-          return data({
-            waifu: {
-              id: 101,
-              playerId: 1,
-              speciesId: 13,
-              level: 22,
-              xp: 5400,
-              affection: 64,
-              nickname: 'Nyx',
-              isFavorite: true,
-              variant: 'level_20',
-              cosmetics: [],
-              selectedAppearance: selectedEntry,
-              caughtAt: '2026-07-02T18:30:00.000Z',
-              releasedAt: null,
-            },
-            species: {
-              id: 13,
-              slug: 'void_empress',
-              name: 'Void Empress',
-              rarity: 'UR',
-              archetype: 'demon',
-              affinity: 'primal',
-              contentRating: 'explicit',
-              description: 'A placeholder description used by the mocked API.',
-              tags: ['placeholder'],
-              baseCaptureRate: null,
-              enabled: true,
-              eventKey: null,
-              perSpeciesWeight: 1,
-              appearances: [
-                {
-                  id: 'standard',
-                  name: 'Standard',
-                  description: null,
-                  flavorText: null,
-                  cosmeticRarity: 'standard',
-                  introducedVersion: null,
-                  assetId: { kind: 'waifumon', slug: 'void_empress', variant: 'standard' },
-                  unlock: { type: 'owned' },
-                  unlockLabel: 'Owned',
-                },
-                {
-                  id: 'level_20',
-                  name: 'Midnight Bloom',
-                  description: 'A darker cut of her usual silhouette.',
-                  flavorText: 'Prepared for the annual shrine celebration.',
-                  cosmeticRarity: 'seasonal',
-                  introducedVersion: 'v1.3',
-                  assetId: null,
-                  unlock: { type: 'level', atLevel: 20 },
-                  unlockLabel: 'Reach Level 20',
-                },
-              ],
-            },
-            progress: { level: 22, xp: 5400, xpIntoLevel: 400, xpToNext: 900, atMaxLevel: false },
-          });
-        },
+        data(multiLookGallery()),
       ),
     );
-
     renderDetail(101);
     const group = await galleryGroup();
-    const tile = within(group).getByRole('button', { name: /Midnight Bloom/ });
 
-    expect(tile.querySelector('img')).not.toBeNull();
-    expect(heroImage().src).toContain('standard');
+    // Every unlocked tile has an <img>, and each points at *its own* appearance
+    // on the per-copy authenticated endpoint — not `/dev-assets`, not the worn
+    // look, not the silhouette placeholder.
+    for (const id of ['standard', 'level_10', 'level_20', 'level_30']) {
+      const img = tileImage(group, new RegExp(id === 'standard' ? 'Standard' : id.replace('_', ' '), 'i'));
+      expect(img, id).not.toBeNull();
+      expect(img!.getAttribute('src'), id).toContain('/players/1/collection/owned/101/artwork');
+      expect(img!.getAttribute('src'), id).toContain(`appearance=${id}`);
+      expect(img!.getAttribute('src'), id).not.toContain('dev-assets');
+    }
+  });
 
-    await user.click(tile);
-    await user.click(await screen.findByRole('button', { name: /Wear this look/i }));
+  it('gives no two unlocked tiles the same artwork URL', async () => {
+    server.use(
+      http.get('/api/v1/players/:playerId/collection/owned/:waifuId/appearances', () =>
+        data(multiLookGallery()),
+      ),
+    );
+    renderDetail(101);
+    const group = await galleryGroup();
 
-    await waitFor(() => expect(requestedAppearance).toBe('level_20'));
-    await waitFor(() => expect(heroImage().src).toContain('level_20'));
-    expect(screen.getAllByText('Midnight Bloom').length).toBeGreaterThan(0);
+    const srcs = ['Standard', 'level 10', 'level 20', 'level 30'].map(
+      (name) => tileImage(group, new RegExp(name, 'i'))!.getAttribute('src'),
+    );
+    expect(new Set(srcs).size).toBe(srcs.length);
+    // And none of them collapses onto the worn (`level_30`) look for the others.
+    expect(srcs.filter((s) => s?.includes('appearance=level_30'))).toHaveLength(1);
+  });
+
+  it('keeps selection highlighting independent of which image each tile shows', async () => {
+    server.use(
+      http.get('/api/v1/players/:playerId/collection/owned/:waifuId/appearances', () =>
+        data(multiLookGallery()),
+      ),
+    );
+    renderDetail(101);
+    const group = await galleryGroup();
+
+    // The worn badge is on `level_30` only, even though every unlocked tile
+    // draws real art — the highlight tracks `isSelected`, not the image.
     expect(
-      within(group).getByRole('button', { name: /Midnight Bloom — currently worn/i }),
+      within(group).getByRole('button', { name: /Level 30 — currently worn/i }),
+    ).toBeInTheDocument();
+    expect(
+      within(group).getByRole('button', { name: /Level 10 — unlocked/i }),
     ).toBeInTheDocument();
   });
 
-  it('reports a rejected appearance selection without revealing locked artwork', async () => {
-    const user = userEvent.setup();
+  it('leaves the locked tile with no artwork while its unlocked peers render', async () => {
     server.use(
       http.get('/api/v1/players/:playerId/collection/owned/:waifuId/appearances', () =>
-        data({
-          selected: 'standard',
-          appearances: [
-            {
-              id: 'standard',
-              name: 'Standard',
-              description: null,
-              flavorText: null,
-              cosmeticRarity: 'standard',
-              introducedVersion: null,
-              assetId: { kind: 'waifumon', slug: 'void_empress', variant: 'standard' },
-              unlock: { type: 'owned' },
-              unlockLabel: 'Owned',
-              isUnlocked: true,
-              isSelected: true,
-            },
-            {
-              id: 'level_20',
-              name: 'Midnight Bloom',
-              description: null,
-              flavorText: null,
-              cosmeticRarity: 'seasonal',
-              introducedVersion: null,
-              assetId: { kind: 'waifumon', slug: 'void_empress', variant: 'level_20' },
-              unlock: { type: 'level', atLevel: 20 },
-              unlockLabel: 'Reach Level 20',
-              isUnlocked: true,
-              isSelected: false,
-            },
-          ],
-        }),
-      ),
-      http.put('/api/v1/players/:playerId/collection/owned/:waifuId/appearance', () =>
-        apiError(409, 'APPEARANCE_LOCKED', 'That appearance is not unlocked yet.'),
+        data(multiLookGallery()),
       ),
     );
-
     renderDetail(101);
     const group = await galleryGroup();
 
-    await user.click(within(group).getByRole('button', { name: /Midnight Bloom/ }));
-    await user.click(await screen.findByRole('button', { name: /Wear this look/i }));
-
-    expect(await screen.findByRole('status')).toHaveTextContent(/not unlocked yet/i);
-    expect(screen.queryByRole('button', { name: /Reveal/i })).not.toBeInTheDocument();
+    const locked = within(group).getByRole('button', { name: /Level 40/ });
+    expect(locked.querySelector('img')).toBeNull();
+    expect(locked.innerHTML).not.toMatch(/\.(png|jpe?g|webp)/i);
+    expect(locked.innerHTML).not.toContain('/artwork');
   });
 
-  it('renders an unlocked-but-unworn entry as selectable artwork', async () => {
+  it('offers no wear control or mutation anywhere in the read-only gallery', async () => {
     const user = userEvent.setup();
     server.use(
       http.get('/api/v1/players/:playerId/collection/owned/:waifuId/appearances', () =>
-        data({
-          selected: 'standard',
-          appearances: [
-            {
-              id: 'standard',
-              name: 'Standard',
-              description: null,
-              flavorText: null,
-              cosmeticRarity: 'standard',
-              introducedVersion: null,
-              assetId: { kind: 'waifumon', slug: 'void_empress', variant: 'standard' },
-              unlock: { type: 'owned' },
-              unlockLabel: 'Owned',
-              isUnlocked: true,
-              isSelected: true,
-            },
-            {
-              id: 'level_20',
-              name: 'Midnight Bloom',
-              description: null,
-              flavorText: null,
-              cosmeticRarity: 'seasonal',
-              introducedVersion: null,
-              assetId: { kind: 'waifumon', slug: 'void_empress', variant: 'level_20' },
-              unlock: { type: 'level', atLevel: 20 },
-              unlockLabel: 'Reach Level 20',
-              isUnlocked: true,
-              isSelected: false,
-            },
-          ],
-        }),
+        data(multiLookGallery()),
       ),
     );
-
     renderDetail(101);
     const group = await galleryGroup();
-    const tile = within(group).getByRole('button', { name: /Midnight Bloom/ });
 
-    // The other half of the fix: a gated look the player *has* earned renders
-    // exactly as it always did, artwork and all. Hiding it too would be the
-    // same bug pointed the other way.
-    expect(tile.querySelector('img')).not.toBeNull();
-
-    await user.click(tile);
-
-    expect(await screen.findByRole('button', { name: /Wear this look/i })).toBeInTheDocument();
+    await user.click(within(group).getByRole('button', { name: /Level 10/ }));
+    expect(screen.queryByRole('button', { name: /Wear this look/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Reveal/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/Equip it from the Discord bot/i)).toBeInTheDocument();
   });
 
   it('shows a single implicit entry for a species with no authored catalog', async () => {

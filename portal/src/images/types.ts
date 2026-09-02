@@ -58,6 +58,14 @@ export interface AssetId {
    * preview: level 1, default appearance.
    */
   owned?: { playerId: number; waifuId: number } | undefined;
+  /**
+   * A specific appearance id to render for an `owned` copy, rather than the
+   * look she is wearing. This is what a gallery tile uses to show *its own*
+   * unlocked appearance: the API re-validates the id against the copy's
+   * ownership and level before serving it, so it names *what* to draw and is
+   * never an authorization input. Ignored without `owned`.
+   */
+  appearanceId?: string | undefined;
 }
 
 export interface ResolvedImage {
@@ -154,8 +162,11 @@ export function assetKey(id: AssetId, bucket: ImageSizeBucket | null = null): st
   // cards (different level, possibly different appearance), and memoising them
   // under one key would serve the first player's card to the second.
   const owned = id.owned ? `${id.owned.playerId}/${id.owned.waifuId}` : '';
+  // `appearanceId` participates: a gallery renders several unlocked looks of
+  // one owned copy, and they must key apart even if two shared an art variant.
+  const appearance = id.appearanceId ?? '';
   // `href` participates: the same avatar slug with a new CDN hash is a
   // genuinely different image and must not serve the memoised old one.
   // The bucket participates for the same reason: two sizes are two URLs.
-  return `${id.kind}:${id.slug}:${id.variant ?? DEFAULT_VARIANT}:${id.baseArtwork === true ? 'base' : ''}:${id.href ?? ''}:${owned}:${bucket ?? 'full'}`;
+  return `${id.kind}:${id.slug}:${id.variant ?? DEFAULT_VARIANT}:${id.baseArtwork === true ? 'base' : ''}:${id.href ?? ''}:${owned}:${appearance}:${bucket ?? 'full'}`;
 }

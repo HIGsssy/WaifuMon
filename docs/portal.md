@@ -560,9 +560,15 @@ Three rules the components enforce, each worth preserving through a refactor:
 1. **Locked entries are shown, with their requirement.** "Owned", "Reach Level
    20". A gallery that hid them would be a picker; showing them makes it a
    progression journal, which is the feature.
-2. **Locked artwork stays a silhouette until asked for.** Tapping a locked tile
-   opens its detail panel with a *Reveal artwork* control — opt-in, so players
-   who want the surprise keep it.
+2. **Locked artwork is never shown, and there is nothing that reveals it.** The
+   API withholds `assetId` for a locked entry, so a locked tile is a named slot
+   with its requirement and nothing to resolve — not a silhouette of the real
+   art behind an opt-in curtain. An unlocked tile shows **its own** appearance,
+   fetched from the authenticated owned-artwork endpoint keyed by that tile's
+   appearance id (`GET …/collection/owned/{id}/artwork?appearance=<id>`), which
+   re-validates the id against the copy before serving. Each tile therefore
+   resolves through the same image path as the hero — no second image
+   architecture, and no way to address a look the copy has not earned.
 3. **The Portal never computes unlock state.** `isUnlocked` always comes from
    the API. That is what keeps Discord and the Portal from ever disagreeing
    about what a player has earned, and why a new unlock source needs no Portal
@@ -584,10 +590,6 @@ anyway, so building it now would mean building it twice.
 Players change looks with `/wm appearance <name>` in Discord, or from the
 `🎀 Appearance` button on the inspect card. An unlocked-but-unworn tile names
 that command rather than offering a button the API client would refuse to send.
-
-Portal-side selection is the natural first feature to add once authenticated
-writes land — the endpoint, the schema and the gallery are all already in
-place; only the mutation hook is missing.
 
 ### Known limitation
 

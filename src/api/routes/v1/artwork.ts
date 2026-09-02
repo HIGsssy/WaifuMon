@@ -11,6 +11,7 @@ import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
 import {
+  ownedAppearanceArtworkRequest,
   ownedCardRequest,
   speciesCardRequest,
   type CardPresentationDeps,
@@ -21,6 +22,7 @@ import { requirePlayer } from '../../plugins/playerScope';
 import type { FastifyPluginAsyncZod } from '../../plugins/typeProvider';
 import {
   commonErrorResponses,
+  errorSchema,
   notFoundResponse,
   slugParam,
   waifuIdParams,
@@ -47,12 +49,29 @@ const artworkQuery = z.object({
     .describe(
       'Client cache discriminator only. The server ignores it and resolves the selected appearance from the owned copy.',
     ),
+  appearance: z
+    .string()
+    .min(1)
+    .max(120)
+    .regex(/^[a-z0-9_]+$/)
+    .optional()
+    .describe(
+      'Owned-artwork only: the appearance id to render (a gallery tile’s own look). ' +
+        'Validated against this copy’s ownership and level — a locked id answers 409, an ' +
+        'unknown id 400. Omitted renders the appearance she is currently wearing.',
+    ),
 }).strict();
 
 const artworkResponses = {
   304: z.null().describe('The artwork is unchanged — the ETag matched.'),
   ...notFoundResponse,
   ...commonErrorResponses,
+} as const;
+
+/** The owned route adds 409 for a requested appearance this copy has not earned. */
+const ownedArtworkResponses = {
+  ...artworkResponses,
+  409: errorSchema.describe('The requested appearance is not unlocked for this copy.'),
 } as const;
 
 interface ArtworkReply {
@@ -163,15 +182,23 @@ export const artworkRoutes =
           summary: 'Get an owned copy’s selected artwork',
           description:
             'Returns the appearance this copy is currently allowed to wear, after ownership and ' +
-            'level checks. A stale or locked selection falls back to the ungated default.',
+            'level checks. A stale or locked selection falls back to the ungated default. Pass ' +
+            '`appearance=<id>` to request a specific unlocked look — a gallery tile’s own art — ' +
+            'which is re-validated against this copy before it is served.',
           params: waifuIdParams,
           querystring: artworkQuery,
-          response: artworkResponses,
+          response: ownedArtworkResponses,
         },
       },
       async (req, reply) => {
         const entry = await collection.getOwned(requirePlayer(req).id, req.params.waifuId);
-        const request = ownedCardRequest(presentation, entry);
+        // With no `appearance` selector this is the look she is wearing (the
+        // hero image). A gallery tile names its own appearance instead, and the
+        // request re-validates ownership and level before serving that variant.
+        const request =
+          req.query.appearance === undefined
+            ? ownedCardRequest(presentation, entry)
+            : ownedAppearanceArtworkRequest(presentation, entry, req.query.appearance);
         await sendArtwork(req, reply, request.artwork.absolutePath, PRIVATE_CACHE_CONTROL);
         return reply;
       },

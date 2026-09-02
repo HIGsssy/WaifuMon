@@ -43,7 +43,10 @@ import type { Logger } from '../../shared/logger';
 
 /** Everything a card request needs from the application around it. */
 export interface CardPresentationDeps {
-  appearance: Pick<AppearanceService, 'speciesContent' | 'catalogFor' | 'currentAppearance'>;
+  appearance: Pick<
+    AppearanceService,
+    'speciesContent' | 'catalogFor' | 'currentAppearance' | 'assertUnlocked'
+  >;
   /** Absolute path to the assets root — `config.assetsDir`. */
   assetsDir: string;
   logger?: Logger | undefined;
@@ -183,6 +186,44 @@ export function ownedCardRequest(
   });
 
   return { input, species, requestedAppearanceId: worn.id, artwork };
+}
+
+/** A resolved raw-artwork request: which appearance, and the bytes it points at. */
+export interface OwnedArtworkRequest {
+  species: SpeciesContent;
+  appearance: ResolvedAppearance;
+  artwork: ResolvedAppearanceAsset;
+}
+
+/**
+ * The raw artwork for **one named appearance of an owned copy** — the gallery's
+ * per-tile image path.
+ *
+ * Unlike {@link ownedCardRequest}, which always draws the look she is *wearing*,
+ * this serves the specific appearance a tile is showing. That extra freedom is
+ * exactly why the unlock fence is not optional here: naming an appearance by id
+ * is the one way to ask this module for artwork nobody has earned, so the id
+ * runs through `assertUnlocked` — validated against *this copy's* level, off the
+ * row, never the caller — before it becomes a path. A locked id is a 409 and an
+ * unknown id a 400, the same two errors `selectAppearance` raises, so the HTTP
+ * layer maps one pair of status codes. The requested variant is a *selector*,
+ * never an authorization input: the copy's ownership and level are what decide.
+ */
+export function ownedAppearanceArtworkRequest(
+  deps: CardPresentationDeps,
+  subject: OwnedCardSubject,
+  appearanceId: string,
+): OwnedArtworkRequest {
+  const species = deps.appearance.speciesContent(subject.species.slug);
+  if (!species) {
+    throw new CardArtworkMissingError('', subject.species.slug, appearanceId);
+  }
+
+  const appearance = deps.appearance.assertUnlocked(species, appearanceId, {
+    level: subject.waifu.level,
+  });
+  const artwork = resolveArtwork(deps, species, appearance);
+  return { species, appearance, artwork };
 }
 
 /**
