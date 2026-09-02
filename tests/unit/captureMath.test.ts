@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   clamp,
   computeCaptureChance,
+  describeCaptureChance,
   rarityAtLeast,
   RARITY_RANK,
   type CaptureConfig,
@@ -354,5 +355,185 @@ describe('Buddy Bonus capture term', () => {
         buddyBonusPercent: 100,
       }),
     ).toBe(1);
+  });
+});
+
+describe('describeCaptureChance — capture-chance breakdown (incident diagnostics)', () => {
+  it('LR species + Basic Charm with no bonuses stays near the LR base rate', () => {
+    // The production incident: an LR encounter with only a Basic Charm
+    // (no multiplier, no affinity, no buddy, no item bonus). With the correct
+    // LR base rate (0.03) this is a ~3% capture — nowhere near 0.95.
+    const b = describeCaptureChance({
+      guaranteed: false,
+      baseCaptureRate: null,
+      rarity: 'LR',
+      captureModifier: null,
+      config,
+    });
+    expect(b.baseCaptureChance).toBeCloseTo(0.03, 10);
+    expect(b.speciesCaptureModifier).toBeNull();
+    expect(b.itemModifier).toBe(1);
+    expect(b.playerCaptureModifier).toBe(0);
+    expect(b.affinityModifier).toBe(0);
+    expect(b.itemCaptureBonus).toBe(0);
+    expect(b.buddyGlobalModifier).toBe(0);
+    expect(b.buddyConditionalModifier).toBe(0);
+    expect(b.otherModifiers).toBe(0);
+    expect(b.chanceBeforeClamp).toBeCloseTo(0.03, 10);
+    expect(b.finalChance).toBeCloseTo(0.03, 10);
+  });
+
+  it('reproduces the production incident when baseCaptureRate is (wrongly) 1', () => {
+    // Documents the exact bad path: a species override of 1.0 makes an LR a
+    // 100% base capture, which the +0.03 affinity pushes over the 0.95 ceiling.
+    // The breakdown makes the culprit obvious: speciesCaptureModifier === 1.
+    const b = describeCaptureChance({
+      guaranteed: false,
+      baseCaptureRate: 1,
+      rarity: 'LR',
+      captureModifier: null,
+      config,
+      buddyAffinityModifier: 0.03,
+    });
+    expect(b.speciesCaptureModifier).toBe(1);
+    expect(b.baseCaptureChance).toBe(1);
+    expect(b.chanceBeforeClamp).toBeCloseTo(1.03, 10);
+    expect(b.finalChance).toBe(config.maxChance);
+  });
+
+  it('an LR + Basic Charm + a +3pp affinity modifier cannot silently become a 95% capture', () => {
+    // The core regression guard. With the configured LR balance (base 0.03),
+    // the only additive help being a +0.03 affinity bonus, the achievable
+    // chance is ~0.06 — the game balance does NOT explicitly produce 0.95, so
+    // the calculation must not either.
+    const b = describeCaptureChance({
+      guaranteed: false,
+      baseCaptureRate: null,
+      rarity: 'LR',
+      captureModifier: null, // Basic Charm: no multiplier
+      config,
+      buddyAffinityModifier: 0.03,
+    });
+    expect(b.finalChance).toBeCloseTo(0.06, 10);
+    expect(b.finalChance).toBeLessThan(0.1);
+    expect(b.finalChance).not.toBe(config.maxChance);
+  });
+
+  it('LR species + favorable affinity adds flat points, still far below the cap', () => {
+    const b = describeCaptureChance({
+      guaranteed: false,
+      baseCaptureRate: null,
+      rarity: 'LR',
+      captureModifier: 1,
+      config,
+      buddyAffinityModifier: 0.05,
+    });
+    expect(b.affinityModifier).toBe(0.05);
+    expect(b.finalChance).toBeCloseTo(0.08, 10);
+  });
+
+  it('LR species + a relevant global buddy capture bonus scales the whole chance', () => {
+    const b = describeCaptureChance({
+      guaranteed: false,
+      baseCaptureRate: null,
+      rarity: 'LR',
+      captureModifier: 1,
+      config,
+      buddyBonusPercent: 50,
+    });
+    expect(b.buddyGlobalModifier).toBe(50);
+    expect(b.buddyConditionalModifier).toBe(0);
+    // 0.03 × (1 + 50/100) = 0.045
+    expect(b.chanceBeforeClamp).toBeCloseTo(0.045, 10);
+    expect(b.finalChance).toBeCloseTo(0.045, 10);
+  });
+
+  it('an irrelevant conditional buddy bonus (0%) does nothing and is attributed conditionally', () => {
+    // A targeted bonus that does not match this species arrives here as 0%.
+    const b = describeCaptureChance({
+      guaranteed: false,
+      baseCaptureRate: null,
+      rarity: 'LR',
+      captureModifier: 1,
+      config,
+      buddyBonusPercent: 0,
+      buddyBonusIsConditional: true,
+    });
+    expect(b.buddyGlobalModifier).toBe(0);
+    expect(b.buddyConditionalModifier).toBe(0);
+    expect(b.finalChance).toBeCloseTo(0.03, 10);
+  });
+
+  it('a matching conditional buddy bonus is attributed to the conditional field only', () => {
+    const b = describeCaptureChance({
+      guaranteed: false,
+      baseCaptureRate: null,
+      rarity: 'SR',
+      captureModifier: 1,
+      config,
+      buddyBonusPercent: 20,
+      buddyBonusIsConditional: true,
+    });
+    expect(b.buddyGlobalModifier).toBe(0);
+    expect(b.buddyConditionalModifier).toBe(20);
+    // 0.22 × 1.2 = 0.264
+    expect(b.finalChance).toBeCloseTo(0.264, 10);
+  });
+
+  it('common/normal species baseline uses the rarity default', () => {
+    const b = describeCaptureChance({
+      guaranteed: false,
+      baseCaptureRate: null,
+      rarity: 'N',
+      captureModifier: 1,
+      config,
+    });
+    expect(b.baseCaptureChance).toBe(0.5);
+    expect(b.speciesCaptureModifier).toBeNull();
+    expect(b.finalChance).toBeCloseTo(0.5, 10);
+  });
+
+  it('max clamp behavior: chanceBeforeClamp records the pre-clamp value', () => {
+    const b = describeCaptureChance({
+      guaranteed: false,
+      baseCaptureRate: null,
+      rarity: 'N',
+      captureModifier: 4, // 0.5 × 4 = 2.0
+      config,
+    });
+    expect(b.chanceBeforeClamp).toBeCloseTo(2.0, 10);
+    expect(b.finalChance).toBe(config.maxChance);
+  });
+
+  it('guaranteed capture behavior: 1.0, unclamped, modifiers reported but inert', () => {
+    const b = describeCaptureChance({
+      guaranteed: true,
+      baseCaptureRate: 0.0001,
+      rarity: 'LR',
+      captureModifier: 2,
+      config,
+      buddyAffinityModifier: 0.03,
+      buddyBonusPercent: 100,
+    });
+    expect(b.guaranteed).toBe(true);
+    expect(b.chanceBeforeClamp).toBe(1);
+    expect(b.finalChance).toBe(1);
+  });
+
+  it('the displayed chance equals the resolution chance for identical inputs', () => {
+    const input = {
+      guaranteed: false,
+      baseCaptureRate: null,
+      rarity: 'SSR' as const,
+      captureModifier: 1.5,
+      config,
+      buddyAffinityModifier: 0.04,
+      captureBonusModifier: 0.02,
+      buddyBonusPercent: 10,
+    };
+    // `computeCaptureChance` (the display/quote helper) and the breakdown's
+    // `finalChance` (what resolution rolls against) share one body, so they
+    // cannot disagree.
+    expect(describeCaptureChance(input).finalChance).toBe(computeCaptureChance(input));
   });
 });

@@ -57,6 +57,10 @@
       "weight": 10
     },
     {
+      "species": "mineral_spring_divine",
+      "weight": 5
+    },
+    {
       "species": "private_onsen_beauty",
       "weight": 3
     },

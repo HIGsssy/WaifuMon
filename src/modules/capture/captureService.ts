@@ -61,7 +61,7 @@ import {
 import type { Logger } from '../../shared/logger';
 import { defaultRng, type Rng } from '../../shared/random';
 import type { CaptureConfig } from './captureMath';
-import { computeCaptureChance } from './captureMath';
+import { computeCaptureChance, describeCaptureChance } from './captureMath';
 import { normalizeAffinity, resolveBuddyAffinity, type AffinityMatchup } from './affinityMath';
 import type { InventoryService } from '../inventory/inventoryService';
 import type { AppearanceService, AppearanceUnlockRef } from '../appearance/appearanceService';
@@ -943,8 +943,16 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
             'capture_chance',
             speciesRefFromRow(speciesRow),
           )) ?? 0;
+        const buddyBonusApplied =
+          buddyBonusPercent !== 0
+            ? ((await buddyBonus?.getActiveBuddyBonus(tx, playerId)) ?? null)
+            : null;
 
-        const chance = computeCaptureChance({
+        // One breakdown drives the roll *and* the diagnostic log, so the number
+        // the server rolls against is the same number an incident can explain
+        // term by term. `buddyBonusIsConditional` only steers how the single
+        // percentage is attributed (global vs targeted); it never doubles it.
+        const breakdown = describeCaptureChance({
           guaranteed,
           baseCaptureRate: speciesRow.baseCaptureRate,
           rarity,
@@ -953,12 +961,10 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
           buddyAffinityModifier,
           captureBonusModifier,
           buddyBonusPercent,
+          buddyBonusIsConditional: (buddyBonusApplied?.bonus.target ?? null) !== null,
           itemCaptureBonus,
         });
-        const buddyBonusApplied =
-          buddyBonusPercent !== 0
-            ? ((await buddyBonus?.getActiveBuddyBonus(tx, playerId)) ?? null)
-            : null;
+        const chance = breakdown.finalChance;
         const affinity: CaptureAffinityInfo = {
           buddyWaifuId: buddy?.waifu.id ?? null,
           buddyAffinity: resolution?.buddyAffinity ?? null,
@@ -1060,6 +1066,7 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
               affinity,
               effect,
               itemCaptureBonus,
+              captureBreakdown: breakdown,
             },
             'capture success',
           );
@@ -1088,6 +1095,30 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
           updatedEncounter = row!;
           attemptOutcome = 'failure';
           xpDelta = progressionConfig.xp.captureFailed;
+        }
+
+        // Failure/escape diagnostics mirror the success log so an incident can
+        // reconstruct a *missed* capture just as precisely as a caught one —
+        // the same breakdown, the same roll, so "why did this fail" and "why
+        // did this catch" are answered from the same fields.
+        if (attemptOutcome !== 'success') {
+          logger.info(
+            {
+              playerId,
+              encounterId: encounter.id,
+              speciesSlug: speciesRow.slug,
+              itemSlug: item.slug,
+              outcome: attemptOutcome,
+              chance,
+              roll,
+              guaranteed,
+              affinity,
+              effect,
+              itemCaptureBonus,
+              captureBreakdown: breakdown,
+            },
+            attemptOutcome === 'escape' ? 'capture escaped' : 'capture failed',
+          );
         }
 
         // Grant XP in the same transaction as the capture state change.

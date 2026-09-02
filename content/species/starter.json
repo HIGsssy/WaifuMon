@@ -3407,7 +3407,7 @@
     },
     "rarity": "LR",
     "archetype": "demon",
-    "baseCaptureRate": 1,
+    "baseCaptureRate": null,
     "description": "The dark side of the perfect Waifu. A goddess? maybe. An interesting time, obviously.",
     "tags": [
       "starter"
