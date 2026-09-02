@@ -747,13 +747,96 @@
     ]
   },
   {
+    "slug": "bathhouse_mistress",
+    "name": "Bathhouse Mistress",
+    "rarity": "SR",
+    "archetype": "demon",
+    "race": "demon",
+    "baseCaptureRate": null,
+    "description": "Runs the oldest bathhouse on the ridge; sets the temperature, the rules, and the penalty for breaking them, and enforces all three personally.",
+    "tags": [
+      "expansion",
+      "region_exclusive"
+    ],
+    "contentRating": "explicit",
+    "affinity": "dominant",
+    "card": {
+      "subtitle": "Keeper of the Old Soak",
+      "ability": {
+        "name": "Rule and Consequence",
+        "text": "Every guest is read the rules once, at the door, by her. Breaking them earns a private appointment"
+      },
+      "flavorQuote": "The water is for healing. The rules are for the ones who come here to misbehave.",
+      "artist": "Whistler"
+    },
+    "imagePath": "waifumon/bathhouse_mistress/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
+  },
+  {
     "slug": "resort_regent_idol",
     "name": "Resort Regent Idol",
     "rarity": "SSR",
     "archetype": "spirit",
     "race": "spirit",
     "baseCaptureRate": null,
-    "description": "The poster spirit of the mountain town \u2014 a see-through ghost idol who performs on the town-square stage.",
+    "description": "The poster spirit of the mountain town — a see-through ghost idol who performs on the town-square stage.",
     "tags": [
       "expansion",
       "region_exclusive"
@@ -853,172 +936,6 @@
       "artist": "Gorthig"
     },
     "imagePath": "waifumon/snowboard_delinquent/standard.png",
-    "enabled": true,
-    "eventKey": null,
-    "perSpeciesWeight": 1,
-    "appearances": [
-      {
-        "id": "standard",
-        "name": "Standard",
-        "sortOrder": 0,
-        "unlock": {
-          "type": "owned"
-        }
-      },
-      {
-        "id": "level_10",
-        "name": "Level 10",
-        "sortOrder": 10,
-        "unlock": {
-          "type": "level",
-          "atLevel": 10
-        }
-      },
-      {
-        "id": "level_20",
-        "name": "Level 20",
-        "sortOrder": 20,
-        "unlock": {
-          "type": "level",
-          "atLevel": 20
-        }
-      },
-      {
-        "id": "level_30",
-        "name": "Level 30",
-        "sortOrder": 30,
-        "unlock": {
-          "type": "level",
-          "atLevel": 30
-        }
-      },
-      {
-        "id": "level_40",
-        "name": "Level 40",
-        "sortOrder": 40,
-        "unlock": {
-          "type": "level",
-          "atLevel": 40
-        }
-      },
-      {
-        "id": "level_50",
-        "name": "Level 50",
-        "sortOrder": 50,
-        "unlock": {
-          "type": "level",
-          "atLevel": 50
-        }
-      }
-    ]
-  },
-  {
-    "slug": "bathhouse_mistress",
-    "name": "Bathhouse Mistress",
-    "rarity": "SR",
-    "archetype": "demon",
-    "race": "demon",
-    "baseCaptureRate": null,
-    "description": "Runs the oldest bathhouse on the ridge; sets the temperature, the rules, and the penalty for breaking them, and enforces all three personally.",
-    "tags": [
-      "expansion",
-      "region_exclusive"
-    ],
-    "contentRating": "explicit",
-    "affinity": "dominant",
-    "card": {
-      "subtitle": "Keeper of the Old Soak",
-      "ability": {
-        "name": "Rule and Consequence",
-        "text": "Every guest is read the rules once, at the door, by her. Breaking them earns a private appointment she always keeps."
-      },
-      "flavorQuote": "The water is for healing. The rules are for the ones who come here to misbehave.",
-      "artist": "Whistler"
-    },
-    "imagePath": "waifumon/bathhouse_mistress/standard.png",
-    "enabled": true,
-    "eventKey": null,
-    "perSpeciesWeight": 1,
-    "appearances": [
-      {
-        "id": "standard",
-        "name": "Standard",
-        "sortOrder": 0,
-        "unlock": {
-          "type": "owned"
-        }
-      },
-      {
-        "id": "level_10",
-        "name": "Level 10",
-        "sortOrder": 10,
-        "unlock": {
-          "type": "level",
-          "atLevel": 10
-        }
-      },
-      {
-        "id": "level_20",
-        "name": "Level 20",
-        "sortOrder": 20,
-        "unlock": {
-          "type": "level",
-          "atLevel": 20
-        }
-      },
-      {
-        "id": "level_30",
-        "name": "Level 30",
-        "sortOrder": 30,
-        "unlock": {
-          "type": "level",
-          "atLevel": 30
-        }
-      },
-      {
-        "id": "level_40",
-        "name": "Level 40",
-        "sortOrder": 40,
-        "unlock": {
-          "type": "level",
-          "atLevel": 40
-        }
-      },
-      {
-        "id": "level_50",
-        "name": "Level 50",
-        "sortOrder": 50,
-        "unlock": {
-          "type": "level",
-          "atLevel": 50
-        }
-      }
-    ]
-  },
-  {
-    "slug": "towel_house_spirit",
-    "name": "Towel-House Spirit",
-    "rarity": "N",
-    "archetype": "spirit",
-    "race": "spirit",
-    "baseCaptureRate": null,
-    "description": "Haunts the storage room where the linen steams; folds every towel so perfectly the guests swear they're being watched.",
-    "tags": [
-      "expansion",
-      "region_exclusive"
-    ],
-    "contentRating": "suggestive",
-    "affinity": "caregiver",
-    "card": {
-      "subtitle": "Linen-Room Custodian",
-      "ability": {
-        "name": "Immaculate Folds",
-        "text": "Every towel leaves her rack with a crease so sharp it could draw blood, and a personal warmth no dryer provides."
-      },
-      "flavorQuote": "She does not want thanks. She wants you to use the towel. That is the whole transaction.",
-      "artist": "Whistler"
-    },
-    "imagePath": "waifumon/towel_house_spirit/standard.png",
     "enabled": true,
     "eventKey": null,
     "perSpeciesWeight": 1,

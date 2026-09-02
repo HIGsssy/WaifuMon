@@ -53,6 +53,10 @@
       "weight": 3
     },
     {
+      "species": "snowboard_delinquent",
+      "weight": 10
+    },
+    {
       "species": "private_onsen_beauty",
       "weight": 3
     },
@@ -155,6 +159,10 @@
     {
       "species": "bathhouse_mistress",
       "weight": 8
+    },
+    {
+      "species": "towel_house_spirit",
+      "weight": 10
     }
   ]
 }
