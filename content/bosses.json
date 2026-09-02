@@ -193,5 +193,31 @@
     "repelledText": "Cherry's halo glitches violently as she stares at the damage report in disbelief. 'Y-YOU CHEATED! Obviously! My combat model doesn't lose!' Her cheeks turn bright pink. 'And tell your Waifus to stop looking so smug! I wasn't even using ten percent of my processing power!' She rockets away while furiously deleting the battle logs.",
     "unchallengedText": "Cherry waits dramatically beneath her glowing halo, arms crossed. Nobody challenges her. One eye twitches. 'Hmph! Obviously you're intimidated. Smart choice.' She floats away, quietly muttering, 'Not that I wanted somebody to fight me or anything... idiots.'",
     "description": "An unhinged tsundere AI bully wrapped in enough pink cyber-divinity to crash a graphics card. OG Cherry considers humility a software vulnerability and losing a battle statistically impossible."
+  },
+  {
+    "id": "shady_doctor",
+    "name": "The Shady \"Doctor\"",
+    "affinity": "primal",
+    "region": "waifu-valley",
+    "enabled": true,
+    "artwork": "bosses/shady-doctor_boss.webp",
+    "rewardTable": "standard-scouting-v1",
+    "scoutingText": "A male cat-person in black ninja garb drops silently from a nearby rooftop, a toy stethoscope dangling around his neck. He adjusts a suspiciously fake medical badge and clears his throat. 'Good news, ma'am. I'm a doctor. Bad news... you're dangerously overdue for a mammogram.'",
+    "repelledText": "His examination gloves go flying as your Waifumon asks to see his medical license. 'My credentials are... classified!' he hisses before throwing down a smoke bomb and sprinting away on all fours.",
+    "unchallengedText": "After several minutes of offering 'complimentary screenings' to absolutely nobody, he sighs, stuffs his fake diploma back into his ninja pouch, and vanishes in a puff of smoke.",
+    "description": "A suspicious feline shinobi whose medical qualifications begin and end with owning a stethoscope and having extremely strong opinions about preventative breast care."
+  },
+  {
+    "id": "creeping_cowboy",
+    "name": "The Creeping Cowboy",
+    "affinity": "submissive",
+    "region": "waifu-valley",
+    "enabled": true,
+    "artwork": "bosses/creeping-cowboy_boss.webp",
+    "rewardTable": "standard-scouting-v1",
+    "scoutingText": "A bald cowboy emerges from behind a boulder, squinting into the distance beneath the brim of his hat. He checks a crumpled WANTED poster covered in sketches of suspiciously muscular women. 'Pardon me, partner,' he says, lowering his voice. 'You ain't happened to see any dangerous Muscle Mommys around these parts, have ya?'",
+    "repelledText": "The Cowboy goes sailing through a wooden fence. From somewhere inside the wreckage comes an ecstatic shout: 'DANGEROUS CONFIRMED!' A moment later, he crawls away while frantically updating his Muscle Mommy field guide.",
+    "unchallengedText": "Finding no Muscle Mommys nearby, he sighs and studies his map. 'Maybe I took a wrong turn at Thigh Noon...' He adjusts his hat and rides off toward the next suspiciously muscular silhouette.",
+    "description": "A bald frontier menace roaming the wilderness in relentless pursuit of the rare and notoriously dangerous Muscle Mommy. Whether he intends to capture one or be captured by one remains unclear."
   }
 ]

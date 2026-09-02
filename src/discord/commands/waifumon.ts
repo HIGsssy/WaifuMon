@@ -26,8 +26,13 @@ import {
   WaifuAlreadyReleasedError,
   WaifuNotOwnedError,
 } from '../../shared/errors';
-import type { PriceCurrency } from '../../db/schema';
+import type { ItemRow, PriceCurrency } from '../../db/schema';
 import type { ItemUseResult } from '../../modules/items/itemUseService';
+import {
+  formatItemEffectLines,
+  effectSummary,
+  formatCaptureBonus,
+} from '../../modules/items/itemEffects';
 import type { AppContext, PlayerInteraction, Provisioned } from '../types';
 import { buildCustomId } from '../types';
 import { respondEphemeral } from '../ephemeralSession';
@@ -496,11 +501,12 @@ export function formatPrice(amount: number, currency: PriceCurrency): string {
   return `${amount} ${currencyLabel(currency)}`;
 }
 
-/** 0.03 → "+3%" — the player-facing form of a flat capture bonus. */
-export function formatCaptureBonus(modifier: number): string {
-  const pct = Math.round(modifier * 1000) / 10;
-  return `+${Number.isInteger(pct) ? pct : pct.toFixed(1)}%`;
-}
+/**
+ * Item mechanics copy lives in `modules/items/itemEffects` so every screen —
+ * shop, inventory, capture selector — reads the same structured fields.
+ * Re-exported here because these two are long-standing imports of this module.
+ */
+export { effectSummary, formatCaptureBonus };
 
 /**
  * One line describing the player's active capture buff, e.g.
@@ -606,27 +612,6 @@ async function buildInventoryView(
   return { embeds: [embed], components: withBackRow(chunkButtonRows(useButtons)) };
 }
 
-/** Short human description of an item's active effect, for list rows. */
-export function effectSummary(
-  effectType: string | null,
-  effectConfig: Record<string, unknown> | null,
-): string {
-  if (effectType === 'restore_energy_full') return 'restores Hunt Energy to full';
-  if (effectType === 'restore_energy_amount') {
-    const amount = effectConfig && typeof effectConfig.amount === 'number'
-      ? effectConfig.amount
-      : 0;
-    return `restores ${amount} Hunt Energy`;
-  }
-  if (effectType === 'capture_bonus_charges') {
-    const cfg = effectConfig ?? {};
-    const bonus = typeof cfg.captureBonus === 'number' ? cfg.captureBonus : 0;
-    const charges = typeof cfg.charges === 'number' ? cfg.charges : 0;
-    return `${formatCaptureBonus(bonus)} capture for ${charges} attempts`;
-  }
-  return '';
-}
-
 export async function handleInventory(
   ctx: AppContext,
   interaction: PlayerInteraction,
@@ -709,6 +694,28 @@ export async function handleItemUse(
   }
 }
 
+/**
+ * One shop shelf entry: the flavour `description` the item ships with, then the
+ * mechanical lines derived from its structured fields, then the price. Flavour
+ * and mechanics stay separate — the description is never rewritten to carry
+ * numbers, and the numbers always come from the columns the game actually
+ * reads.
+ */
+export function formatShopEntry(
+  item: ItemRow,
+  currency: PriceCurrency,
+  ownedQuantity: number,
+): string {
+  const parts = [`${item.emoji ?? '•'} **${item.name}**`];
+  const flavour = item.description.trim();
+  if (flavour) parts.push(`*${flavour}*`);
+  parts.push(...formatItemEffectLines(item));
+  parts.push(
+    `Price: **${formatPrice(item.buyPrice ?? 0, currency)}** · owned ×${ownedQuantity}`,
+  );
+  return parts.join('\n');
+}
+
 async function buildShopView(
   ctx: AppContext,
   prov: Provisioned,
@@ -725,16 +732,10 @@ async function buildShopView(
   // The shop is the player's current region shelf — there is no global shop.
   // The service hands back buyable rows only; items sold in other regions (or
   // nowhere) never reach this page.
-  const lines = catalog.map(({ item, currency }) => {
-    const detail = item.isGuaranteedCapture
-      ? 'guarantees capture'
-      : item.captureModifier != null
-        ? `×${item.captureModifier} capture`
-        : effectSummary(item.effectType, item.effectConfig) || item.category;
-    const price = `**${formatPrice(item.buyPrice ?? 0, currency)}**`;
-    return `${item.emoji ?? '•'} **${item.name}** (${detail}) — ${price} · owned ×${owned.get(item.id) ?? 0}`;
-  });
-  const body = lines.length > 0 ? lines.join('\n') : '*The stalls here are empty today.*';
+  const lines = catalog.map(({ item, currency }) =>
+    formatShopEntry(item, currency, owned.get(item.id) ?? 0),
+  );
+  const body = lines.length > 0 ? lines.join('\n\n') : '*The stalls here are empty today.*';
 
   const header = `💰 **${balances.waifubux}** WaifuBux · ✨ **${balances.essence}** Essence`;
   const status = statusLine ? `\n\n${statusLine}` : '';
