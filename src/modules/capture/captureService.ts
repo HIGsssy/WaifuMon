@@ -60,8 +60,8 @@ import {
 } from '../../shared/errors';
 import type { Logger } from '../../shared/logger';
 import { defaultRng, type Rng } from '../../shared/random';
-import type { CaptureConfig } from './captureMath';
-import { computeCaptureChance } from './captureMath';
+import type { CaptureChanceBreakdown, CaptureConfig } from './captureMath';
+import { computeCaptureChance, computeCaptureChanceBreakdown } from './captureMath';
 import { normalizeAffinity, resolveBuddyAffinity, type AffinityMatchup } from './affinityMath';
 import type { InventoryService } from '../inventory/inventoryService';
 import type { AppearanceService, AppearanceUnlockRef } from '../appearance/appearanceService';
@@ -162,6 +162,7 @@ export interface CaptureQuote {
   buddyAffinityModifier: number;
   captureBonusModifier: number;
   itemCaptureBonus: number;
+  breakdown: CaptureChanceBreakdown;
 }
 
 /**
@@ -247,6 +248,7 @@ export interface CaptureAttemptResult {
    * species ships artwork a brand-new copy already qualifies for.
    */
   newAppearances: AppearanceUnlockRef[];
+  breakdown: CaptureChanceBreakdown;
 }
 
 /** Options for {@link CaptureService.attemptCapture}. */
@@ -505,8 +507,8 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
     });
     const guaranteed = item?.isGuaranteedCapture ?? false;
     const itemCaptureBonus = guaranteed ? 0 : (item?.captureBonus ?? 0);
-    const chance = item
-      ? computeCaptureChance({
+    const breakdown = item
+      ? computeCaptureChanceBreakdown({
           guaranteed,
           baseCaptureRate: speciesRow.baseCaptureRate,
           rarity,
@@ -516,7 +518,16 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
           captureBonusModifier,
           itemCaptureBonus,
         })
-      : baselineChance;
+      : computeCaptureChanceBreakdown({
+          guaranteed: false,
+          baseCaptureRate: speciesRow.baseCaptureRate,
+          rarity,
+          captureModifier: null,
+          config: captureConfig,
+          buddyAffinityModifier,
+          captureBonusModifier,
+        });
+    const chance = item ? breakdown.finalChance : baselineChance;
     return {
       encounter,
       species: speciesRow,
@@ -528,6 +539,7 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
       buddyAffinityModifier,
       captureBonusModifier,
       itemCaptureBonus,
+      breakdown,
     };
   }
 
@@ -885,7 +897,7 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
         // so it contributes nothing there (and content forbids the pairing).
         const itemCaptureBonus = guaranteed ? 0 : (item.captureBonus ?? 0);
 
-        const chance = computeCaptureChance({
+        const breakdown = computeCaptureChanceBreakdown({
           guaranteed,
           baseCaptureRate: speciesRow.baseCaptureRate,
           rarity,
@@ -895,6 +907,7 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
           captureBonusModifier,
           itemCaptureBonus,
         });
+        const chance = breakdown.finalChance;
         const affinity: CaptureAffinityInfo = {
           buddyWaifuId: buddy?.waifu.id ?? null,
           buddyAffinity: resolution?.buddyAffinity ?? null,
@@ -979,25 +992,6 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
               speciesRow.rarity
             ] ?? 0;
           if (isNewDex) xpDelta += progressionConfig.xp.newDexEntry;
-          logger.info(
-            {
-              playerId,
-              encounterId: encounter.id,
-              speciesSlug: speciesRow.slug,
-              itemSlug: item.slug,
-              chance,
-              roll,
-              guaranteed,
-              isDuplicate,
-              isNewDex,
-              xpDelta,
-              baseSp,
-              affinity,
-              effect,
-              itemCaptureBonus,
-            },
-            'capture success',
-          );
         } else if (attemptNumber >= encounter.maxAttempts) {
           const [row] = await tx
             .update(encounters)
@@ -1025,6 +1019,41 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
           xpDelta = progressionConfig.xp.captureFailed;
         }
 
+        logger.info(
+          {
+            playerId,
+            encounterId: encounter.id,
+            speciesSlug: speciesRow.slug,
+            rarity: speciesRow.rarity,
+            itemSlug: item.slug,
+            chance,
+            roll,
+            guaranteed,
+            outcome: attemptOutcome,
+            isDuplicate,
+            isNewDex,
+            xpDelta,
+            baseSp: newWaifu?.baseSp ?? null,
+            affinity,
+            effect,
+            itemCaptureBonus,
+            baseCaptureChance: breakdown.baseCaptureChance,
+            rarityBaseCaptureRate: breakdown.rarityBaseCaptureRate,
+            speciesBaseCaptureRate: breakdown.speciesBaseCaptureRate,
+            playerCaptureModifier: breakdown.playerCaptureModifier,
+            buddyGlobalModifier: breakdown.buddyGlobalModifier,
+            buddyConditionalModifier: breakdown.buddyConditionalModifier,
+            affinityModifier: breakdown.affinityModifier,
+            itemModifier: breakdown.itemModifier,
+            captureBonusModifier: breakdown.captureBonusModifier,
+            otherModifiers: breakdown.otherModifiers,
+            chanceBeforeClamp: breakdown.chanceBeforeClamp,
+            finalChance: breakdown.finalChance,
+            breakdown,
+          },
+          attemptOutcome === 'success' ? 'capture success' : 'capture failure',
+        );
+
         // Grant XP in the same transaction as the capture state change.
         const xpResult = await progression.grantXp(tx, playerId, {
           eventType: attemptOutcome === 'success' ? 'capture_success' : 'capture_failed',
@@ -1045,15 +1074,25 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
             encounterAffinity: affinity.encounterAffinity,
             affinityMatchup: affinity.matchup,
             buddyAffinityModifier: affinity.buddyAffinityModifier,
-            finalChance: affinity.finalChance,
             // Consumable buff audit trail — mirrors the affinity fields so a
             // single progression-event row explains the whole chance.
-            captureBonusModifier: effect?.captureBonusModifier ?? 0,
             captureBonusSource: effect?.sourceItemSlug ?? null,
             captureBonusChargesRemaining: effect?.chargesRemaining ?? null,
             // The committed item's own additive term, so one progression row
             // still explains the whole chance.
             itemCaptureBonus,
+            baseCaptureChance: breakdown.baseCaptureChance,
+            rarityBaseCaptureRate: breakdown.rarityBaseCaptureRate,
+            speciesBaseCaptureRate: breakdown.speciesBaseCaptureRate,
+            playerCaptureModifier: breakdown.playerCaptureModifier,
+            buddyGlobalModifier: breakdown.buddyGlobalModifier,
+            buddyConditionalModifier: breakdown.buddyConditionalModifier,
+            affinityModifier: breakdown.affinityModifier,
+            itemModifier: breakdown.itemModifier,
+            captureBonusModifier: breakdown.captureBonusModifier,
+            otherModifiers: breakdown.otherModifiers,
+            chanceBeforeClamp: breakdown.chanceBeforeClamp,
+            finalChance: breakdown.finalChance,
           },
         });
         // "new dex entry" is logged separately for audit clarity.
@@ -1110,6 +1149,7 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
             effect,
             itemCaptureBonus,
             newAppearances,
+            breakdown,
           },
         };
       });

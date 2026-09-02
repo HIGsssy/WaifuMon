@@ -39,6 +39,36 @@ export interface CaptureChanceInput {
   itemCaptureBonus?: number;
 }
 
+export interface CaptureChanceBreakdown {
+  guaranteed: boolean;
+  rarity: Rarity;
+  /** Rarity-table probability before species overrides. */
+  rarityBaseCaptureRate: number;
+  /** Species-authored override, or null when the rarity table is used. */
+  speciesBaseCaptureRate: number | null;
+  /** The base probability actually fed into the formula. */
+  baseCaptureChance: number;
+  /** There is no player-wide capture modifier today; logged as neutral. */
+  playerCaptureModifier: 1;
+  /** There is no global buddy capture modifier today; logged as neutral. */
+  buddyGlobalModifier: 0;
+  /** There is no conditional buddy capture modifier today; logged as neutral. */
+  buddyConditionalModifier: 0;
+  /** Current affinity system's flat additive probability-point modifier. */
+  affinityModifier: number;
+  /** Multiplicative direct item modifier (`captureModifier`; charms use this). */
+  itemModifier: number;
+  /** Additive direct item bonus (`captureBonus`; restraint items use this). */
+  itemCaptureBonus: number;
+  /** Additive active-effect bonus, currently Microdose. */
+  captureBonusModifier: number;
+  otherModifiers: {
+    captureBonusModifier: number;
+  };
+  chanceBeforeClamp: number;
+  finalChance: number;
+}
+
 /**
  * chance = clamp(
  *   base_capture_rate × charm_modifier
@@ -51,15 +81,41 @@ export interface CaptureChanceInput {
  * clamp bounds remain the single source of truth for the achievable range.
  */
 export function computeCaptureChance(input: CaptureChanceInput): number {
-  if (input.guaranteed) return 1;
-  const base = input.baseCaptureRate ?? input.config.baseRatesByRarity[input.rarity];
-  const modifier = input.captureModifier ?? 1;
-  const raw =
-    base * modifier +
-    (input.buddyAffinityModifier ?? 0) +
-    (input.captureBonusModifier ?? 0) +
-    (input.itemCaptureBonus ?? 0);
-  return clamp(raw, input.config.minChance, input.config.maxChance);
+  return computeCaptureChanceBreakdown(input).finalChance;
+}
+
+export function computeCaptureChanceBreakdown(input: CaptureChanceInput): CaptureChanceBreakdown {
+  const rarityBaseCaptureRate = input.config.baseRatesByRarity[input.rarity];
+  const baseCaptureChance = input.baseCaptureRate ?? rarityBaseCaptureRate;
+  const itemModifier = input.captureModifier ?? 1;
+  const affinityModifier = input.buddyAffinityModifier ?? 0;
+  const captureBonusModifier = input.captureBonusModifier ?? 0;
+  const itemCaptureBonus = input.itemCaptureBonus ?? 0;
+  const chanceBeforeClamp = input.guaranteed
+    ? 1
+    : baseCaptureChance * itemModifier + affinityModifier + captureBonusModifier + itemCaptureBonus;
+  const finalChance = input.guaranteed
+    ? 1
+    : clamp(chanceBeforeClamp, input.config.minChance, input.config.maxChance);
+  return {
+    guaranteed: input.guaranteed,
+    rarity: input.rarity,
+    rarityBaseCaptureRate,
+    speciesBaseCaptureRate: input.baseCaptureRate,
+    baseCaptureChance,
+    playerCaptureModifier: 1,
+    buddyGlobalModifier: 0,
+    buddyConditionalModifier: 0,
+    affinityModifier,
+    itemModifier,
+    itemCaptureBonus,
+    captureBonusModifier,
+    otherModifiers: {
+      captureBonusModifier,
+    },
+    chanceBeforeClamp,
+    finalChance,
+  };
 }
 
 export function clamp(value: number, min: number, max: number): number {

@@ -1,0 +1,1034 @@
+[
+  {
+    "slug": "alley_catgirl",
+    "name": "Alley Catgirl",
+    "rarity": "N",
+    "buddyBonus": {
+      "name": "Trash Treasure",
+      "flavorText": "Trash Treasure: +10% chance to find items from Hunting.",
+      "effectId": "hunt_item_find_chance",
+      "value": 10
+    },
+    "sourceRow": 21
+  },
+  {
+    "slug": "shrine_assistant",
+    "name": "Shrine Assistant",
+    "rarity": "N",
+    "buddyBonus": {
+      "name": "Offering Bowl",
+      "flavorText": "Offering Bowl: +50% Affection gained.",
+      "effectId": "affection_gain",
+      "value": 50
+    },
+    "sourceRow": 22
+  },
+  {
+    "slug": "cafe_maid",
+    "name": "Café Maid",
+    "rarity": "N",
+    "buddyBonus": {
+      "name": "Second Cup",
+      "flavorText": "Second Cup: +50% Energy gained in Care mode.",
+      "effectId": "care_energy_gain",
+      "value": 50
+    },
+    "sourceRow": 17
+  },
+  {
+    "slug": "neon_school_rebel",
+    "name": "Neon School Rebel",
+    "rarity": "N",
+    "buddyBonus": {
+      "name": "After Bell",
+      "flavorText": "After Bell: +8% capture chance against SR and below Waifumon.",
+      "effectId": "capture_chance",
+      "value": 8,
+      "target": {
+        "type": "rarity_max",
+        "value": "SR"
+      }
+    },
+    "sourceRow": 6
+  },
+  {
+    "slug": "library_goth",
+    "name": "Library Goth",
+    "rarity": "N",
+    "buddyBonus": {
+      "name": "Quiet Study",
+      "flavorText": "Quiet Study: +25% Essence gained.",
+      "effectId": "essence_gain",
+      "value": 25
+    },
+    "sourceRow": 20
+  },
+  {
+    "slug": "arcade_bunny",
+    "name": "Arcade Bunny",
+    "rarity": "N",
+    "buddyBonus": {
+      "name": "Free Play",
+      "flavorText": "Free Play: 5% chance Hunting does not consume Energy.",
+      "effectId": "energy_save_chance",
+      "value": 5
+    },
+    "sourceRow": 16
+  },
+  {
+    "slug": "rainy_day_idol",
+    "name": "Rainy Day Idol",
+    "rarity": "N",
+    "buddyBonus": {
+      "name": "Soft Spotlight",
+      "flavorText": "Soft Spotlight: +10% encounter weight for human Waifumon.",
+      "effectId": "encounter_weight",
+      "value": 10,
+      "target": {
+        "type": "race",
+        "value": "human"
+      }
+    },
+    "sourceRow": 10
+  },
+  {
+    "slug": "sleepy_succubus_intern",
+    "name": "Sleepy Succubus Intern",
+    "rarity": "N",
+    "buddyBonus": {
+      "name": "Power Nap",
+      "flavorText": "Power Nap: +50% Affection gained.",
+      "effectId": "affection_gain",
+      "value": 50
+    },
+    "sourceRow": 22
+  },
+  {
+    "slug": "nurse_imp",
+    "name": "Nurse Imp",
+    "rarity": "N",
+    "buddyBonus": {
+      "name": "\"What's in tha-...OW!\"",
+      "flavorText": "\"What's in tha-...OW!\": 5% chance Hunting does not consume Energy.",
+      "effectId": "energy_save_chance",
+      "value": 5
+    },
+    "sourceRow": 16
+  },
+  {
+    "slug": "streetwear_oni",
+    "name": "Streetwear Oni",
+    "rarity": "N",
+    "buddyBonus": {
+      "name": "\"Do a Kickflip!\"",
+      "flavorText": "\"Do a Kickflip!\": +25% Essence gained.",
+      "effectId": "essence_gain",
+      "value": 25
+    },
+    "sourceRow": 20
+  },
+  {
+    "slug": "moonlit_dancer",
+    "name": "Moonlit Dancer",
+    "rarity": "N",
+    "buddyBonus": {
+      "name": "Night Floor",
+      "flavorText": "Night Floor: +10% encounter weight for angel Waifumon.",
+      "effectId": "encounter_weight",
+      "value": 10,
+      "target": {
+        "type": "race",
+        "value": "angel"
+      }
+    },
+    "sourceRow": 10
+  },
+  {
+    "slug": "cyber_neko",
+    "name": "Cyber Neko",
+    "rarity": "N",
+    "buddyBonus": {
+      "name": "Street Pounce",
+      "flavorText": "Street Pounce: +10% encounter weight for demi-human Waifumon.",
+      "effectId": "encounter_weight",
+      "value": 10,
+      "target": {
+        "type": "race",
+        "value": "demi-human"
+      }
+    },
+    "sourceRow": 10
+  },
+  {
+    "slug": "potion_shop_clerk",
+    "name": "Potion Shop Clerk",
+    "rarity": "N",
+    "buddyBonus": {
+      "name": "Under the Counter",
+      "flavorText": "Under the Counter: +25% Essence gained.",
+      "effectId": "essence_gain",
+      "value": 25
+    },
+    "sourceRow": 20
+  },
+  {
+    "slug": "velvet_bartender",
+    "name": "Velvet Bartender",
+    "rarity": "N",
+    "buddyBonus": {
+      "name": "Last Call",
+      "flavorText": "Last Call: +25% Essence gained.",
+      "effectId": "essence_gain",
+      "value": 25
+    },
+    "sourceRow": 20
+  },
+  {
+    "slug": "demon_hall_monitor",
+    "name": "Demon Hall Monitor",
+    "rarity": "N",
+    "buddyBonus": {
+      "name": "Detention List",
+      "flavorText": "Detention List: +10% encounter weight for dominant affinity Waifumon.",
+      "effectId": "encounter_weight",
+      "value": 10,
+      "target": {
+        "type": "affinity",
+        "value": "dominant"
+      }
+    },
+    "sourceRow": 11
+  },
+  {
+    "slug": "beachside_siren",
+    "name": "Beachside Siren",
+    "rarity": "N",
+    "buddyBonus": {
+      "name": "Luring Song",
+      "flavorText": "Luring Song: +8% capture chance against SR and below Waifumon.",
+      "effectId": "capture_chance",
+      "value": 8,
+      "target": {
+        "type": "rarity_max",
+        "value": "SR"
+      }
+    },
+    "sourceRow": 6
+  },
+  {
+    "slug": "neon_kitsune_apprentice",
+    "name": "Neon Kitsune Apprentice",
+    "rarity": "R",
+    "buddyBonus": {
+      "name": "First Trick",
+      "flavorText": "First Trick: +12% encounter weight for spirit Waifumon.",
+      "effectId": "encounter_weight",
+      "value": 12,
+      "target": {
+        "type": "race",
+        "value": "spirit"
+      }
+    },
+    "sourceRow": 10
+  },
+  {
+    "slug": "crimson_oni_bride",
+    "name": "Crimson Oni Bride",
+    "rarity": "R",
+    "buddyBonus": {
+      "name": "Bride's Claim",
+      "flavorText": "Bride's Claim: +12% Player XP gained.",
+      "effectId": "player_xp_gain",
+      "value": 12
+    },
+    "sourceRow": 18
+  },
+  {
+    "slug": "cyber_shrine_maiden",
+    "name": "Cyber Shrine Maiden",
+    "rarity": "R",
+    "buddyBonus": {
+      "name": "Sacred Maintenance",
+      "flavorText": "Sacred Maintenance: +50% Energy gained in Care mode.",
+      "effectId": "care_energy_gain",
+      "value": 50
+    },
+    "sourceRow": 17
+  },
+  {
+    "slug": "latex_paladin",
+    "name": "Latex Paladin",
+    "rarity": "R",
+    "buddyBonus": {
+      "name": "Oathbound",
+      "flavorText": "Oathbound: +10% capture chance against demon Waifumon.",
+      "effectId": "capture_chance",
+      "value": 10,
+      "target": {
+        "type": "race",
+        "value": "demon"
+      }
+    },
+    "sourceRow": 3
+  },
+  {
+    "slug": "gothic_vampire_heiress",
+    "name": "Gothic Vampire Heiress",
+    "rarity": "R",
+    "buddyBonus": {
+      "name": "Eternal Mark",
+      "flavorText": "Eternal Mark: +50% Affection gained.",
+      "effectId": "affection_gain",
+      "value": 50
+    },
+    "sourceRow": 22
+  },
+  {
+    "slug": "hologram_idol",
+    "name": "Hologram Idol",
+    "rarity": "R",
+    "buddyBonus": {
+      "name": "Fan Light",
+      "flavorText": "Fan Light: +50% Affection gained.",
+      "effectId": "affection_gain",
+      "value": 50
+    },
+    "sourceRow": 22
+  },
+  {
+    "slug": "demon_librarian",
+    "name": "Demon Librarian",
+    "rarity": "R",
+    "buddyBonus": {
+      "name": "Demonic Rolodex",
+      "flavorText": "Demonic Rolodex: +12% encounter weight for demon Waifumon.",
+      "effectId": "encounter_weight",
+      "value": 12,
+      "target": {
+        "type": "race",
+        "value": "demon"
+      }
+    },
+    "sourceRow": 10
+  },
+  {
+    "slug": "bunny_dealer",
+    "name": "Bunny Dealer",
+    "rarity": "R",
+    "buddyBonus": {
+      "name": "Gambler",
+      "flavorText": "Gambler: +10% capture chance against unowned species.",
+      "effectId": "capture_chance",
+      "value": 10,
+      "target": {
+        "type": "ownership",
+        "value": "unowned"
+      }
+    },
+    "sourceRow": 7
+  },
+  {
+    "slug": "angelic_delinquent",
+    "name": "Angelic Delinquent",
+    "rarity": "R",
+    "buddyBonus": {
+      "name": "Tough Love",
+      "flavorText": "Tough Love: +12% encounter weight for submissive affinity Waifumon.",
+      "effectId": "encounter_weight",
+      "value": 12,
+      "target": {
+        "type": "affinity",
+        "value": "submissive"
+      }
+    },
+    "sourceRow": 11
+  },
+  {
+    "slug": "witchy_mechanic",
+    "name": "Witchy Mechanic",
+    "rarity": "R",
+    "buddyBonus": {
+      "name": "Big Wrench",
+      "flavorText": "Big Wrench: +10% capture chance against android Waifumon.",
+      "effectId": "capture_chance",
+      "value": 10,
+      "target": {
+        "type": "race",
+        "value": "android"
+      }
+    },
+    "sourceRow": 3
+  },
+  {
+    "slug": "void_catgirl",
+    "name": "Void Catgirl",
+    "rarity": "SR",
+    "buddyBonus": {
+      "name": "\"Swipe!\"",
+      "flavorText": "\"Swipe!\": +40% eligible rewards from Boss Encounters.",
+      "effectId": "boss_reward_gain",
+      "value": 40
+    },
+    "sourceRow": 23
+  },
+  {
+    "slug": "royal_succubus",
+    "name": "Royal Succubus",
+    "rarity": "SR",
+    "buddyBonus": {
+      "name": "Royal Privilege",
+      "flavorText": "Royal Privilege: 8% chance Hunting does not consume Energy.",
+      "effectId": "energy_save_chance",
+      "value": 8
+    },
+    "sourceRow": 16
+  },
+  {
+    "slug": "chrome_valkyrie",
+    "name": "Chrome Valkyrie",
+    "rarity": "SR",
+    "buddyBonus": {
+      "name": "Overclock",
+      "flavorText": "Overclock: 8% chance Hunting does not consume Energy.",
+      "effectId": "energy_save_chance",
+      "value": 8
+    },
+    "sourceRow": 16
+  },
+  {
+    "slug": "blood_moon_priestess",
+    "name": "Blood Moon Priestess",
+    "rarity": "SR",
+    "buddyBonus": {
+      "name": "Blood Offering",
+      "flavorText": "Blood Offering: +40% XP gained by the active Buddy.",
+      "effectId": "buddy_xp_gain",
+      "value": 40
+    },
+    "sourceRow": 19
+  },
+  {
+    "slug": "casino_kitsune",
+    "name": "Casino Kitsune",
+    "rarity": "SR",
+    "buddyBonus": {
+      "name": "High Roller",
+      "flavorText": "High Roller: +15% encounter weight for unowned species.",
+      "effectId": "encounter_weight",
+      "value": 15,
+      "target": {
+        "type": "ownership",
+        "value": "unowned"
+      }
+    },
+    "sourceRow": 14
+  },
+  {
+    "slug": "fallen_angel_nurse",
+    "name": "Fallen Angel Nurse",
+    "rarity": "SR",
+    "buddyBonus": {
+      "name": "Night shift",
+      "flavorText": "Night shift: +50% Energy gained in Care mode.",
+      "effectId": "care_energy_gain",
+      "value": 50
+    },
+    "sourceRow": 17
+  },
+  {
+    "slug": "dollhouse_demon",
+    "name": "Dollhouse Demon",
+    "rarity": "SR",
+    "buddyBonus": {
+      "name": "Wind up",
+      "flavorText": "Wind up: +50% Energy gained in Care mode.",
+      "effectId": "care_energy_gain",
+      "value": 50
+    },
+    "sourceRow": 17
+  },
+  {
+    "slug": "darkelf_royal",
+    "name": "Darkelf Royal",
+    "rarity": "SR",
+    "buddyBonus": {
+      "name": "Royal Favor",
+      "flavorText": "Royal Favor: +12% capture chance against SSR+ Waifumon.",
+      "effectId": "capture_chance",
+      "value": 12,
+      "target": {
+        "type": "rarity_min",
+        "value": "SSR"
+      }
+    },
+    "sourceRow": 5
+  },
+  {
+    "slug": "queen_of_velvet_chains",
+    "name": "Queen of Velvet Chains",
+    "rarity": "SSR",
+    "buddyBonus": {
+      "name": "Willing Chains",
+      "flavorText": "Willing Chains: +15% capture chance against dominant affinity Waifumon.",
+      "effectId": "capture_chance",
+      "value": 15,
+      "target": {
+        "type": "affinity",
+        "value": "dominant"
+      }
+    },
+    "sourceRow": 4
+  },
+  {
+    "slug": "neon_dragon_empress",
+    "name": "Neon Dragon Empress",
+    "rarity": "SSR",
+    "buddyBonus": {
+      "name": "Digital Hoard",
+      "flavorText": "Digital Hoard: +18% chance to find items from Hunting.",
+      "effectId": "hunt_item_find_chance",
+      "value": 18
+    },
+    "sourceRow": 21
+  },
+  {
+    "slug": "eclipse_idol",
+    "name": "Eclipse Idol",
+    "rarity": "SSR",
+    "buddyBonus": {
+      "name": "Encore",
+      "flavorText": "Encore: +18% encounter weight for owned species.",
+      "effectId": "encounter_weight",
+      "value": 18,
+      "target": {
+        "type": "ownership",
+        "value": "owned"
+      }
+    },
+    "sourceRow": 15
+  },
+  {
+    "slug": "abyssal_shrine_oracle",
+    "name": "Abyssal Shrine Oracle",
+    "rarity": "SSR",
+    "buddyBonus": {
+      "name": "Twisted Blessing",
+      "flavorText": "Twisted Blessing: +15% capture chance against primal affinity Waifumon.",
+      "effectId": "capture_chance",
+      "value": 15,
+      "target": {
+        "type": "affinity",
+        "value": "primal"
+      }
+    },
+    "sourceRow": 4
+  },
+  {
+    "slug": "afterglow_goddess",
+    "name": "Afterglow Goddess",
+    "rarity": "UR",
+    "buddyBonus": {
+      "name": "Aftercare",
+      "flavorText": "Aftercare: +75% Energy gained in Care mode.",
+      "effectId": "care_energy_gain",
+      "value": 75
+    },
+    "sourceRow": 17
+  },
+  {
+    "slug": "cyber_lilith_prime",
+    "name": "Cyber Lilith Prime",
+    "rarity": "UR",
+    "buddyBonus": {
+      "name": "Hijack",
+      "flavorText": "Hijack: +18% capture chance against any Waifumon.",
+      "effectId": "capture_chance",
+      "value": 18
+    },
+    "sourceRow": 3
+  },
+  {
+    "slug": "the_first_waifu",
+    "name": "The First Waifu",
+    "rarity": "LR",
+    "buddyBonus": {
+      "name": "Unconditional Love",
+      "flavorText": "Unconditional Love: +100% Affection gained.",
+      "effectId": "affection_gain",
+      "value": 100
+    },
+    "sourceRow": 22
+  },
+  {
+    "slug": "the_waifu_below",
+    "name": "The Waifu Below",
+    "rarity": "LR",
+    "buddyBonus": {
+      "name": "Soul Claim",
+      "flavorText": "Soul Claim: +25% encounter weight for SSR+ Waifumon.",
+      "effectId": "encounter_weight",
+      "value": 25,
+      "target": {
+        "type": "rarity_min",
+        "value": "SSR"
+      }
+    },
+    "sourceRow": 12
+  },
+  {
+    "slug": "neko_barista",
+    "name": "Neko Barista",
+    "rarity": "N",
+    "buddyBonus": {
+      "name": "Warm Refill",
+      "flavorText": "Warm Refill: 5% chance Hunting does not consume Energy.",
+      "effectId": "energy_save_chance",
+      "value": 5
+    },
+    "sourceRow": 16
+  },
+  {
+    "slug": "gym_oni",
+    "name": "Gym Oni",
+    "rarity": "N",
+    "buddyBonus": {
+      "name": "Spotter",
+      "flavorText": "Spotter: +25% XP gained by the active Buddy.",
+      "effectId": "buddy_xp_gain",
+      "value": 25
+    },
+    "sourceRow": 19
+  },
+  {
+    "slug": "library_ghost",
+    "name": "Library Ghost",
+    "rarity": "N",
+    "buddyBonus": {
+      "name": "Unlisted Title",
+      "flavorText": "Unlisted Title: +10% encounter weight for unowned species.",
+      "effectId": "encounter_weight",
+      "value": 10,
+      "target": {
+        "type": "ownership",
+        "value": "unowned"
+      }
+    },
+    "sourceRow": 14
+  },
+  {
+    "slug": "arcade_succubus",
+    "name": "Arcade Succubus",
+    "rarity": "R",
+    "buddyBonus": {
+      "name": "Free Play",
+      "flavorText": "Free Play: +10% capture chance against any Waifumon.",
+      "effectId": "capture_chance",
+      "value": 10
+    },
+    "sourceRow": 2
+  },
+  {
+    "slug": "ramen_android",
+    "name": "Ramen Android",
+    "rarity": "R",
+    "buddyBonus": {
+      "name": "Extra Serving",
+      "flavorText": "Extra Serving: +30% Essence gained.",
+      "effectId": "essence_gain",
+      "value": 30
+    },
+    "sourceRow": 20
+  },
+  {
+    "slug": "neon_kitsune",
+    "name": "Neon Kitsune",
+    "rarity": "SR",
+    "buddyBonus": {
+      "name": "FoxFire",
+      "flavorText": "FoxFire: +15% encounter weight for unowned species.",
+      "effectId": "encounter_weight",
+      "value": 15,
+      "target": {
+        "type": "ownership",
+        "value": "unowned"
+      }
+    },
+    "sourceRow": 14
+  },
+  {
+    "slug": "eclipse_valkyrie",
+    "name": "Eclipse Valkyrie",
+    "rarity": "SSR",
+    "buddyBonus": {
+      "name": "Warpath",
+      "flavorText": "Warpath: +18% Player XP gained.",
+      "effectId": "player_xp_gain",
+      "value": 18
+    },
+    "sourceRow": 18
+  },
+  {
+    "slug": "void_empress",
+    "name": "Void Empress",
+    "rarity": "UR",
+    "buddyBonus": {
+      "name": "Inevitability",
+      "flavorText": "Inevitability: +75% Affection gained.",
+      "effectId": "affection_gain",
+      "value": 75
+    },
+    "sourceRow": 22
+  },
+  {
+    "slug": "ah_caretaker",
+    "name": "After Hours Caretaker",
+    "rarity": "N",
+    "buddyBonus": {
+      "name": "The Naughty Shift",
+      "flavorText": "The Naughty Shift: +50% Energy gained in Care mode.",
+      "effectId": "care_energy_gain",
+      "value": 50
+    },
+    "sourceRow": 17
+  },
+  {
+    "slug": "android_assassin",
+    "name": "Android Assassin",
+    "rarity": "R",
+    "buddyBonus": {
+      "name": "Clean Kill",
+      "flavorText": "Clean Kill: +10% capture chance against any Waifumon.",
+      "effectId": "capture_chance",
+      "value": 10
+    },
+    "sourceRow": 2
+  },
+  {
+    "slug": "android_secretary",
+    "name": "Android Secretary",
+    "rarity": "N",
+    "buddyBonus": {
+      "name": "Filed Under \"You\"",
+      "flavorText": "Filed Under \"You\": +10% encounter weight for owned species.",
+      "effectId": "encounter_weight",
+      "value": 10,
+      "target": {
+        "type": "ownership",
+        "value": "owned"
+      }
+    },
+    "sourceRow": 15
+  },
+  {
+    "slug": "angelic_judge",
+    "name": "Angelic Judge",
+    "rarity": "R",
+    "buddyBonus": {
+      "name": "Verdict",
+      "flavorText": "Verdict: +30% eligible rewards from Boss Encounters.",
+      "effectId": "boss_reward_gain",
+      "value": 30
+    },
+    "sourceRow": 23
+  },
+  {
+    "slug": "archangel_inquisitor",
+    "name": "Archangel Inquisitor",
+    "rarity": "R",
+    "buddyBonus": {
+      "name": "Holy Audit",
+      "flavorText": "Holy Audit: +10% capture chance against SSR+ Waifumon.",
+      "effectId": "capture_chance",
+      "value": 10,
+      "target": {
+        "type": "rarity_min",
+        "value": "SSR"
+      }
+    },
+    "sourceRow": 5
+  },
+  {
+    "slug": "bimbo_valkyrie",
+    "name": "Bimbo Valkyrie",
+    "rarity": "N",
+    "buddyBonus": {
+      "name": "Pretty Spear",
+      "flavorText": "Pretty Spear: +10% encounter weight for SR Waifumon.",
+      "effectId": "encounter_weight",
+      "value": 10,
+      "target": {
+        "type": "rarity",
+        "value": "SR"
+      }
+    },
+    "sourceRow": 13
+  },
+  {
+    "slug": "cabaret_star",
+    "name": "Cabaret Star",
+    "rarity": "SR",
+    "buddyBonus": {
+      "name": "Encore Crowd",
+      "flavorText": "Encore Crowd: +12% capture chance against SR and below Waifumon.",
+      "effectId": "capture_chance",
+      "value": 12,
+      "target": {
+        "type": "rarity_max",
+        "value": "SR"
+      }
+    },
+    "sourceRow": 6
+  },
+  {
+    "slug": "cat_burglar",
+    "name": "Cat Burglar",
+    "rarity": "R",
+    "buddyBonus": {
+      "name": "Quiet Hands",
+      "flavorText": "Quiet Hands: +12% chance to find items from Hunting.",
+      "effectId": "hunt_item_find_chance",
+      "value": 12
+    },
+    "sourceRow": 21
+  },
+  {
+    "slug": "dragon_casino_queen",
+    "name": "Dragon Casino Queen",
+    "rarity": "R",
+    "buddyBonus": {
+      "name": "House Edge",
+      "flavorText": "House Edge: +12% chance to find items from Hunting.",
+      "effectId": "hunt_item_find_chance",
+      "value": 12
+    },
+    "sourceRow": 21
+  },
+  {
+    "slug": "feral_android",
+    "name": "Feral Android",
+    "rarity": "R",
+    "buddyBonus": {
+      "name": "Broken Protocol",
+      "flavorText": "Broken Protocol: +10% capture chance against android Waifumon.",
+      "effectId": "capture_chance",
+      "value": 10,
+      "target": {
+        "type": "race",
+        "value": "android"
+      }
+    },
+    "sourceRow": 3
+  },
+  {
+    "slug": "feral_wood_spirit",
+    "name": "Feral Wood Spirit",
+    "rarity": "SR",
+    "buddyBonus": {
+      "name": "Wildpath",
+      "flavorText": "Wildpath: +15% encounter weight for spirit Waifumon.",
+      "effectId": "encounter_weight",
+      "value": 15,
+      "target": {
+        "type": "race",
+        "value": "spirit"
+      }
+    },
+    "sourceRow": 10
+  },
+  {
+    "slug": "heaven_spear_marshal",
+    "name": "Heaven's Spear Marshal",
+    "rarity": "SSR",
+    "buddyBonus": {
+      "name": "Divine Mandate",
+      "flavorText": "Divine Mandate: +18% encounter weight for demon Waifumon.",
+      "effectId": "encounter_weight",
+      "value": 18,
+      "target": {
+        "type": "race",
+        "value": "demon"
+      }
+    },
+    "sourceRow": 10
+  },
+  {
+    "slug": "holy_courtesan",
+    "name": "Holy Courtesan",
+    "rarity": "SR",
+    "buddyBonus": {
+      "name": "Sacred Softness",
+      "flavorText": "Sacred Softness: +50% Affection gained.",
+      "effectId": "affection_gain",
+      "value": 50
+    },
+    "sourceRow": 22
+  },
+  {
+    "slug": "lantern_spirit",
+    "name": "Lantern Spirit",
+    "rarity": "N",
+    "buddyBonus": {
+      "name": "Light the way",
+      "flavorText": "Light the way: +10% chance to find items from Hunting.",
+      "effectId": "hunt_item_find_chance",
+      "value": 10
+    },
+    "sourceRow": 21
+  },
+  {
+    "slug": "leopard_bodyguard",
+    "name": "Leopard Bodyguard",
+    "rarity": "N",
+    "buddyBonus": {
+      "name": "Escort Duty",
+      "flavorText": "Escort Duty: +25% eligible rewards from Boss Encounters.",
+      "effectId": "boss_reward_gain",
+      "value": 25
+    },
+    "sourceRow": 23
+  },
+  {
+    "slug": "neko_tatto_artist",
+    "name": "Neko Tattoo Artist",
+    "rarity": "N",
+    "buddyBonus": {
+      "name": "Returning Customer",
+      "flavorText": "Returning Customer: +8% capture chance against owned species.",
+      "effectId": "capture_chance",
+      "value": 8,
+      "target": {
+        "type": "ownership",
+        "value": "owned"
+      }
+    },
+    "sourceRow": 8
+  },
+  {
+    "slug": "owl_detective",
+    "name": "Owl Detective",
+    "rarity": "N",
+    "buddyBonus": {
+      "name": "Investigator",
+      "flavorText": "Investigator: +10% encounter weight for SR Waifumon.",
+      "effectId": "encounter_weight",
+      "value": 10,
+      "target": {
+        "type": "rarity",
+        "value": "SR"
+      }
+    },
+    "sourceRow": 13
+  },
+  {
+    "slug": "phantom_violinist",
+    "name": "Phantom Violinist",
+    "rarity": "R",
+    "buddyBonus": {
+      "name": "Lingering Note",
+      "flavorText": "Lingering Note: +12% Player XP gained.",
+      "effectId": "player_xp_gain",
+      "value": 12
+    },
+    "sourceRow": 18
+  },
+  {
+    "slug": "queen_wild_hunt",
+    "name": "Queen of the Wild Hunt",
+    "rarity": "UR",
+    "buddyBonus": {
+      "name": "Horn Call",
+      "flavorText": "Horn Call: +20% encounter weight for SSR+ Waifumon.",
+      "effectId": "encounter_weight",
+      "value": 20,
+      "target": {
+        "type": "rarity_min",
+        "value": "SSR"
+      }
+    },
+    "sourceRow": 12
+  },
+  {
+    "slug": "crimson_judge",
+    "name": "The Crimson Judge",
+    "rarity": "SSR",
+    "buddyBonus": {
+      "name": "Blood Docket",
+      "flavorText": "Blood Docket: +50% eligible rewards from Boss Encounters.",
+      "effectId": "boss_reward_gain",
+      "value": 50
+    },
+    "sourceRow": 23
+  },
+  {
+    "slug": "crown_humanity",
+    "name": "The Crown of Humanity",
+    "rarity": "LR",
+    "buddyBonus": {
+      "name": "Magnetism",
+      "flavorText": "Magnetism: +25% encounter weight for human Waifumon.",
+      "effectId": "encounter_weight",
+      "value": 25,
+      "target": {
+        "type": "race",
+        "value": "human"
+      }
+    },
+    "sourceRow": 10
+  },
+  {
+    "slug": "thot_chat_2",
+    "name": "Thot chat 2.0",
+    "rarity": "N",
+    "buddyBonus": {
+      "name": "Suggested for you",
+      "flavorText": "Suggested for you: +10% encounter weight for android Waifumon.",
+      "effectId": "encounter_weight",
+      "value": 10,
+      "target": {
+        "type": "race",
+        "value": "android"
+      }
+    },
+    "sourceRow": 10
+  },
+  {
+    "slug": "valkyrie_recruit",
+    "name": "Valkyrie Recruit",
+    "rarity": "N",
+    "buddyBonus": {
+      "name": "Prove Yourself",
+      "flavorText": "Prove Yourself: +25% XP gained by the active Buddy.",
+      "effectId": "buddy_xp_gain",
+      "value": 25
+    },
+    "sourceRow": 19
+  },
+  {
+    "slug": "winged_waitress",
+    "name": "Winged Waitress",
+    "rarity": "N",
+    "buddyBonus": {
+      "name": "\"On the House\"",
+      "flavorText": "\"On the House\": +25% eligible rewards from Boss Encounters.",
+      "effectId": "boss_reward_gain",
+      "value": 25
+    },
+    "sourceRow": 23
+  },
+  {
+    "slug": "your_fav_girl",
+    "name": "Your Favorite Girl",
+    "rarity": "R",
+    "buddyBonus": {
+      "name": "Already Yours",
+      "flavorText": "Already Yours: +10% capture chance against owned species.",
+      "effectId": "capture_chance",
+      "value": 10,
+      "target": {
+        "type": "ownership",
+        "value": "owned"
+      }
+    },
+    "sourceRow": 8
+  }
+]

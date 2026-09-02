@@ -13,7 +13,9 @@ import {
   playerCurrencies,
   playerInventory,
   playerWaifus,
+  players,
   species,
+  type Affinity,
   type EncounterRow,
   type SpeciesRow,
 } from '../../src/db/schema';
@@ -28,6 +30,7 @@ import {
 import {
   bootstrapApp,
   getItemBySlug,
+  insertOwnedWaifu,
   provisionPlayer,
   scriptedRng,
   type App,
@@ -83,6 +86,17 @@ async function itemQuantity(playerId: number, slug: string): Promise<number> {
   return app.inventory.getQuantity(playerId, item.id);
 }
 
+async function setSpeciesAffinity(slug: string, affinity: Affinity): Promise<void> {
+  await t.db.update(species).set({ affinity }).where(eq(species.slug, slug));
+}
+
+async function makeBuddy(playerId: number, speciesSlug: string): Promise<void> {
+  const [speciesRow] = await t.db.select().from(species).where(eq(species.slug, speciesSlug));
+  if (!speciesRow) throw new Error(`missing seeded species ${speciesSlug}`);
+  const waifu = await insertOwnedWaifu(t.db, { playerId, speciesId: speciesRow.id });
+  await t.db.update(players).set({ buddyWaifuId: waifu.id }).where(eq(players.id, playerId));
+}
+
 describe('CaptureService — capture math and state machine', () => {
   let playerId: number;
   beforeAll(async () => {
@@ -94,6 +108,7 @@ describe('CaptureService — capture math and state machine', () => {
     await t.db.delete(playerWaifus).where(eq(playerWaifus.playerId, playerId));
     await t.db.delete(encounters).where(eq(encounters.playerId, playerId));
     await t.db.delete(playerInventory).where(eq(playerInventory.playerId, playerId));
+    await t.db.update(players).set({ buddyWaifuId: null }).where(eq(players.id, playerId));
     await t.db
       .update(playerCurrencies)
       .set({ huntEnergy: 25, waifubux: 0, essence: 0 })
@@ -207,6 +222,131 @@ describe('CaptureService — capture math and state machine', () => {
     expect(result.attempt.computedChance).toBe(1);
     expect(result.newWaifu).toBeTruthy();
     expect(await itemQuantity(playerId, 'mythic_contract')).toBe(0);
+  });
+
+  it('LR species + Basic Charm uses the LR rarity base when no bonuses apply', async () => {
+    await grantItem(playerId, 'basic_charm', 1);
+    const { encounter } = await createActiveEncounter(playerId, 'the_waifu_below');
+
+    const quote = await app.capture.quoteCapture(playerId, encounter.id, 'basic_charm');
+    expect(quote.breakdown).toMatchObject({
+      rarity: 'LR',
+      rarityBaseCaptureRate: 0.03,
+      speciesBaseCaptureRate: null,
+      baseCaptureChance: 0.03,
+      itemModifier: 1,
+      affinityModifier: 0,
+      captureBonusModifier: 0,
+      itemCaptureBonus: 0,
+      buddyGlobalModifier: 0,
+      buddyConditionalModifier: 0,
+      chanceBeforeClamp: 0.03,
+      finalChance: 0.03,
+    });
+
+    const service = createCaptureService({
+      db: t.db,
+      inventory: app.inventory,
+      progression: app.progression,
+      progressionConfig: app.content.tables.progression,
+      captureConfig: app.content.tables.capture,
+      buddyAffinityConfig: app.content.tables.buddyAffinity,
+      collection: app.collection,
+      quests: app.quests,
+      effects: app.effects,
+      logger: t.logger,
+      rng: scriptedRng([0.99]),
+    });
+    const result = await service.attemptCapture(playerId, encounter.id, 'basic_charm');
+    expect(result.attempt.computedChance).toBeCloseTo(quote.chance, 10);
+    expect(result.breakdown.finalChance).toBeCloseTo(0.03, 10);
+    expect(result.outcome).toBe('failure');
+  });
+
+  it('LR species + favorable SR buddy affinity is 6%, not the max clamp', async () => {
+    await setSpeciesAffinity('neon_kitsune', 'primal');
+    await setSpeciesAffinity('the_waifu_below', 'dominant');
+    await makeBuddy(playerId, 'neon_kitsune');
+    await grantItem(playerId, 'basic_charm', 1);
+    const { encounter } = await createActiveEncounter(playerId, 'the_waifu_below');
+
+    const quote = await app.capture.quoteCapture(playerId, encounter.id, 'basic_charm');
+    expect(quote.chance).toBeCloseTo(0.06, 10);
+    expect(quote.breakdown.affinityModifier).toBeCloseTo(0.03, 10);
+    expect(quote.breakdown.chanceBeforeClamp).toBeCloseTo(0.06, 10);
+    expect(quote.breakdown.finalChance).not.toBe(app.content.tables.capture.maxChance);
+
+    const service = createCaptureService({
+      db: t.db,
+      inventory: app.inventory,
+      progression: app.progression,
+      progressionConfig: app.content.tables.progression,
+      captureConfig: app.content.tables.capture,
+      buddyAffinityConfig: app.content.tables.buddyAffinity,
+      collection: app.collection,
+      quests: app.quests,
+      effects: app.effects,
+      logger: t.logger,
+      rng: scriptedRng([0.061]),
+    });
+    const result = await service.attemptCapture(playerId, encounter.id, 'basic_charm');
+    expect(result.attempt.computedChance).toBeCloseTo(quote.chance, 10);
+    expect(result.outcome).toBe('failure');
+  });
+
+  it('LR species + relevant LR buddy affinity applies only the configured buddy bonus once', async () => {
+    await setSpeciesAffinity('the_first_waifu', 'primal');
+    await setSpeciesAffinity('the_waifu_below', 'dominant');
+    await makeBuddy(playerId, 'the_first_waifu');
+    await grantItem(playerId, 'basic_charm', 1);
+    const { encounter } = await createActiveEncounter(playerId, 'the_waifu_below');
+
+    const quote = await app.capture.quoteCapture(playerId, encounter.id, 'basic_charm');
+    expect(quote.breakdown.affinityModifier).toBeCloseTo(0.06, 10);
+    expect(quote.chance).toBeCloseTo(0.09, 10);
+
+    const service = createCaptureService({
+      db: t.db,
+      inventory: app.inventory,
+      progression: app.progression,
+      progressionConfig: app.content.tables.progression,
+      captureConfig: app.content.tables.capture,
+      buddyAffinityConfig: app.content.tables.buddyAffinity,
+      collection: app.collection,
+      quests: app.quests,
+      effects: app.effects,
+      logger: t.logger,
+      rng: scriptedRng([0.091]),
+    });
+    const result = await service.attemptCapture(playerId, encounter.id, 'basic_charm');
+    expect(result.attempt.computedChance).toBeCloseTo(quote.chance, 10);
+    expect(result.breakdown.buddyGlobalModifier).toBe(0);
+    expect(result.breakdown.buddyConditionalModifier).toBe(0);
+    expect(result.outcome).toBe('failure');
+  });
+
+  it('LR species + irrelevant buddy affinity leaves the conditional modifier neutral', async () => {
+    await setSpeciesAffinity('neon_kitsune', 'caregiver');
+    await setSpeciesAffinity('the_waifu_below', 'dominant');
+    await makeBuddy(playerId, 'neon_kitsune');
+    await grantItem(playerId, 'basic_charm', 1);
+    const { encounter } = await createActiveEncounter(playerId, 'the_waifu_below');
+
+    const quote = await app.capture.quoteCapture(playerId, encounter.id, 'basic_charm');
+    expect(quote.breakdown.affinityModifier).toBe(0);
+    expect(quote.breakdown.buddyGlobalModifier).toBe(0);
+    expect(quote.breakdown.buddyConditionalModifier).toBe(0);
+    expect(quote.chance).toBeCloseTo(0.03, 10);
+  });
+
+  it('common species + Basic Charm baseline remains the normal rarity base', async () => {
+    await grantItem(playerId, 'basic_charm', 1);
+    const { encounter } = await createActiveEncounter(playerId, 'alley_catgirl');
+
+    const quote = await app.capture.quoteCapture(playerId, encounter.id, 'basic_charm');
+    expect(quote.breakdown.rarity).toBe('N');
+    expect(quote.breakdown.baseCaptureChance).toBeCloseTo(0.5, 10);
+    expect(quote.chance).toBeCloseTo(0.5, 10);
   });
 
   it('captures a duplicate when the player already owns the species', async () => {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   clamp,
   computeCaptureChance,
+  computeCaptureChanceBreakdown,
   rarityAtLeast,
   RARITY_RANK,
   type CaptureConfig,
@@ -79,6 +80,48 @@ describe('computeCaptureChance', () => {
         config,
       }),
     ).toBe(1);
+  });
+
+  it('does not invert low LR probabilities into success rates', () => {
+    const chance = computeCaptureChance({
+      guaranteed: false,
+      baseCaptureRate: null,
+      rarity: 'LR',
+      captureModifier: 1,
+      config,
+      buddyAffinityModifier: 0.03,
+    });
+    expect(chance).toBeCloseTo(0.06, 10);
+    expect(chance).not.toBe(config.maxChance);
+  });
+
+  it('reports the complete arithmetic path before clamping', () => {
+    const breakdown = computeCaptureChanceBreakdown({
+      guaranteed: false,
+      baseCaptureRate: null,
+      rarity: 'LR',
+      captureModifier: 1,
+      config,
+      buddyAffinityModifier: 0.03,
+      captureBonusModifier: 0,
+      itemCaptureBonus: 0,
+    });
+    expect(breakdown).toMatchObject({
+      guaranteed: false,
+      rarity: 'LR',
+      rarityBaseCaptureRate: 0.03,
+      speciesBaseCaptureRate: null,
+      baseCaptureChance: 0.03,
+      playerCaptureModifier: 1,
+      buddyGlobalModifier: 0,
+      buddyConditionalModifier: 0,
+      affinityModifier: 0.03,
+      itemModifier: 1,
+      itemCaptureBonus: 0,
+      captureBonusModifier: 0,
+      chanceBeforeClamp: 0.06,
+      finalChance: 0.06,
+    });
   });
 
   it('defaults captureModifier to 1 when null and not guaranteed', () => {

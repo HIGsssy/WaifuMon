@@ -1,0 +1,1031 @@
+[
+  {
+    "slug": "arcade_succubus",
+    "name": "Arcade Succubus",
+    "buddyBonus": {
+      "name": "Free Play",
+      "bonusId": "capture_chance",
+      "value": null,
+      "target": {
+        "type": "any"
+      }
+    },
+    "sourceRow": 2
+  },
+  {
+    "slug": "android_assassin",
+    "name": "Android Assassin",
+    "buddyBonus": {
+      "name": "Clean Kill",
+      "bonusId": "capture_chance",
+      "value": null,
+      "target": {
+        "type": "any"
+      }
+    },
+    "sourceRow": 2
+  },
+  {
+    "slug": "witchy_mechanic",
+    "name": "Witchy Mechanic",
+    "buddyBonus": {
+      "name": "Big Wrench",
+      "bonusId": "capture_chance",
+      "value": null,
+      "target": {
+        "type": "race",
+        "value": "android"
+      }
+    },
+    "sourceRow": 3
+  },
+  {
+    "slug": "cyber_lilith_prime",
+    "name": "Cyber Lilith Prime",
+    "buddyBonus": {
+      "name": "Hijack",
+      "bonusId": "capture_chance",
+      "value": null,
+      "target": {
+        "type": "race",
+        "value": "android"
+      }
+    },
+    "sourceRow": 3
+  },
+  {
+    "slug": "latex_paladin",
+    "name": "Latex Paladin",
+    "buddyBonus": {
+      "name": "Oathbound",
+      "bonusId": "capture_chance",
+      "value": null,
+      "target": {
+        "type": "race",
+        "value": "demon"
+      }
+    },
+    "sourceRow": 3
+  },
+  {
+    "slug": "feral_android",
+    "name": "Feral Android",
+    "buddyBonus": {
+      "name": "Broken Protocol",
+      "bonusId": "capture_chance",
+      "value": null,
+      "target": {
+        "type": "race",
+        "value": "android"
+      }
+    },
+    "sourceRow": 3
+  },
+  {
+    "slug": "abyssal_shrine_oracle",
+    "name": "Abyssal Shrine Oracle",
+    "buddyBonus": {
+      "name": "Twisted Blessing",
+      "bonusId": "capture_chance",
+      "value": null,
+      "target": {
+        "type": "affinity",
+        "value": "primal"
+      }
+    },
+    "sourceRow": 4
+  },
+  {
+    "slug": "queen_of_velvet_chains",
+    "name": "Queen of Velvet Chains",
+    "buddyBonus": {
+      "name": "Willing Chains",
+      "bonusId": "capture_chance",
+      "value": null,
+      "target": {
+        "type": "affinity",
+        "value": "dominant"
+      }
+    },
+    "sourceRow": 4
+  },
+  {
+    "slug": "darkelf_royal",
+    "name": "Darkelf Royal",
+    "buddyBonus": {
+      "name": "Royal Favor",
+      "bonusId": "capture_chance",
+      "value": null,
+      "target": {
+        "type": "rarity_min",
+        "value": "SSR"
+      }
+    },
+    "sourceRow": 5
+  },
+  {
+    "slug": "archangel_inquisitor",
+    "name": "Archangel Inquisitor",
+    "buddyBonus": {
+      "name": "Holy Audit",
+      "bonusId": "capture_chance",
+      "value": null,
+      "target": {
+        "type": "rarity_min",
+        "value": "SSR"
+      }
+    },
+    "sourceRow": 5
+  },
+  {
+    "slug": "beachside_siren",
+    "name": "Beachside Siren",
+    "buddyBonus": {
+      "name": "Luring Song",
+      "bonusId": "capture_chance",
+      "value": null,
+      "target": {
+        "type": "rarity_max",
+        "value": "SR"
+      }
+    },
+    "sourceRow": 6
+  },
+  {
+    "slug": "cabaret_star",
+    "name": "Cabaret Star",
+    "buddyBonus": {
+      "name": "Encore Crowd",
+      "bonusId": "capture_chance",
+      "value": null,
+      "target": {
+        "type": "rarity_max",
+        "value": "SR"
+      }
+    },
+    "sourceRow": 6
+  },
+  {
+    "slug": "neon_school_rebel",
+    "name": "Neon School Rebel",
+    "buddyBonus": {
+      "name": "After Bell",
+      "bonusId": "capture_chance",
+      "value": null,
+      "target": {
+        "type": "rarity_max",
+        "value": "SR"
+      }
+    },
+    "sourceRow": 6
+  },
+  {
+    "slug": "bunny_dealer",
+    "name": "Bunny Dealer",
+    "buddyBonus": {
+      "name": "Gambler",
+      "bonusId": "capture_chance",
+      "value": null,
+      "target": {
+        "type": "ownership",
+        "value": "unowned"
+      }
+    },
+    "sourceRow": 7
+  },
+  {
+    "slug": "neko_tatto_artist",
+    "name": "Neko Tattoo Artist",
+    "buddyBonus": {
+      "name": "Returning Customer",
+      "bonusId": "capture_chance",
+      "value": null,
+      "target": {
+        "type": "ownership",
+        "value": "owned"
+      }
+    },
+    "sourceRow": 8
+  },
+  {
+    "slug": "your_fav_girl",
+    "name": "Your Favorite Girl",
+    "buddyBonus": {
+      "name": "Already Yours",
+      "bonusId": "capture_chance",
+      "value": null,
+      "target": {
+        "type": "ownership",
+        "value": "owned"
+      }
+    },
+    "sourceRow": 8
+  },
+  {
+    "slug": "heaven_spear_marshal",
+    "name": "Heaven's Spear Marshal",
+    "buddyBonus": {
+      "name": "Divine Mandate",
+      "bonusId": "encounter_weight",
+      "value": null,
+      "target": {
+        "type": "race",
+        "value": "demon"
+      }
+    },
+    "sourceRow": 10
+  },
+  {
+    "slug": "crown_humanity",
+    "name": "The Crown of Humanity",
+    "buddyBonus": {
+      "name": "Magnetism",
+      "bonusId": "encounter_weight",
+      "value": null,
+      "target": {
+        "type": "race",
+        "value": "human"
+      }
+    },
+    "sourceRow": 10
+  },
+  {
+    "slug": "demon_librarian",
+    "name": "Demon Librarian",
+    "buddyBonus": {
+      "name": "Demonic Rolodex",
+      "bonusId": "encounter_weight",
+      "value": null,
+      "target": {
+        "type": "race"
+      }
+    },
+    "sourceRow": 10
+  },
+  {
+    "slug": "feral_wood_spirit",
+    "name": "Feral Wood Spirit",
+    "buddyBonus": {
+      "name": "Wildpath",
+      "bonusId": "encounter_weight",
+      "value": null,
+      "target": {
+        "type": "race",
+        "value": "spirit"
+      }
+    },
+    "sourceRow": 10
+  },
+  {
+    "slug": "rainy_day_idol",
+    "name": "Rainy Day Idol",
+    "buddyBonus": {
+      "name": "Soft Spotlight",
+      "bonusId": "encounter_weight",
+      "value": null,
+      "target": {
+        "type": "race",
+        "value": "human"
+      }
+    },
+    "sourceRow": 10
+  },
+  {
+    "slug": "cyber_neko",
+    "name": "Cyber Neko",
+    "buddyBonus": {
+      "name": "Street Pounce",
+      "bonusId": "encounter_weight",
+      "value": null,
+      "target": {
+        "type": "race",
+        "value": "demi-human"
+      }
+    },
+    "sourceRow": 10
+  },
+  {
+    "slug": "moonlit_dancer",
+    "name": "Moonlit Dancer",
+    "buddyBonus": {
+      "name": "Night Floor)",
+      "bonusId": "encounter_weight",
+      "value": null,
+      "target": {
+        "type": "race",
+        "value": "angel"
+      }
+    },
+    "sourceRow": 10
+  },
+  {
+    "slug": "neon_kitsune_apprentice",
+    "name": "Neon Kitsune Apprentice",
+    "buddyBonus": {
+      "name": "First Trick vs Spirit)",
+      "bonusId": "encounter_weight",
+      "value": null,
+      "target": {
+        "type": "race",
+        "value": "spirit"
+      }
+    },
+    "sourceRow": 10
+  },
+  {
+    "slug": "thot_chat_2",
+    "name": "Thot chat 2.0",
+    "buddyBonus": {
+      "name": "Suggested for you",
+      "bonusId": "encounter_weight",
+      "value": null,
+      "target": {
+        "type": "race",
+        "value": "android"
+      }
+    },
+    "sourceRow": 10
+  },
+  {
+    "slug": "angelic_delinquent",
+    "name": "Angelic Delinquent",
+    "buddyBonus": {
+      "name": "Tough Love",
+      "bonusId": "encounter_weight",
+      "value": null,
+      "target": {
+        "type": "affinity",
+        "value": "submissive"
+      }
+    },
+    "sourceRow": 11
+  },
+  {
+    "slug": "demon_hall_monitor",
+    "name": "Demon Hall Monitor",
+    "buddyBonus": {
+      "name": "Detention List",
+      "bonusId": "encounter_weight",
+      "value": null,
+      "target": {
+        "type": "affinity",
+        "value": "dominant"
+      }
+    },
+    "sourceRow": 11
+  },
+  {
+    "slug": "the_waifu_below",
+    "name": "The Waifu Below",
+    "buddyBonus": {
+      "name": "Soul Claim",
+      "bonusId": "encounter_weight",
+      "value": null,
+      "target": {
+        "type": "rarity_min",
+        "value": "SSR"
+      }
+    },
+    "sourceRow": 12
+  },
+  {
+    "slug": "queen_wild_hunt",
+    "name": "Queen of the Wild Hunt",
+    "buddyBonus": {
+      "name": "Horn Call",
+      "bonusId": "encounter_weight",
+      "value": null,
+      "target": {
+        "type": "rarity_min",
+        "value": "SSR"
+      }
+    },
+    "sourceRow": 12
+  },
+  {
+    "slug": "owl_detective",
+    "name": "Owl Detective",
+    "buddyBonus": {
+      "name": "Investigator",
+      "bonusId": "encounter_weight",
+      "value": null,
+      "target": {
+        "type": "rarity",
+        "value": "SR"
+      }
+    },
+    "sourceRow": 13
+  },
+  {
+    "slug": "bimbo_valkyrie",
+    "name": "Bimbo Valkyrie",
+    "buddyBonus": {
+      "name": "Pretty Spear",
+      "bonusId": "encounter_weight",
+      "value": null,
+      "target": {
+        "type": "rarity",
+        "value": "SR"
+      }
+    },
+    "sourceRow": 13
+  },
+  {
+    "slug": "casino_kitsune",
+    "name": "Casino Kitsune",
+    "buddyBonus": {
+      "name": "High Roller",
+      "bonusId": "encounter_weight",
+      "value": null,
+      "target": {
+        "type": "ownership",
+        "value": "unowned"
+      }
+    },
+    "sourceRow": 14
+  },
+  {
+    "slug": "neon_kitsune",
+    "name": "Neon Kitsune",
+    "buddyBonus": {
+      "name": "FoxFire",
+      "bonusId": "encounter_weight",
+      "value": null,
+      "target": {
+        "type": "ownership",
+        "value": "unowned"
+      }
+    },
+    "sourceRow": 14
+  },
+  {
+    "slug": "library_ghost",
+    "name": "Library Ghost",
+    "buddyBonus": {
+      "name": "Unlisted Title",
+      "bonusId": "encounter_weight",
+      "value": null,
+      "target": {
+        "type": "ownership",
+        "value": "unowned"
+      }
+    },
+    "sourceRow": 14
+  },
+  {
+    "slug": "eclipse_idol",
+    "name": "Eclipse Idol",
+    "buddyBonus": {
+      "name": "Encore",
+      "bonusId": "encounter_weight",
+      "value": null,
+      "target": {
+        "type": "ownership",
+        "value": "owned"
+      }
+    },
+    "sourceRow": 15
+  },
+  {
+    "slug": "android_secretary",
+    "name": "Android Secretary",
+    "buddyBonus": {
+      "name": "Filed Under \"You\"",
+      "bonusId": "encounter_weight",
+      "value": null,
+      "target": {
+        "type": "ownership",
+        "value": "owned"
+      }
+    },
+    "sourceRow": 15
+  },
+  {
+    "slug": "royal_succubus",
+    "name": "Royal Succubus",
+    "buddyBonus": {
+      "name": "Royal Privliage",
+      "bonusId": "energy_save_chance",
+      "value": 25,
+      "target": {
+        "type": "hunt",
+        "value": "hunt"
+      }
+    },
+    "sourceRow": 16
+  },
+  {
+    "slug": "nurse_imp",
+    "name": "Nurse Imp",
+    "buddyBonus": {
+      "name": "\"What's in tha-...OW!\"",
+      "bonusId": "energy_save_chance",
+      "value": 25,
+      "target": {
+        "type": "hunt",
+        "value": "hunt"
+      }
+    },
+    "sourceRow": 16
+  },
+  {
+    "slug": "chrome_valkyrie",
+    "name": "Chrome Valkyrie",
+    "buddyBonus": {
+      "name": "Overclock",
+      "bonusId": "energy_save_chance",
+      "value": 25,
+      "target": {
+        "type": "hunt",
+        "value": "hunt"
+      }
+    },
+    "sourceRow": 16
+  },
+  {
+    "slug": "arcade_bunny",
+    "name": "Arcade Bunny",
+    "buddyBonus": {
+      "name": "Free Play",
+      "bonusId": "energy_save_chance",
+      "value": 25,
+      "target": {
+        "type": "hunt",
+        "value": "hunt"
+      }
+    },
+    "sourceRow": 16
+  },
+  {
+    "slug": "neko_barista",
+    "name": "Neko Barista",
+    "buddyBonus": {
+      "name": "Warm Refill",
+      "bonusId": "energy_save_chance",
+      "value": 25,
+      "target": {
+        "type": "hunt",
+        "value": "hunt"
+      }
+    },
+    "sourceRow": 16
+  },
+  {
+    "slug": "dollhouse_demon",
+    "name": "Dollhouse Demon",
+    "buddyBonus": {
+      "name": "Wind up",
+      "bonusId": "care_energy_gain",
+      "value": null,
+      "target": {
+        "type": "care",
+        "value": "care"
+      }
+    },
+    "sourceRow": 17
+  },
+  {
+    "slug": "fallen_angel_nurse",
+    "name": "Fallen Angel Nurse",
+    "buddyBonus": {
+      "name": "Night shift",
+      "bonusId": "care_energy_gain",
+      "value": null,
+      "target": {
+        "type": "care",
+        "value": "care"
+      }
+    },
+    "sourceRow": 17
+  },
+  {
+    "slug": "cyber_shrine_maiden",
+    "name": "Cyber Shrine Maiden",
+    "buddyBonus": {
+      "name": "Sacred Maintenance",
+      "bonusId": "care_energy_gain",
+      "value": null,
+      "target": {
+        "type": "care",
+        "value": "care"
+      }
+    },
+    "sourceRow": 17
+  },
+  {
+    "slug": "afterglow_goddess",
+    "name": "Afterglow Goddess",
+    "buddyBonus": {
+      "name": "Aftercare",
+      "bonusId": "care_energy_gain",
+      "value": null,
+      "target": {
+        "type": "care",
+        "value": "care"
+      }
+    },
+    "sourceRow": 17
+  },
+  {
+    "slug": "cafe_maid",
+    "name": "Café Maid",
+    "buddyBonus": {
+      "name": "second cup",
+      "bonusId": "care_energy_gain",
+      "value": null,
+      "target": {
+        "type": "care",
+        "value": "care"
+      }
+    },
+    "sourceRow": 17
+  },
+  {
+    "slug": "ah_caretaker",
+    "name": "After Hours Caretaker",
+    "buddyBonus": {
+      "name": "The Naughty Shift",
+      "bonusId": "care_energy_gain",
+      "value": null,
+      "target": {
+        "type": "care",
+        "value": "care"
+      }
+    },
+    "sourceRow": 17
+  },
+  {
+    "slug": "eclipse_valkyrie",
+    "name": "Eclipse Valkyrie",
+    "buddyBonus": {
+      "name": "Warpath",
+      "bonusId": "player_xp_gain",
+      "value": null,
+      "target": {
+        "type": "any"
+      }
+    },
+    "sourceRow": 18
+  },
+  {
+    "slug": "crimson_oni_bride",
+    "name": "Crimson Oni Bride",
+    "buddyBonus": {
+      "name": "Bride's Claim",
+      "bonusId": "player_xp_gain",
+      "value": null,
+      "target": {
+        "type": "any"
+      }
+    },
+    "sourceRow": 18
+  },
+  {
+    "slug": "phantom_violinist",
+    "name": "Phantom Violinist",
+    "buddyBonus": {
+      "name": "Lingering Note",
+      "bonusId": "player_xp_gain",
+      "value": null,
+      "target": {
+        "type": "any"
+      }
+    },
+    "sourceRow": 18
+  },
+  {
+    "slug": "blood_moon_priestess",
+    "name": "Blood Moon Priestess",
+    "buddyBonus": {
+      "name": "Blood Offering",
+      "bonusId": "buddy_xp_gain",
+      "value": null,
+      "target": {
+        "type": "any"
+      }
+    },
+    "sourceRow": 19
+  },
+  {
+    "slug": "valkyrie_recruit",
+    "name": "Valkyrie Recruit",
+    "buddyBonus": {
+      "name": "Prove Yourself",
+      "bonusId": "buddy_xp_gain",
+      "value": null,
+      "target": {
+        "type": "any"
+      }
+    },
+    "sourceRow": 19
+  },
+  {
+    "slug": "gym_oni",
+    "name": "Gym Oni",
+    "buddyBonus": {
+      "name": "Spotter",
+      "bonusId": "buddy_xp_gain",
+      "value": null,
+      "target": {
+        "type": "any"
+      }
+    },
+    "sourceRow": 19
+  },
+  {
+    "slug": "streetwear_oni",
+    "name": "Streetwear Oni",
+    "buddyBonus": {
+      "name": "\"Do a Kickflip!\"",
+      "bonusId": "essence_gain",
+      "value": null,
+      "target": {
+        "type": "any"
+      }
+    },
+    "sourceRow": 20
+  },
+  {
+    "slug": "ramen_android",
+    "name": "Ramen Android",
+    "buddyBonus": {
+      "name": "Extra Serving",
+      "bonusId": "essence_gain",
+      "value": null,
+      "target": {
+        "type": "any"
+      }
+    },
+    "sourceRow": 20
+  },
+  {
+    "slug": "library_goth",
+    "name": "Library Goth",
+    "buddyBonus": {
+      "name": "Quiet Study",
+      "bonusId": "essence_gain",
+      "value": null,
+      "target": {
+        "type": "any"
+      }
+    },
+    "sourceRow": 20
+  },
+  {
+    "slug": "potion_shop_clerk",
+    "name": "Potion Shop Clerk",
+    "buddyBonus": {
+      "name": "Under the Counter",
+      "bonusId": "essence_gain",
+      "value": null,
+      "target": {
+        "type": "any"
+      }
+    },
+    "sourceRow": 20
+  },
+  {
+    "slug": "velvet_bartender",
+    "name": "Velvet Bartender",
+    "buddyBonus": {
+      "name": "Last Call",
+      "bonusId": "essence_gain",
+      "value": null,
+      "target": {
+        "type": "any"
+      }
+    },
+    "sourceRow": 20
+  },
+  {
+    "slug": "neon_dragon_empress",
+    "name": "Neon Dragon Empress",
+    "buddyBonus": {
+      "name": "Digital Hoard",
+      "bonusId": "hunt_item_find_chance",
+      "value": null,
+      "target": {
+        "type": "hunt",
+        "value": "hunt"
+      }
+    },
+    "sourceRow": 21
+  },
+  {
+    "slug": "dragon_casino_queen",
+    "name": "Dragon Casino Queen",
+    "buddyBonus": {
+      "name": "House Edge",
+      "bonusId": "hunt_item_find_chance",
+      "value": null,
+      "target": {
+        "type": "hunt",
+        "value": "hunt"
+      }
+    },
+    "sourceRow": 21
+  },
+  {
+    "slug": "lantern_spirit",
+    "name": "Lantern Spirit",
+    "buddyBonus": {
+      "name": "Light the way",
+      "bonusId": "hunt_item_find_chance",
+      "value": null,
+      "target": {
+        "type": "hunt",
+        "value": "hunt"
+      }
+    },
+    "sourceRow": 21
+  },
+  {
+    "slug": "alley_catgirl",
+    "name": "Alley Catgirl",
+    "buddyBonus": {
+      "name": "Trash Treasure",
+      "bonusId": "hunt_item_find_chance",
+      "value": null,
+      "target": {
+        "type": "hunt",
+        "value": "hunt"
+      }
+    },
+    "sourceRow": 21
+  },
+  {
+    "slug": "cat_burglar",
+    "name": "Cat Burglar",
+    "buddyBonus": {
+      "name": "Quiet Hands",
+      "bonusId": "hunt_item_find_chance",
+      "value": null,
+      "target": {
+        "type": "hunt",
+        "value": "hunt"
+      }
+    },
+    "sourceRow": 21
+  },
+  {
+    "slug": "gothic_vampire_heiress",
+    "name": "Gothic Vampire Heiress",
+    "buddyBonus": {
+      "name": "Eternal Mark",
+      "bonusId": "affection_gain",
+      "value": null,
+      "target": {
+        "type": "any"
+      }
+    },
+    "sourceRow": 22
+  },
+  {
+    "slug": "sleepy_succubus_intern",
+    "name": "Sleepy Succubus Intern",
+    "buddyBonus": {
+      "name": "Power Nap",
+      "bonusId": "affection_gain",
+      "value": null,
+      "target": {
+        "type": "any"
+      }
+    },
+    "sourceRow": 22
+  },
+  {
+    "slug": "void_empress",
+    "name": "Void Empress",
+    "buddyBonus": {
+      "name": "Inevitability",
+      "bonusId": "affection_gain",
+      "value": null,
+      "target": {
+        "type": "any"
+      }
+    },
+    "sourceRow": 22
+  },
+  {
+    "slug": "the_first_waifu",
+    "name": "The First Waifu",
+    "buddyBonus": {
+      "name": "Unconditional Love",
+      "bonusId": "affection_gain",
+      "value": null,
+      "target": {
+        "type": "any"
+      }
+    },
+    "sourceRow": 22
+  },
+  {
+    "slug": "holy_courtesan",
+    "name": "Holy Courtesan",
+    "buddyBonus": {
+      "name": "Sacred Softness",
+      "bonusId": "affection_gain",
+      "value": null,
+      "target": {
+        "type": "any"
+      }
+    },
+    "sourceRow": 22
+  },
+  {
+    "slug": "hologram_idol",
+    "name": "Hologram Idol",
+    "buddyBonus": {
+      "name": "Fan Light",
+      "bonusId": "affection_gain",
+      "value": null,
+      "target": {
+        "type": "any"
+      }
+    },
+    "sourceRow": 22
+  },
+  {
+    "slug": "shrine_assistant",
+    "name": "Shrine Assistant",
+    "buddyBonus": {
+      "name": "Offering Bowl",
+      "bonusId": "affection_gain",
+      "value": null,
+      "target": {
+        "type": "any"
+      }
+    },
+    "sourceRow": 22
+  },
+  {
+    "slug": "winged_waitress",
+    "name": "Winged Waitress",
+    "buddyBonus": {
+      "name": "\"On the House\"",
+      "bonusId": "boss_reward_gain",
+      "value": null,
+      "target": {
+        "type": "boss_encounter",
+        "value": "boss_encounter"
+      }
+    },
+    "sourceRow": 23
+  },
+  {
+    "slug": "void_catgirl",
+    "name": "Void Catgirl",
+    "buddyBonus": {
+      "name": "\"Swipe!\"",
+      "bonusId": "boss_reward_gain",
+      "value": null,
+      "target": {
+        "type": "boss_encounter",
+        "value": "boss_encounter"
+      }
+    },
+    "sourceRow": 23
+  },
+  {
+    "slug": "angelic_judge",
+    "name": "Angelic Judge",
+    "buddyBonus": {
+      "name": "Verdict",
+      "bonusId": "boss_reward_gain",
+      "value": null,
+      "target": {
+        "type": "boss_encounter",
+        "value": "boss_encounter"
+      }
+    },
+    "sourceRow": 23
+  },
+  {
+    "slug": "leopard_bodyguard",
+    "name": "Leopard Bodyguard",
+    "buddyBonus": {
+      "name": "Dscort Duty",
+      "bonusId": "boss_reward_gain",
+      "value": null,
+      "target": {
+        "type": "boss_encounter",
+        "value": "boss_encounter"
+      }
+    },
+    "sourceRow": 23
+  },
+  {
+    "slug": "crimson_judge",
+    "name": "The Crimson Judge",
+    "buddyBonus": {
+      "name": "Blood Docket",
+      "bonusId": "boss_reward_gain",
+      "value": null,
+      "target": {
+        "type": "boss_encounter",
+        "value": "boss_encounter"
+      }
+    },
+    "sourceRow": 23
+  }
+]

@@ -85,6 +85,15 @@ describe('shipped content', () => {
       expect(charm.priceCurrency, charm.slug).toBe('waifubux');
     }
   });
+
+  it('does not ship the Waifu Below with a species capture override', () => {
+    const content = loadShippedContent();
+    const waifuBelow = content.species.find((s) => s.slug === 'the_waifu_below');
+    expect(waifuBelow).toBeTruthy();
+    expect(waifuBelow?.rarity).toBe('LR');
+    expect(waifuBelow?.baseCaptureRate).toBeNull();
+    expect(content.tables.capture.baseRatesByRarity.LR).toBe(0.03);
+  });
 });
 
 describe('schema invariants', () => {

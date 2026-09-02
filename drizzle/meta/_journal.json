@@ -141,6 +141,13 @@
       "when": 1817416800000,
       "tag": "0019_locations_travel",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1817503200000,
+      "tag": "0020_waifu_below_capture_override",
+      "breakpoints": true
     }
   ]
 }

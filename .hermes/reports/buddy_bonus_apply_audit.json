@@ -1,0 +1,98 @@
+{
+  "applied": true,
+  "starterSpecies": 75,
+  "buddyBonusesWritten": 75,
+  "backup": "/home/whistler/Projects/WaifuMon/.hermes/backups/starter.before_buddy_bonus.json",
+  "finalMapping": "/home/whistler/Projects/WaifuMon/.hermes/reports/buddy_bonus_final_mapping.json",
+  "errors": [],
+  "values": {
+    "rarityValues": {
+      "capture_chance": {
+        "N": 8,
+        "R": 10,
+        "SR": 12,
+        "SSR": 15,
+        "UR": 18,
+        "LR": 20
+      },
+      "encounter_weight": {
+        "N": 10,
+        "R": 12,
+        "SR": 15,
+        "SSR": 18,
+        "UR": 20,
+        "LR": 25
+      },
+      "hunt_item_find_chance": {
+        "N": 10,
+        "R": 12,
+        "SR": 15,
+        "SSR": 18,
+        "UR": 20,
+        "LR": 25
+      },
+      "player_xp_gain": {
+        "N": 10,
+        "R": 12,
+        "SR": 15,
+        "SSR": 18,
+        "UR": 20,
+        "LR": 25
+      },
+      "buddy_xp_gain": {
+        "N": 25,
+        "R": 30,
+        "SR": 40,
+        "SSR": 50,
+        "UR": 60,
+        "LR": 75
+      },
+      "energy_save_chance": {
+        "N": 5,
+        "R": 6,
+        "SR": 8,
+        "SSR": 10,
+        "UR": 12,
+        "LR": 15
+      },
+      "care_energy_gain": {
+        "N": 50,
+        "R": 50,
+        "SR": 50,
+        "SSR": 75,
+        "UR": 75,
+        "LR": 100
+      },
+      "essence_gain": {
+        "N": 25,
+        "R": 30,
+        "SR": 40,
+        "SSR": 50,
+        "UR": 60,
+        "LR": 75
+      },
+      "affection_gain": {
+        "N": 50,
+        "R": 50,
+        "SR": 50,
+        "SSR": 75,
+        "UR": 75,
+        "LR": 100
+      },
+      "boss_reward_gain": {
+        "N": 25,
+        "R": 30,
+        "SR": 40,
+        "SSR": 50,
+        "UR": 60,
+        "LR": 75
+      }
+    },
+    "targetOverrides": {
+      "cyber_lilith_prime": {
+        "target_type": "any",
+        "target_value": null
+      }
+    }
+  }
+}
