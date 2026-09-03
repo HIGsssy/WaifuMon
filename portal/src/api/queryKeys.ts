@@ -26,6 +26,7 @@ export const queryKeys = {
   collection: (playerId: number) => ['player', playerId, 'collection'] as const,
   collectionList: (playerId: number, page: number, rarity?: Rarity | undefined) =>
     ['player', playerId, 'collection', 'list', { page, rarity: rarity ?? null }] as const,
+  collectionAll: (playerId: number) => ['player', playerId, 'collection', 'all'] as const,
   collectionEntry: (playerId: number, waifuId: number) =>
     ['player', playerId, 'collection', 'entry', waifuId] as const,
   collectionStats: (playerId: number) => ['player', playerId, 'collection', 'stats'] as const,

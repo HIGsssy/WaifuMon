@@ -19,9 +19,54 @@ import * as fixtures from '../../../../msw/fixtures';
 import { server } from '../../../../msw/server';
 import { routes } from '@/app/router';
 import { renderRoutes } from '@/test/renderWithProviders';
+import type { OwnedEntry } from '@/api/types';
 
 function renderCollection(url = '/collection') {
   return renderRoutes({ routes, initialEntries: [url] });
+}
+
+function collectionSpreadAcrossPages(matchCount = 4): OwnedEntry[] {
+  const matchIndexes = new Set(
+    Array.from({ length: matchCount }, (_, index) =>
+      Math.floor((index * 59) / Math.max(1, matchCount - 1)),
+    ),
+  );
+
+  return Array.from({ length: 60 }, (_, index) => {
+    const matches = matchIndexes.has(index);
+    const source = fixtures.ownedEntries[matches ? 1 : 0]!;
+    return {
+      ...source,
+      waifu: {
+        ...source.waifu,
+        id: matches && index === 59 ? fixtures.buddyEntry.waifu.id : 1_000 + index,
+        nickname: matches ? `Needle Match ${index}` : `Other Copy ${index}`,
+        isFavorite: matches,
+      },
+      species: {
+        ...source.species,
+        rarity: matches ? 'SR' : 'UR',
+        race: matches ? 'spirit' : 'demon',
+        affinity: matches ? 'submissive' : 'primal',
+      },
+    };
+  });
+}
+
+function servePagedCollection(entries: OwnedEntry[]) {
+  server.use(
+    http.get('/api/v1/players/:playerId/collection/owned', ({ request }) => {
+      const requested = Number(new URL(request.url).searchParams.get('page') ?? '1');
+      const pageSize = 25;
+      const start = (requested - 1) * pageSize;
+      return pageEnvelope(
+        entries.slice(start, start + pageSize),
+        requested,
+        pageSize,
+        entries.length,
+      );
+    }),
+  );
 }
 
 describe('CollectionPage', () => {
@@ -82,47 +127,36 @@ describe('CollectionPage', () => {
   it('reads filters from the URL on first render', async () => {
     renderCollection('/collection?rarity=UR');
 
-    // The rarity filter is server-side, so the mock returns only the UR copy.
+    // The full collection is loaded first, then rarity is applied locally.
     expect(await screen.findByRole('link', { name: /Nyx/ })).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByRole('link', { name: /Neko Barista/ })).toBeNull());
   });
 
-  it('narrows the current page client-side and says that is what it did', async () => {
+  it('searches the complete collection before pagination', async () => {
     const user = userEvent.setup();
     renderCollection();
 
     await screen.findByRole('link', { name: /Nyx/ });
 
-    await user.type(screen.getByLabelText('Search the current page of your collection'), 'kitsune');
+    await user.type(screen.getByLabelText('Search your collection'), 'kitsune');
 
-    expect(await screen.findByText('Showing 1 of 3 on this page')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole('link', { name: /Neko Barista/ })).toBeNull());
     expect(screen.getByRole('link', { name: /Neon Kitsune/ })).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: /Neko Barista/ })).toBeNull();
   });
 
-  it('keeps the previous grid on screen while a filter change loads', async () => {
+  it('applies a rarity filter without blanking the retained matching cards', async () => {
     const user = userEvent.setup();
     renderCollection();
 
     await screen.findByRole('link', { name: /Neko Barista/ });
 
-    // Make the next response slow enough that a blanking bug would be visible.
-    server.use(
-      http.get('/api/v1/players/:playerId/collection/owned', async () => {
-        await delay(150);
-        return pageEnvelope(fixtures.ownedEntries.filter((e) => e.species.rarity === 'UR'));
-      }),
-    );
-
     await user.click(screen.getByRole('button', { name: 'Open filters' }));
     await user.click(await screen.findByRole('button', { name: 'UR' }));
 
-    // §14 / §24.15: the old cards stay put, and a quiet indicator explains why.
-    expect(screen.getByRole('link', { name: /Neko Barista/ })).toBeInTheDocument();
-    expect(screen.getByRole('status')).toHaveTextContent('Refreshing...');
+    // Filtering an already-loaded collection does not enter a loading state.
+    expect(screen.getByRole('link', { name: /Nyx/ })).toBeInTheDocument();
     expect(screen.queryByLabelText('Loading your collection')).toBeNull();
-
-    await waitFor(() => expect(screen.queryByRole('link', { name: /Neko Barista/ })).toBeNull());
+    expect(screen.queryByRole('link', { name: /Neko Barista/ })).toBeNull();
   });
 
   it('opens and closes compact filters without losing the selected type', async () => {
@@ -207,12 +241,7 @@ describe('CollectionPage', () => {
 
   it('paginates, and the page lives in the URL', async () => {
     const user = userEvent.setup();
-    server.use(
-      http.get('/api/v1/players/:playerId/collection/owned', ({ request }) => {
-        const requested = Number(new URL(request.url).searchParams.get('page') ?? '1');
-        return pageEnvelope(fixtures.ownedEntries, requested, 25, 60);
-      }),
-    );
+    servePagedCollection(collectionSpreadAcrossPages(4));
 
     renderCollection();
 
@@ -222,5 +251,60 @@ describe('CollectionPage', () => {
     await user.click(screen.getByRole('button', { name: /Next/ }));
 
     expect(await screen.findByText('Page 2 of 3')).toBeInTheDocument();
+  });
+
+  it('compacts affinity matches from multiple source pages before calculating pages', async () => {
+    servePagedCollection(collectionSpreadAcrossPages(4));
+
+    renderCollection('/collection?affinity=submissive');
+
+    expect(await screen.findAllByRole('link', { name: /Needle Match/ })).toHaveLength(4);
+    expect(screen.queryByRole('link', { name: /Other Copy/ })).toBeNull();
+    expect(screen.queryByLabelText('Collection pages')).toBeNull();
+  });
+
+  it.each([
+    ['rarity', '/collection?rarity=SR', 4],
+    ['type', '/collection?type=spirit', 4],
+    ['search', '/collection?search=Needle', 4],
+    ['favourites', '/collection?ownership=favorites', 4],
+    ['buddy', '/collection?ownership=buddy', 1],
+  ])('applies %s across the complete dataset before pagination', async (_filter, url, count) => {
+    servePagedCollection(collectionSpreadAcrossPages(4));
+
+    renderCollection(url);
+
+    expect(await screen.findAllByRole('link', { name: /Needle Match/ })).toHaveLength(count);
+    expect(screen.queryByLabelText('Collection pages')).toBeNull();
+  });
+
+  it('bases page count on the filtered total', async () => {
+    servePagedCollection(collectionSpreadAcrossPages(28));
+
+    renderCollection('/collection?affinity=submissive');
+
+    expect(await screen.findByText('Page 1 of 2')).toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: /Needle Match/ })).toHaveLength(25);
+  });
+
+  it('resets a later page when a filter changes', async () => {
+    const user = userEvent.setup();
+    servePagedCollection(collectionSpreadAcrossPages(4));
+    renderCollection('/collection?page=3');
+
+    expect(await screen.findByText('Page 3 of 3')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Open filters' }));
+    await user.click(await screen.findByRole('button', { name: 'Submissive' }));
+
+    expect(await screen.findAllByRole('link', { name: /Needle Match/ })).toHaveLength(4);
+    expect(screen.queryByLabelText('Collection pages')).toBeNull();
+  });
+
+  it('clamps an out-of-range page against the filtered result', async () => {
+    servePagedCollection(collectionSpreadAcrossPages(28));
+    renderCollection('/collection?affinity=submissive&page=3');
+
+    expect(await screen.findByText('Page 2 of 2')).toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: /Needle Match/ })).toHaveLength(3);
   });
 });

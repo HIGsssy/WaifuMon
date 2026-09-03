@@ -157,8 +157,8 @@ export function CollectionToolbar({
     <FilterToolbar
       searchValue={searchDraft}
       onSearchChange={setSearchDraft}
-      searchPlaceholder="Search this page..."
-      searchLabel="Search the current page of your collection"
+      searchPlaceholder="Search your collection..."
+      searchLabel="Search your collection"
       groups={groups}
       activeChips={activeChips}
       onClearAll={() => {

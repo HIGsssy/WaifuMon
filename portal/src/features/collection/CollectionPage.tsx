@@ -13,9 +13,8 @@
  *   - **Filters are URL state.** Back and forward move through filter history,
  *     and a filtered view is a link you can send (§7).
  *
- * Server-side filtering is `rarity` only; the rest narrows the current page in
- * memory and the caption says so. Widening that is an API change (§25.6), not a
- * cleverer client (§16).
+ * The API is page-based, so the Portal walks the owned collection first, then
+ * filters and sorts the complete dataset before slicing the requested UI page.
  *
  * ## Art / Card
  *
@@ -27,10 +26,10 @@
  * card request — the grid is exactly what it was before this existed.
  */
 import { LibraryBig, ChevronLeft, ChevronRight } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { COLLECTION_PAGE_SIZE } from '@/api/collection';
-import { useBuddy, useCollection } from '@/api/hooks/useCollection';
+import { useBuddy, useEntireCollection } from '@/api/hooks/useCollection';
 import { usePlatformCapabilities } from '@/api/hooks/useCapabilities';
 import { useCurrentSession } from '@/auth/useSession';
 import type { Race } from '@/api/types';
@@ -53,7 +52,7 @@ const EAGER_CARDS = 4;
 export function CollectionPage() {
   const session = useCurrentSession();
   const api = useCollectionParams();
-  const { params } = api;
+  const { params, setPage } = api;
 
   const capabilities = usePlatformCapabilities();
   // Art, always, until the player says otherwise. Deliberately component state
@@ -65,21 +64,18 @@ export function CollectionPage() {
   const cardsAvailable = capabilities.cards;
   const tileView: CardView = cardsAvailable ? view : 'art';
 
-  const collection = useCollection({
-    playerId: session.playerId,
-    page: params.page,
-    rarity: params.rarity ?? undefined,
-  });
+  const collection = useEntireCollection(session.playerId);
   const buddy = useBuddy(session.playerId);
 
-  const entries = useMemo(() => collection.data?.items ?? [], [collection.data]);
+  const entries = useMemo(() => collection.data ?? [], [collection.data]);
 
-  const visible = useMemo(
+  const filtered = useMemo(
     () =>
       sortEntries(
         filterEntries(
           entries,
           {
+            rarity: params.rarity,
             search: params.search,
             race: params.race,
             affinity: params.affinity,
@@ -91,6 +87,7 @@ export function CollectionPage() {
       ),
     [
       entries,
+      params.rarity,
       params.search,
       params.race,
       params.affinity,
@@ -103,10 +100,18 @@ export function CollectionPage() {
   const races = useMemo(() => distinctValues(entries, 'race') as Race[], [entries]);
   const affinities = useMemo(() => distinctValues(entries, 'affinity'), [entries]);
 
-  const total = collection.data?.total ?? 0;
-  const pageSize = collection.data?.pageSize ?? COLLECTION_PAGE_SIZE;
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const currentPage = collection.data?.page ?? params.page;
+  const total = entries.length;
+  const pageSize = COLLECTION_PAGE_SIZE;
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const currentPage = Math.min(params.page, totalPages);
+  const visible = useMemo(
+    () => filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize),
+    [currentPage, filtered, pageSize],
+  );
+
+  useEffect(() => {
+    if (params.page !== currentPage) setPage(currentPage);
+  }, [currentPage, params.page, setPage]);
 
   // A cold load has nothing cached; a background refresh keeps the old grid.
   const showSkeletons = collection.isPending;
@@ -155,12 +160,12 @@ export function CollectionPage() {
             </>
           }
         />
-      ) : visible.length === 0 ? (
+      ) : filtered.length === 0 ? (
         <EmptyState
           icon={LibraryBig}
           title="Nothing matches those filters"
-          description="No Waifumon on this page match what you are looking for."
-          hint="Filters other than rarity apply to the current page only — try clearing them or turning the page."
+          description="No Waifumon match what you are looking for."
+          hint="Try clearing a filter or widening your search."
         />
       ) : (
         <>
@@ -176,16 +181,6 @@ export function CollectionPage() {
             ))}
           </div>
 
-          {/*
-            Honest caption: the count on screen is a page, not the collection,
-            whenever a client-side filter is narrowing it.
-          */}
-          {visible.length !== entries.length && (
-            <p className="tabular mt-4 text-center text-xs text-ink-subtle">
-              Showing {visible.length} of {entries.length} on this page
-            </p>
-          )}
-
           {totalPages > 1 && (
             <nav
               className="mt-8 flex items-center justify-center gap-3"
@@ -195,7 +190,7 @@ export function CollectionPage() {
                 variant="outline"
                 size="sm"
                 disabled={currentPage <= 1}
-                onClick={() => api.setPage(currentPage - 1)}
+                onClick={() => setPage(currentPage - 1)}
               >
                 <ChevronLeft aria-hidden="true" />
                 Previous
@@ -207,7 +202,7 @@ export function CollectionPage() {
                 variant="outline"
                 size="sm"
                 disabled={currentPage >= totalPages}
-                onClick={() => api.setPage(currentPage + 1)}
+                onClick={() => setPage(currentPage + 1)}
               >
                 Next
                 <ChevronRight aria-hidden="true" />

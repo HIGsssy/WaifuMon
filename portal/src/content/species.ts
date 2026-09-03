@@ -57,6 +57,7 @@ export function sortEntries(entries: OwnedEntry[], sort: SortKey): OwnedEntry[] 
 }
 
 export interface CollectionFilters {
+  rarity: OwnedEntry['species']['rarity'] | null;
   search: string;
   race: Race | null;
   affinity: string | null;
@@ -64,13 +65,8 @@ export interface CollectionFilters {
 }
 
 /**
- * Client-side filtering of the current page.
- *
- * The collection endpoint accepts only `rarity` today, so everything else is
- * applied in memory over 25 rows. That is honest rather than clever: it adds no
- * gameplay logic, and the label above the grid says the filters apply to the
- * page. Server-side `archetype` / `affinity` / `search` filters are filed as an
- * API enhancement (plan §25.6).
+ * Client-side filtering of the complete owned collection. Callers sort and
+ * paginate only after this function returns.
  */
 export function filterEntries(
   entries: OwnedEntry[],
@@ -80,6 +76,7 @@ export function filterEntries(
   const needle = filters.search.trim().toLowerCase();
 
   return entries.filter((entry) => {
+    if (filters.rarity && entry.species.rarity !== filters.rarity) return false;
     if (needle) {
       const haystack = `${displayName(entry)} ${entry.species.name}`.toLowerCase();
       if (!haystack.includes(needle)) return false;

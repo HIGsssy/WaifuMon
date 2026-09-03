@@ -105,7 +105,7 @@ describe('accessibility', () => {
     renderRoutes({ routes, initialEntries: ['/collection'] });
     await screen.findByText(/Nyx/);
 
-    expect(screen.getByLabelText('Search the current page of your collection')).toBeInTheDocument();
+    expect(screen.getByLabelText('Search your collection')).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: 'Sort' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Open filters' }));
 

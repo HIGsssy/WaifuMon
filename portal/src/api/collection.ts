@@ -30,6 +30,31 @@ export function getCollection(
   });
 }
 
+/** Fetch every API page so UI filters can run before UI pagination. */
+export async function getEntireCollection(
+  playerId: number,
+  signal?: AbortSignal,
+): Promise<OwnedEntry[]> {
+  const entries: OwnedEntry[] = [];
+  let requestedPage = 1;
+  let total = Number.POSITIVE_INFINITY;
+
+  while (entries.length < total) {
+    const result = await getCollection(
+      { playerId, page: requestedPage, pageSize: COLLECTION_PAGE_SIZE },
+      signal,
+    );
+    total = result.total;
+    entries.push(...result.items);
+
+    // The echoed page detects an unexpected server clamp and prevents a loop.
+    if (result.items.length === 0 || result.page !== requestedPage) break;
+    requestedPage += 1;
+  }
+
+  return entries;
+}
+
 export function getCollectionEntry(
   playerId: number,
   waifuId: number,

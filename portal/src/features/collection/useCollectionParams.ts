@@ -21,7 +21,6 @@ export type Ownership = 'all' | 'favorites' | 'buddy';
 
 export interface CollectionParams {
   page: number;
-  /** The one filter the API applies server-side. */
   rarity: Rarity | null;
   search: string;
   race: Race | null;

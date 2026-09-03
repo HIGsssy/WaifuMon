@@ -7,11 +7,7 @@
  * flashes away. `isPlaceholderData` is what the toolbar's quiet refetching
  * indicator reads.
  */
-import {
-  keepPreviousData,
-  useQuery,
-  type UseQueryResult,
-} from '@tanstack/react-query';
+import { keepPreviousData, useQuery, type UseQueryResult } from '@tanstack/react-query';
 
 import { PLAYER_POLICY } from '../cachePolicy';
 import {
@@ -19,6 +15,7 @@ import {
   getAppearances,
   getBuddy,
   getCollection,
+  getEntireCollection,
   getCollectionEntry,
   getCollectionStats,
 } from '../collection';
@@ -40,6 +37,16 @@ export function useCollection({
     queryKey: queryKeys.collectionList(playerId, page, rarity),
     queryFn: ({ signal }) =>
       getCollection({ playerId, page, pageSize: COLLECTION_PAGE_SIZE, rarity }, signal),
+    placeholderData: keepPreviousData,
+    ...PLAYER_POLICY,
+  });
+}
+
+/** Complete collection used when filters and pagination must share one dataset. */
+export function useEntireCollection(playerId: number): UseQueryResult<OwnedEntry[]> {
+  return useQuery({
+    queryKey: queryKeys.collectionAll(playerId),
+    queryFn: ({ signal }) => getEntireCollection(playerId, signal),
     placeholderData: keepPreviousData,
     ...PLAYER_POLICY,
   });
