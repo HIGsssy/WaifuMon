@@ -4531,6 +4531,15 @@
           "type": "level",
           "atLevel": 50
         }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
       }
     ],
     "buddyBonus": {

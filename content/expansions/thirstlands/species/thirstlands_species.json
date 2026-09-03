@@ -673,7 +673,7 @@
       "subtitle": "Warden of the Dune Roads",
       "ability": {
         "name": "Captain's Command",
-        "text": "Her voice carries over the wind and every hand on the caravan snaps to it. Follow her orders and the road stays clear; defy her and the desert keeps what it takes."
+        "text": "Her voice cuts the wind and every hand on the caravan snaps to it. Follow her orders and the road stays clear; defy her and the desert keeps what it takes."
       },
       "flavorQuote": "I've hauled freight through every storm this road can throw. You want cargo delivered, you ride with me.",
       "artist": "Whistler"
@@ -837,7 +837,7 @@
       "subtitle": "Water That Wants",
       "ability": {
         "name": "Answer Every Need",
-        "text": "The oasis reads what you lack and gives it to you \u2014 one need at a time, each sweeter than the last. Those who stay too long find their every want answered, and then their wants answered again."
+        "text": "The oasis reads what you lack and gives it to you, need by need, each sweeter than the last. Stay too long and every want is answered \u2014 then answered again."
       },
       "flavorQuote": "You were looking for water. I can give you so much more than water.",
       "artist": "Whistler"
