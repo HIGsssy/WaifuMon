@@ -33,6 +33,7 @@ import { COLLECTION_PAGE_SIZE } from '@/api/collection';
 import { useBuddy, useCollection } from '@/api/hooks/useCollection';
 import { usePlatformCapabilities } from '@/api/hooks/useCapabilities';
 import { useCurrentSession } from '@/auth/useSession';
+import type { Race } from '@/api/types';
 import type { CardView } from '@/components/media/CardViewToggle';
 import { EmptyState } from '@/components/layout/EmptyState';
 import { ErrorState } from '@/components/layout/ErrorState';
@@ -80,7 +81,7 @@ export function CollectionPage() {
           entries,
           {
             search: params.search,
-            archetype: params.archetype,
+            race: params.race,
             affinity: params.affinity,
             ownership: params.ownership,
           },
@@ -91,7 +92,7 @@ export function CollectionPage() {
     [
       entries,
       params.search,
-      params.archetype,
+      params.race,
       params.affinity,
       params.ownership,
       params.sort,
@@ -99,7 +100,7 @@ export function CollectionPage() {
     ],
   );
 
-  const archetypes = useMemo(() => distinctValues(entries, 'archetype'), [entries]);
+  const races = useMemo(() => distinctValues(entries, 'race') as Race[], [entries]);
   const affinities = useMemo(() => distinctValues(entries, 'affinity'), [entries]);
 
   const total = collection.data?.total ?? 0;
@@ -125,7 +126,7 @@ export function CollectionPage() {
 
       <CollectionToolbar
         api={api}
-        archetypes={archetypes}
+        races={races}
         affinities={affinities}
         refreshing={refreshing}
         {...(cardsAvailable ? { view: tileView, onViewChange: setView } : {})}

@@ -18,6 +18,7 @@
  * column cannot leak, and a renamed one fails the typecheck.
  */
 import { seductivePowerView } from '../modules/power/seductivePower';
+import { resolveRace } from '../modules/cards/race';
 import type {
   Affinity,
   ContentRating,
@@ -129,6 +130,7 @@ export function toSpeciesResource(
   const { imagePath: _imagePath, ...rest } = row;
   return {
     ...rest,
+    race: resolveRace(row),
     rarity: row.rarity as Rarity,
     affinity: row.affinity as Affinity,
     contentRating: row.contentRating as ContentRating,
@@ -142,7 +144,11 @@ export function toContentSpeciesResource(
   appearances: readonly ResolvedAppearance[],
 ) {
   const { imagePath: _imagePath, appearances: _authored, ...rest } = species;
-  return { ...rest, appearances: toAppearanceCatalogResources(appearances) };
+  return {
+    ...rest,
+    race: resolveRace(species),
+    appearances: toAppearanceCatalogResources(appearances),
+  };
 }
 
 /**

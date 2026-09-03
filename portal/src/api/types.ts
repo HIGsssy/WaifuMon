@@ -58,6 +58,7 @@ export interface ApiErrorBody {
 
 export type Rarity = 'N' | 'R' | 'SR' | 'SSR' | 'UR' | 'LR' | 'EX';
 export type Affinity = 'dominant' | 'submissive' | 'caregiver' | 'primal' | 'switch';
+export type Race = 'angel' | 'demon' | 'demi-human' | 'human' | 'spirit' | 'valkyrie' | 'android';
 export type ContentRating = 'suggestive' | 'mature' | 'explicit';
 export type ItemCategory = 'capture' | 'material' | 'cosmetic' | 'consumable';
 export type PriceCurrency = 'waifubux' | 'essence';
@@ -154,6 +155,8 @@ export interface SpeciesFields {
   rarity: Rarity;
   /** What a Waifumon *is*. Surfaced in the UI as "Type" (plan §8.2). */
   archetype: string;
+  /** Closed race/type classification for card iconography and filtering. */
+  race: Race;
   affinity: Affinity;
   contentRating: ContentRating;
   description: string;

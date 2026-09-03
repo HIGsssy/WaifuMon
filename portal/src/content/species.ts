@@ -6,7 +6,7 @@
  * rate, an XP threshold, a drop weight or any other rule the game services own
  * (plan §16). The one judgement call, "related species", is documented below.
  */
-import type { ContentSpecies, OwnedEntry } from '@/api/types';
+import type { ContentSpecies, OwnedEntry, Race } from '@/api/types';
 import { byRarityDesc } from '@/lib/rarity';
 
 /** How a copy is titled: its nickname if it has one, else the species name. */
@@ -58,7 +58,7 @@ export function sortEntries(entries: OwnedEntry[], sort: SortKey): OwnedEntry[] 
 
 export interface CollectionFilters {
   search: string;
-  archetype: string | null;
+  race: Race | null;
   affinity: string | null;
   ownership: 'all' | 'favorites' | 'buddy';
 }
@@ -84,7 +84,7 @@ export function filterEntries(
       const haystack = `${displayName(entry)} ${entry.species.name}`.toLowerCase();
       if (!haystack.includes(needle)) return false;
     }
-    if (filters.archetype && entry.species.archetype !== filters.archetype) return false;
+    if (filters.race && entry.species.race !== filters.race) return false;
     if (filters.affinity && entry.species.affinity !== filters.affinity) return false;
     if (filters.ownership === 'favorites' && !entry.waifu.isFavorite) return false;
     if (filters.ownership === 'buddy' && entry.waifu.id !== buddyWaifuId) return false;
@@ -93,10 +93,17 @@ export function filterEntries(
 }
 
 /** Distinct values present in a set of entries, for building filter chips. */
-export function distinctValues(entries: OwnedEntry[], key: 'archetype' | 'affinity'): string[] {
+export function distinctValues(entries: OwnedEntry[], key: 'race' | 'affinity'): string[] {
   return [...new Set(entries.map((entry) => entry.species[key]))].sort((a, b) =>
     a.localeCompare(b),
   );
+}
+
+export function distinctSpeciesValues(
+  entries: ContentSpecies[],
+  key: 'race' | 'affinity',
+): string[] {
+  return [...new Set(entries.map((entry) => entry[key]))].sort((a, b) => a.localeCompare(b));
 }
 
 /**

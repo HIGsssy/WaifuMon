@@ -1,10 +1,3 @@
-/**
- * Phase 0 smoke test (plan §21): the shell renders and navigation works.
- *
- * Exercises the real provider stack, the real router config, and the real
- * `DevSessionProvider` resolving against MSW — so a break in any of those three
- * fails here rather than in a browser.
- */
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
@@ -13,14 +6,12 @@ import { routes } from '@/app/router';
 import { renderRoutes } from '@/test/renderWithProviders';
 
 describe('AppShell', () => {
-  it('renders the shell, the dev-mode marker and the full navigation', async () => {
+  it('renders the shell without dev-mode presentation chrome and with the full navigation', async () => {
     renderRoutes({ routes, initialEntries: ['/dashboard'] });
 
     expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeInTheDocument();
-
-    // The dev-auth marker is always present — §26's mitigation for "users
-    // mistake dev-auth for real auth".
-    expect(screen.getAllByText(/dev/i).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/DEV MODE/i)).toBeNull();
+    expect(screen.queryByTitle(/No authentication/i)).toBeNull();
 
     const nav = screen.getByRole('navigation', { name: 'Primary' });
     for (const label of [
@@ -51,7 +42,6 @@ describe('AppShell', () => {
     await user.click(within(nav).getByRole('link', { name: 'Collection' }));
 
     expect(await screen.findByRole('heading', { name: 'Collection' })).toBeInTheDocument();
-    // The shell survives the route change (§14).
     expect(screen.getByRole('navigation', { name: 'Primary' })).toBeInTheDocument();
   });
 

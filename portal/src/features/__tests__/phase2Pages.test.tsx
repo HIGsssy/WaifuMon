@@ -187,10 +187,84 @@ describe('EncyclopediaPage', () => {
     renderAt('/encyclopedia');
 
     await screen.findByText('Void Empress');
+    await user.click(screen.getByRole('button', { name: 'Open filters' }));
     await user.click(screen.getByRole('button', { name: 'Undiscovered' }));
 
     await waitFor(() => expect(screen.queryByText('Void Empress')).toBeNull());
     expect(screen.getAllByText('???').length).toBe(2);
+  });
+
+  it('opens compact filters, keeps selections after close, and removes chips', async () => {
+    const user = userEvent.setup();
+    renderAt('/encyclopedia');
+
+    await screen.findByText('Void Empress');
+    await user.click(screen.getByRole('button', { name: 'Open filters' }));
+    await user.click(await screen.findByRole('button', { name: 'Spirit' }));
+    await user.keyboard('{Escape}');
+
+    expect(screen.queryByText('Type')).toBeNull();
+    expect(screen.getByRole('button', { name: /Type: Spirit/ })).toBeInTheDocument();
+    expect(screen.getByText('Neon Kitsune')).toBeInTheDocument();
+    expect(screen.queryByText('Void Empress')).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'Open filters' }));
+    expect(await screen.findByRole('button', { name: 'Spirit' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+
+    await user.keyboard('{Escape}');
+    await user.click(screen.getByRole('button', { name: /Type: Spirit/ }));
+    expect(await screen.findByText('Void Empress')).toBeInTheDocument();
+  });
+
+  it('clears all encyclopedia filters', async () => {
+    const user = userEvent.setup();
+    renderAt('/encyclopedia?type=spirit&affinity=submissive&rarity=SR');
+
+    expect(await screen.findByText('Neon Kitsune')).toBeInTheDocument();
+    expect(screen.queryByText('Void Empress')).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'Clear All' }));
+
+    expect(await screen.findByText('Void Empress')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Type: Spirit/ })).toBeNull();
+  });
+
+  it('filters encyclopedia entries by affinity', async () => {
+    const user = userEvent.setup();
+    renderAt('/encyclopedia');
+
+    await screen.findByText('Void Empress');
+    await user.click(screen.getByRole('button', { name: 'Open filters' }));
+    await user.click(await screen.findByRole('button', { name: 'Primal' }));
+
+    expect(screen.getByText('Void Empress')).toBeInTheDocument();
+    expect(screen.queryByText('Neon Kitsune')).toBeNull();
+  });
+
+  it('uses canonical race values for Type filters instead of malformed archetype prose', async () => {
+    server.use(
+      http.get('/api/v1/content/species', () =>
+        data([
+          {
+            ...fixtures.contentSpecies[0]!,
+            archetype: 'bronze-scaled dragongirl caravan master',
+            race: 'demi-human',
+          },
+        ]),
+      ),
+    );
+
+    const user = userEvent.setup();
+    renderAt('/encyclopedia');
+
+    await screen.findByText('Neko Barista');
+    await user.click(screen.getByRole('button', { name: 'Open filters' }));
+
+    expect(screen.getByRole('button', { name: 'Demi Human' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Bronze Scaled Dragongirl/ })).toBeNull();
   });
 
   it('offers a retry when the catalogue fails to load', async () => {

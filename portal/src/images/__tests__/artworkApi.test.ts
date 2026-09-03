@@ -9,6 +9,7 @@ function species(slug: string): ContentSpecies {
     name: slug,
     rarity: 'R',
     archetype: 'spirit',
+    race: 'spirit',
     affinity: 'switch',
     contentRating: 'suggestive',
     description: '',

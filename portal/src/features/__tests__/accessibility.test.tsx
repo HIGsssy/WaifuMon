@@ -101,14 +101,16 @@ describe('accessibility', () => {
   });
 
   it('keeps every interactive control reachable and labelled on the collection toolbar', async () => {
+    const user = userEvent.setup();
     renderRoutes({ routes, initialEntries: ['/collection'] });
     await screen.findByText(/Nyx/);
 
     expect(screen.getByLabelText('Search the current page of your collection')).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: 'Sort' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Open filters' }));
 
     // Filter chips report their own pressed state.
-    const urChip = screen.getAllByRole('button', { name: 'UR' })[0]!;
+    const urChip = await screen.findByRole('button', { name: 'UR' });
     expect(urChip).toHaveAttribute('aria-pressed', 'false');
   });
 

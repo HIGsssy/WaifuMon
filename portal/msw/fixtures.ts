@@ -120,6 +120,7 @@ function makeSpecies(overrides: Partial<Species> & Pick<Species, 'id' | 'slug' |
   return {
     rarity: 'N',
     archetype: 'demi-human',
+    race: 'demi-human',
     affinity: 'switch',
     contentRating: 'suggestive',
     description: 'A placeholder description used by the mocked API.',
@@ -141,6 +142,7 @@ export const speciesRows: Species[] = [
     name: 'Neon Kitsune',
     rarity: 'SR',
     archetype: 'spirit',
+    race: 'spirit',
     affinity: 'submissive',
   }),
   makeSpecies({
@@ -149,6 +151,7 @@ export const speciesRows: Species[] = [
     name: 'Void Empress',
     rarity: 'UR',
     archetype: 'demon',
+    race: 'demon',
     affinity: 'primal',
     contentRating: 'explicit',
     // Two-entry catalog: the owned default plus a level gate the fixture copy

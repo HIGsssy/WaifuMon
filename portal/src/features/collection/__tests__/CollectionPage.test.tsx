@@ -114,14 +114,95 @@ describe('CollectionPage', () => {
       }),
     );
 
-    await user.click(screen.getAllByRole('button', { name: 'UR' })[0]!);
+    await user.click(screen.getByRole('button', { name: 'Open filters' }));
+    await user.click(await screen.findByRole('button', { name: 'UR' }));
 
     // §14 / §24.15: the old cards stay put, and a quiet indicator explains why.
     expect(screen.getByRole('link', { name: /Neko Barista/ })).toBeInTheDocument();
-    expect(screen.getByRole('status')).toHaveTextContent('Refreshing…');
+    expect(screen.getByRole('status')).toHaveTextContent('Refreshing...');
     expect(screen.queryByLabelText('Loading your collection')).toBeNull();
 
     await waitFor(() => expect(screen.queryByRole('link', { name: /Neko Barista/ })).toBeNull());
+  });
+
+  it('opens and closes compact filters without losing the selected type', async () => {
+    const user = userEvent.setup();
+    renderCollection();
+
+    await screen.findByRole('link', { name: /Nyx/ });
+    await user.click(screen.getByRole('button', { name: 'Open filters' }));
+    await user.click(await screen.findByRole('button', { name: 'Spirit' }));
+    await user.keyboard('{Escape}');
+
+    expect(screen.queryByText('Type')).toBeNull();
+    expect(screen.getByRole('button', { name: /Type: Spirit/ })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Neon Kitsune/ })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Nyx/ })).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'Open filters' }));
+    const popover = await screen.findByRole('button', { name: 'Spirit' });
+    expect(popover).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('removes individual filter chips and clears all collection filters', async () => {
+    const user = userEvent.setup();
+    renderCollection('/collection?type=spirit&affinity=submissive&ownership=favorites');
+
+    await screen.findByRole('heading', { name: 'Collection' });
+    await user.click(screen.getByRole('button', { name: /Affinity: Submissive/ }));
+
+    expect(screen.queryByRole('button', { name: /Affinity: Submissive/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /Type: Spirit/ })).toBeInTheDocument();
+
+    await user.keyboard('{Escape}');
+    await user.click(screen.getByRole('button', { name: 'Clear All' }));
+
+    expect(screen.queryByRole('button', { name: /Type: Spirit/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Favourites/ })).toBeNull();
+    expect(await screen.findByRole('link', { name: /Nyx/ })).toBeInTheDocument();
+  });
+
+  it('keeps favourite and buddy ownership filters working in the compact panel', async () => {
+    const user = userEvent.setup();
+    renderCollection();
+
+    await screen.findByRole('link', { name: /Nyx/ });
+    await user.click(screen.getByRole('button', { name: 'Open filters' }));
+    await user.click(await screen.findByRole('button', { name: 'Favourites' }));
+
+    expect(screen.getByRole('link', { name: /Nyx/ })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Neon Kitsune/ })).toBeNull();
+
+    await user.click(await screen.findByRole('button', { name: 'Buddy' }));
+
+    expect(screen.getByRole('link', { name: /Nyx/ })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Neko Barista/ })).toBeNull();
+  });
+
+  it('uses canonical race values for Type filters instead of malformed archetype prose', async () => {
+    server.use(
+      http.get('/api/v1/players/:playerId/collection/owned', () =>
+        pageEnvelope([
+          {
+            ...fixtures.ownedEntries[0]!,
+            species: {
+              ...fixtures.ownedEntries[0]!.species,
+              archetype: 'bronze-scaled dragongirl caravan master',
+              race: 'demi-human',
+            },
+          },
+        ]),
+      ),
+    );
+
+    const user = userEvent.setup();
+    renderCollection();
+
+    await screen.findByRole('link', { name: /Nyx/ });
+    await user.click(screen.getByRole('button', { name: 'Open filters' }));
+
+    expect(screen.getByRole('button', { name: 'Demi Human' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Bronze Scaled Dragongirl/ })).toBeNull();
   });
 
   it('paginates, and the page lives in the URL', async () => {

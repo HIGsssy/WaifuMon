@@ -13,7 +13,7 @@
 import { useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router';
 
-import type { Rarity } from '@/api/types';
+import type { Race, Rarity } from '@/api/types';
 import { RARITY_ORDER } from '@/lib/rarity';
 import type { SortKey } from '@/content/species';
 
@@ -24,7 +24,7 @@ export interface CollectionParams {
   /** The one filter the API applies server-side. */
   rarity: Rarity | null;
   search: string;
-  archetype: string | null;
+  race: Race | null;
   affinity: string | null;
   ownership: Ownership;
   sort: SortKey;
@@ -32,6 +32,15 @@ export interface CollectionParams {
 
 const SORT_KEYS: readonly SortKey[] = ['rarity', 'name', 'level', 'caught'];
 const OWNERSHIPS: readonly Ownership[] = ['all', 'favorites', 'buddy'];
+const RACES: readonly Race[] = [
+  'angel',
+  'demon',
+  'demi-human',
+  'human',
+  'spirit',
+  'valkyrie',
+  'android',
+];
 
 /** Anything unrecognised falls back to the default rather than throwing. */
 function readEnum<T extends string>(raw: string | null, allowed: readonly T[], fallback: T): T {
@@ -61,7 +70,7 @@ export function useCollectionParams(): CollectionParamsApi {
           ? (rarity as Rarity)
           : null,
       search: searchParams.get('search') ?? '',
-      archetype: searchParams.get('type'),
+      race: readNullableEnum(searchParams.get('type'), RACES),
       affinity: searchParams.get('affinity'),
       ownership: readEnum(searchParams.get('ownership'), OWNERSHIPS, 'all'),
       sort: readEnum(searchParams.get('sort'), SORT_KEYS, 'rarity'),
@@ -98,7 +107,7 @@ export function useCollectionParams(): CollectionParamsApi {
         const next = new URLSearchParams(current);
         if ('rarity' in patch) write(next, 'rarity', patch.rarity ?? null, '');
         if ('search' in patch) write(next, 'search', patch.search ?? null, '');
-        if ('archetype' in patch) write(next, 'type', patch.archetype ?? null, '');
+        if ('race' in patch) write(next, 'type', patch.race ?? null, '');
         if ('affinity' in patch) write(next, 'affinity', patch.affinity ?? null, '');
         if ('ownership' in patch) write(next, 'ownership', patch.ownership ?? null, 'all');
         if ('sort' in patch) write(next, 'sort', patch.sort ?? null, 'rarity');
@@ -117,9 +126,13 @@ export function useCollectionParams(): CollectionParamsApi {
   const hasFilters =
     params.rarity !== null ||
     params.search !== '' ||
-    params.archetype !== null ||
+    params.race !== null ||
     params.affinity !== null ||
     params.ownership !== 'all';
 
   return { params, setPage, setFilter, clearFilters, hasFilters };
+}
+
+function readNullableEnum<T extends string>(raw: string | null, allowed: readonly T[]): T | null {
+  return raw !== null && (allowed as readonly string[]).includes(raw) ? (raw as T) : null;
 }

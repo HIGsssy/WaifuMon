@@ -31,6 +31,7 @@ import {
   contentRatingSchema,
   raritySchema,
 } from './common';
+import { RACE_CODES } from '../../modules/cards/race';
 
 /**
  * A species' authored Buddy Bonus — the passive effect she grants while
@@ -61,6 +62,7 @@ const speciesFields = {
   name: z.string(),
   rarity: raritySchema,
   archetype: z.string(),
+  race: z.enum(RACE_CODES).describe('Closed race/type classification.'),
   affinity: affinitySchema.describe('Buddy capture-matchup style.'),
   contentRating: contentRatingSchema,
   description: z.string(),

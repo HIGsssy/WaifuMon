@@ -1,73 +1,41 @@
 /**
- * `/encyclopedia` — every species in the world (plan §8.7).
+ * `/encyclopedia` - every species in the world.
  *
- * Unlike the Collection, this page filters entirely client-side and that is
- * correct rather than a compromise: the content snapshot is one cached array of
- * ~50 rows with `staleTime: Infinity`, so there is nothing to fetch per filter
- * and no server round trip to save.
- *
- * The ownership overlay is derived by `useOwnedSlugs`, which walks the
- * collection once per distinct owned count — so a capture in Discord shows up
- * here without a reload. `GET /players/{id}/collection/dex` (§25.5) would
- * replace that walk with a single request.
- *
- * The overlay gates the grid rather than decorating it: a species rendered
- * before it lands would be presented as undiscovered, and that is the one
- * wrong answer a dex can give about something the player already owns.
- *
- * Disabled species are hidden: they are content an operator has switched off,
- * not content a player has failed to find.
+ * The catalogue filters client-side over the cached content snapshot. The
+ * ownership overlay still gates the grid so undiscovered species never leak
+ * names or lore while the owned-count request is loading.
  */
-import { BookOpen, Search, X } from 'lucide-react';
+import { BookOpen } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router';
 
+import type { Affinity, Race } from '@/api/types';
 import { useContentSpecies } from '@/api/hooks/useContent';
 import { useOwnedSlugs } from '@/api/hooks/useOwnedSlugs';
 import { useCurrentSession } from '@/auth/useSession';
 import { EmptyState } from '@/components/layout/EmptyState';
 import { ErrorState } from '@/components/layout/ErrorState';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import {
+  FilterToolbar,
+  type ActiveFilterChip,
+  type FilterGroup,
+} from '@/components/waifumon/FilterToolbar';
 import { Skeleton } from '@/components/ui/skeleton';
+import { distinctSpeciesValues } from '@/content/species';
 import { titleCase } from '@/lib/format';
 import { byRarityDesc, RARITY_ORDER, rarityStyle } from '@/lib/rarity';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
-import { cn } from '@/lib/cn';
 import { SpeciesCard } from './SpeciesCard';
 
 type Discovery = 'all' | 'discovered' | 'undiscovered';
 
 const GRID = 'grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 2xl:grid-cols-5';
 
-function Chip({
-  active,
-  onClick,
-  children,
-  style,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-  style?: React.CSSProperties;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={cn(
-        'rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
-        active
-          ? 'border-transparent bg-ink text-ink-inverse'
-          : 'border-border text-ink-muted hover:border-border-strong hover:text-ink',
-      )}
-      style={active ? undefined : style}
-    >
-      {children}
-    </button>
-  );
+const DISCOVERY_OPTIONS: readonly Discovery[] = ['all', 'discovered', 'undiscovered'];
+
+function readParam<T extends string>(raw: string | null, allowed: readonly T[]): T | null {
+  return raw !== null && (allowed as readonly string[]).includes(raw) ? (raw as T) : null;
 }
 
 export function EncyclopediaPage() {
@@ -75,11 +43,9 @@ export function EncyclopediaPage() {
   const species = useContentSpecies();
   const owned = useOwnedSlugs(session.playerId);
 
-  // URL-backed, same rule as the Collection: a filtered dex is a shareable link.
   const [searchParams, setSearchParams] = useSearchParams();
-  const rarity = searchParams.get('rarity');
-  const archetype = searchParams.get('type');
-  const discovery = (searchParams.get('discovery') ?? 'all') as Discovery;
+  const rarity = readParam(searchParams.get('rarity'), RARITY_ORDER);
+  const discovery = readParam(searchParams.get('discovery'), DISCOVERY_OPTIONS) ?? 'all';
   const search = searchParams.get('search') ?? '';
 
   const [searchDraft, setSearchDraft] = useState(search);
@@ -98,13 +64,14 @@ export function EncyclopediaPage() {
     () => (species.data ?? []).filter((entry) => entry.enabled),
     [species.data],
   );
-
-  const archetypes = useMemo(
-    () => [...new Set(enabled.map((entry) => entry.archetype))].sort((a, b) => a.localeCompare(b)),
+  const races = useMemo(() => distinctSpeciesValues(enabled, 'race') as Race[], [enabled]);
+  const affinities = useMemo(
+    () => distinctSpeciesValues(enabled, 'affinity') as Affinity[],
     [enabled],
   );
+  const race = readParam(searchParams.get('type'), races);
+  const affinity = readParam(searchParams.get('affinity'), affinities);
 
-  // Memoised so the filter below is not invalidated by a fresh `{}` each render.
   const counts = useMemo(() => owned.data?.countBySlug ?? {}, [owned.data]);
 
   const visible = useMemo(() => {
@@ -113,21 +80,110 @@ export function EncyclopediaPage() {
       .filter((entry) => {
         const ownedCount = counts[entry.slug] ?? 0;
         if (rarity && entry.rarity !== rarity) return false;
-        if (archetype && entry.archetype !== archetype) return false;
+        if (race && entry.race !== race) return false;
+        if (affinity && entry.affinity !== affinity) return false;
         if (discovery === 'discovered' && ownedCount === 0) return false;
         if (discovery === 'undiscovered' && ownedCount > 0) return false;
-        // An undiscovered species must not be findable by typing its name —
-        // that would leak the very thing the silhouette hides.
         if (needle && (ownedCount === 0 || !entry.name.toLowerCase().includes(needle))) {
           return false;
         }
         return true;
       })
       .sort((a, b) => byRarityDesc(a.rarity, b.rarity) || a.name.localeCompare(b.name));
-  }, [enabled, counts, rarity, archetype, discovery, debouncedSearch]);
+  }, [enabled, counts, rarity, race, affinity, discovery, debouncedSearch]);
 
   const discoveredCount = enabled.filter((entry) => (counts[entry.slug] ?? 0) > 0).length;
-  const hasFilters = Boolean(rarity || archetype || search || discovery !== 'all');
+
+  const groups: FilterGroup[] = [
+    {
+      label: 'Show',
+      options: DISCOVERY_OPTIONS.map((value) => ({
+        value,
+        label: titleCase(value),
+        active: discovery === value,
+        onSelect: () => patch('discovery', value === 'all' ? null : value),
+      })),
+    },
+    {
+      label: 'Rarity',
+      options: RARITY_ORDER.map((tier) => ({
+        value: tier,
+        label: tier,
+        active: rarity === tier,
+        onSelect: () => patch('rarity', rarity === tier ? null : tier),
+        style: { color: `var(${rarityStyle(tier).cssVar})` },
+      })),
+    },
+    {
+      label: 'Type',
+      options: races.map((value) => ({
+        value,
+        label: titleCase(value),
+        active: race === value,
+        onSelect: () => patch('type', race === value ? null : value),
+      })),
+    },
+    {
+      label: 'Affinity',
+      options: affinities.map((value) => ({
+        value,
+        label: titleCase(value),
+        active: affinity === value,
+        onSelect: () => patch('affinity', affinity === value ? null : value),
+      })),
+    },
+  ];
+
+  const activeChips: ActiveFilterChip[] = [
+    ...(search
+      ? [
+          {
+            key: 'search',
+            label: `Search: "${search}"`,
+            onRemove: () => {
+              setSearchDraft('');
+              patch('search', null);
+            },
+          },
+        ]
+      : []),
+    ...(rarity
+      ? [
+          {
+            key: 'rarity',
+            label: `Rarity: ${rarity}`,
+            onRemove: () => patch('rarity', null),
+          },
+        ]
+      : []),
+    ...(race
+      ? [
+          {
+            key: 'type',
+            label: `Type: ${titleCase(race)}`,
+            onRemove: () => patch('type', null),
+          },
+        ]
+      : []),
+    ...(affinity
+      ? [
+          {
+            key: 'affinity',
+            label: `Affinity: ${titleCase(affinity)}`,
+            onRemove: () => patch('affinity', null),
+          },
+        ]
+      : []),
+    ...(discovery !== 'all'
+      ? [
+          {
+            key: 'discovery',
+            label: titleCase(discovery),
+            onRemove: () => patch('discovery', null),
+          },
+        ]
+      : []),
+  ];
 
   return (
     <>
@@ -151,99 +207,22 @@ export function EncyclopediaPage() {
         />
       ) : (
         <>
-          <div className="mb-6 space-y-4">
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="relative min-w-0 flex-1 sm:max-w-xs">
-                <Search
-                  className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-ink-subtle"
-                  aria-hidden="true"
-                />
-                <Input
-                  value={searchDraft}
-                  onChange={(event) => {
-                    setSearchDraft(event.target.value);
-                    patch('search', event.target.value);
-                  }}
-                  placeholder="Search discovered species…"
-                  aria-label="Search discovered species"
-                  className="pl-9"
-                />
-              </div>
-              {hasFilters && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setSearchDraft('');
-                    setSearchParams(new URLSearchParams());
-                  }}
-                >
-                  <X aria-hidden="true" />
-                  Clear
-                </Button>
-              )}
-            </div>
+          <FilterToolbar
+            searchValue={searchDraft}
+            onSearchChange={(value) => {
+              setSearchDraft(value);
+              patch('search', value);
+            }}
+            searchPlaceholder="Search discovered species..."
+            searchLabel="Search discovered species"
+            groups={groups}
+            activeChips={activeChips}
+            onClearAll={() => {
+              setSearchDraft('');
+              setSearchParams(new URLSearchParams());
+            }}
+          />
 
-            <fieldset>
-              <legend className="mb-2 text-xs tracking-wide text-ink-muted uppercase">Show</legend>
-              <div className="flex flex-wrap gap-1.5">
-                {(['all', 'discovered', 'undiscovered'] as const).map((value) => (
-                  <Chip
-                    key={value}
-                    active={discovery === value}
-                    onClick={() => patch('discovery', value === 'all' ? null : value)}
-                  >
-                    {titleCase(value)}
-                  </Chip>
-                ))}
-              </div>
-            </fieldset>
-
-            <fieldset>
-              <legend className="mb-2 text-xs tracking-wide text-ink-muted uppercase">
-                Rarity
-              </legend>
-              <div className="flex flex-wrap gap-1.5">
-                {RARITY_ORDER.map((tier) => (
-                  <Chip
-                    key={tier}
-                    active={rarity === tier}
-                    onClick={() => patch('rarity', rarity === tier ? null : tier)}
-                    style={{ color: `var(${rarityStyle(tier).cssVar})` }}
-                  >
-                    {tier}
-                  </Chip>
-                ))}
-              </div>
-            </fieldset>
-
-            {archetypes.length > 0 && (
-              <fieldset>
-                <legend className="mb-2 text-xs tracking-wide text-ink-muted uppercase">
-                  Type
-                </legend>
-                <div className="flex flex-wrap gap-1.5">
-                  {archetypes.map((value) => (
-                    <Chip
-                      key={value}
-                      active={archetype === value}
-                      onClick={() => patch('type', archetype === value ? null : value)}
-                    >
-                      {titleCase(value)}
-                    </Chip>
-                  ))}
-                </div>
-              </fieldset>
-            )}
-          </div>
-
-          {/*
-            The ownership overlay is a *precondition* for the grid, not an
-            enhancement of it. Rendering species before it lands presents every
-            entry as undiscovered, which is the locked treatment — a skeleton
-            says "not yet known", a silhouette says "you do not own her", and
-            only one of those is honest while the answer is still in flight.
-          */}
           {species.isPending || owned.isPending ? (
             <div className={GRID} aria-busy="true" aria-label="Loading the encyclopedia">
               {Array.from({ length: 10 }, (_, index) => (

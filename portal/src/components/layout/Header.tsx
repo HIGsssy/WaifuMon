@@ -14,7 +14,6 @@ import { useSession } from '@/auth/useSession';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { SwitchPlayerButton } from '@/features/devLogin/SwitchPlayerButton';
-import { DevModeChip } from './DevModeBanner';
 import { NavList } from './NavList';
 
 function ThemeToggle() {
@@ -62,8 +61,6 @@ export function Header() {
           />
           Waifumon
         </Link>
-
-        <DevModeChip className="ml-1" />
 
         <div className="ml-auto flex items-center gap-1.5">
           {session && (

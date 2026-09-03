@@ -12,7 +12,6 @@
 import { Suspense } from 'react';
 import { Outlet } from 'react-router';
 
-import { DevModeBanner } from '@/components/layout/DevModeBanner';
 import { Footer } from '@/components/layout/Footer';
 import { Header } from '@/components/layout/Header';
 import { Sidebar } from '@/components/layout/Sidebar';
@@ -43,7 +42,6 @@ export function AppShell() {
         Skip to main content
       </a>
       <Header />
-      <DevModeBanner className="hidden sm:flex" />
       <div className="flex flex-1">
         <Sidebar />
         <main
