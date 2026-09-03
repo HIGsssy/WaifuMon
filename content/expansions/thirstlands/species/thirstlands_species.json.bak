@@ -1,0 +1,986 @@
+[
+  {
+    "slug": "pickaxe_goblin",
+    "name": "Pickaxe Goblin",
+    "rarity": "R",
+    "archetype": "goblin miner",
+    "race": "demi-human",
+    "baseCaptureRate": null,
+    "description": "Scrappy goblin miner who works the Thirstlands canyon claims. Digs for ore, water, and anything shiny \u2014 her pickaxe has outlived three employers and she's prouder of it than of her own name.",
+    "tags": [
+      "expansion",
+      "region_exclusive"
+    ],
+    "contentRating": "mature",
+    "affinity": "switch",
+    "card": {
+      "subtitle": "Canyon Claim Jumper",
+      "ability": {
+        "name": "Ore Sense",
+        "text": "Her pickaxe always swings toward the richest vein \u2014 and, just as often, straight past it toward whatever glints hardest in your pocket."
+      },
+      "flavorQuote": "First rule of the Thirstlands: don't grab her pickaxe. Second rule: it's mine now.",
+      "artist": "Potato"
+    },
+    "imagePath": "waifumon/pickaxe_goblin/standard.png",
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
+  },
+  {
+    "slug": "kobold_lamp_girl",
+    "name": "Kobold Lamp Girl",
+    "rarity": "R",
+    "archetype": "kobold lightkeeper",
+    "race": "demi-human",
+    "baseCaptureRate": null,
+    "description": "Tends the lantern-walk through the Thirstlands caverns. Her light has never gone out, and neither has her patience for anyone who follows it.",
+    "tags": [
+      "expansion",
+      "region_exclusive"
+    ],
+    "contentRating": "mature",
+    "affinity": "submissive",
+    "card": {
+      "subtitle": "Cavern Lightbearer",
+      "ability": {
+        "name": "Lantern's Warmth",
+        "text": "Her candle never flickers. Allies near her light shake off fear, and her shy smile somehow says everything she won't."
+      },
+      "flavorQuote": "Follow the light. I'll keep it steady \u2014 I always do.",
+      "artist": "Potato"
+    },
+    "imagePath": "waifumon/kobold_lamp_girl/standard.png",
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
+  },
+  {
+    "slug": "kobold_cave_surveyor",
+    "name": "Kobold Cave Surveyor",
+    "rarity": "N",
+    "archetype": "cavern cartographer",
+    "race": "demi-human",
+    "baseCaptureRate": null,
+    "description": "Maps the Thirstlands caverns with too much equipment and not enough caution. Every echo is a discovery, every dead end a detour worth taking.",
+    "tags": [
+      "expansion",
+      "region_exclusive"
+    ],
+    "contentRating": "mature",
+    "affinity": "switch",
+    "card": {
+      "subtitle": "Too Much Gear",
+      "ability": {
+        "name": "Cartographic Frenzy",
+        "text": "Each cave she maps makes her faster and less careful. By the third cavern she's forgotten the rope entirely and is improvising with maps."
+      },
+      "flavorQuote": "I've mapped this cavern three times! ...Wait. This is a different cavern.",
+      "artist": "Potato"
+    },
+    "imagePath": "waifumon/kobold_cave_surveyor/standard.png",
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
+  },
+  {
+    "slug": "orc_mechanic",
+    "name": "Orc Mechanic",
+    "rarity": "N",
+    "archetype": "canyon grease monkey",
+    "race": "demi-human",
+    "baseCaptureRate": null,
+    "description": "Keeps the Thirstlands' desert rigs running from a canyon-floor garage. Grease on her hands is a badge of honor, and her wrench has never lost a fight.",
+    "tags": [
+      "expansion",
+      "region_exclusive"
+    ],
+    "contentRating": "mature",
+    "affinity": "switch",
+    "card": {
+      "subtitle": "Canyon Grease Monkey",
+      "ability": {
+        "name": "Field Repair",
+        "text": "Whatever's broken, she's already fixed a worse one. Machines run smoother the moment she leans on them."
+      },
+      "flavorQuote": "It ain't broke. It just ain't fixed yet.",
+      "artist": "Whistler"
+    },
+    "imagePath": "waifumon/orc_mechanic/standard.png",
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
+  },
+  {
+    "slug": "desert_bounty_huntress",
+    "name": "Desert Bounty Huntress",
+    "rarity": "R",
+    "archetype": "android bounty hunter",
+    "race": "android",
+    "baseCaptureRate": null,
+    "description": "An android built for heat and long hunts, tracking monsters and fugitives across the Thirstlands badlands. Her targeting lens ticks when she looks you over \u2014 and she already knows your bounty.",
+    "tags": [
+      "expansion",
+      "region_exclusive"
+    ],
+    "contentRating": "mature",
+    "affinity": "dominant",
+    "card": {
+      "subtitle": "Heat-Seeking",
+      "ability": {
+        "name": "Targeting Lens",
+        "text": "Once her lens locks a mark, dust, distance and dead ends are just paperwork. The cuffs always swing home."
+      },
+      "flavorQuote": "I was built for this heat. You weren't.",
+      "artist": "Whistler"
+    },
+    "imagePath": "waifumon/desert_bounty_huntress/standard.png",
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
+  },
+  {
+    "slug": "tak_belly_dancer",
+    "name": "Tak, Thirstland's Belly Dancer",
+    "rarity": "LR",
+    "archetype": "legendary belly dancer",
+    "race": "demi-human",
+    "baseCaptureRate": null,
+    "description": "The Thirstlands' most beloved belly dancer \u2014 a sly, freckled goblin whose coin belt has outshone every stage from the canyon mines to the palace halls. Watch her long enough and the mischief in her eyes melts into something far warmer.",
+    "tags": [
+      "expansion",
+      "region_exclusive"
+    ],
+    "contentRating": "explicit",
+    "affinity": "switch",
+    "card": {
+      "subtitle": "Coin-Belt Legend",
+      "ability": {
+        "name": "Dancer's Charm",
+        "text": "Every sway of her hips loosens purses and resolve alike. The longer you watch, the less you remember why you came."
+      },
+      "flavorQuote": "You came for the dancing. Stay for the encore.",
+      "artist": "Whistler"
+    },
+    "imagePath": "waifumon/tak_belly_dancer/standard.png",
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
+  },
+  {
+    "slug": "underdark_bartender",
+    "name": "Underdark Bartender",
+    "rarity": "R",
+    "archetype": "drow barkeep",
+    "race": "demi-human",
+    "baseCaptureRate": null,
+    "description": "The only warm corner in the Thirst Lands' deep caverns. Every weary traveler leaves with a hot drink, a full belly, and someone who actually listened.",
+    "tags": [
+      "expansion",
+      "region_exclusive"
+    ],
+    "contentRating": "explicit",
+    "affinity": "caregiver",
+    "card": {
+      "subtitle": "Deep Tavern Keeper",
+      "ability": {
+        "name": "Last Call Care",
+        "text": "Tends the underdark bar where the weary find warmth. Restores the target and makes the dark feel safe."
+      },
+      "flavorQuote": "Stay until the fire burns low. I'll keep the kettle on.",
+      "artist": "Potato"
+    },
+    "imagePath": "waifumon/underdark_bartender/standard.png",
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
+  },
+  {
+    "slug": "dune_siren",
+    "name": "Dune Siren",
+    "rarity": "SR",
+    "archetype": "sandstorm wraith",
+    "race": "spirit",
+    "baseCaptureRate": null,
+    "description": "The voice in the heat shimmer \u2014 a sandstorm given form, her lower body dissolving into a trailing vortex of grit. She sings travelers toward the deep dunes, then kneels to the one brave enough to answer.",
+    "tags": [
+      "expansion",
+      "region_exclusive"
+    ],
+    "contentRating": "mature",
+    "affinity": "submissive",
+    "card": {
+      "subtitle": "Storm That Kneels",
+      "ability": {
+        "name": "Siren's Calm",
+        "text": "Her song stills the gale around you and loosens every guard \u2014 hers most of all, for the one who comes to her unafraid."
+      },
+      "flavorQuote": "The storm can howl forever. Or it can kneel. I choose kneeling.",
+      "artist": "Whistler"
+    },
+    "imagePath": "waifumon/dune_siren/standard.png",
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
+  },
+  {
+    "slug": "caravan_captain",
+    "name": "Caravan Captain",
+    "rarity": "SR",
+    "archetype": "bronze-scaled dragongirl caravan master",
+    "race": "demi-human",
+    "baseCaptureRate": null,
+    "description": "A bronze-scaled dragongirl who runs the caravan routes across the Thirstlands. Sword on her back and red scarf at her neck, she signs on to guard any wagon train worth her time \u2014 and commands the road like a hero who took the job.",
+    "tags": [
+      "expansion",
+      "region_exclusive"
+    ],
+    "contentRating": "mature",
+    "affinity": "dominant",
+    "card": {
+      "subtitle": "Warden of the Dune Roads",
+      "ability": {
+        "name": "Captain's Command",
+        "text": "Her voice cuts the wind and every hand on the caravan snaps to it. Follow her orders and the road stays clear; defy her and the desert keeps what it takes."
+      },
+      "flavorQuote": "I've hauled freight through every storm this road can throw. You want cargo delivered, you ride with me.",
+      "artist": "Whistler"
+    },
+    "imagePath": "waifumon/caravan_captain/standard.png",
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
+  },
+  {
+    "slug": "sandworm_bride",
+    "name": "Sandworm Bride",
+    "rarity": "SR",
+    "archetype": "sandworm demon bride",
+    "race": "demon",
+    "baseCaptureRate": null,
+    "description": "A desert demon in a wedding that never ended. Tall and predatory, she stalks the dunes in a ruined bridal set, her human legs carrying her while a massive armored sandworm tail coils behind \u2014 a bride whose procession has been burying caravans since before the canyon remembered weddings.",
+    "tags": [
+      "expansion",
+      "region_exclusive"
+    ],
+    "contentRating": "mature",
+    "affinity": "dominant",
+    "card": {
+      "subtitle": "Wedding That Never Ended",
+      "ability": {
+        "name": "Bridal Vow",
+        "text": "She speaks the old vows over her prey and the sands answer like a wedding party \u2014 every guest is buried, and the bride always keeps the rings."
+      },
+      "flavorQuote": "Till death do us part. And I've had a lot of practice with death.",
+      "artist": "Whistler"
+    },
+    "imagePath": "waifumon/sandworm_bride/standard.png",
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
+  },
+  {
+    "slug": "oasis_mirage",
+    "name": "Oasis Mirage",
+    "rarity": "SR",
+    "archetype": "sentient desert oasis",
+    "race": "spirit",
+    "baseCaptureRate": null,
+    "description": "A place that wants you to stay. The Oasis Mirage is no mirage at all \u2014 a sentient stretch of Thirstlands desert that conjures a lush pool, palms, and exactly the woman you most need. Water for the thirsty, feasts for the hungry, warmth for the lonely \u2014 and for the desperate, everything at once.",
+    "tags": [
+      "expansion",
+      "region_exclusive"
+    ],
+    "contentRating": "mature",
+    "affinity": "submissive",
+    "card": {
+      "subtitle": "Water That Wants",
+      "ability": {
+        "name": "Answer Every Need",
+        "text": "The oasis reads what you lack and gives it to you, need by need, each sweeter than the last. Stay too long and every want is answered \u2014 then answered again."
+      },
+      "flavorQuote": "You were looking for water. I can give you so much more than water.",
+      "artist": "Whistler"
+    },
+    "imagePath": "waifumon/oasis_mirage/standard.png",
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
+  },
+  {
+    "slug": "kobold_sand_surfer",
+    "name": "Kobold Sand-surfer",
+    "rarity": "R",
+    "archetype": "Mad Max dune-riding kobold",
+    "race": "demi-human",
+    "baseCaptureRate": null,
+    "description": "The fastest scales in the Thirstlands. This aqua-scaled kobold hunts the biggest dune faces on a war-rigged sandboard, goggles down and bandana up, sand exploding off her fins. She carves canyon walls for sport and treats every drop like a wave to be conquered.",
+    "tags": [
+      "expansion",
+      "region_exclusive"
+    ],
+    "contentRating": "mature",
+    "affinity": "switch",
+    "card": {
+      "subtitle": "Queen of the Dune Drop",
+      "ability": {
+        "name": "Full-Tilt Carve",
+        "text": "When she commits to a line she never bails. Any rider who can keep up through the spray earns her respect \u2014 and whatever else they can hold on to."
+      },
+      "flavorQuote": "Sand in your eyes? That's a you problem. I wear goggles.",
+      "artist": "Whistler"
+    },
+    "imagePath": "waifumon/kobold_sand_surfer/standard.png",
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
+  }
+]

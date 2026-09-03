@@ -21,7 +21,7 @@ assets/.thumbnails/
 # rendered card images — content-addressed output of src/modules/cards.
 # Regenerated on demand; safe to delete at any time.
 assets/.card-cache/
-
+assets/standby/
 # local database/data
 data/
 *.db
@@ -49,3 +49,4 @@ portal/src/images/__tests__/resolver.test.ts
 docs/roadmap/roadmap.yaml
 docs/roadmap/CHANGELOG.md
 docs/roadmap/README.md
+content/standby/holding.json

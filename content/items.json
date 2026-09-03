@@ -254,6 +254,215 @@
       "description": "A more elegant bind for the most refined. You know exactly how to keep them quiet and attentive.",
       "emoji": "🪢",
       "enabled": true
+    },
+    {
+      "slug": "cream_pie_slice",
+      "name": "Cream Pie Slice",
+      "category": "consumable",
+      "captureModifier": null,
+      "captureBonus": null,
+      "captureRarities": null,
+      "isGuaranteedCapture": false,
+      "shopRegions": [
+        "twin-peeks"
+      ],
+      "buyPrice": 300,
+      "priceCurrency": "waifubux",
+      "dailyStockLimit": null,
+      "effectType": "restore_energy_amount",
+      "effectConfig": {
+        "amount": 15,
+        "exitCareMode": true
+      },
+      "description": "The diner's infamous special. Warm, sweet, and gone too soon.",
+      "emoji": "🥧",
+      "enabled": true
+    },
+    {
+      "slug": "peekaboo_panties",
+      "name": "Peek-a-Boo Panties",
+      "category": "capture",
+      "captureModifier": 1.75,
+      "captureBonus": null,
+      "captureRarities": [
+        "N",
+        "R",
+        "SR"
+      ],
+      "isGuaranteedCapture": false,
+      "shopRegions": [
+        "twin-peeks"
+      ],
+      "buyPrice": 130,
+      "priceCurrency": "waifubux",
+      "dailyStockLimit": null,
+      "effectType": null,
+      "effectConfig": null,
+      "description": "A peek you were never meant to get. Leaves them too flustered to say no.",
+      "emoji": "🩲",
+      "enabled": true
+    },
+    {
+      "slug": "wandering_hand",
+      "name": "Wandering Hand",
+      "category": "consumable",
+      "captureModifier": null,
+      "captureBonus": null,
+      "captureRarities": null,
+      "isGuaranteedCapture": false,
+      "shopRegions": [
+        "twin-peeks"
+      ],
+      "buyPrice": 150,
+      "priceCurrency": "waifubux",
+      "dailyStockLimit": null,
+      "effectType": "capture_bonus_charges",
+      "effectConfig": {
+        "captureBonus": 0.05,
+        "charges": 3,
+        "refreshBehavior": "refresh"
+      },
+      "description": "Borrowed boldness for a few sneaky attempts.",
+      "emoji": "✋",
+      "enabled": true
+    },
+    {
+      "slug": "blue_ridge_pill",
+      "name": "Blue Ridge Pill",
+      "category": "consumable",
+      "captureModifier": null,
+      "captureBonus": null,
+      "captureRarities": null,
+      "isGuaranteedCapture": false,
+      "shopRegions": [
+        "flaccid-foothills"
+      ],
+      "buyPrice": 260,
+      "priceCurrency": "waifubux",
+      "dailyStockLimit": null,
+      "effectType": "restore_energy_amount",
+      "effectConfig": {
+        "amount": 12,
+        "exitCareMode": true
+      },
+      "description": "For when you're struggling to rise to the occasion.",
+      "emoji": "💊",
+      "enabled": true
+    },
+    {
+      "slug": "trophy_wife_charm",
+      "name": "Trophy Wife Charm",
+      "category": "capture",
+      "captureModifier": 3.5,
+      "captureBonus": null,
+      "captureRarities": [
+        "UR",
+        "LR"
+      ],
+      "isGuaranteedCapture": false,
+      "shopRegions": [
+        "flaccid-foothills"
+      ],
+      "buyPrice": 1400,
+      "priceCurrency": "waifubux",
+      "dailyStockLimit": null,
+      "effectType": null,
+      "effectConfig": null,
+      "description": "Only the rarest end up on your arm.",
+      "emoji": "🏆",
+      "enabled": true
+    },
+    {
+      "slug": "slippery_nipple",
+      "name": "Slippery Nipple",
+      "category": "consumable",
+      "captureModifier": null,
+      "captureBonus": null,
+      "captureRarities": null,
+      "isGuaranteedCapture": false,
+      "shopRegions": [
+        "flaccid-foothills"
+      ],
+      "buyPrice": 450,
+      "priceCurrency": "waifubux",
+      "dailyStockLimit": null,
+      "effectType": "restore_energy_amount",
+      "effectConfig": {
+        "amount": 20,
+        "exitCareMode": true
+      },
+      "description": "Goes down easy. Getting up is the point.",
+      "emoji": "🥃",
+      "enabled": true
+    },
+    {
+      "slug": "thirst_trap_flask",
+      "name": "Thirst Trap Flask",
+      "category": "consumable",
+      "captureModifier": null,
+      "captureBonus": null,
+      "captureRarities": null,
+      "isGuaranteedCapture": false,
+      "shopRegions": [
+        "thirstlands"
+      ],
+      "buyPrice": 450,
+      "priceCurrency": "waifubux",
+      "dailyStockLimit": 3,
+      "effectType": "restore_energy_amount",
+      "effectConfig": {
+        "amount": 20,
+        "exitCareMode": true
+      },
+      "description": "The last spring's water. Gone by noon.",
+      "emoji": "💧",
+      "enabled": true
+    },
+    {
+      "slug": "claim_collar",
+      "name": "Claim Collar",
+      "category": "capture",
+      "captureModifier": 1,
+      "captureBonus": 0.28,
+      "captureRarities": [
+        "SR"
+      ],
+      "isGuaranteedCapture": false,
+      "shopRegions": [
+        "thirstlands"
+      ],
+      "buyPrice": 260,
+      "priceCurrency": "waifubux",
+      "dailyStockLimit": null,
+      "effectType": null,
+      "effectConfig": null,
+      "description": "A claim everyone can see.",
+      "emoji": "⛓️",
+      "enabled": true
+    },
+    {
+      "slug": "booty_sweat",
+      "name": "Booty Sweat",
+      "category": "consumable",
+      "captureModifier": null,
+      "captureBonus": null,
+      "captureRarities": null,
+      "isGuaranteedCapture": false,
+      "shopRegions": [
+        "thirstlands"
+      ],
+      "buyPrice": 220,
+      "priceCurrency": "waifubux",
+      "dailyStockLimit": null,
+      "effectType": "capture_bonus_charges",
+      "effectConfig": {
+        "captureBonus": 0.06,
+        "charges": 4,
+        "refreshBehavior": "refresh"
+      },
+      "description": "Bottled from the canyon's finest dancers. One sip and you'll catch anything.",
+      "emoji": "💦",
+      "enabled": true
     }
   ]
 }
