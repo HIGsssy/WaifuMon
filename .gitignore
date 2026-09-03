@@ -46,3 +46,6 @@ logs/
 portal/src/images/__tests__/appearancePipeline.test.tsx
 portal/src/images/__tests__/appearancePipeline.test.tsx
 portal/src/images/__tests__/resolver.test.ts
+docs/roadmap/roadmap.yaml
+docs/roadmap/CHANGELOG.md
+docs/roadmap/README.md

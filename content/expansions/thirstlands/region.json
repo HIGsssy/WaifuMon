@@ -23,6 +23,38 @@
     {
       "species": "kobold_lamp_girl",
       "weight": 10
+    },
+    {
+      "species": "underdark_bartender",
+      "weight": 10
+    },
+    {
+      "species": "orc_mechanic",
+      "weight": 10
+    },
+    {
+      "species": "desert_bounty_huntress",
+      "weight": 10
+    },
+    {
+      "species": "dune_siren",
+      "weight": 6
+    },
+    {
+      "species": "caravan_captain",
+      "weight": 6
+    },
+    {
+      "species": "sandworm_bride",
+      "weight": 6
+    },
+    {
+      "species": "oasis_mirage",
+      "weight": 6
+    },
+    {
+      "species": "tak_belly_dancer",
+      "weight": 1
     }
   ]
 }
