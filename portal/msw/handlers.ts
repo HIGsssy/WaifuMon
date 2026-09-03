@@ -81,15 +81,30 @@ export const handlers = [
   // ── Collection ────────────────────────────────────────────────────────────
   http.get('/api/v1/players/:playerId/collection/stats', () => data(fixtures.dexStats)),
 
+  /**
+   * `sort` is honoured here, not just accepted, because the ordering is the
+   * whole contract for the Dashboard's recent-catches strip: a mock that
+   * ignored it would let a client walk the collection and still look correct.
+   * `fixtures.ownedEntries` is authored rarest-first, so the two orders are
+   * genuine reverses of one another and a test can tell them apart.
+   */
   http.get('/api/v1/players/:playerId/collection/owned', ({ request }) => {
     const url = new URL(request.url, 'http://localhost');
     const rarity = url.searchParams.get('rarity');
+    const sort = url.searchParams.get('sort');
     const pageNumber = Number(url.searchParams.get('page') ?? '1');
     const pageSize = Number(url.searchParams.get('pageSize') ?? '25');
     const filtered = rarity
       ? fixtures.ownedEntries.filter((entry) => entry.species.rarity === rarity)
       : fixtures.ownedEntries;
-    return page(filtered, pageNumber, pageSize, filtered.length);
+    const ordered =
+      sort === 'newest'
+        ? [...filtered].sort(
+            (a, b) =>
+              new Date(b.waifu.caughtAt).getTime() - new Date(a.waifu.caughtAt).getTime(),
+          )
+        : filtered;
+    return page(ordered, pageNumber, pageSize, ordered.length);
   }),
 
   http.get('/api/v1/players/:playerId/collection/owned/:waifuId', ({ params }) => {

@@ -1,10 +1,14 @@
 /**
  * The quick-launch strip (plan §8.1).
  *
- * Curated, not utilitarian: each tile carries a one-line current stat so the
+ * Curated, not utilitarian: each tile carries a one-line description so the
  * strip reads as a summary of the account rather than a second navigation bar.
- * A tile whose stat is not loaded yet shows no caption rather than a zero —
- * a wrong number is worse than a missing one.
+ *
+ * The collection figures used to be captions here as well as on the progress
+ * card, which meant `owned`, `distinctSpecies` and `totalSpecies` each rendered
+ * twice on one screen. They now appear once, on the card that exists to state
+ * them. The Buddy tile keeps its caption because it names something no other
+ * tile does — and it is a name, not a figure repeated from elsewhere.
  */
 import type { LucideIcon } from 'lucide-react';
 import { Backpack, BookOpen, Compass, Heart, LibraryBig, Store, User } from 'lucide-react';
@@ -13,9 +17,7 @@ import { Link } from 'react-router';
 import { cn } from '@/lib/cn';
 
 export interface QuickLaunchProps {
-  ownedCount: number | undefined;
-  distinctSpecies: number | undefined;
-  totalSpecies: number | undefined;
+  /** `undefined` while loading, `null` when no buddy is set. */
   buddyName: string | null | undefined;
 }
 
@@ -26,19 +28,9 @@ interface Tile {
   stat: string | undefined;
 }
 
-export function QuickLaunch({
-  ownedCount,
-  distinctSpecies,
-  totalSpecies,
-  buddyName,
-}: QuickLaunchProps) {
+export function QuickLaunch({ buddyName }: QuickLaunchProps) {
   const tiles: Tile[] = [
-    {
-      to: '/collection',
-      label: 'Collection',
-      icon: LibraryBig,
-      stat: ownedCount === undefined ? undefined : `${ownedCount} caught`,
-    },
+    { to: '/collection', label: 'Collection', icon: LibraryBig, stat: 'Everything you own' },
     {
       to: '/buddy',
       label: 'Buddy',
@@ -47,15 +39,7 @@ export function QuickLaunch({
     },
     { to: '/inventory', label: 'Inventory', icon: Backpack, stat: 'Items and charms' },
     { to: '/shop', label: 'Shop', icon: Store, stat: "Today's catalogue" },
-    {
-      to: '/encyclopedia',
-      label: 'Encyclopedia',
-      icon: BookOpen,
-      stat:
-        distinctSpecies === undefined || totalSpecies === undefined
-          ? undefined
-          : `${distinctSpecies} of ${totalSpecies} discovered`,
-    },
+    { to: '/encyclopedia', label: 'Encyclopedia', icon: BookOpen, stat: 'Every species' },
     { to: '/guide', label: 'Guide', icon: Compass, stat: 'How the game works' },
     { to: '/profile', label: 'Profile', icon: User, stat: 'Lifetime statistics' },
   ];

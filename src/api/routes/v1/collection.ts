@@ -73,8 +73,11 @@ export const collectionRoutes =
           tags: ['Collection'],
           summary: 'List owned Waifumon',
           description:
-            'Active (non-released) copies, rarest first. Paginated; `pageSize` is capped at 25 ' +
-            'to match the service. Optionally filtered to a single rarity.',
+            'Active (non-released) copies. Paginated; `pageSize` is capped at 25 to match the ' +
+            'service. Optionally filtered to a single rarity.\n\n' +
+            '`sort=rarity` (the default) is the browse order — rarest first, then name. ' +
+            '`sort=newest` is most-recently-caught first, which is the only way to ask for ' +
+            'recent captures without reading every page.',
           params: playerIdParams,
           querystring: collectionPageQuery,
           response: {
@@ -85,11 +88,12 @@ export const collectionRoutes =
         },
       },
       async (req) => {
-        const { page, pageSize, rarity } = req.query;
+        const { page, pageSize, rarity, sort } = req.query;
         const playerId = requirePlayer(req).id;
         const result = await collection.listOwned(playerId, {
           page,
           pageSize,
+          sort,
           ...(rarity ? { rarity } : {}),
         });
 
@@ -103,6 +107,14 @@ export const collectionRoutes =
          * fires on the listing because that is the one request that reliably
          * precedes a grid of cards.
          *
+         * **Only on the browse order.** `schedulePlayerWarm` warms the player's
+         * *entire* collection, which is the right bargain ahead of a collection
+         * grid and the wrong one behind `sort=newest` — that query exists to
+         * fetch a handful of recent copies for a summary strip, so warming
+         * every card the player owns would be work for artwork nobody asked
+         * for, on every dashboard mount. A caller that wants the whole grid
+         * asks in the whole grid's order.
+         *
          * **Never awaited, and it cannot be.** `schedulePlayerWarm` starts
          * detached work and returns a disposition synchronously; it dedupes by
          * player, so a client polling this route starts one warm rather than
@@ -110,7 +122,7 @@ export const collectionRoutes =
          * warms are already in flight. Nothing it does can reach this response,
          * including its failures.
          */
-        ctx.cardWarmer?.schedulePlayerWarm(playerId);
+        if (sort !== 'newest') ctx.cardWarmer?.schedulePlayerWarm(playerId);
 
         // Echo the service's own page/pageSize: it clamps an out-of-range page
         // to the last one, and the client should see where it actually landed.

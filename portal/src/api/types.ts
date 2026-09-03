@@ -309,6 +309,33 @@ export interface PlayerIdentity {
   avatarUrl: string | null;
 }
 
+/**
+ * The trainer's position on the level curve, resolved by the API from
+ * `progressionService.progressFor`.
+ *
+ * Identical in shape to {@link WaifuProgress}, which is the point: the Portal
+ * draws the same bar for a trainer as it does for an owned copy and owns
+ * neither curve. The tuning blob publishes `levelCurve`, so this *could* be
+ * recomputed here — doing so would put a second definition of a level in the
+ * codebase, which is the one thing the architecture exists to prevent.
+ */
+export interface PlayerProgress {
+  level: number;
+  /** Lifetime XP — the same figure as `player.xp`. */
+  totalXp: number;
+  xpIntoLevel: number;
+  /** XP from this level to the next. `0` at max level. */
+  xpToNext: number;
+  atMaxLevel: boolean;
+}
+
+/** Where the trainer currently stands. `name` is resolved by the API. */
+export interface CurrentRegion {
+  id: string;
+  /** Player-facing name, e.g. "Waifu Valley". Always populated. */
+  name: string;
+}
+
 export interface Player {
   id: number;
   /** Internal guild id, not a Discord snowflake. */
@@ -320,6 +347,8 @@ export interface Player {
   xp: number;
   /** Owned-waifu id of the active buddy, or null. */
   buddyWaifuId: number | null;
+  progress: PlayerProgress;
+  currentRegion: CurrentRegion;
   lastHuntAt: string | null;
   /** Summary only — `GET /players/{id}/care` returns the full state. */
   careMode: { active: boolean; waifuId: number | null; startedAt: string | null };
@@ -329,6 +358,12 @@ export interface Player {
 export interface CurrencyBalances {
   playerId: number;
   huntEnergy: number;
+  /**
+   * The Energy ceiling at this player's level — `computeMaxEnergy`, the same
+   * number Care Mode reports. Server-derived: the bonuses are level-gated and
+   * live in the tuning table, so a client cannot hold a constant here.
+   */
+  maxHuntEnergy: number;
   waifubux: number;
   essence: number;
   updatedAt: string;

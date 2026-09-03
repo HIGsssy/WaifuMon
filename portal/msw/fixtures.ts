@@ -47,6 +47,21 @@ export const player: Player = {
   level: 12,
   xp: 3480,
   buddyWaifuId: 101,
+  /**
+   * Server-resolved, and internally consistent with `xp`: 3,480 lifetime XP is
+   * partway through Level 12, leaving 280 of a 650-XP level behind her. The
+   * Portal never derives any of this — the fixture mirrors what
+   * `progressionService.progressFor` returns.
+   */
+  progress: {
+    level: 12,
+    totalXp: 3480,
+    xpIntoLevel: 280,
+    xpToNext: 650,
+    atMaxLevel: false,
+  },
+  /** Both fields come from the API; the Portal never title-cases the id itself. */
+  currentRegion: { id: 'twin-peeks', name: 'Twin Peeks' },
   lastHuntAt: '2026-08-06T09:14:00.000Z',
   careMode: { active: false, waifuId: null, startedAt: null },
   createdAt: '2026-05-01T12:00:00.000Z',
@@ -55,6 +70,8 @@ export const player: Player = {
 export const currencies: CurrencyBalances = {
   playerId: PLAYER_ID,
   huntEnergy: 34,
+  /** Level-derived on the server — 25 base plus the Level 7 and 20 bonuses. */
+  maxHuntEnergy: 35,
   waifubux: 1820,
   essence: 46,
   updatedAt: '2026-08-06T09:14:00.000Z',

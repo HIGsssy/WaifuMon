@@ -30,6 +30,15 @@ export const queryKeys = {
   collectionEntry: (playerId: number, waifuId: number) =>
     ['player', playerId, 'collection', 'entry', waifuId] as const,
   collectionStats: (playerId: number) => ['player', playerId, 'collection', 'stats'] as const,
+  /**
+   * The newest-first slice behind the Dashboard's recent-catches strip.
+   *
+   * `limit` is part of the key because it is part of the request: two strips
+   * asking for different counts are different resources, not one cache entry
+   * that happens to be truncated.
+   */
+  collectionRecent: (playerId: number, limit: number) =>
+    ['player', playerId, 'collection', 'recent', limit] as const,
   /** One copy's appearance gallery — per-copy, so it carries the waifu id. */
   waifuAppearances: (playerId: number, waifuId: number) =>
     ['player', playerId, 'collection', 'appearances', waifuId] as const,

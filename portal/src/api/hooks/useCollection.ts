@@ -18,6 +18,8 @@ import {
   getEntireCollection,
   getCollectionEntry,
   getCollectionStats,
+  getRecentCatches,
+  RECENT_CATCH_COUNT,
 } from '../collection';
 import { queryKeys } from '../queryKeys';
 import type { AppearanceGallery, DexStats, OwnedEntry, Page, Rarity } from '../types';
@@ -57,6 +59,25 @@ export function useCollectionEntry(playerId: number, waifuId: number): UseQueryR
     queryKey: queryKeys.collectionEntry(playerId, waifuId),
     queryFn: ({ signal }) => getCollectionEntry(playerId, waifuId, signal),
     enabled: Number.isInteger(waifuId) && waifuId > 0,
+    ...PLAYER_POLICY,
+  });
+}
+
+/**
+ * The player's most recent captures, newest first.
+ *
+ * One request for one short page — the server sorts, so nothing here walks the
+ * collection or re-sorts a page it was handed. Shares `PLAYER_POLICY` with the
+ * rest of the player-scoped queries, so a capture made in Discord shows up when
+ * the tab regains focus.
+ */
+export function useRecentCatches(
+  playerId: number,
+  limit: number = RECENT_CATCH_COUNT,
+): UseQueryResult<OwnedEntry[]> {
+  return useQuery({
+    queryKey: queryKeys.collectionRecent(playerId, limit),
+    queryFn: ({ signal }) => getRecentCatches(playerId, limit, signal),
     ...PLAYER_POLICY,
   });
 }

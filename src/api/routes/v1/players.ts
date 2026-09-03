@@ -5,13 +5,14 @@
  * every other player-scoped route takes. Fastify's router prefers the static
  * segment over `:playerId`, so the two coexist without ambiguity.
  */
+import type { PlayerRow } from '../../../db/schema';
 import type { ApiContext } from '../../context';
 import { dataSchema, ok } from '../../plugins/responseEnvelope';
 import { requirePlayer } from '../../plugins/playerScope';
 import type { FastifyPluginAsyncZod } from '../../plugins/typeProvider';
 import { ApiPlayerNotFoundError } from '../../errors';
 import { noIdentity } from '../../identity';
-import { toPlayerResource } from '../../resources';
+import { toCurrencyResource, toCurrentRegionResource, toPlayerResource } from '../../resources';
 import { commonErrorResponses, notFoundResponse, playerIdParams } from '../../schemas/common';
 import {
   playerLookupQuery,
@@ -28,6 +29,21 @@ export const playerRoutes =
     // unaffected. The resolver already caches, times out and never rejects
     // (`src/api/identity.ts`), so calling it on a read path is bounded.
     const resolveIdentity = ctx.resolveIdentity ?? noIdentity;
+
+    /**
+     * The three non-column facts every player resource carries.
+     *
+     * Gathered once so `/players/{id}` and `/players/{id}/profile` cannot drift
+     * apart, and so it is obvious that none of it costs a query: `progressFor`
+     * is arithmetic over `player.xp`, and the region name is a lookup in the
+     * in-memory content snapshot. The identity resolver is cached, capped and
+     * never rejects, so awaiting it on a read path is bounded.
+     */
+    const playerContext = async (player: PlayerRow) => ({
+      identity: await resolveIdentity(player.discordUserId),
+      progress: ctx.services.progression.progressFor(player.xp),
+      currentRegion: toCurrentRegionResource(player.currentRegion, ctx.getContent().regions),
+    });
 
     app.get(
       '/players/lookup',
@@ -78,7 +94,7 @@ export const playerRoutes =
       // query. The identity lookup is cached and capped, not a database read.
       async (req) => {
         const player = requirePlayer(req);
-        return ok(req, toPlayerResource(player, await resolveIdentity(player.discordUserId)));
+        return ok(req, toPlayerResource(player, await playerContext(player)));
       },
     );
 
@@ -106,11 +122,19 @@ export const playerRoutes =
         const player = requirePlayer(req);
         // Concurrent: the balance read hits Postgres, the identity lookup hits
         // an in-process cache (and at worst the gateway). Neither waits.
-        const [currencies, identity] = await Promise.all([
+        const [balances, context] = await Promise.all([
           ctx.services.currency.getBalances(player.id),
-          resolveIdentity(player.discordUserId),
+          playerContext(player),
         ]);
-        return ok(req, { player: toPlayerResource(player, identity), currencies });
+        return ok(req, {
+          player: toPlayerResource(player, context),
+          // The Energy ceiling comes from the same function Care Mode reports
+          // through, so the two surfaces cannot disagree about the cap.
+          currencies: toCurrencyResource(
+            balances,
+            ctx.services.progression.computeMaxEnergy(player.level),
+          ),
+        });
       },
     );
   };
