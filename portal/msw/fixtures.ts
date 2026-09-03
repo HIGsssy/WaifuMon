@@ -7,6 +7,7 @@
  * typed rather than loose objects.
  */
 import type {
+  BuddyBonus,
   Appearance,
   AppearanceCatalogEntry,
   CareState,
@@ -211,8 +212,47 @@ export const appearanceGalleries: Record<number, { appearances: Appearance[]; se
     },
   };
 
-/** The content snapshot is the same fields minus the internal id. */
-export const contentSpecies: ContentSpecies[] = speciesRows.map(({ id: _id, ...rest }) => rest);
+/**
+ * Buddy Bonuses, keyed by slug — the one field a seeded row cannot carry, so it
+ * is layered on when the rows become the content snapshot.
+ *
+ * Three shapes on purpose, because they are the three the Portal has to render
+ * differently: a race-qualified capture bonus, an untargeted non-capture one,
+ * and (by omission) a species that grants nothing at all. `targetLabel` and
+ * `effectSummary` are exactly the strings the API resolves from its own effect
+ * registry — the fixture mirrors the wire, it does not re-derive it.
+ */
+export const buddyBonuses: Record<string, BuddyBonus> = {
+  void_empress: {
+    name: 'Hijack',
+    flavorText: 'She talks to their firmware the way most people talk to a dog.',
+    effectId: 'capture_chance',
+    value: 15,
+    target: { type: 'race', value: 'android' },
+    targetLabel: 'android Waifumon',
+    effectSummary: '+15% capture chance against android Waifumon',
+  },
+  neon_kitsune: {
+    name: 'Trash Treasure',
+    flavorText: 'Nothing in the alley is rubbish if you know a buyer.',
+    effectId: 'hunt_item_find_chance',
+    value: 5,
+    target: null,
+    targetLabel: null,
+    effectSummary: '+5% item-find chance',
+  },
+  // `neko_barista` deliberately has none — most species do not.
+};
+
+/**
+ * The content snapshot is the same fields minus the internal id, plus the
+ * Buddy Bonus. A species without one carries **no key**, mirroring the API,
+ * which omits it rather than sending a null.
+ */
+export const contentSpecies: ContentSpecies[] = speciesRows.map(({ id: _id, ...rest }) => {
+  const bonus = buddyBonuses[rest.slug];
+  return bonus ? { ...rest, buddyBonus: bonus } : rest;
+});
 
 export const ownedEntries: OwnedEntry[] = [
   {

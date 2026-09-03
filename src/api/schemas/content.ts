@@ -34,12 +34,21 @@ import {
 import { RACE_CODES } from '../../modules/cards/race';
 
 /**
- * A species' authored Buddy Bonus — the passive effect she grants while
- * equipped as the player's Buddy.
+ * A species' authored Buddy Bonus — the passive effect she grants **only while
+ * a copy of her is equipped as the player's Buddy**. It is a property of the
+ * species, not of any one copy, so every copy offers the same bonus and none of
+ * them applies it until that copy is the active Buddy.
  *
  * `name` and `flavorText` are display copy; `effectId`, `value` and the
  * optional `target` are the whole of the behavior, so a client can render the
  * rule as well as the prose without knowing anything species-specific.
+ *
+ * `targetLabel` and `effectSummary` are **resolved server-side** from the
+ * canonical effect registry (`modules/buddyBonus/buddyBonusEffects`) — the same
+ * strings the bot prints on a gameplay result. They travel on the wire because
+ * the alternative is every client re-authoring one sentence per effect id and
+ * drifting from the bot the first time an effect is added. A client that wants
+ * to phrase it itself still has `effectId`, `value` and `target`.
  */
 export const buddyBonusSchema = z.object({
   name: z.string(),
@@ -51,8 +60,18 @@ export const buddyBonusSchema = z.object({
       type: z.enum(BUDDY_BONUS_TARGET_TYPES),
       value: z.string(),
     })
-    .optional()
-    .describe('Which Waifumon the bonus applies against. Absent means all of them.'),
+    .nullable()
+    .describe('Which Waifumon the bonus applies against. Null means all of them.'),
+  targetLabel: z
+    .string()
+    .nullable()
+    .describe('Human-readable form of `target`, e.g. "SSR and above". Null when untargeted.'),
+  effectSummary: z
+    .string()
+    .describe(
+      'The canonical one-line description of the effect, e.g. ' +
+        '"+15% capture chance against android Waifumon". Ready to display.',
+    ),
 });
 
 // ── Species ─────────────────────────────────────────────────────────────────

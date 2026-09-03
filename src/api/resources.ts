@@ -18,6 +18,7 @@
  * column cannot leak, and a renamed one fails the typecheck.
  */
 import { seductivePowerView } from '../modules/power/seductivePower';
+import { buddyBonusView, type BuddyBonus } from '../modules/buddyBonus/buddyBonusEffects';
 import { resolveRace } from '../modules/cards/race';
 import type {
   Affinity,
@@ -138,16 +139,44 @@ export function toSpeciesResource(
   };
 }
 
-/** The authored content snapshot's species, same treatment as the row. */
+/**
+ * A species' Buddy Bonus, with its display strings already resolved.
+ *
+ * `targetLabel` and `effectSummary` come from `buddyBonusView` — the one
+ * registry the bot itself prints from — rather than being re-phrased here or,
+ * worse, by each client. That is the whole point: a client renders the sentence
+ * it is handed, so adding an effect id changes exactly one switch statement and
+ * every surface follows.
+ */
+export function toBuddyBonusResource(bonus: BuddyBonus) {
+  const { name, flavorText, effectId, value, target, targetLabel, effectSummary } =
+    buddyBonusView(bonus);
+  return { name, flavorText, effectId, value, target, targetLabel, effectSummary };
+}
+
+/**
+ * The authored content snapshot's species, same treatment as the row.
+ *
+ * `buddyBonus` is mapped rather than passed through: the authored shape carries
+ * only the rule, and the resource carries the rule *and* the resolved copy.
+ * A species with no authored bonus omits the key entirely — there is no such
+ * thing as an empty Buddy Bonus, and a null would invite a client to render one.
+ */
 export function toContentSpeciesResource(
   species: SpeciesContent,
   appearances: readonly ResolvedAppearance[],
 ) {
-  const { imagePath: _imagePath, appearances: _authored, ...rest } = species;
+  const {
+    imagePath: _imagePath,
+    appearances: _authored,
+    buddyBonus,
+    ...rest
+  } = species;
   return {
     ...rest,
     race: resolveRace(species),
     appearances: toAppearanceCatalogResources(appearances),
+    ...(buddyBonus ? { buddyBonus: toBuddyBonusResource(buddyBonus) } : {}),
   };
 }
 

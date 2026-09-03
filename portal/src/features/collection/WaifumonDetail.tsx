@@ -16,10 +16,11 @@ import { Artwork } from '@/components/media/Artwork';
 import { Button } from '@/components/ui/button';
 import { Card, CardTitle } from '@/components/ui/card';
 import { AffectionMeter, XpBar } from '@/components/waifumon/Meters';
+import { BuddyBonusCard } from '@/components/waifumon/BuddyBonusCard';
 import { AffinityPill, ContentRatingPill, TypePill } from '@/components/waifumon/Pills';
 import { RarityBadge } from '@/components/waifumon/RarityBadge';
 import { RarityGlowRing } from '@/components/waifumon/RarityGlowRing';
-import { displayName, relatedSpecies, subtitleFor } from '@/content/species';
+import { buddyBonusFor, displayName, relatedSpecies, subtitleFor } from '@/content/species';
 import { AppearanceGallery } from './AppearanceGallery';
 import { WaifumonHero } from './WaifumonHero';
 import { speciesAsset } from '@/images/assets';
@@ -71,6 +72,9 @@ export function WaifumonDetail({
   const title = displayName(entry);
   const subtitle = subtitleFor(entry);
   const related = allSpecies ? relatedSpecies(allSpecies, species) : [];
+  // The bonus is a species property and rides on the content snapshot, not on
+  // the seeded row embedded here — see `buddyBonusFor`.
+  const buddyBonus = buddyBonusFor(allSpecies, species.slug);
 
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,26rem)_1fr] lg:gap-8">
@@ -138,6 +142,16 @@ export function WaifumonDetail({
             <AffectionMeter affection={waifu.affection} />
           </div>
         </Card>
+
+        {/*
+          Shown on every copy whose species grants one, labelled by whether it
+          is actually in force: the question a player has in front of a copy is
+          "what would equipping her do?", which needs the panel present even
+          when she is not the Buddy. Absent entirely when there is no bonus.
+        */}
+        {buddyBonus && (
+          <BuddyBonusCard bonus={buddyBonus} status={isBuddy ? 'active' : 'inactive'} />
+        )}
 
         <Card>
           <CardTitle>Capture</CardTitle>

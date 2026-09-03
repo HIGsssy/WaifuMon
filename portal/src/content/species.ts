@@ -104,6 +104,22 @@ export function distinctSpeciesValues(
 }
 
 /**
+ * A species' Buddy Bonus, out of the cached content snapshot.
+ *
+ * An owned copy embeds the *seeded row*, and the row has no bonus by design —
+ * content deliberately never copies it into the database. So a copy's page
+ * reads it off the snapshot it has already fetched for the related strip, at no
+ * extra request. Undefined while that snapshot is still loading, and for the
+ * many species that grant no bonus at all; both render nothing.
+ */
+export function buddyBonusFor(
+  all: ContentSpecies[] | undefined,
+  slug: string,
+): ContentSpecies['buddyBonus'] {
+  return all?.find((candidate) => candidate.slug === slug)?.buddyBonus;
+}
+
+/**
  * "Related species" — same archetype, excluding the subject.
  *
  * A pure presentation heuristic over the cached content list, and labelled as

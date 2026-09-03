@@ -174,8 +174,66 @@ export interface SpeciesFields {
   appearances: AppearanceCatalogEntry[];
 }
 
-/** Authored species from the content snapshot — addressed by slug, no id. */
-export type ContentSpecies = SpeciesFields;
+/**
+ * Every effect a Buddy Bonus can have. Kept as a union for exhaustive handling
+ * where the Portal cares (an icon, say) — but never for *wording*: the API ships
+ * `effectSummary` already phrased, precisely so this list can grow without the
+ * Portal shipping a sentence for the new member.
+ */
+export type BuddyBonusEffectId =
+  | 'capture_chance'
+  | 'encounter_weight'
+  | 'energy_save_chance'
+  | 'care_energy_gain'
+  | 'player_xp_gain'
+  | 'buddy_xp_gain'
+  | 'essence_gain'
+  | 'hunt_item_find_chance'
+  | 'affection_gain'
+  | 'boss_reward_gain';
+
+/** How a bonus narrows which Waifumon it applies against. */
+export interface BuddyBonusTarget {
+  type: 'race' | 'affinity' | 'rarity' | 'rarity_min' | 'rarity_max' | 'ownership';
+  value: string;
+}
+
+/**
+ * A species' Buddy Bonus — the passive effect she grants **only while a copy of
+ * her is the player's active Buddy**. It belongs to the species, so every copy
+ * offers the same one and none of them applies it until equipped.
+ *
+ * `effectSummary` and `targetLabel` arrive already phrased, from the same
+ * registry the bot prints from. Render them; do not re-derive them from
+ * `effectId` and `value`, or the Portal and Discord start disagreeing about what
+ * one bonus does. The structured fields are here for filtering and iconography.
+ */
+export interface BuddyBonus {
+  name: string;
+  /** In-world prose, rendered as a quote. Always present, may be empty. */
+  flavorText: string;
+  effectId: BuddyBonusEffectId;
+  /** Percentage — relative for modifiers, a probability for procs. */
+  value: number;
+  /** Null when the bonus applies to every Waifumon. */
+  target: BuddyBonusTarget | null;
+  /** e.g. `"SSR and above"`. Null exactly when `target` is. */
+  targetLabel: string | null;
+  /** e.g. `"+15% capture chance against android Waifumon"`. Ready to display. */
+  effectSummary: string;
+}
+
+/**
+ * Authored species from the content snapshot — addressed by slug, no id.
+ *
+ * The one field the seeded row cannot carry: a Buddy Bonus lives in content and
+ * is deliberately never copied into the database, so it reaches the Portal only
+ * through `/content/species`. **Absent** — not null — for a species that grants
+ * none, which is most of them.
+ */
+export interface ContentSpecies extends SpeciesFields {
+  buddyBonus?: BuddyBonus;
+}
 
 /** Seeded species row, embedded in gameplay resources — carries the id. */
 export interface Species extends SpeciesFields {

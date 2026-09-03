@@ -379,12 +379,28 @@ export function appliedBuddyBonus(
   };
 }
 
+/**
+ * The least a surface must know to describe a bonus mechanically: which effect,
+ * how much, and the resolved phrase for whatever it is pointed at.
+ *
+ * Named as its own type so the one summary vocabulary can be produced from
+ * either direction — {@link AppliedBuddyBonus}, for a bonus that just fired,
+ * and {@link BuddyBonusView}, for one merely being *described* on a collection
+ * or encyclopedia screen. Both satisfy it structurally, so neither needs a
+ * second copy of the wording.
+ */
+export interface BuddyBonusSummarizable {
+  effectId: BuddyBonusEffectId;
+  value: number;
+  targetLabel: string | null;
+}
+
 /** `+15%`, or `25%` for a proc chance — which is not an increase of anything. */
-function percentLabel(applied: AppliedBuddyBonus): string {
-  if (BUDDY_BONUS_EFFECTS[applied.effectId].operation === 'proc_chance') {
-    return `${applied.value}%`;
+function percentLabel(bonus: BuddyBonusSummarizable): string {
+  if (BUDDY_BONUS_EFFECTS[bonus.effectId].operation === 'proc_chance') {
+    return `${bonus.value}%`;
   }
-  return `${applied.value > 0 ? '+' : ''}${applied.value}%`;
+  return `${bonus.value > 0 ? '+' : ''}${bonus.value}%`;
 }
 
 /**
@@ -396,7 +412,7 @@ function percentLabel(applied: AppliedBuddyBonus): string {
  * This is derived from `effectId`, `value` and `target` only, so a new species
  * using an existing effect needs no new copy anywhere.
  */
-export function buddyBonusEffectSummary(applied: AppliedBuddyBonus): string {
+export function buddyBonusEffectSummary(applied: BuddyBonusSummarizable): string {
   const pct = percentLabel(applied);
   const against = applied.targetLabel ? ` against ${applied.targetLabel}` : '';
   switch (applied.effectId) {
@@ -465,6 +481,13 @@ export function buddyBonusTargetLabel(target: BuddyBonusTarget | undefined | nul
 /**
  * Everything a UI surface needs to print a bonus, and nothing it needs to
  * decide anything. Display strings come straight from content.
+ *
+ * `effectSummary` is the same mechanical sentence a gameplay result line
+ * carries ({@link buddyBonusEffectSummary}) — resolved here rather than at each
+ * surface, so a Discord embed, the Platform API and anything reading it print
+ * one wording for one effect. A client that cannot import this module (the
+ * Portal is a pure API consumer) gets the sentence over the wire instead of
+ * re-authoring the whole vocabulary.
  */
 export interface BuddyBonusView {
   name: string;
@@ -473,15 +496,22 @@ export interface BuddyBonusView {
   value: number;
   target: BuddyBonusTarget | null;
   targetLabel: string | null;
+  effectSummary: string;
 }
 
 export function buddyBonusView(bonus: BuddyBonus): BuddyBonusView {
+  const targetLabel = buddyBonusTargetLabel(bonus.target);
   return {
     name: bonus.name,
     flavorText: bonus.flavorText,
     effectId: bonus.effectId,
     value: bonus.value,
     target: bonus.target ?? null,
-    targetLabel: buddyBonusTargetLabel(bonus.target),
+    targetLabel,
+    effectSummary: buddyBonusEffectSummary({
+      effectId: bonus.effectId,
+      value: bonus.value,
+      targetLabel,
+    }),
   };
 }
