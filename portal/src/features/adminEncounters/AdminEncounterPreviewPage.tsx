@@ -24,6 +24,7 @@ import { ErrorState } from '@/components/layout/ErrorState';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Skeleton } from '@/components/ui/skeleton';
 
+import { EncounterArtwork } from '@/components/media/EncounterArtwork';
 import { AdminEncounterPreviewPanel } from './AdminEncounterPreviewPanel';
 
 const DEFAULT_CTX: PreviewBody = {
@@ -105,6 +106,12 @@ export function AdminEncounterPreviewPage() {
             <Badge variant="outline">{encounter.type}</Badge>{' '}
             <Badge variant="outline">{encounter.rarity}</Badge>
           </p>
+          {/*
+            The artwork Discord will attach to the encounter embed. Shown here
+            so the player-facing preview matches what actually ships; an
+            encounter without artwork is normal and says so.
+          */}
+          <EncounterArtwork path={encounter.artworkPath} />
           <p className="whitespace-pre-line text-sm">{encounter.description || '—'}</p>
           <div className="space-y-2 pt-2">
             {encounter.choices.length === 0 && (

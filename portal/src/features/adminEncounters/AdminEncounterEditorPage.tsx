@@ -36,107 +36,11 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useHasPermission } from '@/auth/useSession';
 
-import { ChoiceEditor, type ChoiceDraft } from './ChoiceEditor';
-import type { EffectShape } from './EffectEditor';
+import { EncounterArtwork } from '@/components/media/EncounterArtwork';
+import { ChoiceEditor } from './ChoiceEditor';
+import { EMPTY_DRAFT, draftFrom, toPayload, type Draft } from './encounterDraft';
 import { AdminEncounterPreviewPanel } from './AdminEncounterPreviewPanel';
 
-interface Draft {
-  slug: string;
-  name: string;
-  description: string;
-  type: string;
-  rarity: string;
-  weight: number;
-  lifecycle: 'draft' | 'active' | 'disabled';
-  huntEligible: boolean;
-  travelEligible: boolean;
-  cooldownSeconds: number;
-  artworkPath: string | null;
-  chainedEncounterSlug: string | null;
-  choicesRequired: boolean;
-  regions: string[];
-  routes: Array<{ fromRegion: string; toRegion: string }>;
-  choices: ChoiceDraft[];
-  metadata: Record<string, unknown>;
-}
-
-const EMPTY_DRAFT: Draft = {
-  slug: '',
-  name: '',
-  description: '',
-  type: 'decision',
-  rarity: 'common',
-  weight: 10,
-  lifecycle: 'draft',
-  huntEligible: true,
-  travelEligible: false,
-  cooldownSeconds: 0,
-  artworkPath: null,
-  chainedEncounterSlug: null,
-  choicesRequired: true,
-  regions: [],
-  routes: [],
-  choices: [],
-  metadata: {},
-};
-
-function toPayload(d: Draft): EncounterInputPayload {
-  return {
-    slug: d.slug,
-    name: d.name,
-    description: d.description,
-    type: d.type,
-    rarity: d.rarity,
-    weight: d.weight,
-    lifecycle: d.lifecycle,
-    huntEligible: d.huntEligible,
-    travelEligible: d.travelEligible,
-    cooldownSeconds: d.cooldownSeconds,
-    artworkPath: d.artworkPath,
-    chainedEncounterSlug: d.chainedEncounterSlug,
-    choicesRequired: d.choicesRequired,
-    regions: d.regions,
-    routes: d.routes,
-    choices: d.choices.map((c) => ({
-      label: c.label,
-      emoji: c.emoji,
-      requirements: c.requirements as Record<string, unknown>,
-      check: c.check as unknown as Record<string, unknown>,
-      successEffects: c.successEffects,
-      failureEffects: c.failureEffects,
-    })),
-    metadata: d.metadata,
-  };
-}
-
-function draftFrom(server: Awaited<ReturnType<typeof getAdminEncounter>>): Draft {
-  return {
-    slug: server.slug,
-    name: server.name,
-    description: server.description,
-    type: server.type,
-    rarity: server.rarity,
-    weight: server.weight,
-    lifecycle: server.lifecycle,
-    huntEligible: server.huntEligible,
-    travelEligible: server.travelEligible,
-    cooldownSeconds: server.cooldownSeconds,
-    artworkPath: server.artworkPath,
-    chainedEncounterSlug: server.chainedEncounterSlug,
-    choicesRequired: server.choicesRequired,
-    regions: server.regions,
-    routes: server.routes,
-    choices: server.choices.map((c) => ({
-      label: c.label,
-      emoji: c.emoji,
-      requirements: c.requirements as ChoiceDraft['requirements'],
-      check: c.check as ChoiceDraft['check'],
-      successEffects: c.successEffects as unknown as EffectShape[],
-      failureEffects: c.failureEffects as unknown as EffectShape[],
-    })),
-    metadata: server.metadata,
-  };
-}
 
 export function AdminEncounterEditorPage() {
   const { id: idParam } = useParams<{ id?: string }>();
@@ -359,8 +263,16 @@ export function AdminEncounterEditorPage() {
                 <Input
                   value={draft.artworkPath ?? ''}
                   onChange={(e) => patch({ artworkPath: e.target.value.trim() || null })}
-                  placeholder="encounters/foo.png"
+                  placeholder="encounters/bandit_ambush.webp"
                 />
+                {/*
+                  Live preview against the path as typed, so a typo shows up
+                  here rather than in Discord. Artwork is optional — the empty
+                  state says so rather than looking broken.
+                */}
+                <div className="mt-2">
+                  <EncounterArtwork path={draft.artworkPath} />
+                </div>
               </label>
               <label className="text-xs text-ink-muted">
                 Chained encounter slug

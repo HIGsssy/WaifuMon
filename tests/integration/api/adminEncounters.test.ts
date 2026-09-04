@@ -236,6 +236,101 @@ describe('admin encounter routes', () => {
     expect(unauthed.statusCode).toBe(401);
   });
 
+  it('serves encounter artwork for the editor preview', async () => {
+    // `assets/placeholder.png` really is on disk, so this exercises the whole
+    // path: confinement through `resolveAssetPath`, then the bytes.
+    const res = await api.inject({
+      method: 'GET',
+      url: '/api/v1/admin/encounters/artwork?path=placeholder.png',
+      headers: AUTH_BEARER,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toBe('image/png');
+    expect(res.rawPayload.length).toBeGreaterThan(0);
+  });
+
+  it('404s a path with no file behind it, which is what a typo looks like', async () => {
+    const res = await api.inject({
+      method: 'GET',
+      url: '/api/v1/admin/encounters/artwork?path=encounters/definitely_absent.webp',
+      headers: AUTH_BEARER,
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('refuses a path that escapes the assets directory', async () => {
+    // Traversal is indistinguishable from a typo in the response, on purpose.
+    const res = await api.inject({
+      method: 'GET',
+      url: `/api/v1/admin/encounters/artwork?path=${encodeURIComponent('../../etc/passwd')}`,
+      headers: AUTH_BEARER,
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('refuses a non-image extension even if the file exists', async () => {
+    const res = await api.inject({
+      method: 'GET',
+      url: '/api/v1/admin/encounters/artwork?path=package.json',
+      headers: AUTH_BEARER,
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('requires the encounters.read permission like the rest of the namespace', async () => {
+    const res = await api.inject({
+      method: 'GET',
+      url: '/api/v1/admin/encounters/artwork?path=placeholder.png',
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('round-trips artworkPath through create and read', async () => {
+    const path = 'encounters/round_trip.webp';
+    const created = await api.inject({
+      method: 'POST',
+      url: '/api/v1/admin/encounters',
+      headers: AUTH_BEARER,
+      payload: {
+        input: {
+          slug: 'artwork_round_trip',
+          name: 'Artwork Round Trip',
+          description: 'x',
+          type: 'discovery',
+          rarity: 'common',
+          weight: 1,
+          lifecycle: 'draft',
+          huntEligible: true,
+          travelEligible: false,
+          cooldownSeconds: 0,
+          artworkPath: path,
+          chainedEncounterSlug: null,
+          choicesRequired: true,
+          regions: [],
+          routes: [],
+          metadata: {},
+          choices: [
+            {
+              label: 'Look',
+              check: { type: 'none' },
+              successEffects: [],
+              failureEffects: [],
+            },
+          ],
+        },
+      },
+    });
+    expect(created.statusCode).toBe(200);
+    const id = (created.json() as { data: { id: number } }).data.id;
+
+    const read = await api.inject({
+      method: 'GET',
+      url: `/api/v1/admin/encounters/${id}`,
+      headers: AUTH_BEARER,
+    });
+    expect((read.json() as { data: { artworkPath: string } }).data.artworkPath).toBe(path);
+  });
+
   it('simulation endpoint returns aggregate stats and does not mutate state', async () => {
     const list = await api.inject({
       method: 'GET',

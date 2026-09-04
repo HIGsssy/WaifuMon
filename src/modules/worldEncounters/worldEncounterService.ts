@@ -205,6 +205,21 @@ export interface Resolution {
     speciesName: string | null;
     blockedByEncounterId: number | null;
   } | null;
+  /**
+   * Set when this encounter interrupted a journey — i.e. `source === 'travel'`.
+   * Null for a hunt encounter.
+   *
+   * The destination is **already committed**: `travelService.travel()` runs and
+   * commits before the travel-encounter roll fires, so by the time a player
+   * sees this encounter their map has already moved. That is what makes
+   * "Continue Journey" pure navigation rather than a second travel
+   * transaction — there is nothing left to charge, gate, or move.
+   *
+   * A chained continuation copies `source` and both region columns from its
+   * parent row, so this survives to the end of a chain and the button can
+   * reappear at the chain's terminal resolution.
+   */
+  journey: { destinationRegionId: string | null } | null;
 }
 
 export interface WorldEncounterServiceDeps {
@@ -659,6 +674,11 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
         continuationActiveId,
         vendorInstance,
         wildEncounter,
+        // Read off the active row, never off anything the client sent.
+        journey:
+          active.source === 'travel'
+            ? { destinationRegionId: active.destinationRegionId }
+            : null,
       };
     });
   }
@@ -737,6 +757,30 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
     return activationFor(playerId, row);
   }
 
+  /**
+   * Travel context for a *resolved* encounter, for the Continue Journey
+   * button. Returns null when the row is missing, belongs to someone else, or
+   * did not come from travel.
+   *
+   * The caller passes only the active-encounter id; the destination comes from
+   * the row. A forged or borrowed id therefore cannot tell the application
+   * where to put the player — the worst it can do is fail this lookup.
+   *
+   * Deliberately does not require a particular status: this resumes a screen
+   * and moves nothing, so being lenient costs nothing and keeps a
+   * double-clicked button quiet.
+   */
+  async function getJourneyContext(
+    activeId: number,
+    playerId: number,
+  ): Promise<{ destinationRegionId: string | null } | null> {
+    const row = await repo.getActiveById(deps.db, activeId);
+    if (!row) return null;
+    if (row.playerId !== playerId) return null;
+    if (row.source !== 'travel') return null;
+    return { destinationRegionId: row.destinationRegionId };
+  }
+
   async function saveMessageId(activeId: number, messageId: string): Promise<void> {
     await deps.db.transaction((tx) => repo.updateActiveMessage(tx, activeId, messageId));
   }
@@ -748,6 +792,7 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
     preview,
     getPendingForPlayer,
     getActivationById,
+    getJourneyContext,
     saveMessageId,
     repo,
     executor,

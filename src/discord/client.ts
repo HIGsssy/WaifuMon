@@ -22,6 +22,7 @@ import {
   handleQuestsClaimAll,
 } from './commands/waifumon';
 import {
+  handleContinueJourney,
   handleLocationBuy,
   handleLocationConfirm,
   handleLocationDetail,
@@ -263,6 +264,10 @@ export function createDiscordClient(ctx: AppContext): Client {
         handleWorldEncounterChoose(ctx, i, prov, args),
       'encw:continue': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleWorldEncounterContinue(ctx, i, prov, args),
+      // Lives in the `loc:` namespace because it resumes the Locations
+      // screen — the encounter is over by the time it is clickable.
+      'loc:journey': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleContinueJourney(ctx, i, prov, args),
       'encv:open': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleWorldEncounterVendorOpen(ctx, i, prov, args),
       'encv:buy': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>

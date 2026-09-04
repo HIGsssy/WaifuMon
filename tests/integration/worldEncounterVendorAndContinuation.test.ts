@@ -263,6 +263,83 @@ describe('continuation: chained encounter creates a pending row', () => {
   });
 });
 
+describe('continuation: travel context survives the chain', () => {
+  it('carries source and destination onto the continuation row', async () => {
+    // Continue Journey depends on this. `tv_bandit_ambush` is travel-eligible
+    // and its Fight choice chains into `tv_bandit_aftermath`; the child row
+    // must inherit the journey so the button can reappear when the chain
+    // finally resolves, rather than stranding the player mid-trip.
+    const activeId = await insertActiveFor('tv_bandit_ambush');
+    const [encounter] = await t.db
+      .select()
+      .from(worldEncounters)
+      .where(eq(worldEncounters.slug, 'tv_bandit_ambush'));
+    const choiceRows = await t.db
+      .select()
+      .from(worldEncounterChoices)
+      .where(eq(worldEncounterChoices.encounterId, encounter!.id));
+    const fight = choiceRows.find((c) => c.label === 'Fight');
+
+    const rng = { next: () => 0, intInclusive: (a: number) => a };
+    const parent = await app.worldEncounter.resolveChoice({
+      activeId,
+      playerId,
+      choiceId: fight!.id,
+      rng,
+    });
+
+    // The parent came from travel, so it reports a journey…
+    expect(parent.journey).not.toBeNull();
+    expect(parent.journey!.destinationRegionId).toBe('twin-peeks');
+    // …but mid-chain the Continue button takes precedence.
+    expect(parent.continuationActiveId).not.toBeNull();
+
+    const [child] = await t.db
+      .select()
+      .from(activeWorldEncounters)
+      .where(eq(activeWorldEncounters.id, parent.continuationActiveId!));
+    expect(child!.source).toBe('travel');
+    expect(child!.destinationRegionId).toBe('twin-peeks');
+
+    // And the service answers for the child id, which is what the button on
+    // the chain's terminal screen will carry.
+    await expect(
+      app.worldEncounter.getJourneyContext(parent.continuationActiveId!, playerId),
+    ).resolves.toEqual({ destinationRegionId: 'twin-peeks' });
+  });
+
+  it('reports no journey for a hunt-origin encounter', async () => {
+    const [encounter] = await t.db
+      .select()
+      .from(worldEncounters)
+      .where(eq(worldEncounters.slug, 'tv_bandit_ambush'));
+    const [row] = await t.db
+      .insert(activeWorldEncounters)
+      .values({
+        playerId,
+        encounterId: encounter!.id,
+        source: 'hunt',
+        regionId: 'waifu-valley',
+        guildId: guildDbId,
+        channelId: 'c-1',
+        contextJson: {},
+        expiresAt: new Date(Date.now() + 10 * 60_000),
+      })
+      .returning();
+    await expect(
+      app.worldEncounter.getJourneyContext(row!.id, playerId),
+    ).resolves.toBeNull();
+  });
+
+  it('refuses a journey lookup for another player', async () => {
+    const other = await provisionPlayer(app, 'g-vendor', 'u-2');
+    const activeId = await insertActiveFor('tv_bandit_ambush');
+    await expect(
+      app.worldEncounter.getJourneyContext(activeId, other.playerId),
+    ).resolves.toBeNull();
+  });
+});
+
 describe('vendor: atomically opened by open_vendor effect', () => {
   it('resolveChoice on the wandering merchant opens a vendor instance and returns its id', async () => {
     const activeId = await insertActiveFor('tv_wandering_merchant');

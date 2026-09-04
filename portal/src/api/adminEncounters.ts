@@ -6,7 +6,7 @@
  * schemas — kept intentionally light on shared type files so the admin
  * bundle stays independent of the player-facing bundle.
  */
-import { deleteData, getData, patchData, postData, putData } from './client';
+import { apiClient, deleteData, getData, patchData, postData, putData } from './client';
 
 export interface AdminEncounterChoice {
   id: number;
@@ -144,6 +144,22 @@ export function listAdminEncounters(signal?: AbortSignal): Promise<{ encounters:
 
 export function getAdminEncounter(id: number, signal?: AbortSignal): Promise<AdminEncounter> {
   return getData<AdminEncounter>(`/v1/admin/encounters/${id}`, signal ? { signal } : {});
+}
+
+/**
+ * Encounter artwork bytes for the editor preview.
+ *
+ * Deliberately not a URL the page builds: the Portal's image resolver refuses
+ * to turn stored physical paths into URLs, and this keeps that rule intact by
+ * going through the same authenticated, permission-gated admin client as every
+ * other call here. The caller owns the resulting object URL and must revoke it.
+ */
+export async function adminEncounterArtworkBlob(path: string): Promise<Blob> {
+  const response = await apiClient.get<Blob>('/v1/admin/encounters/artwork', {
+    params: { path },
+    responseType: 'blob',
+  });
+  return response.data;
 }
 
 export function getAdminEncounterReference(signal?: AbortSignal): Promise<AdminEncounterReference> {

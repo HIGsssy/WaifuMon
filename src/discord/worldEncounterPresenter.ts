@@ -204,6 +204,25 @@ export function buildEncounterResolved(
         .setStyle(ButtonStyle.Primary),
     );
   }
+  // Continue Journey — a travel encounter interrupted a journey whose
+  // destination was already committed before the encounter rolled, so this
+  // resumes the arrival screen and nothing more.
+  //
+  // Only at a *terminal* resolution. When the choice opened a chained
+  // encounter, Continue takes precedence: the chain carries the same travel
+  // context forward (the continuation row copies `source` and both region
+  // columns), so this button reappears when the chain finally resolves.
+  // Offering both at once would ask the player to choose between finishing
+  // the story and finishing the trip.
+  if (resolution.journey && resolution.continuationActiveId == null) {
+    followRow.addComponents(
+      new ButtonBuilder()
+        .setCustomId(buildCustomId('loc', 'journey', String(activation.activeId)))
+        .setLabel('🚶 Continue Journey')
+        .setStyle(ButtonStyle.Secondary),
+    );
+  }
+
   if (followRow.components.length > 0) rows.push(followRow);
 
   return { embeds: [embed], components: rows, files };

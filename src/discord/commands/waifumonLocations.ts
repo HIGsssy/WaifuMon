@@ -280,6 +280,14 @@ async function loadDetail(
 
 const STALE = 'That destination is no longer on the map — re-open Locations.';
 
+/**
+ * Shown when a Continue Journey button can no longer be honoured — the id is
+ * malformed, belongs to someone else, or names a hunt encounter. Deliberately
+ * says nothing about which of those it was.
+ */
+const JOURNEY_STALE =
+  'That journey has already moved on. Open **Locations** to see where you are.';
+
 export async function handleLocationsHome(
   ctx: AppContext,
   interaction: PlayerInteraction,
@@ -288,6 +296,61 @@ export async function handleLocationsHome(
 ): Promise<void> {
   const status = await ctx.services.travel.getStatus(prov.playerId);
   await respondEphemeral(interaction, buildHomeView(ctx, status, statusLine));
+}
+
+/**
+ * Continue Journey — resume the arrival screen after a travel encounter.
+ *
+ * This is **navigation, not travel**. `travelService.travel()` already ran and
+ * committed before the encounter rolled (see `handleLocationTravel`), so the
+ * player is standing in the destination the entire time the encounter is on
+ * screen. There is nothing left to charge, gate, move, or reward — this
+ * repaints the Locations home screen the trip would have landed on had the
+ * encounter not interrupted it.
+ *
+ * Three consequences worth stating, because they are what make the button
+ * safe rather than merely convenient:
+ *
+ *   - **Idempotent by construction.** The only writes on this path are none.
+ *     `travel.getStatus` is a read, `buildHomeView` is pure rendering, so a
+ *     double-click repaints the same screen and a click an hour later shows
+ *     wherever the player actually is now.
+ *   - **Server-authoritative.** The custom id carries an active-encounter id
+ *     and nothing else. The region comes from `travel.getStatus`, which reads
+ *     the player row; `getJourneyContext` is an authorization check (is this
+ *     your encounter, and did it come from travel?), not a source of
+ *     destination.
+ *   - **No re-roll.** Nothing here calls `maybeTriggerTravelEncounter`, so
+ *     continuing a journey cannot spawn a second encounter.
+ */
+export async function handleContinueJourney(
+  ctx: AppContext,
+  interaction: ButtonInteraction,
+  prov: Provisioned,
+  args: string[],
+): Promise<void> {
+  const service = ctx.services.worldEncounter;
+  const activeId = Number(args[0] ?? '');
+  if (!service || !Number.isFinite(activeId)) {
+    await respondEphemeral(interaction, JOURNEY_STALE);
+    return;
+  }
+  // Ownership + origin check. A forged id, someone else's encounter, or a
+  // hunt encounter all come back null and get the same neutral answer.
+  const journey = await service.getJourneyContext(activeId, prov.playerId);
+  if (!journey) {
+    await respondEphemeral(interaction, JOURNEY_STALE);
+    return;
+  }
+  const status = await ctx.services.travel.getStatus(prov.playerId);
+  await respondEphemeral(
+    interaction,
+    buildHomeView(
+      ctx,
+      status,
+      `🚶 You shoulder your pack and carry on into **${status.currentRegionName}**.`,
+    ),
+  );
 }
 
 export async function handleLocationDetail(
