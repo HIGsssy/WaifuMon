@@ -8,18 +8,39 @@
  * gave us into a bar width, which is presentation (plan §16).
  */
 import { Progress } from '@/components/ui/progress';
-import type { WaifuProgress } from '@/api/types';
+import type { PlayerProgress, WaifuProgress } from '@/api/types';
 import { formatNumber } from '@/lib/format';
 import { cn } from '@/lib/cn';
 
+/**
+ * What the bar can measure: an owned copy's progress, or the trainer's.
+ *
+ * The API gives the two the same fields on purpose, so one bar serves both and
+ * neither curve is ever recomputed here. The union rather than a hand-written
+ * minimum, because these are the only two shapes that exist and naming them
+ * keeps the bar tied to the resources it draws.
+ */
+export type XpProgress = WaifuProgress | PlayerProgress;
+
 export interface XpBarProps {
-  progress: WaifuProgress;
+  progress: XpProgress;
   /** Hides the numeric caption for tight layouts. */
   compact?: boolean;
+  /**
+   * What this bar measures. Named because the Dashboard draws two of them —
+   * the trainer's and her buddy's — and a screen reader hearing "experience to
+   * next level" twice cannot tell which one it has landed on.
+   */
+  label?: string;
   className?: string;
 }
 
-export function XpBar({ progress, compact = false, className }: XpBarProps) {
+export function XpBar({
+  progress,
+  compact = false,
+  label = 'Experience',
+  className,
+}: XpBarProps) {
   const span = progress.xpIntoLevel + progress.xpToNext;
   const percent = progress.atMaxLevel || span <= 0 ? 100 : (progress.xpIntoLevel / span) * 100;
 
@@ -27,7 +48,7 @@ export function XpBar({ progress, compact = false, className }: XpBarProps) {
     <div className={cn('space-y-1.5', className)}>
       <Progress
         value={percent}
-        aria-label={progress.atMaxLevel ? 'Experience: max level' : 'Experience to next level'}
+        aria-label={progress.atMaxLevel ? `${label}: max level` : `${label} to next level`}
       />
       {!compact && (
         <p className="tabular text-xs text-ink-subtle">

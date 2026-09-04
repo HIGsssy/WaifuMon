@@ -18,12 +18,16 @@
  * column cannot leak, and a renamed one fails the typecheck.
  */
 import { seductivePowerView } from '../modules/power/seductivePower';
+import { buddyBonusView, type BuddyBonus } from '../modules/buddyBonus/buddyBonusEffects';
+import { resolveRace } from '../modules/cards/race';
+import { DEFAULT_REGION, isRegion, regionLabel, type Region } from '../modules/locations/regions';
 import type {
   Affinity,
   ContentRating,
   EncounterRow,
   GuildRow,
   ItemRow,
+  PlayerCurrenciesRow,
   PlayerRow,
   PlayerWaifuRow,
   Rarity,
@@ -33,7 +37,8 @@ import type {
   AppearanceSpecies,
   ResolvedAppearance,
 } from '../modules/appearance/appearanceContent';
-import type { SpeciesContent } from '../modules/content/schemas';
+import type { LevelProgress } from '../modules/progression/progressionMath';
+import type { RegionContent, SpeciesContent } from '../modules/content/schemas';
 import type { ENCOUNTER_STATES } from './schemas/encounter';
 import type { ITEM_CATEGORIES } from './schemas/content';
 import type { PlayerIdentity } from './identity';
@@ -129,6 +134,7 @@ export function toSpeciesResource(
   const { imagePath: _imagePath, ...rest } = row;
   return {
     ...rest,
+    race: resolveRace(row),
     rarity: row.rarity as Rarity,
     affinity: row.affinity as Affinity,
     contentRating: row.contentRating as ContentRating,
@@ -136,13 +142,45 @@ export function toSpeciesResource(
   };
 }
 
-/** The authored content snapshot's species, same treatment as the row. */
+/**
+ * A species' Buddy Bonus, with its display strings already resolved.
+ *
+ * `targetLabel` and `effectSummary` come from `buddyBonusView` — the one
+ * registry the bot itself prints from — rather than being re-phrased here or,
+ * worse, by each client. That is the whole point: a client renders the sentence
+ * it is handed, so adding an effect id changes exactly one switch statement and
+ * every surface follows.
+ */
+export function toBuddyBonusResource(bonus: BuddyBonus) {
+  const { name, flavorText, effectId, value, target, targetLabel, effectSummary } =
+    buddyBonusView(bonus);
+  return { name, flavorText, effectId, value, target, targetLabel, effectSummary };
+}
+
+/**
+ * The authored content snapshot's species, same treatment as the row.
+ *
+ * `buddyBonus` is mapped rather than passed through: the authored shape carries
+ * only the rule, and the resource carries the rule *and* the resolved copy.
+ * A species with no authored bonus omits the key entirely — there is no such
+ * thing as an empty Buddy Bonus, and a null would invite a client to render one.
+ */
 export function toContentSpeciesResource(
   species: SpeciesContent,
   appearances: readonly ResolvedAppearance[],
 ) {
-  const { imagePath: _imagePath, appearances: _authored, ...rest } = species;
-  return { ...rest, appearances: toAppearanceCatalogResources(appearances) };
+  const {
+    imagePath: _imagePath,
+    appearances: _authored,
+    buddyBonus,
+    ...rest
+  } = species;
+  return {
+    ...rest,
+    race: resolveRace(species),
+    appearances: toAppearanceCatalogResources(appearances),
+    ...(buddyBonus ? { buddyBonus: toBuddyBonusResource(buddyBonus) } : {}),
+  };
 }
 
 /**
@@ -210,21 +248,65 @@ export function toGuildResource(row: GuildRow) {
 }
 
 /**
+ * The player-facing name of a region id.
+ *
+ * Content's authored `name` wins; `regionLabel` is the fallback for a region
+ * the snapshot does not describe. Resolved here rather than by each client
+ * because the two can disagree — `regionLabel` derives "Waifu Valley" from the
+ * id, and nothing stops a region file from authoring something else — and the
+ * authored name is the one players see in Discord.
+ */
+export function toCurrentRegionResource(
+  regionId: string,
+  regions: readonly RegionContent[] = [],
+): { id: Region; name: string } {
+  // `players.current_region` is a `text` column narrowed by
+  // `players_current_region_check`, so anything outside the closed set cannot
+  // be stored — but the guard is cheap and the fallback is the same one
+  // `travelService.getCurrentRegion` applies, so a row written before a region
+  // was renamed reads as home rather than as a value no client can render.
+  const id: Region = isRegion(regionId) ? regionId : DEFAULT_REGION;
+  const authored = regions.find((region) => region.id === id);
+  return { id, name: authored?.name ?? regionLabel(id) };
+}
+
+/**
+ * Everything attached to a player row that is not a column on it.
+ *
+ * `progress` and `currentRegion` are both required rather than optional: they
+ * are part of the resource's contract, and a default here would let a new call
+ * site quietly ship a player with no level curve. Neither costs a query —
+ * `progress` is arithmetic over `player.xp` and the region name is a lookup in
+ * the in-memory content snapshot.
+ */
+export interface PlayerResourceContext {
+  /** Presentation-only Discord identity. Always nullable — see `identity.ts`. */
+  identity?: PlayerIdentity | null;
+  /** From `progressionService.progressFor(player.xp)`. */
+  progress: LevelProgress;
+  /** From {@link toCurrentRegionResource}. */
+  currentRegion: { id: Region; name: string };
+}
+
+/**
  * The one genuine shape change: flat care columns → a nested summary.
  *
  * `identity` is not a column — it is presentation data resolved outside the
- * service layer (`src/api/identity.ts`) and is always nullable. It is attached
+ * service layer (`src/api/identity.ts`) and is always nullable. `progress` and
+ * `currentRegion` are likewise resolved by the caller. All three are attached
  * here so the two player routes cannot disagree about the resource's shape.
  */
-export function toPlayerResource(player: PlayerRow, identity: PlayerIdentity | null = null) {
+export function toPlayerResource(player: PlayerRow, ctx: PlayerResourceContext) {
   return {
-    identity,
+    identity: ctx.identity ?? null,
     id: player.id,
     guildId: player.guildId,
     discordUserId: player.discordUserId,
     level: player.level,
     xp: player.xp,
     buddyWaifuId: player.buddyWaifuId,
+    progress: ctx.progress,
+    currentRegion: ctx.currentRegion,
     lastHuntAt: player.lastHuntAt,
     careMode: {
       active: player.careModeStartedAt !== null,
@@ -233,4 +315,15 @@ export function toPlayerResource(player: PlayerRow, identity: PlayerIdentity | n
     },
     createdAt: player.createdAt,
   };
+}
+
+/**
+ * Balances plus the Energy ceiling for this player's level.
+ *
+ * The ceiling is not a column — it is `progressionService.computeMaxEnergy`,
+ * the same function Care Mode reports through — so it is attached here rather
+ * than being recomputed by each route that returns balances.
+ */
+export function toCurrencyResource(balances: PlayerCurrenciesRow, maxHuntEnergy: number) {
+  return { ...balances, maxHuntEnergy };
 }

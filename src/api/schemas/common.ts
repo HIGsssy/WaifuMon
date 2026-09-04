@@ -78,10 +78,21 @@ export const snowflakeParam = z.string().min(1).max(32).regex(/^\d+$/, 'Expected
  */
 export const COLLECTION_MAX_PAGE_SIZE = 25;
 
+/**
+ * `newest` exists because page 1 of the default order is the *rarest* copies,
+ * which tells a client nothing about recent captures. Without it, "the five
+ * most recent" costs a walk of every page.
+ */
+export const COLLECTION_SORTS = ['rarity', 'newest'] as const;
+
 export const collectionPageQuery = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(COLLECTION_MAX_PAGE_SIZE).default(10),
   rarity: raritySchema.optional(),
+  sort: z
+    .enum(COLLECTION_SORTS)
+    .default('rarity')
+    .describe('`rarity` (default) is rarest-first; `newest` is most-recently-caught first.'),
 });
 
 // ── Error envelope (documented on every route) ──────────────────────────────

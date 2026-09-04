@@ -206,10 +206,7 @@ describe('Card mode', () => {
     await screen.findByRole('link', { name: /Nyx/ });
     await switchToCards();
 
-    await user.type(
-      screen.getByLabelText('Search the current page of your collection'),
-      'Kitsune',
-    );
+    await user.type(screen.getByLabelText('Search your collection'), 'Kitsune');
 
     await waitFor(() => expect(tiles()).toHaveLength(1));
     expect(screen.getByRole('link', { name: /Neon Kitsune/ })).toBeInTheDocument();

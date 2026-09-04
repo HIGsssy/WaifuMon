@@ -24,6 +24,7 @@ import { CardViewToggle, type CardView } from '@/components/media/CardViewToggle
 import { Button } from '@/components/ui/button';
 import { Card, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { BuddyBonusCard } from '@/components/waifumon/BuddyBonusCard';
 import { AffinityPill, ContentRatingPill, TypePill } from '@/components/waifumon/Pills';
 import { RarityBadge } from '@/components/waifumon/RarityBadge';
 import { RarityGlowRing } from '@/components/waifumon/RarityGlowRing';
@@ -223,6 +224,15 @@ export function SpeciesDetailPage() {
               </div>
             </Card>
           )}
+
+          {/*
+            Gated on discovery for the same reason the description is: the
+            bonus is authored lore as much as it is a rule, and an undiscovered
+            entry deliberately gives away nothing but the rarity. Most species
+            grant no bonus at all, and those render no section rather than an
+            empty one.
+          */}
+          {discovered && species.buddyBonus && <BuddyBonusCard bonus={species.buddyBonus} />}
 
           <Card>
             <CardTitle>Your collection</CardTitle>

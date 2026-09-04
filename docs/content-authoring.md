@@ -554,7 +554,11 @@ keeps it in step with the code.
 
 Adding a *new kind* of effect is the one case that needs code: the effect id
 has to be added to `src/modules/buddyBonus/buddyBonusEffects.ts` and applied
-wherever it belongs.
+wherever it belongs. Give it a case in `buddyBonusEffectSummary` while you are
+there — that one sentence is what Discord prints on a result line, what the
+Platform API ships as `buddyBonus.effectSummary`, and what the Player Portal
+renders on a detail page. No surface writes its own wording, so a missing case
+is missing copy everywhere at once.
 
 ## Worked examples
 

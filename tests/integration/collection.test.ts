@@ -114,6 +114,71 @@ describe('CollectionService — listing & dex', () => {
     expect(way.entries).toHaveLength(2);
   });
 
+  /**
+   * The two orders must *disagree* for this to test anything, so the fixture is
+   * built to make them disagree: the rarest copy is the oldest. Under the browse
+   * order she leads; under `newest` she comes last.
+   */
+  it('orders newest-first by caughtAt without disturbing the browse order', async () => {
+    const speciesRows = await t.db.select().from(species);
+    const bySlug = new Map(speciesRows.map((sp) => [sp.slug, sp]));
+
+    const oldestRarest = await insertOwnedWaifu(t.db, {
+      playerId,
+      speciesId: bySlug.get('void_empress')!.id, // UR
+      caughtAt: new Date('2026-01-01T00:00:00.000Z'),
+    });
+    const newestCommonest = await insertOwnedWaifu(t.db, {
+      playerId,
+      speciesId: bySlug.get('neko_barista')!.id, // N
+      caughtAt: new Date('2026-08-01T00:00:00.000Z'),
+    });
+
+    const newest = await app.collection.listOwned(playerId, { sort: 'newest', pageSize: 25 });
+    expect(newest.entries.map((e) => e.waifu.id)).toEqual([
+      newestCommonest.id,
+      oldestRarest.id,
+    ]);
+
+    // Omitting `sort` is byte-for-byte what it always was - rarest first.
+    const browse = await app.collection.listOwned(playerId, { pageSize: 25 });
+    expect(browse.entries.map((e) => e.waifu.id)).toEqual([oldestRarest.id, newestCommonest.id]);
+  });
+
+  /**
+   * The point of the sort: a caller wanting the five most recent reads one
+   * short page, not every page. The ordering has to happen in SQL, before the
+   * limit - sorting a page after the fact would return the newest *of the
+   * rarest*, which is a different and wrong answer.
+   */
+  it('applies the newest ordering before the limit, not after', async () => {
+    const speciesRows = await t.db.select().from(species);
+    const commonId = speciesRows.find((sp) => sp.slug === 'neko_barista')!.id;
+    const rareId = speciesRows.find((sp) => sp.slug === 'void_empress')!.id;
+
+    // The rare copy is the oldest of six; a page of three must exclude her.
+    await insertOwnedWaifu(t.db, {
+      playerId,
+      speciesId: rareId,
+      caughtAt: new Date('2026-01-01T00:00:00.000Z'),
+    });
+    for (let day = 1; day <= 5; day++) {
+      await insertOwnedWaifu(t.db, {
+        playerId,
+        speciesId: commonId,
+        caughtAt: new Date(`2026-08-0${day}T00:00:00.000Z`),
+      });
+    }
+
+    const page = await app.collection.listOwned(playerId, { sort: 'newest', pageSize: 3 });
+    expect(page.entries).toHaveLength(3);
+    expect(page.totalOwned).toBe(6);
+    expect(page.entries.map((e) => e.species.rarity)).toEqual(['N', 'N', 'N']);
+
+    const caughtAt = page.entries.map((e) => e.waifu.caughtAt.getTime());
+    expect(caughtAt).toEqual([...caughtAt].sort((a, b) => b - a));
+  });
+
   it('dex stats count distinct species (duplicates don\'t inflate)', async () => {
     await grantWaifus(playerId, [
       { slug: 'neko_barista', count: 3 },

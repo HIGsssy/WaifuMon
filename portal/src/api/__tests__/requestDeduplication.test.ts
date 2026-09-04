@@ -63,6 +63,21 @@ describe('dashboard startup requests', () => {
     });
   });
 
+  /**
+   * The strip is one request whatever the collection's size. Before the API
+   * grew `sort=newest`, page 1 was the *rarest* twenty-five copies, so the only
+   * way to find the newest five was to read every page — which would have made
+   * this count grow with the player's collection.
+   */
+  it('reads the recent catches in a single listing request', async () => {
+    const counts = countRequests();
+
+    renderRoutes({ routes, initialEntries: ['/dashboard'] });
+    await dashboardReady();
+
+    expect(counts.get('/api/v1/players/1/collection/owned')).toBe(1);
+  });
+
   it('does not fetch the species catalogue as part of first paint', async () => {
     // It is still prefetched for the Collection and Encyclopedia, but on idle —
     // no dashboard widget reads it, and on a slow link it was a fourth request
@@ -82,9 +97,11 @@ describe('dashboard startup requests', () => {
     await dashboardReady();
 
     const total = [...counts.values()].reduce((sum, count) => sum + count, 0);
-    // lookup → player → (profile, buddy, stats). A regression that reintroduces
-    // a duplicate or an eager prefetch pushes past this.
-    expect(total).toBeLessThanOrEqual(5);
+    // lookup → player → (profile, buddy, stats, recent). A regression that
+    // reintroduces a duplicate or an eager prefetch pushes past this — and so
+    // would a recent-catches strip that walked the collection instead of asking
+    // for one newest-first page.
+    expect(total).toBeLessThanOrEqual(6);
   });
 
   it('serves a second mount from cache, inside the stale window', async () => {

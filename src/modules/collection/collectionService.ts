@@ -11,7 +11,7 @@
  * capture history and audit trails stay intact. `listOwned`, `getOwned`, and
  * `getDexStats` all filter on `releasedAt IS NULL`.
  */
-import { and, asc, count, countDistinct, eq, ilike, isNull, ne, or, sql } from 'drizzle-orm';
+import { and, asc, count, countDistinct, desc, eq, ilike, isNull, ne, or, sql } from 'drizzle-orm';
 import type { Db, DbOrTx } from '../../db/client';
 import {
   playerWaifus,
@@ -87,10 +87,29 @@ export interface ReleaseResult {
   balanceAfter: number;
 }
 
+/**
+ * How `listOwned` orders a page.
+ *
+ *   `rarity`  the browse order — rarest first, then name, then id. The default,
+ *             and the only order that existed before: a caller that passes
+ *             nothing gets byte-for-byte what it always got.
+ *   `newest`  most recently caught first. Not merely a different arrangement of
+ *             the same page — it is the only way to ask for *recent* copies
+ *             without reading every page, because page 1 of the browse order is
+ *             the rarest 25, which has no relationship to the newest few.
+ *
+ * The grouped Discord browser has its own richer sort (`CollectionSortBy`) that
+ * it applies in memory after loading every copy. This is deliberately not that:
+ * these two orders are expressible in SQL and are applied *before* the limit.
+ */
+export type CollectionListSort = 'rarity' | 'newest';
+
 export interface ListOptions {
   page?: number;
   pageSize?: number;
   rarity?: Rarity;
+  /** Defaults to `rarity` — the pre-existing order. */
+  sort?: CollectionListSort;
 }
 
 /**
@@ -412,6 +431,7 @@ export function createCollectionService(deps: CollectionServiceDeps): Collection
   async function listOwned(playerId: number, opts: ListOptions = {}): Promise<PaginatedOwned> {
     const pageSize = Math.max(1, Math.min(25, opts.pageSize ?? DEFAULT_PAGE_SIZE));
     const page = Math.max(1, opts.page ?? 1);
+    const sort: CollectionListSort = opts.sort ?? 'rarity';
     const filters = [eq(playerWaifus.playerId, playerId), isNull(playerWaifus.releasedAt)];
     if (opts.rarity) filters.push(eq(species.rarity, opts.rarity));
 
@@ -429,7 +449,15 @@ export function createCollectionService(deps: CollectionServiceDeps): Collection
       .from(playerWaifus)
       .innerJoin(species, eq(playerWaifus.speciesId, species.id))
       .where(and(...filters))
-      .orderBy(sql`${RARITY_RANK_SQL} desc`, asc(species.name), asc(playerWaifus.id))
+      // `id` breaks every tie so a page boundary is deterministic. It matters
+      // more for `newest` than for `rarity`: a burst of captures can share a
+      // `caught_at` to the millisecond, and without the tiebreak the same copy
+      // could appear on two pages or on neither.
+      .orderBy(
+        ...(sort === 'newest'
+          ? [desc(playerWaifus.caughtAt), desc(playerWaifus.id)]
+          : [sql`${RARITY_RANK_SQL} desc`, asc(species.name), asc(playerWaifus.id)]),
+      )
       .limit(pageSize)
       .offset((clampedPage - 1) * pageSize);
 

@@ -23,6 +23,7 @@
  * stays ownership and the server's unlock state.
  */
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { http } from 'msw';
 import { beforeEach, describe, expect, it } from 'vitest';
 
@@ -77,6 +78,7 @@ function species(slug: string, appearances: AppearanceCatalogEntry[]): ContentSp
     name: slug,
     rarity: 'R',
     archetype: 'spirit',
+    race: 'spirit',
     affinity: 'switch',
     contentRating: 'suggestive',
     description: '',
@@ -278,10 +280,12 @@ describe('the ownership overlay after a capture elsewhere', () => {
 
     renderRoutes({ routes, initialEntries: ['/encyclopedia'] });
     await walkStarted;
+    const user = userEvent.setup();
 
     // The catalog has arrived — the Type chips are built from it, unlike the
     // hardcoded Show chips — but the overlay has not. No species may be named,
     // and none may be masked either.
+    await user.click(screen.getByRole('button', { name: 'Open filters' }));
     await screen.findByRole('button', { name: 'Spirit' });
     expect(screen.getByLabelText('Loading the encyclopedia')).toBeInTheDocument();
     expect(screen.queryByText('Neko Barista')).toBeNull();

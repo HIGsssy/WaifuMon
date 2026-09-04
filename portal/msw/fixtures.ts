@@ -7,6 +7,7 @@
  * typed rather than loose objects.
  */
 import type {
+  BuddyBonus,
   Appearance,
   AppearanceCatalogEntry,
   CareState,
@@ -46,6 +47,21 @@ export const player: Player = {
   level: 12,
   xp: 3480,
   buddyWaifuId: 101,
+  /**
+   * Server-resolved, and internally consistent with `xp`: 3,480 lifetime XP is
+   * partway through Level 12, leaving 280 of a 650-XP level behind her. The
+   * Portal never derives any of this — the fixture mirrors what
+   * `progressionService.progressFor` returns.
+   */
+  progress: {
+    level: 12,
+    totalXp: 3480,
+    xpIntoLevel: 280,
+    xpToNext: 650,
+    atMaxLevel: false,
+  },
+  /** Both fields come from the API; the Portal never title-cases the id itself. */
+  currentRegion: { id: 'twin-peeks', name: 'Twin Peeks' },
   lastHuntAt: '2026-08-06T09:14:00.000Z',
   careMode: { active: false, waifuId: null, startedAt: null },
   createdAt: '2026-05-01T12:00:00.000Z',
@@ -54,6 +70,8 @@ export const player: Player = {
 export const currencies: CurrencyBalances = {
   playerId: PLAYER_ID,
   huntEnergy: 34,
+  /** Level-derived on the server — 25 base plus the Level 7 and 20 bonuses. */
+  maxHuntEnergy: 35,
   waifubux: 1820,
   essence: 46,
   updatedAt: '2026-08-06T09:14:00.000Z',
@@ -120,6 +138,7 @@ function makeSpecies(overrides: Partial<Species> & Pick<Species, 'id' | 'slug' |
   return {
     rarity: 'N',
     archetype: 'demi-human',
+    race: 'demi-human',
     affinity: 'switch',
     contentRating: 'suggestive',
     description: 'A placeholder description used by the mocked API.',
@@ -141,6 +160,7 @@ export const speciesRows: Species[] = [
     name: 'Neon Kitsune',
     rarity: 'SR',
     archetype: 'spirit',
+    race: 'spirit',
     affinity: 'submissive',
   }),
   makeSpecies({
@@ -149,6 +169,7 @@ export const speciesRows: Species[] = [
     name: 'Void Empress',
     rarity: 'UR',
     archetype: 'demon',
+    race: 'demon',
     affinity: 'primal',
     contentRating: 'explicit',
     // Two-entry catalog: the owned default plus a level gate the fixture copy
@@ -208,8 +229,47 @@ export const appearanceGalleries: Record<number, { appearances: Appearance[]; se
     },
   };
 
-/** The content snapshot is the same fields minus the internal id. */
-export const contentSpecies: ContentSpecies[] = speciesRows.map(({ id: _id, ...rest }) => rest);
+/**
+ * Buddy Bonuses, keyed by slug — the one field a seeded row cannot carry, so it
+ * is layered on when the rows become the content snapshot.
+ *
+ * Three shapes on purpose, because they are the three the Portal has to render
+ * differently: a race-qualified capture bonus, an untargeted non-capture one,
+ * and (by omission) a species that grants nothing at all. `targetLabel` and
+ * `effectSummary` are exactly the strings the API resolves from its own effect
+ * registry — the fixture mirrors the wire, it does not re-derive it.
+ */
+export const buddyBonuses: Record<string, BuddyBonus> = {
+  void_empress: {
+    name: 'Hijack',
+    flavorText: 'She talks to their firmware the way most people talk to a dog.',
+    effectId: 'capture_chance',
+    value: 15,
+    target: { type: 'race', value: 'android' },
+    targetLabel: 'android Waifumon',
+    effectSummary: '+15% capture chance against android Waifumon',
+  },
+  neon_kitsune: {
+    name: 'Trash Treasure',
+    flavorText: 'Nothing in the alley is rubbish if you know a buyer.',
+    effectId: 'hunt_item_find_chance',
+    value: 5,
+    target: null,
+    targetLabel: null,
+    effectSummary: '+5% item-find chance',
+  },
+  // `neko_barista` deliberately has none — most species do not.
+};
+
+/**
+ * The content snapshot is the same fields minus the internal id, plus the
+ * Buddy Bonus. A species without one carries **no key**, mirroring the API,
+ * which omits it rather than sending a null.
+ */
+export const contentSpecies: ContentSpecies[] = speciesRows.map(({ id: _id, ...rest }) => {
+  const bonus = buddyBonuses[rest.slug];
+  return bonus ? { ...rest, buddyBonus: bonus } : rest;
+});
 
 export const ownedEntries: OwnedEntry[] = [
   {

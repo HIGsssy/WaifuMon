@@ -14,6 +14,15 @@ export interface DexProgressRingProps {
   distinctSpecies: number;
   totalSpecies: number;
   size?: number;
+  /**
+   * Drop the `n / total` line from inside the ring.
+   *
+   * For a layout that already states those two figures beside it — the
+   * Dashboard's summary card does — printing them here as well would put the
+   * same number on screen twice. The percentage stays, because it is the one
+   * thing the ring says that the figures do not.
+   */
+  compact?: boolean;
   className?: string;
 }
 
@@ -21,6 +30,7 @@ export function DexProgressRing({
   distinctSpecies,
   totalSpecies,
   size = 132,
+  compact = false,
   className,
 }: DexProgressRingProps) {
   const fraction = totalSpecies > 0 ? Math.min(1, distinctSpecies / totalSpecies) : 0;
@@ -53,12 +63,19 @@ export function DexProgressRing({
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="tabular text-2xl leading-none font-semibold text-ink">
+        <span
+          className={cn(
+            'tabular leading-none font-semibold text-ink',
+            compact ? 'text-base' : 'text-2xl',
+          )}
+        >
           {formatPercent(fraction)}
         </span>
-        <span className="tabular mt-1 text-xs text-ink-subtle">
-          {distinctSpecies} / {totalSpecies}
-        </span>
+        {!compact && (
+          <span className="tabular mt-1 text-xs text-ink-subtle">
+            {distinctSpecies} / {totalSpecies}
+          </span>
+        )}
       </div>
     </div>
   );

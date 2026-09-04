@@ -6,7 +6,7 @@
  * rate, an XP threshold, a drop weight or any other rule the game services own
  * (plan §16). The one judgement call, "related species", is documented below.
  */
-import type { ContentSpecies, OwnedEntry } from '@/api/types';
+import type { ContentSpecies, OwnedEntry, Race } from '@/api/types';
 import { byRarityDesc } from '@/lib/rarity';
 
 /** How a copy is titled: its nickname if it has one, else the species name. */
@@ -57,20 +57,16 @@ export function sortEntries(entries: OwnedEntry[], sort: SortKey): OwnedEntry[] 
 }
 
 export interface CollectionFilters {
+  rarity: OwnedEntry['species']['rarity'] | null;
   search: string;
-  archetype: string | null;
+  race: Race | null;
   affinity: string | null;
   ownership: 'all' | 'favorites' | 'buddy';
 }
 
 /**
- * Client-side filtering of the current page.
- *
- * The collection endpoint accepts only `rarity` today, so everything else is
- * applied in memory over 25 rows. That is honest rather than clever: it adds no
- * gameplay logic, and the label above the grid says the filters apply to the
- * page. Server-side `archetype` / `affinity` / `search` filters are filed as an
- * API enhancement (plan §25.6).
+ * Client-side filtering of the complete owned collection. Callers sort and
+ * paginate only after this function returns.
  */
 export function filterEntries(
   entries: OwnedEntry[],
@@ -80,11 +76,12 @@ export function filterEntries(
   const needle = filters.search.trim().toLowerCase();
 
   return entries.filter((entry) => {
+    if (filters.rarity && entry.species.rarity !== filters.rarity) return false;
     if (needle) {
       const haystack = `${displayName(entry)} ${entry.species.name}`.toLowerCase();
       if (!haystack.includes(needle)) return false;
     }
-    if (filters.archetype && entry.species.archetype !== filters.archetype) return false;
+    if (filters.race && entry.species.race !== filters.race) return false;
     if (filters.affinity && entry.species.affinity !== filters.affinity) return false;
     if (filters.ownership === 'favorites' && !entry.waifu.isFavorite) return false;
     if (filters.ownership === 'buddy' && entry.waifu.id !== buddyWaifuId) return false;
@@ -93,10 +90,33 @@ export function filterEntries(
 }
 
 /** Distinct values present in a set of entries, for building filter chips. */
-export function distinctValues(entries: OwnedEntry[], key: 'archetype' | 'affinity'): string[] {
+export function distinctValues(entries: OwnedEntry[], key: 'race' | 'affinity'): string[] {
   return [...new Set(entries.map((entry) => entry.species[key]))].sort((a, b) =>
     a.localeCompare(b),
   );
+}
+
+export function distinctSpeciesValues(
+  entries: ContentSpecies[],
+  key: 'race' | 'affinity',
+): string[] {
+  return [...new Set(entries.map((entry) => entry[key]))].sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * A species' Buddy Bonus, out of the cached content snapshot.
+ *
+ * An owned copy embeds the *seeded row*, and the row has no bonus by design —
+ * content deliberately never copies it into the database. So a copy's page
+ * reads it off the snapshot it has already fetched for the related strip, at no
+ * extra request. Undefined while that snapshot is still loading, and for the
+ * many species that grant no bonus at all; both render nothing.
+ */
+export function buddyBonusFor(
+  all: ContentSpecies[] | undefined,
+  slug: string,
+): ContentSpecies['buddyBonus'] {
+  return all?.find((candidate) => candidate.slug === slug)?.buddyBonus;
 }
 
 /**

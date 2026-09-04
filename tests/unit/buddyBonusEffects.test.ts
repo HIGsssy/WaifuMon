@@ -9,8 +9,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  appliedBuddyBonus,
   applyPercentModifier,
   applyPercentModifierInt,
+  buddyBonusEffectSummary,
   BUDDY_BONUS_EFFECTS,
   BUDDY_BONUS_EFFECT_IDS,
   BUDDY_BONUS_TARGET_TYPES,
@@ -220,10 +222,39 @@ describe('display', () => {
       value: 5,
       target: { type: 'rarity_max', value: 'SR' },
       targetLabel: 'SR and below',
+      effectSummary: '+5% capture chance against SR and below',
     });
   });
 
   it('has no target label when the bonus applies to everything', () => {
     expect(buddyBonusView(bonus({ target: undefined })).targetLabel).toBeNull();
+  });
+
+  /**
+   * The view and a gameplay result line are two windows onto one vocabulary.
+   * If they could drift, a player would read one wording on the collection
+   * panel and a different one the moment the bonus fired.
+   */
+  it('summarises exactly as a fired bonus does', () => {
+    for (const effectId of BUDDY_BONUS_EFFECT_IDS) {
+      const authored = bonus({ effectId, value: 12 });
+      expect(buddyBonusView(authored).effectSummary).toBe(
+        buddyBonusEffectSummary(appliedBuddyBonus(authored)),
+      );
+    }
+  });
+
+  it('summarises a qualified bonus with its target phrase', () => {
+    expect(
+      buddyBonusView(
+        bonus({ value: 15, target: { type: 'race', value: 'android' } }),
+      ).effectSummary,
+    ).toBe('+15% capture chance against android Waifumon');
+  });
+
+  it('summarises a proc chance as a probability, not an increase', () => {
+    expect(
+      buddyBonusView(bonus({ effectId: 'energy_save_chance', value: 25 })).effectSummary,
+    ).toBe('25% chance Hunting costs no Energy');
   });
 });

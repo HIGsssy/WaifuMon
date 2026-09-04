@@ -14,6 +14,8 @@ import type { IdentityResolver } from '../../src/api/identity';
 import type { OwnedCardWarmer } from '../../src/modules/appearance/ownedCardWarm';
 import type { ReadinessProbes } from '../../src/api/routes/health';
 import { createAppearanceService } from '../../src/modules/appearance/appearanceService';
+import { createProgressionService } from '../../src/modules/progression/progressionService';
+import type { ProgressionConfig } from '../../src/modules/content/schemas';
 import type { AppServices } from '../../src/discord/types';
 import type { LoadedContent } from '../../src/modules/content/schemas';
 import type { Logger } from '../../src/shared/logger';
@@ -100,6 +102,33 @@ const EMPTY_CONTENT: LoadedContent = {
   speciesOrigin: {},
 };
 
+/**
+ * Progression tuning for a context whose content carries none.
+ *
+ * Mirrors the shipped `tables.json` numbers so a fixture player's level curve
+ * and Energy ceiling are the real ones, without every route test having to
+ * hand-author a full tuning blob. A test that supplies `content.tables` gets
+ * its own values instead.
+ */
+const FIXTURE_PROGRESSION: ProgressionConfig = {
+  levelCurve: { base: 100, growth: 50 },
+  maxLevel: 50,
+  maxEnergy: { cap: 40, levelBonuses: [{ atLevel: 7, delta: 5 }, { atLevel: 20, delta: 5 }] },
+  xp: {
+    hunt: 5,
+    captureFailed: 2,
+    captureSuccessByRarity: { N: 10, R: 15, SR: 25, SSR: 50, UR: 100, LR: 200, EX: 100 },
+    newDexEntry: 25,
+    dailyClaim: 20,
+  },
+  rareEncounterShift: { atLevel: 40, fromRarity: 'N', toRarity: 'R', weightUnits: 1 },
+  dailyBonusItems: [],
+  dailyRareItemChance: { atLevel: 30, chance: 0.15, slug: 'velvet_charm', quantity: 1 },
+  prestigeTitles: [],
+};
+
+const FIXTURE_BASE_MAX_ENERGY = 25;
+
 export function createApiContext(overrides: ApiContextOverrides = {}): ApiContext {
   const content: LoadedContent = { ...EMPTY_CONTENT, ...overrides.content };
 
@@ -116,13 +145,27 @@ export function createApiContext(overrides: ApiContextOverrides = {}): ApiContex
     getContent: () => content,
   });
 
+  /**
+   * Same bargain as `appearance`, and now for the same reason: every player
+   * resource carries `progress` and every balance carries its Energy ceiling,
+   * both of which are pure arithmetic over the tuning config with no database
+   * behind them. A real service is more faithful than a hand-stubbed number and
+   * spares every player-scoped route test from inventing a level curve.
+   */
+  const defaultProgression = createProgressionService({
+    config: content.tables?.progression ?? FIXTURE_PROGRESSION,
+    baseMaxEnergy: content.tables?.energy?.baseMax ?? FIXTURE_BASE_MAX_ENERGY,
+  });
+
   const services = new Proxy({} as AppServices, {
     get(_target, serviceName: string) {
       const stub = (overrides.services as Record<string, unknown> | undefined)?.[serviceName];
       const fallback =
         serviceName === 'appearance'
           ? (defaultAppearance as unknown as Record<string, unknown>)
-          : undefined;
+          : serviceName === 'progression'
+            ? (defaultProgression as unknown as Record<string, unknown>)
+            : undefined;
       return new Proxy(
         {},
         {

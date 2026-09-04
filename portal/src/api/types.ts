@@ -58,6 +58,7 @@ export interface ApiErrorBody {
 
 export type Rarity = 'N' | 'R' | 'SR' | 'SSR' | 'UR' | 'LR' | 'EX';
 export type Affinity = 'dominant' | 'submissive' | 'caregiver' | 'primal' | 'switch';
+export type Race = 'angel' | 'demon' | 'demi-human' | 'human' | 'spirit' | 'valkyrie' | 'android';
 export type ContentRating = 'suggestive' | 'mature' | 'explicit';
 export type ItemCategory = 'capture' | 'material' | 'cosmetic' | 'consumable';
 export type PriceCurrency = 'waifubux' | 'essence';
@@ -154,6 +155,8 @@ export interface SpeciesFields {
   rarity: Rarity;
   /** What a Waifumon *is*. Surfaced in the UI as "Type" (plan §8.2). */
   archetype: string;
+  /** Closed race/type classification for card iconography and filtering. */
+  race: Race;
   affinity: Affinity;
   contentRating: ContentRating;
   description: string;
@@ -171,8 +174,66 @@ export interface SpeciesFields {
   appearances: AppearanceCatalogEntry[];
 }
 
-/** Authored species from the content snapshot — addressed by slug, no id. */
-export type ContentSpecies = SpeciesFields;
+/**
+ * Every effect a Buddy Bonus can have. Kept as a union for exhaustive handling
+ * where the Portal cares (an icon, say) — but never for *wording*: the API ships
+ * `effectSummary` already phrased, precisely so this list can grow without the
+ * Portal shipping a sentence for the new member.
+ */
+export type BuddyBonusEffectId =
+  | 'capture_chance'
+  | 'encounter_weight'
+  | 'energy_save_chance'
+  | 'care_energy_gain'
+  | 'player_xp_gain'
+  | 'buddy_xp_gain'
+  | 'essence_gain'
+  | 'hunt_item_find_chance'
+  | 'affection_gain'
+  | 'boss_reward_gain';
+
+/** How a bonus narrows which Waifumon it applies against. */
+export interface BuddyBonusTarget {
+  type: 'race' | 'affinity' | 'rarity' | 'rarity_min' | 'rarity_max' | 'ownership';
+  value: string;
+}
+
+/**
+ * A species' Buddy Bonus — the passive effect she grants **only while a copy of
+ * her is the player's active Buddy**. It belongs to the species, so every copy
+ * offers the same one and none of them applies it until equipped.
+ *
+ * `effectSummary` and `targetLabel` arrive already phrased, from the same
+ * registry the bot prints from. Render them; do not re-derive them from
+ * `effectId` and `value`, or the Portal and Discord start disagreeing about what
+ * one bonus does. The structured fields are here for filtering and iconography.
+ */
+export interface BuddyBonus {
+  name: string;
+  /** In-world prose, rendered as a quote. Always present, may be empty. */
+  flavorText: string;
+  effectId: BuddyBonusEffectId;
+  /** Percentage — relative for modifiers, a probability for procs. */
+  value: number;
+  /** Null when the bonus applies to every Waifumon. */
+  target: BuddyBonusTarget | null;
+  /** e.g. `"SSR and above"`. Null exactly when `target` is. */
+  targetLabel: string | null;
+  /** e.g. `"+15% capture chance against android Waifumon"`. Ready to display. */
+  effectSummary: string;
+}
+
+/**
+ * Authored species from the content snapshot — addressed by slug, no id.
+ *
+ * The one field the seeded row cannot carry: a Buddy Bonus lives in content and
+ * is deliberately never copied into the database, so it reaches the Portal only
+ * through `/content/species`. **Absent** — not null — for a species that grants
+ * none, which is most of them.
+ */
+export interface ContentSpecies extends SpeciesFields {
+  buddyBonus?: BuddyBonus;
+}
 
 /** Seeded species row, embedded in gameplay resources — carries the id. */
 export interface Species extends SpeciesFields {
@@ -248,6 +309,33 @@ export interface PlayerIdentity {
   avatarUrl: string | null;
 }
 
+/**
+ * The trainer's position on the level curve, resolved by the API from
+ * `progressionService.progressFor`.
+ *
+ * Identical in shape to {@link WaifuProgress}, which is the point: the Portal
+ * draws the same bar for a trainer as it does for an owned copy and owns
+ * neither curve. The tuning blob publishes `levelCurve`, so this *could* be
+ * recomputed here — doing so would put a second definition of a level in the
+ * codebase, which is the one thing the architecture exists to prevent.
+ */
+export interface PlayerProgress {
+  level: number;
+  /** Lifetime XP — the same figure as `player.xp`. */
+  totalXp: number;
+  xpIntoLevel: number;
+  /** XP from this level to the next. `0` at max level. */
+  xpToNext: number;
+  atMaxLevel: boolean;
+}
+
+/** Where the trainer currently stands. `name` is resolved by the API. */
+export interface CurrentRegion {
+  id: string;
+  /** Player-facing name, e.g. "Waifu Valley". Always populated. */
+  name: string;
+}
+
 export interface Player {
   id: number;
   /** Internal guild id, not a Discord snowflake. */
@@ -259,6 +347,8 @@ export interface Player {
   xp: number;
   /** Owned-waifu id of the active buddy, or null. */
   buddyWaifuId: number | null;
+  progress: PlayerProgress;
+  currentRegion: CurrentRegion;
   lastHuntAt: string | null;
   /** Summary only — `GET /players/{id}/care` returns the full state. */
   careMode: { active: boolean; waifuId: number | null; startedAt: string | null };
@@ -268,6 +358,12 @@ export interface Player {
 export interface CurrencyBalances {
   playerId: number;
   huntEnergy: number;
+  /**
+   * The Energy ceiling at this player's level — `computeMaxEnergy`, the same
+   * number Care Mode reports. Server-derived: the bonuses are level-gated and
+   * live in the tuning table, so a client cannot hold a constant here.
+   */
+  maxHuntEnergy: number;
   waifubux: number;
   essence: number;
   updatedAt: string;
