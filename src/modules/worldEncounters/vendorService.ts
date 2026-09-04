@@ -136,14 +136,33 @@ export interface VendorPurchaseResult {
 export interface WorldEncounterVendorService {
   /** Look up (or 404) a vendor by its authored key. Definition only, no stock. */
   getDefinition(vendorKey: string): Promise<WorldEncounterVendorRow | null>;
+  /**
+   * Every authored vendor, for the admin editor's vendor selector. Definitions
+   * only — no instance, no stock, nothing player-specific.
+   */
+  listDefinitions(): Promise<WorldEncounterVendorRow[]>;
   /** Create or fetch the vendor instance for one active encounter. Idempotent. */
   openForEncounter(
     tx: DbOrTx,
     activeEncounterId: number,
     vendorKey: string,
   ): Promise<VendorInstance>;
-  /** Cached read — never mutates. Used by Discord repaint and admin preview. */
-  getForEncounter(activeEncounterId: number): Promise<VendorInstance | null>;
+  /**
+   * Read the instance for one active encounter, **scoped to its owner**.
+   *
+   * `playerId` is required because every caller reaches this from a Discord
+   * custom id, and a custom id is a string the client controls: without the
+   * scope, `encv:open:<someone else's id>` would repaint another player's
+   * shop — their stock, their remaining counts. A mismatched owner is
+   * indistinguishable from a missing instance, so the answer never confirms
+   * that the id exists.
+   *
+   * Never mutates.
+   */
+  getForEncounter(
+    playerId: number,
+    activeEncounterId: number,
+  ): Promise<VendorInstance | null>;
   /**
    * Buy one line. Runs as a single transaction: the caller may leave the tx
    * off to let the service open its own, or pass one it already holds.
@@ -193,6 +212,10 @@ export function createWorldEncounterVendorService(
     return row ?? null;
   }
 
+  async function listDefinitions(): Promise<WorldEncounterVendorRow[]> {
+    return deps.db.select().from(worldEncounterVendors).orderBy(worldEncounterVendors.vendorKey);
+  }
+
   function toVendorInstance(
     def: WorldEncounterVendorRow,
     row: WorldEncounterVendorInstanceRow,
@@ -240,15 +263,30 @@ export function createWorldEncounterVendorService(
     return toVendorInstance(def, inserted);
   }
 
-  async function getForEncounter(activeEncounterId: number): Promise<VendorInstance | null> {
+  async function getForEncounter(
+    playerId: number,
+    activeEncounterId: number,
+  ): Promise<VendorInstance | null> {
+    // One join rather than two reads: the ownership test and the instance
+    // lookup have to be the same query, or a caller could be tempted to skip
+    // the second half.
     const [row] = await deps.db
-      .select()
+      .select({ instance: worldEncounterVendorInstances })
       .from(worldEncounterVendorInstances)
-      .where(eq(worldEncounterVendorInstances.activeEncounterId, activeEncounterId));
+      .innerJoin(
+        activeWorldEncounters,
+        eq(activeWorldEncounters.id, worldEncounterVendorInstances.activeEncounterId),
+      )
+      .where(
+        and(
+          eq(worldEncounterVendorInstances.activeEncounterId, activeEncounterId),
+          eq(activeWorldEncounters.playerId, playerId),
+        ),
+      );
     if (!row) return null;
-    const def = await getDefinition(row.vendorKey);
+    const def = await getDefinition(row.instance.vendorKey);
     if (!def) return null;
-    return toVendorInstance(def, row);
+    return toVendorInstance(def, row.instance);
   }
 
   async function purchase(
@@ -321,7 +359,7 @@ export function createWorldEncounterVendorService(
       .where(eq(worldEncounterVendorInstances.activeEncounterId, activeEncounterId));
   }
 
-  return { getDefinition, openForEncounter, getForEncounter, purchase, close };
+  return { getDefinition, listDefinitions, openForEncounter, getForEncounter, purchase, close };
 }
 
 /**

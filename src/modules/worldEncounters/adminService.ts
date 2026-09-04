@@ -53,6 +53,7 @@ function crossValidate(
   input: EncounterInput,
   itemSlugs: Set<string>,
   existingSlugs: Set<string>,
+  chainTargets: Set<string>,
 ): string[] {
   const issues: string[] = [];
   if (input.chainedEncounterSlug === input.slug) {
@@ -87,8 +88,24 @@ function crossValidate(
   if (input.choicesRequired && input.choices.length === 0) {
     issues.push('choicesRequired=true but no choices defined.');
   }
-  if (!input.huntEligible && !input.travelEligible) {
-    issues.push('At least one of huntEligible / travelEligible must be true.');
+  // Reachability, not eligibility.
+  //
+  // The rule this replaces was `!huntEligible && !travelEligible` → reject,
+  // which is wrong for a chain target: an encounter reached only through a
+  // `trigger_encounter` follow-up deliberately carries neither flag, because
+  // its *parent* already gated where it can occur. The shipped
+  // `tv_bandit_aftermath` is exactly that shape, and under the old rule it
+  // could not be saved through the Portal editor at all — opening shipped
+  // content and pressing Save was rejected.
+  //
+  // What the rule is actually protecting against is authoring an encounter
+  // nothing can ever reach, so that is what it now checks.
+  if (!input.huntEligible && !input.travelEligible && !chainTargets.has(input.slug)) {
+    issues.push(
+      'Unreachable: not hunt- or travel-eligible, and no other encounter chains into it. ' +
+        'Enable a source, or add a trigger_encounter effect (or chainedEncounterSlug) ' +
+        'pointing at this slug from the encounter that should lead here.',
+    );
   }
   return issues;
 }
@@ -102,6 +119,12 @@ export function parseEncounterInput(
   payload: unknown,
   itemSlugs: Set<string>,
   existingSlugs: Set<string>,
+  /**
+   * Slugs some other encounter chains into. Defaults to empty, which is the
+   * conservative answer: with no chain information, only hunt/travel
+   * eligibility can make an encounter reachable.
+   */
+  chainTargets: Set<string> = new Set(),
 ): EncounterInput {
   const parsed = EncounterInputSchema.safeParse(payload);
   if (!parsed.success) {
@@ -109,7 +132,7 @@ export function parseEncounterInput(
       parsed.error.issues.map((i) => `${i.path.join('.') || '<root>'}: ${i.message}`),
     );
   }
-  const cross = crossValidate(parsed.data, itemSlugs, existingSlugs);
+  const cross = crossValidate(parsed.data, itemSlugs, existingSlugs, chainTargets);
   if (cross.some((issue) => !issue.includes('not a known encounter yet'))) {
     // Only "unknown chained slug" is downgraded to a warning-style issue.
     throw new AdminEncounterValidationError(cross);
@@ -128,6 +151,9 @@ export function createWorldEncounterAdminService(
   }
   async function existingSlugs(): Promise<Set<string>> {
     return new Set((await repo.listAll()).map((e) => e.slug));
+  }
+  async function chainTargets(): Promise<Set<string>> {
+    return repo.chainTargetSlugs();
   }
 
   return {
@@ -153,7 +179,7 @@ export function createWorldEncounterAdminService(
     async upsert(input) {
       const items = await itemSlugs();
       const existing = await existingSlugs();
-      const validated = parseEncounterInput(input, items, existing);
+      const validated = parseEncounterInput(input, items, existing, await chainTargets());
       const priorRow = await repo.loadBySlug(validated.slug);
       const values = {
         slug: validated.slug,

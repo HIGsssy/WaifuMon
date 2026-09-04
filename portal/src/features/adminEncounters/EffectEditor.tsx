@@ -40,7 +40,7 @@ function patch(effect: EffectShape, changes: Partial<EffectShape>): EffectShape 
   return { ...effect, ...changes };
 }
 
-export function EffectEditor({ effect, reference, onChange, onRemove }: Props): JSX.Element {
+export function EffectEditor({ effect, reference, onChange, onRemove }: Props) {
   const type = String(effect.type ?? 'waifubux_gain');
   return (
     <div className="rounded-md border border-border bg-surface-sunken p-3">
@@ -154,12 +154,27 @@ export function EffectEditor({ effect, reference, onChange, onRemove }: Props): 
         )}
         {type === 'trigger_waifumon_encounter' && (
           <label className="text-xs text-ink-muted col-span-2">
-            Species slug (optional)
-            <Input
+            Wild Waifumon
+            {/*
+              Canonical selector rather than a free-text slug: a typo here
+              used to be invisible until a player hit the choice and met
+              nobody. Leaving it on "any" hands the pick to the same
+              region/rarity draw a hunt uses.
+            */}
+            <select
               value={String(effect.speciesSlug ?? '')}
-              onChange={(e) => onChange(patch(effect, { speciesSlug: e.target.value || undefined }))}
-              placeholder="e.g. alley_catgirl"
-            />
+              onChange={(e) =>
+                onChange(patch(effect, { speciesSlug: e.target.value || undefined }))
+              }
+              className="w-full rounded-md border border-border bg-surface px-2 py-1 text-sm"
+            >
+              <option value="">— any (region/rarity roll) —</option>
+              {(reference?.species ?? []).map((sp) => (
+                <option key={sp.slug} value={sp.slug}>
+                  {sp.name} ({sp.rarity})
+                </option>
+              ))}
+            </select>
           </label>
         )}
         {type === 'open_vendor' && (

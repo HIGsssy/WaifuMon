@@ -24,6 +24,7 @@ import { createPlayerService } from './modules/players/playerService';
 import { createShopService } from './modules/shop/shopService';
 import { createTravelService } from './modules/travel/travelService';
 import { createHuntService } from './modules/hunt/huntService';
+import { createWildEncounterSpawner } from './modules/encounters/wildEncounterSpawner';
 import { createCaptureService } from './modules/capture/captureService';
 import { createCareService } from './modules/care/careService';
 import { createWorldEncounterService } from './modules/worldEncounters/worldEncounterService';
@@ -241,6 +242,36 @@ async function main(): Promise<void> {
       })
     : undefined;
 
+  // Hoisted out of the services literal because two things need to reference
+  // it: the literal itself, and the wild-encounter spawner, which borrows the
+  // hunt's own region/rarity draw rather than restating it.
+  const huntService = createHuntService({
+    db,
+    currency,
+    inventory,
+    progression,
+    collection,
+    care,
+    quests,
+    tables: content.tables,
+    buddyBonus,
+    logger,
+  });
+
+  /**
+   * The one way anything but a hunt puts a wild Waifumon in front of a player.
+   * Phase 2 wires `trigger_waifumon_encounter` to it; quests, items, events,
+   * exploration and deity rewards are meant to reuse the same seam.
+   */
+  const wildEncounters = createWildEncounterSpawner({
+    db,
+    currency,
+    logger,
+    getDefaultExpirySeconds: () => contentSnapshot.tables.hunt.encounterExpirySeconds,
+    pickSpecies: (tx, playerId, playerLevel, regionId) =>
+      huntService.pickSpeciesForSpawn(tx, playerId, playerLevel, regionId),
+  });
+
   const ctx: AppContext = {
     config,
     logger,
@@ -281,18 +312,7 @@ async function main(): Promise<void> {
         inventory,
         captureCapacity: content.tables.inventory.captureCapacity,
       }),
-      hunt: createHuntService({
-        db,
-        currency,
-        inventory,
-        progression,
-        collection,
-        care,
-        quests,
-        tables: content.tables,
-        buddyBonus,
-        logger,
-      }),
+      hunt: huntService,
       capture: createCaptureService({
         db,
         inventory,
@@ -329,6 +349,7 @@ async function main(): Promise<void> {
         collection,
         buddyBonus,
         vendor: worldEncounterVendorService,
+        wildEncounters,
         getConfig: () => {
           const cfg = contentSnapshot.tables.worldEncounter;
           return {
@@ -341,6 +362,7 @@ async function main(): Promise<void> {
       }),
       worldEncounterAdmin: createWorldEncounterAdminService(db, () => contentSnapshot),
       worldEncounterVendor: worldEncounterVendorService,
+      wildEncounters,
     },
   };
 
@@ -582,6 +604,9 @@ async function main(): Promise<void> {
     ctx: {
       services: ctx.services,
       portalAuthorization,
+      // Fail-closed by default: the shared Platform API token stays a read
+      // credential unless an operator has deliberately made it administrative.
+      adminBearerAllowed: config.platformApi.adminBearer,
       // Read through `ctx` so an admin-panel content reload is visible to the
       // API immediately, exactly as it is to the Discord handlers.
       getContent: () => ctx.content,

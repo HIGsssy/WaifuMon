@@ -36,6 +36,7 @@ import type { BossAnnouncer } from '../modules/bosses/bossScheduler';
 import type { WorldEncounterService } from '../modules/worldEncounters/worldEncounterService';
 import type { WorldEncounterAdminService } from '../modules/worldEncounters/adminService';
 import type { WorldEncounterVendorService } from '../modules/worldEncounters/vendorService';
+import type { WildEncounterSpawner } from '../modules/encounters/wildEncounterSpawner';
 
 export interface AppServices {
   guilds: GuildService;
@@ -101,6 +102,13 @@ export interface AppServices {
    * instances. Present alongside {@link worldEncounter}.
    */
   worldEncounterVendor?: WorldEncounterVendorService | undefined;
+  /**
+   * Spawns a wild Waifumon outside the hunt roll — the bridge behind
+   * `trigger_waifumon_encounter`, and the seam quests, items, events,
+   * exploration and deity rewards will reuse. Optional so a deployment
+   * without the hunt graph simply cannot spawn one.
+   */
+  wildEncounters?: WildEncounterSpawner | undefined;
 }
 
 export interface AppContext {

@@ -73,6 +73,22 @@ function lookupKey(identity: DevIdentity | null) {
   return ['devLogin', 'lookup', identity?.discordGuildId ?? '', identity?.discordUserId ?? ''];
 }
 
+/**
+ * The permission set a local development session is handed.
+ *
+ * Development only: it is granted client-side, and the API grants nothing on
+ * its say-so. It exists so the Portal can be developed against MSW fixtures
+ * and a bot-less API without an OAuth round trip per screen.
+ */
+const ALL_DEV_PERMISSIONS: readonly string[] = [
+  'admin.access',
+  'encounters.read',
+  'encounters.write',
+  'encounters.publish',
+  'encounters.simulate',
+  'encounters.history',
+];
+
 export function DevLoginSessionProvider({ children }: { children: ReactNode }) {
   const [identity, setIdentity] = useState<DevIdentity | null>(readDevIdentity);
   // Survives a sign-out. Pre-filling the form with the pair you just left is
@@ -136,14 +152,12 @@ export function DevLoginSessionProvider({ children }: { children: ReactNode }) {
           // Dev-login shares the env auth's every-permission stance: the
           // Portal is developed locally against MSW fixtures where the API
           // does not compute permissions.
-          permissions: [
-            'admin.access',
-            'encounters.read',
-            'encounters.write',
-            'encounters.publish',
-            'encounters.simulate',
-            'encounters.history',
-          ],
+
+          // Fail-closed, exactly as in `EnvSessionProvider` — see the note
+          // there. Dev-login is already dropped from a production bundle by
+          // the compile-time switch in `DevSessionProvider`; this makes the
+          // grant itself impossible to ship even if that switch changes.
+          permissions: import.meta.env.DEV ? ALL_DEV_PERMISSIONS : [],
         }
       : null;
 

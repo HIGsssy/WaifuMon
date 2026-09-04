@@ -66,4 +66,15 @@ export interface ApiContext {
    * runs, but no session ever holds a permission.
    */
   portalAuthorization?: PortalAuthorizationService | undefined;
+  /**
+   * Whether a `Authorization: Bearer <PLATFORM_API_TOKEN>` request may satisfy
+   * Portal admin permission checks.
+   *
+   * Default (absent / false) is fail-closed: the shared API token is a *read*
+   * credential and does not become an administrator just because the admin
+   * routes exist. An operator opts in with `PLATFORM_API_ADMIN_BEARER=true`,
+   * which is the deliberate, documented decision to make the token
+   * administrative. See `src/api/plugins/portalPermissions.ts`.
+   */
+  adminBearerAllowed?: boolean | undefined;
 }

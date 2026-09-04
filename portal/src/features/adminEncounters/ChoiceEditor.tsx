@@ -49,8 +49,20 @@ export function ChoiceEditor({
   onRemove,
   onMoveUp,
   onMoveDown,
-}: Props): JSX.Element {
+}: Props) {
   const patch = (changes: Partial<ChoiceDraft>) => onChange({ ...choice, ...changes });
+
+  // Strip keys whose value is undefined, so exactOptionalPropertyTypes
+  // does not reject `{ foo: undefined }` on shapes that declare `foo?: T`.
+  function stripUndefined<T extends Record<string, unknown>>(o: T): T {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(o)) if (v !== undefined) out[k] = v;
+    return out as T;
+  }
+  const patchRequirements = (updates: Record<string, unknown>) =>
+    patch({ requirements: stripUndefined({ ...choice.requirements, ...updates }) as ChoiceDraft['requirements'] });
+  const patchCheck = (updates: Record<string, unknown>) =>
+    patch({ check: stripUndefined({ ...choice.check, ...updates }) as ChoiceDraft['check'] });
 
   return (
     <div className="space-y-3 rounded-md border border-border bg-surface p-3">
@@ -90,12 +102,7 @@ export function ChoiceEditor({
             <select
               value={choice.requirements.affinity ?? ''}
               onChange={(e) =>
-                patch({
-                  requirements: {
-                    ...choice.requirements,
-                    affinity: e.target.value || undefined,
-                  },
-                })
+                patchRequirements({ affinity: e.target.value || undefined })
               }
               className="w-full rounded-md border border-border bg-surface px-2 py-1 text-sm"
             >
@@ -112,12 +119,7 @@ export function ChoiceEditor({
             <Input
               value={choice.requirements.requiresItem ?? ''}
               onChange={(e) =>
-                patch({
-                  requirements: {
-                    ...choice.requirements,
-                    requiresItem: e.target.value || undefined,
-                  },
-                })
+                patchRequirements({ requiresItem: e.target.value || undefined })
               }
             />
           </label>
@@ -128,11 +130,8 @@ export function ChoiceEditor({
               min="1"
               value={choice.requirements.minPlayerLevel ?? ''}
               onChange={(e) =>
-                patch({
-                  requirements: {
-                    ...choice.requirements,
-                    minPlayerLevel: e.target.value === '' ? undefined : Number(e.target.value),
-                  },
+                patchRequirements({
+                  minPlayerLevel: e.target.value === '' ? undefined : Number(e.target.value),
                 })
               }
             />
@@ -144,11 +143,8 @@ export function ChoiceEditor({
               min="1"
               value={choice.requirements.minBuddyLevel ?? ''}
               onChange={(e) =>
-                patch({
-                  requirements: {
-                    ...choice.requirements,
-                    minBuddyLevel: e.target.value === '' ? undefined : Number(e.target.value),
-                  },
+                patchRequirements({
+                  minBuddyLevel: e.target.value === '' ? undefined : Number(e.target.value),
                 })
               }
             />
@@ -159,17 +155,14 @@ export function ChoiceEditor({
               value={(choice.requirements.raceAny ?? []).join(',')}
               onChange={(e) => {
                 const raw = e.target.value.trim();
-                patch({
-                  requirements: {
-                    ...choice.requirements,
-                    raceAny:
-                      raw === ''
-                        ? undefined
-                        : raw
-                            .split(',')
-                            .map((s) => s.trim())
-                            .filter(Boolean),
-                  },
+                patchRequirements({
+                  raceAny:
+                    raw === ''
+                      ? undefined
+                      : raw
+                          .split(',')
+                          .map((s) => s.trim())
+                          .filter(Boolean),
                 });
               }}
               placeholder="e.g. valkyrie, demon"
@@ -225,12 +218,7 @@ export function ChoiceEditor({
                 <select
                   value={choice.check.affinityAdvantage ?? ''}
                   onChange={(e) =>
-                    patch({
-                      check: {
-                        ...choice.check,
-                        affinityAdvantage: e.target.value || undefined,
-                      },
-                    })
+                    patchCheck({ affinityAdvantage: e.target.value || undefined })
                   }
                   className="w-full rounded-md border border-border bg-surface px-2 py-1 text-sm"
                 >
@@ -248,17 +236,14 @@ export function ChoiceEditor({
                   value={(choice.check.raceAdvantage ?? []).join(',')}
                   onChange={(e) => {
                     const raw = e.target.value.trim();
-                    patch({
-                      check: {
-                        ...choice.check,
-                        raceAdvantage:
-                          raw === ''
-                            ? undefined
-                            : raw
-                                .split(',')
-                                .map((s) => s.trim())
-                                .filter(Boolean),
-                      },
+                    patchCheck({
+                      raceAdvantage:
+                        raw === ''
+                          ? undefined
+                          : raw
+                              .split(',')
+                              .map((s) => s.trim())
+                              .filter(Boolean),
                     });
                   }}
                 />

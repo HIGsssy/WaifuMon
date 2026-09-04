@@ -16,7 +16,6 @@ import {
   setAdminEncounterLifecycle,
   type AdminEncounter,
 } from '@/api/adminEncounters';
-import { isPortalApiError } from '@/api/client';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -72,7 +71,7 @@ function regionSummary(e: AdminEncounter): string {
   return parts.join(' · ');
 }
 
-export function AdminEncountersListPage(): JSX.Element {
+export function AdminEncountersListPage() {
   const canWrite = useHasPermission('encounters.write');
   const canPublish = useHasPermission('encounters.publish');
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
@@ -180,7 +179,8 @@ export function AdminEncountersListPage(): JSX.Element {
       {query.isError && (
         <ErrorState
           title="Could not load encounters"
-          description={isPortalApiError(query.error) ? query.error.message : 'Try again in a moment.'}
+          error={query.error}
+          onRetry={() => void query.refetch()}
         />
       )}
       {query.data && (

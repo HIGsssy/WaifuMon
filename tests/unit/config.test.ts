@@ -97,6 +97,9 @@ describe('loadConfig', () => {
       host: '127.0.0.1',
       port: 3120,
       token: '',
+      // Fail-closed: the shared API token is not an admin credential unless
+      // an operator sets PLATFORM_API_ADMIN_BEARER.
+      adminBearer: false,
       cardRendererEnabled: false,
       cardRenderWorkers: 2,
       cardWarmConcurrency: 1,
@@ -139,6 +142,25 @@ describe('loadConfig', () => {
     ).toThrow(/PLATFORM_API_TOKEN is required/);
   });
 
+  it('only makes the API token administrative when explicitly told to', () => {
+    // The whole point of the flag: a deployment that has not thought about it
+    // gets the closed answer, and the open one takes a deliberate edit.
+    const off = loadConfig({
+      ...validEnv,
+      PLATFORM_API_ENABLED: 'true',
+      PLATFORM_API_TOKEN: 'a-secret',
+    });
+    expect(off.platformApi.adminBearer).toBe(false);
+
+    const on = loadConfig({
+      ...validEnv,
+      PLATFORM_API_ENABLED: 'true',
+      PLATFORM_API_TOKEN: 'a-secret',
+      PLATFORM_API_ADMIN_BEARER: 'true',
+    });
+    expect(on.platformApi.adminBearer).toBe(true);
+  });
+
   it('defaults the platform API to 127.0.0.1:3120 when enabled with a token', () => {
     const config = loadConfig({
       ...validEnv,
@@ -150,6 +172,7 @@ describe('loadConfig', () => {
       host: '127.0.0.1',
       port: 3120,
       token: 'a-secret',
+      adminBearer: false,
       cardRendererEnabled: false,
       cardRenderWorkers: 2,
       cardWarmConcurrency: 1,

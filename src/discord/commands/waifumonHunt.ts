@@ -1213,6 +1213,47 @@ export async function handleEncounterRelease(
   });
 }
 
+/**
+ * Open the capture screen for a wild Waifumon that a *spawn* put there — a
+ * World Encounter reward today, and later a quest, item, event or deity
+ * favour. The button carries only the encounter id.
+ *
+ * Nothing about the encounter is taken from the custom id: the row is re-read
+ * scoped to the clicking player, and its species, remaining attempts and
+ * expiry all come from the database. A forged id belonging to someone else,
+ * an id for an encounter that has since been captured or released, and an id
+ * that expired between the spawn and the click are all the same answer —
+ * "she is no longer here" — and none of them reveal that the row exists.
+ *
+ * The screen itself is {@link buildEncounterView}, unchanged: a spawned
+ * encounter is captured through exactly the same flow, math and UI as a
+ * hunted one.
+ */
+export async function handleWildEncounterOpen(
+  ctx: AppContext,
+  interaction: ButtonInteraction,
+  prov: Provisioned,
+  args: string[],
+): Promise<void> {
+  const spawner = ctx.services.wildEncounters;
+  if (!spawner) {
+    await respondEphemeral(interaction, 'That encounter is no longer active.');
+    return;
+  }
+  const encounterId = Number(args[0]);
+  if (!Number.isInteger(encounterId)) {
+    await respondEphemeral(interaction, 'That encounter is no longer active.');
+    return;
+  }
+  const found = await spawner.getPlayerEncounter(prov.playerId, encounterId);
+  if (!found) {
+    await respondEphemeral(interaction, 'That encounter is no longer active.');
+    return;
+  }
+  const view = await buildEncounterView(ctx, prov, found.encounter, found.species);
+  await respondEphemeral(interaction, view);
+}
+
 function translateCaptureError(err: unknown): string {
   if (err instanceof EncounterNotFoundError) return err.userMessage;
   if (err instanceof EncounterAlreadyResolvedError) return err.userMessage;

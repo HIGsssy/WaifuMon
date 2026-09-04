@@ -58,6 +58,22 @@ function displayNameFor(player: Player): string {
   return player.identity?.displayName ?? `Trainer #${player.id}`;
 }
 
+/**
+ * The permission set a local development session is handed.
+ *
+ * Development only: it is granted client-side, and the API grants nothing on
+ * its say-so. It exists so the Portal can be developed against MSW fixtures
+ * and a bot-less API without an OAuth round trip per screen.
+ */
+const ALL_DEV_PERMISSIONS: readonly string[] = [
+  'admin.access',
+  'encounters.read',
+  'encounters.write',
+  'encounters.publish',
+  'encounters.simulate',
+  'encounters.history',
+];
+
 export function EnvSessionProvider({ children }: { children: ReactNode }) {
   const configuredPlayerId = portalEnv.defaultPlayerId;
   const playerId = parsePlayerId(configuredPlayerId);
@@ -87,16 +103,18 @@ export function EnvSessionProvider({ children }: { children: ReactNode }) {
           // The player resource carries the internal guild id, not the
           // snowflake; the env value is the only source when one is wanted.
           discordGuildId: portalEnv.defaultDiscordGuildId,
-          // Env-auth is intended for local dev — every permission is
-          // granted so screens are reachable without an OAuth round trip.
-          permissions: [
-            'admin.access',
-            'encounters.read',
-            'encounters.write',
-            'encounters.publish',
-            'encounters.simulate',
-            'encounters.history',
-          ],
+          // Fail-closed. Local development wants every admin screen reachable
+          // without an OAuth round trip, so dev builds grant the full set —
+          // but a *production* bundle must never mint permissions on the
+          // client, no matter which provider it compiles. `import.meta.env.DEV`
+          // is substituted by Vite before bundling, so this folds to the empty
+          // array in a shipped build rather than merely evaluating to it.
+          //
+          // Belt and braces on top of two existing guards: `DevSessionProvider`
+          // selects `OAuthSessionProvider` (server-computed permissions) for
+          // non-dev builds, and every admin API route re-checks server-side
+          // regardless of what the session claims.
+          permissions: import.meta.env.DEV ? ALL_DEV_PERMISSIONS : [],
         }
       : null;
 

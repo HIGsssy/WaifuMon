@@ -145,7 +145,14 @@ export function buildEncounterResolved(
   }
 
   if (resolution.followUps.length > 0) {
-    const followLines = resolution.followUps.map(formatFollowUp);
+    // The wild-Waifumon follow-up is narrated from the *spawn result*, not
+    // from the marker, so the embed never promises an encounter the
+    // one-active-encounter rule actually refused.
+    const followLines = resolution.followUps.map((f) =>
+      f.kind === 'trigger_waifumon_encounter' && resolution.wildEncounter
+        ? formatWildEncounter(resolution.wildEncounter)
+        : formatFollowUp(f),
+    );
     embed.addFields({ name: 'What follows', value: followLines.join('\n'), inline: false });
   }
 
@@ -178,6 +185,23 @@ export function buildEncounterResolved(
         )
         .setLabel('🛒 Open shop')
         .setStyle(ButtonStyle.Success),
+    );
+  }
+  // A spawned wild Waifumon is already a row in `encounters` — this button
+  // only opens the capture screen for it. It carries the encounter id and
+  // nothing else; the handler re-reads species, attempts and expiry from the
+  // database, scoped to the clicking player.
+  if (resolution.wildEncounter?.encounterId != null) {
+    const label = resolution.wildEncounter.speciesName
+      ? `💗 Meet ${resolution.wildEncounter.speciesName}`
+      : '💗 Meet her';
+    followRow.addComponents(
+      new ButtonBuilder()
+        .setCustomId(
+          buildCustomId('enc', 'wild', String(resolution.wildEncounter.encounterId)),
+        )
+        .setLabel(label.slice(0, 80))
+        .setStyle(ButtonStyle.Primary),
     );
   }
   if (followRow.components.length > 0) rows.push(followRow);
@@ -250,6 +274,25 @@ function formatAppliedEffect(entry: {
     case 'trigger_waifumon_encounter':
     case 'open_vendor':
       return null; // rendered under "What follows"
+  }
+}
+
+/**
+ * Narration for a `trigger_waifumon_encounter` outcome. The spawn has already
+ * happened (or provably has not) server-side by the time this runs, so each
+ * line states what is true rather than teasing something that may not exist.
+ */
+function formatWildEncounter(w: NonNullable<Resolution['wildEncounter']>): string {
+  const who = w.speciesName ?? 'A wild Waifumon';
+  switch (w.status) {
+    case 'created':
+      return `**${who}** steps out of the trees…`;
+    case 'existing':
+      return `**${who}** is still waiting for you.`;
+    case 'blocked':
+      return 'Someone was drawn to the commotion — but you are already mid-encounter. Finish that one first.';
+    case 'unavailable':
+      return 'Something stirred in the undergrowth, then thought better of it.';
   }
 }
 

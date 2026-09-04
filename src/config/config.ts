@@ -51,6 +51,22 @@ const EnvSchema = z.object({
   /** Shared bearer secret. Required when PLATFORM_API_ENABLED — never logged. */
   PLATFORM_API_TOKEN: z.string().optional(),
   /**
+   * Treat `PLATFORM_API_TOKEN` as an **administrative** credential, letting a
+   * bearer request satisfy Portal admin permission checks without a Portal
+   * session.
+   *
+   * Off by default, and deliberately so. The token is one process-wide shared
+   * secret with no per-user scoping; the Portal admin surface it would unlock
+   * can author, publish and delete game content. Enable it only for a
+   * loopback-bound deployment that genuinely drives content from scripts, and
+   * understand that everyone holding the token is then an administrator.
+   * See `src/api/plugins/portalPermissions.ts`.
+   */
+  PLATFORM_API_ADMIN_BEARER: z
+    .enum(['true', 'false', '1', '0'])
+    .default('false')
+    .transform((v) => v === 'true' || v === '1'),
+  /**
    * How *clients* reach the API — the base URL advertised in the OpenAPI
    * document, and therefore the one Swagger UI's "Try it out" calls. Distinct
    * from PLATFORM_API_HOST, which is only where the process binds: under
@@ -179,6 +195,15 @@ export interface PlatformApiConfig {
   port: number;
   /** Empty string only when disabled — a startup check enforces this. */
   token: string;
+  /**
+   * Whether a bearer request may satisfy Portal admin permission checks.
+   *
+   * Optional, and absent means **no** — every consumer treats anything but an
+   * explicit `true` as closed, so a config literal that has not thought about
+   * this question (a test fixture, an older deployment) cannot accidentally
+   * hand out admin. See `PLATFORM_API_ADMIN_BEARER`.
+   */
+  adminBearer?: boolean | undefined;
   /**
    * The base URL clients use, when the operator set one. Absent means "derive
    * it from the bind" — see `resolvePublicUrl`, which is what callers should
@@ -310,6 +335,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       host: e.PLATFORM_API_HOST,
       port: e.PLATFORM_API_PORT,
       token: platformApiToken,
+      adminBearer: e.PLATFORM_API_ADMIN_BEARER,
       publicUrl: e.PLATFORM_API_PUBLIC_URL,
       cardRendererEnabled: e.CARD_RENDERER_ENABLED,
       cardRenderWorkers: e.CARD_RENDER_WORKERS,

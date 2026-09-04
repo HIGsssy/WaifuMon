@@ -40,6 +40,10 @@ import { rollCheck, computeChance } from './checkResolver';
 import { createEffectExecutor, type EffectExecutor, type AppliedEffect, type FollowUp } from './effectExecutor';
 import { hydrateEncounter } from './hydrate';
 import type { WorldEncounterVendorService } from './vendorService';
+import type {
+  WildEncounterSpawn,
+  WildEncounterSpawner,
+} from '../encounters/wildEncounterSpawner';
 import {
   createWorldEncounterRepository,
   type WorldEncounterRepository,
@@ -184,6 +188,23 @@ export interface Resolution {
     instanceId: number;
     vendorKey: string;
   } | null;
+  /**
+   * Present when a `trigger_waifumon_encounter` effect fired.
+   *
+   * `status` is the spawner's own answer, carried through rather than
+   * flattened, because all four outcomes are things a player should be told
+   * apart: she appeared, she was already waiting (a replayed click), she
+   * could not appear because the player is mid-encounter with someone else,
+   * or the authored species does not exist. Discord narrates each
+   * differently and only paints a button for the first two.
+   */
+  wildEncounter: {
+    status: WildEncounterSpawn['status'];
+    encounterId: number | null;
+    speciesSlug: string | null;
+    speciesName: string | null;
+    blockedByEncounterId: number | null;
+  } | null;
 }
 
 export interface WorldEncounterServiceDeps {
@@ -203,6 +224,14 @@ export interface WorldEncounterServiceDeps {
    * so the Discord layer only has to paint it.
    */
   vendor?: WorldEncounterVendorService | undefined;
+  /**
+   * Optional wild-encounter spawner — when present, a
+   * `trigger_waifumon_encounter` follow-up spawns a real, capturable wild
+   * encounter inside the resolution transaction. Absent, the follow-up stays
+   * the informational marker it was before Phase 2 closed, which is what a
+   * deployment without the hunt/capture graph wired should do.
+   */
+  wildEncounters?: WildEncounterSpawner | undefined;
 }
 
 /**
@@ -522,6 +551,52 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
         }
       }
 
+      // Wild Waifumon: a `trigger_waifumon_encounter` follow-up spawns a real
+      // capturable encounter rather than a line of flavour text. It happens
+      // inside this transaction so the encounter and the choice that caused it
+      // commit together, and it is keyed on this active row's id — so a
+      // replayed Continue click finds the encounter the first one made rather
+      // than spawning a second Waifumon.
+      let wildEncounter: Resolution['wildEncounter'] = null;
+      if (deps.wildEncounters) {
+        const wildFollowUp = followUps.find((f) => f.kind === 'trigger_waifumon_encounter');
+        if (wildFollowUp) {
+          const speciesSlug = (wildFollowUp.payload as { speciesSlug?: string }).speciesSlug;
+          const spawn = await deps.wildEncounters.createWildEncounter({
+            playerId: opts.playerId,
+            ...(speciesSlug ? { speciesSlug } : {}),
+            // The world encounter knows the channel it was presented in; a
+            // spawned Waifumon belongs to the same conversation.
+            channelId: active.channelId ?? '',
+            regionId: active.regionId,
+            playerLevel,
+            origin: { kind: 'world_encounter', ref: String(active.id) },
+            // A World Encounter reward never costs Hunt Energy — the player
+            // already spent whatever the encounter itself asked of them.
+            consumeHuntEnergy: false,
+            tx,
+            now,
+          });
+          wildEncounter =
+            spawn.status === 'created' || spawn.status === 'existing'
+              ? {
+                  status: spawn.status,
+                  encounterId: spawn.encounter.id,
+                  speciesSlug: spawn.species.slug,
+                  speciesName: spawn.species.name,
+                  blockedByEncounterId: null,
+                }
+              : {
+                  status: spawn.status,
+                  encounterId: null,
+                  speciesSlug: speciesSlug ?? null,
+                  speciesName: null,
+                  blockedByEncounterId:
+                    spawn.status === 'blocked' ? spawn.activeEncounterId : null,
+                };
+        }
+      }
+
       const resolution: Record<string, unknown> = {
         choiceId: choice.id,
         success: check.success,
@@ -530,6 +605,7 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
         followUps,
         effectsApplied: application.applied,
         vendorInstance,
+        wildEncounter,
       };
       await repo.markResolved(tx, active.id, choice.id, resolution);
       await repo.insertHistory(tx, {
@@ -582,6 +658,7 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
         chainedEncounterSlug: chainedSlug,
         continuationActiveId,
         vendorInstance,
+        wildEncounter,
       };
     });
   }

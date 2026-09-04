@@ -2,11 +2,13 @@
  * Portal admin — world encounter CRUD, preview, simulation.
  *
  * Every route here calls {@link requirePortalPermission} before doing any
- * work. Bearer-authenticated calls (loopback/tailnet) pass every check by
- * design; Portal-cookie calls are gated by the {@link PortalPermission} the
- * route names. The permission set is computed once in
- * {@link PortalAuthorizationService} — routes never look up guild
- * ownership directly.
+ * work. A Portal-cookie call is gated by the {@link PortalPermission} the
+ * route names; a bearer call is *also* gated unless the operator has
+ * explicitly made the shared API token administrative with
+ * `PLATFORM_API_ADMIN_BEARER=true` (see that module for why the default is
+ * closed). The permission set is computed once in
+ * {@link PortalAuthorizationService} — routes never look up guild ownership
+ * directly.
  *
  * The routes are deliberately thin: request validation happens via Zod
  * schemas registered with {@link registerTypeProvider}, and all business
@@ -21,7 +23,7 @@ import { dataSchema, ok } from '../../../plugins/responseEnvelope';
 import { commonErrorResponses, notFoundResponse } from '../../../schemas/common';
 import { requirePortalPermission } from '../../../plugins/portalPermissions';
 import { AppError } from '../../../../shared/errors';
-import { computeChance } from '../../../../modules/worldEncounters/checkResolver';
+import { computeChance, rollCheck } from '../../../../modules/worldEncounters/checkResolver';
 import type {
   BuddyProfile,
   EncounterCheckContext,
@@ -32,6 +34,7 @@ import {
   CheckSchema,
   EffectSchema,
 } from '../../../../modules/worldEncounters/types';
+import { seededRng } from '../../../../shared/random';
 import { REGIONS } from '../../../../modules/locations/regions';
 import {
   AFFINITIES,
@@ -109,6 +112,7 @@ const referenceSchema = z.object({
   races: z.array(z.string()),
   items: z.array(z.object({ slug: z.string(), name: z.string(), category: z.string() })),
   encounters: z.array(z.object({ slug: z.string(), name: z.string() })),
+  species: z.array(z.object({ slug: z.string(), name: z.string(), rarity: z.string() })),
   vendors: z.array(z.object({ vendorKey: z.string(), name: z.string() })),
   types: z.array(z.string()),
   rarities: z.array(z.string()),
@@ -117,17 +121,39 @@ const referenceSchema = z.object({
 
 const simulateAggregateSchema = z.object({
   rolls: z.number().int(),
+  /** Observed successes across the N rolls actually performed. */
   successes: z.number().int(),
   failures: z.number().int(),
+  /** `successes / rolls` — what this run produced. */
   successRate: z.number(),
+  /** `computeChance(...)` — what the formula says, for comparison. */
+  expectedSuccessRate: z.number(),
+  /** Observed minus expected. Signed; near zero for a fair large run. */
+  successRateDeviation: z.number(),
+  /**
+   * Standard error of the observed rate, `sqrt(p(1-p)/n)`. A deviation
+   * inside roughly two of these is ordinary sampling noise rather than a
+   * balance problem, which is the question an author is actually asking.
+   */
+  successRateStdError: z.number(),
   waifubuxGained: z.number(),
   waifubuxLost: z.number(),
-  expectedNetWaifubux: z.number(),
+  /** Observed net across the run. */
+  netWaifubux: z.number(),
+  /** Observed net per roll. */
+  netWaifubuxPerRoll: z.number(),
+  /** Closed-form expectation per roll, independent of this run's luck. */
+  expectedNetWaifubuxPerRoll: z.number(),
   essenceGained: z.number(),
   essenceLost: z.number(),
+  netEssence: z.number(),
   itemFrequency: z.record(z.number()),
   followUpFrequency: z.record(z.number()),
+  /** The seed this run used, so a reported result can be reproduced exactly. */
+  seed: z.number().int(),
 });
+export type SimulateAggregate = z.infer<typeof simulateAggregateSchema>;
+
 const simulateResponseSchema = z.object({
   encounter: encounterSchema,
   choiceId: z.number().int(),
@@ -153,6 +179,13 @@ const previewBodySchema = z.object({
 const simulateBodySchema = previewBodySchema.extend({
   choiceId: z.number().int(),
   rolls: z.number().int().min(1).max(10_000).default(100),
+  /**
+   * RNG seed. Supplying one makes a run exactly reproducible — the same seed
+   * and the same encounter always produce the same aggregate, which is what
+   * lets a balance discussion cite a number rather than a vibe. Omitted, the
+   * server picks one and reports it back.
+   */
+  seed: z.number().int().min(0).max(2_147_483_647).optional(),
 });
 
 /* ─────────────────────── Helpers ─────────────────────── */
@@ -265,12 +298,33 @@ export const adminEncounterRoutes =
           'Admin features are unavailable.',
         );
       }
-      await requirePortalPermission(req, authorization, permission);
+      await requirePortalPermission(req, authorization, permission, {
+        allowBearer: ctx.adminBearerAllowed === true,
+      });
     };
+
+    /**
+     * Permission check as a `preValidation` hook rather than the first line of
+     * each handler.
+     *
+     * Ordering is the point. Fastify validates the body against the route's
+     * Zod schema *before* the handler runs, so a check inside the handler
+     * answers an unauthorized caller with a 400 describing the shape the route
+     * expects — handing the admin API's schema to someone who may not even be
+     * in the guild. Running at `preValidation` means the 403 comes first and
+     * the body is never parsed. `src/api/auth.ts` moves the bearer check up to
+     * `onRequest` for exactly this reason.
+     */
+    const gate =
+      (permission: Parameters<typeof requireAuth>[1]) =>
+      async (req: import('fastify').FastifyRequest): Promise<void> => {
+        await requireAuth(req, permission);
+      };
 
     app.get(
       '/admin/encounters',
       {
+        preValidation: gate('encounters.read'),
         schema: {
           tags: ['Admin — Encounters'],
           summary: 'List world encounters',
@@ -281,7 +335,6 @@ export const adminEncounterRoutes =
         },
       },
       async (req) => {
-        await requireAuth(req, 'encounters.read');
         const encounters = await admin.list();
         return ok(req, { encounters: encounters.map(encounterToResource) });
       },
@@ -290,6 +343,7 @@ export const adminEncounterRoutes =
     app.get(
       '/admin/encounters/reference',
       {
+        preValidation: gate('encounters.read'),
         schema: {
           tags: ['Admin — Encounters'],
           summary: 'Canonical selectors for the encounter editor',
@@ -300,20 +354,24 @@ export const adminEncounterRoutes =
         },
       },
       async (req) => {
-        await requireAuth(req, 'encounters.read');
         const content = ctx.getContent();
         const encounters = await admin.list();
-        const vendors = ctx.services.worldEncounterVendor
-          ? await Promise.all(
-              [...new Set(encounters.map((e) => e.slug))].map(() => null),
-            ).then(() => [{ vendorKey: 'wandering_merchant', name: 'The Wandering Merchant' }])
-          : [];
+        // Real definitions from the vendor table — the editor's vendor
+        // selector must offer what is actually seeded, not a hard-coded name
+        // that silently stops matching the moment a second vendor ships.
+        const vendorRows = (await ctx.services.worldEncounterVendor?.listDefinitions()) ?? [];
+        const vendors = vendorRows.map((v) => ({ vendorKey: v.vendorKey, name: v.name }));
         return ok(req, {
           regions: [...REGIONS],
           affinities: [...AFFINITIES],
           races: [...RACE_CODES],
           items: content.items.map((i) => ({ slug: i.slug, name: i.name, category: i.category })),
           encounters: encounters.map((e) => ({ slug: e.slug, name: e.name })),
+          // Enabled species, so `trigger_waifumon_encounter` picks from a
+          // canonical list rather than a free-text slug an author can typo.
+          species: content.species
+            .filter((sp) => sp.enabled !== false)
+            .map((sp) => ({ slug: sp.slug, name: sp.name, rarity: sp.rarity })),
           vendors,
           types: [...WORLD_ENCOUNTER_TYPES],
           rarities: [...WORLD_ENCOUNTER_RARITIES],
@@ -325,6 +383,7 @@ export const adminEncounterRoutes =
     app.get(
       '/admin/encounters/:id',
       {
+        preValidation: gate('encounters.read'),
         schema: {
           tags: ['Admin — Encounters'],
           summary: 'Get one encounter',
@@ -337,7 +396,6 @@ export const adminEncounterRoutes =
         },
       },
       async (req) => {
-        await requireAuth(req, 'encounters.read');
         const { id } = req.params;
         const encounter = await admin.get(id);
         if (!encounter) throw new AppError('NOT_FOUND', `Encounter ${id} not found`, 'Not found.');
@@ -348,6 +406,7 @@ export const adminEncounterRoutes =
     app.post(
       '/admin/encounters',
       {
+        preValidation: gate('encounters.write'),
         schema: {
           tags: ['Admin — Encounters'],
           summary: 'Create or replace an encounter (idempotent on slug)',
@@ -359,7 +418,6 @@ export const adminEncounterRoutes =
         },
       },
       async (req) => {
-        await requireAuth(req, 'encounters.write');
         const result = await admin.upsert(req.body.input);
         return ok(req, encounterToResource(result));
       },
@@ -368,6 +426,7 @@ export const adminEncounterRoutes =
     app.put(
       '/admin/encounters/:id',
       {
+        preValidation: gate('encounters.write'),
         schema: {
           tags: ['Admin — Encounters'],
           summary: 'Replace an encounter by id',
@@ -381,7 +440,6 @@ export const adminEncounterRoutes =
         },
       },
       async (req) => {
-        await requireAuth(req, 'encounters.write');
         const existing = await admin.get(req.params.id);
         if (!existing) throw new AppError('NOT_FOUND', 'Encounter not found', 'Not found.');
         const result = await admin.upsert({ ...req.body.input, slug: existing.slug });
@@ -392,6 +450,7 @@ export const adminEncounterRoutes =
     app.post(
       '/admin/encounters/:id/clone',
       {
+        preValidation: gate('encounters.write'),
         schema: {
           tags: ['Admin — Encounters'],
           summary: 'Clone an encounter under a new slug',
@@ -405,7 +464,6 @@ export const adminEncounterRoutes =
         },
       },
       async (req) => {
-        await requireAuth(req, 'encounters.write');
         const cloned = await admin.clone(req.params.id, req.body.newSlug);
         return ok(req, encounterToResource(cloned));
       },
@@ -414,6 +472,11 @@ export const adminEncounterRoutes =
     app.patch(
       '/admin/encounters/:id/lifecycle',
       {
+        // Gated twice: `encounters.write` before the body is parsed, then
+        // `encounters.publish` once the body says this is a publish. The
+        // pre-validation half keeps the schema away from a caller with no
+        // admin rights at all.
+        preValidation: gate('encounters.write'),
         schema: {
           tags: ['Admin — Encounters'],
           summary: 'Change the lifecycle state of an encounter',
@@ -427,9 +490,7 @@ export const adminEncounterRoutes =
         },
       },
       async (req) => {
-        const permission =
-          req.body.lifecycle === 'active' ? 'encounters.publish' : 'encounters.write';
-        await requireAuth(req, permission);
+        if (req.body.lifecycle === 'active') await requireAuth(req, 'encounters.publish');
         const existing = await admin.get(req.params.id);
         if (!existing) throw new AppError('NOT_FOUND', 'Encounter not found', 'Not found.');
         await admin.setLifecycle(req.params.id, req.body.lifecycle);
@@ -442,6 +503,7 @@ export const adminEncounterRoutes =
     app.delete(
       '/admin/encounters/:id',
       {
+        preValidation: gate('encounters.write'),
         schema: {
           tags: ['Admin — Encounters'],
           summary: 'Delete an encounter (refused when history exists)',
@@ -454,7 +516,6 @@ export const adminEncounterRoutes =
         },
       },
       async (req) => {
-        await requireAuth(req, 'encounters.write');
         const result = await admin.remove(req.params.id);
         if (!result.ok) {
           throw new AppError(
@@ -470,6 +531,7 @@ export const adminEncounterRoutes =
     app.post(
       '/admin/encounters/:id/preview',
       {
+        preValidation: gate('encounters.read'),
         schema: {
           tags: ['Admin — Encounters'],
           summary: 'Preview computed choice chances for a test context',
@@ -483,7 +545,6 @@ export const adminEncounterRoutes =
         },
       },
       async (req) => {
-        await requireAuth(req, 'encounters.read');
         const encounter = await admin.get(req.params.id);
         if (!encounter) throw new AppError('NOT_FOUND', 'Encounter not found', 'Not found.');
         const checkCtx = contextFrom(req.body);
@@ -510,6 +571,7 @@ export const adminEncounterRoutes =
     app.post(
       '/admin/encounters/:id/simulate',
       {
+        preValidation: gate('encounters.simulate'),
         schema: {
           tags: ['Admin — Encounters'],
           summary: 'N-roll simulation (no live state mutation)',
@@ -523,14 +585,17 @@ export const adminEncounterRoutes =
         },
       },
       async (req) => {
-        await requireAuth(req, 'encounters.simulate');
         const encounter = await admin.get(req.params.id);
         if (!encounter) throw new AppError('NOT_FOUND', 'Encounter not found', 'Not found.');
         const choice = encounter.choices.find((c) => c.id === req.body.choiceId);
         if (!choice) {
           throw new AppError('NOT_FOUND', 'Choice not found on this encounter', 'Not found.');
         }
-        const aggregate = simulateChoice(choice, req.body, contextFrom(req.body));
+        // A caller-supplied seed makes the run reproducible; otherwise the
+        // server picks one and reports it back, so any result an author
+        // quotes can be re-run exactly.
+        const seed = req.body.seed ?? Math.floor(Math.random() * 2_147_483_647);
+        const aggregate = simulateChoice(choice, req.body, contextFrom(req.body), seed);
         return ok(req, {
           encounter: encounterToResource(encounter),
           choiceId: choice.id,
@@ -543,22 +608,36 @@ export const adminEncounterRoutes =
 /* ─────────────────────── Simulation ─────────────────────── */
 
 /**
- * Pure aggregation: run the check `rolls` times against the deterministic
- * math and accumulate effect-side expected values from each rolled outcome
- * (successEffects on hit, failureEffects on miss). No DB, no side effects.
- * Currency losses that would soft-cap in production simply cap to the
- * declared amount — the simulator has no player balance to consult.
+ * Run the choice `rolls` times and report what actually happened.
+ *
+ * This is a **simulation**, not an expected-value calculator. Each iteration
+ * draws from the injected RNG and calls the same {@link rollCheck} the live
+ * encounter resolver calls, so the success/failure split carries real
+ * variance and the reward totals are the ones those particular rolls earned.
+ * (An earlier version multiplied the chance by the roll count, which produced
+ * a number that could never disagree with the formula — and therefore could
+ * never tell an author anything the formula had not already told them.)
+ *
+ * The expected values are reported *alongside* the observed ones rather than
+ * instead of them: `expectedSuccessRate` and `expectedNetWaifubuxPerRoll` are
+ * the closed-form answers, and `successRateStdError` says how far an honest
+ * run of this size is likely to stray from them.
+ *
+ * Completely mutation-free by construction: it reads a hydrated encounter and
+ * a context object, and touches no service, no transaction and no table. No
+ * currency, inventory, XP, cooldown, active-encounter row or history line can
+ * result from calling it.
  */
-function simulateChoice(
+export function simulateChoice(
   choice: LoadedEncounter['choices'][number],
-  body: z.infer<typeof simulateBodySchema>,
+  body: { rolls: number },
   ctx: EncounterCheckContext,
-): z.infer<typeof simulateAggregateSchema> {
-  const preview = computeChance(choice.check, ctx);
+  seed: number,
+): SimulateAggregate {
   const rolls = body.rolls;
-  const successes = Math.round(rolls * preview.chance);
-  const failures = rolls - successes;
+  const rng = seededRng(seed);
 
+  let successes = 0;
   let waifubuxGained = 0;
   let waifubuxLost = 0;
   let essenceGained = 0;
@@ -566,41 +645,38 @@ function simulateChoice(
   const itemFrequency: Record<string, number> = {};
   const followUpFrequency: Record<string, number> = {};
 
-  const accumulate = (
-    effects: LoadedEncounter['choices'][number]['successEffects'],
-    count: number,
-  ) => {
+  /** Fold one roll's effect list into the running totals. */
+  const accumulate = (effects: LoadedEncounter['choices'][number]['successEffects']) => {
     for (const effect of effects) {
       switch (effect.type) {
         case 'waifubux_gain':
-          waifubuxGained += effect.amount * count;
+          waifubuxGained += effect.amount;
           break;
         case 'waifubux_loss':
-          waifubuxLost += effect.amount * count;
+          waifubuxLost += effect.amount;
           break;
         case 'waifubux_loss_percent': {
-          // Approximate: without a live balance to read, treat the cap as the
-          // full loss. Real gameplay soft-caps at balance, so this is upper-
-          // bound guidance rather than exact expected value.
-          const capped = effect.maxAmount ?? Math.round(effect.percent * 500);
-          waifubuxLost += capped * count;
+          // No live balance to read against, so the declared cap stands in for
+          // the loss. Upper-bound guidance, and the one figure in this report
+          // that is an approximation rather than an observation.
+          waifubuxLost += effect.maxAmount ?? Math.round(effect.percent * 500);
           break;
         }
         case 'essence_gain':
-          essenceGained += effect.amount * count;
+          essenceGained += effect.amount;
           break;
         case 'essence_loss':
-          essenceLost += effect.amount * count;
+          essenceLost += effect.amount;
           break;
         case 'give_item':
         case 'consume_item':
-          itemFrequency[effect.slug] = (itemFrequency[effect.slug] ?? 0) + effect.quantity * count;
+          itemFrequency[effect.slug] = (itemFrequency[effect.slug] ?? 0) + effect.quantity;
           break;
         case 'trigger_encounter':
         case 'trigger_waifumon_encounter':
         case 'open_vendor':
         case 'temp_buff':
-          followUpFrequency[effect.type] = (followUpFrequency[effect.type] ?? 0) + count;
+          followUpFrequency[effect.type] = (followUpFrequency[effect.type] ?? 0) + 1;
           break;
         default:
           break;
@@ -608,20 +684,67 @@ function simulateChoice(
     }
   };
 
-  accumulate(choice.successEffects, successes);
-  accumulate(choice.failureEffects, failures);
+  for (let i = 0; i < rolls; i++) {
+    const outcome = rollCheck(choice.check, ctx, rng);
+    if (outcome.success) successes++;
+    accumulate(outcome.success ? choice.successEffects : choice.failureEffects);
+  }
+
+  const failures = rolls - successes;
+  const observedRate = successes / rolls;
+  const expectedRate = computeChance(choice.check, ctx).chance;
+  const netWaifubux = waifubuxGained - waifubuxLost;
 
   return {
     rolls,
     successes,
     failures,
-    successRate: preview.chance,
+    successRate: observedRate,
+    expectedSuccessRate: expectedRate,
+    successRateDeviation: observedRate - expectedRate,
+    successRateStdError: Math.sqrt((expectedRate * (1 - expectedRate)) / rolls),
     waifubuxGained,
     waifubuxLost,
-    expectedNetWaifubux: waifubuxGained - waifubuxLost,
+    netWaifubux,
+    netWaifubuxPerRoll: netWaifubux / rolls,
+    expectedNetWaifubuxPerRoll: expectedNetWaifubuxPerRoll(choice, expectedRate),
     essenceGained,
     essenceLost,
+    netEssence: essenceGained - essenceLost,
     itemFrequency,
     followUpFrequency,
+    seed,
   };
+}
+
+/**
+ * Closed-form Waifubux expectation for one roll: the success branch weighted
+ * by `p`, the failure branch by `1 - p`. Reported next to the observed net so
+ * an author can see at a glance whether a run was lucky or the numbers are
+ * genuinely off.
+ */
+function expectedNetWaifubuxPerRoll(
+  choice: LoadedEncounter['choices'][number],
+  chance: number,
+): number {
+  const branch = (effects: LoadedEncounter['choices'][number]['successEffects']): number => {
+    let net = 0;
+    for (const effect of effects) {
+      switch (effect.type) {
+        case 'waifubux_gain':
+          net += effect.amount;
+          break;
+        case 'waifubux_loss':
+          net -= effect.amount;
+          break;
+        case 'waifubux_loss_percent':
+          net -= effect.maxAmount ?? Math.round(effect.percent * 500);
+          break;
+        default:
+          break;
+      }
+    }
+    return net;
+  };
+  return chance * branch(choice.successEffects) + (1 - chance) * branch(choice.failureEffects);
 }

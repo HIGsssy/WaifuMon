@@ -134,7 +134,7 @@ export async function handleWorldEncounterVendorBuy(
       result.currency === 'essence' ? '✨ Essence' : '💰 WB'
     }. Balance: ${result.balanceAfter}. Remaining: ${result.remaining}.`;
     // Repaint the vendor UI so the row reflects the new stock/balance.
-    const opened = await vendor.getForEncounter(activeId);
+    const opened = await vendor.getForEncounter(prov.playerId, activeId);
     if (opened) {
       await respondEphemeral(interaction, buildVendorPresent(opened, summary));
     } else {
@@ -169,15 +169,14 @@ export async function handleWorldEncounterVendorOpen(
     await respondEphemeral(interaction, 'That button is malformed — re-run /waifumon.');
     return;
   }
-  const opened = await vendor.getForEncounter(activeId);
-  if (!opened || opened.activeEncounterId !== activeId) {
+  // Player-scoped read: a forged or borrowed encounter id belonging to
+  // someone else comes back null, exactly like an id that never existed.
+  const opened = await vendor.getForEncounter(prov.playerId, activeId);
+  if (!opened) {
     await respondEphemeral(interaction, 'That merchant has packed up.');
     return;
   }
   await respondEphemeral(interaction, buildVendorPresent(opened));
-  // Silence unused warning when the vendor service is present but the
-  // player-scoped view of it never needs the auth context here.
-  void prov;
 }
 
 /**

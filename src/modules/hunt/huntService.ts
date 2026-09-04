@@ -9,7 +9,7 @@
  * milestone.
  */
 import { and, eq, lte, sql } from 'drizzle-orm';
-import type { Db } from '../../db/client';
+import type { Db, DbOrTx } from '../../db/client';
 import {
   encounters,
   items,
@@ -172,6 +172,26 @@ export interface HuntService {
    * as 'expired'. Also invoked lazily by hunt() when it finds a stale row.
    */
   expireStale(now?: Date): Promise<number>;
+
+  /**
+   * The hunt's own region/rarity species draw, exposed for *scripted* spawns.
+   *
+   * {@link WildEncounterSpawner} calls this when something outside the hunt
+   * ("a wild Waifumon appears") must pick a species and the author named none.
+   * Sharing the draw is the point: a scripted spawn then has the same
+   * distribution the player would have met hunting in that region, and the
+   * rarity table, region pools and fallbacks stay stated exactly once.
+   *
+   * Reads only. No Energy, no cooldown, no row written, no Buddy Bonus applied
+   * (a bonus is earned by hunting, not by a script handing you an encounter).
+   * Returns `null` when no pool — not even the global fallback — has anything.
+   */
+  pickSpeciesForSpawn(
+    tx: DbOrTx,
+    playerId: number,
+    playerLevel: number,
+    regionId: string | null,
+  ): Promise<SpeciesRow | null>;
 }
 
 export interface HuntServiceDeps {
@@ -252,7 +272,7 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
   }
 
   async function regionBucket(
-    tx: Parameters<Parameters<Db['transaction']>[0]>[0],
+    tx: DbOrTx,
     regionId: string,
     rarity: Rarity,
   ): Promise<Array<WeightedEntry<SpeciesRow>>> {
@@ -308,7 +328,7 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
    *      broken and someone needs to know it happened.
    */
   async function pickEncounterSpecies(
-    tx: Parameters<Parameters<Db['transaction']>[0]>[0],
+    tx: DbOrTx,
     playerId: number,
     level: number,
     regionId: string,
@@ -856,6 +876,13 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
         .where(and(eq(encounters.state, 'active'), lte(encounters.expiresAt, now)))
         .returning({ id: encounters.id });
       return rows.length;
+    },
+
+    // The hunt's own draw, with `bonus = null`. A scripted spawn is not a
+    // hunt, so no Buddy Bonus weighting applies — but the rarity table,
+    // region pools and their fallbacks are shared rather than restated.
+    pickSpeciesForSpawn(tx, playerId, playerLevel, regionId) {
+      return pickEncounterSpecies(tx, playerId, playerLevel, toRegion(regionId), null);
     },
   };
 }

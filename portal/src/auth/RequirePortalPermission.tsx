@@ -22,7 +22,7 @@ export function RequirePortalPermission({
   permission,
   children,
   fallback,
-}: RequirePortalPermissionProps): JSX.Element {
+}: RequirePortalPermissionProps) {
   const has = useHasPermission(permission);
   if (!has) return <>{fallback ?? <NotFoundPage />}</>;
   return <>{children}</>;

@@ -19,6 +19,7 @@ import { CalendarDays, Trophy, Users } from 'lucide-react';
 
 import { AppShell } from './AppShell';
 import { RequireSession } from '@/auth/RequireSession';
+import { RequirePortalPermission } from '@/auth/RequirePortalPermission';
 import { ComingSoonPage } from '@/features/comingSoon/ComingSoonPage';
 import { NotFoundPage } from '@/features/notFound/NotFoundPage';
 import { SelectPlayerPage } from '@/features/selectPlayer/SelectPlayerPage';
@@ -65,6 +66,25 @@ const GuidePage = lazy(() =>
 );
 const SettingsPage = lazy(() =>
   import('@/features/settings/SettingsPage').then((m) => ({ default: m.SettingsPage })),
+);
+
+// Admin — encounter management. Lazy so an unprivileged bundle does not
+// carry the editor tree; the route also renders `<RequirePortalPermission>`
+// so a direct hit shows the not-found page.
+const AdminEncountersListPage = lazy(() =>
+  import('@/features/adminEncounters/AdminEncountersListPage').then((m) => ({
+    default: m.AdminEncountersListPage,
+  })),
+);
+const AdminEncounterEditorPage = lazy(() =>
+  import('@/features/adminEncounters/AdminEncounterEditorPage').then((m) => ({
+    default: m.AdminEncounterEditorPage,
+  })),
+);
+const AdminEncounterPreviewPage = lazy(() =>
+  import('@/features/adminEncounters/AdminEncounterPreviewPage').then((m) => ({
+    default: m.AdminEncounterPreviewPage,
+  })),
 );
 
 /**
@@ -141,6 +161,41 @@ export const routes: RouteObject[] = [
               'Other trainers, their collections, and trading.',
               Users,
               'Social features need cross-player queries the Platform API deliberately does not expose today.',
+            ),
+          },
+
+          // Admin — Encounter Manager. Nested `<RequirePortalPermission>` is a
+          // UX affordance; the API independently re-checks every request.
+          {
+            path: 'admin/encounters',
+            element: (
+              <RequirePortalPermission permission="admin.access">
+                <AdminEncountersListPage />
+              </RequirePortalPermission>
+            ),
+          },
+          {
+            path: 'admin/encounters/new',
+            element: (
+              <RequirePortalPermission permission="encounters.write">
+                <AdminEncounterEditorPage />
+              </RequirePortalPermission>
+            ),
+          },
+          {
+            path: 'admin/encounters/:id',
+            element: (
+              <RequirePortalPermission permission="encounters.read">
+                <AdminEncounterEditorPage />
+              </RequirePortalPermission>
+            ),
+          },
+          {
+            path: 'admin/encounters/:id/preview',
+            element: (
+              <RequirePortalPermission permission="encounters.read">
+                <AdminEncounterPreviewPage />
+              </RequirePortalPermission>
             ),
           },
 

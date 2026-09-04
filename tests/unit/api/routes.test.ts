@@ -296,6 +296,8 @@ const ROUTES: Array<{ url: string; overrides: ApiContextOverrides }> = [
               maxAttempts: 3,
               selectedItemId: null,
               regionId: 'waifu-valley',
+              originKind: null,
+              originRef: null,
               createdAt: new Date(),
               expiresAt: new Date(Date.now() + 60_000),
               resolvedAt: null,
@@ -907,7 +909,18 @@ describe('OpenAPI registration', () => {
         if (verb !== 'get') mutations.push(`${verb.toUpperCase()} ${path}`);
       }
     }
+    // Phase 2 also introduces the World Encounter admin namespace — those
+    // routes carry a distinct `Admin — Encounters` tag and are permission-
+    // gated at the request layer (`requirePortalPermission`), never
+    // reachable by an ordinary player-scoped session.
     expect(mutations.sort()).toEqual([
+      'DELETE /api/v1/admin/encounters/{id}',
+      'PATCH /api/v1/admin/encounters/{id}/lifecycle',
+      'POST /api/v1/admin/encounters',
+      'POST /api/v1/admin/encounters/{id}/clone',
+      'POST /api/v1/admin/encounters/{id}/preview',
+      'POST /api/v1/admin/encounters/{id}/simulate',
+      'PUT /api/v1/admin/encounters/{id}',
       'PUT /api/v1/players/{playerId}/collection/owned/{waifuId}/appearance',
     ]);
   });

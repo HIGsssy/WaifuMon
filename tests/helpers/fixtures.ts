@@ -35,6 +35,14 @@ import { createShopService } from '../../src/modules/shop/shopService';
 import { createSessionService } from '../../src/modules/session/sessionService';
 import { createBossEncounterService } from '../../src/modules/bosses/bossEncounterService';
 import { createTravelService } from '../../src/modules/travel/travelService';
+import { createWorldEncounterService } from '../../src/modules/worldEncounters/worldEncounterService';
+import {
+  createWorldEncounterVendorService,
+  seedWorldEncounterVendors,
+} from '../../src/modules/worldEncounters/vendorService';
+import { seedWorldEncounters } from '../../src/modules/worldEncounters/seed';
+import { createWorldEncounterAdminService } from '../../src/modules/worldEncounters/adminService';
+import { createWildEncounterSpawner } from '../../src/modules/encounters/wildEncounterSpawner';
 import {
   createGameEventBus,
   type GameEvent,
@@ -96,6 +104,19 @@ export interface App {
    * admin reload would be.
    */
   travel: ReturnType<typeof createTravelService>;
+  /**
+   * World Encounters — all three services wired together, so continuation +
+   * vendor tests never rebuild the graph by hand.
+   */
+  worldEncounter: ReturnType<typeof createWorldEncounterService>;
+  worldEncounterVendor: ReturnType<typeof createWorldEncounterVendorService>;
+  worldEncounterAdmin: ReturnType<typeof createWorldEncounterAdminService>;
+  /**
+   * The canonical spawner behind `trigger_waifumon_encounter`. Wired to the
+   * hunt service's own species draw, exactly as production does, so a test
+   * that omits a species slug exercises the real fallback.
+   */
+  wildEncounters: ReturnType<typeof createWildEncounterSpawner>;
 }
 
 export interface BootstrapOptions {
@@ -234,12 +255,65 @@ export async function bootstrapApp(
     ...(opts.bossRng ? { rng: opts.bossRng } : {}),
   });
   const travel = createTravelService({ db: t.db, currency, getContent: () => content });
+  const worldEncounterVendor = createWorldEncounterVendorService({
+    db: t.db,
+    currency,
+    inventory,
+  });
+  // Hoisted above the services literal for the same reason production does it:
+  // the spawner borrows the hunt's region/rarity species draw.
+  const hunt = createHuntService({
+    db: t.db,
+    currency,
+    inventory,
+    progression,
+    collection,
+    care,
+    quests,
+    tables: content.tables,
+    buddyBonus,
+    logger: t.logger,
+    ...(opts.huntRng ? { rng: opts.huntRng } : {}),
+  });
+  const wildEncounters = createWildEncounterSpawner({
+    db: t.db,
+    currency,
+    logger: t.logger,
+    getDefaultExpirySeconds: () => content.tables.hunt.encounterExpirySeconds,
+    pickSpecies: (tx, playerId, playerLevel, regionId) =>
+      hunt.pickSpeciesForSpawn(tx, playerId, playerLevel, regionId),
+  });
+  const worldEncounter = createWorldEncounterService({
+    db: t.db,
+    currency,
+    inventory,
+    progression,
+    collection,
+    buddyBonus,
+    vendor: worldEncounterVendor,
+    wildEncounters,
+    getConfig: () => ({
+      huntChance: content.tables.worldEncounter.huntChance,
+      travelChance: content.tables.worldEncounter.travelChance,
+      defaultExpirySeconds: content.tables.worldEncounter.defaultExpirySeconds,
+    }),
+    getMaxWaifuLevel: () => content.tables.waifuProgression.maxLevel,
+  });
+  const worldEncounterAdmin = createWorldEncounterAdminService(t.db, () => content);
+  // Seed the shipped catalogue so every test starts with the same encounter
+  // library the runtime does. Idempotent; safe to call unconditionally.
+  await seedWorldEncounters(t.db);
+  await seedWorldEncounterVendors(t.db);
   return {
     content,
     buddyBonus,
     gifts,
     bosses,
     travel,
+    worldEncounter,
+    worldEncounterVendor,
+    worldEncounterAdmin,
+    wildEncounters,
     guilds: createGuildService(t.db),
     players: createPlayerService(t.db, { initialEnergy: content.tables.energy.baseMax }),
     currency,
@@ -262,19 +336,7 @@ export async function bootstrapApp(
       inventory,
       captureCapacity: content.tables.inventory.captureCapacity,
     }),
-    hunt: createHuntService({
-      db: t.db,
-      currency,
-      inventory,
-      progression,
-      collection,
-      care,
-      quests,
-      tables: content.tables,
-      buddyBonus,
-      logger: t.logger,
-      ...(opts.huntRng ? { rng: opts.huntRng } : {}),
-    }),
+    hunt,
     capture: createCaptureService({
       db: t.db,
       inventory,

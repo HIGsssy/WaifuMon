@@ -402,6 +402,24 @@ export const encounters = pgTable(
      * because rows that predate travel have no answer.
      */
     regionId: text('region_id'),
+    /**
+     * Where this encounter came from, when it was *spawned* rather than
+     * hunted (see `wildEncounterSpawner`).
+     *
+     * `origin_kind` names the subsystem — `world_encounter`, `quest`, `item`,
+     * `event`, `deity`, `admin` — and `origin_ref` is that subsystem's own
+     * identifier for the one thing that caused this spawn (for a World
+     * Encounter, the `active_world_encounters.id` that resolved).
+     *
+     * The pair is the **idempotency key**, enforced by a partial unique
+     * index below. That is what makes a double-clicked Continue button, a
+     * retried job, or a replayed quest step spawn one encounter rather than
+     * two: the second insert loses the race on the index and the caller reads
+     * the winner back. An ordinary hunt leaves both columns null and is
+     * unaffected.
+     */
+    originKind: text('origin_kind'),
+    originRef: text('origin_ref'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     resolvedAt: timestamp('resolved_at', { withTimezone: true }),
@@ -420,8 +438,29 @@ export const encounters = pgTable(
       .on(t.playerId)
       .where(sql`state = 'active'`),
     index('encounters_player_state_idx').on(t.playerId, t.state),
+    // Idempotency for spawned encounters. Partial, so the millions of rows a
+    // hunt writes (both columns null) never enter the index.
+    uniqueIndex('encounters_origin_uq')
+      .on(t.originKind, t.originRef)
+      .where(sql`origin_kind is not null and origin_ref is not null`),
   ],
 );
+
+/**
+ * Subsystems allowed to spawn a wild encounter directly, rather than through
+ * the hunt roll. Kept as a closed set so `origin_kind` stays queryable and a
+ * typo becomes a compile error instead of an unanalysable row.
+ */
+export const WILD_ENCOUNTER_ORIGIN_KINDS = [
+  'world_encounter',
+  'quest',
+  'item',
+  'event',
+  'exploration',
+  'deity',
+  'admin',
+] as const;
+export type WildEncounterOriginKind = (typeof WILD_ENCOUNTER_ORIGIN_KINDS)[number];
 
 /**
  * Every capture button click writes one row here — successful attempts double

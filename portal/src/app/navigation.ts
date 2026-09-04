@@ -17,6 +17,7 @@ import {
   LayoutDashboard,
   LibraryBig,
   Settings,
+  Shield,
   Store,
   Trophy,
   User,
@@ -32,6 +33,8 @@ export interface NavItem {
   comingSoon?: boolean;
   /** Draws a divider above this entry. */
   dividerBefore?: boolean;
+  /** Only rendered when the current session holds this permission. */
+  requiresPermission?: string;
 }
 
 export const NAV_ITEMS: readonly NavItem[] = [
@@ -43,6 +46,13 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { to: '/encyclopedia', label: 'Encyclopedia', icon: BookOpen },
   { to: '/guide', label: 'Guide', icon: Compass },
   { to: '/profile', label: 'Profile', icon: User },
+  {
+    to: '/admin/encounters',
+    label: 'Admin — Encounters',
+    icon: Shield,
+    dividerBefore: true,
+    requiresPermission: 'admin.access',
+  },
   {
     to: '/achievements',
     label: 'Achievements',

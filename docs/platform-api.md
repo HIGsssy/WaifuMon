@@ -29,6 +29,7 @@ PLATFORM_API_TOKEN=<a long random secret>    # openssl rand -hex 32
 | `PLATFORM_API_ENABLED` | `false` | `true`/`1` to start the API. Anything else keeps it off, at zero cost. |
 | `PLATFORM_API_PORT` | `3120` | |
 | `PLATFORM_API_TOKEN` | *(empty)* | **Required** when enabled — startup fails with a config error otherwise. Never logged. |
+| `PLATFORM_API_ADMIN_BEARER` | `false` | Whether the bearer token counts as a Portal **administrator**. See below before turning it on. |
 
 Every request needs `Authorization: Bearer $PLATFORM_API_TOKEN`, except
 `/health`, `/ready`, `/api/v1/docs` and `/api/v1/openapi.json`.
@@ -40,6 +41,32 @@ public Portal edge — the production Nginx returns 404 for `/ready`,
 publishes neither the readiness report nor the API's own surface map. Only
 `/health` (liveness, `{"status":"ok"}`) is proxied publicly. See
 [portal.md](portal.md).
+
+### The bearer token is not an administrator by default
+
+`/api/v1/admin/encounters/*` authors game content: create, edit, publish and
+delete World Encounters. Those routes are gated by Portal permissions, which
+in Phase 2 only the **Discord owner of the guild the session currently has
+selected** holds.
+
+A bearer request carries no user identity, so it holds no permissions and is
+refused with `403 PORTAL_PERMISSION_DENIED`. That is the default, and it is
+deliberate: `PLATFORM_API_TOKEN` is one process-wide shared secret with no
+per-user scoping, and until the admin namespace existed the API it opened was
+substantially read-only. Letting it skip the permission check would have
+silently promoted an existing read credential into a content-authoring
+super-admin — including in development, where the same value is compiled into
+the Portal bundle as `VITE_PLATFORM_API_TOKEN`.
+
+Set `PLATFORM_API_ADMIN_BEARER=true` only when you actively want that: a
+loopback-bound deployment that drives content from scripts, where everyone
+holding the token is understood to be an administrator. Everything else on
+`/api/v1/*` is unaffected by the flag — the bearer token remains the
+credential for the rest of the API either way.
+
+The trust boundary is stated once, in
+`src/api/plugins/portalPermissions.ts`, and tested over HTTP in
+`tests/unit/api/adminEncounterAuth.test.ts`.
 
 ---
 

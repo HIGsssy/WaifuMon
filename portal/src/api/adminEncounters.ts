@@ -46,6 +46,7 @@ export interface AdminEncounterReference {
   races: string[];
   items: Array<{ slug: string; name: string; category: string }>;
   encounters: Array<{ slug: string; name: string }>;
+  species: Array<{ slug: string; name: string; rarity: string }>;
   vendors: Array<{ vendorKey: string; name: string }>;
   types: string[];
   rarities: string[];
@@ -75,18 +76,33 @@ export interface PreviewResponse {
   choices: PreviewChoice[];
 }
 
+/**
+ * The result of an actual N-roll run, not a closed-form estimate.
+ *
+ * `successRate` is what the run observed; `expectedSuccessRate` is what the
+ * formula predicts; `successRateStdError` says how far a fair run of this size
+ * is expected to stray, so a reader can tell an unlucky sample from a broken
+ * balance number. `seed` reproduces the run exactly.
+ */
 export interface SimulateAggregate {
   rolls: number;
   successes: number;
   failures: number;
   successRate: number;
+  expectedSuccessRate: number;
+  successRateDeviation: number;
+  successRateStdError: number;
   waifubuxGained: number;
   waifubuxLost: number;
-  expectedNetWaifubux: number;
+  netWaifubux: number;
+  netWaifubuxPerRoll: number;
+  expectedNetWaifubuxPerRoll: number;
   essenceGained: number;
   essenceLost: number;
+  netEssence: number;
   itemFrequency: Record<string, number>;
   followUpFrequency: Record<string, number>;
+  seed: number;
 }
 
 export interface SimulateResponse {
@@ -181,6 +197,8 @@ export function previewAdminEncounter(id: number, body: PreviewBody): Promise<Pr
 export interface SimulateBody extends PreviewBody {
   choiceId: number;
   rolls: number;
+  /** Omit to let the server pick one and report it back in the aggregate. */
+  seed?: number;
 }
 
 export function simulateAdminEncounter(id: number, body: SimulateBody): Promise<SimulateResponse> {

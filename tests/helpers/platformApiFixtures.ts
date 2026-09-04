@@ -19,6 +19,7 @@ import type { ProgressionConfig } from '../../src/modules/content/schemas';
 import type { AppServices } from '../../src/discord/types';
 import type { LoadedContent } from '../../src/modules/content/schemas';
 import type { Logger } from '../../src/shared/logger';
+import type { PortalAuthorizationService } from '../../src/modules/portalAuth/portalAuthService';
 
 export const TEST_TOKEN = 'super-secret-platform-token';
 
@@ -89,6 +90,18 @@ export interface ApiContextOverrides {
    * route optional-chains it and schedules nothing.
    */
   cardWarmer?: Pick<OwnedCardWarmer, 'schedulePlayerWarm'>;
+  /**
+   * Portal permission oracle. Omitted by default, which is what a deployment
+   * with no Discord bot looks like — every admin route then answers 403,
+   * which is the intended fail-closed behaviour and worth being the default a
+   * test has to opt out of.
+   */
+  portalAuthorization?: PortalAuthorizationService;
+  /**
+   * Whether the shared bearer token counts as an administrator. Omitted means
+   * no, mirroring `PLATFORM_API_ADMIN_BEARER`'s own default.
+   */
+  adminBearerAllowed?: boolean;
 }
 
 const EMPTY_CONTENT: LoadedContent = {
@@ -194,5 +207,11 @@ export function createApiContext(overrides: ApiContextOverrides = {}): ApiContex
     ...(overrides.cardWarmer
       ? { cardWarmer: overrides.cardWarmer as unknown as OwnedCardWarmer }
       : {}),
+    ...(overrides.portalAuthorization
+      ? { portalAuthorization: overrides.portalAuthorization }
+      : {}),
+    ...(overrides.adminBearerAllowed === undefined
+      ? {}
+      : { adminBearerAllowed: overrides.adminBearerAllowed }),
   };
 }

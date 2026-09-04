@@ -8,17 +8,38 @@
  * this user have some role?" directly. Adding a new source of admin (e.g.
  * Discord role mapping) is a change to that service only.
  *
- * Two distinct rejection cases, on purpose:
+ * ## The bearer-token trust boundary
  *
- *   - **Bearer-authenticated requests** carry no user identity, so permission
- *     checks are meaningless: the loopback bearer is trusted for everything.
- *     A bearer request is allowed to pass every check.
- *   - **Portal sessions without the permission** are rejected as 403
- *     `PORTAL_PERMISSION_DENIED` — a distinct code from 401
- *     `UNAUTHORIZED` so the frontend can render "you don't have permission"
- *     separately from "please sign in".
+ * `PLATFORM_API_TOKEN` is a single static shared secret. Until Phase 2 the
+ * Platform API was, in substance, a **read** API — one cosmetic mutation
+ * aside — so a bearer holder could read every player's data and change
+ * essentially nothing. The World Encounter admin namespace changes that: it
+ * can create, edit, publish and delete game content.
+ *
+ * Letting bearer skip permission checks would therefore have silently
+ * promoted an existing read credential into a content-authoring super-admin,
+ * and that credential is not narrow: it is one process-wide value, it is
+ * pasted into operator shells, and in development it is compiled into the
+ * Portal bundle as `VITE_PLATFORM_API_TOKEN` (production builds are refused
+ * by `portal/scripts/verify-build-env.mjs`, which is the only reason a
+ * browser cannot read it in production).
+ *
+ * So the bypass is **opt-in and off by default**. `allowBearer` comes from
+ * `PLATFORM_API_ADMIN_BEARER`, which an operator sets only when they intend
+ * the API token to be an administrative credential — typically a loopback-only
+ * deployment driving content from scripts. Left unset, a bearer request
+ * reaches admin routes and is refused exactly like any other session with no
+ * permissions, and the Portal cookie session is the sole route to admin.
+ *
+ * Three distinct rejection cases, on purpose:
+ *
+ *   - **Bearer with the bypass enabled** passes every check.
+ *   - **Bearer without it**, and **portal sessions lacking the permission**,
+ *     are rejected as 403 `PORTAL_PERMISSION_DENIED` — a distinct code from
+ *     401 `UNAUTHORIZED` so the frontend can render "you do not have
+ *     permission" separately from "please sign in".
  *   - **No session at all** on a private route is already caught by
- *     `registerAuth` at `onRequest`, so we do not re-check that here.
+ *     `registerAuth` at `onRequest`, so it is not re-checked here.
  */
 import type { FastifyRequest } from 'fastify';
 import { AppError } from '../../shared/errors';
@@ -38,16 +59,23 @@ export class PortalPermissionError extends AppError {
 }
 
 /**
- * Enforce that the request holds `permission`. Throws with a 403-mapped
- * {@link PortalPermissionError} otherwise. No-op for bearer-auth requests,
- * which have already proven privileged access via the loopback token.
+ * Enforce that the request holds `permission`, throwing a 403-mapped
+ * {@link PortalPermissionError} otherwise.
+ *
+ * `allowBearer` defaults to **false**: the caller must pass it explicitly to
+ * treat the shared Platform API token as an administrative credential. See
+ * the module comment for why that default is the safe one.
  */
 export async function requirePortalPermission(
   req: FastifyRequest,
   authorization: PortalAuthorizationService,
   permission: PortalPermission,
+  opts: { allowBearer?: boolean | undefined } = {},
 ): Promise<void> {
-  if (req.apiAuth === 'bearer') return;
+  if (req.apiAuth === 'bearer') {
+    if (opts.allowBearer === true) return;
+    throw new PortalPermissionError(permission);
+  }
   const session = req.portalSession ?? null;
   if (!session) throw new PortalPermissionError(permission);
   const has = await authorization.has(session, permission);

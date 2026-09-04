@@ -183,6 +183,13 @@
       "when": 1817935200000,
       "tag": "0025_encounter_continuation_and_vendor",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1818021600000,
+      "tag": "0026_wild_encounter_origin",
+      "breakpoints": true
     }
   ]
 }

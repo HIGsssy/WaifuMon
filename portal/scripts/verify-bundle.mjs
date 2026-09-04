@@ -40,6 +40,21 @@ const FORBIDDEN_MARKERS = [
   'portal slow',
   'portal duplicate',
   'installImageInstrumentation',
+  // The client-side Portal permission grant.
+  //
+  // `EnvSessionProvider` and `DevLoginSessionProvider` hand a local session
+  // every admin permission so the Portal can be developed against MSW
+  // fixtures without an OAuth round trip. Both grants sit behind
+  // `import.meta.env.DEV`, so Vite folds them to `[]` and drops the array.
+  //
+  // `encounters.history` is the canary: it is reserved for a later phase and
+  // no Portal screen reads it, so the *only* place the string appears in the
+  // source is those two dev grants. Finding it in a shipped bundle means a
+  // production build is minting admin permissions on the client — the exact
+  // failure this marker exists to catch. (`admin.access` and the other five
+  // legitimately appear in the admin chunks' `useHasPermission` calls, so
+  // they cannot be used for this.)
+  'encounters.history',
 ];
 
 function walk(dir) {
@@ -78,8 +93,9 @@ if (violations.length > 0) {
     console.error(`  ${file}  contains  "${marker}"`);
   }
   console.error(
-    '\nThe diagnostics feature and the telemetry ring buffer must stay behind ' +
-      'import.meta.env.DEV guards (plan §23).',
+    '\nDev-only code must stay behind import.meta.env.DEV guards (plan §23), and ' +
+      'a production bundle must never grant Portal permissions on the client — ' +
+      'the API is the authority on what a session may do.',
   );
   process.exit(1);
 }

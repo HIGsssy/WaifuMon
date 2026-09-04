@@ -64,6 +64,16 @@ export interface WorldEncounterRepository {
   setLifecycle(tx: DbOrTx, id: number, lifecycle: 'draft' | 'active' | 'disabled'): Promise<void>;
   deleteEncounter(tx: DbOrTx, id: number): Promise<void>;
   hasHistory(id: number): Promise<boolean>;
+  /**
+   * Every encounter slug that some *other* encounter leads to — via its
+   * `chainedEncounterSlug` column or a `trigger_encounter` effect on one of
+   * its choices.
+   *
+   * Admin validation uses this to answer "is this encounter reachable?".
+   * A chain target legitimately has neither hunt nor travel eligibility (the
+   * parent already gated that), so eligibility alone cannot decide it.
+   */
+  chainTargetSlugs(): Promise<Set<string>>;
 
   // Active state
   insertActive(tx: DbOrTx, values: NewActiveValues): Promise<ActiveWorldEncounterRow>;
@@ -297,6 +307,33 @@ export function createWorldEncounterRepository(db: Db): WorldEncounterRepository
     },
     async deleteEncounter(tx, id) {
       await tx.delete(worldEncounters).where(eq(worldEncounters.id, id));
+    },
+    async chainTargetSlugs() {
+      const targets = new Set<string>();
+      // Column-level chains: cheap, and covers `chainedEncounterSlug`.
+      const chained = await db
+        .select({ slug: worldEncounters.chainedEncounterSlug })
+        .from(worldEncounters);
+      for (const row of chained) if (row.slug) targets.add(row.slug);
+
+      // Effect-level chains. Two JSONB columns over every choice in one
+      // query — the effects are small arrays and this runs only on an admin
+      // write, never on a gameplay path.
+      const choices = await db
+        .select({
+          success: worldEncounterChoices.successEffectsJson,
+          failure: worldEncounterChoices.failureEffectsJson,
+        })
+        .from(worldEncounterChoices);
+      for (const row of choices) {
+        for (const effect of [...(row.success ?? []), ...(row.failure ?? [])]) {
+          const e = effect as { type?: unknown; encounterSlug?: unknown };
+          if (e.type === 'trigger_encounter' && typeof e.encounterSlug === 'string') {
+            targets.add(e.encounterSlug);
+          }
+        }
+      }
+      return targets;
     },
     async hasHistory(id) {
       const [row] = await db

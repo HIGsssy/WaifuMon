@@ -57,12 +57,39 @@ describe('parseEncounterInput', () => {
     ).toThrow(AdminEncounterValidationError);
   });
 
-  it('rejects an encounter with neither source enabled', () => {
+  it('rejects an encounter nothing can reach', () => {
+    // Neither source enabled and nothing chains into it: dead content.
     expect(() =>
       parseEncounterInput(
         { ...OK_INPUT, huntEligible: false, travelEligible: false },
         ITEMS,
         SLUGS,
+      ),
+    ).toThrow(AdminEncounterValidationError);
+  });
+
+  it('accepts a chain-only encounter that another encounter leads to', () => {
+    // The shipped `tv_bandit_aftermath` is exactly this shape: it carries
+    // neither source flag because its *parent* already gated where it can
+    // occur. The rule used to be "at least one source flag", which made that
+    // encounter unsavable through the very editor built to edit it.
+    expect(() =>
+      parseEncounterInput(
+        { ...OK_INPUT, huntEligible: false, travelEligible: false },
+        ITEMS,
+        SLUGS,
+        new Set([OK_INPUT.slug]),
+      ),
+    ).not.toThrow();
+  });
+
+  it('still rejects a chain-only encounter when the chain points elsewhere', () => {
+    expect(() =>
+      parseEncounterInput(
+        { ...OK_INPUT, huntEligible: false, travelEligible: false },
+        ITEMS,
+        SLUGS,
+        new Set(['some_other_encounter']),
       ),
     ).toThrow(AdminEncounterValidationError);
   });

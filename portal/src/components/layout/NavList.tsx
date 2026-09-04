@@ -10,15 +10,21 @@ import { NavLink } from 'react-router';
 
 import { Badge } from '@/components/ui/badge';
 import { NAV_ITEMS } from '@/app/navigation';
+import { useSession } from '@/auth/useSession';
 import { cn } from '@/lib/cn';
 
 const ROW = 'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors sm:py-2';
 
 export function NavList({ onNavigate }: { onNavigate?: () => void }) {
+  const { session } = useSession();
+  const permissions = session?.permissions ?? [];
+  const visible = NAV_ITEMS.filter(
+    (item) => !item.requiresPermission || permissions.includes(item.requiresPermission),
+  );
   return (
     <nav aria-label="Primary">
       <ul className="space-y-0.5">
-        {NAV_ITEMS.map((item) => (
+        {visible.map((item) => (
           <li key={item.to}>
             {item.dividerBefore && <hr className="my-3 border-border" />}
             {item.comingSoon ? (

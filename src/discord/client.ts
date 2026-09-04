@@ -34,6 +34,7 @@ import {
   handleEncounterPick,
   handleEncounterPickItem,
   handleEncounterRelease,
+  handleWildEncounterOpen,
   handleHunt,
 } from './commands/waifumonHunt';
 import {
@@ -256,6 +257,8 @@ export function createDiscordClient(ctx: AppContext): Client {
         handleEncounterPickItem(ctx, i, prov, args),
       'enc:release': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleEncounterRelease(ctx, i, prov, args),
+      'enc:wild': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleWildEncounterOpen(ctx, i, prov, args),
       'encw:choose': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleWorldEncounterChoose(ctx, i, prov, args),
       'encw:continue': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
