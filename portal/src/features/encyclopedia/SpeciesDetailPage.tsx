@@ -15,10 +15,11 @@ import { Link, useParams } from 'react-router';
 import { isPortalApiError } from '@/api/client';
 import { usePlatformCapabilities } from '@/api/hooks/useCapabilities';
 import { useContentSpecies, useContentSpeciesEntry } from '@/api/hooks/useContent';
-import { useOwnedSlugs } from '@/api/hooks/useOwnedSlugs';
+import { useSpeciesDiscovery } from '@/api/hooks/useSpeciesDiscovery';
 import { useCurrentSession } from '@/auth/useSession';
 import { ErrorState } from '@/components/layout/ErrorState';
 import { Artwork } from '@/components/media/Artwork';
+import { SpeciesArtwork } from '@/components/media/SpeciesArtwork';
 import { CardViewer } from '@/components/media/CardViewer';
 import { CardViewToggle, type CardView } from '@/components/media/CardViewToggle';
 import { Button } from '@/components/ui/button';
@@ -28,9 +29,10 @@ import { BuddyBonusCard } from '@/components/waifumon/BuddyBonusCard';
 import { AffinityPill, ContentRatingPill, TypePill } from '@/components/waifumon/Pills';
 import { RarityBadge } from '@/components/waifumon/RarityBadge';
 import { RarityGlowRing } from '@/components/waifumon/RarityGlowRing';
-import { relatedSpecies } from '@/content/species';
+import { RelatedSpeciesStrip } from '@/components/waifumon/RelatedSpeciesStrip';
+import { speciesLabel } from '@/content/species';
 import { NotFoundPage } from '@/features/notFound/NotFoundPage';
-import { speciesAsset, speciesCardAsset } from '@/images/assets';
+import { speciesCardAsset } from '@/images/assets';
 import { formatNumber } from '@/lib/format';
 import { rarityStyle } from '@/lib/rarity';
 import { ARTWORK_WIDTH } from '@/images/sizes';
@@ -44,7 +46,7 @@ export function SpeciesDetailPage() {
 
   const entry = useContentSpeciesEntry(slug);
   const allSpecies = useContentSpecies();
-  const owned = useOwnedSlugs(session.playerId);
+  const discovery = useSpeciesDiscovery(session.playerId);
 
   const backLink = (
     <Button asChild variant="ghost" size="sm" className="mb-4 -ml-2">
@@ -82,7 +84,9 @@ export function SpeciesDetailPage() {
   // The ownership overlay gates this page for the same reason it gates the
   // grid: until it lands, every entry would render as undiscovered, and
   // silhouetting a species the player already owns is the one wrong answer.
-  if (entry.isPending || !entry.data || owned.isPending) {
+  // `isSettled` rather than `!isPending` — a placeholder overlay belonging to
+  // the *previous* player is neither pending nor an answer about this one.
+  if (entry.isPending || !entry.data || !discovery.isSettled) {
     return (
       <>
         {backLink}
@@ -103,11 +107,13 @@ export function SpeciesDetailPage() {
   }
 
   const species = entry.data;
-  const ownedCount = owned.data?.countBySlug[species.slug] ?? 0;
-  const bestCopy = owned.data?.bestCopyBySlug[species.slug];
-  const discovered = ownedCount > 0;
+  // Past the gate above, so these are answers about *this* player rather than
+  // absent-means-zero defaults. `discovered` stays tri-state all the way into
+  // the components that gate on it — nothing here collapses it to a boolean.
+  const ownedCount = discovery.copiesOf(species.slug) ?? 0;
+  const bestCopy = discovery.bestCopyOf(species.slug);
+  const discovered = discovery.isDiscovered(species.slug);
   const rarity = rarityStyle(species.rarity);
-  const related = allSpecies.data ? relatedSpecies(allSpecies.data, species) : [];
 
   /**
    * Card mode is offered only for a species the player has actually
@@ -115,7 +121,7 @@ export function SpeciesDetailPage() {
    * silhouette, and a rendered card would show her artwork in full — the
    * toggle would become a way to walk around the spoiler.
    */
-  const cardsOffered = capabilities.cards && discovered;
+  const cardsOffered = capabilities.cards && discovered === true;
   const showingCard = cardsOffered && view === 'card';
   const cardAsset = speciesCardAsset(species);
 
@@ -125,7 +131,7 @@ export function SpeciesDetailPage() {
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,24rem)_1fr] lg:gap-8">
         <div className="space-y-3 lg:sticky lg:top-24 lg:self-start">
-          <RarityGlowRing rarity={species.rarity} glow={discovered}>
+          <RarityGlowRing rarity={species.rarity} glow={discovered === true}>
             {showingCard ? (
               <button
                 type="button"
@@ -145,12 +151,11 @@ export function SpeciesDetailPage() {
                 />
               </button>
             ) : (
-              <Artwork
-                asset={speciesAsset(species)}
+              <SpeciesArtwork
+                species={species}
+                discovered={discovered}
                 displayWidth={ARTWORK_WIDTH.hero}
-                name={species.name}
                 rarityLabel={rarity.label}
-                silhouette={!discovered}
                 priority
                 aspect="aspect-[3/4]"
               />
@@ -179,7 +184,7 @@ export function SpeciesDetailPage() {
         <div className="space-y-5">
           <header>
             <h1 className="font-display text-3xl leading-tight text-ink sm:text-4xl">
-              {discovered ? species.name : '???'}
+              {speciesLabel(species, discovered)}
             </h1>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <RarityBadge rarity={species.rarity} variant="full" />
@@ -254,47 +259,12 @@ export function SpeciesDetailPage() {
             )}
           </Card>
 
-          {related.length > 0 && (
-            <section aria-labelledby="related-heading">
-              <h2
-                id="related-heading"
-                className="mb-1 text-sm font-medium tracking-wide text-ink-muted uppercase"
-              >
-                Related species
-              </h2>
-              <p className="mb-3 text-xs text-ink-subtle">
-                Others sharing the {species.archetype} type.
-              </p>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                {related.map((candidate) => {
-                  const candidateOwned = (owned.data?.countBySlug[candidate.slug] ?? 0) > 0;
-                  return (
-                    <Link
-                      key={candidate.slug}
-                      to={`/encyclopedia/${candidate.slug}`}
-                      className="lift block rounded-2xl"
-                    >
-                      <RarityGlowRing rarity={candidate.rarity}>
-                        <Artwork
-                          asset={speciesAsset(candidate)}
-                          displayWidth={ARTWORK_WIDTH.strip}
-                          name={candidate.name}
-                          rarityLabel={rarityStyle(candidate.rarity).label}
-                          silhouette={!candidateOwned}
-                          aspect="aspect-[3/4]"
-                        />
-                        <div className="p-2.5">
-                          <p className="truncate text-xs font-medium text-ink">
-                            {candidateOwned ? candidate.name : '???'}
-                          </p>
-                        </div>
-                      </RarityGlowRing>
-                    </Link>
-                  );
-                })}
-              </div>
-            </section>
-          )}
+          {/*
+            The same rail the Collection copy page shows, and the same
+            component — the two used to be separate copies that had drifted
+            apart on exactly this question of gating.
+          */}
+          <RelatedSpeciesStrip subject={species} allSpecies={allSpecies.data} />
 
           <p className="flex items-center gap-2 text-xs text-ink-subtle">
             <BookOpen className="size-3.5" aria-hidden="true" />

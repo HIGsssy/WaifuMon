@@ -141,3 +141,20 @@ export function relatedSpecies(
     .sort((a, b) => byRarityDesc(a.rarity, b.rarity) || a.name.localeCompare(b.name))
     .slice(0, limit);
 }
+
+/**
+ * A species' name, or the encyclopedia's `???` placeholder while the player is
+ * not positively authorized to know it.
+ *
+ * Deliberately takes the **same tri-state** `discovered` value that
+ * `<SpeciesArtwork>` gates the pixels on, and applies the same `=== true`
+ * predicate to it. The name and the artwork used to be two independent
+ * `discovered ? … : …` expressions at every call site, which is one more place
+ * for them to disagree about what "not established yet" means.
+ */
+export function speciesLabel(
+  species: { name: string },
+  discovered: boolean | undefined,
+): string {
+  return discovered === true ? species.name : '???';
+}

@@ -205,6 +205,20 @@ export interface CollectionService {
    * to show the CAUGHT duplicate-warning badge *before* charms are spent.
    */
   hasActiveSpeciesCopy(playerId: number, speciesId: number): Promise<boolean>;
+  /**
+   * True iff the player has at least one active (non-released) copy of the
+   * species with this **slug** — the dex's own definition of "discovered".
+   *
+   * The slug-keyed sibling of {@link hasActiveSpeciesCopy}, added for the
+   * byte-serving artwork routes. Those are addressed by slug (the content
+   * identity), never by the internal species id, and resolving slug → id in the
+   * route would mean a second round trip purely to satisfy a signature. One
+   * indexed join answers it directly.
+   *
+   * Read-only, and deliberately the *same* rule the Portal's dex overlay uses,
+   * so the server cannot disagree with the client about what "discovered" means.
+   */
+  hasDiscoveredSpeciesSlug(playerId: number, slug: string): Promise<boolean>;
   /** Substring match on nickname/species name, active copies only. */
   searchByName(playerId: number, query: string, limit?: number): Promise<OwnedEntry[]>;
   /**
@@ -810,12 +824,33 @@ export function createCollectionService(deps: CollectionServiceDeps): Collection
     return row.total > 0;
   }
 
+  /**
+   * Discovery by slug. A join rather than two queries: the artwork routes ask
+   * this on every request for a species image, so it has to be one round trip
+   * against `player_waifus_player_species_idx` plus the unique slug index.
+   */
+  async function hasDiscoveredSpeciesSlug(playerId: number, slug: string): Promise<boolean> {
+    const [row = { total: 0 }] = await db
+      .select({ total: count() })
+      .from(playerWaifus)
+      .innerJoin(species, eq(species.id, playerWaifus.speciesId))
+      .where(
+        and(
+          eq(playerWaifus.playerId, playerId),
+          eq(species.slug, slug),
+          isNull(playerWaifus.releasedAt),
+        ),
+      );
+    return row.total > 0;
+  }
+
   return {
     listOwned,
     getDexStats,
     getOwned,
     hasOtherActiveCopies,
     hasActiveSpeciesCopy,
+    hasDiscoveredSpeciesSlug,
     searchByName,
     listOwnedGrouped,
     listOwnedCopiesForSpecies,

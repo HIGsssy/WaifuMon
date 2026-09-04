@@ -444,7 +444,9 @@ describe('GET /cards/species/:slug', () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.headers['content-type']).toBe('image/webp');
-    expect(res.headers['cache-control']).toBe('public, max-age=300, must-revalidate');
+    // `private`: a card render is caller-dependent — the species route is
+    // gated on the requesting player's dex, so no shared cache may hold it.
+    expect(res.headers['cache-control']).toBe('private, max-age=300, must-revalidate');
     expect(res.headers.etag).toMatch(/^"[0-9a-f]{16}"$/);
     expect(isWebp(res.rawPayload)).toBe(true);
     expect(await dimensionsOf(res.rawPayload)).toEqual({

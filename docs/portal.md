@@ -524,6 +524,39 @@ migration path written out in advance. Set `VITE_ASSET_CDN_URL` and list
 `platformCdn` in `VITE_IMAGE_PROVIDERS` to move artwork off local assets. It
 declines every id until an origin is configured, so it is inert otherwise.
 
+### Species artwork is fail-closed
+
+Artwork for a species with **no owned copy in hand** — an encyclopedia tile, a
+species hero, a Related Species rail — is resolved in exactly one component,
+`<SpeciesArtwork>`, and that component takes a required tri-state `discovered`
+prop from `useSpeciesDiscovery`:
+
+```
+real artwork is rendered  ⟺  discovered === true
+```
+
+`false`, `undefined` (still loading), an overlay belonging to a different
+player, or a failed ownership walk all render the silhouette. The reverse — a
+silhouette shown briefly for a species the player does own — is the acceptable
+direction and is what a slow overlay produces.
+
+Two things keep this from rotting:
+
+- `useSpeciesDiscovery` refuses to trust an `OwnedSlugSummary` whose stamped
+  `playerId` is not the session's. `placeholderData: keepPreviousData` serves
+  the previous key's answer while a new key resolves, so on a player switch the
+  overlay arrives non-pending, `success`-status and about the wrong person.
+- An architecture test (`src/__tests__/architecture.test.ts`) forbids the
+  one-argument `speciesAsset(species)` call anywhere but that component, so the
+  gate cannot be bypassed by writing a new `<Artwork>` call site.
+
+`speciesAsset(species, waifu)` — the two-argument form — is unrestricted: it
+names a copy in the player's own collection, served through the authenticated
+owned-artwork route, so ownership is proven by the copy's existence.
+
+The server enforces the same rule independently; see
+[who may fetch which species' artwork](platform-api.md#who-may-fetch-which-species-artwork).
+
 ### `assetId` from the API drops straight in
 
 The Platform API identifies artwork with `{ kind, slug, variant }` and never a

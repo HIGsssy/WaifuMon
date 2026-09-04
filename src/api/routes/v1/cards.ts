@@ -45,6 +45,7 @@ import type { SpeciesContent } from '../../../modules/content/schemas';
 import type { ApiContext } from '../../context';
 import { ApiCardLevelError, ApiSpeciesNotFoundError } from '../../errors';
 import { requirePlayer } from '../../plugins/playerScope';
+import { assertSpeciesVisible } from '../../plugins/speciesVisibility';
 import type { FastifyPluginAsyncZod } from '../../plugins/typeProvider';
 import {
   commonErrorResponses,
@@ -54,11 +55,16 @@ import {
 } from '../../schemas/common';
 
 /**
- * Mirrors `/dev-assets`. Short and revalidating rather than immutable: the URL
- * carries no version, so a content edit must be able to take effect. The ETag
- * makes revalidation cheap — a 304 costs one hash, not one render.
+ * Short and revalidating rather than immutable: the URL carries no version, so
+ * a content edit must be able to take effect. The ETag makes revalidation
+ * cheap — a 304 costs one hash, not one render.
+ *
+ * `private`, not `public`: both routes are caller-dependent. The owned card is
+ * one player's copy by definition, and the species card now answers bytes or
+ * 403 according to the requesting player's dex — a shared cache keyed on the
+ * URL alone would serve one player's authorized render to another player.
  */
-const CACHE_CONTROL = 'public, max-age=300, must-revalidate';
+const CACHE_CONTROL = 'private, max-age=300, must-revalidate';
 
 const widthQuery = z.coerce
   .number()
@@ -120,9 +126,13 @@ const cardResponses = {
   ...commonErrorResponses,
 } as const;
 
-/** The species route additionally refuses to render a gated appearance. */
+/**
+ * The species route additionally refuses to render a gated appearance, and —
+ * for a player's browser session — a species that player has not discovered.
+ */
 const speciesCardResponses = {
   ...cardResponses,
+  403: commonErrorResponses[400].describe('This player has not discovered this species.'),
   409: commonErrorResponses[400].describe(
     'The named appearance is level-gated and cannot be previewed on the species route.',
   ),
@@ -263,7 +273,9 @@ export const cardRoutes =
             '`ETag` / `If-None-Match`.\n\n' +
             'Artwork falls back (appearance → species default) when a file is missing, and the ' +
             'cache identity follows the artwork that actually resolved.\n\n' +
-            'Level-gated appearances are **not** renderable here — see `variant`.',
+            'Level-gated appearances are **not** renderable here — see `variant`.\n\n' +
+            'A **portal session** may only render a species it has discovered; anything else ' +
+            'answers `403 SPECIES_NOT_DISCOVERED`. Bearer-token callers are unrestricted.',
           params: z.object({ slug: slugParam }),
           querystring: speciesCardQuery,
           response: speciesCardResponses,
@@ -271,6 +283,10 @@ export const cardRoutes =
       },
       async (req, reply) => {
         const species = speciesOr404(req.params.slug);
+        // A rendered card is the species' artwork with a frame around it, so
+        // the encyclopedia's spoiler rule has to hold here too — otherwise the
+        // card route is simply the artwork route with an extra border.
+        await assertSpeciesVisible(ctx, req, species.slug);
         assertLevelInRange(req.query.level, ctx);
 
         const request = logFallback(

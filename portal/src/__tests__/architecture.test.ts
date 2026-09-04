@@ -9,6 +9,9 @@
  *           image resolver so the asset source stays swappable (§12)
  *   §24.6   browser-authenticated writes stay in explicit API helpers, and
  *           this catches a stray `apiClient.post(...)` at author time
+ *   §8.7    un-owned species artwork is resolved only inside the component
+ *           that requires a discovery answer — the silhouette gate cannot be
+ *           forgotten, because there is nowhere else to forget it
  *
  * A lint rule covers the first two as well, but lint is opt-in and this is not:
  * `npm test` fails.
@@ -84,6 +87,37 @@ describe('architectural boundaries', () => {
     const allowed = new Set(['images/providers/cardApi.ts']);
     const offenders = files.filter(
       (file) => cardRoute.test(file.contents) && !allowed.has(file.path),
+    );
+    expect(offenders.map((f) => f.path)).toEqual([]);
+  });
+
+  /**
+   * The privacy rule that a code review keeps failing to catch.
+   *
+   * `speciesAsset(species)` — the one-argument form, with no owned copy in
+   * hand — resolves the *real* artwork of an arbitrary species. Whether the
+   * player may see it is a fact about their dex, and `<Artwork silhouette>` is
+   * an optional prop: a call site that simply omits it renders the artwork with
+   * nothing in the types objecting. That is precisely how the Collection detail
+   * page's related-species rail came to show unlocked art for species the
+   * player had never met.
+   *
+   * So the un-owned form may be written in exactly one component, and that
+   * component takes discovery as a required, tri-state input and silhouettes
+   * anything that is not positively `true`.
+   *
+   * The two-argument form (`speciesAsset(species, waifu)`) is deliberately not
+   * restricted: it names a copy in the player's own collection, addressed
+   * through the authenticated owned-artwork route, so ownership is proven by
+   * the copy's existence rather than by an overlay.
+   */
+  it('resolves un-owned species artwork only inside the gated component', () => {
+    // `speciesAsset(` up to its first `)` with no `,` in between: the
+    // single-argument call.
+    const unownedForm = /speciesAsset\(\s*[^,)]*\)/;
+    const allowed = new Set(['components/media/SpeciesArtwork.tsx', 'images/assets.ts']);
+    const offenders = files.filter(
+      (file) => unownedForm.test(file.contents) && !allowed.has(file.path),
     );
     expect(offenders.map((f) => f.path)).toEqual([]);
   });

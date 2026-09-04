@@ -3,9 +3,12 @@
  *
  * Unlike rendered cards, these responses do not compose anything: they stream
  * the artwork selected by the same appearance service and resolver used by
- * Discord and cards. The public species route exposes only the ungated default
- * appearance. A copy-specific route performs the normal ownership and level
- * checks before serving the appearance that copy is wearing.
+ * Discord and cards. The species route exposes only the ungated default
+ * appearance, and only to a caller allowed to see that species at all — see
+ * `assertSpeciesVisible`, which is what stops a player reading the whole
+ * encyclopedia out of the URL bar. A copy-specific route performs the normal
+ * ownership and level checks before serving the appearance that copy is
+ * wearing.
  */
 import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
@@ -19,6 +22,7 @@ import {
 import type { ApiContext } from '../../context';
 import { ApiSpeciesNotFoundError } from '../../errors';
 import { requirePlayer } from '../../plugins/playerScope';
+import { assertSpeciesVisible } from '../../plugins/speciesVisibility';
 import type { FastifyPluginAsyncZod } from '../../plugins/typeProvider';
 import {
   commonErrorResponses,
@@ -29,8 +33,14 @@ import {
 } from '../../schemas/common';
 
 const SUPPORTED_WIDTHS = [256, 512, 1024] as const;
-const PUBLIC_CACHE_CONTROL = 'public, max-age=300, must-revalidate';
-const PRIVATE_CACHE_CONTROL = 'private, max-age=300, must-revalidate';
+/**
+ * Every artwork response is now caller-dependent: the species route answers
+ * bytes or 403 depending on the requesting player's dex, and the owned route
+ * always has one player in scope. `private` is therefore the only correct
+ * policy — a shared cache keyed on the URL alone would happily hand one
+ * player's authorized response to another player's 403.
+ */
+const CACHE_CONTROL = 'private, max-age=300, must-revalidate';
 
 const artworkQuery = z.object({
   width: z.coerce
@@ -66,6 +76,12 @@ const artworkResponses = {
   304: z.null().describe('The artwork is unchanged — the ETag matched.'),
   ...notFoundResponse,
   ...commonErrorResponses,
+} as const;
+
+/** The species route adds 403 for a species this player has not discovered. */
+const speciesArtworkResponses = {
+  ...artworkResponses,
+  403: errorSchema.describe('This player has not discovered this species.'),
 } as const;
 
 /** The owned route adds 409 for a requested appearance this copy has not earned. */
@@ -159,17 +175,23 @@ export const artworkRoutes =
           summary: 'Get a species’ base artwork',
           description:
             'Returns the species’ ungated default artwork. Level-gated variants are never ' +
-            'addressable through this route.',
+            'addressable through this route.\n\n' +
+            'A **portal session** may only fetch a species it has discovered — owns at least one ' +
+            'active copy of — and anything else answers `403 SPECIES_NOT_DISCOVERED`. ' +
+            'Bearer-token callers (the bot, tools, the admin panel) are unrestricted.',
           params: z.object({ slug: slugParam }),
           querystring: artworkQuery,
-          response: artworkResponses,
+          response: speciesArtworkResponses,
         },
       },
       async (req, reply) => {
         const species = appearance.speciesContent(req.params.slug);
         if (!species) throw new ApiSpeciesNotFoundError(req.params.slug);
+        // Before a byte is read: the dex rule is an authorization check, not a
+        // presentation one, so it runs ahead of any artwork resolution.
+        await assertSpeciesVisible(ctx, req, species.slug);
         const request = speciesCardRequest(presentation, species);
-        await sendArtwork(req, reply, request.artwork.absolutePath, PUBLIC_CACHE_CONTROL);
+        await sendArtwork(req, reply, request.artwork.absolutePath, CACHE_CONTROL);
         return reply;
       },
     );
@@ -199,7 +221,7 @@ export const artworkRoutes =
           req.query.appearance === undefined
             ? ownedCardRequest(presentation, entry)
             : ownedAppearanceArtworkRequest(presentation, entry, req.query.appearance);
-        await sendArtwork(req, reply, request.artwork.absolutePath, PRIVATE_CACHE_CONTROL);
+        await sendArtwork(req, reply, request.artwork.absolutePath, CACHE_CONTROL);
         return reply;
       },
     );

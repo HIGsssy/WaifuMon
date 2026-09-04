@@ -12,6 +12,7 @@ import { useSearchParams } from 'react-router';
 import type { Affinity, Race } from '@/api/types';
 import { useContentSpecies } from '@/api/hooks/useContent';
 import { useOwnedSlugs } from '@/api/hooks/useOwnedSlugs';
+import { useSpeciesDiscovery } from '@/api/hooks/useSpeciesDiscovery';
 import { useCurrentSession } from '@/auth/useSession';
 import { EmptyState } from '@/components/layout/EmptyState';
 import { ErrorState } from '@/components/layout/ErrorState';
@@ -42,6 +43,12 @@ export function EncyclopediaPage() {
   const session = useCurrentSession();
   const species = useContentSpecies();
   const owned = useOwnedSlugs(session.playerId);
+  // The same query read through the fail-closed lens. `owned` still drives the
+  // filters and the tally; nothing that decides what to *reveal* reads it
+  // directly, because `owned.data` alone cannot say whose dex it is holding —
+  // see `useSpeciesDiscovery`. Named `dex` because `discovery` on this page is
+  // already the name of the Show filter.
+  const dex = useSpeciesDiscovery(session.playerId);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const rarity = readParam(searchParams.get('rarity'), RARITY_ORDER);
@@ -72,7 +79,12 @@ export function EncyclopediaPage() {
   const race = readParam(searchParams.get('type'), races);
   const affinity = readParam(searchParams.get('affinity'), affinities);
 
-  const counts = useMemo(() => owned.data?.countBySlug ?? {}, [owned.data]);
+  // Filtering and the header tally only — never artwork. Both are gated on
+  // `discovery.isSettled` below, so an empty map here is never rendered.
+  const counts = useMemo(
+    () => (dex.isSettled ? (owned.data?.countBySlug ?? {}) : {}),
+    [owned.data, dex.isSettled],
+  );
 
   const visible = useMemo(() => {
     const needle = debouncedSearch.trim().toLowerCase();
@@ -191,7 +203,7 @@ export function EncyclopediaPage() {
         title="Encyclopedia"
         description="Every species in the world, discovered or not."
         actions={
-          species.data && owned.data ? (
+          species.data && dex.isSettled ? (
             <span className="tabular text-sm text-ink-muted">
               {discoveredCount} / {enabled.length} discovered
             </span>
@@ -223,7 +235,7 @@ export function EncyclopediaPage() {
             }}
           />
 
-          {species.isPending || owned.isPending ? (
+          {species.isPending || !dex.isSettled ? (
             <div className={GRID} aria-busy="true" aria-label="Loading the encyclopedia">
               {Array.from({ length: 10 }, (_, index) => (
                 <Skeleton key={index} className="aspect-[3/4] rounded-2xl" />
@@ -241,7 +253,7 @@ export function EncyclopediaPage() {
                 <SpeciesCard
                   key={entry.slug}
                   species={entry}
-                  ownedCount={counts[entry.slug] ?? 0}
+                  ownedCount={dex.copiesOf(entry.slug)}
                   priority={index < 4}
                 />
               ))}

@@ -146,6 +146,27 @@ so migrating a storage backend is a per-consumer change with **zero** contract
 impact. Content hashing, size negotiation, WebP fallbacks and edge routing all
 belong inside a resolver and never appear here.
 
+### Who may fetch which species' artwork
+
+The byte-serving species routes — `GET /v1/assets/waifumon/{slug}` and
+`GET /v1/cards/species/{slug}` — are **discovery-gated for player sessions**.
+
+| Caller | Rule |
+| --- | --- |
+| Bearer token (`PLATFORM_API_TOKEN`) | Unrestricted. The bot, the admin panel, the card-warming tools and the dev-mode Vite proxy all render every species by design, and no player is in scope. |
+| Portal session cookie | May fetch a species only if the player owns at least one active copy of it. Anything else — including a session whose player is not yet resolved — answers `403 SPECIES_NOT_DISCOVERED`. |
+
+This exists because the Portal's silhouette for an undiscovered species is a
+*presentation* choice. Slugs are public through `/content/species`, these routes
+are addressed by slug, and without the gate the entire encyclopedia was one
+hand-typed URL away from any signed-in player. The refusal is the standard JSON
+error envelope, never the withheld bytes, and both routes answer
+`Cache-Control: private` because the response now depends on who asked.
+
+Owned-copy artwork (`.../collection/owned/{waifuId}/artwork`) is unchanged: it
+was already ownership- and level-checked, and owning a copy is what authorizes
+it.
+
 This is enforced, not merely intended: an integration test walks every v1
 response body and fails on any image extension or `assets/` substring
 (`tests/integration/api/appearanceEndpoints.test.ts`). Re-adding a path field

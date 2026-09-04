@@ -8,24 +8,31 @@
 import { Link } from 'react-router';
 
 import type { ContentSpecies } from '@/api/types';
-import { Artwork } from '@/components/media/Artwork';
+import { SpeciesArtwork } from '@/components/media/SpeciesArtwork';
 import { Badge } from '@/components/ui/badge';
 import { RarityBadge } from '@/components/waifumon/RarityBadge';
 import { RarityGlowRing } from '@/components/waifumon/RarityGlowRing';
-import { speciesAsset } from '@/images/assets';
+import { speciesLabel } from '@/content/species';
 import { rarityStyle } from '@/lib/rarity';
 import { cn } from '@/lib/cn';
 import { ARTWORK_WIDTH } from '@/images/sizes';
 
 export interface SpeciesCardProps {
   species: ContentSpecies;
-  /** How many copies the player owns; 0 means undiscovered. */
-  ownedCount: number;
+  /**
+   * How many copies the player owns, or `undefined` while the Portal has no
+   * trustworthy overlay for this player.
+   *
+   * Tri-state rather than "0 means undiscovered": those are genuinely different
+   * facts, and collapsing them is how a tile ends up deciding what to reveal
+   * from a default rather than from an answer.
+   */
+  ownedCount: number | undefined;
   priority?: boolean;
 }
 
 export function SpeciesCard({ species, ownedCount, priority = false }: SpeciesCardProps) {
-  const discovered = ownedCount > 0;
+  const discovered = ownedCount === undefined ? undefined : ownedCount > 0;
   const rarity = rarityStyle(species.rarity);
 
   return (
@@ -33,24 +40,26 @@ export function SpeciesCard({ species, ownedCount, priority = false }: SpeciesCa
       to={`/encyclopedia/${species.slug}`}
       className="lift group block rounded-2xl"
       aria-label={
-        discovered
+        discovered === true
           ? `${species.name}, ${rarity.label}, ${ownedCount} owned`
           : `Undiscovered ${rarity.label} species`
       }
     >
-      <RarityGlowRing rarity={species.rarity} className={cn('h-full', !discovered && 'opacity-80')}>
+      <RarityGlowRing
+        rarity={species.rarity}
+        className={cn('h-full', discovered !== true && 'opacity-80')}
+      >
         <div className="flex h-full flex-col">
           <div className="relative">
-            <Artwork
-              asset={speciesAsset(species)}
+            <SpeciesArtwork
+              species={species}
+              discovered={discovered}
               displayWidth={ARTWORK_WIDTH.gridTile}
-              name={species.name}
               rarityLabel={rarity.label}
-              silhouette={!discovered}
               priority={priority}
               aspect="aspect-[3/4]"
             />
-            {discovered && (
+            {discovered === true && (
               <span className="tabular absolute top-2 right-2 rounded-full bg-black/55 px-2 py-0.5 text-xs font-medium text-white backdrop-blur-sm">
                 ×{ownedCount}
               </span>
@@ -61,15 +70,15 @@ export function SpeciesCard({ species, ownedCount, priority = false }: SpeciesCa
             <p
               className={cn(
                 'truncate text-sm font-medium',
-                discovered ? 'text-ink' : 'text-ink-subtle',
+                discovered === true ? 'text-ink' : 'text-ink-subtle',
               )}
-              title={discovered ? species.name : undefined}
+              title={discovered === true ? species.name : undefined}
             >
-              {discovered ? species.name : '???'}
+              {speciesLabel(species, discovered)}
             </p>
             <div className="mt-auto flex flex-wrap items-center gap-1.5">
               <RarityBadge rarity={species.rarity} />
-              {!discovered && <Badge variant="outline">Undiscovered</Badge>}
+              {discovered !== true && <Badge variant="outline">Undiscovered</Badge>}
             </div>
           </div>
         </div>

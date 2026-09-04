@@ -63,6 +63,28 @@ export class ApiSpeciesNotFoundError extends AppError {
 }
 
 /**
+ * Artwork was requested for a species this player has not discovered.
+ *
+ * Raised only for **player-scoped** callers (a Portal browser session). The
+ * shared bearer token is the bot and the operator tooling, which legitimately
+ * render every species; a player's browser gets the dex rule instead, so a
+ * silhouette in the UI cannot be walked around by opening the image URL.
+ *
+ * 403 rather than 404: the species genuinely exists and the content endpoints
+ * already say so, so pretending otherwise would buy no secrecy and would make
+ * a real typo indistinguishable from a locked entry in the logs.
+ */
+export class ApiSpeciesNotDiscoveredError extends AppError {
+  constructor(slug: string) {
+    super(
+      'SPECIES_NOT_DISCOVERED',
+      `Species "${slug}" has not been discovered by this player`,
+      'You have not discovered this species yet.',
+    );
+  }
+}
+
+/**
  * A card was requested at a level the game cannot reach. The ceiling comes
  * from `tables.waifuProgression.maxLevel`, so the API and the game can never
  * disagree about what a valid level is.
@@ -114,6 +136,12 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   PORTAL_FORBIDDEN: 403,
   PORTAL_CSRF_INVALID: 403,
   PORTAL_GUILD_FORBIDDEN: 403,
+  /**
+   * A player's browser asked for artwork of a species they have not caught.
+   * The Portal silhouettes those entries; this is the same rule enforced at
+   * the only place that can actually withhold the bytes.
+   */
+  SPECIES_NOT_DISCOVERED: 403,
   OAUTH_STATE_INVALID: 400,
   NOT_FOUND: 404,
   VALIDATION_ERROR: 400,

@@ -12,21 +12,17 @@ import { BookOpen, Heart, History, Sparkles, Star, Swords, type LucideIcon } fro
 import { Link } from 'react-router';
 
 import type { ContentSpecies, OwnedEntry } from '@/api/types';
-import { Artwork } from '@/components/media/Artwork';
 import { Button } from '@/components/ui/button';
 import { Card, CardTitle } from '@/components/ui/card';
 import { AffectionMeter, XpBar } from '@/components/waifumon/Meters';
 import { BuddyBonusCard } from '@/components/waifumon/BuddyBonusCard';
 import { AffinityPill, ContentRatingPill, TypePill } from '@/components/waifumon/Pills';
 import { RarityBadge } from '@/components/waifumon/RarityBadge';
-import { RarityGlowRing } from '@/components/waifumon/RarityGlowRing';
-import { buddyBonusFor, displayName, relatedSpecies, subtitleFor } from '@/content/species';
+import { RelatedSpeciesStrip } from '@/components/waifumon/RelatedSpeciesStrip';
+import { buddyBonusFor, displayName, subtitleFor } from '@/content/species';
 import { AppearanceGallery } from './AppearanceGallery';
 import { WaifumonHero } from './WaifumonHero';
-import { speciesAsset } from '@/images/assets';
 import { formatDate, formatNumber, formatRelative } from '@/lib/format';
-import { rarityStyle } from '@/lib/rarity';
-import { ARTWORK_WIDTH } from '@/images/sizes';
 
 /** A reserved slot for data the platform does not model yet (§16). */
 function PlaceholderCard({
@@ -71,7 +67,6 @@ export function WaifumonDetail({
   const { waifu, species, progress } = entry;
   const title = displayName(entry);
   const subtitle = subtitleFor(entry);
-  const related = allSpecies ? relatedSpecies(allSpecies, species) : [];
   // The bonus is a species property and rides on the content snapshot, not on
   // the seeded row embedded here — see `buddyBonusFor`.
   const buddyBonus = buddyBonusFor(allSpecies, species.slug);
@@ -206,42 +201,13 @@ export function WaifumonDetail({
           </Card>
         </div>
 
-        {related.length > 0 && (
-          <section aria-labelledby="related-heading">
-            <h2
-              id="related-heading"
-              className="mb-1 text-sm font-medium tracking-wide text-ink-muted uppercase"
-            >
-              Related species
-            </h2>
-            {/* Same-archetype neighbours: a presentation heuristic, labelled (§26). */}
-            <p className="mb-3 text-xs text-ink-subtle">
-              Others sharing the {species.archetype} type.
-            </p>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              {related.map((candidate) => (
-                <Link
-                  key={candidate.slug}
-                  to={`/encyclopedia/${candidate.slug}`}
-                  className="lift block rounded-2xl"
-                >
-                  <RarityGlowRing rarity={candidate.rarity}>
-                    <Artwork
-                      asset={speciesAsset(candidate)}
-                      displayWidth={ARTWORK_WIDTH.strip}
-                      name={candidate.name}
-                      rarityLabel={rarityStyle(candidate.rarity).label}
-                      aspect="aspect-[3/4]"
-                    />
-                    <div className="p-2.5">
-                      <p className="truncate text-xs font-medium text-ink">{candidate.name}</p>
-                    </div>
-                  </RarityGlowRing>
-                </Link>
-              ))}
-            </div>
-          </section>
-        )}
+        {/*
+          Gated inside the strip, not here: the tiles resolve discovery from
+          the ownership overlay themselves and silhouette anything not
+          positively unlocked. This page previously drew its own copy of this
+          rail with no gate, which is the leak the shared component removes.
+        */}
+        <RelatedSpeciesStrip subject={species} allSpecies={allSpecies} />
       </div>
     </div>
   );

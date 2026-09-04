@@ -54,6 +54,18 @@ const OWNED_SLUGS_STALE_TIME = 5 * 60_000;
 const MAX_PAGES = 40;
 
 export interface OwnedSlugSummary {
+  /**
+   * Whose collection this overlay was walked from.
+   *
+   * Load-bearing, not diagnostic. `placeholderData: keepPreviousData` keeps the
+   * previous query's answer on screen while a new key resolves — and the key
+   * carries the player id, so on a player switch the *previous player's* dex is
+   * served with `status: 'success'` and `isPending: false`. Anything reading
+   * this summary to decide whether artwork may be revealed has to be able to
+   * tell whose answer it is holding; see `useSpeciesDiscovery`, which refuses
+   * to trust a summary that is not stamped with the current player.
+   */
+  playerId: number;
   /** Species slug → how many active copies the player owns. */
   countBySlug: Record<string, number>;
   /** Species slug → the highest-level copy's owned id, for deep links. */
@@ -96,7 +108,7 @@ async function walkCollection(
     page += 1;
   }
 
-  return { countBySlug, bestCopyBySlug, truncated };
+  return { playerId, countBySlug, bestCopyBySlug, truncated };
 }
 
 export function useOwnedSlugs(playerId: number): UseQueryResult<OwnedSlugSummary> {
