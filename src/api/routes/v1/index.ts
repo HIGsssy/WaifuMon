@@ -27,6 +27,7 @@ import { playerRoutes } from './players';
 import { questRoutes } from './quests';
 import { sessionRoutes } from './session';
 import { shopRoutes } from './shop';
+import { adminEncounterRoutes } from './admin/encounters';
 
 export interface V1RouteOptions {
   /**
@@ -81,4 +82,8 @@ export const v1Routes =
     // Rendered card images. Behind a rollout flag, and the only routes that
     // answer with bytes rather than the `{ data: … }` envelope.
     if (options.cards === true) await app.register(cardRoutes(ctx));
+
+    // Admin: World Encounters. Silently skips route registration when the
+    // world-encounter admin service is not wired.
+    await app.register(adminEncounterRoutes(ctx));
   };

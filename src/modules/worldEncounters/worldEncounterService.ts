@@ -19,6 +19,7 @@
 import { eq } from 'drizzle-orm';
 import type { Db, DbOrTx } from '../../db/client';
 import {
+  activeWorldEncounters,
   playerWaifus,
   players,
   species,
@@ -38,6 +39,7 @@ import { selectEncounter } from './engine';
 import { rollCheck, computeChance } from './checkResolver';
 import { createEffectExecutor, type EffectExecutor, type AppliedEffect, type FollowUp } from './effectExecutor';
 import { hydrateEncounter } from './hydrate';
+import type { WorldEncounterVendorService } from './vendorService';
 import {
   createWorldEncounterRepository,
   type WorldEncounterRepository,
@@ -168,6 +170,20 @@ export interface Resolution {
   effectsApplied: AppliedEffect[];
   followUps: FollowUp[];
   chainedEncounterSlug: string | null;
+  /**
+   * If this resolution opened a chained encounter (via a `trigger_encounter`
+   * follow-up or `chainedEncounterSlug`), the id of the pending row the
+   * Continue button consumes. Null when there is nothing to continue.
+   */
+  continuationActiveId: number | null;
+  /**
+   * Present when the resolution opened a vendor. Discord picks up the id and
+   * paints the vendor UI on the same ephemeral.
+   */
+  vendorInstance: {
+    instanceId: number;
+    vendorKey: string;
+  } | null;
 }
 
 export interface WorldEncounterServiceDeps {
@@ -181,30 +197,21 @@ export interface WorldEncounterServiceDeps {
   /** Waifu max level, from content. Used by SP formula guard. */
   getMaxWaifuLevel: () => number;
   rng?: Rng;
+  /**
+   * Optional vendor service — when present, an `open_vendor` follow-up
+   * atomically materialises a vendor instance bound to the active encounter
+   * so the Discord layer only has to paint it.
+   */
+  vendor?: WorldEncounterVendorService | undefined;
 }
 
 /**
- * Buddy Bonus effect id keyed here so a rename lands in one place.
- *
- * NOTE: The current {@link BUDDY_BONUS_EFFECT_IDS} registry does not include
- * an encounter-oriented effect yet — adding one is a Buddy Bonus feature
- * change that lives with the registry, its content schema, and the admin
- * bonus editor. Until it lands, {@link resolveBuddyBonusPercent} returns 0
- * unconditionally; the surrounding plumbing is already in place, so wiring
- * the new id in is a one-line swap at that call site.
+ * Buddy Bonus effect id keyed here so a rename lands in one place. Added to
+ * the registry in {@link BUDDY_BONUS_EFFECT_IDS} — a species that authors
+ * `buddyBonus.effectId: "encounter_check_bonus"` grants a flat +N% to every
+ * SP check her buddy takes.
  */
-const CHECK_BONUS_EFFECT_ID = 'encounter_check_bonus';
-
-/**
- * Placeholder — returns 0 until an `encounter_check_bonus` (or equivalent)
- * Buddy Bonus effect id is added to
- * {@link BUDDY_BONUS_EFFECT_IDS}. The wiring around this call is complete;
- * substitute the real `deps.buddyBonus.percentFor(...)` invocation once the
- * registry entry lands.
- */
-async function resolveBuddyBonusPercent(): Promise<number> {
-  return 0;
-}
+const CHECK_BONUS_EFFECT_ID = 'encounter_check_bonus' as const;
 
 export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
   const rng = deps.rng ?? defaultRng();
@@ -341,7 +348,8 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
           expiresAt,
         });
         const buddy = await loadBuddyProfile(tx, opts.playerId);
-        const buddyBonusPercent = await resolveBuddyBonusPercent();
+        const buddyBonusPercent =
+          (await deps.buddyBonus?.percentFor(tx, opts.playerId, CHECK_BONUS_EFFECT_ID)) ?? 0;
         return {
           activeId: active.id,
           encounter: chosen,
@@ -434,7 +442,8 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
         .from(players)
         .where(eq(players.id, opts.playerId));
       const playerLevel = playerRow?.level ?? 1;
-      const buddyBonusPercent = await resolveBuddyBonusPercent();
+      const buddyBonusPercent =
+        (await deps.buddyBonus?.percentFor(tx, opts.playerId, CHECK_BONUS_EFFECT_ID)) ?? 0;
       const ctx: EncounterCheckContext = { playerId: opts.playerId, playerLevel, buddy, buddyBonusPercent };
 
       const availability = isChoiceAvailable(choice, ctx);
@@ -466,6 +475,53 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
         followUps.push({ kind: 'trigger_encounter', payload: { encounterSlug: chainedSlug } });
       }
 
+      // Pick the first `trigger_encounter` follow-up (whether it came from an
+      // effect or the encounter's own `chainedEncounterSlug`) and materialise
+      // it as a pending continuation row. Doing it here means the Continue
+      // button is a pure repaint — the row already exists — and a
+      // double-click races on the partial unique index the same way a fresh
+      // hunt would.
+      let continuationActiveId: number | null = null;
+      const chainFollowUp = followUps.find((f) => f.kind === 'trigger_encounter');
+      if (chainFollowUp) {
+        const nextSlug = String(
+          (chainFollowUp.payload as { encounterSlug?: string }).encounterSlug ?? '',
+        );
+        if (nextSlug.length > 0 && nextSlug !== encounter.slug) {
+          const nextLoaded = await repo.loadBySlug(nextSlug);
+          if (nextLoaded) {
+            // Insert continuation *after* the parent is flipped to `resolved`
+            // below — that ordering avoids the partial unique index blocking
+            // the parent-and-child transition. We hold the id for later.
+            continuationActiveId = -1; // sentinel set below
+          }
+        }
+      }
+
+      // Vendor: if the executor produced an `open_vendor` follow-up, spin up
+      // the instance now so a Discord repaint has the id ready and every
+      // stock decrement is a transactional purchase.
+      let vendorInstance: Resolution['vendorInstance'] = null;
+      if (deps.vendor) {
+        const vendorFollowUp = followUps.find((f) => f.kind === 'open_vendor');
+        if (vendorFollowUp) {
+          const vendorKey = String(
+            (vendorFollowUp.payload as { vendorKey?: string }).vendorKey ?? '',
+          );
+          if (vendorKey.length > 0) {
+            try {
+              const opened = await deps.vendor.openForEncounter(tx, active.id, vendorKey);
+              vendorInstance = { instanceId: opened.id, vendorKey: opened.vendorKey };
+            } catch (err) {
+              // Vendor key that isn't wired doesn't break the resolution —
+              // the follow-up survives so the Discord layer can render a
+              // "vendor unavailable" hint.
+              if (err instanceof AppError && err.code !== 'VENDOR_NOT_FOUND') throw err;
+            }
+          }
+        }
+      }
+
       const resolution: Record<string, unknown> = {
         choiceId: choice.id,
         success: check.success,
@@ -473,6 +529,7 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
         roll: check.roll,
         followUps,
         effectsApplied: application.applied,
+        vendorInstance,
       };
       await repo.markResolved(tx, active.id, choice.id, resolution);
       await repo.insertHistory(tx, {
@@ -486,6 +543,36 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
         startedAt: active.startedAt,
       });
 
+      // Insert the chained continuation now — parent is `resolved`, so the
+      // partial unique index will accept the new pending row.
+      if (continuationActiveId === -1 && chainFollowUp) {
+        const nextSlug = String(
+          (chainFollowUp.payload as { encounterSlug?: string }).encounterSlug ?? '',
+        );
+        const nextLoaded = await repo.loadBySlug(nextSlug);
+        if (nextLoaded) {
+          const expiresAt = new Date(
+            now.getTime() + deps.getConfig().defaultExpirySeconds * 1000,
+          );
+          const nextRow = await repo.insertActive(tx, {
+            playerId: opts.playerId,
+            encounterId: nextLoaded.encounter.id,
+            source: active.source as 'hunt' | 'travel',
+            regionId: active.regionId,
+            originRegionId: active.originRegionId,
+            destinationRegionId: active.destinationRegionId,
+            guildId: active.guildId,
+            channelId: active.channelId,
+            contextJson: { continuedFrom: encounter.slug },
+            expiresAt,
+            continuationOfId: active.id,
+          });
+          continuationActiveId = nextRow.id;
+        } else {
+          continuationActiveId = null;
+        }
+      }
+
       return {
         encounter,
         choice,
@@ -493,6 +580,8 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
         effectsApplied: application.applied,
         followUps,
         chainedEncounterSlug: chainedSlug,
+        continuationActiveId,
+        vendorInstance,
       };
     });
   }
@@ -520,11 +609,19 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
   async function getPendingForPlayer(playerId: number): Promise<EncounterActivation | null> {
     const active = await repo.getPendingForPlayer(playerId);
     if (!active) return null;
+    return activationFor(playerId, active);
+  }
+
+  async function activationFor(
+    playerId: number,
+    active: import('../../db/schema').ActiveWorldEncounterRow,
+  ): Promise<EncounterActivation | null> {
     const loaded = await repo.loadById(active.encounterId);
     if (!loaded) return null;
     const encounter = hydrateEncounter(loaded);
     const buddy = await loadBuddyProfile(deps.db, playerId);
-    const buddyBonusPercent = await resolveBuddyBonusPercent();
+    const buddyBonusPercent =
+      (await deps.buddyBonus?.percentFor(deps.db, playerId, CHECK_BONUS_EFFECT_ID)) ?? 0;
     const [playerRow] = await deps.db
       .select({ level: players.level })
       .from(players)
@@ -543,6 +640,26 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
     };
   }
 
+  /**
+   * Fetch a specific pending activation by id. Used by the Continue button:
+   * a chained encounter's row is written during resolution and this is the
+   * lookup the button uses to paint it. Refuses if the row belongs to a
+   * different player.
+   */
+  async function getActivationById(
+    activeId: number,
+    playerId: number,
+  ): Promise<EncounterActivation | null> {
+    const [row] = await deps.db
+      .select()
+      .from(activeWorldEncounters)
+      .where(eq(activeWorldEncounters.id, activeId));
+    if (!row) return null;
+    if (row.playerId !== playerId) return null;
+    if (row.status !== 'pending') return null;
+    return activationFor(playerId, row);
+  }
+
   async function saveMessageId(activeId: number, messageId: string): Promise<void> {
     await deps.db.transaction((tx) => repo.updateActiveMessage(tx, activeId, messageId));
   }
@@ -553,6 +670,7 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
     resolveChoice,
     preview,
     getPendingForPlayer,
+    getActivationById,
     saveMessageId,
     repo,
     executor,

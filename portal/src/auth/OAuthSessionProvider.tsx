@@ -17,6 +17,7 @@ function toSession(payload: PortalSessionPayload | undefined): PortalSession | n
     avatarUrl: payload.discordUser.avatarUrl,
     discordUserId: payload.discordUser.id,
     discordGuildId: payload.selectedGuild.discordGuildId,
+    permissions: payload.permissions ?? [],
   };
 }
 

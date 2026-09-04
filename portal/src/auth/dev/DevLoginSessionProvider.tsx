@@ -133,6 +133,17 @@ export function DevLoginSessionProvider({ children }: { children: ReactNode }) {
           // The player resource carries the internal guild id, not the
           // snowflake — the signed-in identity is the only source for one.
           discordGuildId: identity?.discordGuildId,
+          // Dev-login shares the env auth's every-permission stance: the
+          // Portal is developed locally against MSW fixtures where the API
+          // does not compute permissions.
+          permissions: [
+            'admin.access',
+            'encounters.read',
+            'encounters.write',
+            'encounters.publish',
+            'encounters.simulate',
+            'encounters.history',
+          ],
         }
       : null;
 

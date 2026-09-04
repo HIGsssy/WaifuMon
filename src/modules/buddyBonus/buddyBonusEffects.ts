@@ -33,6 +33,7 @@ export const BUDDY_BONUS_EFFECT_IDS = [
   'hunt_item_find_chance',
   'affection_gain',
   'boss_reward_gain',
+  'encounter_check_bonus',
 ] as const;
 
 export type BuddyBonusEffectId = (typeof BUDDY_BONUS_EFFECT_IDS)[number];
@@ -125,6 +126,16 @@ export const BUDDY_BONUS_EFFECTS: Readonly<Record<BuddyBonusEffectId, BuddyBonus
   boss_reward_gain: {
     operation: 'percent_modifier',
     appliesTo: 'boss_encounter_rewards',
+    allowedTargetTypes: [],
+  },
+  /**
+   * Percentage-point shift added to a World Encounter check's success chance,
+   * on top of SP/level/affinity/race. Read once per resolution by the check
+   * resolver in `src/modules/worldEncounters/checkResolver.ts`.
+   */
+  encounter_check_bonus: {
+    operation: 'percent_modifier',
+    appliesTo: 'world_encounter_check',
     allowedTargetTypes: [],
   },
 };

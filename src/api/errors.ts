@@ -136,6 +136,7 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   PORTAL_FORBIDDEN: 403,
   PORTAL_CSRF_INVALID: 403,
   PORTAL_GUILD_FORBIDDEN: 403,
+  PORTAL_PERMISSION_DENIED: 403,
   /**
    * A player's browser asked for artwork of a species they have not caught.
    * The Portal silhouettes those entries; this is the same rule enforced at

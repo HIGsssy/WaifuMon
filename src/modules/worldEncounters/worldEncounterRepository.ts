@@ -124,6 +124,8 @@ export interface NewActiveValues {
   channelId: string | null;
   contextJson: Record<string, unknown>;
   expiresAt: Date;
+  /** Set when this row is a chained continuation of another resolved row. */
+  continuationOfId?: number | null;
 }
 
 export interface NewHistoryValues {
@@ -318,6 +320,7 @@ export function createWorldEncounterRepository(db: Db): WorldEncounterRepository
           channelId: values.channelId,
           contextJson: values.contextJson,
           expiresAt: values.expiresAt,
+          continuationOfId: values.continuationOfId ?? null,
         })
         .returning();
       if (!row) throw new Error('insertActive: no row returned');

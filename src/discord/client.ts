@@ -36,7 +36,12 @@ import {
   handleEncounterRelease,
   handleHunt,
 } from './commands/waifumonHunt';
-import { handleWorldEncounterChoose } from './commands/waifumonWorldEncounter';
+import {
+  handleWorldEncounterChoose,
+  handleWorldEncounterContinue,
+  handleWorldEncounterVendorBuy,
+  handleWorldEncounterVendorOpen,
+} from './commands/waifumonWorldEncounter';
 import {
   handleBuddyAutocomplete,
   handleAppearanceCommand,
@@ -253,6 +258,12 @@ export function createDiscordClient(ctx: AppContext): Client {
         handleEncounterRelease(ctx, i, prov, args),
       'encw:choose': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleWorldEncounterChoose(ctx, i, prov, args),
+      'encw:continue': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleWorldEncounterContinue(ctx, i, prov, args),
+      'encv:open': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleWorldEncounterVendorOpen(ctx, i, prov, args),
+      'encv:buy': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleWorldEncounterVendorBuy(ctx, i, prov, args),
       'col:page': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleCollectionPage(ctx, i, prov, args),
       'col:pick': (i: StringSelectMenuInteraction, prov: Provisioned) =>

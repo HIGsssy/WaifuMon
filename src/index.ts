@@ -29,6 +29,12 @@ import { createCareService } from './modules/care/careService';
 import { createWorldEncounterService } from './modules/worldEncounters/worldEncounterService';
 import { createWorldEncounterAdminService } from './modules/worldEncounters/adminService';
 import { seedWorldEncounters } from './modules/worldEncounters/seed';
+import {
+  createWorldEncounterVendorService,
+  seedWorldEncounterVendors,
+} from './modules/worldEncounters/vendorService';
+import { createGuildOwnershipService } from './modules/portalAuth/guildOwnershipService';
+import { createPortalAuthorizationService } from './modules/portalAuth/portalAuthService';
 import { createAppearanceService } from './modules/appearance/appearanceService';
 import { configureCardRenderer, shutdownCardRenderer } from './modules/cards';
 import { OwnedCardWarmer } from './modules/appearance/ownedCardWarm';
@@ -112,6 +118,11 @@ async function main(): Promise<void> {
    */
   let contentSnapshot = content;
   const buddyBonus = createBuddyBonusService({ getContent: () => contentSnapshot });
+  const worldEncounterVendorService = createWorldEncounterVendorService({
+    db,
+    currency,
+    inventory,
+  });
   const progression = createProgressionService({
     config: content.tables.progression,
     baseMaxEnergy: content.tables.energy.baseMax,
@@ -317,6 +328,7 @@ async function main(): Promise<void> {
         progression,
         collection,
         buddyBonus,
+        vendor: worldEncounterVendorService,
         getConfig: () => {
           const cfg = contentSnapshot.tables.worldEncounter;
           return {
@@ -327,6 +339,8 @@ async function main(): Promise<void> {
         },
         getMaxWaifuLevel: () => contentSnapshot.tables.waifuProgression.maxLevel,
       }),
+      worldEncounterAdmin: createWorldEncounterAdminService(db, () => contentSnapshot),
+      worldEncounterVendor: worldEncounterVendorService,
     },
   };
 
@@ -346,6 +360,7 @@ async function main(): Promise<void> {
         'seeded world encounters',
       );
     }
+    await seedWorldEncounterVendors(db);
   } catch (err) {
     logger.warn({ err }, 'world encounter seed failed — feature will run with whatever is in the DB');
   }
@@ -519,6 +534,35 @@ async function main(): Promise<void> {
     worldEncounters: createWorldEncounterAdminService(db, () => contentSnapshot),
   });
 
+  // Guild ownership: the Portal admin authorization layer answers "who owns
+  // this guild?" through this service. Reads live from the bot's client cache
+  // via `guilds.fetch`, falling back to a `null` on any error — meaning
+  // "unknown" and therefore no admin permissions.
+  const guildOwnership = createGuildOwnershipService({
+    fetchOwnerId: async (discordGuildId) => {
+      if (!client.isReady()) return null;
+      const guild = await client.guilds.fetch(discordGuildId);
+      return guild.ownerId;
+    },
+    logger,
+  });
+  // Prime the cache from the client's guild cache once ready, and keep it
+  // fresh on updates. Guild ownership transfer is rare, but the invalidation
+  // is a two-line hook that keeps the cache honest.
+  client.once('ready', (readyClient) => {
+    for (const g of readyClient.guilds.cache.values()) {
+      guildOwnership.set(g.id, g.ownerId);
+    }
+  });
+  client.on('guildUpdate', (before, after) => {
+    if (before.ownerId !== after.ownerId) guildOwnership.set(after.id, after.ownerId);
+  });
+  client.on('guildCreate', (g) => guildOwnership.set(g.id, g.ownerId));
+
+  const portalAuthorization = createPortalAuthorizationService({
+    guildOwnership,
+  });
+
   // Platform API: a thin HTTP adapter over the same service layer the Discord
   // handlers call, on its own port and behind its own token. Silent and
   // zero-overhead unless PLATFORM_API_ENABLED=true. It reads `ctx` live rather
@@ -526,11 +570,18 @@ async function main(): Promise<void> {
   const platformApi = await startPlatformApi({
     config: config.platformApi,
     ...(config.portalAuth?.enabled
-      ? { portalAuth: { config: config.portalAuth, sessions: createPortalSessionService(db, config.portalAuth) } }
+      ? {
+          portalAuth: {
+            config: config.portalAuth,
+            sessions: createPortalSessionService(db, config.portalAuth),
+            authorization: portalAuthorization,
+          },
+        }
       : {}),
     logger,
     ctx: {
       services: ctx.services,
+      portalAuthorization,
       // Read through `ctx` so an admin-panel content reload is visible to the
       // API immediately, exactly as it is to the Discord handlers.
       getContent: () => ctx.content,

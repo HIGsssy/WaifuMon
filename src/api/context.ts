@@ -16,6 +16,7 @@ import type { OwnedCardWarmer } from '../modules/appearance/ownedCardWarm';
 import type { CardRenderer } from '../modules/cards';
 import type { LoadedContent } from '../modules/content/schemas';
 import type { IdentityResolver } from './identity';
+import type { PortalAuthorizationService } from '../modules/portalAuth/portalAuthService';
 
 export interface ApiContext {
   services: AppServices;
@@ -58,4 +59,11 @@ export interface ApiContext {
    * depends on it.
    */
   resolveIdentity?: IdentityResolver;
+  /**
+   * Portal permission oracle. Present when the host wires the Discord guild
+   * ownership service (i.e. when the bot is available to the API). Absent
+   * silently keeps every Portal admin endpoint on 403 — the auth hook still
+   * runs, but no session ever holds a permission.
+   */
+  portalAuthorization?: PortalAuthorizationService | undefined;
 }

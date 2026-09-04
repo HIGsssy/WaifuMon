@@ -73,6 +73,12 @@
       "operation": "percent_modifier",
       "appliesTo": "boss_encounter_rewards",
       "allowedTargetTypes": []
+    },
+
+    "encounter_check_bonus": {
+      "operation": "percent_modifier",
+      "appliesTo": "world_encounter_check",
+      "allowedTargetTypes": []
     }
   },
 

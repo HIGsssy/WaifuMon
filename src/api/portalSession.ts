@@ -70,6 +70,14 @@ export interface BrowserSession {
   needsGuildSelection?: boolean;
   noProfile?: boolean;
   csrfToken?: string;
+  /**
+   * Portal permissions computed for this session. Frontend uses them for
+   * gating admin UI; the API independently re-checks on every mutation, so
+   * this list is a UX hint rather than a security boundary. Empty array
+   * (never omitted) when the session has no permissions — that keeps the
+   * frontend model simple.
+   */
+  permissions?: string[];
 }
 
 export function createDiscordOAuthClient(config: Pick<PortalSessionConfig, 'discordClientId' | 'discordClientSecret'>): DiscordOAuthClient {

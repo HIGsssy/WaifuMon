@@ -35,3 +35,14 @@ export function useCurrentSession(): PortalSession {
   }
   return session;
 }
+
+/**
+ * True iff the current session holds `permission`. Never a security boundary
+ * — API routes independently re-check every mutation. Use to hide admin UI
+ * elements from unprivileged sessions.
+ */
+export function useHasPermission(permission: string): boolean {
+  const { session } = useSession();
+  if (!session) return false;
+  return session.permissions.includes(permission);
+}

@@ -34,6 +34,8 @@ import type { BossEncounterService } from '../modules/bosses/bossEncounterServic
 import type { TravelService } from '../modules/travel/travelService';
 import type { BossAnnouncer } from '../modules/bosses/bossScheduler';
 import type { WorldEncounterService } from '../modules/worldEncounters/worldEncounterService';
+import type { WorldEncounterAdminService } from '../modules/worldEncounters/adminService';
+import type { WorldEncounterVendorService } from '../modules/worldEncounters/vendorService';
 
 export interface AppServices {
   guilds: GuildService;
@@ -88,6 +90,17 @@ export interface AppServices {
    * has been explicitly excluded from the service graph (test seams).
    */
   worldEncounter?: WorldEncounterService | undefined;
+  /**
+   * DB-backed admin CRUD for encounter definitions. Present when the world
+   * encounter feature is wired; the Portal Admin API and the legacy admin
+   * panel both go through this service.
+   */
+  worldEncounterAdmin?: WorldEncounterAdminService | undefined;
+  /**
+   * Encounter vendor lifecycle — vendor definitions and per-encounter
+   * instances. Present alongside {@link worldEncounter}.
+   */
+  worldEncounterVendor?: WorldEncounterVendorService | undefined;
 }
 
 export interface AppContext {

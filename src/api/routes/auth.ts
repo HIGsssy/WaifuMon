@@ -7,9 +7,12 @@ import {
   PORTAL_OAUTH_STATE_COOKIE,
   PORTAL_SESSION_COOKIE,
   portalRedirectUri,
+  type BrowserSession,
+  type PortalSession,
   type PortalSessionConfig,
   type PortalSessionService,
 } from '../portalSession';
+import type { PortalAuthorizationService } from '../../modules/portalAuth/portalAuthService';
 
 const guildBody = z.object({ discordGuildId: z.string().min(1) });
 
@@ -48,10 +51,26 @@ function assertCsrf(req: FastifyRequest, sessions: PortalSessionService, expecte
 export interface PortalAuthRouteDeps {
   config: PortalSessionConfig;
   sessions: PortalSessionService;
+  /**
+   * Optional — attaches computed `permissions` to the session payload the
+   * frontend reads. Absent leaves the field off, which every legacy caller
+   * already handles as "no admin capability".
+   */
+  authorization?: PortalAuthorizationService | undefined;
+}
+
+async function enrichWithPermissions(
+  payload: BrowserSession,
+  session: PortalSession | null,
+  authorization: PortalAuthorizationService | undefined,
+): Promise<BrowserSession> {
+  if (!authorization) return payload;
+  const set = await authorization.computePermissionsFor(session);
+  return { ...payload, permissions: [...set.permissions] };
 }
 
 export function registerPortalAuthRoutes(app: FastifyInstance, deps: PortalAuthRouteDeps): void {
-  const { config, sessions } = deps;
+  const { config, sessions, authorization } = deps;
   const redirectUri = portalRedirectUri(config.publicUrl);
 
   app.get('/auth/discord', async (_req, reply) => {
@@ -96,7 +115,12 @@ export function registerPortalAuthRoutes(app: FastifyInstance, deps: PortalAuthR
   app.get('/auth/session', async (req, reply) => {
     const session = await sessions.getSession(req.cookies[PORTAL_SESSION_COOKIE]);
     if (session) reply.setCookie(PORTAL_CSRF_COOKIE, session.csrfToken, { ...cookieBase(config), httpOnly: false });
-    return reply.send(sessions.toBrowserSession(session));
+    const payload = await enrichWithPermissions(
+      sessions.toBrowserSession(session),
+      session,
+      authorization,
+    );
+    return reply.send(payload);
   });
 
   app.post('/auth/logout', async (req, reply) => {
@@ -119,6 +143,11 @@ export function registerPortalAuthRoutes(app: FastifyInstance, deps: PortalAuthR
     if (!next) {
       throw new AppError('PORTAL_GUILD_FORBIDDEN', 'Guild selection was not eligible', 'That server is not available for this account.');
     }
-    return reply.send(sessions.toBrowserSession(next));
+    const payload = await enrichWithPermissions(
+      sessions.toBrowserSession(next),
+      next,
+      authorization,
+    );
+    return reply.send(payload);
   });
 }

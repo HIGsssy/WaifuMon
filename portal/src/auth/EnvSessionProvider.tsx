@@ -87,6 +87,16 @@ export function EnvSessionProvider({ children }: { children: ReactNode }) {
           // The player resource carries the internal guild id, not the
           // snowflake; the env value is the only source when one is wanted.
           discordGuildId: portalEnv.defaultDiscordGuildId,
+          // Env-auth is intended for local dev — every permission is
+          // granted so screens are reachable without an OAuth round trip.
+          permissions: [
+            'admin.access',
+            'encounters.read',
+            'encounters.write',
+            'encounters.publish',
+            'encounters.simulate',
+            'encounters.history',
+          ],
         }
       : null;
 

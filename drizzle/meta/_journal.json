@@ -176,6 +176,13 @@
       "when": 1817848800000,
       "tag": "0024_world_encounters",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1817935200000,
+      "tag": "0025_encounter_continuation_and_vendor",
+      "breakpoints": true
     }
   ]
 }

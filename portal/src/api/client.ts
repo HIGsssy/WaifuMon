@@ -360,3 +360,36 @@ export async function getPage<T>(url: string, config?: AxiosRequestConfig): Prom
   const { data, page, pageSize, total } = response.data;
   return { items: data, page, pageSize, total };
 }
+
+/** `POST` returning `{ data }`. Attaches CSRF automatically via the request interceptor. */
+export async function postData<T>(
+  url: string,
+  body?: unknown,
+  config?: AxiosRequestConfig,
+): Promise<T> {
+  const response = await apiClient.post<DataEnvelope<T>>(url, body ?? {}, config);
+  return response.data.data;
+}
+
+export async function putData<T>(
+  url: string,
+  body?: unknown,
+  config?: AxiosRequestConfig,
+): Promise<T> {
+  const response = await apiClient.put<DataEnvelope<T>>(url, body ?? {}, config);
+  return response.data.data;
+}
+
+export async function patchData<T>(
+  url: string,
+  body?: unknown,
+  config?: AxiosRequestConfig,
+): Promise<T> {
+  const response = await apiClient.patch<DataEnvelope<T>>(url, body ?? {}, config);
+  return response.data.data;
+}
+
+export async function deleteData<T>(url: string, config?: AxiosRequestConfig): Promise<T> {
+  const response = await apiClient.delete<DataEnvelope<T>>(url, config);
+  return response.data.data;
+}

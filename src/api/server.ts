@@ -43,13 +43,24 @@ import { registerHealthRoutes, type ReadinessProbes } from './routes/health';
 import { registerPortalAuthRoutes } from './routes/auth';
 import type { PortalSessionConfig, PortalSessionService } from './portalSession';
 import { v1Routes } from './routes/v1/index';
+import type { PortalAuthorizationService } from '../modules/portalAuth/portalAuthService';
 
 /** No v1 endpoint needs a large body; a small cap is free DoS hygiene. */
 const BODY_LIMIT_BYTES = 64 * 1024;
 
 export interface PlatformApiDeps {
   config: PlatformApiConfig;
-  portalAuth?: { config: PortalSessionConfig; sessions: PortalSessionService } | undefined;
+  portalAuth?:
+    | {
+        config: PortalSessionConfig;
+        sessions: PortalSessionService;
+        /**
+         * Portal authorization oracle. Optional; absent leaves the session
+         * payload without a `permissions` field and every admin route on 403.
+         */
+        authorization?: PortalAuthorizationService | undefined;
+      }
+    | undefined;
   logger: Logger;
   probes: ReadinessProbes;
   /** Services + content snapshot the v1 routes adapt. */

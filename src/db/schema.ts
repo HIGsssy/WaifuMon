@@ -1550,6 +1550,13 @@ export const activeWorldEncounters = pgTable(
     resolvedAt: timestamp('resolved_at', { withTimezone: true }),
     resolvedChoiceId: bigint('resolved_choice_id', { mode: 'number' }),
     resolutionJson: jsonb('resolution_json').$type<Record<string, unknown>>(),
+    /**
+     * When this row is a chained continuation, points at the active
+     * encounter that resolved with a `trigger_encounter` (or equivalent)
+     * follow-up. `ON DELETE SET NULL` so cleaning up historical rows never
+     * cascades the child continuation away.
+     */
+    continuationOfId: bigint('continuation_of_id', { mode: 'number' }),
   },
   (t) => [
     check(
@@ -1566,6 +1573,7 @@ export const activeWorldEncounters = pgTable(
       .where(sql`status = 'pending'`),
     index('active_world_encounters_player_idx').on(t.playerId, t.status),
     index('active_world_encounters_expires_idx').on(t.expiresAt),
+    index('active_world_encounters_continuation_of_idx').on(t.continuationOfId),
   ],
 );
 
@@ -1605,6 +1613,54 @@ export const worldEncounterHistory = pgTable(
   ],
 );
 
+/**
+ * World encounter vendor — definition. One row per named vendor
+ * (Wandering Merchant, etc.). `stockTemplateJson` is the authoring shape;
+ * a per-encounter instance snapshots and possibly randomises it.
+ */
+export const worldEncounterVendors = pgTable(
+  'world_encounter_vendors',
+  {
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    vendorKey: text('vendor_key').notNull().unique(),
+    name: text('name').notNull(),
+    description: text('description').notNull().default(''),
+    stockTemplateJson: jsonb('stock_template_json')
+      .$type<Record<string, unknown>[]>()
+      .notNull()
+      .default([]),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+);
+
+/**
+ * The vendor as it exists for one active encounter instance. `stockJson` is
+ * the mutating source of truth — a purchase decrements the entry inside a
+ * transaction under a row lock, so double-clicks and concurrent buys can
+ * never oversell.
+ *
+ * Unique on `activeEncounterId` so re-opening a vendor from the same
+ * encounter never regenerates its inventory.
+ */
+export const worldEncounterVendorInstances = pgTable(
+  'world_encounter_vendor_instances',
+  {
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    activeEncounterId: bigint('active_encounter_id', { mode: 'number' })
+      .notNull()
+      .references(() => activeWorldEncounters.id),
+    vendorKey: text('vendor_key').notNull(),
+    stockJson: jsonb('stock_json').$type<Record<string, unknown>[]>().notNull().default([]),
+    openedAt: timestamp('opened_at', { withTimezone: true }).notNull().defaultNow(),
+    closedAt: timestamp('closed_at', { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex('world_encounter_vendor_instances_active_encounter_uq').on(t.activeEncounterId),
+    index('world_encounter_vendor_instances_vendor_key_idx').on(t.vendorKey),
+  ],
+);
+
 export type GuildRow = typeof guilds.$inferSelect;
 export type PlayerRow = typeof players.$inferSelect;
 export type PlayerCurrenciesRow = typeof playerCurrencies.$inferSelect;
@@ -1637,3 +1693,5 @@ export type WorldEncounterChoiceRow = typeof worldEncounterChoices.$inferSelect;
 export type WorldEncounterCooldownRow = typeof worldEncounterCooldowns.$inferSelect;
 export type ActiveWorldEncounterRow = typeof activeWorldEncounters.$inferSelect;
 export type WorldEncounterHistoryRow = typeof worldEncounterHistory.$inferSelect;
+export type WorldEncounterVendorRow = typeof worldEncounterVendors.$inferSelect;
+export type WorldEncounterVendorInstanceRow = typeof worldEncounterVendorInstances.$inferSelect;

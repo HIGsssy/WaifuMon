@@ -34,6 +34,11 @@ export interface PortalSession {
   discordUserId?: string | undefined;
   /** Populated when known; presentation only. */
   discordGuildId?: string | undefined;
+  /**
+   * Portal permissions computed by the API for this session. UI gating
+   * only — every admin API route independently re-checks.
+   */
+  permissions: readonly string[];
 }
 
 export interface PortalEligibleGuild {
@@ -57,6 +62,11 @@ export interface PortalSessionPayload {
   needsGuildSelection?: boolean;
   noProfile?: boolean;
   csrfToken?: string;
+  /**
+   * Portal permissions the session holds. Empty (never omitted) when the
+   * session has no permissions. The API decides — the frontend only reads.
+   */
+  permissions?: string[];
 }
 
 export type SessionStatus = 'loading' | 'ready' | 'unresolved';

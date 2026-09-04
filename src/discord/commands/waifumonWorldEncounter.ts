@@ -20,6 +20,7 @@ import {
   buildEncounterPresent,
   buildEncounterResolved,
 } from '../worldEncounterPresenter';
+import { buildVendorPresent } from '../worldEncounterVendorPresenter';
 import type {
   EncounterActivation,
 } from '../../modules/worldEncounters/worldEncounterService';
@@ -71,6 +72,112 @@ export async function handleWorldEncounterChoose(
     }
     throw err;
   }
+}
+
+/**
+ * Continue button — consumes a pending chained continuation created by a
+ * previous encounter's resolution and paints the next encounter. Every
+ * state check is server-side: the button carries only the id, and a
+ * missing/mismatched row degrades cleanly to a stale-button message.
+ */
+export async function handleWorldEncounterContinue(
+  ctx: AppContext,
+  interaction: ButtonInteraction,
+  prov: Provisioned,
+  args: string[],
+): Promise<void> {
+  const service = ctx.services.worldEncounter;
+  if (!service) {
+    await respondEphemeral(interaction, 'That button no longer works.');
+    return;
+  }
+  const activeId = Number(args[0] ?? '');
+  if (!Number.isFinite(activeId)) {
+    await respondEphemeral(interaction, 'That button is malformed — re-run /waifumon.');
+    return;
+  }
+  const activation = await service.getActivationById(activeId, prov.playerId);
+  if (!activation) {
+    await respondEphemeral(interaction, 'This continuation has already been consumed or expired.');
+    return;
+  }
+  const view = buildEncounterPresent(ctx, activation);
+  await respondEphemeral(interaction, view);
+}
+
+/**
+ * Vendor button — one row per stocked item. Runs one transactional
+ * purchase and repaints the vendor UI with the new balance and remaining
+ * stock. Double-clicks lose the row lock in the vendor service and
+ * surface a plain "out of stock" or "insufficient funds".
+ */
+export async function handleWorldEncounterVendorBuy(
+  ctx: AppContext,
+  interaction: ButtonInteraction,
+  prov: Provisioned,
+  args: string[],
+): Promise<void> {
+  const vendor = ctx.services.worldEncounterVendor;
+  if (!vendor) {
+    await respondEphemeral(interaction, 'That merchant is no longer open.');
+    return;
+  }
+  const activeId = Number(args[0] ?? '');
+  const slug = args[1] ?? '';
+  if (!Number.isFinite(activeId) || slug.length === 0) {
+    await respondEphemeral(interaction, 'That button is malformed — re-run /waifumon.');
+    return;
+  }
+  try {
+    const result = await vendor.purchase(prov.playerId, activeId, slug);
+    const summary = `Bought **${result.itemSlug}** for ${result.price} ${
+      result.currency === 'essence' ? '✨ Essence' : '💰 WB'
+    }. Balance: ${result.balanceAfter}. Remaining: ${result.remaining}.`;
+    // Repaint the vendor UI so the row reflects the new stock/balance.
+    const opened = await vendor.getForEncounter(activeId);
+    if (opened) {
+      await respondEphemeral(interaction, buildVendorPresent(opened, summary));
+    } else {
+      await respondEphemeral(interaction, summary);
+    }
+  } catch (err) {
+    if (err instanceof AppError) {
+      await respondEphemeral(interaction, err.userMessage);
+      return;
+    }
+    throw err;
+  }
+}
+
+/**
+ * Open shop button — repaints the ephemeral with the vendor UI for a
+ * previously-opened instance. Refuses cleanly if the instance is gone.
+ */
+export async function handleWorldEncounterVendorOpen(
+  ctx: AppContext,
+  interaction: ButtonInteraction,
+  prov: Provisioned,
+  args: string[],
+): Promise<void> {
+  const vendor = ctx.services.worldEncounterVendor;
+  if (!vendor) {
+    await respondEphemeral(interaction, 'That merchant is no longer open.');
+    return;
+  }
+  const activeId = Number(args[0] ?? '');
+  if (!Number.isFinite(activeId)) {
+    await respondEphemeral(interaction, 'That button is malformed — re-run /waifumon.');
+    return;
+  }
+  const opened = await vendor.getForEncounter(activeId);
+  if (!opened || opened.activeEncounterId !== activeId) {
+    await respondEphemeral(interaction, 'That merchant has packed up.');
+    return;
+  }
+  await respondEphemeral(interaction, buildVendorPresent(opened));
+  // Silence unused warning when the vendor service is present but the
+  // player-scoped view of it never needs the auth context here.
+  void prov;
 }
 
 /**

@@ -155,7 +155,34 @@ export function buildEncounterResolved(
     embed.setImage(artwork.url);
     files.push(artwork.file);
   }
-  return { embeds: [embed], components: [], files };
+
+  // Continue / Vendor row: when the resolution opened a chained encounter,
+  // add the Continue button. When it opened a vendor, add an "Open shop"
+  // button that repaints as the vendor UI on click. Both buttons carry only
+  // the active row id; every state check is server-side.
+  const rows: ActionRowBuilder<ButtonBuilder>[] = [];
+  const followRow = new ActionRowBuilder<ButtonBuilder>();
+  if (resolution.continuationActiveId != null) {
+    followRow.addComponents(
+      new ButtonBuilder()
+        .setCustomId(buildCustomId('encw', 'continue', String(resolution.continuationActiveId)))
+        .setLabel('Continue →')
+        .setStyle(ButtonStyle.Primary),
+    );
+  }
+  if (resolution.vendorInstance) {
+    followRow.addComponents(
+      new ButtonBuilder()
+        .setCustomId(
+          buildCustomId('encv', 'open', String(activation.activeId)),
+        )
+        .setLabel('🛒 Open shop')
+        .setStyle(ButtonStyle.Success),
+    );
+  }
+  if (followRow.components.length > 0) rows.push(followRow);
+
+  return { embeds: [embed], components: rows, files };
 }
 
 function buildChoiceRows(

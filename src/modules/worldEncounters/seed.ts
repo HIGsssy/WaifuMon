@@ -355,6 +355,7 @@ export const SEED_ENCOUNTERS: EncounterInput[] = EncounterInputSchema.array().pa
         successEffects: [
           { type: 'waifubux_gain', amount: 350 },
           { type: 'give_item', slug: 'basic_charm', quantity: 1 },
+          { type: 'trigger_encounter', encounterSlug: 'tv_bandit_aftermath' },
         ],
         failureEffects: [
           { type: 'waifubux_loss_percent', percent: 0.1, maxAmount: 500 },
@@ -380,6 +381,41 @@ export const SEED_ENCOUNTERS: EncounterInput[] = EncounterInputSchema.array().pa
         emoji: '💰',
         check: { type: 'none' },
         successEffects: [{ type: 'waifubux_loss', amount: 200 }],
+      },
+    ],
+  },
+  {
+    slug: 'tv_bandit_aftermath',
+    name: 'Bandit Camp Aftermath',
+    description:
+      'You loot the bandits\'s abandoned camp. Hidden in a pack — a small coin purse and a scrap of parchment.',
+    type: 'discovery',
+    rarity: 'uncommon',
+    weight: 1,
+    lifecycle: 'active',
+    huntEligible: false,
+    travelEligible: false,
+    // The parent already gates hunt/travel eligibility; this one is only
+    // reachable via a `trigger_encounter` follow-up from the bandit fight.
+    cooldownSeconds: 0,
+    regions: [],
+    routes: [],
+    choicesRequired: true,
+    choices: [
+      {
+        label: 'Pocket the loot',
+        emoji: '🪙',
+        check: { type: 'none' },
+        successEffects: [
+          { type: 'waifubux_gain', amount: 150 },
+          { type: 'player_xp', amount: 20 },
+        ],
+      },
+      {
+        label: 'Leave it — this feels wrong',
+        emoji: '🕯️',
+        check: { type: 'none' },
+        successEffects: [{ type: 'essence_gain', amount: 25 }],
       },
     ],
   },
