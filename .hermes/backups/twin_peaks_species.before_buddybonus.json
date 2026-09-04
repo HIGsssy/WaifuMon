@@ -80,13 +80,7 @@
           "atLevel": 50
         }
       }
-    ],
-    "buddyBonus": {
-      "name": "Steam Service",
-      "flavorText": "Steam Service: +50% Energy gained in Care mode.",
-      "effectId": "care_energy_gain",
-      "value": 50
-    }
+    ]
   },
   {
     "slug": "hot_spring_intern",
@@ -169,13 +163,7 @@
           "atLevel": 50
         }
       }
-    ],
-    "buddyBonus": {
-      "name": "Snooze Break",
-      "flavorText": "Snooze Break: 5% chance Hunting does not consume Energy.",
-      "effectId": "energy_save_chance",
-      "value": 5
-    }
+    ]
   },
   {
     "slug": "clawfoot_bather",
@@ -258,13 +246,7 @@
           "atLevel": 50
         }
       }
-    ],
-    "buddyBonus": {
-      "name": "Purr Therapy",
-      "flavorText": "Purr Therapy: +50% Affection gained.",
-      "effectId": "affection_gain",
-      "value": 50
-    }
+    ]
   },
   {
     "slug": "mountain_rescue_angel",
@@ -347,13 +329,7 @@
           "atLevel": 50
         }
       }
-    ],
-    "buddyBonus": {
-      "name": "Snowdrift Search",
-      "flavorText": "Snowdrift Search: +12% chance to find items from Hunting.",
-      "effectId": "hunt_item_find_chance",
-      "value": 12
-    }
+    ]
   },
   {
     "slug": "avalanche_huntress",
@@ -436,13 +412,7 @@
           "atLevel": 50
         }
       }
-    ],
-    "buddyBonus": {
-      "name": "Storm Catch",
-      "flavorText": "Storm Catch: +10% capture chance against any Waifumon.",
-      "effectId": "capture_chance",
-      "value": 10
-    }
+    ]
   },
   {
     "slug": "yuki_onna_bartender",
@@ -525,13 +495,7 @@
           "atLevel": 50
         }
       }
-    ],
-    "buddyBonus": {
-      "name": "On the Rocks",
-      "flavorText": "On the Rocks: +40% eligible rewards from Boss Encounters.",
-      "effectId": "boss_reward_gain",
-      "value": 40
-    }
+    ]
   },
   {
     "slug": "infernal_sauna_mistress",
@@ -614,13 +578,7 @@
           "atLevel": 50
         }
       }
-    ],
-    "buddyBonus": {
-      "name": "Crank the Heat",
-      "flavorText": "Crank the Heat: +75% Energy gained in Care mode.",
-      "effectId": "care_energy_gain",
-      "value": 75
-    }
+    ]
   },
   {
     "slug": "private_onsen_beauty",
@@ -703,17 +661,7 @@
           "atLevel": 50
         }
       }
-    ],
-    "buddyBonus": {
-      "name": "No Vacancy",
-      "flavorText": "No Vacancy: +12% capture chance against SSR+ Waifumon.",
-      "effectId": "capture_chance",
-      "value": 12,
-      "target": {
-        "type": "rarity_min",
-        "value": "SSR"
-      }
-    }
+    ]
   },
   {
     "slug": "summit_surveyor",
@@ -796,13 +744,7 @@
           "atLevel": 50
         }
       }
-    ],
-    "buddyBonus": {
-      "name": "Survey Data",
-      "flavorText": "Survey Data: +18% chance to find items from Hunting.",
-      "effectId": "hunt_item_find_chance",
-      "value": 18
-    }
+    ]
   },
   {
     "slug": "resort_regent_idol",
@@ -885,13 +827,7 @@
           "atLevel": 50
         }
       }
-    ],
-    "buddyBonus": {
-      "name": "Standing Ovation",
-      "flavorText": "Standing Ovation: +75% Affection gained.",
-      "effectId": "affection_gain",
-      "value": 75
-    }
+    ]
   },
   {
     "slug": "snowboard_delinquent",
@@ -974,13 +910,7 @@
           "atLevel": 50
         }
       }
-    ],
-    "buddyBonus": {
-      "name": "The Grind",
-      "flavorText": "The Grind: +25% Essence gained.",
-      "effectId": "essence_gain",
-      "value": 25
-    }
+    ]
   },
   {
     "slug": "bathhouse_mistress",
@@ -1063,13 +993,7 @@
           "atLevel": 50
         }
       }
-    ],
-    "buddyBonus": {
-      "name": "Management Perks",
-      "flavorText": "Management Perks: +40% eligible rewards from Boss Encounters.",
-      "effectId": "boss_reward_gain",
-      "value": 40
-    }
+    ]
   },
   {
     "slug": "towel_house_spirit",
@@ -1152,13 +1076,7 @@
           "atLevel": 50
         }
       }
-    ],
-    "buddyBonus": {
-      "name": "Perfect Fold",
-      "flavorText": "Perfect Fold: +50% Affection gained.",
-      "effectId": "affection_gain",
-      "value": 50
-    }
+    ]
   },
   {
     "slug": "mineral_spring_divine",
@@ -1241,13 +1159,7 @@
           "atLevel": 50
         }
       }
-    ],
-    "buddyBonus": {
-      "name": "Precious Minerals",
-      "flavorText": "Precious Minerals: +30% Essence gained.",
-      "effectId": "essence_gain",
-      "value": 30
-    }
+    ]
   },
   {
     "slug": "primordial_onsen_goddess",
@@ -1330,12 +1242,6 @@
           "atLevel": 50
         }
       }
-    ],
-    "buddyBonus": {
-      "name": "Primordial Bath",
-      "flavorText": "Primordial Bath: +100% Energy gained in Care mode.",
-      "effectId": "care_energy_gain",
-      "value": 100
-    }
+    ]
   }
 ]

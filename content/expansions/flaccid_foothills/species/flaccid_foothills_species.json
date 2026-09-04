@@ -80,7 +80,13 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Coin Cup",
+      "flavorText": "Coin Cup: +25% Essence gained.",
+      "effectId": "essence_gain",
+      "value": 25
+    }
   },
   {
     "slug": "candy_demon_courier",
@@ -163,7 +169,13 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Express Delivery",
+      "flavorText": "Express Delivery: +10% chance to find items from Hunting.",
+      "effectId": "hunt_item_find_chance",
+      "value": 10
+    }
   },
   {
     "slug": "midnight_swamp_witch",
@@ -246,7 +258,17 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Fog Bank",
+      "flavorText": "Fog Bank: +12% encounter weight for spirit Waifumon.",
+      "effectId": "encounter_weight",
+      "value": 12,
+      "target": {
+        "type": "race",
+        "value": "spirit"
+      }
+    }
   },
   {
     "slug": "clockwork_astronomer",
@@ -329,7 +351,13 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Star Charts",
+      "flavorText": "Star Charts: +30% XP gained by the active Buddy.",
+      "effectId": "buddy_xp_gain",
+      "value": 30
+    }
   },
   {
     "slug": "aurora_songspirit",
@@ -412,7 +440,13 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Aurora Chorus",
+      "flavorText": "Aurora Chorus: +50% Affection gained.",
+      "effectId": "affection_gain",
+      "value": 50
+    }
   },
   {
     "slug": "sky_pirate_valkyrie",
@@ -495,7 +529,13 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Prize Cargo",
+      "flavorText": "Prize Cargo: +40% eligible rewards from Boss Encounters.",
+      "effectId": "boss_reward_gain",
+      "value": 40
+    }
   },
   {
     "slug": "dusk_gravekeeper",
@@ -578,7 +618,17 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Roll Call",
+      "flavorText": "Roll Call: +15% capture chance against unowned species.",
+      "effectId": "capture_chance",
+      "value": 15,
+      "target": {
+        "type": "ownership",
+        "value": "unowned"
+      }
+    }
   },
   {
     "slug": "infernal_circus_ringmaster",
@@ -661,7 +711,17 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Step Right Up",
+      "flavorText": "Step Right Up: +18% encounter weight for demon Waifumon.",
+      "effectId": "encounter_weight",
+      "value": 18,
+      "target": {
+        "type": "race",
+        "value": "demon"
+      }
+    }
   },
   {
     "slug": "solar_archangel",
@@ -744,7 +804,13 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Solar Charge",
+      "flavorText": "Solar Charge: 12% chance Hunting does not consume Energy.",
+      "effectId": "energy_save_chance",
+      "value": 12
+    }
   },
   {
     "slug": "storm_titan_huntress",
@@ -827,7 +893,13 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Storm Quarry",
+      "flavorText": "Storm Quarry: +20% capture chance against any Waifumon.",
+      "effectId": "capture_chance",
+      "value": 20
+    }
   },
   {
     "slug": "gravel_harvester",
@@ -910,7 +982,13 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Gravel Sift",
+      "flavorText": "Gravel Sift: +12% chance to find items from Hunting.",
+      "effectId": "hunt_item_find_chance",
+      "value": 12
+    }
   },
   {
     "slug": "clover_field_dryad",
@@ -993,7 +1071,13 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Lucky Clover",
+      "flavorText": "Lucky Clover: +8% capture chance against any Waifumon.",
+      "effectId": "capture_chance",
+      "value": 8
+    }
   },
   {
     "slug": "orchard_dawn_angel",
@@ -1076,7 +1160,13 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Ripe Harvest",
+      "flavorText": "Ripe Harvest: +30% Essence gained.",
+      "effectId": "essence_gain",
+      "value": 30
+    }
   },
   {
     "slug": "long_grass_valkyrie",
@@ -1159,6 +1249,101 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Ridgeline Patrol",
+      "flavorText": "Ridgeline Patrol: +15% encounter weight for valkyrie Waifumon.",
+      "effectId": "encounter_weight",
+      "value": 15,
+      "target": {
+        "type": "race",
+        "value": "valkyrie"
+      }
+    }
+  },
+  {
+    "slug": "hayloft_farmhand",
+    "name": "Hayloft Farmhand",
+    "rarity": "N",
+    "archetype": "human",
+    "race": "human",
+    "baseCaptureRate": null,
+    "description": "Naps in the hayloft between chores and pretends he wasn't caught. His pitchfork has a better work ethic than he does.",
+    "tags": [
+      "expansion",
+      "region_exclusive"
+    ],
+    "contentRating": "suggestive",
+    "affinity": "submissive",
+    "card": {
+      "subtitle": "Loft-Bound Hire",
+      "flavorQuote": "The hay was already warm before you climbed up.",
+      "artist": "MagicMonday"
+    },
+    "imagePath": "waifumon/hayloft_farmhand/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ],
+    "buddyBonus": {
+      "name": "Chore Break",
+      "flavorText": "Chore Break: 5% chance Hunting does not consume Energy.",
+      "effectId": "energy_save_chance",
+      "value": 5
+    }
   }
 ]

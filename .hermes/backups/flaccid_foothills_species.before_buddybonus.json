@@ -1,117 +1,28 @@
 [
   {
-    "slug": "onsen_maid",
-    "name": "Onsen Maid",
+    "slug": "starfall_street_dancer",
+    "name": "Starfall Street Dancer",
     "rarity": "N",
     "archetype": "human",
     "race": "human",
     "baseCaptureRate": null,
-    "description": "The warmest smile in the steam. Fills your bath, fetches your yukata, and blushes to her ears when you say thanks.",
+    "description": "Spins for spare change and shooting stars. Their coin cup fills faster when the meteor shower hits.",
     "tags": [
       "expansion",
       "region_exclusive"
     ],
-    "contentRating": "explicit",
-    "affinity": "submissive",
-    "card": {
-      "subtitle": "Steam & Service",
-      "ability": {
-        "name": "Attentive Service",
-        "text": "Fills your bath and your heart. Restores the target and leaves them far too relaxed to argue."
-      },
-      "flavorQuote": "The water's perfect, guest. Now \u2014 is there anything else you need?",
-      "artist": "Gorthig"
-    },
-    "imagePath": "waifumon/onsen_maid/standard.png",
-    "enabled": true,
-    "eventKey": null,
-    "perSpeciesWeight": 1,
-    "appearances": [
-      {
-        "id": "standard",
-        "name": "Standard",
-        "sortOrder": 0,
-        "unlock": {
-          "type": "owned"
-        }
-      },
-      {
-        "id": "level_10",
-        "name": "Level 10",
-        "sortOrder": 10,
-        "unlock": {
-          "type": "level",
-          "atLevel": 10
-        }
-      },
-      {
-        "id": "level_20",
-        "name": "Level 20",
-        "sortOrder": 20,
-        "unlock": {
-          "type": "level",
-          "atLevel": 20
-        }
-      },
-      {
-        "id": "level_30",
-        "name": "Level 30",
-        "sortOrder": 30,
-        "unlock": {
-          "type": "level",
-          "atLevel": 30
-        }
-      },
-      {
-        "id": "level_40",
-        "name": "Level 40",
-        "sortOrder": 40,
-        "unlock": {
-          "type": "level",
-          "atLevel": 40
-        }
-      },
-      {
-        "id": "level_50",
-        "name": "Level 50",
-        "sortOrder": 50,
-        "unlock": {
-          "type": "level",
-          "atLevel": 50
-        }
-      }
-    ],
-    "buddyBonus": {
-      "name": "Steam Service",
-      "flavorText": "Steam Service: +50% Energy gained in Care mode.",
-      "effectId": "care_energy_gain",
-      "value": 50
-    }
-  },
-  {
-    "slug": "hot_spring_intern",
-    "name": "Hot Spring Intern",
-    "rarity": "N",
-    "archetype": "demi-human",
-    "race": "demi-human",
-    "baseCaptureRate": null,
-    "description": "Bunny-eared; her job is guest towels but she keeps being found napping in the hottest pool after hours.",
-    "tags": [
-      "expansion",
-      "region_exclusive"
-    ],
-    "contentRating": "explicit",
+    "contentRating": "suggestive",
     "affinity": "switch",
     "card": {
-      "subtitle": "The Hottest Pool",
+      "subtitle": "Sidewalk Supernova",
       "ability": {
-        "name": "After-Hours Nap",
-        "text": "She keeps being found napping in the hottest pool. Restores the target and leaves everyone too cozy to complain."
+        "name": "Gravity Assist",
+        "text": "Every third backflip pulls coins out of pockets within twenty feet. The hips help."
       },
-      "flavorQuote": "The towels are right there. She'll get to them. Eventually.",
-      "artist": "Gorthig"
+      "flavorQuote": "Make a wish. They already caught it.",
+      "artist": "Whistler"
     },
-    "imagePath": "waifumon/hot_spring_intern/standard.png",
+    "imagePath": "waifumon/starfall_street_dancer/standard.png",
     "enabled": true,
     "eventKey": null,
     "perSpeciesWeight": 1,
@@ -169,38 +80,32 @@
           "atLevel": 50
         }
       }
-    ],
-    "buddyBonus": {
-      "name": "Snooze Break",
-      "flavorText": "Snooze Break: 5% chance Hunting does not consume Energy.",
-      "effectId": "energy_save_chance",
-      "value": 5
-    }
+    ]
   },
   {
-    "slug": "clawfoot_bather",
-    "name": "Clawfoot Bather",
+    "slug": "candy_demon_courier",
+    "name": "Candy Demon Courier",
     "rarity": "N",
-    "archetype": "demi-human",
-    "race": "demi-human",
+    "archetype": "demon",
+    "race": "demon",
     "baseCaptureRate": null,
-    "description": "Sleepiest catgirl in the valley; sinks to her chin in the tin tub and purrs whenever your hand comes near the water.",
+    "description": "Guaranteed same-day delivery, no matter which circle you're in. Tips are accepted in chocolate or souls \u2014 they'll blush either way.",
     "tags": [
       "expansion",
       "region_exclusive"
     ],
-    "contentRating": "explicit",
+    "contentRating": "suggestive",
     "affinity": "submissive",
     "card": {
-      "subtitle": "The Tin Tub",
+      "subtitle": "Express Hell Delivery",
       "ability": {
-        "name": "Deep Purr",
-        "text": "Sinks to her chin in the tin tub and purrs whenever your hand comes near the water. Calms the target; capture attempts feel rude."
+        "name": "Sweet Tooth Tax",
+        "text": "Packages arrive on time. The candy inside may arrive missing one wrapper \u2014 and one courier's composure."
       },
-      "flavorQuote": "The water's warm. Stay a while.",
-      "artist": "Gorthig"
+      "flavorQuote": "Your receipt is in the bag. Their heart is in the box.",
+      "artist": "Whistler"
     },
-    "imagePath": "waifumon/clawfoot_bather/standard.png",
+    "imagePath": "waifumon/candy_demon_courier/standard.png",
     "enabled": true,
     "eventKey": null,
     "perSpeciesWeight": 1,
@@ -258,216 +163,32 @@
           "atLevel": 50
         }
       }
-    ],
-    "buddyBonus": {
-      "name": "Purr Therapy",
-      "flavorText": "Purr Therapy: +50% Affection gained.",
-      "effectId": "affection_gain",
-      "value": 50
-    }
+    ]
   },
   {
-    "slug": "mountain_rescue_angel",
-    "name": "Mountain Rescue Angel",
+    "slug": "midnight_swamp_witch",
+    "name": "Midnight Swamp Witch",
     "rarity": "R",
-    "archetype": "angel",
-    "race": "angel",
-    "baseCaptureRate": null,
-    "description": "Ski-patrol rescuer with wings, goggles, and an enormous emergency jacket.",
-    "tags": [
-      "expansion",
-      "region_exclusive"
-    ],
-    "contentRating": "explicit",
-    "affinity": "caregiver",
-    "card": {
-      "subtitle": "Bubblegum Patrol",
-      "ability": {
-        "name": "Emergency Warmth",
-        "text": "Shields you from the blizzard with her wings and patches you up by the fire. Restores the target and makes the cold feel far away."
-      },
-      "flavorQuote": "Rescued by an angel who looks like a pop concert.",
-      "artist": "Gorthig"
-    },
-    "imagePath": "waifumon/mountain_rescue_angel/standard.png",
-    "enabled": true,
-    "eventKey": null,
-    "perSpeciesWeight": 1,
-    "appearances": [
-      {
-        "id": "standard",
-        "name": "Standard",
-        "sortOrder": 0,
-        "unlock": {
-          "type": "owned"
-        }
-      },
-      {
-        "id": "level_10",
-        "name": "Level 10",
-        "sortOrder": 10,
-        "unlock": {
-          "type": "level",
-          "atLevel": 10
-        }
-      },
-      {
-        "id": "level_20",
-        "name": "Level 20",
-        "sortOrder": 20,
-        "unlock": {
-          "type": "level",
-          "atLevel": 20
-        }
-      },
-      {
-        "id": "level_30",
-        "name": "Level 30",
-        "sortOrder": 30,
-        "unlock": {
-          "type": "level",
-          "atLevel": 30
-        }
-      },
-      {
-        "id": "level_40",
-        "name": "Level 40",
-        "sortOrder": 40,
-        "unlock": {
-          "type": "level",
-          "atLevel": 40
-        }
-      },
-      {
-        "id": "level_50",
-        "name": "Level 50",
-        "sortOrder": 50,
-        "unlock": {
-          "type": "level",
-          "atLevel": 50
-        }
-      }
-    ],
-    "buddyBonus": {
-      "name": "Snowdrift Search",
-      "flavorText": "Snowdrift Search: +12% chance to find items from Hunting.",
-      "effectId": "hunt_item_find_chance",
-      "value": 12
-    }
-  },
-  {
-    "slug": "avalanche_huntress",
-    "name": "Avalanche Huntress",
-    "rarity": "R",
-    "archetype": "demi-human",
-    "race": "demi-human",
-    "baseCaptureRate": null,
-    "description": "Submissive snow leopard woman who chases snowstorms. Thrill-hunts the biggest blizzards, then melts the moment she's praised.",
-    "tags": [
-      "expansion",
-      "region_exclusive"
-    ],
-    "contentRating": "explicit",
-    "affinity": "submissive",
-    "card": {
-      "subtitle": "Storm Chaser",
-      "ability": {
-        "name": "Avalanche Rush",
-        "text": "Chases the biggest storms on the mountain and submits the moment she's caught. Boosts the target and leaves them breathless."
-      },
-      "flavorQuote": "She chased the storm. You caught her.",
-      "artist": "Gorthig"
-    },
-    "imagePath": "waifumon/avalanche_huntress/standard.png",
-    "enabled": true,
-    "eventKey": null,
-    "perSpeciesWeight": 1,
-    "appearances": [
-      {
-        "id": "standard",
-        "name": "Standard",
-        "sortOrder": 0,
-        "unlock": {
-          "type": "owned"
-        }
-      },
-      {
-        "id": "level_10",
-        "name": "Level 10",
-        "sortOrder": 10,
-        "unlock": {
-          "type": "level",
-          "atLevel": 10
-        }
-      },
-      {
-        "id": "level_20",
-        "name": "Level 20",
-        "sortOrder": 20,
-        "unlock": {
-          "type": "level",
-          "atLevel": 20
-        }
-      },
-      {
-        "id": "level_30",
-        "name": "Level 30",
-        "sortOrder": 30,
-        "unlock": {
-          "type": "level",
-          "atLevel": 30
-        }
-      },
-      {
-        "id": "level_40",
-        "name": "Level 40",
-        "sortOrder": 40,
-        "unlock": {
-          "type": "level",
-          "atLevel": 40
-        }
-      },
-      {
-        "id": "level_50",
-        "name": "Level 50",
-        "sortOrder": 50,
-        "unlock": {
-          "type": "level",
-          "atLevel": 50
-        }
-      }
-    ],
-    "buddyBonus": {
-      "name": "Storm Catch",
-      "flavorText": "Storm Catch: +10% capture chance against any Waifumon.",
-      "effectId": "capture_chance",
-      "value": 10
-    }
-  },
-  {
-    "slug": "yuki_onna_bartender",
-    "name": "Yuki-onna Bartender",
-    "rarity": "SR",
     "archetype": "spirit",
     "race": "spirit",
     "baseCaptureRate": null,
-    "description": "Japanese frost spirit working the resort bar. Every glass she touches comes out frosted; her cocktails are legendary.",
+    "description": "Brews fog and grudges in equal measure. The bog pays their rent in lost buttons and old coins.",
     "tags": [
       "expansion",
       "region_exclusive"
     ],
-    "contentRating": "explicit",
-    "affinity": "switch",
+    "contentRating": "mature",
+    "affinity": "primal",
     "card": {
-      "subtitle": "The Frosted Pour",
+      "subtitle": "Bog-Born Hexweaver",
       "ability": {
-        "name": "Cold Service",
-        "text": "Every glass she touches comes out frosted. Cools the target's temper and leaves them utterly relaxed."
+        "name": "Miasma Pact",
+        "text": "Anyone lost in their fog owes them a favor. The fog decides what counts as lost."
       },
-      "flavorQuote": "Compliment the drink. She'll thaw.",
-      "artist": "Gorthig"
+      "flavorQuote": "The lantern isn't for finding the way out.",
+      "artist": "Whistler"
     },
-    "imagePath": "waifumon/yuki_onna_bartender/standard.png",
+    "imagePath": "waifumon/midnight_swamp_witch/standard.png",
     "enabled": true,
     "eventKey": null,
     "perSpeciesWeight": 1,
@@ -525,560 +246,16 @@
           "atLevel": 50
         }
       }
-    ],
-    "buddyBonus": {
-      "name": "On the Rocks",
-      "flavorText": "On the Rocks: +40% eligible rewards from Boss Encounters.",
-      "effectId": "boss_reward_gain",
-      "value": 40
-    }
+    ]
   },
   {
-    "slug": "infernal_sauna_mistress",
-    "name": "Infernal Sauna Mistress",
-    "rarity": "UR",
-    "archetype": "demon",
-    "race": "demon",
-    "baseCaptureRate": null,
-    "description": "Fire demon who runs the resort sauna and considers anything below 200\u00b0F cowardice.",
-    "tags": [
-      "expansion",
-      "region_exclusive"
-    ],
-    "contentRating": "explicit",
-    "affinity": "dominant",
-    "card": {
-      "subtitle": "The Boiling Throne",
-      "ability": {
-        "name": "Mistress's Heat",
-        "text": "Runs the resort sauna and considers anything below 200\u00b0F cowardice. Sets the target's temperature and commands absolute submission."
-      },
-      "flavorQuote": "Below 200\u00b0F? Cowardice.",
-      "artist": "Gorthig"
-    },
-    "imagePath": "waifumon/infernal_sauna_mistress/standard.png",
-    "enabled": true,
-    "eventKey": null,
-    "perSpeciesWeight": 1,
-    "appearances": [
-      {
-        "id": "standard",
-        "name": "Standard",
-        "sortOrder": 0,
-        "unlock": {
-          "type": "owned"
-        }
-      },
-      {
-        "id": "level_10",
-        "name": "Level 10",
-        "sortOrder": 10,
-        "unlock": {
-          "type": "level",
-          "atLevel": 10
-        }
-      },
-      {
-        "id": "level_20",
-        "name": "Level 20",
-        "sortOrder": 20,
-        "unlock": {
-          "type": "level",
-          "atLevel": 20
-        }
-      },
-      {
-        "id": "level_30",
-        "name": "Level 30",
-        "sortOrder": 30,
-        "unlock": {
-          "type": "level",
-          "atLevel": 30
-        }
-      },
-      {
-        "id": "level_40",
-        "name": "Level 40",
-        "sortOrder": 40,
-        "unlock": {
-          "type": "level",
-          "atLevel": 40
-        }
-      },
-      {
-        "id": "level_50",
-        "name": "Level 50",
-        "sortOrder": 50,
-        "unlock": {
-          "type": "level",
-          "atLevel": 50
-        }
-      }
-    ],
-    "buddyBonus": {
-      "name": "Crank the Heat",
-      "flavorText": "Crank the Heat: +75% Energy gained in Care mode.",
-      "effectId": "care_energy_gain",
-      "value": 75
-    }
-  },
-  {
-    "slug": "private_onsen_beauty",
-    "name": "Private Onsen Beauty",
-    "rarity": "SR",
-    "archetype": "demon",
-    "race": "demon",
-    "baseCaptureRate": null,
-    "description": "Rents the exclusive cliffside pool and wants no company \u2014 which is why she keeps returning his towel with an open invitation folded inside.",
-    "tags": [
-      "expansion",
-      "region_exclusive"
-    ],
-    "contentRating": "explicit",
-    "affinity": "dominant",
-    "card": {
-      "subtitle": "Cliffside Recluse",
-      "ability": {
-        "name": "Open Invitation",
-        "text": "Rents the cliffside pool and wants no company, yet keeps returning your towel with an invitation folded inside. Commands attention, and holds it."
-      },
-      "flavorQuote": "She wanted no company. She folded the invitation anyway.",
-      "artist": "MagicMonday"
-    },
-    "imagePath": "waifumon/private_onsen_beauty/standard.png",
-    "enabled": true,
-    "eventKey": null,
-    "perSpeciesWeight": 1,
-    "appearances": [
-      {
-        "id": "standard",
-        "name": "Standard",
-        "sortOrder": 0,
-        "unlock": {
-          "type": "owned"
-        }
-      },
-      {
-        "id": "level_10",
-        "name": "Level 10",
-        "sortOrder": 10,
-        "unlock": {
-          "type": "level",
-          "atLevel": 10
-        }
-      },
-      {
-        "id": "level_20",
-        "name": "Level 20",
-        "sortOrder": 20,
-        "unlock": {
-          "type": "level",
-          "atLevel": 20
-        }
-      },
-      {
-        "id": "level_30",
-        "name": "Level 30",
-        "sortOrder": 30,
-        "unlock": {
-          "type": "level",
-          "atLevel": 30
-        }
-      },
-      {
-        "id": "level_40",
-        "name": "Level 40",
-        "sortOrder": 40,
-        "unlock": {
-          "type": "level",
-          "atLevel": 40
-        }
-      },
-      {
-        "id": "level_50",
-        "name": "Level 50",
-        "sortOrder": 50,
-        "unlock": {
-          "type": "level",
-          "atLevel": 50
-        }
-      }
-    ],
-    "buddyBonus": {
-      "name": "No Vacancy",
-      "flavorText": "No Vacancy: +12% capture chance against SSR+ Waifumon.",
-      "effectId": "capture_chance",
-      "value": 12,
-      "target": {
-        "type": "rarity_min",
-        "value": "SSR"
-      }
-    }
-  },
-  {
-    "slug": "summit_surveyor",
-    "name": "Summit Surveyor",
-    "rarity": "SSR",
+    "slug": "clockwork_astronomer",
+    "name": "Clockwork Astronomer",
+    "rarity": "R",
     "archetype": "android",
     "race": "android",
     "baseCaptureRate": null,
-    "description": "Rugged exploration android built for scaling sheer cliffs and mapping the mountains' frozen caves.",
-    "tags": [
-      "expansion",
-      "region_exclusive"
-    ],
-    "contentRating": "explicit",
-    "affinity": "primal",
-    "card": {
-      "subtitle": "Range Surveyor",
-      "ability": {
-        "name": "Feral Ascent",
-        "text": "Built to scale sheer cliffs and map frozen caves. Scales any vertical surface, and the map comes back glowing ice-blue."
-      },
-      "flavorQuote": "She doesn't survey the mountain. She hunts it.",
-      "artist": "Gorthig"
-    },
-    "imagePath": "waifumon/summit_surveyor/standard.png",
-    "enabled": true,
-    "eventKey": null,
-    "perSpeciesWeight": 1,
-    "appearances": [
-      {
-        "id": "standard",
-        "name": "Standard",
-        "sortOrder": 0,
-        "unlock": {
-          "type": "owned"
-        }
-      },
-      {
-        "id": "level_10",
-        "name": "Level 10",
-        "sortOrder": 10,
-        "unlock": {
-          "type": "level",
-          "atLevel": 10
-        }
-      },
-      {
-        "id": "level_20",
-        "name": "Level 20",
-        "sortOrder": 20,
-        "unlock": {
-          "type": "level",
-          "atLevel": 20
-        }
-      },
-      {
-        "id": "level_30",
-        "name": "Level 30",
-        "sortOrder": 30,
-        "unlock": {
-          "type": "level",
-          "atLevel": 30
-        }
-      },
-      {
-        "id": "level_40",
-        "name": "Level 40",
-        "sortOrder": 40,
-        "unlock": {
-          "type": "level",
-          "atLevel": 40
-        }
-      },
-      {
-        "id": "level_50",
-        "name": "Level 50",
-        "sortOrder": 50,
-        "unlock": {
-          "type": "level",
-          "atLevel": 50
-        }
-      }
-    ],
-    "buddyBonus": {
-      "name": "Survey Data",
-      "flavorText": "Survey Data: +18% chance to find items from Hunting.",
-      "effectId": "hunt_item_find_chance",
-      "value": 18
-    }
-  },
-  {
-    "slug": "resort_regent_idol",
-    "name": "Resort Regent Idol",
-    "rarity": "SSR",
-    "archetype": "spirit",
-    "race": "spirit",
-    "baseCaptureRate": null,
-    "description": "The poster spirit of the mountain town \u2014 a see-through ghost idol who performs on the town-square stage.",
-    "tags": [
-      "expansion",
-      "region_exclusive"
-    ],
-    "contentRating": "explicit",
-    "affinity": "switch",
-    "card": {
-      "subtitle": "Town-Square Star",
-      "ability": {
-        "name": "Ghostly Encore",
-        "text": "The mountain town's mascot idol. Her translucent encore leaves the crowd breathless and the stage haunted."
-      },
-      "flavorQuote": "The snow falls through her, and still she shines.",
-      "artist": "Gorthig"
-    },
-    "imagePath": "waifumon/resort_regent_idol/standard.png",
-    "enabled": true,
-    "eventKey": null,
-    "perSpeciesWeight": 1,
-    "appearances": [
-      {
-        "id": "standard",
-        "name": "Standard",
-        "sortOrder": 0,
-        "unlock": {
-          "type": "owned"
-        }
-      },
-      {
-        "id": "level_10",
-        "name": "Level 10",
-        "sortOrder": 10,
-        "unlock": {
-          "type": "level",
-          "atLevel": 10
-        }
-      },
-      {
-        "id": "level_20",
-        "name": "Level 20",
-        "sortOrder": 20,
-        "unlock": {
-          "type": "level",
-          "atLevel": 20
-        }
-      },
-      {
-        "id": "level_30",
-        "name": "Level 30",
-        "sortOrder": 30,
-        "unlock": {
-          "type": "level",
-          "atLevel": 30
-        }
-      },
-      {
-        "id": "level_40",
-        "name": "Level 40",
-        "sortOrder": 40,
-        "unlock": {
-          "type": "level",
-          "atLevel": 40
-        }
-      },
-      {
-        "id": "level_50",
-        "name": "Level 50",
-        "sortOrder": 50,
-        "unlock": {
-          "type": "level",
-          "atLevel": 50
-        }
-      }
-    ],
-    "buddyBonus": {
-      "name": "Standing Ovation",
-      "flavorText": "Standing Ovation: +75% Affection gained.",
-      "effectId": "affection_gain",
-      "value": 75
-    }
-  },
-  {
-    "slug": "snowboard_delinquent",
-    "name": "Snowboard Delinquent",
-    "rarity": "N",
-    "archetype": "human",
-    "race": "human",
-    "baseCaptureRate": null,
-    "description": "Local mountain punk treating every staircase and railing as part of the course.",
-    "tags": [
-      "expansion",
-      "region_exclusive"
-    ],
-    "contentRating": "explicit",
-    "affinity": "switch",
-    "card": {
-      "subtitle": "Rail-Rat",
-      "ability": {
-        "name": "Grind Session",
-        "text": "Treats every staircase and railing as part of the course. Dodges the target and leaves them eating snow."
-      },
-      "flavorQuote": "She doesn't take the stairs. She never has.",
-      "artist": "Gorthig"
-    },
-    "imagePath": "waifumon/snowboard_delinquent/standard.png",
-    "enabled": true,
-    "eventKey": null,
-    "perSpeciesWeight": 1,
-    "appearances": [
-      {
-        "id": "standard",
-        "name": "Standard",
-        "sortOrder": 0,
-        "unlock": {
-          "type": "owned"
-        }
-      },
-      {
-        "id": "level_10",
-        "name": "Level 10",
-        "sortOrder": 10,
-        "unlock": {
-          "type": "level",
-          "atLevel": 10
-        }
-      },
-      {
-        "id": "level_20",
-        "name": "Level 20",
-        "sortOrder": 20,
-        "unlock": {
-          "type": "level",
-          "atLevel": 20
-        }
-      },
-      {
-        "id": "level_30",
-        "name": "Level 30",
-        "sortOrder": 30,
-        "unlock": {
-          "type": "level",
-          "atLevel": 30
-        }
-      },
-      {
-        "id": "level_40",
-        "name": "Level 40",
-        "sortOrder": 40,
-        "unlock": {
-          "type": "level",
-          "atLevel": 40
-        }
-      },
-      {
-        "id": "level_50",
-        "name": "Level 50",
-        "sortOrder": 50,
-        "unlock": {
-          "type": "level",
-          "atLevel": 50
-        }
-      }
-    ],
-    "buddyBonus": {
-      "name": "The Grind",
-      "flavorText": "The Grind: +25% Essence gained.",
-      "effectId": "essence_gain",
-      "value": 25
-    }
-  },
-  {
-    "slug": "bathhouse_mistress",
-    "name": "Bathhouse Mistress",
-    "rarity": "SR",
-    "archetype": "demon",
-    "race": "demon",
-    "baseCaptureRate": null,
-    "description": "Runs the oldest bathhouse on the ridge; sets the temperature, the rules, and the penalty for breaking them, and enforces all three personally.",
-    "tags": [
-      "expansion",
-      "region_exclusive"
-    ],
-    "contentRating": "explicit",
-    "affinity": "dominant",
-    "card": {
-      "subtitle": "Keeper of the Old Soak",
-      "ability": {
-        "name": "Rule and Consequence",
-        "text": "Every guest is read the rules once, at the door, by her. Breaking them earns a private appointment she always keeps."
-      },
-      "flavorQuote": "The water is for healing. The rules are for the ones who come here to misbehave.",
-      "artist": "Whistler"
-    },
-    "imagePath": "waifumon/bathhouse_mistress/standard.png",
-    "enabled": true,
-    "eventKey": null,
-    "perSpeciesWeight": 1,
-    "appearances": [
-      {
-        "id": "standard",
-        "name": "Standard",
-        "sortOrder": 0,
-        "unlock": {
-          "type": "owned"
-        }
-      },
-      {
-        "id": "level_10",
-        "name": "Level 10",
-        "sortOrder": 10,
-        "unlock": {
-          "type": "level",
-          "atLevel": 10
-        }
-      },
-      {
-        "id": "level_20",
-        "name": "Level 20",
-        "sortOrder": 20,
-        "unlock": {
-          "type": "level",
-          "atLevel": 20
-        }
-      },
-      {
-        "id": "level_30",
-        "name": "Level 30",
-        "sortOrder": 30,
-        "unlock": {
-          "type": "level",
-          "atLevel": 30
-        }
-      },
-      {
-        "id": "level_40",
-        "name": "Level 40",
-        "sortOrder": 40,
-        "unlock": {
-          "type": "level",
-          "atLevel": 40
-        }
-      },
-      {
-        "id": "level_50",
-        "name": "Level 50",
-        "sortOrder": 50,
-        "unlock": {
-          "type": "level",
-          "atLevel": 50
-        }
-      }
-    ],
-    "buddyBonus": {
-      "name": "Management Perks",
-      "flavorText": "Management Perks: +40% eligible rewards from Boss Encounters.",
-      "effectId": "boss_reward_gain",
-      "value": 40
-    }
-  },
-  {
-    "slug": "towel_house_spirit",
-    "name": "Towel-House Spirit",
-    "rarity": "N",
-    "archetype": "spirit",
-    "race": "spirit",
-    "baseCaptureRate": null,
-    "description": "Haunts the storage room where the linen steams; folds every towel so perfectly the guests swear they're being watched.",
+    "description": "Charts the stars with gears instead of eyes. Their telescope is wound so tight it hums in binary.",
     "tags": [
       "expansion",
       "region_exclusive"
@@ -1086,15 +263,15 @@
     "contentRating": "suggestive",
     "affinity": "caregiver",
     "card": {
-      "subtitle": "Linen-Room Custodian",
+      "subtitle": "Celestial Gearhead",
       "ability": {
-        "name": "Immaculate Folds",
-        "text": "Every towel leaves her rack with a crease so sharp it could draw blood, and a personal warmth no dryer provides."
+        "name": "Orbital Forecast",
+        "text": "Predicts eclipses, tides, and exactly when you'll need a second blanket."
       },
-      "flavorQuote": "She does not want thanks. She wants you to use the towel. That is the whole transaction.",
+      "flavorQuote": "The stars don't drift. People do. Their heart ticks in perfect time.",
       "artist": "Whistler"
     },
-    "imagePath": "waifumon/towel_house_spirit/standard.png",
+    "imagePath": "waifumon/clockwork_astronomer/standard.png",
     "enabled": true,
     "eventKey": null,
     "perSpeciesWeight": 1,
@@ -1152,38 +329,281 @@
           "atLevel": 50
         }
       }
-    ],
-    "buddyBonus": {
-      "name": "Perfect Fold",
-      "flavorText": "Perfect Fold: +50% Affection gained.",
-      "effectId": "affection_gain",
-      "value": 50
-    }
+    ]
   },
   {
-    "slug": "mineral_spring_divine",
-    "name": "Mineral Spring Divine",
-    "rarity": "R",
+    "slug": "aurora_songspirit",
+    "name": "Aurora Songspirit",
+    "rarity": "SR",
     "archetype": "spirit",
     "race": "spirit",
     "baseCaptureRate": null,
-    "description": "Reads the mineral content of every source and declares which pool truly healed your soul \u2014 never says which one's purely for the view.",
+    "description": "Sings the northern lights into being. Their voice leaves afterimages on your eyelids.",
+    "tags": [
+      "expansion",
+      "region_exclusive"
+    ],
+    "contentRating": "mature",
+    "affinity": "caregiver",
+    "card": {
+      "subtitle": "Skyborn Cantor",
+      "ability": {
+        "name": "Curtain Call",
+        "text": "Once per night, their song parts the sky. What it reveals is never the same twice."
+      },
+      "flavorQuote": "Listen past the melody. That's the part they wrote for you.",
+      "artist": "Whistler"
+    },
+    "imagePath": "waifumon/aurora_songspirit/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
+  },
+  {
+    "slug": "sky_pirate_valkyrie",
+    "name": "Sky Pirate Valkyrie",
+    "rarity": "SR",
+    "archetype": "valkyrie",
+    "race": "valkyrie",
+    "baseCaptureRate": null,
+    "description": "Flies the trade routes between cloud kingdoms. Boarding actions only, insurance fraud never.",
+    "tags": [
+      "expansion",
+      "region_exclusive"
+    ],
+    "contentRating": "mature",
+    "affinity": "dominant",
+    "card": {
+      "subtitle": "Winged Privateer",
+      "ability": {
+        "name": "Plunder Winds",
+        "text": "When the gale picks up, cargo manifests have a habit of blowing out of other ships' hands."
+      },
+      "flavorQuote": "She doesn't take hostages. She takes the good stuff.",
+      "artist": "Whistler"
+    },
+    "imagePath": "waifumon/sky_pirate_valkyrie/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
+  },
+  {
+    "slug": "dusk_gravekeeper",
+    "name": "Dusk Gravekeeper",
+    "rarity": "SSR",
+    "archetype": "spirit",
+    "race": "spirit",
+    "baseCaptureRate": null,
+    "description": "Tends the wall between dusk and the other side. She knows every name on it by heart.",
+    "tags": [
+      "expansion",
+      "region_exclusive"
+    ],
+    "contentRating": "mature",
+    "affinity": "switch",
+    "card": {
+      "subtitle": "Warden of the Quiet Gate",
+      "ability": {
+        "name": "Lantern Vigil",
+        "text": "The dead may pass once the lantern is lit. She decides which side of the gate counts as passing."
+      },
+      "flavorQuote": "The wall isn't to keep them in. It's to keep you out.",
+      "artist": "Whistler"
+    },
+    "imagePath": "waifumon/dusk_gravekeeper/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
+  },
+  {
+    "slug": "infernal_circus_ringmaster",
+    "name": "Infernal Circus Ringmaster",
+    "rarity": "SSR",
+    "archetype": "demon",
+    "race": "demon",
+    "baseCaptureRate": null,
+    "description": "Runs the only show where the audience is the main act. Every seat is ringside.",
     "tags": [
       "expansion",
       "region_exclusive"
     ],
     "contentRating": "explicit",
-    "affinity": "primal",
+    "affinity": "dominant",
     "card": {
-      "subtitle": "The True Spring",
+      "subtitle": "Mistress of the Big Top",
       "ability": {
-        "name": "Mineral Reading",
-        "text": "Reads the mineral content of every source and declares which pool truly healed your soul \u2014 never says which one's purely for the view."
+        "name": "Three-Ring Charm",
+        "text": "Her whistle decides the tempo, the stakes, and which of the three rings you perform in."
       },
-      "flavorQuote": "That one's for the view.",
-      "artist": "Gorthig"
+      "flavorQuote": "Ladies and gentlemen, boys and girls \u2014 sign the waiver on your way in. No refunds on the finale.",
+      "artist": "Whistler"
     },
-    "imagePath": "waifumon/mineral_spring_divine/standard.png",
+    "imagePath": "waifumon/infernal_circus_ringmaster/standard.png",
     "enabled": true,
     "eventKey": null,
     "perSpeciesWeight": 1,
@@ -1241,22 +661,16 @@
           "atLevel": 50
         }
       }
-    ],
-    "buddyBonus": {
-      "name": "Precious Minerals",
-      "flavorText": "Precious Minerals: +30% Essence gained.",
-      "effectId": "essence_gain",
-      "value": 30
-    }
+    ]
   },
   {
-    "slug": "primordial_onsen_goddess",
-    "name": "Primordial Onsen Goddess",
-    "rarity": "LR",
-    "archetype": "demon",
-    "race": "demon",
+    "slug": "solar_archangel",
+    "name": "Solar Archangel",
+    "rarity": "UR",
+    "archetype": "angel",
+    "race": "angel",
     "baseCaptureRate": null,
-    "description": "The volcano-heated water that fills every pool, given form to thank you for soaking in her. Bathes with you whether the pool is private or not.",
+    "description": "Dawn made manifest and mildly annoyed at being woken early. Her halo is a small, contained sunrise.",
     "tags": [
       "expansion",
       "region_exclusive"
@@ -1264,15 +678,15 @@
     "contentRating": "explicit",
     "affinity": "caregiver",
     "card": {
-      "subtitle": "Primordial Heat",
+      "subtitle": "Winged Dawn",
       "ability": {
-        "name": "Always-Tended Water",
-        "text": "Refills every pool from her own body-temperature stream and refuses to let a single guest soak alone."
+        "name": "First Light",
+        "text": "At daybreak she chooses one soul to forgive. The other forty thousand wait their turn."
       },
-      "flavorQuote": "You came all this way to bathe in me. The least I can do is stay in the water too.",
+      "flavorQuote": "She burned the midnight oil. Literally. It was a nice oil.",
       "artist": "Whistler"
     },
-    "imagePath": "waifumon/primordial_onsen_goddess/standard.png",
+    "imagePath": "waifumon/solar_archangel/standard.png",
     "enabled": true,
     "eventKey": null,
     "perSpeciesWeight": 1,
@@ -1330,12 +744,500 @@
           "atLevel": 50
         }
       }
+    ]
+  },
+  {
+    "slug": "storm_titan_huntress",
+    "name": "Storm Titan Huntress",
+    "rarity": "LR",
+    "archetype": "valkyrie",
+    "race": "valkyrie",
+    "baseCaptureRate": null,
+    "description": "Hunts things that eat gods. The thunder is her footsteps, not the weather.",
+    "tags": [
+      "expansion",
+      "region_exclusive"
     ],
-    "buddyBonus": {
-      "name": "Primordial Bath",
-      "flavorText": "Primordial Bath: +100% Energy gained in Care mode.",
-      "effectId": "care_energy_gain",
-      "value": 100
-    }
+    "contentRating": "explicit",
+    "affinity": "primal",
+    "card": {
+      "subtitle": "Thunder-Chaser",
+      "ability": {
+        "name": "Skyrend Spear",
+        "text": "Her spear hits before the lightning does. The lightning just takes the credit."
+      },
+      "flavorQuote": "You don't hear the storm coming. You hear it running.",
+      "artist": "Whistler"
+    },
+    "imagePath": "waifumon/storm_titan_huntress/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
+  },
+  {
+    "slug": "gravel_harvester",
+    "name": "Gravel Harvester",
+    "rarity": "R",
+    "archetype": "android",
+    "race": "android",
+    "baseCaptureRate": null,
+    "description": "Decommissioned quarry unit that still hums along the gravel beds at night. Its grip is the only early warning system left.",
+    "tags": [
+      "expansion",
+      "region_exclusive"
+    ],
+    "contentRating": "mature",
+    "affinity": "switch",
+    "card": {
+      "subtitle": "Old Quarry Save",
+      "ability": {
+        "name": "Stone Memory",
+        "text": "Holds the temperature of every rock it ever hauled, and runs a thumb over yours like checking an old wound."
+      },
+      "flavorQuote": "I don't crush what I'm asked to keep.",
+      "artist": "Whistler"
+    },
+    "imagePath": "waifumon/gravel_harvester/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
+  },
+  {
+    "slug": "clover_field_dryad",
+    "name": "Clover-Field Dryad",
+    "rarity": "N",
+    "archetype": "demi-human",
+    "race": "demi-human",
+    "baseCaptureRate": null,
+    "description": "Tends the clover flats at the base of the slopes. The bees stay calm when she's near.",
+    "tags": [
+      "expansion",
+      "region_exclusive"
+    ],
+    "contentRating": "suggestive",
+    "affinity": "submissive",
+    "card": {
+      "subtitle": "Bloom-Kept Daughter",
+      "ability": {
+        "name": "Clover Thirst",
+        "text": "Every patch she beds down in flowers by morning. She blushes like it's a secret."
+      },
+      "flavorQuote": "The meadow asked me to keep you. It didn't say for how long.",
+      "artist": "Whistler"
+    },
+    "imagePath": "waifumon/clover_field_dryad/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
+  },
+  {
+    "slug": "orchard_dawn_angel",
+    "name": "Orchard-Dawn",
+    "rarity": "R",
+    "archetype": "angel",
+    "race": "angel",
+    "baseCaptureRate": null,
+    "description": "The first light to rise over the valley orchards. The apples ripen toward her before she's even awake.",
+    "tags": [
+      "expansion",
+      "region_exclusive"
+    ],
+    "contentRating": "mature",
+    "affinity": "primal",
+    "card": {
+      "subtitle": "Row-Born Dawn",
+      "ability": {
+        "name": "First Ripeness",
+        "text": "Whatever she lingers beside comes early and comes sweet, and the nearest tree leans to hold her."
+      },
+      "flavorQuote": "Dawn doesn't wait for a reason. Neither do I.",
+      "artist": "Whistler"
+    },
+    "imagePath": "waifumon/orchard_dawn_angel/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
+  },
+  {
+    "slug": "long_grass_valkyrie",
+    "name": "Long-Grass Valkyrie",
+    "rarity": "SR",
+    "archetype": "valkyrie",
+    "race": "valkyrie",
+    "baseCaptureRate": null,
+    "description": "Patrols the tall-grass ridgelines between the foothill valleys. Carries a spear, keeps no off-season.",
+    "tags": [
+      "expansion",
+      "region_exclusive"
+    ],
+    "contentRating": "explicit",
+    "affinity": "dominant",
+    "card": {
+      "subtitle": "Grass-Ward Rider",
+      "ability": {
+        "name": "Field Claim",
+        "text": "Parts the grass like a curtain with one bare hand, and chooses what she finds waiting on the far side."
+      },
+      "flavorQuote": "Every valley ends the same way. Mine.",
+      "artist": "Whistler"
+    },
+    "imagePath": "waifumon/long_grass_valkyrie/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
+  },
+  {
+    "slug": "hayloft_farmhand",
+    "name": "Hayloft Farmhand",
+    "rarity": "N",
+    "archetype": "human",
+    "race": "human",
+    "baseCaptureRate": null,
+    "description": "Naps in the hayloft between chores and pretends he wasn't caught. His pitchfork has a better work ethic than he does.",
+    "tags": [
+      "expansion",
+      "region_exclusive"
+    ],
+    "contentRating": "suggestive",
+    "affinity": "submissive",
+    "card": {
+      "subtitle": "Loft-Bound Hire",
+      "flavorQuote": "The hay was already warm before you climbed up.",
+      "artist": "MagicMonday"
+    },
+    "imagePath": "waifumon/hayloft_farmhand/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
   }
 ]

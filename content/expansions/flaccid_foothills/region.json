@@ -167,6 +167,10 @@
     {
       "species": "long_grass_valkyrie",
       "weight": 8
+    },
+    {
+      "species": "hayloft_farmhand",
+      "weight": 10
     }
   ]
 }
