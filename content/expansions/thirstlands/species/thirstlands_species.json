@@ -2,7 +2,7 @@
  {
   "slug": "pickaxe_goblin",
   "name": "Pickaxe Goblin",
-  "rarity": "R",
+  "rarity": "N",
   "archetype": "demi-human",
   "race": "demi-human",
   "baseCaptureRate": null,
@@ -12,7 +12,7 @@
    "region_exclusive"
   ],
   "contentRating": "mature",
-  "affinity": "switch",
+  "affinity": "primal",
   "card": {
    "subtitle": "Canyon Claim Jumper",
    "ability": {
@@ -84,7 +84,7 @@
  {
   "slug": "kobold_lamp_girl",
   "name": "Kobold Lamp Girl",
-  "rarity": "R",
+  "rarity": "N",
   "archetype": "demi-human",
   "race": "demi-human",
   "baseCaptureRate": null,
@@ -176,7 +176,7 @@
    "region_exclusive"
   ],
   "contentRating": "mature",
-  "affinity": "switch",
+  "affinity": "caregiver",
   "card": {
    "subtitle": "Too Much Gear",
    "ability": {
@@ -258,7 +258,7 @@
    "region_exclusive"
   ],
   "contentRating": "mature",
-  "affinity": "switch",
+  "affinity": "dominant",
   "card": {
    "subtitle": "Canyon Grease Monkey",
    "ability": {
@@ -266,7 +266,7 @@
     "text": "Whatever's broken, she's already fixed a worse one. Machines run smoother the moment she leans on them."
    },
    "flavorQuote": "It ain't broke. It just ain't fixed yet.",
-   "artist": "Whistler"
+   "artist": "Potato"
   },
   "imagePath": "waifumon/orc_mechanic/standard.png",
   "eventKey": null,
@@ -340,7 +340,7 @@
    "region_exclusive"
   ],
   "contentRating": "mature",
-  "affinity": "dominant",
+  "affinity": "switch",
   "card": {
    "subtitle": "Heat-Seeking",
    "ability": {
@@ -348,7 +348,7 @@
     "text": "Once her lens locks a mark, dust, distance and dead ends are just paperwork. The cuffs always swing home."
    },
    "flavorQuote": "I was built for this heat. You weren't.",
-   "artist": "Whistler"
+   "artist": "Potato"
   },
   "imagePath": "waifumon/desert_bounty_huntress/standard.png",
   "eventKey": null,
@@ -411,7 +411,7 @@
  },
  {
   "slug": "tak_belly_dancer",
-  "name": "Tak, Thirstland's Belly Dancer",
+  "name": "Tak, Thirstland's Favorite",
   "rarity": "LR",
   "archetype": "demi-human",
   "race": "demi-human",
@@ -430,7 +430,7 @@
     "text": "Every sway of her hips loosens purses and resolve alike. The longer you watch, the less you remember why you came."
    },
    "flavorQuote": "You came for the dancing. Stay for the encore.",
-   "artist": "Whistler"
+   "artist": "Potato"
   },
   "imagePath": "waifumon/tak_belly_dancer/standard.png",
   "eventKey": null,
@@ -512,7 +512,7 @@
     "text": "Tends the underdark bar where the weary find warmth. Restores the target and makes the dark feel safe."
    },
    "flavorQuote": "Stay until the fire burns low. I'll keep the kettle on.",
-   "artist": "Potato"
+   "artist": "Gorthig"
   },
   "imagePath": "waifumon/underdark_bartender/standard.png",
   "eventKey": null,
@@ -576,7 +576,7 @@
  {
   "slug": "dune_siren",
   "name": "Dune Siren",
-  "rarity": "SR",
+  "rarity": "R",
   "archetype": "spirit",
   "race": "spirit",
   "baseCaptureRate": null,
@@ -594,7 +594,7 @@
     "text": "Her song stills the gale around you and loosens every guard \u2014 hers most of all, for the one who comes to her unafraid."
    },
    "flavorQuote": "The storm can howl forever. Or it can kneel. I choose kneeling.",
-   "artist": "Whistler"
+   "artist": "Potato"
   },
   "imagePath": "waifumon/dune_siren/standard.png",
   "eventKey": null,
@@ -676,7 +676,7 @@
     "text": "Her voice cuts the wind and every hand on the caravan snaps to it. Follow her orders and the road stays clear; defy her and the desert keeps what it takes."
    },
    "flavorQuote": "I've hauled freight through every storm this road can throw. You want cargo delivered, you ride with me.",
-   "artist": "Whistler"
+   "artist": "Potato"
   },
   "imagePath": "waifumon/caravan_captain/standard.png",
   "eventKey": null,
@@ -740,7 +740,7 @@
  {
   "slug": "sandworm_bride",
   "name": "Sandworm Bride",
-  "rarity": "SR",
+  "rarity": "UR",
   "archetype": "demon",
   "race": "demon",
   "baseCaptureRate": null,
@@ -750,7 +750,7 @@
    "region_exclusive"
   ],
   "contentRating": "mature",
-  "affinity": "dominant",
+  "affinity": "primal",
   "card": {
    "subtitle": "Wedding That Never Ended",
    "ability": {
@@ -758,7 +758,7 @@
     "text": "She speaks the old vows over her prey and the sands answer like a wedding party \u2014 every guest is buried, and the bride always keeps the rings."
    },
    "flavorQuote": "Till death do us part. And I've had a lot of practice with death.",
-   "artist": "Whistler"
+   "artist": "Potato"
   },
   "imagePath": "waifumon/sandworm_bride/standard.png",
   "eventKey": null,
@@ -832,7 +832,7 @@
    "region_exclusive"
   ],
   "contentRating": "mature",
-  "affinity": "submissive",
+  "affinity": "caregiver",
   "card": {
    "subtitle": "Water That Wants",
    "ability": {
@@ -840,7 +840,7 @@
     "text": "The oasis reads what you lack and gives it to you, need by need, each sweeter than the last. Stay too long and every want is answered \u2014 then answered again."
    },
    "flavorQuote": "You were looking for water. I can give you so much more than water.",
-   "artist": "Whistler"
+   "artist": "Potato"
   },
   "imagePath": "waifumon/oasis_mirage/standard.png",
   "eventKey": null,
@@ -904,7 +904,7 @@
  {
   "slug": "kobold_sand_surfer",
   "name": "Kobold Sand-surfer",
-  "rarity": "R",
+  "rarity": "SSR",
   "archetype": "demi-human",
   "race": "demi-human",
   "baseCaptureRate": null,
@@ -922,7 +922,7 @@
     "text": "When she commits to a line she never bails. Any rider who can keep up through the spray earns her respect."
    },
    "flavorQuote": "Sand in your eyes? That's a you problem. I wear goggles.",
-   "artist": "Whistler"
+   "artist": "Potato"
   },
   "imagePath": "waifumon/kobold_sand_surfer/standard.png",
   "eventKey": null,
@@ -1086,7 +1086,7 @@
     "text": "Performs on the lantern-lit stage of the deep caverns. Her primal set leaves the whole cave silent, then roaring."
    },
    "flavorQuote": "The dark doesn't listen to anyone. It listens to her.",
-   "artist": "Potato"
+   "artist": "Gorthig"
   },
   "imagePath": "waifumon/cave_bat_idol/standard.png",
   "eventKey": null,
