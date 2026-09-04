@@ -1653,6 +1653,71 @@ export const worldEncounterHistory = pgTable(
 );
 
 /**
+ * Global World Encounter runtime tuning — one row, edited from Portal Admin.
+ *
+ * These four values used to live in `content/tables.json`, which meant every
+ * change to an encounter rate was a content edit plus a reload. They are the
+ * knobs an operator actually wants to turn while watching a live server, so
+ * they live in the database instead: a write here is visible to the engine
+ * within seconds, with no rebuild, redeploy, or content reload.
+ *
+ * **A singleton, enforced by the database.** `id` is fixed at 1 by a CHECK, so
+ * "the settings" is always exactly one row and no code has to decide which of
+ * several rows is authoritative.
+ *
+ * Ranges are CHECK constraints rather than only application validation,
+ * because these values divide the game's pacing: a chance outside [0, 1] or a
+ * negative expiry would not error, it would quietly make encounters impossible
+ * or instantaneous. The API validates too — this is the backstop for anything
+ * that reaches the table another way.
+ *
+ * Defaults deliberately mirror the shipped `content/tables.json` values, so a
+ * deployment that migrates and never opens the panel behaves exactly as it did
+ * before this table existed.
+ */
+export const worldEncounterSettings = pgTable(
+  'world_encounter_settings',
+  {
+    id: integer('id').primaryKey().default(1),
+    /** Probability a hunt is interrupted by a world encounter. */
+    huntChance: real('hunt_chance').notNull().default(0.35),
+    /** Probability a completed travel is interrupted by one. */
+    travelChance: real('travel_chance').notNull().default(0.2),
+    /** How long a presented encounter stays answerable. */
+    defaultExpirySeconds: integer('default_expiry_seconds').notNull().default(600),
+    /**
+     * Testing switch: skip the probability roll so an eligible encounter fires
+     * every time.
+     *
+     * It replaces *only* the dice. Cooldowns, the one-pending-encounter rule,
+     * region and route eligibility, source eligibility and lifecycle all still
+     * apply — see `tryRollForHunt` / `tryRollForTravel`, which hand off to the
+     * same `rollAndActivate` either way.
+     */
+    forceTrigger: boolean('force_trigger').notNull().default(false),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Discord id of whoever last saved, for an audit trail. Null when seeded. */
+    updatedBy: text('updated_by'),
+  },
+  (t) => [
+    check('world_encounter_settings_singleton_check', sql`${t.id} = 1`),
+    check(
+      'world_encounter_settings_hunt_chance_check',
+      sql`${t.huntChance} >= 0 and ${t.huntChance} <= 1`,
+    ),
+    check(
+      'world_encounter_settings_travel_chance_check',
+      sql`${t.travelChance} >= 0 and ${t.travelChance} <= 1`,
+    ),
+    check(
+      'world_encounter_settings_expiry_check',
+      sql`${t.defaultExpirySeconds} >= 30 and ${t.defaultExpirySeconds} <= 86400`,
+    ),
+  ],
+);
+export type WorldEncounterSettingsRow = typeof worldEncounterSettings.$inferSelect;
+
+/**
  * World encounter vendor — definition. One row per named vendor
  * (Wandering Merchant, etc.). `stockTemplateJson` is the authoring shape;
  * a per-encounter instance snapshots and possibly randomises it.

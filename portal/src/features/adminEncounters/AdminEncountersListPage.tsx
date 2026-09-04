@@ -22,6 +22,8 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { ErrorState } from '@/components/layout/ErrorState';
 import { PageHeader } from '@/components/layout/PageHeader';
+
+import { GlobalEncounterSettingsPanel } from './GlobalEncounterSettingsPanel';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useHasPermission } from '@/auth/useSession';
 
@@ -118,6 +120,13 @@ export function AdminEncountersListPage() {
           ) : undefined
         }
       />
+
+      {/*
+        Global runtime tuning sits above the encounter list: it applies to
+        every encounter below it, and Force Trigger being on is the first
+        thing an operator needs to notice on this screen.
+      */}
+      <GlobalEncounterSettingsPanel />
 
       <Card className="space-y-3 p-4">
         <div className="grid grid-cols-2 gap-3 md:grid-cols-5">

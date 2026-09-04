@@ -87,6 +87,16 @@ const ENCOUNTER = {
   ],
 };
 
+/** The settings the double reports as live. */
+const SETTINGS = {
+  huntChance: 0.35,
+  travelChance: 0.2,
+  defaultExpirySeconds: 600,
+  forceTrigger: false,
+  updatedAt: null,
+  updatedBy: null,
+};
+
 function portalSession(overrides: Partial<PortalSession> = {}): PortalSession {
   return {
     sessionDigest: 'digest',
@@ -171,6 +181,7 @@ interface BuildOpts {
   /** Wire no permission oracle at all — the bot-less deployment shape. */
   noAuthorization?: boolean;
   upsert?: (input: never) => Promise<typeof ENCOUNTER>;
+  updateSettings?: (patch: unknown, actor: string | null) => Promise<typeof SETTINGS>;
 }
 
 async function build(opts: BuildOpts = {}): Promise<ZodFastify> {
@@ -185,6 +196,12 @@ async function build(opts: BuildOpts = {}): Promise<ZodFastify> {
     probes: createProbes(),
     ctx: createApiContext({
       services: {
+        worldEncounterSettings: {
+          get: async () => SETTINGS,
+          getCached: () => SETTINGS,
+          invalidate: () => {},
+          update: opts.updateSettings ?? (async () => SETTINGS),
+        },
         worldEncounterAdmin: {
           list: async () => [ENCOUNTER],
           get: async (id: number) => (id === ENCOUNTER.id ? ENCOUNTER : null),
@@ -401,6 +418,113 @@ describe('admin encounters: CSRF on cookie-authenticated mutations', () => {
     expect(res.statusCode).toBe(403);
     expect(res.json().error.code).toBe('PORTAL_PERMISSION_DENIED');
     expect(upsert).not.toHaveBeenCalled();
+  });
+});
+
+describe('global encounter settings: the same boundary as the rest of the namespace', () => {
+  it('serves the effective values, with bounds, to the guild owner', async () => {
+    app = await build();
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/v1/admin/encounters/settings',
+      headers: { cookie: browserCookies() },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json().data;
+    expect(body.huntChance).toBe(0.35);
+    expect(body.forceTrigger).toBe(false);
+    // Bounds ship with the values so the panel does not hard-code its own.
+    expect(body.bounds.chance).toEqual({ min: 0, max: 1 });
+    expect(body.bounds.expirySeconds).toEqual({ min: 30, max: 86400 });
+  });
+
+  it('refuses a read from a non-owner', async () => {
+    app = await build({ owns: { [GUILD_A]: STRANGER_DISCORD_ID } });
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/v1/admin/encounters/settings',
+      headers: { cookie: browserCookies() },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('refuses a bearer read by default, like every other admin route', async () => {
+    app = await build();
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/v1/admin/encounters/settings',
+      headers: AUTH,
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('rejects a save with no CSRF token, before the handler runs', async () => {
+    const updateSettings = vi.fn(async (_patch: unknown, _actor: string | null) => SETTINGS);
+    app = await build({ updateSettings });
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/admin/encounters/settings',
+      headers: { cookie: browserCookies(null) },
+      payload: { huntChance: 0.5 },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.code).toBe('PORTAL_CSRF_INVALID');
+    expect(updateSettings).not.toHaveBeenCalled();
+  });
+
+  it('reaches the handler with a valid CSRF token, and takes the actor from the session', async () => {
+    const updateSettings = vi.fn(async (_patch: unknown, _actor: string | null) => SETTINGS);
+    app = await build({ updateSettings });
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/admin/encounters/settings',
+      headers: { cookie: browserCookies(), [PORTAL_CSRF_HEADER]: CSRF },
+      payload: { huntChance: 0.5, forceTrigger: true },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(updateSettings).toHaveBeenCalledTimes(1);
+    expect(updateSettings.mock.calls[0]![0]).toEqual({ huntChance: 0.5, forceTrigger: true });
+    // Identity comes from the authenticated session, never from the body.
+    expect(updateSettings.mock.calls[0]![1]).toBe(OWNER_DISCORD_ID);
+  });
+
+  it('refuses a save from a non-owner even with a valid CSRF token', async () => {
+    const updateSettings = vi.fn(async (_patch: unknown, _actor: string | null) => SETTINGS);
+    app = await build({ updateSettings, owns: { [GUILD_A]: STRANGER_DISCORD_ID } });
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/admin/encounters/settings',
+      headers: { cookie: browserCookies(), [PORTAL_CSRF_HEADER]: CSRF },
+      payload: { huntChance: 0.5 },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.code).toBe('PORTAL_PERMISSION_DENIED');
+    expect(updateSettings).not.toHaveBeenCalled();
+  });
+
+  it('rejects out-of-range values before reaching the service', async () => {
+    const updateSettings = vi.fn(async (_patch: unknown, _actor: string | null) => SETTINGS);
+    app = await build({ updateSettings });
+    for (const payload of [
+      { huntChance: 1.5 },
+      { travelChance: -0.1 },
+      { defaultExpirySeconds: 5 },
+      { defaultExpirySeconds: 999_999 },
+      {},
+    ]) {
+      const res = await app.inject({
+        method: 'PUT',
+        url: '/api/v1/admin/encounters/settings',
+        headers: { cookie: browserCookies(), [PORTAL_CSRF_HEADER]: CSRF },
+        payload,
+      });
+      expect(res.statusCode, JSON.stringify(payload)).toBe(400);
+    }
+    expect(updateSettings).not.toHaveBeenCalled();
   });
 });
 

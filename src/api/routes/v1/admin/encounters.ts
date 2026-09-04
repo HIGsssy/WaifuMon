@@ -37,6 +37,12 @@ import {
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { resolveAssetPath } from '../../../../modules/content/loader';
+import {
+  SETTINGS_BOUNDS,
+  WorldEncounterSettingsValidationError,
+  type WorldEncounterSettings,
+  type WorldEncounterSettingsService,
+} from '../../../../modules/worldEncounters/settingsService';
 import { seededRng } from '../../../../shared/random';
 import { REGIONS } from '../../../../modules/locations/regions';
 import {
@@ -176,6 +182,40 @@ const simulateResponseSchema = z.object({
   aggregate: simulateAggregateSchema,
 });
 
+const settingsSchema = z.object({
+  huntChance: z.number(),
+  travelChance: z.number(),
+  defaultExpirySeconds: z.number().int(),
+  forceTrigger: z.boolean(),
+  updatedAt: z.string().nullable(),
+  updatedBy: z.string().nullable(),
+  /** Echoed so the panel can label its inputs without hard-coding limits. */
+  bounds: z.object({
+    chance: z.object({ min: z.number(), max: z.number() }),
+    expirySeconds: z.object({ min: z.number(), max: z.number() }),
+  }),
+});
+
+/**
+ * Every field optional: the panel sends only what changed, so two operators
+ * editing different settings do not clobber each other's values.
+ *
+ * Bounds are enforced here, again in the settings service, and a third time by
+ * the table's CHECK constraints. That is deliberate for values that set the
+ * game's pacing — a bad one does not throw, it silently makes encounters
+ * impossible or instantaneous.
+ */
+const settingsPatchSchema = z
+  .object({
+    huntChance: z.number().min(0).max(1).optional(),
+    travelChance: z.number().min(0).max(1).optional(),
+    defaultExpirySeconds: z.number().int().min(30).max(86_400).optional(),
+    forceTrigger: z.boolean().optional(),
+  })
+  .refine((patch) => Object.keys(patch).length > 0, {
+    message: 'Provide at least one setting to change.',
+  });
+
 /* ─────────────────────── Request schemas ─────────────────────── */
 
 const previewBodySchema = z.object({
@@ -205,6 +245,26 @@ const simulateBodySchema = previewBodySchema.extend({
 });
 
 /* ─────────────────────── Helpers ─────────────────────── */
+
+/**
+ * Settings row → API resource. Bounds travel with the values so the Portal
+ * panel labels and validates its inputs from one source rather than repeating
+ * the numbers in the frontend.
+ */
+function toSettingsResource(s: WorldEncounterSettings): z.infer<typeof settingsSchema> {
+  return {
+    huntChance: s.huntChance,
+    travelChance: s.travelChance,
+    defaultExpirySeconds: s.defaultExpirySeconds,
+    forceTrigger: s.forceTrigger,
+    updatedAt: s.updatedAt ? s.updatedAt.toISOString() : null,
+    updatedBy: s.updatedBy,
+    bounds: {
+      chance: { ...SETTINGS_BOUNDS.chance },
+      expirySeconds: { ...SETTINGS_BOUNDS.expirySeconds },
+    },
+  };
+}
 
 function encounterToResource(e: LoadedEncounter): z.infer<typeof encounterSchema> {
   return {
@@ -331,6 +391,23 @@ export const adminEncounterRoutes =
      * the body is never parsed. `src/api/auth.ts` moves the bearer check up to
      * `onRequest` for exactly this reason.
      */
+    /**
+     * The settings service is optional on `ApiContext` (a deployment without
+     * the encounter engine wires none), so the routes that need it say so
+     * once rather than each optional-chaining their way to a confusing null.
+     */
+    const requireSettings = (): WorldEncounterSettingsService => {
+      const service = ctx.services.worldEncounterSettings;
+      if (!service) {
+        throw new AppError(
+          'NOT_FOUND',
+          'World encounter settings are not wired in this deployment',
+          'Encounter settings are unavailable.',
+        );
+      }
+      return service;
+    };
+
     const gate =
       (permission: Parameters<typeof requireAuth>[1]) =>
       async (req: import('fastify').FastifyRequest): Promise<void> => {
@@ -419,6 +496,62 @@ export const adminEncounterRoutes =
           .header('cache-control', 'private, max-age=60, must-revalidate')
           .send(await readFile(absolute));
         return reply;
+      },
+    );
+
+    /**
+     * Global runtime tuning: the four values the engine reads on every roll.
+     *
+     * Deliberately inside the encounter admin namespace and gated on the same
+     * permissions as everything else here — this is encounter configuration,
+     * not a general settings surface, and nothing unrelated belongs in it.
+     */
+    app.get(
+      '/admin/encounters/settings',
+      {
+        preValidation: gate('encounters.read'),
+        schema: {
+          tags: ['Admin — Encounters'],
+          summary: 'Read global world encounter runtime settings',
+          response: { 200: dataSchema(settingsSchema), ...commonErrorResponses },
+        },
+      },
+      async (req) => {
+        const settings = requireSettings();
+        return ok(req, toSettingsResource(await settings.get()));
+      },
+    );
+
+    app.put(
+      '/admin/encounters/settings',
+      {
+        // `encounters.publish` rather than `.write`: these values change the
+        // live game for every player at once, which is closer to publishing an
+        // encounter than to editing a draft.
+        preValidation: gate('encounters.publish'),
+        schema: {
+          tags: ['Admin — Encounters'],
+          summary: 'Update global world encounter runtime settings',
+          body: settingsPatchSchema,
+          response: { 200: dataSchema(settingsSchema), ...commonErrorResponses },
+        },
+      },
+      async (req) => {
+        const settings = requireSettings();
+        // The actor comes from the authenticated session, never the body.
+        const actor = req.portalSession?.discordUserId ?? null;
+        try {
+          return ok(req, toSettingsResource(await settings.update(req.body, actor)));
+        } catch (err) {
+          if (err instanceof WorldEncounterSettingsValidationError) {
+            throw new AppError(
+              'VALIDATION_ERROR',
+              err.issues.join(' '),
+              err.issues.join(' '),
+            );
+          }
+          throw err;
+        }
       },
     );
 

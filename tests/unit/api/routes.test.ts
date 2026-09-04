@@ -920,6 +920,9 @@ describe('OpenAPI registration', () => {
       'POST /api/v1/admin/encounters/{id}/clone',
       'POST /api/v1/admin/encounters/{id}/preview',
       'POST /api/v1/admin/encounters/{id}/simulate',
+      // Global runtime tuning. Gated on `encounters.publish` rather than
+      // `.write`: it changes the live game for every player at once.
+      'PUT /api/v1/admin/encounters/settings',
       'PUT /api/v1/admin/encounters/{id}',
       'PUT /api/v1/players/{playerId}/collection/owned/{waifuId}/appearance',
     ]);

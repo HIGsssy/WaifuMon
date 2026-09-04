@@ -162,6 +162,44 @@ export async function adminEncounterArtworkBlob(path: string): Promise<Blob> {
   return response.data;
 }
 
+/** Global runtime tuning the engine reads on every encounter roll. */
+export interface AdminEncounterSettings {
+  huntChance: number;
+  travelChance: number;
+  defaultExpirySeconds: number;
+  forceTrigger: boolean;
+  updatedAt: string | null;
+  updatedBy: string | null;
+  /** Server-supplied limits, so the panel never hard-codes its own. */
+  bounds: {
+    chance: { min: number; max: number };
+    expirySeconds: { min: number; max: number };
+  };
+}
+
+export function getAdminEncounterSettings(
+  signal?: AbortSignal,
+): Promise<AdminEncounterSettings> {
+  return getData<AdminEncounterSettings>(
+    '/v1/admin/encounters/settings',
+    signal ? { signal } : {},
+  );
+}
+
+/** Partial by design — the panel sends only the fields that changed. */
+export type AdminEncounterSettingsPatch = Partial<
+  Pick<
+    AdminEncounterSettings,
+    'huntChance' | 'travelChance' | 'defaultExpirySeconds' | 'forceTrigger'
+  >
+>;
+
+export function updateAdminEncounterSettings(
+  patch: AdminEncounterSettingsPatch,
+): Promise<AdminEncounterSettings> {
+  return putData<AdminEncounterSettings>('/v1/admin/encounters/settings', patch);
+}
+
 export function getAdminEncounterReference(signal?: AbortSignal): Promise<AdminEncounterReference> {
   return getData<AdminEncounterReference>(
     '/v1/admin/encounters/reference',

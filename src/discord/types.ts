@@ -37,6 +37,7 @@ import type { WorldEncounterService } from '../modules/worldEncounters/worldEnco
 import type { WorldEncounterAdminService } from '../modules/worldEncounters/adminService';
 import type { WorldEncounterVendorService } from '../modules/worldEncounters/vendorService';
 import type { WildEncounterSpawner } from '../modules/encounters/wildEncounterSpawner';
+import type { WorldEncounterSettingsService } from '../modules/worldEncounters/settingsService';
 
 export interface AppServices {
   guilds: GuildService;
@@ -109,6 +110,11 @@ export interface AppServices {
    * without the hunt graph simply cannot spawn one.
    */
   wildEncounters?: WildEncounterSpawner | undefined;
+  /**
+   * Live-tunable global encounter settings. The engine reads it on every roll
+   * and Portal Admin writes it, so a rate change lands without a redeploy.
+   */
+  worldEncounterSettings?: WorldEncounterSettingsService | undefined;
 }
 
 export interface AppContext {

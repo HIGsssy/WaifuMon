@@ -43,6 +43,7 @@ import {
 import { seedWorldEncounters } from '../../src/modules/worldEncounters/seed';
 import { createWorldEncounterAdminService } from '../../src/modules/worldEncounters/adminService';
 import { createWildEncounterSpawner } from '../../src/modules/encounters/wildEncounterSpawner';
+import { createWorldEncounterSettingsService } from '../../src/modules/worldEncounters/settingsService';
 import {
   createGameEventBus,
   type GameEvent,
@@ -117,6 +118,11 @@ export interface App {
    * that omits a species slug exercises the real fallback.
    */
   wildEncounters: ReturnType<typeof createWildEncounterSpawner>;
+  /**
+   * Live encounter tuning, wired exactly as production does it so a test can
+   * change a rate and watch the engine follow.
+   */
+  worldEncounterSettings: ReturnType<typeof createWorldEncounterSettingsService>;
 }
 
 export interface BootstrapOptions {
@@ -283,6 +289,13 @@ export async function bootstrapApp(
     pickSpecies: (tx, playerId, playerLevel, regionId) =>
       hunt.pickSpeciesForSpawn(tx, playerId, playerLevel, regionId),
   });
+  // `ttlMs: 0` so a test that writes a setting sees it on the very next read
+  // rather than waiting out production's cache window.
+  const worldEncounterSettings = createWorldEncounterSettingsService({
+    db: t.db,
+    logger: t.logger,
+    ttlMs: 0,
+  });
   const worldEncounter = createWorldEncounterService({
     db: t.db,
     currency,
@@ -292,11 +305,7 @@ export async function bootstrapApp(
     buddyBonus,
     vendor: worldEncounterVendor,
     wildEncounters,
-    getConfig: () => ({
-      huntChance: content.tables.worldEncounter.huntChance,
-      travelChance: content.tables.worldEncounter.travelChance,
-      defaultExpirySeconds: content.tables.worldEncounter.defaultExpirySeconds,
-    }),
+    getConfig: () => worldEncounterSettings.get(),
     getMaxWaifuLevel: () => content.tables.waifuProgression.maxLevel,
   });
   const worldEncounterAdmin = createWorldEncounterAdminService(t.db, () => content);
@@ -313,6 +322,7 @@ export async function bootstrapApp(
     worldEncounter,
     worldEncounterVendor,
     worldEncounterAdmin,
+    worldEncounterSettings,
     wildEncounters,
     guilds: createGuildService(t.db),
     players: createPlayerService(t.db, { initialEnergy: content.tables.energy.baseMax }),

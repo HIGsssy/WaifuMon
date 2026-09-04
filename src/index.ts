@@ -28,6 +28,7 @@ import { createWildEncounterSpawner } from './modules/encounters/wildEncounterSp
 import { createCaptureService } from './modules/capture/captureService';
 import { createCareService } from './modules/care/careService';
 import { createWorldEncounterService } from './modules/worldEncounters/worldEncounterService';
+import { createWorldEncounterSettingsService } from './modules/worldEncounters/settingsService';
 import { createWorldEncounterAdminService } from './modules/worldEncounters/adminService';
 import { seedWorldEncounters } from './modules/worldEncounters/seed';
 import {
@@ -124,6 +125,13 @@ async function main(): Promise<void> {
     currency,
     inventory,
   });
+  /**
+   * Live encounter tuning. Replaces the `content/tables.json` values these
+   * four settings used to come from — the row seeds itself from the identical
+   * defaults, so this changes nothing until an operator edits it in Portal
+   * Admin, and then it changes things immediately.
+   */
+  const worldEncounterSettings = createWorldEncounterSettingsService({ db, logger });
   const progression = createProgressionService({
     config: content.tables.progression,
     baseMaxEnergy: content.tables.energy.baseMax,
@@ -350,18 +358,15 @@ async function main(): Promise<void> {
         buddyBonus,
         vendor: worldEncounterVendorService,
         wildEncounters,
-        getConfig: () => {
-          const cfg = contentSnapshot.tables.worldEncounter;
-          return {
-            huntChance: cfg.huntChance,
-            travelChance: cfg.travelChance,
-            defaultExpirySeconds: cfg.defaultExpirySeconds,
-          };
-        },
+        // Read per roll, from the database, through a short-TTL cache — so a
+        // save in Portal Admin is felt by the next hunt with no redeploy and
+        // no content reload.
+        getConfig: () => worldEncounterSettings.get(),
         getMaxWaifuLevel: () => contentSnapshot.tables.waifuProgression.maxLevel,
       }),
       worldEncounterAdmin: createWorldEncounterAdminService(db, () => contentSnapshot),
       worldEncounterVendor: worldEncounterVendorService,
+      worldEncounterSettings,
       wildEncounters,
     },
   };

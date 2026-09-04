@@ -190,6 +190,13 @@
       "when": 1818021600000,
       "tag": "0026_wild_encounter_origin",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1818108000000,
+      "tag": "0027_world_encounter_settings",
+      "breakpoints": true
     }
   ]
 }

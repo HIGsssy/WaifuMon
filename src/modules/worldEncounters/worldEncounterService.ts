@@ -61,6 +61,17 @@ import type {
 export interface WorldEncounterConfig {
   huntChance: number;
   travelChance: number;
+  /**
+   * Testing switch: skip the probability roll so an eligible encounter fires
+   * every time.
+   *
+   * It replaces the dice and nothing else. Everything that decides whether an
+   * encounter *may* happen — cooldowns, the one-pending-encounter rule, region
+   * and route eligibility, source eligibility, lifecycle — lives downstream in
+   * `rollAndActivate`, which both paths reach identically whether the roll was
+   * skipped or won.
+   */
+  forceTrigger?: boolean | undefined;
   /** Default encounter expiration if the definition doesn't override it. */
   defaultExpirySeconds: number;
 }
@@ -68,6 +79,7 @@ export interface WorldEncounterConfig {
 export const DEFAULT_WORLD_ENCOUNTER_CONFIG: WorldEncounterConfig = {
   huntChance: 0,
   travelChance: 0,
+  forceTrigger: false,
   defaultExpirySeconds: 10 * 60,
 };
 
@@ -229,7 +241,16 @@ export interface WorldEncounterServiceDeps {
   progression: ProgressionService;
   collection: CollectionService;
   buddyBonus: BuddyBonusService | null;
-  getConfig: () => WorldEncounterConfig;
+  /**
+   * Current runtime tuning. May be async: the values are a database row that
+   * Portal Admin edits live, so this is `WorldEncounterSettingsService.get()`
+   * in production and a plain closure in tests.
+   *
+   * Every call site resolves it *outside* a transaction — see
+   * `rollAndActivate` and `resolveChoice`, which each read it once up front —
+   * so a settings lookup never widens a lock window.
+   */
+  getConfig: () => WorldEncounterConfig | Promise<WorldEncounterConfig>;
   /** Waifu max level, from content. Used by SP formula guard. */
   getMaxWaifuLevel: () => number;
   rng?: Rng;
@@ -342,24 +363,37 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
 
   /* ─────────────────── Selection roll ─────────────────── */
 
+/**
+ * Should this action be interrupted by an encounter at all?
+ *
+ * The *only* thing `forceTrigger` changes. It stands in for the dice — and
+ * deliberately also for the `chance <= 0` short-circuit, because an operator
+ * who has turned Force Trigger on has stated a more specific intent than a
+ * rate of zero. Everything past this point is identical either way, which is
+ * what keeps force-trigger from becoming a way to bypass cooldowns, region
+ * rules, or the one-pending-encounter limit.
+ */
+  function passesTriggerRoll(chance: number, cfg: WorldEncounterConfig, roll: Rng): boolean {
+    if (cfg.forceTrigger === true) return true;
+    if (chance <= 0) return false;
+    return roll.next() < chance;
+  }
+
   async function tryRollForHunt(opts: TryRollOpts): Promise<EncounterActivation | null> {
-    const cfg = deps.getConfig();
-    if (cfg.huntChance <= 0) return null;
-    const optRng = opts.rng ?? rng;
-    if (optRng.next() >= cfg.huntChance) return null;
-    return rollAndActivate({ ...opts, source: 'hunt' });
+    const cfg = await deps.getConfig();
+    if (!passesTriggerRoll(cfg.huntChance, cfg, opts.rng ?? rng)) return null;
+    return rollAndActivate({ ...opts, source: 'hunt' }, cfg);
   }
 
   async function tryRollForTravel(opts: TryTravelRollOpts): Promise<EncounterActivation | null> {
-    const cfg = deps.getConfig();
-    if (cfg.travelChance <= 0) return null;
-    const optRng = opts.rng ?? rng;
-    if (optRng.next() >= cfg.travelChance) return null;
-    return rollAndActivate({ ...opts, source: 'travel' });
+    const cfg = await deps.getConfig();
+    if (!passesTriggerRoll(cfg.travelChance, cfg, opts.rng ?? rng)) return null;
+    return rollAndActivate({ ...opts, source: 'travel' }, cfg);
   }
 
   async function rollAndActivate(
     opts: TryRollOpts & { source: 'hunt' | 'travel'; originRegionId?: string; destinationRegionId?: string },
+    cfg: WorldEncounterConfig,
   ): Promise<EncounterActivation | null> {
     const now = opts.now ?? new Date();
     const cooldownIds = await repo.getCooldownEncounterIds(opts.playerId, now);
@@ -378,7 +412,7 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
       // partial unique index fires. We surface it as ActiveWorldEncounterError
       // so the Discord layer can decide (re-show the pending row vs skip).
       try {
-        const expiresAt = new Date(now.getTime() + deps.getConfig().defaultExpirySeconds * 1000);
+        const expiresAt = new Date(now.getTime() + cfg.defaultExpirySeconds * 1000);
         const active = await repo.insertActive(tx, {
           playerId: opts.playerId,
           encounterId: chosen.id,
@@ -464,6 +498,10 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
   async function resolveChoice(opts: ResolveChoiceOpts): Promise<Resolution> {
     const now = opts.now ?? new Date();
     const useRng = opts.rng ?? rng;
+    // Read the tuning before the transaction opens: a chained continuation
+    // needs the expiry, and a settings lookup inside the transaction would
+    // hold row locks across it for no reason.
+    const cfg = await deps.getConfig();
     return deps.db.transaction(async (tx) => {
       const active = await repo.getActiveById(tx, opts.activeId);
       if (!active) throw new WorldEncounterResolvedError();
@@ -642,9 +680,7 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
         );
         const nextLoaded = await repo.loadBySlug(nextSlug);
         if (nextLoaded) {
-          const expiresAt = new Date(
-            now.getTime() + deps.getConfig().defaultExpirySeconds * 1000,
-          );
+          const expiresAt = new Date(now.getTime() + cfg.defaultExpirySeconds * 1000);
           const nextRow = await repo.insertActive(tx, {
             playerId: opts.playerId,
             encounterId: nextLoaded.encounter.id,
