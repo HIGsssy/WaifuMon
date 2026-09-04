@@ -26,6 +26,24 @@ import {
   type SpeciesListFilters,
 } from './views/speciesPages';
 import { tablesPage } from './views/tablePages';
+import {
+  encounterFormPage,
+  encounterListPage,
+  encounterPreviewPage,
+  filterEncounters,
+  type EncounterListFilters,
+  type PreviewChoiceRender,
+} from './views/encounterPages';
+import {
+  AdminEncounterValidationError,
+  type WorldEncounterAdminService,
+} from '../modules/worldEncounters/adminService';
+import { computeChance } from '../modules/worldEncounters/checkResolver';
+import type {
+  BuddyProfile,
+  EncounterCheckContext,
+  LoadedEncounter,
+} from '../modules/worldEncounters/types';
 
 const IMAGE_TYPES: Record<string, string> = {
   '.png': 'image/png',
@@ -43,6 +61,9 @@ interface ErrorBody {
 
 function toErrorBody(err: unknown): ErrorBody {
   if (err instanceof AdminValidationError) {
+    return { ok: false, message: 'Validation failed — nothing was written.', errors: err.issues };
+  }
+  if (err instanceof AdminEncounterValidationError) {
     return { ok: false, message: 'Validation failed — nothing was written.', errors: err.issues };
   }
   const message = err instanceof Error ? err.message : String(err);
@@ -63,7 +84,11 @@ function isWritable(dir: string): boolean {
   }
 }
 
-export function registerRoutes(app: FastifyInstance, content: AdminContentService): void {
+export function registerRoutes(
+  app: FastifyInstance,
+  content: AdminContentService,
+  worldEncounters?: WorldEncounterAdminService | undefined,
+): void {
   const html = (reply: import('fastify').FastifyReply, body: string): unknown =>
     reply.type('text/html; charset=utf-8').send(body);
 
@@ -435,4 +460,186 @@ export function registerRoutes(app: FastifyInstance, content: AdminContentServic
       .header('cache-control', 'private, max-age=60')
       .send(fs.createReadStream(resolved));
   });
+
+  // ── world encounters ───────────────────────────────────────────────────────
+
+  const encountersDisabledResponse = (reply: import('fastify').FastifyReply): unknown =>
+    html(
+      reply,
+      encounterListPage(
+        [],
+        { q: '', region: '', source: '', type: '', rarity: '', lifecycle: '' },
+      ),
+    );
+
+  function parseEncounterFilters(query: unknown): EncounterListFilters {
+    const q = (query ?? {}) as Record<string, unknown>;
+    return {
+      q: str(q.q),
+      region: str(q.region),
+      source: str(q.source),
+      type: str(q.type),
+      rarity: str(q.rarity),
+      lifecycle: str(q.lifecycle),
+    };
+  }
+
+  app.get('/admin/encounters', async (req, reply) => {
+    if (!worldEncounters) return encountersDisabledResponse(reply);
+    const filters = parseEncounterFilters(req.query);
+    const all = await worldEncounters.list();
+    return html(reply, encounterListPage(filterEncounters(all, filters), filters));
+  });
+
+  app.get('/admin/encounters/new', async (_req, reply) => {
+    if (!worldEncounters) return reply.code(404).send({ ok: false, errors: ['Feature disabled'] });
+    const itemSlugs = content.readRaw().items.map((i) => i.slug);
+    return html(reply, encounterFormPage(null, itemSlugs));
+  });
+
+  app.get<{ Params: { id: string } }>('/admin/encounters/:id', async (req, reply) => {
+    if (!worldEncounters) return reply.code(404).send({ ok: false, errors: ['Feature disabled'] });
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return reply.code(400).send({ ok: false, errors: ['Bad id'] });
+    const encounter = await worldEncounters.get(id);
+    if (!encounter) return reply.code(404).send({ ok: false, errors: ['Not found'] });
+    const itemSlugs = content.readRaw().items.map((i) => i.slug);
+    return html(reply, encounterFormPage(encounter, itemSlugs));
+  });
+
+  app.post<{ Body: { input?: unknown } }>('/admin/encounters/save', async (req, reply) => {
+    if (!worldEncounters) return reply.code(404).send({ ok: false, errors: ['Feature disabled'] });
+    try {
+      const result = await worldEncounters.upsert(
+        (req.body?.input ?? req.body ?? {}) as Parameters<typeof worldEncounters.upsert>[0],
+      );
+      return reply.send({
+        ok: true,
+        message: `Saved "${result.name}".`,
+        redirect: `/admin/encounters/${result.id}`,
+      });
+    } catch (err) {
+      req.log.warn({ err }, 'encounter save failed');
+      return reply.code(400).send(toErrorBody(err));
+    }
+  });
+
+  app.post<{ Params: { id: string } }>('/admin/encounters/:id/toggle-enabled', async (req, reply) => {
+    if (!worldEncounters) return reply.code(404).send({ ok: false, errors: ['Feature disabled'] });
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return reply.code(400).send({ ok: false, errors: ['Bad id'] });
+    const encounter = await worldEncounters.get(id);
+    if (!encounter) return reply.code(404).send({ ok: false, errors: ['Not found'] });
+    const next = encounter.lifecycle === 'active' ? 'disabled' : 'active';
+    await worldEncounters.setLifecycle(id, next);
+    return reply.send({ ok: true, message: `Encounter ${next}.` });
+  });
+
+  app.post<{ Params: { id: string } }>('/admin/encounters/:id/clone', async (req, reply) => {
+    if (!worldEncounters) return reply.code(404).send({ ok: false, errors: ['Feature disabled'] });
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return reply.code(400).send({ ok: false, errors: ['Bad id'] });
+    const encounter = await worldEncounters.get(id);
+    if (!encounter) return reply.code(404).send({ ok: false, errors: ['Not found'] });
+    // Cheap, unique-ish suffix so clones do not collide on their own next round.
+    const newSlug = `${encounter.slug}_copy_${Math.floor(Date.now() / 1000) % 100000}`;
+    try {
+      const cloned = await worldEncounters.clone(id, newSlug);
+      return reply.send({ ok: true, redirect: `/admin/encounters/${cloned.id}` });
+    } catch (err) {
+      return reply.code(400).send(toErrorBody(err));
+    }
+  });
+
+  app.post<{ Params: { id: string } }>('/admin/encounters/:id/delete', async (req, reply) => {
+    if (!worldEncounters) return reply.code(404).send({ ok: false, errors: ['Feature disabled'] });
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return reply.code(400).send({ ok: false, errors: ['Bad id'] });
+    const result = await worldEncounters.remove(id);
+    if (!result.ok) {
+      return reply.code(409).send({ ok: false, message: result.reason, errors: [result.reason ?? ''] });
+    }
+    return reply.send({ ok: true, message: 'Deleted.', redirect: '/admin/encounters' });
+  });
+
+  app.get<{ Params: { id: string }; Querystring: Record<string, string> }>(
+    '/admin/encounters/:id/preview',
+    async (req, reply) => {
+      if (!worldEncounters) return reply.code(404).send({ ok: false, errors: ['Feature disabled'] });
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id)) return reply.code(400).send({ ok: false, errors: ['Bad id'] });
+      const encounter = await worldEncounters.get(id);
+      if (!encounter) return reply.code(404).send({ ok: false, errors: ['Not found'] });
+
+      const q = req.query ?? {};
+      const playerLevel = Number(q.playerLevel) > 0 ? Number(q.playerLevel) : 20;
+      const withBuddy = q.withBuddy === '1' || 'buddyLevel' in q;
+      let buddy: BuddyProfile | null = null;
+      let buddyLine: { level: number; affinity: string; race: string; currentSp: number } | null = null;
+      if (withBuddy) {
+        const level = Number(q.buddyLevel) > 0 ? Number(q.buddyLevel) : 10;
+        const currentSp = Number(q.buddySp) > 0 ? Number(q.buddySp) : 60;
+        const affinity = str(q.buddyAffinity) || 'switch';
+        const race = str(q.buddyRace) || 'human';
+        buddy = {
+          waifuId: 0,
+          speciesSlug: 'test',
+          speciesName: 'Test Buddy',
+          level,
+          affinity,
+          baseSp: currentSp,
+          currentSp,
+          rarity: 'R',
+          raceTags: [race],
+        };
+        buddyLine = { level, affinity, race, currentSp };
+      }
+
+      const ctx: EncounterCheckContext = {
+        playerId: 0,
+        playerLevel,
+        buddy,
+        buddyBonusPercent: 0,
+      };
+      const choiceRenders: PreviewChoiceRender[] = encounter.choices.map((c) => {
+        const preview = computeChance(c.check, ctx);
+        // Availability: reuse the service's rules would require pulling the
+        // service in here. The preview is authoring-facing, so we inline the
+        // subset (affinity + race + player level + buddy level).
+        let available = true;
+        let reason: string | null = null;
+        const r = c.requirements;
+        if (r.affinity && (!buddy || buddy.affinity !== r.affinity)) {
+          available = false;
+          reason = `requires ${r.affinity} affinity`;
+        } else if (r.raceAny && r.raceAny.length > 0) {
+          const has = buddy && r.raceAny.some((t) => buddy!.raceTags.includes(t));
+          if (!has) {
+            available = false;
+            reason = `requires ${r.raceAny.join('/')}`;
+          }
+        } else if (r.minPlayerLevel && playerLevel < r.minPlayerLevel) {
+          available = false;
+          reason = `requires player level ${r.minPlayerLevel}`;
+        } else if (r.minBuddyLevel && (!buddy || buddy.level < r.minBuddyLevel)) {
+          available = false;
+          reason = `requires buddy level ${r.minBuddyLevel}`;
+        }
+        return {
+          choiceId: c.id,
+          label: c.label,
+          emoji: c.emoji,
+          available,
+          unavailableReason: reason,
+          chance: preview.chance,
+          breakdown: preview.breakdown,
+        };
+      });
+
+      return html(
+        reply,
+        encounterPreviewPage(encounter, { playerLevel, buddy: buddyLine }, choiceRenders),
+      );
+    },
+  );
 }

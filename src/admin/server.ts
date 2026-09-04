@@ -23,10 +23,18 @@ import type { AdminContentService } from '../modules/content/adminContentService
 import type { Logger } from '../shared/logger';
 import { registerAuth } from './auth';
 import { registerRoutes } from './routes';
+import type { WorldEncounterAdminService } from '../modules/worldEncounters/adminService';
 
 export interface AdminServerDeps {
   config: AdminWebConfig;
   content: AdminContentService;
+  /**
+   * World-encounter admin CRUD backend. Optional: the panel still boots
+   * without it (the Encounters tab explains it is not wired), so a lightly-
+   * configured deployment can skip the whole feature without pulling on the
+   * server graph.
+   */
+  worldEncounters?: WorldEncounterAdminService | undefined;
   logger: Logger;
 }
 
@@ -76,7 +84,7 @@ export async function createAdminServer(deps: AdminServerDeps): Promise<FastifyI
     // over plain http. Behind a TLS reverse proxy, set the host accordingly.
     secureCookies: false,
   });
-  registerRoutes(app, deps.content);
+  registerRoutes(app, deps.content, deps.worldEncounters);
 
   app.setNotFoundHandler(async (req, reply) => {
     if (String(req.headers.accept ?? '').includes('text/html')) {

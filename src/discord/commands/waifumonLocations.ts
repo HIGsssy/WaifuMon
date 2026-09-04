@@ -37,6 +37,9 @@ import { withBackRow } from '../ui';
 import { formatPrice, buttonRows, type ScreenView } from './waifumon';
 import { resolveRegionBanner } from '../regionBanner';
 import type { DestinationView, TravelStatus } from '../../modules/travel/travelService';
+import { maybeTriggerTravelEncounter } from './waifumonWorldEncounter';
+import { players as playersTable } from '../../db/schema';
+import { eq } from 'drizzle-orm';
 
 const LOCATIONS_COLOR = 0x7fb2e5;
 
@@ -362,12 +365,35 @@ export async function handleLocationTravel(
   regionId: string,
 ): Promise<void> {
   let statusLine: string;
+  let travelSucceeded = false;
+  let originRegionId: string | null = null;
+  let destinationRegionId: string | null = null;
   try {
     const outcome = await ctx.services.travel.travel(prov.playerId, regionId);
     statusLine = `🚶 You set out from **${outcome.fromRegion}** and arrive in **${outcome.toRegionName}**.`;
+    travelSucceeded = true;
+    originRegionId = outcome.fromRegion;
+    destinationRegionId = outcome.toRegion;
   } catch (err) {
     if (!(err instanceof AppError)) throw err;
     statusLine = `⚠️ ${err.userMessage}`;
+  }
+  // Destination is now committed. Fire the travel-encounter roll — the
+  // player's map has already moved. When one fires it takes over the
+  // ephemeral; otherwise fall through to the standard Locations home screen.
+  if (travelSucceeded && originRegionId && destinationRegionId) {
+    const [level] = await ctx.db
+      .select({ level: playersTable.level })
+      .from(playersTable)
+      .where(eq(playersTable.id, prov.playerId))
+      .limit(1);
+    const playerLevel = level?.level ?? 1;
+    const fired = await maybeTriggerTravelEncounter(ctx, interaction, prov, {
+      playerLevel,
+      originRegionId,
+      destinationRegionId,
+    });
+    if (fired) return;
   }
   // Travel lands on the *home* screen rather than the detail screen: the
   // player's whole map has changed meaning (a new "you are here"), and the

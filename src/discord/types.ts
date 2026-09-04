@@ -33,6 +33,7 @@ import type { OwnedCardWarmer } from '../modules/appearance/ownedCardWarm';
 import type { BossEncounterService } from '../modules/bosses/bossEncounterService';
 import type { TravelService } from '../modules/travel/travelService';
 import type { BossAnnouncer } from '../modules/bosses/bossScheduler';
+import type { WorldEncounterService } from '../modules/worldEncounters/worldEncounterService';
 
 export interface AppServices {
   guilds: GuildService;
@@ -76,6 +77,17 @@ export interface AppServices {
    * than a different service graph.
    */
   travel: TravelService;
+  /**
+   * World Encounters — the interactive-encounter feature (hunt/travel
+   * button flows, admin-authored definitions).
+   *
+   * Present exactly when `tables.worldEncounter.huntChance` or
+   * `travelChance` is above zero, or an admin uses the panel: the service is
+   * cheap to wire and every roll is a fast pool query, so we always wire it
+   * and let the config gate the *behaviour*. Absent only when the feature
+   * has been explicitly excluded from the service graph (test seams).
+   */
+  worldEncounter?: WorldEncounterService | undefined;
 }
 
 export interface AppContext {

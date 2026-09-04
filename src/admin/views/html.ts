@@ -207,6 +207,7 @@ export const NAV: NavItem[] = [
   { href: '/admin', label: 'Dashboard' },
   { href: '/admin/species', label: 'Species' },
   { href: '/admin/items', label: 'Items' },
+  { href: '/admin/encounters', label: 'Encounters' },
   { href: '/admin/tables', label: 'Tables & Rates' },
   { href: '/admin/quests', label: 'Quests' },
 ];

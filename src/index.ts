@@ -26,6 +26,9 @@ import { createTravelService } from './modules/travel/travelService';
 import { createHuntService } from './modules/hunt/huntService';
 import { createCaptureService } from './modules/capture/captureService';
 import { createCareService } from './modules/care/careService';
+import { createWorldEncounterService } from './modules/worldEncounters/worldEncounterService';
+import { createWorldEncounterAdminService } from './modules/worldEncounters/adminService';
+import { seedWorldEncounters } from './modules/worldEncounters/seed';
 import { createAppearanceService } from './modules/appearance/appearanceService';
 import { configureCardRenderer, shutdownCardRenderer } from './modules/cards';
 import { OwnedCardWarmer } from './modules/appearance/ownedCardWarm';
@@ -307,12 +310,45 @@ async function main(): Promise<void> {
         timezone: config.dailyTimezone,
       }),
       ...(bosses === undefined ? {} : { bosses }),
+      worldEncounter: createWorldEncounterService({
+        db,
+        currency,
+        inventory,
+        progression,
+        collection,
+        buddyBonus,
+        getConfig: () => {
+          const cfg = contentSnapshot.tables.worldEncounter;
+          return {
+            huntChance: cfg.huntChance,
+            travelChance: cfg.travelChance,
+            defaultExpirySeconds: cfg.defaultExpirySeconds,
+          };
+        },
+        getMaxWaifuLevel: () => contentSnapshot.tables.waifuProgression.maxLevel,
+      }),
     },
   };
 
   // Best-effort startup sweep: mark expired encounters closed after downtime.
   const expired = await ctx.services.hunt.expireStale();
   if (expired > 0) logger.info({ expired }, 'swept stale active encounters');
+
+  // Seed world encounters idempotently. Every restart re-upserts the shipped
+  // catalogue, which lets an admin edit a definition safely — the seeder
+  // does not know about admin-authored slugs (they are simply not in
+  // SEED_ENCOUNTERS), so it never touches them.
+  try {
+    const seedResult = await seedWorldEncounters(db);
+    if (seedResult.created.length > 0 || seedResult.updated.length > 0) {
+      logger.info(
+        { created: seedResult.created.length, updated: seedResult.updated.length },
+        'seeded world encounters',
+      );
+    }
+  } catch (err) {
+    logger.warn({ err }, 'world encounter seed failed — feature will run with whatever is in the DB');
+  }
 
   await registerCommands(config.discordToken, config.discordClientId, config.discordGuildId, logger);
 
@@ -480,6 +516,7 @@ async function main(): Promise<void> {
         return result;
       },
     }),
+    worldEncounters: createWorldEncounterAdminService(db, () => contentSnapshot),
   });
 
   // Platform API: a thin HTTP adapter over the same service layer the Discord

@@ -169,6 +169,13 @@
       "when": 1817762400000,
       "tag": "0023_portal_oauth_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1817848800000,
+      "tag": "0024_world_encounters",
+      "breakpoints": true
     }
   ]
 }

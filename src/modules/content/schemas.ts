@@ -1928,6 +1928,35 @@ export type TravelRouteConfig = z.infer<typeof TravelRouteSchema>;
 /** Travel switched off — the default when `tables.json` omits the block. */
 const TRAVEL_DEFAULT: z.input<typeof TravelConfigSchema> = { enabled: false };
 
+/**
+ * World Encounter config — how often the interactive-encounter roll fires
+ * on Hunt and Travel, and how long the resulting pending row lives before
+ * the engine expires it. Set to zero on both to switch the feature off
+ * without dropping the definitions; the seed encounters remain browsable in
+ * the admin panel.
+ */
+export const WorldEncounterConfigSchema = z
+  .object({
+    /** Chance a hunt fires an interactive encounter, in [0, 1]. */
+    huntChance: z.number().min(0).max(1).default(0),
+    /** Chance a travel step fires an interactive encounter, in [0, 1]. */
+    travelChance: z.number().min(0).max(1).default(0),
+    /** How long a pending encounter row lives before it is auto-expired. */
+    defaultExpirySeconds: z
+      .number()
+      .int()
+      .positive()
+      .max(24 * 60 * 60)
+      .default(10 * 60),
+  })
+  .strict();
+export type WorldEncounterConfigContent = z.infer<typeof WorldEncounterConfigSchema>;
+const WORLD_ENCOUNTER_DEFAULT: z.input<typeof WorldEncounterConfigSchema> = {
+  huntChance: 0,
+  travelChance: 0,
+  defaultExpirySeconds: 600,
+};
+
 export const TablesFileSchema = z.object({
   energy: z.object({
     baseMax: z.number().int().positive(),
@@ -1969,6 +1998,7 @@ export const TablesFileSchema = z.object({
   }),
   session: SessionConfigSchema.optional().default({ inactiveTimeoutMinutes: 45 }),
   travel: TravelConfigSchema.optional().default(TRAVEL_DEFAULT),
+  worldEncounter: WorldEncounterConfigSchema.optional().default(WORLD_ENCOUNTER_DEFAULT),
 });
 
 export type ItemContent = z.infer<typeof ItemContentSchema>;

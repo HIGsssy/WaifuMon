@@ -1283,6 +1283,328 @@ export const travelTransactions = pgTable(
   ],
 );
 
+/* ─────────────────────── World Encounters ───────────────────────
+ *
+ * Interactive, choice-driven encounters that fire during Hunt or Travel.
+ * Distinct from `encounters` (the hunt/species table) — those model a met
+ * Waifumon and its capture attempts; world encounters model a decision point
+ * with buttons, checks, and effects.
+ *
+ * Definitions are DB-backed (authored via the admin panel), not JSON —
+ * because they carry rich choice/effect trees the JSON content service was
+ * not shaped to edit. Region eligibility and route restrictions live in
+ * junction tables so an encounter can span several regions or be scoped to a
+ * single directed route.
+ */
+
+export const WORLD_ENCOUNTER_TYPES = [
+  'decision',
+  'skill_check',
+  'combat',
+  'vendor',
+  'deity',
+  'discovery',
+] as const;
+export type WorldEncounterType = (typeof WORLD_ENCOUNTER_TYPES)[number];
+
+export const WORLD_ENCOUNTER_RARITIES = ['common', 'uncommon', 'rare', 'mythic'] as const;
+export type WorldEncounterRarity = (typeof WORLD_ENCOUNTER_RARITIES)[number];
+
+export const WORLD_ENCOUNTER_LIFECYCLES = ['draft', 'active', 'disabled'] as const;
+export type WorldEncounterLifecycle = (typeof WORLD_ENCOUNTER_LIFECYCLES)[number];
+
+/** How the engine reached this encounter. Also stamped on history rows. */
+export const WORLD_ENCOUNTER_SOURCES = ['hunt', 'travel'] as const;
+export type WorldEncounterSource = (typeof WORLD_ENCOUNTER_SOURCES)[number];
+
+/** Active-instance state machine. */
+export const WORLD_ENCOUNTER_ACTIVE_STATUS = [
+  'pending',
+  'resolved',
+  'expired',
+  'abandoned',
+] as const;
+export type WorldEncounterActiveStatus = (typeof WORLD_ENCOUNTER_ACTIVE_STATUS)[number];
+
+/**
+ * Effect types the {@link module:src/modules/worldEncounters/effectExecutor}
+ * dispatch table understands. Soft-typed (text column) so adding an effect is
+ * one handler + one enum entry, no migration required.
+ */
+export const WORLD_ENCOUNTER_EFFECT_TYPES = [
+  'waifubux_gain',
+  'waifubux_loss',
+  'waifubux_loss_percent',
+  'essence_gain',
+  'essence_loss',
+  'energy_gain',
+  'energy_loss',
+  'player_xp',
+  'buddy_xp',
+  'give_item',
+  'consume_item',
+  'trigger_encounter',
+  'trigger_waifumon_encounter',
+  'temp_buff',
+  'open_vendor',
+] as const;
+export type WorldEncounterEffectType = (typeof WORLD_ENCOUNTER_EFFECT_TYPES)[number];
+
+/** Check kinds a choice can gate its success/failure on. `none` = auto-success. */
+export const WORLD_ENCOUNTER_CHECK_TYPES = ['none', 'sp'] as const;
+export type WorldEncounterCheckType = (typeof WORLD_ENCOUNTER_CHECK_TYPES)[number];
+
+export const worldEncounters = pgTable(
+  'world_encounters',
+  {
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    slug: text('slug').notNull().unique(),
+    name: text('name').notNull(),
+    description: text('description').notNull().default(''),
+    type: text('type').notNull(),
+    rarity: text('rarity').notNull(),
+    /** Selection weight, scoped to the source pool that survives filtering. */
+    weight: integer('weight').notNull().default(10),
+    lifecycle: text('lifecycle').notNull().default('draft'),
+    huntEligible: boolean('hunt_eligible').notNull().default(true),
+    travelEligible: boolean('travel_eligible').notNull().default(false),
+    /** Player cooldown in seconds. 0 = no cooldown. */
+    cooldownSeconds: integer('cooldown_seconds').notNull().default(0),
+    /** Relative path under assets/, e.g. `encounters/bandit_ambush.png`. Nullable. */
+    artworkPath: text('artwork_path'),
+    /** Optional slug of another world encounter to chain into on resolution. */
+    chainedEncounterSlug: text('chained_encounter_slug'),
+    /**
+     * When true, resolution requires the player to pick a choice; the engine
+     * refuses to auto-resolve. Discovery encounters can set false and provide
+     * effects on the encounter itself via a synthetic "continue" choice.
+     */
+    choicesRequired: boolean('choices_required').notNull().default(true),
+    /** Free-form metadata for future evolution — vendor inventory template etc. */
+    metadata: jsonb('metadata').$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check(
+      'world_encounters_type_check',
+      sql`${t.type} in ('decision','skill_check','combat','vendor','deity','discovery')`,
+    ),
+    check(
+      'world_encounters_rarity_check',
+      sql`${t.rarity} in ('common','uncommon','rare','mythic')`,
+    ),
+    check(
+      'world_encounters_lifecycle_check',
+      sql`${t.lifecycle} in ('draft','active','disabled')`,
+    ),
+    check('world_encounters_weight_check', sql`${t.weight} > 0`),
+    check('world_encounters_cooldown_check', sql`${t.cooldownSeconds} >= 0`),
+    index('world_encounters_lifecycle_idx').on(t.lifecycle),
+  ],
+);
+
+/**
+ * Region eligibility. An encounter with **no** rows here is treated as
+ * globally eligible for its enabled sources — this keeps travel-only global
+ * encounters (Bandit Ambush, Wandering Merchant) light on rows.
+ */
+export const worldEncounterRegions = pgTable(
+  'world_encounter_regions',
+  {
+    encounterId: bigint('encounter_id', { mode: 'number' })
+      .notNull()
+      .references(() => worldEncounters.id, { onDelete: 'cascade' }),
+    regionId: text('region_id').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.encounterId, t.regionId] }),
+    check(
+      'world_encounter_regions_region_check',
+      sql`${t.regionId} in (${sql.raw(REGION_SQL_LIST)})`,
+    ),
+    index('world_encounter_regions_region_idx').on(t.regionId),
+  ],
+);
+
+/**
+ * Route eligibility for travel encounters. Directional: reverse travel needs
+ * its own row. An encounter with `travelEligible=true` and no rows here is
+ * eligible on every travel edge, region-scoped only.
+ */
+export const worldEncounterRoutes = pgTable(
+  'world_encounter_routes',
+  {
+    encounterId: bigint('encounter_id', { mode: 'number' })
+      .notNull()
+      .references(() => worldEncounters.id, { onDelete: 'cascade' }),
+    fromRegion: text('from_region').notNull(),
+    toRegion: text('to_region').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.encounterId, t.fromRegion, t.toRegion] }),
+    check(
+      'world_encounter_routes_from_check',
+      sql`${t.fromRegion} in (${sql.raw(REGION_SQL_LIST)})`,
+    ),
+    check(
+      'world_encounter_routes_to_check',
+      sql`${t.toRegion} in (${sql.raw(REGION_SQL_LIST)})`,
+    ),
+    check('world_encounter_routes_distinct', sql`${t.fromRegion} <> ${t.toRegion}`),
+    index('world_encounter_routes_route_idx').on(t.fromRegion, t.toRegion),
+  ],
+);
+
+/**
+ * One choice on an encounter. `requirementsJson`, `checkJson`,
+ * `successEffectsJson` and `failureEffectsJson` are validated against the
+ * runtime Zod schemas in the module — the DB does not restate them.
+ */
+export const worldEncounterChoices = pgTable(
+  'world_encounter_choices',
+  {
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    encounterId: bigint('encounter_id', { mode: 'number' })
+      .notNull()
+      .references(() => worldEncounters.id, { onDelete: 'cascade' }),
+    sortOrder: integer('sort_order').notNull().default(0),
+    label: text('label').notNull(),
+    emoji: text('emoji'),
+    requirementsJson: jsonb('requirements_json')
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    checkJson: jsonb('check_json')
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({ type: 'none' }),
+    successEffectsJson: jsonb('success_effects_json')
+      .$type<Record<string, unknown>[]>()
+      .notNull()
+      .default([]),
+    failureEffectsJson: jsonb('failure_effects_json')
+      .$type<Record<string, unknown>[]>()
+      .notNull()
+      .default([]),
+  },
+  (t) => [
+    index('world_encounter_choices_encounter_idx').on(t.encounterId, t.sortOrder),
+  ],
+);
+
+/**
+ * Per-player cooldown ledger. Written when an encounter resolves for a
+ * player; the selection engine excludes any row whose `expires_at > now`.
+ */
+export const worldEncounterCooldowns = pgTable(
+  'world_encounter_cooldowns',
+  {
+    playerId: bigint('player_id', { mode: 'number' })
+      .notNull()
+      .references(() => players.id),
+    encounterId: bigint('encounter_id', { mode: 'number' })
+      .notNull()
+      .references(() => worldEncounters.id, { onDelete: 'cascade' }),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.playerId, t.encounterId] }),
+    index('world_encounter_cooldowns_expires_idx').on(t.expiresAt),
+  ],
+);
+
+/**
+ * A pending interactive world encounter. Discord button clicks resolve it;
+ * a partial unique index on `player_id WHERE status='pending'` guarantees a
+ * player cannot have two open at once — a double-click races on the insert.
+ */
+export const activeWorldEncounters = pgTable(
+  'active_world_encounters',
+  {
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    playerId: bigint('player_id', { mode: 'number' })
+      .notNull()
+      .references(() => players.id),
+    encounterId: bigint('encounter_id', { mode: 'number' })
+      .notNull()
+      .references(() => worldEncounters.id),
+    source: text('source').notNull(),
+    /** Region the player was in when the encounter fired. */
+    regionId: text('region_id').notNull(),
+    /** Travel-only: where the trip started. Null on hunt encounters. */
+    originRegionId: text('origin_region_id'),
+    /** Travel-only: intended destination (already committed before the encounter). */
+    destinationRegionId: text('destination_region_id'),
+    guildId: bigint('guild_id', { mode: 'number' }),
+    channelId: text('channel_id'),
+    messageId: text('message_id'),
+    status: text('status').notNull().default('pending'),
+    /** Snapshot: rolled vendor inventory, deity riddle answers, etc. */
+    contextJson: jsonb('context_json')
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+    resolvedChoiceId: bigint('resolved_choice_id', { mode: 'number' }),
+    resolutionJson: jsonb('resolution_json').$type<Record<string, unknown>>(),
+  },
+  (t) => [
+    check(
+      'active_world_encounters_source_check',
+      sql`${t.source} in ('hunt','travel')`,
+    ),
+    check(
+      'active_world_encounters_status_check',
+      sql`${t.status} in ('pending','resolved','expired','abandoned')`,
+    ),
+    // At most one pending encounter per player — the anti-double-click rail.
+    uniqueIndex('active_world_encounters_player_pending_uq')
+      .on(t.playerId)
+      .where(sql`status = 'pending'`),
+    index('active_world_encounters_player_idx').on(t.playerId, t.status),
+    index('active_world_encounters_expires_idx').on(t.expiresAt),
+  ],
+);
+
+/**
+ * Immutable audit trail. Written in the same transaction that flips an
+ * active encounter to `resolved`, so analytics can never disagree with the
+ * player's history.
+ */
+export const worldEncounterHistory = pgTable(
+  'world_encounter_history',
+  {
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    playerId: bigint('player_id', { mode: 'number' })
+      .notNull()
+      .references(() => players.id),
+    encounterId: bigint('encounter_id', { mode: 'number' })
+      .notNull()
+      .references(() => worldEncounters.id),
+    choiceId: bigint('choice_id', { mode: 'number' }),
+    source: text('source').notNull(),
+    regionId: text('region_id').notNull(),
+    success: boolean('success'),
+    effectsAppliedJson: jsonb('effects_applied_json')
+      .$type<Record<string, unknown>[]>()
+      .notNull()
+      .default([]),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull(),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check(
+      'world_encounter_history_source_check',
+      sql`${t.source} in ('hunt','travel')`,
+    ),
+    index('world_encounter_history_player_idx').on(t.playerId, t.resolvedAt),
+    index('world_encounter_history_encounter_idx').on(t.encounterId, t.resolvedAt),
+  ],
+);
+
 export type GuildRow = typeof guilds.$inferSelect;
 export type PlayerRow = typeof players.$inferSelect;
 export type PlayerCurrenciesRow = typeof playerCurrencies.$inferSelect;
@@ -1308,3 +1630,10 @@ export type RegionEncounterPoolRow = typeof regionEncounterPools.$inferSelect;
 export type PlayerTravelPassRow = typeof playerTravelPasses.$inferSelect;
 export type PlayerUnlockedRouteRow = typeof playerUnlockedRoutes.$inferSelect;
 export type TravelTransactionRow = typeof travelTransactions.$inferSelect;
+export type WorldEncounterRow = typeof worldEncounters.$inferSelect;
+export type WorldEncounterRegionRow = typeof worldEncounterRegions.$inferSelect;
+export type WorldEncounterRouteRow = typeof worldEncounterRoutes.$inferSelect;
+export type WorldEncounterChoiceRow = typeof worldEncounterChoices.$inferSelect;
+export type WorldEncounterCooldownRow = typeof worldEncounterCooldowns.$inferSelect;
+export type ActiveWorldEncounterRow = typeof activeWorldEncounters.$inferSelect;
+export type WorldEncounterHistoryRow = typeof worldEncounterHistory.$inferSelect;

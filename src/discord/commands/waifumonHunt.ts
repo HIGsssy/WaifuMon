@@ -28,6 +28,7 @@ import {
 } from 'discord.js';
 import {
   species as speciesTable,
+  players as playersTable,
   type EncounterRow,
   type ItemRow,
   type SpeciesRow,
@@ -84,6 +85,7 @@ import { postAppearanceUnlockToasts } from '../appearanceToast';
 import { withBackRow } from '../ui';
 import { formatCaptureBonus, renderCaptureBonusLine } from './waifumon';
 import { duplicatePromptComponents } from './waifumonCollection';
+import { maybeTriggerHuntEncounter } from './waifumonWorldEncounter';
 
 const RARITY_COLORS: Record<string, number> = {
   N: 0xb8b8b8,
@@ -449,6 +451,15 @@ async function loadSpeciesById(ctx: AppContext, speciesId: number): Promise<Spec
   return row ?? null;
 }
 
+async function loadPlayerLevel(ctx: AppContext, playerId: number): Promise<number> {
+  const [row] = await ctx.db
+    .select({ level: playersTable.level })
+    .from(playersTable)
+    .where(eq(playersTable.id, playerId))
+    .limit(1);
+  return row?.level ?? 1;
+}
+
 /** /waifumon hunt (and the menu Hunt button). */
 export async function handleHunt(
   ctx: AppContext,
@@ -521,6 +532,22 @@ export async function handleHunt(
       await respondEphemeral(interaction, view);
       await emitEvents(ctx, interaction, prov, events);
       await postBuddyAppearanceToasts(ctx, interaction, result, prov.playerId);
+      return;
+    }
+    // Non-encounter result. Before we paint the find, roll for an interactive
+    // world encounter. When one fires it presents itself as the screen for
+    // this hunt; the find (currency/item) is already committed and lives on
+    // the player's balance regardless — the encounter is *what* the player
+    // sees, not what they earn. Never fatal: any failure logs and falls
+    // through to the standard find embed.
+    const currentRegionId = await ctx.services.travel.getCurrentRegion(prov.playerId);
+    const playerLevel = await loadPlayerLevel(ctx, prov.playerId);
+    const worldEncounterFired = await maybeTriggerHuntEncounter(ctx, interaction, prov, {
+      playerLevel,
+      regionId: currentRegionId,
+    });
+    if (worldEncounterFired) {
+      await emitEvents(ctx, interaction, prov, events);
       return;
     }
     const embed = new EmbedBuilder().setColor(0xff6fa5);

@@ -651,5 +651,10 @@
         "requiredLevel": 25
       }
     ]
+  },
+  "worldEncounter": {
+    "huntChance": 0.35,
+    "travelChance": 0.20,
+    "defaultExpirySeconds": 600
   }
 }
