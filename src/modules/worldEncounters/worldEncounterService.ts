@@ -232,6 +232,21 @@ export interface Resolution {
    * reappear at the chain's terminal resolution.
    */
   journey: { destinationRegionId: string | null } | null;
+  /**
+   * Set when this encounter came from a hunt — i.e. `source === 'hunt'`.
+   * Null for a travel encounter.
+   *
+   * The mirror image of {@link journey}, and deliberately just as thin: it
+   * carries the region the hunt happened in and nothing else, because the
+   * only thing it authorises is *navigation back to the Hunt screen*. No
+   * hunt is owed, no Energy is held in escrow, nothing is pending — a hunt
+   * encounter is the whole result of the hunt that spawned it, and this
+   * exists so the resolution screen is not a dead end.
+   *
+   * Like `journey`, a chained continuation copies `source` from its parent
+   * row, so this survives to the terminal node of a hunt-origin chain.
+   */
+  huntReturn: { regionId: string | null } | null;
 }
 
 export interface WorldEncounterServiceDeps {
@@ -715,6 +730,7 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
           active.source === 'travel'
             ? { destinationRegionId: active.destinationRegionId }
             : null,
+        huntReturn: active.source === 'hunt' ? { regionId: active.regionId } : null,
       };
     });
   }
@@ -817,6 +833,31 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
     return { destinationRegionId: row.destinationRegionId };
   }
 
+  /**
+   * Hunt-origin check for a *resolved* encounter, for the Back to Hunting
+   * button. The exact counterpart of {@link getJourneyContext}: returns null
+   * when the row is missing, belongs to someone else, or did not come from a
+   * hunt, so a forged, stale, borrowed or travel-origin id all fail the same
+   * neutral way.
+   *
+   * Purely an authorisation answer. It performs no writes and grants no
+   * hunt: the caller repaints the Hunt screen from live player state, so the
+   * worst a bad id can do is fail this lookup.
+   *
+   * Status-agnostic for the same reason `getJourneyContext` is — this resumes
+   * a screen and moves nothing, so a double-clicked button stays quiet.
+   */
+  async function getHuntReturnContext(
+    activeId: number,
+    playerId: number,
+  ): Promise<{ regionId: string | null } | null> {
+    const row = await repo.getActiveById(deps.db, activeId);
+    if (!row) return null;
+    if (row.playerId !== playerId) return null;
+    if (row.source !== 'hunt') return null;
+    return { regionId: row.regionId };
+  }
+
   async function saveMessageId(activeId: number, messageId: string): Promise<void> {
     await deps.db.transaction((tx) => repo.updateActiveMessage(tx, activeId, messageId));
   }
@@ -829,6 +870,7 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
     getPendingForPlayer,
     getActivationById,
     getJourneyContext,
+    getHuntReturnContext,
     saveMessageId,
     repo,
     executor,

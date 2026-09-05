@@ -37,6 +37,7 @@ import {
   handleEncounterRelease,
   handleWildEncounterOpen,
   handleHunt,
+  handleHuntReturn,
 } from './commands/waifumonHunt';
 import {
   handleWorldEncounterChoose,
@@ -268,6 +269,11 @@ export function createDiscordClient(ctx: AppContext): Client {
       // screen — the encounter is over by the time it is clickable.
       'loc:journey': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleContinueJourney(ctx, i, prov, args),
+      // The hunt-origin counterpart, in the `hunt:` namespace for the same
+      // reason: it repaints the Hunt screen. Navigation only — it never
+      // starts a hunt (that is `menu:hunt`).
+      'hunt:return': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleHuntReturn(ctx, i, prov, args),
       'encv:open': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleWorldEncounterVendorOpen(ctx, i, prov, args),
       'encv:buy': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>

@@ -10,6 +10,10 @@
  *   • `encw:choose`  — a choice button
  *   • `encw:abandon` — future support; not wired today
  *
+ * The follow-up row also paints ids owned by other screens — `loc:journey`
+ * and `hunt:return` — because those buttons *leave* the encounter. Their
+ * handlers live with the screens they return to, not here.
+ *
  * Attachment filename is derived from the encounter slug (kebab-safe) so the
  * embed's image ref is always predictable.
  */
@@ -219,6 +223,26 @@ export function buildEncounterResolved(
       new ButtonBuilder()
         .setCustomId(buildCustomId('loc', 'journey', String(activation.activeId)))
         .setLabel('🚶 Continue Journey')
+        .setStyle(ButtonStyle.Secondary),
+    );
+  }
+  // Back to Hunting — the hunt-origin mirror of Continue Journey, and for the
+  // same reason: without it a resolved hunt encounter is a dead end with no
+  // way back to the Hunt screen.
+  //
+  // Navigation only. Unlike Continue Journey there is not even a committed
+  // move behind it: the hunt that spawned this encounter already charged its
+  // Energy and produced this screen as its result, so returning owes the
+  // player nothing and costs them nothing.
+  //
+  // Same precedence rule as Continue Journey — only at a *terminal*
+  // resolution. Mid-chain, Continue wins; `source` is copied onto each
+  // continuation row, so this reappears when the chain finally ends.
+  if (resolution.huntReturn && resolution.continuationActiveId == null) {
+    followRow.addComponents(
+      new ButtonBuilder()
+        .setCustomId(buildCustomId('hunt', 'return', String(activation.activeId)))
+        .setLabel('🏹 Back to Hunting')
         .setStyle(ButtonStyle.Secondary),
     );
   }

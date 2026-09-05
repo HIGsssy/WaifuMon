@@ -635,6 +635,83 @@ function huntAgainRow(): ActionRowBuilder<ButtonBuilder> {
   );
 }
 
+/** Neutral answer for a Back to Hunting id we will not act on. */
+const HUNT_RETURN_STALE = 'That button has expired — re-run /waifumon.';
+
+/**
+ * The Hunt screen with no hunt performed: where the player stands, how much
+ * Energy they have, and the same `Hunt again` / `Back to menu` controls the
+ * post-hunt screen ends with.
+ *
+ * Every number is read fresh at paint time, so the screen describes the
+ * player as they are now rather than as they were when the encounter began —
+ * an encounter's own effects (Energy gained or lost, a region changed
+ * underneath them) are already reflected.
+ */
+export async function buildHuntLandingView(
+  ctx: AppContext,
+  playerId: number,
+  statusLine?: string,
+): Promise<SessionPayload> {
+  const [status, balances] = await Promise.all([
+    ctx.services.travel.getStatus(playerId),
+    ctx.services.currency.getBalances(playerId),
+  ]);
+  const embed = new EmbedBuilder()
+    .setColor(0xff6fa5)
+    .setTitle('🏹 Hunting')
+    .setDescription(
+      `${statusLine ? `${statusLine}\n\n` : ''}You are hunting in **${status.currentRegionName}**.`,
+    )
+    .setFooter({ text: `Energy left: ${balances.huntEnergy}` });
+  return { embeds: [embed], components: withBackRow([huntAgainRow()]) };
+}
+
+/**
+ * Back to Hunting — the exit from a resolved hunt-origin World Encounter.
+ *
+ * Lives here rather than with the encounter handlers because it *ends* at
+ * the Hunt screen: this module already owns that screen, and importing it
+ * from the encounter module would close a hunt → encounter → hunt cycle.
+ *
+ * What makes it safe is what it does not do. It runs no hunt: nothing here
+ * calls `hunt.hunt()`, so no Energy is spent, no cooldown is stamped, no
+ * find or Waifumon is rolled, and no world encounter is re-rolled. The only
+ * database access on this path is reads — the ownership check, and the two
+ * reads that paint the screen — so a double-click repaints the same screen
+ * and a click an hour later shows wherever the player actually is now.
+ *
+ * Server-authoritative in the same shape as Continue Journey: the custom id
+ * carries an active-encounter id and nothing else. `getHuntReturnContext` is
+ * an authorisation question (is this your encounter, and did it come from a
+ * hunt?) whose answer is used only as a yes/no — the screen's content comes
+ * from the player's live row. A forged id, someone else's encounter, an
+ * expired one, and a travel-origin one all get the same neutral message and
+ * cause no writes.
+ */
+export async function handleHuntReturn(
+  ctx: AppContext,
+  interaction: ButtonInteraction,
+  prov: Provisioned,
+  args: string[],
+): Promise<void> {
+  const service = ctx.services.worldEncounter;
+  const activeId = Number(args[0] ?? '');
+  if (!service || !Number.isFinite(activeId)) {
+    await respondEphemeral(interaction, HUNT_RETURN_STALE);
+    return;
+  }
+  const huntReturn = await service.getHuntReturnContext(activeId, prov.playerId);
+  if (!huntReturn) {
+    await respondEphemeral(interaction, HUNT_RETURN_STALE);
+    return;
+  }
+  await respondEphemeral(
+    interaction,
+    await buildHuntLandingView(ctx, prov.playerId, '🏹 You shoulder your bow and pick up the trail.'),
+  );
+}
+
 // ─────────────────────────────── capture flow ───────────────────────────────
 
 async function sendRareAnnouncement(
