@@ -83,6 +83,7 @@ import { emitEvents } from '../gameEventEmitter';
 import { captureDescriptors, huntDescriptors } from '../gameEventBuilders';
 import { postAppearanceUnlockToasts } from '../appearanceToast';
 import { withBackRow } from '../ui';
+import { formatChancePercent, formatRoll } from '../rollFormat';
 import { formatCaptureBonus, renderCaptureBonusLine } from './waifumon';
 import { duplicatePromptComponents } from './waifumonCollection';
 import { maybeTriggerHuntEncounter } from './waifumonWorldEncounter';
@@ -101,27 +102,6 @@ function rarityColor(rarity: string): number {
   return RARITY_COLORS[rarity] ?? 0xff6fa5;
 }
 
-/** 0.525 → "52.5%" — used next to the buddy-bonus line on capture results. */
-function formatChancePercent(chance: number): string {
-  const pct = Math.round(chance * 1000) / 10;
-  return `${Number.isInteger(pct) ? pct : pct.toFixed(1)}%`;
-}
-
-/** 0.21 → "21%", 0.525 → "52.5%". Shared by every chance line on this screen. */
-function formatChance(chance: number): string {
-  const pct = Math.round(chance * 1000) / 10;
-  return `${Number.isInteger(pct) ? pct : pct.toFixed(1)}%`;
-}
-
-/**
- * The [0, 1) unit value the capture attempt actually rolled, shown on the
- * result screen in human-friendly 0–100 form with a single decimal place
- * (0.734 → "73.4"). This is the *same* number the server compared against the
- * capture chance — a capture succeeds when this roll lands within the chance.
- */
-function formatRoll(roll: number): string {
-  return (roll * 100).toFixed(1);
-}
 
 /**
  * Encounter controls.
@@ -254,7 +234,7 @@ function itemSelectRow(
           value: `${DIRECT_VALUE_PREFIX}${entry.item.slug}`,
           description: (entry.quote.guaranteed
             ? 'Guaranteed capture · used on Capture'
-            : `Capture chance: ${formatChance(entry.quote.chance)} · used on Capture`
+            : `Capture chance: ${formatChancePercent(entry.quote.chance)} · used on Capture`
           ).slice(0, 100),
           ...(entry.item.emoji ? { emoji: entry.item.emoji } : {}),
           default: entry.item.id === selectedItemId,
@@ -395,7 +375,7 @@ async function buildEncounterView(
     const { quote } = selectedEntry;
     const value = quote.guaranteed
       ? 'Capture chance: **Guaranteed**'
-      : `Capture chance: **${formatChance(quote.baselineChance)} → ${formatChance(quote.chance)}**`;
+      : `Capture chance: **${formatChancePercent(quote.baselineChance)} → ${formatChancePercent(quote.chance)}**`;
     embed.addFields({
       name: `${selectedEntry.item.emoji ?? '•'} ${selectedEntry.item.name} selected`,
       value: `${value}\nOwned: ×${selectedEntry.quantity} · consumed only when you capture.`,
@@ -1194,7 +1174,7 @@ export async function handleEncounterPickItem(
   const statusLine = quote.guaranteed
     ? `**${quote.item?.name ?? 'Item'} selected**\nCapture chance: **Guaranteed**`
     : `**${quote.item?.name ?? 'Item'} selected**\nCapture chance: ` +
-      `**${formatChance(quote.baselineChance)} → ${formatChance(quote.chance)}**`;
+      `**${formatChancePercent(quote.baselineChance)} → ${formatChancePercent(quote.chance)}**`;
 
   const view = await buildEncounterView(ctx, prov, quote.encounter, quote.species, {
     statusLine,
@@ -1248,7 +1228,7 @@ async function activateEncounterConsumable(
   // says so rather than printing "100% → 100%".
   const chanceLine = quoteAfter.guaranteed
     ? 'Capture chance: **Guaranteed**'
-    : `Capture chance: **${formatChance(quoteBefore.chance)} → ${formatChance(quoteAfter.chance)}**`;
+    : `Capture chance: **${formatChancePercent(quoteBefore.chance)} → ${formatChancePercent(quoteAfter.chance)}**`;
   const statusLine =
     `**${item.name} ${refreshed ? 'refreshed' : 'used'}**\n` +
     `Capture bonus active for the next **${charges} attempts**.\n` +

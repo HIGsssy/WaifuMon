@@ -119,6 +119,9 @@ export function computeChance(check: CheckSpec, ctx: EncounterCheckContext): Che
       chance: 1,
       roll: 0,
       success: true,
+      checkType: 'none',
+      model: 'none',
+      rolled: false,
       breakdown: {
         base: 1,
         spTerm: 0,
@@ -158,6 +161,9 @@ export function computeChance(check: CheckSpec, ctx: EncounterCheckContext): Che
       chance,
       roll: 0,
       success: true, // overwritten by rollCheck; irrelevant here
+      checkType: 'sp',
+      model: 'new',
+      rolled: false, // no draw happened; rollCheck flips this
       breakdown: { base, spTerm, levelTerm: 0, affinityMod, raceMod, buddyBonusMod, baseBias: 0 },
     };
   }
@@ -180,6 +186,9 @@ export function computeChance(check: CheckSpec, ctx: EncounterCheckContext): Che
     chance,
     roll: 0,
     success: true, // overwritten by rollCheck; irrelevant here
+    checkType: 'sp',
+    model: 'legacy',
+    rolled: false, // no draw happened; rollCheck flips this
     breakdown: {
       base: LEGACY_BASE_CHANCE,
       spTerm,
@@ -204,5 +213,5 @@ export function rollCheck(
   const computed = computeChance(check, ctx);
   if (check.type === 'none') return computed;
   const roll = rng.next();
-  return { ...computed, roll, success: roll < computed.chance };
+  return { ...computed, roll, rolled: true, success: roll < computed.chance };
 }

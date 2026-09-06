@@ -282,6 +282,26 @@ export interface CheckResolution {
   chance: number;
   roll: number;
   success: boolean;
+  /**
+   * Which check produced this resolution. `'none'` is the no-op check: it
+   * never draws from the RNG, so a presentation layer must not narrate a roll
+   * for it.
+   */
+  checkType: 'none' | 'sp';
+  /**
+   * Which SP formula produced `chance` — `'new'` for a `baseChance` check,
+   * `'legacy'` for a `difficulty` one, `'none'` for the no-op check. Carried
+   * so a UI can read the breakdown with the right vocabulary (the legacy model
+   * is the only one with `levelTerm` / `baseBias` terms) without re-deriving
+   * the model from the spec.
+   */
+  model: 'none' | 'new' | 'legacy';
+  /**
+   * True only when an RNG value was actually drawn and compared against
+   * `chance`. False for every preview (`computeChance`) and for `'none'`
+   * checks, whose `roll` is a filler zero rather than a real draw.
+   */
+  rolled: boolean;
   /** Broken-out contributors so preview + tests can assert them. */
   breakdown: {
     base: number;

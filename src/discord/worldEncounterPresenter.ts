@@ -27,10 +27,12 @@ import {
   EmbedBuilder,
 } from 'discord.js';
 import { resolveAssetPath } from '../modules/content/loader';
+import { formatChancePercent, formatModifierPercent, formatRoll } from './rollFormat';
 import { buildCustomId } from './types';
 import type { AppContext } from './types';
 import type { SessionPayload } from './ephemeralSession';
 import type { ChoiceView, EncounterActivation, Resolution } from '../modules/worldEncounters/worldEncounterService';
+import type { CheckResolution, CheckSpec } from '../modules/worldEncounters/types';
 
 /** Discord button rows cap at 5 buttons each. */
 const BUTTONS_PER_ROW = 5;
@@ -134,12 +136,17 @@ export function buildEncounterResolved(
     .setDescription(encounter.description || '*(no description)*');
 
   const choiceLine = `**Chose:** ${resolution.choice.label}`;
-  const outcomeLine =
-    resolution.check.chance >= 1
-      ? '**Outcome:** Auto-resolved'
-      : `**Outcome:** ${resolution.check.success ? '✅ Success' : '❌ Failure'} (${(resolution.check.chance * 100).toFixed(1)}% chance)`;
+  const outcomeLine = resolution.check.rolled
+    ? `**Outcome:** ${resolution.check.success ? '✅ Success' : '❌ Failure'} (${formatChancePercent(resolution.check.chance)} chance)`
+    : '**Outcome:** Auto-resolved';
 
   embed.addFields({ name: 'Result', value: `${choiceLine}\n${outcomeLine}`, inline: false });
+
+  // The dice behind the outcome, on every choice that actually rolled. The
+  // numbers are the resolver's own — nothing here recomputes a probability —
+  // so what the player reads is exactly what decided their result.
+  const rollField = buildCheckRollField(resolution.check, resolution.choice.check);
+  if (rollField) embed.addFields(rollField);
 
   const effects = resolution.effectsApplied
     .map(formatAppliedEffect)
@@ -250,6 +257,75 @@ export function buildEncounterResolved(
   if (followRow.components.length > 0) rows.push(followRow);
 
   return { embeds: [embed], components: rows, files };
+}
+
+/* ─────────────────────── Check roll display ─────────────────────── */
+
+/** Human label for the affinity a check gives an advantage to. */
+function affinityLabel(affinity: string): string {
+  return affinity.charAt(0).toUpperCase() + affinity.slice(1);
+}
+
+/**
+ * The compact modifier breakdown, e.g. `Base 40% · SP +15% · Dominant +10%`.
+ *
+ * Only contributors that actually moved the number appear: a zero term is not
+ * "no bonus", it is a term that had nothing to say, and listing it would pad
+ * every result with rows the player can do nothing about. The base is always
+ * shown because it is the thing the modifiers modify.
+ *
+ * The terms come straight out of {@link CheckResolution.breakdown}; the check
+ * spec is read only to *name* the affinity term, never to recompute it.
+ */
+function buildModifierLine(check: CheckResolution, spec: CheckSpec | undefined): string {
+  const b = check.breakdown;
+  const parts = [`Base ${formatChancePercent(b.base)}`];
+  if (b.spTerm !== 0) parts.push(`SP ${formatModifierPercent(b.spTerm)}`);
+  if (b.levelTerm !== 0) parts.push(`Level ${formatModifierPercent(b.levelTerm)}`);
+  if (b.affinityMod !== 0) {
+    const name =
+      spec && spec.type === 'sp' && spec.affinityAdvantage
+        ? affinityLabel(spec.affinityAdvantage)
+        : 'Affinity';
+    parts.push(`${name} ${formatModifierPercent(b.affinityMod)}`);
+  }
+  if (b.raceMod !== 0) parts.push(`Race ${formatModifierPercent(b.raceMod)}`);
+  if (b.buddyBonusMod !== 0) parts.push(`Buddy Bonus ${formatModifierPercent(b.buddyBonusMod)}`);
+  if (b.baseBias !== 0) parts.push(`Bias ${formatModifierPercent(b.baseBias)}`);
+
+  // The resolver clamps the assembled chance into [5 %, 95 %]. When it bit,
+  // the terms above no longer add up to the chance shown — say so rather than
+  // letting the arithmetic look broken.
+  const raw =
+    b.base + b.spTerm + b.levelTerm + b.affinityMod + b.raceMod + b.buddyBonusMod + b.baseBias;
+  if (Math.abs(raw - check.chance) > 0.0005) parts.push('capped');
+
+  return parts.join(' · ');
+}
+
+/**
+ * The 🎲 Check field, or null when there was no roll to narrate.
+ *
+ * Null covers every non-probabilistic path — a `none` check, and any screen
+ * reached without resolving a choice at all (Continue Journey and Back to
+ * Hunting are navigation, so they never arrive here with `rolled` set). The
+ * chance and the roll are copied verbatim from the resolution the server
+ * already decided with, so the display can never disagree with the outcome.
+ */
+export function buildCheckRollField(
+  check: CheckResolution,
+  spec?: CheckSpec,
+): { name: string; value: string; inline: boolean } | null {
+  if (!check.rolled || check.checkType === 'none') return null;
+  return {
+    name: '🎲 Check',
+    value:
+      `Success Chance: **${formatChancePercent(check.chance)}**\n` +
+      `🎲 Roll: **${formatRoll(check.roll)}**\n` +
+      `Result: **${check.success ? 'Success' : 'Failure'}**\n` +
+      buildModifierLine(check, spec),
+    inline: false,
+  };
 }
 
 function buildChoiceRows(
