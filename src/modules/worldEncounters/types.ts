@@ -91,20 +91,69 @@ export type Requirements = z.infer<typeof RequirementsSchema>;
 
 /* ─────────────────────── Checks ─────────────────────── */
 
-export const CheckSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('none') }),
-  z.object({
-    type: z.literal('sp'),
-    /** Target SP the buddy is measured against. */
-    difficulty: z.number().int().nonnegative().max(1_000),
-    /** Advantage modifier when buddy affinity matches. */
-    affinityAdvantage: z.enum(AFFINITIES).optional(),
-    /** Advantage modifier when any of these race tags is on the buddy species. */
-    raceAdvantage: z.array(z.string().min(1).max(64)).optional(),
-    /** Optional flat percentage-point shift to the base success chance. */
-    baseBias: z.number().min(-0.5).max(0.5).optional(),
-  }),
-]);
+/**
+ * SP checks come in two models that live in the same object shape and are told
+ * apart by a single field: **presence of `baseChance` selects the new model.**
+ *
+ * NEW MODEL (author sets an explicit success floor, buddy strength moves it a
+ * bounded amount):
+ *   { type: 'sp', baseChance: 0.40, maxSpModifier: 0.15,
+ *     affinityAdvantage?, raceAdvantage? }
+ *
+ * LEGACY MODEL (base fixed at 50 %, `difficulty` compared against SP; kept so
+ * existing content behaves *identically* — see {@link computeChance}):
+ *   { type: 'sp', difficulty: 60, baseBias?, affinityAdvantage?, raceAdvantage? }
+ *
+ * Every field except `type` is optional at the schema level; the cross-field
+ * rule ("exactly enough to pick a model") is enforced by the `superRefine`
+ * below so a discriminated union can still carry both models without a third
+ * `model` discriminant leaking into authored content.
+ */
+export const CheckSchema = z
+  .discriminatedUnion('type', [
+    z.object({ type: z.literal('none') }),
+    z.object({
+      type: z.literal('sp'),
+
+      /* ── New model ── */
+      /**
+       * Author-set success chance (0–1) *before* any buddy advantages. Its
+       * presence is what switches a check onto the new formula.
+       */
+      baseChance: z.number().min(0).max(1).optional(),
+      /**
+       * Maximum absolute shift buddy SP may contribute, in probability points
+       * (0–0.5). A strong buddy adds up to `+maxSpModifier`, a weak one up to
+       * `−maxSpModifier`. Named for the cap it enforces rather than the scaling
+       * curve, because the cap is the guarantee an author is buying — no amount
+       * of SP can move the chance further than this. Defaults to
+       * `DEFAULT_MAX_SP_MODIFIER` at resolve time when omitted.
+       */
+      maxSpModifier: z.number().min(0).max(0.5).optional(),
+
+      /* ── Legacy model ── */
+      /** Target SP the buddy is measured against (legacy formula only). */
+      difficulty: z.number().int().nonnegative().max(1_000).optional(),
+      /** Legacy flat percentage-point shift to the fixed 50 % base. */
+      baseBias: z.number().min(-0.5).max(0.5).optional(),
+
+      /* ── Shared advantages (both models) ── */
+      /** Advantage modifier when buddy affinity matches. */
+      affinityAdvantage: z.enum(AFFINITIES).optional(),
+      /** Advantage modifier when any of these race tags is on the buddy species. */
+      raceAdvantage: z.array(z.string().min(1).max(64)).optional(),
+    }),
+  ])
+  .superRefine((check, ctx) => {
+    if (check.type !== 'sp') return;
+    if (check.baseChance === undefined && check.difficulty === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          'An SP check needs either `baseChance` (new model) or `difficulty` (legacy model).',
+      });
+    }
+  });
 export type CheckSpec = z.infer<typeof CheckSchema>;
 
 /* ─────────────────────── Choice ─────────────────────── */

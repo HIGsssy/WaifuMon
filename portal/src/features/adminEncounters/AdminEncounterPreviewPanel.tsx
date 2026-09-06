@@ -29,6 +29,17 @@ const DEFAULT_CTX: PreviewBody = {
   buddyBonusPercent: 0,
 };
 
+/**
+ * SP values that map to the new model's reference band (neutral 200, full
+ * ±cap at 50/350). "Weak" is a fresh low-rarity buddy, "Average" the neutral
+ * point, "Strong" a high-rarity end-game buddy that reaches the positive cap.
+ */
+const SP_PRESETS: ReadonlyArray<{ label: string; sp: number }> = [
+  { label: 'Weak', sp: 90 },
+  { label: 'Average', sp: 200 },
+  { label: 'Strong', sp: 350 },
+];
+
 export function AdminEncounterPreviewPanel({ encounterId, reference }: Props) {
   const [ctx, setCtx] = useState<PreviewBody>(DEFAULT_CTX);
   const [result, setResult] = useState<PreviewResponse | null>(null);
@@ -138,6 +149,38 @@ export function AdminEncounterPreviewPanel({ encounterId, reference }: Props) {
             onChange={(e) => setCtx({ ...ctx, buddyBonusPercent: Number(e.target.value) })}
           />
         </label>
+        {buddyOn && ctx.buddy && (
+          <div className="space-y-1">
+            <span className="block text-[11px] uppercase text-ink-muted">
+              Buddy SP presets
+            </span>
+            <div className="flex flex-wrap gap-2">
+              {SP_PRESETS.map((p) => (
+                <Button
+                  key={p.label}
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    const next = {
+                      ...ctx,
+                      buddy: { ...ctx.buddy!, currentSp: p.sp },
+                    };
+                    setCtx(next);
+                    previewMutation.mutate(next);
+                  }}
+                >
+                  {p.label} ({p.sp} SP)
+                </Button>
+              ))}
+            </div>
+            <span className="block text-[11px] text-ink-muted">
+              Presets run the real resolver. Combine with matching affinity/race
+              above to see an ideal-match chance. New-model checks read SP against
+              a 200-neutral / 350-strong band.
+            </span>
+          </div>
+        )}
         <Button
           type="button"
           size="sm"

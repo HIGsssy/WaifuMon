@@ -239,6 +239,131 @@ describe('round trip', () => {
     expect(plan.ok).toBe(true);
     expect(plan.counts).toMatchObject({ created: 0, updated: 0, unchanged: 1 });
   });
+
+  it('exports and re-imports a new-model SP check without losing its fields', () => {
+    const source = loaded({
+      slug: 'nm_new_model',
+      choices: [
+        {
+          id: 42,
+          sortOrder: 0,
+          label: 'Charm',
+          emoji: null,
+          requirements: {},
+          check: {
+            type: 'sp',
+            baseChance: 0.4,
+            maxSpModifier: 0.15,
+            affinityAdvantage: 'dominant',
+            raceAdvantage: ['demon', 'valkyrie'],
+          },
+          successEffects: [{ type: 'waifubux_gain', amount: 50 }],
+          failureEffects: [],
+        },
+      ],
+    });
+
+    const [packaged] = pkgOf([source]).encounters;
+    expect(packaged!.choices[0]!.check).toEqual({
+      type: 'sp',
+      baseChance: 0.4,
+      maxSpModifier: 0.15,
+      affinityAdvantage: 'dominant',
+      raceAdvantage: ['demon', 'valkyrie'],
+    });
+
+    // And the planner accepts it — schema validation passes for the new shape.
+    const plan = planImport(pkgOf([source]), target());
+    expect(plan.ok).toBe(true);
+    expect(plan.counts).toMatchObject({ created: 1 });
+  });
+
+  it('still imports a legacy old-format package (difficulty, no baseChance)', () => {
+    const legacyRaw = {
+      format: PACKAGE_FORMAT,
+      version: PACKAGE_VERSION,
+      exportedAt: '2026-09-05T00:00:00.000Z',
+      label: null,
+      vendors: [],
+      encounters: [
+        {
+          slug: 'lg_legacy',
+          name: 'Legacy',
+          description: '',
+          type: 'combat',
+          rarity: 'common',
+          weight: 10,
+          lifecycle: 'active',
+          huntEligible: true,
+          travelEligible: false,
+          cooldownSeconds: 0,
+          artworkPath: null,
+          chainedEncounterSlug: null,
+          choicesRequired: true,
+          regions: [],
+          routes: [],
+          choices: [
+            {
+              label: 'Fight',
+              emoji: null,
+              requirements: {},
+              check: { type: 'sp', difficulty: 70, baseBias: 0.1 },
+              successEffects: [],
+              failureEffects: [],
+            },
+          ],
+          metadata: {},
+        },
+      ],
+    };
+
+    const plan = planImport(legacyRaw, target());
+    expect(plan.ok).toBe(true);
+    expect(plan.counts).toMatchObject({ created: 1 });
+  });
+
+  it('rejects an SP check that sets neither baseChance nor difficulty', () => {
+    const badRaw = {
+      format: PACKAGE_FORMAT,
+      version: PACKAGE_VERSION,
+      exportedAt: '2026-09-05T00:00:00.000Z',
+      label: null,
+      vendors: [],
+      encounters: [
+        {
+          slug: 'bad_check',
+          name: 'Bad',
+          description: '',
+          type: 'combat',
+          rarity: 'common',
+          weight: 10,
+          lifecycle: 'active',
+          huntEligible: true,
+          travelEligible: false,
+          cooldownSeconds: 0,
+          artworkPath: null,
+          chainedEncounterSlug: null,
+          choicesRequired: true,
+          regions: [],
+          routes: [],
+          choices: [
+            {
+              label: 'Nope',
+              emoji: null,
+              requirements: {},
+              check: { type: 'sp', affinityAdvantage: 'dominant' },
+              successEffects: [],
+              failureEffects: [],
+            },
+          ],
+          metadata: {},
+        },
+      ],
+    };
+
+    const plan = planImport(badRaw, target());
+    expect(plan.ok).toBe(false);
+  });
 });
 
 /* ─────────────────────── Planning ─────────────────────── */

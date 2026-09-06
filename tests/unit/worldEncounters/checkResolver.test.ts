@@ -125,6 +125,181 @@ describe('computeChance — SP check', () => {
   });
 });
 
+describe('computeChance — new SP model (baseChance present)', () => {
+  const NEUTRAL_SP = 200; // SP_NEUTRAL_REFERENCE — spModifier is 0 here
+  const STRONG_SP = 350; // reaches the full +cap
+  const WEAK_SP = 50; // reaches the full −cap
+
+  it('returns baseChance exactly at neutral SP with no advantages', () => {
+    const check: CheckSpec = { type: 'sp', baseChance: 0.4 };
+    const result = computeChance(check, ctx({ buddy: buddy({ currentSp: NEUTRAL_SP }) }));
+    expect(result.chance).toBeCloseTo(0.4, 6);
+    expect(result.breakdown.base).toBe(0.4);
+    expect(result.breakdown.spTerm).toBeCloseTo(0, 6);
+    // The new model never uses a separate level term or baseBias.
+    expect(result.breakdown.levelTerm).toBe(0);
+    expect(result.breakdown.baseBias).toBe(0);
+  });
+
+  it('a weak buddy produces a negative bounded SP modifier', () => {
+    const check: CheckSpec = { type: 'sp', baseChance: 0.4 };
+    const result = computeChance(check, ctx({ buddy: buddy({ currentSp: WEAK_SP }) }));
+    expect(result.breakdown.spTerm).toBeCloseTo(-0.15, 6);
+    expect(result.chance).toBeCloseTo(0.25, 6);
+  });
+
+  it('a strong buddy produces a positive bounded SP modifier', () => {
+    const check: CheckSpec = { type: 'sp', baseChance: 0.4 };
+    const result = computeChance(check, ctx({ buddy: buddy({ currentSp: STRONG_SP }) }));
+    expect(result.breakdown.spTerm).toBeCloseTo(0.15, 6);
+    expect(result.chance).toBeCloseTo(0.55, 6);
+  });
+
+  it('caps the SP modifier at the configured maximum however high SP goes', () => {
+    const check: CheckSpec = { type: 'sp', baseChance: 0.4, maxSpModifier: 0.15 };
+    const huge = computeChance(check, ctx({ buddy: buddy({ currentSp: 9999 }) }));
+    expect(huge.breakdown.spTerm).toBeCloseTo(0.15, 6);
+    const tiny = computeChance(check, ctx({ buddy: buddy({ currentSp: 0 }) }));
+    expect(tiny.breakdown.spTerm).toBeCloseTo(-0.15, 6);
+  });
+
+  it('honours a custom maxSpModifier', () => {
+    const check: CheckSpec = { type: 'sp', baseChance: 0.4, maxSpModifier: 0.05 };
+    const strong = computeChance(check, ctx({ buddy: buddy({ currentSp: STRONG_SP }) }));
+    expect(strong.breakdown.spTerm).toBeCloseTo(0.05, 6);
+  });
+
+  it('defaults maxSpModifier to 0.15 when omitted', () => {
+    const check: CheckSpec = { type: 'sp', baseChance: 0.4 };
+    const strong = computeChance(check, ctx({ buddy: buddy({ currentSp: STRONG_SP }) }));
+    expect(strong.breakdown.spTerm).toBeCloseTo(0.15, 6);
+  });
+
+  it('applies affinity advantage on top of base + SP', () => {
+    const check: CheckSpec = { type: 'sp', baseChance: 0.4, affinityAdvantage: 'dominant' };
+    const matched = computeChance(
+      check,
+      ctx({ buddy: buddy({ currentSp: NEUTRAL_SP, affinity: 'dominant' }) }),
+    );
+    expect(matched.chance).toBeCloseTo(0.55, 6);
+    expect(matched.breakdown.affinityMod).toBeCloseTo(0.15, 6);
+  });
+
+  it('applies race advantage when any listed tag matches, and stacks with affinity', () => {
+    const check: CheckSpec = {
+      type: 'sp',
+      baseChance: 0.4,
+      affinityAdvantage: 'dominant',
+      raceAdvantage: ['demon', 'valkyrie'],
+    };
+    const ideal = computeChance(
+      check,
+      ctx({
+        buddy: buddy({ currentSp: STRONG_SP, affinity: 'dominant', raceTags: ['valkyrie'] }),
+      }),
+    );
+    // 0.40 base + 0.15 sp + 0.15 affinity + 0.10 race = 0.80
+    expect(ideal.chance).toBeCloseTo(0.8, 6);
+  });
+
+  it('does not stack race advantage when a buddy matches several listed tags', () => {
+    const oneTag: CheckSpec = { type: 'sp', baseChance: 0.4, raceAdvantage: ['demon'] };
+    const twoTags: CheckSpec = { type: 'sp', baseChance: 0.4, raceAdvantage: ['demon', 'valkyrie'] };
+    const b = buddy({ currentSp: NEUTRAL_SP, raceTags: ['demon', 'valkyrie'] });
+    const a = computeChance(oneTag, ctx({ buddy: b }));
+    const c = computeChance(twoTags, ctx({ buddy: b }));
+    expect(a.breakdown.raceMod).toBeCloseTo(0.1, 6);
+    expect(c.breakdown.raceMod).toBeCloseTo(0.1, 6); // matching two tags still adds 0.10 once
+  });
+
+  it('folds a Buddy Bonus in exactly once', () => {
+    const check: CheckSpec = { type: 'sp', baseChance: 0.4 };
+    const base = computeChance(check, ctx({ buddy: buddy({ currentSp: NEUTRAL_SP }), buddyBonusPercent: 0 }));
+    const bonus = computeChance(check, ctx({ buddy: buddy({ currentSp: NEUTRAL_SP }), buddyBonusPercent: 10 }));
+    expect(bonus.chance - base.chance).toBeCloseTo(0.1, 6);
+    expect(bonus.breakdown.buddyBonusMod).toBeCloseTo(0.1, 6);
+  });
+
+  it('pays the full negative SP cap when no buddy is equipped', () => {
+    const check: CheckSpec = { type: 'sp', baseChance: 0.4, maxSpModifier: 0.15 };
+    const result = computeChance(check, ctx({ buddy: null }));
+    expect(result.breakdown.spTerm).toBeCloseTo(-0.15, 6);
+    expect(result.chance).toBeCloseTo(0.25, 6);
+  });
+
+  it('clamps to the 5% floor for a hard check even against a mismatched buddy', () => {
+    const check: CheckSpec = { type: 'sp', baseChance: 0.1 };
+    const result = computeChance(check, ctx({ buddy: buddy({ currentSp: WEAK_SP }) }));
+    // 0.10 − 0.15 = −0.05 → clamped up to the 0.05 floor.
+    expect(result.chance).toBe(0.05);
+  });
+
+  it('clamps to the 95% ceiling for an easy check with ideal advantages', () => {
+    const check: CheckSpec = {
+      type: 'sp',
+      baseChance: 0.85,
+      affinityAdvantage: 'dominant',
+      raceAdvantage: ['valkyrie'],
+    };
+    const result = computeChance(
+      check,
+      ctx({ buddy: buddy({ currentSp: STRONG_SP, affinity: 'dominant', raceTags: ['valkyrie'] }) }),
+    );
+    // 0.85 + 0.15 + 0.15 + 0.10 = 1.25 → clamped to 0.95.
+    expect(result.chance).toBe(0.95);
+  });
+
+  it('a very high-SP buddy does NOT automatically max out an ordinary new-model check', () => {
+    // The core design goal: a moderate encounter stays risky no matter the SP.
+    const check: CheckSpec = { type: 'sp', baseChance: 0.4 };
+    const godlike = computeChance(check, ctx({ buddy: buddy({ currentSp: 99_999 }) }));
+    // Base + full SP cap only = 0.55, well short of the 0.95 ceiling.
+    expect(godlike.chance).toBeCloseTo(0.55, 6);
+    expect(godlike.chance).toBeLessThan(0.95);
+  });
+
+  it('a deliberately hard check stays risky even for a strong, matched buddy', () => {
+    const check: CheckSpec = { type: 'sp', baseChance: 0.25, affinityAdvantage: 'dominant' };
+    const result = computeChance(
+      check,
+      ctx({ buddy: buddy({ currentSp: STRONG_SP, affinity: 'dominant' }) }),
+    );
+    // 0.25 + 0.15 + 0.15 = 0.55 — meaningfully below certainty.
+    expect(result.chance).toBeCloseTo(0.55, 6);
+    expect(result.chance).toBeLessThan(0.7);
+  });
+});
+
+describe('computeChance — legacy model is untouched by the new fields', () => {
+  it('still centres on 50% when SP matches difficulty', () => {
+    const check: CheckSpec = { type: 'sp', difficulty: 60 };
+    const result = computeChance(check, ctx({ buddy: buddy({ currentSp: 60, level: 1 }) }));
+    expect(result.chance).toBeCloseTo(0.5, 6);
+    expect(result.breakdown.base).toBe(0.5);
+  });
+
+  it('produces the same numbers as before this change for a representative legacy check', () => {
+    // difficulty 70, dominant advantage, valkyrie race, mid buddy — a shipped
+    // seed shape. Locks the legacy formula against accidental drift.
+    const check: CheckSpec = {
+      type: 'sp',
+      difficulty: 70,
+      affinityAdvantage: 'dominant',
+      raceAdvantage: ['valkyrie'],
+    };
+    const result = computeChance(
+      check,
+      ctx({
+        buddy: buddy({ currentSp: 150, level: 20, affinity: 'dominant', raceTags: ['valkyrie'] }),
+      }),
+    );
+    // base 0.5 + sp (150-70)/200=0.4 + level (20-1)/100=0.19 + aff 0.15 + race 0.10 = 1.34 → 0.95
+    expect(result.chance).toBe(0.95);
+    expect(result.breakdown.spTerm).toBeCloseTo(0.4, 6);
+    expect(result.breakdown.levelTerm).toBeCloseTo(0.19, 6);
+  });
+});
+
 describe('rollCheck', () => {
   it('is deterministic given a seeded RNG', () => {
     const check: CheckSpec = { type: 'sp', difficulty: 60 };
