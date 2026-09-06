@@ -1,7 +1,7 @@
 /**
  * CollectionService integration — real Postgres.
  * Covers pagination + rarity sort, dex stats, inspect ownership, duplicate
- * conversion + Essence grant, release (favorite guard, force override), and
+ * conversion + Essence grant, release (favourite/buddy protection), and
  * favorite toggle.
  */
 import { and, eq, sql } from 'drizzle-orm';
@@ -18,6 +18,7 @@ import {
   NotADuplicateError,
   WaifuAlreadyReleasedError,
   WaifuIsFavoriteError,
+  WaifuReleaseBlockedError,
   WaifuNotOwnedError,
 } from '../../src/shared/errors';
 import {
@@ -65,6 +66,131 @@ async function grantWaifus(
 async function cleanPlayer(playerId: number): Promise<void> {
   await t.db.delete(playerWaifus).where(eq(playerWaifus.playerId, playerId));
 }
+
+describe('CollectionService — grouped listing with a rarity filter', () => {
+  let rarityPlayerId: number;
+  beforeAll(async () => {
+    ({ playerId: rarityPlayerId } = await provisionPlayer(app, 'g-rarity', 'u-rarity'));
+  });
+  beforeEach(() => cleanPlayer(rarityPlayerId));
+
+  /** A spread across four tiers, with a duplicate pair on the SSR. */
+  const spread = () => [
+    { slug: 'neko_barista' }, // N
+    { slug: 'gym_oni' }, // N
+    { slug: 'arcade_succubus' }, // R
+    { slug: 'neon_kitsune' }, // SR
+    { slug: 'eclipse_valkyrie', count: 2 }, // SSR ×2
+    { slug: 'void_empress' }, // UR
+  ];
+
+  it('narrows to one rarity through the real query path', async () => {
+    await grantWaifus(rarityPlayerId, spread());
+
+    const view = await app.collection.listOwnedGrouped(rarityPlayerId, {
+      rarities: ['SSR'],
+      pageSize: 25,
+    });
+
+    expect(view.groups.map((g) => g.species.rarity)).toEqual(['SSR']);
+    expect(view.totalGroups).toBe(1);
+    expect(view.totalCopies).toBe(2);
+  });
+
+  it('null and an empty list both mean every rarity', async () => {
+    await grantWaifus(rarityPlayerId, spread());
+
+    const all = await app.collection.listOwnedGrouped(rarityPlayerId, { pageSize: 25 });
+    const explicitNull = await app.collection.listOwnedGrouped(rarityPlayerId, {
+      rarities: null,
+      pageSize: 25,
+    });
+    const empty = await app.collection.listOwnedGrouped(rarityPlayerId, {
+      rarities: [],
+      pageSize: 25,
+    });
+
+    expect(all.totalGroups).toBe(6); // seven copies, six species
+    expect(all.totalCopies).toBe(7);
+    expect(explicitNull.totalGroups).toBe(6);
+    expect(empty.totalGroups).toBe(6);
+  });
+
+  it('composes with the name filter', async () => {
+    await grantWaifus(rarityPlayerId, spread());
+
+    // Name matches the N copy; asking for SSR as well leaves nothing.
+    const both = await app.collection.listOwnedGrouped(rarityPlayerId, {
+      name: 'neko',
+      rarities: ['SSR'],
+      pageSize: 25,
+    });
+    expect(both.totalGroups).toBe(0);
+
+    const agreeing = await app.collection.listOwnedGrouped(rarityPlayerId, {
+      name: 'neko',
+      rarities: ['N'],
+      pageSize: 25,
+    });
+    expect(agreeing.groups.map((g) => g.species.slug)).toEqual(['neko_barista']);
+  });
+
+  it('composes with the minCopies (duplicate) filter', async () => {
+    await grantWaifus(rarityPlayerId, spread());
+
+    const dupes = await app.collection.listOwnedGrouped(rarityPlayerId, {
+      minCopies: 2,
+      pageSize: 25,
+    });
+    expect(dupes.groups.map((g) => g.species.rarity)).toEqual(['SSR']);
+
+    // The same duplicate filter, narrowed to a rarity that has no duplicates.
+    const none = await app.collection.listOwnedGrouped(rarityPlayerId, {
+      minCopies: 2,
+      rarities: ['N'],
+      pageSize: 25,
+    });
+    expect(none.totalGroups).toBe(0);
+  });
+
+  it('paginates the filtered set', async () => {
+    await grantWaifus(rarityPlayerId, spread());
+
+    // Two N species, one per page.
+    const page1 = await app.collection.listOwnedGrouped(rarityPlayerId, {
+      rarities: ['N'],
+      pageSize: 1,
+      page: 1,
+    });
+    expect(page1.totalGroups).toBe(2);
+    expect(page1.totalPages).toBe(2);
+    expect(page1.groups).toHaveLength(1);
+    expect(page1.groups[0]!.species.rarity).toBe('N');
+
+    // A page beyond the filtered set clamps rather than paging past it.
+    const page9 = await app.collection.listOwnedGrouped(rarityPlayerId, {
+      rarities: ['N'],
+      pageSize: 1,
+      page: 9,
+    });
+    expect(page9.page).toBe(2);
+    expect(page9.groups[0]!.species.rarity).toBe('N');
+  });
+
+  it('composes with sort', async () => {
+    await grantWaifus(rarityPlayerId, spread());
+
+    const view = await app.collection.listOwnedGrouped(rarityPlayerId, {
+      rarities: ['N', 'SSR'],
+      sortBy: 'copies_desc',
+      pageSize: 25,
+    });
+
+    // SSR has two copies, so it leads regardless of rarity ordering.
+    expect(view.groups[0]!.species.rarity).toBe('SSR');
+    expect(view.groups).toHaveLength(3);
+  });
+});
 
 describe('CollectionService — listing & dex', () => {
   let playerId: number;
@@ -348,22 +474,93 @@ describe('CollectionService — inspect, favorite, convert, release', () => {
     expect(row?.releasedAt).not.toBeNull();
   });
 
-  it('release rejects favorites without force, allows with force', async () => {
+  it('release refuses a favorite outright — force does not override it', async () => {
+    // Behaviour change: a favourite used to be releasable on a second
+    // confirmation. It is now protected, and the player must unfavourite her
+    // first, so there is no `force` escape hatch left on this path.
     const [mine] = await grantWaifus(playerId, [
       { slug: 'neko_barista', isFavorite: true },
     ]);
     await expect(app.collection.releaseWaifu(playerId, mine!.id)).rejects.toBeInstanceOf(
-      WaifuIsFavoriteError,
+      WaifuReleaseBlockedError,
     );
-    // Nothing was released.
-    const [before] = await t.db
+    await expect(
+      app.collection.releaseWaifu(playerId, mine!.id, { force: true }),
+    ).rejects.toBeInstanceOf(WaifuReleaseBlockedError);
+
+    // Nothing was released, and she is still a favourite — the refusal never
+    // "helpfully" unfavourites her.
+    const [after] = await t.db
       .select()
       .from(playerWaifus)
       .where(eq(playerWaifus.id, mine!.id));
-    expect(before?.releasedAt).toBeNull();
-    // Force release succeeds.
-    const result = await app.collection.releaseWaifu(playerId, mine!.id, { force: true });
+    expect(after?.releasedAt).toBeNull();
+    expect(after?.isFavorite).toBe(true);
+
+    // Unfavourite, and the same release goes through.
+    await app.collection.toggleFavorite(playerId, mine!.id);
+    const result = await app.collection.releaseWaifu(playerId, mine!.id);
     expect(result.essenceGranted).toBeGreaterThan(0);
+  });
+
+  it('refuses the active buddy, and still refuses once she is also favourite', async () => {
+    const [mine] = await grantWaifus(playerId, [{ slug: 'neko_barista' }]);
+    await app.collection.setBuddy(playerId, mine!.id);
+
+    const buddyOnly = await app.collection
+      .releaseWaifu(playerId, mine!.id)
+      .then(() => null, (e: unknown) => e);
+    expect(buddyOnly).toBeInstanceOf(WaifuReleaseBlockedError);
+    expect((buddyOnly as WaifuReleaseBlockedError).reasons).toEqual(['buddy']);
+
+    await app.collection.toggleFavorite(playerId, mine!.id);
+    const both = await app.collection
+      .releaseWaifu(playerId, mine!.id)
+      .then(() => null, (e: unknown) => e);
+    expect((both as WaifuReleaseBlockedError).reasons).toEqual(['favorite', 'buddy']);
+
+    // Neither flag was cleared on the player's behalf.
+    const [row] = await t.db.select().from(playerWaifus).where(eq(playerWaifus.id, mine!.id));
+    expect(row?.releasedAt).toBeNull();
+    expect(row?.isFavorite).toBe(true);
+    const buddyStill = await app.collection.getBuddy(playerId);
+    expect(buddyStill?.waifu.id).toBe(mine!.id);
+  });
+
+  it('the invariant lives in the service, not the screen', async () => {
+    // The direct service call is the one a future command, the API, or a
+    // stale button would make. It is refused on its own terms, with no UI
+    // involved and no options that could relax it.
+    const [mine] = await grantWaifus(playerId, [
+      { slug: 'neko_barista', isFavorite: true },
+    ]);
+
+    await expect(app.collection.releaseWaifu(playerId, mine!.id)).rejects.toBeInstanceOf(
+      WaifuReleaseBlockedError,
+    );
+    await expect(
+      app.collection.releaseWaifu(playerId, mine!.id, { force: true }),
+    ).rejects.toBeInstanceOf(WaifuReleaseBlockedError);
+    await expect(
+      app.collection.releaseWaifu(playerId, mine!.id, { force: true, now: new Date() }),
+    ).rejects.toBeInstanceOf(WaifuReleaseBlockedError);
+
+    const [row] = await t.db.select().from(playerWaifus).where(eq(playerWaifus.id, mine!.id));
+    expect(row?.releasedAt).toBeNull();
+  });
+
+  it('favouriting between render and confirm still blocks the release', async () => {
+    // The stale-UI case: the Release button was painted while she was an
+    // ordinary copy, and the flag changed before the click landed. The check
+    // runs inside the release transaction, so the late favourite wins.
+    const [mine] = await grantWaifus(playerId, [{ slug: 'neko_barista' }]);
+    expect(await app.collection.getOwned(playerId, mine!.id)).toBeTruthy();
+
+    await app.collection.toggleFavorite(playerId, mine!.id);
+
+    await expect(app.collection.releaseWaifu(playerId, mine!.id)).rejects.toBeInstanceOf(
+      WaifuReleaseBlockedError,
+    );
   });
 
   it('cannot release someone else\'s waifu', async () => {

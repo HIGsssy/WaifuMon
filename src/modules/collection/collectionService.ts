@@ -39,6 +39,7 @@ import {
   WaifuAtMaxLevelError,
   WaifuIsBuddyError,
   WaifuIsFavoriteError,
+  WaifuReleaseBlockedError,
   WaifuNicknameTooEarlyError,
   WaifuNotOwnedError,
 } from '../../shared/errors';
@@ -123,6 +124,8 @@ export interface GroupedListOptions {
   minLevel?: number | null;
   maxLevel?: number | null;
   minCopies?: number | null;
+  /** Species rarities to keep. Null/empty = every rarity. */
+  rarities?: readonly Rarity[] | null;
   sortBy?: CollectionSortBy;
   page?: number;
   pageSize?: number;
@@ -138,7 +141,11 @@ export interface CopyFilterOptions {
 }
 
 export interface ReleaseOptions {
-  /** When true, bypass the favorite-guard (second confirmation). */
+  /**
+   * Retained for source compatibility and deliberately ignored: favourites and
+   * the active buddy are protected outright on the release path, with no
+   * override. See {@link CollectionService.releaseWaifu}.
+   */
   force?: boolean;
   now?: Date;
 }
@@ -249,8 +256,12 @@ export interface CollectionService {
   ): Promise<ReleaseResult>;
   /**
    * Manual release from inspect: soft-release + grant `floor(dupEssence ×
-   * releaseFraction)`. Favorites require `force=true` (second confirmation).
-   * Active buddy always throws `WaifuIsBuddyError`.
+   * releaseFraction)`.
+   *
+   * Refuses with `WaifuReleaseBlockedError` when the copy is a favourite or
+   * the active buddy — there is no override, and `ReleaseOptions.force` does
+   * not apply. The check runs inside the release transaction, so a stale
+   * Release button cannot bypass it.
    */
   releaseWaifu(playerId: number, waifuId: number, opts?: ReleaseOptions): Promise<ReleaseResult>;
   toggleFavorite(playerId: number, waifuId: number): Promise<PlayerWaifuRow>;
@@ -682,6 +693,7 @@ export function createCollectionService(deps: CollectionServiceDeps): Collection
       minLevel: opts.minLevel ?? null,
       maxLevel: opts.maxLevel ?? null,
       minCopies: opts.minCopies ?? null,
+      rarities: opts.rarities ?? null,
       ...(opts.sortBy ? { sortBy: opts.sortBy } : {}),
       page: opts.page ?? 1,
       pageSize: opts.pageSize ?? DEFAULT_PAGE_SIZE,
@@ -697,12 +709,24 @@ export function createCollectionService(deps: CollectionServiceDeps): Collection
     return filterCopiesByLevel(rows, opts.minLevel, opts.maxLevel);
   }
 
+  /**
+   * How the protected-copy checks behave for this call.
+   *
+   * `release` is a hard refusal: a favourite or the active buddy cannot be
+   * released at all, and both causes are reported together so the player is
+   * told everything they must undo. `convert` keeps its long-standing
+   * confirm-again behaviour for favourites — converting a *duplicate* to
+   * Essence is a different intent from saying goodbye to a copy, and this
+   * change is deliberately scoped to release.
+   */
+  type ReleaseGuard = { kind: 'release' } | { kind: 'convert'; allowFavorite: boolean };
+
   async function softRelease(
     playerId: number,
     waifuId: number,
     fraction: number,
     now: Date,
-    allowFavorite: boolean,
+    guard: ReleaseGuard,
     requireDuplicate: boolean,
   ): Promise<ReleaseResult> {
     return db.transaction(async (tx) => {
@@ -714,16 +738,30 @@ export function createCollectionService(deps: CollectionServiceDeps): Collection
         .for('update');
       if (!locked) throw new WaifuNotOwnedError(waifuId);
       if (locked.releasedAt != null) throw new WaifuAlreadyReleasedError(waifuId);
-      if (locked.isFavorite && !allowFavorite) throw new WaifuIsFavoriteError();
-
-      // Buddy guard: releasing / converting the active buddy is blocked.
-      // Player must switch buddies (or clear) before saying goodbye.
+      // Both protection reads happen before either can throw, so the release
+      // path can name a copy that is favourite *and* buddy in one message
+      // rather than sending the player round twice.
+      //
+      // This is the authoritative check, not a mirror of the UI's: it runs
+      // inside the transaction, on the locked `player_waifus` row and a
+      // locked `players` row, so a Release button rendered before the copy
+      // was favourited (or before the buddy changed) still cannot get through.
       const [player] = await tx
         .select({ buddyWaifuId: players.buddyWaifuId })
         .from(players)
         .where(eq(players.id, playerId))
         .for('update');
-      if (player?.buddyWaifuId === waifuId) throw new WaifuIsBuddyError();
+      const isBuddy = player?.buddyWaifuId === waifuId;
+
+      if (guard.kind === 'release') {
+        const reasons: ('favorite' | 'buddy')[] = [];
+        if (locked.isFavorite) reasons.push('favorite');
+        if (isBuddy) reasons.push('buddy');
+        if (reasons.length > 0) throw new WaifuReleaseBlockedError(reasons);
+      } else {
+        if (locked.isFavorite && !guard.allowFavorite) throw new WaifuIsFavoriteError();
+        if (isBuddy) throw new WaifuIsBuddyError();
+      }
 
       if (requireDuplicate) {
         const [others = { total: 0 }] = await tx
@@ -864,17 +902,21 @@ export function createCollectionService(deps: CollectionServiceDeps): Collection
         waifuId,
         1,
         opts.now ?? new Date(),
-        opts.force === true,
+        { kind: 'convert', allowFavorite: opts.force === true },
         true,
       );
     },
     async releaseWaifu(playerId, waifuId, opts = {}) {
+      // No `force` path: `opts.force` is deliberately ignored here. A
+      // favourite or the active buddy is protected outright, so there is
+      // nothing for a caller — Discord, the API, a future command — to
+      // override. Every release funnels through this one function.
       return softRelease(
         playerId,
         waifuId,
         duplicateConfig.releaseFraction,
         opts.now ?? new Date(),
-        opts.force === true,
+        { kind: 'release' },
         false,
       );
     },

@@ -9,6 +9,7 @@ import {
   buildGroupedView,
   filterByMinCopies,
   filterCopiesByLevel,
+  filterGroupsByRarity,
   groupBySpecies,
   isCollectionSortBy,
   paginateGroups,
@@ -232,5 +233,113 @@ describe('isCollectionSortBy', () => {
     expect(isCollectionSortBy('newest')).toBe(true);
     expect(isCollectionSortBy('by_vibes')).toBe(false);
     expect(isCollectionSortBy(undefined)).toBe(false);
+  });
+});
+
+/* ─────────────────────── rarity filter ─────────────────────── */
+
+/**
+ * Rarity is a species property, so it is a *group*-level filter — and it has
+ * to land before pagination, or a player narrowing to EX would page through
+ * the empty remainder of their unfiltered collection.
+ */
+describe('filterGroupsByRarity', () => {
+  const N_MON = species(10, 'Normie', 'N');
+  const SR_MON = species(11, 'Middling', 'SR');
+  const EX_MON = species(12, 'Exotic', 'EX');
+  const rows = [copy(N_MON, 5), copy(SR_MON, 20), copy(EX_MON, 40)];
+
+  it('keeps only the requested rarity', () => {
+    const groups = groupBySpecies(rows);
+    const kept = filterGroupsByRarity(groups, ['SR']);
+
+    expect(kept.map((g) => g.species.rarity)).toEqual(['SR']);
+  });
+
+  it('keeps several rarities at once', () => {
+    const kept = filterGroupsByRarity(groupBySpecies(rows), ['N', 'EX']);
+
+    expect(kept.map((g) => g.species.name).sort()).toEqual(['Exotic', 'Normie']);
+  });
+
+  it('treats null and an empty list as "all rarities"', () => {
+    const groups = groupBySpecies(rows);
+
+    expect(filterGroupsByRarity(groups, null)).toHaveLength(3);
+    expect(filterGroupsByRarity(groups, [])).toHaveLength(3);
+    expect(filterGroupsByRarity(groups, undefined)).toHaveLength(3);
+  });
+
+  it('does not mutate the input', () => {
+    const groups = groupBySpecies(rows);
+    filterGroupsByRarity(groups, ['SR']);
+
+    expect(groups).toHaveLength(3);
+  });
+});
+
+describe('buildGroupedView with rarity', () => {
+  const N_MON = species(20, 'Normie', 'N');
+  const SR_MON = species(21, 'Middling', 'SR');
+  const EX_MON = species(22, 'Exotic', 'EX');
+
+  it('composes with the level filter, which still applies to copies first', () => {
+    // The SR copy is out of the level range, so the SR group is gone before
+    // rarity is even consulted — and asking for SR then yields nothing.
+    const rows = [copy(N_MON, 50), copy(SR_MON, 5), copy(EX_MON, 50)];
+
+    const view = buildGroupedView(rows, { minLevel: 10, rarities: ['SR'] });
+
+    expect(view.groups).toHaveLength(0);
+    expect(view.totalGroups).toBe(0);
+  });
+
+  it('composes with minCopies, counting only surviving copies', () => {
+    const rows = [copy(EX_MON, 30), copy(EX_MON, 31), copy(SR_MON, 30), copy(SR_MON, 31)];
+
+    const view = buildGroupedView(rows, { rarities: ['EX'], minCopies: 2 });
+
+    expect(view.groups.map((g) => g.species.name)).toEqual(['Exotic']);
+    expect(view.groups[0]!.totalCopies).toBe(2);
+  });
+
+  it('composes with sort', () => {
+    const rows = [copy(N_MON, 9), copy(EX_MON, 40), copy(SR_MON, 20)];
+
+    const view = buildGroupedView(rows, { rarities: ['N', 'EX'], sortBy: 'level_desc' });
+
+    expect(view.groups.map((g) => g.species.name)).toEqual(['Exotic', 'Normie']);
+  });
+
+  it('paginates the filtered set, not the raw one', () => {
+    // Ten N species and two EX. Narrowed to EX with a page size of 1, there
+    // must be exactly two pages — if rarity were applied after paging, page 1
+    // would hold an N species and the count would still read 12.
+    const rows = [
+      ...Array.from({ length: 10 }, (_, i) => copy(species(100 + i, `N${i}`, 'N'), 5)),
+      copy(species(200, 'ExoticA', 'EX'), 40),
+      copy(species(201, 'ExoticB', 'EX'), 41),
+    ];
+
+    const view = buildGroupedView(rows, { rarities: ['EX'], pageSize: 1, page: 1 });
+
+    expect(view.totalGroups).toBe(2);
+    expect(view.totalPages).toBe(2);
+    expect(view.totalCopies).toBe(2);
+    expect(view.groups[0]!.species.rarity).toBe('EX');
+  });
+
+  it('clamps a now-out-of-range page down to the filtered last page', () => {
+    const rows = [
+      ...Array.from({ length: 10 }, (_, i) => copy(species(300 + i, `N${i}`, 'N'), 5)),
+      copy(species(400, 'ExoticA', 'EX'), 40),
+    ];
+
+    // Page 4 was valid unfiltered; with one EX group there is only page 1.
+    const view = buildGroupedView(rows, { rarities: ['EX'], pageSize: 3, page: 4 });
+
+    expect(view.page).toBe(1);
+    expect(view.totalPages).toBe(1);
+    expect(view.groups).toHaveLength(1);
   });
 });

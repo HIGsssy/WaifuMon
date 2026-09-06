@@ -13,11 +13,16 @@
  * Filter ordering is deliberate and load-bearing (see `buildGroupedView`):
  *   1. level range applies to **individual copies**, before grouping;
  *   2. grouping collapses the survivors by species;
- *   3. `minCopies` applies to the **surviving** copy count, after grouping.
+ *   3. `minCopies` and `rarities` apply **after grouping** — the first to the
+ *      surviving copy count, the second to the species itself.
  * So a player owning Sakura at levels 4/12/30 who filters `minLevel: 10` sees
  * Sakura with two matching copies — not three, and not zero.
+ *
+ * Rarity is a property of the *species*, not of a copy, so it can only be a
+ * group-level filter: every copy in a group shares one rarity, and filtering
+ * copies by it would be the same predicate applied N times.
  */
-import type { SpeciesRow } from '../../db/schema';
+import type { Rarity, SpeciesRow } from '../../db/schema';
 import type { OwnedEntry } from './collectionService';
 
 export type CollectionSortBy = 'name_asc' | 'level_desc' | 'copies_desc' | 'newest';
@@ -62,6 +67,11 @@ export interface GroupedViewOptions {
   minLevel?: number | null;
   maxLevel?: number | null;
   minCopies?: number | null;
+  /**
+   * Keep only these rarities. `null`, `undefined` or an empty list all mean
+   * "every rarity" — so clearing the filter needs no separate signal.
+   */
+  rarities?: readonly Rarity[] | null;
   sortBy?: CollectionSortBy;
   page?: number;
   pageSize?: number;
@@ -143,6 +153,23 @@ export function filterByMinCopies(
   return groups.filter((group) => group.totalCopies >= min);
 }
 
+/**
+ * Drop groups whose species is not one of `rarities`.
+ *
+ * Applied after grouping for the reason in the module comment: rarity belongs
+ * to the species. An empty or absent list is "no filter" rather than "match
+ * nothing", which is what makes deselecting every option in the rarity menu
+ * mean *All rarities*.
+ */
+export function filterGroupsByRarity(
+  groups: readonly SpeciesGroup[],
+  rarities?: readonly Rarity[] | null,
+): SpeciesGroup[] {
+  if (rarities == null || rarities.length === 0) return [...groups];
+  const wanted = new Set<string>(rarities);
+  return groups.filter((group) => wanted.has(group.species.rarity));
+}
+
 /** Sort a copy of `groups`; the input array is left untouched. */
 export function sortGroups(
   groups: readonly SpeciesGroup[],
@@ -192,11 +219,18 @@ export function paginateGroups(
 }
 
 /**
- * The whole pipeline in filter-order: level → group → minCopies → sort → page.
+ * The whole pipeline in filter-order:
+ * level → group → rarity → minCopies → sort → page.
  *
  * The service hands this every active copy matching the cheap SQL-side
  * predicates (player, not released, name) and lets the ordering above decide
- * the rest, so the level/minCopies interaction lives in exactly one place.
+ * the rest, so the level/rarity/minCopies interaction lives in exactly one
+ * place.
+ *
+ * Pagination is last, and must stay last: `totalGroups`, `totalPages` and the
+ * page slice are all computed from the fully filtered set, so a rarity that
+ * removes most of a player's collection shrinks the page count instead of
+ * leaving them clicking through pages of nothing.
  */
 export function buildGroupedView(
   rows: readonly OwnedEntry[],
@@ -204,7 +238,8 @@ export function buildGroupedView(
 ): GroupedView {
   const leveled = filterCopiesByLevel(rows, opts.minLevel, opts.maxLevel);
   const grouped = groupBySpecies(leveled);
-  const enough = filterByMinCopies(grouped, opts.minCopies);
+  const byRarity = filterGroupsByRarity(grouped, opts.rarities);
+  const enough = filterByMinCopies(byRarity, opts.minCopies);
   const sorted = sortGroups(enough, opts.sortBy ?? DEFAULT_COLLECTION_SORT);
   return paginateGroups(sorted, opts.page ?? 1, opts.pageSize ?? DEFAULT_GROUP_PAGE_SIZE);
 }

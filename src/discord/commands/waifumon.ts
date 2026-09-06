@@ -59,7 +59,16 @@ import fs from 'node:fs';
 import type { QuestRewards, UiSplashConfig } from '../../modules/content/schemas';
 import { parseQuestRewards, type RewardGrant } from '../../modules/quests/questService';
 
-function menuComponents(care: CareState, questsEnabled: boolean): ActionRowBuilder<ButtonBuilder>[] {
+/**
+ * The main menu's button rows.
+ *
+ * Exported so tests can assert the menu's shape — which controls it offers and
+ * which row they land in — without standing up an interaction.
+ */
+export function menuComponents(
+  care: CareState,
+  questsEnabled: boolean,
+): ActionRowBuilder<ButtonBuilder>[] {
   const careButton = care.active
     ? new ButtonBuilder()
         .setCustomId(buildCustomId('care', 'leave'))
@@ -105,6 +114,16 @@ function menuComponents(care: CareState, questsEnabled: boolean): ActionRowBuild
         .setLabel('Inventory')
         .setStyle(ButtonStyle.Secondary),
       careButton,
+      // Beside Care, as the two "look after the one you have" controls. The
+      // row holds four of Discord's five buttons, so this fits without
+      // pushing anything to another row. Never disabled: the no-buddy case is
+      // an ephemeral that says how to set one, which is more useful than a
+      // greyed-out button with no explanation.
+      new ButtonBuilder()
+        .setCustomId(buildCustomId('menu', 'inspect_buddy'))
+        .setLabel('Inspect Buddy')
+        .setEmoji('🔍')
+        .setStyle(ButtonStyle.Secondary),
     ),
   ];
   const bottomRow: ButtonBuilder[] = [

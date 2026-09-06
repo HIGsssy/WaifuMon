@@ -64,6 +64,8 @@ import {
   handleCollectionPickGroup,
   handleCollectionPickId,
   handleCollectionSort,
+  handleCollectionRarity,
+  handleInspectBuddy,
   handleDuplicateConvert,
   handleDuplicateKeep,
   handleInspectAutocomplete,
@@ -216,6 +218,10 @@ export function createDiscordClient(ctx: AppContext): Client {
       'menu:collection': (i: ButtonInteraction, prov: Provisioned) =>
         handleCollection(ctx, i, prov),
       'menu:quests': (i: ButtonInteraction, prov: Provisioned) => handleQuests(ctx, i, prov),
+      // Opens the ordinary inspect card for the active buddy — the same
+      // renderer Collection uses, reached one click sooner.
+      'menu:inspect_buddy': (i: ButtonInteraction, prov: Provisioned) =>
+        handleInspectBuddy(ctx, i, prov),
       'menu:back': (i: ButtonInteraction, prov: Provisioned) => handleMenu(ctx, i, prov),
       'menu:start': (i: ButtonInteraction, prov: Provisioned) => handleMenuStart(ctx, i, prov),
       'shop:buy': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
@@ -290,6 +296,8 @@ export function createDiscordClient(ctx: AppContext): Client {
         handleCollectionDuplicates(ctx, i, prov, args),
       'col:sort': (i: StringSelectMenuInteraction, prov: Provisioned) =>
         handleCollectionSort(ctx, i, prov),
+      'col:rarity': (i: StringSelectMenuInteraction, prov: Provisioned) =>
+        handleCollectionRarity(ctx, i, prov),
       'col:filter_open': (i: ButtonInteraction, prov: Provisioned) =>
         handleCollectionFilterOpen(ctx, i, prov),
       'col:filter_submit': (i: ModalSubmitInteraction, prov: Provisioned) =>

@@ -276,6 +276,43 @@ export class NotADuplicateError extends AppError {
   }
 }
 
+/**
+ * Release refused because the copy is protected — a favourite, the active
+ * buddy, or both.
+ *
+ * Distinct from {@link WaifuIsFavoriteError}, which is the *convert* path's
+ * "press confirm again" prompt. Release has no such second chance: a
+ * protected copy cannot be released at all until the player unfavourites her
+ * or changes buddy, so this error is a refusal rather than a challenge, and
+ * `reasons` lets one message name both causes at once.
+ */
+export class WaifuReleaseBlockedError extends AppError {
+  readonly reasons: readonly ('favorite' | 'buddy')[];
+
+  constructor(reasons: readonly ('favorite' | 'buddy')[]) {
+    // Normalised rather than trusted: this is the one AppError whose
+    // constructor reads its argument's shape, and the API's error sweep
+    // instantiates every subclass generically.
+    const list = Array.isArray(reasons) ? reasons : [];
+    const isFav = list.includes('favorite');
+    const isBuddy = list.includes('buddy');
+    const userMessage =
+      isFav && isBuddy
+        ? 'She is a ★ favourite **and** your active buddy — unfavourite her and switch buddies first.'
+        : isFav
+          ? 'Favourite Waifumon cannot be released — unfavourite her first.'
+          : isBuddy
+            ? 'Your active Buddy cannot be released — switch or clear your Buddy first.'
+            : 'She cannot be released right now.';
+    super(
+      'WAIFU_RELEASE_BLOCKED',
+      `Cannot release waifu: ${list.join('+') || 'unspecified'}`,
+      userMessage,
+    );
+    this.reasons = list;
+  }
+}
+
 export class WaifuIsBuddyError extends AppError {
   constructor() {
     super(

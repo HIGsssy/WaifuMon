@@ -27,6 +27,7 @@ import { isAppearanceUnlocked } from '../../modules/appearance/appearanceRules';
 import { buddyBonusView } from '../../modules/buddyBonus/buddyBonusEffects';
 import { buddyBonusValueLine } from '../buddyBonusFeedback';
 import { findBuddyBonus } from '../../modules/buddyBonus/buddyBonusService';
+import { RARITIES } from '../../db/schema';
 import type {
   AppearanceView,
   UnlockedAppearanceView,
@@ -50,6 +51,7 @@ import {
 import {
   createCollectionFilterTracker,
   hasActiveFilters,
+  normalizeRarityFilter,
   parseFilterInput,
   FILTER_NAME_MAX_LENGTH,
   type CollectionFilterState,
@@ -68,6 +70,7 @@ import {
   WaifuAtMaxLevelError,
   WaifuIsBuddyError,
   WaifuIsFavoriteError,
+  WaifuReleaseBlockedError,
   WaifuNicknameTooEarlyError,
   WaifuNotOwnedError,
 } from '../../shared/errors';
@@ -89,6 +92,21 @@ import { backButton, isStaleInteractionError, withBackRow } from '../ui';
 const PAGE_SIZE = 10;
 /** Discord select menus cap at 25 options; the gallery paginates past that. */
 const GALLERY_PAGE_SIZE = 25;
+
+/**
+ * Menu labels for the rarity filter. Keyed off {@link RARITIES} so a new tier
+ * added to the game shows up here automatically — the fallback is the code
+ * itself, which is what the collection lines already display.
+ */
+const RARITY_FILTER_LABELS: Record<string, string> = {
+  N: 'N · Normal',
+  R: 'R · Rare',
+  SR: 'SR · Super Rare',
+  SSR: 'SSR · Super Super Rare',
+  UR: 'UR · Ultra Rare',
+  LR: 'LR · Legendary Rare',
+  EX: 'EX · Exotic',
+};
 
 const RARITY_COLORS: Record<string, number> = {
   N: 0xb8b8b8,
@@ -141,6 +159,9 @@ function describeFilters(state: CollectionFilterState): string {
     parts.push(`Lv ${state.maxLevel} and under`);
   }
   if (state.minCopies != null) parts.push(`${state.minCopies}+ copies`);
+  if (state.rarities != null && state.rarities.length > 0) {
+    parts.push(`Rarity: ${state.rarities.join('/')}`);
+  }
   const sort = `Sort: ${COLLECTION_SORT_LABELS[state.sortBy]}`;
   return parts.length > 0
     ? `🔎 ${parts.join(' · ')} · ${sort}`
@@ -226,6 +247,38 @@ function sortSelectRow(
   ) as ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>;
 }
 
+/**
+ * Rarity picker — a multi-select over the game's own {@link RARITIES} ladder,
+ * so there is no second rarity list to drift from the canonical one.
+ *
+ * `minValues(0)` is what gives "All rarities" a home: deselecting everything
+ * is a valid submission, and {@link normalizeRarityFilter} turns the empty
+ * list back into `null`. That means the menu itself is the way back to all
+ * rarities, and the existing ✕ Clear button still works as a blanket reset.
+ */
+function raritySelectRow(
+  state: CollectionFilterState,
+): ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder> {
+  const selected = new Set<string>(state.rarities ?? []);
+  const select = new StringSelectMenuBuilder()
+    .setCustomId(buildCustomId('col', 'rarity'))
+    .setPlaceholder(
+      selected.size > 0 ? `Rarity: ${[...selected].join('/')}` : 'Rarity: All',
+    )
+    .setMinValues(0)
+    .setMaxValues(RARITIES.length)
+    .addOptions(
+      RARITIES.map((rarity) => ({
+        label: RARITY_FILTER_LABELS[rarity] ?? rarity,
+        value: rarity,
+        default: selected.has(rarity),
+      })),
+    );
+  return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+    select,
+  ) as ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>;
+}
+
 function collectionComponents(
   view: PaginatedGroups,
   state: CollectionFilterState,
@@ -248,6 +301,7 @@ function collectionComponents(
   }
 
   rows.push(sortSelectRow(state));
+  rows.push(raritySelectRow(state));
 
   const active = hasActiveFilters(state);
   const nav = [
@@ -294,6 +348,7 @@ async function buildCollectionScreen(
     minLevel: state.minLevel,
     maxLevel: state.maxLevel,
     minCopies: state.minCopies,
+    rarities: state.rarities,
     sortBy: state.sortBy,
     page: state.page,
     pageSize: PAGE_SIZE,
@@ -348,6 +403,30 @@ export async function handleCollectionSort(
   if (isCollectionSortBy(picked)) {
     filterTracker(ctx).set(prov.playerId, { sortBy: picked, page: 1 });
   }
+  const view = await buildCollectionScreen(ctx, prov.playerId);
+  await respondEphemeral(interaction, view);
+}
+
+/**
+ * col:rarity select — narrow to the chosen rarities and jump back to page 1.
+ *
+ * Page 1 rather than the current page because the filtered set is a different
+ * list: staying on page 4 of a collection that now has two pages would show
+ * the clamped last page, which reads as the filter having done nothing.
+ * `buildCollectionScreen` still clamps as a backstop.
+ *
+ * An empty submission is the "All rarities" path — Discord allows it because
+ * the menu sets `minValues(0)` — and normalises to `null`.
+ */
+export async function handleCollectionRarity(
+  ctx: AppContext,
+  interaction: StringSelectMenuInteraction,
+  prov: Provisioned,
+): Promise<void> {
+  filterTracker(ctx).set(prov.playerId, {
+    rarities: normalizeRarityFilter(interaction.values),
+    page: 1,
+  });
   const view = await buildCollectionScreen(ctx, prov.playerId);
   await respondEphemeral(interaction, view);
 }
@@ -737,6 +816,27 @@ async function essenceLimits(
   };
 }
 
+/**
+ * Why this copy cannot be released, or null when she can be.
+ *
+ * The single statement of the rule for the Discord layer — the inspect embed
+ * and the inspect buttons both read it, so the explanation and the disabled
+ * state can never disagree. The rule itself is owned by
+ * `collection.releaseWaifu`; this mirrors it for display.
+ */
+export function releaseBlock(entry: OwnedEntry, isBuddy: boolean): string | null {
+  if (entry.waifu.isFavorite && isBuddy) {
+    return '🚫 **Release unavailable** — she is a ★ favourite **and** your active Buddy. Unfavourite her and switch Buddy first.';
+  }
+  if (entry.waifu.isFavorite) {
+    return '🚫 **Release unavailable** — Favourite Waifumon cannot be released. Unfavourite her first.';
+  }
+  if (isBuddy) {
+    return '🚫 **Release unavailable** — your active Buddy cannot be released. Switch or clear your Buddy first.';
+  }
+  return null;
+}
+
 function inspectComponents(
   ctx: AppContext,
   entry: OwnedEntry,
@@ -750,10 +850,19 @@ function inspectComponents(
     .setCustomId(buildCustomId('waifu', 'fav', String(entry.waifu.id)))
     .setLabel(entry.waifu.isFavorite ? '★ Unfavorite' : '☆ Favorite')
     .setStyle(entry.waifu.isFavorite ? ButtonStyle.Success : ButtonStyle.Secondary);
+  // Release is refused for favourites and for the active buddy. The button is
+  // disabled to say so at a glance, and `releaseBlockedReason` puts the *why*
+  // in the embed — a disabled Discord button gives no tooltip, so without that
+  // line the control would simply look broken.
+  //
+  // This is presentation only. `collection.releaseWaifu` re-checks both under
+  // its own row locks, so a stale screen cannot get past it.
+  const releaseBlocked = releaseBlock(entry, isBuddy);
   const releaseBtn = new ButtonBuilder()
     .setCustomId(buildCustomId('waifu', 'release', String(entry.waifu.id)))
     .setLabel('🕊️ Release')
-    .setStyle(ButtonStyle.Danger);
+    .setStyle(ButtonStyle.Danger)
+    .setDisabled(releaseBlocked != null);
   const backBtn = new ButtonBuilder()
     .setCustomId(buildCustomId('col', 'list'))
     .setLabel('⟵ Collection')
@@ -904,6 +1013,8 @@ async function renderInspect(
     // The gift teaser leads the description so it is the first thing read.
     // It names *nothing* about the item: the reveal is the reward for tapping
     // Accept, and this line is the anticipation.
+    // Stated in the embed because a disabled Discord button explains nothing.
+    const releaseNotice = releaseBlock(entry, isBuddy);
     const giftTeaser = pendingGift
       ? `🎁 **Gift waiting**` +
         '\n' +
@@ -917,7 +1028,7 @@ async function renderInspect(
       )
       .setColor(rarityColor(species.rarity))
       .setDescription(
-        [giftTeaser, species.description || '_A mysterious presence…_']
+        [giftTeaser, species.description || '_A mysterious presence…_', releaseNotice]
           .filter(Boolean)
           .join('\n' + '\n'),
       )
@@ -1431,13 +1542,18 @@ export async function handleWaifuFavorite(
   await renderInspect(ctx, interaction, prov, waifuId);
 }
 
-function releaseConfirmRow(waifuId: number, force: boolean): ActionRowBuilder<ButtonBuilder> {
+/**
+ * The confirm step for an eligible copy.
+ *
+ * There is no longer a "yes, release my favourite" variant: a favourite (or
+ * the active buddy) never reaches this screen, and the service would refuse it
+ * anyway. Confirmation is now only about "this cannot be undone".
+ */
+function releaseConfirmRow(waifuId: number): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
-      .setCustomId(
-        buildCustomId('waifu', 'release_confirm', String(waifuId), force ? 'force' : 'std'),
-      )
-      .setLabel(force ? '⚠️ Yes, release my favorite' : 'Confirm Release')
+      .setCustomId(buildCustomId('waifu', 'release_confirm', String(waifuId), 'std'))
+      .setLabel('Confirm Release')
       .setStyle(ButtonStyle.Danger),
     new ButtonBuilder()
       .setCustomId(buildCustomId('col', 'pick_id', String(waifuId)))
@@ -1471,21 +1587,37 @@ export async function handleWaifuRelease(
     }
     throw err;
   }
+  // The button that led here is disabled for protected copies, but a stale
+  // screen can still deliver this click — so re-check rather than trusting it,
+  // and refuse before showing a confirm the service would reject.
+  const buddy = await ctx.services.collection.getBuddy(prov.playerId);
+  const blocked = releaseBlock(entry, buddy?.waifu.id === waifuId);
+  if (blocked) {
+    await respondEphemeral(interaction, {
+      content: blocked,
+      components: withBackRow([
+        new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder()
+            .setCustomId(buildCustomId('col', 'pick_id', String(waifuId)))
+            .setLabel('⟵ Back to her card')
+            .setStyle(ButtonStyle.Secondary),
+        ),
+      ]),
+    });
+    return;
+  }
   const essence = Math.floor(
     ((ctx.content.tables.duplicate.essenceByRarity as Record<string, number>)[
       entry.species.rarity
     ] ?? 0) * ctx.content.tables.duplicate.releaseFraction,
   );
-  const warn = entry.waifu.isFavorite
-    ? '⚠️ **This is a ★ favorite.** Are you sure?\n\n'
-    : '';
   const embed = new EmbedBuilder()
     .setTitle(`🕊️ Release ${displayName(entry)}?`)
     .setColor(0xff6f6f)
-    .setDescription(`${warn}You'll receive **${essence} Essence**. This cannot be undone.`);
+    .setDescription(`You'll receive **${essence} Essence**. This cannot be undone.`);
   await respondEphemeral(interaction, {
     embeds: [embed],
-    components: [releaseConfirmRow(waifuId, entry.waifu.isFavorite)],
+    components: [releaseConfirmRow(waifuId)],
     files: [],
   });
 }
@@ -1498,7 +1630,6 @@ export async function handleWaifuReleaseConfirm(
   args: string[],
 ): Promise<void> {
   const waifuId = Number(args[0]);
-  const force = args[1] === 'force';
   if (!Number.isInteger(waifuId)) {
     await respondEphemeral(interaction, {
       content: 'That Waifumon is no longer available.',
@@ -1507,7 +1638,7 @@ export async function handleWaifuReleaseConfirm(
     return;
   }
   try {
-    const result = await ctx.services.collection.releaseWaifu(prov.playerId, waifuId, { force });
+    const result = await ctx.services.collection.releaseWaifu(prov.playerId, waifuId);
     const embed = new EmbedBuilder()
       .setTitle(`🕊️ Released ${displayName({ waifu: result.waifu, species: result.species })}`)
       .setColor(0x7ce68a)
@@ -1532,9 +1663,24 @@ export async function handleWaifuReleaseConfirm(
       files: [],
     });
   } catch (err) {
+    // The service is the authority: a copy favourited (or made buddy) between
+    // rendering the confirm and pressing it lands here, and the player is told
+    // exactly what to undo.
+    if (err instanceof WaifuReleaseBlockedError) {
+      await respondEphemeral(interaction, {
+        content: err.userMessage,
+        components: withBackRow([
+          new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder()
+              .setCustomId(buildCustomId('col', 'pick_id', String(waifuId)))
+              .setLabel('⟵ Back to her card')
+              .setStyle(ButtonStyle.Secondary),
+          ),
+        ]),
+      });
+      return;
+    }
     if (err instanceof WaifuIsFavoriteError) {
-      // Should be rare — the confirm button we sent already carried force=true
-      // for favorites — but stay safe.
       await respondEphemeral(interaction, {
         content: err.userMessage,
         components: withBackRow(),
@@ -1554,6 +1700,35 @@ export async function handleWaifuReleaseConfirm(
     }
     throw err;
   }
+}
+
+/**
+ * menu:inspect_buddy — open the *normal* inspect card for the active buddy.
+ *
+ * Deliberately the thinnest possible handler: it resolves the buddy and hands
+ * the id to {@link renderInspect}, the same function the Collection list, the
+ * duplicate picker and `/waifumon inspect` all call. There is no buddy-only
+ * inspect screen, so the Buddy Bonus panel, affection, favourite state and
+ * every action button come from the one renderer and cannot drift.
+ *
+ * No buddy is an ordinary ephemeral with the menu's own Back row, matching how
+ * the other menu screens report an empty state.
+ */
+export async function handleInspectBuddy(
+  ctx: AppContext,
+  interaction: PlayerInteraction,
+  prov: Provisioned,
+): Promise<void> {
+  const buddy = await ctx.services.collection.getBuddy(prov.playerId);
+  if (!buddy) {
+    await respondEphemeral(interaction, {
+      content:
+        'You have no active Buddy yet~ Open **Collection**, inspect a Waifumon and press **🤝 Set Buddy**.',
+      components: withBackRow(),
+    });
+    return;
+  }
+  await renderInspect(ctx, interaction, prov, buddy.waifu.id);
 }
 
 /** col:pick_id — inspect-by-id, used by "Cancel" in the release confirm. */

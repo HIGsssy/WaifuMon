@@ -9,6 +9,7 @@ import {
   createCollectionFilterTracker,
   defaultCollectionFilterState,
   hasActiveFilters,
+  normalizeRarityFilter,
   parseFilterInput,
   type FilterInputRaw,
 } from '../../src/discord/collectionFilterTracker';
@@ -137,5 +138,59 @@ describe('parseFilterInput', () => {
     expect(parseFilterInput(input({ minCopies: '3' }), MAX_LEVEL)).toMatchObject({
       patch: { minCopies: 3 },
     });
+  });
+});
+
+/* ─────────────────────── rarity filter state ─────────────────────── */
+
+describe('rarity filter state', () => {
+  it('defaults to null — every rarity', () => {
+    expect(defaultCollectionFilterState().rarities).toBeNull();
+  });
+
+  it('counts as an active filter, so ✕ Clear lights up', () => {
+    const base = defaultCollectionFilterState();
+
+    expect(hasActiveFilters(base)).toBe(false);
+    expect(hasActiveFilters({ ...base, rarities: ['SR'] })).toBe(true);
+    // An empty list is "all rarities", not a filter.
+    expect(hasActiveFilters({ ...base, rarities: [] })).toBe(false);
+  });
+
+  it('persists per player and survives an unrelated patch', () => {
+    const tracker = createCollectionFilterTracker();
+    tracker.set(1, { rarities: ['UR', 'LR'] });
+    tracker.set(2, { rarities: ['N'] });
+
+    // A later sort change must not disturb the rarity selection.
+    tracker.set(1, { sortBy: 'level_desc' });
+
+    expect(tracker.get(1).rarities).toEqual(['UR', 'LR']);
+    expect(tracker.get(1).sortBy).toBe('level_desc');
+    expect(tracker.get(2).rarities).toEqual(['N']);
+  });
+
+  it('is dropped by reset, like every other filter', () => {
+    const tracker = createCollectionFilterTracker();
+    tracker.set(7, { rarities: ['EX'], name: 'sak' });
+
+    expect(tracker.reset(7).rarities).toBeNull();
+    expect(tracker.get(7).rarities).toBeNull();
+  });
+});
+
+describe('normalizeRarityFilter', () => {
+  it('keeps real rarities in ladder order regardless of click order', () => {
+    expect(normalizeRarityFilter(['EX', 'N', 'SR'])).toEqual(['N', 'SR', 'EX']);
+  });
+
+  it('turns an empty selection into null — the All rarities path', () => {
+    expect(normalizeRarityFilter([])).toBeNull();
+  });
+
+  it('drops values that are not rarities and de-duplicates', () => {
+    // The values arrive from a Discord client, so this is a trust boundary.
+    expect(normalizeRarityFilter(['SR', 'SR', 'not-a-rarity', ''])).toEqual(['SR']);
+    expect(normalizeRarityFilter(['nonsense'])).toBeNull();
   });
 });

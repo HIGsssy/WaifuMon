@@ -17,6 +17,7 @@
  * Entries are swept lazily on write, so an idle process holds nothing for a
  * player who wandered off, without a timer to own or shut down.
  */
+import { RARITIES, type Rarity } from '../db/schema';
 import {
   DEFAULT_COLLECTION_SORT,
   type CollectionSortBy,
@@ -29,6 +30,12 @@ export interface CollectionFilterState {
   maxLevel: number | null;
   /** Minimum matching copies for a species group to be listed. */
   minCopies: number | null;
+  /**
+   * Species rarities to show. `null` means every rarity — the same thing an
+   * empty selection means in the menu, so "All rarities" needs no sentinel
+   * value of its own.
+   */
+  rarities: Rarity[] | null;
   sortBy: CollectionSortBy;
   page: number;
 }
@@ -64,6 +71,7 @@ export function defaultCollectionFilterState(): CollectionFilterState {
     minLevel: null,
     maxLevel: null,
     minCopies: null,
+    rarities: null,
     sortBy: DEFAULT_COLLECTION_SORT,
     page: 1,
   };
@@ -75,8 +83,23 @@ export function hasActiveFilters(state: CollectionFilterState): boolean {
     state.name != null ||
     state.minLevel != null ||
     state.maxLevel != null ||
-    state.minCopies != null
+    state.minCopies != null ||
+    (state.rarities != null && state.rarities.length > 0)
   );
+}
+
+/**
+ * Keep only real rarities, in the canonical ladder order, without duplicates.
+ *
+ * Values arrive from a Discord select menu, so they are strings the client
+ * chose; this is the boundary that turns them back into the game's own
+ * {@link RARITIES}. An empty result is normalised to `null` — "all rarities" —
+ * which is also what deselecting every option produces.
+ */
+export function normalizeRarityFilter(values: readonly string[]): Rarity[] | null {
+  const chosen = new Set(values);
+  const kept = RARITIES.filter((rarity) => chosen.has(rarity));
+  return kept.length > 0 ? [...kept] : null;
 }
 
 export function createCollectionFilterTracker(

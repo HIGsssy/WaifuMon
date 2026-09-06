@@ -208,6 +208,12 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   WAIFU_ALREADY_RELEASED: 409,
   WAIFU_IS_FAVORITE: 409,
   WAIFU_IS_BUDDY: 409,
+  /**
+   * Release refused: the copy is a favourite, the active buddy, or both. A
+   * conflict rather than a 403 — the caller may release her, once they have
+   * cleared the flag the message names.
+   */
+  WAIFU_RELEASE_BLOCKED: 409,
   CARE_MODE_DISABLED: 409,
   /** The appearance exists but this copy has not earned it — a state conflict. */
   APPEARANCE_LOCKED: 409,

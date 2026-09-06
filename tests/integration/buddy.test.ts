@@ -21,6 +21,7 @@ import {
   InsufficientEssenceError,
   WaifuAlreadyReleasedError,
   WaifuIsBuddyError,
+  WaifuReleaseBlockedError,
   WaifuNicknameTooEarlyError,
   WaifuNotOwnedError,
 } from '../../src/shared/errors';
@@ -146,19 +147,27 @@ describe('release / convert guard against active buddy', () => {
   it('release refuses the active buddy', async () => {
     const mine = await grantWaifu(playerId, 'neko_barista');
     await app.collection.setBuddy(playerId, mine.id);
-    await expect(app.collection.releaseWaifu(playerId, mine.id)).rejects.toBeInstanceOf(
-      WaifuIsBuddyError,
-    );
+    const err = await app.collection
+      .releaseWaifu(playerId, mine.id)
+      .then(() => null, (e: unknown) => e);
+    expect(err).toBeInstanceOf(WaifuReleaseBlockedError);
+    expect((err as WaifuReleaseBlockedError).reasons).toEqual(['buddy']);
     const [row] = await t.db.select().from(playerWaifus).where(eq(playerWaifus.id, mine.id));
     expect(row?.releasedAt).toBeNull();
   });
 
-  it('release refuses even with force=true (buddy check is unconditional)', async () => {
+  it('release refuses even with force=true (the guard is unconditional)', async () => {
     const mine = await grantWaifu(playerId, 'neko_barista', { isFavorite: true });
     await app.collection.setBuddy(playerId, mine.id);
-    await expect(
-      app.collection.releaseWaifu(playerId, mine.id, { force: true }),
-    ).rejects.toBeInstanceOf(WaifuIsBuddyError);
+    // Favourite *and* buddy: one refusal names both, so the player learns
+    // everything they have to undo in a single message.
+    const err = await app.collection
+      .releaseWaifu(playerId, mine.id, { force: true })
+      .then(() => null, (e: unknown) => e);
+    expect(err).toBeInstanceOf(WaifuReleaseBlockedError);
+    expect((err as WaifuReleaseBlockedError).reasons).toEqual(['favorite', 'buddy']);
+    expect((err as WaifuReleaseBlockedError).userMessage).toContain('favourite');
+    expect((err as WaifuReleaseBlockedError).userMessage).toContain('buddy');
   });
 
   it('convertDuplicateToEssence refuses the active buddy', async () => {
