@@ -11,12 +11,11 @@
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { encounters, playerCurrencies, players, species } from '../../src/db/schema';
-import { handleMenu } from '../../src/discord/commands/waifumon';
+import { handleMenu, handleShop } from '../../src/discord/commands/waifumon';
 import {
   handleLocationBuy,
   handleLocationConfirm,
   handleLocationDetail,
-  handleLocationShop,
   handleLocationTravel,
   handleLocationsHome,
 } from '../../src/discord/commands/waifumonLocations';
@@ -314,18 +313,113 @@ describe('travel result', () => {
   });
 });
 
-describe('regional shop', () => {
-  it('renders the region shelf and routes buys through the ordinary shop handler', async () => {
+/**
+ * Travel screens no longer offer a shortcut into a region's shop.
+ *
+ * The shortcut was the one control on these screens that was not about travel,
+ * and it let a player browse the shelf of a place they were not standing in.
+ * Shopping now has exactly one entry point — the main menu's Shop button —
+ * which already renders the player's *current* region's shelf.
+ *
+ * Every state that renders its own component set is checked, because the old
+ * button was gated on both `shopItemCount` and the destination state, so a
+ * single-state assertion could pass while another state still painted it.
+ */
+describe('travel screens carry no shop shortcut', () => {
+  const SHOP_ID = 'wm|v1|loc|shop|twin-peeks';
+
+  /** Every custom id on the screen this action paints. */
+  async function idsForDetail(regionId: string): Promise<string[]> {
+    const btn = fakeButton();
+    await handleLocationDetail(ctx, btn as never, prov, regionId);
+    return buttonsOf(painted(btn)).map((b) => b.customId);
+  }
+
+  it('current location', async () => {
+    // Waifu Valley is where the player starts, and it stocks items — the
+    // strongest case for the old button, so the clearest one to pin.
+    const ids = await idsForDetail('waifu-valley');
+    expect(ids).not.toContain('wm|v1|loc|shop|waifu-valley');
+    expect(ids.some((id) => id.startsWith('wm|v1|loc|shop|'))).toBe(false);
+    // Travel action and Back navigation are untouched.
+    expect(ids).toContain('wm|v1|loc|travel|waifu-valley');
+    expect(ids).toContain('wm|v1|loc|home');
+  });
+
+  it('purchasable destination (route not yet bought)', async () => {
+    const ids = await idsForDetail('twin-peeks');
+    expect(ids).not.toContain(SHOP_ID);
+    expect(ids).toContain('wm|v1|loc|confirm|twin-peeks');
+    expect(ids).toContain('wm|v1|loc|home');
+  });
+
+  it('unlocked destination (route purchased)', async () => {
+    await app.travel.grantRoute(prov.playerId, 'twin-peeks');
+    const ids = await idsForDetail('twin-peeks');
+    expect(ids).not.toContain(SHOP_ID);
+    expect(ids).toContain('wm|v1|loc|travel|twin-peeks');
+    expect(ids).toContain('wm|v1|loc|home');
+  });
+
+  it('ineligible destination', async () => {
+    await resetPlayer({ level: 10 });
+    const ids = await idsForDetail('twin-peeks');
+    expect(ids).not.toContain(SHOP_ID);
+    // Still no action but Back — unchanged from before.
+    expect(ids).toEqual(['wm|v1|loc|home']);
+  });
+
+  it('locations home lists destinations only', async () => {
+    const btn = fakeButton();
+    await handleLocationsHome(ctx, btn as never, prov);
+    const ids = buttonsOf(painted(btn)).map((b) => b.customId);
+    expect(ids.some((id) => id.startsWith('wm|v1|loc|shop|'))).toBe(false);
+    expect(ids.some((id) => id.startsWith('wm|v1|shop|'))).toBe(false);
+    expect(ids).toContain('wm|v1|loc|detail|twin-peeks');
+    expect(ids).toContain('wm|v1|menu|back');
+  });
+
+  it('the arrival screen after travelling offers no shop either', async () => {
     await app.travel.grantRoute(prov.playerId, 'twin-peeks');
     const btn = fakeButton();
-    await handleLocationShop(ctx, btn as never, prov, 'twin-peeks');
+    await handleLocationTravel(ctx, btn as never, prov, 'twin-peeks');
+    const ids = buttonsOf(painted(btn)).map((b) => b.customId);
+    expect(ids.some((id) => id.startsWith('wm|v1|loc|shop|'))).toBe(false);
+    expect(ids.some((id) => id.startsWith('wm|v1|shop|'))).toBe(false);
+  });
+
+  it('the purchase confirmation screen is unchanged', async () => {
+    const btn = fakeButton();
+    await handleLocationConfirm(ctx, btn as never, prov, 'twin-peeks');
+    const ids = buttonsOf(painted(btn)).map((b) => b.customId);
+    expect(ids).toEqual(['wm|v1|loc|buy|twin-peeks', 'wm|v1|loc|detail|twin-peeks']);
+  });
+});
+
+describe('the canonical Shop entry point still works', () => {
+  it('the menu Shop button opens the current region shelf, with its regional stock', async () => {
+    // Removing the travel shortcut must not cost the player access to a
+    // region-exclusive item: standing in Twin Peeks, the ordinary Shop screen
+    // is where Shibari Rope lives, and it is reached from the main menu.
+    await app.travel.grantRoute(prov.playerId, 'twin-peeks');
+    await app.travel.travel(prov.playerId, 'twin-peeks');
+
+    const btn = fakeButton();
+    await handleShop(ctx, btn as never, prov);
     const payload = painted(btn);
-    expect(embedOf(payload).title).toBe('🛍️ Twin Peeks Shop');
-    // Twin Peeks stocks the region-exclusive Shibari Rope.
+
     expect(embedOf(payload).description).toContain('Shibari Rope');
-    const customIds = buttonsOf(payload).map((b) => b.customId);
-    expect(customIds).toContain('wm|v1|shop|buy|shibari_rope');
-    expect(customIds).toContain('wm|v1|loc|detail|twin-peeks');
+    const ids = buttonsOf(payload).map((b) => b.customId);
+    expect(ids).toContain('wm|v1|shop|buy|shibari_rope');
+    // And the Shop screen keeps its own Back navigation.
+    expect(ids).toContain('wm|v1|menu|back');
+  });
+
+  it('the main menu still offers Shop', async () => {
+    const btn = fakeButton();
+    await handleMenu(ctx, btn as never, prov);
+    const ids = buttonsOf(painted(btn)).map((b) => b.customId);
+    expect(ids).toContain('wm|v1|menu|shop');
   });
 });
 

@@ -14,7 +14,10 @@
  *   `loc:confirm` — the mandatory confirmation before any purchase.
  *   `loc:buy`     — the purchase itself, landing back on the detail screen.
  *   `loc:travel`  — the move, landing back on the home screen.
- *   `loc:shop`    — a region's own shelf, reusing the shop's rendering.
+ *
+ * Travel screens carry travel information and travel actions only. Shopping is
+ * reached from the main menu's **Shop** button, which already renders the
+ * player's current region's shelf, so no screen here needs a shortcut into it.
  *
  * The destination *states* (current / unlocked / purchasable / ineligible)
  * are computed once by `travelService`, not re-derived here. Anything this
@@ -202,18 +205,6 @@ function buildDetailView(
         .setLabel(`Buy — ${formatPrice(destination.price, destination.currency)}`)
         .setEmoji('🎫')
         .setStyle(ButtonStyle.Primary),
-    );
-  }
-  // A region's own shelf, only when it has one. Reached from the destination
-  // rather than from the Shop, because a regional shop is a property of the
-  // place, not a second tab on the global store.
-  if (destination.shopItemCount > 0 && destination.state !== 'ineligible') {
-    actions.push(
-      new ButtonBuilder()
-        .setCustomId(buildCustomId('loc', 'shop', destination.regionId))
-        .setLabel(`${destination.name} Shop`)
-        .setEmoji('🛍️')
-        .setStyle(ButtonStyle.Secondary),
     );
   }
   actions.push(
@@ -462,57 +453,4 @@ export async function handleLocationTravel(
   // player's whole map has changed meaning (a new "you are here"), and the
   // list is where that reads.
   await handleLocationsHome(ctx, interaction, prov, statusLine);
-}
-
-export async function handleLocationShop(
-  ctx: AppContext,
-  interaction: ButtonInteraction,
-  prov: Provisioned,
-  regionId: string,
-): Promise<void> {
-  const loaded = await loadDetail(ctx, prov, regionId);
-  if (!loaded) {
-    await respondEphemeral(interaction, STALE);
-    return;
-  }
-  const [catalog, balances] = await Promise.all([
-    ctx.services.shop.getRegionalCatalog(regionId),
-    ctx.services.currency.getBalances(prov.playerId),
-  ]);
-
-  const header = `💰 **${balances.waifubux}** WaifuBux · ✨ **${balances.essence}** Essence`;
-  const lines =
-    catalog.length > 0
-      ? catalog
-          .map(
-            ({ item, currency }) =>
-              `${item.emoji ?? '•'} **${item.name}** — **${formatPrice(item.buyPrice ?? 0, currency)}**`,
-          )
-          .join('\n')
-      : '*The stalls are empty today.*';
-
-  const embed = new EmbedBuilder()
-    .setTitle(`🛍️ ${loaded.destination.name} Shop`)
-    .setColor(LOCATIONS_COLOR)
-    .setDescription(`${header}\n\n${lines}`);
-
-  // Buying reuses the global `shop:buy` handler unchanged: a regional item is
-  // an ordinary item with an ordinary price, and `shopService.purchase` is
-  // already region-agnostic. Nothing about regional stock changes what a
-  // purchase *is*.
-  const buyButtons = catalog.map(({ item, currency }) =>
-    new ButtonBuilder()
-      .setCustomId(buildCustomId('shop', 'buy', item.slug))
-      .setLabel(`Buy ${item.name} — ${formatPrice(item.buyPrice ?? 0, currency)}`)
-      .setStyle(ButtonStyle.Success),
-  );
-  const back = new ButtonBuilder()
-    .setCustomId(buildCustomId('loc', 'detail', regionId))
-    .setLabel(`⟵ ${loaded.destination.name}`)
-    .setStyle(ButtonStyle.Secondary);
-
-  await respondEphemeral(interaction, {
-    embeds: [embed],
-    components: buttonRows([...buyButtons, back]),
-  });
 }

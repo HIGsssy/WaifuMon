@@ -26,7 +26,6 @@ import {
   handleLocationBuy,
   handleLocationConfirm,
   handleLocationDetail,
-  handleLocationShop,
   handleLocationTravel,
   handleLocationsHome,
 } from './commands/waifumonLocations';
@@ -239,8 +238,6 @@ export function createDiscordClient(ctx: AppContext): Client {
         handleLocationBuy(ctx, i, prov, args[0] ?? ''),
       'loc:travel': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleLocationTravel(ctx, i, prov, args[0] ?? ''),
-      'loc:shop': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
-        handleLocationShop(ctx, i, prov, args[0] ?? ''),
       'shop:exchange': (i: ButtonInteraction, prov: Provisioned) =>
         handleShopExchange(ctx, i, prov),
       'shop:convert': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
