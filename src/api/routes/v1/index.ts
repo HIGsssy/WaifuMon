@@ -28,6 +28,7 @@ import { questRoutes } from './quests';
 import { sessionRoutes } from './session';
 import { shopRoutes } from './shop';
 import { adminEncounterRoutes } from './admin/encounters';
+import { adminAccessRoutes } from './admin/access';
 
 export interface V1RouteOptions {
   /**
@@ -86,4 +87,8 @@ export const v1Routes =
     // Admin: World Encounters. Silently skips route registration when the
     // world-encounter admin service is not wired.
     await app.register(adminEncounterRoutes(ctx));
+
+    // Admin: who else may use the admin area. Owner-only, and skipped when the
+    // grant service is not wired.
+    await app.register(adminAccessRoutes(ctx));
   };

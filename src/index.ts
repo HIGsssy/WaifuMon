@@ -36,6 +36,8 @@ import {
   seedWorldEncounterVendors,
 } from './modules/worldEncounters/vendorService';
 import { createGuildOwnershipService } from './modules/portalAuth/guildOwnershipService';
+import { createGuildRoleService } from './modules/portalAuth/guildRoleService';
+import { createAdminRoleGrantService } from './modules/portalAuth/adminRoleGrantService';
 import { createPortalAuthorizationService } from './modules/portalAuth/portalAuthService';
 import { createAppearanceService } from './modules/appearance/appearanceService';
 import { configureCardRenderer, shutdownCardRenderer } from './modules/cards';
@@ -590,9 +592,70 @@ async function main(): Promise<void> {
   });
   client.on('guildCreate', (g) => guildOwnership.set(g.id, g.ownerId));
 
+  // Discord role lookups behind delegated Portal Admin access. Same shape as
+  // the ownership service and for the same reason: role membership is
+  // Discord's state, so it is read live from the gateway rather than stored.
+  //
+  // `guilds.fetch` and `members.fetch` both serve from the client's cache when
+  // it is warm, so the common path is not an HTTP call. Any throw propagates
+  // to the service, which logs once and answers "unknown" — no access.
+  const guildRoles = createGuildRoleService({
+    fetchMemberRoleIds: async (discordGuildId, discordUserId) => {
+      if (!client.isReady()) return null;
+      const guild = await client.guilds.fetch(discordGuildId);
+      // `null` for a user who is not a member: `fetch` throws for an unknown
+      // member, which the service already treats as unknown, but being
+      // explicit keeps the two "no access" paths readable.
+      const member = await guild.members.fetch(discordUserId).catch(() => null);
+      if (!member) return null;
+      return [...member.roles.cache.keys()];
+    },
+    fetchGuildRoles: async (discordGuildId) => {
+      if (!client.isReady()) return null;
+      const guild = await client.guilds.fetch(discordGuildId);
+      const roles = await guild.roles.fetch();
+      return [...roles.values()]
+        .filter((role): role is NonNullable<typeof role> => role != null)
+        .map((role) => ({
+          id: role.id,
+          name: role.name,
+          color: role.color,
+          position: role.position,
+          managed: role.managed,
+        }));
+    },
+    logger,
+  });
+  // Bound staleness from the gateway rather than only by TTL. A role removed
+  // from a member must stop granting admin access promptly, and these are the
+  // events Discord already sends us.
+  client.on('guildMemberUpdate', (_before, after) => {
+    guildRoles.invalidateMember(after.guild.id, after.id);
+  });
+  client.on('guildMemberRemove', (member) => {
+    guildRoles.invalidateMember(member.guild.id, member.id);
+  });
+  client.on('roleUpdate', (_before, after) => guildRoles.invalidateGuildRoles(after.guild.id));
+  client.on('roleCreate', (role) => guildRoles.invalidateGuildRoles(role.guild.id));
+  // A deleted role can still be named by a grant row. Authorization already
+  // ignores it — nobody holds a role that does not exist — but dropping the
+  // cached role list keeps the Portal's picker honest.
+  client.on('roleDelete', (role) => guildRoles.invalidateGuildRoles(role.guild.id));
+
+  const adminRoleGrants = createAdminRoleGrantService(db);
+
   const portalAuthorization = createPortalAuthorizationService({
     guildOwnership,
+    guildRoles,
+    roleGrants: adminRoleGrants,
   });
+
+  // Attached after construction rather than in the `ctx` literal above: both
+  // depend on the Discord client, which is itself built from `ctx`. The
+  // Platform API is started further down and reads `ctx.services` then, so it
+  // sees both — and the Discord handlers never touch either.
+  ctx.services.adminRoleGrants = adminRoleGrants;
+  ctx.services.guildRoles = guildRoles;
 
   // Platform API: a thin HTTP adapter over the same service layer the Discord
   // handlers call, on its own port and behind its own token. Silent and

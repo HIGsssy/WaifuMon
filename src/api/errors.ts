@@ -137,6 +137,10 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   PORTAL_CSRF_INVALID: 403,
   PORTAL_GUILD_FORBIDDEN: 403,
   PORTAL_PERMISSION_DENIED: 403,
+  /** Role-access management needs a selected guild; the session has none. */
+  PORTAL_GUILD_REQUIRED: 400,
+  /** A role grant payload named a permission that cannot be delegated. */
+  ROLE_GRANT_INVALID: 400,
   /**
    * A player's browser asked for artwork of a species they have not caught.
    * The Portal silhouettes those entries; this is the same rule enforced at
@@ -175,6 +179,8 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   ENCOUNTER_NOT_FOUND: 404,
   WAIFU_NOT_OWNED: 404,
   GUILD_NOT_FOUND: 404,
+  /** Revoking or editing a grant that is not there. */
+  ROLE_GRANT_NOT_FOUND: 404,
   SPECIES_NOT_FOUND: 404,
   TABLE_NOT_FOUND: 404,
   SESSION_NOT_FOUND: 404,

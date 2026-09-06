@@ -38,6 +38,8 @@ import type { WorldEncounterAdminService } from '../modules/worldEncounters/admi
 import type { WorldEncounterVendorService } from '../modules/worldEncounters/vendorService';
 import type { WildEncounterSpawner } from '../modules/encounters/wildEncounterSpawner';
 import type { WorldEncounterSettingsService } from '../modules/worldEncounters/settingsService';
+import type { AdminRoleGrantService } from '../modules/portalAuth/adminRoleGrantService';
+import type { GuildRoleService } from '../modules/portalAuth/guildRoleService';
 
 export interface AppServices {
   guilds: GuildService;
@@ -115,6 +117,21 @@ export interface AppServices {
    * and Portal Admin writes it, so a rate change lands without a redeploy.
    */
   worldEncounterSettings?: WorldEncounterSettingsService | undefined;
+  /**
+   * Portal Admin access delegated to Discord guild roles.
+   *
+   * Optional: a deployment without it simply has no delegation, and Portal
+   * Admin remains owner-only — the behaviour that shipped before grants
+   * existed. The owner-only management routes skip registration entirely when
+   * this is absent.
+   */
+  adminRoleGrants?: AdminRoleGrantService | undefined;
+  /**
+   * Live Discord role lookups behind those grants — which roles a member
+   * holds, and which roles a guild has. Absent means every role lookup answers
+   * "unknown", which grants nothing.
+   */
+  guildRoles?: GuildRoleService | undefined;
 }
 
 export interface AppContext {

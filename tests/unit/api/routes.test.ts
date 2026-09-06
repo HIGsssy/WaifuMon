@@ -914,8 +914,15 @@ describe('OpenAPI registration', () => {
     // gated at the request layer (`requirePortalPermission`), never
     // reachable by an ordinary player-scoped session.
     expect(mutations.sort()).toEqual([
+      // The three `admin/access/*` entries are Role Access. Owner-only: gated
+      // on `admin.roles.manage`, the one permission that cannot be delegated
+      // to a Discord role, so a role-granted admin cannot reach them to widen
+      // their own access. They interleave below because the list is sorted.
+      'DELETE /api/v1/admin/access/grants/{roleId}',
       'DELETE /api/v1/admin/encounters/{id}',
+      'PATCH /api/v1/admin/access/grants/{roleId}',
       'PATCH /api/v1/admin/encounters/{id}/lifecycle',
+      'POST /api/v1/admin/access/grants',
       'POST /api/v1/admin/encounters',
       'POST /api/v1/admin/encounters/{id}/clone',
       'POST /api/v1/admin/encounters/{id}/preview',

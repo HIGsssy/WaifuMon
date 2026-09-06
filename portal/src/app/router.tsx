@@ -86,6 +86,14 @@ const AdminEncounterPreviewPage = lazy(() =>
     default: m.AdminEncounterPreviewPage,
   })),
 );
+// Owner-only. Guarded on `admin.roles.manage`, which the authorization service
+// issues to the live guild owner and to nobody else — a role grant can never
+// confer it, so a delegated admin hitting this path gets the not-found page.
+const AdminRoleAccessPage = lazy(() =>
+  import('@/features/adminAccess/AdminRoleAccessPage').then((m) => ({
+    default: m.AdminRoleAccessPage,
+  })),
+);
 
 /**
  * Dev-only routes. The array is empty in production *and* the import inside it
@@ -195,6 +203,16 @@ export const routes: RouteObject[] = [
             element: (
               <RequirePortalPermission permission="encounters.read">
                 <AdminEncounterPreviewPage />
+              </RequirePortalPermission>
+            ),
+          },
+
+          // Admin — Role Access. Owner-only, by virtue of the permission.
+          {
+            path: 'admin/access',
+            element: (
+              <RequirePortalPermission permission="admin.roles.manage">
+                <AdminRoleAccessPage />
               </RequirePortalPermission>
             ),
           },

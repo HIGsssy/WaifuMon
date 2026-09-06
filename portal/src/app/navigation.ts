@@ -54,6 +54,14 @@ export const NAV_ITEMS: readonly NavItem[] = [
     requiresPermission: 'admin.access',
   },
   {
+    // Owner-only: `admin.roles.manage` is the one permission that cannot be
+    // delegated to a role, so a granted admin never sees this entry.
+    to: '/admin/access',
+    label: 'Admin — Role Access',
+    icon: Shield,
+    requiresPermission: 'admin.roles.manage',
+  },
+  {
     to: '/achievements',
     label: 'Achievements',
     icon: Trophy,

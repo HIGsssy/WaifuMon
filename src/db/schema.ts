@@ -196,6 +196,51 @@ export const portalSessions = pgTable(
   ],
 );
 
+/**
+ * Portal Admin access granted to a Discord guild role.
+ *
+ * The guild *owner* is never represented here: ownership is read live from
+ * Discord (see `GuildOwnershipService`) and a row asserting it would be a
+ * second, staler opinion. This table holds only the delegated grants an owner
+ * has chosen to hand out, so an empty table means "owner only" — which is
+ * exactly the behaviour that shipped before it existed.
+ *
+ * `permissions` is a text array rather than a join table on purpose: a grant
+ * is read as one whole set on every authorization, never queried by
+ * individual permission, and the set is closed and tiny. The column is
+ * validated against `GRANTABLE_PORTAL_PERMISSIONS` in the service, not by a
+ * CHECK constraint — the list of permissions is application vocabulary that
+ * changes with releases, and a constraint would turn adding one into a
+ * migration.
+ *
+ * Scoped by `discord_guild_id` on every read and write. The unique index on
+ * (guild, role) is what makes a grant idempotent to re-add and lets an update
+ * address a row by the pair the UI actually knows.
+ */
+export const guildAdminRoleGrants = pgTable(
+  'guild_admin_role_grants',
+  {
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    /** Discord guild snowflake — the scope boundary, never an internal id. */
+    discordGuildId: text('discord_guild_id').notNull(),
+    /** Discord role snowflake. Not validated against Discord at write time. */
+    roleId: text('role_id').notNull(),
+    permissions: text('permissions').array().notNull().default([]),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Discord user id of the owner who created the grant. Audit only. */
+    createdBy: text('created_by'),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Discord user id of the owner who last changed it. Audit only. */
+    updatedBy: text('updated_by'),
+  },
+  (t) => [
+    uniqueIndex('guild_admin_role_grants_guild_role_uq').on(t.discordGuildId, t.roleId),
+    index('guild_admin_role_grants_guild_idx').on(t.discordGuildId),
+  ],
+);
+
+export type GuildAdminRoleGrantRow = typeof guildAdminRoleGrants.$inferSelect;
+
 export const playerCurrencies = pgTable(
   'player_currencies',
   {
