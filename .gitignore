@@ -1,6 +1,6 @@
 node_modules/
 dist/
-
+.hermes/
 # player portal (own package, own lockfile — see docs/portal.md)
 portal/node_modules/
 portal/dist/
