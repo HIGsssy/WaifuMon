@@ -363,6 +363,10 @@ async function main(): Promise<void> {
         // no content reload.
         getConfig: () => worldEncounterSettings.get(),
         getMaxWaifuLevel: () => contentSnapshot.tables.waifuProgression.maxLevel,
+        // One `world-encounter/roll` line per roll. The gates after the dice
+        // (cooldowns, region/route scoping, the one-pending rule) are
+        // otherwise indistinguishable from a lost roll in production.
+        logger,
       }),
       worldEncounterAdmin: createWorldEncounterAdminService(db, () => contentSnapshot),
       worldEncounterVendor: worldEncounterVendorService,

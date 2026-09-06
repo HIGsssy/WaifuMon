@@ -149,6 +149,14 @@ export interface BootstrapOptions {
    * the window to minutes without editing `content/tables.json`.
    */
   bossEncounters?: Partial<LoadedContent['tables']['bossEncounters']>;
+  /**
+   * Drives the world-encounter trigger roll and the weighted draw that follows
+   * it. A test that wants to prove `forceTrigger` overrides a *losing* roll
+   * needs the dice to be losing, and the Discord-facing path
+   * (`maybeTriggerHuntEncounter` / `maybeTriggerTravelEncounter`) has no rng
+   * parameter to pass one through — so it has to be wired into the service.
+   */
+  worldEncounterRng?: Rng;
 }
 
 /** Wires all services against a test database with the shipped content seeded. */
@@ -306,6 +314,8 @@ export async function bootstrapApp(
     vendor: worldEncounterVendor,
     wildEncounters,
     getConfig: () => worldEncounterSettings.get(),
+    logger: t.logger,
+    ...(opts.worldEncounterRng ? { rng: opts.worldEncounterRng } : {}),
     getMaxWaifuLevel: () => content.tables.waifuProgression.maxLevel,
   });
   const worldEncounterAdmin = createWorldEncounterAdminService(t.db, () => content);

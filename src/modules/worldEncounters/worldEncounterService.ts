@@ -27,6 +27,7 @@ import {
   type SpeciesRow,
 } from '../../db/schema';
 import { defaultRng, type Rng } from '../../shared/random';
+import type { Logger } from '../../shared/logger';
 import type { CurrencyService } from '../currency/currencyService';
 import type { InventoryService } from '../inventory/inventoryService';
 import type { ProgressionService } from '../progression/progressionService';
@@ -35,7 +36,7 @@ import type { BuddyBonusService } from '../buddyBonus/buddyBonusService';
 import { currentSeductivePower } from '../power/seductivePower';
 import { resolveRace } from '../cards/race';
 import { AppError, PlayerNotFoundError } from '../../shared/errors';
-import { selectEncounter } from './engine';
+import { selectEncounterDetailed, type SelectionReason } from './engine';
 import { rollCheck, computeChance } from './checkResolver';
 import { createEffectExecutor, type EffectExecutor, type AppliedEffect, type FollowUp } from './effectExecutor';
 import { hydrateEncounter } from './hydrate';
@@ -283,6 +284,14 @@ export interface WorldEncounterServiceDeps {
    * deployment without the hunt/capture graph wired should do.
    */
   wildEncounters?: WildEncounterSpawner | undefined;
+  /**
+   * Optional logger. When present, every roll emits one structured
+   * `world-encounter/roll` line naming the stage that decided the outcome.
+   *
+   * Optional because the service is constructed in unit fixtures that have no
+   * logger, and a missing log must never be a missing encounter.
+   */
+  logger?: Logger | undefined;
 }
 
 /**
@@ -394,25 +403,91 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
     return roll.next() < chance;
   }
 
+  /**
+   * One structured line per roll, naming the stage that decided the outcome.
+   *
+   * This exists because `travelChance = 1` and `forceTrigger = true` decide
+   * only the *dice*, and every gate after them — cooldowns, region and route
+   * scoping, the one-pending-encounter rule — is invisible from the outside.
+   * An operator who turns both on and still sees nothing needs to be able to
+   * tell "all four candidates are on cooldown" from "you still have an
+   * encounter open", and before this the two produced identical silence.
+   *
+   * Only game-state ids and counts. No Discord ids, no names, no message
+   * content: `playerId` is the internal row id, which is meaningless outside
+   * this database.
+   */
+  function logRoll(fields: {
+    source: 'hunt' | 'travel';
+    playerId: number;
+    regionId: string;
+    configuredChance: number;
+    forceTrigger: boolean;
+    probabilityPassed: boolean;
+    candidateCountBeforeCooldown: number | null;
+    candidateCountAfterCooldown: number | null;
+    activeEncounterBlocked: boolean;
+    selectedEncounterSlug: string | null;
+    finalReason: string;
+  }): void {
+    deps.logger?.info({ tag: 'world-encounter/roll', ...fields }, 'world encounter roll');
+  }
+
   async function tryRollForHunt(opts: TryRollOpts): Promise<EncounterActivation | null> {
     const cfg = await deps.getConfig();
-    if (!passesTriggerRoll(cfg.huntChance, cfg, opts.rng ?? rng)) return null;
-    return rollAndActivate({ ...opts, source: 'hunt' }, cfg);
+    return rollWithLogging(cfg, cfg.huntChance, { ...opts, source: 'hunt' });
   }
 
   async function tryRollForTravel(opts: TryTravelRollOpts): Promise<EncounterActivation | null> {
     const cfg = await deps.getConfig();
-    if (!passesTriggerRoll(cfg.travelChance, cfg, opts.rng ?? rng)) return null;
-    return rollAndActivate({ ...opts, source: 'travel' }, cfg);
+    return rollWithLogging(cfg, cfg.travelChance, { ...opts, source: 'travel' });
+  }
+
+  /**
+   * The probability gate and the reporting around it, shared by both sources.
+   *
+   * Behaviour is unchanged from the two one-liners this replaced: roll, and on
+   * a pass hand off to `rollAndActivate`. The only addition is that both
+   * branches now say why.
+   */
+  async function rollWithLogging(
+    cfg: WorldEncounterConfig,
+    configuredChance: number,
+    opts: TryRollOpts & {
+      source: 'hunt' | 'travel';
+      originRegionId?: string;
+      destinationRegionId?: string;
+    },
+  ): Promise<EncounterActivation | null> {
+    const forceTrigger = cfg.forceTrigger === true;
+    const probabilityPassed = passesTriggerRoll(configuredChance, cfg, opts.rng ?? rng);
+    if (!probabilityPassed) {
+      logRoll({
+        source: opts.source,
+        playerId: opts.playerId,
+        regionId: opts.regionId,
+        configuredChance,
+        forceTrigger,
+        probabilityPassed: false,
+        candidateCountBeforeCooldown: null,
+        candidateCountAfterCooldown: null,
+        activeEncounterBlocked: false,
+        selectedEncounterSlug: null,
+        finalReason: configuredChance <= 0 ? 'chance_is_zero' : 'probability_roll_lost',
+      });
+      return null;
+    }
+    return rollAndActivate(opts, cfg, { configuredChance, forceTrigger });
   }
 
   async function rollAndActivate(
     opts: TryRollOpts & { source: 'hunt' | 'travel'; originRegionId?: string; destinationRegionId?: string },
     cfg: WorldEncounterConfig,
+    reporting: { configuredChance: number; forceTrigger: boolean },
   ): Promise<EncounterActivation | null> {
     const now = opts.now ?? new Date();
     const cooldownIds = await repo.getCooldownEncounterIds(opts.playerId, now);
-    const chosen = await selectEncounter(repo, opts.rng ?? rng, {
+    const selection = await selectEncounterDetailed(repo, opts.rng ?? rng, {
       playerId: opts.playerId,
       playerLevel: opts.playerLevel,
       source: opts.source,
@@ -421,8 +496,51 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
       toRegion: opts.destinationRegionId ?? null,
       cooldownIds,
     });
-    if (!chosen) return null;
+    const chosen = selection.encounter;
+    const report = (
+      activeEncounterBlocked: boolean,
+      selectedEncounterSlug: string | null,
+      finalReason: SelectionReason | 'active_encounter_open',
+    ): void =>
+      logRoll({
+        source: opts.source,
+        playerId: opts.playerId,
+        regionId: opts.regionId,
+        configuredChance: reporting.configuredChance,
+        forceTrigger: reporting.forceTrigger,
+        probabilityPassed: true,
+        candidateCountBeforeCooldown: selection.candidateCountBeforeCooldown,
+        candidateCountAfterCooldown: selection.candidateCountAfterCooldown,
+        activeEncounterBlocked,
+        selectedEncounterSlug,
+        finalReason,
+      });
+
+    if (!chosen) {
+      report(false, null, selection.reason);
+      return null;
+    }
     return deps.db.transaction(async (tx) => {
+      // Retire the player's own abandoned encounters first.
+      //
+      // Nothing else sweeps `active_world_encounters`: `hunt.expireStale()`
+      // covers the wild-Waifumon table, and `resolveChoice` only notices an
+      // expiry when the player clicks a choice on a screen they may well have
+      // dismissed. Without this, one encounter a player walked away from held
+      // `status = 'pending'` forever and the partial unique index silently
+      // refused every later roll — the feature simply stopped, with no way
+      // back short of a database edit.
+      //
+      // This is not a relaxation of the one-pending rule: the row is past its
+      // own `expiresAt`, which `resolveChoice` already treats as over, and the
+      // update is guarded on exactly that. A live encounter still blocks.
+      const swept = await repo.expirePendingBefore(tx, opts.playerId, now);
+      if (swept > 0) {
+        deps.logger?.info(
+          { tag: 'world-encounter/swept-expired', playerId: opts.playerId, swept },
+          'retired abandoned world encounters before rolling',
+        );
+      }
       // If the player picked up a pending encounter in a parallel action, the
       // partial unique index fires. We surface it as ActiveWorldEncounterError
       // so the Discord layer can decide (re-show the pending row vs skip).
@@ -443,6 +561,7 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
         const buddy = await loadBuddyProfile(tx, opts.playerId);
         const buddyBonusPercent =
           (await deps.buddyBonus?.percentFor(tx, opts.playerId, CHECK_BONUS_EFFECT_ID)) ?? 0;
+        report(false, chosen.slug, 'selected');
         return {
           activeId: active.id,
           encounter: chosen,
@@ -458,7 +577,12 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
       } catch (err) {
         if (isUniquePendingViolation(err)) {
           const existing = await repo.getPendingForPlayer(opts.playerId);
-          if (existing) throw new ActiveWorldEncounterError(existing.id);
+          if (existing) {
+            // The gate that made staging look broken: an encounter the player
+            // never resolved silently refuses every subsequent roll.
+            report(true, chosen.slug, 'active_encounter_open');
+            throw new ActiveWorldEncounterError(existing.id);
+          }
         }
         throw err;
       }

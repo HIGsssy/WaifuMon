@@ -13,7 +13,7 @@
  * runtime `LoadedEncounter` happens in `service.ts`, which is also where the
  * Zod schemas live.
  */
-import { and, asc, eq, gt, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, lte, sql } from 'drizzle-orm';
 import type { Db, DbOrTx } from '../../db/client';
 import {
   activeWorldEncounters,
@@ -86,6 +86,16 @@ export interface WorldEncounterRepository {
     resolution: Record<string, unknown>,
   ): Promise<void>;
   markExpired(tx: DbOrTx, id: number): Promise<void>;
+  /**
+   * Flip every one of this player's `pending` rows whose `expiresAt` has
+   * passed to `expired`, returning how many moved.
+   *
+   * The same lazy-expiry policy `resolveChoice` already applies when a player
+   * clicks a stale button, applied on the path that is *blocked* by the row
+   * instead. Scoped to one player and guarded on `expires_at <= now`, so it
+   * can never touch a live encounter or anyone else's.
+   */
+  expirePendingBefore(tx: DbOrTx, playerId: number, now: Date): Promise<number>;
   updateActiveMessage(tx: DbOrTx, id: number, messageId: string): Promise<void>;
 
   // Cooldown
@@ -399,6 +409,20 @@ export function createWorldEncounterRepository(db: Db): WorldEncounterRepository
         .update(activeWorldEncounters)
         .set({ status: 'expired', resolvedAt: sql`now()` })
         .where(eq(activeWorldEncounters.id, id));
+    },
+    async expirePendingBefore(tx, playerId, now) {
+      const rows = await tx
+        .update(activeWorldEncounters)
+        .set({ status: 'expired', resolvedAt: sql`now()` })
+        .where(
+          and(
+            eq(activeWorldEncounters.playerId, playerId),
+            eq(activeWorldEncounters.status, 'pending'),
+            lte(activeWorldEncounters.expiresAt, now),
+          ),
+        )
+        .returning({ id: activeWorldEncounters.id });
+      return rows.length;
     },
     async updateActiveMessage(tx, id, messageId) {
       await tx

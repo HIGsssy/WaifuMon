@@ -214,6 +214,21 @@ export async function maybeTriggerHuntEncounter(
     if (err instanceof ActiveWorldEncounterError) {
       // A prior pending encounter is still open: skip so the standard hunt
       // result renders and the player is not confused by two open flows.
+      //
+      // Logged rather than silently swallowed. This is the gate that makes a
+      // staging test look broken — an encounter the tester never resolved
+      // suppresses every later roll, which from the outside is
+      // indistinguishable from the feature being off.
+      ctx.logger.info(
+        {
+          tag: 'world-encounter/roll-skipped',
+          source: 'hunt',
+          playerId: prov.playerId,
+          blockingActiveId: err.activeId,
+          finalReason: 'active_encounter_open',
+        },
+        'world encounter skipped — player already has an encounter open',
+      );
       return false;
     }
     ctx.logger.warn({ err, tag: 'world-encounter/hunt-roll' }, 'world encounter hunt roll failed');
@@ -253,7 +268,21 @@ export async function maybeTriggerTravelEncounter(
     await respondEphemeral(interaction, view);
     return true;
   } catch (err) {
-    if (err instanceof ActiveWorldEncounterError) return false;
+    if (err instanceof ActiveWorldEncounterError) {
+      // Same silent gate as the hunt path, and the one behind the
+      // "travelChance = 1 but only one encounter ever fired" report.
+      ctx.logger.info(
+        {
+          tag: 'world-encounter/roll-skipped',
+          source: 'travel',
+          playerId: prov.playerId,
+          blockingActiveId: err.activeId,
+          finalReason: 'active_encounter_open',
+        },
+        'world encounter skipped — player already has an encounter open',
+      );
+      return false;
+    }
     ctx.logger.warn(
       { err, tag: 'world-encounter/travel-roll' },
       'world encounter travel roll failed',
