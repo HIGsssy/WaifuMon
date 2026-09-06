@@ -4,6 +4,7 @@
  * commands → Discord login. Fail fast and loud before Discord login.
  * The optional admin web panel starts last, and only when enabled.
  */
+import { existsSync } from 'node:fs';
 import { startAdminServer } from './admin/server';
 import { startPlatformApi } from './api/server';
 import { withIdentityCache } from './api/identity';
@@ -16,6 +17,7 @@ import { registerCommands } from './discord/commandRegistry';
 import type { AppContext } from './discord/types';
 import { createAdminContentService } from './modules/content/adminContentService';
 import { createContentReloader } from './modules/content/reloadService';
+import { resolveAssetPath } from './modules/content/loader';
 import { createCurrencyService } from './modules/currency/currencyService';
 import { createDailyService } from './modules/daily/dailyService';
 import { createGuildService } from './modules/guilds/guildService';
@@ -30,6 +32,7 @@ import { createCareService } from './modules/care/careService';
 import { createWorldEncounterService } from './modules/worldEncounters/worldEncounterService';
 import { createWorldEncounterSettingsService } from './modules/worldEncounters/settingsService';
 import { createWorldEncounterAdminService } from './modules/worldEncounters/adminService';
+import { createEncounterPromotionService } from './modules/worldEncounters/encounterImportService';
 import { seedWorldEncounters } from './modules/worldEncounters/seed';
 import {
   createWorldEncounterVendorService,
@@ -371,6 +374,22 @@ async function main(): Promise<void> {
         logger,
       }),
       worldEncounterAdmin: createWorldEncounterAdminService(db, () => contentSnapshot),
+      // Content promotion: staging exports a package, production imports it.
+      // `artworkExists` lets a preview warn about images that have not been
+      // deployed yet without ever failing the import for them.
+      encounterPromotion: createEncounterPromotionService({
+        db,
+        getContent: () => contentSnapshot,
+        artworkExists: (relative) => {
+          try {
+            return existsSync(resolveAssetPath(config.assetsDir, relative));
+          } catch {
+            // A path the resolver refuses (traversal, escape) is not
+            // "missing" — the planner rejects it on its own terms.
+            return true;
+          }
+        },
+      }),
       worldEncounterVendor: worldEncounterVendorService,
       worldEncounterSettings,
       wildEncounters,

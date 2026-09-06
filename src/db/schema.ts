@@ -1767,6 +1767,49 @@ export type WorldEncounterSettingsRow = typeof worldEncounterSettings.$inferSele
  * (Wandering Merchant, etc.). `stockTemplateJson` is the authoring shape;
  * a per-encounter instance snapshots and possibly randomises it.
  */
+/**
+ * One row per applied encounter import — the audit trail for content
+ * promotion.
+ *
+ * Written inside the import transaction, so a log row exists if and only if
+ * the content it describes actually landed. A failed or refused import leaves
+ * nothing behind, which is what makes this table answerable to "what is on
+ * this server and who put it there?".
+ *
+ * Records the actor, the package's own version and label, the source filename
+ * the operator uploaded, and the counts the plan predicted. It deliberately
+ * does not store the package body: packages are large, they are already in
+ * source control or the operator's hands, and a copy here would be a second
+ * place for stale content to live.
+ */
+export const worldEncounterImportLog = pgTable(
+  'world_encounter_import_log',
+  {
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    /** Discord user id of the operator who applied it. Null for a bearer call. */
+    actorDiscordUserId: text('actor_discord_user_id'),
+    appliedAt: timestamp('applied_at', { withTimezone: true }).notNull().defaultNow(),
+    packageFormat: text('package_format').notNull(),
+    packageVersion: integer('package_version').notNull(),
+    /** The package's own `exportedAt`, as sent. Null when absent. */
+    packageExportedAt: text('package_exported_at'),
+    /** Free-form provenance from the package, e.g. "staging 2026-09-05". */
+    packageLabel: text('package_label'),
+    /** Filename the operator uploaded, when the client sent one. */
+    sourceFilename: text('source_filename'),
+    createdCount: integer('created_count').notNull().default(0),
+    updatedCount: integer('updated_count').notNull().default(0),
+    unchangedCount: integer('unchanged_count').notNull().default(0),
+    vendorCreatedCount: integer('vendor_created_count').notNull().default(0),
+    vendorUpdatedCount: integer('vendor_updated_count').notNull().default(0),
+    /** Slugs touched, for a quick "what changed" without re-reading the file. */
+    encounterSlugs: jsonb('encounter_slugs').$type<string[]>().notNull().default([]),
+  },
+  (t) => [index('world_encounter_import_log_applied_idx').on(t.appliedAt)],
+);
+
+export type WorldEncounterImportLogRow = typeof worldEncounterImportLog.$inferSelect;
+
 export const worldEncounterVendors = pgTable(
   'world_encounter_vendors',
   {

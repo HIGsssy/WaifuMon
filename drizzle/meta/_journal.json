@@ -204,6 +204,13 @@
       "when": 1818194400000,
       "tag": "0028_guild_admin_role_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1818280800000,
+      "tag": "0029_world_encounter_import_log",
+      "breakpoints": true
     }
   ]
 }

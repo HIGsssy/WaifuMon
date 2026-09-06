@@ -258,3 +258,82 @@ export interface SimulateBody extends PreviewBody {
 export function simulateAdminEncounter(id: number, body: SimulateBody): Promise<SimulateResponse> {
   return postData<SimulateResponse>(`/v1/admin/encounters/${id}/simulate`, body);
 }
+
+/* ─────────────────────── Content promotion ─────────────────────── */
+
+/**
+ * Export/import of encounter content between environments.
+ *
+ * The package the server returns is the file that gets saved: `getData`
+ * unwraps the `{ data: … }` envelope, so what reaches disk is a bare package
+ * an import will accept, with no transport wrapper around it.
+ */
+export interface EncounterPackage {
+  format: string;
+  version: number;
+  exportedAt: string;
+  label: string | null;
+  vendors: Array<{ vendorKey: string; name: string }>;
+  encounters: Array<{ slug: string; name: string }>;
+}
+
+export interface ImportPlanIssue {
+  severity: 'error' | 'warning' | string;
+  code: string;
+  subject: string | null;
+  message: string;
+}
+
+export interface ImportPlan {
+  ok: boolean;
+  format: string;
+  version: number;
+  exportedAt: string | null;
+  label: string | null;
+  encounters: Array<{ slug: string; name: string; status: string }>;
+  vendors: Array<{ vendorKey: string; status: string }>;
+  issues: ImportPlanIssue[];
+  counts: {
+    created: number;
+    updated: number;
+    unchanged: number;
+    vendorsCreated: number;
+    vendorsUpdated: number;
+    vendorsUnchanged: number;
+    errors: number;
+    warnings: number;
+  };
+}
+
+export function exportAdminEncounters(opts: {
+  slugs?: readonly string[];
+  label?: string | null;
+} = {}): Promise<EncounterPackage> {
+  const params = new URLSearchParams();
+  if (opts.slugs && opts.slugs.length > 0) params.set('slugs', opts.slugs.join(','));
+  if (opts.label) params.set('label', opts.label);
+  const query = params.toString();
+  return getData<EncounterPackage>(
+    `/v1/admin/encounters/export${query ? `?${query}` : ''}`,
+  );
+}
+
+export function previewAdminEncounterImport(
+  pkg: unknown,
+  sourceFilename: string | null,
+): Promise<ImportPlan> {
+  return postData<ImportPlan>('/v1/admin/encounters/import/preview', {
+    package: pkg,
+    sourceFilename,
+  });
+}
+
+export function applyAdminEncounterImport(
+  pkg: unknown,
+  sourceFilename: string | null,
+): Promise<{ plan: ImportPlan; importLogId: number }> {
+  return postData<{ plan: ImportPlan; importLogId: number }>(
+    '/v1/admin/encounters/import/apply',
+    { package: pkg, sourceFilename },
+  );
+}

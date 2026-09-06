@@ -39,6 +39,7 @@ import type { WorldEncounterVendorService } from '../modules/worldEncounters/ven
 import type { WildEncounterSpawner } from '../modules/encounters/wildEncounterSpawner';
 import type { WorldEncounterSettingsService } from '../modules/worldEncounters/settingsService';
 import type { AdminRoleGrantService } from '../modules/portalAuth/adminRoleGrantService';
+import type { EncounterPromotionService } from '../modules/worldEncounters/encounterImportService';
 import type { GuildRoleService } from '../modules/portalAuth/guildRoleService';
 
 export interface AppServices {
@@ -100,6 +101,12 @@ export interface AppServices {
    * panel both go through this service.
    */
   worldEncounterAdmin?: WorldEncounterAdminService | undefined;
+  /**
+   * Export/import of encounter content between environments. Present
+   * alongside {@link worldEncounterAdmin}; absent simply means the promotion
+   * routes do not register.
+   */
+  encounterPromotion?: EncounterPromotionService | undefined;
   /**
    * Encounter vendor lifecycle — vendor definitions and per-encounter
    * instances. Present alongside {@link worldEncounter}.

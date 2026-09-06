@@ -24,6 +24,7 @@ import { ErrorState } from '@/components/layout/ErrorState';
 import { PageHeader } from '@/components/layout/PageHeader';
 
 import { GlobalEncounterSettingsPanel } from './GlobalEncounterSettingsPanel';
+import { ContentPromotionPanel } from './ContentPromotionPanel';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useHasPermission } from '@/auth/useSession';
 
@@ -127,6 +128,13 @@ export function AdminEncountersListPage() {
         thing an operator needs to notice on this screen.
       */}
       <GlobalEncounterSettingsPanel />
+
+      {/*
+        Promotion sits below tuning and above the list: it is an occasional,
+        deliberate action rather than part of day-to-day authoring, and it
+        reads better next to the list of encounters it moves.
+      */}
+      <ContentPromotionPanel />
 
       <Card className="space-y-3 p-4">
         <div className="grid grid-cols-2 gap-3 md:grid-cols-5">

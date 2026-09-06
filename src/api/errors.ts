@@ -141,6 +141,10 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   PORTAL_GUILD_REQUIRED: 400,
   /** A role grant payload named a permission that cannot be delegated. */
   ROLE_GRANT_INVALID: 400,
+  /** A promotion package failed validation against this server. */
+  ENCOUNTER_IMPORT_REJECTED: 400,
+  /** Nothing to export. */
+  ENCOUNTER_EXPORT_EMPTY: 400,
   /**
    * A player's browser asked for artwork of a species they have not caught.
    * The Portal silhouettes those entries; this is the same rule enforced at

@@ -29,6 +29,7 @@ import { sessionRoutes } from './session';
 import { shopRoutes } from './shop';
 import { adminEncounterRoutes } from './admin/encounters';
 import { adminAccessRoutes } from './admin/access';
+import { adminEncounterPromotionRoutes } from './admin/encounterPromotion';
 
 export interface V1RouteOptions {
   /**
@@ -91,4 +92,7 @@ export const v1Routes =
     // Admin: who else may use the admin area. Owner-only, and skipped when the
     // grant service is not wired.
     await app.register(adminAccessRoutes(ctx));
+
+    // Admin: export/import of encounter content between environments.
+    await app.register(adminEncounterPromotionRoutes(ctx));
   };

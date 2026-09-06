@@ -924,6 +924,11 @@ describe('OpenAPI registration', () => {
       'PATCH /api/v1/admin/encounters/{id}/lifecycle',
       'POST /api/v1/admin/access/grants',
       'POST /api/v1/admin/encounters',
+      // Content promotion. `preview` writes nothing but is a POST because it
+      // carries a package body; `apply` requires `encounters.publish`, the
+      // same permission as any other change that reaches every player at once.
+      'POST /api/v1/admin/encounters/import/apply',
+      'POST /api/v1/admin/encounters/import/preview',
       'POST /api/v1/admin/encounters/{id}/clone',
       'POST /api/v1/admin/encounters/{id}/preview',
       'POST /api/v1/admin/encounters/{id}/simulate',
