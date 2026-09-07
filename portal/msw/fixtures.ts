@@ -7,6 +7,7 @@
  * typed rather than loose objects.
  */
 import type {
+  AchievementsResponse,
   BuddyBonus,
   Appearance,
   AppearanceCatalogEntry,
@@ -18,6 +19,7 @@ import type {
   InventoryEntry,
   Item,
   DirectoryPlayer,
+  LeaderboardResponse,
   OwnedEntry,
   Player,
   PublicOwnedEntry,
@@ -538,6 +540,105 @@ export const publicProfile: PublicPlayerProfile = {
   createdAt: '2026-04-02T12:00:00.000Z',
   currentRegion: { id: 'waifu-valley', name: 'Waifu Valley' },
   collection: { owned: 61, distinctSpecies: 30, totalSpecies: 58 },
+  achievements: {
+    total: 23,
+    unlocked: 7,
+    completionPercent: 30,
+    recent: [
+      { id: 'level_25', name: 'Accomplished Trainer', category: 'progression', icon: '🌟', unlockedAt: '2026-05-01T10:00:00.000Z' },
+      { id: 'rarity_ssr', name: 'Superstar', category: 'rarity', icon: '🥇', unlockedAt: '2026-04-20T10:00:00.000Z' },
+    ],
+  },
+};
+
+/** A player's own achievement wall — a mix of unlocked, in-progress and hidden. */
+export const achievementsResponse: AchievementsResponse = {
+  summary: { total: 5, unlocked: 2, completionPercent: 40 },
+  achievements: [
+    {
+      id: 'hunter_1',
+      category: 'hunting',
+      hidden: false,
+      status: 'unlocked',
+      unlocked: true,
+      unlockedAt: '2026-05-01T10:00:00.000Z',
+      name: 'First Hunt',
+      description: 'Complete your first hunt.',
+      icon: '🌱',
+      series: 'hunter',
+      tier: 1,
+      progress: { current: 1, target: 1 },
+    },
+    {
+      id: 'hunter_3',
+      category: 'hunting',
+      hidden: false,
+      status: 'in_progress',
+      unlocked: false,
+      unlockedAt: null,
+      name: 'Seasoned Hunter',
+      description: 'Complete 100 hunts.',
+      icon: '🎯',
+      series: 'hunter',
+      tier: 3,
+      progress: { current: 82, target: 100 },
+    },
+    {
+      id: 'collector_1',
+      category: 'collection',
+      hidden: false,
+      status: 'unlocked',
+      unlocked: true,
+      unlockedAt: '2026-04-28T10:00:00.000Z',
+      name: 'Budding Collector',
+      description: 'Own 10 distinct species.',
+      icon: '📗',
+      series: 'collector',
+      tier: 1,
+      progress: { current: 10, target: 10 },
+    },
+    {
+      id: 'devoted_1',
+      category: 'buddy',
+      hidden: false,
+      status: 'locked',
+      unlocked: false,
+      unlockedAt: null,
+      name: 'Growing Closer',
+      description: 'Reach 500 Affection with your Buddy.',
+      icon: '💞',
+      series: 'devoted',
+      tier: 1,
+      progress: { current: 0, target: 500 },
+    },
+    {
+      // Hidden + locked: concealed exactly as the backend ships it.
+      id: 'secret_devotion',
+      category: 'special',
+      hidden: true,
+      status: 'locked',
+      unlocked: false,
+      unlockedAt: null,
+      name: '???',
+      description: 'Hidden Achievement',
+      icon: null,
+      series: null,
+      tier: null,
+      progress: null,
+    },
+  ],
+};
+
+/** A guild leaderboard — ranks only, never a metric value. */
+export const leaderboardResponse: LeaderboardResponse = {
+  metric: 'trainer',
+  entries: [
+    { rank: 1, playerId: 7, displayName: 'Vex', avatarUrl: null, isMe: false },
+    { rank: 2, playerId: 42, displayName: 'Aiko', avatarUrl: null, isMe: false },
+    { rank: 2, playerId: 43, displayName: 'Rin', avatarUrl: null, isMe: false },
+    { rank: 4, playerId: PLAYER_ID, displayName: 'You', avatarUrl: null, isMe: true },
+  ],
+  me: { rank: 4 },
 };
 
 // ── A guild-mate's public collection ────────────────────────────────────────

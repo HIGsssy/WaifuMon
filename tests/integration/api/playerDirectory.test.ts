@@ -435,6 +435,7 @@ describe('GET /v1/players/:id/public — the profile the directory links to', ()
     });
     expect(Object.keys(body).sort()).toEqual(
       [
+        'achievements',
         'avatarUrl',
         'buddy',
         'collection',

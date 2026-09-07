@@ -23,6 +23,8 @@ import { effectsRoutes } from './effects';
 import { encounterRoutes } from './encounter';
 import { guildRoutes } from './guilds';
 import { inventoryRoutes } from './inventory';
+import { achievementRoutes } from './achievements';
+import { leaderboardRoutes } from './leaderboards';
 import { playerRoutes } from './players';
 import { playerDirectoryRoutes } from './playerDirectory';
 import { questRoutes } from './quests';
@@ -73,6 +75,12 @@ export const v1Routes =
     await app.register(dailyRoutes(ctx));
     await app.register(questRoutes(ctx));
     await app.register(sessionRoutes(ctx));
+    // A player's own achievement wall (self-scoped).
+    await app.register(achievementRoutes(ctx));
+
+    // Guild-scoped leaderboards. No `:playerId` param; scope comes from the
+    // Portal session (or the bearer token's named guild), like the directory.
+    await app.register(leaderboardRoutes(ctx));
 
     // What this deployment supports. Registered unconditionally and *before*
     // the optional surfaces it describes, so a client can always ask.

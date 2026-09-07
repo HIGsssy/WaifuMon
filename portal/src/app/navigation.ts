@@ -22,6 +22,7 @@ import {
   Heart,
   LayoutDashboard,
   LibraryBig,
+  Medal,
   Settings,
   Shield,
   Store,
@@ -72,9 +73,9 @@ export const NAV_ITEMS: readonly NavItem[] = [
     to: '/achievements',
     label: 'Achievements',
     icon: Trophy,
-    comingSoon: true,
     dividerBefore: true,
   },
+  { to: '/leaderboards', label: 'Leaderboards', icon: Medal },
   { to: '/events', label: 'Events', icon: CalendarDays, comingSoon: true },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];

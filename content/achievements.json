@@ -1,0 +1,217 @@
+{
+  "achievements": [
+    {
+      "id": "hunter_1",
+      "name": "First Hunt",
+      "description": "Complete your first hunt.",
+      "category": "hunting",
+      "series": "hunter",
+      "tier": 1,
+      "icon": "🌱",
+      "criteria": { "metric": "hunts", "target": 1 }
+    },
+    {
+      "id": "hunter_2",
+      "name": "Getting the Hang of It",
+      "description": "Complete 25 hunts.",
+      "category": "hunting",
+      "series": "hunter",
+      "tier": 2,
+      "icon": "🏹",
+      "criteria": { "metric": "hunts", "target": 25 }
+    },
+    {
+      "id": "hunter_3",
+      "name": "Seasoned Hunter",
+      "description": "Complete 100 hunts.",
+      "category": "hunting",
+      "series": "hunter",
+      "tier": 3,
+      "icon": "🎯",
+      "criteria": { "metric": "hunts", "target": 100 }
+    },
+    {
+      "id": "hunter_4",
+      "name": "Relentless",
+      "description": "Complete 500 hunts.",
+      "category": "hunting",
+      "series": "hunter",
+      "tier": 4,
+      "icon": "🔥",
+      "criteria": { "metric": "hunts", "target": 500 }
+    },
+    {
+      "id": "first_capture",
+      "name": "First Capture",
+      "description": "Capture your first Waifumon.",
+      "category": "collection",
+      "icon": "💗",
+      "criteria": { "metric": "captures", "target": 1 }
+    },
+    {
+      "id": "collector_1",
+      "name": "Budding Collector",
+      "description": "Own 10 distinct species.",
+      "category": "collection",
+      "series": "collector",
+      "tier": 1,
+      "icon": "📗",
+      "criteria": { "metric": "distinct_species", "target": 10 }
+    },
+    {
+      "id": "collector_2",
+      "name": "Dedicated Collector",
+      "description": "Own 25 distinct species.",
+      "category": "collection",
+      "series": "collector",
+      "tier": 2,
+      "icon": "📘",
+      "criteria": { "metric": "distinct_species", "target": 25 }
+    },
+    {
+      "id": "collector_3",
+      "name": "Master Collector",
+      "description": "Own 50 distinct species.",
+      "category": "collection",
+      "series": "collector",
+      "tier": 3,
+      "icon": "📚",
+      "criteria": { "metric": "distinct_species", "target": 50 }
+    },
+    {
+      "id": "rarity_sr",
+      "name": "A Cut Above",
+      "description": "Capture your first SR Waifumon.",
+      "category": "rarity",
+      "icon": "🥈",
+      "criteria": { "metric": "first_sr", "target": 1 }
+    },
+    {
+      "id": "rarity_ssr",
+      "name": "Superstar",
+      "description": "Capture your first SSR Waifumon.",
+      "category": "rarity",
+      "icon": "🥇",
+      "criteria": { "metric": "first_ssr", "target": 1 }
+    },
+    {
+      "id": "rarity_ur",
+      "name": "Ultra Rare Find",
+      "description": "Capture your first UR Waifumon.",
+      "category": "rarity",
+      "icon": "💎",
+      "criteria": { "metric": "first_ur", "target": 1 }
+    },
+    {
+      "id": "rarity_lr",
+      "name": "The Stuff of Legend",
+      "description": "Capture your first LR Waifumon.",
+      "category": "rarity",
+      "icon": "👑",
+      "criteria": { "metric": "first_lr", "target": 1 }
+    },
+    {
+      "id": "buddy_set",
+      "name": "Partners",
+      "description": "Set a Buddy.",
+      "category": "buddy",
+      "icon": "🤝",
+      "criteria": { "metric": "buddy_set", "target": 1 }
+    },
+    {
+      "id": "devoted_1",
+      "name": "Growing Closer",
+      "description": "Reach 500 Affection with your Buddy.",
+      "category": "buddy",
+      "series": "devoted",
+      "tier": 1,
+      "icon": "💞",
+      "criteria": { "metric": "buddy_affection", "target": 500 }
+    },
+    {
+      "id": "devoted_2",
+      "name": "Most Devoted",
+      "description": "Reach 2500 Affection with your Buddy.",
+      "category": "buddy",
+      "series": "devoted",
+      "tier": 2,
+      "icon": "💖",
+      "criteria": { "metric": "buddy_affection", "target": 2500 }
+    },
+    {
+      "id": "level_10",
+      "name": "Rising Trainer",
+      "description": "Reach Trainer Level 10.",
+      "category": "progression",
+      "series": "trainer",
+      "tier": 1,
+      "icon": "⭐",
+      "criteria": { "metric": "level", "target": 10 }
+    },
+    {
+      "id": "level_25",
+      "name": "Accomplished Trainer",
+      "description": "Reach Trainer Level 25.",
+      "category": "progression",
+      "series": "trainer",
+      "tier": 2,
+      "icon": "🌟",
+      "criteria": { "metric": "level", "target": 25 }
+    },
+    {
+      "id": "level_50",
+      "name": "Elite Trainer",
+      "description": "Reach Trainer Level 50.",
+      "category": "progression",
+      "series": "trainer",
+      "tier": 3,
+      "icon": "✨",
+      "criteria": { "metric": "level", "target": 50 }
+    },
+    {
+      "id": "explorer_1",
+      "name": "Wanderlust",
+      "description": "Unlock travel to a second region.",
+      "category": "travel",
+      "icon": "🧭",
+      "criteria": { "metric": "regions_visited", "target": 2 }
+    },
+    {
+      "id": "explorer_2",
+      "name": "Seasoned Traveller",
+      "description": "Reach 4 regions.",
+      "category": "travel",
+      "icon": "🗺️",
+      "criteria": { "metric": "regions_visited", "target": 4 }
+    },
+    {
+      "id": "boss_1",
+      "name": "Into the Fray",
+      "description": "Take part in your first boss encounter.",
+      "category": "bosses",
+      "series": "boss",
+      "tier": 1,
+      "icon": "⚔️",
+      "criteria": { "metric": "boss_participations", "target": 1 }
+    },
+    {
+      "id": "boss_2",
+      "name": "Boss Veteran",
+      "description": "Take part in 10 boss encounters.",
+      "category": "bosses",
+      "series": "boss",
+      "tier": 2,
+      "icon": "🛡️",
+      "criteria": { "metric": "boss_participations", "target": 10 }
+    },
+    {
+      "id": "secret_devotion",
+      "name": "Soulbound",
+      "description": "Reach 5000 Affection with a single Buddy.",
+      "category": "special",
+      "hidden": true,
+      "icon": "🔮",
+      "criteria": { "metric": "buddy_affection", "target": 5000 }
+    }
+  ]
+}

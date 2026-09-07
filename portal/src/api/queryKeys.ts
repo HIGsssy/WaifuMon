@@ -13,7 +13,7 @@
  * Every key is built here so a typo cannot silently create a second cache entry
  * for the same resource.
  */
-import type { ItemCategory, Rarity } from './types';
+import type { ItemCategory, LeaderboardMetric, Rarity } from './types';
 
 export const queryKeys = {
   player: (playerId: number) => ['player', playerId] as const,
@@ -60,6 +60,9 @@ export const queryKeys = {
   ownedSlugs: (playerId: number, ownedCount?: number | undefined) =>
     ['player', playerId, 'collection', 'ownedSlugs', ownedCount ?? 'unknown'] as const,
 
+  /** A player's own achievements — player-scoped like the rest of the wall. */
+  achievements: (playerId: number) => ['player', playerId, 'achievements'] as const,
+
   /**
    * The guild player directory — **keyed by guild, not by player**.
    *
@@ -101,6 +104,15 @@ export const queryKeys = {
     ['players', guildDbId, 'collection', playerId] as const,
   publicCollectionEntry: (guildDbId: number, playerId: number, waifuId: number) =>
     ['players', guildDbId, 'collection', playerId, 'entry', waifuId] as const,
+
+  /**
+   * A guild-scoped leaderboard — **keyed by guild**, for the same reason the
+   * directory is: ranks are the selected guild's, so switching guilds must not
+   * render one guild's ladder under another's heading. The metric is the second
+   * segment so switching category is its own cache entry.
+   */
+  leaderboard: (guildDbId: number, metric: LeaderboardMetric) =>
+    ['leaderboards', guildDbId, metric] as const,
 
   content: () => ['content'] as const,
   /**

@@ -23,6 +23,9 @@ import { createCaptureService } from '../../src/modules/capture/captureService';
 import { createCareService } from '../../src/modules/care/careService';
 import { createAppearanceService } from '../../src/modules/appearance/appearanceService';
 import { createCollectionService } from '../../src/modules/collection/collectionService';
+import { createAchievementService } from '../../src/modules/achievements/achievementService';
+import { loadAchievementDefinitions } from '../../src/modules/achievements/achievementDefinitions';
+import { createLeaderboardService } from '../../src/modules/leaderboards/leaderboardService';
 import { createPlayerEffectsService } from '../../src/modules/effects/playerEffectsService';
 import { createItemUseService } from '../../src/modules/items/itemUseService';
 import { createAffectionGiftService } from '../../src/modules/gifts/affectionGiftService';
@@ -83,6 +86,8 @@ export interface App {
   capture: ReturnType<typeof createCaptureService>;
   care: ReturnType<typeof createCareService>;
   collection: ReturnType<typeof createCollectionService>;
+  achievements: ReturnType<typeof createAchievementService>;
+  leaderboards: ReturnType<typeof createLeaderboardService>;
   appearance: ReturnType<typeof createAppearanceService>;
   progression: ReturnType<typeof createProgressionService>;
   quests: ReturnType<typeof createQuestService>;
@@ -377,6 +382,8 @@ export async function bootstrapApp(
     }),
     care,
     collection,
+    achievements: createAchievementService(t.db, loadAchievementDefinitions(CONTENT_DIR)),
+    leaderboards: createLeaderboardService(t.db),
     appearance,
     quests,
     effects,

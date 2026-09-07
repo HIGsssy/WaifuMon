@@ -27,6 +27,7 @@ describe('AppShell', () => {
       // `app/navigation.ts` for why the name changed with it.
       'Players',
       'Achievements',
+      'Leaderboards',
       'Events',
       'Settings',
     ]) {
@@ -52,8 +53,12 @@ describe('AppShell', () => {
     await screen.findByRole('heading', { name: 'Dashboard' });
 
     const nav = screen.getByRole('navigation', { name: 'Primary' });
-    expect(within(nav).queryByRole('link', { name: /Achievements/ })).toBeNull();
-    expect(within(nav).getByText('Achievements').closest('[aria-disabled="true"]')).not.toBeNull();
+    // Events is still a reserved placeholder; Achievements and Leaderboards
+    // have shipped and are now real links.
+    expect(within(nav).queryByRole('link', { name: /Events/ })).toBeNull();
+    expect(within(nav).getByText('Events').closest('[aria-disabled="true"]')).not.toBeNull();
+    expect(within(nav).getByRole('link', { name: /Achievements/ })).toBeInTheDocument();
+    expect(within(nav).getByRole('link', { name: /Leaderboards/ })).toBeInTheDocument();
   });
 
   it('redirects the index route to the dashboard', async () => {

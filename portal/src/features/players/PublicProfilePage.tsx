@@ -156,6 +156,40 @@ export function PublicProfilePage() {
             </Button>
           </div>
 
+          <section aria-labelledby="public-achievements-heading">
+            <h2
+              id="public-achievements-heading"
+              className="mb-3 text-sm font-medium tracking-wide text-ink-muted uppercase"
+            >
+              Achievements
+            </h2>
+            <Card>
+              <p className="tabular text-sm text-ink-muted">
+                <span className="font-semibold text-ink">
+                  {formatNumber(player.achievements.unlocked)}
+                </span>{' '}
+                of {formatNumber(player.achievements.total)} unlocked
+              </p>
+              {player.achievements.recent.length > 0 ? (
+                <ul className="mt-3 flex flex-wrap gap-2">
+                  {/* Only unlocked, non-hidden-locked badges ever reach this
+                      list — the API omits everything else. */}
+                  {player.achievements.recent.map((badge) => (
+                    <li
+                      key={badge.id}
+                      className="flex items-center gap-1.5 rounded-full border border-border bg-surface-sunken px-3 py-1 text-sm text-ink"
+                    >
+                      <span aria-hidden="true">{badge.icon ?? '🏅'}</span>
+                      <span>{badge.name}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-2 text-sm text-ink-subtle">No achievements earned yet.</p>
+              )}
+            </Card>
+          </section>
+
           <section aria-labelledby="public-buddy-heading">
             <h2
               id="public-buddy-heading"

@@ -88,6 +88,8 @@ function buildCtx(): AppContext {
       guilds: app.guilds,
       travel: app.travel,
       players: app.players,
+      achievements: app.achievements,
+      leaderboards: app.leaderboards,
       currency: app.currency,
       inventory: app.inventory,
       daily: app.daily,

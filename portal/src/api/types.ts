@@ -575,6 +575,92 @@ export interface PublicPlayerProfile extends DirectoryPlayer {
   createdAt: string;
   currentRegion: { id: string; name: string };
   collection: { owned: number; distinctSpecies: number; totalSpecies: number };
+  achievements: PublicAchievementSummary;
+}
+
+// ── Achievements ────────────────────────────────────────────────────────────
+
+export type AchievementCategory =
+  | 'hunting'
+  | 'collection'
+  | 'rarity'
+  | 'buddy'
+  | 'progression'
+  | 'travel'
+  | 'bosses'
+  | 'special';
+
+export type AchievementStatus = 'locked' | 'in_progress' | 'unlocked';
+
+export interface Achievement {
+  id: string;
+  category: AchievementCategory;
+  hidden: boolean;
+  status: AchievementStatus;
+  unlocked: boolean;
+  unlockedAt: string | null;
+  /** `"???"` for a hidden achievement that is still locked. */
+  name: string;
+  /** `"Hidden Achievement"` for a hidden, locked achievement. */
+  description: string;
+  icon: string | null;
+  series: string | null;
+  tier: number | null;
+  /** `null` for a hidden, locked achievement — no criteria are exposed. */
+  progress: { current: number; target: number } | null;
+}
+
+export interface AchievementSummary {
+  total: number;
+  unlocked: number;
+  completionPercent: number;
+}
+
+export interface AchievementsResponse {
+  summary: AchievementSummary;
+  achievements: Achievement[];
+}
+
+export interface PublicAchievement {
+  id: string;
+  name: string;
+  category: AchievementCategory;
+  icon: string | null;
+  unlockedAt: string;
+}
+
+export interface PublicAchievementSummary {
+  total: number;
+  unlocked: number;
+  completionPercent: number;
+  recent: PublicAchievement[];
+}
+
+// ── Leaderboards ────────────────────────────────────────────────────────────
+
+export type LeaderboardMetric =
+  | 'trainer'
+  | 'collector'
+  | 'hunter'
+  | 'devoted'
+  | 'legendary';
+
+/**
+ * A ranked entry. There is deliberately **no** metric value — the backend
+ * returns ranks, never scores (plan §10).
+ */
+export interface LeaderboardEntry {
+  rank: number;
+  playerId: number;
+  displayName: string;
+  avatarUrl: string | null;
+  isMe: boolean;
+}
+
+export interface LeaderboardResponse {
+  metric: LeaderboardMetric;
+  entries: LeaderboardEntry[];
+  me: { rank: number } | null;
 }
 
 export type DirectorySort = 'name' | 'level' | 'recent';

@@ -15,7 +15,7 @@
  */
 import { lazy, type ReactElement } from 'react';
 import { createBrowserRouter, Navigate, type RouteObject } from 'react-router';
-import { CalendarDays, Trophy } from 'lucide-react';
+import { CalendarDays } from 'lucide-react';
 
 import { AppShell } from './AppShell';
 import { RequireSession } from '@/auth/RequireSession';
@@ -88,6 +88,16 @@ const GuidePage = lazy(() =>
 );
 const SettingsPage = lazy(() =>
   import('@/features/settings/SettingsPage').then((m) => ({ default: m.SettingsPage })),
+);
+const AchievementsPage = lazy(() =>
+  import('@/features/achievements/AchievementsPage').then((m) => ({
+    default: m.AchievementsPage,
+  })),
+);
+const LeaderboardsPage = lazy(() =>
+  import('@/features/leaderboards/LeaderboardsPage').then((m) => ({
+    default: m.LeaderboardsPage,
+  })),
 );
 
 // Admin — encounter management. Lazy so an unprivileged bundle does not
@@ -172,16 +182,10 @@ export const routes: RouteObject[] = [
           { path: 'guide', element: <GuidePage /> },
           { path: 'settings', element: <SettingsPage /> },
 
+          { path: 'achievements', element: <AchievementsPage /> },
+          { path: 'leaderboards', element: <LeaderboardsPage /> },
+
           // Reserved slots — see §25.12.
-          {
-            path: 'achievements',
-            element: comingSoon(
-              'Achievements',
-              'Milestones and badges earned across your journey.',
-              Trophy,
-              'Achievements are not modelled in the game services yet, so there is nothing for the Portal to read.',
-            ),
-          },
           {
             path: 'events',
             element: comingSoon(

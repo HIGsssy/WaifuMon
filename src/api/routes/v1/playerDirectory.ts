@@ -209,12 +209,13 @@ export const playerDirectoryRoutes =
 
         // The same query the list uses, narrowed to one id — so the profile
         // cannot disagree with the row that linked to it about scope or buddy.
-        const [[row], stats] = await Promise.all([
+        const [[row], stats, achievements] = await Promise.all([
           ctx.services.players.listGuildDirectory({
             guildDbId: scope.guildDbId,
             playerId: player.id,
           }),
           ctx.services.collection.getDexStats(player.id),
+          ctx.services.achievements.getPublicSummary(player.id),
         ]);
         if (!row) throw new ApiPlayerNotFoundError(player.id);
 
@@ -226,6 +227,7 @@ export const playerDirectoryRoutes =
           createdAt: player.createdAt,
           currentRegion: toCurrentRegionResource(player.currentRegion, ctx.getContent().regions),
           collection: stats,
+          achievements,
         });
       },
     );

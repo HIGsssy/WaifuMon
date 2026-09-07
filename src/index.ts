@@ -47,6 +47,9 @@ import { configureCardRenderer, shutdownCardRenderer } from './modules/cards';
 import { OwnedCardWarmer } from './modules/appearance/ownedCardWarm';
 import { listOwnedWarmSubjects } from './modules/appearance/ownedCardWarmSubjects';
 import { createCollectionService } from './modules/collection/collectionService';
+import { createAchievementService } from './modules/achievements/achievementService';
+import { loadAchievementDefinitions } from './modules/achievements/achievementDefinitions';
+import { createLeaderboardService } from './modules/leaderboards/leaderboardService';
 import { createPlayerEffectsService } from './modules/effects/playerEffectsService';
 import { createItemUseService } from './modules/items/itemUseService';
 import { createAffectionGiftService } from './modules/gifts/affectionGiftService';
@@ -125,6 +128,11 @@ async function main(): Promise<void> {
    */
   let contentSnapshot = content;
   const buddyBonus = createBuddyBonusService({ getContent: () => contentSnapshot });
+  // Achievement definitions are content, validated on load like every other
+  // content file. Static for Phase 1 (no admin editing), so they are read once
+  // here rather than through the reload pipeline.
+  const achievements = createAchievementService(db, loadAchievementDefinitions(config.contentDir));
+  const leaderboards = createLeaderboardService(db);
   const worldEncounterVendorService = createWorldEncounterVendorService({
     db,
     currency,
@@ -345,6 +353,8 @@ async function main(): Promise<void> {
       }),
       care,
       collection,
+      achievements,
+      leaderboards,
       appearance,
       quests,
       effects,

@@ -239,6 +239,15 @@ export const handlers = [
   http.get('/api/v1/players/:playerId/inventory', () => data(fixtures.inventoryEntries)),
   http.get('/api/v1/shop/catalog', () => data(fixtures.shopCatalog)),
 
+  // ── Achievements & Leaderboards ───────────────────────────────────────────
+  http.get('/api/v1/players/:playerId/achievements', () => data(fixtures.achievementsResponse)),
+  // Guild-scoped board. Honours `metric` so a test switching category sees a
+  // different board rather than a handler that ignored the query.
+  http.get('/api/v1/leaderboards', ({ request }) => {
+    const metric = new URL(request.url).searchParams.get('metric') ?? 'trainer';
+    return data({ ...fixtures.leaderboardResponse, metric });
+  }),
+
   // ── Content ───────────────────────────────────────────────────────────────
   http.get('/api/v1/content/species', () => data(fixtures.contentSpecies)),
   http.get('/api/v1/content/species/:slug', ({ params }) => {

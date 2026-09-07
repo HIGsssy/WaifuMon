@@ -218,6 +218,13 @@
       "when": 1818367200000,
       "tag": "0030_buddy_affection_item_effect",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1818453600000,
+      "tag": "0031_player_achievements",
+      "breakpoints": true
     }
   ]
 }

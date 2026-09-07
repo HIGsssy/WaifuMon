@@ -34,7 +34,8 @@ const PAGES: ReadonlyArray<{ name: string; url: string; settled: string | RegExp
   { name: 'Profile', url: '/profile', settled: 'Statistics' },
   { name: 'Guide', url: '/guide', settled: 'Hunting' },
   { name: 'Settings', url: '/settings', settled: 'Appearance' },
-  { name: 'Achievements placeholder', url: '/achievements', settled: 'Coming Soon' },
+  { name: 'Achievements', url: '/achievements', settled: 'Unlocked' },
+  { name: 'Leaderboards', url: '/leaderboards', settled: 'Top Trainers' },
   { name: '404', url: '/nowhere', settled: 'Page not found' },
 ];
 
@@ -93,8 +94,9 @@ describe('accessibility', () => {
 
     const nav = screen.getByRole('navigation', { name: 'Primary' });
     // "Friends" is no longer among them: it became the real Players
-    // destination, which is asserted to be a working link below.
-    for (const label of ['Achievements', 'Events']) {
+    // destination, which is asserted to be a working link below. Achievements
+    // and Leaderboards have shipped; only Events remains a placeholder.
+    for (const label of ['Events']) {
       const row = Array.from(nav.querySelectorAll('[aria-disabled="true"]')).find((element) =>
         element.textContent?.includes(label),
       );

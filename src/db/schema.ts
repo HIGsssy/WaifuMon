@@ -1859,6 +1859,47 @@ export const worldEncounterVendorInstances = pgTable(
   ],
 );
 
+/**
+ * Player achievement state (Achievements & Leaderboards, Phase 1).
+ *
+ * The **only** durable achievement data. Definitions, criteria, categories and
+ * hidden flags live in content (`content/achievements.json`) — this table holds
+ * nothing an admin would edit, just the per-player facts that current state
+ * cannot reconstruct: *when* a badge was first earned.
+ *
+ * Achievements are otherwise **derived**: progress is computed on read from the
+ * canonical player state (level, collection, captures, buddy, bosses…). A row
+ * appears here the first time an achievement is observed unlocked, stamping
+ * `unlocked_at`. That is the one fact worth persisting — a derived unlock time
+ * cannot be recovered later, and once earned a badge must never revert even if
+ * the underlying metric later dips (a released copy, a re-tuned threshold).
+ *
+ * `achievement_id` is the content slug, soft-typed on purpose: adding or
+ * retiring an achievement is a content edit, never a migration. A row whose id
+ * no longer matches any definition is simply not surfaced.
+ */
+export const playerAchievements = pgTable(
+  'player_achievements',
+  {
+    playerId: bigint('player_id', { mode: 'number' })
+      .notNull()
+      .references(() => players.id),
+    achievementId: text('achievement_id').notNull(),
+    /**
+     * Progress snapshot at the moment of unlock, for auditing only. Live
+     * progress on a *locked* achievement is always derived and never stored;
+     * this records what the metric read when the badge was earned.
+     */
+    progress: integer('progress').notNull().default(0),
+    unlockedAt: timestamp('unlocked_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.playerId, t.achievementId] }),
+    index('player_achievements_player_idx').on(t.playerId),
+    check('player_achievements_progress_check', sql`${t.progress} >= 0`),
+  ],
+);
+
 export type GuildRow = typeof guilds.$inferSelect;
 export type PlayerRow = typeof players.$inferSelect;
 export type PlayerCurrenciesRow = typeof playerCurrencies.$inferSelect;
@@ -1893,3 +1934,4 @@ export type ActiveWorldEncounterRow = typeof activeWorldEncounters.$inferSelect;
 export type WorldEncounterHistoryRow = typeof worldEncounterHistory.$inferSelect;
 export type WorldEncounterVendorRow = typeof worldEncounterVendors.$inferSelect;
 export type WorldEncounterVendorInstanceRow = typeof worldEncounterVendorInstances.$inferSelect;
+export type PlayerAchievementRow = typeof playerAchievements.$inferSelect;

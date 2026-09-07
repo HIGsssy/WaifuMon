@@ -9,6 +9,7 @@ import { z } from 'zod';
 import { REGIONS } from '../../modules/locations/regions';
 import { isoDateTime, nullableIsoDateTime, snowflakeParam } from './common';
 import { currencySchema } from './currency';
+import { publicAchievementSummarySchema } from './achievements';
 
 /**
  * Presentation-only Discord identity, resolved outside the service layer
@@ -210,4 +211,7 @@ export const publicPlayerProfileSchema = directoryPlayerSchema.extend({
     distinctSpecies: z.number().int(),
     totalSpecies: z.number().int(),
   }),
+  achievements: publicAchievementSummarySchema.describe(
+    'Showcase-safe achievement summary. Never includes a locked or hidden-locked badge.',
+  ),
 });

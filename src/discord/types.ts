@@ -18,6 +18,8 @@ import type { HuntService } from '../modules/hunt/huntService';
 import type { CaptureService } from '../modules/capture/captureService';
 import type { CareService } from '../modules/care/careService';
 import type { CollectionService } from '../modules/collection/collectionService';
+import type { AchievementService } from '../modules/achievements/achievementService';
+import type { LeaderboardService } from '../modules/leaderboards/leaderboardService';
 import type { AppearanceService } from '../modules/appearance/appearanceService';
 import type { PlayerEffectsService } from '../modules/effects/playerEffectsService';
 import type { ItemUseService } from '../modules/items/itemUseService';
@@ -53,6 +55,18 @@ export interface AppServices {
   capture: CaptureService;
   care: CareService;
   collection: CollectionService;
+  /**
+   * Achievements (progression/badge, Phase 1). Derives per-player badge state
+   * from canonical state and persists first-earned timestamps. Always wired;
+   * definitions are content, so an empty catalog is a content decision.
+   */
+  achievements: AchievementService;
+  /**
+   * Guild-scoped leaderboards (Phase 1). Ranks a guild's players by a metric
+   * and returns values for the API layer to turn into ranks; raw values never
+   * leave the backend.
+   */
+  leaderboards: LeaderboardService;
   /**
    * Cosmetic appearance gallery, selection, and unlock bookkeeping. Reads
    * waifu level; writes only `variant` and `seen_appearances`.
