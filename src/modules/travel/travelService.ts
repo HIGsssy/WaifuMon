@@ -46,6 +46,7 @@ import {
 } from '../../db/schema';
 import {
   AlreadyInRegionError,
+  InsufficientEnergyError,
   isUniqueViolation,
   RegionLockedError,
   RegionNotFoundError,
@@ -127,6 +128,112 @@ export interface DestinationView {
   bannerImagePath: string | null;
 }
 
+/**
+ * Why travel is refused right now, independent of any one destination.
+ *
+ * Destination-shaped refusals (locked route, missing pass, level gate, already
+ * here) are *not* in this list — they belong to {@link DestinationState}, which
+ * varies per row on the Locations list. These three are player-shaped: they
+ * refuse every destination at once, which is why they are computed once and
+ * hang off {@link TravelStatus} rather than off each {@link DestinationView}.
+ */
+export type TravelBlockReason = 'active_encounter' | 'care_mode' | 'insufficient_energy';
+
+/** The player-side facts a travel-readiness decision reads. */
+export interface TravelReadinessContext {
+  /** An encounter that is open *and* unexpired, or null. */
+  activeEncounterId: number | null;
+  careModeActive: boolean;
+  huntEnergy: number;
+}
+
+export interface TravelReadiness {
+  canTravel: boolean;
+  blockedBy: TravelBlockReason | null;
+  /**
+   * A few words, for a button label or a list row — the examples in the UX
+   * spec: `💤 Resting in Care Mode`, `⚡ Not enough Energy`.
+   */
+  shortReason: string | null;
+  /** A sentence, for the banner at the top of the Locations screen. */
+  detail: string | null;
+}
+
+/**
+ * Care Mode's "is it running?" test, over the three columns that carry it.
+ *
+ * The same predicate `careService` applies internally, restated here over a
+ * projected row rather than delegated. Calling the care service for this would
+ * mean either `applyPendingTicks` — a *write*, on read paths and on a travel
+ * path that may still refuse — or adding a read-only entry point that exists
+ * for one boolean. Both `travel()` and `getStatus()` call this, so the map
+ * screen and the move cannot disagree about whether the player is resting.
+ *
+ * Read-only by construction: nothing here exits Care Mode. Looking at the map
+ * must never end someone's rest.
+ */
+function isCareModeActive(player: {
+  careModeStartedAt: Date | null;
+  careModeLastTickAt: Date | null;
+  careModeWaifuId: number | null;
+}): boolean {
+  return (
+    player.careModeStartedAt != null &&
+    player.careModeLastTickAt != null &&
+    player.careModeWaifuId != null
+  );
+}
+
+/**
+ * The pure travel-readiness rule — the single source of truth for both the
+ * screen and the move, exactly as {@link evaluateDestination} is for the
+ * screen and the purchase.
+ *
+ * The Locations screen must grey out Travel for precisely the reasons
+ * `travel()` will refuse for, and in the same priority order. The only way to
+ * guarantee that stays true through later edits is for both to call this, so
+ * `travel()` derives its thrown error from this function's verdict rather than
+ * running its own parallel sequence of `if`s.
+ *
+ * A free function with no database and no service, for the same reason
+ * `evaluateDestination` is one: it is the piece worth unit-testing directly,
+ * and a closure over `db` would have made that impossible without a container.
+ *
+ * Order matters and is asserted by tests. Care Mode outranks Energy because a
+ * resting player is nearly always also out of Energy, and "leave Care Mode" is
+ * the instruction that actually moves them forward — telling them to claim a
+ * daily is advice for a problem they are already solving.
+ */
+export function evaluateTravelReadiness(ctx: TravelReadinessContext): TravelReadiness {
+  if (ctx.activeEncounterId !== null) {
+    return {
+      canTravel: false,
+      blockedBy: 'active_encounter',
+      shortReason: '⏳ Encounter in progress',
+      detail:
+        "Someone's still waiting on you — finish or release your encounter before travelling.",
+    };
+  }
+  if (ctx.careModeActive) {
+    return {
+      canTravel: false,
+      blockedBy: 'care_mode',
+      shortReason: '💤 Resting in Care Mode',
+      detail:
+        "You're resting in Care Mode. Leave it and recover some Hunt Energy before you set out.",
+    };
+  }
+  if (ctx.huntEnergy < TRAVEL_ENERGY_COST) {
+    return {
+      canTravel: false,
+      blockedBy: 'insufficient_energy',
+      shortReason: '⚡ Not enough Energy',
+      detail: `Travelling costs **${TRAVEL_ENERGY_COST}** Hunt Energy and you have **${ctx.huntEnergy}**.`,
+    };
+  }
+  return { canTravel: true, blockedBy: null, shortReason: null, detail: null };
+}
+
 export interface TravelStatus {
   enabled: boolean;
   currentRegion: Region;
@@ -136,6 +243,20 @@ export interface TravelStatus {
   essence: number;
   /** Blocked-by-encounter is surfaced here so the list can explain itself. */
   activeEncounterId: number | null;
+  /** Hunt Energy on hand. One journey costs {@link TRAVEL_ENERGY_COST}. */
+  huntEnergy: number;
+  /**
+   * True while the player is resting. Read-only here — no screen may exit Care
+   * Mode as a side effect of looking at the map; that is a decision the player
+   * makes on the Care screen.
+   */
+  careModeActive: boolean;
+  /**
+   * Whether travel is possible at all right now, and why not. Computed by
+   * {@link evaluateTravelReadiness}, the same function `travel()` enforces
+   * with, so the greyed-out button and the refusal can never disagree.
+   */
+  readiness: TravelReadiness;
   destinations: DestinationView[];
 }
 
@@ -164,8 +285,15 @@ export interface TravelOutcome {
 export interface TravelService {
   /** The catalog for the current content snapshot. Rebuilt on content reload. */
   catalog(): TravelCatalog;
-  /** Everything the Locations screen needs, in one read. */
-  getStatus(playerId: number): Promise<TravelStatus>;
+  /**
+   * Everything the Locations screen needs, in one read.
+   *
+   * Includes {@link TravelStatus.readiness}, so the screen can grey out Travel
+   * with the reason *before* the click rather than surfacing it as an error
+   * after. Purely a read — it never applies Care Mode ticks and never exits
+   * Care Mode. `now` is injectable so encounter expiry is testable.
+   */
+  getStatus(playerId: number, now?: Date): Promise<TravelStatus>;
   /** One destination's view, or null when it is unreleased/unknown. */
   getDestination(playerId: number, regionId: string): Promise<DestinationView | null>;
   /** The player's current region, defaulted if the column holds anything odd. */
@@ -337,22 +465,35 @@ export function createTravelService(deps: TravelServiceDeps): TravelService {
       return toRegion(row?.currentRegion);
     },
 
-    async getStatus(playerId) {
+    async getStatus(playerId, now = new Date()) {
       const cat = catalog();
       const [[player], balances] = await Promise.all([
         db
-          .select({ level: players.level, currentRegion: players.currentRegion })
+          .select({
+            level: players.level,
+            currentRegion: players.currentRegion,
+            careModeStartedAt: players.careModeStartedAt,
+            careModeLastTickAt: players.careModeLastTickAt,
+            careModeWaifuId: players.careModeWaifuId,
+          })
           .from(players)
           .where(eq(players.id, playerId)),
         currency.getBalances(playerId),
       ]);
       const currentRegion = toRegion(player?.currentRegion);
       const level = player?.level ?? 1;
+      // Expiry is honoured here exactly as `travel()` honours it, and for the
+      // same reason: an encounter whose window has closed is not a reason to
+      // grey out the button, and a screen that disagreed with the move would
+      // strand the player behind a block the service would have let through.
       const [active] = await db
-        .select({ id: encounters.id })
+        .select({ id: encounters.id, expiresAt: encounters.expiresAt })
         .from(encounters)
         .where(and(eq(encounters.playerId, playerId), eq(encounters.state, 'active')))
         .limit(1);
+      const blockingEncounterId =
+        active && active.expiresAt.getTime() > now.getTime() ? active.id : null;
+      const careModeActive = player != null && isCareModeActive(player);
       return {
         enabled: cat.enabled,
         currentRegion,
@@ -360,7 +501,14 @@ export function createTravelService(deps: TravelServiceDeps): TravelService {
         level,
         waifubux: balances.waifubux,
         essence: balances.essence,
-        activeEncounterId: active?.id ?? null,
+        activeEncounterId: blockingEncounterId,
+        huntEnergy: balances.huntEnergy,
+        careModeActive,
+        readiness: evaluateTravelReadiness({
+          activeEncounterId: blockingEncounterId,
+          careModeActive,
+          huntEnergy: balances.huntEnergy,
+        }),
         destinations: cat.enabled ? await buildViews(playerId, level, currentRegion) : [],
       };
     },
@@ -569,7 +717,7 @@ export function createTravelService(deps: TravelServiceDeps): TravelService {
           .where(eq(players.id, playerId))
           .for('update');
         if (!player) throw new RegionNotFoundError(regionId);
-        await currency.lockCurrencies(tx, playerId);
+        const currencies = await currency.lockCurrencies(tx, playerId);
 
         // ── Validation order ──────────────────────────────────────────────
         //
@@ -582,15 +730,19 @@ export function createTravelService(deps: TravelServiceDeps): TravelService {
         //
         //   1. already here          — nothing to do at all
         //   2. route locked          — a trip they could never take
+        //   ── then `evaluateTravelReadiness`, which owns these three ──
         //   3. encounter open        — someone is waiting on them
         //   4. Care Mode             — they are deliberately resting
         //   5. Energy                — the trip is real, the tank is empty
         //
-        // Care Mode sits above Energy because a resting player is nearly
-        // always also out of Energy, and "leave Care Mode" is the instruction
-        // that actually moves them forward. Both sit *below* the destination
-        // checks so a player is never told to go recover for a journey that
-        // was refused for an unrelated reason.
+        // The destination checks stay here because they are per-row: the
+        // Locations list shows them as each destination's own state. The
+        // player-shaped three are hoisted into the shared helper because they
+        // refuse *every* destination at once, which is exactly the thing the
+        // screen wants to say once at the top rather than on every line.
+        //
+        // They sit below the destination checks so a player is never told to
+        // go recover for a journey that was refused for an unrelated reason.
         const fromRegion = toRegion(player.currentRegion);
         if (fromRegion === regionId) {
           throw new AlreadyInRegionError(regionId, destination.region.name);
@@ -609,7 +761,7 @@ export function createTravelService(deps: TravelServiceDeps): TravelService {
           if (!route) throw new RegionLockedError(regionId, destination.region.name);
         }
 
-        // The active-encounter block. Read under the same transaction that
+        // The active-encounter read. Taken under the same transaction that
         // writes `current_region`, and expiry is honoured the way the hunt
         // honours it — an encounter whose window has closed is not a reason to
         // keep someone standing still.
@@ -618,25 +770,38 @@ export function createTravelService(deps: TravelServiceDeps): TravelService {
           .from(encounters)
           .where(and(eq(encounters.playerId, playerId), eq(encounters.state, 'active')))
           .for('update');
-        if (active && active.expiresAt.getTime() > now.getTime()) {
-          throw new TravelBlockedByEncounterError(active.id);
+
+        // The three player-shaped blocks — encounter, Care Mode, Energy — are
+        // decided by `evaluateTravelReadiness`, not re-implemented here. That
+        // is what keeps the greyed-out Travel button on the Locations screen
+        // and this refusal in permanent agreement: one function owns both the
+        // rules and their priority order, and this call site owns only the
+        // translation from verdict to thrown error.
+        const readiness = evaluateTravelReadiness({
+          activeEncounterId:
+            active && active.expiresAt.getTime() > now.getTime() ? active.id : null,
+          careModeActive: isCareModeActive(player),
+          huntEnergy: currencies.huntEnergy,
+        });
+        if (!readiness.canTravel) {
+          switch (readiness.blockedBy) {
+            case 'active_encounter':
+              throw new TravelBlockedByEncounterError(active!.id);
+            case 'care_mode':
+              throw new TravelBlockedByCareModeError();
+            case 'insufficient_energy':
+              throw new InsufficientEnergyError();
+          }
         }
 
-        // Care Mode, read off the row locked above. The same three-column test
-        // `careService` uses for "active" — duplicated rather than delegated
-        // because calling into the care service here would mean either
-        // applying pending ticks (a write, on a path that may still refuse) or
-        // adding a read-only entry point for one boolean.
-        const inCareMode =
-          player.careModeStartedAt != null &&
-          player.careModeLastTickAt != null &&
-          player.careModeWaifuId != null;
-        if (inCareMode) throw new TravelBlockedByCareModeError();
-
-        // Energy: the conditional deduct *is* the check. `spendHuntEnergy`
-        // throws `InsufficientEnergyError` when the balance is short, so there
-        // is no read-then-write window between deciding and charging, and a
-        // player at zero cannot travel however they got here.
+        // Energy. The readiness check above already refused an empty tank, so
+        // this is the atomic backstop rather than the decision: `spendHuntEnergy`
+        // deducts under `WHERE hunt_energy >= cost` and throws the same
+        // `InsufficientEnergyError` if a concurrent spend beat us to the last
+        // point between the read and the write. The currency row is locked, so
+        // that should be unreachable — but the balance is the one thing here
+        // another transaction could legitimately be moving, and a conditional
+        // write costs nothing to keep.
         const spent = await currency.spendHuntEnergy(tx, playerId, TRAVEL_ENERGY_COST);
 
         // Destination last. Same transaction as the deduction, so the two

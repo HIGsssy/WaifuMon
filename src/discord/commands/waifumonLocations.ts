@@ -24,6 +24,14 @@
  * file decided for itself would be a second opinion the purchase path could
  * disagree with — which is precisely how a screen ends up offering a Buy
  * button that then refuses.
+ *
+ * The same rule covers *travel readiness* — the encounter, Care Mode and
+ * Energy blocks. Those come pre-decided on `status.readiness`, computed by
+ * `evaluateTravelReadiness`, which is also the function `travelService.travel()`
+ * refuses with. So this file greys out the Travel button by asking
+ * `canTravel` and prints `shortReason`/`detail` verbatim; it never checks an
+ * Energy balance or a care column itself. A block added to the rule later
+ * appears on these screens with no edit here.
  */
 import {
   ActionRowBuilder,
@@ -95,13 +103,16 @@ function buildHomeView(
 
   const header =
     `${HERE} You are in **${status.currentRegionName}**\n` +
-    `💰 **${status.waifubux}** WaifuBux · 🎖️ Trainer Level **${status.level}**`;
+    `💰 **${status.waifubux}** WaifuBux · ⚡ **${status.huntEnergy}** Energy · ` +
+    `🎖️ Trainer Level **${status.level}**`;
   // Surfaced on the list rather than only on the failed click: a player who
-  // has an encounter open should see *why* travel is greyed out before they
-  // reach for it.
-  const blocked = status.activeEncounterId
-    ? "\n\n⚠️ Someone's still waiting on you — finish or release your encounter before travelling."
-    : '';
+  // cannot travel should see *why* before they reach for the button.
+  //
+  // The sentence comes from `evaluateTravelReadiness`, which is also what
+  // `travelService.travel()` refuses with — so this banner cannot drift out of
+  // agreement with the actual rule, and a fourth block added later shows up
+  // here for free. This file decides nothing about eligibility itself.
+  const blocked = status.readiness.detail ? `\n\n⚠️ ${status.readiness.detail}` : '';
   const note = statusLine ? `\n\n${statusLine}` : '';
   const lines = status.destinations.map(destinationLine).join('\n');
 
@@ -151,6 +162,12 @@ function buildHomeView(
  *   unlocked     → Travel;
  *   purchasable  → price and a Buy that routes through confirmation;
  *   ineligible   → requirements listed, no action offered at all.
+ *
+ * Travel readiness is a second, independent axis over that: a player who is
+ * resting, out of Energy, or mid-encounter gets the Travel button **disabled
+ * and relabelled with the reason**, whatever the destination's own state says.
+ * Buy is untouched by it — you can still unlock a road while you are resting,
+ * you just cannot walk it yet.
  */
 function buildDetailView(
   ctx: AppContext,
@@ -175,6 +192,16 @@ function buildDetailView(
   if (destination.state === 'ineligible') {
     parts.push(`\n🔒 **Requires:**\n${destination.requirements.map((r) => `• ${r}`).join('\n')}`);
   }
+  // Only on screens that actually offer travel. A destination the player has
+  // not unlocked is refused for its own reason, and stacking "not enough
+  // Energy" underneath that would give them two problems to solve when the
+  // route is the only one in their way.
+  if (
+    (destination.state === 'unlocked' || destination.state === 'current') &&
+    status.readiness.detail
+  ) {
+    parts.push(`\n⚠️ ${status.readiness.detail}`);
+  }
   if (statusLine) parts.push(`\n${statusLine}`);
 
   const banner = resolveRegionBanner(ctx, destination.regionId, destination.bannerImagePath);
@@ -187,15 +214,24 @@ function buildDetailView(
 
   const actions: ButtonBuilder[] = [];
   if (destination.state === 'unlocked' || destination.state === 'current') {
+    // Disabled rather than hidden, and labelled with the reason: a missing
+    // button leaves the player guessing, a dead one with "💤 Resting in Care
+    // Mode" on it tells them what to go do. `canTravel` covers the encounter,
+    // Care Mode and Energy blocks together — this file never asks which.
+    const blockedFromTravel = !status.readiness.canTravel;
+    const label =
+      destination.state === 'current'
+        ? 'You are here'
+        : blockedFromTravel && status.readiness.shortReason
+          ? status.readiness.shortReason
+          : `Travel to ${destination.name}`;
     actions.push(
       new ButtonBuilder()
         .setCustomId(buildCustomId('loc', 'travel', destination.regionId))
-        .setLabel(destination.state === 'current' ? 'You are here' : `Travel to ${destination.name}`)
+        .setLabel(label)
         .setEmoji('🚶')
         .setStyle(ButtonStyle.Success)
-        // Two independent reasons to refuse, both shown as a dead button
-        // rather than a hidden one, so the screen explains itself.
-        .setDisabled(destination.state === 'current' || status.activeEncounterId !== null),
+        .setDisabled(destination.state === 'current' || blockedFromTravel),
     );
   }
   if (destination.state === 'purchasable') {

@@ -8,7 +8,11 @@
  */
 import { describe, expect, it } from 'vitest';
 import { buildTravelCatalog, toRegion } from '../../src/modules/travel/travelCatalog';
-import { evaluateDestination } from '../../src/modules/travel/travelService';
+import {
+  evaluateDestination,
+  evaluateTravelReadiness,
+  TRAVEL_ENERGY_COST,
+} from '../../src/modules/travel/travelService';
 import type { LoadedContent, RegionContent } from '../../src/modules/content/schemas';
 
 function region(over: Partial<RegionContent> & Pick<RegionContent, 'id' | 'name'>): RegionContent {
@@ -191,5 +195,97 @@ describe('toRegion', () => {
     expect(toRegion('waifu-valley')).toBe('waifu-valley');
     expect(toRegion(null)).toBe('waifu-valley');
     expect(toRegion('atlantis')).toBe('waifu-valley');
+  });
+});
+
+/**
+ * Travel readiness — the player-shaped blocks, as a pure rule.
+ *
+ * `evaluateTravelReadiness` plays the same role for the Travel button that
+ * `evaluateDestination` plays for the Buy button: one function decides, and
+ * both the Locations screen and `travelService.travel()` consult it. These
+ * tests pin the verdicts and — more importantly — the *priority order*, since
+ * that is what decides which message a player sees when several rules are
+ * unmet at once, and it is invisible from either call site.
+ */
+describe('evaluateTravelReadiness', () => {
+  const ready = { activeEncounterId: null, careModeActive: false, huntEnergy: 10 };
+
+  it('permits travel with energy, no encounter and no care mode', () => {
+    const r = evaluateTravelReadiness(ready);
+    expect(r.canTravel).toBe(true);
+    expect(r.blockedBy).toBeNull();
+    // A permitted verdict carries no copy — there is nothing for a screen to
+    // explain, and a non-null reason here would paint a warning banner on a
+    // perfectly healthy map.
+    expect(r.shortReason).toBeNull();
+    expect(r.detail).toBeNull();
+  });
+
+  it('blocks on an open encounter', () => {
+    const r = evaluateTravelReadiness({ ...ready, activeEncounterId: 42 });
+    expect(r.canTravel).toBe(false);
+    expect(r.blockedBy).toBe('active_encounter');
+    expect(r.detail).toMatch(/before travelling/);
+  });
+
+  it('blocks in Care Mode even with a full tank', () => {
+    const r = evaluateTravelReadiness({ ...ready, careModeActive: true, huntEnergy: 99 });
+    expect(r.canTravel).toBe(false);
+    expect(r.blockedBy).toBe('care_mode');
+    expect(r.shortReason).toBe('💤 Resting in Care Mode');
+  });
+
+  it('blocks below the travel cost', () => {
+    const r = evaluateTravelReadiness({ ...ready, huntEnergy: TRAVEL_ENERGY_COST - 1 });
+    expect(r.canTravel).toBe(false);
+    expect(r.blockedBy).toBe('insufficient_energy');
+    expect(r.shortReason).toBe('⚡ Not enough Energy');
+  });
+
+  it('permits travel at exactly the travel cost', () => {
+    // The boundary the whole gate turns on: the cost is affordable, not
+    // merely exceeded.
+    const r = evaluateTravelReadiness({ ...ready, huntEnergy: TRAVEL_ENERGY_COST });
+    expect(r.canTravel).toBe(true);
+  });
+
+  it('reports Care Mode ahead of Energy when both apply', () => {
+    // A resting player is nearly always also at zero. "Leave Care Mode" is the
+    // instruction that moves them forward; "claim your daily" is advice for a
+    // problem they are already solving.
+    const r = evaluateTravelReadiness({
+      activeEncounterId: null,
+      careModeActive: true,
+      huntEnergy: 0,
+    });
+    expect(r.blockedBy).toBe('care_mode');
+  });
+
+  it('reports an open encounter ahead of everything else', () => {
+    // The encounter is the most immediate and the most recoverable: it is on
+    // screen, and one click clears it.
+    const r = evaluateTravelReadiness({
+      activeEncounterId: 7,
+      careModeActive: true,
+      huntEnergy: 0,
+    });
+    expect(r.blockedBy).toBe('active_encounter');
+  });
+
+  it('gives every blocked verdict copy for both a button and a banner', () => {
+    // The screens print these verbatim. A null on a blocked verdict would
+    // paint an unlabelled dead button or a silent refusal.
+    const blocked = [
+      { activeEncounterId: 1, careModeActive: false, huntEnergy: 10 },
+      { activeEncounterId: null, careModeActive: true, huntEnergy: 10 },
+      { activeEncounterId: null, careModeActive: false, huntEnergy: 0 },
+    ];
+    for (const ctx of blocked) {
+      const r = evaluateTravelReadiness(ctx);
+      expect(r.canTravel).toBe(false);
+      expect(r.shortReason).toBeTruthy();
+      expect(r.detail).toBeTruthy();
+    }
   });
 });

@@ -23,6 +23,7 @@ import type { AppContext, Provisioned } from '../../src/discord/types';
 import {
   bootstrapApp,
   createEventHarness,
+  insertOwnedWaifu,
   provisionPlayer,
   type App,
   type EventHarness,
@@ -119,17 +120,27 @@ function embedOf(payload: any): { title?: string; description?: string } {
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
-async function resetPlayer(opts: { level?: number; waifubux?: number } = {}): Promise<void> {
+async function resetPlayer(
+  opts: { level?: number; waifubux?: number; huntEnergy?: number } = {},
+): Promise<void> {
   await t.db.delete(encounters).where(eq(encounters.playerId, prov.playerId));
   await app.travel.revokeRoute(prov.playerId, 'twin-peeks');
   await app.travel.revokePass(prov.playerId, 'caravan_pass');
   await t.db
     .update(players)
-    .set({ level: opts.level ?? 20, currentRegion: 'waifu-valley' })
+    .set({
+      level: opts.level ?? 20,
+      currentRegion: 'waifu-valley',
+      // Care Mode gates the Travel button, so every test starts out of it
+      // rather than inheriting whatever the previous one left behind.
+      careModeStartedAt: null,
+      careModeLastTickAt: null,
+      careModeWaifuId: null,
+    })
     .where(eq(players.id, prov.playerId));
   await t.db
     .update(playerCurrencies)
-    .set({ waifubux: opts.waifubux ?? 5000 })
+    .set({ waifubux: opts.waifubux ?? 5000, huntEnergy: opts.huntEnergy ?? 25 })
     .where(eq(playerCurrencies.playerId, prov.playerId));
 }
 
@@ -441,5 +452,217 @@ describe('region banner', () => {
     const payload = painted(btn);
     expect((payload.files ?? []).length).toBe(0);
     expect(embedOf(payload).title).toContain('Twin Peeks');
+  });
+});
+
+/**
+ * Travel readiness as the player actually sees it.
+ *
+ * The point of these is the *painted button*, not the service verdict — the
+ * service is already covered by `travelEnergy.test.ts`, and the risk at this
+ * layer is the inverse of it: a screen that offers an enabled Travel button
+ * the service would then refuse. Every assertion here is "what did the player
+ * get handed", so a regression shows up as a live button rather than as a
+ * changed internal field.
+ */
+describe('travel readiness on the Locations screens', () => {
+  /** Grant the route so the destination itself is never the reason. */
+  async function unlockTwinPeeks(): Promise<void> {
+    await app.travel.grantRoute(prov.playerId, 'twin-peeks');
+  }
+
+  async function enterCareMode(): Promise<void> {
+    const [anySpecies] = await t.db.select().from(species).limit(1);
+    const waifu = await insertOwnedWaifu(t.db, {
+      playerId: prov.playerId,
+      speciesId: anySpecies!.id,
+    });
+    await app.care.start(prov.playerId, waifu.id);
+  }
+
+  const travelButton = (
+    payload: unknown,
+  ): { customId: string; label: string; disabled: boolean } | undefined =>
+    buttonsOf(payload).find((b) => b.customId === 'wm|v1|loc|travel|twin-peeks');
+
+  describe('when the player can travel', () => {
+    it('offers an enabled Travel button labelled with the destination', async () => {
+      await unlockTwinPeeks();
+      const btn = fakeButton();
+      await handleLocationDetail(ctx, btn as never, prov, 'twin-peeks');
+
+      const travel = travelButton(painted(btn));
+      expect(travel).toBeDefined();
+      expect(travel!.disabled).toBe(false);
+      expect(travel!.label).toBe('Travel to Twin Peeks');
+    });
+
+    it('paints no warning banner on the home screen', async () => {
+      const btn = fakeButton();
+      await handleLocationsHome(ctx, btn as never, prov);
+      expect(embedOf(painted(btn)).description).not.toContain('⚠️');
+    });
+
+    it('shows the player their Energy on the home screen', async () => {
+      await resetPlayer({ huntEnergy: 7 });
+      const btn = fakeButton();
+      await handleLocationsHome(ctx, btn as never, prov);
+      expect(embedOf(painted(btn)).description).toContain('**7** Energy');
+    });
+  });
+
+  describe('when the player is in Care Mode', () => {
+    beforeEach(async () => {
+      await unlockTwinPeeks();
+      await enterCareMode();
+    });
+
+    it('disables the Travel button and labels it with the reason', async () => {
+      const btn = fakeButton();
+      await handleLocationDetail(ctx, btn as never, prov, 'twin-peeks');
+
+      const travel = travelButton(painted(btn));
+      expect(travel).toBeDefined();
+      expect(travel!.disabled).toBe(true);
+      expect(travel!.label).toBe('💤 Resting in Care Mode');
+    });
+
+    it('explains it on the home screen before the player clicks anything', async () => {
+      const btn = fakeButton();
+      await handleLocationsHome(ctx, btn as never, prov);
+      expect(embedOf(painted(btn)).description).toMatch(/resting in Care Mode/i);
+    });
+
+    it('does not exit Care Mode as a side effect of opening the map', async () => {
+      // Painting a screen must never end someone's rest. Both screens are
+      // reads, and this is the assertion that keeps them that way.
+      const home = fakeButton();
+      await handleLocationsHome(ctx, home as never, prov);
+      const detail = fakeButton();
+      await handleLocationDetail(ctx, detail as never, prov, 'twin-peeks');
+
+      expect((await app.care.getState(prov.playerId)).active).toBe(true);
+    });
+
+    it('still offers Buy on a destination the player has not unlocked', async () => {
+      // Care Mode blocks walking the road, not buying it. Requirement 5: the
+      // existing route/pass/level/currency flow is untouched.
+      await app.travel.revokeRoute(prov.playerId, 'twin-peeks');
+      const btn = fakeButton();
+      await handleLocationDetail(ctx, btn as never, prov, 'twin-peeks');
+
+      const ids = buttonsOf(painted(btn)).map((b) => b.customId);
+      expect(ids).toContain('wm|v1|loc|confirm|twin-peeks');
+    });
+  });
+
+  describe('when the player is out of Energy', () => {
+    beforeEach(async () => {
+      await resetPlayer({ huntEnergy: 0 });
+      await unlockTwinPeeks();
+    });
+
+    it('disables the Travel button and labels it with the reason', async () => {
+      const btn = fakeButton();
+      await handleLocationDetail(ctx, btn as never, prov, 'twin-peeks');
+
+      const travel = travelButton(painted(btn));
+      expect(travel).toBeDefined();
+      expect(travel!.disabled).toBe(true);
+      expect(travel!.label).toBe('⚡ Not enough Energy');
+    });
+
+    it('explains it on the home screen with the cost and the balance', async () => {
+      const btn = fakeButton();
+      await handleLocationsHome(ctx, btn as never, prov);
+      expect(embedOf(painted(btn)).description).toMatch(/Hunt Energy/);
+      expect(embedOf(painted(btn)).description).toContain('**0**');
+    });
+
+    it('re-enables the button as soon as the player has exactly enough', async () => {
+      await t.db
+        .update(playerCurrencies)
+        .set({ huntEnergy: 1 })
+        .where(eq(playerCurrencies.playerId, prov.playerId));
+      const btn = fakeButton();
+      await handleLocationDetail(ctx, btn as never, prov, 'twin-peeks');
+
+      expect(travelButton(painted(btn))!.disabled).toBe(false);
+    });
+  });
+
+  describe('when an encounter is open', () => {
+    beforeEach(async () => {
+      await unlockTwinPeeks();
+      const [anySpecies] = await t.db.select().from(species).limit(1);
+      await t.db.insert(encounters).values({
+        playerId: prov.playerId,
+        speciesId: anySpecies!.id,
+        channelId: 'c-loc',
+        state: 'active',
+        expiresAt: new Date(Date.now() + 60_000),
+      });
+    });
+
+    it('still disables Travel, unchanged by the new Energy rules', async () => {
+      // Requirement 7: the pre-existing block keeps working exactly as it did.
+      const btn = fakeButton();
+      await handleLocationDetail(ctx, btn as never, prov, 'twin-peeks');
+      expect(travelButton(painted(btn))!.disabled).toBe(true);
+    });
+
+    it('takes priority over Care Mode and Energy in the message', async () => {
+      await enterCareMode();
+      await t.db
+        .update(playerCurrencies)
+        .set({ huntEnergy: 0 })
+        .where(eq(playerCurrencies.playerId, prov.playerId));
+      const btn = fakeButton();
+      await handleLocationsHome(ctx, btn as never, prov);
+      expect(embedOf(painted(btn)).description).toMatch(/before travelling/);
+    });
+
+    it('does not block travel once the encounter window has closed', async () => {
+      // The screen honours expiry the same way the service does, so a stale
+      // row never greys out a button the service would have let through.
+      await t.db.delete(encounters).where(eq(encounters.playerId, prov.playerId));
+      await t.db.insert(encounters).values({
+        playerId: prov.playerId,
+        speciesId: (await t.db.select().from(species).limit(1))[0]!.id,
+        channelId: 'c-loc',
+        state: 'active',
+        expiresAt: new Date(Date.now() - 60_000),
+      });
+      const btn = fakeButton();
+      await handleLocationDetail(ctx, btn as never, prov, 'twin-peeks');
+      expect(travelButton(painted(btn))!.disabled).toBe(false);
+    });
+  });
+
+  describe('the screen and the service never disagree', () => {
+    it.each([
+      ['care mode', async () => { await enterCareMode(); }],
+      [
+        'no energy',
+        async () => {
+          await t.db
+            .update(playerCurrencies)
+            .set({ huntEnergy: 0 })
+            .where(eq(playerCurrencies.playerId, prov.playerId));
+        },
+      ],
+    ])('a disabled button means the service refuses too: %s', async (_name, block) => {
+      // The whole reason readiness lives in one shared function. If these ever
+      // drift apart, one of them is lying to the player.
+      await unlockTwinPeeks();
+      await block();
+
+      const btn = fakeButton();
+      await handleLocationDetail(ctx, btn as never, prov, 'twin-peeks');
+      expect(travelButton(painted(btn))!.disabled).toBe(true);
+
+      await expect(app.travel.travel(prov.playerId, 'twin-peeks')).rejects.toThrow();
+      expect(await app.travel.getCurrentRegion(prov.playerId)).toBe('waifu-valley');
+    });
   });
 });

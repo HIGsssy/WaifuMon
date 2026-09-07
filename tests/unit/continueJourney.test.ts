@@ -24,6 +24,8 @@ import type {
   EncounterActivation,
   Resolution,
 } from '../../src/modules/worldEncounters/worldEncounterService';
+import { evaluateTravelReadiness } from '../../src/modules/travel/travelService';
+import type { TravelStatus } from '../../src/modules/travel/travelService';
 
 const PLAYER_ID = 7;
 const OTHER_PLAYER_ID = 8;
@@ -158,6 +160,14 @@ function paintedText(painted: unknown[]): string {
     .join('\n');
 }
 
+/**
+ * A painted-screen fixture for a player standing in Twin Peeks, able to travel.
+ *
+ * Typed with `satisfies TravelStatus` rather than left loose: this stub feeds
+ * `buildHomeView`, so a field added to the read model must be added here too,
+ * and the compiler is a far better place to find that out than a `Cannot read
+ * properties of undefined` at runtime.
+ */
 const STATUS = {
   enabled: true,
   currentRegion: 'twin-peeks',
@@ -166,8 +176,15 @@ const STATUS = {
   waifubux: 500,
   essence: 100,
   activeEncounterId: null,
+  huntEnergy: 10,
+  careModeActive: false,
+  readiness: evaluateTravelReadiness({
+    activeEncounterId: null,
+    careModeActive: false,
+    huntEnergy: 10,
+  }),
   destinations: [],
-};
+} satisfies TravelStatus;
 
 /**
  * A travel service where every mutating method blows up. `travel` and
