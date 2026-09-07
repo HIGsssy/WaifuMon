@@ -1,11 +1,11 @@
 {
   "energy": {
-    "baseMax": 25,
+    "baseMax": 15,
     "careMode": {
       "enabled": true,
       "intervalMinutes": 30,
       "energyPerTick": 1,
-      "recoveryCap": 20,
+      "recoveryCap": 10,
       "waifuXpPerTick": 2,
       "affectionPerTick": 1
     }
@@ -34,11 +34,11 @@
     "resultTable": [
       {
         "kind": "encounter",
-        "weight": 70
+        "weight": 74
       },
       {
         "kind": "item_find",
-        "weight": 12
+        "weight": 8
       },
       {
         "kind": "waifubux_find",
@@ -89,13 +89,13 @@
           "slug": "basic_charm",
           "weight": 70,
           "minQty": 1,
-          "maxQty": 3
+          "maxQty": 2
         },
         {
           "slug": "silk_charm",
           "weight": 30,
           "minQty": 1,
-          "maxQty": 2
+          "maxQty": 1
         }
       ]
     },
@@ -122,12 +122,12 @@
       ]
     },
     "waifubuxFind": {
-      "min": 25,
-      "max": 75
+      "min": 5,
+      "max": 15
     },
     "essenceFind": {
-      "min": 3,
-      "max": 10
+      "min": 15,
+      "max": 35
     },
     "flavor": [
       "You found a suspiciously heart-shaped rock.",

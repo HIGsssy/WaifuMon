@@ -9,9 +9,12 @@
       "captureRarities": null,
       "isGuaranteedCapture": false,
       "shopRegions": [
-        "waifu-valley"
+        "waifu-valley",
+        "twin-peeks",
+        "flaccid-foothills",
+        "thirstlands"
       ],
-      "buyPrice": 25,
+      "buyPrice": 75,
       "priceCurrency": "waifubux",
       "dailyStockLimit": null,
       "effectType": null,
@@ -29,9 +32,12 @@
       "captureRarities": null,
       "isGuaranteedCapture": false,
       "shopRegions": [
-        "waifu-valley"
+        "waifu-valley",
+        "twin-peeks",
+        "flaccid-foothills",
+        "thirstlands"
       ],
-      "buyPrice": 75,
+      "buyPrice": 150,
       "priceCurrency": "waifubux",
       "dailyStockLimit": null,
       "effectType": null,
@@ -49,9 +55,12 @@
       "captureRarities": null,
       "isGuaranteedCapture": false,
       "shopRegions": [
-        "waifu-valley"
+        "waifu-valley",
+        "twin-peeks",
+        "flaccid-foothills",
+        "thirstlands"
       ],
-      "buyPrice": 200,
+      "buyPrice": 325,
       "priceCurrency": "waifubux",
       "dailyStockLimit": null,
       "effectType": null,
@@ -69,7 +78,10 @@
       "captureRarities": null,
       "isGuaranteedCapture": false,
       "shopRegions": [
-        "waifu-valley"
+        "waifu-valley",
+        "twin-peeks",
+        "flaccid-foothills",
+        "thirstlands"
       ],
       "buyPrice": 1750,
       "priceCurrency": "essence",
@@ -112,12 +124,12 @@
       "buyPrice": 500,
       "priceCurrency": "waifubux",
       "dailyStockLimit": null,
-      "effectType": "restore_energy_full",
+      "effectType": "restore_energy_amount",
       "effectConfig": {
-        "restoreToMax": true,
+        "amount": 5,
         "exitCareMode": true
       },
-      "description": "Aggressively carbonated. Refills Hunt Energy to full and snaps you out of Care Mode.",
+      "description": "Aggressively carbonated. Refills 5 Hunt Energyand snaps you out of Care Mode.",
       "emoji": "🥤",
       "enabled": true
     },
@@ -266,7 +278,7 @@
       "shopRegions": [
         "twin-peeks"
       ],
-      "buyPrice": 300,
+      "buyPrice": 750,
       "priceCurrency": "waifubux",
       "dailyStockLimit": null,
       "effectType": "restore_energy_amount",
@@ -313,12 +325,12 @@
       "shopRegions": [
         "twin-peeks"
       ],
-      "buyPrice": 150,
+      "buyPrice": 300,
       "priceCurrency": "waifubux",
       "dailyStockLimit": null,
       "effectType": "capture_bonus_charges",
       "effectConfig": {
-        "captureBonus": 0.05,
+        "captureBonus": 0.1,
         "charges": 3,
         "refreshBehavior": "refresh"
       },
@@ -337,7 +349,7 @@
       "shopRegions": [
         "flaccid-foothills"
       ],
-      "buyPrice": 260,
+      "buyPrice": 640,
       "priceCurrency": "waifubux",
       "dailyStockLimit": null,
       "effectType": "restore_energy_amount",
@@ -383,7 +395,7 @@
       "shopRegions": [
         "flaccid-foothills"
       ],
-      "buyPrice": 450,
+      "buyPrice": 950,
       "priceCurrency": "waifubux",
       "dailyStockLimit": null,
       "effectType": "restore_energy_amount",
@@ -406,7 +418,7 @@
       "shopRegions": [
         "thirstlands"
       ],
-      "buyPrice": 450,
+      "buyPrice": 950,
       "priceCurrency": "waifubux",
       "dailyStockLimit": 3,
       "effectType": "restore_energy_amount",
