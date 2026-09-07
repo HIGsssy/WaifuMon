@@ -119,7 +119,9 @@ describe('amount-based restores', () => {
     await setEnergy(0);
     const result = await app.itemUse.use(playerId, slug as string);
     expect(result.kind).toBe('restore_energy_amount');
-    if (result.kind === 'capture_bonus_charges') throw new Error('unreachable');
+    if (result.kind !== 'restore_energy_full' && result.kind !== 'restore_energy_amount') {
+      throw new Error('unreachable');
+    }
     expect(result.energyBefore).toBe(0);
     expect(result.energyAfter).toBe(amount);
     expect(result.restoreAmount).toBe(amount);
@@ -133,7 +135,9 @@ describe('amount-based restores', () => {
     await grant('reach_around', 1);
     await setEnergy(maxEnergy - 2);
     const result = await app.itemUse.use(playerId, 'reach_around');
-    if (result.kind === 'capture_bonus_charges') throw new Error('unreachable');
+    if (result.kind !== 'restore_energy_full' && result.kind !== 'restore_energy_amount') {
+      throw new Error('unreachable');
+    }
     expect(result.energyAfter).toBe(maxEnergy);
     expect(result.restoreAmount).toBe(10);
     expect(await energy()).toBe(maxEnergy);
@@ -168,7 +172,9 @@ describe('amount-based restores', () => {
 
     await setEnergy(0);
     const result = await app.itemUse.use(playerId, 'quickie_coffee');
-    if (result.kind === 'capture_bonus_charges') throw new Error('unreachable');
+    if (result.kind !== 'restore_energy_full' && result.kind !== 'restore_energy_amount') {
+      throw new Error('unreachable');
+    }
     expect(result.careModeExited).toBe(true);
     expect((await app.care.getState(playerId)).active).toBe(false);
   });
@@ -180,7 +186,9 @@ describe('Full Body Massage', () => {
     await setEnergy(1);
     const result = await app.itemUse.use(playerId, 'full_body_massage');
     expect(result.kind).toBe('restore_energy_full');
-    if (result.kind === 'capture_bonus_charges') throw new Error('unreachable');
+    if (result.kind !== 'restore_energy_full' && result.kind !== 'restore_energy_amount') {
+      throw new Error('unreachable');
+    }
     expect(result.energyAfter).toBe(maxEnergy);
     expect(result.restoreAmount).toBeNull();
     expect(await energy()).toBe(maxEnergy);
@@ -201,7 +209,9 @@ describe('Full Body Massage', () => {
     await app.care.start(playerId, await careTarget());
     await setEnergy(0);
     const result = await app.itemUse.use(playerId, 'full_body_massage');
-    if (result.kind === 'capture_bonus_charges') throw new Error('unreachable');
+    if (result.kind !== 'restore_energy_full' && result.kind !== 'restore_energy_amount') {
+      throw new Error('unreachable');
+    }
     expect(result.careModeExited).toBe(true);
   });
 });

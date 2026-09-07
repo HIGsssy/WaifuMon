@@ -46,6 +46,17 @@ export const EffectSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('energy_loss'), amount: lossAmount }),
   z.object({ type: z.literal('player_xp'), amount: xpAmount }),
   z.object({ type: z.literal('buddy_xp'), amount: xpAmount }),
+  /**
+   * Flat Affection to the active Buddy. `gainAmount` rather than `xpAmount`
+   * because zero is not a meaningful award here — an authored `0` is a mistake
+   * worth rejecting at validation rather than a no-op to discover at runtime.
+   *
+   * The `affection_gain` **Buddy Bonus** scales this on the way out. That
+   * happens inside `CollectionService.awardBuddyAffection`; the name collision
+   * between the two registries is deliberate — they are the same concept seen
+   * from the authoring side and the modifier side.
+   */
+  z.object({ type: z.literal('affection_gain'), amount: gainAmount }),
   z.object({ type: z.literal('give_item'), slug, quantity: z.number().int().positive().max(99) }),
   z.object({
     type: z.literal('consume_item'),

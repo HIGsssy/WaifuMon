@@ -23,24 +23,42 @@
  *                           the overflow is spilled rather than the use denied.
  *   capture_bonus_charges — Microdose. Grants/refreshes the non-stacking
  *                           capture-bonus buff (see PlayerEffectsService).
+ *   buddy_affection_gain  — Affection consumables. Flat Affection to the
+ *                           active Buddy, scaled by the `affection_gain` Buddy
+ *                           Bonus. Refuses with `NoActiveBuddyError` when no
+ *                           Buddy is equipped, consuming nothing. The award
+ *                           itself — including the bonus multiply — belongs to
+ *                           `CollectionService.awardBuddyAffection`; this
+ *                           module only decides *whether* to spend the item.
  */
 import { eq } from 'drizzle-orm';
 import type { Db, DbOrTx } from '../../db/client';
-import { items, players, type ItemRow } from '../../db/schema';
+import {
+  items,
+  players,
+  species,
+  type ItemRow,
+  type PlayerWaifuRow,
+  type SpeciesRow,
+} from '../../db/schema';
 import {
   EnergyAlreadyFullError,
   ItemHasNoEffectError,
   ItemNotFoundError,
+  NoActiveBuddyError,
   PlayerNotFoundError,
 } from '../../shared/errors';
 import type {
+  BuddyAffectionGainEffect,
   CaptureBonusEffect,
   ItemEffectType,
   RestoreEnergyAmountEffect,
   RestoreEnergyEffect,
 } from '../content/schemas';
 import { effectConfigSchemaFor } from '../content/schemas';
+import type { AppliedBuddyBonus } from '../buddyBonus/buddyBonusEffects';
 import type { CareService } from '../care/careService';
+import type { CollectionService } from '../collection/collectionService';
 import type { CurrencyService } from '../currency/currencyService';
 import type { InventoryService } from '../inventory/inventoryService';
 import type { PlayerEffectsService } from '../effects/playerEffectsService';
@@ -81,14 +99,39 @@ export interface CaptureBonusUseResult {
   chargesBefore: number;
 }
 
-export type ItemUseResult = RestoreEnergyUseResult | CaptureBonusUseResult;
+export interface BuddyAffectionUseResult {
+  kind: 'buddy_affection_gain';
+  item: ItemRow;
+  quantityRemaining: number;
+  /** The copy that received it, and her species, for naming her in the result. */
+  waifu: PlayerWaifuRow;
+  species: SpeciesRow;
+  /** The item's configured award, before any Buddy Bonus. */
+  baseAffection: number;
+  /** What actually landed. Equals `baseAffection` when no bonus applied. */
+  affectionGained: number;
+  /** Her Affection after the award. */
+  affectionAfter: number;
+  /**
+   * Set **only** when `affection_gain` actually raised the award, matching
+   * `BuddyAwardResult`: a bonus is never announced next to a number it did
+   * not move.
+   */
+  affectionBonus: AppliedBuddyBonus | null;
+}
+
+export type ItemUseResult =
+  | RestoreEnergyUseResult
+  | CaptureBonusUseResult
+  | BuddyAffectionUseResult;
 
 export interface ItemUseService {
   /**
    * Use one copy of `itemSlug` in its own transaction. Throws
    * `ItemNotFoundError` (unknown/disabled), `ItemHasNoEffectError` (not a
-   * consumable), `InsufficientItemsError` (none owned) or
-   * `EnergyAlreadyFullError` — in every case nothing is consumed.
+   * consumable), `InsufficientItemsError` (none owned),
+   * `EnergyAlreadyFullError` or `NoActiveBuddyError` — in every case nothing
+   * is consumed.
    */
   use(playerId: number, itemSlug: string, now?: Date): Promise<ItemUseResult>;
 
@@ -118,6 +161,8 @@ export interface ItemUseServiceDeps {
   effects: PlayerEffectsService;
   progression: ProgressionService;
   care: CareService;
+  /** Owns buddy resolution and every Affection award. */
+  collection: CollectionService;
 }
 
 /**
@@ -135,7 +180,7 @@ function parseEffectConfig<T>(item: ItemRow, effectType: ItemEffectType): T {
 }
 
 export function createItemUseService(deps: ItemUseServiceDeps): ItemUseService {
-  const { db, currency, inventory, effects, progression, care } = deps;
+  const { db, currency, inventory, effects, progression, care, collection } = deps;
 
   async function useInTransaction(
     tx: DbOrTx,
@@ -205,6 +250,40 @@ export function createItemUseService(deps: ItemUseServiceDeps): ItemUseService {
         restoreAmount,
         careModeExited,
         careEnergyGained,
+      };
+    }
+
+    if (effectType === 'buddy_affection_gain') {
+      const config = parseEffectConfig<BuddyAffectionGainEffect>(item, effectType);
+
+      // Grant first, consume second — the ordering is the whole refusal
+      // contract. `awardBuddyAffection` returns null for "no Buddy equipped",
+      // and throwing here means `consumeItem` below is never reached, so the
+      // item survives a use that could not do anything.
+      //
+      // Both statements are in the caller's transaction either way, so even
+      // the reverse order would roll back; doing it in this order means the
+      // guarantee does not depend on that, and reads as what it is.
+      const award = await collection.awardBuddyAffection(tx, playerId, config.amount);
+      if (!award) throw new NoActiveBuddyError(item.name);
+
+      const [row] = await tx
+        .select({ species })
+        .from(species)
+        .where(eq(species.id, award.waifu.speciesId));
+      if (!row) throw new PlayerNotFoundError(playerId);
+
+      const quantityRemaining = await inventory.consumeItem(tx, playerId, item.id, 1);
+      return {
+        kind: 'buddy_affection_gain',
+        item,
+        quantityRemaining,
+        waifu: award.waifu,
+        species: row.species,
+        baseAffection: config.amount,
+        affectionGained: award.affectionGranted,
+        affectionAfter: award.waifu.affection,
+        affectionBonus: award.affectionBonus,
       };
     }
 

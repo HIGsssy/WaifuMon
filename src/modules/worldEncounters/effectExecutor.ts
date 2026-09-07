@@ -24,6 +24,7 @@ import type { InventoryService } from '../inventory/inventoryService';
 import type { ProgressionService } from '../progression/progressionService';
 import type { CollectionService } from '../collection/collectionService';
 import { InsufficientFundsError, InsufficientItemsError } from '../../shared/errors';
+import type { AppliedBuddyBonus } from '../buddyBonus/buddyBonusEffects';
 import type { Effect } from './types';
 
 export interface EffectExecutorDeps {
@@ -37,6 +38,12 @@ export interface EffectContext {
   playerId: number;
   /** Buddy waifu id — required for buddy_xp; effects skip if null. */
   buddyWaifuId: number | null;
+  /**
+   * Species name of the active Buddy, for the audit row's own readability.
+   * A nickname on the copy wins over it — see the `affection_gain` handler.
+   * Null when there is no Buddy, which is also when nothing reads it.
+   */
+  buddySpeciesName: string | null;
   /** Encounter refId used on progression audit rows. */
   encounterId: number;
 }
@@ -47,6 +54,34 @@ export interface EffectContext {
  * history row so the audit trail carries the concrete numbers rather than a
  * template of intent.
  */
+/**
+ * What an `affection_gain` effect actually paid, carried on the applied entry.
+ *
+ * Exists because the award is the one effect whose *reported* number can
+ * differ from its authored one: the `affection_gain` Buddy Bonus scales it.
+ * Every figure here comes straight off the `BuddyAwardResult` that
+ * `awardBuddyAffection` returned, so the presentation layer prints values the
+ * domain computed rather than re-deriving a percentage — which is exactly the
+ * duplication this whole shape exists to prevent.
+ *
+ * It is persisted with the rest of `effects_applied_json`, so the history row
+ * records who was paid and why the number was what it was.
+ */
+export interface AppliedAffectionDetail {
+  /** The copy that received it. */
+  waifuId: number;
+  /** Her nickname, else her species name — resolved once, here. */
+  waifuName: string;
+  /** The authored award, before any bonus. */
+  baseAmount: number;
+  /** What actually landed. Equal to `baseAmount` when no bonus applied. */
+  finalAmount: number;
+  /** Her Affection after the award. */
+  affectionAfter: number;
+  /** Set only when the bonus actually raised the award. */
+  bonus: AppliedBuddyBonus | null;
+}
+
 export interface AppliedEffect {
   /** Original effect input, preserved so a caller can render it. */
   effect: Effect;
@@ -56,6 +91,8 @@ export interface AppliedEffect {
   amount?: number;
   /** Reason a soft-fail effect declined (e.g. insufficient funds on loss). */
   reason?: string;
+  /** Present only on an applied `affection_gain`. */
+  affection?: AppliedAffectionDetail;
 }
 
 /**
@@ -195,6 +232,52 @@ export function createEffectExecutor(deps: EffectExecutorDeps) {
           } else {
             record({ amount: granted });
           }
+          break;
+        }
+        case 'affection_gain': {
+          // Delegated wholesale. `awardBuddyAffection` resolves the Buddy,
+          // applies the `affection_gain` Buddy Bonus and writes the row; this
+          // handler contributes no arithmetic of its own, which is the point —
+          // an encounter award and an item award must be the same award.
+          const result = await collection.awardBuddyAffection(
+            tx,
+            ctx.playerId,
+            effect.amount,
+          );
+
+          // No Buddy: skip, do not fail.
+          //
+          // This is the deliberate difference from the `buddy_affection_gain`
+          // *item*, which refuses so the item is not spent for nothing. An
+          // encounter has already been resolved by the time effects run — the
+          // check was rolled, the outcome was decided, and the other effects
+          // on this choice are legitimately earned. Throwing here would roll
+          // the whole resolution back and turn "you have no Buddy" into "your
+          // encounter failed", which is a worse answer to a smaller problem.
+          //
+          // Recorded as `applied: false` with a reason rather than dropped, so
+          // the history row still shows the effect fired and why it paid
+          // nothing. Same shape `buddy_xp` uses above.
+          if (result == null) {
+            applied.push({ effect, applied: false, amount: 0, reason: 'no_buddy' });
+            break;
+          }
+
+          record({
+            amount: result.affectionGranted,
+            affection: {
+              waifuId: result.waifu.id,
+              // The nickname is on the row the award returned; the species
+              // name is context the caller already resolved. Neither is looked
+              // up again here.
+              waifuName:
+                result.waifu.nickname?.trim() || ctx.buddySpeciesName || 'Your Buddy',
+              baseAmount: effect.amount,
+              finalAmount: result.affectionGranted,
+              affectionAfter: result.waifu.affection,
+              bonus: result.affectionBonus,
+            },
+          });
           break;
         }
         case 'give_item': {

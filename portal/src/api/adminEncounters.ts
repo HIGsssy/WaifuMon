@@ -100,6 +100,8 @@ export interface SimulateAggregate {
   essenceGained: number;
   essenceLost: number;
   netEssence: number;
+  /** Total *base* Affection awarded across the run, before any Buddy Bonus. */
+  affectionGranted: number;
   itemFrequency: Record<string, number>;
   followUpFrequency: Record<string, number>;
   seed: number;

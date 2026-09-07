@@ -169,6 +169,16 @@ const simulateAggregateSchema = z.object({
   essenceGained: z.number(),
   essenceLost: z.number(),
   netEssence: z.number(),
+  /**
+   * Total **base** Affection the run would award the active Buddy.
+   *
+   * Base, not final, and deliberately so: the `affection_gain` Buddy Bonus
+   * that scales a real award depends on who the player has equipped, which a
+   * simulation has no player for. Reporting the authored figure keeps this an
+   * observation of the encounter rather than a guess about an account — and
+   * is why the simulator needs no player state to produce it.
+   */
+  affectionGranted: z.number(),
   itemFrequency: z.record(z.number()),
   followUpFrequency: z.record(z.number()),
   /** The seed this run used, so a reported result can be reproduced exactly. */
@@ -857,6 +867,7 @@ export function simulateChoice(
   let waifubuxLost = 0;
   let essenceGained = 0;
   let essenceLost = 0;
+  let affectionGranted = 0;
   const itemFrequency: Record<string, number> = {};
   const followUpFrequency: Record<string, number> = {};
 
@@ -882,6 +893,11 @@ export function simulateChoice(
           break;
         case 'essence_loss':
           essenceLost += effect.amount;
+          break;
+        case 'affection_gain':
+          // Pure arithmetic over the authored list — no Buddy is resolved and
+          // no row is touched, so a simulation can never move real Affection.
+          affectionGranted += effect.amount;
           break;
         case 'give_item':
         case 'consume_item':
@@ -926,6 +942,7 @@ export function simulateChoice(
     essenceGained,
     essenceLost,
     netEssence: essenceGained - essenceLost,
+    affectionGranted,
     itemFrequency,
     followUpFrequency,
     seed,

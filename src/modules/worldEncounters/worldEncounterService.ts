@@ -676,7 +676,12 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
       const effectsToApply = check.success ? choice.successEffects : choice.failureEffects;
       const application = await executor.apply(
         tx,
-        { playerId: opts.playerId, buddyWaifuId: buddy?.waifuId ?? null, encounterId: encounter.id },
+        {
+          playerId: opts.playerId,
+          buddyWaifuId: buddy?.waifuId ?? null,
+          buddySpeciesName: buddy?.speciesName ?? null,
+          encounterId: encounter.id,
+        },
         effectsToApply,
       );
 

@@ -26,6 +26,7 @@ import {
   ButtonStyle,
   EmbedBuilder,
 } from 'discord.js';
+import { buddyBonusShortLine } from '../modules/buddyBonus/buddyBonusEffects';
 import { resolveAssetPath } from '../modules/content/loader';
 import { formatChancePercent, formatModifierPercent, formatRoll } from './rollFormat';
 import { buildCustomId } from './types';
@@ -33,6 +34,7 @@ import type { AppContext } from './types';
 import type { SessionPayload } from './ephemeralSession';
 import type { ChoiceView, EncounterActivation, Resolution } from '../modules/worldEncounters/worldEncounterService';
 import type { CheckResolution, CheckSpec } from '../modules/worldEncounters/types';
+import type { AppliedAffectionDetail } from '../modules/worldEncounters/effectExecutor';
 
 /** Discord button rows cap at 5 buttons each. */
 const BUTTONS_PER_ROW = 5;
@@ -362,6 +364,7 @@ function formatAppliedEffect(entry: {
   applied: boolean;
   amount?: number;
   reason?: string;
+  affection?: AppliedAffectionDetail | undefined;
 }): string | null {
   const e = entry.effect;
   const amount = entry.amount;
@@ -383,6 +386,19 @@ function formatAppliedEffect(entry: {
       return `+${amount ?? e.amount} Player XP`;
     case 'buddy_xp':
       return amount && amount > 0 ? `+${amount} Buddy XP` : null;
+    case 'affection_gain': {
+      // Null when there was no Buddy to pay. The encounter still succeeded and
+      // its other effects still printed — this line simply is not one of them,
+      // which is the whole no-Buddy behaviour rendered.
+      const detail = entry.affection;
+      if (!detail || !entry.applied) return null;
+      const headline = `💕 ${detail.waifuName} gained +${detail.finalAmount} Affection`;
+      // The breakdown appears only when the bonus actually moved the number —
+      // `bonus` is non-null on exactly that condition, decided by the domain.
+      // Nothing here multiplies anything.
+      if (!detail.bonus) return headline;
+      return `${headline}\nBase: ${detail.baseAmount} · ${buddyBonusShortLine(detail.bonus)}`;
+    }
     case 'give_item':
       return `Received ${e.quantity} × ${e.slug}`;
     case 'consume_item':

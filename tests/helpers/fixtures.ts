@@ -243,6 +243,7 @@ export async function bootstrapApp(
     effects,
     progression,
     care,
+    collection,
   });
   // Wired exactly as production does — the daily claim is the authoritative
   // daily reset, so the gift roll rides inside its transaction.

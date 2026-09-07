@@ -54,6 +54,7 @@ import type { CareState, CareTickSummary } from '../../modules/care/careService'
 import { buddyBonusValueLine } from '../buddyBonusFeedback';
 import { ownerFromInteraction } from '../userDisplay';
 import { withBackRow } from '../ui';
+import { buddyBonusShortLine } from '../../modules/buddyBonus/buddyBonusEffects';
 import { resolveAssetPath } from '../../modules/content/loader';
 import fs from 'node:fs';
 import type { QuestRewards, UiSplashConfig } from '../../modules/content/schemas';
@@ -642,6 +643,20 @@ export async function handleInventory(
 
 /** Human-readable outcome line for a successful item use. */
 export function formatItemUseResult(result: ItemUseResult): string {
+  if (result.kind === 'buddy_affection_gain') {
+    const name = result.waifu.nickname?.trim() || result.species.name;
+    const headline =
+      `✅ **${result.item.name}** given to **${name}** — 💕 +${result.affectionGained} Affection ` +
+      `(now **${result.affectionAfter}**).`;
+    // The breakdown appears only when a bonus actually moved the number, so a
+    // player never reads "Base: 50" next to a final of 50 and wonders what it
+    // was for. `affectionBonus` is non-null on exactly that condition.
+    if (!result.affectionBonus) return headline;
+    return (
+      `${headline}\n` +
+      `Base: ${result.baseAffection} · ${buddyBonusShortLine(result.affectionBonus)}`
+    );
+  }
   if (result.kind === 'capture_bonus_charges') {
     const verb = result.refreshed ? 'refreshed' : 'active';
     return (

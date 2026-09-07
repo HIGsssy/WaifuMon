@@ -58,11 +58,16 @@ export type ShopItemCategory = (typeof SHOP_ITEM_CATEGORIES)[number];
  *   restore_energy_amount — Quickie Coffee / Reach Around: add a fixed amount,
  *                           clamped to the computed max.
  *   capture_bonus_charges — Microdose: flat capture bonus for N attempts.
+ *   buddy_affection_gain  — Affection consumables: a flat Affection award to
+ *                           whoever is equipped as the Buddy, scaled by the
+ *                           `affection_gain` Buddy Bonus like every other
+ *                           Affection award in the game.
  */
 export const ITEM_EFFECT_TYPES = [
   'restore_energy_full',
   'restore_energy_amount',
   'capture_bonus_charges',
+  'buddy_affection_gain',
 ] as const;
 export type ItemEffectType = (typeof ITEM_EFFECT_TYPES)[number];
 
@@ -341,7 +346,7 @@ export const items = pgTable(
     ),
     check(
       'items_effect_type_check',
-      sql`${t.effectType} is null or ${t.effectType} in ('restore_energy_full','restore_energy_amount','capture_bonus_charges')`,
+      sql`${t.effectType} is null or ${t.effectType} in ('restore_energy_full','restore_energy_amount','capture_bonus_charges','buddy_affection_gain')`,
     ),
     check('items_price_currency_check', sql`${t.priceCurrency} in ('waifubux','essence')`),
   ],
@@ -1425,6 +1430,7 @@ export const WORLD_ENCOUNTER_EFFECT_TYPES = [
   'energy_loss',
   'player_xp',
   'buddy_xp',
+  'affection_gain',
   'give_item',
   'consume_item',
   'trigger_encounter',

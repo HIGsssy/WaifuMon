@@ -119,24 +119,49 @@ export const CaptureBonusEffectSchema = z
   })
   .strict();
 
+/**
+ * Affection consumables. A flat Affection award to the player's **active
+ * Buddy** — not to a chosen copy: the item is about the relationship you are
+ * currently in, and a target picker would make it a different item.
+ *
+ * `amount` is the *base* award. The `affection_gain` Buddy Bonus scales it on
+ * the way out, exactly as it scales the per-hunt award, so an item and a hunt
+ * cannot disagree about what "+20% Affection" means. That multiply lives in
+ * `CollectionService.awardBuddyAffection`; nothing here or in the item handler
+ * repeats it.
+ *
+ * `.positive()` is load-bearing rather than decorative: a zero or negative
+ * amount would let an item be consumed for nothing, or drain Affection through
+ * a code path whose entire vocabulary is "gain".
+ */
+export const BuddyAffectionGainEffectSchema = z
+  .object({
+    amount: z.number().int().positive(),
+  })
+  .strict();
+
 export type ItemEffectType = (typeof ITEM_EFFECT_TYPES)[number];
 export type RestoreEnergyEffect = z.infer<typeof RestoreEnergyEffectSchema>;
 export type RestoreEnergyAmountEffect = z.infer<typeof RestoreEnergyAmountEffectSchema>;
 export type CaptureBonusEffect = z.infer<typeof CaptureBonusEffectSchema>;
+export type BuddyAffectionGainEffect = z.infer<typeof BuddyAffectionGainEffectSchema>;
 export type ItemEffectConfig =
   | RestoreEnergyEffect
   | RestoreEnergyAmountEffect
-  | CaptureBonusEffect;
+  | CaptureBonusEffect
+  | BuddyAffectionGainEffect;
 
 export type ItemEffectConfigSchema =
   | typeof RestoreEnergyEffectSchema
   | typeof RestoreEnergyAmountEffectSchema
-  | typeof CaptureBonusEffectSchema;
+  | typeof CaptureBonusEffectSchema
+  | typeof BuddyAffectionGainEffectSchema;
 
 /** The config schema that goes with an `effectType`. */
 export function effectConfigSchemaFor(effectType: ItemEffectType): ItemEffectConfigSchema {
   if (effectType === 'restore_energy_full') return RestoreEnergyEffectSchema;
   if (effectType === 'restore_energy_amount') return RestoreEnergyAmountEffectSchema;
+  if (effectType === 'buddy_affection_gain') return BuddyAffectionGainEffectSchema;
   return CaptureBonusEffectSchema;
 }
 

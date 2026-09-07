@@ -47,6 +47,23 @@ export function formatCaptureMultiplier(modifier: number): string {
   return `${rounded}×`;
 }
 
+/**
+ * `50` → `Gives your active Buddy +50 Affection`.
+ *
+ * The single wording for this effect, shared by the shop, the inventory, the
+ * Platform API and anything else that describes an Affection consumable. It
+ * says "active Buddy" rather than naming anyone: the item targets whoever is
+ * equipped **at the moment of use**, and a description that named the current
+ * Buddy would be a promise the item does not make.
+ *
+ * The number is the *base* award. Whether a Buddy Bonus will raise it depends
+ * on who is equipped when it is used, so the description cannot know — the
+ * result line reports the final figure instead.
+ */
+export function formatBuddyAffectionGain(amount: number): string {
+  return `Gives your active Buddy +${amount} Affection`;
+}
+
 /** ["SSR","UR"] → "SSR • UR". */
 function formatRarities(rarities: readonly string[]): string {
   return rarities.join(' • ');
@@ -74,6 +91,9 @@ export function effectSummary(
     const bonus = num(effectConfig, 'captureBonus') ?? 0;
     const charges = num(effectConfig, 'charges') ?? 0;
     return `${formatCaptureBonus(bonus)} capture for ${charges} attempts`;
+  }
+  if (effectType === 'buddy_affection_gain') {
+    return `+${num(effectConfig, 'amount') ?? 0} Buddy Affection`;
   }
   return '';
 }
@@ -135,6 +155,13 @@ export function formatItemEffects(item: ItemEffectSource): ItemEffectLine[] {
           value: `Next ${charges} capture attempt${charges === 1 ? '' : 's'}`,
         });
       }
+      break;
+    }
+    case 'buddy_affection_gain': {
+      lines.push({
+        label: 'Effect',
+        value: formatBuddyAffectionGain(num(cfg, 'amount') ?? 0),
+      });
       break;
     }
     default:

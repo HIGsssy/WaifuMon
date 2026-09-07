@@ -334,6 +334,13 @@ export function AdminEncounterPreviewPage() {
                 <dd className="text-right">{simResult.aggregate.essenceLost}</dd>
                 <dt className="text-ink-muted">Essence net</dt>
                 <dd className="text-right">{simResult.aggregate.netEssence}</dd>
+                {/*
+                  Base, because a simulation has no equipped Buddy to read an
+                  `affection_gain` bonus from. Labelled so an author is not
+                  left guessing which of the two numbers this is.
+                */}
+                <dt className="text-ink-muted">Affection (base)</dt>
+                <dd className="text-right">{simResult.aggregate.affectionGranted}</dd>
               </dl>
             </Card>
             <Card className="p-3 md:col-span-2">

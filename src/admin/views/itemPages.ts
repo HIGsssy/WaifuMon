@@ -8,6 +8,7 @@ import { REGIONS } from '../../modules/locations/regions';
 import {
   MAX_CAPTURE_ITEM_BONUS,
   MAX_ITEM_CAPTURE_BONUS,
+  type BuddyAffectionGainEffect,
   type CaptureBonusEffect,
   type ItemContent,
   type RestoreEnergyAmountEffect,
@@ -97,6 +98,9 @@ function effectFields(i: ItemContent): string {
   const capture = (i.effectType === 'capture_bonus_charges'
     ? i.effectConfig
     : null) as CaptureBonusEffect | null;
+  const affection = (i.effectType === 'buddy_affection_gain'
+    ? i.effectConfig
+    : null) as BuddyAffectionGainEffect | null;
 
   return `<h2>Active effect</h2>
 <p class="muted">Set an effect type to make the item usable from the player's inventory screen. Config is validated against the effect type — capture-only fields are rejected on a <span class="mono">restore_energy_full</span> item and vice versa.</p>
@@ -135,6 +139,14 @@ function effectFields(i: ItemContent): string {
       ['refresh', 'ignore'],
       { hint: 'refresh = reset charges (never stacks)' },
     )}</div>
+  </div>
+</div>
+<div data-effect-block="buddy_affection_gain">
+  <div class="row">
+    <div>${numberField('effectConfig.amount', 'Affection granted', affection?.amount ?? 50, {
+      hint: 'positive integer — base award to the active Buddy, before any affection_gain Buddy Bonus',
+      step: '1',
+    })}</div>
   </div>
 </div>
 <script>(function(){

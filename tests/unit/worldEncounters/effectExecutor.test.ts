@@ -130,7 +130,12 @@ function makeExecutor(overrides: Partial<{
     collection: collection as never,
   });
 
-  const ctx = { playerId: 1, buddyWaifuId: buddyExists ? 42 : null, encounterId: 99 };
+  const ctx = {
+    playerId: 1,
+    buddyWaifuId: buddyExists ? 42 : null,
+    buddySpeciesName: buddyExists ? 'Alley Catgirl' : null,
+    encounterId: 99,
+  };
   return { executor, ctx, tx: tx as never, state, mocks: { currency, inventory, progression, collection } };
 }
 
@@ -166,7 +171,7 @@ describe('effect executor — grants', () => {
 
   it('buddy_xp is a no-op when there is no buddy', async () => {
     const t = makeExecutor({ buddyExists: false });
-    const t2 = { ...t, ctx: { ...t.ctx, buddyWaifuId: null } };
+    const t2 = { ...t, ctx: { ...t.ctx, buddyWaifuId: null, buddySpeciesName: null } };
     const result = await t2.executor.apply(t2.tx, t2.ctx, [{ type: 'buddy_xp', amount: 30 } as Effect]);
     expect(t2.mocks.collection.awardWaifuXp).not.toHaveBeenCalled();
     expect(result.applied[0]!.applied).toBe(false);

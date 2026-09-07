@@ -185,6 +185,7 @@ async function main(): Promise<void> {
     effects,
     progression,
     care,
+    collection,
   });
   // Affection gifts. Built before the context because DailyService takes it —
   // the daily claim is the authoritative daily reset the roll rides inside.

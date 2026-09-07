@@ -527,6 +527,30 @@ export class BossAlreadyCommittedError extends AppError {
   }
 }
 
+/**
+ * An Affection consumable used with no Buddy equipped.
+ *
+ * A refusal rather than a no-op, and deliberately raised *before* the item is
+ * consumed: the whole item is "give this to your Buddy", so with nobody
+ * equipped there is no sensible partial outcome — spending it would destroy
+ * the item for nothing.
+ *
+ * Distinct from {@link BossNoActiveBuddyError}, which refuses a boss
+ * commitment: same missing pointer, different instruction, and a caller that
+ * conflated them would tell an item user to go fight something.
+ */
+export class NoActiveBuddyError extends AppError {
+  constructor(itemName?: string) {
+    super(
+      'NO_ACTIVE_BUDDY',
+      'Player has no active buddy to receive affection',
+      `${itemName ? `**${itemName}** is a gift for your Buddy` : 'That is a gift for your Buddy'}, ` +
+        'but you have no one equipped~ Pick a Buddy with `/wm buddy <name>` and try again — ' +
+        'nothing was used.',
+    );
+  }
+}
+
 /** No active buddy to commit. The message explains how to get one. */
 export class BossNoActiveBuddyError extends AppError {
   constructor() {

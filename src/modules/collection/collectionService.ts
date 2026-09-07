@@ -328,6 +328,27 @@ export interface CollectionService {
    */
   awardBuddyOnHunt(tx: DbOrTx, playerId: number): Promise<BuddyAwardResult | null>;
   /**
+   * Grant a flat Affection award to the active buddy, inside the caller's
+   * transaction. Returns `null` when there is no active buddy — the caller
+   * decides whether that is a refusal (an item use) or a silent skip.
+   *
+   * The Affection-granting sibling of {@link awardBuddyOnHunt}, and the reason
+   * it exists rather than each caller writing its own update: this is where
+   * the `affection_gain` Buddy Bonus is applied. A consumable that wrote
+   * `player_waifus.affection` itself would be the one Affection award in the
+   * game the bonus silently did not reach, and nobody would notice until a
+   * player did the arithmetic.
+   *
+   * `baseAmount` must be a positive integer — a non-positive award is a
+   * programming error (the content schema already rejects it), not a no-op,
+   * so it throws rather than quietly granting nothing.
+   */
+  awardBuddyAffection(
+    tx: DbOrTx,
+    playerId: number,
+    baseAmount: number,
+  ): Promise<BuddyAwardResult | null>;
+  /**
    * Grant XP to **one named owned copy**, inside the caller's transaction.
    *
    * The buddy-agnostic sibling of {@link awardBuddyOnHunt}, added for boss
@@ -882,6 +903,36 @@ export function createCollectionService(deps: CollectionServiceDeps): Collection
     return row.total > 0;
   }
 
+  /**
+   * The active buddy, resolved inside the caller's transaction, with the
+   * dangling-pointer self-heal.
+   *
+   * A local function rather than only a method, because two other methods in
+   * this file need it and an object literal cannot call its own siblings
+   * without a name for itself. One implementation, so the self-heal is not
+   * something a caller can forget.
+   */
+  async function resolveActiveBuddy(tx: DbOrTx, playerId: number): Promise<OwnedEntry | null> {
+    const [player] = await tx
+      .select({ buddyWaifuId: players.buddyWaifuId })
+      .from(players)
+      .where(eq(players.id, playerId));
+    const buddyId = player?.buddyWaifuId;
+    if (!buddyId) return null;
+    const [row] = await tx
+      .select({ waifu: playerWaifus, species })
+      .from(playerWaifus)
+      .innerJoin(species, eq(playerWaifus.speciesId, species.id))
+      .where(and(eq(playerWaifus.id, buddyId), eq(playerWaifus.playerId, playerId)));
+    if (!row || row.waifu.releasedAt != null) {
+      // Same self-heal as awardBuddyOnHunt — drop the dangling pointer so the
+      // player isn't stuck with an invisible buddy.
+      await tx.update(players).set({ buddyWaifuId: null }).where(eq(players.id, playerId));
+      return null;
+    }
+    return row;
+  }
+
   return {
     listOwned,
     getDexStats,
@@ -993,26 +1044,7 @@ export function createCollectionService(deps: CollectionServiceDeps): Collection
       return row;
     },
 
-    async resolveActiveBuddy(tx, playerId) {
-      const [player] = await tx
-        .select({ buddyWaifuId: players.buddyWaifuId })
-        .from(players)
-        .where(eq(players.id, playerId));
-      const buddyId = player?.buddyWaifuId;
-      if (!buddyId) return null;
-      const [row] = await tx
-        .select({ waifu: playerWaifus, species })
-        .from(playerWaifus)
-        .innerJoin(species, eq(playerWaifus.speciesId, species.id))
-        .where(and(eq(playerWaifus.id, buddyId), eq(playerWaifus.playerId, playerId)));
-      if (!row || row.waifu.releasedAt != null) {
-        // Same self-heal as awardBuddyOnHunt — drop the dangling pointer so the
-        // player isn't stuck with an invisible buddy.
-        await tx.update(players).set({ buddyWaifuId: null }).where(eq(players.id, playerId));
-        return null;
-      }
-      return row;
-    },
+    resolveActiveBuddy,
 
     // ─────────────────── individual waifu progression ──────────────────
     waifuXpToNext,
@@ -1116,6 +1148,68 @@ export function createCollectionService(deps: CollectionServiceDeps): Collection
         toLevel: newLevel,
         newAppearances,
         xpBonus,
+        affectionBonus,
+      };
+    },
+
+    async awardBuddyAffection(tx, playerId, baseAmount) {
+      if (!Number.isInteger(baseAmount) || baseAmount <= 0) {
+        throw new RangeError(
+          `awardBuddyAffection: baseAmount must be a positive integer, got ${baseAmount}`,
+        );
+      }
+
+      // Resolve through the shared helper rather than reading
+      // `players.buddy_waifu_id` directly: it self-heals a pointer aimed at a
+      // soft-released copy, so an item can never pay a buddy who no longer
+      // exists — and the caller's "no buddy, refuse the use" branch is reached
+      // in that case instead of a silent nothing.
+      const buddy = await resolveActiveBuddy(tx, playerId);
+      if (!buddy) return null;
+
+      // The same two lines `awardBuddyOnHunt` uses, against the same effect
+      // id. `affection_gain` is a general Affection-gain modifier — it carries
+      // no target and names no source — so it applies here by definition, and
+      // the item handler never sees a percentage.
+      const active = await buddyBonus?.getActiveBuddyBonus(tx, playerId);
+      const affDelta = applyPercentModifierInt(
+        baseAmount,
+        buddyBonusPercent(active?.bonus, 'affection_gain'),
+      );
+      const affectionBonus =
+        active && affDelta > baseAmount
+          ? appliedBuddyBonus(active.bonus, { base: baseAmount, final: affDelta })
+          : null;
+
+      // Lock before the read-modify-write. Two concurrent uses of the same
+      // consumable serialize here, so both awards land rather than one
+      // overwriting the other's total.
+      const [locked] = await tx
+        .select()
+        .from(playerWaifus)
+        .where(and(eq(playerWaifus.id, buddy.waifu.id), eq(playerWaifus.playerId, playerId)))
+        .for('update');
+      // Released between `resolveActiveBuddy` and the lock. Vanishingly
+      // unlikely, and handled as "no buddy" rather than as an error so the
+      // caller's refusal path stays the single way this can fail.
+      if (!locked || locked.releasedAt != null) return null;
+
+      const [updated] = await tx
+        .update(playerWaifus)
+        .set({ affection: locked.affection + affDelta })
+        .where(eq(playerWaifus.id, locked.id))
+        .returning();
+
+      return {
+        waifu: updated!,
+        xpGranted: 0,
+        affectionGranted: affDelta,
+        // Affection does not level a copy, so the level is unchanged and no
+        // appearance sync is owed — `syncAppearances` keys off a level rise.
+        fromLevel: locked.level,
+        toLevel: locked.level,
+        newAppearances: [],
+        xpBonus: null,
         affectionBonus,
       };
     },

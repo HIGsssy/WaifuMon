@@ -248,6 +248,12 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   INSUFFICIENT_ENERGY: 422,
   INVENTORY_CAPACITY: 422,
   ENERGY_ALREADY_FULL: 422,
+  /**
+   * An Affection consumable used with no Buddy equipped. 422: the request is
+   * well-formed and the item is real — the account is simply not in a state
+   * where the effect means anything.
+   */
+  NO_ACTIVE_BUDDY: 422,
   ITEM_NOT_PURCHASABLE: 422,
   ITEM_NOT_USABLE: 422,
   ITEM_HAS_NO_EFFECT: 422,

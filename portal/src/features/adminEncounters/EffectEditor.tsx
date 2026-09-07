@@ -18,6 +18,7 @@ const EFFECT_TYPES = [
   'energy_loss',
   'player_xp',
   'buddy_xp',
+  'affection_gain',
   'give_item',
   'consume_item',
   'trigger_encounter',
@@ -69,7 +70,8 @@ export function EffectEditor({ effect, reference, onChange, onRemove }: Props) {
           type === 'energy_gain' ||
           type === 'energy_loss' ||
           type === 'player_xp' ||
-          type === 'buddy_xp') && (
+          type === 'buddy_xp' ||
+          type === 'affection_gain') && (
           <label className="text-xs text-ink-muted">
             Amount
             <Input
