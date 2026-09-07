@@ -27,6 +27,19 @@ declare module 'fastify' {
     /** Set by the player-scope hook on routes carrying a `:playerId` param. */
     player?: PlayerRow;
   }
+  interface FastifyContextConfig {
+    /**
+     * This route may be pointed at *another* player, provided that player is
+     * in the requesting Portal session's currently selected guild.
+     *
+     * Opt-in per route and default-absent, which is what keeps the rule
+     * fail-closed: every existing route stays self-only without being touched,
+     * and a new cross-player route has to say so in its own definition where a
+     * reviewer will see it. Set by `GET /players/:playerId/public` and by
+     * nothing else.
+     */
+    publicGuildProfile?: boolean;
+  }
 }
 
 export function registerPlayerScope(app: FastifyInstance, ctx: ApiContext): void {
@@ -45,7 +58,24 @@ export function registerPlayerScope(app: FastifyInstance, ctx: ApiContext): void
     if (!player) throw new ApiPlayerNotFoundError(playerId);
 
     if (req.apiAuth === 'portal' && req.portalSession?.playerId !== player.id) {
-      throw new AppError('PORTAL_FORBIDDEN', 'Portal session tried to access another player', 'Not found.');
+      // The one widening: a public guild profile may name somebody else, but
+      // only inside the guild the session has selected. Everything else — a
+      // player from another guild, a session with no selection at all, any
+      // route that has not opted in — is refused exactly as before.
+      const isPublicRoute = req.routeOptions.config?.publicGuildProfile === true;
+      const inScope =
+        isPublicRoute &&
+        req.portalSession?.selectedGuildDbId != null &&
+        req.portalSession.selectedGuildDbId === player.guildId;
+      if (!inScope) {
+        // A public route refusing an out-of-guild player answers 404 —
+        // deliberately the same response an id that does not exist gets, so
+        // walking ids cannot map out who plays where. Every other route keeps
+        // the 403, where the caller already knows the player is theirs to ask
+        // about and the refusal is about the resource, not the existence.
+        if (isPublicRoute) throw new ApiPlayerNotFoundError(playerId);
+        throw new AppError('PORTAL_FORBIDDEN', 'Portal session tried to access another player', 'Not found.');
+      }
     }
     req.player = player;
   });

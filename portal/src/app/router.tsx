@@ -15,7 +15,7 @@
  */
 import { lazy, type ReactElement } from 'react';
 import { createBrowserRouter, Navigate, type RouteObject } from 'react-router';
-import { CalendarDays, Trophy, Users } from 'lucide-react';
+import { CalendarDays, Trophy } from 'lucide-react';
 
 import { AppShell } from './AppShell';
 import { RequireSession } from '@/auth/RequireSession';
@@ -60,6 +60,15 @@ const SpeciesDetailPage = lazy(() =>
 );
 const ProfilePage = lazy(() =>
   import('@/features/profile/ProfilePage').then((m) => ({ default: m.ProfilePage })),
+);
+const PlayersPage = lazy(() =>
+  import('@/features/players/PlayersPage').then((m) => ({ default: m.PlayersPage })),
+);
+// The public profile of another trainer in the selected guild. Distinct from
+// `/profile`, which is the self view and reads endpoints the API scopes to the
+// session's own player — see the page's own header.
+const PublicProfilePage = lazy(() =>
+  import('@/features/players/PublicProfilePage').then((m) => ({ default: m.PublicProfilePage })),
 );
 const GuidePage = lazy(() =>
   import('@/features/guide/GuidePage').then((m) => ({ default: m.GuidePage })),
@@ -140,6 +149,11 @@ export const routes: RouteObject[] = [
           { path: 'encyclopedia', element: <EncyclopediaPage /> },
           { path: 'encyclopedia/:slug', element: <SpeciesDetailPage /> },
           { path: 'profile', element: <ProfilePage /> },
+          // `:playerId` is a route param, which §7's rules bar for the *acting*
+          // player — and this is the one route that is deliberately not about
+          // the acting player. The API decides whether the session may see it.
+          { path: 'players', element: <PlayersPage /> },
+          { path: 'players/:playerId', element: <PublicProfilePage /> },
           { path: 'guide', element: <GuidePage /> },
           { path: 'settings', element: <SettingsPage /> },
 
@@ -162,15 +176,10 @@ export const routes: RouteObject[] = [
               'Event content exists in the data model but has no player-facing surface yet.',
             ),
           },
-          {
-            path: 'friends',
-            element: comingSoon(
-              'Friends',
-              'Other trainers, their collections, and trading.',
-              Users,
-              'Social features need cross-player queries the Platform API deliberately does not expose today.',
-            ),
-          },
+          // `/friends` was the reserved placeholder for this. It now redirects
+          // to the real destination so an old bookmark or link still lands
+          // somewhere useful rather than on the not-found page.
+          { path: 'friends', element: <Navigate to="/players" replace /> },
 
           // Admin — Encounter Manager. Nested `<RequirePortalPermission>` is a
           // UX affordance; the API independently re-checks every request.

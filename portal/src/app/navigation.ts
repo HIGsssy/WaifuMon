@@ -1,10 +1,16 @@
 /**
  * Primary navigation (plan §7).
  *
- * All thirteen entries are declared here, including the four that are not built
+ * All thirteen entries are declared here, including the ones that are not built
  * yet. The "Coming Soon" entries render as inert rows on purpose: they reserve
  * the visual space now so the sidebar does not have to be redesigned when
- * Achievements, Events and Friends land (§25.12).
+ * Achievements and Events land (§25.12).
+ *
+ * **Players, not Friends.** The reserved "Friends" slot has become a real
+ * "Players" destination. The rename is the feature: there is no friendship in
+ * Waifumon and none is planned for this phase — no requests, no accepting, no
+ * mutual state. What exists is the guild you are already in, so the entry says
+ * what it lists.
  *
  * The order is the plan's order, and the divider position is part of it.
  */
@@ -46,6 +52,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { to: '/encyclopedia', label: 'Encyclopedia', icon: BookOpen },
   { to: '/guide', label: 'Guide', icon: Compass },
   { to: '/profile', label: 'Profile', icon: User },
+  { to: '/players', label: 'Players', icon: Users },
   {
     to: '/admin/encounters',
     label: 'Admin — Encounters',
@@ -69,6 +76,5 @@ export const NAV_ITEMS: readonly NavItem[] = [
     dividerBefore: true,
   },
   { to: '/events', label: 'Events', icon: CalendarDays, comingSoon: true },
-  { to: '/friends', label: 'Friends', icon: Users, comingSoon: true },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];

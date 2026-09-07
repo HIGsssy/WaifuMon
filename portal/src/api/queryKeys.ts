@@ -60,6 +60,34 @@ export const queryKeys = {
   ownedSlugs: (playerId: number, ownedCount?: number | undefined) =>
     ['player', playerId, 'collection', 'ownedSlugs', ownedCount ?? 'unknown'] as const,
 
+  /**
+   * The guild player directory — **keyed by guild, not by player**.
+   *
+   * This is the first cached resource whose contents depend on the session's
+   * *selected guild* rather than on the acting player, and getting the key
+   * wrong here is a data-leak shape, not a staleness annoyance: with a
+   * player-scoped or unscoped key, switching from guild A to guild B would
+   * render A's roster — real names, real avatars — under B's heading until the
+   * refetch landed.
+   *
+   * So `guildDbId` is the first discriminating segment, and the pages under it
+   * carry the query that produced them. Guild A's entry and guild B's entry are
+   * different cache entries that cannot substitute for one another, and a
+   * component that has not yet resolved a guild asks for no key at all (the
+   * hook stays disabled) rather than falling back to a shared one.
+   */
+  players: (guildDbId: number) => ['players', guildDbId] as const,
+  playerDirectory: (
+    guildDbId: number,
+    query: { page: number; search: string; sort: string },
+  ) => ['players', guildDbId, 'directory', query] as const,
+  /**
+   * Another player's public profile, under the same guild prefix — a profile is
+   * only viewable *because* of the guild, so it is invalidated by leaving it.
+   */
+  publicProfile: (guildDbId: number, playerId: number) =>
+    ['players', guildDbId, 'profile', playerId] as const,
+
   content: () => ['content'] as const,
   /**
    * Which optional backend features exist. Deployment-wide and player-free —

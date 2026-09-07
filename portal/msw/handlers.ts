@@ -68,6 +68,53 @@ export const handlers = [
       : apiError(404, 'PLAYER_NOT_FOUND', 'No player for that Discord identity.');
   }),
 
+  /**
+   * The guild player directory.
+   *
+   * Registered *before* `/players/:playerId` so MSW does not match the literal
+   * path `/players` against the parametric handler.
+   *
+   * The mock honours `search` and `sort` rather than merely accepting them, for
+   * the same reason the collection mock honours its sort: a handler that
+   * ignored them would let a page that never sent them still look correct.
+   *
+   * It takes no guild parameter — because the real endpoint takes none. Guild
+   * scope lives in the session cookie, so a test that wants guild B's roster
+   * overrides this handler; there is no query string that could ask for it.
+   */
+  http.get('/api/v1/players', ({ request }) => {
+    const url = new URL(request.url, 'http://localhost');
+    const search = (url.searchParams.get('search') ?? '').toLowerCase();
+    const sort = url.searchParams.get('sort') ?? 'name';
+    const pageNumber = Number(url.searchParams.get('page') ?? '1');
+    const pageSize = Number(url.searchParams.get('pageSize') ?? '25');
+
+    const matched = search
+      ? fixtures.directoryPlayers.filter((p) => p.displayName.toLowerCase().includes(search))
+      : fixtures.directoryPlayers;
+    const sorted = [...matched].sort((a, b) => {
+      if (sort === 'level') return b.level - a.level || a.id - b.id;
+      if (sort === 'recent') {
+        return new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime() || a.id - b.id;
+      }
+      return a.displayName.localeCompare(b.displayName) || a.id - b.id;
+    });
+    const start = (pageNumber - 1) * pageSize;
+    return page(sorted.slice(start, start + pageSize), pageNumber, pageSize, sorted.length);
+  }),
+
+  /**
+   * Another player's public profile. Answers only for players in the fixture
+   * directory — everyone else is the 404 the real API gives both for an unknown
+   * id and for a player outside the selected guild.
+   */
+  http.get('/api/v1/players/:playerId/public', ({ params }) => {
+    const id = Number(params.playerId);
+    const row = fixtures.directoryPlayers.find((p) => p.id === id);
+    if (!row) return apiError(404, 'PLAYER_NOT_FOUND', 'No player with that id.');
+    return data({ ...fixtures.publicProfile, ...row });
+  }),
+
   http.get('/api/v1/players/:playerId', ({ params }) =>
     params.playerId === P
       ? data(fixtures.player)

@@ -23,9 +23,11 @@ describe('AppShell', () => {
       'Encyclopedia',
       'Guide',
       'Profile',
+      // Players replaced the reserved "Friends" placeholder — see
+      // `app/navigation.ts` for why the name changed with it.
+      'Players',
       'Achievements',
       'Events',
-      'Friends',
       'Settings',
     ]) {
       expect(within(nav).getByText(label)).toBeInTheDocument();

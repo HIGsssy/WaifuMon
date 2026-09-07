@@ -13,7 +13,7 @@
  * Colour contrast is checked in the Playwright suite instead, where real
  * stylesheets and computed colours exist — see `src/test/axe.ts`.
  */
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 
@@ -92,12 +92,18 @@ describe('accessibility', () => {
     await screen.findByText('Level 12');
 
     const nav = screen.getByRole('navigation', { name: 'Primary' });
-    for (const label of ['Achievements', 'Events', 'Friends']) {
+    // "Friends" is no longer among them: it became the real Players
+    // destination, which is asserted to be a working link below.
+    for (const label of ['Achievements', 'Events']) {
       const row = Array.from(nav.querySelectorAll('[aria-disabled="true"]')).find((element) =>
         element.textContent?.includes(label),
       );
       expect(row, `${label} should be an aria-disabled row`).toBeDefined();
     }
+
+    const players = within(nav).getByRole('link', { name: 'Players' });
+    expect(players).toHaveAttribute('href', '/players');
+    expect(players).not.toHaveAttribute('aria-disabled');
   });
 
   it('keeps every interactive control reachable and labelled on the collection toolbar', async () => {

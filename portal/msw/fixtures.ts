@@ -17,8 +17,10 @@ import type {
   DexStats,
   InventoryEntry,
   Item,
+  DirectoryPlayer,
   OwnedEntry,
   Player,
+  PublicPlayerProfile,
   ShopCatalogEntry,
   Species,
 } from '@/api/types';
@@ -469,3 +471,69 @@ export function cardWebpBytes(): Uint8Array {
   for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
   return bytes;
 }
+
+// ── Guild player directory ──────────────────────────────────────────────────
+
+/**
+ * The Players directory for `player.guildId` (7).
+ *
+ * Deliberately not name-ordered, not level-ordered and not recency-ordered as
+ * authored, so a test asserting any of the three orders is asserting that the
+ * order was *applied* rather than that the fixture happened to be right.
+ *
+ * Note what the shape does not contain: no `discordUserId`, no `xp`, no
+ * currencies. That is the API's contract, and a payload test asserts it against
+ * this fixture, so widening the fixture would fail that test rather than
+ * quietly bless a leak.
+ */
+export const directoryPlayers: DirectoryPlayer[] = [
+  {
+    id: PLAYER_ID,
+    displayName: 'Mika',
+    avatarUrl: 'https://cdn.discordapp.com/avatars/123456789012345678/abcdef.png',
+    level: 12,
+    lastActiveAt: '2026-08-06T09:14:00.000Z',
+    buddy: {
+      speciesSlug: 'nyx',
+      speciesName: 'Nyx',
+      rarity: 'SSR',
+      level: 14,
+      assetId: { kind: 'waifumon', slug: 'nyx', variant: 'standard' },
+    },
+  },
+  {
+    id: 42,
+    displayName: 'Aiko',
+    avatarUrl: null,
+    level: 31,
+    lastActiveAt: '2026-08-07T18:00:00.000Z',
+    buddy: null,
+  },
+  {
+    id: 77,
+    displayName: 'Zara',
+    avatarUrl: null,
+    level: 4,
+    lastActiveAt: '2026-06-01T08:00:00.000Z',
+    buddy: null,
+  },
+];
+
+/** The directory of a *different* guild — nothing here may reach guild 7's page. */
+export const otherGuildDirectoryPlayers: DirectoryPlayer[] = [
+  {
+    id: 900,
+    displayName: 'Outsider',
+    avatarUrl: null,
+    level: 50,
+    lastActiveAt: '2026-08-07T18:00:00.000Z',
+    buddy: null,
+  },
+];
+
+export const publicProfile: PublicPlayerProfile = {
+  ...(directoryPlayers[1] as DirectoryPlayer),
+  createdAt: '2026-04-02T12:00:00.000Z',
+  currentRegion: { id: 'waifu-valley', name: 'Waifu Valley' },
+  collection: { owned: 61, distinctSpecies: 30, totalSpecies: 58 },
+};

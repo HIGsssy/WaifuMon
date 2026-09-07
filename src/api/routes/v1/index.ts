@@ -24,6 +24,7 @@ import { encounterRoutes } from './encounter';
 import { guildRoutes } from './guilds';
 import { inventoryRoutes } from './inventory';
 import { playerRoutes } from './players';
+import { playerDirectoryRoutes } from './playerDirectory';
 import { questRoutes } from './quests';
 import { sessionRoutes } from './session';
 import { shopRoutes } from './shop';
@@ -58,6 +59,11 @@ export const v1Routes =
 
     // Player-scoped resources.
     await app.register(playerRoutes(ctx));
+    // The guild-scoped Players directory and the public profile it links to.
+    // Registered after `playerRoutes` so `/players/lookup` still wins the
+    // static-vs-parametric match, and after `registerPlayerScope` so
+    // `/players/:playerId/public` inherits the (widened) scope check.
+    await app.register(playerDirectoryRoutes(ctx));
     await app.register(collectionRoutes(ctx));
     await app.register(currencyRoutes(ctx));
     await app.register(inventoryRoutes(ctx));

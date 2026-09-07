@@ -489,3 +489,37 @@ export interface ReadinessReport {
   components: Record<string, ComponentReport>;
   checkedAt: string;
 }
+
+// ── Guild player directory ("Players") ──────────────────────────────────────
+
+/**
+ * One row of the guild player directory — the public-within-guild view of
+ * somebody who is not the acting player.
+ *
+ * There is deliberately no `discordUserId` and no `xp`: the API does not send
+ * them for other players, and `id` is the identifier the public profile route
+ * takes. The Portal has no second player identity system and did not gain one.
+ */
+export interface DirectoryPlayer {
+  id: number;
+  displayName: string;
+  avatarUrl: string | null;
+  level: number;
+  /** Last hunt, else when they joined this guild. A date, not a presence flag. */
+  lastActiveAt: string;
+  buddy: {
+    speciesSlug: string;
+    speciesName: string;
+    rarity: string;
+    level: number;
+    assetId: AssetIdResource;
+  } | null;
+}
+
+export interface PublicPlayerProfile extends DirectoryPlayer {
+  createdAt: string;
+  currentRegion: { id: string; name: string };
+  collection: { owned: number; distinctSpecies: number; totalSpecies: number };
+}
+
+export type DirectorySort = 'name' | 'level' | 'recent';
