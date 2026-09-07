@@ -71,6 +71,106 @@
     {
       "species": "goblin_gemcutter",
       "weight": 3
+    },
+    {
+      "species": "leopard_bodyguard",
+      "weight": 10
+    },
+    {
+      "species": "nurse_imp",
+      "weight": 8
+    },
+    {
+      "species": "ah_caretaker",
+      "weight": 8
+    },
+    {
+      "species": "darkelf_royal",
+      "weight": 6
+    },
+    {
+      "species": "royal_succubus",
+      "weight": 5
+    },
+    {
+      "species": "dollhouse_demon",
+      "weight": 4
+    },
+    {
+      "species": "cabaret_star",
+      "weight": 4
+    },
+    {
+      "species": "queen_of_velvet_chains",
+      "weight": 2
+    },
+    {
+      "species": "crimson_judge",
+      "weight": 3
+    },
+    {
+      "species": "angelic_judge",
+      "weight": 4
+    },
+    {
+      "species": "archangel_inquisitor",
+      "weight": 4
+    },
+    {
+      "species": "angelic_delinquent",
+      "weight": 4
+    },
+    {
+      "species": "android_assassin",
+      "weight": 5
+    },
+    {
+      "species": "feral_android",
+      "weight": 4
+    },
+    {
+      "species": "latex_paladin",
+      "weight": 5
+    },
+    {
+      "species": "android_secretary",
+      "weight": 6
+    },
+    {
+      "species": "ramen_android",
+      "weight": 5
+    },
+    {
+      "species": "your_fav_girl",
+      "weight": 4
+    },
+    {
+      "species": "sleepy_succubus_intern",
+      "weight": 6
+    },
+    {
+      "species": "beachside_siren",
+      "weight": 5
+    },
+    {
+      "species": "bimbo_valkyrie",
+      "weight": 3
+    },
+    {
+      "species": "crown_humanity",
+      "weight": 1
+    },
+    {
+      "species": "neon_kitsune",
+      "weight": 4
+    },
+    {
+      "species": "heaven_spear_marshal",
+      "weight": 2
+    },
+    {
+      "species": "demon_hall_monitor",
+      "weight": 5
     }
   ]
 }
