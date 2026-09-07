@@ -52,6 +52,15 @@ export function defaultAppearanceOf(
 export function speciesAsset(
   species: Species | ContentSpecies,
   waifu?: Pick<OwnedWaifu, 'id' | 'playerId' | 'variant' | 'selectedAppearance'>,
+  /**
+   * Resolve the owned artwork through the guild-scoped public route.
+   *
+   * Passed explicitly by the public Collection views. Without it a viewer's
+   * grid would address another player's copies on the self-only route and get
+   * a page of 403s — so the default (absent) is the self behaviour every
+   * existing call site already relies on.
+   */
+  options: { publicOwner?: boolean } = {},
 ): AssetId {
   // Both of these carry an `assetId` in practice — `selectedAppearance` is
   // what she is wearing (unlocked by construction, and unlock-aware on the
@@ -59,13 +68,19 @@ export function speciesAsset(
   // catalog entry is ungated. The `??` chain is for the shapes the type still
   // permits, and falls through to the bare species identity rather than
   // guessing a variant filename.
+  const ownedContext = waifu
+    ? {
+        owned: {
+          playerId: waifu.playerId,
+          waifuId: waifu.id,
+          ...(options.publicOwner ? { public: true } : {}),
+        },
+      }
+    : {};
+
   const worn = waifu?.selectedAppearance ? appearanceAsset(waifu.selectedAppearance) : null;
   if (worn) {
-    return {
-      ...worn,
-      baseArtwork: true,
-      ...(waifu ? { owned: { playerId: waifu.playerId, waifuId: waifu.id } } : {}),
-    };
+    return { ...worn, baseArtwork: true, ...ownedContext };
   }
 
   const fallback = defaultAppearanceOf(species);

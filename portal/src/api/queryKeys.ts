@@ -87,6 +87,20 @@ export const queryKeys = {
    */
   publicProfile: (guildDbId: number, playerId: number) =>
     ['players', guildDbId, 'profile', playerId] as const,
+  /**
+   * A guild-mate's collection.
+   *
+   * Both the guild **and** the owner are key segments, which is what stops
+   * three distinct confusions the type system would happily allow:
+   * serving the viewer's own collection here (different prefix entirely —
+   * `['player', id, …]`), serving player A's cards while player B loads
+   * (different owner segment), and serving a multi-guild player's collection
+   * from the wrong guild's scope (different guild segment).
+   */
+  publicCollection: (guildDbId: number, playerId: number) =>
+    ['players', guildDbId, 'collection', playerId] as const,
+  publicCollectionEntry: (guildDbId: number, playerId: number, waifuId: number) =>
+    ['players', guildDbId, 'collection', playerId, 'entry', waifuId] as const,
 
   content: () => ['content'] as const,
   /**

@@ -115,6 +115,38 @@ export const handlers = [
     return data({ ...fixtures.publicProfile, ...row });
   }),
 
+  /**
+   * A guild-mate's collection.
+   *
+   * Serves a *different* set from `fixtures.ownedEntries` on purpose: a test
+   * that confuses the viewer's collection with the viewed player's fails
+   * loudly here rather than passing because both fixtures happened to match.
+   *
+   * Registered before `/players/:playerId` so the more specific path wins, and
+   * it honours `rarity`/`sort` for the same reason the self handler does.
+   */
+  http.get('/api/v1/players/:playerId/public/collection', ({ params, request }) => {
+    const id = Number(params.playerId);
+    const owned = fixtures.publicCollections[id];
+    if (!owned) return apiError(404, 'PLAYER_NOT_FOUND', 'No player with that id.');
+
+    const url = new URL(request.url, 'http://localhost');
+    const rarity = url.searchParams.get('rarity');
+    const pageNumber = Number(url.searchParams.get('page') ?? '1');
+    const pageSize = Number(url.searchParams.get('pageSize') ?? '25');
+    const filtered = rarity ? owned.filter((e) => e.species.rarity === rarity) : owned;
+    const start = (pageNumber - 1) * pageSize;
+    return page(filtered.slice(start, start + pageSize), pageNumber, pageSize, filtered.length);
+  }),
+
+  http.get('/api/v1/players/:playerId/public/collection/:waifuId', ({ params }) => {
+    const owned = fixtures.publicCollections[Number(params.playerId)];
+    const entry = owned?.find((e) => e.waifu.id === Number(params.waifuId));
+    return entry
+      ? data(entry)
+      : apiError(404, 'WAIFU_NOT_OWNED', 'No such Waifumon in that collection.');
+  }),
+
   http.get('/api/v1/players/:playerId', ({ params }) =>
     params.playerId === P
       ? data(fixtures.player)

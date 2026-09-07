@@ -196,6 +196,57 @@ export const artworkRoutes =
       },
     );
 
+    /**
+     * The same bytes, for a **guild-mate's** copy.
+     *
+     * This is the one place the public collection touches artwork
+     * authorization, and it is deliberately shaped so that it cannot become a
+     * species oracle:
+     *
+     *   - It is addressed by **owner + copy**, never by slug. The only artwork
+     *     it can serve is the appearance a real, active, owned copy is wearing,
+     *     resolved by `getOwned` scoped to that owner. There is no parameter
+     *     that names a species.
+     *   - `publicGuildProfile` routes it through the same scope hook as the
+     *     rest of the public surface, so the target must be a player in the
+     *     requesting session's selected guild — checked before a byte is read.
+     *   - **`/assets/waifumon/:slug` is untouched.** `assertSpeciesVisible`
+     *     still gates every slug-addressed request on the viewer's own dex, so
+     *     the encyclopedia cannot be read out of the URL bar any more than it
+     *     could before. Seeing what a guild-mate owns is a different
+     *     authorization context from browsing species you have not discovered,
+     *     and the two now have separate routes rather than one weakened rule.
+     *
+     * Level-gated appearances stay unreachable here: there is no `appearance`
+     * selector, so this only ever serves the look she is actually wearing —
+     * which the copy has, by definition, already earned.
+     */
+    app.get(
+      '/players/:playerId/public/collection/:waifuId/artwork',
+      {
+        config: { publicGuildProfile: true },
+        schema: {
+          tags: ['Collection'],
+          summary: "Get a guild-mate's owned copy artwork",
+          description:
+            "The artwork one copy in another player's public collection is wearing. Authorized " +
+            'as an owned copy inside the selected guild — never as a species — so it grants no ' +
+            'access to artwork of species the viewer has not discovered except through a copy ' +
+            'that player demonstrably owns.',
+          params: waifuIdParams,
+          querystring: artworkQuery,
+          response: artworkResponses,
+        },
+      },
+      async (req, reply) => {
+        const owner = requirePlayer(req);
+        const entry = await collection.getOwned(owner.id, req.params.waifuId);
+        const request = ownedCardRequest(presentation, entry);
+        await sendArtwork(req, reply, request.artwork.absolutePath, CACHE_CONTROL);
+        return reply;
+      },
+    );
+
     app.get(
       '/players/:playerId/collection/owned/:waifuId/artwork',
       {

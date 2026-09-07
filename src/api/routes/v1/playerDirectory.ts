@@ -37,18 +37,21 @@ import { requirePlayer } from '../../plugins/playerScope';
 import { resolveGuildScope } from '../../plugins/guildScope';
 import { dataSchema, ok, okPage, paginatedSchema } from '../../plugins/responseEnvelope';
 import type { FastifyPluginAsyncZod } from '../../plugins/typeProvider';
-import { toCurrentRegionResource } from '../../resources';
+import { toCurrentRegionResource, toPublicOwnedEntry } from '../../resources';
 import {
+  collectionPageQuery,
   commonErrorResponses,
   errorSchema,
   notFoundResponse,
   playerIdParams,
+  waifuIdParams,
 } from '../../schemas/common';
 import {
   directoryPlayerSchema,
   directoryQuery,
   publicPlayerProfileSchema,
 } from '../../schemas/players';
+import { publicOwnedEntrySchema } from '../../schemas/collection';
 import type { DirectoryPlayer } from '../../../modules/players/playerService';
 import type { PlayerIdentity } from '../../identity';
 
@@ -224,6 +227,113 @@ export const playerDirectoryRoutes =
           currentRegion: toCurrentRegionResource(player.currentRegion, ctx.getContent().regions),
           collection: stats,
         });
+      },
+    );
+
+    // ── The owner's collection, read-only, for their guild-mates ───────────
+    //
+    // Both routes carry `:playerId` and set `publicGuildProfile`, so the scope
+    // hook has already established — before either handler runs — that the
+    // target is a real player in *this session's selected guild*, and answered
+    // 404 otherwise. Authorization therefore happens strictly before any
+    // collection row is read, which is the ordering requirement.
+    //
+    // They deliberately mirror `/collection/owned`'s contract (page, pageSize,
+    // rarity, sort) rather than inventing a richer one. Search, race and
+    // affinity are not server-side filters *anywhere* on this API — the
+    // Portal's own Collection page walks the paginated resource once and
+    // filters the complete set in the browser — so adding them only here would
+    // mean a gameplay-service change made solely for one screen, and two
+    // collection surfaces whose filtering could disagree.
+
+    app.get(
+      '/players/:playerId/public/collection',
+      {
+        config: { publicGuildProfile: true },
+        schema: {
+          tags: ['Collection'],
+          summary: "List another player's collection",
+          description:
+            "The read-only public view of a guild-mate's active Waifumon. Paginated exactly like " +
+            '`/collection/owned`, with the same `rarity` filter and `sort` orders.\n\n' +
+            'Authorized by guild, before any row is read: a player outside the requesting ' +
+            "session's selected guild answers 404 — the same answer an unknown id gets — so no " +
+            'crafted id enumerates another server. A multi-guild player is viewable in whichever ' +
+            'guild the session currently has selected and both players share.\n\n' +
+            'The payload carries no XP, affection, Seductive Power, release state or currencies; ' +
+            'see `publicOwnedEntrySchema`.',
+          params: playerIdParams,
+          querystring: collectionPageQuery,
+          response: {
+            200: paginatedSchema(publicOwnedEntrySchema),
+            ...notFoundResponse,
+            ...commonErrorResponses,
+          },
+        },
+      },
+      async (req) => {
+        const owner = requirePlayer(req);
+        const { page, pageSize, rarity, sort } = req.query;
+        const result = await ctx.services.collection.listOwned(owner.id, {
+          page,
+          pageSize,
+          sort,
+          ...(rarity ? { rarity } : {}),
+        });
+        // Deliberately no `cardWarmer.schedulePlayerWarm` here. Warming is work
+        // done on a player's behalf for their own grid; a viewer browsing
+        // somebody else's collection must not be able to schedule background
+        // rendering across another account's entire collection.
+        return okPage(
+          req,
+          result.entries.map((entry) =>
+            toPublicOwnedEntry(
+              entry.waifu,
+              entry.species,
+              ctx.services.appearance,
+              entry.waifu.id === owner.buddyWaifuId,
+            ),
+          ),
+          result.page,
+          result.pageSize,
+          result.totalOwned,
+        );
+      },
+    );
+
+    app.get(
+      '/players/:playerId/public/collection/:waifuId',
+      {
+        config: { publicGuildProfile: true },
+        schema: {
+          tags: ['Collection'],
+          summary: "Inspect one copy from another player's collection",
+          description:
+            'The read-only detail view. 404 (`WAIFU_NOT_OWNED`) when the copy is not this ' +
+            "player's, has been released, or does not exist — and 404 for the whole route when " +
+            "the player is outside the session's selected guild.",
+          params: waifuIdParams,
+          response: {
+            200: dataSchema(publicOwnedEntrySchema),
+            ...notFoundResponse,
+            ...commonErrorResponses,
+          },
+        },
+      },
+      async (req) => {
+        const owner = requirePlayer(req);
+        // Scoped to the owner, so a waifu id belonging to anybody else — the
+        // viewer included — is `WAIFU_NOT_OWNED`, not a cross-account read.
+        const entry = await ctx.services.collection.getOwned(owner.id, req.params.waifuId);
+        return ok(
+          req,
+          toPublicOwnedEntry(
+            entry.waifu,
+            entry.species,
+            ctx.services.appearance,
+            entry.waifu.id === owner.buddyWaifuId,
+          ),
+        );
       },
     );
   };

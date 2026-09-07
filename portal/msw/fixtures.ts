@@ -20,6 +20,8 @@ import type {
   DirectoryPlayer,
   OwnedEntry,
   Player,
+  PublicOwnedEntry,
+  PublicOwnedWaifu,
   PublicPlayerProfile,
   ShopCatalogEntry,
   Species,
@@ -536,4 +538,90 @@ export const publicProfile: PublicPlayerProfile = {
   createdAt: '2026-04-02T12:00:00.000Z',
   currentRegion: { id: 'waifu-valley', name: 'Waifu Valley' },
   collection: { owned: 61, distinctSpecies: 30, totalSpecies: 58 },
+};
+
+// ── A guild-mate's public collection ────────────────────────────────────────
+
+/**
+ * What Aiko (player 42) owns, as her guild-mates see it.
+ *
+ * Deliberately **not** a slice of `ownedEntries`: these are different copies,
+ * different ids, different nicknames and a different species mix. A test that
+ * mixes up "the viewer's collection" with "the viewed player's" therefore fails
+ * on the assertion rather than passing because the two fixtures agreed.
+ *
+ * The shape is the API's `publicOwnedEntrySchema` exactly — note the absent
+ * `xp`, `affection`, `seductivePower`, `cosmetics`, `speciesId`, `releasedAt`
+ * and `progress`, and note that `caughtAt` is a calendar day rather than the
+ * full instant `ownedEntries` carries. A payload test asserts both against this
+ * fixture, so widening it fails a test rather than quietly blessing a
+ * disclosure.
+ */
+function publicCopy(
+  waifu: Omit<PublicOwnedWaifu, 'playerId' | 'variant' | 'selectedAppearance'> & {
+    slug: string;
+  },
+  species: Species,
+  isBuddy = false,
+): PublicOwnedEntry {
+  const { slug, ...rest } = waifu;
+  return {
+    waifu: {
+      ...rest,
+      playerId: 42,
+      variant: 'standard',
+      selectedAppearance: withState(standardAppearance(slug), {
+        isUnlocked: true,
+        isSelected: true,
+      }),
+    },
+    species,
+    isBuddy,
+  };
+}
+
+export const aikoCollection: PublicOwnedEntry[] = [
+  publicCopy(
+    {
+      id: 501,
+      slug: 'void_empress',
+      level: 40,
+      nickname: 'Vesper',
+      isFavorite: true,
+      caughtAt: '2026-05-11',
+    },
+    speciesRows[2]!,
+    true,
+  ),
+  publicCopy(
+    {
+      id: 502,
+      slug: 'neko_barista',
+      level: 6,
+      nickname: null,
+      isFavorite: false,
+      caughtAt: '2026-08-01',
+    },
+    speciesRows[0]!,
+  ),
+  publicCopy(
+    {
+      id: 503,
+      slug: 'neon_kitsune',
+      level: 18,
+      nickname: 'Amber',
+      isFavorite: false,
+      caughtAt: '2026-06-15',
+    },
+    speciesRows[1]!,
+  ),
+];
+
+/**
+ * Public collections by owner id. A player absent from this map is one the API
+ * would answer 404 for — which is how the mock expresses "not in your guild"
+ * without inventing a guild parameter the real endpoint does not have.
+ */
+export const publicCollections: Record<number, PublicOwnedEntry[]> = {
+  42: aikoCollection,
 };

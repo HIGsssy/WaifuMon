@@ -57,7 +57,25 @@ export interface AssetId {
    * slug into one for every other kind. A card with no `owned` is the species
    * preview: level 1, default appearance.
    */
-  owned?: { playerId: number; waifuId: number } | undefined;
+  owned?:
+    | {
+        playerId: number;
+        waifuId: number;
+        /**
+         * Resolve through the **public** guild-scoped route rather than the
+         * self-only one.
+         *
+         * Two different authorizations, so two different URLs: the self route
+         * requires the copy to be the session's own, while the public route
+         * requires the owner to be in the session's selected guild. Naming
+         * which one applies here — rather than letting the provider guess from
+         * whether `playerId` matches the session — is what stops a viewer's
+         * grid quietly issuing self-scoped requests for somebody else's copies
+         * and rendering a page of 403s.
+         */
+        public?: boolean | undefined;
+      }
+    | undefined;
   /**
    * A specific appearance id to render for an `owned` copy, rather than the
    * look she is wearing. This is what a gallery tile uses to show *its own*

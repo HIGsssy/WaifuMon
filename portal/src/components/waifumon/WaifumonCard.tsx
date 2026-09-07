@@ -31,7 +31,7 @@ import { Heart, Star } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router';
 
-import type { OwnedEntry } from '@/api/types';
+import type { CollectionEntryView } from '@/api/types';
 import { Artwork } from '@/components/media/Artwork';
 import { RarityBadge } from '@/components/waifumon/RarityBadge';
 import { RarityGlowRing } from '@/components/waifumon/RarityGlowRing';
@@ -42,8 +42,26 @@ import { cn } from '@/lib/cn';
 import { ARTWORK_WIDTH } from '@/images/sizes';
 import type { CardView } from '@/components/media/CardViewToggle';
 
+/**
+ * Whose collection this tile belongs to.
+ *
+ * `'self'` is the viewer's own copy: it links into `/collection`, resolves
+ * artwork on the self-scoped route, and may draw the rendered card. `'public'`
+ * is a guild-mate's: it links into that player's public collection, resolves
+ * artwork on the guild-scoped public route, and never asks for a card — there
+ * is no public card endpoint, and requesting one would be a grid of 403s.
+ *
+ * The mode is passed in rather than inferred from `waifu.playerId` against the
+ * session. Inference is exactly the bug this prop exists to prevent: it would
+ * make the ownership decision implicitly, in a component, from data the server
+ * supplied — and a wrong guess is either a broken image or a viewer treating
+ * somebody else's copy as their own.
+ */
+export type CollectionMode = 'self' | 'public';
+
 export interface WaifumonCardProps {
-  entry: OwnedEntry;
+  entry: CollectionEntryView;
+  mode?: CollectionMode;
   /** True for the copy currently set as the player's buddy. */
   isBuddy?: boolean;
   /** Above-the-fold tiles load eagerly; the rest stay lazy (§15). */
@@ -72,6 +90,7 @@ export function heroTransitionName(waifuId: number): string {
 
 export function WaifumonCard({
   entry,
+  mode = 'self',
   isBuddy = false,
   priority = false,
   view = 'art',
@@ -86,11 +105,14 @@ export function WaifumonCard({
   // again, so re-requesting it on every toggle would be a guaranteed-failing
   // request each time.
   const [cardFailed, setCardFailed] = useState(false);
-  const showingCard = view === 'card' && !cardFailed;
+  const isPublic = mode === 'public';
+  // Cards are self-only: the renderer is addressed by the owned-copy route,
+  // which a viewer cannot use for somebody else. Public tiles draw artwork.
+  const showingCard = view === 'card' && !cardFailed && !isPublic;
 
   return (
     <Link
-      to={`/collection/${waifu.id}`}
+      to={isPublic ? `/players/${waifu.playerId}/collection/${waifu.id}` : `/collection/${waifu.id}`}
       // Opts this navigation into `document.startViewTransition` where the
       // browser supports it; a no-op everywhere else (§14).
       viewTransition
@@ -120,7 +142,7 @@ export function WaifumonCard({
               />
             ) : (
               <Artwork
-                asset={speciesAsset(species, waifu)}
+                asset={speciesAsset(species, waifu, { publicOwner: isPublic })}
                 displayWidth={ARTWORK_WIDTH.gridTile}
                 name={species.name}
                 rarityLabel={rarity.label}
@@ -147,10 +169,10 @@ export function WaifumonCard({
               {isBuddy && (
                 <span
                   className="rounded-full bg-black/55 p-1.5 text-rose-300 backdrop-blur-sm"
-                  title="Your buddy"
+                  title={isPublic ? 'Their buddy' : 'Your buddy'}
                 >
                   <Heart className="size-3.5 fill-current" aria-hidden="true" />
-                  <span className="sr-only">Your buddy</span>
+                  <span className="sr-only">{isPublic ? 'Their buddy' : 'Your buddy'}</span>
                 </span>
               )}
             </div>

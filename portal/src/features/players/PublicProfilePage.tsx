@@ -21,7 +21,7 @@
  * session's selected guild is a 404, indistinguishable from an id that does not
  * exist, and lands on the same "not available" state below.
  */
-import { ArrowLeft, Heart, MapPin, Users } from 'lucide-react';
+import { ArrowLeft, Heart, LibraryBig, MapPin, Users } from 'lucide-react';
 import { Link, useParams } from 'react-router';
 
 import { usePublicPlayerProfile } from '@/api/hooks/usePlayerDirectory';
@@ -146,6 +146,15 @@ export function PublicProfilePage() {
               />
             </dl>
           </section>
+
+          <div className="flex flex-wrap gap-3">
+            <Button asChild variant="outline" size="sm">
+              <Link to={`/players/${player.id}/collection`} viewTransition>
+                <LibraryBig className="size-4" aria-hidden="true" />
+                View Collection
+              </Link>
+            </Button>
+          </div>
 
           <section aria-labelledby="public-buddy-heading">
             <h2

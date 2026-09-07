@@ -24,15 +24,37 @@
  * card requests, and the switch is only offered when `/v1/capabilities` says
  * the backend can render them. With the renderer off there is no control and no
  * card request — the grid is exactly what it was before this existed.
+ *
+ * ## Self and public are one renderer
+ *
+ * `/collection` and `/players/:playerId/collection` are the same component in
+ * two modes. That is deliberate, and it is the whole reason the public view
+ * cannot drift: the filters, the sort, the pagination, the empty states and the
+ * grid are defined once. What differs is stated in exactly two places — the
+ * query the data comes from, and the props below.
+ *
+ * In `public` mode the page fetches through the guild-scoped public resource,
+ * which the API authorizes against the session's selected guild before it reads
+ * a row. Nothing here filters by guild, and nothing here could: the viewer's
+ * browser never names one.
+ *
+ * **There are no ownership actions to disable.** The Portal is a read-only
+ * surface — it has no release, favourite, set-buddy, essence or care controls
+ * anywhere, in either mode, because those are game actions that live in
+ * Discord. The one component with a write path adjacent to it, the appearance
+ * gallery, is omitted in public mode by `WaifumonDetail`. A test asserts the
+ * absence rather than trusting this paragraph.
  */
 import { LibraryBig, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
 import { COLLECTION_PAGE_SIZE } from '@/api/collection';
 import { useBuddy, useEntireCollection } from '@/api/hooks/useCollection';
+import { useEntirePublicCollection } from '@/api/hooks/usePublicCollection';
 import { usePlatformCapabilities } from '@/api/hooks/useCapabilities';
-import { useCurrentSession } from '@/auth/useSession';
-import type { Race } from '@/api/types';
+import { useCurrentSession, useSession } from '@/auth/useSession';
+import type { CollectionEntryView, Race } from '@/api/types';
+import type { CollectionMode } from '@/components/waifumon/WaifumonCard';
 import type { CardView } from '@/components/media/CardViewToggle';
 import { EmptyState } from '@/components/layout/EmptyState';
 import { ErrorState } from '@/components/layout/ErrorState';
@@ -49,8 +71,23 @@ const GRID = 'grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 2xl:
 /** The first row is above the fold on most viewports and loads eagerly (§15). */
 const EAGER_CARDS = 4;
 
-export function CollectionPage() {
+export interface CollectionPageProps {
+  /** `'self'` (default) is the acting player's own collection. */
+  mode?: CollectionMode;
+  /** Public mode only: whose collection this is. */
+  ownerPlayerId?: number | undefined;
+  /** Public mode only: the owner's display name, for the heading. */
+  ownerName?: string | undefined;
+}
+
+export function CollectionPage({
+  mode = 'self',
+  ownerPlayerId,
+  ownerName,
+}: CollectionPageProps = {}) {
   const session = useCurrentSession();
+  const { session: rawSession } = useSession();
+  const isPublic = mode === 'public';
   const api = useCollectionParams();
   const { params, setPage } = api;
 
@@ -61,13 +98,29 @@ export function CollectionPage() {
   const [view, setView] = useState<CardView>('art');
   // A capability that flips off mid-session (an API restart) takes the grid
   // back to artwork rather than leaving a page of broken images behind.
-  const cardsAvailable = capabilities.cards;
+  // Cards are self-only — there is no public card endpoint, so public mode
+  // neither offers the switch nor requests one.
+  const cardsAvailable = capabilities.cards && !isPublic;
   const tileView: CardView = cardsAvailable ? view : 'art';
 
-  const collection = useEntireCollection(session.playerId);
-  const buddy = useBuddy(session.playerId);
+  // Both hooks are called unconditionally so hook order is stable, and each
+  // disables itself in the mode it does not serve. That is what keeps the
+  // viewer's own collection out of the public view's cache and vice versa —
+  // the two use entirely different query keys, one keyed by the viewer's
+  // player id and one by the guild plus the *owner's*.
+  const selfCollection = useEntireCollection(session.playerId, { enabled: !isPublic });
+  const publicCollection = useEntirePublicCollection({
+    guildDbId: rawSession?.guildDbId,
+    playerId: ownerPlayerId,
+    enabled: isPublic,
+  });
+  const collection = isPublic ? publicCollection : selfCollection;
 
-  const entries = useMemo(() => collection.data ?? [], [collection.data]);
+  // The viewer's own buddy is irrelevant to somebody else's grid; in public
+  // mode the owner's buddy arrives on each entry as `isBuddy` instead.
+  const buddy = useBuddy(session.playerId, { enabled: !isPublic });
+
+  const entries = useMemo<CollectionEntryView[]>(() => collection.data ?? [], [collection.data]);
 
   const filtered = useMemo(
     () =>
@@ -81,7 +134,11 @@ export function CollectionPage() {
             affinity: params.affinity,
             ownership: params.ownership,
           },
-          buddy.data?.waifu.id ?? null,
+          // Which copy the "Buddy" filter means: the viewer's own in self mode,
+          // the owner's in public mode. Never crossed.
+          isPublic
+            ? (entries.find((entry) => entry.isBuddy)?.waifu.id ?? null)
+            : (buddy.data?.waifu.id ?? null),
         ),
         params.sort,
       ),
@@ -94,6 +151,7 @@ export function CollectionPage() {
       params.ownership,
       params.sort,
       buddy.data,
+      isPublic,
     ],
   );
 
@@ -120,8 +178,12 @@ export function CollectionPage() {
   return (
     <>
       <PageHeader
-        title="Collection"
-        description="Every Waifumon you have caught."
+        title={isPublic && ownerName ? `${ownerName}'s Collection` : 'Collection'}
+        description={
+          isPublic
+            ? `A read-only view of ${ownerName ?? 'this trainer'}'s Waifumon.`
+            : 'Every Waifumon you have caught.'
+        }
         actions={
           collection.data ? (
             <span className="tabular text-sm text-ink-muted">{formatNumber(total)} owned</span>
@@ -131,6 +193,7 @@ export function CollectionPage() {
 
       <CollectionToolbar
         api={api}
+        {...(isPublic && ownerName ? { ownerName } : {})}
         races={races}
         affinities={affinities}
         refreshing={refreshing}
@@ -141,25 +204,33 @@ export function CollectionPage() {
         <ErrorState
           error={collection.error}
           onRetry={() => void collection.refetch()}
-          title="Couldn't load your collection."
+          title={isPublic ? "Couldn't load this collection." : "Couldn't load your collection."}
         />
       ) : showSkeletons ? (
-        <div className={GRID} aria-busy="true" aria-label="Loading your collection">
+        <div className={GRID} aria-busy="true" aria-label={isPublic ? 'Loading this collection' : 'Loading your collection'}>
           {Array.from({ length: 10 }, (_, index) => (
             <WaifumonCardSkeleton key={index} />
           ))}
         </div>
       ) : total === 0 ? (
-        <EmptyState
-          icon={LibraryBig}
-          title="Your collection is empty"
-          description="No Waifumon yet — the hunt starts in Discord."
-          hint={
-            <>
-              Head to Discord and try <code className="font-mono text-ink">/waifumon hunt</code>.
-            </>
-          }
-        />
+        isPublic ? (
+          <EmptyState
+            icon={LibraryBig}
+            title="No Waifumon yet"
+            description={`${ownerName ?? 'This trainer'} has not caught anything yet.`}
+          />
+        ) : (
+          <EmptyState
+            icon={LibraryBig}
+            title="Your collection is empty"
+            description="No Waifumon yet — the hunt starts in Discord."
+            hint={
+              <>
+                Head to Discord and try <code className="font-mono text-ink">/waifumon hunt</code>.
+              </>
+            }
+          />
+        )
       ) : filtered.length === 0 ? (
         <EmptyState
           icon={LibraryBig}
@@ -174,7 +245,8 @@ export function CollectionPage() {
               <WaifumonCard
                 key={entry.waifu.id}
                 entry={entry}
-                isBuddy={entry.waifu.id === buddy.data?.waifu.id}
+                mode={mode}
+                isBuddy={isPublic ? entry.isBuddy === true : entry.waifu.id === buddy.data?.waifu.id}
                 priority={index < EAGER_CARDS}
                 view={tileView}
               />

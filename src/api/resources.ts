@@ -223,6 +223,52 @@ export function toOwnedWaifuResource(
   };
 }
 
+/**
+ * One owned copy as **another player in the same guild** may see her.
+ *
+ * Built by naming fields, never by deleting them from `toOwnedWaifuResource`.
+ * That function spreads the whole row (`...waifu`), which is right for a
+ * resource describing the caller's own copy and exactly wrong here: a new
+ * column would ride the spread straight into a stranger's response. The schema
+ * would drop it, but a mapper that never assembled it in the first place is the
+ * stronger guarantee, and it is the one a reviewer can check in one screen.
+ *
+ * `isBuddy` is passed in rather than derived: the caller already holds the
+ * owner's row, so this costs no query and cannot disagree with it.
+ *
+ * See `publicOwnedEntrySchema` for the field-by-field rationale.
+ */
+export function toPublicOwnedEntry(
+  waifu: PlayerWaifuRow,
+  species: SpeciesRow,
+  appearance: {
+    currentAppearance(
+      species: SpeciesRow | AppearanceSpecies,
+      variant: string | null | undefined,
+      unlockCtx?: { level: number } | undefined,
+    ): ResolvedAppearance;
+    catalogFor(species: SpeciesRow | AppearanceSpecies): ResolvedAppearance[];
+  },
+  isBuddy: boolean,
+) {
+  const current = appearance.currentAppearance(species, waifu.variant, { level: waifu.level });
+  return {
+    waifu: {
+      id: waifu.id,
+      playerId: waifu.playerId,
+      level: waifu.level,
+      nickname: waifu.nickname,
+      isFavorite: waifu.isFavorite,
+      variant: waifu.variant,
+      // Unlocked by construction: it is what she is wearing.
+      selectedAppearance: toAppearanceResource(current, { isUnlocked: true, isSelected: true }),
+      caughtAt: waifu.caughtAt,
+    },
+    species: toSpeciesResource(species, appearance.catalogFor(species)),
+    isBuddy,
+  };
+}
+
 export function toItemResource(row: ItemRow) {
   return {
     ...row,

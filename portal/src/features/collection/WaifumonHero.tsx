@@ -19,13 +19,13 @@
 import { useState } from 'react';
 import { Download, Loader2 } from 'lucide-react';
 
-import type { OwnedEntry } from '@/api/types';
+import type { CollectionEntryView } from '@/api/types';
 import { Artwork } from '@/components/media/Artwork';
 import { CardViewer } from '@/components/media/CardViewer';
 import { CardViewToggle, type CardView } from '@/components/media/CardViewToggle';
 import { Button } from '@/components/ui/button';
 import { RarityGlowRing } from '@/components/waifumon/RarityGlowRing';
-import { heroTransitionName } from '@/components/waifumon/WaifumonCard';
+import { heroTransitionName, type CollectionMode } from '@/components/waifumon/WaifumonCard';
 import { ownedCardAsset, speciesAsset } from '@/images/assets';
 import { cardUrlFor } from '@/images/providers/cardApi';
 import { ARTWORK_WIDTH } from '@/images/sizes';
@@ -33,13 +33,20 @@ import { cardFilename, downloadAuthenticatedFile } from '@/lib/download';
 import { rarityStyle } from '@/lib/rarity';
 
 export interface WaifumonHeroProps {
-  entry: OwnedEntry;
+  entry: CollectionEntryView;
+  /**
+   * `'public'` is a guild-mate's copy: artwork resolves through the
+   * guild-scoped public route, and the card view — which has no public
+   * endpoint, and whose export downloads a file — is not offered at all.
+   */
+  mode?: CollectionMode;
   /** False when the backend has card rendering switched off. */
   cardsAvailable: boolean;
 }
 
-export function WaifumonHero({ entry, cardsAvailable }: WaifumonHeroProps) {
+export function WaifumonHero({ entry, mode = 'self', cardsAvailable }: WaifumonHeroProps) {
   const { waifu, species } = entry;
+  const isPublic = mode === 'public';
   const [view, setView] = useState<CardView>('art');
   const [viewerOpen, setViewerOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -48,7 +55,7 @@ export function WaifumonHero({ entry, cardsAvailable }: WaifumonHeroProps) {
   // A card the renderer cannot serve is not a view to offer. If the flag is
   // switched off between renders the toggle disappears and this falls back to
   // artwork rather than leaving a broken image on screen.
-  const showingCard = cardsAvailable && view === 'card';
+  const showingCard = cardsAvailable && !isPublic && view === 'card';
   const cardAsset = ownedCardAsset(waifu.playerId, entry);
   const rarity = rarityStyle(species.rarity);
 
@@ -102,7 +109,7 @@ export function WaifumonHero({ entry, cardsAvailable }: WaifumonHeroProps) {
             // she is wearing is unlocked by construction and always carries an
             // `assetId`, but this keeps the null-handling in the one helper
             // that owns it rather than asserting it here.
-            asset={speciesAsset(species, waifu)}
+            asset={speciesAsset(species, waifu, { publicOwner: isPublic })}
             displayWidth={ARTWORK_WIDTH.hero}
             name={species.name}
             rarityLabel={rarity.label}
@@ -113,7 +120,12 @@ export function WaifumonHero({ entry, cardsAvailable }: WaifumonHeroProps) {
         )}
       </RarityGlowRing>
 
-      {cardsAvailable && (
+      {/*
+        Self only. The toggle would request a card the public API does not
+        serve, and "Export card" downloads another player's copy as a file —
+        neither belongs on a read-only view of somebody else's Waifumon.
+      */}
+      {cardsAvailable && !isPublic && (
         <div className="space-y-2">
           <CardViewToggle
             value={showingCard ? 'card' : 'art'}

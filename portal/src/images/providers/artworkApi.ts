@@ -32,8 +32,14 @@ export function artworkUrlFor(id: AssetId, bucket: ImageSizeBucket | null = null
     params.set('selected', id.variant);
   }
 
+  // Three destinations, one per authorization context: the viewer's own copy,
+  // a guild-mate's copy (public), and the species itself — which stays gated on
+  // the viewer's own dex and is emphatically *not* what the public collection
+  // uses. See the server's `artwork.ts` for the matching rationale.
   const path = id.owned
-    ? `${base}/v1/players/${id.owned.playerId}/collection/owned/${id.owned.waifuId}/artwork`
+    ? id.owned.public === true
+      ? `${base}/v1/players/${id.owned.playerId}/public/collection/${id.owned.waifuId}/artwork`
+      : `${base}/v1/players/${id.owned.playerId}/collection/owned/${id.owned.waifuId}/artwork`
     : `${base}/v1/assets/waifumon/${id.slug}`;
   const query = params.toString();
   return query.length > 0 ? `${path}?${query}` : path;

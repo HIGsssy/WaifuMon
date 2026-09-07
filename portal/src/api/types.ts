@@ -417,6 +417,61 @@ export interface OwnedEntry {
   progress: WaifuProgress;
 }
 
+/**
+ * One copy of **another player's** collection, as the API publishes it.
+ *
+ * A strict subset of `OwnedWaifu`: no `xp`, no `affection`, no
+ * `seductivePower`, no `releasedAt`, no `speciesId`, no `cosmetics`. See
+ * `publicOwnedWaifuSchema` on the server for why each is in or out.
+ *
+ * `id` and `playerId` are internal ids, and they are here because there is no
+ * safer public handle to use instead — the public profile route already
+ * addresses a player by internal id, and inventing a second identity system was
+ * out of scope. They are the same two ids already visible in the URL.
+ */
+export interface PublicOwnedWaifu {
+  id: number;
+  playerId: number;
+  level: number;
+  nickname: string | null;
+  isFavorite: boolean;
+  variant: string;
+  selectedAppearance: Appearance;
+  /**
+   * Calendar day only — `2026-09-07`, never a timestamp.
+   *
+   * Deliberately less precise than `OwnedWaifu.caughtAt`, which is a full ISO
+   * instant and is unchanged. A millisecond capture time is a record of when
+   * another player was at their keyboard; the UI renders days, so nothing is
+   * lost. Same-day copies arrive in the server's own (full-precision) order —
+   * see the tie note in `sortEntries`.
+   */
+  caughtAt: string;
+}
+
+export interface PublicOwnedEntry {
+  waifu: PublicOwnedWaifu;
+  species: Species;
+  /** Whether this copy is the *owner's* buddy — never the viewer's. */
+  isBuddy: boolean;
+}
+
+/**
+ * What the shared Collection renderer actually needs.
+ *
+ * `OwnedEntry` and `PublicOwnedEntry` are both assignable to this, which is
+ * what lets one grid, one card and one detail view serve both the self and the
+ * public modes instead of a second page that drifts. `progress` is optional
+ * because it is the XP curve — present for your own copies, absent for
+ * everybody else's, and every consumer must therefore handle its absence.
+ */
+export interface CollectionEntryView {
+  waifu: PublicOwnedWaifu;
+  species: Species;
+  progress?: WaifuProgress | undefined;
+  isBuddy?: boolean | undefined;
+}
+
 export interface DexStats {
   /** Active (non-released) owned Waifumon. */
   owned: number;

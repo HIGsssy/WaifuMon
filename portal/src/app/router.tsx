@@ -70,6 +70,19 @@ const PlayersPage = lazy(() =>
 const PublicProfilePage = lazy(() =>
   import('@/features/players/PublicProfilePage').then((m) => ({ default: m.PublicProfilePage })),
 );
+// A guild-mate's collection and one copy from it. Both render the shared
+// Collection components in `public` mode — see those files for why the mode is
+// an explicit prop rather than something inferred from the data.
+const PublicCollectionPage = lazy(() =>
+  import('@/features/players/PublicCollectionPage').then((m) => ({
+    default: m.PublicCollectionPage,
+  })),
+);
+const PublicWaifumonDetailPage = lazy(() =>
+  import('@/features/players/PublicWaifumonDetailPage').then((m) => ({
+    default: m.PublicWaifumonDetailPage,
+  })),
+);
 const GuidePage = lazy(() =>
   import('@/features/guide/GuidePage').then((m) => ({ default: m.GuidePage })),
 );
@@ -154,6 +167,8 @@ export const routes: RouteObject[] = [
           // the acting player. The API decides whether the session may see it.
           { path: 'players', element: <PlayersPage /> },
           { path: 'players/:playerId', element: <PublicProfilePage /> },
+          { path: 'players/:playerId/collection', element: <PublicCollectionPage /> },
+          { path: 'players/:playerId/collection/:waifuId', element: <PublicWaifumonDetailPage /> },
           { path: 'guide', element: <GuidePage /> },
           { path: 'settings', element: <SettingsPage /> },
 

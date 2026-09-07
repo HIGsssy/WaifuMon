@@ -6,16 +6,25 @@
  * rate, an XP threshold, a drop weight or any other rule the game services own
  * (plan §16). The one judgement call, "related species", is documented below.
  */
-import type { ContentSpecies, OwnedEntry, Race } from '@/api/types';
+import type { CollectionEntryView, ContentSpecies, Race } from '@/api/types';
 import { byRarityDesc } from '@/lib/rarity';
 
+/**
+ * These helpers are typed against {@link CollectionEntryView} rather than
+ * `OwnedEntry` so the self and public Collection views share one
+ * implementation. Both entry shapes are assignable to it, and nothing here
+ * reads a field the public payload withholds — which is why widening the
+ * signature was enough to make the whole grid work in public mode, with no
+ * second copy of the filter and sort rules to keep in step.
+ */
+
 /** How a copy is titled: its nickname if it has one, else the species name. */
-export function displayName(entry: OwnedEntry): string {
+export function displayName(entry: CollectionEntryView): string {
   return entry.waifu.nickname?.trim() || entry.species.name;
 }
 
 /** The species name, shown as a subtitle only when a nickname replaced it. */
-export function subtitleFor(entry: OwnedEntry): string | null {
+export function subtitleFor(entry: CollectionEntryView): string | null {
   return entry.waifu.nickname?.trim() ? entry.species.name : null;
 }
 
@@ -33,7 +42,7 @@ export const SORT_OPTIONS: ReadonlyArray<{ value: SortKey; label: string }> = [
  * `rarity` reproduces the server order and the rest are alternative views of
  * the same 25 rows — never a claim about the whole collection.
  */
-export function sortEntries(entries: OwnedEntry[], sort: SortKey): OwnedEntry[] {
+export function sortEntries<T extends CollectionEntryView>(entries: T[], sort: SortKey): T[] {
   const sorted = [...entries];
   switch (sort) {
     case 'name':
@@ -43,6 +52,15 @@ export function sortEntries(entries: OwnedEntry[], sort: SortKey): OwnedEntry[] 
         (a, b) => b.waifu.level - a.waifu.level || displayName(a).localeCompare(displayName(b)),
       );
     case 'caught':
+      // Ties resolve to 0 and `Array.prototype.sort` is stable, so copies the
+      // comparator cannot separate keep the order the server sent them in.
+      //
+      // That is load-bearing for the public collection rather than incidental:
+      // its `caughtAt` is a calendar day (`2026-09-07`), so every copy caught
+      // on the same day compares equal here. Falling through to the server's
+      // ordering is exactly right — the server sorted by the real timestamp,
+      // which this view is deliberately not shown. Inventing a tiebreak from
+      // the truncated date would replace a correct order with a guess.
       return sorted.sort(
         (a, b) => new Date(b.waifu.caughtAt).getTime() - new Date(a.waifu.caughtAt).getTime(),
       );
@@ -57,7 +75,7 @@ export function sortEntries(entries: OwnedEntry[], sort: SortKey): OwnedEntry[] 
 }
 
 export interface CollectionFilters {
-  rarity: OwnedEntry['species']['rarity'] | null;
+  rarity: CollectionEntryView['species']['rarity'] | null;
   search: string;
   race: Race | null;
   affinity: string | null;
@@ -68,11 +86,11 @@ export interface CollectionFilters {
  * Client-side filtering of the complete owned collection. Callers sort and
  * paginate only after this function returns.
  */
-export function filterEntries(
-  entries: OwnedEntry[],
+export function filterEntries<T extends CollectionEntryView>(
+  entries: T[],
   filters: CollectionFilters,
   buddyWaifuId: number | null,
-): OwnedEntry[] {
+): T[] {
   const needle = filters.search.trim().toLowerCase();
 
   return entries.filter((entry) => {
@@ -90,7 +108,10 @@ export function filterEntries(
 }
 
 /** Distinct values present in a set of entries, for building filter chips. */
-export function distinctValues(entries: OwnedEntry[], key: 'race' | 'affinity'): string[] {
+export function distinctValues(
+  entries: readonly CollectionEntryView[],
+  key: 'race' | 'affinity',
+): string[] {
   return [...new Set(entries.map((entry) => entry.species[key]))].sort((a, b) =>
     a.localeCompare(b),
   );

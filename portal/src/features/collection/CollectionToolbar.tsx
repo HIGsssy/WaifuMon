@@ -28,6 +28,8 @@ const OWNERSHIP_OPTIONS: ReadonlyArray<{ value: Ownership; label: string }> = [
 
 export interface CollectionToolbarProps {
   api: CollectionParamsApi;
+  /** Whose collection is being filtered — only wording depends on it. */
+  ownerName?: string | undefined;
   races: Race[];
   affinities: string[];
   /** Shows the quiet inline indicator while a background refetch runs (§14). */
@@ -38,6 +40,7 @@ export interface CollectionToolbarProps {
 
 export function CollectionToolbar({
   api,
+  ownerName,
   races,
   affinities,
   refreshing,
@@ -157,8 +160,10 @@ export function CollectionToolbar({
     <FilterToolbar
       searchValue={searchDraft}
       onSearchChange={setSearchDraft}
-      searchPlaceholder="Search your collection..."
-      searchLabel="Search your collection"
+      searchPlaceholder={
+        ownerName ? `Search ${ownerName}'s collection...` : 'Search your collection...'
+      }
+      searchLabel={ownerName ? `Search ${ownerName}'s collection` : 'Search your collection'}
       groups={groups}
       activeChips={activeChips}
       onClearAll={() => {

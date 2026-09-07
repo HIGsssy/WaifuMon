@@ -11,7 +11,8 @@
 import { BookOpen, Heart, History, Sparkles, Star, Swords, type LucideIcon } from 'lucide-react';
 import { Link } from 'react-router';
 
-import type { ContentSpecies, OwnedEntry } from '@/api/types';
+import type { CollectionEntryView, ContentSpecies, OwnedEntry } from '@/api/types';
+import type { CollectionMode } from '@/components/waifumon/WaifumonCard';
 import { Button } from '@/components/ui/button';
 import { Card, CardTitle } from '@/components/ui/card';
 import { AffectionMeter, XpBar } from '@/components/waifumon/Meters';
@@ -50,8 +51,30 @@ function PlaceholderCard({
 }
 
 export interface WaifumonDetailProps {
-  entry: OwnedEntry;
+  entry: CollectionEntryView;
   isBuddy: boolean;
+  /**
+   * Whose copy this is.
+   *
+   * `'public'` is a guild-mate's, viewed read-only. It changes three things,
+   * each of which would otherwise be a real defect rather than a cosmetic one:
+   *
+   *   - **The progression card loses XP and affection.** The public payload
+   *     does not carry them (`progress` is absent, and `affection` is not a
+   *     field), so rendering that card would print `undefined`.
+   *   - **The appearance gallery is omitted.** Its endpoint is self-only *and*
+   *     it writes — reading a gallery acknowledges pending unlocks and appends
+   *     an audit row. A viewer must not be able to touch another player's
+   *     progression bookkeeping by opening their copy.
+   *   - **Artwork resolves through the guild-scoped public route**, because the
+   *     self-only one would refuse.
+   *
+   * Passed explicitly rather than inferred from `waifu.playerId`: the mode is
+   * an authorization fact the route already knows, and re-deriving it in a
+   * component from server data is how a viewer ends up treating somebody else's
+   * copy as their own.
+   */
+  mode?: CollectionMode;
   /** The cached content snapshot, for the related-species strip. */
   allSpecies: ContentSpecies[] | undefined;
   /** Whether the backend serves rendered cards — gates the Art/Card switch. */
@@ -61,10 +84,12 @@ export interface WaifumonDetailProps {
 export function WaifumonDetail({
   entry,
   isBuddy,
+  mode = 'self',
   allSpecies,
   cardsAvailable = false,
 }: WaifumonDetailProps) {
   const { waifu, species, progress } = entry;
+  const isPublic = mode === 'public';
   const title = displayName(entry);
   const subtitle = subtitleFor(entry);
   // The bonus is a species property and rides on the content snapshot, not on
@@ -79,7 +104,7 @@ export function WaifumonDetail({
         to hero instead of blinking out (§14). Nothing depends on that support.
       */}
       <div className="lg:sticky lg:top-24 lg:self-start">
-        <WaifumonHero entry={entry} cardsAvailable={cardsAvailable} />
+        <WaifumonHero entry={entry} mode={mode} cardsAvailable={cardsAvailable} />
       </div>
 
       <div className="space-y-5">
@@ -100,7 +125,7 @@ export function WaifumonDetail({
             {isBuddy && (
               <span className="inline-flex items-center gap-1 rounded-full border border-rose-500/40 bg-rose-500/10 px-2.5 py-0.5 text-xs font-medium text-rose-800 dark:text-rose-200">
                 <Heart className="size-3 fill-current" aria-hidden="true" />
-                Buddy
+                {isPublic ? 'Their buddy' : 'Buddy'}
               </span>
             )}
           </div>
@@ -129,12 +154,26 @@ export function WaifumonDetail({
               <span className="tabular rounded-full border border-border bg-surface-raised px-2.5 py-0.5 text-sm font-medium text-ink">
                 Level {waifu.level}
               </span>
-              <span className="tabular text-sm text-ink-muted">
-                {formatNumber(waifu.xp)} XP total
-              </span>
+              {/*
+                XP and affection are self-only. They are not hidden here — the
+                public payload simply does not contain them, so this branch is
+                reading what it was given rather than choosing what to withhold.
+              */}
+              {'xp' in waifu && (
+                <span className="tabular text-sm text-ink-muted">
+                  {formatNumber((waifu as OwnedEntry['waifu']).xp)} XP total
+                </span>
+              )}
             </div>
-            <XpBar progress={progress} />
-            <AffectionMeter affection={waifu.affection} />
+            {progress && <XpBar progress={progress} />}
+            {'affection' in waifu && (
+              <AffectionMeter affection={(waifu as OwnedEntry['waifu']).affection} />
+            )}
+            {isPublic && (
+              <p className="text-xs text-ink-subtle">
+                Experience and affection are private to {'their trainer'}.
+              </p>
+            )}
           </div>
         </Card>
 
@@ -169,7 +208,16 @@ export function WaifumonDetail({
           </p>
         </Card>
 
-        <AppearanceGallery playerId={waifu.playerId} waifuId={waifu.id} waifuName={title} />
+        {/*
+          Self only. The gallery endpoint is scoped to the session's own player
+          *and* has a write side effect (it acknowledges pending unlocks and
+          writes an audit row), so it must never be reached for somebody else's
+          copy. Omitted rather than disabled: a disabled component still mounts
+          its query.
+        */}
+        {!isPublic && (
+          <AppearanceGallery playerId={waifu.playerId} waifuId={waifu.id} waifuName={title} />
+        )}
 
         <div className="grid gap-4 sm:grid-cols-2">
           <PlaceholderCard
