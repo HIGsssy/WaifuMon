@@ -125,17 +125,103 @@ build cannot block the bot and Platform API from starting — an unqualified
 as above, activates its profile and builds it; `docker compose --profile portal
 up -d --build` brings up the whole stack together.
 
-For Cloudflare Tunnel, point the tunnel service at `http://127.0.0.1:3130`.
-The public Portal URL is `https://portal.playwaifumon.online`.
+For Cloudflare Tunnel, point the tunnel service at
+`http://127.0.0.1:<PORTAL_WEB_PORT>` — `3130` for production, `3230` for
+staging. See "Two environments on one host" below.
 
-Discord Developer Portal settings:
+Discord Developer Portal settings — **each environment has its own Discord
+application**, so these are filled in twice, once per application:
 
-| Setting | Value |
-|---|---|
-| OAuth2 redirect URI | `https://portal.playwaifumon.online/auth/discord/callback` |
-| Scopes | `identify`, `guilds` |
-| Client ID | same value as `DISCORD_CLIENT_ID` |
-| Client secret | stored only as `DISCORD_CLIENT_SECRET` in the root `.env` |
+| Setting | Production | Staging |
+|---|---|---|
+| OAuth2 redirect URI | `https://afterdark.playwaifumon.online/auth/discord/callback` | `https://portal.playwaifumon.online/auth/discord/callback` |
+| Scopes | `identify`, `guilds` | `identify`, `guilds` |
+| Client ID | production app id, as `DISCORD_CLIENT_ID` | staging app id, as `DISCORD_CLIENT_ID` |
+| Client secret | production secret, as `DISCORD_CLIENT_SECRET` | staging secret, as `DISCORD_CLIENT_SECRET` |
+
+Both values live only in that environment's root `.env`. There is no separate
+`PORTAL_DISCORD_CLIENT_ID`: the OAuth authorize URL is built from
+`DISCORD_CLIENT_ID`, the same variable the bot's gateway login uses, so the bot
+and the Portal in one stack are necessarily the same Discord application.
+
+## Two environments on one host
+
+Production and staging run as two separate checkouts and two separate Compose
+projects on the same physical server. Both Portals stay bound to `127.0.0.1`;
+Cloudflare Tunnel is the only public path to either.
+
+| | Production | Staging |
+|---|---|---|
+| Public hostname | `afterdark.playwaifumon.online` | `portal.playwaifumon.online` |
+| Cloudflare Tunnel origin | `http://127.0.0.1:3130` | `http://127.0.0.1:3230` |
+| Portal host port (`PORTAL_WEB_PORT`) | `3130` | `3230` |
+| Admin host port (`ADMIN_WEB_PORT`) | `3111` | `3211` |
+| Platform API host port (`PLATFORM_API_PORT`) | `3120` | `3220` |
+| Publish host (all three) | `127.0.0.1` | `127.0.0.1` |
+| Discord application | production app | staging app |
+| Postgres user / db | `waifumon` / `waifumon` | `waifumon_stage` / `waifumon_stage` |
+| `COMPOSE_PROJECT_NAME` | `waifumon` | `waifumon-stage` |
+| Postgres volume | `waifumon_waifumon-pgdata` | `waifumon-stage_waifumon-pgdata` |
+| Card cache volume | `waifumon_waifumon-card-cache` | `waifumon-stage_waifumon-card-cache` |
+| Default network | `waifumon_default` | `waifumon-stage_default` |
+
+Host ports follow a `31xx` / `32xx` scheme: production `3111 / 3120 / 3130`,
+staging `3211 / 3220 / 3230`. Nothing overlaps, and the Portal slot is the
+`x130` / `x230` position in each block.
+
+### Cloudflare terminates TLS; Nginx is reached over plaintext loopback
+
+The tunnel origin for production is:
+
+```
+http://127.0.0.1:3130
+```
+
+**`http`, not `https`, and that is correct.** Cloudflare provides HTTPS to the
+public internet and terminates it at its edge; `cloudflared` runs on this same
+server and dials the Portal's Nginx over the host loopback interface, where
+there is no TLS and none is wanted — the traffic never leaves the machine.
+`PORTAL_FORWARDED_PROTO=https` is what carries the browser's real scheme across
+that boundary, as the `X-Forwarded-Proto` header Nginx sets on `/api` and
+`/auth`. It is operator-set rather than read from the request, so a client
+cannot claim its own scheme. Leaving it at `http` while Cloudflare fronts the
+origin would drop the `Secure` flag from the session and CSRF cookies, because
+`cookieBase()` in `src/api/routes/auth.ts` sets `secure` from exactly this
+value.
+
+### What keeps the two stacks apart
+
+Everything derives from `COMPOSE_PROJECT_NAME`. Compose prefixes container
+names, the default network and every named volume with it, and
+`docker-compose.yml` sets no `container_name` and declares no `external`
+volume — so two stacks with different project names cannot collide on any of
+them. The remaining separation is per-environment `.env` values: different host
+ports, different Postgres credentials, different Discord application, different
+`PORTAL_SESSION_SECRET` (a shared one would make staging session and OAuth-state
+digests valid in production).
+
+Production's project name is `waifumon` — the historical default derived from
+the `/opt/ADWaifumon/WaifuMon` directory name, which is why its containers are
+named `waifumon-postgres-1`. Writing `COMPOSE_PROJECT_NAME=waifumon` into the
+production `.env` is a no-op that pins the existing name. **Setting it to
+anything else orphans the production database**: Compose would look for
+`<newname>_waifumon-pgdata`, not find it, and create a new empty volume.
+
+### `COMPOSE_FILE` and `docker-compose.stage.yml`
+
+This repository ships a single `docker-compose.yml` and no override files.
+There is no `docker-compose.stage.yml` in the working tree, on any branch, or
+anywhere in git history. A `.env` containing
+
+```
+COMPOSE_FILE=docker-compose.yml:docker-compose.stage.yml
+```
+
+therefore names a file that does not exist, and every `docker compose` command
+in that checkout fails to load. Remove the `COMPOSE_FILE` line rather than
+creating the missing file — nothing in the staging setup needs an override.
+Every difference between the environments is expressible as `.env` values,
+which is what the table above does.
 
 ### Why `/ready` is not public
 
@@ -192,9 +278,15 @@ Neither file is tracked by git.
 
 ### Production ports and binds
 
+Staging's equivalents are in "Two environments on one host" above. Note the
+Portal row: unlike Admin and the Platform API, whose processes bind
+`ADMIN_WEB_PORT` / `PLATFORM_API_PORT` directly, Nginx always listens on `8080`
+inside the container. `PORTAL_WEB_PORT` moves only the host side of the
+mapping.
+
 | Surface | Compose service | Host bind | Public? |
 |---|---|---|---|
-| Portal web | `waifumon-portal` | `${PORTAL_WEB_PUBLISH_HOST:-127.0.0.1}:${PORTAL_WEB_PORT:-3130}` | Only through Cloudflare Tunnel |
+| Portal web | `waifumon-portal` | `${PORTAL_WEB_PUBLISH_HOST:-127.0.0.1}:${PORTAL_WEB_PORT:-3130}` -> container `8080` | Only through Cloudflare Tunnel |
 | Platform API | `waifumon-bot` | `${PLATFORM_API_PUBLISH_HOST:-127.0.0.1}:${PLATFORM_API_PORT:-3120}` | No |
 | Admin web | `waifumon-bot` | `${ADMIN_WEB_PUBLISH_HOST:-127.0.0.1}:${ADMIN_WEB_PORT:-3111}` | No |
 | Postgres | `postgres` | none | No |

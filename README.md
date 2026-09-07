@@ -126,6 +126,14 @@ can never stop the bot from starting — plain `docker compose up --build` does
 not build it. Naming it, as above, builds and starts it anyway; to bring up the
 whole stack at once, use `docker compose --profile portal up -d --build`.
 
+Production and staging run side by side on one host as two Compose projects
+(`COMPOSE_PROJECT_NAME=waifumon` and `waifumon-stage`), with host ports on a
+`31xx`/`32xx` scheme — Portal `3130`/`3230`, Platform API `3120`/`3220`, Admin
+`3111`/`3211` — and their own Discord application, database and session secret
+each. `PORTAL_WEB_PORT` is a host-side port only; Nginx always listens on
+`8080` inside the container. See "Two environments on one host" in
+[docs/portal.md](docs/portal.md).
+
 This does not add public player authentication yet. The production proxy does
 not inject `PLATFORM_API_TOKEN`; Discord OAuth/session auth is the next step.
 
