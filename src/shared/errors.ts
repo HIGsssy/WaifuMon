@@ -703,6 +703,32 @@ export class TravelBlockedByEncounterError extends AppError {
 }
 
 /**
+ * Travel refused because the player is resting in Care Mode.
+ *
+ * Checked *before* the Energy balance, and that ordering is the whole point of
+ * having a separate error. Care Mode is the recovery state: a player sitting in
+ * it is usually at or near zero Energy, and telling them "you're out of Energy,
+ * claim your daily" would be advice for a problem they are already solving. The
+ * actionable instruction is "leave Care Mode" — so that is what this says.
+ *
+ * A hard block rather than an implicit exit, which is where travel deliberately
+ * parts company with the hunt. `huntService` calls `care.applyAndExit` and
+ * charges on: a hunt is the thing a rested player came back to do. Travel is
+ * not — it is a movement that happens to roll a World Encounter, so silently
+ * ending someone's rest to let them wander is both surprising and the exact
+ * shape of the farming loop this gate exists to close.
+ */
+export class TravelBlockedByCareModeError extends AppError {
+  constructor() {
+    super(
+      'TRAVEL_BLOCKED_BY_CARE_MODE',
+      'Cannot travel while in Care Mode',
+      "You're resting right now~ Leave Care Mode and recover some Hunt Energy before you set out.",
+    );
+  }
+}
+
+/**
  * A regionally-stocked item bought from outside the regions that stock it.
  *
  * Distinct from {@link ItemNotPurchasableError}, which means "this is never

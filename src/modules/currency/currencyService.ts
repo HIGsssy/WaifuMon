@@ -1,7 +1,12 @@
 import { and, eq, gte, sql } from 'drizzle-orm';
 import type { Db, DbOrTx } from '../../db/client';
 import { playerCurrencies, type PlayerCurrenciesRow } from '../../db/schema';
-import { InsufficientEssenceError, InsufficientFundsError, PlayerNotFoundError } from '../../shared/errors';
+import {
+  InsufficientEnergyError,
+  InsufficientEssenceError,
+  InsufficientFundsError,
+  PlayerNotFoundError,
+} from '../../shared/errors';
 
 /**
  * Currency operations. Mutations take a DbOrTx so callers compose them into
@@ -18,6 +23,18 @@ export interface CurrencyService {
   grantEssence(tx: DbOrTx, playerId: number, amount: number): Promise<PlayerCurrenciesRow>;
   spendEssence(tx: DbOrTx, playerId: number, amount: number): Promise<PlayerCurrenciesRow>;
   setHuntEnergy(tx: DbOrTx, playerId: number, value: number): Promise<PlayerCurrenciesRow>;
+  /**
+   * Conditionally deduct Hunt Energy, throwing {@link InsufficientEnergyError}
+   * when the balance would go negative.
+   *
+   * The same shape as {@link CurrencyService.spendWaifubux} and for the same
+   * reason: `WHERE hunt_energy >= amount` makes the check and the deduction one
+   * statement, so a caller cannot read a balance, be raced, and spend anyway.
+   * `setHuntEnergy` is a read-then-write and gives no such guarantee — it is
+   * the right tool for "set it to this value" (a daily refill, an item), and
+   * the wrong one for "charge for an action".
+   */
+  spendHuntEnergy(tx: DbOrTx, playerId: number, amount: number): Promise<PlayerCurrenciesRow>;
 }
 
 function assertPositiveInt(amount: number): void {
@@ -116,6 +133,32 @@ export function createCurrencyService(db: Db): CurrencyService {
           .where(eq(playerCurrencies.playerId, playerId));
         if (!current) throw new PlayerNotFoundError(playerId);
         throw new InsufficientEssenceError(amount, current.essence);
+      }
+      return row;
+    },
+
+    async spendHuntEnergy(tx, playerId, amount) {
+      assertPositiveInt(amount);
+      const [row] = await tx
+        .update(playerCurrencies)
+        .set({
+          huntEnergy: sql`${playerCurrencies.huntEnergy} - ${amount}`,
+          updatedAt: sql`now()`,
+        })
+        .where(
+          and(eq(playerCurrencies.playerId, playerId), gte(playerCurrencies.huntEnergy, amount)),
+        )
+        .returning();
+      if (!row) {
+        // No row updated means either the player does not exist or the balance
+        // was short. Distinguish, so a missing player never masquerades as an
+        // empty energy tank.
+        const [current] = await tx
+          .select({ huntEnergy: playerCurrencies.huntEnergy })
+          .from(playerCurrencies)
+          .where(eq(playerCurrencies.playerId, playerId));
+        if (!current) throw new PlayerNotFoundError(playerId);
+        throw new InsufficientEnergyError();
       }
       return row;
     },

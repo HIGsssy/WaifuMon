@@ -283,7 +283,11 @@ describe('travel', () => {
   });
   beforeEach(() => resetPlayer(playerId));
 
-  it('is free and immediate once unlocked', async () => {
+  it('costs no WaifuBux and is immediate once unlocked', async () => {
+    // Travel is priced in Hunt Energy, never in currency — see
+    // `travelEnergy.test.ts` for the Energy side. This asserts the half that
+    // has always been true and must stay true: unlocking a route is the
+    // purchase, and walking it afterwards is not a second one.
     await app.travel.purchaseDestination(playerId, 'twin-peeks');
     const balanceBefore = await balanceOf(playerId);
 

@@ -304,6 +304,16 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   ALREADY_IN_REGION: 409,
   /** An open encounter holds the player in place until it resolves. */
   TRAVEL_BLOCKED_BY_ENCOUNTER: 409,
+  /**
+   * Resting in Care Mode holds the player in place until they leave it.
+   *
+   * 409 rather than 422, matching the encounter block above: the request is
+   * well-formed and the destination is legal — the player is simply in a state
+   * that conflicts with it, and the fix is to change that state rather than to
+   * change the request. `INSUFFICIENT_ENERGY` stays 422 because there the
+   * request is genuinely unaffordable.
+   */
+  TRAVEL_BLOCKED_BY_CARE_MODE: 409,
   /** The whole feature is switched off in content. */
   TRAVEL_DISABLED: 422,
   /**

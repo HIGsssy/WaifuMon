@@ -424,7 +424,12 @@ export async function handleLocationTravel(
   let destinationRegionId: string | null = null;
   try {
     const outcome = await ctx.services.travel.travel(prov.playerId, regionId);
-    statusLine = `🚶 You set out from **${outcome.fromRegion}** and arrive in **${outcome.toRegionName}**.`;
+    // The Energy line is reported, not enforced, here: `travel.travel()` has
+    // already charged and would have thrown rather than move the player. This
+    // is the receipt.
+    statusLine =
+      `🚶 You set out from **${outcome.fromRegion}** and arrive in **${outcome.toRegionName}**. ` +
+      `⚡ −${outcome.energySpent} Energy (**${outcome.energyRemaining}** left).`;
     travelSucceeded = true;
     originRegionId = outcome.fromRegion;
     destinationRegionId = outcome.toRegion;

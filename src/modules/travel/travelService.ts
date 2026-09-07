@@ -8,7 +8,8 @@
  *   - **regions** — read where a player is; list what they can see and do.
  *   - **passes** — buy the Caravan Pass (and the destination it stamps).
  *   - **routes** — add a later destination to a pass already owned.
- *   - **travel** — actually move, subject to the active-encounter block.
+ *   - **travel** — actually move, for 1 Hunt Energy, subject to the
+ *     active-encounter, Care Mode and Energy blocks.
  *
  * Every money path follows the Shop's transaction shape exactly: lock the
  * currency row first (which serializes this player's concurrent clicks),
@@ -19,10 +20,18 @@
  * rolls back. A player therefore cannot be charged twice for one entitlement
  * even in principle.
  *
- * What this module deliberately does **not** do: touch capture, rarity, energy,
- * cooldowns, care, gifts or boss participation. Region reaches exactly one
- * gameplay decision — which species the hunt may draw — and that decision is
- * made in `huntService`, not here.
+ * What this module deliberately does **not** do: touch capture, rarity,
+ * cooldowns, gifts or boss participation. Region reaches exactly one gameplay
+ * decision — which species the hunt may draw — and that decision is made in
+ * `huntService`, not here.
+ *
+ * It *does* touch Energy and Care Mode, in exactly one place: `travel()`. That
+ * is a deliberate later addition, not a leak of hunt concerns into the map.
+ * Travel can roll a World Encounter, and a World Encounter pays out — so a move
+ * that costs nothing is an unbounded reward loop for anyone willing to walk
+ * back and forth. `TRAVEL_ENERGY_COST` is what prices it, and it is charged
+ * here rather than in the Discord handler so that the Portal, the Platform API
+ * and any future client are gated by construction rather than by remembering.
  */
 import { and, eq } from 'drizzle-orm';
 import type { Db } from '../../db/client';
@@ -41,6 +50,7 @@ import {
   RegionLockedError,
   RegionNotFoundError,
   RouteAlreadyUnlockedError,
+  TravelBlockedByCareModeError,
   TravelBlockedByEncounterError,
   TravelDisabledError,
   TravelLevelRequiredError,
@@ -56,6 +66,21 @@ import {
   type DestinationDefinition,
   type TravelCatalog,
 } from './travelCatalog';
+
+/**
+ * Hunt Energy charged for one successful journey.
+ *
+ * One, flat, and not content-tunable on purpose. The number is not a balance
+ * dial — it is the thing that makes travel *finite*, so it belongs next to the
+ * code that enforces it rather than in a table an admin can quietly set to
+ * zero and reopen the farm. Exported so the UI and the tests name the cost
+ * once instead of each hard-coding a `1`.
+ *
+ * Charged once per journey, at the moment the destination is committed. The
+ * World Encounter that a journey may roll is downstream of that commit and
+ * costs nothing further — see the note on the roll in `travel()`.
+ */
+export const TRAVEL_ENERGY_COST = 1;
 
 /**
  * How a destination renders on the Locations screen.
@@ -130,6 +155,10 @@ export interface TravelOutcome {
   fromRegion: Region;
   toRegion: Region;
   toRegionName: string;
+  /** Hunt Energy this journey consumed. Always {@link TRAVEL_ENERGY_COST}. */
+  energySpent: number;
+  /** Hunt Energy left after the charge, so the UI need not re-read it. */
+  energyRemaining: number;
 }
 
 export interface TravelService {
@@ -148,7 +177,15 @@ export interface TravelService {
    * kind it is looking at.
    */
   purchaseDestination(playerId: number, regionId: string): Promise<PurchaseOutcome>;
-  /** Move. Free, immediate, and refused while an encounter is open. */
+  /**
+   * Move. Immediate, and refused while an encounter is open, while the player
+   * is in Care Mode, or below {@link TRAVEL_ENERGY_COST} Hunt Energy.
+   *
+   * Costs exactly {@link TRAVEL_ENERGY_COST} Energy, deducted atomically with
+   * the destination update: a journey that throws for any reason consumes
+   * nothing. WaifuBux, passes and routes are unaffected — travel has never
+   * charged money and still does not.
+   */
   travel(playerId: number, regionId: string, now?: Date): Promise<TravelOutcome>;
   /** Admin: grant a pass (and its routes) with no charge. Idempotent. */
   grantPass(playerId: number, passId: string): Promise<void>;
@@ -507,15 +544,53 @@ export function createTravelService(deps: TravelServiceDeps): TravelService {
     },
 
     async travel(playerId, regionId, now = new Date()) {
+      // Content gate first, and outside the transaction: a disabled travel
+      // system or an unknown region is a fact about the catalog, not about
+      // this player, so it needs no locks and no rollback.
       const destination = requireDestination(regionId);
 
       return db.transaction(async (tx) => {
+        // Both rows are locked up front, before any decision reads them.
+        //
+        // The currency lock is what serializes this player's concurrent travel
+        // clicks — the same role it plays in `purchaseDestination` and in the
+        // Shop. Without it, two clicks could both read 1 Energy and both
+        // commit; `spendHuntEnergy`'s conditional `WHERE` would still stop the
+        // second from going negative, but the lock is what makes the *ordering*
+        // deterministic rather than leaning on the backstop.
         const [player] = await tx
-          .select({ currentRegion: players.currentRegion })
+          .select({
+            currentRegion: players.currentRegion,
+            careModeStartedAt: players.careModeStartedAt,
+            careModeLastTickAt: players.careModeLastTickAt,
+            careModeWaifuId: players.careModeWaifuId,
+          })
           .from(players)
           .where(eq(players.id, playerId))
           .for('update');
         if (!player) throw new RegionNotFoundError(regionId);
+        await currency.lockCurrencies(tx, playerId);
+
+        // ── Validation order ──────────────────────────────────────────────
+        //
+        // Everything below this line runs before a single write, so the "a
+        // failed travel costs nothing" guarantee does not actually depend on
+        // the ordering — the deduction is last, and any throw rolls the whole
+        // transaction back regardless. What the ordering buys is the *right
+        // message* when more than one rule is unmet, cheapest and most
+        // specific first:
+        //
+        //   1. already here          — nothing to do at all
+        //   2. route locked          — a trip they could never take
+        //   3. encounter open        — someone is waiting on them
+        //   4. Care Mode             — they are deliberately resting
+        //   5. Energy                — the trip is real, the tank is empty
+        //
+        // Care Mode sits above Energy because a resting player is nearly
+        // always also out of Energy, and "leave Care Mode" is the instruction
+        // that actually moves them forward. Both sit *below* the destination
+        // checks so a player is never told to go recover for a journey that
+        // was refused for an unrelated reason.
         const fromRegion = toRegion(player.currentRegion);
         if (fromRegion === regionId) {
           throw new AlreadyInRegionError(regionId, destination.region.name);
@@ -547,15 +622,44 @@ export function createTravelService(deps: TravelServiceDeps): TravelService {
           throw new TravelBlockedByEncounterError(active.id);
         }
 
+        // Care Mode, read off the row locked above. The same three-column test
+        // `careService` uses for "active" — duplicated rather than delegated
+        // because calling into the care service here would mean either
+        // applying pending ticks (a write, on a path that may still refuse) or
+        // adding a read-only entry point for one boolean.
+        const inCareMode =
+          player.careModeStartedAt != null &&
+          player.careModeLastTickAt != null &&
+          player.careModeWaifuId != null;
+        if (inCareMode) throw new TravelBlockedByCareModeError();
+
+        // Energy: the conditional deduct *is* the check. `spendHuntEnergy`
+        // throws `InsufficientEnergyError` when the balance is short, so there
+        // is no read-then-write window between deciding and charging, and a
+        // player at zero cannot travel however they got here.
+        const spent = await currency.spendHuntEnergy(tx, playerId, TRAVEL_ENERGY_COST);
+
+        // Destination last. Same transaction as the deduction, so the two
+        // commit together or not at all: no journey without a charge, and no
+        // charge without a journey.
         await tx
           .update(players)
           .set({ currentRegion: regionId })
           .where(eq(players.id, playerId));
 
+        // The World Encounter roll is deliberately NOT here. It fires after
+        // this transaction commits (see `handleLocationTravel`), against a
+        // destination that is already the player's real position — which is
+        // what makes the encounter, its resolution, any chained continuation
+        // and the "Continue Journey" button all pure downstream navigation
+        // with nothing left to charge. Travel is billed once, here, whether or
+        // not anything comes of the trip.
         return {
           fromRegion,
           toRegion: regionId as Region,
           toRegionName: destination.region.name,
+          energySpent: TRAVEL_ENERGY_COST,
+          energyRemaining: spent.huntEnergy,
         } satisfies TravelOutcome;
       });
     },
