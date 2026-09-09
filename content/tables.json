@@ -5,18 +5,18 @@
       "enabled": true,
       "intervalMinutes": 30,
       "energyPerTick": 1,
-      "recoveryCap": 10,
-      "waifuXpPerTick": 2,
-      "affectionPerTick": 1
+      "recoveryCap": 15,
+      "waifuXpPerTick": 4,
+      "affectionPerTick": 2
     }
   },
   "inventory": {
     "captureCapacity": 200
   },
   "dailyPackage": {
-    "waifubux": 100,
+    "waifubux": 125,
     "items": {
-      "basic_charm": 5,
+      "basic_charm": 2,
       "silk_charm": 2,
       "velvet_charm": 1
     }
