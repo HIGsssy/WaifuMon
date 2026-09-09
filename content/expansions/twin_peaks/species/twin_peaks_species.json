@@ -83,9 +83,9 @@
     ],
     "buddyBonus": {
       "name": "Steam Service",
-      "flavorText": "Steam Service: +50% Energy gained in Care mode.",
+      "flavorText": "Steam Service: +100% Energy gained in Care mode.",
       "effectId": "care_energy_gain",
-      "value": 50
+      "value": 100
     }
   },
   {
@@ -617,9 +617,9 @@
     ],
     "buddyBonus": {
       "name": "Crank the Heat",
-      "flavorText": "Crank the Heat: +75% Energy gained in Care mode.",
+      "flavorText": "Crank the Heat: +100% Energy gained in Care mode.",
       "effectId": "care_energy_gain",
-      "value": 75
+      "value": 100
     }
   },
   {
@@ -706,9 +706,9 @@
     ],
     "buddyBonus": {
       "name": "No Vacancy",
-      "flavorText": "No Vacancy: +12% capture chance against SSR+ Waifumon.",
+      "flavorText": "No Vacancy: +24% capture chance against SSR+ Waifumon.",
       "effectId": "capture_chance",
-      "value": 12,
+      "value": 24,
       "target": {
         "type": "rarity_min",
         "value": "SSR"
@@ -888,9 +888,9 @@
     ],
     "buddyBonus": {
       "name": "Standing Ovation",
-      "flavorText": "Standing Ovation: +75% Affection gained.",
+      "flavorText": "Standing Ovation: +100% Affection gained.",
       "effectId": "affection_gain",
-      "value": 75
+      "value": 100
     }
   },
   {
@@ -1066,9 +1066,9 @@
     ],
     "buddyBonus": {
       "name": "Management Perks",
-      "flavorText": "Management Perks: +40% eligible rewards from Boss Encounters.",
+      "flavorText": "Management Perks: +50%eligible rewards from Boss Encounters.",
       "effectId": "boss_reward_gain",
-      "value": 40
+      "value": 50
     }
   },
   {
@@ -1155,9 +1155,9 @@
     ],
     "buddyBonus": {
       "name": "Perfect Fold",
-      "flavorText": "Perfect Fold: +50% Affection gained.",
+      "flavorText": "Perfect Fold: +100% Affection gained.",
       "effectId": "affection_gain",
-      "value": 50
+      "value": 100
     }
   },
   {
@@ -1333,9 +1333,9 @@
     ],
     "buddyBonus": {
       "name": "Primordial Bath",
-      "flavorText": "Primordial Bath: +100% Energy gained in Care mode.",
+      "flavorText": "Primordial Bath: +200% Energy gained in Care mode.",
       "effectId": "care_energy_gain",
-      "value": 100
+      "value": 200
     }
   }
 ]
