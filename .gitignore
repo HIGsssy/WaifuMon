@@ -22,6 +22,7 @@ assets/.thumbnails/
 # Regenerated on demand; safe to delete at any time.
 assets/.card-cache/
 assets/standby/
+assets/drafts/
 # local database/data
 data/
 *.db
