@@ -225,6 +225,13 @@
       "when": 1818453600000,
       "tag": "0031_player_achievements",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1818540000000,
+      "tag": "0032_world_encounter_outcome_text",
+      "breakpoints": true
     }
   ]
 }

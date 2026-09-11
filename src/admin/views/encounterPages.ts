@@ -175,6 +175,10 @@ export function encounterFormPage(encounter: LoadedEncounter | null, itemSlugs: 
           check: c.check,
           successEffects: c.successEffects,
           failureEffects: c.failureEffects,
+          // Carried so a save from this panel does not drop authored flavor.
+          ...(c.outcomeText ? { outcomeText: c.outcomeText } : {}),
+          ...(c.successText ? { successText: c.successText } : {}),
+          ...(c.failureText ? { failureText: c.failureText } : {}),
         }))
       : [],
     null,

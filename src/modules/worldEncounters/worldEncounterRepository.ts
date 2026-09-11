@@ -131,6 +131,10 @@ export interface NewChoiceValues {
   checkJson: Record<string, unknown>;
   successEffectsJson: Record<string, unknown>[];
   failureEffectsJson: Record<string, unknown>[];
+  /** Authored flavor text. Omitted = none. */
+  outcomeText?: string | null | undefined;
+  successText?: string | null | undefined;
+  failureText?: string | null | undefined;
 }
 
 export interface NewActiveValues {
@@ -156,6 +160,8 @@ export interface NewHistoryValues {
   regionId: string;
   success: boolean | null;
   effectsAppliedJson: Record<string, unknown>[];
+  /** The flavor line shown at resolution time, snapshotted. Null = none. */
+  resolvedOutcomeText?: string | null | undefined;
   startedAt: Date;
 }
 
@@ -305,6 +311,9 @@ export function createWorldEncounterRepository(db: Db): WorldEncounterRepository
             checkJson: c.checkJson,
             successEffectsJson: c.successEffectsJson,
             failureEffectsJson: c.failureEffectsJson,
+            outcomeText: c.outcomeText ?? null,
+            successText: c.successText ?? null,
+            failureText: c.failureText ?? null,
           })),
         );
       }
@@ -462,6 +471,7 @@ export function createWorldEncounterRepository(db: Db): WorldEncounterRepository
           regionId: values.regionId,
           success: values.success,
           effectsAppliedJson: values.effectsAppliedJson,
+          resolvedOutcomeText: values.resolvedOutcomeText ?? null,
           startedAt: values.startedAt,
         })
         .returning({ id: worldEncounterHistory.id });

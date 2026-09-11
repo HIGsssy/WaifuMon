@@ -17,6 +17,19 @@ export interface AdminEncounterChoice {
   check: Record<string, unknown>;
   successEffects: Array<Record<string, unknown>>;
   failureEffects: Array<Record<string, unknown>>;
+  /** Authored flavor text. Optional so an older server's response still loads. */
+  outcomeText?: string | null;
+  successText?: string | null;
+  failureText?: string | null;
+}
+
+/**
+ * One outcome's flavor line, resolved by the server with the same resolver a
+ * live resolution uses. `auto` is a no-check choice.
+ */
+export interface OutcomeFlavor {
+  outcome: 'auto' | 'success' | 'failure';
+  resolvedOutcomeText: string | null;
 }
 
 export interface AdminEncounter {
@@ -73,6 +86,8 @@ export interface PreviewChoice {
     buddyBonusMod: number;
     baseBias: number;
   };
+  /** Flavor per possible outcome. Optional so an older server still renders. */
+  outcomeFlavor?: OutcomeFlavor[];
 }
 
 export interface PreviewResponse {
@@ -108,6 +123,11 @@ export interface SimulateAggregate {
   affectionGranted: number;
   itemFrequency: Record<string, number>;
   followUpFrequency: Record<string, number>;
+  /**
+   * Flavor for each outcome the run actually produced, with its roll count.
+   * Optional so an older server's response still renders.
+   */
+  outcomeTexts?: Array<OutcomeFlavor & { count: number }>;
   seed: number;
 }
 
@@ -158,6 +178,10 @@ export interface EncounterInputPayload {
     check: Record<string, unknown>;
     successEffects: Array<Record<string, unknown>>;
     failureEffects: Array<Record<string, unknown>>;
+    /** Omitted when unauthored; the server trims and normalises. */
+    outcomeText?: string;
+    successText?: string;
+    failureText?: string;
   }>;
   metadata: Record<string, unknown>;
 }

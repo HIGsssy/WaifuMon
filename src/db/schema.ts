@@ -1577,6 +1577,10 @@ export const worldEncounterChoices = pgTable(
       .$type<Record<string, unknown>[]>()
       .notNull()
       .default([]),
+    /** Authored flavor text — presentation only. Null when unauthored. */
+    outcomeText: text('outcome_text'),
+    successText: text('success_text'),
+    failureText: text('failure_text'),
   },
   (t) => [
     index('world_encounter_choices_encounter_idx').on(t.encounterId, t.sortOrder),
@@ -1690,6 +1694,13 @@ export const worldEncounterHistory = pgTable(
       .$type<Record<string, unknown>[]>()
       .notNull()
       .default([]),
+    /**
+     * The flavor line the player was actually shown, resolved at resolution
+     * time. A snapshot, so a later edit to the encounter's authored text can
+     * never rewrite what history says happened. Null when none was shown —
+     * and on every row written before this column existed.
+     */
+    resolvedOutcomeText: text('resolved_outcome_text'),
     startedAt: timestamp('started_at', { withTimezone: true }).notNull(),
     resolvedAt: timestamp('resolved_at', { withTimezone: true }).notNull().defaultNow(),
   },

@@ -57,7 +57,17 @@ export function hydrateChoice(row: WorldEncounterChoiceRow): LoadedChoice {
     check: safeCheck(row.checkJson),
     successEffects: safeEffects(row.successEffectsJson),
     failureEffects: safeEffects(row.failureEffectsJson),
+    outcomeText: safeText(row.outcomeText),
+    successText: safeText(row.successText),
+    failureText: safeText(row.failureText),
   };
+}
+
+/** Blank stored text reads as absent, matching write-side normalisation. */
+function safeText(value: string | null | undefined): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length === 0 ? null : trimmed;
 }
 
 export function hydrateEncounter(row: EncounterWithChildren): LoadedEncounter {

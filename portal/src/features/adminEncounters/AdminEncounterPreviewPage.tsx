@@ -410,6 +410,38 @@ export function AdminEncounterPreviewPage() {
                 </div>
               </div>
             </Card>
+            {(simResult.aggregate.outcomeTexts ?? []).some(
+              (o) => o.resolvedOutcomeText != null,
+            ) && (
+              <Card className="p-3 md:col-span-2" data-testid="sim-outcome-flavor">
+                <h4 className="text-sm font-medium">Outcome flavor</h4>
+                <p className="text-xs text-ink-muted">
+                  The text a player would read for each outcome this run actually produced.
+                </p>
+                {simResult.aggregate.outcomeTexts!.map((o) => (
+                  <dl
+                    key={o.outcome}
+                    className="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 rounded-md border border-border p-2 text-sm"
+                  >
+                    <dt className="text-ink-muted">Outcome</dt>
+                    <dd>
+                      {o.outcome === 'auto'
+                        ? 'Auto-resolved'
+                        : o.outcome === 'success'
+                          ? 'Success'
+                          : 'Failure'}{' '}
+                      <span className="text-ink-muted tabular">× {o.count}</span>
+                    </dd>
+                    <dt className="text-ink-muted">Flavor</dt>
+                    <dd className="whitespace-pre-line">
+                      {o.resolvedOutcomeText ?? (
+                        <span className="text-ink-muted">— none —</span>
+                      )}
+                    </dd>
+                  </dl>
+                ))}
+              </Card>
+            )}
             {(simResult.sightings ?? []).length > 0 && (
               <Card className="p-3 md:col-span-2" data-testid="sim-sightings">
                 <h4 className="text-sm font-medium">Wild Waifumon sightings</h4>

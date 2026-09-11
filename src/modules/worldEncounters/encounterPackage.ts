@@ -137,6 +137,11 @@ export function toPackagedEncounter(encounter: LoadedEncounter): PackagedEncount
       check: choice.check,
       successEffects: choice.successEffects,
       failureEffects: choice.failureEffects,
+      // Only when authored: a legacy encounter exports exactly the keys it
+      // always did, so its package — and "unchanged" detection — is stable.
+      ...(choice.outcomeText ? { outcomeText: choice.outcomeText } : {}),
+      ...(choice.successText ? { successText: choice.successText } : {}),
+      ...(choice.failureText ? { failureText: choice.failureText } : {}),
     })),
     metadata: encounter.metadata,
   };

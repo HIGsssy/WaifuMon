@@ -218,6 +218,9 @@ export function createWorldEncounterAdminService(
             checkJson: c.check as unknown as Record<string, unknown>,
             successEffectsJson: c.successEffects as unknown as Record<string, unknown>[],
             failureEffectsJson: c.failureEffects as unknown as Record<string, unknown>[],
+            outcomeText: c.outcomeText ?? null,
+            successText: c.successText ?? null,
+            failureText: c.failureText ?? null,
           })),
         );
       });
@@ -258,6 +261,9 @@ export function createWorldEncounterAdminService(
           check: c.check,
           successEffects: c.successEffects,
           failureEffects: c.failureEffects,
+          outcomeText: c.outcomeText ?? null,
+          successText: c.successText ?? null,
+          failureText: c.failureText ?? null,
         })),
         metadata: original.metadata,
       });

@@ -41,6 +41,7 @@ import { selectEncounterDetailed, type SelectionReason } from './engine';
 import { rollCheck, computeChance } from './checkResolver';
 import { createEffectExecutor, type EffectExecutor, type AppliedEffect, type FollowUp } from './effectExecutor';
 import { hydrateEncounter } from './hydrate';
+import { outcomeKindOf, resolveOutcomeText } from './outcomeText';
 import type { WorldEncounterVendorService } from './vendorService';
 import type {
   WildEncounterSpawn,
@@ -186,6 +187,13 @@ export interface Resolution {
   encounter: LoadedEncounter;
   choice: LoadedChoice;
   check: CheckResolution;
+  /**
+   * The authored flavor line for this outcome, already resolved by
+   * `resolveOutcomeText` (success/failure text, falling back to outcome
+   * text). Null when nothing applies. Presentation layers show this verbatim
+   * and never re-run the precedence rules. Snapshotted into history.
+   */
+  resolvedOutcomeText: string | null;
   effectsApplied: AppliedEffect[];
   followUps: FollowUp[];
   chainedEncounterSlug: string | null;
@@ -689,6 +697,12 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
 
       const check = rollCheck(choice.check, ctx, useRng);
       const effectsToApply = check.success ? choice.successEffects : choice.failureEffects;
+      // Flavor is read *after* the outcome is decided and feeds nothing back:
+      // it cannot move the roll, the effects, or anything downstream.
+      const resolvedOutcomeText = resolveOutcomeText(
+        choice,
+        outcomeKindOf(choice.check.type !== 'none', check.success),
+      );
       const application = await executor.apply(
         tx,
         {
@@ -855,6 +869,7 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
         success: check.success,
         chance: check.chance,
         roll: check.roll,
+        resolvedOutcomeText,
         followUps,
         effectsApplied: application.applied,
         vendorInstance,
@@ -869,6 +884,9 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
         regionId: active.regionId,
         success: choice.check.type === 'none' ? null : check.success,
         effectsAppliedJson: application.applied as unknown as Record<string, unknown>[],
+        // The resolved string, not the authored fields: history must keep
+        // saying what the player saw even after the encounter is re-edited.
+        resolvedOutcomeText,
         startedAt: active.startedAt,
       });
 
@@ -904,6 +922,7 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
         encounter,
         choice,
         check,
+        resolvedOutcomeText,
         effectsApplied: application.applied,
         followUps,
         chainedEncounterSlug: chainedSlug,

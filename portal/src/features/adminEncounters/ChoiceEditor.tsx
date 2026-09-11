@@ -35,7 +35,21 @@ export interface ChoiceDraft {
   };
   successEffects: EffectShape[];
   failureEffects: EffectShape[];
+  /**
+   * Authored flavor text, as typed. Success/Failure Text stay here while the
+   * check is switched off, so turning it back on restores them; `toPayload`
+   * decides what is actually saved.
+   */
+  outcomeText?: string;
+  successText?: string;
+  failureText?: string;
 }
+
+const TEXTAREA_CLASS =
+  'mt-1 block w-full rounded-md border border-border bg-surface px-2 py-1 text-sm text-ink';
+
+/** Matches the server's limit (`OUTCOME_TEXT_MAX_LENGTH`). */
+const FLAVOR_MAX_LENGTH = 500;
 
 interface Props {
   index: number;
@@ -398,6 +412,59 @@ export function ChoiceEditor({
               </label>
             </>
           )}
+        </div>
+      </fieldset>
+
+      <fieldset className="rounded-md border border-border p-3" data-testid="flavor-fields">
+        <legend className="px-1 text-xs uppercase text-ink-muted">Outcome flavor</legend>
+        <div className="space-y-3">
+          <label className="block text-xs text-ink-muted">
+            Outcome Text
+            <textarea
+              rows={2}
+              maxLength={FLAVOR_MAX_LENGTH}
+              className={TEXTAREA_CLASS}
+              value={choice.outcomeText ?? ''}
+              onChange={(e) => patch({ outcomeText: e.target.value })}
+              placeholder="What happens after this choice resolves."
+            />
+          </label>
+          {/*
+            Hidden, not cleared, when there is no check: the draft keeps the
+            branch text so re-enabling the check brings it straight back.
+          */}
+          {isSpCheck && (
+            <>
+              <label className="block text-xs text-ink-muted">
+                Success Text
+                <textarea
+                  rows={2}
+                  maxLength={FLAVOR_MAX_LENGTH}
+                  className={TEXTAREA_CLASS}
+                  value={choice.successText ?? ''}
+                  onChange={(e) => patch({ successText: e.target.value })}
+                />
+              </label>
+              <label className="block text-xs text-ink-muted">
+                Failure Text
+                <textarea
+                  rows={2}
+                  maxLength={FLAVOR_MAX_LENGTH}
+                  className={TEXTAREA_CLASS}
+                  value={choice.failureText ?? ''}
+                  onChange={(e) => patch({ failureText: e.target.value })}
+                />
+              </label>
+              <p className="text-[11px] text-ink-muted">
+                Success/Failure Text overrides Outcome Text for that result. Outcome Text is
+                used as the fallback.
+              </p>
+            </>
+          )}
+          <p className="text-[11px] text-ink-muted">
+            Optional, up to {FLAVOR_MAX_LENGTH} characters each. Presentation only — never
+            changes the check, effects or what follows.
+          </p>
         </div>
       </fieldset>
 

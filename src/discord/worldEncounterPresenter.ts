@@ -146,7 +146,14 @@ export function buildEncounterResolved(
     ? `**Outcome:** ${resolution.check.success ? '✅ Success' : '❌ Failure'} (${formatChancePercent(resolution.check.chance)} chance)`
     : '**Outcome:** Auto-resolved';
 
-  embed.addFields({ name: 'Result', value: `${choiceLine}\n${outcomeLine}`, inline: false });
+  // Authored flavor, already resolved by the domain for this outcome — shown
+  // verbatim under the result heading and above the 🎲 Check block. Absent,
+  // the field is exactly what it was before flavor existed.
+  const flavor = resolution.resolvedOutcomeText ?? null;
+  const resultValue = flavor
+    ? `${choiceLine}\n${outcomeLine}\n\n${flavor}`
+    : `${choiceLine}\n${outcomeLine}`;
+  embed.addFields({ name: 'Result', value: resultValue, inline: false });
 
   // The dice behind the outcome, on every choice that actually rolled. The
   // numbers are the resolver's own — nothing here recomputes a probability —

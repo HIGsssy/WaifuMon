@@ -13,6 +13,7 @@ import {
   SpeciesSelectionSchema,
   type RandomSpeciesSelection,
 } from '../encounters/speciesSelection';
+import { OutcomeTextSchema } from './outcomeText';
 import {
   WORLD_ENCOUNTER_CHECK_TYPES,
   WORLD_ENCOUNTER_EFFECT_TYPES,
@@ -235,6 +236,14 @@ export const ChoiceInputSchema = z.object({
   check: CheckSchema.default({ type: 'none' }),
   successEffects: z.array(EffectSchema).default([]),
   failureEffects: z.array(EffectSchema).default([]),
+  /**
+   * Authored flavor text — presentation only, see `outcomeText.ts`. All
+   * optional; trimmed, and blank normalises to omitted. `successText` and
+   * `failureText` are never required just because a check exists.
+   */
+  outcomeText: OutcomeTextSchema,
+  successText: OutcomeTextSchema,
+  failureText: OutcomeTextSchema,
 });
 export type ChoiceInput = z.infer<typeof ChoiceInputSchema>;
 
@@ -290,6 +299,14 @@ export interface LoadedChoice {
   check: CheckSpec;
   successEffects: Effect[];
   failureEffects: Effect[];
+  /**
+   * Authored flavor text. Hydration always sets these (null when unauthored);
+   * optional in the type only so hand-built fixtures need not spell them out.
+   * Resolve with `resolveOutcomeText`, never by picking a field directly.
+   */
+  outcomeText?: string | null;
+  successText?: string | null;
+  failureText?: string | null;
 }
 
 /** An encounter, fully loaded from the DB with its choices. */

@@ -79,9 +79,42 @@ export function toPayload(d: Draft): EncounterInputPayload {
       check: c.check as unknown as Record<string, unknown>,
       successEffects: c.successEffects,
       failureEffects: c.failureEffects,
+      ...flavorPayload(c),
     })),
     metadata: d.metadata,
   };
+}
+
+/** Trimmed text, or undefined when blank — the server's own normalisation. */
+function authored(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+/**
+ * The flavor fields a choice saves.
+ *
+ * Success/Failure Text are kept in the draft while the check is switched off,
+ * so re-enabling the check brings them back — but they are only *saved* when
+ * the choice actually has a check. A no-check choice's runtime reads only
+ * Outcome Text, so serializing hidden branch text would store words no player
+ * can ever see.
+ */
+export function flavorPayload(c: ChoiceDraft): {
+  outcomeText?: string;
+  successText?: string;
+  failureText?: string;
+} {
+  const out: { outcomeText?: string; successText?: string; failureText?: string } = {};
+  const outcomeText = authored(c.outcomeText);
+  if (outcomeText) out.outcomeText = outcomeText;
+  if (c.check.type !== 'none') {
+    const successText = authored(c.successText);
+    const failureText = authored(c.failureText);
+    if (successText) out.successText = successText;
+    if (failureText) out.failureText = failureText;
+  }
+  return out;
 }
 
 /** Every effect in the draft, with a label an author can find it by. */
@@ -154,6 +187,9 @@ export function draftFrom(server: AdminEncounter): Draft {
       check: c.check as ChoiceDraft['check'],
       successEffects: c.successEffects as unknown as EffectShape[],
       failureEffects: c.failureEffects as unknown as EffectShape[],
+      ...(c.outcomeText ? { outcomeText: c.outcomeText } : {}),
+      ...(c.successText ? { successText: c.successText } : {}),
+      ...(c.failureText ? { failureText: c.failureText } : {}),
     })),
     metadata: server.metadata,
   };

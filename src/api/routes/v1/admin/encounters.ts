@@ -60,6 +60,11 @@ import {
 } from '../../../../modules/encounters/speciesSelection';
 import { normalizeWaifumonSelection } from '../../../../modules/worldEncounters/types';
 import { directRegions } from '../../../../modules/worldEncounters/encounterPackage';
+import {
+  outcomeKindOf,
+  resolveOutcomeText,
+  type OutcomeKind,
+} from '../../../../modules/worldEncounters/outcomeText';
 
 /**
  * Image types an encounter may use. A closed list, so the endpoint below can
@@ -88,6 +93,19 @@ const choiceSchema = z.object({
   check: checkSchema,
   successEffects: z.array(effectSchema),
   failureEffects: z.array(effectSchema),
+  /** Authored flavor text; null when unauthored. */
+  outcomeText: z.string().nullable(),
+  successText: z.string().nullable(),
+  failureText: z.string().nullable(),
+});
+
+/**
+ * One outcome's resolved flavor, decided by the domain resolver. `auto` is a
+ * no-check choice; a checked choice reports `success` and `failure`.
+ */
+const outcomeFlavorSchema = z.object({
+  outcome: z.enum(['auto', 'success', 'failure']),
+  resolvedOutcomeText: z.string().nullable(),
 });
 
 const encounterSchema = z.object({
@@ -129,6 +147,8 @@ const previewChoiceSchema = z.object({
     buddyBonusMod: z.number(),
     baseBias: z.number(),
   }),
+  /** Flavor per possible outcome, so the Portal can preview each state. */
+  outcomeFlavor: z.array(outcomeFlavorSchema),
 });
 
 const previewResponseSchema = z.object({
@@ -193,6 +213,12 @@ const simulateAggregateSchema = z.object({
   affectionGranted: z.number(),
   itemFrequency: z.record(z.number()),
   followUpFrequency: z.record(z.number()),
+  /**
+   * The flavor line each outcome this run *actually produced* would show, and
+   * how many rolls produced it. Only observed outcomes appear — a run of all
+   * successes lists no failure text — so nothing here is a fabricated result.
+   */
+  outcomeTexts: z.array(outcomeFlavorSchema.extend({ count: z.number().int() })),
   /** The seed this run used, so a reported result can be reproduced exactly. */
   seed: z.number().int(),
 });
@@ -474,9 +500,28 @@ function encounterToResource(e: LoadedEncounter): z.infer<typeof encounterSchema
       check: c.check,
       successEffects: c.successEffects,
       failureEffects: c.failureEffects,
+      outcomeText: c.outcomeText ?? null,
+      successText: c.successText ?? null,
+      failureText: c.failureText ?? null,
     })),
     metadata: e.metadata,
   };
+}
+
+/**
+ * The flavor each outcome of a choice would show, through the same resolver
+ * the live resolution uses. A checked choice reports both branches; a
+ * no-check choice reports its one `auto` outcome.
+ */
+export function previewOutcomeFlavor(
+  choice: LoadedEncounter['choices'][number],
+): Array<{ outcome: OutcomeKind; resolvedOutcomeText: string | null }> {
+  const outcomes: OutcomeKind[] =
+    choice.check.type === 'none' ? ['auto'] : ['success', 'failure'];
+  return outcomes.map((outcome) => ({
+    outcome,
+    resolvedOutcomeText: resolveOutcomeText(choice, outcome),
+  }));
 }
 
 function contextFrom(body: z.infer<typeof previewBodySchema>): EncounterCheckContext {
@@ -983,6 +1028,7 @@ export const adminEncounterRoutes =
             unavailableReason: reason,
             chance: preview.chance,
             breakdown: preview.breakdown,
+            outcomeFlavor: previewOutcomeFlavor(c),
           };
         });
         return ok(req, { encounter: encounterToResource(encounter), choices });
@@ -1218,11 +1264,24 @@ export function simulateChoice(
     }
   };
 
+  // Outcome kinds as the rolls actually landed, for the flavor report.
+  const checked = choice.check.type !== 'none';
+  const outcomeCounts: Record<OutcomeKind, number> = { auto: 0, success: 0, failure: 0 };
+
   for (let i = 0; i < rolls; i++) {
     const outcome = rollCheck(choice.check, ctx, rng);
     if (outcome.success) successes++;
+    outcomeCounts[outcomeKindOf(checked, outcome.success)]++;
     accumulate(outcome.success ? choice.successEffects : choice.failureEffects);
   }
+
+  const outcomeTexts = (['auto', 'success', 'failure'] as const)
+    .filter((kind) => outcomeCounts[kind] > 0)
+    .map((kind) => ({
+      outcome: kind,
+      count: outcomeCounts[kind],
+      resolvedOutcomeText: resolveOutcomeText(choice, kind),
+    }));
 
   const failures = rolls - successes;
   const observedRate = successes / rolls;
@@ -1248,6 +1307,7 @@ export function simulateChoice(
     affectionGranted,
     itemFrequency,
     followUpFrequency,
+    outcomeTexts,
     seed,
   };
 }

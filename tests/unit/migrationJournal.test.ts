@@ -91,8 +91,21 @@ describe('Phase 2 migrations', () => {
     expect(sql).toMatch(/WHERE\s+origin_kind is not null and origin_ref is not null/);
   });
 
-  it('breaks 0025 and 0026 into statements the migrator can split', () => {
-    for (const tag of ['0025_encounter_continuation_and_vendor', '0026_wild_encounter_origin']) {
+  it('0032 adds the choice flavor columns and the history snapshot, all nullable', () => {
+    const sql = read('0032_world_encounter_outcome_text');
+    for (const column of ['outcome_text', 'success_text', 'failure_text']) {
+      expect(sql).toContain(`ALTER TABLE "world_encounter_choices" ADD COLUMN "${column}" text;`);
+    }
+    expect(sql).toContain('ALTER TABLE "world_encounter_history" ADD COLUMN "resolved_outcome_text" text;');
+    expect(sql).not.toMatch(/NOT NULL/i);
+  });
+
+  it('breaks 0025, 0026 and 0032 into statements the migrator can split', () => {
+    for (const tag of [
+      '0025_encounter_continuation_and_vendor',
+      '0026_wild_encounter_origin',
+      '0032_world_encounter_outcome_text',
+    ]) {
       const statements = read(tag)
         .split('--> statement-breakpoint')
         .map((s) => s.trim())

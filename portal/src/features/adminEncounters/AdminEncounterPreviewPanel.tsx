@@ -10,6 +10,7 @@ import { useMutation } from '@tanstack/react-query';
 import {
   previewAdminEncounter,
   type AdminEncounterReference,
+  type OutcomeFlavor,
   type PreviewBody,
   type PreviewResponse,
 } from '@/api/adminEncounters';
@@ -39,6 +40,73 @@ const SP_PRESETS: ReadonlyArray<{ label: string; sp: number }> = [
   { label: 'Average', sp: 200 },
   { label: 'Strong', sp: 350 },
 ];
+
+const OUTCOME_LABEL: Record<OutcomeFlavor['outcome'], string> = {
+  auto: 'Auto-resolved',
+  success: '✅ Success',
+  failure: '❌ Failure',
+};
+
+/**
+ * The Discord Result field for one choice, with its flavor line in the same
+ * place Discord puts it: under the outcome, above the 🎲 Check block.
+ *
+ * The text is the server's resolved value for each outcome — this component
+ * only chooses *which outcome to look at*, never which authored field wins.
+ * Renders nothing when no outcome has flavor, so an unauthored encounter's
+ * preview is unchanged.
+ */
+export function OutcomeFlavorPreview({
+  label,
+  chance,
+  flavors,
+}: {
+  label: string;
+  chance: number;
+  flavors: OutcomeFlavor[];
+}) {
+  const [selected, setSelected] = useState<OutcomeFlavor['outcome'] | null>(null);
+  if (flavors.every((f) => f.resolvedOutcomeText == null)) return null;
+  const current = flavors.find((f) => f.outcome === selected) ?? flavors[0]!;
+  const checked = current.outcome !== 'auto';
+
+  return (
+    <div className="mt-2 space-y-2" data-testid="flavor-preview">
+      {flavors.length > 1 && (
+        <div className="flex gap-2" role="group" aria-label="Preview outcome">
+          {flavors.map((f) => (
+            <Button
+              key={f.outcome}
+              type="button"
+              size="sm"
+              variant={f.outcome === current.outcome ? 'default' : 'outline'}
+              aria-pressed={f.outcome === current.outcome}
+              onClick={() => setSelected(f.outcome)}
+            >
+              {f.outcome === 'success' ? 'Success' : 'Failure'}
+            </Button>
+          ))}
+        </div>
+      )}
+      <div className="rounded-md border border-border bg-surface p-2 text-xs">
+        <p>
+          <strong>Chose:</strong> {label}
+        </p>
+        <p>
+          <strong>Outcome:</strong> {OUTCOME_LABEL[current.outcome]}
+        </p>
+        {current.resolvedOutcomeText != null && (
+          <p className="mt-2 whitespace-pre-line" data-testid="flavor-text">
+            {current.resolvedOutcomeText}
+          </p>
+        )}
+        {checked && (
+          <p className="mt-2 text-ink-muted">🎲 Check · Success Chance {Math.round(chance * 100)}%</p>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export function AdminEncounterPreviewPanel({ encounterId, reference }: Props) {
   const [ctx, setCtx] = useState<PreviewBody>(DEFAULT_CTX);
@@ -209,6 +277,11 @@ export function AdminEncounterPreviewPanel({ encounterId, reference }: Props) {
               {!c.available && c.unavailableReason && (
                 <p className="text-xs text-ink-muted">{c.unavailableReason}</p>
               )}
+              <OutcomeFlavorPreview
+                label={c.label}
+                chance={c.chance}
+                flavors={c.outcomeFlavor ?? []}
+              />
               <p className="text-xs text-ink-muted tabular">
                 base {c.breakdown.base.toFixed(2)} · sp {c.breakdown.spTerm.toFixed(3)} · lvl{' '}
                 {c.breakdown.levelTerm.toFixed(3)} · aff {c.breakdown.affinityMod.toFixed(2)} · race{' '}
