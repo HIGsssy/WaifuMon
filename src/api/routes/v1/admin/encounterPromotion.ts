@@ -56,6 +56,8 @@ const planSchema = z.object({
       code: z.string(),
       subject: z.string().nullable(),
       message: z.string(),
+      /** Region ids the issue is about, so the Portal can label them. */
+      regions: z.array(z.string()).optional(),
     }),
   ),
   counts: z.object({

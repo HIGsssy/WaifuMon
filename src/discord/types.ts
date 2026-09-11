@@ -39,6 +39,7 @@ import type { WorldEncounterService } from '../modules/worldEncounters/worldEnco
 import type { WorldEncounterAdminService } from '../modules/worldEncounters/adminService';
 import type { WorldEncounterVendorService } from '../modules/worldEncounters/vendorService';
 import type { WildEncounterSpawner } from '../modules/encounters/wildEncounterSpawner';
+import type { SpeciesSelectorService } from '../modules/encounters/speciesSelection';
 import type { WorldEncounterSettingsService } from '../modules/worldEncounters/settingsService';
 import type { AdminRoleGrantService } from '../modules/portalAuth/adminRoleGrantService';
 import type { EncounterPromotionService } from '../modules/worldEncounters/encounterImportService';
@@ -133,6 +134,13 @@ export interface AppServices {
    * without the hunt graph simply cannot spawn one.
    */
   wildEncounters?: WildEncounterSpawner | undefined;
+  /**
+   * The strict species selector behind `selection` on
+   * `trigger_waifumon_encounter` — the *same* picker instance the spawner
+   * uses — exposed read-only so Portal previews and the simulator evaluate a
+   * selector exactly as the runtime would.
+   */
+  speciesSelector?: SpeciesSelectorService | undefined;
   /**
    * Live-tunable global encounter settings. The engine reads it on every roll
    * and Portal Admin writes it, so a rate change lands without a redeploy.

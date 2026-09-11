@@ -129,6 +129,19 @@ export function AdminEncountersListPage() {
       */}
       <GlobalEncounterSettingsPanel />
 
+      {/* A refused Activate — e.g. a Waifumon selector that matches nothing
+          anywhere — must say why rather than leave the button looking dead. */}
+      {toggleLifecycle.isError && (
+        <p
+          className="rounded-md border border-destructive/50 bg-destructive/5 p-3 text-sm text-destructive"
+          role="alert"
+        >
+          {toggleLifecycle.error instanceof Error
+            ? toggleLifecycle.error.message
+            : 'Could not change the lifecycle.'}
+        </p>
+      )}
+
       {/*
         Promotion sits below tuning and above the list: it is an occasional,
         deliberate action rather than part of day-to-day authoring, and it

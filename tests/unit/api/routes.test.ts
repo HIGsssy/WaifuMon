@@ -929,6 +929,10 @@ describe('OpenAPI registration', () => {
       // same permission as any other change that reaches every player at once.
       'POST /api/v1/admin/encounters/import/apply',
       'POST /api/v1/admin/encounters/import/preview',
+      // Waifumon sighting selector preview. Read-only — it evaluates a
+      // selector with the runtime picker and writes nothing — but a POST
+      // because the selector travels as a structured body. `encounters.read`.
+      'POST /api/v1/admin/encounters/selector-preview',
       'POST /api/v1/admin/encounters/{id}/clone',
       'POST /api/v1/admin/encounters/{id}/preview',
       'POST /api/v1/admin/encounters/{id}/simulate',

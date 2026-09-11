@@ -195,6 +195,13 @@ export interface HuntService {
     playerLevel: number,
     regionId: string | null,
   ): Promise<SpeciesRow | null>;
+
+  /**
+   * The hunt's level-adjusted rarity table with no Buddy Bonus — the rarity
+   * weights a *filtered* scripted spawn conditions on (see
+   * `encounters/speciesSelection.ts`). Pure; reads nothing.
+   */
+  spawnRarityWeights(playerLevel: number): Array<WeightedEntry<Rarity>>;
 }
 
 export interface HuntServiceDeps {
@@ -893,6 +900,12 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
     // region pools and their fallbacks are shared rather than restated.
     pickSpeciesForSpawn(tx, playerId, playerLevel, regionId) {
       return pickEncounterSpecies(tx, playerId, playerLevel, toRegion(regionId), null);
+    },
+
+    // Same table, same `bonus = null`: a filtered spawn conditions this
+    // distribution on its filter rather than inventing a second one.
+    spawnRarityWeights(playerLevel) {
+      return rarityEntriesFor(playerLevel, null);
     },
   };
 }

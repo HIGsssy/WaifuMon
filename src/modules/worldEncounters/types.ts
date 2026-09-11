@@ -10,6 +10,10 @@ import { z } from 'zod';
 import { REGIONS } from '../locations/regions';
 import { AFFINITIES } from '../../db/schema';
 import {
+  SpeciesSelectionSchema,
+  type RandomSpeciesSelection,
+} from '../encounters/speciesSelection';
+import {
   WORLD_ENCOUNTER_CHECK_TYPES,
   WORLD_ENCOUNTER_EFFECT_TYPES,
   WORLD_ENCOUNTER_LIFECYCLES,
@@ -64,11 +68,28 @@ export const EffectSchema = z.discriminatedUnion('type', [
     quantity: z.number().int().positive().max(99),
   }),
   z.object({ type: z.literal('trigger_encounter'), encounterSlug: slug }),
-  z.object({
-    type: z.literal('trigger_waifumon_encounter'),
-    /** Optional biased species — server will validate against the current region pool. */
-    speciesSlug: slug.optional(),
-  }),
+  /**
+   * A wild Waifumon sighting. Three authored shapes, all valid:
+   *
+   *   - `{ type }` — legacy random: the hunt's own region/rarity draw,
+   *     fallbacks included. Behaviour unchanged.
+   *   - `{ type, speciesSlug }` — legacy specific.
+   *   - `{ type, selection }` — `specific` (one slug) or `random` (pool scope
+   *     plus optional rarity/race/affinity filters, resolved strictly — see
+   *     `encounters/speciesSelection.ts`).
+   *
+   * `speciesSlug` and `selection` together are refused (see the refinement on
+   * {@link EffectSchema}). Strict, so a misspelled `selection` is an error
+   * rather than a silent downgrade to legacy random.
+   * {@link normalizeWaifumonSelection} is the one reader of these shapes.
+   */
+  z
+    .object({
+      type: z.literal('trigger_waifumon_encounter'),
+      speciesSlug: slug.optional(),
+      selection: SpeciesSelectionSchema.optional(),
+    })
+    .strict(),
   z.object({
     type: z.literal('temp_buff'),
     /** Free-form identifier for a follow-up buff system to hook into. */
@@ -77,8 +98,46 @@ export const EffectSchema = z.discriminatedUnion('type', [
     payload: z.record(z.unknown()).default({}),
   }),
   z.object({ type: z.literal('open_vendor'), vendorKey: z.string().min(1).max(64) }),
-]);
+]).superRefine((effect, ctx) => {
+  // The one cross-field rule a discriminated-union member cannot carry on its
+  // own object: two ways of naming the species at once is ambiguous.
+  if (
+    effect.type === 'trigger_waifumon_encounter' &&
+    effect.speciesSlug != null &&
+    effect.selection != null
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['selection'],
+      message: 'Use either the legacy `speciesSlug` or `selection`, not both.',
+    });
+  }
+});
 export type Effect = z.infer<typeof EffectSchema>;
+export type WaifumonEncounterEffect = Extract<Effect, { type: 'trigger_waifumon_encounter' }>;
+
+/**
+ * The one reading of a `trigger_waifumon_encounter` effect, whatever shape was
+ * authored. Normalised at use rather than migrated in storage, so legacy
+ * content round-trips byte-for-byte.
+ *
+ *   `{ type }`                              → `legacy_random` (hunt draw + fallbacks)
+ *   `{ type, speciesSlug }`                 → `specific`
+ *   `{ type, selection: { mode: 'specific' } }` → `specific`
+ *   `{ type, selection: { mode: 'random' } }`   → `random` (strict selector)
+ */
+export type NormalizedWaifumonSelection =
+  | { mode: 'specific'; speciesSlug: string }
+  | { mode: 'legacy_random' }
+  | RandomSpeciesSelection;
+
+export function normalizeWaifumonSelection(
+  effect: WaifumonEncounterEffect,
+): NormalizedWaifumonSelection {
+  if (effect.selection) return effect.selection;
+  if (effect.speciesSlug) return { mode: 'specific', speciesSlug: effect.speciesSlug };
+  return { mode: 'legacy_random' };
+}
 
 /* ─────────────────────── Requirements ─────────────────────── */
 

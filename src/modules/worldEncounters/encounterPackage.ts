@@ -38,9 +38,14 @@ import { z } from 'zod';
 import { REGIONS } from '../locations/regions';
 import {
   EncounterInputSchema,
+  normalizeWaifumonSelection,
   type EncounterInput,
   type LoadedEncounter,
 } from './types';
+import {
+  matchesSpeciesFilter,
+  type RandomSpeciesSelection,
+} from '../encounters/speciesSelection';
 import { VendorStockTemplateSchema, type VendorStockTemplate } from './vendorService';
 import type { WorldEncounterVendorRow } from '../../db/schema';
 
@@ -214,6 +219,8 @@ export interface PlanIssue {
   /** Encounter or vendor key the issue belongs to; null for package-level. */
   subject: string | null;
   message: string;
+  /** Region ids the issue concerns, when it is about specific regions. */
+  regions?: string[];
 }
 
 export interface EncounterPlanEntry {
@@ -264,9 +271,113 @@ export interface ImportTargetState {
    * assets deploy separately from content.
    */
   artworkExists?: (relativePath: string) => boolean;
+  /**
+   * Species facts a random selector is matched against. Optional, together
+   * with {@link regionPools}: a target that omits them skips the
+   * empty-candidate proof rather than guessing.
+   */
+  speciesCatalog?: ReadonlyArray<CatalogSpecies>;
+  /** Species slugs in each *enabled* region's encounter pool. */
+  regionPools?: ReadonlyMap<string, ReadonlySet<string>>;
+}
+
+/** One species as the selector check sees it. `race` is already resolved. */
+export interface CatalogSpecies {
+  slug: string;
+  rarity: string;
+  affinity: string;
+  race: string;
+  enabled: boolean;
+  regionExclusive: boolean;
 }
 
 const REGION_SET: ReadonlySet<string> = new Set(REGIONS);
+
+/**
+ * The regions an encounter can fire in *directly* (hunt regions, travel
+ * destinations). Empty lists mean "anywhere", as does an encounter reachable
+ * only by chaining — a chained node inherits its parent's region.
+ */
+export function directRegions(
+  encounter: {
+    huntEligible: boolean;
+    travelEligible: boolean;
+    regions: readonly string[];
+    routes: ReadonlyArray<{ toRegion: string }>;
+  },
+  allRegions: readonly string[],
+): string[] {
+  const out = new Set<string>();
+  let anywhere = !encounter.huntEligible && !encounter.travelEligible;
+  if (encounter.huntEligible) {
+    if (encounter.regions.length === 0) anywhere = true;
+    else encounter.regions.forEach((r) => out.add(r));
+  }
+  if (encounter.travelEligible) {
+    // A travel encounter resolves in the destination, which travel has
+    // already committed before the roll.
+    if (encounter.routes.length === 0) anywhere = true;
+    else encounter.routes.forEach((r) => out.add(r.toRegion));
+  }
+  return anywhere ? [...allRegions] : [...out];
+}
+
+/**
+ * Proves what can be proved about a random selector's candidate set, using
+ * the same {@link matchesSpeciesFilter} the runtime uses.
+ *
+ *   - **error** `selector_no_candidates`: nothing matches in *any* enabled
+ *     region (and, for `global`, nothing matches outside the pools either).
+ *     This selector can never produce a sighting anywhere.
+ *   - **warning** `selector_region_no_candidates`: it matches somewhere, but
+ *     not in some region this encounter can fire in directly. Only a warning,
+ *     because a chain can carry the encounter into a region that does match.
+ */
+function selectorIssues(
+  selection: RandomSpeciesSelection,
+  encounter: PackagedEncounter,
+  choiceIndex: number,
+  target: ImportTargetState,
+): PlanIssue[] {
+  const { speciesCatalog, regionPools } = target;
+  if (!speciesCatalog || !regionPools) return [];
+
+  const matching = speciesCatalog.filter((s) => s.enabled && matchesSpeciesFilter(s, selection));
+  if (selection.poolScope === 'global' && matching.some((s) => !s.regionExclusive)) return [];
+
+  const pooledMatches = (region: string): number =>
+    matching.filter((s) => regionPools.get(region)?.has(s.slug)).length;
+  const allRegions = [...regionPools.keys()];
+  const describe = `choice[${choiceIndex}] random selector (${selection.poolScope}` +
+    `${selection.rarities ? `, rarities ${selection.rarities.join('/')}` : ''}` +
+    `${selection.races ? `, races ${selection.races.join('/')}` : ''}` +
+    `${selection.affinities ? `, affinities ${selection.affinities.join('/')}` : ''})`;
+
+  if (allRegions.every((r) => pooledMatches(r) === 0)) {
+    return [
+      issue(
+        'error',
+        'selector_no_candidates',
+        encounter.slug,
+        `${describe} matches no species on this server — it can never produce a sighting.`,
+      ),
+    ];
+  }
+  const empty = directRegions(encounter, allRegions).filter((r) => pooledMatches(r) === 0);
+  if (empty.length === 0) return [];
+  return [
+    {
+      ...issue(
+        'warning',
+        'selector_region_no_candidates',
+        encounter.slug,
+        `${describe} matches no species in ${empty.join(', ')}; resolving there will ` +
+          'produce no sighting (there is no fallback).',
+      ),
+      regions: empty,
+    },
+  ];
+}
 
 function issue(
   severity: PlanIssueSeverity,
@@ -521,20 +632,28 @@ export function planImport(raw: unknown, target: ImportTargetState): ImportPlan 
               );
             }
             break;
-          case 'trigger_waifumon_encounter':
-            // The slug is optional — omitted means "roll from the region
-            // pool", which is always valid. Named, it must exist.
-            if (effect.speciesSlug != null && !target.speciesSlugs.has(effect.speciesSlug)) {
-              issues.push(
-                issue(
-                  'error',
-                  'missing_species',
-                  subject,
-                  `choice[${i}] references unknown species "${effect.speciesSlug}".`,
-                ),
-              );
+          case 'trigger_waifumon_encounter': {
+            // Legacy "any" is always valid. A named species — legacy
+            // `speciesSlug` or `selection.mode: 'specific'` — must exist. A
+            // random selector names no species, so it has no species
+            // dependency; it is checked for provably-empty candidate sets.
+            const selection = normalizeWaifumonSelection(effect);
+            if (selection.mode === 'specific') {
+              if (!target.speciesSlugs.has(selection.speciesSlug)) {
+                issues.push(
+                  issue(
+                    'error',
+                    'missing_species',
+                    subject,
+                    `choice[${i}] references unknown species "${selection.speciesSlug}".`,
+                  ),
+                );
+              }
+            } else if (selection.mode === 'random') {
+              issues.push(...selectorIssues(selection, encounter, i, target));
             }
             break;
+          }
           case 'open_vendor':
             if (!knownVendors.has(effect.vendorKey)) {
               issues.push(

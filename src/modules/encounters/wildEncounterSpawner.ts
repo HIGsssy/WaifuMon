@@ -56,6 +56,7 @@ import {
 } from '../../db/schema';
 import type { CurrencyService } from '../currency/currencyService';
 import { isUniqueViolation } from '../../shared/errors';
+import type { FilteredSpeciesPicker, SpeciesFilter } from './speciesSelection';
 import type { Logger } from '../../shared/logger';
 
 /**
@@ -81,6 +82,14 @@ export interface CreateWildEncounterOptions {
    * {@link WildEncounterSpawnerDeps.pickSpecies}.
    */
   speciesSlug?: string | undefined;
+  /**
+   * Filtered random selection (pool scope + rarity/race/affinity filters),
+   * resolved strictly by {@link WildEncounterSpawnerDeps.pickFilteredSpecies}
+   * against `regionId`: zero matches spawns nothing and reports
+   * `no_matching_species` — no fallback to another region, another rarity or
+   * the unfiltered draw. Ignored when `speciesSlug` is given.
+   */
+  selection?: SpeciesFilter | undefined;
   /** Discord channel the encounter belongs to, mirroring the hunt's column. */
   channelId: string;
   /** Snapshot of where she was met. Nothing reads it back to decide anything. */
@@ -117,6 +126,11 @@ export type WildEncounterSpawn =
   | { status: 'blocked'; reason: 'active_encounter'; activeEncounterId: number }
   /** Nothing to spawn: the slug is unknown/disabled, or no pool has a species. */
   | { status: 'unavailable'; reason: 'unknown_species' | 'no_species_available' }
+  /**
+   * A `selection` matched nobody in its scope. Strict by design: nothing was
+   * written and no fallback species was substituted.
+   */
+  | { status: 'unavailable'; reason: 'no_matching_species' }
   /** `consumeHuntEnergy` was set and the player had none. */
   | { status: 'unavailable'; reason: 'insufficient_energy' };
 
@@ -156,6 +170,11 @@ export interface WildEncounterSpawnerDeps {
         regionId: string | null,
       ) => Promise<SpeciesRow | null>)
     | undefined;
+  /**
+   * Strict picker for a `selection` — see `speciesSelection.ts`. Absent, a
+   * spawn that carries a selection reports `no_species_available`.
+   */
+  pickFilteredSpecies?: FilteredSpeciesPicker | undefined;
 }
 
 const DEFAULT_MAX_ATTEMPTS = 3;
@@ -225,6 +244,22 @@ export function createWildEncounterSpawner(
         .where(and(eq(species.slug, opts.speciesSlug), eq(species.enabled, true)));
       if (!row) return { status: 'unavailable', reason: 'unknown_species' };
       picked = row;
+    } else if (opts.selection) {
+      // Strict: the selector's candidate set is the whole guarantee, so an
+      // empty set spawns nothing rather than borrowing the fallback draw
+      // below. Resolved before the Energy step and the insert, so a miss
+      // writes nothing and spends nothing.
+      if (!deps.pickFilteredSpecies) {
+        return { status: 'unavailable', reason: 'no_species_available' };
+      }
+      const pick = await deps.pickFilteredSpecies(tx, opts.selection, {
+        regionId: opts.regionId ?? null,
+        playerLevel: opts.playerLevel ?? 1,
+      });
+      if (pick.status !== 'selected') {
+        return { status: 'unavailable', reason: 'no_matching_species' };
+      }
+      picked = pick.species;
     } else if (deps.pickSpecies) {
       picked = await deps.pickSpecies(
         tx,
@@ -301,6 +336,8 @@ export function createWildEncounterSpawner(
           originKind: opts.origin.kind,
           originRef: opts.origin.ref,
           speciesSlug: opts.speciesSlug ?? null,
+          regionId: opts.regionId ?? null,
+          selection: opts.selection ?? null,
           reason: outcome.reason,
         },
         'wild encounter spawn produced nothing',

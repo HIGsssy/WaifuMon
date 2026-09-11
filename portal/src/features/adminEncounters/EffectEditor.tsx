@@ -6,7 +6,10 @@
  */
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import type { AdminEncounterReference } from '@/api/adminEncounters';
+import type { AdminEncounterReference, SelectorPreviewEncounter } from '@/api/adminEncounters';
+
+import { WaifumonSelectorEditor } from './WaifumonSelectorEditor';
+import { WAIFUMON_EFFECT } from './waifumonSelection';
 
 const EFFECT_TYPES = [
   'waifubux_gain',
@@ -32,6 +35,8 @@ export type EffectShape = Record<string, unknown> & { type: string };
 interface Props {
   effect: EffectShape;
   reference: AdminEncounterReference | undefined;
+  /** Where the owning encounter can fire — scopes the Waifumon selector preview. */
+  encounterContext?: SelectorPreviewEncounter | undefined;
   onChange: (next: EffectShape) => void;
   onRemove: () => void;
 }
@@ -41,14 +46,24 @@ function patch(effect: EffectShape, changes: Partial<EffectShape>): EffectShape 
   return { ...effect, ...changes };
 }
 
-export function EffectEditor({ effect, reference, onChange, onRemove }: Props) {
+export function EffectEditor({ effect, reference, encounterContext, onChange, onRemove }: Props) {
   const type = String(effect.type ?? 'waifubux_gain');
   return (
     <div className="rounded-md border border-border bg-surface-sunken p-3">
       <div className="mb-2 flex items-center gap-2">
         <select
           value={type}
-          onChange={(e) => onChange(patch(effect, { type: e.target.value }))}
+          onChange={(e) => {
+            const next = e.target.value;
+            // The Waifumon effect is `.strict()` on the server, so a switch
+            // into or out of it starts clean: no `slug`/`amount` carried into
+            // it, no `selection`/`speciesSlug` carried out of it.
+            onChange(
+              next === WAIFUMON_EFFECT || type === WAIFUMON_EFFECT
+                ? { type: next }
+                : patch(effect, { type: next }),
+            );
+          }}
           className="rounded-md border border-border bg-surface px-2 py-1 text-sm"
         >
           {EFFECT_TYPES.map((t) => (
@@ -154,30 +169,15 @@ export function EffectEditor({ effect, reference, onChange, onRemove }: Props) {
             </select>
           </label>
         )}
-        {type === 'trigger_waifumon_encounter' && (
-          <label className="text-xs text-ink-muted col-span-2">
-            Wild Waifumon
-            {/*
-              Canonical selector rather than a free-text slug: a typo here
-              used to be invisible until a player hit the choice and met
-              nobody. Leaving it on "any" hands the pick to the same
-              region/rarity draw a hunt uses.
-            */}
-            <select
-              value={String(effect.speciesSlug ?? '')}
-              onChange={(e) =>
-                onChange(patch(effect, { speciesSlug: e.target.value || undefined }))
-              }
-              className="w-full rounded-md border border-border bg-surface px-2 py-1 text-sm"
-            >
-              <option value="">— any (region/rarity roll) —</option>
-              {(reference?.species ?? []).map((sp) => (
-                <option key={sp.slug} value={sp.slug}>
-                  {sp.name} ({sp.rarity})
-                </option>
-              ))}
-            </select>
-          </label>
+        {type === WAIFUMON_EFFECT && (
+          <div className="col-span-2">
+            <WaifumonSelectorEditor
+              effect={effect}
+              reference={reference}
+              encounterContext={encounterContext}
+              onChange={onChange}
+            />
+          </div>
         )}
         {type === 'open_vendor' && (
           <label className="text-xs text-ink-muted col-span-2">

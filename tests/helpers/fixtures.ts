@@ -47,6 +47,12 @@ import {
 import { seedWorldEncounters } from '../../src/modules/worldEncounters/seed';
 import { createWorldEncounterAdminService } from '../../src/modules/worldEncounters/adminService';
 import { createWildEncounterSpawner } from '../../src/modules/encounters/wildEncounterSpawner';
+import {
+  createFilteredSpeciesPicker,
+  createSpeciesSelectorService,
+  raceResolverFromContent,
+  type SpeciesSelectorService,
+} from '../../src/modules/encounters/speciesSelection';
 import { createWorldEncounterSettingsService } from '../../src/modules/worldEncounters/settingsService';
 import {
   createGameEventBus,
@@ -125,6 +131,8 @@ export interface App {
    * that omits a species slug exercises the real fallback.
    */
   wildEncounters: ReturnType<typeof createWildEncounterSpawner>;
+  /** The spawner's own filtered picker, bound to the test database. */
+  speciesSelector: SpeciesSelectorService;
   /**
    * Live encounter tuning, wired exactly as production does it so a test can
    * change a rate and watch the engine follow.
@@ -303,6 +311,11 @@ export async function bootstrapApp(
     logger: t.logger,
     ...(opts.huntRng ? { rng: opts.huntRng } : {}),
   });
+  const pickFilteredSpecies = createFilteredSpeciesPicker({
+    resolveRace: raceResolverFromContent(() => content),
+    rarityWeightsFor: (level) => hunt.spawnRarityWeights(level),
+  });
+  const speciesSelector = createSpeciesSelectorService(t.db, pickFilteredSpecies);
   const wildEncounters = createWildEncounterSpawner({
     db: t.db,
     currency,
@@ -310,6 +323,7 @@ export async function bootstrapApp(
     getDefaultExpirySeconds: () => content.tables.hunt.encounterExpirySeconds,
     pickSpecies: (tx, playerId, playerLevel, regionId) =>
       hunt.pickSpeciesForSpawn(tx, playerId, playerLevel, regionId),
+    pickFilteredSpecies,
   });
   // `ttlMs: 0` so a test that writes a setting sees it on the very next read
   // rather than waiting out production's cache window.
@@ -349,6 +363,7 @@ export async function bootstrapApp(
     worldEncounterAdmin,
     worldEncounterSettings,
     wildEncounters,
+    speciesSelector,
     guilds: createGuildService(t.db),
     players: createPlayerService(t.db, { initialEnergy: content.tables.energy.baseMax }),
     currency,

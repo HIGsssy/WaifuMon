@@ -13,6 +13,7 @@ import type {
 } from '@/api/adminEncounters';
 import type { ChoiceDraft } from './ChoiceEditor';
 import type { EffectShape } from './EffectEditor';
+import { WAIFUMON_EFFECT, formFromEffect } from './waifumonSelection';
 
 export interface Draft {
   slug: string;
@@ -81,6 +82,52 @@ export function toPayload(d: Draft): EncounterInputPayload {
     })),
     metadata: d.metadata,
   };
+}
+
+/** Every effect in the draft, with a label an author can find it by. */
+function labelledEffects(d: Draft): Array<{ where: string; effect: EffectShape }> {
+  return d.choices.flatMap((c, i) => [
+    ...c.successEffects.map((effect, j) => ({
+      where: `Choice #${i + 1}, success effect #${j + 1}`,
+      effect,
+    })),
+    ...c.failureEffects.map((effect, j) => ({
+      where: `Choice #${i + 1}, failure effect #${j + 1}`,
+      effect,
+    })),
+  ]);
+}
+
+/**
+ * Waifumon sightings left in Specific Species mode with no species chosen.
+ *
+ * A plain form-state check — the author has not finished the field — so it
+ * blocks every save (draft included) here rather than being left for the
+ * server to reject.
+ */
+export function unchosenSpeciesIssues(d: Draft): string[] {
+  return labelledEffects(d)
+    .filter(({ effect }) => {
+      if (effect.type !== WAIFUMON_EFFECT) return false;
+      const form = formFromEffect(effect);
+      return form.mode === 'specific' && form.speciesSlug === '';
+    })
+    .map(({ where }) => `${where}: pick a species for this Waifumon sighting.`);
+}
+
+/**
+ * The random selectors in the draft, as stored. What they can match is
+ * decided by the server's selector preview — nothing here evaluates them.
+ */
+export function randomSelections(
+  d: Draft,
+): Array<{ where: string; selection: Record<string, unknown> }> {
+  return labelledEffects(d).flatMap(({ where, effect }) => {
+    const selection = effect.selection as Record<string, unknown> | undefined;
+    return effect.type === WAIFUMON_EFFECT && selection?.mode === 'random'
+      ? [{ where, selection }]
+      : [];
+  });
 }
 
 export function draftFrom(server: AdminEncounter): Draft {

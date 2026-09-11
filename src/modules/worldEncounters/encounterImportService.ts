@@ -59,6 +59,8 @@ import {
   type PackagedVendor,
 } from './encounterPackage';
 import type { LoadedEncounter } from './types';
+import { resolveRace } from '../cards/race';
+import { REGION_EXCLUSIVE_TAG } from '../locations/regions';
 
 export class EncounterImportRejectedError extends AppError {
   readonly plan: ImportPlan;
@@ -147,6 +149,22 @@ export function createEncounterPromotionService(
       existingVendors,
       itemSlugs: new Set(content.items.map((i) => i.slug)),
       speciesSlugs: new Set(content.species.map((s) => s.slug)),
+      // What a random selector can match here, so the planner can prove an
+      // empty candidate set before import rather than a player finding it.
+      speciesCatalog: content.species.map((s) => ({
+        slug: s.slug,
+        rarity: s.rarity,
+        affinity: s.affinity,
+        race: resolveRace({ slug: s.slug, race: s.race ?? null, archetype: s.archetype }),
+        enabled: s.enabled !== false,
+        regionExclusive: s.tags.includes(REGION_EXCLUSIVE_TAG),
+      })),
+      // Enabled regions only — the seeder skips a disabled region's pool.
+      regionPools: new Map(
+        content.regions
+          .filter((r) => r.enabled)
+          .map((r) => [r.id, new Set(r.encounterPool.map((e) => e.species))]),
+      ),
       ...(deps.artworkExists ? { artworkExists: deps.artworkExists } : {}),
     };
   }

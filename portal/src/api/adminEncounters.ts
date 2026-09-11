@@ -42,6 +42,10 @@ export interface AdminEncounter {
 
 export interface AdminEncounterReference {
   regions: string[];
+  /** Display names by region id. Optional so older servers still render. */
+  regionNames?: Record<string, string>;
+  /** Species rarity codes (N…EX), distinct from encounter `rarities`. */
+  speciesRarities?: string[];
   affinities: string[];
   races: string[];
   items: Array<{ slug: string; name: string; category: string }>;
@@ -107,10 +111,28 @@ export interface SimulateAggregate {
   seed: number;
 }
 
+/**
+ * One `trigger_waifumon_encounter` effect in the simulated choice, sampled
+ * once by the server's live species selector. Never a species the Portal
+ * picked: `selectedSpecies` is null whenever the server selected nothing.
+ */
+export interface SimulatedSighting {
+  outcome: 'success' | 'failure';
+  /** The authored effect, for the summary line. */
+  effect: Record<string, unknown>;
+  /** Region evaluated; null for a specific species, which ignores pools. */
+  regionId: string | null;
+  candidateCount: number | null;
+  selectedSpecies: { slug: string; name: string; rarity: string } | null;
+  result: 'selected' | 'no_matching_species' | 'unknown_species' | 'hunt_draw';
+}
+
 export interface SimulateResponse {
   encounter: AdminEncounter;
   choiceId: number;
   aggregate: SimulateAggregate;
+  /** Optional so an older server's response still renders. */
+  sightings?: SimulatedSighting[];
 }
 
 export interface EncounterInputPayload {
@@ -255,6 +277,8 @@ export interface SimulateBody extends PreviewBody {
   rolls: number;
   /** Omit to let the server pick one and report it back in the aggregate. */
   seed?: number;
+  /** Region Waifumon sightings are sampled in; omitted, the server picks and reports it. */
+  regionId?: string;
 }
 
 export function simulateAdminEncounter(id: number, body: SimulateBody): Promise<SimulateResponse> {
@@ -284,6 +308,8 @@ export interface ImportPlanIssue {
   code: string;
   subject: string | null;
   message: string;
+  /** Region ids a regional issue concerns (selector warnings). */
+  regions?: string[];
 }
 
 export interface ImportPlan {
@@ -338,4 +364,58 @@ export function applyAdminEncounterImport(
     '/v1/admin/encounters/import/apply',
     { package: pkg, sourceFilename },
   );
+}
+
+/* ─────────────────────── Species selector preview ─────────────────────── */
+
+/**
+ * Where an encounter can fire, so the server can evaluate a region selector in
+ * each region that matters: hunt regions and travel destinations.
+ */
+export interface SelectorPreviewEncounter {
+  huntEligible: boolean;
+  travelEligible: boolean;
+  regions: string[];
+  routes: Array<{ fromRegion: string; toRegion: string }>;
+}
+
+export interface SelectorPreviewBody {
+  /** The effect's `selection`, or null for the legacy hunt draw. */
+  selection: Record<string, unknown> | null;
+  encounter?: SelectorPreviewEncounter;
+  /** Evaluate one region only. */
+  regionId?: string;
+}
+
+export interface SelectorPreviewSpecies {
+  slug: string;
+  name: string;
+  rarity: string;
+}
+
+export interface SelectorPreviewRegion {
+  regionId: string;
+  regionName: string;
+  candidateCount: number;
+  candidates: SelectorPreviewSpecies[];
+}
+
+/**
+ * The runtime picker's answer, evaluated server-side. The Portal renders it
+ * and never re-derives which species match.
+ */
+export interface SelectorPreviewResponse {
+  mode: 'specific' | 'random' | 'hunt_draw';
+  /** Specific mode: the species, and whether it exists and is enabled here. */
+  specific: (SelectorPreviewSpecies & { found: boolean }) | null;
+  /** Random mode: one row per evaluated region. */
+  regions: SelectorPreviewRegion[];
+  /** Whether any enabled region has at least one candidate. False blocks import. */
+  matchesAnywhere: boolean;
+}
+
+export function previewSpeciesSelector(
+  body: SelectorPreviewBody,
+): Promise<SelectorPreviewResponse> {
+  return postData<SelectorPreviewResponse>('/v1/admin/encounters/selector-preview', body);
 }

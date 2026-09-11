@@ -26,6 +26,15 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 import { EncounterArtwork } from '@/components/media/EncounterArtwork';
 import { AdminEncounterPreviewPanel } from './AdminEncounterPreviewPanel';
+import { regionLabel, summarizeEffect } from './waifumonSelection';
+import type { SimulatedSighting } from '@/api/adminEncounters';
+
+const SIGHTING_RESULT_TEXT: Record<SimulatedSighting['result'], string> = {
+  selected: 'Selected',
+  no_matching_species: 'No matching species — no sighting would happen',
+  unknown_species: 'Species not found or disabled — no sighting would happen',
+  hunt_draw: 'Hunt draw — the species is decided by the region/rarity roll at runtime',
+};
 
 const DEFAULT_CTX: PreviewBody = {
   playerLevel: 20,
@@ -53,12 +62,22 @@ export function AdminEncounterPreviewPage() {
   const [choiceId, setChoiceId] = useState<number | null>(null);
   const [rolls, setRolls] = useState<number>(1000);
   const [simResult, setSimResult] = useState<SimulateResponse | null>(null);
+  /** Region Waifumon sightings are sampled in; '' lets the server choose. */
+  const [simRegion, setSimRegion] = useState<string>('');
 
   const simMutation = useMutation({
     mutationFn: () =>
-      simulateAdminEncounter(encounterId!, { ...ctx, choiceId: choiceId!, rolls }),
+      simulateAdminEncounter(encounterId!, {
+        ...ctx,
+        choiceId: choiceId!,
+        rolls,
+        ...(simRegion ? { regionId: simRegion } : {}),
+      }),
     onSuccess: (r) => setSimResult(r),
   });
+
+  const speciesName = (slug: string) =>
+    referenceQuery.data?.species.find((s) => s.slug === slug)?.name;
 
   if (encounterQuery.isPending) {
     return (
@@ -180,6 +199,21 @@ export function AdminEncounterPreviewPage() {
               value={rolls}
               onChange={(e) => setRolls(Number(e.target.value))}
             />
+          </label>
+          <label className="text-xs text-ink-muted">
+            Sighting region
+            <select
+              value={simRegion}
+              onChange={(e) => setSimRegion(e.target.value)}
+              className="w-full rounded-md border border-border bg-surface px-2 py-1 text-sm"
+            >
+              <option value="">Auto (encounter&rsquo;s first region)</option>
+              {(referenceQuery.data?.regions ?? []).map((r) => (
+                <option key={r} value={r}>
+                  {regionLabel(r, referenceQuery.data?.regionNames)}
+                </option>
+              ))}
+            </select>
           </label>
           <div className="flex items-end gap-2">
             {ROLL_PRESETS.map((n) => (
@@ -376,6 +410,49 @@ export function AdminEncounterPreviewPage() {
                 </div>
               </div>
             </Card>
+            {(simResult.sightings ?? []).length > 0 && (
+              <Card className="p-3 md:col-span-2" data-testid="sim-sightings">
+                <h4 className="text-sm font-medium">Wild Waifumon sightings</h4>
+                <p className="text-xs text-ink-muted">
+                  One sample draw per sighting effect, made by the live species selector — the
+                  same code a real resolution runs. Nothing is spawned.
+                </p>
+                {simResult.sightings!.map((s, i) => (
+                  <dl
+                    key={i}
+                    className="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 rounded-md border border-border p-2 text-sm"
+                  >
+                    <dt className="text-ink-muted">On</dt>
+                    <dd>{s.outcome === 'success' ? 'Success' : 'Failure'}</dd>
+                    <dt className="text-ink-muted">Selection</dt>
+                    <dd>{summarizeEffect(s.effect, speciesName)}</dd>
+                    <dt className="text-ink-muted">Region</dt>
+                    <dd>
+                      {s.regionId
+                        ? regionLabel(s.regionId, referenceQuery.data?.regionNames)
+                        : 'Any (a specific species ignores region pools)'}
+                    </dd>
+                    <dt className="text-ink-muted">Eligible species</dt>
+                    <dd>{s.candidateCount ?? '—'}</dd>
+                    {s.result === 'selected' && s.selectedSpecies ? (
+                      <>
+                        <dt className="text-ink-muted">Selected species</dt>
+                        <dd>
+                          {s.selectedSpecies.name} ({s.selectedSpecies.rarity})
+                        </dd>
+                      </>
+                    ) : (
+                      <>
+                        <dt className="text-ink-muted">Result</dt>
+                        <dd className={s.result === 'hunt_draw' ? '' : 'text-destructive'}>
+                          {SIGHTING_RESULT_TEXT[s.result]}
+                        </dd>
+                      </>
+                    )}
+                  </dl>
+                ))}
+              </Card>
+            )}
           </div>
         )}
       </Card>

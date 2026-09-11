@@ -30,7 +30,9 @@ import {
   exportAdminEncounters,
   previewAdminEncounterImport,
   type ImportPlan,
+  type ImportPlanIssue,
 } from '@/api/adminEncounters';
+import { describeIssue } from './waifumonSelection';
 import { useHasPermission } from '@/auth/useSession';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -46,6 +48,21 @@ function downloadJson(filename: string, data: unknown): void {
   anchor.download = filename;
   anchor.click();
   URL.revokeObjectURL(url);
+}
+
+/**
+ * One plan issue in author-facing words. Selector issues get an explanation
+ * (with region names rather than ids); the server's own message stays
+ * underneath so nothing it said is lost.
+ */
+function IssueText({ issue }: { issue: ImportPlanIssue }) {
+  const { headline, detail } = describeIssue(issue);
+  return (
+    <>
+      {headline}
+      {detail ? <span className="block opacity-80">{detail}</span> : null}
+    </>
+  );
 }
 
 function messageOf(err: unknown): string {
@@ -245,7 +262,7 @@ export function ContentPromotionPanel({
                     {errors.map((issue, i) => (
                       <li key={`${issue.code}-${i}`}>
                         {issue.subject ? <strong>{issue.subject}: </strong> : null}
-                        {issue.message}
+                        <IssueText issue={issue} />
                       </li>
                     ))}
                   </ul>
@@ -262,7 +279,7 @@ export function ContentPromotionPanel({
                     {warnings.map((issue, i) => (
                       <li key={`${issue.code}-${i}`}>
                         {issue.subject ? <strong>{issue.subject}: </strong> : null}
-                        {issue.message}
+                        <IssueText issue={issue} />
                       </li>
                     ))}
                   </ul>

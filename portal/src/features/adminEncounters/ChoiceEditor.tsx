@@ -7,7 +7,7 @@
  */
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import type { AdminEncounterReference } from '@/api/adminEncounters';
+import type { AdminEncounterReference, SelectorPreviewEncounter } from '@/api/adminEncounters';
 import { EffectEditor, type EffectShape } from './EffectEditor';
 
 export interface ChoiceDraft {
@@ -41,6 +41,8 @@ interface Props {
   index: number;
   choice: ChoiceDraft;
   reference: AdminEncounterReference | undefined;
+  /** Where the encounter can fire — handed to Waifumon selector previews. */
+  encounterContext?: SelectorPreviewEncounter | undefined;
   onChange: (next: ChoiceDraft) => void;
   onRemove: () => void;
   onMoveUp: (() => void) | undefined;
@@ -51,6 +53,7 @@ export function ChoiceEditor({
   index,
   choice,
   reference,
+  encounterContext,
   onChange,
   onRemove,
   onMoveUp,
@@ -406,6 +409,7 @@ export function ChoiceEditor({
               key={i}
               effect={eff}
               reference={reference}
+              encounterContext={encounterContext}
               onChange={(next) => {
                 const list = [...choice.successEffects];
                 list[i] = next;
@@ -440,6 +444,7 @@ export function ChoiceEditor({
               key={i}
               effect={eff}
               reference={reference}
+              encounterContext={encounterContext}
               onChange={(next) => {
                 const list = [...choice.failureEffects];
                 list[i] = next;

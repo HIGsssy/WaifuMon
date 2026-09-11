@@ -13,18 +13,29 @@
  * The Save button is disabled until the required fields carry a value —
  * a UX hint, not a security boundary. The server re-validates against
  * `EncounterInputSchema`, and validation errors flash inline.
+ *
+ * Two Waifumon-sighting rules gate Save here:
+ *
+ *   - a Specific Species sighting with no species blocks every save — an
+ *     unfinished field, caught in the form rather than left to the server;
+ *   - a random selector that matches nothing in any enabled region blocks
+ *     *publishing* only. Draft saves still work. Whether it matches is the
+ *     server's selector preview answer; nothing here evaluates a selector.
+ *     The server enforces the same rule on activation.
  */
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   createAdminEncounter,
   getAdminEncounter,
   getAdminEncounterReference,
+  previewSpeciesSelector,
   updateAdminEncounter,
   type AdminEncounterReference,
   type EncounterInputPayload,
+  type SelectorPreviewEncounter,
 } from '@/api/adminEncounters';
 import { isPortalApiError } from '@/api/client';
 import { Button } from '@/components/ui/button';
@@ -38,9 +49,19 @@ import { useHasPermission } from '@/auth/useSession';
 
 import { EncounterArtwork } from '@/components/media/EncounterArtwork';
 import { ChoiceEditor } from './ChoiceEditor';
-import { EMPTY_DRAFT, draftFrom, toPayload, type Draft } from './encounterDraft';
+import {
+  EMPTY_DRAFT,
+  draftFrom,
+  randomSelections,
+  toPayload,
+  unchosenSpeciesIssues,
+  type Draft,
+} from './encounterDraft';
 import { AdminEncounterPreviewPanel } from './AdminEncounterPreviewPanel';
 
+/** The publish-blocking explanation, verbatim wherever it is shown. */
+export const SELECTOR_PUBLISH_BLOCKED =
+  'This selector does not match any enabled Waifumon in any region where this encounter can run.';
 
 export function AdminEncounterEditorPage() {
   const { id: idParam } = useParams<{ id?: string }>();
@@ -88,12 +109,40 @@ export function AdminEncounterEditorPage() {
 
   const patch = (updates: Partial<Draft>) => setDraft((d) => ({ ...d, ...updates }));
 
+  // The same context object the selector editors preview with, so these
+  // checks share their query cache rather than asking the server twice.
+  const encounterContext: SelectorPreviewEncounter = {
+    huntEligible: draft.huntEligible,
+    travelEligible: draft.travelEligible,
+    regions: draft.regions,
+    routes: draft.routes,
+  };
+  const speciesIssues = unchosenSpeciesIssues(draft);
+  const selectors = randomSelections(draft);
+  const selectorChecks = useQueries({
+    queries: selectors.map(({ selection }) => ({
+      queryKey: ['admin', 'encounters', 'selector-preview', selection, encounterContext],
+      queryFn: () => previewSpeciesSelector({ selection, encounter: encounterContext }),
+      staleTime: 30_000,
+    })),
+  });
+  // Zero candidates in every enabled region — the `selector_no_candidates`
+  // condition, as the server computed it. Zero in only some regions is a
+  // warning shown by the selector editor and does not block publishing.
+  const deadSelectors = selectors.filter(
+    (_, i) => selectorChecks[i]?.data?.matchesAnywhere === false,
+  );
+  const publishBlocked = deadSelectors.length > 0;
+  const wantsPublish = draft.lifecycle === 'active';
+  const saveBlocked = speciesIssues.length > 0 || (wantsPublish && publishBlocked);
+
   const canSave =
     canWrite &&
     draft.slug.trim().length > 0 &&
     draft.name.trim().length > 0 &&
     (draft.huntEligible || draft.travelEligible) &&
     (!draft.choicesRequired || draft.choices.length > 0) &&
+    !saveBlocked &&
     !saveMutation.isPending;
 
   const wireRegionToggle = (region: string) =>
@@ -241,10 +290,15 @@ export function AdminEncounterEditorPage() {
                     <option
                       key={l}
                       value={l}
-                      disabled={l === 'active' && !canPublish && draft.lifecycle !== 'active'}
+                      disabled={
+                        l === 'active' &&
+                        draft.lifecycle !== 'active' &&
+                        (!canPublish || publishBlocked)
+                      }
                     >
                       {l}
                       {l === 'active' && !canPublish && ' (requires publish)'}
+                      {l === 'active' && canPublish && publishBlocked && ' (blocked)'}
                     </option>
                   ))}
                 </select>
@@ -404,6 +458,7 @@ export function AdminEncounterEditorPage() {
                   index={i}
                   choice={c}
                   reference={reference}
+                  encounterContext={encounterContext}
                   onChange={(next) => {
                     const list = [...draft.choices];
                     list[i] = next;
@@ -462,6 +517,41 @@ export function AdminEncounterEditorPage() {
               </Button>
             </div>
           </fieldset>
+
+          {speciesIssues.length > 0 && (
+            <div
+              className="rounded-md border border-destructive/50 bg-destructive/5 p-3 text-sm text-destructive"
+              role="alert"
+              data-testid="save-blockers"
+            >
+              <p className="font-medium">Pick a species before saving.</p>
+              <ul className="mt-1 list-disc pl-5 text-xs">
+                {speciesIssues.map((issue) => (
+                  <li key={issue}>{issue}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {publishBlocked && (
+            <div
+              className="rounded-md border border-destructive/50 bg-destructive/5 p-3 text-sm text-destructive"
+              role="alert"
+              data-testid="publish-blockers"
+            >
+              <p className="font-medium">{SELECTOR_PUBLISH_BLOCKED}</p>
+              <p className="mt-1 text-xs">
+                {wantsPublish
+                  ? 'This encounter cannot be published while it is here. Set Lifecycle to draft to save your changes, or change the selector.'
+                  : 'You can save this encounter as a draft, but it cannot be published until the selector matches something.'}
+              </p>
+              <ul className="mt-1 list-disc pl-5 text-xs">
+                {deadSelectors.map(({ where }) => (
+                  <li key={where}>{where}</li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           <div className="flex items-center gap-3 pt-2">
             <Button

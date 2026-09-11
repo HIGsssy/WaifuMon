@@ -46,6 +46,7 @@ import type {
   WildEncounterSpawn,
   WildEncounterSpawner,
 } from '../encounters/wildEncounterSpawner';
+import type { SpeciesFilter } from '../encounters/speciesSelection';
 import {
   createWorldEncounterRepository,
   type WorldEncounterRepository,
@@ -218,6 +219,11 @@ export interface Resolution {
     speciesSlug: string | null;
     speciesName: string | null;
     blockedByEncounterId: number | null;
+    /**
+     * Why an `unavailable` spawn produced nothing — e.g. `no_matching_species`
+     * for a selector whose filters matched nobody in scope. Absent otherwise.
+     */
+    unavailableReason?: Extract<WildEncounterSpawn, { status: 'unavailable' }>['reason'];
   } | null;
   /**
    * Set when this encounter interrupted a journey — i.e. `source === 'travel'`.
@@ -767,10 +773,23 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
       if (deps.wildEncounters) {
         const wildFollowUp = followUps.find((f) => f.kind === 'trigger_waifumon_encounter');
         if (wildFollowUp) {
-          const speciesSlug = (wildFollowUp.payload as { speciesSlug?: string }).speciesSlug;
+          // The executor has already normalised the authored effect: a named
+          // species arrives as `speciesSlug`, a selector as `selection`, and
+          // legacy "any" as neither — which keeps the hunt draw it always had.
+          const payload = wildFollowUp.payload as {
+            speciesSlug?: string;
+            selection?: SpeciesFilter;
+          };
+          const speciesSlug = payload.speciesSlug;
+          const selection = speciesSlug ? undefined : payload.selection;
           const spawn = await deps.wildEncounters.createWildEncounter({
             playerId: opts.playerId,
             ...(speciesSlug ? { speciesSlug } : {}),
+            // A selector resolves against `active.regionId` below: the hunt's
+            // region for a hunt-origin encounter, the already-committed
+            // destination for a travel-origin one, and inherited unchanged by
+            // every chained continuation.
+            ...(selection ? { selection } : {}),
             // The world encounter knows the channel it was presented in; a
             // spawned Waifumon belongs to the same conversation.
             channelId: active.channelId ?? '',
@@ -799,7 +818,35 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
                   speciesName: null,
                   blockedByEncounterId:
                     spawn.status === 'blocked' ? spawn.activeEncounterId : null,
+                  ...(spawn.status === 'unavailable' ? { unavailableReason: spawn.reason } : {}),
                 };
+          if (spawn.status === 'unavailable') {
+            // Enough to find the authored content that produced nothing. The
+            // resolution still commits: the choice was made and its other
+            // effects were earned — only the sighting did not happen, and no
+            // encounter row, Energy spend or fallback species came of it.
+            deps.logger?.warn(
+              {
+                tag: 'world-encounter/wild-spawn-unavailable',
+                playerId: opts.playerId,
+                activeId: active.id,
+                encounterSlug: encounter.slug,
+                source: active.source,
+                regionId: active.regionId,
+                speciesSlug: speciesSlug ?? null,
+                poolScope: selection?.poolScope ?? null,
+                filters: selection
+                  ? {
+                      rarities: selection.rarities ?? null,
+                      races: selection.races ?? null,
+                      affinities: selection.affinities ?? null,
+                    }
+                  : null,
+                reason: spawn.reason,
+              },
+              'world encounter wild spawn produced nothing',
+            );
+          }
         }
       }
 

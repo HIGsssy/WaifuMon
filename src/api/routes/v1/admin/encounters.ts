@@ -44,14 +44,22 @@ import {
   type WorldEncounterSettingsService,
 } from '../../../../modules/worldEncounters/settingsService';
 import { seededRng } from '../../../../shared/random';
-import { REGIONS } from '../../../../modules/locations/regions';
+import { DEFAULT_REGION, REGIONS } from '../../../../modules/locations/regions';
 import {
   AFFINITIES,
+  RARITIES,
   WORLD_ENCOUNTER_LIFECYCLES,
   WORLD_ENCOUNTER_RARITIES,
   WORLD_ENCOUNTER_TYPES,
+  type SpeciesRow,
 } from '../../../../db/schema';
 import { RACE_CODES } from '../../../../modules/cards/race';
+import {
+  SpeciesSelectionSchema,
+  type SpeciesSelectorService,
+} from '../../../../modules/encounters/speciesSelection';
+import { normalizeWaifumonSelection } from '../../../../modules/worldEncounters/types';
+import { directRegions } from '../../../../modules/worldEncounters/encounterPackage';
 
 /**
  * Image types an encounter may use. A closed list, so the endpoint below can
@@ -130,6 +138,10 @@ const previewResponseSchema = z.object({
 
 const referenceSchema = z.object({
   regions: z.array(z.string()),
+  /** Display names from region content, keyed by region id. */
+  regionNames: z.record(z.string()),
+  /** Species rarity codes, in canonical order — distinct from encounter `rarities`. */
+  speciesRarities: z.array(z.string()),
   affinities: z.array(z.string()),
   races: z.array(z.string()),
   items: z.array(z.object({ slug: z.string(), name: z.string(), category: z.string() })),
@@ -186,11 +198,164 @@ const simulateAggregateSchema = z.object({
 });
 export type SimulateAggregate = z.infer<typeof simulateAggregateSchema>;
 
+const speciesRefSchema = z.object({ slug: z.string(), name: z.string(), rarity: z.string() });
+
+/**
+ * One `trigger_waifumon_encounter` effect of the simulated choice, sampled
+ * once through the live species selector. `selectedSpecies` is only ever what
+ * that selector returned — null whenever it returned nothing.
+ */
+const sightingSchema = z.object({
+  outcome: z.enum(['success', 'failure']),
+  effect: z.record(z.unknown()),
+  /** Region evaluated; null for a specific species, which ignores pools. */
+  regionId: z.string().nullable(),
+  candidateCount: z.number().int().nullable(),
+  selectedSpecies: speciesRefSchema.nullable(),
+  result: z.enum(['selected', 'no_matching_species', 'unknown_species', 'hunt_draw']),
+});
+type Sighting = z.infer<typeof sightingSchema>;
+
 const simulateResponseSchema = z.object({
   encounter: encounterSchema,
   choiceId: z.number().int(),
   aggregate: simulateAggregateSchema,
+  sightings: z.array(sightingSchema),
 });
+
+/** Where an encounter can fire, as the editor's draft describes it. */
+const selectorEncounterSchema = z.object({
+  huntEligible: z.boolean(),
+  travelEligible: z.boolean(),
+  regions: z.array(z.enum(REGIONS)),
+  routes: z.array(z.object({ fromRegion: z.enum(REGIONS), toRegion: z.enum(REGIONS) })),
+});
+
+const selectorPreviewBodySchema = z.object({
+  /** The effect's `selection`; null previews the legacy hunt draw. */
+  selection: SpeciesSelectionSchema.nullable(),
+  /** Omitted = the selector may run anywhere, so every enabled region is evaluated. */
+  encounter: selectorEncounterSchema.optional(),
+  /** Evaluate this one region instead. */
+  regionId: z.enum(REGIONS).optional(),
+  playerLevel: z.number().int().min(1).max(200).default(20),
+});
+
+const selectorPreviewResponseSchema = z.object({
+  mode: z.enum(['specific', 'random', 'hunt_draw']),
+  specific: speciesRefSchema.extend({ found: z.boolean() }).nullable(),
+  regions: z.array(
+    z.object({
+      regionId: z.string(),
+      regionName: z.string(),
+      candidateCount: z.number().int(),
+      candidates: z.array(speciesRefSchema),
+    }),
+  ),
+  /** Any enabled region has a candidate. False is the import-blocking case. */
+  matchesAnywhere: z.boolean(),
+});
+
+const speciesRef = (s: SpeciesRow): z.infer<typeof speciesRefSchema> => ({
+  slug: s.slug,
+  name: s.name,
+  rarity: s.rarity,
+});
+
+/**
+ * Sample every Waifumon sighting on a choice through the real selector — the
+ * picker instance the spawner itself uses. Reads only; nothing is spawned.
+ */
+async function simulateSightings(
+  selector: SpeciesSelectorService | undefined,
+  choice: LoadedEncounter['choices'][number],
+  regionId: string,
+  playerLevel: number,
+): Promise<Sighting[]> {
+  const out: Sighting[] = [];
+  const lists = [
+    ['success', choice.successEffects],
+    ['failure', choice.failureEffects],
+  ] as const;
+  for (const [outcome, effects] of lists) {
+    for (const effect of effects) {
+      if (effect.type !== 'trigger_waifumon_encounter') continue;
+      const base = { outcome, effect: effect as unknown as Record<string, unknown> };
+      const selection = normalizeWaifumonSelection(effect);
+      if (selection.mode === 'legacy_random') {
+        // The hunt draw re-rolls rarity and falls back across pools at
+        // runtime; there is no fixed candidate set to report honestly.
+        out.push({ ...base, regionId, candidateCount: null, selectedSpecies: null, result: 'hunt_draw' });
+        continue;
+      }
+      if (!selector) continue;
+      if (selection.mode === 'specific') {
+        const row = await selector.findEnabledSpecies(selection.speciesSlug);
+        out.push({
+          ...base,
+          regionId: null,
+          candidateCount: row ? 1 : 0,
+          selectedSpecies: row ? speciesRef(row) : null,
+          result: row ? 'selected' : 'unknown_species',
+        });
+        continue;
+      }
+      const pick = await selector.pick(selection, { regionId, playerLevel });
+      out.push({
+        ...base,
+        regionId,
+        candidateCount: pick.candidateCount,
+        selectedSpecies: pick.status === 'selected' ? speciesRef(pick.species) : null,
+        result: pick.status === 'selected' ? 'selected' : 'no_matching_species',
+      });
+    }
+  }
+  return out;
+}
+
+const SELECTOR_PUBLISH_BLOCKED =
+  'This selector does not match any enabled Waifumon in any region where this encounter can run.';
+
+/**
+ * Refuse to *publish* an encounter carrying a random selector that matches
+ * nothing in any enabled region — the `selector_no_candidates` condition,
+ * evaluated by the live picker. Zero in only some regions is allowed: a chain
+ * can carry the node into a region that does match.
+ *
+ * Only activation is gated. Drafts may hold such a selector while it is being
+ * worked on, which is what lets an author save their progress.
+ */
+async function assertPublishableSelectors(
+  selector: SpeciesSelectorService | undefined,
+  enabledRegions: readonly string[],
+  choices: ReadonlyArray<{
+    successEffects: LoadedEncounter['choices'][number]['successEffects'];
+    failureEffects: LoadedEncounter['choices'][number]['failureEffects'];
+  }>,
+): Promise<void> {
+  if (!selector) return;
+  const dead: string[] = [];
+  for (const [i, choice] of choices.entries()) {
+    for (const effect of [...choice.successEffects, ...choice.failureEffects]) {
+      if (effect.type !== 'trigger_waifumon_encounter') continue;
+      const selection = normalizeWaifumonSelection(effect);
+      if (selection.mode !== 'random') continue;
+      let matches = false;
+      for (const regionId of enabledRegions) {
+        const pick = await selector.pick(selection, { regionId, playerLevel: 20 });
+        if (pick.status === 'selected') {
+          matches = true;
+          break;
+        }
+      }
+      if (!matches) dead.push(`choice ${i + 1}`);
+    }
+  }
+  if (dead.length > 0) {
+    const message = `${SELECTOR_PUBLISH_BLOCKED} Save it as a draft or change the selector (${dead.join(', ')}).`;
+    throw new AppError('VALIDATION_ERROR', message, message);
+  }
+}
 
 const settingsSchema = z.object({
   huntChance: z.number(),
@@ -252,6 +417,12 @@ const simulateBodySchema = previewBodySchema.extend({
    * server picks one and reports it back.
    */
   seed: z.number().int().min(0).max(2_147_483_647).optional(),
+  /**
+   * Region Waifumon sightings are sampled in. Omitted: the first region the
+   * encounter can fire in (or the starting region), reported back on each
+   * sighting so the result is never region-ambiguous.
+   */
+  regionId: z.enum(REGIONS).optional(),
 });
 
 /* ─────────────────────── Helpers ─────────────────────── */
@@ -588,6 +759,8 @@ export const adminEncounterRoutes =
         const vendors = vendorRows.map((v) => ({ vendorKey: v.vendorKey, name: v.name }));
         return ok(req, {
           regions: [...REGIONS],
+          regionNames: Object.fromEntries(content.regions.map((r) => [r.id, r.name])),
+          speciesRarities: [...RARITIES],
           affinities: [...AFFINITIES],
           races: [...RACE_CODES],
           items: content.items.map((i) => ({ slug: i.slug, name: i.name, category: i.category })),
@@ -643,6 +816,13 @@ export const adminEncounterRoutes =
         },
       },
       async (req) => {
+        if (req.body.input.lifecycle === 'active') {
+          await assertPublishableSelectors(
+            ctx.services.speciesSelector,
+            ctx.getContent().regions.filter((r) => r.enabled).map((r) => r.id),
+            req.body.input.choices,
+          );
+        }
         const result = await admin.upsert(req.body.input);
         return ok(req, encounterToResource(result));
       },
@@ -667,6 +847,13 @@ export const adminEncounterRoutes =
       async (req) => {
         const existing = await admin.get(req.params.id);
         if (!existing) throw new AppError('NOT_FOUND', 'Encounter not found', 'Not found.');
+        if (req.body.input.lifecycle === 'active') {
+          await assertPublishableSelectors(
+            ctx.services.speciesSelector,
+            ctx.getContent().regions.filter((r) => r.enabled).map((r) => r.id),
+            req.body.input.choices,
+          );
+        }
         const result = await admin.upsert({ ...req.body.input, slug: existing.slug });
         return ok(req, encounterToResource(result));
       },
@@ -718,6 +905,15 @@ export const adminEncounterRoutes =
         if (req.body.lifecycle === 'active') await requireAuth(req, 'encounters.publish');
         const existing = await admin.get(req.params.id);
         if (!existing) throw new AppError('NOT_FOUND', 'Encounter not found', 'Not found.');
+        // The list page's Activate goes through here, so the publish rule
+        // lives on the server rather than only in the editor.
+        if (req.body.lifecycle === 'active') {
+          await assertPublishableSelectors(
+            ctx.services.speciesSelector,
+            ctx.getContent().regions.filter((r) => r.enabled).map((r) => r.id),
+            existing.choices,
+          );
+        }
         await admin.setLifecycle(req.params.id, req.body.lifecycle);
         const updated = await admin.get(req.params.id);
         if (!updated) throw new AppError('NOT_FOUND', 'Encounter not found', 'Not found.');
@@ -821,10 +1017,117 @@ export const adminEncounterRoutes =
         // quotes can be re-run exactly.
         const seed = req.body.seed ?? Math.floor(Math.random() * 2_147_483_647);
         const aggregate = simulateChoice(choice, req.body, contextFrom(req.body), seed);
+        // Sightings are sampled once each through the live selector, in a
+        // region that is always reported back — never an ambiguous count.
+        const enabled = ctx
+          .getContent()
+          .regions.filter((r) => r.enabled)
+          .map((r) => r.id as string);
+        const regionId =
+          req.body.regionId ?? directRegions(encounter, enabled)[0] ?? DEFAULT_REGION;
+        const sightings = await simulateSightings(
+          ctx.services.speciesSelector,
+          choice,
+          regionId,
+          req.body.playerLevel,
+        );
         return ok(req, {
           encounter: encounterToResource(encounter),
           choiceId: choice.id,
           aggregate,
+          sightings,
+        });
+      },
+    );
+
+    /**
+     * What a `trigger_waifumon_encounter` selector can produce, evaluated by
+     * the runtime's own picker — the Portal renders this and never re-derives
+     * which species match.
+     *
+     * Random selectors are evaluated per region: the one asked for, or every
+     * region the encounter can fire in directly (hunt regions, travel
+     * destinations; "anywhere" means every enabled region). `matchesAnywhere`
+     * is computed over all enabled regions, which is exactly the
+     * `selector_no_candidates` condition import validation blocks on.
+     *
+     * Reads only. The picker draws a species as a side effect of evaluating;
+     * that draw is discarded and nothing is written.
+     */
+    app.post(
+      '/admin/encounters/selector-preview',
+      {
+        preValidation: gate('encounters.read'),
+        schema: {
+          tags: ['Admin — Encounters'],
+          summary: 'Preview the species a Waifumon sighting selector can produce',
+          body: selectorPreviewBodySchema,
+          response: {
+            200: dataSchema(selectorPreviewResponseSchema),
+            ...commonErrorResponses,
+          },
+        },
+      },
+      async (req) => {
+        const selector = ctx.services.speciesSelector;
+        if (!selector) {
+          throw new AppError(
+            'NOT_FOUND',
+            'The species selector is not wired in this deployment',
+            'Selector preview is unavailable.',
+          );
+        }
+        const { selection, playerLevel } = req.body;
+        if (!selection) {
+          return ok(req, { mode: 'hunt_draw', specific: null, regions: [], matchesAnywhere: true });
+        }
+        if (selection.mode === 'specific') {
+          const row = await selector.findEnabledSpecies(selection.speciesSlug);
+          return ok(req, {
+            mode: 'specific',
+            specific: row
+              ? { ...speciesRef(row), found: true }
+              : { slug: selection.speciesSlug, name: selection.speciesSlug, rarity: '', found: false },
+            regions: [],
+            matchesAnywhere: row != null,
+          });
+        }
+
+        const content = ctx.getContent();
+        const names = new Map<string, string>(content.regions.map((r) => [r.id, r.name]));
+        const enabled = content.regions.filter((r) => r.enabled).map((r) => r.id as string);
+        const evaluate = async (regionId: string) => {
+          const pick = await selector.pick(selection, { regionId, playerLevel });
+          const candidates =
+            pick.status === 'selected'
+              ? pick.candidates.map(speciesRef).sort((a, b) => a.name.localeCompare(b.name))
+              : [];
+          return {
+            regionId,
+            regionName: names.get(regionId) ?? regionId,
+            candidateCount: candidates.length,
+            candidates,
+          };
+        };
+        const everywhere = await Promise.all(enabled.map(evaluate));
+        const byId = new Map(everywhere.map((r) => [r.regionId, r]));
+        const wanted = req.body.regionId
+          ? [req.body.regionId]
+          : directRegions(
+              req.body.encounter ?? {
+                huntEligible: true,
+                travelEligible: false,
+                regions: [],
+                routes: [],
+              },
+              enabled,
+            );
+        const regions = await Promise.all(wanted.map((id) => byId.get(id) ?? evaluate(id)));
+        return ok(req, {
+          mode: 'random',
+          specific: null,
+          regions,
+          matchesAnywhere: everywhere.some((r) => r.candidateCount > 0),
         });
       },
     );

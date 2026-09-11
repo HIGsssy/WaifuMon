@@ -28,6 +28,11 @@ import { createShopService } from './modules/shop/shopService';
 import { createTravelService } from './modules/travel/travelService';
 import { createHuntService } from './modules/hunt/huntService';
 import { createWildEncounterSpawner } from './modules/encounters/wildEncounterSpawner';
+import {
+  createFilteredSpeciesPicker,
+  createSpeciesSelectorService,
+  raceResolverFromContent,
+} from './modules/encounters/speciesSelection';
 import { createCaptureService } from './modules/capture/captureService';
 import { createCareService } from './modules/care/careService';
 import { createWorldEncounterService } from './modules/worldEncounters/worldEncounterService';
@@ -297,6 +302,15 @@ async function main(): Promise<void> {
    * Phase 2 wires `trigger_waifumon_encounter` to it; quests, items, events,
    * exploration and deity rewards are meant to reuse the same seam.
    */
+  // Filtered selectors: the hunt's rarity weights conditioned on the authored
+  // filter, with race read from the live content snapshot. One instance,
+  // shared by the spawner and by Portal previews, so an authoring preview is
+  // the runtime's answer rather than a second implementation of it.
+  const pickFilteredSpecies = createFilteredSpeciesPicker({
+    resolveRace: raceResolverFromContent(() => contentSnapshot),
+    rarityWeightsFor: (level) => huntService.spawnRarityWeights(level),
+  });
+  const speciesSelector = createSpeciesSelectorService(db, pickFilteredSpecies);
   const wildEncounters = createWildEncounterSpawner({
     db,
     currency,
@@ -304,6 +318,7 @@ async function main(): Promise<void> {
     getDefaultExpirySeconds: () => contentSnapshot.tables.hunt.encounterExpirySeconds,
     pickSpecies: (tx, playerId, playerLevel, regionId) =>
       huntService.pickSpeciesForSpawn(tx, playerId, playerLevel, regionId),
+    pickFilteredSpecies,
   });
 
   const ctx: AppContext = {
@@ -417,6 +432,7 @@ async function main(): Promise<void> {
       worldEncounterVendor: worldEncounterVendorService,
       worldEncounterSettings,
       wildEncounters,
+      speciesSelector,
     },
   };
 

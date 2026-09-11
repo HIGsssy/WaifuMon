@@ -29,7 +29,7 @@ import type { ProgressionService } from '../progression/progressionService';
 import type { CollectionService } from '../collection/collectionService';
 import { InsufficientFundsError, InsufficientItemsError } from '../../shared/errors';
 import type { AppliedBuddyBonus } from '../buddyBonus/buddyBonusEffects';
-import type { Effect } from './types';
+import { normalizeWaifumonSelection, type Effect } from './types';
 
 export interface EffectExecutorDeps {
   currency: CurrencyService;
@@ -410,9 +410,18 @@ export function createEffectExecutor(deps: EffectExecutorDeps) {
           break;
         }
         case 'trigger_waifumon_encounter': {
+          // Normalised here so the resolver reads one shape: a named species
+          // travels as `speciesSlug` exactly as it always has, a random
+          // selector as `selection`, and legacy "any" as an empty payload.
+          const selection = normalizeWaifumonSelection(effect);
           followUps.push({
             kind: 'trigger_waifumon_encounter',
-            payload: effect.speciesSlug ? { speciesSlug: effect.speciesSlug } : {},
+            payload:
+              selection.mode === 'specific'
+                ? { speciesSlug: selection.speciesSlug }
+                : selection.mode === 'random'
+                  ? { selection }
+                  : {},
           });
           record({});
           break;
