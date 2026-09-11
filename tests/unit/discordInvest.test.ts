@@ -151,6 +151,11 @@ function makeCtx(overrides: {
         collection: {
           investEssence,
           investEssenceBatch: investEssence,
+        previewConversionEssence: vi.fn(async (_p: number, _r: string) => ({
+          baseAmount: 100,
+          finalAmount: 100,
+          bonus: null,
+        })),
           maxUsefulApplications: vi.fn(() => 20),
           getOwned,
           hasOtherActiveCopies: vi.fn(async () => false),

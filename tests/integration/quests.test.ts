@@ -449,7 +449,13 @@ describe('QuestService.claimAllCompleted', () => {
     const result = await app.quests.claimAllCompleted(playerId, DAY1);
     expect(result.claimed.length).toBe(0);
     expect(result.allCompleteBonusGranted).toBe(false);
-    expect(result.totalRewards).toEqual({ waifubux: 0, essence: 0, items: [] });
+    expect(result.totalRewards).toEqual({
+      waifubux: 0,
+      essence: 0,
+      essenceBase: 0,
+      essenceBonus: null,
+      items: [],
+    });
     const bal = await app.currency.getBalances(playerId);
     expect(bal.waifubux).toBe(0);
     expect(bal.essence).toBe(0);

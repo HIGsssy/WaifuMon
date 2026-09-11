@@ -447,6 +447,20 @@ export function buddyBonusEffectSummary(applied: BuddyBonusSummarizable): string
       return `${pct} Affection`;
     case 'boss_reward_gain':
       return `${pct} Boss rewards`;
+    /**
+     * Worded as a **percentage-point** shift, because that is what the check
+     * resolver actually does with it: the value is added to the success
+     * chance, not multiplied into it (`checkResolver` reads it as
+     * `percent / 100` and adds). Every other `percent_modifier` in this
+     * registry is relative, so saying "+10% success chance" here would
+     * describe the wrong arithmetic on a 40% check — it becomes 50%, not 44%.
+     *
+     * The registry still declares this `percent_modifier`, which is a known
+     * inconsistency held open as a deliberate design decision rather than
+     * quietly changed; the wording below describes shipped behaviour.
+     */
+    case 'encounter_check_bonus':
+      return `${pct} (flat) World Encounter check success chance`;
     default:
       return pct;
   }

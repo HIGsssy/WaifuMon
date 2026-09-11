@@ -24,7 +24,8 @@ import {
 import { affinityLabel } from '../../modules/capture/affinityMath';
 import { seductivePowerView } from '../../modules/power/seductivePower';
 import { isAppearanceUnlocked } from '../../modules/appearance/appearanceRules';
-import { buddyBonusView } from '../../modules/buddyBonus/buddyBonusEffects';
+import { buddyBonusShortLine, buddyBonusView } from '../../modules/buddyBonus/buddyBonusEffects';
+import type { EssencePreview } from '../../modules/currency/essenceAwardService';
 import { buddyBonusValueLine } from '../buddyBonusFeedback';
 import { findBuddyBonus } from '../../modules/buddyBonus/buddyBonusService';
 import { RARITIES } from '../../db/schema';
@@ -841,7 +842,7 @@ function inspectComponents(
   ctx: AppContext,
   entry: OwnedEntry,
   isDuplicate: boolean,
-  convertEssence: number,
+  convertPreview: EssencePreview,
   isBuddy: boolean,
   essence: { balance: number; maxUseful: number },
   hasPendingGift: boolean,
@@ -921,7 +922,7 @@ function inspectComponents(
     primary.push(
       new ButtonBuilder()
         .setCustomId(buildCustomId('waifu', 'convert', String(entry.waifu.id)))
-        .setLabel(`✨ Convert (+${convertEssence})`)
+        .setLabel(`✨ Convert (+${convertPreview.finalAmount})`)
         .setStyle(ButtonStyle.Primary),
     );
   }
@@ -958,9 +959,14 @@ async function renderInspect(
     const isBuddy = buddy?.waifu.id === waifuId;
     const { waifu, species } = entry;
     const caught = waifu.caughtAt.toISOString().slice(0, 10);
-    const convertEssence =
-      (ctx.content.tables.duplicate.essenceByRarity as Record<string, number>)[species.rarity] ??
-      0;
+    // Buddy-adjusted, from the same modifier logic the conversion itself uses.
+    // Reading `essenceByRarity` here used to under-quote every player with an
+    // `essence_gain` Buddy.
+    const convertPreview = await ctx.services.collection.previewConversionEssence(
+      prov.playerId,
+      species.rarity,
+      'convert',
+    );
 
     const waifuProg = ctx.services.collection.waifuProgress(waifu);
     // One domain call, not arithmetic in a handler - the API, the trainer
@@ -1090,7 +1096,7 @@ async function renderInspect(
         ctx,
         entry,
         isDuplicate,
-        convertEssence,
+        convertPreview,
         isBuddy,
         { balance: balances.essence, maxUseful },
         pendingGift != null,
@@ -1606,15 +1612,19 @@ export async function handleWaifuRelease(
     });
     return;
   }
-  const essence = Math.floor(
-    ((ctx.content.tables.duplicate.essenceByRarity as Record<string, number>)[
-      entry.species.rarity
-    ] ?? 0) * ctx.content.tables.duplicate.releaseFraction,
+  const preview = await ctx.services.collection.previewConversionEssence(
+    prov.playerId,
+    entry.species.rarity,
+    'release',
   );
+  const note = essencePreviewNote(preview);
   const embed = new EmbedBuilder()
     .setTitle(`🕊️ Release ${displayName(entry)}?`)
     .setColor(0xff6f6f)
-    .setDescription(`You'll receive **${essence} Essence**. This cannot be undone.`);
+    .setDescription(
+      `You'll receive **${preview.finalAmount} Essence**. This cannot be undone.` +
+        (note ? `\n${note}` : ''),
+    );
   await respondEphemeral(interaction, {
     embeds: [embed],
     components: [releaseConfirmRow(waifuId)],
@@ -1771,7 +1781,7 @@ export async function handleCollectionList(
  */
 export function duplicatePromptComponents(
   waifuId: number,
-  essenceValue: number,
+  preview: EssencePreview,
 ): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
@@ -1780,9 +1790,20 @@ export function duplicatePromptComponents(
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId(buildCustomId('dup', 'convert', String(waifuId)))
-      .setLabel(`✨ Convert to Essence (+${essenceValue})`)
+      .setLabel(`✨ Convert to Essence (+${preview.finalAmount})`)
       .setStyle(ButtonStyle.Primary),
   );
+}
+
+/**
+ * The `✨ Extra Serving: +30% (Base: 100)` line under a conversion quote.
+ *
+ * Null unless the equipped Buddy actually raises the payout — the domain
+ * decides that by setting `preview.bonus`, and this never re-tests it.
+ */
+function essencePreviewNote(preview: EssencePreview): string | null {
+  if (!preview.bonus) return null;
+  return `${buddyBonusShortLine(preview.bonus)}\n(Base: ${preview.baseAmount})`;
 }
 
 /** dup:keep — no-op confirmation; the row was already saved on capture. */
@@ -1895,15 +1916,19 @@ export async function handleWaifuConvert(
   }
 
   if (entry.waifu.isFavorite) {
-    const essence =
-      (ctx.content.tables.duplicate.essenceByRarity as Record<string, number>)[
-        entry.species.rarity
-      ] ?? 0;
+    const preview = await ctx.services.collection.previewConversionEssence(
+      prov.playerId,
+      entry.species.rarity,
+      'convert',
+    );
+    const note = essencePreviewNote(preview);
     const embed = new EmbedBuilder()
       .setTitle(`✨ Convert ${displayName(entry)} to Essence?`)
       .setColor(0xff6f6f)
       .setDescription(
-        `⚠️ **This is a ★ favorite.** You'll receive **${essence} Essence**. This cannot be undone.`,
+        `⚠️ **This is a ★ favorite.** You'll receive **${preview.finalAmount} Essence**. ` +
+          'This cannot be undone.' +
+          (note ? `\n${note}` : ''),
       );
     await respondEphemeral(interaction, {
       embeds: [embed],

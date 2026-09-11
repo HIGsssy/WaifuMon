@@ -34,7 +34,11 @@ import type { AppContext } from './types';
 import type { SessionPayload } from './ephemeralSession';
 import type { ChoiceView, EncounterActivation, Resolution } from '../modules/worldEncounters/worldEncounterService';
 import type { CheckResolution, CheckSpec } from '../modules/worldEncounters/types';
-import type { AppliedAffectionDetail } from '../modules/worldEncounters/effectExecutor';
+import type {
+  AppliedAffectionDetail,
+  AppliedBuddyXpDetail,
+  AppliedEssenceDetail,
+} from '../modules/worldEncounters/effectExecutor';
 
 /** Discord button rows cap at 5 buttons each. */
 const BUTTONS_PER_ROW = 5;
@@ -365,6 +369,8 @@ function formatAppliedEffect(entry: {
   amount?: number;
   reason?: string;
   affection?: AppliedAffectionDetail | undefined;
+  essence?: AppliedEssenceDetail | undefined;
+  buddyXp?: AppliedBuddyXpDetail | undefined;
 }): string | null {
   const e = entry.effect;
   const amount = entry.amount;
@@ -374,8 +380,19 @@ function formatAppliedEffect(entry: {
     case 'waifubux_loss':
     case 'waifubux_loss_percent':
       return amount && amount > 0 ? `−${amount} Waifubux` : null;
-    case 'essence_gain':
-      return `+${amount ?? e.amount} Essence`;
+    case 'essence_gain': {
+      // Same contract as `affection_gain` below: every figure is one the
+      // domain computed and handed over. `detail` is absent only on history
+      // rows written before the award carried its metadata, which fall back
+      // to the plain line they always printed.
+      const detail = entry.essence;
+      if (!detail) return `💎 +${amount ?? e.amount} Essence`;
+      const headline = `💎 +${detail.finalAmount} Essence`;
+      // The breakdown appears only when the bonus actually moved the number —
+      // `bonus` is non-null on exactly that condition, decided by the domain.
+      if (!detail.bonus) return headline;
+      return `${headline}\nBase: ${detail.baseAmount} · ${buddyBonusShortLine(detail.bonus)}`;
+    }
     case 'essence_loss':
       return amount && amount > 0 ? `−${amount} Essence` : null;
     case 'energy_gain':
@@ -384,8 +401,14 @@ function formatAppliedEffect(entry: {
       return amount && amount > 0 ? `−${amount} Energy` : null;
     case 'player_xp':
       return `+${amount ?? e.amount} Player XP`;
-    case 'buddy_xp':
-      return amount && amount > 0 ? `+${amount} Buddy XP` : null;
+    case 'buddy_xp': {
+      if (!amount || amount <= 0) return null;
+      const detail = entry.buddyXp;
+      if (!detail) return `+${amount} Buddy XP`;
+      const headline = `⭐ ${detail.waifuName} gained +${detail.finalAmount} Buddy XP`;
+      if (!detail.bonus) return headline;
+      return `${headline}\nBase: ${detail.baseAmount} · ${buddyBonusShortLine(detail.bonus)}`;
+    }
     case 'affection_gain': {
       // Null when there was no Buddy to pay. The encounter still succeeded and
       // its other effects still printed — this line simply is not one of them,

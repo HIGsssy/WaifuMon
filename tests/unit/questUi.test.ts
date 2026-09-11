@@ -10,6 +10,20 @@ import {
   questsView,
   type QuestRow,
 } from '../../src/discord/commands/waifumon';
+import { appliedBuddyBonus } from '../../src/modules/buddyBonus/buddyBonusEffects';
+
+/** A fired `essence_gain` bonus, shaped exactly as the domain hands one over. */
+function essenceBonus(value = 30, name = 'Extra Serving') {
+  return appliedBuddyBonus(
+    {
+      name,
+      flavorText: `${name}: +${value}% Essence gained.`,
+      effectId: 'essence_gain',
+      value,
+    },
+    { base: 40, final: 52 },
+  );
+}
 
 function questRow(overrides: Partial<QuestRow> = {}): QuestRow {
   return {
@@ -53,6 +67,54 @@ describe('formatRewardSummary', () => {
 
   it('omits zero components', () => {
     expect(formatRewardSummary({ waifubux: 15, essence: 0, items: [] })).toBe('15 WaifuBux');
+  });
+
+  it('marks a Buddy-adjusted Essence quote with a star', () => {
+    // The compact form: the number is already the adjusted one, and the star
+    // points at the board-level line that names the bonus. A per-quest
+    // breakdown would repeat the same sentence under every quest.
+    const out = formatRewardSummary({
+      waifubux: 50,
+      essence: 52,
+      essenceBonus: essenceBonus(),
+      items: [{ name: 'Basic Charm', emoji: '🧿', quantity: 1 }],
+    });
+    expect(out).toBe('50 WaifuBux, 52 Essence ✨, 🧿 Basic Charm ×1');
+  });
+
+  it('leaves an unbonused quote exactly as it always rendered', () => {
+    // The no-bonus path is byte-for-byte what shipped, which is what keeps the
+    // post-claim summary — which never sets `essenceBonus` — untouched.
+    const out = formatRewardSummary({ waifubux: 50, essence: 40, items: [] });
+    expect(out).toBe('50 WaifuBux, 40 Essence');
+    expect(out).not.toContain('✨');
+  });
+
+  it('never stars a reward bundle with no Essence in it', () => {
+    const out = formatRewardSummary({
+      waifubux: 25,
+      essence: 0,
+      essenceBonus: essenceBonus(),
+      items: [{ name: 'Basic Charm', emoji: '🧿', quantity: 1 }],
+    });
+    expect(out).toBe('25 WaifuBux, 🧿 Basic Charm ×1');
+  });
+
+  it('leaves Waifubux and items untouched when Essence is adjusted', () => {
+    const plain = formatRewardSummary({
+      waifubux: 50,
+      essence: 40,
+      items: [{ name: 'Silk Charm', emoji: null, quantity: 2 }],
+    });
+    const bonused = formatRewardSummary({
+      waifubux: 50,
+      essence: 52,
+      essenceBonus: essenceBonus(),
+      items: [{ name: 'Silk Charm', emoji: null, quantity: 2 }],
+    });
+    // Only the Essence clause differs; `essence_gain` scales Essence and
+    // nothing else.
+    expect(plain.replace('40 Essence', 'X')).toBe(bonused.replace('52 Essence ✨', 'X'));
   });
 });
 
@@ -129,6 +191,30 @@ describe('questsView', () => {
     });
     const field = embed.data.fields?.find((f) => f.name === '🧾 Claim Results');
     expect(field?.value).toBe('No completed quests are ready to claim yet.');
+  });
+
+  it('names the Essence Buddy Bonus once, under every quote it explains', () => {
+    const { embed } = questsView(
+      [questRow({ rewardsLabel: '25 WaifuBux, 52 Essence ✨' })],
+      false,
+      {
+        ...noBonus,
+        essenceBonusNote: '✨ Essence shown includes ✨ Extra Serving: +30% from your Buddy.',
+      },
+    );
+    const desc = embed.data.description ?? '';
+    expect(desc).toContain('52 Essence ✨');
+    expect(desc).toContain('Extra Serving: +30%');
+    // Once for the whole board, not once per quest.
+    expect(desc.match(/Extra Serving/g)).toHaveLength(1);
+  });
+
+  it('omits the note entirely when no Buddy raises Essence', () => {
+    const { embed } = questsView([questRow()], false, {
+      ...noBonus,
+      essenceBonusNote: null,
+    });
+    expect(embed.data.description ?? '').not.toContain('✨ Essence shown includes');
   });
 
   it('handles an empty quest list', () => {

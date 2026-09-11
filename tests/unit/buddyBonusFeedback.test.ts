@@ -65,6 +65,12 @@ describe('effect summaries', () => {
       [{ effectId: 'hunt_item_find_chance', value: 5 }, '+5% item-find chance'],
       [{ effectId: 'affection_gain', value: 100 }, '+100% Affection'],
       [{ effectId: 'boss_reward_gain', value: 50 }, '+50% Boss rewards'],
+      // Worded as a flat shift because that is what the check resolver does
+      // with it — it is added to the success chance, not multiplied into it.
+      [
+        { effectId: 'encounter_check_bonus', value: 10 },
+        '+10% (flat) World Encounter check success chance',
+      ],
     ];
     for (const [over, expected] of cases) {
       expect(buddyBonusEffectSummary(appliedBuddyBonus(bonus(over)))).toBe(expected);

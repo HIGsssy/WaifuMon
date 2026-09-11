@@ -203,6 +203,22 @@ describe('the effect registry', () => {
       );
     }
   });
+
+  /**
+   * The author-facing table is the third copy of this list, after the registry
+   * and `bonus.json`. `encounter_check_bonus` was missing from it for the whole
+   * time the effect existed, so a content author had no way to learn it was
+   * available.
+   */
+  it('is fully documented in the content-authoring Buddy Bonus table', () => {
+    const doc = fs.readFileSync(
+      path.join(process.cwd(), 'docs', 'content-authoring.md'),
+      'utf8',
+    );
+    for (const id of BUDDY_BONUS_EFFECT_IDS) {
+      expect(doc, id).toContain(`| \`${id}\` |`);
+    }
+  });
 });
 
 describe('display', () => {
@@ -241,6 +257,26 @@ describe('display', () => {
       expect(buddyBonusView(authored).effectSummary).toBe(
         buddyBonusEffectSummary(appliedBuddyBonus(authored)),
       );
+    }
+  });
+
+  /**
+   * The guard that would have caught `encounter_check_bonus` shipping without
+   * a wording.
+   *
+   * A missing `case` in `buddyBonusEffectSummary` falls through to the default
+   * and yields a bare `+12%` — a percentage with no noun, which Discord, the
+   * Platform API and the Portal would all print verbatim. Nothing failed when
+   * that happened, because every surface takes the string it is given. This
+   * asserts every registered effect actually says what it changes.
+   */
+  it('gives every registered effect a wording, not a bare percentage', () => {
+    for (const effectId of BUDDY_BONUS_EFFECT_IDS) {
+      const summary = buddyBonusEffectSummary(appliedBuddyBonus(bonus({ effectId, value: 12 })));
+      expect(summary, effectId).not.toBe('+12%');
+      expect(summary, effectId).not.toBe('12%');
+      // A wording is more than the number it qualifies.
+      expect(summary.replace(/[+\d%]/g, '').trim().length, effectId).toBeGreaterThan(0);
     }
   });
 

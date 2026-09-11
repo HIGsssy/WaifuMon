@@ -520,6 +520,7 @@ instead the probability of the proc.
 | `hunt_item_find_chance` | How often a hunt finds an item | none |
 | `affection_gain` | Affection awards | none |
 | `boss_reward_gain` | The payout from a Boss Encounter | none |
+| `encounter_check_bonus` | World Encounter check success chance. **Percentage points, not a relative scale** — a `value` of `10` turns a 40 % check into 50 %, not 44 %. The one effect in this table whose `value` is read that way | none |
 
 A bonus is granted by the copy the player has **equipped as their Buddy**, with
 one deliberate exception: `boss_reward_gain` is resolved from the copy that was
@@ -541,6 +542,26 @@ screens print a short mechanical summary derived from `effectId`, `value` and
 Affection award the player earns, including Affection earned by a different
 Waifumon being cared for in Care Mode. `buddy_xp_gain` does not work that way —
 it applies only to XP awarded to the active Buddy herself.
+
+Three of these effects are applied at a **single domain choke point** rather
+than at each reward that pays them out, so a newly-authored reward is bonused
+without anyone remembering to multiply:
+
+| Effect | Where it is applied | Every reward that goes through it |
+| --- | --- | --- |
+| `player_xp_gain` | `ProgressionService.grantXp` | hunt, capture, daily claim, World Encounter `player_xp` |
+| `essence_gain` | `EssenceAwardService.awardEssence` | hunt Essence finds, duplicate Convert / Release, World Encounter `essence_gain`, Daily Quest Essence (including the all-complete bonus) |
+| `buddy_xp_gain` / `affection_gain` | `CollectionService.awardBuddyXp` / `.awardBuddyAffection` | World Encounter `buddy_xp` and `affection_gain`, Affection consumables |
+
+If you are adding a reward that pays Essence or pays the active Buddy, call the
+award method — **not** `currency.grantEssence` or
+`CollectionService.awardWaifuXp`. Those two stay deliberately bonus-free:
+`grantEssence` is the raw balance mutation admin grants, refunds and migrations
+need, and `awardWaifuXp` names a *specific copy*, which is how a Boss Encounter
+pays a snapshotted participant whose payout `boss_reward_gain` has already
+scaled. Care Mode keeps its own `buddy_xp_gain` multiply because its condition
+is genuinely different — it pays whichever copy is being cared for, and applies
+the bonus only when that copy *is* the equipped Buddy.
 
 Target values are closed sets: races are the `race` codes above, affinities are
 `dominant` / `submissive` / `switch` / `caregiver` / `primal`, rarities are

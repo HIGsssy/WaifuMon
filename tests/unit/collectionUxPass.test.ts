@@ -392,6 +392,11 @@ function inspectCtx(opts: {
       collection: {
         getOwned: opts.getOwned,
         getBuddy: vi.fn(async () => buddy),
+        previewConversionEssence: vi.fn(async (_p: number, _r: string) => ({
+          baseAmount: 100,
+          finalAmount: 100,
+          bonus: null,
+        })),
         hasOtherActiveCopies: vi.fn(async () => false),
         waifuProgress: () => ({ atMaxLevel: false, xpIntoLevel: 0, xpToNext: 100 }),
         maxUsefulApplications: () => 3,

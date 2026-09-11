@@ -54,11 +54,18 @@ import type { CareState, CareTickSummary } from '../../modules/care/careService'
 import { buddyBonusValueLine } from '../buddyBonusFeedback';
 import { ownerFromInteraction } from '../userDisplay';
 import { withBackRow } from '../ui';
-import { buddyBonusShortLine } from '../../modules/buddyBonus/buddyBonusEffects';
+import {
+  buddyBonusShortLine,
+  type AppliedBuddyBonus,
+} from '../../modules/buddyBonus/buddyBonusEffects';
 import { resolveAssetPath } from '../../modules/content/loader';
 import fs from 'node:fs';
-import type { QuestRewards, UiSplashConfig } from '../../modules/content/schemas';
-import { parseQuestRewards, type RewardGrant } from '../../modules/quests/questService';
+import type { UiSplashConfig } from '../../modules/content/schemas';
+import {
+  parseQuestRewards,
+  type QuestRewardsPreview,
+  type RewardGrant,
+} from '../../modules/quests/questService';
 
 /**
  * The main menu's button rows.
@@ -1327,6 +1334,16 @@ export interface RewardDisplay {
   waifubux: number;
   essence: number;
   items: RewardDisplayItem[];
+  /**
+   * Set only when an `essence_gain` Buddy Bonus raised `essence` above the
+   * authored figure — on a **pre-claim quote**, that is.
+   *
+   * Post-claim summaries leave this absent on purpose: `RewardGrant.essence`
+   * is already the amount that was paid, the claim result names the bonus in
+   * its own line, and repeating it inside the reward list would say the same
+   * thing twice.
+   */
+  essenceBonus?: AppliedBuddyBonus | null;
 }
 
 /**
@@ -1337,7 +1354,12 @@ export interface RewardDisplay {
 export function formatRewardSummary(rewards: RewardDisplay): string {
   const parts: string[] = [];
   if (rewards.waifubux > 0) parts.push(`${rewards.waifubux} WaifuBux`);
-  if (rewards.essence > 0) parts.push(`${rewards.essence} Essence`);
+  // The compact form: the quest board stacks several of these, so the full
+  // `Base: 40 · ✨ Name: +30%` breakdown goes once at the foot of the board
+  // rather than after every quest. The star marks *which* numbers it explains.
+  if (rewards.essence > 0) {
+    parts.push(`${rewards.essence} Essence${rewards.essenceBonus ? ' ✨' : ''}`);
+  }
   const combined = new Map<string, RewardDisplayItem>();
   for (const it of rewards.items) {
     if (it.quantity <= 0) continue;
@@ -1358,6 +1380,16 @@ export interface QuestBoardExtras {
   bonusClaimed: boolean;
   /** Claim-result lines to surface on the board (claim summary / nothing-to-claim). */
   noticeLines?: readonly string[];
+  /**
+   * One line naming the `essence_gain` Buddy Bonus already folded into every
+   * Essence figure above, or null when no Buddy raises it.
+   *
+   * Lives at board level rather than per quest because the board stacks
+   * several reward lines and they all came from the same equipped Buddy —
+   * repeating the breakdown under each would be the same sentence three times.
+   * The `✨` beside a number is the pointer to this line.
+   */
+  essenceBonusNote?: string | null;
 }
 
 /** Build the quests screen from the current quest rows. */
@@ -1387,6 +1419,9 @@ export function questsView(
         : `🏆 **All-complete bonus** — complete all quests to earn: ${extras.bonusPreview}`,
     );
   }
+  // Last, under every quote it explains. A quote, not a promise: the player
+  // can swap Buddy before pressing Claim, and the claim re-resolves.
+  if (extras.essenceBonusNote) lines.push(extras.essenceBonusNote);
   embed.setDescription(lines.join('\n\n'));
   if (extras.noticeLines && extras.noticeLines.length > 0) {
     embed.addFields({ name: '🧾 Claim Results', value: extras.noticeLines.join('\n') });
@@ -1409,15 +1444,27 @@ function itemDisplayBySlug(ctx: AppContext): Map<string, { name: string; emoji?:
   return map;
 }
 
-/** Resolve a frozen QuestRewards struct (slugs) into display entries. */
-function rewardDisplayFromConfig(
-  rewards: QuestRewards,
+/**
+ * Resolve a **pre-claim quote** (slugs) into display entries.
+ *
+ * Takes a `QuestRewardsPreview` rather than the raw authored `QuestRewards`:
+ * the board is shown to one specific player, and the Essence they will
+ * actually receive depends on the Buddy they have equipped right now. Reading
+ * the authored figure here is what made the board under-report every reward
+ * for a player with an `essence_gain` Buddy.
+ *
+ * Every number is one `QuestService.previewRewards` computed. Nothing here
+ * multiplies anything.
+ */
+function rewardDisplayFromPreview(
+  preview: QuestRewardsPreview,
   bySlug: Map<string, { name: string; emoji?: string | null }>,
 ): RewardDisplay {
   return {
-    waifubux: rewards.waifubux,
-    essence: rewards.essence,
-    items: rewards.items.map((i) => {
+    waifubux: preview.waifubux,
+    essence: preview.essence,
+    essenceBonus: preview.essenceBonus,
+    items: preview.items.map((i) => {
       const meta = bySlug.get(i.slug);
       return { name: meta?.name ?? i.slug, emoji: meta?.emoji ?? null, quantity: i.quantity };
     }),
@@ -1444,7 +1491,21 @@ async function loadTodayQuests(
   await ctx.services.quests.ensureDailyQuests(playerId);
   const raw = await ctx.services.quests.getDailyQuests(playerId);
   const bySlug = itemDisplayBySlug(ctx);
-  const rows: QuestRow[] = raw.map((r) => ({
+  const bonusConfig = ctx.services.quests.config.allCompleteBonus;
+
+  // One quote for the whole board: the quests in order, then the all-complete
+  // bonus. Batched so the Buddy is resolved once — but each bundle is still
+  // scaled on its own inside `previewRewards`, because the claim pays each as
+  // a separate award and a preview that summed first would quote a total the
+  // claim never produces.
+  const authored = raw.map((r) => parseQuestRewards(r.rewardsJson));
+  const previews = await ctx.services.quests.previewRewards(
+    playerId,
+    bonusConfig ? [...authored, bonusConfig] : authored,
+  );
+  const bonusPreviewData = bonusConfig ? previews[previews.length - 1] : undefined;
+
+  const rows: QuestRow[] = raw.map((r, i) => ({
     id: r.id,
     slug: r.questSlug,
     title: r.titleSnapshot,
@@ -1453,19 +1514,25 @@ async function loadTodayQuests(
     progress: r.progress,
     completedAt: r.completedAt,
     claimedAt: r.claimedAt,
-    rewardsLabel: formatRewardSummary(
-      rewardDisplayFromConfig(parseQuestRewards(r.rewardsJson), bySlug),
-    ),
+    rewardsLabel: formatRewardSummary(rewardDisplayFromPreview(previews[i]!, bySlug)),
   }));
   const claimable = rows.filter((r) => r.completedAt && !r.claimedAt).length;
-  const bonusConfig = ctx.services.quests.config.allCompleteBonus;
+
+  // The bonus that explains every ✨ on this board. All the quotes came from
+  // one Buddy, so one line covers them all — whichever quote carries it first
+  // is describing the same bonus as the rest.
+  const essenceBonus =
+    previews.find((p) => p.essenceBonus)?.essenceBonus ?? null;
   const board: QuestBoardExtras = {
-    bonusPreview: bonusConfig
-      ? formatRewardSummary(rewardDisplayFromConfig(bonusConfig, bySlug))
+    bonusPreview: bonusPreviewData
+      ? formatRewardSummary(rewardDisplayFromPreview(bonusPreviewData, bySlug))
       : null,
     bonusClaimed: bonusConfig
       ? await ctx.services.quests.hasClaimedAllCompleteBonus(playerId)
       : false,
+    essenceBonusNote: essenceBonus
+      ? `✨ Essence shown includes ${buddyBonusShortLine(essenceBonus)} from your Buddy.`
+      : null,
   };
   return { rows, claimable, board };
 }

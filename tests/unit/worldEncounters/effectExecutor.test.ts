@@ -91,6 +91,19 @@ function makeExecutor(overrides: Partial<{
       state.grants.push({ kind: 'awardWaifuXp', args: [xp] });
       return { xpGranted: xp } as never;
     }),
+    // The Buddy-aimed sibling. `buddy_xp` routes here rather than to
+    // `awardWaifuXp` so the award picks up `buddy_xp_gain`; the bonus itself
+    // is the real service's business, so this double just pays what it is
+    // asked and reports no uplift.
+    awardBuddyXp: vi.fn(async (_tx: unknown, _p: number, xp: number) => {
+      if (!buddyExists) return null;
+      state.grants.push({ kind: 'awardBuddyXp', args: [xp] });
+      return {
+        xpGranted: xp,
+        xpBonus: null,
+        waifu: { id: 42, nickname: null },
+      } as never;
+    }),
   };
 
   // Fake tx supporting only .select().from(table).where(cond) and
@@ -149,10 +162,20 @@ describe('effect executor — grants', () => {
     expect(result.applied[0]!.amount).toBe(200);
   });
 
-  it('essence_gain routes through currency.grantEssence', async () => {
+  it('essence_gain reaches currency.grantEssence through the shared award path', async () => {
     const t = makeExecutor();
-    await t.executor.apply(t.tx, t.ctx, [{ type: 'essence_gain', amount: 50 } as Effect]);
+    const result = await t.executor.apply(t.tx, t.ctx, [
+      { type: 'essence_gain', amount: 50 } as Effect,
+    ]);
+    // No Buddy Bonus service in this fixture, so the award is exactly what was
+    // authored — the raw grant still sees 50, and the applied entry carries
+    // the base/final pair a result screen reads.
     expect(t.mocks.currency.grantEssence).toHaveBeenCalledWith(t.tx, 1, 50);
+    expect(result.applied[0]!.essence).toMatchObject({
+      baseAmount: 50,
+      finalAmount: 50,
+      bonus: null,
+    });
   });
 
   it('player_xp routes through progression.grantXp', async () => {
@@ -163,17 +186,21 @@ describe('effect executor — grants', () => {
     expect(call[2]).toMatchObject({ xpDelta: 75, eventType: 'world_encounter', refId: 99 });
   });
 
-  it('buddy_xp routes through collection.awardWaifuXp when a buddy is set', async () => {
+  it('buddy_xp routes through collection.awardBuddyXp when a buddy is set', async () => {
     const t = makeExecutor();
     await t.executor.apply(t.tx, t.ctx, [{ type: 'buddy_xp', amount: 30 } as Effect]);
-    expect(t.mocks.collection.awardWaifuXp).toHaveBeenCalledWith(t.tx, 1, 42, 30);
+    // `awardBuddyXp`, not `awardWaifuXp`: the award is aimed at the *live*
+    // Buddy, which is the population `buddy_xp_gain` is defined over.
+    // `awardWaifuXp` names a copy and stays bonus-free for Boss Encounters.
+    expect(t.mocks.collection.awardBuddyXp).toHaveBeenCalledWith(t.tx, 1, 30);
+    expect(t.mocks.collection.awardWaifuXp).not.toHaveBeenCalled();
   });
 
   it('buddy_xp is a no-op when there is no buddy', async () => {
     const t = makeExecutor({ buddyExists: false });
     const t2 = { ...t, ctx: { ...t.ctx, buddyWaifuId: null, buddySpeciesName: null } };
     const result = await t2.executor.apply(t2.tx, t2.ctx, [{ type: 'buddy_xp', amount: 30 } as Effect]);
-    expect(t2.mocks.collection.awardWaifuXp).not.toHaveBeenCalled();
+    expect(t2.mocks.collection.awardBuddyXp).not.toHaveBeenCalled();
     expect(result.applied[0]!.applied).toBe(false);
   });
 });

@@ -32,6 +32,10 @@ import {
 import type { Logger } from '../../shared/logger';
 import { defaultRng, rollWeighted, type Rng, type WeightedEntry } from '../../shared/random';
 import type { CurrencyService } from '../currency/currencyService';
+import {
+  createEssenceAwardService,
+  type EssenceAwardService,
+} from '../currency/essenceAwardService';
 import type { InventoryService } from '../inventory/inventoryService';
 import type { HuntResultKind, TablesContent } from '../content/schemas';
 import type {
@@ -51,7 +55,6 @@ import { toRegion } from '../travel/travelCatalog';
 import {
   appliedBuddyBonus,
   applyPercentModifier,
-  applyPercentModifierInt,
   buddyBonusPercent,
   type AppliedBuddyBonus,
   encounterRarityWeightPercent,
@@ -197,6 +200,13 @@ export interface HuntService {
 export interface HuntServiceDeps {
   db: Db;
   currency: CurrencyService;
+  /**
+   * The shared gameplay Essence award path. Optional only so the many
+   * fixtures that build this service by hand keep working: when omitted one
+   * is constructed from `currency` + `buddyBonus`, so the *behaviour* is the
+   * shared path either way and there is no second implementation to drift.
+   */
+  essenceAward?: EssenceAwardService | undefined;
   inventory: InventoryService;
   progression: ProgressionService;
   collection: CollectionService;
@@ -215,6 +225,9 @@ export interface HuntServiceDeps {
 const MAX_RARITY_REROLLS = 6;
 
 export function createHuntService(deps: HuntServiceDeps): HuntService {
+  const essenceAward =
+    deps.essenceAward ??
+    createEssenceAwardService({ currency: deps.currency, buddyBonus: deps.buddyBonus });
   const { db, currency, inventory, progression, collection, care, quests, tables, logger } =
     deps;
   const rng = deps.rng ?? defaultRng();
@@ -780,20 +793,17 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
 
         if (kind === 'essence_find') {
           // `essence_gain` scales the award, not the range: the table still
-          // decides how much a find is worth, the bonus decides what it becomes.
+          // decides how much a find is worth, the bonus decides what it
+          // becomes. The multiply itself lives in `awardEssence` — the same
+          // one a World Encounter payout and a Daily Quest reward go through,
+          // so a hunt find cannot drift from either.
           const baseAmount = rng.intInclusive(hunt.essenceFind.min, hunt.essenceFind.max);
-          const amount = applyPercentModifierInt(
-            baseAmount,
-            buddyBonusPercent(activeBonus, 'essence_gain'),
-          );
-          if (activeBonus && amount > baseAmount) {
-            buddyBonuses.push(appliedBuddyBonus(activeBonus, { base: baseAmount, final: amount }));
-          }
-          const row = await currency.grantEssence(tx, playerId, amount);
+          const award = await essenceAward.awardEssence(tx, playerId, baseAmount);
+          if (award.bonus) buddyBonuses.push(award.bonus);
           return {
             kind: 'essence_find',
-            amount,
-            balanceAfter: row.essence,
+            amount: award.essenceGranted,
+            balanceAfter: award.essenceAfter,
             energyRemaining,
             levelUps,
             buddyAward,

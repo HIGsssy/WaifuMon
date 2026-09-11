@@ -16,6 +16,7 @@ import { loadContent } from '../../src/modules/content/loader';
 import type { LoadedContent } from '../../src/modules/content/schemas';
 import { seedContent } from '../../src/modules/content/seeder';
 import { createCurrencyService } from '../../src/modules/currency/currencyService';
+import { createEssenceAwardService } from '../../src/modules/currency/essenceAwardService';
 import { createDailyService } from '../../src/modules/daily/dailyService';
 import { createGuildService } from '../../src/modules/guilds/guildService';
 import { createHuntService } from '../../src/modules/hunt/huntService';
@@ -79,6 +80,7 @@ export interface App {
   guilds: ReturnType<typeof createGuildService>;
   players: ReturnType<typeof createPlayerService>;
   currency: ReturnType<typeof createCurrencyService>;
+  essenceAward: ReturnType<typeof createEssenceAwardService>;
   inventory: ReturnType<typeof createInventoryService>;
   daily: ReturnType<typeof createDailyService>;
   shop: ReturnType<typeof createShopService>;
@@ -203,6 +205,9 @@ export async function bootstrapApp(
   // Wired exactly as production does, so integration tests exercise real Buddy
   // Bonuses rather than an unbonused game.
   const buddyBonus = createBuddyBonusService({ getContent: () => content });
+  // Wired exactly as production does, so integration tests exercise the real
+  // bonused Essence award rather than a raw grant.
+  const essenceAward = createEssenceAwardService({ currency, buddyBonus });
   const progression = createProgressionService({
     config: content.tables.progression,
     baseMaxEnergy: content.tables.energy.baseMax,
@@ -211,6 +216,7 @@ export async function bootstrapApp(
   const quests = createQuestService({
     db: t.db,
     currency,
+    essenceAward,
     inventory,
     config: content.tables.dailyQuests,
     timezone,
@@ -222,6 +228,7 @@ export async function bootstrapApp(
   const collection = createCollectionService({
     db: t.db,
     currency,
+    essenceAward,
     quests,
     appearance,
     duplicateConfig: content.tables.duplicate,
@@ -285,6 +292,7 @@ export async function bootstrapApp(
   const hunt = createHuntService({
     db: t.db,
     currency,
+    essenceAward,
     inventory,
     progression,
     collection,
@@ -313,6 +321,7 @@ export async function bootstrapApp(
   const worldEncounter = createWorldEncounterService({
     db: t.db,
     currency,
+    essenceAward,
     inventory,
     progression,
     collection,
@@ -343,6 +352,7 @@ export async function bootstrapApp(
     guilds: createGuildService(t.db),
     players: createPlayerService(t.db, { initialEnergy: content.tables.energy.baseMax }),
     currency,
+    essenceAward,
     inventory,
     progression,
     daily: createDailyService({

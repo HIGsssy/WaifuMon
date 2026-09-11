@@ -29,6 +29,7 @@ import {
 import { defaultRng, type Rng } from '../../shared/random';
 import type { Logger } from '../../shared/logger';
 import type { CurrencyService } from '../currency/currencyService';
+import type { EssenceAwardService } from '../currency/essenceAwardService';
 import type { InventoryService } from '../inventory/inventoryService';
 import type { ProgressionService } from '../progression/progressionService';
 import type { CollectionService } from '../collection/collectionService';
@@ -285,6 +286,11 @@ export interface WorldEncounterServiceDeps {
    */
   wildEncounters?: WildEncounterSpawner | undefined;
   /**
+   * The shared gameplay Essence award path, handed to the effect executor so
+   * an `essence_gain` effect pays the `essence_gain` Buddy Bonus.
+   */
+  essenceAward?: EssenceAwardService | undefined;
+  /**
    * Optional logger. When present, every roll emits one structured
    * `world-encounter/roll` line naming the stage that decided the outcome.
    *
@@ -310,6 +316,9 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
     inventory: deps.inventory,
     progression: deps.progression,
     collection: deps.collection,
+    // Passed straight through so an encounter's Essence payout is the same
+    // award a hunt find is. Absent, the executor builds an unbonused one.
+    ...(deps.essenceAward === undefined ? {} : { essenceAward: deps.essenceAward }),
   });
 
   /* ─────────────────── Player + buddy snapshot ─────────────────── */

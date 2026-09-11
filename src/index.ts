@@ -19,6 +19,7 @@ import { createAdminContentService } from './modules/content/adminContentService
 import { createContentReloader } from './modules/content/reloadService';
 import { resolveAssetPath } from './modules/content/loader';
 import { createCurrencyService } from './modules/currency/currencyService';
+import { createEssenceAwardService } from './modules/currency/essenceAwardService';
 import { createDailyService } from './modules/daily/dailyService';
 import { createGuildService } from './modules/guilds/guildService';
 import { createInventoryService } from './modules/inventory/inventoryService';
@@ -128,6 +129,14 @@ async function main(): Promise<void> {
    */
   let contentSnapshot = content;
   const buddyBonus = createBuddyBonusService({ getContent: () => contentSnapshot });
+  /**
+   * The one gameplay path for awarding Essence. Every reward that a player
+   * *earned* goes through this rather than `currency.grantEssence`, which
+   * stays the raw system mutation for admin grants and compensation. Declared
+   * next to `buddyBonus` because it is the same kind of thing: a cross-cutting
+   * rule the reward services depend on rather than re-implement.
+   */
+  const essenceAward = createEssenceAwardService({ currency, buddyBonus });
   // Achievement definitions are content, validated on load like every other
   // content file. Static for Phase 1 (no admin editing), so they are read once
   // here rather than through the reload pipeline.
@@ -153,6 +162,7 @@ async function main(): Promise<void> {
   const quests = createQuestService({
     db,
     currency,
+    essenceAward,
     inventory,
     config: content.tables.dailyQuests,
     timezone: config.dailyTimezone,
@@ -166,6 +176,7 @@ async function main(): Promise<void> {
   const collection = createCollectionService({
     db,
     currency,
+    essenceAward,
     quests,
     appearance,
     duplicateConfig: content.tables.duplicate,
@@ -270,6 +281,7 @@ async function main(): Promise<void> {
   const huntService = createHuntService({
     db,
     currency,
+    essenceAward,
     inventory,
     progression,
     collection,
@@ -368,6 +380,7 @@ async function main(): Promise<void> {
       worldEncounter: createWorldEncounterService({
         db,
         currency,
+        essenceAward,
         inventory,
         progression,
         collection,

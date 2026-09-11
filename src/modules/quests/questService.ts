@@ -40,6 +40,11 @@ import type {
   QuestRewards,
 } from '../content/schemas';
 import type { CurrencyService } from '../currency/currencyService';
+import type { AppliedBuddyBonus } from '../buddyBonus/buddyBonusEffects';
+import {
+  createEssenceAwardService,
+  type EssenceAwardService,
+} from '../currency/essenceAwardService';
 import type { InventoryService } from '../inventory/inventoryService';
 
 export interface QuestEventContext {
@@ -49,8 +54,77 @@ export interface QuestEventContext {
 
 export interface RewardGrant {
   waifubux: number;
+  /**
+   * Essence **actually granted** — after the `essence_gain` Buddy Bonus. This
+   * is the number a result screen prints, and it is what the player's balance
+   * moved by.
+   */
   essence: number;
+  /**
+   * The authored Essence, before any bonus. Equal to {@link essence} when no
+   * bonus applied, so a surface can show `Base: 40` only when it differs.
+   */
+  essenceBase: number;
+  /**
+   * Set only when the bonus actually raised the Essence. On an aggregate
+   * (`totalRewards`, or a multi-quest claim) `baseValue` / `finalValue` are
+   * the aggregate figures, so a summary line stays arithmetically honest.
+   *
+   * Only Essence is affected: a quest's Waifubux and items are untouched by
+   * `essence_gain`, which is a modifier on Essence awards and nothing else.
+   */
+  essenceBonus: AppliedBuddyBonus | null;
   items: Array<{ item: ItemRow; quantity: number }>;
+}
+
+/**
+ * Sum two grants' Essence and carry the bonus onto the total.
+ *
+ * Both operands come from the same player in the same transaction, so at most
+ * one distinct bonus can be in play; whichever side has it describes the pair,
+ * restated against the combined figures.
+ */
+function mergeEssence(
+  a: { essence: number; essenceBase: number; essenceBonus: AppliedBuddyBonus | null },
+  b: { essence: number; essenceBase: number; essenceBonus: AppliedBuddyBonus | null } | null,
+): Pick<RewardGrant, 'essence' | 'essenceBase' | 'essenceBonus'> {
+  const essence = a.essence + (b?.essence ?? 0);
+  const essenceBase = a.essenceBase + (b?.essenceBase ?? 0);
+  const source = a.essenceBonus ?? b?.essenceBonus ?? null;
+  return {
+    essence,
+    essenceBase,
+    essenceBonus:
+      source && essence > essenceBase
+        ? { ...source, baseValue: essenceBase, finalValue: essence }
+        : null,
+  };
+}
+
+/**
+ * One authored reward bundle, quoted against the player's **current** Buddy.
+ *
+ * The pre-claim counterpart to {@link RewardGrant}, and deliberately the same
+ * field names: a board that quotes `essence` and a claim that reports
+ * `essence` are talking about the same number, so a surface can render either
+ * without knowing which it holds.
+ *
+ * **Not authoritative.** The player may equip a different Buddy between
+ * reading the board and pressing Claim, and `claimAllCompleted` re-resolves at
+ * that moment. That is correct: this describes the reward as it stands now,
+ * not a promise about later. Nothing here is cached or persisted, and the
+ * authored `rewardsJson` it was derived from is never touched.
+ */
+export interface QuestRewardsPreview {
+  waifubux: number;
+  /** Essence the player would receive right now, after `essence_gain`. */
+  essence: number;
+  /** The authored Essence, before any bonus. Equal to {@link essence} when none applies. */
+  essenceBase: number;
+  /** Set only when the current Buddy would actually raise the Essence. */
+  essenceBonus: AppliedBuddyBonus | null;
+  /** Untouched: `essence_gain` scales Essence and nothing else. */
+  items: readonly { slug: string; quantity: number }[];
 }
 
 export interface QuestClaimResult {
@@ -105,11 +179,48 @@ export interface QuestService {
    * sentinel row exists). Used by the UI to keep the bonus visibly claimed.
    */
   hasClaimedAllCompleteBonus(playerId: number, now?: Date): Promise<boolean>;
+
+  /**
+   * Quote authored reward bundles against the player's current Buddy, for the
+   * screens shown **before** a claim. Reads only — no row is written, no
+   * balance moves, no quest state changes.
+   *
+   * Takes a list rather than one bundle for two reasons, and the second is the
+   * important one:
+   *
+   *   - the Buddy is resolved once for the whole board rather than once per
+   *     quest;
+   *   - each bundle is still scaled and rounded **on its own**, which is what
+   *     the claim does. A board showing a 5-Essence quest and a 5-Essence
+   *     all-complete bonus at +10% must quote 6 and 6 — because the claim pays
+   *     two separate awards — not preview their combined 10 as 11.
+   *
+   * Returns one preview per input, index-aligned.
+   */
+  previewRewards(
+    playerId: number,
+    rewards: readonly QuestRewards[],
+  ): Promise<QuestRewardsPreview[]>;
 }
 
 export interface QuestServiceDeps {
   db: Db;
   currency: CurrencyService;
+  /**
+   * The shared gameplay Essence award path, so a Daily Quest reward pays the
+   * `essence_gain` Buddy Bonus that a hunt find and a duplicate conversion
+   * already do.
+   *
+   * Deliberately this rather than a `BuddyBonusService`: quests have no
+   * business knowing what a Buddy Bonus is or how a percentage is applied.
+   * They know they owe the player some Essence, and they hand that to the one
+   * service that owns what "owing a player Essence" means.
+   *
+   * Optional only so hand-built fixtures keep working: when omitted one is
+   * constructed from `currency`, which grants the authored amount exactly —
+   * identical to the pre-existing behaviour.
+   */
+  essenceAward?: EssenceAwardService | undefined;
   inventory: InventoryService;
   config: DailyQuestsConfig;
   timezone: string;
@@ -167,6 +278,7 @@ function pickWeighted<T>(entries: readonly { weight: number; value: T }[], rng: 
 }
 export function createQuestService(deps: QuestServiceDeps): QuestService {
   const { db, currency, inventory, config, timezone, logger } = deps;
+  const essenceAward = deps.essenceAward ?? createEssenceAwardService({ currency });
   const rng = deps.rng ?? defaultRng();
 
   function today(now: Date): string {
@@ -214,9 +326,12 @@ export function createQuestService(deps: QuestServiceDeps): QuestService {
     if (rewards.waifubux > 0) {
       await currency.grantWaifubux(tx, playerId, rewards.waifubux);
     }
-    if (rewards.essence > 0) {
-      await currency.grantEssence(tx, playerId, rewards.essence);
-    }
+    // Both the per-quest claim and the all-complete bonus come through this
+    // one helper, so migrating it covers both Essence reward paths at once.
+    const essenceAwarded =
+      rewards.essence > 0
+        ? await essenceAward.awardEssence(tx, playerId, rewards.essence)
+        : null;
     const slugs = rewards.items.map((i) => i.slug);
     const bySlug = await loadItemRowsBySlug(tx, slugs);
     const granted: Array<{ item: ItemRow; quantity: number }> = [];
@@ -235,7 +350,12 @@ export function createQuestService(deps: QuestServiceDeps): QuestService {
     }
     return {
       waifubux: rewards.waifubux,
-      essence: rewards.essence,
+      // What actually landed, not what the frozen snapshot authored — a
+      // result screen prints this number. `essenceBase` carries the authored
+      // figure alongside it so the uplift can be shown without arithmetic.
+      essence: essenceAwarded?.essenceGranted ?? rewards.essence,
+      essenceBase: rewards.essence,
+      essenceBonus: essenceAwarded?.bonus ?? null,
       items: granted,
     };
   }
@@ -424,7 +544,13 @@ export function createQuestService(deps: QuestServiceDeps): QuestService {
         )
         .for('update');
 
-      const questRewards: RewardGrant = { waifubux: 0, essence: 0, items: [] };
+      const questRewards: RewardGrant = {
+        waifubux: 0,
+        essence: 0,
+        essenceBase: 0,
+        essenceBonus: null,
+        items: [],
+      };
       const claimed: PlayerDailyQuestRow[] = [];
 
       for (const row of readyRows) {
@@ -438,7 +564,7 @@ export function createQuestService(deps: QuestServiceDeps): QuestService {
         const rewards = parseQuestRewards(row.rewardsJson);
         const grant = await grantRewards(tx, playerId, rewards);
         questRewards.waifubux += grant.waifubux;
-        questRewards.essence += grant.essence;
+        Object.assign(questRewards, mergeEssence(questRewards, grant));
         questRewards.items.push(...grant.items);
         claimed.push(stamped);
       }
@@ -510,7 +636,7 @@ export function createQuestService(deps: QuestServiceDeps): QuestService {
 
       const totalRewards: RewardGrant = {
         waifubux: questRewards.waifubux + (allCompleteBonusRewards?.waifubux ?? 0),
-        essence: questRewards.essence + (allCompleteBonusRewards?.essence ?? 0),
+        ...mergeEssence(questRewards, allCompleteBonusRewards),
         items: [...questRewards.items, ...(allCompleteBonusRewards?.items ?? [])],
       };
       return {
@@ -542,6 +668,38 @@ export function createQuestService(deps: QuestServiceDeps): QuestService {
     return row != null;
   }
 
+  /**
+   * Read-only quote of authored bundles against the live Buddy.
+   *
+   * Every Essence figure comes from `essenceAward.previewEssenceMany`, which
+   * is the same modifier logic `awardEssence` runs at claim time — this
+   * function contains no percentage, no rounding and no Buddy lookup of its
+   * own. Waifubux and items are passed through untouched: `essence_gain`
+   * scales Essence and nothing else.
+   */
+  async function previewRewards(
+    playerId: number,
+    rewards: readonly QuestRewards[],
+  ): Promise<QuestRewardsPreview[]> {
+    // One batch call, so the Buddy is resolved once — but each base amount is
+    // still scaled on its own inside it, matching per-award claim rounding.
+    const previews = await essenceAward.previewEssenceMany(
+      db,
+      playerId,
+      rewards.map((r) => r.essence),
+    );
+    return rewards.map((r, i) => {
+      const preview = previews[i]!;
+      return {
+        waifubux: r.waifubux,
+        essence: preview.finalAmount,
+        essenceBase: preview.baseAmount,
+        essenceBonus: preview.bonus,
+        items: r.items,
+      };
+    });
+  }
+
   return {
     config,
     ensureDailyQuests,
@@ -549,6 +707,7 @@ export function createQuestService(deps: QuestServiceDeps): QuestService {
     recordQuestEvent,
     claimAllCompleted,
     hasClaimedAllCompleteBonus,
+    previewRewards,
   };
 }
 

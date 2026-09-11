@@ -20,6 +20,10 @@ import { eq } from 'drizzle-orm';
 import type { DbOrTx } from '../../db/client';
 import { items, playerCurrencies } from '../../db/schema';
 import type { CurrencyService } from '../currency/currencyService';
+import {
+  createEssenceAwardService,
+  type EssenceAwardService,
+} from '../currency/essenceAwardService';
 import type { InventoryService } from '../inventory/inventoryService';
 import type { ProgressionService } from '../progression/progressionService';
 import type { CollectionService } from '../collection/collectionService';
@@ -32,6 +36,14 @@ export interface EffectExecutorDeps {
   inventory: InventoryService;
   progression: ProgressionService;
   collection: CollectionService;
+  /**
+   * The shared gameplay Essence award path, so an `essence_gain` effect pays
+   * the same `essence_gain` Buddy Bonus a hunt find and a duplicate conversion
+   * do. Optional only so hand-built unit fixtures keep working: when omitted
+   * one is constructed from `currency`, which yields an unbonused award —
+   * identical to the behaviour those fixtures already assert.
+   */
+  essenceAward?: EssenceAwardService | undefined;
 }
 
 export interface EffectContext {
@@ -82,6 +94,49 @@ export interface AppliedAffectionDetail {
   bonus: AppliedBuddyBonus | null;
 }
 
+/**
+ * What an `essence_gain` effect actually paid.
+ *
+ * The Essence twin of {@link AppliedAffectionDetail}, and it exists for the
+ * same reason: the `essence_gain` Buddy Bonus means the number a player
+ * receives can differ from the number an author wrote, and a result screen
+ * must be able to say so without recomputing a percentage. Every figure comes
+ * straight off the `EssenceAwardResult` that `awardEssence` returned.
+ *
+ * Persisted with the rest of `effects_applied_json`, so the history row
+ * records the authored award, what landed, and why they differ.
+ */
+export interface AppliedEssenceDetail {
+  /** The authored award, before any bonus. */
+  baseAmount: number;
+  /** What actually landed. Equal to `baseAmount` when no bonus applied. */
+  finalAmount: number;
+  /** The player's Essence balance after the grant. */
+  essenceAfter: number;
+  /** Set only when the bonus actually raised the award. */
+  bonus: AppliedBuddyBonus | null;
+}
+
+/**
+ * What a `buddy_xp` effect actually paid, and to whom.
+ *
+ * Same contract as its Essence and Affection siblings — the `buddy_xp_gain`
+ * Buddy Bonus scales the authored amount, so the applied entry carries base,
+ * final and the bonus rather than leaving a presenter to work it out.
+ */
+export interface AppliedBuddyXpDetail {
+  /** The copy that received it — the Buddy equipped at resolution time. */
+  waifuId: number;
+  /** Her nickname, else her species name — resolved once, here. */
+  waifuName: string;
+  /** The authored award, before any bonus. */
+  baseAmount: number;
+  /** What actually landed. Equal to `baseAmount` when no bonus applied. */
+  finalAmount: number;
+  /** Set only when the bonus actually raised the award. */
+  bonus: AppliedBuddyBonus | null;
+}
+
 export interface AppliedEffect {
   /** Original effect input, preserved so a caller can render it. */
   effect: Effect;
@@ -93,6 +148,10 @@ export interface AppliedEffect {
   reason?: string;
   /** Present only on an applied `affection_gain`. */
   affection?: AppliedAffectionDetail;
+  /** Present only on an applied `essence_gain`. */
+  essence?: AppliedEssenceDetail;
+  /** Present only on an applied `buddy_xp`. */
+  buddyXp?: AppliedBuddyXpDetail;
 }
 
 /**
@@ -112,6 +171,7 @@ export interface EffectApplication {
 
 export function createEffectExecutor(deps: EffectExecutorDeps) {
   const { currency, inventory, progression, collection } = deps;
+  const essenceAward = deps.essenceAward ?? createEssenceAwardService({ currency });
 
   async function resolveItemId(tx: DbOrTx, slug: string): Promise<number | null> {
     const [row] = await tx
@@ -169,8 +229,23 @@ export function createEffectExecutor(deps: EffectExecutorDeps) {
           break;
         }
         case 'essence_gain': {
-          await currency.grantEssence(tx, ctx.playerId, effect.amount);
-          record({ amount: effect.amount });
+          // Delegated wholesale, the same way `affection_gain` below is:
+          // `awardEssence` resolves the Buddy, applies `essence_gain` and
+          // writes the balance. This handler contributes no arithmetic, which
+          // is the point — an encounter payout and a hunt find must be the
+          // same award.
+          const award = await essenceAward.awardEssence(tx, ctx.playerId, effect.amount);
+          record({
+            // `amount` stays what actually landed, which is what every
+            // existing reader of the applied list already expects.
+            amount: award.essenceGranted,
+            essence: {
+              baseAmount: award.baseAmount,
+              finalAmount: award.essenceGranted,
+              essenceAfter: award.essenceAfter,
+              bonus: award.bonus,
+            },
+          });
           break;
         }
         case 'essence_loss': {
@@ -220,17 +295,35 @@ export function createEffectExecutor(deps: EffectExecutorDeps) {
             applied.push({ effect, applied: false, amount: 0, reason: 'no_buddy_or_zero' });
             break;
           }
-          const result = await collection.awardWaifuXp(
-            tx,
-            ctx.playerId,
-            ctx.buddyWaifuId,
-            effect.amount,
-          );
+          // `awardBuddyXp`, not `awardWaifuXp`: this award is aimed at the
+          // *live* Buddy, which is exactly the population `buddy_xp_gain` is
+          // defined over. `awardWaifuXp` names a specific copy and stays
+          // bonus-free for the Boss Encounter case, which pays a snapshotted
+          // participant already scaled by `boss_reward_gain`.
+          //
+          // The `ctx.buddyWaifuId != null` guard above is kept as-is so the
+          // `no_buddy_or_zero` reason string on the history row is unchanged;
+          // `awardBuddyXp` re-resolves the Buddy itself and returns null if
+          // she was released in between, which is the `buddy_missing` branch.
+          const result = await collection.awardBuddyXp(tx, ctx.playerId, effect.amount);
           const granted = result?.xpGranted ?? 0;
           if (result == null) {
             record({ amount: 0, reason: 'buddy_missing' });
           } else {
-            record({ amount: granted });
+            record({
+              amount: granted,
+              buddyXp: {
+                waifuId: result.waifu.id,
+                // Same resolution the `affection_gain` handler uses: the
+                // nickname is on the row the award returned, the species name
+                // is context the caller already holds.
+                waifuName:
+                  result.waifu.nickname?.trim() || ctx.buddySpeciesName || 'Your Buddy',
+                baseAmount: effect.amount,
+                finalAmount: granted,
+                bonus: result.xpBonus,
+              },
+            });
           }
           break;
         }

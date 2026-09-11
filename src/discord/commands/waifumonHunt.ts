@@ -935,11 +935,19 @@ export async function buildEphemeralOutcomeMessage(
   // player can resolve the dup right away without a second slash command.
   // (Timeout defaults to Keep — the row already exists in the DB.)
   if (outcome === 'success' && isDuplicate && newWaifu) {
-    const essenceValue =
-      (ctx.content.tables.duplicate.essenceByRarity as Record<string, number>)[species.rarity] ?? 0;
+    // Asked of the domain rather than read off the rarity table: a player with
+    // an `essence_gain` Buddy is paid more than the table says, and quoting
+    // the table here would under-promise on the one screen where the number is
+    // the whole decision. Not a promise — `convertDuplicateToEssence`
+    // re-resolves from whoever is Buddy when the button is actually pressed.
+    const preview = await ctx.services.collection.previewConversionEssence(
+      newWaifu.playerId,
+      species.rarity,
+      'convert',
+    );
     return {
       embeds: [embed],
-      components: [duplicatePromptComponents(newWaifu.id, essenceValue), ...withBackRow()],
+      components: [duplicatePromptComponents(newWaifu.id, preview), ...withBackRow()],
       files,
     };
   }

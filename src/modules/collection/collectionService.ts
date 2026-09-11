@@ -44,6 +44,11 @@ import {
   WaifuNotOwnedError,
 } from '../../shared/errors';
 import type { CurrencyService } from '../currency/currencyService';
+import {
+  createEssenceAwardService,
+  type EssenceAwardService,
+  type EssencePreview,
+} from '../currency/essenceAwardService';
 import type { QuestService } from '../quests/questService';
 import {
   appliedBuddyBonus,
@@ -264,6 +269,27 @@ export interface CollectionService {
    * Release button cannot bypass it.
    */
   releaseWaifu(playerId: number, waifuId: number, opts?: ReleaseOptions): Promise<ReleaseResult>;
+  /**
+   * What converting or releasing a copy of this rarity would pay **right
+   * now**, without writing anything.
+   *
+   * The pre-confirmation screens — the post-capture Keep/Convert prompt, the
+   * Inspect Convert button, and the Release and favourite-convert
+   * confirmations — used to read `tables.duplicate.essenceByRarity` directly
+   * and print the raw rarity-table number, which a player with an
+   * `essence_gain` Buddy would then not receive. They ask this instead, so the
+   * quoted number comes from the same modifier logic the payout uses.
+   *
+   * **Not authoritative.** The player may equip a different Buddy between
+   * seeing this and pressing the button; `convertDuplicateToEssence` and
+   * `releaseWaifu` re-resolve from the live Buddy and their result is what
+   * actually happened. That is the intended behaviour, not a race to close.
+   */
+  previewConversionEssence(
+    playerId: number,
+    rarity: string,
+    kind: 'convert' | 'release',
+  ): Promise<EssencePreview>;
   toggleFavorite(playerId: number, waifuId: number): Promise<PlayerWaifuRow>;
 
   // ── Buddy ─────────────────────────────────────────────────────────────────
@@ -349,6 +375,28 @@ export interface CollectionService {
     baseAmount: number,
   ): Promise<BuddyAwardResult | null>;
   /**
+   * Grant XP to the player's **currently equipped Buddy**, inside the caller's
+   * transaction, scaled by the `buddy_xp_gain` Buddy Bonus. Returns `null`
+   * when no Buddy is equipped — the caller decides whether that is a refusal
+   * or a silent skip.
+   *
+   * The XP sibling of {@link awardBuddyAffection}, and deliberately *not* the
+   * same thing as {@link awardWaifuXp}: this one asks "who is the Buddy?" and
+   * pays whoever that is, which is exactly the population `buddy_xp_gain` is
+   * defined over ("XP awarded to the active Buddy"). `awardWaifuXp` names a
+   * copy and must stay bonus-free — Boss Encounters use it to pay a
+   * *snapshotted* participant who may no longer be the Buddy, and whose payout
+   * is already scaled by `boss_reward_gain`.
+   *
+   * `baseAmount` of 0 is a legal no-op and returns null without locking, the
+   * same contract `awardWaifuXp` has for a max-level Buddy.
+   */
+  awardBuddyXp(
+    tx: DbOrTx,
+    playerId: number,
+    baseAmount: number,
+  ): Promise<BuddyAwardResult | null>;
+  /**
    * Grant XP to **one named owned copy**, inside the caller's transaction.
    *
    * The buddy-agnostic sibling of {@link awardBuddyOnHunt}, added for boss
@@ -392,6 +440,13 @@ export interface CollectionServiceDeps {
    * the release/convert Essence payout are exactly what content configures.
    */
   buddyBonus?: BuddyBonusService | undefined;
+  /**
+   * The shared gameplay Essence award path. Optional only so hand-built
+   * fixtures keep working: when omitted one is constructed from `currency` +
+   * `buddyBonus`, so a conversion always pays through the same code a hunt
+   * find and a World Encounter payout do.
+   */
+  essenceAward?: EssenceAwardService | undefined;
 }
 
 const DEFAULT_PAGE_SIZE = 10;
@@ -419,6 +474,9 @@ export function createCollectionService(deps: CollectionServiceDeps): Collection
   const { db, currency, quests, duplicateConfig, waifuConfig } = deps;
   const appearance = deps.appearance;
   const buddyBonus = deps.buddyBonus;
+  const essenceAward =
+    deps.essenceAward ??
+    createEssenceAwardService({ currency: deps.currency, buddyBonus: deps.buddyBonus });
 
   /**
    * Cosmetic side effect of a level gain, run inside the caller's transaction.
@@ -807,17 +865,13 @@ export function createCollectionService(deps: CollectionServiceDeps): Collection
 
       // `essence_gain` scales the payout, never the rarity table it comes
       // from: content still decides what a copy is worth, the Buddy decides
-      // what the player walks away with.
+      // what the player walks away with. The scaling itself is `awardEssence`'s
+      // — this path holds no percentage of its own.
+      //
+      // Resolved here, from the Buddy equipped *at this moment*, which is what
+      // makes the confirmation authoritative over any preview the player saw:
+      // swapping Buddy after opening the prompt changes what they are paid.
       const baseEssence = essenceForRarity(speciesRow.rarity, fraction);
-      const essenceActive = await buddyBonus?.getActiveBuddyBonus(tx, playerId);
-      const essence = applyPercentModifierInt(
-        baseEssence,
-        buddyBonusPercent(essenceActive?.bonus, 'essence_gain'),
-      );
-      const essenceBonus =
-        essenceActive && essence > baseEssence
-          ? appliedBuddyBonus(essenceActive.bonus, { base: baseEssence, final: essence })
-          : null;
 
       // Serialize with concurrent shop/daily spends on the same player.
       const currencyRow = await currency.lockCurrencies(tx, playerId);
@@ -826,11 +880,13 @@ export function createCollectionService(deps: CollectionServiceDeps): Collection
         .set({ releasedAt: now })
         .where(eq(playerWaifus.id, waifuId))
         .returning();
-      let balanceAfter = currencyRow.essence;
-      if (essence > 0) {
-        const row = await currency.grantEssence(tx, playerId, essence);
-        balanceAfter = row.essence;
-      }
+      // A rarity with no conversion value pays nothing and reports no bonus —
+      // `awardEssence` rejects a non-positive award rather than writing one.
+      const award =
+        baseEssence > 0 ? await essenceAward.awardEssence(tx, playerId, baseEssence) : null;
+      const essence = award?.essenceGranted ?? 0;
+      const essenceBonus = award?.bonus ?? null;
+      const balanceAfter = award?.essenceAfter ?? currencyRow.essence;
 
       // Daily-quest progress: only "convert duplicate" counts. Plain release
       // is a different intent and doesn't tick the convert quest.
@@ -956,6 +1012,13 @@ export function createCollectionService(deps: CollectionServiceDeps): Collection
         { kind: 'convert', allowFavorite: opts.force === true },
         true,
       );
+    },
+    async previewConversionEssence(playerId, rarity, kind) {
+      // The same two inputs `softRelease` uses, in the same order: the rarity
+      // table decides the base, the Buddy decides what it becomes. Read
+      // outside a transaction — a preview locks nothing and settles nothing.
+      const base = essenceForRarity(rarity, kind === 'release' ? duplicateConfig.releaseFraction : 1);
+      return essenceAward.previewEssence(db, playerId, base);
     },
     async releaseWaifu(playerId, waifuId, opts = {}) {
       // No `force` path: `opts.force` is deliberately ignored here. A
@@ -1214,6 +1277,65 @@ export function createCollectionService(deps: CollectionServiceDeps): Collection
       };
     },
 
+    async awardBuddyXp(tx, playerId, baseAmount) {
+      if (!Number.isInteger(baseAmount) || baseAmount < 0) {
+        throw new RangeError(
+          `awardBuddyXp: baseAmount must be a non-negative integer, got ${baseAmount}`,
+        );
+      }
+      if (baseAmount === 0) return null;
+
+      // Same resolution as `awardBuddyAffection`: the shared helper, so a
+      // pointer aimed at a soft-released copy self-heals and the caller's
+      // "no Buddy" branch is reached rather than a silent nothing.
+      const buddy = await resolveActiveBuddy(tx, playerId);
+      if (!buddy) return null;
+
+      // The one `buddy_xp_gain` multiply outside Care Mode. Care keeps its own
+      // because its condition is genuinely different — see the note on
+      // `careService`'s tick core — but every *award to the Buddy* now lands
+      // here, so a hunt reward and an encounter reward cannot disagree.
+      const active = await buddyBonus?.getActiveBuddyBonus(tx, playerId);
+      const xpDelta = applyPercentModifierInt(
+        baseAmount,
+        buddyBonusPercent(active?.bonus, 'buddy_xp_gain'),
+      );
+      const xpBonus =
+        active && xpDelta > baseAmount
+          ? appliedBuddyBonus(active.bonus, { base: baseAmount, final: xpDelta })
+          : null;
+
+      // Lock before the read-modify-write, exactly as the Affection sibling
+      // does: two concurrent awards serialize here so both land.
+      const [locked] = await tx
+        .select()
+        .from(playerWaifus)
+        .where(and(eq(playerWaifus.id, buddy.waifu.id), eq(playerWaifus.playerId, playerId)))
+        .for('update');
+      if (!locked || locked.releasedAt != null) return null;
+
+      const fromLevel = locked.level;
+      const newTotalXp = locked.xp + xpDelta;
+      const newLevel = waifuLevelFromXp(newTotalXp);
+      const [updated] = await tx
+        .update(playerWaifus)
+        .set({ xp: newTotalXp, level: newLevel })
+        .where(eq(playerWaifus.id, locked.id))
+        .returning();
+      const newAppearances = await syncAppearances(tx, updated!, fromLevel);
+
+      return {
+        waifu: updated!,
+        xpGranted: xpDelta,
+        affectionGranted: 0,
+        fromLevel,
+        toLevel: newLevel,
+        newAppearances,
+        xpBonus,
+        affectionBonus: null,
+      };
+    },
+
     async awardWaifuXp(tx, playerId, waifuId, xpDelta) {
       if (xpDelta <= 0) return null;
       const [locked] = await tx
@@ -1243,8 +1365,12 @@ export function createCollectionService(deps: CollectionServiceDeps): Collection
         fromLevel,
         toLevel: newLevel,
         newAppearances,
-        // Boss XP and other direct awards do not go through `buddy_xp_gain` —
-        // see `awardBuddyOnHunt`, which is the only path that does.
+        // Deliberately unbonused. `buddy_xp_gain` is defined over XP awarded
+        // to the *active Buddy*, and this method names an arbitrary copy —
+        // Boss Encounters use it to pay a snapshotted participant who may no
+        // longer be equipped, and whose payout `boss_reward_gain` has already
+        // scaled. An award that really is aimed at the live Buddy belongs in
+        // `awardBuddyXp`, which is where that bonus lives.
         xpBonus: null,
         affectionBonus: null,
       };
