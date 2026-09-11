@@ -457,6 +457,11 @@
         "weight": 1000
       },
       {
+        "slug": "cream_pie_slice",
+        "quantity": 1,
+        "weight": 900
+      },
+      {
         "slug": "shibari_rope",
         "quantity": 1,
         "weight": 750

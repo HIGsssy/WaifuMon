@@ -475,6 +475,94 @@
       "description": "Bottled from the canyon's finest dancers. One sip and you'll catch anything.",
       "emoji": "💦",
       "enabled": true
+    },
+    {
+      "slug": "compliment_sandwich",
+      "name": "Compliment Sandwich",
+      "category": "consumable",
+      "captureModifier": null,
+      "captureBonus": null,
+      "captureRarities": null,
+      "isGuaranteedCapture": false,
+      "shopRegions": [
+        "waifu-valley"
+      ],
+      "buyPrice": 250,
+      "priceCurrency": "waifubux",
+      "dailyStockLimit": null,
+      "effectType": "buddy_affection_gain",
+      "effectConfig": {
+        "amount": 50
+      },
+      "description": "Two sweet words with meat in the middle.",
+      "emoji": "🥪",
+      "enabled": true
+    },
+    {
+      "slug": "motorboat_coupon",
+      "name": "Motorboat Coupon",
+      "category": "consumable",
+      "captureModifier": null,
+      "captureBonus": null,
+      "captureRarities": null,
+      "isGuaranteedCapture": false,
+      "shopRegions": [
+        "twin-peeks"
+      ],
+      "buyPrice": 420,
+      "priceCurrency": "waifubux",
+      "dailyStockLimit": null,
+      "effectType": "buddy_affection_gain",
+      "effectConfig": {
+        "amount": 75
+      },
+      "description": "Redeemable where eye contact gets complicated.",
+      "emoji": "🎟️",
+      "enabled": true
+    },
+    {
+      "slug": "morning_wood_bouquet",
+      "name": "Morning Wood Bouquet",
+      "category": "consumable",
+      "captureModifier": null,
+      "captureBonus": null,
+      "captureRarities": null,
+      "isGuaranteedCapture": false,
+      "shopRegions": [
+        "flaccid-foothills"
+      ],
+      "buyPrice": 680,
+      "priceCurrency": "waifubux",
+      "dailyStockLimit": null,
+      "effectType": "buddy_affection_gain",
+      "effectConfig": {
+        "amount": 100
+      },
+      "description": "Stands tall when words fall short.",
+      "emoji": "💐",
+      "enabled": true
+    },
+    {
+      "slug": "mouthful_of_mercy",
+      "name": "Mouthful of Mercy",
+      "category": "consumable",
+      "captureModifier": null,
+      "captureBonus": null,
+      "captureRarities": null,
+      "isGuaranteedCapture": false,
+      "shopRegions": [
+        "thirstlands"
+      ],
+      "buyPrice": 920,
+      "priceCurrency": "waifubux",
+      "dailyStockLimit": 3,
+      "effectType": "buddy_affection_gain",
+      "effectConfig": {
+        "amount": 125
+      },
+      "description": "A generous swallow of desert kindness.",
+      "emoji": "💧",
+      "enabled": true
     }
   ]
 }
