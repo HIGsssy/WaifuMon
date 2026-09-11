@@ -90,6 +90,44 @@ export function AdminEncountersListPage() {
     [query.data, filters],
   );
 
+  // Selection lives on the list page (not the row) so it survives filtering:
+  // an author can select, refine the search, select more, and export both.
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const filteredSlugs = useMemo(() => filtered.map((e) => e.slug), [filtered]);
+  const selectedInFiltered = useMemo(
+    () => filteredSlugs.reduce((n, s) => (selected.has(s) ? n + 1 : n), 0),
+    [filteredSlugs, selected],
+  );
+  const allFilteredSelected =
+    filteredSlugs.length > 0 && selectedInFiltered === filteredSlugs.length;
+  const someFilteredSelected =
+    selectedInFiltered > 0 && selectedInFiltered < filteredSlugs.length;
+
+  const toggleOne = (slug: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(slug)) next.delete(slug);
+      else next.add(slug);
+      return next;
+    });
+
+  // Select-all is bounded to the current filter: it never reaches encounters
+  // an author cannot see, and clicking it a second time only clears what it
+  // added, not selections carried over from other filters.
+  const toggleAllFiltered = () =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allFilteredSelected) {
+        for (const s of filteredSlugs) next.delete(s);
+      } else {
+        for (const s of filteredSlugs) next.add(s);
+      }
+      return next;
+    });
+
+  const clearSelection = () => setSelected(new Set());
+  const selectedSlugs = useMemo(() => Array.from(selected), [selected]);
+
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: ['admin', 'encounters', 'list'] });
 
@@ -147,7 +185,7 @@ export function AdminEncountersListPage() {
         deliberate action rather than part of day-to-day authoring, and it
         reads better next to the list of encounters it moves.
       */}
-      <ContentPromotionPanel />
+      <ContentPromotionPanel selectedSlugs={selectedSlugs} onClearSelection={clearSelection} />
 
       <Card className="space-y-3 p-4">
         <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
@@ -215,9 +253,32 @@ export function AdminEncountersListPage() {
       )}
       {query.data && (
         <Card className="overflow-hidden">
+          {selected.size > 0 && (
+            <div
+              className="flex items-center justify-between border-b border-border bg-surface-sunken px-3 py-2 text-sm"
+              data-testid="encounter-selection-status"
+            >
+              <span className="text-ink-muted">{selected.size} selected</span>
+              <Button size="sm" variant="outline" onClick={clearSelection}>
+                Clear selection
+              </Button>
+            </div>
+          )}
           <table className="w-full text-sm">
             <thead className="bg-surface-sunken text-left text-xs uppercase tracking-wide text-ink-muted">
               <tr>
+                <th className="px-3 py-2 w-8">
+                  <input
+                    type="checkbox"
+                    aria-label="Select all encounters in view"
+                    checked={allFilteredSelected}
+                    disabled={filteredSlugs.length === 0}
+                    ref={(el) => {
+                      if (el) el.indeterminate = someFilteredSelected;
+                    }}
+                    onChange={toggleAllFiltered}
+                  />
+                </th>
                 <th className="px-3 py-2">Name</th>
                 <th className="px-3 py-2">Type</th>
                 <th className="px-3 py-2">Rarity</th>
@@ -231,13 +292,21 @@ export function AdminEncountersListPage() {
             <tbody>
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-3 py-6 text-center text-ink-muted">
+                  <td colSpan={9} className="px-3 py-6 text-center text-ink-muted">
                     No encounters match these filters.
                   </td>
                 </tr>
               )}
               {filtered.map((e) => (
                 <tr key={e.id} className="border-t border-border">
+                  <td className="px-3 py-2 align-top">
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${e.name}`}
+                      checked={selected.has(e.slug)}
+                      onChange={() => toggleOne(e.slug)}
+                    />
+                  </td>
                   <td className="px-3 py-2">
                     <Link to={`/admin/encounters/${e.id}`} className="font-medium text-primary">
                       {e.name}

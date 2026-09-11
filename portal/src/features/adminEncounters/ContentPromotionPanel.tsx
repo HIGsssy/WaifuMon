@@ -72,8 +72,11 @@ function messageOf(err: unknown): string {
 export function ContentPromotionPanel({
   /** Slugs currently selected in the list, if any. */
   selectedSlugs = [],
+  /** Called by the "Clear selection" affordance. Omit to hide it. */
+  onClearSelection,
 }: {
   selectedSlugs?: readonly string[];
+  onClearSelection?: () => void;
 }) {
   const canRead = useHasPermission('encounters.read');
   const canWrite = useHasPermission('encounters.write');
@@ -172,7 +175,7 @@ export function ContentPromotionPanel({
             onChange={(e) => setLabel(e.target.value)}
           />
         </label>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="outline"
             disabled={exportMutation.isPending}
@@ -189,6 +192,16 @@ export function ContentPromotionPanel({
               ? `Export selected (${selectedSlugs.length})`
               : 'Export selected'}
           </Button>
+          {selectedSlugs.length > 0 ? (
+            <span className="text-sm text-muted-foreground" data-testid="promotion-selection-count">
+              {selectedSlugs.length} selected
+            </span>
+          ) : null}
+          {selectedSlugs.length > 0 && onClearSelection ? (
+            <Button variant="ghost" size="sm" onClick={onClearSelection}>
+              Clear selection
+            </Button>
+          ) : null}
         </div>
       </section>
 
