@@ -292,8 +292,10 @@ describe('selection survives filtering', () => {
     await user.click(exportSelectedBtn());
 
     await waitFor(() => expect(exportSpy).toHaveBeenCalledTimes(1));
-    const [{ slugs }] = exportSpy.mock.calls[0]!;
-    expect([...slugs].sort()).toEqual(['tv_alpha', 'tv_charlie']);
+    const call = exportSpy.mock.calls.at(0)?.[0];
+    if (!call) throw new Error('Expected exportAdminEncounters to have been called');
+    if (!call.slugs) throw new Error('Expected export call to contain slugs');
+    expect([...call.slugs].sort()).toEqual(['tv_alpha', 'tv_charlie']);
   });
 
   it('Select-all only reaches rows the filter shows', async () => {
@@ -315,7 +317,10 @@ describe('selection survives filtering', () => {
 
     await user.click(exportSelectedBtn());
     await waitFor(() => expect(exportSpy).toHaveBeenCalledTimes(1));
-    expect(exportSpy.mock.calls[0]![0].slugs).toEqual(['tv_bravo']);
+    const call = exportSpy.mock.calls.at(0)?.[0];
+    if (!call) throw new Error('Expected exportAdminEncounters to have been called');
+    if (!call.slugs) throw new Error('Expected export call to contain slugs');
+    expect(call.slugs).toEqual(['tv_bravo']);
   });
 });
 
@@ -333,7 +338,9 @@ describe('Export wiring', () => {
     await user.click(exportSelectedBtn());
 
     await waitFor(() => expect(exportSpy).toHaveBeenCalledTimes(1));
-    const call = exportSpy.mock.calls[0]![0];
+    const call = exportSpy.mock.calls.at(0)?.[0];
+    if (!call) throw new Error('Expected exportAdminEncounters to have been called');
+    if (!call.slugs) throw new Error('Expected export call to contain slugs');
     expect(call.label).toBeNull();
     expect([...call.slugs].sort()).toEqual(['tv_alpha', 'tv_charlie']);
   });
@@ -352,7 +359,9 @@ describe('Export wiring', () => {
     await user.click(exportAllBtn());
 
     await waitFor(() => expect(exportSpy).toHaveBeenCalledTimes(1));
-    expect(exportSpy.mock.calls[0]![0]).toEqual({ slugs: [], label: null });
+    const call = exportSpy.mock.calls.at(0)?.[0];
+    if (!call) throw new Error('Expected exportAdminEncounters to have been called');
+    expect(call).toEqual({ slugs: [], label: null });
   });
 
   it('Export Selected is disabled with zero checked', async () => {
