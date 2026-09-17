@@ -1,0 +1,24 @@
+{
+ "id": "base-80085",
+ "name": "Base 80085",
+ "description": "A numbered installation at the end of a supply line nobody audits. The berths are rented by the week, the roster is whoever walked in and paid, and the only rule still standing is that you settle up before you dock.",
+ "emoji": "\ud83d\udef0\ufe0f",
+ "enabled": false,
+ "starting": false,
+ "order": 6,
+ "bannerImagePath": "locations/base-80085/banner.png",
+ "flavor": [
+  "Base 80085 was never formally decommissioned. Nobody in the chain of command wanted to sign the paperwork, so it simply kept being staffed.",
+  "The number is painted across the hull in letters three metres tall. Nobody stationed here has ever once read it out loud."
+ ],
+ "encounterPool": [
+  {
+   "species": "angel_combat_medic",
+   "weight": 12
+  },
+  {
+   "species": "spec_ops_valkyrie",
+   "weight": 10
+  }
+ ]
+}

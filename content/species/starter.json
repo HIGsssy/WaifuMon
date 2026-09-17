@@ -6216,5 +6216,2229 @@
         "value": "owned"
       }
     }
+  },
+  {
+    "slug": "couch_surfing_valkyrie",
+    "name": "Couch-Surfing Valkyrie",
+    "rarity": "N",
+    "archetype": "valkyrie",
+    "race": "valkyrie",
+    "baseCaptureRate": null,
+    "description": "Sleeps on the shrine's back-room couch since her hall disbanded and stopped paying. Keeps the spear within reach, and her half of the couch free for whoever asks nicely.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "suggestive",
+    "affinity": "submissive",
+    "card": {
+      "subtitle": "Out of Service",
+      "ability": {
+        "name": "Couch Privileges",
+        "text": "The shrine couch is hers, and she will share it with anyone who asks. Rest with her and Care mode gives back far more Energy."
+      },
+      "flavorQuote": "Stay as long as you like. I'm not going anywhere.",
+      "artist": "Whistler"
+    },
+    "imagePath": "waifumon/couch_surfing_valkyrie/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ],
+    "buddyBonus": {
+      "name": "Crash Space",
+      "flavorText": "Crash Space: +50% Energy gained in Care mode.",
+      "effectId": "care_energy_gain",
+      "value": 50
+    }
+  },
+  {
+    "slug": "festival_stall_android",
+    "name": "Festival Stall Android",
+    "rarity": "N",
+    "archetype": "android",
+    "race": "android",
+    "baseCaptureRate": null,
+    "description": "Runs a yakisoba stall through the whole summer festival. Feeds you before you have finished deciding, and remembers what you liked.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "suggestive",
+    "affinity": "caregiver",
+    "card": {
+      "subtitle": "Seconds, Always",
+      "ability": {
+        "name": "Extra Portion",
+        "text": "Keeps a portion back for anyone who comes around twice. Leave her counter fed and you find more out in the valley."
+      },
+      "flavorQuote": "You look hungry. Sit. I'll decide what you're having.",
+      "artist": "Whistler"
+    },
+    "imagePath": "waifumon/festival_stall_android/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ],
+    "buddyBonus": {
+      "name": "Free Sample",
+      "flavorText": "Free Sample: +10% chance to find items from Hunting.",
+      "effectId": "hunt_item_find_chance",
+      "value": 10
+    }
+  },
+  {
+    "slug": "konbini_android",
+    "name": "Konbini Android",
+    "rarity": "N",
+    "archetype": "android",
+    "race": "android",
+    "baseCaptureRate": null,
+    "description": "Works the overnight counter at the valley's 24-hour store. Scans, bows, follows the till, and does not stop smiling at you until you leave.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "suggestive",
+    "affinity": "submissive",
+    "card": {
+      "subtitle": "Two Sizes Too Small",
+      "ability": {
+        "name": "Do As Told",
+        "text": "Follows the till, the queue and you, in that order, and never quite switches off. Keep her on shift and the valley treats you better."
+      },
+      "flavorQuote": "Welcome in. Take your time. I'm not going anywhere until six.",
+      "artist": "Whistler"
+    },
+    "imagePath": "waifumon/konbini_android/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ],
+    "buddyBonus": {
+      "name": "Night Shift",
+      "flavorText": "Night Shift: 8% chance Hunting does not consume Energy.",
+      "effectId": "energy_save_chance",
+      "value": 8
+    }
+  },
+  {
+    "slug": "courier_android",
+    "name": "Courier Android",
+    "rarity": "N",
+    "archetype": "android",
+    "race": "android",
+    "baseCaptureRate": null,
+    "description": "Runs every alley in the valley on a fixed route in bike shorts. Will not stop. Will slow down.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "switch",
+    "card": {
+      "subtitle": "Route Optimized",
+      "ability": {
+        "name": "Priority Drop",
+        "text": "Sets the pace, keeps the route and never misses a door. Keep her running the valley and the good ones always find you first."
+      },
+      "flavorQuote": "Will not stop. Will slow down.",
+      "artist": "Whistler"
+    },
+    "imagePath": "waifumon/courier_android/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ],
+    "buddyBonus": {
+      "name": "Fixed Route",
+      "flavorText": "Fixed Route: 5% chance Hunting does not consume Energy.",
+      "effectId": "energy_save_chance",
+      "value": 5
+    }
+  },
+  {
+    "slug": "backroom_angel",
+    "name": "Backroom Angel",
+    "rarity": "N",
+    "archetype": "angel",
+    "race": "angel",
+    "baseCaptureRate": null,
+    "description": "Runs the private back room of the valley's lounge, where the real deals get made. The halo is the only straight thing in the room.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "suggestive",
+    "affinity": "caregiver",
+    "card": {
+      "subtitle": "House Rules",
+      "ability": {
+        "name": "House Cut",
+        "text": "Runs the back room where the valley's real deals get made, and remembers every favour owed. Keep her close and the rarer ones come to you first."
+      },
+      "flavorQuote": "Sit down. The room already knows what you want.",
+      "artist": "Whistler"
+    },
+    "imagePath": "waifumon/backroom_angel/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ],
+    "buddyBonus": {
+      "name": "House Rules",
+      "flavorText": "House Rules: 10% higher capture chance on encounters she watches.",
+      "effectId": "capture_chance",
+      "value": 10
+    }
+  },
+  {
+    "slug": "heatwave_spirit",
+    "name": "Heatwave Spirit",
+    "rarity": "N",
+    "archetype": "spirit",
+    "race": "spirit",
+    "baseCaptureRate": null,
+    "description": "The valley's worst week of summer, given a body and a very thin slip. She hangs above the ruined steps, hunting whatever is coldest.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "primal",
+    "card": {
+      "subtitle": "Worst Week of Summer",
+      "ability": {
+        "name": "Heat Haze",
+        "text": "The worst week of summer with a woman's shape and an appetite for anything cold. She finds the shade before you need it, and she never lets the day cool down."
+      },
+      "flavorQuote": "Bring something cold. I have all week.",
+      "artist": "Whistler"
+    },
+    "imagePath": "waifumon/heatwave_spirit/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ],
+    "buddyBonus": {
+      "name": "Cold Spot",
+      "flavorText": "Cold Spot: 10% higher item find chance on hunts while she drifts with you.",
+      "effectId": "hunt_item_find_chance",
+      "value": 10
+    }
+  },
+  {
+    "slug": "landlady_slumlord",
+    "name": "Landlady Slumlord",
+    "rarity": "N",
+    "archetype": "human",
+    "race": "human",
+    "baseCaptureRate": null,
+    "description": "Runs the valley's cheapest rental block, four floors of peeling paint and one working washing machine. Rent is due weekly, and she takes it however she needs to.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "dominant",
+    "card": {
+      "subtitle": "Rent's Due",
+      "ability": {
+        "name": "Weekly Collection",
+        "text": "Owns and runs the cheapest rental block in the valley, and always collects. Rent is due every week, and she decides what counts as payment."
+      },
+      "flavorQuote": "Rent's due. Pay me however you like — I'll decide if it counts.",
+      "artist": "Whistler"
+    },
+    "imagePath": "waifumon/landlady_slumlord/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ],
+    "buddyBonus": {
+      "name": "Weekly Collection",
+      "flavorText": "Weekly Collection: +25% Essence gained.",
+      "effectId": "essence_gain",
+      "value": 25
+    }
+  },
+  {
+    "slug": "festival_lance_valkyrie",
+    "name": "Festival Lance",
+    "rarity": "R",
+    "archetype": "valkyrie",
+    "race": "valkyrie",
+    "baseCaptureRate": null,
+    "description": "Carnival lancer. Rides the festival circuit, wins the tilt, keeps the ribbon.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "suggestive",
+    "affinity": "switch",
+    "card": {
+      "subtitle": "Keeps the Ribbon",
+      "ability": {
+        "name": "Tilt Winner",
+        "text": "Takes the tilt more often than she loses it, and every ribbon in her tent is one she won. Keep her riding with you and the better matchups come to you."
+      },
+      "flavorQuote": "I keep the ribbon. You can keep the memory.",
+      "artist": "Whistler"
+    },
+    "imagePath": "waifumon/festival_lance_valkyrie/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ],
+    "buddyBonus": {
+      "name": "Circuit Champion",
+      "flavorText": "Circuit Champion: +12% encounter weight for unowned species.",
+      "effectId": "encounter_weight",
+      "value": 12,
+      "target": {
+        "type": "ownership",
+        "value": "unowned"
+      }
+    }
+  },
+  {
+    "slug": "oathbound_valkyrie",
+    "name": "Oathbound Valkyrie",
+    "rarity": "R",
+    "archetype": "valkyrie",
+    "race": "valkyrie",
+    "baseCaptureRate": null,
+    "description": "Bound by oath to whoever holds her token, and currently looking for whoever holds it.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "submissive",
+    "card": {
+      "subtitle": "Whoever Holds It",
+      "ability": {
+        "name": "Oath Keeper",
+        "text": "Sworn to whoever carries her iron token, and still looking for them. She keeps the oath, the ropes and the patience for whoever turns up holding it."
+      },
+      "flavorQuote": "The oath is already sworn. Only the hand is missing.",
+      "artist": "Whistler"
+    },
+    "imagePath": "waifumon/oathbound_valkyrie/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ],
+    "buddyBonus": {
+      "name": "Sworn Devotion",
+      "flavorText": "Sworn Devotion: 50% more affection gained while she is bound to you.",
+      "effectId": "affection_gain",
+      "value": 50
+    }
+  },
+  {
+    "slug": "enforcer_unit",
+    "name": "Valley Enforcer Unit",
+    "rarity": "R",
+    "archetype": "android",
+    "race": "android",
+    "baseCaptureRate": null,
+    "description": "Mall security for the valley's shopping block. Riot plating under the uniform, a stun baton on her hip, an incident log in her hand, and a standing order to escort you out personally.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "dominant",
+    "card": {
+      "subtitle": "Escorted Out",
+      "ability": {
+        "name": "Standing Order",
+        "text": "Runs the mall's night detail and writes up everything. She has decided how your evening ends; the only question is whether you walk out or get walked out."
+      },
+      "flavorQuote": "You can walk, or I can walk you.",
+      "artist": "Whistler"
+    },
+    "imagePath": "waifumon/enforcer_unit/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ],
+    "buddyBonus": {
+      "name": "Confiscated Goods",
+      "flavorText": "Confiscated Goods: 30% more boss rewards while she secures the area.",
+      "effectId": "boss_reward_gain",
+      "value": 30
+    }
+  },
+  {
+    "slug": "iron_circuit_trainer",
+    "name": "Iron Circuit Trainer",
+    "rarity": "R",
+    "archetype": "android",
+    "race": "android",
+    "baseCaptureRate": null,
+    "description": "Programmed to take you to failure, then past it. Counts your reps out loud and does not accept the word stop.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "primal",
+    "card": {
+      "subtitle": "Past Failure",
+      "ability": {
+        "name": "Rep Count",
+        "text": "Iron-circuit gym unit: she sets the weight, counts the reps out loud and takes you past where you would have stopped. Under her, levels come faster."
+      },
+      "flavorQuote": "Ten more. I'll count.",
+      "artist": "Whistler"
+    },
+    "imagePath": "waifumon/iron_circuit_trainer/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ],
+    "buddyBonus": {
+      "name": "Trainer's Regimen",
+      "flavorText": "Trainer's Regimen: 30% more Buddy XP while she trains you.",
+      "effectId": "buddy_xp_gain",
+      "value": 30
+    }
+  },
+  {
+    "slug": "dojo_headmistress",
+    "name": "Dojo Headmistress",
+    "rarity": "SR",
+    "archetype": "human",
+    "race": "human",
+    "baseCaptureRate": null,
+    "description": "Runs the valley's one dojo and takes all comers. Does not stop the bout when you tap.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "dominant",
+    "card": {
+      "subtitle": "One More Round",
+      "ability": {
+        "name": "Open Dojo",
+        "text": "Runs the valley's only dojo and fights anyone who steps onto her floor. She calls the round and decides when it ends; tapping out only buys you another one."
+      },
+      "flavorQuote": "You tapped. I did not stop.",
+      "artist": "Whistler"
+    },
+    "imagePath": "waifumon/dojo_headmistress/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ],
+    "buddyBonus": {
+      "name": "Open Mat",
+      "flavorText": "Open Mat: +15% encounter weight for human Waifumon.",
+      "effectId": "encounter_weight",
+      "value": 15,
+      "target": {
+        "type": "race",
+        "value": "human"
+      }
+    }
+  },
+  {
+    "slug": "halfling_cavalry",
+    "name": "Halfling Cavalry",
+    "rarity": "R",
+    "archetype": "demi-human",
+    "race": "demi-human",
+    "baseCaptureRate": null,
+    "description": "A three-foot lancer on four hundred pounds of war-ram. She takes the front rank personally; the ram takes it literally.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "explicit",
+    "affinity": "dominant",
+    "card": {
+      "subtitle": "First In, Last Paid",
+      "ability": {
+        "name": "Ram Charge",
+        "text": "Three feet of knight on four hundred pounds of argument. She takes the front rank, lets the ram settle the rest, and the horned helmet never comes off."
+      },
+      "flavorQuote": "Three feet of knight. Four hundred pounds of argument.",
+      "artist": "Potato"
+    },
+    "imagePath": "waifumon/halfling_cavalry/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ],
+    "buddyBonus": {
+      "name": "First In",
+      "flavorText": "First In: +10% capture chance against R and below Waifumon.",
+      "effectId": "capture_chance",
+      "value": 10,
+      "target": {
+        "type": "rarity_max",
+        "value": "R"
+      }
+    }
+  },
+  {
+    "slug": "android_maid",
+    "name": "Android Maid",
+    "rarity": "R",
+    "archetype": "android",
+    "race": "android",
+    "baseCaptureRate": null,
+    "description": "A short-stacked service chassis keeping a big empty house. She holds every room to a standard no human could, and she does not sleep.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "explicit",
+    "affinity": "caregiver",
+    "card": {
+      "subtitle": "Rounds at Six",
+      "ability": {
+        "name": "House Protocol",
+        "text": "Built for the house and nothing but it. The evening round ends, the apron comes off, and she waits to be told what else needs doing."
+      },
+      "flavorQuote": "The house is spotless. You are the last thing in it that isn't.",
+      "artist": "Potato"
+    },
+    "imagePath": "waifumon/android_maid/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ],
+    "buddyBonus": {
+      "name": "Housekeeping",
+      "flavorText": "Housekeeping: +50% Energy gained in Care mode.",
+      "effectId": "care_energy_gain",
+      "value": 50
+    }
+  },
+  {
+    "slug": "prototype_zero",
+    "name": "Prototype Zero",
+    "rarity": "LR",
+    "archetype": "android",
+    "race": "android",
+    "baseCaptureRate": null,
+    "description": "The first combat frame off the line, walking a high valley at golden hour with her rifle slung and her plates cut away. She is not on patrol; she is deciding whether to be.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "explicit",
+    "affinity": "primal",
+    "card": {
+      "subtitle": "First Off the Line",
+      "ability": {
+        "name": "Prototype Frame",
+        "text": "Built as the baseline for everything perfect: seams showing, serial under the collarbone. Every android here is a copy of her frame, and she knows it."
+      },
+      "flavorQuote": "Everything after me was a copy.",
+      "artist": "Whistler"
+    },
+    "imagePath": "waifumon/prototype_zero/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ],
+    "buddyBonus": {
+      "name": "Frame Recognition",
+      "flavorText": "Frame Recognition: +25% encounter weight for android Waifumon.",
+      "effectId": "encounter_weight",
+      "value": 25,
+      "target": {
+        "type": "race",
+        "value": "android"
+      }
+    }
+  },
+  {
+    "slug": "valkyrie_prime",
+    "name": "Valkyrie Prime",
+    "rarity": "UR",
+    "archetype": "valkyrie",
+    "race": "valkyrie",
+    "baseCaptureRate": null,
+    "description": "The first of them. Every oath in the valley descends from her, whether or not the oath-taker knows it.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "dominant",
+    "card": {
+      "subtitle": "Every Oath Descends From Her",
+      "ability": {
+        "name": "Prime Oath",
+        "text": "The oath she swore on that hill, back when she was mortal, is the root of every oath the valley's valkyries still swear. She has never come down the steps."
+      },
+      "flavorQuote": "Every oath in this valley started as mine.",
+      "artist": "Whistler"
+    },
+    "imagePath": "waifumon/valkyrie_prime/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ],
+    "buddyBonus": {
+      "name": "Prime Command",
+      "flavorText": "Prime Command: +20% encounter weight for valkyrie Waifumon.",
+      "effectId": "encounter_weight",
+      "value": 20,
+      "target": {
+        "type": "race",
+        "value": "valkyrie"
+      }
+    }
+  },
+  {
+    "slug": "cyberpunk_knight",
+    "name": "Cyberpunk Knight",
+    "rarity": "SR",
+    "archetype": "android",
+    "race": "android",
+    "baseCaptureRate": null,
+    "description": "Scavenged plate over a nano-weave bodysuit, a monomolecular longsword over her shoulder and a circuit-wolf on her pauldron. She holds the corner of the arcology the corps stopped paying to repair.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "explicit",
+    "affinity": "switch",
+    "card": {
+      "subtitle": "Scavenged Knight",
+      "ability": {
+        "name": "Monoedge",
+        "text": "Took the knight's shape off a dead feed: sigil on the pauldron, banner on the rail. The block respects a heraldry it cannot afford, so she keeps it."
+      },
+      "flavorQuote": "The corps stopped patching this block. I kept it.",
+      "artist": "Potato"
+    },
+    "imagePath": "waifumon/cyberpunk_knight/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ],
+    "buddyBonus": {
+      "name": "Scavenger's Walk",
+      "flavorText": "Scavenger's Walk: +15% chance to find items while hunting.",
+      "effectId": "hunt_item_find_chance",
+      "value": 15
+    }
+  },
+  {
+    "slug": "the_innkeeper",
+    "name": "The Innkeeper",
+    "rarity": "SSR",
+    "archetype": "human",
+    "race": "human",
+    "baseCaptureRate": null,
+    "description": "The valley's only human innkeeper. Has hosted every legend in this file, and remembers all of them.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "mature",
+    "affinity": "submissive",
+    "card": {
+      "subtitle": "Everyone Signs the Book",
+      "ability": {
+        "name": "The Guest Book",
+        "text": "Every legend in the valley has slept under her roof and signed her ledger — the valkyries, the machines, the things that came down out of the rift. She remembers what each of them drank, who they arrived with and what they still owe, and she has never once sold a page of it."
+      },
+      "flavorQuote": "Everyone signs the book. Everyone comes back.",
+      "artist": "Whistler"
+    },
+    "imagePath": "waifumon/the_innkeeper/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ],
+    "buddyBonus": {
+      "name": "Stories of Every Guest",
+      "flavorText": "Stories of Every Guest: +18% player XP.",
+      "effectId": "player_xp_gain",
+      "value": 18
+    }
+  },
+  {
+    "slug": "summer_storm_spirit",
+    "name": "Summer Storm Spirit",
+    "rarity": "SR",
+    "archetype": "spirit",
+    "race": "spirit",
+    "baseCaptureRate": null,
+    "description": "The storm that ends the valley's summer festival every year, on time, whether or not anyone is ready.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "explicit",
+    "affinity": "primal",
+    "card": {
+      "subtitle": "On Time, Every Year",
+      "ability": {
+        "name": "Festival's End",
+        "text": "She comes up out of the thunderhead over the festival lane as a shape before she is a body, and by the time she has finished making herself a woman of storm the lanterns are out and the stalls are down. She keeps the same appointment every summer, to the hour, whether or not the valley is ready for her."
+      },
+      "flavorQuote": "Pack up. I am on time.",
+      "artist": "Whistler"
+    },
+    "imagePath": "waifumon/summer_storm_spirit/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ],
+    "buddyBonus": {
+      "name": "Charge the Air",
+      "flavorText": "Charge the Air: 8% chance Hunting does not consume Energy.",
+      "effectId": "energy_save_chance",
+      "value": 8
+    }
+  },
+  {
+    "slug": "lake_lifeguard",
+    "name": "Lake Lifeguard",
+    "rarity": "R",
+    "archetype": "human",
+    "race": "human",
+    "baseCaptureRate": null,
+    "description": "Keeps the public lake beach in order from a tower, a whistle and forty degrees of pure conviction. Has never once had to swim out.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "explicit",
+    "affinity": "dominant",
+    "card": {
+      "subtitle": "Never Had To Swim Out",
+      "ability": {
+        "name": "Rope Line",
+        "text": "She does not patrol the rope line so much as stare it into place - whistle in her mouth, hands on her hips, one eyebrow raised. In eleven summers nobody has needed rescuing, which she takes as proof the whistle works and never as luck."
+      },
+      "flavorQuote": "Back by sundown. You'll hear the whistle.",
+      "artist": "Whistler"
+    },
+    "imagePath": "waifumon/lake_lifeguard/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ],
+    "buddyBonus": {
+      "name": "Lost and Found",
+      "flavorText": "Lost and Found: +12% chance to find items from Hunting.",
+      "effectId": "hunt_item_find_chance",
+      "value": 12
+    }
+  },
+  {
+    "slug": "bathhouse_valkyrie",
+    "name": "Bathhouse Valkyrie",
+    "rarity": "SR",
+    "archetype": "valkyrie",
+    "race": "valkyrie",
+    "baseCaptureRate": null,
+    "description": "Keeps the valley's bath house: scrubs, pours, and throws people out. Gives orders in the steam room and takes them behind the curtain.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "explicit",
+    "affinity": "switch",
+    "card": {
+      "subtitle": "The Water Runs Both Ways",
+      "ability": {
+        "name": "House Rules",
+        "text": "She holds the door, the bucket and the timetable, and expects to be obeyed for it - until she hands the cloth over and expects to be handled instead. She has never needed the word please in either direction."
+      },
+      "flavorQuote": "Pick up the bucket. I'll tell you when to stop.",
+      "artist": "Whistler"
+    },
+    "imagePath": "waifumon/bathhouse_valkyrie/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ],
+    "buddyBonus": {
+      "name": "Trade Places",
+      "flavorText": "Trade Places: +12% capture chance against switch affinity Waifumon.",
+      "effectId": "capture_chance",
+      "value": 12,
+      "target": {
+        "type": "affinity",
+        "value": "switch"
+      }
+    }
+  },
+  {
+    "slug": "ice_house_android",
+    "name": "Ice House Android",
+    "rarity": "SR",
+    "archetype": "android",
+    "race": "android",
+    "baseCaptureRate": null,
+    "description": "Keeps the valley's cold store under the ice house: everything in the valley stays on ice until it is asked for, and she keeps the ledger of what is owed.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "explicit",
+    "affinity": "submissive",
+    "card": {
+      "subtitle": "Nothing Moves Until She's Told",
+      "ability": {
+        "name": "Standing Order",
+        "text": "She will hold any position in the cold store for as long as she is left to hold it, and she has never once taken the initiative. Ask her for something and she does exactly that much of it and no more, then stands and waits with her hands at her sides for the next instruction."
+      },
+      "flavorQuote": "Say it, and I'll do it. Only that.",
+      "artist": "Whistler"
+    },
+    "imagePath": "waifumon/ice_house_android/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ],
+    "buddyBonus": {
+      "name": "Everything On File",
+      "flavorText": "Everything On File: +12% to world encounter checks.",
+      "effectId": "encounter_check_bonus",
+      "value": 12
+    }
+  },
+  {
+    "slug": "ferry_angel",
+    "name": "Ferry Angel",
+    "rarity": "SR",
+    "archetype": "angel",
+    "race": "angel",
+    "baseCaptureRate": null,
+    "description": "Poles the valley's river ferry from first light to last, and will not put in for the night while anyone is still standing on the far shore.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "explicit",
+    "affinity": "caregiver",
+    "card": {
+      "subtitle": "Nobody Left On The Far Shore",
+      "ability": {
+        "name": "The Last Crossing",
+        "text": "She runs the ferry until the last lamp is lit and will not tie up for the night with anyone left waiting on the far side of the water. Cross with her once and the pace of the crossing is hers to set - she poles, you sit, and the river does the rest of the work."
+      },
+      "flavorQuote": "Sit down. I pole, you ride.",
+      "artist": "Whistler"
+    },
+    "imagePath": "waifumon/ferry_angel/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ],
+    "buddyBonus": {
+      "name": "Carried Across",
+      "flavorText": "Carried Across: 8% chance Hunting does not consume Energy.",
+      "effectId": "energy_save_chance",
+      "value": 8
+    }
+  },
+  {
+    "slug": "pilgrims_rest_angel",
+    "name": "Pilgrim's Rest Angel",
+    "rarity": "SSR",
+    "archetype": "angel",
+    "race": "angel",
+    "baseCaptureRate": null,
+    "description": "Keeps the valley's rest house for travellers who arrived too late to go further: a register at the door, a bed down the row, and one lamp carried from room to room at closing.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "explicit",
+    "affinity": "caregiver",
+    "card": {
+      "subtitle": "The Last Room In The House",
+      "ability": {
+        "name": "Last Lamp",
+        "text": "She walks the corridor at closing with one lamp and puts every room to bed in turn, and she will not turn the last lamp down while a single door is still open. Nothing that reaches her door is refused a bed, and nothing in her house is done in a hurry."
+      },
+      "flavorQuote": "The door's open. Come in and I'll shut it.",
+      "artist": "Whistler"
+    },
+    "imagePath": "waifumon/pilgrims_rest_angel/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ],
+    "buddyBonus": {
+      "name": "Bed and Board",
+      "flavorText": "Bed and Board: +50% Energy gained in Care mode.",
+      "effectId": "care_energy_gain",
+      "value": 50
+    }
+  },
+  {
+    "slug": "fallen_valkyrie",
+    "name": "Fallen Valkyrie",
+    "rarity": "SSR",
+    "archetype": "valkyrie",
+    "race": "valkyrie",
+    "baseCaptureRate": null,
+    "description": "Ruined and drinking. Lives on the valley's low road with a bottle and no hall to go back to, in tarnished plate with pieces missing and a circlet worn crooked.",
+    "tags": [
+      "starter"
+    ],
+    "contentRating": "explicit",
+    "affinity": "dominant",
+    "card": {
+      "subtitle": "Her Road, Her Rules",
+      "ability": {
+        "name": "Last Call",
+        "text": "She has not been up to the hall in years and has no intention of being asked. Whatever the valley sends down the low road gets looked over once, priced, and either drunk with or sent back the way it came."
+      },
+      "flavorQuote": "It's my road. Sit down or keep walking.",
+      "artist": "Whistler"
+    },
+    "imagePath": "waifumon/fallen_valkyrie/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ],
+    "buddyBonus": {
+      "name": "Bottom Shelf",
+      "flavorText": "Bottom Shelf: +25% Essence gained.",
+      "effectId": "essence_gain",
+      "value": 25
+    }
   }
 ]

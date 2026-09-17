@@ -1,0 +1,1157 @@
+[
+  {
+    "slug": "moonbase_receptionist",
+    "name": "Moonbase Receptionist",
+    "rarity": "N",
+    "archetype": "human",
+    "race": "human",
+    "baseCaptureRate": null,
+    "description": "Cheerful retro-future receptionist with a bubble helmet, beehive hair and chunky analog terminal",
+    "tags": [
+      "expansion",
+      "region_exclusive"
+    ],
+    "contentRating": "suggestive",
+    "affinity": "caregiver",
+    "card": {
+      "artist": "Gorthig"
+    },
+    "imagePath": "waifumon/moonbase_receptionist/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
+  },
+  {
+    "slug": "zero_g_mechanic",
+    "name": "Zero-G Mechanic",
+    "rarity": "N",
+    "archetype": "android",
+    "race": "android",
+    "baseCaptureRate": null,
+    "description": "Scrappy station mechanic in stained coveralls, magnetic boots and tool belt",
+    "tags": [
+      "expansion",
+      "region_exclusive"
+    ],
+    "contentRating": "suggestive",
+    "affinity": "switch",
+    "card": {
+      "artist": "Gorthig"
+    },
+    "imagePath": "waifumon/zero_g_mechanic/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
+  },
+  {
+    "slug": "asteroid_cantina_waitress",
+    "name": "Asteroid Cantina Waitress",
+    "rarity": "N",
+    "archetype": "alien",
+    "race": "demi-human",
+    "baseCaptureRate": null,
+    "description": "Cute blue alien server with little antennae and a tray of glowing drinks",
+    "tags": [
+      "expansion",
+      "region_exclusive"
+    ],
+    "contentRating": "suggestive",
+    "affinity": "caregiver",
+    "card": {
+      "artist": "Gorthig"
+    },
+    "imagePath": "waifumon/asteroid_cantina_waitress/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
+  },
+  {
+    "slug": "vacuum_maid_mk_2",
+    "name": "Vacuum Maid MK II",
+    "rarity": "N",
+    "archetype": "android",
+    "race": "android",
+    "baseCaptureRate": null,
+    "description": "Domestic space-age android with a transparent helmet and wonderfully outdated 1950s styling",
+    "tags": [
+      "expansion",
+      "region_exclusive"
+    ],
+    "contentRating": "mature",
+    "affinity": "submissive",
+    "card": {
+      "artist": "Gorthig"
+    },
+    "imagePath": "waifumon/vacuum_maid_mk_2/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
+  },
+  {
+    "slug": "cargo_bay_slimegirl",
+    "name": "Cargo Bay Slimegirl",
+    "rarity": "N",
+    "archetype": "alien",
+    "race": "demi-human",
+    "baseCaptureRate": null,
+    "description": "Translucent alien slime who accidentally arrived inside a mislabeled shipping container",
+    "tags": [
+      "expansion",
+      "region_exclusive"
+    ],
+    "contentRating": "explicit",
+    "affinity": "primal",
+    "card": {
+      "artist": "Gorthig"
+    },
+    "imagePath": "waifumon/cargo_bay_slimegirl/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
+  },
+  {
+    "slug": "raygun_rocketgirl",
+    "name": "Raygun Rocketgirl",
+    "rarity": "R",
+    "archetype": "human",
+    "race": "human",
+    "baseCaptureRate": null,
+    "description": "Silver boots, chrome ray pistol, fishbowl helmet and pure pulp-science-fiction swagger",
+    "tags": [
+      "expansion",
+      "region_exclusive"
+    ],
+    "contentRating": "mature",
+    "affinity": "switch",
+    "card": {
+      "artist": "Gorthig"
+    },
+    "imagePath": "waifumon/raygun_rocketgirl/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
+  },
+  {
+    "slug": "nebula_nurse",
+    "name": "Nebula Nurse",
+    "rarity": "R",
+    "archetype": "android",
+    "race": "android",
+    "baseCaptureRate": null,
+    "description": "Sleek medical android carrying retro-futuristic scanners and glowing injector tools",
+    "tags": [
+      "expansion",
+      "region_exclusive"
+    ],
+    "contentRating": "mature",
+    "affinity": "caregiver",
+    "card": {
+      "artist": "Gorthig"
+    },
+    "imagePath": "waifumon/nebula_nurse/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
+  },
+  {
+    "slug": "neon_street_samurai",
+    "name": "Neon Street Samurai",
+    "rarity": "R",
+    "archetype": "android",
+    "race": "android",
+    "baseCaptureRate": null,
+    "description": "Cyberpunk mercenary with chromed limbs, glowing jacket and mono-blade",
+    "tags": [
+      "expansion",
+      "region_exclusive"
+    ],
+    "contentRating": "explicit",
+    "affinity": "dominant",
+    "card": {
+      "artist": "Gorthig"
+    },
+    "imagePath": "waifumon/neon_street_samurai/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
+  },
+  {
+    "slug": "chrome_corsair",
+    "name": "Chrome Corsair",
+    "rarity": "SR",
+    "archetype": "android",
+    "race": "android",
+    "baseCaptureRate": null,
+    "description": "Pirate android captain with polished metal limbs, holographic coat and energy cutlass",
+    "tags": [
+      "expansion",
+      "region_exclusive"
+    ],
+    "contentRating": "explicit",
+    "affinity": "dominant",
+    "card": {
+      "artist": "Gorthig"
+    },
+    "imagePath": "waifumon/chrome_corsair/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
+  },
+  {
+    "slug": "blacksite_netrunner",
+    "name": "Blacksite Netrunner",
+    "rarity": "SR",
+    "archetype": "android",
+    "race": "android",
+    "baseCaptureRate": null,
+    "description": "Cyberpunk hacker who steals military secrets from orbiting corporate fortresses",
+    "tags": [
+      "expansion",
+      "region_exclusive"
+    ],
+    "contentRating": "mature",
+    "affinity": "submissive",
+    "card": {
+      "artist": "Gorthig"
+    },
+    "imagePath": "waifumon/blacksite_netrunner/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
+  },
+  {
+    "slug": "living_nebula",
+    "name": "Living Nebula",
+    "rarity": "SR",
+    "archetype": "alien",
+    "race": "demi-human",
+    "baseCaptureRate": null,
+    "description": "Humanoid cosmic entity whose translucent body contains drifting stars and colorful interstellar clouds",
+    "tags": [
+      "expansion",
+      "region_exclusive"
+    ],
+    "contentRating": "explicit",
+    "affinity": "switch",
+    "card": {
+      "artist": "Gorthig"
+    },
+    "imagePath": "waifumon/living_nebula/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
+  },
+  {
+    "slug": "the_last_star_knight",
+    "name": "The Last Star Knight",
+    "rarity": "SSR",
+    "archetype": "human",
+    "race": "human",
+    "baseCaptureRate": null,
+    "description": "Ancient-order warrior with ceremonial armor and a plasma blade powered by a mysterious cosmic relic",
+    "tags": [
+      "expansion",
+      "region_exclusive"
+    ],
+    "contentRating": "explicit",
+    "affinity": "caregiver",
+    "card": {
+      "artist": "Gorthig"
+    },
+    "imagePath": "waifumon/the_last_star_knight/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
+  },
+  {
+    "slug": "star_marshal",
+    "name": "Star Marshal",
+    "rarity": "SSR",
+    "archetype": "human",
+    "race": "human",
+    "baseCaptureRate": null,
+    "description": "Legendary frontier law-woman hunting criminals across entire star systems",
+    "tags": [
+      "expansion",
+      "region_exclusive"
+    ],
+    "contentRating": "explicit",
+    "affinity": "dominant",
+    "card": {
+      "artist": "Gorthig"
+    },
+    "imagePath": "waifumon/star_marshal/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
+  },
+  {
+    "slug": "queen_of_the_rogue_planet",
+    "name": "Queen of the Rogue Planet",
+    "rarity": "UR",
+    "archetype": "android",
+    "race": "android",
+    "baseCaptureRate": null,
+    "description": "Intimidating Android Pirate queen ruling a world wandering between stars, with orbiting crystalline crowns",
+    "tags": [
+      "expansion",
+      "region_exclusive"
+    ],
+    "contentRating": "explicit",
+    "affinity": "dominant",
+    "card": {
+      "artist": "Gorthig"
+    },
+    "imagePath": "waifumon/queen_of_the_rogue_planet/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
+  },
+  {
+    "slug": "the_waifu_beyond",
+    "name": "The Waifu Beyond",
+    "rarity": "LR",
+    "archetype": "alien",
+    "race": "demi-human",
+    "baseCaptureRate": null,
+    "description": "a radiant humanoid entity composed of galaxies, starlight and impossible geometry",
+    "tags": [
+      "expansion",
+      "region_exclusive"
+    ],
+    "contentRating": "explicit",
+    "affinity": "primal",
+    "card": {
+      "artist": "Gorthig"
+    },
+    "imagePath": "waifumon/the_waifu_beyond/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ]
+  }
+]

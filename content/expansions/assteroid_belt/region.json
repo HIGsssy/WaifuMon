@@ -1,0 +1,15 @@
+{
+  "id": "assteroid-belt",
+  "name": "Assteroid Belt",
+  "description": "A shattered planet's worth of rock, a station that has never once been empty, and rules that stop at the airlock. Everything out here is for sale and nothing out here is free.",
+  "emoji": "\ud83e\ude90",
+  "enabled": false,
+  "starting": false,
+  "order": 5,
+  "bannerImagePath": "locations/assteroid-belt/banner.png",
+  "flavor": [
+    "Hard vacuum outside, harder crew inside. The Belt does not care which one you came for.",
+    "Station 8008135 is the only berth for half a billion kilometres in any direction, and she has never once been empty."
+  ],
+  "encounterPool": []
+}

@@ -1,0 +1,184 @@
+[
+ {
+  "slug": "angel_combat_medic",
+  "name": "Angel Combat Medic",
+  "rarity": "N",
+  "archetype": "angel",
+  "race": "angel",
+  "baseCaptureRate": null,
+  "description": "Runs the dust-off bird out of Pad 3. Cuts the halo's light for the ones who still have a pulse and spends it on the ones who don't.",
+  "tags": [
+   "expansion",
+   "region_exclusive"
+  ],
+  "contentRating": "explicit",
+  "affinity": "caregiver",
+  "card": {
+   "subtitle": "First Hands On",
+   "ability": {
+    "name": "Golden Hour",
+    "text": "Lands inside the window that decides it, and spends her halo on whoever is still open."
+   },
+   "flavorQuote": "Sign here and you live. The rest is paperwork.",
+   "artist": "Potato"
+  },
+  "imagePath": "waifumon/angel_combat_medic/standard.png",
+  "enabled": true,
+  "eventKey": null,
+  "perSpeciesWeight": 1,
+  "appearances": [
+   {
+    "id": "standard",
+    "name": "Standard",
+    "sortOrder": 0,
+    "unlock": {
+     "type": "owned"
+    }
+   },
+   {
+    "id": "level_10",
+    "name": "Level 10",
+    "sortOrder": 10,
+    "unlock": {
+     "type": "level",
+     "atLevel": 10
+    }
+   },
+   {
+    "id": "level_20",
+    "name": "Level 20",
+    "sortOrder": 20,
+    "unlock": {
+     "type": "level",
+     "atLevel": 20
+    }
+   },
+   {
+    "id": "level_30",
+    "name": "Level 30",
+    "sortOrder": 30,
+    "unlock": {
+     "type": "level",
+     "atLevel": 30
+    }
+   },
+   {
+    "id": "level_40",
+    "name": "Level 40",
+    "sortOrder": 40,
+    "unlock": {
+     "type": "level",
+     "atLevel": 40
+    }
+   },
+   {
+    "id": "level_50",
+    "name": "Level 50",
+    "sortOrder": 50,
+    "unlock": {
+     "type": "level",
+     "atLevel": 50
+    }
+   }
+  ],
+  "buddyBonus": {
+   "name": "Field Patch",
+   "flavorText": "Field Patch: 10% chance Hunting does not consume Energy.",
+   "effectId": "energy_save_chance",
+   "value": 10
+  }
+ },
+ {
+  "slug": "spec_ops_valkyrie",
+  "name": "Spec-Ops Valkyrie",
+  "rarity": "R",
+  "archetype": "valkyrie",
+  "race": "valkyrie",
+  "baseCaptureRate": null,
+  "description": "Runs the grav-fin element out of Berth 12. The stencil on her rack reads DO NOT TOW THE FINS. She wrote the stencil.",
+  "tags": [
+   "expansion",
+   "region_exclusive"
+  ],
+  "contentRating": "mature",
+  "affinity": "primal",
+  "card": {
+   "subtitle": "Fin-Borne Element",
+   "ability": {
+    "name": "Grav Insertion",
+    "text": "Comes down on the vector nobody charted and leaves the fin wash as the warning."
+   },
+   "flavorQuote": "Void the deck before I land, or the deck and I have a problem.",
+   "artist": "Potato"
+  },
+  "imagePath": "waifumon/spec_ops_valkyrie/standard.png",
+  "enabled": true,
+  "eventKey": null,
+  "perSpeciesWeight": 1,
+  "appearances": [
+   {
+    "id": "standard",
+    "name": "Standard",
+    "sortOrder": 0,
+    "unlock": {
+     "type": "owned"
+    }
+   },
+   {
+    "id": "level_10",
+    "name": "Level 10",
+    "sortOrder": 10,
+    "unlock": {
+     "type": "level",
+     "atLevel": 10
+    }
+   },
+   {
+    "id": "level_20",
+    "name": "Level 20",
+    "sortOrder": 20,
+    "unlock": {
+     "type": "level",
+     "atLevel": 20
+    }
+   },
+   {
+    "id": "level_30",
+    "name": "Level 30",
+    "sortOrder": 30,
+    "unlock": {
+     "type": "level",
+     "atLevel": 30
+    }
+   },
+   {
+    "id": "level_40",
+    "name": "Level 40",
+    "sortOrder": 40,
+    "unlock": {
+     "type": "level",
+     "atLevel": 40
+    }
+   },
+   {
+    "id": "level_50",
+    "name": "Level 50",
+    "sortOrder": 50,
+    "unlock": {
+     "type": "level",
+     "atLevel": 50
+    }
+   }
+  ],
+  "buddyBonus": {
+   "name": "Ridgeline Watch",
+   "flavorText": "Ridgeline Watch: +15% encounter weight for valkyrie Waifumon.",
+   "effectId": "encounter_weight",
+   "value": 15,
+   "target": {
+    "type": "race",
+    "value": "valkyrie"
+   }
+  }
+ }
+]
