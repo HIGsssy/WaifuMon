@@ -13,10 +13,9 @@
  */
 import {
   ActionRowBuilder,
-  AttachmentBuilder,
+  type AttachmentBuilder,
   ButtonBuilder,
   ButtonStyle,
-  EmbedBuilder,
 } from 'discord.js';
 import type { SpeciesRow } from '../db/schema';
 import type { HuntEncounterResult, HuntResult } from '../modules/hunt/huntService';
@@ -26,13 +25,9 @@ import {
   buildHuntResultScreen,
   buildReleaseScreen,
   huntPresentationKey as keyForKind,
-  type ResultScreen,
 } from '../modules/resultPresentation/screens';
-import { CARD_FILENAME } from './assets/resolveAppearanceAsset';
-import {
-  resolveArtworkAttachment,
-  type ArtworkAttachmentContext,
-} from './assets/resolveArtworkAttachment';
+import type { ArtworkAttachmentContext } from './assets/resolveArtworkAttachment';
+import { renderResultScreen } from './resultScreenRenderer';
 import { buddyAwardFeedbackLines, buddyBonusFeedbackLines } from './buddyBonusFeedback';
 import type { SessionPayload } from './ephemeralSession';
 import { buildCustomId } from './types';
@@ -63,48 +58,6 @@ export function huntAgainRow(): ActionRowBuilder<ButtonBuilder> {
   );
 }
 
-function attachmentStem(key: ResultPresentationKey): string {
-  return `result_${key.replace(/\./g, '_')}`;
-}
-
-/**
- * Render a screen model. `encounteredArtwork` is consulted only when the
- * screen asks for the Waifumon's own art, so no asset work is wasted.
- */
-function renderScreen(
-  ctx: ArtworkAttachmentContext,
-  screen: ResultScreen,
-  presentation: ResolvedResultPresentation,
-  encounteredArtwork: () => AttachmentBuilder | null = () => null,
-): { embed: EmbedBuilder; files: AttachmentBuilder[] } {
-  const embed = new EmbedBuilder()
-    .setColor(screen.color)
-    .setTitle(screen.title)
-    .setDescription(screen.description);
-  if (screen.footer) embed.setFooter({ text: screen.footer });
-
-  const files: AttachmentBuilder[] = [];
-  if (screen.artwork.kind === 'custom') {
-    const artwork = resolveArtworkAttachment(ctx, {
-      relativePath: screen.artwork.path,
-      stem: attachmentStem(screen.key),
-      logTag: 'result-presentation',
-      logFields: { key: screen.key, variantId: presentation.variantId },
-    });
-    if (artwork) {
-      embed.setImage(artwork.url);
-      files.push(artwork.file);
-    }
-  } else if (screen.artwork.kind === 'encountered') {
-    const file = encounteredArtwork();
-    if (file) {
-      embed.setImage(`attachment://${CARD_FILENAME}`);
-      files.push(file);
-    }
-  }
-  return { embed, files };
-}
-
 /** The screen for a non-encounter hunt result. */
 export function buildHuntResultView(
   ctx: ArtworkAttachmentContext,
@@ -116,7 +69,7 @@ export function buildHuntResultView(
     ...buddyAwardFeedbackLines(result.buddyAward),
   ];
   const screen = buildHuntResultScreen(result, presentation, buddyLines);
-  const { embed, files } = renderScreen(ctx, screen, presentation);
+  const { embed, files } = renderResultScreen(ctx, screen, presentation);
   return { embeds: [embed], components: withBackRow([huntAgainRow()]), files };
 }
 
@@ -162,6 +115,11 @@ export function buildReleaseView(
   input: ReleaseViewInput,
 ): SessionPayload {
   const screen = buildReleaseScreen({ species: input.species }, input.presentation);
-  const { embed, files } = renderScreen(ctx, screen, input.presentation, input.encounteredArtwork);
+  const { embed, files } = renderResultScreen(
+    ctx,
+    screen,
+    input.presentation,
+    input.encounteredArtwork,
+  );
   return { content: '', embeds: [embed], components: withBackRow(), files };
 }

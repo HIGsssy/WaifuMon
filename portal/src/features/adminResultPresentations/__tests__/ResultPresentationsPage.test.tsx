@@ -2,9 +2,10 @@
  * The Result Presentation Manager.
  *
  * The API module is spied, so these tests pin what the page shows and what it
- * asks the server to do. Canonical rules — the six result types, labels,
- * legal artwork modes and defaults — come only from the reference double
- * below, which is the point: the page must not carry its own copy.
+ * asks the server to do. Canonical rules — which result types exist, their
+ * labels, legal artwork modes and defaults — come only from the reference
+ * double below, which is the point: the page must not carry its own copy. The
+ * double therefore lists all eight keys, including the two added after Phase 2.
  */
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
@@ -61,6 +62,25 @@ const REFERENCE: ResultPresentationReference = {
       defaultArtworkMode: 'encountered',
       fallbackDescription: "Uses the standard release message and the encountered Waifumon's artwork.",
       emptyFlavorDescription: 'No flavor text: players see the standard release message.',
+    },
+    {
+      key: 'world_encounter.back_to_hunting',
+      label: 'Back to Hunting',
+      allowedArtworkModes: ['custom', 'none'],
+      defaultArtworkMode: 'none',
+      fallbackDescription:
+        'Uses the standard Back to Hunting screen: the region you are hunting in and your Energy, with the usual Hunt again and Back buttons.',
+      emptyFlavorDescription:
+        'No flavor text: players see the standard "you pick up the trail" line.',
+    },
+    {
+      key: 'collection.converted_to_essence',
+      label: 'Converted to Essence',
+      allowedArtworkModes: ['encountered', 'custom', 'none'],
+      defaultArtworkMode: 'encountered',
+      fallbackDescription:
+        "Uses the standard conversion result (her name, the Essence paid and your balance) with the converted Waifumon's artwork.",
+      emptyFlavorDescription: 'No flavor text: players see only the standard conversion result.',
     },
   ],
   flavorTextMaxLength: 500,
@@ -223,7 +243,7 @@ afterEach(() => {
 const card = (key: string) => screen.findByTestId(`result-type-${key}`);
 
 describe('manager overview', () => {
-  it('shows all six result types from the server, even with no variants', async () => {
+  it('shows every result type the server lists, even with no variants', async () => {
     renderPage();
     for (const k of REFERENCE.keys) {
       const el = await card(k.key);
@@ -246,6 +266,17 @@ describe('manager overview', () => {
     expect(await card('hunt.waifubux_find')).toHaveTextContent('4 variants · 3 enabled');
     expect(await card('encounter.released')).toHaveTextContent('2 variants · 2 enabled');
     expect(await card('hunt.nothing_found')).toHaveTextContent('0 variants · Built-in fallback');
+  });
+
+  it('includes the two newest result types, driven purely by reference data', async () => {
+    renderPage();
+    expect(REFERENCE.keys).toHaveLength(8);
+    const back = await card('world_encounter.back_to_hunting');
+    expect(back).toHaveTextContent('Back to Hunting');
+    expect(back).toHaveTextContent('0 variants · Built-in fallback');
+    const converted = await card('collection.converted_to_essence');
+    expect(converted).toHaveTextContent('Converted to Essence');
+    expect(converted).toHaveTextContent('0 variants · Built-in fallback');
   });
 
   it('explains the built-in fallback, and says when it is active', async () => {
@@ -563,6 +594,77 @@ describe('editor', () => {
     expect(screen.getByTestId('editor-chance')).toHaveTextContent('~50% chance among 2 enabled variants');
     await user.click(screen.getByRole('checkbox', { name: 'Enabled' }));
     expect(screen.getByTestId('editor-chance')).toHaveTextContent('Disabled');
+  });
+});
+
+describe('the two newest result types', () => {
+  it('offers Back to Hunting only custom/no artwork, defaulting to none', async () => {
+    const user = userEvent.setup();
+    renderPage(WRITE, '/admin/result-presentations?key=world_encounter.back_to_hunting');
+    expect(await screen.findByTestId('fallback-panel')).toHaveTextContent(
+      'the region you are hunting in and your Energy',
+    );
+    await user.click(screen.getByRole('button', { name: 'New variant' }));
+    const editor = screen.getByTestId('variant-editor');
+    expect(within(editor).getAllByRole('radio').map((r) => r.closest('label')?.textContent)).toEqual(
+      ['Custom Artwork', 'No Artwork'],
+    );
+    expect(within(editor).getByRole('radio', { name: 'No Artwork' })).toBeChecked();
+    // No Waifumon on this screen, so no preview picker either.
+    expect(within(editor).queryByRole('combobox', { name: 'Preview Waifumon' })).toBeNull();
+  });
+
+  it('offers a conversion her artwork by default, with the preview picker', async () => {
+    const user = userEvent.setup();
+    renderPage(WRITE, '/admin/result-presentations?key=collection.converted_to_essence');
+    await user.click(await screen.findByRole('button', { name: 'New variant' }));
+    const editor = screen.getByTestId('variant-editor');
+    expect(within(editor).getAllByRole('radio').map((r) => r.closest('label')?.textContent)).toEqual(
+      ['Encountered Waifumon', 'Custom Artwork', 'No Artwork'],
+    );
+    expect(within(editor).getByRole('radio', { name: 'Encountered Waifumon' })).toBeChecked();
+    expect(within(editor).getByRole('combobox', { name: 'Preview Waifumon' })).toHaveValue(
+      'alpha_girl',
+    );
+    await waitFor(() =>
+      expect(spies.preview).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          variant: expect.objectContaining({ presentationKey: 'collection.converted_to_essence' }),
+          previewSpeciesSlug: 'alpha_girl',
+        }),
+        expect.anything(),
+      ),
+    );
+
+    // The preview selection is never part of what gets saved.
+    await user.click(within(editor).getByRole('button', { name: 'Create variant' }));
+    await waitFor(() => expect(spies.create).toHaveBeenCalled());
+    expect(spies.create.mock.calls[0]![0]).toEqual({
+      presentationKey: 'collection.converted_to_essence',
+      enabled: true,
+      weight: 1,
+      flavorText: null,
+      artworkMode: 'encountered',
+      artworkPath: null,
+    });
+  });
+
+  it('creates a Back to Hunting variant with authored prose only', async () => {
+    const user = userEvent.setup();
+    renderPage(WRITE, '/admin/result-presentations?key=world_encounter.back_to_hunting');
+    await user.click(await screen.findByRole('button', { name: 'New variant' }));
+    await user.type(screen.getByLabelText(/Flavor text/), 'The trail is warm again.');
+    await user.click(screen.getByRole('button', { name: 'Create variant' }));
+    await waitFor(() =>
+      expect(spies.create).toHaveBeenCalledWith({
+        presentationKey: 'world_encounter.back_to_hunting',
+        enabled: true,
+        weight: 1,
+        flavorText: 'The trail is warm again.',
+        artworkMode: 'none',
+        artworkPath: null,
+      }),
+    );
   });
 });
 

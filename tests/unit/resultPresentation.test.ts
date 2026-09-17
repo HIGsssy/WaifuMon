@@ -41,10 +41,30 @@ import {
 } from '../../src/modules/resultPresentation/preview';
 import { seededRng, type Rng } from '../../src/shared/random';
 
-const MIGRATION = fs.readFileSync(
-  path.resolve(__dirname, '..', '..', 'drizzle', '0033_result_presentation_variants.sql'),
-  'utf8',
-);
+const DRIZZLE_DIR = path.resolve(__dirname, '..', '..', 'drizzle');
+
+/**
+ * The CHECK expression a migrated database actually ends up with: the *last*
+ * migration that defines `constraint`, since a later one may drop and
+ * recreate it (0034 widens the key list 0033 created).
+ */
+function latestConstraint(constraint: string): string {
+  const files = fs
+    .readdirSync(DRIZZLE_DIR)
+    .filter((file) => file.endsWith('.sql'))
+    .sort();
+  // Both spellings: `CREATE TABLE` states a constraint inline, and a later
+  // migration re-adds it with `ADD CONSTRAINT`. The last one a database
+  // applies is the one it ends up with.
+  const pattern = new RegExp(`CONSTRAINT "${constraint}" CHECK \\(([^;]*)\\)`, 'g');
+  let found: string | null = null;
+  for (const file of files) {
+    const sql = fs.readFileSync(path.join(DRIZZLE_DIR, file), 'utf8');
+    for (const match of sql.matchAll(pattern)) found = match[1]!;
+  }
+  if (found === null) throw new Error(`no migration defines ${constraint}`);
+  return found;
+}
 
 /** A scripted Rng that records every draw. */
 function recordingRng(nexts: number[]): Rng & { draws: number } {
@@ -80,7 +100,7 @@ function variant(overrides: Partial<ResultPresentationVariant> = {}): ResultPres
 }
 
 describe('presentation keys', () => {
-  it('is the closed Phase 1 list, each with a label', () => {
+  it('is the closed list, each with a label', () => {
     expect(RESULT_PRESENTATION_KEYS).toEqual([
       'hunt.waifubux_find',
       'hunt.essence_find',
@@ -88,6 +108,8 @@ describe('presentation keys', () => {
       'hunt.rare_item_find',
       'hunt.nothing_found',
       'encounter.released',
+      'world_encounter.back_to_hunting',
+      'collection.converted_to_essence',
     ]);
     expect(RESULT_PRESENTATION_KEYS.map(resultPresentationLabel)).toEqual([
       'WaifuBux Found',
@@ -96,6 +118,8 @@ describe('presentation keys', () => {
       'Rare Item Found',
       'Nothing Found',
       'Waifumon Released',
+      'Back to Hunting',
+      'Converted to Essence',
     ]);
   });
 
@@ -105,8 +129,15 @@ describe('presentation keys', () => {
     expect(isResultPresentationKey(42)).toBe(false);
   });
 
-  it('allows encountered artwork only for a release, and defaults a release to it', () => {
-    expect(keysAllowingArtworkMode('encountered')).toEqual(['encounter.released']);
+  it('allows encountered artwork only where a Waifumon is in hand, and defaults to it there', () => {
+    // A release and a conversion both still carry her species row; every
+    // other key describes an outcome with no Waifumon to show.
+    expect(keysAllowingArtworkMode('encountered')).toEqual([
+      'encounter.released',
+      'collection.converted_to_essence',
+    ]);
+    expect(defaultArtworkModeFor('collection.converted_to_essence')).toBe('encountered');
+    expect(defaultArtworkModeFor('world_encounter.back_to_hunting')).toBe('none');
     for (const key of RESULT_PRESENTATION_KEYS) {
       expect(isArtworkModeAllowed(key, 'custom')).toBe(true);
       expect(isArtworkModeAllowed(key, 'none')).toBe(true);
@@ -115,16 +146,24 @@ describe('presentation keys', () => {
     expect(defaultArtworkModeFor('hunt.nothing_found')).toBe('none');
   });
 
-  it('matches the migration CHECK constraints', () => {
-    // The migration is hand-written, so pin that it lists exactly the code's
-    // keys and modes, and the same encountered-artwork rule.
+  it('matches the migration CHECK constraints a migrated database ends up with', () => {
+    // The migrations are hand-written, so pin that the constraint a database
+    // actually holds lists exactly the code's keys and modes, and the same
+    // encountered-artwork rule. A key added in code without widening the
+    // constraint fails here rather than at the first insert.
     const list = (values: readonly string[]) => values.map((v) => `'${v}'`).join(',');
-    expect(MIGRATION).toContain(`"presentation_key" in (${list(RESULT_PRESENTATION_KEYS)})`);
-    expect(MIGRATION).toContain(`"artwork_mode" in (${list(ARTWORK_MODES)})`);
-    expect(MIGRATION).toContain(
+    expect(latestConstraint('result_presentation_variants_key_check')).toContain(
+      `"presentation_key" in (${list(RESULT_PRESENTATION_KEYS)})`,
+    );
+    expect(latestConstraint('result_presentation_variants_artwork_mode_check')).toContain(
+      `"artwork_mode" in (${list(ARTWORK_MODES)})`,
+    );
+    expect(latestConstraint('result_presentation_variants_encountered_key_check')).toContain(
       `"presentation_key" in (${list(keysAllowingArtworkMode('encountered'))})`,
     );
-    expect(MIGRATION).toContain(`char_length("flavor_text") <= ${RESULT_PRESENTATION_FLAVOR_MAX_LENGTH}`);
+    expect(latestConstraint('result_presentation_variants_flavor_text_check')).toContain(
+      `char_length("flavor_text") <= ${RESULT_PRESENTATION_FLAVOR_MAX_LENGTH}`,
+    );
   });
 });
 
@@ -481,6 +520,7 @@ describe('buildResultPresentationPreview (pure)', () => {
   const deps: ResultPresentationPreviewDeps = {
     items: [{ slug: 'basic_charm', name: 'Basic Charm', emoji: '🩷' }],
     huntFlavorPool: ['First pool line', 'Second pool line'],
+    regionNames: ['Sample Valley'],
     species: [
       { slug: 'alpha', name: 'Alpha', rarity: 'SR' },
       { slug: 'beta', name: 'Beta', rarity: 'N' },

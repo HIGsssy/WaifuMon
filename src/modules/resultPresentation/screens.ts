@@ -190,6 +190,93 @@ export function buildHuntResultScreen(
   };
 }
 
+/** What a Back to Hunting screen needs to know. Read live, not authored. */
+export interface BackToHuntingFacts {
+  regionName: string;
+  energyRemaining: number;
+}
+
+/** Built-in line for the Back to Hunting screen. */
+export const BACK_TO_HUNTING_FALLBACK_LINES: readonly string[] = [
+  '🏹 You shoulder your bow and pick up the trail.',
+];
+
+/**
+ * The screen a resolved hunt-origin World Encounter leaves the player on.
+ *
+ * Navigation is **not** here and is not authorable: the caller owns the
+ * buttons. Authored text replaces only the standing "pick up the trail" line;
+ * the region and Energy lines stay code-generated from live player state.
+ */
+export function buildBackToHuntingScreen(
+  facts: BackToHuntingFacts,
+  presentation: ResolvedResultPresentation,
+): ResultScreen {
+  const sections: ScreenSection[] = [];
+  const prose = presentation.flavorText ?? BACK_TO_HUNTING_FALLBACK_LINES[0]!;
+  if (prose) sections.push({ kind: 'flavor', text: prose });
+  sections.push({ kind: 'mechanical', text: `You are hunting in **${facts.regionName}**.` });
+  const artwork = artworkOf(presentation);
+  return {
+    key: 'world_encounter.back_to_hunting',
+    title: '🏹 Hunting',
+    sections,
+    description: joinSections(sections),
+    color: HUNT_RESULT_COLOR,
+    footer: `Energy left: ${facts.energyRemaining}`,
+    // Nobody to show: the encounter is over and no Waifumon is in hand.
+    artwork: artwork.kind === 'encountered' ? { kind: 'none' } : artwork,
+  };
+}
+
+/** Accent the conversion result has always used. */
+export const CONVERSION_COLOR = 0x7ce68a;
+
+/** What a conversion screen needs to know about the committed conversion. */
+export interface ConversionFacts {
+  /** Her name as the surface shows it — nickname-aware where applicable. */
+  displayName: string;
+  essenceGranted: number;
+  balanceAfter: number;
+  /** Pre-formatted Buddy Bonus line, when `essence_gain` raised the payout. */
+  buddyLine: string | null;
+  /** True when her canonical artwork is available to show. */
+  hasSpeciesArtwork: boolean;
+}
+
+/**
+ * The screen after converting an owned copy to Essence.
+ *
+ * The conversion has already committed. Her name, the Essence paid, the
+ * balance and any Buddy Bonus line are all code-generated from the result;
+ * authored text is prose above them.
+ */
+export function buildConversionScreen(
+  facts: ConversionFacts,
+  presentation: ResolvedResultPresentation,
+): ResultScreen {
+  const sections: ScreenSection[] = [];
+  if (presentation.flavorText) sections.push({ kind: 'flavor', text: presentation.flavorText });
+  // One block, exactly as this screen has always read: the payout line, and
+  // the Buddy line on the next line when there is one.
+  const buddy = facts.buddyLine ? `\n${facts.buddyLine}` : '';
+  sections.push({
+    kind: 'mechanical',
+    text: `+**${facts.essenceGranted}** Essence (balance: ${facts.balanceAfter}).${buddy}`,
+  });
+  const artwork = artworkOf(presentation);
+  return {
+    key: 'collection.converted_to_essence',
+    title: `✨ Converted ${facts.displayName} to Essence`,
+    sections,
+    description: joinSections(sections),
+    color: CONVERSION_COLOR,
+    footer: null,
+    artwork:
+      artwork.kind === 'encountered' && !facts.hasSpeciesArtwork ? { kind: 'none' } : artwork,
+  };
+}
+
 /** The screen after Let Her Go. The release itself has already committed. */
 export function buildReleaseScreen(
   facts: ReleaseScreenFacts,

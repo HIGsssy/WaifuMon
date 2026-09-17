@@ -96,38 +96,13 @@ import {
   rarityColor,
   RELEASE_FALLBACK_LINES,
 } from '../huntResultPresenter';
-import type { ResultPresentationKey } from '../../modules/resultPresentation/keys';
 import {
-  resolveResultPresentation,
-  type ResolvedResultPresentation,
-} from '../../modules/resultPresentation/resolver';
-import { defaultRng } from '../../shared/random';
-
-/**
- * Presentation randomness for contexts wired without a presentation service
- * (tests, stripped-down graphs). Never the gameplay RNG.
- */
-const fallbackPresentationRng = defaultRng();
-
-/**
- * Choose how an already-resolved outcome is shown — once, after gameplay has
- * committed. Uses the authored variants when the service is wired, and the
- * built-in presentation otherwise.
- */
-async function resolvePresentation(
-  ctx: AppContext,
-  key: ResultPresentationKey,
-  fallbackFlavorLines: readonly string[] = [],
-): Promise<ResolvedResultPresentation> {
-  const service = ctx.services.resultPresentation;
-  if (service) return service.resolve(key, { fallbackFlavorLines });
-  return resolveResultPresentation({
-    key,
-    variants: [],
-    fallbackFlavorLines,
-    rng: fallbackPresentationRng,
-  });
-}
+  BACK_TO_HUNTING_FALLBACK_LINES,
+  buildBackToHuntingScreen,
+} from '../../modules/resultPresentation/screens';
+import { renderResultScreen } from '../resultScreenRenderer';
+import type { ResolvedResultPresentation } from '../../modules/resultPresentation/resolver';
+import { resolvePresentationFor as resolvePresentation } from '../resultScreenRenderer';
 
 
 /**
@@ -618,24 +593,27 @@ const HUNT_RETURN_STALE = 'That button has expired — re-run /waifumon.';
  * player as they are now rather than as they were when the encounter began —
  * an encounter's own effects (Energy gained or lost, a region changed
  * underneath them) are already reflected.
+ *
+ * `presentation` supplies only the standing line above those facts, and an
+ * optional image. The region, the Energy and both buttons stay code-owned:
+ * authored content cannot change what this screen says happened, or where it
+ * leads. The one caller is {@link handleHuntReturn}.
  */
 export async function buildHuntLandingView(
   ctx: AppContext,
   playerId: number,
-  statusLine?: string,
+  presentation: ResolvedResultPresentation,
 ): Promise<SessionPayload> {
   const [status, balances] = await Promise.all([
     ctx.services.travel.getStatus(playerId),
     ctx.services.currency.getBalances(playerId),
   ]);
-  const embed = new EmbedBuilder()
-    .setColor(0xff6fa5)
-    .setTitle('🏹 Hunting')
-    .setDescription(
-      `${statusLine ? `${statusLine}\n\n` : ''}You are hunting in **${status.currentRegionName}**.`,
-    )
-    .setFooter({ text: `Energy left: ${balances.huntEnergy}` });
-  return { embeds: [embed], components: withBackRow([huntAgainRow()]) };
+  const screen = buildBackToHuntingScreen(
+    { regionName: status.currentRegionName, energyRemaining: balances.huntEnergy },
+    presentation,
+  );
+  const { embed, files } = renderResultScreen(ctx, screen, presentation);
+  return { embeds: [embed], components: withBackRow([huntAgainRow()]), files };
 }
 
 /**
@@ -677,10 +655,16 @@ export async function handleHuntReturn(
     await respondEphemeral(interaction, HUNT_RETURN_STALE);
     return;
   }
-  await respondEphemeral(
-    interaction,
-    await buildHuntLandingView(ctx, prov.playerId, '🏹 You shoulder your bow and pick up the trail.'),
+  // The encounter has already resolved and committed; only now is the
+  // presentation chosen, with presentation randomness. Reached on this path
+  // alone — a travel-origin encounter answers `null` above and never gets
+  // here, and mid-chain the Continue button takes precedence over this one.
+  const presentation = await resolvePresentation(
+    ctx,
+    'world_encounter.back_to_hunting',
+    BACK_TO_HUNTING_FALLBACK_LINES,
   );
+  await respondEphemeral(interaction, await buildHuntLandingView(ctx, prov.playerId, presentation));
 }
 
 // ─────────────────────────────── capture flow ───────────────────────────────

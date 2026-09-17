@@ -416,6 +416,7 @@ export const adminResultPresentationRoutes =
               items: content.items,
               huntFlavorPool: content.tables.hunt.flavor,
               species: previewSpecies(),
+              regionNames: content.regions.filter((r) => r.enabled).map((r) => r.name),
               locateArtwork: (path) => locateArtworkFile(assetsDir, path),
               speciesArtworkAvailable: (slug) => speciesArtworkFile(slug) !== null,
             },

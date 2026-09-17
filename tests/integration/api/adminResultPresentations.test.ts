@@ -108,10 +108,11 @@ describe('reference data', () => {
 });
 
 describe('CRUD', () => {
-  it('lists all six result types, even with no variants', async () => {
+  it('lists every canonical result type, even with no variants', async () => {
     const { status, body } = await send('GET', BASE);
     expect(status).toBe(200);
-    expect(body.data.groups).toHaveLength(6);
+    expect(body.data.groups).toHaveLength(RESULT_PRESENTATION_KEYS.length);
+    expect(body.data.groups.map((g: Json) => g.key)).toEqual([...RESULT_PRESENTATION_KEYS]);
     for (const group of body.data.groups) {
       expect(group).toMatchObject({ variantCount: 0, enabledCount: 0, usingFallback: true, variants: [] });
     }
@@ -444,6 +445,102 @@ describe('unsaved preview', () => {
       });
       expect(res.statusCode).toBe(404);
     });
+  });
+});
+
+describe('the keys added after Phase 2', () => {
+  const preview = (variant: Json, previewSpeciesSlug?: string) =>
+    send('POST', `${BASE}/preview`, {
+      variant,
+      ...(previewSpeciesSlug === undefined ? {} : { previewSpeciesSlug }),
+    });
+
+  it('offers them through reference data with their own artwork rules', async () => {
+    const { body } = await send('GET', `${BASE}/reference`);
+    const keys = body.data.keys as Json[];
+    expect(keys.find((k) => k.key === 'world_encounter.back_to_hunting')).toMatchObject({
+      label: 'Back to Hunting',
+      allowedArtworkModes: ['custom', 'none'],
+      defaultArtworkMode: 'none',
+    });
+    expect(keys.find((k) => k.key === 'collection.converted_to_essence')).toMatchObject({
+      label: 'Converted to Essence',
+      allowedArtworkModes: ['encountered', 'custom', 'none'],
+      defaultArtworkMode: 'encountered',
+    });
+  });
+
+  it('stores variants for both — the migrated database accepts the new keys', async () => {
+    const back = await create({
+      presentationKey: 'world_encounter.back_to_hunting',
+      flavorText: 'The trail is warm again.',
+    });
+    expect(back.status).toBe(200);
+    expect(back.body.data).toMatchObject({ artworkMode: 'none', enabled: true });
+
+    const converted = await create({ presentationKey: 'collection.converted_to_essence' });
+    expect(converted.status).toBe(200);
+    // Defaults to her artwork, so the built-in screen needs no content.
+    expect(converted.body.data.artworkMode).toBe('encountered');
+
+    // …and the per-key artwork rule still bites where it should.
+    const illegal = await create({
+      presentationKey: 'world_encounter.back_to_hunting',
+      artworkMode: 'encountered',
+    });
+    expect(illegal.status).toBe(400);
+    expect(issuePaths(illegal.body)).toContain('artworkMode');
+  });
+
+  it('previews Back to Hunting with the standing line, region and Energy', async () => {
+    const { status, body } = await preview({ presentationKey: 'world_encounter.back_to_hunting' });
+    expect(status).toBe(200);
+    expect(body.data.screen.title).toBe('🏹 Hunting');
+    const [flavor, mechanical] = body.data.screen.sections as [Json, Json];
+    expect(flavor).toMatchObject({ kind: 'flavor', sample: false });
+    expect(flavor.text).toContain('pick up the trail');
+    expect(mechanical).toMatchObject({ kind: 'mechanical', sample: true });
+    expect(mechanical.text).toMatch(/^You are hunting in \*\*.+\*\*\.$/);
+    expect(body.data.screen.footer).toBe('Energy left: 18');
+    expect(body.data.artwork).toEqual({ mode: 'none' });
+    expect(body.data.flavorNote).toMatch(/pick up the trail/);
+  });
+
+  it('previews a conversion with sample Essence and a preview Waifumon', async () => {
+    const species = (await send('GET', `${BASE}/reference`)).body.data.previewSpecies[0] as Json;
+    const { status, body } = await preview(
+      { presentationKey: 'collection.converted_to_essence', flavorText: 'Her energy crystallizes…' },
+      species.slug,
+    );
+    expect(status).toBe(200);
+    expect(body.data.screen.title).toBe(`✨ Converted ${species.name} to Essence`);
+    expect(body.data.screen.sections).toEqual([
+      { kind: 'flavor', text: 'Her energy crystallizes…', sample: false },
+      { kind: 'mechanical', text: '+**32** Essence (balance: 672).', sample: true },
+    ]);
+    expect(body.data.screen.footer).toBeNull();
+    expect(body.data.artwork).toMatchObject({ mode: 'encountered', species: { slug: species.slug } });
+    expect(body.data.previewSpecies.slug).toBe(species.slug);
+    // Preview only: nothing was written.
+    expect(await rowCount()).toBe(0);
+  });
+
+  it('refuses a preview Waifumon for Back to Hunting, which shows none', async () => {
+    const species = (await send('GET', `${BASE}/reference`)).body.data.previewSpecies[0] as Json;
+    const res = await preview({ presentationKey: 'world_encounter.back_to_hunting' }, species.slug);
+    expect(res.status).toBe(400);
+    expect(issuePaths(res.body)).toContain('previewSpeciesSlug');
+  });
+
+  it('keeps sample gameplay values out of the request for both', async () => {
+    expect(
+      (await preview({ presentationKey: 'world_encounter.back_to_hunting', regionName: 'Nowhere' }))
+        .status,
+    ).toBe(400);
+    expect(
+      (await preview({ presentationKey: 'collection.converted_to_essence', essenceGranted: 9999 }))
+        .status,
+    ).toBe(400);
   });
 });
 

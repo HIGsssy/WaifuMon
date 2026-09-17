@@ -20,6 +20,8 @@ export const RESULT_PRESENTATION_KEYS = [
   'hunt.rare_item_find',
   'hunt.nothing_found',
   'encounter.released',
+  'world_encounter.back_to_hunting',
+  'collection.converted_to_essence',
 ] as const;
 export type ResultPresentationKey = (typeof RESULT_PRESENTATION_KEYS)[number];
 
@@ -94,6 +96,27 @@ export const RESULT_PRESENTATION_KEY_DEFINITIONS: Readonly<
     defaultArtworkMode: 'encountered',
     fallbackDescription: "Uses the standard release message and the encountered Waifumon's artwork.",
     emptyFlavorDescription: 'No flavor text: players see the standard release message.',
+  },
+  // The exit from a resolved hunt-origin World Encounter. Navigation is
+  // code-owned: authored content never decides where the buttons go.
+  'world_encounter.back_to_hunting': {
+    label: 'Back to Hunting',
+    artworkModes: ['custom', 'none'],
+    defaultArtworkMode: 'none',
+    fallbackDescription:
+      'Uses the standard Back to Hunting screen: the region you are hunting in and your Energy, with the usual Hunt again and Back buttons.',
+    emptyFlavorDescription: 'No flavor text: players see the standard "you pick up the trail" line.',
+  },
+  // Converting an owned copy to Essence. The conversion has already
+  // committed by the time this is shown; `encountered` is her canonical
+  // artwork, which the result still carries.
+  'collection.converted_to_essence': {
+    label: 'Converted to Essence',
+    artworkModes: ['encountered', 'custom', 'none'],
+    defaultArtworkMode: 'encountered',
+    fallbackDescription:
+      "Uses the standard conversion result (her name, the Essence paid and your balance) with the converted Waifumon's artwork.",
+    emptyFlavorDescription: 'No flavor text: players see only the standard conversion result.',
   },
 };
 

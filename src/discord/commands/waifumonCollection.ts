@@ -37,8 +37,11 @@ import {
   MAX_ESSENCE_APPLICATIONS,
   type OwnedEntry,
   type PaginatedGroups,
+  type ReleaseResult,
   type WaifuInvestResult,
 } from '../../modules/collection/collectionService';
+import { buildConversionScreen } from '../../modules/resultPresentation/screens';
+import { renderResultScreen, resolvePresentationFor } from '../resultScreenRenderer';
 import {
   maxAffordableApplications,
   parseEssenceApplications,
@@ -1796,6 +1799,60 @@ export function duplicatePromptComponents(
 }
 
 /**
+ * Paint the result of a conversion that has **already committed**.
+ *
+ * Both conversion surfaces (the post-capture duplicate prompt and Inspect)
+ * end here, so they cannot drift. Everything factual — her name, the Essence
+ * paid, the balance, the Buddy Bonus line — is generated from the result the
+ * service returned; the authored `collection.converted_to_essence`
+ * presentation only adds prose above it and may swap the image. Her canonical
+ * artwork is the built-in image, and it is resolved lazily so a failure
+ * degrades to a text-only screen rather than costing the player their result.
+ *
+ * `extraRows` is the caller's navigation, which authored content never sees.
+ */
+async function paintConversionResult(
+  ctx: AppContext,
+  interaction: ButtonInteraction,
+  result: ReleaseResult,
+  name: string,
+  extraRows: ActionRowBuilder<ButtonBuilder>[] = [],
+): Promise<void> {
+  const presentation = await resolvePresentationFor(ctx, 'collection.converted_to_essence');
+  const screen = buildConversionScreen(
+    {
+      displayName: name,
+      essenceGranted: result.essenceGranted,
+      balanceAfter: result.balanceAfter,
+      // Named only when `essence_gain` actually raised the payout — the
+      // service sets `essenceBonus` at the moment it does.
+      buddyLine: buddyBonusValueLine(result.essenceBonus),
+      hasSpeciesArtwork: true,
+    },
+    presentation,
+  );
+  const { embed, files } = renderResultScreen(ctx, screen, presentation, () => {
+    try {
+      // The copy is soft-released, so her species row is still in hand: this
+      // is her default look, the same one every other artwork surface shows.
+      const appearance = ctx.services.appearance.currentAppearance(result.species, null);
+      return resolveAppearanceAsset(ctx, appearance.assetId);
+    } catch (err) {
+      ctx.logger.warn(
+        { err, speciesSlug: result.species.slug },
+        'converted species artwork could not be resolved — rendering text-only',
+      );
+      return null;
+    }
+  });
+  await respondEphemeral(interaction, {
+    embeds: [embed],
+    components: withBackRow(extraRows),
+    files,
+  });
+}
+
+/**
  * The `✨ Extra Serving: +30% (Base: 100)` line under a conversion quote.
  *
  * Null unless the equipped Buddy actually raises the payout — the domain
@@ -1841,22 +1898,9 @@ export async function handleDuplicateConvert(
       prov.playerId,
       waifuId,
     );
-    const embed = new EmbedBuilder()
-      .setTitle(`✨ Converted ${result.species.name} to Essence`)
-      .setColor(0x7ce68a)
-      .setDescription(
-        `+**${result.essenceGranted}** Essence (balance: ${result.balanceAfter}).` +
-          // Named only when `essence_gain` actually raised the payout — the
-          // service sets `essenceBonus` at the moment it does.
-          (buddyBonusValueLine(result.essenceBonus)
-            ? `\n${buddyBonusValueLine(result.essenceBonus)}`
-            : ''),
-      );
-    await respondEphemeral(interaction, {
-      embeds: [embed],
-      components: withBackRow(),
-      files: [],
-    });
+    // Committed. Only now is the presentation chosen — this screen is the
+    // post-capture prompt, which has no nickname to show.
+    await paintConversionResult(ctx, interaction, result, result.species.name);
   } catch (err) {
     if (
       err instanceof WaifuNotOwnedError ||
@@ -1972,31 +2016,22 @@ async function performConvertFromInspect(
       waifuId,
       { force },
     );
-    const embed = new EmbedBuilder()
-      .setTitle(
-        `✨ Converted ${displayName({ waifu: result.waifu, species: result.species })} to Essence`,
-      )
-      .setColor(0x7ce68a)
-      .setDescription(
-        `+**${result.essenceGranted}** Essence (balance: ${result.balanceAfter}).` +
-          // Named only when `essence_gain` actually raised the payout — the
-          // service sets `essenceBonus` at the moment it does.
-          (buddyBonusValueLine(result.essenceBonus)
-            ? `\n${buddyBonusValueLine(result.essenceBonus)}`
-            : ''),
-      );
-    await respondEphemeral(interaction, {
-      embeds: [embed],
-      components: withBackRow([
+    // Committed. Inspect knows her nickname, so this surface keeps naming her
+    // the way the rest of the collection does.
+    await paintConversionResult(
+      ctx,
+      interaction,
+      result,
+      displayName({ waifu: result.waifu, species: result.species }),
+      [
         new ActionRowBuilder<ButtonBuilder>().addComponents(
           new ButtonBuilder()
             .setCustomId(buildCustomId('menu', 'collection'))
             .setLabel('Back to Collection')
             .setStyle(ButtonStyle.Secondary),
         ),
-      ]),
-      files: [],
-    });
+      ],
+    );
   } catch (err) {
     if (err instanceof NotADuplicateError) {
       await respondEphemeral(interaction, {

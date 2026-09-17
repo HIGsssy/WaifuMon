@@ -239,6 +239,13 @@
       "when": 1818626400000,
       "tag": "0033_result_presentation_variants",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1818712800000,
+      "tag": "0034_result_presentation_keys_v2",
+      "breakpoints": true
     }
   ]
 }
