@@ -7750,7 +7750,7 @@
       "subtitle": "Everyone Signs the Book",
       "ability": {
         "name": "The Guest Book",
-        "text": "Every legend in the valley has slept under her roof and signed her ledger — the valkyries, the machines, the things that came down out of the rift. She remembers what each of them drank, who they arrived with and what they still owe, and she has never once sold a page of it."
+        "text": "Every legend in the valley has slept under her roof and signed her ledger. She remembers what they drank and what they still owe, and has never sold a page."
       },
       "flavorQuote": "Everyone signs the book. Everyone comes back.",
       "artist": "Whistler"
@@ -7838,7 +7838,7 @@
       "subtitle": "On Time, Every Year",
       "ability": {
         "name": "Festival's End",
-        "text": "She comes up out of the thunderhead over the festival lane as a shape before she is a body, and by the time she has finished making herself a woman of storm the lanterns are out and the stalls are down. She keeps the same appointment every summer, to the hour, whether or not the valley is ready for her."
+        "text": "She comes up out of the thunderhead and by the time she has made herself a woman of storm the stalls are down. Same appointment every summer, ready or not."
       },
       "flavorQuote": "Pack up. I am on time.",
       "artist": "Whistler"
@@ -7926,7 +7926,7 @@
       "subtitle": "Never Had To Swim Out",
       "ability": {
         "name": "Rope Line",
-        "text": "She does not patrol the rope line so much as stare it into place - whistle in her mouth, hands on her hips, one eyebrow raised. In eleven summers nobody has needed rescuing, which she takes as proof the whistle works and never as luck."
+        "text": "She keeps the rope line in order from the tower: whistle in her mouth, hands on her hips, one eyebrow raised. Eleven summers, nobody has needed rescuing."
       },
       "flavorQuote": "Back by sundown. You'll hear the whistle.",
       "artist": "Whistler"
@@ -8014,7 +8014,7 @@
       "subtitle": "The Water Runs Both Ways",
       "ability": {
         "name": "House Rules",
-        "text": "She holds the door, the bucket and the timetable, and expects to be obeyed for it - until she hands the cloth over and expects to be handled instead. She has never needed the word please in either direction."
+        "text": "She holds the door, the bucket and the timetable, and expects to be obeyed for it, until she hands the cloth over and expects to be handled instead."
       },
       "flavorQuote": "Pick up the bucket. I'll tell you when to stop.",
       "artist": "Whistler"
@@ -8106,7 +8106,7 @@
       "subtitle": "Nothing Moves Until She's Told",
       "ability": {
         "name": "Standing Order",
-        "text": "She will hold any position in the cold store for as long as she is left to hold it, and she has never once taken the initiative. Ask her for something and she does exactly that much of it and no more, then stands and waits with her hands at her sides for the next instruction."
+        "text": "She holds any position in the cold store for as long as she is left to hold it, and has never once taken the initiative. Ask for a thing, she does that much."
       },
       "flavorQuote": "Say it, and I'll do it. Only that.",
       "artist": "Whistler"
@@ -8194,7 +8194,7 @@
       "subtitle": "Nobody Left On The Far Shore",
       "ability": {
         "name": "The Last Crossing",
-        "text": "She runs the ferry until the last lamp is lit and will not tie up for the night with anyone left waiting on the far side of the water. Cross with her once and the pace of the crossing is hers to set - she poles, you sit, and the river does the rest of the work."
+        "text": "She runs the ferry until the last lamp is lit and will not tie up with anyone still on the far shore. Cross once and the pace is hers: she poles, you sit."
       },
       "flavorQuote": "Sit down. I pole, you ride.",
       "artist": "Whistler"
@@ -8282,7 +8282,7 @@
       "subtitle": "The Last Room In The House",
       "ability": {
         "name": "Last Lamp",
-        "text": "She walks the corridor at closing with one lamp and puts every room to bed in turn, and she will not turn the last lamp down while a single door is still open. Nothing that reaches her door is refused a bed, and nothing in her house is done in a hurry."
+        "text": "She walks the corridor at closing with one lamp and puts every room to bed in turn, and will not turn it down while a single door is still open."
       },
       "flavorQuote": "The door's open. Come in and I'll shut it.",
       "artist": "Whistler"
@@ -8370,7 +8370,7 @@
       "subtitle": "Her Road, Her Rules",
       "ability": {
         "name": "Last Call",
-        "text": "She has not been up to the hall in years and has no intention of being asked. Whatever the valley sends down the low road gets looked over once, priced, and either drunk with or sent back the way it came."
+        "text": "Not up to the hall in years, and no intention of being asked. Whatever comes down the low road is looked over once, priced, then drunk with or sent back."
       },
       "flavorQuote": "It's my road. Sit down or keep walking.",
       "artist": "Whistler"
