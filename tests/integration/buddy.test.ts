@@ -194,7 +194,7 @@ describe('buddy hunt reward', () => {
     const { playerId } = await provisionPlayer(app, 'g-buddy-hunt', 'u-1');
     await resetPlayer(playerId);
     // First hunt without a buddy: baseline.
-    const noBuddyApp = await bootstrapApp(t, { huntRng: scriptedRng([0.99, 0.0]) });
+    const noBuddyApp = await bootstrapApp(t, { huntRng: scriptedRng([0.99]) });
     const r0 = await noBuddyApp.hunt.hunt(playerId, 'c-1');
     expect(r0.kind).toBe('flavor');
     expect(r0.buddyAward).toBeNull();
@@ -204,7 +204,7 @@ describe('buddy hunt reward', () => {
     await app.collection.setBuddy(playerId, mine.id);
     await t.db.update(players).set({ lastHuntAt: null }).where(eq(players.id, playerId));
 
-    const buddyApp = await bootstrapApp(t, { huntRng: scriptedRng([0.99, 0.0]) });
+    const buddyApp = await bootstrapApp(t, { huntRng: scriptedRng([0.99]) });
     const r1 = await buddyApp.hunt.hunt(playerId, 'c-1');
     expect(r1.buddyAward).not.toBeNull();
     expect(r1.buddyAward?.xpGranted).toBe(app.content.tables.waifuProgression.buddy.xpPerHunt);

@@ -124,9 +124,14 @@ export interface HuntEssenceResult extends WithXp {
   energyRemaining: number;
 }
 
+/**
+ * Nothing was found. Carries no player-facing line: which words (and art)
+ * describe "nothing" is a presentation choice made after this transaction,
+ * with presentation randomness — see `modules/resultPresentation`. Choosing it
+ * here used to draw from the gameplay RNG and shift every later roll.
+ */
 export interface HuntFlavorResult extends WithXp {
   kind: 'flavor';
-  text: string;
   energyRemaining: number;
 }
 
@@ -680,7 +685,6 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
             logger.error('no enabled species available; degrading encounter to flavor');
             return {
               kind: 'flavor',
-              text: hunt.flavor[rng.intInclusive(0, hunt.flavor.length - 1)]!,
               energyRemaining,
               levelUps,
               buddyAward,
@@ -755,7 +759,6 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
             logger.warn({ slug: sub.slug }, 'hunt reward item missing or disabled');
             return {
               kind: 'flavor',
-              text: hunt.flavor[rng.intInclusive(0, hunt.flavor.length - 1)]!,
               energyRemaining,
               levelUps,
               buddyAward,
@@ -821,11 +824,10 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
           } satisfies HuntEssenceResult;
         }
 
-        // kind === 'flavor'
-        const text = hunt.flavor[rng.intInclusive(0, hunt.flavor.length - 1)]!;
+        // kind === 'flavor'. No line is chosen here: that is presentation, and
+        // must not consume the gameplay RNG.
         return {
           kind: 'flavor',
-          text,
           energyRemaining,
           levelUps,
           buddyAward,

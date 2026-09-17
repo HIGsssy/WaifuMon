@@ -524,8 +524,8 @@ describe('Microdose — capture-chance effect and charge consumption', () => {
     await setEnergy(playerId, 10);
     await t.db.update(players).set({ lastHuntAt: null }).where(eq(players.id, playerId));
 
-    // 0.99 lands in the last bucket of the result table (flavor); the second
-    // draw picks the flavor line. No encounter, so no capture attempt.
+    // 0.99 lands in the last bucket of the result table (flavor). No
+    // encounter, so no capture attempt.
     const scriptedHunt = createHuntService({
       db: t.db,
       currency: app.currency,
@@ -536,7 +536,7 @@ describe('Microdose — capture-chance effect and charge consumption', () => {
       quests: app.quests,
       tables: app.content.tables,
       logger: t.logger,
-      rng: scriptedRng([0.99, 0.0]),
+      rng: scriptedRng([0.99]),
     });
     const hunt = await scriptedHunt.hunt(playerId, 'chan-consumables');
     expect(hunt.kind).toBe('flavor');

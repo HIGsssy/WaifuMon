@@ -232,6 +232,13 @@
       "when": 1818540000000,
       "tag": "0032_world_encounter_outcome_text",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1818626400000,
+      "tag": "0033_result_presentation_variants",
+      "breakpoints": true
     }
   ]
 }

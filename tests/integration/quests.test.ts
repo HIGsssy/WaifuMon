@@ -626,7 +626,7 @@ describe('gameplay actions update quest progress', () => {
         quests: app.quests,
         tables: app.content.tables,
         logger: t.logger,
-        rng: scriptedRng([0.99, 0.0]),
+        rng: scriptedRng([0.99]),
       });
       await scripted.hunt(playerId, 'c-1', at);
     }

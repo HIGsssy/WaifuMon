@@ -107,9 +107,10 @@ describe('HuntService — energy, cooldown, encounter lifecycle', () => {
       quests: app.quests,
       tables: app.content.tables,
       logger: t.logger,
-      // Two flavor rolls (each consumes 2 next() calls). The cooldown-blocked
-      // second hunt is rejected before any RNG is touched.
-      rng: scriptedRng([0.99, 0.0, 0.99, 0.0]),
+      // Two flavor rolls, one draw each: a "nothing found" hunt consumes only
+      // the result-table roll (its line is chosen by presentation, not here).
+      // The cooldown-blocked second hunt is rejected before any RNG is touched.
+      rng: scriptedRng([0.99, 0.99]),
     });
     // First hunt lands on 'flavor' (0.99 picks the last weighted bucket).
     const first = await scripted.hunt(playerId, CHANNEL_ID, now);
@@ -362,7 +363,7 @@ describe('HuntService — non-encounter rewards', () => {
   });
 
   it('yields a flavor result at the tail of the table', async () => {
-    // flavor bucket 98-100 → 0.99, then flavor line index (intInclusive(0, N-1)).
+    // flavor bucket 98-100 → 0.99. No second draw: the line is presentation.
     const scripted = createHuntService({
       db: t.db,
       currency: app.currency,
@@ -373,10 +374,12 @@ describe('HuntService — non-encounter rewards', () => {
       quests: app.quests,
       tables: app.content.tables,
       logger: t.logger,
-      rng: rewardsRng(0.99, 0.0, 0.0),
+      rng: scriptedRng([0.99]),
     });
     const result = await scripted.hunt(playerId, CHANNEL_ID);
     expect(result.kind).toBe('flavor');
+    // The result carries no player-facing line any more.
+    expect(result).not.toHaveProperty('text');
   });
 
   it('skips disabled species when rolling an encounter', async () => {

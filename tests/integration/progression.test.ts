@@ -136,7 +136,7 @@ describe('hunt grants +5 XP and audit row', () => {
     const { playerId } = await provisionPlayer(app, 'g-progression-hunt', 'u-1');
     await resetPlayerState(playerId);
     const scriptedApp = await bootstrapApp(t, {
-      huntRng: scriptedRng([0.99, 0.0]), // flavor bucket → flavor line 0
+      huntRng: scriptedRng([0.99]), // flavor bucket
     });
     // provisionPlayer stored the row in shared app; scripted app shares the DB.
     const result = await scriptedApp.hunt.hunt(playerId, 'c-1');

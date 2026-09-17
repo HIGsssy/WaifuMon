@@ -14,11 +14,10 @@
  * and `hunt:return` — because those buttons *leave* the encounter. Their
  * handlers live with the screens they return to, not here.
  *
- * Attachment filename is derived from the encounter slug (kebab-safe) so the
- * embed's image ref is always predictable.
+ * Attachment filename is derived from the encounter slug (kebab-safe) plus the
+ * source file's real extension, so the embed's image ref is always
+ * predictable and a `.webp` is never announced as a `.png`.
  */
-import fs from 'node:fs';
-import path from 'node:path';
 import {
   ActionRowBuilder,
   AttachmentBuilder,
@@ -27,7 +26,11 @@ import {
   EmbedBuilder,
 } from 'discord.js';
 import { buddyBonusShortLine } from '../modules/buddyBonus/buddyBonusEffects';
-import { resolveAssetPath } from '../modules/content/loader';
+import { artworkAttachmentFilename } from '../modules/assets/artworkPath';
+import {
+  resolveArtworkAttachment,
+  type ResolvedArtworkAttachment,
+} from './assets/resolveArtworkAttachment';
 import { formatChancePercent, formatModifierPercent, formatRoll } from './rollFormat';
 import { buildCustomId } from './types';
 import type { AppContext } from './types';
@@ -45,44 +48,46 @@ const BUTTONS_PER_ROW = 5;
 /** Total encounter choices we render. Extra choices are truncated. */
 const MAX_CHOICES = 10;
 
-/** Sanitise the slug into a safe attachment filename. */
-export function encounterArtworkFilename(slug: string): string {
-  return `${slug.replace(/[^a-z0-9_]/g, '_')}.png`;
+/**
+ * Safe attachment filename for an encounter's artwork: the slug as the stem,
+ * and the **source file's own extension** (a `.webp` is attached as `.webp`).
+ * Null when the source is not a supported image format.
+ */
+export function encounterArtworkFilename(slug: string, sourcePath: string): string | null {
+  return artworkAttachmentFilename(slug, sourcePath);
 }
 
 /**
- * Best-effort artwork resolution, mirroring {@link resolveBossArtwork}: the
- * relative path from the definition is confined to `ASSETS_DIR`, and a
- * missing file drops the attachment rather than failing the render.
+ * Best-effort artwork resolution through the shared authored-artwork
+ * resolver: the path is shape-checked, confined to `ASSETS_DIR`, and a missing
+ * file drops the attachment rather than failing the render.
  */
 function resolveEncounterArtwork(
   ctx: AppContext,
   slug: string,
   relative: string | null,
-): { file: AttachmentBuilder; url: string } | null {
-  if (!relative) return null;
-  try {
-    const absolute = resolveAssetPath(ctx.config.assetsDir, relative);
-    if (!fs.existsSync(absolute)) {
-      ctx.logger.warn(
-        { tag: 'world-encounter/artwork-missing', slug, artwork: relative },
-        'world encounter artwork missing at post time — rendering text-only',
-      );
-      return null;
-    }
-    const filename = encounterArtworkFilename(slug);
-    return {
-      file: new AttachmentBuilder(absolute, { name: filename }),
-      url: `attachment://${filename}`,
-    };
-  } catch (err) {
-    ctx.logger.error(
-      { tag: 'world-encounter/artwork-unsafe', slug, artwork: relative, err },
-      'world encounter artwork path rejected — rendering text-only',
-    );
-    return null;
-  }
+): ResolvedArtworkAttachment | null {
+  return resolveArtworkAttachment(ctx, {
+    relativePath: relative,
+    stem: slug,
+    logTag: 'world-encounter',
+    logFields: { slug },
+  });
 }
+
+/** Options for {@link buildEncounterPresent}. */
+export interface EncounterPresentOptions {
+  /**
+   * A one-line summary of a reward the triggering hunt already granted
+   * ("+12 WaifuBux"), shown under **Along the way** so the encounter screen
+   * does not hide it. Pre-formatted by the caller from the committed result;
+   * this presenter neither reads nor recomputes rewards.
+   */
+  alongTheWay?: string | null | undefined;
+}
+
+/** Field name for the already-granted hunt reward on the encounter screen. */
+export const ALONG_THE_WAY_FIELD = 'Along the way';
 
 const RARITY_COLOR: Record<string, number> = {
   common: 0x9ca3af,
@@ -104,6 +109,7 @@ const TYPE_LABEL: Record<string, string> = {
 export function buildEncounterPresent(
   ctx: AppContext,
   activation: EncounterActivation,
+  options: EncounterPresentOptions = {},
 ): SessionPayload {
   const { encounter, buddy, buddyBonusPercent, choiceViews } = activation;
   const embed = new EmbedBuilder()
@@ -117,6 +123,12 @@ export function buildEncounterPresent(
   const bonusLine =
     buddyBonusPercent > 0 ? `\nBuddy Bonus: +${buddyBonusPercent.toFixed(1)}%` : '';
   embed.addFields({ name: 'Buddy', value: buddyLine + bonusLine, inline: false });
+
+  // Additive: the encounter screen is unchanged except for this one field.
+  // The encounter's own artwork stays the only image.
+  if (options.alongTheWay) {
+    embed.addFields({ name: ALONG_THE_WAY_FIELD, value: options.alongTheWay, inline: false });
+  }
 
   const artwork = resolveEncounterArtwork(ctx, encounter.slug, encounter.artworkPath);
   const files: AttachmentBuilder[] = [];
@@ -475,7 +487,3 @@ function formatFollowUp(f: { kind: string; payload: Record<string, unknown> }): 
       return f.kind;
   }
 }
-
-// Silence unused-import warnings if resolveAssetPath is unused when TS
-// tree-shakes the resolver — the import above is load-bearing at runtime.
-void path;

@@ -194,6 +194,11 @@ export async function maybeTriggerHuntEncounter(
   opts: {
     playerLevel: number;
     regionId: string;
+    /**
+     * Summary of the reward this hunt already committed, shown under
+     * "Along the way" when the encounter takes over the screen. Display only.
+     */
+    alongTheWay?: string | null;
   },
 ): Promise<boolean> {
   const service = ctx.services.worldEncounter;
@@ -207,7 +212,7 @@ export async function maybeTriggerHuntEncounter(
       regionId: opts.regionId,
     });
     if (!activation) return false;
-    const view = buildEncounterPresent(ctx, activation);
+    const view = buildEncounterPresent(ctx, activation, { alongTheWay: opts.alongTheWay });
     await respondEphemeral(interaction, view);
     return true;
   } catch (err) {

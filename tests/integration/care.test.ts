@@ -403,7 +403,7 @@ describe('hunt interacts with Care Mode', () => {
   it('applies pending ticks, exits Care Mode, then spends 1 energy', async () => {
     const w = await grantWaifu(playerId, 'neko_barista');
     await app.care.start(playerId, w.id, T0);
-    // 60m later a full-flavor hunt (0.99 → flavor bucket, then random flavor).
+    // 60m later a "nothing found" hunt (0.99 → flavor bucket).
     const scripted = createHuntService({
       db: t.db,
       currency: app.currency,
@@ -414,7 +414,7 @@ describe('hunt interacts with Care Mode', () => {
       quests: app.quests,
       tables: app.content.tables,
       logger: t.logger,
-      rng: scriptedRng([0.99, 0.0]),
+      rng: scriptedRng([0.99]),
     });
     const result = await scripted.hunt(playerId, 'c-1', later(60));
     // Care ticks were applied (energy went 0 → 2), and 1 spent by hunt → 1 left.

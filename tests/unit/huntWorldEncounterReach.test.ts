@@ -62,7 +62,7 @@ function huntResult(kind: 'encounter' | 'flavor') {
     // `huntDescriptors` reads the session block off every result.
     session: { closedPreviousReason: null, isNew: false, id: 1 },
   };
-  if (kind === 'flavor') return { ...base, kind: 'flavor' as const, text: 'wind' };
+  if (kind === 'flavor') return { ...base, kind: 'flavor' as const };
   return {
     ...base,
     kind: 'encounter' as const,
@@ -90,6 +90,8 @@ function makeCtx(kind: 'encounter' | 'flavor'): AppContext {
     db: { select },
     content: {
       tables: {
+        // The "nothing found" screen reads its built-in lines from here.
+        hunt: { flavor: ['wind'] },
         capture: { announceMinRarity: 'SR', hereMentionMinRarity: 'UR' },
         inventory: { captureCapacity: 10 },
       },

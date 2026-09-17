@@ -6,6 +6,12 @@
 import { sql } from 'drizzle-orm';
 import { REGION_SQL_LIST } from '../modules/locations/regions';
 import {
+  ARTWORK_MODE_SQL_LIST,
+  ENCOUNTERED_ARTWORK_KEY_SQL_LIST,
+  RESULT_PRESENTATION_FLAVOR_MAX_LENGTH,
+  RESULT_PRESENTATION_KEY_SQL_LIST,
+} from '../modules/resultPresentation/keys';
+import {
   bigint,
   boolean,
   check,
@@ -1911,6 +1917,63 @@ export const playerAchievements = pgTable(
   ],
 );
 
+/**
+ * Authored presentation for lightweight gameplay outcomes (a hunt find, a
+ * released Waifumon): flavor text and artwork, with weighted variants.
+ *
+ * **Presentation only.** Gameplay decides what happened — amounts, items,
+ * species, state — before anything here is read, and nothing here is read
+ * back by gameplay. There are deliberately no reward, rarity or chance
+ * columns.
+ *
+ * `presentation_key` is a closed, code-defined list
+ * (`modules/resultPresentation/keys.ts`); the CHECKs below mirror it and the
+ * per-key artwork rule, so a row the runtime could not honour cannot be
+ * stored. Path *shape* is validated in the application; path *containment* is
+ * enforced by `resolveAssetPath` when the artwork is used.
+ */
+export const resultPresentationVariants = pgTable(
+  'result_presentation_variants',
+  {
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    presentationKey: text('presentation_key').notNull(),
+    enabled: boolean('enabled').notNull().default(true),
+    /** Relative selection weight among this key's enabled variants. */
+    weight: integer('weight').notNull().default(1),
+    /** Authored prose shown alongside the code-generated result. Null = none. */
+    flavorText: text('flavor_text'),
+    /** Path relative to `ASSETS_DIR`; used when `artwork_mode = 'custom'`. */
+    artworkPath: text('artwork_path'),
+    artworkMode: text('artwork_mode').notNull().default('none'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check(
+      'result_presentation_variants_key_check',
+      sql`${t.presentationKey} in (${sql.raw(RESULT_PRESENTATION_KEY_SQL_LIST)})`,
+    ),
+    check('result_presentation_variants_weight_check', sql`${t.weight} > 0`),
+    check(
+      'result_presentation_variants_artwork_mode_check',
+      sql`${t.artworkMode} in (${sql.raw(ARTWORK_MODE_SQL_LIST)})`,
+    ),
+    check(
+      'result_presentation_variants_encountered_key_check',
+      sql`${t.artworkMode} <> 'encountered' or ${t.presentationKey} in (${sql.raw(ENCOUNTERED_ARTWORK_KEY_SQL_LIST)})`,
+    ),
+    check(
+      'result_presentation_variants_custom_artwork_check',
+      sql`${t.artworkMode} <> 'custom' or ${t.artworkPath} is not null`,
+    ),
+    check(
+      'result_presentation_variants_flavor_text_check',
+      sql`${t.flavorText} is null or (btrim(${t.flavorText}) <> '' and char_length(${t.flavorText}) <= ${sql.raw(String(RESULT_PRESENTATION_FLAVOR_MAX_LENGTH))})`,
+    ),
+    index('result_presentation_variants_key_idx').on(t.presentationKey, t.enabled),
+  ],
+);
+
 export type GuildRow = typeof guilds.$inferSelect;
 export type PlayerRow = typeof players.$inferSelect;
 export type PlayerCurrenciesRow = typeof playerCurrencies.$inferSelect;
@@ -1946,3 +2009,4 @@ export type WorldEncounterHistoryRow = typeof worldEncounterHistory.$inferSelect
 export type WorldEncounterVendorRow = typeof worldEncounterVendors.$inferSelect;
 export type WorldEncounterVendorInstanceRow = typeof worldEncounterVendorInstances.$inferSelect;
 export type PlayerAchievementRow = typeof playerAchievements.$inferSelect;
+export type ResultPresentationVariantRow = typeof resultPresentationVariants.$inferSelect;

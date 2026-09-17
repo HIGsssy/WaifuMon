@@ -37,6 +37,7 @@ import { createCaptureService } from './modules/capture/captureService';
 import { createCareService } from './modules/care/careService';
 import { createWorldEncounterService } from './modules/worldEncounters/worldEncounterService';
 import { createWorldEncounterSettingsService } from './modules/worldEncounters/settingsService';
+import { createResultPresentationService } from './modules/resultPresentation/resultPresentationService';
 import { createWorldEncounterAdminService } from './modules/worldEncounters/adminService';
 import { createEncounterPromotionService } from './modules/worldEncounters/encounterImportService';
 import { seedWorldEncounters } from './modules/worldEncounters/seed';
@@ -159,6 +160,12 @@ async function main(): Promise<void> {
    * Admin, and then it changes things immediately.
    */
   const worldEncounterSettings = createWorldEncounterSettingsService({ db, logger });
+  /**
+   * Authored presentation for hunt finds and Let Her Go. Presentation only —
+   * it owns its own randomness and is read after gameplay commits, so an
+   * empty table (or a broken one) simply means the built-in screens.
+   */
+  const resultPresentation = createResultPresentationService({ db, logger });
   const progression = createProgressionService({
     config: content.tables.progression,
     baseMaxEnergy: content.tables.energy.baseMax,
@@ -433,6 +440,7 @@ async function main(): Promise<void> {
       worldEncounterSettings,
       wildEncounters,
       speciesSelector,
+      resultPresentation,
     },
   };
 

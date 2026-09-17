@@ -41,6 +41,7 @@ import type { WorldEncounterVendorService } from '../modules/worldEncounters/ven
 import type { WildEncounterSpawner } from '../modules/encounters/wildEncounterSpawner';
 import type { SpeciesSelectorService } from '../modules/encounters/speciesSelection';
 import type { WorldEncounterSettingsService } from '../modules/worldEncounters/settingsService';
+import type { ResultPresentationService } from '../modules/resultPresentation/resultPresentationService';
 import type { AdminRoleGrantService } from '../modules/portalAuth/adminRoleGrantService';
 import type { EncounterPromotionService } from '../modules/worldEncounters/encounterImportService';
 import type { GuildRoleService } from '../modules/portalAuth/guildRoleService';
@@ -146,6 +147,13 @@ export interface AppServices {
    * and Portal Admin writes it, so a rate change lands without a redeploy.
    */
   worldEncounterSettings?: WorldEncounterSettingsService | undefined;
+  /**
+   * Authored presentation (flavor text, artwork) for lightweight outcomes —
+   * hunt finds and Let Her Go. Presentation only: consulted after gameplay
+   * commits, never by it. Optional: absent, every outcome renders its
+   * built-in presentation.
+   */
+  resultPresentation?: ResultPresentationService | undefined;
   /**
    * Portal Admin access delegated to Discord guild roles.
    *

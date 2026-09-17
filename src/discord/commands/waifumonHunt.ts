@@ -87,19 +87,46 @@ import { formatChancePercent, formatRoll } from '../rollFormat';
 import { formatCaptureBonus, renderCaptureBonusLine } from './waifumon';
 import { duplicatePromptComponents } from './waifumonCollection';
 import { maybeTriggerHuntEncounter } from './waifumonWorldEncounter';
+import {
+  alongTheWaySummary,
+  buildHuntResultView,
+  buildReleaseView,
+  huntAgainRow,
+  huntPresentationKey,
+  rarityColor,
+  RELEASE_FALLBACK_LINES,
+} from '../huntResultPresenter';
+import type { ResultPresentationKey } from '../../modules/resultPresentation/keys';
+import {
+  resolveResultPresentation,
+  type ResolvedResultPresentation,
+} from '../../modules/resultPresentation/resolver';
+import { defaultRng } from '../../shared/random';
 
-const RARITY_COLORS: Record<string, number> = {
-  N: 0xb8b8b8,
-  R: 0x6fb1ff,
-  SR: 0xa66fff,
-  SSR: 0xffc46f,
-  UR: 0xff6fa5,
-  LR: 0xff3d7f,
-  EX: 0xffffff,
-};
+/**
+ * Presentation randomness for contexts wired without a presentation service
+ * (tests, stripped-down graphs). Never the gameplay RNG.
+ */
+const fallbackPresentationRng = defaultRng();
 
-function rarityColor(rarity: string): number {
-  return RARITY_COLORS[rarity] ?? 0xff6fa5;
+/**
+ * Choose how an already-resolved outcome is shown — once, after gameplay has
+ * committed. Uses the authored variants when the service is wired, and the
+ * built-in presentation otherwise.
+ */
+async function resolvePresentation(
+  ctx: AppContext,
+  key: ResultPresentationKey,
+  fallbackFlavorLines: readonly string[] = [],
+): Promise<ResolvedResultPresentation> {
+  const service = ctx.services.resultPresentation;
+  if (service) return service.resolve(key, { fallbackFlavorLines });
+  return resolveResultPresentation({
+    key,
+    variants: [],
+    fallbackFlavorLines,
+    rng: fallbackPresentationRng,
+  });
 }
 
 
@@ -520,57 +547,32 @@ export async function handleHunt(
     // the player's balance regardless — the encounter is *what* the player
     // sees, not what they earn. Never fatal: any failure logs and falls
     // through to the standard find embed.
+    //
+    // When it fires, the already-granted reward is summarised on the
+    // encounter screen under "Along the way" so the player still sees it. The
+    // summary is read off the committed result; the encounter's artwork stays
+    // the only image.
     const currentRegionId = await ctx.services.travel.getCurrentRegion(prov.playerId);
     const playerLevel = await loadPlayerLevel(ctx, prov.playerId);
     const worldEncounterFired = await maybeTriggerHuntEncounter(ctx, interaction, prov, {
       playerLevel,
       regionId: currentRegionId,
+      alongTheWay: alongTheWaySummary(result),
     });
     if (worldEncounterFired) {
       await emitEvents(ctx, interaction, prov, events);
       return;
     }
-    const embed = new EmbedBuilder().setColor(0xff6fa5);
-    if (result.kind === 'item_find' || result.kind === 'rare_item_find') {
-      const emoji = result.item.emoji ?? '•';
-      embed
-        .setTitle(result.kind === 'rare_item_find' ? '🌟 Rare Find!' : '🎒 Item Found')
-        .setDescription(`${emoji} **${result.item.name}** ×${result.quantity}`);
-    } else if (result.kind === 'waifubux_find') {
-      embed
-        .setTitle('💰 WaifuBux Found')
-        .setDescription(`+**${result.amount}** WaifuBux (balance: ${result.balanceAfter})`);
-    } else if (result.kind === 'essence_find') {
-      embed
-        .setTitle('✨ Essence Found')
-        .setDescription(`+**${result.amount}** Essence (balance: ${result.balanceAfter})`);
-    } else if (result.kind === 'flavor') {
-      embed.setTitle('🍃 Nothing but wind…').setDescription(result.text);
-    }
-    if (result.levelUps.length) {
-      const lu = result.levelUps
-        .map((l) => `⬆️ **Level ${l.toLevel}!**${l.rewardLabels.length ? ` — ${l.rewardLabels.join(', ')}` : ''}`)
-        .join('\n');
-      embed.setDescription(`${embed.data.description ?? ''}\n\n${lu}`.trim());
-    }
-    // "No Energy spent" is the only visible sign an `energy_save_chance` Buddy
-    // Bonus procced, so the footer says so rather than leaving the player to
-    // notice a number that did not move.
-    // Applied Buddy Bonuses for this hunt: the Energy save that fired, the
-    // item-find bonus that improved the odds of the find just reported, the
-    // Essence uplift. Never a bonus that did not affect this result.
-    const bonusLines = [
-      ...buddyBonusFeedbackLines(result.buddyBonuses),
-      ...buddyAwardFeedbackLines(result.buddyAward),
-    ];
-    if (bonusLines.length > 0) {
-      embed.setDescription(`${embed.data.description ?? ''}\n\n${bonusLines.join('\n')}`.trim());
-    }
-    embed.setFooter({ text: `Energy left: ${result.energyRemaining}` });
-    await respondEphemeral(interaction, {
-      embeds: [embed],
-      components: withBackRow([huntAgainRow()]),
-    });
+    // The find screen. The result is final; presentation is chosen once, now,
+    // with presentation randomness. `tables.hunt.flavor` is read live as the
+    // built-in "nothing found" pool.
+    const key = huntPresentationKey(result);
+    const presentation = await resolvePresentation(
+      ctx,
+      key,
+      key === 'hunt.nothing_found' ? ctx.content.tables.hunt.flavor : [],
+    );
+    await respondEphemeral(interaction, buildHuntResultView(ctx, result, presentation));
     await emitEvents(ctx, interaction, prov, events);
   } catch (err) {
     if (err instanceof ActiveEncounterError) {
@@ -602,17 +604,6 @@ export async function handleHunt(
     }
     throw err;
   }
-}
-
-/** Small "Hunt again" pill for the non-encounter result screen. */
-function huntAgainRow(): ActionRowBuilder<ButtonBuilder> {
-  return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder()
-      .setCustomId(buildCustomId('menu', 'hunt'))
-      .setLabel('Hunt again')
-      .setEmoji('🏹')
-      .setStyle(ButtonStyle.Primary),
-  );
 }
 
 /** Neutral answer for a Back to Hunting id we will not act on. */
@@ -1248,7 +1239,15 @@ async function activateEncounterConsumable(
   await respondEphemeral(interaction, view);
 }
 
-/** Let Her Go — pre or post-attempt. Session board is the sole surface. */
+/**
+ * Let Her Go — pre or post-attempt, for hunted and spawned encounters alike.
+ *
+ * `letHerGo` is the whole gameplay effect (the row becomes `released`); no
+ * capture attempt, item, charge or currency is touched. Everything after it
+ * only describes the release: the `encounter.released` presentation, which by
+ * default shows her canonical artwork. A failed species read degrades to a
+ * text-only screen — the release has already committed.
+ */
 export async function handleEncounterRelease(
   ctx: AppContext,
   interaction: ButtonInteraction,
@@ -1260,8 +1259,9 @@ export async function handleEncounterRelease(
     await respondEphemeral(interaction, 'That encounter is no longer active.');
     return;
   }
+  let released: EncounterRow;
   try {
-    await ctx.services.hunt.letHerGo(prov.playerId, encounterId);
+    released = await ctx.services.hunt.letHerGo(prov.playerId, encounterId);
   } catch (err) {
     if (err instanceof EncounterNotFoundError) {
       await respondEphemeral(interaction, err.userMessage);
@@ -1270,12 +1270,33 @@ export async function handleEncounterRelease(
     throw err;
   }
 
-  await respondEphemeral(interaction, {
-    content: 'You let her slip back into the neon~',
-    embeds: [],
-    components: withBackRow(),
-    files: [],
+  const species = await loadSpeciesById(ctx, released.speciesId).catch((err: unknown) => {
+    ctx.logger.warn(
+      { err, encounterId: released.id, speciesId: released.speciesId },
+      'released species could not be read — rendering release without her details',
+    );
+    return null;
   });
+  const presentation = await resolvePresentation(ctx, 'encounter.released', RELEASE_FALLBACK_LINES);
+  await respondEphemeral(
+    interaction,
+    buildReleaseView(ctx, {
+      species,
+      presentation,
+      encounteredArtwork: () => {
+        if (!species) return null;
+        try {
+          return attachSpeciesArtwork(ctx, species);
+        } catch (err) {
+          ctx.logger.warn(
+            { err, encounterId: released.id, speciesSlug: species.slug },
+            'released species artwork could not be resolved — rendering text-only',
+          );
+          return null;
+        }
+      },
+    }),
+  );
 }
 
 /**

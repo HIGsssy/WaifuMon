@@ -1330,8 +1330,11 @@ export const SeductivePowerConfigSchema = z
  * escape anyway, but a content author deserves the error at the field rather
  * than as a startup crash, and a path that never reaches the filesystem cannot
  * be a traversal.
+ *
+ * Exported so other authored artwork fields (Result Presentation variants)
+ * apply the same rules rather than a weaker copy.
  */
-const relativeAssetPath = z
+export const relativeAssetPath = z
   .string()
   .min(1)
   .refine((p) => !p.startsWith('/') && !p.startsWith('\\'), {
