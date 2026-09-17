@@ -16,15 +16,18 @@
  *
  * Every non-encounter hunt and every release asks for variants, so reads go
  * through a short TTL cache (the World Encounter settings pattern): one query
- * loads every enabled variant, and `createVariant` refreshes this process's
- * cache immediately. The TTL bounds staleness when another process writes.
+ * loads every enabled variant, and every write through this service refreshes
+ * this process's cache immediately — including a load that was already in
+ * flight when the write happened. The TTL bounds staleness when another
+ * process writes (for example a bot running separately from the API). There
+ * is deliberately no cross-process invalidation.
  *
  * ## Failure never costs the player a screen
  *
  * If the table cannot be read, the service logs and answers with no variants,
  * so the caller renders the built-in presentation.
  */
-import { eq } from 'drizzle-orm';
+import { asc, eq, sql } from 'drizzle-orm';
 import type { Db } from '../../db/client';
 import {
   resultPresentationVariants,
@@ -43,7 +46,17 @@ import {
   type ResolvedResultPresentation,
   type ResultPresentationVariant,
 } from './resolver';
-import { parseResultPresentationVariantInput } from './validation';
+import {
+  mergeResultPresentationVariantPatch,
+  parseResultPresentationVariantInput,
+  type ResultPresentationVariantPatch,
+} from './validation';
+
+/** A stored variant, as the admin surface sees it. */
+export interface ResultPresentationVariantRecord extends ResultPresentationVariant {
+  createdAt: Date;
+  updatedAt: Date;
+}
 
 export interface ResolvePresentationOptions {
   /** Built-in lines for this key (e.g. the legacy `tables.hunt.flavor`). */
@@ -62,11 +75,27 @@ export interface ResultPresentationService {
     key: ResultPresentationKey,
     options?: ResolvePresentationOptions,
   ): Promise<ResolvedResultPresentation>;
+  /** Every stored variant, enabled or not, ordered by key then creation. Uncached. */
+  listVariants(): Promise<ResultPresentationVariantRecord[]>;
+  /** One stored variant, or null. Uncached. */
+  getVariant(id: number): Promise<ResultPresentationVariantRecord | null>;
   /**
-   * Validate and store a variant. Minimal internal write path for tests and
-   * the future authoring API; throws `ResultPresentationValidationError`.
+   * Validate and store a new variant. Throws
+   * `ResultPresentationValidationError` for anything the runtime could not
+   * honour.
    */
-  createVariant(raw: unknown): Promise<ResultPresentationVariant>;
+  createVariant(raw: unknown): Promise<ResultPresentationVariantRecord>;
+  /**
+   * Apply a partial edit, validated as a whole with the create rules. Returns
+   * null when the variant does not exist — never creates one. The
+   * presentation key cannot be changed.
+   */
+  updateVariant(
+    id: number,
+    patch: ResultPresentationVariantPatch & Record<string, unknown>,
+  ): Promise<ResultPresentationVariantRecord | null>;
+  /** Physically delete a variant. False when there was nothing to delete. */
+  deleteVariant(id: number): Promise<boolean>;
   /** Force the next read to hit the database. */
   invalidate(): void;
 }
@@ -81,6 +110,19 @@ export interface ResultPresentationServiceDeps {
 }
 
 const DEFAULT_TTL_MS = 5_000;
+
+function rowToRecord(row: ResultPresentationVariantRow): ResultPresentationVariantRecord | null {
+  const variant = rowToVariant(row);
+  return variant ? { ...variant, createdAt: row.createdAt, updatedAt: row.updatedAt } : null;
+}
+
+function requireRecord(row: ResultPresentationVariantRow): ResultPresentationVariantRecord {
+  const record = rowToRecord(row);
+  if (!record) {
+    throw new Error(`result presentation variant ${row.id} has an unknown key or artwork mode`);
+  }
+  return record;
+}
 
 function rowToVariant(row: ResultPresentationVariantRow): ResultPresentationVariant | null {
   if (!isResultPresentationKey(row.presentationKey)) return null;
@@ -104,6 +146,14 @@ export function createResultPresentationService(
   let cache = new Map<ResultPresentationKey, ResultPresentationVariant[]>();
   let expiresAt = 0;
   let inFlight: Promise<Map<ResultPresentationKey, ResultPresentationVariant[]>> | null = null;
+  /** Bumped by every write, so a load that began before it cannot be cached. */
+  let generation = 0;
+
+  function afterWrite(): void {
+    generation++;
+    expiresAt = 0;
+    inFlight = null;
+  }
 
   async function load(): Promise<Map<ResultPresentationKey, ResultPresentationVariant[]>> {
     const rows = await deps.db
@@ -131,10 +181,15 @@ export function createResultPresentationService(
   async function current(): Promise<Map<ResultPresentationKey, ResultPresentationVariant[]>> {
     if (Date.now() < expiresAt) return cache;
     if (!inFlight) {
-      inFlight = load()
+      const startedAt = generation;
+      const request: Promise<Map<ResultPresentationKey, ResultPresentationVariant[]>> = load()
         .then((fresh) => {
-          cache = fresh;
-          expiresAt = Date.now() + ttl;
+          // A write landed while this was loading: serve it to this caller,
+          // but do not cache what may predate the write.
+          if (startedAt === generation) {
+            cache = fresh;
+            expiresAt = Date.now() + ttl;
+          }
           return fresh;
         })
         .catch((err: unknown) => {
@@ -144,12 +199,13 @@ export function createResultPresentationService(
             { tag: 'result-presentation/load-failed', err },
             'result presentation variants could not be loaded — using built-in presentation',
           );
-          expiresAt = Date.now() + ttl;
+          if (startedAt === generation) expiresAt = Date.now() + ttl;
           return cache;
         })
         .finally(() => {
-          inFlight = null;
+          if (inFlight === request) inFlight = null;
         });
+      inFlight = request;
     }
     return inFlight;
   }
@@ -174,20 +230,64 @@ export function createResultPresentationService(
       });
     },
 
+    async listVariants() {
+      const rows = await deps.db
+        .select()
+        .from(resultPresentationVariants)
+        .orderBy(asc(resultPresentationVariants.presentationKey), asc(resultPresentationVariants.id));
+      return rows.map(rowToRecord).filter((r): r is ResultPresentationVariantRecord => r !== null);
+    },
+
+    async getVariant(id) {
+      const [row] = await deps.db
+        .select()
+        .from(resultPresentationVariants)
+        .where(eq(resultPresentationVariants.id, id));
+      return row ? rowToRecord(row) : null;
+    },
+
     async createVariant(raw) {
       const input = parseResultPresentationVariantInput(raw);
+      const [row] = await deps.db.insert(resultPresentationVariants).values(input).returning();
+      // Writes refresh this process at once; other processes within one TTL.
+      afterWrite();
+      if (!row) throw new Error('result presentation variant could not be stored');
+      return requireRecord(row);
+    },
+
+    async updateVariant(id, patch) {
+      const current = await this.getVariant(id);
+      if (!current) return null;
+      const next = mergeResultPresentationVariantPatch(current, patch);
+      // An UPDATE, never an upsert: a row deleted since it was read updates
+      // nothing and the caller reports it as gone.
       const [row] = await deps.db
-        .insert(resultPresentationVariants)
-        .values(input)
+        .update(resultPresentationVariants)
+        .set({
+          enabled: next.enabled,
+          weight: next.weight,
+          flavorText: next.flavorText,
+          artworkMode: next.artworkMode,
+          artworkPath: next.artworkPath,
+          updatedAt: sql`now()`,
+        })
+        .where(eq(resultPresentationVariants.id, id))
         .returning();
-      expiresAt = 0;
-      const variant = row ? rowToVariant(row) : null;
-      if (!variant) throw new Error('result presentation variant could not be stored');
-      return variant;
+      afterWrite();
+      return row ? requireRecord(row) : null;
+    },
+
+    async deleteVariant(id) {
+      const rows = await deps.db
+        .delete(resultPresentationVariants)
+        .where(eq(resultPresentationVariants.id, id))
+        .returning({ id: resultPresentationVariants.id });
+      afterWrite();
+      return rows.length > 0;
     },
 
     invalidate() {
-      expiresAt = 0;
+      afterWrite();
     },
   };
 }

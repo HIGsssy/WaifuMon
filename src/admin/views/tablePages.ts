@@ -74,7 +74,8 @@ ${weightTable(
   })),
   'Rare item find',
 )}
-<p class="muted">WaifuBux find ${t.hunt.waifubuxFind.min}–${t.hunt.waifubuxFind.max} · Essence find ${t.hunt.essenceFind.min}–${t.hunt.essenceFind.max} · ${t.hunt.flavor.length} flavor lines</p>`;
+<p class="muted">WaifuBux find ${t.hunt.waifubuxFind.min}–${t.hunt.waifubuxFind.max} · Essence find ${t.hunt.essenceFind.min}–${t.hunt.essenceFind.max} · ${t.hunt.flavor.length} flavor lines</p>
+<p class="muted"><code>hunt.flavor</code> is only the built-in fallback for the "Nothing Found" screen, used while no Result Presentation variant is enabled. Author "Nothing Found" presentations in Portal Admin → Result Presentations.</p>`;
 }
 
 function affinityNotes(raw: RawContent): string {
@@ -118,7 +119,8 @@ export function tablesPage(raw: RawContent): string {
     {
       key: 'hunt',
       title: 'Hunt — result, rarity and find tables',
-      blurb: 'Weighted result table, rarity buckets, item/rare-item finds, currency ranges, flavor lines.',
+      blurb:
+        'Weighted result table, rarity buckets, item/rare-item finds, currency ranges, and the fallback "nothing found" flavor lines.',
       notes: huntNotes(raw),
     },
     {

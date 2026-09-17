@@ -29,7 +29,7 @@ export interface AdminAccessRolesResponse {
 export interface AdminAccessGrant {
   roleId: string;
   permissions: string[];
-  /** `encounter_editor`, `encounter_publisher`, or `custom`. */
+  /** A preset name from `presets` (e.g. `encounter_editor`), or `custom`. */
   preset: string;
   createdAt: string;
   createdBy: string | null;
@@ -43,6 +43,8 @@ export interface AdminAccessGrantsResponse {
   presets: Record<string, string[]>;
   /** Every permission an owner may delegate. Never includes role management. */
   grantablePermissions: string[];
+  /** What each grantable permission allows. Optional so an older server still loads. */
+  permissionDescriptions?: Record<string, string>;
 }
 
 export function getAdminAccessRoles(signal?: AbortSignal): Promise<AdminAccessRolesResponse> {

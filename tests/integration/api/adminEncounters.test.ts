@@ -259,13 +259,15 @@ describe('admin encounter routes', () => {
   });
 
   it('refuses a path that escapes the assets directory', async () => {
-    // Traversal is indistinguishable from a typo in the response, on purpose.
+    // Shared authored-artwork rules (`api/adminArtwork.ts`): an unsafe path is
+    // a validation error, and nothing on disk is consulted for it.
     const res = await api.inject({
       method: 'GET',
       url: `/api/v1/admin/encounters/artwork?path=${encodeURIComponent('../../etc/passwd')}`,
       headers: AUTH_BEARER,
     });
-    expect(res.statusCode).toBe(404);
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('VALIDATION_ERROR');
   });
 
   it('refuses a non-image extension even if the file exists', async () => {
@@ -274,7 +276,7 @@ describe('admin encounter routes', () => {
       url: '/api/v1/admin/encounters/artwork?path=package.json',
       headers: AUTH_BEARER,
     });
-    expect(res.statusCode).toBe(404);
+    expect(res.statusCode).toBe(400);
   });
 
   it('requires the encounters.read permission like the rest of the namespace', async () => {

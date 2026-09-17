@@ -6,17 +6,17 @@
  * `AttachmentBuilder` an embed can reference. Species artwork does not come
  * through here — it has its own `AssetId` resolver with appearance fallbacks.
  *
+ * The checks themselves live in `locateArtworkFile`, shared with the admin
+ * artwork routes and the presentation preview; this module only decides what
+ * a Discord screen does with each answer.
+ *
  * Always best-effort: a missing file, an unsafe path or an unsupported format
  * logs once and returns null, and the caller renders text-only. Authored
  * artwork is optional decoration and must never cost a player their screen.
  */
-import fs from 'node:fs';
 import { AttachmentBuilder } from 'discord.js';
-import {
-  artworkAttachmentFilename,
-  isSafeRelativeArtworkPath,
-} from '../../modules/assets/artworkPath';
-import { resolveAssetPath } from '../../modules/content/loader';
+import { artworkAttachmentFilename } from '../../modules/assets/artworkPath';
+import { locateArtworkFile } from '../../modules/assets/artworkFile';
 import type { Logger } from '../../shared/logger';
 
 export interface ArtworkAttachmentContext {
@@ -49,29 +49,15 @@ export function resolveArtworkAttachment(
   if (!relativePath) return null;
   const fields = { ...logFields, artwork: relativePath };
 
-  const filename = isSafeRelativeArtworkPath(relativePath)
-    ? artworkAttachmentFilename(stem, relativePath)
-    : null;
-  if (!filename) {
+  const located = locateArtworkFile(ctx.config.assetsDir, relativePath);
+  if (located.status === 'unsafe') {
     ctx.logger.error(
-      { tag: `${logTag}/artwork-unsafe`, ...fields },
-      'artwork path rejected (must be a relative path to a .png/.webp/.jpg/.jpeg/.gif under assets/) — rendering text-only',
+      { tag: `${logTag}/artwork-unsafe`, ...fields, reason: located.reason },
+      'artwork path rejected — rendering text-only',
     );
     return null;
   }
-
-  let absolute: string;
-  try {
-    absolute = resolveAssetPath(ctx.config.assetsDir, relativePath);
-  } catch (err) {
-    ctx.logger.error(
-      { tag: `${logTag}/artwork-unsafe`, ...fields, err },
-      'artwork path resolves outside the assets directory — rendering text-only',
-    );
-    return null;
-  }
-
-  if (!fs.existsSync(absolute)) {
+  if (located.status === 'missing') {
     ctx.logger.warn(
       { tag: `${logTag}/artwork-missing`, ...fields },
       'artwork file missing under ASSETS_DIR — rendering text-only. Copy the file into assets/ or fix the path.',
@@ -79,8 +65,9 @@ export function resolveArtworkAttachment(
     return null;
   }
 
+  const filename = artworkAttachmentFilename(stem, relativePath)!;
   return {
-    file: new AttachmentBuilder(absolute, { name: filename }),
+    file: new AttachmentBuilder(located.absolutePath, { name: filename }),
     url: `attachment://${filename}`,
   };
 }

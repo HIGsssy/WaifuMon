@@ -87,6 +87,8 @@ const ALL_DEV_PERMISSIONS: readonly string[] = [
   'encounters.publish',
   'encounters.simulate',
   'encounters.history',
+  'presentations.read',
+  'presentations.write',
 ];
 
 export function DevLoginSessionProvider({ children }: { children: ReactNode }) {

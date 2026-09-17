@@ -25,6 +25,15 @@ import { relativeAssetPath } from '../content/schemas';
 export const SUPPORTED_ARTWORK_EXTENSIONS = ['png', 'webp', 'jpg', 'jpeg', 'gif'] as const;
 export type ArtworkExtension = (typeof SUPPORTED_ARTWORK_EXTENSIONS)[number];
 
+/** MIME type per supported extension. Typed as a total map, so a new format needs one. */
+export const ARTWORK_CONTENT_TYPES: Readonly<Record<ArtworkExtension, string>> = {
+  png: 'image/png',
+  webp: 'image/webp',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+};
+
 /** Longest authored artwork path, matching the World Encounter field. */
 export const ARTWORK_PATH_MAX_LENGTH = 200;
 

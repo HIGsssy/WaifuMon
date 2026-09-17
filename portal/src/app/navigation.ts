@@ -25,6 +25,7 @@ import {
   Medal,
   Settings,
   Shield,
+  Sparkles,
   Store,
   Trophy,
   User,
@@ -60,6 +61,12 @@ export const NAV_ITEMS: readonly NavItem[] = [
     icon: Shield,
     dividerBefore: true,
     requiresPermission: 'admin.access',
+  },
+  {
+    to: '/admin/result-presentations',
+    label: 'Admin — Result Presentations',
+    icon: Sparkles,
+    requiresPermission: 'presentations.read',
   },
   {
     // Owner-only: `admin.roles.manage` is the one permission that cannot be

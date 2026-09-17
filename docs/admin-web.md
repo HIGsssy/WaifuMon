@@ -31,6 +31,12 @@ find, rare item find, currency ranges, flavor), `capture`, `buddyAffinity`,
 computed diagnostics — total weights, per-entry share, empty-rarity warnings,
 unknown/disabled item references, and the buddy-affinity wheel and bonus table.
 
+`hunt.flavor` is the **built-in fallback** pool for the "Nothing Found" hunt
+screen only: players see one of its lines while no "Nothing Found" Result
+Presentation variant is enabled. Authored flavor text and artwork for hunt
+finds and Let Her Go are managed in Portal Admin → Result Presentations, not
+here.
+
 ---
 
 ## Enabling it

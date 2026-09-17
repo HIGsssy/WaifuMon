@@ -108,18 +108,38 @@ export function resolveResultPresentation(
     usable.map((v) => ({ weight: v.weight, value: v })),
     rng,
   );
-  // An artwork-only variant still gets words where the key has built-in
-  // ones (a "nothing found" screen is its line), drawn from the same
-  // presentation randomness.
-  const authored = chosen.flavorText?.trim() ? chosen.flavorText : null;
-  const line = authored ?? pickLine(input.fallbackFlavorLines, rng);
+  return presentVariant(key, chosen, input.fallbackFlavorLines, rng);
+}
+
+/** The presentable parts of a variant; weight and enabled do not affect the look. */
+export type PresentableVariant = Pick<
+  ResultPresentationVariant,
+  'flavorText' | 'artworkMode' | 'artworkPath'
+> & { id: number | null };
+
+/**
+ * Present one specific variant — no selection. `resolveResultPresentation`
+ * uses this for the variant it picked, and the admin preview uses it for the
+ * unsaved variant in the editor, so both describe a variant identically.
+ *
+ * An artwork-only variant still gets words where the key has built-in ones (a
+ * "nothing found" screen is its line), drawn from `rng`.
+ */
+export function presentVariant(
+  key: ResultPresentationKey,
+  variant: PresentableVariant,
+  fallbackFlavorLines: readonly string[] | undefined,
+  rng: Rng,
+): ResolvedResultPresentation {
+  const authored = variant.flavorText?.trim() ? variant.flavorText : null;
+  const line = authored ?? pickLine(fallbackFlavorLines, rng);
   return {
     key,
-    variantId: chosen.id,
+    variantId: variant.id,
     flavorText: line,
     flavorSource: authored ? 'authored' : line ? 'fallback' : 'none',
-    artworkMode: chosen.artworkMode,
-    artworkPath: chosen.artworkMode === 'custom' ? chosen.artworkPath : null,
+    artworkMode: variant.artworkMode,
+    artworkPath: variant.artworkMode === 'custom' ? variant.artworkPath : null,
     usedFallback: false,
   };
 }

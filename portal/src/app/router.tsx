@@ -118,6 +118,13 @@ const AdminEncounterPreviewPage = lazy(() =>
     default: m.AdminEncounterPreviewPage,
   })),
 );
+// Result Presentations. Gated on its own permission — not `admin.access` or
+// any encounter permission — so a presentation-only editor reaches it.
+const ResultPresentationsPage = lazy(() =>
+  import('@/features/adminResultPresentations/ResultPresentationsPage').then((m) => ({
+    default: m.ResultPresentationsPage,
+  })),
+);
 // Owner-only. Guarded on `admin.roles.manage`, which the authorization service
 // issues to the live guild owner and to nobody else — a role grant can never
 // confer it, so a delegated admin hitting this path gets the not-found page.
@@ -231,6 +238,16 @@ export const routes: RouteObject[] = [
             element: (
               <RequirePortalPermission permission="encounters.read">
                 <AdminEncounterPreviewPage />
+              </RequirePortalPermission>
+            ),
+          },
+
+          // Admin — Result Presentations. The API re-checks every request.
+          {
+            path: 'admin/result-presentations',
+            element: (
+              <RequirePortalPermission permission="presentations.read">
+                <ResultPresentationsPage />
               </RequirePortalPermission>
             ),
           },

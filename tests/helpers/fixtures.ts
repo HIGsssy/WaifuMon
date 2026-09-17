@@ -54,6 +54,7 @@ import {
   type SpeciesSelectorService,
 } from '../../src/modules/encounters/speciesSelection';
 import { createWorldEncounterSettingsService } from '../../src/modules/worldEncounters/settingsService';
+import { createResultPresentationService } from '../../src/modules/resultPresentation/resultPresentationService';
 import {
   createGameEventBus,
   type GameEvent,
@@ -138,6 +139,11 @@ export interface App {
    * change a rate and watch the engine follow.
    */
   worldEncounterSettings: ReturnType<typeof createWorldEncounterSettingsService>;
+  /**
+   * Result Presentations, wired as production does but with `ttlMs: 0` so a
+   * test sees a direct database edit on its next read.
+   */
+  resultPresentation: ReturnType<typeof createResultPresentationService>;
 }
 
 export interface BootstrapOptions {
@@ -348,6 +354,11 @@ export async function bootstrapApp(
     getMaxWaifuLevel: () => content.tables.waifuProgression.maxLevel,
   });
   const worldEncounterAdmin = createWorldEncounterAdminService(t.db, () => content);
+  const resultPresentation = createResultPresentationService({
+    db: t.db,
+    logger: t.logger,
+    ttlMs: 0,
+  });
   // Seed the shipped catalogue so every test starts with the same encounter
   // library the runtime does. Idempotent; safe to call unconditionally.
   await seedWorldEncounters(t.db);
@@ -362,6 +373,7 @@ export async function bootstrapApp(
     worldEncounterVendor,
     worldEncounterAdmin,
     worldEncounterSettings,
+    resultPresentation,
     wildEncounters,
     speciesSelector,
     guilds: createGuildService(t.db),

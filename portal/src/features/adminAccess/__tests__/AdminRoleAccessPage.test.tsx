@@ -180,6 +180,29 @@ describe('Role Access page', () => {
     expect(screen.queryByText('admin.roles.manage')).not.toBeInTheDocument();
   });
 
+  it('offers the Presentation Editor preset and describes presentation permissions', async () => {
+    vi.spyOn(adminAccess, 'getAdminAccessGrants').mockResolvedValue({
+      grants: [],
+      presets: { ...PRESETS, presentation_editor: ['presentations.read', 'presentations.write'] },
+      grantablePermissions: [...GRANTABLE, 'presentations.read', 'presentations.write'],
+      permissionDescriptions: {
+        'presentations.read': 'View Result Presentations, their artwork and previews.',
+        'presentations.write': 'Create, edit, enable/disable and delete Result Presentations.',
+      },
+    });
+    const user = userEvent.setup();
+    render(<AdminRoleAccessPage />, { wrapper });
+    await screen.findByLabelText('Discord role');
+
+    expect(screen.getByRole('radio', { name: /Presentation Editor/ })).toBeInTheDocument();
+    expect(screen.getByText(/No encounter access/)).toBeInTheDocument();
+    await user.click(screen.getByRole('radio', { name: /custom/i }));
+    expect(await screen.findByText('presentations.write')).toBeInTheDocument();
+    expect(
+      screen.getByText('Create, edit, enable/disable and delete Result Presentations.'),
+    ).toBeInTheDocument();
+  });
+
   it('falls back to a role-ID box, and says why, when Discord is unreachable', async () => {
     vi.spyOn(adminAccess, 'getAdminAccessRoles').mockResolvedValue(rolesResponse(false));
     render(<AdminRoleAccessPage />, { wrapper });

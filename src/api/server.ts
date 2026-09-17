@@ -32,6 +32,7 @@ import type { Logger } from '../shared/logger';
 import { registerAuth } from './auth';
 import type { ApiContext } from './context';
 import {
+  ApiErrorWithDetails,
   ApiNotFoundError,
   ApiValidationError,
   mapAppErrorToStatus,
@@ -242,7 +243,8 @@ export async function createPlatformApiServer(deps: PlatformApiDeps): Promise<Zo
       // 5xx is ours to fix and gets a stack; 4xx is the caller's and does not.
       if (status >= 500) req.log.error({ err, requestId }, 'platform api request failed');
       else req.log.info({ code: err.code, status, path: req.url }, 'platform api request refused');
-      return reply.code(status).send(toErrorBody(err, status, requestId));
+      const details = err instanceof ApiErrorWithDetails ? err.details : undefined;
+      return reply.code(status).send(toErrorBody(err, status, requestId, details));
     }
 
     // Fastify's own client errors (malformed JSON, body too large, unsupported

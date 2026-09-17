@@ -37,6 +37,7 @@ import { AppError } from '../../../../shared/errors';
 import {
   ADMIN_ROLES_MANAGE,
   GRANTABLE_PORTAL_PERMISSIONS,
+  PORTAL_PERMISSION_DESCRIPTIONS,
   ROLE_GRANT_PRESETS,
   presetForPermissions,
   type PortalPermission,
@@ -186,6 +187,8 @@ export const adminAccessRoutes =
                 grants: z.array(grantSchema),
                 presets: z.record(z.string(), z.array(z.string())),
                 grantablePermissions: z.array(z.string()),
+                /** What each grantable permission allows, for the owner's picker. */
+                permissionDescriptions: z.record(z.string(), z.string()),
               }),
             ),
             ...commonErrorResponses,
@@ -201,6 +204,9 @@ export const adminAccessRoutes =
             Object.entries(ROLE_GRANT_PRESETS).map(([k, v]) => [k, [...v]]),
           ),
           grantablePermissions: [...GRANTABLE_PORTAL_PERMISSIONS],
+          permissionDescriptions: Object.fromEntries(
+            GRANTABLE_PORTAL_PERMISSIONS.map((p) => [p, PORTAL_PERMISSION_DESCRIPTIONS[p]]),
+          ),
         });
       },
     );

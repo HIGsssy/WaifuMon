@@ -26,12 +26,19 @@ import {
 } from '../../src/modules/resultPresentation/keys';
 import {
   ResultPresentationValidationError,
+  mergeResultPresentationVariantPatch,
   parseResultPresentationVariantInput,
 } from '../../src/modules/resultPresentation/validation';
 import {
+  presentVariant,
   resolveResultPresentation,
   type ResultPresentationVariant,
 } from '../../src/modules/resultPresentation/resolver';
+import {
+  buildResultPresentationPreview,
+  PREVIEW_SAMPLE_NOTICE,
+  type ResultPresentationPreviewDeps,
+} from '../../src/modules/resultPresentation/preview';
 import { seededRng, type Rng } from '../../src/shared/random';
 
 const MIGRATION = fs.readFileSync(
@@ -399,5 +406,162 @@ describe('resolveResultPresentation', () => {
     });
     expect(random).not.toHaveBeenCalled();
     random.mockRestore();
+  });
+});
+
+describe('editing a variant (mergeResultPresentationVariantPatch)', () => {
+  const stored = parseResultPresentationVariantInput({
+    presentationKey: 'hunt.item_find',
+    flavorText: 'Stored',
+    weight: 4,
+    artworkMode: 'custom',
+    artworkPath: 'results/coin.png',
+  });
+
+  it('changes only the named fields', () => {
+    expect(mergeResultPresentationVariantPatch(stored, { enabled: false })).toEqual({
+      ...stored,
+      enabled: false,
+    });
+    expect(mergeResultPresentationVariantPatch(stored, { flavorText: ' New\r\n' }).flavorText).toBe(
+      'New',
+    );
+  });
+
+  it('clears the path when leaving custom artwork, unless a path is named', () => {
+    expect(mergeResultPresentationVariantPatch(stored, { artworkMode: 'none' })).toMatchObject({
+      artworkMode: 'none',
+      artworkPath: null,
+    });
+    expect(() =>
+      mergeResultPresentationVariantPatch(stored, { artworkMode: 'none', artworkPath: 'a/b.png' }),
+    ).toThrow(ResultPresentationValidationError);
+  });
+
+  it('refuses to change the result type, with a field issue', () => {
+    try {
+      mergeResultPresentationVariantPatch(stored, { presentationKey: 'hunt.rare_item_find' });
+      throw new Error('expected a refusal');
+    } catch (err) {
+      expect(err).toBeInstanceOf(ResultPresentationValidationError);
+      expect((err as ResultPresentationValidationError).fieldIssues[0]!.path).toBe('presentationKey');
+    }
+  });
+
+  it('refuses unknown fields such as reward values', () => {
+    expect(() => mergeResultPresentationVariantPatch(stored, { amount: 5 })).toThrow(
+      ResultPresentationValidationError,
+    );
+  });
+
+  it('validates the merged result with the create rules', () => {
+    expect(() => mergeResultPresentationVariantPatch(stored, { weight: 0 })).toThrow();
+    expect(() => mergeResultPresentationVariantPatch(stored, { artworkMode: 'encountered' })).toThrow();
+    expect(() =>
+      mergeResultPresentationVariantPatch(stored, { artworkPath: '../escape.png' }),
+    ).toThrow();
+  });
+});
+
+describe('presentVariant', () => {
+  it('presents exactly the given variant and draws only for a missing line', () => {
+    const rng = recordingRng([]);
+    const authored = presentVariant(
+      'hunt.nothing_found',
+      { id: null, flavorText: 'Mine', artworkMode: 'none', artworkPath: null },
+      ['pool'],
+      rng,
+    );
+    expect(authored).toMatchObject({ variantId: null, flavorText: 'Mine', flavorSource: 'authored' });
+    expect(rng.draws).toBe(0);
+  });
+});
+
+describe('buildResultPresentationPreview (pure)', () => {
+  const deps: ResultPresentationPreviewDeps = {
+    items: [{ slug: 'basic_charm', name: 'Basic Charm', emoji: '🩷' }],
+    huntFlavorPool: ['First pool line', 'Second pool line'],
+    species: [
+      { slug: 'alpha', name: 'Alpha', rarity: 'SR' },
+      { slug: 'beta', name: 'Beta', rarity: 'N' },
+    ],
+    locateArtwork: (p) => (p.includes('missing') ? { status: 'missing' } : {
+      status: 'available',
+      absolutePath: `/abs/${p}`,
+      extension: 'png',
+      contentType: 'image/png',
+    }),
+    speciesArtworkAvailable: (slug) => slug === 'alpha',
+  };
+
+  it('never uses Math.random and is stable between calls', () => {
+    const random = vi.spyOn(Math, 'random');
+    const request = { variant: { presentationKey: 'hunt.nothing_found' } };
+    const first = buildResultPresentationPreview(request, deps);
+    expect(buildResultPresentationPreview(request, deps)).toEqual(first);
+    expect(first.screen.description).toBe('First pool line');
+    expect(random).not.toHaveBeenCalled();
+    random.mockRestore();
+  });
+
+  it('uses the server fixtures, marked as sample data', () => {
+    const preview = buildResultPresentationPreview(
+      { variant: { presentationKey: 'hunt.item_find', flavorText: 'Words' } },
+      deps,
+    );
+    expect(preview.screen.sections).toEqual([
+      { kind: 'flavor', text: 'Words', sample: false },
+      { kind: 'mechanical', text: '🩷 **Basic Charm** ×1', sample: true },
+    ]);
+    expect(preview.sampleNotice).toBe(PREVIEW_SAMPLE_NOTICE);
+  });
+
+  it('picks a preview Waifumon for releases only', () => {
+    const release = buildResultPresentationPreview(
+      { variant: { presentationKey: 'encounter.released' }, previewSpeciesSlug: 'beta' },
+      deps,
+    );
+    expect(release.artwork).toEqual({
+      mode: 'encountered',
+      species: { slug: 'beta', name: 'Beta', rarity: 'N' },
+      available: false,
+    });
+    expect(release.screen.title).toBe('👋 You let Beta go');
+    const byDefault = buildResultPresentationPreview(
+      { variant: { presentationKey: 'encounter.released' } },
+      deps,
+    );
+    expect(byDefault.previewSpecies?.slug).toBe('alpha');
+    expect(() =>
+      buildResultPresentationPreview(
+        { variant: { presentationKey: 'hunt.item_find' }, previewSpeciesSlug: 'alpha' },
+        deps,
+      ),
+    ).toThrow(ResultPresentationValidationError);
+  });
+
+  it('reports missing custom artwork instead of failing', () => {
+    const preview = buildResultPresentationPreview(
+      {
+        variant: {
+          presentationKey: 'hunt.item_find',
+          artworkMode: 'custom',
+          artworkPath: 'results/missing.png',
+        },
+      },
+      deps,
+    );
+    expect(preview.artwork).toEqual({ mode: 'custom', path: 'results/missing.png', status: 'missing' });
+  });
+
+  it('rejects weight, enabled and gameplay fields', () => {
+    for (const extra of [{ weight: 2 }, { enabled: false }, { amount: 9 }, { species: 'x' }]) {
+      expect(() =>
+        buildResultPresentationPreview(
+          { variant: { presentationKey: 'hunt.item_find', ...extra } },
+          deps,
+        ),
+      ).toThrow(ResultPresentationValidationError);
+    }
   });
 });

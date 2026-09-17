@@ -33,6 +33,7 @@ import { shopRoutes } from './shop';
 import { adminEncounterRoutes } from './admin/encounters';
 import { adminAccessRoutes } from './admin/access';
 import { adminEncounterPromotionRoutes } from './admin/encounterPromotion';
+import { adminResultPresentationRoutes } from './admin/resultPresentations';
 
 export interface V1RouteOptions {
   /**
@@ -109,4 +110,8 @@ export const v1Routes =
 
     // Admin: export/import of encounter content between environments.
     await app.register(adminEncounterPromotionRoutes(ctx));
+
+    // Admin: Result Presentations (hunt-find and release flavor/artwork).
+    // Skipped when the presentation service is not wired.
+    await app.register(adminResultPresentationRoutes(ctx));
   };

@@ -34,9 +34,7 @@ import {
   CheckSchema,
   EffectSchema,
 } from '../../../../modules/worldEncounters/types';
-import { existsSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
-import { resolveAssetPath } from '../../../../modules/content/loader';
+import { adminArtworkQuery, sendAdminArtwork } from '../../../adminArtwork';
 import {
   SETTINGS_BOUNDS,
   WorldEncounterSettingsValidationError,
@@ -66,18 +64,6 @@ import {
   type OutcomeKind,
 } from '../../../../modules/worldEncounters/outcomeText';
 
-/**
- * Image types an encounter may use. A closed list, so the endpoint below can
- * set an accurate Content-Type without sniffing bytes and cannot be pointed at
- * a `.json` or `.env` that happens to sit under `assets/`.
- */
-const ARTWORK_CONTENT_TYPES: Record<string, string> = {
-  '.png': 'image/png',
-  '.webp': 'image/webp',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.gif': 'image/gif',
-};
 
 /* ─────────────────────── Response schemas ─────────────────────── */
 
@@ -665,20 +651,12 @@ export const adminEncounterRoutes =
      * The Portal's image resolver deliberately refuses to turn a stored
      * `imagePath` into a URL — physical paths are an internal detail and must
      * not leak into pages (`portal/src/images/providers/localDevAssets.ts`).
-     * The encounter editor is the one place where the path *is* the subject:
-     * an author types it and needs to see what they typed. So the API answers
-     * with bytes rather than handing the Portal a path to construct a URL
-     * from, and the rule survives intact.
+     * The encounter editor is one place where the path *is* the subject: an
+     * author types it and needs to see what they typed.
      *
-     * This is not a general asset server:
-     *
-     *   - it is inside the admin namespace and gated on `encounters.read`;
-     *   - the path is confined by `resolveAssetPath`, the same helper the
-     *     Discord presenter and the content loader use, which throws for
-     *     anything resolving outside `assetsDir`;
-     *   - it serves a fixed, small allowlist of image extensions;
-     *   - a missing file is a plain 404, so a typo reads as "not found"
-     *     rather than as an error the editor has to interpret.
+     * Gated on `encounters.read`. The path rules, containment, MIME types and
+     * 400/404 answers are shared with the Result Presentation editor's own,
+     * separately authorized route — see `api/adminArtwork.ts`.
      */
     app.get(
       '/admin/encounters/artwork',
@@ -687,42 +665,12 @@ export const adminEncounterRoutes =
         schema: {
           tags: ['Admin — Encounters'],
           summary: 'Stream encounter artwork for the editor preview',
-          querystring: z.object({ path: z.string().min(1).max(200) }),
+          querystring: adminArtworkQuery,
           response: { ...notFoundResponse, ...commonErrorResponses },
         },
       },
-      async (req, reply) => {
-        const relative = req.query.path;
-        const ext = relative.slice(relative.lastIndexOf('.')).toLowerCase();
-        if (!ARTWORK_CONTENT_TYPES[ext]) {
-          throw new AppError('NOT_FOUND', `Unsupported artwork type "${ext}"`, 'Not found.');
-        }
-        let absolute: string;
-        try {
-          absolute = resolveAssetPath(ctx.assetsDir ?? './assets', relative);
-        } catch {
-          // Escaping the assets directory is indistinguishable from a typo
-          // as far as the editor is concerned, and saying so tells an
-          // attacker nothing.
-          throw new AppError('NOT_FOUND', 'Artwork not found', 'Not found.');
-        }
-        if (!existsSync(absolute)) {
-          throw new AppError('NOT_FOUND', 'Artwork not found', 'Not found.');
-        }
-        // Same shape the species artwork route uses: set headers, send the
-        // bytes, hand the reply back. The Zod type provider types `send`
-        // against the declared JSON responses, and a binary body is the
-        // documented exception — see `ArtworkReply` in `routes/v1/artwork.ts`.
-        const out = reply as unknown as {
-          header(k: string, v: string): typeof out;
-          send(payload: Buffer): unknown;
-        };
-        out
-          .header('content-type', ARTWORK_CONTENT_TYPES[ext] as string)
-          .header('cache-control', 'private, max-age=60, must-revalidate')
-          .send(await readFile(absolute));
-        return reply;
-      },
+      async (req, reply) =>
+        sendAdminArtwork(reply, ctx.assetsDir ?? './assets', req.query.path),
     );
 
     /**

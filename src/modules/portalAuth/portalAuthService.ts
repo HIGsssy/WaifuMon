@@ -43,8 +43,30 @@ export const ALL_PORTAL_PERMISSIONS = [
   'encounters.publish',
   'encounters.simulate',
   'encounters.history',
+  // Result Presentations (hunt finds, Let Her Go). Enabled/disabled records
+  // with no draft/published lifecycle, so there is no `publish` permission:
+  // `write` covers create, edit, enable/disable and delete.
+  'presentations.read',
+  'presentations.write',
 ] as const;
 export type PortalPermission = (typeof ALL_PORTAL_PERMISSIONS)[number];
+
+/**
+ * What each permission allows, in owner-facing words. Typed as a total map,
+ * so a new permission cannot ship without a description the Role Access
+ * screen can show.
+ */
+export const PORTAL_PERMISSION_DESCRIPTIONS: Readonly<Record<PortalPermission, string>> = {
+  'admin.access': 'Open the Encounter Manager.',
+  'admin.roles.manage': 'Manage who may use Portal Admin (guild owner only).',
+  'encounters.read': 'View World Encounter definitions, settings and previews.',
+  'encounters.write': 'Create, edit, clone and delete World Encounters.',
+  'encounters.publish': 'Activate World Encounters and change global encounter settings.',
+  'encounters.simulate': 'Run World Encounter simulations.',
+  'encounters.history': 'View World Encounter history.',
+  'presentations.read': 'View Result Presentations, their artwork and previews.',
+  'presentations.write': 'Create, edit, enable/disable and delete Result Presentations.',
+};
 
 /**
  * Permissions an owner may delegate to a Discord role.
@@ -95,6 +117,10 @@ export const ROLE_GRANT_PRESETS = {
     'encounters.simulate',
     'encounters.history',
   ],
+  // Presentation authoring only. Deliberately no `admin.access` or
+  // `encounters.*`: the Result Presentations page is gated on its own
+  // permission, and editing flavor text is no reason to reach encounters.
+  presentation_editor: ['presentations.read', 'presentations.write'],
 } as const satisfies Record<string, readonly PortalPermission[]>;
 
 export type RoleGrantPreset = keyof typeof ROLE_GRANT_PRESETS;

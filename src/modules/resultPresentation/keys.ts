@@ -40,6 +40,10 @@ interface KeyDefinition {
   artworkModes: readonly ArtworkMode[];
   /** What the built-in (no authored variant) presentation uses. */
   defaultArtworkMode: ArtworkMode;
+  /** What players see while no variant is enabled, in author-facing words. */
+  fallbackDescription: string;
+  /** What players see when a chosen variant has no flavor text of its own. */
+  emptyFlavorDescription: string;
 }
 
 /**
@@ -53,31 +57,43 @@ export const RESULT_PRESENTATION_KEY_DEFINITIONS: Readonly<
     label: 'WaifuBux Found',
     artworkModes: ['custom', 'none'],
     defaultArtworkMode: 'none',
+    fallbackDescription: 'Uses the standard WaifuBux result screen.',
+    emptyFlavorDescription: 'No flavor text: players see only the standard result lines.',
   },
   'hunt.essence_find': {
     label: 'Essence Found',
     artworkModes: ['custom', 'none'],
     defaultArtworkMode: 'none',
+    fallbackDescription: 'Uses the standard Essence result screen.',
+    emptyFlavorDescription: 'No flavor text: players see only the standard result lines.',
   },
   'hunt.item_find': {
     label: 'Item Found',
     artworkModes: ['custom', 'none'],
     defaultArtworkMode: 'none',
+    fallbackDescription: 'Uses the standard item result screen.',
+    emptyFlavorDescription: 'No flavor text: players see only the standard result lines.',
   },
   'hunt.rare_item_find': {
     label: 'Rare Item Found',
     artworkModes: ['custom', 'none'],
     defaultArtworkMode: 'none',
+    fallbackDescription: 'Uses the standard rare find screen.',
+    emptyFlavorDescription: 'No flavor text: players see only the standard result lines.',
   },
   'hunt.nothing_found': {
     label: 'Nothing Found',
     artworkModes: ['custom', 'none'],
     defaultArtworkMode: 'none',
+    fallbackDescription: 'Uses a random line from the existing hunt flavor pool.',
+    emptyFlavorDescription: 'No flavor text: players see a random line from the hunt flavor pool.',
   },
   'encounter.released': {
     label: 'Waifumon Released',
     artworkModes: ['encountered', 'custom', 'none'],
     defaultArtworkMode: 'encountered',
+    fallbackDescription: "Uses the standard release message and the encountered Waifumon's artwork.",
+    emptyFlavorDescription: 'No flavor text: players see the standard release message.',
   },
 };
 
@@ -113,7 +129,7 @@ export function keysAllowingArtworkMode(mode: ArtworkMode): ResultPresentationKe
  */
 export const RESULT_PRESENTATION_FLAVOR_MAX_LENGTH = 500;
 
-const sqlList =(values: readonly string[]) => values.map((v) => `'${v}'`).join(',');
+const sqlList = (values: readonly string[]) => values.map((v) => `'${v}'`).join(',');
 
 /** SQL fragments for the CHECK constraints in `schema.ts`. */
 export const RESULT_PRESENTATION_KEY_SQL_LIST = sqlList(RESULT_PRESENTATION_KEYS);

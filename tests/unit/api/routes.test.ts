@@ -940,8 +940,15 @@ describe('OpenAPI registration', () => {
       // `.write`: it changes the live game for every player at once.
       'PUT /api/v1/admin/encounters/settings',
       'PUT /api/v1/admin/encounters/{id}',
+      // Result Presentations. Create/edit/delete need `presentations.write`;
+      // `preview` writes nothing (it renders an unsaved variant) but is a POST
+      // because the variant travels as a body, and needs `presentations.read`.
+      'DELETE /api/v1/admin/result-presentations/{id}',
+      'PATCH /api/v1/admin/result-presentations/{id}',
+      'POST /api/v1/admin/result-presentations',
+      'POST /api/v1/admin/result-presentations/preview',
       'PUT /api/v1/players/{playerId}/collection/owned/{waifuId}/appearance',
-    ]);
+    ].sort());
   });
 
   it('gives every operation a summary, a tag and the shared error responses', async () => {

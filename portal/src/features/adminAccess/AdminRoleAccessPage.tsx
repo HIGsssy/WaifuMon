@@ -45,12 +45,15 @@ const ROLES_KEY = ['admin', 'access', 'roles'] as const;
 const PRESET_LABELS: Record<string, string> = {
   encounter_editor: 'Encounter Editor',
   encounter_publisher: 'Encounter Publisher',
+  presentation_editor: 'Presentation Editor',
   custom: 'Custom',
 };
 
 const PRESET_BLURB: Record<string, string> = {
   encounter_editor: 'Can author, edit and simulate encounters. Cannot publish.',
   encounter_publisher: 'Everything an Editor can do, plus publishing.',
+  presentation_editor:
+    'Can create, edit, enable/disable and delete Result Presentations. No encounter access.',
   custom: 'Pick individual permissions.',
 };
 
@@ -276,6 +279,11 @@ export function AdminRoleAccessPage() {
                   onChange={() => togglePermission(permission)}
                 />
                 <code className="text-xs">{permission}</code>
+                {grants.permissionDescriptions?.[permission] ? (
+                  <span className="text-xs text-muted-foreground">
+                    {grants.permissionDescriptions[permission]}
+                  </span>
+                ) : null}
               </label>
             ))}
           </fieldset>

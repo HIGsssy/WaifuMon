@@ -36,6 +36,29 @@ export class ApiValidationError extends AppError {
 }
 
 /**
+ * An `AppError` that carries structured, client-safe `details` for the error
+ * body — for example per-field validation issues an editor can show inline.
+ * Never put submitted values or internal state in `details`.
+ */
+export class ApiErrorWithDetails extends AppError {
+  readonly details: Record<string, unknown>;
+  constructor(code: string, message: string, userMessage: string, details: Record<string, unknown>) {
+    super(code, message, userMessage);
+    this.details = details;
+  }
+}
+
+/** A domain validation failure, with per-field issues (same shape as schema failures). */
+export class ApiFieldValidationError extends ApiErrorWithDetails {
+  constructor(issues: ReadonlyArray<{ path: string; message: string }>) {
+    const summary = issues.map((i) => (i.path ? `${i.path}: ${i.message}` : i.message)).join(' ');
+    super('VALIDATION_ERROR', summary, summary || 'The request was not valid.', {
+      issues: issues.map((i) => ({ path: i.path, message: i.message })),
+    });
+  }
+}
+
+/**
  * Resource-specific 404s raised by the API layer.
  *
  * The service layer's own `PlayerNotFoundError` exists but carries the default
