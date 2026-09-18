@@ -48,7 +48,33 @@ function collectionSpreadAcrossPages(matchCount = 4): OwnedEntry[] {
         rarity: matches ? 'SR' : 'UR',
         race: matches ? 'spirit' : 'demon',
         affinity: matches ? 'submissive' : 'primal',
+        tags: matches
+          ? ['expansion', 'region_exclusive', 'twin_peeks']
+          : ['starter', 'waifu_valley'],
       },
+    };
+  });
+}
+
+/**
+ * 60 copies over three API pages, zones rotating by index. Favourites are every
+ * third copy, so "Twin Peeks + Favourites" is a strict subset of both filters
+ * and its members sit on all three source pages. Index 59 carries no zone tag.
+ */
+function zonedCollection(): OwnedEntry[] {
+  const zoneTags = ['waifu_valley', 'twin_peeks', 'flaccid_foothills', 'thirstlands'];
+  return Array.from({ length: 60 }, (_, index) => {
+    const source = fixtures.ownedEntries[0]!;
+    const tag = index === 59 ? null : zoneTags[index % zoneTags.length]!;
+    return {
+      ...source,
+      waifu: {
+        ...source.waifu,
+        id: 2_000 + index,
+        nickname: `${tag ?? 'zoneless'} copy ${index}`,
+        isFavorite: index % 3 === 0,
+      },
+      species: { ...source.species, tags: tag ? ['expansion', tag] : ['expansion'] },
     };
   });
 }
@@ -269,6 +295,7 @@ describe('CollectionPage', () => {
     ['search', '/collection?search=Needle', 4],
     ['favourites', '/collection?ownership=favorites', 4],
     ['buddy', '/collection?ownership=buddy', 1],
+    ['zone', '/collection?zone=twin_peeks', 4],
   ])('applies %s across the complete dataset before pagination', async (_filter, url, count) => {
     servePagedCollection(collectionSpreadAcrossPages(4));
 
@@ -276,6 +303,92 @@ describe('CollectionPage', () => {
 
     expect(await screen.findAllByRole('link', { name: /Needle Match/ })).toHaveLength(count);
     expect(screen.queryByLabelText('Collection pages')).toBeNull();
+  });
+
+  it('labels each card with its zone from the species tags', async () => {
+    servePagedCollection(collectionSpreadAcrossPages(4));
+    renderCollection('/collection?search=Needle');
+
+    const cards = await screen.findAllByRole('link', { name: /Needle Match/ });
+    expect(cards).toHaveLength(4);
+    for (const card of cards) expect(card).toHaveAccessibleName(/, Twin Peeks$/);
+    expect(screen.queryByText('twin_peeks')).toBeNull();
+  });
+
+  it('filters by zone from the compact panel, and All Zones clears it', async () => {
+    const user = userEvent.setup();
+    servePagedCollection(zonedCollection());
+    renderCollection();
+
+    expect(await screen.findByText('Page 1 of 3')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Open filters' }));
+    expect(screen.getByRole('button', { name: 'All Zones' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await user.click(screen.getByRole('button', { name: 'Twin Peeks' }));
+
+    // 15 Twin Peeks copies, drawn from all three source pages, on one UI page.
+    expect(await screen.findAllByRole('link', { name: /^twin_peeks copy/ })).toHaveLength(15);
+    expect(screen.queryByRole('link', { name: /^waifu_valley copy/ })).toBeNull();
+    expect(screen.queryByLabelText('Collection pages')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Zone: Twin Peeks' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'All Zones' }));
+    expect(await screen.findByText('Page 1 of 3')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Zone: Twin Peeks' })).toBeNull();
+  });
+
+  it('combines the zone filter with favourites across the complete collection', async () => {
+    servePagedCollection(zonedCollection());
+    renderCollection('/collection?zone=twin_peeks&ownership=favorites');
+
+    // Indexes 1..57 step 4 that are also multiples of 3: 9, 21, 33, 45, 57.
+    const cards = await screen.findAllByRole('link', { name: /^twin_peeks copy/ });
+    expect(cards.map((card) => card.getAttribute('aria-label')?.split(',')[0])).toEqual(
+      expect.arrayContaining([9, 21, 33, 45, 57].map((i) => `twin_peeks copy ${i}`)),
+    );
+    expect(cards).toHaveLength(5);
+  });
+
+  it('combines the zone filter with search', async () => {
+    servePagedCollection(zonedCollection());
+    renderCollection('/collection?zone=thirstlands&search=copy%205');
+
+    // Thirstlands indexes are 3 mod 4; of those, 51 and 55 are "copy 5…" —
+    // one from source page 3, and neither on the first API page.
+    const cards = await screen.findAllByRole('link', { name: /copy/ });
+    expect(cards.map((card) => card.getAttribute('aria-label')?.split(',')[0])).toEqual([
+      'thirstlands copy 51',
+      'thirstlands copy 55',
+    ]);
+  });
+
+  it('keeps zoneless species out of every zone but in All Zones', async () => {
+    servePagedCollection(zonedCollection());
+    renderCollection('/collection?zone=waifu_valley');
+
+    expect(await screen.findAllByRole('link', { name: /^waifu_valley copy/ })).toHaveLength(15);
+    expect(screen.queryByRole('link', { name: /^zoneless copy/ })).toBeNull();
+  });
+
+  it('ignores an unrecognised zone in the URL, including the legacy twin_peaks spelling', async () => {
+    servePagedCollection(zonedCollection());
+    renderCollection('/collection?zone=twin_peaks');
+
+    expect(await screen.findByText('Page 1 of 3')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Zone:/ })).toBeNull();
+  });
+
+  it('sorts the zone-filtered set globally before slicing a page', async () => {
+    servePagedCollection(zonedCollection());
+    renderCollection('/collection?zone=twin_peeks&sort=name');
+
+    const names = (await screen.findAllByRole('link', { name: /^twin_peeks copy/ })).map(
+      (card) => card.getAttribute('aria-label')?.split(',')[0] ?? '',
+    );
+    expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b)));
+    expect(names).toHaveLength(15);
   });
 
   it('bases page count on the filtered total', async () => {

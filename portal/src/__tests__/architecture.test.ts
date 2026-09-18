@@ -132,4 +132,12 @@ describe('architectural boundaries', () => {
     );
     expect(offenders.map((f) => f.path)).toEqual([]);
   });
+
+  it('names zone tags only in lib/zone.ts — everything else asks zoneFor()', () => {
+    const zoneTag = /['"`](?:waifu_valley|twin_peeks|flaccid_foothills|thirstlands)['"`]/;
+    const offenders = files.filter(
+      (file) => zoneTag.test(file.contents) && file.path !== 'lib/zone.ts',
+    );
+    expect(offenders.map((f) => f.path)).toEqual([]);
+  });
 });

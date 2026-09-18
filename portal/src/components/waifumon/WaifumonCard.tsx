@@ -27,7 +27,7 @@
  * switching the whole grid back to Art: one species with a pre-composed source
  * image is content debt, and it must cost exactly one tile.
  */
-import { Heart, Star } from 'lucide-react';
+import { Heart, MapPin, Star } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router';
 
@@ -38,6 +38,7 @@ import { RarityGlowRing } from '@/components/waifumon/RarityGlowRing';
 import { displayName, subtitleFor } from '@/content/species';
 import { ownedCardAsset, speciesAsset } from '@/images/assets';
 import { rarityStyle } from '@/lib/rarity';
+import { zoneFor } from '@/lib/zone';
 import { cn } from '@/lib/cn';
 import { ARTWORK_WIDTH } from '@/images/sizes';
 import type { CardView } from '@/components/media/CardViewToggle';
@@ -100,6 +101,8 @@ export function WaifumonCard({
   const title = displayName(entry);
   const subtitle = subtitleFor(entry);
   const rarity = rarityStyle(species.rarity);
+  // Null for a species with no recognised zone tag: the tile simply omits it.
+  const zone = zoneFor(species);
 
   // Per-tile, and never reset by a mode switch: a card that 404s once will 404
   // again, so re-requesting it on every toggle would be a guaranteed-failing
@@ -117,7 +120,7 @@ export function WaifumonCard({
       // browser supports it; a no-op everywhere else (§14).
       viewTransition
       className={cn('lift group block rounded-2xl', className)}
-      aria-label={`${title}, ${rarity.label}, level ${waifu.level}`}
+      aria-label={`${title}, ${rarity.label}, level ${waifu.level}${zone ? `, ${zone.label}` : ''}`}
     >
       <RarityGlowRing rarity={species.rarity} className="h-full">
         <div className="flex h-full flex-col">
@@ -201,8 +204,18 @@ export function WaifumonCard({
                 </p>
               )}
             </div>
-            <div className="mt-auto">
+            {/* Zone shares the rarity row, so it costs no height. */}
+            <div className="mt-auto flex min-w-0 items-center gap-2">
               <RarityBadge rarity={species.rarity} />
+              {zone && (
+                <span
+                  className="inline-flex min-w-0 items-center gap-1 text-xs text-ink-subtle"
+                  title={zone.label}
+                >
+                  <MapPin className="size-3 shrink-0" aria-hidden="true" />
+                  <span className="truncate">{zone.label}</span>
+                </span>
+              )}
             </div>
           </div>
         </div>

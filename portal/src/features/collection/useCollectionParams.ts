@@ -15,6 +15,7 @@ import { useSearchParams } from 'react-router';
 
 import type { Race, Rarity } from '@/api/types';
 import { RARITY_ORDER } from '@/lib/rarity';
+import { isZoneTag } from '@/lib/zone';
 import type { SortKey } from '@/content/species';
 
 export type Ownership = 'all' | 'favorites' | 'buddy';
@@ -26,6 +27,8 @@ export interface CollectionParams {
   race: Race | null;
   affinity: string | null;
   ownership: Ownership;
+  /** Canonical zone tag; unrecognised values in the URL read as "all zones". */
+  zone: string | null;
   sort: SortKey;
 }
 
@@ -62,6 +65,7 @@ export function useCollectionParams(): CollectionParamsApi {
   const params = useMemo<CollectionParams>(() => {
     const rawPage = Number(searchParams.get('page') ?? '1');
     const rarity = searchParams.get('rarity');
+    const zone = searchParams.get('zone');
     return {
       page: Number.isInteger(rawPage) && rawPage > 0 ? rawPage : 1,
       rarity:
@@ -72,6 +76,7 @@ export function useCollectionParams(): CollectionParamsApi {
       race: readNullableEnum(searchParams.get('type'), RACES),
       affinity: searchParams.get('affinity'),
       ownership: readEnum(searchParams.get('ownership'), OWNERSHIPS, 'all'),
+      zone: isZoneTag(zone) ? zone : null,
       sort: readEnum(searchParams.get('sort'), SORT_KEYS, 'rarity'),
     };
   }, [searchParams]);
@@ -109,6 +114,7 @@ export function useCollectionParams(): CollectionParamsApi {
         if ('race' in patch) write(next, 'type', patch.race ?? null, '');
         if ('affinity' in patch) write(next, 'affinity', patch.affinity ?? null, '');
         if ('ownership' in patch) write(next, 'ownership', patch.ownership ?? null, 'all');
+        if ('zone' in patch) write(next, 'zone', patch.zone ?? null, '');
         if ('sort' in patch) write(next, 'sort', patch.sort ?? null, 'rarity');
         // A filtered page 2 is meaningless against a different result set.
         next.delete('page');
@@ -127,7 +133,8 @@ export function useCollectionParams(): CollectionParamsApi {
     params.search !== '' ||
     params.race !== null ||
     params.affinity !== null ||
-    params.ownership !== 'all';
+    params.ownership !== 'all' ||
+    params.zone !== null;
 
   return { params, setPage, setFilter, clearFilters, hasFilters };
 }

@@ -8,6 +8,7 @@
  */
 import type { CollectionEntryView, ContentSpecies, Race } from '@/api/types';
 import { byRarityDesc } from '@/lib/rarity';
+import { zoneFor } from '@/lib/zone';
 
 /**
  * These helpers are typed against {@link CollectionEntryView} rather than
@@ -80,6 +81,8 @@ export interface CollectionFilters {
   race: Race | null;
   affinity: string | null;
   ownership: 'all' | 'favorites' | 'buddy';
+  /** A canonical zone tag (see `@/lib/zone`), or null for every zone. */
+  zone: string | null;
 }
 
 /**
@@ -101,6 +104,7 @@ export function filterEntries<T extends CollectionEntryView>(
     }
     if (filters.race && entry.species.race !== filters.race) return false;
     if (filters.affinity && entry.species.affinity !== filters.affinity) return false;
+    if (filters.zone && zoneFor(entry.species)?.tag !== filters.zone) return false;
     if (filters.ownership === 'favorites' && !entry.waifu.isFavorite) return false;
     if (filters.ownership === 'buddy' && entry.waifu.id !== buddyWaifuId) return false;
     return true;

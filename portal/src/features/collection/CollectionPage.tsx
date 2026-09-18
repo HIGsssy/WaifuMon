@@ -133,6 +133,7 @@ export function CollectionPage({
             race: params.race,
             affinity: params.affinity,
             ownership: params.ownership,
+            zone: params.zone,
           },
           // Which copy the "Buddy" filter means: the viewer's own in self mode,
           // the owner's in public mode. Never crossed.
@@ -149,6 +150,7 @@ export function CollectionPage({
       params.race,
       params.affinity,
       params.ownership,
+      params.zone,
       params.sort,
       buddy.data,
       isPublic,

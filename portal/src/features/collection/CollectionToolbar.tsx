@@ -17,6 +17,7 @@ import {
 import { SORT_OPTIONS, type SortKey } from '@/content/species';
 import { titleCase } from '@/lib/format';
 import { RARITY_ORDER, rarityStyle } from '@/lib/rarity';
+import { ZONES, zoneLabel } from '@/lib/zone';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
 import type { CollectionParamsApi, Ownership } from './useCollectionParams';
 
@@ -93,6 +94,23 @@ export function CollectionToolbar({
       })),
     },
     {
+      label: 'Zone',
+      options: [
+        {
+          value: 'all',
+          label: 'All Zones',
+          active: params.zone === null,
+          onSelect: () => setFilter({ zone: null }),
+        },
+        ...ZONES.map((zone) => ({
+          value: zone.tag,
+          label: zone.label,
+          active: params.zone === zone.tag,
+          onSelect: () => setFilter({ zone: params.zone === zone.tag ? null : zone.tag }),
+        })),
+      ],
+    },
+    {
       label: 'Show',
       options: OWNERSHIP_OPTIONS.map((option) => ({
         value: option.value,
@@ -140,6 +158,15 @@ export function CollectionToolbar({
             key: 'affinity',
             label: `Affinity: ${titleCase(params.affinity)}`,
             onRemove: () => setFilter({ affinity: null }),
+          },
+        ]
+      : []),
+    ...(params.zone
+      ? [
+          {
+            key: 'zone',
+            label: `Zone: ${zoneLabel(params.zone) ?? 'Unknown'}`,
+            onRemove: () => setFilter({ zone: null }),
           },
         ]
       : []),

@@ -120,6 +120,29 @@ describe('WaifumonCard', () => {
     expect(link).toHaveAccessibleName('Nyx, Ultra Rare, level 22');
   });
 
+  it.each([
+    ['waifu_valley', 'Waifu Valley'],
+    ['twin_peeks', 'Twin Peeks'],
+    ['flaccid_foothills', 'Flaccid Foothills'],
+    ['thirstlands', 'Thirstlands'],
+  ])('shows the %s zone by its player-facing name', (tag, label) => {
+    renderCard({
+      entry: { ...entry, species: { ...entry.species, tags: ['expansion', tag] } },
+    });
+    expect(screen.getByTitle(label)).toHaveTextContent(label);
+    expect(screen.getByRole('link')).toHaveAccessibleName(`Nyx, Ultra Rare, level 22, ${label}`);
+    expect(screen.queryByText(tag)).toBeNull();
+  });
+
+  it('renders without a zone label when the species has no recognised zone tag', () => {
+    renderCard({
+      entry: { ...entry, species: { ...entry.species, tags: ['expansion', 'region_exclusive'] } },
+    });
+    const link = screen.getByRole('link');
+    expect(link).toHaveAccessibleName('Nyx, Ultra Rare, level 22');
+    expect(link).not.toHaveTextContent(/region_exclusive|expansion/);
+  });
+
   it('titles by nickname and keeps the species name as a subtitle', () => {
     renderCard();
     expect(screen.getByTitle('Nyx')).toBeInTheDocument();
