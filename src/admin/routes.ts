@@ -16,6 +16,7 @@ import {
   type AdminContentService,
 } from '../modules/content/adminContentService';
 import { QuestPoolEntrySchema, type QuestPoolEntry } from '../modules/content/schemas';
+import { resolveExistingAssetFile } from '../modules/assets/assetContainment';
 import { dashboardPage, loginPage } from './views/pages';
 import { itemFormPage, itemListPage } from './views/itemPages';
 import { questFormPage, questListPage } from './views/questPages';
@@ -452,13 +453,20 @@ export function registerRoutes(
     const ext = path.extname(resolved).toLowerCase();
     const type = IMAGE_TYPES[ext];
     if (!type) return reply.code(415).send({ ok: false, errors: ['Unsupported asset type'] });
-    if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
+    // Lexical containment above; before reading, the file's real location
+    // must also be inside the real assets root (no symlink escapes).
+    const found = resolveExistingAssetFile(content.assetsDir, relative);
+    if (found.status === 'unsafe') {
+      req.log.warn({ relative }, 'admin asset request rejected: path escapes assets root via a symlink');
+      return reply.code(400).send({ ok: false, errors: ['Invalid asset path'] });
+    }
+    if (found.status === 'missing') {
       return reply.code(404).send({ ok: false, errors: ['Asset not found'] });
     }
     return reply
       .type(type)
       .header('cache-control', 'private, max-age=60')
-      .send(fs.createReadStream(resolved));
+      .send(fs.createReadStream(found.absolutePath));
   });
 
   // ── world encounters ───────────────────────────────────────────────────────

@@ -33,8 +33,18 @@ import {
   EncounterInputSchema,
   CheckSchema,
   EffectSchema,
+  WORLD_ENCOUNTER_ARTWORK_ROOTS,
 } from '../../../../modules/worldEncounters/types';
-import { adminArtworkQuery, sendAdminArtwork } from '../../../adminArtwork';
+import {
+  adminArtworkBrowseQuery,
+  adminArtworkQuery,
+  adminArtworkSearchQuery,
+  artworkDirectorySchema,
+  artworkSearchSchema,
+  browseAdminArtwork,
+  searchAdminArtwork,
+  sendAdminArtwork,
+} from '../../../adminArtwork';
 import {
   SETTINGS_BOUNDS,
   WorldEncounterSettingsValidationError,
@@ -671,6 +681,57 @@ export const adminEncounterRoutes =
       },
       async (req, reply) =>
         sendAdminArtwork(reply, ctx.assetsDir ?? './assets', req.query.path),
+    );
+
+    /**
+     * The artwork picker for the encounter editor: one folder of
+     * `encounters/` at a time, and a bounded search over it. Same shared
+     * browser as the Result Presentation picker, its own permission and its
+     * own root ({@link WORLD_ENCOUNTER_ARTWORK_ROOTS}).
+     */
+    app.get(
+      '/admin/encounters/artwork/browse',
+      {
+        preValidation: gate('encounters.read'),
+        schema: {
+          tags: ['Admin — Encounters'],
+          summary: 'List one folder of encounter artwork for the picker',
+          querystring: adminArtworkBrowseQuery,
+          response: { 200: dataSchema(artworkDirectorySchema), ...notFoundResponse, ...commonErrorResponses },
+        },
+      },
+      async (req) =>
+        ok(
+          req,
+          await browseAdminArtwork(
+            ctx.assetsDir ?? './assets',
+            WORLD_ENCOUNTER_ARTWORK_ROOTS,
+            req.query.path,
+          ),
+        ),
+    );
+
+    app.get(
+      '/admin/encounters/artwork/search',
+      {
+        preValidation: gate('encounters.read'),
+        schema: {
+          tags: ['Admin — Encounters'],
+          summary: 'Search encounter artwork by file name or folder',
+          querystring: adminArtworkSearchQuery,
+          response: { 200: dataSchema(artworkSearchSchema), ...commonErrorResponses },
+        },
+      },
+      async (req) =>
+        ok(
+          req,
+          await searchAdminArtwork(
+            ctx.assetsDir ?? './assets',
+            WORLD_ENCOUNTER_ARTWORK_ROOTS,
+            req.query.q,
+            req.query.limit,
+          ),
+        ),
     );
 
     /**

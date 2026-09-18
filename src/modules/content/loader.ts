@@ -7,6 +7,7 @@ import {
   locateLegacyArtwork,
   locateSpeciesArtwork,
 } from '../assets/speciesArtworkFile';
+import { resolveExistingAssetFile } from '../assets/assetContainment';
 import { archetypeToRace, DEFAULT_RACE } from '../cards/race';
 import { ContentValidationError } from '../../shared/errors';
 import type { Logger } from '../../shared/logger';
@@ -54,8 +55,13 @@ function parseJsonFile<T>(filePath: string, schema: ZodType<T, ZodTypeDef, unkno
 }
 
 /**
- * Resolves a species image path under the assets root, rejecting escapes
- * (a malicious image_path in content JSON must not read outside ASSETS_DIR).
+ * Resolves a content path under the assets root, rejecting lexical escapes
+ * (a malicious image_path in content JSON must not point outside ASSETS_DIR).
+ *
+ * Lexical only — no disk access, so it works for paths that may not exist.
+ * It is a *shape* check, not permission to read: code about to read or serve
+ * a file uses `resolveExistingAssetFile`, which also refuses symlinks that
+ * lead out of the assets directory.
  */
 export function resolveAssetPath(assetsDir: string, imagePath: string): string {
   const resolved = assetPathWithin(assetsDir, imagePath);
@@ -240,19 +246,17 @@ export function validateBossAssets(
 ): BossContent[] {
   return bosses.map((boss) => {
     if (!boss.artwork) return boss;
-    let absolute: string;
-    try {
-      absolute = resolveAssetPath(assetsDir, boss.artwork);
-    } catch {
-      // Traversal — the schema should already have rejected it, so this is the
-      // belt to that braces. Treated as missing, loudly.
+    const found = resolveExistingAssetFile(assetsDir, boss.artwork);
+    if (found.status === 'unsafe') {
+      // Traversal or a symlink out of assets/ — the schema rejects the former,
+      // so this is the belt to those braces. Treated as missing, loudly.
       logger.warn(
         { bossId: boss.id, artwork: boss.artwork },
         'boss artwork resolves outside the assets directory — encounter will render text-only',
       );
       return { ...boss, artwork: null };
     }
-    if (fs.existsSync(absolute)) return boss;
+    if (found.status === 'available') return boss;
     logger.warn(
       { bossId: boss.id, artwork: boss.artwork },
       'boss artwork missing — encounter will render text-only',

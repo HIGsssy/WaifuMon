@@ -6,15 +6,17 @@
  *
  *   1. shape — strict relative path with a supported image extension
  *      ({@link isSafeRelativeArtworkPath}); nothing on disk is consulted;
- *   2. containment — `resolveAssetPath` confines it to the assets root;
- *   3. existence.
+ *   2. containment — lexically inside the assets root, and its *real*
+ *      (symlink-resolved) location inside the real assets root
+ *      ({@link resolveExistingAssetFile}), so a symlink under `assets/` that
+ *      leads elsewhere is refused;
+ *   3. existence, as a regular file.
  *
  * Callers decide what each answer means for them: the Discord resolver logs
  * and renders text-only, the admin artwork routes answer 400/404, and the
  * Result Presentation preview reports a status to the editor.
  */
-import fs from 'node:fs';
-import { resolveAssetPath } from '../content/loader';
+import { resolveExistingAssetFile } from './assetContainment';
 import {
   ARTWORK_CONTENT_TYPES,
   artworkExtensionOf,
@@ -29,9 +31,12 @@ export type LocatedArtwork =
       extension: ArtworkExtension;
       contentType: string;
     }
-  /** Bad shape, unsupported extension, or resolves outside the assets root. */
+  /** Bad shape, unsupported extension, or resolves outside the assets root (lexically or via a symlink). */
   | { status: 'unsafe'; reason: string }
-  /** A well-formed path with no file behind it — usually a typo. */
+  /**
+   * A well-formed path with no regular file behind it — usually a typo; also
+   * a broken or looping symlink, or a directory.
+   */
   | { status: 'missing' };
 
 export function locateArtworkFile(assetsDir: string, relativePath: string): LocatedArtwork {
@@ -43,16 +48,14 @@ export function locateArtworkFile(assetsDir: string, relativePath: string): Loca
     };
   }
   const extension = artworkExtensionOf(relativePath)!;
-  let absolutePath: string;
-  try {
-    absolutePath = resolveAssetPath(assetsDir, relativePath);
-  } catch {
-    return { status: 'unsafe', reason: 'Artwork path resolves outside the assets directory.' };
+  const found = resolveExistingAssetFile(assetsDir, relativePath);
+  if (found.status === 'unsafe') {
+    return { status: 'unsafe', reason: found.reason };
   }
-  if (!fs.existsSync(absolutePath)) return { status: 'missing' };
+  if (found.status === 'missing') return { status: 'missing' };
   return {
     status: 'available',
-    absolutePath,
+    absolutePath: found.absolutePath,
     extension,
     contentType: ARTWORK_CONTENT_TYPES[extension],
   };

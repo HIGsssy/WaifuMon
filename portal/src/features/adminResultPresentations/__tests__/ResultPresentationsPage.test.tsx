@@ -21,6 +21,7 @@ import type {
   ResultPresentationVariant,
   ResultPresentationPreview,
 } from '@/api/adminResultPresentations';
+import type { ArtworkDirectory } from '@/api/adminArtwork';
 import { PortalApiError } from '@/api/client';
 import { SessionContext } from '@/auth/SessionContext';
 import type { PortalSession, SessionState } from '@/auth/types';
@@ -204,7 +205,28 @@ const spies = {} as {
   update: MockInstance<typeof api.updateResultPresentation>;
   remove: MockInstance<typeof api.deleteResultPresentation>;
   preview: MockInstance<typeof api.previewResultPresentation>;
+  browse: MockInstance<typeof api.browseResultPresentationArtwork>;
+  search: MockInstance<typeof api.searchResultPresentationArtwork>;
 };
+
+/** The picker's view of the server's `results/` tree. */
+const PICKER_TREE: Record<string, string[]> = {
+  results: ['coins.webp'],
+  'results/hunt/waifubux': ['purse-01.webp', 'suspicious-purse-03.webp'],
+};
+
+function pickerFolder(path: string): ArtworkDirectory {
+  const files = PICKER_TREE[path];
+  if (!files) throw new PortalApiError({ status: 404, code: 'NOT_FOUND', message: 'That folder no longer exists.' });
+  const parts = path.split('/');
+  return {
+    path,
+    parent: parts.length === 1 ? null : parts.slice(0, -1).join('/'),
+    breadcrumbs: parts.map((name, i) => ({ name, path: parts.slice(0, i + 1).join('/') })),
+    directories: path === 'results' ? [{ name: 'hunt', path: 'results/hunt' }] : [],
+    files: files.map((name) => ({ name, path: `${path}/${name}`, folder: path, extension: 'webp' })),
+  };
+}
 
 beforeEach(() => {
   stored = [];
@@ -233,6 +255,15 @@ beforeEach(() => {
     .spyOn(api, 'previewResultPresentation')
     .mockImplementation(async (request) => previewFor(request));
   vi.spyOn(api, 'resultPresentationArtworkBlob').mockResolvedValue(new Blob(['x']));
+  spies.browse = vi
+    .spyOn(api, 'browseResultPresentationArtwork')
+    .mockImplementation(async (path) => pickerFolder(path ?? 'results'));
+  spies.search = vi.spyOn(api, 'searchResultPresentationArtwork').mockResolvedValue({
+    query: 'purse',
+    results: [],
+    truncated: false,
+    limit: 100,
+  });
   vi.spyOn(api, 'resultPresentationSpeciesArtworkBlob').mockResolvedValue(new Blob(['x']));
 });
 
@@ -597,6 +628,119 @@ describe('editor', () => {
   });
 });
 
+describe('Browse Artwork', () => {
+  async function openNewEditor(key?: string) {
+    const user = userEvent.setup();
+    renderPage(WRITE, key ? `/admin/result-presentations?key=${key}` : undefined);
+    await user.click(await screen.findByRole('button', { name: 'New variant' }));
+    return { user, editor: screen.getByTestId('variant-editor') };
+  }
+
+  it('is offered only for Custom Artwork', async () => {
+    const { user, editor } = await openNewEditor();
+    expect(within(editor).queryByRole('button', { name: 'Browse Artwork' })).toBeNull();
+    await user.click(within(editor).getByRole('radio', { name: 'Custom Artwork' }));
+    expect(within(editor).getByRole('button', { name: 'Browse Artwork' })).toBeInTheDocument();
+    await user.click(within(editor).getByRole('radio', { name: 'No Artwork' }));
+    expect(within(editor).queryByRole('button', { name: 'Browse Artwork' })).toBeNull();
+  });
+
+  it('is not offered for the encountered Waifumon', async () => {
+    const { user, editor } = await openNewEditor('encounter.released');
+    expect(within(editor).getByRole('radio', { name: 'Encountered Waifumon' })).toBeChecked();
+    expect(within(editor).queryByRole('button', { name: 'Browse Artwork' })).toBeNull();
+    // The preview Waifumon selector is separate and still there.
+    expect(within(editor).getByRole('combobox', { name: 'Preview Waifumon' })).toBeInTheDocument();
+    await user.click(within(editor).getByRole('radio', { name: 'Custom Artwork' }));
+    expect(within(editor).getByRole('button', { name: 'Browse Artwork' })).toBeInTheDocument();
+  });
+
+  it.each(REFERENCE.keys.filter((k) => k.allowedArtworkModes.includes('custom')).map((k) => k.key))(
+    'is offered for every key the reference allows custom artwork on: %s',
+    async (key) => {
+      const { user, editor } = await openNewEditor(key);
+      await user.click(within(editor).getByRole('radio', { name: 'Custom Artwork' }));
+      expect(within(editor).getByRole('button', { name: 'Browse Artwork' })).toBeInTheDocument();
+    },
+  );
+
+  it('selecting a file fills the path, updates the previews and saves nothing', async () => {
+    {
+      const { user, editor } = await openNewEditor();
+      await user.click(within(editor).getByRole('radio', { name: 'Custom Artwork' }));
+      await user.click(within(editor).getByRole('button', { name: 'Browse Artwork' }));
+      const dialog = await screen.findByRole('dialog');
+      await user.click(await within(dialog).findByRole('button', { name: 'Use results/coins.webp' }));
+
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      expect(within(editor).getByLabelText('Artwork path')).toHaveValue('results/coins.webp');
+      // The existing artwork preview loads the picked file…
+      expect(await within(editor).findByTestId('presentation-artwork-image')).toBeInTheDocument();
+      expect(api.resultPresentationArtworkBlob).toHaveBeenCalledWith('results/coins.webp');
+      // …and the unsaved-variant preview is asked about it.
+      await waitFor(() =>
+        expect(spies.preview).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            variant: expect.objectContaining({ artworkMode: 'custom', artworkPath: 'results/coins.webp' }),
+          }),
+          expect.anything(),
+        ),
+      );
+      expect(spies.create).not.toHaveBeenCalled();
+      expect(spies.update).not.toHaveBeenCalled();
+    }
+  });
+
+  it('opens on the folder of the existing path and marks the file', async () => {
+    stored = [
+      variant({ artworkMode: 'custom', artworkPath: 'results/hunt/waifubux/suspicious-purse-03.webp' }),
+    ];
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(within(await screen.findByTestId('variant-row-1')).getByRole('button', { name: 'Edit' }));
+    await user.click(screen.getByRole('button', { name: 'Browse Artwork' }));
+    const current = await screen.findByTestId('artwork-file-results/hunt/waifubux/suspicious-purse-03.webp');
+    expect(current).toHaveAttribute('aria-pressed', 'true');
+    expect(spies.browse).toHaveBeenCalledWith('results/hunt/waifubux', expect.anything());
+  });
+
+  it('keeps a moved file’s path until the author picks something, and cancelling changes nothing', async () => {
+    stored = [variant({ artworkMode: 'custom', artworkPath: 'results/old/gone.webp' })];
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(within(await screen.findByTestId('variant-row-1')).getByRole('button', { name: 'Edit' }));
+    await user.click(screen.getByRole('button', { name: 'Browse Artwork' }));
+    expect(await screen.findByTestId('artwork-browser-fallback')).toHaveTextContent('results/old');
+    expect(await screen.findByTestId('artwork-file-results/coins.webp')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(screen.getByLabelText('Artwork path')).toHaveValue('results/old/gone.webp');
+    expect(spies.update).not.toHaveBeenCalled();
+  });
+
+  it('manual path entry still works alongside the browser', async () => {
+    const { user, editor } = await openNewEditor();
+    await user.click(within(editor).getByRole('radio', { name: 'Custom Artwork' }));
+    await user.type(within(editor).getByLabelText('Artwork path'), 'results/typed.webp');
+    expect(within(editor).getByLabelText('Artwork path')).toHaveValue('results/typed.webp');
+    expect(spies.browse).not.toHaveBeenCalled();
+  });
+
+  it('saving a picked path is an ordinary save (presentations.write)', async () => {
+    const { user, editor } = await openNewEditor();
+    await user.click(within(editor).getByRole('radio', { name: 'Custom Artwork' }));
+    await user.click(within(editor).getByRole('button', { name: 'Browse Artwork' }));
+    await user.click(await screen.findByRole('button', { name: 'Use results/coins.webp' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await user.click(within(editor).getByRole('button', { name: 'Create variant' }));
+    await waitFor(() =>
+      expect(spies.create).toHaveBeenCalledWith(
+        expect.objectContaining({ artworkMode: 'custom', artworkPath: 'results/coins.webp' }),
+      ),
+    );
+  });
+});
+
 describe('the two newest result types', () => {
   it('offers Back to Hunting only custom/no artwork, defaulting to none', async () => {
     const user = userEvent.setup();
@@ -744,6 +888,17 @@ describe('authorization in the UI', () => {
     const editor = screen.getByTestId('variant-editor');
     expect(within(editor).queryByRole('button', { name: /Save|Create/ })).toBeNull();
     expect(within(editor).getByLabelText(/Flavor text/)).toBeDisabled();
+  });
+
+  it('read-only authors cannot open the picker on a field they cannot change', async () => {
+    stored = [variant({ artworkMode: 'custom', artworkPath: 'results/coins.webp' })];
+    const user = userEvent.setup();
+    renderPage(READ);
+    await user.click(within(await screen.findByTestId('variant-row-1')).getByRole('button', { name: 'View' }));
+    const editor = screen.getByTestId('variant-editor');
+    expect(within(editor).getByLabelText('Artwork path')).toBeDisabled();
+    expect(within(editor).queryByRole('button', { name: 'Browse Artwork' })).toBeNull();
+    expect(spies.browse).not.toHaveBeenCalled();
   });
 
   it('hides the navigation entry without presentations.read', () => {

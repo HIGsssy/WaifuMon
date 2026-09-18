@@ -58,8 +58,7 @@ import {
   buddyBonusShortLine,
   type AppliedBuddyBonus,
 } from '../../modules/buddyBonus/buddyBonusEffects';
-import { resolveAssetPath } from '../../modules/content/loader';
-import fs from 'node:fs';
+import { resolveExistingAssetFile } from '../../modules/assets/assetContainment';
 import type { UiSplashConfig } from '../../modules/content/schemas';
 import {
   parseQuestRewards,
@@ -308,9 +307,9 @@ export function buildSplashView(
   const files: AttachmentBuilder[] = [];
   if (splash.imagePath) {
     try {
-      const abs = resolveAssetPath(ctx.config.assetsDir, splash.imagePath);
-      if (fs.existsSync(abs)) {
-        files.push(new AttachmentBuilder(abs, { name: SPLASH_IMAGE_FILENAME }));
+      const found = resolveExistingAssetFile(ctx.config.assetsDir, splash.imagePath);
+      if (found.status === 'available') {
+        files.push(new AttachmentBuilder(found.absolutePath, { name: SPLASH_IMAGE_FILENAME }));
         embed.setImage(`attachment://${SPLASH_IMAGE_FILENAME}`);
       } else {
         ctx.logger.warn(

@@ -6,6 +6,7 @@
  * shape those columns are validated into on the way in (admin write) and on
  * the way out (engine load). Nothing else in the module reads the raw JSONB.
  */
+import { relativeArtworkPath } from '../assets/artworkPath';
 import { z } from 'zod';
 import { REGIONS } from '../locations/regions';
 import { AFFINITIES } from '../../db/schema';
@@ -249,6 +250,13 @@ export type ChoiceInput = z.infer<typeof ChoiceInputSchema>;
 
 /* ─────────────────────── Encounter definition ─────────────────────── */
 
+/**
+ * Folders under `assets/` the encounter editor's artwork picker may browse.
+ * Every shipped encounter image is under `encounters/`; nothing else in the
+ * assets tree is encounter content.
+ */
+export const WORLD_ENCOUNTER_ARTWORK_ROOTS = ['encounters'] as const;
+
 export const EncounterInputSchema = z.object({
   slug,
   name: z.string().min(1).max(120),
@@ -260,16 +268,19 @@ export const EncounterInputSchema = z.object({
   huntEligible: z.boolean().default(true),
   travelEligible: z.boolean().default(false),
   cooldownSeconds: z.number().int().nonnegative().max(30 * 24 * 60 * 60).default(0),
-  /** Relative path under `assets/`, e.g. `encounters/bandit_ambush.png`. */
-  artworkPath: z
-    .string()
-    .max(200)
-    .nullable()
-    .default(null)
-    .refine(
-      (v) => v == null || !v.includes('..'),
-      'artworkPath must not contain path traversal',
-    ),
+  /**
+   * Relative path under `assets/`, e.g. `encounters/bandit_ambush.webp`.
+   *
+   * The canonical authored-artwork rule ({@link relativeArtworkPath}): relative,
+   * forward slashes, no `..` segment, no URL, a supported image extension —
+   * the same rule the renderer applies, so a path that saves is a path that
+   * can render. An empty string means "no artwork", exactly as it always has
+   * at render time.
+   */
+  artworkPath: z.preprocess(
+    (v) => (v === '' ? null : v),
+    relativeArtworkPath.nullable().default(null),
+  ),
   chainedEncounterSlug: slug.nullable().default(null),
   choicesRequired: z.boolean().default(true),
   /** Empty = globally eligible for its enabled sources. */

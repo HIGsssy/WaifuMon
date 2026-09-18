@@ -39,9 +39,14 @@ beforeAll(() => {
     fs.writeFileSync(path.join(assetsDir, 'encounters', `scene.${ext}`), 'not really an image');
   }
   fs.writeFileSync(path.join(assetsDir, 'encounters', 'notes.txt'), 'text');
+  // Outside the assets directory, linked from inside it; and a safe link.
+  fs.writeFileSync(`${assetsDir}-secret.png`, 'secret');
+  fs.symlinkSync(`${assetsDir}-secret.png`, path.join(assetsDir, 'encounters', 'escape.png'));
+  fs.symlinkSync(path.join(assetsDir, 'encounters', 'scene.webp'), path.join(assetsDir, 'encounters', 'alias.webp'));
 });
 afterAll(() => {
   fs.rmSync(assetsDir, { recursive: true, force: true });
+  fs.rmSync(`${assetsDir}-secret.png`, { force: true });
 });
 
 function makeCtx() {
@@ -187,6 +192,31 @@ describe('World Encounter screen', () => {
     expect(embed.fields).toContainEqual({ name: ALONG_THE_WAY_FIELD, value: '💰 +12 WaifuBux', inline: false });
     expect((view.files ?? []).map(nameOf)).toEqual(['tv_bandit_ambush.jpg']);
     expect(embed.image?.url).toBe('attachment://tv_bandit_ambush.jpg');
+  });
+
+  it('attaches artwork reached through a symlink that stays inside assets', () => {
+    const { ctx } = makeCtx();
+    const view = buildEncounterPresent(ctx as unknown as AppContext, activation('encounters/alias.webp'));
+    expect((view.files ?? []).map(nameOf)).toEqual(['tv_bandit_ambush.webp']);
+  });
+
+  it('a symlink out of assets presents the encounter text-only and logs it', () => {
+    const { ctx, error } = makeCtx();
+    const view = buildEncounterPresent(ctx as unknown as AppContext, activation('encounters/escape.png'), {
+      alongTheWay: '💰 +12 WaifuBux',
+    });
+    expect(view.files ?? []).toEqual([]);
+    expect(embedJson(view).image).toBeUndefined();
+    // The encounter itself — and the reward already granted — still show.
+    expect(embedJson(view).fields).toContainEqual({
+      name: ALONG_THE_WAY_FIELD,
+      value: '💰 +12 WaifuBux',
+      inline: false,
+    });
+    expect(error).toHaveBeenCalledWith(
+      expect.objectContaining({ tag: 'world-encounter/artwork-unsafe' }),
+      expect.any(String),
+    );
   });
 
   it('adds no "Along the way" field without a summary', () => {

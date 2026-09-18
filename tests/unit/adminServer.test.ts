@@ -3,6 +3,7 @@
  * Driven with Fastify's `inject()`, so nothing binds a real port here.
  */
 import fs from 'node:fs';
+import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createAdminServer } from '../../src/admin/server';
@@ -296,6 +297,26 @@ describe('asset preview', () => {
       headers: bearer,
     });
     expect(notImage.statusCode).toBe(415);
+  });
+
+  it('refuses a symlink that leads outside the assets root, and still serves one that stays inside', async () => {
+    // `f.assetsDir` sits inside the fixture root, so a file next to it is
+    // outside the assets directory.
+    const outside = path.join(path.dirname(f.assetsDir), 'secret.png');
+    fs.writeFileSync(outside, 'SECRET-BYTES');
+    fs.symlinkSync(outside, path.join(f.assetsDir, 'escape.png'));
+    fs.symlinkSync(
+      path.join(f.assetsDir, 'waifumon', 'alley_catgirl', 'standard.png'),
+      path.join(f.assetsDir, 'alias.png'),
+    );
+
+    const escape = await app.inject({ method: 'GET', url: '/admin/assets/escape.png', headers: bearer });
+    expect(escape.statusCode).toBe(400);
+    expect(escape.body).not.toContain('SECRET-BYTES');
+
+    const alias = await app.inject({ method: 'GET', url: '/admin/assets/alias.png', headers: bearer });
+    expect(alias.statusCode).toBe(200);
+    expect(alias.headers['content-type']).toBe('image/png');
   });
 });
 

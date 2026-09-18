@@ -23,7 +23,7 @@
  *     server's selector preview answer; nothing here evaluates a selector.
  *     The server enforces the same rule on activation.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -48,6 +48,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useHasPermission } from '@/auth/useSession';
 
 import { EncounterArtwork } from '@/components/media/EncounterArtwork';
+import { ArtworkPickerDialog } from '@/components/admin/ArtworkPicker';
+import { encounterArtworkSource } from '@/components/admin/artworkSources';
 import { ChoiceEditor } from './ChoiceEditor';
 import {
   EMPTY_DRAFT,
@@ -69,6 +71,8 @@ export function AdminEncounterEditorPage() {
   const queryClient = useQueryClient();
   const canWrite = useHasPermission('encounters.write');
   const canPublish = useHasPermission('encounters.publish');
+  const artworkPathId = useId();
+  const [artworkPickerOpen, setArtworkPickerOpen] = useState(false);
   const isNew = !idParam;
   const encounterId = idParam ? Number(idParam) : null;
 
@@ -312,12 +316,26 @@ export function AdminEncounterEditorPage() {
                   onChange={(e) => patch({ cooldownSeconds: Number(e.target.value) })}
                 />
               </label>
-              <label className="text-xs text-ink-muted">
-                Artwork path (relative to assets/)
-                <Input
-                  value={draft.artworkPath ?? ''}
-                  onChange={(e) => patch({ artworkPath: e.target.value.trim() || null })}
-                  placeholder="encounters/bandit_ambush.webp"
+              <div className="text-xs text-ink-muted">
+                <label htmlFor={artworkPathId}>Artwork path (relative to assets/)</label>
+                <div className="flex gap-2">
+                  <Input
+                    id={artworkPathId}
+                    value={draft.artworkPath ?? ''}
+                    onChange={(e) => patch({ artworkPath: e.target.value.trim() || null })}
+                    placeholder="encounters/bandit_ambush.webp"
+                  />
+                  <Button type="button" variant="outline" onClick={() => setArtworkPickerOpen(true)}>
+                    Browse Artwork
+                  </Button>
+                </div>
+                <ArtworkPickerDialog
+                  open={artworkPickerOpen}
+                  onClose={() => setArtworkPickerOpen(false)}
+                  source={encounterArtworkSource}
+                  selectedPath={draft.artworkPath}
+                  onSelect={(path) => patch({ artworkPath: path })}
+                  title="Browse encounter artwork"
                 />
                 {/*
                   Live preview against the path as typed, so a typo shows up
@@ -327,7 +345,7 @@ export function AdminEncounterEditorPage() {
                 <div className="mt-2">
                   <EncounterArtwork path={draft.artworkPath} />
                 </div>
-              </label>
+              </div>
               <label className="text-xs text-ink-muted">
                 Chained encounter slug
                 <Input

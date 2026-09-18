@@ -10,10 +10,9 @@
  * loader deliberately does not enforce a 4:1 aspect, but the schema's field
  * doc recommends 1200×300.
  */
-import fs from 'node:fs';
 import path from 'node:path';
 import { AttachmentBuilder } from 'discord.js';
-import { resolveAssetPath } from '../modules/content/loader';
+import { resolveExistingAssetFile } from '../modules/assets/assetContainment';
 import type { AppContext } from './types';
 
 export interface RegionBanner {
@@ -41,14 +40,22 @@ export function resolveRegionBanner(
   const assetsDir = ctx.config.assetsDir;
   if (!assetsDir) return null;
   try {
-    const abs = resolveAssetPath(assetsDir, bannerImagePath);
-    if (!fs.existsSync(abs)) {
+    const found = resolveExistingAssetFile(assetsDir, bannerImagePath);
+    if (found.status === 'unsafe') {
+      ctx.logger.warn(
+        { regionId, bannerImagePath, reason: found.reason },
+        'region banner path rejected — rendering without banner',
+      );
+      return null;
+    }
+    if (found.status === 'missing') {
       ctx.logger.debug(
         { regionId, bannerImagePath },
         'region banner not found on disk — rendering without banner',
       );
       return null;
     }
+    const abs = found.absolutePath;
     // Namespace the attachment by region so two banners in the same payload
     // (unlikely, but the detail screen could bump into the main menu one)
     // never collide on Discord's attachment table.

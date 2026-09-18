@@ -13,11 +13,10 @@
  * and the appearance sync tool ask it whether artwork exists — and because
  * this module imports none of them, none of them import each other through it.
  */
-import fs from 'node:fs';
-import { stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { AssetId } from '../content/schemas';
 import { ARTWORK_CONTENT_TYPES, artworkExtensionOf, type ArtworkExtension } from './artworkPath';
+import { isPathInside, resolveExistingAssetFile } from './assetContainment';
 
 /**
  * Formats species artwork may be stored in, most preferred first.
@@ -40,16 +39,10 @@ export interface ArtworkFile {
   contentType: string;
 }
 
-/**
- * `relative` resolved under the assets root, or `null` when it would escape
- * it. The one containment rule every artwork path goes through; the content
- * loader's throwing `resolveAssetPath` is built on it.
- */
-export function assetPathWithin(assetsDir: string, relative: string): string | null {
-  const root = path.resolve(assetsDir);
-  const resolved = path.resolve(root, relative);
-  return resolved === root || resolved.startsWith(root + path.sep) ? resolved : null;
-}
+// The containment rules live in `assetContainment.ts`; `assetPathWithin` is
+// re-exported here because the build tool and the content loader import it
+// from this module.
+export { assetPathWithin } from './assetContainment';
 
 /**
  * The storage stem an `AssetId` maps to: `<kind>/<slug>/<variant>`, relative
@@ -140,28 +133,30 @@ export async function resolveArtworkRendition(
 ): Promise<ArtworkFile> {
   if (width === undefined) return artwork;
   const root = path.resolve(assetsDir);
+  if (!isPathInside(root, artwork.absolutePath)) return artwork;
   const relative = path.relative(root, artwork.absolutePath);
-  if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
-    return artwork;
-  }
   const stem = relative.split(path.sep).join('/').replace(/\.[^./]+$/, '');
-  const rendition = assetPathWithin(root, renditionRelativePath(stem, width));
-  if (rendition === null) return artwork;
-  try {
-    if ((await stat(rendition)).isFile()) {
-      return { absolutePath: rendition, extension: 'webp', contentType: ARTWORK_CONTENT_TYPES.webp };
-    }
-  } catch {
-    // Renditions are an optimization. Fall through to the artwork itself.
-  }
-  return artwork;
+  // A rendition is read and served like the artwork itself, so it gets the
+  // same canonical containment check. Renditions are an optimization: any
+  // answer but "available" falls through to the artwork.
+  const rendition = resolveExistingAssetFile(root, renditionRelativePath(stem, width));
+  if (rendition.status !== 'available') return artwork;
+  return {
+    absolutePath: rendition.absolutePath,
+    extension: 'webp',
+    contentType: ARTWORK_CONTENT_TYPES.webp,
+  };
 }
 
+/**
+ * The candidate as an {@link ArtworkFile} when it may be read: a supported
+ * format, and a regular file whose real location is inside the real assets
+ * root (a symlink out of `assets/` counts as absent).
+ */
 function existingArtwork(assetsDir: string, relative: string): ArtworkFile | null {
   const extension = artworkExtensionOf(relative);
   if (extension === null) return null;
-  const absolutePath = assetPathWithin(assetsDir, relative);
-  if (absolutePath === null) return null;
-  if (!fs.existsSync(absolutePath)) return null;
-  return { absolutePath, extension, contentType: ARTWORK_CONTENT_TYPES[extension] };
+  const found = resolveExistingAssetFile(assetsDir, relative);
+  if (found.status !== 'available') return null;
+  return { absolutePath: found.absolutePath, extension, contentType: ARTWORK_CONTENT_TYPES[extension] };
 }

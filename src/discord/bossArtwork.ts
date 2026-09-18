@@ -17,9 +17,8 @@
  * `...resolveBossArtwork(ctx, encounter)` and the "no artwork" case is simply
  * an absent key.
  */
-import fs from 'node:fs';
 import type { BossEncounterRow } from '../db/schema';
-import { resolveAssetPath } from '../modules/content/loader';
+import { resolveExistingAssetFile } from '../modules/assets/assetContainment';
 import type { AppContext } from './types';
 
 export interface BossArtwork {
@@ -34,21 +33,20 @@ export function resolveBossArtwork(
   // with artwork keeps rendering with it even if the boss is retired midway.
   const relative = encounter.bossArtwork;
   if (!relative) return {};
-  try {
-    const absolute = resolveAssetPath(ctx.config.assetsDir, relative);
-    if (!fs.existsSync(absolute)) {
-      ctx.logger.warn(
-        { tag: 'boss/artwork-missing', encounterId: encounter.id, artwork: relative },
-        'boss artwork missing at post time — rendering text-only',
-      );
-      return {};
-    }
-    return { artworkPath: absolute };
-  } catch (err) {
+  const found = resolveExistingAssetFile(ctx.config.assetsDir, relative);
+  if (found.status === 'unsafe') {
     ctx.logger.error(
-      { tag: 'boss/artwork-unsafe', encounterId: encounter.id, artwork: relative, err },
+      { tag: 'boss/artwork-unsafe', encounterId: encounter.id, artwork: relative, reason: found.reason },
       'boss artwork path rejected — rendering text-only',
     );
     return {};
   }
+  if (found.status === 'missing') {
+    ctx.logger.warn(
+      { tag: 'boss/artwork-missing', encounterId: encounter.id, artwork: relative },
+      'boss artwork missing at post time — rendering text-only',
+    );
+    return {};
+  }
+  return { artworkPath: found.absolutePath };
 }

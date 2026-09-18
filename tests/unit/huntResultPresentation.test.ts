@@ -61,9 +61,18 @@ beforeAll(() => {
   fs.mkdirSync(path.join(assetsDir, 'results'));
   fs.writeFileSync(path.join(assetsDir, 'results', 'coins.webp'), 'x');
   fs.writeFileSync(path.join(assetsDir, 'results', 'wave.jpg'), 'x');
+  // A file outside the assets directory, linked from inside it; and a link
+  // that stays inside.
+  fs.writeFileSync(path.join(path.dirname(assetsDir), `${path.basename(assetsDir)}-secret.png`), 'secret');
+  fs.symlinkSync(
+    path.join(path.dirname(assetsDir), `${path.basename(assetsDir)}-secret.png`),
+    path.join(assetsDir, 'results', 'escape.png'),
+  );
+  fs.symlinkSync(path.join(assetsDir, 'results', 'coins.webp'), path.join(assetsDir, 'results', 'alias.webp'));
 });
 afterAll(() => {
   fs.rmSync(assetsDir, { recursive: true, force: true });
+  fs.rmSync(path.join(path.dirname(assetsDir), `${path.basename(assetsDir)}-secret.png`), { force: true });
 });
 
 beforeEach(() => {
@@ -375,6 +384,32 @@ describe('custom artwork on hunt finds', () => {
     const { body, error } = await hunt(results.waifubux, svc);
     expect(body.files ?? []).toEqual([]);
     expect(error).toHaveBeenCalledTimes(1);
+  });
+
+  it('attaches artwork reached through a symlink that stays inside assets', async () => {
+    const svc = presentationService([
+      variant('hunt.waifubux_find', { artworkMode: 'custom', artworkPath: 'results/alias.webp' }),
+    ]);
+    const { body } = await hunt(results.waifubux, svc);
+    expect(fileNames(body)).toEqual(['result_hunt_waifubux_find.webp']);
+  });
+
+  it('a symlink out of assets degrades to text-only: same result, logged, no re-roll', async () => {
+    const svc = presentationService([
+      variant('hunt.waifubux_find', {
+        flavorText: 'A purse!',
+        artworkMode: 'custom',
+        artworkPath: 'results/escape.png',
+      }),
+    ]);
+    const { body, error } = await hunt(results.waifubux, svc);
+    expect(body.files ?? []).toEqual([]);
+    expect(embedOf(body).image).toBeUndefined();
+    // The already-committed reward is still what the player sees.
+    expect(embedOf(body).description).toBe('A purse!\n\n+**12** WaifuBux (balance: 112)');
+    expect(error).toHaveBeenCalledTimes(1);
+    expect(error.mock.calls[0]![0]).toMatchObject({ tag: 'result-presentation/artwork-unsafe' });
+    expect(svc.resolve).toHaveBeenCalledTimes(1);
   });
 });
 

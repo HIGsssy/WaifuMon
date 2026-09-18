@@ -6,6 +6,7 @@
  * *read from the reference endpoint* — this module deliberately declares no
  * second copy of those rules, only the wire types.
  */
+import type { ArtworkDirectory, ArtworkSearchResults } from './adminArtwork';
 import { apiClient, deleteData, getData, patchData, postData } from './client';
 
 export type ArtworkMode = 'custom' | 'encountered' | 'none';
@@ -169,6 +170,28 @@ export async function resultPresentationArtworkBlob(path: string): Promise<Blob>
     responseType: 'blob',
   });
   return response.data;
+}
+
+/** One folder of presentation artwork for the picker (`results/` only, server-chosen). */
+export function browseResultPresentationArtwork(
+  path: string | undefined,
+  signal?: AbortSignal,
+): Promise<ArtworkDirectory> {
+  return getData<ArtworkDirectory>(`${BASE}/artwork/browse`, {
+    params: path ? { path } : {},
+    ...(signal ? { signal } : {}),
+  });
+}
+
+/** Search presentation artwork by file name or folder. */
+export function searchResultPresentationArtwork(
+  query: string,
+  signal?: AbortSignal,
+): Promise<ArtworkSearchResults> {
+  return getData<ArtworkSearchResults>(`${BASE}/artwork/search`, {
+    params: { q: query },
+    ...(signal ? { signal } : {}),
+  });
 }
 
 /** A Waifumon's release-screen artwork, by species slug, for the preview. */

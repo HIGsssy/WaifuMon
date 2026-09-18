@@ -43,6 +43,7 @@ import {
   type SpeciesContent,
   type TablesContent,
 } from './schemas';
+import { resolveExistingAssetFile } from '../assets/assetContainment';
 
 /** Species JSON file new cards land in when the admin does not pick one. */
 export const DEFAULT_NEW_SPECIES_FILE = 'species/custom.json';
@@ -233,7 +234,8 @@ export function assertSafeRelativeAssetPath(assetsDir: string, imagePath: string
 /**
  * Resolves a request path under a root directory, refusing traversal. Used by
  * the authenticated asset-preview route — the panel must never become an
- * arbitrary file reader.
+ * arbitrary file reader. Lexical only: the route also checks the file's real
+ * location with `resolveExistingAssetFile` before reading it.
  */
 export function resolveWithinRoot(root: string, relative: string): string | null {
   if (relative.includes('\0')) return null;
@@ -743,8 +745,7 @@ export function createAdminContentService(deps: AdminContentServiceDeps): AdminC
     const enabledItems = new Set(raw.items.filter((i) => i.enabled).map((i) => i.slug));
 
     for (const s of raw.species) {
-      const resolved = resolveWithinRoot(assetsDir, s.imagePath);
-      if (!resolved || !fs.existsSync(resolved)) {
+      if (resolveExistingAssetFile(assetsDir, s.imagePath).status !== 'available') {
         warnings.push(
           `species "${s.slug}": image "${s.imagePath}" not found — it will be auto-disabled on load`,
         );
@@ -868,8 +869,7 @@ export function createAdminContentService(deps: AdminContentServiceDeps): AdminC
       warnings.push('dailyQuests: enabled but the pool is empty — no quests can be assigned');
     }
     if (t.uiSplash.enabled && t.uiSplash.imagePath) {
-      const resolved = resolveWithinRoot(assetsDir, t.uiSplash.imagePath);
-      if (!resolved || !fs.existsSync(resolved)) {
+      if (resolveExistingAssetFile(assetsDir, t.uiSplash.imagePath).status !== 'available') {
         warnings.push(
           `uiSplash.imagePath: "${t.uiSplash.imagePath}" not found — the splash renders text-only`,
         );

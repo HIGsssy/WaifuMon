@@ -9,8 +9,9 @@
  * Authorization, checked at `preValidation` so an unauthorized caller never
  * learns the body shape:
  *
- *   - `presentations.read`  — list, get, reference data, artwork bytes, and
- *                             the (non-persisting) preview;
+ *   - `presentations.read`  — list, get, reference data, artwork bytes, the
+ *                             artwork picker (browse/search `results/` only)
+ *                             and the (non-persisting) preview;
  *   - `presentations.write` — create, update (including enable/disable) and
  *                             delete. Every write route checks it; there is
  *                             no lifecycle route that could skip it.
@@ -32,11 +33,21 @@ import { dataSchema, ok } from '../../../plugins/responseEnvelope';
 import { commonErrorResponses, notFoundResponse, slugParam } from '../../../schemas/common';
 import { requirePortalPermission } from '../../../plugins/portalPermissions';
 import { ApiFieldValidationError } from '../../../errors';
-import { adminArtworkQuery, sendAdminArtwork } from '../../../adminArtwork';
+import {
+  adminArtworkBrowseQuery,
+  adminArtworkQuery,
+  adminArtworkSearchQuery,
+  artworkDirectorySchema,
+  artworkSearchSchema,
+  browseAdminArtwork,
+  searchAdminArtwork,
+  sendAdminArtwork,
+} from '../../../adminArtwork';
 import { AppError } from '../../../../shared/errors';
 import type { PortalPermission } from '../../../../modules/portalAuth/portalAuthService';
 import {
   ARTWORK_MODES,
+  RESULT_PRESENTATION_ARTWORK_ROOTS,
   RESULT_PRESENTATION_FLAVOR_MAX_LENGTH,
   RESULT_PRESENTATION_KEY_DEFINITIONS,
   RESULT_PRESENTATION_KEYS,
@@ -349,6 +360,51 @@ export const adminResultPresentationRoutes =
         },
       },
       async (req, reply) => sendAdminArtwork(reply, assetsDir, req.query.path),
+    );
+
+    /**
+     * The artwork picker: one folder of `results/` at a time, and a bounded
+     * search over it. Read-only and rooted at
+     * {@link RESULT_PRESENTATION_ARTWORK_ROOTS}, so `presentations.read`
+     * never lists the rest of the assets tree. Thumbnails come from the
+     * artwork route above.
+     */
+    app.get(
+      '/admin/result-presentations/artwork/browse',
+      {
+        preValidation: gate('presentations.read'),
+        schema: {
+          tags: ['Admin — Result Presentations'],
+          summary: 'List one folder of presentation artwork for the picker',
+          querystring: adminArtworkBrowseQuery,
+          response: { 200: dataSchema(artworkDirectorySchema), ...notFoundResponse, ...commonErrorResponses },
+        },
+      },
+      async (req) =>
+        ok(req, await browseAdminArtwork(assetsDir, RESULT_PRESENTATION_ARTWORK_ROOTS, req.query.path)),
+    );
+
+    app.get(
+      '/admin/result-presentations/artwork/search',
+      {
+        preValidation: gate('presentations.read'),
+        schema: {
+          tags: ['Admin — Result Presentations'],
+          summary: 'Search presentation artwork by file name or folder',
+          querystring: adminArtworkSearchQuery,
+          response: { 200: dataSchema(artworkSearchSchema), ...commonErrorResponses },
+        },
+      },
+      async (req) =>
+        ok(
+          req,
+          await searchAdminArtwork(
+            assetsDir,
+            RESULT_PRESENTATION_ARTWORK_ROOTS,
+            req.query.q,
+            req.query.limit,
+          ),
+        ),
     );
 
     /**

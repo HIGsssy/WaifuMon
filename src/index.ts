@@ -4,7 +4,6 @@
  * commands → Discord login. Fail fast and loud before Discord login.
  * The optional admin web panel starts last, and only when enabled.
  */
-import { existsSync } from 'node:fs';
 import { startAdminServer } from './admin/server';
 import { startPlatformApi } from './api/server';
 import { withIdentityCache } from './api/identity';
@@ -17,7 +16,7 @@ import { registerCommands } from './discord/commandRegistry';
 import type { AppContext } from './discord/types';
 import { createAdminContentService } from './modules/content/adminContentService';
 import { createContentReloader } from './modules/content/reloadService';
-import { resolveAssetPath } from './modules/content/loader';
+import { resolveExistingAssetFile } from './modules/assets/assetContainment';
 import { createCurrencyService } from './modules/currency/currencyService';
 import { createEssenceAwardService } from './modules/currency/essenceAwardService';
 import { createDailyService } from './modules/daily/dailyService';
@@ -427,15 +426,10 @@ async function main(): Promise<void> {
       encounterPromotion: createEncounterPromotionService({
         db,
         getContent: () => contentSnapshot,
-        artworkExists: (relative) => {
-          try {
-            return existsSync(resolveAssetPath(config.assetsDir, relative));
-          } catch {
-            // A path the resolver refuses (traversal, escape) is not
-            // "missing" — the planner rejects it on its own terms.
-            return true;
-          }
-        },
+        // A path the resolver refuses (traversal, escape) is not "missing" —
+        // the planner rejects it on its own terms.
+        artworkExists: (relative) =>
+          resolveExistingAssetFile(config.assetsDir, relative).status !== 'missing',
       }),
       worldEncounterVendor: worldEncounterVendorService,
       worldEncounterSettings,

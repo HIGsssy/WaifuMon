@@ -9,8 +9,8 @@
  * assertion.
  *
  * Pinned:
- *   - `presentations.read` opens list/get/reference/preview/artwork and
- *     nothing that writes;
+ *   - `presentations.read` opens list/get/reference/preview/artwork (bytes
+ *     and the picker's browse/search) and nothing that writes;
  *   - `presentations.write` is required by every write, including
  *     enable/disable (there is no separate lifecycle route to forget);
  *   - no permission, the bearer token by default, and every `encounters.*`
@@ -200,6 +200,8 @@ const READ_ROUTES: Route[] = [
   { method: 'GET', url: '/api/v1/admin/result-presentations/9' },
   { method: 'GET', url: '/api/v1/admin/result-presentations/reference' },
   { method: 'GET', url: '/api/v1/admin/result-presentations/artwork?path=placeholder.png' },
+  { method: 'GET', url: '/api/v1/admin/result-presentations/artwork/browse' },
+  { method: 'GET', url: '/api/v1/admin/result-presentations/artwork/search?q=find' },
   {
     method: 'POST',
     url: '/api/v1/admin/result-presentations/preview',

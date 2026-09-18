@@ -26,6 +26,8 @@ import {
   type ResultPresentationVariant,
 } from '@/api/adminResultPresentations';
 import { isPortalApiError } from '@/api/client';
+import { ArtworkPickerDialog } from '@/components/admin/ArtworkPicker';
+import { resultPresentationArtworkSource } from '@/components/admin/artworkSources';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -91,6 +93,7 @@ export function VariantEditor({
   const ids = useId();
   const [form, setForm] = useState<FormState>(() => initialForm(keyRef, variant));
   const [speciesSlug, setSpeciesSlug] = useState<string | null>(reference.defaultPreviewSpeciesSlug);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const set = <K extends keyof FormState>(field: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [field]: value }));
 
@@ -263,18 +266,37 @@ export function VariantEditor({
             <label htmlFor={`${ids}-path`} className="text-sm font-medium">
               Artwork path
             </label>
-            <Input
-              id={`${ids}-path`}
-              value={form.artworkPath}
-              disabled={readOnly}
-              placeholder="results/coins.webp"
-              onChange={(e) => set('artworkPath', e.target.value)}
-            />
+            <div className="flex gap-2">
+              <Input
+                id={`${ids}-path`}
+                value={form.artworkPath}
+                disabled={readOnly}
+                placeholder="results/coins.webp"
+                onChange={(e) => set('artworkPath', e.target.value)}
+              />
+              {!readOnly && (
+                <Button type="button" variant="outline" onClick={() => setPickerOpen(true)}>
+                  Browse Artwork
+                </Button>
+              )}
+            </div>
             <p className="text-xs text-ink-muted">
               Relative to <code>assets/</code>. Supported:{' '}
               {reference.supportedArtworkExtensions.map((ext) => `.${ext}`).join(', ')}. The file must
-              already be on the server.
+              already be on the server — browse to pick one, or type the path.
             </p>
+            {/*
+              Picking only fills the field; the live previews follow from the
+              form state as if it had been typed. Nothing is saved until Save.
+            */}
+            <ArtworkPickerDialog
+              open={pickerOpen}
+              onClose={() => setPickerOpen(false)}
+              source={resultPresentationArtworkSource}
+              selectedPath={form.artworkPath}
+              onSelect={(path) => set('artworkPath', path)}
+              title="Browse presentation artwork"
+            />
             {(saveIssues.artworkPath ?? previewIssues.artworkPath) && (
               <p className="text-xs text-danger" data-testid="artwork-path-error">
                 {saveIssues.artworkPath ?? previewIssues.artworkPath}

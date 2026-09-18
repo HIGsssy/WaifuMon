@@ -6,6 +6,7 @@
  * schemas — kept intentionally light on shared type files so the admin
  * bundle stays independent of the player-facing bundle.
  */
+import type { ArtworkDirectory, ArtworkSearchResults } from './adminArtwork';
 import { apiClient, deleteData, getData, patchData, postData, putData } from './client';
 
 export interface AdminEncounterChoice {
@@ -208,6 +209,28 @@ export async function adminEncounterArtworkBlob(path: string): Promise<Blob> {
     responseType: 'blob',
   });
   return response.data;
+}
+
+/** One folder of encounter artwork for the picker (`encounters/` only, server-chosen). */
+export function browseAdminEncounterArtwork(
+  path: string | undefined,
+  signal?: AbortSignal,
+): Promise<ArtworkDirectory> {
+  return getData<ArtworkDirectory>('/v1/admin/encounters/artwork/browse', {
+    params: path ? { path } : {},
+    ...(signal ? { signal } : {}),
+  });
+}
+
+/** Search encounter artwork by file name or folder. */
+export function searchAdminEncounterArtwork(
+  query: string,
+  signal?: AbortSignal,
+): Promise<ArtworkSearchResults> {
+  return getData<ArtworkSearchResults>('/v1/admin/encounters/artwork/search', {
+    params: { q: query },
+    ...(signal ? { signal } : {}),
+  });
 }
 
 /** Global runtime tuning the engine reads on every encounter roll. */

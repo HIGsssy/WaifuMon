@@ -35,6 +35,15 @@ export type ResultPresentationKey = (typeof RESULT_PRESENTATION_KEYS)[number];
 export const ARTWORK_MODES = ['custom', 'encountered', 'none'] as const;
 export type ArtworkMode = (typeof ARTWORK_MODES)[number];
 
+/**
+ * Folders under `assets/` the editor's artwork picker may browse for
+ * `custom` artwork. `results/` is where every shipped presentation image
+ * lives; the rest of the assets tree (species art, card caches, drafts,
+ * working files) is not presentation content and is not listed. A path typed
+ * by hand is still validated by the write rules, not by this list.
+ */
+export const RESULT_PRESENTATION_ARTWORK_ROOTS = ['results'] as const;
+
 interface KeyDefinition {
   /** Human-readable name for admin surfaces and logs. */
   label: string;
