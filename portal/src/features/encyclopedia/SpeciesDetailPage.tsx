@@ -26,10 +26,11 @@ import { Button } from '@/components/ui/button';
 import { Card, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { BuddyBonusCard } from '@/components/waifumon/BuddyBonusCard';
-import { AffinityPill, ContentRatingPill, TypePill } from '@/components/waifumon/Pills';
+import { AffinityPill, ContentRatingPill, TypePill, ZonePill } from '@/components/waifumon/Pills';
 import { RarityBadge } from '@/components/waifumon/RarityBadge';
 import { RarityGlowRing } from '@/components/waifumon/RarityGlowRing';
 import { RelatedSpeciesStrip } from '@/components/waifumon/RelatedSpeciesStrip';
+import { SpeciesTagList } from '@/components/waifumon/SpeciesTagList';
 import { speciesLabel } from '@/content/species';
 import { NotFoundPage } from '@/features/notFound/NotFoundPage';
 import { speciesCardAsset } from '@/images/assets';
@@ -193,6 +194,7 @@ export function SpeciesDetailPage() {
                   <TypePill archetype={species.archetype} />
                   <AffinityPill affinity={species.affinity} />
                   <ContentRatingPill rating={species.contentRating} />
+                  <ZonePill species={species} />
                 </>
               )}
             </div>
@@ -201,18 +203,7 @@ export function SpeciesDetailPage() {
           {discovered ? (
             <Card>
               <p className="text-ink-muted">{species.description}</p>
-              {species.tags.length > 0 && (
-                <div className="mt-4 flex flex-wrap gap-1.5">
-                  {species.tags.map((tag) => (
-                    <span
-                      key={tag}
-                      className="rounded-full bg-surface-sunken px-2 py-0.5 text-xs text-ink-subtle"
-                    >
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-              )}
+              <SpeciesTagList species={species} className="mt-4" />
             </Card>
           ) : (
             <Card className="border-dashed bg-surface/40">

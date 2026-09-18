@@ -11,11 +11,12 @@
  *     is a capture-matchup rule, not a personality — the Portal omits it and the
  *     gap is filed as API feedback.
  */
-import { Sparkles, Tag } from 'lucide-react';
+import { MapPin, Sparkles, Tag } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { titleCase } from '@/lib/format';
 import { cn } from '@/lib/cn';
+import { zoneFor } from '@/lib/zone';
 
 /** `archetype` — what a Waifumon *is*. */
 export function TypePill({ archetype, className }: { archetype: string; className?: string }) {
@@ -48,6 +49,28 @@ export function ContentRatingPill({ rating, className }: { rating: string; class
     <Badge variant="outline" className={className}>
       <span className="sr-only">Content rating: </span>
       {titleCase(rating)}
+    </Badge>
+  );
+}
+
+/**
+ * The species' zone, by its player-facing name. Renders nothing for a species
+ * with no recognised zone tag — see `@/lib/zone`.
+ */
+export function ZonePill({
+  species,
+  className,
+}: {
+  species: { tags?: readonly unknown[] | null | undefined };
+  className?: string;
+}) {
+  const zone = zoneFor(species);
+  if (!zone) return null;
+  return (
+    <Badge variant="outline" className={cn('gap-1', className)}>
+      <MapPin className="size-3 opacity-70" aria-hidden="true" />
+      <span className="sr-only">Zone: </span>
+      {zone.label}
     </Badge>
   );
 }

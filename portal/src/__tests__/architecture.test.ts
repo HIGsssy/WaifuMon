@@ -140,4 +140,14 @@ describe('architectural boundaries', () => {
     );
     expect(offenders.map((f) => f.path)).toEqual([]);
   });
+
+  it('never renders raw species tags — lib/speciesTags.ts decides what players see', () => {
+    // Only the two presentation modules read the raw tag collection.
+    const rawTags = /\bspecies\??\.tags\b/;
+    const allowed = new Set(['lib/zone.ts', 'lib/speciesTags.ts']);
+    const offenders = files.filter(
+      (file) => rawTags.test(file.contents) && !allowed.has(file.path),
+    );
+    expect(offenders.map((f) => f.path)).toEqual([]);
+  });
 });
