@@ -13,6 +13,7 @@
  *   npm run artwork:build -- --all --only thumbnails       # renditions only; no runtime switch
  *   npm run artwork:build -- --all --dry-run               # plan, write nothing
  *   npm run artwork:build -- --all --check                 # as --dry-run; exit 1 if anything is stale
+ *   npm run artwork:check                                  # CI: committed runtime WebPs are current
  *   npm run artwork:build -- --asset x/standard --force    # rebuild regardless of the manifest
  *
  * Only runtime artwork is built: masters named by the species content (every
@@ -58,7 +59,7 @@ const HELP = [
   '  --only full|thumbnails     build only these outputs (default: both)',
   '  --force                    rebuild selected outputs regardless of the manifest',
   '  --dry-run                  report what would be built; write nothing',
-  '  --check                    as --dry-run, but exit 1 when anything is stale',
+  '  --check                    as --dry-run, but exit 1 when anything is out of date',
   '  --assets <dir>             assets directory (default: $ASSETS_DIR or ./assets)',
   '  --content <dir>            content directory (default: $CONTENT_DIR or ./content)',
   '  --concurrency <n>          assets encoded in parallel',
@@ -148,7 +149,14 @@ async function main(): Promise<void> {
 
   if (args.verbose) for (const file of report.ignored) console.log(`ignored ${file}`);
   console.log(formatBuildReport(report));
-  const stale = args.check && report.built.length > 0;
+  const stale = args.check && (report.built.length > 0 || report.staleEntries.length > 0);
+  if (stale || (args.check && report.failed.length > 0)) {
+    console.error(
+      '\nRuntime artwork is out of date with its masters or the content.\n' +
+        'Run `npm run artwork:build -- --all` locally and commit the updated WebPs and ' +
+        'assets/.artwork-manifest.json.',
+    );
+  }
   if (report.failed.length > 0 || report.unknown.length > 0 || stale) process.exitCode = 1;
 }
 

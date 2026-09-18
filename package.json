@@ -17,6 +17,7 @@
     "cards:gc": "tsx src/tools/gcCards.ts",
     "cards:gc:prod": "node dist/tools/gcCards.js",
     "artwork:build": "tsx src/tools/buildArtwork.ts",
+    "artwork:check": "npm run artwork:build -- --all --only full --check",
     "assets:thumbs": "npm run artwork:build -- --all --only thumbnails",
     "portal:build": "npm --prefix portal run build && npm --prefix portal run verify:bundle",
     "content:prepare": "npm run appearances:sync && npm run artwork:build -- --all",

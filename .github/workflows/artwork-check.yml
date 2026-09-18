@@ -1,0 +1,59 @@
+# Runtime artwork consistency.
+#
+# The runtime WebPs under assets/waifumon/ and assets/.artwork-manifest.json
+# are committed, built from the PNG masters beside them. This job fails when
+# they have drifted apart — a new or replaced master without its WebP, a WebP
+# that no longer matches its master or the encoding contract, a missing
+# output, or a manifest entry for artwork the content no longer names.
+#
+# It never regenerates or commits anything: the fix is always
+# `npm run artwork:build -- --all` on a developer machine, committed with the
+# change. Renditions (.thumbnails/) are generated, not committed, so the check
+# covers the full-size WebPs only (`--only full`).
+#
+# Deliberately scoped to artwork: the repository has no bot CI pipeline, and
+# this job does not introduce one.
+name: artwork-check
+
+on:
+  pull_request:
+    paths:
+      - 'assets/waifumon/**'
+      - 'assets/.artwork-manifest.json'
+      - 'content/**'
+      - 'src/tools/artworkBuild.ts'
+      - 'src/tools/buildArtwork.ts'
+      - 'src/modules/assets/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/artwork-check.yml'
+  push:
+    branches: [master]
+    paths:
+      - 'assets/waifumon/**'
+      - 'assets/.artwork-manifest.json'
+      - 'content/**'
+      - 'src/tools/artworkBuild.ts'
+      - 'src/tools/buildArtwork.ts'
+      - 'src/modules/assets/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/artwork-check.yml'
+
+jobs:
+  artwork-check:
+    name: runtime WebPs match their masters
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Check runtime artwork
+        run: npm run artwork:check

@@ -13,21 +13,29 @@
  *     backup or working PNG beside it never is.
  */
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import sharp from 'sharp';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  ARTWORK_PIPELINE_VERSION,
+  encoderVersions,
   FULL_WEBP_OPTIONS,
   MANIFEST_FILE,
+  OUTPUT_KEYS,
+  outputSettings,
+  outputSettingsHash,
   readManifest,
   readRuntimeArtworkCatalog,
   runArtworkBuild,
   runtimeArtworkStems,
   THUMBNAIL_KEYS,
+  THUMBNAIL_RESIZE_OPTIONS,
   THUMBNAIL_WEBP_OPTIONS,
   type ArtworkBuildOptions,
+  type OutputKey,
 } from '../../src/tools/artworkBuild';
 
 let assetsDir: string;
@@ -420,6 +428,210 @@ describe('incremental builds', () => {
   });
 });
 
+const manifestPath = (): string => path.join(assetsDir, MANIFEST_FILE);
+const readJson = (): any => JSON.parse(fs.readFileSync(manifestPath(), 'utf8'));
+const hash16 = (value: unknown): string =>
+  createHash('sha256').update(JSON.stringify(value)).digest('hex').slice(0, 16);
+
+/** Runs `fn` while sharp reports a different encoder build, then restores it. */
+async function withEncoderVersions<T>(fake: Record<string, string>, fn: () => Promise<T>): Promise<T> {
+  const versions = sharp.versions as Record<string, string | undefined>;
+  const saved = { ...versions };
+  Object.assign(versions, fake);
+  try {
+    return await fn();
+  } finally {
+    for (const key of Object.keys(fake)) versions[key] = saved[key];
+  }
+}
+
+describe('the encoding contract', () => {
+  it('is the pipeline version plus the settings encode applies, with no encoder versions', () => {
+    expect(outputSettings('full')).toEqual({
+      pipelineVersion: ARTWORK_PIPELINE_VERSION,
+      kind: 'full',
+      format: 'webp',
+      dimensions: 'native',
+      quality: 90,
+      effort: 6,
+      smartSubsample: true,
+    });
+    expect(outputSettings('512')).toEqual({
+      pipelineVersion: ARTWORK_PIPELINE_VERSION,
+      kind: 'rendition',
+      format: 'webp',
+      width: 512,
+      withoutEnlargement: true,
+      quality: 80,
+    });
+    for (const key of OUTPUT_KEYS) expect(JSON.stringify(outputSettings(key))).not.toMatch(/sharp|vips/);
+  });
+
+  it('does not rebuild anything when only the encoder versions change', async () => {
+    await addMaster('alley_catgirl', 'standard');
+    await build();
+    const manifestBefore = fs.readFileSync(manifestPath(), 'utf8');
+    const fullBefore = fs.statSync(full('alley_catgirl', 'standard')).mtimeMs;
+
+    const again = await withEncoderVersions({ sharp: '99.0.0', vips: '99.1.0', webp: '99.2.0' }, async () => {
+      expect(outputSettingsHash('full')).toBe(readJson().settings.full.hash);
+      return build();
+    });
+
+    expect(again.built).toEqual([]);
+    expect(fs.statSync(full('alley_catgirl', 'standard')).mtimeMs).toBe(fullBefore);
+    // Not even the manifest changes: a no-op run leaves it byte-identical.
+    expect(fs.readFileSync(manifestPath(), 'utf8')).toBe(manifestBefore);
+  });
+
+  it('records the encoder that built each output, for traceability', async () => {
+    await addMaster('alley_catgirl', 'standard');
+    await build();
+    await addMaster('alley_catgirl', 'level_10', 2);
+
+    await withEncoderVersions({ sharp: '99.0.0' }, () => build());
+
+    const m = readJson();
+    expect(m.assets['waifumon/alley_catgirl/standard'].outputs.full.encoder).toEqual(encoderVersions());
+    expect(m.assets['waifumon/alley_catgirl/level_10'].outputs.full.encoder.sharp).toBe('99.0.0');
+    expect(m.generator.encoder.sharp).toBe('99.0.0'); // the last run that wrote anything
+  });
+
+  it('rebuilds an output recorded under a different pipeline version', async () => {
+    await addMaster('alley_catgirl', 'standard');
+    await build();
+    const m = readJson();
+    m.assets['waifumon/alley_catgirl/standard'].outputs.full.settingsHash = hash16({
+      ...outputSettings('full'),
+      pipelineVersion: ARTWORK_PIPELINE_VERSION - 1,
+    });
+    fs.writeFileSync(manifestPath(), JSON.stringify(m));
+
+    const report = await build();
+
+    expect(report.pending).toEqual([
+      { asset: 'waifumon/alley_catgirl/standard', reasons: ['full: encoding contract changed'] },
+    ]);
+  });
+
+  it('rebuilds a corrupted output even when its size is unchanged', async () => {
+    await addMaster('alley_catgirl', 'standard');
+    await build();
+    const file = full('alley_catgirl', 'standard');
+    const bytes = fs.readFileSync(file);
+    const middle = bytes.length >> 1;
+    bytes.writeUInt8(bytes.readUInt8(middle) ^ 0xff, middle);
+    fs.writeFileSync(file, bytes);
+
+    const report = await build();
+
+    expect(report.pending[0]?.reasons).toEqual(['full: output modified']);
+    expect(readJson().assets['waifumon/alley_catgirl/standard'].outputs.full.sha256).toBe(
+      createHash('sha256').update(fs.readFileSync(file)).digest('hex'),
+    );
+  });
+});
+
+describe('a version-1 manifest', () => {
+  /** Rewrites the current manifest the way the version-1 tool wrote it. */
+  function downgradeToV1(encoder: Record<string, string>): void {
+    const m = readJson();
+    const legacy = (key: OutputKey) =>
+      hash16({
+        ...(key === 'full'
+          ? { kind: 'full', webp: FULL_WEBP_OPTIONS }
+          : { kind: 'rendition', width: Number(key), resize: THUMBNAIL_RESIZE_OPTIONS, webp: THUMBNAIL_WEBP_OPTIONS }),
+        encoder,
+      });
+    for (const entry of Object.values<any>(m.assets)) {
+      for (const [key, out] of Object.entries<any>(entry.outputs)) {
+        out.settingsHash = legacy(key as OutputKey);
+        delete out.encoder;
+      }
+    }
+    fs.writeFileSync(
+      manifestPath(),
+      JSON.stringify({ version: 1, generator: { tool: 'artwork-build', encoder }, settings: {}, assets: m.assets }),
+    );
+  }
+
+  it('is carried forward without re-encoding outputs built with the same contract', async () => {
+    await addMaster('alley_catgirl', 'standard');
+    await build();
+    const webpBefore = fs.readFileSync(full('alley_catgirl', 'standard'));
+    const oldEncoder = { sharp: '0.35.3', vips: '8.18.3', webp: '1.6.0' };
+    downgradeToV1(oldEncoder);
+
+    const report = await build();
+
+    expect(report.built).toEqual([]);
+    expect(fs.readFileSync(full('alley_catgirl', 'standard')).equals(webpBefore)).toBe(true);
+    const m = readJson();
+    expect(m.version).toBe(2);
+    const out = m.assets['waifumon/alley_catgirl/standard'].outputs.full;
+    expect(out.settingsHash).toBe(outputSettingsHash('full'));
+    expect(out.encoder).toEqual(oldEncoder);
+  });
+
+  it('rebuilds a v1 output whose recorded hash does not match the pipeline-1 contract', async () => {
+    await addMaster('alley_catgirl', 'standard');
+    await build();
+    downgradeToV1({ sharp: '0.35.3', vips: '8.18.3', webp: '1.6.0' });
+    const m = readJson();
+    m.assets['waifumon/alley_catgirl/standard'].outputs.full.settingsHash = 'built-at-q75';
+    fs.writeFileSync(manifestPath(), JSON.stringify(m));
+
+    const report = await build();
+
+    expect(report.pending[0]?.reasons).toEqual(['full: encoding contract changed']);
+  });
+});
+
+describe('manifest entries that no longer match the library', () => {
+  it('reports an entry for artwork the content dropped, then prunes it and its outputs', async () => {
+    await addMaster('alley_catgirl', 'standard');
+    await addMaster('alley_catgirl', 'winter_2026', 2);
+    await build();
+    catalog.delete('waifumon/alley_catgirl/winter_2026');
+
+    const check = await build({ dryRun: true });
+    expect(check.staleEntries).toEqual(['waifumon/alley_catgirl/winter_2026']);
+    expect(fs.existsSync(full('alley_catgirl', 'winter_2026'))).toBe(true);
+
+    const report = await build();
+    expect(report.staleEntries).toEqual(['waifumon/alley_catgirl/winter_2026']);
+    expect(fs.existsSync(full('alley_catgirl', 'winter_2026'))).toBe(false);
+    expect(fs.existsSync(thumb(256, 'alley_catgirl', 'winter_2026'))).toBe(false);
+    expect(Object.keys(readJson().assets)).toEqual(['waifumon/alley_catgirl/standard']);
+  });
+
+  it('fails, and keeps the runtime WebP, when a master the content still names is missing', async () => {
+    const master = await addMaster('alley_catgirl', 'standard');
+    await build();
+    fs.rmSync(master);
+
+    const report = await build();
+
+    expect(report.failed).toEqual([
+      { asset: 'waifumon/alley_catgirl/standard', error: 'master waifumon/alley_catgirl/standard.png is missing' },
+    ]);
+    expect(fs.existsSync(full('alley_catgirl', 'standard'))).toBe(true);
+    expect(Object.keys(readJson().assets)).toEqual(['waifumon/alley_catgirl/standard']);
+  });
+
+  it('leaves entries alone on a narrower selection', async () => {
+    await addMaster('alley_catgirl', 'standard');
+    await addMaster('cafe_maid', 'standard', 2);
+    await build();
+    catalog.delete('waifumon/cafe_maid/standard');
+
+    const report = await build({ selection: { species: ['alley_catgirl'] } });
+
+    expect(report.staleEntries).toEqual([]);
+    expect(fs.existsSync(full('cafe_maid', 'standard'))).toBe(true);
+  });
+});
+
 describe('failures', () => {
   it('reports a bad master, writes no output or manifest claim for it, and builds the rest', async () => {
     await addMaster('alley_catgirl', 'standard');
@@ -558,6 +770,64 @@ describe('the CLI', () => {
       expect(result.stdout).toMatch(/Ignored: +1 PNG/);
       expect(fs.existsSync(full('alley_catgirl', 'standard'))).toBe(true);
       expect(fs.existsSync(full('alley_catgirl', 'standard_placeholder_backup'))).toBe(false);
+    } finally {
+      fs.rmSync(contentDir, { recursive: true, force: true });
+    }
+  });
+
+  it('artwork:check fails with instructions when a master has no runtime WebP, and passes once built', async () => {
+    const contentDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wm-artwork-check-'));
+    try {
+      fs.mkdirSync(path.join(contentDir, 'species'));
+      fs.writeFileSync(
+        path.join(contentDir, 'species', 'core.json'),
+        JSON.stringify([
+          {
+            slug: 'alley_catgirl',
+            name: 'Alley Catgirl',
+            rarity: 'N',
+            archetype: 'demi-human',
+            baseCaptureRate: null,
+            description: '',
+            tags: [],
+            contentRating: 'suggestive',
+            affinity: 'switch',
+            imagePath: 'waifumon/alley_catgirl/standard.png',
+            enabled: true,
+            eventKey: null,
+            perSpeciesWeight: 1,
+          },
+        ]),
+      );
+      await addPng('alley_catgirl', 'standard');
+      // Exactly what `npm run artwork:check` runs.
+      const check = () =>
+        spawnSync(
+          process.execPath,
+          [
+            require.resolve('tsx/cli'),
+            'src/tools/buildArtwork.ts',
+            '--all',
+            '--only',
+            'full',
+            '--check',
+            '--assets',
+            assetsDir,
+            '--content',
+            contentDir,
+          ],
+          { encoding: 'utf8' },
+        );
+
+      const stale = check();
+      expect(stale.status).toBe(1);
+      expect(stale.stdout).toContain('out of date: waifumon/alley_catgirl/standard (full: no manifest entry)');
+      expect(stale.stderr).toContain('npm run artwork:build -- --all');
+      expect(fs.existsSync(full('alley_catgirl', 'standard'))).toBe(false); // it never writes
+
+      catalog.add('waifumon/alley_catgirl/standard');
+      await build({ outputs: ['full'] });
+      expect(check().status).toBe(0);
     } finally {
       fs.rmSync(contentDir, { recursive: true, force: true });
     }

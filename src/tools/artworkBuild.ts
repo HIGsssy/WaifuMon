@@ -23,11 +23,17 @@
  * ## What decides a rebuild
  *
  * A manifest (`<assets>/.artwork-manifest.json`), not modification times. An
- * output is rebuilt when the master's SHA-256 changed, the output's encoder
- * settings (which include the sharp / libvips / libwebp versions) changed, the
- * output file is missing or not the size the manifest recorded, or the
- * manifest has no valid entry for it. A git checkout that touches every mtime
- * rebuilds nothing.
+ * output is rebuilt when the master's SHA-256 changed, the output's *encoding
+ * contract* changed, the output file is missing or not byte-identical to what
+ * the manifest recorded, or the manifest has no valid entry for it. A git
+ * checkout that touches every mtime rebuilds nothing.
+ *
+ * The contract is what we chose — format, quality, effort, subsampling,
+ * dimensions — plus `ARTWORK_PIPELINE_VERSION`. The sharp / libvips / libwebp
+ * versions are recorded beside every output for traceability but are **not**
+ * part of it: the runtime WebPs are committed, and a routine dependency bump
+ * must not re-encode the whole library into Git history. When an encoder
+ * change is worth a library-wide re-encode, bump `ARTWORK_PIPELINE_VERSION`.
  *
  * ## Safety
  *
@@ -89,8 +95,14 @@ export const THUMBNAIL_RESIZE_OPTIONS = { withoutEnlargement: true } as const;
 /** The artwork kind this tool builds. Other asset directories are authored as-is. */
 export const SPECIES_ARTWORK_ROOT = 'waifumon';
 
+/**
+ * Bump to deliberately re-encode every output — for instance after an encoder
+ * upgrade that is worth the Git churn. It is part of every output's contract.
+ */
+export const ARTWORK_PIPELINE_VERSION = 1;
+
 export const MANIFEST_FILE = '.artwork-manifest.json';
-export const MANIFEST_VERSION = 1;
+export const MANIFEST_VERSION = 2;
 
 export type OutputKey = 'full' | `${ArtworkRenditionWidth}`;
 export const OUTPUT_KEYS: readonly OutputKey[] = [
@@ -99,22 +111,56 @@ export const OUTPUT_KEYS: readonly OutputKey[] = [
 ];
 export const THUMBNAIL_KEYS: readonly OutputKey[] = OUTPUT_KEYS.filter((k) => k !== 'full');
 
-/** Library versions that can change encoded bytes. Part of every settings hash. */
-function encoderVersions(): Record<string, string> {
+/**
+ * Library versions that can change encoded bytes. Recorded for traceability;
+ * deliberately not part of the contract (see "What decides a rebuild").
+ */
+export function encoderVersions(): Record<string, string> {
   const v = sharp.versions as Record<string, string | undefined>;
   return { sharp: v.sharp ?? 'unknown', vips: v.vips ?? 'unknown', webp: v.webp ?? 'unknown' };
 }
 
-/** The encoder settings behind one output, exactly as they are applied. */
+/**
+ * The encoding contract of one output: the pipeline version plus the settings
+ * exactly as `encode` applies them. Built from the same constants, so the two
+ * cannot drift apart.
+ */
 export function outputSettings(key: OutputKey): Record<string, unknown> {
   return key === 'full'
-    ? { kind: 'full', webp: FULL_WEBP_OPTIONS }
-    : { kind: 'rendition', width: Number(key), resize: THUMBNAIL_RESIZE_OPTIONS, webp: THUMBNAIL_WEBP_OPTIONS };
+    ? {
+        pipelineVersion: ARTWORK_PIPELINE_VERSION,
+        kind: 'full',
+        format: 'webp',
+        dimensions: 'native',
+        ...FULL_WEBP_OPTIONS,
+      }
+    : {
+        pipelineVersion: ARTWORK_PIPELINE_VERSION,
+        kind: 'rendition',
+        format: 'webp',
+        width: Number(key),
+        ...THUMBNAIL_RESIZE_OPTIONS,
+        ...THUMBNAIL_WEBP_OPTIONS,
+      };
 }
 
-/** Hash of an output's settings plus encoder versions. A change rebuilds that output. */
+/** Hash of an output's encoding contract. A change rebuilds that output. */
 export function outputSettingsHash(key: OutputKey): string {
-  return sha256(JSON.stringify({ ...outputSettings(key), encoder: encoderVersions() })).slice(0, 16);
+  return sha256(JSON.stringify(outputSettings(key))).slice(0, 16);
+}
+
+/**
+ * The settings hash a version-1 manifest recorded for an output built with
+ * pipeline 1's contract by `encoder`. Version 1 folded the encoder versions
+ * into the hash; this reproduces that formula so a v1 manifest can be carried
+ * forward without re-encoding anything (see `readManifest`).
+ */
+function legacyV1SettingsHash(key: OutputKey, encoder: Record<string, string>): string {
+  const settings =
+    key === 'full'
+      ? { kind: 'full', webp: FULL_WEBP_OPTIONS }
+      : { kind: 'rendition', width: Number(key), resize: THUMBNAIL_RESIZE_OPTIONS, webp: THUMBNAIL_WEBP_OPTIONS };
+  return sha256(JSON.stringify({ ...settings, encoder })).slice(0, 16);
 }
 
 // ── Manifest ─────────────────────────────────────────────────────────────────
@@ -126,7 +172,10 @@ export interface ManifestOutput {
   sha256: string;
   width: number;
   height: number;
+  /** Hash of the encoding contract (`outputSettingsHash`). Decides rebuilds. */
   settingsHash: string;
+  /** Encoder versions that produced this file. Traceability only. */
+  encoder: Record<string, string>;
 }
 
 export interface ManifestAsset {
@@ -139,6 +188,8 @@ export interface ManifestAsset {
 
 export interface ArtworkManifest {
   version: typeof MANIFEST_VERSION;
+  pipelineVersion: number;
+  /** The encoder of the most recent run that wrote anything. */
   generator: { tool: 'artwork-build'; encoder: Record<string, string> };
   settings: Record<OutputKey, { hash: string } & Record<string, unknown>>;
   /** Keyed by artwork stem: `waifumon/<slug>/<variant>`. */
@@ -148,6 +199,7 @@ export interface ArtworkManifest {
 function emptyManifest(): ArtworkManifest {
   return {
     version: MANIFEST_VERSION,
+    pipelineVersion: ARTWORK_PIPELINE_VERSION,
     generator: { tool: 'artwork-build', encoder: encoderVersions() },
     settings: currentSettings(),
     assets: {},
@@ -161,17 +213,33 @@ function currentSettings(): ArtworkManifest['settings'] {
 }
 
 /**
- * Reads the manifest. A missing, unreadable or wrong-version manifest is an
+ * Reads the manifest. A missing, unreadable or unknown-version manifest is an
  * empty one — every output is then rebuilt — and says so via `warning`.
+ *
+ * A version-1 manifest is migrated in memory: each output whose recorded hash
+ * proves it was built with pipeline 1's contract gets the current contract
+ * hash and keeps its v1 encoder as provenance. Nothing is re-encoded; an
+ * output that does not match is left alone and rebuilt as a settings change.
  */
 export function readManifest(file: string): { manifest: ArtworkManifest; warning?: string } {
   if (!fs.existsSync(file)) return { manifest: emptyManifest() };
   try {
-    const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as Partial<ArtworkManifest>;
-    if (parsed.version !== MANIFEST_VERSION || typeof parsed.assets !== 'object' || !parsed.assets) {
+    const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as Omit<
+      Partial<ArtworkManifest>,
+      'version'
+    > & { version?: number };
+    if (typeof parsed.assets !== 'object' || !parsed.assets) {
+      return { manifest: emptyManifest(), warning: `ignoring ${file}: no assets` };
+    }
+    if (parsed.version !== 1 && parsed.version !== MANIFEST_VERSION) {
       return { manifest: emptyManifest(), warning: `ignoring ${file}: unrecognised version` };
     }
-    return { manifest: { ...emptyManifest(), assets: parsed.assets } };
+    const base = emptyManifest();
+    // The recorded generator is provenance — the encoder of the last run that
+    // wrote outputs — so it survives reading; only a writing run replaces it.
+    if (parsed.generator) base.generator = parsed.generator;
+    const assets = parsed.version === 1 ? migrateV1Assets(parsed) : parsed.assets;
+    return { manifest: { ...base, assets } };
   } catch (err) {
     return {
       manifest: emptyManifest(),
@@ -180,11 +248,30 @@ export function readManifest(file: string): { manifest: ArtworkManifest; warning
   }
 }
 
+function migrateV1Assets(v1: Omit<Partial<ArtworkManifest>, 'version'>): ArtworkManifest['assets'] {
+  const encoder = v1.generator?.encoder ?? {};
+  const assets: ArtworkManifest['assets'] = {};
+  for (const [stem, entry] of Object.entries(v1.assets ?? {})) {
+    const outputs: ManifestAsset['outputs'] = {};
+    for (const [key, out] of Object.entries(entry.outputs) as [OutputKey, ManifestOutput][]) {
+      outputs[key] =
+        out.settingsHash === legacyV1SettingsHash(key, encoder)
+          ? { ...out, settingsHash: outputSettingsHash(key), encoder }
+          : { ...out, encoder };
+    }
+    assets[stem] = { ...entry, outputs };
+  }
+  return assets;
+}
+
 function writeManifest(file: string, manifest: ArtworkManifest): void {
   const sorted = Object.fromEntries(
     Object.entries(manifest.assets).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
   );
-  atomicWrite(file, `${JSON.stringify({ ...manifest, assets: sorted }, null, 2)}\n`);
+  const text = `${JSON.stringify({ ...manifest, assets: sorted }, null, 2)}\n`;
+  // A run that changed nothing leaves the committed manifest byte-identical.
+  if (fs.existsSync(file) && fs.readFileSync(file, 'utf8') === text) return;
+  atomicWrite(file, text);
 }
 
 // ── Runtime artwork catalog ──────────────────────────────────────────────────
@@ -355,8 +442,15 @@ export interface ArtworkBuildReport {
   unknown: string[];
   /** PNGs under `waifumon/` that are not runtime artwork (backups, strays). */
   ignored: string[];
-  /** Stale outputs removed after a failed rebuild of a changed master. */
+  /** Stale outputs removed after a failed rebuild of a changed master, or with a pruned entry. */
   removedStale: string[];
+  /** Why each built (or, in a dry run, out-of-date) asset needed work: `full: master changed`. */
+  pending: { asset: string; reasons: string[] }[];
+  /**
+   * Manifest entries (with `--all`) for artwork the content no longer names.
+   * A build prunes them and their outputs; a dry run only reports them.
+   */
+  staleEntries: string[];
   /** Bytes of every selected master. */
   sourceBytes: number;
   /** Current bytes of each output kind across the selection, after this run. */
@@ -368,7 +462,11 @@ function sha256(data: string | Buffer): string {
   return createHash('sha256').update(data).digest('hex');
 }
 
-/** Why an output needs building, or `null` when the manifest says it is current. */
+/**
+ * Why an output needs building, or `null` when the manifest says it is
+ * current. The output is compared byte-for-byte (size, then SHA-256), so a
+ * truncated or corrupted file is caught even when its size happens to match.
+ */
 function staleReason(
   assetsDir: string,
   entry: ManifestAsset | undefined,
@@ -380,13 +478,16 @@ function staleReason(
   if (entry.sourceSha256 !== sourceSha) return 'master changed';
   const out = entry.outputs[key];
   if (!out || out.path !== expectedPath) return 'not in manifest';
-  if (out.settingsHash !== outputSettingsHash(key)) return 'settings changed';
+  if (out.settingsHash !== outputSettingsHash(key)) return 'encoding contract changed';
+  let bytes: Buffer;
   try {
-    if (fs.statSync(path.join(assetsDir, out.path)).size !== out.bytes) return 'output modified';
+    const file = path.join(assetsDir, out.path);
+    if (fs.statSync(file).size !== out.bytes) return 'output modified';
+    bytes = fs.readFileSync(file);
   } catch {
     return 'output missing';
   }
-  return null;
+  return sha256(bytes) === out.sha256 ? null : 'output modified';
 }
 
 function outputRelativePath(source: ArtworkSource, key: OutputKey): string {
@@ -434,6 +535,8 @@ export async function runArtworkBuild(options: ArtworkBuildOptions): Promise<Art
     unknown,
     ignored: discovered.ignored,
     removedStale: [],
+    pending: [],
+    staleEntries: [],
     sourceBytes: 0,
     outputBytes: {},
     ...(warning === undefined ? {} : { manifestWarning: warning }),
@@ -466,11 +569,16 @@ export async function runArtworkBuild(options: ArtworkBuildOptions): Promise<Art
       outputs: sameSource ? { ...previous.outputs } : {},
     };
 
-    const todo = outputs.filter(
-      (key) =>
-        options.force === true ||
-        staleReason(assetsDir, previous, sourceSha, key, outputRelativePath(source, key)) !== null,
-    );
+    const reasons: string[] = [];
+    const todo = outputs.filter((key) => {
+      const reason =
+        options.force === true
+          ? 'forced'
+          : staleReason(assetsDir, previous, sourceSha, key, outputRelativePath(source, key));
+      if (reason !== null) reasons.push(`${key}: ${reason}`);
+      return reason !== null;
+    });
+    if (todo.length > 0) report.pending.push({ asset: source.stem, reasons });
 
     if (todo.length === 0) {
       report.skipped += 1;
@@ -493,6 +601,7 @@ export async function runArtworkBuild(options: ArtworkBuildOptions): Promise<Art
             width: meta.width ?? 0,
             height: meta.height ?? 0,
             settingsHash: outputSettingsHash(key),
+            encoder: encoderVersions(),
           };
         } catch (err) {
           errors.push(`${key}: ${(err as Error).message}`);
@@ -543,19 +652,59 @@ export async function runArtworkBuild(options: ArtworkBuildOptions): Promise<Art
         for (let next = queue.shift(); next; next = queue.shift()) await processOne(next);
       }),
     );
+    if ('all' in options.selection) reconcileEntries(assetsDir, options.runtimeArtwork, discovered.sources, manifest, report);
   } finally {
     // Whatever succeeded is recorded even if the run was interrupted by an
     // unexpected error, so the next run does not redo finished work.
-    if (!dryRun && sources.length > 0) {
-      manifest.generator = { tool: 'artwork-build', encoder: encoderVersions() };
+    if (!dryRun && (sources.length > 0 || fs.existsSync(manifestFile))) {
+      if (report.built.length > 0) {
+        manifest.generator = { tool: 'artwork-build', encoder: encoderVersions() };
+      }
       manifest.settings = currentSettings();
       writeManifest(manifestFile, manifest);
     }
   }
 
   report.built.sort();
+  report.pending.sort((a, b) => (a.asset < b.asset ? -1 : 1));
   report.failed.sort((a, b) => (a.asset < b.asset ? -1 : 1));
   return report;
+}
+
+/**
+ * With `--all`, every manifest entry must still describe a current source.
+ *
+ * - An entry for artwork the content no longer names is stale: a build removes
+ *   it and its outputs (nothing can ask for them); a dry run reports it.
+ * - An entry for artwork the content still names but whose master is gone is
+ *   a failure either way — the runtime WebP can no longer be rebuilt or
+ *   verified, and deleting it would take the artwork offline.
+ */
+function reconcileEntries(
+  assetsDir: string,
+  runtimeArtwork: ReadonlySet<string>,
+  sources: readonly ArtworkSource[],
+  manifest: ArtworkManifest,
+  report: ArtworkBuildReport,
+): void {
+  const current = new Set(sources.map((s) => s.stem));
+  for (const [stem, entry] of Object.entries(manifest.assets).sort(([a], [b]) => (a < b ? -1 : 1))) {
+    if (current.has(stem)) continue;
+    if (runtimeArtwork.has(stem)) {
+      report.failed.push({ asset: stem, error: `master ${entry.source} is missing` });
+      continue;
+    }
+    report.staleEntries.push(stem);
+    if (report.dryRun) continue;
+    for (const out of Object.values(entry.outputs)) {
+      const file = assetPathWithin(assetsDir, out.path);
+      if (file !== null && fs.existsSync(file)) {
+        fs.rmSync(file, { force: true });
+        report.removedStale.push(out.path);
+      }
+    }
+    delete manifest.assets[stem];
+  }
 }
 
 function defaultConcurrency(): number {
@@ -598,6 +747,18 @@ export function formatBuildReport(report: ArtworkBuildReport): string {
   }
   for (const name of report.unknown) {
     lines.push(`unknown selection: ${name} (no runtime-artwork master PNG)`);
+  }
+  if (report.dryRun) {
+    const shown = report.pending.slice(0, 25);
+    for (const p of shown) lines.push(`out of date: ${p.asset} (${p.reasons.join('; ')})`);
+    if (report.pending.length > shown.length) {
+      lines.push(`… and ${report.pending.length - shown.length} more out-of-date asset(s)`);
+    }
+    for (const stem of report.staleEntries) {
+      lines.push(`stale manifest entry: ${stem} (the content no longer names it)`);
+    }
+  } else {
+    for (const stem of report.staleEntries) lines.push(`pruned manifest entry: ${stem}`);
   }
   for (const f of report.failed) lines.push(`FAILED ${f.asset}: ${f.error}`);
   for (const r of report.removedStale) lines.push(`removed stale output: ${r}`);

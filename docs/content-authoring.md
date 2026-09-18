@@ -90,6 +90,17 @@ look like a successful one. Either stage failing exits non-zero.
 You can still run the two halves separately (`npm run appearances:sync`,
 `npm run artwork:build -- --all`) when you only want one of them.
 
+**Why preparation builds the committed runtime artwork, not just renditions.**
+The full-size WebPs are committed and are what production serves, so they are
+part of the change you are preparing, like the JSON. The build is incremental —
+unchanged artwork is not touched, and a run with nothing to do leaves every
+file, the manifest included, byte-identical — so it costs seconds. Running
+anything less would be actively wrong: a renditions-only build after replacing
+a master deletes that master's now-stale WebP, and a build that skipped the
+full size would leave the old picture live. A master that cannot be encoded
+fails the command (non-zero exit, named in the output) and is never recorded
+as built.
+
 ### The rule it follows: artwork leads, content follows
 
 **An appearance is only ever added when its artwork already exists.** If
@@ -319,11 +330,25 @@ npm run artwork:build -- --all            # everything that is new or changed
 npm run artwork:build -- --species <slug> # one species
 npm run artwork:build -- --asset <slug>/<variant>
 npm run artwork:build -- --all --check    # exit 1 if anything is out of date
+npm run artwork:check                     # what CI runs (full-size WebPs only)
 ```
 
-Rebuilds are decided by the manifest — the master's content hash and the
-encoder settings — never by file timestamps, so a fresh clone or a `git
-checkout` rebuilds nothing and a re-run is cheap. Outputs are written to a
+Rebuilds are decided by the manifest, never by file timestamps, so a fresh
+clone or a `git checkout` rebuilds nothing and a re-run is cheap. An output is
+rebuilt when:
+
+- its master's SHA-256 changed;
+- its **encoding contract** changed — format, quality, effort, subsampling,
+  dimensions, and `ARTWORK_PIPELINE_VERSION` (`src/tools/artworkBuild.ts`);
+- the file is missing, or not byte-identical to what the manifest recorded;
+- the manifest has no entry for it.
+
+The sharp / libvips / libwebp versions are recorded with every output for
+traceability, but **an encoder upgrade alone rebuilds nothing** — otherwise a
+routine dependency bump would re-encode the whole committed library into Git
+history. When an encoder change *is* worth a library-wide re-encode, bump
+`ARTWORK_PIPELINE_VERSION` and run the build; that is the one deliberate way to
+force it. Outputs are written to a
 temporary file and renamed into place, so an interrupted build never leaves a
 truncated runtime image.
 
@@ -338,6 +363,26 @@ as *ignored* and never converted. Add the content first, then build.
 **Adding or replacing Waifumon artwork therefore always means running the
 build.** A replaced master that is not rebuilt leaves the old WebP serving;
 the build notices the changed hash and replaces it.
+
+#### The consistency check (CI)
+
+```sh
+npm run artwork:check    # = artwork:build -- --all --only full --check
+```
+
+Writes nothing. Exits non-zero, listing each problem, when:
+
+- a master has no runtime WebP, or its WebP was built from an older master;
+- a WebP is missing, modified, or was built under a different encoding contract;
+- the manifest has an entry for artwork the content no longer names;
+- a master the content still names is missing.
+
+The `artwork-check` GitHub workflow runs it on changes to artwork, content or
+the build tool. CI never regenerates artwork: the fix is always to run
+`npm run artwork:build -- --all` locally and commit the result. It checks the
+full-size WebPs only, because renditions are generated rather than committed.
+A non-`--all` build never prunes: stale entries are only reconciled when the
+whole library is in view.
 
 #### Adding an appearance to an existing species
 
@@ -696,6 +741,7 @@ All of these run from the repository root.
 | `npm run cards:warm -- --player <id>` | Pre-renders the **owned** cards for one player's current collection — her real level, the look she is wearing — plus the `@256` and `@512` the Portal's collection grid draws. Needs `DATABASE_URL`. |
 | `npm run cards:warm -- --all-players` | The same for every player who owns anything. One player at a time by default; `--player-concurrency N` raises it. |
 | `npm run cards:gc -- --dry-run` | Reports which cached card renders would be reclaimed. Add nothing to actually remove them. |
+| `npm run artwork:check` | CI-safe consistency check of the committed runtime WebPs against their masters, the content and the encoding contract. Writes nothing; exit 1 means run `artwork:build -- --all` and commit. |
 | `npm run content:prepare` | `appearances:sync`, then `artwork:build -- --all`, stopping if the first fails. |
 | `npm test` | Full validation, including every appearance rule above. |
 
