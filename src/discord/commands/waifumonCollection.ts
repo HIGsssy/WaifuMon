@@ -62,7 +62,7 @@ import {
   type CollectionFilterTracker,
 } from '../collectionFilterTracker';
 import {
-  CARD_FILENAME,
+  artworkAttachmentUrl,
   resolveAppearanceAsset,
 } from '../assets/resolveAppearanceAsset';
 import {
@@ -1334,7 +1334,7 @@ async function renderGallery(
     ? resolveAppearanceAsset(ctx, highlighted.assetId)
     : null;
   const embed = renderGalleryEmbed(entry, appearances, highlighted, clampedPage, totalPages);
-  if (card) embed.setImage(`attachment://${CARD_FILENAME}`);
+  if (card) embed.setImage(artworkAttachmentUrl(card));
 
   await respondEphemeral(interaction, {
     embeds: [embed],

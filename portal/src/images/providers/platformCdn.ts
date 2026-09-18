@@ -34,6 +34,9 @@ export const PLATFORM_CDN_ID = 'platformCdn';
 /** Matches the slug rule the API enforces on content (`^[a-z0-9_]+$`). */
 const SAFE_SLUG = /^[a-z0-9_]+$/;
 
+/** The runtime artwork format the CDN publishes, for every size. */
+const CDN_ARTWORK_EXTENSION = 'webp';
+
 export interface PlatformCdnOptions {
   /** Origin, e.g. `https://cdn.example.com/waifumon`. Empty disables the provider. */
   baseUrl?: string | undefined;
@@ -54,10 +57,12 @@ export function createPlatformCdnProvider(options: PlatformCdnOptions = {}): Ima
 
       // Size lives in the path, not a query string: a CDN caches paths without
       // configuration, whereas query-string variance is an origin setting
-      // somebody has to remember to turn on.
+      // somebody has to remember to turn on. A static origin needs a concrete
+      // file name, so the CDN is assumed to publish the runtime artwork — WebP
+      // at every size, full-size included — never the PNG source masters.
       const url = bucket
-        ? `${baseUrl}/${id.slug}/${variant}@${bucket}.webp`
-        : `${baseUrl}/${id.slug}/${variant}.png`;
+        ? `${baseUrl}/${id.slug}/${variant}@${bucket}.${CDN_ARTWORK_EXTENSION}`
+        : `${baseUrl}/${id.slug}/${variant}.${CDN_ARTWORK_EXTENSION}`;
 
       return { url, isFallback: false, providerId: PLATFORM_CDN_ID };
     },

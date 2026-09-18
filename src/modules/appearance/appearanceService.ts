@@ -70,7 +70,7 @@ export type AppearanceUnlockSource = 'owned' | 'level' | 'content_add';
  *
  * **`assetId` is `null` while the appearance is locked, and that is the whole
  * access control.** An `AssetId` is not merely a label — every consumer
- * resolves it deterministically to artwork (`waifumon/<slug>/<variant>.png` on
+ * resolves it deterministically to artwork (`waifumon/<slug>/<variant>.webp` or `.png` on
  * disk, a card route on the wire), so handing one out *is* handing out the
  * picture. The artwork is the reward for reaching the level; a client that
  * never receives the identifier has nothing to fetch, blur, or "reveal", and no

@@ -50,9 +50,9 @@ function parseArgs(argv: string[]): Args {
           '  --content <dir>     content directory (default: ./content)',
           '  --assets <dir>      assets directory  (default: ./assets)',
           '',
-          'An appearance is only added when its PNG already exists at',
-          'assets/waifumon/<slug>/<appearance-id>.png. Existing appearances are',
-          'never modified.',
+          'An appearance is only added when its artwork already exists at',
+          'assets/waifumon/<slug>/<appearance-id>.webp or .png. Existing',
+          'appearances are never modified.',
         ].join('\n'),
       );
       process.exit(0);

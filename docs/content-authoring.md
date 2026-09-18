@@ -23,16 +23,20 @@ capture odds. That is a hard rule enforced by tests, not a convention.
 
 Adding a Level-20 look for `alley_catgirl`:
 
-1. Drop the PNG at `assets/waifumon/alley_catgirl/level_20.png`.
-2. Run `npm run appearances:sync` — it writes the JSON entry for you.
-3. Restart the bot, or hit **Save + Reload** in the admin panel.
+1. Drop the PNG master at `assets/waifumon/alley_catgirl/level_20.png`.
+2. Run `npm run content:prepare` — it writes the JSON entry for you, then
+   builds the runtime `level_20.webp` and its renditions from the master.
+3. Commit the PNG, the WebP, the species JSON and
+   `assets/.artwork-manifest.json`.
+4. Restart the bot, or hit **Save + Reload** in the admin panel.
 
 That is the whole pipeline. No migration, no re-seed, no deploy dance. Players
 already past Level 20 have it unlocked the moment the loader sees it, and are
 notified the next time they level up or open the gallery.
 
-Step 2 is optional — the JSON is plain text and you can always write it by hand
-(see [Authoring an appearance](#authoring-an-appearance)). Use the script when
+The JSON half of step 2 is optional — it is plain text and you can always write
+it by hand (see [Authoring an appearance](#authoring-an-appearance)); the
+artwork half is not (see [Masters and runtime artwork](#masters-and-runtime-artwork)). Use the script when
 you are shipping the standard milestone set; write it by hand when the look
 deserves a real name and flavour text.
 
@@ -74,24 +78,21 @@ order:
 
 1. **`appearances:sync`** — writes the appearance metadata into the species
    pack each species already lives in.
-2. **`assets:thumbs`** — generates the web-ready renditions the Portal serves.
+2. **`artwork:build -- --all`** — builds the runtime WebP and the 256/512/1024
+   renditions for every artwork the content names that is new or changed.
 
-The order matters, and so does the failure behaviour: if synchronisation fails
-— a duplicate slug, content that does not currently load — the pipeline stops
-and rendition generation never runs, so a failed preparation can never look
-like a successful one. Either stage failing exits non-zero.
+The order matters, and so does the failure behaviour: the build only converts
+artwork the content names, so the content has to be written first. If
+synchronisation fails — a duplicate slug, content that does not currently load —
+the pipeline stops and the build never runs, so a failed preparation can never
+look like a successful one. Either stage failing exits non-zero.
 
 You can still run the two halves separately (`npm run appearances:sync`,
-`npm run assets:thumbs`) when you only want one of them.
-
-> `assets:thumbs` at the root delegates to the Portal package. The Portal has
-> its own lockfile and its own dependencies, and nothing here installs them for
-> you — if they are missing, the command says so and names the exact command to
-> run (`npm install --prefix portal`).
+`npm run artwork:build -- --all`) when you only want one of them.
 
 ### The rule it follows: artwork leads, content follows
 
-**An appearance is only ever added when its PNG already exists.** If
+**An appearance is only ever added when its artwork already exists.** If
 `cyber_shrine_maiden` has `standard.png`, `level_10.png` and `level_20.png`,
 the script writes those three and nothing else. `level_30` appears in content
 the run after `level_30.png` appears on disk.
@@ -150,8 +151,8 @@ touching the Portal.
 The practical consequence: an appearance id nobody has written code for — a
 `winter_2026` from some future seasonal process — renders correctly the day it
 is authored. `appearances:sync` is the only piece that knows what a "level
-milestone" is; `assets:thumbs` optimises *any* appearance artwork, and the
-Portal renders *any* appearance the API sends.
+milestone" is; `artwork:build` converts *any* appearance the content names,
+and the Portal renders *any* appearance the API sends.
 
 ### Adding a new content pack
 
@@ -236,7 +237,7 @@ The moment you want a second look, you must write the array out in full,
 
 | Field | Required | What it does |
 | --- | --- | --- |
-| `id` | ✅ | Unique within the species, `lowercase_snake_case`. Also the filename (`<id>.png`) and the value stored on the owned copy. |
+| `id` | ✅ | Unique within the species, `lowercase_snake_case`. Also the filename (`<id>.png` master, `<id>.webp` runtime) and the value stored on the owned copy. |
 | `name` | ✅ | Display name. Shown on the tile, in the select menu, and on the unlock toast. |
 | `unlock` | ✅ | `{ "type": "owned" }` or `{ "type": "level", "atLevel": N }`. See below. |
 | `description` | – | One-line subtitle in the detail panel. |
@@ -294,33 +295,97 @@ gameplay — it is a badge.
 
 ## Artwork
 
-The default resolver expects an appearance PNG to sit **beside the species'
-own image**, named after the appearance id:
+### Masters and runtime artwork
+
+Every Waifumon artwork exists twice, side by side:
+
+| File | Role | In Git |
+| --- | --- | --- |
+| `assets/waifumon/<slug>/<variant>.png` | **Master.** The source artwork you author and replace. | Yes |
+| `assets/waifumon/<slug>/<variant>.webp` | **Runtime artwork.** What the bot, the card renderer and the Platform API serve. WebP q90, effort 6, `smartSubsample`, the master's native size. | Yes |
+| `assets/.artwork-manifest.json` | What each runtime file and rendition was built from (master SHA-256, encoder settings, output hashes). | Yes |
+| `assets/.thumbnails/<256\|512\|1024>/waifumon/<slug>/<variant>.webp` | Display renditions for the Portal, WebP q80. | No — generated |
+
+Every consumer resolves an artwork through the same resolver, which **prefers
+`<variant>.webp` and falls back to `<variant>.png`**. The PNG fallback is what
+keeps a brand-new master working before anyone has built it — but a master
+without its WebP is an unfinished change, not a supported state.
+
+All derived files are made by one command, from the master, never from each
+other:
+
+```sh
+npm run artwork:build -- --all            # everything that is new or changed
+npm run artwork:build -- --species <slug> # one species
+npm run artwork:build -- --asset <slug>/<variant>
+npm run artwork:build -- --all --check    # exit 1 if anything is out of date
+```
+
+Rebuilds are decided by the manifest — the master's content hash and the
+encoder settings — never by file timestamps, so a fresh clone or a `git
+checkout` rebuilds nothing and a re-run is cheap. Outputs are written to a
+temporary file and renamed into place, so an interrupted build never leaves a
+truncated runtime image.
+
+**The build converts runtime artwork, not every PNG in the directory.** What
+counts is what the species content can ask for: each appearance's `assetId`,
+the species' `standard`, and a legacy `imagePath` naming a species master —
+across core species and every expansion pack, including disabled packs, so
+enabling a pack needs no artwork step. A backup (`standard_r1_backup.png`), a
+work-in-progress, or art for a species no content file defines yet is reported
+as *ignored* and never converted. Add the content first, then build.
+
+**Adding or replacing Waifumon artwork therefore always means running the
+build.** A replaced master that is not rebuilt leaves the old WebP serving;
+the build notices the changed hash and replaces it.
+
+#### Adding an appearance to an existing species
+
+1. Save the master as `assets/waifumon/<slug>/<appearance id>.png`.
+2. `npm run content:prepare` — writes the appearance entry (for the level
+   milestones; write custom looks by hand first) and builds its WebP and
+   renditions.
+3. Commit the PNG, the WebP, the JSON change and `assets/.artwork-manifest.json`.
+
+#### Adding a new species
+
+1. Write the species entry (with `imagePath: "waifumon/<slug>/standard.png"`)
+   in its species file, and add it to a region's encounter pool.
+2. Save its masters as `assets/waifumon/<slug>/standard.png` (and any
+   `level_NN.png`).
+3. `npm run content:prepare`.
+4. Commit the masters, the WebPs, the JSON and `assets/.artwork-manifest.json`.
+
+#### Replacing a master
+
+Overwrite the PNG, run `npm run artwork:build -- --species <slug>` (or
+`content:prepare`), and commit the PNG, the rebuilt WebP and the manifest.
+Cached card renders need no action: the card cache is keyed on the artwork's
+bytes, so the next request renders the new look.
+
+### Where appearance artwork lives
+
+The resolver derives the file from the appearance's `assetId`
+(`{ kind, slug, variant }`, defaulting to the species slug and the appearance
+id), trying WebP first:
 
 ```
-<directory of the species imagePath>/<appearance id>.png
+assets/<kind>/<slug>/<variant>.webp   (runtime)
+assets/<kind>/<slug>/<variant>.png    (master, and fallback)
 ```
 
-For a core species — whose `imagePath` is `waifumon/<slug>/standard.png` — that
-is:
+For every species — core and expansion packs alike — that is:
 
 ```
-assets/waifumon/<species slug>/<appearance id>.png
+assets/waifumon/<species slug>/<appearance id>.webp
 ```
 
-So `id: "level_20"` on `alley_catgirl` → `assets/waifumon/alley_catgirl/level_20.png`.
+So `id: "level_20"` on `alley_catgirl` → `assets/waifumon/alley_catgirl/level_20.webp`,
+built from `level_20.png`. The species' `imagePath` is consulted only as the
+default look's last-resort fallback.
 
-An **expansion pack** keeps its artwork organised under its own directory
-instead of `waifumon/`. Because its species' `imagePath` points there, its
-appearances resolve there too — one convention, no special case:
-
-```
-assets/expansions/<pack>/<slug>/<appearance id>.png
-```
-
-The loader, the runtime resolver, and `appearances:sync` all use this same
-rule, so a pack that ships art beside its `imagePath` is picked up everywhere on
-identical terms.
+The loader, the runtime resolver, `appearances:sync` and `artwork:build` all use
+this same rule.
 
 That layout is a **consumer** convention, not part of the data model. The
 Platform API only ever emits an abstract `assetId`; the bot and the Portal each
@@ -610,7 +675,7 @@ changes are already part of the cache key, so a card re-renders on its own.
 
 - `docs/platform-api.md` — the `assetId` contract and the appearance endpoints.
 - `docs/portal.md` — how the Portal resolves an `assetId` to a URL, and
-  `npm run assets:thumbs` (run from `portal/`).
+  `npm run assets:thumbs` (also available from `portal/`).
 - `.ai/appearanceplan.md` — the approved design, including future unlock sources.
 - `.ai/SVGPlan.md` — the card rendering system, including how `race` and `card`
   reach the renderer.
@@ -625,14 +690,15 @@ All of these run from the repository root.
 | --- | --- |
 | `npm run appearances:sync -- --dry-run` | Reports which milestone appearances the artwork implies. Writes nothing. |
 | `npm run appearances:sync` | Writes them into the pack each species already lives in. |
-| `npm run assets:thumbs` | Generates the Portal's display renditions. Delegates to the `portal` package. |
+| `npm run artwork:build -- --all` | Builds the runtime WebP (q90, native size) **and** the renditions from the PNG master of every runtime artwork that is new or changed. `--species <slug>` / `--asset <slug>/<variant>` narrow it; `--dry-run`/`--check` plan without writing. A built WebP immediately becomes the artwork the bot, the card renderer and the Portal use — commit it with the manifest. |
+| `npm run assets:thumbs` | Only the Portal's display renditions (256/512/1024 WebP). Run once after cloning — renditions are not committed. Never touches the runtime WebP. |
 | `npm run cards:warm` | Pre-renders the default card for every enabled species, so the first request is a cache hit. Safe to re-run; already-cached cards cost nothing. |
 | `npm run cards:warm -- --player <id>` | Pre-renders the **owned** cards for one player's current collection — her real level, the look she is wearing — plus the `@256` and `@512` the Portal's collection grid draws. Needs `DATABASE_URL`. |
 | `npm run cards:warm -- --all-players` | The same for every player who owns anything. One player at a time by default; `--player-concurrency N` raises it. |
 | `npm run cards:gc -- --dry-run` | Reports which cached card renders would be reclaimed. Add nothing to actually remove them. |
-| `npm run content:prepare` | Both of the above, in order, stopping if the first fails. |
+| `npm run content:prepare` | `appearances:sync`, then `artwork:build -- --all`, stopping if the first fails. |
 | `npm test` | Full validation, including every appearance rule above. |
 
-`assets:thumbs` optimises **any** appearance artwork it finds, not just the
-level milestones — it walks the artwork tree rather than consulting a list, so
-a seasonal or event appearance gets the same renditions with no change to it.
+`artwork:build` converts **any** appearance artwork the content names, not just
+the level milestones — it reads the content rather than a milestone list, so a
+seasonal or event appearance gets the same treatment with no change to it.

@@ -69,8 +69,8 @@ function isShowingSkeleton(): boolean {
   return document.querySelector('.skeleton') !== null;
 }
 
-const NYX = '/dev-assets/t/256/waifumon/nyx/standard.png';
-const LILITH = '/dev-assets/t/256/waifumon/lilith/standard.png';
+const NYX = '/dev-assets/t/256/waifumon/nyx/standard';
+const LILITH = '/dev-assets/t/256/waifumon/lilith/standard';
 
 function renderArt(slug: string, options: { strict?: boolean } = {}) {
   const tree = <Artwork asset={{ kind: 'species', slug }} name={slug} displayWidth={128} />;

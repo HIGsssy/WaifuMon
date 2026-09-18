@@ -16,7 +16,7 @@
 import path from 'node:path';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { EmbedBuilder } from 'discord.js';
+import type { EmbedBuilder, StringSelectMenuInteraction } from 'discord.js';
 import { handleCareStart } from '../../src/discord/commands/waifumon';
 import { handleCollectionPickCopy } from '../../src/discord/commands/waifumonCollection';
 import {
@@ -26,7 +26,6 @@ import {
   type TrainerProfileService,
 } from '../../src/discord/trainerProfile';
 import { ownedCardImage } from '../../src/discord/assets/attachRenderedCard';
-import { CARD_FILENAME } from '../../src/discord/assets/resolveAppearanceAsset';
 import { playerWaifus, species } from '../../src/db/schema';
 import type { AppContext, PlayerInteraction, Provisioned } from '../../src/discord/types';
 import {
@@ -102,6 +101,10 @@ beforeAll(async () => {
     huntSessions: harness.huntSessions,
     services: {
       guilds: app.guilds,
+      // `handleCareStart` repaints the main menu, which reads the player's
+      // current region. The list above predated Travel and silently lacked it,
+      // so every case here died in the menu before reaching the profile.
+      travel: app.travel,
       players: app.players,
       achievements: app.achievements,
       leaderboards: app.leaderboards,
@@ -219,8 +222,9 @@ describe('the buddy is visible', () => {
 
     const payload = posted();
     expect(payload.files).toHaveLength(1);
-    expect(payload.files![0]!.name).toBe(CARD_FILENAME);
-    expect(payload.embeds[0]!.data.image?.url).toBe(`attachment://${CARD_FILENAME}`);
+    // The shipped runtime artwork is WebP, and the attachment name follows the file.
+    expect(payload.files![0]!.name).toBe('card.webp');
+    expect(payload.embeds[0]!.data.image?.url).toBe(`attachment://${payload.files![0]!.name}`);
   });
 
   it('uses the appearance she is equipped with', async () => {
@@ -231,8 +235,8 @@ describe('the buddy is visible', () => {
     // The whole point: an unlocked, selected look must not be replaced by the
     // species default just because this is the profile rather than inspect.
     const file = String(posted().files![0]!.attachment);
-    expect(path.basename(file)).toBe('level_20.png');
-    expect(file).not.toContain('standard.png');
+    expect(path.basename(file)).toBe('level_20.webp');
+    expect(file).not.toContain('standard.');
   });
 
   it('shows the default look for a copy wearing nothing else', async () => {
@@ -240,7 +244,7 @@ describe('the buddy is visible', () => {
 
     await handleCareStart(ctx, careInteraction(), prov);
 
-    expect(path.basename(String(posted().files![0]!.attachment))).toBe('standard.png');
+    expect(path.basename(String(posted().files![0]!.attachment))).toBe('standard.webp');
   });
 
   it('keeps every stat the profile already showed', async () => {
@@ -249,7 +253,15 @@ describe('the buddy is visible', () => {
     await handleCareStart(ctx, careInteraction(), prov);
 
     const payload = posted();
-    expect(fieldNames(payload)).toEqual(['👤 Trainer', '⭐ Buddy', '🎒 Collection', '💗 Activity']);
+    // `📅 Today` joined the profile in 60ab192 (daily recap), after this list
+    // was written; it is rendered on every Care Mode paint.
+    expect(fieldNames(payload)).toEqual([
+      '👤 Trainer',
+      '⭐ Buddy',
+      '🎒 Collection',
+      '💗 Activity',
+      '📅 Today',
+    ]);
     const buddy = payload.embeds[0]!.data.fields!.find((f) => f.name === '⭐ Buddy')!;
     expect(buddy.value).toContain('Lv 12');
     expect(buddy.value).toContain('affection');
@@ -269,7 +281,15 @@ describe('when the picture cannot be made', () => {
     expect(payload.embeds[0]!.data.image).toBeUndefined();
     // The dashboard is unchanged otherwise — this is the profile that shipped
     // before cards, not a degraded one.
-    expect(fieldNames(payload)).toEqual(['👤 Trainer', '⭐ Buddy', '🎒 Collection', '💗 Activity']);
+    // `📅 Today` joined the profile in 60ab192 (daily recap), after this list
+    // was written; it is rendered on every Care Mode paint.
+    expect(fieldNames(payload)).toEqual([
+      '👤 Trainer',
+      '⭐ Buddy',
+      '🎒 Collection',
+      '💗 Activity',
+      '📅 Today',
+    ]);
   });
 
   it('starts Care Mode anyway when the renderer throws', async () => {
@@ -319,7 +339,7 @@ describe('the inspect card is unchanged', () => {
       isStringSelectMenu: () => true,
       values: [String(waifuId)],
       message: { id: 'm-1' },
-    } as unknown as PlayerInteraction;
+    } as unknown as StringSelectMenuInteraction;
 
     await handleCollectionPickCopy(ctx, pick, prov);
 
@@ -327,8 +347,8 @@ describe('the inspect card is unchanged', () => {
     // `update` rather than `reply`.
     const calls = (pick.update as unknown as { mock: { calls: unknown[][] } }).mock.calls;
     const payload = calls.at(-1)![0] as SentPayload;
-    expect(path.basename(String(payload.files![0]!.attachment))).toBe('level_30.png');
-    expect(payload.embeds[0]!.data.image?.url).toBe(`attachment://${CARD_FILENAME}`);
+    expect(path.basename(String(payload.files![0]!.attachment))).toBe('level_30.webp');
+    expect(payload.embeds[0]!.data.image?.url).toBe(`attachment://${payload.files![0]!.name}`);
     expect(fieldNames(payload)).toEqual(
       expect.arrayContaining(['Rarity', 'Appearance', 'Level', 'XP', 'Affection', 'Essence']),
     );
@@ -354,7 +374,7 @@ describe('refreshing the profile in place', () => {
       SentPayload & { attachments: unknown[] },
     ];
     expect(editedId).toBe(messageId);
-    expect(path.basename(String(payload.files![0]!.attachment))).toBe('level_10.png');
+    expect(path.basename(String(payload.files![0]!.attachment))).toBe('level_10.webp');
     // Without this, discord.js keeps the old upload alongside the new one.
     expect(payload.attachments).toEqual([]);
   });

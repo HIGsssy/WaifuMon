@@ -41,8 +41,16 @@ const CONTENT_TYPES: Record<string, string> = {
 
 // (see `devAssets` below for the caching and size-rendition behaviour)
 
-/** Where `scripts/generate-thumbnails.mjs` writes its renditions. */
+/** Where the bot's artwork build (`npm run artwork:build`) writes its renditions. */
 const THUMBNAIL_DIR = '.thumbnails';
+
+/**
+ * Formats an extensionless artwork request may resolve to, most preferred
+ * first. Mirrors `SPECIES_ARTWORK_EXTENSIONS` in the bot's
+ * `src/modules/assets/speciesArtworkFile.ts` — the Portal is a separate
+ * package and cannot import it, but the two lists must agree.
+ */
+const ARTWORK_EXTENSIONS = ['.webp', '.png'];
 
 /**
  * How long a browser may reuse artwork without asking.
@@ -70,6 +78,17 @@ function isFile(target: string): boolean {
 }
 
 /**
+ * The file an original-size request names. The `localDevAssets` provider asks
+ * for artwork without an extension (`/waifumon/<slug>/<variant>`), so the
+ * format is decided here from what exists — WebP before PNG. A request that
+ * already names a file is served as-is.
+ */
+function originalFor(target: string): string {
+  if (path.extname(target) !== '' || isFile(target)) return target;
+  return ARTWORK_EXTENSIONS.map((ext) => target + ext).find(isFile) ?? target;
+}
+
+/**
  * Serves the bot repo's `assets/` folder at `/dev-assets/*`.
  *
  * Deliberately not `publicDir` and deliberately not a copy: the repo's assets
@@ -92,12 +111,15 @@ function isFile(target: string): boolean {
  *     the original when one has not been generated. The Content-Type comes from
  *     whatever is actually sent, so the fallback cannot mislabel itself and the
  *     Portal works identically before and after the script is run.
+ *
+ * Artwork is requested without an extension and resolved WebP-first (see
+ * `originalFor`), so converting a PNG to WebP needs no Portal change.
  */
 function devAssets(root: string): Plugin {
   const resolvedRoot = path.resolve(root);
 
   /**
-   * `/t/512/waifumon/x/standard.png` → the thumbnail path, if one exists.
+   * `/t/512/waifumon/x/standard` → the thumbnail path, if one exists.
    *
    * The `/t/<width>/` shape is produced by the `localDevAssets` image provider
    * (`src/images/providers/localDevAssets.ts`); the two must agree.
@@ -122,9 +144,10 @@ function devAssets(root: string): Plugin {
         const raw = decodeURIComponent((req.url ?? '/').split('?')[0] ?? '/');
 
         // A size request falls back to the original asset, so strip the prefix
-        // before resolving: `/t/512/waifumon/x.png` → `/waifumon/x.png`.
+        // before resolving: `/t/512/waifumon/x/standard` → `/waifumon/x/standard`.
         const originalPath = raw.replace(/^\/t\/\d+\//, '/');
-        const target = thumbnailFor(raw) ?? path.resolve(resolvedRoot, `.${originalPath}`);
+        const target =
+          thumbnailFor(raw) ?? originalFor(path.resolve(resolvedRoot, `.${originalPath}`));
 
         // Containment check — a `..` segment must not escape the assets root.
         if (target !== resolvedRoot && !target.startsWith(resolvedRoot + path.sep)) {

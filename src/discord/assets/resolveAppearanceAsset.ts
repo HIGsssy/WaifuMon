@@ -5,8 +5,10 @@
  * it is missing — moved to `src/modules/appearance/assetResolver.ts` so the
  * card renderer could share it without the API importing from the Discord
  * layer. What is left here is the only genuinely Discord-shaped part: wrapping
- * a path in an attachment under a fixed filename, so embeds can reference
- * `attachment://card.png` regardless of what the file is really called.
+ * a resolved file in an attachment under a fixed stem (`card`) and the file's
+ * **real** extension, so the attachment is `card.webp` or `card.png` according
+ * to what was actually resolved — never WebP bytes under a `.png` name.
+ * Embeds point at it with {@link artworkAttachmentUrl}, never a literal.
  *
  * Moving the bot to a CDN is still a change to this one file: return a hosted
  * URL instead of an `AttachmentBuilder`, same signatures, no caller touched.
@@ -18,10 +20,24 @@ import {
   resolveAppearanceAssetOrLegacyPath,
   type AppearanceAssetContext as SharedContext,
 } from '../../modules/appearance/assetResolver';
+import type { ArtworkFile } from '../../modules/assets/speciesArtworkFile';
+import { artworkAttachmentFilename } from '../../modules/assets/artworkPath';
 import type { Logger } from '../../shared/logger';
 
-/** Attachment filename every appearance embed references. */
-export const CARD_FILENAME = 'card.png';
+/**
+ * Attachment filename stem for raw appearance artwork. The extension comes
+ * from the resolved file, so the full name is `card.webp` or `card.png`.
+ */
+export const CARD_ATTACHMENT_STEM = 'card';
+
+/**
+ * The `attachment://` URL an embed uses to show `file`. Always derived from
+ * the attachment's own name, so the embed and the upload cannot disagree
+ * about the extension.
+ */
+export function artworkAttachmentUrl(file: AttachmentBuilder): string {
+  return `attachment://${file.name}`;
+}
 
 export interface AppearanceAssetContext {
   config: { assetsDir: string };
@@ -32,10 +48,10 @@ function shared(ctx: AppearanceAssetContext): SharedContext {
   return { assetsDir: ctx.config.assetsDir, logger: ctx.logger };
 }
 
-function attach(absolutePath: string | undefined): AttachmentBuilder | null {
-  return absolutePath === undefined
-    ? null
-    : new AttachmentBuilder(absolutePath, { name: CARD_FILENAME });
+function attach(artwork: ArtworkFile | null): AttachmentBuilder | null {
+  if (artwork === null) return null;
+  const name = artworkAttachmentFilename(CARD_ATTACHMENT_STEM, artwork.absolutePath);
+  return name === null ? null : new AttachmentBuilder(artwork.absolutePath, { name });
 }
 
 /**
@@ -54,7 +70,7 @@ export function resolveAppearanceAsset(
   assetId: AssetId | null | undefined,
 ): AttachmentBuilder | null {
   if (!assetId) return null;
-  return attach(resolveAsset(shared(ctx), assetId)?.absolutePath);
+  return attach(resolveAsset(shared(ctx), assetId));
 }
 
 /**
@@ -69,5 +85,5 @@ export function resolveAppearanceAssetOrPath(
   assetId: AssetId,
   legacyImagePath: string,
 ): AttachmentBuilder | null {
-  return attach(resolveAppearanceAssetOrLegacyPath(shared(ctx), assetId, legacyImagePath)?.absolutePath);
+  return attach(resolveAppearanceAssetOrLegacyPath(shared(ctx), assetId, legacyImagePath));
 }

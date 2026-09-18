@@ -5,16 +5,16 @@
  * set per species (`standard`, `level_10` … `level_50`). Hand-writing those
  * JSON entries is the kind of work that is individually trivial and collectively
  * a source of typos, drift and missed species. This closes the loop: an artist
- * drops a PNG, the tool writes the entry that names it.
+ * drops an image, the tool writes the entry that names it.
  *
  * ### The one rule that shapes everything here
  *
  * **Artwork leads; content follows.** An appearance is only ever added when its
- * PNG already exists on disk. Pre-populating all five levels for every species
- * would be one line of code and exactly the wrong thing — the loader warns and
- * drops an appearance whose art is missing, so a mass-populate would trade a
- * few minutes of typing for hundreds of recurring boot warnings that everyone
- * learns to ignore. A tool that manufactures noise is worse than no tool.
+ * artwork already exists on disk (WebP or PNG). Pre-populating all five levels
+ * for every species would be one line of code and exactly the wrong thing —
+ * the loader warns and drops an appearance whose art is missing, so a
+ * mass-populate would trade a few minutes of typing for hundreds of recurring
+ * boot warnings that everyone learns to ignore. A tool that manufactures noise is worse than no tool.
  *
  * ### It is a synchroniser, never a formatter
  *
@@ -37,10 +37,10 @@ import path from 'node:path';
 import {
   listSpeciesSources,
   readContentFiles,
-  resolveAssetPath,
   validateContentSet,
 } from '../modules/content/loader';
-import { appearanceAssetRelativePath, defaultAssetId } from '../modules/appearance/appearanceContent';
+import { defaultAssetId } from '../modules/appearance/appearanceContent';
+import { locateSpeciesArtwork } from '../modules/assets/speciesArtworkFile';
 import {
   DEFAULT_APPEARANCE_ID,
   SpeciesFileSchema,
@@ -224,20 +224,17 @@ function assertNoDuplicateSlugs(packs: RawPack[]): void {
   );
 }
 
-/** Does the appearance PNG exist at its canonical AssetId path on disk? */
+/**
+ * Does the appearance have artwork on disk at its canonical AssetId location,
+ * in any format the runtime resolves? Asked of the shared resolver, so this
+ * tool and the loader can never disagree about which appearances exist.
+ */
 function artworkExists(
   assetsDir: string,
   slug: string,
   appearanceId: string,
 ): boolean {
-  const relative = appearanceAssetRelativePath(defaultAssetId(slug, appearanceId));
-  try {
-    return fs.existsSync(resolveAssetPath(assetsDir, relative));
-  } catch {
-    // Path traversal, which a well-formed slug cannot produce. Treated as
-    // missing, matching how the loader handles the same case.
-    return false;
-  }
+  return locateSpeciesArtwork(assetsDir, defaultAssetId(slug, appearanceId)) !== null;
 }
 
 function existingAppearances(species: RawSpecies): RawSpecies[] | null {

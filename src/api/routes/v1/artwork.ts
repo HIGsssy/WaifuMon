@@ -11,8 +11,11 @@
  * wearing.
  */
 import { readFile, stat } from 'node:fs/promises';
-import path from 'node:path';
 import { z } from 'zod';
+import {
+  resolveArtworkRendition,
+  type ArtworkFile,
+} from '../../../modules/assets/speciesArtworkFile';
 import {
   ownedAppearanceArtworkRequest,
   ownedCardRequest,
@@ -105,38 +108,6 @@ function matchesEtag(header: unknown, etag: string): boolean {
     .some((candidate) => candidate === '*' || candidate === normalizedEtag);
 }
 
-async function rendition(
-  assetsDir: string,
-  source: string,
-  width: number | undefined,
-): Promise<{ file: string; contentType: string }> {
-  if (width !== undefined) {
-    const relative = path.relative(path.resolve(assetsDir), source);
-    if (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)) {
-      const thumbnail = path.resolve(
-        assetsDir,
-        '.thumbnails',
-        String(width),
-        relative.replace(/\.[^./\\]+$/, '.webp'),
-      );
-      try {
-        if ((await stat(thumbnail)).isFile()) return { file: thumbnail, contentType: 'image/webp' };
-      } catch {
-        // Renditions are an optimization. Fall through to the canonical source.
-      }
-    }
-  }
-
-  const ext = path.extname(source).toLowerCase();
-  const contentType =
-    ext === '.webp'
-      ? 'image/webp'
-      : ext === '.jpg' || ext === '.jpeg'
-        ? 'image/jpeg'
-        : 'image/png';
-  return { file: source, contentType };
-}
-
 export const artworkRoutes =
   (ctx: ApiContext): FastifyPluginAsyncZod =>
   async (app) => {
@@ -149,11 +120,13 @@ export const artworkRoutes =
     async function sendArtwork(
       req: { headers: Record<string, unknown>; query: { width?: number | undefined } },
       reply: ArtworkReply,
-      source: string,
+      artwork: ArtworkFile,
       cacheControl: string,
     ): Promise<void> {
-      const selected = await rendition(assetsDir, source, req.query.width);
-      const stats = await stat(selected.file);
+      // The resolver already knows the file's real format; the route only
+      // chooses between it and a pre-generated display rendition.
+      const selected = await resolveArtworkRendition(assetsDir, artwork, req.query.width);
+      const stats = await stat(selected.absolutePath);
       const etag = `W/"${stats.size.toString(16)}-${Math.floor(stats.mtimeMs).toString(16)}"`;
 
       reply.header('ETag', etag).header('Cache-Control', cacheControl);
@@ -164,7 +137,7 @@ export const artworkRoutes =
       }
 
       reply.header('Content-Type', selected.contentType);
-      reply.send(await readFile(selected.file));
+      reply.send(await readFile(selected.absolutePath));
     }
 
     app.get(
@@ -191,7 +164,7 @@ export const artworkRoutes =
         // presentation one, so it runs ahead of any artwork resolution.
         await assertSpeciesVisible(ctx, req, species.slug);
         const request = speciesCardRequest(presentation, species);
-        await sendArtwork(req, reply, request.artwork.absolutePath, CACHE_CONTROL);
+        await sendArtwork(req, reply, request.artwork, CACHE_CONTROL);
         return reply;
       },
     );
@@ -242,7 +215,7 @@ export const artworkRoutes =
         const owner = requirePlayer(req);
         const entry = await collection.getOwned(owner.id, req.params.waifuId);
         const request = ownedCardRequest(presentation, entry);
-        await sendArtwork(req, reply, request.artwork.absolutePath, CACHE_CONTROL);
+        await sendArtwork(req, reply, request.artwork, CACHE_CONTROL);
         return reply;
       },
     );
@@ -272,7 +245,7 @@ export const artworkRoutes =
           req.query.appearance === undefined
             ? ownedCardRequest(presentation, entry)
             : ownedAppearanceArtworkRequest(presentation, entry, req.query.appearance);
-        await sendArtwork(req, reply, request.artwork.absolutePath, CACHE_CONTROL);
+        await sendArtwork(req, reply, request.artwork, CACHE_CONTROL);
         return reply;
       },
     );

@@ -3,8 +3,10 @@
  *
  * The Vite dev server mounts the bot repo's `assets/` directory at
  * `/dev-assets/*` (see vite.config.ts), so a species resolves to
- * `/dev-assets/waifumon/<slug>/<variant>.png` — exactly the layout the content
- * files already use in their `imagePath` field.
+ * `/dev-assets/waifumon/<slug>/<variant>` — the `AssetId` layout, with **no
+ * file extension**. Which format backs it (WebP before PNG, the same order the
+ * server's artwork resolver uses) is the dev server's decision, made from what
+ * is actually on disk; this provider never names a format.
  *
  * **Why derive the path rather than read `imagePath`?** §12's last rule: the
  * API's `imagePath` is an internal detail and must not leak into pages. Feeding
@@ -38,12 +40,12 @@ const SAFE_SLUG = /^[a-z0-9_]+$/;
 /**
  * Path segment the dev server's asset route recognises as a size request.
  *
- * `/dev-assets/t/512/waifumon/<slug>/<variant>.png` means "the 512-wide
+ * `/dev-assets/t/512/waifumon/<slug>/<variant>` means "the 512-wide
  * rendition of this asset". The dev server serves the pre-generated WebP if one
  * exists and quietly falls back to the original file if not, setting the
- * Content-Type from whichever it actually sends — so the `.png` in the URL is a
- * logical name, never a promise about the bytes. That fallback is what lets
- * this ship before anyone has run the thumbnail script.
+ * Content-Type from whichever it actually sends — the URL is a logical name,
+ * never a promise about the bytes. That fallback is what lets this ship before
+ * anyone has run `npm run assets:thumbs`.
  */
 const SIZE_PREFIX = 't';
 
@@ -59,7 +61,7 @@ export function createLocalDevAssetsProvider(basePath = '/dev-assets'): ImagePro
       const variant = id.variant ?? DEFAULT_VARIANT;
       if (!SAFE_SLUG.test(variant)) return null;
 
-      const asset = `waifumon/${id.slug}/${variant}.png`;
+      const asset = `waifumon/${id.slug}/${variant}`;
       const url = bucket ? `${basePath}/${SIZE_PREFIX}/${bucket}/${asset}` : `${basePath}/${asset}`;
 
       return { url, isFallback: false, providerId: LOCAL_DEV_ASSETS_ID };

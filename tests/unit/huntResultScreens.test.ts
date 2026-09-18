@@ -21,7 +21,6 @@ vi.mock('../../src/discord/commands/waifumonWorldEncounter', () => ({
   maybeTriggerHuntEncounter,
 }));
 vi.mock('../../src/discord/assets/attachRenderedCard', () => ({
-  CARD_FILENAME: 'card.png',
   renderOwnedCardAttachment: vi.fn(async () => null),
   renderEncounterDuplicateCardAttachment: vi.fn(async () => null),
 }));

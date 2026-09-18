@@ -67,8 +67,9 @@ export interface CardRenderInput {
     /** Appearance id, e.g. `standard`, `level_20`. */
     appearanceId: string;
     /**
-     * Absolute path to the artwork PNG. The renderer hashes the bytes itself —
-     * callers cannot supply (or mis-supply) a content hash.
+     * Absolute path to the resolved artwork (WebP or PNG). The renderer
+     * hashes the bytes itself — callers cannot supply (or mis-supply) a
+     * content hash.
      */
     artworkAbsolutePath: string;
   };

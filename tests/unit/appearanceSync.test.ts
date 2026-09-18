@@ -554,3 +554,39 @@ describe('expansion pack discovery', () => {
     }
   });
 });
+
+describe('artwork format', () => {
+  /** Writes `assets/waifumon/<slug>/<file>` for each full file name. */
+  function artFiles(slug: string, ...files: string[]): void {
+    const dir = path.join(assetsDir, 'waifumon', slug);
+    fs.mkdirSync(dir, { recursive: true });
+    for (const file of files) fs.writeFileSync(path.join(dir, file), 'image');
+  }
+
+  it('discovers milestones whose artwork exists only as WebP', () => {
+    // The same resolver the loader uses decides what exists, so a converted
+    // milestone is discovered exactly like a PNG one would be.
+    writePack('starter.json', [species('frost_valkyrie')]);
+    artFiles('frost_valkyrie', 'standard.webp', 'level_10.webp', 'level_20.png');
+
+    sync();
+
+    expect(appearancesOf('starter.json', 'frost_valkyrie')?.map((a) => a.id)).toEqual([
+      'standard',
+      'level_10',
+      'level_20',
+    ]);
+  });
+
+  it('still ignores a milestone with no artwork in any format', () => {
+    writePack('starter.json', [species('frost_valkyrie')]);
+    artFiles('frost_valkyrie', 'standard.webp', 'level_20.webp');
+
+    sync();
+
+    expect(appearancesOf('starter.json', 'frost_valkyrie')?.map((a) => a.id)).toEqual([
+      'standard',
+      'level_20',
+    ]);
+  });
+});

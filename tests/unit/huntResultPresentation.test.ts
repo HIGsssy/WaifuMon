@@ -29,12 +29,11 @@ vi.mock('../../src/discord/commands/waifumonWorldEncounter', () => ({
   maybeTriggerHuntEncounter,
 }));
 vi.mock('../../src/discord/assets/attachRenderedCard', () => ({
-  CARD_FILENAME: 'card.png',
   renderOwnedCardAttachment: vi.fn(async () => null),
   renderEncounterDuplicateCardAttachment: vi.fn(async () => null),
 }));
-vi.mock('../../src/discord/assets/resolveAppearanceAsset', () => ({
-  CARD_FILENAME: 'card.png',
+vi.mock('../../src/discord/assets/resolveAppearanceAsset', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/discord/assets/resolveAppearanceAsset')>()),
   resolveAppearanceAsset: vi.fn(() => null),
   resolveAppearanceAssetOrPath,
 }));

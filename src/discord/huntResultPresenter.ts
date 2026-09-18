@@ -100,7 +100,7 @@ export interface ReleaseViewInput {
   species: SpeciesRow | null;
   presentation: ResolvedResultPresentation;
   /**
-   * Her canonical artwork as a `card.png` attachment. Called only when the
+   * Her canonical artwork as a `card.<ext>` attachment. Called only when the
    * presentation asks for `encountered` art, so no asset work is wasted.
    */
   encounteredArtwork: () => AttachmentBuilder | null;

@@ -73,6 +73,7 @@ import { createCollectionFilterTracker } from './discord/collectionFilterTracker
 import { createEphemeralRegistry } from './discord/ephemeralCleanup';
 import { createActivityFeedService } from './modules/activity/activityFeedService';
 import { resolveAppearanceAsset } from './modules/appearance/assetResolver';
+import { artworkAttachmentFilename } from './modules/assets/artworkPath';
 import { AttachmentBuilder, EmbedBuilder } from 'discord.js';
 import {
   createTrainerProfileService,
@@ -480,17 +481,19 @@ async function main(): Promise<void> {
       const guild = await guilds.getByDiscordId(discordGuildId);
       return guild?.announceChannelId ?? null;
     },
-    // Alternate-appearance unlock announcements attach the raw PNG so other
-    // players see the newly-unlocked artwork itself. Missing artwork → null,
-    // and the feed falls back to a plain text line rather than dropping the
-    // announcement.
+    // Alternate-appearance unlock announcements attach the raw artwork so
+    // other players see the newly-unlocked look itself, under a filename
+    // whose extension matches the file actually resolved. Missing artwork →
+    // null, and the feed falls back to a plain text line rather than dropping
+    // the announcement.
     resolveAppearanceArtwork: (assetId) => {
       const resolved = resolveAppearanceAsset({ assetsDir: config.assetsDir, logger }, assetId);
       if (!resolved) return null;
-      return {
-        absolutePath: resolved.absolutePath,
-        filename: `${assetId.slug}-${assetId.variant}.png`,
-      };
+      const filename = artworkAttachmentFilename(
+        `${assetId.slug}_${assetId.variant}`,
+        resolved.absolutePath,
+      );
+      return filename === null ? null : { absolutePath: resolved.absolutePath, filename };
     },
     post: async (channelId, request) => {
       const channel = await client.channels.fetch(channelId);

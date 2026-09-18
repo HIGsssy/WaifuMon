@@ -81,12 +81,12 @@ describe('size buckets', () => {
 describe('the local dev-assets provider at a size', () => {
   it('points at the rendition route when a bucket is requested', () => {
     const resolved = createLocalDevAssetsProvider().resolve({ kind: 'species', slug: 'nyx' }, 512);
-    expect(resolved?.url).toBe('/dev-assets/t/512/waifumon/nyx/standard.png');
+    expect(resolved?.url).toBe('/dev-assets/t/512/waifumon/nyx/standard');
   });
 
   it('points at the original when none is', () => {
     const resolved = createLocalDevAssetsProvider().resolve({ kind: 'species', slug: 'nyx' });
-    expect(resolved?.url).toBe('/dev-assets/waifumon/nyx/standard.png');
+    expect(resolved?.url).toBe('/dev-assets/waifumon/nyx/standard');
   });
 
   it('keeps the variant in the rendition path', () => {
@@ -94,7 +94,15 @@ describe('the local dev-assets provider at a size', () => {
       { kind: 'species', slug: 'nyx', variant: 'holo' },
       256,
     );
-    expect(resolved?.url).toBe('/dev-assets/t/256/waifumon/nyx/holo.png');
+    expect(resolved?.url).toBe('/dev-assets/t/256/waifumon/nyx/holo');
+  });
+
+  it('never names a file format — the dev server picks WebP or PNG from disk', () => {
+    const provider = createLocalDevAssetsProvider();
+    for (const bucket of [null, 256, 512, 1024] as const) {
+      const url = provider.resolve({ kind: 'species', slug: 'nyx' }, bucket)?.url ?? '';
+      expect(url).not.toMatch(/\.(png|webp)$/);
+    }
   });
 });
 
@@ -103,6 +111,13 @@ describe('the CDN provider at a size', () => {
     const provider = createPlatformCdnProvider({ baseUrl: 'https://cdn.example.com/waifumon' });
     expect(provider.resolve({ kind: 'species', slug: 'nyx' }, 512)?.url).toBe(
       'https://cdn.example.com/waifumon/nyx/standard@512.webp',
+    );
+  });
+
+  it('serves full-size artwork as the runtime WebP, not the PNG master', () => {
+    const provider = createPlatformCdnProvider({ baseUrl: 'https://cdn.example.com/waifumon' });
+    expect(provider.resolve({ kind: 'species', slug: 'nyx', variant: 'holo' })?.url).toBe(
+      'https://cdn.example.com/waifumon/nyx/holo.webp',
     );
   });
 });
@@ -138,7 +153,7 @@ describe('resolveAsset with a width hint', () => {
 
       expect(tile.url).toContain('/t/256/');
       expect(hero.url).toContain('/t/1024/');
-      expect(full.url).toBe('/dev-assets/waifumon/nyx/standard.png');
+      expect(full.url).toBe('/dev-assets/waifumon/nyx/standard');
     });
   });
 

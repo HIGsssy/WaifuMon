@@ -16,9 +16,10 @@
     "cards:geometry": "tsx src/tools/deriveFrameGeometry.ts",
     "cards:gc": "tsx src/tools/gcCards.ts",
     "cards:gc:prod": "node dist/tools/gcCards.js",
-    "assets:thumbs": "npm --prefix portal run assets:thumbs",
+    "artwork:build": "tsx src/tools/buildArtwork.ts",
+    "assets:thumbs": "npm run artwork:build -- --all --only thumbnails",
     "portal:build": "npm --prefix portal run build && npm --prefix portal run verify:bundle",
-    "content:prepare": "npm run appearances:sync && npm run assets:thumbs",
+    "content:prepare": "npm run appearances:sync && npm run artwork:build -- --all",
     "test": "vitest run",
     "test:watch": "vitest"
   },

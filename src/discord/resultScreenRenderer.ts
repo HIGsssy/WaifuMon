@@ -18,7 +18,7 @@ import {
 } from '../modules/resultPresentation/resolver';
 import type { ResultScreen } from '../modules/resultPresentation/screens';
 import { defaultRng } from '../shared/random';
-import { CARD_FILENAME } from './assets/resolveAppearanceAsset';
+import { artworkAttachmentUrl } from './assets/resolveAppearanceAsset';
 import {
   resolveArtworkAttachment,
   type ArtworkAttachmentContext,
@@ -92,7 +92,7 @@ export function renderResultScreen(
   } else if (screen.artwork.kind === 'encountered') {
     const file = speciesArtwork();
     if (file) {
-      embed.setImage(`attachment://${CARD_FILENAME}`);
+      embed.setImage(artworkAttachmentUrl(file));
       files.push(file);
     }
   }

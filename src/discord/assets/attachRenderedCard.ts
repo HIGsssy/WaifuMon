@@ -26,7 +26,7 @@ import { AttachmentBuilder } from 'discord.js';
 import { renderCard } from '../../modules/cards';
 import { ownedCardRequest, speciesCardRequest } from '../../modules/appearance/cardPresentation';
 import type { OwnedCardSubject } from '../../modules/appearance/cardPresentation';
-import { CARD_FILENAME, resolveAppearanceAssetOrPath } from './resolveAppearanceAsset';
+import { artworkAttachmentUrl, resolveAppearanceAssetOrPath } from './resolveAppearanceAsset';
 import type { PlayerWaifuRow, SpeciesRow } from '../../db/schema';
 import type { AppContext } from '../types';
 
@@ -169,7 +169,7 @@ export async function ownedCardImage(
       { level: subject.waifu.level },
     );
     const file = resolveAppearanceAssetOrPath(ctx, worn.assetId, subject.species.imagePath);
-    return file === null ? null : { file, url: `attachment://${CARD_FILENAME}` };
+    return file === null ? null : { file, url: artworkAttachmentUrl(file) };
   } catch (err) {
     ctx.logger.warn(
       { err, tag: 'discord/owned-card-image', slug: subject.species.slug, waifuId: subject.waifu.id },

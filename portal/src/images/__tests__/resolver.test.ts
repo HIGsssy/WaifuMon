@@ -17,7 +17,7 @@ describe('the local dev-assets provider', () => {
 
   it('derives the repo asset layout from the slug', () => {
     expect(provider.resolve({ kind: 'species', slug: 'neon_kitsune' })).toEqual({
-      url: '/dev-assets/waifumon/neon_kitsune/standard.png',
+      url: '/dev-assets/waifumon/neon_kitsune/standard',
       isFallback: false,
       providerId: LOCAL_DEV_ASSETS_ID,
     });
@@ -25,13 +25,13 @@ describe('the local dev-assets provider', () => {
 
   it('honours a non-default variant', () => {
     expect(provider.resolve({ kind: 'species', slug: 'neon_kitsune', variant: 'holo' })?.url).toBe(
-      '/dev-assets/waifumon/neon_kitsune/holo.png',
+      '/dev-assets/waifumon/neon_kitsune/holo',
     );
   });
 
   it('uses the same canonical URL for an expansion species', () => {
     expect(provider.resolve({ kind: 'waifumon', slug: 'onsen_maid', variant: 'standard' })?.url).toBe(
-      '/dev-assets/waifumon/onsen_maid/standard.png',
+      '/dev-assets/waifumon/onsen_maid/standard',
     );
   });
 

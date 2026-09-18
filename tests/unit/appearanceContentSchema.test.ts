@@ -243,3 +243,96 @@ describe('validateSpeciesAssets — appearance pre-flight', () => {
     expect(result?.appearances?.map((a) => a.id)).toEqual(['base']);
   });
 });
+
+/**
+ * The pre-flight asks the shared artwork resolver, so it must accept artwork
+ * in any runtime format. The regression this guards against is the one that
+ * matters most for the WebP migration: converting a species to WebP must never
+ * disable it, and converting one appearance must never drop it from the
+ * gallery. PNG-only trees keep behaving exactly as before.
+ */
+describe('validateSpeciesAssets — artwork format', () => {
+  let assetsDir: string;
+
+  const write = (relative: string): void => {
+    const absolute = path.join(assetsDir, relative);
+    fs.mkdirSync(path.dirname(absolute), { recursive: true });
+    fs.writeFileSync(absolute, 'image-bytes');
+  };
+
+  const LEVEL_20 = { id: 'level_20', name: 'Midnight', unlock: { type: 'level', atLevel: 20 } };
+
+  const speciesWith = (appearances?: unknown[]): SpeciesContent =>
+    SpeciesContentSchema.parse(appearances ? { ...BASE, appearances } : BASE) as SpeciesContent;
+
+  const run = (input: SpeciesContent): SpeciesContent =>
+    validateSpeciesAssets([input], assetsDir, silentLogger())[0]!;
+
+  beforeEach(() => {
+    assetsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wm-appearance-fmt-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(assetsDir, { recursive: true, force: true });
+  });
+
+  it('enables a species that has only standard.png', () => {
+    write('waifumon/alley_catgirl/standard.png');
+    expect(run(speciesWith()).enabled).toBe(true);
+  });
+
+  it('enables a species that has only standard.webp, even though imagePath names a .png', () => {
+    write('waifumon/alley_catgirl/standard.webp');
+    expect(run(speciesWith()).enabled).toBe(true);
+  });
+
+  it('enables a species that has both formats', () => {
+    write('waifumon/alley_catgirl/standard.png');
+    write('waifumon/alley_catgirl/standard.webp');
+    expect(run(speciesWith()).enabled).toBe(true);
+  });
+
+  it('enables a WebP-only species with an authored catalog', () => {
+    write('waifumon/alley_catgirl/standard.webp');
+    const result = run(speciesWith([OWNED]));
+    expect(result.enabled).toBe(true);
+    expect(result.appearances?.map((a) => a.id)).toEqual(['standard']);
+  });
+
+  it('keeps an alternate appearance that exists only as WebP', () => {
+    write('waifumon/alley_catgirl/standard.png');
+    write('waifumon/alley_catgirl/level_20.webp');
+    const result = run(speciesWith([OWNED, LEVEL_20]));
+    expect(result.appearances?.map((a) => a.id)).toEqual(['standard', 'level_20']);
+  });
+
+  it('keeps an alternate appearance that exists only as PNG', () => {
+    write('waifumon/alley_catgirl/standard.webp');
+    write('waifumon/alley_catgirl/level_20.png');
+    const result = run(speciesWith([OWNED, LEVEL_20]));
+    expect(result.appearances?.map((a) => a.id)).toEqual(['standard', 'level_20']);
+  });
+
+  it('still drops an alternate appearance with no artwork in any format', () => {
+    write('waifumon/alley_catgirl/standard.webp');
+    const result = run(speciesWith([OWNED, LEVEL_20]));
+    expect(result.enabled).toBe(true);
+    expect(result.appearances?.map((a) => a.id)).toEqual(['standard']);
+  });
+
+  it('still disables a species with no default artwork in any format', () => {
+    write('waifumon/alley_catgirl/level_20.webp');
+    expect(run(speciesWith()).enabled).toBe(false);
+  });
+
+  it('still rejects an imagePath that escapes the assets root', () => {
+    write('waifumon/alley_catgirl/standard.webp');
+    const input = SpeciesContentSchema.parse({
+      ...BASE,
+      imagePath: '../outside.png',
+    }) as SpeciesContent;
+    expect(() => validateSpeciesAssets([input], assetsDir, silentLogger())).toThrow(
+      /outside the assets directory/,
+    );
+  });
+});

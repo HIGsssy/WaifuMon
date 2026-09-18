@@ -106,7 +106,7 @@ export function speciesAsset(
  *
  * **`null` in means `null` out, and that is the point.** A locked appearance
  * arrives with no `assetId` (see `AppearanceCatalogEntry.assetId`), and the
- * Portal must not invent one — deriving `<slug>/<variant>.png` from the
+ * Portal must not invent one — deriving `<slug>/<variant>` from the
  * appearance's id would reconstruct exactly the artwork the server declined to
  * name, turning a server-side access control back into a client-side one.
  * `Artwork` renders a `null` asset as the silhouette.

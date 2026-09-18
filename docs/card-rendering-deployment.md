@@ -43,6 +43,31 @@ Discord.
 
 ---
 
+## Deploying artwork changes
+
+Species artwork reaches the server through the repository: the runtime WebPs
+(`assets/waifumon/<slug>/<variant>.webp`) and `assets/.artwork-manifest.json`
+are committed, and `./assets` is bind-mounted into the container, so a
+`git pull` on the host is the deployment — the bot and the Platform API serve a
+new WebP from the next request. See
+[content authoring](content-authoring.md#masters-and-runtime-artwork) for how
+those files are built.
+
+Two follow-ups, neither urgent:
+
+- **Card cache.** Render keys include a hash of the artwork's bytes, so a
+  changed artwork can never be served from a card rendered off the old one — it
+  simply renders cold once. After a change that touches many species (the
+  PNG→WebP migration touched all of them), warm the back catalogue out of hours
+  with `cards:warm:prod -- --all-players`; the entries keyed on the old bytes
+  are orphans that `cards:gc:prod` reclaims once they pass the age limit
+  (30 days by default).
+- **Portal renditions** (`assets/.thumbnails/`) are generated, not committed.
+  Missing ones fall back to the full-size WebP; regenerate them on the host
+  with `npm run assets:thumbs`.
+
+---
+
 ## The cache directory under Docker
 
 The renderer writes to `/app/assets/.card-cache/` inside the container. Two

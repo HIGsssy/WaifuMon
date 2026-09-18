@@ -51,13 +51,10 @@ import {
   PREVIEW_SAMPLE_NOTICE,
   type PreviewSpecies,
 } from '../../../../modules/resultPresentation/preview';
-import {
-  ARTWORK_CONTENT_TYPES,
-  SUPPORTED_ARTWORK_EXTENSIONS,
-  artworkExtensionOf,
-} from '../../../../modules/assets/artworkPath';
+import { SUPPORTED_ARTWORK_EXTENSIONS } from '../../../../modules/assets/artworkPath';
 import { locateArtworkFile } from '../../../../modules/assets/artworkFile';
 import { resolveAppearanceAssetOrLegacyPath } from '../../../../modules/appearance/assetResolver';
+import type { ArtworkFile } from '../../../../modules/assets/speciesArtworkFile';
 
 /* ─────────────────────── Schemas ─────────────────────── */
 
@@ -265,15 +262,12 @@ export const adminResultPresentationRoutes =
      * appearance through the same resolver Discord uses, with the same legacy
      * fallback. Null when none resolves.
      */
-    const speciesArtworkFile = (slug: string): string | null => {
+    const speciesArtworkFile = (slug: string): ArtworkFile | null => {
       const { appearance } = ctx.services;
       const species = appearance.speciesContent(slug);
       if (!species || species.enabled === false) return null;
       const current = appearance.currentAppearance(species, null);
-      return (
-        resolveAppearanceAssetOrLegacyPath({ assetsDir }, current.assetId, species.imagePath)
-          ?.absolutePath ?? null
-      );
+      return resolveAppearanceAssetOrLegacyPath({ assetsDir }, current.assetId, species.imagePath);
     };
 
     app.get(
@@ -375,8 +369,7 @@ export const adminResultPresentationRoutes =
       },
       async (req, reply) => {
         const file = speciesArtworkFile(req.query.slug);
-        const ext = file ? artworkExtensionOf(file.replace(/\\/g, '/')) : null;
-        if (!file || !ext) {
+        if (!file) {
           throw new AppError('NOT_FOUND', 'Species artwork not found', 'No artwork for that Waifumon.');
         }
         const out = reply as unknown as {
@@ -384,9 +377,9 @@ export const adminResultPresentationRoutes =
           send(payload: Buffer): unknown;
         };
         out
-          .header('content-type', ARTWORK_CONTENT_TYPES[ext])
+          .header('content-type', file.contentType)
           .header('cache-control', 'private, max-age=300, must-revalidate')
-          .send(await readFile(file));
+          .send(await readFile(file.absolutePath));
         return reply;
       },
     );

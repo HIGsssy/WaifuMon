@@ -412,9 +412,14 @@ dashboard loads, that was this.
 npm run assets:thumbs        # once after cloning; again when artwork changes
 ```
 
-Writes `assets/.thumbnails/<width>/…​.webp` at 256, 512 and 1024 px — 10 MB in
-total against 219 MB of sources. The directory is generated, gitignored, and
-never a source of truth.
+Writes `assets/.thumbnails/<width>/waifumon/…​.webp` at 256, 512 and 1024 px,
+each encoded directly from the species' PNG master by the bot's artwork build
+tool (`npm run artwork:build`; `assets:thumbs` is its renditions-only mode).
+Rebuilds are decided by a content-hash manifest, not timestamps. The directory
+is generated, gitignored, and never a source of truth. The full-size runtime
+WebP (`assets/waifumon/<slug>/<variant>.webp`) is committed, so a fresh clone
+serves WebP at full size before this has ever run; see
+[content authoring](content-authoring.md#masters-and-runtime-artwork).
 
 Components declare how wide they draw (`<Artwork displayWidth>`, from
 `ARTWORK_WIDTH` in `src/images/sizes.ts`) and the resolver picks a bucket,

@@ -25,7 +25,6 @@ vi.mock('../../src/discord/commands/waifumonWorldEncounter', () => ({
 }));
 // The encounter reveal renders a species card; stub the asset work away.
 vi.mock('../../src/discord/assets/attachRenderedCard', () => ({
-  CARD_FILENAME: 'card.png',
   renderOwnedCardAttachment: vi.fn(async () => null),
   renderEncounterDuplicateCardAttachment: vi.fn(async () => null),
 }));

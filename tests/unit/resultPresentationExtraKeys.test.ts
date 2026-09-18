@@ -25,8 +25,8 @@ const { resolveAppearanceAsset } = vi.hoisted(() => ({
   resolveAppearanceAsset: vi.fn(),
 }));
 
-vi.mock('../../src/discord/assets/resolveAppearanceAsset', () => ({
-  CARD_FILENAME: 'card.png',
+vi.mock('../../src/discord/assets/resolveAppearanceAsset', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/discord/assets/resolveAppearanceAsset')>()),
   resolveAppearanceAsset,
   resolveAppearanceAssetOrPath: vi.fn(() => null),
 }));

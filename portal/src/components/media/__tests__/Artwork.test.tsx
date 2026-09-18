@@ -66,7 +66,7 @@ describe('Artwork', () => {
     );
     expect(screen.getByAltText('Neko Barista')).toHaveAttribute(
       'src',
-      '/dev-assets/t/256/waifumon/neko_barista/standard.png',
+      '/dev-assets/t/256/waifumon/neko_barista/standard',
     );
   });
 
@@ -74,7 +74,7 @@ describe('Artwork', () => {
     render(<Artwork asset={{ kind: 'species', slug: 'neon_kitsune' }} name="Neon Kitsune" />);
 
     const img = screen.getByAltText('Neon Kitsune');
-    expect(img).toHaveAttribute('src', '/dev-assets/waifumon/neon_kitsune/standard.png');
+    expect(img).toHaveAttribute('src', '/dev-assets/waifumon/neon_kitsune/standard');
 
     fireEvent.error(img);
 

@@ -26,7 +26,7 @@ import {
   MessageFlags,
 } from 'discord.js';
 import type { AppearanceUnlockRef } from '../modules/appearance/appearanceService';
-import { CARD_FILENAME, resolveAppearanceAsset } from './assets/resolveAppearanceAsset';
+import { artworkAttachmentUrl, resolveAppearanceAsset } from './assets/resolveAppearanceAsset';
 import type { AppContext, PlayerInteraction } from './types';
 import { buildCustomId } from './types';
 import { EPHEMERAL_UNLOCK_TOAST_TTL_MS, scheduleEphemeralCleanup } from './ephemeralCleanup';
@@ -70,7 +70,7 @@ export function buildAppearanceUnlockView(
     .setFooter({ text: `✦ ${rarityLabel} · Cosmetic only — nothing about her changes.` });
 
   const card = resolveAppearanceAsset(ctx, unlock.assetId);
-  if (card) embed.setImage(`attachment://${CARD_FILENAME}`);
+  if (card) embed.setImage(artworkAttachmentUrl(card));
 
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()

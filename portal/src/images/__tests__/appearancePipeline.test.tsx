@@ -1,6 +1,6 @@
 /**
  * The Portal half of the authoring pipeline: **appearance id → asset identity
- * → resolved URL → generated rendition → rendered gallery.**
+ * → resolved URL → rendered gallery.**
  *
  * The bot-side half (artwork → content JSON → the appearance data the API
  * serves) lives in `tests/integration/appearancePipeline.test.ts` in the root
@@ -15,13 +15,8 @@
  * below deliberately use `winter_2026`, an id no code in this repository has
  * ever heard of.
  */
-import { execFileSync } from 'node:child_process';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import type { Appearance } from '@/api/types';
 import { Artwork } from '@/components/media/Artwork';
@@ -33,7 +28,6 @@ import { resolveAsset, setImageProviderChain } from '../provider';
 import { ARTWORK_WIDTH } from '../sizes';
 
 const SLUG = 'test_species';
-const portalRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 
 /**
  * `appearanceAsset` for an entry this file has already declared unlocked.
@@ -82,7 +76,7 @@ describe('appearance identity → image URL', () => {
       displayWidth: ARTWORK_WIDTH.gridTile,
     });
 
-    expect(resolved.url).toContain(`waifumon/${SLUG}/level_20.png`);
+    expect(resolved.url).toMatch(new RegExp(`waifumon/${SLUG}/level_20$`));
     expect(resolved.url).not.toContain('standard');
     expect(resolved.isFallback).toBe(false);
   });
@@ -106,7 +100,7 @@ describe('appearance identity → image URL', () => {
       displayWidth: ARTWORK_WIDTH.gridTile,
     });
 
-    expect(resolved.url).toContain(`waifumon/${SLUG}/winter_2026.png`);
+    expect(resolved.url).toMatch(new RegExp(`waifumon/${SLUG}/winter_2026$`));
   });
 
   it('keeps each appearance of one species distinct', () => {
@@ -122,124 +116,13 @@ describe('appearance identity → image URL', () => {
 });
 
 // ── Rendition generation ────────────────────────────────────────────────────
-
-/**
- * Runs the real `generate-thumbnails.mjs` against a throwaway assets tree.
- *
- * Spawned rather than imported because the script is a CLI that runs its work
- * on load — and spawning is what exercises the thing authors actually invoke.
- * `sharp` is a devDependency of this package, so this is skipped rather than
- * failed where it is absent: renditions are an optimisation, and a test suite
- * that cannot run without native binaries would make them feel mandatory.
- */
-const hasSharp = fs.existsSync(path.join(portalRoot, 'node_modules', 'sharp'));
-
-describe.skipIf(!hasSharp)('rendition generation', () => {
-  let assetsDir: string;
-  let pngFixture: Buffer;
-
-  beforeAll(() => {
-    // A real image, so sharp has something it can actually decode and resize.
-    pngFixture = fs.readFileSync(
-      path.resolve(portalRoot, '..', 'assets', 'waifumon', 'alley_catgirl', 'standard.png'),
-    );
-  });
-
-  beforeEach(() => {
-    assetsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'waifumon-thumbs-'));
-  });
-
-  afterEach(() => {
-    fs.rmSync(assetsDir, { recursive: true, force: true });
-  });
-
-  function addArtworkFor(slug: string, ...appearanceIds: string[]): void {
-    const dir = path.join(assetsDir, 'waifumon', slug);
-    fs.mkdirSync(dir, { recursive: true });
-    for (const id of appearanceIds) fs.writeFileSync(path.join(dir, `${id}.png`), pngFixture);
-  }
-
-  function addArtwork(...appearanceIds: string[]): void {
-    addArtworkFor(SLUG, ...appearanceIds);
-  }
-
-  function generate(): string {
-    return execFileSync(
-      process.execPath,
-      ['scripts/generate-thumbnails.mjs', '--assets', assetsDir],
-      { cwd: portalRoot, encoding: 'utf8' },
-    );
-  }
-
-  function rendition(width: number, appearanceId: string, slug = SLUG): string {
-    return path.join(assetsDir, '.thumbnails', String(width), 'waifumon', slug, `${appearanceId}.webp`);
-  }
-
-  it('renders the same set for an appearance as for the default artwork', () => {
-    addArtwork('standard', 'level_10');
-
-    generate();
-
-    for (const width of [256, 512, 1024]) {
-      expect(fs.existsSync(rendition(width, 'standard')), `standard @${width}`).toBe(true);
-      expect(fs.existsSync(rendition(width, 'level_10')), `level_10 @${width}`).toBe(true);
-    }
-  });
-
-  it('generates canonical renditions for expansion species artwork', () => {
-    const expansionSlug = 'onsen_maid';
-    addArtworkFor(expansionSlug, 'standard', 'level_20');
-
-    generate();
-
-    expect(fs.existsSync(rendition(256, 'standard', expansionSlug))).toBe(true);
-    expect(fs.existsSync(rendition(512, 'level_20', expansionSlug))).toBe(true);
-  });
-
-  it('renders an appearance id it was never told about', () => {
-    // The generator walks the artwork tree; it does not consult a milestone
-    // list. That is what keeps `assets:thumbs` useful for seasonal drops that
-    // `appearances:sync` knows nothing about.
-    addArtwork('standard', 'winter_2026');
-
-    generate();
-
-    expect(fs.existsSync(rendition(512, 'winter_2026'))).toBe(true);
-  });
-
-  it('produces renditions far smaller than the source', () => {
-    addArtwork('level_10');
-    generate();
-
-    const source = fs.statSync(path.join(assetsDir, 'waifumon', SLUG, 'level_10.png')).size;
-    expect(fs.statSync(rendition(512, 'level_10')).size).toBeLessThan(source / 10);
-  });
-
-  it('is idempotent, and never treats its own output as source artwork', () => {
-    addArtwork('standard', 'level_10');
-    generate();
-    const first = fs.readFileSync(rendition(512, 'level_10'));
-
-    const output = generate();
-
-    expect(output).toContain('0 written');
-    // A second pass must not re-encode a rendition from a rendition, which
-    // would degrade the image a little more on every run.
-    expect(fs.readFileSync(rendition(512, 'level_10')).equals(first)).toBe(true);
-    expect(fs.existsSync(path.join(assetsDir, '.thumbnails', '512', '.thumbnails'))).toBe(false);
-  });
-
-  it('picks up artwork added after an earlier run', () => {
-    addArtwork('standard');
-    generate();
-
-    addArtwork('level_20');
-    const output = generate();
-
-    expect(fs.existsSync(rendition(512, 'level_20'))).toBe(true);
-    expect(output).toContain('3 written');
-  });
-});
+//
+// Renditions are produced by the bot's artwork build tool
+// (`npm run artwork:build`, root `src/tools/artworkBuild.ts`), which encodes
+// every size directly from the PNG master. Its tests — including "an
+// appearance id it was never told about" — live beside it in the root package
+// (`tests/unit/artworkBuild.test.ts`), since this package may not import the
+// bot's `src/`.
 
 // ── Rendering ───────────────────────────────────────────────────────────────
 
@@ -284,7 +167,7 @@ describe('rendering an appearance', () => {
 
     expect(screen.getByAltText('level_20')).toHaveAttribute(
       'src',
-      expect.stringContaining(`waifumon/${SLUG}/level_20.png`),
+      expect.stringMatching(new RegExp(`waifumon/${SLUG}/level_20$`)),
     );
   });
 
@@ -292,7 +175,7 @@ describe('rendering an appearance', () => {
     // What a player sees when the copy they are looking at changes what it is
     // wearing: the API reports a new `variant`, and every surface follows.
     const { rerender } = renderAppearance('standard');
-    expect(screen.getByAltText('standard').getAttribute('src')).toContain('standard.png');
+    expect(screen.getByAltText('standard').getAttribute('src')).toMatch(new RegExp(`waifumon/${SLUG}/standard$`));
 
     rerender(
       <Artwork
@@ -301,7 +184,7 @@ describe('rendering an appearance', () => {
         displayWidth={ARTWORK_WIDTH.gridTile}
       />,
     );
-    expect(screen.getByAltText('level_20').getAttribute('src')).toContain('level_20.png');
+    expect(screen.getByAltText('level_20').getAttribute('src')).toMatch(new RegExp(`waifumon/${SLUG}/level_20$`));
 
     rerender(
       <Artwork
@@ -310,7 +193,7 @@ describe('rendering an appearance', () => {
         displayWidth={ARTWORK_WIDTH.gridTile}
       />,
     );
-    expect(screen.getByAltText('standard').getAttribute('src')).toContain('standard.png');
+    expect(screen.getByAltText('standard').getAttribute('src')).toMatch(new RegExp(`waifumon/${SLUG}/standard$`));
   });
 
   it('does not strand an appearance on its skeleton when returning to it', () => {

@@ -15,7 +15,6 @@
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ownedCardImage } from '../../src/discord/assets/attachRenderedCard';
-import { CARD_FILENAME } from '../../src/discord/assets/resolveAppearanceAsset';
 import { createAppearanceService } from '../../src/modules/appearance/appearanceService';
 import type { SpeciesRow } from '../../src/db/schema';
 import type { AppContext } from '../../src/discord/types';
@@ -59,15 +58,15 @@ describe('the appearance she is wearing', () => {
     const image = await ownedCardImage(ctxFor(), subject('level_20'));
 
     expect(image).not.toBeNull();
-    expect(path.basename(attachedPath(image!.file))).toBe('level_20.png');
-    expect(attachedPath(image!.file)).not.toContain('standard.png');
+    expect(path.basename(attachedPath(image!.file))).toBe('level_20.webp');
+    expect(attachedPath(image!.file)).not.toContain('standard.');
   });
 
   it.each(['standard', 'level_10', 'level_20'])(
     'follows the copy from look to look (%s)',
     async (variant) => {
       const image = await ownedCardImage(ctxFor(), subject(variant));
-      expect(path.basename(attachedPath(image!.file))).toBe(`${variant}.png`);
+      expect(path.basename(attachedPath(image!.file))).toBe(`${variant}.webp`);
     },
   );
 
@@ -87,18 +86,19 @@ describe('the appearance she is wearing', () => {
     async (variant) => {
       const image = await ownedCardImage(ctxFor(), subject(variant));
 
-      expect(path.basename(attachedPath(image!.file))).toBe('standard.png');
+      expect(path.basename(attachedPath(image!.file))).toBe('standard.webp');
       expect(attachedPath(image!.file)).not.toContain(variant);
     },
   );
 
-  it('references the attachment under the shared filename', async () => {
+  it('references the attachment under the shared stem and its real extension', async () => {
     const image = await ownedCardImage(ctxFor(), subject('level_20'));
 
-    // The embed points at `attachment://…`, so the name and the URL have to
-    // agree or the picture silently fails to bind.
-    expect(image!.file.name).toBe(CARD_FILENAME);
-    expect(image!.url).toBe(`attachment://${CARD_FILENAME}`);
+    // The shipped runtime artwork is WebP, so the attachment says so. The embed points
+    // at `attachment://…`, so the name and the URL have to agree or the
+    // picture silently fails to bind.
+    expect(image!.file.name).toBe('card.webp');
+    expect(image!.url).toBe(`attachment://${image!.file.name}`);
   });
 });
 
@@ -106,7 +106,7 @@ describe('degrading', () => {
   it('falls back to the species default when a look has no artwork', async () => {
     const image = await ownedCardImage(ctxFor(), subject('level_9001'));
 
-    expect(path.basename(attachedPath(image!.file))).toBe('standard.png');
+    expect(path.basename(attachedPath(image!.file))).toBe('standard.webp');
   });
 
   it('degrades to raw artwork when the card render fails', async () => {
@@ -122,7 +122,7 @@ describe('degrading', () => {
     );
 
     expect(image).not.toBeNull();
-    expect(path.basename(attachedPath(image!.file))).toBe('standard.png');
+    expect(path.basename(attachedPath(image!.file))).toBe('standard.webp');
   });
 
   it('returns null when no artwork exists at all', async () => {

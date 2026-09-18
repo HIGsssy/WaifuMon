@@ -73,7 +73,7 @@ import {
 } from '../buddyBonusFeedback';
 import { buddyBonusLine } from '../../modules/buddyBonus/buddyBonusEffects';
 import { buildCustomId } from '../types';
-import { CARD_FILENAME, resolveAppearanceAssetOrPath } from '../assets/resolveAppearanceAsset';
+import { artworkAttachmentUrl, resolveAppearanceAssetOrPath } from '../assets/resolveAppearanceAsset';
 import {
   renderEncounterDuplicateCardAttachment,
   renderOwnedCardAttachment,
@@ -403,7 +403,7 @@ async function buildEncounterView(
     const attach = attachSpeciesArtwork(ctx, species);
     if (attach) {
       files.push(attach);
-      embed.setImage(`attachment://${CARD_FILENAME}`);
+      embed.setImage(artworkAttachmentUrl(attach));
     }
   }
   const components: EncounterRowComponent[] = [];
@@ -704,7 +704,7 @@ async function sendRareAnnouncement(
   const artwork = owned ? null : attachSpeciesArtwork(ctx, species);
   const card = owned?.file ?? artwork;
   const files = card ? [card] : [];
-  if (card) embed.setImage(owned ? owned.url : `attachment://${CARD_FILENAME}`);
+  if (card) embed.setImage(owned ? owned.url : artworkAttachmentUrl(card));
 
   // Announce channel: guild-configured if set, otherwise the capture channel.
   let target: GuildTextBasedChannel | null = null;
@@ -809,7 +809,6 @@ export async function buildEphemeralOutcomeMessage(
       : null;
 
   const artwork = owned ? null : attachSpeciesArtwork(ctx, species);
-  const attachName = owned ? owned.url : `attachment://${CARD_FILENAME}`;
   const card = owned?.file ?? artwork;
   const files = card ? [card] : [];
 
@@ -833,7 +832,7 @@ export async function buildEphemeralOutcomeMessage(
         `Attempt ${attempt.attemptNumber} — she wriggled free. **${attemptsRemaining}** attempt${attemptsRemaining === 1 ? '' : 's'} left.`,
       );
   }
-  if (card) embed.setImage(attachName);
+  if (card) embed.setImage(owned ? owned.url : artworkAttachmentUrl(card));
   // The actual roll behind this attempt, on every non-guaranteed result
   // (success and failure alike). It reuses `attempt.roll` — the exact RNG value
   // the server compared against the chance — so the player can see the rule for

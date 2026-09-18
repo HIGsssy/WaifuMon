@@ -1,10 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { ZodError, ZodType, ZodTypeDef } from 'zod';
+import { defaultAssetId } from '../appearance/appearanceContent';
 import {
-  appearanceAssetRelativePath,
-  defaultAssetId,
-} from '../appearance/appearanceContent';
+  assetPathWithin,
+  locateLegacyArtwork,
+  locateSpeciesArtwork,
+} from '../assets/speciesArtworkFile';
 import { archetypeToRace, DEFAULT_RACE } from '../cards/race';
 import { ContentValidationError } from '../../shared/errors';
 import type { Logger } from '../../shared/logger';
@@ -12,6 +14,7 @@ import { DEFAULT_REGION, isRegion, REGION_EXCLUSIVE_TAG } from '../locations/reg
 import {
   BossesFileSchema,
   BossRewardsFileSchema,
+  DEFAULT_APPEARANCE_ID,
   ExpansionContentSchema,
   ItemsFileSchema,
   RegionContentSchema,
@@ -55,9 +58,8 @@ function parseJsonFile<T>(filePath: string, schema: ZodType<T, ZodTypeDef, unkno
  * (a malicious image_path in content JSON must not read outside ASSETS_DIR).
  */
 export function resolveAssetPath(assetsDir: string, imagePath: string): string {
-  const root = path.resolve(assetsDir);
-  const resolved = path.resolve(root, imagePath);
-  if (resolved !== root && !resolved.startsWith(root + path.sep)) {
+  const resolved = assetPathWithin(assetsDir, imagePath);
+  if (resolved === null) {
     throw new ContentValidationError(
       `image_path "${imagePath}" resolves outside the assets directory`,
     );
@@ -69,34 +71,43 @@ export function resolveAssetPath(assetsDir: string, imagePath: string): string {
  * Asset pre-flight.
  *
  * Two different severities, on purpose:
- *   - a missing **default** image disables the species (unchanged behavior —
- *     a species that cannot render at all is worse than one that is absent);
+ *   - a species whose **default** artwork resolves nowhere is disabled — a
+ *     species that cannot render at all is worse than one that is absent;
  *   - a missing **non-default appearance** file drops just that appearance
  *     with a warning and leaves the species enabled. Half-shipped artwork
  *     should cost one gallery tile, not a whole Waifumon.
  *
- * Species with no authored catalog are untouched: their implicit `standard`
- * appearance is covered by the `imagePath` probe that already existed.
+ * Every existence question goes through the shared artwork resolver, so an
+ * appearance stored as WebP, PNG or both counts as present — the loader never
+ * decides which file format artwork must be in. The default look is resolved
+ * exactly as consumers will resolve it: the `owned` appearance, then the
+ * species' `standard`, then the legacy `imagePath`.
+ *
+ * Species with no authored catalog are covered by that same probe of their
+ * implicit `standard` appearance.
  */
 export function validateSpeciesAssets(
   species: SpeciesContent[],
   assetsDir: string,
   logger: Logger,
 ): SpeciesContent[] {
-  const exists = (relative: string): boolean => {
-    try {
-      return fs.existsSync(resolveAssetPath(assetsDir, relative));
-    } catch {
-      // Path traversal — treated as missing rather than fatal, matching the
-      // "never render a broken card" rule. `resolveAssetPath` already logged
-      // the intent by throwing.
-      return false;
-    }
-  };
-
   return species.map((s) => {
-    const absolute = resolveAssetPath(assetsDir, s.imagePath);
-    if (!fs.existsSync(absolute)) {
+    // Shape check only: an `imagePath` that escapes the assets root is a
+    // content error and fails the load loudly, as it always has.
+    resolveAssetPath(assetsDir, s.imagePath);
+
+    const owned = s.appearances?.find((appearance) => appearance.unlock.type === 'owned');
+    const defaultAsset = owned
+      ? (owned.assetId ?? defaultAssetId(s.slug, owned.id))
+      : defaultAssetId(s.slug, DEFAULT_APPEARANCE_ID);
+    // Mirrors the consumers' fallback chain — the default look, then the
+    // species' `standard`, then the legacy `imagePath` — so a species is only
+    // disabled when nothing any consumer could fall back to exists.
+    const renderable =
+      locateSpeciesArtwork(assetsDir, defaultAsset) ??
+      locateSpeciesArtwork(assetsDir, defaultAssetId(s.slug, DEFAULT_APPEARANCE_ID)) ??
+      locateLegacyArtwork(assetsDir, s.imagePath);
+    if (!renderable) {
       logger.warn({ slug: s.slug, imagePath: s.imagePath }, 'species image missing — disabling');
       return { ...s, enabled: false };
     }
@@ -107,10 +118,9 @@ export function validateSpeciesAssets(
     for (const appearance of s.appearances) {
       const assetId = appearance.assetId ?? defaultAssetId(s.slug, appearance.id);
       // AssetId is the only artwork identity, for core and expansion species
-      // alike. It always maps to `waifumon/<slug>/<variant>.png`; imagePath is
-      // retained only as the loader's standard-image existence probe.
-      const relative = appearanceAssetRelativePath(assetId);
-      if (exists(relative)) {
+      // alike; the resolver decides which stored format backs it. imagePath
+      // is retained only as the default look's last-resort fallback.
+      if (locateSpeciesArtwork(assetsDir, assetId)) {
         kept.push(appearance);
         continue;
       }
