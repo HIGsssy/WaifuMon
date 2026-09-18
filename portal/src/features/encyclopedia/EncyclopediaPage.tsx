@@ -27,6 +27,7 @@ import { distinctSpeciesValues } from '@/content/species';
 import { titleCase } from '@/lib/format';
 import { byRarityDesc, RARITY_ORDER, rarityStyle } from '@/lib/rarity';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
+import { isZoneTag, ZONES, zoneFor, zoneLabel } from '@/lib/zone';
 import { SpeciesCard } from './SpeciesCard';
 
 type Discovery = 'all' | 'discovered' | 'undiscovered';
@@ -54,6 +55,9 @@ export function EncyclopediaPage() {
   const rarity = readParam(searchParams.get('rarity'), RARITY_ORDER);
   const discovery = readParam(searchParams.get('discovery'), DISCOVERY_OPTIONS) ?? 'all';
   const search = searchParams.get('search') ?? '';
+  // Unrecognised values, including the legacy `twin_peaks`, read as All Zones.
+  const zoneParam = searchParams.get('zone');
+  const zone = isZoneTag(zoneParam) ? zoneParam : null;
 
   const [searchDraft, setSearchDraft] = useState(search);
   const debouncedSearch = useDebouncedValue(searchDraft, 250);
@@ -94,6 +98,8 @@ export function EncyclopediaPage() {
         if (rarity && entry.rarity !== rarity) return false;
         if (race && entry.race !== race) return false;
         if (affinity && entry.affinity !== affinity) return false;
+        // Zone is known before discovery, so undiscovered species stay in.
+        if (zone && zoneFor(entry)?.tag !== zone) return false;
         if (discovery === 'discovered' && ownedCount === 0) return false;
         if (discovery === 'undiscovered' && ownedCount > 0) return false;
         if (needle && (ownedCount === 0 || !entry.name.toLowerCase().includes(needle))) {
@@ -102,9 +108,16 @@ export function EncyclopediaPage() {
         return true;
       })
       .sort((a, b) => byRarityDesc(a.rarity, b.rarity) || a.name.localeCompare(b.name));
-  }, [enabled, counts, rarity, race, affinity, discovery, debouncedSearch]);
+  }, [enabled, counts, rarity, race, affinity, zone, discovery, debouncedSearch]);
 
-  const discoveredCount = enabled.filter((entry) => (counts[entry.slug] ?? 0) > 0).length;
+  // The header tally: the whole dex, or just the selected zone. Scoped by zone
+  // alone — not the other filters — so it always answers "how much of this
+  // zone have I found?". Counts only; never names an undiscovered species.
+  const tallied = useMemo(
+    () => (zone ? enabled.filter((entry) => zoneFor(entry)?.tag === zone) : enabled),
+    [enabled, zone],
+  );
+  const discoveredCount = tallied.filter((entry) => (counts[entry.slug] ?? 0) > 0).length;
 
   const groups: FilterGroup[] = [
     {
@@ -115,6 +128,23 @@ export function EncyclopediaPage() {
         active: discovery === value,
         onSelect: () => patch('discovery', value === 'all' ? null : value),
       })),
+    },
+    {
+      label: 'Zone',
+      options: [
+        {
+          value: 'all',
+          label: 'All Zones',
+          active: zone === null,
+          onSelect: () => patch('zone', null),
+        },
+        ...ZONES.map((option) => ({
+          value: option.tag,
+          label: option.label,
+          active: zone === option.tag,
+          onSelect: () => patch('zone', zone === option.tag ? null : option.tag),
+        })),
+      ],
     },
     {
       label: 'Rarity',
@@ -186,6 +216,15 @@ export function EncyclopediaPage() {
           },
         ]
       : []),
+    ...(zone
+      ? [
+          {
+            key: 'zone',
+            label: `Zone: ${zoneLabel(zone) ?? 'Unknown'}`,
+            onRemove: () => patch('zone', null),
+          },
+        ]
+      : []),
     ...(discovery !== 'all'
       ? [
           {
@@ -205,7 +244,8 @@ export function EncyclopediaPage() {
         actions={
           species.data && dex.isSettled ? (
             <span className="tabular text-sm text-ink-muted">
-              {discoveredCount} / {enabled.length} discovered
+              {zone ? `${zoneLabel(zone)}: ` : ''}
+              {discoveredCount} / {tallied.length} discovered
             </span>
           ) : undefined
         }
