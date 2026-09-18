@@ -60,6 +60,7 @@ import {
   FILTER_NAME_MAX_LENGTH,
   type CollectionFilterState,
   type CollectionFilterTracker,
+  type FilterParseResult,
 } from '../collectionFilterTracker';
 import {
   artworkAttachmentUrl,
@@ -95,7 +96,7 @@ import { backButton, isStaleInteractionError, withBackRow } from '../ui';
 
 const PAGE_SIZE = 10;
 /** Discord select menus cap at 25 options; the gallery paginates past that. */
-const GALLERY_PAGE_SIZE = 25;
+export const GALLERY_PAGE_SIZE = 25;
 
 /**
  * Menu labels for the rarity filter. Keyed off {@link RARITIES} so a new tier
@@ -152,7 +153,7 @@ function filterTracker(ctx: AppContext): CollectionFilterTracker {
 }
 
 /** One-line summary of what the player is currently looking at. */
-function describeFilters(state: CollectionFilterState): string {
+export function describeFilters(state: CollectionFilterState): string {
   const parts: string[] = [];
   if (state.name != null) parts.push(`“${state.name}”`);
   if (state.minLevel != null && state.maxLevel != null) {
@@ -215,8 +216,11 @@ export function renderCollectionEmbed(
   return embed;
 }
 
-/** Select options for the species groups on this page. */
-function groupSelectOptions(
+/**
+ * Select options for the species groups on this page. The value prefix tells
+ * the handler whether to act on the lone copy directly or open the copy picker.
+ */
+export function groupSelectOptions(
   groups: PaginatedGroups['groups'],
 ): { label: string; description: string; value: string }[] {
   return groups.map((group) => {
@@ -233,11 +237,16 @@ function groupSelectOptions(
   });
 }
 
-function sortSelectRow(
+/**
+ * Sort picker. `customId` defaults to the collection's own; other browsers
+ * built on the same grouped view (the Care Mode target picker) pass theirs.
+ */
+export function sortSelectRow(
   state: CollectionFilterState,
+  customId = buildCustomId('col', 'sort'),
 ): ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder> {
   const select = new StringSelectMenuBuilder()
-    .setCustomId(buildCustomId('col', 'sort'))
+    .setCustomId(customId)
     .setPlaceholder('Sort…')
     .addOptions(
       COLLECTION_SORTS.map((sort) => ({
@@ -260,12 +269,13 @@ function sortSelectRow(
  * list back into `null`. That means the menu itself is the way back to all
  * rarities, and the existing ✕ Clear button still works as a blanket reset.
  */
-function raritySelectRow(
+export function raritySelectRow(
   state: CollectionFilterState,
+  customId = buildCustomId('col', 'rarity'),
 ): ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder> {
   const selected = new Set<string>(state.rarities ?? []);
   const select = new StringSelectMenuBuilder()
-    .setCustomId(buildCustomId('col', 'rarity'))
+    .setCustomId(customId)
     .setPlaceholder(
       selected.size > 0 ? `Rarity: ${[...selected].join('/')}` : 'Rarity: All',
     )
@@ -446,13 +456,15 @@ export async function handleCollectionFilterClear(
   await respondEphemeral(interaction, view);
 }
 
-/** col:filter_open button — show the filter modal, prefilled with current state. */
-export async function handleCollectionFilterOpen(
-  ctx: AppContext,
-  interaction: ButtonInteraction,
-  prov: Provisioned,
-): Promise<void> {
-  const state = filterTracker(ctx).get(prov.playerId);
+/**
+ * The filter modal, prefilled with `state`. Shared with the Care Mode target
+ * picker, which submits to its own `customId`.
+ */
+export function filterModal(
+  customId: string,
+  title: string,
+  state: CollectionFilterState,
+): ModalBuilder {
   const text = (
     id: string,
     label: string,
@@ -470,25 +482,23 @@ export async function handleCollectionFilterOpen(
         .setPlaceholder(placeholder)
         .setValue(value),
     );
-  const modal = new ModalBuilder()
-    .setCustomId(buildCustomId('col', 'filter_submit'))
-    .setTitle('Filter your collection')
+  return new ModalBuilder()
+    .setCustomId(customId)
+    .setTitle(title)
     .addComponents(
       text('name', 'Name (blank = any)', state.name ?? '', FILTER_NAME_MAX_LENGTH, 'e.g. saku'),
       text('min_level', 'Min level (blank = any)', state.minLevel?.toString() ?? '', 3, 'e.g. 10'),
       text('max_level', 'Max level (blank = any)', state.maxLevel?.toString() ?? '', 3, 'e.g. 50'),
       text('min_copies', 'Min copies (blank = any)', state.minCopies?.toString() ?? '', 3, 'e.g. 2'),
     );
-  await interaction.showModal(modal);
 }
 
-/** col:filter_submit — modal callback. */
-export async function handleCollectionFilterSubmit(
+/** Parse a submitted {@link filterModal} against the game's level ceiling. */
+export function parseFilterModal(
   ctx: AppContext,
   interaction: ModalSubmitInteraction,
-  prov: Provisioned,
-): Promise<void> {
-  const parsed = parseFilterInput(
+): FilterParseResult {
+  return parseFilterInput(
     {
       name: interaction.fields.getTextInputValue('name'),
       minLevel: interaction.fields.getTextInputValue('min_level'),
@@ -497,6 +507,27 @@ export async function handleCollectionFilterSubmit(
     },
     ctx.content.tables.waifuProgression.maxLevel,
   );
+}
+
+/** col:filter_open button — show the filter modal, prefilled with current state. */
+export async function handleCollectionFilterOpen(
+  ctx: AppContext,
+  interaction: ButtonInteraction,
+  prov: Provisioned,
+): Promise<void> {
+  const state = filterTracker(ctx).get(prov.playerId);
+  await interaction.showModal(
+    filterModal(buildCustomId('col', 'filter_submit'), 'Filter your collection', state),
+  );
+}
+
+/** col:filter_submit — modal callback. */
+export async function handleCollectionFilterSubmit(
+  ctx: AppContext,
+  interaction: ModalSubmitInteraction,
+  prov: Provisioned,
+): Promise<void> {
+  const parsed = parseFilterModal(ctx, interaction);
   if (!parsed.ok) {
     // Filters are left exactly as they were — a rejected form changes nothing.
     await replyEphemeralNotice(ctx, interaction, prov.playerId, parsed.error, 'filter-rejected');
@@ -557,7 +588,7 @@ export async function handleCollectionPick(
  * The active level filter carries over, so the copies listed here are the same
  * ones the group line counted.
  */
-function renderDuplicateEmbed(
+export function renderDuplicateEmbed(
   species: OwnedEntry['species'],
   copies: OwnedEntry[],
   buddyId: number | null,
@@ -602,11 +633,36 @@ function renderDuplicateEmbed(
   return embed;
 }
 
-function duplicateComponents(
+/**
+ * Where the copy selector's controls lead. The collection inspects the picked
+ * copy; the Care Mode target picker makes it the care target instead.
+ */
+export interface CopySelectorIds {
+  /** Custom id of the copy select; its value is the owned copy's id. */
+  pick: string;
+  placeholder: string;
+  /** Custom id of the Prev/Next button that shows `page` of this species. */
+  page: (speciesId: number, page: number) => string;
+  /** The button back out to the list this selector was opened from. */
+  back: ButtonBuilder;
+}
+
+const COLLECTION_COPY_IDS: CopySelectorIds = {
+  pick: buildCustomId('col', 'pick_copy'),
+  placeholder: 'Inspect a copy…',
+  page: (speciesId, page) => buildCustomId('col', 'dupes', String(speciesId), String(page)),
+  back: new ButtonBuilder()
+    .setCustomId(buildCustomId('col', 'list'))
+    .setLabel('⟵ Back to collection')
+    .setStyle(ButtonStyle.Secondary),
+};
+
+export function duplicateComponents(
   speciesId: number,
   copies: OwnedEntry[],
   page: number,
   totalPages: number,
+  ids: CopySelectorIds = COLLECTION_COPY_IDS,
 ): ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>[] {
   const rows: ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>[] = [];
   const shown = copies.slice((page - 1) * GALLERY_PAGE_SIZE, page * GALLERY_PAGE_SIZE);
@@ -614,8 +670,8 @@ function duplicateComponents(
   // Same rule as the group list: never emit an empty select menu.
   if (shown.length > 0) {
     const select = new StringSelectMenuBuilder()
-      .setCustomId(buildCustomId('col', 'pick_copy'))
-      .setPlaceholder('Inspect a copy…')
+      .setCustomId(ids.pick)
+      .setPlaceholder(ids.placeholder)
       .addOptions(
         shown.map((copy) => {
           const nick = copy.waifu.nickname?.trim();
@@ -643,23 +699,18 @@ function duplicateComponents(
   if (totalPages > 1) {
     nav.push(
       new ButtonBuilder()
-        .setCustomId(buildCustomId('col', 'dupes', String(speciesId), String(page - 1)))
+        .setCustomId(ids.page(speciesId, page - 1))
         .setLabel('◀ Prev')
         .setStyle(ButtonStyle.Secondary)
         .setDisabled(page <= 1),
       new ButtonBuilder()
-        .setCustomId(buildCustomId('col', 'dupes', String(speciesId), String(page + 1)))
+        .setCustomId(ids.page(speciesId, page + 1))
         .setLabel('Next ▶')
         .setStyle(ButtonStyle.Secondary)
         .setDisabled(page >= totalPages),
     );
   }
-  nav.push(
-    new ButtonBuilder()
-      .setCustomId(buildCustomId('col', 'list'))
-      .setLabel('⟵ Back to collection')
-      .setStyle(ButtonStyle.Secondary),
-  );
+  nav.push(ids.back);
   rows.push(
     new ActionRowBuilder<ButtonBuilder>().addComponents(...nav) as ActionRowBuilder<
       ButtonBuilder | StringSelectMenuBuilder

@@ -16,11 +16,22 @@ import {
   handleCareChangeOpen,
   handleCareChangePick,
   handleCareCommand,
+  handleCareTargetPick,
   handleCareLeave,
   handleCareStart,
   handleQuests,
   handleQuestsClaimAll,
 } from './commands/waifumon';
+import {
+  handleCareTargetDuplicates,
+  handleCareTargetFilterClear,
+  handleCareTargetFilterOpen,
+  handleCareTargetFilterSubmit,
+  handleCareTargetList,
+  handleCareTargetPage,
+  handleCareTargetRarity,
+  handleCareTargetSort,
+} from './commands/waifumonCareTarget';
 import {
   handleContinueJourney,
   handleLocationBuy,
@@ -254,6 +265,25 @@ export function createDiscordClient(ctx: AppContext): Client {
         handleCareChangeOpen(ctx, i, prov),
       'care:change_pick': (i: StringSelectMenuInteraction, prov: Provisioned) =>
         handleCareChangePick(ctx, i, prov),
+      // Paged, searchable Care Mode target picker.
+      'care:target_pick': (i: StringSelectMenuInteraction, prov: Provisioned) =>
+        handleCareTargetPick(ctx, i, prov),
+      'care:target_page': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleCareTargetPage(ctx, i, prov, args),
+      'care:target_sort': (i: StringSelectMenuInteraction, prov: Provisioned) =>
+        handleCareTargetSort(ctx, i, prov),
+      'care:target_rarity': (i: StringSelectMenuInteraction, prov: Provisioned) =>
+        handleCareTargetRarity(ctx, i, prov),
+      'care:target_filter_open': (i: ButtonInteraction, prov: Provisioned) =>
+        handleCareTargetFilterOpen(ctx, i, prov),
+      'care:target_filter_submit': (i: ModalSubmitInteraction, prov: Provisioned) =>
+        handleCareTargetFilterSubmit(ctx, i, prov),
+      'care:target_filter_clear': (i: ButtonInteraction, prov: Provisioned) =>
+        handleCareTargetFilterClear(ctx, i, prov),
+      'care:target_list': (i: ButtonInteraction, prov: Provisioned) =>
+        handleCareTargetList(ctx, i, prov),
+      'care:target_dupes': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleCareTargetDuplicates(ctx, i, prov, args),
       'enc:capture': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleEncounterCapture(ctx, i, prov, args),
       'enc:pick': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>

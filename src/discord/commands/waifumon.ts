@@ -13,7 +13,6 @@ import {
   ButtonBuilder,
   ButtonStyle,
   EmbedBuilder,
-  StringSelectMenuBuilder,
   type ButtonInteraction,
   type ChatInputCommandInteraction,
   type StringSelectMenuInteraction,
@@ -43,6 +42,7 @@ import {
   careEnterDescriptors,
   careLeaveDescriptors,
   carePendingDescriptors,
+  careTickDescriptors,
   levelUpDescriptors,
 } from '../gameEventBuilders';
 import { gameEvent, type GameEventDescriptor } from '../../modules/events/gameEvents';
@@ -54,6 +54,11 @@ import type { CareState, CareTickSummary } from '../../modules/care/careService'
 import { buddyBonusValueLine } from '../buddyBonusFeedback';
 import { ownerFromInteraction } from '../userDisplay';
 import { withBackRow } from '../ui';
+import {
+  buildCareTargetScreen,
+  renderCareCopySelector,
+  resetCareTargetPicker,
+} from './waifumonCareTarget';
 import {
   buddyBonusShortLine,
   type AppliedBuddyBonus,
@@ -1012,38 +1017,16 @@ export function formatCareSummary(summary: CareTickSummary): string | null {
   return bonuses.length > 0 ? `${head}\n${bonuses.join('\n')}` : head;
 }
 
-/** Build the target-picker select menu (owned, non-released copies). */
+/**
+ * The paged, searchable target picker (owned, non-released copies), opened
+ * fresh on page 1. Null when the player owns nothing to care for.
+ */
 async function buildChangeTargetView(
   ctx: AppContext,
   prov: Provisioned,
-): Promise<{
-  embeds: EmbedBuilder[];
-  components: ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>[];
-} | null> {
-  const matches = await ctx.services.collection.searchByName(prov.playerId, '', 25);
-  if (matches.length === 0) return null;
-  const menu = new StringSelectMenuBuilder()
-    .setCustomId(buildCustomId('care', 'change_pick'))
-    .setPlaceholder('Choose a Waifumon to care for…')
-    .addOptions(
-      matches.slice(0, 25).map((entry) => {
-        const nick = entry.waifu.nickname?.trim();
-        return {
-          label: (nick ?? entry.species.name).slice(0, 100),
-          description: `[${entry.species.rarity}] Lv ${entry.waifu.level}`.slice(0, 100),
-          value: String(entry.waifu.id),
-        };
-      }),
-    );
-  const embed = new EmbedBuilder()
-    .setTitle('💗 Care Mode — choose a target')
-    .setColor(0xffb6d1)
-    .setDescription('Select which Waifumon to care for. Ticks continue every 30 minutes.');
-  const rows: ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>[] = [
-    new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu),
-    ...withBackRow(),
-  ];
-  return { embeds: [embed], components: rows };
+): ReturnType<typeof buildCareTargetScreen> {
+  resetCareTargetPicker(ctx, prov.playerId);
+  return buildCareTargetScreen(ctx, prov.playerId);
 }
 
 /**
@@ -1212,40 +1195,94 @@ export async function handleCareChangeOpen(
   await respondEphemeral(interaction, view);
 }
 
+/** care:change_pick select — a specific copy, from the copy selector. */
 export async function handleCareChangePick(
   ctx: AppContext,
   interaction: StringSelectMenuInteraction,
   prov: Provisioned,
 ): Promise<void> {
-  const raw = interaction.values[0];
-  const targetId = Number(raw);
+  const targetId = Number(interaction.values[0]);
   if (!Number.isInteger(targetId)) {
-    await respondEphemeral(interaction, 'That Waifumon is no longer available.');
+    await respondEphemeral(interaction, {
+      content: 'That Waifumon is no longer available.',
+      components: withBackRow(),
+    });
     return;
   }
+  await applyCareTargetPick(ctx, interaction, prov, targetId);
+}
+
+/**
+ * care:target_pick select — a species group from the picker. A lone copy is
+ * picked outright; several open the copy selector so the exact one is chosen.
+ */
+export async function handleCareTargetPick(
+  ctx: AppContext,
+  interaction: StringSelectMenuInteraction,
+  prov: Provisioned,
+): Promise<void> {
+  const [kind, rawId] = (interaction.values[0] ?? '').split(':');
+  const id = Number(rawId);
+  if (!Number.isInteger(id)) {
+    await respondEphemeral(interaction, {
+      content: 'That Waifumon is no longer available.',
+      components: withBackRow(),
+    });
+    return;
+  }
+  if (kind === 'single') {
+    await applyCareTargetPick(ctx, interaction, prov, id);
+    return;
+  }
+  await renderCareCopySelector(ctx, interaction as unknown as PlayerInteraction, prov, id, 1);
+}
+
+/**
+ * Make `targetId` the care target — entering Care Mode if it isn't on.
+ *
+ * Re-picking the current target is a no-op: pending ticks are still credited
+ * (the service does that on every call), but no target-change event fires, so
+ * the Trainer Profile isn't reposted for a change that didn't happen.
+ */
+async function applyCareTargetPick(
+  ctx: AppContext,
+  interaction: StringSelectMenuInteraction,
+  prov: Provisioned,
+  targetId: number,
+): Promise<void> {
   let events: GameEventDescriptor[] = [];
-  let statusLine: string | null = null;
-  let wasActiveBeforePick = false;
+  let note: string | null = null;
   try {
     const care = await ctx.services.care.getState(prov.playerId);
-    wasActiveBeforePick = care.active;
-    // If not in Care Mode, treat as start with target; otherwise change.
-    const summary = care.active
-      ? await ctx.services.care.changeTarget(prov.playerId, targetId)
-      : await ctx.services.care.start(prov.playerId, targetId);
-    events = care.active
-      ? careChangedDescriptors(summary)
-      : [...closeHuntSessionForCare(ctx, prov), ...careEnterDescriptors(summary)];
-    statusLine = formatCareSummary(summary);
+    const current = care.active ? care.target : null;
+    if (current && current.waifu.id === targetId) {
+      const summary = await ctx.services.care.start(prov.playerId, targetId);
+      events = careTickDescriptors(summary);
+      const line = formatCareSummary(summary);
+      const name = current.waifu.nickname?.trim() || current.species.name;
+      const already = `💗 Already caring for **${name}** — no change.`;
+      note = line ? `${already}\n${line}` : already;
+    } else {
+      // If not in Care Mode, treat as start with target; otherwise change.
+      const summary = care.active
+        ? await ctx.services.care.changeTarget(prov.playerId, targetId)
+        : await ctx.services.care.start(prov.playerId, targetId);
+      events = care.active
+        ? careChangedDescriptors(summary)
+        : [...closeHuntSessionForCare(ctx, prov), ...careEnterDescriptors(summary)];
+      note = careModeNote(care.active, formatCareSummary(summary));
+    }
   } catch (err) {
     if (err instanceof WaifuNotOwnedError || err instanceof WaifuAlreadyReleasedError) {
-      await respondEphemeral(interaction, err.userMessage);
+      await respondEphemeral(interaction, {
+        content: err.userMessage,
+        components: withBackRow(),
+      });
       return;
     }
     throw err;
   }
   await handleMenu(ctx, interaction, prov);
-  const note = careModeNote(wasActiveBeforePick, statusLine);
   if (note) await respondEphemeral(interaction, note);
   await emitEvents(ctx, interaction, prov, events);
 }
