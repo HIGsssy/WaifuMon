@@ -20,7 +20,7 @@ import { isZoneTag, ZONES } from '../zone';
 describe('playerFacingTags', () => {
   it('labels region_exclusive for players', () => {
     expect(playerFacingTags({ tags: ['expansion', 'region_exclusive', 'twin_peeks'] })).toEqual([
-      { tag: 'region_exclusive', label: 'Region Exclusive' },
+      { tag: 'region_exclusive', label: 'Zone Exclusive' },
     ]);
   });
 
@@ -34,9 +34,11 @@ describe('playerFacingTags', () => {
   });
 
   it('hides tags it does not recognise rather than printing them raw', () => {
-    expect(playerFacingTags({ tags: ['placeholder', 'Region Exclusive', 'twin_peaks'] })).toEqual(
-      [],
-    );
+    expect(
+      playerFacingTags({
+        tags: ['placeholder', 'Zone Exclusive', 'Region Exclusive', 'twin_peaks'],
+      }),
+    ).toEqual([]);
   });
 
   it('tolerates missing, null, duplicate and non-string tags', () => {

@@ -9,7 +9,7 @@ import { screen } from '@testing-library/react';
 import { http } from 'msw';
 import { describe, expect, it } from 'vitest';
 
-import { data } from '../../../msw/handlers';
+import { data, page as pageEnvelope } from '../../../msw/handlers';
 import * as fixtures from '../../../msw/fixtures';
 import { server } from '../../../msw/server';
 import { routes } from '@/app/router';
@@ -66,14 +66,14 @@ describe.each(surfaces)('$name', (surface) => {
     expect(document.body.textContent).not.toMatch(RAW_TAGS);
   });
 
-  it('labels region_exclusive as "Region Exclusive"', async () => {
+  it('labels region_exclusive as "Zone Exclusive"', async () => {
     await show(['expansion', 'region_exclusive', 'twin_peeks']);
-    expect(screen.getByText('Region Exclusive')).toBeInTheDocument();
+    expect(screen.getByText('Zone Exclusive')).toBeInTheDocument();
   });
 
   it('shows no classification chip for a starter species', async () => {
     await show(['starter', 'waifu_valley']);
-    expect(screen.queryByText('Region Exclusive')).toBeNull();
+    expect(screen.queryByText(/Exclusive/)).toBeNull();
     expect(screen.queryByText(/^starter$/i)).toBeNull();
   });
 
@@ -82,7 +82,7 @@ describe.each(surfaces)('$name', (surface) => {
 
     expect(screen.queryByText('Zone:', { exact: false })).toBeNull();
     expect(screen.getByText('Rarity: Ultra Rare')).toBeInTheDocument();
-    expect(screen.getByText('Region Exclusive')).toBeInTheDocument();
+    expect(screen.getByText('Zone Exclusive')).toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(RAW_TAGS);
   });
 
@@ -92,5 +92,44 @@ describe.each(surfaces)('$name', (surface) => {
     expect(screen.queryByText('Zone:', { exact: false })).toBeNull();
     expect(document.body.textContent).not.toMatch(RAW_TAGS);
     expect(document.body.textContent).not.toMatch(/some_future_flag/);
+  });
+});
+
+/**
+ * The Zone is the one piece of species metadata an undiscovered entry shows —
+ * it says where to look, not what she is. Everything else stays gated.
+ */
+describe('undiscovered encyclopedia entry', () => {
+  async function showUndiscovered(tags: string[]): Promise<void> {
+    server.use(
+      http.get('/api/v1/players/:playerId/collection/owned', () => pageEnvelope([], 1, 25, 0)),
+    );
+    surfaces[1]!.render(tags);
+    await screen.findByText('Not yet discovered');
+    expect(screen.getByRole('heading', { name: '???', level: 1 })).toBeInTheDocument();
+  }
+
+  it('shows the Zone before discovery', async () => {
+    await showUndiscovered(['expansion', 'region_exclusive', 'twin_peeks']);
+
+    expect(screen.getByText('Zone:', { exact: false }).parentElement).toHaveTextContent(
+      'Zone: Twin Peeks',
+    );
+    expect(document.body.textContent).not.toMatch(RAW_TAGS);
+  });
+
+  it('still withholds Type, Affinity, Content rating and tags', async () => {
+    await showUndiscovered(['expansion', 'region_exclusive', 'twin_peeks']);
+
+    expect(screen.queryByText('Type:', { exact: false })).toBeNull();
+    expect(screen.queryByText('Affinity:', { exact: false })).toBeNull();
+    expect(screen.queryByText('Content rating:', { exact: false })).toBeNull();
+    expect(screen.queryByText('Zone Exclusive')).toBeNull();
+    expect(screen.queryByText(/placeholder description/)).toBeNull();
+  });
+
+  it('omits the Zone when no zone tag is recognised', async () => {
+    await showUndiscovered(['expansion', 'region_exclusive']);
+    expect(screen.queryByText('Zone:', { exact: false })).toBeNull();
   });
 });

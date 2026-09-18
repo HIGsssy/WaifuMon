@@ -26,7 +26,7 @@ export interface PlayerFacingTag {
  * pool, never the hunt's global fallback.
  */
 export const PLAYER_FACING_TAGS: readonly PlayerFacingTag[] = [
-  { tag: 'region_exclusive', label: 'Region Exclusive' },
+  { tag: 'region_exclusive', label: 'Zone Exclusive' },
 ];
 
 /**

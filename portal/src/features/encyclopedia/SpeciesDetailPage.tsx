@@ -189,12 +189,13 @@ export function SpeciesDetailPage() {
             </h1>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <RarityBadge rarity={species.rarity} variant="full" />
+              {/* Where to find her is a hint, not a spoiler — shown before discovery. */}
+              <ZonePill species={species} />
               {discovered && (
                 <>
                   <TypePill archetype={species.archetype} />
                   <AffinityPill affinity={species.affinity} />
                   <ContentRatingPill rating={species.contentRating} />
-                  <ZonePill species={species} />
                 </>
               )}
             </div>
