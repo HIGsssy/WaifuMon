@@ -14,6 +14,9 @@
  * a UX hint, not a security boundary. The server re-validates against
  * `EncounterInputSchema`, and validation errors flash inline.
  *
+ * An item effect with no item, or a quantity outside the schema's range,
+ * blocks every save the same way (see `unfinishedItemIssues`).
+ *
  * Two Waifumon-sighting rules gate Save here:
  *
  *   - a Specific Species sighting with no species blocks every save — an
@@ -55,8 +58,10 @@ import {
   EMPTY_DRAFT,
   draftFrom,
   randomSelections,
+  saveIssuesOf,
   toPayload,
   unchosenSpeciesIssues,
+  unfinishedItemIssues,
   type Draft,
 } from './encounterDraft';
 import { AdminEncounterPreviewPanel } from './AdminEncounterPreviewPanel';
@@ -122,6 +127,8 @@ export function AdminEncounterEditorPage() {
     routes: draft.routes,
   };
   const speciesIssues = unchosenSpeciesIssues(draft);
+  const itemIssues = unfinishedItemIssues(draft);
+  const effectIssues = [...speciesIssues, ...itemIssues];
   const selectors = randomSelections(draft);
   const selectorChecks = useQueries({
     queries: selectors.map(({ selection }) => ({
@@ -138,7 +145,7 @@ export function AdminEncounterEditorPage() {
   );
   const publishBlocked = deadSelectors.length > 0;
   const wantsPublish = draft.lifecycle === 'active';
-  const saveBlocked = speciesIssues.length > 0 || (wantsPublish && publishBlocked);
+  const saveBlocked = effectIssues.length > 0 || (wantsPublish && publishBlocked);
 
   const canSave =
     canWrite &&
@@ -212,11 +219,23 @@ export function AdminEncounterEditorPage() {
       />
 
       {saveError != null && (
-        <ErrorState
-          title="Save failed"
-          error={saveError}
-          onRetry={() => void saveMutation.mutate(toPayload(draft))}
-        />
+        <div className="space-y-2">
+          <ErrorState
+            title="Save failed"
+            error={saveError}
+            onRetry={() => void saveMutation.mutate(toPayload(draft))}
+          />
+          {saveIssuesOf(saveError).length > 0 && (
+            <ul
+              className="list-disc rounded-md border border-destructive/50 bg-destructive/5 p-3 pl-8 text-xs text-destructive"
+              data-testid="save-error-issues"
+            >
+              {saveIssuesOf(saveError).map((issue) => (
+                <li key={issue}>{issue}</li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -536,15 +555,19 @@ export function AdminEncounterEditorPage() {
             </div>
           </fieldset>
 
-          {speciesIssues.length > 0 && (
+          {effectIssues.length > 0 && (
             <div
               className="rounded-md border border-destructive/50 bg-destructive/5 p-3 text-sm text-destructive"
               role="alert"
               data-testid="save-blockers"
             >
-              <p className="font-medium">Pick a species before saving.</p>
+              <p className="font-medium">
+                {itemIssues.length === 0
+                  ? 'Pick a species before saving.'
+                  : 'Finish these effects before saving.'}
+              </p>
               <ul className="mt-1 list-disc pl-5 text-xs">
-                {speciesIssues.map((issue) => (
+                {effectIssues.map((issue) => (
                   <li key={issue}>{issue}</li>
                 ))}
               </ul>

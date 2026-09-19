@@ -528,6 +528,65 @@ describe('global encounter settings: the same boundary as the rest of the namesp
   });
 });
 
+/**
+ * The production failure, over HTTP: an extra success effect granting an item
+ * with no `quantity`. Refused at the body schema — with the JSON-pointer path
+ * the Portal turns into an author-facing line — before any service runs.
+ */
+describe('admin encounters: item effect quantity at the boundary', () => {
+  const withSuccessEffects = (effects: unknown[]) => ({
+    ...VALID_ENCOUNTER_BODY,
+    choices: [{ ...VALID_ENCOUNTER_BODY.choices[0]!, successEffects: effects }],
+  });
+  const put = (input: unknown) =>
+    app!.inject({
+      method: 'PUT',
+      url: `/api/v1/admin/encounters/${ENCOUNTER.id}`,
+      headers: { cookie: browserCookies(), [PORTAL_CSRF_HEADER]: CSRF },
+      payload: { input },
+    });
+
+  it('rejects a give_item with no quantity, naming the path', async () => {
+    const upsert = vi.fn(async () => ENCOUNTER);
+    app = await build({ upsert });
+    const res = await put(
+      withSuccessEffects([
+        { type: 'waifubux_gain', amount: 100 },
+        { type: 'player_xp', amount: 10 },
+        { type: 'give_item', slug: 'basic_charm' },
+      ]),
+    );
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('VALIDATION_ERROR');
+    expect(res.json().error.details.issues).toContainEqual({
+      path: '/input/choices/0/successEffects/2/quantity',
+      message: 'Required',
+    });
+    expect(upsert).not.toHaveBeenCalled();
+  });
+
+  it('accepts a give_item with quantity 1 and hands it to the service unchanged', async () => {
+    const upsert = vi.fn(async (_input: unknown) => ENCOUNTER);
+    app = await build({ upsert });
+    const res = await put(
+      withSuccessEffects([
+        { type: 'waifubux_gain', amount: 100 },
+        { type: 'player_xp', amount: 10 },
+        { type: 'give_item', slug: 'basic_charm', quantity: 1 },
+      ]),
+    );
+
+    expect(res.statusCode).toBe(200);
+    const saved = upsert.mock.calls[0]![0] as { choices: Array<{ successEffects: unknown[] }> };
+    expect(saved.choices[0]!.successEffects[2]).toEqual({
+      type: 'give_item',
+      slug: 'basic_charm',
+      quantity: 1,
+    });
+  });
+});
+
 describe('guild switching recomputes permissions', () => {
   it('drops every permission when the session switches to a guild the user does not own', async () => {
     app = await build({

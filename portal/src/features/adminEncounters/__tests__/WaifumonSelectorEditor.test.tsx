@@ -253,7 +253,8 @@ describe('mode switching never leaves stale fields', () => {
       selection: { mode: 'random', poolScope: 'region', rarities: ['LR'] },
     });
     await user.selectOptions(screen.getAllByRole('combobox')[0]!, 'waifubux_gain');
-    expect(last()).toEqual({ type: 'waifubux_gain' });
+    // …and starts the new type with its required default, not a bare `{ type }`.
+    expect(last()).toEqual({ type: 'waifubux_gain', amount: 100 });
   });
 });
 

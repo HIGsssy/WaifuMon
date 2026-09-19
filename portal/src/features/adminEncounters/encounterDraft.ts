@@ -12,6 +12,7 @@ import type {
   EncounterInputPayload,
 } from '@/api/adminEncounters';
 import type { ChoiceDraft } from './ChoiceEditor';
+import { itemEffectIssues } from './effectDefaults';
 import type { EffectShape } from './EffectEditor';
 import { WAIFUMON_EFFECT, formFromEffect } from './waifumonSelection';
 
@@ -146,6 +147,53 @@ export function unchosenSpeciesIssues(d: Draft): string[] {
       return form.mode === 'specific' && form.speciesSlug === '';
     })
     .map(({ where }) => `${where}: pick a species for this Waifumon sighting.`);
+}
+
+/**
+ * Item effects with no item picked, or a quantity outside the schema's range
+ * (cleared, zero, negative, fractional). Like an unchosen species, these block
+ * every save rather than being sent for the server to reject.
+ */
+export function unfinishedItemIssues(d: Draft): string[] {
+  return labelledEffects(d).flatMap(({ where, effect }) =>
+    itemEffectIssues(effect).map((issue) => `${where}: ${issue}`),
+  );
+}
+
+/**
+ * The server's 400 `details.issues` for a save, as lines an author can act on.
+ *
+ * The schema reports JSON-pointer paths into the request body —
+ * `/input/choices/0/successEffects/2/quantity` — which this renders with the
+ * same labels the save blockers use: `Choice #1, success effect #3 — quantity:
+ * Required`. Empty when the error carries no issues; the error's own message
+ * is then all there is to show.
+ */
+export function saveIssuesOf(error: unknown): string[] {
+  const details = (error as { details?: { issues?: unknown } } | null)?.details;
+  const issues = Array.isArray(details?.issues) ? details.issues : [];
+  return (issues as Array<{ path?: unknown; message?: unknown }>).flatMap((issue) => {
+    if (typeof issue.message !== 'string') return [];
+    const path = typeof issue.path === 'string' ? issue.path : '';
+    const where = describeIssuePath(path.replace(/^\/input(?=\/|$)/, ''));
+    return [where ? `${where}: ${issue.message}` : issue.message];
+  });
+}
+
+function describeIssuePath(path: string): string {
+  const effect = /^\/choices\/(\d+)\/(success|failure)Effects\/(\d+)(?:\/(.+))?$/.exec(path);
+  if (effect) {
+    const [, choice, branch, index, field] = effect;
+    const where = `Choice #${Number(choice) + 1}, ${branch} effect #${Number(index) + 1}`;
+    return field ? `${where} — ${field.replace(/\//g, '.')}` : where;
+  }
+  const choice = /^\/choices\/(\d+)(?:\/(.+))?$/.exec(path);
+  if (choice) {
+    const [, index, field] = choice;
+    const where = `Choice #${Number(index) + 1}`;
+    return field ? `${where} — ${field.replace(/\//g, '.')}` : where;
+  }
+  return path.replace(/^\//, '').replace(/\//g, '.');
 }
 
 /**

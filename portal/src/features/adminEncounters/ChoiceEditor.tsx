@@ -8,6 +8,7 @@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type { AdminEncounterReference, SelectorPreviewEncounter } from '@/api/adminEncounters';
+import { newEffect } from './effectDefaults';
 import { EffectEditor, type EffectShape } from './EffectEditor';
 
 export interface ChoiceDraft {
@@ -494,7 +495,7 @@ export function ChoiceEditor({
             variant="outline"
             onClick={() =>
               patch({
-                successEffects: [...choice.successEffects, { type: 'waifubux_gain', amount: 100 }],
+                successEffects: [...choice.successEffects, newEffect('waifubux_gain')],
               })
             }
           >
@@ -529,7 +530,7 @@ export function ChoiceEditor({
             variant="outline"
             onClick={() =>
               patch({
-                failureEffects: [...choice.failureEffects, { type: 'waifubux_loss', amount: 50 }],
+                failureEffects: [...choice.failureEffects, newEffect('waifubux_loss')],
               })
             }
           >

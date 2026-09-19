@@ -8,27 +8,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type { AdminEncounterReference, SelectorPreviewEncounter } from '@/api/adminEncounters';
 
+import {
+  EFFECT_TYPES,
+  ITEM_QUANTITY_MAX,
+  ITEM_QUANTITY_MIN,
+  switchEffectType,
+} from './effectDefaults';
 import { WaifumonSelectorEditor } from './WaifumonSelectorEditor';
 import { WAIFUMON_EFFECT } from './waifumonSelection';
-
-const EFFECT_TYPES = [
-  'waifubux_gain',
-  'waifubux_loss',
-  'waifubux_loss_percent',
-  'essence_gain',
-  'essence_loss',
-  'energy_gain',
-  'energy_loss',
-  'player_xp',
-  'buddy_xp',
-  'affection_gain',
-  'give_item',
-  'consume_item',
-  'trigger_encounter',
-  'trigger_waifumon_encounter',
-  'temp_buff',
-  'open_vendor',
-] as const;
 
 export type EffectShape = Record<string, unknown> & { type: string };
 
@@ -46,23 +33,43 @@ function patch(effect: EffectShape, changes: Partial<EffectShape>): EffectShape 
   return { ...effect, ...changes };
 }
 
+/**
+ * A number input's value, exactly as the effect holds it. A missing field
+ * shows empty rather than a made-up fallback, so the form never displays a
+ * value Save would not send.
+ */
+function shown(value: unknown): number | '' {
+  return typeof value === 'number' ? value : '';
+}
+
+/**
+ * Set (or, when the input is cleared, remove) one numeric field. Clearing is
+ * deliberate: the field is then absent, and Save is blocked or refused for it,
+ * rather than a silent `Number('') === 0` being sent in its place.
+ */
+function setNumber(effect: EffectShape, field: string, raw: string): EffectShape {
+  if (raw === '') {
+    const { [field]: _removed, ...rest } = effect;
+    return rest as EffectShape;
+  }
+  return patch(effect, { [field]: Number(raw) });
+}
+
 export function EffectEditor({ effect, reference, encounterContext, onChange, onRemove }: Props) {
-  const type = String(effect.type ?? 'waifubux_gain');
+  const type = String(effect.type);
   return (
-    <div className="rounded-md border border-border bg-surface-sunken p-3">
+    <div
+      className="rounded-md border border-border bg-surface-sunken p-3"
+      data-testid="effect-editor"
+    >
       <div className="mb-2 flex items-center gap-2">
         <select
+          aria-label="Effect type"
           value={type}
           onChange={(e) => {
-            const next = e.target.value;
-            // The Waifumon effect is `.strict()` on the server, so a switch
-            // into or out of it starts clean: no `slug`/`amount` carried into
-            // it, no `selection`/`speciesSlug` carried out of it.
-            onChange(
-              next === WAIFUMON_EFFECT || type === WAIFUMON_EFFECT
-                ? { type: next }
-                : patch(effect, { type: next }),
-            );
+            // The new type's required defaults, plus only the fields it
+            // shares with the old one — see `switchEffectType`.
+            onChange(switchEffectType(effect, e.target.value));
           }}
           className="rounded-md border border-border bg-surface px-2 py-1 text-sm"
         >
@@ -91,8 +98,9 @@ export function EffectEditor({ effect, reference, encounterContext, onChange, on
             Amount
             <Input
               type="number"
-              value={Number(effect.amount ?? 0)}
-              onChange={(e) => onChange(patch(effect, { amount: Number(e.target.value) }))}
+              step="1"
+              value={shown(effect.amount)}
+              onChange={(e) => onChange(setNumber(effect, 'amount', e.target.value))}
             />
           </label>
         )}
@@ -105,21 +113,16 @@ export function EffectEditor({ effect, reference, encounterContext, onChange, on
                 step="0.01"
                 min="0"
                 max="1"
-                value={Number(effect.percent ?? 0.1)}
-                onChange={(e) => onChange(patch(effect, { percent: Number(e.target.value) }))}
+                value={shown(effect.percent)}
+                onChange={(e) => onChange(setNumber(effect, 'percent', e.target.value))}
               />
             </label>
             <label className="text-xs text-ink-muted">
               Cap (WB, optional)
               <Input
                 type="number"
-                value={effect.maxAmount == null ? '' : Number(effect.maxAmount)}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  onChange(
-                    patch(effect, v === '' ? { maxAmount: undefined } : { maxAmount: Number(v) }),
-                  );
-                }}
+                value={shown(effect.maxAmount)}
+                onChange={(e) => onChange(setNumber(effect, 'maxAmount', e.target.value))}
               />
             </label>
           </>
@@ -145,9 +148,11 @@ export function EffectEditor({ effect, reference, encounterContext, onChange, on
               Quantity
               <Input
                 type="number"
-                min="1"
-                value={Number(effect.quantity ?? 1)}
-                onChange={(e) => onChange(patch(effect, { quantity: Number(e.target.value) }))}
+                min={ITEM_QUANTITY_MIN}
+                max={ITEM_QUANTITY_MAX}
+                step="1"
+                value={shown(effect.quantity)}
+                onChange={(e) => onChange(setNumber(effect, 'quantity', e.target.value))}
               />
             </label>
           </>
@@ -210,10 +215,9 @@ export function EffectEditor({ effect, reference, encounterContext, onChange, on
               <Input
                 type="number"
                 min="1"
-                value={Number(effect.durationSeconds ?? 3600)}
-                onChange={(e) =>
-                  onChange(patch(effect, { durationSeconds: Number(e.target.value) }))
-                }
+                step="1"
+                value={shown(effect.durationSeconds)}
+                onChange={(e) => onChange(setNumber(effect, 'durationSeconds', e.target.value))}
               />
             </label>
           </>

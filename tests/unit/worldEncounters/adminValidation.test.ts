@@ -122,6 +122,59 @@ describe('parseEncounterInput', () => {
     expect(() => parseEncounterInput(good, ITEMS, SLUGS)).not.toThrow();
   });
 
+  // `quantity` is required, with no schema default: an item effect without one
+  // is malformed, whichever branch it sits on. The Portal once sent exactly
+  // that (`/input/choices/0/successEffects/2/quantity: Required`); the fix was
+  // in the editor, and this pins the server's side of it.
+  describe('item effect quantity', () => {
+    const withEffect = (effect: Record<string, unknown>, branch = 'successEffects') => ({
+      ...OK_INPUT,
+      choices: [{ label: 'Take a charm', check: { type: 'none' }, [branch]: [effect] }],
+    });
+    const issuesOf = (payload: unknown): string[] => {
+      try {
+        parseEncounterInput(payload, ITEMS, SLUGS);
+        return [];
+      } catch (err) {
+        return (err as AdminEncounterValidationError).issues;
+      }
+    };
+
+    for (const type of ['give_item', 'consume_item']) {
+      for (const branch of ['successEffects', 'failureEffects']) {
+        it(`rejects ${type} with no quantity (${branch})`, () => {
+          expect(issuesOf(withEffect({ type, slug: 'basic_charm' }, branch))).toEqual([
+            `choices.0.${branch}.0.quantity: Required`,
+          ]);
+        });
+      }
+
+      it(`rejects ${type} with a quantity outside 1–99 or not whole`, () => {
+        for (const quantity of [0, -1, 1.5, 100]) {
+          expect(
+            issuesOf(withEffect({ type, slug: 'basic_charm', quantity })),
+            String(quantity),
+          ).toHaveLength(1);
+        }
+      });
+
+      it(`accepts ${type} with quantity 1 and 99, stored as given`, () => {
+        for (const quantity of [1, 99]) {
+          const parsed = parseEncounterInput(
+            withEffect({ type, slug: 'basic_charm', quantity }),
+            ITEMS,
+            SLUGS,
+          );
+          expect(parsed.choices[0]!.successEffects[0]).toEqual({
+            type,
+            slug: 'basic_charm',
+            quantity,
+          });
+        }
+      });
+    }
+  });
+
   it('rejects a choice that triggers its own parent encounter (immediate loop)', () => {
     const bad = {
       ...OK_INPUT,
