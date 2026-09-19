@@ -2,7 +2,7 @@
  "id": "base-80085",
  "name": "Base 80085",
  "description": "A numbered installation at the end of a supply line nobody audits. The berths are rented by the week, the roster is whoever walked in and paid, and the only rule still standing is that you settle up before you dock.",
- "emoji": "\ud83d\udef0\ufe0f",
+ "emoji": "🛰️",
  "enabled": false,
  "starting": false,
  "order": 6,
@@ -18,6 +18,14 @@
   },
   {
    "species": "spec_ops_valkyrie",
+   "weight": 10
+  },
+  {
+   "species": "cyber_security_android",
+   "weight": 5
+  },
+  {
+   "species": "border_jackal",
    "weight": 10
   }
  ]

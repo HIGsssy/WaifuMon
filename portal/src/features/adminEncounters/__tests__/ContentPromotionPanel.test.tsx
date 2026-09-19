@@ -21,6 +21,7 @@ import { SessionContext } from '@/auth/SessionContext';
 import type { PortalSession, SessionState } from '@/auth/types';
 import * as adminEncounters from '@/api/adminEncounters';
 import type { ImportPlan } from '@/api/adminEncounters';
+import { PortalApiError } from '@/api/client';
 
 function sessionState(permissions: readonly string[]): SessionState {
   const session: PortalSession = {
@@ -277,6 +278,146 @@ describe('errors and warnings read differently', () => {
 
     expect(await screen.findByText(/broken\.json is not valid JSON/i)).toBeInTheDocument();
     expect(preview).not.toHaveBeenCalled();
+  });
+});
+
+describe('a failed preview is never silent', () => {
+  it('names the size limit the API reports when the package is too large', async () => {
+    vi.spyOn(adminEncounters, 'previewAdminEncounterImport').mockRejectedValue(
+      new PortalApiError({
+        status: 413,
+        code: 'PAYLOAD_TOO_LARGE',
+        message: 'Request body is too large. Maximum supported size is 8 MB.',
+        details: { maxBytes: 8 * 1024 * 1024 },
+      }),
+    );
+    const user = userEvent.setup();
+    render(<ContentPromotionPanel />, { wrapper: wrapper(PUBLISHER) });
+
+    await user.upload(screen.getByLabelText('Package file'), packageFile());
+    await user.click(screen.getByRole('button', { name: /preview import/i }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(
+      'Import file is too large. Maximum supported size is 8 MB.',
+    );
+    // Shown in the Import section, beside the button that failed.
+    expect(screen.getByTestId('import-error')).toBe(alert);
+    expect(screen.getByRole('button', { name: /preview import/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /apply import/i })).toBeDisabled();
+  });
+
+  it('still explains a 413 that came from a proxy rather than the API', async () => {
+    // Nginx answers with HTML, which the client decodes as UNEXPECTED_RESPONSE
+    // with no details — the documented ceiling stands in.
+    vi.spyOn(adminEncounters, 'previewAdminEncounterImport').mockRejectedValue(
+      new PortalApiError({
+        status: 413,
+        code: 'UNEXPECTED_RESPONSE',
+        message: 'The Waifumon server returned an unexpected response.',
+      }),
+    );
+    const user = userEvent.setup();
+    render(<ContentPromotionPanel />, { wrapper: wrapper(PUBLISHER) });
+
+    await user.upload(screen.getByLabelText('Package file'), packageFile());
+    await user.click(screen.getByRole('button', { name: /preview import/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Import file is too large. Maximum supported size is 8 MB.',
+    );
+  });
+
+  it('shows the API’s own message for any other failure', async () => {
+    vi.spyOn(adminEncounters, 'previewAdminEncounterImport').mockRejectedValue(
+      new PortalApiError({
+        status: 400,
+        code: 'VALIDATION_ERROR',
+        message: 'The request was not valid.',
+      }),
+    );
+    const user = userEvent.setup();
+    render(<ContentPromotionPanel />, { wrapper: wrapper(PUBLISHER) });
+
+    await user.upload(screen.getByLabelText('Package file'), packageFile());
+    await user.click(screen.getByRole('button', { name: /preview import/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('The request was not valid.');
+    expect(screen.queryByTestId('import-plan')).not.toBeInTheDocument();
+  });
+
+  it('clears the error when the next preview succeeds', async () => {
+    const preview = vi
+      .spyOn(adminEncounters, 'previewAdminEncounterImport')
+      .mockRejectedValueOnce(
+        new PortalApiError({ status: 500, code: 'INTERNAL_ERROR', message: 'Internal error.' }),
+      );
+    const user = userEvent.setup();
+    render(<ContentPromotionPanel />, { wrapper: wrapper(PUBLISHER) });
+
+    await user.upload(screen.getByLabelText('Package file'), packageFile());
+    await user.click(screen.getByRole('button', { name: /preview import/i }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Internal error.');
+
+    await user.click(screen.getByRole('button', { name: /preview import/i }));
+    await screen.findByTestId('import-plan');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(preview).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows a failed apply beside the buttons too', async () => {
+    vi.spyOn(adminEncounters, 'applyAdminEncounterImport').mockRejectedValue(
+      new PortalApiError({
+        status: 400,
+        code: 'ENCOUNTER_IMPORT_REJECTED',
+        message: '1 problem(s) blocked this import.',
+      }),
+    );
+    const user = userEvent.setup();
+    render(<ContentPromotionPanel />, { wrapper: wrapper(PUBLISHER) });
+
+    await user.upload(screen.getByLabelText('Package file'), packageFile());
+    await user.click(screen.getByRole('button', { name: /preview import/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /apply import/i })).toBeEnabled(),
+    );
+    await user.click(screen.getByRole('button', { name: /apply import/i }));
+
+    expect(await screen.findByTestId('import-error')).toHaveTextContent(
+      '1 problem(s) blocked this import.',
+    );
+  });
+});
+
+describe('preview loading state', () => {
+  it('blocks a second submission and a file change while the preview is out', async () => {
+    let fail!: (err: unknown) => void;
+    const preview = vi
+      .spyOn(adminEncounters, 'previewAdminEncounterImport')
+      .mockImplementation(
+        () =>
+          new Promise((_resolve, reject) => {
+            fail = reject;
+          }),
+      );
+    const user = userEvent.setup();
+    render(<ContentPromotionPanel />, { wrapper: wrapper(PUBLISHER) });
+
+    await user.upload(screen.getByLabelText('Package file'), packageFile());
+    await user.click(screen.getByRole('button', { name: /preview import/i }));
+
+    const checking = await screen.findByRole('button', { name: /checking/i });
+    expect(checking).toBeDisabled();
+    expect(screen.getByLabelText('Package file')).toBeDisabled();
+    await user.click(checking);
+    expect(preview).toHaveBeenCalledTimes(1);
+
+    fail(new PortalApiError({ status: 413, code: 'PAYLOAD_TOO_LARGE', message: 'too large' }));
+
+    // Restored after the failure, so the operator can fix the file and retry.
+    expect(await screen.findByRole('button', { name: /preview import/i })).toBeEnabled();
+    expect(screen.getByLabelText('Package file')).toBeEnabled();
+    expect(screen.getByRole('alert')).toHaveTextContent(/too large/i);
   });
 });
 

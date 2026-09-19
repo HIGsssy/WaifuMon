@@ -250,7 +250,12 @@ describe('error handling', () => {
       payload: JSON.stringify({ blob: 'x'.repeat(70 * 1024) }),
     });
     expect(res.statusCode).toBe(413);
-    expect(res.json().error).toBeTruthy();
+    // A code and the limit, not the generic "not valid" it used to be.
+    expect(res.json().error.code).toBe('PAYLOAD_TOO_LARGE');
+    expect(res.json().error.details.maxBytes).toBe(64 * 1024);
+    expect(res.json().error.message).toBe(
+      'Request body is too large. Maximum supported size is 64 KB.',
+    );
   });
 
   it('accepts an empty JSON body, so idempotent POSTs need no payload', async () => {

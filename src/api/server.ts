@@ -49,6 +49,12 @@ import type { PortalAuthorizationService } from '../modules/portalAuth/portalAut
 /** No v1 endpoint needs a large body; a small cap is free DoS hygiene. */
 const BODY_LIMIT_BYTES = 64 * 1024;
 
+/** `65536` → `64 KB`, `8388608` → `8 MB`. Binary units, as the limits are set. */
+function formatBytes(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${Math.round((bytes / (1024 * 1024)) * 10) / 10} MB`;
+  return `${Math.round(bytes / 1024)} KB`;
+}
+
 export interface PlatformApiDeps {
   config: PlatformApiConfig;
   portalAuth?:
@@ -251,6 +257,21 @@ export async function createPlatformApiServer(deps: PlatformApiDeps): Promise<Zo
     // media type) already carry the right status; keep it, drop the detail.
     const status = err.statusCode && err.statusCode >= 400 && err.statusCode < 500 ? err.statusCode : 500;
     if (status >= 500) req.log.error({ err, requestId }, 'platform api request failed');
+
+    // Body over the limit. Given its own code and the limit that applied, since
+    // a few routes (encounter import) raise it: "not valid" gave a client
+    // nothing to act on, and the ceiling is the one thing it needs to know.
+    if (status === 413) {
+      const maxBytes = req.routeOptions.bodyLimit ?? BODY_LIMIT_BYTES;
+      const tooLarge = new AppError(
+        'PAYLOAD_TOO_LARGE',
+        err.message,
+        `Request body is too large. Maximum supported size is ${formatBytes(maxBytes)}.`,
+      );
+      req.log.info({ status, path: req.url, maxBytes }, 'platform api request body too large');
+      return reply.code(413).send(toErrorBody(tooLarge, 413, requestId, { maxBytes }));
+    }
+
     const wrapped = new AppError(
       status === 400 ? 'VALIDATION_ERROR' : 'INTERNAL_ERROR',
       err.message,

@@ -98,8 +98,13 @@ describe('security headers are defined once and applied everywhere', () => {
 describe('proxied responses carry exactly one copy of each header', () => {
   const proxied = blocks.filter((b) => b.body.includes('proxy_pass'));
 
-  it('proxies the two endpoints it should, and no others', () => {
-    expect(proxied.map((b) => b.selector).sort()).toEqual(['= /health', '^~ /api', '^~ /auth/']);
+  it('proxies the endpoints it should, and no others', () => {
+    expect(proxied.map((b) => b.selector).sort()).toEqual([
+      '= /health',
+      '^~ /api',
+      '^~ /api/v1/admin/encounters/import/',
+      '^~ /auth/',
+    ]);
   });
 
   it.each(proxied.map((b) => [b.selector, b] as const))(
@@ -192,5 +197,25 @@ describe('/ready is not exposed at the public edge', () => {
     };
     walk(path.join(PORTAL_DIR, 'src'));
     expect(offenders).toEqual([]);
+  });
+});
+
+describe('request body size', () => {
+  const importBlock = blocks.find((b) => b.selector === '^~ /api/v1/admin/encounters/import/');
+  const apiBlock = blocks.find((b) => b.selector === '^~ /api');
+
+  it('raises the limit only for World Encounter import, above the API’s 8 MiB cap', () => {
+    // nginx's default is 1 MB, which a complete encounter export outgrows. The
+    // API is the authority (its 413 names the limit), so nginx must not be the
+    // tighter of the two for these routes.
+    const match = importBlock?.body.match(/client_max_body_size\s+(\d+)m;/);
+    expect(match).toBeTruthy();
+    expect(Number(match![1])).toBeGreaterThan(8);
+  });
+
+  it('leaves every other path on the default', () => {
+    expect(apiBlock!.body).not.toContain('client_max_body_size');
+    const serverLevel = template.replace(/location\s+[^{]+?\s*\{[\s\S]*?\n {2}\}/g, '');
+    expect(serverLevel).not.toContain('client_max_body_size');
   });
 });

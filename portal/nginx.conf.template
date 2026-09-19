@@ -107,6 +107,27 @@ server {
     proxy_set_header X-Forwarded-Proto ${PORTAL_FORWARDED_PROTO};
   }
 
+  # World Encounter import (preview + apply) carries a complete encounter
+  # export, which outgrows nginx's 1 MB default body limit as the library grows.
+  # The API caps these two routes at 8 MiB (ENCOUNTER_IMPORT_BODY_LIMIT_BYTES in
+  # src/api/routes/v1/admin/encounterPromotion.ts); this is set a little above
+  # that so the API's own JSON 413, which names the limit, is what a caller
+  # sees rather than nginx's HTML page. Every other /api path keeps the default.
+  # Otherwise identical to the /api proxy below.
+  location ^~ /api/v1/admin/encounters/import/ {
+    include /etc/nginx/security-headers.conf;
+    client_max_body_size 9m;
+    proxy_hide_header X-Content-Type-Options;
+    proxy_hide_header X-Frame-Options;
+    proxy_hide_header Referrer-Policy;
+    proxy_pass ${PORTAL_API_UPSTREAM};
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto ${PORTAL_FORWARDED_PROTO};
+  }
+
   location ^~ /api {
     include /etc/nginx/security-headers.conf;
     # Strip the upstream's copies before adding ours. @fastify/helmet sends

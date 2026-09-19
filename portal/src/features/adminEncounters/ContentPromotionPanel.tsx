@@ -26,12 +26,14 @@ import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 
 import {
+  ENCOUNTER_IMPORT_MAX_BYTES,
   applyAdminEncounterImport,
   exportAdminEncounters,
   previewAdminEncounterImport,
   type ImportPlan,
   type ImportPlanIssue,
 } from '@/api/adminEncounters';
+import { isPortalApiError } from '@/api/client';
 import { describeIssue } from './waifumonSelection';
 import { useHasPermission } from '@/auth/useSession';
 import { Badge } from '@/components/ui/badge';
@@ -69,6 +71,21 @@ function messageOf(err: unknown): string {
   return err instanceof Error ? err.message : 'That did not work.';
 }
 
+/**
+ * A failed preview or apply, in words an operator can act on. A 413 names the
+ * ceiling — the API reports the one that applied; a proxy's own 413 carries no
+ * envelope, so the documented limit stands in.
+ */
+function importMessageOf(err: unknown): string {
+  if (isPortalApiError(err) && err.status === 413) {
+    const reported = err.details?.['maxBytes'];
+    const maxBytes = typeof reported === 'number' ? reported : ENCOUNTER_IMPORT_MAX_BYTES;
+    const mb = Math.round((maxBytes / (1024 * 1024)) * 10) / 10;
+    return `Import file is too large. Maximum supported size is ${mb} MB.`;
+  }
+  return messageOf(err);
+}
+
 export function ContentPromotionPanel({
   /** Slugs currently selected in the list, if any. */
   selectedSlugs = [],
@@ -86,6 +103,9 @@ export function ContentPromotionPanel({
   const [file, setFile] = useState<{ name: string; parsed: unknown } | null>(null);
   const [plan, setPlan] = useState<ImportPlan | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Import failures are shown beside the Preview/Apply buttons, not at the top
+  // of the card: up there, a rejected preview left the button looking dead.
+  const [importError, setImportError] = useState<string | null>(null);
   const [applied, setApplied] = useState<string | null>(null);
 
   const exportMutation = useMutation({
@@ -102,24 +122,26 @@ export function ContentPromotionPanel({
 
   const previewMutation = useMutation({
     mutationFn: () => previewAdminEncounterImport(file?.parsed, file?.name ?? null),
+    onMutate: () => setImportError(null),
     onSuccess: (next) => {
-      setError(null);
+      setImportError(null);
       setPlan(next);
     },
-    onError: (err) => setError(messageOf(err)),
+    onError: (err) => setImportError(importMessageOf(err)),
   });
 
   const applyMutation = useMutation({
     mutationFn: () => applyAdminEncounterImport(file?.parsed, file?.name ?? null),
+    onMutate: () => setImportError(null),
     onSuccess: (result) => {
-      setError(null);
+      setImportError(null);
       setPlan(result.plan);
       setApplied(
         `Imported: ${result.plan.counts.created} created, ` +
           `${result.plan.counts.updated} updated, ${result.plan.counts.unchanged} unchanged.`,
       );
     },
-    onError: (err) => setError(messageOf(err)),
+    onError: (err) => setImportError(importMessageOf(err)),
   });
 
   if (!canRead) return null;
@@ -129,7 +151,7 @@ export function ContentPromotionPanel({
     // able to act on a package other than the one that was previewed.
     setPlan(null);
     setApplied(null);
-    setError(null);
+    setImportError(null);
     if (!chosen) {
       setFile(null);
       return;
@@ -138,10 +160,13 @@ export function ContentPromotionPanel({
       setFile({ name: chosen.name, parsed: JSON.parse(await chosen.text()) });
     } catch {
       setFile(null);
-      setError(`${chosen.name} is not valid JSON.`);
+      setImportError(`${chosen.name} is not valid JSON.`);
     }
   };
 
+  // While a request is out, the file cannot change underneath it: a plan that
+  // landed after a new file was chosen would enable Apply for the wrong file.
+  const importBusy = previewMutation.isPending || applyMutation.isPending;
   const errors = plan?.issues.filter((i) => i.severity === 'error') ?? [];
   const warnings = plan?.issues.filter((i) => i.severity === 'warning') ?? [];
 
@@ -216,6 +241,7 @@ export function ContentPromotionPanel({
               type="file"
               accept="application/json,.json"
               className="text-sm"
+              disabled={importBusy}
               onChange={(e) => void onFile(e.target.files?.[0] ?? null)}
             />
           </label>
@@ -223,7 +249,7 @@ export function ContentPromotionPanel({
           <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="outline"
-              disabled={!file || previewMutation.isPending}
+              disabled={!file || importBusy}
               onClick={() => previewMutation.mutate()}
             >
               {previewMutation.isPending ? 'Checking…' : 'Preview import'}
@@ -233,7 +259,7 @@ export function ContentPromotionPanel({
               // permission. An Encounter Editor can prepare a promotion and
               // see exactly what it would do, but not perform it.
               disabled={
-                !plan || !plan.ok || !canPublish || applyMutation.isPending || applied !== null
+                !plan || !plan.ok || !canPublish || importBusy || applied !== null
               }
               onClick={() => applyMutation.mutate()}
             >
@@ -245,6 +271,16 @@ export function ContentPromotionPanel({
               </span>
             ) : null}
           </div>
+
+          {importError ? (
+            <p
+              className="rounded-md border border-destructive/50 bg-destructive/5 p-3 text-sm text-destructive"
+              role="alert"
+              data-testid="import-error"
+            >
+              {importError}
+            </p>
+          ) : null}
 
           {applied ? (
             <p className="rounded-md border border-primary/40 bg-primary/5 p-3 text-sm">

@@ -21,10 +21,13 @@
  *
  * CSRF is enforced upstream at the `onRequest` hook in `src/api/auth.ts` for
  * every non-GET portal-session request, so the two mutations inherit it.
- * Permission checks run at `preValidation` — before the body is parsed —
- * matching the rest of the admin namespace, which matters more here than
- * anywhere else: an import body is an entire content package, and parsing one
- * for a caller who may not even be an admin is work done on their say-so.
+ *
+ * The two import routes check permission at `onRequest`, not `preValidation`
+ * like the rest of the admin namespace. Fastify parses the body *before*
+ * `preValidation`, and these are the only routes that accept a multi-megabyte
+ * body (see {@link ENCOUNTER_IMPORT_BODY_LIMIT_BYTES}): gating at `onRequest`
+ * refuses a caller without the permission before a byte of the package is
+ * read, so the larger limit is only ever spent on someone allowed to use it.
  */
 import { z } from 'zod';
 import type { ApiContext } from '../../../context';
@@ -34,6 +37,23 @@ import { commonErrorResponses } from '../../../schemas/common';
 import { requirePortalPermission } from '../../../plugins/portalPermissions';
 import { AppError } from '../../../../shared/errors';
 import { EncounterImportRejectedError } from '../../../../modules/worldEncounters/encounterImportService';
+
+/**
+ * Request-body ceiling for the two import routes.
+ *
+ * The API's global limit is 64 KB (`src/api/server.ts`), and a complete
+ * export outgrows that once a library has a few dozen richly authored
+ * encounters — at which point the server can no longer re-import its own
+ * export, which is the whole point of Export → edit → Preview → Apply. The
+ * shipped seed is ~1 KB per encounter on the wire; authored encounters with
+ * flavor text and several choices run a few KB. 8 MiB leaves room for
+ * thousands of encounters while staying a bounded, cheap `JSON.parse`.
+ *
+ * Route-scoped on purpose: every other endpoint keeps the 64 KB default. The
+ * Portal's Nginx allows slightly more than this on `/api/v1/admin/encounters/import/`
+ * only, so this limit — with its JSON error body — is the one callers meet.
+ */
+export const ENCOUNTER_IMPORT_BODY_LIMIT_BYTES = 8 * 1024 * 1024;
 
 /**
  * The plan, as JSON. Described loosely on purpose: it is a report for a human
@@ -147,7 +167,8 @@ export const adminEncounterPromotionRoutes =
     app.post(
       '/admin/encounters/import/preview',
       {
-        preValidation: gate('encounters.write'),
+        onRequest: gate('encounters.write'),
+        bodyLimit: ENCOUNTER_IMPORT_BODY_LIMIT_BYTES,
         schema: {
           tags: ['Admin — Encounters'],
           summary: 'Dry-run an encounter package against this server',
@@ -167,7 +188,8 @@ export const adminEncounterPromotionRoutes =
     app.post(
       '/admin/encounters/import/apply',
       {
-        preValidation: gate('encounters.publish'),
+        onRequest: gate('encounters.publish'),
+        bodyLimit: ENCOUNTER_IMPORT_BODY_LIMIT_BYTES,
         schema: {
           tags: ['Admin — Encounters'],
           summary: 'Apply an encounter package in a single transaction',

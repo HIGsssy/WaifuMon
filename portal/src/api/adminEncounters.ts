@@ -393,6 +393,14 @@ export function exportAdminEncounters(opts: {
   );
 }
 
+/**
+ * The import routes' request-body ceiling, mirrored from the API's
+ * `ENCOUNTER_IMPORT_BODY_LIMIT_BYTES`. Used only to word a 413 that did not
+ * come from the API itself (a proxy's HTML page); an API 413 reports the limit
+ * that actually applied in `details.maxBytes`, and that wins.
+ */
+export const ENCOUNTER_IMPORT_MAX_BYTES = 8 * 1024 * 1024;
+
 export function previewAdminEncounterImport(
   pkg: unknown,
   sourceFilename: string | null,

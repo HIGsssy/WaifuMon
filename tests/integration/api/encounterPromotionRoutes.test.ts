@@ -26,7 +26,11 @@ import {
   ROLE_GRANT_PRESETS,
   createPortalAuthorizationService,
 } from '../../../src/modules/portalAuth/portalAuthService';
-import { createEncounterPromotionService } from '../../../src/modules/worldEncounters/encounterImportService';
+import {
+  createEncounterPromotionService,
+  type EncounterPromotionService,
+} from '../../../src/modules/worldEncounters/encounterImportService';
+import { ENCOUNTER_IMPORT_BODY_LIMIT_BYTES } from '../../../src/api/routes/v1/admin/encounterPromotion';
 
 const GUILD_ID = '111222333444555666';
 const OWNER_ID = '777888999000111222';
@@ -40,6 +44,7 @@ let app: App;
 let api: ZodFastify;
 let sessions: StubSessions;
 let memberRoles: Record<string, readonly string[] | null>;
+let promotion: EncounterPromotionService;
 
 beforeAll(async () => {
   t = await createTestDb();
@@ -65,6 +70,7 @@ beforeAll(async () => {
     db: t.db,
     getContent: () => app.content,
   });
+  promotion = encounterPromotion;
 
   sessions = makeStubSessions();
   api = await createPlatformApiServer({
@@ -427,5 +433,181 @@ describe('CSRF and bearer', () => {
       payload: { package: PACKAGE },
     });
     expect(res.statusCode).toBe(401);
+  });
+});
+
+/**
+ * Body size. A complete export must always re-import: Export → edit → Preview
+ * → Apply is the workflow, and the library only grows. Production broke when a
+ * full export passed the API's global 64 KB body limit and Preview answered 413.
+ */
+describe('import body size', () => {
+  /** The global limit every other route keeps. */
+  const DEFAULT_LIMIT = 64 * 1024;
+  /** Authored encounters carry real prose; the seed's are terse. */
+  const FLAVOR = 'The wind shifts and something moves at the edge of the path. '.repeat(25);
+  const BULK_COUNT = 120;
+
+  type Pkg = { encounters: Array<Record<string, unknown>> } & Record<string, unknown>;
+
+  async function exportAll(): Promise<Pkg> {
+    const res = await api.inject({
+      method: 'GET',
+      url: '/api/v1/admin/encounters/export',
+      cookies: login(OWNER_ID).cookies,
+    });
+    expect(res.statusCode).toBe(200);
+    return (res.json() as { data: Pkg }).data;
+  }
+
+  function bodySize(payload: unknown): number {
+    return Buffer.byteLength(JSON.stringify(payload));
+  }
+
+  beforeAll(async () => {
+    // Grow the library well past the old ceiling with encounters shaped like
+    // the ones operators author: the seeded set, cloned, with full flavor text.
+    const seed = await promotion.exportPackage({});
+    const clones = Array.from({ length: BULK_COUNT }, (_, i) => {
+      const base = seed.encounters[i % seed.encounters.length]! as unknown as Record<string, unknown>;
+      return { ...base, slug: `bulk_${i}_${String(base['slug'])}`.slice(0, 64), description: FLAVOR };
+    });
+    await promotion.apply(
+      { ...seed, encounters: [...seed.encounters, ...clones] },
+      { actorDiscordUserId: null, sourceFilename: null },
+    );
+  });
+
+  it('regression: the complete export POSTs back to Preview and is accepted', async () => {
+    const pkg = await exportAll();
+    const payload = { package: pkg, sourceFilename: 'world-encounters-all.json' };
+    // The point of the test: this is bigger than the limit that broke it.
+    expect(bodySize(payload)).toBeGreaterThan(DEFAULT_LIMIT * 4);
+
+    const res = await post(EDITOR_ID, '/api/v1/admin/encounters/import/preview', payload);
+
+    expect(res.statusCode).toBe(200);
+    const plan = (res.json() as { data: { ok: boolean; counts: { unchanged: number } } }).data;
+    expect(plan.ok).toBe(true);
+    expect(plan.counts.unchanged).toBe(pkg.encounters.length);
+  });
+
+  it('previews and then applies a modified full export of the same size', async () => {
+    const pkg = await exportAll();
+    const edited: Pkg = {
+      ...pkg,
+      encounters: pkg.encounters.map((e, i) => (i === 0 ? { ...e, name: 'Renamed By Import' } : e)),
+    };
+    const payload = { package: edited, sourceFilename: 'edited.json' };
+    expect(bodySize(payload)).toBeGreaterThan(DEFAULT_LIMIT * 4);
+
+    const preview = await post(EDITOR_ID, '/api/v1/admin/encounters/import/preview', payload);
+    expect(preview.statusCode).toBe(200);
+    expect((preview.json() as { data: { counts: { updated: number } } }).data.counts.updated).toBe(1);
+
+    const apply = await post(OWNER_ID, '/api/v1/admin/encounters/import/apply', payload);
+    expect(apply.statusCode).toBe(200);
+    expect(
+      (apply.json() as { data: { plan: { counts: { updated: number } } } }).data.plan.counts.updated,
+    ).toBe(1);
+  });
+
+  it('accepts a body just under the import maximum on both Preview and Apply', async () => {
+    // The transport limit, isolated from planner cost: unknown top-level keys
+    // are stripped by the body schema, so the padding reaches nothing.
+    const base = {
+      package: { ...PACKAGE, encounters: [{ ...NEW_ENCOUNTER, slug: 'imp_size_edge' }] },
+      sourceFilename: 'edge.json',
+    };
+    const padding = 'x'.repeat(ENCOUNTER_IMPORT_BODY_LIMIT_BYTES - bodySize(base) - 1024);
+    const payload = { ...base, padding };
+    expect(bodySize(payload)).toBeLessThanOrEqual(ENCOUNTER_IMPORT_BODY_LIMIT_BYTES);
+    expect(bodySize(payload)).toBeGreaterThan(ENCOUNTER_IMPORT_BODY_LIMIT_BYTES - 2048);
+
+    const preview = await post(EDITOR_ID, '/api/v1/admin/encounters/import/preview', payload);
+    expect(preview.statusCode).toBe(200);
+
+    const apply = await post(OWNER_ID, '/api/v1/admin/encounters/import/apply', payload);
+    expect(apply.statusCode).toBe(200);
+    expect(await slugExists('imp_size_edge')).toBe(true);
+  });
+
+  it.each([
+    ['preview', EDITOR_ID],
+    ['apply', OWNER_ID],
+  ])('still answers 413 above the maximum on %s, naming the limit', async (route, who) => {
+    const payload = {
+      package: { ...PACKAGE, encounters: [{ ...NEW_ENCOUNTER, slug: `imp_too_big_${route}` }] },
+      padding: 'x'.repeat(ENCOUNTER_IMPORT_BODY_LIMIT_BYTES),
+    };
+
+    const res = await post(who, `/api/v1/admin/encounters/import/${route}`, payload);
+
+    expect(res.statusCode).toBe(413);
+    const body = res.json() as {
+      error: { code: string; message: string; details: { maxBytes: number } };
+    };
+    expect(body.error.code).toBe('PAYLOAD_TOO_LARGE');
+    expect(body.error.details.maxBytes).toBe(ENCOUNTER_IMPORT_BODY_LIMIT_BYTES);
+    expect(body.error.message).toContain('8 MB');
+    expect(await slugExists(`imp_too_big_${route}`)).toBe(false);
+  });
+
+  it('leaves ordinary routes on the 64 KB default', async () => {
+    const res = await post(OWNER_ID, '/api/v1/admin/encounters/selector-preview', {
+      selection: null,
+      padding: 'x'.repeat(DEFAULT_LIMIT + 1024),
+    });
+
+    expect(res.statusCode).toBe(413);
+    expect(
+      (res.json() as { error: { details: { maxBytes: number } } }).error.details.maxBytes,
+    ).toBe(DEFAULT_LIMIT);
+  });
+
+  it('refuses a caller without the permission before reading a large body', async () => {
+    // 403, not 413: the gate runs at onRequest, so the raised limit is never
+    // spent on someone who could not use the route anyway.
+    const big = { package: PACKAGE, padding: 'x'.repeat(ENCOUNTER_IMPORT_BODY_LIMIT_BYTES) };
+
+    const member = await post(PLAIN_ID, '/api/v1/admin/encounters/import/preview', big);
+    expect(member.statusCode).toBe(403);
+
+    const editor = await post(EDITOR_ID, '/api/v1/admin/encounters/import/apply', big);
+    expect(editor.statusCode).toBe(403);
+  });
+
+  it('a large package still goes through normal validation', async () => {
+    const pkg = await exportAll();
+    const broken: Pkg = {
+      ...pkg,
+      encounters: [
+        ...pkg.encounters,
+        { ...NEW_ENCOUNTER, slug: 'imp_size_invalid', chainedEncounterSlug: 'nope' },
+      ],
+    };
+    const payload = { package: broken, sourceFilename: 'broken.json' };
+    expect(bodySize(payload)).toBeGreaterThan(DEFAULT_LIMIT * 4);
+
+    const preview = await post(EDITOR_ID, '/api/v1/admin/encounters/import/preview', payload);
+    expect(preview.statusCode).toBe(200);
+    const plan = (preview.json() as { data: { ok: boolean; counts: { errors: number } } }).data;
+    expect(plan.ok).toBe(false);
+    expect(plan.counts.errors).toBeGreaterThan(0);
+
+    const apply = await post(OWNER_ID, '/api/v1/admin/encounters/import/apply', payload);
+    expect(apply.statusCode).toBe(400);
+    expect((apply.json() as { error: { code: string } }).error.code).toBe(
+      'ENCOUNTER_IMPORT_REJECTED',
+    );
+    expect(await slugExists('imp_size_invalid')).toBe(false);
+
+    // The request schema is enforced as before, whatever the size.
+    const badShape = await post(EDITOR_ID, '/api/v1/admin/encounters/import/preview', {
+      ...payload,
+      sourceFilename: 'x'.repeat(300),
+    });
+    expect(badShape.statusCode).toBe(400);
+    expect((badShape.json() as { error: { code: string } }).error.code).toBe('VALIDATION_ERROR');
   });
 });

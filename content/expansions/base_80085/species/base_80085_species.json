@@ -180,5 +180,187 @@
     "value": "valkyrie"
    }
   }
+ },
+ {
+  "slug": "cyber_security_android",
+  "name": "Cyber Security Android",
+  "rarity": "SSR",
+  "archetype": "android",
+  "race": "android",
+  "baseCaptureRate": null,
+  "description": "Sits on the installation's access layer like a locked door. She reads you like traffic: quiet, thorough, and already deciding what gets through.",
+  "tags": [
+   "expansion",
+   "region_exclusive"
+  ],
+  "contentRating": "explicit",
+  "affinity": "dominant",
+  "card": {
+   "subtitle": "Access Layer",
+   "ability": {
+    "name": "System Scan",
+    "text": "Reads the contact before it lands and closes the lane it was counting on."
+   },
+   "flavorQuote": "The lights dim when I look at you. That is the warning.",
+   "artist": "Potato"
+  },
+  "imagePath": "waifumon/cyber_security_android/standard.png",
+  "enabled": true,
+  "eventKey": null,
+  "perSpeciesWeight": 1,
+  "appearances": [
+   {
+    "id": "standard",
+    "name": "Standard",
+    "sortOrder": 0,
+    "unlock": {
+     "type": "owned"
+    }
+   },
+   {
+    "id": "level_10",
+    "name": "Level 10",
+    "sortOrder": 10,
+    "unlock": {
+     "type": "level",
+     "atLevel": 10
+    }
+   },
+   {
+    "id": "level_20",
+    "name": "Level 20",
+    "sortOrder": 20,
+    "unlock": {
+     "type": "level",
+     "atLevel": 20
+    }
+   },
+   {
+    "id": "level_30",
+    "name": "Level 30",
+    "sortOrder": 30,
+    "unlock": {
+     "type": "level",
+     "atLevel": 30
+    }
+   },
+   {
+    "id": "level_40",
+    "name": "Level 40",
+    "sortOrder": 40,
+    "unlock": {
+     "type": "level",
+     "atLevel": 40
+    }
+   },
+   {
+    "id": "level_50",
+    "name": "Level 50",
+    "sortOrder": 50,
+    "unlock": {
+     "type": "level",
+     "atLevel": 50
+    }
+   }
+  ],
+  "buddyBonus": {
+   "name": "Access Control",
+   "flavorText": "Access Control: +15% capture chance against dominant Waifumon.",
+   "effectId": "capture_chance",
+   "value": 15,
+   "target": {
+    "type": "affinity",
+    "value": "dominant"
+   }
+  }
+ },
+ {
+  "slug": "border_jackal",
+  "name": "Border Jackal",
+  "rarity": "R",
+  "archetype": "demi-human",
+  "race": "demi-human",
+  "baseCaptureRate": null,
+  "description": "Works the barrier arm and the wire both, because every shortcut across the line is one she has already walked. Grins like she saw you coming.",
+  "tags": [
+   "expansion",
+   "region_exclusive"
+  ],
+  "contentRating": "mature",
+  "affinity": "dominant",
+  "card": {
+   "subtitle": "Back Route",
+   "ability": {
+    "name": "Shortcut",
+    "text": "Takes the route nobody else has walked and gets there before the patrol does."
+   },
+   "flavorQuote": "I know every way across this line. Including the one you just used.",
+   "artist": "Potato"
+  },
+  "imagePath": "waifumon/border_jackal/standard.png",
+  "enabled": true,
+  "eventKey": null,
+  "perSpeciesWeight": 1,
+  "appearances": [
+   {
+    "id": "standard",
+    "name": "Standard",
+    "sortOrder": 0,
+    "unlock": {
+     "type": "owned"
+    }
+   },
+   {
+    "id": "level_10",
+    "name": "Level 10",
+    "sortOrder": 10,
+    "unlock": {
+     "type": "level",
+     "atLevel": 10
+    }
+   },
+   {
+    "id": "level_20",
+    "name": "Level 20",
+    "sortOrder": 20,
+    "unlock": {
+     "type": "level",
+     "atLevel": 20
+    }
+   },
+   {
+    "id": "level_30",
+    "name": "Level 30",
+    "sortOrder": 30,
+    "unlock": {
+     "type": "level",
+     "atLevel": 30
+    }
+   },
+   {
+    "id": "level_40",
+    "name": "Level 40",
+    "sortOrder": 40,
+    "unlock": {
+     "type": "level",
+     "atLevel": 40
+    }
+   },
+   {
+    "id": "level_50",
+    "name": "Level 50",
+    "sortOrder": 50,
+    "unlock": {
+     "type": "level",
+     "atLevel": 50
+    }
+   }
+  ],
+  "buddyBonus": {
+   "name": "Shortcut",
+   "flavorText": "Shortcut: 12% chance Hunting does not consume Energy.",
+   "effectId": "energy_save_chance",
+   "value": 12
+  }
  }
 ]
