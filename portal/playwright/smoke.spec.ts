@@ -22,7 +22,7 @@ test.beforeEach(async ({ page }) => {
 test('startup → dashboard → collection → detail → back', async ({ page }) => {
   await page.goto('/');
 
-  // The index route redirects, and the session resolves from the env value.
+  // The index route redirects, and the session resolves from `/auth/session`.
   await expect(page).toHaveURL(/\/dashboard$/);
   await expect(page.getByRole('heading', { name: 'Dashboard', level: 1 })).toBeVisible();
   // The hero, not the header: the header's name is hidden below `sm` by design
@@ -77,7 +77,8 @@ test('every page in the site map renders in the production build', async ({ page
     ['/settings', 'Settings'],
     ['/achievements', 'Achievements'],
     ['/events', 'Events'],
-    ['/friends', 'Friends'],
+    // `/friends` was a placeholder; it now redirects to the Players directory.
+    ['/friends', 'Players'],
   ];
 
   for (const [url, heading] of pages) {
@@ -122,4 +123,36 @@ test('the collection filter lives in the URL and survives reload', async ({ page
   await page.reload();
   await expect(page).toHaveURL(/rarity=UR/);
   await expect(page.getByRole('link', { name: /Nyx/ })).toBeVisible();
+});
+
+test.describe('Admin Waifumon Gallery', () => {
+  test('a session holding gallery.read reaches the gallery and a species', async ({ page }) => {
+    await page.goto('/admin/gallery');
+    await expect(page.getByRole('heading', { name: 'Waifumon Gallery', level: 1 })).toBeVisible();
+
+    await page.goto('/admin/gallery/neon_kitsune');
+    await expect(page.getByRole('heading', { name: 'Neon Kitsune', level: 1 })).toBeVisible();
+  });
+
+  test('a session without gallery.read is turned away', async ({ page }) => {
+    // Re-stubbed: the later registration wins over the default owner session.
+    await stubApi(page, { session: { permissions: ['admin.access', 'encounters.read'] } });
+
+    for (const url of ['/admin/gallery', '/admin/gallery/neon_kitsune']) {
+      await page.goto(url);
+      await expect(page.getByText('Page not found')).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Waifumon Gallery' })).toHaveCount(0);
+    }
+  });
+
+  test('an ordinary player session gets no admin surface at all', async ({ page }) => {
+    await stubApi(page, { session: 'player' });
+
+    await page.goto('/dashboard');
+    await expect(page.getByRole('heading', { name: 'Dashboard', level: 1 })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Admin — Waifumon Gallery' })).toHaveCount(0);
+
+    await page.goto('/admin/gallery');
+    await expect(page.getByText('Page not found')).toBeVisible();
+  });
 });

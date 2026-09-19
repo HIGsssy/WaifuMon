@@ -27,6 +27,10 @@
   {
    "species": "border_jackal",
    "weight": 10
+  },
+  {
+   "species": "glacier_bear",
+   "weight": 8
   }
  ]
 }

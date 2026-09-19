@@ -10,18 +10,20 @@
  * ownership and level checks before serving the appearance that copy is
  * wearing.
  */
-import { readFile, stat } from 'node:fs/promises';
 import { z } from 'zod';
-import {
-  resolveArtworkRendition,
-  type ArtworkFile,
-} from '../../../modules/assets/speciesArtworkFile';
+import type { ArtworkFile } from '../../../modules/assets/speciesArtworkFile';
 import {
   ownedAppearanceArtworkRequest,
   ownedCardRequest,
   speciesCardRequest,
   type CardPresentationDeps,
 } from '../../../modules/appearance/cardPresentation';
+import {
+  artworkWidthQueryField,
+  sendArtwork as sendArtworkFile,
+  type ArtworkReply,
+  type ArtworkRequest,
+} from '../../artworkResponse';
 import type { ApiContext } from '../../context';
 import { ApiSpeciesNotFoundError } from '../../errors';
 import { requirePlayer } from '../../plugins/playerScope';
@@ -35,7 +37,6 @@ import {
   waifuIdParams,
 } from '../../schemas/common';
 
-const SUPPORTED_WIDTHS = [256, 512, 1024] as const;
 /**
  * Every artwork response is now caller-dependent: the species route answers
  * bytes or 403 depending on the requesting player's dex, and the owned route
@@ -46,13 +47,7 @@ const SUPPORTED_WIDTHS = [256, 512, 1024] as const;
 const CACHE_CONTROL = 'private, max-age=300, must-revalidate';
 
 const artworkQuery = z.object({
-  width: z.coerce
-    .number()
-    .int()
-    .refine((width) => SUPPORTED_WIDTHS.includes(width as (typeof SUPPORTED_WIDTHS)[number]), {
-      message: `width must be one of ${SUPPORTED_WIDTHS.join(', ')}`,
-    })
-    .optional(),
+  width: artworkWidthQueryField,
   selected: z
     .string()
     .min(1)
@@ -93,21 +88,6 @@ const ownedArtworkResponses = {
   409: errorSchema.describe('The requested appearance is not unlocked for this copy.'),
 } as const;
 
-interface ArtworkReply {
-  code(statusCode: 304): ArtworkReply;
-  header(key: string, value: string): ArtworkReply;
-  send(payload?: unknown): unknown;
-}
-
-function matchesEtag(header: unknown, etag: string): boolean {
-  if (typeof header !== 'string') return false;
-  const normalizedEtag = etag.replace(/^W\//, '');
-  return header
-    .split(',')
-    .map((candidate) => candidate.trim().replace(/^W\//, ''))
-    .some((candidate) => candidate === '*' || candidate === normalizedEtag);
-}
-
 export const artworkRoutes =
   (ctx: ApiContext): FastifyPluginAsyncZod =>
   async (app) => {
@@ -117,28 +97,14 @@ export const artworkRoutes =
     const { appearance, collection } = ctx.services;
     const presentation: CardPresentationDeps = { appearance, assetsDir };
 
-    async function sendArtwork(
-      req: { headers: Record<string, unknown>; query: { width?: number | undefined } },
+    // Rendition choice, ETag/304 and headers are shared with the Admin
+    // Gallery; which file a caller may see is decided by each route below.
+    const sendArtwork = (
+      req: ArtworkRequest,
       reply: ArtworkReply,
       artwork: ArtworkFile,
       cacheControl: string,
-    ): Promise<void> {
-      // The resolver already knows the file's real format; the route only
-      // chooses between it and a pre-generated display rendition.
-      const selected = await resolveArtworkRendition(assetsDir, artwork, req.query.width);
-      const stats = await stat(selected.absolutePath);
-      const etag = `W/"${stats.size.toString(16)}-${Math.floor(stats.mtimeMs).toString(16)}"`;
-
-      reply.header('ETag', etag).header('Cache-Control', cacheControl);
-      if (matchesEtag(req.headers['if-none-match'], etag)) {
-        reply.code(304);
-        reply.send();
-        return;
-      }
-
-      reply.header('Content-Type', selected.contentType);
-      reply.send(await readFile(selected.absolutePath));
-    }
+    ): Promise<void> => sendArtworkFile(assetsDir, req, reply, artwork, cacheControl);
 
     app.get(
       '/assets/waifumon/:slug',

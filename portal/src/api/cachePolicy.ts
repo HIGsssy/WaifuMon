@@ -91,6 +91,22 @@ export const PLAYER_POLICY: CachePolicy = {
 };
 
 /**
+ * The Admin Waifumon Gallery catalog and species detail.
+ *
+ * Not `CONTENT_POLICY`: the gallery reports artwork health checked on disk
+ * per request, which changes whenever an artist drops a file in — without any
+ * content reload. Five minutes keeps paging between species free, the page's
+ * Refresh button is the explicit "look again", and focus/reconnect refetches
+ * are off like the rest of the admin tooling.
+ */
+export const ADMIN_GALLERY_POLICY: CachePolicy = {
+  staleTime: 5 * MINUTE,
+  gcTime: 30 * MINUTE,
+  refetchOnWindowFocus: false,
+  refetchOnReconnect: false,
+};
+
+/**
  * Spreads a policy into a TanStack Query options object.
  *
  * Written as a function rather than an inline spread so a hook cannot pick up

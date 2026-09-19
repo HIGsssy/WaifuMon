@@ -37,6 +37,10 @@ const PAGES = [
   '/guide',
   '/profile',
   '/settings',
+  // Admin — Waifumon Gallery (the e2e session holds gallery.read).
+  '/admin/gallery',
+  '/admin/gallery/neon_kitsune',
+  '/admin/gallery/star_marshal',
 ];
 
 /** How far the document scrolls sideways. Should always be zero. */
@@ -95,6 +99,10 @@ test.describe('responsive layout', () => {
       for (const url of PAGES) {
         await page.goto(url);
         await page.waitForLoadState('networkidle');
+        // Guard against auditing the sign-in screen instead of the page.
+        await expect(page, `${url} did not reach an authenticated page`).not.toHaveURL(
+          /\/select-player/,
+        );
 
         expect(await horizontalOverflow(page), `${url} scrolls sideways`).toBe(0);
         expect(

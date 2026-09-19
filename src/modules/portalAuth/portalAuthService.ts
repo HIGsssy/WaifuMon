@@ -48,6 +48,10 @@ export const ALL_PORTAL_PERMISSIONS = [
   // `write` covers create, edit, enable/disable and delete.
   'presentations.read',
   'presentations.write',
+  // Waifumon Gallery: read-only inspection of every authored species and
+  // appearance, including disabled and not-yet-loaded content. No write
+  // counterpart exists — the gallery edits nothing.
+  'gallery.read',
 ] as const;
 export type PortalPermission = (typeof ALL_PORTAL_PERMISSIONS)[number];
 
@@ -66,6 +70,8 @@ export const PORTAL_PERMISSION_DESCRIPTIONS: Readonly<Record<PortalPermission, s
   'encounters.history': 'View World Encounter history.',
   'presentations.read': 'View Result Presentations, their artwork and previews.',
   'presentations.write': 'Create, edit, enable/disable and delete Result Presentations.',
+  'gallery.read':
+    'View every Waifumon species and all artwork, including disabled, locked and unreleased content.',
 };
 
 /**
@@ -121,6 +127,9 @@ export const ROLE_GRANT_PRESETS = {
   // `encounters.*`: the Result Presentations page is gated on its own
   // permission, and editing flavor text is no reason to reach encounters.
   presentation_editor: ['presentations.read', 'presentations.write'],
+  // Content QA only: sees unreleased species and every appearance, and
+  // nothing in the encounter or presentation areas.
+  gallery_viewer: ['gallery.read'],
 } as const satisfies Record<string, readonly PortalPermission[]>;
 
 export type RoleGrantPreset = keyof typeof ROLE_GRANT_PRESETS;

@@ -46,6 +46,7 @@ const PRESET_LABELS: Record<string, string> = {
   encounter_editor: 'Encounter Editor',
   encounter_publisher: 'Encounter Publisher',
   presentation_editor: 'Presentation Editor',
+  gallery_viewer: 'Gallery Viewer',
   custom: 'Custom',
 };
 
@@ -54,6 +55,8 @@ const PRESET_BLURB: Record<string, string> = {
   encounter_publisher: 'Everything an Editor can do, plus publishing.',
   presentation_editor:
     'Can create, edit, enable/disable and delete Result Presentations. No encounter access.',
+  gallery_viewer:
+    'Can view every Waifumon and all artwork, including unreleased content. Read-only.',
   custom: 'Pick individual permissions.',
 };
 

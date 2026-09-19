@@ -731,6 +731,42 @@ client, and is tracked under [API feedback](#api-feedback).
 
 ---
 
+## Admin Waifumon Gallery
+
+`/admin/gallery` and `/admin/gallery/:slug` are a read-only content/artwork QA
+view of **every authored species** — loaded, disabled, and from expansion packs
+that are switched off — and every authored appearance, whether or not the
+runtime kept it. It is not the Encyclopedia: no ownership, discovery or unlock
+rule applies. The only requirement is the `gallery.read` Portal permission
+(guild owner, or a role granted it — the `gallery_viewer` preset); the nav
+entry and both routes are gated on it, and the API re-checks every request.
+
+- **Data:** one `GET /api/v1/admin/gallery/species` for the whole grid, one
+  `GET /api/v1/admin/gallery/species/:slug` per species page. Filters are
+  client-side and live in the URL (`q`, `rarity`, `type`, `affinity`, `zone`
+  incl. `none`, `runtime`, `enabled`, `health`, `rating`), so a filtered view
+  is bookmarkable and previous/next species follow it.
+- **Images:** the `adminGalleryApi` provider, always first in the resolver
+  chain, claims only identities marked `adminGallery: true` and points them at
+  `…/species/:slug/appearances/:appearanceId/artwork?width=…` — the
+  permission-gated route that serves exactly that appearance or 404. Grid
+  tiles use the 256 bucket, appearance cards 512, the lightbox 1024; the
+  original is fetched only through the lightbox's explicit *Open original*.
+- **Missing art looks missing.** `AdminGalleryArtwork` renders a labelled QA
+  placeholder (*Artwork Missing* / *Artwork Unavailable* / *Artwork Failed to
+  Load*) instead of the player silhouette — without any request when the API
+  already reports the file missing or unsafe. Player `<Artwork>` is unchanged.
+
+**Local development caveat.** The Vite dev proxy attaches the Platform API
+bearer token to every `/api` request, including `<img>` loads, and the API
+prefers the bearer token over the Portal session cookie. Admin routes refuse
+the bearer token unless the API runs with `PLATFORM_API_ADMIN_BEARER=true`, so
+in dev the gallery's metadata and images answer 403 until that is set (the
+same is true of every other Portal admin page). Production is unaffected: the
+built Portal never carries a token and authenticates with the session cookie.
+
+---
+
 ## Testing
 
 | Layer | Tool | Covers |

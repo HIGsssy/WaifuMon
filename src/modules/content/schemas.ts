@@ -2096,4 +2096,66 @@ export interface LoadedContent {
    * was written, never where she may be encountered.
    */
   speciesOrigin: Record<string, string>;
+  /**
+   * The content as authored, beside what the runtime made of it. Read by the
+   * Portal Admin Gallery and nothing else — no gameplay path consults it.
+   *
+   * Optional because only the loader fills it in: hand-built snapshots (tests,
+   * the admin panel's validation candidates) carry none, and a reader must
+   * treat its absence as "authored and runtime are the same thing".
+   */
+  authoring?: ContentAuthoring | undefined;
+}
+
+/**
+ * Species authored in an expansion pack whose manifest is switched off.
+ *
+ * Schema-validated exactly like live content (the expansion scan parses every
+ * pack), but never merged into {@link LoadedContent.species}: not seeded, not
+ * drawable, not addressable by any player-facing resource.
+ */
+export interface UnloadedSpecies {
+  expansionId: string;
+  species: SpeciesContent;
+}
+
+/**
+ * What the loader's species asset pre-flight did, as data rather than log
+ * lines. Each entry records one decision that made the runtime snapshot differ
+ * from — or degrade relative to — the authored content.
+ *
+ *   - `species_disabled_default_artwork_missing` — nothing the default look
+ *     could fall back to exists, so the species was loaded `enabled: false`.
+ *   - `default_appearance_artwork_missing` — the `owned` appearance's own file
+ *     is missing; the entry was kept and consumers fall back to the species'
+ *     standard artwork or legacy image.
+ *   - `appearance_dropped_artwork_missing` — a non-default appearance's file is
+ *     missing, so the entry was removed from the runtime catalog.
+ */
+export const SPECIES_ARTWORK_DIAGNOSTIC_CODES = [
+  'species_disabled_default_artwork_missing',
+  'default_appearance_artwork_missing',
+  'appearance_dropped_artwork_missing',
+] as const;
+export type SpeciesArtworkDiagnosticCode = (typeof SPECIES_ARTWORK_DIAGNOSTIC_CODES)[number];
+
+export interface SpeciesArtworkDiagnostic {
+  code: SpeciesArtworkDiagnosticCode;
+  slug: string;
+  /** The appearance the decision concerns — for a disabled species, her default. */
+  appearanceId: string;
+  assetId: AssetId;
+}
+
+export interface ContentAuthoring {
+  /**
+   * Every runtime-source species (core plus enabled packs) exactly as parsed,
+   * **before** the asset pre-flight disabled any species or dropped any
+   * appearance. Same slugs, same order as {@link LoadedContent.species}.
+   */
+  species: SpeciesContent[];
+  /** Species from disabled expansion packs. Never part of the runtime. */
+  unloadedSpecies: UnloadedSpecies[];
+  /** Empty until the asset pre-flight has run (`loadContent`). */
+  artworkDiagnostics: SpeciesArtworkDiagnostic[];
 }

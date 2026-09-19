@@ -20,6 +20,7 @@ import {
   CalendarDays,
   Compass,
   Heart,
+  Images,
   LayoutDashboard,
   LibraryBig,
   Medal,
@@ -67,6 +68,12 @@ export const NAV_ITEMS: readonly NavItem[] = [
     label: 'Admin — Result Presentations',
     icon: Sparkles,
     requiresPermission: 'presentations.read',
+  },
+  {
+    to: '/admin/gallery',
+    label: 'Admin — Waifumon Gallery',
+    icon: Images,
+    requiresPermission: 'gallery.read',
   },
   {
     // Owner-only: `admin.roles.manage` is the one permission that cannot be

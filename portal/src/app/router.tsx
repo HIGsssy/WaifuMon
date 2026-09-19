@@ -125,6 +125,18 @@ const ResultPresentationsPage = lazy(() =>
     default: m.ResultPresentationsPage,
   })),
 );
+// Waifumon Gallery. Read-only content/artwork QA, gated on `gallery.read` and
+// nothing else — no encounter or presentation permission reaches it.
+const AdminGalleryPage = lazy(() =>
+  import('@/features/adminGallery/AdminGalleryPage').then((m) => ({
+    default: m.AdminGalleryPage,
+  })),
+);
+const AdminGallerySpeciesPage = lazy(() =>
+  import('@/features/adminGallery/AdminGallerySpeciesPage').then((m) => ({
+    default: m.AdminGallerySpeciesPage,
+  })),
+);
 // Owner-only. Guarded on `admin.roles.manage`, which the authorization service
 // issues to the live guild owner and to nobody else — a role grant can never
 // confer it, so a delegated admin hitting this path gets the not-found page.
@@ -248,6 +260,24 @@ export const routes: RouteObject[] = [
             element: (
               <RequirePortalPermission permission="presentations.read">
                 <ResultPresentationsPage />
+              </RequirePortalPermission>
+            ),
+          },
+
+          // Admin — Waifumon Gallery. The API re-checks every request, images included.
+          {
+            path: 'admin/gallery',
+            element: (
+              <RequirePortalPermission permission="gallery.read">
+                <AdminGalleryPage />
+              </RequirePortalPermission>
+            ),
+          },
+          {
+            path: 'admin/gallery/:slug',
+            element: (
+              <RequirePortalPermission permission="gallery.read">
+                <AdminGallerySpeciesPage />
               </RequirePortalPermission>
             ),
           },

@@ -27,7 +27,9 @@ import {
   type ExpansionContent,
   type LoadedContent,
   type RegionContent,
+  type SpeciesArtworkDiagnostic,
   type SpeciesContent,
+  type UnloadedSpecies,
 } from './schemas';
 
 function formatZodError(file: string, err: ZodError): string {
@@ -97,7 +99,25 @@ export function validateSpeciesAssets(
   assetsDir: string,
   logger: Logger,
 ): SpeciesContent[] {
-  return species.map((s) => {
+  return preflightSpeciesAssets(species, assetsDir, logger).species;
+}
+
+/**
+ * {@link validateSpeciesAssets}, plus a typed record of every decision it made.
+ *
+ * The returned species are identical to what `validateSpeciesAssets` returns —
+ * that function is this one with the diagnostics discarded. The diagnostics
+ * exist because the snapshot alone cannot say *why* it differs from the
+ * authored content: a dropped appearance is simply absent, and a disabled
+ * species looks the same as one an author switched off.
+ */
+export function preflightSpeciesAssets(
+  species: SpeciesContent[],
+  assetsDir: string,
+  logger: Logger,
+): { species: SpeciesContent[]; diagnostics: SpeciesArtworkDiagnostic[] } {
+  const diagnostics: SpeciesArtworkDiagnostic[] = [];
+  const checked = species.map((s) => {
     // Shape check only: an `imagePath` that escapes the assets root is a
     // content error and fails the load loudly, as it always has.
     resolveAssetPath(assetsDir, s.imagePath);
@@ -115,6 +135,12 @@ export function validateSpeciesAssets(
       locateLegacyArtwork(assetsDir, s.imagePath);
     if (!renderable) {
       logger.warn({ slug: s.slug, imagePath: s.imagePath }, 'species image missing — disabling');
+      diagnostics.push({
+        code: 'species_disabled_default_artwork_missing',
+        slug: s.slug,
+        appearanceId: owned?.id ?? DEFAULT_APPEARANCE_ID,
+        assetId: defaultAsset,
+      });
       return { ...s, enabled: false };
     }
 
@@ -139,6 +165,12 @@ export function validateSpeciesAssets(
           { slug: s.slug, appearanceId: appearance.id, assetId },
           'default appearance artwork missing — consumers will fall back',
         );
+        diagnostics.push({
+          code: 'default_appearance_artwork_missing',
+          slug: s.slug,
+          appearanceId: appearance.id,
+          assetId,
+        });
         kept.push(appearance);
         continue;
       }
@@ -146,9 +178,16 @@ export function validateSpeciesAssets(
         { slug: s.slug, appearanceId: appearance.id, assetId },
         'appearance artwork missing — appearance disabled',
       );
+      diagnostics.push({
+        code: 'appearance_dropped_artwork_missing',
+        slug: s.slug,
+        appearanceId: appearance.id,
+        assetId,
+      });
     }
     return { ...s, appearances: kept };
   });
+  return { species: checked, diagnostics };
 }
 
 /**
@@ -750,17 +789,20 @@ export function readContentFiles(contentDir: string): LoadedContent {
     ? parseJsonFile(bossRewardsPath, BossRewardsFileSchema)
     : [];
 
-  const { regions, expansions, expansionSpecies, speciesOrigin } = readExpansionPacks(contentDir);
+  const { regions, expansions, expansionSpecies, speciesOrigin, unloadedSpecies } =
+    readExpansionPacks(contentDir);
+  const allSpecies = [...species, ...expansionSpecies];
 
   return {
     items: itemsFile.items,
-    species: [...species, ...expansionSpecies],
+    species: allSpecies,
     tables,
     bosses,
     bossRewards,
     regions,
     expansions,
     speciesOrigin,
+    authoring: { species: allSpecies, unloadedSpecies, artworkDiagnostics: [] },
   };
 }
 
@@ -791,6 +833,12 @@ export interface ExpansionScan {
   expansionSpecies: SpeciesContent[];
   /** Every expansion species' origin, disabled packs included. */
   speciesOrigin: Record<string, string>;
+  /**
+   * Species from *disabled* packs, already schema-validated by this same scan.
+   * Kept for inspection only (the Portal Admin Gallery) — never merged into
+   * the registry, so nothing reachable from gameplay can see them.
+   */
+  unloadedSpecies: UnloadedSpecies[];
   /**
    * Every species file found under `content/expansions/`, disabled packs
    * included and flagged as such. Surfaced so the admin panel and the
@@ -830,6 +878,7 @@ export function readExpansionPacks(contentDir: string): ExpansionScan {
   const expansions: ExpansionContent[] = [];
   const expansionSpecies: SpeciesContent[] = [];
   const speciesOrigin: Record<string, string> = {};
+  const unloadedSpecies: UnloadedSpecies[] = [];
   const sources: SpeciesSource[] = [];
 
   const regionsDir = path.join(contentDir, 'regions');
@@ -841,7 +890,7 @@ export function readExpansionPacks(contentDir: string): ExpansionScan {
 
   const expansionsDir = path.join(contentDir, 'expansions');
   if (!fs.existsSync(expansionsDir)) {
-    return { regions, expansions, expansionSpecies, speciesOrigin, sources };
+    return { regions, expansions, expansionSpecies, speciesOrigin, unloadedSpecies, sources };
   }
 
   const packDirs = fs
@@ -895,7 +944,10 @@ export function readExpansionPacks(contentDir: string): ExpansionScan {
       speciesOrigin[s.slug] = manifest.id;
     }
 
-    if (!manifest.enabled) continue;
+    if (!manifest.enabled) {
+      unloadedSpecies.push(...packSpecies.map((species) => ({ expansionId: manifest.id, species })));
+      continue;
+    }
 
     expansionSpecies.push(...packSpecies);
 
@@ -910,7 +962,7 @@ export function readExpansionPacks(contentDir: string): ExpansionScan {
     }
   }
 
-  return { regions, expansions, expansionSpecies, speciesOrigin, sources };
+  return { regions, expansions, expansionSpecies, speciesOrigin, unloadedSpecies, sources };
 }
 
 /**
@@ -998,7 +1050,11 @@ export function loadContent(contentDir: string, assetsDir: string, logger: Logge
   validateContentSet(content);
   checkSpeciesRaces(content.species, logger);
 
-  const validatedSpecies = validateSpeciesAssets(content.species, assetsDir, logger);
+  const { species: validatedSpecies, diagnostics: artworkDiagnostics } = preflightSpeciesAssets(
+    content.species,
+    assetsDir,
+    logger,
+  );
   const validatedBosses = validateBossAssets(content.bosses, assetsDir, logger);
   warnOnUnpooledSpecies(validatedSpecies, content.regions, logger);
 
@@ -1013,5 +1069,16 @@ export function loadContent(contentDir: string, assetsDir: string, logger: Logge
     },
     'content loaded and validated',
   );
-  return { ...content, species: validatedSpecies, bosses: validatedBosses };
+  return {
+    ...content,
+    species: validatedSpecies,
+    bosses: validatedBosses,
+    // `content.species` is still the pre-flight list: the pre-flight returns
+    // new objects for anything it changes and never mutates its input.
+    authoring: {
+      species: content.species,
+      unloadedSpecies: content.authoring?.unloadedSpecies ?? [],
+      artworkDiagnostics,
+    },
+  };
 }

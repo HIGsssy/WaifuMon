@@ -67,11 +67,50 @@ export function speciesArtworkCandidatePaths(assetId: AssetId): string[] {
  * Never throws — a bad `slug` in content is a missing file, not a crash.
  */
 export function locateSpeciesArtwork(assetsDir: string, assetId: AssetId): ArtworkFile | null {
+  const inspected = inspectSpeciesArtwork(assetsDir, assetId);
+  return inspected.status === 'available' ? inspected.file : null;
+}
+
+/**
+ * {@link locateSpeciesArtwork}, keeping the reason when there is no file.
+ *
+ *   - `available` — the first candidate, in preference order, that may be read;
+ *   - `unsafe`    — no candidate is readable and at least one escapes the
+ *                   assets root (through a symlink — an `AssetId` cannot
+ *                   express a lexical escape);
+ *   - `missing`   — nothing there at all.
+ *
+ * Same containment check, same candidates, same order: `unsafe` is only ever a
+ * more specific word for what `locateSpeciesArtwork` reports as `null`. Never
+ * throws, and never reads file contents.
+ */
+export type SpeciesArtworkInspection =
+  | { status: 'available'; file: ArtworkFile }
+  | { status: 'missing' }
+  | { status: 'unsafe' };
+
+export function inspectSpeciesArtwork(
+  assetsDir: string,
+  assetId: AssetId,
+): SpeciesArtworkInspection {
+  let unsafe = false;
   for (const relative of speciesArtworkCandidatePaths(assetId)) {
-    const found = existingArtwork(assetsDir, relative);
-    if (found) return found;
+    const extension = artworkExtensionOf(relative);
+    if (extension === null) continue;
+    const found = resolveExistingAssetFile(assetsDir, relative);
+    if (found.status === 'available') {
+      return {
+        status: 'available',
+        file: {
+          absolutePath: found.absolutePath,
+          extension,
+          contentType: ARTWORK_CONTENT_TYPES[extension],
+        },
+      };
+    }
+    if (found.status === 'unsafe') unsafe = true;
   }
-  return null;
+  return unsafe ? { status: 'unsafe' } : { status: 'missing' };
 }
 
 /**
@@ -117,6 +156,26 @@ export type ArtworkRenditionWidth = (typeof ARTWORK_RENDITION_WIDTHS)[number];
 /** Rendition path, relative to the assets root, for an artwork stem. */
 export function renditionRelativePath(stem: string, width: number): string {
   return `${ARTWORK_RENDITION_DIR}/${width}/${stem}.webp`;
+}
+
+/**
+ * Which pre-generated renditions exist for an `AssetId`, per width.
+ *
+ * Checked with the same canonical containment as the artwork itself — a
+ * rendition symlinked out of the assets root counts as absent — and never
+ * reads a byte. Presence only: a missing rendition is served as the original.
+ */
+export function speciesArtworkRenditions(
+  assetsDir: string,
+  assetId: AssetId,
+): Record<ArtworkRenditionWidth, boolean> {
+  const stem = speciesArtworkStem(assetId);
+  const out = {} as Record<ArtworkRenditionWidth, boolean>;
+  for (const width of ARTWORK_RENDITION_WIDTHS) {
+    out[width] =
+      resolveExistingAssetFile(assetsDir, renditionRelativePath(stem, width)).status === 'available';
+  }
+  return out;
 }
 
 /**

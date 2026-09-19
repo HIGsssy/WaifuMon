@@ -134,6 +134,15 @@ export const queryKeys = {
   /** Dev-only, diagnostics page. */
   readiness: () => ['system', 'readiness'] as const,
 
+  /**
+   * Admin Waifumon Gallery. Global like content — the catalog does not depend
+   * on the acting player — and under one `['admin', 'gallery']` prefix, so the
+   * gallery's Refresh invalidates the catalog and every species detail at once.
+   */
+  adminGallery: () => ['admin', 'gallery'] as const,
+  adminGalleryCatalog: () => ['admin', 'gallery', 'catalog'] as const,
+  adminGallerySpecies: (slug: string) => ['admin', 'gallery', 'species', slug] as const,
+
   // The developer login's Discord-identity lookup is the one key not built
   // here. It belongs to a subtree a production build drops entirely, and a
   // property on this object would survive that drop as a dead string — see

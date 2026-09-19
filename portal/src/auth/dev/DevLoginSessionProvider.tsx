@@ -89,6 +89,7 @@ const ALL_DEV_PERMISSIONS: readonly string[] = [
   'encounters.history',
   'presentations.read',
   'presentations.write',
+  'gallery.read',
 ];
 
 export function DevLoginSessionProvider({ children }: { children: ReactNode }) {

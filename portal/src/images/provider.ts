@@ -10,6 +10,7 @@
  * changing pages and components.
  */
 import { portalEnv } from '@/lib/env';
+import { createAdminGalleryApiProvider } from './providers/adminGalleryApi';
 import { API_SUPPLIED_URL_ID, createApiSuppliedUrlProvider } from './providers/apiSuppliedUrl';
 import { ARTWORK_API_ID, createArtworkApiProvider } from './providers/artworkApi';
 import { CARD_API_ID, createCardApiProvider } from './providers/cardApi';
@@ -51,7 +52,9 @@ const DEFAULT_ORDER = [API_SUPPLIED_URL_ID, CARD_API_ID, ARTWORK_API_ID, LOCAL_D
 
 function buildChain(): ImageProvider[] {
   const requested = portalEnv.imageProviders ?? DEFAULT_ORDER;
-  const chain: ImageProvider[] = [];
+  // Always first and never configurable: it claims only admin gallery
+  // identities, and must see them before any player provider can.
+  const chain: ImageProvider[] = [createAdminGalleryApiProvider()];
 
   for (const id of requested) {
     if (id === SILHOUETTE_ID) continue; // appended below, always last

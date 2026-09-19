@@ -726,3 +726,306 @@ export const aikoCollection: PublicOwnedEntry[] = [
 export const publicCollections: Record<number, PublicOwnedEntry[]> = {
   42: aikoCollection,
 };
+
+// ── Admin Waifumon Gallery ───────────────────────────────────────────────────
+//
+// A small catalog covering every state the gallery must tell apart: loaded vs
+// future, enabled vs disabled (by the author and by the loader), missing and
+// unsafe primary artwork, a PNG-only look, a dropped appearance, and species
+// with and without a recognised zone.
+
+type GalleryArtworkStatus = import('@/api/adminGallery').GalleryArtworkStatus;
+type GalleryAppearanceFixture = import('@/api/adminGallery').GalleryAppearance;
+type GallerySpeciesDetailFixture = import('@/api/adminGallery').GallerySpeciesDetail;
+type GalleryIssueFixture = import('@/api/adminGallery').GalleryIssue;
+
+const GALLERY_LOOKS = ['standard', 'level_10', 'level_20', 'level_30', 'level_40', 'level_50'];
+
+interface LookOverride {
+  status?: GalleryArtworkStatus;
+  format?: 'webp' | 'png';
+  inRuntime?: boolean;
+  renditions?: Record<string, boolean>;
+  dropped?: boolean;
+}
+
+function galleryLook(
+  slug: string,
+  id: string,
+  index: number,
+  loaded: boolean,
+  over: LookOverride = {},
+): GalleryAppearanceFixture {
+  const status = over.status ?? 'available';
+  const isDefault = id === 'standard';
+  const format = status === 'available' ? (over.format ?? 'webp') : null;
+  const renditions =
+    status === 'available' ? (over.renditions ?? { 256: true, 512: true, 1024: true }) : undefined;
+  const inRuntime = loaded && (over.inRuntime ?? true);
+  const issues: GalleryIssueFixture[] = [];
+  if (status === 'missing') {
+    issues.push({
+      code: isDefault ? 'default_artwork_missing' : 'appearance_artwork_missing',
+      severity: 'error',
+      appearanceId: id,
+    });
+  }
+  if (status === 'unsafe')
+    issues.push({ code: 'artwork_unsafe', severity: 'error', appearanceId: id });
+  if (format === 'png')
+    issues.push({ code: 'artwork_png_only', severity: 'warning', appearanceId: id });
+  if (loaded && !inRuntime) {
+    issues.push({ code: 'appearance_not_in_runtime', severity: 'warning', appearanceId: id });
+  }
+  if (renditions && Object.values(renditions).some((present) => !present)) {
+    issues.push({ code: 'renditions_missing', severity: 'warning', appearanceId: id });
+  }
+  const level = index * 10;
+  return {
+    id,
+    name: isDefault ? 'Standard' : `Level ${level}`,
+    description: null,
+    flavorText: null,
+    cosmeticRarity: 'standard',
+    introducedVersion: null,
+    contentRating: 'mature',
+    contentRatingSource: 'species',
+    sortOrder: level,
+    tags: [],
+    unlock: isDefault ? { type: 'owned' } : { type: 'level', atLevel: level },
+    unlockLabel: isDefault ? 'Owned' : `Reach Level ${level}`,
+    isDefault,
+    implicit: false,
+    assetId: { kind: 'waifumon', slug, variant: id },
+    inRuntime,
+    artwork: {
+      status,
+      format,
+      storageStem: `waifumon/${slug}/${id}`,
+      ...(renditions ? { renditions } : {}),
+    },
+    loaderDiagnostics: over.dropped ? ['appearance_dropped_artwork_missing'] : [],
+    issues,
+  };
+}
+
+interface GallerySpeciesFixtureInput {
+  slug: string;
+  name: string;
+  rarity: import('@/api/types').Rarity;
+  race: string;
+  affinity: import('@/api/types').Affinity;
+  contentRating: import('@/api/types').ContentRating;
+  tags: string[];
+  source: GallerySpeciesDetailFixture['source'];
+  authoredEnabled?: boolean;
+  loaded: boolean;
+  runtimeEnabled?: boolean;
+  disabledByLoader?: boolean;
+  looks?: Record<string, LookOverride>;
+}
+
+function gallerySpeciesFixture(input: GallerySpeciesFixtureInput): GallerySpeciesDetailFixture {
+  const appearances = GALLERY_LOOKS.map((id, i) =>
+    galleryLook(input.slug, id, i, input.loaded, input.looks?.[id]),
+  );
+  const primary = appearances[0]!;
+  const speciesIssues: GalleryIssueFixture[] = input.disabledByLoader
+    ? [{ code: 'species_disabled_by_loader', severity: 'error', appearanceId: 'standard' }]
+    : [];
+  return {
+    slug: input.slug,
+    name: input.name,
+    rarity: input.rarity,
+    race: input.race,
+    archetype: input.race,
+    affinity: input.affinity,
+    contentRating: input.contentRating,
+    tags: input.tags,
+    source: input.source,
+    authoredEnabled: input.authoredEnabled ?? true,
+    runtime: {
+      loaded: input.loaded,
+      enabled: input.loaded ? (input.runtimeEnabled ?? true) : null,
+      disabledByLoader: input.disabledByLoader ?? false,
+    },
+    appearanceCounts: {
+      authored: appearances.length,
+      inRuntime: input.loaded ? appearances.filter((a) => a.inRuntime).length : null,
+      artworkAvailable: appearances.filter((a) => a.artwork.status === 'available').length,
+    },
+    primary: {
+      appearanceId: primary.id,
+      assetId: primary.assetId,
+      status: primary.artwork.status,
+      format: primary.artwork.format,
+    },
+    issues: [...speciesIssues, ...appearances.flatMap((a) => a.issues)],
+    description: `${input.name} is an admin gallery fixture.`,
+    card: null,
+    buddyBonus: null,
+    baseCaptureRate: null,
+    eventKey: null,
+    perSpeciesWeight: 1,
+    appearances,
+    loaderDiagnostics: [
+      ...(input.disabledByLoader
+        ? [
+            {
+              code: 'species_disabled_default_artwork_missing',
+              slug: input.slug,
+              appearanceId: 'standard',
+              assetId: { kind: 'waifumon' as const, slug: input.slug, variant: 'standard' },
+            },
+          ]
+        : []),
+      ...Object.entries(input.looks ?? {})
+        .filter(([, o]) => o.dropped)
+        .map(([id]) => ({
+          code: 'appearance_dropped_artwork_missing',
+          slug: input.slug,
+          appearanceId: id,
+          assetId: { kind: 'waifumon' as const, slug: input.slug, variant: id },
+        })),
+    ],
+  };
+}
+
+const CORE = { kind: 'core' } as const;
+
+export const adminGalleryDetails: GallerySpeciesDetailFixture[] = [
+  gallerySpeciesFixture({
+    slug: 'alley_catgirl',
+    name: 'Alley Catgirl',
+    rarity: 'N',
+    race: 'demi-human',
+    affinity: 'dominant',
+    contentRating: 'suggestive',
+    tags: ['starter', 'waifu_valley'],
+    source: CORE,
+    loaded: true,
+  }),
+  gallerySpeciesFixture({
+    slug: 'onsen_maid',
+    name: 'Onsen Maid',
+    rarity: 'SR',
+    race: 'human',
+    affinity: 'caregiver',
+    contentRating: 'mature',
+    tags: ['expansion', 'region_exclusive', 'twin_peeks'],
+    source: {
+      kind: 'expansion',
+      expansionId: 'twin_peaks',
+      expansionName: 'Twin Peaks',
+      expansionEnabled: true,
+    },
+    loaded: true,
+    looks: {
+      level_10: { format: 'png' },
+      level_20: { renditions: { 256: true, 512: false, 1024: false } },
+      level_40: { status: 'missing', inRuntime: false, dropped: true },
+    },
+  }),
+  gallerySpeciesFixture({
+    slug: 'ghost_girl',
+    name: 'Ghost Girl',
+    rarity: 'UR',
+    race: 'spirit',
+    affinity: 'primal',
+    contentRating: 'explicit',
+    tags: ['waifu_valley'],
+    source: CORE,
+    loaded: true,
+    runtimeEnabled: false,
+    disabledByLoader: true,
+    looks: Object.fromEntries(GALLERY_LOOKS.map((id) => [id, { status: 'missing' as const }])),
+  }),
+  gallerySpeciesFixture({
+    slug: 'retired_idol',
+    name: 'Retired Idol',
+    rarity: 'SSR',
+    race: 'angel',
+    affinity: 'submissive',
+    contentRating: 'suggestive',
+    tags: ['flaccid_foothills'],
+    source: CORE,
+    authoredEnabled: false,
+    loaded: true,
+    runtimeEnabled: false,
+  }),
+  gallerySpeciesFixture({
+    slug: 'star_marshal',
+    name: 'Star Marshal',
+    rarity: 'LR',
+    race: 'android',
+    affinity: 'switch',
+    contentRating: 'explicit',
+    tags: ['expansion'],
+    source: {
+      kind: 'expansion',
+      expansionId: 'assteroid_belt',
+      expansionName: 'Assteroid Belt',
+      expansionEnabled: false,
+    },
+    loaded: false,
+  }),
+  gallerySpeciesFixture({
+    slug: 'chrome_corsair',
+    name: 'Chrome Corsair',
+    rarity: 'R',
+    race: 'valkyrie',
+    affinity: 'submissive',
+    contentRating: 'mature',
+    tags: ['expansion'],
+    source: {
+      kind: 'expansion',
+      expansionId: 'assteroid_belt',
+      expansionName: 'Assteroid Belt',
+      expansionEnabled: false,
+    },
+    loaded: false,
+    looks: { standard: { status: 'unsafe' } },
+  }),
+];
+
+function gallerySummaryOf(species: readonly GallerySpeciesDetailFixture[]) {
+  const loaded = species.filter((s) => s.runtime.loaded);
+  const issueCounts: Record<string, number> = {};
+  for (const s of species)
+    for (const i of s.issues) issueCounts[i.code] = (issueCounts[i.code] ?? 0) + 1;
+  return {
+    authoredSpecies: species.length,
+    runtimeLoadedSpecies: loaded.length,
+    runtimeEnabledSpecies: loaded.filter((s) => s.runtime.enabled).length,
+    loaderDisabledSpecies: species.filter((s) => s.runtime.disabledByLoader).length,
+    unloadedSpecies: species.length - loaded.length,
+    authoredAppearances: species.reduce((n, s) => n + s.appearanceCounts.authored, 0),
+    runtimeAppearances: loaded.reduce((n, s) => n + (s.appearanceCounts.inRuntime ?? 0), 0),
+    artworkAvailableAppearances: species.reduce(
+      (n, s) => n + s.appearanceCounts.artworkAvailable,
+      0,
+    ),
+    speciesWithIssues: species.filter((s) => s.issues.length > 0).length,
+    issueCounts,
+  };
+}
+
+/** The list response: summaries only, sorted by name like the server. */
+export const adminGalleryCatalog = {
+  summary: gallerySummaryOf(adminGalleryDetails),
+  species: [...adminGalleryDetails]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map(
+      ({
+        description: _d,
+        card: _c,
+        buddyBonus: _b,
+        baseCaptureRate: _r,
+        eventKey: _e,
+        perSpeciesWeight: _w,
+        appearances: _a,
+        loaderDiagnostics: _l,
+        ...summary
+      }) => summary,
+    ),
+};

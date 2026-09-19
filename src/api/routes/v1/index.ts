@@ -34,6 +34,7 @@ import { adminEncounterRoutes } from './admin/encounters';
 import { adminAccessRoutes } from './admin/access';
 import { adminEncounterPromotionRoutes } from './admin/encounterPromotion';
 import { adminResultPresentationRoutes } from './admin/resultPresentations';
+import { adminGalleryRoutes } from './admin/gallery';
 
 export interface V1RouteOptions {
   /**
@@ -114,4 +115,8 @@ export const v1Routes =
     // Admin: Result Presentations (hunt-find and release flavor/artwork).
     // Skipped when the presentation service is not wired.
     await app.register(adminResultPresentationRoutes(ctx));
+
+    // Admin: Waifumon Gallery (read-only species/artwork QA catalog).
+    // Skipped when the context has no assets root.
+    await app.register(adminGalleryRoutes(ctx));
   };

@@ -35,6 +35,16 @@ export interface AssetId {
    */
   baseArtwork?: boolean | undefined;
   /**
+   * Admin Waifumon Gallery artwork: `slug` + `variant` (the appearance id)
+   * through the `gallery.read`-gated admin route, for any authored appearance
+   * — locked, disabled or unreleased.
+   *
+   * Only the admin gallery provider claims this form, and it sits first in
+   * every chain, so no player provider can resolve an admin identity to a
+   * player route (or the reverse). Set only by `AdminGalleryArtwork`.
+   */
+  adminGallery?: boolean | undefined;
+  /**
    * An absolute URL the **Platform API itself supplied** for this asset —
    * today only `player.identity.avatarUrl`, which points at Discord's CDN.
    *
@@ -186,5 +196,9 @@ export function assetKey(id: AssetId, bucket: ImageSizeBucket | null = null): st
   // `href` participates: the same avatar slug with a new CDN hash is a
   // genuinely different image and must not serve the memoised old one.
   // The bucket participates for the same reason: two sizes are two URLs.
-  return `${id.kind}:${id.slug}:${id.variant ?? DEFAULT_VARIANT}:${id.baseArtwork === true ? 'base' : ''}:${id.href ?? ''}:${owned}:${appearance}:${bucket ?? 'full'}`;
+  // An admin gallery identity resolves to a different, permission-gated URL, so
+  // it must never share a memo entry with the player identity of the same art.
+  // Prefixed only when set, so every existing key is byte-for-byte unchanged.
+  const admin = id.adminGallery === true ? 'admin-gallery|' : '';
+  return `${admin}${id.kind}:${id.slug}:${id.variant ?? DEFAULT_VARIANT}:${id.baseArtwork === true ? 'base' : ''}:${id.href ?? ''}:${owned}:${appearance}:${bucket ?? 'full'}`;
 }

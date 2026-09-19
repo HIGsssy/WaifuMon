@@ -273,6 +273,15 @@ export const handlers = [
   // `server.use(http.get('/api/v1/capabilities', () => data({ cards: false })))`.
   http.get('/api/v1/capabilities', () => data(fixtures.capabilities)),
 
+  // ── Admin: Waifumon Gallery ──────────────────────────────────────────────
+  http.get('/api/v1/admin/gallery/species', () => data(fixtures.adminGalleryCatalog)),
+  http.get('/api/v1/admin/gallery/species/:slug', ({ params }) => {
+    const found = fixtures.adminGalleryDetails.find((s) => s.slug === params.slug);
+    return found
+      ? data(found)
+      : apiError(404, 'SPECIES_NOT_FOUND', `Species "${String(params.slug)}" not found`);
+  }),
+
   // ── Rendered cards ────────────────────────────────────────────────────────
   // Real bytes, not JSON: these routes answer `image/webp`. The fixture is a
   // tiny valid WebP so an <img> can actually decode it and the export flow has
