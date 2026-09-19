@@ -22,6 +22,7 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { captureItemEffect, temporaryCaptureEffect } from '@/content/items';
 import { formatNumber } from '@/lib/format';
 
 interface CategoryMeta {
@@ -32,7 +33,14 @@ interface CategoryMeta {
 
 /** Display order and copy for the four content categories. */
 const CATEGORIES: ReadonlyArray<[ItemCategory, CategoryMeta]> = [
-  ['capture', { label: 'Capture', description: 'Charms that improve your odds.', icon: Sparkles }],
+  [
+    'capture',
+    {
+      label: 'Capture',
+      description: 'Charms and restraints for capture attempts.',
+      icon: Sparkles,
+    },
+  ],
   ['consumable', { label: 'Consumables', description: 'One-use effects.', icon: FlaskConical }],
   ['material', { label: 'Materials', description: 'Crafting and trade goods.', icon: Boxes }],
   ['cosmetic', { label: 'Cosmetics', description: 'Looks, not power.', icon: Shirt }],
@@ -40,6 +48,7 @@ const CATEGORIES: ReadonlyArray<[ItemCategory, CategoryMeta]> = [
 
 function ItemRow({ entry }: { entry: InventoryEntry }) {
   const { item, quantity } = entry;
+  const itemEffect = captureItemEffect(item) ?? temporaryCaptureEffect(item);
 
   return (
     <li className="flex items-start gap-4 border-b border-border py-4 last:border-0">
@@ -54,11 +63,8 @@ function ItemRow({ entry }: { entry: InventoryEntry }) {
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
           <h3 className="font-medium text-ink">{item.name}</h3>
-          {item.isGuaranteedCapture && <Badge variant="outline">Guaranteed capture</Badge>}
-          {item.captureModifier !== null && !item.isGuaranteedCapture && (
-            <Badge variant="outline">×{item.captureModifier} capture</Badge>
-          )}
-          {!item.purchasable && <Badge variant="outline">Not for sale</Badge>}
+          {itemEffect && <Badge variant="outline">{itemEffect}</Badge>}
+          {item.shopRegions.length === 0 && <Badge variant="outline">Not for sale</Badge>}
         </div>
         <p className="mt-1 text-sm text-ink-muted">{item.description}</p>
       </div>

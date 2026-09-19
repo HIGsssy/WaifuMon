@@ -133,7 +133,7 @@ describe('CollectionPage', () => {
 
     renderCollection();
 
-    expect(await screen.findByText('Your collection is empty')).toBeInTheDocument();
+    expect(await screen.findByText('Your active collection is empty')).toBeInTheDocument();
     expect(screen.getByText(/waifumon hunt/)).toBeInTheDocument();
   });
 

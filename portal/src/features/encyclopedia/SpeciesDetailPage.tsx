@@ -189,7 +189,7 @@ export function SpeciesDetailPage() {
             </h1>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <RarityBadge rarity={species.rarity} variant="full" />
-              {/* Where to find her is a hint, not a spoiler — shown before discovery. */}
+              {/* Authored origin is a hint, not a list of every hunt pool. */}
               <ZonePill species={species} />
               {discovered && (
                 <>
@@ -213,9 +213,10 @@ export function SpeciesDetailPage() {
                   <Lock className="size-4" aria-hidden="true" />
                 </div>
                 <div>
-                  <h2 className="font-medium text-ink">Not yet discovered</h2>
+                  <h2 className="font-medium text-ink">Not currently owned</h2>
                   <p className="mt-1 text-sm text-ink-muted">
-                    Catch one in Discord to unlock this entry — the name, the art and the lore.
+                    Own a copy to reveal this entry — its name, artwork and lore. Releasing your
+                    final active copy hides it again.
                   </p>
                 </div>
               </div>
@@ -247,7 +248,7 @@ export function SpeciesDetailPage() {
                 )}
               </div>
             ) : (
-              <p className="mt-3 text-sm text-ink-muted">You have not caught this species yet.</p>
+              <p className="mt-3 text-sm text-ink-muted">You do not currently own this species.</p>
             )}
           </Card>
 
@@ -260,7 +261,7 @@ export function SpeciesDetailPage() {
 
           <p className="flex items-center gap-2 text-xs text-ink-subtle">
             <BookOpen className="size-3.5" aria-hidden="true" />
-            Entries unlock as you catch each species in Discord.
+            Entries remain visible while you own at least one active copy of the species.
           </p>
         </div>
       </div>

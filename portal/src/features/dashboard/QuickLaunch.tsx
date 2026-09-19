@@ -38,10 +38,10 @@ export function QuickLaunch({ buddyName }: QuickLaunchProps) {
       stat: buddyName === undefined ? undefined : (buddyName ?? 'None set'),
     },
     { to: '/inventory', label: 'Inventory', icon: Backpack, stat: 'Items and charms' },
-    { to: '/shop', label: 'Shop', icon: Store, stat: "Today's catalogue" },
+    { to: '/shop', label: 'Shop', icon: Store, stat: 'All regional catalogues' },
     { to: '/encyclopedia', label: 'Encyclopedia', icon: BookOpen, stat: 'Every species' },
     { to: '/guide', label: 'Guide', icon: Compass, stat: 'How the game works' },
-    { to: '/profile', label: 'Profile', icon: User, stat: 'Lifetime statistics' },
+    { to: '/profile', label: 'Profile', icon: User, stat: 'Trainer and collection stats' },
   ];
 
   return (

@@ -108,7 +108,7 @@ function serve(): void {
 async function renderAt(url: string): Promise<void> {
   serve();
   renderRoutes({ routes, initialEntries: [url] });
-  await screen.findByText(/\d+ \/ \d+ discovered$/);
+  await screen.findByText(/\d+ \/ \d+ owned$/);
 }
 
 /** Every species tile on the page. */
@@ -119,7 +119,7 @@ function tiles(): HTMLElement[] {
 }
 
 function undiscoveredTiles(): HTMLElement[] {
-  return tiles().filter((tile) => /^Undiscovered /.test(tile.getAttribute('aria-label') ?? ''));
+  return tiles().filter((tile) => /^Not owned, /.test(tile.getAttribute('aria-label') ?? ''));
 }
 
 const UNDISCOVERED_NAMES = SPECS.filter((spec) => !spec.owned).map((spec) => spec.name);
@@ -133,9 +133,9 @@ describe('Encyclopedia Zone filter', () => {
   it('shows every species with All Zones, and the whole-dex tally', async () => {
     await renderAt('/encyclopedia');
 
-    expect(await screen.findByText('7 / 16 discovered')).toBeInTheDocument();
+    expect(await screen.findByText('7 / 16 owned')).toBeInTheDocument();
     expect(tiles()).toHaveLength(16);
-    expect(screen.queryByRole('button', { name: /^Zone:/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Origin:/ })).toBeNull();
   });
 
   it.each([
@@ -148,8 +148,8 @@ describe('Encyclopedia Zone filter', () => {
 
     await waitFor(() => expect(tiles()).toHaveLength(total));
     expect(undiscoveredTiles()).toHaveLength(total - discovered);
-    expect(screen.getByText(`${label}: ${discovered} / ${total} discovered`)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: `Zone: ${label}` })).toBeInTheDocument();
+    expect(screen.getByText(`${label} origin: ${discovered} / ${total} owned`)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: `Origin: ${label}` })).toBeInTheDocument();
     expectNoUndiscoveredNames();
   });
 
@@ -176,7 +176,7 @@ describe('Encyclopedia Zone filter', () => {
     await waitFor(() => expect(tiles()).toHaveLength(2));
     expect(undiscoveredTiles()).toHaveLength(2);
     // The tally still describes the zone, not the narrowed list.
-    expect(screen.getByText('Twin Peeks: 3 / 5 discovered')).toBeInTheDocument();
+    expect(screen.getByText('Twin Peeks origin: 3 / 5 owned')).toBeInTheDocument();
     expectNoUndiscoveredNames();
   });
 
@@ -208,9 +208,9 @@ describe('Encyclopedia Zone filter', () => {
     async (value) => {
       await renderAt(`/encyclopedia?zone=${value}`);
 
-      expect(await screen.findByText('7 / 16 discovered')).toBeInTheDocument();
+      expect(await screen.findByText('7 / 16 owned')).toBeInTheDocument();
       expect(tiles()).toHaveLength(16);
-      expect(screen.queryByRole('button', { name: /^Zone:/ })).toBeNull();
+      expect(screen.queryByRole('button', { name: /^Origin:/ })).toBeNull();
     },
   );
 
@@ -219,13 +219,13 @@ describe('Encyclopedia Zone filter', () => {
     await renderAt('/encyclopedia');
 
     await user.click(screen.getByRole('button', { name: 'Open filters' }));
-    const group = await screen.findByRole('group', { name: 'Zone' });
+    const group = await screen.findByRole('group', { name: 'Origin' });
     expect(
       within(group)
         .getAllByRole('button')
         .map((button) => button.textContent),
-    ).toEqual(['All Zones', 'Waifu Valley', 'Twin Peeks', 'Flaccid Foothills', 'Thirstlands']);
-    expect(within(group).getByRole('button', { name: 'All Zones' })).toHaveAttribute(
+    ).toEqual(['All origins', 'Waifu Valley', 'Twin Peeks', 'Flaccid Foothills', 'Thirstlands']);
+    expect(within(group).getByRole('button', { name: 'All origins' })).toHaveAttribute(
       'aria-pressed',
       'true',
     );
@@ -236,37 +236,37 @@ describe('Encyclopedia Zone filter', () => {
     await renderAt('/encyclopedia');
 
     await user.click(screen.getByRole('button', { name: 'Open filters' }));
-    const group = await screen.findByRole('group', { name: 'Zone' });
+    const group = await screen.findByRole('group', { name: 'Origin' });
 
     await user.click(within(group).getByRole('button', { name: 'Twin Peeks' }));
     await waitFor(() => expect(tiles()).toHaveLength(5));
-    expect(screen.getByRole('button', { name: 'Zone: Twin Peeks' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Origin: Twin Peeks' })).toBeInTheDocument();
 
     await user.click(within(group).getByRole('button', { name: 'Flaccid Foothills' }));
     await waitFor(() => expect(tiles()).toHaveLength(3));
-    expect(screen.getByText('Flaccid Foothills: 0 / 3 discovered')).toBeInTheDocument();
+    expect(screen.getByText('Flaccid Foothills origin: 0 / 3 owned')).toBeInTheDocument();
 
-    await user.click(within(group).getByRole('button', { name: 'All Zones' }));
+    await user.click(within(group).getByRole('button', { name: 'All origins' }));
     await waitFor(() => expect(tiles()).toHaveLength(16));
-    expect(screen.getByText('7 / 16 discovered')).toBeInTheDocument();
+    expect(screen.getByText('7 / 16 owned')).toBeInTheDocument();
   });
 
   it('removes the Zone chip, and Clear All clears Zone with everything else', async () => {
     const user = userEvent.setup();
     await renderAt('/encyclopedia?zone=twin_peeks');
 
-    await user.click(await screen.findByRole('button', { name: 'Zone: Twin Peeks' }));
+    await user.click(await screen.findByRole('button', { name: 'Origin: Twin Peeks' }));
     await waitFor(() => expect(tiles()).toHaveLength(16));
 
     await user.click(screen.getByRole('button', { name: 'Open filters' }));
-    const group = await screen.findByRole('group', { name: 'Zone' });
+    const group = await screen.findByRole('group', { name: 'Origin' });
     await user.click(within(group).getByRole('button', { name: 'Thirstlands' }));
-    await user.click(screen.getByRole('button', { name: 'Undiscovered' }));
+    await user.click(screen.getByRole('button', { name: 'Not owned' }));
     await user.keyboard('{Escape}');
 
     await user.click(screen.getByRole('button', { name: 'Clear All' }));
     await waitFor(() => expect(tiles()).toHaveLength(16));
-    expect(screen.queryByRole('button', { name: /^Zone:/ })).toBeNull();
-    expect(screen.getByText('7 / 16 discovered')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Origin:/ })).toBeNull();
+    expect(screen.getByText('7 / 16 owned')).toBeInTheDocument();
   });
 });

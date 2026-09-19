@@ -86,7 +86,7 @@ export function BuddyPage() {
                 icon={Heart}
                 title="No buddy set"
                 description="Choose a companion in Discord and they will appear here."
-                hint="A buddy earns affection and XP while Care Mode runs."
+                hint="The Waifumon in Care Mode earns affection and XP over time; she does not have to be your active Buddy."
                 className="h-full"
               />
             </div>

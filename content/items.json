@@ -88,7 +88,7 @@
       "dailyStockLimit": null,
       "effectType": null,
       "effectConfig": null,
-      "description": "Refracts light into pure temptation. Listed, but not yet in stock.",
+      "description": "Refracts light into pure temptation. Multiplies base capture chance by five.",
       "emoji": "🌈",
       "enabled": true
     },
@@ -129,7 +129,7 @@
         "amount": 5,
         "exitCareMode": true
       },
-      "description": "Aggressively carbonated. Refills 5 Hunt Energyand snaps you out of Care Mode.",
+      "description": "Aggressively carbonated. Restores 5 Hunt Energy and snaps you out of Care Mode.",
       "emoji": "🥤",
       "enabled": true
     },

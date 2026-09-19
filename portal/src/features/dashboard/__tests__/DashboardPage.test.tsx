@@ -154,7 +154,7 @@ describe('DashboardPage', () => {
       });
 
       renderDashboard();
-      await screen.findByRole('heading', { name: 'Recent catches' });
+      await screen.findByRole('heading', { name: 'Recently added to your collection' });
       await waitFor(() => expect(requests.length).toBeGreaterThan(0));
 
       // Exactly one listing request, for five rows, in newest order.
@@ -174,7 +174,7 @@ describe('DashboardPage', () => {
     it('renders the strip in the order the server returned', async () => {
       renderDashboard();
 
-      const strip = await screen.findByRole('region', { name: 'Recent catches' });
+      const strip = await screen.findByRole('region', { name: 'Recently added to your collection' });
       // The heading paints before the query lands, so wait for the tiles.
       const links = await within(strip).findAllByRole('link');
 
@@ -193,7 +193,7 @@ describe('DashboardPage', () => {
 
       renderDashboard();
 
-      expect(await screen.findByText(/Nothing caught yet/i)).toBeInTheDocument();
+      expect(await screen.findByText(/most recently caught Waifumon that you still own/i)).toBeInTheDocument();
     });
   });
 
@@ -294,7 +294,7 @@ describe('DashboardPage', () => {
     expect(await screen.findByText('No buddy set')).toBeInTheDocument();
     expect(await screen.findByText('0 / 58')).toBeInTheDocument();
     expect(await screen.findByText('0 / 25')).toBeInTheDocument();
-    expect(await screen.findByText(/Nothing caught yet/i)).toBeInTheDocument();
+    expect(await screen.findByText(/most recently caught Waifumon that you still own/i)).toBeInTheDocument();
     // Zeros, not an error screen.
     expect(screen.queryByRole('alert')).toBeNull();
   });

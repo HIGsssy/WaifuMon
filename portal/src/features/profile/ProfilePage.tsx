@@ -1,11 +1,5 @@
 /**
- * `/profile` — the trainer, and how far they have come (plan §8.8).
- *
- * The placeholder tiles for Achievements, Seasonal Progress and Leaderboards
- * are not filler: they are reserved slots, so the layout does not shift when
- * those features land (§25.12). Leaderboards in particular are a deliberate
- * service-layer gap — every read service is scoped to one player, and a
- * cross-player ranking is a gameplay-design decision, not an adapter change.
+ * `/profile` — the trainer, current collection statistics and progress links.
  *
  * "Total captures" is deliberately absent. `owned` counts *active* copies, so
  * presenting it as a lifetime capture count would be wrong the moment a player
@@ -135,8 +129,15 @@ export function ProfilePage() {
             </div>
           )}
           <p className="mt-3 text-xs text-ink-subtle">
-            "Owned" counts your active Waifumon. A lifetime capture total — including released
-            copies — is not exposed by the Platform API yet.
+            "Owned" counts your active Waifumon. Released copies still count toward your lifetime
+            captures, which rank you on the{' '}
+            <Link
+              to="/leaderboards?metric=hunter"
+              className="text-accent underline underline-offset-4"
+            >
+              Most Captures
+            </Link>{' '}
+            leaderboard.
           </p>
         </section>
 
@@ -184,28 +185,38 @@ export function ProfilePage() {
           </Card>
         </section>
 
-        <section aria-labelledby="soon-heading">
+        <section aria-labelledby="progress-links-heading">
           <h2
-            id="soon-heading"
+            id="progress-links-heading"
             className="mb-3 text-sm font-medium tracking-wide text-ink-muted uppercase"
           >
-            Coming later
+            More progress
           </h2>
           <div className="grid gap-4 sm:grid-cols-3">
-            <ComingSoonTile
-              icon={Trophy}
-              title="Achievements"
-              description="Milestones and badges, once the game services model them."
-            />
+            <Link
+              to="/achievements"
+              className="lift rounded-2xl border border-border bg-surface p-5"
+            >
+              <Trophy className="size-5 text-accent" aria-hidden="true" />
+              <h3 className="mt-3 font-medium text-ink">Achievements</h3>
+              <p className="mt-1 text-sm text-ink-muted">
+                View your earned badges and current progress.
+              </p>
+            </Link>
+            <Link
+              to="/leaderboards"
+              className="lift rounded-2xl border border-border bg-surface p-5"
+            >
+              <LibraryBig className="size-5 text-accent" aria-hidden="true" />
+              <h3 className="mt-3 font-medium text-ink">Leaderboards</h3>
+              <p className="mt-1 text-sm text-ink-muted">
+                See your rank among trainers in this server.
+              </p>
+            </Link>
             <ComingSoonTile
               icon={CalendarRange}
               title="Seasonal progress"
               description="Season tracks and rewards are not modelled yet."
-            />
-            <ComingSoonTile
-              icon={LibraryBig}
-              title="Leaderboards"
-              description="Cross-player rankings need a service the API deliberately does not have."
             />
           </div>
         </section>

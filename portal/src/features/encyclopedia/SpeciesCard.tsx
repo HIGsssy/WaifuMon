@@ -42,7 +42,7 @@ export function SpeciesCard({ species, ownedCount, priority = false }: SpeciesCa
       aria-label={
         discovered === true
           ? `${species.name}, ${rarity.label}, ${ownedCount} owned`
-          : `Undiscovered ${rarity.label} species`
+          : `Not owned, ${rarity.label} species`
       }
     >
       <RarityGlowRing
@@ -78,7 +78,7 @@ export function SpeciesCard({ species, ownedCount, priority = false }: SpeciesCa
             </p>
             <div className="mt-auto flex flex-wrap items-center gap-1.5">
               <RarityBadge rarity={species.rarity} />
-              {discovered !== true && <Badge variant="outline">Undiscovered</Badge>}
+              {discovered !== true && <Badge variant="outline">Not owned</Badge>}
             </div>
           </div>
         </div>

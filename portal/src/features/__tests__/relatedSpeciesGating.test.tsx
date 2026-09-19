@@ -363,7 +363,7 @@ describe('navigating between species', () => {
     await user.click(screen.getByRole('link', { name: /\?\?\?/ }));
 
     await screen.findByRole('heading', { level: 1, name: '???' });
-    expect(screen.getByText('Not yet discovered')).toBeInTheDocument();
+    expect(screen.getByText('Not currently owned')).toBeInTheDocument();
 
     const everSeen = watcher.stop();
     expect(everSeen.some((src) => artworkRouteFor(UNKNOWN).test(src))).toBe(false);
@@ -439,7 +439,7 @@ describe('when the ownership walk fails outright', () => {
     const locked = await screen.findAllByText('???');
     expect(locked.length).toBe(CONTENT.length);
     expect(screen.queryByLabelText('Loading the encyclopedia')).toBeNull();
-    expect(screen.getByText(`0 / ${CONTENT.length} discovered`)).toBeInTheDocument();
+    expect(screen.getByText(`0 / ${CONTENT.length} owned`)).toBeInTheDocument();
 
     const everSeen = watcher.stop();
     for (const slug of [SUBJECT, KNOWN, UNKNOWN]) {

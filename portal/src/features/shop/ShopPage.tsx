@@ -20,22 +20,22 @@ import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { CurrencyChip } from '@/components/waifumon/CurrencyChip';
+import { captureItemEffect, temporaryCaptureEffect } from '@/content/items';
 import { cn } from '@/lib/cn';
 
 function ShopTile({ entry }: { entry: ShopCatalogEntry }) {
   const { item, available, availabilityNote, currency } = entry;
+  const itemEffect = captureItemEffect(item) ?? temporaryCaptureEffect(item);
 
   return (
-    <Card
-      className={cn(
-        'relative flex h-full flex-col gap-3',
-        !available && 'opacity-70 grayscale-[0.4]',
-      )}
-    >
+    <Card className="relative flex h-full flex-col gap-3">
       <div className="flex items-start gap-3">
         <div
           aria-hidden="true"
-          className="flex size-12 shrink-0 items-center justify-center rounded-xl border border-border bg-surface-sunken text-2xl"
+          className={cn(
+            'flex size-12 shrink-0 items-center justify-center rounded-xl border border-border bg-surface-sunken text-2xl',
+            !available && 'opacity-70 grayscale-[0.4]',
+          )}
         >
           {item.emoji ?? '🛒'}
         </div>
@@ -51,10 +51,7 @@ function ShopTile({ entry }: { entry: ShopCatalogEntry }) {
         ) : (
           <CurrencyChip kind={currency} value={item.buyPrice} />
         )}
-        {item.isGuaranteedCapture && <Badge variant="outline">Guaranteed</Badge>}
-        {item.captureModifier !== null && !item.isGuaranteedCapture && (
-          <Badge variant="outline">×{item.captureModifier}</Badge>
-        )}
+        {itemEffect && <Badge variant="outline">{itemEffect}</Badge>}
         {/* The service's own words for why a row cannot be bought. */}
         {!available && (
           <Badge variant="danger" className="ml-auto">
@@ -74,7 +71,7 @@ export function ShopPage() {
     <>
       <PageHeader
         title="Shop"
-        description="What is for sale today."
+        description="Items sold across all regional shops."
         actions={
           catalog.data ? (
             <span className="tabular text-sm text-ink-muted">{entries.length} listed</span>
@@ -112,7 +109,7 @@ export function ShopPage() {
             ))}
           </div>
           <p className="mt-8 text-center text-sm text-ink-subtle">
-            Buying happens in Discord — use{' '}
+            Availability in Discord depends on your current region. Buy with{' '}
             <code className="font-mono text-ink">/waifumon shop</code>.
           </p>
         </>

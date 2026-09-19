@@ -86,12 +86,12 @@ export function RecentCatches({ entries, loading, placeholders = 5 }: RecentCatc
         className="mb-3 flex items-center gap-2 text-sm font-medium tracking-wide text-ink-muted uppercase"
       >
         <Clock className="size-3.5" aria-hidden="true" />
-        Recent catches
+        Recently added to your collection
       </h2>
 
       {empty ? (
         <p className="rounded-2xl border border-dashed border-border bg-surface/40 p-5 text-sm text-ink-muted">
-          Nothing caught yet — your most recent Waifumon will appear here.
+          Your most recently caught Waifumon that you still own will appear here.
         </p>
       ) : (
         <div className={TRACK}>

@@ -61,6 +61,8 @@ const PAGES = [
   '/guide',
   '/profile',
   '/settings',
+  '/achievements',
+  '/leaderboards',
   // Admin — Waifumon Gallery (the e2e session holds gallery.read).
   '/admin/gallery',
   '/admin/gallery/neon_kitsune',

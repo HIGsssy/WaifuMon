@@ -34,7 +34,12 @@ type Discovery = 'all' | 'discovered' | 'undiscovered';
 
 const GRID = 'grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 2xl:grid-cols-5';
 
-const DISCOVERY_OPTIONS: readonly Discovery[] = ['all', 'discovered', 'undiscovered'];
+const DISCOVERY_OPTIONS: ReadonlyArray<{ value: Discovery; label: string }> = [
+  { value: 'all', label: 'All' },
+  { value: 'discovered', label: 'Owned' },
+  { value: 'undiscovered', label: 'Not owned' },
+];
+const DISCOVERY_VALUES = DISCOVERY_OPTIONS.map((option) => option.value);
 
 function readParam<T extends string>(raw: string | null, allowed: readonly T[]): T | null {
   return raw !== null && (allowed as readonly string[]).includes(raw) ? (raw as T) : null;
@@ -53,7 +58,7 @@ export function EncyclopediaPage() {
 
   const [searchParams, setSearchParams] = useSearchParams();
   const rarity = readParam(searchParams.get('rarity'), RARITY_ORDER);
-  const discovery = readParam(searchParams.get('discovery'), DISCOVERY_OPTIONS) ?? 'all';
+  const discovery = readParam(searchParams.get('discovery'), DISCOVERY_VALUES) ?? 'all';
   const search = searchParams.get('search') ?? '';
   // Unrecognised values, including the legacy `twin_peaks`, read as All Zones.
   const zoneParam = searchParams.get('zone');
@@ -121,20 +126,20 @@ export function EncyclopediaPage() {
 
   const groups: FilterGroup[] = [
     {
-      label: 'Show',
-      options: DISCOVERY_OPTIONS.map((value) => ({
+      label: 'Ownership',
+      options: DISCOVERY_OPTIONS.map(({ value, label }) => ({
         value,
-        label: titleCase(value),
+        label,
         active: discovery === value,
         onSelect: () => patch('discovery', value === 'all' ? null : value),
       })),
     },
     {
-      label: 'Zone',
+      label: 'Origin',
       options: [
         {
           value: 'all',
-          label: 'All Zones',
+          label: 'All origins',
           active: zone === null,
           onSelect: () => patch('zone', null),
         },
@@ -220,7 +225,7 @@ export function EncyclopediaPage() {
       ? [
           {
             key: 'zone',
-            label: `Zone: ${zoneLabel(zone) ?? 'Unknown'}`,
+            label: `Origin: ${zoneLabel(zone) ?? 'Unknown'}`,
             onRemove: () => patch('zone', null),
           },
         ]
@@ -229,7 +234,9 @@ export function EncyclopediaPage() {
       ? [
           {
             key: 'discovery',
-            label: titleCase(discovery),
+            label:
+              DISCOVERY_OPTIONS.find((option) => option.value === discovery)?.label ??
+              titleCase(discovery),
             onRemove: () => patch('discovery', null),
           },
         ]
@@ -240,12 +247,12 @@ export function EncyclopediaPage() {
     <>
       <PageHeader
         title="Encyclopedia"
-        description="Every species in the world, discovered or not."
+        description="Every enabled species, including those you do not currently own."
         actions={
           species.data && dex.isSettled ? (
             <span className="tabular text-sm text-ink-muted">
-              {zone ? `${zoneLabel(zone)}: ` : ''}
-              {discoveredCount} / {tallied.length} discovered
+              {zone ? `${zoneLabel(zone)} origin: ` : ''}
+              {discoveredCount} / {tallied.length} owned
             </span>
           ) : undefined
         }
@@ -265,8 +272,8 @@ export function EncyclopediaPage() {
               setSearchDraft(value);
               patch('search', value);
             }}
-            searchPlaceholder="Search discovered species..."
-            searchLabel="Search discovered species"
+            searchPlaceholder="Search owned species..."
+            searchLabel="Search owned species"
             groups={groups}
             activeChips={activeChips}
             onClearAll={() => {

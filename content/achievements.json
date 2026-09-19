@@ -3,7 +3,7 @@
     {
       "id": "hunter_1",
       "name": "First Hunt",
-      "description": "Complete your first hunt.",
+      "description": "Resolve your first Waifumon encounter.",
       "category": "hunting",
       "series": "hunter",
       "tier": 1,
@@ -13,7 +13,7 @@
     {
       "id": "hunter_2",
       "name": "Getting the Hang of It",
-      "description": "Complete 25 hunts.",
+      "description": "Resolve 25 Waifumon encounters.",
       "category": "hunting",
       "series": "hunter",
       "tier": 2,
@@ -23,7 +23,7 @@
     {
       "id": "hunter_3",
       "name": "Seasoned Hunter",
-      "description": "Complete 100 hunts.",
+      "description": "Resolve 100 Waifumon encounters.",
       "category": "hunting",
       "series": "hunter",
       "tier": 3,
@@ -33,7 +33,7 @@
     {
       "id": "hunter_4",
       "name": "Relentless",
-      "description": "Complete 500 hunts.",
+      "description": "Resolve 500 Waifumon encounters.",
       "category": "hunting",
       "series": "hunter",
       "tier": 4,
@@ -179,7 +179,7 @@
     {
       "id": "explorer_2",
       "name": "Seasoned Traveller",
-      "description": "Reach 4 regions.",
+      "description": "Unlock travel to all 4 regions.",
       "category": "travel",
       "icon": "🗺️",
       "criteria": { "metric": "regions_visited", "target": 4 }

@@ -257,7 +257,7 @@ function captureInDiscord(): void {
 const ownedSlugsKey = ['player', fixtures.PLAYER_ID, 'collection', 'ownedSlugs'] as const;
 
 /** The header tally, which only renders once both the catalog and overlay land. */
-const SETTLED = /^\d+ \/ \d+ discovered$/;
+const SETTLED = /^\d+ \/ \d+ owned$/;
 
 describe('the ownership overlay after a capture elsewhere', () => {
   it('never presents a species as unowned while the overlay is still loading', async () => {

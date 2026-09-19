@@ -26,10 +26,7 @@ export function AchievementCard({ achievement }: { achievement: Achievement }) {
 
   return (
     <Card
-      className={cn(
-        'flex h-full gap-4',
-        unlocked ? 'border-accent/40' : 'opacity-90',
-      )}
+      className={cn('flex h-full gap-4', unlocked && 'border-accent/40')}
       data-testid="achievement-card"
       data-unlocked={unlocked}
       data-hidden={hidden}
@@ -40,7 +37,7 @@ export function AchievementCard({ achievement }: { achievement: Achievement }) {
           'flex size-12 shrink-0 items-center justify-center rounded-xl border text-2xl',
           unlocked
             ? 'border-accent/40 bg-accent-soft'
-            : 'border-border bg-surface-sunken grayscale',
+            : 'border-border bg-surface-sunken opacity-90 grayscale',
         )}
       >
         {concealed ? '❓' : (achievement.icon ?? '🏅')}

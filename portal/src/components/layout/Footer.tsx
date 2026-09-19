@@ -15,7 +15,7 @@ export function Footer() {
     <footer className="mt-auto border-t border-border px-4 py-6 text-xs text-ink-subtle sm:px-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p>
-          Waifumon Portal v{portalEnv.appVersion} — a read-only companion. The game happens in
+          Waifumon Portal v{portalEnv.appVersion} — a web companion. Player gameplay happens in
           Discord.
         </p>
         {import.meta.env.DEV && (

@@ -11,6 +11,7 @@
 import type { Page, Route } from '@playwright/test';
 
 import type {
+  AchievementsResponse,
   Affinity,
   AppearanceCatalogEntry,
   AppearanceGallery,
@@ -19,6 +20,7 @@ import type {
   DexStats,
   InventoryEntry,
   Item,
+  LeaderboardResponse,
   OwnedEntry,
   Player,
   Race,
@@ -129,16 +131,53 @@ const ITEMS: Item[] = [
     description: 'A simple heart-shaped charm.',
     emoji: '💗',
     enabled: true,
-    purchasable: true,
     buyPrice: 25,
     priceCurrency: 'waifubux',
+    shopRegions: ['waifu-valley'],
     captureModifier: 1,
+    captureBonus: null,
+    captureRarities: [],
     isGuaranteedCapture: false,
     effectType: null,
     effectConfig: null,
     dailyStockLimit: null,
   },
 ];
+
+/** One unlocked and one locked-in-progress card: the locked one carries progress text. */
+const ACHIEVEMENTS: AchievementsResponse = {
+  summary: { total: 2, unlocked: 1, completionPercent: 50 },
+  achievements: [
+    {
+      id: 'hunter_1',
+      category: 'hunting',
+      hidden: false,
+      status: 'unlocked',
+      unlocked: true,
+      unlockedAt: '2026-05-01T10:00:00.000Z',
+      name: 'First Hunt',
+      description: 'Resolve your first Waifumon encounter.',
+      icon: '🌱',
+      series: 'hunter',
+      tier: 1,
+      progress: { current: 1, target: 1 },
+    },
+    {
+      id: 'hunter_3',
+      category: 'hunting',
+      hidden: false,
+      status: 'in_progress',
+      unlocked: false,
+      unlockedAt: null,
+      name: 'Seasoned Hunter',
+      description: 'Resolve 100 Waifumon encounters.',
+      icon: '🎯',
+      series: 'hunter',
+      tier: 3,
+      progress: { current: 82, target: 100 },
+    },
+  ],
+};
 
 const TABLES = {
   energy: {
@@ -216,12 +255,21 @@ const ROUTES: ReadonlyArray<[RegExp, () => string]> = [
         maxEnergy: 25,
       } satisfies CareState),
   ],
+  [/\/api\/v1\/players\/\d+\/achievements$/, () => envelope(ACHIEVEMENTS)],
+  [/\/api\/v1\/leaderboards$/, () => envelope(LEADERBOARD)],
   [/\/api\/v1\/players\/\d+$/, () => envelope(PLAYER)],
   [
     /\/api\/v1\/shop\/catalog$/,
     () =>
       envelope([
         { item: ITEMS[0]!, available: true, availabilityNote: null, currency: 'waifubux' },
+        // An unavailable tile, so the axe pass covers its styling too.
+        {
+          item: { ...ITEMS[0]!, id: 2, slug: 'silk_charm', name: 'Silk Charm' },
+          available: false,
+          availabilityNote: 'Not sold in your current region',
+          currency: 'waifubux',
+        },
       ] satisfies ShopCatalogEntry[]),
   ],
   [/\/api\/v1\/admin\/gallery\/species$/, () => envelope(GALLERY_CATALOG)],
@@ -369,6 +417,22 @@ const PLAYER: Player & { identity: NonNullable<Player['identity']> } = {
   lastHuntAt: '2026-08-06T09:14:00.000Z',
   careMode: { active: false, waifuId: null, startedAt: null },
   createdAt: '2026-05-01T12:00:00.000Z',
+};
+
+/** The caller's own row is on the page, so its "You" tag renders on the accent row. */
+const LEADERBOARD: LeaderboardResponse = {
+  metric: 'trainer',
+  entries: [
+    { rank: 1, playerId: 7, displayName: 'Vex', avatarUrl: null, isMe: false },
+    {
+      rank: 2,
+      playerId: PLAYER.id,
+      displayName: PLAYER.identity.displayName,
+      avatarUrl: null,
+      isMe: true,
+    },
+  ],
+  me: { rank: 2 },
 };
 
 async function respond(route: Route): Promise<void> {

@@ -68,7 +68,7 @@ export function CareCard({ care, targetName }: { care: CareState; targetName: st
               {care.nextTickAt ? formatRelative(care.nextTickAt) : '—'}
             </dd>
 
-            <dt className="text-ink-muted">Pending ticks</dt>
+            <dt className="text-ink-muted">Accrued ticks (forecast)</dt>
             <dd className="tabular text-right text-ink">{formatNumber(care.pendingTicks)}</dd>
 
             <dt className="text-ink-muted">Interval</dt>
@@ -97,15 +97,15 @@ export function CareCard({ care, targetName }: { care: CareState; targetName: st
 
       <dl className="mt-4 grid grid-cols-3 gap-3 border-t border-border pt-4 text-center">
         <div>
-          <dt className="text-xs text-ink-muted">Energy / tick</dt>
+          <dt className="text-xs text-ink-muted">Base Energy / tick</dt>
           <dd className="tabular text-sm text-ink">{care.energyPerTick}</dd>
         </div>
         <div>
-          <dt className="text-xs text-ink-muted">XP / tick</dt>
+          <dt className="text-xs text-ink-muted">Base XP / tick</dt>
           <dd className="tabular text-sm text-ink">{care.waifuXpPerTick}</dd>
         </div>
         <div>
-          <dt className="text-xs text-ink-muted">Affection / tick</dt>
+          <dt className="text-xs text-ink-muted">Base Affection / tick</dt>
           <dd className="tabular text-sm text-ink">{care.affectionPerTick}</dd>
         </div>
       </dl>

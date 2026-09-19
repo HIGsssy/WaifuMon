@@ -54,8 +54,9 @@ export function ContentRatingPill({ rating, className }: { rating: string; class
 }
 
 /**
- * The species' zone, by its player-facing name. Renders nothing for a species
- * with no recognised zone tag — see `@/lib/zone`.
+ * The species' authored origin, by its player-facing name. This is content
+ * provenance, not a complete list of regional hunt pools. Renders nothing for
+ * a species with no recognised origin tag — see `@/lib/zone`.
  */
 export function ZonePill({
   species,
@@ -69,7 +70,7 @@ export function ZonePill({
   return (
     <Badge variant="outline" className={cn('gap-1', className)}>
       <MapPin className="size-3 opacity-70" aria-hidden="true" />
-      <span className="sr-only">Zone: </span>
+      <span className="sr-only">Origin: </span>
       {zone.label}
     </Badge>
   );

@@ -1,14 +1,9 @@
 /**
- * `/settings` — theme and About (plan §8.10).
+ * `/settings` — theme, session context and build information.
  *
- * The only enabled entry among the four reserved sidebar slots, and the only
- * page in the Portal with a control that changes anything. That control changes
- * a CSS class, not game state: the read-only rule is about the Platform API,
- * and the theme never leaves the browser.
- *
- * The About card restates the dev-auth caveat in full. §26 lists "users mistake
- * dev-auth for real auth" as a high-impact risk, and the header chip alone is
- * easy to stop seeing.
+ * Development keeps an explicit warning about the local player picker and
+ * shared bearer token. Production uses Discord OAuth, so it shows the signed-in
+ * identity instead of the retired pre-OAuth warning.
  */
 import { Info, Moon, ShieldAlert, Sun } from 'lucide-react';
 
@@ -79,38 +74,40 @@ export function SettingsPage() {
           </div>
         </Card>
 
-        <Card>
-          <div className="flex items-start gap-3">
-            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-2.5 text-amber-800 dark:text-amber-200">
-              <ShieldAlert className="size-4" aria-hidden="true" />
+        {import.meta.env.DEV ? (
+          <Card>
+            <div className="flex items-start gap-3">
+              <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-2.5 text-amber-800 dark:text-amber-200">
+                <ShieldAlert className="size-4" aria-hidden="true" />
+              </div>
+              <div className="min-w-0">
+                <h2 className="font-medium text-ink">This is a development build</h2>
+                <p className="mt-2 text-sm text-ink-muted">
+                  The developer picker is not authentication. This browser acts as whichever player
+                  you selected and carries the Platform API's shared development token. Keep this
+                  build on your own machine or a trusted network.
+                </p>
+                <SwitchPlayerButton className="mt-3 -ml-2" />
+              </div>
             </div>
-            <div className="min-w-0">
-              <h2 className="font-medium text-ink">This is a development build</h2>
-              <p className="mt-2 text-sm text-ink-muted">
-                The Portal has no authentication.{' '}
-                {import.meta.env.DEV ? (
-                  <>
-                    It acts as whichever player you chose on the developer login screen, and it
-                    carries the Platform API's shared token in the page itself.
-                  </>
-                ) : (
-                  <>
-                    It acts as whichever player{' '}
-                    <code className="font-mono text-ink">VITE_DEFAULT_PLAYER_ID</code> names, and it
-                    carries the Platform API's shared token in the page itself.
-                  </>
-                )}{' '}
-                Anyone who can reach this address is that player.
-              </p>
-              <p className="mt-2 text-sm text-ink-muted">
-                Discord sign-in replaces this before the Portal is ever deployed anywhere. Until
-                then, keep it on your own machine.
-              </p>
-              {/* Compile-time constant: a production build drops this entirely. */}
-              {import.meta.env.DEV && <SwitchPlayerButton className="mt-3 -ml-2" />}
+          </Card>
+        ) : (
+          <Card>
+            <div className="flex items-start gap-3">
+              <div className="rounded-xl border border-border bg-surface-raised p-2.5 text-accent">
+                <ShieldAlert className="size-4" aria-hidden="true" />
+              </div>
+              <div className="min-w-0">
+                <h2 className="font-medium text-ink">Signed in with Discord</h2>
+                <p className="mt-2 text-sm text-ink-muted">
+                  You are viewing Waifumon as{' '}
+                  <strong className="text-ink">{session.displayName}</strong> in the selected
+                  Discord server. Use Sign out in the header to end this Portal session.
+                </p>
+              </div>
             </div>
-          </div>
-        </Card>
+          </Card>
+        )}
 
         <Card>
           <div className="flex items-start gap-3">
@@ -140,8 +137,8 @@ export function SettingsPage() {
                 </div>
               </dl>
               <p className="mt-3 text-xs text-ink-subtle">
-                The Portal is a read-only companion. Gameplay lives in Discord, and the Platform API
-                is the only thing this page talks to.
+                Player features are browse-only and gameplay happens in Discord. Permission-gated
+                administration tools can update game configuration.
               </p>
               {import.meta.env.DEV && (
                 <Button asChild variant="ghost" size="sm" className="mt-3 -ml-2">

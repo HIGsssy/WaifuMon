@@ -184,7 +184,7 @@ export function CollectionPage({
         description={
           isPublic
             ? `A read-only view of ${ownerName ?? 'this trainer'}'s Waifumon.`
-            : 'Every Waifumon you have caught.'
+            : 'Every Waifumon you currently own.'
         }
         actions={
           collection.data ? (
@@ -218,14 +218,14 @@ export function CollectionPage({
         isPublic ? (
           <EmptyState
             icon={LibraryBig}
-            title="No Waifumon yet"
-            description={`${ownerName ?? 'This trainer'} has not caught anything yet.`}
+            title="No active Waifumon"
+            description={`${ownerName ?? 'This trainer'} does not currently own any Waifumon.`}
           />
         ) : (
           <EmptyState
             icon={LibraryBig}
-            title="Your collection is empty"
-            description="No Waifumon yet — the hunt starts in Discord."
+            title="Your active collection is empty"
+            description="You do not currently own any Waifumon — the hunt starts in Discord."
             hint={
               <>
                 Head to Discord and try <code className="font-mono text-ink">/waifumon hunt</code>.

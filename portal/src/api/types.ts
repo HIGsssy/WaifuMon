@@ -249,10 +249,15 @@ export interface ItemFields {
   description: string;
   emoji: string | null;
   enabled: boolean;
-  purchasable: boolean;
   buyPrice: number | null;
   priceCurrency: PriceCurrency;
+  /** Region ids whose shops sell this item; empty means it is sold nowhere. */
+  shopRegions: string[];
   captureModifier: number | null;
+  /** Flat additive capture chance in probability points (0.15 = +15 points). */
+  captureBonus: number | null;
+  /** Rarities this capture item may be used against; null means every rarity. */
+  captureRarities: string[] | null;
   isGuaranteedCapture: boolean;
   effectType: string | null;
   effectConfig: Record<string, unknown> | null;

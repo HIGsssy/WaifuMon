@@ -88,6 +88,17 @@ describe('InventoryPage', () => {
     expect(screen.getByText('Not for sale')).toBeInTheDocument();
   });
 
+  it('marks only items sold in no regional shop as not for sale', async () => {
+    renderAt('/inventory');
+
+    // The API sends `shopRegions`, not a `purchasable` flag: Basic Charm is
+    // stocked in a region, Moon Shard in none.
+    const charm = (await screen.findByRole('heading', { name: 'Basic Charm' })).closest('li')!;
+    const shard = screen.getByRole('heading', { name: 'Moon Shard' }).closest('li')!;
+    expect(within(charm).queryByText('Not for sale')).toBeNull();
+    expect(within(shard).getByText('Not for sale')).toBeInTheDocument();
+  });
+
   it('offers no "use item" control', async () => {
     renderAt('/inventory');
     await screen.findByText('Basic Charm');
@@ -159,7 +170,7 @@ describe('EncyclopediaPage', () => {
     // Owned species are named; the third fixture species is not owned.
     expect(await screen.findByText('Void Empress')).toBeInTheDocument();
     expect(screen.getByText('Neon Kitsune')).toBeInTheDocument();
-    expect(screen.getByText('3 / 3 discovered')).toBeInTheDocument();
+    expect(screen.getByText('3 / 3 owned')).toBeInTheDocument();
   });
 
   it('hides undiscovered names behind ??? and a silhouette', async () => {
@@ -173,7 +184,7 @@ describe('EncyclopediaPage', () => {
     await waitFor(() => expect(screen.getAllByText('???').length).toBe(3));
     expect(screen.queryByText('Void Empress')).toBeNull();
     expect(screen.getAllByAltText('Undiscovered Waifumon silhouette').length).toBe(3);
-    expect(screen.getByText('0 / 3 discovered')).toBeInTheDocument();
+    expect(screen.getByText('0 / 3 owned')).toBeInTheDocument();
   });
 
   it('filters by discovery state', async () => {
@@ -188,7 +199,7 @@ describe('EncyclopediaPage', () => {
 
     await screen.findByText('Void Empress');
     await user.click(screen.getByRole('button', { name: 'Open filters' }));
-    await user.click(screen.getByRole('button', { name: 'Undiscovered' }));
+    await user.click(screen.getByRole('button', { name: 'Not owned' }));
 
     await waitFor(() => expect(screen.queryByText('Void Empress')).toBeNull());
     expect(screen.getAllByText('???').length).toBe(2);
@@ -293,7 +304,7 @@ describe('SpeciesDetailPage', () => {
     renderAt('/encyclopedia/void_empress');
 
     expect(await screen.findByRole('heading', { name: '???' })).toBeInTheDocument();
-    expect(screen.getByText('Not yet discovered')).toBeInTheDocument();
+    expect(screen.getByText('Not currently owned')).toBeInTheDocument();
     expect(screen.queryByText(fixtures.contentSpecies[2]!.description)).toBeNull();
   });
 
@@ -321,21 +332,31 @@ describe('ProfilePage', () => {
     expect(await screen.findByText('18 / 58')).toBeInTheDocument();
   });
 
-  it('reserves slots for unbuilt features instead of hiding them', async () => {
+  it('links shipped progress features and reserves a slot for unbuilt ones', async () => {
     renderAt('/profile');
 
     await screen.findByRole('heading', { name: 'Mika' });
-    // Scoped to the section: the sidebar reserves its own Achievements slot.
-    const section = screen.getByRole('region', { name: 'Coming later' });
-    for (const title of ['Achievements', 'Seasonal progress', 'Leaderboards']) {
-      expect(within(section).getByText(title)).toBeInTheDocument();
-    }
-    expect(within(section).getAllByText('Coming Soon').length).toBe(3);
+    // Scoped to the section: the sidebar has its own Achievements link.
+    const section = screen.getByRole('region', { name: 'More progress' });
+    expect(within(section).getByRole('link', { name: /Achievements/ })).toHaveAttribute(
+      'href',
+      '/achievements',
+    );
+    expect(within(section).getByRole('link', { name: /Leaderboards/ })).toHaveAttribute(
+      'href',
+      '/leaderboards',
+    );
+    expect(within(section).getByText('Seasonal progress')).toBeInTheDocument();
+    expect(within(section).getAllByText('Coming Soon').length).toBe(1);
   });
 
-  it('says plainly that a lifetime capture total is not available', async () => {
+  it('explains that Owned excludes released copies and where lifetime captures count', async () => {
     renderAt('/profile');
-    expect(await screen.findByText(/lifetime capture total/i)).toBeInTheDocument();
+    expect(await screen.findByText(/counts your active Waifumon/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Most Captures' })).toHaveAttribute(
+      'href',
+      '/leaderboards?metric=hunter',
+    );
   });
 
   it('keeps the page usable when statistics fail', async () => {
@@ -362,8 +383,8 @@ describe('GuidePage', () => {
     expect(await screen.findByRole('heading', { name: 'Hunting' })).toBeInTheDocument();
     // 120 seconds, presented to a player as minutes.
     expect(await screen.findByText('2 minutes')).toBeInTheDocument();
-    expect(screen.getByText('2-second')).toBeInTheDocument();
-    expect(screen.getByText('25 energy')).toBeInTheDocument();
+    expect(screen.getByText('2-second cooldown')).toBeInTheDocument();
+    expect(screen.getByText('25 Energy')).toBeInTheDocument();
 
     // §8.9: no raw JSON and no tuning key names anywhere on the page.
     for (const key of ['encounterExpirySeconds', 'baseRatesByRarity', 'levelCurve', '{"']) {
@@ -374,9 +395,9 @@ describe('GuidePage', () => {
   it('turns base capture rates into a player-facing table', async () => {
     renderAt('/guide');
 
-    expect(await screen.findByRole('heading', { name: 'Capture odds' })).toBeInTheDocument();
-    const tables = screen.getAllByRole('table');
-    const oddsTable = tables.find((table) => table.textContent?.includes('%'))!;
+    expect(await screen.findByRole('heading', { name: 'Capturing Waifumon' })).toBeInTheDocument();
+    const oddsRegion = await screen.findByRole('region', { name: 'Base capture chance table' });
+    const oddsTable = within(oddsRegion).getByRole('table');
     expect(within(oddsTable).getByText('50%')).toBeInTheDocument();
     expect(within(oddsTable).getByText('Rarity: Ultra Rare')).toBeInTheDocument();
   });
@@ -388,10 +409,11 @@ describe('GuidePage', () => {
 
     expect(await screen.findByRole('heading', { name: 'Hunting' })).toBeInTheDocument();
     // The section still renders; only the data-backed lines are gone, and the
-    // capture-odds section drops out rather than rendering an empty table.
-    expect(await screen.findByText(/Charms improve your odds/)).toBeInTheDocument();
+    // base-rate table drops out rather than rendering empty.
+    expect(await screen.findByText(/Rarity is rolled separately/)).toBeInTheDocument();
     expect(screen.queryByText('2 minutes')).toBeNull();
-    expect(screen.queryByRole('heading', { name: 'Capture odds' })).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Capturing Waifumon' })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Base capture chance table' })).toBeNull();
   });
 
   it('builds the charm table from the item catalogue', async () => {
@@ -404,13 +426,13 @@ describe('GuidePage', () => {
       .getAllByRole('table')
       .find((table) => table.textContent?.includes('Basic Charm'))!;
     expect(within(charmTable).getByText(/Basic Charm/)).toBeInTheDocument();
-    expect(within(charmTable).getByText('×1.5 odds')).toBeInTheDocument();
+    expect(within(charmTable).getByText('×1.5 base capture chance')).toBeInTheDocument();
   });
 
   it('says evolution is not modelled yet rather than inventing it', async () => {
     renderAt('/guide');
-    expect(await screen.findByRole('heading', { name: 'Evolution' })).toBeInTheDocument();
-    expect(screen.getByText('Deep dive coming soon')).toBeInTheDocument();
+    expect(await screen.findByText('There is currently no separate evolution system.')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /Evolution/ })).toBeNull();
   });
 });
 

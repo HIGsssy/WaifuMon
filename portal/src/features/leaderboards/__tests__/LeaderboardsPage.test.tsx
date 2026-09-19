@@ -6,7 +6,7 @@
  * row — and, above all, **never renders a raw metric value** (plan §10). The
  * fixture carries no value, so the page cannot, and this suite locks that in.
  */
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http } from 'msw';
 import { describe, expect, it } from 'vitest';
@@ -44,10 +44,14 @@ describe('LeaderboardsPage', () => {
     // A board whose (backend-only) values are large; the API still omits them,
     // so no digits from a score may appear on screen.
     renderLeaderboards();
-    await screen.findByRole('link', { name: /Vex/ });
+    const row = await screen.findByRole('link', { name: /Vex/ });
     // Ranks 1, 2, 2, 4 are the only numerals expected — never a score.
     expect(screen.queryByText(/125000/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/\bxp\b/i)).not.toBeInTheDocument();
+    // The category description names the metric ("Ranked by Trainer XP."); the
+    // ranked rows themselves must never carry a unit or score.
+    const list = row.closest('ol');
+    expect(list).not.toBeNull();
+    expect(within(list!).queryByText(/\bxp\b/i)).not.toBeInTheDocument();
   });
 
   it('switches metric from the toolbar', async () => {
@@ -62,7 +66,7 @@ describe('LeaderboardsPage', () => {
 
     renderLeaderboards();
     await screen.findByRole('link', { name: /Vex/ });
-    await user.click(screen.getByRole('tab', { name: 'Elite Hunters' }));
+    await user.click(screen.getByRole('tab', { name: 'Most Captures' }));
     await waitFor(() => expect(requestedMetric).toBe('hunter'));
   });
 

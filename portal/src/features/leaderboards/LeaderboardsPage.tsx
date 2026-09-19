@@ -30,15 +30,32 @@ import { formatNumber } from '@/lib/format';
 interface MetricTab {
   metric: LeaderboardMetric;
   label: string;
+  description: string;
 }
 
 /** Player-facing category names mapped to their internal metric. */
 const METRICS: readonly MetricTab[] = [
-  { metric: 'trainer', label: 'Top Trainers' },
-  { metric: 'collector', label: 'Master Collectors' },
-  { metric: 'hunter', label: 'Elite Hunters' },
-  { metric: 'devoted', label: 'Most Devoted' },
-  { metric: 'legendary', label: 'Legendary Hunters' },
+  { metric: 'trainer', label: 'Top Trainers', description: 'Ranked by Trainer XP.' },
+  {
+    metric: 'collector',
+    label: 'Most Species Owned',
+    description: 'Ranked by distinct species currently owned.',
+  },
+  {
+    metric: 'hunter',
+    label: 'Most Captures',
+    description: 'Ranked by all Waifumon copies ever captured.',
+  },
+  {
+    metric: 'devoted',
+    label: 'Most Devoted',
+    description: "Ranked by each trainer's current Buddy affection.",
+  },
+  {
+    metric: 'legendary',
+    label: 'Most UR+ Captures',
+    description: 'Ranked by UR, LR and EX copies ever captured.',
+  },
 ];
 
 function isMetric(value: string | null): value is LeaderboardMetric {
@@ -70,7 +87,7 @@ function LeaderboardRow({ entry }: { entry: LeaderboardEntry }) {
         />
         <span className="min-w-0 flex-1 truncate font-medium text-ink">
           {entry.displayName}
-          {entry.isMe && <span className="ml-2 text-xs text-ink-subtle">You</span>}
+          {entry.isMe && <span className="ml-2 text-xs text-ink-muted">You</span>}
         </span>
       </Link>
     </li>
@@ -90,6 +107,7 @@ export function LeaderboardsPage() {
   const entries = query.data?.entries ?? [];
   const me = query.data?.me ?? null;
   const meInPage = entries.some((e) => e.isMe);
+  const metricDescription = METRICS.find((entry) => entry.metric === metric)?.description;
 
   return (
     <>
@@ -131,6 +149,7 @@ export function LeaderboardsPage() {
             );
           })}
         </div>
+        {metricDescription && <p className="text-sm text-ink-muted">{metricDescription}</p>}
 
         {query.isError ? (
           <ErrorState
@@ -166,7 +185,7 @@ export function LeaderboardsPage() {
                   </span>
                   <span className="flex-1 font-medium text-ink">
                     You
-                    <span className="ml-2 text-xs text-ink-subtle">
+                    <span className="ml-2 text-xs text-ink-muted">
                       not in the top {entries.length}
                     </span>
                   </span>

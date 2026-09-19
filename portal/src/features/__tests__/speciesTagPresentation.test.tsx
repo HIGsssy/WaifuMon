@@ -60,8 +60,8 @@ describe.each(surfaces)('$name', (surface) => {
   ])('shows %j as the Zone "%s", never as raw tags', async (tags, label) => {
     await show(tags);
 
-    expect(screen.getByText('Zone:', { exact: false }).parentElement).toHaveTextContent(
-      `Zone: ${label}`,
+    expect(screen.getByText('Origin:', { exact: false }).parentElement).toHaveTextContent(
+      `Origin: ${label}`,
     );
     expect(document.body.textContent).not.toMatch(RAW_TAGS);
   });
@@ -80,7 +80,7 @@ describe.each(surfaces)('$name', (surface) => {
   it('renders normally, with no Zone field, when no zone tag is recognised', async () => {
     await show(['expansion', 'region_exclusive']);
 
-    expect(screen.queryByText('Zone:', { exact: false })).toBeNull();
+    expect(screen.queryByText('Origin:', { exact: false })).toBeNull();
     expect(screen.getByText('Rarity: Ultra Rare')).toBeInTheDocument();
     expect(screen.getByText('Zone Exclusive')).toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(RAW_TAGS);
@@ -89,7 +89,7 @@ describe.each(surfaces)('$name', (surface) => {
   it('does not leak unknown or legacy tags', async () => {
     await show(['internal_flag', 'twin_peaks', 'some_future_flag']);
 
-    expect(screen.queryByText('Zone:', { exact: false })).toBeNull();
+    expect(screen.queryByText('Origin:', { exact: false })).toBeNull();
     expect(document.body.textContent).not.toMatch(RAW_TAGS);
     expect(document.body.textContent).not.toMatch(/some_future_flag/);
   });
@@ -105,15 +105,15 @@ describe('undiscovered encyclopedia entry', () => {
       http.get('/api/v1/players/:playerId/collection/owned', () => pageEnvelope([], 1, 25, 0)),
     );
     surfaces[1]!.render(tags);
-    await screen.findByText('Not yet discovered');
+    await screen.findByText('Not currently owned');
     expect(screen.getByRole('heading', { name: '???', level: 1 })).toBeInTheDocument();
   }
 
   it('shows the Zone before discovery', async () => {
     await showUndiscovered(['expansion', 'region_exclusive', 'twin_peeks']);
 
-    expect(screen.getByText('Zone:', { exact: false }).parentElement).toHaveTextContent(
-      'Zone: Twin Peeks',
+    expect(screen.getByText('Origin:', { exact: false }).parentElement).toHaveTextContent(
+      'Origin: Twin Peeks',
     );
     expect(document.body.textContent).not.toMatch(RAW_TAGS);
   });
@@ -130,6 +130,6 @@ describe('undiscovered encyclopedia entry', () => {
 
   it('omits the Zone when no zone tag is recognised', async () => {
     await showUndiscovered(['expansion', 'region_exclusive']);
-    expect(screen.queryByText('Zone:', { exact: false })).toBeNull();
+    expect(screen.queryByText('Origin:', { exact: false })).toBeNull();
   });
 });
