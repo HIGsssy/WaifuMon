@@ -34,7 +34,7 @@
  *     that cannot be honoured (inventory capacity) leaves the row untouched
  *     and explains itself; nothing is ever discarded.
  */
-import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
 import type { Db, DbOrTx } from '../../db/client';
 import {
   affectionGiftRolls,
@@ -403,18 +403,43 @@ export function createAffectionGiftService(
     now: Date = new Date(),
   ): Promise<GiftClaimResult> {
     return db.transaction(async (tx) => {
-      // Lock the gift row. A concurrent claim blocks here and then finds
-      // `claimed_at` set, which is what turns a double-click into one grant.
+      // Lock the *pending* gift — the same `claimed_at IS NULL` definition
+      // every indicator and the Accept button read. At most one exists (the
+      // `affection_gifts_waifu_unclaimed_uq` partial index). Selecting by copy
+      // alone used to lock her oldest, long-claimed gift, which made every
+      // later gift on the same copy unclaimable.
+      //
+      // A concurrent claim blocks on this lock; once the winner commits,
+      // Postgres re-checks the row, finds `claimed_at` set and returns nothing,
+      // so the loser falls through to the "already claimed" branch below.
       const [locked] = await tx
         .select()
         .from(affectionGifts)
         .where(
-          and(eq(affectionGifts.playerId, playerId), eq(affectionGifts.waifuId, waifuId)),
+          and(
+            eq(affectionGifts.playerId, playerId),
+            eq(affectionGifts.waifuId, waifuId),
+            isNull(affectionGifts.claimedAt),
+          ),
         )
-        .orderBy(asc(affectionGifts.id))
+        .limit(1)
         .for('update');
-      if (!locked) throw new GiftNotFoundError();
-      if (locked.claimedAt != null) throw new GiftAlreadyClaimedError();
+      if (!locked) {
+        // Nothing pending. A copy that has given a gift before reads as a
+        // retry or a double-click; one that never has is simply not holding one.
+        const [previous] = await tx
+          .select({ id: affectionGifts.id })
+          .from(affectionGifts)
+          .where(
+            and(
+              eq(affectionGifts.playerId, playerId),
+              eq(affectionGifts.waifuId, waifuId),
+              isNotNull(affectionGifts.claimedAt),
+            ),
+          )
+          .limit(1);
+        throw previous ? new GiftAlreadyClaimedError() : new GiftNotFoundError();
+      }
 
       const [item] = await tx.select().from(items).where(eq(items.slug, locked.itemSlug));
       if (!item || !item.enabled) throw new ItemNotFoundError(locked.itemSlug);

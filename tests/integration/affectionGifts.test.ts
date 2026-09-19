@@ -556,3 +556,174 @@ describe('claiming', () => {
     expect(await app.inventory.getQuantity(playerId, row.id)).toBe(0);
   });
 });
+
+// ───────────────────── a second gift on the same copy ─────────────────────
+//
+// Regression: `claimGift` used to lock the copy's *oldest* gift row whatever
+// its claim status. Once a copy had given one gift, every later gift on her
+// showed as waiting (the indicators filter `claimed_at IS NULL`) but refused
+// with "already accepted" — and, still pending, froze her daily rolls.
+
+describe('a second gift on the same copy', () => {
+  const DAY_A = '2026-08-26T12:00:00.000Z';
+  const DAY_B = '2026-08-27T12:00:00.000Z';
+
+  /**
+   * Gift A generated on DAY_A and claimed, then gift B generated on DAY_B for
+   * the same copy. `lootDraw` picks B's loot bucket so B can differ from A.
+   */
+  async function claimedThenPending(lootDraw = 0.5) {
+    const waifu = await giveWaifu(5000);
+    await setBuddy(waifu.id);
+    await roll(giftService(scriptedRng([0, 0])), DAY_A);
+    const claimA = await app.gifts.claimGift(playerId, waifu.id);
+    const rollB = await roll(giftService(scriptedRng([0, lootDraw])), DAY_B);
+    expect(rollB.rolled).toBe(true);
+    const giftB = rollB.rolled ? rollB.outcome.gift : null;
+    expect(giftB).not.toBeNull();
+    return { waifu, giftA: claimA.gift, giftB: giftB! };
+  }
+
+  async function giftRow(id: number) {
+    const [row] = await t.db.select().from(affectionGifts).where(eq(affectionGifts.id, id));
+    return row!;
+  }
+
+  /** What each read path says about the copy. They must never disagree. */
+  async function pendingViews(waifuId: number) {
+    return {
+      getPendingGift: (await app.gifts.getPendingGift(playerId, waifuId)) !== null,
+      listPendingGifts: (await app.gifts.listPendingGifts(playerId)).some(
+        (g) => g.waifu.id === waifuId,
+      ),
+      pendingWaifuIds: (await app.gifts.pendingWaifuIds(playerId)).has(waifuId),
+    };
+  }
+
+  it('claims gift B, granting exactly its item once and leaving A untouched', async () => {
+    const { waifu, giftA, giftB } = await claimedThenPending();
+    expect(giftB.id).not.toBe(giftA.id);
+    expect(giftB.itemSlug).not.toBe(giftA.itemSlug);
+
+    // Every read path agrees B is waiting…
+    expect(await pendingViews(waifu.id)).toEqual({
+      getPendingGift: true,
+      listPendingGifts: true,
+      pendingWaifuIds: true,
+    });
+
+    const itemB = await getItemBySlug(t.db, giftB.itemSlug);
+    const itemA = await getItemBySlug(t.db, giftA.itemSlug);
+    const beforeB = await app.inventory.getQuantity(playerId, itemB.id);
+    const beforeA = await app.inventory.getQuantity(playerId, itemA.id);
+
+    // …and the claim agrees too: it takes B, not the long-claimed A.
+    const claim = await app.gifts.claimGift(playerId, waifu.id);
+    expect(claim.gift.id).toBe(giftB.id);
+    expect(claim.item.slug).toBe(giftB.itemSlug);
+    expect(claim.quantity).toBe(giftB.quantity);
+    expect(await app.inventory.getQuantity(playerId, itemB.id)).toBe(beforeB + giftB.quantity);
+    expect(await app.inventory.getQuantity(playerId, itemA.id)).toBe(beforeA);
+
+    expect((await giftRow(giftB.id)).claimedAt).not.toBeNull();
+    expect(await giftRow(giftA.id)).toEqual(giftA);
+
+    // Afterwards every read path, and a further claim, agree nothing waits.
+    expect(await pendingViews(waifu.id)).toEqual({
+      getPendingGift: false,
+      listPendingGifts: false,
+      pendingWaifuIds: false,
+    });
+    await expect(app.gifts.claimGift(playerId, waifu.id)).rejects.toBeInstanceOf(
+      GiftAlreadyClaimedError,
+    );
+  });
+
+  it('a retry after claiming B is "already claimed" and grants nothing more', async () => {
+    const { waifu, giftB } = await claimedThenPending();
+    const itemB = await getItemBySlug(t.db, giftB.itemSlug);
+    await app.gifts.claimGift(playerId, waifu.id);
+    const after = await app.inventory.getQuantity(playerId, itemB.id);
+
+    await expect(app.gifts.claimGift(playerId, waifu.id)).rejects.toBeInstanceOf(
+      GiftAlreadyClaimedError,
+    );
+    expect(await app.inventory.getQuantity(playerId, itemB.id)).toBe(after);
+  });
+
+  it('concurrent claims of B grant exactly once; the loser reads "already claimed"', async () => {
+    const { waifu, giftB } = await claimedThenPending();
+    const itemB = await getItemBySlug(t.db, giftB.itemSlug);
+    const before = await app.inventory.getQuantity(playerId, itemB.id);
+
+    const results = await Promise.allSettled([
+      app.gifts.claimGift(playerId, waifu.id),
+      app.gifts.claimGift(playerId, waifu.id),
+    ]);
+    const fulfilled = results.filter((r) => r.status === 'fulfilled');
+    const rejected = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]!.reason).toBeInstanceOf(GiftAlreadyClaimedError);
+    expect(await app.inventory.getQuantity(playerId, itemB.id)).toBe(before + giftB.quantity);
+  });
+
+  /**
+   * The RNG draw that lands mid-bucket on the first capture-category loot
+   * entry, read from the live table so a retuned loot table cannot move it.
+   */
+  async function captureLootDraw(): Promise<{ draw: number; slug: string }> {
+    const table = app.content.tables.affectionGifts.lootTable;
+    const total = table.reduce((sum, e) => sum + e.weight, 0);
+    let before = 0;
+    for (const entry of table) {
+      if ((await getItemBySlug(t.db, entry.slug)).category === 'capture') {
+        return { draw: (before + entry.weight / 2) / total, slug: entry.slug };
+      }
+      before += entry.weight;
+    }
+    throw new Error('the loot table has no capture-category item');
+  }
+
+  it('a capacity refusal on B leaves B pending and A untouched', async () => {
+    const capture = await captureLootDraw();
+    const { waifu, giftA, giftB } = await claimedThenPending(capture.draw);
+    expect(giftB.itemSlug).toBe(capture.slug);
+
+    const capacity = app.content.tables.inventory.captureCapacity;
+    const charm = await getItemBySlug(t.db, 'basic_charm');
+    await app.inventory.addItem(t.db, playerId, charm.id, capacity);
+
+    await expect(app.gifts.claimGift(playerId, waifu.id)).rejects.toBeInstanceOf(
+      InventoryCapacityError,
+    );
+    expect(await giftRow(giftB.id)).toEqual(giftB);
+    expect(await giftRow(giftA.id)).toEqual(giftA);
+    expect(await pendingViews(waifu.id)).toEqual({
+      getPendingGift: true,
+      listPendingGifts: true,
+      pendingWaifuIds: true,
+    });
+  });
+
+  it('daily rolls resume once B is claimed', async () => {
+    const { waifu } = await claimedThenPending();
+
+    // While B waits, the copy is not rolled at all.
+    const paused = await roll(giftService(scriptedRng([0.99])), '2026-08-28T12:00:00.000Z');
+    expect(paused).toEqual({ rolled: false, reason: 'gift_pending' });
+
+    await app.gifts.claimGift(playerId, waifu.id);
+    const resumed = await roll(giftService(scriptedRng([0.99])), '2026-08-29T12:00:00.000Z');
+    expect(resumed.rolled).toBe(true);
+    expect(await counterOf(waifu.id)).toBe(1);
+  });
+
+  it('a copy that never had a gift is "not found", even beside one that did', async () => {
+    await claimedThenPending();
+    const never = await giveWaifu(5000);
+    await expect(app.gifts.claimGift(playerId, never.id)).rejects.toBeInstanceOf(
+      GiftNotFoundError,
+    );
+  });
+});

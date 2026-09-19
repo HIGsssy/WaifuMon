@@ -18,11 +18,12 @@ import {
 } from 'discord.js';
 import type { GiftClaimResult } from '../../modules/gifts/affectionGiftService';
 import { gameEvent } from '../../modules/events/gameEvents';
-import { AppError } from '../../shared/errors';
+import { AppError, GiftAlreadyClaimedError, GiftNotFoundError } from '../../shared/errors';
 import { publicWaifuName } from '../gameEventBuilders';
 import { emitEvents } from '../gameEventEmitter';
 import { respondEphemeral } from '../ephemeralSession';
 import { withBackRow } from '../ui';
+import { renderInspect } from './waifumonCollection';
 import type { AppContext, Provisioned } from '../types';
 import { buildCustomId } from '../types';
 
@@ -71,8 +72,9 @@ function giftRevealMessage(result: GiftClaimResult): {
  * `gift:claim <waifuId>` — accept the gift waiting on one owned copy.
  *
  * The service is transactional and idempotent, so a double-clicked button
- * grants once and the loser is told plainly that it already landed. Every
- * refusal (capacity in particular) leaves the gift exactly where it was.
+ * grants once and the loser is told plainly that it already landed — on a
+ * freshly rendered Inspect screen. Every refusal (capacity in particular)
+ * leaves the gift exactly where it was.
  */
 export async function handleGiftClaim(
   ctx: AppContext,
@@ -90,6 +92,15 @@ export async function handleGiftClaim(
   try {
     result = await ctx.services.gifts.claimGift(prov.playerId, waifuId);
   } catch (err) {
+    // Nothing to accept on this copy — a retry, a double-click, or a stale
+    // button. Repaint her Inspect screen from fresh state rather than leaving
+    // a bare refusal: whether 🎁 and Accept Gift appear is decided by the same
+    // pending-gift query as every other render, so a stale control is replaced
+    // by the server's answer instead of merely hidden.
+    if (err instanceof GiftAlreadyClaimedError || err instanceof GiftNotFoundError) {
+      await renderInspect(ctx, interaction, prov, waifuId, err.userMessage);
+      return;
+    }
     if (err instanceof AppError) {
       await respondEphemeral(interaction, {
         content: err.userMessage,

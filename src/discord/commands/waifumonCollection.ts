@@ -992,11 +992,18 @@ function inspectComponents(
   return rows;
 }
 
-async function renderInspect(
+/**
+ * Paint one owned copy's Inspect screen from fresh state. Exported for the gift
+ * handler, which repaints it after a claim that found nothing to accept, so the
+ * 🎁 marker and Accept Gift come from the same pending-gift query as always.
+ * `notice` rides above the embed as message content.
+ */
+export async function renderInspect(
   ctx: AppContext,
   interaction: PlayerInteraction,
   prov: Provisioned,
   waifuId: number,
+  notice?: string,
 ): Promise<void> {
   try {
     const entry = await ctx.services.collection.getOwned(prov.playerId, waifuId);
@@ -1145,6 +1152,7 @@ async function renderInspect(
     const files = card ? [card.file] : [];
     if (card) embed.setImage(card.url);
     await respondEphemeral(interaction, {
+      ...(notice ? { content: notice } : {}),
       embeds: [embed],
       components: inspectComponents(
         ctx,

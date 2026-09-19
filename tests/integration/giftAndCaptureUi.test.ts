@@ -201,8 +201,13 @@ async function grantWaifu(nickname: string | null = null): Promise<number> {
   return row!.id;
 }
 
-async function giveGift(waifuId: number, itemSlug = 'quickie_coffee'): Promise<void> {
+async function giveGift(
+  waifuId: number,
+  itemSlug = 'quickie_coffee',
+  claimedAt: Date | null = null,
+): Promise<void> {
   await t.db.insert(affectionGifts).values({
+    claimedAt,
     playerId: prov.playerId,
     waifuId,
     itemSlug,
@@ -298,6 +303,85 @@ describe('Accept Gift', () => {
       itemSlug: 'quickie_coffee',
       quantity: 1,
     });
+  });
+});
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function customIds(payload: any): string[] {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return buttons(payload).map((b: any) => String(b.data.custom_id ?? ''));
+}
+
+/** Nothing on this painted screen offers or advertises a gift. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function expectNoGiftOffered(payload: any): void {
+  expect(customIds(payload).some((id) => id.startsWith('gift:claim'))).toBe(false);
+  expect(labels(payload)).not.toContain('Accept Gift');
+  expect(embedText(payload)).not.toContain('Gift waiting');
+  expect(embedText(payload)).not.toContain('🎁');
+}
+
+async function freshInspect(waifuId: number) {
+  const i = fakeCommand(String(waifuId));
+  await handleInspectCommand(ctx, i as never, prov);
+  return painted(i);
+}
+
+describe('Accept Gift — state stays authoritative', () => {
+  it('a fresh Inspect after a successful claim offers no gift', async () => {
+    const waifuId = await grantWaifu('Luna');
+    await giveGift(waifuId);
+    await handleGiftClaim(ctx, fakeButton() as never, prov, [String(waifuId)]);
+
+    expectNoGiftOffered(await freshInspect(waifuId));
+  });
+
+  it('a click on an already-claimed gift repaints Inspect from fresh state', async () => {
+    const waifuId = await grantWaifu('Luna');
+    await giveGift(waifuId);
+    await handleGiftClaim(ctx, fakeButton() as never, prov, [String(waifuId)]);
+
+    // The stale button, clicked again: the message becomes her Inspect screen
+    // with the explanation on top — not a bare refusal, and no Accept Gift.
+    const stale = fakeButton();
+    await handleGiftClaim(ctx, stale as never, prov, [String(waifuId)]);
+    expect(stale.update).toHaveBeenCalledTimes(1);
+    const payload = painted(stale);
+    expect(payload.content).toContain('You already accepted that gift');
+    expect(embedText(payload)).toContain('Luna');
+    expectNoGiftOffered(payload);
+
+    const item = await getItemBySlug(t.db, 'quickie_coffee');
+    expect(await app.inventory.getQuantity(prov.playerId, item.id)).toBe(1);
+  });
+
+  it('a click on a copy that never had a gift repaints Inspect, "not found"', async () => {
+    const waifuId = await grantWaifu('Luna');
+    const i = fakeButton();
+    await handleGiftClaim(ctx, i as never, prov, [String(waifuId)]);
+    const payload = painted(i);
+    expect(payload.content).toContain('There is no gift waiting there');
+    expect(embedText(payload)).toContain('Luna');
+    expectNoGiftOffered(payload);
+  });
+
+  it('recovers the stuck state: an old claimed gift no longer blocks the waiting one', async () => {
+    const waifuId = await grantWaifu('Luna');
+    // Exactly the rows an affected player holds: gift A long claimed, gift B
+    // generated later and still waiting.
+    await giveGift(waifuId, 'quickie_coffee', new Date('2026-08-20T12:00:00.000Z'));
+    await giveGift(waifuId, 'cream_pie_slice');
+
+    const before = await freshInspect(waifuId);
+    expect(labels(before)).toContain('Accept Gift');
+
+    const click = fakeButton();
+    await handleGiftClaim(ctx, click as never, prov, [String(waifuId)]);
+    expect(embedText(painted(click))).toContain('A gift from Luna');
+    const pie = await getItemBySlug(t.db, 'cream_pie_slice');
+    expect(await app.inventory.getQuantity(prov.playerId, pie.id)).toBe(1);
+
+    expectNoGiftOffered(await freshInspect(waifuId));
   });
 });
 
