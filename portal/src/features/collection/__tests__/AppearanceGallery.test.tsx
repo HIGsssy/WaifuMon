@@ -264,6 +264,27 @@ describe('AppearanceGallery', () => {
     ).toBeInTheDocument();
   });
 
+  it('marks only the worn tile with a visible badge in the accent’s paired ink', async () => {
+    server.use(
+      http.get('/api/v1/players/:playerId/collection/owned/:waifuId/appearances', () =>
+        data(multiLookGallery()),
+      ),
+    );
+    renderDetail(101);
+    const group = await galleryGroup();
+
+    const worn = within(group).getByRole('button', { name: /Level 30 — currently worn/i });
+    const badge = within(worn).getByText('Worn');
+    expect(within(group).getAllByText('Worn')).toHaveLength(1);
+
+    // jsdom cannot compute contrast (the Playwright axe pass does). This pins
+    // the cause of the dark-theme failure: `bg-accent` must be paired with
+    // `text-accent-ink`, which flips with the theme — plain white fell to
+    // 2.6:1 on the lighter dark-theme accent.
+    expect(badge).toHaveClass('bg-accent', 'text-accent-ink');
+    expect(badge).not.toHaveClass('text-white');
+  });
+
   it('leaves the locked tile with no artwork while its unlocked peers render', async () => {
     server.use(
       http.get('/api/v1/players/:playerId/collection/owned/:waifuId/appearances', () =>

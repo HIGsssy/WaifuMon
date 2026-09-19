@@ -151,7 +151,7 @@ function AppearanceTile({ appearance, playerId, waifuId, isActive, onSelect }: A
           />
         )}
         {appearance.isSelected && (
-          <span className="absolute top-2 right-2 inline-flex items-center gap-1 rounded-full bg-accent px-2 py-0.5 text-[0.65rem] font-semibold text-white shadow">
+          <span className="absolute top-2 right-2 inline-flex items-center gap-1 rounded-full bg-accent px-2 py-0.5 text-[0.65rem] font-semibold text-accent-ink shadow">
             <Check className="size-3" aria-hidden="true" />
             Worn
           </span>
