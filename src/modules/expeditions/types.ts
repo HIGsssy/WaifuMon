@@ -10,7 +10,13 @@ import type {
   RegionalExpedition,
   SuitabilityBand,
 } from '../content/schemas';
-import type { ExpeditionOutcome, ExpeditionStatus, PlayerExpeditionRow } from '../../db/schema';
+import type {
+  Affinity,
+  ExpeditionOutcome,
+  ExpeditionStatus,
+  PlayerExpeditionRow,
+} from '../../db/schema';
+import type { RaceCode } from '../cards/race';
 import type { ExpeditionRewardPayload } from './expeditionRewards';
 import type { SuitabilityFactor } from './expeditionMath';
 
@@ -77,6 +83,17 @@ export interface ExpeditionCandidate {
   name: string;
   level: number;
   band: SuitabilityBand;
+  /**
+   * Her affinity and race, resolved the same way the maths resolved them.
+   *
+   * Carried so a UI can *explain* a band without being handed the chance that
+   * produced it — "Dominant ✓ • Demon ✗" is the non-numeric account of why a
+   * match is what it is. A presentation layer must never re-derive these:
+   * race in particular is content, not a column, and a second resolver would
+   * drift from the one the chance was computed with.
+   */
+  affinity: Affinity;
+  race: RaceCode;
   /** Present and non-empty means she cannot be sent; the UI greys her out. */
   unavailableReasons: string[];
   /**
@@ -118,6 +135,14 @@ export interface ExpeditionView {
   expeditionKey: string;
   region: string;
   waifuId: number;
+  /**
+   * The deployed copy's display name, resolved at read time.
+   *
+   * Read live rather than snapshotted, unlike the mission's own name: a
+   * nickname the player sets mid-flight should show up, and unlike content,
+   * an owned copy cannot be deleted out from under the row.
+   */
+  waifuName: string;
   /** From the snapshot, so a deleted definition still renders. */
   name: string;
   emoji: string | null;

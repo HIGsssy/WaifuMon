@@ -111,6 +111,7 @@ beforeAll(async () => {
         care: app.care,
         collection: app.collection,
       expeditions: app.expeditions,
+      availability: app.availability,
         appearance: app.appearance,
         progression: app.progression,
         quests: app.quests,

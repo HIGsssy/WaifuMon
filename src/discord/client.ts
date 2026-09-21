@@ -2,6 +2,17 @@ import { Client, Events, GatewayIntentBits } from 'discord.js';
 import { createDispatcher } from './commandRegistry';
 import type { AppContext } from './types';
 import {
+  handleExpeditionActive,
+  handleExpeditionBoard,
+  handleExpeditionCancel,
+  handleExpeditionCancelConfirm,
+  handleExpeditionClaim,
+  handleExpeditionDeploy,
+  handleExpeditionPick,
+  handleExpeditionView,
+  handleExpeditions,
+} from './commands/waifumonExpeditions';
+import {
   handleDaily,
   handleInventory,
   handleItemUse,
@@ -238,6 +249,29 @@ export function createDiscordClient(ctx: AppContext): Client {
       'menu:start': (i: ButtonInteraction, prov: Provisioned) => handleMenuStart(ctx, i, prov),
       'shop:buy': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleShopBuy(ctx, i, prov, args[0] ?? ''),
+      // Expeditions. `menu:expeditions` opens the Active screen when a mission
+      // is running and the board otherwise — the handler decides, so both the
+      // menu button and a "back to expeditions" press land in the right place.
+      'menu:expeditions': (i: ButtonInteraction, prov: Provisioned) =>
+        handleExpeditions(ctx, i, prov),
+      'exp:board': (i: ButtonInteraction, prov: Provisioned) =>
+        handleExpeditionBoard(ctx, i, prov),
+      'exp:active': (i: ButtonInteraction, prov: Provisioned) =>
+        handleExpeditionActive(ctx, i, prov),
+      'exp:view': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleExpeditionView(ctx, i, prov, args[0] ?? ''),
+      'exp:pick': (i: StringSelectMenuInteraction, prov: Provisioned, args: string[]) =>
+        handleExpeditionPick(ctx, i, prov, args[0] ?? ''),
+      'exp:deploy': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleExpeditionDeploy(ctx, i, prov, args[0] ?? '', args[1] ?? ''),
+      'exp:claim': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleExpeditionClaim(ctx, i, prov, args[0] ?? ''),
+      'exp:cancel': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleExpeditionCancel(ctx, i, prov, args[0] ?? ''),
+      // The only route that writes a cancellation. Separate from `exp:cancel`
+      // precisely so no single press can abandon a mission.
+      'exp:cancel_confirm': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleExpeditionCancelConfirm(ctx, i, prov, args[0] ?? ''),
       // Locations & Travel. Same scope/action custom-id scheme as every other
       // screen, so the dispatcher's stale-button and version handling covers
       // these for free.

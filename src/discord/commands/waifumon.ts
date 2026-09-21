@@ -115,6 +115,15 @@ export function menuComponents(
         .setLabel('Collection')
         .setEmoji('🎒')
         .setStyle(ButtonStyle.Secondary),
+      // Fifth and last slot in this row — Discord's per-row limit. Sits with
+      // the other "go and do something" actions rather than with the
+      // look-after-what-you-have controls below, because a deployment is a
+      // commitment of hours in the same way a hunt is a commitment of energy.
+      new ButtonBuilder()
+        .setCustomId(buildCustomId('menu', 'expeditions'))
+        .setLabel('Expeditions')
+        .setEmoji('🗺️')
+        .setStyle(ButtonStyle.Primary),
     ),
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()

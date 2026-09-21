@@ -148,6 +148,12 @@ function makeCtx(overrides: {
         currency: {
           getBalances: vi.fn(async () => ({ essence: 1000, waifubux: 0, huntEnergy: 5 })),
         },
+        // The shared availability vocabulary. This fixture describes a copy
+        // who is simply at home, so nothing is reported.
+        availability: {
+          reasonsFor: vi.fn(async () => []),
+          reasonsForMany: vi.fn(async () => new Map()),
+        },
         collection: {
           investEssence,
           investEssenceBatch: investEssence,

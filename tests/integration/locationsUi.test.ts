@@ -62,6 +62,7 @@ beforeAll(async () => {
       capture: app.capture,
       collection: app.collection,
       expeditions: app.expeditions,
+      availability: app.availability,
       appearance: app.appearance,
       care: app.care,
       progression: app.progression,

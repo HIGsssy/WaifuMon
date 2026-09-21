@@ -93,6 +93,7 @@ import {
   type WaifuAvailabilityService,
   type WaifuUnavailabilityReason,
 } from '../collection/waifuAvailability';
+import { normalizeAffinity } from '../capture/affinityMath';
 import { buildBoard, rotationEndsAt } from './expeditionBoard';
 import { evaluateSuitability } from './expeditionMath';
 import { expeditionDrawFraction, EXPEDITION_LOGIC_VERSION } from './expeditionRandom';
@@ -256,7 +257,7 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
    * renamed the mission. The fallbacks exist for rows whose plan has been
    * cleared at resolution.
    */
-  function toView(row: PlayerExpeditionRow, at: Date): ExpeditionView {
+  function toView(row: PlayerExpeditionRow, at: Date, waifuName = 'Your WaifuMon'): ExpeditionView {
     const plan = planOf(row);
     const live = findDefinition(row.expeditionKey);
     const remainingMs = row.completesAt.getTime() - at.getTime();
@@ -266,6 +267,7 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
       expeditionKey: row.expeditionKey,
       region: row.region,
       waifuId: row.waifuId,
+      waifuName,
       name: plan?.definition.name ?? live?.name ?? row.expeditionKey,
       emoji: plan?.definition.emoji ?? live?.emoji ?? null,
       description: plan?.definition.description ?? live?.description ?? '',
@@ -281,6 +283,29 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
       secondsRemaining: Math.max(0, Math.ceil(remainingMs / 1000)),
       isDue: row.status === 'active' && remainingMs <= 0,
     };
+  }
+
+  /**
+   * Display names for a batch of deployed copies, in one query.
+   *
+   * A nickname wins over the species name, matching every other screen. Rows
+   * whose copy has somehow vanished fall back to the default in `toView`
+   * rather than dropping the mission from the list — the mission is real even
+   * if the pointer is not, and hiding it would look like lost rewards.
+   */
+  async function waifuNames(
+    tx: DbOrTx,
+    waifuIds: readonly number[],
+  ): Promise<Map<number, string>> {
+    const names = new Map<number, string>();
+    if (waifuIds.length === 0) return names;
+    const rows = await tx
+      .select({ id: playerWaifus.id, nickname: playerWaifus.nickname, speciesName: species.name })
+      .from(playerWaifus)
+      .innerJoin(species, eq(playerWaifus.speciesId, species.id))
+      .where(inArray(playerWaifus.id, [...waifuIds]));
+    for (const row of rows) names.set(row.id, row.nickname?.trim() || row.speciesName);
+    return names;
   }
 
   /** Every copy the player owns and has not released, with her species row. */
@@ -493,6 +518,10 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
             name: waifu.nickname?.trim() || speciesRow.name,
             level: waifu.level,
             band: suitability.band,
+            // The same values the chance was computed from, handed onward so a
+            // UI explains the band instead of re-deriving it.
+            affinity: normalizeAffinity(speciesRow.affinity),
+            race: resolveRace(speciesRow),
             unavailableReasons: blocking,
             successChance: suitability.successChance,
             factors: suitability.factors,
@@ -596,7 +625,7 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
           })
           .returning();
 
-        return toView(inserted!, now());
+        return toView(inserted!, now(), waifu.nickname?.trim() || speciesRow.name);
       });
     },
 
@@ -606,7 +635,8 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
       // resolve and pay whatever content says about new ones.
       const rows = await db.transaction((tx) => readSlots(tx, playerId));
       const at = now();
-      return rows.map((row) => toView(row, at));
+      const names = await waifuNames(db, rows.map((r) => r.waifuId));
+      return rows.map((row) => toView(row, at, names.get(row.waifuId)));
     },
 
     async claim(playerId, expeditionId) {
@@ -723,8 +753,9 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
           }
         }
 
+        const claimedNames = await waifuNames(tx, [won.waifuId]);
         return {
-          expedition: toView(won, now()),
+          expedition: toView(won, now(), claimedNames.get(won.waifuId)),
           outcome: won.outcome as ExpeditionOutcome,
           rewards,
           waifubuxAfter,
@@ -773,7 +804,10 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
             ),
           )
           .returning();
-        if (cancelled) return toView(cancelled, now());
+        if (cancelled) {
+          const names = await waifuNames(tx, [cancelled.waifuId]);
+          return toView(cancelled, now(), names.get(cancelled.waifuId));
+        }
 
         // Lost the race, or it was never cancellable. Distinguish the two so
         // the message is about what actually happened.
@@ -804,7 +838,8 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
         .orderBy(desc(playerExpeditions.startedAt))
         .limit(limit);
       const at = now();
-      return rows.map((row) => toView(row, at));
+      const names = await waifuNames(db, rows.map((r) => r.waifuId));
+      return rows.map((row) => toView(row, at, names.get(row.waifuId)));
     },
 
     async unavailabilityFor(tx, playerId, waifuIds) {

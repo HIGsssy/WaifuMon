@@ -19,6 +19,7 @@ import type { CaptureService } from '../modules/capture/captureService';
 import type { CareService } from '../modules/care/careService';
 import type { CollectionService } from '../modules/collection/collectionService';
 import type { ExpeditionService } from '../modules/expeditions/expeditionService';
+import type { WaifuAvailabilityService } from '../modules/collection/waifuAvailability';
 import type { AchievementService } from '../modules/achievements/achievementService';
 import type { LeaderboardService } from '../modules/leaderboards/leaderboardService';
 import type { AppearanceService } from '../modules/appearance/appearanceService';
@@ -96,6 +97,15 @@ export interface AppServices {
    * Phase 3 wires the engine only. The Discord screens land in Phase 4.
    */
   expeditions: ExpeditionService;
+  /**
+   * Why an owned copy is not free right now, in the shared vocabulary.
+   *
+   * On the container so presentation layers ask *this* rather than querying
+   * feature tables directly — the inspect screen needs to say "On Expedition"
+   * without knowing that expeditions exist, and the next unavailable state
+   * should reach it with no edit to the screen at all.
+   */
+  availability: WaifuAvailabilityService;
   /**
    * Boss encounters (Stage 1).
    *

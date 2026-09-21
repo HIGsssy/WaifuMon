@@ -367,6 +367,8 @@ describe('inspect card · Release button', () => {
 function inspectCtx(opts: {
   buddyId: number | null;
   getOwned: ReturnType<typeof vi.fn>;
+  /** Reasons the shared availability service should report for this copy. */
+  unavailable?: readonly string[];
 }): AppContext {
   const buddy =
     opts.buddyId == null
@@ -404,6 +406,13 @@ function inspectCtx(opts: {
       currency: { getBalances: vi.fn(async () => ({ essence: 100, waifubux: 0 })) },
       gifts: { getPendingGift: vi.fn(async () => null) },
       quests: { recordQuestEvent: vi.fn(async () => {}) },
+      // The shared availability vocabulary. These fixtures describe a copy
+      // that is simply at home, so nothing is reported — `opts.unavailable`
+      // lets a test say otherwise.
+      availability: {
+        reasonsFor: vi.fn(async () => opts.unavailable ?? []),
+        reasonsForMany: vi.fn(async () => new Map()),
+      },
       appearance: {
         catalogFor: () => [
           { id: 'standard', name: 'Standard', unlock: { type: 'always' } },

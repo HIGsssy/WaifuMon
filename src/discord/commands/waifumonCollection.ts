@@ -81,6 +81,10 @@ import {
 } from '../../shared/errors';
 import type { AppContext, PlayerInteraction, Provisioned } from '../types';
 import { buildCustomId } from '../types';
+import {
+  WAIFU_UNAVAILABILITY_BADGES,
+  type WaifuUnavailabilityReason,
+} from '../../modules/collection/waifuAvailability';
 import { postAppearanceUnlockToasts } from '../appearanceToast';
 import { emitEvents } from '../gameEventEmitter';
 import { appearanceUnlockDescriptors, publicWaifuName } from '../gameEventBuilders';
@@ -879,7 +883,22 @@ async function essenceLimits(
  * state can never disagree. The rule itself is owned by
  * `collection.releaseWaifu`; this mirrors it for display.
  */
-export function releaseBlock(entry: OwnedEntry, isBuddy: boolean): string | null {
+export function releaseBlock(
+  entry: OwnedEntry,
+  isBuddy: boolean,
+  /**
+   * Reasons from the shared availability vocabulary, so this screen never
+   * queries `player_expeditions` itself. A future unavailable state surfaces
+   * here by being added to that vocabulary, not by editing this function.
+   */
+  reasons: readonly WaifuUnavailabilityReason[] = [],
+): string | null {
+  // Being away outranks the other two, because unfavouriting her or switching
+  // Buddy would not help while she is on the other side of the map — and
+  // because it is the one reason that resolves on its own, with time.
+  if (reasons.includes('on_expedition')) {
+    return '🚫 **Release unavailable** — she is away on an expedition. Collect her first.';
+  }
   if (entry.waifu.isFavorite && isBuddy) {
     return '🚫 **Release unavailable** — she is a ★ favourite **and** your active Buddy. Unfavourite her and switch Buddy first.';
   }
@@ -892,6 +911,22 @@ export function releaseBlock(entry: OwnedEntry, isBuddy: boolean): string | null
   return null;
 }
 
+/**
+ * The "she is not here right now" banner for the inspect screen.
+ *
+ * Separate from {@link releaseBlock} because they answer different questions:
+ * that one explains why a *button* is disabled, this one explains where she
+ * *is*. A player looking at a favourite copy who cannot find her on the
+ * Expeditions screen needs the second answer even though the first happens to
+ * mention it too.
+ */
+export function awayBanner(
+  reasons: readonly WaifuUnavailabilityReason[],
+): string | null {
+  if (!reasons.includes('on_expedition')) return null;
+  return `🗺️ **${WAIFU_UNAVAILABILITY_BADGES.on_expedition}** — she is out on a job and unavailable until she returns.`;
+}
+
 function inspectComponents(
   ctx: AppContext,
   entry: OwnedEntry,
@@ -900,6 +935,8 @@ function inspectComponents(
   isBuddy: boolean,
   essence: { balance: number; maxUseful: number },
   hasPendingGift: boolean,
+  /** Same reasons the embed's notice was built from, so the two agree. */
+  reasons: readonly WaifuUnavailabilityReason[] = [],
 ): ActionRowBuilder<ButtonBuilder>[] {
   const favBtn = new ButtonBuilder()
     .setCustomId(buildCustomId('waifu', 'fav', String(entry.waifu.id)))
@@ -912,7 +949,7 @@ function inspectComponents(
   //
   // This is presentation only. `collection.releaseWaifu` re-checks both under
   // its own row locks, so a stale screen cannot get past it.
-  const releaseBlocked = releaseBlock(entry, isBuddy);
+  const releaseBlocked = releaseBlock(entry, isBuddy, reasons);
   const releaseBtn = new ButtonBuilder()
     .setCustomId(buildCustomId('waifu', 'release', String(entry.waifu.id)))
     .setLabel('🕊️ Release')
@@ -1011,11 +1048,14 @@ export async function renderInspect(
     // Ownership was verified above (getOwned throws WaifuNotOwnedError
     // otherwise), so wrong-user / stale interactions never reach this call.
     await ctx.services.quests.recordQuestEvent(null, prov.playerId, 'inspect_waifu', 1, {});
-    const [isDuplicate, buddy, balances, pendingGift] = await Promise.all([
+    const [isDuplicate, buddy, balances, pendingGift, availability] = await Promise.all([
       ctx.services.collection.hasOtherActiveCopies(prov.playerId, waifuId),
       ctx.services.collection.getBuddy(prov.playerId),
       ctx.services.currency.getBalances(prov.playerId),
       ctx.services.gifts.getPendingGift(prov.playerId, waifuId),
+      // Through the shared vocabulary, never a direct expedition query: this
+      // screen has no business knowing that expeditions exist.
+      ctx.services.availability.reasonsFor(ctx.db, prov.playerId, waifuId),
     ]);
     const isBuddy = buddy?.waifu.id === waifuId;
     const { waifu, species } = entry;
@@ -1081,7 +1121,8 @@ export async function renderInspect(
     // It names *nothing* about the item: the reveal is the reward for tapping
     // Accept, and this line is the anticipation.
     // Stated in the embed because a disabled Discord button explains nothing.
-    const releaseNotice = releaseBlock(entry, isBuddy);
+    const releaseNotice = releaseBlock(entry, isBuddy, availability);
+    const away = awayBanner(availability);
     const giftTeaser = pendingGift
       ? `🎁 **Gift waiting**` +
         '\n' +
@@ -1091,11 +1132,13 @@ export async function renderInspect(
       : null;
     const embed = new EmbedBuilder()
       .setTitle(
-        `✨ ${displayName(entry)}${isBuddy ? ' · ★ Buddy' : ''}${pendingGift ? ' · 🎁' : ''}`,
+        `✨ ${displayName(entry)}${isBuddy ? ' · ★ Buddy' : ''}` +
+          `${away ? ` · 🗺️ ${WAIFU_UNAVAILABILITY_BADGES.on_expedition}` : ''}` +
+          `${pendingGift ? ' · 🎁' : ''}`,
       )
       .setColor(rarityColor(species.rarity))
       .setDescription(
-        [giftTeaser, species.description || '_A mysterious presence…_', releaseNotice]
+        [away, giftTeaser, species.description || '_A mysterious presence…_', releaseNotice]
           .filter(Boolean)
           .join('\n' + '\n'),
       )
@@ -1162,6 +1205,7 @@ export async function renderInspect(
         isBuddy,
         { balance: balances.essence, maxUseful },
         pendingGift != null,
+        availability,
       ),
       files,
     });

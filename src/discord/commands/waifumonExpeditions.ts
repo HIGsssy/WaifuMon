@@ -1,0 +1,899 @@
+/**
+ * Expeditions — the Discord screens.
+ *
+ * Presentation and orchestration only. Every rule lives in
+ * `modules/expeditions`: this file never computes a chance, never rolls a
+ * reward, never decides whether a mission is due, and never writes a row. It
+ * calls the service and renders what comes back.
+ *
+ * Three conventions carry most of the weight:
+ *
+ *   - **The band is the contract.** No percentage reaches a player on any
+ *     screen. The service returns a band and never exposes `successChance`,
+ *     so this file could not leak one even by accident — there is nothing to
+ *     read. Candidate rows explain a match with *chips* (`Dominant ✓`) rather
+ *     than numbers, so the player learns which WaifuMon suits which mission
+ *     without being handed the formula.
+ *
+ *   - **Time is Discord's job.** Completion is rendered with `<t:…:R>`, so the
+ *     client counts down locally. No timer, no message-edit loop, no drift,
+ *     and the countdown keeps working while the bot is down.
+ *
+ *   - **Opening the screen is what resolves a mission.** `getActive` resolves
+ *     anything due before returning, so every entry point below runs it first
+ *     and the resolve path is exercised constantly rather than on a rare timer.
+ *
+ * Stale controls are expected, not exceptional: a custom id is a string that
+ * outlives the message that painted it. Every handler re-reads state and
+ * re-renders rather than trusting its own arguments, and the conditional
+ * updates in the service mean a stale press can refuse but never double-apply.
+ */
+import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  EmbedBuilder,
+  StringSelectMenuBuilder,
+  type ButtonInteraction,
+  type StringSelectMenuInteraction,
+} from 'discord.js';
+import { AppError } from '../../shared/errors';
+import type { AppContext, PlayerInteraction, Provisioned } from '../types';
+import { buildCustomId } from '../types';
+import { respondEphemeral } from '../ephemeralSession';
+import { regionLabel } from '../../modules/locations/regions';
+import { affinityLabel } from '../../modules/capture/affinityMath';
+import type {
+  ExpeditionBoard,
+  ExpeditionCandidate,
+  ExpeditionClaimResult,
+  ExpeditionView,
+} from '../../modules/expeditions/types';
+import type {
+  ExpeditionRewardPayload,
+  RewardTableKind,
+} from '../../modules/expeditions/expeditionRewards';
+import type { RegionalExpedition, SuitabilityBand } from '../../modules/content/schemas';
+
+type Rows = ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>[];
+interface Screen {
+  embeds: EmbedBuilder[];
+  components: Rows;
+}
+
+const COLOR_BOARD = 0x8ec7ff;
+const COLOR_ACTIVE = 0xffc46f;
+const COLOR_SUCCESS = 0x6fdc8c;
+const COLOR_EXCEPTIONAL = 0xffd76f;
+const COLOR_FAILURE = 0xb0b6c0;
+const COLOR_DANGER = 0xff6f6f;
+
+/**
+ * Band presentation. Ordered best to worst, and deliberately *not* a colour
+ * ramp from green to red: POOR is grey rather than red because a risky
+ * deployment is a choice the game wants players to make, not a mistake it
+ * wants to scold them for.
+ */
+const BAND_DISPLAY: Readonly<Record<SuitabilityBand, { icon: string; label: string }>> = {
+  EXCELLENT: { icon: '✦', label: 'EXCELLENT' },
+  GOOD: { icon: '✧', label: 'GOOD' },
+  FAIR: { icon: '·', label: 'FAIR' },
+  RISKY: { icon: '⚠', label: 'RISKY' },
+  POOR: { icon: '✗', label: 'POOR' },
+};
+
+/** Broad reward-preview vocabulary → what a player sees on the board. */
+const PREVIEW_DISPLAY: Readonly<Record<string, string>> = {
+  waifubux: '💰 WaifuBux',
+  essence: '✨ Essence',
+  salvage: '📦 Salvage',
+  charms: '🎀 Charms',
+  consumables: '🧃 Consumables',
+  waifu_xp: '📈 WaifuMon XP',
+  rare_find: '🌟 Rare find',
+  key_item: '🔑 Key item',
+};
+
+function bandTag(band: SuitabilityBand): string {
+  const display = BAND_DISPLAY[band];
+  return `${display.label} ${display.icon}`;
+}
+
+/** `<t:…:R>` — Discord renders and counts this down on the client. */
+function relativeTimestamp(at: Date): string {
+  return `<t:${Math.floor(at.getTime() / 1000)}:R>`;
+}
+
+/** "6h", "2h 30m", "45m" — a duration a player reads at a glance. */
+export function formatDuration(minutes: number): string {
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  if (hours === 0) return `${mins}m`;
+  if (mins === 0) return `${hours}h`;
+  return `${hours}h ${mins}m`;
+}
+
+function previewLine(previews: readonly string[]): string {
+  if (previews.length === 0) return '_Rewards unknown._';
+  return previews.map((p) => PREVIEW_DISPLAY[p] ?? p).join(' · ');
+}
+
+/**
+ * What a mission is looking for, as chips rather than numbers.
+ *
+ * This is the non-numeric half of the explanation: the board says "wants
+ * Dominant, Demon", the candidate row says whether *she* is those things, and
+ * between them the player can reason about the match without ever being shown
+ * a percentage.
+ */
+function preferenceLine(definition: RegionalExpedition): string | null {
+  const parts: string[] = [];
+  if (definition.preferredAffinities.length > 0) {
+    parts.push(definition.preferredAffinities.map(affinityLabel).join(' / '));
+  }
+  if (definition.preferredRaces.length > 0) {
+    parts.push(definition.preferredRaces.map(raceLabel).join(' / '));
+  }
+  if (parts.length === 0) return null;
+  return `Prefers: ${parts.join(' • ')}`;
+}
+
+/** "demi-human" → "Demi-Human". */
+export function raceLabel(race: string): string {
+  return race
+    .split('-')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join('-');
+}
+
+// ─────────────────────────────── Board ───────────────────────────────
+
+function backRow(): ActionRowBuilder<ButtonBuilder> {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(buildCustomId('menu', 'back'))
+      .setLabel('⟵ Back')
+      .setStyle(ButtonStyle.Secondary),
+  );
+}
+
+function boardScreen(board: ExpeditionBoard, statusLine?: string): Screen {
+  const embed = new EmbedBuilder()
+    .setTitle(`🗺️ Expeditions — ${regionLabel(board.regionId)}`)
+    .setColor(COLOR_BOARD);
+
+  const status = statusLine ? `${statusLine}\n\n` : '';
+
+  if (!board.enabled) {
+    embed.setDescription(
+      `${status}_Expeditions are closed for now. Check back soon~_`,
+    );
+    return { embeds: [embed], components: [backRow()] };
+  }
+  if (board.entries.length === 0) {
+    embed.setDescription(
+      `${status}_Nobody around here is hiring today._\n\n` +
+        'Try again after the board rotates, or travel somewhere busier.',
+    );
+    embed.setFooter({ text: 'Board rotates' });
+    embed.setTimestamp(board.rotatesAt);
+    return { embeds: [embed], components: [backRow()] };
+  }
+
+  embed.setDescription(
+    `${status}Send one WaifuMon on a timed job. She is unavailable until she returns.\n` +
+      `Slots: **${board.slotsAvailable}/${board.slotsTotal}** free · ` +
+      `Board rotates ${relativeTimestamp(board.rotatesAt)}`,
+  );
+
+  for (const { definition } of board.entries) {
+    const lines = [
+      definition.description ? `_${definition.description}_` : null,
+      `⏱️ ${formatDuration(definition.durationMinutes)} · Recommended Lv **${definition.recommendedLevel}**`,
+      preferenceLine(definition),
+      previewLine(definition.rewardPreview),
+    ].filter(Boolean) as string[];
+    embed.addFields({
+      name: `${definition.emoji ?? '•'} ${definition.name}`,
+      value: lines.join('\n'),
+    });
+  }
+
+  // One button per mission. The board is capped at `boardSize` in content
+  // (4 by default) and Discord allows 5 per row, so a single row holds a
+  // sensible board; a larger one chunks across rows and the Back row still
+  // fits inside the five-row message limit for boards up to 15.
+  const buttons = board.entries.map(({ definition }) => {
+    const button = new ButtonBuilder()
+      .setCustomId(buildCustomId('exp', 'view', definition.key))
+      .setLabel(definition.name.slice(0, 80))
+      .setStyle(ButtonStyle.Primary);
+    if (definition.emoji) button.setEmoji(definition.emoji);
+    return button;
+  });
+
+  const rows: Rows = [];
+  for (let i = 0; i < buttons.length; i += 5) {
+    rows.push(
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        buttons.slice(i, i + 5),
+      ) as ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>,
+    );
+  }
+  rows.push(backRow() as ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>);
+  return { embeds: [embed], components: rows };
+}
+
+// ─────────────────────────── Active mission ───────────────────────────
+
+function activeScreen(view: ExpeditionView, statusLine?: string): Screen {
+  const done = view.status === 'resolved';
+  const embed = new EmbedBuilder()
+    .setTitle(`${view.emoji ?? '🧭'} ${view.name}`)
+    .setColor(done ? COLOR_SUCCESS : COLOR_ACTIVE);
+
+  const status = statusLine ? `${statusLine}\n\n` : '';
+  const timing = done
+    ? '✅ **She is back.** Collect to see how it went.'
+    : // Discord counts this down on the client, so the bot never edits a
+      // message on a timer and the countdown survives a restart.
+      `⏳ Returns ${relativeTimestamp(view.completesAt)}`;
+
+  embed.setDescription(
+    [
+      status + `**${view.waifuName}** is out on this job.`,
+      `Suitability: **${bandTag(view.band)}**`,
+      timing,
+    ].join('\n'),
+  );
+  if (view.description) embed.addFields({ name: '​', value: `_${view.description}_` });
+
+  const collect = new ButtonBuilder()
+    .setCustomId(buildCustomId('exp', 'claim', String(view.id)))
+    .setLabel(done ? 'Collect' : 'Not back yet')
+    .setEmoji('📦')
+    .setStyle(done ? ButtonStyle.Success : ButtonStyle.Secondary)
+    .setDisabled(!done);
+
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(collect);
+  // Recall is only offered while she is still out. Once a result exists there
+  // is nothing to abandon — cancelling then would mean throwing away a payout
+  // the player has already earned.
+  if (!done) {
+    row.addComponents(
+      new ButtonBuilder()
+        .setCustomId(buildCustomId('exp', 'cancel', String(view.id)))
+        .setLabel('Recall')
+        .setEmoji('🚩')
+        .setStyle(ButtonStyle.Secondary),
+    );
+  }
+  row.addComponents(
+    new ButtonBuilder()
+      .setCustomId(buildCustomId('exp', 'board'))
+      .setLabel('View board')
+      .setStyle(ButtonStyle.Secondary),
+  );
+
+  return {
+    embeds: [embed],
+    components: [
+      row as ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>,
+      backRow() as ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>,
+    ],
+  };
+}
+
+// ────────────────────────── Mission detail ──────────────────────────
+
+/**
+ * One candidate row.
+ *
+ *   `EXCELLENT ✦ Lilith — Lv.31`
+ *   `Dominant ✓ • Demon ✓`
+ *
+ * The chips are the explanation. A tick means the mission asked for that and
+ * she has it; a cross means it asked and she does not. Nothing is shown when
+ * the mission has no preference on that axis, because an empty requirement is
+ * not a failed one.
+ */
+export function candidateChips(
+  candidate: ExpeditionCandidate,
+  definition: RegionalExpedition,
+): string | null {
+  const chips: string[] = [];
+  if (definition.preferredAffinities.length > 0) {
+    const hit = definition.preferredAffinities.includes(candidate.affinity);
+    chips.push(`${affinityLabel(candidate.affinity)} ${hit ? '✓' : '✗'}`);
+  }
+  if (definition.preferredRaces.length > 0) {
+    const hit = definition.preferredRaces.includes(candidate.race);
+    chips.push(`${raceLabel(candidate.race)} ${hit ? '✓' : '✗'}`);
+  }
+  // Level is a preference every mission has, so it is always worth a chip.
+  chips.push(
+    candidate.level >= definition.recommendedLevel
+      ? `Lv ${definition.recommendedLevel}+ ✓`
+      : `Lv ${definition.recommendedLevel}+ ✗`,
+  );
+  return chips.length > 0 ? chips.join(' • ') : null;
+}
+
+function detailScreen(
+  definition: RegionalExpedition,
+  candidates: ExpeditionCandidate[],
+  statusLine?: string,
+): Screen {
+  const embed = new EmbedBuilder()
+    .setTitle(`${definition.emoji ?? '•'} ${definition.name}`)
+    .setColor(COLOR_BOARD);
+
+  const status = statusLine ? `${statusLine}\n\n` : '';
+  embed.setDescription(
+    [
+      status + (definition.description ? `_${definition.description}_` : ''),
+      '',
+      `⏱️ Duration: **${formatDuration(definition.durationMinutes)}**`,
+      `🎯 Recommended level: **${definition.recommendedLevel}**`,
+      preferenceLine(definition) ?? 'Prefers: _anyone willing_',
+    ]
+      .filter((line) => line !== '')
+      .join('\n'),
+  );
+  embed.addFields({ name: 'Possible rewards', value: previewLine(definition.rewardPreview) });
+
+  const deployable = candidates.filter((c) => c.unavailableReasons.length === 0);
+
+  if (candidates.length === 0) {
+    embed.addFields({
+      name: 'Who to send',
+      value: '_You have no WaifuMon yet. Go hunting first~_',
+    });
+    return { embeds: [embed], components: [boardBackRow()] };
+  }
+
+  // The list the player reads, best fit first (the service sorts it).
+  // Capped so the embed field stays inside Discord's 1024-character limit;
+  // the select menu below is capped at 25 by Discord itself.
+  const shown = candidates.slice(0, 10);
+  const rows = shown.map((candidate) => {
+    const head = candidate.unavailableReasons.length > 0
+      ? `~~${bandTag(candidate.band)} ${candidate.name} — Lv.${candidate.level}~~`
+      : `**${bandTag(candidate.band)}** ${candidate.name} — Lv.${candidate.level}`;
+    const detail =
+      candidate.unavailableReasons.length > 0
+        ? unavailableNote(candidate.unavailableReasons)
+        : candidateChips(candidate, definition);
+    return detail ? `${head}\n${detail}` : head;
+  });
+  embed.addFields({
+    name: 'Who to send',
+    value: rows.join('\n\n').slice(0, 1024),
+  });
+
+  const components: Rows = [];
+  if (deployable.length > 0) {
+    components.push(
+      new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId(buildCustomId('exp', 'pick', definition.key))
+          .setPlaceholder('Choose who to send…')
+          // Discord caps a select at 25 options.
+          .addOptions(
+            deployable.slice(0, 25).map((candidate) => ({
+              label: `${bandTag(candidate.band)} ${candidate.name}`.slice(0, 100),
+              description: `Lv.${candidate.level} · ${candidateChips(candidate, definition) ?? ''}`
+                .slice(0, 100),
+              value: String(candidate.waifuId),
+            })),
+          ),
+      ) as ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>,
+    );
+  } else {
+    embed.addFields({
+      name: '​',
+      value: '🚫 _Nobody is free to go right now._',
+    });
+  }
+  components.push(boardBackRow() as ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>);
+  return { embeds: [embed], components };
+}
+
+function unavailableNote(reasons: readonly string[]): string {
+  const [first] = reasons;
+  if (first === 'on_expedition') return '🚫 Already away on an expedition';
+  if (first === 'buddy') return '🚫 Your active Buddy';
+  if (first === 'care_target') return '🚫 In Care Mode';
+  if (first === 'released') return '🚫 Released';
+  return '🚫 Unavailable';
+}
+
+function boardBackRow(): ActionRowBuilder<ButtonBuilder> {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(buildCustomId('exp', 'board'))
+      .setLabel('⟵ Back to board')
+      .setStyle(ButtonStyle.Secondary),
+  );
+}
+
+// ──────────────────────── Deployment confirmation ────────────────────────
+
+function confirmScreen(
+  definition: RegionalExpedition,
+  candidate: ExpeditionCandidate,
+): Screen {
+  // Completion is computed here purely to *show* the player when she would be
+  // back. The authoritative finish line is set by the database at deploy time
+  // — this is a preview, and the active screen renders the real one.
+  const completesAt = new Date(Date.now() + definition.durationMinutes * 60 * 1000);
+
+  const embed = new EmbedBuilder()
+    .setTitle(`Send ${candidate.name}?`)
+    .setColor(COLOR_BOARD)
+    .setDescription(
+      [
+        `${definition.emoji ?? '•'} **${definition.name}**`,
+        '',
+        `👤 Sending: **${candidate.name}** — Lv.${candidate.level}`,
+        `🎲 Suitability: **${bandTag(candidate.band)}**`,
+        `   ${candidateChips(candidate, definition) ?? ''}`,
+        `⏱️ Duration: **${formatDuration(definition.durationMinutes)}**`,
+        `📅 Back ${relativeTimestamp(completesAt)}`,
+        preferenceLine(definition) ?? 'Prefers: _anyone willing_',
+      ].join('\n'),
+    );
+  embed.addFields({ name: 'Possible rewards', value: previewLine(definition.rewardPreview) });
+  embed.addFields({
+    name: '​',
+    value: `_She is unavailable until she returns — no Buddy, no Care Mode, no releasing._`,
+  });
+
+  return {
+    embeds: [embed],
+    components: [
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setCustomId(
+            buildCustomId('exp', 'deploy', definition.key, String(candidate.waifuId)),
+          )
+          .setLabel('Send her out')
+          .setEmoji('🧭')
+          .setStyle(ButtonStyle.Success),
+        new ButtonBuilder()
+          .setCustomId(buildCustomId('exp', 'view', definition.key))
+          .setLabel('Pick someone else')
+          .setStyle(ButtonStyle.Secondary),
+      ) as ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>,
+      boardBackRow() as ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>,
+    ],
+  };
+}
+
+// ───────────────────────── Cancel confirmation ─────────────────────────
+
+/**
+ * Recall is a two-step, and deliberately so.
+ *
+ * Abandoning a twelve-hour mission for nothing is the single most destructive
+ * thing this feature lets a player do, and it is one misclick away from the
+ * Collect button. The confirmation states all four consequences plainly rather
+ * than asking "are you sure?", because "are you sure" is a question players
+ * answer reflexively and a list of consequences is one they read.
+ */
+function cancelConfirmScreen(view: ExpeditionView): Screen {
+  const embed = new EmbedBuilder()
+    .setTitle('🚩 Recall her?')
+    .setColor(COLOR_DANGER)
+    .setDescription(
+      [
+        `**${view.waifuName}** is part-way through **${view.name}**.`,
+        `She would otherwise be back ${relativeTimestamp(view.completesAt)}.`,
+        '',
+        '**Recalling her now:**',
+        '• Returns her immediately — she is available again at once',
+        '• Grants **no rewards** — no WaifuBux, no Essence, no items',
+        '• Grants **no XP** — the trip counts for nothing',
+        '• **Cannot be undone** — the mission is abandoned, not paused',
+      ].join('\n'),
+    );
+
+  return {
+    embeds: [embed],
+    components: [
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        // Keep going is first and Primary; the destructive action is second
+        // and Danger. The safe option is where the thumb already is.
+        new ButtonBuilder()
+          .setCustomId(buildCustomId('exp', 'active'))
+          .setLabel('Let her finish')
+          .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+          .setCustomId(buildCustomId('exp', 'cancel_confirm', String(view.id)))
+          .setLabel('Recall — abandon the mission')
+          .setStyle(ButtonStyle.Danger),
+      ) as ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>,
+    ],
+  };
+}
+
+// ───────────────────────────── Results ─────────────────────────────
+
+const OUTCOME_DISPLAY = {
+  exceptional: {
+    title: '🌟 Exceptional Success',
+    color: COLOR_EXCEPTIONAL,
+    lead: 'She went far beyond what the job asked for.',
+  },
+  success: {
+    title: '✅ Success',
+    color: COLOR_SUCCESS,
+    lead: 'The job is done.',
+  },
+  failure: {
+    title: '💤 Setback',
+    color: COLOR_FAILURE,
+    lead: 'It did not go to plan — but she did not come back empty-handed.',
+  },
+} as const;
+
+/** One reward block: currency, essence, XP and item stacks, as lines. */
+export function rewardLines(
+  reward: {
+    waifubux: number;
+    essence: number;
+    waifuXp: number;
+    items: { slug: string; quantity: number }[];
+  },
+  itemNames: Map<string, string>,
+  essenceOverride?: number,
+): string[] {
+  const lines: string[] = [];
+  if (reward.waifubux > 0) lines.push(`💰 **${reward.waifubux}** WaifuBux`);
+  const essence = essenceOverride ?? reward.essence;
+  if (essence > 0) lines.push(`✨ **${essence}** Essence`);
+  if (reward.waifuXp > 0) lines.push(`📈 **${reward.waifuXp}** WaifuMon XP`);
+  for (const item of reward.items) {
+    lines.push(`📦 **${itemNames.get(item.slug) ?? item.slug}** ×${item.quantity}`);
+  }
+  return lines;
+}
+
+function sourcesOfKind(rewards: ExpeditionRewardPayload, kind: RewardTableKind) {
+  return rewards.sources.filter((s) => s.kind === kind);
+}
+
+function sumSources(
+  sources: ExpeditionRewardPayload['sources'],
+): { waifubux: number; essence: number; waifuXp: number; items: { slug: string; quantity: number }[] } {
+  return {
+    waifubux: sources.reduce((n, s) => n + s.waifubux, 0),
+    essence: sources.reduce((n, s) => n + s.essence, 0),
+    waifuXp: sources.reduce((n, s) => n + s.waifuXp, 0),
+    items: sources.flatMap((s) => s.items),
+  };
+}
+
+function resultScreen(result: ExpeditionClaimResult): Screen {
+  const display = OUTCOME_DISPLAY[result.outcome];
+  const itemNames = new Map(result.itemsGranted.map((i) => [i.slug, i.name]));
+
+  const embed = new EmbedBuilder()
+    .setTitle(display.title)
+    .setColor(display.color)
+    .setDescription(
+      [
+        `${result.expedition.emoji ?? '•'} **${result.expedition.name}**`,
+        `👤 **${result.expedition.waifuName}** · ${bandTag(result.expedition.band)}`,
+        '',
+        display.lead,
+      ].join('\n'),
+    );
+
+  const normal = sourcesOfKind(result.rewards, 'success');
+  const bonus = sourcesOfKind(result.rewards, 'bonus');
+  const consolation = sourcesOfKind(result.rewards, 'failure');
+
+  /**
+   * Exceptional Success is rendered as two blocks, never one flattened list.
+   *
+   * The whole point of an additive bonus is that the player can see what
+   * excelling earned them; merging it into the ordinary payout hides exactly
+   * the information the outcome exists to convey.
+   *
+   * Essence is the one line that cannot be split faithfully: the Buddy Bonus
+   * is applied to the *total* at claim time, so attributing the uplift to one
+   * table or the other would be inventing a number. It is therefore reported
+   * once, below the blocks, as the amount actually credited.
+   */
+  if (bonus.length > 0) {
+    const normalLines = rewardLines(sumSources(normal), itemNames);
+    const bonusLines = rewardLines(sumSources(bonus), itemNames);
+    embed.addFields({
+      name: 'Normal Rewards',
+      value: normalLines.length > 0 ? normalLines.join('\n') : '_Nothing._',
+    });
+    embed.addFields({
+      name: '🌟 Exceptional Bonus',
+      value: bonusLines.length > 0 ? bonusLines.join('\n') : '_Nothing._',
+    });
+  } else if (result.outcome === 'failure') {
+    const lines = rewardLines(sumSources(consolation), itemNames);
+    embed.addFields({
+      // Named so a consolation never reads as "you got nothing" — that is the
+      // whole difference between a setback and a punishment.
+      name: 'Brought home anyway',
+      value: lines.length > 0 ? lines.join('\n') : '_Nothing at all this time._',
+    });
+  } else {
+    const lines = rewardLines(sumSources(normal), itemNames);
+    embed.addFields({
+      name: 'Rewards',
+      value: lines.length > 0 ? lines.join('\n') : '_Nothing._',
+    });
+  }
+
+  // Essence as actually credited, once, after any Buddy Bonus.
+  if (result.essenceGranted > 0) {
+    const base = result.rewards.essence;
+    const bonusNote = result.essenceGranted > base ? ` _(+${result.essenceGranted - base} Buddy Bonus)_` : '';
+    embed.addFields({
+      name: 'Essence',
+      value: `✨ **${result.essenceGranted}** Essence${bonusNote}`,
+    });
+  }
+
+  if (result.waifuLeveledUp) {
+    embed.addFields({ name: '​', value: `🎉 **${result.expedition.waifuName} levelled up!**` });
+  }
+
+  embed.setFooter({
+    text: `Balance: ${result.waifubuxAfter} WaifuBux · ${result.essenceAfter} Essence`,
+  });
+
+  return {
+    embeds: [embed],
+    components: [
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setCustomId(buildCustomId('exp', 'board'))
+          .setLabel('Send her out again')
+          .setEmoji('🗺️')
+          .setStyle(ButtonStyle.Primary),
+      ) as ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>,
+      backRow() as ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>,
+    ],
+  };
+}
+
+// ─────────────────────────── Entry points ───────────────────────────
+
+/**
+ * `menu:expeditions` — the front door.
+ *
+ * Defaults to the **Active** screen when a mission is running or waiting to be
+ * collected, because that is what the player came to check. Only a player with
+ * nothing out sees the board first.
+ */
+export async function handleExpeditions(
+  ctx: AppContext,
+  interaction: PlayerInteraction,
+  prov: Provisioned,
+): Promise<void> {
+  // Resolves anything due before it answers, so opening the screen is what
+  // makes a finished mission finish.
+  const active = await ctx.services.expeditions.getActive(prov.playerId);
+  if (active.length > 0) {
+    await respondEphemeral(interaction, activeScreen(active[0]!));
+    return;
+  }
+  const board = await ctx.services.expeditions.getBoard(prov.playerId);
+  await respondEphemeral(interaction, boardScreen(board));
+}
+
+/** `exp:board` — the board, explicitly, even while a mission is running. */
+export async function handleExpeditionBoard(
+  ctx: AppContext,
+  interaction: PlayerInteraction,
+  prov: Provisioned,
+  statusLine?: string,
+): Promise<void> {
+  await ctx.services.expeditions.getActive(prov.playerId);
+  const board = await ctx.services.expeditions.getBoard(prov.playerId);
+  await respondEphemeral(interaction, boardScreen(board, statusLine));
+}
+
+/** `exp:active` — back to the active mission from a sub-screen. */
+export async function handleExpeditionActive(
+  ctx: AppContext,
+  interaction: PlayerInteraction,
+  prov: Provisioned,
+  statusLine?: string,
+): Promise<void> {
+  const active = await ctx.services.expeditions.getActive(prov.playerId);
+  if (active.length === 0) {
+    // She finished and was collected in another window, or was recalled.
+    // Falling back to the board is more useful than an error about a screen —
+    // but the caller's own status line wins, because "you already collected
+    // that one" is the thing the player needs to read, not "nobody is out".
+    await handleExpeditionBoard(
+      ctx,
+      interaction,
+      prov,
+      statusLine ?? 'Nobody is out right now.',
+    );
+    return;
+  }
+  await respondEphemeral(interaction, activeScreen(active[0]!, statusLine));
+}
+
+/** `exp:view|<key>` — mission detail with the candidate list. */
+export async function handleExpeditionView(
+  ctx: AppContext,
+  interaction: PlayerInteraction,
+  prov: Provisioned,
+  key: string,
+): Promise<void> {
+  const definition = findDefinition(ctx, key);
+  if (!definition) {
+    await handleExpeditionBoard(ctx, interaction, prov, '⚠️ That expedition is no longer listed.');
+    return;
+  }
+  let candidates: ExpeditionCandidate[];
+  try {
+    candidates = await ctx.services.expeditions.getCandidates(prov.playerId, key);
+  } catch (err) {
+    if (err instanceof AppError) {
+      await handleExpeditionBoard(ctx, interaction, prov, `⚠️ ${err.userMessage}`);
+      return;
+    }
+    throw err;
+  }
+  await respondEphemeral(interaction, detailScreen(definition, candidates));
+}
+
+/** `exp:pick|<key>` select — the deployment confirmation. */
+export async function handleExpeditionPick(
+  ctx: AppContext,
+  interaction: StringSelectMenuInteraction,
+  prov: Provisioned,
+  key: string,
+): Promise<void> {
+  const waifuId = Number(interaction.values[0]);
+  const definition = findDefinition(ctx, key);
+  if (!definition || !Number.isInteger(waifuId)) {
+    await handleExpeditionBoard(ctx, interaction, prov, '⚠️ That expedition is no longer listed.');
+    return;
+  }
+  const candidates = await ctx.services.expeditions.getCandidates(prov.playerId, key);
+  const candidate = candidates.find((c) => c.waifuId === waifuId);
+  // Re-read rather than trusting the select: the copy may have become Buddy,
+  // entered Care Mode or been sent elsewhere since the menu was painted.
+  if (!candidate || candidate.unavailableReasons.length > 0) {
+    await respondEphemeral(
+      interaction,
+      detailScreen(definition, candidates, '⚠️ She is not available any more — pick someone else.'),
+    );
+    return;
+  }
+  await respondEphemeral(interaction, confirmScreen(definition, candidate));
+}
+
+/** `exp:deploy|<key>|<waifuId>` — send her out. */
+export async function handleExpeditionDeploy(
+  ctx: AppContext,
+  interaction: ButtonInteraction,
+  prov: Provisioned,
+  key: string,
+  rawWaifuId: string,
+): Promise<void> {
+  const waifuId = Number(rawWaifuId);
+  if (!key || !Number.isInteger(waifuId)) {
+    await handleExpeditionBoard(ctx, interaction, prov, '⚠️ That button no longer works~');
+    return;
+  }
+  try {
+    const view = await ctx.services.expeditions.deploy(prov.playerId, key, waifuId);
+    await respondEphemeral(
+      interaction,
+      activeScreen(view, `🧭 **${view.waifuName}** sets out.`),
+    );
+  } catch (err) {
+    // Every refusal the service can raise is an AppError with player-facing
+    // wording — a stale Deploy lands here and repaints rather than erroring.
+    if (err instanceof AppError) {
+      await handleExpeditionBoard(ctx, interaction, prov, `⚠️ ${err.userMessage}`);
+      return;
+    }
+    throw err;
+  }
+}
+
+/** `exp:claim|<id>` — collect a finished mission. */
+export async function handleExpeditionClaim(
+  ctx: AppContext,
+  interaction: ButtonInteraction,
+  prov: Provisioned,
+  rawId: string,
+): Promise<void> {
+  const expeditionId = Number(rawId);
+  if (!Number.isInteger(expeditionId)) {
+    await handleExpeditionBoard(ctx, interaction, prov, '⚠️ That button no longer works~');
+    return;
+  }
+  try {
+    const result = await ctx.services.expeditions.claim(prov.playerId, expeditionId);
+    await respondEphemeral(interaction, resultScreen(result));
+  } catch (err) {
+    if (err instanceof AppError) {
+      // A double-clicked Collect lands here having granted nothing — the
+      // conditional claim in the service is what guarantees that, not this.
+      await handleExpeditionActive(ctx, interaction, prov, `⚠️ ${err.userMessage}`);
+      return;
+    }
+    throw err;
+  }
+}
+
+/** `exp:cancel|<id>` — the confirmation screen. Nothing is written here. */
+export async function handleExpeditionCancel(
+  ctx: AppContext,
+  interaction: ButtonInteraction,
+  prov: Provisioned,
+  rawId: string,
+): Promise<void> {
+  const expeditionId = Number(rawId);
+  const active = await ctx.services.expeditions.getActive(prov.playerId);
+  const view = active.find((v) => v.id === expeditionId);
+  if (!view) {
+    await handleExpeditionActive(ctx, interaction, prov, '⚠️ There is nothing to recall.');
+    return;
+  }
+  if (view.status !== 'active') {
+    // She finished while the player was looking at the screen. Recalling now
+    // would throw away a payout that already exists.
+    await handleExpeditionActive(
+      ctx,
+      interaction,
+      prov,
+      '✅ She got back before you could recall her — collect instead.',
+    );
+    return;
+  }
+  await respondEphemeral(interaction, cancelConfirmScreen(view));
+}
+
+/** `exp:cancel_confirm|<id>` — the only place a cancellation is written. */
+export async function handleExpeditionCancelConfirm(
+  ctx: AppContext,
+  interaction: ButtonInteraction,
+  prov: Provisioned,
+  rawId: string,
+): Promise<void> {
+  const expeditionId = Number(rawId);
+  if (!Number.isInteger(expeditionId)) {
+    await handleExpeditionBoard(ctx, interaction, prov, '⚠️ That button no longer works~');
+    return;
+  }
+  try {
+    const view = await ctx.services.expeditions.cancel(prov.playerId, expeditionId);
+    await handleExpeditionBoard(
+      ctx,
+      interaction,
+      prov,
+      `🚩 **${view.waifuName}** was recalled. The mission was abandoned — no rewards.`,
+    );
+  } catch (err) {
+    if (err instanceof AppError) {
+      // Lost the race (a second press, or she finished first): the service
+      // refused, so nothing was abandoned.
+      await handleExpeditionActive(ctx, interaction, prov, `⚠️ ${err.userMessage}`);
+      return;
+    }
+    throw err;
+  }
+}
+
+function findDefinition(ctx: AppContext, key: string): RegionalExpedition | undefined {
+  return ctx.content.expeditions.find((e) => e.key === key);
+}

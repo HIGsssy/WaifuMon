@@ -83,11 +83,31 @@ export interface ExpeditionRewardPayload {
   playerXp: number;
   items: ExpeditionItemGrant[];
   /**
-   * Which tables contributed, with their versions. This is the audit trail
-   * that survives `resolution_plan` being cleared: a historical row can still
-   * say which tuning produced it.
+   * What each contributing table paid, with its version.
+   *
+   * Two jobs. It is the audit trail that survives the resolution plan being
+   * trimmed — a historical row can still say which tuning produced it — and it
+   * is what lets a result screen show an Exceptional Success as
+   * "Normal Rewards" **plus** "Exceptional Bonus" rather than flattening the
+   * two into one indistinguishable list. Without the per-table amounts the
+   * player has no way to see what excelling actually earned them.
+   *
+   * The flat totals above stay **authoritative for granting**: the claim loop
+   * reads those and never this. That is a deliberate duplication — the totals
+   * are the sum of these entries — accepted because both are written together,
+   * once, by `mergeRolls`, and nothing else ever writes either. Presentation
+   * reads the breakdown; the ledger reads the totals.
    */
-  sources: { tableId: string; tableVersion: string; kind: RewardTableKind }[];
+  sources: {
+    tableId: string;
+    tableVersion: string;
+    kind: RewardTableKind;
+    waifubux: number;
+    essence: number;
+    waifuXp: number;
+    playerXp: number;
+    items: ExpeditionItemGrant[];
+  }[];
   warnings: ExpeditionRewardWarning[];
 }
 
@@ -220,6 +240,13 @@ export function mergeRolls(
       tableId: r.roll.tableId,
       tableVersion: r.roll.tableVersion,
       kind: r.kind,
+      waifubux: r.roll.waifubux,
+      essence: r.roll.essence,
+      waifuXp: r.roll.waifuXp,
+      playerXp: r.roll.playerXp,
+      // Merged within the table, but deliberately *not* across tables: the
+      // whole point is that the bonus stays separable from the success roll.
+      items: mergeGrants(r.roll.items),
     })),
     warnings: rolls.flatMap((r) => r.roll.warnings),
   };

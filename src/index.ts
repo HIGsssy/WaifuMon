@@ -391,6 +391,7 @@ async function main(): Promise<void> {
       inventory,
       progression,
       expeditions,
+      availability,
       daily: createDailyService({
         db,
         currency,
