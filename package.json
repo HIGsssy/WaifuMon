@@ -16,6 +16,7 @@
     "cards:geometry": "tsx src/tools/deriveFrameGeometry.ts",
     "cards:gc": "tsx src/tools/gcCards.ts",
     "cards:gc:prod": "node dist/tools/gcCards.js",
+    "expeditions:due": "tsx src/tools/expeditionDevClock.ts",
     "artwork:build": "tsx src/tools/buildArtwork.ts",
     "artwork:check": "npm run artwork:build -- --all --only full --check",
     "assets:thumbs": "npm run artwork:build -- --all --only thumbnails",

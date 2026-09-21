@@ -1,0 +1,59 @@
+{
+  "region": "waifu-valley",
+  "expeditions": [
+    {
+      "key": "valley_corner_store_run",
+      "name": "Corner Store Run",
+      "description": "The convenience store two blocks over needs its back room emptied before the morning delivery. Easy work, decent scrap, and whoever goes gets to keep what the previous tenant left behind.",
+      "emoji": "\ud83c\udfea",
+      "type": "supply_run",
+      "durationMinutes": 120,
+      "teamSize": 1,
+      "recommendedLevel": 5,
+      "preferredAffinities": ["caregiver", "submissive"],
+      "preferredRaces": ["human", "demi-human"],
+      "baseSuccessChance": 0.75,
+      "rewardTable": "valley-corner-store-success-v1",
+      "exceptionalRewardTable": "valley-corner-store-bonus-v1",
+      "failureRewardTable": "valley-corner-store-failure-v1",
+      "rewardPreview": ["salvage", "waifubux", "waifu_xp"],
+      "enabled": true
+    },
+    {
+      "key": "valley_rooftop_survey",
+      "name": "Rooftop Survey",
+      "description": "Somebody has to walk the rain-slick rooftops between the shrine and the neon strip and write down what is still standing. The wiring hums. So does everything living in it.",
+      "emoji": "\ud83c\udf03",
+      "type": "scouting",
+      "durationMinutes": 360,
+      "teamSize": 1,
+      "recommendedLevel": 15,
+      "preferredAffinities": ["switch", "primal"],
+      "preferredRaces": ["spirit", "android"],
+      "baseSuccessChance": 0.62,
+      "rewardTable": "valley-rooftop-survey-success-v1",
+      "exceptionalRewardTable": "valley-rooftop-survey-bonus-v1",
+      "failureRewardTable": "valley-rooftop-survey-failure-v1",
+      "rewardPreview": ["salvage", "waifubux", "essence", "consumables", "waifu_xp"],
+      "enabled": true
+    },
+    {
+      "key": "valley_undercity_dive",
+      "name": "Undercity Dive",
+      "description": "Under the Valley there is an older Valley, flooded to the knee and lit by signs that nobody pays for any more. Twelve hours down there turns up things the surface forgot it lost.",
+      "emoji": "\ud83d\udd77\ufe0f",
+      "type": "salvage_dive",
+      "durationMinutes": 720,
+      "teamSize": 1,
+      "recommendedLevel": 28,
+      "preferredAffinities": ["dominant"],
+      "preferredRaces": ["demon", "valkyrie"],
+      "baseSuccessChance": 0.5,
+      "rewardTable": "valley-undercity-dive-success-v1",
+      "exceptionalRewardTable": "valley-undercity-dive-bonus-v1",
+      "failureRewardTable": "valley-undercity-dive-failure-v1",
+      "rewardPreview": ["salvage", "waifubux", "essence", "charms", "rare_find", "waifu_xp"],
+      "enabled": true
+    }
+  ]
+}

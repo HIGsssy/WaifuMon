@@ -86,20 +86,31 @@ describe('items_sell_value_check', () => {
 
 describe('migration compatibility', () => {
   /**
-   * The seeded catalog is the pre-expeditions content set: nothing in it has
-   * been given a sell value yet. If this ever fails it means content started
-   * pricing items, which is a Phase 5 change that should update this test
-   * deliberately rather than discover it.
+   * Selling is opt-in per item, and the playtest content slice opts exactly one
+   * category in: salvage. Everything the catalog shipped before expeditions
+   * existed — charms, consumables, the guaranteed-capture contract — stays
+   * unsellable, which is the migration's compatibility promise and the reason
+   * an item added without thinking about `sellValue` is inert rather than
+   * exploitable. Widening this beyond salvage should be a deliberate edit here,
+   * not a surprise discovered in a shop.
    */
-  it('leaves every seeded item unsellable', async () => {
+  it('prices only salvage, and leaves every other seeded item unsellable', async () => {
     // Scoped to slugs the seeder owns, so the raw rows the constraint tests
     // above insert cannot make this pass or fail for the wrong reason.
-    const shippedSlugs = loadShippedContent(t.logger).items.map((i) => i.slug);
+    const shipped = loadShippedContent(t.logger).items;
+    const shippedSlugs = shipped.map((i) => i.slug);
+    const salvageSlugs = shipped.filter((i) => i.category === 'salvage').map((i) => i.slug);
+    // The slice itself has to be non-empty, or this test would keep passing
+    // after somebody deleted the salvage it exists to describe.
+    expect(salvageSlugs.length).toBeGreaterThan(0);
+
     const sellable = await t.db
       .select({ slug: items.slug, sellValue: items.sellValue })
       .from(items)
       .where(and(inArray(items.slug, shippedSlugs), isNotNull(items.sellValue)));
-    expect(sellable).toEqual([]);
+
+    expect(sellable.map((row) => row.slug).sort()).toEqual([...salvageSlugs].sort());
+    for (const row of sellable) expect(row.sellValue).toBeGreaterThan(0);
   });
 
   it('round-trips a sell value through the content seeder', async () => {
