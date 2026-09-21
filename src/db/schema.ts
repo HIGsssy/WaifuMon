@@ -43,13 +43,36 @@ export const AFFINITIES = ['dominant', 'submissive', 'caregiver', 'primal', 'swi
 export type Affinity = (typeof AFFINITIES)[number];
 export const DEFAULT_AFFINITY: Affinity = 'switch';
 
-export const ITEM_CATEGORIES = ['capture', 'material', 'cosmetic', 'consumable'] as const;
+/**
+ * What an item *is*. The three later additions are all expedition-facing:
+ *
+ *   - `salvage` — the haul. Exists to be sold; carries a `sell_value` and no
+ *     `shop_regions`, so it is vendorable without ever being purchasable.
+ *   - `key` — quest and gate items. Sellability is opt-in twice over (a
+ *     `sell_value` *and* an explicit content flag), because a key the player
+ *     needed and vendored is an unrecoverable mistake.
+ *   - `equipment` — reserved. The schema can describe it; V1 hands none out.
+ */
+export const ITEM_CATEGORIES = [
+  'capture',
+  'material',
+  'cosmetic',
+  'consumable',
+  'salvage',
+  'key',
+  'equipment',
+] as const;
 export type ItemCategory = (typeof ITEM_CATEGORIES)[number];
 
 /**
- * The categories a shop ever lists. `capture` is the charm catalog; `consumable`
- * covers the utility items. Material and cosmetic items are never sold, so a
- * `shopRegions` assignment on one is a content error, not a hidden shelf.
+ * The categories a shop ever *lists for sale to the player*. `capture` is the
+ * charm catalog; `consumable` covers the utility items. Everything else is
+ * never stocked, so a `shopRegions` assignment on one is a content error, not
+ * a hidden shelf.
+ *
+ * This is deliberately **not** the mirror of what a player may sell *back*.
+ * Buying is region-gated stock; selling is the global `sell_value` on the item
+ * row. Widening the category set above therefore cannot put salvage on a shelf.
  */
 export const SHOP_ITEM_CATEGORIES = ['capture', 'consumable'] as const;
 export type ShopItemCategory = (typeof SHOP_ITEM_CATEGORIES)[number];
@@ -335,6 +358,17 @@ export const items = pgTable(
       .notNull()
       .default(sql`'{}'::text[]`),
     buyPrice: integer('buy_price'),
+    /**
+     * What a shop pays the player *for* this item. Null means "not sellable",
+     * and it is the only spelling of that fact — the CHECK forbids `0`, so
+     * every consumer can test `sell_value IS NOT NULL` and be done.
+     *
+     * Global rather than regional: there is no per-region sell modifier yet,
+     * and inventing one in the column shape before content can express it
+     * would be a column nobody writes. A regional ladder later is an additive
+     * table, not a change to this one.
+     */
+    sellValue: integer('sell_value'),
     /** Which currency `buy_price` is denominated in. */
     priceCurrency: text('price_currency').notNull().default('waifubux'),
     dailyStockLimit: integer('daily_stock_limit'),
@@ -348,8 +382,10 @@ export const items = pgTable(
   (t) => [
     check(
       'items_category_check',
-      sql`${t.category} in ('capture','material','cosmetic','consumable')`,
+      sql`${t.category} in ('capture','material','cosmetic','consumable','salvage','key','equipment')`,
     ),
+    // `0` is not a third way to say "not sellable" — see the column comment.
+    check('items_sell_value_check', sql`${t.sellValue} is null or ${t.sellValue} > 0`),
     check(
       'items_effect_type_check',
       sql`${t.effectType} is null or ${t.effectType} in ('restore_energy_full','restore_energy_amount','capture_bonus_charges','buddy_affection_gain')`,
@@ -399,19 +435,35 @@ export const shopTransactions = pgTable(
     itemId: bigint('item_id', { mode: 'number' })
       .notNull()
       .references(() => items.id),
+    /**
+     * Which direction the money moved. Every column below keeps its plain
+     * meaning in both directions — `quantity` is how many items moved,
+     * `total_price` is how much money moved — and the *direction* is read
+     * from here, never from a sign. One ledger answers "what happened to this
+     * player's money" without a UNION.
+     */
+    kind: text('kind').notNull().default('purchase'),
     quantity: integer('quantity').notNull(),
+    /** `buy_price` on a purchase, `sell_value` on a sale. */
     unitPrice: integer('unit_price').notNull(),
     totalPrice: integer('total_price').notNull(),
-    /** Currency the purchase was paid in; `balance_after` is that currency. */
+    /** Currency the transaction settled in; `balance_after` is that currency. */
     currency: text('currency').notNull().default('waifubux'),
+    /** The balance after the debit (purchase) or credit (sale). */
     balanceAfter: integer('balance_after').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     index('shop_transactions_player_created_idx').on(t.playerId, t.createdAt),
+    index('shop_transactions_player_kind_idx').on(t.playerId, t.kind, t.createdAt),
     check('shop_transactions_currency_check', sql`${t.currency} in ('waifubux','essence')`),
+    check('shop_transactions_kind_check', sql`${t.kind} in ('purchase','sale')`),
   ],
 );
+
+/** Direction of a `shop_transactions` row. See the `kind` column comment. */
+export const SHOP_TRANSACTION_KINDS = ['purchase', 'sale'] as const;
+export type ShopTransactionKind = (typeof SHOP_TRANSACTION_KINDS)[number];
 
 export const ENCOUNTER_STATES = [
   'active',
@@ -1986,6 +2038,7 @@ export type EncounterRow = typeof encounters.$inferSelect;
 export type CaptureAttemptRow = typeof captureAttempts.$inferSelect;
 export type PlayerWaifuRow = typeof playerWaifus.$inferSelect;
 export type PlayerProgressionEventRow = typeof playerProgressionEvents.$inferSelect;
+export type PlayerExpeditionRow = typeof playerExpeditions.$inferSelect;
 export type WaifumonSessionRow = typeof waifumonSessions.$inferSelect;
 export type PlayerDailyQuestRow = typeof playerDailyQuests.$inferSelect;
 export type PlayerDailySplashViewRow = typeof playerDailySplashViews.$inferSelect;
@@ -2010,3 +2063,176 @@ export type WorldEncounterVendorRow = typeof worldEncounterVendors.$inferSelect;
 export type WorldEncounterVendorInstanceRow = typeof worldEncounterVendorInstances.$inferSelect;
 export type PlayerAchievementRow = typeof playerAchievements.$inferSelect;
 export type ResultPresentationVariantRow = typeof resultPresentationVariants.$inferSelect;
+
+/**
+ * Expedition lifecycle. `active` is the only state a mission can be deployed
+ * into; every other state is terminal in the sense that nothing re-enters
+ * `active`.
+ *
+ *   active ──(due, resolve)──► resolved ──(claim)──► claimed
+ *      └────(cancel)────► cancelled
+ *
+ * `cancelled` never rolls an outcome and never pays: it returns the deployed
+ * copy and nothing else.
+ */
+export const EXPEDITION_STATUSES = ['active', 'resolved', 'claimed', 'cancelled'] as const;
+export type ExpeditionStatus = (typeof EXPEDITION_STATUSES)[number];
+
+/**
+ * What a resolved mission did. Three values rather than a boolean, because
+ * `exceptional` is a *better success*, not a different axis — and because an
+ * enum leaves room for a fourth outcome without a column change.
+ */
+export const EXPEDITION_OUTCOMES = ['failure', 'success', 'exceptional'] as const;
+export type ExpeditionOutcome = (typeof EXPEDITION_OUTCOMES)[number];
+
+export const playerExpeditions = pgTable(
+  'player_expeditions',
+  {
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    playerId: bigint('player_id', { mode: 'number' })
+      .notNull()
+      .references(() => players.id),
+    /**
+     * Which of the player's expedition slots this mission occupies.
+     *
+     * 1-based. V1 offers exactly one slot because `tables.expeditions
+     * .maxConcurrent` is 1, but the *table* is keyed by (player, slot) rather
+     * than by player alone — so unlocking a second slot is a content edit and
+     * a service-side cap, not a migration and not a redesign of this table.
+     *
+     * The cap deliberately lives in content rather than in a CHECK here: a
+     * CHECK would make raising it a migration, which is exactly the coupling
+     * this column exists to avoid.
+     */
+    slotIndex: integer('slot_index').notNull().default(1),
+    /**
+     * The content key this mission was deployed from. Recorded rather than
+     * referenced: content is not a table, and the definition may be edited,
+     * disabled or removed while the mission is in flight.
+     */
+    expeditionKey: text('expedition_key').notNull(),
+    region: text('region').notNull(),
+    /**
+     * The deployed copy. No FK, matching the documented precedent for
+     * `buddy_waifu_id` and `care_mode_waifu_id`.
+     */
+    waifuId: bigint('waifu_id', { mode: 'number' }).notNull(),
+    status: text('status').notNull().default('active'),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+    completesAt: timestamp('completes_at', { withTimezone: true }).notNull(),
+    /**
+     * The chances computed at deployment, from the definition and the copy
+     * that was sent. Persisted rather than recomputed so a mission resolves
+     * under the rules it was started under, however content moves afterwards.
+     *
+     * Never serialized to a client — see `suitability_band`, which is.
+     */
+    successChance: real('success_chance').notNull(),
+    exceptionalChance: real('exceptional_chance').notNull(),
+    /** The band the player was shown. The only odds any client ever sees. */
+    suitabilityBand: text('suitability_band').notNull(),
+    /**
+     * **The immutable contract.** Everything resolution needs, copied out of
+     * content at deployment: the reward tables, the display metadata, and the
+     * config version that produced the chances above.
+     *
+     * This is what makes a mission survive a content deploy. Once it is
+     * written, resolution reads nothing from the content snapshot at all — so
+     * retuning a table, disabling a mission or removing it from the files
+     * affects future deployments only, and a player who committed twelve hours
+     * gets the deal they were offered.
+     *
+     * Cleared at resolution, in the same statement that writes `rewards`: by
+     * then the outcome is decided and the plan can never be needed again, so
+     * keeping it would be storing every historical mission's tables forever
+     * for no reader. The table ids and versions are copied into `rewards` for
+     * audit before it goes.
+     */
+    resolutionPlan: jsonb('resolution_plan').$type<Record<string, unknown> | null>(),
+    /** The uniform draw the outcome was decided by. Audit only. */
+    resolutionRoll: real('resolution_roll'),
+    outcome: text('outcome'),
+    /**
+     * The resolved payout, written once. A *resolved payload*, not a table
+     * reference: what the player won must survive an edit to the table they
+     * won it from, and claiming must never need to roll anything.
+     */
+    rewards: jsonb('rewards').$type<Record<string, unknown> | null>(),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+    claimedAt: timestamp('claimed_at', { withTimezone: true }),
+    cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
+    /**
+     * Which derivation produced this row, mirroring `BOSS_REWARD_LOGIC_VERSION`.
+     * Records *how* the numbers were computed, so a later change to the maths
+     * is auditable rather than retroactive.
+     */
+    logicVersion: integer('logic_version').notNull().default(1),
+  },
+  (t) => [
+    check(
+      'player_expeditions_status_check',
+      sql`${t.status} in ('active','resolved','claimed','cancelled')`,
+    ),
+    check(
+      'player_expeditions_outcome_check',
+      sql`${t.outcome} is null or ${t.outcome} in ('failure','success','exceptional')`,
+    ),
+    check('player_expeditions_slot_check', sql`${t.slotIndex} >= 1`),
+    // Derived from the canonical region list rather than spelled out, so a
+    // new region widens this constraint in the same migration that widens
+    // every other one.
+    check(
+      'player_expeditions_region_check',
+      sql`${t.region} in (${sql.raw(REGION_SQL_LIST)})`,
+    ),
+    // The state machine's illegal states, made unrepresentable rather than
+    // merely unreached. A resolved row has an outcome and rewards; an active
+    // one has neither; a claim implies a resolution; a cancellation implies
+    // no outcome at all.
+    check(
+      'player_expeditions_active_shape_check',
+      sql`(${t.status} = 'active') = (${t.resolvedAt} is null and ${t.cancelledAt} is null)`,
+    ),
+    check(
+      'player_expeditions_resolved_shape_check',
+      sql`(${t.resolvedAt} is null) = (${t.outcome} is null)`,
+    ),
+    check(
+      'player_expeditions_claimed_shape_check',
+      sql`${t.claimedAt} is null or ${t.resolvedAt} is not null`,
+    ),
+    check(
+      'player_expeditions_cancelled_shape_check',
+      sql`(${t.status} = 'cancelled') = (${t.cancelledAt} is not null)`,
+    ),
+    /**
+     * One active mission per (player, slot). This — not a count in the
+     * service — is what makes a double-clicked Deploy impossible: the second
+     * insert loses to a unique violation rather than to a check that read a
+     * stale count.
+     *
+     * Keyed on the slot rather than on the player alone precisely so raising
+     * `maxConcurrent` needs no migration. Terminal rows are excluded, so a
+     * player may have any number of finished missions in the same slot.
+     */
+    uniqueIndex('player_expeditions_player_slot_active_uq')
+      .on(t.playerId, t.slotIndex)
+      .where(sql`${t.status} = 'active'`),
+    /**
+     * A copy cannot be in two places at once, whatever the slot count becomes.
+     * Independent of the index above, because "one mission per slot" and "one
+     * mission per WaifuMon" stop being the same rule the moment a second slot
+     * exists.
+     */
+    uniqueIndex('player_expeditions_waifu_active_uq')
+      .on(t.waifuId)
+      .where(sql`${t.status} = 'active'`),
+    /** Serves the due-mission sweep a worker tick would run. */
+    index('player_expeditions_due_idx')
+      .on(t.completesAt)
+      .where(sql`${t.status} = 'active'`),
+    /** Serves the profile/portal history read. */
+    index('player_expeditions_player_history_idx').on(t.playerId, t.startedAt),
+  ],
+);

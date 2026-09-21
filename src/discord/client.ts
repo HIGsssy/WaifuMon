@@ -12,6 +12,8 @@ import {
   handleShopBuy,
   handleShopExchange,
   handleShopConvert,
+  handleShopSell,
+  handleShopSellQuantity,
   handleCareAutocomplete,
   handleCareChangeOpen,
   handleCareChangePick,
@@ -253,6 +255,9 @@ export function createDiscordClient(ctx: AppContext): Client {
         handleShopExchange(ctx, i, prov),
       'shop:convert': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleShopConvert(ctx, i, prov, args[0] ?? '', args[1] ?? ''),
+      'shop:sell': (i: ButtonInteraction, prov: Provisioned) => handleShopSell(ctx, i, prov),
+      'shop:sellqty': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleShopSellQuantity(ctx, i, prov, args[0] ?? '', args[1] ?? ''),
       'item:use': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleItemUse(ctx, i, prov, args[0] ?? ''),
       'quests:claim_all': (i: ButtonInteraction, prov: Provisioned) =>

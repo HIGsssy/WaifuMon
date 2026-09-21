@@ -668,5 +668,39 @@
     "huntChance": 0.35,
     "travelChance": 0.2,
     "defaultExpirySeconds": 600
+  },
+  "expeditions": {
+    "enabled": true,
+    "durations": {
+      "short": 120,
+      "medium": 360,
+      "long": 720
+    },
+    "boardSize": 4,
+    "rotationHours": 12,
+    "maxConcurrent": 1,
+    "buddyDeployable": false,
+    "suitability": {
+      "affinityStrong": 0.2,
+      "affinityWeak": -0.15,
+      "raceMatch": 0.1,
+      "levelAtOrAbove": 0.1,
+      "levelBelowPerLevel": -0.02,
+      "levelAbovePerLevel": 0.01,
+      "levelAboveCap": 0.1,
+      "minChance": 0.05,
+      "maxChance": 0.95
+    },
+    "exceptional": {
+      "baseChance": 0.05,
+      "perSuitabilityPoint": 0.25,
+      "maxChance": 0.3
+    },
+    "bands": {
+      "excellent": 0.8,
+      "good": 0.65,
+      "fair": 0.5,
+      "risky": 0.35
+    }
   }
 }

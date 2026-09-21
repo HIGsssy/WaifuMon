@@ -25,6 +25,7 @@ import {
   listSpeciesSources,
   readContentFiles,
   readExpansionPacks,
+  readExpeditionContent,
   validateContentSet,
 } from './loader';
 import type { ContentReloader, ReloadResult } from './reloadService';
@@ -38,8 +39,10 @@ import {
   TablesFileSchema,
   type BossContent,
   type BossRewardTable,
+  type ExpeditionRewardTable,
   type ItemContent,
   type LoadedContent,
+  type RegionalExpedition,
   type SpeciesContent,
   type TablesContent,
 } from './schemas';
@@ -138,6 +141,15 @@ export interface RawContent {
    * with both files in hand.
    */
   bossRewards: BossRewardTable[];
+  /**
+   * Expedition definitions and payout tables, read for the same reason as
+   * `bossRewards`: the panel has no expedition editor, but a `tables.json`
+   * save is validated against them — and removing the duration tier every
+   * shipped mission names is exactly the edit that has to be caught with both
+   * files in hand.
+   */
+  expeditions: RegionalExpedition[];
+  expeditionRewards: ExpeditionRewardTable[];
 }
 
 export interface RarityBucketSummary {
@@ -295,6 +307,7 @@ export function createAdminContentService(deps: AdminContentServiceDeps): AdminC
       expansionId: source.expansionId,
       species: parseFile(source.absolutePath, SpeciesFileSchema),
     }));
+    const { expeditions, expeditionRewards } = readExpeditionContent(contentDir);
     return {
       items,
       speciesFiles,
@@ -302,6 +315,8 @@ export function createAdminContentService(deps: AdminContentServiceDeps): AdminC
       tables,
       bosses,
       bossRewards,
+      expeditions,
+      expeditionRewards,
     };
   }
 
@@ -407,6 +422,8 @@ export function createAdminContentService(deps: AdminContentServiceDeps): AdminC
       tables: overrides.tables ?? raw.tables,
       bosses: overrides.bosses ?? raw.bosses,
       bossRewards: overrides.bossRewards ?? raw.bossRewards,
+      expeditions: overrides.expeditions ?? raw.expeditions,
+      expeditionRewards: overrides.expeditionRewards ?? raw.expeditionRewards,
       regions: overrides.regions ?? packs.regions,
       expansions: overrides.expansions ?? packs.expansions,
       speciesOrigin: overrides.speciesOrigin ?? packs.speciesOrigin,

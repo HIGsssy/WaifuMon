@@ -253,6 +253,27 @@
       "when": 1818799200000,
       "tag": "0035_base_80085_region",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1818885600000,
+      "tag": "0036_item_categories_and_sell_value",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1818972000000,
+      "tag": "0037_shop_sales",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1819058400000,
+      "tag": "0038_expeditions",
+      "breakpoints": true
     }
   ]
 }

@@ -30,6 +30,7 @@ export async function seedContent(db: Db, content: LoadedContent, logger: Logger
         isGuaranteedCapture: item.isGuaranteedCapture,
         shopRegions: item.shopRegions,
         buyPrice: item.buyPrice,
+        sellValue: item.sellValue,
         priceCurrency: item.priceCurrency,
         dailyStockLimit: item.dailyStockLimit,
         effectType: item.effectType,

@@ -97,6 +97,7 @@ function buildCtx(): AppContext {
       hunt: app.hunt,
       capture: app.capture,
       collection: app.collection,
+      expeditions: app.expeditions,
         appearance: app.appearance,
       care: app.care,
       progression: app.progression,

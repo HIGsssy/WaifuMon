@@ -46,7 +46,11 @@ import { REGIONS } from '../bosses/regions';
  * pools, travel routes and regional shops must name. Wider than the boss list
  * on purpose: a travel destination need not host a boss.
  */
-import { REGIONS as ALL_REGIONS, DEFAULT_REGION } from '../locations/regions';
+import {
+  REGIONS as ALL_REGIONS,
+  DEFAULT_REGION,
+  type Region,
+} from '../locations/regions';
 /**
  * The shipped SP ladder doubles as this schema's default, so content and code
  * cannot ship disagreeing tables — omitting the block yields exactly the
@@ -196,6 +200,21 @@ const ItemBaseSchema = z.object({
    */
   shopRegions: z.array(z.enum(ALL_REGIONS)).default([]),
   buyPrice: z.number().int().positive().nullable().default(null),
+  /**
+   * What a shop pays for this item, in WaifuBux. Null (the default) means the
+   * item cannot be sold — so an author opts *in* to vendorability, and an item
+   * added without thinking about it is inert rather than exploitable. Positive
+   * only: the database rejects `0`, because 0 and null are the same fact and a
+   * fact with two spellings gets tested for in only one of them.
+   */
+  sellValue: z.number().int().positive().nullable().default(null),
+  /**
+   * Required to put a non-null `sellValue` on a `key` item. Two independent
+   * opt-ins guard the one item category whose loss is unrecoverable: a typo in
+   * a single field cannot turn a quest key into vendor trash, because the typo
+   * would have to land in two fields that do not resemble each other.
+   */
+  explicitlySellable: z.boolean().default(false),
   /** Which currency `buyPrice` is denominated in; defaults to WaifuBux. */
   priceCurrency: z.enum(PRICE_CURRENCIES).default('waifubux'),
   dailyStockLimit: z.number().int().positive().nullable().default(null),
@@ -246,6 +265,47 @@ export const ItemContentSchema = ItemBaseSchema.superRefine((item, ctx) => {
       }
       seenRegion.add(regionId);
     }
+  }
+  // Key items are the one category whose loss cannot be undone, so making one
+  // sellable takes two deliberate fields rather than one. The acceptance
+  // criterion — "key items cannot accidentally be sold unless explicitly
+  // configured" — is expressed here as a boot-time refusal rather than as a
+  // runtime guard, because a content set that would allow it should never
+  // reach a running bot in the first place.
+  //
+  // Considered and rejected: treating a non-null `sellValue` as sufficient
+  // evidence of intent. A single mistyped field should not be able to put a
+  // quest key on the vendor counter, and `sellValue` sits next to `buyPrice`
+  // in every item file — exactly the neighbourhood a stray edit lands in.
+  if (item.category === 'key' && item.sellValue != null && !item.explicitlySellable) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message:
+        `"${item.slug}": a key item with a sellValue also requires explicitlySellable: true. ` +
+        'If this key is meant to be vendorable, say so twice; if it is not, remove sellValue.',
+      path: ['sellValue'],
+    });
+  }
+  // The flag on its own does nothing, and an author who set it almost
+  // certainly meant to set a price too. Reading it back as a silent no-op is
+  // how an item ships unsellable for a month after somebody "made it sellable".
+  if (item.explicitlySellable && item.sellValue == null) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `"${item.slug}": explicitlySellable: true is inert without a sellValue`,
+      path: ['explicitlySellable'],
+    });
+  }
+  // The flag is *only* the key-item escape hatch. On any other category it
+  // reads as though it were doing something, which is worse than absent.
+  if (item.explicitlySellable && item.category !== 'key') {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message:
+        `"${item.slug}": explicitlySellable only applies to category "key" — ` +
+        'every other category is sellable on sellValue alone',
+      path: ['explicitlySellable'],
+    });
   }
   // The two capture-item fields only mean anything on a capture item, and a
   // guaranteed item bypasses the chance formula entirely — a flat bonus on one
@@ -1985,6 +2045,403 @@ const WORLD_ENCOUNTER_DEFAULT: z.input<typeof WorldEncounterConfigSchema> = {
   defaultExpirySeconds: 600,
 };
 
+// ────────────────────────────── Expeditions ──────────────────────────────
+
+/**
+ * Expeditions & Salvage.
+ *
+ * A player sends **one owned WaifuMon** on a timed mission. The mission
+ * resolves from a chance computed at *deployment* and pays out from reward
+ * tables snapshotted at the same moment. Nothing about a mission in flight is
+ * re-derived from live content, which is the property the rest of this block
+ * is shaped to support.
+ *
+ * Three kinds of file take part:
+ *
+ *   - `content/tables.json` → `expeditions` — every balance constant. Not one
+ *     of these numbers appears in a `.ts` file, so retuning the feature is a
+ *     content edit rather than a deploy.
+ *   - `content/expeditions/<region>.json` — the mission definitions.
+ *   - `content/expeditionRewards.json` — the payout tables the definitions name.
+ *
+ * The reward tables copy the *shape* of the boss tables (independent groups, a
+ * `chanceBasisPoints` gate in front of a weighted pick) rather than reusing
+ * their schema. That is deliberate and is revisited only once both have
+ * shipped: an expedition table pays currency, Essence and WaifuMon XP as well
+ * as items, and folding those into `BossRewardTableSchema` would put four
+ * fields on the boss path that bosses have no use for.
+ */
+
+/** Suitability bands — the only expression of odds a player is ever shown. */
+export const SUITABILITY_BANDS = ['EXCELLENT', 'GOOD', 'FAIR', 'RISKY', 'POOR'] as const;
+export type SuitabilityBand = (typeof SUITABILITY_BANDS)[number];
+
+/**
+ * Mission archetypes. Flavour and grouping only — no code branches on this.
+ * It exists so a board can be described ("two supply runs and an escort") and
+ * so a future filter has something to filter on.
+ */
+export const EXPEDITION_TYPES = [
+  'supply_run',
+  'escort',
+  'excavation',
+  'scouting',
+  'diplomacy',
+  'salvage_dive',
+] as const;
+export type ExpeditionType = (typeof EXPEDITION_TYPES)[number];
+
+/**
+ * The closed vocabulary of reward *previews*.
+ *
+ * Deliberately decoupled from what the tables actually contain: the preview is
+ * a promise about the kind of thing that might come back, not a manifest. That
+ * is what lets a rare find stay a surprise while the board still tells the
+ * truth about what a mission is for.
+ */
+export const EXPEDITION_REWARD_PREVIEWS = [
+  'waifubux',
+  'essence',
+  'salvage',
+  'charms',
+  'consumables',
+  'waifu_xp',
+  'rare_find',
+  'key_item',
+] as const;
+
+const expeditionKey = z
+  .string()
+  .min(1)
+  .regex(/^[a-z0-9]+(?:_[a-z0-9]+)*$/, 'expedition key must be lowercase snake_case');
+
+/**
+ * Balance constants for the whole feature. Every number the design called
+ * provisional lives here and nowhere else.
+ */
+export const ExpeditionsConfigSchema = z
+  .object({
+    /**
+     * Global kill switch. Switching it off hides the board and refuses new
+     * deployments — it does **not** touch missions already in flight, which
+     * still resolve and still pay. A kill switch must not eat someone's twelve
+     * hours.
+     */
+    enabled: z.boolean().default(true),
+    /**
+     * The legal mission lengths, in minutes. A definition must name one of
+     * these values rather than writing its own, because free-form durations
+     * are how a board ends up offering a 47-minute mission nobody balanced.
+     */
+    durations: z
+      .record(z.string(), z.number().int().positive())
+      .default({ short: 120, medium: 360, long: 720 }),
+    /** Missions shown per region board. */
+    boardSize: z.number().int().positive().default(4),
+    /** How long one board stands before it is redrawn. */
+    rotationHours: z.number().int().positive().default(12),
+    /**
+     * Expedition slots a player may have running at once.
+     *
+     * V1 ships `1`. The state table is keyed by `(player_id, slot_index)`
+     * rather than by player alone, so raising this is a content edit and a
+     * service-side cap — not a migration and not a redesign.
+     */
+    maxConcurrent: z.number().int().positive().default(1),
+    /** Whether the active Buddy may be deployed. Ships off: she is busy. */
+    buddyDeployable: z.boolean().default(false),
+    /** Additive suitability terms, in probability points. */
+    suitability: z
+      .object({
+        /** The copy's affinity is one the mission prefers. */
+        affinityStrong: z.number().default(0.2),
+        /** A preferred affinity beats the copy's on the wheel. */
+        affinityWeak: z.number().default(-0.15),
+        raceMatch: z.number().default(0.1),
+        levelAtOrAbove: z.number().default(0.1),
+        /** Per level *below* the recommendation. Negative. */
+        levelBelowPerLevel: z.number().default(-0.02),
+        /** Per level *above* the recommendation, capped by `levelAboveCap`. */
+        levelAbovePerLevel: z.number().default(0.01),
+        levelAboveCap: z.number().default(0.1),
+        minChance: z.number().gt(0).lt(1).default(0.05),
+        maxChance: z.number().gt(0).lte(1).default(0.95),
+      })
+      .strict()
+      .default({}),
+    /**
+     * Exceptional Success — a **bonus** layer on top of an ordinary success,
+     * never a replacement for one. See `rollExpeditionRewards`.
+     */
+    exceptional: z
+      .object({
+        baseChance: z.number().gte(0).lte(1).default(0.05),
+        /**
+         * How much of the margin between the computed success chance and the
+         * mission's own base chance converts into exceptional chance. This is
+         * what makes a well-matched deployment more likely to excel, not just
+         * more likely to succeed.
+         */
+        perSuitabilityPoint: z.number().gte(0).default(0.25),
+        maxChance: z.number().gte(0).lte(1).default(0.3),
+      })
+      .strict()
+      .default({}),
+    /**
+     * Lower bounds for each band, descending. A chance at or above
+     * `excellent` is EXCELLENT; below `risky` is POOR.
+     */
+    bands: z
+      .object({
+        excellent: z.number().gt(0).lt(1).default(0.8),
+        good: z.number().gt(0).lt(1).default(0.65),
+        fair: z.number().gt(0).lt(1).default(0.5),
+        risky: z.number().gt(0).lt(1).default(0.35),
+      })
+      .strict()
+      .default({}),
+  })
+  .strict()
+  .superRefine((config, ctx) => {
+    if (config.suitability.minChance > config.suitability.maxChance) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'expeditions.suitability.minChance is above maxChance',
+        path: ['suitability', 'minChance'],
+      });
+    }
+    // Bands must descend or the band lookup is order-dependent nonsense: a
+    // `good` above `excellent` would make EXCELLENT unreachable.
+    const { excellent, good, fair, risky } = config.bands;
+    if (!(excellent > good && good > fair && fair > risky)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          'expeditions.bands must strictly descend: excellent > good > fair > risky ' +
+          `(got ${excellent} > ${good} > ${fair} > ${risky})`,
+        path: ['bands'],
+      });
+    }
+    if (Object.keys(config.durations).length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'expeditions.durations must name at least one tier',
+        path: ['durations'],
+      });
+    }
+  });
+
+export type ExpeditionsConfig = z.infer<typeof ExpeditionsConfigSchema>;
+
+export const EXPEDITIONS_DEFAULT: ExpeditionsConfig = ExpeditionsConfigSchema.parse({});
+
+/** One weighted drop inside an expedition reward group. */
+export const ExpeditionRewardEntrySchema = z
+  .object({
+    /** An item slug from `items.json`; this file references, never defines. */
+    itemId: slug,
+    enabled: z.boolean().default(true),
+    weight: z.number().int().positive(),
+    quantity: z.number().int().positive().default(1),
+  })
+  .strict();
+
+/**
+ * A probability gate in front of a weighted pick. Groups are independent of
+ * one another, which is what lets a table hand out guaranteed salvage and,
+ * separately and rarely, a treasure map *in addition to* it.
+ */
+export const ExpeditionRewardGroupSchema = z
+  .object({
+    /**
+     * Stable within its table, and part of the deterministic draw key — so a
+     * renamed group draws differently. Deliberate: a renamed group is a
+     * different group.
+     */
+    id: rewardId,
+    enabled: z.boolean().default(true),
+    rolls: z.number().int().positive().default(1),
+    /** 10000 = always, 25 = 0.25%. Basis points, so a rare chance reads exactly. */
+    chanceBasisPoints: z.number().int().gte(0).lte(10_000).default(10_000),
+    entries: z.array(ExpeditionRewardEntrySchema).min(1),
+  })
+  .strict();
+
+/** An inclusive integer range, drawn uniformly. `min === max` is a flat amount. */
+const ExpeditionAmountRangeSchema = z
+  .object({
+    min: z.number().int().nonnegative(),
+    max: z.number().int().nonnegative(),
+  })
+  .strict()
+  .refine((r) => r.max >= r.min, { message: 'max must be >= min' });
+
+/**
+ * A named expedition payout table.
+ *
+ * Referenced by `rewardTable` / `exceptionalRewardTable` / `failureRewardTable`
+ * on a definition, and **copied wholesale onto the expedition row at deploy**,
+ * so editing one of these affects future deployments only.
+ */
+export const ExpeditionRewardTableSchema = z
+  .object({
+    id: z.string().min(1),
+    /**
+     * Table switch. A disabled table is refused at *deploy* time rather than
+     * silently paying nothing; a mission already carrying a snapshot of it is
+     * unaffected, because the snapshot is what resolves.
+     */
+    enabled: z.boolean().default(true),
+    /**
+     * Recorded in the snapshot and in the resolved payload, so an audit can
+     * say which tuning produced a historical result. Defaults to the id.
+     */
+    version: z.string().min(1).optional(),
+    waifubux: ExpeditionAmountRangeSchema.optional(),
+    essence: ExpeditionAmountRangeSchema.optional(),
+    /** Flat XP for the deployed copy. Zero and absent mean the same thing. */
+    waifuXp: z.number().int().nonnegative().default(0),
+    /** Flat player XP. Routed through `progression.grantXp` like every other. */
+    playerXp: z.number().int().nonnegative().default(0),
+    groups: z.array(ExpeditionRewardGroupSchema).default([]),
+  })
+  .strict()
+  .superRefine((table, ctx) => {
+    const groupIds = table.groups.map((g) => g.id);
+    const duplicate = groupIds.find((id, i) => groupIds.indexOf(id) !== i);
+    if (duplicate) {
+      // Group ids key the deterministic draw, so two groups sharing an id
+      // would draw *identically* rather than independently.
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `expeditionRewards["${table.id}"] has two groups with id "${duplicate}"`,
+        path: ['groups'],
+      });
+    }
+    for (const [index, group] of table.groups.entries()) {
+      const drops = group.entries.map((e) => `${e.itemId}x${e.quantity}`);
+      const dupDrop = drops.find((d, i) => drops.indexOf(d) !== i);
+      if (dupDrop) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `expeditionRewards["${table.id}"].groups["${group.id}"] lists the same drop twice: ${dupDrop}`,
+          path: ['groups', index, 'entries'],
+        });
+      }
+    }
+  });
+
+export const ExpeditionRewardsFileSchema = z
+  .array(ExpeditionRewardTableSchema)
+  .superRefine((tables, ctx) => {
+    const ids = tables.map((t) => t.id);
+    const duplicate = ids.find((id, i) => ids.indexOf(id) !== i);
+    if (duplicate) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `expeditionRewards has two tables with id "${duplicate}"`,
+      });
+    }
+  });
+
+/** One mission on a region's board. */
+export const ExpeditionDefinitionSchema = z
+  .object({
+    /**
+     * Globally unique across every region file, because it is what a deployed
+     * row records and what a board button carries. The loader lints it.
+     */
+    key: expeditionKey,
+    name: z.string().min(1),
+    description: z.string().default(''),
+    emoji: z.string().nullable().default(null),
+    type: z.enum(EXPEDITION_TYPES),
+    /** Must match one of `tables.expeditions.durations`; the loader checks it. */
+    durationMinutes: z.number().int().positive(),
+    /** Pinned to 1 in V1. The field stays so teams need no schema change. */
+    teamSize: z.number().int().positive().default(1),
+    recommendedLevel: z.number().int().positive(),
+    preferredAffinities: z.array(z.enum(AFFINITIES)).default([]),
+    preferredRaces: z.array(z.enum(RACE_CODES)).default([]),
+    /** Chance before any suitability term. */
+    baseSuccessChance: z.number().gt(0).lt(1),
+    rewardTable: z.string().min(1),
+    /**
+     * The **bonus** table paid *in addition to* `rewardTable` on an
+     * Exceptional Success. Absent means an exceptional result pays the
+     * ordinary table and nothing more, which is legal but dull.
+     */
+    exceptionalRewardTable: z.string().min(1).nullable().default(null),
+    /**
+     * Consolation on failure. Chosen by the mission, never by how good the
+     * deployed copy was: suitability already moved the odds, and letting it
+     * move the consolation too would penalise a risky deployment twice.
+     */
+    failureRewardTable: z.string().min(1).nullable().default(null),
+    rewardPreview: z.array(z.enum(EXPEDITION_REWARD_PREVIEWS)).default([]),
+    enabled: z.boolean().default(true),
+  })
+  .strict()
+  .superRefine((def, ctx) => {
+    if (def.teamSize !== 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `expedition "${def.key}": teamSize must be 1 in V1`,
+        path: ['teamSize'],
+      });
+    }
+    const dupAffinity = def.preferredAffinities.find(
+      (a, i) => def.preferredAffinities.indexOf(a) !== i,
+    );
+    if (dupAffinity) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `expedition "${def.key}": duplicate preferred affinity "${dupAffinity}"`,
+        path: ['preferredAffinities'],
+      });
+    }
+    const dupRace = def.preferredRaces.find((r, i) => def.preferredRaces.indexOf(r) !== i);
+    if (dupRace) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `expedition "${def.key}": duplicate preferred race "${dupRace}"`,
+        path: ['preferredRaces'],
+      });
+    }
+    const dupPreview = def.rewardPreview.find((p, i) => def.rewardPreview.indexOf(p) !== i);
+    if (dupPreview) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `expedition "${def.key}": duplicate reward preview "${dupPreview}"`,
+        path: ['rewardPreview'],
+      });
+    }
+  });
+
+/** `content/expeditions/<region>.json`. */
+export const ExpeditionsFileSchema = z
+  .object({
+    region: z.enum(ALL_REGIONS),
+    expeditions: z.array(ExpeditionDefinitionSchema).default([]),
+  })
+  .strict();
+
+export type ExpeditionDefinition = z.infer<typeof ExpeditionDefinitionSchema>;
+export type ExpeditionRewardTable = z.infer<typeof ExpeditionRewardTableSchema>;
+export type ExpeditionRewardGroup = z.infer<typeof ExpeditionRewardGroupSchema>;
+export type ExpeditionRewardEntry = z.infer<typeof ExpeditionRewardEntrySchema>;
+
+/**
+ * A definition carrying the region whose file declared it.
+ *
+ * The region is a property of the *file*, not of the definition, but every
+ * consumer needs both — so the loader flattens them together once rather than
+ * making each caller carry the pairing.
+ */
+export interface RegionalExpedition extends ExpeditionDefinition {
+  region: Region;
+}
+
 export const TablesFileSchema = z.object({
   energy: z.object({
     baseMax: z.number().int().positive(),
@@ -2012,6 +2469,7 @@ export const TablesFileSchema = z.object({
   }),
   affectionGifts: AffectionGiftsConfigSchema.optional().default(AFFECTION_GIFTS_DEFAULT),
   bossEncounters: BossEncountersConfigSchema.optional().default(BOSS_ENCOUNTERS_DEFAULT),
+  expeditions: ExpeditionsConfigSchema.optional().default(EXPEDITIONS_DEFAULT),
   seductivePower: SeductivePowerConfigSchema.optional().default({
     rangesByRarity: DEFAULT_SP_RANGES_BY_RARITY,
   }),
@@ -2061,6 +2519,24 @@ export interface LoadedContent {
    * empty list here can only coexist with an empty `bosses` list.
    */
   bossRewards: BossRewardTable[];
+  /**
+   * Expedition definitions from `content/expeditions/<region>.json`, flattened
+   * across every region file with each definition carrying its own region.
+   *
+   * Legitimately empty, exactly like `bosses`: a deployment with no
+   * `content/expeditions/` directory loads with `[]`, every board renders
+   * empty and the feature is simply inert. That is a supported configuration
+   * — and it is the shipped one until Phase 5 authors missions.
+   */
+  expeditions: RegionalExpedition[];
+  /**
+   * Expedition payout tables from `content/expeditionRewards.json`.
+   *
+   * Only meaningful together with `expeditions`: an enabled definition whose
+   * table is missing is refused by `validateExpeditionContent`, so an empty
+   * list here can only coexist with an empty definition list.
+   */
+  expeditionRewards: ExpeditionRewardTable[];
   /**
    * Boss definitions from `content/bosses.json`.
    *

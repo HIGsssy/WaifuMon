@@ -55,6 +55,22 @@ export class ItemNotPurchasableError extends AppError {
   }
 }
 
+/**
+ * The item exists and the player owns it, but nobody will buy it. Distinct
+ * from `ItemNotFoundError` (no such item) and from `ItemNotPurchasableError`
+ * (its mirror on the buying side) — the player is holding something real and
+ * the refusal is about the item's configuration, not their inventory.
+ */
+export class ItemNotSellableError extends AppError {
+  constructor(slug: string, name?: string) {
+    super(
+      'ITEM_NOT_SELLABLE',
+      `Item "${slug}" is not sellable`,
+      name ? `Nobody will buy your ${name}.` : "Nobody will buy that.",
+    );
+  }
+}
+
 export class InsufficientFundsError extends AppError {
   constructor(required: number, balance: number) {
     super(
@@ -287,17 +303,22 @@ export class NotADuplicateError extends AppError {
  * `reasons` lets one message name both causes at once.
  */
 export class WaifuReleaseBlockedError extends AppError {
-  readonly reasons: readonly ('favorite' | 'buddy')[];
+  readonly reasons: readonly ('favorite' | 'buddy' | 'on_expedition')[];
 
-  constructor(reasons: readonly ('favorite' | 'buddy')[]) {
+  constructor(reasons: readonly ('favorite' | 'buddy' | 'on_expedition')[]) {
     // Normalised rather than trusted: this is the one AppError whose
     // constructor reads its argument's shape, and the API's error sweep
     // instantiates every subclass generically.
     const list = Array.isArray(reasons) ? reasons : [];
     const isFav = list.includes('favorite');
     const isBuddy = list.includes('buddy');
-    const userMessage =
-      isFav && isBuddy
+    // Being away outranks the other two in the message: unfavouriting her or
+    // switching Buddy would not help while she is on the other side of the
+    // map, so leading with that is the only advice that actually unblocks.
+    const isAway = list.includes('on_expedition');
+    const userMessage = isAway
+      ? 'She is away on an expedition — collect her first.'
+      : isFav && isBuddy
         ? 'She is a ★ favourite **and** your active buddy — unfavourite her and switch buddies first.'
         : isFav
           ? 'Favourite Waifumon cannot be released — unfavourite her first.'
@@ -793,4 +814,176 @@ export function isUniqueViolation(err: unknown): boolean {
     if (e.cause) return isUniqueViolation(e.cause);
   }
   return false;
+}
+
+/**
+ * Expedition refusals.
+ *
+ * Every constructor here tolerates being called with junk arguments, because
+ * `tests/unit/api/errors.test.ts` sweeps every exported `AppError` subclass
+ * and instantiates it generically to prove its code is mapped to a status.
+ * That sweep passes three `Date`s, so nothing below may assume the shape of
+ * what it is handed — the same defensive normalisation
+ * `WaifuReleaseBlockedError` already does for its `reasons` array.
+ */
+
+/** The key named no mission in the current content snapshot. */
+export class ExpeditionNotFoundError extends AppError {
+  constructor(key: unknown) {
+    super(
+      'EXPEDITION_NOT_FOUND',
+      `Expedition "${String(key)}" not found`,
+      'That expedition is no longer on the board~',
+    );
+  }
+}
+
+/** Deployment refused because the feature itself is switched off in content. */
+export class ExpeditionsDisabledError extends AppError {
+  constructor() {
+    super(
+      'EXPEDITIONS_DISABLED',
+      'Expeditions are disabled in content',
+      'Expeditions are closed for now — check back soon~',
+    );
+  }
+}
+
+/**
+ * Every expedition slot the player has is already occupied.
+ *
+ * Names the counts rather than saying "you already have one", because the
+ * moment a second slot unlocks the old wording becomes a lie and nobody
+ * remembers to change it.
+ */
+export class ExpeditionSlotsFullError extends AppError {
+  readonly slotsInUse: number;
+  readonly slotsTotal: number;
+
+  constructor(slotsInUse: unknown, slotsTotal: unknown) {
+    const used = Number.isInteger(slotsInUse) ? (slotsInUse as number) : 0;
+    const total = Number.isInteger(slotsTotal) ? (slotsTotal as number) : 0;
+    super(
+      'EXPEDITION_SLOTS_FULL',
+      `All expedition slots in use (${used}/${total})`,
+      total === 1
+        ? 'One of your WaifuMon is already out on an expedition — collect her first.'
+        : `All ${total} of your expedition slots are busy — collect one first.`,
+    );
+    this.slotsInUse = used;
+    this.slotsTotal = total;
+  }
+}
+
+/**
+ * The chosen copy cannot be sent, and the reasons say why.
+ *
+ * Carries the canonical {@link WaifuUnavailabilityReason} list rather than a
+ * bespoke enum, so a future unavailable state surfaces through this error with
+ * no change here.
+ */
+export class WaifuUnavailableError extends AppError {
+  readonly reasons: readonly string[];
+
+  constructor(reasons: unknown, name?: unknown) {
+    const list = Array.isArray(reasons) ? reasons.map(String) : [];
+    const who = typeof name === 'string' && name.trim() ? name.trim() : 'She';
+    const explanation =
+      list.includes('on_expedition')
+        ? `${who} is already away on an expedition.`
+        : list.includes('buddy')
+          ? `${who} is your active Buddy — switch Buddies first.`
+          : list.includes('care_target')
+            ? `${who} is the focus of Care Mode — leave Care Mode first.`
+            : list.includes('released')
+              ? `${who} has already been released.`
+              : `${who} is not available right now.`;
+    super(
+      'WAIFU_UNAVAILABLE',
+      `Waifu unavailable: ${list.join('+') || 'unspecified'}`,
+      explanation,
+    );
+    this.reasons = list;
+  }
+}
+
+/** No active or resolved expedition in the slot the caller named. */
+export class ExpeditionNotActiveError extends AppError {
+  constructor() {
+    super(
+      'EXPEDITION_NOT_ACTIVE',
+      'No active expedition',
+      'You have nobody out on an expedition right now.',
+    );
+  }
+}
+
+/**
+ * Collect pressed on a mission that has not finished.
+ *
+ * A refusal rather than a silent no-op, because a button that does nothing
+ * reads as broken. The remaining time is on the error so a caller can say how
+ * long is left without a second query.
+ */
+export class ExpeditionNotCompleteError extends AppError {
+  readonly secondsRemaining: number;
+
+  constructor(secondsRemaining: unknown) {
+    const seconds =
+      typeof secondsRemaining === 'number' && Number.isFinite(secondsRemaining)
+        ? Math.max(0, Math.ceil(secondsRemaining))
+        : 0;
+    super(
+      'EXPEDITION_NOT_COMPLETE',
+      `Expedition not complete (${seconds}s remaining)`,
+      'She is still out there — give her a little longer~',
+    );
+    this.secondsRemaining = seconds;
+  }
+}
+
+/**
+ * The rewards were already collected.
+ *
+ * The *expected* outcome of a double-clicked Collect, not an exceptional one:
+ * the claim is a conditional UPDATE and exactly one caller wins it. The loser
+ * lands here having granted nothing.
+ */
+export class ExpeditionAlreadyClaimedError extends AppError {
+  constructor() {
+    super(
+      'EXPEDITION_ALREADY_CLAIMED',
+      'Expedition rewards already claimed',
+      'You already collected that one~',
+    );
+  }
+}
+
+/** Cancel pressed on a mission that has already finished or been cancelled. */
+export class ExpeditionNotCancellableError extends AppError {
+  constructor(status: unknown) {
+    super(
+      'EXPEDITION_NOT_CANCELLABLE',
+      `Expedition cannot be cancelled from status "${String(status)}"`,
+      'That expedition is already over — collect it instead.',
+    );
+  }
+}
+
+/**
+ * The content set cannot supply something deployment needs — a reward table
+ * that is missing or disabled, a duration that is not on the ladder.
+ *
+ * Refused at *deploy* rather than discovered at resolution, which is the whole
+ * benefit of snapshotting: a broken mission fails at the moment somebody
+ * presses the button, with nothing committed, rather than twelve hours later.
+ */
+export class ExpeditionContentError extends AppError {
+  constructor(detail: unknown) {
+    super(
+      'EXPEDITION_CONTENT_INVALID',
+      `Expedition content problem: ${String(detail)}`,
+      'That expedition is misconfigured and cannot be started — this has been logged.',
+    );
+  }
 }

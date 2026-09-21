@@ -15,6 +15,8 @@ import {
   handleShop,
   handleShopConvert,
   handleShopExchange,
+  handleShopSell,
+  handleShopSellQuantity,
 } from '../../src/discord/commands/waifumon';
 import { bootstrapApp, provisionPlayer, type App, createEventHarness, type EventHarness } from '../helpers/fixtures';
 import { createTestDb, type TestDb } from '../helpers/testDb';
@@ -64,6 +66,7 @@ beforeAll(async () => {
       hunt: app.hunt,
       capture: app.capture,
       collection: app.collection,
+      expeditions: app.expeditions,
         appearance: app.appearance,
       care: app.care,
       progression: app.progression,
@@ -345,6 +348,185 @@ describe('charm exchange: shop sub-menu navigation and conversion', () => {
     await handleShopExchange(ctx, btn as any, prov);
     const buttons = paintedButtons(btn.update.mock.calls[0]![0]);
     // menu:shop is dispatched to handleShop — the Shop screen, not the menu.
+    const back = buttons.find((b) => b.label.includes('Back'));
+    expect(back?.customId).toBe('wm|v1|menu|shop');
+  });
+});
+
+describe('sell items: shop sub-menu navigation and sales', () => {
+  /** Phase 2 ships no salvage content, so these tests author their own. */
+  let sellSeq = 0;
+  async function seedSalvage(overrides: Record<string, unknown> = {}) {
+    sellSeq += 1;
+    const [row] = await t.db
+      .insert(items)
+      .values({
+        slug: `ui_salvage_${sellSeq}`,
+        name: `Scrap ${sellSeq}`,
+        category: 'salvage',
+        sellValue: 40,
+        emoji: '📦',
+        ...overrides,
+      })
+      .returning();
+    return row!;
+  }
+
+  it('the main Shop shows one Sell Items button and no individual stack buttons', async () => {
+    const btn = fakeButtonOn('m-ephemeral');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleShop(ctx, btn as any, prov);
+    const buttons = paintedButtons(btn.update.mock.calls[0]![0]);
+
+    const sell = buttons.filter((b) => b.customId === 'wm|v1|shop|sell');
+    expect(sell).toHaveLength(1);
+    expect(sell[0]!.label).toContain('Sell Items');
+
+    // The per-stack buttons never leak onto the main Shop screen.
+    expect(buttons.some((b) => b.customId.startsWith('wm|v1|shop|sellqty'))).toBe(false);
+  });
+
+  it('shows an empty state when the player holds nothing worth selling', async () => {
+    const empty = await provisionPlayer(app, 'g-ui-nav', 'u-sell-empty');
+    const btn = fakeButtonOn('m-ephemeral');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleShopSell(ctx, btn as any, empty);
+
+    const payload = btn.update.mock.calls[0]![0];
+    expect(paintedEmbed(payload).title).toBe('🪙 Sell Items');
+    expect(payload.embeds[0].toJSON().description as string).toContain(
+      'Nothing here anyone would pay for',
+    );
+    // Only the Back row — nothing to press.
+    const buttons = paintedButtons(payload);
+    expect(buttons.every((b) => b.customId === 'wm|v1|menu|shop')).toBe(true);
+  });
+
+  it('lists a sellable stack with parseable Sell 1 / 5 / All custom ids', async () => {
+    const player = await provisionPlayer(app, 'g-ui-nav', 'u-sell-list');
+    const scrap = await seedSalvage({ sellValue: 30 });
+    await app.inventory.addItem(t.db, player.playerId, scrap.id, 6);
+
+    const btn = fakeButtonOn('m-ephemeral');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleShopSell(ctx, btn as any, player);
+    const payload = btn.update.mock.calls[0]![0];
+
+    const description = payload.embeds[0].toJSON().description as string;
+    expect(description).toContain(scrap.name);
+    expect(description).toContain('30');
+    // The stack total, so the player can see the size of the pile.
+    expect(description).toContain('180');
+
+    const buttons = paintedButtons(payload);
+    for (const amount of ['1', '5', 'all']) {
+      expect(
+        buttons.some((b) => b.customId === `wm|v1|shop|sellqty|${scrap.slug}|${amount}`),
+      ).toBe(true);
+    }
+  });
+
+  it('disables Sell 5 on a stack of fewer than five', async () => {
+    const player = await provisionPlayer(app, 'g-ui-nav', 'u-sell-small');
+    const scrap = await seedSalvage();
+    await app.inventory.addItem(t.db, player.playerId, scrap.id, 2);
+
+    const btn = fakeButtonOn('m-ephemeral');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleShopSell(ctx, btn as any, player);
+    const buttons = paintedButtons(btn.update.mock.calls[0]![0]);
+
+    const five = buttons.find((b) => b.customId === `wm|v1|shop|sellqty|${scrap.slug}|5`);
+    const one = buttons.find((b) => b.customId === `wm|v1|shop|sellqty|${scrap.slug}|1`);
+    expect(five?.disabled).toBe(true);
+    expect(one?.disabled).toBe(false);
+  });
+
+  it('a sale refreshes the sell screen in place with a confirmation', async () => {
+    const player = await provisionPlayer(app, 'g-ui-nav', 'u-sell-one');
+    const scrap = await seedSalvage({ sellValue: 50 });
+    await app.inventory.addItem(t.db, player.playerId, scrap.id, 3);
+
+    const btn = fakeButtonOn('m-ephemeral');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleShopSellQuantity(ctx, btn as any, player, scrap.slug, '1');
+    expect(btn.update).toHaveBeenCalledOnce();
+    expect(btn.channel.send).not.toHaveBeenCalled();
+
+    const payload = btn.update.mock.calls[0]![0];
+    // Stayed on the sell screen.
+    expect(paintedEmbed(payload).title).toBe('🪙 Sell Items');
+    const description = payload.embeds[0].toJSON().description as string;
+    expect(description).toContain('Sold');
+    expect(description).toContain('50');
+
+    expect(await app.inventory.getQuantity(player.playerId, scrap.id)).toBe(2);
+    expect((await app.currency.getBalances(player.playerId)).waifubux).toBe(50);
+  });
+
+  // "All" means the stack the player was looking at, resolved fresh at click
+  // time rather than trusted from the custom id.
+  it('Sell All empties exactly one stack and leaves the others alone', async () => {
+    const player = await provisionPlayer(app, 'g-ui-nav', 'u-sell-all');
+    const target = await seedSalvage({ sellValue: 20 });
+    const other = await seedSalvage({ sellValue: 20 });
+    await app.inventory.addItem(t.db, player.playerId, target.id, 5);
+    await app.inventory.addItem(t.db, player.playerId, other.id, 5);
+
+    const btn = fakeButtonOn('m-ephemeral');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleShopSellQuantity(ctx, btn as any, player, target.slug, 'all');
+
+    expect(await app.inventory.getQuantity(player.playerId, target.id)).toBe(0);
+    expect(await app.inventory.getQuantity(player.playerId, other.id)).toBe(5);
+    expect((await app.currency.getBalances(player.playerId)).waifubux).toBe(100);
+  });
+
+  it('a double-clicked Sell All reports the refusal and pays out once', async () => {
+    const player = await provisionPlayer(app, 'g-ui-nav', 'u-sell-double');
+    const scrap = await seedSalvage({ sellValue: 75 });
+    await app.inventory.addItem(t.db, player.playerId, scrap.id, 2);
+
+    const first = fakeButtonOn('m-ephemeral');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleShopSellQuantity(ctx, first as any, player, scrap.slug, 'all');
+    const second = fakeButtonOn('m-ephemeral');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleShopSellQuantity(ctx, second as any, player, scrap.slug, 'all');
+
+    // Second click stays on the screen and explains itself rather than throwing.
+    const payload = second.update.mock.calls[0]![0];
+    expect(paintedEmbed(payload).title).toBe('🪙 Sell Items');
+    expect(payload.embeds[0].toJSON().description as string).toContain('⚠️');
+    expect((await app.currency.getBalances(player.playerId)).waifubux).toBe(150);
+  });
+
+  // A custom id outlives the message that painted it; an unsellable item
+  // reached this way must be refused by the service, not by the screen.
+  it('refuses a stale button for an item that is not sellable', async () => {
+    const player = await provisionPlayer(app, 'g-ui-nav', 'u-sell-stale');
+    const junk = await seedSalvage({ category: 'material', sellValue: null });
+    await app.inventory.addItem(t.db, player.playerId, junk.id, 4);
+
+    const btn = fakeButtonOn('m-ephemeral');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleShopSellQuantity(ctx, btn as any, player, junk.slug, '1');
+
+    const payload = btn.update.mock.calls[0]![0];
+    expect(payload.embeds[0].toJSON().description as string).toContain('⚠️');
+    expect(await app.inventory.getQuantity(player.playerId, junk.id)).toBe(4);
+    expect((await app.currency.getBalances(player.playerId)).waifubux).toBe(0);
+  });
+
+  it('Back on the sell screen routes to the Shop screen, not the main menu', async () => {
+    const player = await provisionPlayer(app, 'g-ui-nav', 'u-sell-back');
+    const scrap = await seedSalvage();
+    await app.inventory.addItem(t.db, player.playerId, scrap.id, 1);
+
+    const btn = fakeButtonOn('m-ephemeral');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleShopSell(ctx, btn as any, player);
+    const buttons = paintedButtons(btn.update.mock.calls[0]![0]);
     const back = buttons.find((b) => b.label.includes('Back'));
     expect(back?.customId).toBe('wm|v1|menu|shop');
   });

@@ -72,6 +72,8 @@ function content(over: Partial<LoadedContent> = {}): LoadedContent {
     species: [species('valley_girl')],
     bosses: [],
     bossRewards: [],
+  expeditions: [],
+  expeditionRewards: [],
     expansions: [],
     speciesOrigin: {},
     regions: [

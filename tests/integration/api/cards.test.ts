@@ -206,6 +206,8 @@ beforeAll(async () => {
     tables: TABLES,
     bosses: [],
     bossRewards: [],
+  expeditions: [],
+  expeditionRewards: [],
     regions: [],
     expansions: [],
     speciesOrigin: {},

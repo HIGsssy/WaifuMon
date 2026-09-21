@@ -18,6 +18,7 @@ import type { HuntService } from '../modules/hunt/huntService';
 import type { CaptureService } from '../modules/capture/captureService';
 import type { CareService } from '../modules/care/careService';
 import type { CollectionService } from '../modules/collection/collectionService';
+import type { ExpeditionService } from '../modules/expeditions/expeditionService';
 import type { AchievementService } from '../modules/achievements/achievementService';
 import type { LeaderboardService } from '../modules/leaderboards/leaderboardService';
 import type { AppearanceService } from '../modules/appearance/appearanceService';
@@ -83,6 +84,18 @@ export interface AppServices {
   itemUse: ItemUseService;
   /** Affection gifts: the daily buddy roll, and accepting what she is holding. */
   gifts: AffectionGiftService;
+  /**
+   * Expeditions & Salvage — the domain engine.
+   *
+   * Always wired, unlike bosses: the feature's own gate is
+   * `tables.expeditions.enabled` plus the presence of expedition content, and
+   * both are checked inside the service. A deployment with no
+   * `content/expeditions/` directory has a working service that reports empty
+   * boards, which is the shipped state until missions are authored.
+   *
+   * Phase 3 wires the engine only. The Discord screens land in Phase 4.
+   */
+  expeditions: ExpeditionService;
   /**
    * Boss encounters (Stage 1).
    *

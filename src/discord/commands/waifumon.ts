@@ -587,6 +587,39 @@ export function buttonRows(
   return chunkButtonRows(buttons);
 }
 
+/**
+ * How the inventory screen orders and titles its category sections.
+ *
+ * The service orders rows by `items.category` — which is alphabetical, and
+ * alphabetical is meaningless to a player. This is the player's order instead:
+ * the things they act on first (charms, consumables), then the things they came
+ * back from an expedition holding (salvage, keys), then the inert tail.
+ *
+ * A category missing from this map still renders — it falls to the end under
+ * its capitalized id — so adding a category to the database can never make a
+ * player's items invisible, only badly sorted.
+ */
+const INVENTORY_CATEGORY_DISPLAY: Record<string, { label: string; order: number }> = {
+  capture: { label: '🎀 Charms', order: 0 },
+  consumable: { label: '🧃 Consumables', order: 1 },
+  salvage: { label: '📦 Salvage', order: 2 },
+  key: { label: '🔑 Key Items', order: 3 },
+  equipment: { label: '⚔️ Equipment', order: 4 },
+  material: { label: '🧵 Materials', order: 5 },
+  cosmetic: { label: '💄 Cosmetics', order: 6 },
+};
+
+function inventoryCategoryLabel(category: string): string {
+  return (
+    INVENTORY_CATEGORY_DISPLAY[category]?.label ??
+    category.charAt(0).toUpperCase() + category.slice(1)
+  );
+}
+
+function inventoryCategoryOrder(category: string): number {
+  return INVENTORY_CATEGORY_DISPLAY[category]?.order ?? Number.MAX_SAFE_INTEGER;
+}
+
 async function buildInventoryView(
   ctx: AppContext,
   prov: Provisioned,
@@ -614,11 +647,11 @@ async function buildInventoryView(
     embed.setDescription(`${status}Empty~ Claim your daily or visit the shop!`);
   } else {
     if (status) embed.setDescription(status.trimEnd());
-    for (const [category, lines] of byCategory) {
-      embed.addFields({
-        name: category.charAt(0).toUpperCase() + category.slice(1),
-        value: lines.join('\n'),
-      });
+    const ordered = [...byCategory.entries()].sort(
+      (a, b) => inventoryCategoryOrder(a[0]) - inventoryCategoryOrder(b[0]),
+    );
+    for (const [category, lines] of ordered) {
+      embed.addFields({ name: inventoryCategoryLabel(category), value: lines.join('\n') });
     }
   }
   const buffLine = renderCaptureBonusLine(
@@ -797,12 +830,16 @@ async function buildShopView(
         .setLabel(`Buy ${item.name} — ${formatPrice(item.buyPrice ?? 0, currency)}`)
         .setStyle(ButtonStyle.Success),
     );
-  // One entry point to the conversion sub-menu — the individual recipe buttons
-  // live there, never on this screen.
+  // One entry point per sub-menu — the individual recipe and stack buttons
+  // live on those screens, never on this one.
   const exchangeRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId(buildCustomId('shop', 'exchange'))
       .setLabel('✨ Charm Exchange')
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId(buildCustomId('shop', 'sell'))
+      .setLabel('🪙 Sell Items')
       .setStyle(ButtonStyle.Primary),
   );
   return {
@@ -834,6 +871,160 @@ export async function handleShopBuy(
   const status = `✅ Bought **${result.item.name}** for **${formatPrice(result.totalPrice, result.currency)}** — you now own ×${result.ownedAfter}.`;
   const view = await buildShopView(ctx, prov, status);
   await respondEphemeral(interaction, view);
+}
+
+// ─────────────────────────── Sell Items (Shop sub-menu) ───────────────────────────
+
+/**
+ * The Sell screen: one row per sellable stack, each with Sell 1 / Sell 5 /
+ * Sell All. Back routes through `menu:shop` → {@link handleShop}, exactly as
+ * the Charm Exchange does, so it returns to the Shop rather than the main menu.
+ *
+ * Sell All sells the whole stack of **one** item, never the whole inventory.
+ * A single "liquidate everything" button is a support ticket waiting to
+ * happen — the one misclick nobody can undo — and the player asking for it can
+ * still press Sell All three times.
+ *
+ * Discord allows five action rows per message, one of which is the Back row,
+ * so at most four stacks are actionable at a time. The embed lists more than
+ * that and says so, rather than silently pretending the rest are not there.
+ */
+const SELL_ROWS_PER_SCREEN = 4;
+
+async function buildSellView(
+  ctx: AppContext,
+  prov: Provisioned,
+  statusLine?: string,
+): Promise<ScreenView> {
+  const [sellable, balances] = await Promise.all([
+    ctx.services.shop.getSellableInventory(prov.playerId),
+    ctx.services.currency.getBalances(prov.playerId),
+  ]);
+
+  const embed = new EmbedBuilder().setTitle('🪙 Sell Items').setColor(0xffc46f);
+  const status = statusLine ? `${statusLine}\n\n` : '';
+  const header = `💰 **${balances.waifubux}** WaifuBux`;
+
+  if (sellable.length === 0) {
+    embed.setDescription(
+      `${status}${header}\n\n*Nothing here anyone would pay for. Yet.*`,
+    );
+    return { embeds: [embed], components: [backToShopRow()] };
+  }
+
+  // What the whole screen is worth, so the player can see the size of the pile
+  // without adding it up. Deliberately a total, not a button.
+  const everything = sellable.reduce((sum, e) => sum + e.stackValue, 0);
+  const lines = sellable.map(
+    (e) =>
+      `${e.item.emoji ?? '•'} **${e.item.name}** ×${e.quantity} — ` +
+      `**${e.unitValue}** WaifuBux each *(${e.stackValue} for the lot)*`,
+  );
+  const overflow =
+    sellable.length > SELL_ROWS_PER_SCREEN
+      ? `\n\n*Buttons shown for the ${SELL_ROWS_PER_SCREEN} most valuable stacks — ` +
+        'sell those and the rest move up.*'
+      : '';
+  embed.setDescription(
+    `${status}${header}\n\n${lines.join('\n')}\n\n` +
+      `Everything here: **${everything}** WaifuBux${overflow}`,
+  );
+
+  const rows = sellable.slice(0, SELL_ROWS_PER_SCREEN).map((entry) => {
+    const { item, quantity } = entry;
+    const button = (amount: string, label: string, style: ButtonStyle, disabled = false) =>
+      new ButtonBuilder()
+        .setCustomId(buildCustomId('shop', 'sellqty', item.slug, amount))
+        .setLabel(label)
+        .setStyle(style)
+        .setDisabled(disabled);
+    return new ActionRowBuilder<ButtonBuilder>().addComponents(
+      button('1', `Sell 1 ${item.name}`, ButtonStyle.Success),
+      button('5', 'Sell 5', ButtonStyle.Success, quantity < 5),
+      button('all', `Sell All (${quantity})`, ButtonStyle.Primary),
+    );
+  });
+
+  return { embeds: [embed], components: [...rows, backToShopRow()] };
+}
+
+/** Back to the Shop screen (not the main menu): `menu:shop` → handleShop. */
+function backToShopRow(): ActionRowBuilder<ButtonBuilder> {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(buildCustomId('menu', 'shop'))
+      .setLabel('⟵ Back to Shop')
+      .setStyle(ButtonStyle.Secondary),
+  );
+}
+
+/** Open the Sell sub-menu from the Shop screen. */
+export async function handleShopSell(
+  ctx: AppContext,
+  interaction: PlayerInteraction,
+  prov: Provisioned,
+): Promise<void> {
+  const view = await buildSellView(ctx, prov);
+  await respondEphemeral(interaction, view);
+}
+
+/**
+ * Sell part or all of one stack and stay on the Sell screen, refreshed in
+ * place with a status line — the same pattern as {@link handleShopBuy}.
+ *
+ * `all` is resolved here rather than being passed to the service as a magic
+ * quantity, because "all" is a *screen* concept: it means the stack the player
+ * was just looking at. Reading it fresh and letting the service's conditional
+ * decrement arbitrate means a stack that shrank underneath the button fails
+ * cleanly instead of selling a number the player never saw.
+ */
+export async function handleShopSellQuantity(
+  ctx: AppContext,
+  interaction: ButtonInteraction,
+  prov: Provisioned,
+  itemSlug: string,
+  amount: string,
+): Promise<void> {
+  if (!itemSlug) {
+    await respondEphemeral(interaction, 'That button no longer works~');
+    return;
+  }
+  try {
+    let quantity: number;
+    if (amount === 'all') {
+      const entry = (await ctx.services.shop.getSellableInventory(prov.playerId)).find(
+        (e) => e.item.slug === itemSlug,
+      );
+      if (!entry) {
+        const view = await buildSellView(ctx, prov, "⚠️ You don't have any of those left.");
+        await respondEphemeral(interaction, view);
+        return;
+      }
+      quantity = entry.quantity;
+    } else {
+      quantity = Number(amount);
+      if (!Number.isInteger(quantity) || quantity <= 0) {
+        await respondEphemeral(interaction, 'That button no longer works~');
+        return;
+      }
+    }
+
+    const result = await ctx.services.shop.sellItem(prov.playerId, itemSlug, quantity);
+    const status =
+      `✅ Sold **${result.item.name}** ×${result.quantity} for ` +
+      `**${result.totalValue}** WaifuBux — balance **${result.balanceAfter}**.`;
+    const view = await buildSellView(ctx, prov, status);
+    await respondEphemeral(interaction, view);
+  } catch (err) {
+    // A double-clicked Sell All lands here: the stack is already gone, nothing
+    // was paid twice, and the screen repaints with the reason.
+    if (err instanceof AppError) {
+      const view = await buildSellView(ctx, prov, `⚠️ ${err.userMessage}`);
+      await respondEphemeral(interaction, view);
+      return;
+    }
+    throw err;
+  }
 }
 
 // ─────────────────────── Charm Exchange (Shop sub-menu) ───────────────────────

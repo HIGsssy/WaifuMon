@@ -1,4 +1,4 @@
-import { and, arrayContains, asc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
+import { and, arrayContains, asc, desc, eq, gt, inArray, isNotNull, sql } from 'drizzle-orm';
 import type { Db } from '../../db/client';
 import {
   items,
@@ -15,6 +15,7 @@ import {
   InventoryCapacityError,
   ItemNotFoundError,
   ItemNotPurchasableError,
+  ItemNotSellableError,
   ItemNotSoldHereError,
 } from '../../shared/errors';
 import type { CurrencyService } from '../currency/currencyService';
@@ -122,6 +123,27 @@ export interface PurchaseResult {
   ownedAfter: number;
 }
 
+/** One inventory stack the player could sell right now. */
+export interface SellableEntry {
+  item: ItemRow;
+  /** How many the player currently holds. Always > 0 — empty stacks are filtered out. */
+  quantity: number;
+  /** `item.sellValue`, narrowed to a number because the query guarantees it is non-null. */
+  unitValue: number;
+  /** What the whole stack is worth — rendered as the "sell all" figure. */
+  stackValue: number;
+}
+
+export interface SellResult {
+  item: ItemRow;
+  quantity: number;
+  unitValue: number;
+  totalValue: number;
+  /** WaifuBux balance after the credit. */
+  balanceAfter: number;
+  ownedAfter: number;
+}
+
 export interface ShopService {
   /**
    * The union catalog: every capture/consumable item that is `enabled`, priced,
@@ -146,6 +168,24 @@ export interface ShopService {
    * row. Nothing is ever partially applied.
    */
   purchase(playerId: number, itemSlug: string, quantity?: number): Promise<PurchaseResult>;
+  /**
+   * Every inventory stack the player could sell right now: owned, enabled, and
+   * carrying a sell value. Read-only.
+   *
+   * Sellability is *not* the mirror of `getRegionalCatalog`. Buying is
+   * region-gated stock; selling is a global property of the item row, so this
+   * takes no region and a sale is refused nowhere. When regional price
+   * modifiers exist they become a content-side multiplier on `unitValue`, not
+   * a new gate here.
+   */
+  getSellableInventory(playerId: number): Promise<SellableEntry[]>;
+  /**
+   * Sell part or all of one stack in a single transaction: resolve the item →
+   * lock the currency row → conditional inventory decrement → credit WaifuBux
+   * → audit row. A failed validation mutates nothing, and a double-clicked
+   * button cannot sell the same stack twice.
+   */
+  sellItem(playerId: number, itemSlug: string, quantity?: number): Promise<SellResult>;
   /**
    * The charm-exchange ladder for a player: each enabled recipe paired with the
    * live owned quantity of its input charm and how many conversions are
@@ -290,6 +330,9 @@ export function createShopService(deps: ShopServiceDeps): ShopService {
         await tx.insert(shopTransactions).values({
           playerId,
           itemId: item.id,
+          // Written explicitly rather than leaning on the column default, so
+          // both directions of the ledger are greppable from their call sites.
+          kind: 'purchase',
           quantity,
           unitPrice,
           totalPrice,
@@ -306,6 +349,91 @@ export function createShopService(deps: ShopServiceDeps): ShopService {
           balanceAfter,
           ownedAfter,
         };
+      });
+    },
+
+    async getSellableInventory(playerId) {
+      // Every part of the eligibility rule lives in this WHERE clause, for the
+      // same reason `getCatalog` puts the buy rule in its own: a rule split
+      // between the query and the presentation layer is a rule two callers
+      // will disagree about. The sell screen, the API endpoint and `sellItem`
+      // all answer "is this sellable?" the same way because they all ask here.
+      //
+      // `sell_value IS NOT NULL` is the *whole* test — `items_sell_value_check`
+      // forbids 0, so there is no second spelling of "not sellable" to catch.
+      //
+      // Key items need no extra clause. A key item's `sell_value` can only be
+      // non-null if content set `explicitlySellable: true` alongside it, which
+      // the item schema enforces at load; the seeder is the only writer of this
+      // column, so by the time a row is here the author has already said yes
+      // twice.
+      const rows = await db
+        .select({ item: items, quantity: playerInventory.quantity })
+        .from(playerInventory)
+        .innerJoin(items, eq(items.id, playerInventory.itemId))
+        .where(
+          and(
+            eq(playerInventory.playerId, playerId),
+            gt(playerInventory.quantity, 0),
+            eq(items.enabled, true),
+            isNotNull(items.sellValue),
+          ),
+        )
+        // Most valuable stack first: the sell screen is a "convert clutter to
+        // money" screen, and the thing worth the most money is the thing the
+        // player opened it for.
+        .orderBy(desc(items.sellValue), asc(items.slug));
+
+      return rows.map(({ item, quantity }) => {
+        const unitValue = item.sellValue ?? 0;
+        return { item, quantity, unitValue, stackValue: unitValue * quantity };
+      });
+    },
+
+    async sellItem(playerId, itemSlug, quantity = 1) {
+      if (!Number.isInteger(quantity) || quantity <= 0) {
+        throw new RangeError(`Quantity must be a positive integer, got ${quantity}`);
+      }
+      return db.transaction(async (tx) => {
+        const [item] = await tx.select().from(items).where(eq(items.slug, itemSlug));
+        if (!item || !item.enabled) throw new ItemNotFoundError(itemSlug);
+        // Re-checked here and not merely on the screen that painted the button:
+        // a `shop|sellqty` custom id is a string that outlives its message, and
+        // the Platform API will reach this method with no screen at all.
+        if (item.sellValue == null) throw new ItemNotSellableError(itemSlug, item.name);
+
+        const unitValue = item.sellValue;
+        const totalValue = unitValue * quantity;
+
+        // Lock the currency row first, exactly as `purchase` does, so two
+        // concurrent sells by this player serialize rather than interleaving
+        // between the decrement and the credit.
+        await currency.lockCurrencies(tx, playerId);
+
+        // Consume *before* granting. `consumeItem` is a conditional decrement
+        // (WHERE quantity >= n) that throws `InsufficientItemsError` on a miss,
+        // so "does the player still own these?" is a property of the statement
+        // rather than a separate read that something could race between. The
+        // loser of a double-click throws here, having paid out nothing.
+        const ownedAfter = await inventory.consumeItem(tx, playerId, item.id, quantity);
+        // Selling always pays WaifuBux. `price_currency` describes what an item
+        // costs to *buy* and has no bearing on the counter — an Essence-priced
+        // item is not an Essence printer.
+        const balance = await currency.grantWaifubux(tx, playerId, totalValue);
+        const balanceAfter = balance.waifubux;
+
+        await tx.insert(shopTransactions).values({
+          playerId,
+          itemId: item.id,
+          kind: 'sale',
+          quantity,
+          unitPrice: unitValue,
+          totalPrice: totalValue,
+          currency: 'waifubux',
+          balanceAfter,
+        });
+
+        return { item, quantity, unitValue, totalValue, balanceAfter, ownedAfter };
       });
     },
 

@@ -110,6 +110,8 @@ const EMPTY_CONTENT: LoadedContent = {
   tables: {} as LoadedContent['tables'],
   bosses: [],
   bossRewards: [],
+  expeditions: [],
+  expeditionRewards: [],
   regions: [],
   expansions: [],
   speciesOrigin: {},

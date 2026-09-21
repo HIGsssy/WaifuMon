@@ -35,6 +35,8 @@ function content(over: Partial<LoadedContent> = {}): LoadedContent {
     species: [],
     bosses: [],
     bossRewards: [],
+    expeditions: [],
+    expeditionRewards: [],
     expansions: [],
     speciesOrigin: {},
     regions: [

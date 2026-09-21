@@ -130,7 +130,15 @@ export const speciesQuery = z.object({
 
 // ── Items ───────────────────────────────────────────────────────────────────
 
-export const ITEM_CATEGORIES = ['capture', 'material', 'cosmetic', 'consumable'] as const;
+export const ITEM_CATEGORIES = [
+  'capture',
+  'material',
+  'cosmetic',
+  'consumable',
+  'salvage',
+  'key',
+  'equipment',
+] as const;
 
 const itemFields = {
   slug: z.string(),
@@ -143,6 +151,11 @@ const itemFields = {
     .array(z.string())
     .describe('Region ids whose shops sell this item; empty means sold nowhere.'),
   buyPrice: z.number().int().nullable(),
+  sellValue: z
+    .number()
+    .int()
+    .nullable()
+    .describe('What a shop pays for this item, in WaifuBux; null means not sellable.'),
   priceCurrency: z.enum(['waifubux', 'essence']),
   captureModifier: z.number().nullable(),
   captureBonus: z

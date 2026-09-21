@@ -5,8 +5,14 @@
  * the pattern §16 asks the reviewer to be able to see at a glance.
  *
  * Phase 2 is read-only: every route below is a GET. Mutations (hunt, capture,
- * purchase, claim, care actions, `POST /players/ensure`) land in Phase 3.
+ * purchase, sell, claim, care actions, `POST /players/ensure`) land in Phase 3.
  * `/api/v1/system` stays a reserved, unregistered namespace (§8.1, §17.3).
+ *
+ * Specifically deferred, listed here so the gap is visible rather than
+ * discovered: `POST /players/:playerId/shop/sell` — the read side
+ * (`GET .../shop/sellable`) ships now, and the sale itself stays a Discord
+ * action until the mutation phase gives it the auth story every other
+ * inventory-changing call will share.
  */
 import type { ApiContext } from '../../context';
 import { registerPlayerScope } from '../../plugins/playerScope';

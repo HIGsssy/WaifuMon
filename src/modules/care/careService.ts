@@ -33,9 +33,19 @@ import {
   type PlayerWaifuRow,
   type SpeciesRow,
 } from '../../db/schema';
-import { PlayerNotFoundError, WaifuAlreadyReleasedError, WaifuNotOwnedError } from '../../shared/errors';
+import {
+  PlayerNotFoundError,
+  WaifuAlreadyReleasedError,
+  WaifuNotOwnedError,
+  WaifuUnavailableError,
+} from '../../shared/errors';
 import type { CareModeConfig } from '../content/schemas';
 import type { CollectionService } from '../collection/collectionService';
+import {
+  ALWAYS_AVAILABLE,
+  type WaifuAvailabilityService,
+  type WaifuUnavailabilityReason,
+} from '../collection/waifuAvailability';
 import type { CurrencyService } from '../currency/currencyService';
 import type { AppearanceService, AppearanceUnlockRef } from '../appearance/appearanceService';
 import type { ProgressionService } from '../progression/progressionService';
@@ -184,6 +194,16 @@ export interface CareServiceDeps {
    * what `careMode` configures.
    */
   buddyBonus?: BuddyBonusService | undefined;
+  /**
+   * Whether an owned copy is free to be cared for. Optional, defaulting to
+   * "nothing is unavailable", like every other optional dependency here.
+   *
+   * Care Mode is hands-on: the player is grooming, training and spending time
+   * with one WaifuMon. That requires her to actually be present, so a copy
+   * away on an expedition cannot be a Care target — and, symmetrically, the
+   * Care target cannot be deployed.
+   */
+  availability?: WaifuAvailabilityService | undefined;
 }
 
 const INACTIVE_SUMMARY: CareTickSummary = {
@@ -207,6 +227,7 @@ const INACTIVE_SUMMARY: CareTickSummary = {
 
 export function createCareService(deps: CareServiceDeps): CareService {
   const { db, currency, collection, progression, quests, careConfig } = deps;
+  const availability = deps.availability ?? ALWAYS_AVAILABLE;
   const appearance = deps.appearance;
   const buddyBonus = deps.buddyBonus;
 
@@ -233,6 +254,17 @@ export function createCareService(deps: CareServiceDeps): CareService {
     if (locked.releasedAt != null) throw new WaifuAlreadyReleasedError(waifuId);
     const [sp] = await tx.select().from(species).where(eq(species.id, locked.speciesId));
     if (!sp) throw new WaifuNotOwnedError(waifuId);
+    // The single chokepoint every Care path goes through to name a target, so
+    // one check here covers starting Care, switching target and the tick's own
+    // re-lock. Scoped to `on_expedition` deliberately: being a favourite or
+    // the Buddy is no obstacle to being cared for — in fact the Buddy is the
+    // default target — whereas being on the other side of the map is.
+    const away = (await availability.reasonsFor(tx, playerId, waifuId)).filter(
+      (reason: WaifuUnavailabilityReason) => reason === 'on_expedition',
+    );
+    if (away.length > 0) {
+      throw new WaifuUnavailableError(away, locked.nickname?.trim() || sp.name);
+    }
     return { waifu: locked, species: sp };
   }
 

@@ -24,6 +24,11 @@ import { createCaptureService } from '../../src/modules/capture/captureService';
 import { createCareService } from '../../src/modules/care/careService';
 import { createAppearanceService } from '../../src/modules/appearance/appearanceService';
 import { createCollectionService } from '../../src/modules/collection/collectionService';
+import {
+  createCoreAvailabilityProvider,
+  createWaifuAvailabilityService,
+} from '../../src/modules/collection/waifuAvailability';
+import { createExpeditionService } from '../../src/modules/expeditions/expeditionService';
 import { createAchievementService } from '../../src/modules/achievements/achievementService';
 import { loadAchievementDefinitions } from '../../src/modules/achievements/achievementDefinitions';
 import { createLeaderboardService } from '../../src/modules/leaderboards/leaderboardService';
@@ -95,6 +100,14 @@ export interface App {
   capture: ReturnType<typeof createCaptureService>;
   care: ReturnType<typeof createCareService>;
   collection: ReturnType<typeof createCollectionService>;
+  /**
+   * Expeditions, wired exactly as production does — including the availability
+   * knot, so the "she is away" guards on release, Buddy and Care Mode are the
+   * real ones in every test that touches them.
+   */
+  expeditions: ReturnType<typeof createExpeditionService>;
+  /** The shared availability vocabulary, for tests that assert on reasons. */
+  availability: ReturnType<typeof createWaifuAvailabilityService>;
   achievements: ReturnType<typeof createAchievementService>;
   leaderboards: ReturnType<typeof createLeaderboardService>;
   appearance: ReturnType<typeof createAppearanceService>;
@@ -239,6 +252,18 @@ export async function bootstrapApp(
   // Wired exactly as production does, so integration tests exercise the real
   // unlock/acknowledge path rather than a stub.
   const appearance = createAppearanceService({ db: t.db, getContent: () => content });
+  // The same late-bound knot production ties in `index.ts`: expeditions depend
+  // on collection, collection depends on availability, availability depends on
+  // expeditions. Wired identically here so availability tests exercise the
+  // real graph rather than a simplified one.
+  let expeditions: ReturnType<typeof createExpeditionService> | undefined;
+  const availability = createWaifuAvailabilityService({
+    bulkProviders: [
+      createCoreAvailabilityProvider(),
+      (tx, playerId, waifuIds) =>
+        expeditions?.unavailabilityFor(tx, playerId, waifuIds) ?? Promise.resolve(new Map()),
+    ],
+  });
   const collection = createCollectionService({
     db: t.db,
     currency,
@@ -248,6 +273,7 @@ export async function bootstrapApp(
     duplicateConfig: content.tables.duplicate,
     waifuConfig: content.tables.waifuProgression,
     buddyBonus,
+    availability,
   });
   const care = createCareService({
     db: t.db,
@@ -258,6 +284,23 @@ export async function bootstrapApp(
     appearance,
     careConfig: content.tables.energy.careMode,
     buddyBonus,
+    availability,
+  });
+  // `getContent: () => content` rather than a snapshot, matching travel: a
+  // test that edits `app.content.expeditions` in place is seen immediately,
+  // which is how expedition content reaches these tests at all — nothing
+  // expedition-shaped ships in `content/` until Phase 5.
+  expeditions = createExpeditionService({
+    db: t.db,
+    logger: t.logger,
+    getContent: () => content,
+    resolveRace: raceResolverFromContent(() => content),
+    currency,
+    essenceAward,
+    inventory,
+    collection,
+    progression,
+    availability,
   });
   const effects = createPlayerEffectsService(t.db);
   // Wired exactly as production does, so the encounter-consumable path is the
@@ -368,6 +411,8 @@ export async function bootstrapApp(
     buddyBonus,
     gifts,
     bosses,
+    expeditions,
+    availability,
     travel,
     worldEncounter,
     worldEncounterVendor,

@@ -53,6 +53,14 @@ import { configureCardRenderer, shutdownCardRenderer } from './modules/cards';
 import { OwnedCardWarmer } from './modules/appearance/ownedCardWarm';
 import { listOwnedWarmSubjects } from './modules/appearance/ownedCardWarmSubjects';
 import { createCollectionService } from './modules/collection/collectionService';
+import {
+  createCoreAvailabilityProvider,
+  createWaifuAvailabilityService,
+} from './modules/collection/waifuAvailability';
+import {
+  createExpeditionService,
+  type ExpeditionService,
+} from './modules/expeditions/expeditionService';
 import { createAchievementService } from './modules/achievements/achievementService';
 import { loadAchievementDefinitions } from './modules/achievements/achievementDefinitions';
 import { createLeaderboardService } from './modules/leaderboards/leaderboardService';
@@ -185,6 +193,29 @@ async function main(): Promise<void> {
   // retroactively unlockable) without a restart — `ctx.content` is reassigned
   // below, and this closure follows it.
   const appearance = createAppearanceService({ db, getContent: () => contentSnapshot });
+
+  /**
+   * Waifu availability, and the one knot in this graph.
+   *
+   * Expeditions depend on collection (they award XP to the deployed copy), and
+   * collection depends on availability, which depends on expeditions to answer
+   * "is she away". That is a genuine cycle in the *data*, not a mistake in the
+   * layering — so it is tied here, at the composition root, with a late-bound
+   * closure rather than by making any module import another one backwards.
+   *
+   * Before `expeditions` is assigned the provider reports nothing, which is
+   * correct: nothing can be on an expedition before the expedition service
+   * exists to have deployed it.
+   */
+  let expeditions: ExpeditionService | undefined;
+  const availability = createWaifuAvailabilityService({
+    bulkProviders: [
+      createCoreAvailabilityProvider(),
+      (tx, playerId, waifuIds) =>
+        expeditions?.unavailabilityFor(tx, playerId, waifuIds) ?? Promise.resolve(new Map()),
+    ],
+  });
+
   const collection = createCollectionService({
     db,
     currency,
@@ -194,6 +225,7 @@ async function main(): Promise<void> {
     duplicateConfig: content.tables.duplicate,
     waifuConfig: content.tables.waifuProgression,
     buddyBonus,
+    availability,
   });
   const care = createCareService({
     db,
@@ -204,6 +236,20 @@ async function main(): Promise<void> {
     appearance,
     careConfig: content.tables.energy.careMode,
     buddyBonus,
+    availability,
+  });
+  // Ties the knot opened above. Everything it needs exists by this line.
+  expeditions = createExpeditionService({
+    db,
+    logger,
+    getContent: () => contentSnapshot,
+    resolveRace: raceResolverFromContent(() => contentSnapshot),
+    currency,
+    essenceAward,
+    inventory,
+    collection,
+    progression,
+    availability,
   });
   const effects = createPlayerEffectsService(db);
   // Hoisted above the context literal because CaptureService now takes it:
@@ -344,6 +390,7 @@ async function main(): Promise<void> {
       currency,
       inventory,
       progression,
+      expeditions,
       daily: createDailyService({
         db,
         currency,

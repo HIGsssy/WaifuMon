@@ -40,10 +40,16 @@ import {
   WaifuIsBuddyError,
   WaifuIsFavoriteError,
   WaifuReleaseBlockedError,
+  WaifuUnavailableError,
   WaifuNicknameTooEarlyError,
   WaifuNotOwnedError,
 } from '../../shared/errors';
 import type { CurrencyService } from '../currency/currencyService';
+import {
+  ALWAYS_AVAILABLE,
+  type WaifuAvailabilityService,
+  type WaifuUnavailabilityReason,
+} from './waifuAvailability';
 import {
   createEssenceAwardService,
   type EssenceAwardService,
@@ -447,6 +453,19 @@ export interface CollectionServiceDeps {
    * find and a World Encounter payout do.
    */
   essenceAward?: EssenceAwardService | undefined;
+  /**
+   * Whether an owned copy is free to be used, and if not why.
+   *
+   * **Optional**, defaulting to "nothing is unavailable", for the same reason
+   * every other optional dependency here is: a hand-built fixture keeps
+   * working and simply sees a world with no expeditions in it.
+   *
+   * Injected rather than imported because the expedition service depends on
+   * *this* service (it awards XP to the deployed copy), so importing it back
+   * would be a cycle. `index.ts` registers the provider at composition time,
+   * exactly as it injects `resolveRace`.
+   */
+  availability?: WaifuAvailabilityService | undefined;
 }
 
 const DEFAULT_PAGE_SIZE = 10;
@@ -477,6 +496,7 @@ export function createCollectionService(deps: CollectionServiceDeps): Collection
   const essenceAward =
     deps.essenceAward ??
     createEssenceAwardService({ currency: deps.currency, buddyBonus: deps.buddyBonus });
+  const availability = deps.availability ?? ALWAYS_AVAILABLE;
 
   /**
    * Cosmetic side effect of a level gain, run inside the caller's transaction.
@@ -832,14 +852,30 @@ export function createCollectionService(deps: CollectionServiceDeps): Collection
         .for('update');
       const isBuddy = player?.buddyWaifuId === waifuId;
 
+      // Reasons that live outside this transaction's own reads — today that
+      // means "away on an expedition". Asked through the shared vocabulary
+      // rather than by querying `player_expeditions` here, so a future
+      // unavailable state needs no edit at this call site.
+      //
+      // Scoped to the reasons *release* cares about: favourite and buddy are
+      // already read above from rows this transaction holds locked, and
+      // re-reporting them from the provider would double them in the message.
+      const external = (await availability.reasonsFor(tx, playerId, waifuId)).filter(
+        (reason: WaifuUnavailabilityReason) => reason === 'on_expedition',
+      );
+
       if (guard.kind === 'release') {
-        const reasons: ('favorite' | 'buddy')[] = [];
+        const reasons: ('favorite' | 'buddy' | 'on_expedition')[] = [];
         if (locked.isFavorite) reasons.push('favorite');
         if (isBuddy) reasons.push('buddy');
+        reasons.push(...external);
         if (reasons.length > 0) throw new WaifuReleaseBlockedError(reasons);
       } else {
         if (locked.isFavorite && !guard.allowFavorite) throw new WaifuIsFavoriteError();
         if (isBuddy) throw new WaifuIsBuddyError();
+        // A deployed copy cannot be converted either: converting destroys her,
+        // and she is not here to be destroyed.
+        if (external.length > 0) throw new WaifuUnavailableError(external);
       }
 
       if (requireDuplicate) {
@@ -1067,6 +1103,17 @@ export function createCollectionService(deps: CollectionServiceDeps): Collection
           .from(species)
           .where(eq(species.id, locked.speciesId));
         if (!speciesRow) throw new WaifuNotOwnedError(waifuId);
+        // Symmetric with the "a Buddy cannot be deployed" rule: a copy who is
+        // away cannot be promoted to Buddy while she is gone. Without this the
+        // two rules would disagree depending on which order a player did them
+        // in, which is exactly the kind of gap a shared vocabulary exists to
+        // close.
+        const away = (await availability.reasonsFor(tx, playerId, waifuId)).filter(
+          (reason: WaifuUnavailabilityReason) => reason === 'on_expedition',
+        );
+        if (away.length > 0) {
+          throw new WaifuUnavailableError(away, locked.nickname?.trim() || speciesRow.name);
+        }
         const [updatedPlayer] = await tx
           .update(players)
           .set({ buddyWaifuId: waifuId })

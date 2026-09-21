@@ -15,6 +15,8 @@ import { DEFAULT_REGION, isRegion, REGION_EXCLUSIVE_TAG } from '../locations/reg
 import {
   BossesFileSchema,
   BossRewardsFileSchema,
+  ExpeditionRewardsFileSchema,
+  ExpeditionsFileSchema,
   DEFAULT_APPEARANCE_ID,
   ExpansionContentSchema,
   ItemsFileSchema,
@@ -26,6 +28,8 @@ import {
   type BossContent,
   type ExpansionContent,
   type LoadedContent,
+  type ExpeditionRewardTable,
+  type RegionalExpedition,
   type RegionContent,
   type SpeciesArtworkDiagnostic,
   type SpeciesContent,
@@ -620,6 +624,173 @@ export function validateRegionContent(content: LoadedContent): void {
  * with exactly the same rules the bot enforces at startup. Throws
  * `ContentValidationError` on the first violation.
  */
+/**
+ * Expedition content cross-validation.
+ *
+ * Split out of `validateContentSet` for the same reason `validateBossContent`
+ * is: the admin panel validates a candidate set held in memory with exactly
+ * the rules the bot enforces at boot, and a focused function is what a
+ * per-rule test can aim at.
+ *
+ * Every check here is fatal, and each for a specific reason:
+ *
+ *   - **A duplicate key** would make `expedition_key` ambiguous on a deployed
+ *     row, which is the key a mission in flight is read back by.
+ *   - **A missing reward table** mints a mission nobody can be paid for. It
+ *     would fail at *deployment* rather than at resolution — which is better
+ *     than the boss case, because the snapshot is taken up front — but a
+ *     player pressing Deploy and getting an error is still a broken board.
+ *   - **A missing reward item** is the same failure one level down.
+ *   - **An off-ladder duration** is a mission nobody balanced. Durations are a
+ *     closed set precisely so a board cannot offer 47 minutes.
+ *   - **An equipment reward** would hand over an item with no mechanics. The
+ *     category is reserved in V1 and reward tables are where it would leak.
+ *
+ * A *disabled* reward item is deliberately not fatal, matching the boss rule
+ * and for the same reason: the grant resolves the live `items` row inside the
+ * payout transaction, and a disabled item still exists and can still be added
+ * to an inventory. `items.enabled` is retirement, not shop availability.
+ *
+ * A *disabled table* is likewise not fatal on its own — it is refused at
+ * deploy time with an actionable error. It becomes fatal only when an
+ * **enabled** definition names it, which is checked below, because from the
+ * player's side an enabled mission that cannot be deployed is just broken.
+ */
+/**
+ * Reads `content/expeditions/*.json` and `content/expeditionRewards.json`.
+ *
+ * Exported because the admin panel assembles a *candidate* content set for
+ * validation and has to see exactly what the bot sees. A panel that validated
+ * a `tables.json` edit without the expedition files in hand would happily
+ * accept removing the duration tier that every shipped mission names.
+ *
+ * Both sources are optional on disk. Their absence is a supported
+ * configuration — it is what ships until missions are authored — and every
+ * board simply renders empty.
+ */
+export function readExpeditionContent(contentDir: string): {
+  expeditions: RegionalExpedition[];
+  expeditionRewards: ExpeditionRewardTable[];
+} {
+  /**
+   * One file per region, scanned like `content/regions/`. The region is a
+   * property of the file; it is flattened onto each definition here so no
+   * consumer has to carry the pairing. The filename must agree with the
+   * `region` field, because a `thirstlands.json` that declares `waifu-valley`
+   * is a rename that went half-way.
+   */
+  const expeditionsDir = path.join(contentDir, 'expeditions');
+  const expeditions: RegionalExpedition[] = [];
+  if (fs.existsSync(expeditionsDir)) {
+    for (const file of listJsonFiles(expeditionsDir)) {
+      const filePath = path.join(expeditionsDir, file);
+      const parsed = parseJsonFile(filePath, ExpeditionsFileSchema);
+      const expectedRegion = file.replace(/\.json$/, '');
+      if (parsed.region !== expectedRegion) {
+        throw new ContentValidationError(
+          `content/expeditions/${file} declares region "${parsed.region}" but is named for ` +
+            `"${expectedRegion}". One region per file, and the name is the region.`,
+        );
+      }
+      for (const definition of parsed.expeditions) {
+        expeditions.push({ ...definition, region: parsed.region });
+      }
+    }
+  }
+
+  /**
+   * Payout tables, optional under the same conditions as the definitions:
+   * `validateExpeditionContent` refuses a mission whose table is absent, so a
+   * missing file can only coexist with an absent roster.
+   */
+  const expeditionRewardsPath = path.join(contentDir, 'expeditionRewards.json');
+  const expeditionRewards: ExpeditionRewardTable[] = fs.existsSync(expeditionRewardsPath)
+    ? parseJsonFile(expeditionRewardsPath, ExpeditionRewardsFileSchema)
+    : [];
+
+  return { expeditions, expeditionRewards };
+}
+
+export function validateExpeditionContent(content: LoadedContent): void {
+  const { expeditions, expeditionRewards, items, tables } = content;
+  const config = tables.expeditions;
+
+  const keys = expeditions.map((e) => e.key);
+  const duplicate = keys.find((k, i) => keys.indexOf(k) !== i);
+  if (duplicate) {
+    throw new ContentValidationError(
+      `Duplicate expedition key: ${duplicate}. Keys are globally unique across every ` +
+        'content/expeditions/<region>.json file, because a deployed row records only the key.',
+    );
+  }
+
+  const tablesById = new Map(expeditionRewards.map((t) => [t.id, t]));
+  const itemsBySlug = new Map(items.map((i) => [i.slug, i]));
+  const legalDurations = new Set(Object.values(config.durations));
+
+  for (const expedition of expeditions) {
+    if (!legalDurations.has(expedition.durationMinutes)) {
+      throw new ContentValidationError(
+        `expedition "${expedition.key}" has durationMinutes ${expedition.durationMinutes}, ` +
+          `which is not one of the configured tiers (${[...legalDurations].sort((a, b) => a - b).join(', ')}). ` +
+          'Add the tier to tables.json → expeditions.durations, or use an existing one.',
+      );
+    }
+
+    // Named tables must exist whether or not the definition is enabled: a
+    // disabled mission is one flag away from being live, and a dangling table
+    // reference that only fails on the day somebody enables it is the kind of
+    // break that lands on a weekend.
+    const named: [string, string | null][] = [
+      ['rewardTable', expedition.rewardTable],
+      ['exceptionalRewardTable', expedition.exceptionalRewardTable],
+      ['failureRewardTable', expedition.failureRewardTable],
+    ];
+    for (const [field, tableId] of named) {
+      if (tableId == null) continue;
+      const table = tablesById.get(tableId);
+      if (!table) {
+        throw new ContentValidationError(
+          `expedition "${expedition.key}".${field} references unknown reward table: ${tableId}. ` +
+            `Add it to content/expeditionRewards.json (known tables: ${[...tablesById.keys()].join(', ') || 'none'}).`,
+        );
+      }
+      // Only an *enabled* mission is refused for pointing at a switched-off
+      // table, because only an enabled mission can be deployed.
+      if (expedition.enabled && !table.enabled) {
+        throw new ContentValidationError(
+          `expedition "${expedition.key}" is enabled but its ${field} "${tableId}" is disabled. ` +
+            'Re-enable the table, or disable the expedition — an enabled mission that cannot ' +
+            'be deployed is a broken board entry, not a hidden one.',
+        );
+      }
+    }
+  }
+
+  for (const table of expeditionRewards) {
+    for (const group of table.groups) {
+      for (const entry of group.entries) {
+        const item = itemsBySlug.get(entry.itemId);
+        if (!item) {
+          throw new ContentValidationError(
+            `expeditionRewards["${table.id}"].groups["${group.id}"] references unknown item: ` +
+              `${entry.itemId}. Reward tables name items from items.json; they never define them.`,
+          );
+        }
+        // V1 reserves the category rather than shipping it. A table is the one
+        // place an inert item could reach a player's hands.
+        if (item.category === 'equipment') {
+          throw new ContentValidationError(
+            `expeditionRewards["${table.id}"].groups["${group.id}"] awards equipment item ` +
+              `"${entry.itemId}". Equipment has no mechanics in V1 and must not be granted — ` +
+              'the category is reserved for a later phase.',
+          );
+        }
+      }
+    }
+  }
+}
+
 export function validateContentSet(content: LoadedContent): void {
   const { items, species, tables } = content;
 
@@ -746,6 +917,7 @@ export function validateContentSet(content: LoadedContent): void {
 
   validateRegionContent(content);
   validateBossContent(content);
+  validateExpeditionContent(content);
 }
 
 /**
@@ -789,6 +961,8 @@ export function readContentFiles(contentDir: string): LoadedContent {
     ? parseJsonFile(bossRewardsPath, BossRewardsFileSchema)
     : [];
 
+  const { expeditions, expeditionRewards } = readExpeditionContent(contentDir);
+
   const { regions, expansions, expansionSpecies, speciesOrigin, unloadedSpecies } =
     readExpansionPacks(contentDir);
   const allSpecies = [...species, ...expansionSpecies];
@@ -797,6 +971,8 @@ export function readContentFiles(contentDir: string): LoadedContent {
     items: itemsFile.items,
     species: allSpecies,
     tables,
+    expeditions,
+    expeditionRewards,
     bosses,
     bossRewards,
     regions,
@@ -1042,6 +1218,29 @@ function warnOnUnpooledSpecies(
 }
 
 /**
+ * Equipment is a **reserved** category in V1: the item model can describe it,
+ * the expedition reward tables refuse it, and nothing in the game equips it.
+ *
+ * A warning rather than a refusal, for the same reason the unpooled-species
+ * check is one. Authoring equipment ahead of the mechanics is legitimate —
+ * that is what "reserve the category" means — and failing the boot over it
+ * would make the reservation useless. But an *enabled* equipment item is one
+ * reward-table edit away from being handed to a player as an object with no
+ * behaviour, and "I got a sword and nothing happened" is a bug report. So the
+ * line gets logged every boot until somebody either disables the item or
+ * ships the mechanics.
+ */
+function warnOnEnabledEquipment(items: LoadedContent['items'], logger: Logger): void {
+  const enabled = items.filter((i) => i.category === 'equipment' && i.enabled).map((i) => i.slug);
+  if (enabled.length === 0) return;
+  logger.warn(
+    { items: enabled },
+    'equipment items are enabled but equipment has no mechanics in V1 — they can be ' +
+      'granted and held, and will do nothing. Set enabled: false until slots ship.',
+  );
+}
+
+/**
  * Loads and validates all content JSON. Bad content fails loudly with
  * file+field errors — never silently.
  */
@@ -1057,6 +1256,7 @@ export function loadContent(contentDir: string, assetsDir: string, logger: Logge
   );
   const validatedBosses = validateBossAssets(content.bosses, assetsDir, logger);
   warnOnUnpooledSpecies(validatedSpecies, content.regions, logger);
+  warnOnEnabledEquipment(content.items, logger);
 
   logger.info(
     {

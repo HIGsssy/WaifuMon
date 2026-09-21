@@ -179,6 +179,8 @@ export function itemFormPage(item: ItemContent | null, references: string[]): st
     isGuaranteedCapture: false,
     shopRegions: [],
     buyPrice: null,
+    sellValue: null,
+    explicitlySellable: false,
     priceCurrency: 'waifubux',
     dailyStockLimit: null,
     effectType: null,
@@ -222,6 +224,17 @@ ${refWarning}
       hint: 'reserved — no purchase-limit system yet',
       step: '1',
     })}</div>
+  </div>
+  <div class="row">
+    <div>${numberField('sellValue', 'Sell value', i.sellValue, {
+      hint: 'what a shop pays the player, in WaifuBux; blank = not sellable. 0 is rejected.',
+      step: '1',
+    })}</div>
+    <div>${boolField(
+      'explicitlySellable',
+      'Key item may be sold',
+      i.explicitlySellable,
+    )}<p class="muted">Only for category <span class="mono">key</span>, and only alongside a sell value — a key item needs both before it will vendor.</p></div>
   </div>
   ${textField('shopRegions', 'Sold in regions', i.shopRegions.join(', '), {
     type: 'list',

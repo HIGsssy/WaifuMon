@@ -202,6 +202,8 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
 
   // --- Unknown resource ---------------------------------------------------
   PLAYER_NOT_FOUND: 404,
+  EXPEDITION_NOT_FOUND: 404,
+  EXPEDITION_NOT_ACTIVE: 404,
   ITEM_NOT_FOUND: 404,
   ENCOUNTER_NOT_FOUND: 404,
   WAIFU_NOT_OWNED: 404,
@@ -278,7 +280,25 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
    */
   NO_ACTIVE_BUDDY: 422,
   ITEM_NOT_PURCHASABLE: 422,
+  /**
+   * The mirror of ITEM_NOT_PURCHASABLE on the selling side, and 422 for the
+   * same reason: the item is real and the player holds it, so the request is
+   * well-formed — it is the item's configuration that refuses, not the URL.
+   */
+  ITEM_NOT_SELLABLE: 422,
   ITEM_NOT_USABLE: 422,
+  // --- Expeditions ---------------------------------------------------------
+  // All 422 rather than 409: the request is well-formed and the resources are
+  // real; the account is simply not in a state where the action means
+  // anything. That is the same reading every other gameplay refusal here gets.
+  EXPEDITIONS_DISABLED: 422,
+  EXPEDITION_SLOTS_FULL: 422,
+  WAIFU_UNAVAILABLE: 422,
+  EXPEDITION_NOT_COMPLETE: 422,
+  EXPEDITION_ALREADY_CLAIMED: 422,
+  EXPEDITION_NOT_CANCELLABLE: 422,
+  /** A broken content set, not a bad request — the operator gets the detail. */
+  EXPEDITION_CONTENT_INVALID: 500,
   ITEM_HAS_NO_EFFECT: 422,
   NOT_A_DUPLICATE: 422,
   WAIFU_NICKNAME_TOO_EARLY: 422,
