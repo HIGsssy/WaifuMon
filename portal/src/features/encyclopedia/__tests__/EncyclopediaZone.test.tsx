@@ -224,7 +224,14 @@ describe('Encyclopedia Zone filter', () => {
       within(group)
         .getAllByRole('button')
         .map((button) => button.textContent),
-    ).toEqual(['All origins', 'Waifu Valley', 'Twin Peeks', 'Flaccid Foothills', 'Thirstlands']);
+    ).toEqual([
+      'All origins',
+      'Waifu Valley',
+      'Twin Peeks',
+      'Flaccid Foothills',
+      'Thirstlands',
+      'Base 80085',
+    ]);
     expect(within(group).getByRole('button', { name: 'All origins' })).toHaveAttribute(
       'aria-pressed',
       'true',

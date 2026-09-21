@@ -33,6 +33,7 @@ const REGION_LABELS: Record<string, string> = {
   'twin-peeks': 'Twin Peeks',
   'flaccid-foothills': 'Flaccid Foothills',
   thirstlands: 'Thirstlands',
+  'base-80085': 'Base 80085',
 };
 
 interface Filters {

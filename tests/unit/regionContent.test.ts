@@ -20,6 +20,7 @@ import {
   validateRegionContent,
 } from '../../src/modules/content/loader';
 import { buildTravelCatalog } from '../../src/modules/travel/travelCatalog';
+import { REGIONS, isRegion } from '../../src/modules/locations/regions';
 import { silentLogger } from '../helpers/testDb';
 import {
   RegionContentSchema,
@@ -587,6 +588,7 @@ describe('shipped content', () => {
       'twin-peeks',
       'flaccid-foothills',
       'thirstlands',
+      'base-80085',
     ]);
   });
 
@@ -676,7 +678,7 @@ describe('shipped content — Thirstlands, the third destination', () => {
     expect(thirstlands.requiredLevel).toBe(25);
   });
 
-  it('lists last, and leaves the three destinations before it alone', () => {
+  it('leaves the three destinations before it alone', () => {
     const content = loadContent(CONTENT_DIR, ASSETS_DIR, silentLogger());
     const catalog = buildTravelCatalog(content);
     expect(catalog.destinations.map((d) => d.region.id)).toEqual([
@@ -684,6 +686,7 @@ describe('shipped content — Thirstlands, the third destination', () => {
       'twin-peeks',
       'flaccid-foothills',
       'thirstlands',
+      'base-80085',
     ]);
     const twin = catalog.get('twin-peeks')!;
     expect(twin.grantedByPassPurchase).toBe(true);
@@ -714,6 +717,115 @@ describe('shipped content — Thirstlands, the third destination', () => {
     });
     expect(() => validateRegionContent(bad)).toThrow(
       /Region "thirstlands" is enabled but defines no encounterPool/,
+    );
+  });
+});
+
+describe('shipped content — Base 80085, the fourth destination', () => {
+  const CONTENT_DIR = path.resolve(__dirname, '..', '..', 'content');
+
+  it('ships the region enabled, non-starting, with a banner and a pool', () => {
+    const scan = readExpansionPacks(CONTENT_DIR);
+    const base = scan.regions.find((r) => r.id === 'base-80085');
+    expect(base).toBeDefined();
+    expect(base!.enabled).toBe(true);
+    // Only Waifu Valley may claim this, and releasing a destination must never
+    // be the edit that moves where new players spawn.
+    expect(base!.starting).toBe(false);
+    expect(base!.name).toBe('Base 80085');
+    expect(base!.bannerImagePath).toBe('locations/base-80085/banner.png');
+    expect(base!.encounterPool.length).toBeGreaterThan(0);
+    expect(base!.encounterPool.every((e) => typeof e.weight === 'number')).toBe(true);
+  });
+
+  it('is a storable region id, not just a content one', () => {
+    // The region file being enabled is only half a release: every column that
+    // holds a region carries a CHECK against REGIONS, so a region content can
+    // name but the database cannot store is a runtime error on first travel.
+    expect(isRegion('base-80085')).toBe(true);
+    expect(REGIONS).toContain('base-80085');
+  });
+
+  it('declares its region on the expansion manifest', () => {
+    const scan = readExpansionPacks(CONTENT_DIR);
+    const manifest = scan.expansions.find((e) => e.id === 'base_80085');
+    expect(manifest).toBeDefined();
+    expect(manifest!.enabled).toBe(true);
+    // A pack that ships a region.json but leaves regionId null loads its
+    // species and silently contributes no destination.
+    expect(manifest!.regionId).toBe('base-80085');
+  });
+
+  it('validates as part of the shipped content set', () => {
+    expect(() => loadContent(CONTENT_DIR, ASSETS_DIR, silentLogger())).not.toThrow();
+  });
+
+  it('ships its residents tagged as expansion region-exclusives of this zone', () => {
+    const scan = readExpansionPacks(CONTENT_DIR);
+    const pack = scan.expansionSpecies.filter((s) => scan.speciesOrigin[s.slug] === 'base_80085');
+    expect(pack.length).toBeGreaterThan(0);
+    for (const s of pack) {
+      expect(s.tags).toContain('expansion');
+      expect(s.tags).toContain('region_exclusive');
+      // The zone tag is what the Portal's region filter reads. Without it the
+      // pack is huntable but unfindable in the collection.
+      expect(s.tags).toContain('base_80085');
+      expect(s.imagePath).toBe(`waifumon/${s.slug}/standard.png`);
+    }
+  });
+
+  it('pools every Base 80085 exclusive at home, and nowhere else', () => {
+    const scan = readExpansionPacks(CONTENT_DIR);
+    const packSlugs = new Set(
+      scan.expansionSpecies
+        .filter((s) => scan.speciesOrigin[s.slug] === 'base_80085')
+        .map((s) => s.slug),
+    );
+    const base = scan.regions.find((r) => r.id === 'base-80085')!;
+    const pooled = new Set(base.encounterPool.map((e) => e.species));
+    // An exclusive missing from her own pool is unobtainable content. The pool
+    // is a superset, not an equality: it also stocks non-exclusive core species,
+    // which is how every released region fills out its rarity buckets.
+    for (const slug of packSlugs) expect(pooled).toContain(slug);
+    for (const other of scan.regions.filter((r) => r.id !== 'base-80085')) {
+      expect(other.encounterPool.filter((e) => packSlugs.has(e.species))).toEqual([]);
+    }
+  });
+
+  it('sells it as a Caravan Pass route at level 30 for 2,500', () => {
+    const content = loadContent(CONTENT_DIR, ASSETS_DIR, silentLogger());
+    const catalog = buildTravelCatalog(content);
+    const base = catalog.get('base-80085')!;
+    expect(base.access).toBe('route');
+    expect(base.pass!.id).toBe('caravan_pass');
+    // Stamped onto a pass the player must already hold: buying the Caravan
+    // Pass for Twin Peeks must not quietly hand this one over too.
+    expect(base.grantedByPassPurchase).toBe(false);
+    expect(content.tables.travel.passes.every((p) => !p.grantsRoutes.includes('base-80085'))).toBe(
+      true,
+    );
+    expect(base.price).toBe(2500);
+    expect(base.currency).toBe('waifubux');
+    // The stricter of the pass gate (15) and the route gate (30).
+    expect(base.requiredLevel).toBe(30);
+  });
+
+  it('would refuse the release if the pool were emptied', () => {
+    const scan = readExpansionPacks(CONTENT_DIR);
+    const base = scan.regions.find((r) => r.id === 'base-80085')!;
+    const bad = content({
+      regions: [
+        region({
+          id: 'waifu-valley',
+          name: 'Waifu Valley',
+          starting: true,
+          encounterPool: [{ species: 'valley_girl' }],
+        }),
+        { ...base, encounterPool: [] },
+      ],
+    });
+    expect(() => validateRegionContent(bad)).toThrow(
+      /Region "base-80085" is enabled but defines no encounterPool/,
     );
   });
 });

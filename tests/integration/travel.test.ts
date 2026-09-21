@@ -80,7 +80,7 @@ describe('shipped travel content', () => {
     expect(twinPeeks.grantedByPassPurchase).toBe(true);
   });
 
-  it('lists Thirstlands as the fourth destination, priced and gated', () => {
+  it('lists Thirstlands as a priced and gated destination', () => {
     // The route was authored against the Caravan Pass long before the region
     // was switched on, which is exactly why releasing it was a content edit:
     // the catalog is what turns an enabled region into a sellable destination.
@@ -90,6 +90,7 @@ describe('shipped travel content', () => {
       'twin-peeks',
       'flaccid-foothills',
       'thirstlands',
+      'base-80085',
     ]);
     const thirstlands = catalog.get('thirstlands')!;
     expect(thirstlands.pass!.id).toBe('caravan_pass');
@@ -104,11 +105,34 @@ describe('shipped travel content', () => {
       .selectDistinct({ regionId: regionEncounterPools.regionId })
       .from(regionEncounterPools);
     expect(pooled.map((r) => r.regionId).sort()).toEqual([
+      'base-80085',
       'flaccid-foothills',
       'thirstlands',
       'twin-peeks',
       'waifu-valley',
     ]);
+  });
+
+  it('lists Base 80085 as the last destination, priced and gated', () => {
+    // Enabling the pack is a content edit; the catalog is what turns the
+    // enabled region into a sellable destination, and `order: 6` is what puts
+    // it after Thirstlands rather than anywhere the map iterates.
+    const catalog = app.travel.catalog();
+    const base = catalog.get('base-80085')!;
+    expect(base).toBeDefined();
+    expect(base.region.name).toBe('Base 80085');
+    expect(base.access).toBe('route');
+    expect(base.pass!.id).toBe('caravan_pass');
+    // Not bundled into the pass: the Caravan Pass still buys Twin Peeks only.
+    expect(base.grantedByPassPurchase).toBe(false);
+    expect(base.price).toBe(2500);
+    expect(base.currency).toBe('waifubux');
+    expect(base.requiredLevel).toBe(30);
+  });
+
+  it('refuses to travel to Base 80085 before the route is bought', async () => {
+    const { playerId } = await provisionPlayer(app, 'g-travel-base', 'u-base');
+    await expect(app.travel.travel(playerId, 'base-80085')).rejects.toThrow(RegionLockedError);
   });
 
   it('refuses to travel to it before the route is bought', async () => {

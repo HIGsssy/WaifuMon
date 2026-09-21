@@ -1,36 +1,136 @@
 {
- "id": "base-80085",
- "name": "Base 80085",
- "description": "A numbered installation at the end of a supply line nobody audits. The berths are rented by the week, the roster is whoever walked in and paid, and the only rule still standing is that you settle up before you dock.",
- "emoji": "🛰️",
- "enabled": false,
- "starting": false,
- "order": 6,
- "bannerImagePath": "locations/base-80085/banner.png",
- "flavor": [
-  "Base 80085 was never formally decommissioned. Nobody in the chain of command wanted to sign the paperwork, so it simply kept being staffed.",
-  "The number is painted across the hull in letters three metres tall. Nobody stationed here has ever once read it out loud."
- ],
- "encounterPool": [
-  {
-   "species": "angel_combat_medic",
-   "weight": 12
-  },
-  {
-   "species": "spec_ops_valkyrie",
-   "weight": 10
-  },
-  {
-   "species": "cyber_security_android",
-   "weight": 5
-  },
-  {
-   "species": "border_jackal",
-   "weight": 10
-  },
-  {
-   "species": "glacier_bear",
-   "weight": 8
-  }
- ]
+  "id": "base-80085",
+  "name": "Base 80085",
+  "description": "A numbered installation at the end of a supply line nobody audits. The berths are rented by the week, the roster is whoever walked in and paid, and the only rule still standing is that you settle up before you dock.",
+  "emoji": "🛰️",
+  "enabled": true,
+  "starting": false,
+  "order": 6,
+  "bannerImagePath": "locations/base-80085/banner.png",
+  "flavor": [
+    "Base 80085 was never formally decommissioned. Nobody in the chain of command wanted to sign the paperwork, so it simply kept being staffed.",
+    "The number is painted across the hull in letters three metres tall. Nobody stationed here has ever once read it out loud."
+  ],
+  "encounterPool": [
+    {
+      "species": "drone_handler",
+      "weight": 12
+    },
+    {
+      "species": "overwatch_ghost",
+      "weight": 12
+    },
+    {
+      "species": "cyber_security_android",
+      "weight": 12
+    },
+    {
+      "species": "supply_runner",
+      "weight": 12
+    },
+    {
+      "species": "blacksite_interrogator",
+      "weight": 10
+    },
+    {
+      "species": "angel_combat_medic",
+      "weight": 10
+    },
+    {
+      "species": "border_jackal",
+      "weight": 10
+    },
+    {
+      "species": "demon_recon_scout",
+      "weight": 10
+    },
+    {
+      "species": "mech_jockey",
+      "weight": 8
+    },
+    {
+      "species": "glacier_bear",
+      "weight": 8
+    },
+    {
+      "species": "field_chapel_succubus",
+      "weight": 8
+    },
+    {
+      "species": "spec_ops_valkyrie",
+      "weight": 5
+    },
+    {
+      "species": "breacher",
+      "weight": 5
+    },
+    {
+      "species": "honor_guard_captain",
+      "weight": 3
+    },
+    {
+      "species": "vivian_field_commander",
+      "weight": 1
+    },
+    {
+      "species": "courier_android",
+      "weight": 10
+    },
+    {
+      "species": "konbini_android",
+      "weight": 10
+    },
+    {
+      "species": "landlady_slumlord",
+      "weight": 10
+    },
+    {
+      "species": "backroom_angel",
+      "weight": 10
+    },
+    {
+      "species": "heatwave_spirit",
+      "weight": 10
+    },
+    {
+      "species": "enforcer_unit",
+      "weight": 8
+    },
+    {
+      "species": "iron_circuit_trainer",
+      "weight": 8
+    },
+    {
+      "species": "oathbound_valkyrie",
+      "weight": 8
+    },
+    {
+      "species": "lake_lifeguard",
+      "weight": 8
+    },
+    {
+      "species": "ice_house_android",
+      "weight": 6
+    },
+    {
+      "species": "summer_storm_spirit",
+      "weight": 6
+    },
+    {
+      "species": "ferry_angel",
+      "weight": 6
+    },
+    {
+      "species": "bathhouse_valkyrie",
+      "weight": 6
+    },
+    {
+      "species": "fallen_valkyrie",
+      "weight": 5
+    },
+    {
+      "species": "the_innkeeper",
+      "weight": 5
+    }
+  ]
 }

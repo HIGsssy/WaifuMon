@@ -563,6 +563,99 @@
       "description": "A generous swallow of desert kindness.",
       "emoji": "💧",
       "enabled": true
+    },
+    {
+      "slug": "hot_bunk",
+      "name": "Hot Bunk",
+      "category": "consumable",
+      "captureModifier": null,
+      "captureBonus": null,
+      "captureRarities": null,
+      "isGuaranteedCapture": false,
+      "shopRegions": [
+        "base-80085"
+      ],
+      "buyPrice": 1050,
+      "priceCurrency": "waifubux",
+      "dailyStockLimit": null,
+      "effectType": "restore_energy_amount",
+      "effectConfig": {
+        "amount": 25,
+        "exitCareMode": true
+      },
+      "description": "Two shifts, one rack. Somebody always leaves it warm.",
+      "emoji": "🛏️",
+      "enabled": true
+    },
+    {
+      "slug": "billet_bunny",
+      "name": "Billet Bunny",
+      "category": "consumable",
+      "captureModifier": null,
+      "captureBonus": null,
+      "captureRarities": null,
+      "isGuaranteedCapture": false,
+      "shopRegions": [
+        "base-80085"
+      ],
+      "buyPrice": 1200,
+      "priceCurrency": "waifubux",
+      "dailyStockLimit": null,
+      "effectType": "buddy_affection_gain",
+      "effectConfig": {
+        "amount": 150
+      },
+      "description": "Somebody has to keep the billet warm.",
+      "emoji": "🐰",
+      "enabled": true
+    },
+    {
+      "slug": "docking_clamp",
+      "name": "Docking Clamp",
+      "category": "capture",
+      "captureModifier": 1,
+      "captureBonus": 0.22,
+      "captureRarities": [
+        "SSR",
+        "UR",
+        "LR"
+      ],
+      "isGuaranteedCapture": false,
+      "shopRegions": [
+        "base-80085"
+      ],
+      "buyPrice": 850,
+      "priceCurrency": "waifubux",
+      "dailyStockLimit": null,
+      "effectType": null,
+      "effectConfig": null,
+      "description": "Locks on and does not let go until you do.",
+      "emoji": "⚓",
+      "enabled": true
+    },
+    {
+      "slug": "mag_dump",
+      "name": "Mag Dump",
+      "category": "consumable",
+      "captureModifier": null,
+      "captureBonus": null,
+      "captureRarities": null,
+      "isGuaranteedCapture": false,
+      "shopRegions": [
+        "base-80085"
+      ],
+      "buyPrice": 450,
+      "priceCurrency": "waifubux",
+      "dailyStockLimit": null,
+      "effectType": "capture_bonus_charges",
+      "effectConfig": {
+        "captureBonus": 0.12,
+        "charges": 3,
+        "refreshBehavior": "refresh"
+      },
+      "description": "Empty it in one go. Reload later.",
+      "emoji": "🧨",
+      "enabled": true
     }
   ]
 }

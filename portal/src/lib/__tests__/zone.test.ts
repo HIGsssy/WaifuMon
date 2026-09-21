@@ -21,18 +21,20 @@ describe('zoneFor', () => {
     ['twin_peeks', 'Twin Peeks'],
     ['flaccid_foothills', 'Flaccid Foothills'],
     ['thirstlands', 'Thirstlands'],
+    ['base_80085', 'Base 80085'],
   ])('resolves %s to "%s"', (tag, label) => {
     expect(zoneFor({ tags: ['expansion', 'region_exclusive', tag] })).toEqual({ tag, label });
     expect(zoneLabel(tag)).toBe(label);
     expect(isZoneTag(tag)).toBe(true);
   });
 
-  it('lists exactly the four released zones, in filter order', () => {
+  it('lists exactly the released zones, in filter order', () => {
     expect(ZONES.map((zone) => zone.label)).toEqual([
       'Waifu Valley',
       'Twin Peeks',
       'Flaccid Foothills',
       'Thirstlands',
+      'Base 80085',
     ]);
   });
 
@@ -131,6 +133,7 @@ describe('authored species content', () => {
       'Flaccid Foothills',
     ],
     ['content/expansions/thirstlands/species/thirstlands_species.json', 15, 'Thirstlands'],
+    ['content/expansions/base_80085/species/base_80085_species.json', 15, 'Base 80085'],
   ])('%s: all %i species resolve to %s', (file, count, label) => {
     const species = JSON.parse(fs.readFileSync(path.join(REPO, file), 'utf8')) as Array<{
       slug: string;

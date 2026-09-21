@@ -1,455 +1,1380 @@
 [
- {
-  "slug": "angel_combat_medic",
-  "name": "Angel Combat Medic",
-  "rarity": "N",
-  "archetype": "angel",
-  "race": "angel",
-  "baseCaptureRate": null,
-  "description": "Runs the dust-off bird out of Pad 3. Cuts the halo's light for the ones who still have a pulse and spends it on the ones who don't.",
-  "tags": [
-   "expansion",
-   "region_exclusive"
-  ],
-  "contentRating": "explicit",
-  "affinity": "caregiver",
-  "card": {
-   "subtitle": "First Hands On",
-   "ability": {
-    "name": "Golden Hour",
-    "text": "Lands inside the window that decides it, and spends her halo on whoever is still open."
-   },
-   "flavorQuote": "Sign here and you live. The rest is paperwork.",
-   "artist": "Potato"
+  {
+    "slug": "drone_handler",
+    "name": "Drone Handler",
+    "rarity": "N",
+    "archetype": "human",
+    "race": "human",
+    "baseCaptureRate": null,
+    "description": "Flies the installation's drone screen off a folding table and a single monitor. Anything that crosses the wire is already logged and named before it is close enough to matter.",
+    "tags": [
+      "expansion",
+      "region_exclusive",
+      "base_80085"
+    ],
+    "contentRating": "explicit",
+    "affinity": "caregiver",
+    "card": {
+      "subtitle": "Eyes Above",
+      "ability": {
+        "name": "Sweep",
+        "text": "Puts a bird over the ground ahead and calls out what is worth picking up on the way through."
+      },
+      "flavorQuote": "She already sent something ahead to look.",
+      "artist": "Potato"
+    },
+    "imagePath": "waifumon/drone_handler/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ],
+    "buddyBonus": {
+      "name": "Eyes Up",
+      "flavorText": "Eyes Up: +15% chance of finding items while Hunting.",
+      "effectId": "hunt_item_find_chance",
+      "value": 15
+    }
   },
-  "imagePath": "waifumon/angel_combat_medic/standard.png",
-  "enabled": true,
-  "eventKey": null,
-  "perSpeciesWeight": 1,
-  "appearances": [
-   {
-    "id": "standard",
-    "name": "Standard",
-    "sortOrder": 0,
-    "unlock": {
-     "type": "owned"
+  {
+    "slug": "overwatch_ghost",
+    "name": "Overwatch Ghost",
+    "rarity": "N",
+    "archetype": "spirit",
+    "race": "spirit",
+    "baseCaptureRate": null,
+    "description": "Stood a rooftop post on an installation that has been dark for years and never signed off shift. The watch log still updates in her handwriting.",
+    "tags": [
+      "expansion",
+      "region_exclusive",
+      "base_80085"
+    ],
+    "contentRating": "explicit",
+    "affinity": "switch",
+    "card": {
+      "subtitle": "Last Shift",
+      "ability": {
+        "name": "Rooftop Post",
+        "text": "Has not left the post since the last order came through, and the dead of this place still report to her."
+      },
+      "flavorQuote": "The rooftop never really emptied.",
+      "artist": "Potato"
+    },
+    "imagePath": "waifumon/overwatch_ghost/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ],
+    "buddyBonus": {
+      "name": "Still Watching",
+      "flavorText": "Still Watching: +15% encounter weight for spirit Waifumon.",
+      "effectId": "encounter_weight",
+      "value": 15,
+      "target": {
+        "type": "race",
+        "value": "spirit"
+      }
     }
-   },
-   {
-    "id": "level_10",
-    "name": "Level 10",
-    "sortOrder": 10,
-    "unlock": {
-     "type": "level",
-     "atLevel": 10
-    }
-   },
-   {
-    "id": "level_20",
-    "name": "Level 20",
-    "sortOrder": 20,
-    "unlock": {
-     "type": "level",
-     "atLevel": 20
-    }
-   },
-   {
-    "id": "level_30",
-    "name": "Level 30",
-    "sortOrder": 30,
-    "unlock": {
-     "type": "level",
-     "atLevel": 30
-    }
-   },
-   {
-    "id": "level_40",
-    "name": "Level 40",
-    "sortOrder": 40,
-    "unlock": {
-     "type": "level",
-     "atLevel": 40
-    }
-   },
-   {
-    "id": "level_50",
-    "name": "Level 50",
-    "sortOrder": 50,
-    "unlock": {
-     "type": "level",
-     "atLevel": 50
-    }
-   }
-  ],
-  "buddyBonus": {
-   "name": "Field Patch",
-   "flavorText": "Field Patch: 10% chance Hunting does not consume Energy.",
-   "effectId": "energy_save_chance",
-   "value": 10
-  }
- },
- {
-  "slug": "spec_ops_valkyrie",
-  "name": "Spec-Ops Valkyrie",
-  "rarity": "R",
-  "archetype": "valkyrie",
-  "race": "valkyrie",
-  "baseCaptureRate": null,
-  "description": "Runs the grav-fin element out of Berth 12. The stencil on her rack reads DO NOT TOW THE FINS. She wrote the stencil.",
-  "tags": [
-   "expansion",
-   "region_exclusive"
-  ],
-  "contentRating": "mature",
-  "affinity": "primal",
-  "card": {
-   "subtitle": "Fin-Borne Element",
-   "ability": {
-    "name": "Grav Insertion",
-    "text": "Comes down on the vector nobody charted and leaves the fin wash as the warning."
-   },
-   "flavorQuote": "Void the deck before I land, or the deck and I have a problem.",
-   "artist": "Potato"
   },
-  "imagePath": "waifumon/spec_ops_valkyrie/standard.png",
-  "enabled": true,
-  "eventKey": null,
-  "perSpeciesWeight": 1,
-  "appearances": [
-   {
-    "id": "standard",
-    "name": "Standard",
-    "sortOrder": 0,
-    "unlock": {
-     "type": "owned"
+  {
+    "slug": "cyber_security_android",
+    "name": "Cyber Security Android",
+    "rarity": "N",
+    "archetype": "android",
+    "race": "android",
+    "baseCaptureRate": null,
+    "description": "Sits on the installation's access layer like a locked door. She reads you like traffic: quiet, thorough, and already deciding what gets through.",
+    "tags": [
+      "expansion",
+      "region_exclusive",
+      "base_80085"
+    ],
+    "contentRating": "explicit",
+    "affinity": "dominant",
+    "card": {
+      "subtitle": "Access Layer",
+      "ability": {
+        "name": "System Scan",
+        "text": "Reads the contact before it lands and closes the lane it was counting on."
+      },
+      "flavorQuote": "Your credentials just expired.",
+      "artist": "Potato"
+    },
+    "imagePath": "waifumon/cyber_security_android/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ],
+    "buddyBonus": {
+      "name": "Access Denied",
+      "flavorText": "Access Denied: +15% capture chance against submissive Waifumon.",
+      "effectId": "capture_chance",
+      "value": 15,
+      "target": {
+        "type": "affinity",
+        "value": "submissive"
+      }
     }
-   },
-   {
-    "id": "level_10",
-    "name": "Level 10",
-    "sortOrder": 10,
-    "unlock": {
-     "type": "level",
-     "atLevel": 10
-    }
-   },
-   {
-    "id": "level_20",
-    "name": "Level 20",
-    "sortOrder": 20,
-    "unlock": {
-     "type": "level",
-     "atLevel": 20
-    }
-   },
-   {
-    "id": "level_30",
-    "name": "Level 30",
-    "sortOrder": 30,
-    "unlock": {
-     "type": "level",
-     "atLevel": 30
-    }
-   },
-   {
-    "id": "level_40",
-    "name": "Level 40",
-    "sortOrder": 40,
-    "unlock": {
-     "type": "level",
-     "atLevel": 40
-    }
-   },
-   {
-    "id": "level_50",
-    "name": "Level 50",
-    "sortOrder": 50,
-    "unlock": {
-     "type": "level",
-     "atLevel": 50
-    }
-   }
-  ],
-  "buddyBonus": {
-   "name": "Ridgeline Watch",
-   "flavorText": "Ridgeline Watch: +15% encounter weight for valkyrie Waifumon.",
-   "effectId": "encounter_weight",
-   "value": 15,
-   "target": {
-    "type": "race",
-    "value": "valkyrie"
-   }
-  }
- },
- {
-  "slug": "cyber_security_android",
-  "name": "Cyber Security Android",
-  "rarity": "SSR",
-  "archetype": "android",
-  "race": "android",
-  "baseCaptureRate": null,
-  "description": "Sits on the installation's access layer like a locked door. She reads you like traffic: quiet, thorough, and already deciding what gets through.",
-  "tags": [
-   "expansion",
-   "region_exclusive"
-  ],
-  "contentRating": "explicit",
-  "affinity": "dominant",
-  "card": {
-   "subtitle": "Access Layer",
-   "ability": {
-    "name": "System Scan",
-    "text": "Reads the contact before it lands and closes the lane it was counting on."
-   },
-   "flavorQuote": "The lights dim when I look at you. That is the warning.",
-   "artist": "Potato"
   },
-  "imagePath": "waifumon/cyber_security_android/standard.png",
-  "enabled": true,
-  "eventKey": null,
-  "perSpeciesWeight": 1,
-  "appearances": [
-   {
-    "id": "standard",
-    "name": "Standard",
-    "sortOrder": 0,
-    "unlock": {
-     "type": "owned"
+  {
+    "slug": "supply_runner",
+    "name": "Supply Runner",
+    "rarity": "N",
+    "archetype": "demi-human",
+    "race": "demi-human",
+    "baseCaptureRate": null,
+    "description": "Runs the line between the pad and the wire with a pack twice her size and has never once dropped it. What she carries is not on any manifest.",
+    "tags": [
+      "expansion",
+      "region_exclusive",
+      "base_80085"
+    ],
+    "contentRating": "explicit",
+    "affinity": "submissive",
+    "card": {
+      "subtitle": "Load Bearing",
+      "ability": {
+        "name": "Extra Clip",
+        "text": "Has never arrived short, and has never explained where the surplus came from."
+      },
+      "flavorQuote": "She packed enough for both of you.",
+      "artist": "Potato"
+    },
+    "imagePath": "waifumon/supply_runner/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ],
+    "buddyBonus": {
+      "name": "Extra Clip",
+      "flavorText": "Extra Clip: 25% chance Hunting does not consume Energy.",
+      "effectId": "energy_save_chance",
+      "value": 25
     }
-   },
-   {
-    "id": "level_10",
-    "name": "Level 10",
-    "sortOrder": 10,
-    "unlock": {
-     "type": "level",
-     "atLevel": 10
-    }
-   },
-   {
-    "id": "level_20",
-    "name": "Level 20",
-    "sortOrder": 20,
-    "unlock": {
-     "type": "level",
-     "atLevel": 20
-    }
-   },
-   {
-    "id": "level_30",
-    "name": "Level 30",
-    "sortOrder": 30,
-    "unlock": {
-     "type": "level",
-     "atLevel": 30
-    }
-   },
-   {
-    "id": "level_40",
-    "name": "Level 40",
-    "sortOrder": 40,
-    "unlock": {
-     "type": "level",
-     "atLevel": 40
-    }
-   },
-   {
-    "id": "level_50",
-    "name": "Level 50",
-    "sortOrder": 50,
-    "unlock": {
-     "type": "level",
-     "atLevel": 50
-    }
-   }
-  ],
-  "buddyBonus": {
-   "name": "Access Control",
-   "flavorText": "Access Control: +15% capture chance against dominant Waifumon.",
-   "effectId": "capture_chance",
-   "value": 15,
-   "target": {
-    "type": "affinity",
-    "value": "dominant"
-   }
-  }
- },
- {
-  "slug": "border_jackal",
-  "name": "Border Jackal",
-  "rarity": "R",
-  "archetype": "demi-human",
-  "race": "demi-human",
-  "baseCaptureRate": null,
-  "description": "Works the barrier arm and the wire both, because every shortcut across the line is one she has already walked. Grins like she saw you coming.",
-  "tags": [
-   "expansion",
-   "region_exclusive"
-  ],
-  "contentRating": "mature",
-  "affinity": "dominant",
-  "card": {
-   "subtitle": "Back Route",
-   "ability": {
-    "name": "Shortcut",
-    "text": "Takes the route nobody else has walked and gets there before the patrol does."
-   },
-   "flavorQuote": "I know every way across this line. Including the one you just used.",
-   "artist": "Potato"
   },
-  "imagePath": "waifumon/border_jackal/standard.png",
-  "enabled": true,
-  "eventKey": null,
-  "perSpeciesWeight": 1,
-  "appearances": [
-   {
-    "id": "standard",
-    "name": "Standard",
-    "sortOrder": 0,
-    "unlock": {
-     "type": "owned"
+  {
+    "slug": "blacksite_interrogator",
+    "name": "Blacksite Interrogator",
+    "rarity": "R",
+    "archetype": "demon",
+    "race": "demon",
+    "baseCaptureRate": null,
+    "description": "Keeps the interview room behind the black door at the end of the admin corridor. She has never raised her voice in it, and nobody has ever asked to leave.",
+    "tags": [
+      "expansion",
+      "region_exclusive",
+      "base_80085"
+    ],
+    "contentRating": "explicit",
+    "affinity": "primal",
+    "card": {
+      "subtitle": "Long Session",
+      "ability": {
+        "name": "Soft Questions",
+        "text": "Takes as long as the answer takes, and the door stays shut until she has it."
+      },
+      "flavorQuote": "She doesn't need volume. She needs time.",
+      "artist": "Potato"
+    },
+    "imagePath": "waifumon/blacksite_interrogator/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ],
+    "buddyBonus": {
+      "name": "Soft Questions",
+      "flavorText": "Soft Questions: +10% capture chance against any Waifumon.",
+      "effectId": "capture_chance",
+      "value": 10
     }
-   },
-   {
-    "id": "level_10",
-    "name": "Level 10",
-    "sortOrder": 10,
-    "unlock": {
-     "type": "level",
-     "atLevel": 10
-    }
-   },
-   {
-    "id": "level_20",
-    "name": "Level 20",
-    "sortOrder": 20,
-    "unlock": {
-     "type": "level",
-     "atLevel": 20
-    }
-   },
-   {
-    "id": "level_30",
-    "name": "Level 30",
-    "sortOrder": 30,
-    "unlock": {
-     "type": "level",
-     "atLevel": 30
-    }
-   },
-   {
-    "id": "level_40",
-    "name": "Level 40",
-    "sortOrder": 40,
-    "unlock": {
-     "type": "level",
-     "atLevel": 40
-    }
-   },
-   {
-    "id": "level_50",
-    "name": "Level 50",
-    "sortOrder": 50,
-    "unlock": {
-     "type": "level",
-     "atLevel": 50
-    }
-   }
-  ],
-  "buddyBonus": {
-   "name": "Shortcut",
-   "flavorText": "Shortcut: 12% chance Hunting does not consume Energy.",
-   "effectId": "energy_save_chance",
-   "value": 12
-  }
- },
- {
-  "slug": "glacier_bear",
-  "name": "Glacier Bear",
-  "rarity": "SR",
-  "archetype": "demi-human",
-  "race": "demi-human",
-  "baseCaptureRate": null,
-  "description": "Runs the cold-side beat out of the ice pad. Slow to speak and slower to stand up, and she sleeps between deployments the way the weather does.",
-  "tags": [
-   "expansion",
-   "region_exclusive"
-  ],
-  "contentRating": "explicit",
-  "affinity": "primal",
-  "card": {
-   "subtitle": "Slow To Wake",
-   "ability": {
-    "name": "Cold Start",
-    "text": "Slow to wake and slower to stop. The first blow lands before anyone agrees it started."
-   },
-   "flavorQuote": "Wake me when it matters. It will matter.",
-   "artist": "Potato"
   },
-  "imagePath": "waifumon/glacier_bear/standard.png",
-  "enabled": true,
-  "eventKey": null,
-  "perSpeciesWeight": 1,
-  "appearances": [
-   {
-    "id": "standard",
-    "name": "Standard",
-    "sortOrder": 0,
-    "unlock": {
-     "type": "owned"
+  {
+    "slug": "angel_combat_medic",
+    "name": "Angel Combat Medic",
+    "rarity": "R",
+    "archetype": "angel",
+    "race": "angel",
+    "baseCaptureRate": null,
+    "description": "Runs the dust-off bird out of Pad 3. Cuts the halo's light for the ones who still have a pulse and spends it on the ones who don't.",
+    "tags": [
+      "expansion",
+      "region_exclusive",
+      "base_80085"
+    ],
+    "contentRating": "explicit",
+    "affinity": "caregiver",
+    "card": {
+      "subtitle": "First Hands On",
+      "ability": {
+        "name": "Golden Hour",
+        "text": "Lands inside the window that decides it, and spends her halo on whoever is still open."
+      },
+      "flavorQuote": "Stay down. She's not done with you yet.",
+      "artist": "Potato"
+    },
+    "imagePath": "waifumon/angel_combat_medic/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ],
+    "buddyBonus": {
+      "name": "Hold Still",
+      "flavorText": "Hold Still: +100% Energy gained in Care mode.",
+      "effectId": "care_energy_gain",
+      "value": 100
     }
-   },
-   {
-    "id": "level_10",
-    "name": "Level 10",
-    "sortOrder": 10,
-    "unlock": {
-     "type": "level",
-     "atLevel": 10
+  },
+  {
+    "slug": "border_jackal",
+    "name": "Border Jackal",
+    "rarity": "R",
+    "archetype": "demi-human",
+    "race": "demi-human",
+    "baseCaptureRate": null,
+    "description": "Works the barrier arm and the wire both, because every shortcut across the line is one she has already walked. Grins like she saw you coming.",
+    "tags": [
+      "expansion",
+      "region_exclusive",
+      "base_80085"
+    ],
+    "contentRating": "explicit",
+    "affinity": "switch",
+    "card": {
+      "subtitle": "Back Route",
+      "ability": {
+        "name": "Shortcut",
+        "text": "Takes the route nobody else has walked and gets there before the patrol does."
+      },
+      "flavorQuote": "She knows the routes that aren't on the map.",
+      "artist": "Potato"
+    },
+    "imagePath": "waifumon/border_jackal/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ],
+    "buddyBonus": {
+      "name": "Side Path",
+      "flavorText": "Side Path: +15% encounter weight for Waifumon you do not own.",
+      "effectId": "encounter_weight",
+      "value": 15,
+      "target": {
+        "type": "ownership",
+        "value": "unowned"
+      }
     }
-   },
-   {
-    "id": "level_20",
-    "name": "Level 20",
-    "sortOrder": 20,
-    "unlock": {
-     "type": "level",
-     "atLevel": 20
+  },
+  {
+    "slug": "demon_recon_scout",
+    "name": "Recon Scout",
+    "rarity": "R",
+    "archetype": "demon",
+    "race": "demon",
+    "baseCaptureRate": null,
+    "description": "Goes out past the perimeter for days at a time and comes back with the map already redrawn. Nobody asks how she found the route, because she is always right about it.",
+    "tags": [
+      "expansion",
+      "region_exclusive",
+      "base_80085"
+    ],
+    "contentRating": "explicit",
+    "affinity": "dominant",
+    "card": {
+      "subtitle": "Nothing On The Map",
+      "ability": {
+        "name": "Recon By Feel",
+        "text": "Walks out past the wire and comes back with a contact nobody else has seen."
+      },
+      "flavorQuote": "If it's out there, she smelled it first.",
+      "artist": "Potato"
+    },
+    "imagePath": "waifumon/demon_recon_scout/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ],
+    "buddyBonus": {
+      "name": "First Contact",
+      "flavorText": "First Contact: +12% encounter weight for SR Waifumon.",
+      "effectId": "encounter_weight",
+      "value": 12,
+      "target": {
+        "type": "rarity",
+        "value": "SR"
+      }
     }
-   },
-   {
-    "id": "level_30",
-    "name": "Level 30",
-    "sortOrder": 30,
-    "unlock": {
-     "type": "level",
-     "atLevel": 30
+  },
+  {
+    "slug": "mech_jockey",
+    "name": "Mech Jockey",
+    "rarity": "SR",
+    "archetype": "human",
+    "race": "human",
+    "baseCaptureRate": null,
+    "description": "Rides the maintenance frames through the hangar bays all day and treats every partner the way she treats a machine: checked, tuned, and worth keeping.",
+    "tags": [
+      "expansion",
+      "region_exclusive",
+      "base_80085"
+    ],
+    "contentRating": "explicit",
+    "affinity": "caregiver",
+    "card": {
+      "subtitle": "Hangar Deck",
+      "ability": {
+        "name": "Ride-Along",
+        "text": "Keeps both hands on the frame and one eye on whoever is riding it with her."
+      },
+      "flavorQuote": "She treats every partner like a machine worth keeping tuned.",
+      "artist": "Potato"
+    },
+    "imagePath": "waifumon/mech_jockey/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ],
+    "buddyBonus": {
+      "name": "Ride-Along",
+      "flavorText": "Ride-Along: +25% XP gained by the active Buddy.",
+      "effectId": "buddy_xp_gain",
+      "value": 25
     }
-   },
-   {
-    "id": "level_40",
-    "name": "Level 40",
-    "sortOrder": 40,
-    "unlock": {
-     "type": "level",
-     "atLevel": 40
+  },
+  {
+    "slug": "glacier_bear",
+    "name": "Glacier Bear",
+    "rarity": "SR",
+    "archetype": "demi-human",
+    "race": "demi-human",
+    "baseCaptureRate": null,
+    "description": "Runs the cold-side beat out of the ice pad. Slow to speak and slower to stand up, and she sleeps between deployments the way the weather does.",
+    "tags": [
+      "expansion",
+      "region_exclusive",
+      "base_80085"
+    ],
+    "contentRating": "explicit",
+    "affinity": "primal",
+    "card": {
+      "subtitle": "Slow To Wake",
+      "ability": {
+        "name": "Cold Start",
+        "text": "Slow to wake and slower to stop. The first blow lands before anyone agrees it started."
+      },
+      "flavorQuote": "She doesn't chase. The temperature drops until you stop.",
+      "artist": "Potato"
+    },
+    "imagePath": "waifumon/glacier_bear/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ],
+    "buddyBonus": {
+      "name": "Cold Front",
+      "flavorText": "Cold Front: +15% capture chance against primal Waifumon.",
+      "effectId": "capture_chance",
+      "value": 15,
+      "target": {
+        "type": "affinity",
+        "value": "primal"
+      }
     }
-   },
-   {
-    "id": "level_50",
-    "name": "Level 50",
-    "sortOrder": 50,
-    "unlock": {
-     "type": "level",
-     "atLevel": 50
+  },
+  {
+    "slug": "field_chapel_succubus",
+    "name": "Field Chapel Succubus",
+    "rarity": "SR",
+    "archetype": "demon",
+    "race": "demon",
+    "baseCaptureRate": null,
+    "description": "Runs the field chapel out of a crate, an altar cloth and a lamp. She takes confession and criticism the same way: quietly, and without ever once looking away.",
+    "tags": [
+      "expansion",
+      "region_exclusive",
+      "base_80085"
+    ],
+    "contentRating": "explicit",
+    "affinity": "submissive",
+    "card": {
+      "subtitle": "Field Confession",
+      "ability": {
+        "name": "Last Rites",
+        "text": "Anything confessed in her tent stays there, and whoever walks out is steadier than they came in."
+      },
+      "flavorQuote": "Confess whatever you want. She'll carry it for a while.",
+      "artist": "Potato"
+    },
+    "imagePath": "waifumon/field_chapel_succubus/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ],
+    "buddyBonus": {
+      "name": "Quiet Absolution",
+      "flavorText": "Quiet Absolution: +50% Affection gained.",
+      "effectId": "affection_gain",
+      "value": 50
     }
-   }
-  ],
-  "buddyBonus": {
-   "name": "Cold Storage",
-   "flavorText": "Cold Storage: +20% Essence gained.",
-   "effectId": "essence_gain",
-   "value": 20
+  },
+  {
+    "slug": "spec_ops_valkyrie",
+    "name": "Spec-Ops Valkyrie",
+    "rarity": "SSR",
+    "archetype": "valkyrie",
+    "race": "valkyrie",
+    "baseCaptureRate": null,
+    "description": "Runs the grav-fin element out of Berth 12. The stencil on her rack reads DO NOT TOW THE FINS. She wrote the stencil.",
+    "tags": [
+      "expansion",
+      "region_exclusive",
+      "base_80085"
+    ],
+    "contentRating": "explicit",
+    "affinity": "switch",
+    "card": {
+      "subtitle": "Fin-Borne Element",
+      "ability": {
+        "name": "Grav Insertion",
+        "text": "Comes down on the vector nobody charted and leaves the fin wash as the warning."
+      },
+      "flavorQuote": "She arrives from angles that shouldn't exist.",
+      "artist": "Potato"
+    },
+    "imagePath": "waifumon/spec_ops_valkyrie/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ],
+    "buddyBonus": {
+      "name": "Insert Package",
+      "flavorText": "Insert Package: +10% encounter weight for SSR and above.",
+      "effectId": "encounter_weight",
+      "value": 10,
+      "target": {
+        "type": "rarity_min",
+        "value": "SSR"
+      }
+    }
+  },
+  {
+    "slug": "breacher",
+    "name": "Breacher",
+    "rarity": "SSR",
+    "archetype": "human",
+    "race": "human",
+    "baseCaptureRate": null,
+    "description": "Opens doors for a living, which on this installation means walls as well. She has never once used the keypad when the frame would do.",
+    "tags": [
+      "expansion",
+      "region_exclusive",
+      "base_80085"
+    ],
+    "contentRating": "explicit",
+    "affinity": "dominant",
+    "card": {
+      "subtitle": "Frame First",
+      "ability": {
+        "name": "Breach",
+        "text": "Comes through whatever is in the way and does not slow down to see what it was."
+      },
+      "flavorQuote": "She doesn't knock. She renovates.",
+      "artist": "Potato"
+    },
+    "imagePath": "waifumon/breacher/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ],
+    "buddyBonus": {
+      "name": "Door's Open",
+      "flavorText": "Door's Open: +20% capture chance against dominant Waifumon.",
+      "effectId": "capture_chance",
+      "value": 20,
+      "target": {
+        "type": "affinity",
+        "value": "dominant"
+      }
+    }
+  },
+  {
+    "slug": "honor_guard_captain",
+    "name": "Honor Guard Captain",
+    "rarity": "UR",
+    "archetype": "android",
+    "race": "android",
+    "baseCaptureRate": null,
+    "description": "Stands the command deck hatch and has not moved from it in eleven years, because the last officer to hold the post asked her to stay. The post has changed officers twice since.",
+    "tags": [
+      "expansion",
+      "region_exclusive",
+      "base_80085"
+    ],
+    "contentRating": "explicit",
+    "affinity": "submissive",
+    "card": {
+      "subtitle": "Standing Post",
+      "ability": {
+        "name": "Honor Guard",
+        "text": "Was built to stand behind someone worth guarding, and has not yet been asked to stop."
+      },
+      "flavorQuote": "She was built to stand behind someone worth guarding.",
+      "artist": "Potato"
+    },
+    "imagePath": "waifumon/honor_guard_captain/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ],
+    "buddyBonus": {
+      "name": "At Your Back",
+      "flavorText": "At Your Back: +25% rewards from Boss Encounters.",
+      "effectId": "boss_reward_gain",
+      "value": 25
+    }
+  },
+  {
+    "slug": "vivian_field_commander",
+    "name": "Vivian, Field Commander",
+    "rarity": "LR",
+    "archetype": "human",
+    "race": "human",
+    "baseCaptureRate": null,
+    "description": "Runs the installation from the gallery above the war room, rapier point-down and the supply line at her back. She gives you her full attention once. Nobody asks for it twice.",
+    "tags": [
+      "expansion",
+      "region_exclusive",
+      "base_80085"
+    ],
+    "contentRating": "explicit",
+    "affinity": "switch",
+    "card": {
+      "subtitle": "Point of Order",
+      "ability": {
+        "name": "Stand To",
+        "text": "The deck moves before she finishes the order. Whoever was already moving gets there first."
+      },
+      "flavorQuote": "When she moves, the whole map moves with her.",
+      "artist": "Potato"
+    },
+    "imagePath": "waifumon/vivian_field_commander/standard.png",
+    "enabled": true,
+    "eventKey": null,
+    "perSpeciesWeight": 1,
+    "appearances": [
+      {
+        "id": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "unlock": {
+          "type": "owned"
+        }
+      },
+      {
+        "id": "level_10",
+        "name": "Level 10",
+        "sortOrder": 10,
+        "unlock": {
+          "type": "level",
+          "atLevel": 10
+        }
+      },
+      {
+        "id": "level_20",
+        "name": "Level 20",
+        "sortOrder": 20,
+        "unlock": {
+          "type": "level",
+          "atLevel": 20
+        }
+      },
+      {
+        "id": "level_30",
+        "name": "Level 30",
+        "sortOrder": 30,
+        "unlock": {
+          "type": "level",
+          "atLevel": 30
+        }
+      },
+      {
+        "id": "level_40",
+        "name": "Level 40",
+        "sortOrder": 40,
+        "unlock": {
+          "type": "level",
+          "atLevel": 40
+        }
+      },
+      {
+        "id": "level_50",
+        "name": "Level 50",
+        "sortOrder": 50,
+        "unlock": {
+          "type": "level",
+          "atLevel": 50
+        }
+      }
+    ],
+    "buddyBonus": {
+      "name": "All Callsigns",
+      "flavorText": "All Callsigns: +30% capture chance against any Waifumon.",
+      "effectId": "capture_chance",
+      "value": 30
+    }
   }
- }
 ]

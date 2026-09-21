@@ -2,7 +2,7 @@
   "id": "base_80085",
   "name": "Base 80085",
   "description": "The fifth paid destination. Ships the Base 80085 region and its region-exclusive Waifumon, reachable only by stamping the route onto a Caravan Pass the player already holds.",
-  "enabled": false,
+  "enabled": true,
   "order": 6,
-  "regionId": null
+  "regionId": "base-80085"
 }

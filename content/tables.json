@@ -654,12 +654,19 @@
         "price": 2000,
         "currency": "waifubux",
         "requiredLevel": 25
+      },
+      {
+        "regionId": "base-80085",
+        "passId": "caravan_pass",
+        "price": 2500,
+        "currency": "waifubux",
+        "requiredLevel": 30
       }
     ]
   },
   "worldEncounter": {
     "huntChance": 0.35,
-    "travelChance": 0.20,
+    "travelChance": 0.2,
     "defaultExpirySeconds": 600
   }
 }
