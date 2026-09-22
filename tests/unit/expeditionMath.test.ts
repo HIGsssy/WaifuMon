@@ -8,7 +8,6 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-  bandFor,
   evaluateSuitability,
   resolveAffinityFit,
   type SuitabilityCandidate,
@@ -184,29 +183,14 @@ describe('clamping', () => {
   });
 });
 
-describe('bands', () => {
-  it.each([
-    [0.95, 'EXCELLENT'],
-    [0.8, 'EXCELLENT'],
-    [0.79, 'GOOD'],
-    [0.65, 'GOOD'],
-    [0.64, 'FAIR'],
-    [0.5, 'FAIR'],
-    [0.49, 'RISKY'],
-    [0.35, 'RISKY'],
-    [0.34, 'POOR'],
-    [0.05, 'POOR'],
-  ])('maps %s to %s', (chance, expected) => {
-    expect(bandFor(chance, CONFIG)).toBe(expected);
-  });
-
-  // Each boundary is inclusive at the bottom of its own band, which is the
-  // only reading that makes the four thresholds partition the range.
-  it('treats every threshold as the floor of its own band', () => {
-    expect(bandFor(CONFIG.bands.excellent, CONFIG)).toBe('EXCELLENT');
-    expect(bandFor(CONFIG.bands.good, CONFIG)).toBe('GOOD');
-    expect(bandFor(CONFIG.bands.fair, CONFIG)).toBe('FAIR');
-    expect(bandFor(CONFIG.bands.risky, CONFIG)).toBe('RISKY');
+/**
+ * The success chance no longer produces a player-facing adjective. Mapping it
+ * onto EXCELLENT … POOR is what made easy missions call almost anyone
+ * EXCELLENT; the player-facing read is `expeditionMatch`, tested separately.
+ */
+describe('no player-facing label', () => {
+  it('returns numbers and factors only', () => {
+    expect(Object.keys(evaluate()).sort()).toEqual(['exceptionalChance', 'factors', 'successChance']);
   });
 });
 
@@ -285,7 +269,6 @@ describe('content drives every constant', () => {
   it('follows a retuned config with no code change', () => {
     const retuned = ExpeditionsConfigSchema.parse({
       suitability: { affinityStrong: 0.5, minChance: 0.01, maxChance: 0.99 },
-      bands: { excellent: 0.9, good: 0.7, fair: 0.4, risky: 0.2 },
     });
     const result = evaluate(
       { preferredAffinities: ['dominant'] },
@@ -295,7 +278,6 @@ describe('content drives every constant', () => {
     expect(deltaOf(result, 'affinity_strong')).toBe(0.5);
     // 0.4 base + 0.5 affinity + 0.1 readiness = 1.0, clamped to 0.99
     expect(result.successChance).toBe(0.99);
-    expect(result.band).toBe('EXCELLENT');
   });
 });
 

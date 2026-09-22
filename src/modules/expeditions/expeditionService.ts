@@ -81,7 +81,6 @@ import type {
   ExpeditionRewardTable,
   LoadedContent,
   RegionalExpedition,
-  SuitabilityBand,
 } from '../content/schemas';
 import type { CollectionService } from '../collection/collectionService';
 import type { CurrencyService } from '../currency/currencyService';
@@ -94,8 +93,9 @@ import {
   type WaifuUnavailabilityReason,
 } from '../collection/waifuAvailability';
 import { normalizeAffinity } from '../capture/affinityMath';
-import { buildBoard, rotationEndsAt } from './expeditionBoard';
+import { buildBoard, orderBoardForDisplay, rotationEndsAt } from './expeditionBoard';
 import { evaluateSuitability } from './expeditionMath';
+import { compareCandidates, evaluateMatch, parseStoredMatch } from './expeditionMatch';
 import { expeditionDrawFraction, EXPEDITION_LOGIC_VERSION } from './expeditionRandom';
 import { rollExpeditionRewards, type ExpeditionRewardPayload } from './expeditionRewards';
 import {
@@ -110,7 +110,7 @@ import {
 export interface ExpeditionService {
   /** The player's board for the region they are standing in. */
   getBoard(playerId: number): Promise<ExpeditionBoard>;
-  /** Owned copies with a band each, and why any of them cannot be sent. */
+  /** Owned copies with a match quality each, best first, and why any cannot be sent. */
   getCandidates(playerId: number, expeditionKey: string): Promise<ExpeditionCandidate[]>;
   /**
    * Validate, snapshot, compute chances, insert ACTIVE — one transaction. The
@@ -272,7 +272,7 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
       emoji: plan?.definition.emoji ?? live?.emoji ?? null,
       description: plan?.definition.description ?? live?.description ?? '',
       status: row.status as ExpeditionView['status'],
-      band: row.suitabilityBand as SuitabilityBand,
+      match: parseStoredMatch(row.suitabilityBand),
       startedAt: row.startedAt,
       completesAt: row.completesAt,
       resolvedAt: row.resolvedAt,
@@ -466,15 +466,19 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
       return {
         regionId,
         // A switched-off feature shows an empty board rather than a stale one.
+        // Selection first, presentation second: `buildBoard` decides *which*
+        // missions this window shows, then they are laid out shortest first.
         entries: cfg.enabled
-          ? buildBoard({
-              playerId,
-              regionId,
-              expeditions: getContent().expeditions,
-              boardSize: cfg.boardSize,
-              rotationHours: cfg.rotationHours,
-              now: at,
-            }).map((definition) => ({ definition }))
+          ? orderBoardForDisplay(
+              buildBoard({
+                playerId,
+                regionId,
+                expeditions: getContent().expeditions,
+                boardSize: cfg.boardSize,
+                rotationHours: cfg.rotationHours,
+                now: at,
+              }),
+            ).map((definition) => ({ definition }))
           : [],
         rotatesAt: rotationEndsAt(at, cfg.rotationHours),
         slotsAvailable: Math.max(0, slotsTotal - occupied.length),
@@ -498,7 +502,7 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
 
       return owned
         .map(({ waifu, species: speciesRow }) => {
-          const suitability = evaluateSuitability({
+          const input = {
             definition,
             waifu: {
               level: waifu.level,
@@ -507,7 +511,8 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
             },
             config: cfg,
             affinityConfig: content.tables.buddyAffinity,
-          });
+          };
+          const suitability = evaluateSuitability(input);
           const blocking = (reasons.get(waifu.id) ?? []).filter((r) =>
             // The Buddy is only blocked when content says so, which is what
             // makes `buddyDeployable` a real switch rather than decoration.
@@ -517,9 +522,9 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
             waifuId: waifu.id,
             name: waifu.nickname?.trim() || speciesRow.name,
             level: waifu.level,
-            band: suitability.band,
+            match: evaluateMatch(input),
             // The same values the chance was computed from, handed onward so a
-            // UI explains the band instead of re-deriving it.
+            // UI explains the match instead of re-deriving it.
             affinity: normalizeAffinity(speciesRow.affinity),
             race: resolveRace(speciesRow),
             unavailableReasons: blocking,
@@ -527,14 +532,10 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
             factors: suitability.factors,
           };
         })
-        // Best fit first, then by level: the player opened this list to find
-        // the right copy, and the right copy should be at the top.
-        .sort(
-          (a, b) =>
-            Number(a.unavailableReasons.length > 0) - Number(b.unavailableReasons.length > 0) ||
-            b.successChance - a.successChance ||
-            b.level - a.level,
-        );
+        // Best fit first: the player opened this list to find the right copy,
+        // and Discord's 25-option menu only has room for the top of it. See
+        // `compareCandidates` for the full, total order.
+        .sort(compareCandidates);
     },
 
     async deploy(playerId, expeditionKey, waifuId) {
@@ -594,7 +595,7 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
         }
 
         const plan = buildPlan(definition);
-        const suitability = evaluateSuitability({
+        const input = {
           definition,
           waifu: {
             level: waifu.level,
@@ -603,7 +604,9 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
           },
           config: cfg,
           affinityConfig: content.tables.buddyAffinity,
-        });
+        };
+        const suitability = evaluateSuitability(input);
+        const match = evaluateMatch(input);
 
         const [inserted] = await tx
           .insert(playerExpeditions)
@@ -619,7 +622,9 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
             completesAt: sql`now() + make_interval(mins => ${definition.durationMinutes})`,
             successChance: suitability.successChance,
             exceptionalChance: suitability.exceptionalChance,
-            suitabilityBand: suitability.band,
+            // The column keeps its name: it is still "the label the player was
+            // shown". The value is now a match quality, never a success band.
+            suitabilityBand: match.quality,
             resolutionPlan: plan as unknown as Record<string, unknown>,
             logicVersion: EXPEDITION_LOGIC_VERSION,
           })
@@ -631,7 +636,7 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
 
     async getActive(playerId) {
       // Deliberately does not consult `expeditions.enabled`. A kill switch
-      // must not eat somebody's twelve hours: missions already in flight
+      // must not eat somebody's eighteen hours: missions already in flight
       // resolve and pay whatever content says about new ones.
       const rows = await db.transaction((tx) => readSlots(tx, playerId));
       const at = now();

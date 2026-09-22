@@ -7,8 +7,8 @@
 import type {
   ExpeditionRewardTable,
   ExpeditionType,
+  MatchQuality,
   RegionalExpedition,
-  SuitabilityBand,
 } from '../content/schemas';
 import type {
   Affinity,
@@ -19,6 +19,7 @@ import type {
 import type { RaceCode } from '../cards/race';
 import type { ExpeditionRewardPayload } from './expeditionRewards';
 import type { SuitabilityFactor } from './expeditionMath';
+import type { MatchAssessment } from './expeditionMatch';
 
 /**
  * Current version of the persisted snapshot's own shape.
@@ -77,16 +78,22 @@ export interface ExpeditionResolutionPlan {
   failureTable: ExpeditionRewardTable | null;
 }
 
-/** One deployable copy, with the band the player is shown. */
+/** One deployable copy, with the match quality the player is shown. */
 export interface ExpeditionCandidate {
   waifuId: number;
   name: string;
   level: number;
-  band: SuitabilityBand;
+  /**
+   * How well she fits the mission's stated requirements, with the per-axis
+   * verdicts that explain it. `match.quality` is what the player reads; the
+   * verdicts drive the chips, so the UI never re-derives a tick or a cross.
+   * `match.score` is internal, like `successChance`.
+   */
+  match: MatchAssessment;
   /**
    * Her affinity and race, resolved the same way the maths resolved them.
    *
-   * Carried so a UI can *explain* a band without being handed the chance that
+   * Carried so a UI can *explain* a match without being handed the chance that
    * produced it — "Dominant ✓ • Demon ✗" is the non-numeric account of why a
    * match is what it is. A presentation layer must never re-derive these:
    * race in particular is content, not a column, and a second resolver would
@@ -98,7 +105,7 @@ export interface ExpeditionCandidate {
   unavailableReasons: string[];
   /**
    * Internal. Never serialized to a client — the API resource type omits it,
-   * and the Discord layer renders the band. Kept on the domain object because
+   * and the Discord layer renders the match quality. Kept on the domain object because
    * `deploy` re-derives rather than trusting it, and tests assert on it.
    */
   successChance: number;
@@ -125,7 +132,7 @@ export interface ExpeditionBoard {
 /**
  * A mission as a caller sees it.
  *
- * Carries the band but **not** `successChance` or `resolutionRoll`: those stay
+ * Carries the match quality but **not** `successChance` or `resolutionRoll`: those stay
  * on the row. Every surface — Discord, the Platform API, anything later — gets
  * its odds from the same place, so a client cannot leak what the UI hides.
  */
@@ -148,7 +155,11 @@ export interface ExpeditionView {
   emoji: string | null;
   description: string;
   status: ExpeditionStatus;
-  band: SuitabilityBand;
+  /**
+   * The match quality the player was shown at deployment. `null` for a row
+   * deployed under the legacy success-band vocabulary, which is not translated.
+   */
+  match: MatchQuality | null;
   startedAt: Date;
   completesAt: Date;
   resolvedAt: Date | null;

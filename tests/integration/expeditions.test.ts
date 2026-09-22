@@ -35,6 +35,7 @@ import {
   ExpeditionDefinitionSchema,
   ExpeditionRewardTableSchema,
   ExpeditionsConfigSchema,
+  MATCH_QUALITIES,
   type ExpeditionRewardTable,
   type RegionalExpedition,
 } from '../../src/modules/content/schemas';
@@ -213,6 +214,33 @@ describe('the board', () => {
     expect(board.slotsAvailable).toBe(1);
   });
 
+  // Selection is the hash sort; presentation is shortest first. Playtesting
+  // saw 2h → 12h → 6h before this.
+  it('lists the selected missions shortest first', async () => {
+    installContent(
+      [
+        definition({ key: 'night_run', durationMinutes: 1080 }),
+        definition({ key: 'mid_run', durationMinutes: 360 }),
+        definition({ key: 'quick_run', durationMinutes: 60 }),
+        definition({ key: 'short_run', durationMinutes: 180 }),
+      ],
+      DEFAULT_TABLES,
+    );
+    const { playerId } = await playerWithWaifu();
+    const board = await app.expeditions.getBoard(playerId);
+    expect(board.entries.map((e) => e.definition.key)).toEqual([
+      'quick_run',
+      'short_run',
+      'mid_run',
+      'night_run',
+    ]);
+    // Reading it again gives the same board.
+    const again = await app.expeditions.getBoard(playerId);
+    expect(again.entries.map((e) => e.definition.key)).toEqual(
+      board.entries.map((e) => e.definition.key),
+    );
+  });
+
   it('is empty, not broken, when the region has no expedition content', async () => {
     installContent([definition({ region: 'thirstlands' })], DEFAULT_TABLES);
     const { playerId } = await playerWithWaifu();
@@ -230,7 +258,7 @@ describe('the board', () => {
 });
 
 describe('deploying', () => {
-  it('starts a mission with a band, a finish line and a snapshot', async () => {
+  it('starts a mission with a match quality, a finish line and a snapshot', async () => {
     const { playerId, waifuId } = await playerWithWaifu();
     const view = await app.expeditions.deploy(playerId, 'test_run', waifuId);
 
@@ -238,13 +266,15 @@ describe('deploying', () => {
     expect(view.slotIndex).toBe(1);
     expect(view.waifuId).toBe(waifuId);
     expect(view.name).toBe('Test Run');
-    expect(['EXCELLENT', 'GOOD', 'FAIR', 'RISKY', 'POOR']).toContain(view.band);
+    expect(MATCH_QUALITIES).toContain(view.match);
     expect(view.secondsRemaining).toBeGreaterThan(0);
 
     const row = await rowOf(view.id);
     expect(row.resolutionPlan).not.toBeNull();
     expect(row.outcome).toBeNull();
     expect(row.rewards).toBeNull();
+    // The persisted label is the match quality the player saw, never a band.
+    expect(row.suitabilityBand).toBe(view.match);
     // The finish line is set by the database's clock, not Node's.
     expect(row.completesAt.getTime() - row.startedAt.getTime()).toBeCloseTo(360 * 60 * 1000, -4);
   });
@@ -349,7 +379,7 @@ describe('deploying', () => {
 });
 
 describe('candidates', () => {
-  it('bands every owned copy and flags the ones that cannot go', async () => {
+  it('grades every owned copy and flags the ones that cannot go', async () => {
     const { playerId, waifuId } = await playerWithWaifu();
     const buddy = await insertOwnedWaifu(t.db, {
       playerId,
@@ -365,6 +395,45 @@ describe('candidates', () => {
     expect(blocked?.unavailableReasons).toContain('buddy');
     // Deployable copies sort ahead of blocked ones.
     expect(candidates[0]?.waifuId).toBe(waifuId);
+    for (const c of candidates) expect(MATCH_QUALITIES).toContain(c.match.quality);
+  });
+
+  /**
+   * Ordered by what the player reads, not by the hidden chance alone. The
+   * caregiver copy has the better odds of the two (0.70 vs 0.66) but meets
+   * one requirement of two; the level-8 dominant copy meets affinity and is
+   * nearly ready, so she is the stronger match and is listed first.
+   */
+  it('orders candidates by match quality, then hidden chance, then level, then id', async () => {
+    installContent(
+      [definition({ preferredAffinities: ['dominant'], preferredRaces: [], recommendedLevel: 10 })],
+      DEFAULT_TABLES,
+    );
+    const [caregiver] = await t.db
+      .select()
+      .from(speciesTable)
+      .where(eq(speciesTable.affinity, 'caregiver'))
+      .limit(1);
+    const { playerId } = await playerWithWaifu(3); // dominant, badly under-levelled
+    const add = async (speciesId: number, level: number) =>
+      (await insertOwnedWaifu(t.db, { playerId, speciesId, level })).id;
+    const partial = await add(caregiver!.id, 30);
+    const strong = await add(demonSpecies.id, 8);
+    const perfectA = await add(demonSpecies.id, 10);
+    const perfectB = await add(demonSpecies.id, 10);
+
+    const candidates = await app.expeditions.getCandidates(playerId, 'test_run');
+    expect(candidates.map((c) => c.match.quality)).toEqual([
+      'PERFECT_MATCH',
+      'PERFECT_MATCH',
+      'STRONG_MATCH',
+      'PARTIAL_MATCH',
+      'POOR_MATCH',
+    ]);
+    // Identical twins break on id, oldest first.
+    expect(candidates.slice(0, 4).map((c) => c.waifuId)).toEqual([perfectA, perfectB, strong, partial]);
+    const byId = new Map(candidates.map((c) => [c.waifuId, c]));
+    expect(byId.get(partial)!.successChance).toBeGreaterThan(byId.get(strong)!.successChance);
   });
 
   it('refuses to list candidates for an unknown mission', async () => {
@@ -824,17 +893,41 @@ describe('an active mission is an immutable contract', () => {
     const { playerId, waifuId } = await playerWithWaifu();
     const view = await app.expeditions.deploy(playerId, 'test_run', waifuId);
     const chanceAtDeploy = (await rowOf(view.id)).successChance;
-    const bandAtDeploy = view.band;
+    const matchAtDeploy = view.match;
 
     installContent([definition()], DEFAULT_TABLES, {
       suitability: { affinityStrong: 0.9, levelAtOrAbove: 0.9 },
+      match: { thresholds: { strong: 0.99, partial: 0.98, weak: 0.97 } },
     });
     await timeTravel(view.id);
     await app.expeditions.getActive(playerId);
 
     const row = await rowOf(view.id);
     expect(row.successChance).toBe(chanceAtDeploy);
-    expect(row.suitabilityBand).toBe(bandAtDeploy);
+    expect(row.suitabilityBand).toBe(matchAtDeploy);
+    expect((await app.expeditions.getActive(playerId))[0]?.match).toBe(matchAtDeploy);
+  });
+
+  /**
+   * Rows deployed before match quality existed carry a success band. They
+   * still resolve and pay exactly as before; they just do not claim a match
+   * label the game never computed for them.
+   */
+  it('reads a legacy success band as no match label, and still resolves and pays', async () => {
+    const { playerId, waifuId } = await playerWithWaifu();
+    const view = await app.expeditions.deploy(playerId, 'test_run', waifuId);
+    await t.db
+      .update(playerExpeditions)
+      .set({ suitabilityBand: 'EXCELLENT' })
+      .where(eq(playerExpeditions.id, view.id));
+    expect((await app.expeditions.getActive(playerId))[0]?.match).toBeNull();
+
+    await forceOutcome(view.id, 'success');
+    await timeTravel(view.id);
+    const claimed = await app.expeditions.claim(playerId, view.id);
+    expect(claimed.outcome).toBe('success');
+    expect(claimed.rewards.waifubux).toBe(200);
+    expect(claimed.expedition.match).toBeNull();
   });
 });
 
@@ -1050,8 +1143,9 @@ describe('odds stay private', () => {
   it('never puts a numeric chance on the view a client sees', async () => {
     const { playerId, waifuId } = await playerWithWaifu();
     const view = await app.expeditions.deploy(playerId, 'test_run', waifuId);
-    // The band is the whole contract with the player.
-    expect(view).toHaveProperty('band');
+    // Match quality is the whole contract with the player.
+    expect(view).toHaveProperty('match');
+    expect(view).not.toHaveProperty('band');
     expect(view).not.toHaveProperty('successChance');
     expect(view).not.toHaveProperty('exceptionalChance');
     expect(view).not.toHaveProperty('resolutionRoll');

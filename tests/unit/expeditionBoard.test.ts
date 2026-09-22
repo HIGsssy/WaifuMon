@@ -9,6 +9,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildBoard,
+  orderBoardForDisplay,
   rotationEndsAt,
   rotationWindow,
 } from '../../src/modules/expeditions/expeditionBoard';
@@ -213,6 +214,53 @@ describe('fairness', () => {
     for (const [, count] of counts) {
       expect(count / players).toBeGreaterThan(0.3);
       expect(count / players).toBeLessThan(0.5);
+    }
+  });
+});
+
+describe('orderBoardForDisplay', () => {
+  const TIERS = [60, 180, 360, 1080];
+  // Durations assigned so the hash order and the duration order disagree.
+  const MIXED = [
+    expedition('zeta', { durationMinutes: 1080 }),
+    expedition('alpha', { durationMinutes: 360 }),
+    expedition('mu', { durationMinutes: 60 }),
+    expedition('beta', { durationMinutes: 180 }),
+    expedition('gamma', { durationMinutes: 360 }),
+  ];
+
+  it('lays the board out shortest first, whatever order it was selected in', () => {
+    const shown = orderBoardForDisplay([...MIXED].reverse());
+    expect(shown.map((e) => e.durationMinutes)).toEqual([60, 180, 360, 360, 1080]);
+  });
+
+  it('breaks a duration tie on the key', () => {
+    const shown = orderBoardForDisplay(MIXED);
+    expect(keys(shown)).toEqual(['mu', 'beta', 'alpha', 'gamma', 'zeta']);
+  });
+
+  it('does not mutate its input', () => {
+    const input = [...MIXED];
+    orderBoardForDisplay(input);
+    expect(keys(input)).toEqual(keys(MIXED));
+  });
+
+  /**
+   * Presentation must not leak back into selection: the set a window shows is
+   * decided by the hash sort alone, and re-ordering it cannot add or drop one.
+   */
+  it('changes the order of a board but never its membership', () => {
+    const pool = Array.from({ length: 10 }, (_, i) =>
+      expedition(`mission_${i}`, { durationMinutes: TIERS[i % TIERS.length] }),
+    );
+    for (let playerId = 1; playerId <= 50; playerId += 1) {
+      const selected = build({ playerId, expeditions: pool });
+      const shown = orderBoardForDisplay(selected);
+      expect(new Set(keys(shown))).toEqual(new Set(keys(selected)));
+      const minutes = shown.map((e) => e.durationMinutes);
+      expect(minutes).toEqual([...minutes].sort((a, b) => a - b));
+      // And the same inputs still produce the same board.
+      expect(keys(orderBoardForDisplay(build({ playerId, expeditions: pool })))).toEqual(keys(shown));
     }
   });
 });

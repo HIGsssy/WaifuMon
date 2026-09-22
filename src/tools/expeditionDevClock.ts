@@ -3,7 +3,7 @@
  * `npm run expeditions:due` — make an active expedition due *now*, for local
  * playtesting only.
  *
- * Waiting two, six or twelve real hours to exercise the claim path is not a
+ * Waiting one, three, six or eighteen real hours to exercise the claim path is not a
  * test loop, it is a day off. This tool pulls exactly one lever:
  *
  *     UPDATE player_expeditions SET completes_at = now() WHERE status = 'active' AND ...

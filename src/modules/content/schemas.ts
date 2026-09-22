@@ -2072,9 +2072,28 @@ const WORLD_ENCOUNTER_DEFAULT: z.input<typeof WorldEncounterConfigSchema> = {
  * fields on the boss path that bosses have no use for.
  */
 
-/** Suitability bands — the only expression of odds a player is ever shown. */
-export const SUITABILITY_BANDS = ['EXCELLENT', 'GOOD', 'FAIR', 'RISKY', 'POOR'] as const;
-export type SuitabilityBand = (typeof SUITABILITY_BANDS)[number];
+/**
+ * Match quality — how well a WaifuMon fits what a mission asks for (affinity,
+ * race, recommended level). The only assessment a player is ever shown.
+ *
+ * Deliberately **not** a translation of the success chance. The old
+ * `EXCELLENT … POOR` bands were success-chance thresholds, so an easy mission
+ * labelled almost anyone EXCELLENT and players read that as "perfect fit".
+ * Match quality answers the question the player is actually asking; the
+ * hidden chance still decides the outcome.
+ *
+ * The stored tokens carry a `_MATCH` suffix so they can never collide with the
+ * legacy band values still sitting on rows deployed before the change (the old
+ * vocabulary also had a bare `POOR`).
+ */
+export const MATCH_QUALITIES = [
+  'PERFECT_MATCH',
+  'STRONG_MATCH',
+  'PARTIAL_MATCH',
+  'WEAK_MATCH',
+  'POOR_MATCH',
+] as const;
+export type MatchQuality = (typeof MATCH_QUALITIES)[number];
 
 /**
  * Mission archetypes. Flavour and grouping only — no code branches on this.
@@ -2124,7 +2143,7 @@ export const ExpeditionsConfigSchema = z
     /**
      * Global kill switch. Switching it off hides the board and refuses new
      * deployments — it does **not** touch missions already in flight, which
-     * still resolve and still pay. A kill switch must not eat someone's twelve
+     * still resolve and still pay. A kill switch must not eat someone's eighteen
      * hours.
      */
     enabled: z.boolean().default(true),
@@ -2135,7 +2154,7 @@ export const ExpeditionsConfigSchema = z
      */
     durations: z
       .record(z.string(), z.number().int().positive())
-      .default({ short: 120, medium: 360, long: 720 }),
+      .default({ short: 60, medium: 180, long: 360, overnight: 1080 }),
     /** Missions shown per region board. */
     boardSize: z.number().int().positive().default(4),
     /** How long one board stands before it is redrawn. */
@@ -2188,18 +2207,40 @@ export const ExpeditionsConfigSchema = z
       .strict()
       .default({}),
     /**
-     * Lower bounds for each band, descending. A chance at or above
-     * `excellent` is EXCELLENT; below `risky` is POOR.
+     * Match quality — the player-facing assessment. See `expeditionMatch.ts`.
+     *
+     * Each requirement the mission states (affinity, race, and always level)
+     * scores `1` when met, `nearScore` when level is just short, `0` when
+     * missed, and `againstScore` when it actively works against the mission
+     * (a temperament a preferred affinity beats, or badly under-levelled). The
+     * score is the mean over the requirements the mission actually states.
+     * Only a copy that meets **every** stated requirement is PERFECT; the
+     * thresholds below grade everything else.
      */
-    bands: z
+    match: z
       .object({
-        excellent: z.number().gt(0).lt(1).default(0.8),
-        good: z.number().gt(0).lt(1).default(0.65),
-        fair: z.number().gt(0).lt(1).default(0.5),
-        risky: z.number().gt(0).lt(1).default(0.35),
+        /** Levels under the recommendation that still count as "nearly there". */
+        levelNearTolerance: z.number().int().gte(0).default(3),
+        nearScore: z.number().gt(0).lt(1).default(0.5),
+        againstScore: z.number().lte(0).default(-1),
+        /** Lower bounds on the mean score, descending. Below `weak` is POOR. */
+        thresholds: z
+          .object({
+            strong: z.number().gt(0).lt(1).default(0.65),
+            partial: z.number().gt(0).lt(1).default(0.45),
+            weak: z.number().gt(0).lt(1).default(0.3),
+          })
+          .strict()
+          .default({}),
       })
       .strict()
       .default({}),
+    /**
+     * **Deprecated, ignored.** The old success-chance → adjective thresholds.
+     * Accepted so a `tables.json` edited through the admin panel before the
+     * match-quality change still loads; nothing reads it.
+     */
+    bands: z.record(z.string(), z.number()).optional(),
   })
   .strict()
   .superRefine((config, ctx) => {
@@ -2210,16 +2251,24 @@ export const ExpeditionsConfigSchema = z
         path: ['suitability', 'minChance'],
       });
     }
-    // Bands must descend or the band lookup is order-dependent nonsense: a
-    // `good` above `excellent` would make EXCELLENT unreachable.
-    const { excellent, good, fair, risky } = config.bands;
-    if (!(excellent > good && good > fair && fair > risky)) {
+    // Thresholds must descend or the lookup is order-dependent nonsense: a
+    // `partial` above `strong` would make STRONG unreachable.
+    const { strong, partial, weak } = config.match.thresholds;
+    if (!(strong > partial && partial > weak)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message:
-          'expeditions.bands must strictly descend: excellent > good > fair > risky ' +
-          `(got ${excellent} > ${good} > ${fair} > ${risky})`,
-        path: ['bands'],
+          'expeditions.match.thresholds must strictly descend: strong > partial > weak ' +
+          `(got ${strong} > ${partial} > ${weak})`,
+        path: ['match', 'thresholds'],
+      });
+    }
+    const minutes = Object.values(config.durations);
+    if (new Set(minutes).size !== minutes.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'expeditions.durations names the same number of minutes twice',
+        path: ['durations'],
       });
     }
     if (Object.keys(config.durations).length === 0) {

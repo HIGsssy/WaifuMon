@@ -672,9 +672,10 @@
   "expeditions": {
     "enabled": true,
     "durations": {
-      "short": 120,
-      "medium": 360,
-      "long": 720
+      "short": 60,
+      "medium": 180,
+      "long": 360,
+      "overnight": 1080
     },
     "boardSize": 4,
     "rotationHours": 12,
@@ -696,11 +697,15 @@
       "perSuitabilityPoint": 0.25,
       "maxChance": 0.3
     },
-    "bands": {
-      "excellent": 0.8,
-      "good": 0.65,
-      "fair": 0.5,
-      "risky": 0.35
+    "match": {
+      "levelNearTolerance": 3,
+      "nearScore": 0.5,
+      "againstScore": -1,
+      "thresholds": {
+        "strong": 0.65,
+        "partial": 0.45,
+        "weak": 0.3
+      }
     }
   }
 }

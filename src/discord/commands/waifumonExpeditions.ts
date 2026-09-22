@@ -8,10 +8,12 @@
  *
  * Three conventions carry most of the weight:
  *
- *   - **The band is the contract.** No percentage reaches a player on any
- *     screen. The service returns a band and never exposes `successChance`,
- *     so this file could not leak one even by accident — there is nothing to
- *     read. Candidate rows explain a match with *chips* (`Dominant ✓`) rather
+ *   - **Match quality is the contract.** No percentage reaches a player on any
+ *     screen. The service returns how well she fits the mission (PERFECT …
+ *     POOR MATCH) and never exposes `successChance`, so this file could not
+ *     leak one even by accident — there is nothing to read. Match quality is
+ *     a separate model from the hidden chance, not a relabelling of it.
+ *     Candidate rows explain a match with *chips* (`Dominant ✓`) rather
  *     than numbers, so the player learns which WaifuMon suits which mission
  *     without being handed the formula.
  *
@@ -49,11 +51,12 @@ import type {
   ExpeditionClaimResult,
   ExpeditionView,
 } from '../../modules/expeditions/types';
+import type { MatchVerdict } from '../../modules/expeditions/expeditionMatch';
 import type {
   ExpeditionRewardPayload,
   RewardTableKind,
 } from '../../modules/expeditions/expeditionRewards';
-import type { RegionalExpedition, SuitabilityBand } from '../../modules/content/schemas';
+import type { MatchQuality, RegionalExpedition } from '../../modules/content/schemas';
 
 type Rows = ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>[];
 interface Screen {
@@ -69,17 +72,17 @@ const COLOR_FAILURE = 0xb0b6c0;
 const COLOR_DANGER = 0xff6f6f;
 
 /**
- * Band presentation. Ordered best to worst, and deliberately *not* a colour
- * ramp from green to red: POOR is grey rather than red because a risky
- * deployment is a choice the game wants players to make, not a mistake it
- * wants to scold them for.
+ * Match-quality presentation, best to worst. Describes *fit* — how many of the
+ * mission's stated requirements she meets — never the hidden success chance.
+ * Deliberately not a green-to-red ramp: a poor match is a choice the game
+ * wants players to be able to make, not a mistake it wants to scold.
  */
-const BAND_DISPLAY: Readonly<Record<SuitabilityBand, { icon: string; label: string }>> = {
-  EXCELLENT: { icon: '✦', label: 'EXCELLENT' },
-  GOOD: { icon: '✧', label: 'GOOD' },
-  FAIR: { icon: '·', label: 'FAIR' },
-  RISKY: { icon: '⚠', label: 'RISKY' },
-  POOR: { icon: '✗', label: 'POOR' },
+const MATCH_DISPLAY: Readonly<Record<MatchQuality, { icon: string; label: string }>> = {
+  PERFECT_MATCH: { icon: '★', label: 'PERFECT MATCH' },
+  STRONG_MATCH: { icon: '✦', label: 'STRONG MATCH' },
+  PARTIAL_MATCH: { icon: '✧', label: 'PARTIAL MATCH' },
+  WEAK_MATCH: { icon: '·', label: 'WEAK MATCH' },
+  POOR_MATCH: { icon: '✗', label: 'POOR MATCH' },
 };
 
 /** Broad reward-preview vocabulary → what a player sees on the board. */
@@ -94,8 +97,8 @@ const PREVIEW_DISPLAY: Readonly<Record<string, string>> = {
   key_item: '🔑 Key item',
 };
 
-function bandTag(band: SuitabilityBand): string {
-  const display = BAND_DISPLAY[band];
+export function matchTag(quality: MatchQuality): string {
+  const display = MATCH_DISPLAY[quality];
   return `${display.label} ${display.icon}`;
 }
 
@@ -242,9 +245,12 @@ function activeScreen(view: ExpeditionView, statusLine?: string): Screen {
   embed.setDescription(
     [
       status + `**${view.waifuName}** is out on this job.`,
-      `Suitability: **${bandTag(view.band)}**`,
+      // Omitted for a row deployed under the legacy vocabulary.
+      view.match ? `Match: **${matchTag(view.match)}**` : null,
       timing,
-    ].join('\n'),
+    ]
+      .filter((line) => line !== null)
+      .join('\n'),
   );
   if (view.description) embed.addFields({ name: '​', value: `_${view.description}_` });
 
@@ -289,34 +295,39 @@ function activeScreen(view: ExpeditionView, statusLine?: string): Screen {
 /**
  * One candidate row.
  *
- *   `EXCELLENT ✦ Lilith — Lv.31`
- *   `Dominant ✓ • Demon ✓`
+ *   `STRONG MATCH ✦ Lilith — Lv.31`
+ *   `Dominant ✓ • Human ✗ • Lv 28+ ✓`
  *
- * The chips are the explanation. A tick means the mission asked for that and
- * she has it; a cross means it asked and she does not. Nothing is shown when
- * the mission has no preference on that axis, because an empty requirement is
- * not a failed one.
+ * The chips are the explanation, and they read the service's own per-axis
+ * verdicts rather than re-deriving them: ✓ met, ✗ missed, `~` level just
+ * short, ⚠ actively works against the mission (a temperament a preferred
+ * affinity beats, or badly under-levelled). Nothing is shown when the mission
+ * has no preference on an axis, because an empty requirement is not a failed
+ * one.
  */
+const VERDICT_MARK: Readonly<Record<MatchVerdict, string>> = {
+  met: '✓',
+  near: '~',
+  missed: '✗',
+  against: '⚠',
+  none: '',
+};
+
 export function candidateChips(
   candidate: ExpeditionCandidate,
   definition: RegionalExpedition,
-): string | null {
+): string {
+  const { match } = candidate;
   const chips: string[] = [];
-  if (definition.preferredAffinities.length > 0) {
-    const hit = definition.preferredAffinities.includes(candidate.affinity);
-    chips.push(`${affinityLabel(candidate.affinity)} ${hit ? '✓' : '✗'}`);
+  if (match.affinity !== 'none') {
+    chips.push(`${affinityLabel(candidate.affinity)} ${VERDICT_MARK[match.affinity]}`);
   }
-  if (definition.preferredRaces.length > 0) {
-    const hit = definition.preferredRaces.includes(candidate.race);
-    chips.push(`${raceLabel(candidate.race)} ${hit ? '✓' : '✗'}`);
+  if (match.race !== 'none') {
+    chips.push(`${raceLabel(candidate.race)} ${VERDICT_MARK[match.race]}`);
   }
-  // Level is a preference every mission has, so it is always worth a chip.
-  chips.push(
-    candidate.level >= definition.recommendedLevel
-      ? `Lv ${definition.recommendedLevel}+ ✓`
-      : `Lv ${definition.recommendedLevel}+ ✗`,
-  );
-  return chips.length > 0 ? chips.join(' • ') : null;
+  // Level is a requirement every mission has, so it is always worth a chip.
+  chips.push(`Lv ${definition.recommendedLevel}+ ${VERDICT_MARK[match.level]}`);
+  return chips.join(' • ');
 }
 
 function detailScreen(
@@ -358,8 +369,8 @@ function detailScreen(
   const shown = candidates.slice(0, 10);
   const rows = shown.map((candidate) => {
     const head = candidate.unavailableReasons.length > 0
-      ? `~~${bandTag(candidate.band)} ${candidate.name} — Lv.${candidate.level}~~`
-      : `**${bandTag(candidate.band)}** ${candidate.name} — Lv.${candidate.level}`;
+      ? `~~${matchTag(candidate.match.quality)} ${candidate.name} — Lv.${candidate.level}~~`
+      : `**${matchTag(candidate.match.quality)}** ${candidate.name} — Lv.${candidate.level}`;
     const detail =
       candidate.unavailableReasons.length > 0
         ? unavailableNote(candidate.unavailableReasons)
@@ -381,8 +392,8 @@ function detailScreen(
           // Discord caps a select at 25 options.
           .addOptions(
             deployable.slice(0, 25).map((candidate) => ({
-              label: `${bandTag(candidate.band)} ${candidate.name}`.slice(0, 100),
-              description: `Lv.${candidate.level} · ${candidateChips(candidate, definition) ?? ''}`
+              label: `${matchTag(candidate.match.quality)} ${candidate.name}`.slice(0, 100),
+              description: `Lv.${candidate.level} · ${candidateChips(candidate, definition)}`
                 .slice(0, 100),
               value: String(candidate.waifuId),
             })),
@@ -436,8 +447,8 @@ function confirmScreen(
         `${definition.emoji ?? '•'} **${definition.name}**`,
         '',
         `👤 Sending: **${candidate.name}** — Lv.${candidate.level}`,
-        `🎲 Suitability: **${bandTag(candidate.band)}**`,
-        `   ${candidateChips(candidate, definition) ?? ''}`,
+        `🎯 Match: **${matchTag(candidate.match.quality)}**`,
+        `   ${candidateChips(candidate, definition)}`,
         `⏱️ Duration: **${formatDuration(definition.durationMinutes)}**`,
         `📅 Back ${relativeTimestamp(completesAt)}`,
         preferenceLine(definition) ?? 'Prefers: _anyone willing_',
@@ -475,7 +486,7 @@ function confirmScreen(
 /**
  * Recall is a two-step, and deliberately so.
  *
- * Abandoning a twelve-hour mission for nothing is the single most destructive
+ * Abandoning an eighteen-hour mission for nothing is the single most destructive
  * thing this feature lets a player do, and it is one misclick away from the
  * Collect button. The confirmation states all four consequences plainly rather
  * than asking "are you sure?", because "are you sure" is a question players
@@ -584,7 +595,9 @@ function resultScreen(result: ExpeditionClaimResult): Screen {
     .setDescription(
       [
         `${result.expedition.emoji ?? '•'} **${result.expedition.name}**`,
-        `👤 **${result.expedition.waifuName}** · ${bandTag(result.expedition.band)}`,
+        result.expedition.match
+          ? `👤 **${result.expedition.waifuName}** · ${matchTag(result.expedition.match)}`
+          : `👤 **${result.expedition.waifuName}**`,
         '',
         display.lead,
       ].join('\n'),

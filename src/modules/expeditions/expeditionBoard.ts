@@ -103,3 +103,22 @@ export function buildBoard(input: {
     .slice(0, boardSize)
     .map((entry) => entry.expedition);
 }
+
+/**
+ * The order a board is *shown* in: shortest mission first, key as the
+ * tie-break. Presentation only.
+ *
+ * Deliberately a separate step applied after {@link buildBoard}. The hash sort
+ * inside `buildBoard` decides *which* missions a window shows, and its order
+ * is meaningless to a player (it read as 2h → 12h → 6h in playtesting).
+ * Re-sorting the selected set cannot change what was selected, so rotation
+ * stays exactly as deterministic as it was.
+ */
+export function orderBoardForDisplay(
+  expeditions: readonly RegionalExpedition[],
+): RegionalExpedition[] {
+  return [...expeditions].sort(
+    (a, b) =>
+      a.durationMinutes - b.durationMinutes || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0),
+  );
+}

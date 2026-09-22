@@ -8,7 +8,7 @@
  *
  * One assertion runs across nearly every screen and is the reason several of
  * these tests exist at all: **no numeric chance may appear anywhere**. The
- * band is the whole contract with the player, and a percentage leaking into
+ * match quality is the whole contract with the player, and a percentage leaking into
  * one embed would quietly undo that everywhere.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -379,6 +379,42 @@ describe('board rendering', () => {
     expect(screenText(painted(btn))).toMatch(/<t:\d+:R>/);
   });
 
+  it('renders the missions shortest first: 1h → 3h → 6h → 18h', async () => {
+    installContent([
+      definition({ key: 'd_night', name: 'Night Dive', durationMinutes: 1080 }),
+      definition({ key: 'a_quick', name: 'Quick Errand', durationMinutes: 60 }),
+      definition({ key: 'c_mid', name: 'Mid Survey', durationMinutes: 360 }),
+      definition({ key: 'b_short', name: 'Short Escort', durationMinutes: 180 }),
+    ]);
+    const { prov } = await player();
+    const btn = fakeButton();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleExpeditions(ctx, btn as any, prov);
+    const payload = painted(btn);
+    const fields = (embedOf(payload).fields ?? []).map((f: { name: string }) => f.name);
+    expect(fields.map((n: string) => n.replace(/^\S+ /, ''))).toEqual([
+      'Quick Errand',
+      'Short Escort',
+      'Mid Survey',
+      'Night Dive',
+    ]);
+    const text = screenText(payload);
+    const at = (label: string) => text.indexOf(label);
+    expect(at('⏱️ 1h ·')).toBeLessThan(at('⏱️ 3h ·'));
+    expect(at('⏱️ 3h ·')).toBeLessThan(at('⏱️ 6h ·'));
+    expect(at('⏱️ 6h ·')).toBeLessThan(at('⏱️ 18h ·'));
+    // Buttons follow the same order.
+    const views = components(payload)
+      .map((c) => c.customId)
+      .filter((id) => id.startsWith('wm|v1|exp|view|'));
+    expect(views).toEqual([
+      'wm|v1|exp|view|a_quick',
+      'wm|v1|exp|view|b_short',
+      'wm|v1|exp|view|c_mid',
+      'wm|v1|exp|view|d_night',
+    ]);
+  });
+
   it('shows an empty state when nothing is on offer here', async () => {
     installContent([definition({ region: 'thirstlands' })]);
     const { prov } = await player();
@@ -403,7 +439,7 @@ describe('board rendering', () => {
 });
 
 describe('candidate selection', () => {
-  it('shows the band and non-numeric chips for each candidate', async () => {
+  it('shows the match quality and non-numeric chips for each candidate', async () => {
     const { prov } = await player(31);
     const btn = fakeButton();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -411,8 +447,9 @@ describe('candidate selection', () => {
     const payload = painted(btn);
     const text = screenText(payload);
 
-    // `EXCELLENT ✦ Lilith1 — Lv.31`
-    expect(text).toMatch(/(EXCELLENT|GOOD|FAIR|RISKY|POOR)/);
+    // `PERFECT MATCH ★ Lilith1 — Lv.31` — dominant, demon, over-levelled.
+    expect(text).toContain('PERFECT MATCH');
+    expect(text).not.toMatch(/EXCELLENT|GOOD|FAIR|RISKY/);
     expect(text).toContain('Lv.31');
     // `Dominant ✓ • Demon ✓ • Lv 10+ ✓` — the explanation, with no numbers.
     expect(text).toContain('Dominant ✓');
@@ -421,13 +458,39 @@ describe('candidate selection', () => {
     assertNoNumericOdds(text);
   });
 
-  it('marks a mismatch with a cross rather than hiding it', async () => {
-    // An under-levelled copy: the level chip must read as a miss.
+  it('marks a badly under-levelled copy as working against the mission', async () => {
     const { prov } = await player(3);
     const btn = fakeButton();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await handleExpeditionView(ctx, btn as any, prov, 'supply_run');
-    expect(screenText(painted(btn))).toContain('Lv 10+ ✗');
+    const text = screenText(painted(btn));
+    expect(text).toContain('Lv 10+ ⚠');
+    // Affinity and race both met, level far short: not the top label.
+    expect(text).toContain('WEAK MATCH');
+  });
+
+  it('marks a copy just short of the level as nearly there, and not a perfect match', async () => {
+    const { prov } = await player(8);
+    const btn = fakeButton();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleExpeditionView(ctx, btn as any, prov, 'supply_run');
+    const text = screenText(painted(btn));
+    expect(text).toContain('Lv 10+ ~');
+    expect(text).toContain('STRONG MATCH');
+    expect(text).not.toContain('PERFECT MATCH');
+  });
+
+  it('marks a missed race with a cross rather than hiding it', async () => {
+    installContent([definition({ preferredRaces: ['angel'] })]);
+    const { prov } = await player(31);
+    const btn = fakeButton();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleExpeditionView(ctx, btn as any, prov, 'supply_run');
+    const text = screenText(painted(btn));
+    expect(text).toContain('Demon ✗');
+    // Two of three: a strong match, never the top label.
+    expect(text).toContain('STRONG MATCH');
+    expect(text).not.toContain('PERFECT MATCH');
   });
 
   it('offers a select menu of deployable copies', async () => {
@@ -439,8 +502,8 @@ describe('candidate selection', () => {
     expect(components(payload).map((c) => c.customId)).toContain('wm|v1|exp|pick|supply_run');
     const options = selectOptions(payload);
     expect(options.map((o) => o.value)).toContain(String(waifuId));
-    // The option label carries the band, so the dropdown itself is readable.
-    expect(options[0]!.label).toMatch(/(EXCELLENT|GOOD|FAIR|RISKY|POOR)/);
+    // The option label carries the match quality, so the dropdown itself is readable.
+    expect(options[0]!.label).toMatch(/(PERFECT|STRONG|PARTIAL|WEAK|POOR) MATCH/);
   });
 
   it('greys out a copy who is busy and says why', async () => {
@@ -478,7 +541,7 @@ describe('deployment confirmation', () => {
     const text = screenText(payload);
 
     expect(text).toContain('Lilith');           // who
-    expect(text).toMatch(/(EXCELLENT|GOOD|FAIR|RISKY|POOR)/); // band
+    expect(text).toMatch(/(PERFECT|STRONG|PARTIAL|WEAK|POOR) MATCH/); // match quality
     expect(text).toContain('6h');               // duration
     expect(text).toMatch(/<t:\d+:R>/);          // relative completion
     expect(text).toContain('Dominant');         // preferred affinity

@@ -2,16 +2,17 @@
  * Expedition suitability — pure. No database, no clock, no Discord.
  *
  * Answers one question: given a mission and the WaifuMon a player is thinking
- * of sending, how likely is this to go well? The answer has two forms, and the
- * difference between them is a product decision rather than an implementation
- * detail:
+ * of sending, how likely is this to go well? The answer is two exact numbers,
+ * `successChance` and `exceptionalChance`, persisted on the expedition row at
+ * deployment, used to resolve it, and **never shown to anybody**. A player who
+ * can read the percentage optimises against the formula instead of thinking
+ * about their roster.
  *
- *   - `successChance` / `exceptionalChance` — exact numbers. Persisted on the
- *     expedition row at deployment, used to resolve it, and **never shown to
- *     anybody**. A player who can read the percentage optimises against the
- *     formula instead of thinking about their roster.
- *   - `band` — one of five words. This is the entire contract with the player,
- *     on every surface: Discord, the Platform API, and anything built later.
+ * What the player *is* shown lives in `expeditionMatch.ts`, and is a separate
+ * model on purpose: match quality describes how well she fits the mission's
+ * stated requirements, not a relabelled success chance. This file used to map
+ * the chance onto `EXCELLENT … POOR`, which on an easy mission called almost
+ * any ready copy EXCELLENT.
  *
  * Every constant is injected from `tables.expeditions`. Nothing in this file
  * is a number, which is what makes the design's "provisional, to be validated
@@ -23,7 +24,6 @@ import type {
   BuddyAffinityConfig,
   ExpeditionDefinition,
   ExpeditionsConfig,
-  SuitabilityBand,
 } from '../content/schemas';
 import type { Affinity } from '../../db/schema';
 
@@ -69,8 +69,6 @@ export interface SuitabilityResult {
   successChance: number;
   /** Clamped to [0, exceptional.maxChance]. Also internal. */
   exceptionalChance: number;
-  /** The only expression of odds a player ever sees. */
-  band: SuitabilityBand;
   /**
    * Every term that contributed, in the order applied.
    *
@@ -114,16 +112,6 @@ export function resolveAffinityFit(
     }
   }
   return 'neutral';
-}
-
-/** The band a chance falls into. Bands are lower bounds, checked descending. */
-export function bandFor(successChance: number, config: ExpeditionsConfig): SuitabilityBand {
-  const { bands } = config;
-  if (successChance >= bands.excellent) return 'EXCELLENT';
-  if (successChance >= bands.good) return 'GOOD';
-  if (successChance >= bands.fair) return 'FAIR';
-  if (successChance >= bands.risky) return 'RISKY';
-  return 'POOR';
 }
 
 /**
@@ -232,10 +220,5 @@ export function evaluateSuitability(input: SuitabilityInput): SuitabilityResult 
     config.exceptional.maxChance,
   );
 
-  return {
-    successChance,
-    exceptionalChance,
-    band: bandFor(successChance, config),
-    factors,
-  };
+  return { successChance, exceptionalChance, factors };
 }
