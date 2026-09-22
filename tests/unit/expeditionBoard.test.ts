@@ -5,6 +5,12 @@
  * properties of a *function*: same inputs, same board; different window,
  * different board; different player, different board. If those three hold,
  * there is nothing to drift and nothing to recover after a restart.
+ *
+ * Since the draw became duration-stratified there is a fourth property, and it
+ * is the one the change exists for: a board always offers every commitment
+ * length the content author configured. Under the old uniform draw that was
+ * left to chance, and a player looking for an overnight mission found none on
+ * roughly 38% of boards.
  */
 import { describe, expect, it } from 'vitest';
 import {
@@ -17,6 +23,10 @@ import {
   ExpeditionDefinitionSchema,
   type RegionalExpedition,
 } from '../../src/modules/content/schemas';
+import { ConfigError, IncompleteExpeditionPoolError } from '../../src/shared/errors';
+
+/** The shipped ladder, shortest first. */
+const TIERS = [60, 180, 360, 1080] as const;
 
 function expedition(key: string, over: Record<string, unknown> = {}): RegionalExpedition {
   // `region` belongs to the *file*, not the definition — and the definition
@@ -38,14 +48,23 @@ function expedition(key: string, over: Record<string, unknown> = {}): RegionalEx
   };
 }
 
-/** Ten missions, so a board of four is a genuine selection. */
-const POOL = Array.from({ length: 10 }, (_, i) => expedition(`mission_${i}`));
+/**
+ * Twelve missions, three on every tier — so one slot per tier is a genuine
+ * selection rather than a foregone conclusion, and Waifu Valley's real shape
+ * (2–4 per tier) sits inside what these tests cover.
+ */
+const POOL = TIERS.flatMap((minutes, tier) =>
+  Array.from({ length: 3 }, (_, i) =>
+    expedition(`mission_t${tier}_${i}`, { durationMinutes: minutes }),
+  ),
+);
 
 const build = (over: Partial<Parameters<typeof buildBoard>[0]> = {}) =>
   buildBoard({
     playerId: 1,
     regionId: 'thirstlands',
     expeditions: POOL,
+    durations: TIERS,
     boardSize: 4,
     rotationHours: 12,
     now: new Date('2026-09-21T03:00:00Z'),
@@ -53,6 +72,9 @@ const build = (over: Partial<Parameters<typeof buildBoard>[0]> = {}) =>
   });
 
 const keys = (board: RegionalExpedition[]) => board.map((e) => e.key);
+const minutes = (board: RegionalExpedition[]) => board.map((e) => e.durationMinutes);
+const windowAt = (hoursFromEpochStart: number) =>
+  new Date(Date.UTC(2026, 8, 21, 0) + hoursFromEpochStart * 3600_000);
 
 describe('rotationWindow', () => {
   it('is stable across a window and changes at the boundary', () => {
@@ -88,14 +110,65 @@ describe('rotationEndsAt', () => {
   });
 });
 
+/**
+ * The guarantee the stratified draw exists to make. Every assertion here is
+ * about *which tiers* a board carries, never about which mission — the choice
+ * within a tier is the rotation's business and is covered further down.
+ */
+describe('duration coverage', () => {
+  it('puts exactly one mission from each tier on a boardSize-4 board', () => {
+    expect(minutes(build())).toEqual([...TIERS]);
+  });
+
+  /**
+   * The old failure mode, stated as a test. Under the uniform draw this held
+   * for only ~62% of (player, window) pairs; it must now hold for all of them.
+   */
+  it('never omits a tier, for any player, in any window', () => {
+    for (let playerId = 1; playerId <= 150; playerId += 1) {
+      for (let w = 0; w < 6; w += 1) {
+        const board = build({ playerId, now: windowAt(w * 12 + 3) });
+        expect(minutes(board)).toEqual([...TIERS]);
+      }
+    }
+  });
+
+  it('reads the ladder from the config rather than assuming four tiers', () => {
+    const twoTier = [
+      ...Array.from({ length: 3 }, (_, i) => expedition(`s_${i}`, { durationMinutes: 60 })),
+      ...Array.from({ length: 3 }, (_, i) => expedition(`l_${i}`, { durationMinutes: 360 })),
+    ];
+    const board = build({ expeditions: twoTier, durations: [60, 360], boardSize: 2 });
+    expect(minutes(board)).toEqual([60, 360]);
+  });
+
+  it('accepts a ladder listed out of order and still lays it out shortest first', () => {
+    expect(minutes(build({ durations: [1080, 60, 360, 180] }))).toEqual([...TIERS]);
+  });
+
+  /**
+   * A board larger than the ladder spends its surplus on the *shortest* tiers,
+   * because an extra 1h option gets used several times a day and an extra
+   * overnight one at most once.
+   */
+  it('spends surplus slots on the shortest tiers first', () => {
+    expect(minutes(build({ boardSize: 6 }))).toEqual([60, 60, 180, 180, 360, 1080]);
+  });
+});
+
 describe('buildBoard', () => {
-  it('returns exactly boardSize missions when the pool is larger', () => {
+  it('returns exactly boardSize missions when every tier has spares', () => {
     expect(build()).toHaveLength(4);
   });
 
-  it('returns the whole pool when it is smaller than boardSize', () => {
-    const small = [expedition('only_one')];
-    expect(keys(build({ expeditions: small }))).toEqual(['only_one']);
+  it('returns one per tier when the pool is exactly one per tier', () => {
+    const minimal = TIERS.map((m, i) => expedition(`only_${i}`, { durationMinutes: m }));
+    expect(keys(build({ expeditions: minimal }))).toEqual([
+      'only_0',
+      'only_1',
+      'only_2',
+      'only_3',
+    ]);
   });
 
   it('returns an empty board for a region with no content — not an error', () => {
@@ -108,23 +181,81 @@ describe('buildBoard', () => {
   });
 
   it('omits a disabled mission', () => {
-    const pool = [...POOL, expedition('switched_off', { enabled: false })];
+    const pool = [...POOL, expedition('switched_off', { durationMinutes: 60, enabled: false })];
     // Every board drawn from this pool, at any window, must exclude it.
     for (let hour = 0; hour < 48; hour += 3) {
-      const board = keys(
-        build({
-          expeditions: pool,
-          boardSize: 99,
-          now: new Date(Date.UTC(2026, 8, 21, hour)),
-        }),
-      );
+      const board = keys(build({ expeditions: pool, boardSize: 99, now: windowAt(hour) }));
       expect(board).not.toContain('switched_off');
     }
   });
 
   it('omits missions belonging to another region', () => {
-    const pool = [...POOL, expedition('elsewhere', { region: 'twin-peeks' })];
+    const pool = [...POOL, expedition('elsewhere', { durationMinutes: 60, region: 'twin-peeks' })];
     expect(keys(build({ expeditions: pool, boardSize: 99 }))).not.toContain('elsewhere');
+  });
+});
+
+/**
+ * An incomplete pool is a content bug, and it must say so.
+ *
+ * A short board is the one failure mode a player cannot distinguish from
+ * correct behaviour — "there is no overnight mission tonight" looks exactly
+ * like "this region has no overnight missions at all". `validateExpeditionContent`
+ * refuses the condition at boot; these assert that the draw itself refuses it
+ * too, rather than trusting the loader to have run.
+ */
+describe('an incomplete regional pool', () => {
+  const missingOvernight = POOL.filter((e) => e.durationMinutes !== 1080);
+
+  it('throws rather than returning a board with a tier missing', () => {
+    expect(() => build({ expeditions: missingOvernight })).toThrow(IncompleteExpeditionPoolError);
+  });
+
+  it('names the region and the missing tiers', () => {
+    try {
+      build({ expeditions: missingOvernight });
+      expect.unreachable('expected an IncompleteExpeditionPoolError');
+    } catch (error) {
+      expect(error).toBeInstanceOf(IncompleteExpeditionPoolError);
+      const e = error as IncompleteExpeditionPoolError;
+      expect(e.regionId).toBe('thirstlands');
+      expect(e.missingDurations).toEqual([1080]);
+      expect(e.message).toContain('1080');
+    }
+  });
+
+  it('reports every missing tier at once, not just the first', () => {
+    const shortOnly = POOL.filter((e) => e.durationMinutes === 60);
+    try {
+      build({ expeditions: shortOnly });
+      expect.unreachable('expected an IncompleteExpeditionPoolError');
+    } catch (error) {
+      expect((error as IncompleteExpeditionPoolError).missingDurations).toEqual([180, 360, 1080]);
+    }
+  });
+
+  // A region nobody has authored yet is not "incomplete", it is absent — and
+  // that is the shipped state of every region but Waifu Valley.
+  it('stays silent for a region with no missions at all', () => {
+    expect(build({ expeditions: [], regionId: 'thirstlands' })).toEqual([]);
+  });
+
+  // A tier whose only mission is switched off is a gap, not a tier: the board
+  // cannot show a disabled mission, so the promise is broken either way.
+  it('treats a tier whose missions are all disabled as missing', () => {
+    const pool = POOL.map((e) =>
+      e.durationMinutes === 1080 ? { ...e, enabled: false } : e,
+    );
+    expect(() => build({ expeditions: pool })).toThrow(IncompleteExpeditionPoolError);
+  });
+
+  it('refuses a board too small to carry one mission per tier', () => {
+    expect(() => build({ boardSize: 3 })).toThrow(ConfigError);
+    expect(() => build({ boardSize: 3 })).toThrow(/below the number of duration tiers/);
+  });
+
+  it('refuses an empty duration ladder', () => {
+    expect(() => build({ durations: [] })).toThrow(ConfigError);
   });
 });
 
@@ -142,14 +273,43 @@ describe('determinism', () => {
 
   it('is stable at any moment inside one rotation window', () => {
     const atStart = keys(build({ now: new Date('2026-09-21T00:00:00Z') }));
+    const atMiddle = keys(build({ now: new Date('2026-09-21T06:17:43Z') }));
     const atEnd = keys(build({ now: new Date('2026-09-21T11:59:59Z') }));
+    expect(atMiddle).toEqual(atStart);
     expect(atEnd).toEqual(atStart);
+  });
+
+  /**
+   * Stability has to survive the stratification: the tier a mission sits in
+   * must not depend on anything that moves during a window.
+   */
+  it('holds every player steady across a whole window', () => {
+    for (let playerId = 1; playerId <= 60; playerId += 1) {
+      const atStart = keys(build({ playerId, now: new Date('2026-09-21T00:00:00Z') }));
+      const atEnd = keys(build({ playerId, now: new Date('2026-09-21T11:59:59Z') }));
+      expect(atEnd).toEqual(atStart);
+    }
   });
 
   it('changes at the window boundary and not before', () => {
     const before = keys(build({ now: new Date('2026-09-21T11:59:59Z') }));
     const after = keys(build({ now: new Date('2026-09-21T12:00:00Z') }));
     expect(after).not.toEqual(before);
+  });
+
+  /**
+   * Rotation must actually rotate. With three missions per tier, a single
+   * boundary could coincidentally redraw the same four; what cannot happen
+   * over many windows is the board standing still.
+   */
+  it('works through the alternatives on every tier as windows pass', () => {
+    const seenPerTier = TIERS.map(() => new Set<string>());
+    for (let w = 0; w < 60; w += 1) {
+      const board = build({ now: windowAt(w * 12 + 1) });
+      board.forEach((mission, tier) => seenPerTier[tier]!.add(mission.key));
+    }
+    // Every mission on every tier must come up, not merely more than one.
+    for (const seen of seenPerTier) expect(seen.size).toBe(3);
   });
 
   /**
@@ -166,7 +326,11 @@ describe('determinism', () => {
   it('gives one player different boards in different regions', () => {
     const pool = [
       ...POOL,
-      ...Array.from({ length: 10 }, (_, i) => expedition(`tp_${i}`, { region: 'twin-peeks' })),
+      ...TIERS.flatMap((m, tier) =>
+        Array.from({ length: 3 }, (_, i) =>
+          expedition(`tp_t${tier}_${i}`, { durationMinutes: m, region: 'twin-peeks' }),
+        ),
+      ),
     ];
     const here = keys(build({ expeditions: pool, regionId: 'thirstlands' }));
     const there = keys(build({ expeditions: pool, regionId: 'twin-peeks' }));
@@ -178,6 +342,39 @@ describe('determinism', () => {
     const full = keys(build({ boardSize: 99 }));
     expect(full).toHaveLength(POOL.length);
     expect(keys(build({ boardSize: 99 }))).toEqual(full);
+  });
+
+  /**
+   * The order content happens to be read in must not reach the player. The
+   * loader flattens region files in directory order, and a file rename would
+   * otherwise silently reshuffle every board in the game.
+   */
+  it('ignores the order the pool was given in', () => {
+    const shuffled = [...POOL].reverse();
+    const interleaved = [...POOL].sort((a, b) => (a.key < b.key ? 1 : -1));
+    for (let playerId = 1; playerId <= 40; playerId += 1) {
+      const canonical = keys(build({ playerId }));
+      expect(keys(build({ playerId, expeditions: shuffled }))).toEqual(canonical);
+      expect(keys(build({ playerId, expeditions: interleaved }))).toEqual(canonical);
+    }
+  });
+
+  /**
+   * Within a tier, the winner is a pure function of the same seed the old
+   * uniform draw used. Adding a mission to *another* tier must not disturb it —
+   * that is what makes the stratification four independent draws rather than
+   * one draw with extra steps.
+   */
+  it('picks within a tier independently of the other tiers', () => {
+    const board = build();
+    const extraShort = [
+      ...POOL,
+      expedition('mission_t0_extra', { durationMinutes: 60 }),
+      expedition('mission_t0_extra2', { durationMinutes: 60 }),
+    ];
+    const widened = build({ expeditions: extraShort });
+    // The 3h, 6h and 18h picks are untouched by three new 1h missions.
+    expect(keys(widened).slice(1)).toEqual(keys(board).slice(1));
   });
 
   it('reshuffles everything when the salt changes', () => {
@@ -201,7 +398,7 @@ describe('fairness', () => {
     expect(seen.size).toBe(POOL.length);
   });
 
-  it('spreads appearances roughly evenly across a large sample', () => {
+  it('spreads appearances roughly evenly within each tier', () => {
     const counts = new Map<string, number>();
     const players = 2000;
     for (let playerId = 1; playerId <= players; playerId += 1) {
@@ -209,17 +406,18 @@ describe('fairness', () => {
         counts.set(key, (counts.get(key) ?? 0) + 1);
       }
     }
-    // 4 of 10 slots => each mission expected on 40% of boards. A wide band:
-    // this asserts no mission is starved or dominant, not that md5 is uniform.
+    expect(counts.size).toBe(POOL.length);
+    // One slot per tier over three candidates => each mission expected on a
+    // third of boards. A wide band: this asserts no mission is starved or
+    // dominant, not that md5 is uniform.
     for (const [, count] of counts) {
-      expect(count / players).toBeGreaterThan(0.3);
-      expect(count / players).toBeLessThan(0.5);
+      expect(count / players).toBeGreaterThan(0.25);
+      expect(count / players).toBeLessThan(0.42);
     }
   });
 });
 
 describe('orderBoardForDisplay', () => {
-  const TIERS = [60, 180, 360, 1080];
   // Durations assigned so the hash order and the duration order disagree.
   const MIXED = [
     expedition('zeta', { durationMinutes: 1080 }),
@@ -246,21 +444,28 @@ describe('orderBoardForDisplay', () => {
   });
 
   /**
+   * The player-facing contract: 1h → 3h → 6h → 18h, every time, for everyone.
+   */
+  it('renders a selected board as 1h → 3h → 6h → 18h', () => {
+    for (let playerId = 1; playerId <= 100; playerId += 1) {
+      const shown = orderBoardForDisplay(build({ playerId }));
+      expect(minutes(shown)).toEqual([...TIERS]);
+    }
+  });
+
+  /**
    * Presentation must not leak back into selection: the set a window shows is
-   * decided by the hash sort alone, and re-ordering it cannot add or drop one.
+   * decided by the stratified draw alone, and re-ordering it cannot add or
+   * drop one.
    */
   it('changes the order of a board but never its membership', () => {
-    const pool = Array.from({ length: 10 }, (_, i) =>
-      expedition(`mission_${i}`, { durationMinutes: TIERS[i % TIERS.length] }),
-    );
     for (let playerId = 1; playerId <= 50; playerId += 1) {
-      const selected = build({ playerId, expeditions: pool });
+      const selected = build({ playerId });
       const shown = orderBoardForDisplay(selected);
       expect(new Set(keys(shown))).toEqual(new Set(keys(selected)));
-      const minutes = shown.map((e) => e.durationMinutes);
-      expect(minutes).toEqual([...minutes].sort((a, b) => a - b));
+      expect(minutes(shown)).toEqual([...minutes(shown)].sort((a, b) => a - b));
       // And the same inputs still produce the same board.
-      expect(keys(orderBoardForDisplay(build({ playerId, expeditions: pool })))).toEqual(keys(shown));
+      expect(keys(orderBoardForDisplay(build({ playerId })))).toEqual(keys(shown));
     }
   });
 });

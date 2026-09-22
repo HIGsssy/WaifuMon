@@ -117,14 +117,32 @@ export interface ExpeditionBoardEntry {
   definition: RegionalExpedition;
 }
 
+/**
+ * One region's board, plus the player's standing across every region.
+ *
+ * There is no slot count here any more. Concurrency is regional — one active
+ * mission per region, as many regions as the player can reach — so "2 of 3
+ * slots free" is not a fact about this player, and a number that has to be
+ * raised by hand every time a region gains expedition content is exactly what
+ * this shape is designed not to have.
+ */
 export interface ExpeditionBoard {
   regionId: string;
   entries: ExpeditionBoardEntry[];
   /** When this board is replaced. Rendered as a countdown. */
   rotatesAt: Date;
-  /** Slots the player could deploy into right now. */
-  slotsAvailable: number;
-  slotsTotal: number;
+  /**
+   * The player's open mission **in this region**, active or waiting to be
+   * collected. Non-null means no further deployment here until it is settled.
+   */
+  regionMission: ExpeditionView | null;
+  /**
+   * Open missions in every *other* region, so the board can show which regions
+   * are already busy without a second call. These never block deployment here.
+   */
+  elsewhere: ExpeditionView[];
+  /** Convenience: the feature is on and this region is free. */
+  canDeploy: boolean;
   /** False when content has switched the feature off. */
   enabled: boolean;
 }
@@ -138,6 +156,11 @@ export interface ExpeditionBoard {
  */
 export interface ExpeditionView {
   id: number;
+  /**
+   * Which slot within `region` this mission holds. Always 1 today — regions,
+   * not slots, are the concurrency axis. Carried through for the per-region
+   * ladder the column is kept for; see the schema.
+   */
   slotIndex: number;
   expeditionKey: string;
   region: string;

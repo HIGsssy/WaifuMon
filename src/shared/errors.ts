@@ -827,6 +827,40 @@ export function isUniqueViolation(err: unknown): boolean {
  * `WaifuReleaseBlockedError` already does for its `reasons` array.
  */
 
+/**
+ * A region's mission pool cannot fill one slot on every duration tier.
+ *
+ * Raised by `buildBoard` rather than quietly returning a short board. The
+ * board promises one mission per tier — that is the whole point of the
+ * stratified draw — and a board silently missing the overnight row is
+ * indistinguishable, to a player, from "there is no overnight mission
+ * tonight". Failing loudly turns an authoring gap into a boot-time error
+ * instead of a mystery nobody reports.
+ *
+ * `validateExpeditionContent` refuses the same condition at load, so in a
+ * correctly-built deployment this is unreachable: it is the assertion that
+ * keeps it that way, not a path players can reach.
+ */
+export class IncompleteExpeditionPoolError extends AppError {
+  readonly regionId: string;
+  readonly missingDurations: number[];
+
+  constructor(regionId: unknown, missingDurations: unknown) {
+    const missing = Array.isArray(missingDurations)
+      ? missingDurations.map((m) => Number(m)).filter((m) => Number.isFinite(m))
+      : [];
+    super(
+      'EXPEDITION_POOL_INCOMPLETE',
+      `Region "${String(regionId)}" has expeditions but none on duration tier(s): ` +
+        `${missing.join(', ') || 'unknown'}. Every participating region must author at ` +
+        'least one enabled mission per configured tier.',
+      'The expedition board is being reorganised — check back shortly~',
+    );
+    this.regionId = String(regionId);
+    this.missingDurations = missing;
+  }
+}
+
 /** The key named no mission in the current content snapshot. */
 export class ExpeditionNotFoundError extends AppError {
   constructor(key: unknown) {
@@ -850,28 +884,58 @@ export class ExpeditionsDisabledError extends AppError {
 }
 
 /**
- * Every expedition slot the player has is already occupied.
+ * The player already has a mission running in this region.
  *
- * Names the counts rather than saying "you already have one", because the
- * moment a second slot unlocks the old wording becomes a lie and nobody
- * remembers to change it.
+ * The regional-concurrency refusal. It names the region and the WaifuMon
+ * rather than a slot count, because with capacity derived from the region set
+ * "3/3 slots busy" is no longer a thing a player can act on — "Waifu Valley is
+ * busy, go somewhere else" is.
+ *
+ * A *resolved but uncollected* mission holds its region too. That is service
+ * policy rather than an index: it stops a player stacking a second mission on
+ * top of a payout they have not looked at and losing track of it.
  */
-export class ExpeditionSlotsFullError extends AppError {
-  readonly slotsInUse: number;
-  readonly slotsTotal: number;
+export class ExpeditionRegionBusyError extends AppError {
+  readonly regionId: string;
 
-  constructor(slotsInUse: unknown, slotsTotal: unknown) {
-    const used = Number.isInteger(slotsInUse) ? (slotsInUse as number) : 0;
-    const total = Number.isInteger(slotsTotal) ? (slotsTotal as number) : 0;
+  constructor(regionId: unknown, waifuName?: unknown) {
+    const region = typeof regionId === 'string' && regionId.trim() ? regionId.trim() : 'unknown';
+    const who = typeof waifuName === 'string' && waifuName.trim() ? waifuName.trim() : null;
     super(
-      'EXPEDITION_SLOTS_FULL',
-      `All expedition slots in use (${used}/${total})`,
-      total === 1
-        ? 'One of your WaifuMon is already out on an expedition — collect her first.'
-        : `All ${total} of your expedition slots are busy — collect one first.`,
+      'EXPEDITION_REGION_BUSY',
+      `Player already has an open expedition in region "${region}"`,
+      who
+        ? `**${who}** is already working this region — collect her first, or try another region.`
+        : 'You already have an expedition running here — collect it first, or try another region.',
     );
-    this.slotsInUse = used;
-    this.slotsTotal = total;
+    this.regionId = region;
+  }
+}
+
+/**
+ * The player is not standing in the region the mission belongs to.
+ *
+ * Location is a **deployment** requirement and nothing else: once a mission is
+ * running it is inspected, resolved, collected and recalled from anywhere, so
+ * this is the only place in the feature that asks where the player is.
+ */
+export class ExpeditionWrongRegionError extends AppError {
+  readonly regionId: string;
+  readonly currentRegionId: string;
+
+  constructor(regionId: unknown, currentRegionId: unknown) {
+    const target = typeof regionId === 'string' && regionId.trim() ? regionId.trim() : 'unknown';
+    const here =
+      typeof currentRegionId === 'string' && currentRegionId.trim()
+        ? currentRegionId.trim()
+        : 'unknown';
+    super(
+      'EXPEDITION_WRONG_REGION',
+      `Expedition belongs to region "${target}" but the player is in "${here}"`,
+      'You have to be there to take that job — travel to the region first~',
+    );
+    this.regionId = target;
+    this.currentRegionId = here;
   }
 }
 

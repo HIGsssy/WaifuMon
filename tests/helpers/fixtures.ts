@@ -256,6 +256,9 @@ export async function bootstrapApp(
   // on collection, collection depends on availability, availability depends on
   // expeditions. Wired identically here so availability tests exercise the
   // real graph rather than a simplified one.
+  // Hoisted for the same reason production hoists it: expeditions need the
+  // canonical "where is the player" answer to gate a deployment.
+  const travel = createTravelService({ db: t.db, currency, getContent: () => content });
   let expeditions: ReturnType<typeof createExpeditionService> | undefined;
   const availability = createWaifuAvailabilityService({
     bulkProviders: [
@@ -301,6 +304,7 @@ export async function bootstrapApp(
     collection,
     progression,
     availability,
+    getCurrentRegion: (playerId) => travel.getCurrentRegion(playerId),
   });
   const effects = createPlayerEffectsService(t.db);
   // Wired exactly as production does, so the encounter-consumable path is the
@@ -338,7 +342,6 @@ export async function bootstrapApp(
     logger: t.logger,
     ...(opts.bossRng ? { rng: opts.bossRng } : {}),
   });
-  const travel = createTravelService({ db: t.db, currency, getContent: () => content });
   const worldEncounterVendor = createWorldEncounterVendorService({
     db: t.db,
     currency,

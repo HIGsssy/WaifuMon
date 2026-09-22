@@ -19,9 +19,9 @@
  * mechanisms stop it, and they are independent on purpose — each covers a
  * failure the others do not:
  *
- *   1. **Partial unique indexes.** One active row per (player, slot) and one
- *      per waifu. A double-clicked Deploy loses to a unique violation in the
- *      database, not to a service-side count that read a stale value.
+ *   1. **Partial unique indexes.** One active row per (player, region) and
+ *      one per waifu. A double-clicked Deploy loses to a unique violation in
+ *      the database, not to a service-side count that read a stale value.
  *
  *   2. **Conditional UPDATEs.** Resolution and claiming are each a single
  *      `UPDATE ... WHERE <expected state> RETURNING`. No row returned means
@@ -34,6 +34,33 @@
  *      one lands — they compute the *same* result, and the UPDATE arbitrates
  *      between two identical writes. Without this, (2) would still be correct,
  *      but a retry after a partial failure would be correct only by luck.
+ *
+ * ── Concurrency is regional ────────────────────────────────────────────────
+ *
+ * A player may have **one active mission per region**, and as many regions
+ * running at once as they can reach. There is no global slot count anywhere in
+ * this file: capacity is a consequence of the world, so shipping expedition
+ * content for a new region raises every player's ceiling with no edit to
+ * content, to this service, or to the schema.
+ *
+ * Two rules keep that honest, and they are separate on purpose:
+ *
+ *   - `(player_id, region)` unique-while-active — you cannot run Waifu Valley
+ *     twice;
+ *   - `(waifu_id)` unique-while-active — and you cannot solve that by sending
+ *     the same WaifuMon to Twin Peeks instead.
+ *
+ * A *resolved but uncollected* mission also holds its region, which is service
+ * policy rather than an index: it stops a player stacking a new mission on top
+ * of a payout they have not looked at and losing track of it.
+ *
+ * ── Location is a deployment requirement, and only that ────────────────────
+ *
+ * `deploy` refuses a mission whose region is not the one the player is
+ * standing in, reading that through the canonical travel service rather than
+ * the `players` row. Nothing else in this file asks where the player is:
+ * inspecting, resolving, claiming and cancelling all work from anywhere, and
+ * travelling away mid-flight changes nothing about a running mission.
  *
  * ── Timing lives in Postgres ───────────────────────────────────────────────
  *
@@ -57,7 +84,6 @@ import type { Db, DbOrTx } from '../../db/client';
 import {
   items,
   playerExpeditions,
-  players,
   playerWaifus,
   species,
   type ExpeditionOutcome,
@@ -71,8 +97,9 @@ import {
   ExpeditionNotCancellableError,
   ExpeditionNotCompleteError,
   ExpeditionNotFoundError,
-  ExpeditionSlotsFullError,
+  ExpeditionRegionBusyError,
   ExpeditionsDisabledError,
+  ExpeditionWrongRegionError,
   WaifuUnavailableError,
 } from '../../shared/errors';
 import type { Logger } from '../../shared/logger';
@@ -108,18 +135,25 @@ import {
 } from './types';
 
 export interface ExpeditionService {
-  /** The player's board for the region they are standing in. */
+  /**
+   * The player's board for the region they are standing in, plus what they
+   * already have running here and elsewhere.
+   */
   getBoard(playerId: number): Promise<ExpeditionBoard>;
   /** Owned copies with a match quality each, best first, and why any cannot be sent. */
   getCandidates(playerId: number, expeditionKey: string): Promise<ExpeditionCandidate[]>;
   /**
-   * Validate, snapshot, compute chances, insert ACTIVE — one transaction. The
-   * unique index is the race guard, not the validation above it.
+   * Validate, snapshot, compute chances, insert ACTIVE — one transaction.
+   *
+   * Refuses unless the player is standing in the mission's region and has
+   * nothing open there. The `(player_id, region)` unique index is the race
+   * guard, not the validation above it.
    */
   deploy(playerId: number, expeditionKey: string, waifuId: number): Promise<ExpeditionView>;
   /**
-   * Every mission occupying a slot, resolving any that are due. Safe — and
-   * intended — to call on every screen open.
+   * Every open mission across **every** region, resolving any that are due.
+   * Safe — and intended — to call on every screen open. Ordered by region so
+   * a list of them is stable between reads.
    */
   getActive(playerId: number): Promise<ExpeditionView[]>;
   /** Grant the resolved rewards exactly once and mark CLAIMED. */
@@ -150,6 +184,17 @@ export interface ExpeditionServiceDeps {
   getContent: () => LoadedContent;
   /** Race is content, never a column. Injected exactly as elsewhere. */
   resolveRace: (row: SpeciesRow) => RaceCode;
+  /**
+   * Where the player is standing, from the canonical travel service.
+   *
+   * A narrow port rather than the whole `TravelService`, and injected rather
+   * than imported, for the usual two reasons: expeditions must not learn what
+   * a route or a pass is, and `travel` is composed after the availability knot
+   * this service sits inside. It is the *same* function `travel.getCurrentRegion`
+   * exposes, so the defaulting of an odd `players.current_region` value happens
+   * once, there, and this file never reads that column.
+   */
+  getCurrentRegion: (playerId: number) => Promise<string>;
   currency: CurrencyService;
   essenceAward: EssenceAwardService;
   inventory: InventoryService;
@@ -177,6 +222,7 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
     inventory,
     collection,
     progression,
+    getCurrentRegion,
   } = deps;
   const availability = deps.availability ?? ALWAYS_AVAILABLE;
   /**
@@ -419,13 +465,25 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
   }
 
   /**
-   * Read a player's slot-occupying missions, resolving anything due.
+   * Read a player's **open** missions, resolving anything due.
    *
-   * "Slot-occupying" is `active` or `resolved`: a resolved mission still holds
-   * its slot until it is collected, which is what stops a player queueing a
+   * "Open" is `active` or `resolved`: a resolved mission still holds its
+   * region until it is collected, which is what stops a player queueing a
    * second mission on top of an uncollected reward and losing track of it.
+   *
+   * `region` scopes the read to one region — which is the eligibility question
+   * `deploy` asks, and the only question it asks, because a mission in another
+   * region is none of its business.
+   *
+   * Ordered by region and then by start, so a screen listing several missions
+   * shows them in the same order every time rather than in whatever order the
+   * planner felt like.
    */
-  async function readSlots(tx: DbOrTx, playerId: number): Promise<PlayerExpeditionRow[]> {
+  async function readOpenMissions(
+    tx: DbOrTx,
+    playerId: number,
+    region?: string,
+  ): Promise<PlayerExpeditionRow[]> {
     const rows = await tx
       .select()
       .from(playerExpeditions)
@@ -433,9 +491,10 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
         and(
           eq(playerExpeditions.playerId, playerId),
           inArray(playerExpeditions.status, ['active', 'resolved']),
+          ...(region == null ? [] : [eq(playerExpeditions.region, region)]),
         ),
       )
-      .orderBy(playerExpeditions.slotIndex);
+      .orderBy(playerExpeditions.region, playerExpeditions.startedAt);
 
     const out: PlayerExpeditionRow[] = [];
     for (const row of rows) {
@@ -454,14 +513,18 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
     async getBoard(playerId) {
       const cfg = config();
       const at = now();
-      const [player] = await db
-        .select({ currentRegion: players.currentRegion })
-        .from(players)
-        .where(eq(players.id, playerId));
-      const regionId = player?.currentRegion ?? '';
+      // The canonical answer, defaulting included. This service never reads
+      // `players.current_region` itself — one resolver, one default, one place
+      // a future "you are in transit" state would have to be handled.
+      const regionId = await getCurrentRegion(playerId);
 
-      const occupied = await readSlots(db, playerId);
-      const slotsTotal = cfg.maxConcurrent;
+      // Resolves anything due in passing, so opening the board is as much of a
+      // trigger as opening the active list — and so `canDeploy` below is
+      // computed against post-resolution state rather than stale rows.
+      const open = await db.transaction((tx) => readOpenMissions(tx, playerId));
+      const names = await waifuNames(db, open.map((r) => r.waifuId));
+      const views = open.map((row) => toView(row, at, names.get(row.waifuId)));
+      const here = views.find((v) => v.region === regionId) ?? null;
 
       return {
         regionId,
@@ -474,6 +537,7 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
                 playerId,
                 regionId,
                 expeditions: getContent().expeditions,
+                durations: Object.values(cfg.durations),
                 boardSize: cfg.boardSize,
                 rotationHours: cfg.rotationHours,
                 now: at,
@@ -481,8 +545,12 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
             ).map((definition) => ({ definition }))
           : [],
         rotatesAt: rotationEndsAt(at, cfg.rotationHours),
-        slotsAvailable: Math.max(0, slotsTotal - occupied.length),
-        slotsTotal,
+        // What the player already has going on. `here` is the one that gates
+        // deployment; `elsewhere` exists purely so the board can say which
+        // regions are already busy without a second round trip.
+        regionMission: here,
+        elsewhere: views.filter((v) => v.region !== regionId),
+        canDeploy: cfg.enabled && here == null,
         enabled: cfg.enabled,
       };
     },
@@ -550,6 +618,21 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
 
       const content = getContent();
 
+      /**
+       * Location is checked here, and only here.
+       *
+       * Reading it before the transaction is deliberate: the player's region
+       * is not the racy part of a deployment — the region *slot* is, and the
+       * unique index below settles that. Someone who travels between this read
+       * and the insert has, at worst, started a mission in the region they
+       * were standing in a millisecond ago, which is the mission they asked
+       * for. Nothing downstream ever asks about location again.
+       */
+      const currentRegion = await getCurrentRegion(playerId);
+      if (definition.region !== currentRegion) {
+        throw new ExpeditionWrongRegionError(definition.region, currentRegion);
+      }
+
       return db.transaction(async (tx) => {
         // Lock the copy for the duration: this is what serialises a
         // double-clicked Deploy long enough for the unique index below to be
@@ -579,19 +662,27 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
           );
         }
 
-        // Which slot to take. Slots are 1-based and the lowest free one wins,
-        // so a player with three slots fills 1, 2, 3 rather than scattering.
-        const occupied = await readSlots(tx, playerId);
-        const used = new Set(occupied.map((r) => r.slotIndex));
-        let slotIndex = 0;
-        for (let candidate = 1; candidate <= cfg.maxConcurrent; candidate += 1) {
-          if (!used.has(candidate)) {
-            slotIndex = candidate;
-            break;
-          }
-        }
-        if (slotIndex === 0) {
-          throw new ExpeditionSlotsFullError(occupied.length, cfg.maxConcurrent);
+        /**
+         * Is this *region* free?
+         *
+         * Scoped to `definition.region` and nothing wider: what the player has
+         * running in Twin Peeks has no bearing on whether they may take a job
+         * in Waifu Valley. The read resolves anything due in this region in
+         * passing, so a mission that finished while the player was away frees
+         * its region on the very press that needed it free.
+         *
+         * This is the *courteous* refusal, not the guarantee — it also covers
+         * a `resolved` mission, which no index does. The guarantee against two
+         * simultaneous presses is `player_expeditions_player_region_active_uq`
+         * on the insert below.
+         */
+        const openHere = await readOpenMissions(tx, playerId, definition.region);
+        if (openHere.length > 0) {
+          const busyNames = await waifuNames(tx, [openHere[0]!.waifuId]);
+          throw new ExpeditionRegionBusyError(
+            definition.region,
+            busyNames.get(openHere[0]!.waifuId),
+          );
         }
 
         const plan = buildPlan(definition);
@@ -612,7 +703,10 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
           .insert(playerExpeditions)
           .values({
             playerId,
-            slotIndex,
+            // Always 1 while a region holds one mission. Written explicitly
+            // rather than left to the column default so the day a per-region
+            // ladder arrives, this is the line that changes.
+            slotIndex: 1,
             expeditionKey: definition.key,
             region: definition.region,
             waifuId,
@@ -638,7 +732,7 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
       // Deliberately does not consult `expeditions.enabled`. A kill switch
       // must not eat somebody's eighteen hours: missions already in flight
       // resolve and pay whatever content says about new ones.
-      const rows = await db.transaction((tx) => readSlots(tx, playerId));
+      const rows = await db.transaction((tx) => readOpenMissions(tx, playerId));
       const at = now();
       const names = await waifuNames(db, rows.map((r) => r.waifuId));
       return rows.map((row) => toView(row, at, names.get(row.waifuId)));

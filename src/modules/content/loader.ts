@@ -767,6 +767,38 @@ export function validateExpeditionContent(content: LoadedContent): void {
     }
   }
 
+  /**
+   * Every region that participates must be able to fill the board.
+   *
+   * The board draws one mission per duration tier, so a region with missions
+   * on only three of the four tiers cannot produce a complete board — and the
+   * failure would otherwise surface as a permanently short board that nobody
+   * recognises as a content bug. Checked per region rather than globally,
+   * because the board is per region.
+   *
+   * A region with **no** enabled missions is not participating and is exempt:
+   * that is the shipped state of every region Phase 5 has not reached yet, and
+   * it renders as an empty board rather than a broken one.
+   */
+  const enabledByRegion = new Map<string, Set<number>>();
+  for (const expedition of expeditions) {
+    if (!expedition.enabled) continue;
+    const tiersPresent = enabledByRegion.get(expedition.region) ?? new Set<number>();
+    tiersPresent.add(expedition.durationMinutes);
+    enabledByRegion.set(expedition.region, tiersPresent);
+  }
+  for (const [region, tiersPresent] of enabledByRegion) {
+    const missing = [...legalDurations].filter((d) => !tiersPresent.has(d)).sort((a, b) => a - b);
+    if (missing.length > 0) {
+      throw new ContentValidationError(
+        `Region "${region}" has enabled expeditions but none on duration tier(s): ` +
+          `${missing.join(', ')}. The board shows one mission per tier, so a participating ` +
+          'region must author at least one enabled mission on every tier in ' +
+          'tables.json → expeditions.durations (or disable the region\'s missions entirely).',
+      );
+    }
+  }
+
   for (const table of expeditionRewards) {
     for (const group of table.groups) {
       for (const entry of group.entries) {
@@ -1241,6 +1273,56 @@ function warnOnEnabledEquipment(items: LoadedContent['items'], logger: Logger): 
 }
 
 /**
+ * The same `itemId` listed more than once inside one reward group.
+ *
+ * A **warning**, never a refusal, because weighted quantity variants are a
+ * legitimate authoring device: "three tokens, or just the one" is two genuine
+ * outcomes of different sizes, and `ExpeditionRewardTableSchema` already
+ * refuses the unambiguously broken case — the same item at the *same*
+ * quantity twice, which silently doubles its weight rather than saying
+ * anything. Making this one fatal as well would ban the useful shape to catch
+ * the mistake.
+ *
+ * But it is worth a line, because the mistake it catches is real and quiet.
+ * `valley-undercity-dive-bonus-v3` shipped with `moonlit_perfume_vial` at
+ * quantity 2 (weight 60) *and* quantity 1 (weight 15) in its `rare-find`
+ * group: a copy of the success table's `flooded-cache` group in which the
+ * third entry's item was never changed from the one above it. The table
+ * validated cleanly, the weights still summed, and the only symptom was a
+ * region paying out far more high-value salvage than anybody intended. So the
+ * message names the table, the group, the item and every quantity involved,
+ * and says the word "intentional" — the author reading it either recognises
+ * the variant they wrote or finds the entry they forgot to edit.
+ */
+export function warnOnRepeatedRewardItems(
+  expeditionRewards: ExpeditionRewardTable[],
+  logger: Logger,
+): void {
+  for (const table of expeditionRewards) {
+    for (const group of table.groups) {
+      const quantitiesByItem = new Map<string, number[]>();
+      for (const entry of group.entries) {
+        quantitiesByItem.set(entry.itemId, [
+          ...(quantitiesByItem.get(entry.itemId) ?? []),
+          entry.quantity,
+        ]);
+      }
+      for (const [itemId, quantities] of quantitiesByItem) {
+        if (quantities.length < 2) continue;
+        logger.warn(
+          { tag: 'expeditions/repeated-reward-item', table: table.id, group: group.id, itemId, quantities },
+          `expeditionRewards["${table.id}"].groups["${group.id}"] lists "${itemId}" ` +
+            `${quantities.length} times, at quantities ${quantities.join(', ')}. That is legal — ` +
+            'weighted quantity variants of one item are a real authoring device — but it is ' +
+            'also what a copy-pasted entry whose itemId was never changed looks like. Confirm ' +
+            'it is intentional, or correct the entry that was meant to name a different item.',
+        );
+      }
+    }
+  }
+}
+
+/**
  * Loads and validates all content JSON. Bad content fails loudly with
  * file+field errors — never silently.
  */
@@ -1257,6 +1339,7 @@ export function loadContent(contentDir: string, assetsDir: string, logger: Logge
   const validatedBosses = validateBossAssets(content.bosses, assetsDir, logger);
   warnOnUnpooledSpecies(validatedSpecies, content.regions, logger);
   warnOnEnabledEquipment(content.items, logger);
+  warnOnRepeatedRewardItems(content.expeditionRewards, logger);
 
   logger.info(
     {

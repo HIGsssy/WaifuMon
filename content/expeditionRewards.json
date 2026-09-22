@@ -1,9 +1,9 @@
 [
   {
-    "id": "valley-corner-store-success-v2",
+    "id": "valley-corner-store-success-v4",
     "enabled": true,
-    "version": "valley-corner-store-success-v2",
-    "waifubux": { "min": 8, "max": 16 },
+    "version": "valley-corner-store-success-v4",
+    "waifubux": { "min": 3, "max": 5 },
     "waifuXp": 35,
     "playerXp": 8,
     "groups": [
@@ -11,17 +11,17 @@
         "id": "back-room-scrap",
         "enabled": true,
         "rolls": 2,
-        "chanceBasisPoints": 10000,
+        "chanceBasisPoints": 8500,
         "entries": [
-          { "itemId": "bent_arcade_token", "weight": 60, "quantity": 1, "enabled": true },
-          { "itemId": "smudged_love_letter", "weight": 40, "quantity": 1, "enabled": true }
+          { "itemId": "bent_arcade_token", "weight": 80, "quantity": 1, "enabled": true },
+          { "itemId": "smudged_love_letter", "weight": 20, "quantity": 1, "enabled": true }
         ]
       },
       {
         "id": "left-behind",
         "enabled": true,
         "rolls": 1,
-        "chanceBasisPoints": 3000,
+        "chanceBasisPoints": 600,
         "entries": [
           { "itemId": "bent_arcade_token", "weight": 70, "quantity": 2, "enabled": true },
           { "itemId": "cracked_shrine_charm", "weight": 30, "quantity": 1, "enabled": true }
@@ -30,10 +30,10 @@
     ]
   },
   {
-    "id": "valley-corner-store-bonus-v2",
+    "id": "valley-corner-store-bonus-v4",
     "enabled": true,
-    "version": "valley-corner-store-bonus-v2",
-    "waifubux": { "min": 5, "max": 10 },
+    "version": "valley-corner-store-bonus-v4",
+    "waifubux": { "min": 2, "max": 5 },
     "waifuXp": 15,
     "playerXp": 0,
     "groups": [
@@ -41,19 +41,20 @@
         "id": "owners-stash",
         "enabled": true,
         "rolls": 1,
-        "chanceBasisPoints": 10000,
+        "chanceBasisPoints": 4500,
         "entries": [
-          { "itemId": "cracked_shrine_charm", "weight": 80, "quantity": 1, "enabled": true },
-          { "itemId": "neon_sign_filament", "weight": 20, "quantity": 1, "enabled": true }
+          { "itemId": "smudged_love_letter", "weight": 30, "quantity": 2, "enabled": true },
+          { "itemId": "cracked_shrine_charm", "weight": 15, "quantity": 1, "enabled": true },
+          { "itemId": "bent_arcade_token", "weight": 55, "quantity": 2, "enabled": true }
         ]
       }
     ]
   },
   {
-    "id": "valley-corner-store-failure-v2",
+    "id": "valley-corner-store-failure-v4",
     "enabled": true,
-    "version": "valley-corner-store-failure-v2",
-    "waifubux": { "min": 2, "max": 5 },
+    "version": "valley-corner-store-failure-v4",
+    "waifubux": { "min": 1, "max": 3 },
     "waifuXp": 10,
     "playerXp": 3,
     "groups": [
@@ -61,78 +62,150 @@
         "id": "pocketed-anyway",
         "enabled": true,
         "rolls": 1,
-        "chanceBasisPoints": 6000,
+        "chanceBasisPoints": 5000,
         "entries": [
           { "itemId": "bent_arcade_token", "weight": 100, "quantity": 1, "enabled": true }
         ]
       }
     ]
   },
+
   {
-    "id": "valley-shrine-lantern-success-v1",
+    "id": "valley-token-sweep-success-v2",
     "enabled": true,
-    "version": "valley-shrine-lantern-success-v1",
-    "waifubux": { "min": 20, "max": 40 },
-    "essence": { "min": 0, "max": 2 },
-    "waifuXp": 90,
-    "playerXp": 22,
+    "version": "valley-token-sweep-success-v2",
+    "waifubux": { "min": 2, "max": 4 },
+    "waifuXp": 30,
+    "playerXp": 6,
     "groups": [
       {
-        "id": "procession-pickings",
+        "id": "coin-return",
         "enabled": true,
-        "rolls": 2,
-        "chanceBasisPoints": 10000,
+        "rolls": 3,
+        "chanceBasisPoints": 7000,
         "entries": [
-          { "itemId": "smudged_love_letter", "weight": 45, "quantity": 1, "enabled": true },
-          { "itemId": "cracked_shrine_charm", "weight": 45, "quantity": 1, "enabled": true },
-          { "itemId": "neon_sign_filament", "weight": 10, "quantity": 1, "enabled": true }
+          { "itemId": "bent_arcade_token", "weight": 88, "quantity": 1, "enabled": true },
+          { "itemId": "smudged_love_letter", "weight": 12, "quantity": 1, "enabled": true }
         ]
       },
       {
-        "id": "left-at-the-altar",
+        "id": "stuck-in-the-cabinet",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 500,
+        "entries": [
+          { "itemId": "bent_arcade_token", "weight": 65, "quantity": 3, "enabled": true },
+          { "itemId": "dropped_setlist", "weight": 35, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "valley-token-sweep-bonus-v2",
+    "enabled": true,
+    "version": "valley-token-sweep-bonus-v2",
+    "waifubux": { "min": 2, "max": 4 },
+    "waifuXp": 12,
+    "playerXp": 0,
+    "groups": [
+      {
+        "id": "jackpot-tray",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 3500,
+        "entries": [
+          { "itemId": "bent_arcade_token", "weight": 60, "quantity": 4, "enabled": true },
+          { "itemId": "dropped_setlist", "weight": 28, "quantity": 1, "enabled": true },
+          { "itemId": "cracked_shrine_charm", "weight": 12, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "valley-token-sweep-failure-v2",
+    "enabled": true,
+    "version": "valley-token-sweep-failure-v2",
+    "waifubux": { "min": 1, "max": 2 },
+    "waifuXp": 9,
+    "playerXp": 2,
+    "groups": [
+      {
+        "id": "swept-off-the-floor",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 5000,
+        "entries": [
+          { "itemId": "bent_arcade_token", "weight": 100, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+
+  {
+    "id": "valley-alley-cat-success-v2",
+    "enabled": true,
+    "version": "valley-alley-cat-success-v2",
+    "waifubux": { "min": 3, "max": 5 },
+    "waifuXp": 45,
+    "playerXp": 10,
+    "groups": [
+      {
+        "id": "scattered-in-the-alley",
+        "enabled": true,
+        "rolls": 2,
+        "chanceBasisPoints": 5500,
+        "entries": [
+          { "itemId": "smudged_love_letter", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "bent_arcade_token", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "dropped_setlist", "weight": 10, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "whatever-she-dragged-back",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 300,
+        "entries": [
+          { "itemId": "cracked_shrine_charm", "weight": 70, "quantity": 1, "enabled": true },
+          { "itemId": "neon_sign_filament", "weight": 30, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "valley-alley-cat-bonus-v2",
+    "enabled": true,
+    "version": "valley-alley-cat-bonus-v2",
+    "waifubux": { "min": 2, "max": 5 },
+    "waifuXp": 18,
+    "playerXp": 0,
+    "groups": [
+      {
+        "id": "pinned-under-a-paw",
         "enabled": true,
         "rolls": 1,
         "chanceBasisPoints": 2000,
         "entries": [
-          { "itemId": "compliment_sandwich", "weight": 100, "quantity": 1, "enabled": true }
+          { "itemId": "dropped_setlist", "weight": 40, "quantity": 1, "enabled": true },
+          { "itemId": "cracked_shrine_charm", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "neon_sign_filament", "weight": 15, "quantity": 1, "enabled": true }
         ]
       }
     ]
   },
   {
-    "id": "valley-shrine-lantern-bonus-v1",
+    "id": "valley-alley-cat-failure-v2",
     "enabled": true,
-    "version": "valley-shrine-lantern-bonus-v1",
-    "waifubux": { "min": 15, "max": 25 },
-    "essence": { "min": 1, "max": 2 },
-    "waifuXp": 40,
-    "playerXp": 0,
+    "version": "valley-alley-cat-failure-v2",
+    "waifubux": { "min": 1, "max": 3 },
+    "waifuXp": 14,
+    "playerXp": 4,
     "groups": [
       {
-        "id": "keepers-thanks",
+        "id": "bitten-but-not-empty-handed",
         "enabled": true,
         "rolls": 1,
-        "chanceBasisPoints": 10000,
-        "entries": [
-          { "itemId": "neon_sign_filament", "weight": 70, "quantity": 1, "enabled": true },
-          { "itemId": "moonlit_perfume_vial", "weight": 30, "quantity": 1, "enabled": true }
-        ]
-      }
-    ]
-  },
-  {
-    "id": "valley-shrine-lantern-failure-v1",
-    "enabled": true,
-    "version": "valley-shrine-lantern-failure-v1",
-    "waifubux": { "min": 8, "max": 15 },
-    "waifuXp": 30,
-    "playerXp": 8,
-    "groups": [
-      {
-        "id": "swept-up-after",
-        "enabled": true,
-        "rolls": 1,
-        "chanceBasisPoints": 7000,
+        "chanceBasisPoints": 4200,
         "entries": [
           { "itemId": "bent_arcade_token", "weight": 50, "quantity": 1, "enabled": true },
           { "itemId": "smudged_love_letter", "weight": 50, "quantity": 1, "enabled": true }
@@ -140,41 +213,375 @@
       }
     ]
   },
+
   {
-    "id": "valley-rooftop-survey-success-v2",
+    "id": "valley-room-twelve-success-v2",
     "enabled": true,
-    "version": "valley-rooftop-survey-success-v2",
-    "waifubux": { "min": 35, "max": 60 },
-    "essence": { "min": 1, "max": 3 },
-    "waifuXp": 160,
-    "playerXp": 40,
+    "version": "valley-room-twelve-success-v2",
+    "waifubux": { "min": 4, "max": 6 },
+    "essence": { "min": 0, "max": 1 },
+    "waifuXp": 55,
+    "playerXp": 12,
+    "groups": [
+      {
+        "id": "stripped-the-room",
+        "enabled": true,
+        "rolls": 2,
+        "chanceBasisPoints": 4500,
+        "entries": [
+          { "itemId": "smudged_love_letter", "weight": 62, "quantity": 1, "enabled": true },
+          { "itemId": "cracked_shrine_charm", "weight": 5, "quantity": 1, "enabled": true },
+          { "itemId": "bent_arcade_token", "weight": 33, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "under-the-mattress",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 250,
+        "entries": [
+          { "itemId": "neon_sign_filament", "weight": 85, "quantity": 1, "enabled": true },
+          { "itemId": "moonlit_perfume_vial", "weight": 15, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "valley-room-twelve-bonus-v2",
+    "enabled": true,
+    "version": "valley-room-twelve-bonus-v2",
+    "waifubux": { "min": 3, "max": 6 },
+    "essence": { "min": 1, "max": 2 },
+    "waifuXp": 22,
+    "playerXp": 0,
+    "groups": [
+      {
+        "id": "left-a-tip",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 3000,
+        "entries": [
+          { "itemId": "cracked_shrine_charm", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "smudged_love_letter", "weight": 55, "quantity": 2, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "valley-room-twelve-failure-v2",
+    "enabled": true,
+    "version": "valley-room-twelve-failure-v2",
+    "waifubux": { "min": 1, "max": 3 },
+    "waifuXp": 16,
+    "playerXp": 4,
+    "groups": [
+      {
+        "id": "aired-it-out-anyway",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 3500,
+        "entries": [
+          { "itemId": "smudged_love_letter", "weight": 70, "quantity": 1, "enabled": true },
+          { "itemId": "bent_arcade_token", "weight": 30, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+
+  {
+    "id": "valley-shrine-lantern-success-v3",
+    "enabled": true,
+    "version": "valley-shrine-lantern-success-v3",
+    "waifubux": { "min": 7, "max": 13 },
+    "essence": { "min": 0, "max": 1 },
+    "waifuXp": 95,
+    "playerXp": 24,
+    "groups": [
+      {
+        "id": "procession-pickings",
+        "enabled": true,
+        "rolls": 2,
+        "chanceBasisPoints": 5000,
+        "entries": [
+          { "itemId": "smudged_love_letter", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "cracked_shrine_charm", "weight": 15, "quantity": 1, "enabled": true },
+          { "itemId": "dropped_setlist", "weight": 30, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "left-at-the-altar",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 800,
+        "entries": [
+          { "itemId": "cracked_shrine_charm", "weight": 70, "quantity": 1, "enabled": true },
+          { "itemId": "neon_sign_filament", "weight": 30, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "somebody-meant-well",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 1200,
+        "entries": [
+          { "itemId": "compliment_sandwich", "weight": 100, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "valley-shrine-lantern-bonus-v3",
+    "enabled": true,
+    "version": "valley-shrine-lantern-bonus-v3",
+    "waifubux": { "min": 6, "max": 11 },
+    "essence": { "min": 1, "max": 2 },
+    "waifuXp": 42,
+    "playerXp": 0,
+    "groups": [
+      {
+        "id": "keepers-thanks",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 2200,
+        "entries": [
+          { "itemId": "neon_sign_filament", "weight": 70, "quantity": 1, "enabled": true },
+          { "itemId": "cracked_shrine_charm", "weight": 30, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "valley-shrine-lantern-failure-v3",
+    "enabled": true,
+    "version": "valley-shrine-lantern-failure-v3",
+    "waifubux": { "min": 3, "max": 6 },
+    "waifuXp": 32,
+    "playerXp": 9,
+    "groups": [
+      {
+        "id": "swept-up-after",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 5500,
+        "entries": [
+          { "itemId": "bent_arcade_token", "weight": 40, "quantity": 1, "enabled": true },
+          { "itemId": "smudged_love_letter", "weight": 40, "quantity": 1, "enabled": true },
+          { "itemId": "dropped_setlist", "weight": 20, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+
+  {
+    "id": "valley-stall-watch-success-v2",
+    "enabled": true,
+    "version": "valley-stall-watch-success-v2",
+    "waifubux": { "min": 8, "max": 15 },
+    "essence": { "min": 0, "max": 1 },
+    "waifuXp": 105,
+    "playerXp": 26,
+    "groups": [
+      {
+        "id": "till-and-crates",
+        "enabled": true,
+        "rolls": 2,
+        "chanceBasisPoints": 4500,
+        "entries": [
+          { "itemId": "smudged_love_letter", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "cracked_shrine_charm", "weight": 20, "quantity": 1, "enabled": true },
+          { "itemId": "dropped_setlist", "weight": 35, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "wilted-stock",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 1000,
+        "entries": [
+          { "itemId": "cracked_shrine_charm", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "last_train_ticket", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "neon_sign_filament", "weight": 10, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "a-regular-left-this",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 1500,
+        "entries": [
+          { "itemId": "compliment_sandwich", "weight": 70, "quantity": 1, "enabled": true },
+          { "itemId": "microdose", "weight": 30, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "valley-stall-watch-bonus-v2",
+    "enabled": true,
+    "version": "valley-stall-watch-bonus-v2",
+    "waifubux": { "min": 7, "max": 13 },
+    "essence": { "min": 1, "max": 2 },
+    "waifuXp": 45,
+    "playerXp": 0,
+    "groups": [
+      {
+        "id": "the-owners-cut",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 2500,
+        "entries": [
+          { "itemId": "last_train_ticket", "weight": 62, "quantity": 1, "enabled": true },
+          { "itemId": "neon_sign_filament", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "moonlit_perfume_vial", "weight": 3, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "valley-stall-watch-failure-v2",
+    "enabled": true,
+    "version": "valley-stall-watch-failure-v2",
+    "waifubux": { "min": 4, "max": 7 },
+    "waifuXp": 34,
+    "playerXp": 10,
+    "groups": [
+      {
+        "id": "closed-up-early",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 5000,
+        "entries": [
+          { "itemId": "smudged_love_letter", "weight": 50, "quantity": 1, "enabled": true },
+          { "itemId": "dropped_setlist", "weight": 30, "quantity": 1, "enabled": true },
+          { "itemId": "bent_arcade_token", "weight": 20, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+
+  {
+    "id": "valley-karaoke-success-v2",
+    "enabled": true,
+    "version": "valley-karaoke-success-v2",
+    "waifubux": { "min": 10, "max": 17 },
+    "essence": { "min": 0, "max": 1 },
+    "waifuXp": 120,
+    "playerXp": 30,
+    "groups": [
+      {
+        "id": "between-the-cushions",
+        "enabled": true,
+        "rolls": 3,
+        "chanceBasisPoints": 4000,
+        "entries": [
+          { "itemId": "dropped_setlist", "weight": 30, "quantity": 1, "enabled": true },
+          { "itemId": "smudged_love_letter", "weight": 40, "quantity": 1, "enabled": true },
+          { "itemId": "bent_arcade_token", "weight": 22, "quantity": 1, "enabled": true },
+          { "itemId": "cracked_shrine_charm", "weight": 8, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "room-seven",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 800,
+        "entries": [
+          { "itemId": "neon_sign_filament", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "last_train_ticket", "weight": 40, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "left-on-the-table",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 1200,
+        "entries": [
+          { "itemId": "booty_sweat", "weight": 50, "quantity": 1, "enabled": true },
+          { "itemId": "energy_drink", "weight": 50, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "valley-karaoke-bonus-v2",
+    "enabled": true,
+    "version": "valley-karaoke-bonus-v2",
+    "waifubux": { "min": 8, "max": 15 },
+    "essence": { "min": 1, "max": 2 },
+    "waifuXp": 50,
+    "playerXp": 0,
+    "groups": [
+      {
+        "id": "the-tab-nobody-paid",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 2200,
+        "entries": [
+          { "itemId": "neon_sign_filament", "weight": 57, "quantity": 1, "enabled": true },
+          { "itemId": "last_train_ticket", "weight": 38, "quantity": 1, "enabled": true },
+          { "itemId": "moonlit_perfume_vial", "weight": 5, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "valley-karaoke-failure-v2",
+    "enabled": true,
+    "version": "valley-karaoke-failure-v2",
+    "waifubux": { "min": 5, "max": 8 },
+    "waifuXp": 38,
+    "playerXp": 11,
+    "groups": [
+      {
+        "id": "shouted-down",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 3600,
+        "entries": [
+          { "itemId": "dropped_setlist", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "smudged_love_letter", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "bent_arcade_token", "weight": 20, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+
+  {
+    "id": "valley-rooftop-survey-success-v4",
+    "enabled": true,
+    "version": "valley-rooftop-survey-success-v4",
+    "waifubux": { "min": 14, "max": 22 },
+    "essence": { "min": 1, "max": 2 },
+    "waifuXp": 175,
+    "playerXp": 44,
     "groups": [
       {
         "id": "field-salvage",
         "enabled": true,
-        "rolls": 2,
-        "chanceBasisPoints": 10000,
+        "rolls": 3,
+        "chanceBasisPoints": 3100,
         "entries": [
-          { "itemId": "smudged_love_letter", "weight": 35, "quantity": 1, "enabled": true },
-          { "itemId": "cracked_shrine_charm", "weight": 45, "quantity": 1, "enabled": true },
-          { "itemId": "neon_sign_filament", "weight": 20, "quantity": 1, "enabled": true }
+          { "itemId": "cracked_shrine_charm", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "dropped_setlist", "weight": 30, "quantity": 1, "enabled": true },
+          { "itemId": "neon_sign_filament", "weight": 10, "quantity": 1, "enabled": true },
+          { "itemId": "smudged_love_letter", "weight": 25, "quantity": 1, "enabled": true }
         ]
       },
       {
         "id": "high-ledge",
         "enabled": true,
         "rolls": 1,
-        "chanceBasisPoints": 3000,
+        "chanceBasisPoints": 600,
         "entries": [
-          { "itemId": "neon_sign_filament", "weight": 70, "quantity": 1, "enabled": true },
-          { "itemId": "moonlit_perfume_vial", "weight": 30, "quantity": 1, "enabled": true }
+          { "itemId": "neon_sign_filament", "weight": 75, "quantity": 1, "enabled": true },
+          { "itemId": "moonlit_perfume_vial", "weight": 25, "quantity": 1, "enabled": true }
         ]
       },
       {
         "id": "someone-left-supplies",
         "enabled": true,
         "rolls": 1,
-        "chanceBasisPoints": 2500,
+        "chanceBasisPoints": 1200,
         "entries": [
           { "itemId": "compliment_sandwich", "weight": 60, "quantity": 1, "enabled": true },
           { "itemId": "energy_drink", "weight": 40, "quantity": 1, "enabled": true }
@@ -183,103 +590,291 @@
     ]
   },
   {
-    "id": "valley-rooftop-survey-bonus-v2",
+    "id": "valley-rooftop-survey-bonus-v4",
     "enabled": true,
-    "version": "valley-rooftop-survey-bonus-v2",
-    "waifubux": { "min": 25, "max": 45 },
-    "essence": { "min": 1, "max": 3 },
-    "waifuXp": 60,
+    "version": "valley-rooftop-survey-bonus-v4",
+    "waifubux": { "min": 12, "max": 20 },
+    "essence": { "min": 2, "max": 3 },
+    "waifuXp": 70,
     "playerXp": 0,
     "groups": [
       {
         "id": "above-the-signs",
         "enabled": true,
         "rolls": 1,
-        "chanceBasisPoints": 10000,
+        "chanceBasisPoints": 2200,
         "entries": [
-          { "itemId": "neon_sign_filament", "weight": 60, "quantity": 1, "enabled": true },
-          { "itemId": "moonlit_perfume_vial", "weight": 40, "quantity": 1, "enabled": true }
+          { "itemId": "neon_sign_filament", "weight": 65, "quantity": 1, "enabled": true },
+          { "itemId": "moonlit_perfume_vial", "weight": 25, "quantity": 1, "enabled": true },
+          { "itemId": "last_train_ticket", "weight": 10, "quantity": 1, "enabled": true }
         ]
       }
     ]
   },
   {
-    "id": "valley-rooftop-survey-failure-v2",
+    "id": "valley-rooftop-survey-failure-v4",
     "enabled": true,
-    "version": "valley-rooftop-survey-failure-v2",
-    "waifubux": { "min": 15, "max": 30 },
-    "waifuXp": 55,
-    "playerXp": 14,
+    "version": "valley-rooftop-survey-failure-v4",
+    "waifubux": { "min": 6, "max": 10 },
+    "essence": { "min": 0, "max": 1 },
+    "waifuXp": 62,
+    "playerXp": 17,
     "groups": [
       {
         "id": "walked-back-with-something",
         "enabled": true,
-        "rolls": 1,
-        "chanceBasisPoints": 8000,
+        "rolls": 2,
+        "chanceBasisPoints": 3500,
         "entries": [
-          { "itemId": "bent_arcade_token", "weight": 40, "quantity": 1, "enabled": true },
-          { "itemId": "smudged_love_letter", "weight": 40, "quantity": 1, "enabled": true },
-          { "itemId": "cracked_shrine_charm", "weight": 20, "quantity": 1, "enabled": true }
+          { "itemId": "bent_arcade_token", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "smudged_love_letter", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "cracked_shrine_charm", "weight": 10, "quantity": 1, "enabled": true },
+          { "itemId": "dropped_setlist", "weight": 20, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+
+  {
+    "id": "valley-substation-success-v2",
+    "enabled": true,
+    "version": "valley-substation-success-v2",
+    "waifubux": { "min": 15, "max": 24 },
+    "essence": { "min": 1, "max": 2 },
+    "waifuXp": 190,
+    "playerXp": 48,
+    "groups": [
+      {
+        "id": "cable-trench",
+        "enabled": true,
+        "rolls": 3,
+        "chanceBasisPoints": 2450,
+        "entries": [
+          { "itemId": "neon_sign_filament", "weight": 22, "quantity": 1, "enabled": true },
+          { "itemId": "cracked_shrine_charm", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "dropped_setlist", "weight": 25, "quantity": 1, "enabled": true },
+          { "itemId": "bent_arcade_token", "weight": 18, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "in-the-transformer-housing",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 700,
+        "entries": [
+          { "itemId": "neon_sign_filament", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "moonlit_perfume_vial", "weight": 25, "quantity": 1, "enabled": true },
+          { "itemId": "last_train_ticket", "weight": 20, "quantity": 1, "enabled": true }
         ]
       }
     ]
   },
   {
-    "id": "valley-undercity-dive-success-v2",
+    "id": "valley-substation-bonus-v2",
     "enabled": true,
-    "version": "valley-undercity-dive-success-v2",
-    "waifubux": { "min": 110, "max": 180 },
-    "essence": { "min": 4, "max": 8 },
-    "waifuXp": 450,
-    "playerXp": 110,
+    "version": "valley-substation-bonus-v2",
+    "waifubux": { "min": 13, "max": 22 },
+    "essence": { "min": 2, "max": 4 },
+    "waifuXp": 78,
+    "playerXp": 0,
     "groups": [
       {
-        "id": "deep-salvage",
+        "id": "the-hum-paid-out",
         "enabled": true,
-        "rolls": 4,
-        "chanceBasisPoints": 10000,
+        "rolls": 1,
+        "chanceBasisPoints": 2200,
         "entries": [
-          { "itemId": "cracked_shrine_charm", "weight": 40, "quantity": 1, "enabled": true },
-          { "itemId": "neon_sign_filament", "weight": 40, "quantity": 1, "enabled": true },
-          { "itemId": "moonlit_perfume_vial", "weight": 20, "quantity": 1, "enabled": true }
+          { "itemId": "moonlit_perfume_vial", "weight": 30, "quantity": 1, "enabled": true },
+          { "itemId": "neon_sign_filament", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "last_train_ticket", "weight": 15, "quantity": 1, "enabled": true }
         ]
       },
       {
-        "id": "flooded-cache",
+        "id": "crews-spare-kit",
         "enabled": true,
         "rolls": 1,
-        "chanceBasisPoints": 2500,
+        "chanceBasisPoints": 1200,
         "entries": [
-          { "itemId": "moonlit_perfume_vial", "weight": 70, "quantity": 2, "enabled": true },
+          { "itemId": "silk_charm", "weight": 70, "quantity": 1, "enabled": true },
           { "itemId": "velvet_charm", "weight": 30, "quantity": 1, "enabled": true }
         ]
       }
     ]
   },
   {
-    "id": "valley-undercity-dive-bonus-v2",
+    "id": "valley-substation-failure-v2",
     "enabled": true,
-    "version": "valley-undercity-dive-bonus-v2",
-    "waifubux": { "min": 60, "max": 100 },
-    "essence": { "min": 3, "max": 6 },
+    "version": "valley-substation-failure-v2",
+    "waifubux": { "min": 7, "max": 11 },
+    "essence": { "min": 0, "max": 1 },
+    "waifuXp": 68,
+    "playerXp": 19,
+    "groups": [
+      {
+        "id": "nothing-happened-exactly",
+        "enabled": true,
+        "rolls": 2,
+        "chanceBasisPoints": 1700,
+        "entries": [
+          { "itemId": "cracked_shrine_charm", "weight": 32, "quantity": 1, "enabled": true },
+          { "itemId": "dropped_setlist", "weight": 28, "quantity": 1, "enabled": true },
+          { "itemId": "neon_sign_filament", "weight": 5, "quantity": 1, "enabled": true },
+          { "itemId": "bent_arcade_token", "weight": 35, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+
+  {
+    "id": "valley-last-train-success-v2",
+    "enabled": true,
+    "version": "valley-last-train-success-v2",
+    "waifubux": { "min": 44, "max": 74 },
+    "essence": { "min": 2, "max": 5 },
+    "waifuXp": 430,
+    "playerXp": 105,
+    "groups": [
+      {
+        "id": "platform-lost-property",
+        "enabled": true,
+        "rolls": 3,
+        "chanceBasisPoints": 7600,
+        "entries": [
+          { "itemId": "last_train_ticket", "weight": 30, "quantity": 1, "enabled": true },
+          { "itemId": "neon_sign_filament", "weight": 8, "quantity": 1, "enabled": true },
+          { "itemId": "cracked_shrine_charm", "weight": 27, "quantity": 1, "enabled": true },
+          { "itemId": "dropped_setlist", "weight": 20, "quantity": 1, "enabled": true },
+          { "itemId": "smudged_love_letter", "weight": 15, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "the-four-am-freight",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 800,
+        "entries": [
+          { "itemId": "moonlit_perfume_vial", "weight": 25, "quantity": 1, "enabled": true },
+          { "itemId": "neon_sign_filament", "weight": 50, "quantity": 1, "enabled": true },
+          { "itemId": "last_train_ticket", "weight": 25, "quantity": 2, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "valley-last-train-bonus-v2",
+    "enabled": true,
+    "version": "valley-last-train-bonus-v2",
+    "waifubux": { "min": 28, "max": 48 },
+    "essence": { "min": 2, "max": 5 },
     "waifuXp": 150,
+    "playerXp": 0,
+    "groups": [
+      {
+        "id": "the-bench-at-dawn",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 6000,
+        "entries": [
+          { "itemId": "moonlit_perfume_vial", "weight": 40, "quantity": 1, "enabled": true },
+          { "itemId": "neon_sign_filament", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "last_train_ticket", "weight": 15, "quantity": 2, "enabled": true }
+        ]
+      },
+      {
+        "id": "signed-for-something-odd",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 300,
+        "entries": [
+          { "itemId": "prismatic_charm", "weight": 100, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "valley-last-train-failure-v2",
+    "enabled": true,
+    "version": "valley-last-train-failure-v2",
+    "waifubux": { "min": 24, "max": 40 },
+    "essence": { "min": 1, "max": 2 },
+    "waifuXp": 175,
+    "playerXp": 45,
+    "groups": [
+      {
+        "id": "held-the-platform-anyway",
+        "enabled": true,
+        "rolls": 2,
+        "chanceBasisPoints": 2900,
+        "entries": [
+          { "itemId": "last_train_ticket", "weight": 30, "quantity": 1, "enabled": true },
+          { "itemId": "cracked_shrine_charm", "weight": 30, "quantity": 1, "enabled": true },
+          { "itemId": "smudged_love_letter", "weight": 20, "quantity": 1, "enabled": true },
+          { "itemId": "dropped_setlist", "weight": 20, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+
+  {
+    "id": "valley-undercity-dive-success-v4",
+    "enabled": true,
+    "version": "valley-undercity-dive-success-v4",
+    "waifubux": { "min": 46, "max": 78 },
+    "essence": { "min": 3, "max": 6 },
+    "waifuXp": 470,
+    "playerXp": 115,
+    "groups": [
+      {
+        "id": "deep-salvage",
+        "enabled": true,
+        "rolls": 4,
+        "chanceBasisPoints": 4800,
+        "entries": [
+          { "itemId": "cracked_shrine_charm", "weight": 40, "quantity": 1, "enabled": true },
+          { "itemId": "neon_sign_filament", "weight": 12, "quantity": 1, "enabled": true },
+          { "itemId": "moonlit_perfume_vial", "weight": 4, "quantity": 1, "enabled": true },
+          { "itemId": "last_train_ticket", "weight": 30, "quantity": 1, "enabled": true },
+          { "itemId": "dropped_setlist", "weight": 14, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "flooded-cache",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 800,
+        "entries": [
+          { "itemId": "moonlit_perfume_vial", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "neon_sign_filament", "weight": 30, "quantity": 2, "enabled": true },
+          { "itemId": "velvet_charm", "weight": 15, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "valley-undercity-dive-bonus-v4",
+    "enabled": true,
+    "version": "valley-undercity-dive-bonus-v4",
+    "waifubux": { "min": 30, "max": 52 },
+    "essence": { "min": 3, "max": 6 },
+    "waifuXp": 160,
     "playerXp": 0,
     "groups": [
       {
         "id": "rare-find",
         "enabled": true,
         "rolls": 1,
-        "chanceBasisPoints": 10000,
+        "chanceBasisPoints": 5000,
         "entries": [
-          { "itemId": "moonlit_perfume_vial", "weight": 70, "quantity": 2, "enabled": true },
-          { "itemId": "neon_sign_filament", "weight": 30, "quantity": 3, "enabled": true }
+          { "itemId": "moonlit_perfume_vial", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "neon_sign_filament", "weight": 25, "quantity": 2, "enabled": true },
+          { "itemId": "velvet_charm", "weight": 15, "quantity": 1, "enabled": true }
         ]
       },
       {
         "id": "the-old-contract",
         "enabled": true,
         "rolls": 1,
-        "chanceBasisPoints": 600,
+        "chanceBasisPoints": 400,
         "entries": [
           { "itemId": "mythic_contract", "weight": 100, "quantity": 1, "enabled": true }
         ]
@@ -287,23 +882,24 @@
     ]
   },
   {
-    "id": "valley-undercity-dive-failure-v2",
+    "id": "valley-undercity-dive-failure-v4",
     "enabled": true,
-    "version": "valley-undercity-dive-failure-v2",
-    "waifubux": { "min": 60, "max": 100 },
+    "version": "valley-undercity-dive-failure-v4",
+    "waifubux": { "min": 26, "max": 44 },
     "essence": { "min": 1, "max": 2 },
-    "waifuXp": 180,
-    "playerXp": 45,
+    "waifuXp": 190,
+    "playerXp": 48,
     "groups": [
       {
         "id": "surfaced-with-what-she-could",
         "enabled": true,
-        "rolls": 3,
-        "chanceBasisPoints": 8500,
+        "rolls": 2,
+        "chanceBasisPoints": 3300,
         "entries": [
-          { "itemId": "smudged_love_letter", "weight": 40, "quantity": 1, "enabled": true },
-          { "itemId": "cracked_shrine_charm", "weight": 45, "quantity": 1, "enabled": true },
-          { "itemId": "neon_sign_filament", "weight": 15, "quantity": 1, "enabled": true }
+          { "itemId": "smudged_love_letter", "weight": 25, "quantity": 1, "enabled": true },
+          { "itemId": "cracked_shrine_charm", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "neon_sign_filament", "weight": 15, "quantity": 1, "enabled": true },
+          { "itemId": "dropped_setlist", "weight": 25, "quantity": 1, "enabled": true }
         ]
       }
     ]

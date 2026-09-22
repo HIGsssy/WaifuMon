@@ -8,6 +8,7 @@ import {
   handleExpeditionCancelConfirm,
   handleExpeditionClaim,
   handleExpeditionDeploy,
+  handleExpeditionMission,
   handleExpeditionPick,
   handleExpeditionView,
   handleExpeditions,
@@ -258,6 +259,10 @@ export function createDiscordClient(ctx: AppContext): Client {
         handleExpeditionBoard(ctx, i, prov),
       'exp:active': (i: ButtonInteraction, prov: Provisioned) =>
         handleExpeditionActive(ctx, i, prov),
+      // One mission from the overview. Regional concurrency means "the active
+      // screen" is no longer a single thing, so the id travels in the button.
+      'exp:mission': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleExpeditionMission(ctx, i, prov, args[0] ?? ''),
       'exp:view': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleExpeditionView(ctx, i, prov, args[0] ?? ''),
       'exp:pick': (i: StringSelectMenuInteraction, prov: Provisioned, args: string[]) =>

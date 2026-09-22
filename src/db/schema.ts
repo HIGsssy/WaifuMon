@@ -2094,16 +2094,20 @@ export const playerExpeditions = pgTable(
       .notNull()
       .references(() => players.id),
     /**
-     * Which of the player's expedition slots this mission occupies.
+     * Which slot *within its region* this mission occupies. 1-based.
      *
-     * 1-based. V1 offers exactly one slot because `tables.expeditions
-     * .maxConcurrent` is 1, but the *table* is keyed by (player, slot) rather
-     * than by player alone — so unlocking a second slot is a content edit and
-     * a service-side cap, not a migration and not a redesign of this table.
+     * No longer the concurrency key. Concurrency is regional: the active
+     * constraint is `(player_id, region)`, so a player's capacity is the
+     * number of regions they can reach with expedition content in them, and
+     * adding a region raises it with no edit anywhere.
      *
-     * The cap deliberately lives in content rather than in a CHECK here: a
-     * CHECK would make raising it a migration, which is exactly the coupling
-     * this column exists to avoid.
+     * The column is kept, and always written as 1, for one reason: it is the
+     * hook for the only concurrency axis regions do *not* derive — a
+     * per-region ladder ("Twin Peeks supports two at once"). That future is an
+     * index swap to `(player_id, region, slot_index)` and a per-region cap in
+     * content; the column, its `>= 1` CHECK and its path through the service
+     * and the view are already here. Dropping it would rewrite every
+     * historical row to buy back four bytes and close that door.
      */
     slotIndex: integer('slot_index').notNull().default(1),
     /**
@@ -2207,23 +2211,26 @@ export const playerExpeditions = pgTable(
       sql`(${t.status} = 'cancelled') = (${t.cancelledAt} is not null)`,
     ),
     /**
-     * One active mission per (player, slot). This — not a count in the
-     * service — is what makes a double-clicked Deploy impossible: the second
-     * insert loses to a unique violation rather than to a check that read a
-     * stale count.
+     * **One active mission per player per region.** This — not a count in the
+     * service — is what makes a double-clicked Deploy, or two requests racing
+     * on the same region, produce exactly one mission: the loser takes a
+     * unique violation rather than passing a check that read a stale count.
      *
-     * Keyed on the slot rather than on the player alone precisely so raising
-     * `maxConcurrent` needs no migration. Terminal rows are excluded, so a
-     * player may have any number of finished missions in the same slot.
+     * Keyed on the region rather than on the player alone because that *is*
+     * the rule: two active missions in different regions are legal and
+     * expected, and a player's concurrency is simply how many regions they can
+     * reach. Terminal rows are excluded, so claiming or cancelling frees the
+     * region with no extra write.
      */
-    uniqueIndex('player_expeditions_player_slot_active_uq')
-      .on(t.playerId, t.slotIndex)
+    uniqueIndex('player_expeditions_player_region_active_uq')
+      .on(t.playerId, t.region)
       .where(sql`${t.status} = 'active'`),
     /**
-     * A copy cannot be in two places at once, whatever the slot count becomes.
-     * Independent of the index above, because "one mission per slot" and "one
-     * mission per WaifuMon" stop being the same rule the moment a second slot
-     * exists.
+     * A copy cannot be in two places at once — including two *regions*.
+     * Deliberately global and deliberately independent of the index above:
+     * "one mission per region" and "one mission per WaifuMon" are different
+     * rules, and only this one stops a player shuttling the same WaifuMon
+     * across every region they have unlocked.
      */
     uniqueIndex('player_expeditions_waifu_active_uq')
       .on(t.waifuId)
@@ -2232,6 +2239,14 @@ export const playerExpeditions = pgTable(
     index('player_expeditions_due_idx')
       .on(t.completesAt)
       .where(sql`${t.status} = 'active'`),
+    /**
+     * Serves the per-player open-mission read, which regional concurrency made
+     * the hot path: every expedition screen now lists *every* region the
+     * player has something running in, not just one row.
+     */
+    index('player_expeditions_player_open_idx')
+      .on(t.playerId, t.region)
+      .where(sql`${t.status} in ('active','resolved')`),
     /** Serves the profile/portal history read. */
     index('player_expeditions_player_history_idx').on(t.playerId, t.startedAt),
   ],

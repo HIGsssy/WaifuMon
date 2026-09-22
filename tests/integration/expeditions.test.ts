@@ -26,8 +26,9 @@ import {
   ExpeditionNotCancellableError,
   ExpeditionNotCompleteError,
   ExpeditionNotFoundError,
-  ExpeditionSlotsFullError,
+  ExpeditionRegionBusyError,
   ExpeditionsDisabledError,
+  ExpeditionWrongRegionError,
   WaifuReleaseBlockedError,
   WaifuUnavailableError,
 } from '../../src/shared/errors';
@@ -45,7 +46,13 @@ import {
   createWaifuAvailabilityService,
 } from '../../src/modules/collection/waifuAvailability';
 import { raceResolverFromContent } from '../../src/modules/encounters/speciesSelection';
-import { bootstrapApp, insertOwnedWaifu, provisionPlayer, type App } from '../helpers/fixtures';
+import {
+  bootstrapApp,
+  forceRegion,
+  insertOwnedWaifu,
+  provisionPlayer,
+  type App,
+} from '../helpers/fixtures';
 import { createTestDb, type TestDb } from '../helpers/testDb';
 
 let t: TestDb;
@@ -80,6 +87,47 @@ function definition(over: Record<string, unknown> = {}): RegionalExpedition {
     }),
     region: region as RegionalExpedition['region'],
   };
+}
+
+/**
+ * One mission on every configured tier, with `over` applied to the 6h one.
+ *
+ * The board draws one mission per duration tier, so a region that appears on a
+ * board at all has to cover the whole ladder — a single-mission region is a
+ * content error now, not a minimal fixture. `test_run` stays the 6h mission so
+ * every deployment test still names it.
+ */
+function completePool(over: Record<string, unknown> = {}): RegionalExpedition[] {
+  return [
+    definition({ key: 'test_run_quick', durationMinutes: 60 }),
+    definition({ key: 'test_run_short', durationMinutes: 180 }),
+    definition(over),
+    definition({ key: 'test_run_night', durationMinutes: 1080 }),
+  ];
+}
+
+/** The keys `completePool` puts on a board, in display order. */
+const POOL_KEYS = ['test_run_quick', 'test_run_short', 'test_run', 'test_run_night'];
+
+/** The configured ladder, which every participating region must cover. */
+const TIERS = [60, 180, 360, 1080];
+
+/**
+ * A full ladder for one region, keyed `<prefix>_<minutes>`.
+ *
+ * Regional concurrency is only testable against more than one region, and a
+ * region that appears on a board at all has to cover every duration tier — so
+ * "a second region" means four missions, not one.
+ */
+function poolFor(region: string, prefix: string): RegionalExpedition[] {
+  return TIERS.map((minutes) =>
+    definition({ key: `${prefix}_${minutes}`, region, durationMinutes: minutes }),
+  );
+}
+
+/** Waifu Valley and Twin Peeks, both fully authored. */
+function twoRegionPool(): RegionalExpedition[] {
+  return [...completePool(), ...poolFor('twin-peeks', 'peeks')];
 }
 
 function rewardTable(over: Record<string, unknown> = {}): ExpeditionRewardTable {
@@ -200,7 +248,7 @@ afterAll(async () => {
 });
 
 beforeEach(() => {
-  installContent([definition()], DEFAULT_TABLES, { enabled: true, maxConcurrent: 1 });
+  installContent(completePool(), DEFAULT_TABLES, { enabled: true });
 });
 
 describe('the board', () => {
@@ -208,10 +256,11 @@ describe('the board', () => {
     const { playerId } = await playerWithWaifu();
     const board = await app.expeditions.getBoard(playerId);
     expect(board.regionId).toBe('waifu-valley');
-    expect(board.entries.map((e) => e.definition.key)).toEqual(['test_run']);
+    expect(board.entries.map((e) => e.definition.key)).toEqual(POOL_KEYS);
     expect(board.rotatesAt.getTime()).toBeGreaterThan(Date.now());
-    expect(board.slotsTotal).toBe(1);
-    expect(board.slotsAvailable).toBe(1);
+    expect(board.regionMission).toBeNull();
+    expect(board.elsewhere).toEqual([]);
+    expect(board.canDeploy).toBe(true);
   });
 
   // Selection is the hash sort; presentation is shortest first. Playtesting
@@ -249,11 +298,17 @@ describe('the board', () => {
     expect(board.enabled).toBe(true);
   });
 
-  it('reports a slot as busy while a mission is running', async () => {
+  it('reports this region as taken while a mission is running in it', async () => {
     const { playerId, waifuId } = await playerWithWaifu();
     await app.expeditions.deploy(playerId, 'test_run', waifuId);
     const board = await app.expeditions.getBoard(playerId);
-    expect(board.slotsAvailable).toBe(0);
+    expect(board.canDeploy).toBe(false);
+    expect(board.regionMission?.waifuId).toBe(waifuId);
+    expect(board.regionMission?.region).toBe('waifu-valley');
+    // Nothing anywhere else, and the missions on offer are unchanged: a busy
+    // region hides no listings, it only refuses deployments.
+    expect(board.elsewhere).toEqual([]);
+    expect(board.entries.map((e) => e.definition.key)).toEqual(POOL_KEYS);
   });
 });
 
@@ -302,7 +357,7 @@ describe('deploying', () => {
     );
   });
 
-  it('refuses a second mission while a slot is occupied', async () => {
+  it('refuses a second mission in a region that already has one', async () => {
     const { playerId, waifuId } = await playerWithWaifu();
     const second = await insertOwnedWaifu(t.db, {
       playerId,
@@ -312,14 +367,20 @@ describe('deploying', () => {
     await app.expeditions.deploy(playerId, 'test_run', waifuId);
     await expect(
       app.expeditions.deploy(playerId, 'test_run', second.id),
-    ).rejects.toBeInstanceOf(ExpeditionSlotsFullError);
+    ).rejects.toBeInstanceOf(ExpeditionRegionBusyError);
+    // Not even a different mission in the same region.
+    await expect(
+      app.expeditions.deploy(playerId, 'test_run_quick', second.id),
+    ).rejects.toBeInstanceOf(ExpeditionRegionBusyError);
   });
 
   it('refuses a copy already out on a mission', async () => {
     const { playerId, waifuId } = await playerWithWaifu();
     await app.expeditions.deploy(playerId, 'test_run', waifuId);
-    // Two slots, so the refusal is about the *copy* and not about capacity.
-    installContent([definition()], DEFAULT_TABLES, { maxConcurrent: 2 });
+    // Availability is checked before the region is, so this is the *copy*
+    // being refused rather than the region — which is the distinction that
+    // matters the moment a second region exists. See the regional-concurrency
+    // suite for the same copy refused across regions.
     await expect(
       app.expeditions.deploy(playerId, 'test_run', waifuId),
     ).rejects.toBeInstanceOf(WaifuUnavailableError);
@@ -367,14 +428,15 @@ describe('deploying', () => {
     expect(rows).toHaveLength(1);
   });
 
-  it('fills the lowest free slot when several are available', async () => {
-    installContent([definition()], DEFAULT_TABLES, { maxConcurrent: 3 });
+  it('writes slot 1 for every mission — the region is the key now', async () => {
+    installContent(twoRegionPool(), DEFAULT_TABLES);
     const { playerId, waifuId } = await playerWithWaifu();
     const b = await insertOwnedWaifu(t.db, { playerId, speciesId: demonSpecies.id, level: 10 });
     const first = await app.expeditions.deploy(playerId, 'test_run', waifuId);
-    const second = await app.expeditions.deploy(playerId, 'test_run', b.id);
+    await forceRegion(t.db, playerId, 'twin-peeks');
+    const second = await app.expeditions.deploy(playerId, 'peeks_360', b.id);
     expect(first.slotIndex).toBe(1);
-    expect(second.slotIndex).toBe(2);
+    expect(second.slotIndex).toBe(1);
   });
 });
 
@@ -597,7 +659,7 @@ describe('claiming', () => {
     expect(copy?.waifu.xp ?? 0).toBeGreaterThan(0);
   });
 
-  it('marks the mission claimed and frees the slot', async () => {
+  it('marks the mission claimed and frees the region', async () => {
     const { playerId, expeditionId } = await resolvedMission();
     await app.expeditions.claim(playerId, expeditionId);
 
@@ -605,7 +667,7 @@ describe('claiming', () => {
     expect(row.status).toBe('claimed');
     expect(row.claimedAt).not.toBeNull();
     expect(await app.expeditions.getActive(playerId)).toEqual([]);
-    expect((await app.expeditions.getBoard(playerId)).slotsAvailable).toBe(1);
+    expect((await app.expeditions.getBoard(playerId)).canDeploy).toBe(true);
   });
 
   it('refuses a second claim', async () => {
@@ -690,12 +752,12 @@ describe('cancellation', () => {
     expect(await app.currency.getBalances(playerId)).toEqual(before);
   });
 
-  it('frees the slot and the copy immediately', async () => {
+  it('frees the region and the copy immediately', async () => {
     const { playerId, waifuId } = await playerWithWaifu();
     const view = await app.expeditions.deploy(playerId, 'test_run', waifuId);
     await app.expeditions.cancel(playerId, view.id);
 
-    expect((await app.expeditions.getBoard(playerId)).slotsAvailable).toBe(1);
+    expect((await app.expeditions.getBoard(playerId)).canDeploy).toBe(true);
     // The same copy can go straight back out.
     const again = await app.expeditions.deploy(playerId, 'test_run', waifuId);
     expect(again.status).toBe('active');
@@ -958,6 +1020,7 @@ describe('restarting the bot mid-flight', () => {
       collection: app.collection,
       progression: app.progression,
       availability,
+      getCurrentRegion: (id) => app.travel.getCurrentRegion(id),
     });
 
     const [resolved] = await restarted.getActive(playerId);
@@ -985,6 +1048,7 @@ describe('restarting the bot mid-flight', () => {
       inventory: app.inventory,
       collection: app.collection,
       progression: app.progression,
+      getCurrentRegion: (id) => app.travel.getCurrentRegion(id),
     });
     const [byRestarted] = await restarted.getActive(playerId);
 
@@ -993,8 +1057,281 @@ describe('restarting the bot mid-flight', () => {
   });
 });
 
+/**
+ * Regional concurrency — the rule the whole feature now hangs on.
+ *
+ * One active mission per player per region; as many regions at once as the
+ * player can reach; the same WaifuMon in exactly one of them. Location gates
+ * *starting* a mission and nothing else, which is the half of the rule most
+ * likely to rot, so most of the tests below are about what location does
+ * **not** do.
+ */
+describe('regional concurrency', () => {
+  /** A player standing in Twin Peeks with a spare copy, both regions authored. */
+  async function twoRegionPlayer() {
+    installContent(twoRegionPool(), DEFAULT_TABLES);
+    const { playerId, waifuId } = await playerWithWaifu();
+    const second = await insertOwnedWaifu(t.db, {
+      playerId,
+      speciesId: demonSpecies.id,
+      level: 10,
+    });
+    return { playerId, valleyWaifu: waifuId, peeksWaifu: second.id };
+  }
+
+  it('runs two missions at once in different regions', async () => {
+    const { playerId, valleyWaifu, peeksWaifu } = await twoRegionPlayer();
+
+    const valley = await app.expeditions.deploy(playerId, 'test_run', valleyWaifu);
+    await forceRegion(t.db, playerId, 'twin-peeks');
+    const peeks = await app.expeditions.deploy(playerId, 'peeks_360', peeksWaifu);
+
+    expect(valley.region).toBe('waifu-valley');
+    expect(peeks.region).toBe('twin-peeks');
+
+    const active = await app.expeditions.getActive(playerId);
+    expect(active).toHaveLength(2);
+    expect(active.every((v) => v.status === 'active')).toBe(true);
+    // Ordered by region, so a screen listing them is stable between reads.
+    expect(active.map((v) => v.region)).toEqual(['twin-peeks', 'waifu-valley']);
+  });
+
+  it('refuses a second mission in a region that already has one', async () => {
+    const { playerId, valleyWaifu, peeksWaifu } = await twoRegionPlayer();
+    await app.expeditions.deploy(playerId, 'test_run', valleyWaifu);
+    await expect(
+      app.expeditions.deploy(playerId, 'test_run_quick', peeksWaifu),
+    ).rejects.toBeInstanceOf(ExpeditionRegionBusyError);
+  });
+
+  it('refuses a region holding a resolved-but-uncollected mission', async () => {
+    const { playerId, valleyWaifu, peeksWaifu } = await twoRegionPlayer();
+    const view = await app.expeditions.deploy(playerId, 'test_run', valleyWaifu);
+    await timeTravel(view.id);
+    // Resolves it, but does not collect it. The region stays held: this is
+    // service policy, not the index, and it is what stops a player stacking a
+    // mission on top of a payout they have not looked at.
+    await app.expeditions.getActive(playerId);
+
+    await expect(
+      app.expeditions.deploy(playerId, 'test_run', peeksWaifu),
+    ).rejects.toBeInstanceOf(ExpeditionRegionBusyError);
+    expect((await app.expeditions.getBoard(playerId)).canDeploy).toBe(false);
+  });
+
+  it('refuses the same WaifuMon in a second region', async () => {
+    const { playerId, valleyWaifu } = await twoRegionPlayer();
+    await app.expeditions.deploy(playerId, 'test_run', valleyWaifu);
+    await forceRegion(t.db, playerId, 'twin-peeks');
+    // The region is free; she is not. Availability refuses, not concurrency.
+    await expect(
+      app.expeditions.deploy(playerId, 'peeks_360', valleyWaifu),
+    ).rejects.toBeInstanceOf(WaifuUnavailableError);
+  });
+
+  it('refuses a mission whose region the player is not standing in', async () => {
+    const { playerId, peeksWaifu } = await twoRegionPlayer();
+    // Standing in Waifu Valley, reaching for a Twin Peeks job.
+    await expect(
+      app.expeditions.deploy(playerId, 'peeks_360', peeksWaifu),
+    ).rejects.toBeInstanceOf(ExpeditionWrongRegionError);
+    expect(await app.expeditions.getActive(playerId)).toEqual([]);
+  });
+
+  it('is unaffected by travelling away after deployment', async () => {
+    const { playerId, valleyWaifu } = await twoRegionPlayer();
+    const view = await app.expeditions.deploy(playerId, 'test_run', valleyWaifu);
+    const before = await rowOf(view.id);
+
+    await forceRegion(t.db, playerId, 'twin-peeks');
+
+    const [seen] = await app.expeditions.getActive(playerId);
+    expect(seen?.id).toBe(view.id);
+    expect(seen?.status).toBe('active');
+    const after = await rowOf(view.id);
+    expect(after.completesAt).toEqual(before.completesAt);
+    expect(after.successChance).toBe(before.successChance);
+    expect(after.resolutionPlan).toEqual(before.resolutionPlan);
+  });
+
+  it('claims a mission from a different region', async () => {
+    const { playerId, valleyWaifu } = await twoRegionPlayer();
+    const view = await app.expeditions.deploy(playerId, 'test_run', valleyWaifu);
+    await forceOutcome(view.id, 'success');
+    await timeTravel(view.id);
+
+    await forceRegion(t.db, playerId, 'twin-peeks');
+    const result = await app.expeditions.claim(playerId, view.id);
+    expect(result.outcome).toBe('success');
+    expect(result.rewards.waifubux).toBe(200);
+  });
+
+  it('cancels a mission from a different region', async () => {
+    const { playerId, valleyWaifu } = await twoRegionPlayer();
+    const view = await app.expeditions.deploy(playerId, 'test_run', valleyWaifu);
+
+    await forceRegion(t.db, playerId, 'twin-peeks');
+    const cancelled = await app.expeditions.cancel(playerId, view.id);
+    expect(cancelled.status).toBe('cancelled');
+    expect(await app.expeditions.getActive(playerId)).toEqual([]);
+  });
+
+  it('settles one region without touching another', async () => {
+    const { playerId, valleyWaifu, peeksWaifu } = await twoRegionPlayer();
+    const valley = await app.expeditions.deploy(playerId, 'test_run', valleyWaifu);
+    await forceRegion(t.db, playerId, 'twin-peeks');
+    const peeks = await app.expeditions.deploy(playerId, 'peeks_360', peeksWaifu);
+
+    // Only the Waifu Valley mission falls due.
+    await forceOutcome(valley.id, 'success');
+    await timeTravel(valley.id);
+    await app.expeditions.claim(playerId, valley.id);
+
+    const peeksRow = await rowOf(peeks.id);
+    expect(peeksRow.status).toBe('active');
+    expect(peeksRow.outcome).toBeNull();
+    expect(peeksRow.rewards).toBeNull();
+
+    // Waifu Valley is immediately re-deployable; Twin Peeks is not.
+    const active = await app.expeditions.getActive(playerId);
+    expect(active.map((v) => v.region)).toEqual(['twin-peeks']);
+    await expect(
+      app.expeditions.deploy(playerId, 'peeks_60', valleyWaifu),
+    ).rejects.toBeInstanceOf(ExpeditionRegionBusyError);
+    await forceRegion(t.db, playerId, 'waifu-valley');
+    const again = await app.expeditions.deploy(playerId, 'test_run', valleyWaifu);
+    expect(again.status).toBe('active');
+  });
+
+  /**
+   * The index, not the service-side read, is what makes this safe. Two
+   * simultaneous presses on the *same* region must produce one mission.
+   */
+  it('produces exactly one mission when the same region is raced', async () => {
+    const { playerId, valleyWaifu, peeksWaifu } = await twoRegionPlayer();
+    const attempts = await Promise.allSettled([
+      app.expeditions.deploy(playerId, 'test_run', valleyWaifu),
+      app.expeditions.deploy(playerId, 'test_run_quick', peeksWaifu),
+    ]);
+    expect(attempts.filter((a) => a.status === 'fulfilled')).toHaveLength(1);
+    const rows = await t.db
+      .select()
+      .from(playerExpeditions)
+      .where(eq(playerExpeditions.playerId, playerId));
+    expect(rows).toHaveLength(1);
+  });
+
+  /**
+   * The mirror image, and the one that would have failed under the old global
+   * key: two deployments racing in *different* regions must both land.
+   *
+   * Driven at the database rather than through `deploy`, because a player
+   * stands in exactly one region at a time — there is no way to reach two
+   * different-region deployments concurrently through the service, and the
+   * thing under test is the index that used to serialise them.
+   */
+  it('lets two different regions be deployed concurrently and keeps both', async () => {
+    const { playerId, valleyWaifu, peeksWaifu } = await twoRegionPlayer();
+    const insert = (region: string, waifuId: number) =>
+      t.db.insert(playerExpeditions).values({
+        playerId,
+        expeditionKey: 'test_run',
+        region,
+        waifuId,
+        completesAt: sql`now() + interval '1 hour'`,
+        successChance: 0.5,
+        exceptionalChance: 0.05,
+        suitabilityBand: 'STRONG_MATCH',
+      });
+
+    const settled = await Promise.allSettled([
+      insert('waifu-valley', valleyWaifu),
+      insert('twin-peeks', peeksWaifu),
+    ]);
+    expect(settled.filter((a) => a.status === 'fulfilled')).toHaveLength(2);
+
+    const active = await app.expeditions.getActive(playerId);
+    expect(active.map((v) => v.region)).toEqual(['twin-peeks', 'waifu-valley']);
+  });
+
+  it('shows the other regions on the board without blocking this one', async () => {
+    const { playerId, valleyWaifu, peeksWaifu } = await twoRegionPlayer();
+    await app.expeditions.deploy(playerId, 'test_run', valleyWaifu);
+    await forceRegion(t.db, playerId, 'twin-peeks');
+
+    const board = await app.expeditions.getBoard(playerId);
+    expect(board.regionId).toBe('twin-peeks');
+    expect(board.regionMission).toBeNull();
+    expect(board.canDeploy).toBe(true);
+    expect(board.elsewhere.map((v) => v.region)).toEqual(['waifu-valley']);
+
+    // And deploying here really is allowed.
+    const peeks = await app.expeditions.deploy(playerId, 'peeks_360', peeksWaifu);
+    expect(peeks.region).toBe('twin-peeks');
+  });
+
+  /**
+   * A snapshot written before regional concurrency existed must still resolve
+   * and still pay its own tables. The migration touched no row, so the only
+   * thing that could break this is a reader that started demanding a field the
+   * old plan does not have.
+   */
+  it('resolves an in-flight mission deployed under the old slot model', async () => {
+    installContent(twoRegionPool(), DEFAULT_TABLES);
+    const { playerId, waifuId } = await playerWithWaifu();
+    const view = await app.expeditions.deploy(playerId, 'test_run', waifuId);
+
+    // Make the row look exactly like a pre-migration one: slot 1, and content
+    // since retuned out from under it.
+    await t.db
+      .update(playerExpeditions)
+      .set({ slotIndex: 1 })
+      .where(eq(playerExpeditions.id, view.id));
+    installContent(
+      [definition({ rewardTable: 'test_success' })],
+      [rewardTable({ waifubux: { min: 1, max: 1 }, essence: undefined, groups: [] })],
+    );
+
+    await forceOutcome(view.id, 'success');
+    await timeTravel(view.id);
+    const result = await app.expeditions.claim(playerId, view.id);
+    // The snapshot's tables, not the retuned live ones.
+    expect(result.rewards.waifubux).toBe(200);
+    expect(result.outcome).toBe('success');
+  });
+
+  it('stays deterministic and idempotent across regions', async () => {
+    const { playerId, valleyWaifu, peeksWaifu } = await twoRegionPlayer();
+    const valley = await app.expeditions.deploy(playerId, 'test_run', valleyWaifu);
+    await forceRegion(t.db, playerId, 'twin-peeks');
+    const peeks = await app.expeditions.deploy(playerId, 'peeks_360', peeksWaifu);
+    await timeTravel(valley.id);
+    await timeTravel(peeks.id);
+
+    // Read repeatedly: resolution is idempotent, and the two missions do not
+    // borrow each other's roll.
+    const first = await app.expeditions.getActive(playerId);
+    const second = await app.expeditions.getActive(playerId);
+    expect(second.map((v) => v.outcome)).toEqual(first.map((v) => v.outcome));
+    expect(second.map((v) => v.rewards)).toEqual(first.map((v) => v.rewards));
+
+    // Concurrent claims on two different missions: both pay, once each.
+    const claims = await Promise.all([
+      app.expeditions.claim(playerId, valley.id),
+      app.expeditions.claim(playerId, peeks.id),
+    ]);
+    expect(claims).toHaveLength(2);
+    for (const id of [valley.id, peeks.id]) {
+      expect((await rowOf(id)).status).toBe('claimed');
+      await expect(app.expeditions.claim(playerId, id)).rejects.toBeInstanceOf(
+        ExpeditionAlreadyClaimedError,
+      );
+    }
+  });
+});
+
 describe('database-enforced invariants', () => {
-  it('refuses a second active row in the same slot', async () => {
+  it('refuses a second active row in the same region', async () => {
     const { playerId, waifuId } = await playerWithWaifu();
     await app.expeditions.deploy(playerId, 'test_run', waifuId);
     const second = await insertOwnedWaifu(t.db, {
@@ -1006,7 +1343,6 @@ describe('database-enforced invariants', () => {
     await expect(
       t.db.insert(playerExpeditions).values({
         playerId,
-        slotIndex: 1,
         expeditionKey: 'test_run',
         region: 'waifu-valley',
         waifuId: second.id,
@@ -1015,18 +1351,71 @@ describe('database-enforced invariants', () => {
         exceptionalChance: 0.05,
         suitabilityBand: 'FAIR',
       }),
-    ).rejects.toThrow(/player_expeditions_player_slot_active_uq/);
+    ).rejects.toThrow(/player_expeditions_player_region_active_uq/);
   });
 
-  it('refuses the same copy on two missions, even in different slots', async () => {
+  /**
+   * The index is keyed on the region, so a *different* slot index must not be
+   * a way around it. This is the assertion that would fail if somebody
+   * reinstated the old (player, slot) key alongside the new one.
+   */
+  it('refuses a second active row in the same region whatever the slot index', async () => {
     const { playerId, waifuId } = await playerWithWaifu();
     await app.expeditions.deploy(playerId, 'test_run', waifuId);
+    const second = await insertOwnedWaifu(t.db, {
+      playerId,
+      speciesId: demonSpecies.id,
+      level: 10,
+    });
     await expect(
       t.db.insert(playerExpeditions).values({
         playerId,
         slotIndex: 2,
         expeditionKey: 'test_run',
         region: 'waifu-valley',
+        waifuId: second.id,
+        completesAt: sql`now() + interval '1 hour'`,
+        successChance: 0.5,
+        exceptionalChance: 0.05,
+        suitabilityBand: 'FAIR',
+      }),
+    ).rejects.toThrow(/player_expeditions_player_region_active_uq/);
+  });
+
+  it('allows a second active row in a different region', async () => {
+    const { playerId, waifuId } = await playerWithWaifu();
+    await app.expeditions.deploy(playerId, 'test_run', waifuId);
+    const second = await insertOwnedWaifu(t.db, {
+      playerId,
+      speciesId: demonSpecies.id,
+      level: 10,
+    });
+    await t.db.insert(playerExpeditions).values({
+      playerId,
+      expeditionKey: 'test_run',
+      region: 'twin-peeks',
+      waifuId: second.id,
+      completesAt: sql`now() + interval '1 hour'`,
+      successChance: 0.5,
+      exceptionalChance: 0.05,
+      suitabilityBand: 'FAIR',
+    });
+    const rows = await t.db
+      .select()
+      .from(playerExpeditions)
+      .where(eq(playerExpeditions.playerId, playerId));
+    expect(rows).toHaveLength(2);
+  });
+
+  it('refuses the same copy on two missions, even in different regions', async () => {
+    const { playerId, waifuId } = await playerWithWaifu();
+    await app.expeditions.deploy(playerId, 'test_run', waifuId);
+    await expect(
+      t.db.insert(playerExpeditions).values({
+        playerId,
+        expeditionKey: 'test_run',
+        // A different region, so only the waifu index can refuse this.
+        region: 'twin-peeks',
         waifuId,
         completesAt: sql`now() + interval '1 hour'`,
         successChance: 0.5,
@@ -1036,13 +1425,14 @@ describe('database-enforced invariants', () => {
     ).rejects.toThrow(/player_expeditions_waifu_active_uq/);
   });
 
-  it('allows a new mission in a slot whose previous one finished', async () => {
+  it('allows a new mission in a region whose previous one finished', async () => {
     const { playerId, waifuId } = await playerWithWaifu();
     const view = await app.expeditions.deploy(playerId, 'test_run', waifuId);
     await timeTravel(view.id);
     await app.expeditions.claim(playerId, view.id);
     const again = await app.expeditions.deploy(playerId, 'test_run', waifuId);
     expect(again.slotIndex).toBe(1);
+    expect(again.region).toBe('waifu-valley');
   });
 
   it('refuses an active row that claims to be resolved', async () => {

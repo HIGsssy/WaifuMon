@@ -292,13 +292,26 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   // real; the account is simply not in a state where the action means
   // anything. That is the same reading every other gameplay refusal here gets.
   EXPEDITIONS_DISABLED: 422,
-  EXPEDITION_SLOTS_FULL: 422,
+  EXPEDITION_REGION_BUSY: 422,
+  /**
+   * Also 422 rather than 403: the player is allowed to run this mission,
+   * they are simply standing somewhere else. Travelling is the fix, and
+   * travelling is a game action rather than an authorisation change.
+   */
+  EXPEDITION_WRONG_REGION: 422,
   WAIFU_UNAVAILABLE: 422,
   EXPEDITION_NOT_COMPLETE: 422,
   EXPEDITION_ALREADY_CLAIMED: 422,
   EXPEDITION_NOT_CANCELLABLE: 422,
   /** A broken content set, not a bad request — the operator gets the detail. */
   EXPEDITION_CONTENT_INVALID: 500,
+  /**
+   * Also a content fault, not a client one: the region is real and the board
+   * was asked for correctly, but its pool cannot fill every duration tier.
+   * `validateExpeditionContent` refuses this at load, so reaching it here
+   * means content changed underneath a running process.
+   */
+  EXPEDITION_POOL_INCOMPLETE: 500,
   ITEM_HAS_NO_EFFECT: 422,
   NOT_A_DUPLICATE: 422,
   WAIFU_NICKNAME_TOO_EARLY: 422,

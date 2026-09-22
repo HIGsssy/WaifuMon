@@ -34,6 +34,7 @@ import {
   handleExpeditionCancelConfirm,
   handleExpeditionClaim,
   handleExpeditionDeploy,
+  handleExpeditionMission,
   handleExpeditionPick,
   handleExpeditionView,
   handleExpeditions,
@@ -43,6 +44,7 @@ import { handleMenu } from '../../src/discord/commands/waifumon';
 import {
   bootstrapApp,
   createEventHarness,
+  forceRegion,
   insertOwnedWaifu,
   provisionPlayer,
   type App,
@@ -184,6 +186,29 @@ function definition(over: Record<string, unknown> = {}): RegionalExpedition {
   };
 }
 
+/**
+ * One mission on every configured tier, with `over` applied to the 6h one.
+ *
+ * The board draws one mission per duration tier, so a region that appears on a
+ * board at all has to cover the whole ladder — a single-mission region is a
+ * content error now, not a minimal fixture. `supply_run` stays the 6h mission,
+ * so every screen these tests drive still opens on the same mission.
+ */
+function completePool(over: Record<string, unknown> = {}): RegionalExpedition[] {
+  // `region` is a property of the pool, not of one mission: moving the region
+  // under test has to move the whole ladder, or the region left behind is the
+  // incomplete one.
+  const region = over.region;
+  const sibling = (o: Record<string, unknown>) =>
+    definition(region === undefined ? o : { ...o, region });
+  return [
+    sibling({ key: 'night_market', name: 'Night Market Errand', emoji: '🏮', durationMinutes: 60 }),
+    sibling({ key: 'well_watch', name: 'Well Watch', emoji: '🪣', durationMinutes: 180 }),
+    definition(over),
+    sibling({ key: 'dune_vigil', name: 'Dune Vigil', emoji: '🌙', durationMinutes: 1080 }),
+  ];
+}
+
 const TABLES: ExpeditionRewardTable[] = [
   ExpeditionRewardTableSchema.parse({
     id: 'supply_success',
@@ -208,7 +233,7 @@ const TABLES: ExpeditionRewardTable[] = [
 ];
 
 function installContent(
-  expeditions: RegionalExpedition[] = [definition()],
+  expeditions: RegionalExpedition[] = completePool(),
   config: Record<string, unknown> = {},
 ) {
   app.content.expeditions = expeditions;
@@ -416,7 +441,7 @@ describe('board rendering', () => {
   });
 
   it('shows an empty state when nothing is on offer here', async () => {
-    installContent([definition({ region: 'thirstlands' })]);
+    installContent(completePool({ region: 'thirstlands' }));
     const { prov } = await player();
     const btn = fakeButton();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -429,7 +454,7 @@ describe('board rendering', () => {
   });
 
   it('says so when the whole feature is switched off', async () => {
-    installContent([definition()], { enabled: false });
+    installContent(completePool(), { enabled: false });
     const { prov } = await player();
     const btn = fakeButton();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -481,7 +506,7 @@ describe('candidate selection', () => {
   });
 
   it('marks a missed race with a cross rather than hiding it', async () => {
-    installContent([definition({ preferredRaces: ['angel'] })]);
+    installContent(completePool({ preferredRaces: ['angel'] }));
     const { prov } = await player(31);
     const btn = fakeButton();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -634,13 +659,196 @@ describe('the active screen', () => {
     );
   });
 
-  it('still reaches the board while a mission is running', async () => {
+  it('still reaches the board while a mission is running, and says why it is shut', async () => {
     const { prov } = await deployed();
     const btn = fakeButton();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await handleExpeditionBoard(ctx, btn as any, prov);
-    expect(screenText(painted(btn))).toContain('Desert Supply Run');
-    expect(screenText(painted(btn))).toContain('0/1');
+    const payload = painted(btn);
+    const text = screenText(payload);
+    // The listings are all still there — a busy region hides nothing.
+    expect(text).toContain('Desert Supply Run');
+    expect(text).toContain('Night Market Errand');
+    // But it says, in words, that this region is taken and by whom.
+    expect(text).toContain('already working this region');
+    // …and every mission button is greyed out rather than missing.
+    const missionButtons = components(payload).filter((b) =>
+      b.customId.startsWith('wm|v1|exp|view'),
+    );
+    expect(missionButtons).toHaveLength(4);
+    expect(missionButtons.every((b) => b.disabled)).toBe(true);
+  });
+});
+
+/**
+ * Multiple regions on screen.
+ *
+ * Every assertion here is about a thing the one-mission UI could not express:
+ * a roll-call of regions, a board that refuses *this* region without refusing
+ * the others, and a claim that frees one region and leaves the rest alone.
+ */
+describe('several regions at once', () => {
+  /** Two missions running: Waifu Valley and Twin Peeks. */
+  async function twoRegions() {
+    // Distinct keys per region: a content key is global, so a second region
+    // reusing `supply_run` would simply shadow the first one.
+    const peeksPool = completePool({ region: 'twin-peeks' }).map((d) => ({
+      ...d,
+      key: `peeks_${d.key}`,
+    }));
+    installContent([...completePool(), ...peeksPool]);
+    const { prov, waifuId } = await player();
+    const second = await insertOwnedWaifu(t.db, {
+      playerId: prov.playerId,
+      speciesId: demonSpecies.id,
+      level: 12,
+      nickname: 'Morrigan',
+    });
+    const valley = await app.expeditions.deploy(prov.playerId, 'supply_run', waifuId);
+    await forceRegion(t.db, prov.playerId, 'twin-peeks');
+    const peeks = await app.expeditions.deploy(prov.playerId, 'peeks_supply_run', second.id);
+    return { prov, waifuId, peeksWaifuId: second.id, valley, peeks };
+  }
+
+  it('opens on a roll-call of every region working', async () => {
+    const { prov } = await twoRegions();
+    const btn = fakeButton();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleExpeditions(ctx, btn as any, prov);
+    const payload = painted(btn);
+    const text = screenText(payload);
+
+    expect(text).toContain('Your Expeditions');
+    expect(text).toContain('**2** regions working');
+    // Region, mission and deployed WaifuMon, for both.
+    expect(text).toContain('Waifu Valley');
+    expect(text).toContain('Twin Peeks');
+    expect(text).toContain('Morrigan');
+    expect(text).toContain('Desert Supply Run');
+    // Duration state, rendered by Discord rather than by us.
+    expect(text).toMatch(/<t:\d+:R>/);
+    expect(text).toContain('One expedition per region');
+    assertNoNumericOdds(text);
+
+    // One button per region, and they name the region.
+    const missionButtons = components(payload).filter((b) =>
+      b.customId.startsWith('wm|v1|exp|mission'),
+    );
+    expect(missionButtons).toHaveLength(2);
+    expect(missionButtons.map((b) => b.label).sort()).toEqual(['Twin Peeks', 'Waifu Valley']);
+    // Well inside Discord's five-row limit.
+    expect(payload.components.length).toBeLessThanOrEqual(5);
+  });
+
+  it('marks a finished mission as collectable on the roll-call', async () => {
+    const { prov, valley } = await twoRegions();
+    await timeTravel(valley.id);
+
+    const btn = fakeButton();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleExpeditions(ctx, btn as any, prov);
+    const payload = painted(btn);
+    expect(screenText(payload)).toContain('1** ready to collect');
+    const collectable = components(payload).find((b) => b.label.includes('collect'));
+    expect(collectable?.customId).toBe(`wm|v1|exp|mission|${valley.id}`);
+  });
+
+  it('opens one mission from the roll-call, and offers the way back', async () => {
+    const { prov, valley } = await twoRegions();
+    const btn = fakeButton();
+    await handleExpeditionMission(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ctx, btn as any, prov, String(valley.id),
+    );
+    const payload = painted(btn);
+    expect(screenText(payload)).toContain('Waifu Valley');
+    expect(screenText(payload)).toContain('is out on this job');
+    expect(components(payload).map((b) => b.customId)).toContain('wm|v1|exp|active');
+  });
+
+  it('shows the busy region on the board and lets the free one deploy', async () => {
+    const { prov, valley } = await twoRegions();
+    // Travel home, where a mission is already running.
+    await forceRegion(t.db, prov.playerId, 'waifu-valley');
+
+    const btn = fakeButton();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleExpeditionBoard(ctx, btn as any, prov);
+    const payload = painted(btn);
+    const text = screenText(payload);
+
+    expect(text).toContain('Expeditions — Waifu Valley');
+    expect(text).toContain('already working this region');
+    // The other region is named, and named as information rather than a block.
+    expect(text).toContain('Also out');
+    expect(text).toContain('Twin Peeks');
+    expect(
+      components(payload)
+        .filter((b) => b.customId.startsWith('wm|v1|exp|view'))
+        .every((b) => b.disabled),
+    ).toBe(true);
+    // A direct route to the WaifuMon holding this region.
+    expect(components(payload).map((b) => b.customId)).toContain(
+      `wm|v1|exp|mission|${valley.id}`,
+    );
+    assertNoNumericOdds(text);
+  });
+
+  it('refuses to open a mission detail in a region already deployed', async () => {
+    const { prov } = await twoRegions();
+    await forceRegion(t.db, prov.playerId, 'waifu-valley');
+
+    const btn = fakeButton();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleExpeditionView(ctx, btn as any, prov, 'night_market');
+    const text = screenText(painted(btn));
+    // Bounced back to the board rather than offered a menu that can only fail.
+    expect(text).toContain('already working this region');
+    expect(selectOptions(painted(btn))).toHaveLength(0);
+  });
+
+  it('still offers a deployment in a region that is free', async () => {
+    const { prov, waifuId } = await twoRegions();
+    // Cancel Twin Peeks so the region the player is standing in opens back up.
+    const [peeks] = (await app.expeditions.getActive(prov.playerId)).filter(
+      (v) => v.region === 'twin-peeks',
+    );
+    await app.expeditions.cancel(prov.playerId, peeks!.id);
+
+    const btn = fakeButton();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleExpeditionBoard(ctx, btn as any, prov);
+    const payload = painted(btn);
+    expect(screenText(payload)).not.toContain('already working this region');
+    // Waifu Valley is still running, and says so without blocking anything.
+    expect(screenText(payload)).toContain('Also out');
+    expect(
+      components(payload)
+        .filter((b) => b.customId.startsWith('wm|v1|exp|view'))
+        .every((b) => b.disabled),
+    ).toBe(false);
+    // The copy in Waifu Valley is not on offer here.
+    const detail = fakeButton();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleExpeditionView(ctx, detail as any, prov, 'supply_run');
+    expect(selectOptions(painted(detail)).map((o) => o.value)).not.toContain(String(waifuId));
+  });
+
+  it('collects one region and leaves the other running', async () => {
+    const { prov, valley, peeks } = await twoRegions();
+    await timeTravel(valley.id);
+
+    const btn = fakeButton();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleExpeditionClaim(ctx, btn as any, prov, String(valley.id));
+    const text = screenText(painted(btn));
+    expect(text).toContain('Desert Supply Run');
+    expect(painted(btn).embeds[0].toJSON().footer.text).toContain('Waifu Valley is free again');
+
+    // The other mission is untouched, and is now the only one running.
+    const active = await app.expeditions.getActive(prov.playerId);
+    expect(active.map((v) => v.id)).toEqual([peeks.id]);
+    expect(active[0]?.status).toBe('active');
   });
 });
 
@@ -783,8 +991,13 @@ describe('cancellation', () => {
     const text = screenText(painted(btn));
     expect(text).toContain('was recalled');
     expect(text).toContain('no rewards');
-    // Back on the board, with the slot free.
-    expect(text).toContain('1/1');
+    // Back on the board, with the region open again.
+    expect(text).not.toContain('already working this region');
+    expect(
+      components(painted(btn))
+        .filter((b) => b.customId.startsWith('wm|v1|exp|view'))
+        .every((b) => b.disabled),
+    ).toBe(false);
 
     expect(await app.currency.getBalances(prov.playerId)).toEqual(before);
     const [row] = await t.db

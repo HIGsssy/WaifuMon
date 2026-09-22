@@ -2160,13 +2160,19 @@ export const ExpeditionsConfigSchema = z
     /** How long one board stands before it is redrawn. */
     rotationHours: z.number().int().positive().default(12),
     /**
-     * Expedition slots a player may have running at once.
+     * **Deprecated, ignored.** The old global expedition-slot count.
      *
-     * V1 ships `1`. The state table is keyed by `(player_id, slot_index)`
-     * rather than by player alone, so raising this is a content edit and a
-     * service-side cap — not a migration and not a redesign.
+     * Concurrency is regional now: a player may have one active mission *per
+     * region*, enforced by `player_expeditions_player_region_active_uq`, and
+     * their capacity is simply how many regions they can reach with expedition
+     * content in them. Adding a region therefore raises every player's
+     * concurrency on its own — which is the point, and is exactly what a
+     * global ceiling here would have vetoed.
+     *
+     * Still accepted, like `bands` below, so a `tables.json` edited through
+     * the admin panel before this change still loads. Nothing reads it.
      */
-    maxConcurrent: z.number().int().positive().default(1),
+    maxConcurrent: z.number().int().positive().optional(),
     /** Whether the active Buddy may be deployed. Ships off: she is busy. */
     buddyDeployable: z.boolean().default(false),
     /** Additive suitability terms, in probability points. */
@@ -2276,6 +2282,21 @@ export const ExpeditionsConfigSchema = z
         code: z.ZodIssueCode.custom,
         message: 'expeditions.durations must name at least one tier',
         path: ['durations'],
+      });
+    }
+    // The board draws one mission per duration tier, so it needs at least one
+    // slot per tier. A smaller board would not shrink evenly — it would drop
+    // the *longest* commitments, which are exactly the ones a player cannot
+    // simply wait for.
+    const tierCount = new Set(minutes).size;
+    if (tierCount > 0 && config.boardSize < tierCount) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          `expeditions.boardSize (${config.boardSize}) is below the number of duration ` +
+          `tiers (${tierCount}). The board shows one mission per tier, so raise boardSize ` +
+          'or remove a tier.',
+        path: ['boardSize'],
       });
     }
   });

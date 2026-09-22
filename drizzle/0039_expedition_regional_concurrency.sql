@@ -1,0 +1,60 @@
+-- Expeditions — concurrency becomes regional.
+--
+-- Hand-written for the reason recorded in 0019-0021, 0035-0038: the
+-- drizzle-kit snapshots stop at 0004, so a generated migration would diff
+-- against a stale baseline. The journal `when` is above 0038's, because the
+-- node-postgres migrator skips any entry not strictly newer than the last
+-- applied one.
+--
+-- ── What changes, and why it is only an index ──────────────────────────────
+--
+-- 0038 keyed the active-mission constraint on (player_id, slot_index) so that
+-- raising a *global* slot count would need no migration. The rule has changed
+-- shape rather than size: a player may now have one active mission **per
+-- region**, and gains capacity by unlocking regions rather than by an operator
+-- editing a number. The constraint follows the rule, so the key becomes
+-- (player_id, region).
+--
+-- This is the whole of the schema change. No column is added, no column is
+-- dropped, no row is rewritten, and nothing in flight is touched:
+--
+--   * every in-flight mission keeps its `resolution_plan`, `completes_at`,
+--     `success_chance`, `exceptional_chance` and `logic_version`, so its
+--     deterministic outcome and its reward tables stay exactly as authoritative
+--     as they were before this ran;
+--   * the new index cannot fail on existing data. Under the old constraint
+--     every active row carried `slot_index = 1` (the service only ever
+--     allocated slot 1 with `maxConcurrent = 1`), so no player had more than
+--     one active row at all — let alone two in one region.
+--
+-- ── Why `slot_index` stays ────────────────────────────────────────────────
+--
+-- It is no longer the concurrency key, and the service now always writes 1.
+-- It is kept rather than dropped because:
+--
+--   * dropping it would rewrite every historical row for no reader, and it is
+--     the one part of 0038's groundwork that is genuinely one-way;
+--   * it remains the hook for a *per-region* slot ladder ("Twin Peeks supports
+--     two simultaneous expeditions"), which is the only concurrency axis left
+--     that is not derived from the region set. That future is a two-line index
+--     swap to (player_id, region, slot_index) — with the column already there,
+--     already checked `>= 1`, and already carried through the service and the
+--     view.
+--
+-- What it is *not* any more is a global ceiling. `tables.expeditions
+-- .maxConcurrent` is deprecated and ignored in the same change, so adding a
+-- region never requires anyone to raise a number by hand.
+
+DROP INDEX IF EXISTS "player_expeditions_player_slot_active_uq";--> statement-breakpoint
+-- One active mission per player per region. This — not a count in the service
+-- — is what makes a double-clicked Deploy, or two requests racing on the same
+-- region, produce exactly one mission: the loser takes a unique violation
+-- rather than passing a check that read a stale count.
+--
+-- Terminal rows (`resolved`, `claimed`, `cancelled`) are excluded, so a region
+-- becomes eligible again the instant a mission leaves `active` — which is what
+-- makes claim and cancel free the region with no extra write.
+CREATE UNIQUE INDEX IF NOT EXISTS "player_expeditions_player_region_active_uq" ON "player_expeditions" ("player_id","region") WHERE "player_expeditions"."status" = 'active';--> statement-breakpoint
+-- Serves the per-player active/resolved read, which is now the hot path: the
+-- overview screen lists every region a player has a mission in.
+CREATE INDEX IF NOT EXISTS "player_expeditions_player_open_idx" ON "player_expeditions" ("player_id","region") WHERE "player_expeditions"."status" in ('active','resolved');

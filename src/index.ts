@@ -207,6 +207,21 @@ async function main(): Promise<void> {
    * correct: nothing can be on an expedition before the expedition service
    * exists to have deployed it.
    */
+  /**
+   * Hoisted above expeditions, which now needs it: a deployment is only legal
+   * from the region the mission belongs to, and this is the canonical answer
+   * to "where is the player". Travel itself depends on nothing in the
+   * availability knot below, so the move is a reordering and not a new edge.
+   */
+  const travel = createTravelService({
+    db,
+    currency,
+    // Same `contentSnapshot` closure the appearance and boss services use,
+    // so an admin Reload Content republishes prices and destinations
+    // without a restart.
+    getContent: () => contentSnapshot,
+  });
+
   let expeditions: ExpeditionService | undefined;
   const availability = createWaifuAvailabilityService({
     bulkProviders: [
@@ -250,6 +265,9 @@ async function main(): Promise<void> {
     collection,
     progression,
     availability,
+    // The narrow location port. Passed as a bound method rather than the whole
+    // service so expeditions cannot reach for a route or a pass.
+    getCurrentRegion: (playerId) => travel.getCurrentRegion(playerId),
   });
   const effects = createPlayerEffectsService(db);
   // Hoisted above the context literal because CaptureService now takes it:
@@ -402,14 +420,7 @@ async function main(): Promise<void> {
         tables: content.tables,
         timezone: config.dailyTimezone,
       }),
-      travel: createTravelService({
-        db,
-        currency,
-        // Same `contentSnapshot` closure the appearance and boss services use,
-        // so an admin Reload Content republishes prices and destinations
-        // without a restart.
-        getContent: () => contentSnapshot,
-      }),
+      travel,
       shop: createShopService({
         db,
         currency,

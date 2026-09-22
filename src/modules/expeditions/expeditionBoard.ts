@@ -7,6 +7,11 @@
  * proof by construction rather than by recovery, and it means a board cannot
  * drift out of sync with a clock nobody is watching.
  *
+ * The draw is **stratified by duration**: one slot per configured tier, filled
+ * by ranking that tier's missions alone. A player looking for an overnight
+ * mission finds one every window rather than 62% of them, which is what the
+ * duration ladder was for. The ranking itself is unchanged.
+ *
  * The rotation is **per player**. Two players standing in the same region at
  * the same moment see different boards, which is the fairer default: a shared
  * board makes the good mission a race, and a race is won by whoever happened
@@ -20,6 +25,7 @@
  */
 import { createHash } from 'node:crypto';
 import type { RegionalExpedition } from '../content/schemas';
+import { ConfigError, IncompleteExpeditionPoolError } from '../../shared/errors';
 
 /** Versioned salt. Changing it reshuffles every board at once — deliberate. */
 export const EXPEDITION_BOARD_SALT = 'waifumon.expedition.board.v1';
@@ -60,59 +66,136 @@ function boardHash(
 }
 
 /**
- * The missions visible to one player, in one region, in one rotation window.
+ * Rank a set of missions for one player, in one window: best first.
  *
- * Implemented as a deterministic *sort* followed by a take, rather than as a
- * weighted draw without replacement. The sort cannot pick the same mission
- * twice, needs no bookkeeping, and — because the key is a hash of the mission
- * *and* the player — gives every mission a genuinely independent chance of
- * ranking highly for any given player.
+ * The whole of the original selection algorithm, factored out unchanged. The
+ * key is a hash of the mission *and* the player *and* the window, so every
+ * mission has a genuinely independent chance of ranking highly for any given
+ * player, and a player's ranking is stable for as long as the window is.
  *
- * Ties break on the key so the result is total: two missions whose hashes
- * collide still order deterministically rather than depending on the order the
- * content files happened to be read in.
- *
- * A region with fewer missions than `boardSize` shows all of them. A region
- * with none shows none, which is an empty board and not an error — that is
- * what every region looks like until Phase 5 authors content.
+ * Ties break on the mission key so the order is **total**: two missions whose
+ * hashes collide still rank deterministically rather than depending on the
+ * order the content files happened to be read in.
  */
-export function buildBoard(input: {
-  playerId: number;
-  regionId: string;
-  expeditions: readonly RegionalExpedition[];
-  boardSize: number;
-  rotationHours: number;
-  now: Date;
-  salt?: string;
-}): RegionalExpedition[] {
-  const { playerId, regionId, expeditions, boardSize, rotationHours, now } = input;
-  const salt = input.salt ?? EXPEDITION_BOARD_SALT;
-  const window = rotationWindow(now, rotationHours);
-
-  // A disabled mission is off the board entirely rather than shown greyed out:
-  // the board is a list of things you can do, and content switches a mission
-  // off precisely so nobody has to look at it.
-  const candidates = expeditions.filter((e) => e.enabled && e.region === regionId);
-
-  return [...candidates]
+function rankForWindow(
+  missions: readonly RegionalExpedition[],
+  playerId: number,
+  regionId: string,
+  window: number,
+  salt: string,
+): RegionalExpedition[] {
+  return [...missions]
     .map((expedition) => ({
       expedition,
       key: boardHash(playerId, regionId, window, expedition.key, salt),
     }))
     .sort((a, b) => a.key - b.key || (a.expedition.key < b.expedition.key ? -1 : 1))
-    .slice(0, boardSize)
     .map((entry) => entry.expedition);
+}
+
+/**
+ * How many board slots each tier gets, shortest tier first.
+ *
+ * With the shipped `boardSize: 4` and the shipped four-tier ladder this is
+ * simply one each, which is the case the feature is designed around. The
+ * remainder is spread over the *shortest* tiers because a surplus slot is
+ * worth most where a player cycles fastest — an extra 1h option gets used
+ * several times a day, an extra overnight one at most once.
+ */
+function slotsPerTier(boardSize: number, tierCount: number): number[] {
+  const base = Math.floor(boardSize / tierCount);
+  const remainder = boardSize % tierCount;
+  return Array.from({ length: tierCount }, (_, i) => base + (i < remainder ? 1 : 0));
+}
+
+/**
+ * The missions visible to one player, in one region, in one rotation window.
+ *
+ * **Stratified by duration.** The board draws independently *within each
+ * configured tier* rather than from the region's pool as a whole, and returns
+ * the tiers shortest-first. That is the one behavioural change from the
+ * original uniform draw, and it exists because the uniform draw treated the
+ * duration ladder as decoration: with a pool of eleven and a board of four, a
+ * player had a ~38% chance of opening the board before bed and finding no
+ * overnight mission at all. A tier the content author wrote is a promise that
+ * the commitment length is available, not that it might be.
+ *
+ * Everything else is deliberately untouched. Selection within a tier is the
+ * same hash-sort over the same `(playerId, regionId, window, key, salt)` seed,
+ * so rotation timing, per-player variation, restart-proofness and the
+ * "reopening is not a reroll" property all hold exactly as before — the sort
+ * is simply applied to four small groups instead of one large one.
+ *
+ * A region with **no** enabled missions returns an empty board, which is not
+ * an error: that is what every unauthored region looks like. A region with
+ * *some* missions but a gap in the ladder throws
+ * {@link IncompleteExpeditionPoolError} rather than returning a short board —
+ * see that error for why silence is the worse failure.
+ */
+export function buildBoard(input: {
+  playerId: number;
+  regionId: string;
+  expeditions: readonly RegionalExpedition[];
+  /** Every configured tier length, in minutes. From `expeditions.durations`. */
+  durations: readonly number[];
+  boardSize: number;
+  rotationHours: number;
+  now: Date;
+  salt?: string;
+}): RegionalExpedition[] {
+  const { playerId, regionId, expeditions, durations, boardSize, rotationHours, now } = input;
+  const salt = input.salt ?? EXPEDITION_BOARD_SALT;
+  const window = rotationWindow(now, rotationHours);
+
+  // Ascending, de-duplicated: the ladder is a set of lengths, and the board is
+  // laid out shortest first. Sorting here rather than trusting the caller also
+  // means `tables.json` may list the tiers in any order.
+  const tiers = [...new Set(durations)].sort((a, b) => a - b);
+  if (tiers.length === 0) {
+    throw new ConfigError(
+      'expeditions.durations is empty: a board cannot be stratified by a ladder with no tiers.',
+    );
+  }
+  if (boardSize < tiers.length) {
+    // Unreachable through content — `ExpeditionsConfigSchema` refuses it at
+    // load — but asserted here so the guarantee is enforced by the function
+    // that makes it rather than only by the file that configures it.
+    throw new ConfigError(
+      `expeditions.boardSize (${boardSize}) is below the number of duration tiers ` +
+        `(${tiers.length}). The board shows one mission per tier, so a smaller board ` +
+        'would silently drop the longest commitments.',
+    );
+  }
+
+  // A disabled mission is off the board entirely rather than shown greyed out:
+  // the board is a list of things you can do, and content switches a mission
+  // off precisely so nobody has to look at it.
+  const candidates = expeditions.filter((e) => e.enabled && e.region === regionId);
+  if (candidates.length === 0) return [];
+
+  const byTier = tiers.map((minutes) => candidates.filter((e) => e.durationMinutes === minutes));
+
+  const missing = tiers.filter((_, i) => byTier[i]!.length === 0);
+  if (missing.length > 0) throw new IncompleteExpeditionPoolError(regionId, missing);
+
+  const slots = slotsPerTier(boardSize, tiers.length);
+  return byTier.flatMap((missionsInTier, i) =>
+    rankForWindow(missionsInTier, playerId, regionId, window, salt).slice(0, slots[i]!),
+  );
 }
 
 /**
  * The order a board is *shown* in: shortest mission first, key as the
  * tie-break. Presentation only.
  *
- * Deliberately a separate step applied after {@link buildBoard}. The hash sort
- * inside `buildBoard` decides *which* missions a window shows, and its order
- * is meaningless to a player (it read as 2h → 12h → 6h in playtesting).
- * Re-sorting the selected set cannot change what was selected, so rotation
- * stays exactly as deterministic as it was.
+ * Deliberately a separate step applied after {@link buildBoard}. Selection
+ * decides *which* missions a window shows; this decides how they read. The
+ * two stayed split when selection became duration-stratified: `buildBoard`
+ * now happens to emit tiers shortest-first already, so this is usually a
+ * no-op re-sort, but presentation must not become load-bearing. Re-sorting a
+ * selected set cannot add or drop a mission, so rotation stays exactly as
+ * deterministic as it was, and a future selection order — or a board with two
+ * missions on one tier — still renders 1h → 3h → 6h → 18h.
  */
 export function orderBoardForDisplay(
   expeditions: readonly RegionalExpedition[],

@@ -25,6 +25,13 @@
  *     anything due before returning, so every entry point below runs it first
  *     and the resolve path is exercised constantly rather than on a rare timer.
  *
+ *   - **A player has missions, plural.** Concurrency is regional: one active
+ *     mission per region, as many regions as the player can reach. So the
+ *     front door is an *overview* of every region with something running, the
+ *     single-mission screen is one press below it, and the board says plainly
+ *     whether the region the player is standing in is already taken. No screen
+ *     counts slots, because there are none to count.
+ *
  * Stale controls are expected, not exceptional: a custom id is a string that
  * outlives the message that painted it. Every handler re-reads state and
  * re-renders rather than trusting its own arguments, and the conditional
@@ -149,6 +156,108 @@ export function raceLabel(race: string): string {
     .join('-');
 }
 
+/**
+ * "returns in …" or "ready to collect", for one open mission.
+ *
+ * `resolved` is the only status besides `active` that reaches these screens,
+ * and it is the one the player is waiting for, so it gets the louder phrasing.
+ */
+function timingLine(view: ExpeditionView): string {
+  return view.status === 'resolved'
+    ? '✅ **Back — ready to collect**'
+    : `⏳ Returns ${relativeTimestamp(view.completesAt)}`;
+}
+
+/** `🗺️ Waifu Valley — Lilith · Supply Run`, for a one-line roll-call. */
+function missionSummaryLine(view: ExpeditionView): string {
+  return `**${regionLabel(view.region)}** — ${view.waifuName} · ${view.name}`;
+}
+
+// ────────────────────────── Active overview ──────────────────────────
+
+/**
+ * Every region the player has something running in.
+ *
+ * The front door once a player has deployed anything, and the screen the
+ * regional-concurrency change exists to make possible. It answers the two
+ * questions a multi-region player actually has — *who is where*, and *is
+ * anything ready* — without making them travel anywhere to find out.
+ *
+ * Capped at five entries for Discord's sake: five is also the number of
+ * regions, so the cap is defensive rather than reachable. If a per-region
+ * ladder ever makes it reachable, the overflow is stated rather than silently
+ * dropped.
+ */
+const OVERVIEW_LIMIT = 5;
+
+function overviewScreen(views: readonly ExpeditionView[], statusLine?: string): Screen {
+  const shown = views.slice(0, OVERVIEW_LIMIT);
+  const ready = shown.filter((v) => v.status === 'resolved').length;
+
+  const embed = new EmbedBuilder()
+    .setTitle('🧭 Your Expeditions')
+    .setColor(ready > 0 ? COLOR_SUCCESS : COLOR_ACTIVE)
+    .setDescription(
+      [
+        statusLine ?? null,
+        `**${views.length}** ${views.length === 1 ? 'region' : 'regions'} working` +
+          (ready > 0 ? ` · **${ready}** ready to collect` : ''),
+        // The rule, stated once where a player can act on it, rather than
+        // discovered by being refused at the board.
+        '_One expedition per region — travel somewhere new to send another._',
+      ]
+        .filter((line) => line !== null)
+        .join('\n'),
+    );
+
+  for (const view of shown) {
+    embed.addFields({
+      name: `${view.emoji ?? '•'} ${regionLabel(view.region)} — ${view.name}`,
+      value: [
+        `👤 **${view.waifuName}**` + (view.match ? ` · ${matchTag(view.match)}` : ''),
+        timingLine(view),
+      ].join('\n'),
+    });
+  }
+  if (views.length > shown.length) {
+    embed.addFields({
+      name: '​',
+      value: `_…and ${views.length - shown.length} more._`,
+    });
+  }
+
+  // One button per region, so the label says where rather than what — that is
+  // the thing the player is choosing between. Five fit in a single row.
+  const missionRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    shown.map((view) =>
+      new ButtonBuilder()
+        .setCustomId(buildCustomId('exp', 'mission', String(view.id)))
+        .setLabel(
+          `${regionLabel(view.region)}${view.status === 'resolved' ? ' — collect' : ''}`.slice(
+            0,
+            80,
+          ),
+        )
+        .setStyle(view.status === 'resolved' ? ButtonStyle.Success : ButtonStyle.Secondary),
+    ),
+  );
+
+  return {
+    embeds: [embed],
+    components: [
+      missionRow as ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>,
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setCustomId(buildCustomId('exp', 'board'))
+          .setLabel('Board here')
+          .setEmoji('🗺️')
+          .setStyle(ButtonStyle.Primary),
+      ) as ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>,
+      backRow() as ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>,
+    ],
+  };
+}
+
 // ─────────────────────────────── Board ───────────────────────────────
 
 function backRow(): ActionRowBuilder<ButtonBuilder> {
@@ -183,11 +292,40 @@ function boardScreen(board: ExpeditionBoard, statusLine?: string): Screen {
     return { embeds: [embed], components: [backRow()] };
   }
 
+  /**
+   * The regional-concurrency statement, in the one place a player is about to
+   * act on it.
+   *
+   * A busy region is stated *first* and in full — who is out, on what, and
+   * when she is back — because the alternative is a player pressing a mission
+   * and being refused, which teaches the rule the slow way. A busy region
+   * *elsewhere* is never a refusal, so it is a footnote rather than a warning.
+   */
+  const busy = board.regionMission;
   embed.setDescription(
-    `${status}Send one WaifuMon on a timed job. She is unavailable until she returns.\n` +
-      `Slots: **${board.slotsAvailable}/${board.slotsTotal}** free · ` +
+    [
+      status.trimEnd() || null,
+      busy
+        ? `🚩 **${busy.waifuName}** is already working this region on **${busy.name}**.\n` +
+          `${timingLine(busy)} — collect or recall her before sending anyone else here.`
+        : 'Send one WaifuMon on a timed job. She is unavailable until she returns.',
       `Board rotates ${relativeTimestamp(board.rotatesAt)}`,
+    ]
+      .filter((line) => line !== null)
+      .join('\n\n'),
   );
+
+  // Where else she has people out. Never a blocker — it is here so "which
+  // regions am I already using" is answerable without leaving the board.
+  if (board.elsewhere.length > 0) {
+    embed.addFields({
+      name: 'Also out',
+      value: board.elsewhere
+        .map((view) => `${view.emoji ?? '•'} ${missionSummaryLine(view)} — ${timingLine(view)}`)
+        .join('\n')
+        .slice(0, 1024),
+    });
+  }
 
   for (const { definition } of board.entries) {
     const lines = [
@@ -210,7 +348,12 @@ function boardScreen(board: ExpeditionBoard, statusLine?: string): Screen {
     const button = new ButtonBuilder()
       .setCustomId(buildCustomId('exp', 'view', definition.key))
       .setLabel(definition.name.slice(0, 80))
-      .setStyle(ButtonStyle.Primary);
+      .setStyle(ButtonStyle.Primary)
+      // Greyed out rather than hidden while this region is busy. The board is
+      // still the honest list of what is on offer here — the player simply
+      // cannot take any of it until the region frees up, and a disabled row
+      // says that far more plainly than four missing buttons would.
+      .setDisabled(!board.canDeploy);
     if (definition.emoji) button.setEmoji(definition.emoji);
     return button;
   });
@@ -223,16 +366,54 @@ function boardScreen(board: ExpeditionBoard, statusLine?: string): Screen {
       ) as ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>,
     );
   }
+  // The way out of a busy region: straight to the WaifuMon holding it, or to
+  // the roll-call of every region. Painted only when something is running, so
+  // a first-time board keeps its original two-row shape.
+  const openCount = board.elsewhere.length + (busy ? 1 : 0);
+  if (openCount > 0) {
+    const navRow = new ActionRowBuilder<ButtonBuilder>();
+    if (busy) {
+      navRow.addComponents(
+        new ButtonBuilder()
+          .setCustomId(buildCustomId('exp', 'mission', String(busy.id)))
+          .setLabel(
+            (busy.status === 'resolved' ? 'Collect her' : `Check on ${busy.waifuName}`).slice(0, 80),
+          )
+          .setEmoji(busy.status === 'resolved' ? '📦' : '🧭')
+          .setStyle(busy.status === 'resolved' ? ButtonStyle.Success : ButtonStyle.Secondary),
+      );
+    }
+    navRow.addComponents(
+      new ButtonBuilder()
+        .setCustomId(buildCustomId('exp', 'active'))
+        .setLabel(`All expeditions (${openCount})`)
+        .setStyle(ButtonStyle.Secondary),
+    );
+    rows.push(navRow as ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>);
+  }
   rows.push(backRow() as ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>);
   return { embeds: [embed], components: rows };
 }
 
 // ─────────────────────────── Active mission ───────────────────────────
 
-function activeScreen(view: ExpeditionView, statusLine?: string): Screen {
+/**
+ * One mission, in full.
+ *
+ * `openCount` is how many regions the player has running in total, and is used
+ * for one thing: deciding whether to offer the way back up to the overview. A
+ * player with a single mission should not be handed a button to a list of one.
+ */
+function activeScreen(
+  view: ExpeditionView,
+  statusLine?: string,
+  openCount = 1,
+): Screen {
   const done = view.status === 'resolved';
   const embed = new EmbedBuilder()
-    .setTitle(`${view.emoji ?? '🧭'} ${view.name}`)
+    // The region is in the title because with several missions running it is
+    // the only thing that distinguishes two screens at a glance.
+    .setTitle(`${view.emoji ?? '🧭'} ${view.name} — ${regionLabel(view.region)}`)
     .setColor(done ? COLOR_SUCCESS : COLOR_ACTIVE);
 
   const status = statusLine ? `${statusLine}\n\n` : '';
@@ -253,6 +434,11 @@ function activeScreen(view: ExpeditionView, statusLine?: string): Screen {
       .join('\n'),
   );
   if (view.description) embed.addFields({ name: '​', value: `_${view.description}_` });
+  // The question regional concurrency invites, answered before it is asked.
+  // Location gates *starting* a mission and nothing else.
+  if (view.status === 'active') {
+    embed.setFooter({ text: 'Travel wherever you like — she carries on regardless.' });
+  }
 
   const collect = new ButtonBuilder()
     .setCustomId(buildCustomId('exp', 'claim', String(view.id)))
@@ -280,6 +466,14 @@ function activeScreen(view: ExpeditionView, statusLine?: string): Screen {
       .setLabel('View board')
       .setStyle(ButtonStyle.Secondary),
   );
+  if (openCount > 1) {
+    row.addComponents(
+      new ButtonBuilder()
+        .setCustomId(buildCustomId('exp', 'active'))
+        .setLabel(`All expeditions (${openCount})`)
+        .setStyle(ButtonStyle.Secondary),
+    );
+  }
 
   return {
     embeds: [embed],
@@ -498,7 +692,8 @@ function cancelConfirmScreen(view: ExpeditionView): Screen {
     .setColor(COLOR_DANGER)
     .setDescription(
       [
-        `**${view.waifuName}** is part-way through **${view.name}**.`,
+        `**${view.waifuName}** is part-way through **${view.name}** in ` +
+          `**${regionLabel(view.region)}**.`,
         `She would otherwise be back ${relativeTimestamp(view.completesAt)}.`,
         '',
         '**Recalling her now:**',
@@ -661,7 +856,11 @@ function resultScreen(result: ExpeditionClaimResult): Screen {
   }
 
   embed.setFooter({
-    text: `Balance: ${result.waifubuxAfter} WaifuBux · ${result.essenceAfter} Essence`,
+    text:
+      `Balance: ${result.waifubuxAfter} WaifuBux · ${result.essenceAfter} Essence` +
+      // Collecting is what frees the region, so the screen that does it is
+      // where a player learns that it did — and that nothing else moved.
+      ` · ${regionLabel(result.expedition.region)} is free again`,
   });
 
   return {
@@ -684,9 +883,10 @@ function resultScreen(result: ExpeditionClaimResult): Screen {
 /**
  * `menu:expeditions` — the front door.
  *
- * Defaults to the **Active** screen when a mission is running or waiting to be
- * collected, because that is what the player came to check. Only a player with
- * nothing out sees the board first.
+ * Defaults to whatever the player already has running, because that is what
+ * they came to check. With one mission that is the mission; with several it is
+ * the overview, which is the screen regional concurrency exists to fill. Only
+ * a player with nothing out sees the board first.
  */
 export async function handleExpeditions(
   ctx: AppContext,
@@ -694,29 +894,44 @@ export async function handleExpeditions(
   prov: Provisioned,
 ): Promise<void> {
   // Resolves anything due before it answers, so opening the screen is what
-  // makes a finished mission finish.
+  // makes a finished mission finish — all of them, not just the first.
   const active = await ctx.services.expeditions.getActive(prov.playerId);
-  if (active.length > 0) {
-    await respondEphemeral(interaction, activeScreen(active[0]!));
+  if (active.length === 1) {
+    await respondEphemeral(interaction, activeScreen(active[0]!, undefined, 1));
+    return;
+  }
+  if (active.length > 1) {
+    await respondEphemeral(interaction, overviewScreen(active));
     return;
   }
   const board = await ctx.services.expeditions.getBoard(prov.playerId);
   await respondEphemeral(interaction, boardScreen(board));
 }
 
-/** `exp:board` — the board, explicitly, even while a mission is running. */
+/**
+ * `exp:board` — this region's board, explicitly, whatever else is running.
+ *
+ * One call now: `getBoard` resolves due missions itself and carries the
+ * player's standing in every region, so the screen no longer needs a separate
+ * `getActive` to know whether this region is taken.
+ */
 export async function handleExpeditionBoard(
   ctx: AppContext,
   interaction: PlayerInteraction,
   prov: Provisioned,
   statusLine?: string,
 ): Promise<void> {
-  await ctx.services.expeditions.getActive(prov.playerId);
   const board = await ctx.services.expeditions.getBoard(prov.playerId);
   await respondEphemeral(interaction, boardScreen(board, statusLine));
 }
 
-/** `exp:active` — back to the active mission from a sub-screen. */
+/**
+ * `exp:active` — the roll-call of every region with something running.
+ *
+ * Also the universal fallback: a handler that has lost track of which mission
+ * it was talking about lands here, and a player with exactly one mission is
+ * taken straight to it rather than to a list of one.
+ */
 export async function handleExpeditionActive(
   ctx: AppContext,
   interaction: PlayerInteraction,
@@ -725,7 +940,7 @@ export async function handleExpeditionActive(
 ): Promise<void> {
   const active = await ctx.services.expeditions.getActive(prov.playerId);
   if (active.length === 0) {
-    // She finished and was collected in another window, or was recalled.
+    // Everything was collected or recalled — possibly in another window.
     // Falling back to the board is more useful than an error about a screen —
     // but the caller's own status line wins, because "you already collected
     // that one" is the thing the player needs to read, not "nobody is out".
@@ -737,7 +952,40 @@ export async function handleExpeditionActive(
     );
     return;
   }
-  await respondEphemeral(interaction, activeScreen(active[0]!, statusLine));
+  if (active.length === 1) {
+    await respondEphemeral(interaction, activeScreen(active[0]!, statusLine, 1));
+    return;
+  }
+  await respondEphemeral(interaction, overviewScreen(active, statusLine));
+}
+
+/**
+ * `exp:mission|<id>` — one mission from the overview.
+ *
+ * Re-reads rather than trusting the id in the custom id, like every handler
+ * here: the mission may have been collected in another window since the button
+ * was painted, and the overview is the right place to land when it has.
+ */
+export async function handleExpeditionMission(
+  ctx: AppContext,
+  interaction: PlayerInteraction,
+  prov: Provisioned,
+  rawId: string,
+  statusLine?: string,
+): Promise<void> {
+  const expeditionId = Number(rawId);
+  const active = await ctx.services.expeditions.getActive(prov.playerId);
+  const view = active.find((v) => v.id === expeditionId);
+  if (!view) {
+    await handleExpeditionActive(
+      ctx,
+      interaction,
+      prov,
+      statusLine ?? '⚠️ That expedition is no longer running.',
+    );
+    return;
+  }
+  await respondEphemeral(interaction, activeScreen(view, statusLine, active.length));
 }
 
 /** `exp:view|<key>` — mission detail with the candidate list. */
@@ -752,6 +1000,21 @@ export async function handleExpeditionView(
     await handleExpeditionBoard(ctx, interaction, prov, '⚠️ That expedition is no longer listed.');
     return;
   }
+  /**
+   * The region gate, painted rather than thrown.
+   *
+   * `deploy` would refuse this anyway — it is the service and the unique index
+   * that enforce one mission per region, never this file — but offering a
+   * "choose who to send" menu that can only end in a refusal is a worse screen
+   * than saying so up front. Note what this does *not* consult: missions in
+   * other regions, which never block anything here.
+   */
+  const board = await ctx.services.expeditions.getBoard(prov.playerId);
+  if (board.regionMission && board.regionMission.region === definition.region) {
+    await respondEphemeral(interaction, boardScreen(board));
+    return;
+  }
+
   let candidates: ExpeditionCandidate[];
   try {
     candidates = await ctx.services.expeditions.getCandidates(prov.playerId, key);
@@ -807,9 +1070,17 @@ export async function handleExpeditionDeploy(
   }
   try {
     const view = await ctx.services.expeditions.deploy(prov.playerId, key, waifuId);
+    // A second read, only to count the regions now working — which is what
+    // decides whether the screen offers the overview. Cheap, and it keeps the
+    // count honest rather than inferred from the press that got here.
+    const active = await ctx.services.expeditions.getActive(prov.playerId);
     await respondEphemeral(
       interaction,
-      activeScreen(view, `🧭 **${view.waifuName}** sets out.`),
+      activeScreen(
+        view,
+        `🧭 **${view.waifuName}** sets out into ${regionLabel(view.region)}.`,
+        Math.max(1, active.length),
+      ),
     );
   } catch (err) {
     // Every refusal the service can raise is an AppError with player-facing
@@ -865,10 +1136,11 @@ export async function handleExpeditionCancel(
   if (view.status !== 'active') {
     // She finished while the player was looking at the screen. Recalling now
     // would throw away a payout that already exists.
-    await handleExpeditionActive(
+    await handleExpeditionMission(
       ctx,
       interaction,
       prov,
+      rawId,
       '✅ She got back before you could recall her — collect instead.',
     );
     return;
@@ -890,11 +1162,14 @@ export async function handleExpeditionCancelConfirm(
   }
   try {
     const view = await ctx.services.expeditions.cancel(prov.playerId, expeditionId);
+    // Back to the board — which, because only this region was touched, now
+    // shows this region open and every other mission exactly as it was.
     await handleExpeditionBoard(
       ctx,
       interaction,
       prov,
-      `🚩 **${view.waifuName}** was recalled. The mission was abandoned — no rewards.`,
+      `🚩 **${view.waifuName}** was recalled from ${regionLabel(view.region)}. ` +
+        'The mission was abandoned — no rewards.',
     );
   } catch (err) {
     if (err instanceof AppError) {

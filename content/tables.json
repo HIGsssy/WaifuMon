@@ -679,7 +679,6 @@
     },
     "boardSize": 4,
     "rotationHours": 12,
-    "maxConcurrent": 1,
     "buddyDeployable": false,
     "suitability": {
       "affinityStrong": 0.2,
