@@ -1,0 +1,272 @@
+{
+  "region": "twin-peeks",
+  "expeditions": [
+    {
+      "key": "peeks_fog_line_delivery",
+      "name": "Fog Line Delivery",
+      "description": "The ridge road's mailboxes stop where the fog starts. Past that, everything is hand-carried to the door, and nobody up there signs for anything. Six parcels, four houses, and one of the four will want to talk.",
+      "emoji": "🌫️",
+      "type": "supply_run",
+      "durationMinutes": 60,
+      "teamSize": 1,
+      "recommendedLevel": 4,
+      "preferredAffinities": [
+        "switch"
+      ],
+      "preferredRaces": [],
+      "baseSuccessChance": 0.78,
+      "rewardTable": "peeks-fog-line-success-v1",
+      "exceptionalRewardTable": "peeks-fog-line-bonus-v1",
+      "failureRewardTable": "peeks-fog-line-failure-v1",
+      "rewardPreview": [
+        "salvage",
+        "waifubux",
+        "essence",
+        "charms",
+        "waifu_xp"
+      ],
+      "enabled": true
+    },
+    {
+      "key": "peeks_bathhouse_turnover",
+      "name": "Bathhouse Turnover",
+      "description": "Between the morning soak and the afternoon one, the whole house has to be drained, scrubbed, refilled and got warm again. The regulars will be waiting at the door the entire time. The regulars do not queue.",
+      "emoji": "♨️",
+      "type": "supply_run",
+      "durationMinutes": 60,
+      "teamSize": 1,
+      "recommendedLevel": 7,
+      "preferredAffinities": [
+        "submissive"
+      ],
+      "preferredRaces": [
+        "demi-human",
+        "spirit"
+      ],
+      "baseSuccessChance": 0.76,
+      "rewardTable": "peeks-bathhouse-turnover-success-v1",
+      "exceptionalRewardTable": "peeks-bathhouse-turnover-bonus-v1",
+      "failureRewardTable": "peeks-bathhouse-turnover-failure-v1",
+      "rewardPreview": [
+        "salvage",
+        "waifubux",
+        "essence",
+        "charms",
+        "waifu_xp"
+      ],
+      "enabled": true
+    },
+    {
+      "key": "peeks_overlook_sweep",
+      "name": "Overlook Sweep",
+      "description": "Someone has been leaving things at the east overlook. Not litter — arranged. Get up there before the fog closes, write down what is there and where, and do not rearrange any of it.",
+      "emoji": "🔭",
+      "type": "scouting",
+      "durationMinutes": 60,
+      "teamSize": 1,
+      "recommendedLevel": 11,
+      "preferredAffinities": [
+        "primal"
+      ],
+      "preferredRaces": [
+        "android",
+        "valkyrie"
+      ],
+      "baseSuccessChance": 0.74,
+      "rewardTable": "peeks-overlook-sweep-success-v1",
+      "exceptionalRewardTable": "peeks-overlook-sweep-bonus-v1",
+      "failureRewardTable": "peeks-overlook-sweep-failure-v1",
+      "rewardPreview": [
+        "salvage",
+        "waifubux",
+        "essence",
+        "charms",
+        "consumables",
+        "waifu_xp"
+      ],
+      "enabled": true
+    },
+    {
+      "key": "peeks_ridge_road_diner_shift",
+      "name": "Ridge Road Diner Shift",
+      "description": "The pie is the same at all four diners on this road and every owner will explain at length why theirs is not. Cover the counter through the fog hour, agree with every single one of them, and sign for the delivery that arrives with no name on the docket.",
+      "emoji": "🥧",
+      "type": "diplomacy",
+      "durationMinutes": 180,
+      "teamSize": 1,
+      "recommendedLevel": 13,
+      "preferredAffinities": [
+        "caregiver"
+      ],
+      "preferredRaces": [
+        "human",
+        "angel"
+      ],
+      "baseSuccessChance": 0.7,
+      "rewardTable": "peeks-diner-shift-success-v1",
+      "exceptionalRewardTable": "peeks-diner-shift-bonus-v1",
+      "failureRewardTable": "peeks-diner-shift-failure-v1",
+      "rewardPreview": [
+        "salvage",
+        "waifubux",
+        "essence",
+        "charms",
+        "consumables",
+        "waifu_xp"
+      ],
+      "enabled": true
+    },
+    {
+      "key": "peeks_slope_patrol",
+      "name": "Slope Patrol",
+      "description": "Sweep the runs from the last lift to full dark, count everybody down, and get the one who ducked the rope back over it before the snow starts moving. She knows the rope was there. She will not thank you.",
+      "emoji": "🏂",
+      "type": "escort",
+      "durationMinutes": 180,
+      "teamSize": 1,
+      "recommendedLevel": 16,
+      "preferredAffinities": [
+        "dominant"
+      ],
+      "preferredRaces": [
+        "human",
+        "valkyrie"
+      ],
+      "baseSuccessChance": 0.68,
+      "rewardTable": "peeks-slope-patrol-success-v1",
+      "exceptionalRewardTable": "peeks-slope-patrol-bonus-v1",
+      "failureRewardTable": "peeks-slope-patrol-failure-v1",
+      "rewardPreview": [
+        "salvage",
+        "waifubux",
+        "essence",
+        "charms",
+        "consumables",
+        "waifu_xp"
+      ],
+      "enabled": true
+    },
+    {
+      "key": "peeks_mineral_works_night_draw",
+      "name": "Mineral Works Night Draw",
+      "description": "The spring works draws its richest water between midnight and six, when there is nobody queueing for it and nobody watching the gauges. Mind the valves, bottle what comes up, and do not ask about the second pipe.",
+      "emoji": "💧",
+      "type": "excavation",
+      "durationMinutes": 360,
+      "teamSize": 1,
+      "recommendedLevel": 19,
+      "preferredAffinities": [
+        "caregiver",
+        "primal"
+      ],
+      "preferredRaces": [
+        "spirit",
+        "demon"
+      ],
+      "baseSuccessChance": 0.66,
+      "rewardTable": "peeks-mineral-works-success-v1",
+      "exceptionalRewardTable": "peeks-mineral-works-bonus-v1",
+      "failureRewardTable": "peeks-mineral-works-failure-v1",
+      "rewardPreview": [
+        "salvage",
+        "waifubux",
+        "essence",
+        "charms",
+        "waifu_xp"
+      ],
+      "enabled": true
+    },
+    {
+      "key": "peeks_house_that_never_answers",
+      "name": "The House That Never Answers",
+      "description": "Third property past the switchback. Lights on every night for a year, mail uncollected for just as long. The town would like somebody to knock properly, wait the full hour, and come back able to say what they saw.",
+      "emoji": "🚪",
+      "type": "diplomacy",
+      "durationMinutes": 360,
+      "teamSize": 1,
+      "recommendedLevel": 23,
+      "preferredAffinities": [],
+      "preferredRaces": [
+        "spirit",
+        "demon"
+      ],
+      "baseSuccessChance": 0.64,
+      "rewardTable": "peeks-never-answers-success-v1",
+      "exceptionalRewardTable": "peeks-never-answers-bonus-v1",
+      "failureRewardTable": "peeks-never-answers-failure-v1",
+      "rewardPreview": [
+        "salvage",
+        "waifubux",
+        "essence",
+        "charms",
+        "consumables",
+        "rare_find",
+        "waifu_xp"
+      ],
+      "enabled": true
+    },
+    {
+      "key": "peeks_fog_bank_vigil",
+      "name": "Fog Bank Vigil",
+      "description": "Sit the north saddle from dusk to noon and log everything that crosses the line. Most of it is weather. The log has a second column for the rest, which means somebody has had to fill that column in before.",
+      "emoji": "🌁",
+      "type": "scouting",
+      "durationMinutes": 1080,
+      "teamSize": 1,
+      "recommendedLevel": 17,
+      "preferredAffinities": [
+        "switch",
+        "caregiver"
+      ],
+      "preferredRaces": [
+        "angel",
+        "android"
+      ],
+      "baseSuccessChance": 0.62,
+      "rewardTable": "peeks-fog-bank-vigil-success-v1",
+      "exceptionalRewardTable": "peeks-fog-bank-vigil-bonus-v1",
+      "failureRewardTable": "peeks-fog-bank-vigil-failure-v1",
+      "rewardPreview": [
+        "salvage",
+        "waifubux",
+        "essence",
+        "charms",
+        "consumables",
+        "waifu_xp"
+      ],
+      "enabled": true
+    },
+    {
+      "key": "peeks_avalanche_shed_dig",
+      "name": "Avalanche Shed Dig",
+      "description": "The upper shed took the slide in March and nobody has been up since the road reopened. A full night and a morning of digging gets the equipment out — and whatever the mountain packed in beside it on the way down.",
+      "emoji": "🏔️",
+      "type": "excavation",
+      "durationMinutes": 1080,
+      "teamSize": 1,
+      "recommendedLevel": 27,
+      "preferredAffinities": [
+        "primal",
+        "submissive"
+      ],
+      "preferredRaces": [
+        "valkyrie",
+        "demi-human"
+      ],
+      "baseSuccessChance": 0.58,
+      "rewardTable": "peeks-avalanche-shed-success-v1",
+      "exceptionalRewardTable": "peeks-avalanche-shed-bonus-v1",
+      "failureRewardTable": "peeks-avalanche-shed-failure-v1",
+      "rewardPreview": [
+        "salvage",
+        "waifubux",
+        "essence",
+        "charms",
+        "consumables",
+        "rare_find",
+        "waifu_xp"
+      ],
+      "enabled": true
+    }
+  ]
+}

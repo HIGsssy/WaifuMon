@@ -54,6 +54,39 @@
  * policy rather than an index: it stops a player stacking a new mission on top
  * of a payout they have not looked at and losing track of it.
  *
+ * ── The economy target is per region, not per player ───────────────────────
+ *
+ * Each Expedition-enabled region is authored to **~250-350 WBe per typical
+ * day**, where WBe is direct WaifuBux plus the sell value of the salvage a run
+ * is expected to produce. That is a *per-region* benchmark and deliberately
+ * **not** a player ceiling: a player running four regions is expected to earn
+ * roughly four regions' worth, and that is the reward for unlocking them.
+ *
+ * Consequently, and on purpose, none of the following exists anywhere in this
+ * module, in `tables.json`, or in the schema:
+ *
+ *   - a global WBe cap;
+ *   - a diminishing-return multiplier on the second or fifth concurrent
+ *     mission;
+ *   - a concurrency penalty of any kind;
+ *   - a deployment fee.
+ *
+ * Nor do later regions pay less merely because they unlock later. Flaccid
+ * Foothills is authored to the same band as Waifu Valley; the difference
+ * between regions is *composition* — what the salvage is, how much Essence,
+ * which keepables — never size.
+ *
+ * If total player income needs restraining later, the lever is a **sink**
+ * (equipment, Ascension, special shops, Key Items, other progression systems),
+ * not a quiet reduction in what an expedition pays. A sink is visible, opt-in
+ * and designable; shrinking rewards to compensate for a player owning more of
+ * the game punishes progress and is invisible to everyone except the person
+ * who notices their overnight mission got worse.
+ *
+ * The per-region assertions live in `tests/unit/expeditionContent.test.ts`,
+ * region-scoped by construction — there is no global reward-composition rule,
+ * because two regions are supposed to look different.
+ *
  * ── Location is a deployment requirement, and only that ────────────────────
  *
  * `deploy` refuses a mission whose region is not the one the player is

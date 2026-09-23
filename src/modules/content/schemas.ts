@@ -2070,6 +2070,32 @@ const WORLD_ENCOUNTER_DEFAULT: z.input<typeof WorldEncounterConfigSchema> = {
  * shipped: an expedition table pays currency, Essence and WaifuMon XP as well
  * as items, and folding those into `BossRewardTableSchema` would put four
  * fields on the boss path that bosses have no use for.
+ *
+ * ── Regional chase rewards ─────────────────────────────────────────────────
+ *
+ * Each authored region carries a rare "chase" drop that gives its Exceptional
+ * results a recognisable identity — Waifu Valley's Mythic Contract on the
+ * Undercity Dive, Twin Peeks' Full Body Massage in the treatment room the
+ * avalanche buried.
+ *
+ * **An item may have more than one acquisition path**, and a chase reward does
+ * not have to be an item invented for the purpose. Minting a new and
+ * necessarily powerful item for every region is how a game acquires power
+ * creep it did not choose; reaching for something that already exists and
+ * already fits is usually the better answer. The Full Body Massage is also an
+ * affection-gift drop, and is a Twin Peeks chase reward as well, because both
+ * conditions hold:
+ *
+ *   - **genuinely rare on each path** — roughly 1 in 264 runs of the mission
+ *     that carries it, in line with the Valley's chase rates, so neither path
+ *     makes the other redundant;
+ *   - **thematically native to the region** — Twin Peeks is a hot-spring
+ *     resort town, and a full-body massage is the thing it actually sells.
+ *
+ * What this does *not* license is handing out a region's **shop** inventory
+ * often enough that buying it stops being the way to get it. Those items may
+ * appear as finds, but only Exceptional-gated and at low basis points; the
+ * per-region tests assert the resulting rate stays under 1% per run.
  */
 
 /**

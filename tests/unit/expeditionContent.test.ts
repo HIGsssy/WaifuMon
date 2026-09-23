@@ -16,12 +16,14 @@ import {
   type LoadedContent,
 } from '../../src/modules/content/schemas';
 import { AFFINITIES } from '../../src/db/schema';
-import { RACE_CODES } from '../../src/modules/cards/race';
+import { RACE_CODES, resolveRace } from '../../src/modules/cards/race';
 import {
   validateExpeditionContent,
   warnOnRepeatedRewardItems,
 } from '../../src/modules/content/loader';
 import { evaluateSuitability } from '../../src/modules/expeditions/expeditionMath';
+import { evaluateMatch } from '../../src/modules/expeditions/expeditionMatch';
+import { buildBoard } from '../../src/modules/expeditions/expeditionBoard';
 import { ContentValidationError } from '../../src/shared/errors';
 import { loadShippedContent } from '../helpers/fixtures';
 
@@ -1066,5 +1068,688 @@ describe('Waifu Valley reward scaling', () => {
         expect(new Set(ids).size, `${table.id} / ${group.id}`).toBe(ids.length);
       }
     }
+  });
+});
+
+/**
+ * ── Twin Peeks ─────────────────────────────────────────────────────────────
+ *
+ * Twin Peeks is the second authored region, and it is deliberately **not** a
+ * second Waifu Valley. The Valley is the salvage economy: it pays you in
+ * things worth selling. The Peeks is the fog dividend — it pays you in things
+ * worth keeping, and takes a lower direct-WaifuBux cut to afford them.
+ *
+ * These guardrails are **regional on purpose**. They are a separate block
+ * rather than a widening of the Waifu Valley ones because the two regions are
+ * tuned to different profiles, and a rule that held both would have to be
+ * loose enough to hold neither. Where a number differs from the Valley's, the
+ * comment says why.
+ *
+ * The shared contract — the ~300 WBe/day scale, the duration ladder, the
+ * failure floor, the additive Exceptional — is asserted here too, at the same
+ * strength. Identity is a different *composition* of the same budget, never a
+ * quieter board wearing a theme.
+ */
+describe('Twin Peeks reward scaling', () => {
+  const tables = new Map(SHIPPED.expeditionRewards.map((t) => [t.id, t]));
+  const items = new Map(SHIPPED.items.map((i) => [i.slug, i]));
+  const sell = new Map(SHIPPED.items.map((i) => [i.slug, i.sellValue ?? 0]));
+
+  /** Mean WaifuBux, salvage sell value, Essence and XP of one table. */
+  function value(id: string | null) {
+    const table = id ? tables.get(id) : undefined;
+    if (!table) return { waifubux: 0, salvage: 0, essence: 0, waifuXp: 0, playerXp: 0 };
+    const mid = (r?: { min: number; max: number }) => (r ? (r.min + r.max) / 2 : 0);
+    let salvage = 0;
+    for (const group of table.groups.filter((g) => g.enabled)) {
+      const entries = group.entries.filter((e) => e.enabled);
+      const total = entries.reduce((s, e) => s + e.weight, 0);
+      for (const e of entries) {
+        salvage +=
+          group.rolls * (group.chanceBasisPoints / 10_000) * (e.weight / total) *
+          e.quantity * (sell.get(e.itemId) ?? 0);
+      }
+    }
+    return {
+      waifubux: mid(table.waifubux),
+      salvage,
+      essence: mid(table.essence),
+      waifuXp: table.waifuXp,
+      playerXp: table.playerXp,
+    };
+  }
+  const wbe = (v: { waifubux: number; salvage: number }): number => v.waifubux + v.salvage;
+
+  const peeks = SHIPPED.expeditions
+    .filter((e) => e.region === 'twin-peeks' && e.enabled)
+    .sort((a, b) => a.durationMinutes - b.durationMinutes);
+  const valley = SHIPPED.expeditions.filter((e) => e.region === 'waifu-valley' && e.enabled);
+  const perRun = peeks.map((e) => {
+    const v = value(e.rewardTable);
+    return { e, success: wbe(v), ...v };
+  });
+
+  /** The same reference deployment the Waifu Valley block measures on. */
+  function reference(e: (typeof peeks)[number]) {
+    return evaluateSuitability({
+      definition: e,
+      waifu: {
+        level: e.recommendedLevel + 5,
+        affinity: e.preferredAffinities[0] ?? 'switch',
+        race: e.preferredRaces[0] ?? 'human',
+      },
+      config: SHIPPED.tables.expeditions,
+      affinityConfig: SHIPPED.tables.buddyAffinity,
+    });
+  }
+
+  /** Outcome-weighted mean of one reward axis. Mirrors `rollExpeditionRewards`. */
+  function expectedOf(
+    e: (typeof peeks)[number],
+    axis: 'wbe' | 'essence' | 'waifuXp' | 'playerXp',
+  ): number {
+    const { successChance, exceptionalChance } = reference(e);
+    const pExceptional = successChance * exceptionalChance;
+    const pOrdinary = successChance - pExceptional;
+    const read = (id: string | null) => {
+      const v = value(id);
+      return axis === 'wbe' ? wbe(v) : v[axis];
+    };
+    const s = read(e.rewardTable);
+    return (
+      (1 - successChance) * read(e.failureRewardTable) +
+      pOrdinary * s +
+      pExceptional * (s + read(e.exceptionalRewardTable))
+    );
+  }
+  const expectedWbe = (e: (typeof peeks)[number]) => expectedOf(e, 'wbe');
+
+  const TIERS = [60, 180, 360, 1080] as const;
+  const tierMean = (minutes: number): number => {
+    const runs = perRun.filter((r) => r.e.durationMinutes === minutes);
+    expect(runs.length).toBeGreaterThan(0);
+    return runs.reduce((s, r) => s + r.success, 0) / runs.length;
+  };
+  const tierExpected = (minutes: number, axis: 'wbe' | 'essence' | 'waifuXp' | 'playerXp') => {
+    const runs = peeks.filter((e) => e.durationMinutes === minutes);
+    expect(runs.length).toBeGreaterThan(0);
+    return runs.reduce((s, e) => s + expectedOf(e, axis), 0) / runs.length;
+  };
+
+  /** Twin Peeks' own salvage set. Nothing here may come from the Valley. */
+  const PEEKS_SALVAGE = [
+    'ridge_road_postcard',
+    'bathhouse_locker_token',
+    'chipped_enamel_pie_plate',
+    'snapped_board_binding',
+    'survey_flag_bundle',
+    'geothermal_core_sample',
+  ] as const;
+
+  const peeksTables = peeks.flatMap((e) =>
+    [e.rewardTable, e.exceptionalRewardTable, e.failureRewardTable]
+      .filter((id): id is string => id !== null)
+      .map((id) => tables.get(id)!),
+  );
+
+  // ── pool shape ───────────────────────────────────────────────────────────
+
+  it('gives Twin Peeks a full pool with at least two missions on every tier', () => {
+    expect(peeks.length).toBeGreaterThanOrEqual(8);
+    for (const tier of TIERS) {
+      expect(peeks.filter((e) => e.durationMinutes === tier).length).toBeGreaterThanOrEqual(2);
+    }
+    for (const e of peeks) {
+      expect(e.exceptionalRewardTable).not.toBeNull();
+      expect(e.failureRewardTable).not.toBeNull();
+    }
+  });
+
+  it('gives every Twin Peeks mission its own name, description and emoji', () => {
+    expect(new Set(peeks.map((e) => e.name)).size).toBe(peeks.length);
+    expect(new Set(peeks.map((e) => e.description)).size).toBe(peeks.length);
+    expect(new Set(peeks.map((e) => e.emoji)).size).toBe(peeks.length);
+    // And none of them is a Waifu Valley mission wearing a hat.
+    const valleyNames = new Set(valley.map((e) => e.name));
+    for (const e of peeks) expect(valleyNames.has(e.name)).toBe(false);
+  });
+
+  it('spreads Twin Peeks across every affinity and every race', () => {
+    for (const affinity of AFFINITIES) {
+      expect(peeks.some((e) => e.preferredAffinities.includes(affinity))).toBe(true);
+    }
+    for (const race of RACE_CODES) {
+      expect(peeks.some((e) => e.preferredRaces.includes(race))).toBe(true);
+    }
+    const levels = peeks.map((e) => e.recommendedLevel);
+    // Arriving in the region must not require an endgame roster: the Caravan
+    // Pass unlocks at player level 15, and a first-time visitor's collection
+    // is not built around Twin Peeks yet.
+    expect(Math.min(...levels)).toBeLessThanOrEqual(5);
+    expect(Math.max(...levels)).toBeGreaterThanOrEqual(25);
+    const overnight = peeks.filter((e) => e.durationMinutes === 1080);
+    expect(Math.min(...overnight.map((e) => e.recommendedLevel))).toBeLessThanOrEqual(20);
+  });
+
+  /**
+   * Twin Peeks must give *different* parts of a collection something to do.
+   * A pool that repeated the Valley's pairs would mean the roster a player
+   * built for the Valley is the roster that plays the Peeks, and the second
+   * region would add commitment slots rather than reasons to collect.
+   */
+  it('does not reproduce a Waifu Valley affinity/race requirement pair', () => {
+    const fingerprint = (e: (typeof peeks)[number]) =>
+      `${[...e.preferredAffinities].sort().join('+')}|${[...e.preferredRaces].sort().join('+')}`;
+    const valleyPairs = new Set(valley.map(fingerprint));
+    for (const e of peeks) {
+      expect(valleyPairs.has(fingerprint(e)), `${e.key} duplicates a Waifu Valley pair`).toBe(
+        false,
+      );
+    }
+  });
+
+  /**
+   * A stated requirement nobody can meet is a mission that reads POOR forever.
+   * PERFECT is "every stated requirement met", so it is reachable only if some
+   * obtainable species carries one of the preferred affinities *and* one of
+   * the preferred races. Checked against the real resolver, because race is
+   * derived content rather than a column.
+   */
+  it('leaves a PERFECT MATCH path open on every Twin Peeks mission', () => {
+    const roster = SHIPPED.species
+      .filter((s) => s.enabled)
+      .map((s) => ({ affinity: s.affinity, race: resolveRace(s) }));
+    for (const e of peeks) {
+      const reachable = roster.some(
+        (s) =>
+          evaluateMatch({
+            definition: e,
+            waifu: { level: e.recommendedLevel, affinity: s.affinity, race: s.race },
+            config: SHIPPED.tables.expeditions,
+            affinityConfig: SHIPPED.tables.buddyAffinity,
+          }).quality === 'PERFECT_MATCH',
+      );
+      expect(reachable, `${e.key} has no PERFECT MATCH path in the obtainable collection`).toBe(
+        true,
+      );
+    }
+  });
+
+  /**
+   * A mission that states only *one* preference list cannot produce a
+   * WEAK_MATCH: with two scored requirements the mean score can never land in
+   * the weak band, so the label silently disappears from that mission's
+   * candidate list. That is acceptable occasionally — a deliberately forgiving
+   * entry mission, a mission that is about *who* rather than *what* — and a
+   * problem if it becomes the house style.
+   */
+  it('uses single-preference missions sparingly', () => {
+    const twoAxis = peeks.filter(
+      (e) => e.preferredAffinities.length === 0 || e.preferredRaces.length === 0,
+    );
+    expect(twoAxis.length).toBeLessThanOrEqual(2);
+  });
+
+  // ── salvage identity ─────────────────────────────────────────────────────
+
+  it('pays Twin Peeks salvage, never Waifu Valley salvage', () => {
+    const valleyTables = valley.flatMap((e) =>
+      [e.rewardTable, e.exceptionalRewardTable, e.failureRewardTable]
+        .filter((id): id is string => id !== null)
+        .map((id) => tables.get(id)!),
+    );
+    const salvageIn = (set: typeof peeksTables) =>
+      new Set(
+        set.flatMap((t) =>
+          t.groups.flatMap((g) =>
+            g.entries.map((e) => e.itemId).filter((id) => items.get(id)?.category === 'salvage'),
+          ),
+        ),
+      );
+    expect([...salvageIn(peeksTables)].sort()).toEqual([...PEEKS_SALVAGE].sort());
+    for (const id of salvageIn(valleyTables)) {
+      expect((PEEKS_SALVAGE as readonly string[]).includes(id)).toBe(false);
+    }
+  });
+
+  /**
+   * Sellability rides on the canonical `sellValue` model, and the ladder stays
+   * on the Valley's scale: Twin Peeks unlocks later, which is not a reason for
+   * its scrap to be worth more. Rare salvage stays rare by *drop rate*, and
+   * common salvage stays cheap enough to give a 1h table real granularity.
+   */
+  it('keeps Twin Peeks salvage on the established value ladder', () => {
+    const values = PEEKS_SALVAGE.map((slug) => {
+      const item = items.get(slug);
+      expect(item, `${slug} is not a shipped item`).toBeDefined();
+      expect(item!.category).toBe('salvage');
+      expect(item!.enabled).toBe(true);
+      expect(item!.shopRegions).toEqual([]);
+      expect(item!.sellValue).toBeGreaterThan(0);
+      return item!.sellValue!;
+    });
+    const valleySalvage = SHIPPED.items
+      .filter((i) => i.category === 'salvage' && !(PEEKS_SALVAGE as readonly string[]).includes(i.slug))
+      .map((i) => i.sellValue ?? 0);
+    expect(Math.min(...values)).toBeLessThanOrEqual(10);
+    expect(Math.max(...values)).toBeLessThanOrEqual(Math.max(...valleySalvage));
+    // Enough distinct steps that a short mission can be priced without either
+    // rounding to nothing or jumping a tier.
+    expect(new Set(values).size).toBe(values.length);
+    expect(values.length).toBeGreaterThanOrEqual(5);
+  });
+
+  // ── the curve ────────────────────────────────────────────────────────────
+
+  it('pays more per run the longer the tier', () => {
+    const means = TIERS.map(tierMean);
+    for (let i = 1; i < means.length; i += 1) expect(means[i]!).toBeGreaterThan(means[i - 1]!);
+  });
+
+  it('preserves the duration curve: 1h > 3h > 6h per hour, with a modest 18h premium', () => {
+    const hourly = TIERS.map((t) => tierMean(t) / (t / 60));
+    expect(hourly[0]!).toBeGreaterThan(hourly[1]!);
+    expect(hourly[1]!).toBeGreaterThan(hourly[2]!);
+    expect(hourly[3]!).toBeGreaterThan(hourly[2]!);
+    expect(hourly[3]!).toBeLessThan(hourly[1]!);
+    expect(hourly[3]! / hourly[2]!).toBeLessThan(1.5);
+  });
+
+  /**
+   * The Valley asserts `salvage > waifubux * 2`. Twin Peeks is held to a
+   * *stricter* ratio, because "lower direct WaifuBux emphasis" is the half of
+   * its identity that shows up inside the WBe budget — the rest of the
+   * difference is Essence and keepables, which WBe deliberately cannot see.
+   */
+  it('takes a smaller direct-WaifuBux cut than Waifu Valley', () => {
+    for (const r of perRun) {
+      expect(r.waifubux, r.e.key).toBeGreaterThan(0);
+      expect(r.salvage, r.e.key).toBeGreaterThan(r.waifubux * 2.8);
+      // Still visible on the result screen before the player reaches a shop.
+      expect(r.waifubux / r.success, r.e.key).toBeGreaterThan(0.12);
+      expect(r.waifubux / r.success, r.e.key).toBeLessThan(0.26);
+    }
+  });
+
+  it('pays a failure less than a success, and an Exceptional bonus on top', () => {
+    for (const { e, success } of perRun) {
+      expect(wbe(value(e.exceptionalRewardTable)), e.key).toBeGreaterThan(0);
+      const ratio = wbe(value(e.failureRewardTable)) / success;
+      // Same floor and ceiling as the Valley: an 18-hour failure must still
+      // come home with something, and failing must still cost.
+      expect(ratio, e.key).toBeGreaterThan(0.15);
+      expect(ratio, e.key).toBeLessThan(0.35);
+    }
+  });
+
+  /**
+   * Twin Peeks is the more variable region, expressed as reward-table
+   * composition rather than as a hidden chance nobody can see. Its bonus
+   * tables are allowed to be worth proportionally more of a success than the
+   * Valley's, and they carry the regional keepables — but Exceptional stays a
+   * minority of the expected value, or the ordinary success stops mattering.
+   */
+  it('keeps the Exceptional bonus bigger than the Valley\'s, and still bounded', () => {
+    for (const { e, success } of perRun) {
+      const ratio = wbe(value(e.exceptionalRewardTable)) / success;
+      expect(ratio, e.key).toBeGreaterThan(0.4);
+      expect(ratio, e.key).toBeLessThan(1.0);
+    }
+    for (const e of peeks) {
+      const { successChance, exceptionalChance } = reference(e);
+      const contribution =
+        (successChance * exceptionalChance * wbe(value(e.exceptionalRewardTable))) /
+        expectedWbe(e);
+      expect(contribution, e.key).toBeGreaterThan(0.02);
+      expect(contribution, e.key).toBeLessThan(0.2);
+    }
+    // Every Exceptional table pays something a success table cannot: Essence,
+    // a charm, a consumable. Otherwise "exceptional" is just "more scrap".
+    for (const e of peeks) {
+      const bonus = tables.get(e.exceptionalRewardTable!)!;
+      const keepables = bonus.groups.flatMap((g) =>
+        g.entries.filter((x) => items.get(x.itemId)?.category !== 'salvage'),
+      );
+      expect((bonus.essence?.max ?? 0) > 0 || keepables.length > 0, e.key).toBe(true);
+    }
+  });
+
+  // ── the regional benchmark ───────────────────────────────────────────────
+
+  const DAY = {
+    casual: [[1080, 1]],
+    typical: [[1080, 1], [360, 1]],
+    active: [[360, 2], [180, 2], [60, 6]],
+    aggressive: [[360, 1], [60, 18]],
+  } as const satisfies Record<string, readonly (readonly [number, number])[]>;
+
+  const day = (
+    plan: readonly (readonly [number, number])[],
+    axis: 'wbe' | 'essence' | 'waifuXp' | 'playerXp',
+  ): number => plan.reduce((sum, [minutes, runs]) => sum + tierExpected(minutes, axis) * runs, 0);
+
+  /**
+   * Same ~300 WBe/day scale as Waifu Valley, and deliberately toward the lower
+   * half of the band: Twin Peeks buys its Essence and its keepables out of the
+   * same budget rather than on top of it. The floor is what stops "regional
+   * identity" from being used to ship a quietly weaker board.
+   */
+  it('pays a comparable ~300 WBe on a typical one-region day', () => {
+    const typical = day(DAY.typical, 'wbe');
+    expect(typical).toBeGreaterThan(250);
+    expect(typical).toBeLessThan(350);
+  });
+
+  it('cannot quietly become a runaway region', () => {
+    for (const plan of Object.values(DAY)) expect(day(plan, 'wbe')).toBeLessThan(500);
+  });
+
+  it('rewards frequent play without making it the only way to play', () => {
+    const typical = day(DAY.typical, 'wbe');
+    expect(day(DAY.aggressive, 'wbe')).toBeGreaterThan(typical);
+    expect(day(DAY.aggressive, 'wbe')).toBeLessThan(typical * 1.6);
+    expect(day(DAY.casual, 'wbe')).toBeGreaterThan(typical * 0.6);
+  });
+
+  /**
+   * ── The Essence benchmark ────────────────────────────────────────────────
+   *
+   * The fog dividend, as a number. Twin Peeks pays several times the Valley's
+   * Essence on the same WBe budget — that is the identity — while staying a
+   * modest share of a player's actual daily Essence income (hunt finds, daily
+   * quests and duplicate conversion together run well into three figures). A
+   * Prismatic Charm costs 1,750 Essence, and Twin Peeks must shorten that
+   * cycle noticeably without paying for one on its own.
+   */
+  it('pays the regional Essence dividend, without trivialising the Essence sinks', () => {
+    const typical = day(DAY.typical, 'essence');
+    expect(typical).toBeGreaterThan(15);
+    expect(typical).toBeLessThan(26);
+    // Several times the Valley's, on a comparable WBe budget.
+    const valleyTypical = [
+      [1080, 1],
+      [360, 1],
+    ].reduce((sum, [minutes, runs]) => {
+      const runsOnTier = valley.filter((e) => e.durationMinutes === minutes);
+      const mean =
+        runsOnTier.reduce((s, e) => {
+          const { successChance, exceptionalChance } = evaluateSuitability({
+            definition: e,
+            waifu: {
+              level: e.recommendedLevel + 5,
+              affinity: e.preferredAffinities[0] ?? 'switch',
+              race: e.preferredRaces[0] ?? 'human',
+            },
+            config: SHIPPED.tables.expeditions,
+            affinityConfig: SHIPPED.tables.buddyAffinity,
+          });
+          const pExc = successChance * exceptionalChance;
+          return (
+            s +
+            (successChance - pExc) * value(e.rewardTable).essence +
+            pExc * (value(e.rewardTable).essence + value(e.exceptionalRewardTable).essence) +
+            (1 - successChance) * value(e.failureRewardTable).essence
+          );
+        }, 0) / runsOnTier.length;
+      return sum + mean * runs!;
+    }, 0);
+    expect(typical).toBeGreaterThan(valleyTypical * 2);
+    // Never a Prismatic Charm a week on Expeditions alone.
+    expect(day(DAY.aggressive, 'essence')).toBeLessThan(1750 / 7);
+  });
+
+  /**
+   * Expedition XP is a deliberate passive progression path and was **not**
+   * reduced when the currency was re-baselined. Twin Peeks tracks the Valley's
+   * scale rather than escalating because it unlocks later: a second region
+   * already doubles a player's XP throughput by existing.
+   */
+  it('keeps Expedition XP on the Waifu Valley scale rather than escalating it', () => {
+    const waifuXp = day(DAY.typical, 'waifuXp');
+    const playerXp = day(DAY.typical, 'playerXp');
+    expect(waifuXp).toBeGreaterThan(450);
+    expect(waifuXp).toBeLessThan(750);
+    expect(playerXp).toBeGreaterThan(100);
+    expect(playerXp).toBeLessThan(180);
+  });
+
+  // ── rare finds ───────────────────────────────────────────────────────────
+
+  /**
+   * Twin Peeks' chase is the **Full Body Massage** — a full Hunt Energy
+   * restore, found in the treatment room the March slide buried. It is an item
+   * that already exists (an affection-gift drop), so the region gets a chase
+   * without a new powerful item being minted for it, and it is the region's
+   * thesis in one object: the Peeks sends you home with something worth
+   * keeping, not something worth selling.
+   *
+   * Everything in a Twin Peeks bonus table that is not salvage is held to the
+   * same ceiling as the Valley's Mythic Contract — under one in a hundred runs
+   * of the mission that carries it. That is also what keeps the region's shop
+   * worth visiting: Shibari Rope and Wandering Hand appear as finds rarely
+   * enough that buying them stays the way you get them.
+   */
+  it('keeps the regional finds rare, and the shop worth shopping at', () => {
+    const rate = (e: (typeof peeks)[number], itemId: string): number => {
+      const { successChance, exceptionalChance } = reference(e);
+      const table = tables.get(e.exceptionalRewardTable!)!;
+      const group = table.groups.find((g) => g.entries.some((x) => x.itemId === itemId))!;
+      const entry = group.entries.find((x) => x.itemId === itemId)!;
+      const within = entry.weight / group.entries.reduce((s, x) => s + x.weight, 0);
+      return successChance * exceptionalChance * (group.chanceBasisPoints / 10_000) * within;
+    };
+    let nonSalvage = 0;
+    for (const e of peeks) {
+      const table = tables.get(e.exceptionalRewardTable!)!;
+      for (const group of table.groups) {
+        for (const entry of group.entries) {
+          if (items.get(entry.itemId)?.category === 'salvage') continue;
+          nonSalvage += 1;
+          const p = rate(e, entry.itemId);
+          expect(p, `${e.key} / ${entry.itemId}`).toBeGreaterThan(0);
+          expect(p, `${e.key} / ${entry.itemId}`).toBeLessThan(0.01);
+        }
+      }
+    }
+    expect(nonSalvage).toBeGreaterThanOrEqual(6);
+
+    // The chase itself, named so it cannot be quietly retuned or dropped.
+    const dig = peeks.find((e) => e.key === 'peeks_avalanche_shed_dig')!;
+    const chase = rate(dig, 'full_body_massage');
+    expect(chase).toBeGreaterThan(0.001);
+    expect(chase).toBeLessThan(0.006);
+    // Never sold anywhere, so the Expedition is a genuine second path to it.
+    expect(items.get('full_body_massage')!.shopRegions).toEqual([]);
+    // And it is not a WBe reward wearing a disguise: it cannot be vendored.
+    expect(items.get('full_body_massage')!.sellValue ?? 0).toBe(0);
+  });
+
+  it('never lists the same item twice in one Twin Peeks reward group', () => {
+    for (const table of peeksTables) {
+      for (const group of table.groups) {
+        const ids = group.entries.map((entry) => entry.itemId);
+        expect(new Set(ids).size, `${table.id} / ${group.id}`).toBe(ids.length);
+      }
+    }
+  });
+
+  /**
+   * Rotation has to *reach* every mission. A pool entry the board can never
+   * draw is content nobody will ever see, and because the draw is a stable
+   * hash of `(player, region, window, key)` that failure would be silent and
+   * permanent for the affected player rather than intermittent.
+   */
+  it('exposes every Twin Peeks mission over enough rotations, for any player', () => {
+    const config = SHIPPED.tables.expeditions;
+    const durations = Object.values(config.durations);
+    for (const playerId of [1, 2, 17, 4242]) {
+      const seen = new Set<string>();
+      for (let window = 0; window < 200; window += 1) {
+        for (const mission of buildBoard({
+          playerId,
+          regionId: 'twin-peeks',
+          expeditions: SHIPPED.expeditions,
+          durations,
+          boardSize: config.boardSize,
+          rotationHours: config.rotationHours,
+          now: new Date(window * config.rotationHours * 3_600_000),
+        })) {
+          seen.add(mission.key);
+        }
+      }
+      expect(seen.size, `player ${playerId}`).toBe(peeks.length);
+    }
+  });
+});
+
+/**
+ * ── The regional economy benchmark ─────────────────────────────────────────
+ *
+ * The one economic rule that applies to **every** Expedition-enabled region,
+ * present and future:
+ *
+ *     ~250-350 WBe per region per typical day.
+ *
+ * It is a **per-region** benchmark, not a global player ceiling. Regional
+ * concurrency is intentionally rewarding: unlocking another Expedition-enabled
+ * region raises a player's passive capacity by roughly one region's worth, and
+ * that is the payoff for getting there. There is deliberately no global WBe
+ * cap, no diminishing-return multiplier, no concurrency penalty and no
+ * deployment fee — see the header of `expeditionService.ts` for why, and for
+ * why future scaling belongs in sinks rather than in quieter rewards.
+ *
+ * This block therefore checks each region **independently** and never sums
+ * them. It is also deliberately thin: it asserts *size* and nothing about
+ * *composition*, because composition is where regional identity lives. Waifu
+ * Valley is salvage-led; Twin Peeks is Essence-and-keepables-led; both are
+ * correct, and a global composition rule would have to forbid one of them. The
+ * per-region blocks above own those assertions.
+ *
+ * A region added later is picked up here automatically, which is the point: a
+ * new region's first economic test should not have to be written by hand.
+ */
+describe('the regional Expedition economy benchmark', () => {
+  const tables = new Map(SHIPPED.expeditionRewards.map((t) => [t.id, t]));
+  const sell = new Map(SHIPPED.items.map((i) => [i.slug, i.sellValue ?? 0]));
+
+  /** WBe of one table: direct WaifuBux plus expected salvage sell value. */
+  function wbe(id: string | null): number {
+    const table = id ? tables.get(id) : undefined;
+    if (!table) return 0;
+    let total = table.waifubux ? (table.waifubux.min + table.waifubux.max) / 2 : 0;
+    for (const group of table.groups.filter((g) => g.enabled)) {
+      const entries = group.entries.filter((e) => e.enabled);
+      const weight = entries.reduce((s, e) => s + e.weight, 0);
+      for (const e of entries) {
+        total +=
+          group.rolls * (group.chanceBasisPoints / 10_000) * (e.weight / weight) *
+          e.quantity * (sell.get(e.itemId) ?? 0);
+      }
+    }
+    return total;
+  }
+
+  function expectedWbe(e: LoadedContent['expeditions'][number]): number {
+    const { successChance, exceptionalChance } = evaluateSuitability({
+      definition: e,
+      waifu: {
+        level: e.recommendedLevel + 5,
+        affinity: e.preferredAffinities[0] ?? 'switch',
+        race: e.preferredRaces[0] ?? 'human',
+      },
+      config: SHIPPED.tables.expeditions,
+      affinityConfig: SHIPPED.tables.buddyAffinity,
+    });
+    const pExceptional = successChance * exceptionalChance;
+    const pOrdinary = successChance - pExceptional;
+    const success = wbe(e.rewardTable);
+    return (
+      (1 - successChance) * wbe(e.failureRewardTable) +
+      pOrdinary * success +
+      pExceptional * (success + wbe(e.exceptionalRewardTable))
+    );
+  }
+
+  /** The benchmark day: one overnight mission and one 6h, per region. */
+  const TYPICAL_DAY = [
+    [1080, 1],
+    [360, 1],
+  ] as const;
+
+  const authoredRegions = [
+    ...new Set(SHIPPED.expeditions.filter((e) => e.enabled).map((e) => e.region)),
+  ].sort();
+
+  it('has at least one authored region to measure', () => {
+    expect(authoredRegions.length).toBeGreaterThan(0);
+  });
+
+  it.each(authoredRegions)(
+    'pays %s about 250-350 WBe on a typical day, measured on its own',
+    (region) => {
+      const pool = SHIPPED.expeditions.filter((e) => e.region === region && e.enabled);
+      const total = TYPICAL_DAY.reduce((sum, [minutes, runs]) => {
+        const tier = pool.filter((e) => e.durationMinutes === minutes);
+        expect(tier.length, `${region} has no ${minutes}m mission`).toBeGreaterThan(0);
+        const mean = tier.reduce((s, e) => s + expectedWbe(e), 0) / tier.length;
+        return sum + mean * runs;
+      }, 0);
+      expect(total, `${region} typical day`).toBeGreaterThan(250);
+      expect(total, `${region} typical day`).toBeLessThan(350);
+    },
+  );
+
+  /**
+   * A later region does not pay less for being later.
+   *
+   * Region order is an unlock gate, not an economic tier, and the temptation
+   * to taper each new region is exactly how a game ends up with content nobody
+   * plays once they have seen it. Held as a *band* between the best and worst
+   * region rather than as equality, so the identity differences the per-region
+   * blocks encourage stay legal.
+   */
+  it('does not taper later regions', () => {
+    const totals = authoredRegions.map((region) => {
+      const pool = SHIPPED.expeditions.filter((e) => e.region === region && e.enabled);
+      return TYPICAL_DAY.reduce((sum, [minutes, runs]) => {
+        const tier = pool.filter((e) => e.durationMinutes === minutes);
+        return sum + (tier.reduce((s, e) => s + expectedWbe(e), 0) / tier.length) * runs;
+      }, 0);
+    });
+    if (totals.length < 2) return;
+    expect(Math.max(...totals) / Math.min(...totals)).toBeLessThan(1.4);
+  });
+
+  /**
+   * The absences, pinned.
+   *
+   * `ExpeditionsConfigSchema` is `.strict()`, so a field it does not declare
+   * is a load error rather than a silently ignored key. That makes "there is
+   * no deployment fee" testable: the config cannot grow one without this
+   * failing, which is the moment to have the conversation rather than the
+   * moment to discover it in a changelog.
+   */
+  it('has no deployment fee, global cap, or concurrency multiplier in its config', () => {
+    const config = SHIPPED.tables.expeditions as unknown as Record<string, unknown>;
+    for (const forbidden of [
+      'deploymentFee',
+      'deployCost',
+      'globalWbeCap',
+      'dailyRewardCap',
+      'concurrencyPenalty',
+      'concurrencyMultiplier',
+      'diminishingReturns',
+      'regionMultiplier',
+    ]) {
+      expect(config[forbidden], forbidden).toBeUndefined();
+      // And the schema refuses to learn one by accident.
+      expect(
+        ExpeditionsConfigSchema.safeParse({ [forbidden]: 1 }).success,
+        `${forbidden} must not be accepted by the config schema`,
+      ).toBe(false);
+    }
+    // `maxConcurrent` survives as a parsed-and-ignored legacy key. It must
+    // stay ignored: reading it again would reintroduce a global slot ceiling.
+    expect(SHIPPED.tables.expeditions.maxConcurrent).toBeUndefined();
   });
 });

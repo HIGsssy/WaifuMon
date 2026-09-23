@@ -903,5 +903,852 @@
         ]
       }
     ]
+  },
+
+  {
+    "id": "peeks-fog-line-success-v1",
+    "enabled": true,
+    "version": "peeks-fog-line-success-v1",
+    "waifubux": { "min": 2, "max": 4 },
+    "essence": { "min": 0, "max": 1 },
+    "waifuXp": 32,
+    "playerXp": 7,
+    "groups": [
+      {
+        "id": "hand-carried",
+        "enabled": true,
+        "rolls": 2,
+        "chanceBasisPoints": 7500,
+        "entries": [
+          { "itemId": "ridge_road_postcard", "weight": 72, "quantity": 1, "enabled": true },
+          { "itemId": "bathhouse_locker_token", "weight": 28, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "left-on-the-step",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 500,
+        "entries": [
+          { "itemId": "chipped_enamel_pie_plate", "weight": 75, "quantity": 1, "enabled": true },
+          { "itemId": "snapped_board_binding", "weight": 25, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "pressed-on-you-at-the-door",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 700,
+        "entries": [
+          { "itemId": "basic_charm", "weight": 100, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "peeks-fog-line-bonus-v1",
+    "enabled": true,
+    "version": "peeks-fog-line-bonus-v1",
+    "waifubux": { "min": 2, "max": 4 },
+    "essence": { "min": 1, "max": 2 },
+    "waifuXp": 14,
+    "playerXp": 0,
+    "groups": [
+      {
+        "id": "the-one-who-wanted-to-talk",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 3500,
+        "entries": [
+          { "itemId": "bathhouse_locker_token", "weight": 55, "quantity": 2, "enabled": true },
+          { "itemId": "chipped_enamel_pie_plate", "weight": 30, "quantity": 1, "enabled": true },
+          { "itemId": "snapped_board_binding", "weight": 15, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "peeks-fog-line-failure-v1",
+    "enabled": true,
+    "version": "peeks-fog-line-failure-v1",
+    "waifubux": { "min": 1, "max": 2 },
+    "waifuXp": 10,
+    "playerXp": 3,
+    "groups": [
+      {
+        "id": "dropped-in-the-ditch",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 5000,
+        "entries": [
+          { "itemId": "ridge_road_postcard", "weight": 100, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+
+  {
+    "id": "peeks-bathhouse-turnover-success-v1",
+    "enabled": true,
+    "version": "peeks-bathhouse-turnover-success-v1",
+    "waifubux": { "min": 2, "max": 4 },
+    "essence": { "min": 1, "max": 2 },
+    "waifuXp": 38,
+    "playerXp": 8,
+    "groups": [
+      {
+        "id": "drained-and-scrubbed",
+        "enabled": true,
+        "rolls": 2,
+        "chanceBasisPoints": 6000,
+        "entries": [
+          { "itemId": "bathhouse_locker_token", "weight": 65, "quantity": 1, "enabled": true },
+          { "itemId": "ridge_road_postcard", "weight": 35, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "left-in-the-locker-bank",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 400,
+        "entries": [
+          { "itemId": "chipped_enamel_pie_plate", "weight": 70, "quantity": 1, "enabled": true },
+          { "itemId": "snapped_board_binding", "weight": 30, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "from-the-front-desk",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 700,
+        "entries": [
+          { "itemId": "basic_charm", "weight": 100, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "peeks-bathhouse-turnover-bonus-v1",
+    "enabled": true,
+    "version": "peeks-bathhouse-turnover-bonus-v1",
+    "waifubux": { "min": 2, "max": 5 },
+    "essence": { "min": 2, "max": 3 },
+    "waifuXp": 15,
+    "playerXp": 0,
+    "groups": [
+      {
+        "id": "the-regulars-tipped",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 2200,
+        "entries": [
+          { "itemId": "chipped_enamel_pie_plate", "weight": 50, "quantity": 1, "enabled": true },
+          { "itemId": "snapped_board_binding", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "survey_flag_bundle", "weight": 15, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "peeks-bathhouse-turnover-failure-v1",
+    "enabled": true,
+    "version": "peeks-bathhouse-turnover-failure-v1",
+    "waifubux": { "min": 1, "max": 2 },
+    "waifuXp": 11,
+    "playerXp": 3,
+    "groups": [
+      {
+        "id": "swept-into-the-drain",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 2500,
+        "entries": [
+          { "itemId": "bathhouse_locker_token", "weight": 100, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+
+  {
+    "id": "peeks-overlook-sweep-success-v1",
+    "enabled": true,
+    "version": "peeks-overlook-sweep-success-v1",
+    "waifubux": { "min": 3, "max": 5 },
+    "essence": { "min": 1, "max": 2 },
+    "waifuXp": 46,
+    "playerXp": 10,
+    "groups": [
+      {
+        "id": "written-down-where-it-lay",
+        "enabled": true,
+        "rolls": 2,
+        "chanceBasisPoints": 4000,
+        "entries": [
+          { "itemId": "bathhouse_locker_token", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "ridge_road_postcard", "weight": 25, "quantity": 1, "enabled": true },
+          { "itemId": "chipped_enamel_pie_plate", "weight": 15, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "arranged-too-neatly",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 400,
+        "entries": [
+          { "itemId": "snapped_board_binding", "weight": 70, "quantity": 1, "enabled": true },
+          { "itemId": "survey_flag_bundle", "weight": 30, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "tucked-under-a-stone",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 700,
+        "entries": [
+          { "itemId": "basic_charm", "weight": 75, "quantity": 1, "enabled": true },
+          { "itemId": "quickie_coffee", "weight": 25, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "peeks-overlook-sweep-bonus-v1",
+    "enabled": true,
+    "version": "peeks-overlook-sweep-bonus-v1",
+    "waifubux": { "min": 3, "max": 5 },
+    "essence": { "min": 2, "max": 4 },
+    "waifuXp": 18,
+    "playerXp": 0,
+    "groups": [
+      {
+        "id": "what-was-left-for-whoever-came",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 2200,
+        "entries": [
+          { "itemId": "chipped_enamel_pie_plate", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "snapped_board_binding", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "survey_flag_bundle", "weight": 20, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "peeks-overlook-sweep-failure-v1",
+    "enabled": true,
+    "version": "peeks-overlook-sweep-failure-v1",
+    "waifubux": { "min": 1, "max": 3 },
+    "waifuXp": 13,
+    "playerXp": 4,
+    "groups": [
+      {
+        "id": "only-got-the-first-cairn",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 4000,
+        "entries": [
+          { "itemId": "ridge_road_postcard", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "bathhouse_locker_token", "weight": 40, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+
+  {
+    "id": "peeks-diner-shift-success-v1",
+    "enabled": true,
+    "version": "peeks-diner-shift-success-v1",
+    "waifubux": { "min": 7, "max": 11 },
+    "essence": { "min": 1, "max": 3 },
+    "waifuXp": 100,
+    "playerXp": 24,
+    "groups": [
+      {
+        "id": "counter-takings",
+        "enabled": true,
+        "rolls": 3,
+        "chanceBasisPoints": 6000,
+        "entries": [
+          { "itemId": "bathhouse_locker_token", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "ridge_road_postcard", "weight": 25, "quantity": 1, "enabled": true },
+          { "itemId": "chipped_enamel_pie_plate", "weight": 20, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "the-unsigned-docket",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 900,
+        "entries": [
+          { "itemId": "snapped_board_binding", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "survey_flag_bundle", "weight": 40, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "on-the-house",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 1400,
+        "entries": [
+          { "itemId": "basic_charm", "weight": 70, "quantity": 1, "enabled": true },
+          { "itemId": "quickie_coffee", "weight": 30, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "peeks-diner-shift-bonus-v1",
+    "enabled": true,
+    "version": "peeks-diner-shift-bonus-v1",
+    "waifubux": { "min": 5, "max": 9 },
+    "essence": { "min": 3, "max": 5 },
+    "waifuXp": 34,
+    "playerXp": 0,
+    "groups": [
+      {
+        "id": "under-the-pie-dome",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 3000,
+        "entries": [
+          { "itemId": "chipped_enamel_pie_plate", "weight": 40, "quantity": 1, "enabled": true },
+          { "itemId": "snapped_board_binding", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "survey_flag_bundle", "weight": 25, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "staff-discount",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 500,
+        "entries": [
+          { "itemId": "quickie_coffee", "weight": 100, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "peeks-diner-shift-failure-v1",
+    "enabled": true,
+    "version": "peeks-diner-shift-failure-v1",
+    "waifubux": { "min": 3, "max": 5 },
+    "waifuXp": 30,
+    "playerXp": 7,
+    "groups": [
+      {
+        "id": "covered-the-shift-anyway",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 6000,
+        "entries": [
+          { "itemId": "bathhouse_locker_token", "weight": 70, "quantity": 1, "enabled": true },
+          { "itemId": "ridge_road_postcard", "weight": 30, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+
+  {
+    "id": "peeks-slope-patrol-success-v1",
+    "enabled": true,
+    "version": "peeks-slope-patrol-success-v1",
+    "waifubux": { "min": 7, "max": 11 },
+    "essence": { "min": 2, "max": 3 },
+    "waifuXp": 112,
+    "playerXp": 26,
+    "groups": [
+      {
+        "id": "swept-off-the-runs",
+        "enabled": true,
+        "rolls": 2,
+        "chanceBasisPoints": 4800,
+        "entries": [
+          { "itemId": "snapped_board_binding", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "bathhouse_locker_token", "weight": 40, "quantity": 1, "enabled": true },
+          { "itemId": "ridge_road_postcard", "weight": 25, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "ducked-the-rope",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 400,
+        "entries": [
+          { "itemId": "survey_flag_bundle", "weight": 65, "quantity": 1, "enabled": true },
+          { "itemId": "geothermal_core_sample", "weight": 35, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "out-of-the-patrol-locker",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 1400,
+        "entries": [
+          { "itemId": "basic_charm", "weight": 70, "quantity": 1, "enabled": true },
+          { "itemId": "peekaboo_panties", "weight": 30, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "peeks-slope-patrol-bonus-v1",
+    "enabled": true,
+    "version": "peeks-slope-patrol-bonus-v1",
+    "waifubux": { "min": 5, "max": 9 },
+    "essence": { "min": 3, "max": 6 },
+    "waifuXp": 36,
+    "playerXp": 0,
+    "groups": [
+      {
+        "id": "she-left-her-board",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 2600,
+        "entries": [
+          { "itemId": "snapped_board_binding", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "survey_flag_bundle", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "geothermal_core_sample", "weight": 20, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "rental-shop-thanks-you",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 400,
+        "entries": [
+          { "itemId": "peekaboo_panties", "weight": 100, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "peeks-slope-patrol-failure-v1",
+    "enabled": true,
+    "version": "peeks-slope-patrol-failure-v1",
+    "waifubux": { "min": 3, "max": 5 },
+    "waifuXp": 33,
+    "playerXp": 8,
+    "groups": [
+      {
+        "id": "got-everyone-down-at-least",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 2000,
+        "entries": [
+          { "itemId": "bathhouse_locker_token", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "snapped_board_binding", "weight": 40, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+
+  {
+    "id": "peeks-mineral-works-success-v1",
+    "enabled": true,
+    "version": "peeks-mineral-works-success-v1",
+    "waifubux": { "min": 11, "max": 16 },
+    "essence": { "min": 4, "max": 7 },
+    "waifuXp": 172,
+    "playerXp": 41,
+    "groups": [
+      {
+        "id": "night-draw-bottling",
+        "enabled": true,
+        "rolls": 2,
+        "chanceBasisPoints": 6000,
+        "entries": [
+          { "itemId": "bathhouse_locker_token", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "chipped_enamel_pie_plate", "weight": 30, "quantity": 1, "enabled": true },
+          { "itemId": "snapped_board_binding", "weight": 25, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "up-the-second-pipe",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 900,
+        "entries": [
+          { "itemId": "survey_flag_bundle", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "geothermal_core_sample", "weight": 40, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "bottled-for-yourself",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 1800,
+        "entries": [
+          { "itemId": "basic_charm", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "peekaboo_panties", "weight": 40, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "peeks-mineral-works-bonus-v1",
+    "enabled": true,
+    "version": "peeks-mineral-works-bonus-v1",
+    "waifubux": { "min": 8, "max": 14 },
+    "essence": { "min": 6, "max": 10 },
+    "waifuXp": 55,
+    "playerXp": 0,
+    "groups": [
+      {
+        "id": "richest-of-the-draw",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 3200,
+        "entries": [
+          { "itemId": "chipped_enamel_pie_plate", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "survey_flag_bundle", "weight": 40, "quantity": 1, "enabled": true },
+          { "itemId": "geothermal_core_sample", "weight": 25, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "works-dispensary",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 600,
+        "entries": [
+          { "itemId": "silk_charm", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "velvet_charm", "weight": 40, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "peeks-mineral-works-failure-v1",
+    "enabled": true,
+    "version": "peeks-mineral-works-failure-v1",
+    "waifubux": { "min": 5, "max": 8 },
+    "waifuXp": 52,
+    "playerXp": 12,
+    "groups": [
+      {
+        "id": "bottled-what-we-could",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 3500,
+        "entries": [
+          { "itemId": "bathhouse_locker_token", "weight": 50, "quantity": 1, "enabled": true },
+          { "itemId": "chipped_enamel_pie_plate", "weight": 50, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+
+  {
+    "id": "peeks-never-answers-success-v1",
+    "enabled": true,
+    "version": "peeks-never-answers-success-v1",
+    "waifubux": { "min": 11, "max": 16 },
+    "essence": { "min": 4, "max": 7 },
+    "waifuXp": 178,
+    "playerXp": 42,
+    "groups": [
+      {
+        "id": "left-on-the-porch",
+        "enabled": true,
+        "rolls": 2,
+        "chanceBasisPoints": 6000,
+        "entries": [
+          { "itemId": "bathhouse_locker_token", "weight": 40, "quantity": 1, "enabled": true },
+          { "itemId": "chipped_enamel_pie_plate", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "snapped_board_binding", "weight": 25, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "through-the-side-window",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 850,
+        "entries": [
+          { "itemId": "survey_flag_bundle", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "geothermal_core_sample", "weight": 45, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "she-did-answer-eventually",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 1800,
+        "entries": [
+          { "itemId": "basic_charm", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "silk_charm", "weight": 25, "quantity": 1, "enabled": true },
+          { "itemId": "quickie_coffee", "weight": 20, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "peeks-never-answers-bonus-v1",
+    "enabled": true,
+    "version": "peeks-never-answers-bonus-v1",
+    "waifubux": { "min": 8, "max": 14 },
+    "essence": { "min": 6, "max": 10 },
+    "waifuXp": 57,
+    "playerXp": 0,
+    "groups": [
+      {
+        "id": "what-she-wanted-seen",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 3000,
+        "entries": [
+          { "itemId": "chipped_enamel_pie_plate", "weight": 30, "quantity": 1, "enabled": true },
+          { "itemId": "survey_flag_bundle", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "geothermal_core_sample", "weight": 25, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "pressed-into-your-hand",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 700,
+        "entries": [
+          { "itemId": "wandering_hand", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "motorboat_coupon", "weight": 45, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "peeks-never-answers-failure-v1",
+    "enabled": true,
+    "version": "peeks-never-answers-failure-v1",
+    "waifubux": { "min": 5, "max": 8 },
+    "waifuXp": 54,
+    "playerXp": 13,
+    "groups": [
+      {
+        "id": "nobody-came-to-the-door",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 4000,
+        "entries": [
+          { "itemId": "ridge_road_postcard", "weight": 40, "quantity": 1, "enabled": true },
+          { "itemId": "bathhouse_locker_token", "weight": 40, "quantity": 1, "enabled": true },
+          { "itemId": "chipped_enamel_pie_plate", "weight": 20, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+
+  {
+    "id": "peeks-fog-bank-vigil-success-v1",
+    "enabled": true,
+    "version": "peeks-fog-bank-vigil-success-v1",
+    "waifubux": { "min": 34, "max": 46 },
+    "essence": { "min": 10, "max": 16 },
+    "waifuXp": 425,
+    "playerXp": 100,
+    "groups": [
+      {
+        "id": "logged-and-bagged",
+        "enabled": true,
+        "rolls": 5,
+        "chanceBasisPoints": 7000,
+        "entries": [
+          { "itemId": "bathhouse_locker_token", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "chipped_enamel_pie_plate", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "snapped_board_binding", "weight": 20, "quantity": 1, "enabled": true },
+          { "itemId": "ridge_road_postcard", "weight": 10, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "second-column",
+        "enabled": true,
+        "rolls": 2,
+        "chanceBasisPoints": 1800,
+        "entries": [
+          { "itemId": "survey_flag_bundle", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "geothermal_core_sample", "weight": 40, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "left-in-the-log-box",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 2500,
+        "entries": [
+          { "itemId": "basic_charm", "weight": 50, "quantity": 1, "enabled": true },
+          { "itemId": "silk_charm", "weight": 30, "quantity": 1, "enabled": true },
+          { "itemId": "quickie_coffee", "weight": 20, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "peeks-fog-bank-vigil-bonus-v1",
+    "enabled": true,
+    "version": "peeks-fog-bank-vigil-bonus-v1",
+    "waifubux": { "min": 26, "max": 40 },
+    "essence": { "min": 14, "max": 22 },
+    "waifuXp": 130,
+    "playerXp": 0,
+    "groups": [
+      {
+        "id": "crossed-the-line",
+        "enabled": true,
+        "rolls": 2,
+        "chanceBasisPoints": 3800,
+        "entries": [
+          { "itemId": "chipped_enamel_pie_plate", "weight": 30, "quantity": 1, "enabled": true },
+          { "itemId": "snapped_board_binding", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "survey_flag_bundle", "weight": 25, "quantity": 1, "enabled": true },
+          { "itemId": "geothermal_core_sample", "weight": 10, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "it-came-back-with-her",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 900,
+        "entries": [
+          { "itemId": "reach_around", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "velvet_charm", "weight": 45, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "charm-in-the-log-box",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 500,
+        "entries": [
+          { "itemId": "shibari_rope", "weight": 100, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "peeks-fog-bank-vigil-failure-v1",
+    "enabled": true,
+    "version": "peeks-fog-bank-vigil-failure-v1",
+    "waifubux": { "min": 12, "max": 18 },
+    "waifuXp": 120,
+    "playerXp": 28,
+    "groups": [
+      {
+        "id": "mostly-weather",
+        "enabled": true,
+        "rolls": 2,
+        "chanceBasisPoints": 5500,
+        "entries": [
+          { "itemId": "bathhouse_locker_token", "weight": 50, "quantity": 1, "enabled": true },
+          { "itemId": "chipped_enamel_pie_plate", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "ridge_road_postcard", "weight": 15, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+
+  {
+    "id": "peeks-avalanche-shed-success-v1",
+    "enabled": true,
+    "version": "peeks-avalanche-shed-success-v1",
+    "waifubux": { "min": 36, "max": 50 },
+    "essence": { "min": 12, "max": 18 },
+    "waifuXp": 455,
+    "playerXp": 107,
+    "groups": [
+      {
+        "id": "dug-out-the-equipment",
+        "enabled": true,
+        "rolls": 5,
+        "chanceBasisPoints": 7200,
+        "entries": [
+          { "itemId": "bathhouse_locker_token", "weight": 30, "quantity": 1, "enabled": true },
+          { "itemId": "chipped_enamel_pie_plate", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "snapped_board_binding", "weight": 25, "quantity": 1, "enabled": true },
+          { "itemId": "ridge_road_postcard", "weight": 10, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "packed-in-beside-it",
+        "enabled": true,
+        "rolls": 2,
+        "chanceBasisPoints": 1900,
+        "entries": [
+          { "itemId": "survey_flag_bundle", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "geothermal_core_sample", "weight": 45, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "out-of-the-equipment-crate",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 2500,
+        "entries": [
+          { "itemId": "basic_charm", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "silk_charm", "weight": 30, "quantity": 1, "enabled": true },
+          { "itemId": "quickie_coffee", "weight": 25, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "peeks-avalanche-shed-bonus-v1",
+    "enabled": true,
+    "version": "peeks-avalanche-shed-bonus-v1",
+    "waifubux": { "min": 28, "max": 44 },
+    "essence": { "min": 16, "max": 26 },
+    "waifuXp": 140,
+    "playerXp": 0,
+    "groups": [
+      {
+        "id": "under-the-shed-floor",
+        "enabled": true,
+        "rolls": 2,
+        "chanceBasisPoints": 4000,
+        "entries": [
+          { "itemId": "chipped_enamel_pie_plate", "weight": 25, "quantity": 1, "enabled": true },
+          { "itemId": "snapped_board_binding", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "survey_flag_bundle", "weight": 25, "quantity": 1, "enabled": true },
+          { "itemId": "geothermal_core_sample", "weight": 15, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "march-was-not-the-first-slide",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 1100,
+        "entries": [
+          { "itemId": "fluffy_cuffs", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "velvet_charm", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "wandering_hand", "weight": 20, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "the-treatment-room-under-the-snow",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 400,
+        "entries": [
+          { "itemId": "full_body_massage", "weight": 70, "quantity": 1, "enabled": true },
+          { "itemId": "survey_flag_bundle", "weight": 30, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "peeks-avalanche-shed-failure-v1",
+    "enabled": true,
+    "version": "peeks-avalanche-shed-failure-v1",
+    "waifubux": { "min": 13, "max": 20 },
+    "waifuXp": 128,
+    "playerXp": 30,
+    "groups": [
+      {
+        "id": "shifted-what-we-could",
+        "enabled": true,
+        "rolls": 2,
+        "chanceBasisPoints": 5000,
+        "entries": [
+          { "itemId": "bathhouse_locker_token", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "chipped_enamel_pie_plate", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "snapped_board_binding", "weight": 20, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
   }
 ]

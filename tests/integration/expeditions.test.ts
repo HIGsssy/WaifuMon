@@ -18,6 +18,8 @@ import { eq, sql } from 'drizzle-orm';
 import {
   items,
   playerExpeditions,
+  players,
+  playerWaifus,
   species as speciesTable,
   type SpeciesRow,
 } from '../../src/db/schema';
@@ -1548,5 +1550,210 @@ describe('odds stay private', () => {
     expect(row.successChance).toBeGreaterThan(0);
     expect(row.exceptionalChance).toBeGreaterThan(0);
     expect(row.logicVersion).toBe(1);
+  });
+});
+
+/**
+ * ── Who the Waifu XP belongs to ────────────────────────────────────────────
+ *
+ * Regional concurrency makes this load-bearing in a way it was not when a
+ * player had one mission. Five regions running at once produce roughly five
+ * regions' worth of WaifuMon XP per day — and the design intent is that this
+ * is *distributed across five WaifuMon*, because five simultaneous missions
+ * structurally require five distinct copies (`player_expeditions_waifu_active_uq`).
+ * It must not be five regions' worth of XP that can be funnelled onto one
+ * favourite, which would turn Expeditions into a levelling exploit rather than
+ * a passive progression path.
+ *
+ * Two independent mechanisms deliver that, and these tests cover both:
+ *
+ *   1. `waifu_id` is written at **deploy** and read back off the *claimed row*
+ *      (`won.waifuId`) — never from whoever is Buddy at collection time.
+ *   2. `collection.awardWaifuXp` locks on `(id, player_id)` and updates that
+ *      one row, so the grant cannot spill sideways even if the caller lied.
+ */
+describe('Expedition XP belongs to the copy that was sent', () => {
+  /**
+   * Two regions with *different* XP payouts, so a cross-credit shows up as the
+   * wrong number rather than as a coincidence. Same-valued tables would let a
+   * swap pass silently.
+   */
+  const XP_TABLES = [
+    ...DEFAULT_TABLES,
+    rewardTable({
+      id: 'peeks_success',
+      waifubux: { min: 10, max: 10 },
+      essence: undefined,
+      waifuXp: 400,
+      playerXp: 30,
+      groups: [],
+    }),
+  ];
+
+  function xpPool(): RegionalExpedition[] {
+    return [
+      // Waifu Valley keeps `test_success`: 80 Waifu XP, 0 player XP.
+      ...completePool(),
+      // Twin Peeks pays 400 Waifu XP and 30 player XP, on every tier.
+      ...TIERS.map((minutes) =>
+        definition({
+          key: `peeks_${minutes}`,
+          region: 'twin-peeks',
+          durationMinutes: minutes,
+          rewardTable: 'peeks_success',
+        }),
+      ),
+    ];
+  }
+
+  const waifuXpOf = async (waifuId: number) => {
+    const [row] = await t.db
+      .select({ xp: playerWaifus.xp })
+      .from(playerWaifus)
+      .where(eq(playerWaifus.id, waifuId));
+    return row!.xp;
+  };
+  const playerXpOf = async (playerId: number) => {
+    const [row] = await t.db.select({ xp: players.xp }).from(players).where(eq(players.id, playerId));
+    return row!.xp;
+  };
+
+  /** A player with two spare copies and a mission running in each region. */
+  async function twoRegionsInFlight() {
+    installContent(xpPool(), XP_TABLES);
+    const { playerId, waifuId: valleyWaifu } = await playerWithWaifu();
+    const second = await insertOwnedWaifu(t.db, {
+      playerId,
+      speciesId: demonSpecies.id,
+      level: 10,
+    });
+    const valley = await app.expeditions.deploy(playerId, 'test_run', valleyWaifu);
+    await forceRegion(t.db, playerId, 'twin-peeks');
+    const peeks = await app.expeditions.deploy(playerId, 'peeks_360', second.id);
+    for (const view of [valley, peeks]) {
+      await forceOutcome(view.id, 'success');
+      await timeTravel(view.id);
+    }
+    return { playerId, valleyWaifu, peeksWaifu: second.id, valley, peeks };
+  }
+
+  it('credits each mission only to the WaifuMon that ran it', async () => {
+    const { playerId, valleyWaifu, peeksWaifu, valley, peeks } = await twoRegionsInFlight();
+    const valleyBefore = await waifuXpOf(valleyWaifu);
+    const peeksBefore = await waifuXpOf(peeksWaifu);
+
+    await app.expeditions.claim(playerId, valley.id);
+    // After the Valley claim only the Valley copy has moved. This is the
+    // cross-credit assertion: the Twin Peeks copy is untouched even though it
+    // is the same player, in the same transaction-visible state.
+    expect(await waifuXpOf(valleyWaifu)).toBe(valleyBefore + 80);
+    expect(await waifuXpOf(peeksWaifu)).toBe(peeksBefore);
+
+    await app.expeditions.claim(playerId, peeks.id);
+    expect(await waifuXpOf(peeksWaifu)).toBe(peeksBefore + 400);
+    // And the Valley copy did not pick up any of Twin Peeks' 400.
+    expect(await waifuXpOf(valleyWaifu)).toBe(valleyBefore + 80);
+  });
+
+  it('cannot cross-credit when both regions are claimed simultaneously', async () => {
+    const { playerId, valleyWaifu, peeksWaifu, valley, peeks } = await twoRegionsInFlight();
+    const valleyBefore = await waifuXpOf(valleyWaifu);
+    const peeksBefore = await waifuXpOf(peeksWaifu);
+
+    // Both claims race through `currency.lockCurrencies` on the same player
+    // row, so they serialise — the question is whether serialising them also
+    // keeps the two XP grants pointed at different WaifuMon.
+    const results = await Promise.all([
+      app.expeditions.claim(playerId, valley.id),
+      app.expeditions.claim(playerId, peeks.id),
+    ]);
+    expect(results.map((r) => r.outcome)).toEqual(['success', 'success']);
+
+    expect(await waifuXpOf(valleyWaifu)).toBe(valleyBefore + 80);
+    expect(await waifuXpOf(peeksWaifu)).toBe(peeksBefore + 400);
+  });
+
+  /**
+   * Player XP is the opposite rule and must stay that way: it belongs to the
+   * *player*, so two regions accumulate onto one total. Only Twin Peeks pays
+   * it here, which is what makes the number attributable.
+   */
+  it('still pays player XP to the player, accumulating across regions', async () => {
+    const { playerId, valley, peeks } = await twoRegionsInFlight();
+    const before = await playerXpOf(playerId);
+
+    await app.expeditions.claim(playerId, valley.id);
+    // Waifu Valley's table pays no player XP, so nothing moves yet.
+    expect(await playerXpOf(playerId)).toBe(before);
+
+    await app.expeditions.claim(playerId, peeks.id);
+    expect(await playerXpOf(playerId)).toBe(before + 30);
+  });
+
+  /**
+   * The mid-flight Buddy swap — the failure mode `awardWaifuXp` exists for.
+   *
+   * An 18-hour mission outlives most Buddy decisions. If the claim read the
+   * *current* Buddy instead of the row's `waifu_id`, the XP would land on
+   * whoever happened to be equipped at collection time, which is both wrong
+   * and quietly exploitable.
+   */
+  it('pays the deployed copy even after the Buddy changes mid-flight', async () => {
+    const { playerId, valleyWaifu, valley } = await twoRegionsInFlight();
+    // A third copy, kept at home: a deployed copy cannot be equipped as Buddy
+    // (`setBuddy` refuses `on_expedition`), so the Buddy here is necessarily
+    // somebody with no stake in either mission — which is the case that would
+    // wrongly collect the XP if the claim read the Buddy pointer.
+    const bystander = await insertOwnedWaifu(t.db, {
+      playerId,
+      speciesId: demonSpecies.id,
+      level: 10,
+    });
+    await app.collection.setBuddy(playerId, bystander.id);
+    const bystanderBefore = await waifuXpOf(bystander.id);
+    const valleyBefore = await waifuXpOf(valleyWaifu);
+
+    await app.expeditions.claim(playerId, valley.id);
+
+    expect(await waifuXpOf(valleyWaifu)).toBe(valleyBefore + 80);
+    expect(await waifuXpOf(bystander.id)).toBe(bystanderBefore);
+  });
+
+  /**
+   * Expedition Waifu XP is deliberately **unbonused**.
+   *
+   * `buddy_xp_gain` is defined over "XP awarded to the active Buddy", and an
+   * expedition names an arbitrary copy — who, by default, cannot even be the
+   * Buddy (`buddyDeployable` ships false). Routing it through `awardBuddyXp`
+   * would pay the bonus to a copy the bonus is not defined over, and would pay
+   * it based on whoever is equipped at collection time. Essence is the
+   * deliberate contrast: it goes through `essenceAward`, which *does* apply the
+   * Buddy Bonus, exactly as every other Essence award in the game does.
+   */
+  it('pays the flat authored Waifu XP, unscaled by any Buddy Bonus', async () => {
+    const { playerId, peeksWaifu, peeks } = await twoRegionsInFlight();
+    const before = await waifuXpOf(peeksWaifu);
+    const result = await app.expeditions.claim(playerId, peeks.id);
+
+    // Exactly the authored number — not a bonused multiple of it.
+    expect(result.rewards.waifuXp).toBe(400);
+    expect(await waifuXpOf(peeksWaifu)).toBe(before + 400);
+  });
+
+  /**
+   * The structural guarantee behind "five regions means five WaifuMon".
+   *
+   * Without this index a player could shuttle one copy across every unlocked
+   * region and collect the whole game's Expedition XP onto her. It is a unique
+   * index rather than a service check precisely so a race cannot beat it.
+   */
+  it('cannot concentrate several regions of XP onto one WaifuMon', async () => {
+    installContent(xpPool(), XP_TABLES);
+    const { playerId, waifuId } = await playerWithWaifu();
+    await app.expeditions.deploy(playerId, 'test_run', waifuId);
+    await forceRegion(t.db, playerId, 'twin-peeks');
+    await expect(
+      app.expeditions.deploy(playerId, 'peeks_360', waifuId),
+    ).rejects.toBeInstanceOf(WaifuUnavailableError);
   });
 });
