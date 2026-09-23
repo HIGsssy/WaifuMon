@@ -817,6 +817,20 @@ export function isUniqueViolation(err: unknown): boolean {
 }
 
 /**
+ * The name of the unique constraint a Postgres error violated, or null when
+ * the error is not a unique violation. For a table with more than one unique
+ * rule, where the caller has to know *which* rule refused it.
+ */
+export function uniqueViolationConstraint(err: unknown): string | null {
+  if (err && typeof err === 'object') {
+    const e = err as { code?: unknown; constraint?: unknown; cause?: unknown };
+    if (e.code === '23505') return typeof e.constraint === 'string' ? e.constraint : null;
+    if (e.cause) return uniqueViolationConstraint(e.cause);
+  }
+  return null;
+}
+
+/**
  * Expedition refusals.
  *
  * Every constructor here tolerates being called with junk arguments, because

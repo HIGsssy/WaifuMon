@@ -706,6 +706,15 @@ export function createTravelService(deps: TravelServiceDeps): TravelService {
         // commit; `spendHuntEnergy`'s conditional `WHERE` would still stop the
         // second from going negative, but the lock is what makes the *ordering*
         // deterministic rather than leaning on the backstop.
+        //
+        // Currency *before* the player row, never after. That is the order
+        // `purchaseDestination`, the hunt, an Expedition claim and every reward
+        // that ends in `progression.grantXp` (FOR UPDATE on `players`) already
+        // take them in. Taking the player row first here made travel the one
+        // path holding `players` while waiting for currency — so a travel
+        // racing an Expedition claim, which holds currency and then needs
+        // `players` for Player XP, was a deadlock.
+        const currencies = await currency.lockCurrencies(tx, playerId);
         const [player] = await tx
           .select({
             currentRegion: players.currentRegion,
@@ -717,7 +726,6 @@ export function createTravelService(deps: TravelServiceDeps): TravelService {
           .where(eq(players.id, playerId))
           .for('update');
         if (!player) throw new RegionNotFoundError(regionId);
-        const currencies = await currency.lockCurrencies(tx, playerId);
 
         // ── Validation order ──────────────────────────────────────────────
         //

@@ -17,6 +17,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { eq, sql } from 'drizzle-orm';
 import {
   items,
+  playerCurrencies,
   playerExpeditions,
   players,
   playerUnlockedRoutes,
@@ -2097,6 +2098,343 @@ describe('four shipped regions at once', () => {
       if (s.status === 'rejected') {
         expect((s.reason as Error).message).toMatch(/player_expeditions_waifu_active_uq/);
       }
+    }
+  });
+});
+
+/**
+ * Races against the rest of the game, and what each side is told afterwards.
+ *
+ * Synthetic reward tables on the four real region ids, so every number below
+ * is fixed: a claim pays exactly 200 WaifuBux, 50 Essence, 80 Waifu XP and 30
+ * Player XP, and any drift is a bug rather than a roll.
+ */
+describe('races: the loser is refused properly, and balances stay true', () => {
+  const REGIONS = ['waifu-valley', 'twin-peeks', 'flaccid-foothills', 'thirstlands'] as const;
+  /** The 6h mission in each region. */
+  const KEY: Record<(typeof REGIONS)[number], string> = {
+    'waifu-valley': 'test_run',
+    'twin-peeks': 'peeks_360',
+    'flaccid-foothills': 'foot_360',
+    thirstlands: 'thirst_360',
+  };
+  const PAY = { waifubux: 200, essence: 50, waifuXp: 80, playerXp: 30 };
+
+  function installFourRegions() {
+    installContent(
+      [
+        ...completePool(),
+        ...poolFor('twin-peeks', 'peeks'),
+        ...poolFor('flaccid-foothills', 'foot'),
+        ...poolFor('thirstlands', 'thirst'),
+      ],
+      [
+        rewardTable({
+          waifubux: { min: PAY.waifubux, max: PAY.waifubux },
+          essence: { min: PAY.essence, max: PAY.essence },
+          waifuXp: PAY.waifuXp,
+          playerXp: PAY.playerXp,
+          groups: [],
+        }),
+        ...DEFAULT_TABLES.slice(1),
+      ],
+    );
+  }
+
+  /** A player in Waifu Valley with `n` copies and a road to every region. */
+  async function playerWithCopies(n: number) {
+    installFourRegions();
+    const { playerId, waifuId } = await playerWithWaifu();
+    const copies = [waifuId];
+    while (copies.length < n) {
+      copies.push(
+        (await insertOwnedWaifu(t.db, { playerId, speciesId: demonSpecies.id, level: 10 })).id,
+      );
+    }
+    for (const regionId of REGIONS.slice(1)) {
+      await t.db
+        .insert(playerUnlockedRoutes)
+        .values({ playerId, regionId, source: 'admin' })
+        .onConflictDoNothing();
+    }
+    return { playerId, copies };
+  }
+
+  /** One finished (successful, not yet resolved) mission per region. */
+  async function fourDue(playerId: number, copies: number[]) {
+    const views = [];
+    for (const [i, region] of REGIONS.entries()) {
+      await forceRegion(t.db, playerId, region);
+      views.push(await app.expeditions.deploy(playerId, KEY[region], copies[i]!));
+    }
+    for (const view of views) {
+      await forceOutcome(view.id, 'success');
+      await timeTravel(view.id);
+    }
+    return views;
+  }
+
+  /** What the database holds, read on its own connection after the fact. */
+  async function stateOf(playerId: number) {
+    const [cur] = await t.db
+      .select()
+      .from(playerCurrencies)
+      .where(eq(playerCurrencies.playerId, playerId));
+    const [player] = await t.db.select().from(players).where(eq(players.id, playerId));
+    return {
+      waifubux: cur!.waifubux,
+      essence: cur!.essence,
+      energy: cur!.huntEnergy,
+      xp: player!.xp,
+      region: player!.currentRegion,
+    };
+  }
+
+  /**
+   * Resolves once `n` callers have arrived. Lets two transactions be held at
+   * the same point so the race is certain rather than likely.
+   */
+  function barrier(n: number) {
+    let arrived = 0;
+    let release!: () => void;
+    const open = new Promise<void>((resolve) => (release = resolve));
+    return async () => {
+      arrived += 1;
+      if (arrived === n) release();
+      await open;
+    };
+  }
+
+  // ── 1. The deployment race ──────────────────────────────────────────────
+
+  /**
+   * Two different, eligible WaifuMon into one region, and both requests are
+   * held — inside their deploying transactions, after locking their own copy
+   * and before the region check — until both have arrived. Neither can see
+   * the other's uncommitted row, so both pass the service-side check and both
+   * insert: the second is refused by `player_expeditions_player_region_active_uq`
+   * itself. That violation must reach the caller as the domain refusal.
+   */
+  it('turns the loser of a same-region race into a region-busy refusal', async () => {
+    for (let round = 0; round < 5; round++) {
+      const { playerId, copies } = await playerWithCopies(2);
+      const gate = barrier(2);
+      const racing = createExpeditionService({
+        db: t.db,
+        logger: t.logger,
+        getContent: () => app.content,
+        resolveRace: raceResolverFromContent(() => app.content),
+        currency: app.currency,
+        essenceAward: app.essenceAward,
+        inventory: app.inventory,
+        collection: app.collection,
+        progression: app.progression,
+        availability: {
+          ...app.availability,
+          reasonsFor: async (tx, pid, wid) => {
+            const reasons = await app.availability.reasonsFor(tx, pid, wid);
+            await gate();
+            return reasons;
+          },
+        },
+        getCurrentRegion: (pid) => app.travel.getCurrentRegion(pid),
+      });
+
+      const settled = await Promise.allSettled([
+        racing.deploy(playerId, 'test_run', copies[0]!),
+        racing.deploy(playerId, 'test_run_quick', copies[1]!),
+      ]);
+
+      expect(settled.filter((s) => s.status === 'fulfilled')).toHaveLength(1);
+      const lost = settled.find((s) => s.status === 'rejected') as PromiseRejectedResult;
+      expect(lost.reason).toBeInstanceOf(ExpeditionRegionBusyError);
+      // The domain error, not a Postgres one wearing a different name.
+      expect((lost.reason as { code?: unknown }).code).toBe('EXPEDITION_REGION_BUSY');
+      expect(String((lost.reason as Error).message)).not.toMatch(/unique|duplicate|_uq/);
+      // And it names who beat her there.
+      const won = settled.find((s) => s.status === 'fulfilled') as PromiseFulfilledResult<
+        Awaited<ReturnType<typeof racing.deploy>>
+      >;
+      expect((lost.reason as { userMessage: string }).userMessage).toContain(won.value.waifuName);
+
+      const rows = await t.db
+        .select()
+        .from(playerExpeditions)
+        .where(eq(playerExpeditions.playerId, playerId));
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.waifuId).toBe(won.value.waifuId);
+    }
+  });
+
+  // ── 2. The balance a claim reports ──────────────────────────────────────
+
+  it('reports the post-claim balances for a single claim', async () => {
+    const { playerId, copies } = await playerWithCopies(1);
+    const view = await app.expeditions.deploy(playerId, 'test_run', copies[0]!);
+    await forceOutcome(view.id, 'success');
+    await timeTravel(view.id);
+    const before = await stateOf(playerId);
+
+    const result = await app.expeditions.claim(playerId, view.id);
+
+    const after = await stateOf(playerId);
+    expect(result.essenceGranted).toBe(PAY.essence);
+    expect(result.essenceAfter).toBe(before.essence + PAY.essence);
+    expect(result.essenceAfter).toBe(after.essence);
+    expect(result.waifubuxAfter).toBe(before.waifubux + PAY.waifubux);
+    expect(result.waifubuxAfter).toBe(after.waifubux);
+  });
+
+  /**
+   * Four regions collected at once, each Collect pressed twice. Claims
+   * serialise on the currency row, so the four winners' reported balances
+   * must form an exact chain: each is the previous one plus its own grant,
+   * and the last is what the database holds.
+   */
+  it('reports a consistent chain of balances across concurrent regional claims', async () => {
+    const { playerId, copies } = await playerWithCopies(4);
+    const views = await fourDue(playerId, copies);
+    const before = await stateOf(playerId);
+
+    const settled = await Promise.allSettled(
+      views.flatMap((v) => [
+        app.expeditions.claim(playerId, v.id),
+        app.expeditions.claim(playerId, v.id),
+      ]),
+    );
+    const won = settled.flatMap((s) => (s.status === 'fulfilled' ? [s.value] : []));
+    expect(won).toHaveLength(4);
+    for (const s of settled) {
+      if (s.status === 'rejected') expect(s.reason).toBeInstanceOf(ExpeditionAlreadyClaimedError);
+    }
+
+    const chain = [...won].sort((a, b) => a.essenceAfter - b.essenceAfter);
+    let essence = before.essence;
+    let bux = before.waifubux;
+    for (const result of chain) {
+      essence += result.essenceGranted;
+      bux += result.rewards.waifubux;
+      expect(result.essenceAfter).toBe(essence);
+      expect(result.waifubuxAfter).toBe(bux);
+    }
+    const after = await stateOf(playerId);
+    expect(after.essence).toBe(before.essence + 4 * PAY.essence);
+    expect(chain.at(-1)!.essenceAfter).toBe(after.essence);
+    expect(chain.at(-1)!.waifubuxAfter).toBe(after.waifubux);
+  });
+
+  /**
+   * The Essence Buddy Bonus is applied by the canonical `awardEssence`, not by
+   * the expedition service — and the reported balance includes the bonused
+   * amount, because it is read after that award, in the same transaction.
+   */
+  it('reports the bonused Essence balance when a Buddy Bonus applies', async () => {
+    const { playerId, copies } = await playerWithCopies(2);
+    const [buddySpecies] = await t.db
+      .select()
+      .from(speciesTable)
+      .where(sql`${speciesTable.id} <> ${demonSpecies.id}`)
+      .limit(1);
+    const entry = app.content.species.find((s) => s.slug === buddySpecies!.slug)!;
+    const shipped = entry.buddyBonus;
+    entry.buddyBonus = {
+      name: 'Quiet Study',
+      flavorText: '+100% Essence gained.',
+      effectId: 'essence_gain',
+      value: 100,
+    } as typeof entry.buddyBonus;
+    try {
+      const buddy = await insertOwnedWaifu(t.db, {
+        playerId,
+        speciesId: buddySpecies!.id,
+        level: 10,
+      });
+      await app.collection.setBuddy(playerId, buddy.id);
+
+      const a = await app.expeditions.deploy(playerId, 'test_run', copies[0]!);
+      await forceRegion(t.db, playerId, 'twin-peeks');
+      const b = await app.expeditions.deploy(playerId, 'peeks_360', copies[1]!);
+      for (const view of [a, b]) {
+        await forceOutcome(view.id, 'success');
+        await timeTravel(view.id);
+      }
+      const before = await stateOf(playerId);
+
+      // Both collected at once, and the first pressed twice.
+      const settled = await Promise.allSettled([
+        app.expeditions.claim(playerId, a.id),
+        app.expeditions.claim(playerId, a.id),
+        app.expeditions.claim(playerId, b.id),
+      ]);
+      const won = settled.flatMap((s) => (s.status === 'fulfilled' ? [s.value] : []));
+      expect(won).toHaveLength(2);
+
+      for (const result of won) {
+        // The table's 50, doubled by the Buddy — and only by the Buddy.
+        expect(result.rewards.essence).toBe(PAY.essence);
+        expect(result.essenceGranted).toBe(PAY.essence * 2);
+      }
+      const after = await stateOf(playerId);
+      expect(after.essence).toBe(before.essence + 2 * PAY.essence * 2);
+      const last = [...won].sort((x, y) => x.essenceAfter - y.essenceAfter).at(-1)!;
+      expect(last.essenceAfter).toBe(after.essence);
+      const first = [...won].sort((x, y) => x.essenceAfter - y.essenceAfter)[0]!;
+      expect(first.essenceAfter).toBe(before.essence + PAY.essence * 2);
+    } finally {
+      if (shipped) entry.buddyBonus = shipped;
+      else delete entry.buddyBonus;
+    }
+  });
+
+  // ── 3. Travel racing a Collect ──────────────────────────────────────────
+
+  /**
+   * Travel and Collect, for the same player, started together — repeatedly.
+   *
+   * The mission is due but not yet resolved, so the claim resolves and claims
+   * in one transaction (which takes KEY SHARE on `players` via the foreign
+   * key) and pays Player XP (FOR UPDATE on `players`). Travel locks both
+   * `players` and the currency row. If the two ever take those in opposite
+   * orders, this deadlocks; they must not.
+   */
+  it('lets Travel and a Collect race without deadlock or partial effects', async () => {
+    const ROUNDS = 25;
+    const { playerId, copies } = await playerWithCopies(1);
+    let here: (typeof REGIONS)[number] = 'waifu-valley';
+
+    for (let round = 0; round < ROUNDS; round++) {
+      const there: (typeof REGIONS)[number] = here === 'waifu-valley' ? 'twin-peeks' : 'waifu-valley';
+      const view = await app.expeditions.deploy(playerId, KEY[here], copies[0]!);
+      await forceOutcome(view.id, 'success');
+      await timeTravel(view.id);
+      await t.db
+        .update(playerCurrencies)
+        .set({ huntEnergy: 10 })
+        .where(eq(playerCurrencies.playerId, playerId));
+      const before = await stateOf(playerId);
+
+      const [travelled, claimed] = await Promise.allSettled([
+        app.travel.travel(playerId, there),
+        app.expeditions.claim(playerId, view.id),
+      ]);
+      if (travelled.status === 'rejected') throw travelled.reason;
+      if (claimed.status === 'rejected') throw claimed.reason;
+
+      const after = await stateOf(playerId);
+      // Travel: charged exactly once, and she is where she went.
+      expect(after.region).toBe(there);
+      expect(after.energy).toBe(before.energy - travelled.value.energySpent);
+      expect(travelled.value.energySpent).toBeGreaterThan(0);
+      // Collect: paid exactly once, in full.
+      expect(after.waifubux).toBe(before.waifubux + PAY.waifubux);
+      expect(after.essence).toBe(before.essence + claimed.value.essenceGranted);
+      expect(claimed.value.essenceGranted).toBe(PAY.essence);
+      expect(after.xp).toBe(before.xp + PAY.playerXp);
+      expect(claimed.value.waifubuxAfter).toBe(after.waifubux);
+      expect(claimed.value.essenceAfter).toBe(after.essence);
+      expect((await rowOf(view.id)).status).toBe('claimed');
+
+      here = there;
     }
   });
 });

@@ -134,6 +134,7 @@ import {
   ExpeditionsDisabledError,
   ExpeditionWrongRegionError,
   WaifuUnavailableError,
+  uniqueViolationConstraint,
 } from '../../shared/errors';
 import type { Logger } from '../../shared/logger';
 import type { RaceCode } from '../cards/race';
@@ -542,6 +543,46 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
     return out;
   }
 
+  /**
+   * Translate a deployment that lost a race into the refusal it deserves.
+   *
+   * The unique indexes are the final authority on "one per region" and "one
+   * per WaifuMon", and a request that passed every service-side check can
+   * still lose to one that committed a moment earlier. When it does, the
+   * player is owed the same refusal they would have got a second later — not
+   * a Postgres error. Anything that is not one of those two violations is
+   * returned untouched.
+   *
+   * Runs after the deploying transaction has rolled back, so the winner is
+   * committed and readable through `db`; the read is only for her name.
+   */
+  async function asDeployRefusal(
+    err: unknown,
+    playerId: number,
+    region: string,
+  ): Promise<unknown> {
+    const constraint = uniqueViolationConstraint(err);
+    if (constraint === 'player_expeditions_player_region_active_uq') {
+      const [winner] = await db
+        .select({ waifuId: playerExpeditions.waifuId })
+        .from(playerExpeditions)
+        .where(
+          and(
+            eq(playerExpeditions.playerId, playerId),
+            eq(playerExpeditions.region, region),
+            eq(playerExpeditions.status, 'active'),
+          ),
+        )
+        .limit(1);
+      const names = winner ? await waifuNames(db, [winner.waifuId]) : new Map<number, string>();
+      return new ExpeditionRegionBusyError(region, winner && names.get(winner.waifuId));
+    }
+    if (constraint === 'player_expeditions_waifu_active_uq') {
+      return new WaifuUnavailableError(['on_expedition']);
+    }
+    return err;
+  }
+
   return {
     async getBoard(playerId) {
       const cfg = config();
@@ -666,99 +707,104 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
         throw new ExpeditionWrongRegionError(definition.region, currentRegion);
       }
 
-      return db.transaction(async (tx) => {
-        // Lock the copy for the duration: this is what serialises a
-        // double-clicked Deploy long enough for the unique index below to be
-        // the thing that refuses the second one, rather than a duplicate row
-        // being written and cleaned up afterwards.
-        const [waifu] = await tx
-          .select()
-          .from(playerWaifus)
-          .where(and(eq(playerWaifus.id, waifuId), eq(playerWaifus.playerId, playerId)))
-          .for('update');
-        if (!waifu || waifu.releasedAt != null) {
-          throw new WaifuUnavailableError(['released']);
-        }
-        const [speciesRow] = await tx
-          .select()
-          .from(species)
-          .where(eq(species.id, waifu.speciesId));
-        if (!speciesRow) throw new WaifuUnavailableError(['released']);
+      try {
+        return await db.transaction(async (tx) => {
+          // Lock the copy for the duration: this is what serialises a
+          // double-clicked Deploy long enough for the unique index below to be
+          // the thing that refuses the second one, rather than a duplicate row
+          // being written and cleaned up afterwards.
+          const [waifu] = await tx
+            .select()
+            .from(playerWaifus)
+            .where(and(eq(playerWaifus.id, waifuId), eq(playerWaifus.playerId, playerId)))
+            .for('update');
+          if (!waifu || waifu.releasedAt != null) {
+            throw new WaifuUnavailableError(['released']);
+          }
+          const [speciesRow] = await tx
+            .select()
+            .from(species)
+            .where(eq(species.id, waifu.speciesId));
+          if (!speciesRow) throw new WaifuUnavailableError(['released']);
 
-        const blocking = (await availability.reasonsFor(tx, playerId, waifuId)).filter((r) =>
-          r === 'buddy' ? !cfg.buddyDeployable : true,
-        );
-        if (blocking.length > 0) {
-          throw new WaifuUnavailableError(
-            blocking,
-            waifu.nickname?.trim() || speciesRow.name,
+          const blocking = (await availability.reasonsFor(tx, playerId, waifuId)).filter((r) =>
+            r === 'buddy' ? !cfg.buddyDeployable : true,
           );
-        }
+          if (blocking.length > 0) {
+            throw new WaifuUnavailableError(
+              blocking,
+              waifu.nickname?.trim() || speciesRow.name,
+            );
+          }
 
-        /**
-         * Is this *region* free?
-         *
-         * Scoped to `definition.region` and nothing wider: what the player has
-         * running in Twin Peeks has no bearing on whether they may take a job
-         * in Waifu Valley. The read resolves anything due in this region in
-         * passing, so a mission that finished while the player was away frees
-         * its region on the very press that needed it free.
-         *
-         * This is the *courteous* refusal, not the guarantee — it also covers
-         * a `resolved` mission, which no index does. The guarantee against two
-         * simultaneous presses is `player_expeditions_player_region_active_uq`
-         * on the insert below.
-         */
-        const openHere = await readOpenMissions(tx, playerId, definition.region);
-        if (openHere.length > 0) {
-          const busyNames = await waifuNames(tx, [openHere[0]!.waifuId]);
-          throw new ExpeditionRegionBusyError(
-            definition.region,
-            busyNames.get(openHere[0]!.waifuId),
-          );
-        }
+          /**
+           * Is this *region* free?
+           *
+           * Scoped to `definition.region` and nothing wider: what the player has
+           * running in Twin Peeks has no bearing on whether they may take a job
+           * in Waifu Valley. The read resolves anything due in this region in
+           * passing, so a mission that finished while the player was away frees
+           * its region on the very press that needed it free.
+           *
+           * This is the *courteous* refusal, not the guarantee — it also covers
+           * a `resolved` mission, which no index does. The guarantee against two
+           * simultaneous presses is `player_expeditions_player_region_active_uq`
+           * on the insert below, whose violation `asDeployRefusal` turns back
+           * into this same error for the loser.
+           */
+          const openHere = await readOpenMissions(tx, playerId, definition.region);
+          if (openHere.length > 0) {
+            const busyNames = await waifuNames(tx, [openHere[0]!.waifuId]);
+            throw new ExpeditionRegionBusyError(
+              definition.region,
+              busyNames.get(openHere[0]!.waifuId),
+            );
+          }
 
-        const plan = buildPlan(definition);
-        const input = {
-          definition,
-          waifu: {
-            level: waifu.level,
-            affinity: speciesRow.affinity as never,
-            race: resolveRace(speciesRow),
-          },
-          config: cfg,
-          affinityConfig: content.tables.buddyAffinity,
-        };
-        const suitability = evaluateSuitability(input);
-        const match = evaluateMatch(input);
+          const plan = buildPlan(definition);
+          const input = {
+            definition,
+            waifu: {
+              level: waifu.level,
+              affinity: speciesRow.affinity as never,
+              race: resolveRace(speciesRow),
+            },
+            config: cfg,
+            affinityConfig: content.tables.buddyAffinity,
+          };
+          const suitability = evaluateSuitability(input);
+          const match = evaluateMatch(input);
 
-        const [inserted] = await tx
-          .insert(playerExpeditions)
-          .values({
-            playerId,
-            // Always 1 while a region holds one mission. Written explicitly
-            // rather than left to the column default so the day a per-region
-            // ladder arrives, this is the line that changes.
-            slotIndex: 1,
-            expeditionKey: definition.key,
-            region: definition.region,
-            waifuId,
-            status: 'active',
-            // Computed by the database from the database's own clock, so the
-            // finish line is set by the same clock that will judge it.
-            completesAt: sql`now() + make_interval(mins => ${definition.durationMinutes})`,
-            successChance: suitability.successChance,
-            exceptionalChance: suitability.exceptionalChance,
-            // The column keeps its name: it is still "the label the player was
-            // shown". The value is now a match quality, never a success band.
-            suitabilityBand: match.quality,
-            resolutionPlan: plan as unknown as Record<string, unknown>,
-            logicVersion: EXPEDITION_LOGIC_VERSION,
-          })
-          .returning();
+          const [inserted] = await tx
+            .insert(playerExpeditions)
+            .values({
+              playerId,
+              // Always 1 while a region holds one mission. Written explicitly
+              // rather than left to the column default so the day a per-region
+              // ladder arrives, this is the line that changes.
+              slotIndex: 1,
+              expeditionKey: definition.key,
+              region: definition.region,
+              waifuId,
+              status: 'active',
+              // Computed by the database from the database's own clock, so the
+              // finish line is set by the same clock that will judge it.
+              completesAt: sql`now() + make_interval(mins => ${definition.durationMinutes})`,
+              successChance: suitability.successChance,
+              exceptionalChance: suitability.exceptionalChance,
+              // The column keeps its name: it is still "the label the player was
+              // shown". The value is now a match quality, never a success band.
+              suitabilityBand: match.quality,
+              resolutionPlan: plan as unknown as Record<string, unknown>,
+              logicVersion: EXPEDITION_LOGIC_VERSION,
+            })
+            .returning();
 
-        return toView(inserted!, now(), waifu.nickname?.trim() || speciesRow.name);
-      });
+          return toView(inserted!, now(), waifu.nickname?.trim() || speciesRow.name);
+        });
+      } catch (err) {
+        throw await asDeployRefusal(err, playerId, definition.region);
+      }
     },
 
     async getActive(playerId) {
@@ -841,10 +887,8 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
 
         // The currency row was locked at the top of this transaction, so
         // concurrent grants to this player are already serialised.
-        let waifubuxAfter = (await currency.getBalances(playerId)).waifubux;
         if (rewards.waifubux > 0) {
-          waifubuxAfter = (await currency.grantWaifubux(tx, playerId, rewards.waifubux))
-            .waifubux;
+          await currency.grantWaifubux(tx, playerId, rewards.waifubux);
         }
 
         // Essence goes through `essenceAward`, never `grantEssence`, so the
@@ -856,7 +900,6 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
           const award = await essenceAward.awardEssence(tx, playerId, rewards.essence);
           essenceGranted = award.essenceGranted;
         }
-        const essenceAfter = (await currency.getBalances(playerId)).essence;
 
         // XP to the copy that was actually sent — read from the row, not from
         // whoever happens to be Buddy now.
@@ -897,6 +940,15 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
             itemsGranted.push({ slug: item.slug, name: item.name, quantity: grant.quantity });
           }
         }
+
+        // The balances the result reports, read through *this* transaction
+        // after every grant above. `getBalances` would read on another pooled
+        // connection, which cannot see these uncommitted grants and so shows
+        // the balance from before the claim. The row is already locked by us,
+        // so this returns at once.
+        const balances = await currency.lockCurrencies(tx, playerId);
+        const waifubuxAfter = balances.waifubux;
+        const essenceAfter = balances.essence;
 
         const claimedNames = await waifuNames(tx, [won.waifuId]);
         return {
