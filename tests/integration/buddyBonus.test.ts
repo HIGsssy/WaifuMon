@@ -584,6 +584,40 @@ describe('care_energy_gain', () => {
 });
 
 describe('player_xp_gain', () => {
+  async function careThenHunt(
+    buddySlug: string | null,
+    targetIsBuddy = false,
+  ): Promise<{
+    playerXp: number;
+    careTargetXp: number;
+    buddyXp: number | null;
+    result: Awaited<ReturnType<typeof app.hunt.hunt>>;
+  }> {
+    const buddyId = buddySlug ? await giveBuddy(buddySlug) : null;
+    let targetId = buddyId;
+    if (!targetIsBuddy || targetId == null) {
+      const targetSpecies = await speciesBySlug(contentSlugOf((s) => s.slug !== buddySlug));
+      const target = await insertOwnedWaifu(t.db, { playerId, speciesId: targetSpecies.id });
+      targetId = target.id;
+    }
+    const interval = app.content.tables.energy.careMode.intervalMinutes * MINUTE;
+    const start = new Date('2031-01-01T00:00:00Z');
+    await app.care.start(playerId, targetId, start);
+    const result = await app.hunt.hunt(playerId, CHANNEL, new Date(start.getTime() + interval));
+    const [player] = await t.db.select().from(players).where(eq(players.id, playerId));
+    const [target] = await t.db.select().from(playerWaifus).where(eq(playerWaifus.id, targetId));
+    const [buddy] =
+      buddyId == null
+        ? [undefined]
+        : await t.db.select().from(playerWaifus).where(eq(playerWaifus.id, buddyId));
+    return {
+      playerXp: player!.xp,
+      careTargetXp: target!.xp,
+      buddyXp: buddy?.xp ?? null,
+      result,
+    };
+  }
+
   it('scales an XP award, and records what was actually granted', async () => {
     const slug = contentSlugOf((s) => s.rarity === 'N');
     authorBonus(slug, {
@@ -618,6 +652,77 @@ describe('player_xp_gain', () => {
     expect(negative.xpDelta).toBe(-5);
     expect(negative.buddyBonusPercent).toBe(0);
     expect(negative.buddyBonus).toBeNull();
+  });
+
+  it('keeps the no-Buddy Care/hunt baseline separated by XP recipient', async () => {
+    const observed = await careThenHunt(null);
+    expect(observed.playerXp).toBe(app.content.tables.progression.xp.hunt);
+    expect(observed.result.careExit?.waifuXpGained).toBe(
+      app.content.tables.energy.careMode.waifuXpPerTick,
+    );
+    expect(observed.careTargetXp).toBe(app.content.tables.energy.careMode.waifuXpPerTick);
+    expect(observed.buddyXp).toBeNull();
+    expect(observed.result.buddyAward).toBeNull();
+  });
+
+  it('applies Warband Princess Birthright only to Player XP while caring for another copy', async () => {
+    const warband = app.content.species.find((s) => s.slug === 'warchief_daughter');
+    expect(warband?.name).toBe('Warband Princess');
+    expect(warband?.buddyBonus).toMatchObject({
+      name: 'Birthright',
+      effectId: 'player_xp_gain',
+      value: 15,
+    });
+
+    const observed = await careThenHunt('warchief_daughter');
+    const basePlayerXp = app.content.tables.progression.xp.hunt;
+    const baseCareXp = app.content.tables.energy.careMode.waifuXpPerTick;
+    const baseBuddyXp = app.content.tables.waifuProgression.buddy.xpPerHunt;
+
+    expect(observed.playerXp).toBe(Math.round(basePlayerXp * 1.15));
+    expect(observed.result.careExit?.waifuXpGained).toBe(baseCareXp);
+    expect(observed.careTargetXp).toBe(baseCareXp);
+    // Warband Princess still earns the ordinary per-hunt Buddy award, but
+    // Birthright must not amplify that separate Waifumon-XP channel.
+    expect(observed.result.buddyAward?.xpGranted).toBe(baseBuddyXp);
+    expect(observed.result.buddyAward?.xpBonus).toBeNull();
+    expect(observed.buddyXp).toBe(baseBuddyXp);
+  });
+
+  it('keeps a shipped Buddy-XP bonus out of Player XP and a different Care target', async () => {
+    const xpBuddy = app.content.species.find(
+      (s) => s.enabled && s.buddyBonus?.effectId === 'buddy_xp_gain',
+    );
+    expect(xpBuddy?.buddyBonus).toBeDefined();
+
+    const observed = await careThenHunt(xpBuddy!.slug);
+    const basePlayerXp = app.content.tables.progression.xp.hunt;
+    const baseCareXp = app.content.tables.energy.careMode.waifuXpPerTick;
+    const baseBuddyXp = app.content.tables.waifuProgression.buddy.xpPerHunt;
+    const expectedBuddyXp = Math.round(
+      baseBuddyXp * (1 + xpBuddy!.buddyBonus!.value / 100),
+    );
+
+    expect(observed.playerXp).toBe(basePlayerXp);
+    expect(observed.careTargetXp).toBe(baseCareXp);
+    expect(observed.result.careExit?.xpBonus).toBeNull();
+    expect(observed.result.buddyAward?.xpGranted).toBe(expectedBuddyXp);
+    expect(observed.buddyXp).toBe(expectedBuddyXp);
+  });
+
+  it('does not hide a channel crossover when Warband Princess is both Buddy and Care target', async () => {
+    const observed = await careThenHunt('warchief_daughter', true);
+    const basePlayerXp = app.content.tables.progression.xp.hunt;
+    const baseCareXp = app.content.tables.energy.careMode.waifuXpPerTick;
+    const baseBuddyXp = app.content.tables.waifuProgression.buddy.xpPerHunt;
+
+    expect(observed.playerXp).toBe(Math.round(basePlayerXp * 1.15));
+    expect(observed.result.careExit?.waifuXpGained).toBe(baseCareXp);
+    expect(observed.result.careExit?.xpBonus).toBeNull();
+    expect(observed.result.buddyAward?.xpGranted).toBe(baseBuddyXp);
+    expect(observed.result.buddyAward?.xpBonus).toBeNull();
+    expect(observed.careTargetXp).toBe(baseCareXp + baseBuddyXp);
+    expect(observed.buddyXp).toBe(baseCareXp + baseBuddyXp);
   });
 });
 

@@ -137,6 +137,22 @@ export interface AppliedBuddyXpDetail {
   bonus: AppliedBuddyBonus | null;
 }
 
+/**
+ * What a `player_xp` effect actually paid to the player account.
+ *
+ * Player XP and Waifumon XP deliberately use different detail fields. This
+ * keeps persisted encounter history unambiguous instead of asking consumers
+ * to interpret a generic `xp` value from context.
+ */
+export interface AppliedPlayerXpDetail {
+  /** The authored account-XP award, before `player_xp_gain`. */
+  baseAmount: number;
+  /** Account XP that actually landed. */
+  finalAmount: number;
+  /** Set only when `player_xp_gain` changed the account-XP award. */
+  bonus: AppliedBuddyBonus | null;
+}
+
 export interface AppliedEffect {
   /** Original effect input, preserved so a caller can render it. */
   effect: Effect;
@@ -152,6 +168,8 @@ export interface AppliedEffect {
   essence?: AppliedEssenceDetail;
   /** Present only on an applied `buddy_xp`. */
   buddyXp?: AppliedBuddyXpDetail;
+  /** Present only on an applied `player_xp`. */
+  playerXp?: AppliedPlayerXpDetail;
 }
 
 /**
@@ -281,13 +299,20 @@ export function createEffectExecutor(deps: EffectExecutorDeps) {
             applied.push({ effect, applied: false, amount: 0, reason: 'zero' });
             break;
           }
-          await progression.grantXp(tx, ctx.playerId, {
+          const result = await progression.grantXp(tx, ctx.playerId, {
             eventType: 'world_encounter',
             xpDelta: effect.amount,
             refId: ctx.encounterId,
             metadata: { source: 'world_encounter' },
           });
-          record({ amount: effect.amount });
+          record({
+            amount: result.xpDelta,
+            playerXp: {
+              baseAmount: result.baseXpDelta,
+              finalAmount: result.xpDelta,
+              bonus: result.buddyBonus,
+            },
+          });
           break;
         }
         case 'buddy_xp': {
