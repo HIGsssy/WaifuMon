@@ -21,12 +21,13 @@ import { Download, Loader2 } from 'lucide-react';
 
 import type { CollectionEntryView } from '@/api/types';
 import { Artwork } from '@/components/media/Artwork';
+import { CopyArtwork } from '@/components/media/CopyArtwork';
 import { CardViewer } from '@/components/media/CardViewer';
 import { CardViewToggle, type CardView } from '@/components/media/CardViewToggle';
 import { Button } from '@/components/ui/button';
 import { RarityGlowRing } from '@/components/waifumon/RarityGlowRing';
 import { heroTransitionName, type CollectionMode } from '@/components/waifumon/WaifumonCard';
-import { ownedCardAsset, speciesAsset } from '@/images/assets';
+import { ownedCardAsset } from '@/images/assets';
 import { cardUrlFor } from '@/images/providers/cardApi';
 import { ARTWORK_WIDTH } from '@/images/sizes';
 import { cardFilename, downloadAuthenticatedFile } from '@/lib/download';
@@ -104,14 +105,14 @@ export function WaifumonHero({ entry, mode = 'self', cardsAvailable }: WaifumonH
             />
           </button>
         ) : (
-          <Artwork
-            // `speciesAsset` rather than `appearanceAsset` directly: the look
-            // she is wearing is unlocked by construction and always carries an
-            // `assetId`, but this keeps the null-handling in the one helper
-            // that owns it rather than asserting it here.
-            asset={speciesAsset(species, waifu, { publicOwner: isPublic })}
+          <CopyArtwork
+            // The gated twin of `<Artwork>` for an owned copy: it resolves the
+            // look she is wearing through the owned route as before, and — in
+            // public mode — silhouettes her unless the *viewer* has discovered
+            // the species. Whose copy it is never decides that.
+            entry={entry}
+            mode={mode}
             displayWidth={ARTWORK_WIDTH.hero}
-            name={species.name}
             rarityLabel={rarity.label}
             priority
             aspect="aspect-[3/4]"

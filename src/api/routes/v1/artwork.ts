@@ -9,6 +9,11 @@
  * encyclopedia out of the URL bar. A copy-specific route performs the normal
  * ownership and level checks before serving the appearance that copy is
  * wearing.
+ *
+ * Every route here that can reach a species the caller may not own runs
+ * `assertSpeciesVisible` against **the caller's own dex** — including the
+ * public one, which is addressed by somebody else's copy. Whose collection a
+ * picture is reached through never changes who is allowed to look at it.
  */
 import { z } from 'zod';
 import type { ArtworkFile } from '../../../modules/assets/speciesArtworkFile';
@@ -76,7 +81,10 @@ const artworkResponses = {
   ...commonErrorResponses,
 } as const;
 
-/** The species route adds 403 for a species this player has not discovered. */
+/**
+ * Both the species route and the public owned-copy route add 403 for a species
+ * the *requesting* player has not discovered.
+ */
 const speciesArtworkResponses = {
   ...artworkResponses,
   403: errorSchema.describe('This player has not discovered this species.'),
@@ -138,23 +146,26 @@ export const artworkRoutes =
     /**
      * The same bytes, for a **guild-mate's** copy.
      *
-     * This is the one place the public collection touches artwork
-     * authorization, and it is deliberately shaped so that it cannot become a
-     * species oracle:
+     * Two ownerships have to line up before a pixel is served here, and
+     * conflating them is the bug this route once had:
      *
-     *   - It is addressed by **owner + copy**, never by slug. The only artwork
-     *     it can serve is the appearance a real, active, owned copy is wearing,
-     *     resolved by `getOwned` scoped to that owner. There is no parameter
-     *     that names a species.
-     *   - `publicGuildProfile` routes it through the same scope hook as the
-     *     rest of the public surface, so the target must be a player in the
-     *     requesting session's selected guild — checked before a byte is read.
-     *   - **`/assets/waifumon/:slug` is untouched.** `assertSpeciesVisible`
-     *     still gates every slug-addressed request on the viewer's own dex, so
-     *     the encyclopedia cannot be read out of the URL bar any more than it
-     *     could before. Seeing what a guild-mate owns is a different
-     *     authorization context from browsing species you have not discovered,
-     *     and the two now have separate routes rather than one weakened rule.
+     *   - **The owner's.** Addressed by owner + copy, never by slug: the only
+     *     artwork reachable is the appearance a real, active copy of *that*
+     *     player is wearing, resolved by `getOwned` scoped to them. There is no
+     *     parameter that names a species, and `publicGuildProfile` has already
+     *     established that the owner is inside the requesting session's
+     *     selected guild before the handler runs.
+     *   - **The viewer's.** `assertSpeciesVisible` — the same check, against
+     *     the same dex, that `/assets/waifumon/:slug` has always run. A
+     *     guild-mate owning a species is a reason to list her copy; it is not a
+     *     reason to hand the viewer artwork they have not earned. Without this
+     *     the route was a species oracle with extra steps: any viewer could
+     *     read the full-resolution art of anything anybody in their guild owned
+     *     by walking copy ids, which is precisely what the slug route refuses.
+     *
+     * So the public collection shows an undiscovered species exactly as the
+     * encyclopedia does — a silhouette — and the two surfaces now answer to one
+     * rule instead of two.
      *
      * Level-gated appearances stay unreachable here: there is no `appearance`
      * selector, so this only ever serves the look she is actually wearing —
@@ -168,18 +179,25 @@ export const artworkRoutes =
           tags: ['Collection'],
           summary: "Get a guild-mate's owned copy artwork",
           description:
-            "The artwork one copy in another player's public collection is wearing. Authorized " +
-            'as an owned copy inside the selected guild — never as a species — so it grants no ' +
-            'access to artwork of species the viewer has not discovered except through a copy ' +
-            'that player demonstrably owns.',
+            "The artwork one copy in another player's public collection is wearing." +
+            "\n\n" +
+            'Two checks, both required: the copy must be an active one belonging to a player in ' +
+            "the requesting session's selected guild (404 otherwise), **and** the requesting " +
+            'player must have discovered that species themselves (`403 ' +
+            "SPECIES_NOT_DISCOVERED` otherwise). Viewing a guild-mate's collection is not a way " +
+            'to unlock artwork — the Portal draws the silhouette instead.',
           params: waifuIdParams,
           querystring: artworkQuery,
-          response: artworkResponses,
+          response: speciesArtworkResponses,
         },
       },
       async (req, reply) => {
         const owner = requirePlayer(req);
         const entry = await collection.getOwned(owner.id, req.params.waifuId);
+        // The owner's copy got us this far; the viewer's dex decides whether
+        // the bytes may be read. Ahead of any artwork resolution, as on the
+        // slug route — this is authorization, not presentation.
+        await assertSpeciesVisible(ctx, req, entry.species.slug);
         const request = ownedCardRequest(presentation, entry);
         await sendArtwork(req, reply, request.artwork, CACHE_CONTROL);
         return reply;

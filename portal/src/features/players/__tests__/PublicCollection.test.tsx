@@ -62,7 +62,7 @@ describe('public collection', () => {
     expect(screen.queryByText('Nyx')).not.toBeInTheDocument();
   });
 
-  it('reads the public resource and never the viewer\'s own collection', async () => {
+  it('draws the grid from the public resource, never from the viewer\'s own', async () => {
     const paths: string[] = [];
     server.events.on('request:start', ({ request }) => {
       paths.push(new URL(request.url, 'http://localhost').pathname);
@@ -72,12 +72,20 @@ describe('public collection', () => {
     await screen.findByText('Vesper');
 
     expect(paths).toContain(`/api/v1/players/${AIKO}/public/collection`);
-    // The viewer's own collection and buddy are not fetched for somebody
-    // else's grid — those hooks are disabled in public mode.
-    expect(paths.some((p) => p === `/api/v1/players/${fixtures.PLAYER_ID}/collection/owned`)).toBe(
-      false,
-    );
+    // The viewer's own buddy has no bearing on somebody else's grid — the
+    // owner's arrives on each entry as `isBuddy` — so that hook stays off.
     expect(paths.some((p) => p.endsWith('/collection/buddy'))).toBe(false);
+    // The viewer's *own* collection is read here, and for exactly one reason:
+    // it is the dex overlay that decides which of these species this viewer may
+    // see. It contributes no card to the grid — "shows the target player's
+    // copies, not the viewer's" is the assertion holding that line — and it is
+    // the same session-wide walk the Encyclopedia already runs. See
+    // `publicCollectionGating.test.tsx` for what it is used for.
+    await waitFor(() =>
+      expect(
+        paths.some((p) => p === `/api/v1/players/${fixtures.PLAYER_ID}/collection/owned`),
+      ).toBe(true),
+    );
   });
 
   it('keys the cache by guild and owner, so no other collection can answer', () => {

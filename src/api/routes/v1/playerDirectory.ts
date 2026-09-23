@@ -35,6 +35,7 @@ import { ApiPlayerNotFoundError } from '../../errors';
 import { noIdentity } from '../../identity';
 import { requirePlayer } from '../../plugins/playerScope';
 import { resolveGuildScope } from '../../plugins/guildScope';
+import { visibleSpeciesSlugs } from '../../plugins/speciesVisibility';
 import { dataSchema, ok, okPage, paginatedSchema } from '../../plugins/responseEnvelope';
 import type { FastifyPluginAsyncZod } from '../../plugins/typeProvider';
 import { toCurrentRegionResource, toPublicOwnedEntry } from '../../resources';
@@ -263,7 +264,12 @@ export const playerDirectoryRoutes =
             'crafted id enumerates another server. A multi-guild player is viewable in whichever ' +
             'guild the session currently has selected and both players share.\n\n' +
             'The payload carries no XP, affection, Seductive Power, release state or currencies; ' +
-            'see `publicOwnedEntrySchema`.',
+            'see `publicOwnedEntrySchema`.' +
+            '\n\n' +
+            'Artwork identifiers (`assetId`) are attached only for species the **requesting** ' +
+            'player has discovered. The owner owning a copy is what puts the row in this list; ' +
+            'it is not a reason to hand the viewer artwork they have not earned, so an ' +
+            'undiscovered species arrives fully described and with every `assetId` null.',
           params: playerIdParams,
           querystring: collectionPageQuery,
           response: {
@@ -286,6 +292,15 @@ export const playerDirectoryRoutes =
         // done on a player's behalf for their own grid; a viewer browsing
         // somebody else's collection must not be able to schedule background
         // rendering across another account's entire collection.
+        //
+        // One query for the whole page: which of these species the *viewer*
+        // has discovered. The owner's ownership put the rows here; only the
+        // viewer's may attach artwork identifiers to them.
+        const visible = await visibleSpeciesSlugs(
+          ctx,
+          req,
+          result.entries.map((entry) => entry.species.slug),
+        );
         return okPage(
           req,
           result.entries.map((entry) =>
@@ -294,6 +309,7 @@ export const playerDirectoryRoutes =
               entry.species,
               ctx.services.appearance,
               entry.waifu.id === owner.buddyWaifuId,
+              { revealArtwork: visible.has(entry.species.slug) },
             ),
           ),
           result.page,
@@ -327,6 +343,7 @@ export const playerDirectoryRoutes =
         // Scoped to the owner, so a waifu id belonging to anybody else — the
         // viewer included — is `WAIFU_NOT_OWNED`, not a cross-account read.
         const entry = await ctx.services.collection.getOwned(owner.id, req.params.waifuId);
+        const visible = await visibleSpeciesSlugs(ctx, req, [entry.species.slug]);
         return ok(
           req,
           toPublicOwnedEntry(
@@ -334,6 +351,7 @@ export const playerDirectoryRoutes =
             entry.species,
             ctx.services.appearance,
             entry.waifu.id === owner.buddyWaifuId,
+            { revealArtwork: visible.has(entry.species.slug) },
           ),
         );
       },

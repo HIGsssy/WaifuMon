@@ -96,9 +96,22 @@ function isUngated(appearance: ResolvedAppearance): boolean {
   return appearance.unlock.type === 'owned';
 }
 
-/** A species catalog, with artwork revealed only for the ungated default. */
-export function toAppearanceCatalogResources(appearances: readonly ResolvedAppearance[]) {
-  return appearances.map((a) => toAppearanceCatalogResource(a, { revealArtwork: isUngated(a) }));
+/**
+ * A species catalog, with artwork revealed only for the ungated default.
+ *
+ * `revealArtwork: false` withholds even that one — the catalog still describes
+ * every look (name, unlock label, cosmetic rarity) but names no artwork at all.
+ * That is the shape a species the *caller* has not discovered takes when it is
+ * embedded in a payload the caller may otherwise read, such as a guild-mate's
+ * public collection: the row is legitimate, the picture is not theirs yet.
+ */
+export function toAppearanceCatalogResources(
+  appearances: readonly ResolvedAppearance[],
+  { revealArtwork = true }: { revealArtwork?: boolean } = {},
+) {
+  return appearances.map((a) =>
+    toAppearanceCatalogResource(a, { revealArtwork: revealArtwork && isUngated(a) }),
+  );
 }
 
 /**
@@ -130,6 +143,15 @@ export function toAppearanceResource(
 export function toSpeciesResource(
   row: SpeciesRow,
   appearances: readonly ResolvedAppearance[] = [],
+  /**
+   * `revealArtwork: false` publishes the species with every `assetId` stripped
+   * out of its catalog — for a caller who may read the row but has not earned
+   * the pictures. It defaults to `true` because the overwhelming majority of
+   * call sites embed a species the caller demonstrably owns; the one place that
+   * passes `false` is the public collection, and it decides per species against
+   * the *viewer's* dex.
+   */
+  { revealArtwork = true }: { revealArtwork?: boolean } = {},
 ) {
   const { imagePath: _imagePath, ...rest } = row;
   return {
@@ -138,7 +160,7 @@ export function toSpeciesResource(
     rarity: row.rarity as Rarity,
     affinity: row.affinity as Affinity,
     contentRating: row.contentRating as ContentRating,
-    appearances: toAppearanceCatalogResources(appearances),
+    appearances: toAppearanceCatalogResources(appearances, { revealArtwork }),
   };
 }
 
@@ -236,6 +258,22 @@ export function toOwnedWaifuResource(
  * `isBuddy` is passed in rather than derived: the caller already holds the
  * owner's row, so this costs no query and cannot disagree with it.
  *
+ * ## Two different ownerships, and why `revealArtwork` is not optional here
+ *
+ * The **owner's** ownership decides which copies appear in this payload. The
+ * **viewer's** decides which artwork identifiers it may carry, and those are
+ * not the same fact: a guild-mate owning a species has never been a reason for
+ * the viewer to be handed art they have not earned. `isUnlocked: true` below
+ * therefore stays true — it is a statement about the owner's copy, and it is
+ * accurate — while the `assetId` beside it is withheld unless the *viewer* has
+ * discovered the species. That is the same split the appearance gallery already
+ * draws between "this look exists" and "here is its picture".
+ *
+ * The flag is required rather than defaulted because there is no safe default:
+ * `true` would restore the leak for any new call site, and `false` would
+ * silently silhouette a species the viewer does own. The caller has the
+ * viewer's dex; it has to say.
+ *
  * See `publicOwnedEntrySchema` for the field-by-field rationale.
  */
 export function toPublicOwnedEntry(
@@ -250,6 +288,8 @@ export function toPublicOwnedEntry(
     catalogFor(species: SpeciesRow | AppearanceSpecies): ResolvedAppearance[];
   },
   isBuddy: boolean,
+  /** Whether **the viewer** owns an active copy of this species. */
+  { revealArtwork }: { revealArtwork: boolean },
 ) {
   const current = appearance.currentAppearance(species, waifu.variant, { level: waifu.level });
   return {
@@ -260,11 +300,16 @@ export function toPublicOwnedEntry(
       nickname: waifu.nickname,
       isFavorite: waifu.isFavorite,
       variant: waifu.variant,
-      // Unlocked by construction: it is what she is wearing.
-      selectedAppearance: toAppearanceResource(current, { isUnlocked: true, isSelected: true }),
+      // Unlocked and selected are the owner's facts and stay true; the artwork
+      // identifier is the viewer's and is withheld when it is not theirs.
+      selectedAppearance: {
+        ...toAppearanceCatalogResource(current, { revealArtwork }),
+        isUnlocked: true,
+        isSelected: true,
+      },
       caughtAt: waifu.caughtAt,
     },
-    species: toSpeciesResource(species, appearance.catalogFor(species)),
+    species: toSpeciesResource(species, appearance.catalogFor(species), { revealArtwork }),
     isBuddy,
   };
 }

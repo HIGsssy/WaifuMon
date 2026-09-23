@@ -33,10 +33,12 @@ import { Link } from 'react-router';
 
 import type { CollectionEntryView } from '@/api/types';
 import { Artwork } from '@/components/media/Artwork';
+import { CopyArtwork } from '@/components/media/CopyArtwork';
 import { RarityBadge } from '@/components/waifumon/RarityBadge';
 import { RarityGlowRing } from '@/components/waifumon/RarityGlowRing';
-import { displayName, subtitleFor } from '@/content/species';
-import { ownedCardAsset, speciesAsset } from '@/images/assets';
+import { useCopyKnowledge } from '@/components/waifumon/useCopyKnowledge';
+import { viewerDisplayName, viewerSubtitle } from '@/content/species';
+import { ownedCardAsset } from '@/images/assets';
 import { rarityStyle } from '@/lib/rarity';
 import { zoneFor } from '@/lib/zone';
 import { cn } from '@/lib/cn';
@@ -98,8 +100,12 @@ export function WaifumonCard({
   className,
 }: WaifumonCardProps) {
   const { waifu, species } = entry;
-  const title = displayName(entry);
-  const subtitle = subtitleFor(entry);
+  // Whether *the viewer* has unlocked this species — `true` by construction for
+  // their own copies, and the tri-state dex answer for a guild-mate's. Nothing
+  // below reads ownership of the copy as permission to describe the species.
+  const discovered = useCopyKnowledge(mode, species.slug);
+  const title = viewerDisplayName(entry, discovered);
+  const subtitle = viewerSubtitle(entry, discovered);
   const rarity = rarityStyle(species.rarity);
   // Null for a species with no recognised zone tag: the tile simply omits it.
   const zone = zoneFor(species);
@@ -144,10 +150,10 @@ export function WaifumonCard({
                 onLoadFailure={() => setCardFailed(true)}
               />
             ) : (
-              <Artwork
-                asset={speciesAsset(species, waifu, { publicOwner: isPublic })}
+              <CopyArtwork
+                entry={entry}
+                mode={mode}
                 displayWidth={ARTWORK_WIDTH.gridTile}
-                name={species.name}
                 rarityLabel={rarity.label}
                 priority={priority}
                 aspect="aspect-[3/4]"

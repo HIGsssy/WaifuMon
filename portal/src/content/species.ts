@@ -183,3 +183,34 @@ export function speciesLabel(
 ): string {
   return discovered === true ? species.name : '???';
 }
+
+/**
+ * How a copy is titled **for a particular viewer**.
+ *
+ * The nickname is the owner's own label for their copy and is public
+ * collection information, so it survives the gate. The species name does not:
+ * it is exactly what {@link speciesLabel} withholds from an entry the viewer
+ * has not unlocked, and a nickname-less copy would otherwise announce it.
+ *
+ * Takes the same tri-state `discovered` as `speciesLabel` and
+ * `<SpeciesArtwork>`, and applies the same `=== true` predicate — one rule, one
+ * shape, three surfaces.
+ */
+export function viewerDisplayName(
+  entry: CollectionEntryView,
+  discovered: boolean | undefined,
+): string {
+  return entry.waifu.nickname?.trim() || speciesLabel(entry.species, discovered);
+}
+
+/**
+ * The species-name subtitle, present only when a nickname replaced it **and**
+ * the viewer is allowed to know what it replaced.
+ */
+export function viewerSubtitle(
+  entry: CollectionEntryView,
+  discovered: boolean | undefined,
+): string | null {
+  if (discovered !== true) return null;
+  return subtitleFor(entry);
+}

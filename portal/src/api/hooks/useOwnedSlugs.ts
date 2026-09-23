@@ -111,8 +111,24 @@ async function walkCollection(
   return { playerId, countBySlug, bestCopyBySlug, truncated };
 }
 
-export function useOwnedSlugs(playerId: number): UseQueryResult<OwnedSlugSummary> {
-  const stats = useCollectionStats(playerId);
+export interface OwnedSlugsOptions {
+  /**
+   * `false` parks the walk without changing hook order.
+   *
+   * For a page that only *might* need the overlay — a collection grid whose
+   * `mode` decides whether the viewer's own dex is relevant — React's rules
+   * forbid calling the hook conditionally, so the condition moves in here. A
+   * disabled walk answers `undefined`, which every consumer already treats as
+   * "not established" and therefore locked.
+   */
+  enabled?: boolean;
+}
+
+export function useOwnedSlugs(
+  playerId: number,
+  { enabled = true }: OwnedSlugsOptions = {},
+): UseQueryResult<OwnedSlugSummary> {
+  const stats = useCollectionStats(playerId, { enabled });
   const ownedCount = stats.data?.owned;
 
   // Wait for the count before walking, so the first overlay is already keyed
@@ -120,7 +136,7 @@ export function useOwnedSlugs(playerId: number): UseQueryResult<OwnedSlugSummary
   // optimisation for *when* to walk, never a precondition for walking: if it
   // fails, the walk still runs under the sentinel and the page behaves exactly
   // as it did before this key existed — stale-time only.
-  const ready = ownedCount !== undefined || stats.isError;
+  const ready = enabled && (ownedCount !== undefined || stats.isError);
 
   return useQuery({
     queryKey: queryKeys.ownedSlugs(playerId, ownedCount),

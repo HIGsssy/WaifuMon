@@ -83,8 +83,19 @@ export interface SpeciesDiscovery {
  * alongside `useOwnedSlugs` (for counts, filters and totals) without issuing a
  * second walk.
  */
-export function useSpeciesDiscovery(playerId: number): SpeciesDiscovery {
-  const owned = useOwnedSlugs(playerId);
+export function useSpeciesDiscovery(
+  playerId: number,
+  /**
+   * `enabled: false` parks the underlying walk and pins every answer at
+   * `undefined` / `isSettled: false`. It exists for components that need the
+   * overlay in only one of their modes — a collection tile consults the
+   * viewer's dex when it is drawing somebody *else's* copy, and has no use for
+   * it when the copy is the viewer's own. Because the disabled answer is
+   * `undefined`, switching it off can only ever lock more, never less.
+   */
+  options: { enabled?: boolean } = {},
+): SpeciesDiscovery {
+  const owned = useOwnedSlugs(playerId, options);
   const summary = owned.data;
 
   const failed = owned.isError;
