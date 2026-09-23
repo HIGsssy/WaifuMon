@@ -20,7 +20,7 @@ import {
   validateRegionContent,
 } from '../../src/modules/content/loader';
 import { buildTravelCatalog } from '../../src/modules/travel/travelCatalog';
-import { REGIONS, isRegion } from '../../src/modules/locations/regions';
+import { REGIONS, REGION_EXCLUSIVE_TAG, isRegion } from '../../src/modules/locations/regions';
 import { silentLogger } from '../helpers/testDb';
 import {
   RegionContentSchema,
@@ -655,8 +655,12 @@ describe('shipped content — Thirstlands, the third destination', () => {
         .map((s) => s.slug),
     );
     const thirstlands = scan.regions.find((r) => r.id === 'thirstlands')!;
-    // An exclusive missing from her own pool is unobtainable content.
-    expect(new Set(thirstlands.encounterPool.map((e) => e.species))).toEqual(packSlugs);
+    // Every resident is reachable: an exclusive missing from her own pool
+    // would be unobtainable content, which is worse than absent content.
+    // The pool is a superset — it also stocks shared, non-exclusive species —
+    // so this asserts coverage, not equality.
+    const thirstlandsPool = new Set(thirstlands.encounterPool.map((e) => e.species));
+    for (const slug of packSlugs) expect(thirstlandsPool).toContain(slug);
     for (const other of scan.regions.filter((r) => r.id !== 'thirstlands')) {
       expect(other.encounterPool.filter((e) => packSlugs.has(e.species))).toEqual([]);
     }
@@ -884,6 +888,165 @@ describe('bannerImagePath � optional, safe local asset only', () => {
     if (!parsed.success) {
       const joined = parsed.error.issues.map((i) => i.message).join(' | ');
       expect(joined).toMatch(message);
+    }
+  });
+});
+/**
+ * ── The regional encounter-pool contract ───────────────────────────────────
+ *
+ * The per-region blocks above each assert their own pack's wiring. This block
+ * asserts the rules that hold for **every** region in the shipped set, present
+ * and future, so a region added later is covered without anybody remembering
+ * to write these again.
+ *
+ * The contract, stated once:
+ *
+ *   1. every enabled region-exclusive species appears in her declared home
+ *      region's pool — an exclusive missing from it is unobtainable content;
+ *   2. no exclusive appears in any other region's pool;
+ *   3. every slug a pool names resolves to a species in the content set;
+ *   4. shared, non-exclusive species may appear in as many pools as they like;
+ *   5. an enabled region's pool is non-empty;
+ *   6. a pool never lists the same species twice.
+ *
+ * **What is deliberately absent is `pool === exclusives`.** A region's pool is
+ * a *superset* of its exclusives: roughly fifteen residents of its own, plus
+ * whatever shared species the region wants on its roster. Earlier tests
+ * asserted equality and were correct only until the first shared species was
+ * added to a destination pool; the pools grew, the assertion did not, and it
+ * failed on content that was doing exactly what it was meant to. Size is not
+ * the invariant — coverage and exclusivity are. If a pack's resident count
+ * ever needs pinning, pin it against the *pack*, as below, never against the
+ * pool it is drawn into.
+ */
+describe('shipped regional encounter pools', () => {
+  const CONTENT_DIR_ALL = path.resolve(__dirname, '..', '..', 'content');
+  const scan = readExpansionPacks(CONTENT_DIR_ALL);
+  const content = loadContent(CONTENT_DIR_ALL, ASSETS_DIR, silentLogger());
+
+  /** Enabled regions only: a disabled pack ships no pool and is not a place. */
+  const liveRegions = scan.regions.filter((r) => r.enabled);
+
+  /** slug → the expansion pack that authored her, for exclusives only. */
+  const exclusiveOrigin = new Map(
+    scan.expansionSpecies
+      .filter((s) => s.tags.includes(REGION_EXCLUSIVE_TAG))
+      .map((s) => [s.slug, scan.speciesOrigin[s.slug]!] as const),
+  );
+  /** Expansion pack id → the region id it ships, for enabled packs. */
+  const regionOfPack = new Map(
+    scan.expansions.filter((e) => e.enabled && e.regionId).map((e) => [e.id, e.regionId!] as const),
+  );
+
+  it('has regions to measure, and exclusives in them', () => {
+    expect(liveRegions.length).toBeGreaterThan(1);
+    expect(exclusiveOrigin.size).toBeGreaterThan(0);
+  });
+
+  it('pools every enabled exclusive in her own region', () => {
+    const poolsByRegion = new Map(
+      liveRegions.map((r) => [r.id, new Set(r.encounterPool.map((e) => e.species))] as const),
+    );
+    const enabled = new Set(content.species.filter((s) => s.enabled).map((s) => s.slug));
+    for (const [slug, pack] of exclusiveOrigin) {
+      const regionId = regionOfPack.get(pack);
+      // A species from a disabled pack is not shipped content; skip her.
+      if (!regionId || !enabled.has(slug)) continue;
+      const pool = poolsByRegion.get(regionId);
+      expect(pool, `${pack} ships no enabled region`).toBeDefined();
+      expect(pool, `${slug} is missing from ${regionId}'s pool`).toContain(slug);
+    }
+  });
+
+  it('never leaks an exclusive into another region', () => {
+    for (const region of liveRegions) {
+      for (const entry of region.encounterPool) {
+        const pack = exclusiveOrigin.get(entry.species);
+        if (!pack) continue; // shared species: allowed anywhere.
+        expect(
+          regionOfPack.get(pack),
+          `${entry.species} (${pack}) appears in ${region.id}'s pool`,
+        ).toBe(region.id);
+      }
+    }
+  });
+
+  it('names only species the content set actually ships', () => {
+    const known = new Set(content.species.map((s) => s.slug));
+    for (const region of liveRegions) {
+      for (const entry of region.encounterPool) {
+        expect(known, `${region.id} pools unknown species ${entry.species}`).toContain(
+          entry.species,
+        );
+      }
+    }
+  });
+
+  it('draws only enabled species into a live pool', () => {
+    const disabled = new Set(content.species.filter((s) => !s.enabled).map((s) => s.slug));
+    for (const region of liveRegions) {
+      for (const entry of region.encounterPool) {
+        expect(
+          disabled.has(entry.species),
+          `${region.id} pools disabled species ${entry.species}`,
+        ).toBe(false);
+      }
+    }
+  });
+
+  it('gives every enabled region a non-empty pool', () => {
+    for (const region of liveRegions) {
+      expect(region.encounterPool.length, `${region.id} has an empty pool`).toBeGreaterThan(0);
+    }
+  });
+
+  it('never lists the same species twice in one pool', () => {
+    for (const region of liveRegions) {
+      const slugs = region.encounterPool.map((e) => e.species);
+      expect(new Set(slugs).size, `${region.id} lists a species twice`).toBe(slugs.length);
+    }
+  });
+
+  /**
+   * Shared species are the reason equality was the wrong assertion. Stated as
+   * a positive so the allowance is documented rather than merely tolerated:
+   * at least one non-exclusive species is stocked by more than one live pool,
+   * and destination pools are genuinely larger than their own pack.
+   */
+  it('lets shared species stock as many regional pools as they like', () => {
+    const appearances = new Map<string, number>();
+    for (const region of liveRegions) {
+      for (const entry of region.encounterPool) {
+        if (exclusiveOrigin.has(entry.species)) continue;
+        appearances.set(entry.species, (appearances.get(entry.species) ?? 0) + 1);
+      }
+    }
+    expect([...appearances.values()].some((n) => n > 1)).toBe(true);
+
+    for (const [pack, regionId] of regionOfPack) {
+      const region = liveRegions.find((r) => r.id === regionId);
+      if (!region) continue;
+      const own = [...exclusiveOrigin].filter(([, p]) => p === pack).length;
+      if (own === 0) continue;
+      expect(
+        region.encounterPool.length,
+        `${regionId}'s pool is smaller than ${pack}'s own roster`,
+      ).toBeGreaterThanOrEqual(own);
+    }
+  });
+
+  /**
+   * Roster size, pinned against the **pack** rather than against the pool it
+   * feeds. This is the assertion the old `pool === exclusives` equality was
+   * reaching for, and it is the only place a count belongs: adding a shared
+   * species to a region cannot move it, which is exactly why the previous
+   * spelling kept going stale.
+   */
+  it('ships a comparable roster of exclusives per enabled pack', () => {
+    for (const [pack, regionId] of regionOfPack) {
+      const own = [...exclusiveOrigin].filter(([, p]) => p === pack).length;
+      expect(own, `${pack} (${regionId}) ships no exclusives`).toBeGreaterThanOrEqual(10);
+      expect(own, `${pack} (${regionId}) ships an unusually large roster`).toBeLessThanOrEqual(25);
     }
   });
 });

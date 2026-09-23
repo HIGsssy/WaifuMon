@@ -52,6 +52,12 @@ const ROUTE_LEVEL = 25;
 let packSlugs: string[];
 /** Every other pack's exclusives — what must never surface in a Thirstlands hunt. */
 let foreignExclusives: string[];
+/**
+ * Everything the region's pool stocks — the pack's own residents *plus* the
+ * shared species it also draws. A destination pool is deliberately a superset
+ * of its pack, so this, not `packSlugs`, is what a hunt here may return.
+ */
+let poolSlugs: string[];
 
 beforeAll(async () => {
   t = await createTestDb();
@@ -69,6 +75,12 @@ beforeAll(async () => {
     )
     .map((s) => s.slug);
   expect(foreignExclusives.length).toBeGreaterThan(0);
+  poolSlugs = app.content.regions
+    .find((r) => r.id === REGION)!
+    .encounterPool.map((e) => e.species);
+  // Coverage, not equality: every resident is reachable here, and the pool is
+  // free to be larger than the pack.
+  for (const slug of packSlugs) expect(poolSlugs).toContain(slug);
 });
 
 afterAll(async () => {
@@ -122,10 +134,16 @@ describe('released destination', () => {
 
   it('is seeded with its own encounter pool, covering every resident', async () => {
     const rows = await t.db
-      .select({ speciesId: regionEncounterPools.speciesId })
+      .select({ slug: speciesTable.slug })
       .from(regionEncounterPools)
+      .innerJoin(speciesTable, eq(regionEncounterPools.speciesId, speciesTable.id))
       .where(eq(regionEncounterPools.regionId, REGION));
-    expect(rows).toHaveLength(packSlugs.length);
+    const seeded = rows.map((r) => r.slug);
+    // The whole authored pool reached the database, residents and shared
+    // species alike — asserted against the *pool*, never against the pack,
+    // because the pool is a superset of it by design.
+    expect(seeded.sort()).toEqual([...poolSlugs].sort());
+    for (const slug of packSlugs) expect(seeded).toContain(slug);
   });
 
   it('ships its residents enabled, on canonical artwork paths', async () => {
@@ -265,10 +283,12 @@ describe('its residents live there and nowhere else', () => {
   const N_ROLL = 0;
   const R_ROLL = 0.7;
 
-  it('draws only Thirstlands species at the rarities its pool covers', async () => {
+  it('draws only from the Thirstlands pool at the rarities it covers', async () => {
     await resetPlayer({ region: REGION, withPass: true });
     const drawn = [...(await sample(6, N_ROLL)), ...(await sample(6, R_ROLL))];
-    expect(drawn.every((slug) => packSlugs.includes(slug))).toBe(true);
+    // The pool, not the pack: standing here may legitimately turn up a shared
+    // species, and asserting otherwise fails on content doing its job.
+    expect(drawn.every((slug) => poolSlugs.includes(slug))).toBe(true);
     // Both buckets were reached, so this is not one species twelve times.
     expect(new Set(drawn).size).toBeGreaterThan(1);
   });

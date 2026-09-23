@@ -1,7 +1,7 @@
 {
   "id": "flaccid_foothills",
   "name": "Flaccid Foothills",
-  "description": "The second paid destination. Ships the Flaccid Foothills region and its eleven region-exclusive Waifumon, reachable only by stamping the route onto a Caravan Pass.",
+  "description": "The second paid destination. Ships the Flaccid Foothills region and its region-exclusive Waifumon, reachable only by stamping the route onto a Caravan Pass the player already holds.",
   "enabled": true,
   "order": 3,
   "regionId": "flaccid-foothills"

@@ -169,8 +169,40 @@ export function effectConfigSchemaFor(effectType: ItemEffectType): ItemEffectCon
   return CaptureBonusEffectSchema;
 }
 
+/**
+ * One item in `content/items.json`.
+ *
+ * ── Slugs are identifiers; names are content ───────────────────────────────
+ *
+ * **`slug` is a persistent technical identifier and is immutable once
+ * deployed. `name` is mutable player-facing content — rewrite it freely.**
+ *
+ * The two are not symmetric, and the asymmetry is load-bearing:
+ *
+ *   - `name` is upserted onto the `items` row from this file on every content
+ *     load, and every surface (inventory, shop, Discord, Portal, expedition
+ *     payouts) reads it live off that row. Changing it here renames the item
+ *     everywhere on the next load. Nothing persists a copy, so no migration
+ *     and no backfill — retitle an item whenever the tone needs it.
+ *   - `slug` is what the database and half the content corpus point *at*. The
+ *     seeder upserts on slug conflict, so editing one does not rename an item:
+ *     it mints a second one and disables the first. Player inventory keeps
+ *     referencing the old `items.id`, reward tables and world-encounter
+ *     effects that still name the old slug fail content validation at boot,
+ *     and slugs already frozen into `player_expeditions.rewards`,
+ *     `waifu_gifts.item_slug` and `active_effects.source_item_slug` resolve to
+ *     nothing and are silently skipped.
+ *
+ * A slug therefore does not have to match the display name and should not be
+ * kept in step with it — `sand_scoured_bearing` may quite happily be called
+ * anything at all. There is no alias layer and none is planned; renaming a
+ * shipped slug would need a deliberate data migration, so treat the ones
+ * already out there as fixed and get new ones right before they ship.
+ */
 const ItemBaseSchema = z.object({
+  /** Immutable after deployment. See the block above. */
   slug,
+  /** Player-facing, and freely mutable. See the block above. */
   name: z.string().min(1),
   category: z.enum(ITEM_CATEGORIES),
   captureModifier: z.number().positive().nullable(),

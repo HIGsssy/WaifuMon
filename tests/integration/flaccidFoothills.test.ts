@@ -17,6 +17,7 @@ import {
   playerUnlockedRoutes,
   players,
   regionEncounterPools,
+  species as speciesTable,
 } from '../../src/db/schema';
 import { seedContent } from '../../src/modules/content/seeder';
 import { createHuntService, type HuntService } from '../../src/modules/hunt/huntService';
@@ -46,6 +47,14 @@ const ROUTE_LEVEL = 20;
 
 /** Every species the pack ships, read from content rather than hard-coded. */
 let packSlugs: string[];
+/**
+ * Everything the region's pool stocks — the pack's own residents *plus* the
+ * shared species it also draws. A destination pool is deliberately a superset
+ * of its pack, so this, not `packSlugs`, is what a hunt here may return.
+ */
+let poolSlugs: string[];
+/** Every other pack's exclusives — what must never surface in a Foothills hunt. */
+let foreignExclusives: string[];
 
 beforeAll(async () => {
   t = await createTestDb();
@@ -55,6 +64,20 @@ beforeAll(async () => {
     .filter((s) => app.content.speciesOrigin[s.slug] === 'flaccid_foothills')
     .map((s) => s.slug);
   expect(packSlugs.length).toBeGreaterThan(0);
+  poolSlugs = app.content.regions
+    .find((r) => r.id === REGION)!
+    .encounterPool.map((e) => e.species);
+  // Coverage, not equality: every resident is reachable here, and the pool is
+  // free to be larger than the pack.
+  for (const slug of packSlugs) expect(poolSlugs).toContain(slug);
+  foreignExclusives = app.content.species
+    .filter(
+      (s) =>
+        s.tags.includes('region_exclusive') &&
+        app.content.speciesOrigin[s.slug] !== 'flaccid_foothills',
+    )
+    .map((s) => s.slug);
+  expect(foreignExclusives.length).toBeGreaterThan(0);
 });
 
 afterAll(async () => {
@@ -116,12 +139,18 @@ describe('released destination', () => {
     await expect(app.travel.purchaseDestination(playerId, REGION)).rejects.toThrow();
   });
 
-  it('is seeded with its own encounter pool', async () => {
+  it('is seeded with its own encounter pool, covering every resident', async () => {
     const rows = await t.db
-      .select({ speciesId: regionEncounterPools.speciesId })
+      .select({ slug: speciesTable.slug })
       .from(regionEncounterPools)
+      .innerJoin(speciesTable, eq(regionEncounterPools.speciesId, speciesTable.id))
       .where(eq(regionEncounterPools.regionId, REGION));
-    expect(rows).toHaveLength(packSlugs.length);
+    const seeded = rows.map((r) => r.slug);
+    // The whole authored pool reached the database, residents and shared
+    // species alike — asserted against the *pool*, never against the pack,
+    // because the pool is a superset of it by design.
+    expect(seeded.sort()).toEqual([...poolSlugs].sort());
+    for (const slug of packSlugs) expect(seeded).toContain(slug);
   });
 });
 
@@ -215,10 +244,13 @@ describe('its residents live there and nowhere else', () => {
     return slugs;
   }
 
-  it('draws only Foothills species while standing in the Foothills', async () => {
+  it('draws only from the Foothills pool, and never a foreign exclusive', async () => {
     await resetPlayer({ region: REGION, withPass: true });
     const drawn = await sample(12);
-    expect(drawn.every((slug) => packSlugs.includes(slug))).toBe(true);
+    // The pool, not the pack: standing here may legitimately turn up a shared
+    // species, and asserting otherwise fails on content doing its job.
+    expect(drawn.every((slug) => poolSlugs.includes(slug))).toBe(true);
+    expect(drawn.some((slug) => foreignExclusives.includes(slug))).toBe(false);
     expect(new Set(drawn).size).toBeGreaterThan(1);
   });
 

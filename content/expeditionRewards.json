@@ -2544,5 +2544,919 @@
         ]
       }
     ]
+  },
+
+  {
+    "id": "thirst-claim-line-success-v1",
+    "enabled": true,
+    "version": "thirst-claim-line-success-v1",
+    "waifubux": { "min": 2, "max": 3 },
+    "waifuXp": 40,
+    "playerXp": 9,
+    "groups": [
+      {
+        "id": "hammered-out-of-the-seam",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 7000,
+        "entries": [
+          { "itemId": "spent_blasting_cap", "weight": 100, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "turned-up-in-the-spoil",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 700,
+        "entries": [
+          { "itemId": "sand_scoured_bearing", "weight": 80, "quantity": 1, "enabled": true },
+          { "itemId": "surveyors_brass_dial", "weight": 20, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "the-seam-had-something-in-it",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 300,
+        "entries": [
+          { "itemId": "strongbox_hinge_plate", "weight": 80, "quantity": 1, "enabled": true },
+          { "itemId": "canyon_cut_gemstone", "weight": 20, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "thirst-claim-line-bonus-v1",
+    "enabled": true,
+    "version": "thirst-claim-line-bonus-v1",
+    "waifubux": { "min": 2, "max": 4 },
+    "waifuXp": 16,
+    "playerXp": 0,
+    "groups": [
+      {
+        "id": "the-seam-opened",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 1400,
+        "entries": [
+          { "itemId": "sand_scoured_bearing", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "surveyors_brass_dial", "weight": 45, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "thirst-claim-line-failure-v1",
+    "enabled": true,
+    "version": "thirst-claim-line-failure-v1",
+    "waifubux": { "min": 1, "max": 2 },
+    "waifuXp": 12,
+    "playerXp": 3,
+    "groups": [
+      {
+        "id": "dust-and-a-sore-shoulder",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 2800,
+        "entries": [
+          { "itemId": "spent_blasting_cap", "weight": 75, "quantity": 1, "enabled": true },
+          { "itemId": "dust_choked_rig_filter", "weight": 25, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "thirst-water-haul-success-v1",
+    "enabled": true,
+    "version": "thirst-water-haul-success-v1",
+    "waifubux": { "min": 2, "max": 3 },
+    "waifuXp": 34,
+    "playerXp": 7,
+    "groups": [
+      {
+        "id": "what-the-drums-rattled-loose",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 6500,
+        "entries": [
+          { "itemId": "spent_blasting_cap", "weight": 100, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "left-at-the-rim-camp",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 600,
+        "entries": [
+          { "itemId": "sand_scoured_bearing", "weight": 85, "quantity": 1, "enabled": true },
+          { "itemId": "surveyors_brass_dial", "weight": 15, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "traded-for-the-last-drum",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 270,
+        "entries": [
+          { "itemId": "strongbox_hinge_plate", "weight": 85, "quantity": 1, "enabled": true },
+          { "itemId": "canyon_cut_gemstone", "weight": 15, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "thirst-water-haul-bonus-v1",
+    "enabled": true,
+    "version": "thirst-water-haul-bonus-v1",
+    "waifubux": { "min": 2, "max": 3 },
+    "waifuXp": 14,
+    "playerXp": 0,
+    "groups": [
+      {
+        "id": "the-camp-paid-in-kind",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 1300,
+        "entries": [
+          { "itemId": "sand_scoured_bearing", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "surveyors_brass_dial", "weight": 40, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "thirst-water-haul-failure-v1",
+    "enabled": true,
+    "version": "thirst-water-haul-failure-v1",
+    "waifubux": { "min": 1, "max": 2 },
+    "waifuXp": 10,
+    "playerXp": 3,
+    "groups": [
+      {
+        "id": "half-the-drums-came-back",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 2500,
+        "entries": [
+          { "itemId": "spent_blasting_cap", "weight": 80, "quantity": 1, "enabled": true },
+          { "itemId": "dust_choked_rig_filter", "weight": 20, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "thirst-filter-run-success-v1",
+    "enabled": true,
+    "version": "thirst-filter-run-success-v1",
+    "waifubux": { "min": 2, "max": 4 },
+    "waifuXp": 46,
+    "playerXp": 10,
+    "groups": [
+      {
+        "id": "out-of-the-housings",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 6800,
+        "entries": [
+          { "itemId": "dust_choked_rig_filter", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "spent_blasting_cap", "weight": 45, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "under-the-twelfth-rig",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 700,
+        "entries": [
+          { "itemId": "sand_scoured_bearing", "weight": 75, "quantity": 1, "enabled": true },
+          { "itemId": "surveyors_brass_dial", "weight": 25, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "wedged-behind-the-firewall",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 220,
+        "entries": [
+          { "itemId": "strongbox_hinge_plate", "weight": 75, "quantity": 1, "enabled": true },
+          { "itemId": "canyon_cut_gemstone", "weight": 25, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "thirst-filter-run-bonus-v1",
+    "enabled": true,
+    "version": "thirst-filter-run-bonus-v1",
+    "waifubux": { "min": 2, "max": 4 },
+    "waifuXp": 18,
+    "playerXp": 0,
+    "groups": [
+      {
+        "id": "she-let-you-keep-it",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 1500,
+        "entries": [
+          { "itemId": "sand_scoured_bearing", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "surveyors_brass_dial", "weight": 45, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "thirst-filter-run-failure-v1",
+    "enabled": true,
+    "version": "thirst-filter-run-failure-v1",
+    "waifubux": { "min": 1, "max": 3 },
+    "waifuXp": 14,
+    "playerXp": 4,
+    "groups": [
+      {
+        "id": "eleven-owners-nine-arguments",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 2600,
+        "entries": [
+          { "itemId": "dust_choked_rig_filter", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "spent_blasting_cap", "weight": 40, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "thirst-lantern-walk-success-v1",
+    "enabled": true,
+    "version": "thirst-lantern-walk-success-v1",
+    "waifubux": { "min": 6, "max": 8 },
+    "waifuXp": 100,
+    "playerXp": 24,
+    "groups": [
+      {
+        "id": "what-the-light-reached",
+        "enabled": true,
+        "rolls": 2,
+        "chanceBasisPoints": 5200,
+        "entries": [
+          { "itemId": "spent_blasting_cap", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "dust_choked_rig_filter", "weight": 45, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "past-the-third-junction",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 1400,
+        "entries": [
+          { "itemId": "sand_scoured_bearing", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "surveyors_brass_dial", "weight": 40, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "the-note-in-the-margin",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 700,
+        "entries": [
+          { "itemId": "strongbox_hinge_plate", "weight": 65, "quantity": 1, "enabled": true },
+          { "itemId": "canyon_cut_gemstone", "weight": 35, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "thirst-lantern-walk-bonus-v1",
+    "enabled": true,
+    "version": "thirst-lantern-walk-bonus-v1",
+    "waifubux": { "min": 4, "max": 7 },
+    "waifuXp": 40,
+    "playerXp": 0,
+    "groups": [
+      {
+        "id": "the-junction-opened",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 1700,
+        "entries": [
+          { "itemId": "surveyors_brass_dial", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "strongbox_hinge_plate", "weight": 40, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "thirst-lantern-walk-failure-v1",
+    "enabled": true,
+    "version": "thirst-lantern-walk-failure-v1",
+    "waifubux": { "min": 2, "max": 4 },
+    "waifuXp": 30,
+    "playerXp": 7,
+    "groups": [
+      {
+        "id": "as-far-as-the-lamps-went",
+        "enabled": true,
+        "rolls": 2,
+        "chanceBasisPoints": 2900,
+        "entries": [
+          { "itemId": "spent_blasting_cap", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "dust_choked_rig_filter", "weight": 40, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "thirst-rig-recovery-success-v1",
+    "enabled": true,
+    "version": "thirst-rig-recovery-success-v1",
+    "waifubux": { "min": 6, "max": 9 },
+    "waifuXp": 110,
+    "playerXp": 26,
+    "groups": [
+      {
+        "id": "stripped-off-the-frames",
+        "enabled": true,
+        "rolls": 2,
+        "chanceBasisPoints": 4500,
+        "entries": [
+          { "itemId": "dust_choked_rig_filter", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "spent_blasting_cap", "weight": 40, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "worth-lifting-out",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 1500,
+        "entries": [
+          { "itemId": "sand_scoured_bearing", "weight": 70, "quantity": 1, "enabled": true },
+          { "itemId": "surveyors_brass_dial", "weight": 30, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "not-built-anywhere-she-knows",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 700,
+        "entries": [
+          { "itemId": "strongbox_hinge_plate", "weight": 65, "quantity": 1, "enabled": true },
+          { "itemId": "canyon_cut_gemstone", "weight": 35, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "she-kept-the-serial-plate",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 110,
+        "entries": [
+          { "itemId": "canyon_cut_gemstone", "weight": 100, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "thirst-rig-recovery-bonus-v1",
+    "enabled": true,
+    "version": "thirst-rig-recovery-bonus-v1",
+    "waifubux": { "min": 5, "max": 8 },
+    "waifuXp": 44,
+    "playerXp": 0,
+    "groups": [
+      {
+        "id": "the-part-she-could-not-name",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 1600,
+        "entries": [
+          { "itemId": "surveyors_brass_dial", "weight": 50, "quantity": 1, "enabled": true },
+          { "itemId": "strongbox_hinge_plate", "weight": 50, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "thirst-rig-recovery-failure-v1",
+    "enabled": true,
+    "version": "thirst-rig-recovery-failure-v1",
+    "waifubux": { "min": 2, "max": 5 },
+    "waifuXp": 33,
+    "playerXp": 8,
+    "groups": [
+      {
+        "id": "two-of-three-and-the-light-went",
+        "enabled": true,
+        "rolls": 2,
+        "chanceBasisPoints": 2900,
+        "entries": [
+          { "itemId": "dust_choked_rig_filter", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "spent_blasting_cap", "weight": 45, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "thirst-writ-service-success-v1",
+    "enabled": true,
+    "version": "thirst-writ-service-success-v1",
+    "waifubux": { "min": 5, "max": 9 },
+    "essence": { "min": 0, "max": 1 },
+    "waifuXp": 118,
+    "playerXp": 28,
+    "groups": [
+      {
+        "id": "recovered-from-the-mark",
+        "enabled": true,
+        "rolls": 2,
+        "chanceBasisPoints": 4800,
+        "entries": [
+          { "itemId": "spent_blasting_cap", "weight": 50, "quantity": 1, "enabled": true },
+          { "itemId": "dust_choked_rig_filter", "weight": 50, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "never-the-marks-to-begin-with",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 1500,
+        "entries": [
+          { "itemId": "sand_scoured_bearing", "weight": 65, "quantity": 1, "enabled": true },
+          { "itemId": "surveyors_brass_dial", "weight": 35, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "crossed-out-twice",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 780,
+        "entries": [
+          { "itemId": "strongbox_hinge_plate", "weight": 70, "quantity": 1, "enabled": true },
+          { "itemId": "canyon_cut_gemstone", "weight": 30, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "thirst-writ-service-bonus-v1",
+    "enabled": true,
+    "version": "thirst-writ-service-bonus-v1",
+    "waifubux": { "min": 5, "max": 8 },
+    "essence": { "min": 1, "max": 2 },
+    "waifuXp": 47,
+    "playerXp": 0,
+    "groups": [
+      {
+        "id": "the-name-under-the-name",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 1650,
+        "entries": [
+          { "itemId": "surveyors_brass_dial", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "strongbox_hinge_plate", "weight": 45, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "thirst-writ-service-failure-v1",
+    "enabled": true,
+    "version": "thirst-writ-service-failure-v1",
+    "waifubux": { "min": 2, "max": 5 },
+    "waifuXp": 35,
+    "playerXp": 9,
+    "groups": [
+      {
+        "id": "served-and-nothing-else",
+        "enabled": true,
+        "rolls": 2,
+        "chanceBasisPoints": 2800,
+        "entries": [
+          { "itemId": "spent_blasting_cap", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "dust_choked_rig_filter", "weight": 45, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "thirst-unrefiled-claim-success-v1",
+    "enabled": true,
+    "version": "thirst-unrefiled-claim-success-v1",
+    "waifubux": { "min": 10, "max": 13 },
+    "essence": { "min": 1, "max": 2 },
+    "waifuXp": 178,
+    "playerXp": 44,
+    "groups": [
+      {
+        "id": "still-where-she-set-it-down",
+        "enabled": true,
+        "rolls": 2,
+        "chanceBasisPoints": 5400,
+        "entries": [
+          { "itemId": "spent_blasting_cap", "weight": 50, "quantity": 1, "enabled": true },
+          { "itemId": "dust_choked_rig_filter", "weight": 50, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "down-the-shored-shaft",
+        "enabled": true,
+        "rolls": 2,
+        "chanceBasisPoints": 1500,
+        "entries": [
+          { "itemId": "sand_scoured_bearing", "weight": 70, "quantity": 1, "enabled": true },
+          { "itemId": "surveyors_brass_dial", "weight": 30, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "nine-years-of-nobody",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 1050,
+        "entries": [
+          { "itemId": "strongbox_hinge_plate", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "canyon_cut_gemstone", "weight": 40, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "what-the-last-shift-was-cutting",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 200,
+        "entries": [
+          { "itemId": "canyon_cut_gemstone", "weight": 75, "quantity": 1, "enabled": true },
+          { "itemId": "strongbox_hinge_plate", "weight": 25, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "thirst-unrefiled-claim-bonus-v1",
+    "enabled": true,
+    "version": "thirst-unrefiled-claim-bonus-v1",
+    "waifubux": { "min": 8, "max": 13 },
+    "essence": { "min": 1, "max": 3 },
+    "waifuXp": 72,
+    "playerXp": 0,
+    "groups": [
+      {
+        "id": "why-nobody-came-back",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 1900,
+        "entries": [
+          { "itemId": "surveyors_brass_dial", "weight": 40, "quantity": 1, "enabled": true },
+          { "itemId": "strongbox_hinge_plate", "weight": 40, "quantity": 1, "enabled": true },
+          { "itemId": "canyon_cut_gemstone", "weight": 20, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "thirst-unrefiled-claim-failure-v1",
+    "enabled": true,
+    "version": "thirst-unrefiled-claim-failure-v1",
+    "waifubux": { "min": 4, "max": 7 },
+    "waifuXp": 55,
+    "playerXp": 13,
+    "groups": [
+      {
+        "id": "shored-but-not-safe",
+        "enabled": true,
+        "rolls": 2,
+        "chanceBasisPoints": 3700,
+        "entries": [
+          { "itemId": "spent_blasting_cap", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "dust_choked_rig_filter", "weight": 45, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "thirst-wreck-field-success-v1",
+    "enabled": true,
+    "version": "thirst-wreck-field-success-v1",
+    "waifubux": { "min": 10, "max": 14 },
+    "essence": { "min": 1, "max": 2 },
+    "waifuXp": 190,
+    "playerXp": 47,
+    "groups": [
+      {
+        "id": "off-the-easy-wrecks",
+        "enabled": true,
+        "rolls": 2,
+        "chanceBasisPoints": 5600,
+        "entries": [
+          { "itemId": "dust_choked_rig_filter", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "spent_blasting_cap", "weight": 45, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "the-good-parts",
+        "enabled": true,
+        "rolls": 2,
+        "chanceBasisPoints": 1600,
+        "entries": [
+          { "itemId": "sand_scoured_bearing", "weight": 65, "quantity": 1, "enabled": true },
+          { "itemId": "surveyors_brass_dial", "weight": 35, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "the-one-that-lost-the-argument",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 1150,
+        "entries": [
+          { "itemId": "strongbox_hinge_plate", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "canyon_cut_gemstone", "weight": 45, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "still-locked-still-loaded",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 210,
+        "entries": [
+          { "itemId": "canyon_cut_gemstone", "weight": 70, "quantity": 1, "enabled": true },
+          { "itemId": "strongbox_hinge_plate", "weight": 30, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "thirst-wreck-field-bonus-v1",
+    "enabled": true,
+    "version": "thirst-wreck-field-bonus-v1",
+    "waifubux": { "min": 9, "max": 14 },
+    "essence": { "min": 1, "max": 3 },
+    "waifuXp": 76,
+    "playerXp": 0,
+    "groups": [
+      {
+        "id": "intact-under-the-sand",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 2000,
+        "entries": [
+          { "itemId": "surveyors_brass_dial", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "strongbox_hinge_plate", "weight": 40, "quantity": 1, "enabled": true },
+          { "itemId": "canyon_cut_gemstone", "weight": 25, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "spare-kit-out-of-the-cab",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 700,
+        "entries": [
+          { "itemId": "silk_charm", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "velvet_charm", "weight": 40, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "thirst-wreck-field-failure-v1",
+    "enabled": true,
+    "version": "thirst-wreck-field-failure-v1",
+    "waifubux": { "min": 5, "max": 8 },
+    "waifuXp": 58,
+    "playerXp": 14,
+    "groups": [
+      {
+        "id": "too-hot-to-work-by-noon",
+        "enabled": true,
+        "rolls": 2,
+        "chanceBasisPoints": 3600,
+        "entries": [
+          { "itemId": "dust_choked_rig_filter", "weight": 50, "quantity": 1, "enabled": true },
+          { "itemId": "spent_blasting_cap", "weight": 50, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "thirst-dune-road-success-v1",
+    "enabled": true,
+    "version": "thirst-dune-road-success-v1",
+    "waifubux": { "min": 30, "max": 38 },
+    "essence": { "min": 2, "max": 3 },
+    "waifuXp": 430,
+    "playerXp": 105,
+    "groups": [
+      {
+        "id": "along-the-verge",
+        "enabled": true,
+        "rolls": 4,
+        "chanceBasisPoints": 5500,
+        "entries": [
+          { "itemId": "spent_blasting_cap", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "dust_choked_rig_filter", "weight": 55, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "what-the-sand-gave-up",
+        "enabled": true,
+        "rolls": 3,
+        "chanceBasisPoints": 2400,
+        "entries": [
+          { "itemId": "sand_scoured_bearing", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "surveyors_brass_dial", "weight": 40, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "the-verge-keeps-some-of-it",
+        "enabled": true,
+        "rolls": 2,
+        "chanceBasisPoints": 2000,
+        "entries": [
+          { "itemId": "strongbox_hinge_plate", "weight": 65, "quantity": 1, "enabled": true },
+          { "itemId": "canyon_cut_gemstone", "weight": 35, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "signed-for-before-dawn",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 1400,
+        "entries": [
+          { "itemId": "surveyors_brass_dial", "weight": 40, "quantity": 1, "enabled": true },
+          { "itemId": "strongbox_hinge_plate", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "canyon_cut_gemstone", "weight": 25, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "the-singing-stopped-for-it",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 380,
+        "entries": [
+          { "itemId": "canyon_cut_gemstone", "weight": 80, "quantity": 1, "enabled": true },
+          { "itemId": "strongbox_hinge_plate", "weight": 20, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "thirst-dune-road-bonus-v1",
+    "enabled": true,
+    "version": "thirst-dune-road-bonus-v1",
+    "waifubux": { "min": 22, "max": 32 },
+    "essence": { "min": 2, "max": 4 },
+    "waifuXp": 150,
+    "playerXp": 0,
+    "groups": [
+      {
+        "id": "the-captains-cut",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 3200,
+        "entries": [
+          { "itemId": "strongbox_hinge_plate", "weight": 50, "quantity": 1, "enabled": true },
+          { "itemId": "canyon_cut_gemstone", "weight": 50, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "out-of-the-wagon-locker",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 750,
+        "entries": [
+          { "itemId": "silk_charm", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "velvet_charm", "weight": 45, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "thirst-dune-road-failure-v1",
+    "enabled": true,
+    "version": "thirst-dune-road-failure-v1",
+    "waifubux": { "min": 12, "max": 20 },
+    "waifuXp": 215,
+    "playerXp": 52,
+    "groups": [
+      {
+        "id": "a-quiet-night-and-little-else",
+        "enabled": true,
+        "rolls": 4,
+        "chanceBasisPoints": 4000,
+        "entries": [
+          { "itemId": "spent_blasting_cap", "weight": 50, "quantity": 1, "enabled": true },
+          { "itemId": "dust_choked_rig_filter", "weight": 40, "quantity": 1, "enabled": true },
+          { "itemId": "sand_scoured_bearing", "weight": 10, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "thirst-procession-wake-success-v1",
+    "enabled": true,
+    "version": "thirst-procession-wake-success-v1",
+    "waifubux": { "min": 32, "max": 40 },
+    "essence": { "min": 2, "max": 4 },
+    "waifuXp": 465,
+    "playerXp": 113,
+    "groups": [
+      {
+        "id": "down-through-the-welded-deck",
+        "enabled": true,
+        "rolls": 4,
+        "chanceBasisPoints": 5300,
+        "entries": [
+          { "itemId": "dust_choked_rig_filter", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "spent_blasting_cap", "weight": 45, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "the-cargo-not-the-rings",
+        "enabled": true,
+        "rolls": 3,
+        "chanceBasisPoints": 2300,
+        "entries": [
+          { "itemId": "sand_scoured_bearing", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "surveyors_brass_dial", "weight": 45, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "what-the-procession-left",
+        "enabled": true,
+        "rolls": 2,
+        "chanceBasisPoints": 1900,
+        "entries": [
+          { "itemId": "strongbox_hinge_plate", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "canyon_cut_gemstone", "weight": 40, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "deeper-than-the-old-hands-go",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 1250,
+        "entries": [
+          { "itemId": "surveyors_brass_dial", "weight": 40, "quantity": 1, "enabled": true },
+          { "itemId": "strongbox_hinge_plate", "weight": 30, "quantity": 1, "enabled": true },
+          { "itemId": "canyon_cut_gemstone", "weight": 30, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "under-the-bridal-deck",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 470,
+        "entries": [
+          { "itemId": "canyon_cut_gemstone", "weight": 85, "quantity": 1, "enabled": true },
+          { "itemId": "strongbox_hinge_plate", "weight": 15, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "thirst-procession-wake-bonus-v1",
+    "enabled": true,
+    "version": "thirst-procession-wake-bonus-v1",
+    "waifubux": { "min": 24, "max": 34 },
+    "essence": { "min": 3, "max": 5 },
+    "waifuXp": 160,
+    "playerXp": 0,
+    "groups": [
+      {
+        "id": "the-bride-kept-the-rest",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 3500,
+        "entries": [
+          { "itemId": "canyon_cut_gemstone", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "strongbox_hinge_plate", "weight": 45, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "off-the-strongbox-deck",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 900,
+        "entries": [
+          { "itemId": "velvet_charm", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "claim_collar", "weight": 40, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "thirst-procession-wake-failure-v1",
+    "enabled": true,
+    "version": "thirst-procession-wake-failure-v1",
+    "waifubux": { "min": 13, "max": 21 },
+    "waifuXp": 232,
+    "playerXp": 56,
+    "groups": [
+      {
+        "id": "the-sand-took-it-back",
+        "enabled": true,
+        "rolls": 4,
+        "chanceBasisPoints": 4100,
+        "entries": [
+          { "itemId": "spent_blasting_cap", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "dust_choked_rig_filter", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "sand_scoured_bearing", "weight": 10, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
   }
 ]

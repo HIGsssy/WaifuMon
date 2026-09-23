@@ -2247,3 +2247,703 @@ describe('Flaccid Foothills reward scaling', () => {
     }
   });
 });
+
+/**
+ * ── Thirstlands ────────────────────────────────────────────────────────────
+ *
+ * The fourth authored region, and the first one whose identity is a *shape*
+ * rather than a second currency. Thirstlands pays the same family as Waifu
+ * Valley — WaifuBux and salvage, nothing else — on the same ~300 WBe budget,
+ * and is still meant to feel nothing like it:
+ *
+ *   - **Waifu Valley** — ordinary scavenging. Reliable income, and salvage
+ *     that is the residue of ordinary life: a bent token, an unsent letter.
+ *   - **Thirstlands** — a resource frontier. The same money arrives in lumps,
+ *     and the salvage is what somebody was carrying or using for a reason and
+ *     did not come back for.
+ *
+ * That difference is expressed three ways, and each one is asserted below
+ * because none of them is visible in a WBe total:
+ *
+ *   1. **Composition** — the region takes a *smaller* direct-WaifuBux cut than
+ *      any other (12–18%, against the Valley's ~27%), so the haul is the pay.
+ *   2. **Variance** — most of a Thirstlands table's expected value sits behind
+ *      low-probability gates rather than in guaranteed rolls. A run is more
+ *      often mediocre and occasionally much better, at the same long-run EV.
+ *   3. **A steeper ladder** — six salvage items spanning 8 → 255 WaifuBux,
+ *      against the Valley's flatter spread, so the lumps are worth waiting for.
+ *
+ * What is deliberately *not* here: Essence (Twin Peeks owns that niche and
+ * this region pays less of it than the Valley does), XP escalation (the
+ * Foothills own that), and any item that gestures at a system which does not
+ * exist yet. The maps, writs, unidentified components and buried rings this
+ * region's missions talk about live in **mission text only** — no key items,
+ * no equipment, nothing a player could sell today and regret when those
+ * systems ship.
+ */
+describe('Thirstlands reward scaling', () => {
+  const tables = new Map(SHIPPED.expeditionRewards.map((t) => [t.id, t]));
+  const items = new Map(SHIPPED.items.map((i) => [i.slug, i]));
+  const sell = new Map(SHIPPED.items.map((i) => [i.slug, i.sellValue ?? 0]));
+
+  /** The region's own salvage, in ladder order. Named so it cannot drift. */
+  const THIRSTLANDS_SALVAGE = [
+    'spent_blasting_cap',
+    'dust_choked_rig_filter',
+    'sand_scoured_bearing',
+    'surveyors_brass_dial',
+    'strongbox_hinge_plate',
+    'canyon_cut_gemstone',
+  ] as const;
+
+  /**
+   * Mean **and variance** of a table's salvage, in WaifuBux.
+   *
+   * The variance matters here in a way it does not in the other regional
+   * blocks: it is the arithmetic form of "pays in lumps". One group is a
+   * Bernoulli gate in front of a weighted pick, repeated `rolls` times and
+   * independent of every other group, so the moments add.
+   */
+  function value(id: string | null) {
+    const table = id ? tables.get(id) : undefined;
+    if (!table) {
+      return { waifubux: 0, salvage: 0, essence: 0, waifuXp: 0, playerXp: 0, variance: 0, gated: 0 };
+    }
+    const mid = (r?: { min: number; max: number }) => (r ? (r.min + r.max) / 2 : 0);
+    let salvage = 0;
+    let variance = 0;
+    /** Expected salvage drawn from groups rarer than 1-in-4. */
+    let gated = 0;
+    for (const group of table.groups.filter((g) => g.enabled)) {
+      const entries = group.entries.filter((e) => e.enabled);
+      const weight = entries.reduce((s, e) => s + e.weight, 0);
+      const q = group.chanceBasisPoints / 10_000;
+      const worth = (e: (typeof entries)[number]) => e.quantity * (sell.get(e.itemId) ?? 0);
+      const m1 = entries.reduce((s, e) => s + (e.weight / weight) * worth(e), 0);
+      const m2 = entries.reduce((s, e) => s + (e.weight / weight) * worth(e) ** 2, 0);
+      const mean = q * m1;
+      salvage += group.rolls * mean;
+      variance += group.rolls * (q * m2 - mean ** 2);
+      if (group.chanceBasisPoints <= 2_500) gated += group.rolls * mean;
+    }
+    return {
+      waifubux: mid(table.waifubux),
+      salvage,
+      essence: mid(table.essence),
+      waifuXp: table.waifuXp,
+      playerXp: table.playerXp,
+      variance,
+      gated,
+    };
+  }
+  const wbe = (v: { waifubux: number; salvage: number }): number => v.waifubux + v.salvage;
+
+  const regionPool = (region: string) =>
+    SHIPPED.expeditions
+      .filter((e) => e.region === region && e.enabled)
+      .sort((a, b) => a.durationMinutes - b.durationMinutes);
+
+  const thirstlands = regionPool('thirstlands');
+  const valley = regionPool('waifu-valley');
+  const elsewhere = SHIPPED.expeditions.filter((e) => e.enabled && e.region !== 'thirstlands');
+  const perRun = thirstlands.map((e) => {
+    const v = value(e.rewardTable);
+    return { e, success: wbe(v), ...v };
+  });
+
+  function reference(e: (typeof thirstlands)[number]) {
+    return evaluateSuitability({
+      definition: e,
+      waifu: {
+        level: e.recommendedLevel + 5,
+        affinity: e.preferredAffinities[0] ?? 'switch',
+        race: e.preferredRaces[0] ?? 'human',
+      },
+      config: SHIPPED.tables.expeditions,
+      affinityConfig: SHIPPED.tables.buddyAffinity,
+    });
+  }
+
+  function expectedWbe(e: (typeof thirstlands)[number]): number {
+    const { successChance, exceptionalChance } = reference(e);
+    const pExceptional = successChance * exceptionalChance;
+    const pOrdinary = successChance - pExceptional;
+    const success = wbe(value(e.rewardTable));
+    return (
+      (1 - successChance) * wbe(value(e.failureRewardTable)) +
+      pOrdinary * success +
+      pExceptional * (success + wbe(value(e.exceptionalRewardTable)))
+    );
+  }
+
+  const TIERS = [60, 180, 360, 1080] as const;
+  const tierMean = (pool: typeof thirstlands, minutes: number): number => {
+    const runs = pool.filter((e) => e.durationMinutes === minutes);
+    expect(runs.length).toBeGreaterThan(0);
+    return runs.reduce((s, e) => s + wbe(value(e.rewardTable)), 0) / runs.length;
+  };
+  const tierExpected = (minutes: number): number => {
+    const runs = thirstlands.filter((e) => e.durationMinutes === minutes);
+    return runs.reduce((s, e) => s + expectedWbe(e), 0) / runs.length;
+  };
+
+  const tablesOf = (pool: readonly LoadedContent['expeditions'][number][]) =>
+    pool
+      .flatMap((e) => [e.rewardTable, e.exceptionalRewardTable, e.failureRewardTable])
+      .filter((id): id is string => id != null)
+      .map((id) => tables.get(id)!);
+  const thirstlandsTables = tablesOf(thirstlands);
+
+  // ── pool shape ───────────────────────────────────────────────────────────
+
+  it('gives Thirstlands a full pool with at least two missions on every tier', () => {
+    expect(thirstlands.length).toBeGreaterThanOrEqual(9);
+    for (const tier of TIERS) {
+      expect(
+        thirstlands.filter((e) => e.durationMinutes === tier).length,
+        `${tier}m tier`,
+      ).toBeGreaterThanOrEqual(2);
+    }
+    for (const e of thirstlands) {
+      expect(e.exceptionalRewardTable, e.key).not.toBeNull();
+      expect(e.failureRewardTable, e.key).not.toBeNull();
+    }
+  });
+
+  it('gives every Thirstlands mission its own name, description and emoji', () => {
+    expect(new Set(thirstlands.map((e) => e.name)).size).toBe(thirstlands.length);
+    expect(new Set(thirstlands.map((e) => e.description)).size).toBe(thirstlands.length);
+    expect(new Set(thirstlands.map((e) => e.emoji)).size).toBe(thirstlands.length);
+    const taken = new Set(elsewhere.map((e) => e.name));
+    for (const e of thirstlands) expect(taken.has(e.name), e.key).toBe(false);
+  });
+
+  it('spreads Thirstlands across every affinity and every race', () => {
+    for (const affinity of AFFINITIES) {
+      expect(
+        thirstlands.some((e) => e.preferredAffinities.includes(affinity)),
+        affinity,
+      ).toBe(true);
+    }
+    for (const race of RACE_CODES) {
+      expect(thirstlands.some((e) => e.preferredRaces.includes(race)), race).toBe(true);
+    }
+    const levels = thirstlands.map((e) => e.recommendedLevel);
+    // The road costs 2,000 WaifuBux at player level 25, but a first visitor's
+    // *roster* is not built around this region, so the entry rung stays low.
+    expect(Math.min(...levels)).toBeLessThanOrEqual(6);
+    expect(Math.max(...levels)).toBeGreaterThanOrEqual(25);
+    const overnight = thirstlands.filter((e) => e.durationMinutes === 1080);
+    expect(Math.min(...overnight.map((e) => e.recommendedLevel))).toBeLessThanOrEqual(20);
+  });
+
+  it('does not reproduce a requirement pair from any earlier region', () => {
+    const fingerprint = (e: LoadedContent['expeditions'][number]) =>
+      `${[...e.preferredAffinities].sort().join('+')}|${[...e.preferredRaces].sort().join('+')}`;
+    const taken = new Set(elsewhere.map(fingerprint));
+    for (const e of thirstlands) {
+      expect(taken.has(fingerprint(e)), `${e.key} duplicates an existing pair`).toBe(false);
+    }
+  });
+
+  it('leaves a PERFECT MATCH path open on every Thirstlands mission', () => {
+    const roster = SHIPPED.species
+      .filter((s) => s.enabled)
+      .map((s) => ({ affinity: s.affinity, race: resolveRace(s) }));
+    for (const e of thirstlands) {
+      const reachable = roster.some(
+        (s) =>
+          evaluateMatch({
+            definition: e,
+            waifu: { level: e.recommendedLevel, affinity: s.affinity, race: s.race },
+            config: SHIPPED.tables.expeditions,
+            affinityConfig: SHIPPED.tables.buddyAffinity,
+          }).quality === 'PERFECT_MATCH',
+      );
+      expect(reachable, `${e.key} has no PERFECT MATCH path`).toBe(true);
+    }
+  });
+
+  it('uses single-preference missions sparingly', () => {
+    const oneAxis = thirstlands.filter(
+      (e) => e.preferredAffinities.length === 0 || e.preferredRaces.length === 0,
+    );
+    expect(oneAxis.length).toBeLessThanOrEqual(2);
+  });
+
+  /**
+   * The board reads as a frontier before a single number is compared. Waifu
+   * Valley is errands — six of its eleven missions are supply runs and
+   * escorts; Thirstlands is work you have to dig for.
+   */
+  it('leans on recovery work rather than errands', () => {
+    const recovery = thirstlands.filter((e) =>
+      (['excavation', 'salvage_dive', 'scouting'] as const).includes(
+        e.type as 'excavation' | 'salvage_dive' | 'scouting',
+      ),
+    );
+    expect(recovery.length).toBeGreaterThanOrEqual(Math.ceil(thirstlands.length / 2));
+    const errands = thirstlands.filter((e) => e.type === 'supply_run' || e.type === 'escort');
+    expect(errands.length).toBeLessThanOrEqual(2);
+    // The overnight slot is the region's set piece, not another night shift.
+    expect(thirstlands.some((e) => e.durationMinutes === 1080 && e.type === 'salvage_dive')).toBe(
+      true,
+    );
+  });
+
+  // ── salvage identity ─────────────────────────────────────────────────────
+
+  it('pays Thirstlands salvage, and no other region pays it', () => {
+    const salvageIn = (set: typeof thirstlandsTables) =>
+      new Set(
+        set.flatMap((t) =>
+          t.groups.flatMap((g) =>
+            g.entries.map((e) => e.itemId).filter((id) => items.get(id)?.category === 'salvage'),
+          ),
+        ),
+      );
+    expect([...salvageIn(thirstlandsTables)].sort()).toEqual([...THIRSTLANDS_SALVAGE].sort());
+    for (const id of salvageIn(tablesOf(elsewhere))) {
+      expect((THIRSTLANDS_SALVAGE as readonly string[]).includes(id), id).toBe(false);
+    }
+  });
+
+  /**
+   * A **steeper** ladder than the Valley's, not a richer one. Unlocking fourth
+   * is not a reason for the scrap to be worth more, so the top rung stays
+   * under the most valuable salvage already in the game; what changes is the
+   * spread between the bottom rung and the top, which is what makes a gated
+   * find feel like a find.
+   */
+  it('keeps Thirstlands salvage on a steeper value ladder than the Valley', () => {
+    const values = THIRSTLANDS_SALVAGE.map((slug) => {
+      const item = items.get(slug);
+      expect(item, slug).toBeDefined();
+      expect(item!.category).toBe('salvage');
+      expect(item!.enabled).toBe(true);
+      // Salvage is vendorable without ever being purchasable.
+      expect(item!.shopRegions, slug).toEqual([]);
+      expect(item!.buyPrice ?? 0, slug).toBe(0);
+      expect(item!.sellValue, slug).toBeGreaterThan(0);
+      return item!.sellValue!;
+    });
+    expect(new Set(values).size).toBe(values.length);
+    expect(values.length).toBeGreaterThanOrEqual(6);
+    // Granular at the bottom, so a 1h table can be priced without rounding to
+    // nothing — and mundane, because not every object should look important.
+    expect(Math.min(...values)).toBeLessThanOrEqual(10);
+
+    const others = SHIPPED.items
+      .filter(
+        (i) =>
+          i.category === 'salvage' && !(THIRSTLANDS_SALVAGE as readonly string[]).includes(i.slug),
+      )
+      .map((i) => i.sellValue ?? 0);
+    expect(Math.max(...values)).toBeLessThanOrEqual(Math.max(...others));
+
+    // Steeper: fewer rungs covering a wider multiple than the Valley's pool.
+    const valleySalvage = new Set(
+      tablesOf(valley).flatMap((t) =>
+        t.groups.flatMap((g) =>
+          g.entries.map((e) => e.itemId).filter((id) => items.get(id)?.category === 'salvage'),
+        ),
+      ),
+    );
+    const valleyValues = [...valleySalvage].map((id) => items.get(id)!.sellValue ?? 0);
+    const spread = (v: number[]) => Math.max(...v) / Math.min(...v);
+    expect(values.length).toBeLessThan(valleyValues.length);
+    expect(spread(values)).toBeGreaterThan(spread(valleyValues) * 0.55);
+  });
+
+  // ── the curve ────────────────────────────────────────────────────────────
+
+  it('pays more per run the longer the tier', () => {
+    const means = TIERS.map((t) => tierMean(thirstlands, t));
+    for (let i = 1; i < means.length; i += 1) expect(means[i]!).toBeGreaterThan(means[i - 1]!);
+  });
+
+  it('preserves the duration curve: 1h > 3h > 6h per hour, with a modest 18h premium', () => {
+    const hourly = TIERS.map((t) => tierMean(thirstlands, t) / (t / 60));
+    expect(hourly[0]!).toBeGreaterThan(hourly[1]!);
+    expect(hourly[1]!).toBeGreaterThan(hourly[2]!);
+    expect(hourly[3]!).toBeGreaterThan(hourly[2]!);
+    expect(hourly[3]!).toBeLessThan(hourly[1]!);
+    expect(hourly[3]! / hourly[2]!).toBeLessThan(1.5);
+  });
+
+  // ── composition: the haul is the pay ─────────────────────────────────────
+
+  /**
+   * The narrowest direct-WaifuBux cut of any region, and a floor under it.
+   * The floor is not decoration: because so much of this region's value hides
+   * behind gates, a run whose salvage rolls badly has to have paid *something*
+   * on its own, or a successful mission reads as a bug.
+   */
+  it('takes the smallest direct-WaifuBux cut of any region, but never zero', () => {
+    for (const r of perRun) {
+      expect(r.waifubux, r.e.key).toBeGreaterThan(0);
+      expect(r.waifubux / r.success, r.e.key).toBeGreaterThan(0.12);
+      expect(r.waifubux / r.success, r.e.key).toBeLessThan(0.18);
+    }
+    const share = (pool: typeof thirstlands) => {
+      const totals = pool.map((e) => value(e.rewardTable));
+      const wb = totals.reduce((s, v) => s + v.waifubux, 0);
+      const sal = totals.reduce((s, v) => s + v.salvage, 0);
+      return sal / (wb + sal);
+    };
+    const mine = share(thirstlands);
+    expect(mine).toBeGreaterThan(0.82);
+    expect(mine).toBeLessThan(0.88);
+    // Materially more salvage-led than the region it shares its economy with.
+    expect(mine).toBeGreaterThan(share(valley) + 0.08);
+  });
+
+  // ── variance: the Valley pays reliably, the Thirstlands pays in lumps ────
+
+  /**
+   * The identity, stated as arithmetic.
+   *
+   * Two regions can pay the same WBe/day and feel completely different, and
+   * this is the measurement that tells them apart. Asserted on **every tier**
+   * rather than on a regional average, because an average can be carried by
+   * one swingy mission — the Valley's own `room_twelve_turnover` is swingier
+   * than most of this region and proves the point.
+   */
+  it('runs materially higher salvage variance than Waifu Valley, tier for tier', () => {
+    const cv = (e: LoadedContent['expeditions'][number]) => {
+      const v = value(e.rewardTable);
+      return Math.sqrt(v.variance) / v.salvage;
+    };
+    const meanCv = (pool: typeof thirstlands, tier: number) => {
+      const runs = pool.filter((e) => e.durationMinutes === tier);
+      return runs.reduce((s, e) => s + cv(e), 0) / runs.length;
+    };
+    for (const tier of TIERS) {
+      expect(meanCv(thirstlands, tier), `${tier}m variance`).toBeGreaterThan(
+        meanCv(valley, tier),
+      );
+    }
+  });
+
+  /**
+   * *Where* the value sits, which is the mechanism behind the variance above.
+   *
+   * In the Valley most of a table's expected salvage comes out of groups that
+   * almost always fire; here most of it sits behind gates rarer than one in
+   * four. That is what makes an ordinary Thirstlands run modest and an
+   * occasional one much better at the same long-run EV.
+   */
+  it('hides most of its expected salvage behind low-probability finds', () => {
+    const gatedShare = (pool: typeof thirstlands) => {
+      const totals = pool.map((e) => value(e.rewardTable));
+      return (
+        totals.reduce((s, v) => s + v.gated, 0) / totals.reduce((s, v) => s + v.salvage, 0)
+      );
+    };
+    const mine = gatedShare(thirstlands);
+    expect(mine).toBeGreaterThan(0.6);
+    expect(mine).toBeGreaterThan(gatedShare(valley) * 2);
+    for (const r of perRun) {
+      expect(r.gated / r.salvage, r.e.key).toBeGreaterThan(0.4);
+    }
+  });
+
+  /**
+   * Lumpy is not the same as punishing. A player who succeeds and comes back
+   * with nothing but pocket change is having a bad run, not hitting a bug, so
+   * the rate at which that happens stays inside the range the Valley already
+   * ships rather than becoming its own kind of difficulty.
+   */
+  it('does not make an empty haul more common than the Valley already allows', () => {
+    const empty = (e: LoadedContent['expeditions'][number]) => {
+      const table = tables.get(e.rewardTable)!;
+      let p = 1;
+      for (const group of table.groups.filter((g) => g.enabled)) {
+        const worth = group.entries
+          .filter((x) => x.enabled)
+          .reduce((s, x) => s + x.quantity * (sell.get(x.itemId) ?? 0), 0);
+        if (worth <= 0) continue;
+        p *= (1 - group.chanceBasisPoints / 10_000) ** group.rolls;
+      }
+      return p;
+    };
+    const ceiling = Math.max(...valley.map(empty));
+    for (const e of thirstlands) expect(empty(e), e.key).toBeLessThanOrEqual(ceiling);
+  });
+
+  // ── failure and Exceptional ──────────────────────────────────────────────
+
+  it('pays a failure less than a success, and an Exceptional bonus on top', () => {
+    for (const { e, success } of perRun) {
+      expect(wbe(value(e.exceptionalRewardTable)), e.key).toBeGreaterThan(0);
+      const ratio = wbe(value(e.failureRewardTable)) / success;
+      expect(ratio, e.key).toBeGreaterThan(0.15);
+      expect(ratio, e.key).toBeLessThan(0.35);
+    }
+  });
+
+  /**
+   * Exceptional here is **one better find**, not a second haul.
+   *
+   * A bonus table that repeated the success table's structure would pay the
+   * player more of the same junk at a moment that is supposed to be the story
+   * of the run. So every Exceptional table carries at most one salvage group,
+   * and that group rolls once: the result is a single object worth talking
+   * about, which is the Thirstlands version of excelling.
+   */
+  it('makes Exceptional one interesting find rather than a second haul', () => {
+    for (const e of thirstlands) {
+      const table = tables.get(e.exceptionalRewardTable!)!;
+      const salvageGroups = table.groups.filter((g) =>
+        g.entries.some((x) => items.get(x.itemId)?.category === 'salvage'),
+      );
+      expect(salvageGroups.length, `${e.key} bonus table`).toBe(1);
+      expect(salvageGroups[0]!.rolls, `${e.key} bonus rolls`).toBe(1);
+      // And it is drawn from the top of the ladder, never the bottom.
+      const floor = Math.min(
+        ...salvageGroups[0]!.entries.map((x) => sell.get(x.itemId) ?? 0),
+      );
+      expect(floor, `${e.key} bonus floor`).toBeGreaterThanOrEqual(42);
+    }
+    for (const { e, success } of perRun) {
+      const ratio = wbe(value(e.exceptionalRewardTable)) / success;
+      expect(ratio, e.key).toBeGreaterThan(0.4);
+      expect(ratio, e.key).toBeLessThan(1.0);
+    }
+    // Bounded in expectation: exciting, never the budget.
+    for (const e of thirstlands) {
+      const { successChance, exceptionalChance } = reference(e);
+      const contribution =
+        (successChance * exceptionalChance * wbe(value(e.exceptionalRewardTable))) /
+        expectedWbe(e);
+      expect(contribution, e.key).toBeGreaterThan(0.02);
+      expect(contribution, e.key).toBeLessThan(0.2);
+    }
+  });
+
+  // ── the budget ───────────────────────────────────────────────────────────
+
+  const DAY = {
+    casual: [[1080, 1]],
+    typical: [[1080, 1], [360, 1]],
+    active: [[360, 2], [180, 2], [60, 6]],
+    aggressive: [[360, 1], [60, 18]],
+  } as const satisfies Record<string, readonly (readonly [number, number])[]>;
+
+  const dayWbe = (plan: readonly (readonly [number, number])[]): number =>
+    plan.reduce((sum, [minutes, runs]) => sum + tierExpected(minutes) * runs, 0);
+
+  /**
+   * Authored to **275–300 WBe** on the benchmark day, inside the 250–350 band
+   * every region shares. Held as a band rather than a value so ordinary
+   * retuning passes; the point is that a later region is neither a payday nor
+   * a taper.
+   */
+  it('pays a peer 275-300 WBe on a typical one-region day', () => {
+    const typical = dayWbe(DAY.typical);
+    expect(typical).toBeGreaterThan(270);
+    expect(typical).toBeLessThan(310);
+  });
+
+  it('cannot quietly become a runaway region', () => {
+    for (const plan of Object.values(DAY)) expect(dayWbe(plan)).toBeLessThan(500);
+  });
+
+  it('rewards frequent play without making it the only way to play', () => {
+    const typical = dayWbe(DAY.typical);
+    expect(dayWbe(DAY.aggressive)).toBeGreaterThan(typical);
+    expect(dayWbe(DAY.aggressive)).toBeLessThan(typical * 1.6);
+    expect(dayWbe(DAY.casual)).toBeGreaterThan(typical * 0.6);
+  });
+
+  // ── the niches it does not take ──────────────────────────────────────────
+
+  /**
+   * Twin Peeks owns elevated Essence and the Foothills own elevated XP. This
+   * region is allowed to pay both at background rates and nothing more —
+   * which, for Essence, means *below* the Valley, not merely below Twin Peeks.
+   *
+   * Worth stating because the pull exists: the two strongest Essence Buddy
+   * Bonuses in the game (`tak_belly_dancer` at +75%, `goblin_gemcutter` at
+   * +50%) are both Thirstlands residents. That is a Buddy-side channel and it
+   * stays one; the Expedition board must not become a second.
+   */
+  it('takes neither the Essence nor the XP niche', () => {
+    const mean = (pool: typeof thirstlands, pick: (v: ReturnType<typeof value>) => number) =>
+      pool.reduce((s, e) => s + pick(value(e.rewardTable)), 0) / pool.length;
+
+    const essence = mean(thirstlands, (v) => v.essence);
+    expect(essence).toBeLessThan(mean(valley, (v) => v.essence));
+    expect(essence).toBeLessThan(mean(regionPool('twin-peeks'), (v) => v.essence) * 0.25);
+
+    // XP stays on the Valley scale, tier for tier, and well under the Foothills.
+    const foothills = regionPool('flaccid-foothills');
+    for (const tier of TIERS) {
+      const xpOf = (pool: typeof thirstlands) => {
+        const runs = pool.filter((e) => e.durationMinutes === tier);
+        return runs.reduce((s, e) => s + value(e.rewardTable).waifuXp, 0) / runs.length;
+      };
+      const mine = xpOf(thirstlands);
+      expect(mine, `${tier}m waifu XP`).toBeGreaterThan(xpOf(valley) * 0.8);
+      expect(mine, `${tier}m waifu XP`).toBeLessThan(xpOf(valley) * 1.2);
+      expect(mine, `${tier}m waifu XP`).toBeLessThan(xpOf(foothills));
+    }
+  });
+
+  // ── the shop, and the systems that do not exist yet ──────────────────────
+
+  /**
+   * The regional shop stays the way to get regional stock.
+   *
+   * Thirstlands sells four things, two of them daily-limited premium sinks —
+   * the Thirst Trap Flask (950 WaifuBux, 3 a day) and the Mouthful of Mercy
+   * (920, 3 a day). A table that handed either out would not be generous, it
+   * would delete the limit. They are named here so the absence is deliberate
+   * and survives a retune.
+   */
+  it('never puts premium Thirstlands stock in a reward table', () => {
+    const forbidden = ['thirst_trap_flask', 'mouthful_of_mercy', 'booty_sweat'];
+    for (const table of thirstlandsTables) {
+      for (const group of table.groups) {
+        for (const entry of group.entries) {
+          expect(forbidden, `${table.id} / ${entry.itemId}`).not.toContain(entry.itemId);
+        }
+      }
+    }
+    // Nothing purchasable at all reaches a *success* table.
+    for (const e of thirstlands) {
+      for (const group of tables.get(e.rewardTable)!.groups) {
+        for (const entry of group.entries) {
+          expect(
+            items.get(entry.itemId)!.shopRegions,
+            `${e.key} success table stocks ${entry.itemId}`,
+          ).toEqual([]);
+        }
+      }
+    }
+  });
+
+  it('keeps the regional finds rare, and the Thirstlands shop worth shopping at', () => {
+    const rate = (e: (typeof thirstlands)[number], itemId: string): number => {
+      const { successChance, exceptionalChance } = reference(e);
+      const table = tables.get(e.exceptionalRewardTable!)!;
+      const group = table.groups.find((g) => g.entries.some((x) => x.itemId === itemId))!;
+      const entry = group.entries.find((x) => x.itemId === itemId)!;
+      const within = entry.weight / group.entries.reduce((s, x) => s + x.weight, 0);
+      return successChance * exceptionalChance * (group.chanceBasisPoints / 10_000) * within;
+    };
+
+    let nonSalvage = 0;
+    for (const e of thirstlands) {
+      for (const group of tables.get(e.exceptionalRewardTable!)!.groups) {
+        for (const entry of group.entries) {
+          if (items.get(entry.itemId)?.category === 'salvage') continue;
+          nonSalvage += 1;
+          const p = rate(e, entry.itemId);
+          expect(p, `${e.key} / ${entry.itemId}`).toBeGreaterThan(0);
+          expect(p, `${e.key} / ${entry.itemId}`).toBeLessThan(0.01);
+        }
+      }
+    }
+    expect(nonSalvage).toBeGreaterThanOrEqual(4);
+
+    // The one piece of Thirstlands shop stock a mission can produce, named so
+    // it cannot be quietly widened.
+    const wake = thirstlands.find((e) => e.key === 'thirst_procession_wake')!;
+    const collar = rate(wake, 'claim_collar');
+    expect(collar).toBeGreaterThan(0.001);
+    expect(collar).toBeLessThan(0.008);
+    const item = items.get('claim_collar')!;
+    expect(item.shopRegions).toEqual(['thirstlands']);
+    // Not a WBe reward in disguise: it cannot be vendored.
+    expect(item.sellValue ?? 0).toBe(0);
+  });
+
+  /**
+   * The breadcrumbs stay breadcrumbs.
+   *
+   * These missions talk about a chart that stops at a junction, a component
+   * the mechanic cannot place, a writ with a name crossed out twice and a
+   * caravan whose rings you leave where they are. None of that is an item,
+   * and it must not become one by accident before key items, equipment and
+   * the encounter-gating language exist. Until then, everything this region
+   * hands over is ordinary sellable salvage a player can vendor without ever
+   * having destroyed a key.
+   */
+  it('hands out nothing that a future key-item or equipment system would want back', () => {
+    for (const table of thirstlandsTables) {
+      for (const group of table.groups) {
+        for (const entry of group.entries) {
+          const item = items.get(entry.itemId)!;
+          expect(['salvage', 'capture'], `${table.id} / ${item.slug}`).toContain(item.category);
+          if (item.category !== 'salvage') continue;
+          // Sellable today, and sellable without a second opt-in — which is
+          // exactly what a `key` item is not.
+          expect(item.sellValue ?? 0, item.slug).toBeGreaterThan(0);
+          expect(item.explicitlySellable ?? false, item.slug).toBe(false);
+        }
+      }
+    }
+    // And the fiction is carried by the missions, not by inert objects.
+    const prose = thirstlands.map((e) => `${e.name} ${e.description}`.toLowerCase()).join(' ');
+    for (const thread of ['chart', 'writ', 'not built anywhere', 'rings']) {
+      expect(prose, thread).toContain(thread);
+    }
+  });
+
+  it('never lists the same item twice in one Thirstlands reward group', () => {
+    for (const table of thirstlandsTables) {
+      for (const group of table.groups) {
+        const ids = group.entries.map((entry) => entry.itemId);
+        expect(new Set(ids).size, `${table.id} / ${group.id}`).toBe(ids.length);
+      }
+    }
+  });
+
+  it('exposes every Thirstlands mission over enough rotations, for any player', () => {
+    const config = SHIPPED.tables.expeditions;
+    const durations = Object.values(config.durations);
+    for (const playerId of [1, 2, 17, 4242]) {
+      const seen = new Set<string>();
+      for (let window = 0; window < 200; window += 1) {
+        for (const mission of buildBoard({
+          playerId,
+          regionId: 'thirstlands',
+          expeditions: SHIPPED.expeditions,
+          durations,
+          boardSize: config.boardSize,
+          rotationHours: config.rotationHours,
+          now: new Date(window * config.rotationHours * 3_600_000),
+        })) {
+          seen.add(mission.key);
+        }
+      }
+      expect(seen.size, `player ${playerId}`).toBe(thirstlands.length);
+    }
+  });
+
+  /**
+   * The board a player actually opens, on the day the region ships: full, one
+   * mission per tier, and no longer the empty rectangle it rendered while the
+   * region had a shop, a pass and fifteen residents but nothing to do.
+   */
+  it('fills a board on every rotation', () => {
+    const config = SHIPPED.tables.expeditions;
+    const durations = Object.values(config.durations);
+    for (let window = 0; window < 12; window += 1) {
+      const board = buildBoard({
+        playerId: 7,
+        regionId: 'thirstlands',
+        expeditions: SHIPPED.expeditions,
+        durations,
+        boardSize: config.boardSize,
+        rotationHours: config.rotationHours,
+        now: new Date(window * config.rotationHours * 3_600_000),
+      });
+      expect(board.length, `window ${window}`).toBe(config.boardSize);
+      expect(new Set(board.map((m) => m.durationMinutes)).size, `window ${window}`).toBe(
+        TIERS.length,
+      );
+    }
+  });
+});
