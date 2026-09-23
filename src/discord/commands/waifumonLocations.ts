@@ -338,10 +338,12 @@ export async function handleLocationsHome(
  * Three consequences worth stating, because they are what make the button
  * safe rather than merely convenient:
  *
- *   - **Idempotent by construction.** The only writes on this path are none.
- *     `travel.getStatus` is a read, `buildHomeView` is pure rendering, so a
- *     double-click repaints the same screen and a click an hour later shows
- *     wherever the player actually is now.
+ *   - **Idempotent by construction.** The one write on this path is the
+ *     terminal state for a Waifumon the encounter spawned and the player left
+ *     behind, guarded on that row still being active. `travel.getStatus` is a
+ *     read and `buildHomeView` is pure rendering, so a double-click repaints
+ *     the same screen and a click an hour later shows wherever the player
+ *     actually is now.
  *   - **Server-authoritative.** The custom id carries an active-encounter id
  *     and nothing else. The region comes from `travel.getStatus`, which reads
  *     the player row; `getJourneyContext` is an authorization check (is this
@@ -369,6 +371,11 @@ export async function handleContinueJourney(
     await respondEphemeral(interaction, JOURNEY_STALE);
     return;
   }
+  // Carrying on with the journey declines anything the encounter offered, so a
+  // Waifumon it spawned is closed here instead of staying the player's one
+  // active encounter and replaying on their next hunt. Idempotent and scoped
+  // to that spawn — see `abandonTriggeredEncounter`.
+  await service.abandonTriggeredEncounter(activeId, prov.playerId);
   const status = await ctx.services.travel.getStatus(prov.playerId);
   await respondEphemeral(
     interaction,

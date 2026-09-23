@@ -44,6 +44,7 @@ import { hydrateEncounter } from './hydrate';
 import { outcomeKindOf, resolveOutcomeText } from './outcomeText';
 import type { WorldEncounterVendorService } from './vendorService';
 import type {
+  WildEncounterDismissal,
   WildEncounterSpawn,
   WildEncounterSpawner,
 } from '../encounters/wildEncounterSpawner';
@@ -321,6 +322,14 @@ export interface WorldEncounterServiceDeps {
  * SP check her buddy takes.
  */
 const CHECK_BONUS_EFFECT_ID = 'encounter_check_bonus' as const;
+
+/**
+ * How far {@link WorldEncounterService.abandonTriggeredEncounter} walks up
+ * `continuationOfId`. Authored chains are a handful of links at most; the cap
+ * is here so a cycle introduced by a future bug degrades into "dismissed
+ * nothing" rather than an unbounded loop on a button click.
+ */
+const MAX_CHAIN_WALK = 16;
 
 export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
   const rng = deps.rng ?? defaultRng();
@@ -1062,6 +1071,66 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
     return { regionId: row.regionId };
   }
 
+  /**
+   * Terminal state for a triggered Waifumon the player walked away from.
+   *
+   * A `trigger_waifumon_encounter` effect writes a real `encounters` row
+   * during resolution, and the resolution screen paints a "Meet her" button
+   * beside whichever button *leaves* the encounter (Continue →, Continue
+   * Journey, Back to Hunting). Accepting her hands the row to the ordinary
+   * capture flow, which always ends it — captured, escaped or released.
+   * Leaving used to end nothing: the row stayed `active` until its expiry, and
+   * because `encounters_active_player_uq` allows only one active encounter,
+   * the player's very next hunt threw `ActiveEncounterError` and re-painted
+   * the Waifumon they had just declined instead of rolling a fresh hunt. She
+   * appeared to have followed them home.
+   *
+   * So the exit buttons call this, and declining is now as terminal as
+   * accepting. Two properties make it safe to call unconditionally:
+   *
+   *   1. **Precisely scoped.** Only an `active` row spawned by *this* chain of
+   *      activations (`origin_kind = 'world_encounter'`, `origin_ref` in the
+   *      chain's ids) can match. A hunted encounter, an encounter spawned by a
+   *      quest or an item, and a spawn from someone else's World Encounter are
+   *      all unreachable — so no legitimate pending state is swept up. This is
+   *      deliberately *not* "clear whatever is pending when a hunt starts".
+   *   2. **Idempotent.** The guard is `state = 'active'`, so a double-clicked
+   *      exit, or an exit clicked after she was captured, does nothing and
+   *      cannot resurrect a closed encounter.
+   *
+   * The chain walk exists because a chained continuation is a *different*
+   * activation row: the spawn is keyed to the link that produced it, while the
+   * exit button at the end of the chain carries the terminal link's id. Walking
+   * `continuationOfId` upwards collects every link that could own the spawn.
+   * Ownership is checked at every hop, and the walk is capped so a cycle
+   * written by a future bug cannot loop here.
+   */
+  async function abandonTriggeredEncounter(
+    activeId: number,
+    playerId: number,
+    now: Date = new Date(),
+  ): Promise<WildEncounterDismissal> {
+    if (!deps.wildEncounters || !Number.isFinite(activeId)) {
+      return { status: 'nothing_to_dismiss' };
+    }
+    const refs: string[] = [];
+    let cursor: number | null = activeId;
+    for (let hop = 0; cursor != null && hop < MAX_CHAIN_WALK; hop += 1) {
+      const row = await repo.getActiveById(deps.db, cursor);
+      // A missing row, or one belonging to someone else, ends the walk without
+      // contributing a ref — a forged id can therefore dismiss nothing.
+      if (!row || row.playerId !== playerId) break;
+      refs.push(String(row.id));
+      cursor = row.continuationOfId ?? null;
+    }
+    if (refs.length === 0) return { status: 'nothing_to_dismiss' };
+    return deps.wildEncounters.dismissWildEncounter({
+      playerId,
+      origin: { kind: 'world_encounter', refs },
+      now,
+    });
+  }
+
   async function saveMessageId(activeId: number, messageId: string): Promise<void> {
     await deps.db.transaction((tx) => repo.updateActiveMessage(tx, activeId, messageId));
   }
@@ -1075,6 +1144,7 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
     getActivationById,
     getJourneyContext,
     getHuntReturnContext,
+    abandonTriggeredEncounter,
     saveMessageId,
     repo,
     executor,

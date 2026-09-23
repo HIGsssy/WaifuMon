@@ -25,6 +25,13 @@ import { handleWildEncounterOpen } from '../../src/discord/commands/waifumonHunt
 import type { AppContext, Provisioned } from '../../src/discord/types';
 import { AppError } from '../../src/shared/errors';
 
+/**
+ * The exit buttons end a triggered Waifumon as well as leaving the screen, so
+ * every `worldEncounter` double needs this method. It answers the real
+ * service's "there was nothing to dismiss" shape.
+ */
+const noAbandon = () => vi.fn(async () => ({ status: 'nothing_to_dismiss' as const }));
+
 const PLAYER_ID = 7;
 const OTHER_PLAYER_ID = 8;
 
@@ -94,7 +101,7 @@ describe('Continue button', () => {
     const getActivationById = vi.fn(async () => activation);
     const { interaction, painted } = makeInteraction();
     await handleWorldEncounterContinue(
-      makeCtx({ worldEncounter: { getActivationById } }),
+      makeCtx({ worldEncounter: { abandonTriggeredEncounter: noAbandon(), getActivationById } }),
       interaction as never,
       prov,
       ['42'],
@@ -113,7 +120,7 @@ describe('Continue button', () => {
       .fn()
       .mockResolvedValueOnce(activation)
       .mockResolvedValueOnce(null);
-    const ctx = makeCtx({ worldEncounter: { getActivationById } });
+    const ctx = makeCtx({ worldEncounter: { abandonTriggeredEncounter: noAbandon(), getActivationById } });
 
     const first = makeInteraction();
     await handleWorldEncounterContinue(ctx, first.interaction as never, prov, ['42']);
@@ -131,7 +138,7 @@ describe('Continue button', () => {
     );
     const { interaction, painted } = makeInteraction();
     await handleWorldEncounterContinue(
-      makeCtx({ worldEncounter: { getActivationById } }),
+      makeCtx({ worldEncounter: { abandonTriggeredEncounter: noAbandon(), getActivationById } }),
       interaction as never,
       prov,
       ['9999'],
@@ -145,7 +152,7 @@ describe('Continue button', () => {
     const getActivationById = vi.fn();
     const { interaction, painted } = makeInteraction();
     await handleWorldEncounterContinue(
-      makeCtx({ worldEncounter: { getActivationById } }),
+      makeCtx({ worldEncounter: { abandonTriggeredEncounter: noAbandon(), getActivationById } }),
       interaction as never,
       prov,
       ['not-a-number'],

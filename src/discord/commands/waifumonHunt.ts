@@ -625,10 +625,11 @@ export async function buildHuntLandingView(
  *
  * What makes it safe is what it does not do. It runs no hunt: nothing here
  * calls `hunt.hunt()`, so no Energy is spent, no cooldown is stamped, no
- * find or Waifumon is rolled, and no world encounter is re-rolled. The only
- * database access on this path is reads — the ownership check, and the two
- * reads that paint the screen — so a double-click repaints the same screen
- * and a click an hour later shows wherever the player actually is now.
+ * find or Waifumon is rolled, and no world encounter is re-rolled. Its one
+ * write is the terminal state for a Waifumon the encounter spawned and the
+ * player just walked away from, which is idempotent and scoped to that
+ * spawn — so a double-click repaints the same screen and a click an hour
+ * later shows wherever the player actually is now.
  *
  * Server-authoritative in the same shape as Continue Journey: the custom id
  * carries an active-encounter id and nothing else. `getHuntReturnContext` is
@@ -655,6 +656,12 @@ export async function handleHuntReturn(
     await respondEphemeral(interaction, HUNT_RETURN_STALE);
     return;
   }
+  // Leaving the encounter is the player declining whatever it put in front of
+  // them, so a Waifumon this encounter (or an earlier link of its chain)
+  // spawned ends here rather than lingering as the player's one active
+  // encounter and hijacking their next hunt. Scoped to that spawn and
+  // idempotent — see `abandonTriggeredEncounter`.
+  await service.abandonTriggeredEncounter(activeId, prov.playerId);
   // The encounter has already resolved and committed; only now is the
   // presentation chosen, with presentation randomness. Reached on this path
   // alone — a travel-origin encounter answers `null` above and never gets

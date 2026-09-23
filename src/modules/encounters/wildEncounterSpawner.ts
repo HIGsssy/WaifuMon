@@ -45,7 +45,7 @@
  * were applied but the Waifumon never appeared. Callers with no transaction of
  * their own get one opened for them.
  */
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import type { Db, DbOrTx } from '../../db/client';
 import {
   encounters,
@@ -134,8 +134,48 @@ export type WildEncounterSpawn =
   /** `consumeHuntEnergy` was set and the player had none. */
   | { status: 'unavailable'; reason: 'insufficient_energy' };
 
+/**
+ * Options for {@link WildEncounterSpawner.dismissWildEncounter} — the terminal
+ * state for a spawned Waifumon the player walked away from.
+ *
+ * Scoped by `(origin.kind, origin.refs)` on purpose. A dismissal is never "the
+ * player has no encounter any more", it is "the encounter *this* cause spawned
+ * is over": a hunted row (both origin columns null) and a spawn from any other
+ * cause can never match, so no legitimate encounter can be collaterally
+ * closed. `refs` is a list because a chained World Encounter's spawn belongs
+ * to whichever link of the chain produced it, and the button that leaves the
+ * chain only knows the link it is painted on.
+ */
+export interface DismissWildEncounterOptions {
+  playerId: number;
+  origin: { kind: WildEncounterOriginKind; refs: readonly string[] };
+  /** Join an in-flight transaction instead of opening one. */
+  tx?: DbOrTx | undefined;
+  now?: Date | undefined;
+}
+
+/**
+ * Result of a dismissal. Deliberately not an error when nothing matched: the
+ * exit buttons call this unconditionally, and "this resolution spawned no
+ * Waifumon" / "she was already captured, released, or expired" are both the
+ * normal case, not a failure. That is also what makes a double-clicked exit
+ * idempotent.
+ */
+export type WildEncounterDismissal =
+  | { status: 'released'; encounterId: number }
+  | { status: 'nothing_to_dismiss' };
+
 export interface WildEncounterSpawner {
   createWildEncounter(opts: CreateWildEncounterOptions): Promise<WildEncounterSpawn>;
+  /**
+   * Close a spawned encounter the player explicitly left behind, moving it to
+   * the same `released` terminal state "Let Her Go" uses.
+   *
+   * Without this a declined spawn stayed `active` until its expiry, and the
+   * one-active-encounter rule then made the player's next hunt re-paint her
+   * instead of rolling — the encounter looked like it had followed them home.
+   */
+  dismissWildEncounter(opts: DismissWildEncounterOptions): Promise<WildEncounterDismissal>;
   /**
    * Read one spawned (or hunted) encounter back, scoped to its owner. The
    * `playerId` argument is not optional on purpose: every caller reaching this
@@ -346,6 +386,53 @@ export function createWildEncounterSpawner(
     return outcome;
   }
 
+  /**
+   * One guarded UPDATE. The guard *is* the safety argument:
+   *
+   *   - `player_id` scopes it to the clicking player;
+   *   - `state = 'active'` makes it idempotent — a second click, or one after
+   *     a capture/release/expiry, matches no row and reports
+   *     `nothing_to_dismiss` rather than reopening or re-closing anything;
+   *   - `origin_kind` + `origin_ref` restrict it to the spawn this cause
+   *     created, so a hunted encounter (null origin columns) and every other
+   *     subsystem's spawn are out of reach.
+   */
+  async function dismissWildEncounter(
+    opts: DismissWildEncounterOptions,
+  ): Promise<WildEncounterDismissal> {
+    const refs = opts.origin.refs.filter((r) => r.length > 0);
+    if (refs.length === 0) return { status: 'nothing_to_dismiss' };
+    const now = opts.now ?? new Date();
+    const run = async (tx: DbOrTx): Promise<WildEncounterDismissal> => {
+      const rows = await tx
+        .update(encounters)
+        .set({ state: 'released', resolvedAt: now })
+        .where(
+          and(
+            eq(encounters.playerId, opts.playerId),
+            eq(encounters.state, 'active'),
+            eq(encounters.originKind, opts.origin.kind),
+            inArray(encounters.originRef, refs as string[]),
+          ),
+        )
+        .returning({ id: encounters.id });
+      const released = rows[0];
+      if (!released) return { status: 'nothing_to_dismiss' };
+      deps.logger.info(
+        {
+          tag: 'wild-encounter/dismissed',
+          playerId: opts.playerId,
+          encounterId: released.id,
+          originKind: opts.origin.kind,
+          originRefs: refs,
+        },
+        'spawned wild encounter dismissed by the player leaving it',
+      );
+      return { status: 'released', encounterId: released.id };
+    };
+    return opts.tx ? run(opts.tx) : deps.db.transaction((tx) => run(tx));
+  }
+
   async function getPlayerEncounter(
     playerId: number,
     encounterId: number,
@@ -363,5 +450,5 @@ export function createWildEncounterSpawner(
     return { encounter: row, species: sp };
   }
 
-  return { createWildEncounter, getPlayerEncounter };
+  return { createWildEncounter, dismissWildEncounter, getPlayerEncounter };
 }

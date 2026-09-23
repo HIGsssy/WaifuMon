@@ -101,6 +101,12 @@ export async function handleWorldEncounterContinue(
     await respondEphemeral(interaction, 'This continuation has already been consumed or expired.');
     return;
   }
+  // Continuing the story leaves the previous link's screen behind, and with it
+  // any Waifumon that link spawned: the player chose the story over her. Close
+  // her now, or she stays the player's one active encounter — blocking the next
+  // link's own spawn and replaying on the next hunt. The walk up
+  // `continuationOfId` inside the service is what finds the link she came from.
+  await service.abandonTriggeredEncounter(activeId, prov.playerId);
   const view = buildEncounterPresent(ctx, activation);
   await respondEphemeral(interaction, view);
 }
