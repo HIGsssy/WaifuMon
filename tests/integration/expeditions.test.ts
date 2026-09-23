@@ -19,6 +19,7 @@ import {
   items,
   playerExpeditions,
   players,
+  playerUnlockedRoutes,
   playerWaifus,
   species as speciesTable,
   type SpeciesRow,
@@ -52,6 +53,7 @@ import {
   bootstrapApp,
   forceRegion,
   insertOwnedWaifu,
+  loadShippedContent,
   provisionPlayer,
   type App,
 } from '../helpers/fixtures';
@@ -1755,5 +1757,346 @@ describe('Expedition XP belongs to the copy that was sent', () => {
     await expect(
       app.expeditions.deploy(playerId, 'peeks_360', waifuId),
     ).rejects.toBeInstanceOf(WaifuUnavailableError);
+  });
+});
+
+/**
+ * The four regions that ship Expedition content today, end to end.
+ *
+ * Everything above drives synthetic pools. This block uses the *shipped*
+ * missions and reward tables for Waifu Valley, Twin Peeks, Flaccid Foothills
+ * and Thirstlands, and moves the player with the real `travel()` rather than
+ * `forceRegion` — so "travel does not touch a running mission" is proven
+ * against the code that actually moves a player, not a column write.
+ */
+describe('four shipped regions at once', () => {
+  const SHIPPED = loadShippedContent();
+  const WALK = ['waifu-valley', 'twin-peeks', 'flaccid-foothills', 'thirstlands'] as const;
+
+  let otherSpecies: SpeciesRow;
+  beforeAll(async () => {
+    const [row] = await t.db
+      .select()
+      .from(speciesTable)
+      .where(sql`${speciesTable.id} <> ${demonSpecies.id}`)
+      .limit(1);
+    otherSpecies = row!;
+  });
+
+  /**
+   * A player standing in Waifu Valley with a road to every other region, four
+   * copies to send, and a fifth kept at home — of a *different* species, so a
+   * block that leaked by species rather than by copy would show up.
+   */
+  async function fourRegionPlayer() {
+    installContent(SHIPPED.expeditions, SHIPPED.expeditionRewards, {
+      ...SHIPPED.tables.expeditions,
+      enabled: true,
+    });
+    const { playerId, waifuId } = await playerWithWaifu();
+    const copies = [waifuId];
+    for (let i = 0; i < 3; i++) {
+      const copy = await insertOwnedWaifu(t.db, {
+        playerId,
+        speciesId: demonSpecies.id,
+        level: 10,
+      });
+      copies.push(copy.id);
+    }
+    const spare = await insertOwnedWaifu(t.db, {
+      playerId,
+      speciesId: otherSpecies.id,
+      level: 10,
+    });
+    for (const regionId of WALK.slice(1)) {
+      await t.db
+        .insert(playerUnlockedRoutes)
+        .values({ playerId, regionId, source: 'admin' })
+        .onConflictDoNothing();
+    }
+    return { playerId, copies, spare: spare.id };
+  }
+
+  /** The first mission on the board where the player is standing. */
+  async function boardKey(playerId: number) {
+    const board = await app.expeditions.getBoard(playerId);
+    expect(board.entries.length).toBeGreaterThan(0);
+    return board.entries[0]!.definition.key;
+  }
+
+  /** Deploy off this region's own board, as a player pressing it would. */
+  async function deployHere(playerId: number, waifuId: number) {
+    expect((await app.expeditions.getBoard(playerId)).canDeploy).toBe(true);
+    return app.expeditions.deploy(playerId, await boardKey(playerId), waifuId);
+  }
+
+  /** Deploy one copy per region, travelling between them for real. */
+  async function walkAndDeploy(playerId: number, copies: number[]) {
+    const views = [];
+    for (const [i, regionId] of WALK.entries()) {
+      if (i > 0) await app.travel.travel(playerId, regionId);
+      views.push(await deployHere(playerId, copies[i]!));
+    }
+    return views;
+  }
+
+  const xpOf = async (waifuId: number) => {
+    const [row] = await t.db
+      .select({ xp: playerWaifus.xp })
+      .from(playerWaifus)
+      .where(eq(playerWaifus.id, waifuId));
+    return row!.xp;
+  };
+
+  it('ships an expedition board in each of the four regions', () => {
+    for (const regionId of WALK) {
+      expect(SHIPPED.expeditions.some((e) => e.region === regionId && e.enabled)).toBe(true);
+    }
+  });
+
+  it('runs Valley, Peeks, Foothills and Thirstlands simultaneously, one copy each', async () => {
+    const { playerId, copies, spare } = await fourRegionPlayer();
+    const views: Awaited<ReturnType<typeof deployHere>>[] = [];
+
+    for (const [i, regionId] of WALK.entries()) {
+      if (i > 0) {
+        const before = await Promise.all(views.map((v) => rowOf(v.id)));
+        await app.travel.travel(playerId, regionId);
+        expect(await app.travel.getCurrentRegion(playerId)).toBe(regionId);
+        // Travelling left every earlier mission exactly as it was.
+        const after = await Promise.all(views.map((v) => rowOf(v.id)));
+        expect(after).toEqual(before);
+        expect(after.every((r) => r.status === 'active')).toBe(true);
+
+        // The new region's board is open, and lists the others as "also out"
+        // rather than as a reason to refuse.
+        const board = await app.expeditions.getBoard(playerId);
+        expect(board.regionId).toBe(regionId);
+        expect(board.regionMission).toBeNull();
+        expect(board.canDeploy).toBe(true);
+        expect(board.elsewhere.map((v) => v.region).sort()).toEqual(
+          WALK.slice(0, i).slice().sort(),
+        );
+      }
+      const view = await deployHere(playerId, copies[i]!);
+      expect(view.region).toBe(regionId);
+      expect(view.waifuId).toBe(copies[i]);
+      views.push(view);
+    }
+
+    const active = await app.expeditions.getActive(playerId);
+    expect(active).toHaveLength(4);
+    expect(active.every((v) => v.status === 'active')).toBe(true);
+    expect(active.map((v) => v.region).sort()).toEqual([...WALK].sort());
+    // Four distinct owned copies, each the one sent to that region.
+    expect(new Set(active.map((v) => v.waifuId)).size).toBe(4);
+    for (const [i, regionId] of WALK.entries()) {
+      expect(active.find((v) => v.region === regionId)!.waifuId).toBe(copies[i]);
+    }
+
+    // Standing in Thirstlands: this region is occupied, the rest are listed.
+    const board = await app.expeditions.getBoard(playerId);
+    expect(board.regionMission?.region).toBe('thirstlands');
+    expect(board.canDeploy).toBe(false);
+    expect(board.elsewhere).toHaveLength(3);
+
+    // Exactly the four deployed copies are away; the spare — another
+    // species — is still eligible.
+    const key = await boardKey(playerId);
+    const candidates = await app.expeditions.getCandidates(playerId, key);
+    for (const id of copies) {
+      expect(candidates.find((c) => c.waifuId === id)!.unavailableReasons).toContain(
+        'on_expedition',
+      );
+    }
+    expect(candidates.find((c) => c.waifuId === spare)!.unavailableReasons).toEqual([]);
+
+    // A second Thirstlands mission is refused on the region, not the copy.
+    await expect(app.expeditions.deploy(playerId, key, spare)).rejects.toBeInstanceOf(
+      ExpeditionRegionBusyError,
+    );
+    expect(await app.expeditions.getActive(playerId)).toHaveLength(4);
+  });
+
+  it('settles each region on its own: resolved holds, claim frees, recall frees', async () => {
+    const { playerId, copies, spare } = await fourRegionPlayer();
+    const [valley, peeks, foothills, thirst] = await walkAndDeploy(playerId, copies);
+    for (const view of [valley!, peeks!, foothills!]) {
+      await forceOutcome(view.id, 'success');
+      await timeTravel(view.id);
+    }
+
+    // Valley, Peeks and Foothills have finished; Thirstlands has not.
+    const open = await app.expeditions.getActive(playerId);
+    const statusOf = (region: string) => open.find((v) => v.region === region)!.status;
+    expect(statusOf('waifu-valley')).toBe('resolved');
+    expect(statusOf('twin-peeks')).toBe('resolved');
+    expect(statusOf('flaccid-foothills')).toBe('resolved');
+    expect(statusOf('thirstlands')).toBe('active');
+
+    // A resolved-but-uncollected mission still holds its region.
+    await forceRegion(t.db, playerId, 'waifu-valley');
+    const held = await app.expeditions.getBoard(playerId);
+    expect(held.regionMission?.status).toBe('resolved');
+    expect(held.canDeploy).toBe(false);
+    await expect(
+      app.expeditions.deploy(playerId, await boardKey(playerId), spare),
+    ).rejects.toBeInstanceOf(ExpeditionRegionBusyError);
+
+    // Collect the Valley: XP lands on the Valley copy and nobody else…
+    const others = [peeks!, foothills!, thirst!];
+    const xpBefore = await Promise.all(copies.map(xpOf));
+    const othersBefore = await Promise.all(others.map((v) => rowOf(v.id)));
+    const claimed = await app.expeditions.claim(playerId, valley!.id);
+    expect(claimed.rewards.waifuXp).toBeGreaterThan(0);
+    const xpAfter = await Promise.all(copies.map(xpOf));
+    expect(xpAfter[0]).toBe(xpBefore[0]! + claimed.rewards.waifuXp);
+    expect(xpAfter.slice(1)).toEqual(xpBefore.slice(1));
+    // …and every other region's row is exactly as it was.
+    expect(await Promise.all(others.map((v) => rowOf(v.id)))).toEqual(othersBefore);
+
+    // The claim freed the Valley: a new mission goes out at once.
+    expect((await deployHere(playerId, spare)).region).toBe('waifu-valley');
+
+    // Recalling Thirstlands frees that region, and her, too.
+    await app.expeditions.cancel(playerId, thirst!.id);
+    await forceRegion(t.db, playerId, 'thirstlands');
+    expect((await deployHere(playerId, copies[3]!)).region).toBe('thirstlands');
+
+    // Peeks and Foothills were never touched by any of that.
+    expect((await rowOf(peeks!.id)).status).toBe('resolved');
+    expect((await rowOf(foothills!.id)).status).toBe('resolved');
+    const regions = (await app.expeditions.getActive(playerId)).map((v) => v.region).sort();
+    expect(regions).toEqual([...WALK].sort());
+  });
+
+  it('pays each simultaneous claim once, to its own copy, even when raced', async () => {
+    const { playerId, copies } = await fourRegionPlayer();
+    const views = await walkAndDeploy(playerId, copies);
+    for (const view of views) {
+      await forceOutcome(view.id, 'success');
+      await timeTravel(view.id);
+    }
+    const xpBefore = await Promise.all(copies.map(xpOf));
+    const bux = async () => (await app.currency.getBalances(playerId)).waifubux;
+    const buxBefore = await bux();
+
+    // Every region collected at once, and every Collect pressed twice.
+    const settled = await Promise.allSettled(
+      views.flatMap((v) => [
+        app.expeditions.claim(playerId, v.id),
+        app.expeditions.claim(playerId, v.id),
+      ]),
+    );
+    const won = settled.flatMap((s) => (s.status === 'fulfilled' ? [s.value] : []));
+    expect(won).toHaveLength(4);
+    for (const s of settled) {
+      if (s.status === 'rejected') expect(s.reason).toBeInstanceOf(ExpeditionAlreadyClaimedError);
+    }
+    expect(new Set(won.map((r) => r.expedition.id))).toEqual(new Set(views.map((v) => v.id)));
+
+    // Each copy got exactly its own mission's Waifu XP.
+    const xpAfter = await Promise.all(copies.map(xpOf));
+    for (const [i, view] of views.entries()) {
+      const result = won.find((r) => r.expedition.id === view.id)!;
+      expect(result.expedition.waifuId).toBe(copies[i]);
+      expect(xpAfter[i]).toBe(xpBefore[i]! + result.rewards.waifuXp);
+    }
+    // WaifuBux: the four payouts, once each.
+    expect(await bux()).toBe(buxBefore + won.reduce((sum, r) => sum + r.rewards.waifubux, 0));
+    expect(await app.expeditions.getActive(playerId)).toEqual([]);
+  });
+
+  /**
+   * Several copies racing into one real region. The service-side read cannot
+   * stop this — every request sees the region empty — so it is the
+   * `(player_id, region)` index that must leave exactly one row.
+   */
+  it('keeps one mission per region when several copies race into it', async () => {
+    const { playerId, copies } = await fourRegionPlayer();
+    await app.travel.travel(playerId, 'thirstlands');
+    const key = await boardKey(playerId);
+
+    const settled = await Promise.allSettled(
+      copies.map((id) => app.expeditions.deploy(playerId, key, id)),
+    );
+    expect(settled.filter((s) => s.status === 'fulfilled')).toHaveLength(1);
+    const rows = await t.db
+      .select()
+      .from(playerExpeditions)
+      .where(eq(playerExpeditions.playerId, playerId));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.region).toBe('thirstlands');
+  });
+
+  /**
+   * One copy racing into all four regions at once.
+   *
+   * Location is read before the deploying transaction opens, so a press that
+   * straddles a travel can pass the region check for a region the player has
+   * just left. This service takes that to the limit — every call is "standing
+   * in" the region its mission belongs to — leaving only the copy's row lock
+   * and the `waifu_id` index between her and four missions.
+   */
+  it('keeps one mission per copy when she is raced into every region', async () => {
+    const { playerId, copies } = await fourRegionPlayer();
+    const keys = WALK.map(
+      (regionId) => SHIPPED.expeditions.find((e) => e.region === regionId && e.enabled)!.key,
+    );
+    // `deploy` asks for the region synchronously on entry, so the calls below
+    // consume this queue in the order they are made.
+    const standingIn: string[] = [...WALK];
+    const anywhere = createExpeditionService({
+      db: t.db,
+      logger: t.logger,
+      getContent: () => app.content,
+      resolveRace: raceResolverFromContent(() => app.content),
+      currency: app.currency,
+      essenceAward: app.essenceAward,
+      inventory: app.inventory,
+      collection: app.collection,
+      progression: app.progression,
+      availability: app.availability,
+      getCurrentRegion: async () => standingIn.shift()!,
+    });
+
+    const settled = await Promise.allSettled(
+      keys.map((key) => anywhere.deploy(playerId, key, copies[0]!)),
+    );
+    expect(settled.filter((s) => s.status === 'fulfilled')).toHaveLength(1);
+    for (const s of settled) {
+      if (s.status === 'rejected') expect(s.reason).toBeInstanceOf(WaifuUnavailableError);
+    }
+    const rows = await t.db
+      .select()
+      .from(playerExpeditions)
+      .where(eq(playerExpeditions.playerId, playerId));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.waifuId).toBe(copies[0]);
+  });
+
+  /** The same race with the service out of the way: the index alone. */
+  it('refuses one copy in four regions at the database, raced', async () => {
+    const { playerId, copies } = await fourRegionPlayer();
+    const settled = await Promise.allSettled(
+      WALK.map((region) =>
+        t.db.insert(playerExpeditions).values({
+          playerId,
+          expeditionKey: 'raw',
+          region,
+          waifuId: copies[0]!,
+          completesAt: sql`now() + interval '1 hour'`,
+          successChance: 0.5,
+          exceptionalChance: 0.05,
+          suitabilityBand: 'FAIR',
+        }),
+      ),
+    );
+    expect(settled.filter((s) => s.status === 'fulfilled')).toHaveLength(1);
+    for (const s of settled) {
+      if (s.status === 'rejected') {
+        expect((s.reason as Error).message).toMatch(/player_expeditions_waifu_active_uq/);
+      }
+    }
   });
 });

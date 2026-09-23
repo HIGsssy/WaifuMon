@@ -773,6 +773,21 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
 
     async claim(playerId, expeditionId) {
       return db.transaction(async (tx) => {
+        /**
+         * Lock the currency row first — before the mission row, not after.
+         *
+         * Every claim for this player queues here holding nothing, so claims in
+         * different regions serialise instead of deadlocking. The order matters
+         * because of what happens below when a due mission is resolved and
+         * claimed in one press: the second UPDATE touches a row version this
+         * transaction wrote, so Postgres re-runs the `player_id` foreign-key
+         * check and takes KEY SHARE on the `players` row. Taken *before* the
+         * currency lock, that share blocks another claim's `grantXp` (FOR
+         * UPDATE on `players`) while this one waits for that claim's currency
+         * lock — a cycle. Taken after, nobody else can be past this line.
+         */
+        await currency.lockCurrencies(tx, playerId);
+
         const [existing] = await tx
           .select()
           .from(playerExpeditions)
@@ -824,10 +839,8 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
           warnings: [],
         };
 
-        // Lock the currency row before any credit, exactly as the shop does,
-        // so concurrent grants to this player serialise.
-        await currency.lockCurrencies(tx, playerId);
-
+        // The currency row was locked at the top of this transaction, so
+        // concurrent grants to this player are already serialised.
         let waifubuxAfter = (await currency.getBalances(playerId)).waifubux;
         if (rewards.waifubux > 0) {
           waifubuxAfter = (await currency.grantWaifubux(tx, playerId, rewards.waifubux))
