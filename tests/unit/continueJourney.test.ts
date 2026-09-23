@@ -27,6 +27,13 @@ import type {
 import { evaluateTravelReadiness } from '../../src/modules/travel/travelService';
 import type { TravelStatus } from '../../src/modules/travel/travelService';
 
+/**
+ * The exit buttons end a triggered Waifumon as well as leaving the screen, so
+ * every `worldEncounter` double needs this method. It answers the real
+ * service's "there was nothing to dismiss" shape.
+ */
+const noAbandon = () => vi.fn(async () => ({ status: 'nothing_to_dismiss' as const }));
+
 const PLAYER_ID = 7;
 const OTHER_PLAYER_ID = 8;
 const prov = { playerId: PLAYER_ID, guildDbId: 3 } as unknown as Provisioned;
@@ -219,7 +226,7 @@ describe('Continue Journey handler', () => {
     const { interaction, painted } = makeInteraction();
 
     await handleContinueJourney(
-      makeCtx({ travel, worldEncounter: { getJourneyContext } }),
+      makeCtx({ travel, worldEncounter: { abandonTriggeredEncounter: noAbandon(), getJourneyContext } }),
       interaction as never,
       prov,
       ['42'],
@@ -237,7 +244,7 @@ describe('Continue Journey handler', () => {
   it('is safe to click repeatedly', async () => {
     const travel = travelDouble();
     const getJourneyContext = vi.fn(async () => TRAVEL);
-    const c = makeCtx({ travel, worldEncounter: { getJourneyContext } });
+    const c = makeCtx({ travel, worldEncounter: { abandonTriggeredEncounter: noAbandon(), getJourneyContext } });
 
     for (let i = 0; i < 3; i++) {
       const { interaction } = makeInteraction();
@@ -255,7 +262,7 @@ describe('Continue Journey handler', () => {
     const { interaction, painted } = makeInteraction();
 
     await handleContinueJourney(
-      makeCtx({ travel, worldEncounter: { getJourneyContext } }),
+      makeCtx({ travel, worldEncounter: { abandonTriggeredEncounter: noAbandon(), getJourneyContext } }),
       interaction as never,
       prov,
       ['42'],
@@ -275,7 +282,7 @@ describe('Continue Journey handler', () => {
     const { interaction, painted } = makeInteraction();
 
     await handleContinueJourney(
-      makeCtx({ travel, worldEncounter: { getJourneyContext } }),
+      makeCtx({ travel, worldEncounter: { abandonTriggeredEncounter: noAbandon(), getJourneyContext } }),
       interaction as never,
       prov,
       ['9999'],
@@ -291,7 +298,7 @@ describe('Continue Journey handler', () => {
     const { interaction, painted } = makeInteraction();
 
     await handleContinueJourney(
-      makeCtx({ travel, worldEncounter: { getJourneyContext } }),
+      makeCtx({ travel, worldEncounter: { abandonTriggeredEncounter: noAbandon(), getJourneyContext } }),
       interaction as never,
       prov,
       ['../../etc/passwd'],

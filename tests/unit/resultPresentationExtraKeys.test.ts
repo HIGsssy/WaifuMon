@@ -47,6 +47,13 @@ import { BACK_TO_HUNTING_FALLBACK_LINES } from '../../src/modules/resultPresenta
 import { seededRng } from '../../src/shared/random';
 import { NotADuplicateError } from '../../src/shared/errors';
 
+/**
+ * The exit buttons end a triggered Waifumon as well as leaving the screen, so
+ * every `worldEncounter` double needs this method. It answers the real
+ * service's "there was nothing to dismiss" shape.
+ */
+const noAbandon = () => vi.fn(async () => ({ status: 'nothing_to_dismiss' as const }));
+
 const PLAYER_ID = 7;
 const prov = { playerId: PLAYER_ID, guildDbId: 3 } as unknown as Provisioned;
 const BUILT_IN_LINE = BACK_TO_HUNTING_FALLBACK_LINES[0]!;
@@ -163,7 +170,7 @@ describe('world_encounter.back_to_hunting', () => {
       config: { assetsDir },
       logger: { warn, error: vi.fn(), info: vi.fn(), debug: vi.fn() },
       services: {
-        worldEncounter: { getHuntReturnContext },
+        worldEncounter: { abandonTriggeredEncounter: noAbandon(), getHuntReturnContext },
         travel: { getStatus: vi.fn(async () => STATUS) },
         currency: { getBalances: vi.fn(async () => ({ huntEnergy: 12 })) },
         ...(opts.presentation ? { resultPresentation: opts.presentation } : {}),

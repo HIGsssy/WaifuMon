@@ -25,6 +25,13 @@ import type {
   Resolution,
 } from '../../src/modules/worldEncounters/worldEncounterService';
 
+/**
+ * The exit buttons end a triggered Waifumon as well as leaving the screen, so
+ * every `worldEncounter` double needs this method. It answers the real
+ * service's "there was nothing to dismiss" shape.
+ */
+const noAbandon = () => vi.fn(async () => ({ status: 'nothing_to_dismiss' as const }));
+
 const PLAYER_ID = 7;
 const OTHER_PLAYER_ID = 8;
 const prov = { playerId: PLAYER_ID, guildDbId: 3 } as unknown as Provisioned;
@@ -245,7 +252,7 @@ describe('Back to Hunting handler', () => {
     const { interaction, painted } = makeInteraction();
 
     await handleHuntReturn(
-      makeCtx({ ...d.services, worldEncounter: { getHuntReturnContext } }),
+      makeCtx({ ...d.services, worldEncounter: { abandonTriggeredEncounter: noAbandon(), getHuntReturnContext } }),
       interaction as never,
       prov,
       ['42'],
@@ -270,7 +277,7 @@ describe('Back to Hunting handler', () => {
     const { interaction } = makeInteraction();
 
     await handleHuntReturn(
-      makeCtx({ ...d.services, worldEncounter: { getHuntReturnContext: async () => HUNT } }),
+      makeCtx({ ...d.services, worldEncounter: { abandonTriggeredEncounter: noAbandon(), getHuntReturnContext: async () => HUNT } }),
       interaction as never,
       prov,
       ['42'],
@@ -289,6 +296,7 @@ describe('Back to Hunting handler', () => {
     // either would mean the return path could hand the player a second
     // encounter.
     const worldEncounter = {
+      abandonTriggeredEncounter: noAbandon(),
       getHuntReturnContext: vi.fn(async () => HUNT),
       tryRollForHunt: vi.fn(async () => {
         throw new Error('tryRollForHunt() must never be called by Back to Hunting');
@@ -318,7 +326,7 @@ describe('Back to Hunting handler', () => {
     const d = huntDoubles();
     const c = makeCtx({
       ...d.services,
-      worldEncounter: { getHuntReturnContext: async () => HUNT },
+      worldEncounter: { abandonTriggeredEncounter: noAbandon(), getHuntReturnContext: async () => HUNT },
     });
 
     for (let i = 0; i < 3; i++) {
@@ -337,7 +345,7 @@ describe('Back to Hunting handler', () => {
     const { interaction, painted } = makeInteraction();
 
     await handleHuntReturn(
-      makeCtx({ ...d.services, worldEncounter: { getHuntReturnContext } }),
+      makeCtx({ ...d.services, worldEncounter: { abandonTriggeredEncounter: noAbandon(), getHuntReturnContext } }),
       interaction as never,
       prov,
       ['42'],
@@ -357,7 +365,7 @@ describe('Back to Hunting handler', () => {
     const { interaction, painted } = makeInteraction();
 
     await handleHuntReturn(
-      makeCtx({ ...d.services, worldEncounter: { getHuntReturnContext } }),
+      makeCtx({ ...d.services, worldEncounter: { abandonTriggeredEncounter: noAbandon(), getHuntReturnContext } }),
       interaction as never,
       prov,
       ['9999'],
@@ -375,7 +383,7 @@ describe('Back to Hunting handler', () => {
     const { interaction, painted } = makeInteraction();
 
     await handleHuntReturn(
-      makeCtx({ ...d.services, worldEncounter: { getHuntReturnContext } }),
+      makeCtx({ ...d.services, worldEncounter: { abandonTriggeredEncounter: noAbandon(), getHuntReturnContext } }),
       interaction as never,
       prov,
       ['42'],
@@ -391,7 +399,7 @@ describe('Back to Hunting handler', () => {
     const { interaction, painted } = makeInteraction();
 
     await handleHuntReturn(
-      makeCtx({ ...d.services, worldEncounter: { getHuntReturnContext } }),
+      makeCtx({ ...d.services, worldEncounter: { abandonTriggeredEncounter: noAbandon(), getHuntReturnContext } }),
       interaction as never,
       prov,
       ['../../etc/passwd'],
