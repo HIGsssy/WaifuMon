@@ -41,6 +41,7 @@ import type {
   AppliedAffectionDetail,
   AppliedBuddyXpDetail,
   AppliedEssenceDetail,
+  AppliedPlayerXpDetail,
 } from '../modules/worldEncounters/effectExecutor';
 
 /** Discord button rows cap at 5 buttons each. */
@@ -390,6 +391,7 @@ function formatAppliedEffect(entry: {
   affection?: AppliedAffectionDetail | undefined;
   essence?: AppliedEssenceDetail | undefined;
   buddyXp?: AppliedBuddyXpDetail | undefined;
+  playerXp?: AppliedPlayerXpDetail | undefined;
 }): string | null {
   const e = entry.effect;
   const amount = entry.amount;
@@ -418,8 +420,13 @@ function formatAppliedEffect(entry: {
       return `+${amount ?? e.amount} Energy`;
     case 'energy_loss':
       return amount && amount > 0 ? `−${amount} Energy` : null;
-    case 'player_xp':
-      return `+${amount ?? e.amount} Player XP`;
+    case 'player_xp': {
+      const detail = entry.playerXp;
+      if (!detail) return `+${amount ?? e.amount} Player XP`;
+      const headline = `+${detail.finalAmount} Player XP`;
+      if (!detail.bonus) return headline;
+      return `${headline}\nBase: ${detail.baseAmount} · ${buddyBonusShortLine(detail.bonus)}`;
+    }
     case 'buddy_xp': {
       if (!amount || amount <= 0) return null;
       const detail = entry.buddyXp;

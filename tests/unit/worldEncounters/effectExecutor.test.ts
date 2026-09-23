@@ -18,12 +18,14 @@ function makeExecutor(overrides: Partial<{
   energy: number;
   itemLookup: Map<string, number>;
   buddyExists: boolean;
+  playerXpPercent: number;
 }> = {}) {
   const waifubux = overrides.waifubux ?? 1000;
   const essence = overrides.essence ?? 500;
   const energy = overrides.energy ?? 5;
   const itemLookup = overrides.itemLookup ?? new Map([['basic_charm', 1]]);
   const buddyExists = overrides.buddyExists ?? true;
+  const playerXpPercent = overrides.playerXpPercent ?? 0;
 
   const state = {
     waifubux,
@@ -81,7 +83,22 @@ function makeExecutor(overrides: Partial<{
   const progression = {
     grantXp: vi.fn(async (_tx: unknown, _p: number, opts: { xpDelta: number }) => {
       state.grants.push({ kind: 'grantPlayerXp', args: [opts.xpDelta] });
-      return { xpDelta: opts.xpDelta } as never;
+      const final = Math.round(opts.xpDelta * (1 + playerXpPercent / 100));
+      return {
+        baseXpDelta: opts.xpDelta,
+        xpDelta: final,
+        buddyBonus:
+          playerXpPercent > 0
+            ? {
+                name: 'Quick Study',
+                flavorText: 'More Player XP.',
+                effectId: 'player_xp_gain',
+                value: playerXpPercent,
+                baseValue: opts.xpDelta,
+                finalValue: final,
+              }
+            : null,
+      } as never;
     }),
   };
 
@@ -184,6 +201,25 @@ describe('effect executor — grants', () => {
     expect(t.mocks.progression.grantXp).toHaveBeenCalled();
     const call = t.mocks.progression.grantXp.mock.calls[0]!;
     expect(call[2]).toMatchObject({ xpDelta: 75, eventType: 'world_encounter', refId: 99 });
+  });
+
+  it('records final Player XP without routing any of it to Waifumon XP', async () => {
+    const t = makeExecutor({ playerXpPercent: 20 });
+    const result = await t.executor.apply(t.tx, t.ctx, [
+      { type: 'player_xp', amount: 75 } as Effect,
+    ]);
+
+    expect(result.applied[0]).toMatchObject({
+      applied: true,
+      amount: 90,
+      playerXp: {
+        baseAmount: 75,
+        finalAmount: 90,
+        bonus: { effectId: 'player_xp_gain', value: 20 },
+      },
+    });
+    expect(t.mocks.collection.awardBuddyXp).not.toHaveBeenCalled();
+    expect(t.mocks.collection.awardWaifuXp).not.toHaveBeenCalled();
   });
 
   it('buddy_xp routes through collection.awardBuddyXp when a buddy is set', async () => {
