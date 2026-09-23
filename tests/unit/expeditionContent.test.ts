@@ -1753,3 +1753,497 @@ describe('the regional Expedition economy benchmark', () => {
     expect(SHIPPED.tables.expeditions.maxConcurrent).toBeUndefined();
   });
 });
+
+/**
+ * ── Flaccid Foothills ──────────────────────────────────────────────────────
+ *
+ * The third authored region, and the one that makes "regional identity" a
+ * system rather than a coincidence. Three regions now pay three genuinely
+ * different things out of the same ~300 WBe budget:
+ *
+ *   - **Waifu Valley** — the salvage economy. Things worth selling.
+ *   - **Twin Peeks** — the fog dividend. Essence and things worth keeping.
+ *   - **Flaccid Foothills** — the long road. Things worth *becoming*.
+ *
+ * The Foothills identity is not a theme chosen for variety: it is what the
+ * shipped pack already says. Four of the six species in the entire game
+ * carrying a `buddy_xp_gain` Buddy Bonus sit in this region's encounter pool
+ * (`clockwork_astronomer`, `gym_oni`, `valkyrie_recruit`,
+ * `blood_moon_priestess`), its one XP-granting World Encounter is
+ * `ff_hot_spring` (`buddy_xp: 20`), and its residents are farmhands, quarry
+ * units, orchard pickers and a ridge patrol that "keeps no off-season". It is
+ * the region about honest repetitive work on a road that changes you.
+ *
+ * So Foothills pays **XP** — roughly half again what either other region pays,
+ * of both kinds — and pays correspondingly little Essence and few keepables.
+ * Because Expedition Waifu XP is locked to the copy that was sent
+ * (`player_expeditions_waifu_active_uq`, and the claim path reads `waifu_id`
+ * off the row), a training region is also a *rotation* region: the way to
+ * develop a roster here is to keep sending different members.
+ *
+ * As with the other regional blocks, these bands are Foothills' own. Its
+ * Exceptional results are deliberately **less** WBe-swingy than Twin Peeks'
+ * and carry their upside as XP instead, so a shared Exceptional rule would
+ * have to be loose enough to mean nothing.
+ */
+describe('Flaccid Foothills reward scaling', () => {
+  const tables = new Map(SHIPPED.expeditionRewards.map((t) => [t.id, t]));
+  const items = new Map(SHIPPED.items.map((i) => [i.slug, i]));
+  const sell = new Map(SHIPPED.items.map((i) => [i.slug, i.sellValue ?? 0]));
+
+  function value(id: string | null) {
+    const table = id ? tables.get(id) : undefined;
+    if (!table) return { waifubux: 0, salvage: 0, essence: 0, waifuXp: 0, playerXp: 0 };
+    const mid = (r?: { min: number; max: number }) => (r ? (r.min + r.max) / 2 : 0);
+    let salvage = 0;
+    for (const group of table.groups.filter((g) => g.enabled)) {
+      const entries = group.entries.filter((e) => e.enabled);
+      const weight = entries.reduce((s, e) => s + e.weight, 0);
+      for (const e of entries) {
+        salvage +=
+          group.rolls * (group.chanceBasisPoints / 10_000) * (e.weight / weight) *
+          e.quantity * (sell.get(e.itemId) ?? 0);
+      }
+    }
+    return {
+      waifubux: mid(table.waifubux), salvage, essence: mid(table.essence),
+      waifuXp: table.waifuXp, playerXp: table.playerXp,
+    };
+  }
+  const wbe = (v: { waifubux: number; salvage: number }): number => v.waifubux + v.salvage;
+
+  const regionPool = (region: string) =>
+    SHIPPED.expeditions
+      .filter((e) => e.region === region && e.enabled)
+      .sort((a, b) => a.durationMinutes - b.durationMinutes);
+
+  const foothills = regionPool('flaccid-foothills');
+  const elsewhere = SHIPPED.expeditions.filter(
+    (e) => e.enabled && e.region !== 'flaccid-foothills',
+  );
+  const perRun = foothills.map((e) => {
+    const v = value(e.rewardTable);
+    return { e, success: wbe(v), ...v };
+  });
+
+  function reference(e: (typeof foothills)[number]) {
+    return evaluateSuitability({
+      definition: e,
+      waifu: {
+        level: e.recommendedLevel + 5,
+        affinity: e.preferredAffinities[0] ?? 'switch',
+        race: e.preferredRaces[0] ?? 'human',
+      },
+      config: SHIPPED.tables.expeditions,
+      affinityConfig: SHIPPED.tables.buddyAffinity,
+    });
+  }
+
+  type Axis = 'wbe' | 'essence' | 'waifuXp' | 'playerXp';
+  function expectedOf(e: LoadedContent['expeditions'][number], axis: Axis): number {
+    const { successChance, exceptionalChance } = evaluateSuitability({
+      definition: e,
+      waifu: {
+        level: e.recommendedLevel + 5,
+        affinity: e.preferredAffinities[0] ?? 'switch',
+        race: e.preferredRaces[0] ?? 'human',
+      },
+      config: SHIPPED.tables.expeditions,
+      affinityConfig: SHIPPED.tables.buddyAffinity,
+    });
+    const pExceptional = successChance * exceptionalChance;
+    const pOrdinary = successChance - pExceptional;
+    const read = (id: string | null) => {
+      const v = value(id);
+      return axis === 'wbe' ? wbe(v) : v[axis];
+    };
+    const s = read(e.rewardTable);
+    return (
+      (1 - successChance) * read(e.failureRewardTable) +
+      pOrdinary * s +
+      pExceptional * (s + read(e.exceptionalRewardTable))
+    );
+  }
+  const expectedWbe = (e: (typeof foothills)[number]) => expectedOf(e, 'wbe');
+
+  const TIERS = [60, 180, 360, 1080] as const;
+  const tierMean = (minutes: number): number => {
+    const runs = perRun.filter((r) => r.e.durationMinutes === minutes);
+    expect(runs.length).toBeGreaterThan(0);
+    return runs.reduce((s, r) => s + r.success, 0) / runs.length;
+  };
+
+  /** Typical day for any region: one overnight mission and one 6h. */
+  const typicalDay = (region: string, axis: Axis): number => {
+    const pool = regionPool(region);
+    return ([[1080, 1], [360, 1]] as const).reduce((sum, [minutes, runs]) => {
+      const tier = pool.filter((e) => e.durationMinutes === minutes);
+      expect(tier.length, `${region} ${minutes}m`).toBeGreaterThan(0);
+      return sum + (tier.reduce((s, e) => s + expectedOf(e, axis), 0) / tier.length) * runs;
+    }, 0);
+  };
+
+  /** Foothills' own salvage set. Nothing here may come from another region. */
+  const FOOTHILLS_SALVAGE = [
+    'split_fence_rail',
+    'undelivered_wax_seal',
+    'quarry_grit_pouch',
+    'leaning_cairn_stone',
+    'orchard_brandy_jar',
+    'skyfreight_ballast_weight',
+  ] as const;
+
+  const tablesOf = (pool: readonly LoadedContent['expeditions'][number][]) =>
+    pool.flatMap((e) =>
+      [e.rewardTable, e.exceptionalRewardTable, e.failureRewardTable]
+        .filter((id): id is string => id !== null)
+        .map((id) => tables.get(id)!),
+    );
+  const foothillsTables = tablesOf(foothills);
+
+  // ── pool shape ───────────────────────────────────────────────────────────
+
+  it('gives Flaccid Foothills a full pool with at least two missions on every tier', () => {
+    expect(foothills.length).toBeGreaterThanOrEqual(8);
+    for (const tier of TIERS) {
+      expect(foothills.filter((e) => e.durationMinutes === tier).length).toBeGreaterThanOrEqual(2);
+    }
+    for (const e of foothills) {
+      expect(e.exceptionalRewardTable, e.key).not.toBeNull();
+      expect(e.failureRewardTable, e.key).not.toBeNull();
+    }
+  });
+
+  it('gives every Foothills mission its own name, description and emoji', () => {
+    expect(new Set(foothills.map((e) => e.name)).size).toBe(foothills.length);
+    expect(new Set(foothills.map((e) => e.description)).size).toBe(foothills.length);
+    expect(new Set(foothills.map((e) => e.emoji)).size).toBe(foothills.length);
+    const taken = new Set(elsewhere.map((e) => e.name));
+    for (const e of foothills) expect(taken.has(e.name), e.key).toBe(false);
+  });
+
+  it('spreads Flaccid Foothills across every affinity and every race', () => {
+    for (const affinity of AFFINITIES) {
+      expect(foothills.some((e) => e.preferredAffinities.includes(affinity)), affinity).toBe(true);
+    }
+    for (const race of RACE_CODES) {
+      expect(foothills.some((e) => e.preferredRaces.includes(race)), race).toBe(true);
+    }
+    const levels = foothills.map((e) => e.recommendedLevel);
+    // The route unlocks at player level 20, but a first visitor's *collection*
+    // is not built around this region, so the entry rung stays low.
+    expect(Math.min(...levels)).toBeLessThanOrEqual(5);
+    expect(Math.max(...levels)).toBeGreaterThanOrEqual(25);
+    const overnight = foothills.filter((e) => e.durationMinutes === 1080);
+    expect(Math.min(...overnight.map((e) => e.recommendedLevel))).toBeLessThanOrEqual(20);
+  });
+
+  /**
+   * Checked against **both** prior regions. With three regions authored, the
+   * risk is no longer accidental repetition of one pool but convergence: three
+   * boards that all want the same Demon and the same Valkyrie, so a player's
+   * second and third region add slots without adding reasons to collect.
+   */
+  it('does not reproduce a Waifu Valley or Twin Peeks requirement pair', () => {
+    const fingerprint = (e: LoadedContent['expeditions'][number]) =>
+      `${[...e.preferredAffinities].sort().join('+')}|${[...e.preferredRaces].sort().join('+')}`;
+    const taken = new Set(elsewhere.map(fingerprint));
+    for (const e of foothills) {
+      expect(taken.has(fingerprint(e)), `${e.key} duplicates an existing pair`).toBe(false);
+    }
+  });
+
+  it('leaves a PERFECT MATCH path open on every Foothills mission', () => {
+    const roster = SHIPPED.species
+      .filter((s) => s.enabled)
+      .map((s) => ({ affinity: s.affinity, race: resolveRace(s) }));
+    for (const e of foothills) {
+      const reachable = roster.some(
+        (s) =>
+          evaluateMatch({
+            definition: e,
+            waifu: { level: e.recommendedLevel, affinity: s.affinity, race: s.race },
+            config: SHIPPED.tables.expeditions,
+            affinityConfig: SHIPPED.tables.buddyAffinity,
+          }).quality === 'PERFECT_MATCH',
+      );
+      expect(reachable, `${e.key} has no PERFECT MATCH path`).toBe(true);
+    }
+  });
+
+  it('uses single-preference missions sparingly', () => {
+    const twoAxis = foothills.filter(
+      (e) => e.preferredAffinities.length === 0 || e.preferredRaces.length === 0,
+    );
+    expect(twoAxis.length).toBeLessThanOrEqual(2);
+  });
+
+  // ── salvage identity ─────────────────────────────────────────────────────
+
+  it('pays Foothills salvage, and no other region pays it', () => {
+    const salvageIn = (set: typeof foothillsTables) =>
+      new Set(
+        set.flatMap((t) =>
+          t.groups.flatMap((g) =>
+            g.entries.map((e) => e.itemId).filter((id) => items.get(id)?.category === 'salvage'),
+          ),
+        ),
+      );
+    expect([...salvageIn(foothillsTables)].sort()).toEqual([...FOOTHILLS_SALVAGE].sort());
+    for (const id of salvageIn(tablesOf(elsewhere))) {
+      expect((FOOTHILLS_SALVAGE as readonly string[]).includes(id), id).toBe(false);
+    }
+  });
+
+  it('keeps Foothills salvage on the established value ladder', () => {
+    const values = FOOTHILLS_SALVAGE.map((slug) => {
+      const item = items.get(slug);
+      expect(item, slug).toBeDefined();
+      expect(item!.category).toBe('salvage');
+      expect(item!.enabled).toBe(true);
+      expect(item!.shopRegions).toEqual([]);
+      expect(item!.sellValue).toBeGreaterThan(0);
+      return item!.sellValue!;
+    });
+    const others = SHIPPED.items
+      .filter(
+        (i) =>
+          i.category === 'salvage' &&
+          !(FOOTHILLS_SALVAGE as readonly string[]).includes(i.slug),
+      )
+      .map((i) => i.sellValue ?? 0);
+    // Unlocking third is not a reason for the scrap to be worth more.
+    expect(Math.max(...values)).toBeLessThanOrEqual(Math.max(...others));
+    // Low-value granularity, so a 1h table can be priced without rounding to
+    // nothing or jumping a tier.
+    expect(Math.min(...values)).toBeLessThanOrEqual(10);
+    expect(new Set(values).size).toBe(values.length);
+    expect(values.length).toBeGreaterThanOrEqual(5);
+  });
+
+  // ── the curve ────────────────────────────────────────────────────────────
+
+  it('pays more per run the longer the tier', () => {
+    const means = TIERS.map(tierMean);
+    for (let i = 1; i < means.length; i += 1) expect(means[i]!).toBeGreaterThan(means[i - 1]!);
+  });
+
+  it('preserves the duration curve: 1h > 3h > 6h per hour, with a modest 18h premium', () => {
+    const hourly = TIERS.map((t) => tierMean(t) / (t / 60));
+    expect(hourly[0]!).toBeGreaterThan(hourly[1]!);
+    expect(hourly[1]!).toBeGreaterThan(hourly[2]!);
+    expect(hourly[3]!).toBeGreaterThan(hourly[2]!);
+    expect(hourly[3]!).toBeLessThan(hourly[1]!);
+    expect(hourly[3]! / hourly[2]!).toBeLessThan(1.5);
+  });
+
+  it('keeps direct WaifuBux secondary to salvage inside the WBe budget', () => {
+    for (const r of perRun) {
+      expect(r.waifubux, r.e.key).toBeGreaterThan(0);
+      expect(r.salvage, r.e.key).toBeGreaterThan(r.waifubux * 2.8);
+      expect(r.waifubux / r.success, r.e.key).toBeGreaterThan(0.12);
+      expect(r.waifubux / r.success, r.e.key).toBeLessThan(0.28);
+    }
+  });
+
+  it('pays a failure less than a success, and an Exceptional bonus on top', () => {
+    for (const { e, success } of perRun) {
+      expect(wbe(value(e.exceptionalRewardTable)), e.key).toBeGreaterThan(0);
+      const ratio = wbe(value(e.failureRewardTable)) / success;
+      expect(ratio, e.key).toBeGreaterThan(0.15);
+      expect(ratio, e.key).toBeLessThan(0.35);
+    }
+  });
+
+  /**
+   * Foothills' Exceptional personality, which is the region's identity showing
+   * up in the shape of a table rather than only in its totals.
+   *
+   * Twin Peeks makes excelling *lucrative*: its bonus tables are worth 48-91%
+   * of a success in WBe. Foothills makes excelling **developmental** — a
+   * smaller WBe bump, and a large slug of XP on top of an already XP-heavy
+   * success. A player who reads a Foothills Exceptional result sees the copy
+   * they sent jump levels, not a pile of scrap.
+   */
+  it('makes Exceptional developmental rather than lucrative', () => {
+    for (const { e, success } of perRun) {
+      const ratio = wbe(value(e.exceptionalRewardTable)) / success;
+      expect(ratio, e.key).toBeGreaterThan(0.25);
+      expect(ratio, e.key).toBeLessThan(0.6);
+      // The upside that *is* there: the bonus table pays at least 40% again of
+      // the success table's Waifu XP.
+      const xp = value(e.exceptionalRewardTable).waifuXp / value(e.rewardTable).waifuXp;
+      expect(xp, `${e.key} bonus XP share`).toBeGreaterThan(0.4);
+    }
+    // Still a minority of expected value, so an ordinary success matters.
+    for (const e of foothills) {
+      const { successChance, exceptionalChance } = reference(e);
+      const contribution =
+        (successChance * exceptionalChance * wbe(value(e.exceptionalRewardTable))) /
+        expectedWbe(e);
+      expect(contribution, e.key).toBeGreaterThan(0.02);
+      expect(contribution, e.key).toBeLessThan(0.2);
+    }
+  });
+
+  // ── the identity, as numbers ─────────────────────────────────────────────
+
+  /**
+   * The point of the whole exercise: a player running all three regions should
+   * want all three *for different reasons*. That is only true if the reward
+   * profiles are measurably different, so it is asserted rather than described.
+   *
+   * Deliberately expressed as **comparisons between regions**, not as absolute
+   * thresholds — retuning any region moves these together, and what must
+   * survive retuning is the ordering, not the numbers.
+   */
+  it('is the development region: most XP, least Essence, same WBe band', () => {
+    const REGIONS = ['waifu-valley', 'twin-peeks', 'flaccid-foothills'] as const;
+    const waifuXp = Object.fromEntries(REGIONS.map((r) => [r, typicalDay(r, 'waifuXp')]));
+    const playerXp = Object.fromEntries(REGIONS.map((r) => [r, typicalDay(r, 'playerXp')]));
+    const essence = Object.fromEntries(REGIONS.map((r) => [r, typicalDay(r, 'essence')]));
+
+    // Noticeably better for training — a third again, at least — than either
+    // other region, on both XP tracks.
+    for (const other of ['waifu-valley', 'twin-peeks'] as const) {
+      expect(waifuXp['flaccid-foothills']!, `wXP vs ${other}`).toBeGreaterThan(
+        waifuXp[other]! * 1.35,
+      );
+      expect(playerXp['flaccid-foothills']!, `pXP vs ${other}`).toBeGreaterThan(
+        playerXp[other]! * 1.35,
+      );
+    }
+    // But not a runaway: an XP region that pays triple stops being a choice
+    // and starts being the only place worth deploying.
+    expect(waifuXp['flaccid-foothills']!).toBeLessThan(
+      Math.max(waifuXp['waifu-valley']!, waifuXp['twin-peeks']!) * 2,
+    );
+
+    // It buys that with Essence: the lowest of the three, and far below the
+    // region whose identity Essence actually is.
+    expect(essence['flaccid-foothills']!).toBeLessThan(essence['waifu-valley']!);
+    expect(essence['flaccid-foothills']!).toBeLessThan(essence['twin-peeks']! * 0.4);
+
+    // And not with WBe — the shared budget holds. (The per-region band is
+    // asserted for every authored region in its own block above.)
+    const wbeDay = typicalDay('flaccid-foothills', 'wbe');
+    expect(wbeDay).toBeGreaterThan(250);
+    expect(wbeDay).toBeLessThan(350);
+  });
+
+  it('rewards frequent play without making it the only way to play', () => {
+    const day = (plan: readonly (readonly [number, number])[]) =>
+      plan.reduce((sum, [minutes, runs]) => {
+        const tier = foothills.filter((e) => e.durationMinutes === minutes);
+        return sum + (tier.reduce((s, e) => s + expectedWbe(e), 0) / tier.length) * runs;
+      }, 0);
+    const typical = day([[1080, 1], [360, 1]]);
+    expect(day([[360, 1], [60, 18]])).toBeGreaterThan(typical);
+    expect(day([[360, 1], [60, 18]])).toBeLessThan(typical * 1.6);
+    expect(day([[1080, 1]])).toBeGreaterThan(typical * 0.6);
+    for (const plan of [[[1080, 1]], [[1080, 1], [360, 1]], [[360, 2], [180, 2], [60, 6]], [[360, 1], [60, 18]]] as const) {
+      expect(day(plan)).toBeLessThan(500);
+    }
+  });
+
+  // ── rare finds and the shop ──────────────────────────────────────────────
+
+  /**
+   * The Foothills chase is the **Trophy Wife Charm** — the region's own
+   * 1,400-WaifuBux shop exclusive, which multiplies capture chance on UR and
+   * LR targets only. It is an existing, region-native item rather than a new
+   * one: nothing in the catalogue embodies "training", and minting a powerful
+   * XP artifact to fill this slot would be inventing a mechanic to satisfy a
+   * pattern. (A genuine training key item is noted as a Phase 6 hook instead.)
+   *
+   * Every non-salvage drop in a Foothills bonus table is held under one in a
+   * hundred runs, which is what keeps the region's shop — two energy
+   * consumables, an affection bouquet and this charm — worth actually
+   * visiting. Promotion off the ridge is a story, not a supply line.
+   */
+  it('keeps the regional finds rare, and the Foothills shop worth shopping at', () => {
+    const rate = (e: (typeof foothills)[number], itemId: string): number => {
+      const { successChance, exceptionalChance } = reference(e);
+      const table = tables.get(e.exceptionalRewardTable!)!;
+      const group = table.groups.find((g) => g.entries.some((x) => x.itemId === itemId))!;
+      const entry = group.entries.find((x) => x.itemId === itemId)!;
+      const within = entry.weight / group.entries.reduce((s, x) => s + x.weight, 0);
+      return successChance * exceptionalChance * (group.chanceBasisPoints / 10_000) * within;
+    };
+
+    const shopSlugs = new Set(
+      SHIPPED.items.filter((i) => i.shopRegions.includes('flaccid-foothills')).map((i) => i.slug),
+    );
+    let nonSalvage = 0;
+    let shopFinds = 0;
+    for (const e of foothills) {
+      const table = tables.get(e.exceptionalRewardTable!)!;
+      for (const group of table.groups) {
+        for (const entry of group.entries) {
+          if (items.get(entry.itemId)?.category === 'salvage') continue;
+          nonSalvage += 1;
+          if (shopSlugs.has(entry.itemId)) shopFinds += 1;
+          const p = rate(e, entry.itemId);
+          expect(p, `${e.key} / ${entry.itemId}`).toBeGreaterThan(0);
+          expect(p, `${e.key} / ${entry.itemId}`).toBeLessThan(0.01);
+        }
+      }
+    }
+    expect(nonSalvage).toBeGreaterThanOrEqual(5);
+    expect(shopFinds).toBeGreaterThan(0);
+
+    // Expensive regional stock never appears on a *success* table — only
+    // behind an Exceptional result.
+    for (const e of foothills) {
+      for (const group of tables.get(e.rewardTable)!.groups) {
+        for (const entry of group.entries) {
+          const item = items.get(entry.itemId)!;
+          if (!item.shopRegions.includes('flaccid-foothills')) continue;
+          expect(item.buyPrice ?? 0, `${e.key} success table stocks ${entry.itemId}`)
+            .toBeLessThanOrEqual(150);
+        }
+      }
+    }
+
+    // The chase itself, named so it cannot be quietly retuned away.
+    const drill = foothills.find((e) => e.key === 'foothills_off_season_drill')!;
+    const chase = rate(drill, 'trophy_wife_charm');
+    expect(chase).toBeGreaterThan(0.001);
+    expect(chase).toBeLessThan(0.006);
+    const charm = items.get('trophy_wife_charm')!;
+    expect(charm.shopRegions).toEqual(['flaccid-foothills']);
+    // Not a WBe reward in disguise: it cannot be vendored.
+    expect(charm.sellValue ?? 0).toBe(0);
+  });
+
+  it('never lists the same item twice in one Foothills reward group', () => {
+    for (const table of foothillsTables) {
+      for (const group of table.groups) {
+        const ids = group.entries.map((entry) => entry.itemId);
+        expect(new Set(ids).size, `${table.id} / ${group.id}`).toBe(ids.length);
+      }
+    }
+  });
+
+  it('exposes every Foothills mission over enough rotations, for any player', () => {
+    const config = SHIPPED.tables.expeditions;
+    const durations = Object.values(config.durations);
+    for (const playerId of [1, 2, 17, 4242]) {
+      const seen = new Set<string>();
+      for (let window = 0; window < 200; window += 1) {
+        for (const mission of buildBoard({
+          playerId,
+          regionId: 'flaccid-foothills',
+          expeditions: SHIPPED.expeditions,
+          durations,
+          boardSize: config.boardSize,
+          rotationHours: config.rotationHours,
+          now: new Date(window * config.rotationHours * 3_600_000),
+        })) {
+          seen.add(mission.key);
+        }
+      }
+      expect(seen.size, `player ${playerId}`).toBe(foothills.length);
+    }
+  });
+});

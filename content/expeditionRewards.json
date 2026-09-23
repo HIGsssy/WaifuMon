@@ -1750,5 +1750,799 @@
         ]
       }
     ]
+  },
+
+  {
+    "id": "foothills-cairn-line-success-v1",
+    "enabled": true,
+    "version": "foothills-cairn-line-success-v1",
+    "waifubux": { "min": 2, "max": 4 },
+    "waifuXp": 52,
+    "playerXp": 12,
+    "groups": [
+      {
+        "id": "straightened-the-line",
+        "enabled": true,
+        "rolls": 2,
+        "chanceBasisPoints": 6000,
+        "entries": [
+          { "itemId": "split_fence_rail", "weight": 70, "quantity": 1, "enabled": true },
+          { "itemId": "undelivered_wax_seal", "weight": 30, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "gone-missing-since-spring",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 500,
+        "entries": [
+          { "itemId": "quarry_grit_pouch", "weight": 75, "quantity": 1, "enabled": true },
+          { "itemId": "leaning_cairn_stone", "weight": 25, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foothills-cairn-line-bonus-v1",
+    "enabled": true,
+    "version": "foothills-cairn-line-bonus-v1",
+    "waifubux": { "min": 2, "max": 4 },
+    "waifuXp": 26,
+    "playerXp": 6,
+    "groups": [
+      {
+        "id": "put-back-by-somebody-else",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 1400,
+        "entries": [
+          { "itemId": "undelivered_wax_seal", "weight": 55, "quantity": 2, "enabled": true },
+          { "itemId": "quarry_grit_pouch", "weight": 30, "quantity": 1, "enabled": true },
+          { "itemId": "leaning_cairn_stone", "weight": 15, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foothills-cairn-line-failure-v1",
+    "enabled": true,
+    "version": "foothills-cairn-line-failure-v1",
+    "waifubux": { "min": 1, "max": 2 },
+    "waifuXp": 16,
+    "playerXp": 4,
+    "groups": [
+      {
+        "id": "walked-the-line-anyway",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 4500,
+        "entries": [
+          { "itemId": "split_fence_rail", "weight": 100, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+
+  {
+    "id": "foothills-hayloft-success-v1",
+    "enabled": true,
+    "version": "foothills-hayloft-success-v1",
+    "waifubux": { "min": 2, "max": 4 },
+    "waifuXp": 58,
+    "playerXp": 13,
+    "groups": [
+      {
+        "id": "turned-and-restacked",
+        "enabled": true,
+        "rolls": 2,
+        "chanceBasisPoints": 5200,
+        "entries": [
+          { "itemId": "undelivered_wax_seal", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "split_fence_rail", "weight": 40, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "under-the-bottom-bale",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 400,
+        "entries": [
+          { "itemId": "quarry_grit_pouch", "weight": 70, "quantity": 1, "enabled": true },
+          { "itemId": "leaning_cairn_stone", "weight": 30, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foothills-hayloft-bonus-v1",
+    "enabled": true,
+    "version": "foothills-hayloft-bonus-v1",
+    "waifubux": { "min": 2, "max": 5 },
+    "waifuXp": 29,
+    "playerXp": 7,
+    "groups": [
+      {
+        "id": "the-farmhand-woke-up",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 1000,
+        "entries": [
+          { "itemId": "quarry_grit_pouch", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "leaning_cairn_stone", "weight": 30, "quantity": 1, "enabled": true },
+          { "itemId": "orchard_brandy_jar", "weight": 15, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foothills-hayloft-failure-v1",
+    "enabled": true,
+    "version": "foothills-hayloft-failure-v1",
+    "waifubux": { "min": 1, "max": 2 },
+    "waifuXp": 18,
+    "playerXp": 4,
+    "groups": [
+      {
+        "id": "got-half-of-it-down",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 2200,
+        "entries": [
+          { "itemId": "undelivered_wax_seal", "weight": 100, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+
+  {
+    "id": "foothills-courier-relay-success-v1",
+    "enabled": true,
+    "version": "foothills-courier-relay-success-v1",
+    "waifubux": { "min": 3, "max": 5 },
+    "waifuXp": 62,
+    "playerXp": 14,
+    "groups": [
+      {
+        "id": "both-books-signed",
+        "enabled": true,
+        "rolls": 2,
+        "chanceBasisPoints": 3400,
+        "entries": [
+          { "itemId": "undelivered_wax_seal", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "split_fence_rail", "weight": 25, "quantity": 1, "enabled": true },
+          { "itemId": "quarry_grit_pouch", "weight": 20, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "the-march-docket",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 350,
+        "entries": [
+          { "itemId": "leaning_cairn_stone", "weight": 70, "quantity": 1, "enabled": true },
+          { "itemId": "orchard_brandy_jar", "weight": 30, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foothills-courier-relay-bonus-v1",
+    "enabled": true,
+    "version": "foothills-courier-relay-bonus-v1",
+    "waifubux": { "min": 3, "max": 5 },
+    "waifuXp": 31,
+    "playerXp": 7,
+    "groups": [
+      {
+        "id": "what-was-in-the-westbound-sack",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 900,
+        "entries": [
+          { "itemId": "quarry_grit_pouch", "weight": 50, "quantity": 1, "enabled": true },
+          { "itemId": "leaning_cairn_stone", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "orchard_brandy_jar", "weight": 15, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foothills-courier-relay-failure-v1",
+    "enabled": true,
+    "version": "foothills-courier-relay-failure-v1",
+    "waifubux": { "min": 1, "max": 3 },
+    "waifuXp": 19,
+    "playerXp": 5,
+    "groups": [
+      {
+        "id": "westbound-only",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 3500,
+        "entries": [
+          { "itemId": "split_fence_rail", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "undelivered_wax_seal", "weight": 45, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+
+  {
+    "id": "foothills-orchard-dawn-success-v1",
+    "enabled": true,
+    "version": "foothills-orchard-dawn-success-v1",
+    "waifubux": { "min": 7, "max": 11 },
+    "essence": { "min": 0, "max": 1 },
+    "waifuXp": 160,
+    "playerXp": 37,
+    "groups": [
+      {
+        "id": "picked-before-the-sun",
+        "enabled": true,
+        "rolls": 3,
+        "chanceBasisPoints": 5000,
+        "entries": [
+          { "itemId": "undelivered_wax_seal", "weight": 50, "quantity": 1, "enabled": true },
+          { "itemId": "split_fence_rail", "weight": 25, "quantity": 1, "enabled": true },
+          { "itemId": "quarry_grit_pouch", "weight": 25, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "windfall-under-the-roots",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 700,
+        "entries": [
+          { "itemId": "leaning_cairn_stone", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "orchard_brandy_jar", "weight": 40, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foothills-orchard-dawn-bonus-v1",
+    "enabled": true,
+    "version": "foothills-orchard-dawn-bonus-v1",
+    "waifubux": { "min": 5, "max": 8 },
+    "essence": { "min": 1, "max": 2 },
+    "waifuXp": 80,
+    "playerXp": 18,
+    "groups": [
+      {
+        "id": "the-jar-under-the-oldest-tree",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 1600,
+        "entries": [
+          { "itemId": "leaning_cairn_stone", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "orchard_brandy_jar", "weight": 40, "quantity": 1, "enabled": true },
+          { "itemId": "quarry_grit_pouch", "weight": 15, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foothills-orchard-dawn-failure-v1",
+    "enabled": true,
+    "version": "foothills-orchard-dawn-failure-v1",
+    "waifubux": { "min": 3, "max": 5 },
+    "waifuXp": 50,
+    "playerXp": 12,
+    "groups": [
+      {
+        "id": "got-what-we-could-reach",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 5000,
+        "entries": [
+          { "itemId": "undelivered_wax_seal", "weight": 65, "quantity": 1, "enabled": true },
+          { "itemId": "split_fence_rail", "weight": 35, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+
+  {
+    "id": "foothills-quarry-night-success-v1",
+    "enabled": true,
+    "version": "foothills-quarry-night-success-v1",
+    "waifubux": { "min": 7, "max": 11 },
+    "essence": { "min": 0, "max": 2 },
+    "waifuXp": 172,
+    "playerXp": 40,
+    "groups": [
+      {
+        "id": "screened-overnight",
+        "enabled": true,
+        "rolls": 3,
+        "chanceBasisPoints": 4000,
+        "entries": [
+          { "itemId": "quarry_grit_pouch", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "undelivered_wax_seal", "weight": 30, "quantity": 1, "enabled": true },
+          { "itemId": "split_fence_rail", "weight": 15, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "deep-in-the-beds",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 400,
+        "entries": [
+          { "itemId": "leaning_cairn_stone", "weight": 65, "quantity": 1, "enabled": true },
+          { "itemId": "skyfreight_ballast_weight", "weight": 35, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foothills-quarry-night-bonus-v1",
+    "enabled": true,
+    "version": "foothills-quarry-night-bonus-v1",
+    "waifubux": { "min": 5, "max": 8 },
+    "essence": { "min": 1, "max": 3 },
+    "waifuXp": 86,
+    "playerXp": 20,
+    "groups": [
+      {
+        "id": "what-the-screen-caught",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 1500,
+        "entries": [
+          { "itemId": "leaning_cairn_stone", "weight": 50, "quantity": 1, "enabled": true },
+          { "itemId": "orchard_brandy_jar", "weight": 30, "quantity": 1, "enabled": true },
+          { "itemId": "skyfreight_ballast_weight", "weight": 20, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foothills-quarry-night-failure-v1",
+    "enabled": true,
+    "version": "foothills-quarry-night-failure-v1",
+    "waifubux": { "min": 3, "max": 5 },
+    "waifuXp": 54,
+    "playerXp": 13,
+    "groups": [
+      {
+        "id": "it-kept-running-without-you",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 3000,
+        "entries": [
+          { "itemId": "quarry_grit_pouch", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "undelivered_wax_seal", "weight": 40, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+
+  {
+    "id": "foothills-circus-load-out-success-v1",
+    "enabled": true,
+    "version": "foothills-circus-load-out-success-v1",
+    "waifubux": { "min": 7, "max": 11 },
+    "essence": { "min": 0, "max": 2 },
+    "waifuXp": 180,
+    "playerXp": 42,
+    "groups": [
+      {
+        "id": "walked-the-wagons-to-the-flat",
+        "enabled": true,
+        "rolls": 2,
+        "chanceBasisPoints": 6000,
+        "entries": [
+          { "itemId": "undelivered_wax_seal", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "quarry_grit_pouch", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "split_fence_rail", "weight": 20, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "left-on-the-prop-wagon",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 900,
+        "entries": [
+          { "itemId": "leaning_cairn_stone", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "orchard_brandy_jar", "weight": 40, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foothills-circus-load-out-bonus-v1",
+    "enabled": true,
+    "version": "foothills-circus-load-out-bonus-v1",
+    "waifubux": { "min": 5, "max": 9 },
+    "essence": { "min": 1, "max": 3 },
+    "waifuXp": 90,
+    "playerXp": 21,
+    "groups": [
+      {
+        "id": "the-ringmasters-cut",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 1400,
+        "entries": [
+          { "itemId": "leaning_cairn_stone", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "orchard_brandy_jar", "weight": 40, "quantity": 1, "enabled": true },
+          { "itemId": "skyfreight_ballast_weight", "weight": 15, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "out-of-the-costume-trunk",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 500,
+        "entries": [
+          { "itemId": "morning_wood_bouquet", "weight": 100, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foothills-circus-load-out-failure-v1",
+    "enabled": true,
+    "version": "foothills-circus-load-out-failure-v1",
+    "waifubux": { "min": 3, "max": 5 },
+    "waifuXp": 56,
+    "playerXp": 13,
+    "groups": [
+      {
+        "id": "the-count-came-up-short",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 3800,
+        "entries": [
+          { "itemId": "undelivered_wax_seal", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "split_fence_rail", "weight": 45, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+
+  {
+    "id": "foothills-bog-dredge-success-v1",
+    "enabled": true,
+    "version": "foothills-bog-dredge-success-v1",
+    "waifubux": { "min": 12, "max": 17 },
+    "essence": { "min": 0, "max": 2 },
+    "waifuXp": 268,
+    "playerXp": 62,
+    "groups": [
+      {
+        "id": "up-from-the-shallows",
+        "enabled": true,
+        "rolls": 4,
+        "chanceBasisPoints": 5500,
+        "entries": [
+          { "itemId": "undelivered_wax_seal", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "quarry_grit_pouch", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "split_fence_rail", "weight": 20, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "older-than-the-road",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 1500,
+        "entries": [
+          { "itemId": "leaning_cairn_stone", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "orchard_brandy_jar", "weight": 45, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foothills-bog-dredge-bonus-v1",
+    "enabled": true,
+    "version": "foothills-bog-dredge-bonus-v1",
+    "waifubux": { "min": 8, "max": 13 },
+    "essence": { "min": 2, "max": 4 },
+    "waifuXp": 134,
+    "playerXp": 31,
+    "groups": [
+      {
+        "id": "what-it-was-willing-to-part-with",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 1800,
+        "entries": [
+          { "itemId": "leaning_cairn_stone", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "orchard_brandy_jar", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "skyfreight_ballast_weight", "weight": 20, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foothills-bog-dredge-failure-v1",
+    "enabled": true,
+    "version": "foothills-bog-dredge-failure-v1",
+    "waifubux": { "min": 5, "max": 9 },
+    "waifuXp": 82,
+    "playerXp": 19,
+    "groups": [
+      {
+        "id": "the-water-table-came-back-up",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 5000,
+        "entries": [
+          { "itemId": "undelivered_wax_seal", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "split_fence_rail", "weight": 40, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+
+  {
+    "id": "foothills-dusk-roll-call-success-v1",
+    "enabled": true,
+    "version": "foothills-dusk-roll-call-success-v1",
+    "waifubux": { "min": 12, "max": 17 },
+    "essence": { "min": 0, "max": 2 },
+    "waifuXp": 276,
+    "playerXp": 64,
+    "groups": [
+      {
+        "id": "every-name-on-the-wall",
+        "enabled": true,
+        "rolls": 4,
+        "chanceBasisPoints": 5200,
+        "entries": [
+          { "itemId": "undelivered_wax_seal", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "quarry_grit_pouch", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "split_fence_rail", "weight": 20, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "left-at-the-far-end",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 1450,
+        "entries": [
+          { "itemId": "leaning_cairn_stone", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "orchard_brandy_jar", "weight": 45, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foothills-dusk-roll-call-bonus-v1",
+    "enabled": true,
+    "version": "foothills-dusk-roll-call-bonus-v1",
+    "waifubux": { "min": 8, "max": 13 },
+    "essence": { "min": 2, "max": 4 },
+    "waifuXp": 138,
+    "playerXp": 32,
+    "groups": [
+      {
+        "id": "somebody-answered-back",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 1700,
+        "entries": [
+          { "itemId": "leaning_cairn_stone", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "orchard_brandy_jar", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "skyfreight_ballast_weight", "weight": 20, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "left-on-the-wall-for-you",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 500,
+        "entries": [
+          { "itemId": "blue_ridge_pill", "weight": 100, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foothills-dusk-roll-call-failure-v1",
+    "enabled": true,
+    "version": "foothills-dusk-roll-call-failure-v1",
+    "waifubux": { "min": 5, "max": 9 },
+    "waifuXp": 84,
+    "playerXp": 20,
+    "groups": [
+      {
+        "id": "read-until-full-dark",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 4600,
+        "entries": [
+          { "itemId": "undelivered_wax_seal", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "split_fence_rail", "weight": 40, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+
+  {
+    "id": "foothills-ballast-drop-success-v1",
+    "enabled": true,
+    "version": "foothills-ballast-drop-success-v1",
+    "waifubux": { "min": 38, "max": 52 },
+    "essence": { "min": 1, "max": 3 },
+    "waifuXp": 690,
+    "playerXp": 160,
+    "groups": [
+      {
+        "id": "marked-and-reached-first",
+        "enabled": true,
+        "rolls": 6,
+        "chanceBasisPoints": 7000,
+        "entries": [
+          { "itemId": "undelivered_wax_seal", "weight": 40, "quantity": 1, "enabled": true },
+          { "itemId": "quarry_grit_pouch", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "split_fence_rail", "weight": 15, "quantity": 1, "enabled": true },
+          { "itemId": "leaning_cairn_stone", "weight": 10, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "still-warm-where-it-landed",
+        "enabled": true,
+        "rolls": 2,
+        "chanceBasisPoints": 2900,
+        "entries": [
+          { "itemId": "leaning_cairn_stone", "weight": 50, "quantity": 1, "enabled": true },
+          { "itemId": "orchard_brandy_jar", "weight": 30, "quantity": 1, "enabled": true },
+          { "itemId": "skyfreight_ballast_weight", "weight": 20, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foothills-ballast-drop-bonus-v1",
+    "enabled": true,
+    "version": "foothills-ballast-drop-bonus-v1",
+    "waifubux": { "min": 24, "max": 36 },
+    "essence": { "min": 2, "max": 4 },
+    "waifuXp": 345,
+    "playerXp": 80,
+    "groups": [
+      {
+        "id": "a-whole-nights-drop",
+        "enabled": true,
+        "rolls": 2,
+        "chanceBasisPoints": 2200,
+        "entries": [
+          { "itemId": "leaning_cairn_stone", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "orchard_brandy_jar", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "skyfreight_ballast_weight", "weight": 20, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "off-the-freighters-manifest",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 700,
+        "entries": [
+          { "itemId": "slippery_nipple", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "blue_ridge_pill", "weight": 40, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foothills-ballast-drop-failure-v1",
+    "enabled": true,
+    "version": "foothills-ballast-drop-failure-v1",
+    "waifubux": { "min": 15, "max": 22 },
+    "waifuXp": 210,
+    "playerXp": 48,
+    "groups": [
+      {
+        "id": "the-farmers-got-there-first",
+        "enabled": true,
+        "rolls": 2,
+        "chanceBasisPoints": 5600,
+        "entries": [
+          { "itemId": "undelivered_wax_seal", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "quarry_grit_pouch", "weight": 25, "quantity": 1, "enabled": true },
+          { "itemId": "split_fence_rail", "weight": 20, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+
+  {
+    "id": "foothills-off-season-success-v1",
+    "enabled": true,
+    "version": "foothills-off-season-success-v1",
+    "waifubux": { "min": 40, "max": 54 },
+    "essence": { "min": 2, "max": 4 },
+    "waifuXp": 720,
+    "playerXp": 168,
+    "groups": [
+      {
+        "id": "eighteen-hours-of-switchbacks",
+        "enabled": true,
+        "rolls": 6,
+        "chanceBasisPoints": 7000,
+        "entries": [
+          { "itemId": "undelivered_wax_seal", "weight": 40, "quantity": 1, "enabled": true },
+          { "itemId": "quarry_grit_pouch", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "split_fence_rail", "weight": 15, "quantity": 1, "enabled": true },
+          { "itemId": "leaning_cairn_stone", "weight": 10, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "what-the-tall-grass-held",
+        "enabled": true,
+        "rolls": 2,
+        "chanceBasisPoints": 2900,
+        "entries": [
+          { "itemId": "leaning_cairn_stone", "weight": 50, "quantity": 1, "enabled": true },
+          { "itemId": "orchard_brandy_jar", "weight": 30, "quantity": 1, "enabled": true },
+          { "itemId": "skyfreight_ballast_weight", "weight": 20, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foothills-off-season-bonus-v1",
+    "enabled": true,
+    "version": "foothills-off-season-bonus-v1",
+    "waifubux": { "min": 26, "max": 38 },
+    "essence": { "min": 3, "max": 5 },
+    "waifuXp": 360,
+    "playerXp": 84,
+    "groups": [
+      {
+        "id": "the-patrols-own-cache",
+        "enabled": true,
+        "rolls": 2,
+        "chanceBasisPoints": 2300,
+        "entries": [
+          { "itemId": "leaning_cairn_stone", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "orchard_brandy_jar", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "skyfreight_ballast_weight", "weight": 20, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "spare-kit-out-of-the-locker",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 900,
+        "entries": [
+          { "itemId": "silk_charm", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "velvet_charm", "weight": 45, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "promoted-off-the-ridge",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 380,
+        "entries": [
+          { "itemId": "trophy_wife_charm", "weight": 70, "quantity": 1, "enabled": true },
+          { "itemId": "skyfreight_ballast_weight", "weight": 30, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foothills-off-season-failure-v1",
+    "enabled": true,
+    "version": "foothills-off-season-failure-v1",
+    "waifubux": { "min": 16, "max": 24 },
+    "waifuXp": 216,
+    "playerXp": 50,
+    "groups": [
+      {
+        "id": "corrected-about-your-footing",
+        "enabled": true,
+        "rolls": 2,
+        "chanceBasisPoints": 5200,
+        "entries": [
+          { "itemId": "undelivered_wax_seal", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "quarry_grit_pouch", "weight": 25, "quantity": 1, "enabled": true },
+          { "itemId": "split_fence_rail", "weight": 20, "quantity": 1, "enabled": true }
+        ]
+      }
+    ]
   }
 ]
