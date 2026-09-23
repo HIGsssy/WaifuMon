@@ -122,6 +122,30 @@ describe('architectural boundaries', () => {
     expect(offenders.map((f) => f.path)).toEqual([]);
   });
 
+  /**
+   * The same rule, one step along: the *two*-argument form with
+   * `{ publicOwner: true }`.
+   *
+   * `speciesAsset(species, waifu)` is safe because a copy in the viewer's own
+   * collection proves they own the species. `{ publicOwner: true }` says the
+   * copy is somebody *else's*, and that proves nothing about the viewer — which
+   * is exactly how the public Collection came to render full artwork for
+   * species the viewer had never caught.
+   *
+   * So the public form lives in the one component that resolves the viewer's
+   * dex first, for the same reason `<SpeciesArtwork>` owns the un-owned form:
+   * the gate is a required part of the component rather than an optional prop a
+   * tile can forget.
+   */
+  it('resolves another player’s copy artwork only inside the gated component', () => {
+    const publicForm = /publicOwner/;
+    const allowed = new Set(['components/media/CopyArtwork.tsx', 'images/assets.ts']);
+    const offenders = files.filter(
+      (file) => publicForm.test(file.contents) && !allowed.has(file.path),
+    );
+    expect(offenders.map((f) => f.path)).toEqual([]);
+  });
+
   it('reaches the Platform API only through the api/ module', () => {
     // `api/system.ts` is the one deliberate exception: /ready and /health live
     // at the API server's root, outside the client's `/api` base URL.

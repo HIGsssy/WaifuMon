@@ -56,3 +56,32 @@ export async function assertSpeciesVisible(
   const discovered = await ctx.services.collection.hasDiscoveredSpeciesSlug(playerId, slug);
   if (!discovered) throw new ApiSpeciesNotDiscoveredError(slug);
 }
+
+/**
+ * The same rule, asked about a page of species at once and answered as a set
+ * rather than a throw.
+ *
+ * `assertSpeciesVisible` is the gate on a route that *serves artwork*: it
+ * refuses. This is the gate on a route that *embeds artwork identifiers* in a
+ * larger payload it is otherwise allowed to serve — a guild-mate's public
+ * collection — where the correct answer is not 403 but "publish the row, omit
+ * the `assetId`". Both read the same viewer, the same dex and the same
+ * `releasedAt IS NULL` rule, so the two surfaces cannot disagree about what a
+ * viewer has discovered.
+ *
+ * Fail-closed in the same direction: a portal session with no resolved player
+ * discovers nothing, and the empty set withholds every identifier.
+ */
+export async function visibleSpeciesSlugs(
+  ctx: ApiContext,
+  req: SpeciesVisibilityRequest,
+  slugs: readonly string[],
+): Promise<ReadonlySet<string>> {
+  // Trusted callers render every species by design — see the file header.
+  if (req.apiAuth === 'bearer') return new Set(slugs);
+
+  const playerId = req.portalSession?.playerId;
+  if (playerId === undefined || playerId === null) return new Set();
+
+  return ctx.services.collection.discoveredSpeciesSlugs(playerId, slugs);
+}

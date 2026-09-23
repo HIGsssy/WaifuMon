@@ -15,6 +15,11 @@
  *   3. **The public profile did not become a second self-profile.** The
  *      self-only rule on every other `/players/:id` route still holds; exactly
  *      one route opts out of it, and only inside the selected guild.
+ *   4. **Whose ownership unlocks what.** The *owner's* ownership decides which
+ *      copies the payload carries. The *viewer's* decides which artwork it may
+ *      name and which bytes it may serve. Conflating the two is what let a
+ *      viewer read the artwork of any species anybody in their guild owned, and
+ *      the artwork tests below hold the two apart deliberately.
  *
  * A player who plays in two guilds has two `players` rows, one per guild, and
  * the multi-guild test asserts that both directories list them with that
@@ -77,6 +82,15 @@ let queryCount = 0;
 let assetsDir: string;
 /** Aiko's copies in guild A, and the slug they wear. */
 let aikoBuddyWaifuId: number;
+/**
+ * Mika's own copy — of `seededSlug` only.
+ *
+ * She is the viewer in almost every assertion here, and the artwork rule is
+ * about *her* dex, so she has to be able to fail it for one species and pass it
+ * for the other. Without a copy of her own every artwork case would answer 403
+ * and the tests would agree with each other about nothing.
+ */
+let mikaWaifuId: number;
 let aikoSecondWaifuId: number;
 let outsiderWaifuId: number;
 let seededSlug: string;
@@ -149,6 +163,14 @@ beforeAll(async () => {
     nickname: 'Pumpkin',
   });
   aikoSecondWaifuId = second.id;
+  // Mika discovers the first species and only the first. `secondSlug` is her
+  // blind spot, and Aiko owning a copy of it must not change that.
+  const mikaCopy = await insertOwnedWaifu(t.db, {
+    playerId: playerIds[key(GUILD_A, MIKA)]!,
+    speciesId: firstSpecies!.id,
+    level: 2,
+  });
+  mikaWaifuId = mikaCopy.id;
   const outsiderCopy = await insertOwnedWaifu(t.db, {
     playerId: playerIds[key(GUILD_B, OUTSIDER)]!,
     speciesId: secondSpecies!.id,
@@ -732,13 +754,26 @@ describe('the public collection', () => {
   });
 });
 
+
 /**
- * Artwork authorization.
+ * Artwork authorization — whose dex decides.
  *
- * The feature deliberately lets a viewer see art for species they have not
- * discovered — but *only* through a copy a guild-mate demonstrably owns. These
- * tests hold both halves of that at once: the owned-copy route opens, and the
- * slug-addressed species route stays exactly as shut as it was.
+ * Two ownerships meet on the public collection, and the bug these tests exist
+ * for was treating them as one:
+ *
+ *   - **The owner's** puts the copy in the payload. It is authorized by guild,
+ *     before a row is read, and nothing here changes that.
+ *   - **The viewer's** decides whether the picture may be seen. It is the same
+ *     dex `/assets/waifumon/:slug` has always been gated on.
+ *
+ * The route used to check only the first, which made it a species oracle with
+ * extra steps: any viewer could read the full-resolution artwork of anything
+ * anybody in their guild owned by walking copy ids — precisely what the slug
+ * route refuses. Both halves are now asserted together, and the payload's
+ * `assetId` follows the same line so nothing is merely hidden on the client.
+ *
+ * Mika owns `seededSlug` and not `secondSlug`; Zara owns nothing at all. Aiko
+ * owns a copy of both, which is the fact that must not move either of them.
  */
 describe('public collection artwork', () => {
   const artwork = (guild: string, user: string, playerId: number, waifuId: number) =>
@@ -748,29 +783,59 @@ describe('public collection artwork', () => {
       headers: asPortal(guild, user),
     });
 
-  it('serves artwork for a copy the target player owns', async () => {
-    const res = await artwork(GUILD_A, MIKA, playerIds[key(GUILD_A, AIKO)]!, aikoBuddyWaifuId);
+  const aikoId = () => playerIds[key(GUILD_A, AIKO)]!;
+
+  it('serves artwork for a species the viewer has discovered', async () => {
+    // Aiko's buddy wears `seededSlug`, and Mika owns a copy of it herself — so
+    // she is already entitled to the picture and merely seeing it on somebody
+    // else's shelf changes nothing.
+    const res = await artwork(GUILD_A, MIKA, aikoId(), aikoBuddyWaifuId);
     expect(res.statusCode).toBe(200);
     expect(res.headers['content-type']).toMatch(/^image\//);
     // Caller-dependent, so it must never land in a shared cache.
     expect(String(res.headers['cache-control'])).toContain('private');
   });
 
+  it('refuses artwork for a species only the owner has discovered', async () => {
+    // Aiko's second copy wears `secondSlug`. Aiko owning it is what puts the
+    // copy on her public profile; it is not a reason to hand Mika the art.
+    const res = await artwork(GUILD_A, MIKA, aikoId(), aikoSecondWaifuId);
+    expect(res.statusCode).toBe(403);
+    expect((res.json() as { error: { code: string } }).error.code).toBe('SPECIES_NOT_DISCOVERED');
+  });
+
+  it('refuses every species for a viewer who owns nothing', async () => {
+    // Zara's dex is empty, so the owner's collection is entirely silhouettes
+    // for her — including the copy Mika is allowed to see.
+    for (const waifuId of [aikoBuddyWaifuId, aikoSecondWaifuId]) {
+      const res = await artwork(GUILD_A, ZARA, aikoId(), waifuId);
+      expect(res.statusCode, String(waifuId)).toBe(403);
+    }
+  });
+
   it('refuses artwork for a player outside the selected guild', async () => {
+    // Guild scope is checked first, and answers 404 — a viewer must not learn
+    // from a 403 that the species exists and is merely undiscovered.
     const res = await artwork(GUILD_A, MIKA, playerIds[key(GUILD_B, OUTSIDER)]!, outsiderWaifuId);
     expect(res.statusCode).toBe(404);
   });
 
+  it('is refused outright for a session with no resolved player', async () => {
+    // Mid guild-selection there is no dex to check against, so there is no
+    // artwork. Unknown is refused, never allowed.
+    const res = await artwork('noguild', MIKA, aikoId(), aikoBuddyWaifuId);
+    expect([403, 404]).toContain(res.statusCode);
+  });
+
   it('does not become a species oracle', async () => {
-    // Mika owns nothing, so she has discovered nothing. The species route is
-    // the one that could leak the encyclopedia, and it is unchanged: still 403
-    // for both slugs, including the one she can legitimately see *through
-    // Aiko's copy* on the route above.
+    // Zara owns nothing, so she has discovered nothing. The slug route is the
+    // one that could leak the encyclopedia, and it is unchanged: still 403 for
+    // both slugs.
     for (const slug of [seededSlug, secondSlug]) {
       const res = await api.inject({
         method: 'GET',
         url: `/api/v1/assets/waifumon/${slug}`,
-        headers: asPortal(GUILD_A, MIKA),
+        headers: asPortal(GUILD_A, ZARA),
       });
       expect(res.statusCode, slug).toBe(403);
       expect((res.json() as { error: { code: string } }).error.code).toBe(
@@ -780,7 +845,108 @@ describe('public collection artwork', () => {
 
     // And the public artwork route is addressed by owner + copy only — there
     // is no slug parameter through which a species could be requested.
-    const bogus = await artwork(GUILD_A, MIKA, playerIds[key(GUILD_A, AIKO)]!, 999999);
+    const bogus = await artwork(GUILD_A, MIKA, aikoId(), 999999);
     expect(bogus.statusCode).toBe(404);
+  });
+
+  it('leaves the viewer’s own copies alone', async () => {
+    // The self route is unaffected: owning the copy is the proof, and no dex
+    // lookup stands between a player and their own Waifumon.
+    const res = await api.inject({
+      method: 'GET',
+      url: `/api/v1/players/${playerIds[key(GUILD_A, MIKA)]!}/collection/owned/${mikaWaifuId}/artwork`,
+      headers: asPortal(GUILD_A, MIKA),
+    });
+    expect(res.statusCode).toBe(200);
+  });
+});
+
+/**
+ * The payload half of the same rule.
+ *
+ * Hiding a field in React is not a privacy boundary while the endpoint still
+ * sends it: devtools, a saved HAR and a hand-crafted `curl` all read what the
+ * component chose not to draw. An `assetId` resolves deterministically to a
+ * picture on every consumer, so it is the artwork as far as this boundary is
+ * concerned, and it follows the viewer's dex rather than the owner's.
+ *
+ * Species *text* deliberately does not. The whole authored catalog — names,
+ * rarities, lore, appearance names — is already served to any authenticated
+ * session by `GET /content/species`, which is what the Encyclopedia renders
+ * from; withholding it here would be theatre, not a boundary, and the
+ * Encyclopedia's `???` is a spoiler treatment the Portal now applies to this
+ * surface too. The field-by-field allowlist above is what keeps *player* data
+ * out of this payload; this is about the pictures.
+ */
+describe('public collection payload — artwork identifiers', () => {
+  const entry = (guild: string, user: string, waifuId: number) =>
+    api.inject({
+      method: 'GET',
+      url: `/api/v1/players/${playerIds[key(GUILD_A, AIKO)]!}/public/collection/${waifuId}`,
+      headers: asPortal(guild, user),
+    });
+
+  type Entry = {
+    data: {
+      waifu: { selectedAppearance: { assetId: unknown; isUnlocked: boolean; name: string } };
+      species: { name: string; rarity: string; appearances: { assetId: unknown }[] };
+    };
+  };
+
+  it('names the artwork for a species the viewer has discovered', async () => {
+    const body = (await entry(GUILD_A, MIKA, aikoBuddyWaifuId)).json() as Entry;
+    expect(body.data.waifu.selectedAppearance.assetId).not.toBeNull();
+    expect(body.data.species.appearances.some((a) => a.assetId !== null)).toBe(true);
+  });
+
+  it('withholds every artwork identifier for a species the viewer has not', async () => {
+    const body = (await entry(GUILD_A, MIKA, aikoSecondWaifuId)).json() as Entry;
+    expect(body.data.waifu.selectedAppearance.assetId).toBeNull();
+    for (const appearance of body.data.species.appearances) {
+      expect(appearance.assetId).toBeNull();
+    }
+    // The owner's facts are still stated truthfully — she *is* wearing it, and
+    // it *is* unlocked for her. Only the picture is withheld.
+    expect(body.data.waifu.selectedAppearance.isUnlocked).toBe(true);
+    expect(body.data.waifu.selectedAppearance.name.length).toBeGreaterThan(0);
+  });
+
+  it('applies the same rule across a whole page', async () => {
+    const res = await api.inject({
+      method: 'GET',
+      url: `/api/v1/players/${playerIds[key(GUILD_A, AIKO)]!}/public/collection`,
+      headers: asPortal(GUILD_A, MIKA),
+    });
+    const body = res.json() as {
+      data: {
+        species: { slug: string };
+        waifu: { selectedAppearance: { assetId: unknown } };
+      }[];
+    };
+    for (const row of body.data) {
+      const expected = row.species.slug === seededSlug;
+      expect(row.waifu.selectedAppearance.assetId !== null, row.species.slug).toBe(expected);
+    }
+  });
+
+  it('withholds them all for a viewer who owns nothing', async () => {
+    const body = (await entry(GUILD_A, ZARA, aikoBuddyWaifuId)).json() as Entry;
+    expect(body.data.waifu.selectedAppearance.assetId).toBeNull();
+    // The row itself is still served: what the owner owns is public, and the
+    // level, nickname and buddy flag on it are the point of the feature.
+    expect(body.data.species.rarity.length).toBeGreaterThan(0);
+  });
+
+  it('leaves the viewer’s own collection resource untouched', async () => {
+    const res = await api.inject({
+      method: 'GET',
+      url: `/api/v1/players/${playerIds[key(GUILD_A, MIKA)]!}/collection/owned/${mikaWaifuId}`,
+      headers: asPortal(GUILD_A, MIKA),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      data: { waifu: { selectedAppearance: { assetId: unknown } } };
+    };
+    expect(body.data.waifu.selectedAppearance.assetId).not.toBeNull();
   });
 });

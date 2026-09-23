@@ -11,7 +11,7 @@
  * capture history and audit trails stay intact. `listOwned`, `getOwned`, and
  * `getDexStats` all filter on `releasedAt IS NULL`.
  */
-import { and, asc, count, countDistinct, desc, eq, ilike, isNull, ne, or, sql } from 'drizzle-orm';
+import { and, asc, count, countDistinct, desc, eq, ilike, inArray, isNull, ne, or, sql } from 'drizzle-orm';
 import type { Db, DbOrTx } from '../../db/client';
 import {
   playerWaifus,
@@ -237,6 +237,19 @@ export interface CollectionService {
    * so the server cannot disagree with the client about what "discovered" means.
    */
   hasDiscoveredSpeciesSlug(playerId: number, slug: string): Promise<boolean>;
+  /**
+   * The same question, asked about a page of species at once.
+   *
+   * A public collection page embeds up to `pageSize` species, and each of them
+   * has to be checked against the *viewer's* dex before its artwork identifiers
+   * may be published. Calling {@link hasDiscoveredSpeciesSlug} per row would be
+   * a query per tile; this is one indexed join for the whole page.
+   *
+   * Returns the subset of `slugs` the player owns an active copy of — never a
+   * slug that was not asked about, so a caller can treat "absent" as "not
+   * discovered" without a second lookup.
+   */
+  discoveredSpeciesSlugs(playerId: number, slugs: readonly string[]): Promise<Set<string>>;
   /** Substring match on nickname/species name, active copies only. */
   searchByName(playerId: number, query: string, limit?: number): Promise<OwnedEntry[]>;
   /**
@@ -995,6 +1008,26 @@ export function createCollectionService(deps: CollectionServiceDeps): Collection
     return row.total > 0;
   }
 
+  async function discoveredSpeciesSlugs(
+    playerId: number,
+    slugs: readonly string[],
+  ): Promise<Set<string>> {
+    const wanted = [...new Set(slugs)];
+    if (wanted.length === 0) return new Set();
+    const rows = await db
+      .selectDistinct({ slug: species.slug })
+      .from(playerWaifus)
+      .innerJoin(species, eq(species.id, playerWaifus.speciesId))
+      .where(
+        and(
+          eq(playerWaifus.playerId, playerId),
+          inArray(species.slug, wanted),
+          isNull(playerWaifus.releasedAt),
+        ),
+      );
+    return new Set(rows.map((row) => row.slug));
+  }
+
   /**
    * The active buddy, resolved inside the caller's transaction, with the
    * dangling-pointer self-heal.
@@ -1032,6 +1065,7 @@ export function createCollectionService(deps: CollectionServiceDeps): Collection
     hasOtherActiveCopies,
     hasActiveSpeciesCopy,
     hasDiscoveredSpeciesSlug,
+    discoveredSpeciesSlugs,
     searchByName,
     listOwnedGrouped,
     listOwnedCopiesForSpecies,

@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { OwnedEntry } from '@/api/types';
 import * as fixtures from '../../../../msw/fixtures';
+import { renderWithProviders } from '@/test/renderWithProviders';
 import { CurrencyTile } from '../CurrencyChip';
 import { DexProgressRing } from '../DexProgressRing';
 import { AffectionMeter, XpBar } from '../Meters';
@@ -105,8 +106,16 @@ describe('Pills', () => {
 });
 
 describe('WaifumonCard', () => {
+  /**
+   * Wrapped in the real provider stack rather than a bare `<MemoryRouter>`: the
+   * tile now asks who is looking before it draws a species, and that question
+   * needs a session and a query client. In `self` mode — every case below — the
+   * answer is a constant (`the copy is mine, so the species is mine`) and no
+   * request is issued, so this is provider wiring rather than a behaviour
+   * change. `public` mode is covered in `PublicCollection.test.tsx`.
+   */
   function renderCard(props: Partial<Parameters<typeof WaifumonCard>[0]> = {}) {
-    return render(
+    return renderWithProviders(
       <MemoryRouter>
         <WaifumonCard entry={entry} {...props} />
       </MemoryRouter>,

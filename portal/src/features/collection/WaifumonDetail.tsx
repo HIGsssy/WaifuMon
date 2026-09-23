@@ -8,7 +8,7 @@
  * content-model gap (§25.7, §25.11), and §16 is explicit that a placeholder is
  * the right answer — a fabricated stat block would be worse than an empty one.
  */
-import { BookOpen, Heart, History, Sparkles, Star, Swords, type LucideIcon } from 'lucide-react';
+import { BookOpen, Heart, History, Lock, Sparkles, Star, Swords, type LucideIcon } from 'lucide-react';
 import { Link } from 'react-router';
 
 import type { CollectionEntryView, ContentSpecies, OwnedEntry } from '@/api/types';
@@ -21,7 +21,13 @@ import { AffinityPill, ContentRatingPill, TypePill, ZonePill } from '@/component
 import { RarityBadge } from '@/components/waifumon/RarityBadge';
 import { RelatedSpeciesStrip } from '@/components/waifumon/RelatedSpeciesStrip';
 import { SpeciesTagList } from '@/components/waifumon/SpeciesTagList';
-import { buddyBonusFor, displayName, subtitleFor } from '@/content/species';
+import { useCopyKnowledge } from '@/components/waifumon/useCopyKnowledge';
+import {
+  buddyBonusFor,
+  speciesLabel,
+  viewerDisplayName,
+  viewerSubtitle,
+} from '@/content/species';
 import { AppearanceGallery } from './AppearanceGallery';
 import { WaifumonHero } from './WaifumonHero';
 import { formatDate, formatNumber, formatRelative } from '@/lib/format';
@@ -91,8 +97,23 @@ export function WaifumonDetail({
 }: WaifumonDetailProps) {
   const { waifu, species, progress } = entry;
   const isPublic = mode === 'public';
-  const title = displayName(entry);
-  const subtitle = subtitleFor(entry);
+  /**
+   * Whether **the viewer** has unlocked this species, as opposed to whether the
+   * owner has. `true` by construction for the viewer's own copies; the
+   * Encyclopedia's tri-state dex answer for a guild-mate's.
+   *
+   * Everything below splits on which of the two a field belongs to. *Instance*
+   * facts — level, favourite, buddy, capture date, the owner's nickname — are
+   * public collection information and render either way. *Species knowledge* —
+   * the name, archetype, affinity, content rating, lore, tags, Buddy Bonus and
+   * the appearance she is wearing — is the viewer's to earn, and follows
+   * exactly the rule the Encyclopedia's locked entry follows: rarity and the
+   * authored zone stay, everything else waits.
+   */
+  const discovered = useCopyKnowledge(mode, species.slug);
+  const known = discovered === true;
+  const title = viewerDisplayName(entry, discovered);
+  const subtitle = viewerSubtitle(entry, discovered);
   // The bonus is a species property and rides on the content snapshot, not on
   // the seeded row embedded here — see `buddyBonusFor`.
   const buddyBonus = buddyBonusFor(allSpecies, species.slug);
@@ -113,10 +134,20 @@ export function WaifumonDetail({
           <h1 className="font-display text-3xl leading-tight text-ink sm:text-4xl">{title}</h1>
           {subtitle && <p className="mt-1 text-ink-muted">{subtitle}</p>}
           <div className="mt-3 flex flex-wrap items-center gap-2">
+            {/*
+              Rarity and the authored zone are what an undiscovered encyclopedia
+              entry already shows — the hook, and a hint about where she turns
+              up. The type, affinity and content rating are not, so they wait on
+              the viewer's own dex here too.
+            */}
             <RarityBadge rarity={species.rarity} variant="full" />
-            <TypePill archetype={species.archetype} />
-            <AffinityPill affinity={species.affinity} />
-            <ContentRatingPill rating={species.contentRating} />
+            {known && (
+              <>
+                <TypePill archetype={species.archetype} />
+                <AffinityPill affinity={species.affinity} />
+                <ContentRatingPill rating={species.contentRating} />
+              </>
+            )}
             <ZonePill species={species} />
             {waifu.isFavorite && (
               <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-0.5 text-xs font-medium text-amber-800 dark:text-amber-200">
@@ -133,10 +164,32 @@ export function WaifumonDetail({
           </div>
         </header>
 
-        <Card>
-          <p className="text-ink-muted">{species.description}</p>
-          <SpeciesTagList species={species} className="mt-4" />
-        </Card>
+        {known ? (
+          <Card>
+            <p className="text-ink-muted">{species.description}</p>
+            <SpeciesTagList species={species} className="mt-4" />
+          </Card>
+        ) : (
+          /*
+            The same locked panel the Encyclopedia shows, for the same reason
+            and in the same words: this trainer owning her is not the viewer
+            owning her.
+          */
+          <Card className="border-dashed bg-surface/40">
+            <div className="flex items-start gap-3">
+              <div className="rounded-xl border border-border bg-surface-raised p-2.5 text-ink-subtle">
+                <Lock className="size-4" aria-hidden="true" />
+              </div>
+              <div>
+                <h2 className="font-medium text-ink">Not currently owned</h2>
+                <p className="mt-1 text-sm text-ink-muted">
+                  Own a copy yourself to reveal this species — its name, artwork and lore. Seeing
+                  another trainer&rsquo;s copy does not unlock it.
+                </p>
+              </div>
+            </div>
+          </Card>
+        )}
 
         <Card>
           <CardTitle>Progression</CardTitle>
@@ -174,7 +227,7 @@ export function WaifumonDetail({
           "what would equipping her do?", which needs the panel present even
           when she is not the Buddy. Absent entirely when there is no bonus.
         */}
-        {buddyBonus && (
+        {known && buddyBonus && (
           <BuddyBonusCard bonus={buddyBonus} status={isBuddy ? 'active' : 'inactive'} />
         )}
 
@@ -190,7 +243,12 @@ export function WaifumonDetail({
             </div>
             <div className="flex items-baseline justify-between gap-3">
               <span className="text-ink-muted">Appearance</span>
-              <span className="text-ink">{waifu.selectedAppearance.name}</span>
+              {/*
+                *That* she is wearing a look is public; *which* one is authored
+                species content, and an appearance name ("Midnight Gala") is
+                lore about a species the viewer may not have met.
+              */}
+              <span className="text-ink">{known ? waifu.selectedAppearance.name : '???'}</span>
             </div>
           </div>
           <p className="mt-4 border-t border-border pt-3 text-xs text-ink-subtle">
@@ -229,7 +287,7 @@ export function WaifumonDetail({
           <Card>
             <CardTitle>Species</CardTitle>
             <p className="mt-3 text-sm text-ink-muted">
-              Read the encyclopedia entry for {species.name}.
+              Read the encyclopedia entry for {speciesLabel(species, discovered)}.
             </p>
             <Button asChild variant="outline" size="sm" className="mt-4">
               <Link to={`/encyclopedia/${species.slug}`}>

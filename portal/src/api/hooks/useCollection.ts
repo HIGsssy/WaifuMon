@@ -94,10 +94,15 @@ export function useRecentCatches(
   });
 }
 
-export function useCollectionStats(playerId: number): UseQueryResult<DexStats> {
+export function useCollectionStats(
+  playerId: number,
+  /** Off alongside the overlay it triggers — see `useOwnedSlugs`. */
+  { enabled = true }: { enabled?: boolean } = {},
+): UseQueryResult<DexStats> {
   return useQuery({
     queryKey: queryKeys.collectionStats(playerId),
     queryFn: ({ signal }) => getCollectionStats(playerId, signal),
+    enabled,
     ...PLAYER_POLICY,
   });
 }
