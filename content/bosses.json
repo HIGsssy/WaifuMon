@@ -56,7 +56,7 @@
     "name": "Sir Defends-a-Lot",
     "affinity": "caregiver",
     "region": "waifu-valley",
-    "enabled": true,
+    "enabled": false,
     "artwork": "bosses/white_knight.webp",
     "rewardTable": "standard-scouting-v1",
     "scoutingText": "A heavily armoured knight thuds into view, his polished breastplate reflecting everything. 'Thou shalt not harm these pure souls!' he roars.",
@@ -134,7 +134,7 @@
     "name": "The Unwashed Wanderer",
     "affinity": "primal",
     "region": "waifu-valley",
-    "enabled": true,
+    "enabled": false,
     "artwork": "bosses/unwashed-wanderer.webp",
     "rewardTable": "standard-scouting-v1",
     "scoutingText": "A greasy wanderer crests the hill in cargo shorts, socks with sandals, and a battered fedora. He throws both arms wide. 'Where's my hug?' he demands, advancing before anyone has answered.",
@@ -219,5 +219,31 @@
     "repelledText": "The Cowboy goes sailing through a wooden fence. From somewhere inside the wreckage comes an ecstatic shout: 'DANGEROUS CONFIRMED!' A moment later, he crawls away while frantically updating his Muscle Mommy field guide.",
     "unchallengedText": "Finding no Muscle Mommys nearby, he sighs and studies his map. 'Maybe I took a wrong turn at Thigh Noon...' He adjusts his hat and rides off toward the next suspiciously muscular silhouette.",
     "description": "A bald frontier menace roaming the wilderness in relentless pursuit of the rare and notoriously dangerous Muscle Mommy. Whether he intends to capture one or be captured by one remains unclear."
+  },
+  {
+    "id": "captain_obvious",
+    "name": "Captain Obvious",
+    "affinity": "switch",
+    "region": "waifu-valley",
+    "enabled": true,
+    "artwork": "bosses/captain-obvious_boss.webp",
+    "rewardTable": "standard-scouting-v1",
+    "scoutingText": "A decorated officer raises her binoculars and scans the battlefield. Her expression suddenly turns grave. 'CONTACT!' she shouts. 'Enemy Waifumon directly ahead!' Everyone stares at the Waifumon standing six feet in front of her. Captain Obvious lowers her binoculars. 'She's also looking at us.' She reaches for her radio. 'Command, be advised. Situation appears... confrontational.'",
+    "repelledText": "Captain Obvious hits the ground with a thud. She lies there for several seconds before grabbing her radio. 'Command, be advised. I have fallen down.' She slowly gets back to her feet. 'Update: I am standing again.' She points toward your Waifumon. 'Additional update: she's stronger than anticipated.' Nobody requested any of these updates.",
+    "unchallengedText": "With no challenger approaching, Captain Obvious carefully surveys the empty battlefield. 'Area appears clear,' she announces. A bird flies overhead. She immediately raises her binoculars. 'Possible airborne contact.' The bird lands in a tree. 'Contact has assumed a defensive position.' She begins taking notes.",
+    "description": "A legendary tactical intelligence officer capable of identifying threats, terrain, weather conditions, and other information everyone else noticed several minutes ago. Captain Obvious has never failed to state the obvious because, as she frequently reminds her unit, 'somebody has to say it.'"
+  },
+  {
+    "id": "captain_casanova",
+    "name": "Captain Casanova",
+    "affinity": "dominant",
+    "region": "waifu-valley",
+    "enabled": true,
+    "artwork": "bosses/captain-casanova_boss.webp",
+    "rewardTable": "standard-scouting-v1",
+    "scoutingText": "A handsome starship captain beams down directly in front of your Waifumon. He straightens his uniform, flashes a devastating smile, and completely ignores you. 'Captain Casanova. Galactic Exploration Corps.' He takes her hand. 'Our mission is to discover new civilizations, establish peaceful relations, and explore strange new worlds.' He pauses. 'Personally, I prefer the hands-on approach.'",
+    "repelledText": "Captain Casanova goes flying backward into his transporter beam. 'Okay!' he shouts, hurriedly fixing his uniform. 'Strong, beautiful, AND completely uninterested!' His smile returns. 'God, I love space.' He taps his communicator. 'Beam me up. And find me a planet with slightly lower standards.'",
+    "unchallengedText": "Captain Casanova waits several minutes before checking his communicator. 'Computer, scan nearby systems for intelligent life.' A robotic voice answers: 'Specify parameters.' He clears his throat. 'Female. Adult. Single.' The computer pauses. 'Captain, this is the fourth search today.' He sighs. 'Just run the scan.'",
+    "description": "A legendary space captain whose official mission is peaceful galactic exploration and whose unofficial mission is discovering whether every intelligent species in the universe is into him. His diplomatic record is surprisingly impressive. His child-support situation is classified."
   }
 ]
