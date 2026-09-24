@@ -284,5 +284,83 @@
     "repelledText": "Corporal Punishment crashes through a stack of crates and slowly drags herself upright. 'Not bad.' She wipes a smear of dirt from her cheek and points at you. 'But resisting punishment is another infraction.' She adds something to her list. 'We'll discuss it next time.' Then she disappears into the shadows.",
     "unchallengedText": "With nobody foolish enough to challenge her, Corporal Punishment scans the area for criminal activity. Her eyes suddenly narrow. 'Son of a bitch.' She marches toward the parking lot. Someone has left a shopping cart beside the return corral. 'We've got a runner.'",
     "description": "A grim one-woman war on minor inconveniences. Corporal Punishment brings the intensity of an elite vigilante to littering, bad parking, loud phone conversations, expired coupons, and every other offense she personally considers punishable by tactical intervention."
+  },
+  {
+    "id": "scorned_waifu",
+    "name": "Scorned Waifu",
+    "affinity": "dominant",
+    "region": "waifu-valley",
+    "enabled": true,
+    "artwork": "bosses/scorned-waifu_boss.webp",
+    "rewardTable": "standard-scouting-v1",
+    "scoutingText": "A beautifully dressed woman steps onto the path carrying a box labeled YOUR CRAP. She spots the Waifumon beside you and smiles with terrifying politeness. 'Ohhh. So THAT'S her.' She looks your Waifumon up and down. 'No, she's cute. Really. I'm happy for you.' Somewhere behind her, your belongings spontaneously catch fire. 'I hope you two are VERY happy.'",
+    "repelledText": "The Scorned Waifu drops to one knee, staring at the battlefield in disbelief. Then she begins laughing. 'Wow. You really did choose her over me.' She rises, wipes away one furious tear, and points dramatically toward the horizon. 'Fine! Have a wonderful life!' She storms away, returns five seconds later for the box marked YOUR CRAP, and storms away again.",
+    "unchallengedText": "The Scorned Waifu waits with folded arms. Nobody approaches. 'Typical,' she mutters. She pulls out her phone, changes her relationship status to THRIVING, takes fourteen selfies until one looks sufficiently unbothered, and leaves without looking back. She looks back twice.",
+    "description": "A former romantic interest powered entirely by heartbreak, wounded pride, and the supernatural need to prove she has absolutely, definitely, completely moved on."
+  },
+  {
+    "id": "obsessed_yandere",
+    "name": "Obsessed Yandere",
+    "affinity": "primal",
+    "region": "waifu-valley",
+    "enabled": true,
+    "artwork": "bosses/obsessed-yandere_boss.webp",
+    "rewardTable": "standard-scouting-v1",
+    "scoutingText": "A cheerful woman steps from behind a tree carrying flowers, chocolates, and a suspiciously detailed scrapbook. 'There you are!' she squeals. 'I was starting to worry! You normally come through here at 3:17.' She flips open the scrapbook. Today's page already contains a picture of you entering the valley. 'Don't worry, silly. I'm not stalking you. Stalking implies I don't already know where you're going.'",
+    "repelledText": "Her flowers scatter across the ground as she stumbles backward. For one terrible moment, she simply stares. Then her smile returns. 'Awww... our first fight!' she whispers, scribbling something into her scrapbook. 'I'll put this right between FIRST DATE and WEDDING.' She skips away humming your favorite song. You don't remember telling her what it was.",
+    "unchallengedText": "Nobody challenges her. She waits patiently, smiling at absolutely nothing. Eventually she checks a tiny notebook. 'That's okay! You're probably busy.' She crosses out FIND THEM and circles WAIT OUTSIDE THEIR HOUSE. 'See you tonight!'",
+    "description": "A hopeless romantic who has mistaken boundaries for optional side quests. She knows your schedule, your favorite foods, your usual routes, and several things you haven't told anybody yet."
+  },
+  {
+    "id": "the_returned",
+    "name": "The Returned",
+    "affinity": "primal",
+    "region": "waifu-valley",
+    "enabled": true,
+    "artwork": "bosses/the-returned_boss.webp",
+    "rewardTable": "standard-scouting-v1",
+    "scoutingText": "A familiar silhouette steps onto the trail ahead. For a moment, you can't quite place her. Then she smiles. 'Remember me?' Your stomach drops. You released this Waifumon ages ago. She slowly cracks her knuckles. 'You said I was free to go.' Her smile widens. 'You never said I couldn't come back.'",
+    "repelledText": "The Returned staggers backward, battered but still grinning. 'Again?' she laughs. 'You're rejecting me AGAIN?!' She wipes the blood from her lip and begins backing into the wilderness. 'Fine. Go ahead. Run around with your precious Waifus.' Her eyes narrow. 'I'll find you again.'",
+    "unchallengedText": "The Returned waits in the middle of the trail. Eventually she realizes you're not coming. She calmly pulls out a battered notebook filled with maps, sightings, and crossed-out locations. 'Still running, huh?' She circles another spot on the map. 'That's okay. I'm getting really good at finding you.'",
+    "description": "A discarded Waifu who interpreted 'released' less as the end of your relationship and more as the beginning of a very long hunt. She doesn't want another chance. She wants you to remember why throwing away perfectly good Waifus has consequences."
+  },
+  {
+    "id": "major_red_flag",
+    "name": "Major Red Flag",
+    "affinity": "dominant",
+    "region": "waifu-valley",
+    "enabled": true,
+    "artwork": "bosses/major-red-flag_boss.webp",
+    "rewardTable": "standard-scouting-v1",
+    "scoutingText": "A decorated officer marches onto the field, his immaculate uniform covered in medals, ribbons, and an alarming number of literal red flags. He studies your Waifumon and gives an approving nod. 'Excellent. Effective immediately, I'll be assuming command of this relationship.' Another red flag unfurls from his shoulder. 'Don't worry. I'm not controlling.' A second flag pops out. 'I simply know what's best for both of us.' Three more appear.",
+    "repelledText": "Major Red Flag crashes backward as ribbons and tiny crimson banners scatter everywhere. He rises indignantly. 'Unbelievable! This is exactly the kind of insubordination my exes warned me about!' He freezes. 'I mean... that I warned people about my exes.' Another red flag quietly unfurls behind him. He salutes and retreats.",
+    "unchallengedText": "Major Red Flag waits impatiently for someone to submit to his authority. Nobody does. He checks his watch. 'Typical. Nobody respects commitment anymore.' He plants an enormous flag reading I'M ACTUALLY A REALLY NICE GUY and marches away beneath a forest of crimson banners.",
+    "description": "A decorated relationship commander whose medals commemorate campaigns in jealousy, possessiveness, unsolicited phone inspections, and strategic guilt deployment. His red flags are not warnings. He considers them credentials."
+  },
+  {
+    "id": "love_bomber",
+    "name": "The Love Bomber",
+    "affinity": "dominant",
+    "region": "waifu-valley",
+    "enabled": true,
+    "artwork": "bosses/love-bomber_boss.webp",
+    "rewardTable": "standard-scouting-v1",
+    "scoutingText": "A handsome man descends beneath a parachute shaped like a giant heart, scattering roses everywhere. He spots your Waifumon and gasps. 'There she is! My soulmate!' He checks his watch. 'God, these have been the most incredible forty-five seconds of my life.'",
+    "repelledText": "The Love Bomber lands face-first in his own roses. 'Fine! Maybe we ARE moving too fast!' he cries, gathering seventeen unopened gifts. His phone buzzes. He looks at the screen, gasps, and whispers, 'Wait... she's perfect.' He immediately sprints toward someone else.",
+    "unchallengedText": "With nobody around to adore excessively, he arranges flowers, chocolates, jewelry, and a spare apartment key into a heart. After five lonely minutes he whispers, 'I guess she wasn't ready for something real,' and packs everything for the next soulmate.",
+    "description": "A romantic bombardier capable of compressing six months of relationship intensity into approximately four minutes."
+  },
+  {
+    "id": "canuck_chubby_chaser",
+    "name": "The Canuck Chubby Chaser",
+    "affinity": "primal",
+    "region": "waifu-valley",
+    "enabled": true,
+    "artwork": "bosses/canuck-chubby-chaser_boss.webp",
+    "rewardTable": "standard-scouting-v1",
+    "scoutingText": "The Canuck Chubby Chaser bursts from the brush and immediately raises his binoculars. His excitement lasts three seconds. 'Oh, for fuck's sake!' He lowers them in disgust. 'Too skinny, bud! Where's the belly? Where's the thunder thighs? Where are the love handles I was promised?!' He slaps a weathered map covered in increasingly large silhouettes. 'Every time I find my perfect woman, I realize I could go bigger. It's a curse, eh?' He points accusingly at your Waifumon. 'Come back when you've had another poutine!'",
+    "repelledText": "The Canuck goes tumbling through a stack of maple syrup crates and lands flat on his back. He stares at your Waifumon for a long moment before shaking his head. 'Strong, sure... but I know there's a bigger one out there, bud.' He retrieves his binoculars, dusts off his toque, and marches toward the horizon. 'The Great Thicc North waits for no man.'",
+    "unchallengedText": "Hours pass without a single sufficiently thicc Waifu crossing his path. The Canuck lowers his binoculars with a disappointed sigh. 'Not a spare tire in sight, eh?' He studies his map, circles an area labeled HEAVY SIGHTINGS, and shoulders his pack. 'No worries, bud. Somewhere out there, a beautiful woman is absolutely demolishing a pair of yoga pants.'",
+    "description": "A fanatical northern admirer locked in an endless pursuit of greater thiccness. Love handles are landmarks, stretch marks are beauty marks, spare tires are treasures, and thunder thighs are a sacred Canadian resource. Unfortunately, every time he discovers his perfect woman, one terrible thought enters his mind: 'But what if there's a bigger one, eh?'"
   }
 ]
