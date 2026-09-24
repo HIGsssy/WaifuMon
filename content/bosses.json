@@ -245,5 +245,44 @@
     "repelledText": "Captain Casanova goes flying backward into his transporter beam. 'Okay!' he shouts, hurriedly fixing his uniform. 'Strong, beautiful, AND completely uninterested!' His smile returns. 'God, I love space.' He taps his communicator. 'Beam me up. And find me a planet with slightly lower standards.'",
     "unchallengedText": "Captain Casanova waits several minutes before checking his communicator. 'Computer, scan nearby systems for intelligent life.' A robotic voice answers: 'Specify parameters.' He clears his throat. 'Female. Adult. Single.' The computer pauses. 'Captain, this is the fourth search today.' He sighs. 'Just run the scan.'",
     "description": "A legendary space captain whose official mission is peaceful galactic exploration and whose unofficial mission is discovering whether every intelligent species in the universe is into him. His diplomatic record is surprisingly impressive. His child-support situation is classified."
+  },
+  {
+    "id": "the_danestroyer",
+    "name": "The Danestroyer",
+    "affinity": "primal",
+    "region": "waifu-valley",
+    "enabled": true,
+    "artwork": "bosses/the-danestroyer_boss.webp",
+    "rewardTable": "standard-scouting-v1",
+    "scoutingText": "A thunderous screech echoes across the trail. A Danish woman in a cowboy hat comes charging toward you on the back of a raptor, one hand gripping the reins and the other brandishing a knife. She skids to a stop beside you. 'Nobody move!' she shouts. 'Wallets stay where they are. Jewelry too. I want the energy drinks.' The raptor growls. She points the knife at your bag. 'Don't make this weird. Hand over the caffeine.'",
+    "repelledText": "The Danestroyer tumbles from the saddle and lands flat on her back. Her raptor immediately leans down and steals an energy drink from her belt. She stares at it in disbelief. 'Are you fucking serious?' The raptor punctures the can with one claw. 'THAT WAS MY LAST ONE!' She completely forgets about you and chases it into the distance.",
+    "unchallengedText": "The Danestroyer searches your supplies while her raptor watches impatiently. 'Water... juice... coffee...' Her expression grows increasingly disgusted. 'What kind of operation are you running here?' She finds a single energy drink buried at the bottom of your bag. Her eyes light up. 'HA!' She snatches it, tips her cowboy hat, and rides away yelling, 'YOU'VE BEEN DANESTROYED!'",
+    "description": "A prickly Danish outlaw who roams the frontier atop a questionably domesticated raptor, robbing travelers exclusively for energy drinks. Armed with several knives, an unreasonable amount of confidence, and absolutely no interest in your money, The Danestroyer is believed to be responsible for caffeine shortages across three regions."
+  },
+  {
+    "id": "sergeant_snuggle",
+    "name": "Sergeant Snuggle",
+    "affinity": "caregiver",
+    "region": "waifu-valley",
+    "enabled": true,
+    "artwork": "bosses/sergeant-snuggle_boss.webp",
+    "rewardTable": "standard-scouting-v1",
+    "scoutingText": "A massive combat medic stomps onto the trail and immediately begins inspecting your Waifumon. 'When did you last eat?' she demands. Your Waifumon shrugs. Sergeant Snuggle's eye twitches. 'Hydration?' Another shrug. 'SLEEP?!' Silence. She slowly removes her medical gloves. 'Alright, sweetheart. We can do this the easy way...' She cracks her knuckles. '...or Sergeant Snuggle can fucking tuck you in herself.'",
+    "repelledText": "Sergeant Snuggle crashes backward through a medical supply crate. She sits up, checks herself for injuries, then immediately points at your Waifumon. 'Good hit! Excellent follow-through!' She reaches into her vest and throws her a protein bar. 'NOW EAT THAT. YOU'RE LOOKING PALE.' She retreats while angrily reminding everyone to stretch.",
+    "unchallengedText": "Nobody challenges her. Sergeant Snuggle narrows her eyes. 'Too tired to fight, huh?' Twenty minutes later, everyone nearby has been issued water, a hot meal, clean socks, sunscreen, and a mandatory eight-hour sleep schedule. Satisfied, she shoulders her medical bag. 'Good. Proud of you, sweethearts.'",
+    "description": "A hulking combat medic whose bedside manner consists of aggressive affection, mandatory hydration, and carrying exhausted soldiers to bed whether they consent to being stubborn or not. Sergeant Snuggle has never lost a patient, an argument about bedtime, or an opportunity to ask if you've eaten today."
+  },
+  {
+    "id": "corporal_punishment",
+    "name": "Corporal Punishment",
+    "affinity": "dominant",
+    "region": "waifu-valley",
+    "enabled": true,
+    "artwork": "bosses/corporal-punishment_boss.webp",
+    "rewardTable": "standard-scouting-v1",
+    "scoutingText": "Heavy boots approach from the darkness. A scarred woman in black tactical gear steps into view, slowly tightening her gloves. 'Littering. Jaywalking. Failure to return a shopping cart.' She unfolds a crumpled list and looks directly at you. 'And turning waifumon into essence?.' Her jaw clenches. 'I've seen enough.'",
+    "repelledText": "Corporal Punishment crashes through a stack of crates and slowly drags herself upright. 'Not bad.' She wipes a smear of dirt from her cheek and points at you. 'But resisting punishment is another infraction.' She adds something to her list. 'We'll discuss it next time.' Then she disappears into the shadows.",
+    "unchallengedText": "With nobody foolish enough to challenge her, Corporal Punishment scans the area for criminal activity. Her eyes suddenly narrow. 'Son of a bitch.' She marches toward the parking lot. Someone has left a shopping cart beside the return corral. 'We've got a runner.'",
+    "description": "A grim one-woman war on minor inconveniences. Corporal Punishment brings the intensity of an elite vigilante to littering, bad parking, loud phone conversations, expired coupons, and every other offense she personally considers punishable by tactical intervention."
   }
 ]
