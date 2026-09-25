@@ -362,5 +362,18 @@
     "repelledText": "The Canuck goes tumbling through a stack of maple syrup crates and lands flat on his back. He stares at your Waifumon for a long moment before shaking his head. 'Strong, sure... but I know there's a bigger one out there, bud.' He retrieves his binoculars, dusts off his toque, and marches toward the horizon. 'The Great Thicc North waits for no man.'",
     "unchallengedText": "Hours pass without a single sufficiently thicc Waifu crossing his path. The Canuck lowers his binoculars with a disappointed sigh. 'Not a spare tire in sight, eh?' He studies his map, circles an area labeled HEAVY SIGHTINGS, and shoulders his pack. 'No worries, bud. Somewhere out there, a beautiful woman is absolutely demolishing a pair of yoga pants.'",
     "description": "A fanatical northern admirer locked in an endless pursuit of greater thiccness. Love handles are landmarks, stretch marks are beauty marks, spare tires are treasures, and thunder thighs are a sacred Canadian resource. Unfortunately, every time he discovers his perfect woman, one terrible thought enters his mind: 'But what if there's a bigger one, eh?'"
+  },
+  {
+    "id": "candy_planet_queen",
+    "name": "Candy Planet Queen",
+    "affinity": "dominant",
+    "region": "waifu-valley",
+    "enabled": true,
+    "artwork": "bosses/candy-planet-queen_boss.webp",
+    "rewardTable": "standard-scouting-v1",
+    "scoutingText": "A candy-striped royal procession blocks your path as the Candy Planet Queen lounges atop her sugary throne. She points her lollipop scepter toward your supplies. 'Candy. Chocolate. Cookies. Hand them over.' Her eyes suddenly drift toward your Waifumon. She gasps. 'Oh my GOD. She's adorable.' The Queen rises immediately. 'Actually, I'll take her too. She looks sweet.'",
+    "repelledText": "The Candy Planet Queen crashes backward into a mountain of frosting. She emerges moments later covered in sprinkles, absolutely furious. 'FINE! Keep your stupid candy!' She points accusingly at your Waifumon. 'And YOU! Stop being so damn sweet-looking if you're not willing to be confiscated!' She stuffs two emergency cupcakes into her pockets and retreats toward her palace.",
+    "unchallengedText": "The Candy Planet Queen raids your supplies with ruthless efficiency. Chocolate disappears. Gummies vanish. Cookies are seized in the name of the crown. She reaches your Waifumon, pauses, and thoughtfully pokes her cheek. 'Hmm. Definitely sweet.' Your Waifumon slaps her hand away. The Queen gasps. 'RUDE!' She grabs one last candy bar and storms back toward her castle.",
+    "description": "The spoiled ruler of an entire planet made of candy, where every cookie, cake, chocolate bar, gummy, pastry, and suspiciously sweet-looking Waifumon is legally considered property of the crown. She doesn't need your candy. She owns mountains of it. But she just wants it."
   }
 ]
