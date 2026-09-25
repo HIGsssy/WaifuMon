@@ -2,9 +2,9 @@
   "region": "flaccid-foothills",
   "expeditions": [
     {
-      "key": "foothills_cairn_line_walk",
-      "name": "Cairn Line Walk",
-      "description": "Every ridge up here looks like the last one, and the locals navigate by which cairn is leaning. Walk the line from the third switchback to the saddle, straighten what has drifted, and write down what has gone missing since spring.",
+      "key": "foothills_milked_by_hand",
+      "name": "Milked By Hand",
+      "description": "The hillside dairy, the hour before the tanker comes. Nothing up there is finished off by machine — it has to be done by hand, and she is not to stop until it is empty.",
       "emoji": "🧭",
       "type": "scouting",
       "durationMinutes": 60,
@@ -20,9 +20,9 @@
       "enabled": true
     },
     {
-      "key": "foothills_hayloft_turn",
-      "name": "Hayloft Turn",
-      "description": "The whole loft has to come down, get turned, and go back up before the damp gets into the middle of it. It is four hours of work, one hour of which is waking the farmhand who is asleep in it.",
+      "key": "foothills_up_to_her_thighs",
+      "name": "Up To Her Thighs",
+      "description": "Into the bog for the one hour the water drops. She wades in to the thigh, brings out whatever the swamp hands over, and does not complain about what it does to her clothes — it has taken payment in complaining girls before.",
       "emoji": "🌾",
       "type": "supply_run",
       "durationMinutes": 60,
@@ -38,9 +38,9 @@
       "enabled": true
     },
     {
-      "key": "foothills_courier_relay",
-      "name": "Courier Relay",
-      "description": "Through-road parcels change hands at the leaning cairn and nowhere else. Take the westbound sack, hand over the eastbound, sign both books — and do not read the docket on the one that has been going back and forth since March.",
+      "key": "foothills_hour_it_takes",
+      "name": "The Hour It Takes",
+      "description": "Into the treeline to negotiate passage for the wagon train. Whatever lives in there will not take coin, will not take grain, and has never been talked out of taking a girl for the hour instead — so she goes in and gives it the hour.",
       "emoji": "📦",
       "type": "diplomacy",
       "durationMinutes": 60,
@@ -56,9 +56,9 @@
       "enabled": true
     },
     {
-      "key": "foothills_orchard_dawn_pick",
-      "name": "Orchard Dawn Pick",
-      "description": "The valley apples ripen toward the first light, which means the entire crop comes good within about six hours of each other and nobody in four generations has solved this. Pick from full dark until the sun clears the ridge.",
+      "key": "foothills_low_hanging_fruit",
+      "name": "Low-Hanging Fruit",
+      "description": "Into the orchard for the three hours before sunrise. Everything worth taking grows low, comes off by hand, and is finished on the knees — she works the row that way, and the farmer keeps only girls who clear it unaided.",
       "emoji": "🍎",
       "type": "supply_run",
       "durationMinutes": 180,
@@ -74,9 +74,9 @@
       "enabled": true
     },
     {
-      "key": "foothills_quarry_night_shift",
-      "name": "Quarry Night Shift",
-      "description": "The gravel beds are still worked after dark by a harvester nobody has switched off in nine years. It does not need help and it does not want conversation. It needs somebody standing where it can see them, or it stops.",
+      "key": "foothills_elbow_deep",
+      "name": "Elbow Deep",
+      "description": "Down the new shaft for the night shift. Three hours, no breaks, and she will be elbow deep in it before the first one is done — the crew above bores without stopping and does not ask, and nothing on that rig is built for comfort.",
       "emoji": "⛏️",
       "type": "excavation",
       "durationMinutes": 180,
@@ -92,9 +92,9 @@
       "enabled": true
     },
     {
-      "key": "foothills_circus_load_out",
-      "name": "Circus Load-Out",
-      "description": "The show strikes its tent at midnight and the road down is the one nobody warns you about. Walk the wagons to the flat, keep the ringmaster talking the whole way, and check the count at the bottom against the count at the top.",
+      "key": "foothills_standing_orders",
+      "name": "Standing Orders",
+      "description": "Work the circus troupe for the three hours before the tent opens. Nothing in this valley stands up on its own and they are the worst of it — she takes them one at a time, and anyone who goes soft on her answers to her for it.",
       "emoji": "🎪",
       "type": "escort",
       "durationMinutes": 180,
@@ -110,9 +110,9 @@
       "enabled": true
     },
     {
-      "key": "foothills_bog_button_dredge",
-      "name": "Bog Button Dredge",
-      "description": "The bog at the bottom of the switchbacks pays the witch's rent in lost buttons and old coins, and it has been collecting since before there was a road to lose things off. Wade the shallows on a falling water table and bring up what it is willing to part with.",
+      "key": "foothills_flooded_cellar",
+      "name": "The Flooded Cellar",
+      "description": "Down the sinkhole for six hours of free-diving in the dark. There is a cellar down there belonging to a house nobody will admit to remembering, and the water is cold enough that she is out of everything she owns in two minutes.",
       "emoji": "🫧",
       "type": "salvage_dive",
       "durationMinutes": 360,
@@ -128,9 +128,9 @@
       "enabled": true
     },
     {
-      "key": "foothills_dusk_roll_call",
-      "name": "Dusk Roll Call",
-      "description": "The gravekeeper reads every name on the wall between dusk and the other side, out loud, once a season. It takes six hours and it cannot be done alone: somebody has to stand at the far end and answer 'here' for the ones who cannot.",
+      "key": "foothills_answer_for_the_dead",
+      "name": "Answer For The Dead",
+      "description": "Stand at the far end of the grave wall while the keeper reads every name out loud, and answer for the ones who cannot. Keep answering once the row is no longer empty — some of them come back wanting more than an answer.",
       "emoji": "🪦",
       "type": "diplomacy",
       "durationMinutes": 360,
@@ -146,9 +146,9 @@
       "enabled": true
     },
     {
-      "key": "foothills_ballast_drop_watch",
-      "name": "Ballast Drop Watch",
-      "description": "Cloud-kingdom freighters shed weight over the foothills because the tariff is calculated at the pass and not a mile before it. Be out under it all night with a lamp and a chalk line, mark where each one lands, and reach it before the farmers do.",
+      "key": "foothills_on_the_clock",
+      "name": "On The Clock",
+      "description": "Out on the hill road to work the night — one booking after the next, every camp along the switchbacks taking whoever is still on her feet. On the clock from the gate, payment up front, and nobody finishes before she does.",
       "emoji": "🪂",
       "type": "escort",
       "durationMinutes": 1080,
@@ -164,9 +164,9 @@
       "enabled": true
     },
     {
-      "key": "foothills_off_season_drill",
-      "name": "Off-Season Drill",
-      "description": "The ridge patrol keeps no off-season, which is precisely how the ridge patrol stays the ridge patrol. Eighteen hours of switchbacks and tall grass, being corrected about your footing by somebody carrying a spear and no opinions whatsoever about your feelings.",
+      "key": "foothills_bad_dragon",
+      "name": "Bad Dragon",
+      "description": "Into the rolling hills to search for an object the foothills have officially declared does not exist. If she finds it, she is not to try it on and not to let it enter her, however nicely it asks.",
       "emoji": "🏋️",
       "type": "scouting",
       "durationMinutes": 1080,

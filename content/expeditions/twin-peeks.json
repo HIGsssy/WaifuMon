@@ -2,9 +2,9 @@
   "region": "twin-peeks",
   "expeditions": [
     {
-      "key": "peeks_fog_line_delivery",
-      "name": "Fog Line Delivery",
-      "description": "The ridge road's mailboxes stop where the fog starts. Past that, everything is hand-carried to the door, and nobody up there signs for anything. Six parcels, four houses, and one of the four will want to talk.",
+      "key": "peeks_fifteen_minutes_a_house",
+      "name": "Fifteen Minutes A House",
+      "description": "Up the ridge road with the bathhouse's afternoon bookings: four houses, one hour of fog, fifteen minutes each. Nobody up there ordered a parcel, and she does not come down until the fourth has finished with her.",
       "emoji": "🌫️",
       "type": "supply_run",
       "durationMinutes": 60,
@@ -28,9 +28,9 @@
       "enabled": true
     },
     {
-      "key": "peeks_bathhouse_turnover",
-      "name": "Bathhouse Turnover",
-      "description": "Between the morning soak and the afternoon one, the whole house has to be drained, scrubbed, refilled and got warm again. The regulars will be waiting at the door the entire time. The regulars do not queue.",
+      "key": "peeks_on_her_knees",
+      "name": "On Her Knees",
+      "description": "Turn the bathhouse over in the one hour between soaks — drain it, scrub it, refill it, and have it hot before the regulars are back at the door. She spends the hour on her knees, and no regular arriving early gets turned away.",
       "emoji": "♨️",
       "type": "supply_run",
       "durationMinutes": 60,
@@ -57,9 +57,9 @@
       "enabled": true
     },
     {
-      "key": "peeks_overlook_sweep",
-      "name": "Overlook Sweep",
-      "description": "Someone has been leaving things at the east overlook. Not litter — arranged. Get up there before the fog closes, write down what is there and where, and do not rearrange any of it.",
+      "key": "peeks_follow_the_scent",
+      "name": "Follow The Scent",
+      "description": "One hour of fog on the ridge: find whatever leaves that scent on the north saddle and log where it beds down. Do not announce herself, do not touch it, and do not stay once she finds the den, however glad of the company.",
       "emoji": "🔭",
       "type": "scouting",
       "durationMinutes": 60,
@@ -87,9 +87,9 @@
       "enabled": true
     },
     {
-      "key": "peeks_ridge_road_diner_shift",
-      "name": "Ridge Road Diner Shift",
-      "description": "The pie is the same at all four diners on this road and every owner will explain at length why theirs is not. Cover the counter through the fog hour, agree with every single one of them, and sign for the delivery that arrives with no name on the docket.",
+      "key": "peeks_cream_pie_shift",
+      "name": "The Cream Pie Shift",
+      "description": "Hold the counter at the ridge road diner, agree with all four owners about whose pie is best, and sign for the delivery that arrives with no name on the docket. The special sells out nightly, and free slices are hers to hand out.",
       "emoji": "🥧",
       "type": "diplomacy",
       "durationMinutes": 180,
@@ -117,9 +117,9 @@
       "enabled": true
     },
     {
-      "key": "peeks_slope_patrol",
-      "name": "Slope Patrol",
-      "description": "Sweep the runs from the last lift to full dark, count everybody down, and get the one who ducked the rope back over it before the snow starts moving. She knows the rope was there. She will not thank you.",
+      "key": "peeks_steep_and_deep",
+      "name": "Steep And Deep",
+      "description": "Down the mountain with the après-ski crowd — three hours of cocoa and one girl who swears she can take a double black in the dark. Get them all to the lodge; anyone after something steep and deep can have it indoors, on her back.",
       "emoji": "🏂",
       "type": "escort",
       "durationMinutes": 180,
@@ -147,9 +147,9 @@
       "enabled": true
     },
     {
-      "key": "peeks_mineral_works_night_draw",
-      "name": "Mineral Works Night Draw",
-      "description": "The spring works draws its richest water between midnight and six, when there is nobody queueing for it and nobody watching the gauges. Mind the valves, bottle what comes up, and do not ask about the second pipe.",
+      "key": "peeks_warmer_the_deeper_you_go",
+      "name": "Warmer The Deeper You Go",
+      "description": "Down through the ice to the spring the resort does not put on its maps. Six hours of digging, and the deeper she gets the warmer it comes — coat, thermals, the lot, all of it off before she reaches water.",
       "emoji": "💧",
       "type": "excavation",
       "durationMinutes": 360,
@@ -177,9 +177,9 @@
       "enabled": true
     },
     {
-      "key": "peeks_house_that_never_answers",
-      "name": "The House That Never Answers",
-      "description": "Third property past the switchback. Lights on every night for a year, mail uncollected for just as long. The town would like somebody to knock properly, wait the full hour, and come back able to say what they saw.",
+      "key": "peeks_collared_six_hours",
+      "name": "Collared, Six Hours",
+      "description": "Collared and handed over for six hours. The house past the switchback pays triple for a girl who does not argue, does not look away, and does not ask what the bell by the door is for. She leaves her name at the door on the way out.",
       "emoji": "🚪",
       "type": "diplomacy",
       "durationMinutes": 360,
@@ -206,9 +206,9 @@
       "enabled": true
     },
     {
-      "key": "peeks_fog_bank_vigil",
-      "name": "Fog Bank Vigil",
-      "description": "Sit the north saddle from dusk to noon and log everything that crosses the line. Most of it is weather. The log has a second column for the rest, which means somebody has had to fill that column in before.",
+      "key": "peeks_bedside_manner",
+      "name": "Bedside Manner",
+      "description": "Long-term placement, no early release: tend a guest who has not left his bed in a month and will not say what is wrong with him. Water, blankets, and whatever else he works up the nerve to ask for. Nothing gets logged.",
       "emoji": "🌁",
       "type": "scouting",
       "durationMinutes": 1080,
@@ -237,9 +237,9 @@
       "enabled": true
     },
     {
-      "key": "peeks_avalanche_shed_dig",
-      "name": "Avalanche Shed Dig",
-      "description": "The upper shed took the slide in March and nobody has been up since the road reopened. A full night and a morning of digging gets the equipment out — and whatever the mountain packed in beside it on the way down.",
+      "key": "peeks_down_until_told_otherwise",
+      "name": "Down Until Told Otherwise",
+      "description": "Down a shaft that has to be cleared by hand — eighteen hours on her knees in the dark, somebody up top who will not stop her until she is finished, and no questions about what it is for. She comes up when told to.",
       "emoji": "🏔️",
       "type": "excavation",
       "durationMinutes": 1080,

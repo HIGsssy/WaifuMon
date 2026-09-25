@@ -305,7 +305,7 @@ describe('ExpeditionsConfigSchema', () => {
  *
  * Both halves matter. Weighted quantity variants of one item are a real
  * authoring device, so the schema must keep accepting them — but the Undercity
- * Dive bonus table shipped with `moonlit_perfume_vial` at two quantities
+ * Dive bonus table shipped with `chewed_gag_ball` at two quantities
  * because an entry copied from another group never had its item changed, and
  * nothing said a word. The warning is the word.
  */
@@ -1019,8 +1019,8 @@ describe('Waifu Valley reward scaling', () => {
   /**
    * Rare rewards are **not** part of the WBe budget, and must not be used to
    * compensate for a smaller one. The Mythic Contract is a Waifu Valley hook
-   * that happens on an Undercity Dive and nowhere else; the Prismatic Charm is
-   * a Last Train curio. Both are gated behind an Exceptional result *and* a
+   * that happens on Going Down and nowhere else; the Prismatic Charm is a
+   * What Opens After Dark curio. Both are gated behind an Exceptional result *and* a
    * low basis-point roll, and the product of those two is what makes them feel
    * like a story rather than a drop rate.
    */
@@ -1036,8 +1036,8 @@ describe('Waifu Valley reward scaling', () => {
     };
     // Both well under one in a hundred runs of the mission that carries them.
     for (const [key, itemId] of [
-      ['valley_undercity_dive', 'mythic_contract'],
-      ['valley_last_train_vigil', 'prismatic_charm'],
+      ['valley_going_down', 'mythic_contract'],
+      ['valley_what_opens_after_dark', 'prismatic_charm'],
     ] as const) {
       const p = rate(key, itemId);
       expect(p).toBeGreaterThan(0);
@@ -1048,7 +1048,7 @@ describe('Waifu Valley reward scaling', () => {
   /**
    * The Undercity bug, pinned open.
    *
-   * `valley-undercity-dive-bonus-v3` shipped with `moonlit_perfume_vial` twice
+   * `valley-undercity-dive-bonus-v3` shipped with `chewed_gag_ball` twice
    * in its `rare-find` group — at quantity 2 (weight 60) and quantity 1
    * (weight 15) — because the group was copied from the success table's
    * `flooded-cache` and the third entry's item was never changed back to
@@ -1178,12 +1178,12 @@ describe('Twin Peeks reward scaling', () => {
 
   /** Twin Peeks' own salvage set. Nothing here may come from the Valley. */
   const PEEKS_SALVAGE = [
-    'ridge_road_postcard',
-    'bathhouse_locker_token',
-    'chipped_enamel_pie_plate',
-    'snapped_board_binding',
-    'survey_flag_bundle',
-    'geothermal_core_sample',
+    'frozen_cum_rag',
+    'stained_damp_towel',
+    'licked_clean_pie_tin',
+    'ripped_leggings',
+    'thawed_onahole',
+    'threadworn_love_glove',
   ] as const;
 
   const peeksTables = peeks.flatMap((e) =>
@@ -1554,7 +1554,7 @@ describe('Twin Peeks reward scaling', () => {
     expect(nonSalvage).toBeGreaterThanOrEqual(6);
 
     // The chase itself, named so it cannot be quietly retuned or dropped.
-    const dig = peeks.find((e) => e.key === 'peeks_avalanche_shed_dig')!;
+    const dig = peeks.find((e) => e.key === 'peeks_down_until_told_otherwise')!;
     const chase = rate(dig, 'full_body_massage');
     expect(chase).toBeGreaterThan(0.001);
     expect(chase).toBeLessThan(0.006);
@@ -1885,12 +1885,12 @@ describe('Flaccid Foothills reward scaling', () => {
 
   /** Foothills' own salvage set. Nothing here may come from another region. */
   const FOOTHILLS_SALVAGE = [
-    'split_fence_rail',
-    'undelivered_wax_seal',
-    'quarry_grit_pouch',
-    'leaning_cairn_stone',
-    'orchard_brandy_jar',
-    'skyfreight_ballast_weight',
+    'rusted_anal_beads',
+    'snapped_cock_ring',
+    'weighted_ball_stretcher',
+    'broken_penis_pump',
+    'sweat_stained_leather_harness',
+    'dropped_chastity_cage',
   ] as const;
 
   const tablesOf = (pool: readonly LoadedContent['expeditions'][number][]) =>
@@ -2206,7 +2206,7 @@ describe('Flaccid Foothills reward scaling', () => {
     }
 
     // The chase itself, named so it cannot be quietly retuned away.
-    const drill = foothills.find((e) => e.key === 'foothills_off_season_drill')!;
+    const drill = foothills.find((e) => e.key === 'foothills_bad_dragon')!;
     const chase = rate(drill, 'trophy_wife_charm');
     expect(chase).toBeGreaterThan(0.001);
     expect(chase).toBeLessThan(0.006);
@@ -2288,12 +2288,12 @@ describe('Thirstlands reward scaling', () => {
 
   /** The region's own salvage, in ladder order. Named so it cannot drift. */
   const THIRSTLANDS_SALVAGE = [
-    'spent_blasting_cap',
-    'dust_choked_rig_filter',
-    'sand_scoured_bearing',
-    'surveyors_brass_dial',
-    'strongbox_hinge_plate',
-    'canyon_cut_gemstone',
+    'blown_out_fleshlight',
+    'dust_caked_blindfold',
+    'sand_scoured_nipple_clamps',
+    'sun_bleached_strap_on',
+    'dried_up_lube_bottle',
+    'sun_cracked_flogger',
   ] as const;
 
   /**
@@ -2849,7 +2849,7 @@ describe('Thirstlands reward scaling', () => {
 
     // The one piece of Thirstlands shop stock a mission can produce, named so
     // it cannot be quietly widened.
-    const wake = thirstlands.find((e) => e.key === 'thirst_procession_wake')!;
+    const wake = thirstlands.find((e) => e.key === 'thirst_headfirst')!;
     const collar = rate(wake, 'claim_collar');
     expect(collar).toBeGreaterThan(0.001);
     expect(collar).toBeLessThan(0.008);
@@ -2862,11 +2862,10 @@ describe('Thirstlands reward scaling', () => {
   /**
    * The breadcrumbs stay breadcrumbs.
    *
-   * These missions talk about a chart that stops at a junction, a component
-   * the mechanic cannot place, a writ with a name crossed out twice and a
-   * caravan whose rings you leave where they are. None of that is an item,
-   * and it must not become one by accident before key items, equipment and
-   * the encounter-gating language exist. Until then, everything this region
+   * Whatever these missions allude to — a writ with a name crossed out twice,
+   * a shipment the flood took under — is not an item, and it must not become
+   * one by accident before key items, equipment and the encounter-gating
+   * language exist. Until then, everything this region
    * hands over is ordinary sellable salvage a player can vendor without ever
    * having destroyed a key.
    */
@@ -2883,11 +2882,6 @@ describe('Thirstlands reward scaling', () => {
           expect(item.explicitlySellable ?? false, item.slug).toBe(false);
         }
       }
-    }
-    // And the fiction is carried by the missions, not by inert objects.
-    const prose = thirstlands.map((e) => `${e.name} ${e.description}`.toLowerCase()).join(' ');
-    for (const thread of ['chart', 'writ', 'not built anywhere', 'rings']) {
-      expect(prose, thread).toContain(thread);
     }
   });
 

@@ -1284,7 +1284,7 @@ function warnOnEnabledEquipment(items: LoadedContent['items'], logger: Logger): 
  * the mistake.
  *
  * But it is worth a line, because the mistake it catches is real and quiet.
- * `valley-undercity-dive-bonus-v3` shipped with `moonlit_perfume_vial` at
+ * `valley-undercity-dive-bonus-v3` shipped with `chewed_gag_ball` at
  * quantity 2 (weight 60) *and* quantity 1 (weight 15) in its `rare-find`
  * group: a copy of the success table's `flooded-cache` group in which the
  * third entry's item was never changed from the one above it. The table

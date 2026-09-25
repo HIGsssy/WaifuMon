@@ -194,10 +194,13 @@ export function effectConfigSchemaFor(effectType: ItemEffectType): ItemEffectCon
  *     nothing and are silently skipped.
  *
  * A slug therefore does not have to match the display name and should not be
- * kept in step with it — `sand_scoured_bearing` may quite happily be called
- * anything at all. There is no alias layer and none is planned; renaming a
- * shipped slug would need a deliberate data migration, so treat the ones
- * already out there as fixed and get new ones right before they ship.
+ * kept in step with it — `sand_scoured_nipple_clamps` may quite happily be
+ * called anything at all. There is no alias layer and none is planned; renaming
+ * a shipped slug needs a deliberate data migration that renames the `items`
+ * row in place (keeping its id) before the seeder runs, and rewrites every
+ * frozen copy listed above. `drizzle/0040_salvage_slug_rename.sql` is the
+ * worked example. Treat the ones already out there as fixed unless that cost
+ * is worth paying, and get new ones right before they ship.
  */
 const ItemBaseSchema = z.object({
   /** Immutable after deployment. See the block above. */
@@ -2107,8 +2110,8 @@ const WORLD_ENCOUNTER_DEFAULT: z.input<typeof WorldEncounterConfigSchema> = {
  *
  * Each authored region carries a rare "chase" drop that gives its Exceptional
  * results a recognisable identity — Waifu Valley's Mythic Contract on the
- * Undercity Dive, Twin Peeks' Full Body Massage in the treatment room the
- * avalanche buried.
+ * Going Down mission, Twin Peeks' Full Body Massage on Down Until Told
+ * Otherwise.
  *
  * **An item may have more than one acquisition path**, and a chase reward does
  * not have to be an item invented for the purpose. Minting a new and

@@ -2,9 +2,9 @@
   "region": "thirstlands",
   "expeditions": [
     {
-      "key": "thirst_claim_line_shift",
-      "name": "Claim Line Shift",
-      "description": "One shift on the canyon claims, swinging at a seam three employers have already written off. Whatever comes out of the hole gets split with the crew, and the crew counts fast.",
+      "key": "thirst_goblin_shift",
+      "name": "The Goblin Shift",
+      "description": "One hour's shift on a canyon claim with the goblin crew. They count every stroke out loud and split the take by whoever is still swinging at the bell — so she keeps up, does not go shy, and does not complain about the crowd.",
       "emoji": "🪨",
       "type": "excavation",
       "durationMinutes": 60,
@@ -20,9 +20,9 @@
       "enabled": true
     },
     {
-      "key": "thirst_water_haul",
-      "name": "Water Haul",
-      "description": "Six drums from the deep cistern up to the rim camps before the heat turns the road to glass. Water is worth more than ore out here, and everybody on that road knows exactly what you are carrying.",
+      "key": "thirst_wet_cargo",
+      "name": "Wet Cargo",
+      "description": "Six drums of water up to the rim camps before the heat turns the road to glass. The orc crews there have been dry a week, and she names her own price — they have no coin, and pay in the only currency they have.",
       "emoji": "🛢️",
       "type": "supply_run",
       "durationMinutes": 60,
@@ -38,9 +38,9 @@
       "enabled": true
     },
     {
-      "key": "thirst_filter_run",
-      "name": "Filter Run",
-      "description": "The canyon-floor garage wants every rig checked before the dust season, which means crawling under twelve of them and arguing with eleven owners. What comes out of the housings is yours to sell.",
+      "key": "thirst_line_them_up",
+      "name": "Line Them Up",
+      "description": "Down at the canyon checkpoint for the hour the goblin crews come off shift. Every last one of them gets checked before he goes home, and she is the one holding the whip — nobody steps out of that line without her say-so.",
       "emoji": "🌪️",
       "type": "scouting",
       "durationMinutes": 60,
@@ -56,9 +56,9 @@
       "enabled": true
     },
     {
-      "key": "thirst_lantern_walk_survey",
-      "name": "Lantern-Walk Survey",
-      "description": "Walk the lantern-walk as far as the third junction and write down whatever the light reaches. The surveyor's chart stops there with a note in the margin, and the note is not a measurement.",
+      "key": "thirst_posted_alone",
+      "name": "Posted Alone",
+      "description": "Down the caravan route, scouting the waystations one at a time. Every man posted on that road has been alone for a season, and each gets the same treatment: water checked, lines of sight checked, and she stays as long as he needs her.",
       "emoji": "🕯️",
       "type": "scouting",
       "durationMinutes": 180,
@@ -74,9 +74,9 @@
       "enabled": true
     },
     {
-      "key": "thirst_rig_recovery_circuit",
-      "name": "Rig Recovery Circuit",
-      "description": "Three rigs died on the canyon floor this month and the garage wants them stripped before the sand does it for nothing. The mechanic asks you to set aside anything you cannot name — she says the last one was not built anywhere she knows.",
+      "key": "thirst_dig_it_out",
+      "name": "Dig It Out",
+      "description": "Dig out a shaft the old crews sealed and walked away from — three hours of it, with the orcs on the next claim working the same seam and getting nowhere. Whatever is down there was buried for a reason.",
       "emoji": "🔧",
       "type": "excavation",
       "durationMinutes": 180,
@@ -92,9 +92,9 @@
       "enabled": true
     },
     {
-      "key": "thirst_badlands_writ_service",
-      "name": "Badlands Writ Service",
-      "description": "Ride out with a bounty writ, a lens that ticks, and a name that has been crossed out and rewritten twice. Serving it is the easy part — the office pays by what you bring back, and half of what you bring back was never the mark's.",
+      "key": "thirst_writ_served_warm",
+      "name": "Writ, Served Warm",
+      "description": "Out into the badlands to serve a writ on a name crossed out and rewritten twice. The office pays by what she brings back, and the mark is only worth the fee — so she takes whatever else she wants off him first, then brings him in.",
       "emoji": "📜",
       "type": "diplomacy",
       "durationMinutes": 180,
@@ -110,9 +110,9 @@
       "enabled": true
     },
     {
-      "key": "thirst_unrefiled_claim",
-      "name": "The Claim Nobody Refiled",
-      "description": "The paperwork lapsed nine years ago and nobody has walked down to say why. The shaft is still shored, the lamps are still hung, and the tools are still lying where somebody set them down mid-shift.",
+      "key": "thirst_still_shored_still_hung",
+      "name": "Still Shored, Still Hung",
+      "description": "Down a claim nobody has refiled in nine years. The shaft is still shored, the lamps still hung, the tools where the last crew set them down mid-shift — anything she finds is hers, anything still standing is left standing.",
       "emoji": "🕳️",
       "type": "excavation",
       "durationMinutes": 360,
@@ -128,9 +128,9 @@
       "enabled": true
     },
     {
-      "key": "thirst_wreck_field_salvage",
-      "name": "Wreck Field Salvage",
-      "description": "A day in the wreck field under the switchback, where every rig that ever lost an argument with the canyon ended up. Bring shade, bring water, and bring something to carry the good parts out in.",
+      "key": "thirst_stripped_to_the_frame",
+      "name": "Stripped To The Frame",
+      "description": "Into the desert wreck field to bring the medic back what she needs. Nothing comes home unless it is stripped to the frame, and every piece gets handed over in person — she has firm opinions about how salvage is presented to her.",
       "emoji": "🛞",
       "type": "salvage_dive",
       "durationMinutes": 360,
@@ -146,9 +146,9 @@
       "enabled": true
     },
     {
-      "key": "thirst_dune_road_nightwatch",
-      "name": "Dune Road Nightwatch",
-      "description": "Sit the night out with a wagon train on the dune roads, last light to first. The captain wants somebody awake who will not sing back at whatever is singing, and who will sign for whatever the verge gives up before dawn.",
+      "key": "thirst_dont_sing_back",
+      "name": "Don't Sing Back",
+      "description": "Out with a wagon train on the dune roads. The captain wants somebody awake who will not sing back at whatever sings out there, and who is willing to keep the men warm in the wagons instead — nothing else out here does.",
       "emoji": "🌙",
       "type": "escort",
       "durationMinutes": 1080,
@@ -164,9 +164,9 @@
       "enabled": true
     },
     {
-      "key": "thirst_procession_wake",
-      "name": "The Procession's Wake",
-      "description": "A whole night and a day digging out a caravan the bride's procession put under, working down through a deck the sand has welded shut. The old hands have one rule about the wake: take the cargo, leave the rings.",
+      "key": "thirst_headfirst",
+      "name": "Headfirst",
+      "description": "Down into a flooded canyon slot, searching for the shipment the last flash flood took under. The hole is narrow, she goes in headfirst and keeps going, and the canyon does not care what it does to her — it has taken three crews.",
       "emoji": "💍",
       "type": "salvage_dive",
       "durationMinutes": 1080,

@@ -2,9 +2,9 @@
   "region": "waifu-valley",
   "expeditions": [
     {
-      "key": "valley_corner_store_run",
-      "name": "Corner Store Run",
-      "description": "The convenience store two blocks over needs its back room emptied before the morning delivery. Quick work, a little scrap, and whoever goes gets to keep what the previous tenant left behind.",
+      "key": "valley_stockroom_squeeze",
+      "name": "Stockroom Squeeze",
+      "description": "The convenience store two blocks up needs its back room emptied before the morning truck, and 'back room' is doing a lot of work there. Someone who doesn't mind a tight squeeze, please — whatever the last tenant left is hers.",
       "emoji": "🏪",
       "type": "supply_run",
       "durationMinutes": 60,
@@ -20,9 +20,9 @@
       "enabled": true
     },
     {
-      "key": "valley_arcade_token_sweep",
-      "name": "Token Sweep",
-      "description": "Every cabinet on the strip eats coins and gives a few back into the return tray, and the route collector only comes on Thursdays. Get there first, be polite about it, and nobody has to call anybody a thief.",
+      "key": "valley_changing_room_sweep",
+      "name": "Changing Room Sweep",
+      "description": "Every fitting room on the strip has to be cleared of left-behind underwear before the ward inspector does rounds, and the lost-and-found box is already full to the lid. Somebody with sharp eyes, quick hands, and no shame whatsoever.",
       "emoji": "🕹️",
       "type": "scouting",
       "durationMinutes": 60,
@@ -38,9 +38,9 @@
       "enabled": true
     },
     {
-      "key": "valley_alley_cat_wrangle",
-      "name": "Alley Cat Wrangle",
-      "description": "The arcade's mascot strays have got into the ramen place's bins again and the ward inspector is doing rounds at ten. They will not be carried, they will not be bribed, and they will absolutely be chased.",
+      "key": "valley_pussy_patrol",
+      "name": "Pussy Patrol",
+      "description": "The arcade's stray mascots have got into the ramen place's bins again and the ward inspector does rounds at ten. They will not be carried, they will not be bribed, and they will absolutely be chased. Send the one who enjoys the chase.",
       "emoji": "🐈",
       "type": "escort",
       "durationMinutes": 60,
@@ -56,9 +56,9 @@
       "enabled": true
     },
     {
-      "key": "valley_room_twelve_turnover",
-      "name": "Room Twelve Turnover",
-      "description": "The love hotel off Ninth wants room twelve stripped, aired and turned around before the evening rate starts. The manager's only instruction is that the lost-and-found box is not a place for questions.",
+      "key": "valley_room_twelve_by_the_hour",
+      "name": "Room Twelve, By The Hour",
+      "description": "Room twelve gets stripped, aired and turned around before the evening rate starts, and the manager's only house rule is that the lost-and-found box is not a place for questions. Put a pin in your curiosity.",
       "emoji": "💋",
       "type": "supply_run",
       "durationMinutes": 60,
@@ -74,9 +74,9 @@
       "enabled": true
     },
     {
-      "key": "valley_shrine_lantern_rounds",
-      "name": "Shrine Lantern Rounds",
-      "description": "The hill shrine's lanterns have to be walked, lit and blessed one by one before dusk, and the path up is steep enough that the priestess wants company. Visitors leave offerings. Some of them are even meant for the shrine.",
+      "key": "valley_attend_to_her",
+      "name": "Attend To Her",
+      "description": "The shrine's spirit gets one night off a year and is not spending it alone. Attend to her — at her shoulder all night, wherever on the strip she goes, and by whatever meaning of \"attend\" she lands on once the drinks arrive.",
       "emoji": "🏮",
       "type": "escort",
       "durationMinutes": 180,
@@ -92,9 +92,9 @@
       "enabled": true
     },
     {
-      "key": "valley_ninth_street_stall_watch",
-      "name": "Ninth Street Stall Watch",
-      "description": "The flower stall's owner has been summoned to the ward office to explain her awning for the third time this month. Somebody has to mind the till, take the deliveries, and agree with every single customer.",
+      "key": "valley_flower_stall_sweet_talk",
+      "name": "Flower Stall Sweet Talk",
+      "description": "The flower stall's owner is at the ward office explaining her awning for the third time, so somebody has to mind the till, take the deliveries, and agree with every last customer. Smile, nod, and let them think it was their idea.",
       "emoji": "🛍️",
       "type": "diplomacy",
       "durationMinutes": 180,
@@ -110,9 +110,9 @@
       "enabled": true
     },
     {
-      "key": "valley_karaoke_box_overtime",
-      "name": "Karaoke Box Overtime",
-      "description": "Three hours of booth turnover starting at one in the morning, which is exactly when the Valley decides it can sing. Rooms four through nine will need telling. Room seven will need telling twice.",
+      "key": "valley_make_him_beg",
+      "name": "Make Him Beg",
+      "description": "A client has booked the same three hours for four months and still apologises at the door. Give him the disappointment he paid for, keep him on his knees the whole booking, and let him finish only when told to.",
       "emoji": "🎤",
       "type": "supply_run",
       "durationMinutes": 180,
@@ -128,9 +128,9 @@
       "enabled": true
     },
     {
-      "key": "valley_rooftop_survey",
-      "name": "Rooftop Survey",
-      "description": "Somebody has to walk the rain-slick rooftops between the shrine and the neon strip and write down what is still standing. The wiring hums. So does everything living in it.",
+      "key": "valley_peep_show_six_hours",
+      "name": "Peep Show, Six Hours",
+      "description": "Across the rooftops from shrine steps to neon strip — six hours in the rain, notebook, no company. Nothing up there can see her, which is the appeal: the Valley undresses itself after dark, and somebody has to write it down.",
       "emoji": "🌃",
       "type": "scouting",
       "durationMinutes": 360,
@@ -146,9 +146,9 @@
       "enabled": true
     },
     {
-      "key": "valley_substation_nightwatch",
-      "name": "Substation Nightwatch",
-      "description": "The Valley's substation hums louder on some nights than the grid can account for, and the utility crew would rather not find out alone why. They do not care what she is like. They care that she does not conduct and does not blink.",
+      "key": "valley_hum_job",
+      "name": "The Hum Job",
+      "description": "The substation fence, midnight until dawn, alone in the rain. The grid hums louder than the load can explain and the crew will not go in alone — they care only that she keeps her hands to herself and does not stop the hum.",
       "emoji": "⚡",
       "type": "escort",
       "durationMinutes": 360,
@@ -164,9 +164,9 @@
       "enabled": true
     },
     {
-      "key": "valley_last_train_vigil",
-      "name": "Last Train Vigil",
-      "description": "Hold the night platform from the last train to the first. Walk the drunk ones home, talk the one who never got off out of the ticket barrier, and sign for whatever the four a.m. freight decides to leave on the bench.",
+      "key": "valley_what_opens_after_dark",
+      "name": "What Opens After Dark",
+      "description": "Walk the Valley from dusk through midday and take every door that opens after dark — the bath-houses that never close, the back rooms that unlock once the neon is on. One instruction: be kind to whoever is still up at four.",
       "emoji": "🚉",
       "type": "diplomacy",
       "durationMinutes": 1080,
@@ -182,9 +182,9 @@
       "enabled": true
     },
     {
-      "key": "valley_undercity_dive",
-      "name": "Undercity Dive",
-      "description": "Under the Valley there is an older Valley, flooded to the knee and lit by signs that nobody pays for any more. A whole night and a day down there turns up things the surface forgot it lost.",
+      "key": "valley_going_down",
+      "name": "Going Down",
+      "description": "Down under the Valley is an older Valley, flooded to the knee and lit by signs nobody pays for. Eighteen hours, no daylight, no company but whatever has lived down there since the water came. Something will ask her to stay.",
       "emoji": "🕷️",
       "type": "salvage_dive",
       "durationMinutes": 1080,

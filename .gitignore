@@ -25,6 +25,7 @@ assets/standby/
 assets/drafts/
 # local database/data
 data/
+drafts/
 *.db
 *.sqlite
 *.sqlite3
@@ -53,3 +54,10 @@ docs/roadmap/README.md
 content/standby/holding.json
 docs/world-encounter-authoring-guide.md
 --help
+content/expeditions/waifumon-expeditions-balance.xlsx
+drafts/review_expedition_text.py
+drafts/expedition-text-draft.json
+drafts/proposed/flaccid-foothills.json
+drafts/proposed/thirstlands.json
+drafts/proposed/twin-peeks.json
+drafts/proposed/waifu-valley.json

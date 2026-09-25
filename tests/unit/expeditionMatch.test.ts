@@ -168,8 +168,8 @@ describe('match quality', () => {
   });
 });
 
-describe('the shipped Corner Store Run — the playtest case', () => {
-  const corner = SHIPPED.expeditions.find((e) => e.key === 'valley_corner_store_run')!;
+describe('the shipped Stockroom Squeeze — the playtest case', () => {
+  const corner = SHIPPED.expeditions.find((e) => e.key === 'valley_stockroom_squeeze')!;
   const evaluate = (waifu: SuitabilityCandidate) => {
     const input = {
       definition: corner,

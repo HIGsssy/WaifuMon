@@ -281,6 +281,13 @@
       "when": 1819144800000,
       "tag": "0039_expedition_regional_concurrency",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1819231200000,
+      "tag": "0040_salvage_slug_rename",
+      "breakpoints": true
     }
   ]
 }

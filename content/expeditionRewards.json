@@ -13,8 +13,8 @@
         "rolls": 2,
         "chanceBasisPoints": 8500,
         "entries": [
-          { "itemId": "bent_arcade_token", "weight": 80, "quantity": 1, "enabled": true },
-          { "itemId": "smudged_love_letter", "weight": 20, "quantity": 1, "enabled": true }
+          { "itemId": "sticky_joystick", "weight": 80, "quantity": 1, "enabled": true },
+          { "itemId": "crusted_magazine", "weight": 20, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -23,8 +23,8 @@
         "rolls": 1,
         "chanceBasisPoints": 600,
         "entries": [
-          { "itemId": "bent_arcade_token", "weight": 70, "quantity": 2, "enabled": true },
-          { "itemId": "cracked_shrine_charm", "weight": 30, "quantity": 1, "enabled": true }
+          { "itemId": "sticky_joystick", "weight": 70, "quantity": 2, "enabled": true },
+          { "itemId": "cracked_butt_plug", "weight": 30, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -43,9 +43,9 @@
         "rolls": 1,
         "chanceBasisPoints": 4500,
         "entries": [
-          { "itemId": "smudged_love_letter", "weight": 30, "quantity": 2, "enabled": true },
-          { "itemId": "cracked_shrine_charm", "weight": 15, "quantity": 1, "enabled": true },
-          { "itemId": "bent_arcade_token", "weight": 55, "quantity": 2, "enabled": true }
+          { "itemId": "crusted_magazine", "weight": 30, "quantity": 2, "enabled": true },
+          { "itemId": "cracked_butt_plug", "weight": 15, "quantity": 1, "enabled": true },
+          { "itemId": "sticky_joystick", "weight": 55, "quantity": 2, "enabled": true }
         ]
       }
     ]
@@ -64,7 +64,7 @@
         "rolls": 1,
         "chanceBasisPoints": 5000,
         "entries": [
-          { "itemId": "bent_arcade_token", "weight": 100, "quantity": 1, "enabled": true }
+          { "itemId": "sticky_joystick", "weight": 100, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -84,8 +84,8 @@
         "rolls": 3,
         "chanceBasisPoints": 7000,
         "entries": [
-          { "itemId": "bent_arcade_token", "weight": 88, "quantity": 1, "enabled": true },
-          { "itemId": "smudged_love_letter", "weight": 12, "quantity": 1, "enabled": true }
+          { "itemId": "sticky_joystick", "weight": 88, "quantity": 1, "enabled": true },
+          { "itemId": "crusted_magazine", "weight": 12, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -94,8 +94,8 @@
         "rolls": 1,
         "chanceBasisPoints": 500,
         "entries": [
-          { "itemId": "bent_arcade_token", "weight": 65, "quantity": 3, "enabled": true },
-          { "itemId": "dropped_setlist", "weight": 35, "quantity": 1, "enabled": true }
+          { "itemId": "sticky_joystick", "weight": 65, "quantity": 3, "enabled": true },
+          { "itemId": "cum_stained_evening_dress", "weight": 35, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -114,9 +114,9 @@
         "rolls": 1,
         "chanceBasisPoints": 3500,
         "entries": [
-          { "itemId": "bent_arcade_token", "weight": 60, "quantity": 4, "enabled": true },
-          { "itemId": "dropped_setlist", "weight": 28, "quantity": 1, "enabled": true },
-          { "itemId": "cracked_shrine_charm", "weight": 12, "quantity": 1, "enabled": true }
+          { "itemId": "sticky_joystick", "weight": 60, "quantity": 4, "enabled": true },
+          { "itemId": "cum_stained_evening_dress", "weight": 28, "quantity": 1, "enabled": true },
+          { "itemId": "cracked_butt_plug", "weight": 12, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -135,7 +135,7 @@
         "rolls": 1,
         "chanceBasisPoints": 5000,
         "entries": [
-          { "itemId": "bent_arcade_token", "weight": 100, "quantity": 1, "enabled": true }
+          { "itemId": "sticky_joystick", "weight": 100, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -155,9 +155,9 @@
         "rolls": 2,
         "chanceBasisPoints": 5500,
         "entries": [
-          { "itemId": "smudged_love_letter", "weight": 45, "quantity": 1, "enabled": true },
-          { "itemId": "bent_arcade_token", "weight": 45, "quantity": 1, "enabled": true },
-          { "itemId": "dropped_setlist", "weight": 10, "quantity": 1, "enabled": true }
+          { "itemId": "crusted_magazine", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "sticky_joystick", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "cum_stained_evening_dress", "weight": 10, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -166,8 +166,8 @@
         "rolls": 1,
         "chanceBasisPoints": 300,
         "entries": [
-          { "itemId": "cracked_shrine_charm", "weight": 70, "quantity": 1, "enabled": true },
-          { "itemId": "neon_sign_filament", "weight": 30, "quantity": 1, "enabled": true }
+          { "itemId": "cracked_butt_plug", "weight": 70, "quantity": 1, "enabled": true },
+          { "itemId": "still_buzzing_wand", "weight": 30, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -186,9 +186,9 @@
         "rolls": 1,
         "chanceBasisPoints": 2000,
         "entries": [
-          { "itemId": "dropped_setlist", "weight": 40, "quantity": 1, "enabled": true },
-          { "itemId": "cracked_shrine_charm", "weight": 45, "quantity": 1, "enabled": true },
-          { "itemId": "neon_sign_filament", "weight": 15, "quantity": 1, "enabled": true }
+          { "itemId": "cum_stained_evening_dress", "weight": 40, "quantity": 1, "enabled": true },
+          { "itemId": "cracked_butt_plug", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "still_buzzing_wand", "weight": 15, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -207,8 +207,8 @@
         "rolls": 1,
         "chanceBasisPoints": 4200,
         "entries": [
-          { "itemId": "bent_arcade_token", "weight": 50, "quantity": 1, "enabled": true },
-          { "itemId": "smudged_love_letter", "weight": 50, "quantity": 1, "enabled": true }
+          { "itemId": "sticky_joystick", "weight": 50, "quantity": 1, "enabled": true },
+          { "itemId": "crusted_magazine", "weight": 50, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -229,9 +229,9 @@
         "rolls": 2,
         "chanceBasisPoints": 4500,
         "entries": [
-          { "itemId": "smudged_love_letter", "weight": 62, "quantity": 1, "enabled": true },
-          { "itemId": "cracked_shrine_charm", "weight": 5, "quantity": 1, "enabled": true },
-          { "itemId": "bent_arcade_token", "weight": 33, "quantity": 1, "enabled": true }
+          { "itemId": "crusted_magazine", "weight": 62, "quantity": 1, "enabled": true },
+          { "itemId": "cracked_butt_plug", "weight": 5, "quantity": 1, "enabled": true },
+          { "itemId": "sticky_joystick", "weight": 33, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -240,8 +240,8 @@
         "rolls": 1,
         "chanceBasisPoints": 250,
         "entries": [
-          { "itemId": "neon_sign_filament", "weight": 85, "quantity": 1, "enabled": true },
-          { "itemId": "moonlit_perfume_vial", "weight": 15, "quantity": 1, "enabled": true }
+          { "itemId": "still_buzzing_wand", "weight": 85, "quantity": 1, "enabled": true },
+          { "itemId": "chewed_gag_ball", "weight": 15, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -261,8 +261,8 @@
         "rolls": 1,
         "chanceBasisPoints": 3000,
         "entries": [
-          { "itemId": "cracked_shrine_charm", "weight": 45, "quantity": 1, "enabled": true },
-          { "itemId": "smudged_love_letter", "weight": 55, "quantity": 2, "enabled": true }
+          { "itemId": "cracked_butt_plug", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "crusted_magazine", "weight": 55, "quantity": 2, "enabled": true }
         ]
       }
     ]
@@ -281,8 +281,8 @@
         "rolls": 1,
         "chanceBasisPoints": 3500,
         "entries": [
-          { "itemId": "smudged_love_letter", "weight": 70, "quantity": 1, "enabled": true },
-          { "itemId": "bent_arcade_token", "weight": 30, "quantity": 1, "enabled": true }
+          { "itemId": "crusted_magazine", "weight": 70, "quantity": 1, "enabled": true },
+          { "itemId": "sticky_joystick", "weight": 30, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -303,9 +303,9 @@
         "rolls": 2,
         "chanceBasisPoints": 5000,
         "entries": [
-          { "itemId": "smudged_love_letter", "weight": 55, "quantity": 1, "enabled": true },
-          { "itemId": "cracked_shrine_charm", "weight": 15, "quantity": 1, "enabled": true },
-          { "itemId": "dropped_setlist", "weight": 30, "quantity": 1, "enabled": true }
+          { "itemId": "crusted_magazine", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "cracked_butt_plug", "weight": 15, "quantity": 1, "enabled": true },
+          { "itemId": "cum_stained_evening_dress", "weight": 30, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -314,8 +314,8 @@
         "rolls": 1,
         "chanceBasisPoints": 800,
         "entries": [
-          { "itemId": "cracked_shrine_charm", "weight": 70, "quantity": 1, "enabled": true },
-          { "itemId": "neon_sign_filament", "weight": 30, "quantity": 1, "enabled": true }
+          { "itemId": "cracked_butt_plug", "weight": 70, "quantity": 1, "enabled": true },
+          { "itemId": "still_buzzing_wand", "weight": 30, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -344,8 +344,8 @@
         "rolls": 1,
         "chanceBasisPoints": 2200,
         "entries": [
-          { "itemId": "neon_sign_filament", "weight": 70, "quantity": 1, "enabled": true },
-          { "itemId": "cracked_shrine_charm", "weight": 30, "quantity": 1, "enabled": true }
+          { "itemId": "still_buzzing_wand", "weight": 70, "quantity": 1, "enabled": true },
+          { "itemId": "cracked_butt_plug", "weight": 30, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -364,9 +364,9 @@
         "rolls": 1,
         "chanceBasisPoints": 5500,
         "entries": [
-          { "itemId": "bent_arcade_token", "weight": 40, "quantity": 1, "enabled": true },
-          { "itemId": "smudged_love_letter", "weight": 40, "quantity": 1, "enabled": true },
-          { "itemId": "dropped_setlist", "weight": 20, "quantity": 1, "enabled": true }
+          { "itemId": "sticky_joystick", "weight": 40, "quantity": 1, "enabled": true },
+          { "itemId": "crusted_magazine", "weight": 40, "quantity": 1, "enabled": true },
+          { "itemId": "cum_stained_evening_dress", "weight": 20, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -387,9 +387,9 @@
         "rolls": 2,
         "chanceBasisPoints": 4500,
         "entries": [
-          { "itemId": "smudged_love_letter", "weight": 45, "quantity": 1, "enabled": true },
-          { "itemId": "cracked_shrine_charm", "weight": 20, "quantity": 1, "enabled": true },
-          { "itemId": "dropped_setlist", "weight": 35, "quantity": 1, "enabled": true }
+          { "itemId": "crusted_magazine", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "cracked_butt_plug", "weight": 20, "quantity": 1, "enabled": true },
+          { "itemId": "cum_stained_evening_dress", "weight": 35, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -398,9 +398,9 @@
         "rolls": 1,
         "chanceBasisPoints": 1000,
         "entries": [
-          { "itemId": "cracked_shrine_charm", "weight": 55, "quantity": 1, "enabled": true },
-          { "itemId": "last_train_ticket", "weight": 35, "quantity": 1, "enabled": true },
-          { "itemId": "neon_sign_filament", "weight": 10, "quantity": 1, "enabled": true }
+          { "itemId": "cracked_butt_plug", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "glory_hole_ticket", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "still_buzzing_wand", "weight": 10, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -430,9 +430,9 @@
         "rolls": 1,
         "chanceBasisPoints": 2500,
         "entries": [
-          { "itemId": "last_train_ticket", "weight": 62, "quantity": 1, "enabled": true },
-          { "itemId": "neon_sign_filament", "weight": 35, "quantity": 1, "enabled": true },
-          { "itemId": "moonlit_perfume_vial", "weight": 3, "quantity": 1, "enabled": true }
+          { "itemId": "glory_hole_ticket", "weight": 62, "quantity": 1, "enabled": true },
+          { "itemId": "still_buzzing_wand", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "chewed_gag_ball", "weight": 3, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -451,9 +451,9 @@
         "rolls": 1,
         "chanceBasisPoints": 5000,
         "entries": [
-          { "itemId": "smudged_love_letter", "weight": 50, "quantity": 1, "enabled": true },
-          { "itemId": "dropped_setlist", "weight": 30, "quantity": 1, "enabled": true },
-          { "itemId": "bent_arcade_token", "weight": 20, "quantity": 1, "enabled": true }
+          { "itemId": "crusted_magazine", "weight": 50, "quantity": 1, "enabled": true },
+          { "itemId": "cum_stained_evening_dress", "weight": 30, "quantity": 1, "enabled": true },
+          { "itemId": "sticky_joystick", "weight": 20, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -474,10 +474,10 @@
         "rolls": 3,
         "chanceBasisPoints": 4000,
         "entries": [
-          { "itemId": "dropped_setlist", "weight": 30, "quantity": 1, "enabled": true },
-          { "itemId": "smudged_love_letter", "weight": 40, "quantity": 1, "enabled": true },
-          { "itemId": "bent_arcade_token", "weight": 22, "quantity": 1, "enabled": true },
-          { "itemId": "cracked_shrine_charm", "weight": 8, "quantity": 1, "enabled": true }
+          { "itemId": "cum_stained_evening_dress", "weight": 30, "quantity": 1, "enabled": true },
+          { "itemId": "crusted_magazine", "weight": 40, "quantity": 1, "enabled": true },
+          { "itemId": "sticky_joystick", "weight": 22, "quantity": 1, "enabled": true },
+          { "itemId": "cracked_butt_plug", "weight": 8, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -486,8 +486,8 @@
         "rolls": 1,
         "chanceBasisPoints": 800,
         "entries": [
-          { "itemId": "neon_sign_filament", "weight": 60, "quantity": 1, "enabled": true },
-          { "itemId": "last_train_ticket", "weight": 40, "quantity": 1, "enabled": true }
+          { "itemId": "still_buzzing_wand", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "glory_hole_ticket", "weight": 40, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -517,9 +517,9 @@
         "rolls": 1,
         "chanceBasisPoints": 2200,
         "entries": [
-          { "itemId": "neon_sign_filament", "weight": 57, "quantity": 1, "enabled": true },
-          { "itemId": "last_train_ticket", "weight": 38, "quantity": 1, "enabled": true },
-          { "itemId": "moonlit_perfume_vial", "weight": 5, "quantity": 1, "enabled": true }
+          { "itemId": "still_buzzing_wand", "weight": 57, "quantity": 1, "enabled": true },
+          { "itemId": "glory_hole_ticket", "weight": 38, "quantity": 1, "enabled": true },
+          { "itemId": "chewed_gag_ball", "weight": 5, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -538,9 +538,9 @@
         "rolls": 1,
         "chanceBasisPoints": 3600,
         "entries": [
-          { "itemId": "dropped_setlist", "weight": 45, "quantity": 1, "enabled": true },
-          { "itemId": "smudged_love_letter", "weight": 35, "quantity": 1, "enabled": true },
-          { "itemId": "bent_arcade_token", "weight": 20, "quantity": 1, "enabled": true }
+          { "itemId": "cum_stained_evening_dress", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "crusted_magazine", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "sticky_joystick", "weight": 20, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -561,10 +561,10 @@
         "rolls": 3,
         "chanceBasisPoints": 3100,
         "entries": [
-          { "itemId": "cracked_shrine_charm", "weight": 35, "quantity": 1, "enabled": true },
-          { "itemId": "dropped_setlist", "weight": 30, "quantity": 1, "enabled": true },
-          { "itemId": "neon_sign_filament", "weight": 10, "quantity": 1, "enabled": true },
-          { "itemId": "smudged_love_letter", "weight": 25, "quantity": 1, "enabled": true }
+          { "itemId": "cracked_butt_plug", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "cum_stained_evening_dress", "weight": 30, "quantity": 1, "enabled": true },
+          { "itemId": "still_buzzing_wand", "weight": 10, "quantity": 1, "enabled": true },
+          { "itemId": "crusted_magazine", "weight": 25, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -573,8 +573,8 @@
         "rolls": 1,
         "chanceBasisPoints": 600,
         "entries": [
-          { "itemId": "neon_sign_filament", "weight": 75, "quantity": 1, "enabled": true },
-          { "itemId": "moonlit_perfume_vial", "weight": 25, "quantity": 1, "enabled": true }
+          { "itemId": "still_buzzing_wand", "weight": 75, "quantity": 1, "enabled": true },
+          { "itemId": "chewed_gag_ball", "weight": 25, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -604,9 +604,9 @@
         "rolls": 1,
         "chanceBasisPoints": 2200,
         "entries": [
-          { "itemId": "neon_sign_filament", "weight": 65, "quantity": 1, "enabled": true },
-          { "itemId": "moonlit_perfume_vial", "weight": 25, "quantity": 1, "enabled": true },
-          { "itemId": "last_train_ticket", "weight": 10, "quantity": 1, "enabled": true }
+          { "itemId": "still_buzzing_wand", "weight": 65, "quantity": 1, "enabled": true },
+          { "itemId": "chewed_gag_ball", "weight": 25, "quantity": 1, "enabled": true },
+          { "itemId": "glory_hole_ticket", "weight": 10, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -626,10 +626,10 @@
         "rolls": 2,
         "chanceBasisPoints": 3500,
         "entries": [
-          { "itemId": "bent_arcade_token", "weight": 35, "quantity": 1, "enabled": true },
-          { "itemId": "smudged_love_letter", "weight": 35, "quantity": 1, "enabled": true },
-          { "itemId": "cracked_shrine_charm", "weight": 10, "quantity": 1, "enabled": true },
-          { "itemId": "dropped_setlist", "weight": 20, "quantity": 1, "enabled": true }
+          { "itemId": "sticky_joystick", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "crusted_magazine", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "cracked_butt_plug", "weight": 10, "quantity": 1, "enabled": true },
+          { "itemId": "cum_stained_evening_dress", "weight": 20, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -650,10 +650,10 @@
         "rolls": 3,
         "chanceBasisPoints": 2450,
         "entries": [
-          { "itemId": "neon_sign_filament", "weight": 22, "quantity": 1, "enabled": true },
-          { "itemId": "cracked_shrine_charm", "weight": 35, "quantity": 1, "enabled": true },
-          { "itemId": "dropped_setlist", "weight": 25, "quantity": 1, "enabled": true },
-          { "itemId": "bent_arcade_token", "weight": 18, "quantity": 1, "enabled": true }
+          { "itemId": "still_buzzing_wand", "weight": 22, "quantity": 1, "enabled": true },
+          { "itemId": "cracked_butt_plug", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "cum_stained_evening_dress", "weight": 25, "quantity": 1, "enabled": true },
+          { "itemId": "sticky_joystick", "weight": 18, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -662,9 +662,9 @@
         "rolls": 1,
         "chanceBasisPoints": 700,
         "entries": [
-          { "itemId": "neon_sign_filament", "weight": 55, "quantity": 1, "enabled": true },
-          { "itemId": "moonlit_perfume_vial", "weight": 25, "quantity": 1, "enabled": true },
-          { "itemId": "last_train_ticket", "weight": 20, "quantity": 1, "enabled": true }
+          { "itemId": "still_buzzing_wand", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "chewed_gag_ball", "weight": 25, "quantity": 1, "enabled": true },
+          { "itemId": "glory_hole_ticket", "weight": 20, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -684,9 +684,9 @@
         "rolls": 1,
         "chanceBasisPoints": 2200,
         "entries": [
-          { "itemId": "moonlit_perfume_vial", "weight": 30, "quantity": 1, "enabled": true },
-          { "itemId": "neon_sign_filament", "weight": 55, "quantity": 1, "enabled": true },
-          { "itemId": "last_train_ticket", "weight": 15, "quantity": 1, "enabled": true }
+          { "itemId": "chewed_gag_ball", "weight": 30, "quantity": 1, "enabled": true },
+          { "itemId": "still_buzzing_wand", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "glory_hole_ticket", "weight": 15, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -716,10 +716,10 @@
         "rolls": 2,
         "chanceBasisPoints": 1700,
         "entries": [
-          { "itemId": "cracked_shrine_charm", "weight": 32, "quantity": 1, "enabled": true },
-          { "itemId": "dropped_setlist", "weight": 28, "quantity": 1, "enabled": true },
-          { "itemId": "neon_sign_filament", "weight": 5, "quantity": 1, "enabled": true },
-          { "itemId": "bent_arcade_token", "weight": 35, "quantity": 1, "enabled": true }
+          { "itemId": "cracked_butt_plug", "weight": 32, "quantity": 1, "enabled": true },
+          { "itemId": "cum_stained_evening_dress", "weight": 28, "quantity": 1, "enabled": true },
+          { "itemId": "still_buzzing_wand", "weight": 5, "quantity": 1, "enabled": true },
+          { "itemId": "sticky_joystick", "weight": 35, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -740,11 +740,11 @@
         "rolls": 3,
         "chanceBasisPoints": 7600,
         "entries": [
-          { "itemId": "last_train_ticket", "weight": 30, "quantity": 1, "enabled": true },
-          { "itemId": "neon_sign_filament", "weight": 8, "quantity": 1, "enabled": true },
-          { "itemId": "cracked_shrine_charm", "weight": 27, "quantity": 1, "enabled": true },
-          { "itemId": "dropped_setlist", "weight": 20, "quantity": 1, "enabled": true },
-          { "itemId": "smudged_love_letter", "weight": 15, "quantity": 1, "enabled": true }
+          { "itemId": "glory_hole_ticket", "weight": 30, "quantity": 1, "enabled": true },
+          { "itemId": "still_buzzing_wand", "weight": 8, "quantity": 1, "enabled": true },
+          { "itemId": "cracked_butt_plug", "weight": 27, "quantity": 1, "enabled": true },
+          { "itemId": "cum_stained_evening_dress", "weight": 20, "quantity": 1, "enabled": true },
+          { "itemId": "crusted_magazine", "weight": 15, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -753,9 +753,9 @@
         "rolls": 1,
         "chanceBasisPoints": 800,
         "entries": [
-          { "itemId": "moonlit_perfume_vial", "weight": 25, "quantity": 1, "enabled": true },
-          { "itemId": "neon_sign_filament", "weight": 50, "quantity": 1, "enabled": true },
-          { "itemId": "last_train_ticket", "weight": 25, "quantity": 2, "enabled": true }
+          { "itemId": "chewed_gag_ball", "weight": 25, "quantity": 1, "enabled": true },
+          { "itemId": "still_buzzing_wand", "weight": 50, "quantity": 1, "enabled": true },
+          { "itemId": "glory_hole_ticket", "weight": 25, "quantity": 2, "enabled": true }
         ]
       }
     ]
@@ -775,9 +775,9 @@
         "rolls": 1,
         "chanceBasisPoints": 6000,
         "entries": [
-          { "itemId": "moonlit_perfume_vial", "weight": 40, "quantity": 1, "enabled": true },
-          { "itemId": "neon_sign_filament", "weight": 45, "quantity": 1, "enabled": true },
-          { "itemId": "last_train_ticket", "weight": 15, "quantity": 2, "enabled": true }
+          { "itemId": "chewed_gag_ball", "weight": 40, "quantity": 1, "enabled": true },
+          { "itemId": "still_buzzing_wand", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "glory_hole_ticket", "weight": 15, "quantity": 2, "enabled": true }
         ]
       },
       {
@@ -806,10 +806,10 @@
         "rolls": 2,
         "chanceBasisPoints": 2900,
         "entries": [
-          { "itemId": "last_train_ticket", "weight": 30, "quantity": 1, "enabled": true },
-          { "itemId": "cracked_shrine_charm", "weight": 30, "quantity": 1, "enabled": true },
-          { "itemId": "smudged_love_letter", "weight": 20, "quantity": 1, "enabled": true },
-          { "itemId": "dropped_setlist", "weight": 20, "quantity": 1, "enabled": true }
+          { "itemId": "glory_hole_ticket", "weight": 30, "quantity": 1, "enabled": true },
+          { "itemId": "cracked_butt_plug", "weight": 30, "quantity": 1, "enabled": true },
+          { "itemId": "crusted_magazine", "weight": 20, "quantity": 1, "enabled": true },
+          { "itemId": "cum_stained_evening_dress", "weight": 20, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -830,11 +830,11 @@
         "rolls": 4,
         "chanceBasisPoints": 4800,
         "entries": [
-          { "itemId": "cracked_shrine_charm", "weight": 40, "quantity": 1, "enabled": true },
-          { "itemId": "neon_sign_filament", "weight": 12, "quantity": 1, "enabled": true },
-          { "itemId": "moonlit_perfume_vial", "weight": 4, "quantity": 1, "enabled": true },
-          { "itemId": "last_train_ticket", "weight": 30, "quantity": 1, "enabled": true },
-          { "itemId": "dropped_setlist", "weight": 14, "quantity": 1, "enabled": true }
+          { "itemId": "cracked_butt_plug", "weight": 40, "quantity": 1, "enabled": true },
+          { "itemId": "still_buzzing_wand", "weight": 12, "quantity": 1, "enabled": true },
+          { "itemId": "chewed_gag_ball", "weight": 4, "quantity": 1, "enabled": true },
+          { "itemId": "glory_hole_ticket", "weight": 30, "quantity": 1, "enabled": true },
+          { "itemId": "cum_stained_evening_dress", "weight": 14, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -843,8 +843,8 @@
         "rolls": 1,
         "chanceBasisPoints": 800,
         "entries": [
-          { "itemId": "moonlit_perfume_vial", "weight": 55, "quantity": 1, "enabled": true },
-          { "itemId": "neon_sign_filament", "weight": 30, "quantity": 2, "enabled": true },
+          { "itemId": "chewed_gag_ball", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "still_buzzing_wand", "weight": 30, "quantity": 2, "enabled": true },
           { "itemId": "velvet_charm", "weight": 15, "quantity": 1, "enabled": true }
         ]
       }
@@ -865,8 +865,8 @@
         "rolls": 1,
         "chanceBasisPoints": 5000,
         "entries": [
-          { "itemId": "moonlit_perfume_vial", "weight": 60, "quantity": 1, "enabled": true },
-          { "itemId": "neon_sign_filament", "weight": 25, "quantity": 2, "enabled": true },
+          { "itemId": "chewed_gag_ball", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "still_buzzing_wand", "weight": 25, "quantity": 2, "enabled": true },
           { "itemId": "velvet_charm", "weight": 15, "quantity": 1, "enabled": true }
         ]
       },
@@ -896,10 +896,10 @@
         "rolls": 2,
         "chanceBasisPoints": 3300,
         "entries": [
-          { "itemId": "smudged_love_letter", "weight": 25, "quantity": 1, "enabled": true },
-          { "itemId": "cracked_shrine_charm", "weight": 35, "quantity": 1, "enabled": true },
-          { "itemId": "neon_sign_filament", "weight": 15, "quantity": 1, "enabled": true },
-          { "itemId": "dropped_setlist", "weight": 25, "quantity": 1, "enabled": true }
+          { "itemId": "crusted_magazine", "weight": 25, "quantity": 1, "enabled": true },
+          { "itemId": "cracked_butt_plug", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "still_buzzing_wand", "weight": 15, "quantity": 1, "enabled": true },
+          { "itemId": "cum_stained_evening_dress", "weight": 25, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -920,8 +920,8 @@
         "rolls": 2,
         "chanceBasisPoints": 7500,
         "entries": [
-          { "itemId": "ridge_road_postcard", "weight": 72, "quantity": 1, "enabled": true },
-          { "itemId": "bathhouse_locker_token", "weight": 28, "quantity": 1, "enabled": true }
+          { "itemId": "frozen_cum_rag", "weight": 72, "quantity": 1, "enabled": true },
+          { "itemId": "stained_damp_towel", "weight": 28, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -930,8 +930,8 @@
         "rolls": 1,
         "chanceBasisPoints": 500,
         "entries": [
-          { "itemId": "chipped_enamel_pie_plate", "weight": 75, "quantity": 1, "enabled": true },
-          { "itemId": "snapped_board_binding", "weight": 25, "quantity": 1, "enabled": true }
+          { "itemId": "licked_clean_pie_tin", "weight": 75, "quantity": 1, "enabled": true },
+          { "itemId": "ripped_leggings", "weight": 25, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -960,9 +960,9 @@
         "rolls": 1,
         "chanceBasisPoints": 3500,
         "entries": [
-          { "itemId": "bathhouse_locker_token", "weight": 55, "quantity": 2, "enabled": true },
-          { "itemId": "chipped_enamel_pie_plate", "weight": 30, "quantity": 1, "enabled": true },
-          { "itemId": "snapped_board_binding", "weight": 15, "quantity": 1, "enabled": true }
+          { "itemId": "stained_damp_towel", "weight": 55, "quantity": 2, "enabled": true },
+          { "itemId": "licked_clean_pie_tin", "weight": 30, "quantity": 1, "enabled": true },
+          { "itemId": "ripped_leggings", "weight": 15, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -981,7 +981,7 @@
         "rolls": 1,
         "chanceBasisPoints": 5000,
         "entries": [
-          { "itemId": "ridge_road_postcard", "weight": 100, "quantity": 1, "enabled": true }
+          { "itemId": "frozen_cum_rag", "weight": 100, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -1002,8 +1002,8 @@
         "rolls": 2,
         "chanceBasisPoints": 6000,
         "entries": [
-          { "itemId": "bathhouse_locker_token", "weight": 65, "quantity": 1, "enabled": true },
-          { "itemId": "ridge_road_postcard", "weight": 35, "quantity": 1, "enabled": true }
+          { "itemId": "stained_damp_towel", "weight": 65, "quantity": 1, "enabled": true },
+          { "itemId": "frozen_cum_rag", "weight": 35, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -1012,8 +1012,8 @@
         "rolls": 1,
         "chanceBasisPoints": 400,
         "entries": [
-          { "itemId": "chipped_enamel_pie_plate", "weight": 70, "quantity": 1, "enabled": true },
-          { "itemId": "snapped_board_binding", "weight": 30, "quantity": 1, "enabled": true }
+          { "itemId": "licked_clean_pie_tin", "weight": 70, "quantity": 1, "enabled": true },
+          { "itemId": "ripped_leggings", "weight": 30, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -1042,9 +1042,9 @@
         "rolls": 1,
         "chanceBasisPoints": 2200,
         "entries": [
-          { "itemId": "chipped_enamel_pie_plate", "weight": 50, "quantity": 1, "enabled": true },
-          { "itemId": "snapped_board_binding", "weight": 35, "quantity": 1, "enabled": true },
-          { "itemId": "survey_flag_bundle", "weight": 15, "quantity": 1, "enabled": true }
+          { "itemId": "licked_clean_pie_tin", "weight": 50, "quantity": 1, "enabled": true },
+          { "itemId": "ripped_leggings", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "thawed_onahole", "weight": 15, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -1063,7 +1063,7 @@
         "rolls": 1,
         "chanceBasisPoints": 2500,
         "entries": [
-          { "itemId": "bathhouse_locker_token", "weight": 100, "quantity": 1, "enabled": true }
+          { "itemId": "stained_damp_towel", "weight": 100, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -1084,9 +1084,9 @@
         "rolls": 2,
         "chanceBasisPoints": 4000,
         "entries": [
-          { "itemId": "bathhouse_locker_token", "weight": 60, "quantity": 1, "enabled": true },
-          { "itemId": "ridge_road_postcard", "weight": 25, "quantity": 1, "enabled": true },
-          { "itemId": "chipped_enamel_pie_plate", "weight": 15, "quantity": 1, "enabled": true }
+          { "itemId": "stained_damp_towel", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "frozen_cum_rag", "weight": 25, "quantity": 1, "enabled": true },
+          { "itemId": "licked_clean_pie_tin", "weight": 15, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -1095,8 +1095,8 @@
         "rolls": 1,
         "chanceBasisPoints": 400,
         "entries": [
-          { "itemId": "snapped_board_binding", "weight": 70, "quantity": 1, "enabled": true },
-          { "itemId": "survey_flag_bundle", "weight": 30, "quantity": 1, "enabled": true }
+          { "itemId": "ripped_leggings", "weight": 70, "quantity": 1, "enabled": true },
+          { "itemId": "thawed_onahole", "weight": 30, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -1126,9 +1126,9 @@
         "rolls": 1,
         "chanceBasisPoints": 2200,
         "entries": [
-          { "itemId": "chipped_enamel_pie_plate", "weight": 45, "quantity": 1, "enabled": true },
-          { "itemId": "snapped_board_binding", "weight": 35, "quantity": 1, "enabled": true },
-          { "itemId": "survey_flag_bundle", "weight": 20, "quantity": 1, "enabled": true }
+          { "itemId": "licked_clean_pie_tin", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "ripped_leggings", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "thawed_onahole", "weight": 20, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -1147,8 +1147,8 @@
         "rolls": 1,
         "chanceBasisPoints": 4000,
         "entries": [
-          { "itemId": "ridge_road_postcard", "weight": 60, "quantity": 1, "enabled": true },
-          { "itemId": "bathhouse_locker_token", "weight": 40, "quantity": 1, "enabled": true }
+          { "itemId": "frozen_cum_rag", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "stained_damp_towel", "weight": 40, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -1169,9 +1169,9 @@
         "rolls": 3,
         "chanceBasisPoints": 6000,
         "entries": [
-          { "itemId": "bathhouse_locker_token", "weight": 55, "quantity": 1, "enabled": true },
-          { "itemId": "ridge_road_postcard", "weight": 25, "quantity": 1, "enabled": true },
-          { "itemId": "chipped_enamel_pie_plate", "weight": 20, "quantity": 1, "enabled": true }
+          { "itemId": "stained_damp_towel", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "frozen_cum_rag", "weight": 25, "quantity": 1, "enabled": true },
+          { "itemId": "licked_clean_pie_tin", "weight": 20, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -1180,8 +1180,8 @@
         "rolls": 1,
         "chanceBasisPoints": 900,
         "entries": [
-          { "itemId": "snapped_board_binding", "weight": 60, "quantity": 1, "enabled": true },
-          { "itemId": "survey_flag_bundle", "weight": 40, "quantity": 1, "enabled": true }
+          { "itemId": "ripped_leggings", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "thawed_onahole", "weight": 40, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -1211,9 +1211,9 @@
         "rolls": 1,
         "chanceBasisPoints": 3000,
         "entries": [
-          { "itemId": "chipped_enamel_pie_plate", "weight": 40, "quantity": 1, "enabled": true },
-          { "itemId": "snapped_board_binding", "weight": 35, "quantity": 1, "enabled": true },
-          { "itemId": "survey_flag_bundle", "weight": 25, "quantity": 1, "enabled": true }
+          { "itemId": "licked_clean_pie_tin", "weight": 40, "quantity": 1, "enabled": true },
+          { "itemId": "ripped_leggings", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "thawed_onahole", "weight": 25, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -1241,8 +1241,8 @@
         "rolls": 1,
         "chanceBasisPoints": 6000,
         "entries": [
-          { "itemId": "bathhouse_locker_token", "weight": 70, "quantity": 1, "enabled": true },
-          { "itemId": "ridge_road_postcard", "weight": 30, "quantity": 1, "enabled": true }
+          { "itemId": "stained_damp_towel", "weight": 70, "quantity": 1, "enabled": true },
+          { "itemId": "frozen_cum_rag", "weight": 30, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -1263,9 +1263,9 @@
         "rolls": 2,
         "chanceBasisPoints": 4800,
         "entries": [
-          { "itemId": "snapped_board_binding", "weight": 35, "quantity": 1, "enabled": true },
-          { "itemId": "bathhouse_locker_token", "weight": 40, "quantity": 1, "enabled": true },
-          { "itemId": "ridge_road_postcard", "weight": 25, "quantity": 1, "enabled": true }
+          { "itemId": "ripped_leggings", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "stained_damp_towel", "weight": 40, "quantity": 1, "enabled": true },
+          { "itemId": "frozen_cum_rag", "weight": 25, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -1274,8 +1274,8 @@
         "rolls": 1,
         "chanceBasisPoints": 400,
         "entries": [
-          { "itemId": "survey_flag_bundle", "weight": 65, "quantity": 1, "enabled": true },
-          { "itemId": "geothermal_core_sample", "weight": 35, "quantity": 1, "enabled": true }
+          { "itemId": "thawed_onahole", "weight": 65, "quantity": 1, "enabled": true },
+          { "itemId": "threadworn_love_glove", "weight": 35, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -1305,9 +1305,9 @@
         "rolls": 1,
         "chanceBasisPoints": 2600,
         "entries": [
-          { "itemId": "snapped_board_binding", "weight": 45, "quantity": 1, "enabled": true },
-          { "itemId": "survey_flag_bundle", "weight": 35, "quantity": 1, "enabled": true },
-          { "itemId": "geothermal_core_sample", "weight": 20, "quantity": 1, "enabled": true }
+          { "itemId": "ripped_leggings", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "thawed_onahole", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "threadworn_love_glove", "weight": 20, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -1335,8 +1335,8 @@
         "rolls": 1,
         "chanceBasisPoints": 2000,
         "entries": [
-          { "itemId": "bathhouse_locker_token", "weight": 60, "quantity": 1, "enabled": true },
-          { "itemId": "snapped_board_binding", "weight": 40, "quantity": 1, "enabled": true }
+          { "itemId": "stained_damp_towel", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "ripped_leggings", "weight": 40, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -1357,9 +1357,9 @@
         "rolls": 2,
         "chanceBasisPoints": 6000,
         "entries": [
-          { "itemId": "bathhouse_locker_token", "weight": 45, "quantity": 1, "enabled": true },
-          { "itemId": "chipped_enamel_pie_plate", "weight": 30, "quantity": 1, "enabled": true },
-          { "itemId": "snapped_board_binding", "weight": 25, "quantity": 1, "enabled": true }
+          { "itemId": "stained_damp_towel", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "licked_clean_pie_tin", "weight": 30, "quantity": 1, "enabled": true },
+          { "itemId": "ripped_leggings", "weight": 25, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -1368,8 +1368,8 @@
         "rolls": 1,
         "chanceBasisPoints": 900,
         "entries": [
-          { "itemId": "survey_flag_bundle", "weight": 60, "quantity": 1, "enabled": true },
-          { "itemId": "geothermal_core_sample", "weight": 40, "quantity": 1, "enabled": true }
+          { "itemId": "thawed_onahole", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "threadworn_love_glove", "weight": 40, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -1399,9 +1399,9 @@
         "rolls": 1,
         "chanceBasisPoints": 3200,
         "entries": [
-          { "itemId": "chipped_enamel_pie_plate", "weight": 35, "quantity": 1, "enabled": true },
-          { "itemId": "survey_flag_bundle", "weight": 40, "quantity": 1, "enabled": true },
-          { "itemId": "geothermal_core_sample", "weight": 25, "quantity": 1, "enabled": true }
+          { "itemId": "licked_clean_pie_tin", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "thawed_onahole", "weight": 40, "quantity": 1, "enabled": true },
+          { "itemId": "threadworn_love_glove", "weight": 25, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -1430,8 +1430,8 @@
         "rolls": 1,
         "chanceBasisPoints": 3500,
         "entries": [
-          { "itemId": "bathhouse_locker_token", "weight": 50, "quantity": 1, "enabled": true },
-          { "itemId": "chipped_enamel_pie_plate", "weight": 50, "quantity": 1, "enabled": true }
+          { "itemId": "stained_damp_towel", "weight": 50, "quantity": 1, "enabled": true },
+          { "itemId": "licked_clean_pie_tin", "weight": 50, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -1452,9 +1452,9 @@
         "rolls": 2,
         "chanceBasisPoints": 6000,
         "entries": [
-          { "itemId": "bathhouse_locker_token", "weight": 40, "quantity": 1, "enabled": true },
-          { "itemId": "chipped_enamel_pie_plate", "weight": 35, "quantity": 1, "enabled": true },
-          { "itemId": "snapped_board_binding", "weight": 25, "quantity": 1, "enabled": true }
+          { "itemId": "stained_damp_towel", "weight": 40, "quantity": 1, "enabled": true },
+          { "itemId": "licked_clean_pie_tin", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "ripped_leggings", "weight": 25, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -1463,8 +1463,8 @@
         "rolls": 1,
         "chanceBasisPoints": 850,
         "entries": [
-          { "itemId": "survey_flag_bundle", "weight": 55, "quantity": 1, "enabled": true },
-          { "itemId": "geothermal_core_sample", "weight": 45, "quantity": 1, "enabled": true }
+          { "itemId": "thawed_onahole", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "threadworn_love_glove", "weight": 45, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -1495,9 +1495,9 @@
         "rolls": 1,
         "chanceBasisPoints": 3000,
         "entries": [
-          { "itemId": "chipped_enamel_pie_plate", "weight": 30, "quantity": 1, "enabled": true },
-          { "itemId": "survey_flag_bundle", "weight": 45, "quantity": 1, "enabled": true },
-          { "itemId": "geothermal_core_sample", "weight": 25, "quantity": 1, "enabled": true }
+          { "itemId": "licked_clean_pie_tin", "weight": 30, "quantity": 1, "enabled": true },
+          { "itemId": "thawed_onahole", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "threadworn_love_glove", "weight": 25, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -1526,9 +1526,9 @@
         "rolls": 1,
         "chanceBasisPoints": 4000,
         "entries": [
-          { "itemId": "ridge_road_postcard", "weight": 40, "quantity": 1, "enabled": true },
-          { "itemId": "bathhouse_locker_token", "weight": 40, "quantity": 1, "enabled": true },
-          { "itemId": "chipped_enamel_pie_plate", "weight": 20, "quantity": 1, "enabled": true }
+          { "itemId": "frozen_cum_rag", "weight": 40, "quantity": 1, "enabled": true },
+          { "itemId": "stained_damp_towel", "weight": 40, "quantity": 1, "enabled": true },
+          { "itemId": "licked_clean_pie_tin", "weight": 20, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -1549,10 +1549,10 @@
         "rolls": 5,
         "chanceBasisPoints": 7000,
         "entries": [
-          { "itemId": "bathhouse_locker_token", "weight": 35, "quantity": 1, "enabled": true },
-          { "itemId": "chipped_enamel_pie_plate", "weight": 35, "quantity": 1, "enabled": true },
-          { "itemId": "snapped_board_binding", "weight": 20, "quantity": 1, "enabled": true },
-          { "itemId": "ridge_road_postcard", "weight": 10, "quantity": 1, "enabled": true }
+          { "itemId": "stained_damp_towel", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "licked_clean_pie_tin", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "ripped_leggings", "weight": 20, "quantity": 1, "enabled": true },
+          { "itemId": "frozen_cum_rag", "weight": 10, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -1561,8 +1561,8 @@
         "rolls": 2,
         "chanceBasisPoints": 1800,
         "entries": [
-          { "itemId": "survey_flag_bundle", "weight": 60, "quantity": 1, "enabled": true },
-          { "itemId": "geothermal_core_sample", "weight": 40, "quantity": 1, "enabled": true }
+          { "itemId": "thawed_onahole", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "threadworn_love_glove", "weight": 40, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -1593,10 +1593,10 @@
         "rolls": 2,
         "chanceBasisPoints": 3800,
         "entries": [
-          { "itemId": "chipped_enamel_pie_plate", "weight": 30, "quantity": 1, "enabled": true },
-          { "itemId": "snapped_board_binding", "weight": 35, "quantity": 1, "enabled": true },
-          { "itemId": "survey_flag_bundle", "weight": 25, "quantity": 1, "enabled": true },
-          { "itemId": "geothermal_core_sample", "weight": 10, "quantity": 1, "enabled": true }
+          { "itemId": "licked_clean_pie_tin", "weight": 30, "quantity": 1, "enabled": true },
+          { "itemId": "ripped_leggings", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "thawed_onahole", "weight": 25, "quantity": 1, "enabled": true },
+          { "itemId": "threadworn_love_glove", "weight": 10, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -1634,9 +1634,9 @@
         "rolls": 2,
         "chanceBasisPoints": 5500,
         "entries": [
-          { "itemId": "bathhouse_locker_token", "weight": 50, "quantity": 1, "enabled": true },
-          { "itemId": "chipped_enamel_pie_plate", "weight": 35, "quantity": 1, "enabled": true },
-          { "itemId": "ridge_road_postcard", "weight": 15, "quantity": 1, "enabled": true }
+          { "itemId": "stained_damp_towel", "weight": 50, "quantity": 1, "enabled": true },
+          { "itemId": "licked_clean_pie_tin", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "frozen_cum_rag", "weight": 15, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -1657,10 +1657,10 @@
         "rolls": 5,
         "chanceBasisPoints": 7200,
         "entries": [
-          { "itemId": "bathhouse_locker_token", "weight": 30, "quantity": 1, "enabled": true },
-          { "itemId": "chipped_enamel_pie_plate", "weight": 35, "quantity": 1, "enabled": true },
-          { "itemId": "snapped_board_binding", "weight": 25, "quantity": 1, "enabled": true },
-          { "itemId": "ridge_road_postcard", "weight": 10, "quantity": 1, "enabled": true }
+          { "itemId": "stained_damp_towel", "weight": 30, "quantity": 1, "enabled": true },
+          { "itemId": "licked_clean_pie_tin", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "ripped_leggings", "weight": 25, "quantity": 1, "enabled": true },
+          { "itemId": "frozen_cum_rag", "weight": 10, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -1669,8 +1669,8 @@
         "rolls": 2,
         "chanceBasisPoints": 1900,
         "entries": [
-          { "itemId": "survey_flag_bundle", "weight": 55, "quantity": 1, "enabled": true },
-          { "itemId": "geothermal_core_sample", "weight": 45, "quantity": 1, "enabled": true }
+          { "itemId": "thawed_onahole", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "threadworn_love_glove", "weight": 45, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -1701,10 +1701,10 @@
         "rolls": 2,
         "chanceBasisPoints": 4000,
         "entries": [
-          { "itemId": "chipped_enamel_pie_plate", "weight": 25, "quantity": 1, "enabled": true },
-          { "itemId": "snapped_board_binding", "weight": 35, "quantity": 1, "enabled": true },
-          { "itemId": "survey_flag_bundle", "weight": 25, "quantity": 1, "enabled": true },
-          { "itemId": "geothermal_core_sample", "weight": 15, "quantity": 1, "enabled": true }
+          { "itemId": "licked_clean_pie_tin", "weight": 25, "quantity": 1, "enabled": true },
+          { "itemId": "ripped_leggings", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "thawed_onahole", "weight": 25, "quantity": 1, "enabled": true },
+          { "itemId": "threadworn_love_glove", "weight": 15, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -1725,7 +1725,7 @@
         "chanceBasisPoints": 400,
         "entries": [
           { "itemId": "full_body_massage", "weight": 70, "quantity": 1, "enabled": true },
-          { "itemId": "survey_flag_bundle", "weight": 30, "quantity": 1, "enabled": true }
+          { "itemId": "thawed_onahole", "weight": 30, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -1744,9 +1744,9 @@
         "rolls": 2,
         "chanceBasisPoints": 5000,
         "entries": [
-          { "itemId": "bathhouse_locker_token", "weight": 45, "quantity": 1, "enabled": true },
-          { "itemId": "chipped_enamel_pie_plate", "weight": 35, "quantity": 1, "enabled": true },
-          { "itemId": "snapped_board_binding", "weight": 20, "quantity": 1, "enabled": true }
+          { "itemId": "stained_damp_towel", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "licked_clean_pie_tin", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "ripped_leggings", "weight": 20, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -1766,8 +1766,8 @@
         "rolls": 2,
         "chanceBasisPoints": 6000,
         "entries": [
-          { "itemId": "split_fence_rail", "weight": 70, "quantity": 1, "enabled": true },
-          { "itemId": "undelivered_wax_seal", "weight": 30, "quantity": 1, "enabled": true }
+          { "itemId": "rusted_anal_beads", "weight": 70, "quantity": 1, "enabled": true },
+          { "itemId": "snapped_cock_ring", "weight": 30, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -1776,8 +1776,8 @@
         "rolls": 1,
         "chanceBasisPoints": 500,
         "entries": [
-          { "itemId": "quarry_grit_pouch", "weight": 75, "quantity": 1, "enabled": true },
-          { "itemId": "leaning_cairn_stone", "weight": 25, "quantity": 1, "enabled": true }
+          { "itemId": "weighted_ball_stretcher", "weight": 75, "quantity": 1, "enabled": true },
+          { "itemId": "broken_penis_pump", "weight": 25, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -1796,9 +1796,9 @@
         "rolls": 1,
         "chanceBasisPoints": 1400,
         "entries": [
-          { "itemId": "undelivered_wax_seal", "weight": 55, "quantity": 2, "enabled": true },
-          { "itemId": "quarry_grit_pouch", "weight": 30, "quantity": 1, "enabled": true },
-          { "itemId": "leaning_cairn_stone", "weight": 15, "quantity": 1, "enabled": true }
+          { "itemId": "snapped_cock_ring", "weight": 55, "quantity": 2, "enabled": true },
+          { "itemId": "weighted_ball_stretcher", "weight": 30, "quantity": 1, "enabled": true },
+          { "itemId": "broken_penis_pump", "weight": 15, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -1817,7 +1817,7 @@
         "rolls": 1,
         "chanceBasisPoints": 4500,
         "entries": [
-          { "itemId": "split_fence_rail", "weight": 100, "quantity": 1, "enabled": true }
+          { "itemId": "rusted_anal_beads", "weight": 100, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -1837,8 +1837,8 @@
         "rolls": 2,
         "chanceBasisPoints": 5200,
         "entries": [
-          { "itemId": "undelivered_wax_seal", "weight": 60, "quantity": 1, "enabled": true },
-          { "itemId": "split_fence_rail", "weight": 40, "quantity": 1, "enabled": true }
+          { "itemId": "snapped_cock_ring", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "rusted_anal_beads", "weight": 40, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -1847,8 +1847,8 @@
         "rolls": 1,
         "chanceBasisPoints": 400,
         "entries": [
-          { "itemId": "quarry_grit_pouch", "weight": 70, "quantity": 1, "enabled": true },
-          { "itemId": "leaning_cairn_stone", "weight": 30, "quantity": 1, "enabled": true }
+          { "itemId": "weighted_ball_stretcher", "weight": 70, "quantity": 1, "enabled": true },
+          { "itemId": "broken_penis_pump", "weight": 30, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -1867,9 +1867,9 @@
         "rolls": 1,
         "chanceBasisPoints": 1000,
         "entries": [
-          { "itemId": "quarry_grit_pouch", "weight": 55, "quantity": 1, "enabled": true },
-          { "itemId": "leaning_cairn_stone", "weight": 30, "quantity": 1, "enabled": true },
-          { "itemId": "orchard_brandy_jar", "weight": 15, "quantity": 1, "enabled": true }
+          { "itemId": "weighted_ball_stretcher", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "broken_penis_pump", "weight": 30, "quantity": 1, "enabled": true },
+          { "itemId": "sweat_stained_leather_harness", "weight": 15, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -1888,7 +1888,7 @@
         "rolls": 1,
         "chanceBasisPoints": 2200,
         "entries": [
-          { "itemId": "undelivered_wax_seal", "weight": 100, "quantity": 1, "enabled": true }
+          { "itemId": "snapped_cock_ring", "weight": 100, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -1908,9 +1908,9 @@
         "rolls": 2,
         "chanceBasisPoints": 3400,
         "entries": [
-          { "itemId": "undelivered_wax_seal", "weight": 55, "quantity": 1, "enabled": true },
-          { "itemId": "split_fence_rail", "weight": 25, "quantity": 1, "enabled": true },
-          { "itemId": "quarry_grit_pouch", "weight": 20, "quantity": 1, "enabled": true }
+          { "itemId": "snapped_cock_ring", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "rusted_anal_beads", "weight": 25, "quantity": 1, "enabled": true },
+          { "itemId": "weighted_ball_stretcher", "weight": 20, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -1919,8 +1919,8 @@
         "rolls": 1,
         "chanceBasisPoints": 350,
         "entries": [
-          { "itemId": "leaning_cairn_stone", "weight": 70, "quantity": 1, "enabled": true },
-          { "itemId": "orchard_brandy_jar", "weight": 30, "quantity": 1, "enabled": true }
+          { "itemId": "broken_penis_pump", "weight": 70, "quantity": 1, "enabled": true },
+          { "itemId": "sweat_stained_leather_harness", "weight": 30, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -1939,9 +1939,9 @@
         "rolls": 1,
         "chanceBasisPoints": 900,
         "entries": [
-          { "itemId": "quarry_grit_pouch", "weight": 50, "quantity": 1, "enabled": true },
-          { "itemId": "leaning_cairn_stone", "weight": 35, "quantity": 1, "enabled": true },
-          { "itemId": "orchard_brandy_jar", "weight": 15, "quantity": 1, "enabled": true }
+          { "itemId": "weighted_ball_stretcher", "weight": 50, "quantity": 1, "enabled": true },
+          { "itemId": "broken_penis_pump", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "sweat_stained_leather_harness", "weight": 15, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -1960,8 +1960,8 @@
         "rolls": 1,
         "chanceBasisPoints": 3500,
         "entries": [
-          { "itemId": "split_fence_rail", "weight": 55, "quantity": 1, "enabled": true },
-          { "itemId": "undelivered_wax_seal", "weight": 45, "quantity": 1, "enabled": true }
+          { "itemId": "rusted_anal_beads", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "snapped_cock_ring", "weight": 45, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -1982,9 +1982,9 @@
         "rolls": 3,
         "chanceBasisPoints": 5000,
         "entries": [
-          { "itemId": "undelivered_wax_seal", "weight": 50, "quantity": 1, "enabled": true },
-          { "itemId": "split_fence_rail", "weight": 25, "quantity": 1, "enabled": true },
-          { "itemId": "quarry_grit_pouch", "weight": 25, "quantity": 1, "enabled": true }
+          { "itemId": "snapped_cock_ring", "weight": 50, "quantity": 1, "enabled": true },
+          { "itemId": "rusted_anal_beads", "weight": 25, "quantity": 1, "enabled": true },
+          { "itemId": "weighted_ball_stretcher", "weight": 25, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -1993,8 +1993,8 @@
         "rolls": 1,
         "chanceBasisPoints": 700,
         "entries": [
-          { "itemId": "leaning_cairn_stone", "weight": 60, "quantity": 1, "enabled": true },
-          { "itemId": "orchard_brandy_jar", "weight": 40, "quantity": 1, "enabled": true }
+          { "itemId": "broken_penis_pump", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "sweat_stained_leather_harness", "weight": 40, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -2014,9 +2014,9 @@
         "rolls": 1,
         "chanceBasisPoints": 1600,
         "entries": [
-          { "itemId": "leaning_cairn_stone", "weight": 45, "quantity": 1, "enabled": true },
-          { "itemId": "orchard_brandy_jar", "weight": 40, "quantity": 1, "enabled": true },
-          { "itemId": "quarry_grit_pouch", "weight": 15, "quantity": 1, "enabled": true }
+          { "itemId": "broken_penis_pump", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "sweat_stained_leather_harness", "weight": 40, "quantity": 1, "enabled": true },
+          { "itemId": "weighted_ball_stretcher", "weight": 15, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -2035,8 +2035,8 @@
         "rolls": 1,
         "chanceBasisPoints": 5000,
         "entries": [
-          { "itemId": "undelivered_wax_seal", "weight": 65, "quantity": 1, "enabled": true },
-          { "itemId": "split_fence_rail", "weight": 35, "quantity": 1, "enabled": true }
+          { "itemId": "snapped_cock_ring", "weight": 65, "quantity": 1, "enabled": true },
+          { "itemId": "rusted_anal_beads", "weight": 35, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -2057,9 +2057,9 @@
         "rolls": 3,
         "chanceBasisPoints": 4000,
         "entries": [
-          { "itemId": "quarry_grit_pouch", "weight": 55, "quantity": 1, "enabled": true },
-          { "itemId": "undelivered_wax_seal", "weight": 30, "quantity": 1, "enabled": true },
-          { "itemId": "split_fence_rail", "weight": 15, "quantity": 1, "enabled": true }
+          { "itemId": "weighted_ball_stretcher", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "snapped_cock_ring", "weight": 30, "quantity": 1, "enabled": true },
+          { "itemId": "rusted_anal_beads", "weight": 15, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -2068,8 +2068,8 @@
         "rolls": 1,
         "chanceBasisPoints": 400,
         "entries": [
-          { "itemId": "leaning_cairn_stone", "weight": 65, "quantity": 1, "enabled": true },
-          { "itemId": "skyfreight_ballast_weight", "weight": 35, "quantity": 1, "enabled": true }
+          { "itemId": "broken_penis_pump", "weight": 65, "quantity": 1, "enabled": true },
+          { "itemId": "dropped_chastity_cage", "weight": 35, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -2089,9 +2089,9 @@
         "rolls": 1,
         "chanceBasisPoints": 1500,
         "entries": [
-          { "itemId": "leaning_cairn_stone", "weight": 50, "quantity": 1, "enabled": true },
-          { "itemId": "orchard_brandy_jar", "weight": 30, "quantity": 1, "enabled": true },
-          { "itemId": "skyfreight_ballast_weight", "weight": 20, "quantity": 1, "enabled": true }
+          { "itemId": "broken_penis_pump", "weight": 50, "quantity": 1, "enabled": true },
+          { "itemId": "sweat_stained_leather_harness", "weight": 30, "quantity": 1, "enabled": true },
+          { "itemId": "dropped_chastity_cage", "weight": 20, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -2110,8 +2110,8 @@
         "rolls": 1,
         "chanceBasisPoints": 3000,
         "entries": [
-          { "itemId": "quarry_grit_pouch", "weight": 60, "quantity": 1, "enabled": true },
-          { "itemId": "undelivered_wax_seal", "weight": 40, "quantity": 1, "enabled": true }
+          { "itemId": "weighted_ball_stretcher", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "snapped_cock_ring", "weight": 40, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -2132,9 +2132,9 @@
         "rolls": 2,
         "chanceBasisPoints": 6000,
         "entries": [
-          { "itemId": "undelivered_wax_seal", "weight": 45, "quantity": 1, "enabled": true },
-          { "itemId": "quarry_grit_pouch", "weight": 35, "quantity": 1, "enabled": true },
-          { "itemId": "split_fence_rail", "weight": 20, "quantity": 1, "enabled": true }
+          { "itemId": "snapped_cock_ring", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "weighted_ball_stretcher", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "rusted_anal_beads", "weight": 20, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -2143,8 +2143,8 @@
         "rolls": 1,
         "chanceBasisPoints": 900,
         "entries": [
-          { "itemId": "leaning_cairn_stone", "weight": 60, "quantity": 1, "enabled": true },
-          { "itemId": "orchard_brandy_jar", "weight": 40, "quantity": 1, "enabled": true }
+          { "itemId": "broken_penis_pump", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "sweat_stained_leather_harness", "weight": 40, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -2164,9 +2164,9 @@
         "rolls": 1,
         "chanceBasisPoints": 1400,
         "entries": [
-          { "itemId": "leaning_cairn_stone", "weight": 45, "quantity": 1, "enabled": true },
-          { "itemId": "orchard_brandy_jar", "weight": 40, "quantity": 1, "enabled": true },
-          { "itemId": "skyfreight_ballast_weight", "weight": 15, "quantity": 1, "enabled": true }
+          { "itemId": "broken_penis_pump", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "sweat_stained_leather_harness", "weight": 40, "quantity": 1, "enabled": true },
+          { "itemId": "dropped_chastity_cage", "weight": 15, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -2194,8 +2194,8 @@
         "rolls": 1,
         "chanceBasisPoints": 3800,
         "entries": [
-          { "itemId": "undelivered_wax_seal", "weight": 55, "quantity": 1, "enabled": true },
-          { "itemId": "split_fence_rail", "weight": 45, "quantity": 1, "enabled": true }
+          { "itemId": "snapped_cock_ring", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "rusted_anal_beads", "weight": 45, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -2216,9 +2216,9 @@
         "rolls": 4,
         "chanceBasisPoints": 5500,
         "entries": [
-          { "itemId": "undelivered_wax_seal", "weight": 45, "quantity": 1, "enabled": true },
-          { "itemId": "quarry_grit_pouch", "weight": 35, "quantity": 1, "enabled": true },
-          { "itemId": "split_fence_rail", "weight": 20, "quantity": 1, "enabled": true }
+          { "itemId": "snapped_cock_ring", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "weighted_ball_stretcher", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "rusted_anal_beads", "weight": 20, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -2227,8 +2227,8 @@
         "rolls": 1,
         "chanceBasisPoints": 1500,
         "entries": [
-          { "itemId": "leaning_cairn_stone", "weight": 55, "quantity": 1, "enabled": true },
-          { "itemId": "orchard_brandy_jar", "weight": 45, "quantity": 1, "enabled": true }
+          { "itemId": "broken_penis_pump", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "sweat_stained_leather_harness", "weight": 45, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -2248,9 +2248,9 @@
         "rolls": 1,
         "chanceBasisPoints": 1800,
         "entries": [
-          { "itemId": "leaning_cairn_stone", "weight": 45, "quantity": 1, "enabled": true },
-          { "itemId": "orchard_brandy_jar", "weight": 35, "quantity": 1, "enabled": true },
-          { "itemId": "skyfreight_ballast_weight", "weight": 20, "quantity": 1, "enabled": true }
+          { "itemId": "broken_penis_pump", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "sweat_stained_leather_harness", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "dropped_chastity_cage", "weight": 20, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -2269,8 +2269,8 @@
         "rolls": 1,
         "chanceBasisPoints": 5000,
         "entries": [
-          { "itemId": "undelivered_wax_seal", "weight": 60, "quantity": 1, "enabled": true },
-          { "itemId": "split_fence_rail", "weight": 40, "quantity": 1, "enabled": true }
+          { "itemId": "snapped_cock_ring", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "rusted_anal_beads", "weight": 40, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -2291,9 +2291,9 @@
         "rolls": 4,
         "chanceBasisPoints": 5200,
         "entries": [
-          { "itemId": "undelivered_wax_seal", "weight": 45, "quantity": 1, "enabled": true },
-          { "itemId": "quarry_grit_pouch", "weight": 35, "quantity": 1, "enabled": true },
-          { "itemId": "split_fence_rail", "weight": 20, "quantity": 1, "enabled": true }
+          { "itemId": "snapped_cock_ring", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "weighted_ball_stretcher", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "rusted_anal_beads", "weight": 20, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -2302,8 +2302,8 @@
         "rolls": 1,
         "chanceBasisPoints": 1450,
         "entries": [
-          { "itemId": "leaning_cairn_stone", "weight": 55, "quantity": 1, "enabled": true },
-          { "itemId": "orchard_brandy_jar", "weight": 45, "quantity": 1, "enabled": true }
+          { "itemId": "broken_penis_pump", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "sweat_stained_leather_harness", "weight": 45, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -2323,9 +2323,9 @@
         "rolls": 1,
         "chanceBasisPoints": 1700,
         "entries": [
-          { "itemId": "leaning_cairn_stone", "weight": 45, "quantity": 1, "enabled": true },
-          { "itemId": "orchard_brandy_jar", "weight": 35, "quantity": 1, "enabled": true },
-          { "itemId": "skyfreight_ballast_weight", "weight": 20, "quantity": 1, "enabled": true }
+          { "itemId": "broken_penis_pump", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "sweat_stained_leather_harness", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "dropped_chastity_cage", "weight": 20, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -2353,8 +2353,8 @@
         "rolls": 1,
         "chanceBasisPoints": 4600,
         "entries": [
-          { "itemId": "undelivered_wax_seal", "weight": 60, "quantity": 1, "enabled": true },
-          { "itemId": "split_fence_rail", "weight": 40, "quantity": 1, "enabled": true }
+          { "itemId": "snapped_cock_ring", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "rusted_anal_beads", "weight": 40, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -2375,10 +2375,10 @@
         "rolls": 6,
         "chanceBasisPoints": 7000,
         "entries": [
-          { "itemId": "undelivered_wax_seal", "weight": 40, "quantity": 1, "enabled": true },
-          { "itemId": "quarry_grit_pouch", "weight": 35, "quantity": 1, "enabled": true },
-          { "itemId": "split_fence_rail", "weight": 15, "quantity": 1, "enabled": true },
-          { "itemId": "leaning_cairn_stone", "weight": 10, "quantity": 1, "enabled": true }
+          { "itemId": "snapped_cock_ring", "weight": 40, "quantity": 1, "enabled": true },
+          { "itemId": "weighted_ball_stretcher", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "rusted_anal_beads", "weight": 15, "quantity": 1, "enabled": true },
+          { "itemId": "broken_penis_pump", "weight": 10, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -2387,9 +2387,9 @@
         "rolls": 2,
         "chanceBasisPoints": 2900,
         "entries": [
-          { "itemId": "leaning_cairn_stone", "weight": 50, "quantity": 1, "enabled": true },
-          { "itemId": "orchard_brandy_jar", "weight": 30, "quantity": 1, "enabled": true },
-          { "itemId": "skyfreight_ballast_weight", "weight": 20, "quantity": 1, "enabled": true }
+          { "itemId": "broken_penis_pump", "weight": 50, "quantity": 1, "enabled": true },
+          { "itemId": "sweat_stained_leather_harness", "weight": 30, "quantity": 1, "enabled": true },
+          { "itemId": "dropped_chastity_cage", "weight": 20, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -2409,9 +2409,9 @@
         "rolls": 2,
         "chanceBasisPoints": 2200,
         "entries": [
-          { "itemId": "leaning_cairn_stone", "weight": 45, "quantity": 1, "enabled": true },
-          { "itemId": "orchard_brandy_jar", "weight": 35, "quantity": 1, "enabled": true },
-          { "itemId": "skyfreight_ballast_weight", "weight": 20, "quantity": 1, "enabled": true }
+          { "itemId": "broken_penis_pump", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "sweat_stained_leather_harness", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "dropped_chastity_cage", "weight": 20, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -2440,9 +2440,9 @@
         "rolls": 2,
         "chanceBasisPoints": 5600,
         "entries": [
-          { "itemId": "undelivered_wax_seal", "weight": 55, "quantity": 1, "enabled": true },
-          { "itemId": "quarry_grit_pouch", "weight": 25, "quantity": 1, "enabled": true },
-          { "itemId": "split_fence_rail", "weight": 20, "quantity": 1, "enabled": true }
+          { "itemId": "snapped_cock_ring", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "weighted_ball_stretcher", "weight": 25, "quantity": 1, "enabled": true },
+          { "itemId": "rusted_anal_beads", "weight": 20, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -2463,10 +2463,10 @@
         "rolls": 6,
         "chanceBasisPoints": 7000,
         "entries": [
-          { "itemId": "undelivered_wax_seal", "weight": 40, "quantity": 1, "enabled": true },
-          { "itemId": "quarry_grit_pouch", "weight": 35, "quantity": 1, "enabled": true },
-          { "itemId": "split_fence_rail", "weight": 15, "quantity": 1, "enabled": true },
-          { "itemId": "leaning_cairn_stone", "weight": 10, "quantity": 1, "enabled": true }
+          { "itemId": "snapped_cock_ring", "weight": 40, "quantity": 1, "enabled": true },
+          { "itemId": "weighted_ball_stretcher", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "rusted_anal_beads", "weight": 15, "quantity": 1, "enabled": true },
+          { "itemId": "broken_penis_pump", "weight": 10, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -2475,9 +2475,9 @@
         "rolls": 2,
         "chanceBasisPoints": 2900,
         "entries": [
-          { "itemId": "leaning_cairn_stone", "weight": 50, "quantity": 1, "enabled": true },
-          { "itemId": "orchard_brandy_jar", "weight": 30, "quantity": 1, "enabled": true },
-          { "itemId": "skyfreight_ballast_weight", "weight": 20, "quantity": 1, "enabled": true }
+          { "itemId": "broken_penis_pump", "weight": 50, "quantity": 1, "enabled": true },
+          { "itemId": "sweat_stained_leather_harness", "weight": 30, "quantity": 1, "enabled": true },
+          { "itemId": "dropped_chastity_cage", "weight": 20, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -2497,9 +2497,9 @@
         "rolls": 2,
         "chanceBasisPoints": 2300,
         "entries": [
-          { "itemId": "leaning_cairn_stone", "weight": 45, "quantity": 1, "enabled": true },
-          { "itemId": "orchard_brandy_jar", "weight": 35, "quantity": 1, "enabled": true },
-          { "itemId": "skyfreight_ballast_weight", "weight": 20, "quantity": 1, "enabled": true }
+          { "itemId": "broken_penis_pump", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "sweat_stained_leather_harness", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "dropped_chastity_cage", "weight": 20, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -2519,7 +2519,7 @@
         "chanceBasisPoints": 380,
         "entries": [
           { "itemId": "trophy_wife_charm", "weight": 70, "quantity": 1, "enabled": true },
-          { "itemId": "skyfreight_ballast_weight", "weight": 30, "quantity": 1, "enabled": true }
+          { "itemId": "dropped_chastity_cage", "weight": 30, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -2538,9 +2538,9 @@
         "rolls": 2,
         "chanceBasisPoints": 5200,
         "entries": [
-          { "itemId": "undelivered_wax_seal", "weight": 55, "quantity": 1, "enabled": true },
-          { "itemId": "quarry_grit_pouch", "weight": 25, "quantity": 1, "enabled": true },
-          { "itemId": "split_fence_rail", "weight": 20, "quantity": 1, "enabled": true }
+          { "itemId": "snapped_cock_ring", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "weighted_ball_stretcher", "weight": 25, "quantity": 1, "enabled": true },
+          { "itemId": "rusted_anal_beads", "weight": 20, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -2560,7 +2560,7 @@
         "rolls": 1,
         "chanceBasisPoints": 7000,
         "entries": [
-          { "itemId": "spent_blasting_cap", "weight": 100, "quantity": 1, "enabled": true }
+          { "itemId": "blown_out_fleshlight", "weight": 100, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -2569,8 +2569,8 @@
         "rolls": 1,
         "chanceBasisPoints": 700,
         "entries": [
-          { "itemId": "sand_scoured_bearing", "weight": 80, "quantity": 1, "enabled": true },
-          { "itemId": "surveyors_brass_dial", "weight": 20, "quantity": 1, "enabled": true }
+          { "itemId": "sand_scoured_nipple_clamps", "weight": 80, "quantity": 1, "enabled": true },
+          { "itemId": "sun_bleached_strap_on", "weight": 20, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -2579,8 +2579,8 @@
         "rolls": 1,
         "chanceBasisPoints": 300,
         "entries": [
-          { "itemId": "strongbox_hinge_plate", "weight": 80, "quantity": 1, "enabled": true },
-          { "itemId": "canyon_cut_gemstone", "weight": 20, "quantity": 1, "enabled": true }
+          { "itemId": "dried_up_lube_bottle", "weight": 80, "quantity": 1, "enabled": true },
+          { "itemId": "sun_cracked_flogger", "weight": 20, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -2599,8 +2599,8 @@
         "rolls": 1,
         "chanceBasisPoints": 1400,
         "entries": [
-          { "itemId": "sand_scoured_bearing", "weight": 55, "quantity": 1, "enabled": true },
-          { "itemId": "surveyors_brass_dial", "weight": 45, "quantity": 1, "enabled": true }
+          { "itemId": "sand_scoured_nipple_clamps", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "sun_bleached_strap_on", "weight": 45, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -2619,8 +2619,8 @@
         "rolls": 1,
         "chanceBasisPoints": 2800,
         "entries": [
-          { "itemId": "spent_blasting_cap", "weight": 75, "quantity": 1, "enabled": true },
-          { "itemId": "dust_choked_rig_filter", "weight": 25, "quantity": 1, "enabled": true }
+          { "itemId": "blown_out_fleshlight", "weight": 75, "quantity": 1, "enabled": true },
+          { "itemId": "dust_caked_blindfold", "weight": 25, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -2639,7 +2639,7 @@
         "rolls": 1,
         "chanceBasisPoints": 6500,
         "entries": [
-          { "itemId": "spent_blasting_cap", "weight": 100, "quantity": 1, "enabled": true }
+          { "itemId": "blown_out_fleshlight", "weight": 100, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -2648,8 +2648,8 @@
         "rolls": 1,
         "chanceBasisPoints": 600,
         "entries": [
-          { "itemId": "sand_scoured_bearing", "weight": 85, "quantity": 1, "enabled": true },
-          { "itemId": "surveyors_brass_dial", "weight": 15, "quantity": 1, "enabled": true }
+          { "itemId": "sand_scoured_nipple_clamps", "weight": 85, "quantity": 1, "enabled": true },
+          { "itemId": "sun_bleached_strap_on", "weight": 15, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -2658,8 +2658,8 @@
         "rolls": 1,
         "chanceBasisPoints": 270,
         "entries": [
-          { "itemId": "strongbox_hinge_plate", "weight": 85, "quantity": 1, "enabled": true },
-          { "itemId": "canyon_cut_gemstone", "weight": 15, "quantity": 1, "enabled": true }
+          { "itemId": "dried_up_lube_bottle", "weight": 85, "quantity": 1, "enabled": true },
+          { "itemId": "sun_cracked_flogger", "weight": 15, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -2678,8 +2678,8 @@
         "rolls": 1,
         "chanceBasisPoints": 1300,
         "entries": [
-          { "itemId": "sand_scoured_bearing", "weight": 60, "quantity": 1, "enabled": true },
-          { "itemId": "surveyors_brass_dial", "weight": 40, "quantity": 1, "enabled": true }
+          { "itemId": "sand_scoured_nipple_clamps", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "sun_bleached_strap_on", "weight": 40, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -2698,8 +2698,8 @@
         "rolls": 1,
         "chanceBasisPoints": 2500,
         "entries": [
-          { "itemId": "spent_blasting_cap", "weight": 80, "quantity": 1, "enabled": true },
-          { "itemId": "dust_choked_rig_filter", "weight": 20, "quantity": 1, "enabled": true }
+          { "itemId": "blown_out_fleshlight", "weight": 80, "quantity": 1, "enabled": true },
+          { "itemId": "dust_caked_blindfold", "weight": 20, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -2718,8 +2718,8 @@
         "rolls": 1,
         "chanceBasisPoints": 6800,
         "entries": [
-          { "itemId": "dust_choked_rig_filter", "weight": 55, "quantity": 1, "enabled": true },
-          { "itemId": "spent_blasting_cap", "weight": 45, "quantity": 1, "enabled": true }
+          { "itemId": "dust_caked_blindfold", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "blown_out_fleshlight", "weight": 45, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -2728,8 +2728,8 @@
         "rolls": 1,
         "chanceBasisPoints": 700,
         "entries": [
-          { "itemId": "sand_scoured_bearing", "weight": 75, "quantity": 1, "enabled": true },
-          { "itemId": "surveyors_brass_dial", "weight": 25, "quantity": 1, "enabled": true }
+          { "itemId": "sand_scoured_nipple_clamps", "weight": 75, "quantity": 1, "enabled": true },
+          { "itemId": "sun_bleached_strap_on", "weight": 25, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -2738,8 +2738,8 @@
         "rolls": 1,
         "chanceBasisPoints": 220,
         "entries": [
-          { "itemId": "strongbox_hinge_plate", "weight": 75, "quantity": 1, "enabled": true },
-          { "itemId": "canyon_cut_gemstone", "weight": 25, "quantity": 1, "enabled": true }
+          { "itemId": "dried_up_lube_bottle", "weight": 75, "quantity": 1, "enabled": true },
+          { "itemId": "sun_cracked_flogger", "weight": 25, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -2758,8 +2758,8 @@
         "rolls": 1,
         "chanceBasisPoints": 1500,
         "entries": [
-          { "itemId": "sand_scoured_bearing", "weight": 55, "quantity": 1, "enabled": true },
-          { "itemId": "surveyors_brass_dial", "weight": 45, "quantity": 1, "enabled": true }
+          { "itemId": "sand_scoured_nipple_clamps", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "sun_bleached_strap_on", "weight": 45, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -2778,8 +2778,8 @@
         "rolls": 1,
         "chanceBasisPoints": 2600,
         "entries": [
-          { "itemId": "dust_choked_rig_filter", "weight": 60, "quantity": 1, "enabled": true },
-          { "itemId": "spent_blasting_cap", "weight": 40, "quantity": 1, "enabled": true }
+          { "itemId": "dust_caked_blindfold", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "blown_out_fleshlight", "weight": 40, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -2798,8 +2798,8 @@
         "rolls": 2,
         "chanceBasisPoints": 5200,
         "entries": [
-          { "itemId": "spent_blasting_cap", "weight": 55, "quantity": 1, "enabled": true },
-          { "itemId": "dust_choked_rig_filter", "weight": 45, "quantity": 1, "enabled": true }
+          { "itemId": "blown_out_fleshlight", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "dust_caked_blindfold", "weight": 45, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -2808,8 +2808,8 @@
         "rolls": 1,
         "chanceBasisPoints": 1400,
         "entries": [
-          { "itemId": "sand_scoured_bearing", "weight": 60, "quantity": 1, "enabled": true },
-          { "itemId": "surveyors_brass_dial", "weight": 40, "quantity": 1, "enabled": true }
+          { "itemId": "sand_scoured_nipple_clamps", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "sun_bleached_strap_on", "weight": 40, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -2818,8 +2818,8 @@
         "rolls": 1,
         "chanceBasisPoints": 700,
         "entries": [
-          { "itemId": "strongbox_hinge_plate", "weight": 65, "quantity": 1, "enabled": true },
-          { "itemId": "canyon_cut_gemstone", "weight": 35, "quantity": 1, "enabled": true }
+          { "itemId": "dried_up_lube_bottle", "weight": 65, "quantity": 1, "enabled": true },
+          { "itemId": "sun_cracked_flogger", "weight": 35, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -2838,8 +2838,8 @@
         "rolls": 1,
         "chanceBasisPoints": 1700,
         "entries": [
-          { "itemId": "surveyors_brass_dial", "weight": 60, "quantity": 1, "enabled": true },
-          { "itemId": "strongbox_hinge_plate", "weight": 40, "quantity": 1, "enabled": true }
+          { "itemId": "sun_bleached_strap_on", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "dried_up_lube_bottle", "weight": 40, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -2858,8 +2858,8 @@
         "rolls": 2,
         "chanceBasisPoints": 2900,
         "entries": [
-          { "itemId": "spent_blasting_cap", "weight": 60, "quantity": 1, "enabled": true },
-          { "itemId": "dust_choked_rig_filter", "weight": 40, "quantity": 1, "enabled": true }
+          { "itemId": "blown_out_fleshlight", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "dust_caked_blindfold", "weight": 40, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -2878,8 +2878,8 @@
         "rolls": 2,
         "chanceBasisPoints": 4500,
         "entries": [
-          { "itemId": "dust_choked_rig_filter", "weight": 60, "quantity": 1, "enabled": true },
-          { "itemId": "spent_blasting_cap", "weight": 40, "quantity": 1, "enabled": true }
+          { "itemId": "dust_caked_blindfold", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "blown_out_fleshlight", "weight": 40, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -2888,8 +2888,8 @@
         "rolls": 1,
         "chanceBasisPoints": 1500,
         "entries": [
-          { "itemId": "sand_scoured_bearing", "weight": 70, "quantity": 1, "enabled": true },
-          { "itemId": "surveyors_brass_dial", "weight": 30, "quantity": 1, "enabled": true }
+          { "itemId": "sand_scoured_nipple_clamps", "weight": 70, "quantity": 1, "enabled": true },
+          { "itemId": "sun_bleached_strap_on", "weight": 30, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -2898,8 +2898,8 @@
         "rolls": 1,
         "chanceBasisPoints": 700,
         "entries": [
-          { "itemId": "strongbox_hinge_plate", "weight": 65, "quantity": 1, "enabled": true },
-          { "itemId": "canyon_cut_gemstone", "weight": 35, "quantity": 1, "enabled": true }
+          { "itemId": "dried_up_lube_bottle", "weight": 65, "quantity": 1, "enabled": true },
+          { "itemId": "sun_cracked_flogger", "weight": 35, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -2908,7 +2908,7 @@
         "rolls": 1,
         "chanceBasisPoints": 110,
         "entries": [
-          { "itemId": "canyon_cut_gemstone", "weight": 100, "quantity": 1, "enabled": true }
+          { "itemId": "sun_cracked_flogger", "weight": 100, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -2927,8 +2927,8 @@
         "rolls": 1,
         "chanceBasisPoints": 1600,
         "entries": [
-          { "itemId": "surveyors_brass_dial", "weight": 50, "quantity": 1, "enabled": true },
-          { "itemId": "strongbox_hinge_plate", "weight": 50, "quantity": 1, "enabled": true }
+          { "itemId": "sun_bleached_strap_on", "weight": 50, "quantity": 1, "enabled": true },
+          { "itemId": "dried_up_lube_bottle", "weight": 50, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -2947,8 +2947,8 @@
         "rolls": 2,
         "chanceBasisPoints": 2900,
         "entries": [
-          { "itemId": "dust_choked_rig_filter", "weight": 55, "quantity": 1, "enabled": true },
-          { "itemId": "spent_blasting_cap", "weight": 45, "quantity": 1, "enabled": true }
+          { "itemId": "dust_caked_blindfold", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "blown_out_fleshlight", "weight": 45, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -2968,8 +2968,8 @@
         "rolls": 2,
         "chanceBasisPoints": 4800,
         "entries": [
-          { "itemId": "spent_blasting_cap", "weight": 50, "quantity": 1, "enabled": true },
-          { "itemId": "dust_choked_rig_filter", "weight": 50, "quantity": 1, "enabled": true }
+          { "itemId": "blown_out_fleshlight", "weight": 50, "quantity": 1, "enabled": true },
+          { "itemId": "dust_caked_blindfold", "weight": 50, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -2978,8 +2978,8 @@
         "rolls": 1,
         "chanceBasisPoints": 1500,
         "entries": [
-          { "itemId": "sand_scoured_bearing", "weight": 65, "quantity": 1, "enabled": true },
-          { "itemId": "surveyors_brass_dial", "weight": 35, "quantity": 1, "enabled": true }
+          { "itemId": "sand_scoured_nipple_clamps", "weight": 65, "quantity": 1, "enabled": true },
+          { "itemId": "sun_bleached_strap_on", "weight": 35, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -2988,8 +2988,8 @@
         "rolls": 1,
         "chanceBasisPoints": 780,
         "entries": [
-          { "itemId": "strongbox_hinge_plate", "weight": 70, "quantity": 1, "enabled": true },
-          { "itemId": "canyon_cut_gemstone", "weight": 30, "quantity": 1, "enabled": true }
+          { "itemId": "dried_up_lube_bottle", "weight": 70, "quantity": 1, "enabled": true },
+          { "itemId": "sun_cracked_flogger", "weight": 30, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -3009,8 +3009,8 @@
         "rolls": 1,
         "chanceBasisPoints": 1650,
         "entries": [
-          { "itemId": "surveyors_brass_dial", "weight": 55, "quantity": 1, "enabled": true },
-          { "itemId": "strongbox_hinge_plate", "weight": 45, "quantity": 1, "enabled": true }
+          { "itemId": "sun_bleached_strap_on", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "dried_up_lube_bottle", "weight": 45, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -3029,8 +3029,8 @@
         "rolls": 2,
         "chanceBasisPoints": 2800,
         "entries": [
-          { "itemId": "spent_blasting_cap", "weight": 55, "quantity": 1, "enabled": true },
-          { "itemId": "dust_choked_rig_filter", "weight": 45, "quantity": 1, "enabled": true }
+          { "itemId": "blown_out_fleshlight", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "dust_caked_blindfold", "weight": 45, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -3050,8 +3050,8 @@
         "rolls": 2,
         "chanceBasisPoints": 5400,
         "entries": [
-          { "itemId": "spent_blasting_cap", "weight": 50, "quantity": 1, "enabled": true },
-          { "itemId": "dust_choked_rig_filter", "weight": 50, "quantity": 1, "enabled": true }
+          { "itemId": "blown_out_fleshlight", "weight": 50, "quantity": 1, "enabled": true },
+          { "itemId": "dust_caked_blindfold", "weight": 50, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -3060,8 +3060,8 @@
         "rolls": 2,
         "chanceBasisPoints": 1500,
         "entries": [
-          { "itemId": "sand_scoured_bearing", "weight": 70, "quantity": 1, "enabled": true },
-          { "itemId": "surveyors_brass_dial", "weight": 30, "quantity": 1, "enabled": true }
+          { "itemId": "sand_scoured_nipple_clamps", "weight": 70, "quantity": 1, "enabled": true },
+          { "itemId": "sun_bleached_strap_on", "weight": 30, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -3070,8 +3070,8 @@
         "rolls": 1,
         "chanceBasisPoints": 1050,
         "entries": [
-          { "itemId": "strongbox_hinge_plate", "weight": 60, "quantity": 1, "enabled": true },
-          { "itemId": "canyon_cut_gemstone", "weight": 40, "quantity": 1, "enabled": true }
+          { "itemId": "dried_up_lube_bottle", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "sun_cracked_flogger", "weight": 40, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -3080,8 +3080,8 @@
         "rolls": 1,
         "chanceBasisPoints": 200,
         "entries": [
-          { "itemId": "canyon_cut_gemstone", "weight": 75, "quantity": 1, "enabled": true },
-          { "itemId": "strongbox_hinge_plate", "weight": 25, "quantity": 1, "enabled": true }
+          { "itemId": "sun_cracked_flogger", "weight": 75, "quantity": 1, "enabled": true },
+          { "itemId": "dried_up_lube_bottle", "weight": 25, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -3101,9 +3101,9 @@
         "rolls": 1,
         "chanceBasisPoints": 1900,
         "entries": [
-          { "itemId": "surveyors_brass_dial", "weight": 40, "quantity": 1, "enabled": true },
-          { "itemId": "strongbox_hinge_plate", "weight": 40, "quantity": 1, "enabled": true },
-          { "itemId": "canyon_cut_gemstone", "weight": 20, "quantity": 1, "enabled": true }
+          { "itemId": "sun_bleached_strap_on", "weight": 40, "quantity": 1, "enabled": true },
+          { "itemId": "dried_up_lube_bottle", "weight": 40, "quantity": 1, "enabled": true },
+          { "itemId": "sun_cracked_flogger", "weight": 20, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -3122,8 +3122,8 @@
         "rolls": 2,
         "chanceBasisPoints": 3700,
         "entries": [
-          { "itemId": "spent_blasting_cap", "weight": 55, "quantity": 1, "enabled": true },
-          { "itemId": "dust_choked_rig_filter", "weight": 45, "quantity": 1, "enabled": true }
+          { "itemId": "blown_out_fleshlight", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "dust_caked_blindfold", "weight": 45, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -3143,8 +3143,8 @@
         "rolls": 2,
         "chanceBasisPoints": 5600,
         "entries": [
-          { "itemId": "dust_choked_rig_filter", "weight": 55, "quantity": 1, "enabled": true },
-          { "itemId": "spent_blasting_cap", "weight": 45, "quantity": 1, "enabled": true }
+          { "itemId": "dust_caked_blindfold", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "blown_out_fleshlight", "weight": 45, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -3153,8 +3153,8 @@
         "rolls": 2,
         "chanceBasisPoints": 1600,
         "entries": [
-          { "itemId": "sand_scoured_bearing", "weight": 65, "quantity": 1, "enabled": true },
-          { "itemId": "surveyors_brass_dial", "weight": 35, "quantity": 1, "enabled": true }
+          { "itemId": "sand_scoured_nipple_clamps", "weight": 65, "quantity": 1, "enabled": true },
+          { "itemId": "sun_bleached_strap_on", "weight": 35, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -3163,8 +3163,8 @@
         "rolls": 1,
         "chanceBasisPoints": 1150,
         "entries": [
-          { "itemId": "strongbox_hinge_plate", "weight": 55, "quantity": 1, "enabled": true },
-          { "itemId": "canyon_cut_gemstone", "weight": 45, "quantity": 1, "enabled": true }
+          { "itemId": "dried_up_lube_bottle", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "sun_cracked_flogger", "weight": 45, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -3173,8 +3173,8 @@
         "rolls": 1,
         "chanceBasisPoints": 210,
         "entries": [
-          { "itemId": "canyon_cut_gemstone", "weight": 70, "quantity": 1, "enabled": true },
-          { "itemId": "strongbox_hinge_plate", "weight": 30, "quantity": 1, "enabled": true }
+          { "itemId": "sun_cracked_flogger", "weight": 70, "quantity": 1, "enabled": true },
+          { "itemId": "dried_up_lube_bottle", "weight": 30, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -3194,9 +3194,9 @@
         "rolls": 1,
         "chanceBasisPoints": 2000,
         "entries": [
-          { "itemId": "surveyors_brass_dial", "weight": 35, "quantity": 1, "enabled": true },
-          { "itemId": "strongbox_hinge_plate", "weight": 40, "quantity": 1, "enabled": true },
-          { "itemId": "canyon_cut_gemstone", "weight": 25, "quantity": 1, "enabled": true }
+          { "itemId": "sun_bleached_strap_on", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "dried_up_lube_bottle", "weight": 40, "quantity": 1, "enabled": true },
+          { "itemId": "sun_cracked_flogger", "weight": 25, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -3225,8 +3225,8 @@
         "rolls": 2,
         "chanceBasisPoints": 3600,
         "entries": [
-          { "itemId": "dust_choked_rig_filter", "weight": 50, "quantity": 1, "enabled": true },
-          { "itemId": "spent_blasting_cap", "weight": 50, "quantity": 1, "enabled": true }
+          { "itemId": "dust_caked_blindfold", "weight": 50, "quantity": 1, "enabled": true },
+          { "itemId": "blown_out_fleshlight", "weight": 50, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -3246,8 +3246,8 @@
         "rolls": 4,
         "chanceBasisPoints": 5500,
         "entries": [
-          { "itemId": "spent_blasting_cap", "weight": 45, "quantity": 1, "enabled": true },
-          { "itemId": "dust_choked_rig_filter", "weight": 55, "quantity": 1, "enabled": true }
+          { "itemId": "blown_out_fleshlight", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "dust_caked_blindfold", "weight": 55, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -3256,8 +3256,8 @@
         "rolls": 3,
         "chanceBasisPoints": 2400,
         "entries": [
-          { "itemId": "sand_scoured_bearing", "weight": 60, "quantity": 1, "enabled": true },
-          { "itemId": "surveyors_brass_dial", "weight": 40, "quantity": 1, "enabled": true }
+          { "itemId": "sand_scoured_nipple_clamps", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "sun_bleached_strap_on", "weight": 40, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -3266,8 +3266,8 @@
         "rolls": 2,
         "chanceBasisPoints": 2000,
         "entries": [
-          { "itemId": "strongbox_hinge_plate", "weight": 65, "quantity": 1, "enabled": true },
-          { "itemId": "canyon_cut_gemstone", "weight": 35, "quantity": 1, "enabled": true }
+          { "itemId": "dried_up_lube_bottle", "weight": 65, "quantity": 1, "enabled": true },
+          { "itemId": "sun_cracked_flogger", "weight": 35, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -3276,9 +3276,9 @@
         "rolls": 1,
         "chanceBasisPoints": 1400,
         "entries": [
-          { "itemId": "surveyors_brass_dial", "weight": 40, "quantity": 1, "enabled": true },
-          { "itemId": "strongbox_hinge_plate", "weight": 35, "quantity": 1, "enabled": true },
-          { "itemId": "canyon_cut_gemstone", "weight": 25, "quantity": 1, "enabled": true }
+          { "itemId": "sun_bleached_strap_on", "weight": 40, "quantity": 1, "enabled": true },
+          { "itemId": "dried_up_lube_bottle", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "sun_cracked_flogger", "weight": 25, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -3287,8 +3287,8 @@
         "rolls": 1,
         "chanceBasisPoints": 380,
         "entries": [
-          { "itemId": "canyon_cut_gemstone", "weight": 80, "quantity": 1, "enabled": true },
-          { "itemId": "strongbox_hinge_plate", "weight": 20, "quantity": 1, "enabled": true }
+          { "itemId": "sun_cracked_flogger", "weight": 80, "quantity": 1, "enabled": true },
+          { "itemId": "dried_up_lube_bottle", "weight": 20, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -3308,8 +3308,8 @@
         "rolls": 1,
         "chanceBasisPoints": 3200,
         "entries": [
-          { "itemId": "strongbox_hinge_plate", "weight": 50, "quantity": 1, "enabled": true },
-          { "itemId": "canyon_cut_gemstone", "weight": 50, "quantity": 1, "enabled": true }
+          { "itemId": "dried_up_lube_bottle", "weight": 50, "quantity": 1, "enabled": true },
+          { "itemId": "sun_cracked_flogger", "weight": 50, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -3338,9 +3338,9 @@
         "rolls": 4,
         "chanceBasisPoints": 4000,
         "entries": [
-          { "itemId": "spent_blasting_cap", "weight": 50, "quantity": 1, "enabled": true },
-          { "itemId": "dust_choked_rig_filter", "weight": 40, "quantity": 1, "enabled": true },
-          { "itemId": "sand_scoured_bearing", "weight": 10, "quantity": 1, "enabled": true }
+          { "itemId": "blown_out_fleshlight", "weight": 50, "quantity": 1, "enabled": true },
+          { "itemId": "dust_caked_blindfold", "weight": 40, "quantity": 1, "enabled": true },
+          { "itemId": "sand_scoured_nipple_clamps", "weight": 10, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -3360,8 +3360,8 @@
         "rolls": 4,
         "chanceBasisPoints": 5300,
         "entries": [
-          { "itemId": "dust_choked_rig_filter", "weight": 55, "quantity": 1, "enabled": true },
-          { "itemId": "spent_blasting_cap", "weight": 45, "quantity": 1, "enabled": true }
+          { "itemId": "dust_caked_blindfold", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "blown_out_fleshlight", "weight": 45, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -3370,8 +3370,8 @@
         "rolls": 3,
         "chanceBasisPoints": 2300,
         "entries": [
-          { "itemId": "sand_scoured_bearing", "weight": 55, "quantity": 1, "enabled": true },
-          { "itemId": "surveyors_brass_dial", "weight": 45, "quantity": 1, "enabled": true }
+          { "itemId": "sand_scoured_nipple_clamps", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "sun_bleached_strap_on", "weight": 45, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -3380,8 +3380,8 @@
         "rolls": 2,
         "chanceBasisPoints": 1900,
         "entries": [
-          { "itemId": "strongbox_hinge_plate", "weight": 60, "quantity": 1, "enabled": true },
-          { "itemId": "canyon_cut_gemstone", "weight": 40, "quantity": 1, "enabled": true }
+          { "itemId": "dried_up_lube_bottle", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "sun_cracked_flogger", "weight": 40, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -3390,9 +3390,9 @@
         "rolls": 1,
         "chanceBasisPoints": 1250,
         "entries": [
-          { "itemId": "surveyors_brass_dial", "weight": 40, "quantity": 1, "enabled": true },
-          { "itemId": "strongbox_hinge_plate", "weight": 30, "quantity": 1, "enabled": true },
-          { "itemId": "canyon_cut_gemstone", "weight": 30, "quantity": 1, "enabled": true }
+          { "itemId": "sun_bleached_strap_on", "weight": 40, "quantity": 1, "enabled": true },
+          { "itemId": "dried_up_lube_bottle", "weight": 30, "quantity": 1, "enabled": true },
+          { "itemId": "sun_cracked_flogger", "weight": 30, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -3401,8 +3401,8 @@
         "rolls": 1,
         "chanceBasisPoints": 470,
         "entries": [
-          { "itemId": "canyon_cut_gemstone", "weight": 85, "quantity": 1, "enabled": true },
-          { "itemId": "strongbox_hinge_plate", "weight": 15, "quantity": 1, "enabled": true }
+          { "itemId": "sun_cracked_flogger", "weight": 85, "quantity": 1, "enabled": true },
+          { "itemId": "dried_up_lube_bottle", "weight": 15, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -3422,8 +3422,8 @@
         "rolls": 1,
         "chanceBasisPoints": 3500,
         "entries": [
-          { "itemId": "canyon_cut_gemstone", "weight": 55, "quantity": 1, "enabled": true },
-          { "itemId": "strongbox_hinge_plate", "weight": 45, "quantity": 1, "enabled": true }
+          { "itemId": "sun_cracked_flogger", "weight": 55, "quantity": 1, "enabled": true },
+          { "itemId": "dried_up_lube_bottle", "weight": 45, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -3452,9 +3452,9 @@
         "rolls": 4,
         "chanceBasisPoints": 4100,
         "entries": [
-          { "itemId": "spent_blasting_cap", "weight": 45, "quantity": 1, "enabled": true },
-          { "itemId": "dust_choked_rig_filter", "weight": 45, "quantity": 1, "enabled": true },
-          { "itemId": "sand_scoured_bearing", "weight": 10, "quantity": 1, "enabled": true }
+          { "itemId": "blown_out_fleshlight", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "dust_caked_blindfold", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "sand_scoured_nipple_clamps", "weight": 10, "quantity": 1, "enabled": true }
         ]
       }
     ]
