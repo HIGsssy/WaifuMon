@@ -163,7 +163,9 @@ import {
   EXPEDITION_PLAN_VERSION,
   type ExpeditionBoard,
   type ExpeditionCandidate,
+  type ExpeditionBoardEntry,
   type ExpeditionClaimResult,
+  type ExpeditionOverview,
   type ExpeditionResolutionPlan,
   type ExpeditionView,
 } from './types';
@@ -190,6 +192,17 @@ export interface ExpeditionService {
    * a list of them is stable between reads.
    */
   getActive(playerId: number): Promise<ExpeditionView[]>;
+  /**
+   * Every open mission, and the board for each of `regionIds` — **without
+   * resolving anything and without writing anything**.
+   *
+   * The read-only counterpart of `getActive` + `getBoard` for surfaces that
+   * must not trigger gameplay (the Portal). A mission past its finish line is
+   * reported as `active` with `isDue: true`; the boards come from the same
+   * {@link boardFor} path `getBoard` uses, so a region's offers are exactly
+   * what Discord shows a player standing there.
+   */
+  getOverview(playerId: number, regionIds: readonly string[]): Promise<ExpeditionOverview>;
   /** Grant the resolved rewards exactly once and mark CLAIMED. */
   claim(playerId: number, expeditionId: number): Promise<ExpeditionClaimResult>;
   /**
@@ -341,6 +354,9 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
     const plan = planOf(row);
     const live = findDefinition(row.expeditionKey);
     const remainingMs = row.completesAt.getTime() - at.getTime();
+    const plannedMinutes = Math.round(
+      (row.completesAt.getTime() - row.startedAt.getTime()) / 60_000,
+    );
     return {
       id: row.id,
       slotIndex: row.slotIndex,
@@ -351,6 +367,10 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
       name: plan?.definition.name ?? live?.name ?? row.expeditionKey,
       emoji: plan?.definition.emoji ?? live?.emoji ?? null,
       description: plan?.definition.description ?? live?.description ?? '',
+      type: plan?.definition.type ?? live?.type ?? null,
+      durationMinutes: plan?.definition.durationMinutes ?? live?.durationMinutes ?? plannedMinutes,
+      recommendedLevel: plan?.definition.recommendedLevel ?? live?.recommendedLevel ?? null,
+      rewardPreview: live?.rewardPreview ?? [],
       status: row.status as ExpeditionView['status'],
       match: parseStoredMatch(row.suitabilityBand),
       startedAt: row.startedAt,
@@ -544,6 +564,52 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
   }
 
   /**
+   * Open rows exactly as stored — no resolution, no write.
+   *
+   * The same selection `readOpenMissions` makes, minus its resolving loop.
+   * Only the read-only overview uses it; every gameplay path keeps resolving
+   * on read.
+   */
+  async function peekOpenMissions(playerId: number): Promise<PlayerExpeditionRow[]> {
+    return db
+      .select()
+      .from(playerExpeditions)
+      .where(
+        and(
+          eq(playerExpeditions.playerId, playerId),
+          inArray(playerExpeditions.status, ['active', 'resolved']),
+        ),
+      )
+      .orderBy(playerExpeditions.region, playerExpeditions.startedAt);
+  }
+
+  /**
+   * One region's offers for one player at one instant — the canonical board.
+   *
+   * The single place a board is built. `getBoard` (Discord) and `getOverview`
+   * (Portal) both call it, so the two surfaces cannot disagree about what a
+   * region is offering. A switched-off feature shows an empty board rather
+   * than a stale one. Selection first, presentation second: `buildBoard`
+   * decides *which* missions this window shows, then they are laid out
+   * shortest first.
+   */
+  function boardFor(playerId: number, regionId: string, at: Date): ExpeditionBoardEntry[] {
+    const cfg = config();
+    if (!cfg.enabled) return [];
+    return orderBoardForDisplay(
+      buildBoard({
+        playerId,
+        regionId,
+        expeditions: getContent().expeditions,
+        durations: Object.values(cfg.durations),
+        boardSize: cfg.boardSize,
+        rotationHours: cfg.rotationHours,
+        now: at,
+      }),
+    ).map((definition) => ({ definition }));
+  }
+
+  /**
    * Translate a deployment that lost a race into the refusal it deserves.
    *
    * The unique indexes are the final authority on "one per region" and "one
@@ -602,22 +668,7 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
 
       return {
         regionId,
-        // A switched-off feature shows an empty board rather than a stale one.
-        // Selection first, presentation second: `buildBoard` decides *which*
-        // missions this window shows, then they are laid out shortest first.
-        entries: cfg.enabled
-          ? orderBoardForDisplay(
-              buildBoard({
-                playerId,
-                regionId,
-                expeditions: getContent().expeditions,
-                durations: Object.values(cfg.durations),
-                boardSize: cfg.boardSize,
-                rotationHours: cfg.rotationHours,
-                now: at,
-              }),
-            ).map((definition) => ({ definition }))
-          : [],
+        entries: boardFor(playerId, regionId, at),
         rotatesAt: rotationEndsAt(at, cfg.rotationHours),
         // What the player already has going on. `here` is the one that gates
         // deployment; `elsewhere` exists purely so the board can say which
@@ -815,6 +866,28 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
       const at = now();
       const names = await waifuNames(db, rows.map((r) => r.waifuId));
       return rows.map((row) => toView(row, at, names.get(row.waifuId)));
+    },
+
+    async getOverview(playerId, regionIds) {
+      const cfg = config();
+      const at = now();
+      // Deliberately `peekOpenMissions`, not `readOpenMissions`: this read must
+      // never resolve. A due mission stays `active` with `isDue` set, and the
+      // player's next Discord read resolves it — to the same result, because
+      // resolution is derived from the row id rather than from when it runs.
+      const open = await peekOpenMissions(playerId);
+      const names = await waifuNames(db, open.map((r) => r.waifuId));
+      const views = open.map((row) => toView(row, at, names.get(row.waifuId)));
+      return {
+        enabled: cfg.enabled,
+        rotatesAt: rotationEndsAt(at, cfg.rotationHours),
+        open: views,
+        boards: regionIds.map((regionId) => ({
+          regionId,
+          entries: boardFor(playerId, regionId, at),
+          regionMission: views.find((v) => v.region === regionId) ?? null,
+        })),
+      };
     },
 
     async claim(playerId, expeditionId) {

@@ -27,6 +27,7 @@ import { currencyRoutes } from './currency';
 import { dailyRoutes } from './daily';
 import { effectsRoutes } from './effects';
 import { encounterRoutes } from './encounter';
+import { expeditionRoutes } from './expeditions';
 import { guildRoutes } from './guilds';
 import { inventoryRoutes } from './inventory';
 import { achievementRoutes } from './achievements';
@@ -82,6 +83,8 @@ export const v1Routes =
     await app.register(encounterRoutes(ctx));
     await app.register(dailyRoutes(ctx));
     await app.register(questRoutes(ctx));
+    // Read-only: open missions and regional boards. No mutation routes.
+    await app.register(expeditionRoutes(ctx));
     await app.register(sessionRoutes(ctx));
     // A player's own achievement wall (self-scoped).
     await app.register(achievementRoutes(ctx));

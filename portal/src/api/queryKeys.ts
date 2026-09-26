@@ -22,6 +22,7 @@ export const queryKeys = {
   playerProfile: (playerId: number) => ['player', playerId, 'profile'] as const,
   care: (playerId: number) => ['player', playerId, 'care'] as const,
   inventory: (playerId: number) => ['player', playerId, 'inventory'] as const,
+  expeditions: (playerId: number) => ['player', playerId, 'expeditions'] as const,
 
   collection: (playerId: number) => ['player', playerId, 'collection'] as const,
   collectionList: (playerId: number, page: number, rarity?: Rarity | undefined) =>

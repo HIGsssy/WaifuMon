@@ -16,6 +16,7 @@ import type {
   ContentSpecies,
   CurrencyBalances,
   DexStats,
+  ExpeditionOverview,
   InventoryEntry,
   Item,
   DirectoryPlayer,
@@ -1030,4 +1031,124 @@ export const adminGalleryCatalog = {
         ...summary
       }) => summary,
     ),
+};
+
+// ── Expeditions ──────────────────────────────────────────────────────────────
+
+const HOUR_MS = 60 * 60 * 1000;
+const iso = (offsetMs: number) => new Date(Date.now() + offsetMs).toISOString();
+
+/**
+ * Two open missions — one underway in the current region, one finished and
+ * waiting in Discord — and three reachable regions: the occupied current one,
+ * a free one with a board, and one with no Expedition content at all.
+ * Times are relative to load so countdowns always have something to count.
+ */
+export const expeditionOverview: ExpeditionOverview = {
+  enabled: true,
+  currentRegion: 'twin-peeks',
+  rotatesAt: iso(3 * HOUR_MS + 30 * 60 * 1000),
+  active: [
+    {
+      region: 'twin-peeks',
+      regionName: 'Twin Peeks',
+      name: 'Summit Relay',
+      emoji: '⛰️',
+      description: 'Carry the mail over the pass.',
+      type: 'supply_run',
+      durationMinutes: 360,
+      recommendedLevel: 12,
+      rewardPreview: ['waifubux', 'salvage'],
+      match: 'STRONG_MATCH',
+      status: 'active',
+      isDue: false,
+      readyToClaim: false,
+      startedAt: iso(-4 * HOUR_MS),
+      completesAt: iso(2 * HOUR_MS + 14 * 60 * 1000 + 30 * 1000),
+      secondsRemaining: 2 * 3600 + 14 * 60 + 30,
+      waifuName: ownedEntries[0]!.waifu.nickname ?? 'Nyx',
+      waifu: { waifu: ownedEntries[0]!.waifu, species: ownedEntries[0]!.species },
+    },
+    {
+      region: 'waifu-valley',
+      regionName: 'Waifu Valley',
+      name: 'Orchard Watch',
+      emoji: '🍑',
+      description: 'Keep the pickers company.',
+      type: 'escort',
+      durationMinutes: 60,
+      recommendedLevel: 3,
+      rewardPreview: ['essence'],
+      match: 'PERFECT_MATCH',
+      status: 'active',
+      isDue: true,
+      readyToClaim: true,
+      startedAt: iso(-2 * HOUR_MS),
+      completesAt: iso(-HOUR_MS),
+      secondsRemaining: 0,
+      waifuName: 'Lilith',
+      waifu: { waifu: ownedEntries[1]!.waifu, species: ownedEntries[1]!.species },
+    },
+  ],
+  regions: [
+    {
+      regionId: 'twin-peeks',
+      name: 'Twin Peeks',
+      emoji: '🏔️',
+      isCurrent: true,
+      occupied: true,
+      offers: [
+        {
+          name: 'Ridge Survey',
+          emoji: '🧭',
+          description: 'Map the northern ridge.',
+          type: 'scouting',
+          durationMinutes: 60,
+          recommendedLevel: 8,
+          preferredAffinities: ['dominant'],
+          preferredRaces: ['demi-human'],
+          rewardPreview: ['waifubux'],
+        },
+      ],
+    },
+    {
+      regionId: 'thirstlands',
+      name: 'Thirstlands',
+      emoji: '🏜️',
+      isCurrent: false,
+      occupied: false,
+      offers: [
+        {
+          name: 'Dune Salvage',
+          emoji: '📦',
+          description: 'Dig out what the storm buried.',
+          type: 'salvage_dive',
+          durationMinutes: 180,
+          recommendedLevel: 15,
+          preferredAffinities: [],
+          preferredRaces: ['android'],
+          rewardPreview: ['salvage', 'rare_find'],
+        },
+        {
+          name: 'Oasis Escort',
+          emoji: '🐫',
+          description: '',
+          type: 'escort',
+          durationMinutes: 1080,
+          recommendedLevel: 18,
+          preferredAffinities: ['caregiver', 'switch'],
+          preferredRaces: [],
+          rewardPreview: [],
+        },
+      ],
+    },
+    {
+      regionId: 'base-80085',
+      name: 'Base 80085',
+      emoji: null,
+      isCurrent: false,
+      occupied: false,
+      offers: [],
+    },
+  ],
 };

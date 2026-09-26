@@ -36,6 +36,21 @@ export function formatDate(iso: string | null | undefined): string {
   return Number.isNaN(date.getTime()) ? '' : dateFormat.format(date);
 }
 
+const dateTimeFormat = new Intl.DateTimeFormat(undefined, {
+  weekday: 'short',
+  month: 'short',
+  day: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit',
+});
+
+/** Local instant for things measured in hours, e.g. `Fri, 25 Sep, 14:30`. */
+export function formatDateTime(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? '' : dateTimeFormat.format(date);
+}
+
 const RELATIVE_UNITS: Array<[Intl.RelativeTimeFormatUnit, number]> = [
   ['year', 365 * 24 * 60 * 60 * 1000],
   ['month', 30 * 24 * 60 * 60 * 1000],
@@ -66,6 +81,32 @@ export function formatRelative(iso: string | null | undefined, now: Date = new D
 export function formatDuration(ms: number): string {
   if (ms < 1000) return `${Math.round(ms)} ms`;
   return `${(ms / 1000).toFixed(2)} s`;
+}
+
+/**
+ * A span of minutes as a player reads it: `45m`, `6h`, `2h 30m`, `1d 2h`.
+ * Matches the Discord Expedition screens up to 24h; longer spans add days.
+ */
+export function formatMinutes(totalMinutes: number): string {
+  const minutes = Math.max(0, Math.round(totalMinutes));
+  const days = Math.floor(minutes / 1440);
+  const hours = Math.floor((minutes % 1440) / 60);
+  const mins = minutes % 60;
+  if (days > 0) return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
+  if (hours === 0) return `${mins}m`;
+  if (mins === 0) return `${hours}h`;
+  return `${hours}h ${mins}m`;
+}
+
+/**
+ * Time left until `iso`, rounded *up* to the minute so a countdown never reads
+ * `0m` while there is still time on the clock. `null` once the instant passes.
+ */
+export function formatCountdown(iso: string, now: Date = new Date()): string | null {
+  const ms = new Date(iso).getTime() - now.getTime();
+  if (Number.isNaN(ms) || ms <= 0) return null;
+  if (ms < 60_000) return 'less than a minute';
+  return formatMinutes(Math.ceil(ms / 60_000));
 }
 
 /** Sentence-cases a lowercase content token like `demi-human` or `submissive`. */

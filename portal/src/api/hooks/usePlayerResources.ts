@@ -9,15 +9,30 @@ import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 
 import { PLAYER_POLICY, SHOP_POLICY } from '../cachePolicy';
 import { getCareState } from '../care';
+import { getExpeditions } from '../expeditions';
 import { getInventory } from '../inventory';
 import { queryKeys } from '../queryKeys';
 import { getShopCatalog } from '../shop';
-import type { CareState, InventoryEntry, ShopCatalogEntry } from '../types';
+import type { CareState, ExpeditionOverview, InventoryEntry, ShopCatalogEntry } from '../types';
 
 export function useCareState(playerId: number): UseQueryResult<CareState> {
   return useQuery({
     queryKey: queryKeys.care(playerId),
     queryFn: ({ signal }) => getCareState(playerId, signal),
+    ...PLAYER_POLICY,
+  });
+}
+
+/**
+ * Open Expeditions and regional boards. Ordinary `PLAYER_POLICY` — no polling:
+ * countdowns tick locally from `completesAt` / `rotatesAt`, so the only reason
+ * to ask again is state that really moved (a focus back from Discord, or a
+ * board rotation, which the page handles).
+ */
+export function useExpeditions(playerId: number): UseQueryResult<ExpeditionOverview> {
+  return useQuery({
+    queryKey: queryKeys.expeditions(playerId),
+    queryFn: ({ signal }) => getExpeditions(playerId, signal),
     ...PLAYER_POLICY,
   });
 }

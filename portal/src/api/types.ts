@@ -669,3 +669,83 @@ export interface LeaderboardResponse {
 }
 
 export type DirectorySort = 'name' | 'level' | 'recent';
+
+// ── Expeditions ──────────────────────────────────────────────────────────────
+
+/** Read-only. Deploying, collecting and recalling all happen in Discord. */
+export type ExpeditionType =
+  'supply_run' | 'escort' | 'excavation' | 'scouting' | 'diplomacy' | 'salvage_dive';
+
+export type ExpeditionRewardPreview =
+  | 'waifubux'
+  | 'essence'
+  | 'salvage'
+  | 'charms'
+  | 'consumables'
+  | 'waifu_xp'
+  | 'rare_find'
+  | 'key_item';
+
+export type MatchQuality =
+  'PERFECT_MATCH' | 'STRONG_MATCH' | 'PARTIAL_MATCH' | 'WEAK_MATCH' | 'POOR_MATCH';
+
+/**
+ * One open mission. Carries neither the outcome nor the payout: Discord
+ * withholds both until the player collects, and so does the API.
+ */
+export interface ActiveExpedition {
+  region: string;
+  regionName: string;
+  name: string;
+  emoji: string | null;
+  description: string;
+  type: ExpeditionType | null;
+  durationMinutes: number;
+  recommendedLevel: number | null;
+  rewardPreview: ExpeditionRewardPreview[];
+  /** The match shown at deployment; null for legacy rows. */
+  match: MatchQuality | null;
+  /** Canonical row status. The Portal's read never resolves a mission. */
+  status: 'active' | 'resolved';
+  isDue: boolean;
+  /** Finished and waiting to be collected in Discord. */
+  readyToClaim: boolean;
+  startedAt: string;
+  completesAt: string;
+  secondsRemaining: number;
+  waifuName: string;
+  waifu: { waifu: OwnedWaifu; species: Species } | null;
+}
+
+export interface ExpeditionOffer {
+  name: string;
+  emoji: string | null;
+  description: string;
+  type: ExpeditionType;
+  durationMinutes: number;
+  recommendedLevel: number;
+  preferredAffinities: Affinity[];
+  preferredRaces: Race[];
+  rewardPreview: ExpeditionRewardPreview[];
+}
+
+export interface ExpeditionRegion {
+  regionId: string;
+  name: string;
+  emoji: string | null;
+  /** Where the player is standing — the only region a mission can start in. */
+  isCurrent: boolean;
+  /** An open mission holds this region. */
+  occupied: boolean;
+  offers: ExpeditionOffer[];
+}
+
+export interface ExpeditionOverview {
+  /** False when new deployments are switched off. */
+  enabled: boolean;
+  currentRegion: string;
+  rotatesAt: string;
+  active: ActiveExpedition[];
+  /** Current region first, then unlocked regions in travel order. */
+  regions: ExpeditionRegion[];
+}

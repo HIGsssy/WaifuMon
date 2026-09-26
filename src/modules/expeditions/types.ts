@@ -177,6 +177,18 @@ export interface ExpeditionView {
   name: string;
   emoji: string | null;
   description: string;
+  /** From the snapshot, falling back to the live definition. */
+  type: ExpeditionType | null;
+  /** From the snapshot; derived from the row's own timestamps as a last resort. */
+  durationMinutes: number;
+  /** From the snapshot, falling back to the live definition. */
+  recommendedLevel: number | null;
+  /**
+   * The broad "what might come back" categories. Live, because the snapshot
+   * does not carry them — empty if the definition has since been deleted. A
+   * promise about the kind of payout, never the payout itself.
+   */
+  rewardPreview: RegionalExpedition['rewardPreview'];
   status: ExpeditionStatus;
   /**
    * The match quality the player was shown at deployment. `null` for a row
@@ -195,6 +207,30 @@ export interface ExpeditionView {
   secondsRemaining: number;
   /** True when `completes_at` has passed and the row is still active. */
   isDue: boolean;
+}
+
+/**
+ * Every open mission plus the board of each requested region — **read only**.
+ *
+ * The Portal's view of the feature. Unlike {@link ExpeditionBoard} it never
+ * resolves anything: a mission past `completesAt` is still reported as
+ * `active` with `isDue: true`, and Discord resolves it on its next read. The
+ * resolution is deterministic from the row id, so *when* it happens changes
+ * nothing about the result.
+ */
+export interface ExpeditionOverview {
+  enabled: boolean;
+  /** Epoch-aligned, so one instant covers every region's board. */
+  rotatesAt: Date;
+  /** Every open mission in every region, ordered by region then start. */
+  open: ExpeditionView[];
+  /** One entry per requested region, in the order requested. */
+  boards: {
+    regionId: string;
+    entries: ExpeditionBoardEntry[];
+    /** The open mission holding this region, if any — the same rule `getBoard` applies. */
+    regionMission: ExpeditionView | null;
+  }[];
 }
 
 /** What `claim` actually granted, for the result screen. */

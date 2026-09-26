@@ -27,6 +27,7 @@ const PAGES: ReadonlyArray<{ name: string; url: string; settled: string | RegExp
   { name: 'Collection', url: '/collection', settled: /Nyx/ },
   { name: 'Waifumon detail', url: '/collection/101', settled: 'Progression' },
   { name: 'Buddy', url: '/buddy', settled: 'Energy / tick' },
+  { name: 'Expeditions', url: '/expeditions', settled: 'Summit Relay' },
   { name: 'Inventory', url: '/inventory', settled: 'Basic Charm' },
   { name: 'Shop', url: '/shop', settled: 'Basic Charm' },
   { name: 'Encyclopedia', url: '/encyclopedia', settled: 'Void Empress' },

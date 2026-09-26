@@ -42,6 +42,9 @@ const WaifumonDetailPage = lazy(() =>
 const BuddyPage = lazy(() =>
   import('@/features/buddy/BuddyPage').then((m) => ({ default: m.BuddyPage })),
 );
+const ExpeditionsPage = lazy(() =>
+  import('@/features/expeditions/ExpeditionsPage').then((m) => ({ default: m.ExpeditionsPage })),
+);
 const InventoryPage = lazy(() =>
   import('@/features/inventory/InventoryPage').then((m) => ({ default: m.InventoryPage })),
 );
@@ -186,6 +189,7 @@ export const routes: RouteObject[] = [
           { path: 'collection', element: <CollectionPage /> },
           { path: 'collection/:waifuId', element: <WaifumonDetailPage /> },
           { path: 'buddy', element: <BuddyPage /> },
+          { path: 'expeditions', element: <ExpeditionsPage /> },
           { path: 'inventory', element: <InventoryPage /> },
           { path: 'shop', element: <ShopPage /> },
           { path: 'encyclopedia', element: <EncyclopediaPage /> },

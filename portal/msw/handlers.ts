@@ -236,6 +236,7 @@ export const handlers = [
 
   // ── Care, inventory, shop ─────────────────────────────────────────────────
   http.get('/api/v1/players/:playerId/care', () => data(fixtures.careState)),
+  http.get('/api/v1/players/:playerId/expeditions', () => data(fixtures.expeditionOverview)),
   http.get('/api/v1/players/:playerId/inventory', () => data(fixtures.inventoryEntries)),
   http.get('/api/v1/shop/catalog', () => data(fixtures.shopCatalog)),
 
