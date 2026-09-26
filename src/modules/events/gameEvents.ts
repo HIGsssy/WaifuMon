@@ -168,6 +168,18 @@ export interface GameEventPayloads {
   };
   /** Internal, reserved — passive energy regen outside Care Mode. */
   ENERGY_REGENERATED: { amount: number; energyAfter: number };
+  /**
+   * A WaifuMon was sent on an Expedition. Emitted only after the deploying
+   * transaction has committed, so it never describes a mission that does not
+   * exist. Display strings only — no key, no chance, no reward table.
+   */
+  EXPEDITION_DEPLOYED: {
+    /** Nickname when set, species name otherwise. */
+    waifuName: string;
+    /** The player-facing mission name, as snapshotted at deployment. */
+    expeditionName: string;
+    durationMinutes: number;
+  };
   /** Reserved for the awakening system. */
   AWAKENING: { waifuId: number; buddyName: string };
   COLLECTION_COMPLETED: { distinctSpecies: number; totalSpecies: number };
@@ -268,6 +280,7 @@ export const EVENT_META: Readonly<Record<GameEventKind, GameEventMeta>> = {
   WAIFU_GIFT_CLAIMED: { visibility: 'minor', scope: 'internal' },
   PLAYER_ENTERED_CARE: { visibility: 'major', scope: 'player-visible' },
   PLAYER_LEFT_CARE: { visibility: 'normal', scope: 'player-visible' },
+  EXPEDITION_DEPLOYED: { visibility: 'normal', scope: 'player-visible' },
   AWAKENING: { visibility: 'major', scope: 'player-visible' },
   COLLECTION_COMPLETED: { visibility: 'major', scope: 'player-visible' },
   CARE_BUDDY_CHANGED: { visibility: 'minor', scope: 'internal' },

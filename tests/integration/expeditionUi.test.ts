@@ -51,6 +51,8 @@ import {
   type EventHarness,
 } from '../helpers/fixtures';
 import { createTestDb, type TestDb } from '../helpers/testDb';
+import { createGameEventBus } from '../../src/modules/events/gameEvents';
+import { createActivityFeedService } from '../../src/modules/activity/activityFeedService';
 import type { AppContext, Provisioned } from '../../src/discord/types';
 
 let t: TestDb;
@@ -601,6 +603,173 @@ describe('deployment', () => {
     expect(text).toContain('Lilith');
     expect(text).toMatch(/<t:\d+:R>/);
 
+    const active = await app.expeditions.getActive(prov.playerId);
+    expect(active).toHaveLength(1);
+    expect(active[0]?.waifuId).toBe(waifuId);
+  });
+});
+
+describe('activity log — Expedition deployed', () => {
+  const deployLines = () => harness.lines.filter((l) => l.text.startsWith('🧭'));
+
+  /** Press Deploy, as the confirmation button does. */
+  async function press(prov: Provisioned, key: string, waifuId: number | string, context = ctx) {
+    const btn = fakeButton();
+    // A real Discord display name, so the log's identity goes through the same
+    // resolver every other narrated line uses.
+    Object.assign(btn.user, { globalName: 'Hunter' });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleExpeditionDeploy(context, btn as any, prov, key, String(waifuId));
+    return btn;
+  }
+
+  async function rowsFor(playerId: number) {
+    return t.db.select().from(playerExpeditions).where(eq(playerExpeditions.playerId, playerId));
+  }
+
+  beforeEach(() => {
+    harness.reset();
+  });
+
+  it('narrates a successful deployment exactly once, to the Waifumon Log', async () => {
+    const { prov, waifuId } = await player();
+    await press(prov, 'supply_run', waifuId);
+
+    expect(harness.ofKind('EXPEDITION_DEPLOYED')).toHaveLength(1);
+    // Player: the Discord display name. WaifuMon: nickname, else species.
+    // Mission: its player-facing name. Duration: 360 minutes, in words.
+    expect(deployLines()).toEqual([
+      {
+        channelId: 'c-waifumon-log',
+        text: `🧭 Hunter has sent Lilith${seq} on Desert Supply Run for 6 hours.`,
+        visibility: 'normal',
+      },
+    ]);
+    const text = deployLines()[0]!.text;
+    expect(text).not.toContain('supply_run');
+    expect(text).not.toContain('supply_success');
+    assertNoNumericOdds(text);
+  });
+
+  it('formats the duration of the mission actually deployed', async () => {
+    const { prov, waifuId } = await player();
+    await press(prov, 'night_market', waifuId);
+    expect(deployLines().map((l) => l.text)).toEqual([
+      `🧭 Hunter has sent Lilith${seq} on Night Market Errand for 1 hour.`,
+    ]);
+  });
+
+  it('logs nothing when the region is already occupied', async () => {
+    const { prov } = await deployed();
+    const second = await insertOwnedWaifu(t.db, {
+      playerId: prov.playerId,
+      speciesId: demonSpecies.id,
+      level: 12,
+    });
+    harness.reset();
+
+    const btn = await press(prov, 'well_watch', second.id);
+    expect(screenText(painted(btn))).toContain('⚠️');
+    expect(harness.ofKind('EXPEDITION_DEPLOYED')).toHaveLength(0);
+    expect(deployLines()).toHaveLength(0);
+  });
+
+  it('logs nothing when the WaifuMon is unavailable (already away)', async () => {
+    const { prov, waifuId } = await deployed();
+    const peeks = completePool({ region: 'twin-peeks' }).map((d) => ({
+      ...d,
+      key: `peeks_${d.key}`,
+    }));
+    installContent([...completePool(), ...peeks]);
+    await forceRegion(t.db, prov.playerId, 'twin-peeks');
+    harness.reset();
+
+    // Twin Peeks is free, but she is still out in Waifu Valley.
+    const btn = await press(prov, 'peeks_supply_run', waifuId);
+    expect(screenText(painted(btn))).toContain('⚠️');
+    expect(deployLines()).toHaveLength(0);
+    expect((await rowsFor(prov.playerId)).filter((r) => r.status === 'active')).toHaveLength(1);
+  });
+
+  it('logs nothing on validation failure — unknown mission, wrong region, bad id', async () => {
+    const { prov, waifuId } = await player();
+    await press(prov, 'no_such_mission', waifuId);
+    await press(prov, 'supply_run', 'not-a-number');
+    await forceRegion(t.db, prov.playerId, 'twin-peeks');
+    await press(prov, 'supply_run', waifuId);
+
+    expect(harness.ofKind('EXPEDITION_DEPLOYED')).toHaveLength(0);
+    expect(deployLines()).toHaveLength(0);
+    expect(await rowsFor(prov.playerId)).toHaveLength(0);
+  });
+
+  it('logs only the winner of a race for one region', async () => {
+    const { prov, waifuId } = await player();
+    const rival = await insertOwnedWaifu(t.db, {
+      playerId: prov.playerId,
+      speciesId: demonSpecies.id,
+      level: 12,
+      nickname: 'Rival',
+    });
+    await Promise.all([
+      press(prov, 'supply_run', waifuId),
+      press(prov, 'well_watch', rival.id),
+    ]);
+
+    const active = (await rowsFor(prov.playerId)).filter((r) => r.status === 'active');
+    expect(active).toHaveLength(1);
+    expect(harness.ofKind('EXPEDITION_DEPLOYED')).toHaveLength(1);
+    expect(deployLines()).toHaveLength(1);
+    // And it names the copy that actually went.
+    const winner = active[0]!.waifuId === waifuId ? `Lilith${seq}` : 'Rival';
+    expect(deployLines()[0]!.text).toContain(`has sent ${winner} on`);
+  });
+
+  it('still narrates a committed deployment when the confirmation screen fails to paint', async () => {
+    const { prov, waifuId } = await player();
+    const btn = fakeButton();
+    Object.assign(btn.user, { globalName: 'Hunter' });
+    const broken = vi.fn(async () => {
+      throw new Error('Discord rejected the interaction update');
+    });
+    btn.update = broken;
+    btn.reply = broken;
+    btn.editReply = broken;
+
+    await expect(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      handleExpeditionDeploy(ctx, btn as any, prov, 'supply_run', String(waifuId)),
+    ).rejects.toThrow('Discord rejected the interaction update');
+
+    expect(broken).toHaveBeenCalled();
+    expect(harness.ofKind('EXPEDITION_DEPLOYED')).toHaveLength(1);
+    expect(deployLines().map((l) => l.text)).toEqual([
+      `🧭 Hunter has sent Lilith${seq} on Desert Supply Run for 6 hours.`,
+    ]);
+    const active = await app.expeditions.getActive(prov.playerId);
+    expect(active).toHaveLength(1);
+    expect(active[0]?.waifuId).toBe(waifuId);
+    expect(active[0]?.status).toBe('active');
+  });
+
+  it('a Waifumon Log failure neither fails nor undoes the deployment', async () => {
+    const { prov, waifuId } = await player();
+    const bus = createGameEventBus({ logger: t.logger });
+    createActivityFeedService({
+      logger: t.logger,
+      richEmbedMinRarity: app.content.tables.capture.announceMinRarity,
+      resolveChannel: async () => 'c-waifumon-log',
+      post: async () => {
+        throw new Error('Discord is down');
+      },
+    }).subscribe(bus);
+    // A subscriber that throws outright, too — the bus must isolate it.
+    bus.subscribe(() => {
+      throw new Error('subscriber exploded');
+    });
+
+    const btn = await press(prov, 'supply_run', waifuId, { ...ctx, events: bus });
+    expect(screenText(painted(btn))).toContain('sets out');
     const active = await app.expeditions.getActive(prov.playerId);
     expect(active).toHaveLength(1);
     expect(active[0]?.waifuId).toBe(waifuId);

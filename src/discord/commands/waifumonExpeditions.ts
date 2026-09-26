@@ -50,6 +50,8 @@ import { AppError } from '../../shared/errors';
 import type { AppContext, PlayerInteraction, Provisioned } from '../types';
 import { buildCustomId } from '../types';
 import { respondEphemeral } from '../ephemeralSession';
+import { emitEvents } from '../gameEventEmitter';
+import { gameEvent } from '../../modules/events/gameEvents';
 import { regionLabel } from '../../modules/locations/regions';
 import { affinityLabel } from '../../modules/capture/affinityMath';
 import type {
@@ -1068,8 +1070,39 @@ export async function handleExpeditionDeploy(
     await handleExpeditionBoard(ctx, interaction, prov, '⚠️ That button no longer works~');
     return;
   }
+  let view: ExpeditionView;
   try {
-    const view = await ctx.services.expeditions.deploy(prov.playerId, key, waifuId);
+    view = await ctx.services.expeditions.deploy(prov.playerId, key, waifuId);
+  } catch (err) {
+    // Every refusal the service can raise is an AppError with player-facing
+    // wording — a stale Deploy lands here and repaints rather than erroring.
+    // A refused or lost deployment never reaches the narration below.
+    if (err instanceof AppError) {
+      await handleExpeditionBoard(ctx, interaction, prov, `⚠️ ${err.userMessage}`);
+      return;
+    }
+    throw err;
+  }
+
+  // `deploy` has returned, so its transaction has committed: the mission
+  // exists, and the event describing it is emitted now — before the screen,
+  // so a failed interaction update cannot suppress it. Built from the
+  // deployment's own result, no second lookup. `emitEvents` never rejects: a
+  // Waifumon Log outage cannot turn a started mission into an error, nor keep
+  // the player's screen from painting.
+  //
+  // Started rather than awaited here, and awaited once the screen is up: the
+  // interaction has a few seconds to answer, and a slow log post must not
+  // spend them.
+  const emitted = emitEvents(ctx, interaction, prov, [
+    gameEvent('EXPEDITION_DEPLOYED', {
+      waifuName: view.waifuName,
+      expeditionName: view.name,
+      durationMinutes: view.durationMinutes,
+    }),
+  ]);
+
+  try {
     // A second read, only to count the regions now working — which is what
     // decides whether the screen offers the overview. Cheap, and it keeps the
     // count honest rather than inferred from the press that got here.
@@ -1082,14 +1115,8 @@ export async function handleExpeditionDeploy(
         Math.max(1, active.length),
       ),
     );
-  } catch (err) {
-    // Every refusal the service can raise is an AppError with player-facing
-    // wording — a stale Deploy lands here and repaints rather than erroring.
-    if (err instanceof AppError) {
-      await handleExpeditionBoard(ctx, interaction, prov, `⚠️ ${err.userMessage}`);
-      return;
-    }
-    throw err;
+  } finally {
+    await emitted;
   }
 }
 

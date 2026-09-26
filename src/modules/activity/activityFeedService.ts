@@ -136,6 +136,21 @@ function unlockActor(event: GameEvent): string {
 }
 
 /**
+ * A whole-number span in words, for narration: `1 hour`, `3 hours`,
+ * `45 minutes`, `2 hours 30 minutes`. The compact `3h` the Expedition screens
+ * use reads as shorthand in a sentence someone else is reading.
+ */
+export function formatDurationWords(totalMinutes: number): string {
+  const minutes = Math.max(0, Math.round(totalMinutes));
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  const unit = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+  if (hours === 0) return unit(mins, 'minute');
+  if (mins === 0) return unit(hours, 'hour');
+  return `${unit(hours, 'hour')} ${unit(mins, 'minute')}`;
+}
+
+/**
  * Canonical narration. Returns `null` for events that are deliberately not
  * narrated (internal scope is filtered before this is reached; reserved
  * kinds return null so adding a producer later is a one-line change here).
@@ -194,6 +209,11 @@ export function formatActivityLine(event: GameEvent): ActivityLine | null {
           : `🌸 ${player} finished spending time with their Waifumon.`,
       );
     }
+    case 'EXPEDITION_DEPLOYED':
+      return line(
+        `🧭 ${player} has sent ${event.payload.waifuName} on ${event.payload.expeditionName} ` +
+          `for ${formatDurationWords(event.payload.durationMinutes)}.`,
+      );
     case 'AWAKENING':
       return line(`🌌 ${event.payload.buddyName} awakened for ${player}.`);
     case 'COLLECTION_COMPLETED':

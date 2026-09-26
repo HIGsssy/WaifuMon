@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   createActivityFeedService,
   formatActivityLine,
+  formatDurationWords,
 } from '../../src/modules/activity/activityFeedService';
 import {
   buildGameEvent,
@@ -113,6 +114,14 @@ describe('formatActivityLine — canonical wording', () => {
     [
       gameEvent('COLLECTION_COMPLETED', { distinctSpecies: 40, totalSpecies: 40 }),
       '🌟 Whistler completed the collection.',
+    ],
+    [
+      gameEvent('EXPEDITION_DEPLOYED', {
+        waifuName: 'Warband Princess',
+        expeditionName: 'Stockroom Squeeze',
+        durationMinutes: 180,
+      }),
+      '🧭 Whistler has sent Warband Princess on Stockroom Squeeze for 3 hours.',
     ],
   ])('narrates %#', (descriptor, expected) => {
     expect(line(descriptor)).toBe(expected);
@@ -245,5 +254,40 @@ describe('createActivityFeedService', () => {
     await expect(
       feed.handle(buildGameEvent(gameEvent('PLAYER_LEVEL_UP', { level: 2, rewardLabels: [] }), SOURCE)),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe('formatDurationWords', () => {
+  it.each([
+    [60, '1 hour'],
+    [180, '3 hours'],
+    [360, '6 hours'],
+    [1080, '18 hours'],
+    [45, '45 minutes'],
+    [1, '1 minute'],
+    [150, '2 hours 30 minutes'],
+    [61, '1 hour 1 minute'],
+  ])('%i minutes → %s', (minutes, expected) => {
+    expect(formatDurationWords(minutes)).toBe(expected);
+  });
+
+  it('narrates an Expedition deployment as player-visible, carrying display strings only', () => {
+    const event = buildGameEvent(
+      gameEvent('EXPEDITION_DEPLOYED', {
+        waifuName: 'Lilith',
+        expeditionName: 'Well Watch',
+        durationMinutes: 60,
+      }),
+      SOURCE,
+    );
+    expect(event.scope).toBe('player-visible');
+    expect(Object.keys(event.payload).sort()).toEqual([
+      'durationMinutes',
+      'expeditionName',
+      'waifuName',
+    ]);
+    expect(formatActivityLine(event)?.text).toBe(
+      '🧭 Whistler has sent Lilith on Well Watch for 1 hour.',
+    );
   });
 });
