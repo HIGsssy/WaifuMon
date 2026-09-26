@@ -21,6 +21,25 @@ export class UnauthorizedError extends AppError {
   }
 }
 
+/**
+ * A credential the global auth hook accepted, on a route that needs a stronger
+ * one.
+ *
+ * Raised only by `/metrics`. That hook admits either the shared bearer token or
+ * a Portal session cookie, but a Portal session is a *player's* browser login —
+ * and RSS, query latency and pool saturation are operator readings, not player
+ * data. So the metrics routes narrow to bearer-only and this is the refusal.
+ */
+export class MetricsBearerRequiredError extends AppError {
+  constructor() {
+    super(
+      'METRICS_FORBIDDEN',
+      'Runtime metrics require the platform API bearer token; a Portal session is not sufficient',
+      'You do not have permission to do that.',
+    );
+  }
+}
+
 /** No route (or no resource) at the requested path. */
 export class ApiNotFoundError extends AppError {
   constructor(detail: string) {
@@ -160,6 +179,8 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   PORTAL_CSRF_INVALID: 403,
   PORTAL_GUILD_FORBIDDEN: 403,
   PORTAL_PERMISSION_DENIED: 403,
+  /** `/metrics` reached with a Portal session rather than the bearer token. */
+  METRICS_FORBIDDEN: 403,
   /** Role-access management needs a selected guild; the session has none. */
   PORTAL_GUILD_REQUIRED: 400,
   /** A role grant payload named a permission that cannot be delegated. */

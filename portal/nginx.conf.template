@@ -59,6 +59,35 @@ server {
     return 404;
   }
 
+  # /metrics is deliberately NOT proxied, for the same reasons as /ready and
+  # more of them.
+  #
+  # It reports process RSS and heap, event-loop delay percentiles, per-route
+  # request counts and latency, Postgres pool saturation, and card-renderer
+  # queue depth. That is a live capacity and load profile of the deployment:
+  # enough to infer traffic volume, to see which routes are slow, and to tell
+  # when the node is close to its limit — which is exactly the information that
+  # makes a deployment worth pushing on, and none of which the Portal reads.
+  #
+  # Unpublished rather than removed. `/metrics` still answers, with the bearer
+  # token, everywhere it is used:
+  #   - container-internally at http://waifumon-bot:3120/metrics
+  #   - on the host at http://127.0.0.1:3120/metrics (loopback publication)
+  #
+  # This is the second of two layers, not the only one. The route itself demands
+  # the Platform API bearer token and refuses a Portal session with 403, so the
+  # endpoint is closed even to a logged-in player who reaches it by some other
+  # path. This rule is what keeps it off the public origin regardless.
+  #
+  # `^~` rather than `=` so it covers `/metrics/reset` as well as `/metrics`,
+  # and so a future subpath is closed by default rather than by being
+  # remembered. The prefix shadows no SPA route — the Portal has no page under
+  # /metrics.
+  location ^~ /metrics {
+    include /etc/nginx/security-headers.conf;
+    return 404;
+  }
+
   # The API's own documentation surface is not published to the internet.
   #
   # `@fastify/swagger` puts Swagger UI at /api/v1/docs and the spec at

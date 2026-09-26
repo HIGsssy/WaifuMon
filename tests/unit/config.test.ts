@@ -100,6 +100,12 @@ describe('loadConfig', () => {
       // Fail-closed: the shared API token is not an admin credential unless
       // an operator sets PLATFORM_API_ADMIN_BEARER.
       adminBearer: false,
+      // On by default, unlike every other surface here. The routes require the
+      // bearer token, refuse a Portal session with 403, and are 404'd at the
+      // Portal edge — so enabling them exposes nothing a token holder could not
+      // already reach, and an observability endpoint that needs a config change
+      // and a restart is one that is off during the incident it was built for.
+      metricsEnabled: true,
       cardRendererEnabled: false,
       cardRenderWorkers: 2,
       cardWarmConcurrency: 1,
@@ -173,6 +179,7 @@ describe('loadConfig', () => {
       port: 3120,
       token: 'a-secret',
       adminBearer: false,
+      metricsEnabled: true,
       cardRendererEnabled: false,
       cardRenderWorkers: 2,
       cardWarmConcurrency: 1,

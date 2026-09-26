@@ -18,6 +18,7 @@ export {
   configureCardRenderer,
   createCardRenderer,
   getCardRenderer,
+  peekCardRenderer,
   renderCard,
   shutdownCardRenderer,
   MAX_OUTPUT_WIDTH,

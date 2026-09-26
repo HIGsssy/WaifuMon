@@ -49,7 +49,8 @@ import { createGuildRoleService } from './modules/portalAuth/guildRoleService';
 import { createAdminRoleGrantService } from './modules/portalAuth/adminRoleGrantService';
 import { createPortalAuthorizationService } from './modules/portalAuth/portalAuthService';
 import { createAppearanceService } from './modules/appearance/appearanceService';
-import { configureCardRenderer, shutdownCardRenderer } from './modules/cards';
+import { configureCardRenderer, peekCardRenderer, shutdownCardRenderer } from './modules/cards';
+import { EventLoopMonitor, LatencyRecorder } from './shared/metrics';
 import { OwnedCardWarmer } from './modules/appearance/ownedCardWarm';
 import { listOwnedWarmSubjects } from './modules/appearance/ownedCardWarmSubjects';
 import { createCollectionService } from './modules/collection/collectionService';
@@ -780,11 +781,67 @@ async function main(): Promise<void> {
   ctx.services.adminRoleGrants = adminRoleGrants;
   ctx.services.guildRoles = guildRoles;
 
+  /**
+   * Runtime instrumentation for capacity measurement.
+   *
+   * Built here, and only when enabled, because this is the one place that can
+   * see all three subjects: the event loop it shares with the gateway, the
+   * Postgres pool, and the card renderer. The API layer is handed closures
+   * rather than the objects themselves, which is what keeps `api/routes/
+   * metrics.ts` free of `pg` and of the cards module — the same arrangement
+   * `probes` below uses for the database and the Discord client.
+   *
+   * The event-loop monitor is started here rather than at the top of `main` so
+   * that a deployment with metrics off pays for no libuv timer at all.
+   */
+  const metrics =
+    config.platformApi.metricsEnabled === true
+      ? (() => {
+          const eventLoop = new EventLoopMonitor();
+          eventLoop.start();
+          return {
+            eventLoop,
+            http: new LatencyRecorder(),
+            describeDatabasePool: () => ({
+              totalCount: pool.totalCount,
+              idleCount: pool.idleCount,
+              waitingCount: pool.waitingCount,
+              // `options` is public on pg.Pool but not in its typings.
+              max: (pool as unknown as { options?: { max?: number } }).options?.max ?? null,
+            }),
+            // `peek`, never `get`: reading stats must not be what constructs the
+            // renderer. See `modules/cards/renderer.ts`.
+            describeCardRenderer: () => {
+              const stats = peekCardRenderer()?.getStats();
+              if (stats === undefined) {
+                return {
+                  active: false,
+                  masterRenders: null,
+                  derivativeRenders: null,
+                  cacheHits: null,
+                  dedupedRenders: null,
+                  workers: null,
+                };
+              }
+              return {
+                active: true,
+                masterRenders: stats.masterRenders,
+                derivativeRenders: stats.derivativeRenders,
+                cacheHits: stats.cacheHits,
+                dedupedRenders: stats.dedupedRenders,
+                workers: stats.workers ?? null,
+              };
+            },
+          };
+        })()
+      : undefined;
+
   // Platform API: a thin HTTP adapter over the same service layer the Discord
   // handlers call, on its own port and behind its own token. Silent and
   // zero-overhead unless PLATFORM_API_ENABLED=true. It reads `ctx` live rather
   // than capturing it, so a content reload is visible to /ready immediately.
   const platformApi = await startPlatformApi({
+    ...(metrics === undefined ? {} : { metrics }),
     config: config.platformApi,
     ...(config.portalAuth?.enabled
       ? {
@@ -860,6 +917,9 @@ async function main(): Promise<void> {
     // going away, and before the process exits, so threads are not orphaned.
     // A no-op unless a card was actually drawn — the pool starts lazily.
     await shutdownCardRenderer();
+    // Holds a libuv timer, so leaving it enabled would be a handle that
+    // outlives everything above it.
+    metrics?.eventLoop.stop();
     await pool.end();
     process.exit(0);
   };

@@ -67,6 +67,24 @@ const EnvSchema = z.object({
     .default('false')
     .transform((v) => v === 'true' || v === '1'),
   /**
+   * Runtime metrics (`GET /metrics`, `POST /metrics/reset`).
+   *
+   * Defaults to **on**, unlike the other opt-in surfaces here, because the
+   * thing it guards is not a risk in the same way: the routes demand the
+   * bearer token, refuse a Portal session, and are blocked at the Portal's
+   * nginx layer, so enabling them exposes nothing a token holder could not
+   * already reach. An observability endpoint that needs a config change and a
+   * restart before it answers is one that is off during the incident it was
+   * built for.
+   *
+   * `false` unregisters the routes *and* the request-timing hooks, so it is a
+   * genuine zero-overhead off switch rather than a hidden endpoint.
+   */
+  PLATFORM_API_METRICS_ENABLED: z
+    .enum(['true', 'false', '1', '0'])
+    .default('true')
+    .transform((v) => v === 'true' || v === '1'),
+  /**
    * How *clients* reach the API — the base URL advertised in the OpenAPI
    * document, and therefore the one Swagger UI's "Try it out" calls. Distinct
    * from PLATFORM_API_HOST, which is only where the process binds: under
@@ -205,6 +223,16 @@ export interface PlatformApiConfig {
    */
   adminBearer?: boolean | undefined;
   /**
+   * Whether `/metrics` is registered and request timing is recorded.
+   *
+   * Optional, and absent reads as **off** — the same convention
+   * `cardRendererEnabled` uses, so a config literal written before this existed
+   * (a test fixture, an older deployment) keeps its current behaviour. The
+   * *environment* default is on; this is the in-code fallback for a caller that
+   * never mentions it.
+   */
+  metricsEnabled?: boolean | undefined;
+  /**
    * The base URL clients use, when the operator set one. Absent means "derive
    * it from the bind" — see `resolvePublicUrl`, which is what callers should
    * use rather than reading this field directly.
@@ -336,6 +364,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       port: e.PLATFORM_API_PORT,
       token: platformApiToken,
       adminBearer: e.PLATFORM_API_ADMIN_BEARER,
+      metricsEnabled: e.PLATFORM_API_METRICS_ENABLED,
       publicUrl: e.PLATFORM_API_PUBLIC_URL,
       cardRendererEnabled: e.CARD_RENDERER_ENABLED,
       cardRenderWorkers: e.CARD_RENDER_WORKERS,

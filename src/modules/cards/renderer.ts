@@ -306,6 +306,23 @@ export function getCardRenderer(): CardRenderer {
   return sharedRenderer;
 }
 
+/**
+ * The shared renderer **if one has been built**, without building one.
+ *
+ * Exists for observability. `getCardRenderer()` constructs on first call, so
+ * reading stats through it would mint a renderer in a deployment with cards
+ * switched off — turning a metrics scrape into a state change, and burning the
+ * one chance `configureCardRenderer` has to set the worker count.
+ *
+ * `undefined` is the honest answer in that case, and a useful one: it means no
+ * card has been drawn or served in this process, which is exactly what a reader
+ * wants to know. It is the same reasoning as `CardRendererStats.workers` being
+ * absent until a thread has actually run.
+ */
+export function peekCardRenderer(): CardRenderer | undefined {
+  return sharedRenderer;
+}
+
 /** Renders one card using the shared renderer. */
 export function renderCard(input: CardRenderInput): Promise<CardRenderResult> {
   return getCardRenderer().renderCard(input);

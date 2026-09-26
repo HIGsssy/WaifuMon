@@ -41,6 +41,8 @@ import {
 import { API_VERSION, genRequestId, registerRequestId } from './plugins/requestId';
 import { registerTypeProvider, type ZodFastify } from './plugins/typeProvider';
 import { registerHealthRoutes, type ReadinessProbes } from './routes/health';
+import { registerMetricsRoutes, type MetricsSources } from './routes/metrics';
+import { registerRequestMetrics } from './plugins/requestMetrics';
 import { registerPortalAuthRoutes } from './routes/auth';
 import type { PortalSessionConfig, PortalSessionService } from './portalSession';
 import { v1Routes } from './routes/v1/index';
@@ -72,6 +74,12 @@ export interface PlatformApiDeps {
   probes: ReadinessProbes;
   /** Services + content snapshot the v1 routes adapt. */
   ctx: ApiContext;
+  /**
+   * Runtime instrumentation. Absent leaves `/metrics` unregistered and installs
+   * no request-timing hooks — a true zero-overhead off switch, the same shape
+   * `PLATFORM_API_ENABLED=false` gives the whole API.
+   */
+  metrics?: MetricsSources | undefined;
 }
 
 /**
@@ -138,6 +146,13 @@ export async function createPlatformApiServer(deps: PlatformApiDeps): Promise<Zo
   );
 
   registerRequestId(app);
+
+  // Before `registerAuth` on purpose. Hooks run in registration order, so
+  // starting the clock here means a 401 from the auth hook and a 413 from the
+  // body limit both land in the latency distribution — a client waited for
+  // those, and an instrument that only timed successful requests would report
+  // the system as healthy precisely when it had started refusing work.
+  if (deps.metrics !== undefined) registerRequestMetrics(app, deps.metrics.http);
 
   await app.register(helmet, {
     // JSON only, plus a Swagger UI that needs inline styles — a CSP here would
@@ -285,6 +300,9 @@ export async function createPlatformApiServer(deps: PlatformApiDeps): Promise<Zo
   }
 
   registerHealthRoutes(app, deps.probes);
+  // Registered after the error handler above, so the bearer-only refusal is
+  // rendered by it rather than by Fastify's default.
+  if (deps.metrics !== undefined) registerMetricsRoutes(app, deps.metrics);
   await app.register(
     v1Routes(deps.ctx, { cards: deps.config.cardRendererEnabled === true }),
     { prefix: '/api/v1' },

@@ -120,6 +120,29 @@ describe('proxied responses carry exactly one copy of each header', () => {
   );
 });
 
+describe('the diagnostics surface is not exposed at the public edge', () => {
+  const ready = blocks.find((b) => b.selector === '= /ready');
+  const metrics = blocks.find((b) => b.selector === '^~ /metrics');
+
+  it('blocks /ready and the /metrics subtree', () => {
+    expect(ready).toBeDefined();
+    expect(metrics).toBeDefined();
+    for (const block of [ready!, metrics!]) {
+      expect(block.body).toContain('return 404;');
+      expect(block.body).not.toContain('proxy_pass');
+      expect(block.body).toContain('include /etc/nginx/security-headers.conf;');
+    }
+  });
+
+  it('covers /metrics/reset with a prefix rather than an exact match', () => {
+    // `= /metrics` would leave POST /metrics/reset proxied to the SPA location,
+    // and would leave any future subpath published by default. The prefix is
+    // what makes the rule closed rather than enumerated.
+    expect(metrics!.selector.startsWith('^~ ')).toBe(true);
+    expect(template).not.toContain('location = /metrics');
+  });
+});
+
 describe('the API documentation surface is not exposed at the public edge', () => {
   const openapi = blocks.find((b) => b.selector === '= /api/v1/openapi.json');
   const docs = blocks.find((b) => b.selector === '^~ /api/v1/docs');
