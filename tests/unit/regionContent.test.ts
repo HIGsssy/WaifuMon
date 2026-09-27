@@ -591,6 +591,7 @@ describe('shipped content', () => {
       'flaccid-foothills',
       'thirstlands',
       'base-80085',
+      'assteroid-belt',
     ]);
   });
 
@@ -693,6 +694,7 @@ describe('shipped content — Thirstlands, the third destination', () => {
       'flaccid-foothills',
       'thirstlands',
       'base-80085',
+      'assteroid-belt',
     ]);
     const twin = catalog.get('twin-peeks')!;
     expect(twin.grantedByPassPurchase).toBe(true);
@@ -832,6 +834,127 @@ describe('shipped content — Base 80085, the fourth destination', () => {
     });
     expect(() => validateRegionContent(bad)).toThrow(
       /Region "base-80085" is enabled but defines no encounterPool/,
+    );
+  });
+});
+
+describe('shipped content — Assteroid Belt, the destination after Base 80085', () => {
+  const CONTENT_DIR = path.resolve(__dirname, '..', '..', 'content');
+
+  it('ships the region enabled, non-starting, after Base 80085, with a pool', () => {
+    const scan = readExpansionPacks(CONTENT_DIR);
+    const belt = scan.regions.find((r) => r.id === 'assteroid-belt');
+    const base = scan.regions.find((r) => r.id === 'base-80085')!;
+    expect(belt).toBeDefined();
+    expect(belt!.enabled).toBe(true);
+    expect(belt!.starting).toBe(false);
+    expect(belt!.name).toBe('Assteroid Belt');
+    // Released after Base 80085, so it must sort after it in the catalog.
+    expect(belt!.order).toBe(7);
+    expect(belt!.order).toBeGreaterThan(base.order);
+    // Authored even though the file has not landed yet: a missing banner
+    // degrades to a text-only card rather than failing the load.
+    expect(belt!.bannerImagePath).toBe('locations/assteroid-belt/banner.png');
+    expect(belt!.encounterPool.length).toBeGreaterThan(0);
+    expect(belt!.encounterPool.every((e) => typeof e.weight === 'number')).toBe(true);
+  });
+
+  it('is a storable region id, not just a content one', () => {
+    expect(isRegion('assteroid-belt')).toBe(true);
+    expect(REGIONS).toContain('assteroid-belt');
+  });
+
+  it('declares its region on the expansion manifest', () => {
+    const scan = readExpansionPacks(CONTENT_DIR);
+    const manifest = scan.expansions.find((e) => e.id === 'assteroid_belt');
+    expect(manifest).toBeDefined();
+    expect(manifest!.enabled).toBe(true);
+    expect(manifest!.order).toBe(7);
+    expect(manifest!.regionId).toBe('assteroid-belt');
+  });
+
+  it('validates as part of the shipped content set', () => {
+    expect(() => loadContent(CONTENT_DIR, ASSETS_DIR, silentLogger())).not.toThrow();
+  });
+
+  it('ships its residents tagged as expansion region-exclusives of this zone', () => {
+    const scan = readExpansionPacks(CONTENT_DIR);
+    const pack = scan.expansionSpecies.filter(
+      (s) => scan.speciesOrigin[s.slug] === 'assteroid_belt',
+    );
+    expect(pack).toHaveLength(15);
+    for (const s of pack) {
+      expect(s.tags).toContain('expansion');
+      expect(s.tags).toContain('region_exclusive');
+      expect(s.tags).toContain('assteroid_belt');
+      expect(s.imagePath).toBe(`waifumon/${s.slug}/standard.png`);
+    }
+  });
+
+  it('pools every Belt exclusive at home, and nowhere else', () => {
+    const scan = readExpansionPacks(CONTENT_DIR);
+    const packSlugs = new Set(
+      scan.expansionSpecies
+        .filter((s) => scan.speciesOrigin[s.slug] === 'assteroid_belt')
+        .map((s) => s.slug),
+    );
+    const belt = scan.regions.find((r) => r.id === 'assteroid-belt')!;
+    const pooled = new Set(belt.encounterPool.map((e) => e.species));
+    for (const slug of packSlugs) expect(pooled).toContain(slug);
+    for (const other of scan.regions.filter((r) => r.id !== 'assteroid-belt')) {
+      expect(other.encounterPool.filter((e) => packSlugs.has(e.species))).toEqual([]);
+    }
+  });
+
+  it('shares only non-exclusive species with Base 80085', () => {
+    // The belt's starter tail deliberately overlaps Base 80085's. That is
+    // legal only because none of the shared species is region-exclusive.
+    const content = loadContent(CONTENT_DIR, ASSETS_DIR, silentLogger());
+    const scan = readExpansionPacks(CONTENT_DIR);
+    const belt = new Set(
+      scan.regions.find((r) => r.id === 'assteroid-belt')!.encounterPool.map((e) => e.species),
+    );
+    const base = scan.regions.find((r) => r.id === 'base-80085')!.encounterPool;
+    const shared = base.map((e) => e.species).filter((slug) => belt.has(slug));
+    expect(shared.length).toBeGreaterThan(0);
+    const bySlug = new Map(content.species.map((s) => [s.slug, s]));
+    for (const slug of shared) {
+      expect(bySlug.get(slug)!.tags ?? [], slug).not.toContain('region_exclusive');
+    }
+  });
+
+  it('sells it as a Caravan Pass route at level 35 for 3,000', () => {
+    const content = loadContent(CONTENT_DIR, ASSETS_DIR, silentLogger());
+    const catalog = buildTravelCatalog(content);
+    const belt = catalog.get('assteroid-belt')!;
+    expect(belt.access).toBe('route');
+    expect(belt.pass!.id).toBe('caravan_pass');
+    expect(belt.grantedByPassPurchase).toBe(false);
+    expect(
+      content.tables.travel.passes.every((p) => !p.grantsRoutes.includes('assteroid-belt')),
+    ).toBe(true);
+    expect(belt.price).toBe(3000);
+    expect(belt.currency).toBe('waifubux');
+    expect(belt.requiredLevel).toBe(35);
+    expect(catalog.destinations.at(-1)!.region.id).toBe('assteroid-belt');
+  });
+
+  it('would refuse the release if the pool were emptied', () => {
+    const scan = readExpansionPacks(CONTENT_DIR);
+    const belt = scan.regions.find((r) => r.id === 'assteroid-belt')!;
+    const bad = content({
+      regions: [
+        region({
+          id: 'waifu-valley',
+          name: 'Waifu Valley',
+          starting: true,
+          encounterPool: [{ species: 'valley_girl' }],
+        }),
+        { ...belt, encounterPool: [] },
+      ],
+    });
+    expect(() => validateRegionContent(bad)).toThrow(
+      /Region "assteroid-belt" is enabled but defines no encounterPool/,
     );
   });
 });

@@ -216,6 +216,14 @@
         {
           "atLevel": 20,
           "delta": 5
+        },
+        {
+          "atLevel": 30,
+          "delta": 5
+        },
+        {
+          "atLevel": 45,
+          "delta": 5
         }
       ]
     },
@@ -661,6 +669,13 @@
         "price": 2500,
         "currency": "waifubux",
         "requiredLevel": 30
+      },
+      {
+        "regionId": "assteroid-belt",
+        "passId": "caravan_pass",
+        "price": 3000,
+        "currency": "waifubux",
+        "requiredLevel": 35
       }
     ]
   },

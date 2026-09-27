@@ -91,6 +91,7 @@ describe('shipped travel content', () => {
       'flaccid-foothills',
       'thirstlands',
       'base-80085',
+      'assteroid-belt',
     ]);
     const thirstlands = catalog.get('thirstlands')!;
     expect(thirstlands.pass!.id).toBe('caravan_pass');
@@ -105,6 +106,7 @@ describe('shipped travel content', () => {
       .selectDistinct({ regionId: regionEncounterPools.regionId })
       .from(regionEncounterPools);
     expect(pooled.map((r) => r.regionId).sort()).toEqual([
+      'assteroid-belt',
       'base-80085',
       'flaccid-foothills',
       'thirstlands',
@@ -113,7 +115,7 @@ describe('shipped travel content', () => {
     ]);
   });
 
-  it('lists Base 80085 as the last destination, priced and gated', () => {
+  it('lists Base 80085 after Thirstlands, priced and gated', () => {
     // Enabling the pack is a content edit; the catalog is what turns the
     // enabled region into a sellable destination, and `order: 6` is what puts
     // it after Thirstlands rather than anywhere the map iterates.
@@ -133,6 +135,29 @@ describe('shipped travel content', () => {
   it('refuses to travel to Base 80085 before the route is bought', async () => {
     const { playerId } = await provisionPlayer(app, 'g-travel-base', 'u-base');
     await expect(app.travel.travel(playerId, 'base-80085')).rejects.toThrow(RegionLockedError);
+  });
+
+  it('lists the Assteroid Belt as the last destination, priced and gated', () => {
+    // `order: 7` puts the belt after Base 80085, the destination released
+    // before it; the route is stamped onto the same Caravan Pass.
+    const catalog = app.travel.catalog();
+    expect(catalog.destinations.at(-1)!.region.id).toBe('assteroid-belt');
+    const belt = catalog.get('assteroid-belt')!;
+    expect(belt).toBeDefined();
+    expect(belt.region.name).toBe('Assteroid Belt');
+    expect(belt.access).toBe('route');
+    expect(belt.pass!.id).toBe('caravan_pass');
+    expect(belt.grantedByPassPurchase).toBe(false);
+    expect(belt.price).toBe(3000);
+    expect(belt.currency).toBe('waifubux');
+    expect(belt.requiredLevel).toBe(35);
+  });
+
+  it('refuses to travel to the Assteroid Belt before the route is bought', async () => {
+    const { playerId } = await provisionPlayer(app, 'g-travel-belt', 'u-belt');
+    await expect(app.travel.travel(playerId, 'assteroid-belt')).rejects.toThrow(
+      RegionLockedError,
+    );
   });
 
   it('refuses to travel to it before the route is bought', async () => {

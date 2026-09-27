@@ -7,9 +7,10 @@
  * always shows.
  *
  * The dataset below: 4 Waifu Valley (2 owned), 5 Twin Peeks (3 owned),
- * 3 Flaccid Foothills (none owned), 2 Thirstlands (both owned), and 2 species
- * with no recognised zone tag — one carrying an unreleased zone's tag, which
- * must not become a filter option. 16 species, 7 discovered.
+ * 3 Flaccid Foothills (none owned), 2 Thirstlands (both owned), 1 Assteroid
+ * Belt (not owned), and 2 species with no recognised zone tag — one carrying an
+ * unreleased zone's tag, which must not become a filter option. 17 species,
+ * 7 discovered.
  */
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -58,11 +59,17 @@ const SPECS: Spec[] = [
     tags: ['expansion', 'region_exclusive', 'thirstlands'],
     owned: true,
   })),
+  {
+    slug: 'ab_0',
+    name: 'Station Hostess 0',
+    tags: ['expansion', 'region_exclusive', 'assteroid_belt'],
+    owned: false,
+  },
   { slug: 'nz_0', name: 'Orbit Drifter', tags: ['expansion', 'region_exclusive'], owned: false },
   {
     slug: 'nz_1',
-    name: 'Asteroid Miner',
-    tags: ['expansion', 'region_exclusive', 'assteroid_belt'],
+    name: 'Comet Miner',
+    tags: ['expansion', 'region_exclusive', 'kuiper_cloud'],
     owned: false,
   },
 ];
@@ -133,8 +140,8 @@ describe('Encyclopedia Zone filter', () => {
   it('shows every species with All Zones, and the whole-dex tally', async () => {
     await renderAt('/encyclopedia');
 
-    expect(await screen.findByText('7 / 16 owned')).toBeInTheDocument();
-    expect(tiles()).toHaveLength(16);
+    expect(await screen.findByText('7 / 17 owned')).toBeInTheDocument();
+    expect(tiles()).toHaveLength(17);
     expect(screen.queryByRole('button', { name: /^Origin:/ })).toBeNull();
   });
 
@@ -143,6 +150,7 @@ describe('Encyclopedia Zone filter', () => {
     ['twin_peeks', 'Twin Peeks', 5, 3],
     ['flaccid_foothills', 'Flaccid Foothills', 3, 0],
     ['thirstlands', 'Thirstlands', 2, 2],
+    ['assteroid_belt', 'Assteroid Belt', 1, 0],
   ])('?zone=%s shows all of %s, discovered or not', async (tag, label, total, discovered) => {
     await renderAt(`/encyclopedia?zone=${tag}`);
 
@@ -203,13 +211,13 @@ describe('Encyclopedia Zone filter', () => {
     expect(undiscoveredTiles()).toHaveLength(0);
   });
 
-  it.each(['twin_peaks', 'assteroid_belt', 'nowhere', ''])(
+  it.each(['twin_peaks', 'kuiper_cloud', 'nowhere', ''])(
     'treats ?zone=%s as All Zones',
     async (value) => {
       await renderAt(`/encyclopedia?zone=${value}`);
 
-      expect(await screen.findByText('7 / 16 owned')).toBeInTheDocument();
-      expect(tiles()).toHaveLength(16);
+      expect(await screen.findByText('7 / 17 owned')).toBeInTheDocument();
+      expect(tiles()).toHaveLength(17);
       expect(screen.queryByRole('button', { name: /^Origin:/ })).toBeNull();
     },
   );
@@ -231,6 +239,7 @@ describe('Encyclopedia Zone filter', () => {
       'Flaccid Foothills',
       'Thirstlands',
       'Base 80085',
+      'Assteroid Belt',
     ]);
     expect(within(group).getByRole('button', { name: 'All origins' })).toHaveAttribute(
       'aria-pressed',
@@ -254,8 +263,8 @@ describe('Encyclopedia Zone filter', () => {
     expect(screen.getByText('Flaccid Foothills origin: 0 / 3 owned')).toBeInTheDocument();
 
     await user.click(within(group).getByRole('button', { name: 'All origins' }));
-    await waitFor(() => expect(tiles()).toHaveLength(16));
-    expect(screen.getByText('7 / 16 owned')).toBeInTheDocument();
+    await waitFor(() => expect(tiles()).toHaveLength(17));
+    expect(screen.getByText('7 / 17 owned')).toBeInTheDocument();
   });
 
   it('removes the Zone chip, and Clear All clears Zone with everything else', async () => {
@@ -263,7 +272,7 @@ describe('Encyclopedia Zone filter', () => {
     await renderAt('/encyclopedia?zone=twin_peeks');
 
     await user.click(await screen.findByRole('button', { name: 'Origin: Twin Peeks' }));
-    await waitFor(() => expect(tiles()).toHaveLength(16));
+    await waitFor(() => expect(tiles()).toHaveLength(17));
 
     await user.click(screen.getByRole('button', { name: 'Open filters' }));
     const group = await screen.findByRole('group', { name: 'Origin' });
@@ -272,8 +281,8 @@ describe('Encyclopedia Zone filter', () => {
     await user.keyboard('{Escape}');
 
     await user.click(screen.getByRole('button', { name: 'Clear All' }));
-    await waitFor(() => expect(tiles()).toHaveLength(16));
+    await waitFor(() => expect(tiles()).toHaveLength(17));
     expect(screen.queryByRole('button', { name: /^Origin:/ })).toBeNull();
-    expect(screen.getByText('7 / 16 owned')).toBeInTheDocument();
+    expect(screen.getByText('7 / 17 owned')).toBeInTheDocument();
   });
 });

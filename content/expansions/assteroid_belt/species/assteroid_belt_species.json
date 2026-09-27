@@ -6,14 +6,21 @@
     "archetype": "human",
     "race": "human",
     "baseCaptureRate": null,
-    "description": "Cheerful retro-future receptionist with a bubble helmet, beehive hair and chunky analog terminal",
+    "description": "Knows every crew by berth number and does not negotiate on badges.",
     "tags": [
       "expansion",
-      "region_exclusive"
+      "region_exclusive",
+      "assteroid_belt"
     ],
     "contentRating": "suggestive",
     "affinity": "caregiver",
     "card": {
+      "subtitle": "Welcome Wagon",
+      "ability": {
+        "name": "Greeting Protocol",
+        "text": "Has the arrival speech memorized so well that returning crews finish it with her."
+      },
+      "flavorQuote": "Sign here, hon. Nobody's ever come back to complain.",
       "artist": "Gorthig"
     },
     "imagePath": "waifumon/moonbase_receptionist/standard.png",
@@ -74,7 +81,13 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Check-In Courtesy",
+      "flavorText": "Check-In Courtesy: +50% Affection gained.",
+      "effectId": "affection_gain",
+      "value": 50
+    }
   },
   {
     "slug": "zero_g_mechanic",
@@ -83,14 +96,21 @@
     "archetype": "android",
     "race": "android",
     "baseCaptureRate": null,
-    "description": "Scrappy station mechanic in stained coveralls, magnetic boots and tool belt",
+    "description": "Fixes the station with two wrenches and a grudge against the airlock.",
     "tags": [
       "expansion",
-      "region_exclusive"
+      "region_exclusive",
+      "assteroid_belt"
     ],
     "contentRating": "suggestive",
     "affinity": "switch",
     "card": {
+      "subtitle": "Magnetic Personality",
+      "ability": {
+        "name": "Spot Weld",
+        "text": "Keeps the station flying with two wrenches and a grudge against whoever designed the airlock."
+      },
+      "flavorQuote": "Bolts are free. Anything else out here costs.",
       "artist": "Gorthig"
     },
     "imagePath": "waifumon/zero_g_mechanic/standard.png",
@@ -151,7 +171,13 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Field Repair",
+      "flavorText": "Field Repair: 20% chance Hunting does not consume Energy.",
+      "effectId": "energy_save_chance",
+      "value": 20
+    }
   },
   {
     "slug": "asteroid_cantina_waitress",
@@ -160,14 +186,21 @@
     "archetype": "alien",
     "race": "demi-human",
     "baseCaptureRate": null,
-    "description": "Cute blue alien server with little antennae and a tray of glowing drinks",
+    "description": "Carries nine glowing drinks on two hands without spilling a drop.",
     "tags": [
       "expansion",
-      "region_exclusive"
+      "region_exclusive",
+      "assteroid_belt"
     ],
     "contentRating": "suggestive",
     "affinity": "caregiver",
     "card": {
+      "subtitle": "Glow & Tonic",
+      "ability": {
+        "name": "Blue Plate Special",
+        "text": "Carries nine glowing drinks on two hands and never spills a drop nobody asked her to spill."
+      },
+      "flavorQuote": "Table four wants trouble. Table four is getting water.",
       "artist": "Gorthig"
     },
     "imagePath": "waifumon/asteroid_cantina_waitress/standard.png",
@@ -228,7 +261,13 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Round's On Me",
+      "flavorText": "Round's On Me: +50% Energy gained in Care mode.",
+      "effectId": "care_energy_gain",
+      "value": 50
+    }
   },
   {
     "slug": "vacuum_maid_mk_2",
@@ -237,14 +276,21 @@
     "archetype": "android",
     "race": "android",
     "baseCaptureRate": null,
-    "description": "Domestic space-age android with a transparent helmet and wonderfully outdated 1950s styling",
+    "description": "Dusts corridors nothing has walked down since the crew stopped coming back.",
     "tags": [
       "expansion",
-      "region_exclusive"
+      "region_exclusive",
+      "assteroid_belt"
     ],
     "contentRating": "mature",
     "affinity": "submissive",
     "card": {
+      "subtitle": "Sealed For Freshness",
+      "ability": {
+        "name": "Deep Clean",
+        "text": "Dusts corridors nothing has walked down in a decade, then irons the sheets for a crew that never disembarked."
+      },
+      "flavorQuote": "Say the word and I'll stay. Nobody's asked in a while.",
       "artist": "Gorthig"
     },
     "imagePath": "waifumon/vacuum_maid_mk_2/standard.png",
@@ -305,7 +351,13 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Tidy Profit",
+      "flavorText": "Tidy Profit: +15% Essence gained.",
+      "effectId": "essence_gain",
+      "value": 15
+    }
   },
   {
     "slug": "cargo_bay_slimegirl",
@@ -314,14 +366,21 @@
     "archetype": "alien",
     "race": "demi-human",
     "baseCaptureRate": null,
-    "description": "Translucent alien slime who accidentally arrived inside a mislabeled shipping container",
+    "description": "Arrived in a crate stamped fragile and never left the inventory.",
     "tags": [
       "expansion",
-      "region_exclusive"
+      "region_exclusive",
+      "assteroid_belt"
     ],
     "contentRating": "explicit",
     "affinity": "primal",
     "card": {
+      "subtitle": "Mislabeled Manifest",
+      "ability": {
+        "name": "Cling Wrap",
+        "text": "Arrived in a crate stamped fragile and has been hugging the cargo ever since."
+      },
+      "flavorQuote": "Freight in, company out. She is not going back in the crate.",
       "artist": "Gorthig"
     },
     "imagePath": "waifumon/cargo_bay_slimegirl/standard.png",
@@ -382,7 +441,13 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Mislabeled Cargo",
+      "flavorText": "Mislabeled Cargo: +15% chance of finding items while Hunting.",
+      "effectId": "hunt_item_find_chance",
+      "value": 15
+    }
   },
   {
     "slug": "raygun_rocketgirl",
@@ -391,14 +456,21 @@
     "archetype": "human",
     "race": "human",
     "baseCaptureRate": null,
-    "description": "Silver boots, chrome ray pistol, fishbowl helmet and pure pulp-science-fiction swagger",
+    "description": "Flies escort for anyone who pays, and shoots like she is scored on it.",
     "tags": [
       "expansion",
-      "region_exclusive"
+      "region_exclusive",
+      "assteroid_belt"
     ],
     "contentRating": "mature",
     "affinity": "switch",
     "card": {
+      "subtitle": "Pulp Friction",
+      "ability": {
+        "name": "Quick Draw",
+        "text": "Draws, fires and pockets the ray pistol before anyone in the room admits there was a shot."
+      },
+      "flavorQuote": "The aim's fine. I just like the smell of scorched ozone.",
       "artist": "Gorthig"
     },
     "imagePath": "waifumon/raygun_rocketgirl/standard.png",
@@ -459,7 +531,13 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Showboat",
+      "flavorText": "Showboat: +15% XP gained.",
+      "effectId": "player_xp_gain",
+      "value": 15
+    }
   },
   {
     "slug": "nebula_nurse",
@@ -468,14 +546,21 @@
     "archetype": "android",
     "race": "android",
     "baseCaptureRate": null,
-    "description": "Sleek medical android carrying retro-futuristic scanners and glowing injector tools",
+    "description": "Reads your vitals, then your face, and treats whichever is worse.",
     "tags": [
       "expansion",
-      "region_exclusive"
+      "region_exclusive",
+      "assteroid_belt"
     ],
     "contentRating": "mature",
     "affinity": "caregiver",
     "card": {
+      "subtitle": "Injection With A Smile",
+      "ability": {
+        "name": "Triage Wink",
+        "text": "Reads your vitals off a scanner and your intentions off your face, and treats both exactly the same."
+      },
+      "flavorQuote": "Roll up a sleeve. Or don't, and I'll have to keep looking.",
       "artist": "Gorthig"
     },
     "imagePath": "waifumon/nebula_nurse/standard.png",
@@ -536,7 +621,13 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Treated Right",
+      "flavorText": "Treated Right: +25% XP gained by the active Buddy.",
+      "effectId": "buddy_xp_gain",
+      "value": 25
+    }
   },
   {
     "slug": "neon_street_samurai",
@@ -545,14 +636,21 @@
     "archetype": "android",
     "race": "android",
     "baseCaptureRate": null,
-    "description": "Cyberpunk mercenary with chromed limbs, glowing jacket and mono-blade",
+    "description": "Holds a stretch of neon between two airlocks and charges the toll.",
     "tags": [
       "expansion",
-      "region_exclusive"
+      "region_exclusive",
+      "assteroid_belt"
     ],
     "contentRating": "explicit",
     "affinity": "dominant",
     "card": {
+      "subtitle": "Edge Of The Belt",
+      "ability": {
+        "name": "Rent's Due",
+        "text": "Cuts first and bills the surviving party, which is how she has stayed solvent this far out."
+      },
+      "flavorQuote": "Pay the toll or keep the arm. Either one clears my ledger.",
       "artist": "Gorthig"
     },
     "imagePath": "waifumon/neon_street_samurai/standard.png",
@@ -613,7 +711,17 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Toll Booth",
+      "flavorText": "Toll Booth: +20% capture chance against dominant Waifumon.",
+      "effectId": "capture_chance",
+      "value": 20,
+      "target": {
+        "type": "affinity",
+        "value": "dominant"
+      }
+    }
   },
   {
     "slug": "chrome_corsair",
@@ -622,14 +730,21 @@
     "archetype": "android",
     "race": "android",
     "baseCaptureRate": null,
-    "description": "Pirate android captain with polished metal limbs, holographic coat and energy cutlass",
+    "description": "Takes whatever the Belt drops, and bills the rest.",
     "tags": [
       "expansion",
-      "region_exclusive"
+      "region_exclusive",
+      "assteroid_belt"
     ],
     "contentRating": "explicit",
     "affinity": "dominant",
     "card": {
+      "subtitle": "Raider Of The Lost Belts",
+      "ability": {
+        "name": "Salvage Rights",
+        "text": "Claims anything that drifts past her bow, including the crews that come out to argue about it."
+      },
+      "flavorQuote": "The Belt writes no laws. I write the invoice.",
       "artist": "Gorthig"
     },
     "imagePath": "waifumon/chrome_corsair/standard.png",
@@ -690,7 +805,17 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Salvage Rights",
+      "flavorText": "Salvage Rights: +15% encounter weight for Waifumon you do not own.",
+      "effectId": "encounter_weight",
+      "value": 15,
+      "target": {
+        "type": "ownership",
+        "value": "unowned"
+      }
+    }
   },
   {
     "slug": "blacksite_netrunner",
@@ -699,14 +824,21 @@
     "archetype": "android",
     "race": "android",
     "baseCaptureRate": null,
-    "description": "Cyberpunk hacker who steals military secrets from orbiting corporate fortresses",
+    "description": "Has been inside every fortress in the Belt and left only a signature.",
     "tags": [
       "expansion",
-      "region_exclusive"
+      "region_exclusive",
+      "assteroid_belt"
     ],
     "contentRating": "mature",
     "affinity": "submissive",
     "card": {
+      "subtitle": "Backdoor Access",
+      "ability": {
+        "name": "Zero Day",
+        "text": "Has been inside every corporate fortress in the Belt and left nothing behind but a signature."
+      },
+      "flavorQuote": "Whatever you're hiding, I already found it. I just wanted to hear you say it.",
       "artist": "Gorthig"
     },
     "imagePath": "waifumon/blacksite_netrunner/standard.png",
@@ -767,7 +899,17 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Zero Day",
+      "flavorText": "Zero Day: +12% encounter weight for SR Waifumon.",
+      "effectId": "encounter_weight",
+      "value": 12,
+      "target": {
+        "type": "rarity",
+        "value": "SR"
+      }
+    }
   },
   {
     "slug": "living_nebula",
@@ -776,14 +918,21 @@
     "archetype": "alien",
     "race": "demi-human",
     "baseCaptureRate": null,
-    "description": "Humanoid cosmic entity whose translucent body contains drifting stars and colorful interstellar clouds",
+    "description": "Drifts through the corridors and leaves the lights warmer behind her.",
     "tags": [
       "expansion",
-      "region_exclusive"
+      "region_exclusive",
+      "assteroid_belt"
     ],
     "contentRating": "explicit",
     "affinity": "switch",
     "card": {
+      "subtitle": "Cloud Storage",
+      "ability": {
+        "name": "Stellar Drift",
+        "text": "Her body is a sky someone could fall into, and she has never once been asked to close it."
+      },
+      "flavorQuote": "Come closer. You can't reach the stars, but they can reach you.",
       "artist": "Gorthig"
     },
     "imagePath": "waifumon/living_nebula/standard.png",
@@ -844,7 +993,13 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Stellar Drift",
+      "flavorText": "Stellar Drift: +10% to world-encounter checks.",
+      "effectId": "encounter_check_bonus",
+      "value": 10
+    }
   },
   {
     "slug": "the_last_star_knight",
@@ -853,14 +1008,21 @@
     "archetype": "human",
     "race": "human",
     "baseCaptureRate": null,
-    "description": "Ancient-order warrior with ceremonial armor and a plasma blade powered by a mysterious cosmic relic",
+    "description": "Keeps a vigil over a relic nobody else believes in, and never stood down.",
     "tags": [
       "expansion",
-      "region_exclusive"
+      "region_exclusive",
+      "assteroid_belt"
     ],
     "contentRating": "explicit",
     "affinity": "caregiver",
     "card": {
+      "subtitle": "Oath Without A King",
+      "ability": {
+        "name": "Standing Vigil",
+        "text": "Keeps a vigil over a relic nobody else believes in, and a softness nobody else has been allowed to see."
+      },
+      "flavorQuote": "Set your things down. The relic can wait; you have been travelling.",
       "artist": "Gorthig"
     },
     "imagePath": "waifumon/the_last_star_knight/standard.png",
@@ -921,7 +1083,13 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Standing Vigil",
+      "flavorText": "Standing Vigil: +50% rewards from Boss Encounters.",
+      "effectId": "boss_reward_gain",
+      "value": 50
+    }
   },
   {
     "slug": "star_marshal",
@@ -930,14 +1098,21 @@
     "archetype": "human",
     "race": "human",
     "baseCaptureRate": null,
-    "description": "Legendary frontier law-woman hunting criminals across entire star systems",
+    "description": "Hunts bounties across three systems and reads the charges on the way in.",
     "tags": [
       "expansion",
-      "region_exclusive"
+      "region_exclusive",
+      "assteroid_belt"
     ],
     "contentRating": "explicit",
     "affinity": "dominant",
     "card": {
+      "subtitle": "Jurisdiction: Everywhere",
+      "ability": {
+        "name": "Warrant Served",
+        "text": "Tracks a bounty across three systems and reads the charges once, on the way in."
+      },
+      "flavorQuote": "There's no appeal out here. There's barely a courthouse.",
       "artist": "Gorthig"
     },
     "imagePath": "waifumon/star_marshal/standard.png",
@@ -998,7 +1173,13 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Warrant Served",
+      "flavorText": "Warrant Served: +15% capture chance against any Waifumon.",
+      "effectId": "capture_chance",
+      "value": 15
+    }
   },
   {
     "slug": "queen_of_the_rogue_planet",
@@ -1007,14 +1188,21 @@
     "archetype": "android",
     "race": "android",
     "baseCaptureRate": null,
-    "description": "Intimidating Android Pirate queen ruling a world wandering between stars, with orbiting crystalline crowns",
+    "description": "Rules a world that wandered off from its star and took the court with it.",
     "tags": [
       "expansion",
-      "region_exclusive"
+      "region_exclusive",
+      "assteroid_belt"
     ],
     "contentRating": "explicit",
     "affinity": "dominant",
     "card": {
+      "subtitle": "Orbital Decay",
+      "ability": {
+        "name": "Regal Claim",
+        "text": "Her world left its star and never came back, so her court came with her, crowns and all."
+      },
+      "flavorQuote": "Kneel or leave. The airlock is that way and it is not generous.",
       "artist": "Gorthig"
     },
     "imagePath": "waifumon/queen_of_the_rogue_planet/standard.png",
@@ -1075,7 +1263,17 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Orbital Decay",
+      "flavorText": "Orbital Decay: +10% encounter weight for SSR and above.",
+      "effectId": "encounter_weight",
+      "value": 10,
+      "target": {
+        "type": "rarity_min",
+        "value": "SSR"
+      }
+    }
   },
   {
     "slug": "the_waifu_beyond",
@@ -1084,14 +1282,21 @@
     "archetype": "alien",
     "race": "demi-human",
     "baseCaptureRate": null,
-    "description": "a radiant humanoid entity composed of galaxies, starlight and impossible geometry",
+    "description": "She is what the Belt looks like when something finally looks back.",
     "tags": [
       "expansion",
-      "region_exclusive"
+      "region_exclusive",
+      "assteroid_belt"
     ],
     "contentRating": "explicit",
     "affinity": "primal",
     "card": {
+      "subtitle": "Where The Stars End",
+      "ability": {
+        "name": "Constellation Form",
+        "text": "Arrives as a shape the eye keeps trying to finish, and waits while you try."
+      },
+      "flavorQuote": "You've been looking for me your whole life. I've been waiting the whole time.",
       "artist": "Gorthig"
     },
     "imagePath": "waifumon/the_waifu_beyond/standard.png",
@@ -1152,6 +1357,12 @@
           "atLevel": 50
         }
       }
-    ]
+    ],
+    "buddyBonus": {
+      "name": "Beyond Reach",
+      "flavorText": "Beyond Reach: +30% capture chance against any Waifumon.",
+      "effectId": "capture_chance",
+      "value": 30
+    }
   }
 ]

@@ -33,6 +33,7 @@ export const ZONES: readonly ZoneDefinition[] = [
   { tag: 'flaccid_foothills', label: 'Flaccid Foothills' },
   { tag: 'thirstlands', label: 'Thirstlands' },
   { tag: 'base_80085', label: 'Base 80085' },
+  { tag: 'assteroid_belt', label: 'Assteroid Belt' },
 ];
 
 const BY_TAG = new Map<string, ZoneDefinition>(ZONES.map((zone) => [zone.tag, zone]));

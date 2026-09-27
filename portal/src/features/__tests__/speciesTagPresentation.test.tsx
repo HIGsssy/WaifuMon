@@ -44,7 +44,7 @@ const surfaces = [
 ];
 
 const RAW_TAGS =
-  /waifu_valley|twin_peeks|twin_peaks|flaccid_foothills|thirstlands|region_exclusive|\bstarter\b|\bexpansion\b|internal_flag/;
+  /waifu_valley|twin_peeks|twin_peaks|flaccid_foothills|thirstlands|base_80085|assteroid_belt|region_exclusive|\bstarter\b|\bexpansion\b|internal_flag/;
 
 describe.each(surfaces)('$name', (surface) => {
   async function show(tags: string[]): Promise<void> {
@@ -57,6 +57,8 @@ describe.each(surfaces)('$name', (surface) => {
     [['expansion', 'region_exclusive', 'twin_peeks'], 'Twin Peeks'],
     [['expansion', 'region_exclusive', 'flaccid_foothills'], 'Flaccid Foothills'],
     [['expansion', 'region_exclusive', 'thirstlands'], 'Thirstlands'],
+    [['expansion', 'region_exclusive', 'base_80085'], 'Base 80085'],
+    [['expansion', 'region_exclusive', 'assteroid_belt'], 'Assteroid Belt'],
   ])('shows %j as the Zone "%s", never as raw tags', async (tags, label) => {
     await show(tags);
 

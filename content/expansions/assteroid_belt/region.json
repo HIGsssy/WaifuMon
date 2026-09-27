@@ -3,13 +3,170 @@
   "name": "Assteroid Belt",
   "description": "A shattered planet's worth of rock, a station that has never once been empty, and rules that stop at the airlock. Everything out here is for sale and nothing out here is free.",
   "emoji": "\ud83e\ude90",
-  "enabled": false,
+  "enabled": true,
   "starting": false,
-  "order": 5,
+  "order": 7,
   "bannerImagePath": "locations/assteroid-belt/banner.png",
   "flavor": [
     "Hard vacuum outside, harder crew inside. The Belt does not care which one you came for.",
     "Station 8008135 is the only berth for half a billion kilometres in any direction, and she has never once been empty."
   ],
-  "encounterPool": []
+  "encounterPool": [
+    {
+      "species": "moonbase_receptionist",
+      "weight": 12
+    },
+    {
+      "species": "zero_g_mechanic",
+      "weight": 12
+    },
+    {
+      "species": "asteroid_cantina_waitress",
+      "weight": 12
+    },
+    {
+      "species": "vacuum_maid_mk_2",
+      "weight": 12
+    },
+    {
+      "species": "cargo_bay_slimegirl",
+      "weight": 12
+    },
+    {
+      "species": "raygun_rocketgirl",
+      "weight": 10
+    },
+    {
+      "species": "nebula_nurse",
+      "weight": 10
+    },
+    {
+      "species": "neon_street_samurai",
+      "weight": 10
+    },
+    {
+      "species": "chrome_corsair",
+      "weight": 8
+    },
+    {
+      "species": "blacksite_netrunner",
+      "weight": 8
+    },
+    {
+      "species": "living_nebula",
+      "weight": 8
+    },
+    {
+      "species": "the_last_star_knight",
+      "weight": 5
+    },
+    {
+      "species": "star_marshal",
+      "weight": 5
+    },
+    {
+      "species": "queen_of_the_rogue_planet",
+      "weight": 3
+    },
+    {
+      "species": "the_waifu_beyond",
+      "weight": 1
+    },
+    {
+      "species": "backroom_angel",
+      "weight": 10
+    },
+    {
+      "species": "couch_surfing_valkyrie",
+      "weight": 10
+    },
+    {
+      "species": "courier_android",
+      "weight": 10
+    },
+    {
+      "species": "festival_stall_android",
+      "weight": 10
+    },
+    {
+      "species": "heatwave_spirit",
+      "weight": 10
+    },
+    {
+      "species": "konbini_android",
+      "weight": 10
+    },
+    {
+      "species": "landlady_slumlord",
+      "weight": 10
+    },
+    {
+      "species": "android_maid",
+      "weight": 8
+    },
+    {
+      "species": "enforcer_unit",
+      "weight": 8
+    },
+    {
+      "species": "festival_lance_valkyrie",
+      "weight": 8
+    },
+    {
+      "species": "halfling_cavalry",
+      "weight": 8
+    },
+    {
+      "species": "iron_circuit_trainer",
+      "weight": 8
+    },
+    {
+      "species": "lake_lifeguard",
+      "weight": 8
+    },
+    {
+      "species": "oathbound_valkyrie",
+      "weight": 8
+    },
+    {
+      "species": "bathhouse_valkyrie",
+      "weight": 6
+    },
+    {
+      "species": "cyberpunk_knight",
+      "weight": 6
+    },
+    {
+      "species": "dojo_headmistress",
+      "weight": 6
+    },
+    {
+      "species": "ferry_angel",
+      "weight": 6
+    },
+    {
+      "species": "ice_house_android",
+      "weight": 6
+    },
+    {
+      "species": "summer_storm_spirit",
+      "weight": 6
+    },
+    {
+      "species": "fallen_valkyrie",
+      "weight": 5
+    },
+    {
+      "species": "pilgrims_rest_angel",
+      "weight": 5
+    },
+    {
+      "species": "the_innkeeper",
+      "weight": 5
+    },
+    {
+      "species": "valkyrie_prime",
+      "weight": 3
+    }
+  ]
 }

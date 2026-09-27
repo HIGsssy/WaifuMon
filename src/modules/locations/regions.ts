@@ -20,10 +20,9 @@
  * `enabled` flag, which is what keeps a place out of the Locations list, out of
  * travel and out of the seeded encounter pools. Widening the column and
  * releasing the place are two separate decisions, and this list is only the
- * first. Every region listed here is currently released; `assteroid_belt` is
- * the counterpart case — a pack on disk that is switched off and therefore
- * has no entry here at all, and will need both a migration and its region
- * file's `enabled` flag on the day it ships.
+ * first. Every region listed here is currently released; a future pack that
+ * is still switched off has no entry here at all, and will need both a
+ * migration and its region file's `enabled` flag on the day it ships.
  */
 export const REGIONS = [
   'waifu-valley',
@@ -31,6 +30,7 @@ export const REGIONS = [
   'flaccid-foothills',
   'thirstlands',
   'base-80085',
+  'assteroid-belt',
 ] as const;
 export type Region = (typeof REGIONS)[number];
 

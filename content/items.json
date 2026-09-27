@@ -1131,6 +1131,98 @@
       "description": "The falls have gone stiff and splayed where the leather dried out, so it no longer lands true. Somebody put real work into the handle, and then left the whole thing where the sun could get at it.",
       "emoji": "💠",
       "enabled": true
+    },
+    {
+      "slug": "milky_way_shake",
+      "name": "Milky Way Shake",
+      "category": "consumable",
+      "captureModifier": null,
+      "captureBonus": null,
+      "captureRarities": null,
+      "isGuaranteedCapture": false,
+      "shopRegions": [
+        "assteroid-belt"
+      ],
+      "buyPrice": 1200,
+      "priceCurrency": "waifubux",
+      "dailyStockLimit": null,
+      "effectType": "restore_energy_amount",
+      "effectConfig": {
+        "amount": 30,
+        "exitCareMode": true
+      },
+      "description": "Cold, milky, and gone before the clamps release.",
+      "emoji": "🥛",
+      "enabled": true
+    },
+    {
+      "slug": "docking_privileges",
+      "name": "Docking Privileges",
+      "category": "consumable",
+      "captureModifier": null,
+      "captureBonus": null,
+      "captureRarities": null,
+      "isGuaranteedCapture": false,
+      "shopRegions": [
+        "assteroid-belt"
+      ],
+      "buyPrice": 1500,
+      "priceCurrency": "waifubux",
+      "dailyStockLimit": null,
+      "effectType": "buddy_affection_gain",
+      "effectConfig": {
+        "amount": 175
+      },
+      "description": "Everything out here is for sale. Including a berth.",
+      "emoji": "🔓",
+      "enabled": true
+    },
+    {
+      "slug": "tractor_beam",
+      "name": "Tractor Beam",
+      "category": "capture",
+      "captureModifier": 2.75,
+      "captureBonus": null,
+      "captureRarities": [
+        "SR",
+        "SSR"
+      ],
+      "isGuaranteedCapture": false,
+      "shopRegions": [
+        "assteroid-belt"
+      ],
+      "buyPrice": 650,
+      "priceCurrency": "waifubux",
+      "dailyStockLimit": null,
+      "effectType": null,
+      "effectConfig": null,
+      "description": "Doesn't ask. Just reels you in.",
+      "emoji": "🧲",
+      "enabled": true
+    },
+    {
+      "slug": "overload_charge",
+      "name": "Overload Charge",
+      "category": "consumable",
+      "captureModifier": null,
+      "captureBonus": null,
+      "captureRarities": null,
+      "isGuaranteedCapture": false,
+      "shopRegions": [
+        "assteroid-belt"
+      ],
+      "buyPrice": 550,
+      "priceCurrency": "waifubux",
+      "dailyStockLimit": null,
+      "effectType": "capture_bonus_charges",
+      "effectConfig": {
+        "captureBonus": 0.14,
+        "charges": 3,
+        "refreshBehavior": "refresh"
+      },
+      "description": "Set it, step back, and don't watch.",
+      "emoji": "⚡",
+      "enabled": true
     }
   ]
 }

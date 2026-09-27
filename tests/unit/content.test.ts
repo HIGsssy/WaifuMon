@@ -458,13 +458,16 @@ describe('species affinity (5D)', () => {
    * A pack that silently fails to load is invisible: the region still exists,
    * its encounter pool still names the species, and the wild-encounter roll
    * simply never produces them. Named per pack so the failure says which one.
-   *
-   * `assteroid_belt` is deliberately absent — its `expansion.json` ships
-   * `enabled: false`, and a disabled pack contributing nothing is the feature.
    */
   it('loads the species of every enabled expansion pack', () => {
     const content = loadShippedContent();
-    for (const pack of ['twin_peeks', 'thirstlands', 'flaccid_foothills', 'base_80085']) {
+    for (const pack of [
+      'twin_peeks',
+      'thirstlands',
+      'flaccid_foothills',
+      'base_80085',
+      'assteroid_belt',
+    ]) {
       const members = content.species.filter((s) => (s.tags ?? []).includes(pack));
       expect(members.length, pack).toBeGreaterThan(0);
       for (const species of members) {
@@ -472,9 +475,6 @@ describe('species affinity (5D)', () => {
         expect(AFFINITIES, species.slug).toContain(species.affinity);
       }
     }
-    expect(
-      content.species.filter((s) => (s.tags ?? []).includes('assteroid_belt')),
-    ).toEqual([]);
   });
 });
 

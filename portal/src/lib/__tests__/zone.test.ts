@@ -22,6 +22,7 @@ describe('zoneFor', () => {
     ['flaccid_foothills', 'Flaccid Foothills'],
     ['thirstlands', 'Thirstlands'],
     ['base_80085', 'Base 80085'],
+    ['assteroid_belt', 'Assteroid Belt'],
   ])('resolves %s to "%s"', (tag, label) => {
     expect(zoneFor({ tags: ['expansion', 'region_exclusive', tag] })).toEqual({ tag, label });
     expect(zoneLabel(tag)).toBe(label);
@@ -35,6 +36,7 @@ describe('zoneFor', () => {
       'Flaccid Foothills',
       'Thirstlands',
       'Base 80085',
+      'Assteroid Belt',
     ]);
   });
 
@@ -59,7 +61,8 @@ describe('zoneFor', () => {
   });
 
   it('returns null labels for unrecognised tags', () => {
-    expect(zoneLabel('assteroid_belt')).toBeNull();
+    expect(zoneLabel('twin_peaks')).toBeNull();
+    expect(zoneLabel('nowhere')).toBeNull();
     expect(isZoneTag(null)).toBe(false);
   });
 });
@@ -134,6 +137,11 @@ describe('authored species content', () => {
     ],
     ['content/expansions/thirstlands/species/thirstlands_species.json', 15, 'Thirstlands'],
     ['content/expansions/base_80085/species/base_80085_species.json', 15, 'Base 80085'],
+    [
+      'content/expansions/assteroid_belt/species/assteroid_belt_species.json',
+      15,
+      'Assteroid Belt',
+    ],
   ])('%s: all %i species resolve to %s', (file, count, label) => {
     const species = JSON.parse(fs.readFileSync(path.join(REPO, file), 'utf8')) as Array<{
       slug: string;

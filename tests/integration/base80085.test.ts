@@ -145,12 +145,14 @@ describe('released destination', () => {
     expect(base!.bannerImagePath).toBe('locations/base-80085/banner.png');
   });
 
-  it('lists last, after every destination released before it', async () => {
+  it('lists after every destination released before it', async () => {
     await resetPlayer({ withPass: true });
     const status = await app.travel.getStatus(playerId);
     const ids = status.destinations.map((d) => d.regionId);
-    expect(ids.at(-1)).toBe(REGION);
-    expect(ids).toContain('thirstlands');
+    // No longer last: the Assteroid Belt (order 7) was released after it.
+    for (const earlier of ['waifu-valley', 'twin-peeks', 'flaccid-foothills', 'thirstlands']) {
+      expect(ids.indexOf(REGION)).toBeGreaterThan(ids.indexOf(earlier));
+    }
   });
 
   it('is seeded with its own encounter pool, covering every entry', async () => {
