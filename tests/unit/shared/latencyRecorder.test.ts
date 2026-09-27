@@ -235,3 +235,71 @@ describe('reset', () => {
     expect(snap.latency.count).toBe(1);
   });
 });
+
+describe('recent interval', () => {
+  function clocked() {
+    let now = 1_000_000;
+    const r = new LatencyRecorder({ now: () => now });
+    return { r, advance: (ms: number) => (now += ms) };
+  }
+
+  it('is null until the first rotation', () => {
+    const { r } = clocked();
+    record(r, 5);
+    expect(r.snapshot().recent).toBeNull();
+  });
+
+  it('reports only the requests completed in the last interval', () => {
+    const { r, advance } = clocked();
+    for (let i = 0; i < 10; i++) record(r, 800); // an old spike
+    advance(5_000);
+    r.rotateRecent();
+    for (let i = 0; i < 20; i++) record(r, 2); // calm now
+    advance(5_000);
+    r.rotateRecent();
+
+    const snap = r.snapshot();
+    // The cumulative window still remembers the spike…
+    expect(snap.latency.maxMs).toBeGreaterThan(700);
+    // …but "now" is calm. This separation is the reason `recent` exists.
+    expect(snap.recent!.latency.p99Ms).toBeLessThan(5);
+    expect(snap.recent!.counts.total).toBe(20);
+    expect(snap.recent!.intervalMs).toBe(5_000);
+    expect(snap.recent!.requestsPerSecond).toBe(4);
+  });
+
+  it('reports an idle interval as zero requests, not as missing', () => {
+    const { r, advance } = clocked();
+    advance(5_000);
+    r.rotateRecent();
+    const recent = r.snapshot().recent!;
+    expect(recent.counts.total).toBe(0);
+    expect(recent.requestsPerSecond).toBe(0);
+    expect(recent.latency.p99Ms).toBeNull();
+  });
+
+  it('is unaffected by reads — only rotation moves it', () => {
+    const { r, advance } = clocked();
+    record(r, 3);
+    advance(5_000);
+    r.rotateRecent();
+    const first = r.snapshot().recent;
+    record(r, 3);
+    r.snapshot();
+    r.snapshot();
+    expect(r.snapshot().recent).toEqual(first);
+  });
+
+  it('is cleared by reset, so pre-reset traffic never reads as "now"', () => {
+    const { r, advance } = clocked();
+    record(r, 3);
+    advance(5_000);
+    r.rotateRecent();
+    r.reset();
+    expect(r.snapshot().recent).toBeNull();
+    // And requests recorded before the reset do not leak into the next interval.
+    advance(5_000);
+    r.rotateRecent();
+    expect(r.snapshot().recent!.counts.total).toBe(0);
+  });
+});

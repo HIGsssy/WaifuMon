@@ -303,8 +303,12 @@ export async function createPlatformApiServer(deps: PlatformApiDeps): Promise<Zo
   // Registered after the error handler above, so the bearer-only refusal is
   // rendered by it rather than by Fastify's default.
   if (deps.metrics !== undefined) registerMetricsRoutes(app, deps.metrics);
+  // The admin System Metrics route reads the same collectors `/metrics` does.
+  // Handed in here, from the one `metrics` dep, so the host cannot wire the two
+  // surfaces to different collectors by accident.
+  const v1Ctx = deps.metrics === undefined ? deps.ctx : { ...deps.ctx, metrics: deps.metrics };
   await app.register(
-    v1Routes(deps.ctx, { cards: deps.config.cardRendererEnabled === true }),
+    v1Routes(v1Ctx, { cards: deps.config.cardRendererEnabled === true }),
     { prefix: '/api/v1' },
   );
 

@@ -14,6 +14,7 @@ export {
   EventLoopMonitor,
   type EventLoopDelay,
   type EventLoopMetrics,
+  type RecentEventLoop,
 } from './eventLoopMetrics';
 export {
   LatencyRecorder,
@@ -21,9 +22,20 @@ export {
   summarize,
   type HttpMetrics,
   type LatencySummary,
+  type RecentHttpMetrics,
   type RequestCounts,
   type RouteMetrics,
 } from './latencyRecorder';
+export {
+  DEFAULT_SYSTEM_SAMPLE_INTERVAL_MS,
+  SystemSampler,
+  type CgroupReadings,
+  type HostReadings,
+  type ProcessCpu,
+  type ReadText,
+  type SystemMetrics,
+  type SystemSamplerOptions,
+} from './systemSampler';
 export {
   readProcessMetrics,
   type CpuMetrics,

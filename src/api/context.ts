@@ -17,6 +17,7 @@ import type { CardRenderer } from '../modules/cards';
 import type { LoadedContent } from '../modules/content/schemas';
 import type { IdentityResolver } from './identity';
 import type { PortalAuthorizationService } from '../modules/portalAuth/portalAuthService';
+import type { MetricsSources } from './routes/metrics';
 
 export interface ApiContext {
   services: AppServices;
@@ -77,4 +78,13 @@ export interface ApiContext {
    * administrative. See `src/api/plugins/portalPermissions.ts`.
    */
   adminBearerAllowed?: boolean | undefined;
+  /**
+   * Runtime metric collectors, for the Portal's System Metrics page. Absent
+   * when `PLATFORM_API_METRICS_ENABLED=false`, in which case the admin route is
+   * not registered — the same on/off the bearer-only `/metrics` follows.
+   *
+   * Set by `createPlatformApiServer` from its own `metrics` dep rather than by
+   * the host, so there is exactly one place the collectors are handed in.
+   */
+  metrics?: MetricsSources | undefined;
 }

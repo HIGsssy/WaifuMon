@@ -50,7 +50,7 @@ import { createAdminRoleGrantService } from './modules/portalAuth/adminRoleGrant
 import { createPortalAuthorizationService } from './modules/portalAuth/portalAuthService';
 import { createAppearanceService } from './modules/appearance/appearanceService';
 import { configureCardRenderer, peekCardRenderer, shutdownCardRenderer } from './modules/cards';
-import { EventLoopMonitor, LatencyRecorder } from './shared/metrics';
+import { EventLoopMonitor, LatencyRecorder, SystemSampler } from './shared/metrics';
 import { OwnedCardWarmer } from './modules/appearance/ownedCardWarm';
 import { listOwnedWarmSubjects } from './modules/appearance/ownedCardWarmSubjects';
 import { createCollectionService } from './modules/collection/collectionService';
@@ -799,9 +799,25 @@ async function main(): Promise<void> {
       ? (() => {
           const eventLoop = new EventLoopMonitor();
           eventLoop.start();
+          const http = new LatencyRecorder();
+          // The one clock for every "right now" reading. It measures CPU as a
+          // rate and, at the same instant, closes the HTTP and event-loop
+          // collectors' recent intervals — so the Portal dashboard, a shell
+          // `curl` and the load harness all see the same ~5 s interval rather
+          // than each reader shortening the others'.
+          const system = new SystemSampler({
+            onSample: () => {
+              eventLoop.rotateRecent();
+              http.rotateRecent();
+            },
+            onError: (err) =>
+              logger.warn({ err, tag: 'metrics/sample-failed' }, 'system metrics sample failed'),
+          });
+          system.start();
           return {
             eventLoop,
-            http: new LatencyRecorder(),
+            system,
+            http,
             describeDatabasePool: () => ({
               totalCount: pool.totalCount,
               idleCount: pool.idleCount,
@@ -820,6 +836,7 @@ async function main(): Promise<void> {
                   derivativeRenders: null,
                   cacheHits: null,
                   dedupedRenders: null,
+                  poolSize: null,
                   workers: null,
                 };
               }
@@ -829,6 +846,7 @@ async function main(): Promise<void> {
                 derivativeRenders: stats.derivativeRenders,
                 cacheHits: stats.cacheHits,
                 dedupedRenders: stats.dedupedRenders,
+                poolSize: stats.workerPoolSize ?? null,
                 workers: stats.workers ?? null,
               };
             },
@@ -920,6 +938,7 @@ async function main(): Promise<void> {
     // Holds a libuv timer, so leaving it enabled would be a handle that
     // outlives everything above it.
     metrics?.eventLoop.stop();
+    metrics?.system.stop();
     await pool.end();
     process.exit(0);
   };

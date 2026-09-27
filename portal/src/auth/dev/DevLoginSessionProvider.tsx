@@ -90,6 +90,7 @@ const ALL_DEV_PERMISSIONS: readonly string[] = [
   'presentations.read',
   'presentations.write',
   'gallery.read',
+  'system.metrics.read',
 ];
 
 export function DevLoginSessionProvider({ children }: { children: ReactNode }) {

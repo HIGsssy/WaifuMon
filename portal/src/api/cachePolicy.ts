@@ -99,6 +99,22 @@ export const PLAYER_POLICY: CachePolicy = {
  * Refresh button is the explicit "look again", and focus/reconnect refetches
  * are off like the rest of the admin tooling.
  */
+/**
+ * Admin System Metrics — a live gauge, not cached data.
+ *
+ * The page polls on its own interval (`SYSTEM_METRICS_POLL_MS`), so nothing
+ * here should trigger a fetch: no focus refetch (the poll is already running)
+ * and no reconnect burst (the next tick picks it up). Zero stale time because a
+ * reading is out of date the moment the next one exists; a short gcTime because
+ * there is no reason to keep a snapshot of server load once the page is closed.
+ */
+export const SYSTEM_METRICS_POLICY: CachePolicy = {
+  staleTime: 0,
+  gcTime: 30 * SECOND,
+  refetchOnWindowFocus: false,
+  refetchOnReconnect: false,
+};
+
 export const ADMIN_GALLERY_POLICY: CachePolicy = {
   staleTime: 5 * MINUTE,
   gcTime: 30 * MINUTE,

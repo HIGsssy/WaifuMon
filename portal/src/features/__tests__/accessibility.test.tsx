@@ -37,6 +37,9 @@ const PAGES: ReadonlyArray<{ name: string; url: string; settled: string | RegExp
   { name: 'Settings', url: '/settings', settled: 'Appearance' },
   { name: 'Achievements', url: '/achievements', settled: 'Unlocked' },
   { name: 'Leaderboards', url: '/leaderboards', settled: 'Top Trainers' },
+  // Admin, but rendered here too so it is checked inside the real app shell.
+  // The dev session holds `system.metrics.read`; the API would refuse anyone else.
+  { name: 'System Metrics', url: '/admin/system', settled: 'Current load' },
   { name: '404', url: '/nowhere', settled: 'Page not found' },
 ];
 

@@ -276,6 +276,12 @@ export const handlers = [
 
   // ── Admin: Waifumon Gallery ──────────────────────────────────────────────
   http.get('/api/v1/admin/gallery/species', () => data(fixtures.adminGalleryCatalog)),
+
+  // Admin — System Metrics. A fresh instant per response, as the real server
+  // gives, so a page left open in `npm run dev` draws a moving trend.
+  http.get('/api/v1/admin/system/metrics', () =>
+    data(fixtures.systemMetricsReport(new Date().toISOString())),
+  ),
   http.get('/api/v1/admin/gallery/species/:slug', ({ params }) => {
     const found = fixtures.adminGalleryDetails.find((s) => s.slug === params.slug);
     return found

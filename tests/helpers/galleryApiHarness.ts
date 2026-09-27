@@ -23,6 +23,7 @@ import { createGuildOwnershipService } from '../../src/modules/portalAuth/guildO
 import { createGuildRoleService } from '../../src/modules/portalAuth/guildRoleService';
 import type { AdminRoleGrantService } from '../../src/modules/portalAuth/adminRoleGrantService';
 import type { LoadedContent } from '../../src/modules/content/schemas';
+import type { MetricsSources } from '../../src/api/routes/metrics';
 import {
   createApiContext,
   createCapturedLogger,
@@ -125,6 +126,12 @@ export interface GalleryServerOptions {
   adminBearerAllowed?: boolean;
   /** Extra service stubs, e.g. a collection that says the player owns a species. */
   services?: ApiContextOverrides['services'];
+  /**
+   * Runtime metric collectors. Lets the System Metrics admin route be tested
+   * behind the same real auth hook and permission guard as the gallery —
+   * this harness is really "a Portal admin server", named for its first user.
+   */
+  metrics?: MetricsSources;
 }
 
 export async function buildGalleryServer(opts: GalleryServerOptions): Promise<ZodFastify> {
@@ -145,6 +152,7 @@ export async function buildGalleryServer(opts: GalleryServerOptions): Promise<Zo
     },
     logger: createCapturedLogger('silent').logger,
     probes: createProbes(),
+    ...(opts.metrics ? { metrics: opts.metrics } : {}),
     ctx: {
       ...createApiContext({
         content: opts.content,

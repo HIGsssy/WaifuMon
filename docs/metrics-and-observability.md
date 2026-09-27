@@ -64,6 +64,79 @@ is one that is off during the incident it was built for. Set it to `false` and
 both the routes *and* the request-timing hooks disappear — a real off switch,
 not a hidden endpoint.
 
+## The Portal dashboard
+
+Guild owners get **Admin — System Metrics** (`/admin/system`) in the Portal: the
+same report, as live gauges, detail panels and ten-minute trend charts, polled
+every 5 s. It is built to be left open while a load test runs.
+
+### How the Portal gets metrics without the token
+
+Not through a proxy. The metrics are collected *inside the process that serves
+the Portal's API*, so the Portal reads them from a second route over the same
+collectors:
+
+```
+GET /metrics                      bearer token only; refuses a Portal session (403)
+GET /api/v1/admin/system/metrics  Portal session holding system.metrics.read
+```
+
+Both call the same `buildMetricsReport` against the same response schema, so
+they cannot drift. The Portal route is authenticated like every other admin
+page — session cookie, then `requirePortalPermission` — and never touches the
+bearer token. A proxy that held the token and relayed `/metrics` would have
+worked, and would have put the token on a code path a browser can trigger.
+
+`system.metrics.read` is **owner-only**: it is excluded from the grantable
+permissions, like `admin.roles.manage`, so no Discord role can confer it. The
+reason is scope — every other admin permission acts on the selected guild's
+content, but these numbers describe the whole process and every guild it
+serves. Relaxing that is a one-line change in `portalAuthService.ts`.
+
+There is **no Portal reset**. `POST /metrics/reset` stays bearer-only; a
+dashboard that could zero the measurement window would let anyone watching a
+load test corrupt it. The page's "Clear trends" button empties only the browser's
+chart history.
+
+### Current versus cumulative
+
+Most readings exist in two windows, and the dashboard always labels which:
+
+- **Recent** — the last completed ~5 s interval. `eventLoop.recent`,
+  `http.recent`, and every CPU figure in `system`. This is "now".
+- **Cumulative** — since process start or the last reset. The original
+  `eventLoop.delay`, `eventLoop.utilization`, `http.latency`, `http.counts`.
+  Right for isolating a load-test phase; wrong as a live gauge, because an hour
+  of calm drowns a minute of trouble.
+
+Recent intervals are driven by one clock — the system sampler — which rotates
+the HTTP and event-loop collectors at the same instant it measures CPU. No
+reader moves an interval boundary, so two dashboards, a `curl` and the load
+harness all see the same numbers.
+
+### Thresholds
+
+A reading is coloured only where a threshold follows from what it means; every
+other reading is shown neutral, with value and trend but no verdict. The full
+reasoning is in `portal/src/features/adminSystemMetrics/thresholds.ts`; in
+brief:
+
+| Reading | Warn | Critical | Basis |
+| --- | --- | --- | --- |
+| Event-loop utilization (recent) | ≥ 70% | ≥ 90% | M/M/1 queueing: wait/service = ρ/(1−ρ) — 2.3× at 0.7, 9× at 0.9 |
+| Event-loop delay p99 (recent) | ≥ 100 ms | ≥ 1 s | 100 ms perceptible; 1 s breaks flow and is a third of Discord's 3 s interaction deadline |
+| Database pool | all connections busy, none idle | any query waiting | definitional saturation — no percentage |
+| Card renderer | all workers busy, or anything queued | queued ≥ pool size (a full round backed up) | measured in render rounds, so independent of render speed |
+| Memory | — | any OOM kill in the cgroup | the only hard event; `memory.current` includes reclaimable cache |
+| HTTP 5xx (recent) | any | — | 5xx is by definition a server fault |
+| Load per CPU (1 min) | > 1.0 | — | more runnable tasks than CPUs |
+| PSI `full` (memory, I/O) | > 0 | — | time in which *every* task was stalled |
+
+Deliberately **neutral**: process CPU %, host CPU %, host memory %, HTTP
+in-flight, RSS without a limit, and PSI `some`. None has a threshold that
+holds without context — 95% CPU can be efficient or saturated, and it is CPU
+*pressure* that says which.
+
 ## Reading it on staging
 
 The API is published on loopback by default (`PLATFORM_API_PUBLISH_HOST`), so
@@ -143,6 +216,33 @@ machine.
 Reading both distinguishes the two ways a request gets slow: low utilization
 with high latency means waiting on Postgres; high utilization means compute-
 bound. A capacity test needs to tell those apart.
+
+### `system`
+
+Sampled every 5 s on its own clock (`shared/metrics/systemSampler.ts`), by
+reading `/proc` and cgroup v2 files directly. Each group is labelled by what it
+describes, because inside Docker those are very different things:
+
+- `process` — this Node process, all threads. `percentOfOneCore` (may exceed 100
+  with busy render workers) and `percentOfAvailable` (against the cgroup CPU
+  quota when set, otherwise schedulable cores).
+- `host` — **kernel-global** readings from `/proc/stat`, `/proc/meminfo`,
+  `/proc/loadavg` and `/proc/pressure/*`. Linux does not namespace these, so
+  **inside a container they describe the whole physical machine** — every core,
+  all RAM, Postgres included. That is what a capacity test wants, and it is the
+  opposite of what `docker stats` shows. CPU splits into busy / iowait / steal;
+  memory "used" is `MemTotal − MemAvailable`, so reclaimable cache counts as free.
+- `cgroup` — `/sys/fs/cgroup/*`: under Docker's default private cgroup
+  namespace, the container's own memory charge, limits, CPU quota and OOM-kill
+  count.
+- `containerized` — a `/.dockerenv` or `/run/.containerenv` marker was found.
+- `hostViewVirtualized` — **LXCFS** is mounted over `/proc`. When true, the
+  `host` readings are the container's, not the machine's, and the dashboard
+  relabels them accordingly.
+
+Why read `/proc` rather than Node's `os` module: `os.freemem()` returns
+`MemAvailable` (not what its name says), `process.constrainedMemory()` returns
+2⁶⁴ when unlimited, and neither exposes iowait, steal or pressure.
 
 ### `process.memory`
 
@@ -320,11 +420,13 @@ docker compose logs -f postgres | grep -E 'duration:|still waiting for'
 
 Honest gaps, so nobody reads a green `/metrics` as a complete picture:
 
-- **Host CPU, host memory, disk I/O.** Outside the process. Use `vmstat`,
-  `iostat -x` and `docker stats` alongside a scrape loop. `cpu.majorPageFaults`
-  is the in-process hint that the host is under memory pressure, not a
-  substitute.
-- **Per-container CPU and memory.** `docker stats --no-stream` is the source.
+- **Per-device disk throughput and IOPS.** PSI `io` says whether tasks are
+  *waiting* on disk, which is the capacity question; it does not say which
+  device or how many operations. `iostat -x` for that.
+- **Postgres's own CPU and memory.** Included in the `host` figures but not
+  separable from them. `docker stats` gives the per-container split.
+- **Per-route recent latency.** The route table is cumulative since the window
+  began; only overall HTTP latency has a recent interval.
 - **Discord gateway latency and rate limiting.** Not yet surfaced. The bot's own
   logs carry it.
 - **Client-observed latency.** `/metrics` reports server-side time and excludes

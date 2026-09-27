@@ -18,6 +18,7 @@ import {
   IDENTITY_POLICY,
   PLAYER_POLICY,
   SHOP_POLICY,
+  SYSTEM_METRICS_POLICY,
   type CachePolicy,
 } from '../cachePolicy';
 
@@ -29,6 +30,7 @@ const ALL: Array<[string, CachePolicy]> = [
   ['content', CONTENT_POLICY],
   ['shop', SHOP_POLICY],
   ['player', PLAYER_POLICY],
+  ['system metrics', SYSTEM_METRICS_POLICY],
 ];
 
 describe('cache policy (plan §13)', () => {
@@ -63,6 +65,14 @@ describe('cache policy (plan §13)', () => {
     // moved, on top of the profile call that refreshes the same row anyway.
     expect(IDENTITY_POLICY.staleTime).toBeGreaterThan(PLAYER_POLICY.staleTime);
     expect(IDENTITY_POLICY.refetchOnWindowFocus).toBe(false);
+  });
+
+  it('leaves system metrics to its own poll: no focus or reconnect fetches', () => {
+    // The dashboard polls every few seconds. A focus or reconnect refetch on
+    // top would be a second, unscheduled request racing the poll.
+    expect(SYSTEM_METRICS_POLICY.refetchOnWindowFocus).toBe(false);
+    expect(SYSTEM_METRICS_POLICY.refetchOnReconnect).toBe(false);
+    expect(SYSTEM_METRICS_POLICY.staleTime).toBe(0);
   });
 
   it('gives every policy an explicit reconnect rule', () => {

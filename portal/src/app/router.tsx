@@ -140,6 +140,14 @@ const AdminGallerySpeciesPage = lazy(() =>
     default: m.AdminGallerySpeciesPage,
   })),
 );
+// System Metrics. Owner-only by permission (`system.metrics.read` is not
+// grantable). Lazy for the same reason as every admin page: an unprivileged
+// bundle never downloads the dashboard.
+const SystemMetricsPage = lazy(() =>
+  import('@/features/adminSystemMetrics/SystemMetricsPage').then((m) => ({
+    default: m.SystemMetricsPage,
+  })),
+);
 // Owner-only. Guarded on `admin.roles.manage`, which the authorization service
 // issues to the live guild owner and to nobody else — a role grant can never
 // confer it, so a delegated admin hitting this path gets the not-found page.
@@ -282,6 +290,17 @@ export const routes: RouteObject[] = [
             element: (
               <RequirePortalPermission permission="gallery.read">
                 <AdminGallerySpeciesPage />
+              </RequirePortalPermission>
+            ),
+          },
+
+          // Admin — System Metrics. Owner-only by permission; the API re-checks
+          // every poll.
+          {
+            path: 'admin/system',
+            element: (
+              <RequirePortalPermission permission="system.metrics.read">
+                <SystemMetricsPage />
               </RequirePortalPermission>
             ),
           },

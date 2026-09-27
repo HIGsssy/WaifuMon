@@ -19,6 +19,7 @@ import {
   BookOpen,
   CalendarDays,
   Compass,
+  Gauge,
   Heart,
   Images,
   LayoutDashboard,
@@ -76,6 +77,14 @@ export const NAV_ITEMS: readonly NavItem[] = [
     label: 'Admin — Waifumon Gallery',
     icon: Images,
     requiresPermission: 'gallery.read',
+  },
+  {
+    // Owner-only: `system.metrics.read` is not grantable, so a delegated admin
+    // never sees this entry. Live process and host telemetry, not game data.
+    to: '/admin/system',
+    label: 'Admin — System Metrics',
+    icon: Gauge,
+    requiresPermission: 'system.metrics.read',
   },
   {
     // Owner-only: `admin.roles.manage` is the one permission that cannot be

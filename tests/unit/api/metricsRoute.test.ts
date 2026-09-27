@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createPlatformApiServer } from '../../../src/api/server';
 import type { ZodFastify } from '../../../src/api/plugins/typeProvider';
 import type { CardMetrics, MetricsSources } from '../../../src/api/routes/metrics';
-import { EventLoopMonitor, LatencyRecorder } from '../../../src/shared/metrics';
+import { EventLoopMonitor, LatencyRecorder, SystemSampler } from '../../../src/shared/metrics';
 import {
   createApiContext,
   createCapturedLogger,
@@ -28,6 +28,7 @@ const NO_RENDERER: CardMetrics = {
   derivativeRenders: null,
   cacheHits: null,
   dedupedRenders: null,
+  poolSize: null,
   workers: null,
 };
 
@@ -41,8 +42,13 @@ async function build(opts: { metrics?: boolean } = {}): Promise<ZodFastify> {
   pool = { totalCount: 3, idleCount: 2, waitingCount: 0, max: 10 };
   const eventLoop = new EventLoopMonitor(1);
   eventLoop.start();
+  // A sampler over a fixed, fake filesystem: the route test is about the
+  // report's shape and auth, not about what this machine's /proc says.
+  const system = new SystemSampler({ platform: 'darwin', readText: () => null, exists: () => false });
+  system.sample();
   sources = {
     eventLoop,
+    system,
     http: new LatencyRecorder(),
     describeDatabasePool: () => pool,
     describeCardRenderer: () => cards,
@@ -62,6 +68,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   sources?.eventLoop.stop();
+  sources?.system.stop();
   await api?.close();
 });
 
@@ -192,7 +199,10 @@ describe('the payload', () => {
       derivativeRenders: 9,
       cacheHits: 120,
       dedupedRenders: 2,
+      poolSize: 2,
       workers: {
+        size: 2,
+        active: 1,
         workers: 1,
         spawned: 2,
         replaced: 1,
@@ -210,6 +220,19 @@ describe('the payload', () => {
     // how deep a burst got, and whether a worker crashed under it.
     expect(body.cards.workers.peakQueued).toBe(7);
     expect(body.cards.workers.replaced).toBe(1);
+    // The live load reading the dashboard's renderer meter is built from.
+    expect(body.cards.workers.active).toBe(1);
+    expect(body.cards.workers.size).toBe(2);
+  });
+
+  it('includes the system block, labelled by platform and container state', async () => {
+    const body = (await api.inject({ method: 'GET', url: '/metrics', headers: AUTH })).json();
+    expect(body.system.platform).toBe('darwin');
+    expect(body.system.containerized).toBe(false);
+    // Off Linux there is no /proc: host and cgroup are absent, not zeroed.
+    expect(body.system.host).toBeNull();
+    expect(body.system.cgroup).toBeNull();
+    expect(body.system.sampledAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
   it('surfaces pool saturation when queries are waiting', async () => {

@@ -143,6 +143,11 @@ export interface CardRendererStats {
   /** Renders that joined an in-flight identical render instead of starting one. */
   dedupedRenders: number;
   /**
+   * Threads the pool will run once started; `0` means rendering happens
+   * in-process (`CARD_RENDER_WORKERS=0`). Present from construction.
+   */
+  workerPoolSize?: number | undefined;
+  /**
    * Worker-pool counters, present once a cold master has actually been drawn
    * on a thread. Absent when the pool is disabled (`workers: 0`) or when
    * everything so far was served from cache — which is itself the useful

@@ -1152,3 +1152,196 @@ export const expeditionOverview: ExpeditionOverview = {
     },
   ],
 };
+
+// ── Admin System Metrics ─────────────────────────────────────────────────────
+
+/**
+ * A plausible mid-load report: a Linux container with a 2 GiB limit, a busy
+ * but unsaturated event loop, a database pool with headroom, and one cold card
+ * in flight. `collectedAt` is a parameter so a polling test can hand out a new
+ * instant per response — the history dedupes on it, so a constant would never
+ * draw more than one point.
+ */
+export function systemMetricsReport(collectedAt = '2026-09-26T12:00:00.000Z') {
+  return {
+    collectedAt,
+    process: {
+      pid: 4242,
+      nodeVersion: 'v22.11.0',
+      uptimeSeconds: 93_784,
+      memory: {
+        rssBytes: 412 * 1024 * 1024,
+        heapUsedBytes: 96 * 1024 * 1024,
+        heapTotalBytes: 128 * 1024 * 1024,
+        externalBytes: 48 * 1024 * 1024,
+        arrayBuffersBytes: 12 * 1024 * 1024,
+        heapScope: 'main-thread' as const,
+      },
+      cpu: { userMs: 812_000, systemMs: 95_000, majorPageFaults: 12, fsReads: 3400, fsWrites: 910 },
+    },
+    eventLoop: {
+      enabled: true,
+      resolutionMs: 20,
+      delay: {
+        minMs: 20,
+        meanMs: 21.2,
+        maxMs: 410,
+        p50Ms: 20.1,
+        p95Ms: 23.4,
+        p99Ms: 38.7,
+        stddevMs: 3.1,
+        samples: 200_000,
+      },
+      utilization: 0.18,
+      recent: {
+        intervalMs: 5000,
+        utilization: 0.42,
+        delay: {
+          minMs: 20,
+          meanMs: 22,
+          maxMs: 64,
+          p50Ms: 20.4,
+          p95Ms: 31,
+          p99Ms: 52.5,
+          stddevMs: 4,
+          samples: 250,
+        },
+      },
+    },
+    system: {
+      sampledAt: collectedAt,
+      intervalMs: 5000,
+      platform: 'linux',
+      containerized: true,
+      hostViewVirtualized: false,
+      process: { percentOfOneCore: 64.5, percentOfAvailable: 32.25, availableCores: 2 },
+      host: {
+        cores: 8,
+        cpu: { busyPercent: 37.5, iowaitPercent: 1.2, stealPercent: 0 },
+        loadAverage: { one: 2.4, five: 1.9, fifteen: 1.2 },
+        loadPerCore: 0.3,
+        memory: {
+          totalBytes: 16 * 1024 ** 3,
+          availableBytes: 9 * 1024 ** 3,
+          usedBytes: 7 * 1024 ** 3,
+          usedPercent: 43.75,
+          swapTotalBytes: 2 * 1024 ** 3,
+          swapUsedBytes: 0,
+        },
+        pressure: {
+          cpu: { someAvg10: 3.2, someAvg60: 2.1, fullAvg10: 0, fullAvg60: 0 },
+          memory: { someAvg10: 0, someAvg60: 0, fullAvg10: 0, fullAvg60: 0 },
+          io: { someAvg10: 0.8, someAvg60: 0.5, fullAvg10: 0, fullAvg60: 0 },
+        },
+      },
+      cgroup: {
+        path: '/',
+        memoryCurrentBytes: 540 * 1024 * 1024,
+        memoryLimitBytes: 2 * 1024 ** 3,
+        memoryPercentOfLimit: 26.37,
+        cpuLimitCores: 2,
+        oomKills: 0,
+      },
+    },
+    http: {
+      inFlight: 3,
+      peakInFlight: 11,
+      counts: {
+        total: 48_210,
+        byStatusClass: { '2xx': 47_600, '3xx': 120, '4xx': 480, '5xx': 10 },
+        errors: 490,
+        serverErrors: 10,
+      },
+      latency: {
+        count: 48_210,
+        minMs: 0.4,
+        meanMs: 18,
+        maxMs: 2400,
+        p50Ms: 6.2,
+        p95Ms: 48,
+        p99Ms: 180,
+      },
+      routes: [
+        {
+          route: '/api/v1/players/:playerId/collection',
+          method: 'GET',
+          counts: {
+            total: 12_400,
+            byStatusClass: { '2xx': 12_390, '5xx': 10 },
+            errors: 10,
+            serverErrors: 10,
+          },
+          latency: {
+            count: 12_400,
+            minMs: 2,
+            meanMs: 14,
+            maxMs: 900,
+            p50Ms: 9,
+            p95Ms: 40,
+            p99Ms: 120,
+          },
+        },
+        {
+          route: '/api/v1/cards/species/:slug',
+          method: 'GET',
+          counts: { total: 30_100, byStatusClass: { '2xx': 30_100 }, errors: 0, serverErrors: 0 },
+          latency: {
+            count: 30_100,
+            minMs: 0.4,
+            meanMs: 22,
+            maxMs: 2400,
+            p50Ms: 1.1,
+            p95Ms: 60,
+            p99Ms: 1480,
+          },
+        },
+        {
+          route: '/api/v1/content/species',
+          method: 'GET',
+          counts: {
+            total: 5_710,
+            byStatusClass: { '2xx': 5_230, '4xx': 480 },
+            errors: 480,
+            serverErrors: 0,
+          },
+          latency: { count: 5_710, minMs: 1, meanMs: 5, maxMs: 80, p50Ms: 4, p95Ms: 11, p99Ms: 25 },
+        },
+      ],
+      recent: {
+        intervalMs: 5000,
+        requestsPerSecond: 42.4,
+        counts: { total: 212, byStatusClass: { '2xx': 212 }, errors: 0, serverErrors: 0 },
+        latency: {
+          count: 212,
+          minMs: 0.5,
+          meanMs: 12,
+          maxMs: 210,
+          p50Ms: 5.5,
+          p95Ms: 41,
+          p99Ms: 96,
+        },
+      },
+      windowStartedAt: '2026-09-25T10:00:00.000Z',
+    },
+    database: { pool: { totalCount: 7, idleCount: 3, waitingCount: 0, max: 10 } },
+    cards: {
+      active: true,
+      masterRenders: 44,
+      derivativeRenders: 130,
+      cacheHits: 29_926,
+      dedupedRenders: 6,
+      poolSize: 2,
+      workers: {
+        size: 2,
+        active: 1,
+        workers: 2,
+        spawned: 2,
+        replaced: 0,
+        queued: 0,
+        peakQueued: 5,
+        peakConcurrent: 2,
+        dispatched: 44,
+      },
+    },
+  };
+}

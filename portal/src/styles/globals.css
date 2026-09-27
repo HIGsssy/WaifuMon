@@ -54,6 +54,17 @@
   --danger: oklch(0.44 0.19 25);
   --danger-soft: oklch(0.97 0.015 25);
 
+  /* ── Operational status (admin System Metrics only) ─────────────────────────
+        The foreground values are *not* new: they are the WaifuBux (145) and
+        Energy (75) currency hues, whose lightness the contrast pass has already
+        measured against white at 12px. Reusing measured values rather than
+        choosing fresh ones is what keeps AA true without a new audit. Never used
+        on player-facing chrome — §17 reserves loud colour for rarity. */
+  --success: oklch(0.46 0.12 145);
+  --success-soft: oklch(0.96 0.03 145);
+  --warning: oklch(0.5 0.13 75);
+  --warning-soft: oklch(0.96 0.04 75);
+
   /* ── Rarity language (plan §17), mirrored from the Discord embed colours. ── */
   --rarity-n: oklch(0.4 0.02 265);
   --rarity-r: oklch(0.4 0.16 250);
@@ -97,6 +108,12 @@
   --danger: oklch(0.78 0.15 25);
   --danger-soft: oklch(0.26 0.05 25);
 
+  /* Dark-theme currency lightness, for the same measured-contrast reason. */
+  --success: oklch(0.84 0.13 145);
+  --success-soft: oklch(0.27 0.04 145);
+  --warning: oklch(0.85 0.14 75);
+  --warning-soft: oklch(0.28 0.05 75);
+
   /* Rarity doubles as text on its own 10% tint, at 12px. That is the hardest
      contrast case in the palette, so the dark-theme lightness is set high
      enough to clear 4.5:1 there — verified by the Playwright contrast pass.
@@ -137,6 +154,10 @@
   --color-accent-ink: var(--accent-ink);
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
 
   --color-rarity-n: var(--rarity-n);
   --color-rarity-r: var(--rarity-r);

@@ -69,6 +69,14 @@ export interface CardRenderPoolOptions {
 }
 
 export interface CardRenderPoolStats {
+  /** Configured ceiling on threads — the most renders that can ever run at once. */
+  size: number;
+  /**
+   * Threads rendering right now. With `size`, this is the pool's current load:
+   * `active === size` means the next cold card queues. `peakConcurrent` is the
+   * high-water mark of this value; this is the live reading.
+   */
+  active: number;
   /** Threads currently alive. */
   workers: number;
   /** Threads started over the pool's life, replacements included. */
@@ -180,6 +188,8 @@ export class CardRenderPool {
 
   getStats(): CardRenderPoolStats {
     return {
+      size: this.size,
+      active: this.busyCount(),
       workers: this.workers.length,
       spawned: this.spawned,
       replaced: this.replaced,

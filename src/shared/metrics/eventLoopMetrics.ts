@@ -55,6 +55,22 @@ export interface EventLoopDelay {
   samples: number;
 }
 
+/**
+ * The loop over the last completed sampling interval (~5 s).
+ *
+ * `delay` and `utilization` on {@link EventLoopMetrics} accumulate since start
+ * or reset, which is what isolates a load-test phase — and what makes them
+ * useless as a live reading once the process has been up a while, because an
+ * hour of calm drowns a minute of stall. This is the live reading.
+ */
+export interface RecentEventLoop {
+  intervalMs: number;
+  /** Fraction of the interval the loop was busy, 0–1. */
+  utilization: number;
+  /** Null when the interval was too short to take a sample. */
+  delay: EventLoopDelay | null;
+}
+
 export interface EventLoopMetrics {
   enabled: boolean;
   /** The sampling floor, so a reader can tell a real baseline from an artefact. */
@@ -66,12 +82,30 @@ export interface EventLoopMetrics {
    * {@link EventLoopMonitor.reset}. Null when no interval has elapsed yet.
    */
   utilization: number | null;
+  /** The last completed sampling interval; null until one has completed. */
+  recent: RecentEventLoop | null;
 }
 
 const NS_PER_MS = 1e6;
 
 function round(value: number): number {
   return Math.round(value * 1000) / 1000;
+}
+
+/** A delay histogram as milliseconds; null when it holds no samples. */
+function summarizeDelay(histogram: IntervalHistogram): EventLoopDelay | null {
+  const samples = Number(histogram.count);
+  if (samples === 0) return null;
+  return {
+    minMs: round(Number(histogram.min) / NS_PER_MS),
+    meanMs: round(histogram.mean / NS_PER_MS),
+    maxMs: round(Number(histogram.max) / NS_PER_MS),
+    p50Ms: round(Number(histogram.percentile(50)) / NS_PER_MS),
+    p95Ms: round(Number(histogram.percentile(95)) / NS_PER_MS),
+    p99Ms: round(Number(histogram.percentile(99)) / NS_PER_MS),
+    stddevMs: round(histogram.stddev / NS_PER_MS),
+    samples,
+  };
 }
 
 /**
@@ -85,12 +119,26 @@ function round(value: number): number {
  */
 export class EventLoopMonitor {
   private readonly resolutionMs: number;
+  private readonly now: () => number;
   private histogram: IntervalHistogram | undefined;
   /** Baseline for the next utilization delta. */
   private eluBaseline = performance.eventLoopUtilization();
+  /**
+   * A second histogram, zeroed at every `rotateRecent`. Percentiles cannot be
+   * subtracted, so "the last five seconds" needs a distribution of its own
+   * rather than a difference of two readings of the cumulative one.
+   */
+  private recentHistogram: IntervalHistogram | undefined;
+  private recentEluBaseline = performance.eventLoopUtilization();
+  private recentStartedAt = 0;
+  private lastRecent: RecentEventLoop | null = null;
 
-  constructor(resolutionMs: number = DEFAULT_EVENT_LOOP_RESOLUTION_MS) {
+  constructor(
+    resolutionMs: number = DEFAULT_EVENT_LOOP_RESOLUTION_MS,
+    options: { now?: () => number } = {},
+  ) {
     this.resolutionMs = resolutionMs;
+    this.now = options.now ?? Date.now;
   }
 
   get enabled(): boolean {
@@ -104,6 +152,13 @@ export class EventLoopMonitor {
     histogram.enable();
     this.histogram = histogram;
     this.eluBaseline = performance.eventLoopUtilization();
+
+    const recent = monitorEventLoopDelay({ resolution: this.resolutionMs });
+    recent.enable();
+    this.recentHistogram = recent;
+    this.recentEluBaseline = performance.eventLoopUtilization();
+    this.recentStartedAt = this.now();
+    this.lastRecent = null;
   }
 
   /**
@@ -115,6 +170,29 @@ export class EventLoopMonitor {
   stop(): void {
     this.histogram?.disable();
     this.histogram = undefined;
+    this.recentHistogram?.disable();
+    this.recentHistogram = undefined;
+    this.lastRecent = null;
+  }
+
+  /**
+   * Closes the interval in progress and starts the next. Called on the system
+   * sampler's fixed clock — never by a reader, for the same reason
+   * `LatencyRecorder.rotateRecent` is not. A no-op while stopped.
+   */
+  rotateRecent(): void {
+    const recent = this.recentHistogram;
+    if (recent === undefined) return;
+    const now = this.now();
+    const elu = performance.eventLoopUtilization(this.recentEluBaseline);
+    this.lastRecent = {
+      intervalMs: Math.max(0, now - this.recentStartedAt),
+      utilization: elu.idle + elu.active === 0 ? 0 : round(elu.utilization),
+      delay: summarizeDelay(recent),
+    };
+    recent.reset();
+    this.recentEluBaseline = performance.eventLoopUtilization();
+    this.recentStartedAt = now;
   }
 
   read(): EventLoopMetrics {
@@ -122,28 +200,22 @@ export class EventLoopMonitor {
     const elu = performance.eventLoopUtilization(this.eluBaseline);
 
     if (histogram === undefined) {
-      return { enabled: false, resolutionMs: this.resolutionMs, delay: null, utilization: null };
+      return {
+        enabled: false,
+        resolutionMs: this.resolutionMs,
+        delay: null,
+        utilization: null,
+        recent: null,
+      };
     }
 
-    const samples = Number(histogram.count);
     return {
       enabled: true,
       resolutionMs: this.resolutionMs,
-      delay:
-        samples === 0
-          ? null
-          : {
-              minMs: round(Number(histogram.min) / NS_PER_MS),
-              meanMs: round(histogram.mean / NS_PER_MS),
-              maxMs: round(Number(histogram.max) / NS_PER_MS),
-              p50Ms: round(Number(histogram.percentile(50)) / NS_PER_MS),
-              p95Ms: round(Number(histogram.percentile(95)) / NS_PER_MS),
-              p99Ms: round(Number(histogram.percentile(99)) / NS_PER_MS),
-              stddevMs: round(histogram.stddev / NS_PER_MS),
-              samples,
-            },
+      delay: summarizeDelay(histogram),
       // `idle + active` is 0 only when no measurable interval has passed.
       utilization: elu.idle + elu.active === 0 ? null : round(elu.utilization),
+      recent: this.lastRecent,
     };
   }
 
@@ -151,5 +223,11 @@ export class EventLoopMonitor {
   reset(): void {
     this.histogram?.reset();
     this.eluBaseline = performance.eventLoopUtilization();
+    // As with the HTTP recorder: a reset must not leave pre-reset stalls
+    // showing as "now".
+    this.recentHistogram?.reset();
+    this.recentEluBaseline = performance.eventLoopUtilization();
+    this.recentStartedAt = this.now();
+    this.lastRecent = null;
   }
 }

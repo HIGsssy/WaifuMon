@@ -30,6 +30,8 @@ import type {
 } from '@/api/types';
 import type { PortalSessionPayload } from '@/auth/types';
 
+import { systemMetricsReport } from '../msw/fixtures';
+
 /** A transparent 1×1 PNG — enough for the `<img>` load path to complete. */
 const PIXEL_PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
@@ -198,6 +200,12 @@ const TABLES = {
 
 /** Routes matched in order; the first hit wins. */
 const ROUTES: ReadonlyArray<[RegExp, () => string]> = [
+  // Admin — System Metrics. The MSW fixture, reused rather than restated, with
+  // the current instant so a page left open draws a trend as the real one does.
+  [
+    /\/api\/v1\/admin\/system\/metrics$/,
+    () => envelope(systemMetricsReport(new Date().toISOString())),
+  ],
   [
     /\/api\/v1\/players\/\d+\/profile$/,
     () =>
@@ -476,6 +484,7 @@ export const ALL_PORTAL_PERMISSIONS: readonly string[] = [
   'presentations.read',
   'presentations.write',
   'gallery.read',
+  'system.metrics.read',
 ];
 
 /** Named session profiles a spec can ask for. */

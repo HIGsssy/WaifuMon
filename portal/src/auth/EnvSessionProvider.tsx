@@ -75,6 +75,7 @@ const ALL_DEV_PERMISSIONS: readonly string[] = [
   'presentations.read',
   'presentations.write',
   'gallery.read',
+  'system.metrics.read',
 ];
 
 export function EnvSessionProvider({ children }: { children: ReactNode }) {

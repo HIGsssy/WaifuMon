@@ -45,7 +45,11 @@ import { CardOutputWidthError } from './errors';
 import { DEFAULT_ASSET_ROOT, DEFAULT_CACHE_ROOT } from './paths';
 import { renderMasterBytes } from './rasterizer/masterRender';
 import { resizeFromMaster } from './rasterizer/renderer';
-import { CardRenderPool, DEFAULT_CARD_RENDER_WORKERS } from './worker/workerPool';
+import {
+  CardRenderPool,
+  DEFAULT_CARD_RENDER_WORKERS,
+  MAX_CARD_RENDER_WORKERS,
+} from './worker/workerPool';
 import type {
   CardRenderer,
   CardRenderInput,
@@ -135,6 +139,11 @@ class CardRendererImpl implements CardRenderer {
     return {
       ...this.stats,
       dedupedRenders: this.masterRenders.joined + this.derivativeRenders.joined,
+      // Known before any thread exists, unlike `workers` below — so a reader
+      // can show "0 of 2 busy" rather than nothing at all. The pool clamps its
+      // size to MAX_CARD_RENDER_WORKERS; this reports the clamped figure, which
+      // is the one that actually bounds concurrency.
+      workerPoolSize: Math.min(this.workerCount, MAX_CARD_RENDER_WORKERS),
       ...(this.workerPool === undefined ? {} : { workers: this.workerPool.getStats() }),
     };
   }

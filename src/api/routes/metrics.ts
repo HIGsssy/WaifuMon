@@ -45,6 +45,7 @@ import {
   type EventLoopMonitor,
   type HttpMetrics,
   type LatencyRecorder,
+  type SystemSampler,
 } from '../../shared/metrics';
 
 /**
@@ -84,7 +85,16 @@ export interface CardMetrics {
   derivativeRenders: number | null;
   cacheHits: number | null;
   dedupedRenders: number | null;
+  /**
+   * Threads the pool runs once started — known before any has, so a reader can
+   * say "0 of 2 busy" rather than nothing. `0` means in-process rendering.
+   */
+  poolSize: number | null;
   workers: {
+    /** Configured ceiling on concurrent renders. */
+    size: number;
+    /** Rendering right now. `active === size` means the next cold card queues. */
+    active: number;
     /** Threads alive now. */
     workers: number;
     /** Started over the pool's life, replacements included. */
@@ -111,6 +121,12 @@ export interface CardMetrics {
 export interface MetricsSources {
   eventLoop: EventLoopMonitor;
   http: LatencyRecorder;
+  /**
+   * Current CPU, memory and pressure for the process, host and cgroup. Sampled
+   * on its own interval so every reader sees the same rate — see
+   * `shared/metrics/systemSampler.ts`.
+   */
+  system: SystemSampler;
   /** Null when the process has no pool — it never does in practice, but tests do. */
   describeDatabasePool: () => DatabasePoolMetrics | null;
   /** Null when no card renderer has been built. */
@@ -136,6 +152,19 @@ const requestCountsSchema = z.object({
   serverErrors: z.number().int().describe('5xx only.'),
 });
 
+const recentHttpSchema = z
+  .object({
+    intervalMs: z.number().int(),
+    requestsPerSecond: z.number(),
+    counts: requestCountsSchema,
+    latency: latencySummarySchema,
+  })
+  .nullable()
+  .describe(
+    'The last completed sampling interval (~5 s) — the live reading. `counts`/`latency` above ' +
+      'are cumulative since start or reset.',
+  );
+
 const httpSchema = z.object({
   inFlight: z.number().int(),
   peakInFlight: z.number().int(),
@@ -149,26 +178,102 @@ const httpSchema = z.object({
       latency: latencySummarySchema,
     }),
   ),
+  recent: recentHttpSchema,
   windowStartedAt: z.string(),
+});
+
+const eventLoopDelaySchema = z.object({
+  minMs: z.number(),
+  meanMs: z.number(),
+  maxMs: z.number(),
+  p50Ms: z.number(),
+  p95Ms: z.number(),
+  p99Ms: z.number(),
+  stddevMs: z.number(),
+  samples: z.number().int(),
 });
 
 const eventLoopSchema = z.object({
   enabled: z.boolean(),
   resolutionMs: z.number().describe('Sampling floor; reported delay never drops below it.'),
-  delay: z
-    .object({
-      minMs: z.number(),
-      meanMs: z.number(),
-      maxMs: z.number(),
-      p50Ms: z.number(),
-      p95Ms: z.number(),
-      p99Ms: z.number(),
-      stddevMs: z.number(),
-      samples: z.number().int(),
-    })
-    .nullable(),
+  delay: eventLoopDelaySchema.nullable(),
   utilization: z.number().nullable().describe('Fraction of wall time the loop was busy, 0–1.'),
+  recent: z
+    .object({
+      intervalMs: z.number().int(),
+      utilization: z.number(),
+      delay: eventLoopDelaySchema.nullable(),
+    })
+    .nullable()
+    .describe(
+      'The last completed sampling interval (~5 s). `delay`/`utilization` above are cumulative.',
+    ),
 });
+
+const pressureSchema = z
+  .object({
+    someAvg10: z.number(),
+    someAvg60: z.number(),
+    fullAvg10: z.number().nullable(),
+    fullAvg60: z.number().nullable(),
+  })
+  .nullable();
+
+const systemSchema = z
+  .object({
+    sampledAt: z.string().nullable(),
+    intervalMs: z.number().int().nullable().describe('Wall time the rates were measured over.'),
+    platform: z.string(),
+    containerized: z.boolean(),
+    hostViewVirtualized: z
+      .boolean()
+      .describe('LXCFS detected: `host` readings describe the container, not the machine.'),
+    process: z.object({
+      percentOfOneCore: z.number().nullable().describe('May exceed 100 with busy worker threads.'),
+      percentOfAvailable: z.number().nullable(),
+      availableCores: z.number(),
+    }),
+    host: z
+      .object({
+        cores: z.number().int(),
+        cpu: z
+          .object({
+            busyPercent: z.number(),
+            iowaitPercent: z.number(),
+            stealPercent: z.number(),
+          })
+          .nullable(),
+        loadAverage: z
+          .object({ one: z.number(), five: z.number(), fifteen: z.number() })
+          .nullable(),
+        loadPerCore: z.number().nullable(),
+        memory: z
+          .object({
+            totalBytes: z.number(),
+            availableBytes: z.number(),
+            usedBytes: z.number(),
+            usedPercent: z.number(),
+            swapTotalBytes: z.number(),
+            swapUsedBytes: z.number(),
+          })
+          .nullable(),
+        pressure: z.object({ cpu: pressureSchema, memory: pressureSchema, io: pressureSchema }),
+      })
+      .nullable()
+      .describe('Kernel-global readings: the physical machine, even inside Docker.'),
+    cgroup: z
+      .object({
+        path: z.string(),
+        memoryCurrentBytes: z.number().nullable(),
+        memoryLimitBytes: z.number().nullable(),
+        memoryPercentOfLimit: z.number().nullable(),
+        cpuLimitCores: z.number().nullable(),
+        oomKills: z.number().int().nullable(),
+      })
+      .nullable()
+      .describe("This process's cgroup — under Docker, the container's limits."),
+  })
+  .describe('Current CPU/memory/pressure, each group labelled by what it describes.');
 
 const metricsResponseSchema = z.object({
   collectedAt: z.string(),
@@ -193,6 +298,7 @@ const metricsResponseSchema = z.object({
     }),
   }),
   eventLoop: eventLoopSchema,
+  system: systemSchema,
   http: httpSchema,
   database: z.object({ pool: z.object({
     totalCount: z.number().int(),
@@ -206,8 +312,11 @@ const metricsResponseSchema = z.object({
     derivativeRenders: z.number().int().nullable(),
     cacheHits: z.number().int().nullable(),
     dedupedRenders: z.number().int().nullable(),
+    poolSize: z.number().int().nullable(),
     workers: z
       .object({
+        size: z.number().int(),
+        active: z.number().int(),
         workers: z.number().int(),
         spawned: z.number().int(),
         replaced: z.number().int(),
@@ -221,6 +330,12 @@ const metricsResponseSchema = z.object({
 });
 
 export type MetricsResponse = z.infer<typeof metricsResponseSchema>;
+
+/**
+ * Exported for the Portal's admin route, which serves this same report inside
+ * the `{ data }` envelope. One schema, so the two surfaces cannot drift.
+ */
+export { metricsResponseSchema };
 
 const resetResponseSchema = z.object({
   reset: z.literal(true),
@@ -240,6 +355,7 @@ export function buildMetricsReport(
     collectedAt: now.toISOString(),
     process: readProcessMetrics(),
     eventLoop,
+    system: sources.system.read(),
     http,
     database: { pool: sources.describeDatabasePool() },
     cards: sources.describeCardRenderer(),

@@ -73,6 +73,24 @@ export interface RouteMetrics {
   latency: LatencySummary;
 }
 
+/**
+ * Requests completed during the last finished sampling interval.
+ *
+ * The cumulative `counts` and `latency` describe the whole window since start
+ * or reset — right for isolating a load-test phase, wrong for "what is
+ * happening now": after an hour, a new latency spike barely moves a cumulative
+ * p99. This is the "now" reading. The interval is driven by the system sampler's
+ * clock (`rotateRecent`), so every reader sees the same one.
+ */
+export interface RecentHttpMetrics {
+  /** Wall time the interval covered. */
+  intervalMs: number;
+  /** Completed requests per second over the interval. */
+  requestsPerSecond: number;
+  counts: RequestCounts;
+  latency: LatencySummary;
+}
+
 export interface HttpMetrics {
   /** Requests that have started but not yet sent a response. */
   inFlight: number;
@@ -82,6 +100,8 @@ export interface HttpMetrics {
   latency: LatencySummary;
   /** Sorted by descending request count, so the busiest route reads first. */
   routes: RouteMetrics[];
+  /** The last completed sampling interval; null until one has completed. */
+  recent: RecentHttpMetrics | null;
   /** When the current measurement window began. */
   windowStartedAt: string;
 }
@@ -111,6 +131,10 @@ function emptyCounts(): RequestCounts {
   return { total: 0, byStatusClass: {}, errors: 0, serverErrors: 0 };
 }
 
+function copyCounts(counts: RequestCounts): RequestCounts {
+  return { ...counts, byStatusClass: { ...counts.byStatusClass } };
+}
+
 function countStatus(counts: RequestCounts, statusCode: number): void {
   counts.total += 1;
   const klass =
@@ -133,12 +157,25 @@ interface RouteBucket {
  * route table.
  */
 export class LatencyRecorder {
+  private readonly now: () => number;
   private readonly overall = createHistogram();
+  /** The interval in progress; becomes `lastInterval` on `rotateRecent`. */
+  private readonly current = createHistogram();
+  private readonly currentCounts = emptyCounts();
+  private currentStartedAt: number;
+  private lastInterval: RecentHttpMetrics | null = null;
   private readonly overallCounts = emptyCounts();
   private readonly routes = new Map<string, RouteBucket>();
   private inFlightCount = 0;
   private peakInFlight = 0;
-  private windowStartedAt = new Date();
+  private windowStartedAt: Date;
+
+  /** `now` is injectable so interval arithmetic can be tested without waiting. */
+  constructor(options: { now?: () => number } = {}) {
+    this.now = options.now ?? Date.now;
+    this.currentStartedAt = this.now();
+    this.windowStartedAt = new Date(this.currentStartedAt);
+  }
 
   /** Call when a request begins. Pair with exactly one {@link recordResponse}. */
   requestStarted(): void {
@@ -164,6 +201,8 @@ export class LatencyRecorder {
     const us = Math.max(MIN_SAMPLE_US, Math.round(params.durationMs * 1000));
     this.overall.record(us);
     countStatus(this.overallCounts, params.statusCode);
+    this.current.record(us);
+    countStatus(this.currentCounts, params.statusCode);
 
     const route = params.route ?? UNROUTED_KEY;
     const key = `${params.method} ${route}`;
@@ -192,7 +231,7 @@ export class LatencyRecorder {
       .map((b) => ({
         route: b.route,
         method: b.method,
-        counts: { ...b.counts, byStatusClass: { ...b.counts.byStatusClass } },
+        counts: copyCounts(b.counts),
         latency: summarize(b.histogram),
       }))
       .sort((a, b) => b.counts.total - a.counts.total);
@@ -200,11 +239,35 @@ export class LatencyRecorder {
     return {
       inFlight: this.inFlightCount,
       peakInFlight: this.peakInFlight,
-      counts: { ...this.overallCounts, byStatusClass: { ...this.overallCounts.byStatusClass } },
+      counts: copyCounts(this.overallCounts),
       latency: summarize(this.overall),
       routes,
+      recent: this.lastInterval,
       windowStartedAt: this.windowStartedAt.toISOString(),
     };
+  }
+
+  /**
+   * Closes the interval in progress and starts the next.
+   *
+   * Called on the system sampler's fixed clock, never by a reader — a reader
+   * that rotated would shorten the interval for everyone else, which is the
+   * whole problem a shared clock exists to avoid.
+   */
+  rotateRecent(): void {
+    const now = this.now();
+    const intervalMs = Math.max(0, now - this.currentStartedAt);
+    const counts = copyCounts(this.currentCounts);
+    this.lastInterval = {
+      intervalMs,
+      requestsPerSecond:
+        intervalMs > 0 ? Math.round((counts.total / intervalMs) * 1000 * 100) / 100 : 0,
+      counts,
+      latency: summarize(this.current),
+    };
+    this.current.reset();
+    Object.assign(this.currentCounts, emptyCounts());
+    this.currentStartedAt = now;
   }
 
   /**
@@ -226,6 +289,13 @@ export class LatencyRecorder {
     Object.assign(this.overallCounts, emptyCounts());
     this.routes.clear();
     this.peakInFlight = this.inFlightCount;
-    this.windowStartedAt = new Date();
+    // The recent interval goes too. Otherwise the first scrape after a reset
+    // would report pre-reset traffic as "now", in a window that claims to have
+    // just begun.
+    this.current.reset();
+    Object.assign(this.currentCounts, emptyCounts());
+    this.lastInterval = null;
+    this.currentStartedAt = this.now();
+    this.windowStartedAt = new Date(this.currentStartedAt);
   }
 }

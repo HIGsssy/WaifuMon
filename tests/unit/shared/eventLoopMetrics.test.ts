@@ -170,3 +170,58 @@ describe('stop', () => {
     expect(m.read().delay).not.toBeNull();
   });
 });
+
+describe('recent interval', () => {
+  it('is null until the first rotation, and while stopped', () => {
+    const m = makeMonitor(1);
+    expect(m.read().recent).toBeNull();
+    m.rotateRecent(); // no-op while stopped
+    expect(m.read().recent).toBeNull();
+    m.start();
+    expect(m.read().recent).toBeNull();
+  });
+
+  it('forgets an old stall once a calm interval has passed', async () => {
+    const m = makeMonitor(1);
+    m.start();
+    await tick(5);
+    blockFor(80);
+    await tick(5);
+    m.rotateRecent();
+    const stalled = m.read().recent!;
+    expect(stalled.delay!.maxMs).toBeGreaterThan(20);
+    expect(stalled.utilization).toBeGreaterThan(0);
+
+    await tick(30);
+    m.rotateRecent();
+    const calm = m.read();
+    // The cumulative distribution still holds the stall…
+    expect(calm.delay!.maxMs).toBeGreaterThan(20);
+    // …but the recent one does not. That is what a live gauge needs.
+    expect(calm.recent!.delay!.maxMs).toBeLessThan(stalled.delay!.maxMs);
+  });
+
+  it('reports the interval length and a utilization in [0, 1]', async () => {
+    let now = 0;
+    const m = new EventLoopMonitor(1, { now: () => now });
+    monitors.push(m);
+    m.start();
+    await tick(10);
+    now += 5_000;
+    m.rotateRecent();
+    const recent = m.read().recent!;
+    expect(recent.intervalMs).toBe(5_000);
+    expect(recent.utilization).toBeGreaterThanOrEqual(0);
+    expect(recent.utilization).toBeLessThanOrEqual(1);
+  });
+
+  it('is cleared by reset', async () => {
+    const m = makeMonitor(1);
+    m.start();
+    await tick(10);
+    m.rotateRecent();
+    expect(m.read().recent).not.toBeNull();
+    m.reset();
+    expect(m.read().recent).toBeNull();
+  });
+});
