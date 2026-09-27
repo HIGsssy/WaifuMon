@@ -1,11 +1,13 @@
 /**
- * Seed catalogue — the initial 10 encounters that prove every major path.
+ * Seed catalogue — the bootstrap encounters that prove every major path.
  *
- * Idempotent: `seedWorldEncounters` looks up each slug and upserts, so
- * running it twice against the same DB never duplicates. Everything here is
- * a *reference implementation* — content teams are expected to replace or
- * extend these via the admin panel. Deliberately terse copy — a designer
- * will rewrite the prose later.
+ * These are *defaults for missing content*, not an enforced definition. The
+ * database is authoritative for any encounter that already exists: startup
+ * inserts a slug only when it is absent and never touches one that is
+ * present, so Portal edits survive restarts and deploys. Moving changed
+ * content onto a live server is the job of export/import
+ * (`encounterImportService.ts`), not of this file. Deliberately terse copy —
+ * a designer will rewrite the prose later.
  *
  * Coverage guaranteed by this list:
  *
@@ -36,6 +38,7 @@ export const SEED_ENCOUNTERS: EncounterInput[] = EncounterInputSchema.array().pa
     name: 'A Lost Companion',
     description:
       'A tiny cub-like waifumon is stumbling through the tall grass, whimpering. It looks unhurt but hopelessly lost.',
+    artworkPath: 'encounters/wv_lost_cub.webp',
     type: 'discovery',
     rarity: 'common',
     weight: 15,
@@ -78,6 +81,7 @@ export const SEED_ENCOUNTERS: EncounterInput[] = EncounterInputSchema.array().pa
     name: 'A Field of Wildflowers',
     description:
       'You wander into a clearing full of shimmering wildflowers. Their pollen carries a strange, invigorating scent.',
+    artworkPath: 'encounters/wv_wildflower_field.webp',
     type: 'discovery',
     rarity: 'common',
     weight: 20,
@@ -107,6 +111,7 @@ export const SEED_ENCOUNTERS: EncounterInput[] = EncounterInputSchema.array().pa
     name: 'A Narrow Ledge',
     description:
       'The path narrows to a crumbling ledge over a long drop. Crossing means placing every step carefully.',
+    artworkPath: 'encounters/tp_narrow_ledge.webp',
     type: 'skill_check',
     rarity: 'uncommon',
     weight: 10,
@@ -147,6 +152,7 @@ export const SEED_ENCOUNTERS: EncounterInput[] = EncounterInputSchema.array().pa
     name: 'Mountain Bandit',
     description:
       'A masked bandit blocks the trail, one hand on a sword hilt. "Toll or trouble, pick one."',
+    artworkPath: 'encounters/tp_mountain_bandit.webp',
     type: 'combat',
     rarity: 'uncommon',
     weight: 8,
@@ -187,6 +193,7 @@ export const SEED_ENCOUNTERS: EncounterInput[] = EncounterInputSchema.array().pa
     name: 'A Cauldron of Suspicious Stew',
     description:
       'A weathered pot bubbles on an unattended fire. The smell is… complicated. A dented ladle rests on a nearby stump.',
+    artworkPath: 'encounters/ff_suspicious_stew.webp',
     type: 'decision',
     rarity: 'common',
     weight: 12,
@@ -226,6 +233,7 @@ export const SEED_ENCOUNTERS: EncounterInput[] = EncounterInputSchema.array().pa
     name: 'A Steaming Hot Spring',
     description:
       'A hidden hot spring nestled in the rocks. The steam rising off it looks almost lazy — a rare invitation.',
+    artworkPath: 'encounters/ff_hot_spring.webp',
     type: 'discovery',
     rarity: 'uncommon',
     weight: 8,
@@ -252,6 +260,7 @@ export const SEED_ENCOUNTERS: EncounterInput[] = EncounterInputSchema.array().pa
     name: 'The Mirage Deity',
     description:
       'The shimmering figure of a goddess rises from a pool that should not be here. "Answer me, traveler. What thirsts eternally, yet drinks nothing?"',
+    artworkPath: 'encounters/th_mirage_oasis.webp',
     type: 'deity',
     rarity: 'rare',
     weight: 4,
@@ -293,6 +302,7 @@ export const SEED_ENCOUNTERS: EncounterInput[] = EncounterInputSchema.array().pa
     name: 'Dune Wraiths',
     description:
       'Sand-shaped forms rise from the dunes, hungering. They circle. Something must be given, or something must be taken.',
+    artworkPath: 'encounters/th_dune_wraiths.webp',
     type: 'combat',
     rarity: 'rare',
     weight: 5,
@@ -333,6 +343,7 @@ export const SEED_ENCOUNTERS: EncounterInput[] = EncounterInputSchema.array().pa
     name: 'Bandit Ambush',
     description:
       'Three bandits step out of the roadside brush. "Nice buddy. Bet the coins are nicer."',
+    artworkPath: 'encounters/tv_bandit_ambush.webp',
     type: 'combat',
     rarity: 'uncommon',
     weight: 10,
@@ -389,6 +400,7 @@ export const SEED_ENCOUNTERS: EncounterInput[] = EncounterInputSchema.array().pa
     name: 'Bandit Camp Aftermath',
     description:
       'You loot the bandits\'s abandoned camp. Hidden in a pack — a small coin purse and a scrap of parchment.',
+    artworkPath: 'encounters/tv_bandit_aftermath.webp',
     type: 'discovery',
     rarity: 'uncommon',
     weight: 1,
@@ -424,6 +436,7 @@ export const SEED_ENCOUNTERS: EncounterInput[] = EncounterInputSchema.array().pa
     name: 'The Wandering Merchant',
     description:
       'A hooded merchant with a cart of curiosities beckons you closer. "Special traveler’s prices, no questions."',
+    artworkPath: 'encounters/tv_wandering_merchant.webp',
     type: 'vendor',
     rarity: 'rare',
     weight: 3,
@@ -461,19 +474,43 @@ export const SEED_ENCOUNTERS: EncounterInput[] = EncounterInputSchema.array().pa
 
 export interface SeedResult {
   created: string[];
+  /** Existing slugs overwritten from the catalogue. Always empty in `insert-missing` mode. */
   updated: string[];
+  /** Existing slugs left exactly as they were. Always empty in `reset` mode. */
+  skipped: string[];
 }
 
 /**
- * Idempotent seed: upserts every {@link SEED_ENCOUNTERS} entry. Never touches
- * an encounter whose slug is not in the list, so hand-authored encounters
- * are safe. Choices/regions/routes are fully replaced on update.
+ * How a seed treats a slug that already exists.
+ *
+ *  - `insert-missing` — the production/bootstrap behaviour. The existing row
+ *    and its regions, routes and choices are not read beyond the slug lookup,
+ *    and never written: no UPDATE, no DELETE, choice ids unchanged.
+ *  - `reset` — destructive. Overwrites the row from the catalogue and replaces
+ *    its children (new choice ids). For test fixtures that want the shipped
+ *    definitions back regardless of what ran before; never used at startup.
  */
-export async function seedWorldEncounters(db: Db): Promise<SeedResult> {
-  const repo = createWorldEncounterRepository(db);
-  const result: SeedResult = { created: [], updated: [] };
+export type SeedMode = 'insert-missing' | 'reset';
 
-  for (const input of SEED_ENCOUNTERS) {
+export interface SeedOptions {
+  mode?: SeedMode;
+  /** The definitions to seed. Defaults to {@link SEED_ENCOUNTERS}. */
+  catalogue?: readonly EncounterInput[];
+}
+
+/**
+ * Seed the bootstrap catalogue, per slug. Never touches an encounter whose
+ * slug is not in the catalogue, so hand-authored encounters are safe in
+ * either mode. Idempotent in either mode.
+ */
+export async function seedWorldEncounters(
+  db: Db,
+  { mode = 'insert-missing', catalogue = SEED_ENCOUNTERS }: SeedOptions = {},
+): Promise<SeedResult> {
+  const repo = createWorldEncounterRepository(db);
+  const result: SeedResult = { created: [], updated: [], skipped: [] };
+
+  for (const input of catalogue) {
     const existing = await db
       .select({ id: worldEncounters.id })
       .from(worldEncounters)
@@ -491,6 +528,8 @@ export async function seedWorldEncounters(db: Db): Promise<SeedResult> {
         );
       });
       result.created.push(input.slug);
+    } else if (mode === 'insert-missing') {
+      result.skipped.push(input.slug);
     } else {
       const id = existing[0]!.id;
       await db.transaction(async (tx) => {
@@ -537,5 +576,8 @@ function mapChoiceValues(choice: EncounterInput['choices'][number], index?: numb
     checkJson: choice.check as unknown as Record<string, unknown>,
     successEffectsJson: choice.successEffects as unknown as Record<string, unknown>[],
     failureEffectsJson: choice.failureEffects as unknown as Record<string, unknown>[],
+    outcomeText: choice.outcomeText ?? null,
+    successText: choice.successText ?? null,
+    failureText: choice.failureText ?? null,
   };
 }

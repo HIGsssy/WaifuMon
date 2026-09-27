@@ -12,6 +12,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { EncounterInputSchema } from '../../../src/modules/worldEncounters/types';
 import { SEED_ENCOUNTERS } from '../../../src/modules/worldEncounters/seed';
+import { locateArtworkFile } from '../../../src/modules/assets/artworkFile';
 
 const ENCOUNTER_ART_DIR = path.resolve(__dirname, '..', '..', '..', 'assets', 'encounters');
 
@@ -27,6 +28,16 @@ describe('shipped content still validates', () => {
   it('every seed encounter parses', () => {
     for (const seed of SEED_ENCOUNTERS) {
       expect(EncounterInputSchema.safeParse(seed).success, seed.slug).toBe(true);
+    }
+  });
+
+  // A typo here would not fail anything at runtime — the presenter just logs
+  // and renders text-only — so a fresh install would ship broken images.
+  it('every seed encounter has artwork that resolves to a shipped asset', () => {
+    const assetsDir = path.dirname(ENCOUNTER_ART_DIR);
+    for (const seed of SEED_ENCOUNTERS) {
+      expect(seed.artworkPath, seed.slug).toBe(`encounters/${seed.slug}.webp`);
+      expect(locateArtworkFile(assetsDir, seed.artworkPath!).status, seed.slug).toBe('available');
     }
   });
 

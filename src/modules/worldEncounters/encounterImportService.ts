@@ -35,6 +35,10 @@
  * encounters it contains, not a declaration of the server's whole catalogue,
  * and treating absence as deletion would make a partial export a destructive
  * act. Removing content stays a deliberate, separate action.
+ *
+ * Nor does it rewrite an encounter or vendor the plan found `unchanged`, so
+ * re-importing an identical package leaves choice ids — which live Discord
+ * buttons carry — exactly as they were.
  */
 import { eq } from 'drizzle-orm';
 import type { Db, DbOrTx } from '../../db/client';
@@ -216,8 +220,20 @@ export function createEncounterPromotionService(
         // Safe: `planImport` returning ok means the package parsed.
         const pkg: EncounterPackage = EncounterPackageSchema.parse(raw);
 
+        // Anything the plan found identical to the target is not written at
+        // all. Rewriting it would change nothing a player can see, but
+        // `replaceChildren` would still re-mint every choice id — and a
+        // Discord button already showing that encounter carries the old one.
+        const unchangedSlugs = new Set(
+          plan.encounters.filter((e) => e.status === 'unchanged').map((e) => e.slug),
+        );
+        const unchangedVendorKeys = new Set(
+          plan.vendors.filter((v) => v.status === 'unchanged').map((v) => v.vendorKey),
+        );
+
         // Vendors first — encounters reference vendor keys.
         for (const vendor of pkg.vendors) {
+          if (unchangedVendorKeys.has(vendor.vendorKey)) continue;
           const [existing] = await tx
             .select({ id: worldEncounterVendors.id })
             .from(worldEncounterVendors)
@@ -241,6 +257,7 @@ export function createEncounterPromotionService(
         }
 
         for (const encounter of pkg.encounters) {
+          if (unchangedSlugs.has(encounter.slug)) continue;
           const values = {
             slug: encounter.slug,
             name: encounter.name,
@@ -271,9 +288,11 @@ export function createEncounterPromotionService(
           }
           // `replaceChildren` deletes and re-inserts regions, routes and
           // choices, so an update cannot leave an orphaned choice from the
-          // previous definition behind. `sortOrder` is the array index, which
-          // is how choice ordering survives a round trip without exporting a
-          // surrogate id.
+          // previous definition behind. A genuinely changed encounter
+          // therefore gets new choice ids, even for choices that did not
+          // change; only an unchanged encounter (skipped above) keeps them.
+          // `sortOrder` is the array index, which is how choice ordering
+          // survives a round trip without exporting a surrogate id.
           await repo.replaceChildren(
             tx,
             id,

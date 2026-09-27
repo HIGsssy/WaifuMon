@@ -406,9 +406,11 @@ export async function bootstrapApp(
     ttlMs: 0,
   });
   // Seed the shipped catalogue so every test starts with the same encounter
-  // library the runtime does. Idempotent; safe to call unconditionally.
-  await seedWorldEncounters(t.db);
-  await seedWorldEncounterVendors(t.db);
+  // library the runtime does. `reset` rather than production's
+  // `insert-missing`: some files bootstrap more than once against the same
+  // database and expect the shipped definitions back each time.
+  await seedWorldEncounters(t.db, { mode: 'reset' });
+  await seedWorldEncounterVendors(t.db, { mode: 'reset' });
   return {
     content,
     buddyBonus,

@@ -41,6 +41,7 @@ import {
 import type { CurrencyService } from '../currency/currencyService';
 import type { InventoryService } from '../inventory/inventoryService';
 import { AppError } from '../../shared/errors';
+import type { SeedMode } from './seed';
 
 /**
  * One purchasable line as it appears in the authored template and in a
@@ -362,29 +363,62 @@ export function createWorldEncounterVendorService(
   return { getDefinition, listDefinitions, openForEncounter, getForEncounter, purchase, close };
 }
 
-/**
- * Seed the shipped vendor catalogue. Idempotent — an existing key is
- * updated in place, matching how {@link seedWorldEncounters} works.
- */
-export async function seedWorldEncounterVendors(db: Db): Promise<void> {
-  const catalogue: Array<
-    Pick<WorldEncounterVendorRow, 'vendorKey' | 'name' | 'description'> & {
-      stock: VendorStockTemplate;
-    }
-  > = [
-    {
-      vendorKey: 'wandering_merchant',
-      name: 'The Wandering Merchant',
-      description:
-        'A hooded merchant offering rare curiosities to travellers she meets on the road.',
-      stock: [
-        { itemSlug: 'basic_charm', quantity: 3, price: 150, currency: 'waifubux' },
-        { itemSlug: 'silk_charm', quantity: 1, price: 900, currency: 'waifubux' },
-      ],
-    },
-  ];
+/** A bootstrap vendor definition — the authored fields only. */
+export type SeedVendor = Pick<WorldEncounterVendorRow, 'vendorKey' | 'name' | 'description'> & {
+  stock: VendorStockTemplate;
+};
 
+/** The bootstrap vendor catalogue. Defaults for missing vendors, not an enforced definition. */
+export const SEED_VENDORS: readonly SeedVendor[] = [
+  {
+    vendorKey: 'wandering_merchant',
+    name: 'The Wandering Merchant',
+    description:
+      'A hooded merchant offering rare curiosities to travellers she meets on the road.',
+    stock: [
+      { itemSlug: 'basic_charm', quantity: 3, price: 150, currency: 'waifubux' },
+      { itemSlug: 'silk_charm', quantity: 1, price: 900, currency: 'waifubux' },
+    ],
+  },
+];
+
+export interface SeedVendorOptions {
+  /**
+   * `insert-missing` (default, startup): an existing vendor key is left
+   * exactly as it is. `reset` (test fixtures): an existing key is overwritten
+   * from the catalogue. Same semantics as {@link seedWorldEncounters}.
+   */
+  mode?: SeedMode;
+  /** The definitions to seed. Defaults to {@link SEED_VENDORS}. */
+  catalogue?: readonly SeedVendor[];
+}
+
+/**
+ * Seed the bootstrap vendor catalogue, per vendor key. Idempotent in either
+ * mode; a key that is not in the catalogue is never touched.
+ */
+export async function seedWorldEncounterVendors(
+  db: Db,
+  { mode = 'insert-missing', catalogue = SEED_VENDORS }: SeedVendorOptions = {},
+): Promise<void> {
   for (const entry of catalogue) {
+    const values = {
+      vendorKey: entry.vendorKey,
+      name: entry.name,
+      description: entry.description,
+      stockTemplateJson: entry.stock as unknown as Record<string, unknown>[],
+    };
+
+    if (mode === 'insert-missing') {
+      // `vendor_key` is UNIQUE, so the conflict target makes an existing
+      // vendor a no-op at the database — no read-then-write race, no UPDATE.
+      await db
+        .insert(worldEncounterVendors)
+        .values(values)
+        .onConflictDoNothing({ target: worldEncounterVendors.vendorKey });
+      continue;
+    }
+
     const [existing] = await db
       .select({ id: worldEncounterVendors.id })
       .from(worldEncounterVendors)
@@ -393,20 +427,10 @@ export async function seedWorldEncounterVendors(db: Db): Promise<void> {
     if (existing) {
       await db
         .update(worldEncounterVendors)
-        .set({
-          name: entry.name,
-          description: entry.description,
-          stockTemplateJson: entry.stock as unknown as Record<string, unknown>[],
-          updatedAt: sql`now()`,
-        })
+        .set({ ...values, updatedAt: sql`now()` })
         .where(eq(worldEncounterVendors.id, existing.id));
     } else {
-      await db.insert(worldEncounterVendors).values({
-        vendorKey: entry.vendorKey,
-        name: entry.name,
-        description: entry.description,
-        stockTemplateJson: entry.stock as unknown as Record<string, unknown>[],
-      });
+      await db.insert(worldEncounterVendors).values(values);
     }
   }
 }

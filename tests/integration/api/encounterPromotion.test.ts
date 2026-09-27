@@ -140,6 +140,62 @@ describe('export → import round trip', () => {
     expect(plan.counts.unchanged).toBe(exported.encounters.length);
   });
 
+  it('applying an unchanged package writes nothing and preserves choice ids', async () => {
+    // Row versions, not just values: a skipped encounter keeps its `xmin`,
+    // a rewritten one — even with identical content — does not.
+    const rowVersions = async () => ({
+      encounters: (await t.pool.query('SELECT id, xmin::text FROM world_encounters ORDER BY id')).rows,
+      choices: (
+        await t.pool.query('SELECT id, encounter_id, xmin::text FROM world_encounter_choices ORDER BY id')
+      ).rows,
+      vendors: (await t.pool.query('SELECT id, xmin::text FROM world_encounter_vendors ORDER BY id')).rows,
+    });
+    const exported = await promotion.exportPackage();
+    const before = await rowVersions();
+
+    const result = await promotion.apply(exported, { actorDiscordUserId: ACTOR });
+
+    expect(result.plan.counts).toMatchObject({
+      created: 0,
+      updated: 0,
+      unchanged: exported.encounters.length,
+    });
+    expect(await rowVersions()).toEqual(before);
+  });
+
+  it('a genuinely changed encounter is still applied; unchanged ones keep their choice ids', async () => {
+    const exported = await promotion.exportPackage();
+    const target = exported.encounters.find((e) => e.slug === 'tv_bandit_ambush')!;
+    target.name = 'Bandit Ambush (imported change)';
+    const idsBySlug = async () =>
+      new Map(
+        await Promise.all(
+          exported.encounters.map(
+            async (e) =>
+              [e.slug, (await app.worldEncounterAdmin.getBySlug(e.slug))!.choices.map((c) => c.id)] as const,
+          ),
+        ),
+      );
+    const before = await idsBySlug();
+
+    const result = await promotion.apply(exported, { actorDiscordUserId: ACTOR });
+
+    expect(result.plan.counts.updated).toBe(1);
+    expect((await app.worldEncounterAdmin.getBySlug('tv_bandit_ambush'))!.name).toBe(
+      'Bandit Ambush (imported change)',
+    );
+    const after = await idsBySlug();
+    for (const [slug, ids] of before) {
+      if (slug === 'tv_bandit_ambush') {
+        // Known, documented: a changed encounter's choices are replaced
+        // wholesale, so their ids change even where the choice did not.
+        expect(after.get(slug)).not.toEqual(ids);
+      } else {
+        expect(after.get(slug), slug).toEqual(ids);
+      }
+    }
+  });
+
   it('chained encounters and vendors survive the trip', async () => {
     // `tv_bandit_ambush` chains to `tv_bandit_aftermath`; `tv_wandering_merchant`
     // opens the seeded vendor. Both relationships are by slug/key only.

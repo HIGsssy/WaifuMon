@@ -515,19 +515,16 @@ async function main(): Promise<void> {
   const expired = await ctx.services.hunt.expireStale();
   if (expired > 0) logger.info({ expired }, 'swept stale active encounters');
 
-  // Seed world encounters idempotently. Every restart re-upserts the shipped
-  // catalogue, which lets an admin edit a definition safely — the seeder
-  // does not know about admin-authored slugs (they are simply not in
-  // SEED_ENCOUNTERS), so it never touches them.
+  // Bootstrap world encounters and vendors: insert any shipped slug/key that
+  // is missing, and leave every existing one exactly as it is. The database
+  // owns live encounter content — Portal edits survive restarts and deploys,
+  // and changed content reaches a live server through export/import only.
   try {
-    const seedResult = await seedWorldEncounters(db);
-    if (seedResult.created.length > 0 || seedResult.updated.length > 0) {
-      logger.info(
-        { created: seedResult.created.length, updated: seedResult.updated.length },
-        'seeded world encounters',
-      );
+    const seedResult = await seedWorldEncounters(db, { mode: 'insert-missing' });
+    if (seedResult.created.length > 0) {
+      logger.info({ created: seedResult.created }, 'seeded missing world encounters');
     }
-    await seedWorldEncounterVendors(db);
+    await seedWorldEncounterVendors(db, { mode: 'insert-missing' });
   } catch (err) {
     logger.warn({ err }, 'world encounter seed failed — feature will run with whatever is in the DB');
   }
