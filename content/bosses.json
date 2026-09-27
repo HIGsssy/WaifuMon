@@ -375,5 +375,18 @@
     "repelledText": "The Candy Planet Queen crashes backward into a mountain of frosting. She emerges moments later covered in sprinkles, absolutely furious. 'FINE! Keep your stupid candy!' She points accusingly at your Waifumon. 'And YOU! Stop being so damn sweet-looking if you're not willing to be confiscated!' She stuffs two emergency cupcakes into her pockets and retreats toward her palace.",
     "unchallengedText": "The Candy Planet Queen raids your supplies with ruthless efficiency. Chocolate disappears. Gummies vanish. Cookies are seized in the name of the crown. She reaches your Waifumon, pauses, and thoughtfully pokes her cheek. 'Hmm. Definitely sweet.' Your Waifumon slaps her hand away. The Queen gasps. 'RUDE!' She grabs one last candy bar and storms back toward her castle.",
     "description": "The spoiled ruler of an entire planet made of candy, where every cookie, cake, chocolate bar, gummy, pastry, and suspiciously sweet-looking Waifumon is legally considered property of the crown. She doesn't need your candy. She owns mountains of it. But she just wants it."
+  },
+  {
+    "id": "waifu_bounty_hunter",
+    "name": "The Waifu Bounty Hunter",
+    "affinity": "primal",
+    "region": "waifu-valley",
+    "enabled": true,
+    "artwork": "bosses/waifu-bounty-hunter_boss.webp",
+    "rewardTable": "standard-scouting-v1",
+    "scoutingText": "A hoverbike screams across the horizon and skids sideways in front of you. A heavily armed woman dismounts, checks a glowing leaderboard on her wrist, then produces a suspiciously Waifumon-sized capture bag. She holds it open toward your Waifumon. 'Get in the bag.' Your Waifumon stares at her. The bounty hunter sighs. 'Look, it's open season, I'm twelve captures away from first place, and I'd really rather not make this complicated.'",
+    "repelledText": "The Bounty Hunter crashes into her hoverbike as the capture bag goes sailing away. Her wrist display flashes RANK: #2. 'NO! No, no, no!' Another hunter's score ticks upward. She points furiously at your Waifumon. 'Do you have ANY idea what you just did to my K/D?!' She jumps onto her bike. 'Fine! There's gotta be an easier SSR somewhere!' She rockets away.",
+    "unchallengedText": "The Bounty Hunter waits with the bag held open. 'Come on.' Your Waifumon doesn't move. 'Get in.' Nothing. She shakes the bag enticingly. 'Look! Plenty of room!' Still nothing. Her wrist display suddenly beeps as another hunter overtakes her. 'OH, FUCK THIS.' She stuffs the bag away, jumps onto her hoverbike, and blasts off after somebody worth more leaderboard points.",
+    "description": "A hypercompetitive galactic bounty hunter treating Waifumon hunting like a ranked multiplayer season. She's chasing captures, rare encounters, achievement badges, and the coveted number-one spot on the Galactic Hunting Leaderboard. To her, your beloved partner isn't a person. She's twelve hundred points and possibly a seasonal achievement."
   }
 ]
