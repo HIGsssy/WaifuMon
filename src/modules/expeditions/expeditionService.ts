@@ -156,6 +156,7 @@ import {
 import { normalizeAffinity } from '../capture/affinityMath';
 import { buildBoard, orderBoardForDisplay, rotationEndsAt } from './expeditionBoard';
 import { evaluateSuitability } from './expeditionMath';
+import { deploymentBlockers } from './expeditionEligibility';
 import { compareCandidates, evaluateMatch, parseStoredMatch } from './expeditionMatch';
 import { expeditionDrawFraction, EXPEDITION_LOGIC_VERSION } from './expeditionRandom';
 import { rollExpeditionRewards, type ExpeditionRewardPayload } from './expeditionRewards';
@@ -706,11 +707,9 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
             affinityConfig: content.tables.buddyAffinity,
           };
           const suitability = evaluateSuitability(input);
-          const blocking = (reasons.get(waifu.id) ?? []).filter((r) =>
-            // The Buddy is only blocked when content says so, which is what
-            // makes `buddyDeployable` a real switch rather than decoration.
-            r === 'buddy' ? !cfg.buddyDeployable : true,
-          );
+          // The same predicate `deploy` refuses with, so the menu never offers
+          // a copy the service would turn away (or hides one it would accept).
+          const blocking = deploymentBlockers(reasons.get(waifu.id) ?? [], cfg);
           return {
             waifuId: waifu.id,
             name: waifu.nickname?.trim() || speciesRow.name,
@@ -778,8 +777,9 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
             .where(eq(species.id, waifu.speciesId));
           if (!speciesRow) throw new WaifuUnavailableError(['released']);
 
-          const blocking = (await availability.reasonsFor(tx, playerId, waifuId)).filter((r) =>
-            r === 'buddy' ? !cfg.buddyDeployable : true,
+          const blocking = deploymentBlockers(
+            await availability.reasonsFor(tx, playerId, waifuId),
+            cfg,
           );
           if (blocking.length > 0) {
             throw new WaifuUnavailableError(

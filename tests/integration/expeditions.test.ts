@@ -511,6 +511,213 @@ describe('candidates', () => {
   });
 });
 
+/**
+ * ── Who survives the 25-option menu ────────────────────────────────────────
+ *
+ * The report behind this block: a Lv.23 copy that met every requirement of a
+ * mission was missing from its deploy menu. Nothing was truncated early — the
+ * whole collection is read and sorted — but she was a ★ favourite, and the
+ * deploy rule blocked every availability reason except the Buddy. Favourite is
+ * a *release* concern, so it hid exactly the copies players care about most.
+ *
+ * `menuOf` mirrors the Discord screen: deployable copies, best first, capped at
+ * Discord's 25. The UI suite asserts the painted menu itself.
+ */
+describe('candidate selection across a large collection', () => {
+  const DISCORD_SELECT_LIMIT = 25;
+  const menuOf = <T extends { unavailableReasons: string[] }>(candidates: T[]) =>
+    candidates.filter((c) => c.unavailableReasons.length === 0).slice(0, DISCORD_SELECT_LIMIT);
+
+  let offType: SpeciesRow;
+
+  beforeAll(async () => {
+    const [caregiver] = await t.db
+      .select()
+      .from(speciesTable)
+      .where(eq(speciesTable.affinity, 'caregiver'))
+      .limit(1);
+    offType = caregiver!;
+  });
+
+  beforeEach(() => {
+    // Dominant, level 10, no race preference: `demonSpecies` at Lv.10+ is a
+    // PERFECT match; `offType` never is, whatever her level.
+    installContent(
+      completePool({ preferredAffinities: ['dominant'], preferredRaces: [], recommendedLevel: 10 }),
+      DEFAULT_TABLES,
+    );
+  });
+
+  /** A player who owns nothing yet, so every copy below is one the test chose. */
+  async function emptyPlayer() {
+    userSeq += 1;
+    const { playerId } = await provisionPlayer(app, 'g-exp', `u-exp-${userSeq}`);
+    return playerId;
+  }
+
+  const own = async (playerId: number, speciesId: number, level: number) =>
+    (await insertOwnedWaifu(t.db, { playerId, speciesId, level })).id;
+
+  it('ranks a favourited PERFECT copy owned last into the menu, and deploys her', async () => {
+    const playerId = await emptyPlayer();
+    const fillers: number[] = [];
+    for (let i = 0; i < 40; i++) fillers.push(await own(playerId, offType.id, 10 + (i % 25)));
+    const star = await own(playerId, demonSpecies.id, 23);
+    await app.collection.toggleFavorite(playerId, star);
+
+    const candidates = await app.expeditions.getCandidates(playerId, 'test_run');
+    // The whole collection was evaluated, not a first page of it.
+    expect(candidates).toHaveLength(41);
+    expect(new Set(candidates.map((c) => c.waifuId))).toEqual(new Set([...fillers, star]));
+
+    const first = candidates[0]!;
+    expect(first.waifuId).toBe(star);
+    expect(first.match.quality).toBe('PERFECT_MATCH');
+    expect(first.unavailableReasons).toEqual([]);
+
+    const menu = menuOf(candidates);
+    expect(menu).toHaveLength(DISCORD_SELECT_LIMIT);
+    expect(menu[0]!.waifuId).toBe(star);
+    // A weaker copy gave up her place: 40 fillers, only 24 of them fit.
+    expect(menu.filter((c) => fillers.includes(c.waifuId))).toHaveLength(24);
+
+    const view = await app.expeditions.deploy(playerId, 'test_run', star);
+    expect(view.waifuId).toBe(star);
+  });
+
+  it('fills the menu with the best 25 when more than 25 are PERFECT, deterministically', async () => {
+    const playerId = await emptyPlayer();
+    // Weaker copies first, so the PERFECT ones are all "late" in id order.
+    const fillers: number[] = [];
+    for (let i = 0; i < 5; i++) fillers.push(await own(playerId, offType.id, 40));
+    // 27 PERFECT copies of the same species: nine each at Lv.10, 20 and 30,
+    // interleaved so id order and level order disagree.
+    const byLevel = new Map<number, number[]>([[10, []], [20, []], [30, []]]);
+    for (let i = 0; i < 27; i++) {
+      const level = [10, 20, 30][i % 3]!;
+      byLevel.get(level)!.push(await own(playerId, demonSpecies.id, level));
+    }
+
+    const candidates = await app.expeditions.getCandidates(playerId, 'test_run');
+    expect(candidates).toHaveLength(32);
+    const menu = menuOf(candidates);
+    expect(menu).toHaveLength(DISCORD_SELECT_LIMIT);
+    expect(menu.every((c) => c.match.quality === 'PERFECT_MATCH')).toBe(true);
+    expect(menu.some((c) => fillers.includes(c.waifuId))).toBe(false);
+
+    // Duplicates are separate candidates: 27 distinct ids of one species.
+    const perfect = candidates.filter((c) => c.match.quality === 'PERFECT_MATCH');
+    expect(new Set(perfect.map((c) => c.waifuId)).size).toBe(27);
+
+    // Within the tier: higher chance first, then higher level, then oldest id.
+    for (let i = 1; i < perfect.length; i++) {
+      const [a, b] = [perfect[i - 1]!, perfect[i]!];
+      expect(a.successChance).toBeGreaterThanOrEqual(b.successChance);
+      if (a.successChance === b.successChance) {
+        expect(a.level).toBeGreaterThanOrEqual(b.level);
+        if (a.level === b.level) expect(a.waifuId).toBeLessThan(b.waifuId);
+      }
+    }
+    // So the two that do not fit are the two newest Lv.10 copies.
+    const dropped = perfect.slice(DISCORD_SELECT_LIMIT).map((c) => c.waifuId);
+    expect(dropped).toEqual(byLevel.get(10)!.slice(-2));
+
+    // And the order is stable between reads.
+    const again = await app.expeditions.getCandidates(playerId, 'test_run');
+    expect(again.map((c) => c.waifuId)).toEqual(candidates.map((c) => c.waifuId));
+  });
+
+  it('keeps duplicate copies of one species as independent candidates', async () => {
+    const playerId = await emptyPlayer();
+    const low = await own(playerId, demonSpecies.id, 3);
+    const high = await own(playerId, demonSpecies.id, 23);
+    const same = await own(playerId, demonSpecies.id, 23);
+
+    const candidates = await app.expeditions.getCandidates(playerId, 'test_run');
+    expect(candidates.map((c) => c.waifuId)).toEqual([high, same, low]);
+    expect(candidates.map((c) => c.level)).toEqual([23, 23, 3]);
+    expect(candidates[0]!.match.quality).toBe('PERFECT_MATCH');
+    expect(candidates[2]!.match.quality).not.toBe('PERFECT_MATCH');
+
+    // Deploying one twin does not take the other out of the list.
+    await app.expeditions.deploy(playerId, 'test_run', high);
+    const after = await app.expeditions.getCandidates(playerId, 'test_run');
+    const byId = new Map(after.map((c) => [c.waifuId, c]));
+    expect(byId.get(high)!.unavailableReasons).toEqual(['on_expedition']);
+    expect(byId.get(same)!.unavailableReasons).toEqual([]);
+    expect(byId.get(low)!.unavailableReasons).toEqual([]);
+  });
+
+  /**
+   * The list and `deploy` share one predicate; this proves they agree on every
+   * rule. Each copy is otherwise a PERFECT match, so only availability can
+   * separate them. Blocked copies are refused with `WaifuUnavailableError`
+   * *before* the region check, so they are all tried while the region is free.
+   */
+  it('offers exactly the copies deploy() accepts', async () => {
+    installContent(
+      [
+        ...completePool({ preferredAffinities: ['dominant'], preferredRaces: [] }),
+        ...poolFor('twin-peeks', 'peeks'),
+      ],
+      DEFAULT_TABLES,
+    );
+    const playerId = await emptyPlayer();
+    const away = await own(playerId, demonSpecies.id, 20);
+    const buddy = await own(playerId, demonSpecies.id, 20);
+    const care = await own(playerId, demonSpecies.id, 20);
+    const favourite = await own(playerId, demonSpecies.id, 20);
+    for (let i = 0; i < 30; i++) await own(playerId, offType.id, 20);
+
+    await forceRegion(t.db, playerId, 'twin-peeks');
+    await app.expeditions.deploy(playerId, 'peeks_360', away);
+    await forceRegion(t.db, playerId, 'waifu-valley');
+    await app.collection.setBuddy(playerId, buddy);
+    await app.care.start(playerId, care);
+    await app.collection.toggleFavorite(playerId, favourite);
+
+    const candidates = await app.expeditions.getCandidates(playerId, 'test_run');
+    const byId = new Map(candidates.map((c) => [c.waifuId, c]));
+    expect(byId.get(away)!.unavailableReasons).toEqual(['on_expedition']);
+    expect(byId.get(buddy)!.unavailableReasons).toEqual(['buddy']);
+    expect(byId.get(care)!.unavailableReasons).toEqual(['care_target']);
+    expect(byId.get(favourite)!.unavailableReasons).toEqual([]);
+
+    const menuIds = menuOf(candidates).map((c) => c.waifuId);
+    expect(menuIds[0]).toBe(favourite);
+    for (const id of [away, buddy, care]) {
+      expect(menuIds).not.toContain(id);
+      await expect(app.expeditions.deploy(playerId, 'test_run', id)).rejects.toBeInstanceOf(
+        WaifuUnavailableError,
+      );
+    }
+    const view = await app.expeditions.deploy(playerId, 'test_run', favourite);
+    expect(view.waifuId).toBe(favourite);
+  });
+
+  it('offers and deploys the Buddy when content says she is deployable', async () => {
+    installContent(
+      completePool({ preferredAffinities: ['dominant'], preferredRaces: [] }),
+      DEFAULT_TABLES,
+      { buddyDeployable: true },
+    );
+    const playerId = await emptyPlayer();
+    const buddy = await own(playerId, demonSpecies.id, 20);
+    for (let i = 0; i < 30; i++) await own(playerId, offType.id, 20);
+    await app.collection.setBuddy(playerId, buddy);
+    // Favourite as well: neither reason may block on its own or together.
+    await app.collection.toggleFavorite(playerId, buddy);
+
+    const candidates = await app.expeditions.getCandidates(playerId, 'test_run');
+    expect(candidates[0]!.waifuId).toBe(buddy);
+    expect(candidates[0]!.unavailableReasons).toEqual([]);
+    expect(menuOf(candidates).map((c) => c.waifuId)).toContain(buddy);
+
+    const view = await app.expeditions.deploy(playerId, 'test_run', buddy);
+    expect(view.waifuId).toBe(buddy);
+  });
+});
+
 describe('resolution', () => {
   it('leaves a mission alone until its finish line passes', async () => {
     const { playerId, waifuId } = await playerWithWaifu();

@@ -549,6 +549,45 @@ describe('candidate selection', () => {
     expect(text).toContain('Nobody is free to go');
   });
 
+  /**
+   * The menu Discord receives: at most 25 options, best first, and a
+   * favourite owned after every weaker copy still earns her place in it.
+   */
+  it('puts a favourited PERFECT copy in a menu capped at 25', async () => {
+    const [caregiver] = await t.db
+      .select()
+      .from(speciesTable)
+      .where(eq(speciesTable.affinity, 'caregiver'))
+      .limit(1);
+    const { prov } = await player(3); // dominant but badly under-levelled
+    for (let i = 0; i < 30; i++) {
+      await insertOwnedWaifu(t.db, { playerId: prov.playerId, speciesId: caregiver!.id, level: 30 });
+    }
+    const star = await insertOwnedWaifu(t.db, {
+      playerId: prov.playerId,
+      speciesId: demonSpecies.id,
+      level: 23,
+      nickname: 'Favourite',
+    });
+    await app.collection.toggleFavorite(prov.playerId, star.id);
+
+    const btn = fakeButton();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleExpeditionView(ctx, btn as any, prov, 'supply_run');
+    const payload = painted(btn);
+    const options = selectOptions(payload);
+    expect(options).toHaveLength(25);
+    expect(options[0]!.value).toBe(String(star.id));
+    expect(options[0]!.label).toContain('PERFECT MATCH');
+    expect(screenText(payload)).not.toContain('Unavailable');
+
+    // And picking her reaches the confirmation rather than "not available".
+    const sel = fakeSelect(String(star.id));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleExpeditionPick(ctx, sel as any, prov, 'supply_run');
+    expect(screenText(painted(sel))).toContain('Send Favourite?');
+  });
+
   it('falls back to the board for a mission that no longer exists', async () => {
     const { prov } = await player();
     const btn = fakeButton();
