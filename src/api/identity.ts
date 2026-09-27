@@ -35,6 +35,7 @@
  *   - **Nothing throws.** A rejected resolver is an absent identity, never a
  *     500 on a read that is otherwise perfectly answerable.
  */
+import { isSyntheticDiscordId } from '../modules/loadTest/synthetic';
 
 export interface PlayerIdentity {
   /** Discord global display name, falling back to the username. */
@@ -122,6 +123,11 @@ export function withIdentityCache(
   }
 
   return async function resolveCached(discordUserId: string): Promise<PlayerIdentity | null> {
+    // A load-test player has no Discord account. Asking the gateway would be a
+    // guaranteed 404 against a rate-limited external API, once per virtual
+    // player — so it is never asked, and never cached either.
+    if (isSyntheticDiscordId(discordUserId)) return null;
+
     const cached = cache.get(discordUserId);
     if (cached && cached.expiresAt > now()) return cached.value;
 

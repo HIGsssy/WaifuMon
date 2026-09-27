@@ -55,6 +55,10 @@ export const ALL_PORTAL_PERMISSIONS = [
   // System Metrics: live process, host and database-pool telemetry. Owner-only
   // — see SYSTEM_METRICS_READ below for why it is not delegable.
   'system.metrics.read',
+  // Load Testing: start and stop synthetic load against this process.
+  // Owner-only, and issued at all only when LOAD_TESTING_ENABLED — see
+  // SYSTEM_LOADTEST_RUN below.
+  'system.loadtest.run',
 ] as const;
 export type PortalPermission = (typeof ALL_PORTAL_PERMISSIONS)[number];
 
@@ -77,6 +81,8 @@ export const PORTAL_PERMISSION_DESCRIPTIONS: Readonly<Record<PortalPermission, s
     'View every Waifumon species and all artwork, including disabled, locked and unreleased content.',
   'system.metrics.read':
     'View live server metrics: memory, CPU, request latency and database load (guild owner only).',
+  'system.loadtest.run':
+    'Run synthetic load tests against this server (guild owner only; staging deployments only).',
 };
 
 /**
@@ -107,10 +113,21 @@ export const ADMIN_ROLES_MANAGE = 'admin.roles.manage' satisfies PortalPermissio
  */
 export const SYSTEM_METRICS_READ = 'system.metrics.read' satisfies PortalPermission;
 
+/**
+ * Generating load — owner-only for the System Metrics reason (it acts on the
+ * whole process, not one guild's content), and additionally **environment
+ * gated**: the authorization service withholds it from everyone unless it was
+ * built with `loadTestingEnabled`, which only `LOAD_TESTING_ENABLED=true`
+ * does. The routes are unregistered in that case anyway; withholding the
+ * permission too is what keeps the Portal from offering a page that cannot work.
+ */
+export const SYSTEM_LOADTEST_RUN = 'system.loadtest.run' satisfies PortalPermission;
+
 /** Permissions that only the live guild owner can ever hold. */
 const OWNER_ONLY_PERMISSIONS: ReadonlySet<PortalPermission> = new Set([
   ADMIN_ROLES_MANAGE,
   SYSTEM_METRICS_READ,
+  SYSTEM_LOADTEST_RUN,
 ]);
 
 export const GRANTABLE_PORTAL_PERMISSIONS: readonly PortalPermission[] =
@@ -226,11 +243,23 @@ export interface PortalAuthorizationServiceDeps {
   guildRoles?: GuildRoleService | undefined;
   /** Reads the grant table. Optional for the same reason as {@link guildRoles}. */
   roleGrants?: AdminRoleGrantService | undefined;
+  /**
+   * Whether this deployment permits load testing (`LOAD_TESTING_ENABLED`).
+   * Absent means no: {@link SYSTEM_LOADTEST_RUN} is then held by nobody, the
+   * owner included.
+   */
+  loadTestingEnabled?: boolean | undefined;
 }
 
 export function createPortalAuthorizationService(
   deps: PortalAuthorizationServiceDeps,
 ): PortalAuthorizationService {
+  const ownerPermissions = sorted(
+    deps.loadTestingEnabled === true
+      ? ADMIN_PERMISSIONS
+      : ADMIN_PERMISSIONS.filter((p) => p !== SYSTEM_LOADTEST_RUN),
+  );
+
   async function computePermissionsFor(
     session: PortalSession | null,
   ): Promise<PortalPermissionSet> {
@@ -244,7 +273,7 @@ export function createPortalAuthorizationService(
       // grant table, on a role lookup, or on anything they could misconfigure,
       // which is what makes locking themselves out impossible.
       return {
-        permissions: sorted(ADMIN_PERMISSIONS),
+        permissions: ownerPermissions,
         reason: { kind: 'guild_owner', discordGuildId },
       };
     }

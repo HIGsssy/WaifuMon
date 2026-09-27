@@ -96,6 +96,7 @@ function makeAuth(opts: {
   memberRoles?: Record<string, readonly string[] | null>;
   memberRolesThrows?: boolean;
   grants?: Parameters<typeof grantsDouble>[0];
+  loadTestingEnabled?: boolean;
 }) {
   const guildOwnership = createGuildOwnershipService({
     fetchOwnerId: async () => opts.ownerId ?? OWNER,
@@ -112,10 +113,21 @@ function makeAuth(opts: {
   });
   const roleGrants = grantsDouble(opts.grants ?? []);
   return {
-    auth: createPortalAuthorizationService({ guildOwnership, guildRoles, roleGrants }),
+    auth: createPortalAuthorizationService({
+      guildOwnership,
+      guildRoles,
+      roleGrants,
+      ...(opts.loadTestingEnabled === undefined ? {} : { loadTestingEnabled: opts.loadTestingEnabled }),
+    }),
     fetchMemberRoleIds,
   };
 }
+
+/**
+ * What an owner holds on an ordinary deployment: everything except
+ * `system.loadtest.run`, which exists only where LOAD_TESTING_ENABLED is set.
+ */
+const OWNER_PERMISSIONS = ALL_PORTAL_PERMISSIONS.filter((p) => p !== 'system.loadtest.run');
 
 const editorGrant = {
   guildId: GUILD,
@@ -129,12 +141,21 @@ const publisherGrant = {
 };
 
 describe('the guild owner is unconditional', () => {
-  it('still receives every permission', async () => {
+  it('still receives every permission the deployment issues', async () => {
     const { auth } = makeAuth({ ownerId: OWNER });
     const result = await auth.computePermissionsFor(makeSession({ discordUserId: OWNER }));
 
-    expect([...result.permissions].sort()).toEqual([...ALL_PORTAL_PERMISSIONS].sort());
+    expect([...result.permissions].sort()).toEqual([...OWNER_PERMISSIONS].sort());
     expect(result.reason.kind).toBe('guild_owner');
+  });
+
+  it('receives system.loadtest.run only where load testing is enabled', async () => {
+    const owner = makeSession({ discordUserId: OWNER });
+    expect(await makeAuth({ ownerId: OWNER }).auth.has(owner, 'system.loadtest.run')).toBe(false);
+    const enabled = makeAuth({ ownerId: OWNER, loadTestingEnabled: true }).auth;
+    expect([...(await enabled.computePermissionsFor(owner)).permissions].sort()).toEqual(
+      [...ALL_PORTAL_PERMISSIONS].sort(),
+    );
   });
 
   it('holds the one permission that cannot be delegated', async () => {
@@ -155,7 +176,7 @@ describe('the guild owner is unconditional', () => {
     });
     const result = await auth.computePermissionsFor(makeSession({ discordUserId: OWNER }));
 
-    expect(result.permissions).toHaveLength(ALL_PORTAL_PERMISSIONS.length);
+    expect(result.permissions).toHaveLength(OWNER_PERMISSIONS.length);
     expect(fetchMemberRoleIds).not.toHaveBeenCalled();
   });
 
@@ -319,7 +340,7 @@ describe('everything uncertain fails closed', () => {
     expect((await auth.computePermissionsFor(makeSession())).permissions).toEqual([]);
     expect(
       (await auth.computePermissionsFor(makeSession({ discordUserId: OWNER }))).permissions,
-    ).toHaveLength(ALL_PORTAL_PERMISSIONS.length);
+    ).toHaveLength(OWNER_PERMISSIONS.length);
   });
 });
 

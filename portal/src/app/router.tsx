@@ -148,6 +148,13 @@ const SystemMetricsPage = lazy(() =>
     default: m.SystemMetricsPage,
   })),
 );
+// Load Testing. Owner-only by permission, and the permission itself is issued
+// only where the server has LOAD_TESTING_ENABLED.
+const LoadTestingPage = lazy(() =>
+  import('@/features/adminLoadTesting/LoadTestingPage').then((m) => ({
+    default: m.LoadTestingPage,
+  })),
+);
 // Owner-only. Guarded on `admin.roles.manage`, which the authorization service
 // issues to the live guild owner and to nobody else — a role grant can never
 // confer it, so a delegated admin hitting this path gets the not-found page.
@@ -301,6 +308,17 @@ export const routes: RouteObject[] = [
             element: (
               <RequirePortalPermission permission="system.metrics.read">
                 <SystemMetricsPage />
+              </RequirePortalPermission>
+            ),
+          },
+
+          // Admin — Load Testing. Owner-only; the API re-checks, and on a
+          // deployment without LOAD_TESTING_ENABLED its routes do not exist.
+          {
+            path: 'admin/load-testing',
+            element: (
+              <RequirePortalPermission permission="system.loadtest.run">
+                <LoadTestingPage />
               </RequirePortalPermission>
             ),
           },

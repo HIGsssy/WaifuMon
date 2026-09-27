@@ -24,6 +24,7 @@ import { createGuildRoleService } from '../../src/modules/portalAuth/guildRoleSe
 import type { AdminRoleGrantService } from '../../src/modules/portalAuth/adminRoleGrantService';
 import type { LoadedContent } from '../../src/modules/content/schemas';
 import type { MetricsSources } from '../../src/api/routes/metrics';
+import type { LoadTestController } from '../../src/modules/loadTest/controller';
 import {
   createApiContext,
   createCapturedLogger,
@@ -132,6 +133,14 @@ export interface GalleryServerOptions {
    * this harness is really "a Portal admin server", named for its first user.
    */
   metrics?: MetricsSources;
+  /**
+   * Load-test controller, for the Load Testing admin routes. Absent is what
+   * every deployment without LOAD_TESTING_ENABLED looks like.
+   */
+  loadTesting?: LoadTestController;
+  loadTestingOperatorIds?: readonly string[];
+  /** Whether the authorization service may issue `system.loadtest.run`. */
+  loadTestingEnabled?: boolean;
 }
 
 export async function buildGalleryServer(opts: GalleryServerOptions): Promise<ZodFastify> {
@@ -142,6 +151,7 @@ export async function buildGalleryServer(opts: GalleryServerOptions): Promise<Zo
       fetchGuildRoles: async () => null,
     }),
     roleGrants: grants(opts.rolePermissions ?? [], opts.grantGuild ?? GUILD),
+    loadTestingEnabled: opts.loadTestingEnabled ?? opts.loadTesting !== undefined,
   });
   return createPlatformApiServer({
     config: { enabled: true, host: '127.0.0.1', port: 3140, token: TEST_TOKEN },
@@ -163,6 +173,8 @@ export async function buildGalleryServer(opts: GalleryServerOptions): Promise<Zo
           : { adminBearerAllowed: opts.adminBearerAllowed }),
       }),
       assetsDir: opts.assetsDir,
+      ...(opts.loadTesting ? { loadTesting: opts.loadTesting } : {}),
+      ...(opts.loadTestingOperatorIds ? { loadTestingOperatorIds: opts.loadTestingOperatorIds } : {}),
     },
   });
 }

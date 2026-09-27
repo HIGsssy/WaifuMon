@@ -148,6 +148,46 @@ const EnvSchema = z.object({
     .enum(['true', 'false', '1', '0'])
     .default('true')
     .transform((v) => v === 'true' || v === '1'),
+  /**
+   * Portal-driven load testing (`/api/v1/admin/load-testing/…`).
+   *
+   * **Off by default, and meant to stay off in production.** This process has
+   * no notion of "staging" versus "production" — the two deployments differ
+   * only in which surfaces they opt into — so this flag *is* the environment
+   * gate. With it off the routes are never registered, the controller is never
+   * built, the Portal permission is never issued, and the generator process
+   * refuses to start. Turning it on is a deliberate edit to server config plus
+   * a restart; nothing in the Portal can do it.
+   */
+  LOAD_TESTING_ENABLED: z
+    .enum(['true', 'false', '1', '0'])
+    .default('false')
+    .transform((v) => v === 'true' || v === '1'),
+  /**
+   * Optional allowlist of Discord user ids who may run load tests, on top of
+   * the owner-only `system.loadtest.run` permission. Comma-separated. Empty
+   * means "any live owner of the selected guild", which is the System Metrics
+   * rule — narrow it on a deployment where other people own guilds.
+   */
+  LOAD_TESTING_OPERATOR_DISCORD_IDS: z
+    .string()
+    .optional()
+    .transform((v) =>
+      (v ?? '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0),
+    )
+    .refine((ids) => ids.every((id) => /^\d+$/.test(id)), {
+      message: 'LOAD_TESTING_OPERATOR_DISCORD_IDS must be a comma-separated list of Discord user ids',
+    }),
+  /** Free-text name for this host, recorded on every run ("3400GE staging"). */
+  LOAD_TESTING_HOST_LABEL: z
+    .string()
+    .trim()
+    .max(80)
+    .optional()
+    .transform((v) => (v !== undefined && v.length > 0 ? v : undefined)),
   PLATFORM_API_PUBLIC_URL: z
     .string()
     .trim()
@@ -292,6 +332,14 @@ export function resolvePublicUrl(
   return `http://${authority}:${config.port}`;
 }
 
+export interface LoadTestingConfig {
+  /** See `LOAD_TESTING_ENABLED`. False unless the environment says otherwise. */
+  enabled: boolean;
+  /** Empty means no allowlist beyond the owner-only permission. */
+  operatorDiscordIds: readonly string[];
+  hostLabel?: string | undefined;
+}
+
 export interface AppConfig {
   discordToken: string;
   discordClientId: string;
@@ -306,6 +354,8 @@ export interface AppConfig {
   adminWeb: AdminWebConfig;
   platformApi: PlatformApiConfig;
   portalAuth?: PortalAuthConfig | undefined;
+  /** Optional so hand-built configs (tests, tools) read as disabled. */
+  loadTesting?: LoadTestingConfig | undefined;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -341,6 +391,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   if (portalAuthEnabled && portalSessionSecret.length < 32) {
     throw new ConfigError(
       'Invalid environment configuration — PORTAL_SESSION_SECRET must be at least 32 characters when PORTAL_PUBLIC_URL is set',
+    );
+  }
+  // The generator drives the Platform API with synthetic Portal sessions, so a
+  // flag that is on without both would be a harness that silently cannot run.
+  // Refusing to start says so on the one deployment that asked for it.
+  if (e.LOAD_TESTING_ENABLED && (!e.PLATFORM_API_ENABLED || !portalAuthEnabled)) {
+    throw new ConfigError(
+      'Invalid environment configuration — LOAD_TESTING_ENABLED=true requires PLATFORM_API_ENABLED=true and PORTAL_PUBLIC_URL',
     );
   }
   return {
@@ -379,6 +437,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       discordClientSecret,
       sessionSecret: portalSessionSecret,
       sessionTtlSeconds: e.PORTAL_SESSION_TTL_SECONDS,
+    },
+    loadTesting: {
+      enabled: e.LOAD_TESTING_ENABLED,
+      operatorDiscordIds: e.LOAD_TESTING_OPERATOR_DISCORD_IDS,
+      hostLabel: e.LOAD_TESTING_HOST_LABEL,
     },
   };
 }

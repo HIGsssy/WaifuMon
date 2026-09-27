@@ -49,7 +49,12 @@ import { createGuildRoleService } from './modules/portalAuth/guildRoleService';
 import { createAdminRoleGrantService } from './modules/portalAuth/adminRoleGrantService';
 import { createPortalAuthorizationService } from './modules/portalAuth/portalAuthService';
 import { createAppearanceService } from './modules/appearance/appearanceService';
-import { configureCardRenderer, peekCardRenderer, shutdownCardRenderer } from './modules/cards';
+import {
+  configureCardRenderer,
+  getCardRenderer,
+  peekCardRenderer,
+  shutdownCardRenderer,
+} from './modules/cards';
 import { EventLoopMonitor, LatencyRecorder, SystemSampler } from './shared/metrics';
 import { OwnedCardWarmer } from './modules/appearance/ownedCardWarm';
 import { listOwnedWarmSubjects } from './modules/appearance/ownedCardWarmSubjects';
@@ -89,6 +94,13 @@ import {
 } from './discord/trainerProfile';
 import { ownedCardImage } from './discord/assets/attachRenderedCard';
 import { createLogger } from './shared/logger';
+import { buildMetricsReport } from './api/routes/metrics';
+import { PORTAL_SESSION_COOKIE } from './api/portalSession';
+import { DEFAULT_CACHE_ROOT } from './modules/cards';
+import { LoadTestController } from './modules/loadTest/controller';
+import { createColdCardService, createRunPreparer } from './modules/loadTest/wiring';
+import { createLoadTestRunStore } from './modules/loadTest/store';
+import { describeHost } from './modules/loadTest/metricsSnapshot';
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -772,6 +784,8 @@ async function main(): Promise<void> {
     guildOwnership,
     guildRoles,
     roleGrants: adminRoleGrants,
+    // `system.loadtest.run` is issued to nobody unless this deployment opted in.
+    loadTestingEnabled: config.loadTesting?.enabled === true,
   });
 
   // Attached after construction rather than in the `ctx` literal above: both
@@ -854,6 +868,72 @@ async function main(): Promise<void> {
         })()
       : undefined;
 
+  const portalSessions = config.portalAuth?.enabled
+    ? createPortalSessionService(db, config.portalAuth)
+    : undefined;
+
+  /**
+   * Load testing — staging only, by configuration.
+   *
+   * Built only under `LOAD_TESTING_ENABLED=true` (which config validation
+   * already refuses without the Platform API and Portal auth). Without it there
+   * is no controller, so the admin routes are never registered, and the
+   * controller's own constructor refuses besides. The generator it forks runs
+   * in a separate process and reaches this one only over loopback HTTP.
+   */
+  const loadTesting =
+    config.loadTesting?.enabled === true && portalSessions !== undefined
+      ? new LoadTestController({
+          enabled: true,
+          baseUrl: resolveLoopbackUrl(config.platformApi.host, config.platformApi.port),
+          sessionCookieName: PORTAL_SESSION_COOKIE,
+          cardsAvailable: config.platformApi.cardRendererEnabled === true,
+          hostLabel: config.loadTesting.hostLabel,
+          hostInfo: () =>
+            describeHost({
+              cardRenderWorkers: config.platformApi.cardRenderWorkers ?? null,
+              databasePoolMax:
+                (pool as unknown as { options?: { max?: number } }).options?.max ?? null,
+            }),
+          preparer: createRunPreparer(db, portalSessions),
+          cold:
+            config.platformApi.cardRendererEnabled === true
+              ? createColdCardService({
+                  renderer: () => getCardRenderer(),
+                  presentation: { appearance, assetsDir: config.assetsDir, logger },
+                  cacheRoot: DEFAULT_CACHE_ROOT,
+                  maxLevel: () => ctx.content.tables.waifuProgression?.maxLevel ?? 50,
+                  rendererBusy: () => {
+                    const workers = peekCardRenderer()?.getStats().workers;
+                    return workers !== undefined && (workers.active > 0 || workers.queued > 0);
+                  },
+                  warmer: cardWarmer,
+                })
+              : undefined,
+          store: createLoadTestRunStore(db),
+          readMetrics: metrics === undefined ? undefined : () => buildMetricsReport(metrics),
+          resetMetrics:
+            metrics === undefined
+              ? undefined
+              : () => {
+                  metrics.http.reset();
+                  metrics.eventLoop.reset();
+                },
+          logger,
+        })
+      : undefined;
+  if (loadTesting) {
+    logger.warn(
+      {
+        tag: 'load-test/enabled',
+        hostLabel: config.loadTesting?.hostLabel ?? null,
+        operatorAllowlist: (config.loadTesting?.operatorDiscordIds.length ?? 0) > 0,
+      },
+      'LOAD TESTING IS ENABLED on this deployment — Portal owners can generate synthetic load. ' +
+        'This must never be set in production.',
+    );
+  }
+
   // Platform API: a thin HTTP adapter over the same service layer the Discord
   // handlers call, on its own port and behind its own token. Silent and
   // zero-overhead unless PLATFORM_API_ENABLED=true. It reads `ctx` live rather
@@ -861,11 +941,11 @@ async function main(): Promise<void> {
   const platformApi = await startPlatformApi({
     ...(metrics === undefined ? {} : { metrics }),
     config: config.platformApi,
-    ...(config.portalAuth?.enabled
+    ...(config.portalAuth?.enabled && portalSessions !== undefined
       ? {
           portalAuth: {
             config: config.portalAuth,
-            sessions: createPortalSessionService(db, config.portalAuth),
+            sessions: portalSessions,
             authorization: portalAuthorization,
           },
         }
@@ -877,6 +957,9 @@ async function main(): Promise<void> {
       // Fail-closed by default: the shared Platform API token stays a read
       // credential unless an operator has deliberately made it administrative.
       adminBearerAllowed: config.platformApi.adminBearer,
+      ...(loadTesting === undefined
+        ? {}
+        : { loadTesting, loadTestingOperatorIds: config.loadTesting?.operatorDiscordIds ?? [] }),
       // Read through `ctx` so an admin-panel content reload is visible to the
       // API immediately, exactly as it is to the Discord handlers.
       getContent: () => ctx.content,
@@ -924,6 +1007,9 @@ async function main(): Promise<void> {
     logger.info({ signal }, 'shutting down');
     // First, so no new pass can start posting into a client that is closing.
     bossScheduler?.stop();
+    // Before the API closes: the generator's requests target it, and the run's
+    // cleanup (synthetic sessions, cold-render cards) needs the database.
+    await loadTesting?.shutdown();
     await platformApi?.close();
     await adminServer?.close();
     await client.destroy();
@@ -944,6 +1030,13 @@ async function main(): Promise<void> {
   };
   process.on('SIGINT', () => void shutdown('SIGINT'));
   process.on('SIGTERM', () => void shutdown('SIGTERM'));
+}
+
+/** Where the generator reaches this process: its own API port, over loopback. */
+function resolveLoopbackUrl(host: string, port: number): string {
+  const wildcard = host === '0.0.0.0' || host === '::' || host === '[::]';
+  const target = wildcard ? '127.0.0.1' : host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
+  return `http://${target}:${port}`;
 }
 
 main().catch((err) => {

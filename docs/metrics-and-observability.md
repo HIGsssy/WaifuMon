@@ -68,7 +68,8 @@ not a hidden endpoint.
 
 Guild owners get **Admin — System Metrics** (`/admin/system`) in the Portal: the
 same report, as live gauges, detail panels and ten-minute trend charts, polled
-every 5 s. It is built to be left open while a load test runs.
+every 5 s. It is built to be left open while a load test runs — generated from
+**Admin — Load Testing** on a staging deployment; see `docs/load-testing.md`.
 
 ### How the Portal gets metrics without the token
 

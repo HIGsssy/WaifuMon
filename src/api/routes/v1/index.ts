@@ -43,6 +43,7 @@ import { adminEncounterPromotionRoutes } from './admin/encounterPromotion';
 import { adminResultPresentationRoutes } from './admin/resultPresentations';
 import { adminGalleryRoutes } from './admin/gallery';
 import { adminSystemMetricsRoutes } from './admin/systemMetrics';
+import { adminLoadTestingRoutes } from './admin/loadTesting';
 
 export interface V1RouteOptions {
   /**
@@ -133,4 +134,8 @@ export const v1Routes =
     // Admin: System Metrics (live process/host/pool telemetry, owner-only).
     // Skipped when metrics are disabled.
     await app.register(adminSystemMetricsRoutes(ctx));
+
+    // Admin: Load Testing (owner-only). Skipped unless LOAD_TESTING_ENABLED —
+    // the host builds no controller otherwise, so the paths do not exist.
+    await app.register(adminLoadTestingRoutes(ctx));
   };

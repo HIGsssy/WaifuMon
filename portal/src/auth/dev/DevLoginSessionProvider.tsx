@@ -91,6 +91,8 @@ const ALL_DEV_PERMISSIONS: readonly string[] = [
   'presentations.write',
   'gallery.read',
   'system.metrics.read',
+  // The page reports "disabled on this server" unless the API has the flag.
+  'system.loadtest.run',
 ];
 
 export function DevLoginSessionProvider({ children }: { children: ReactNode }) {

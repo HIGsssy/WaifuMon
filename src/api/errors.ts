@@ -181,6 +181,10 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   PORTAL_PERMISSION_DENIED: 403,
   /** `/metrics` reached with a Portal session rather than the bearer token. */
   METRICS_FORBIDDEN: 403,
+  /** Load testing: a run is already active, or none is when a stop was asked for. */
+  LOAD_TEST_CONFLICT: 409,
+  /** Load testing: the workload needs a surface this server has switched off. */
+  LOAD_TEST_UNAVAILABLE: 400,
   /** Role-access management needs a selected guild; the session has none. */
   PORTAL_GUILD_REQUIRED: 400,
   /** A role grant payload named a permission that cannot be delegated. */

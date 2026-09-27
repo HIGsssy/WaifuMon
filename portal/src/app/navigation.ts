@@ -19,6 +19,7 @@ import {
   BookOpen,
   CalendarDays,
   Compass,
+  FlaskConical,
   Gauge,
   Heart,
   Images,
@@ -85,6 +86,15 @@ export const NAV_ITEMS: readonly NavItem[] = [
     label: 'Admin — System Metrics',
     icon: Gauge,
     requiresPermission: 'system.metrics.read',
+  },
+  {
+    // Owner-only, and only on a deployment with LOAD_TESTING_ENABLED: the
+    // server issues `system.loadtest.run` to nobody otherwise, so production
+    // never shows this entry. Hiding it is a courtesy — the API is the lock.
+    to: '/admin/load-testing',
+    label: 'Admin — Load Testing',
+    icon: FlaskConical,
+    requiresPermission: 'system.loadtest.run',
   },
   {
     // Owner-only: `admin.roles.manage` is the one permission that cannot be

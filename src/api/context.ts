@@ -18,6 +18,7 @@ import type { LoadedContent } from '../modules/content/schemas';
 import type { IdentityResolver } from './identity';
 import type { PortalAuthorizationService } from '../modules/portalAuth/portalAuthService';
 import type { MetricsSources } from './routes/metrics';
+import type { LoadTestController } from '../modules/loadTest/controller';
 
 export interface ApiContext {
   services: AppServices;
@@ -87,4 +88,15 @@ export interface ApiContext {
    * the host, so there is exactly one place the collectors are handed in.
    */
   metrics?: MetricsSources | undefined;
+  /**
+   * Load-test controller. Present only when `LOAD_TESTING_ENABLED=true`; absent
+   * leaves the Load Testing routes unregistered, so on any other deployment
+   * they 404 rather than refuse.
+   */
+  loadTesting?: LoadTestController | undefined;
+  /**
+   * `LOAD_TESTING_OPERATOR_DISCORD_IDS`. Empty or absent means any session the
+   * permission check admits; see `routes/v1/admin/loadTesting.ts`.
+   */
+  loadTestingOperatorIds?: readonly string[] | undefined;
 }

@@ -23,6 +23,7 @@
  * mechanism.
  */
 import type { Logger } from '../../shared/logger';
+import { isSyntheticDiscordId } from '../loadTest/synthetic';
 
 /** The fetcher that reads authoritative ownership from Discord. */
 export type FetchGuildOwnerId = (discordGuildId: string) => Promise<string | null>;
@@ -62,6 +63,9 @@ export function createGuildOwnershipService(
   const ttl = opts.ttlMs ?? DEFAULT_TTL_MS;
 
   async function getOwnerId(discordGuildId: string): Promise<string | null> {
+    // The load-test guild exists only in this database. It has no owner, and
+    // asking Discord for one would be a REST call that can only 404.
+    if (isSyntheticDiscordId(discordGuildId)) return null;
     const now = Date.now();
     const hit = cache.get(discordGuildId);
     if (hit && hit.expiresAt > now) return hit.ownerId;

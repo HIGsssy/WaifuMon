@@ -38,6 +38,7 @@
  * is the backstop rather than the mechanism.
  */
 import type { Logger } from '../../shared/logger';
+import { isSyntheticDiscordId } from '../loadTest/synthetic';
 
 /** One role as the Portal's role picker needs it. */
 export interface GuildRoleSummary {
@@ -116,6 +117,9 @@ export function createGuildRoleService(opts: GuildRoleServiceOptions): GuildRole
     discordGuildId: string,
     discordUserId: string,
   ): Promise<readonly string[] | null> {
+    // Synthetic load-test identities are never Discord members; see
+    // `modules/loadTest/synthetic.ts`. Unknown, so no roles — and no REST call.
+    if (isSyntheticDiscordId(discordGuildId) || isSyntheticDiscordId(discordUserId)) return null;
     const now = Date.now();
     const key = memberKey(discordGuildId, discordUserId);
     const hit = memberCache.get(key);
@@ -140,6 +144,7 @@ export function createGuildRoleService(opts: GuildRoleServiceOptions): GuildRole
   async function listGuildRoles(
     discordGuildId: string,
   ): Promise<readonly GuildRoleSummary[] | null> {
+    if (isSyntheticDiscordId(discordGuildId)) return null;
     const now = Date.now();
     const hit = rolesCache.get(discordGuildId);
     if (hit && hit.expiresAt > now) return hit.value;

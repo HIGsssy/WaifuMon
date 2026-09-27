@@ -303,6 +303,13 @@ export function createPortalSessionService(
     createOAuthState,
     consumeOAuthState,
     completeOAuth,
+    /**
+     * Also used, server-side only, by the load-test preparer to mint sessions
+     * for synthetic players (`modules/loadTest/wiring.ts`) — the same row and
+     * the same digest an OAuth login produces, so the generator's requests pay
+     * exactly the session lookup a browser's do. No route reaches it.
+     */
+    createSession,
     getSession,
     logout,
     selectGuild,

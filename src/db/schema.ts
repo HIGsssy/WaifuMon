@@ -2251,3 +2251,52 @@ export const playerExpeditions = pgTable(
     index('player_expeditions_player_history_idx').on(t.playerId, t.startedAt),
   ],
 );
+
+/**
+ * Completed load-test runs (Portal Admin → Load Testing).
+ *
+ * One row per run, written once when the run ends. This is a comparison log,
+ * not a monitoring store: enough to line up "3400GE staging, 25 players"
+ * against "Scale VM, 25 players" — scenario, concurrency, client-observed
+ * latency and throughput, and one compact System Metrics snapshot from each end
+ * of the run. No time series is kept; the System Metrics page is where a run is
+ * watched live.
+ *
+ * `summary`, `metrics_start` and `metrics_end` are JSON because their shape is
+ * the harness's own report format, read back only by the Portal page that
+ * wrote them. `host_info` records the machine as the process saw it, so a row
+ * stays interpretable after the host label is forgotten.
+ *
+ * Present on every deployment (migrations are not environment-specific), and
+ * simply empty wherever `LOAD_TESTING_ENABLED` is off.
+ */
+export const loadTestRuns = pgTable(
+  'load_test_runs',
+  {
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    runKey: text('run_key').notNull().unique(),
+    status: text('status').notNull(),
+    profile: text('profile').notNull(),
+    cardMode: text('card_mode'),
+    concurrency: integer('concurrency').notNull(),
+    durationSeconds: integer('duration_seconds').notNull(),
+    elapsedSeconds: integer('elapsed_seconds').notNull(),
+    seed: integer('seed').notNull(),
+    label: text('label'),
+    hostLabel: text('host_label'),
+    operatorDiscordId: text('operator_discord_id'),
+    hostInfo: jsonb('host_info').$type<Record<string, unknown>>().notNull().default({}),
+    summary: jsonb('summary').$type<Record<string, unknown>>().notNull().default({}),
+    metricsStart: jsonb('metrics_start').$type<Record<string, unknown>>(),
+    metricsEnd: jsonb('metrics_end').$type<Record<string, unknown>>(),
+    error: text('error'),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull(),
+    endedAt: timestamp('ended_at', { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    check('load_test_runs_status_check', sql`${t.status} in ('completed','stopped','failed')`),
+    index('load_test_runs_started_idx').on(t.startedAt),
+  ],
+);
+
+export type LoadTestRunRow = typeof loadTestRuns.$inferSelect;
