@@ -388,5 +388,18 @@
     "repelledText": "The Bounty Hunter crashes into her hoverbike as the capture bag goes sailing away. Her wrist display flashes RANK: #2. 'NO! No, no, no!' Another hunter's score ticks upward. She points furiously at your Waifumon. 'Do you have ANY idea what you just did to my K/D?!' She jumps onto her bike. 'Fine! There's gotta be an easier SSR somewhere!' She rockets away.",
     "unchallengedText": "The Bounty Hunter waits with the bag held open. 'Come on.' Your Waifumon doesn't move. 'Get in.' Nothing. She shakes the bag enticingly. 'Look! Plenty of room!' Still nothing. Her wrist display suddenly beeps as another hunter overtakes her. 'OH, FUCK THIS.' She stuffs the bag away, jumps onto her hoverbike, and blasts off after somebody worth more leaderboard points.",
     "description": "A hypercompetitive galactic bounty hunter treating Waifumon hunting like a ranked multiplayer season. She's chasing captures, rare encounters, achievement badges, and the coveted number-one spot on the Galactic Hunting Leaderboard. To her, your beloved partner isn't a person. She's twelve hundred points and possibly a seasonal achievement."
+  },
+  {
+    "id": "monster_smasher",
+    "name": "Monster Smasher",
+    "affinity": "submissive",
+    "region": "waifu-valley",
+    "enabled": true,
+    "artwork": "bosses/monster-smasher_boss.webp",
+    "rewardTable": "standard-scouting-v1",
+    "scoutingText": "A battered spacecraft drops from orbit and lands directly in your path. A man in a patched spacesuit comes sprinting down the ramp holding a scanner covered in warning lights. 'MONSTER WOMAN DETECTED!' He spots your Waifumon and freezes. 'Okay... how many eyes does she have? Any fangs? Claws? Tentacles? Does she crawl out of televisions?' His scanner begins screaming. His eyes widen. 'Oh God, please tell me she's haunted.'",
+    "repelledText": "Monster Smasher goes flying back toward his ship. Instead of looking frightened, he scrambles upright and excitedly starts recording notes. 'Hostile! Powerful! Possibly carnivorous!' He underlines something three times. 'Holy shit, she's PERFECT.' Your Waifumon raises her weapon again. 'RIGHT! LEAVING!'",
+    "unchallengedText": "After determining nobody nearby is sufficiently horrifying, he sighs and checks his scanner. A warning appears: EXTREME BIOLOGICAL HAZARD — DO NOT APPROACH. His face lights up. 'FINALLY.' He immediately sprints toward it while every alarm on his spacesuit begs him to reconsider.",
+    "description": "An interstellar monster enthusiast who has crossed half the galaxy searching for increasingly terrifying women. Fangs are attractive, claws are promising, eldritch biology is exciting, and 'WARNING: DO NOT APPROACH' is apparently his type."
   }
 ]
