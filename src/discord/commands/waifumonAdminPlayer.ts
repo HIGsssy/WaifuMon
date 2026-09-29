@@ -30,6 +30,7 @@ import {
 import { eq } from 'drizzle-orm';
 import { items, playerProgressionEvents } from '../../db/schema';
 import type { AppContext } from '../types';
+import { ADMIN_ACTION_EVENT } from '../../modules/admin/adminActionAudit';
 
 const EPHEMERAL = { flags: MessageFlags.Ephemeral } as const;
 
@@ -37,8 +38,8 @@ const EPHEMERAL = { flags: MessageFlags.Ephemeral } as const;
 export const ADMIN_MAX_ESSENCE_GRANT = 10_000;
 export const ADMIN_MAX_CHARM_GRANT = 1_000;
 
-/** Audit vocabulary for `player_progression_events.event_type`. */
-export const ADMIN_ACTION_EVENT = 'admin_player_action';
+/** Audit vocabulary for `player_progression_events.event_type` — shared with the Portal. */
+export { ADMIN_ACTION_EVENT };
 
 /** Charms an admin may hand out, as Discord command choices. */
 export const ADMIN_CHARM_CHOICES = [

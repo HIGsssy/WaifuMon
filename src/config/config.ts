@@ -188,6 +188,32 @@ const EnvSchema = z.object({
     .max(80)
     .optional()
     .transform((v) => (v !== undefined && v.length > 0 ? v : undefined)),
+  /**
+   * Which deployment this process is. The one explicit answer to "is this
+   * production?" — `NODE_ENV` cannot give it (the shipped image bakes
+   * `NODE_ENV=production` into staging too) and `COMPOSE_PROJECT_NAME` is a
+   * Docker isolation knob, not an identity.
+   *
+   * **Fail-safe:** unset, blank or unrecognised resolves to `production`, so a
+   * production host needs no edit and a typo can never make a host look safer
+   * than it is. Only surfaces that are dangerous in production read this.
+   */
+  DEPLOYMENT_ENV: z
+    .string()
+    .optional()
+    .transform((v) => resolveDeploymentEnv(v)),
+  /**
+   * Portal "Staging Test Controls" (`/admin/test-controls/…`): set a tester's
+   * level, WaifuBux, Energy and travel access directly.
+   *
+   * **Off by default, and refused outright in production** — startup fails if
+   * this is on while `DEPLOYMENT_ENV` resolves to `production`. With it off the
+   * routes are never registered and `players.testcontrols` is issued to nobody.
+   */
+  ENABLE_TEST_ADMIN_CONTROLS: z
+    .enum(['true', 'false', '1', '0'])
+    .default('false')
+    .transform((v) => v === 'true' || v === '1'),
   PLATFORM_API_PUBLIC_URL: z
     .string()
     .trim()
@@ -214,6 +240,31 @@ const EnvSchema = z.object({
   PORTAL_SESSION_SECRET: z.string().optional(),
   PORTAL_SESSION_TTL_SECONDS: z.coerce.number().int().min(300).max(60 * 60 * 24 * 30).default(60 * 60 * 24 * 7),
 });
+
+export const DEPLOYMENT_ENVS = ['production', 'staging', 'development'] as const;
+export type DeploymentEnv = (typeof DEPLOYMENT_ENVS)[number];
+
+/** `DEPLOYMENT_ENV` → a known deployment, defaulting to `production` on anything else. */
+export function resolveDeploymentEnv(raw: string | undefined): DeploymentEnv {
+  const value = (raw ?? '').trim().toLowerCase();
+  return (DEPLOYMENT_ENVS as readonly string[]).includes(value)
+    ? (value as DeploymentEnv)
+    : 'production';
+}
+
+/**
+ * The single rule for whether staging test controls may run: explicitly
+ * enabled **and** on a deployment that is explicitly not production. Called at
+ * startup, when wiring, and again on every request, so no one layer is trusted
+ * alone. Absent fields read as disabled / production.
+ */
+export function testAdminControlsAllowed(
+  config: { enabled?: boolean | undefined; deploymentEnv?: DeploymentEnv | undefined } | undefined,
+): boolean {
+  if (config?.enabled !== true) return false;
+  const env = config.deploymentEnv ?? 'production';
+  return env === 'staging' || env === 'development';
+}
 
 /** Binds that mean "every interface" — valid to listen on, useless to publish. */
 const WILDCARD_HOSTS = new Set(['0.0.0.0', '::', '[::]', '0.0.0.0:0']);
@@ -340,6 +391,13 @@ export interface LoadTestingConfig {
   hostLabel?: string | undefined;
 }
 
+export interface TestAdminControlsConfig {
+  /** `ENABLE_TEST_ADMIN_CONTROLS`. */
+  enabled: boolean;
+  /** `DEPLOYMENT_ENV`, already resolved fail-safe. */
+  deploymentEnv: DeploymentEnv;
+}
+
 export interface AppConfig {
   discordToken: string;
   discordClientId: string;
@@ -356,6 +414,13 @@ export interface AppConfig {
   portalAuth?: PortalAuthConfig | undefined;
   /** Optional so hand-built configs (tests, tools) read as disabled. */
   loadTesting?: LoadTestingConfig | undefined;
+  /**
+   * `DEPLOYMENT_ENV`, resolved. Optional so hand-built configs (tests, tools)
+   * read as production — the fail-safe answer.
+   */
+  deploymentEnv?: DeploymentEnv | undefined;
+  /** Optional so hand-built configs read as disabled. */
+  testAdminControls?: TestAdminControlsConfig | undefined;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -401,6 +466,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       'Invalid environment configuration — LOAD_TESTING_ENABLED=true requires PLATFORM_API_ENABLED=true and PORTAL_PUBLIC_URL',
     );
   }
+  // Belt and braces with the per-request check: a production host that has
+  // this flag set does not start, so the mistake is loud rather than latent.
+  if (e.ENABLE_TEST_ADMIN_CONTROLS && e.DEPLOYMENT_ENV === 'production') {
+    throw new ConfigError(
+      'Invalid environment configuration — ENABLE_TEST_ADMIN_CONTROLS=true is refused when ' +
+        'DEPLOYMENT_ENV is production (unset or unrecognised DEPLOYMENT_ENV means production)',
+    );
+  }
   return {
     discordToken: e.DISCORD_TOKEN,
     discordClientId: e.DISCORD_CLIENT_ID,
@@ -442,6 +515,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       enabled: e.LOAD_TESTING_ENABLED,
       operatorDiscordIds: e.LOAD_TESTING_OPERATOR_DISCORD_IDS,
       hostLabel: e.LOAD_TESTING_HOST_LABEL,
+    },
+    deploymentEnv: e.DEPLOYMENT_ENV,
+    testAdminControls: {
+      enabled: e.ENABLE_TEST_ADMIN_CONTROLS,
+      deploymentEnv: e.DEPLOYMENT_ENV,
     },
   };
 }

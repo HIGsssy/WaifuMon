@@ -388,5 +388,18 @@
     "repelledText": "The Bounty Hunter crashes into her hoverbike as the capture bag goes sailing away. Her wrist display flashes RANK: #2. 'NO! No, no, no!' Another hunter's score ticks upward. She points furiously at your Waifumon. 'Do you have ANY idea what you just did to my K/D?!' She jumps onto her bike. 'Fine! There's gotta be an easier SSR somewhere!' She rockets away.",
     "unchallengedText": "The Bounty Hunter waits with the bag held open. 'Come on.' Your Waifumon doesn't move. 'Get in.' Nothing. She shakes the bag enticingly. 'Look! Plenty of room!' Still nothing. Her wrist display suddenly beeps as another hunter overtakes her. 'OH, FUCK THIS.' She stuffs the bag away, jumps onto her hoverbike, and blasts off after somebody worth more leaderboard points.",
     "description": "A hypercompetitive galactic bounty hunter treating Waifumon hunting like a ranked multiplayer season. She's chasing captures, rare encounters, achievement badges, and the coveted number-one spot on the Galactic Hunting Leaderboard. To her, your beloved partner isn't a person. She's twelve hundred points and possibly a seasonal achievement."
+  },
+  {
+    "id": "space_siren",
+    "name": "The Space Siren",
+    "affinity": "submissive",
+    "region": "waifu-valley",
+    "enabled": true,
+    "artwork": "bosses/space-siren_boss.webp",
+    "rewardTable": "standard-scouting-v1",
+    "scoutingText": "A beautiful woman drifts between the asteroids, her glossy suit shimmering like a field of stars. She notices you watching and immediately lowers her gaze with a coy little smile. 'Oh... you found me.' She slowly clasps her hands behind her back. 'I suppose that means I'm all yours now, doesn't it?' Your Waifumon looks at you. Your navigation computer flashes an enormous warning: THIS IS OBVIOUSLY BAIT.",
+    "repelledText": "The Space Siren tumbles backward through zero gravity before catching herself against an asteroid. She looks up at you with a pout. 'Aww... you're really going to treat me like that?' Your navigation computer immediately flashes: YES. KEEP GOING. DON'T LISTEN TO HER. She giggles, blows you a kiss, and disappears into the asteroid field.",
+    "unchallengedText": "You cautiously begin backing away. The Space Siren tilts her head. 'Leaving already?' She gives you another sweet smile. 'But I was going to be sooooo cooperative...' Your ship stops. The engines shut down. Your Waifumon slowly turns toward you. You restart the engines. 'GOOD DECISION,' announces the navigation computer.",
+    "description": "A coy cosmic temptress who discovered that acting sweet, submissive, and suspiciously eager is remarkably effective at making hunters abandon every survival instinct they possess. Whether she actually wants to be caught or simply enjoys watching people make terrible decisions remains unclear."
   }
 ]

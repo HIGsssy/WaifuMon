@@ -183,6 +183,10 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   METRICS_FORBIDDEN: 403,
   /** Load testing: a run is already active, or none is when a stop was asked for. */
   LOAD_TEST_CONFLICT: 409,
+  // Staging Test Controls reached on a deployment that does not allow them.
+  // Only reachable if the service was wired anyway; normally the route 404s.
+  TEST_CONTROLS_DISABLED: 403,
+  TEST_CONTROLS_INVALID: 400,
   /** Load testing: the workload needs a surface this server has switched off. */
   LOAD_TEST_UNAVAILABLE: 400,
   /** Role-access management needs a selected guild; the session has none. */

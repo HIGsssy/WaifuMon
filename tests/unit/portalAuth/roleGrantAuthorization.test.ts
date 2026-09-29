@@ -97,6 +97,7 @@ function makeAuth(opts: {
   memberRolesThrows?: boolean;
   grants?: Parameters<typeof grantsDouble>[0];
   loadTestingEnabled?: boolean;
+  testControlsEnabled?: boolean;
 }) {
   const guildOwnership = createGuildOwnershipService({
     fetchOwnerId: async () => opts.ownerId ?? OWNER,
@@ -118,16 +119,21 @@ function makeAuth(opts: {
       guildRoles,
       roleGrants,
       ...(opts.loadTestingEnabled === undefined ? {} : { loadTestingEnabled: opts.loadTestingEnabled }),
+      ...(opts.testControlsEnabled === undefined
+        ? {}
+        : { testControlsEnabled: opts.testControlsEnabled }),
     }),
     fetchMemberRoleIds,
   };
 }
 
 /**
- * What an owner holds on an ordinary deployment: everything except
- * `system.loadtest.run`, which exists only where LOAD_TESTING_ENABLED is set.
+ * What an owner holds on an ordinary deployment: everything except the
+ * environment-gated permissions — `system.loadtest.run` (LOAD_TESTING_ENABLED)
+ * and `players.testcontrols` (ENABLE_TEST_ADMIN_CONTROLS on non-production).
  */
-const OWNER_PERMISSIONS = ALL_PORTAL_PERMISSIONS.filter((p) => p !== 'system.loadtest.run');
+const ENV_GATED = new Set(['system.loadtest.run', 'players.testcontrols']);
+const OWNER_PERMISSIONS = ALL_PORTAL_PERMISSIONS.filter((p) => !ENV_GATED.has(p));
 
 const editorGrant = {
   guildId: GUILD,
@@ -154,8 +160,27 @@ describe('the guild owner is unconditional', () => {
     expect(await makeAuth({ ownerId: OWNER }).auth.has(owner, 'system.loadtest.run')).toBe(false);
     const enabled = makeAuth({ ownerId: OWNER, loadTestingEnabled: true }).auth;
     expect([...(await enabled.computePermissionsFor(owner)).permissions].sort()).toEqual(
+      [...OWNER_PERMISSIONS, 'system.loadtest.run'].sort(),
+    );
+    const everything = makeAuth({
+      ownerId: OWNER,
+      loadTestingEnabled: true,
+      testControlsEnabled: true,
+    }).auth;
+    expect([...(await everything.computePermissionsFor(owner)).permissions].sort()).toEqual(
       [...ALL_PORTAL_PERMISSIONS].sort(),
     );
+  });
+
+  it('receives players.testcontrols only where test controls are enabled', async () => {
+    const owner = makeSession({ discordUserId: OWNER });
+    expect(await makeAuth({ ownerId: OWNER }).auth.has(owner, 'players.testcontrols')).toBe(false);
+    expect(
+      await makeAuth({ ownerId: OWNER, testControlsEnabled: true }).auth.has(
+        owner,
+        'players.testcontrols',
+      ),
+    ).toBe(true);
   });
 
   it('holds the one permission that cannot be delegated', async () => {
@@ -356,5 +381,36 @@ describe('preset naming', () => {
   it('does not depend on ordering', () => {
     const shuffled = [...ROLE_GRANT_PRESETS.encounter_editor].reverse();
     expect(presetForPermissions(shuffled)).toBe('encounter_editor');
+  });
+});
+
+describe('players.testcontrols is delegable but environment gated', () => {
+  const testerGrant = {
+    guildId: GUILD,
+    roleId: EDITOR_ROLE,
+    permissions: ['players.testcontrols'] as const,
+  };
+
+  it('is grantable to a role, unlike the owner-only permissions', () => {
+    expect(GRANTABLE_PORTAL_PERMISSIONS).toContain('players.testcontrols');
+  });
+
+  it('reaches a role-granted admin where enabled', async () => {
+    const { auth } = makeAuth({
+      memberRoles: { [`${GUILD}:${MEMBER}`]: [EDITOR_ROLE] },
+      grants: [testerGrant],
+      testControlsEnabled: true,
+    });
+    expect(await auth.has(makeSession({ discordUserId: MEMBER }), 'players.testcontrols')).toBe(true);
+  });
+
+  it('is stripped from a role grant where disabled — a stored grant confers nothing', async () => {
+    const { auth } = makeAuth({
+      memberRoles: { [`${GUILD}:${MEMBER}`]: [EDITOR_ROLE] },
+      grants: [testerGrant],
+    });
+    const result = await auth.computePermissionsFor(makeSession({ discordUserId: MEMBER }));
+    expect(result.permissions).not.toContain('players.testcontrols');
+    expect(result.reason.kind).toBe('ineligible');
   });
 });

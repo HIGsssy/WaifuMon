@@ -358,20 +358,26 @@ export interface TravelService {
    * charged money and still does not.
    */
   travel(playerId: number, regionId: string, now?: Date): Promise<TravelOutcome>;
-  /** Admin: grant a pass (and its routes) with no charge. Idempotent. */
-  grantPass(playerId: number, passId: string): Promise<void>;
+  /**
+   * Admin: grant a pass (and its routes) with no charge. Idempotent.
+   *
+   * The admin helpers take an optional `executor`: pass a caller's transaction
+   * to make the grant commit (or roll back) together with the caller's own
+   * writes — an audit row, say. Omitted, each helper runs its own transaction.
+   */
+  grantPass(playerId: number, passId: string, executor?: DbOrTx): Promise<void>;
   /**
    * Admin: grant one route with no charge and no pass check. For a key-item
    * destination this grants the key item instead. Idempotent.
    */
-  grantRoute(playerId: number, regionId: string): Promise<void>;
+  grantRoute(playerId: number, regionId: string, executor?: DbOrTx): Promise<void>;
   /** Admin: revoke a pass. Leaves route rows alone — see the implementation. */
   revokePass(playerId: number, passId: string): Promise<void>;
   /**
    * Admin: revoke one route (or, for a key-item destination, the key), sending
    * the player home if they are standing in it.
    */
-  revokeRoute(playerId: number, regionId: string): Promise<void>;
+  revokeRoute(playerId: number, regionId: string, executor?: DbOrTx): Promise<void>;
 }
 
 export interface TravelServiceDeps {
@@ -996,12 +1002,13 @@ export function createTravelService(deps: TravelServiceDeps): TravelService {
     // Thin on purpose: they insert and delete the same rows a purchase would,
     // with `source: 'admin'` and no currency involvement, and write no audit
     // row because nothing was bought. All four are idempotent so a repeated
-    // command is never an error. No admin UI is wired to them in this pass.
+    // command is never an error. Staging Test Controls call them inside their
+    // own audited transaction (`modules/testControls`).
 
-    async grantPass(playerId, passId) {
+    async grantPass(playerId, passId, executor = db) {
       const pass = catalog().getPass(passId);
       if (!pass) throw new RegionNotFoundError(passId);
-      await db.transaction(async (tx) => {
+      await executor.transaction(async (tx) => {
         await tx
           .insert(playerTravelPasses)
           .values({ playerId, passId, source: 'admin' })
@@ -1015,14 +1022,14 @@ export function createTravelService(deps: TravelServiceDeps): TravelService {
       });
     },
 
-    async grantRoute(playerId, regionId) {
+    async grantRoute(playerId, regionId, executor = db) {
       const destination = requireDestination(regionId);
       if (destination.access === 'starting') return;
       if (destination.access === 'key_item' && destination.keyItem) {
         // Access to a key-item destination *is* the key, so granting the road
         // grants the key. Idempotent through the item's own cap.
         const slug = destination.keyItem.gate.keyItem;
-        await db.transaction(async (tx) => {
+        await executor.transaction(async (tx) => {
           const [item] = await tx.select({ id: items.id }).from(items).where(eq(items.slug, slug));
           if (!item) throw new RegionNotFoundError(regionId);
           try {
@@ -1033,7 +1040,7 @@ export function createTravelService(deps: TravelServiceDeps): TravelService {
         });
         return;
       }
-      await db
+      await executor
         .insert(playerUnlockedRoutes)
         .values({ playerId, regionId, source: 'admin' })
         .onConflictDoNothing();
@@ -1052,9 +1059,9 @@ export function createTravelService(deps: TravelServiceDeps): TravelService {
         );
     },
 
-    async revokeRoute(playerId, regionId) {
+    async revokeRoute(playerId, regionId, executor = db) {
       const keySlug = catalog().get(regionId)?.keyItem?.gate.keyItem ?? null;
-      await db.transaction(async (tx) => {
+      await executor.transaction(async (tx) => {
         if (keySlug) {
           // The key-item analogue of deleting the route row: take the key.
           const [item] = await tx

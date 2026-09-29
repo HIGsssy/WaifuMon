@@ -77,6 +77,10 @@ export interface ProgressionService {
   progressFor(xp: number): LevelProgress;
   /** XP needed to advance from `level` to `level+1` (0 at max). */
   xpToNext(level: number): number;
+  /** The Trainer Level cap (`progression.maxLevel`). */
+  maxLevel(): number;
+  /** Lifetime XP at which `level` begins — the XP a player *at* that level holds. */
+  cumulativeXpForLevel(level: number): number;
   computeMaxEnergy(level: number): number;
   computeRareShift(level: number): {
     fromRarity: Rarity;
@@ -125,6 +129,8 @@ export function createProgressionService(deps: ProgressionServiceDeps): Progress
     levelFromXp: (xp) => levelFromTotalXp(xp, config),
     progressFor: (xp) => levelProgress(xp, config),
     xpToNext: (level) => xpToNext(level, config),
+    maxLevel: () => config.maxLevel,
+    cumulativeXpForLevel: (level) => cumulativeXpForLevel(level, config),
     computeMaxEnergy: (level) => maxEnergyForLevel(level, baseMaxEnergy, config),
     computeRareShift: (level) => rareEncounterShift(level, config),
     getPrestigeTitle: (level) => prestigeTitleForLevel(level, config),

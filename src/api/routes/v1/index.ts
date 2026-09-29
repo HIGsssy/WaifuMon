@@ -44,6 +44,7 @@ import { adminResultPresentationRoutes } from './admin/resultPresentations';
 import { adminGalleryRoutes } from './admin/gallery';
 import { adminSystemMetricsRoutes } from './admin/systemMetrics';
 import { adminLoadTestingRoutes } from './admin/loadTesting';
+import { adminTestControlsRoutes } from './admin/testControls';
 
 export interface V1RouteOptions {
   /**
@@ -138,4 +139,9 @@ export const v1Routes =
     // Admin: Load Testing (owner-only). Skipped unless LOAD_TESTING_ENABLED —
     // the host builds no controller otherwise, so the paths do not exist.
     await app.register(adminLoadTestingRoutes(ctx));
+
+    // Admin: Staging Test Controls (owners and granted admins). Skipped unless
+    // ENABLE_TEST_ADMIN_CONTROLS on a non-production DEPLOYMENT_ENV — the host
+    // builds no service otherwise, so the paths do not exist.
+    await app.register(adminTestControlsRoutes(ctx));
   };

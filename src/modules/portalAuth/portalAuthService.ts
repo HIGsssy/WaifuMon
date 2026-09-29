@@ -59,6 +59,10 @@ export const ALL_PORTAL_PERMISSIONS = [
   // Owner-only, and issued at all only when LOAD_TESTING_ENABLED — see
   // SYSTEM_LOADTEST_RUN below.
   'system.loadtest.run',
+  // Staging Test Controls: directly set a tester's level, WaifuBux, Energy
+  // and travel access. Delegable to a role (owners *and* admins use it), but
+  // environment gated — see PLAYERS_TEST_CONTROLS below.
+  'players.testcontrols',
 ] as const;
 export type PortalPermission = (typeof ALL_PORTAL_PERMISSIONS)[number];
 
@@ -83,6 +87,8 @@ export const PORTAL_PERMISSION_DESCRIPTIONS: Readonly<Record<PortalPermission, s
     'View live server metrics: memory, CPU, request latency and database load (guild owner only).',
   'system.loadtest.run':
     'Run synthetic load tests against this server (guild owner only; staging deployments only).',
+  'players.testcontrols':
+    'Use Staging Test Controls to set player level, WaifuBux, Energy and travel access (staging deployments only).',
 };
 
 /**
@@ -122,6 +128,17 @@ export const SYSTEM_METRICS_READ = 'system.metrics.read' satisfies PortalPermiss
  * permission too is what keeps the Portal from offering a page that cannot work.
  */
 export const SYSTEM_LOADTEST_RUN = 'system.loadtest.run' satisfies PortalPermission;
+
+/**
+ * Staging Test Controls. Unlike load testing this *is* delegable — testers
+ * are admins, not only the owner — so it lives in the grantable set. What
+ * gates it is the environment: the authorization service strips it from
+ * every computed set, owner and role grant alike, unless it was built with
+ * `testControlsEnabled`, which only a non-production deployment with
+ * `ENABLE_TEST_ADMIN_CONTROLS=true` does. A grant row naming it on a
+ * production host therefore confers nothing.
+ */
+export const PLAYERS_TEST_CONTROLS = 'players.testcontrols' satisfies PortalPermission;
 
 /** Permissions that only the live guild owner can ever hold. */
 const OWNER_ONLY_PERMISSIONS: ReadonlySet<PortalPermission> = new Set([
@@ -249,16 +266,23 @@ export interface PortalAuthorizationServiceDeps {
    * owner included.
    */
   loadTestingEnabled?: boolean | undefined;
+  /**
+   * Whether Staging Test Controls are allowed on this deployment (see
+   * `testAdminControlsAllowed`). Absent means no: {@link PLAYERS_TEST_CONTROLS}
+   * is then held by nobody, whatever the grant table says.
+   */
+  testControlsEnabled?: boolean | undefined;
 }
 
 export function createPortalAuthorizationService(
   deps: PortalAuthorizationServiceDeps,
 ): PortalAuthorizationService {
-  const ownerPermissions = sorted(
-    deps.loadTestingEnabled === true
-      ? ADMIN_PERMISSIONS
-      : ADMIN_PERMISSIONS.filter((p) => p !== SYSTEM_LOADTEST_RUN),
-  );
+  /** Permissions this deployment issues to nobody, owner included. */
+  const withheld = new Set<PortalPermission>();
+  if (deps.loadTestingEnabled !== true) withheld.add(SYSTEM_LOADTEST_RUN);
+  if (deps.testControlsEnabled !== true) withheld.add(PLAYERS_TEST_CONTROLS);
+
+  const ownerPermissions = sorted(ADMIN_PERMISSIONS.filter((p) => !withheld.has(p)));
 
   async function computePermissionsFor(
     session: PortalSession | null,
@@ -311,8 +335,10 @@ export function createPortalAuthorizationService(
     // cannot arrive here — the grant service refuses to write it and filters
     // it on read — and this is the belt to that braces: whatever the table
     // says, a non-owner never holds it.
+    // Environment-withheld permissions are dropped here too, so a grant row
+    // naming one (written on staging, or by hand) is inert on this deployment.
     const permissions = sorted(granted).filter(
-      (p): p is PortalPermission => isGrantablePermission(p),
+      (p): p is PortalPermission => isGrantablePermission(p) && !withheld.has(p),
     );
     if (permissions.length === 0) {
       return { permissions: EMPTY_SET, reason: { kind: 'ineligible' } };

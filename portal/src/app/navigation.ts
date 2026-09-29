@@ -34,6 +34,7 @@ import {
   Trophy,
   User,
   Users,
+  Wrench,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -95,6 +96,15 @@ export const NAV_ITEMS: readonly NavItem[] = [
     label: 'Admin — Load Testing',
     icon: FlaskConical,
     requiresPermission: 'system.loadtest.run',
+  },
+  {
+    // Owners and granted admins — but only on a non-production deployment with
+    // ENABLE_TEST_ADMIN_CONTROLS: the server issues `players.testcontrols` to
+    // nobody otherwise, so production never shows this entry.
+    to: '/admin/test-controls',
+    label: 'Admin — Staging Test Controls',
+    icon: Wrench,
+    requiresPermission: 'players.testcontrols',
   },
   {
     // Owner-only: `admin.roles.manage` is the one permission that cannot be

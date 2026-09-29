@@ -19,6 +19,7 @@ import type { IdentityResolver } from './identity';
 import type { PortalAuthorizationService } from '../modules/portalAuth/portalAuthService';
 import type { MetricsSources } from './routes/metrics';
 import type { LoadTestController } from '../modules/loadTest/controller';
+import type { StagingTestControlsService } from '../modules/testControls/stagingTestControlsService';
 
 export interface ApiContext {
   services: AppServices;
@@ -99,4 +100,11 @@ export interface ApiContext {
    * permission check admits; see `routes/v1/admin/loadTesting.ts`.
    */
   loadTestingOperatorIds?: readonly string[] | undefined;
+  /**
+   * Staging Test Controls. Present only on a non-production deployment with
+   * `ENABLE_TEST_ADMIN_CONTROLS=true` (the service refuses to construct
+   * otherwise); absent leaves `/admin/test-controls/…` unregistered, so on any
+   * other deployment — production included — those paths 404.
+   */
+  testControls?: StagingTestControlsService | undefined;
 }

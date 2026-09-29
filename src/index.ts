@@ -8,7 +8,7 @@ import { startAdminServer } from './admin/server';
 import { startPlatformApi } from './api/server';
 import { withIdentityCache } from './api/identity';
 import { createPortalSessionService } from './api/portalSession';
-import { loadConfig } from './config/config';
+import { loadConfig, testAdminControlsAllowed } from './config/config';
 import { connectWithRetry, createDb, createPool } from './db/client';
 import { runMigrations } from './db/migrate';
 import { createDiscordClient } from './discord/client';
@@ -49,6 +49,7 @@ import { createGuildOwnershipService } from './modules/portalAuth/guildOwnership
 import { createGuildRoleService } from './modules/portalAuth/guildRoleService';
 import { createAdminRoleGrantService } from './modules/portalAuth/adminRoleGrantService';
 import { createPortalAuthorizationService } from './modules/portalAuth/portalAuthService';
+import { createStagingTestControlsService } from './modules/testControls/stagingTestControlsService';
 import { createAppearanceService } from './modules/appearance/appearanceService';
 import {
   configureCardRenderer,
@@ -801,6 +802,9 @@ async function main(): Promise<void> {
     roleGrants: adminRoleGrants,
     // `system.loadtest.run` is issued to nobody unless this deployment opted in.
     loadTestingEnabled: config.loadTesting?.enabled === true,
+    // Likewise `players.testcontrols`: never issued unless the flag is on *and*
+    // DEPLOYMENT_ENV is explicitly non-production.
+    testControlsEnabled: testAdminControlsAllowed(config.testAdminControls),
   });
 
   // Attached after construction rather than in the `ctx` literal above: both
@@ -949,6 +953,33 @@ async function main(): Promise<void> {
     );
   }
 
+  /**
+   * Staging Test Controls — non-production only, by configuration.
+   *
+   * `loadConfig` already refuses to start with the flag on in production; this
+   * is the second lock (no service, so no routes), and the service's own
+   * constructor and per-call checks are the third.
+   */
+  const testControls = testAdminControlsAllowed(config.testAdminControls)
+    ? createStagingTestControlsService({
+        db,
+        currency: ctx.services.currency,
+        inventory: ctx.services.inventory,
+        travel: ctx.services.travel,
+        progression: ctx.services.progression,
+        getContent: () => ctx.content,
+        logger,
+        config: config.testAdminControls!,
+      })
+    : undefined;
+  if (testControls) {
+    logger.warn(
+      { tag: 'test-controls/enabled', deploymentEnv: config.testAdminControls?.deploymentEnv },
+      'STAGING TEST CONTROLS ARE ENABLED on this deployment — Portal admins can set player ' +
+        'level, WaifuBux, Energy and travel access directly. This must never be set in production.',
+    );
+  }
+
   // Platform API: a thin HTTP adapter over the same service layer the Discord
   // handlers call, on its own port and behind its own token. Silent and
   // zero-overhead unless PLATFORM_API_ENABLED=true. It reads `ctx` live rather
@@ -975,6 +1006,7 @@ async function main(): Promise<void> {
       ...(loadTesting === undefined
         ? {}
         : { loadTesting, loadTestingOperatorIds: config.loadTesting?.operatorDiscordIds ?? [] }),
+      ...(testControls === undefined ? {} : { testControls }),
       // Read through `ctx` so an admin-panel content reload is visible to the
       // API immediately, exactly as it is to the Discord handlers.
       getContent: () => ctx.content,

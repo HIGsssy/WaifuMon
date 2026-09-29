@@ -155,6 +155,19 @@ const LoadTestingPage = lazy(() =>
     default: m.LoadTestingPage,
   })),
 );
+// Staging Test Controls. Owners and granted admins, via `players.testcontrols`,
+// which the server issues only on a non-production deployment with
+// ENABLE_TEST_ADMIN_CONTROLS — so production never renders these pages.
+const TestControlsPickerPage = lazy(() =>
+  import('@/features/adminTestControls/TestControlsPickerPage').then((m) => ({
+    default: m.TestControlsPickerPage,
+  })),
+);
+const TestControlsPlayerPage = lazy(() =>
+  import('@/features/adminTestControls/TestControlsPlayerPage').then((m) => ({
+    default: m.TestControlsPlayerPage,
+  })),
+);
 // Owner-only. Guarded on `admin.roles.manage`, which the authorization service
 // issues to the live guild owner and to nobody else — a role grant can never
 // confer it, so a delegated admin hitting this path gets the not-found page.
@@ -319,6 +332,25 @@ export const routes: RouteObject[] = [
             element: (
               <RequirePortalPermission permission="system.loadtest.run">
                 <LoadTestingPage />
+              </RequirePortalPermission>
+            ),
+          },
+
+          // Admin — Staging Test Controls. The API re-checks every request, and
+          // on a deployment without the flag its routes do not exist.
+          {
+            path: 'admin/test-controls',
+            element: (
+              <RequirePortalPermission permission="players.testcontrols">
+                <TestControlsPickerPage />
+              </RequirePortalPermission>
+            ),
+          },
+          {
+            path: 'admin/test-controls/:playerId',
+            element: (
+              <RequirePortalPermission permission="players.testcontrols">
+                <TestControlsPlayerPage />
               </RequirePortalPermission>
             ),
           },

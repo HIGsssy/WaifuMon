@@ -37,6 +37,7 @@ import { AppError } from '../../../../shared/errors';
 import {
   ADMIN_ROLES_MANAGE,
   GRANTABLE_PORTAL_PERMISSIONS,
+  PLAYERS_TEST_CONTROLS,
   PORTAL_PERMISSION_DESCRIPTIONS,
   ROLE_GRANT_PRESETS,
   presetForPermissions,
@@ -198,14 +199,21 @@ export const adminAccessRoutes =
       async (req) => {
         const guildId = guildIdFor(req);
         const list = await grants.list(guildId);
+        // Staging Test Controls are not offered in the picker where this
+        // deployment would never issue them — a checkbox that grants nothing
+        // is worse than none. (A stored grant naming it stays inert here; the
+        // authorization service strips it.)
+        const offered = GRANTABLE_PORTAL_PERMISSIONS.filter(
+          (p) => p !== PLAYERS_TEST_CONTROLS || ctx.testControls !== undefined,
+        );
         return ok(req, {
           grants: list.map(grantToResource),
           presets: Object.fromEntries(
             Object.entries(ROLE_GRANT_PRESETS).map(([k, v]) => [k, [...v]]),
           ),
-          grantablePermissions: [...GRANTABLE_PORTAL_PERMISSIONS],
+          grantablePermissions: offered,
           permissionDescriptions: Object.fromEntries(
-            GRANTABLE_PORTAL_PERMISSIONS.map((p) => [p, PORTAL_PERMISSION_DESCRIPTIONS[p]]),
+            offered.map((p) => [p, PORTAL_PERMISSION_DESCRIPTIONS[p]]),
           ),
         });
       },

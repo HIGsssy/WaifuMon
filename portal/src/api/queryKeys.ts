@@ -146,6 +146,9 @@ export const queryKeys = {
   adminSystemMetrics: () => ['admin', 'system', 'metrics'] as const,
   adminLoadTesting: () => ['admin', 'load-testing', 'status'] as const,
   adminLoadTestingResults: () => ['admin', 'load-testing', 'results'] as const,
+  adminTestControls: () => ['admin', 'test-controls', 'info'] as const,
+  adminTestControlsPlayer: (playerId: number) =>
+    ['admin', 'test-controls', 'player', playerId] as const,
 
   // The developer login's Discord-identity lookup is the one key not built
   // here. It belongs to a subtree a production build drops entirely, and a
