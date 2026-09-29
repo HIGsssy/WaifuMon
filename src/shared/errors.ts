@@ -715,6 +715,68 @@ export class TravelLevelRequiredError extends AppError {
   }
 }
 
+/**
+ * Travel to a destination gated by a key item the player does not hold — the
+ * Assteroid Belt without a Transporter Beacon. The Locations detail screen is
+ * where the recipe progress lives, so the message sends the player there.
+ */
+export class KeyItemRequiredError extends AppError {
+  readonly regionId: string;
+
+  constructor(regionId: string, regionLabel: string, itemName: string) {
+    super(
+      'KEY_ITEM_REQUIRED',
+      `Player does not hold the key item required for region ${regionId}`,
+      `You need a **${itemName}** to reach **${regionLabel}**. Open it in **Locations** to see what it takes to build one.`,
+    );
+    this.regionId = regionId;
+  }
+}
+
+/** A grant would take a capped item (`items.max_owned`) past its cap. */
+export class ItemOwnershipLimitError extends AppError {
+  constructor(itemId: number, itemName: string, maxOwned: number) {
+    super(
+      'ITEM_OWNERSHIP_LIMIT',
+      `Item ${itemId} is capped at ${maxOwned} per player`,
+      `You already hold the most **${itemName}** you can carry (${maxOwned}).`,
+    );
+  }
+}
+
+/** No enabled key-item recipe by that id. */
+export class KeyItemRecipeNotFoundError extends AppError {
+  constructor(recipeId: string) {
+    super(
+      'KEY_ITEM_RECIPE_NOT_FOUND',
+      `Key item recipe "${recipeId}" not found`,
+      "That construction plan isn't available.",
+    );
+  }
+}
+
+/** The recipe's output is already held. Also the losing half of a double-click. */
+export class KeyItemAlreadyOwnedError extends AppError {
+  constructor(recipeId: string, itemName: string) {
+    super(
+      'KEY_ITEM_ALREADY_OWNED',
+      `Player already holds the output of recipe ${recipeId}`,
+      `You already have a **${itemName}** — nothing was spent.`,
+    );
+  }
+}
+
+/** One or more recipe components are short. Nothing is consumed. */
+export class KeyItemComponentsMissingError extends AppError {
+  constructor(recipeId: string, itemName: string, missing: string) {
+    super(
+      'KEY_ITEM_COMPONENTS_MISSING',
+      `Recipe ${recipeId} is missing components: ${missing}`,
+      `You're still missing parts for the **${itemName}**: ${missing}. Nothing was spent.`,
+    );
+  }
+}
+
 /** Travel to the region the player is already standing in. */
 export class AlreadyInRegionError extends AppError {
   readonly regionId: string;

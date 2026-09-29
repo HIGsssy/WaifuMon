@@ -29,6 +29,7 @@ import {
   type ExpansionContent,
   type LoadedContent,
   type ExpeditionRewardTable,
+  type KeyItemRecipeConfig,
   type RegionalExpedition,
   type RegionContent,
   type SpeciesArtworkDiagnostic,
@@ -612,6 +613,119 @@ export function validateRegionContent(content: LoadedContent): void {
       }
     }
   }
+  for (const gate of travel.keyItemRoutes) {
+    if (!regionById.has(gate.regionId)) {
+      throw new ContentValidationError(
+        `travel.keyItemRoutes gates region "${gate.regionId}", which no region file defines.`,
+      );
+    }
+  }
+}
+
+/**
+ * Every item slug a content-authored reward table can hand out, with where it
+ * was found. The list the key-item rules below check capped items against.
+ *
+ * World-encounter effects are not here: those are authored in the database
+ * through the admin panel, not in `content/`, so the loader cannot see them.
+ * The effect executor treats a capped item it cannot grant as an unapplied
+ * effect rather than a failed resolution for exactly that reason.
+ */
+function contentRewardSources(content: LoadedContent): Map<string, string> {
+  const { tables, expeditionRewards, bossRewards } = content;
+  const sources = new Map<string, string>();
+  const add = (slug: string, where: string) => {
+    if (!sources.has(slug)) sources.set(slug, where);
+  };
+  for (const slug of Object.keys(tables.dailyPackage.items)) add(slug, 'dailyPackage.items');
+  for (const sub of tables.hunt.itemFind.sub) add(sub.slug, 'hunt.itemFind');
+  for (const sub of tables.hunt.rareItemFind.sub) add(sub.slug, 'hunt.rareItemFind');
+  for (const bonus of tables.progression.dailyBonusItems) add(bonus.slug, 'progression.dailyBonusItems');
+  add(tables.progression.dailyRareItemChance.slug, 'progression.dailyRareItemChance');
+  for (const quest of tables.dailyQuests.pool) {
+    for (const item of quest.rewards.items) add(item.slug, `dailyQuests.pool[${quest.slug}]`);
+  }
+  for (const item of tables.dailyQuests.allCompleteBonus?.items ?? []) {
+    add(item.slug, 'dailyQuests.allCompleteBonus');
+  }
+  for (const entry of tables.affectionGifts.lootTable) add(entry.slug, 'affectionGifts.lootTable');
+  for (const table of expeditionRewards) {
+    for (const group of table.groups) {
+      for (const entry of group.entries) add(entry.itemId, `expeditionRewards["${table.id}"]`);
+    }
+  }
+  for (const table of bossRewards) {
+    for (const group of table.groups) {
+      for (const entry of group.entries) add(entry.itemId, `bossRewards["${table.id}"]`);
+    }
+  }
+  return sources;
+}
+
+/**
+ * Key-item recipes and key-item travel gates — the Transporter Beacon.
+ *
+ * Every rule here protects one of two promises: the beacon can always be
+ * *obtained* (a gate names an item some recipe builds from items that exist),
+ * and it can never be obtained *twice* (the output is a capped key item that no
+ * reward table also hands out, because a capped grant inside a payout would
+ * roll the whole payout back).
+ */
+export function validateKeyItemContent(content: LoadedContent): void {
+  const { items, tables } = content;
+  const bySlug = new Map(items.map((i) => [i.slug, i]));
+  const rewarded = contentRewardSources(content);
+
+  for (const item of items) {
+    if (item.maxOwned == null) continue;
+    const where = rewarded.get(item.slug);
+    if (where) {
+      throw new ContentValidationError(
+        `Item "${item.slug}" has maxOwned ${item.maxOwned} but is handed out by ${where}. ` +
+          'A capped item cannot be a reward: a grant past the cap would roll back the whole payout.',
+      );
+    }
+  }
+
+  const recipeByOutput = new Map<string, KeyItemRecipeConfig>();
+  for (const recipe of tables.keyItemRecipes) {
+    const output = bySlug.get(recipe.output);
+    if (!output) {
+      throw new ContentValidationError(
+        `keyItemRecipes["${recipe.id}"] produces unknown item "${recipe.output}"`,
+      );
+    }
+    if (output.category !== 'key' || output.maxOwned !== 1) {
+      throw new ContentValidationError(
+        `keyItemRecipes["${recipe.id}"] produces "${recipe.output}", which must be a ` +
+          '`key` item with maxOwned: 1 — a recipe builds one permanent item, once.',
+      );
+    }
+    for (const input of recipe.inputs) {
+      if (!bySlug.has(input.item)) {
+        throw new ContentValidationError(
+          `keyItemRecipes["${recipe.id}"] consumes unknown item "${input.item}"`,
+        );
+      }
+    }
+    recipeByOutput.set(recipe.output, recipe);
+  }
+
+  for (const gate of tables.travel.keyItemRoutes) {
+    const item = bySlug.get(gate.keyItem);
+    if (!item || item.category !== 'key' || item.maxOwned !== 1) {
+      throw new ContentValidationError(
+        `travel.keyItemRoutes["${gate.regionId}"] requires "${gate.keyItem}", which must be ` +
+          'an existing `key` item with maxOwned: 1',
+      );
+    }
+    if (!recipeByOutput.has(gate.keyItem)) {
+      throw new ContentValidationError(
+        `travel.keyItemRoutes["${gate.regionId}"] requires "${gate.keyItem}", but no ` +
+          'keyItemRecipes entry builds it — the region would be unreachable.',
+      );
+    }
+  }
 }
 
 /**
@@ -950,6 +1064,7 @@ export function validateContentSet(content: LoadedContent): void {
   validateRegionContent(content);
   validateBossContent(content);
   validateExpeditionContent(content);
+  validateKeyItemContent(content);
 }
 
 /**

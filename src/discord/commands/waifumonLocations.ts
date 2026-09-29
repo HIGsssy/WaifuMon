@@ -14,6 +14,9 @@
  *   `loc:confirm` — the mandatory confirmation before any purchase.
  *   `loc:buy`     — the purchase itself, landing back on the detail screen.
  *   `loc:travel`  — the move, landing back on the home screen.
+ *   `loc:kconfirm`/`loc:kbuild` — the key-item equivalents of confirm/buy:
+ *                   constructing the Transporter Beacon from the detail screen
+ *                   of the destination it unlocks (the Assteroid Belt).
  *
  * Travel screens carry travel information and travel actions only. Shopping is
  * reached from the main menu's **Shop** button, which already renders the
@@ -48,6 +51,7 @@ import { withBackRow } from '../ui';
 import { formatPrice, buttonRows, type ScreenView } from './waifumon';
 import { resolveRegionBanner } from '../regionBanner';
 import type { DestinationView, TravelStatus } from '../../modules/travel/travelService';
+import type { RecipeProgress } from '../../modules/keyItems/keyItemService';
 import { maybeTriggerTravelEncounter } from './waifumonWorldEncounter';
 import { players as playersTable } from '../../db/schema';
 import { eq } from 'drizzle-orm';
@@ -81,7 +85,43 @@ function destinationLine(destination: DestinationView): string {
       return `${icon} ${name} — 🔒 ${formatPrice(destination.price, destination.currency)}`;
     case 'ineligible':
       return `${icon} ${name} — 🔒 ${destination.requirements.join(' · ')}`;
+    case 'key_required': {
+      const key = destination.keyItem;
+      return `${icon} ${name} — 🔒 ${key?.emoji ?? '🔑'} ${key?.name ?? 'Key item'} required`;
+    }
   }
+}
+
+/** "2,340" — the thousands separator the recipe panel reads best with. */
+function count(n: number): string {
+  return n.toLocaleString('en-US');
+}
+
+/**
+ * The recipe panel on a key-item destination: every component with the
+ * player's count against the requirement, where to find the missing ones, and
+ * the WaifuBux cost. Everything shown comes from `RecipeProgress`, which is the
+ * same evaluation `keyItems.construct` refuses with — so a ✅ here is a
+ * component construction will accept.
+ */
+function recipeLines(keyName: string, keyEmoji: string | null, progress: RecipeProgress): string {
+  const lines = [`${keyEmoji ?? '🔑'} **${keyName} Required**`, ''];
+  for (const c of progress.components) {
+    const mark = c.complete ? '✅' : '▫️';
+    const hint = !c.complete && c.hint ? ` — *${c.hint}*` : '';
+    lines.push(`${mark} ${c.emoji ?? '•'} ${c.name}: **${c.owned}/${c.required}**${hint}`);
+  }
+  const bux = progress.waifubux;
+  lines.push(
+    `${bux.complete ? '✅' : '▫️'} 💰 WaifuBux: **${count(bux.owned)} / ${count(bux.required)}**`,
+  );
+  lines.push(
+    '',
+    progress.ready
+      ? `Everything is in hand. Constructing consumes the components and **${count(bux.required)}** WaifuBux; the ${keyName} is permanent and is never used up by travel.`
+      : `Gather every component, then construct the ${keyName} here. It is permanent and is never used up by travel.`,
+  );
+  return lines.join('\n');
 }
 
 function buildHomeView(
@@ -192,6 +232,20 @@ function buildDetailView(
   if (destination.state === 'ineligible') {
     parts.push(`\n🔒 **Requires:**\n${destination.requirements.map((r) => `• ${r}`).join('\n')}`);
   }
+  if (destination.state === 'key_required' && destination.keyItem) {
+    const { keyItem } = destination;
+    // A level gate still applies on the trip itself; name it alongside the key
+    // so a player does not build the beacon and then meet a second wall.
+    const levelGate = destination.requirements.filter((r) => !r.startsWith(keyItem.name));
+    if (levelGate.length > 0) {
+      parts.push(`\n🔒 **Also requires:** ${levelGate.join(' · ')}`);
+    }
+    parts.push(
+      keyItem.progress
+        ? `\n${recipeLines(keyItem.name, keyItem.emoji, keyItem.progress)}`
+        : `\n🔒 **Requires:** ${keyItem.emoji ?? '🔑'} ${keyItem.name}`,
+    );
+  }
   // Only on screens that actually offer travel. A destination the player has
   // not unlocked is refused for its own reason, and stacking "not enough
   // Energy" underneath that would give them two problems to solve when the
@@ -232,6 +286,17 @@ function buildDetailView(
         .setEmoji('🚶')
         .setStyle(ButtonStyle.Success)
         .setDisabled(destination.state === 'current' || blockedFromTravel),
+    );
+  }
+  if (destination.state === 'key_required' && destination.keyItem?.progress?.ready) {
+    actions.push(
+      new ButtonBuilder()
+        .setCustomId(buildCustomId('loc', 'kconfirm', destination.regionId))
+        .setLabel(
+          `Construct ${destination.keyItem.name} — ${count(destination.keyItem.progress.waifubux.required)} WaifuBux`,
+        )
+        .setEmoji(destination.keyItem.emoji ?? '🔧')
+        .setStyle(ButtonStyle.Primary),
     );
   }
   if (destination.state === 'purchasable') {
@@ -283,6 +348,42 @@ function buildConfirmView(destination: DestinationView, status: TravelStatus): S
         new ButtonBuilder()
           .setCustomId(buildCustomId('loc', 'buy', destination.regionId))
           .setLabel('Confirm')
+          .setEmoji('✅')
+          .setStyle(ButtonStyle.Success),
+        new ButtonBuilder()
+          .setCustomId(buildCustomId('loc', 'detail', destination.regionId))
+          .setLabel('Cancel')
+          .setStyle(ButtonStyle.Secondary),
+      ),
+    ],
+  };
+}
+
+/**
+ * The confirmation before construction. Same rule as purchases: nothing that
+ * spends currency or consumes items does so on its first click.
+ */
+function buildKeyConfirmView(destination: DestinationView, status: TravelStatus): ScreenView {
+  const keyItem = destination.keyItem!;
+  const progress = keyItem.progress!;
+  const consumed = progress.components
+    .map((c) => `• ${c.emoji ?? '•'} ${c.name} ×${c.required}`)
+    .join('\n');
+  const embed = new EmbedBuilder()
+    .setTitle(`${keyItem.emoji ?? '🔧'} Construct ${keyItem.name}?`)
+    .setColor(LOCATIONS_COLOR)
+    .setDescription(
+      `This consumes:\n${consumed}\n• 💰 **${count(progress.waifubux.required)}** WaifuBux\n\n` +
+        `and grants one permanent **${keyItem.name}**, which opens the road to **${destination.name}**.\n\n` +
+        `Balance after: **${count(status.waifubux - progress.waifubux.required)}** WaifuBux.`,
+    );
+  return {
+    embeds: [embed],
+    components: [
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setCustomId(buildCustomId('loc', 'kbuild', destination.regionId))
+          .setLabel('Construct')
           .setEmoji('✅')
           .setStyle(ButtonStyle.Success),
         new ButtonBuilder()
@@ -452,6 +553,67 @@ export async function handleLocationBuy(
   await respondEphemeral(
     interaction,
     buildDetailView(ctx, loaded.destination, loaded.status, statusLine),
+  );
+}
+
+export async function handleLocationKeyConfirm(
+  ctx: AppContext,
+  interaction: ButtonInteraction,
+  prov: Provisioned,
+  regionId: string,
+): Promise<void> {
+  const loaded = await loadDetail(ctx, prov, regionId);
+  if (!loaded) {
+    await respondEphemeral(interaction, STALE);
+    return;
+  }
+  // A stale confirm button — the beacon was built in another window, or a
+  // component was spent elsewhere since the screen was painted — falls back to
+  // the detail screen, which explains the current state.
+  if (!loaded.destination.keyItem?.progress?.ready) {
+    await respondEphemeral(interaction, buildDetailView(ctx, loaded.destination, loaded.status));
+    return;
+  }
+  await respondEphemeral(interaction, buildKeyConfirmView(loaded.destination, loaded.status));
+}
+
+export async function handleLocationKeyBuild(
+  ctx: AppContext,
+  interaction: ButtonInteraction,
+  prov: Provisioned,
+  regionId: string,
+): Promise<void> {
+  const loaded = await loadDetail(ctx, prov, regionId);
+  const recipeId = loaded?.destination.keyItem?.progress?.recipeId ?? null;
+  let statusLine: string;
+  if (!loaded || !recipeId) {
+    // Nothing to build: already owned, or the destination has no recipe. The
+    // detail screen says which.
+    statusLine = '⚠️ There is nothing to construct here right now.';
+  } else {
+    try {
+      // The recipe id comes from content via the server-side view, never from
+      // the custom id, so a forged button cannot name a different recipe.
+      const outcome = await ctx.services.keyItems.construct(prov.playerId, recipeId);
+      statusLine =
+        `✅ Constructed the **${outcome.output.name}** for **${count(outcome.waifubuxSpent)}** WaifuBux — ` +
+        `the road to **${loaded.destination.name}** is open. Balance: **${count(outcome.balanceAfter)}**.`;
+    } catch (err) {
+      // Missing components, short funds, already built, the losing half of a
+      // double-click — all AppErrors with player-safe copy, all having rolled
+      // back with nothing spent.
+      if (!(err instanceof AppError)) throw err;
+      statusLine = `⚠️ ${err.userMessage}`;
+    }
+  }
+  const after = await loadDetail(ctx, prov, regionId);
+  if (!after) {
+    await handleLocationsHome(ctx, interaction, prov, statusLine);
+    return;
+  }
+  await respondEphemeral(
+    interaction,
+    buildDetailView(ctx, after.destination, after.status, statusLine),
   );
 }
 

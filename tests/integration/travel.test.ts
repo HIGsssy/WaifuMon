@@ -23,6 +23,7 @@ import {
 import {
   AlreadyInRegionError,
   InsufficientFundsError,
+  KeyItemRequiredError,
   RegionLockedError,
   RegionNotFoundError,
   ItemNotSoldHereError,
@@ -137,26 +138,27 @@ describe('shipped travel content', () => {
     await expect(app.travel.travel(playerId, 'base-80085')).rejects.toThrow(RegionLockedError);
   });
 
-  it('lists the Assteroid Belt as the last destination, priced and gated', () => {
+  it('lists the Assteroid Belt as the last destination, gated on a Transporter Beacon', () => {
     // `order: 7` puts the belt after Base 80085, the destination released
-    // before it; the route is stamped onto the same Caravan Pass.
+    // before it. Unlike every other destination it is not a Caravan Pass
+    // route: holding the Transporter Beacon key item is the entitlement.
     const catalog = app.travel.catalog();
     expect(catalog.destinations.at(-1)!.region.id).toBe('assteroid-belt');
     const belt = catalog.get('assteroid-belt')!;
     expect(belt).toBeDefined();
     expect(belt.region.name).toBe('Assteroid Belt');
-    expect(belt.access).toBe('route');
-    expect(belt.pass!.id).toBe('caravan_pass');
-    expect(belt.grantedByPassPurchase).toBe(false);
-    expect(belt.price).toBe(3000);
+    expect(belt.access).toBe('key_item');
+    expect(belt.pass).toBeNull();
+    expect(belt.keyItem!.gate.keyItem).toBe('transporter_beacon');
+    expect(belt.price).toBe(1500);
     expect(belt.currency).toBe('waifubux');
     expect(belt.requiredLevel).toBe(35);
   });
 
-  it('refuses to travel to the Assteroid Belt before the route is bought', async () => {
+  it('refuses to travel to the Assteroid Belt without a Transporter Beacon', async () => {
     const { playerId } = await provisionPlayer(app, 'g-travel-belt', 'u-belt');
     await expect(app.travel.travel(playerId, 'assteroid-belt')).rejects.toThrow(
-      RegionLockedError,
+      KeyItemRequiredError,
     );
   });
 

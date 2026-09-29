@@ -797,8 +797,9 @@ export function formatShopEntry(
   const flavour = item.description.trim();
   if (flavour) parts.push(`*${flavour}*`);
   parts.push(...formatItemEffectLines(item));
+  const cap = item.maxOwned != null ? ` (max ${item.maxOwned})` : '';
   parts.push(
-    `Price: **${formatPrice(item.buyPrice ?? 0, currency)}** · owned ×${ownedQuantity}`,
+    `Price: **${formatPrice(item.buyPrice ?? 0, currency)}** · owned ×${ownedQuantity}${cap}`,
   );
   return parts.join('\n');
 }
@@ -833,12 +834,20 @@ async function buildShopView(
 
   const buyButtons = catalog
     .filter((entry) => entry.available)
-    .map(({ item, currency }) =>
-      new ButtonBuilder()
+    .map(({ item, currency }) => {
+      // At an ownership cap the button stays visible but dead, labelled with
+      // why — the purchase would refuse anyway, before charging.
+      const atCap = item.maxOwned != null && (owned.get(item.id) ?? 0) >= item.maxOwned;
+      return new ButtonBuilder()
         .setCustomId(buildCustomId('shop', 'buy', item.slug))
-        .setLabel(`Buy ${item.name} — ${formatPrice(item.buyPrice ?? 0, currency)}`)
-        .setStyle(ButtonStyle.Success),
-    );
+        .setLabel(
+          atCap
+            ? `${item.name} — owned (max ${item.maxOwned})`
+            : `Buy ${item.name} — ${formatPrice(item.buyPrice ?? 0, currency)}`,
+        )
+        .setStyle(ButtonStyle.Success)
+        .setDisabled(atCap);
+    });
   // One entry point per sub-menu — the individual recipe and stack buttons
   // live on those screens, never on this one.
   const exchangeRow = new ActionRowBuilder<ButtonBuilder>().addComponents(

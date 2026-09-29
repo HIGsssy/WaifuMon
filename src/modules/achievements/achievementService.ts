@@ -29,7 +29,6 @@ import {
   encounters,
   players,
   playerAchievements,
-  playerUnlockedRoutes,
   playerWaifus,
   species,
 } from '../../db/schema';
@@ -88,9 +87,19 @@ const HIGH_RARITY_FLAGS: Record<string, keyof MetricSnapshot | undefined> = {
   LR: 'first_lr',
 };
 
+/**
+ * The regions a player holds access to, from the travel service — see
+ * `TravelService.accessibleRegions`. Injected rather than queried here because
+ * access is no longer one table: route destinations are `player_unlocked_routes`
+ * rows, key-item destinations (the Assteroid Belt) are a held key item, and
+ * only the travel catalog knows which region uses which.
+ */
+export type AccessibleRegionsReader = (playerId: number) => Promise<readonly string[]>;
+
 export function createAchievementService(
   db: Db,
   definitions: readonly AchievementDefinition[],
+  accessibleRegions: AccessibleRegionsReader,
 ): AchievementService {
   /**
    * Every metric an achievement can test, for one player, from durable state.
@@ -107,7 +116,7 @@ export function createAchievementService(
       [distinctRow = { total: 0 }],
       rarityRows,
       [bossRow = { total: 0 }],
-      [regionsRow = { total: 0 }],
+      regions,
     ] = await Promise.all([
       db
         .select({ level: players.level, xp: players.xp, buddyWaifuId: players.buddyWaifuId })
@@ -134,12 +143,10 @@ export function createAchievementService(
         .select({ total: count() })
         .from(bossParticipations)
         .where(eq(bossParticipations.playerId, playerId)),
-      // Regions reached: the home region is always available and is never a
-      // route row, so the distinct unlocked routes are the regions *beyond* it.
-      db
-        .select({ total: countDistinct(playerUnlockedRoutes.regionId) })
-        .from(playerUnlockedRoutes)
-        .where(eq(playerUnlockedRoutes.playerId, playerId)),
+      // Regions unlocked — what "Unlock travel to a second region" means.
+      // Includes the home region and every key-item destination whose key is
+      // held, not just route rows.
+      accessibleRegions(playerId),
     ]);
 
     const buddyWaifuId = playerRow?.buddyWaifuId ?? null;
@@ -165,8 +172,8 @@ export function createAchievementService(
       captures: capturesRow.total,
       distinct_species: distinctRow.total,
       boss_participations: bossRow.total,
-      // +1 for the home region every trainer starts in.
-      regions_visited: regionsRow.total + 1,
+      // The starting region is already in the list, by rule.
+      regions_visited: regions.length,
       buddy_set: buddyWaifuId !== null ? 1 : 0,
       buddy_affection: buddyAffection,
       first_sr: 0,

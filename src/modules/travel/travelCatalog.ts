@@ -9,8 +9,10 @@
  */
 import { DEFAULT_REGION, isRegion, regionLabel, type Region } from '../locations/regions';
 import type {
+  KeyItemRecipeConfig,
   LoadedContent,
   RegionContent,
+  TravelKeyItemRouteConfig,
   TravelPassConfig,
   TravelRouteConfig,
 } from '../content/schemas';
@@ -22,10 +24,20 @@ export interface DestinationDefinition {
    * How this destination is reached.
    *
    * `'starting'` is Waifu Valley: always reachable, never bought, and the
-   * reason it has no `player_unlocked_routes` row. `'route'` is everywhere
-   * else — a purchase against a pass.
+   * reason it has no `player_unlocked_routes` row. `'route'` is a purchase
+   * against a pass. `'key_item'` is holding a permanent key item — the
+   * Assteroid Belt and its Transporter Beacon — which is checked on every
+   * trip and never consumed; route rows are ignored for these destinations.
    */
-  access: 'starting' | 'route';
+  access: 'starting' | 'route' | 'key_item';
+  /** The key-item gate. Non-null exactly when `access` is `'key_item'`. */
+  keyItem: {
+    gate: TravelKeyItemRouteConfig;
+    name: string;
+    emoji: string | null;
+    /** The recipe that builds the key, if content defines one. */
+    recipe: KeyItemRecipeConfig | null;
+  } | null;
   /** Null for the starting region. */
   route: TravelRouteConfig | null;
   /** The pass a route stamps onto. Null for the starting region. */
@@ -68,6 +80,7 @@ export function buildTravelCatalog(content: LoadedContent): TravelCatalog {
   const travel = content.tables.travel;
   const routeByRegion = new Map(travel.routes.map((r) => [r.regionId, r]));
   const passById = new Map<string, TravelPassConfig>(travel.passes.map((p) => [p.id, p]));
+  const keyGateByRegion = new Map(travel.keyItemRoutes.map((g) => [g.regionId, g]));
 
   const destinations: DestinationDefinition[] = content.regions
     .filter((region) => region.enabled)
@@ -76,12 +89,36 @@ export function buildTravelCatalog(content: LoadedContent): TravelCatalog {
         return {
           region,
           access: 'starting' as const,
+          keyItem: null,
           route: null,
           pass: null,
           grantedByPassPurchase: false,
           price: 0,
           currency: 'waifubux' as const,
           requiredLevel: 1,
+        };
+      }
+      const gate = keyGateByRegion.get(region.id);
+      if (gate) {
+        const item = content.items.find((i) => i.slug === gate.keyItem);
+        const recipe = content.tables.keyItemRecipes.find((r) => r.output === gate.keyItem) ?? null;
+        return {
+          region,
+          access: 'key_item' as const,
+          keyItem: {
+            gate,
+            name: item?.name ?? gate.keyItem,
+            emoji: item?.emoji ?? null,
+            recipe,
+          },
+          route: null,
+          pass: null,
+          grantedByPassPurchase: false,
+          // The construction cost, so any surface that prints a price for
+          // a locked destination prints the real one.
+          price: recipe?.waifubux ?? 0,
+          currency: 'waifubux' as const,
+          requiredLevel: gate.requiredLevel,
         };
       }
       const route = routeByRegion.get(region.id) ?? null;
@@ -98,6 +135,7 @@ export function buildTravelCatalog(content: LoadedContent): TravelCatalog {
       return {
         region,
         access: 'route' as const,
+        keyItem: null,
         route,
         pass,
         grantedByPassPurchase,

@@ -44,6 +44,7 @@ import { createShopService } from '../../src/modules/shop/shopService';
 import { createSessionService } from '../../src/modules/session/sessionService';
 import { createBossEncounterService } from '../../src/modules/bosses/bossEncounterService';
 import { createTravelService } from '../../src/modules/travel/travelService';
+import { createKeyItemService } from '../../src/modules/keyItems/keyItemService';
 import { createWorldEncounterService } from '../../src/modules/worldEncounters/worldEncounterService';
 import {
   createWorldEncounterVendorService,
@@ -132,6 +133,7 @@ export interface App {
    * admin reload would be.
    */
   travel: ReturnType<typeof createTravelService>;
+  keyItems: ReturnType<typeof createKeyItemService>;
   /**
    * World Encounters — all three services wired together, so continuation +
    * vendor tests never rebuild the graph by hand.
@@ -258,7 +260,19 @@ export async function bootstrapApp(
   // real graph rather than a simplified one.
   // Hoisted for the same reason production hoists it: expeditions need the
   // canonical "where is the player" answer to gate a deployment.
-  const travel = createTravelService({ db: t.db, currency, getContent: () => content });
+  const keyItems = createKeyItemService({
+    db: t.db,
+    currency,
+    inventory,
+    getContent: () => content,
+  });
+  const travel = createTravelService({
+    db: t.db,
+    currency,
+    inventory,
+    keyItems,
+    getContent: () => content,
+  });
   let expeditions: ReturnType<typeof createExpeditionService> | undefined;
   const availability = createWaifuAvailabilityService({
     bulkProviders: [
@@ -419,6 +433,7 @@ export async function bootstrapApp(
     expeditions,
     availability,
     travel,
+    keyItems,
     worldEncounter,
     worldEncounterVendor,
     worldEncounterAdmin,
@@ -469,7 +484,9 @@ export async function bootstrapApp(
     }),
     care,
     collection,
-    achievements: createAchievementService(t.db, loadAchievementDefinitions(CONTENT_DIR)),
+    achievements: createAchievementService(t.db, loadAchievementDefinitions(CONTENT_DIR), (id) =>
+      travel.accessibleRegions(id),
+    ),
     leaderboards: createLeaderboardService(t.db),
     appearance,
     quests,

@@ -55,6 +55,20 @@
             "quantity": 1
           }
         ]
+      },
+      {
+        "id": "astral-salvage",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 500,
+        "entries": [
+          {
+            "itemId": "astral_power_cell",
+            "enabled": true,
+            "weight": 1,
+            "quantity": 1
+          }
+        ]
       }
     ]
   }

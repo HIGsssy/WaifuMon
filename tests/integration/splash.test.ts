@@ -60,6 +60,7 @@ function buildCtx(): AppContext {
     services: {
       guilds: app.guilds,
       travel: app.travel,
+      keyItems: app.keyItems,
       players: app.players,
       achievements: app.achievements,
       leaderboards: app.leaderboards,
@@ -327,6 +328,7 @@ describe('disabled splash config — /waifumon goes directly to the main menu', 
       content: app2.content,
       services: {
         travel: app2.travel,
+        keyItems: app2.keyItems,
         expeditions: app2.expeditions,
         availability: app2.availability,
         guilds: app2.guilds,

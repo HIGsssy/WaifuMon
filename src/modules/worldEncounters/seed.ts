@@ -339,6 +339,49 @@ export const SEED_ENCOUNTERS: EncounterInput[] = EncounterInputSchema.array().pa
     ],
   },
   {
+    // The world-encounter source of the Cracked Teleport Core, one of the four
+    // Transporter Beacon components (`tables.keyItemRecipes`). Seeded rather
+    // than imported so a fresh install and a live server both gain it on the
+    // next boot; `insert-missing` never touches it again after that, so a
+    // designer can retune or rewrite it in the Portal like any other.
+    slug: 'b8_teleporter_wreck',
+    name: 'The Teleporter Wreck',
+    description:
+      'Behind the motor pool, a decommissioned transporter pad sparks on its own. Its core is cracked, still humming, and nobody has signed for it.',
+    artworkPath: 'encounters/b8_teleporter_wreck.webp',
+    type: 'discovery',
+    rarity: 'rare',
+    weight: 6,
+    lifecycle: 'active',
+    huntEligible: true,
+    travelEligible: false,
+    cooldownSeconds: 6 * 3600,
+    regions: ['base-80085'],
+    choices: [
+      {
+        label: 'Pry the core loose',
+        emoji: '🔧',
+        check: {
+          type: 'sp',
+          difficulty: 60,
+          baseBias: 0.1,
+          raceAdvantage: ['android'],
+        },
+        successEffects: [
+          { type: 'give_item', slug: 'cracked_teleport_core', quantity: 1 },
+          { type: 'player_xp', amount: 30 },
+        ],
+        failureEffects: [{ type: 'energy_loss', amount: 1 }],
+      },
+      {
+        label: 'Report it to the quartermaster',
+        emoji: '📋',
+        check: { type: 'none' },
+        successEffects: [{ type: 'waifubux_gain', amount: 75 }],
+      },
+    ],
+  },
+  {
     slug: 'tv_bandit_ambush',
     name: 'Bandit Ambush',
     description:

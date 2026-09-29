@@ -75,6 +75,7 @@ const ITEM = {
   description: 'A charm.',
   emoji: '✨',
   enabled: true,
+  maxOwned: null,
 };
 
 const WAIFU = {

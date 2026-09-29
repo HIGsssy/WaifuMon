@@ -1,7 +1,7 @@
 {
   "id": "assteroid_belt",
   "name": "Assteroid Belt",
-  "description": "The sixth paid destination, released after Base 80085. Ships the Assteroid Belt region and its region-exclusive Waifumon, reachable only by stamping the route onto a Caravan Pass the player already holds.",
+  "description": "The sixth paid destination, released after Base 80085. Ships the Assteroid Belt region and its region-exclusive Waifumon, reachable only by holding a Transporter Beacon, a permanent key item built from four components and 1,500 WaifuBux.",
   "enabled": true,
   "order": 7,
   "regionId": "assteroid-belt"

@@ -38,6 +38,7 @@ export async function seedContent(db: Db, content: LoadedContent, logger: Logger
         description: item.description,
         emoji: item.emoji,
         enabled: item.enabled,
+        maxOwned: item.maxOwned,
       };
       await tx
         .insert(items)

@@ -36,6 +36,7 @@ import type { EphemeralRegistry } from './ephemeralCleanup';
 import type { OwnedCardWarmer } from '../modules/appearance/ownedCardWarm';
 import type { BossEncounterService } from '../modules/bosses/bossEncounterService';
 import type { TravelService } from '../modules/travel/travelService';
+import type { KeyItemService } from '../modules/keyItems/keyItemService';
 import type { BossAnnouncer } from '../modules/bosses/bossScheduler';
 import type { WorldEncounterService } from '../modules/worldEncounters/worldEncounterService';
 import type { WorldEncounterAdminService } from '../modules/worldEncounters/adminService';
@@ -123,6 +124,11 @@ export interface AppServices {
    * than a different service graph.
    */
   travel: TravelService;
+  /**
+   * Key-item recipes — building the Transporter Beacon that gates the
+   * Assteroid Belt. Reached from that destination's Locations screen.
+   */
+  keyItems: KeyItemService;
   /**
    * World Encounters — the interactive-encounter feature (hunt/travel
    * button flows, admin-authored definitions).

@@ -51,6 +51,8 @@ import {
   handleLocationBuy,
   handleLocationConfirm,
   handleLocationDetail,
+  handleLocationKeyBuild,
+  handleLocationKeyConfirm,
   handleLocationTravel,
   handleLocationsHome,
 } from './commands/waifumonLocations';
@@ -290,6 +292,13 @@ export function createDiscordClient(ctx: AppContext): Client {
         handleLocationBuy(ctx, i, prov, args[0] ?? ''),
       'loc:travel': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleLocationTravel(ctx, i, prov, args[0] ?? ''),
+      // Constructing the key item a destination requires (the Transporter
+      // Beacon). Confirm and build are separate routes for the same reason
+      // `loc:confirm` and `loc:buy` are: no first click spends anything.
+      'loc:kconfirm': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleLocationKeyConfirm(ctx, i, prov, args[0] ?? ''),
+      'loc:kbuild': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleLocationKeyBuild(ctx, i, prov, args[0] ?? ''),
       'shop:exchange': (i: ButtonInteraction, prov: Provisioned) =>
         handleShopExchange(ctx, i, prov),
       'shop:convert': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>

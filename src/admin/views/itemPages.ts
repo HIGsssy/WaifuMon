@@ -188,6 +188,7 @@ export function itemFormPage(item: ItemContent | null, references: string[]): st
     description: '',
     emoji: null,
     enabled: true,
+    maxOwned: null,
   };
   const action = isNew ? '/admin/items' : `/admin/items/${encodeURIComponent(i.slug)}`;
   const refWarning =
@@ -235,6 +236,10 @@ ${refWarning}
       'Key item may be sold',
       i.explicitlySellable,
     )}<p class="muted">Only for category <span class="mono">key</span>, and only alongside a sell value — a key item needs both before it will vendor.</p></div>
+    <div>${numberField('maxOwned', 'Max owned per player', i.maxOwned, {
+      hint: 'blank = unlimited. 1 for the Transporter Beacon and Phase Coupler. Never on reward-table items.',
+      step: '1',
+    })}</div>
   </div>
   ${textField('shopRegions', 'Sold in regions', i.shopRegions.join(', '), {
     type: 'list',

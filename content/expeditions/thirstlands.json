@@ -142,7 +142,7 @@
       "rewardTable": "thirst-wreck-field-success-v1",
       "exceptionalRewardTable": "thirst-wreck-field-bonus-v1",
       "failureRewardTable": "thirst-wreck-field-failure-v1",
-      "rewardPreview": ["salvage", "waifubux", "essence", "charms", "waifu_xp"],
+      "rewardPreview": ["salvage", "waifubux", "essence", "charms", "key_item", "waifu_xp"],
       "enabled": true
     },
     {
@@ -178,7 +178,7 @@
       "rewardTable": "thirst-procession-wake-success-v1",
       "exceptionalRewardTable": "thirst-procession-wake-bonus-v1",
       "failureRewardTable": "thirst-procession-wake-failure-v1",
-      "rewardPreview": ["salvage", "waifubux", "essence", "charms", "rare_find", "waifu_xp"],
+      "rewardPreview": ["salvage", "waifubux", "essence", "charms", "rare_find", "key_item", "waifu_xp"],
       "enabled": true
     }
   ]

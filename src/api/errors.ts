@@ -387,6 +387,16 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
    */
   TRAVEL_PASS_ALREADY_OWNED: 409,
   ROUTE_ALREADY_UNLOCKED: 409,
+  /** A key-item destination without the key. Same class as `REGION_LOCKED`. */
+  KEY_ITEM_REQUIRED: 422,
+  /** Recipe components short — a business rule refused, nothing consumed. */
+  KEY_ITEM_COMPONENTS_MISSING: 422,
+  /** No such recipe, indistinguishable from a typo. */
+  KEY_ITEM_RECIPE_NOT_FOUND: 404,
+  /** Already built. Idempotent from the player's side, like a pass already owned. */
+  KEY_ITEM_ALREADY_OWNED: 409,
+  /** A grant past `items.max_owned` — a state conflict, not a malformed request. */
+  ITEM_OWNERSHIP_LIMIT: 409,
   /** Travelling to where you already are. */
   ALREADY_IN_REGION: 409,
   /** An open encounter holds the player in place until it resolves. */

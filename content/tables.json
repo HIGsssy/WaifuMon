@@ -669,16 +669,45 @@
         "price": 2500,
         "currency": "waifubux",
         "requiredLevel": 30
-      },
+      }
+    ],
+    "keyItemRoutes": [
       {
         "regionId": "assteroid-belt",
-        "passId": "caravan_pass",
-        "price": 3000,
-        "currency": "waifubux",
+        "keyItem": "transporter_beacon",
         "requiredLevel": 35
       }
     ]
   },
+  "keyItemRecipes": [
+    {
+      "id": "transporter_beacon",
+      "output": "transporter_beacon",
+      "inputs": [
+        {
+          "item": "cracked_teleport_core",
+          "quantity": 1,
+          "hint": "World encounters in Base 80085"
+        },
+        {
+          "item": "quantum_stabilizer",
+          "quantity": 2,
+          "hint": "Long Thirstlands expeditions"
+        },
+        {
+          "item": "phase_coupler",
+          "quantity": 1,
+          "hint": "Base 80085 shop"
+        },
+        {
+          "item": "astral_power_cell",
+          "quantity": 1,
+          "hint": "Rare boss reward"
+        }
+      ],
+      "waifubux": 1500
+    }
+  ],
   "worldEncounter": {
     "huntChance": 0.35,
     "travelChance": 0.2,

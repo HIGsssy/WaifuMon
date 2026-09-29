@@ -2864,16 +2864,25 @@ describe('Thirstlands reward scaling', () => {
    *
    * Whatever these missions allude to — a writ with a name crossed out twice,
    * a shipment the flood took under — is not an item, and it must not become
-   * one by accident before key items, equipment and the encounter-gating
-   * language exist. Until then, everything this region
-   * hands over is ordinary sellable salvage a player can vendor without ever
-   * having destroyed a key.
+   * one by accident. Everything this region hands over is ordinary sellable
+   * salvage a player can vendor without ever having destroyed a key, a charm,
+   * or — the one deliberate exception — a key item that is a component of a
+   * key-item recipe (the Quantum Stabilizer, for the Transporter Beacon).
+   * Those are consumed by construction and are never vendorable.
    */
   it('hands out nothing that a future key-item or equipment system would want back', () => {
+    const recipeInputs = new Set(
+      SHIPPED.tables.keyItemRecipes.flatMap((r) => r.inputs.map((i) => i.item)),
+    );
     for (const table of thirstlandsTables) {
       for (const group of table.groups) {
         for (const entry of group.entries) {
           const item = items.get(entry.itemId)!;
+          if (item.category === 'key') {
+            expect(recipeInputs.has(item.slug), `${table.id} / ${item.slug}`).toBe(true);
+            expect(item.sellValue, item.slug).toBeNull();
+            continue;
+          }
           expect(['salvage', 'capture'], `${table.id} / ${item.slug}`).toContain(item.category);
           if (item.category !== 'salvage') continue;
           // Sellable today, and sellable without a second opt-in — which is

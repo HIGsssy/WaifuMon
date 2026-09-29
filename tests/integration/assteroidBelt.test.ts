@@ -13,12 +13,18 @@
  *
  * A shared starter appearing in both space zones is not a leak. A tagged
  * species appearing in two pools is the bug this file exists to catch.
+ *
+ * Access is a Transporter Beacon key item rather than a Caravan Pass route;
+ * the gate is exercised here only as far as the region needs it, and in full
+ * (recipe, construction, concurrency) in `transporterBeacon.test.ts`.
  */
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   encounters,
+  items,
   playerCurrencies,
+  playerInventory,
   playerTravelPasses,
   playerUnlockedRoutes,
   players,
@@ -30,12 +36,10 @@ import { createHuntService, type HuntService } from '../../src/modules/hunt/hunt
 import { REGIONS, isRegion } from '../../src/modules/locations/regions';
 import {
   InsufficientEnergyError,
-  InsufficientFundsError,
-  RegionLockedError,
+  KeyItemRequiredError,
   TravelBlockedByCareModeError,
   TravelBlockedByEncounterError,
   TravelLevelRequiredError,
-  TravelPassRequiredError,
 } from '../../src/shared/errors';
 import { TRAVEL_ENERGY_COST } from '../../src/modules/travel/travelService';
 import {
@@ -56,8 +60,9 @@ const REGION = 'assteroid-belt';
 const EXPANSION = 'assteroid_belt';
 const CHANNEL = 'chan-assteroid-belt';
 /** Straight from `tables.json` — asserted, not assumed, in the first test. */
-const ROUTE_PRICE = 3000;
+const BEACON_COST = 1500;
 const ROUTE_LEVEL = 35;
+const BEACON = 'transporter_beacon';
 
 /** The exclusives the pack ships, read from content rather than hard-coded. */
 let packSlugs: string[];
@@ -93,16 +98,17 @@ afterAll(async () => {
 });
 
 /**
- * Back to nothing owned: no pass, no routes, a level and a balance the caller
- * chooses. Entitlements are reset too, so no test can be carried by what an
- * earlier one bought.
+ * Back to nothing owned: no pass, no routes, no items, a level and a balance
+ * the caller chooses. Entitlements are reset too, so no test can be carried by
+ * what an earlier one bought.
  */
 async function resetPlayer(
-  opts: { level?: number; waifubux?: number; region?: string; withPass?: boolean } = {},
+  opts: { level?: number; waifubux?: number; region?: string; withBeacon?: boolean } = {},
 ): Promise<void> {
   await t.db.delete(encounters).where(eq(encounters.playerId, playerId));
   await t.db.delete(playerUnlockedRoutes).where(eq(playerUnlockedRoutes.playerId, playerId));
   await t.db.delete(playerTravelPasses).where(eq(playerTravelPasses.playerId, playerId));
+  await t.db.delete(playerInventory).where(eq(playerInventory.playerId, playerId));
   await t.db
     .update(players)
     .set({
@@ -118,7 +124,17 @@ async function resetPlayer(
     .set({ waifubux: opts.waifubux ?? 6000, huntEnergy: 50 })
     .where(eq(playerCurrencies.playerId, playerId));
   await forceRegion(t.db, playerId, opts.region ?? 'waifu-valley');
-  if (opts.withPass) await app.travel.grantPass(playerId, 'caravan_pass');
+  // The admin grant of a key-item destination hands over the key itself.
+  if (opts.withBeacon) await app.travel.grantRoute(playerId, REGION);
+}
+
+async function beaconCount(): Promise<number> {
+  const [row] = await t.db
+    .select({ quantity: playerInventory.quantity })
+    .from(playerInventory)
+    .innerJoin(items, eq(items.id, playerInventory.itemId))
+    .where(and(eq(playerInventory.playerId, playerId), eq(items.slug, BEACON)));
+  return row?.quantity ?? 0;
 }
 
 beforeEach(() => resetPlayer());
@@ -132,28 +148,26 @@ describe('released destination', () => {
     expect(isRegion(REGION)).toBe(true);
   });
 
-  it('appears in the Locations list, priced and gated', async () => {
-    await resetPlayer({ withPass: true });
+  it('appears in the Locations list, gated on the Transporter Beacon', async () => {
     const status = await app.travel.getStatus(playerId);
     const belt = status.destinations.find((d) => d.regionId === REGION);
     expect(belt).toBeDefined();
     expect(belt!.name).toBe('Assteroid Belt');
-    // Pass in hand and the level met: the only thing left is paying for the road.
-    expect(belt!.state).toBe('purchasable');
-    expect(belt!.price).toBe(ROUTE_PRICE);
+    // Level met, beacon missing: the key is the only thing in the way.
+    expect(belt!.state).toBe('key_required');
+    expect(belt!.price).toBe(BEACON_COST);
     expect(belt!.currency).toBe('waifubux');
     expect(belt!.requiredLevel).toBe(ROUTE_LEVEL);
-    expect(belt!.passName).toBe('Caravan Pass');
-    // The Caravan Pass covers Twin Peeks only; this route is stamped on
-    // afterwards, so buying it is never a pass purchase in disguise.
+    // Not a Caravan Pass route any more, so nothing pass-shaped is offered.
+    expect(belt!.passName).toBeNull();
     expect(belt!.purchaseGrantsPass).toBe(false);
-    expect(belt!.passOwned).toBe(true);
+    expect(belt!.keyItem!.name).toBe('Transporter Beacon');
+    expect(belt!.keyItem!.owned).toBe(false);
     // Authored ahead of the file itself: a missing banner renders text-only.
     expect(belt!.bannerImagePath).toBe('locations/assteroid-belt/banner.png');
   });
 
   it('lists last, after every destination released before it', async () => {
-    await resetPlayer({ withPass: true });
     const status = await app.travel.getStatus(playerId);
     const ids = status.destinations.map((d) => d.regionId);
     expect(ids.at(-1)).toBe(REGION);
@@ -199,56 +213,49 @@ describe('released destination', () => {
 });
 
 describe('the gate', () => {
-  it('cannot be bought before the pass it stamps onto', async () => {
-    const view = await app.travel.getDestination(playerId, REGION);
-    expect(view!.state).toBe('ineligible');
-    expect(view!.requirements.join(' ')).toContain('Caravan Pass');
+  it('is built, never bought — the purchase path refuses and writes nothing', async () => {
     await expect(app.travel.purchaseDestination(playerId, REGION)).rejects.toBeInstanceOf(
-      TravelPassRequiredError,
+      KeyItemRequiredError,
     );
+    expect((await app.currency.getBalances(playerId)).waifubux).toBe(6000);
+    const routes = await t.db
+      .select()
+      .from(playerUnlockedRoutes)
+      .where(eq(playerUnlockedRoutes.playerId, playerId));
+    expect(routes).toEqual([]);
   });
 
-  it('refuses the purchase below level 35, even with the pass', async () => {
-    await resetPlayer({ level: ROUTE_LEVEL - 1, withPass: true });
+  it('refuses travel without the beacon', async () => {
+    await expect(app.travel.travel(playerId, REGION)).rejects.toBeInstanceOf(KeyItemRequiredError);
+    expect(await app.travel.getCurrentRegion(playerId)).toBe('waifu-valley');
+  });
+
+  it('ignores a leftover route row — the beacon is the only key', async () => {
+    // Every pre-beacon purchase left a route row behind. Migration turned those
+    // into beacons; a bare row on its own must not open the road.
+    await t.db.insert(playerUnlockedRoutes).values({ playerId, regionId: REGION });
+    await expect(app.travel.travel(playerId, REGION)).rejects.toBeInstanceOf(KeyItemRequiredError);
+    expect((await app.travel.getDestination(playerId, REGION))!.state).toBe('key_required');
+  });
+
+  it('refuses travel below level 35, even with the beacon', async () => {
+    await resetPlayer({ level: ROUTE_LEVEL - 1, withBeacon: true });
     const view = await app.travel.getDestination(playerId, REGION);
     expect(view!.state).toBe('ineligible');
     expect(view!.requirements.join(' ')).toContain(String(ROUTE_LEVEL));
-    await expect(app.travel.purchaseDestination(playerId, REGION)).rejects.toBeInstanceOf(
+    await expect(app.travel.travel(playerId, REGION)).rejects.toBeInstanceOf(
       TravelLevelRequiredError,
     );
-  });
-
-  it('refuses the purchase without the price, and charges nothing', async () => {
-    await resetPlayer({ waifubux: ROUTE_PRICE - 1, withPass: true });
-    await expect(app.travel.purchaseDestination(playerId, REGION)).rejects.toBeInstanceOf(
-      InsufficientFundsError,
-    );
-    expect((await app.currency.getBalances(playerId)).waifubux).toBe(ROUTE_PRICE - 1);
-  });
-
-  it('refuses travel while the route is locked', async () => {
-    await expect(app.travel.travel(playerId, REGION)).rejects.toBeInstanceOf(RegionLockedError);
     expect(await app.travel.getCurrentRegion(playerId)).toBe('waifu-valley');
   });
 });
 
 describe('unlock and travel', () => {
-  it('buys the route for exactly 3,000 WaifuBux, then walks there and back', async () => {
-    await resetPlayer({ withPass: true });
-    const before = (await app.currency.getBalances(playerId)).waifubux;
-    const outcome = await app.travel.purchaseDestination(playerId, REGION);
-    // The route's own fee, not the pass price — the pass was already held.
-    expect(outcome.amount).toBe(ROUTE_PRICE);
-    expect((await app.currency.getBalances(playerId)).waifubux).toBe(before - ROUTE_PRICE);
+  it('walks there and back with the beacon, which is never used up', async () => {
+    await resetPlayer({ withBeacon: true });
+    expect(await beaconCount()).toBe(1);
+    expect((await app.travel.getDestination(playerId, REGION))!.state).toBe('unlocked');
 
-    const routes = await t.db
-      .select({ regionId: playerUnlockedRoutes.regionId })
-      .from(playerUnlockedRoutes)
-      .where(eq(playerUnlockedRoutes.playerId, playerId));
-    expect(routes.map((r) => r.regionId)).toContain(REGION);
-
-    // Buying a road is not walking down it — the move is its own action.
-    expect(await app.travel.getCurrentRegion(playerId)).toBe('waifu-valley');
     await app.travel.travel(playerId, REGION);
     expect(await app.travel.getCurrentRegion(playerId)).toBe(REGION);
     const status = await app.travel.getStatus(playerId);
@@ -257,11 +264,12 @@ describe('unlock and travel', () => {
     // The way home is always open: the starting region needs no route.
     await app.travel.travel(playerId, 'waifu-valley');
     expect(await app.travel.getCurrentRegion(playerId)).toBe('waifu-valley');
+    await app.travel.travel(playerId, REGION);
+    expect(await beaconCount()).toBe(1);
   });
 
-  it('charges the normal Energy for the trip, and nothing further in WaifuBux', async () => {
-    await resetPlayer({ withPass: true });
-    await app.travel.purchaseDestination(playerId, REGION);
+  it('charges the normal Energy for the trip, and nothing in WaifuBux', async () => {
+    await resetPlayer({ withBeacon: true });
     const bux = (await app.currency.getBalances(playerId)).waifubux;
     const outcome = await app.travel.travel(playerId, REGION);
     expect(outcome.energySpent).toBe(TRAVEL_ENERGY_COST);
@@ -269,9 +277,8 @@ describe('unlock and travel', () => {
     expect((await app.currency.getBalances(playerId)).waifubux).toBe(bux);
   });
 
-  it('refuses the trip at 0 Energy, route or no route', async () => {
-    await resetPlayer({ withPass: true });
-    await app.travel.purchaseDestination(playerId, REGION);
+  it('refuses the trip at 0 Energy, beacon or no beacon', async () => {
+    await resetPlayer({ withBeacon: true });
     await t.db
       .update(playerCurrencies)
       .set({ huntEnergy: 0 })
@@ -283,8 +290,7 @@ describe('unlock and travel', () => {
   });
 
   it('refuses the trip in Care Mode, even with Energy in the tank', async () => {
-    await resetPlayer({ withPass: true });
-    await app.travel.purchaseDestination(playerId, REGION);
+    await resetPlayer({ withBeacon: true });
     const [anySpecies] = await t.db.select().from(speciesTable).limit(1);
     const waifu = await insertOwnedWaifu(t.db, { playerId, speciesId: anySpecies!.id });
     await app.care.start(playerId, waifu.id);
@@ -294,12 +300,15 @@ describe('unlock and travel', () => {
     expect(await app.travel.getCurrentRegion(playerId)).toBe('waifu-valley');
   });
 
-  it('still refuses to move mid-encounter, route or no route', async () => {
+  it('still refuses to move mid-encounter, beacon or no beacon', async () => {
     // Releasing a region must not open a side door out of an unresolved hunt.
-    await resetPlayer({ withPass: true });
-    await app.travel.purchaseDestination(playerId, REGION);
+    await resetPlayer({ withBeacon: true });
     const result = await huntWith([0, 0, 0.5]).hunt(playerId, CHANNEL);
     expect(result.kind).toBe('encounter');
+    // The hunt's XP grant re-derives `level` from this fixture's zero XP.
+    // Restore it: the Belt checks its level gate on the trip, and this test is
+    // about the encounter block, not the level one.
+    await t.db.update(players).set({ level: ROUTE_LEVEL }).where(eq(players.id, playerId));
     await expect(app.travel.travel(playerId, REGION)).rejects.toBeInstanceOf(
       TravelBlockedByEncounterError,
     );
@@ -352,7 +361,7 @@ describe('hunting the region', () => {
   const R_ROLL = 0.7;
 
   it('draws only from the Belt pool', async () => {
-    await resetPlayer({ region: REGION, withPass: true });
+    await resetPlayer({ region: REGION, withBeacon: true });
     const drawn = [...(await sample(6, N_ROLL)), ...(await sample(6, R_ROLL))];
     expect(drawn.every((slug) => pooledSlugs.includes(slug))).toBe(true);
     // Both buckets were reached, so this is not one species twelve times.
@@ -362,13 +371,13 @@ describe('hunting the region', () => {
   it('reaches the pack’s own exclusives, not just its borrowed valley stock', async () => {
     // A pool that stocks core species could in principle drown the exclusives.
     // If the pack is unreachable in practice, the region ships as decoration.
-    await resetPlayer({ region: REGION, withPass: true });
+    await resetPlayer({ region: REGION, withBeacon: true });
     const drawn = [...(await sample(12, N_ROLL)), ...(await sample(12, R_ROLL))];
     expect(drawn.some((slug) => packSlugs.includes(slug))).toBe(true);
   });
 
   it('never lets another region’s exclusives in', async () => {
-    await resetPlayer({ region: REGION, withPass: true });
+    await resetPlayer({ region: REGION, withBeacon: true });
     const drawn = [...(await sample(6, N_ROLL)), ...(await sample(6, R_ROLL))];
     expect(drawn.some((slug) => foreignExclusives.includes(slug))).toBe(false);
   });

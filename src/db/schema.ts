@@ -66,15 +66,18 @@ export type ItemCategory = (typeof ITEM_CATEGORIES)[number];
 
 /**
  * The categories a shop ever *lists for sale to the player*. `capture` is the
- * charm catalog; `consumable` covers the utility items. Everything else is
- * never stocked, so a `shopRegions` assignment on one is a content error, not
- * a hidden shelf.
+ * charm catalog; `consumable` covers the utility items; `key` is for the
+ * occasional quest component a regional shop stocks (the Phase Coupler in Base
+ * 80085). Everything else is never stocked, so a `shopRegions` assignment on
+ * one is a content error, not a hidden shelf. A key item's sellability is
+ * still governed by its own double opt-in, so stocking one never makes it
+ * vendorable.
  *
  * This is deliberately **not** the mirror of what a player may sell *back*.
  * Buying is region-gated stock; selling is the global `sell_value` on the item
  * row. Widening the category set above therefore cannot put salvage on a shelf.
  */
-export const SHOP_ITEM_CATEGORIES = ['capture', 'consumable'] as const;
+export const SHOP_ITEM_CATEGORIES = ['capture', 'consumable', 'key'] as const;
 export type ShopItemCategory = (typeof SHOP_ITEM_CATEGORIES)[number];
 
 /**
@@ -378,8 +381,18 @@ export const items = pgTable(
     description: text('description').notNull().default(''),
     emoji: text('emoji'),
     enabled: boolean('enabled').notNull().default(true),
+    /**
+     * The most of this item one player may hold. Null (almost every item)
+     * means unlimited. Enforced by `inventoryService.addItem` inside the same
+     * conditional upsert that writes the quantity, so the limit holds under
+     * concurrent grants rather than depending on a read-then-write in a
+     * caller. Exists for permanent key items such as the Transporter Beacon,
+     * where "own two" is meaningless and a second copy would be a bug.
+     */
+    maxOwned: integer('max_owned'),
   },
   (t) => [
+    check('items_max_owned_check', sql`${t.maxOwned} is null or ${t.maxOwned} > 0`),
     check(
       'items_category_check',
       sql`${t.category} in ('capture','material','cosmetic','consumable','salvage','key','equipment')`,
@@ -1430,6 +1443,48 @@ export const travelTransactions = pgTable(
   ],
 );
 
+/** How a constructed key item came to be owned. */
+export const KEY_ITEM_CONSTRUCTION_SOURCES = ['construct', 'migration'] as const;
+export type KeyItemConstructionSource = (typeof KEY_ITEM_CONSTRUCTION_SOURCES)[number];
+
+/**
+ * Audit trail for key-item recipes (`tables.keyItemRecipes`) — the Transporter
+ * Beacon today.
+ *
+ * Audit only, not the entitlement. The item itself lives in `player_inventory`
+ * like every other key item, capped by `items.max_owned`; this table records
+ * what was paid for it, written inside the construction transaction exactly as
+ * `shop_transactions` and `travel_transactions` are. `migration` rows are the
+ * 0043 backfill, which granted the beacon to players who had already bought
+ * the Assteroid Belt route and paid nothing further for it.
+ */
+export const keyItemConstructions = pgTable(
+  'key_item_constructions',
+  {
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    playerId: bigint('player_id', { mode: 'number' })
+      .notNull()
+      .references(() => players.id),
+    /** Content id from `tables.keyItemRecipes[]`. */
+    recipeId: text('recipe_id').notNull(),
+    outputItemId: bigint('output_item_id', { mode: 'number' })
+      .notNull()
+      .references(() => items.id),
+    source: text('source').notNull().default('construct'),
+    waifubuxSpent: integer('waifubux_spent').notNull().default(0),
+    /** `[{ slug, quantity }]` consumed. Empty for a migration grant. */
+    inputs: jsonb('inputs').$type<{ slug: string; quantity: number }[]>().notNull(),
+    /** WaifuBux after the charge. Null for a migration grant, which charged nothing. */
+    balanceAfter: integer('balance_after'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('key_item_constructions_player_idx').on(t.playerId, t.createdAt),
+    check('key_item_constructions_source_check', sql`${t.source} in ('construct','migration')`),
+    check('key_item_constructions_spent_check', sql`${t.waifubuxSpent} >= 0`),
+  ],
+);
+
 /* ─────────────────────── World Encounters ───────────────────────
  *
  * Interactive, choice-driven encounters that fire during Hunt or Travel.
@@ -2052,6 +2107,7 @@ export type RegionEncounterPoolRow = typeof regionEncounterPools.$inferSelect;
 export type PlayerTravelPassRow = typeof playerTravelPasses.$inferSelect;
 export type PlayerUnlockedRouteRow = typeof playerUnlockedRoutes.$inferSelect;
 export type TravelTransactionRow = typeof travelTransactions.$inferSelect;
+export type KeyItemConstructionRow = typeof keyItemConstructions.$inferSelect;
 export type WorldEncounterRow = typeof worldEncounters.$inferSelect;
 export type WorldEncounterRegionRow = typeof worldEncounterRegions.$inferSelect;
 export type WorldEncounterRouteRow = typeof worldEncounterRoutes.$inferSelect;

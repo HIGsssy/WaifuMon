@@ -1,13 +1,16 @@
 /**
  * Locations & Travel.
  *
- * Four responsibilities behind one factory, deliberately kept in one module
+ * Five responsibilities behind one factory, deliberately kept in one module
  * because they share a single content projection and a single transaction
  * discipline:
  *
  *   - **regions** — read where a player is; list what they can see and do.
  *   - **passes** — buy the Caravan Pass (and the destination it stamps).
  *   - **routes** — add a later destination to a pass already owned.
+ *   - **key-item gates** — a destination reached by *holding* a key item (the
+ *     Assteroid Belt's Transporter Beacon). Checked on every trip, never
+ *     consumed; built through `keyItems.construct`, never bought here.
  *   - **travel** — actually move, for 1 Hunt Energy, subject to the
  *     active-encounter, Care Mode and Energy blocks.
  *
@@ -33,10 +36,12 @@
  * here rather than in the Discord handler so that the Portal, the Platform API
  * and any future client are gated by construction rather than by remembering.
  */
-import { and, eq } from 'drizzle-orm';
-import type { Db } from '../../db/client';
+import { and, eq, gt } from 'drizzle-orm';
+import type { Db, DbOrTx } from '../../db/client';
 import {
   encounters,
+  items,
+  playerInventory,
   playerTravelPasses,
   playerUnlockedRoutes,
   players,
@@ -48,6 +53,8 @@ import {
   AlreadyInRegionError,
   InsufficientEnergyError,
   isUniqueViolation,
+  ItemOwnershipLimitError,
+  KeyItemRequiredError,
   RegionLockedError,
   RegionNotFoundError,
   RouteAlreadyUnlockedError,
@@ -61,6 +68,8 @@ import {
 import type { Region } from '../locations/regions';
 import type { LoadedContent } from '../content/schemas';
 import type { CurrencyService } from '../currency/currencyService';
+import type { InventoryService } from '../inventory/inventoryService';
+import type { KeyItemService, RecipeProgress } from '../keyItems/keyItemService';
 import {
   buildTravelCatalog,
   toRegion,
@@ -94,12 +103,35 @@ export const TRAVEL_ENERGY_COST = 1;
  *   `purchasable`— eligible and locked. Price + buy action.
  *   `ineligible` — released and locked, but a requirement is unmet. Shows the
  *                  requirement and offers no action.
+ *   `key_required` — released and locked behind a key item the player does not
+ *                  hold (the Assteroid Belt's Transporter Beacon). Shows the
+ *                  recipe progress, and a construct action once it is complete.
  *
  * "Unreleased" is not in the list on purpose: a disabled region never reaches
  * this layer at all (see `buildTravelCatalog`), which is what makes "hidden"
  * structural rather than a `if (!visible) continue` somebody can forget.
  */
-export type DestinationState = 'current' | 'unlocked' | 'purchasable' | 'ineligible';
+export type DestinationState =
+  | 'current'
+  | 'unlocked'
+  | 'purchasable'
+  | 'ineligible'
+  | 'key_required';
+
+/** A key-item gate as the Locations screen renders it. */
+export interface DestinationKeyItemView {
+  slug: string;
+  name: string;
+  emoji: string | null;
+  /** Held right now. The item is checked on every trip, never consumed. */
+  owned: boolean;
+  /**
+   * What the player holds against the recipe that builds the key. Null when
+   * the key is already held (nothing left to show) or content defines no
+   * recipe for it.
+   */
+  progress: RecipeProgress | null;
+}
 
 export interface DestinationView {
   regionId: string;
@@ -119,6 +151,8 @@ export interface DestinationView {
   passName: string | null;
   /** True when buying grants the pass itself (the first purchase). */
   purchaseGrantsPass: boolean;
+  /** Non-null for a key-item destination. See {@link DestinationKeyItemView}. */
+  keyItem: DestinationKeyItemView | null;
   /** Number of items this region's shop stocks. Zero hides the shop entry. */
   /**
    * Relative path (under `assetsDir`) to the region's shallow/wide banner, if
@@ -299,6 +333,15 @@ export interface TravelService {
   /** The player's current region, defaulted if the column holds anything odd. */
   getCurrentRegion(playerId: number): Promise<Region>;
   /**
+   * Every released region this player holds access to, under whichever access
+   * model the catalog says the region uses: the starting region by rule, a
+   * route destination by its route row, a key-item destination by holding the
+   * key. The level gate is deliberately not applied — it is a condition on the
+   * trip, not on the entitlement, exactly as a route bought at level 20 stays
+   * owned. This is "unlocked", not "visited": nothing records visits.
+   */
+  accessibleRegions(playerId: number): Promise<string[]>;
+  /**
    * Buy access to `regionId`. Routes granted by the pass purchase buy the pass
    * *and* the route atomically; every other route is stamped onto a pass the
    * player must already own. One entry point so the UI never has to know which
@@ -317,17 +360,27 @@ export interface TravelService {
   travel(playerId: number, regionId: string, now?: Date): Promise<TravelOutcome>;
   /** Admin: grant a pass (and its routes) with no charge. Idempotent. */
   grantPass(playerId: number, passId: string): Promise<void>;
-  /** Admin: grant one route with no charge and no pass check. Idempotent. */
+  /**
+   * Admin: grant one route with no charge and no pass check. For a key-item
+   * destination this grants the key item instead. Idempotent.
+   */
   grantRoute(playerId: number, regionId: string): Promise<void>;
   /** Admin: revoke a pass. Leaves route rows alone — see the implementation. */
   revokePass(playerId: number, passId: string): Promise<void>;
-  /** Admin: revoke one route, sending the player home if they are standing in it. */
+  /**
+   * Admin: revoke one route (or, for a key-item destination, the key), sending
+   * the player home if they are standing in it.
+   */
   revokeRoute(playerId: number, regionId: string): Promise<void>;
 }
 
 export interface TravelServiceDeps {
   db: Db;
   currency: CurrencyService;
+  /** Admin grants of a key-item destination hand over the key itself. */
+  inventory: InventoryService;
+  /** Recipe progress for key-item destinations the player cannot reach yet. */
+  keyItems: KeyItemService;
   /**
    * Read through a closure, matching the appearance/boss services: the admin
    * panel's Reload Content republishes the snapshot, and a service that
@@ -344,6 +397,8 @@ export interface EligibilityContext {
   passIds: Set<string>;
   /** Region ids the player has route rows for. */
   unlocked: Set<string>;
+  /** Slugs of key items the player currently holds (quantity > 0). */
+  keyItems: Set<string>;
 }
 
 /**
@@ -362,6 +417,22 @@ export function evaluateDestination(
 ): { state: DestinationState; requirements: string[] } {
   const regionId = destination.region.id;
   if (ctx.currentRegion === regionId) return { state: 'current', requirements: [] };
+
+  // A key-item destination is decided by the key alone — a leftover route row
+  // (every pre-beacon Belt purchase left one) neither opens nor closes it.
+  if (destination.access === 'key_item' && destination.keyItem) {
+    const requirements: string[] = [];
+    if (ctx.level < destination.requiredLevel) {
+      requirements.push(`Trainer Level ${destination.requiredLevel} (you are ${ctx.level})`);
+    }
+    if (!ctx.keyItems.has(destination.keyItem.gate.keyItem)) {
+      requirements.push(`${destination.keyItem.name} (build one from components)`);
+      return { state: 'key_required', requirements };
+    }
+    return requirements.length > 0
+      ? { state: 'ineligible', requirements }
+      : { state: 'unlocked', requirements: [] };
+  }
   // The starting region is reachable by rule, not by a row — see the note on
   // `player_unlocked_routes` in the schema.
   if (destination.access === 'starting' || ctx.unlocked.has(regionId)) {
@@ -388,7 +459,7 @@ export function evaluateDestination(
 }
 
 export function createTravelService(deps: TravelServiceDeps): TravelService {
-  const { db, currency } = deps;
+  const { db, currency, inventory, keyItems } = deps;
 
   const catalog = (): TravelCatalog => buildTravelCatalog(deps.getContent());
 
@@ -409,6 +480,22 @@ export function createTravelService(deps: TravelServiceDeps): TravelService {
     return new Set(rows.map((r) => r.passId));
   }
 
+  /** Slugs of every key item the player holds. Read under `tx` when given. */
+  async function heldKeyItems(executor: DbOrTx, playerId: number): Promise<Set<string>> {
+    const rows = await executor
+      .select({ slug: items.slug })
+      .from(playerInventory)
+      .innerJoin(items, eq(items.id, playerInventory.itemId))
+      .where(
+        and(
+          eq(playerInventory.playerId, playerId),
+          eq(items.category, 'key'),
+          gt(playerInventory.quantity, 0),
+        ),
+      );
+    return new Set(rows.map((r) => r.slug));
+  }
+
   async function unlockedRegionIds(playerId: number): Promise<Set<string>> {
     const rows = await db
       .select({ regionId: playerUnlockedRoutes.regionId })
@@ -423,39 +510,78 @@ export function createTravelService(deps: TravelServiceDeps): TravelService {
     currentRegion: string,
   ): Promise<DestinationView[]> {
     const cat = catalog();
-    const [passIds, unlocked] = await Promise.all([
+    const [passIds, unlocked, keys] = await Promise.all([
       ownedPassIds(playerId),
       unlockedRegionIds(playerId),
+      heldKeyItems(db, playerId),
     ]);
-    return cat.destinations.map((destination) => {
-      const { state, requirements } = evaluateDestination(destination, {
-        level,
-        currentRegion,
-        passIds,
-        unlocked,
-      });
-      const passOwned = destination.pass ? passIds.has(destination.pass.id) : false;
-      return {
-        regionId: destination.region.id,
-        name: destination.region.name,
-        description: destination.region.description,
-        emoji: destination.region.emoji,
-        flavor: destination.region.flavor,
-        state,
-        price: state === 'unlocked' || state === 'current' ? 0 : destination.price,
-        currency: destination.currency,
-        requiredLevel: destination.requiredLevel,
-        requirements,
-        passOwned,
-        passName: destination.pass?.name ?? null,
-        purchaseGrantsPass: destination.grantedByPassPurchase && !passOwned,
-        bannerImagePath: destination.region.bannerImagePath ?? null,
-      };
-    });
+    return Promise.all(
+      cat.destinations.map(async (destination) => {
+        const { state, requirements } = evaluateDestination(destination, {
+          level,
+          currentRegion,
+          passIds,
+          unlocked,
+          keyItems: keys,
+        });
+        const passOwned = destination.pass ? passIds.has(destination.pass.id) : false;
+        let keyItem: DestinationKeyItemView | null = null;
+        if (destination.keyItem) {
+          const slug = destination.keyItem.gate.keyItem;
+          const owned = keys.has(slug);
+          keyItem = {
+            slug,
+            name: destination.keyItem.name,
+            emoji: destination.keyItem.emoji,
+            owned,
+            progress:
+              !owned && destination.keyItem.recipe
+                ? await keyItems.getProgress(playerId, destination.keyItem.recipe.id)
+                : null,
+          };
+        }
+        return {
+          regionId: destination.region.id,
+          name: destination.region.name,
+          description: destination.region.description,
+          emoji: destination.region.emoji,
+          flavor: destination.region.flavor,
+          state,
+          price: state === 'unlocked' || state === 'current' ? 0 : destination.price,
+          currency: destination.currency,
+          requiredLevel: destination.requiredLevel,
+          requirements,
+          passOwned,
+          passName: destination.pass?.name ?? null,
+          purchaseGrantsPass: destination.grantedByPassPurchase && !passOwned,
+          keyItem,
+          bannerImagePath: destination.region.bannerImagePath ?? null,
+        } satisfies DestinationView;
+      }),
+    );
   }
 
   return {
     catalog,
+
+    async accessibleRegions(playerId) {
+      const [unlocked, keys] = await Promise.all([
+        unlockedRegionIds(playerId),
+        heldKeyItems(db, playerId),
+      ]);
+      return catalog()
+        .destinations.filter((d) => {
+          switch (d.access) {
+            case 'starting':
+              return true;
+            case 'route':
+              return unlocked.has(d.region.id);
+            case 'key_item':
+              return d.keyItem != null && keys.has(d.keyItem.gate.keyItem);
+          }
+        })
+        .map((d) => d.region.id);
+    },
 
     async getCurrentRegion(playerId) {
       const [row] = await db
@@ -532,6 +658,15 @@ export function createTravelService(deps: TravelServiceDeps): TravelService {
       const destination = requireDestination(regionId);
       if (destination.access === 'starting') {
         throw new RouteAlreadyUnlockedError(regionId, destination.region.name);
+      }
+      if (destination.access === 'key_item' && destination.keyItem) {
+        // Never sold. The key is built (`keyItems.construct`), and holding it
+        // is the whole entitlement — there is no road to buy.
+        const held = await heldKeyItems(db, playerId);
+        if (held.has(destination.keyItem.gate.keyItem)) {
+          throw new RouteAlreadyUnlockedError(regionId, destination.region.name);
+        }
+        throw new KeyItemRequiredError(regionId, destination.region.name, destination.keyItem.name);
       }
       const { route, pass } = destination;
       if (!route || !pass) throw new RegionNotFoundError(regionId);
@@ -717,6 +852,7 @@ export function createTravelService(deps: TravelServiceDeps): TravelService {
         const currencies = await currency.lockCurrencies(tx, playerId);
         const [player] = await tx
           .select({
+            level: players.level,
             currentRegion: players.currentRegion,
             careModeStartedAt: players.careModeStartedAt,
             careModeLastTickAt: players.careModeLastTickAt,
@@ -756,7 +892,25 @@ export function createTravelService(deps: TravelServiceDeps): TravelService {
           throw new AlreadyInRegionError(regionId, destination.region.name);
         }
 
-        if (destination.access !== 'starting') {
+        if (destination.access === 'key_item' && destination.keyItem) {
+          // Held, not spent: this is a read, and nothing below writes to
+          // inventory. Only the *destination's* gate is checked — the region
+          // being left is never consulted — so a player standing in the Belt
+          // can always travel out of it, key or no key.
+          const held = await heldKeyItems(tx, playerId);
+          if (!held.has(destination.keyItem.gate.keyItem)) {
+            throw new KeyItemRequiredError(
+              regionId,
+              destination.region.name,
+              destination.keyItem.name,
+            );
+          }
+          // The level gate a route purchase used to enforce once, enforced on
+          // the trip instead: there is no purchase step left to hang it on.
+          if (player.level < destination.requiredLevel) {
+            throw new TravelLevelRequiredError(destination.requiredLevel, player.level);
+          }
+        } else if (destination.access !== 'starting') {
           const [route] = await tx
             .select()
             .from(playerUnlockedRoutes)
@@ -864,6 +1018,21 @@ export function createTravelService(deps: TravelServiceDeps): TravelService {
     async grantRoute(playerId, regionId) {
       const destination = requireDestination(regionId);
       if (destination.access === 'starting') return;
+      if (destination.access === 'key_item' && destination.keyItem) {
+        // Access to a key-item destination *is* the key, so granting the road
+        // grants the key. Idempotent through the item's own cap.
+        const slug = destination.keyItem.gate.keyItem;
+        await db.transaction(async (tx) => {
+          const [item] = await tx.select({ id: items.id }).from(items).where(eq(items.slug, slug));
+          if (!item) throw new RegionNotFoundError(regionId);
+          try {
+            await inventory.addItem(tx, playerId, item.id, 1);
+          } catch (err) {
+            if (!(err instanceof ItemOwnershipLimitError)) throw err;
+          }
+        });
+        return;
+      }
       await db
         .insert(playerUnlockedRoutes)
         .values({ playerId, regionId, source: 'admin' })
@@ -884,7 +1053,23 @@ export function createTravelService(deps: TravelServiceDeps): TravelService {
     },
 
     async revokeRoute(playerId, regionId) {
+      const keySlug = catalog().get(regionId)?.keyItem?.gate.keyItem ?? null;
       await db.transaction(async (tx) => {
+        if (keySlug) {
+          // The key-item analogue of deleting the route row: take the key.
+          const [item] = await tx
+            .select({ id: items.id })
+            .from(items)
+            .where(eq(items.slug, keySlug));
+          if (item) {
+            await tx
+              .update(playerInventory)
+              .set({ quantity: 0 })
+              .where(
+                and(eq(playerInventory.playerId, playerId), eq(playerInventory.itemId, item.id)),
+              );
+          }
+        }
         await tx
           .delete(playerUnlockedRoutes)
           .where(

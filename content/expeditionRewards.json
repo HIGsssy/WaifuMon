@@ -3131,7 +3131,7 @@
   {
     "id": "thirst-wreck-field-success-v1",
     "enabled": true,
-    "version": "thirst-wreck-field-success-v1",
+    "version": "thirst-wreck-field-success-v2",
     "waifubux": { "min": 10, "max": 14 },
     "essence": { "min": 1, "max": 2 },
     "waifuXp": 190,
@@ -3175,6 +3175,15 @@
         "entries": [
           { "itemId": "sun_cracked_flogger", "weight": 70, "quantity": 1, "enabled": true },
           { "itemId": "dried_up_lube_bottle", "weight": 30, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "stabilizer-in-the-wreckage",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 1500,
+        "entries": [
+          { "itemId": "quantum_stabilizer", "weight": 100, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -3348,7 +3357,7 @@
   {
     "id": "thirst-procession-wake-success-v1",
     "enabled": true,
-    "version": "thirst-procession-wake-success-v1",
+    "version": "thirst-procession-wake-success-v2",
     "waifubux": { "min": 32, "max": 40 },
     "essence": { "min": 2, "max": 4 },
     "waifuXp": 465,
@@ -3403,6 +3412,15 @@
         "entries": [
           { "itemId": "sun_cracked_flogger", "weight": 85, "quantity": 1, "enabled": true },
           { "itemId": "dried_up_lube_bottle", "weight": 15, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "stabilizer-off-the-bridal-barge",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 2500,
+        "entries": [
+          { "itemId": "quantum_stabilizer", "weight": 100, "quantity": 1, "enabled": true }
         ]
       }
     ]

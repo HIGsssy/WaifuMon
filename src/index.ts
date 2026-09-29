@@ -25,6 +25,7 @@ import { createInventoryService } from './modules/inventory/inventoryService';
 import { createPlayerService } from './modules/players/playerService';
 import { createShopService } from './modules/shop/shopService';
 import { createTravelService } from './modules/travel/travelService';
+import { createKeyItemService } from './modules/keyItems/keyItemService';
 import { createHuntService } from './modules/hunt/huntService';
 import { createWildEncounterSpawner } from './modules/encounters/wildEncounterSpawner';
 import {
@@ -164,10 +165,6 @@ async function main(): Promise<void> {
    * rule the reward services depend on rather than re-implement.
    */
   const essenceAward = createEssenceAwardService({ currency, buddyBonus });
-  // Achievement definitions are content, validated on load like every other
-  // content file. Static for Phase 1 (no admin editing), so they are read once
-  // here rather than through the reload pipeline.
-  const achievements = createAchievementService(db, loadAchievementDefinitions(config.contentDir));
   const leaderboards = createLeaderboardService(db);
   const worldEncounterVendorService = createWorldEncounterVendorService({
     db,
@@ -226,15 +223,35 @@ async function main(): Promise<void> {
    * to "where is the player". Travel itself depends on nothing in the
    * availability knot below, so the move is a reordering and not a new edge.
    */
+  // Key-item recipes (the Transporter Beacon). Travel reads their progress to
+  // explain a key-gated destination, so this is built first.
+  const keyItems = createKeyItemService({
+    db,
+    currency,
+    inventory,
+    getContent: () => contentSnapshot,
+  });
   const travel = createTravelService({
     db,
     currency,
+    inventory,
+    keyItems,
     // Same `contentSnapshot` closure the appearance and boss services use,
     // so an admin Reload Content republishes prices and destinations
     // without a restart.
     getContent: () => contentSnapshot,
   });
 
+  // Achievement definitions are content, validated on load like every other
+  // content file. Static for Phase 1 (no admin editing), so they are read once
+  // here rather than through the reload pipeline.
+  // Built after travel: "regions unlocked" is a travel-catalog question now
+  // that the Assteroid Belt is reached by a key item rather than a route row.
+  const achievements = createAchievementService(
+    db,
+    loadAchievementDefinitions(config.contentDir),
+    (playerId) => travel.accessibleRegions(playerId),
+  );
   let expeditions: ExpeditionService | undefined;
   const availability = createWaifuAvailabilityService({
     bulkProviders: [
@@ -434,6 +451,7 @@ async function main(): Promise<void> {
         timezone: config.dailyTimezone,
       }),
       travel,
+      keyItems,
       shop: createShopService({
         db,
         currency,

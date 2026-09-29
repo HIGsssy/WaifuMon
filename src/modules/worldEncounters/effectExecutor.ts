@@ -27,7 +27,11 @@ import {
 import type { InventoryService } from '../inventory/inventoryService';
 import type { ProgressionService } from '../progression/progressionService';
 import type { CollectionService } from '../collection/collectionService';
-import { InsufficientFundsError, InsufficientItemsError } from '../../shared/errors';
+import {
+  InsufficientFundsError,
+  InsufficientItemsError,
+  ItemOwnershipLimitError,
+} from '../../shared/errors';
 import type { AppliedBuddyBonus } from '../buddyBonus/buddyBonusEffects';
 import { normalizeWaifumonSelection, type Effect } from './types';
 
@@ -404,8 +408,20 @@ export function createEffectExecutor(deps: EffectExecutorDeps) {
             applied.push({ effect, applied: false, reason: 'unknown_item' });
             break;
           }
-          await inventory.addItem(tx, ctx.playerId, itemId, effect.quantity);
-          record({ amount: effect.quantity });
+          try {
+            await inventory.addItem(tx, ctx.playerId, itemId, effect.quantity);
+            record({ amount: effect.quantity });
+          } catch (err) {
+            // A capped item (`items.max_owned`, e.g. the Transporter Beacon)
+            // the player already holds. Encounter effects are authored in the
+            // Portal where the loader cannot check them, so this is recorded
+            // as an unapplied effect rather than failing the whole resolution.
+            if (err instanceof ItemOwnershipLimitError) {
+              applied.push({ effect, applied: false, reason: 'ownership_limit' });
+            } else {
+              throw err;
+            }
+          }
           break;
         }
         case 'consume_item': {

@@ -67,7 +67,9 @@ function content(over: Partial<LoadedContent> = {}): LoadedContent {
             requiredLevel: 15,
           },
         ],
+        keyItemRoutes: [],
       },
+      keyItemRecipes: [],
     } as unknown as LoadedContent['tables'],
     ...over,
   };
@@ -78,6 +80,7 @@ const ctx = (over: Partial<Parameters<typeof evaluateDestination>[1]> = {}) => (
   currentRegion: 'waifu-valley',
   passIds: new Set<string>(),
   unlocked: new Set<string>(),
+  keyItems: new Set<string>(),
   ...over,
 });
 

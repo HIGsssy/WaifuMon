@@ -260,6 +260,17 @@ const ItemBaseSchema = z.object({
   description: z.string().default(''),
   emoji: z.string().nullable().default(null),
   enabled: z.boolean().default(true),
+  /**
+   * The most of this item one player may hold; null (the default) is
+   * unlimited. Enforced atomically in `inventoryService.addItem`, so a grant
+   * that would exceed it fails instead of stacking. For permanent key items
+   * (the Transporter Beacon is `1`) and single-use shop components (the Phase
+   * Coupler is `1`: the shop refuses a second copy before charging). Never on
+   * anything a content reward table hands out — a reward that cannot be
+   * granted would roll back the whole payout it belongs to (the loader checks
+   * this).
+   */
+  maxOwned: z.number().int().positive().nullable().default(null),
 });
 
 export const ItemContentSchema = ItemBaseSchema.superRefine((item, ctx) => {
@@ -1977,6 +1988,25 @@ export const TravelRouteSchema = z
   .strict();
 
 /**
+ * A destination gated by *owning* a key item rather than by a route purchase —
+ * the Assteroid Belt and its Transporter Beacon.
+ *
+ * The item is checked, never consumed: holding it is the entitlement. How the
+ * item is obtained (a recipe in `tables.keyItemRecipes`) is deliberately not
+ * named here, so the gate reads "own this" and the recipe reads "build this",
+ * and the loader ties the two together.
+ */
+export const TravelKeyItemRouteSchema = z
+  .object({
+    regionId: z.enum(ALL_REGIONS),
+    /** Slug of a `key` item with `maxOwned: 1`. */
+    keyItem: slug,
+    /** Checked at travel time, alongside the item. */
+    requiredLevel: z.number().int().positive().default(1),
+  })
+  .strict();
+
+/**
  * Travel tuning. Every number a live operator might move — the pass price, the
  * level gate, per-route fees — is content, never a constant in a service.
  */
@@ -1985,6 +2015,38 @@ export const TravelConfigSchema = z
     enabled: z.boolean().default(true),
     passes: z.array(TravelPassSchema).default([]),
     routes: z.array(TravelRouteSchema).default([]),
+    keyItemRoutes: z.array(TravelKeyItemRouteSchema).default([]),
+  })
+  .superRefine((cfg, ctx) => {
+    // A region is reached one way. Both a route and a key gate would make the
+    // Locations screen offer a Buy button that bypasses the key.
+    const keyRegions = cfg.keyItemRoutes.map((r) => r.regionId);
+    const dupKey = keyRegions.find((id, i, a) => a.indexOf(id) !== i);
+    if (dupKey) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `travel.keyItemRoutes defines region "${dupKey}" more than once`,
+        path: ['keyItemRoutes'],
+      });
+    }
+    for (const [i, gate] of cfg.keyItemRoutes.entries()) {
+      if (cfg.routes.some((r) => r.regionId === gate.regionId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            `region "${gate.regionId}" appears in both travel.routes and ` +
+            'travel.keyItemRoutes — a destination is reached one way',
+          path: ['keyItemRoutes', i, 'regionId'],
+        });
+      }
+      if (gate.regionId === DEFAULT_REGION) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `travel.keyItemRoutes must not gate the starting region "${DEFAULT_REGION}"`,
+          path: ['keyItemRoutes', i, 'regionId'],
+        });
+      }
+    }
   })
   .superRefine((cfg, ctx) => {
     const passIds = new Set(cfg.passes.map((p) => p.id));
@@ -2047,6 +2109,79 @@ export const TravelConfigSchema = z
 export type TravelConfig = z.infer<typeof TravelConfigSchema>;
 export type TravelPassConfig = z.infer<typeof TravelPassSchema>;
 export type TravelRouteConfig = z.infer<typeof TravelRouteSchema>;
+export type TravelKeyItemRouteConfig = z.infer<typeof TravelKeyItemRouteSchema>;
+
+/**
+ * A key-item recipe: turn in components and WaifuBux, receive one permanent
+ * key item. The Transporter Beacon is the first.
+ *
+ * Construction consumes every input and the WaifuBux in one transaction and
+ * grants exactly one `output`. The output must be a `key` item capped at one
+ * (`maxOwned: 1`, checked by the loader), which is what makes "build it twice"
+ * impossible at the database rather than merely unoffered on a screen.
+ */
+export const KeyItemRecipeSchema = z
+  .object({
+    /** Stable id — recorded on `key_item_constructions.recipe_id`. */
+    id: slug,
+    output: slug,
+    inputs: z
+      .array(
+        z
+          .object({
+            item: slug,
+            quantity: z.number().int().positive(),
+            /**
+             * Where to look — shown beside a component the player is still
+             * missing, so the recipe is discoverable rather than folklore.
+             */
+            hint: z.string().default(''),
+          })
+          .strict(),
+      )
+      .min(1),
+    waifubux: z.number().int().nonnegative().default(0),
+  })
+  .strict()
+  .superRefine((recipe, ctx) => {
+    const slugs = recipe.inputs.map((i) => i.item);
+    const dup = slugs.find((s, i) => slugs.indexOf(s) !== i);
+    if (dup) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `keyItemRecipes["${recipe.id}"] lists input "${dup}" twice — sum the quantities`,
+        path: ['inputs'],
+      });
+    }
+    if (slugs.includes(recipe.output)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `keyItemRecipes["${recipe.id}"] consumes its own output "${recipe.output}"`,
+        path: ['inputs'],
+      });
+    }
+  });
+
+export const KeyItemRecipesSchema = z.array(KeyItemRecipeSchema).superRefine((recipes, ctx) => {
+  const ids = recipes.map((r) => r.id);
+  const dupId = ids.find((id, i) => ids.indexOf(id) !== i);
+  if (dupId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `keyItemRecipes contains duplicate recipe id "${dupId}"`,
+    });
+  }
+  const outputs = recipes.map((r) => r.output);
+  const dupOut = outputs.find((o, i) => outputs.indexOf(o) !== i);
+  if (dupOut) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `keyItemRecipes has two recipes producing "${dupOut}"`,
+    });
+  }
+});
+
+export type KeyItemRecipeConfig = z.infer<typeof KeyItemRecipeSchema>;
 
 /** Travel switched off — the default when `tables.json` omits the block. */
 const TRAVEL_DEFAULT: z.input<typeof TravelConfigSchema> = { enabled: false };
@@ -2615,6 +2750,7 @@ export const TablesFileSchema = z.object({
   }),
   session: SessionConfigSchema.optional().default({ inactiveTimeoutMinutes: 45 }),
   travel: TravelConfigSchema.optional().default(TRAVEL_DEFAULT),
+  keyItemRecipes: KeyItemRecipesSchema.optional().default([]),
   worldEncounter: WorldEncounterConfigSchema.optional().default(WORLD_ENCOUNTER_DEFAULT),
 });
 

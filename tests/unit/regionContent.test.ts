@@ -62,7 +62,7 @@ function region(over: Partial<RegionContent> & Pick<RegionContent, 'id' | 'name'
   };
 }
 
-const TRAVEL_OFF = { enabled: false, passes: [], routes: [] };
+const TRAVEL_OFF = { enabled: false, passes: [], routes: [], keyItemRoutes: [] };
 const ASSETS_DIR = path.resolve(__dirname, '..', '..', 'assets');
 const CONTENT_DIR_SHIPPED = path.resolve(__dirname, '..', '..', 'content');
 
@@ -923,20 +923,52 @@ describe('shipped content — Assteroid Belt, the destination after Base 80085',
     }
   });
 
-  it('sells it as a Caravan Pass route at level 35 for 3,000', () => {
+  it('gates it on a Transporter Beacon at level 35, built for 1,500', () => {
     const content = loadContent(CONTENT_DIR, ASSETS_DIR, silentLogger());
     const catalog = buildTravelCatalog(content);
     const belt = catalog.get('assteroid-belt')!;
-    expect(belt.access).toBe('route');
-    expect(belt.pass!.id).toBe('caravan_pass');
-    expect(belt.grantedByPassPurchase).toBe(false);
+    // No longer a Caravan Pass route: the key item is the whole entitlement.
+    expect(belt.access).toBe('key_item');
+    expect(belt.pass).toBeNull();
+    expect(belt.route).toBeNull();
+    expect(content.tables.travel.routes.some((r) => r.regionId === 'assteroid-belt')).toBe(false);
     expect(
       content.tables.travel.passes.every((p) => !p.grantsRoutes.includes('assteroid-belt')),
     ).toBe(true);
-    expect(belt.price).toBe(3000);
+    expect(belt.keyItem!.gate.keyItem).toBe('transporter_beacon');
+    expect(belt.keyItem!.name).toBe('Transporter Beacon');
+    expect(belt.keyItem!.recipe!.waifubux).toBe(1500);
+    expect(belt.keyItem!.recipe!.inputs.map((i) => [i.item, i.quantity])).toEqual([
+      ['cracked_teleport_core', 1],
+      ['quantum_stabilizer', 2],
+      ['phase_coupler', 1],
+      ['astral_power_cell', 1],
+    ]);
+    expect(belt.price).toBe(1500);
     expect(belt.currency).toBe('waifubux');
+    // Level gate and ordering unchanged from the route it replaced.
     expect(belt.requiredLevel).toBe(35);
     expect(catalog.destinations.at(-1)!.region.id).toBe('assteroid-belt');
+  });
+
+  it('leaves every other destination on its Caravan Pass route, unchanged', () => {
+    const content = loadContent(CONTENT_DIR, ASSETS_DIR, silentLogger());
+    const catalog = buildTravelCatalog(content);
+    const expected: [string, number, number][] = [
+      ['twin-peeks', 1000, 15],
+      ['flaccid-foothills', 1500, 20],
+      ['thirstlands', 2000, 25],
+      ['base-80085', 2500, 30],
+    ];
+    for (const [id, price, level] of expected) {
+      const d = catalog.get(id)!;
+      expect(d.access, id).toBe('route');
+      expect(d.keyItem, id).toBeNull();
+      expect(d.pass!.id, id).toBe('caravan_pass');
+      expect(d.price, id).toBe(price);
+      expect(d.requiredLevel, id).toBe(level);
+    }
+    expect(catalog.get('waifu-valley')!.access).toBe('starting');
   });
 
   it('would refuse the release if the pool were emptied', () => {

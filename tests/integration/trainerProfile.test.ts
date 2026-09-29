@@ -117,6 +117,7 @@ beforeAll(async () => {
     services: {
       guilds: app.guilds,
       travel: app.travel,
+      keyItems: app.keyItems,
       players: app.players,
       achievements: app.achievements,
       leaderboards: app.leaderboards,

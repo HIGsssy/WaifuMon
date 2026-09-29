@@ -17,6 +17,7 @@ import {
   ItemNotPurchasableError,
   ItemNotSellableError,
   ItemNotSoldHereError,
+  ItemOwnershipLimitError,
 } from '../../shared/errors';
 import type { CurrencyService } from '../currency/currencyService';
 import type { InventoryService } from '../inventory/inventoryService';
@@ -306,6 +307,23 @@ export function createShopService(deps: ShopServiceDeps): ShopService {
         // Lock the currency row first — it serializes concurrent purchases by
         // this player, so the capacity check below can't race either.
         await currency.lockCurrencies(tx, playerId);
+
+        // An ownership-capped item (`max_owned` — the Phase Coupler) is refused
+        // here, before any charge, with the lock above serializing a
+        // double-click. `inventory.addItem` enforces the same cap atomically
+        // below, so this is the clear message and that is the backstop: a
+        // purchase that loses the race still rolls back with nothing spent.
+        if (item.maxOwned != null) {
+          const [held] = await tx
+            .select({ quantity: playerInventory.quantity })
+            .from(playerInventory)
+            .where(
+              and(eq(playerInventory.playerId, playerId), eq(playerInventory.itemId, item.id)),
+            );
+          if ((held?.quantity ?? 0) + quantity > item.maxOwned) {
+            throw new ItemOwnershipLimitError(item.id, item.name, item.maxOwned);
+          }
+        }
 
         // The soft capacity cap covers capture items only; consumables are
         // limited by their price, not by charm capacity.
