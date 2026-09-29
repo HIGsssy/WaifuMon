@@ -414,5 +414,18 @@
     "repelledText": "RNGsus is hurled backward into a mountain of loot crates as his enormous D20 halo flashes CRITICAL FAILURE. Silence falls. He slowly raises one trembling die. 'Surely... twice cannot happen.' He rolls. Another 1. 'WHAT THE FUCK?!' Somewhere in the heavens, a celestial error sound plays. RNGsus immediately disconnects.",
     "unchallengedText": "RNGsus waits beneath his glowing polyhedral halo while hundreds of slot machines spin around him. Eventually they stop simultaneously: NO ENCOUNTER. He shrugs. 'Skill issue.' With a snap of his fingers, every unopened loot crate vanishes with him.",
     "description": "The smug digital messiah of probability itself. RNGsus presides over loot tables, critical hits, random encounters, rare drops, pity systems, and every 99% success chance that somehow fucking misses. He offers neither justice nor mercy—only odds."
+  },
+  {
+    "id": "tween_heart_throbs",
+    "name": "The Tween Heart-Throbs",
+    "affinity": "switch",
+    "region": "waifu-valley",
+    "enabled": true,
+    "artwork": "bosses/tween-heart-throbs_boss.webp",
+    "rewardTable": "standard-scouting-v1",
+    "scoutingText": "The moonlight suddenly becomes suspiciously dramatic. Two impossibly handsome men step from the shadows. One glitters like a dropped disco ball. The other growls while somehow losing another piece of his shirt. They completely ignore you and stare at your Waifumon. 'I've waited a hundred years for you,' Eddy whispers. Jake bares his fangs. 'Back off, Sparkles. She belongs with the pack.' Your Waifumon looks at you. 'I don't know either of these men.'",
+    "repelledText": "Eddy Sparkles crashes into Jake Woofman and the two tumble dramatically into a rose bush. 'YOU RUINED THE MOMENT!' Eddy screams. 'YOU WERE THE MOMENT?!' Jake shouts back. They immediately begin arguing about whose supernatural brooding is more attractive. Your Waifumon quietly suggests leaving before they notice everyone is gone.",
+    "unchallengedText": "You decide not to get involved. Unfortunately, Eddy and Jake interpret this as permission to continue. 'Choose me,' Eddy whispers, sparkling aggressively. Jake dramatically removes what remains of his shirt. 'No. Choose ME.' Your Waifumon stares at them for several uncomfortable seconds before walking away. Neither notices. They're too busy glaring romantically at each other.",
+    "description": "Eddy Sparkles and Jake Woofman are rival supernatural heart-throbs locked in an eternal struggle for romance, attention, and dramatic moonlit staring contests. Whenever they encounter an attractive Waifumon, both immediately become convinced she's the mysterious heroine destiny promised them. Strangely, their constant obsession with each other has caused several witnesses to question who they're actually trying to impress."
   }
 ]
