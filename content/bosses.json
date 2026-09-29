@@ -453,5 +453,18 @@
     "repelledText": "The Space Sheriff tumbles backward through the airlock and catches herself on the railing. 'ASSAULTING AN OFFICER?!' She reaches for her cuffs, pauses, and checks her datapad. 'Huh. Apparently we're outside my jurisdiction.' She points sternly at you. 'Don't move.' Your ship immediately jumps to hyperspace. Somewhere behind you, an extremely angry space sheriff begins filling out paperwork.",
     "unchallengedText": "You cooperate with the investigation. The Space Sheriff spends twenty minutes interviewing your Waifumon individually before returning with her datapad. 'Well, I'll be damned. They're all here voluntarily.' She looks at you. Then at the Waifumon. Then back at you. 'All of them?' Your Waifumon nod. The Sheriff slowly puts her sunglasses back on. 'I don't know whether to arrest you or ask for advice.'",
     "description": "Lawwoman of the outer systems, protector of innocent Waifumon, and sworn enemy of suspicious cargo manifests. The Space Sheriff patrols the galaxy searching for smugglers, traffickers, poachers, and anyone transporting an statistically improbable number of attractive women. Unfortunately for you, your entire lifestyle constitutes probable cause."
+  },
+  {
+    "id": "changeling_imposter",
+    "name": "The Changeling Imposter",
+    "affinity": "switch",
+    "region": "waifu-valley",
+    "enabled": true,
+    "artwork": "bosses/changeling-imposter_boss.webp",
+    "rewardTable": "standard-scouting-v1",
+    "scoutingText": "You round the corner of the starport and freeze. One of your Waifumon is standing there. Same face. Same clothes. Same voice. Everything. She smiles and waves. 'Oh hey! It's me! Your Waifumon!' There's a long silence. 'You know... the one you like?' She glances nervously at your actual Waifumon standing beside you. 'Oh.' Her left eye briefly develops three pupils. 'Okay, I can explain.'",
+    "repelledText": "The Changeling Imposter stumbles backward and her disguise begins glitching wildly. Horns! Wings! Cat ears! Tentacles! Android parts! 'STOP HITTING ME! I'M TRYING TO CONCENTRATE!' For one horrifying second she accidentally transforms into you. She looks down at herself. 'EW! Wrong one!' She immediately turns into your Waifumon again and sprints away.",
+    "unchallengedText": "You stare at the duplicate. The duplicate stares back. Your actual Waifumon slowly raises an eyebrow. 'Soooo...' the Changeling says. 'I assume there's some kind of orientation packet?' Nobody answers. 'Employee handbook?' Silence. 'Cheat sheet?' Your Waifumon cracks her knuckles. The Changeling quietly turns into a nearby trash can.",
+    "description": "A shapeshifting alien with the remarkable ability to perfectly replicate any Waifumon she encounters and the unfortunate inability to research her target for more than thirty seconds. Her disguises are flawless. Her acting is not. Experts recommend asking suspected imposters basic questions such as names, favorite foods, or why they suddenly have antennae."
   }
 ]
