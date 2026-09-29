@@ -401,5 +401,18 @@
     "repelledText": "The Space Siren tumbles backward through zero gravity before catching herself against an asteroid. She looks up at you with a pout. 'Aww... you're really going to treat me like that?' Your navigation computer immediately flashes: YES. KEEP GOING. DON'T LISTEN TO HER. She giggles, blows you a kiss, and disappears into the asteroid field.",
     "unchallengedText": "You cautiously begin backing away. The Space Siren tilts her head. 'Leaving already?' She gives you another sweet smile. 'But I was going to be sooooo cooperative...' Your ship stops. The engines shut down. Your Waifumon slowly turns toward you. You restart the engines. 'GOOD DECISION,' announces the navigation computer.",
     "description": "A coy cosmic temptress who discovered that acting sweet, submissive, and suspiciously eager is remarkably effective at making hunters abandon every survival instinct they possess. Whether she actually wants to be caught or simply enjoys watching people make terrible decisions remains unclear."
+  },
+  {
+    "id": "rngsus",
+    "name": "RNGsus",
+    "affinity": "switch",
+    "region": "waifu-valley",
+    "enabled": true,
+    "artwork": "bosses/rngsus_boss.webp",
+    "rewardTable": "standard-scouting-v1",
+    "scoutingText": "Reality glitches. Dice begin raining from the sky as slot machines spin by themselves and unopened loot crates materialize across the ground. From the chaos waddles a robed figure wearing pixelated sunglasses, a glowing D20 halo blazing behind his head. RNGsus extends a fistful of shimmering dice toward you. 'My child... you seek favorable odds.' He rolls one. It lands on a 1. His grin widens. 'LOL. Get fucked.'",
+    "repelledText": "RNGsus is hurled backward into a mountain of loot crates as his enormous D20 halo flashes CRITICAL FAILURE. Silence falls. He slowly raises one trembling die. 'Surely... twice cannot happen.' He rolls. Another 1. 'WHAT THE FUCK?!' Somewhere in the heavens, a celestial error sound plays. RNGsus immediately disconnects.",
+    "unchallengedText": "RNGsus waits beneath his glowing polyhedral halo while hundreds of slot machines spin around him. Eventually they stop simultaneously: NO ENCOUNTER. He shrugs. 'Skill issue.' With a snap of his fingers, every unopened loot crate vanishes with him.",
+    "description": "The smug digital messiah of probability itself. RNGsus presides over loot tables, critical hits, random encounters, rare drops, pity systems, and every 99% success chance that somehow fucking misses. He offers neither justice nor mercy—only odds."
   }
 ]
