@@ -39,7 +39,6 @@ import {
   KeyItemRequiredError,
   TravelBlockedByCareModeError,
   TravelBlockedByEncounterError,
-  TravelLevelRequiredError,
 } from '../../src/shared/errors';
 import { TRAVEL_ENERGY_COST } from '../../src/modules/travel/travelService';
 import {
@@ -61,7 +60,11 @@ const EXPANSION = 'assteroid_belt';
 const CHANNEL = 'chan-assteroid-belt';
 /** Straight from `tables.json` — asserted, not assumed, in the first test. */
 const BEACON_COST = 1500;
-const ROUTE_LEVEL = 35;
+/**
+ * Past every Caravan Pass gate. Not a Belt requirement — the Belt has no level
+ * gate; holding the beacon is the whole entitlement.
+ */
+const PLAYER_LEVEL = 35;
 const BEACON = 'transporter_beacon';
 
 /** The exclusives the pack ships, read from content rather than hard-coded. */
@@ -112,7 +115,7 @@ async function resetPlayer(
   await t.db
     .update(players)
     .set({
-      level: opts.level ?? ROUTE_LEVEL,
+      level: opts.level ?? PLAYER_LEVEL,
       lastHuntAt: null,
       careModeStartedAt: null,
       careModeLastTickAt: null,
@@ -153,11 +156,12 @@ describe('released destination', () => {
     const belt = status.destinations.find((d) => d.regionId === REGION);
     expect(belt).toBeDefined();
     expect(belt!.name).toBe('Assteroid Belt');
-    // Level met, beacon missing: the key is the only thing in the way.
+    // Beacon missing: the key is the only thing in the way.
     expect(belt!.state).toBe('key_required');
     expect(belt!.price).toBe(BEACON_COST);
     expect(belt!.currency).toBe('waifubux');
-    expect(belt!.requiredLevel).toBe(ROUTE_LEVEL);
+    // No level gate: Base 80085 access and the components are the progression.
+    expect(belt!.requiredLevel).toBeNull();
     // Not a Caravan Pass route any more, so nothing pass-shaped is offered.
     expect(belt!.passName).toBeNull();
     expect(belt!.purchaseGrantsPass).toBe(false);
@@ -238,15 +242,25 @@ describe('the gate', () => {
     expect((await app.travel.getDestination(playerId, REGION))!.state).toBe('key_required');
   });
 
-  it('refuses travel below level 35, even with the beacon', async () => {
-    await resetPlayer({ level: ROUTE_LEVEL - 1, withBeacon: true });
+  it('refuses travel without the beacon at any level', async () => {
+    for (const level of [1, 34, 35, 99]) {
+      await resetPlayer({ level });
+      const view = await app.travel.getDestination(playerId, REGION);
+      expect(view!.state, `level ${level}`).toBe('key_required');
+      await expect(app.travel.travel(playerId, REGION)).rejects.toBeInstanceOf(
+        KeyItemRequiredError,
+      );
+      expect(await app.travel.getCurrentRegion(playerId)).toBe('waifu-valley');
+    }
+  });
+
+  it('lets a player below level 35 in on the beacon alone', async () => {
+    await resetPlayer({ level: 12, withBeacon: true });
     const view = await app.travel.getDestination(playerId, REGION);
-    expect(view!.state).toBe('ineligible');
-    expect(view!.requirements.join(' ')).toContain(String(ROUTE_LEVEL));
-    await expect(app.travel.travel(playerId, REGION)).rejects.toBeInstanceOf(
-      TravelLevelRequiredError,
-    );
-    expect(await app.travel.getCurrentRegion(playerId)).toBe('waifu-valley');
+    expect(view!.state).toBe('unlocked');
+    expect(view!.requirements).toEqual([]);
+    await app.travel.travel(playerId, REGION);
+    expect(await app.travel.getCurrentRegion(playerId)).toBe(REGION);
   });
 });
 
@@ -305,10 +319,6 @@ describe('unlock and travel', () => {
     await resetPlayer({ withBeacon: true });
     const result = await huntWith([0, 0, 0.5]).hunt(playerId, CHANNEL);
     expect(result.kind).toBe('encounter');
-    // The hunt's XP grant re-derives `level` from this fixture's zero XP.
-    // Restore it: the Belt checks its level gate on the trip, and this test is
-    // about the encounter block, not the level one.
-    await t.db.update(players).set({ level: ROUTE_LEVEL }).where(eq(players.id, playerId));
     await expect(app.travel.travel(playerId, REGION)).rejects.toBeInstanceOf(
       TravelBlockedByEncounterError,
     );

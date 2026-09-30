@@ -2001,8 +2001,13 @@ export const TravelKeyItemRouteSchema = z
     regionId: z.enum(ALL_REGIONS),
     /** Slug of a `key` item with `maxOwned: 1`. */
     keyItem: slug,
-    /** Checked at travel time, alongside the item. */
-    requiredLevel: z.number().int().positive().default(1),
+    /**
+     * Optional trainer level, checked at travel time alongside the item. Null
+     * (the default, and what omitting it means) is *no* level requirement —
+     * not level 1 — so the key alone is the entitlement and no level is
+     * compared or shown.
+     */
+    requiredLevel: z.number().int().positive().nullable().default(null),
   })
   .strict();
 

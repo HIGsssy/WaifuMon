@@ -102,7 +102,12 @@ function playerState(overrides: Partial<TestControlsPlayerState> = {}): TestCont
     maxEnergy: 20,
     currentRegion: 'waifu-valley',
     currentRegionName: 'Waifu Valley',
-    beacon: { slug: 'transporter_beacon', name: 'Transporter Beacon', owned: false },
+    beacon: {
+      slug: 'transporter_beacon',
+      name: 'Transporter Beacon',
+      owned: false,
+      requiredLevel: null,
+    },
     beltComponents: [
       { slug: 'cracked_teleport_core', name: 'Cracked Teleport Core', owned: 0, required: 1 },
     ],
@@ -216,6 +221,17 @@ describe('the player page', () => {
     expect(within(summary).getByText('12 / 50')).toBeInTheDocument();
     expect(within(summary).getByText('5,000')).toBeInTheDocument();
     expect(within(summary).getByText('4 / 20')).toBeInTheDocument();
+  });
+
+  it('reports the Belt as having no level requirement, and routes by their level', async () => {
+    serve();
+    renderPlayerPage();
+    const summary = await screen.findByTestId('test-controls-summary');
+    expect(within(summary).getByText('Belt level requirement')).toBeInTheDocument();
+    expect(within(summary).getByText('No level requirement')).toBeInTheDocument();
+    expect(within(summary).queryByText(/Lv 1/)).toBeNull();
+    const access = screen.getByLabelText('Travel access');
+    expect(access).toHaveTextContent('Twin Peeks (Lv 15)');
   });
 
   it('sets the level and shows what changed', async () => {

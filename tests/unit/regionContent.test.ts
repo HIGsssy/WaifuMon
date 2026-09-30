@@ -923,7 +923,7 @@ describe('shipped content — Assteroid Belt, the destination after Base 80085',
     }
   });
 
-  it('gates it on a Transporter Beacon at level 35, built for 1,500', () => {
+  it('gates it on a Transporter Beacon alone, built for 1,500', () => {
     const content = loadContent(CONTENT_DIR, ASSETS_DIR, silentLogger());
     const catalog = buildTravelCatalog(content);
     const belt = catalog.get('assteroid-belt')!;
@@ -946,8 +946,10 @@ describe('shipped content — Assteroid Belt, the destination after Base 80085',
     ]);
     expect(belt.price).toBe(1500);
     expect(belt.currency).toBe('waifubux');
-    // Level gate and ordering unchanged from the route it replaced.
-    expect(belt.requiredLevel).toBe(35);
+    // No level gate: reaching Base 80085 and building the beacon is the
+    // progression. Ordering unchanged from the route it replaced.
+    expect(belt.keyItem!.gate.requiredLevel).toBeNull();
+    expect(belt.requiredLevel).toBeNull();
     expect(catalog.destinations.at(-1)!.region.id).toBe('assteroid-belt');
   });
 

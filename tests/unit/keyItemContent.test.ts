@@ -45,6 +45,28 @@ describe('shipped content', () => {
     ]);
   });
 
+  it('makes every component a sellable key item and leaves the beacon unsellable', () => {
+    const bySlug = new Map(SHIPPED.items.map((i) => [i.slug, i]));
+    const sell = (slug: string) => bySlug.get(slug)!.sellValue;
+    for (const slug of ['cracked_teleport_core', 'quantum_stabilizer', 'phase_coupler', 'astral_power_cell']) {
+      const item = bySlug.get(slug)!;
+      expect(item.category, slug).toBe('key');
+      expect(item.explicitlySellable, slug).toBe(true);
+      expect(item.sellValue, slug).toBeGreaterThan(0);
+    }
+    // Buyable < farmable < world-encounter < boss drop.
+    expect(sell('phase_coupler')!).toBeLessThan(sell('quantum_stabilizer')!);
+    expect(sell('quantum_stabilizer')!).toBeLessThan(sell('cracked_teleport_core')!);
+    expect(sell('cracked_teleport_core')!).toBeLessThan(sell('astral_power_cell')!);
+
+    const beacon = bySlug.get('transporter_beacon')!;
+    expect(beacon.sellValue).toBeNull();
+    expect(beacon.explicitlySellable).toBe(false);
+    expect(beacon.buyPrice).toBeNull();
+    expect(beacon.shopRegions).toEqual([]);
+    expect(beacon.maxOwned).toBe(1);
+  });
+
   it('gives every component a real source', () => {
     const t = SHIPPED.tables;
     // Astral Power Cell — its own independent boss-reward group, so adding it
@@ -70,17 +92,61 @@ describe('shipped content', () => {
     const coupler = SHIPPED.items.find((i) => i.slug === 'phase_coupler')!;
     expect(coupler.shopRegions).toEqual(['base-80085']);
     expect(coupler.buyPrice).toBeGreaterThan(0);
-    // Cracked Teleport Core — a seeded Base 80085 world encounter.
-    const wreck = SEED_ENCOUNTERS.find((e) => e.slug === 'b8_teleporter_wreck')!;
-    expect(wreck.regions).toEqual(['base-80085']);
-    expect(wreck.lifecycle).toBe('active');
-    expect(
-      wreck.choices.some((c) =>
-        c.successEffects.some(
-          (e) => e.type === 'give_item' && e.slug === 'cracked_teleport_core',
-        ),
-      ),
-    ).toBe(true);
+    // Cracked Teleport Core — long Thirstlands expeditions, on the two long
+    // missions the Stabilizer is *not* on, each as its own group so no other
+    // drop's odds moved. Success tables only, like the Stabilizer.
+    //
+    // Interim home: the Core belongs to Base 80085 thematically, but Base 80085
+    // ships no expedition content yet. When `content/expeditions/base-80085.json`
+    // exists, reconsider moving the Core there (and update the recipe hint, the
+    // item description and this test together).
+    const coreGroups = SHIPPED.expeditionRewards.flatMap((table) =>
+      table.groups
+        .filter((g) => g.entries.some((e) => e.itemId === 'cracked_teleport_core'))
+        .map((g) => ({ table: table.id, group: g })),
+    );
+    expect(coreGroups.map((c) => [c.table, c.group.chanceBasisPoints])).toEqual([
+      ['thirst-unrefiled-claim-success-v1', 500],
+      ['thirst-dune-road-success-v1', 2000],
+    ]);
+    for (const { group } of coreGroups) {
+      expect(group.enabled).toBe(true);
+      expect(group.rolls).toBe(1);
+      expect(group.entries).toHaveLength(1);
+      expect(group.entries[0]!.quantity).toBe(1);
+    }
+    const stabilizerIds = new Set(stabilizerTables.map((x) => x.id));
+    for (const { table } of coreGroups) expect(stabilizerIds.has(table), table).toBe(false);
+    // …and nowhere else: the Teleporter Wreck encounter that used to award it
+    // is no longer seeded, and no seeded encounter hands out any component.
+    expect(SEED_ENCOUNTERS.some((e) => e.slug === 'b8_teleporter_wreck')).toBe(false);
+    const components = new Set(['cracked_teleport_core', 'quantum_stabilizer', 'phase_coupler', 'astral_power_cell']);
+    for (const encounter of SEED_ENCOUNTERS) {
+      for (const choice of encounter.choices) {
+        for (const effect of [...choice.successEffects, ...(choice.failureEffects ?? [])]) {
+          const awards = effect.type === 'give_item' && components.has(effect.slug);
+          expect(awards, `${encounter.slug} awards a Beacon component`).toBe(false);
+        }
+      }
+    }
+  });
+
+  it('shows the Core\'s missions a key-item reward, and points the recipe hint at them', () => {
+    const missions = SHIPPED.expeditions.filter((e) =>
+      ['thirst_still_shored_still_hung', 'thirst_dont_sing_back'].includes(e.key),
+    );
+    expect(missions.map((e) => [e.key, e.durationMinutes])).toEqual([
+      ['thirst_still_shored_still_hung', 360],
+      ['thirst_dont_sing_back', 1080],
+    ]);
+    for (const m of missions) expect(m.rewardPreview, m.key).toContain('key_item');
+    const recipe = SHIPPED.tables.keyItemRecipes.find((r) => r.id === 'transporter_beacon')!;
+    const hint = recipe.inputs.find((i) => i.item === 'cracked_teleport_core')!.hint;
+    expect(hint).toMatch(/Thirstlands/);
+    expect(hint).not.toMatch(/encounter|Base 80085/i);
+    const core = SHIPPED.items.find((i) => i.slug === 'cracked_teleport_core')!;
+    expect(core.description).toMatch(/Thirstlands/);
+    expect(core.description).not.toMatch(/world encounter/i);
   });
 });
 
@@ -117,6 +183,33 @@ describe('item schema', () => {
 });
 
 describe('recipe and gate schema', () => {
+  it('reads an omitted gate level as no requirement, not level 1', () => {
+    const r = TravelConfigSchema.parse({
+      keyItemRoutes: [{ regionId: 'assteroid-belt', keyItem: 'transporter_beacon' }],
+    });
+    expect(r.keyItemRoutes[0]!.requiredLevel).toBeNull();
+  });
+
+  it('still accepts an explicit gate level, and refuses 0', () => {
+    const gate = (requiredLevel: unknown) =>
+      TravelConfigSchema.safeParse({
+        keyItemRoutes: [{ regionId: 'assteroid-belt', keyItem: 'transporter_beacon', requiredLevel }],
+      });
+    const ok = gate(40);
+    expect(ok.success && ok.data.keyItemRoutes[0]!.requiredLevel).toBe(40);
+    expect(gate(null).success).toBe(true);
+    expect(gate(0).success).toBe(false);
+  });
+
+  it('keeps pass and route levels numeric, defaulting to 1', () => {
+    const r = TravelConfigSchema.parse({
+      passes: [{ id: 'p', name: 'P', price: 1, grantsRoutes: [] }],
+      routes: [{ regionId: 'twin-peeks', passId: 'p' }],
+    });
+    expect(r.passes[0]!.requiredLevel).toBe(1);
+    expect(r.routes[0]!.requiredLevel).toBe(1);
+  });
+
   it('refuses a recipe that lists an input twice or consumes its own output', () => {
     const inputs = [{ item: 'a', quantity: 1 }];
     expect(
@@ -228,19 +321,28 @@ describe('evaluateDestination for a key-item gate', () => {
     expect(r.requirements.join(' ')).toContain('Transporter Beacon');
   });
 
-  it('opens with the key at the level gate', () => {
+  it('opens with the key', () => {
     expect(evaluateDestination(belt(), ctx({ keyItems: new Set(['transporter_beacon']) })).state).toBe(
       'unlocked',
     );
   });
 
-  it('holds the level gate even with the key', () => {
-    const r = evaluateDestination(
-      belt(),
-      ctx({ level: 34, keyItems: new Set(['transporter_beacon']) }),
-    );
-    expect(r.state).toBe('ineligible');
-    expect(r.requirements.join(' ')).toContain('35');
+  it('has no level gate on top of the key', () => {
+    for (const level of [1, 12, 34]) {
+      const r = evaluateDestination(
+        belt(),
+        ctx({ level, keyItems: new Set(['transporter_beacon']) }),
+      );
+      expect(r, `level ${level}`).toEqual({ state: 'unlocked', requirements: [] });
+    }
+  });
+
+  it('stays key_required without the key at any level, and names only the key', () => {
+    for (const level of [1, 34, 35, 99]) {
+      const r = evaluateDestination(belt(), ctx({ level }));
+      expect(r.state, `level ${level}`).toBe('key_required');
+      expect(r.requirements.join(' ')).not.toContain('Trainer Level');
+    }
   });
 
   it('reads as current when the player is standing there, key or not', () => {

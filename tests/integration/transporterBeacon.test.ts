@@ -11,7 +11,9 @@
  *     WaifuBux, exactly one beacon, or nothing at all;
  *   - no amount of double-clicking builds two or charges twice;
  *   - travel checks the beacon and never spends it, and leaving the Belt never
- *     depends on it;
+ *     depends on it; there is no level gate on top of it;
+ *   - components are vendorable key items, the beacon is not, and selling
+ *     surplus components never touches Belt access;
  *   - every other destination is still a Caravan Pass route, untouched.
  *
  * Written against shipped content, so the recipe asserted here is the recipe
@@ -30,7 +32,11 @@ import {
   playerUnlockedRoutes,
   players,
 } from '../../src/db/schema';
-import { handleShop, handleShopBuy } from '../../src/discord/commands/waifumon';
+import {
+  handleShop,
+  handleShopBuy,
+  handleShopSell,
+} from '../../src/discord/commands/waifumon';
 import {
   handleLocationDetail,
   handleLocationKeyBuild,
@@ -39,6 +45,7 @@ import {
 import type { AppContext, Provisioned } from '../../src/discord/types';
 import {
   InsufficientFundsError,
+  ItemNotSellableError,
   ItemOwnershipLimitError,
   KeyItemAlreadyOwnedError,
   KeyItemComponentsMissingError,
@@ -66,7 +73,15 @@ const BELT = 'assteroid-belt';
 const BEACON = 'transporter_beacon';
 const RECIPE = 'transporter_beacon';
 const COST = 1500;
+/** Past every Caravan Pass gate. The Belt itself has no level gate. */
 const LEVEL = 35;
+/** Resale value of each component; the beacon itself has none. */
+const COMPONENT_SELL_VALUES: Readonly<Record<string, number>> = {
+  cracked_teleport_core: 150,
+  quantum_stabilizer: 35,
+  phase_coupler: 25,
+  astral_power_cell: 400,
+};
 /** The shipped recipe, spelled out so the test does not trust content's copy. */
 const COMPONENTS: readonly (readonly [string, number])[] = [
   ['cracked_teleport_core', 1],
@@ -194,11 +209,27 @@ describe('shipped items', () => {
     expect(row!.enabled).toBe(true);
   });
 
-  it('ships every component as an unsellable key item', async () => {
+  it('ships every component as a sellable key item, priced by how hard it is to get', async () => {
     for (const [slug] of COMPONENTS) {
       const [row] = await t.db.select().from(items).where(eq(items.slug, slug));
       expect(row!.category, slug).toBe('key');
-      expect(row!.sellValue, slug).toBeNull();
+      expect(row!.sellValue, slug).toBe(COMPONENT_SELL_VALUES[slug]);
+    }
+  });
+
+  it('keeps every component off the shelves except the Phase Coupler', async () => {
+    for (const [slug] of COMPONENTS) {
+      const [row] = await t.db.select().from(items).where(eq(items.slug, slug));
+      if (slug === 'phase_coupler') {
+        expect(row!.shopRegions).toEqual(['base-80085']);
+        expect(row!.buyPrice).toBe(900);
+        expect(row!.maxOwned).toBe(1);
+        // Resale is a fraction of the shelf price, so buy-to-sell only loses.
+        expect(row!.sellValue!).toBeLessThan(row!.buyPrice!);
+      } else {
+        expect(row!.shopRegions, slug).toEqual([]);
+        expect(row!.buyPrice, slug).toBeNull();
+      }
     }
   });
 });
@@ -416,11 +447,11 @@ describe('travel with a beacon', () => {
     await expect(app.travel.travel(playerId, BELT)).rejects.toBeInstanceOf(KeyItemRequiredError);
   });
 
-  it('still enforces the level 35 gate on the trip', async () => {
-    await t.db.update(players).set({ level: LEVEL - 1 }).where(eq(players.id, playerId));
-    await expect(app.travel.travel(playerId, BELT)).rejects.toBeInstanceOf(
-      TravelLevelRequiredError,
-    );
+  it('has no level gate: the beacon alone opens the trip', async () => {
+    await t.db.update(players).set({ level: 1 }).where(eq(players.id, playerId));
+    expect((await app.travel.getDestination(playerId, BELT))!.requiredLevel).toBeNull();
+    await app.travel.travel(playerId, BELT);
+    expect(await app.travel.getCurrentRegion(playerId)).toBe(BELT);
     expect(await held(BEACON)).toBe(1);
   });
 });
@@ -444,6 +475,80 @@ describe('admin helpers on a key-item destination', () => {
     await app.travel.revokeRoute(playerId, BELT);
     expect(await held(BEACON)).toBe(0);
     expect(await app.travel.getCurrentRegion(playerId)).toBe('waifu-valley');
+  });
+});
+
+describe('selling components', () => {
+  it('sells each component for its sell value', async () => {
+    for (const [slug] of COMPONENTS) {
+      await give(slug, 1);
+      const bux = (await app.currency.getBalances(playerId)).waifubux;
+      const sale = await app.shop.sellItem(playerId, slug, 1);
+      expect(sale.totalValue, slug).toBe(COMPONENT_SELL_VALUES[slug]);
+      expect(sale.balanceAfter, slug).toBe(bux + COMPONENT_SELL_VALUES[slug]!);
+      expect(await held(slug), slug).toBe(0);
+    }
+  });
+
+  it('refuses to sell the beacon and keeps it', async () => {
+    await app.travel.grantRoute(playerId, BELT);
+    await expect(app.shop.sellItem(playerId, BEACON, 1)).rejects.toBeInstanceOf(
+      ItemNotSellableError,
+    );
+    expect(await held(BEACON)).toBe(1);
+    expect((await app.currency.getBalances(playerId)).waifubux).toBe(5000);
+  });
+
+  it('allows selling a component before construction, which then comes up short', async () => {
+    await giveAllComponents();
+    await app.shop.sellItem(playerId, 'astral_power_cell', 1);
+    await expect(app.keyItems.construct(playerId, RECIPE)).rejects.toBeInstanceOf(
+      KeyItemComponentsMissingError,
+    );
+    expect(await held(BEACON)).toBe(0);
+  });
+
+  it('sells surplus after construction without touching the beacon or Belt access', async () => {
+    await giveAllComponents(2);
+    await app.keyItems.construct(playerId, RECIPE);
+    expect(await held(BEACON)).toBe(1);
+
+    for (const [slug] of COMPONENTS) {
+      const surplus = await held(slug);
+      if (surplus > 0) await app.shop.sellItem(playerId, slug, surplus);
+      expect(await held(slug), slug).toBe(0);
+    }
+
+    expect(await held(BEACON)).toBe(1);
+    expect((await app.travel.getDestination(playerId, BELT))!.state).toBe('unlocked');
+    await app.travel.travel(playerId, BELT);
+    expect(await app.travel.getCurrentRegion(playerId)).toBe(BELT);
+  });
+
+  it('lists components on the Sell screen and never the beacon', async () => {
+    await app.travel.grantRoute(playerId, BELT);
+    for (const [slug] of COMPONENTS) await give(slug, 1);
+
+    const sellable = await app.shop.getSellableInventory(playerId);
+    expect(sellable.map((e) => e.item.slug).sort()).toEqual(
+      Object.keys(COMPONENT_SELL_VALUES).sort(),
+    );
+
+    const btn = fakeButton();
+    await handleShopSell(ctx, btn as never, prov);
+    const text = descriptionOf(painted(btn));
+    for (const name of [
+      'Cracked Teleport Core',
+      'Quantum Stabilizer',
+      'Phase Coupler',
+      'Astral Power Cell',
+    ]) {
+      expect(text).toContain(name);
+    }
+    expect(text).not.toContain('Transporter Beacon');
+    const sellButtons = buttonsOf(painted(btn)).filter((b) => b.customId.includes('sellqty'));
+    expect(sellButtons.length).toBeGreaterThan(0);
+    expect(sellButtons.some((b) => b.customId.includes(BEACON))).toBe(false);
   });
 });
 
@@ -480,6 +585,24 @@ describe('every other destination is unchanged', () => {
     expect(outcome.amount).toBe(2500);
     await app.travel.travel(playerId, 'base-80085');
     expect(await app.travel.getCurrentRegion(playerId)).toBe('base-80085');
+  });
+
+  it('keeps every Caravan Pass level gate, beacon or not', async () => {
+    await app.travel.grantRoute(playerId, BELT);
+    await app.travel.grantPass(playerId, 'caravan_pass');
+    for (const [region, level] of [
+      ['flaccid-foothills', 20],
+      ['thirstlands', 25],
+      ['base-80085', 30],
+    ] as const) {
+      await t.db.update(players).set({ level: level - 1 }).where(eq(players.id, playerId));
+      const view = await app.travel.getDestination(playerId, region);
+      expect(view!.state, region).toBe('ineligible');
+      expect(view!.requirements.join(' '), region).toContain(`Trainer Level ${level}`);
+      await expect(app.travel.purchaseDestination(playerId, region), region).rejects.toBeInstanceOf(
+        TravelLevelRequiredError,
+      );
+    }
   });
 
   it('does not let a beacon open any other region', async () => {
@@ -580,6 +703,20 @@ describe('Phase Coupler in the Base 80085 shop', () => {
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
     expect(await held(COUPLER)).toBe(1);
     expect((await app.currency.getBalances(playerId)).waifubux).toBe(5000 - PRICE);
+  });
+
+  it('sells back for less than it costs, freeing the cap for another purchase', async () => {
+    await app.shop.purchase(playerId, COUPLER, 1);
+    const sale = await app.shop.sellItem(playerId, COUPLER, 1);
+    expect(sale.totalValue).toBe(COMPONENT_SELL_VALUES[COUPLER]);
+    expect(sale.balanceAfter).toBe(5000 - PRICE + COMPONENT_SELL_VALUES[COUPLER]!);
+    expect(await held(COUPLER)).toBe(0);
+
+    await app.shop.purchase(playerId, COUPLER, 1);
+    expect(await held(COUPLER)).toBe(1);
+    await expect(app.shop.purchase(playerId, COUPLER, 1)).rejects.toBeInstanceOf(
+      ItemOwnershipLimitError,
+    );
   });
 
   it('can be bought again once construction has consumed it', async () => {

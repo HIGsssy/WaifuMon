@@ -141,14 +141,19 @@ export interface TestControlsPlayerState {
   maxEnergy: number;
   currentRegion: string;
   currentRegionName: string;
-  beacon: { slug: string; name: string; owned: boolean } | null;
+  /**
+   * The Belt's gate. `requiredLevel` is the gate's own level requirement, null
+   * when it has none — the Beacon alone is the entitlement.
+   */
+  beacon: { slug: string; name: string; owned: boolean; requiredLevel: number | null } | null;
   beltComponents: { slug: string; name: string; owned: number; required: number }[];
   /** Whether a pre-beacon `player_unlocked_routes` row for the Belt exists. */
   legacyBeltRoute: boolean;
   /** Active cooldowns on encounters that award a Belt component. */
   beltEncounterCooldowns: number;
   passes: { id: string; name: string; owned: boolean }[];
-  routes: { regionId: string; name: string; unlocked: boolean; requiredLevel: number }[];
+  /** `requiredLevel` is null for a destination with no level requirement. */
+  routes: { regionId: string; name: string; unlocked: boolean; requiredLevel: number | null }[];
 }
 
 export interface TestControlResult {
@@ -229,6 +234,7 @@ export function createStagingTestControlsService(
   function beltGate(): {
     beaconSlug: string;
     beaconName: string;
+    requiredLevel: number | null;
     components: { slug: string; quantity: number }[];
   } | null {
     const destination = travel.catalog().get(BELT_REGION);
@@ -236,6 +242,7 @@ export function createStagingTestControlsService(
     return {
       beaconSlug: destination.keyItem.gate.keyItem,
       beaconName: destination.keyItem.name,
+      requiredLevel: destination.requiredLevel,
       components: (destination.keyItem.recipe?.inputs ?? []).map((i) => ({
         slug: i.item,
         quantity: i.quantity,
@@ -303,10 +310,11 @@ export function createStagingTestControlsService(
   }
 
   /**
-   * World encounters whose choices award a Belt component — today the
-   * Teleporter Wreck (Cracked Teleport Core). Found by effect rather than by
-   * slug, so an encounter a designer re-authors or renames in the Portal is
-   * still the one that gets reset, and nothing else is.
+   * World encounters whose choices award a Belt component. None ships today —
+   * the Cracked Teleport Core moved to expeditions and the Teleporter Wreck
+   * was retired (migration 0044) — but a live server keeps that disabled row,
+   * and a designer may author another. Found by effect rather than by slug,
+   * so whatever awards a component is what gets reset, and nothing else is.
    */
   async function componentEncounterIds(executor: DbOrTx, slugs: string[]): Promise<number[]> {
     if (slugs.length === 0) return [];
@@ -566,6 +574,7 @@ export function createStagingTestControlsService(
             slug: gate.beaconSlug,
             name: gate.beaconName,
             owned: (held.get(gate.beaconSlug) ?? 0) > 0,
+            requiredLevel: gate.requiredLevel,
           }
         : null,
       beltComponents: (gate?.components ?? []).map((c) => ({

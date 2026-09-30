@@ -1234,11 +1234,13 @@
       "isGuaranteedCapture": false,
       "shopRegions": [],
       "buyPrice": null,
+      "sellValue": 150,
+      "explicitlySellable": true,
       "priceCurrency": "waifubux",
       "dailyStockLimit": null,
       "effectType": null,
       "effectConfig": null,
-      "description": "The heart of a teleporter that tried very hard and then stopped. Transporter Beacon component. Turned up by world encounters in Base 80085.",
+      "description": "The heart of a teleporter that tried very hard and then stopped. Transporter Beacon component. Dug up on long Thirstlands excavations and escorts.",
       "emoji": "🔮",
       "enabled": true
     },
@@ -1252,6 +1254,8 @@
       "isGuaranteedCapture": false,
       "shopRegions": [],
       "buyPrice": null,
+      "sellValue": 35,
+      "explicitlySellable": true,
       "priceCurrency": "waifubux",
       "dailyStockLimit": null,
       "effectType": null,
@@ -1272,6 +1276,8 @@
         "base-80085"
       ],
       "buyPrice": 900,
+      "sellValue": 25,
+      "explicitlySellable": true,
       "priceCurrency": "waifubux",
       "dailyStockLimit": null,
       "effectType": null,
@@ -1291,6 +1297,8 @@
       "isGuaranteedCapture": false,
       "shopRegions": [],
       "buyPrice": null,
+      "sellValue": 400,
+      "explicitlySellable": true,
       "priceCurrency": "waifubux",
       "dailyStockLimit": null,
       "effectType": null,
@@ -1300,7 +1308,7 @@
       "enabled": true
     },
     {
-      "slug": "transporter_beacon",astral_power_cell
+      "slug": "transporter_beacon",
       "name": "Transporter Beacon",
       "category": "key",
       "captureModifier": null,

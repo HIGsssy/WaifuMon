@@ -51,8 +51,12 @@ export interface DestinationDefinition {
   /** Total cost of reaching this destination from nothing, in `currency`. */
   price: number;
   currency: 'waifubux' | 'essence';
-  /** The stricter of the pass's and the route's level gates. */
-  requiredLevel: number;
+  /**
+   * The stricter of the pass's and the route's level gates, or a key-item
+   * gate's own. Null means no level requirement at all — nothing is compared
+   * and nothing is shown — which only a key-item gate can express.
+   */
+  requiredLevel: number | null;
 }
 
 export interface TravelCatalog {

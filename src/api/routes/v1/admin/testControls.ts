@@ -69,7 +69,15 @@ const stateSchema = z.object({
   maxEnergy: z.number().int(),
   currentRegion: z.string(),
   currentRegionName: z.string(),
-  beacon: z.object({ slug: z.string(), name: z.string(), owned: z.boolean() }).nullable(),
+  beacon: z
+    .object({
+      slug: z.string(),
+      name: z.string(),
+      owned: z.boolean(),
+      /** Null: the gate has no level requirement — the key alone opens it. */
+      requiredLevel: z.number().int().nullable(),
+    })
+    .nullable(),
   beltComponents: z.array(
     z.object({
       slug: z.string(),
@@ -86,7 +94,7 @@ const stateSchema = z.object({
       regionId: z.string(),
       name: z.string(),
       unlocked: z.boolean(),
-      requiredLevel: z.number().int(),
+      requiredLevel: z.number().int().nullable(),
     }),
   ),
 });

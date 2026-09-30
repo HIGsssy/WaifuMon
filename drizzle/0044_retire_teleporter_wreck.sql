@@ -1,0 +1,37 @@
+-- Retire the Teleporter Wreck world encounter.
+--
+-- The Cracked Teleport Core — one of the four Transporter Beacon components —
+-- now drops from long Thirstlands expeditions (`content/expeditionRewards.json`)
+-- instead of from this rare, cooldown-gated, skill-checked Base 80085
+-- encounter. The encounter existed only to hand out the Core, so it is
+-- retired rather than re-rewarded, and the Core has exactly one source.
+--
+-- Thirstlands is an interim home: Base 80085 has no expedition content yet.
+-- When it does, the Core should be reconsidered for relocation there.
+--
+-- Hand-written for the reason recorded in 0019-0021 and 0035-0043: the
+-- drizzle-kit snapshots stop at 0004, so a generated migration would diff
+-- against a stale baseline. The journal `when` is above 0043's, because the
+-- node-postgres migrator skips any entry not strictly newer than the last
+-- applied one.
+--
+-- ── Why a migration ────────────────────────────────────────────────────────
+--
+-- The encounter was seeded `insert-missing`: the database is authoritative for
+-- any slug that already exists, so removing it from `SEED_ENCOUNTERS` stops a
+-- fresh install gaining it but leaves every live server's row active. This
+-- flips that row to `disabled`, the lifecycle state the rollers already skip.
+--
+-- Disabled, not deleted: cooldown and history rows reference it, and a
+-- designer can still read it in the Portal. Re-enabling it there would
+-- restore a second Core source, which is a deliberate choice rather than an
+-- accident of a deploy.
+--
+-- Rows already on a player's screen (`active_world_encounters`) are left to
+-- resolve or expire normally; the worst case is one more Core, which is an
+-- ordinary, sellable item.
+--
+-- On a fresh database the row does not exist and this is a no-op.
+UPDATE "world_encounters"
+SET "lifecycle" = 'disabled', "updated_at" = now()
+WHERE "slug" = 'b8_teleporter_wreck' AND "lifecycle" <> 'disabled';

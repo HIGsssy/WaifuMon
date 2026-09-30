@@ -309,6 +309,13 @@
       "when": 1819490400000,
       "tag": "0043_transporter_beacon",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1819576800000,
+      "tag": "0044_retire_teleporter_wreck",
+      "breakpoints": true
     }
   ]
 }

@@ -124,7 +124,7 @@
       "rewardTable": "thirst-unrefiled-claim-success-v1",
       "exceptionalRewardTable": "thirst-unrefiled-claim-bonus-v1",
       "failureRewardTable": "thirst-unrefiled-claim-failure-v1",
-      "rewardPreview": ["salvage", "waifubux", "essence", "waifu_xp"],
+      "rewardPreview": ["salvage", "waifubux", "essence", "key_item", "waifu_xp"],
       "enabled": true
     },
     {
@@ -160,7 +160,7 @@
       "rewardTable": "thirst-dune-road-success-v1",
       "exceptionalRewardTable": "thirst-dune-road-bonus-v1",
       "failureRewardTable": "thirst-dune-road-failure-v1",
-      "rewardPreview": ["salvage", "waifubux", "essence", "charms", "waifu_xp"],
+      "rewardPreview": ["salvage", "waifubux", "essence", "charms", "key_item", "waifu_xp"],
       "enabled": true
     },
     {

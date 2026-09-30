@@ -143,7 +143,8 @@ export interface DestinationView {
   /** Cost to unlock, in `currency`. Zero when already unlocked or current. */
   price: number;
   currency: 'waifubux' | 'essence';
-  requiredLevel: number;
+  /** Null when the destination has no level requirement at all. */
+  requiredLevel: number | null;
   /** Human-readable reasons this destination is not yet purchasable. */
   requirements: string[];
   /** Whether the pass this route stamps onto is already owned. */
@@ -417,6 +418,11 @@ export interface EligibilityContext {
  * is also the piece worth unit-testing directly, which a closure over `db`
  * would have made impossible without a container.
  */
+/** A null requirement is no requirement: no level is ever below it. */
+function belowRequiredLevel(level: number, requiredLevel: number | null): boolean {
+  return requiredLevel != null && level < requiredLevel;
+}
+
 export function evaluateDestination(
   destination: DestinationDefinition,
   ctx: EligibilityContext,
@@ -428,7 +434,7 @@ export function evaluateDestination(
   // (every pre-beacon Belt purchase left one) neither opens nor closes it.
   if (destination.access === 'key_item' && destination.keyItem) {
     const requirements: string[] = [];
-    if (ctx.level < destination.requiredLevel) {
+    if (belowRequiredLevel(ctx.level, destination.requiredLevel)) {
       requirements.push(`Trainer Level ${destination.requiredLevel} (you are ${ctx.level})`);
     }
     if (!ctx.keyItems.has(destination.keyItem.gate.keyItem)) {
@@ -452,7 +458,7 @@ export function evaluateDestination(
     requirements.push('No route to this destination has opened yet.');
     return { state: 'ineligible', requirements };
   }
-  if (ctx.level < destination.requiredLevel) {
+  if (belowRequiredLevel(ctx.level, destination.requiredLevel)) {
     requirements.push(`Trainer Level ${destination.requiredLevel} (you are ${ctx.level})`);
   }
   // A later destination cannot be bought before the pass it stamps onto.
@@ -911,9 +917,12 @@ export function createTravelService(deps: TravelServiceDeps): TravelService {
               destination.keyItem.name,
             );
           }
-          // The level gate a route purchase used to enforce once, enforced on
-          // the trip instead: there is no purchase step left to hang it on.
-          if (player.level < destination.requiredLevel) {
+          // A gate's optional level, enforced on the trip: there is no purchase
+          // step to hang it on. Null — the Belt's case — skips the check.
+          if (
+            destination.requiredLevel != null &&
+            player.level < destination.requiredLevel
+          ) {
             throw new TravelLevelRequiredError(destination.requiredLevel, player.level);
           }
         } else if (destination.access !== 'starting') {

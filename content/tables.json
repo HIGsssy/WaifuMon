@@ -674,8 +674,7 @@
     "keyItemRoutes": [
       {
         "regionId": "assteroid-belt",
-        "keyItem": "transporter_beacon",
-        "requiredLevel": 35
+        "keyItem": "transporter_beacon"
       }
     ]
   },
@@ -687,7 +686,7 @@
         {
           "item": "cracked_teleport_core",
           "quantity": 1,
-          "hint": "World encounters in Base 80085"
+          "hint": "Long Thirstlands excavations and escorts"
         },
         {
           "item": "quantum_stabilizer",

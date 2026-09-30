@@ -93,23 +93,39 @@ describe('migration compatibility', () => {
    * an item added without thinking about `sellValue` is inert rather than
    * exploitable. Widening this beyond salvage should be a deliberate edit here,
    * not a surprise discovered in a shop.
+   *
+   * The one deliberate widening: a `key` item that opts in twice — a
+   * `sellValue` *and* `explicitlySellable: true` (the Transporter Beacon's
+   * components). A key without the flag, the Beacon itself included, stays off
+   * the counter.
    */
-  it('prices only salvage, and leaves every other seeded item unsellable', async () => {
+  it('prices only salvage and explicitly sellable keys, and leaves every other seeded item unsellable', async () => {
     // Scoped to slugs the seeder owns, so the raw rows the constraint tests
     // above insert cannot make this pass or fail for the wrong reason.
     const shipped = loadShippedContent(t.logger).items;
     const shippedSlugs = shipped.map((i) => i.slug);
     const salvageSlugs = shipped.filter((i) => i.category === 'salvage').map((i) => i.slug);
+    const sellableKeySlugs = shipped
+      .filter((i) => i.category === 'key' && i.explicitlySellable)
+      .map((i) => i.slug);
+    const unsellableKeySlugs = shipped
+      .filter((i) => i.category === 'key' && !i.explicitlySellable)
+      .map((i) => i.slug);
     // The slice itself has to be non-empty, or this test would keep passing
     // after somebody deleted the salvage it exists to describe.
     expect(salvageSlugs.length).toBeGreaterThan(0);
+    // Both sides of the key-item rule have to be exercised by shipped content.
+    expect(sellableKeySlugs.length).toBeGreaterThan(0);
+    expect(unsellableKeySlugs).toContain('transporter_beacon');
 
     const sellable = await t.db
       .select({ slug: items.slug, sellValue: items.sellValue })
       .from(items)
       .where(and(inArray(items.slug, shippedSlugs), isNotNull(items.sellValue)));
+    const sellableSlugs = sellable.map((row) => row.slug);
 
-    expect(sellable.map((row) => row.slug).sort()).toEqual([...salvageSlugs].sort());
+    expect([...sellableSlugs].sort()).toEqual([...salvageSlugs, ...sellableKeySlugs].sort());
+    for (const slug of unsellableKeySlugs) expect(sellableSlugs, slug).not.toContain(slug);
     for (const row of sellable) expect(row.sellValue).toBeGreaterThan(0);
   });
 

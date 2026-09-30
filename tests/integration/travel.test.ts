@@ -152,7 +152,7 @@ describe('shipped travel content', () => {
     expect(belt.keyItem!.gate.keyItem).toBe('transporter_beacon');
     expect(belt.price).toBe(1500);
     expect(belt.currency).toBe('waifubux');
-    expect(belt.requiredLevel).toBe(35);
+    expect(belt.requiredLevel).toBeNull();
   });
 
   it('refuses to travel to the Assteroid Belt without a Transporter Beacon', async () => {

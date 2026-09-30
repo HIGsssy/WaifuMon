@@ -169,6 +169,10 @@ function Controls({ info, state }: { info: TestControlsInfo; state: TestControls
             label={state.beacon?.name ?? 'Transporter Beacon'}
             value={state.beacon?.owned ? 'Owned' : 'Not owned'}
           />
+          <Stat
+            label="Belt level requirement"
+            value={state.beacon ? levelRequirement(state.beacon.requiredLevel) : '—'}
+          />
         </dl>
       </Card>
 
@@ -293,7 +297,7 @@ function Controls({ info, state }: { info: TestControlsInfo; state: TestControls
               <Owned
                 key={r.regionId}
                 owned={r.unlocked}
-                label={`${r.name} (Lv ${r.requiredLevel})`}
+                label={`${r.name} (${levelRequirement(r.requiredLevel)})`}
               />
             ))}
           </ul>
@@ -333,7 +337,7 @@ function Controls({ info, state }: { info: TestControlsInfo; state: TestControls
               <li className="text-ink-muted">Legacy Belt route row present</li>
             )}
             {state.beltEncounterCooldowns > 0 && (
-              <li className="text-ink-muted">Teleport Core encounter on cooldown</li>
+              <li className="text-ink-muted">Belt component encounter on cooldown</li>
             )}
           </ul>
         </Card>
@@ -365,7 +369,7 @@ function Controls({ info, state }: { info: TestControlsInfo; state: TestControls
           'Remove the Transporter Beacon',
           `Remove Belt components: ${state.beltComponents.map((c) => c.name).join(', ') || 'none configured'}`,
           'Remove any legacy Belt route unlock',
-          'Clear the Teleport Core encounter cooldown',
+          'Clear cooldowns on any encounter that awards a Belt component',
           'Nothing else — level, WaifuBux, other items and encounters are untouched',
         ]}
         confirmLabel="Reset Belt state"
@@ -385,6 +389,11 @@ function Controls({ info, state }: { info: TestControlsInfo; state: TestControls
       />
     </div>
   );
+}
+
+/** A null level requirement is none at all, never "level 1". */
+function levelRequirement(level: number | null): string {
+  return level == null ? 'No level requirement' : `Lv ${level}`;
 }
 
 function Stat({ label, value }: { label: string; value: string }) {

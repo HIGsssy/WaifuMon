@@ -37,6 +37,8 @@ import {
   worldEncounterCooldowns,
   worldEncounters,
 } from '../../../src/db/schema';
+import { seedWorldEncounters } from '../../../src/modules/worldEncounters/seed';
+import { EncounterInputSchema } from '../../../src/modules/worldEncounters/types';
 import { createGuildOwnershipService } from '../../../src/modules/portalAuth/guildOwnershipService';
 import { createGuildRoleService } from '../../../src/modules/portalAuth/guildRoleService';
 import { createAdminRoleGrantService } from '../../../src/modules/portalAuth/adminRoleGrantService';
@@ -304,6 +306,28 @@ async function routeIds(): Promise<string[]> {
   return rows.map((r) => r.r).sort();
 }
 
+/**
+ * A disabled encounter that still awards a Belt component — what a live server
+ * holds after migration 0044 retired the Teleporter Wreck. Nothing shipped
+ * awards a component any more, so the reset's cooldown sweep needs one made.
+ */
+const RETIRED_WRECK = EncounterInputSchema.parse({
+  slug: 'b8_teleporter_wreck',
+  name: 'The Teleporter Wreck',
+  type: 'discovery',
+  rarity: 'rare',
+  lifecycle: 'disabled',
+  cooldownSeconds: 6 * 3600,
+  regions: ['base-80085'],
+  choices: [
+    {
+      label: 'Pry the core loose',
+      check: { type: 'none' },
+      successEffects: [{ type: 'give_item', slug: 'cracked_teleport_core', quantity: 1 }],
+    },
+  ],
+});
+
 async function encounterId(slug: string): Promise<number> {
   const [row] = await t.db.select({ id: worldEncounters.id }).from(worldEncounters).where(eq(worldEncounters.slug, slug));
   if (!row) throw new Error(`missing encounter ${slug}`);
@@ -520,6 +544,27 @@ describe('Energy', () => {
 /* ───────────────────────────── Beacon ───────────────────────────── */
 
 describe('Transporter Beacon', () => {
+  it('reports the Belt with no level requirement, and standard routes with theirs', async () => {
+    const res = await get(base(testerId));
+    expect(res.statusCode).toBe(200);
+    const state = (
+      res.json() as {
+        data: {
+          beacon: { slug: string; requiredLevel: number | null } | null;
+          routes: { regionId: string; requiredLevel: number | null }[];
+        };
+      }
+    ).data;
+    expect(state.beacon!.slug).toBe(BEACON);
+    expect(state.beacon!.requiredLevel).toBeNull();
+    expect(state.routes.map((r) => [r.regionId, r.requiredLevel])).toEqual([
+      ['twin-peeks', 15],
+      ['flaccid-foothills', 20],
+      ['thirstlands', 25],
+      ['base-80085', 30],
+    ]);
+  });
+
   it('grants one beacon', async () => {
     const res = await post(`${base(testerId)}/beacon/grant`);
     expect(res.statusCode).toBe(200);
@@ -654,7 +699,8 @@ describe('Reset Assteroid Belt Unlock Test State', () => {
       { playerId: testerId, regionId: BELT, source: 'purchase' },
       { playerId: testerId, regionId: 'twin-peeks', source: 'purchase' },
     ]);
-    const wreck = await encounterId('b8_teleporter_wreck');
+    await seedWorldEncounters(t.db, { catalogue: [RETIRED_WRECK] });
+    const wreck = await encounterId(RETIRED_WRECK.slug);
     const other = await encounterId('tv_bandit_ambush');
     const later = new Date(Date.now() + 3_600_000);
     await t.db.insert(worldEncounterCooldowns).values([
@@ -665,7 +711,7 @@ describe('Reset Assteroid Belt Unlock Test State', () => {
     return { wreck, other };
   }
 
-  it('removes the Beacon, components, legacy route and Teleport Core cooldown, and returns the player home', async () => {
+  it('removes the Beacon, components, legacy route and component-encounter cooldowns, and returns the player home', async () => {
     const { wreck, other } = await dirtyBeltState();
 
     const res = await post(`${base(testerId)}/reset-assteroid-belt`);

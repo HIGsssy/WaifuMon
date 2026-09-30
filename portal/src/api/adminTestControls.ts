@@ -32,12 +32,13 @@ export interface TestControlsPlayerState {
   maxEnergy: number;
   currentRegion: string;
   currentRegionName: string;
-  beacon: { slug: string; name: string; owned: boolean } | null;
+  /** `requiredLevel` null: the Belt has no level requirement. */
+  beacon: { slug: string; name: string; owned: boolean; requiredLevel: number | null } | null;
   beltComponents: { slug: string; name: string; owned: number; required: number }[];
   legacyBeltRoute: boolean;
   beltEncounterCooldowns: number;
   passes: { id: string; name: string; owned: boolean }[];
-  routes: { regionId: string; name: string; unlocked: boolean; requiredLevel: number }[];
+  routes: { regionId: string; name: string; unlocked: boolean; requiredLevel: number | null }[];
 }
 
 export type TestControlAction =

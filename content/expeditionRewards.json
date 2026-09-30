@@ -3083,6 +3083,15 @@
           { "itemId": "sun_cracked_flogger", "weight": 75, "quantity": 1, "enabled": true },
           { "itemId": "dried_up_lube_bottle", "weight": 25, "quantity": 1, "enabled": true }
         ]
+      },
+      {
+        "id": "core-down-the-shored-shaft",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 500,
+        "entries": [
+          { "itemId": "cracked_teleport_core", "weight": 100, "quantity": 1, "enabled": true }
+        ]
       }
     ]
   },
@@ -3298,6 +3307,15 @@
         "entries": [
           { "itemId": "sun_cracked_flogger", "weight": 80, "quantity": 1, "enabled": true },
           { "itemId": "dried_up_lube_bottle", "weight": 20, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "core-off-the-escort-wagon",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 2000,
+        "entries": [
+          { "itemId": "cracked_teleport_core", "weight": 100, "quantity": 1, "enabled": true }
         ]
       }
     ]
