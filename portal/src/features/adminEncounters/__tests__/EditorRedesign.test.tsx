@@ -197,10 +197,18 @@ describe('an existing encounter', () => {
     expect(chain).toHaveTextContent('“Open it” · on success');
   });
 
-  it('blocks saving a chain-only encounter nothing links to', async () => {
-    await openEncounter(ORPHAN);
+  it('blocks saving an active chain-only encounter nothing links to', async () => {
+    const active = { ...ORPHAN, lifecycle: 'active' as const };
+    store.set(active.id, active);
+    await openEncounter(active);
     expect(await screen.findByTestId('save-blockers')).toHaveTextContent('can never appear');
     expect(saveButton()).toBeDisabled();
+  });
+
+  it('lets a draft chain node with no Hunt/Travel and no parent save, with a warning', async () => {
+    await openEncounter(ORPHAN);
+    await waitFor(() => expect(screen.getByText(/cannot be activated until/)).toBeInTheDocument());
+    expect(screen.queryByTestId('save-blockers')).toBeNull();
   });
 });
 

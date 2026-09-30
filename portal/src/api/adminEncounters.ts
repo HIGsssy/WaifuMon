@@ -7,7 +7,15 @@
  * bundle stays independent of the player-facing bundle.
  */
 import type { ArtworkDirectory, ArtworkSearchResults } from './adminArtwork';
-import { apiClient, deleteData, getData, patchData, postData, putData } from './client';
+import {
+  PortalApiError,
+  apiClient,
+  deleteData,
+  getData,
+  patchData,
+  postData,
+  putData,
+} from './client';
 
 export interface AdminEncounterChoice {
   id: number;
@@ -304,6 +312,33 @@ export function setAdminEncounterLifecycle(
 
 export function deleteAdminEncounter(id: number): Promise<{ ok: boolean; reason?: string }> {
   return deleteData<{ ok: boolean; reason?: string }>(`/v1/admin/encounters/${id}`);
+}
+
+/**
+ * What stands in the way of a delete — `error.details.blockers` on the
+ * DELETE route's 409 `ENCOUNTER_DELETE_UNSAFE`.
+ */
+export interface EncounterDeleteBlockers {
+  /** Other encounters that continue to this one, one entry per link. */
+  referencedBy: Array<{
+    id: number;
+    slug: string;
+    name: string;
+    lifecycle: string;
+    via: 'after_any_choice' | 'choice';
+    choiceLabel: string | null;
+  }>;
+  historyCount: number;
+  pendingCount: number;
+  queuedContinuationCount: number;
+  closedSessionCount: number;
+}
+
+/** The structured blockers from a refused delete, or null for any other failure. */
+export function deleteBlockersOf(err: unknown): EncounterDeleteBlockers | null {
+  if (!(err instanceof PortalApiError) || err.code !== 'ENCOUNTER_DELETE_UNSAFE') return null;
+  const blockers = err.details?.blockers as EncounterDeleteBlockers | undefined;
+  return blockers && Array.isArray(blockers.referencedBy) ? blockers : null;
 }
 
 export interface PreviewBody {

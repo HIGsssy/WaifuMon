@@ -98,12 +98,24 @@ export function validateDraft(d: Draft, ctx: ValidationContext): DraftValidation
   if (d.chainedEncounterSlug && d.chainedEncounterSlug === d.slug) {
     errors.push('The “after any choice” follow-up cannot be this encounter itself.');
   }
+  // Reachability only blocks an Active save — the server's rule too. A draft
+  // or disabled encounter never spawns and is skipped as a follow-up, so its
+  // Hunt/Travel flags are inert; a half-built chain node saves with a warning
+  // and is checked again when it is activated.
   const role = ctx.graph?.roleOf(d.slug);
   if (role && !role.spawns && role.parents.length === 0) {
-    errors.push(
-      'This encounter can never appear: it is not in Hunt or Travel, and no other encounter ' +
-        'continues to it. Turn on Hunt or Travel, or link to it from another encounter.',
-    );
+    if (d.lifecycle === 'active') {
+      errors.push(
+        'This encounter can never appear: it is not in Hunt or Travel, and no other encounter ' +
+          'continues to it. Turn on Hunt or Travel, or link to it from another encounter.',
+      );
+    } else {
+      warnings.push(
+        'Nothing can reach this encounter yet: it is not in Hunt or Travel, and no other ' +
+          'encounter continues to it. That is fine while it is a draft, but it cannot be ' +
+          'activated until one of those is true.',
+      );
+    }
   }
 
   /* ── Warnings ── */

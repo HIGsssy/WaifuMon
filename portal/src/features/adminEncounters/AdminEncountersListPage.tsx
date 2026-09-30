@@ -19,8 +19,10 @@ import { MoreHorizontal } from 'lucide-react';
 import {
   cloneAdminEncounter,
   deleteAdminEncounter,
+  deleteBlockersOf,
   setAdminEncounterLifecycle,
   type AdminEncounter,
+  type EncounterDeleteBlockers,
 } from '@/api/adminEncounters';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -88,10 +90,14 @@ export function AdminEncountersListPage() {
     },
   });
   const remove = useMutation({
-    mutationFn: (id: number) => deleteAdminEncounter(id),
+    mutationFn: (e: AdminEncounter) => deleteAdminEncounter(e.id),
     onSuccess: invalidate,
   });
   const failure = lifecycle.error ?? clone.error ?? remove.error;
+  // A refused delete carries what is in the way; itemise it rather than
+  // flattening it into one sentence.
+  const deleteBlockers =
+    failure != null && failure === remove.error ? deleteBlockersOf(failure) : null;
 
   return (
     <div className="space-y-4">
@@ -110,7 +116,9 @@ export function AdminEncountersListPage() {
       {/* A refused action — e.g. activating a Waifumon selector that matches
           nothing anywhere, or deleting an encounter with history — must say
           why rather than leave the button looking dead. */}
-      {failure != null && (
+      {deleteBlockers != null && remove.variables != null ? (
+        <DeleteRefusal name={remove.variables.name} blockers={deleteBlockers} />
+      ) : failure != null && (
         <p
           className="rounded-md border border-destructive/50 bg-destructive/5 p-3 text-sm text-destructive"
           role="alert"
@@ -285,14 +293,14 @@ export function AdminEncountersListPage() {
                             onClick={() => {
                               const parents = graph.roleOf(e.slug).parents;
                               const warn = parents.length
-                                ? `\n\n${namesOf(graph, parents)} still continue${parents.length === 1 ? 's' : ''} to it.`
+                                ? `\n\n${namesOf(graph, parents)} still continue${parents.length === 1 ? 's' : ''} to it, so the delete will be refused until ${parents.length === 1 ? 'that link is' : 'those links are'} removed.`
                                 : '';
                               if (
                                 window.confirm(
-                                  `Delete "${e.name}"? Encounters with history cannot be deleted — disable them instead.${warn}`,
+                                  `Delete "${e.name}"? This cannot be undone. Encounters players have met, or that another encounter continues to, cannot be deleted — disable them instead.${warn}`,
                                 )
                               ) {
-                                remove.mutate(e.id);
+                                remove.mutate(e);
                               }
                             }}
                           >
@@ -308,6 +316,58 @@ export function AdminEncountersListPage() {
           })}
         </Card>
       )}
+    </div>
+  );
+}
+
+const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/**
+ * A refused delete, itemised: which encounters continue to it (each a link to
+ * go and remove that link), and whether players have it open or have met it.
+ * The server owns the rule; this only explains its answer.
+ */
+function DeleteRefusal({ name, blockers }: { name: string; blockers: EncounterDeleteBlockers }) {
+  const played = blockers.historyCount + blockers.closedSessionCount + blockers.pendingCount > 0;
+  return (
+    <div
+      className="space-y-2 rounded-md border border-destructive/50 bg-destructive/5 p-3 text-sm text-destructive"
+      role="alert"
+      data-testid="delete-refusal"
+    >
+      <p className="font-medium">Couldn’t delete “{name}”.</p>
+      <ul className="list-disc space-y-1 pl-5">
+        {blockers.referencedBy.map((r, i) => (
+          <li key={`${r.id}-${i}`}>
+            <Link to={`/admin/encounters/${r.id}`} className="underline">
+              {r.name}
+            </Link>{' '}
+            continues to it{' '}
+            {r.via === 'choice' ? `from choice “${r.choiceLabel ?? ''}”` : 'after any choice'}
+            {r.lifecycle !== 'active' && ` (${r.lifecycle})`} — remove that link first.
+          </li>
+        ))}
+        {blockers.pendingCount > 0 && (
+          <li>
+            {count(blockers.pendingCount, 'player has it open', 'players have it open')} right now
+            {blockers.queuedContinuationCount > 0 &&
+              ` (${blockers.queuedContinuationCount} queued as a chain follow-up)`}
+            .
+          </li>
+        )}
+        {blockers.historyCount > 0 && (
+          <li>
+            Players have met it {count(blockers.historyCount, 'time', 'times')} — that history is kept.
+          </li>
+        )}
+        {blockers.closedSessionCount > 0 && (
+          <li>
+            {count(blockers.closedSessionCount, 'past session', 'past sessions')} (expired, abandoned or
+            resolved) still point at it.
+          </li>
+        )}
+      </ul>
+      {played && <p>Disable it instead — it stops appearing, and its history stays intact.</p>}
     </div>
   );
 }

@@ -23,7 +23,7 @@ import { dataSchema, ok } from '../../../plugins/responseEnvelope';
 import { commonErrorResponses, notFoundResponse } from '../../../schemas/common';
 import { requirePortalPermission } from '../../../plugins/portalPermissions';
 import { AppError } from '../../../../shared/errors';
-import { ApiFieldValidationError } from '../../../errors';
+import { ApiErrorWithDetails, ApiFieldValidationError } from '../../../errors';
 import {
   AdminEncounterSlugTakenError,
   AdminEncounterValidationError,
@@ -1007,7 +1007,7 @@ export const adminEncounterRoutes =
             existing.choices,
           );
         }
-        await admin.setLifecycle(req.params.id, req.body.lifecycle);
+        await asFieldIssues(() => admin.setLifecycle(req.params.id, req.body.lifecycle));
         const updated = await admin.get(req.params.id);
         if (!updated) throw new AppError('NOT_FOUND', 'Encounter not found', 'Not found.');
         return ok(req, encounterToResource(updated));
@@ -1020,7 +1020,8 @@ export const adminEncounterRoutes =
         preValidation: gate('encounters.write'),
         schema: {
           tags: ['Admin — Encounters'],
-          summary: 'Delete an encounter (refused when history exists)',
+          summary:
+            'Delete an encounter (409 ENCOUNTER_DELETE_UNSAFE, with details.blockers, while anything references it)',
           params: z.object({ id: z.coerce.number().int().positive() }),
           response: {
             200: dataSchema(z.object({ ok: z.boolean(), reason: z.string().optional() })),
@@ -1032,11 +1033,12 @@ export const adminEncounterRoutes =
       async (req) => {
         const result = await admin.remove(req.params.id);
         if (!result.ok) {
-          throw new AppError(
-            'ENCOUNTER_DELETE_UNSAFE',
-            result.reason ?? 'Encounter cannot be deleted',
-            result.reason ?? 'This encounter has resolved history — disable it instead.',
-          );
+          // `details.blockers` lets the Portal name what is in the way. It
+          // holds encounter names/slugs/choice labels and counts only — no
+          // player ids.
+          throw new ApiErrorWithDetails('ENCOUNTER_DELETE_UNSAFE', result.reason, result.reason, {
+            blockers: result.blockers,
+          });
         }
         return ok(req, { ok: true });
       },

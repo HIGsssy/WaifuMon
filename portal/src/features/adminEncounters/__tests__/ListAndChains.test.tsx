@@ -9,6 +9,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
 
 import * as adminEncounters from '@/api/adminEncounters';
+import { PortalApiError } from '@/api/client';
 import { SessionContext } from '@/auth/SessionContext';
 import type { SessionState } from '@/auth/types';
 
@@ -130,6 +131,64 @@ describe('encounter list', () => {
     for (const action of ['Clone as draft', 'Disable', 'Delete']) {
       expect(within(menu).getByRole('menuitem', { name: action })).toBeInTheDocument();
     }
+  });
+
+  it('explains a refused delete by naming what still references the encounter', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const remove = vi.spyOn(adminEncounters, 'deleteAdminEncounter').mockRejectedValue(
+      new PortalApiError({
+        status: 409,
+        code: 'ENCOUNTER_DELETE_UNSAFE',
+        message: 'This encounter cannot be deleted.',
+        details: {
+          blockers: {
+            referencedBy: [
+              { id: 1, slug: 'strange_door', name: 'A Strange Door', lifecycle: 'active', via: 'choice', choiceLabel: 'Open it' },
+              { id: 3, slug: 'hidden_lab', name: 'Hidden Laboratory', lifecycle: 'draft', via: 'after_any_choice', choiceLabel: null },
+            ],
+            historyCount: 0,
+            pendingCount: 1,
+            queuedContinuationCount: 1,
+            closedSessionCount: 0,
+          },
+        },
+      }),
+    );
+    const user = userEvent.setup();
+    render(<AdminEncountersListPage />, { wrapper: wrapper() });
+    await screen.findByRole('link', { name: 'Security Override' });
+    await user.click(screen.getByRole('button', { name: 'More actions for Security Override' }));
+    await user.click(within(await screen.findByRole('menu')).getByRole('menuitem', { name: 'Delete' }));
+
+    const refusal = await screen.findByTestId('delete-refusal');
+    expect(remove).toHaveBeenCalledWith(2);
+    expect(refusal).toHaveTextContent('Couldn’t delete “Security Override”.');
+    expect(within(refusal).getByRole('link', { name: 'A Strange Door' })).toHaveAttribute(
+      'href',
+      '/admin/encounters/1',
+    );
+    expect(refusal).toHaveTextContent('continues to it from choice “Open it”');
+    expect(within(refusal).getByRole('link', { name: 'Hidden Laboratory' })).toHaveAttribute(
+      'href',
+      '/admin/encounters/3',
+    );
+    expect(refusal).toHaveTextContent('after any choice (draft)');
+    expect(refusal).toHaveTextContent('1 player has it open right now (1 queued as a chain follow-up).');
+    expect(refusal).toHaveTextContent('Disable it instead');
+  });
+
+  it('falls back to the server message for a delete refused without details', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    vi.spyOn(adminEncounters, 'deleteAdminEncounter').mockRejectedValue(
+      new PortalApiError({ status: 500, code: 'INTERNAL', message: 'Internal error.' }),
+    );
+    const user = userEvent.setup();
+    render(<AdminEncountersListPage />, { wrapper: wrapper() });
+    await screen.findByRole('link', { name: 'Lonely Room' });
+    await user.click(screen.getByRole('button', { name: 'More actions for Lonely Room' }));
+    await user.click(within(await screen.findByRole('menu')).getByRole('menuitem', { name: 'Delete' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Internal error.');
+    expect(screen.queryByTestId('delete-refusal')).toBeNull();
   });
 
   it('hides write actions from a read-only author', async () => {

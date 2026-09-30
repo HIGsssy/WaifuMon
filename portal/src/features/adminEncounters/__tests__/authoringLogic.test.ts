@@ -359,11 +359,20 @@ describe('draft validation', () => {
     expect(v.warnings.join('\n')).toMatch(/Security Override”, which is draft/);
   });
 
-  it('blocks a chain-only encounter nothing reaches, but not a reached one', () => {
-    expect(validateDraft(draftFrom(ORPHAN), ctx()).errors.join()).toMatch(/can never appear/);
+  it('blocks an active chain-only encounter nothing reaches, but not a reached one', () => {
+    const active = { ...draftFrom(ORPHAN), lifecycle: 'active' as const };
+    expect(validateDraft(active, ctx()).errors.join()).toMatch(/can never appear/);
     expect(validateDraft(draftFrom(LAB), ctx()).errors).toEqual([]);
     // Without the list there is nothing to judge reachability by — no guess.
-    expect(validateDraft(draftFrom(ORPHAN), ctx({ graph: null })).errors).toEqual([]);
+    expect(validateDraft(active, ctx({ graph: null })).errors).toEqual([]);
+  });
+
+  it('only warns about an unreachable draft or disabled encounter — its sources are inert', () => {
+    for (const lifecycle of ['draft', 'disabled'] as const) {
+      const v = validateDraft({ ...draftFrom(ORPHAN), lifecycle }, ctx());
+      expect(v.errors).toEqual([]);
+      expect(v.warnings.join('\n')).toMatch(/cannot be activated until/);
+    }
   });
 
   it('refuses a new slug that would overwrite another encounter', () => {

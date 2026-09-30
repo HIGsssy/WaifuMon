@@ -63,7 +63,21 @@ export interface WorldEncounterRepository {
   ): Promise<void>;
   setLifecycle(tx: DbOrTx, id: number, lifecycle: 'draft' | 'active' | 'disabled'): Promise<void>;
   deleteEncounter(tx: DbOrTx, id: number): Promise<void>;
-  hasHistory(id: number): Promise<boolean>;
+  /**
+   * Everything that points at this encounter and so stands in the way of
+   * deleting it. Two kinds:
+   *
+   *   - **Rows** the database itself protects: `world_encounter_history` and
+   *     `active_world_encounters` reference `world_encounters.id` with no
+   *     cascade, so any such row makes the DELETE fail with a foreign-key
+   *     violation. A queued chain continuation is one of these — a `pending`
+   *     active row whose `encounter_id` is the target.
+   *   - **Authored links** from other encounters: a `chainedEncounterSlug`
+   *     column or a `trigger_encounter` effect naming this slug. Not a foreign
+   *     key (slugs, in JSONB), so the database would allow the delete — and
+   *     leave the parent continuing to nothing.
+   */
+  deleteReferences(id: number, slug: string): Promise<EncounterDeleteReferences>;
   /**
    * Every encounter slug that some *other* encounter leads to — via its
    * `chainedEncounterSlug` column or a `trigger_encounter` effect on one of
@@ -104,6 +118,28 @@ export interface WorldEncounterRepository {
 
   // History
   insertHistory(tx: DbOrTx, values: NewHistoryValues): Promise<number>;
+}
+
+export interface EncounterDeleteReferences {
+  /** Other encounters that continue to this one, one entry per link. */
+  referencedBy: Array<{
+    id: number;
+    slug: string;
+    name: string;
+    lifecycle: string;
+    /** `after_any_choice` is the `chainedEncounterSlug` column. */
+    via: 'after_any_choice' | 'choice';
+    /** The linking choice's label; null for `after_any_choice`. */
+    choiceLabel: string | null;
+  }>;
+  /** `world_encounter_history` rows. */
+  historyCount: number;
+  /** `pending` active rows, queued chain continuations included. */
+  pendingCount: number;
+  /** Of `pendingCount`, how many are queued chain continuations. */
+  queuedContinuationCount: number;
+  /** `resolved` / `expired` / `abandoned` active rows. */
+  closedSessionCount: number;
 }
 
 export interface NewEncounterValues {
@@ -354,13 +390,63 @@ export function createWorldEncounterRepository(db: Db): WorldEncounterRepository
       }
       return targets;
     },
-    async hasHistory(id) {
-      const [row] = await db
-        .select({ id: worldEncounterHistory.id })
+    async deleteReferences(id, slug) {
+      const [history] = await db
+        .select({ n: sql<number>`count(*)::int` })
         .from(worldEncounterHistory)
-        .where(eq(worldEncounterHistory.encounterId, id))
-        .limit(1);
-      return row != null;
+        .where(eq(worldEncounterHistory.encounterId, id));
+      const [active] = await db
+        .select({
+          pending: sql<number>`count(*) filter (where ${activeWorldEncounters.status} = 'pending')::int`,
+          queued: sql<number>`count(*) filter (where ${activeWorldEncounters.status} = 'pending' and ${activeWorldEncounters.continuationOfId} is not null)::int`,
+          closed: sql<number>`count(*) filter (where ${activeWorldEncounters.status} <> 'pending')::int`,
+        })
+        .from(activeWorldEncounters)
+        .where(eq(activeWorldEncounters.encounterId, id));
+
+      const referencedBy: EncounterDeleteReferences['referencedBy'] = [];
+      const columnParents = await db
+        .select({
+          id: worldEncounters.id,
+          slug: worldEncounters.slug,
+          name: worldEncounters.name,
+          lifecycle: worldEncounters.lifecycle,
+        })
+        .from(worldEncounters)
+        .where(eq(worldEncounters.chainedEncounterSlug, slug));
+      for (const p of columnParents) {
+        if (p.id === id) continue;
+        referencedBy.push({ ...p, via: 'after_any_choice', choiceLabel: null });
+      }
+      // JSONB containment: an effects array holding a trigger_encounter
+      // element for this slug. Extra keys on the element still match.
+      const needle = sql`jsonb_build_array(jsonb_build_object('type', 'trigger_encounter', 'encounterSlug', ${slug}::text))`;
+      const choiceParents = await db
+        .select({
+          id: worldEncounters.id,
+          slug: worldEncounters.slug,
+          name: worldEncounters.name,
+          lifecycle: worldEncounters.lifecycle,
+          choiceLabel: worldEncounterChoices.label,
+        })
+        .from(worldEncounterChoices)
+        .innerJoin(worldEncounters, eq(worldEncounters.id, worldEncounterChoices.encounterId))
+        .where(
+          sql`(${worldEncounterChoices.successEffectsJson} @> ${needle} or ${worldEncounterChoices.failureEffectsJson} @> ${needle})`,
+        )
+        .orderBy(asc(worldEncounters.name), asc(worldEncounterChoices.sortOrder));
+      for (const p of choiceParents) {
+        if (p.id === id) continue;
+        referencedBy.push({ ...p, via: 'choice' });
+      }
+
+      return {
+        referencedBy,
+        historyCount: history?.n ?? 0,
+        pendingCount: active?.pending ?? 0,
+        queuedContinuationCount: active?.queued ?? 0,
+        closedSessionCount: active?.closed ?? 0,
+      };
     },
     async insertActive(tx, values) {
       const [row] = await tx

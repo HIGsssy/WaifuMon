@@ -21,6 +21,7 @@ import type { PortalSession, PortalSessionService } from '../../../src/api/porta
 import { createGuildOwnershipService } from '../../../src/modules/portalAuth/guildOwnershipService';
 import { createPortalAuthorizationService } from '../../../src/modules/portalAuth/portalAuthService';
 import { createEncounterPromotionService } from '../../../src/modules/worldEncounters/encounterImportService';
+import { activeWorldEncounters, worldEncounterHistory } from '../../../src/db/schema';
 
 const AUTH_BEARER = { authorization: `Bearer ${TEST_TOKEN}` };
 const GUILD_ID = '111222333444555777';
@@ -31,12 +32,15 @@ const NON_OWNER_TOKEN = 'token-non-owner';
 let t: TestDb;
 let app: App;
 let api: ZodFastify;
+let guildDbId: number;
+let ownerPlayerId: number;
+let nonOwnerPlayerId: number;
 
 beforeAll(async () => {
   t = await createTestDb();
   app = await bootstrapApp(t);
-  await provisionPlayer(app, GUILD_ID, OWNER_ID);
-  await provisionPlayer(app, GUILD_ID, NON_OWNER_ID);
+  ({ guildDbId, playerId: ownerPlayerId } = await provisionPlayer(app, GUILD_ID, OWNER_ID));
+  ({ playerId: nonOwnerPlayerId } = await provisionPlayer(app, GUILD_ID, NON_OWNER_ID));
 
   const guildOwnership = createGuildOwnershipService({ fetchOwnerId: async () => OWNER_ID });
   const portalAuthorization = createPortalAuthorizationService({ guildOwnership });
@@ -114,7 +118,7 @@ interface VendorResource {
   usedBy: Array<{ slug: string; name: string; lifecycle: string }>;
 }
 
-const call = (method: 'GET' | 'POST' | 'PUT' | 'DELETE', url: string, payload?: unknown) =>
+const call = (method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE', url: string, payload?: unknown) =>
   api.inject({
     method,
     url: `/api/v1${url}`,
@@ -346,9 +350,10 @@ describe('encounter create never overwrites', () => {
 
 describe('encounter writes the Portal editor relies on', () => {
   it('accepts a chain-only follow-up once its parent links to it (the "create follow-up" order)', async () => {
-    // Before the parent links to it, a chain-only encounter is unreachable.
+    // Before the parent links to it, an active chain-only encounter is unreachable.
     const child = encounterInput('test_followup_child', []);
     child.input.huntEligible = false;
+    child.input.lifecycle = 'active';
     expect((await call('POST', '/admin/encounters', child)).statusCode).toBe(400);
 
     const parent = await call(
@@ -366,8 +371,164 @@ describe('encounter writes the Portal editor relies on', () => {
   it('reports an unreachable encounter as a 400 with issues, not a 500', async () => {
     const input = encounterInput('test_unreachable', []);
     input.input.huntEligible = false;
+    input.input.lifecycle = 'active';
     const res = await call('POST', '/admin/encounters', input);
     expect(res.statusCode).toBe(400);
     expect(res.json().error.details.issues[0].message).toMatch(/^Unreachable/);
+  });
+});
+
+describe('reachability only gates active encounters', () => {
+  const idOf = (res: { json: () => unknown }) => (res.json() as { data: { id: number } }).data.id;
+
+  it('saves a draft or disabled chain node with no Hunt/Travel and no parent yet', async () => {
+    for (const lifecycle of ['draft', 'disabled']) {
+      const node = encounterInput(`test_inert_${lifecycle}`, []);
+      node.input.huntEligible = false;
+      node.input.lifecycle = lifecycle;
+      const created = await call('POST', '/admin/encounters', node);
+      expect(created.statusCode).toBe(200);
+      // And edits keep saving while it stays inactive.
+      node.input.name = 'Renamed';
+      expect((await call('PUT', `/admin/encounters/${idOf(created)}`, node)).statusCode).toBe(200);
+    }
+  });
+
+  it('refuses to activate an unreachable encounter, through PUT and through the lifecycle switch', async () => {
+    const node = encounterInput('test_inert_activate', []);
+    node.input.huntEligible = false;
+    const id = idOf(await call('POST', '/admin/encounters', node));
+
+    node.input.lifecycle = 'active';
+    const put = await call('PUT', `/admin/encounters/${id}`, node);
+    expect(put.statusCode).toBe(400);
+    expect(put.json().error.details.issues[0].message).toMatch(/^Unreachable/);
+
+    const patch = await call('PATCH', `/admin/encounters/${id}/lifecycle`, { lifecycle: 'active' });
+    expect(patch.statusCode).toBe(400);
+    expect(patch.json().error.details.issues[0].message).toMatch(/^Unreachable/);
+    const read = await call('GET', `/admin/encounters/${id}`);
+    expect((read.json() as { data: { lifecycle: string } }).data.lifecycle).toBe('draft');
+
+    // Once something continues to it, activation goes through.
+    await call(
+      'POST',
+      '/admin/encounters',
+      encounterInput('test_inert_activate_parent', [
+        { type: 'trigger_encounter', encounterSlug: 'test_inert_activate' },
+      ]),
+    );
+    expect(
+      (await call('PATCH', `/admin/encounters/${id}/lifecycle`, { lifecycle: 'active' })).statusCode,
+    ).toBe(200);
+  });
+});
+
+describe('encounter delete', () => {
+  const idOf = (res: { json: () => unknown }) => (res.json() as { data: { id: number } }).data.id;
+  const create = async (slug: string, effects: unknown[] = [], chained: string | null = null) => {
+    const body = encounterInput(slug, effects);
+    (body.input as { chainedEncounterSlug: string | null }).chainedEncounterSlug = chained;
+    const res = await call('POST', '/admin/encounters', body);
+    expect(res.statusCode).toBe(200);
+    return idOf(res);
+  };
+  const session = (encounterId: number, playerId: number, status: string, continuationOfId?: number) =>
+    t.db
+      .insert(activeWorldEncounters)
+      .values({
+        playerId,
+        encounterId,
+        source: 'hunt',
+        regionId: 'waifu-valley',
+        guildId: guildDbId,
+        channelId: 'c-1',
+        status,
+        contextJson: {},
+        expiresAt: new Date(Date.now() + 10 * 60_000),
+        continuationOfId: continuationOfId ?? null,
+      })
+      .returning()
+      .then((rows) => rows[0]!);
+  const exists = async (id: number) => (await call('GET', `/admin/encounters/${id}`)).statusCode === 200;
+
+  interface Blockers {
+    referencedBy: Array<{ slug: string; name: string; via: string; choiceLabel: string | null }>;
+    historyCount: number;
+    pendingCount: number;
+    queuedContinuationCount: number;
+    closedSessionCount: number;
+  }
+  const refusal = (res: { json: () => unknown }) =>
+    (res.json() as { error: { code: string; message: string; details: { blockers: Blockers } } }).error;
+
+  it('deletes an encounter nothing references', async () => {
+    const id = await create('test_delete_free');
+    const res = await call('DELETE', `/admin/encounters/${id}`);
+    expect(res.statusCode).toBe(200);
+    expect(await exists(id)).toBe(false);
+  });
+
+  it('refuses with 409 naming every encounter that continues to it', async () => {
+    const target = await create('test_delete_linked');
+    await create('test_delete_by_choice', [{ type: 'trigger_encounter', encounterSlug: 'test_delete_linked' }]);
+    await create('test_delete_by_column', [], 'test_delete_linked');
+
+    const res = await call('DELETE', `/admin/encounters/${target}`);
+    expect(res.statusCode).toBe(409);
+    const error = refusal(res);
+    expect(error.code).toBe('ENCOUNTER_DELETE_UNSAFE');
+    expect(error.message).toContain('"test_delete_by_choice"');
+    expect(error.message).toContain('"test_delete_by_column"');
+    expect(error.details.blockers.referencedBy).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ slug: 'test_delete_by_choice', via: 'choice', choiceLabel: 'Browse' }),
+        expect.objectContaining({ slug: 'test_delete_by_column', via: 'after_any_choice', choiceLabel: null }),
+      ]),
+    );
+    expect(error.details.blockers.referencedBy).toHaveLength(2);
+    expect(await exists(target)).toBe(true);
+  });
+
+  it('refuses a queued follow-up target with 409 rather than a foreign-key 500', async () => {
+    const parent = await create('test_delete_queue_parent');
+    const target = await create('test_delete_queue_target');
+    const parentRow = await session(parent, ownerPlayerId, 'resolved');
+    await session(target, ownerPlayerId, 'pending', parentRow.id);
+
+    const res = await call('DELETE', `/admin/encounters/${target}`);
+    expect(res.statusCode).toBe(409);
+    const { blockers } = refusal(res).details;
+    expect(blockers).toMatchObject({
+      referencedBy: [],
+      pendingCount: 1,
+      queuedContinuationCount: 1,
+      historyCount: 0,
+      closedSessionCount: 0,
+    });
+    expect(refusal(res).message).toMatch(/1 player has it open \(1 queued as a chain follow-up\)/);
+    expect(await exists(target)).toBe(true);
+  });
+
+  it('refuses when only past sessions or history remain, and says to disable instead', async () => {
+    const target = await create('test_delete_played');
+    await session(target, nonOwnerPlayerId, 'expired');
+    const expired = await call('DELETE', `/admin/encounters/${target}`);
+    expect(expired.statusCode).toBe(409);
+    expect(refusal(expired).details.blockers.closedSessionCount).toBe(1);
+    expect(refusal(expired).message).toMatch(/Disable it instead/);
+
+    await t.db.insert(worldEncounterHistory).values({
+      playerId: nonOwnerPlayerId,
+      encounterId: target,
+      source: 'hunt',
+      regionId: 'waifu-valley',
+      startedAt: new Date(),
+    });
+    const played = await call('DELETE', `/admin/encounters/${target}`);
+    expect(played.statusCode).toBe(409);
+    expect(refusal(played).details.blockers.historyCount).toBe(1);
+    expect(refusal(played).message).toMatch(/1 recorded play in history/);
+    expect(await exists(target)).toBe(true);
   });
 });
