@@ -906,21 +906,113 @@ describe('shipped content — Assteroid Belt, the destination after Base 80085',
     }
   });
 
-  it('shares only non-exclusive species with Base 80085', () => {
-    // The belt's starter tail deliberately overlaps Base 80085's. That is
-    // legal only because none of the shared species is region-exclusive.
+  /**
+   * The Belt's pool is its exclusives plus a hand-picked crossover list —
+   * machine/android/AI, cosmic/void/eclipse, and station-plausible service
+   * roles — never "whatever else the valley has". The list is closed: adding a
+   * crossover is an edit here, not a side effect of a species existing.
+   */
+  const BELT_CROSSOVERS = [
+    'prototype_zero',
+    'cyber_lilith_prime',
+    'void_empress',
+    'eclipse_valkyrie',
+    'neon_dragon_empress',
+    'eclipse_idol',
+    'chrome_valkyrie',
+    'void_catgirl',
+    'cyber_shrine_maiden',
+    'hologram_idol',
+    'witchy_mechanic',
+    'android_assassin',
+    'ramen_android',
+    'android_secretary',
+    'ah_caretaker',
+  ] as const;
+  /** Considered for the Belt and deliberately left out. */
+  const BELT_REJECTED = ['feral_android', 'cyber_neko'] as const;
+
+  describe('curated crossover pool', () => {
     const content = loadContent(CONTENT_DIR, ASSETS_DIR, silentLogger());
-    const scan = readExpansionPacks(CONTENT_DIR);
-    const belt = new Set(
-      scan.regions.find((r) => r.id === 'assteroid-belt')!.encounterPool.map((e) => e.species),
-    );
-    const base = scan.regions.find((r) => r.id === 'base-80085')!.encounterPool;
-    const shared = base.map((e) => e.species).filter((slug) => belt.has(slug));
-    expect(shared.length).toBeGreaterThan(0);
     const bySlug = new Map(content.species.map((s) => [s.slug, s]));
-    for (const slug of shared) {
-      expect(bySlug.get(slug)!.tags ?? [], slug).not.toContain('region_exclusive');
-    }
+    const belt = content.regions.find((r) => r.id === 'assteroid-belt')!;
+    const pooled = belt.encounterPool.map((e) => e.species);
+    const packSlugs = content.species
+      .filter((s) => content.speciesOrigin[s.slug] === 'assteroid_belt')
+      .map((s) => s.slug);
+
+    it('is exactly the Belt exclusives plus the curated crossovers', () => {
+      expect(packSlugs).toHaveLength(15);
+      expect(new Set(pooled).size).toBe(pooled.length);
+      expect([...pooled].sort()).toEqual([...packSlugs, ...BELT_CROSSOVERS].sort());
+      expect(pooled).toHaveLength(30);
+    });
+
+    it('leaves out the rejected candidates', () => {
+      for (const slug of BELT_REJECTED) {
+        expect(bySlug.has(slug), `${slug} still exists`).toBe(true);
+        expect(pooled, slug).not.toContain(slug);
+      }
+    });
+
+    it('adds nothing merely because it lives in another region', () => {
+      const curated = new Set<string>([...packSlugs, ...BELT_CROSSOVERS]);
+      const elsewhere = new Set(
+        content.regions
+          .filter((r) => r.id !== 'assteroid-belt')
+          .flatMap((r) => r.encounterPool.map((e) => e.species)),
+      );
+      const uncurated = pooled.filter((slug) => elsewhere.has(slug) && !curated.has(slug));
+      expect(uncurated).toEqual([]);
+    });
+
+    it('keeps every crossover a non-exclusive core species, still pooled at home', () => {
+      for (const slug of BELT_CROSSOVERS) {
+        const s = bySlug.get(slug);
+        expect(s, slug).toBeDefined();
+        expect(s!.enabled, slug).toBe(true);
+        // Not from any expansion pack, and not region-locked to any place —
+        // so neither the Belt nor its home region had an exclusivity claim
+        // silently rewritten to make room.
+        expect(content.speciesOrigin[slug], slug).toBeUndefined();
+        expect(s!.tags, slug).not.toContain(REGION_EXCLUSIVE_TAG);
+        expect(s!.tags, slug).not.toContain('assteroid_belt');
+        const homes = content.regions
+          .filter((r) => r.id !== 'assteroid-belt')
+          .filter((r) => r.encounterPool.some((e) => e.species === slug))
+          .map((r) => r.id);
+        expect(homes, slug).toContain('waifu-valley');
+      }
+    });
+
+    it('keeps every Belt exclusive exclusive, and only Belt species exclusive here', () => {
+      for (const slug of pooled) {
+        const exclusive = bySlug.get(slug)!.tags.includes(REGION_EXCLUSIVE_TAG);
+        expect(exclusive, slug).toBe(packSlugs.includes(slug));
+      }
+    });
+
+    it('covers every rarity the hunt can roll, so no hunt falls back to another pool', () => {
+      const rollable = new Set(
+        content.tables.hunt.rarityTable.filter((r) => r.weight > 0).map((r) => r.rarity),
+      );
+      const shift = content.tables.progression.rareEncounterShift;
+      if (shift) rollable.add(shift.toRarity);
+      const covered = new Set(pooled.map((slug) => bySlug.get(slug)!.rarity));
+      for (const rarity of rollable) expect(covered, rarity).toContain(rarity);
+    });
+
+    it('weights crossovers on the Belt ladder, below the exclusives of their rarity', () => {
+      const weight = new Map(belt.encounterPool.map((e) => [e.species, e.weight!]));
+      const LADDER: Record<string, number> = { N: 10, R: 8, SR: 6, SSR: 5, UR: 3, LR: 1 };
+      for (const slug of BELT_CROSSOVERS) {
+        expect(weight.get(slug), slug).toBe(LADDER[bySlug.get(slug)!.rarity]);
+      }
+      for (const slug of packSlugs) {
+        const rarity = bySlug.get(slug)!.rarity;
+        expect(weight.get(slug)!, slug).toBeGreaterThanOrEqual(LADDER[rarity]!);
+      }
+    });
   });
 
   it('gates it on a Transporter Beacon alone, built for 1,500', () => {

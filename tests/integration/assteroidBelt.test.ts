@@ -407,13 +407,14 @@ describe('hunting the region', () => {
   });
 
   it('shares only non-exclusive species with Base 80085', () => {
-    // The overlap is intentional: both space zones borrow the newest valley
-    // starters. It stays legal only while none of them is region-exclusive.
+    // The Belt used to borrow the same valley starters Base 80085 does; its
+    // crossovers are now a curated space/machine list (see regionContent), so
+    // today the two share nobody. Any future overlap stays legal only while
+    // none of the shared species is region-exclusive.
     const base = app.content.regions.find((r) => r.id === 'base-80085')!;
     const shared = base.encounterPool
       .map((e) => e.species)
       .filter((slug) => pooledSlugs.includes(slug));
-    expect(shared.length).toBeGreaterThan(0);
     for (const slug of shared) {
       const s = app.content.species.find((x) => x.slug === slug)!;
       expect(s.tags, slug).not.toContain('region_exclusive');

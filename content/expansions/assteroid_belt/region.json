@@ -73,100 +73,64 @@
       "weight": 1
     },
     {
-      "species": "backroom_angel",
+      "species": "android_secretary",
       "weight": 10
     },
     {
-      "species": "couch_surfing_valkyrie",
+      "species": "ah_caretaker",
       "weight": 10
     },
     {
-      "species": "courier_android",
-      "weight": 10
-    },
-    {
-      "species": "festival_stall_android",
-      "weight": 10
-    },
-    {
-      "species": "heatwave_spirit",
-      "weight": 10
-    },
-    {
-      "species": "konbini_android",
-      "weight": 10
-    },
-    {
-      "species": "landlady_slumlord",
-      "weight": 10
-    },
-    {
-      "species": "android_maid",
+      "species": "cyber_shrine_maiden",
       "weight": 8
     },
     {
-      "species": "enforcer_unit",
+      "species": "hologram_idol",
       "weight": 8
     },
     {
-      "species": "festival_lance_valkyrie",
+      "species": "witchy_mechanic",
       "weight": 8
     },
     {
-      "species": "halfling_cavalry",
+      "species": "android_assassin",
       "weight": 8
     },
     {
-      "species": "iron_circuit_trainer",
+      "species": "ramen_android",
       "weight": 8
     },
     {
-      "species": "lake_lifeguard",
-      "weight": 8
-    },
-    {
-      "species": "oathbound_valkyrie",
-      "weight": 8
-    },
-    {
-      "species": "bathhouse_valkyrie",
+      "species": "chrome_valkyrie",
       "weight": 6
     },
     {
-      "species": "cyberpunk_knight",
+      "species": "void_catgirl",
       "weight": 6
     },
     {
-      "species": "dojo_headmistress",
-      "weight": 6
-    },
-    {
-      "species": "ferry_angel",
-      "weight": 6
-    },
-    {
-      "species": "ice_house_android",
-      "weight": 6
-    },
-    {
-      "species": "summer_storm_spirit",
-      "weight": 6
-    },
-    {
-      "species": "fallen_valkyrie",
+      "species": "eclipse_valkyrie",
       "weight": 5
     },
     {
-      "species": "pilgrims_rest_angel",
+      "species": "neon_dragon_empress",
       "weight": 5
     },
     {
-      "species": "the_innkeeper",
+      "species": "eclipse_idol",
       "weight": 5
     },
     {
-      "species": "valkyrie_prime",
+      "species": "cyber_lilith_prime",
       "weight": 3
+    },
+    {
+      "species": "void_empress",
+      "weight": 3
+    },
+    {
+      "species": "prototype_zero",
+      "weight": 1
     }
   ]
 }

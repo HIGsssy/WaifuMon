@@ -88,6 +88,38 @@ describe('Assteroid Belt hunts (shipped content)', () => {
     const met = results.flatMap((r) => (r.kind === 'encounter' ? [r.species.slug] : []));
     expect(met.length).toBeGreaterThan(0);
     expect(met.filter((slug) => !poolSlugs.has(slug))).toEqual([]);
+    expect(met).not.toContain('feral_android');
+    expect(met).not.toContain('cyber_neko');
     expect(warnings).toEqual([]);
+  });
+
+  it('rolls rarity through the normal hunt table — the pool changes who, never how rare', async () => {
+    // Same RNG, same level: the rarity roll happens before any pool lookup, so
+    // the Belt must draw the identical rarity sequence Waifu Valley does. Only
+    // the species inside each rarity differ.
+    const rarities = (rs: HuntResult[]) =>
+      rs.flatMap((r) => (r.kind === 'encounter' ? [r.species.rarity] : []));
+    const valley = await huntMany('waifu-valley', []);
+    const belt = await huntMany('assteroid-belt', []);
+    expect(rarities(belt)).toEqual(rarities(valley));
+    expect(new Set(rarities(belt)).size).toBeGreaterThan(2);
+  });
+
+  it('seeds the curated crossovers into the Belt and keeps them in their home pools', async () => {
+    const pools = await t.db
+      .select({ regionId: regionEncounterPools.regionId, slug: species.slug })
+      .from(regionEncounterPools)
+      .innerJoin(species, eq(regionEncounterPools.speciesId, species.id));
+    const regionsOf = (slug: string) => pools.filter((p) => p.slug === slug).map((p) => p.regionId);
+    for (const slug of ['prototype_zero', 'void_empress', 'android_secretary', 'witchy_mechanic']) {
+      expect(regionsOf(slug), slug).toContain('assteroid-belt');
+      expect(regionsOf(slug), slug).toContain('waifu-valley');
+    }
+    for (const slug of ['feral_android', 'cyber_neko']) {
+      expect(regionsOf(slug), slug).not.toContain('assteroid-belt');
+      expect(regionsOf(slug).length, slug).toBeGreaterThan(0);
+    }
+    const belt = pools.filter((p) => p.regionId === 'assteroid-belt');
+    expect(belt).toHaveLength(30);
   });
 });
