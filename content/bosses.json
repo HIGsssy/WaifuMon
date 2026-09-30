@@ -518,5 +518,18 @@
     "repelledText": "The Hypnodoll's spiraling eyes flicker and her hypnotic field collapses. All around her, containment pods pop open. A dozen extremely confused men stumble out. One looks around. 'Where am I?' Another checks his watch. 'DUDE. IT'S TUESDAY?!' The Hypnodoll backs away, frantically rebooting her charm protocols. Your Waifumon smacks you on the shoulder. 'And YOU almost fell for it.'",
     "unchallengedText": "The Hypnodoll smiles. Her eyes spiral. 'Come with me.' You immediately take a step forward. Your Waifumon grabs you by the collar and drags you backward. 'Nope.' The Hypnodoll tries again. 'But he wants to—' 'NOPE.' You're carried away while protesting that you were totally about to resist on your own.",
     "description": "An alluring synthetic predator equipped with an illegally powerful hypnotic charm system and an alarming collection of containment pods. The Hypnodoll specializes in convincing men that following the mysterious woman with glowing spiral eyes into an unmarked room is somehow an excellent idea."
+  },
+  {
+    "id": "dick_pic_tomancer",
+    "name": "The Dick Pic-tomancer",
+    "affinity": "dominant",
+    "region": "waifu-valley",
+    "enabled": true,
+    "artwork": "bosses/dick-pic-tomancer_boss.webp",
+    "rewardTable": "standard-scouting-v1",
+    "scoutingText": "A hooded wizard emerges from a cloud of purple smoke, clutching an enchanted phone. 'BEHOLD! The forbidden image!' Every Waifumon in the area immediately checks her messages. A chorus of disgust follows. 'DUDE! WHAT THE FUCK?!' The wizard grins proudly. 'My most powerful unsolicited spell!' Your Waifumon blocks him before he can finish posing dramatically. He gasps. 'Impossible! She has discovered my one weakness!'",
+    "repelledText": "The Dick Pic-tomancer's enchanted phone flies from his hand and shatters against a rock. 'NO! MY GRIMOIRE!' he screams. Hundreds of unread messages vanish into the ether. Somewhere across Waifu Valley, blocked-contact lists spontaneously become shorter. The wizard drops to his knees. 'My legacy...' Your Waifumon kicks the broken phone into a puddle.",
+    "unchallengedText": "You decide not to engage. Moments later, every Waifumon nearby receives the same notification. They slowly turn toward the wizard. His smile disappears. 'Perhaps I have misjudged my audience.' He begins running. The Waifumon begin running faster.",
+    "description": "A depraved digital sorcerer who mastered forbidden telecommunications magic solely to send unwanted intimate photographs to every Waifumon whose contact information he can obtain. His spellbook contains exactly one spell, nobody asked for it, and virtually the entire valley has blocked him."
   }
 ]
