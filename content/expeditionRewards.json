@@ -1012,8 +1012,9 @@
         "rolls": 1,
         "chanceBasisPoints": 400,
         "entries": [
-          { "itemId": "licked_clean_pie_tin", "weight": 70, "quantity": 1, "enabled": true },
-          { "itemId": "ripped_leggings", "weight": 30, "quantity": 1, "enabled": true }
+          { "itemId": "licked_clean_pie_tin", "weight": 60, "quantity": 1, "enabled": true },
+          { "itemId": "ripped_leggings", "weight": 30, "quantity": 1, "enabled": true },
+          { "itemId": "cracked_teleport_core", "weight": 10, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -1679,9 +1680,10 @@
         "rolls": 1,
         "chanceBasisPoints": 2500,
         "entries": [
-          { "itemId": "basic_charm", "weight": 45, "quantity": 1, "enabled": true },
-          { "itemId": "silk_charm", "weight": 30, "quantity": 1, "enabled": true },
-          { "itemId": "quickie_coffee", "weight": 25, "quantity": 1, "enabled": true }
+          { "itemId": "basic_charm", "weight": 35, "quantity": 1, "enabled": true },
+          { "itemId": "silk_charm", "weight": 20, "quantity": 1, "enabled": true },
+          { "itemId": "quickie_coffee", "weight": 25, "quantity": 1, "enabled": true },
+          { "itemId": "cracked_teleport_core", "weight": 20, "quantity": 1, "enabled": true }
         ]
       }
     ]
