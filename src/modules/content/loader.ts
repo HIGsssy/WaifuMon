@@ -757,8 +757,9 @@ export function validateKeyItemContent(content: LoadedContent): void {
  *   - **A missing reward item** is the same failure one level down.
  *   - **An off-ladder duration** is a mission nobody balanced. Durations are a
  *     closed set precisely so a board cannot offer 47 minutes.
- *   - **An equipment reward** would hand over an item with no mechanics. The
- *     category is reserved in V1 and reward tables are where it would leak.
+ *
+ * (An item with the retired `equipment` category never reaches a reward table:
+ * `validateContentSet` refuses it in `items.json` itself.)
  *
  * A *disabled* reward item is deliberately not fatal, matching the boss rule
  * and for the same reason: the grant resolves the live `items` row inside the
@@ -916,20 +917,10 @@ export function validateExpeditionContent(content: LoadedContent): void {
   for (const table of expeditionRewards) {
     for (const group of table.groups) {
       for (const entry of group.entries) {
-        const item = itemsBySlug.get(entry.itemId);
-        if (!item) {
+        if (!itemsBySlug.has(entry.itemId)) {
           throw new ContentValidationError(
             `expeditionRewards["${table.id}"].groups["${group.id}"] references unknown item: ` +
               `${entry.itemId}. Reward tables name items from items.json; they never define them.`,
-          );
-        }
-        // V1 reserves the category rather than shipping it. A table is the one
-        // place an inert item could reach a player's hands.
-        if (item.category === 'equipment') {
-          throw new ContentValidationError(
-            `expeditionRewards["${table.id}"].groups["${group.id}"] awards equipment item ` +
-              `"${entry.itemId}". Equipment has no mechanics in V1 and must not be granted — ` +
-              'the category is reserved for a later phase.',
           );
         }
       }
@@ -944,6 +935,22 @@ export function validateContentSet(content: LoadedContent): void {
     slugs.find((s, i) => slugs.indexOf(s) !== i);
   const dupItem = dupSlug(items.map((i) => i.slug));
   if (dupItem) throw new ContentValidationError(`Duplicate item slug: ${dupItem}`);
+
+  // `equipment` is a retired *item* category. Equipment shipped as its own
+  // database-backed system — definitions in `equipment_definitions`, owned
+  // copies as individual instances — and is never a quantity in
+  // `player_inventory`. The value survives in the item schema, the DB CHECK
+  // and the API enum only for compatibility, so this is where new use of it
+  // is refused, disabled items included: an item that exists at all can be
+  // named by a reward table.
+  const retiredEquipmentItems = items.filter((i) => i.category === 'equipment').map((i) => i.slug);
+  if (retiredEquipmentItems.length > 0) {
+    throw new ContentValidationError(
+      `items.json uses the retired "equipment" item category: ${retiredEquipmentItems.join(', ')}. ` +
+        'Equipment is its own system (equipment definitions and player-owned instances), not an ' +
+        'item — remove these items or give them another category.',
+    );
+  }
   const dupSpecies = dupSlug(species.map((s) => s.slug));
   if (dupSpecies) throw new ContentValidationError(`Duplicate species slug: ${dupSpecies}`);
 
@@ -1365,29 +1372,6 @@ function warnOnUnpooledSpecies(
 }
 
 /**
- * Equipment is a **reserved** category in V1: the item model can describe it,
- * the expedition reward tables refuse it, and nothing in the game equips it.
- *
- * A warning rather than a refusal, for the same reason the unpooled-species
- * check is one. Authoring equipment ahead of the mechanics is legitimate —
- * that is what "reserve the category" means — and failing the boot over it
- * would make the reservation useless. But an *enabled* equipment item is one
- * reward-table edit away from being handed to a player as an object with no
- * behaviour, and "I got a sword and nothing happened" is a bug report. So the
- * line gets logged every boot until somebody either disables the item or
- * ships the mechanics.
- */
-function warnOnEnabledEquipment(items: LoadedContent['items'], logger: Logger): void {
-  const enabled = items.filter((i) => i.category === 'equipment' && i.enabled).map((i) => i.slug);
-  if (enabled.length === 0) return;
-  logger.warn(
-    { items: enabled },
-    'equipment items are enabled but equipment has no mechanics in V1 — they can be ' +
-      'granted and held, and will do nothing. Set enabled: false until slots ship.',
-  );
-}
-
-/**
  * The same `itemId` listed more than once inside one reward group.
  *
  * A **warning**, never a refusal, because weighted quantity variants are a
@@ -1453,7 +1437,6 @@ export function loadContent(contentDir: string, assetsDir: string, logger: Logge
   );
   const validatedBosses = validateBossAssets(content.bosses, assetsDir, logger);
   warnOnUnpooledSpecies(validatedSpecies, content.regions, logger);
-  warnOnEnabledEquipment(content.items, logger);
   warnOnRepeatedRewardItems(content.expeditionRewards, logger);
 
   logger.info(

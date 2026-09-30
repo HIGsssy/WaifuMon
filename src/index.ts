@@ -41,6 +41,15 @@ import { createResultPresentationService } from './modules/resultPresentation/re
 import { createWorldEncounterAdminService } from './modules/worldEncounters/adminService';
 import { createEncounterPromotionService } from './modules/worldEncounters/encounterImportService';
 import { seedWorldEncounters } from './modules/worldEncounters/seed';
+import { createFeatureUnlockService } from './modules/features/featureUnlockService';
+import { createEquipmentService } from './modules/equipment/equipmentService';
+import { createEquipmentDefinitionService } from './modules/equipment/equipmentDefinitionService';
+import { createCombatStatsService } from './modules/equipment/combatStatsService';
+import { createEquipmentPromotionService } from './modules/equipment/equipmentImportService';
+import {
+  loadEquipmentSeedCatalogue,
+  seedEquipmentDefinitions,
+} from './modules/equipment/seed';
 import {
   createWorldEncounterVendorService,
   seedWorldEncounterVendors,
@@ -273,6 +282,21 @@ async function main(): Promise<void> {
     buddyBonus,
     availability,
   });
+  /**
+   * Equipment (Phase 1: domain only — no Discord screen or API route reads
+   * these yet). `combatStats` resolves the Buddy through the collection's own
+   * self-healing read and follows `maxLevel` through the live content getter.
+   */
+  const featureUnlocks = createFeatureUnlockService(db);
+  const equipment = createEquipmentService({ db, featureUnlocks });
+  const equipmentDefinitions = createEquipmentDefinitionService(db);
+  const combatStats = createCombatStatsService({
+    db,
+    resolveActiveBuddy: (tx, playerId) => collection.resolveActiveBuddy(tx, playerId),
+    getMaxLevel: () => contentSnapshot.tables.waifuProgression.maxLevel,
+  });
+  const equipmentPromotion = createEquipmentPromotionService({ db });
+
   const care = createCareService({
     db,
     currency,
@@ -527,6 +551,11 @@ async function main(): Promise<void> {
       wildEncounters,
       speciesSelector,
       resultPresentation,
+      equipment,
+      equipmentDefinitions,
+      combatStats,
+      equipmentPromotion,
+      featureUnlocks,
     },
   };
 
@@ -546,6 +575,21 @@ async function main(): Promise<void> {
     await seedWorldEncounterVendors(db, { mode: 'insert-missing' });
   } catch (err) {
     logger.warn({ err }, 'world encounter seed failed — feature will run with whatever is in the DB');
+  }
+
+  // Equipment definitions follow the same rule: insert any seeded key that is
+  // missing and never touch one that exists. The database owns live
+  // definitions; changed content reaches a server through export/import.
+  try {
+    const equipmentSeed = await seedEquipmentDefinitions(db, {
+      mode: 'insert-missing',
+      catalogue: loadEquipmentSeedCatalogue(config.contentDir),
+    });
+    if (equipmentSeed.created.length > 0) {
+      logger.info({ created: equipmentSeed.created }, 'seeded missing equipment definitions');
+    }
+  } catch (err) {
+    logger.warn({ err }, 'equipment seed failed — equipment will run with whatever is in the DB');
   }
 
   await registerCommands(config.discordToken, config.discordClientId, config.discordGuildId, logger);

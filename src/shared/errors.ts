@@ -868,6 +868,173 @@ export class TravelDisabledError extends AppError {
   }
 }
 
+/* ───────────────────────────── Equipment ─────────────────────────────
+ *
+ * Every constructor here tolerates junk arguments, like the expedition errors
+ * below: `tests/unit/api/errors.test.ts` instantiates each exported subclass
+ * with throwaway values to prove its code is mapped to an HTTP status.
+ */
+
+/** One path-addressed problem with authored equipment content. */
+export interface EquipmentIssue {
+  path: string;
+  message: string;
+}
+
+/**
+ * Equipment content (a definition, a package entry) failed validation. Loud by
+ * design — content is refused with every problem named, never half-applied.
+ */
+export class EquipmentValidationError extends AppError {
+  readonly issues: EquipmentIssue[];
+  constructor(issues: readonly EquipmentIssue[]) {
+    const list = Array.isArray(issues) ? issues : [];
+    const summary = list.map((i) => (i.path ? `${i.path}: ${i.message}` : i.message)).join('; ');
+    super(
+      'EQUIPMENT_INVALID',
+      `Invalid equipment content: ${summary || 'unknown problem'}`,
+      summary || 'That equipment content is not valid.',
+    );
+    this.issues = [...list];
+  }
+}
+
+export class EquipmentDefinitionNotFoundError extends AppError {
+  constructor(key: string) {
+    super(
+      'EQUIPMENT_DEFINITION_NOT_FOUND',
+      `Equipment definition "${String(key)}" not found`,
+      "That equipment doesn't exist.",
+    );
+  }
+}
+
+/** A grant named a disabled definition — disabled means "stops being acquired". */
+export class EquipmentDefinitionDisabledError extends AppError {
+  constructor(key: string) {
+    super(
+      'EQUIPMENT_DEFINITION_DISABLED',
+      `Equipment definition "${String(key)}" is disabled and cannot be granted`,
+      'That equipment is not currently obtainable.',
+    );
+  }
+}
+
+export class EquipmentKeyTakenError extends AppError {
+  constructor(key: string) {
+    super(
+      'EQUIPMENT_KEY_TAKEN',
+      `An equipment definition with key "${String(key)}" already exists`,
+      'Another equipment definition already uses that key.',
+    );
+  }
+}
+
+/**
+ * An import lost a race: another import (or an admin create) added a
+ * definition this package was about to create, between this import planning
+ * it and writing it. Nothing from the package was applied — the import is one
+ * transaction — so the caller should preview again and retry against the
+ * server as it now is.
+ */
+export class EquipmentImportConflictError extends AppError {
+  readonly key: string | null;
+  constructor(key: string | null) {
+    const named = typeof key === 'string' && key !== '' ? key : null;
+    super(
+      'EQUIPMENT_IMPORT_CONFLICT',
+      `Equipment import conflicted with a concurrent change${named ? ` to "${named}"` : ''}; nothing was applied`,
+      'The equipment catalogue changed while this package was being imported. Nothing was ' +
+        'applied — preview the package again and retry.',
+    );
+    this.key = named;
+  }
+}
+
+/** Deleting a definition that owned instances still reference — disable it instead. */
+export class EquipmentDefinitionReferencedError extends AppError {
+  readonly instanceCount: number;
+  constructor(key: string, instanceCount: number) {
+    const count = Number.isInteger(instanceCount) ? instanceCount : 0;
+    super(
+      'EQUIPMENT_DEFINITION_IN_USE',
+      `Equipment definition "${String(key)}" is referenced by ${count} owned instance(s)`,
+      'Players own this equipment, so it cannot be deleted. Disable it instead.',
+    );
+    this.instanceCount = count;
+  }
+}
+
+/** Changing the slot of a definition that owned instances already copied. */
+export class EquipmentSlotLockedError extends AppError {
+  constructor(key: string) {
+    super(
+      'EQUIPMENT_SLOT_LOCKED',
+      `The slot of equipment definition "${String(key)}" cannot change once players own it`,
+      'Players own this equipment, so its slot can no longer change.',
+    );
+  }
+}
+
+/**
+ * The instance does not exist, belongs to someone else, or has been removed.
+ * Deliberately one error for all three, so a guessed id learns nothing.
+ */
+export class EquipmentNotOwnedError extends AppError {
+  constructor(equipmentId: number) {
+    super(
+      'EQUIPMENT_NOT_OWNED',
+      `Equipment ${String(equipmentId)} is not owned by this player`,
+      "That equipment isn't in your gear bag.",
+    );
+  }
+}
+
+export class EquipmentSlotMismatchError extends AppError {
+  constructor(equipmentId: number, expected: string, actual: string) {
+    super(
+      'EQUIPMENT_SLOT_MISMATCH',
+      `Equipment ${String(equipmentId)} fills the ${String(actual)} slot, not ${String(expected)}`,
+      "That equipment doesn't fit that slot.",
+    );
+  }
+}
+
+/** A locked instance was targeted by an action that respects the lock. */
+export class EquipmentLockedError extends AppError {
+  constructor(equipmentId: number) {
+    super(
+      'EQUIPMENT_LOCKED',
+      `Equipment ${String(equipmentId)} is locked`,
+      'That equipment is locked.',
+    );
+  }
+}
+
+/** The caller's view of a slot is stale — someone changed it in between. */
+export class LoadoutConflictError extends AppError {
+  constructor(slot: string) {
+    super(
+      'LOADOUT_CONFLICT',
+      `The ${String(slot)} slot changed since it was last read`,
+      'Your equipment changed in the meantime — take another look.',
+    );
+  }
+}
+
+/** The player has not unlocked this account feature yet. */
+export class FeatureLockedError extends AppError {
+  readonly featureKey: string;
+  constructor(featureKey: string) {
+    super(
+      'FEATURE_LOCKED',
+      `Feature "${String(featureKey)}" is not unlocked for this player`,
+      "You haven't unlocked that yet.",
+    );
+    this.featureKey = String(featureKey);
+  }
+}
+
 /** Detects a Postgres unique-constraint violation (possibly wrapped by drizzle). */
 export function isUniqueViolation(err: unknown): boolean {
   if (err && typeof err === 'object') {

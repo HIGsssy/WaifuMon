@@ -48,6 +48,11 @@ import type { ResultPresentationService } from '../modules/resultPresentation/re
 import type { AdminRoleGrantService } from '../modules/portalAuth/adminRoleGrantService';
 import type { EncounterPromotionService } from '../modules/worldEncounters/encounterImportService';
 import type { GuildRoleService } from '../modules/portalAuth/guildRoleService';
+import type { EquipmentService } from '../modules/equipment/equipmentService';
+import type { EquipmentDefinitionService } from '../modules/equipment/equipmentDefinitionService';
+import type { CombatStatsService } from '../modules/equipment/combatStatsService';
+import type { EquipmentPromotionService } from '../modules/equipment/equipmentImportService';
+import type { FeatureUnlockService } from '../modules/features/featureUnlockService';
 
 export interface AppServices {
   guilds: GuildService;
@@ -198,6 +203,23 @@ export interface AppServices {
    * "unknown", which grants nothing.
    */
   guildRoles?: GuildRoleService | undefined;
+  /**
+   * Equipment (Phase 1: the domain only). Wired in production so the startup
+   * seed runs and later phases have a service to call; no Discord handler or
+   * API route consumes these yet. Optional, like the World Encounter family,
+   * so a test context that builds `AppServices` by hand need not supply them.
+   *
+   *  - `equipment` — the one writer of owned instances and loadouts.
+   *  - `equipmentDefinitions` — authoring operations on the catalogue.
+   *  - `combatStats` — the one place ATK / DEF / HP are calculated.
+   *  - `equipmentPromotion` — package export and import.
+   *  - `featureUnlocks` — per-player account feature unlocks (Equipment first).
+   */
+  equipment?: EquipmentService | undefined;
+  equipmentDefinitions?: EquipmentDefinitionService | undefined;
+  combatStats?: CombatStatsService | undefined;
+  equipmentPromotion?: EquipmentPromotionService | undefined;
+  featureUnlocks?: FeatureUnlockService | undefined;
 }
 
 export interface AppContext {

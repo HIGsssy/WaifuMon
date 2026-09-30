@@ -430,6 +430,38 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
    * business rule refused — the same class as ITEM_NOT_PURCHASABLE above.
    */
   ITEM_NOT_SOLD_HERE: 422,
+
+  // --- Equipment ----------------------------------------------------------
+  // No route raises these yet (Phase 1 is the domain only); they are mapped
+  // now so the first route that does inherits a considered status.
+  /** Authored content failed validation — a malformed request, with issues. */
+  EQUIPMENT_INVALID: 400,
+  /** A package that cannot be applied to this server. */
+  EQUIPMENT_IMPORT_REJECTED: 400,
+  EQUIPMENT_DEFINITION_NOT_FOUND: 404,
+  /**
+   * Foreign, removed and nonexistent instance ids are one answer by design, so
+   * a guessed id learns nothing — the `BOSS_ENCOUNTER_NOT_FOUND` reasoning.
+   */
+  EQUIPMENT_NOT_OWNED: 404,
+  EQUIPMENT_KEY_TAKEN: 409,
+  /** A concurrent change beat this import; nothing applied — refresh and retry. */
+  EQUIPMENT_IMPORT_CONFLICT: 409,
+  /** Deleting a definition players own — disable it instead. */
+  EQUIPMENT_DEFINITION_IN_USE: 409,
+  EQUIPMENT_SLOT_LOCKED: 409,
+  EQUIPMENT_SLOT_MISMATCH: 409,
+  EQUIPMENT_LOCKED: 409,
+  /** The caller's view of a slot is stale; refetch and retry. */
+  LOADOUT_CONFLICT: 409,
+  /** Granting a definition that has been disabled — it is not obtainable now. */
+  EQUIPMENT_DEFINITION_DISABLED: 422,
+  /**
+   * The feature exists and the request is well-formed; the player has simply
+   * not unlocked it yet. 422 rather than 403, matching `REGION_LOCKED` and
+   * every other "you have not earned this yet" refusal in this table.
+   */
+  FEATURE_LOCKED: 422,
 };
 
 /** Every code this layer knows how to classify — used by the contract test. */

@@ -613,7 +613,8 @@ const INVENTORY_CATEGORY_DISPLAY: Record<string, { label: string; order: number 
   consumable: { label: '🧃 Consumables', order: 1 },
   salvage: { label: '📦 Salvage', order: 2 },
   key: { label: '🔑 Key Items', order: 3 },
-  equipment: { label: '⚔️ Equipment', order: 4 },
+  // No `equipment` entry: that item category is retired — equipment is its own
+  // system with its own screen, never an inventory quantity.
   material: { label: '🧵 Materials', order: 5 },
   cosmetic: { label: '💄 Cosmetics', order: 6 },
 };

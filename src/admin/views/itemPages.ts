@@ -16,6 +16,13 @@ import {
 } from '../../modules/content/schemas';
 import { boolField, esc, layout, numberField, selectField, textField, textareaField } from './html';
 
+/**
+ * Categories an item may be saved with. `equipment` is a retired item
+ * category — equipment is its own database-backed system — and the loader
+ * refuses it, so the editor does not offer it.
+ */
+const AUTHORABLE_ITEM_CATEGORIES = ITEM_CATEGORIES.filter((c) => c !== 'equipment');
+
 export interface ItemRow {
   item: ItemContent;
   references: string[];
@@ -209,7 +216,7 @@ ${refWarning}
   <div class="row">
     <div>${textField('slug', 'Slug', i.slug, { hint: 'lowercase_snake_case' })}</div>
     <div>${textField('name', 'Name', i.name)}</div>
-    <div>${selectField('category', 'Category', i.category, ITEM_CATEGORIES)}</div>
+    <div>${selectField('category', 'Category', i.category, AUTHORABLE_ITEM_CATEGORIES)}</div>
     <div>${textField('emoji', 'Emoji', i.emoji, { type: 'nulltext', hint: 'blank = none' })}</div>
   </div>
   <h2>Shop</h2>

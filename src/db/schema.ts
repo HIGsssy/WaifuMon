@@ -6,6 +6,13 @@
 import { sql } from 'drizzle-orm';
 import { REGION_SQL_LIST } from '../modules/locations/regions';
 import {
+  EQUIPMENT_EVENT_KIND_SQL_LIST,
+  EQUIPMENT_MULTIPLIER_BP_MAX,
+  EQUIPMENT_SLOT_SQL_LIST,
+  EQUIPMENT_SOURCE_TYPE_SQL_LIST,
+} from '../modules/equipment/vocabulary';
+import { FEATURE_KEY_SQL_LIST, FEATURE_UNLOCK_SOURCE_SQL_LIST } from '../modules/features/vocabulary';
+import {
   ARTWORK_MODE_SQL_LIST,
   ENCOUNTERED_ARTWORK_KEY_SQL_LIST,
   RESULT_PRESENTATION_FLAVOR_MAX_LENGTH,
@@ -16,6 +23,7 @@ import {
   boolean,
   check,
   date,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -24,6 +32,7 @@ import {
   real,
   text,
   timestamp,
+  unique,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
 
@@ -51,7 +60,12 @@ export const DEFAULT_AFFINITY: Affinity = 'switch';
  *   - `key` — quest and gate items. Sellability is opt-in twice over (a
  *     `sell_value` *and* an explicit content flag), because a key the player
  *     needed and vendored is an unrecoverable mistake.
- *   - `equipment` — reserved. The schema can describe it; V1 hands none out.
+ *   - `equipment` — **deprecated, do not use.** Equipment shipped as its own
+ *     database-backed system (`equipment_definitions` + per-player instances in
+ *     `player_equipment`), not as a quantity item. The content loader refuses
+ *     any item authored with this category. The value stays in this list, the
+ *     `items_category_check` CHECK and the API enum purely for compatibility;
+ *     removing it is a later migration.
  */
 export const ITEM_CATEGORIES = [
   'capture',
@@ -2356,3 +2370,362 @@ export const loadTestRuns = pgTable(
 );
 
 export type LoadTestRunRow = typeof loadTestRuns.$inferSelect;
+
+/* ─────────────────────────────── Equipment ───────────────────────────────
+ *
+ * Player-owned gear that converts the Buddy's Current SP into combat stats
+ * (ATK / DEF / HP). Four tables form the model and two are ledgers:
+ *
+ *   equipment_definitions — the content catalogue. **Database-authoritative**,
+ *     like world encounters: startup inserts missing keys and never updates,
+ *     and content moves between environments by export/import package.
+ *   player_equipment      — one row per owned instance, even when two are
+ *     identical. Never hard-deleted; admin removal sets `removed_at`.
+ *   player_loadouts       — named configurations. V1 exposes exactly one, the
+ *     active loadout; presets are the same rows with `is_active = false`.
+ *   player_loadout_slots  — what a loadout has in each slot.
+ *   equipment_events      — append-only observability ledger.
+ *   equipment_import_log  — audit trail for content packages.
+ *
+ * The invariants that matter most are enforced by the database, not by code:
+ *
+ *   - **Ownership and slot compatibility.** A slot row carries `player_id` and
+ *     `slot` and is foreign-keyed on `(equipment_id, player_id, slot)` to the
+ *     instance, and on `(loadout_id, player_id)` to the loadout. Equipping
+ *     another player's instance, or an Attack item into the Health slot, is a
+ *     foreign-key violation even if the service has a bug.
+ *   - **One item per slot per loadout** — the slot table's primary key.
+ *   - **One active loadout per player** — a partial unique index.
+ *   - **Referenced definitions cannot be hard-deleted** — `ON DELETE RESTRICT`.
+ *   - **A grant is applied once** — a partial unique index on `grant_key`, the
+ *     same technique as `encounters_origin_uq`.
+ *
+ * The one writer of these tables is `modules/equipment`;
+ * `tests/unit/equipmentBoundary.test.ts` fails if anything else writes them.
+ */
+
+const RARITY_SQL_LIST = RARITIES.map((r) => `'${r}'`).join(',');
+
+export const equipmentDefinitions = pgTable(
+  'equipment_definitions',
+  {
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    /**
+     * The stable identity — the only one content, packages, reward tables and
+     * logs ever use. Immutable once created; a rename is a new definition.
+     */
+    key: text('key').notNull().unique(),
+    name: text('name').notNull(),
+    description: text('description').notNull().default(''),
+    /**
+     * Which slot this gear fills. Immutable once any instance references the
+     * definition (service-enforced): instances copy it at grant time, and the
+     * slot foreign key depends on the two agreeing.
+     */
+    slot: text('slot').notNull(),
+    /** Waifumon rarity codes; V1 authoring admits N–UR only (see vocabulary). */
+    rarity: text('rarity').notNull(),
+    /**
+     * Stat multipliers in **basis points** — 8000 = ×0.80, 32000 = ×3.20.
+     * Integers, never floats, for the reason `seductivePower.ts` records: the
+     * errors in binary fractions land exactly where rounding decides between
+     * two integers a player can see. V1 requires the definition's own slot's
+     * multiplier to be positive and the other two to be zero.
+     */
+    attackBp: integer('attack_bp').notNull().default(0),
+    defenseBp: integer('defense_bp').notNull().default(0),
+    healthBp: integer('health_bp').notNull().default(0),
+    /**
+     * Reserved for the data-driven effect system (`{ effectId, value,
+     * qualifiers }`). V1 validation requires an empty array, so no inert
+     * effect can ship before the mechanics that would read it.
+     */
+    secondaryEffects: jsonb('secondary_effects')
+      .$type<Record<string, unknown>[]>()
+      .notNull()
+      .default([]),
+    tags: text('tags')
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
+    /** Regional identity for flavour and filtering. Null = not regional. */
+    regionId: text('region_id'),
+    /** Relative to `ASSETS_DIR`. Null = slot/rarity presentation only. */
+    artworkPath: text('artwork_path'),
+    /**
+     * Gates **acquisition** only: a disabled definition stops dropping, stops
+     * appearing in shops and refuses new grants. Instances already owned stay
+     * owned and stay equipable.
+     */
+    enabled: boolean('enabled').notNull().default(true),
+    /** Mirrors `items.shop_regions`. Unused until shops sell equipment. */
+    shopRegions: text('shop_regions')
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
+    buyPrice: integer('buy_price'),
+    priceCurrency: text('price_currency').notNull().default('waifubux'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Discord id of whoever last saved it. Null for seeded rows. */
+    updatedBy: text('updated_by'),
+  },
+  (t) => [
+    check('equipment_definitions_slot_check', sql`${t.slot} in (${sql.raw(EQUIPMENT_SLOT_SQL_LIST)})`),
+    check('equipment_definitions_rarity_check', sql`${t.rarity} in (${sql.raw(RARITY_SQL_LIST)})`),
+    check(
+      'equipment_definitions_multipliers_check',
+      sql`${t.attackBp} >= 0 and ${t.defenseBp} >= 0 and ${t.healthBp} >= 0`,
+    ),
+    check(
+      'equipment_definitions_bounds_check',
+      sql`${t.attackBp} <= ${sql.raw(String(EQUIPMENT_MULTIPLIER_BP_MAX.attack))} and ${t.defenseBp} <= ${sql.raw(String(EQUIPMENT_MULTIPLIER_BP_MAX.defense))} and ${t.healthBp} <= ${sql.raw(String(EQUIPMENT_MULTIPLIER_BP_MAX.health))}`,
+    ),
+    check(
+      'equipment_definitions_own_stat_check',
+      sql`(${t.slot} = 'attack' and ${t.attackBp} > 0) or (${t.slot} = 'defense' and ${t.defenseBp} > 0) or (${t.slot} = 'health' and ${t.healthBp} > 0)`,
+    ),
+    check(
+      'equipment_definitions_region_check',
+      sql`${t.regionId} is null or ${t.regionId} in (${sql.raw(REGION_SQL_LIST)})`,
+    ),
+    check('equipment_definitions_buy_price_check', sql`${t.buyPrice} is null or ${t.buyPrice} > 0`),
+    check('equipment_definitions_price_currency_check', sql`${t.priceCurrency} in ('waifubux','essence')`),
+    index('equipment_definitions_enabled_slot_idx').on(t.enabled, t.slot),
+    index('equipment_definitions_region_idx').on(t.regionId),
+  ],
+);
+
+export const playerEquipment = pgTable(
+  'player_equipment',
+  {
+    /** The instance's only identity; exposed to clients and always re-validated. */
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    playerId: bigint('player_id', { mode: 'number' })
+      .notNull()
+      .references(() => players.id),
+    definitionId: bigint('definition_id', { mode: 'number' })
+      .notNull()
+      .references(() => equipmentDefinitions.id, { onDelete: 'restrict' }),
+    /**
+     * Copied from the definition at grant time and never changed. Denormalised
+     * so the slot table's composite foreign key can prove slot compatibility.
+     */
+    slot: text('slot').notNull(),
+    /** Empty in V1; reserved for generated/rolled equipment. */
+    rolledProperties: jsonb('rolled_properties')
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    isFavorite: boolean('is_favorite').notNull().default(false),
+    /** Protects against future selling/salvaging; admin removal may override it. */
+    isLocked: boolean('is_locked').notNull().default(false),
+    sourceType: text('source_type').notNull(),
+    /** The source's own identifier — encounter slug, expedition key, region… */
+    sourceKey: text('source_key'),
+    /**
+     * Idempotency key for the grant that created this row. A retried payout, a
+     * double-clicked button or a takeover of a stale resolution races to the
+     * same key and exactly one insert survives.
+     */
+    grantKey: text('grant_key'),
+    /** Discord id of the admin behind an admin/event grant. */
+    grantedBy: text('granted_by'),
+    acquiredAt: timestamp('acquired_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Soft removal. A removed instance is not listed, equipable or countable. */
+    removedAt: timestamp('removed_at', { withTimezone: true }),
+    removedReason: text('removed_reason'),
+  },
+  (t) => [
+    // Target of `player_loadout_slots`' composite foreign key.
+    unique('player_equipment_id_player_slot_uq').on(t.id, t.playerId, t.slot),
+    uniqueIndex('player_equipment_grant_key_uq')
+      .on(t.grantKey)
+      .where(sql`grant_key is not null`),
+    index('player_equipment_player_active_idx')
+      .on(t.playerId)
+      .where(sql`removed_at is null`),
+    index('player_equipment_player_definition_idx').on(t.playerId, t.definitionId),
+    index('player_equipment_definition_idx').on(t.definitionId),
+    check('player_equipment_slot_check', sql`${t.slot} in (${sql.raw(EQUIPMENT_SLOT_SQL_LIST)})`),
+    check(
+      'player_equipment_source_type_check',
+      sql`${t.sourceType} in (${sql.raw(EQUIPMENT_SOURCE_TYPE_SQL_LIST)})`,
+    ),
+    // A removal always says why.
+    check(
+      'player_equipment_removed_shape_check',
+      sql`(${t.removedAt} is null) = (${t.removedReason} is null)`,
+    ),
+  ],
+);
+
+export const playerLoadouts = pgTable(
+  'player_loadouts',
+  {
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    playerId: bigint('player_id', { mode: 'number' })
+      .notNull()
+      .references(() => players.id),
+    name: text('name').notNull().default('Default'),
+    /** Exactly the loadout currently in effect. Presets carry `false`. */
+    isActive: boolean('is_active').notNull().default(false),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // Target of `player_loadout_slots`' composite foreign key.
+    unique('player_loadouts_id_player_uq').on(t.id, t.playerId),
+    uniqueIndex('player_loadouts_player_active_uq')
+      .on(t.playerId)
+      .where(sql`is_active`),
+    uniqueIndex('player_loadouts_player_name_uq').on(t.playerId, sql`lower(${t.name})`),
+    check(
+      'player_loadouts_name_check',
+      sql`btrim(${t.name}) <> '' and char_length(${t.name}) <= 40`,
+    ),
+  ],
+);
+
+export const playerLoadoutSlots = pgTable(
+  'player_loadout_slots',
+  {
+    loadoutId: bigint('loadout_id', { mode: 'number' }).notNull(),
+    /** Denormalised so both composite foreign keys can include it. */
+    playerId: bigint('player_id', { mode: 'number' }).notNull(),
+    slot: text('slot').notNull(),
+    equipmentId: bigint('equipment_id', { mode: 'number' }).notNull(),
+    equippedAt: timestamp('equipped_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // One item per slot per loadout. Unequip deletes the row.
+    primaryKey({ columns: [t.loadoutId, t.slot] }),
+    foreignKey({
+      name: 'player_loadout_slots_loadout_fk',
+      columns: [t.loadoutId, t.playerId],
+      foreignColumns: [playerLoadouts.id, playerLoadouts.playerId],
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'player_loadout_slots_equipment_fk',
+      columns: [t.equipmentId, t.playerId, t.slot],
+      foreignColumns: [playerEquipment.id, playerEquipment.playerId, playerEquipment.slot],
+    }).onDelete('restrict'),
+    uniqueIndex('player_loadout_slots_loadout_equipment_uq').on(t.loadoutId, t.equipmentId),
+    // Deliberately no uniqueness on `equipment_id` alone: one instance may sit
+    // in several presets. Only the active loadout is ever in effect.
+    index('player_loadout_slots_equipment_idx').on(t.equipmentId),
+    check('player_loadout_slots_slot_check', sql`${t.slot} in (${sql.raw(EQUIPMENT_SLOT_SQL_LIST)})`),
+  ],
+);
+
+export const equipmentEvents = pgTable(
+  'equipment_events',
+  {
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    playerId: bigint('player_id', { mode: 'number' })
+      .notNull()
+      .references(() => players.id),
+    equipmentId: bigint('equipment_id', { mode: 'number' }).references(() => playerEquipment.id),
+    loadoutId: bigint('loadout_id', { mode: 'number' }).references(() => playerLoadouts.id, {
+      onDelete: 'set null',
+    }),
+    kind: text('kind').notNull(),
+    slot: text('slot'),
+    /** For `equipped`/`unequipped`: what the slot held before. */
+    previousEquipmentId: bigint('previous_equipment_id', { mode: 'number' }).references(
+      () => playerEquipment.id,
+    ),
+    actorDiscordId: text('actor_discord_id'),
+    metadata: jsonb('metadata').$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check('equipment_events_kind_check', sql`${t.kind} in (${sql.raw(EQUIPMENT_EVENT_KIND_SQL_LIST)})`),
+    check(
+      'equipment_events_slot_check',
+      sql`${t.slot} is null or ${t.slot} in (${sql.raw(EQUIPMENT_SLOT_SQL_LIST)})`,
+    ),
+    index('equipment_events_player_created_idx').on(t.playerId, t.createdAt),
+    index('equipment_events_kind_created_idx').on(t.kind, t.createdAt),
+    index('equipment_events_equipment_idx').on(t.equipmentId),
+    // Serves the `ON DELETE SET NULL` from `player_loadouts`: without it,
+    // deleting a loadout (a preset, later) scans the whole ledger.
+    index('equipment_events_loadout_idx').on(t.loadoutId),
+  ],
+);
+
+/**
+ * One row per applied equipment package, written inside the import
+ * transaction — the `world_encounter_import_log` pattern. Exists if and only if
+ * the content it describes landed.
+ */
+export const equipmentImportLog = pgTable(
+  'equipment_import_log',
+  {
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    actorDiscordUserId: text('actor_discord_user_id'),
+    appliedAt: timestamp('applied_at', { withTimezone: true }).notNull().defaultNow(),
+    packageFormat: text('package_format').notNull(),
+    packageVersion: integer('package_version').notNull(),
+    packageExportedAt: text('package_exported_at'),
+    packageLabel: text('package_label'),
+    sourceFilename: text('source_filename'),
+    createdCount: integer('created_count').notNull().default(0),
+    updatedCount: integer('updated_count').notNull().default(0),
+    unchangedCount: integer('unchanged_count').notNull().default(0),
+    /** Keys created or updated, for a quick "what changed". */
+    definitionKeys: jsonb('definition_keys').$type<string[]>().notNull().default([]),
+  },
+  (t) => [index('equipment_import_log_applied_idx').on(t.appliedAt)],
+);
+
+/**
+ * Account features a player has unlocked — Equipment first.
+ *
+ * The `player_unlocked_routes` / `player_travel_passes` pattern: a permanent
+ * per-player entitlement with a composite primary key, a `source` and a
+ * timestamp. Deliberately **not** inventory (a key item would be listable,
+ * countable and potentially sellable), **not** `players.settings` (no
+ * constraint, no audit, easy to clobber), and **not** derived from owning gear
+ * (an admin grant would unlock it implicitly, with no completion moment).
+ *
+ * The primary key makes unlocking idempotent: a double-clicked completion or a
+ * retried onboarding step collapses to one row. Revocation deletes the row and
+ * is admin-only and audited.
+ */
+export const playerFeatureUnlocks = pgTable(
+  'player_feature_unlocks',
+  {
+    playerId: bigint('player_id', { mode: 'number' })
+      .notNull()
+      .references(() => players.id),
+    featureKey: text('feature_key').notNull(),
+    source: text('source').notNull(),
+    /** The unlocking thing's own identifier, e.g. an onboarding encounter id. */
+    sourceRef: text('source_ref'),
+    /** Discord id of the admin, for `source = 'admin'`. */
+    unlockedBy: text('unlocked_by'),
+    unlockedAt: timestamp('unlocked_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.playerId, t.featureKey] }),
+    check(
+      'player_feature_unlocks_feature_check',
+      sql`${t.featureKey} in (${sql.raw(FEATURE_KEY_SQL_LIST)})`,
+    ),
+    check(
+      'player_feature_unlocks_source_check',
+      sql`${t.source} in (${sql.raw(FEATURE_UNLOCK_SOURCE_SQL_LIST)})`,
+    ),
+  ],
+);
+
+export type EquipmentDefinitionRow = typeof equipmentDefinitions.$inferSelect;
+export type PlayerEquipmentRow = typeof playerEquipment.$inferSelect;
+export type PlayerLoadoutRow = typeof playerLoadouts.$inferSelect;
+export type PlayerLoadoutSlotRow = typeof playerLoadoutSlots.$inferSelect;
+export type EquipmentEventRow = typeof equipmentEvents.$inferSelect;
+export type EquipmentImportLogRow = typeof equipmentImportLog.$inferSelect;
+export type PlayerFeatureUnlockRow = typeof playerFeatureUnlocks.$inferSelect;

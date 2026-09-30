@@ -77,10 +77,7 @@ function completePool(over: Record<string, unknown> = {}): LoadedContent['expedi
 function content(over: Partial<LoadedContent> = {}): LoadedContent {
   return {
     ...SHIPPED,
-    items: [
-      { ...SHIPPED.items[0]!, slug: 'scrap', category: 'salvage' },
-      { ...SHIPPED.items[0]!, slug: 'sword', category: 'equipment' },
-    ],
+    items: [{ ...SHIPPED.items[0]!, slug: 'scrap', category: 'salvage' }],
     expeditions: completePool(),
     expeditionRewards: [ExpeditionRewardTableSchema.parse(rewardTable())],
     ...over,
@@ -584,23 +581,9 @@ describe('validateExpeditionContent', () => {
     );
   });
 
-  /**
-   * Equipment is reserved in V1: the schema can describe it, the game has no
-   * mechanics for it, and a reward table is the one place an inert item could
-   * reach a player's hands.
-   */
-  it('rejects a reward that awards equipment', () => {
-    expectRejection(
-      {
-        expeditionRewards: [
-          ExpeditionRewardTableSchema.parse(
-            rewardTable({ groups: [{ id: 'g', entries: [{ itemId: 'sword', weight: 1 }] }] }),
-          ),
-        ],
-      },
-      /awards equipment item/,
-    );
-  });
+  // The retired `equipment` item category is refused in items.json itself by
+  // `validateContentSet` (see tests/unit/equipmentContentRetirement.test.ts),
+  // so an equipment item can no longer reach a reward table at all.
 
   // A disabled item is fine: the grant resolves the live row inside the payout
   // transaction, and a disabled item still exists and can still be held.
