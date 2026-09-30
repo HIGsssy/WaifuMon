@@ -686,12 +686,12 @@
         {
           "item": "cracked_teleport_core",
           "quantity": 1,
-          "hint": "Long Thirstlands excavations and escorts"
+          "hint": "Long Thirstlands excavations and escorts; rarely Twin Peeks expeditions"
         },
         {
           "item": "quantum_stabilizer",
           "quantity": 2,
-          "hint": "Long Thirstlands expeditions"
+          "hint": "Thirstlands and Valley expeditions; rare salvage encounters"
         },
         {
           "item": "phase_coupler",

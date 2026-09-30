@@ -1240,7 +1240,7 @@
       "dailyStockLimit": null,
       "effectType": null,
       "effectConfig": null,
-      "description": "The heart of a teleporter that tried very hard and then stopped. Transporter Beacon component. Dug up on long Thirstlands excavations and escorts.",
+      "description": "The heart of a teleporter that tried very hard and then stopped. Transporter Beacon component. Dug up on long Thirstlands excavations and escorts, and now and then on Twin Peeks expeditions.",
       "emoji": "🔮",
       "enabled": true
     },
@@ -1260,7 +1260,7 @@
       "dailyStockLimit": null,
       "effectType": null,
       "effectConfig": null,
-      "description": "Keeps a signal in one place long enough to arrive. Transporter Beacon component (need 2). Brought back by long Thirstlands expeditions.",
+      "description": "Keeps a signal in one place long enough to arrive. Transporter Beacon component (need 2). Brought back by technical Thirstlands and Waifu Valley expeditions, and now and then pried out of salvage in world encounters.",
       "emoji": "⚛️",
       "enabled": true
     },

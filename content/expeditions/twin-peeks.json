@@ -52,6 +52,7 @@
         "waifubux",
         "essence",
         "charms",
+        "key_item",
         "waifu_xp"
       ],
       "enabled": true
@@ -264,6 +265,7 @@
         "charms",
         "consumables",
         "rare_find",
+        "key_item",
         "waifu_xp"
       ],
       "enabled": true

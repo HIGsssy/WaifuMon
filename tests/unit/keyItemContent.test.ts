@@ -5,6 +5,8 @@
  * and it can never be obtained twice. Tests start from shipped content and
  * break exactly one thing. No database.
  */
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   validateContentSet,
@@ -23,9 +25,33 @@ import {
 } from '../../src/modules/travel/travelService';
 import { describeMissing, evaluateRecipe } from '../../src/modules/keyItems/keyItemService';
 import { SEED_ENCOUNTERS } from '../../src/modules/worldEncounters/seed';
+import { EncounterPackageSchema } from '../../src/modules/worldEncounters/encounterPackage';
 import { loadShippedContent } from '../helpers/fixtures';
 
 const SHIPPED = loadShippedContent();
+
+/**
+ * Every World Encounter package committed under `content/encounters/`. The
+ * DB is authoritative for encounters, so these files are how content reaches
+ * it. `full` is a whole-catalogue export (`world-encounters-all-*`); the
+ * newest of those is picked by `exportedAt`, not filename, because a `-v2`
+ * suffix sorts before `.json`.
+ */
+function encounterPackages() {
+  const dir = join(__dirname, '..', '..', 'content', 'encounters');
+  const packages = readdirSync(dir)
+    .filter((f) => f.endsWith('.json'))
+    .map((file) => ({
+      file,
+      full: file.startsWith('world-encounters-all-'),
+      pkg: EncounterPackageSchema.parse(JSON.parse(readFileSync(join(dir, file), 'utf8'))),
+    }));
+  const newest = packages
+    .filter((p) => p.full)
+    .sort((a, b) => Date.parse(a.pkg.exportedAt) - Date.parse(b.pkg.exportedAt))
+    .at(-1);
+  return packages.map((p) => ({ ...p, newestFull: p === newest }));
+}
 const shipped = (): LoadedContent => structuredClone(SHIPPED);
 
 describe('shipped content', () => {
@@ -80,21 +106,26 @@ describe('shipped content', () => {
     expect(astral.map((g) => g.id)).toEqual(['astral-salvage']);
     expect(astral[0]!.entries).toHaveLength(1);
     expect(astral[0]!.enabled).toBe(true);
-    // Quantum Stabilizer — Thirstlands expedition rewards.
+    // Quantum Stabilizer — Thirstlands and Waifu Valley expedition rewards
+    // (the spread is pinned in its own test below).
     const stabilizerTables = SHIPPED.expeditionRewards.filter((table) =>
       table.groups.some((g) => g.entries.some((e) => e.itemId === 'quantum_stabilizer')),
     );
     expect(stabilizerTables.map((x) => x.id).sort()).toEqual([
       'thirst-procession-wake-success-v1',
+      'thirst-rig-recovery-success-v1',
       'thirst-wreck-field-success-v1',
+      'valley-substation-success-v2',
+      'valley-undercity-dive-success-v4',
     ]);
     // Phase Coupler — the Base 80085 shop.
     const coupler = SHIPPED.items.find((i) => i.slug === 'phase_coupler')!;
     expect(coupler.shopRegions).toEqual(['base-80085']);
     expect(coupler.buyPrice).toBeGreaterThan(0);
     // Cracked Teleport Core — long Thirstlands expeditions, on the two long
-    // missions the Stabilizer is *not* on, each as its own group so no other
-    // drop's odds moved. Success tables only, like the Stabilizer.
+    // missions the Stabilizer is *not* on, plus a rare Twin Peeks pair. Each
+    // is its own group so no other drop's odds moved. Success tables only,
+    // like the Stabilizer.
     //
     // Interim home: the Core belongs to Base 80085 thematically, but Base 80085
     // ships no expedition content yet. When `content/expeditions/base-80085.json`
@@ -106,6 +137,8 @@ describe('shipped content', () => {
         .map((g) => ({ table: table.id, group: g })),
     );
     expect(coreGroups.map((c) => [c.table, c.group.chanceBasisPoints])).toEqual([
+      ['peeks-bathhouse-turnover-success-v1', 40],
+      ['peeks-avalanche-shed-success-v1', 500],
       ['thirst-unrefiled-claim-success-v1', 500],
       ['thirst-dune-road-success-v1', 2000],
     ]);
@@ -131,13 +164,138 @@ describe('shipped content', () => {
     }
   });
 
-  it('shows the Core\'s missions a key-item reward, and points the recipe hint at them', () => {
-    const missions = SHIPPED.expeditions.filter((e) =>
-      ['thirst_still_shored_still_hung', 'thirst_dont_sing_back'].includes(e.key),
+  /**
+   * The recipe needs two Stabilizers, so it drops across every duration a
+   * player might run — a short mission, two 6h ones and two overnights — each
+   * as its own single-entry group so no existing drop's odds moved. Success
+   * tables only. Thirstlands' 6h and 18h slots are left alone: that region's
+   * typical day already sits at the top of its WBe band.
+   */
+  it('spreads the Stabilizer across mission lengths as independent groups', () => {
+    const missions = new Map(SHIPPED.expeditions.map((e) => [e.rewardTable, e]));
+    const drops = SHIPPED.expeditionRewards.flatMap((table) =>
+      table.groups
+        .filter((g) => g.entries.some((e) => e.itemId === 'quantum_stabilizer'))
+        .map((group) => ({ mission: missions.get(table.id)!, group })),
     );
+    expect(
+      drops.map((d) => [d.mission.key, d.mission.durationMinutes, d.group.chanceBasisPoints]),
+    ).toEqual([
+      ['valley_hum_job', 360, 1500],
+      ['valley_going_down', 1080, 3000],
+      ['thirst_dig_it_out', 180, 1000],
+      ['thirst_stripped_to_the_frame', 360, 1500],
+      ['thirst_headfirst', 1080, 2500],
+    ]);
+    for (const { mission, group } of drops) {
+      expect(mission.enabled, mission.key).toBe(true);
+      expect(group.enabled, mission.key).toBe(true);
+      expect(group.rolls, mission.key).toBe(1);
+      expect(group.entries, mission.key).toHaveLength(1);
+      expect(group.entries[0]!.quantity, mission.key).toBe(1);
+      expect(mission.rewardPreview, mission.key).toContain('key_item');
+    }
+  });
+
+  /**
+   * World encounters are the Stabilizer's rare secondary source: a long-shot
+   * choice on two salvage encounters in regions a player reaches *before*
+   * the Beacon, resolved through the ordinary SP check. No affinity or race
+   * advantage, which would add 10–15 points and turn a long shot into a
+   * farm. The DB is authoritative for encounters; this reads the newest
+   * full export committed alongside the content.
+   */
+  it('awards the Stabilizer from only two encounters, as a long-shot SP check', () => {
+    const pkg = encounterPackages().find((p) => p.newestFull)!.pkg;
+    const awarding = pkg.encounters.flatMap((encounter) =>
+      encounter.choices
+        .filter((c) =>
+          [...c.successEffects, ...c.failureEffects].some(
+            (e) => e.type === 'give_item' && e.slug === 'quantum_stabilizer',
+          ),
+        )
+        .map((choice) => ({ encounter, choice })),
+    );
+    expect(awarding.map((a) => a.encounter.slug).sort()).toEqual([
+      'b8_salvage_row',
+      'th_merchants_lost_cargo',
+    ]);
+    for (const { encounter, choice } of awarding) {
+      expect(encounter.lifecycle, encounter.slug).toBe('active');
+      expect(encounter.regions.some((r) => r === 'assteroid-belt'), encounter.slug).toBe(false);
+      expect(choice.failureEffects, encounter.slug).toEqual([]);
+      const check = choice.check;
+      expect(check.type, encounter.slug).toBe('sp');
+      if (check.type !== 'sp') continue;
+      expect(check.affinityAdvantage, encounter.slug).toBeUndefined();
+      expect(check.raceAdvantage, encounter.slug).toBeUndefined();
+      // Best case before a Buddy Bonus stays at or under 11%.
+      expect(check.baseChance! + check.maxSpModifier!, encounter.slug).toBeLessThanOrEqual(0.11);
+    }
+  });
+
+  /**
+   * Migration 0044 disables the Teleporter Wreck, but an encounter import is
+   * an upsert by slug: importing any package that still carries it as
+   * `active` would quietly re-enable a second Core source. So the newest
+   * full export and every partial package must carry it disabled (not absent
+   * — the row still exists, and a package that lists it disabled is a no-op
+   * once 0044 has run), and no active encounter in them may award the Core.
+   *
+   * Older full exports are kept as dated snapshots of what a server held at
+   * the time, and are exempt: they are records, not import candidates.
+   */
+  /**
+   * Import writes `artworkPath` verbatim, so a full package is also the art
+   * wiring for every encounter it carries. The newest one must not drop or
+   * repoint a path an older snapshot already had, every active encounter
+   * must have art, and every path must resolve under `assets/`.
+   */
+  it('keeps encounter art wired in the newest full export', () => {
+    const packages = encounterPackages();
+    const newest = packages.find((p) => p.newestFull)!.pkg;
+    const assets = join(__dirname, '..', '..', 'assets');
+    for (const e of newest.encounters) {
+      if (e.lifecycle === 'active') expect(e.artworkPath, e.slug).not.toBeNull();
+      if (e.artworkPath) expect(existsSync(join(assets, e.artworkPath)), e.artworkPath).toBe(true);
+    }
+    const current = new Map(newest.encounters.map((e) => [e.slug, e.artworkPath]));
+    for (const { file, pkg } of packages.filter((p) => p.full && !p.newestFull)) {
+      for (const e of pkg.encounters) {
+        if (e.artworkPath) expect(current.get(e.slug), `${file} / ${e.slug}`).toBe(e.artworkPath);
+      }
+    }
+  });
+
+  it('keeps the Teleporter Wreck retired in every importable encounter package', () => {
+    const importable = encounterPackages().filter((p) => p.newestFull || !p.full);
+    expect(importable.some((p) => p.newestFull)).toBe(true);
+    for (const { file, pkg } of importable) {
+      const wreck = pkg.encounters.find((e) => e.slug === 'b8_teleporter_wreck');
+      if (wreck) expect(wreck.lifecycle, file).toBe('disabled');
+      for (const encounter of pkg.encounters.filter((e) => e.lifecycle === 'active')) {
+        for (const choice of encounter.choices) {
+          for (const effect of [...choice.successEffects, ...choice.failureEffects]) {
+            const awardsCore = effect.type === 'give_item' && effect.slug === 'cracked_teleport_core';
+            expect(awardsCore, `${file} / ${encounter.slug}`).toBe(false);
+          }
+        }
+      }
+    }
+  });
+
+  it('shows the Core\'s missions a key-item reward, and points the recipe hint at them', () => {
+    const coreTables = new Set(
+      SHIPPED.expeditionRewards
+        .filter((t) => t.groups.some((g) => g.entries.some((e) => e.itemId === 'cracked_teleport_core')))
+        .map((t) => t.id),
+    );
+    const missions = SHIPPED.expeditions.filter((e) => coreTables.has(e.rewardTable));
     expect(missions.map((e) => [e.key, e.durationMinutes])).toEqual([
       ['thirst_still_shored_still_hung', 360],
       ['thirst_dont_sing_back', 1080],
+      ['peeks_on_her_knees', 60],
+      ['peeks_down_until_told_otherwise', 1080],
     ]);
     for (const m of missions) expect(m.rewardPreview, m.key).toContain('key_item');
     const recipe = SHIPPED.tables.keyItemRecipes.find((r) => r.id === 'transporter_beacon')!;
