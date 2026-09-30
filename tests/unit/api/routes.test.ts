@@ -942,6 +942,11 @@ describe('OpenAPI registration', () => {
       // `.write`: it changes the live game for every player at once.
       'PUT /api/v1/admin/encounters/settings',
       'PUT /api/v1/admin/encounters/{id}',
+      // World Encounter vendors. Create/edit/delete need `encounters.write`;
+      // delete is refused while any encounter still opens the vendor.
+      'DELETE /api/v1/admin/vendors/{vendorKey}',
+      'POST /api/v1/admin/vendors',
+      'PUT /api/v1/admin/vendors/{vendorKey}',
       // Result Presentations. Create/edit/delete need `presentations.write`;
       // `preview` writes nothing (it renders an unsaved variant) but is a POST
       // because the variant travels as a body, and needs `presentations.read`.

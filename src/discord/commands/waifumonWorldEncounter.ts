@@ -18,6 +18,7 @@ import type { AppContext, PlayerInteraction, Provisioned } from '../types';
 import { respondEphemeral } from '../ephemeralSession';
 import {
   buildEncounterPresent,
+  buildFollowUpSkipped,
   buildEncounterResolved,
 } from '../worldEncounterPresenter';
 import { buildVendorPresent } from '../worldEncounterVendorPresenter';
@@ -96,11 +97,19 @@ export async function handleWorldEncounterContinue(
     await respondEphemeral(interaction, 'That button is malformed — re-run /waifumon.');
     return;
   }
-  const activation = await service.getActivationById(activeId, prov.playerId);
-  if (!activation) {
+  // Re-checks the queued follow-up's status: one drafted or disabled after it
+  // was queued is closed here rather than shown, and the player is handed the
+  // way out instead.
+  const outcome = await service.openContinuation(activeId, prov.playerId);
+  if (!outcome) {
     await respondEphemeral(interaction, 'This continuation has already been consumed or expired.');
     return;
   }
+  if (outcome.status === 'skipped') {
+    await respondEphemeral(interaction, buildFollowUpSkipped(outcome));
+    return;
+  }
+  const { activation } = outcome;
   // Continuing the story leaves the previous link's screen behind, and with it
   // any Waifumon that link spawned: the player chose the story over her. Close
   // her now, or she stays the player's one active encounter — blocking the next

@@ -40,6 +40,7 @@ import { shopRoutes } from './shop';
 import { adminEncounterRoutes } from './admin/encounters';
 import { adminAccessRoutes } from './admin/access';
 import { adminEncounterPromotionRoutes } from './admin/encounterPromotion';
+import { adminVendorRoutes } from './admin/vendors';
 import { adminResultPresentationRoutes } from './admin/resultPresentations';
 import { adminGalleryRoutes } from './admin/gallery';
 import { adminSystemMetricsRoutes } from './admin/systemMetrics';
@@ -123,6 +124,10 @@ export const v1Routes =
 
     // Admin: export/import of encounter content between environments.
     await app.register(adminEncounterPromotionRoutes(ctx));
+
+    // Admin: the vendors `open_vendor` effects open. Skipped when either the
+    // vendor or the encounter admin service is not wired.
+    await app.register(adminVendorRoutes(ctx));
 
     // Admin: Result Presentations (hunt-find and release flavor/artwork).
     // Skipped when the presentation service is not wired.

@@ -27,8 +27,14 @@ export interface WorldEncounterAdminService {
   /**
    * Create or replace the encounter identified by `input.slug`. Returns the
    * hydrated record after the write.
+   *
+   * With `createOnly`, an existing slug is refused with
+   * {@link AdminEncounterSlugTakenError} instead of being replaced — the
+   * semantics of every "create" (the Portal's POST, clone). Replacing by
+   * slug stays available to callers that mean it (the legacy admin panel's
+   * single save form, content import).
    */
-  upsert(input: EncounterInput): Promise<LoadedEncounter>;
+  upsert(input: EncounterInput, opts?: { createOnly?: boolean }): Promise<LoadedEncounter>;
   setLifecycle(id: number, lifecycle: 'draft' | 'active' | 'disabled'): Promise<void>;
   clone(id: number, newSlug: string): Promise<LoadedEncounter>;
   /** Refuses when history rows exist — the caller should disable instead. */
@@ -42,6 +48,22 @@ export class AdminEncounterValidationError extends Error {
     this.name = 'AdminEncounterValidationError';
     this.issues = issues;
   }
+}
+
+/** A create named a slug another encounter already has. Nothing was written. */
+export class AdminEncounterSlugTakenError extends AdminEncounterValidationError {
+  readonly slug: string;
+  constructor(slug: string) {
+    super([`An encounter with the slug "${slug}" already exists.`]);
+    this.name = 'AdminEncounterSlugTakenError';
+    this.slug = slug;
+  }
+}
+
+/** Postgres `unique_violation` — a concurrent create won the slug first. */
+function isUniqueViolation(err: unknown): boolean {
+  const e = err as { code?: unknown; cause?: { code?: unknown } } | null;
+  return e?.code === '23505' || e?.cause?.code === '23505';
 }
 
 /**
@@ -176,11 +198,14 @@ export function createWorldEncounterAdminService(
       const row = await repo.loadBySlug(slug);
       return row ? hydrateEncounter(row) : null;
     },
-    async upsert(input) {
+    async upsert(input, opts = {}) {
       const items = await itemSlugs();
       const existing = await existingSlugs();
+      if (opts.createOnly && existing.has(input.slug)) {
+        throw new AdminEncounterSlugTakenError(input.slug);
+      }
       const validated = parseEncounterInput(input, items, existing, await chainTargets());
-      const priorRow = await repo.loadBySlug(validated.slug);
+      const priorRow = opts.createOnly ? null : await repo.loadBySlug(validated.slug);
       const values = {
         slug: validated.slug,
         name: validated.name,
@@ -198,32 +223,39 @@ export function createWorldEncounterAdminService(
         metadata: validated.metadata,
       };
       let id: number;
-      await db.transaction(async (tx) => {
-        if (priorRow) {
-          id = priorRow.encounter.id;
-          await repo.update(tx, id, values);
-        } else {
-          id = await repo.insert(tx, values);
+      try {
+        await db.transaction(async (tx) => {
+          if (priorRow) {
+            id = priorRow.encounter.id;
+            await repo.update(tx, id, values);
+          } else {
+            id = await repo.insert(tx, values);
+          }
+          await repo.replaceChildren(
+            tx,
+            id,
+            validated.regions,
+            validated.routes,
+            validated.choices.map((c, i) => ({
+              sortOrder: i,
+              label: c.label,
+              emoji: c.emoji,
+              requirementsJson: c.requirements as unknown as Record<string, unknown>,
+              checkJson: c.check as unknown as Record<string, unknown>,
+              successEffectsJson: c.successEffects as unknown as Record<string, unknown>[],
+              failureEffectsJson: c.failureEffects as unknown as Record<string, unknown>[],
+              outcomeText: c.outcomeText ?? null,
+              successText: c.successText ?? null,
+              failureText: c.failureText ?? null,
+            })),
+          );
+        });
+      } catch (err) {
+        if (opts.createOnly && isUniqueViolation(err)) {
+          throw new AdminEncounterSlugTakenError(validated.slug);
         }
-        await repo.replaceChildren(
-          tx,
-          id,
-          validated.regions,
-          validated.routes,
-          validated.choices.map((c, i) => ({
-            sortOrder: i,
-            label: c.label,
-            emoji: c.emoji,
-            requirementsJson: c.requirements as unknown as Record<string, unknown>,
-            checkJson: c.check as unknown as Record<string, unknown>,
-            successEffectsJson: c.successEffects as unknown as Record<string, unknown>[],
-            failureEffectsJson: c.failureEffects as unknown as Record<string, unknown>[],
-            outcomeText: c.outcomeText ?? null,
-            successText: c.successText ?? null,
-            failureText: c.failureText ?? null,
-          })),
-        );
-      });
+        throw err;
+      }
       const row = await repo.loadBySlug(validated.slug);
       if (!row) throw new Error('upsert: encounter vanished after write');
       return hydrateEncounter(row);
@@ -267,7 +299,8 @@ export function createWorldEncounterAdminService(
         })),
         metadata: original.metadata,
       });
-      return this.upsert(input);
+      // A clone is a create: a taken slug is refused, never overwritten.
+      return this.upsert(input, { createOnly: true });
     },
     async remove(id) {
       const hasHistory = await repo.hasHistory(id);

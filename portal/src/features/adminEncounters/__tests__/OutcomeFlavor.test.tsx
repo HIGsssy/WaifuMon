@@ -97,12 +97,12 @@ describe('choice editor: flavor fields', () => {
     const { user, latest } = renderEditor(
       base({ type: 'sp', baseChance: 0.55 }, { successText: SUCCESS, failureText: FAILURE }),
     );
-    await user.selectOptions(screen.getByLabelText('Type'), 'none');
+    await user.selectOptions(screen.getByLabelText('Resolution'), 'none');
     expect(screen.queryByLabelText('Success Text')).toBeNull();
     expect(latest.current.successText).toBe(SUCCESS);
     expect(latest.current.failureText).toBe(FAILURE);
 
-    await user.selectOptions(screen.getByLabelText('Type'), 'sp');
+    await user.selectOptions(screen.getByLabelText('Resolution'), 'sp');
     expect(screen.getByLabelText('Success Text')).toHaveValue(SUCCESS);
     expect(screen.getByLabelText('Failure Text')).toHaveValue(FAILURE);
   });

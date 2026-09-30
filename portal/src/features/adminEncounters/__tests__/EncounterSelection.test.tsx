@@ -1,10 +1,10 @@
 /**
- * Encounter Manager — row-level selection and its wiring into Export Selected.
+ * Import / Export — row-level selection and its wiring into Export Selected.
  *
- * The Encounter Manager owed the promotion panel a way to *pick* encounters.
- * Before this change it never rendered anything selectable, so Export Selected
- * was always disabled. These tests cover the pieces that make the workflow
- * actually work:
+ * The promotion panel needs a way to *pick* encounters. It moved off the
+ * encounter list onto the World Encounters → Import / Export page, and the
+ * checklist it picks from moved with it. These tests cover the pieces that
+ * make the workflow actually work:
  *
  *   - a checkbox per row and a header Select-All that respects the active
  *     filter (never reaches encounters the author cannot see),
@@ -25,7 +25,7 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
 
-import { AdminEncountersListPage } from '../AdminEncountersListPage';
+import { ImportExportPage } from '../ImportExportPage';
 import { SessionContext } from '@/auth/SessionContext';
 import type { PortalSession, SessionState } from '@/auth/types';
 import * as adminEncounters from '@/api/adminEncounters';
@@ -57,7 +57,7 @@ function wrapper(permissions: readonly string[] = PUBLISHER) {
     return (
       <QueryClientProvider client={client}>
         <SessionContext.Provider value={session(permissions)}>
-          <MemoryRouter initialEntries={['/admin/encounters']}>{children}</MemoryRouter>
+          <MemoryRouter initialEntries={['/admin/encounters/import-export']}>{children}</MemoryRouter>
         </SessionContext.Provider>
       </QueryClientProvider>
     );
@@ -147,7 +147,7 @@ const exportAllBtn = () => screen.getByRole('button', { name: /export all encoun
 
 describe('per-row selection', () => {
   it('starts with nothing checked and Export Selected disabled', async () => {
-    render(<AdminEncountersListPage />, { wrapper: wrapper() });
+    render(<ImportExportPage />, { wrapper: wrapper() });
     await waitForRows();
 
     expect(rowCheckbox('Alpha')).not.toBeChecked();
@@ -159,7 +159,7 @@ describe('per-row selection', () => {
 
   it('checks a single encounter and exposes the count', async () => {
     const user = userEvent.setup();
-    render(<AdminEncountersListPage />, { wrapper: wrapper() });
+    render(<ImportExportPage />, { wrapper: wrapper() });
     await waitForRows();
 
     await user.click(rowCheckbox('Bravo'));
@@ -175,7 +175,7 @@ describe('per-row selection', () => {
 
   it('checks multiple encounters', async () => {
     const user = userEvent.setup();
-    render(<AdminEncountersListPage />, { wrapper: wrapper() });
+    render(<ImportExportPage />, { wrapper: wrapper() });
     await waitForRows();
 
     await user.click(rowCheckbox('Alpha'));
@@ -191,7 +191,7 @@ describe('per-row selection', () => {
 
   it('deselects when clicked a second time', async () => {
     const user = userEvent.setup();
-    render(<AdminEncountersListPage />, { wrapper: wrapper() });
+    render(<ImportExportPage />, { wrapper: wrapper() });
     await waitForRows();
 
     await user.click(rowCheckbox('Alpha'));
@@ -205,7 +205,7 @@ describe('per-row selection', () => {
     // A checkbox in the row must not be confused with the Name link that
     // opens the editor — the two are separate interactions.
     const user = userEvent.setup();
-    render(<AdminEncountersListPage />, { wrapper: wrapper() });
+    render(<ImportExportPage />, { wrapper: wrapper() });
     await waitForRows();
 
     const link = screen.getByRole('link', { name: 'Alpha' });
@@ -223,7 +223,7 @@ describe('per-row selection', () => {
 describe('Select all', () => {
   it('selects every row currently in view', async () => {
     const user = userEvent.setup();
-    render(<AdminEncountersListPage />, { wrapper: wrapper() });
+    render(<ImportExportPage />, { wrapper: wrapper() });
     await waitForRows();
 
     await user.click(selectAll());
@@ -238,7 +238,7 @@ describe('Select all', () => {
 
   it('goes to an indeterminate state when a row is deselected', async () => {
     const user = userEvent.setup();
-    render(<AdminEncountersListPage />, { wrapper: wrapper() });
+    render(<ImportExportPage />, { wrapper: wrapper() });
     await waitForRows();
 
     await user.click(selectAll());
@@ -251,7 +251,7 @@ describe('Select all', () => {
 
   it('a second click while all are selected clears them', async () => {
     const user = userEvent.setup();
-    render(<AdminEncountersListPage />, { wrapper: wrapper() });
+    render(<ImportExportPage />, { wrapper: wrapper() });
     await waitForRows();
 
     await user.click(selectAll());
@@ -270,7 +270,7 @@ describe('selection survives filtering', () => {
       .spyOn(adminEncounters, 'exportAdminEncounters')
       .mockResolvedValue(EXPORTED);
     const user = userEvent.setup();
-    render(<AdminEncountersListPage />, { wrapper: wrapper() });
+    render(<ImportExportPage />, { wrapper: wrapper() });
     await waitForRows();
 
     await user.click(rowCheckbox('Alpha'));
@@ -303,7 +303,7 @@ describe('selection survives filtering', () => {
       .spyOn(adminEncounters, 'exportAdminEncounters')
       .mockResolvedValue(EXPORTED);
     const user = userEvent.setup();
-    render(<AdminEncountersListPage />, { wrapper: wrapper() });
+    render(<ImportExportPage />, { wrapper: wrapper() });
     await waitForRows();
 
     await user.type(screen.getByPlaceholderText(/search name or slug/i), 'bravo');
@@ -330,7 +330,7 @@ describe('Export wiring', () => {
       .spyOn(adminEncounters, 'exportAdminEncounters')
       .mockResolvedValue(EXPORTED);
     const user = userEvent.setup();
-    render(<AdminEncountersListPage />, { wrapper: wrapper() });
+    render(<ImportExportPage />, { wrapper: wrapper() });
     await waitForRows();
 
     await user.click(rowCheckbox('Alpha'));
@@ -350,7 +350,7 @@ describe('Export wiring', () => {
       .spyOn(adminEncounters, 'exportAdminEncounters')
       .mockResolvedValue(EXPORTED);
     const user = userEvent.setup();
-    render(<AdminEncountersListPage />, { wrapper: wrapper() });
+    render(<ImportExportPage />, { wrapper: wrapper() });
     await waitForRows();
 
     // Even if the author has a partial selection, Export All must ignore it —
@@ -366,7 +366,7 @@ describe('Export wiring', () => {
 
   it('Export Selected is disabled with zero checked', async () => {
     const exportSpy = vi.spyOn(adminEncounters, 'exportAdminEncounters');
-    render(<AdminEncountersListPage />, { wrapper: wrapper() });
+    render(<ImportExportPage />, { wrapper: wrapper() });
     await waitForRows();
 
     expect(exportSelectedBtn()).toBeDisabled();
@@ -377,7 +377,7 @@ describe('Export wiring', () => {
 describe('Clear selection', () => {
   it('resets every checked row and disables Export Selected', async () => {
     const user = userEvent.setup();
-    render(<AdminEncountersListPage />, { wrapper: wrapper() });
+    render(<ImportExportPage />, { wrapper: wrapper() });
     await waitForRows();
 
     await user.click(rowCheckbox('Alpha'));

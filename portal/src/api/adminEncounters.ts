@@ -66,6 +66,8 @@ export interface AdminEncounterReference {
   encounters: Array<{ slug: string; name: string }>;
   species: Array<{ slug: string; name: string; rarity: string }>;
   vendors: Array<{ vendorKey: string; name: string }>;
+  /** Regions enabled in content. Optional so an older server still loads. */
+  enabledRegions?: string[];
   types: string[];
   rarities: string[];
   lifecycles: string[];

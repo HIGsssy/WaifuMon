@@ -63,7 +63,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { to: '/players', label: 'Players', icon: Users },
   {
     to: '/admin/encounters',
-    label: 'Admin — Encounters',
+    label: 'Admin — World Encounters',
     icon: Shield,
     dividerBefore: true,
     requiresPermission: 'admin.access',

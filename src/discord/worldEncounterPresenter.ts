@@ -35,7 +35,12 @@ import { formatChancePercent, formatModifierPercent, formatRoll } from './rollFo
 import { buildCustomId } from './types';
 import type { AppContext } from './types';
 import type { SessionPayload } from './ephemeralSession';
-import type { ChoiceView, EncounterActivation, Resolution } from '../modules/worldEncounters/worldEncounterService';
+import type {
+  ChoiceView,
+  ContinuationOutcome,
+  EncounterActivation,
+  Resolution,
+} from '../modules/worldEncounters/worldEncounterService';
 import type { CheckResolution, CheckSpec } from '../modules/worldEncounters/types';
 import type {
   AppliedAffectionDetail,
@@ -143,6 +148,42 @@ export function buildEncounterPresent(
 }
 
 /** Build the resolution screen: the outcome of the choice the player picked. */
+/**
+ * The Continue button found its queued follow-up no longer active (drafted,
+ * disabled or removed after it was queued). The chain simply ends: nothing is
+ * promised, no encounter is named, and the player gets the same way out as
+ * any terminal resolution — Continue Journey for a trip, Back to Hunting for
+ * a hunt. The button ids carry the closed continuation row's id; both
+ * handlers read `source`/regions from that row, which it copied from its
+ * parent.
+ */
+export function buildFollowUpSkipped(
+  outcome: Extract<ContinuationOutcome, { status: 'skipped' }>,
+): SessionPayload {
+  const embed = new EmbedBuilder()
+    .setTitle('The way on has closed')
+    .setColor(0x9ca3af)
+    .setDescription('Nothing more comes of this — for now.');
+  const row = new ActionRowBuilder<ButtonBuilder>();
+  if (outcome.journey) {
+    row.addComponents(
+      new ButtonBuilder()
+        .setCustomId(buildCustomId('loc', 'journey', String(outcome.activeId)))
+        .setLabel('🚶 Continue Journey')
+        .setStyle(ButtonStyle.Secondary),
+    );
+  }
+  if (outcome.huntReturn) {
+    row.addComponents(
+      new ButtonBuilder()
+        .setCustomId(buildCustomId('hunt', 'return', String(outcome.activeId)))
+        .setLabel('🏹 Back to Hunting')
+        .setStyle(ButtonStyle.Secondary),
+    );
+  }
+  return { embeds: [embed], components: row.components.length > 0 ? [row] : [], files: [] };
+}
+
 export function buildEncounterResolved(
   ctx: AppContext,
   activation: EncounterActivation,
@@ -181,11 +222,17 @@ export function buildEncounterResolved(
     embed.addFields({ name: 'Effects', value: effects.join('\n'), inline: false });
   }
 
-  if (resolution.followUps.length > 0) {
+  // A chained follow-up is announced only when it actually opened: one that
+  // was skipped (draft, disabled or missing) must not promise an encounter
+  // the Continue button will never lead to.
+  const shownFollowUps = resolution.followUps.filter(
+    (f) => f.kind !== 'trigger_encounter' || resolution.continuationActiveId != null,
+  );
+  if (shownFollowUps.length > 0) {
     // The wild-Waifumon follow-up is narrated from the *spawn result*, not
     // from the marker, so the embed never promises an encounter the
     // one-active-encounter rule actually refused.
-    const followLines = resolution.followUps.map((f) =>
+    const followLines = shownFollowUps.map((f) =>
       f.kind === 'trigger_waifumon_encounter' && resolution.wildEncounter
         ? formatWildEncounter(resolution.wildEncounter)
         : formatFollowUp(f),

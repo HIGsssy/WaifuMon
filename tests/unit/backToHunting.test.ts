@@ -124,6 +124,38 @@ describe('resolved view: which exit a hunt encounter offers', () => {
     expect(customIds(chainTerminal)).toContain('wm|v1|hunt|return|99');
   });
 
+  it('ends the chain cleanly when the follow-up was skipped (inactive or missing)', () => {
+    const view = buildEncounterResolved(
+      ctx,
+      activation,
+      resolution({
+        huntReturn: HUNT,
+        followUps: [{ kind: 'trigger_encounter', payload: { encounterSlug: 'hn_disabled' } }],
+        continuationActiveId: null,
+        skippedFollowUp: { encounterSlug: 'hn_disabled', reason: 'inactive', lifecycle: 'disabled' },
+      }),
+    );
+    // No promise of an encounter that will not come, and a way back out.
+    const text = JSON.stringify((view.embeds ?? []).map((e) => (e as { toJSON: () => unknown }).toJSON()));
+    expect(text).not.toContain('Another encounter awaits');
+    expect(text).not.toContain('hn_disabled');
+    expect(customIds(view).some((id) => id.includes('|encw|continue|'))).toBe(false);
+    expect(customIds(view)).toContain('wm|v1|hunt|return|42');
+  });
+
+  it('still announces a follow-up that did open', () => {
+    const view = buildEncounterResolved(
+      ctx,
+      activation,
+      resolution({
+        followUps: [{ kind: 'trigger_encounter', payload: { encounterSlug: 'hn_next' } }],
+        continuationActiveId: 99,
+      }),
+    );
+    const text = JSON.stringify((view.embeds ?? []).map((e) => (e as { toJSON: () => unknown }).toJSON()));
+    expect(text).toContain('Another encounter awaits');
+  });
+
   it('offers Continue Journey, not Back to Hunting, for a travel encounter', () => {
     const view = buildEncounterResolved(ctx, activation, resolution({ journey: TRAVEL }));
     expect(customIds(view)).toContain('wm|v1|loc|journey|42');

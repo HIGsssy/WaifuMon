@@ -16,7 +16,7 @@
  * together, so a second click on the same button sees the row in `resolved`
  * and returns idempotently.
  */
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import type { Db, DbOrTx } from '../../db/client';
 import {
   activeWorldEncounters,
@@ -205,6 +205,17 @@ export interface Resolution {
    */
   continuationActiveId: number | null;
   /**
+   * A follow-up this resolution named but did not open, and why. Null when
+   * there was no follow-up, or it opened. The resolution itself still
+   * completes: the player simply ends the chain here (Continue Journey /
+   * Back to Hunting are offered as at any terminal resolution).
+   *
+   *   `inactive` — the follow-up exists but is draft or disabled. Chains
+   *                bypass the chance roll and repeat cooldown, never status.
+   *   `missing`  — no encounter has that slug.
+   */
+  skippedFollowUp: SkippedFollowUp | null;
+  /**
    * Present when the resolution opened a vendor. Discord picks up the id and
    * paints the vendor UI on the same ephemeral.
    */
@@ -264,6 +275,55 @@ export interface Resolution {
    * row, so this survives to the terminal node of a hunt-origin chain.
    */
   huntReturn: { regionId: string | null } | null;
+}
+
+/**
+ * A chained follow-up that was named but not opened, and why. The same shape
+ * whether the skip happens when the choice resolves (the follow-up is never
+ * queued) or when the player clicks Continue (it was queued, then became
+ * inactive before they got there).
+ */
+export interface SkippedFollowUp {
+  encounterSlug: string;
+  reason: 'inactive' | 'missing';
+  /** The follow-up's lifecycle when `inactive`; null when `missing`. */
+  lifecycle: string | null;
+}
+
+/**
+ * What the Continue button leads to.
+ *
+ *   `opened`  — the queued follow-up is still active; present it.
+ *   `skipped` — it became draft/disabled (or vanished) after it was queued.
+ *               The queued row is closed, nothing of the follow-up applied,
+ *               and the player gets the terminal controls for the trip or
+ *               hunt the chain belonged to.
+ */
+export type ContinuationOutcome =
+  | { status: 'opened'; activation: EncounterActivation }
+  | {
+      status: 'skipped';
+      activeId: number;
+      skippedFollowUp: SkippedFollowUp;
+      journey: { destinationRegionId: string | null } | null;
+      huntReturn: { regionId: string } | null;
+    };
+
+/**
+ * Whether a follow-up may open: only while `active`. Chains deliberately skip
+ * the chance roll and the follow-up's own repeat cooldown — the chain is
+ * already running — but a draft or disabled encounter must never reach a
+ * player. Null means "open it".
+ */
+export function followUpBlock(
+  slug: string,
+  target: { lifecycle: string } | null,
+): SkippedFollowUp | null {
+  if (!target) return { encounterSlug: slug, reason: 'missing', lifecycle: null };
+  if (target.lifecycle !== 'active') {
+    return { encounterSlug: slug, reason: 'inactive', lifecycle: target.lifecycle };
+  }
+  return null;
 }
 
 export interface WorldEncounterServiceDeps {
@@ -332,6 +392,29 @@ const CHECK_BONUS_EFFECT_ID = 'encounter_check_bonus' as const;
 const MAX_CHAIN_WALK = 16;
 
 export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
+  /**
+   * One log line per skipped follow-up, whichever stage skipped it —
+   * `resolve` (the choice named it) or `continue` (it was queued, then went
+   * inactive before the player clicked Continue).
+   */
+  function logSkippedFollowUp(
+    stage: 'resolve' | 'continue',
+    skipped: SkippedFollowUp,
+    fields: { playerId: number; activeId: number; encounterSlug?: string; choiceId?: number },
+  ): void {
+    deps.logger?.warn(
+      {
+        tag: 'world-encounter/follow-up-skipped',
+        stage,
+        ...fields,
+        followUpSlug: skipped.encounterSlug,
+        reason: skipped.reason,
+        followUpLifecycle: skipped.lifecycle,
+      },
+      'world encounter follow-up not opened',
+    );
+  }
+
   const rng = deps.rng ?? defaultRng();
   const repo: WorldEncounterRepository = createWorldEncounterRepository(deps.db);
   const executor: EffectExecutor = createEffectExecutor({
@@ -745,7 +828,15 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
       // button is a pure repaint — the row already exists — and a
       // double-click races on the partial unique index the same way a fresh
       // hunt would.
+      //
+      // A follow-up opens only while it is `active`. Chains deliberately skip
+      // the chance roll and the follow-up's own repeat cooldown — the chain is
+      // already running — but a draft or disabled encounter must never reach
+      // a player. A skipped follow-up ends the chain here: this resolution
+      // still completes, and the player gets the terminal-resolution controls.
       let continuationActiveId: number | null = null;
+      let continuationEncounterId: number | null = null;
+      let skippedFollowUp: SkippedFollowUp | null = null;
       const chainFollowUp = followUps.find((f) => f.kind === 'trigger_encounter');
       if (chainFollowUp) {
         const nextSlug = String(
@@ -753,11 +844,19 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
         );
         if (nextSlug.length > 0 && nextSlug !== encounter.slug) {
           const nextLoaded = await repo.loadBySlug(nextSlug);
-          if (nextLoaded) {
+          skippedFollowUp = followUpBlock(nextSlug, nextLoaded?.encounter ?? null);
+          if (skippedFollowUp) {
+            logSkippedFollowUp('resolve', skippedFollowUp, {
+              playerId: opts.playerId,
+              activeId: active.id,
+              encounterSlug: encounter.slug,
+              choiceId: choice.id,
+            });
+          } else {
             // Insert continuation *after* the parent is flipped to `resolved`
             // below — that ordering avoids the partial unique index blocking
             // the parent-and-child transition. We hold the id for later.
-            continuationActiveId = -1; // sentinel set below
+            continuationEncounterId = nextLoaded!.encounter.id;
           }
         }
       }
@@ -883,6 +982,7 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
         effectsApplied: application.applied,
         vendorInstance,
         wildEncounter,
+        skippedFollowUp,
       };
       await repo.markResolved(tx, active.id, choice.id, resolution);
       await repo.insertHistory(tx, {
@@ -901,30 +1001,22 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
 
       // Insert the chained continuation now — parent is `resolved`, so the
       // partial unique index will accept the new pending row.
-      if (continuationActiveId === -1 && chainFollowUp) {
-        const nextSlug = String(
-          (chainFollowUp.payload as { encounterSlug?: string }).encounterSlug ?? '',
-        );
-        const nextLoaded = await repo.loadBySlug(nextSlug);
-        if (nextLoaded) {
-          const expiresAt = new Date(now.getTime() + cfg.defaultExpirySeconds * 1000);
-          const nextRow = await repo.insertActive(tx, {
-            playerId: opts.playerId,
-            encounterId: nextLoaded.encounter.id,
-            source: active.source as 'hunt' | 'travel',
-            regionId: active.regionId,
-            originRegionId: active.originRegionId,
-            destinationRegionId: active.destinationRegionId,
-            guildId: active.guildId,
-            channelId: active.channelId,
-            contextJson: { continuedFrom: encounter.slug },
-            expiresAt,
-            continuationOfId: active.id,
-          });
-          continuationActiveId = nextRow.id;
-        } else {
-          continuationActiveId = null;
-        }
+      if (continuationEncounterId != null) {
+        const expiresAt = new Date(now.getTime() + cfg.defaultExpirySeconds * 1000);
+        const nextRow = await repo.insertActive(tx, {
+          playerId: opts.playerId,
+          encounterId: continuationEncounterId,
+          source: active.source as 'hunt' | 'travel',
+          regionId: active.regionId,
+          originRegionId: active.originRegionId,
+          destinationRegionId: active.destinationRegionId,
+          guildId: active.guildId,
+          channelId: active.channelId,
+          contextJson: { continuedFrom: encounter.slug },
+          expiresAt,
+          continuationOfId: active.id,
+        });
+        continuationActiveId = nextRow.id;
       }
 
       return {
@@ -936,6 +1028,7 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
         followUps,
         chainedEncounterSlug: chainedSlug,
         continuationActiveId,
+        skippedFollowUp,
         vendorInstance,
         wildEncounter,
         // Read off the active row, never off anything the client sent.
@@ -1020,6 +1113,70 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
     if (row.playerId !== playerId) return null;
     if (row.status !== 'pending') return null;
     return activationFor(playerId, row);
+  }
+
+  /**
+   * The Continue button: open a queued chain continuation — or, when its
+   * encounter was disabled, drafted or deleted after it was queued, close it
+   * instead.
+   *
+   * The status check is repeated here because a continuation is queued when
+   * the previous choice resolves, and an admin can change the follow-up in
+   * between. A skipped continuation:
+   *
+   *   - is flipped from `pending` to `abandoned` (the skip recorded in
+   *     `resolutionJson`) under a row lock, so no pending row is left to
+   *     block the player's next encounter and a double-click finds nothing;
+   *   - applies nothing — none of the follow-up's choices ever ran;
+   *   - hands back the trip or hunt the chain belonged to (the continuation
+   *     row copied `source` and both regions from its parent), so the player
+   *     gets Continue Journey / Back to Hunting as at any terminal resolution.
+   *
+   * A pending row that is not a continuation is presented exactly as
+   * {@link getActivationById} always has. Null for a missing, foreign or
+   * already-consumed row.
+   */
+  async function openContinuation(
+    activeId: number,
+    playerId: number,
+  ): Promise<ContinuationOutcome | null> {
+    const checked = await deps.db.transaction(async (tx) => {
+      const [row] = await tx
+        .select()
+        .from(activeWorldEncounters)
+        .where(eq(activeWorldEncounters.id, activeId))
+        .for('update');
+      if (!row || row.playerId !== playerId || row.status !== 'pending') return null;
+      if (row.continuationOfId == null) return { row, skip: null };
+      const loaded = await repo.loadById(row.encounterId);
+      const slug = loaded?.encounter.slug ?? `#${row.encounterId}`;
+      const skip = followUpBlock(slug, loaded?.encounter ?? null);
+      if (skip) {
+        await tx
+          .update(activeWorldEncounters)
+          .set({
+            status: 'abandoned',
+            resolvedAt: sql`now()`,
+            resolutionJson: { skippedFollowUp: skip, stage: 'continue' },
+          })
+          .where(eq(activeWorldEncounters.id, row.id));
+      }
+      return { row, skip };
+    });
+    if (!checked) return null;
+    const { row, skip } = checked;
+    if (!skip) {
+      const activation = await activationFor(playerId, row);
+      return activation ? { status: 'opened', activation } : null;
+    }
+    logSkippedFollowUp('continue', skip, { playerId, activeId: row.id });
+    return {
+      status: 'skipped',
+      activeId: row.id,
+      skippedFollowUp: skip,
+      journey: row.source === 'travel' ? { destinationRegionId: row.destinationRegionId } : null,
+      huntReturn: row.source === 'hunt' ? { regionId: row.regionId } : null,
+    };
   }
 
   /**
@@ -1142,6 +1299,7 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
     preview,
     getPendingForPlayer,
     getActivationById,
+    openContinuation,
     getJourneyContext,
     getHuntReturnContext,
     abandonTriggeredEncounter,

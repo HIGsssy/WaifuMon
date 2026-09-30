@@ -133,8 +133,10 @@ async function open() {
   const user = userEvent.setup();
   render(<AdminEncounterEditorPage />, { wrapper: Providers });
   await screen.findByText('Edit — Merchant Cart');
+  // Choices start collapsed to their summaries; these tests edit effects.
+  await user.click(screen.getByRole('button', { name: 'Expand all' }));
   // The item options arrive with the reference query.
-  await screen.findAllByRole('option', { name: 'Shiny Charm (shiny_charm)' });
+  await screen.findAllByRole('option', { name: 'Shiny Charm — charm' });
   return user;
 }
 
@@ -190,7 +192,7 @@ describe('every effect location gets the same defaults', () => {
 
   it('an item effect on a second choice (no check) saves with quantity 1', async () => {
     const user = await open();
-    await user.click(screen.getAllByRole('button', { name: '+ Add success effect' })[1]!);
+    await user.click(screen.getByRole('button', { name: '+ Add effect' }));
     // Choice 2's only row follows choice 1's three.
     await user.selectOptions(typeOf(3), 'consume_item');
     await user.selectOptions(itemOf(3), 'shiny_charm');
@@ -226,11 +228,12 @@ describe('every effect location gets the same defaults', () => {
 
   it('a new effect left on its default type saves its default amount', async () => {
     const user = await open();
-    await user.click(screen.getAllByRole('button', { name: '+ Add success effect' })[1]!);
-    await user.click(screen.getAllByRole('button', { name: '+ Add failure effect' })[1]!);
+    // Choice 2 is automatic, so it has one result; choice 1 has a failure branch.
+    await user.click(screen.getByRole('button', { name: '+ Add effect' }));
+    await user.click(screen.getAllByRole('button', { name: '+ Add failure effect' })[0]!);
     const payload = await save(user);
     expect(payload.choices[1]!.successEffects).toEqual([{ type: 'waifubux_gain', amount: 100 }]);
-    expect(payload.choices[1]!.failureEffects).toEqual([{ type: 'waifubux_loss', amount: 50 }]);
+    expect(payload.choices[0]!.failureEffects[1]).toEqual({ type: 'waifubux_loss', amount: 50 });
   });
 });
 
@@ -388,9 +391,12 @@ describe('switching effect type in the editor', () => {
   it('switching to a percent loss or a buff saves the defaults it displays', async () => {
     const user = await open();
     await user.selectOptions(typeOf(0), 'waifubux_loss_percent');
-    expect(within(effectRow(0)).getByLabelText('Percent (0–1)')).toHaveValue(0.1);
+    // Shown as a percentage; stored as a fraction.
+    expect(within(effectRow(0)).getByLabelText('Percent of balance')).toHaveValue(10);
     await user.selectOptions(typeOf(2), 'temp_buff');
-    expect(within(effectRow(2)).getByLabelText('Duration (s)')).toHaveValue(3600);
+    // Shown as a friendly duration; stored in seconds.
+    expect(within(effectRow(2)).getByLabelText('Duration')).toHaveValue(1);
+    expect(within(effectRow(2)).getByLabelText('Duration unit')).toHaveValue('hours');
     await user.type(within(effectRow(2)).getByLabelText('Key'), 'lucky');
 
     const payload = await save(user);

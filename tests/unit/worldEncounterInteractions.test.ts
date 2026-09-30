@@ -97,18 +97,20 @@ describe('Continue button', () => {
     choiceViews: [],
   };
 
+  const opened = { status: 'opened' as const, activation };
+
   it('presents the continuation the server says belongs to this player', async () => {
-    const getActivationById = vi.fn(async () => activation);
+    const openContinuation = vi.fn(async () => opened);
     const { interaction, painted } = makeInteraction();
     await handleWorldEncounterContinue(
-      makeCtx({ worldEncounter: { abandonTriggeredEncounter: noAbandon(), getActivationById } }),
+      makeCtx({ worldEncounter: { abandonTriggeredEncounter: noAbandon(), openContinuation } }),
       interaction as never,
       prov,
       ['42'],
     );
 
     // The player id is supplied by the *session*, never by the button.
-    expect(getActivationById).toHaveBeenCalledWith(42, PLAYER_ID);
+    expect(openContinuation).toHaveBeenCalledWith(42, PLAYER_ID);
     expect(paintedText(painted)).toContain('Aftermath');
   });
 
@@ -116,11 +118,8 @@ describe('Continue button', () => {
     // The service returns null for a row that is no longer pending, which is
     // what makes a double-click safe: the second click paints a message, not
     // a second encounter.
-    const getActivationById = vi
-      .fn()
-      .mockResolvedValueOnce(activation)
-      .mockResolvedValueOnce(null);
-    const ctx = makeCtx({ worldEncounter: { abandonTriggeredEncounter: noAbandon(), getActivationById } });
+    const openContinuation = vi.fn().mockResolvedValueOnce(opened).mockResolvedValueOnce(null);
+    const ctx = makeCtx({ worldEncounter: { abandonTriggeredEncounter: noAbandon(), openContinuation } });
 
     const first = makeInteraction();
     await handleWorldEncounterContinue(ctx, first.interaction as never, prov, ['42']);
@@ -133,12 +132,12 @@ describe('Continue button', () => {
   it('refuses a forged continuation id belonging to another player', async () => {
     // The double models the real query: the row exists, but not for this
     // player, so the lookup answers null.
-    const getActivationById = vi.fn(async (_id: number, playerId: number) =>
-      playerId === OTHER_PLAYER_ID ? activation : null,
+    const openContinuation = vi.fn(async (_id: number, playerId: number) =>
+      playerId === OTHER_PLAYER_ID ? opened : null,
     );
     const { interaction, painted } = makeInteraction();
     await handleWorldEncounterContinue(
-      makeCtx({ worldEncounter: { abandonTriggeredEncounter: noAbandon(), getActivationById } }),
+      makeCtx({ worldEncounter: { abandonTriggeredEncounter: noAbandon(), openContinuation } }),
       interaction as never,
       prov,
       ['9999'],
@@ -148,17 +147,49 @@ describe('Continue button', () => {
     expect(paintedText(painted)).not.toContain('Aftermath');
   });
 
-  it('rejects a malformed id without calling the service', async () => {
-    const getActivationById = vi.fn();
+  it('ends the chain with the way out when the queued follow-up is no longer active', async () => {
+    const openContinuation = vi.fn(async () => ({
+      status: 'skipped' as const,
+      activeId: 42,
+      skippedFollowUp: { encounterSlug: 'tv_bandit_aftermath', reason: 'inactive' as const, lifecycle: 'disabled' },
+      journey: { destinationRegionId: 'twin-peeks' },
+      huntReturn: null,
+    }));
+    const abandonTriggeredEncounter = noAbandon();
     const { interaction, painted } = makeInteraction();
     await handleWorldEncounterContinue(
-      makeCtx({ worldEncounter: { abandonTriggeredEncounter: noAbandon(), getActivationById } }),
+      makeCtx({ worldEncounter: { abandonTriggeredEncounter, openContinuation } }),
+      interaction as never,
+      prov,
+      ['42'],
+    );
+
+    const text = paintedText(painted);
+    // No encounter shown, none promised, no internals leaked.
+    expect(text).not.toContain('Aftermath');
+    expect(text).not.toContain('tv_bandit_aftermath');
+    expect(text).not.toContain('Another encounter awaits');
+    // The trip carries on from the closed row.
+    const ids = painted.flatMap((p) =>
+      ((p as { components?: Array<{ toJSON: () => { components: Array<{ custom_id?: string }> } }> })
+        .components ?? []).flatMap((row) => row.toJSON().components.map((c) => c.custom_id ?? '')),
+    );
+    expect(ids).toContain('wm|v1|loc|journey|42');
+    // Nothing of the previous link is torn down for a follow-up that never opened.
+    expect(abandonTriggeredEncounter).not.toHaveBeenCalled();
+  });
+
+  it('rejects a malformed id without calling the service', async () => {
+    const openContinuation = vi.fn();
+    const { interaction, painted } = makeInteraction();
+    await handleWorldEncounterContinue(
+      makeCtx({ worldEncounter: { abandonTriggeredEncounter: noAbandon(), openContinuation } }),
       interaction as never,
       prov,
       ['not-a-number'],
     );
 
-    expect(getActivationById).not.toHaveBeenCalled();
+    expect(openContinuation).not.toHaveBeenCalled();
     expect(paintedText(painted)).toContain('malformed');
   });
 });

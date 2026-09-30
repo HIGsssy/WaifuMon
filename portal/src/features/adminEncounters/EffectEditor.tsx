@@ -1,19 +1,28 @@
 /**
- * Effect editor — a structured control for one {@link Effect}. The
- * discriminated `type` field drives which secondary fields are visible;
- * server-side Zod validation still gates every save, so the frontend never
- * bans a valid combination client-side.
+ * Effect editor — one effect, in plain language.
+ *
+ * The stored effect shape is unchanged (`{ type: 'energy_gain', amount: 3 }`);
+ * the editor names each type for what it does ("Gain Energy"), shows a
+ * one-line summary ("Gain 3 Energy"), and uses content pickers wherever an
+ * effect names another entity (items, vendors, encounters, species), so an
+ * author never types a slug. Server-side Zod validation still gates every
+ * save, so nothing here bans a valid combination.
  */
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { cn } from '@/lib/cn';
 import type { AdminEncounterReference, SelectorPreviewEncounter } from '@/api/adminEncounters';
 
+import { describeEffect, EFFECT_TYPE_LABELS, type NameLookups } from './describe';
+import { DurationInput } from './DurationInput';
 import {
   EFFECT_TYPES,
   ITEM_QUANTITY_MAX,
   ITEM_QUANTITY_MIN,
   switchEffectType,
 } from './effectDefaults';
+import { EntitySelect, selectClass } from './EntitySelect';
+import { VendorEffectFields } from './VendorEffectFields';
 import { WaifumonSelectorEditor } from './WaifumonSelectorEditor';
 import { WAIFUMON_EFFECT } from './waifumonSelection';
 
@@ -26,6 +35,9 @@ interface Props {
   encounterContext?: SelectorPreviewEncounter | undefined;
   onChange: (next: EffectShape) => void;
   onRemove: () => void;
+  /** Types the picker offers. Follow-ups have their own control, so lists omit them. */
+  types?: readonly string[] | undefined;
+  names?: NameLookups | undefined;
 }
 
 /** Merge helper — returns a new object with the given patch applied. */
@@ -47,22 +59,49 @@ function shown(value: unknown): number | '' {
  * deliberate: the field is then absent, and Save is blocked or refused for it,
  * rather than a silent `Number('') === 0` being sent in its place.
  */
-function setNumber(effect: EffectShape, field: string, raw: string): EffectShape {
+function setNumber(effect: EffectShape, field: string, raw: string, scale = 1): EffectShape {
   if (raw === '') {
     const { [field]: _removed, ...rest } = effect;
     return rest as EffectShape;
   }
-  return patch(effect, { [field]: Number(raw) });
+  return patch(effect, { [field]: Number(raw) / scale });
 }
 
-export function EffectEditor({ effect, reference, encounterContext, onChange, onRemove }: Props) {
+const AMOUNT_TYPES = new Set([
+  'waifubux_gain',
+  'waifubux_loss',
+  'essence_gain',
+  'essence_loss',
+  'energy_gain',
+  'energy_loss',
+  'player_xp',
+  'buddy_xp',
+  'affection_gain',
+]);
+
+export function EffectEditor({
+  effect,
+  reference,
+  encounterContext,
+  onChange,
+  onRemove,
+  types = EFFECT_TYPES,
+  names = {},
+}: Props) {
   const type = String(effect.type);
+  const offered = types.includes(type) ? types : [type, ...types];
+  const itemOptions = (reference?.items ?? []).map((i) => ({
+    value: i.slug,
+    label: i.name,
+    hint: i.category,
+  }));
+
   return (
     <div
       className="rounded-md border border-border bg-surface-sunken p-3"
       data-testid="effect-editor"
     >
-      <div className="mb-2 flex items-center gap-2">
+      <div className="mb-2 flex flex-wrap items-center gap-2">
         <select
           aria-label="Effect type"
           value={type}
@@ -71,29 +110,23 @@ export function EffectEditor({ effect, reference, encounterContext, onChange, on
             // shares with the old one — see `switchEffectType`.
             onChange(switchEffectType(effect, e.target.value));
           }}
-          className="rounded-md border border-border bg-surface px-2 py-1 text-sm"
+          className={cn(selectClass, 'w-auto')}
         >
-          {EFFECT_TYPES.map((t) => (
+          {offered.map((t) => (
             <option key={t} value={t}>
-              {t}
+              {EFFECT_TYPE_LABELS[t] ?? t}
             </option>
           ))}
         </select>
-        <div className="flex-1" />
-        <Button type="button" size="sm" variant="outline" onClick={onRemove}>
+        <span className="flex-1 text-xs text-ink-muted" data-testid="effect-summary">
+          {describeEffect(effect, names)}
+        </span>
+        <Button type="button" size="sm" variant="ghost" onClick={onRemove}>
           Remove
         </Button>
       </div>
-      <div className="grid grid-cols-2 gap-2">
-        {(type === 'waifubux_gain' ||
-          type === 'waifubux_loss' ||
-          type === 'essence_gain' ||
-          type === 'essence_loss' ||
-          type === 'energy_gain' ||
-          type === 'energy_loss' ||
-          type === 'player_xp' ||
-          type === 'buddy_xp' ||
-          type === 'affection_gain') && (
+      <div className="grid gap-2 sm:grid-cols-2">
+        {AMOUNT_TYPES.has(type) && (
           <label className="text-xs text-ink-muted">
             Amount
             <Input
@@ -107,18 +140,20 @@ export function EffectEditor({ effect, reference, encounterContext, onChange, on
         {type === 'waifubux_loss_percent' && (
           <>
             <label className="text-xs text-ink-muted">
-              Percent (0–1)
+              Percent of balance
               <Input
                 type="number"
-                step="0.01"
+                step="1"
                 min="0"
-                max="1"
-                value={shown(effect.percent)}
-                onChange={(e) => onChange(setNumber(effect, 'percent', e.target.value))}
+                max="100"
+                value={
+                  typeof effect.percent === 'number' ? Math.round(effect.percent * 1000) / 10 : ''
+                }
+                onChange={(e) => onChange(setNumber(effect, 'percent', e.target.value, 100))}
               />
             </label>
             <label className="text-xs text-ink-muted">
-              Cap (WB, optional)
+              At most (Waifubux, optional)
               <Input
                 type="number"
                 value={shown(effect.maxAmount)}
@@ -129,21 +164,14 @@ export function EffectEditor({ effect, reference, encounterContext, onChange, on
         )}
         {(type === 'give_item' || type === 'consume_item') && (
           <>
-            <label className="text-xs text-ink-muted">
-              Item
-              <select
-                value={String(effect.slug ?? '')}
-                onChange={(e) => onChange(patch(effect, { slug: e.target.value }))}
-                className="w-full rounded-md border border-border bg-surface px-2 py-1 text-sm"
-              >
-                <option value="">— pick an item —</option>
-                {(reference?.items ?? []).map((i) => (
-                  <option key={i.slug} value={i.slug}>
-                    {i.name} ({i.slug})
-                  </option>
-                ))}
-              </select>
-            </label>
+            <EntitySelect
+              label="Item"
+              value={String(effect.slug ?? '')}
+              options={itemOptions}
+              placeholder="— pick an item —"
+              searchLabel="Search items"
+              onChange={(slug) => onChange(patch(effect, { slug }))}
+            />
             <label className="text-xs text-ink-muted">
               Quantity
               <Input
@@ -158,24 +186,18 @@ export function EffectEditor({ effect, reference, encounterContext, onChange, on
           </>
         )}
         {type === 'trigger_encounter' && (
-          <label className="text-xs text-ink-muted col-span-2">
-            Chained encounter
-            <select
-              value={String(effect.encounterSlug ?? '')}
-              onChange={(e) => onChange(patch(effect, { encounterSlug: e.target.value }))}
-              className="w-full rounded-md border border-border bg-surface px-2 py-1 text-sm"
-            >
-              <option value="">— pick an encounter —</option>
-              {(reference?.encounters ?? []).map((e) => (
-                <option key={e.slug} value={e.slug}>
-                  {e.name} ({e.slug})
-                </option>
-              ))}
-            </select>
-          </label>
+          <EntitySelect
+            label="Continue to"
+            className="sm:col-span-2"
+            value={String(effect.encounterSlug ?? '')}
+            options={(reference?.encounters ?? []).map((e) => ({ value: e.slug, label: e.name }))}
+            placeholder="— pick an encounter —"
+            searchLabel="Search encounters"
+            onChange={(encounterSlug) => onChange(patch(effect, { encounterSlug }))}
+          />
         )}
         {type === WAIFUMON_EFFECT && (
-          <div className="col-span-2">
+          <div className="sm:col-span-2">
             <WaifumonSelectorEditor
               effect={effect}
               reference={reference}
@@ -185,21 +207,13 @@ export function EffectEditor({ effect, reference, encounterContext, onChange, on
           </div>
         )}
         {type === 'open_vendor' && (
-          <label className="text-xs text-ink-muted col-span-2">
-            Vendor
-            <select
-              value={String(effect.vendorKey ?? '')}
-              onChange={(e) => onChange(patch(effect, { vendorKey: e.target.value }))}
-              className="w-full rounded-md border border-border bg-surface px-2 py-1 text-sm"
-            >
-              <option value="">— pick a vendor —</option>
-              {(reference?.vendors ?? []).map((v) => (
-                <option key={v.vendorKey} value={v.vendorKey}>
-                  {v.name} ({v.vendorKey})
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="sm:col-span-2">
+            <VendorEffectFields
+              vendorKey={String(effect.vendorKey ?? '')}
+              reference={reference}
+              onChange={(vendorKey) => onChange(patch(effect, { vendorKey }))}
+            />
+          </div>
         )}
         {type === 'temp_buff' && (
           <>
@@ -210,16 +224,11 @@ export function EffectEditor({ effect, reference, encounterContext, onChange, on
                 onChange={(e) => onChange(patch(effect, { key: e.target.value }))}
               />
             </label>
-            <label className="text-xs text-ink-muted">
-              Duration (s)
-              <Input
-                type="number"
-                min="1"
-                step="1"
-                value={shown(effect.durationSeconds)}
-                onChange={(e) => onChange(setNumber(effect, 'durationSeconds', e.target.value))}
-              />
-            </label>
+            <DurationInput
+              label="Duration"
+              seconds={typeof effect.durationSeconds === 'number' ? effect.durationSeconds : 0}
+              onChange={(durationSeconds) => onChange(patch(effect, { durationSeconds }))}
+            />
           </>
         )}
       </div>

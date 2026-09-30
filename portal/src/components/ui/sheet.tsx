@@ -19,9 +19,20 @@ export const SheetDescription = DialogPrimitive.Description;
 
 export interface SheetContentProps extends ComponentProps<typeof DialogPrimitive.Content> {
   side?: 'left' | 'right';
+  /**
+   * Accessible label for the close button. Defaults to the mobile navigation
+   * drawer's, the sheet's original (and still main) use.
+   */
+  closeLabel?: string;
 }
 
-export function SheetContent({ className, children, side = 'left', ...props }: SheetContentProps) {
+export function SheetContent({
+  className,
+  children,
+  side = 'left',
+  closeLabel = 'Close navigation',
+  ...props
+}: SheetContentProps) {
   return (
     <DialogPrimitive.Portal>
       <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/60 backdrop-blur-[2px] data-[state=open]:animate-in data-[state=closed]:animate-out" />
@@ -36,7 +47,7 @@ export function SheetContent({ className, children, side = 'left', ...props }: S
         {children}
         <DialogPrimitive.Close
           className="absolute top-4 right-4 rounded-md p-2 text-ink-subtle transition-colors hover:bg-surface-raised hover:text-ink"
-          aria-label="Close navigation"
+          aria-label={closeLabel}
         >
           <X className="size-4" />
         </DialogPrimitive.Close>

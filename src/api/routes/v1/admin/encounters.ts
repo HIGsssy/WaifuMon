@@ -23,6 +23,11 @@ import { dataSchema, ok } from '../../../plugins/responseEnvelope';
 import { commonErrorResponses, notFoundResponse } from '../../../schemas/common';
 import { requirePortalPermission } from '../../../plugins/portalPermissions';
 import { AppError } from '../../../../shared/errors';
+import { ApiFieldValidationError } from '../../../errors';
+import {
+  AdminEncounterSlugTakenError,
+  AdminEncounterValidationError,
+} from '../../../../modules/worldEncounters/adminService';
 import { computeChance, rollCheck } from '../../../../modules/worldEncounters/checkResolver';
 import type {
   BuddyProfile,
@@ -164,6 +169,8 @@ const referenceSchema = z.object({
   encounters: z.array(z.object({ slug: z.string(), name: z.string() })),
   species: z.array(z.object({ slug: z.string(), name: z.string(), rarity: z.string() })),
   vendors: z.array(z.object({ vendorKey: z.string(), name: z.string() })),
+  /** Regions enabled in content — a subset of `regions`. */
+  enabledRegions: z.array(z.string()),
   types: z.array(z.string()),
   rarities: z.array(z.string()),
   lifecycles: z.array(z.string()),
@@ -575,6 +582,33 @@ function isChoiceAvailable(
   return { available: true, reason: null };
 }
 
+/**
+ * Run an admin write, turning the service's cross-field refusal into a 400
+ * with `details.issues` — the shape the Portal editor lists inline.
+ *
+ * `AdminEncounterValidationError` is a plain `Error` (the server-rendered
+ * panel renders it itself), so left alone it reached the API's error handler
+ * as an unknown throw: a 500 "Internal error." for, say, an encounter nothing
+ * can reach — a rule the author can fix, reported as a server fault.
+ */
+async function asFieldIssues<T>(write: () => Promise<T>): Promise<T> {
+  try {
+    return await write();
+  } catch (err) {
+    if (err instanceof AdminEncounterSlugTakenError) {
+      throw new AppError(
+        'ENCOUNTER_SLUG_TAKEN',
+        err.message,
+        `An encounter with the slug "${err.slug}" already exists. Edit that one, or choose another slug.`,
+      );
+    }
+    if (err instanceof AdminEncounterValidationError) {
+      throw new ApiFieldValidationError(err.issues.map((message) => ({ path: '', message })));
+    }
+    throw err;
+  }
+}
+
 /* ─────────────────────── Routes ─────────────────────── */
 
 export const adminEncounterRoutes =
@@ -814,6 +848,7 @@ export const adminEncounterRoutes =
         return ok(req, {
           regions: [...REGIONS],
           regionNames: Object.fromEntries(content.regions.map((r) => [r.id, r.name])),
+          enabledRegions: content.regions.filter((r) => r.enabled).map((r) => r.id),
           speciesRarities: [...RARITIES],
           affinities: [...AFFINITIES],
           races: [...RACE_CODES],
@@ -861,7 +896,7 @@ export const adminEncounterRoutes =
         preValidation: gate('encounters.write'),
         schema: {
           tags: ['Admin — Encounters'],
-          summary: 'Create or replace an encounter (idempotent on slug)',
+          summary: 'Create an encounter (409 when the slug is taken)',
           body: z.object({ input: EncounterInputSchema }),
           response: {
             200: dataSchema(encounterSchema),
@@ -877,7 +912,11 @@ export const adminEncounterRoutes =
             req.body.input.choices,
           );
         }
-        const result = await admin.upsert(req.body.input);
+        // A create never replaces: an existing slug is a 409, and edits go through
+        // PUT /admin/encounters/:id.
+        const result = await asFieldIssues(() =>
+          admin.upsert(req.body.input, { createOnly: true }),
+        );
         return ok(req, encounterToResource(result));
       },
     );
@@ -908,7 +947,7 @@ export const adminEncounterRoutes =
             req.body.input.choices,
           );
         }
-        const result = await admin.upsert({ ...req.body.input, slug: existing.slug });
+        const result = await asFieldIssues(() => admin.upsert({ ...req.body.input, slug: existing.slug }));
         return ok(req, encounterToResource(result));
       },
     );
@@ -930,7 +969,7 @@ export const adminEncounterRoutes =
         },
       },
       async (req) => {
-        const cloned = await admin.clone(req.params.id, req.body.newSlug);
+        const cloned = await asFieldIssues(() => admin.clone(req.params.id, req.body.newSlug));
         return ok(req, encounterToResource(cloned));
       },
     );
