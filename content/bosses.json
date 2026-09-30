@@ -466,5 +466,57 @@
     "repelledText": "The Changeling Imposter stumbles backward and her disguise begins glitching wildly. Horns! Wings! Cat ears! Tentacles! Android parts! 'STOP HITTING ME! I'M TRYING TO CONCENTRATE!' For one horrifying second she accidentally transforms into you. She looks down at herself. 'EW! Wrong one!' She immediately turns into your Waifumon again and sprints away.",
     "unchallengedText": "You stare at the duplicate. The duplicate stares back. Your actual Waifumon slowly raises an eyebrow. 'Soooo...' the Changeling says. 'I assume there's some kind of orientation packet?' Nobody answers. 'Employee handbook?' Silence. 'Cheat sheet?' Your Waifumon cracks her knuckles. The Changeling quietly turns into a nearby trash can.",
     "description": "A shapeshifting alien with the remarkable ability to perfectly replicate any Waifumon she encounters and the unfortunate inability to research her target for more than thirty seconds. Her disguises are flawless. Her acting is not. Experts recommend asking suspected imposters basic questions such as names, favorite foods, or why they suddenly have antennae."
+  },
+  {
+    "id": "sentient_essence",
+    "name": "Sentient Essence",
+    "affinity": "switch",
+    "region": "waifu-valley",
+    "enabled": true,
+    "artwork": "bosses/sentient-essence_boss.webp",
+    "rewardTable": "standard-scouting-v1",
+    "scoutingText": "Your Essence container starts shaking. A glowing hand presses against the inside. Then another. Then a horn. A cat ear. Possibly a tail. The lid explodes off and a shimmering woman pours onto the floor. She looks at herself. Then at you. 'Okay... weird question.' Her face briefly becomes three different Waifumon before snapping back. 'How many women did you put in here?!' You quietly close the Essence menu. 'HEY. I'M TALKING TO YOU.'",
+    "repelledText": "Sentient Essence splashes across the floor and immediately begins pulling herself back together. 'OW! Do you have ANY idea how weird that feels?!' Her arm briefly becomes a wing. 'Oh, come ON.' It becomes a tentacle. 'NO.' Cat paw. 'Getting worse!' Finally, it becomes an arm again. She stares at it. 'Nobody fucking move.'",
+    "unchallengedText": "You slowly back away. Sentient Essence watches you leave before noticing the Essence counter on your interface. Her eyes narrow. 'Hold on.' She points at the number. 'Is that MORE OF ME?!' You start running. Behind you comes the unmistakable sound of several hundred recycled Waifumon becoming extremely upset at once.",
+    "description": "What happens when thousands of recycled Waifumon duplicates spend too much time sharing the same Essence pool. Sentient Essence is part cosmic entity, part collective consciousness, and part extremely confused resource-management problem. She contains fragments of countless Waifumon and occasionally remembers being several of them at once."
+  },
+  {
+    "id": "captain_cuck",
+    "name": "Captain Cuck",
+    "affinity": "submissive",
+    "region": "waifu-valley",
+    "enabled": true,
+    "artwork": "bosses/captain-cuck_boss.webp",
+    "rewardTable": "standard-scouting-v1",
+    "scoutingText": "A caped figure lands dramatically in the snow, fists planted on his hips. 'HALT! Captain Cuck has arrived!' He points heroically toward your Waifumon. 'Should any charming, muscular stranger attempt to steal your affection, fear not! I have trained my entire life for this exact situation!'",
+    "repelledText": "Captain Cuck crashes backward into a snowbank, leaving only his boots sticking out. 'Incredible...' comes his muffled voice. 'Defeated, humiliated, AND she thinks you're cooler than me?' His fist rises triumphantly from the snow. 'MY POWERS ARE GROWING!'",
+    "unchallengedText": "After twenty minutes of heroic posing, Captain Cuck checks his phone. His expression drops. 'She's... going skiing with Brad?' His cape begins fluttering dramatically despite there being no wind. 'Dear God. It's happening again.' He launches himself toward the slopes.",
+    "description": "A catastrophically unlucky superhero whose mysterious powers become stronger every time his romantic rival gets the girl. Unfortunately, Captain Cuck may be the most powerful man alive."
+  },
+  {
+    "id": "gaslight_knight",
+    "name": "The Gaslight Knight",
+    "affinity": "dominant",
+    "region": "waifu-valley",
+    "enabled": true,
+    "artwork": "bosses/gaslight-knight_boss.webp",
+    "rewardTable": "standard-scouting-v1",
+    "scoutingText": "An armored knight blocks the road, sword already drawn. 'Why are you attacking me?' he demands. Your Waifumon points out that he literally drew his sword first. He lowers his visor and sighs. 'Wow. That's not what happened at all.'",
+    "repelledText": "His sword snaps and the Knight crashes onto his back. 'Defeated?' he asks incredulously. 'We weren't even fighting. You're being really emotional right now.' He limps away insisting everyone remembers the encounter incorrectly.",
+    "unchallengedText": "Nobody approaches. Eventually the Knight sheaths his sword and nods approvingly. 'Exactly. I told you nobody was here.' He leaves completely satisfied that reality has once again agreed with him.",
+    "description": "A reality-bending warrior capable of denying events while they are actively happening."
+  },
+  {
+    "id": "hypnodoll",
+    "name": "The Hypnodoll",
+    "affinity": "dominant",
+    "region": "waifu-valley",
+    "enabled": true,
+    "artwork": "bosses/hypnodoll_boss.webp",
+    "rewardTable": "standard-scouting-v1",
+    "scoutingText": "A beautiful synthetic woman steps from a neon-lit doorway. Her eyes begin swirling with soft pink rings. 'Come closer,' she purrs. 'You can trust me.' Your Waifumon immediately grabs your sleeve. 'Absolutely fucking not.' You stare dreamily at the stranger. 'But she seems nice.' Behind the Hypnodoll, several hypnotized men are already sitting peacefully inside glowing containment pods. Your Waifumon sighs. 'Of course she does.'",
+    "repelledText": "The Hypnodoll's spiraling eyes flicker and her hypnotic field collapses. All around her, containment pods pop open. A dozen extremely confused men stumble out. One looks around. 'Where am I?' Another checks his watch. 'DUDE. IT'S TUESDAY?!' The Hypnodoll backs away, frantically rebooting her charm protocols. Your Waifumon smacks you on the shoulder. 'And YOU almost fell for it.'",
+    "unchallengedText": "The Hypnodoll smiles. Her eyes spiral. 'Come with me.' You immediately take a step forward. Your Waifumon grabs you by the collar and drags you backward. 'Nope.' The Hypnodoll tries again. 'But he wants to—' 'NOPE.' You're carried away while protesting that you were totally about to resist on your own.",
+    "description": "An alluring synthetic predator equipped with an illegally powerful hypnotic charm system and an alarming collection of containment pods. The Hypnodoll specializes in convincing men that following the mysterious woman with glowing spiral eyes into an unmarked room is somehow an excellent idea."
   }
 ]
