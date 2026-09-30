@@ -666,6 +666,15 @@
           { "itemId": "chewed_gag_ball", "weight": 25, "quantity": 1, "enabled": true },
           { "itemId": "glory_hole_ticket", "weight": 20, "quantity": 1, "enabled": true }
         ]
+      },
+      {
+        "id": "stabilizer-in-the-switchgear",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 1500,
+        "entries": [
+          { "itemId": "quantum_stabilizer", "weight": 100, "quantity": 1, "enabled": true }
+        ]
       }
     ]
   },
@@ -847,6 +856,15 @@
           { "itemId": "still_buzzing_wand", "weight": 30, "quantity": 2, "enabled": true },
           { "itemId": "velvet_charm", "weight": 15, "quantity": 1, "enabled": true }
         ]
+      },
+      {
+        "id": "stabilizer-under-the-old-valley",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 3000,
+        "entries": [
+          { "itemId": "quantum_stabilizer", "weight": 100, "quantity": 1, "enabled": true }
+        ]
       }
     ]
   },
@@ -1012,9 +1030,8 @@
         "rolls": 1,
         "chanceBasisPoints": 400,
         "entries": [
-          { "itemId": "licked_clean_pie_tin", "weight": 60, "quantity": 1, "enabled": true },
-          { "itemId": "ripped_leggings", "weight": 30, "quantity": 1, "enabled": true },
-          { "itemId": "cracked_teleport_core", "weight": 10, "quantity": 1, "enabled": true }
+          { "itemId": "licked_clean_pie_tin", "weight": 70, "quantity": 1, "enabled": true },
+          { "itemId": "ripped_leggings", "weight": 30, "quantity": 1, "enabled": true }
         ]
       },
       {
@@ -1024,6 +1041,15 @@
         "chanceBasisPoints": 700,
         "entries": [
           { "itemId": "basic_charm", "weight": 100, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "core-in-the-locker-bank",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 40,
+        "entries": [
+          { "itemId": "cracked_teleport_core", "weight": 100, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -1680,10 +1706,18 @@
         "rolls": 1,
         "chanceBasisPoints": 2500,
         "entries": [
-          { "itemId": "basic_charm", "weight": 35, "quantity": 1, "enabled": true },
-          { "itemId": "silk_charm", "weight": 20, "quantity": 1, "enabled": true },
-          { "itemId": "quickie_coffee", "weight": 25, "quantity": 1, "enabled": true },
-          { "itemId": "cracked_teleport_core", "weight": 20, "quantity": 1, "enabled": true }
+          { "itemId": "basic_charm", "weight": 45, "quantity": 1, "enabled": true },
+          { "itemId": "silk_charm", "weight": 30, "quantity": 1, "enabled": true },
+          { "itemId": "quickie_coffee", "weight": 25, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "core-in-the-equipment-crate",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 500,
+        "entries": [
+          { "itemId": "cracked_teleport_core", "weight": 100, "quantity": 1, "enabled": true }
         ]
       }
     ]
@@ -2911,6 +2945,15 @@
         "chanceBasisPoints": 110,
         "entries": [
           { "itemId": "sun_cracked_flogger", "weight": 100, "quantity": 1, "enabled": true }
+        ]
+      },
+      {
+        "id": "stabilizer-behind-the-seal",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 1000,
+        "entries": [
+          { "itemId": "quantum_stabilizer", "weight": 100, "quantity": 1, "enabled": true }
         ]
       }
     ]

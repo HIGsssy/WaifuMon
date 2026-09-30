@@ -1,0 +1,1121 @@
+{
+  "format": "waifumon-world-encounters",
+  "version": 1,
+  "exportedAt": "2026-09-30T19:23:04.882Z",
+  "label": "Transporter components: Quantum Stabilizer sources (b8_salvage_row, th_merchants_lost_cargo); retire b8_teleporter_wreck (disabled); + artworkPath backfill for 11 previously-unwired encounters",
+  "vendors": [
+    {
+      "vendorKey": "wandering_merchant",
+      "name": "The Wandering Merchant",
+      "description": "A hooded merchant offering rare curiosities to travellers she meets on the road.",
+      "stockTemplate": [
+        {
+          "itemSlug": "basic_charm",
+          "quantity": 3,
+          "price": 150,
+          "currency": "waifubux"
+        },
+        {
+          "itemSlug": "silk_charm",
+          "quantity": 1,
+          "price": 900,
+          "currency": "waifubux"
+        }
+      ]
+    }
+  ],
+  "encounters": [
+    {
+      "slug": "b8_salvage_row",
+      "name": "Salvage Row",
+      "description": "The far end of the dock is where wrecked frames go to be stripped. A scrapper with a cutting torch is working through something that still has a serial number on it.",
+      "type": "decision",
+      "rarity": "uncommon",
+      "weight": 10,
+      "lifecycle": "active",
+      "huntEligible": true,
+      "travelEligible": false,
+      "cooldownSeconds": 3600,
+      "artworkPath": "encounters/b8_salvage_row.webp",
+      "chainedEncounterSlug": null,
+      "choicesRequired": true,
+      "regions": [
+        "base-80085"
+      ],
+      "routes": [],
+      "choices": [
+        {
+          "label": "Buy the serial plate off her",
+          "emoji": null,
+          "requirements": {},
+          "check": {
+            "type": "sp",
+            "baseChance": 0.6,
+            "maxSpModifier": 0.15,
+            "affinityAdvantage": "switch"
+          },
+          "successEffects": [
+            {
+              "type": "essence_gain",
+              "amount": 35
+            }
+          ],
+          "failureEffects": [
+            {
+              "type": "waifubux_loss",
+              "amount": 25
+            }
+          ],
+          "successText": "She charges for it, then shows you where the rest of the history is stamped.",
+          "failureText": "She charges for it and keeps it anyway."
+        },
+        {
+          "label": "Help her strip the frame",
+          "emoji": null,
+          "requirements": {},
+          "check": {
+            "type": "sp",
+            "baseChance": 0.65,
+            "maxSpModifier": 0.15,
+            "affinityAdvantage": "caregiver",
+            "raceAdvantage": [
+              "demi-human"
+            ]
+          },
+          "successEffects": [
+            {
+              "type": "waifubux_gain",
+              "amount": 40
+            },
+            {
+              "type": "buddy_xp",
+              "amount": 20
+            }
+          ],
+          "failureEffects": [
+            {
+              "type": "energy_loss",
+              "amount": 2
+            }
+          ],
+          "successText": "Two hours of work and an even split, which is more than the dock usually offers.",
+          "failureText": "The torch catches a pressurised line and the afternoon ends early."
+        },
+        {
+          "label": "Ask what the frame used to be",
+          "emoji": null,
+          "requirements": {},
+          "check": {
+            "type": "sp",
+            "baseChance": 0.55,
+            "maxSpModifier": 0.15,
+            "affinityAdvantage": "primal"
+          },
+          "successEffects": [
+            {
+              "type": "trigger_waifumon_encounter",
+              "selection": {
+                "mode": "random",
+                "poolScope": "region",
+                "rarities": [
+                  "R"
+                ],
+                "races": [
+                  "android",
+                  "human"
+                ]
+              }
+            }
+          ],
+          "failureEffects": [],
+          "successText": "She remembers the frame, and who used to fly it.",
+          "failureText": "She shrugs. Frames come in and out of here; she stopped counting."
+        },
+        {
+          "label": "Check the frame for a stabilizer housing",
+          "emoji": null,
+          "requirements": {},
+          "check": {
+            "type": "sp",
+            "baseChance": 0.08,
+            "maxSpModifier": 0.03
+          },
+          "successEffects": [
+            {
+              "type": "give_item",
+              "slug": "quantum_stabilizer",
+              "quantity": 1
+            }
+          ],
+          "failureEffects": [],
+          "successText": "Behind a panel the torch hasn't reached, a Quantum Stabilizer is still seated and still holding. She lets you pull it for the trouble of asking.",
+          "failureText": "Every housing on the frame is empty or slag. Somebody got to it before the torch did."
+        },
+        {
+          "label": "Leave her to the torch",
+          "emoji": null,
+          "requirements": {},
+          "check": {
+            "type": "none"
+          },
+          "successEffects": [],
+          "failureEffects": [],
+          "outcomeText": "The cutting torch restarts behind you and does not stop."
+        }
+      ],
+      "metadata": {}
+    },
+    {
+      "slug": "th_merchants_lost_cargo",
+      "name": "Merchant's Lost Cargo",
+      "description": "Several crates are scattered across the dunes beside broken wheel tracks.",
+      "type": "discovery",
+      "rarity": "common",
+      "weight": 15,
+      "lifecycle": "active",
+      "huntEligible": true,
+      "travelEligible": false,
+      "cooldownSeconds": 120,
+      "artworkPath": "encounters/th_merchants_lost_cargo.webp",
+      "chainedEncounterSlug": null,
+      "choicesRequired": true,
+      "regions": [
+        "thirstlands"
+      ],
+      "routes": [],
+      "choices": [
+        {
+          "label": "Salvage what you can",
+          "emoji": null,
+          "requirements": {},
+          "check": {
+            "type": "sp",
+            "baseChance": 0.6,
+            "maxSpModifier": 0.1
+          },
+          "successEffects": [
+            {
+              "type": "waifubux_gain",
+              "amount": 25
+            }
+          ],
+          "failureEffects": []
+        },
+        {
+          "label": "Follow the wheel tracks",
+          "emoji": null,
+          "requirements": {},
+          "check": {
+            "type": "sp",
+            "baseChance": 0.45,
+            "maxSpModifier": 0.15,
+            "affinityAdvantage": "primal",
+            "raceAdvantage": [
+              "demi-human",
+              "human"
+            ]
+          },
+          "successEffects": [
+            {
+              "type": "trigger_waifumon_encounter"
+            }
+          ],
+          "failureEffects": [
+            {
+              "type": "energy_loss",
+              "amount": 1
+            }
+          ]
+        },
+        {
+          "label": "Pry open the merchant's sealed crate",
+          "emoji": null,
+          "requirements": {},
+          "check": {
+            "type": "sp",
+            "baseChance": 0.06,
+            "maxSpModifier": 0.02
+          },
+          "successEffects": [
+            {
+              "type": "give_item",
+              "slug": "quantum_stabilizer",
+              "quantity": 1
+            }
+          ],
+          "failureEffects": [],
+          "successText": "Packed in foam under the merchant's seal: a Quantum Stabilizer, still humming. Whoever lost it will want it back.",
+          "failureText": "The sealed crate holds bolts of sun-faded cloth and nothing else worth the effort."
+        },
+        {
+          "label": "Leave the cargo alone",
+          "emoji": null,
+          "requirements": {},
+          "check": {
+            "type": "none"
+          },
+          "successEffects": [
+            {
+              "type": "player_xp",
+              "amount": 5
+            }
+          ],
+          "failureEffects": []
+        }
+      ],
+      "metadata": {}
+    },
+    {
+      "slug": "b8_teleporter_wreck",
+      "name": "The Teleporter Wreck",
+      "description": "Behind the motor pool, a decommissioned transporter pad sparks on its own. Its core is cracked, still humming, and nobody has signed for it.",
+      "type": "discovery",
+      "rarity": "rare",
+      "weight": 6,
+      "lifecycle": "disabled",
+      "huntEligible": true,
+      "travelEligible": false,
+      "cooldownSeconds": 21600,
+      "artworkPath": "encounters/b8_teleporter_wreck.webp",
+      "chainedEncounterSlug": null,
+      "choicesRequired": true,
+      "regions": [
+        "base-80085"
+      ],
+      "routes": [],
+      "choices": [
+        {
+          "label": "Pry the core loose",
+          "emoji": "🔧",
+          "requirements": {},
+          "check": {
+            "type": "sp",
+            "difficulty": 60,
+            "baseBias": 0.1,
+            "raceAdvantage": [
+              "android"
+            ]
+          },
+          "successEffects": [
+            {
+              "type": "give_item",
+              "slug": "cracked_teleport_core",
+              "quantity": 1
+            },
+            {
+              "type": "player_xp",
+              "amount": 30
+            }
+          ],
+          "failureEffects": [
+            {
+              "type": "energy_loss",
+              "amount": 1
+            }
+          ]
+        },
+        {
+          "label": "Report it to the quartermaster",
+          "emoji": "📋",
+          "requirements": {},
+          "check": {
+            "type": "none"
+          },
+          "successEffects": [
+            {
+              "type": "waifubux_gain",
+              "amount": 75
+            }
+          ],
+          "failureEffects": []
+        }
+      ],
+      "metadata": {}
+    },
+    {
+      "slug": "ff_hot_spring",
+      "name": "A Steaming Hot Spring",
+      "description": "A hidden hot spring nestled in the rocks. The steam rising off it looks almost lazy — a rare invitation.",
+      "type": "discovery",
+      "rarity": "uncommon",
+      "weight": 8,
+      "lifecycle": "active",
+      "huntEligible": true,
+      "travelEligible": false,
+      "cooldownSeconds": 3600,
+      "artworkPath": "encounters/ff_hot_spring.webp",
+      "chainedEncounterSlug": "tv_wandering_merchant",
+      "choicesRequired": true,
+      "regions": [
+        "flaccid-foothills"
+      ],
+      "routes": [],
+      "choices": [
+        {
+          "label": "Take a long soak",
+          "emoji": "♨️",
+          "requirements": {},
+          "check": {
+            "type": "none"
+          },
+          "successEffects": [
+            {
+              "type": "energy_gain",
+              "amount": 4
+            },
+            {
+              "type": "buddy_xp",
+              "amount": 20
+            }
+          ],
+          "failureEffects": []
+        }
+      ],
+      "metadata": {}
+    },
+    {
+      "slug": "ff_suspicious_stew",
+      "name": "A Cauldron of Suspicious Stew",
+      "description": "A weathered pot bubbles on an unattended fire. The smell is… complicated. A dented ladle rests on a nearby stump.",
+      "type": "decision",
+      "rarity": "common",
+      "weight": 12,
+      "lifecycle": "active",
+      "huntEligible": true,
+      "travelEligible": false,
+      "cooldownSeconds": 900,
+      "artworkPath": "encounters/ff_suspicious_stew.webp",
+      "chainedEncounterSlug": null,
+      "choicesRequired": true,
+      "regions": [
+        "flaccid-foothills"
+      ],
+      "routes": [],
+      "choices": [
+        {
+          "label": "Take a bite",
+          "emoji": "🥣",
+          "requirements": {},
+          "check": {
+            "type": "sp",
+            "difficulty": 30,
+            "baseBias": -0.1
+          },
+          "successEffects": [
+            {
+              "type": "energy_gain",
+              "amount": 3
+            },
+            {
+              "type": "player_xp",
+              "amount": 10
+            }
+          ],
+          "failureEffects": [
+            {
+              "type": "energy_loss",
+              "amount": 2
+            }
+          ]
+        },
+        {
+          "label": "Offer a charm as trade",
+          "emoji": "🎴",
+          "requirements": {
+            "requiresItem": "basic_charm"
+          },
+          "check": {
+            "type": "none"
+          },
+          "successEffects": [
+            {
+              "type": "consume_item",
+              "slug": "basic_charm",
+              "quantity": 1
+            },
+            {
+              "type": "essence_gain",
+              "amount": 40
+            }
+          ],
+          "failureEffects": []
+        },
+        {
+          "label": "Walk away",
+          "emoji": "🚶",
+          "requirements": {},
+          "check": {
+            "type": "none"
+          },
+          "successEffects": [],
+          "failureEffects": []
+        }
+      ],
+      "metadata": {}
+    },
+    {
+      "slug": "th_dune_wraiths",
+      "name": "Dune Wraiths",
+      "description": "Sand-shaped forms rise from the dunes, hungering. They circle. Something must be given, or something must be taken.",
+      "type": "combat",
+      "rarity": "rare",
+      "weight": 5,
+      "lifecycle": "active",
+      "huntEligible": true,
+      "travelEligible": false,
+      "cooldownSeconds": 3600,
+      "artworkPath": "encounters/th_dune_wraiths.webp",
+      "chainedEncounterSlug": null,
+      "choicesRequired": true,
+      "regions": [
+        "thirstlands"
+      ],
+      "routes": [],
+      "choices": [
+        {
+          "label": "Fight through",
+          "emoji": "🗡️",
+          "requirements": {},
+          "check": {
+            "type": "sp",
+            "difficulty": 90,
+            "affinityAdvantage": "dominant",
+            "raceAdvantage": [
+              "valkyrie",
+              "angel"
+            ]
+          },
+          "successEffects": [
+            {
+              "type": "waifubux_gain",
+              "amount": 600
+            },
+            {
+              "type": "player_xp",
+              "amount": 50
+            }
+          ],
+          "failureEffects": [
+            {
+              "type": "waifubux_loss_percent",
+              "percent": 0.15,
+              "maxAmount": 1000
+            },
+            {
+              "type": "energy_loss",
+              "amount": 3
+            }
+          ]
+        },
+        {
+          "label": "Offer essence",
+          "emoji": "💎",
+          "requirements": {},
+          "check": {
+            "type": "none"
+          },
+          "successEffects": [
+            {
+              "type": "essence_loss",
+              "amount": 50
+            }
+          ],
+          "failureEffects": []
+        }
+      ],
+      "metadata": {}
+    },
+    {
+      "slug": "th_mirage_oasis",
+      "name": "The Mirage Deity",
+      "description": "The shimmering figure of a goddess rises from a pool that should not be here. \"Answer me, traveler. What thirsts eternally, yet drinks nothing?\"",
+      "type": "deity",
+      "rarity": "rare",
+      "weight": 4,
+      "lifecycle": "active",
+      "huntEligible": true,
+      "travelEligible": false,
+      "cooldownSeconds": 21600,
+      "artworkPath": "encounters/th_mirage_oasis.webp",
+      "chainedEncounterSlug": null,
+      "choicesRequired": true,
+      "regions": [
+        "thirstlands"
+      ],
+      "routes": [],
+      "choices": [
+        {
+          "label": "A flame",
+          "emoji": "🔥",
+          "requirements": {},
+          "check": {
+            "type": "none"
+          },
+          "successEffects": [
+            {
+              "type": "waifubux_gain",
+              "amount": 500
+            },
+            {
+              "type": "essence_gain",
+              "amount": 100
+            },
+            {
+              "type": "temp_buff",
+              "key": "deity_blessing",
+              "durationSeconds": 3600,
+              "payload": {
+                "kind": "capture_bonus",
+                "magnitude": 0.05
+              }
+            }
+          ],
+          "failureEffects": []
+        },
+        {
+          "label": "The sand",
+          "emoji": "🏜️",
+          "requirements": {},
+          "check": {
+            "type": "none"
+          },
+          "successEffects": [],
+          "failureEffects": [
+            {
+              "type": "waifubux_loss",
+              "amount": 100
+            }
+          ]
+        },
+        {
+          "label": "A god",
+          "emoji": "✨",
+          "requirements": {
+            "raceAny": [
+              "angel",
+              "spirit",
+              "demon"
+            ]
+          },
+          "check": {
+            "type": "none"
+          },
+          "successEffects": [
+            {
+              "type": "essence_gain",
+              "amount": 60
+            }
+          ],
+          "failureEffects": []
+        }
+      ],
+      "metadata": {
+        "riddleAnswer": "flame"
+      }
+    },
+    {
+      "slug": "tp_mountain_bandit",
+      "name": "Mountain Bandit",
+      "description": "A masked bandit blocks the trail, one hand on a sword hilt. \"Toll or trouble, pick one.\"",
+      "type": "combat",
+      "rarity": "uncommon",
+      "weight": 8,
+      "lifecycle": "active",
+      "huntEligible": true,
+      "travelEligible": false,
+      "cooldownSeconds": 1800,
+      "artworkPath": "encounters/tp_mountain_bandit.webp",
+      "chainedEncounterSlug": null,
+      "choicesRequired": true,
+      "regions": [
+        "twin-peeks"
+      ],
+      "routes": [],
+      "choices": [
+        {
+          "label": "Fight",
+          "emoji": "⚔️",
+          "requirements": {},
+          "check": {
+            "type": "sp",
+            "difficulty": 70,
+            "affinityAdvantage": "dominant",
+            "raceAdvantage": [
+              "valkyrie"
+            ]
+          },
+          "successEffects": [
+            {
+              "type": "waifubux_gain",
+              "amount": 400
+            },
+            {
+              "type": "give_item",
+              "slug": "basic_charm",
+              "quantity": 1
+            }
+          ],
+          "failureEffects": [
+            {
+              "type": "waifubux_loss_percent",
+              "percent": 0.1,
+              "maxAmount": 500
+            },
+            {
+              "type": "energy_loss",
+              "amount": 2
+            }
+          ]
+        },
+        {
+          "label": "Pay the toll",
+          "emoji": "💰",
+          "requirements": {},
+          "check": {
+            "type": "none"
+          },
+          "successEffects": [
+            {
+              "type": "waifubux_loss",
+              "amount": 150
+            }
+          ],
+          "failureEffects": []
+        }
+      ],
+      "metadata": {}
+    },
+    {
+      "slug": "tp_narrow_ledge",
+      "name": "A Narrow Ledge",
+      "description": "The path narrows to a crumbling ledge over a long drop. Crossing means placing every step carefully.",
+      "type": "skill_check",
+      "rarity": "uncommon",
+      "weight": 10,
+      "lifecycle": "active",
+      "huntEligible": true,
+      "travelEligible": false,
+      "cooldownSeconds": 1800,
+      "artworkPath": "encounters/tp_narrow_ledge.webp",
+      "chainedEncounterSlug": null,
+      "choicesRequired": true,
+      "regions": [
+        "twin-peeks"
+      ],
+      "routes": [],
+      "choices": [
+        {
+          "label": "Cross the ledge",
+          "emoji": "🧗",
+          "requirements": {},
+          "check": {
+            "type": "sp",
+            "difficulty": 60,
+            "affinityAdvantage": "primal",
+            "raceAdvantage": [
+              "valkyrie",
+              "demon"
+            ]
+          },
+          "successEffects": [
+            {
+              "type": "waifubux_gain",
+              "amount": 300
+            },
+            {
+              "type": "player_xp",
+              "amount": 25
+            }
+          ],
+          "failureEffects": [
+            {
+              "type": "energy_loss",
+              "amount": 2
+            },
+            {
+              "type": "waifubux_loss",
+              "amount": 100
+            }
+          ]
+        },
+        {
+          "label": "Turn back",
+          "emoji": "↩️",
+          "requirements": {},
+          "check": {
+            "type": "none"
+          },
+          "successEffects": [],
+          "failureEffects": []
+        }
+      ],
+      "metadata": {}
+    },
+    {
+      "slug": "tv_bandit_aftermath",
+      "name": "Bandit Camp Aftermath",
+      "description": "You loot the bandits's abandoned camp. Hidden in a pack — a small coin purse and a scrap of parchment.",
+      "type": "discovery",
+      "rarity": "uncommon",
+      "weight": 1,
+      "lifecycle": "active",
+      "huntEligible": false,
+      "travelEligible": false,
+      "cooldownSeconds": 0,
+      "artworkPath": "encounters/tv_bandit_aftermath.webp",
+      "chainedEncounterSlug": null,
+      "choicesRequired": true,
+      "regions": [],
+      "routes": [],
+      "choices": [
+        {
+          "label": "Pocket the loot",
+          "emoji": "🪙",
+          "requirements": {},
+          "check": {
+            "type": "none"
+          },
+          "successEffects": [
+            {
+              "type": "waifubux_gain",
+              "amount": 150
+            },
+            {
+              "type": "player_xp",
+              "amount": 20
+            }
+          ],
+          "failureEffects": []
+        },
+        {
+          "label": "Leave it — this feels wrong",
+          "emoji": "🕯️",
+          "requirements": {},
+          "check": {
+            "type": "none"
+          },
+          "successEffects": [
+            {
+              "type": "essence_gain",
+              "amount": 25
+            }
+          ],
+          "failureEffects": []
+        }
+      ],
+      "metadata": {}
+    },
+    {
+      "slug": "tv_bandit_ambush",
+      "name": "Bandit Ambush",
+      "description": "Three bandits step out of the roadside brush. \"Nice buddy. Bet the coins are nicer.\"",
+      "type": "combat",
+      "rarity": "uncommon",
+      "weight": 10,
+      "lifecycle": "active",
+      "huntEligible": false,
+      "travelEligible": true,
+      "cooldownSeconds": 1800,
+      "artworkPath": "encounters/tv_bandit_ambush.webp",
+      "chainedEncounterSlug": null,
+      "choicesRequired": true,
+      "regions": [
+        "waifu-valley",
+        "twin-peeks",
+        "flaccid-foothills",
+        "thirstlands",
+        "base-80085"
+      ],
+      "routes": [],
+      "choices": [
+        {
+          "label": "Fight",
+          "emoji": "⚔️",
+          "requirements": {},
+          "check": {
+            "type": "sp",
+            "difficulty": 75,
+            "affinityAdvantage": "dominant",
+            "raceAdvantage": [
+              "valkyrie"
+            ]
+          },
+          "successEffects": [
+            {
+              "type": "waifubux_gain",
+              "amount": 350
+            },
+            {
+              "type": "give_item",
+              "slug": "basic_charm",
+              "quantity": 1
+            },
+            {
+              "type": "trigger_encounter",
+              "encounterSlug": "tv_bandit_aftermath"
+            }
+          ],
+          "failureEffects": [
+            {
+              "type": "waifubux_loss_percent",
+              "percent": 0.1,
+              "maxAmount": 500
+            }
+          ]
+        },
+        {
+          "label": "Intimidate",
+          "emoji": "😠",
+          "requirements": {
+            "affinity": "dominant"
+          },
+          "check": {
+            "type": "sp",
+            "difficulty": 50,
+            "baseBias": 0.15
+          },
+          "successEffects": [
+            {
+              "type": "waifubux_gain",
+              "amount": 200
+            }
+          ],
+          "failureEffects": [
+            {
+              "type": "waifubux_loss",
+              "amount": 100
+            }
+          ]
+        },
+        {
+          "label": "Run",
+          "emoji": "🏃",
+          "requirements": {},
+          "check": {
+            "type": "sp",
+            "difficulty": 40,
+            "baseBias": 0.2
+          },
+          "successEffects": [],
+          "failureEffects": [
+            {
+              "type": "waifubux_loss",
+              "amount": 50
+            }
+          ]
+        },
+        {
+          "label": "Pay",
+          "emoji": "💰",
+          "requirements": {},
+          "check": {
+            "type": "none"
+          },
+          "successEffects": [
+            {
+              "type": "waifubux_loss",
+              "amount": 200
+            }
+          ],
+          "failureEffects": []
+        }
+      ],
+      "metadata": {}
+    },
+    {
+      "slug": "tv_wandering_merchant",
+      "name": "The Wandering Merchant",
+      "description": "A hooded merchant with a cart of curiosities beckons you closer. \"Special traveler’s prices, no questions.\"",
+      "type": "vendor",
+      "rarity": "rare",
+      "weight": 3,
+      "lifecycle": "active",
+      "huntEligible": false,
+      "travelEligible": true,
+      "cooldownSeconds": 21600,
+      "artworkPath": "encounters/tv_wandering_merchant.webp",
+      "chainedEncounterSlug": null,
+      "choicesRequired": true,
+      "regions": [],
+      "routes": [],
+      "choices": [
+        {
+          "label": "Buy a lucky charm (150 WB)",
+          "emoji": "🎴",
+          "requirements": {},
+          "check": {
+            "type": "none"
+          },
+          "successEffects": [
+            {
+              "type": "waifubux_loss",
+              "amount": 150
+            },
+            {
+              "type": "give_item",
+              "slug": "basic_charm",
+              "quantity": 1
+            }
+          ],
+          "failureEffects": []
+        },
+        {
+          "label": "Browse (vendor placeholder)",
+          "emoji": "🛒",
+          "requirements": {},
+          "check": {
+            "type": "none"
+          },
+          "successEffects": [
+            {
+              "type": "open_vendor",
+              "vendorKey": "wandering_merchant"
+            }
+          ],
+          "failureEffects": []
+        },
+        {
+          "label": "Walk on",
+          "emoji": "🚶",
+          "requirements": {},
+          "check": {
+            "type": "none"
+          },
+          "successEffects": [],
+          "failureEffects": []
+        }
+      ],
+      "metadata": {}
+    },
+    {
+      "slug": "wv_lost_cub",
+      "name": "A Lost Companion",
+      "description": "A tiny cub-like waifumon is stumbling through the tall grass, whimpering. It looks unhurt but hopelessly lost.",
+      "type": "discovery",
+      "rarity": "common",
+      "weight": 15,
+      "lifecycle": "active",
+      "huntEligible": true,
+      "travelEligible": false,
+      "cooldownSeconds": 900,
+      "artworkPath": "encounters/wv_lost_cub.webp",
+      "chainedEncounterSlug": null,
+      "choicesRequired": true,
+      "regions": [
+        "waifu-valley"
+      ],
+      "routes": [],
+      "choices": [
+        {
+          "label": "Guide her home (Caregiver)",
+          "emoji": "🤝",
+          "requirements": {
+            "affinity": "caregiver"
+          },
+          "check": {
+            "type": "none"
+          },
+          "successEffects": [
+            {
+              "type": "buddy_xp",
+              "amount": 25
+            },
+            {
+              "type": "trigger_waifumon_encounter"
+            }
+          ],
+          "failureEffects": []
+        },
+        {
+          "label": "Escort her carefully",
+          "emoji": "🌾",
+          "requirements": {},
+          "check": {
+            "type": "sp",
+            "difficulty": 20,
+            "baseBias": 0.15
+          },
+          "successEffects": [
+            {
+              "type": "player_xp",
+              "amount": 15
+            },
+            {
+              "type": "essence_gain",
+              "amount": 20
+            }
+          ],
+          "failureEffects": [
+            {
+              "type": "energy_loss",
+              "amount": 1
+            }
+          ]
+        },
+        {
+          "label": "Leave her be",
+          "emoji": "🚶",
+          "requirements": {},
+          "check": {
+            "type": "none"
+          },
+          "successEffects": [],
+          "failureEffects": []
+        }
+      ],
+      "metadata": {}
+    },
+    {
+      "slug": "wv_wildflower_field",
+      "name": "A Field of Wildflowers",
+      "description": "You wander into a clearing full of shimmering wildflowers. Their pollen carries a strange, invigorating scent.",
+      "type": "discovery",
+      "rarity": "common",
+      "weight": 20,
+      "lifecycle": "active",
+      "huntEligible": true,
+      "travelEligible": false,
+      "cooldownSeconds": 600,
+      "artworkPath": "encounters/wv_wildflower_field.webp",
+      "chainedEncounterSlug": null,
+      "choicesRequired": false,
+      "regions": [
+        "waifu-valley"
+      ],
+      "routes": [],
+      "choices": [
+        {
+          "label": "Gather a bouquet",
+          "emoji": "💐",
+          "requirements": {},
+          "check": {
+            "type": "none"
+          },
+          "successEffects": [
+            {
+              "type": "essence_gain",
+              "amount": 30
+            }
+          ],
+          "failureEffects": []
+        },
+        {
+          "label": "Rest here",
+          "emoji": "😌",
+          "requirements": {},
+          "check": {
+            "type": "none"
+          },
+          "successEffects": [
+            {
+              "type": "energy_gain",
+              "amount": 1
+            }
+          ],
+          "failureEffects": []
+        }
+      ],
+      "metadata": {}
+    }
+  ]
+}

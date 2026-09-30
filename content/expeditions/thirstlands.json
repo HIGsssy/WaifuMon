@@ -88,7 +88,7 @@
       "rewardTable": "thirst-rig-recovery-success-v1",
       "exceptionalRewardTable": "thirst-rig-recovery-bonus-v1",
       "failureRewardTable": "thirst-rig-recovery-failure-v1",
-      "rewardPreview": ["salvage", "waifubux", "waifu_xp"],
+      "rewardPreview": ["salvage", "waifubux", "key_item", "waifu_xp"],
       "enabled": true
     },
     {

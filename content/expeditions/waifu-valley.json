@@ -160,7 +160,7 @@
       "rewardTable": "valley-substation-success-v2",
       "exceptionalRewardTable": "valley-substation-bonus-v2",
       "failureRewardTable": "valley-substation-failure-v2",
-      "rewardPreview": ["salvage", "waifubux", "essence", "charms", "waifu_xp"],
+      "rewardPreview": ["salvage", "waifubux", "essence", "charms", "key_item", "waifu_xp"],
       "enabled": true
     },
     {
@@ -196,7 +196,7 @@
       "rewardTable": "valley-undercity-dive-success-v4",
       "exceptionalRewardTable": "valley-undercity-dive-bonus-v4",
       "failureRewardTable": "valley-undercity-dive-failure-v4",
-      "rewardPreview": ["salvage", "waifubux", "essence", "charms", "rare_find", "waifu_xp"],
+      "rewardPreview": ["salvage", "waifubux", "essence", "charms", "rare_find", "key_item", "waifu_xp"],
       "enabled": true
     }
   ]
