@@ -58,7 +58,14 @@ const RULES: readonly TableRule[] = [
 ];
 
 /** Files that must write nothing at all. */
-const READ_ONLY = ['modules/equipment/combatStatsService.ts', 'modules/equipment/equipmentQueries.ts'];
+const READ_ONLY = [
+  'modules/equipment/combatStatsService.ts',
+  'modules/equipment/equipmentQueries.ts',
+  // Phase 2B: management orchestrates the service's writers; the Gear Bag
+  // helper is pure. Neither writes a table itself.
+  'modules/equipment/equipmentManagementService.ts',
+  'modules/equipment/gearBag.ts',
+];
 
 /**
  * Remove comments so prose ("never update player_equipment directly") cannot

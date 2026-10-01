@@ -39,6 +39,13 @@ import {
 } from './equipmentQueries';
 import { isEquipmentSlot, type EquipmentSlot } from './vocabulary';
 
+/** Which `CombatStats.stats` value each slot feeds. */
+const SLOT_STAT_KEY: Readonly<Record<EquipmentSlot, keyof CombatStats['stats']>> = {
+  attack: 'attack',
+  defense: 'defense',
+  health: 'maxHp',
+};
+
 export interface CombatStatsOptions {
   /**
    * Calculate for this owned copy instead of the active Buddy (a "what if I
@@ -52,6 +59,29 @@ export interface CombatStatsOptions {
   slotOverrides?: Partial<Record<EquipmentSlot, number | null>>;
 }
 
+/** One candidate's result in {@link CombatStatsService.previewSlot}. */
+export interface SlotCandidatePreview {
+  equipmentId: number;
+  /**
+   * False when the id is not one of the player's own, unremoved instances for
+   * this slot. Missing, foreign, removed and wrong-slot ids all read the same.
+   */
+  available: boolean;
+  /** The slot's stat with this item equipped; null without a Buddy or when unavailable. */
+  value: number | null;
+  /** `value - current`; null whenever either side is null. */
+  delta: number | null;
+}
+
+export interface SlotPreview {
+  /** The live calculation, exactly as `calculateCombatStats` returns it. */
+  stats: CombatStats;
+  slot: EquipmentSlot;
+  /** The slot's stat as things stand; null when the slot is empty or there is no Buddy. */
+  current: number | null;
+  candidates: SlotCandidatePreview[];
+}
+
 export interface CombatStatsService {
   calculateCombatStats(playerId: number, opts?: CombatStatsOptions): Promise<CombatStats>;
   /**
@@ -60,6 +90,14 @@ export interface CombatStatsService {
    * The returned object is the snapshot — self-describing and JSON-safe.
    */
   snapshotCombatStats(tx: DbOrTx, playerId: number): Promise<CombatStats>;
+  /**
+   * "What would this slot read with each of these items instead?" — the
+   * comparison a management screen shows, for many candidates at once. The
+   * Buddy and loadout are resolved once; each candidate is the same
+   * calculation as a single-slot `slotOverrides` preview. Never writes, and
+   * never throws for a bad candidate: it comes back `available: false`.
+   */
+  previewSlot(playerId: number, slot: EquipmentSlot, candidateIds: readonly number[]): Promise<SlotPreview>;
 }
 
 export interface CombatStatsServiceDeps {
@@ -150,6 +188,37 @@ export function createCombatStatsService(deps: CombatStatsServiceDeps): CombatSt
     },
     snapshotCombatStats(tx, playerId) {
       return calculate(tx, playerId, {});
+    },
+    async previewSlot(playerId, slot, candidateIds) {
+      if (!isEquipmentSlot(slot)) {
+        throw new EquipmentValidationError([{ path: 'slot', message: `unknown slot "${String(slot)}"` }]);
+      }
+      const buddy = await resolveBuddy(db, playerId);
+      const { loadoutId, slots } = await resolveSlots(db, playerId, undefined);
+      const stats = assembleCombatStats({ buddy, loadoutId, slots });
+      const key = SLOT_STAT_KEY[slot];
+      const current = stats.stats[key];
+      const candidates: SlotCandidatePreview[] = [];
+      for (const equipmentId of candidateIds) {
+        const owned = await readOwnedInstance(db, playerId, equipmentId);
+        if (!owned || owned.instance.slot !== slot) {
+          candidates.push({ equipmentId, available: false, value: null, delta: null });
+          continue;
+        }
+        const preview = assembleCombatStats({
+          buddy,
+          loadoutId,
+          slots: { ...slots, [slot]: toCombatSlotItem(owned.instance, owned.definition) },
+        });
+        const value = preview.stats[key];
+        candidates.push({
+          equipmentId,
+          available: true,
+          value,
+          delta: value != null && current != null ? value - current : null,
+        });
+      }
+      return { stats, slot, current, candidates };
     },
   };
 }

@@ -14,7 +14,8 @@
  *   onb|open|equipment             — menu Begin/Resume
  *   onb|adv|equipment|<fromStep>   — a step's button
  *   onb|done|equipment             — "Gear up" (the completion)
- *   onb|view|equipment             — menu Equipment, once unlocked
+ *   onb|view|equipment             — menu Equipment, once unlocked (opens the
+ *                                    management home, `waifumonEquipment.ts`)
  */
 import {
   ActionRowBuilder,
@@ -37,12 +38,12 @@ import {
   type EquipmentOnboardingStep,
 } from '../modules/onboarding/vocabulary';
 import { resolveArtworkAttachment } from './assets/resolveArtworkAttachment';
+import { buildEquipmentHome } from './equipmentPresenter';
 import type { SessionPayload } from './ephemeralSession';
 import { buildCustomId, type AppContext } from './types';
 
 /** Rust-orange: Patch's scrapyard. */
 const ONBOARDING_COLOR = 0xb4643c;
-const OVERVIEW_COLOR = 0x6b7280;
 
 export const SLOT_EMOJI: Readonly<Record<EquipmentSlot, string>> = { attack: '⚔️', defense: '🛡️', health: '❤️' };
 export const SLOT_GEAR_LABEL: Readonly<Record<EquipmentSlot, string>> = {
@@ -56,8 +57,6 @@ const SLOT_STAT: Readonly<Record<EquipmentSlot, { key: 'attack' | 'defense' | 'm
   health: { key: 'maxHp', label: 'HP' },
 };
 
-export const OVERVIEW_TITLE = '⚔️ Equipment';
-export const OVERVIEW_FOOTER = 'Gear management is coming soon.';
 const UNAVAILABLE_FALLBACK = 'Equipment training isn’t available right now.';
 
 /** `4500` → `×0.45`. */
@@ -194,7 +193,8 @@ export function buildOnboardingView(
   view: EquipmentOnboardingView,
   content: OnboardingPresenterContent | null,
 ): SessionPayload {
-  if (view.kind === 'overview') return buildEquipmentOverview(view.stats);
+  // An unlocked player reopening the onboarding lands on Equipment management.
+  if (view.kind === 'overview') return buildEquipmentHome(view.stats);
   if (view.kind === 'unavailable' || !content) {
     return {
       content: content?.flow.unavailableText ?? UNAVAILABLE_FALLBACK,
@@ -282,11 +282,4 @@ export function buildOnboardingView(
       };
     }
   }
-}
-
-/** The read-only Equipment overview. Management arrives in Phase 2B. */
-export function buildEquipmentOverview(stats: CombatStats): SessionPayload {
-  const embed = new EmbedBuilder().setTitle(OVERVIEW_TITLE).setColor(OVERVIEW_COLOR).setFooter({ text: OVERVIEW_FOOTER });
-  addLoadoutFields(embed, stats);
-  return { embeds: [embed], components: [row(backToMenuButton())], files: [] };
 }

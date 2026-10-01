@@ -18,7 +18,7 @@ import { AppError } from '../../shared/errors';
 const STALE = 'That button no longer works.';
 const MALFORMED = 'That button is malformed — re-run /waifumon.';
 
-type Action = 'open' | 'adv' | 'done' | 'view';
+type Action = 'open' | 'adv' | 'done';
 
 async function run(
   ctx: AppContext,
@@ -54,9 +54,6 @@ async function run(
       case 'done':
         view = await service.complete(prov.playerId);
         break;
-      case 'view':
-        view = await service.overview(prov.playerId);
-        break;
     }
     await respondEphemeral(interaction, buildOnboardingView(ctx, view, service.content()));
   } catch (err) {
@@ -81,9 +78,4 @@ export function handleOnboardingAdvance(ctx: AppContext, i: ButtonInteraction, p
 /** `onb|done|equipment` — "Gear up": the atomic completion. */
 export function handleOnboardingComplete(ctx: AppContext, i: ButtonInteraction, prov: Provisioned, args: string[]) {
   return run(ctx, i, prov, args, 'done');
-}
-
-/** `onb|view|equipment` — the read-only Equipment overview, unlocked players only. */
-export function handleEquipmentOverview(ctx: AppContext, i: ButtonInteraction, prov: Provisioned, args: string[]) {
-  return run(ctx, i, prov, args, 'view');
 }

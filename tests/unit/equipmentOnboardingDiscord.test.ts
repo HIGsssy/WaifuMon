@@ -16,21 +16,19 @@ import {
   menuComponents,
 } from '../../src/discord/commands/waifumon';
 import {
-  handleEquipmentOverview,
   handleOnboardingAdvance,
   handleOnboardingComplete,
   handleOnboardingOpen,
 } from '../../src/discord/commands/waifumonOnboarding';
 import {
-  OVERVIEW_FOOTER,
-  OVERVIEW_TITLE,
-  buildEquipmentOverview,
   buildOnboardingView,
   explainLine,
   formatMultiplier,
   onboardingCustomId,
 } from '../../src/discord/onboardingPresenter';
 import { parseCustomId, type AppContext, type Provisioned } from '../../src/discord/types';
+import { EQUIPMENT_HOME_TITLE, buildEquipmentHome, eqId } from '../../src/discord/equipmentPresenter';
+import { handleEquipmentHome } from '../../src/discord/commands/waifumonEquipment';
 import { assembleCombatStats, type CombatSlotItem } from '../../src/modules/equipment/equipmentMath';
 import type { EquipmentEntryState } from '../../src/modules/onboarding/onboardingState';
 import type {
@@ -181,14 +179,11 @@ describe('onboarding screens', () => {
     expect(body).toContain('Kept your **Plasma Coil Ring**');
   });
 
-  it('overview: read-only, real stats, — for anything unavailable', () => {
-    const empty = assembleCombatStats({ buddy: null, loadoutId: null, slots: { attack: null, defense: null, health: null } });
-    const json = embedOf(buildEquipmentOverview(empty));
-    expect(json.title).toBe(OVERVIEW_TITLE);
-    expect(json.footer?.text).toBe(OVERVIEW_FOOTER);
-    const fields = Object.fromEntries((json.fields ?? []).map((f) => [f.name, f.value]));
-    expect(fields).toMatchObject({ ATK: '—', DEF: '—', HP: '—' });
-    expect(buttonIds(buildEquipmentOverview(empty))).toEqual(['wm|v1|menu|start']);
+  it('overview (Phase 2B): an unlocked player re-opening the onboarding lands on Equipment management', () => {
+    const payload = buildOnboardingView(ctx, { kind: 'overview', stats: statsWith280() }, CONTENT);
+    expect(embedOf(payload).title).toBe(EQUIPMENT_HOME_TITLE);
+    expect(buttonIds(payload)).toEqual(buttonIds(buildEquipmentHome(statsWith280())));
+    expect(buttonIds(payload)).toContain(eqId.bag());
   });
 
   it('unavailable: the content message and a way back', () => {
@@ -314,8 +309,6 @@ describe('onb:* handlers', () => {
     expect(service.open).toHaveBeenCalledWith(PLAYER_ID);
     await handleOnboardingComplete(handlerCtx(service), interaction as never, prov, ['equipment']);
     expect(service.complete).toHaveBeenCalledWith(PLAYER_ID);
-    await handleEquipmentOverview(handlerCtx(service), interaction as never, prov, ['equipment']);
-    expect(service.overview).toHaveBeenCalledWith(PLAYER_ID);
   });
 
   it('a different player pressing the same button acts on their own state', async () => {
@@ -363,11 +356,13 @@ describe('onb:* handlers', () => {
     expect(painted[0]?.content).toBe(CONTENT.flow.unavailableText);
   });
 
-  it('with the switch off, an unlocked player still gets the overview', async () => {
+  it('onb|view|equipment (the menu button) opens Equipment management for the clicking player', async () => {
     const stats = statsWith280();
-    const service = serviceDouble({ kind: 'overview', stats });
+    const management = { home: vi.fn(async () => ({ stats })) };
     const { interaction, painted } = makeInteraction();
-    await handleEquipmentOverview(handlerCtx(service), interaction as never, prov, ['equipment']);
-    expect(JSON.stringify(painted)).toContain(OVERVIEW_TITLE);
+    const appCtx = { ...ctx, services: { equipmentManagement: management } } as unknown as AppContext;
+    await handleEquipmentHome(appCtx, interaction as never, prov);
+    expect(management.home).toHaveBeenCalledWith(PLAYER_ID);
+    expect(JSON.stringify(painted)).toContain(EQUIPMENT_HOME_TITLE);
   });
 });

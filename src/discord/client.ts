@@ -72,11 +72,21 @@ import {
   handleWorldEncounterVendorOpen,
 } from './commands/waifumonWorldEncounter';
 import {
-  handleEquipmentOverview,
   handleOnboardingAdvance,
   handleOnboardingComplete,
   handleOnboardingOpen,
 } from './commands/waifumonOnboarding';
+import {
+  handleEquipmentEquip,
+  handleEquipmentFlag,
+  handleEquipmentHome,
+  handleEquipmentItem,
+  handleEquipmentNoop,
+  handleEquipmentPick,
+  handleEquipmentSlot,
+  handleEquipmentUnequip,
+  handleGearBag,
+} from './commands/waifumonEquipment';
 import {
   handleBuddyAutocomplete,
   handleAppearanceCommand,
@@ -364,8 +374,27 @@ export function createDiscordClient(ctx: AppContext): Client {
         handleOnboardingAdvance(ctx, i, prov, args),
       'onb:done': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleOnboardingComplete(ctx, i, prov, args),
-      'onb:view': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
-        handleEquipmentOverview(ctx, i, prov, args),
+      // The main menu's ⚔️ Equipment button (a Phase 2A id) opens the
+      // management home, as does `eq|home`.
+      'onb:view': (i: ButtonInteraction, prov: Provisioned) => handleEquipmentHome(ctx, i, prov),
+      'eq:home': (i: ButtonInteraction, prov: Provisioned) => handleEquipmentHome(ctx, i, prov),
+      'eq:noop': (i: ButtonInteraction, prov: Provisioned) => handleEquipmentNoop(ctx, i, prov),
+      'eq:slot': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleEquipmentSlot(ctx, i, prov, args),
+      'eq:slotp': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleEquipmentSlot(ctx, i, prov, args),
+      'eq:bag': (i: ButtonInteraction, prov: Provisioned, args: string[]) => handleGearBag(ctx, i, prov, args),
+      'eq:bagp': (i: ButtonInteraction, prov: Provisioned, args: string[]) => handleGearBag(ctx, i, prov, args),
+      'eq:pick': (i: StringSelectMenuInteraction, prov: Provisioned, args: string[]) =>
+        handleEquipmentPick(ctx, i, prov, args),
+      'eq:item': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleEquipmentItem(ctx, i, prov, args),
+      'eq:equip': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleEquipmentEquip(ctx, i, prov, args),
+      'eq:uneq': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleEquipmentUnequip(ctx, i, prov, args),
+      'eq:flag': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleEquipmentFlag(ctx, i, prov, args),
       // Lives in the `loc:` namespace because it resumes the Locations
       // screen — the encounter is over by the time it is clickable.
       'loc:journey': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>

@@ -53,6 +53,7 @@ import type { EquipmentDefinitionService } from '../modules/equipment/equipmentD
 import type { CombatStatsService } from '../modules/equipment/combatStatsService';
 import type { EquipmentPromotionService } from '../modules/equipment/equipmentImportService';
 import type { EquipmentOnboardingService } from '../modules/onboarding/equipmentOnboardingService';
+import type { EquipmentManagementService } from '../modules/equipment/equipmentManagementService';
 import type { FeatureUnlockService } from '../modules/features/featureUnlockService';
 
 export interface AppServices {
@@ -223,6 +224,8 @@ export interface AppServices {
   featureUnlocks?: FeatureUnlockService | undefined;
   /** Equipment onboarding (Patch) and the read-only Equipment overview. */
   equipmentOnboarding?: EquipmentOnboardingService | undefined;
+  /** Equipment management (home, slots, Gear Bag, item detail). Requires the unlock. */
+  equipmentManagement?: EquipmentManagementService | undefined;
 }
 
 export interface AppContext {

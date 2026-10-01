@@ -45,6 +45,7 @@ import { createFeatureUnlockService } from './modules/features/featureUnlockServ
 import { createEquipmentService } from './modules/equipment/equipmentService';
 import { createEquipmentDefinitionService } from './modules/equipment/equipmentDefinitionService';
 import { createCombatStatsService } from './modules/equipment/combatStatsService';
+import { createEquipmentManagementService } from './modules/equipment/equipmentManagementService';
 import { createEquipmentOnboardingService } from './modules/onboarding/equipmentOnboardingService';
 import { equipmentOnboardingLevelLabels } from './modules/onboarding/onboardingState';
 import { createEquipmentPromotionService } from './modules/equipment/equipmentImportService';
@@ -312,6 +313,12 @@ async function main(): Promise<void> {
    * `EQUIPMENT_ONBOARDING_ENABLED`; the read-only overview it serves to
    * unlocked players is not.
    */
+  /**
+   * Equipment management (Phase 2B): the Discord home, slot, Gear Bag and item
+   * screens. Gated by the `equipment` unlock on every call — never by the
+   * onboarding switch.
+   */
+  const equipmentManagement = createEquipmentManagementService({ equipment, combatStats, featureUnlocks });
   const equipmentOnboarding = createEquipmentOnboardingService({
     db,
     equipment,
@@ -583,6 +590,7 @@ async function main(): Promise<void> {
       equipmentPromotion,
       featureUnlocks,
       equipmentOnboarding,
+      equipmentManagement,
     },
   };
 
