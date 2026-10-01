@@ -53,11 +53,14 @@ describe('retired equipment item category', () => {
 });
 
 describe('shipped equipment seed catalogue', () => {
-  it('exists, is a valid package, and ships exactly the three onboarding starters (Phase 2A)', () => {
+  it('exists, is a valid package, and ships the three onboarding starters plus the base Attack/Defense catalogue', () => {
     const file = path.join(CONTENT_DIR, EQUIPMENT_SEED_FILE);
     expect(fs.existsSync(file)).toBe(true);
     const pkg = parseEquipmentPackage(JSON.parse(fs.readFileSync(file, 'utf8')));
-    expect(pkg.definitions.map((d) => d.key)).toEqual(['rusty_pipe', 'scrap_plate', 'dented_lunchbox']);
+    const keys = pkg.definitions.map((d) => d.key);
+    expect(keys).toEqual(expect.arrayContaining(['rusty_pipe', 'scrap_plate', 'dented_lunchbox']));
+    // 10 Attack + 10 Defense + the one Health starter; the per-item content is pinned in equipmentBaseCatalogue.test.ts.
+    expect(keys).toHaveLength(21);
     expect(loadEquipmentSeedCatalogue(CONTENT_DIR)).toEqual(pkg.definitions);
   });
 

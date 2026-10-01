@@ -64,8 +64,9 @@ describe('shipped starter catalogue', () => {
     }
   });
 
-  it('matches the keys the onboarding grants, and nothing else', () => {
-    expect(catalogue.map((d) => d.key).sort()).toEqual(Object.values(STARTER_EQUIPMENT).sort());
+  it('tags exactly the keys the onboarding grants as starters', () => {
+    const starters = catalogue.filter((d) => d.tags.includes('starter')).map((d) => d.key);
+    expect(starters.sort()).toEqual(Object.values(STARTER_EQUIPMENT).sort());
   });
 });
 

@@ -2,8 +2,8 @@
  * Equipment content handling against a real database: authoring operations
  * on definitions, the insert-missing startup seed, and package import/export.
  *
- * The shipped seed catalogue is empty in Phase 1, so the seed machinery is
- * exercised here with injected catalogues.
+ * The seed machinery is mostly exercised here with injected catalogues; the
+ * shipped catalogue's own content is pinned in equipmentBaseCatalogue tests.
  */
 import { count, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -205,21 +205,22 @@ describe('seedEquipmentDefinitions', () => {
     );
   });
 
-  it('seeds the shipped starter catalogue once, and a restart changes nothing', async () => {
+  it('seeds the shipped catalogue once, and a restart changes nothing', async () => {
     const shipped = loadEquipmentSeedCatalogue(CONTENT_DIR);
-    const starters = ['rusty_pipe', 'scrap_plate', 'dented_lunchbox'];
+    const keys = shipped.map((d) => d.key);
+    expect(keys).toEqual(expect.arrayContaining(['rusty_pipe', 'scrap_plate', 'dented_lunchbox']));
     expect(await seedEquipmentDefinitions(t.db, { catalogue: shipped })).toEqual({
-      created: starters,
+      created: keys,
       updated: [],
       skipped: [],
     });
-    expect(await definitionCount()).toBe(3);
+    expect(await definitionCount()).toBe(shipped.length);
     expect(await seedEquipmentDefinitions(t.db, { catalogue: shipped })).toEqual({
       created: [],
       updated: [],
-      skipped: starters,
+      skipped: keys,
     });
-    expect(await definitionCount()).toBe(3);
+    expect(await definitionCount()).toBe(shipped.length);
   });
 });
 
