@@ -16,7 +16,7 @@
 import { FeatureLockedError, EquipmentNotOwnedError } from '../../shared/errors';
 import type { FeatureUnlockService } from '../features/featureUnlockService';
 import type { CombatStatsService, SlotCandidatePreview } from './combatStatsService';
-import type { CombatStats } from './equipmentMath';
+import type { CombatStats, CombatStatValues } from './equipmentMath';
 import type { EquipmentInstanceView } from './equipmentQueries';
 import type { EquipmentGroup, EquipmentService } from './equipmentService';
 import {
@@ -37,6 +37,38 @@ export const SLOT_PAGE_SIZE = 10;
 export interface HomeView {
   stats: CombatStats;
 }
+
+/** One equipped item as a summary shows it: display data only. */
+export interface EquipmentSummarySlot {
+  name: string;
+  rarity: string;
+}
+
+/**
+ * The active Buddy's loadout and derived stats for surfaces that *mention*
+ * Equipment rather than manage it — Buddy inspect, the Player Profile, the
+ * Care Mode Trainer Profile. One read, so they all agree with each other and
+ * with the Equipment home.
+ *
+ * Deliberately a projection, not a `CombatStats`: the Trainer Profile is a
+ * public channel post, so instance ids, definition keys, flags and grant
+ * sources do not travel here at all. Every number is copied verbatim from
+ * `calculateCombatStats` — nothing is derived or rounded again.
+ *
+ * Unlike every other read here it does not throw for a locked player: a
+ * surface that merely mentions Equipment needs to know to say nothing.
+ */
+export type EquipmentSummary =
+  | { unlocked: false }
+  | {
+      unlocked: true;
+      /** The Buddy the stats belong to; null without one. */
+      buddy: { waifuId: number; name: string } | null;
+      slots: Record<EquipmentSlot, EquipmentSummarySlot | null>;
+      /** Null per stat when its slot is empty or there is no Buddy. */
+      stats: CombatStatValues;
+      isComplete: boolean;
+    };
 
 export interface SlotCandidate {
   group: EquipmentGroup;
@@ -93,6 +125,8 @@ export type EquipmentFlag = 'favorite' | 'locked';
 
 export interface EquipmentManagementService {
   home(playerId: number): Promise<HomeView>;
+  /** Never throws `FeatureLockedError`: a locked player reads `{ unlocked: false }`. */
+  summary(playerId: number): Promise<EquipmentSummary>;
   slot(playerId: number, slot: EquipmentSlot, page: number): Promise<SlotView>;
   bag(playerId: number, filter: GearBagFilter, page: number): Promise<BagView>;
   /** Throws `EquipmentNotOwnedError` for missing, foreign and removed ids alike. */
@@ -139,6 +173,23 @@ export function createEquipmentManagementService(deps: EquipmentManagementDeps):
     async home(playerId) {
       await requireUnlocked(playerId);
       return { stats: await combatStats.calculateCombatStats(playerId) };
+    },
+
+    async summary(playerId) {
+      if (!(await featureUnlocks.isUnlocked(playerId, 'equipment'))) return { unlocked: false };
+      const combat = await combatStats.calculateCombatStats(playerId);
+      const slots = {} as Record<EquipmentSlot, EquipmentSummarySlot | null>;
+      for (const slot of EQUIPMENT_SLOTS) {
+        const item = combat.loadout.slots[slot];
+        slots[slot] = item ? { name: item.name, rarity: item.rarity } : null;
+      }
+      return {
+        unlocked: true,
+        buddy: combat.buddy ? { waifuId: combat.buddy.waifuId, name: combat.buddy.name } : null,
+        slots,
+        stats: { ...combat.stats },
+        isComplete: combat.isComplete,
+      };
     },
 
     async slot(playerId, slot, page) {

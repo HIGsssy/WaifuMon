@@ -158,22 +158,50 @@ export async function ownedCardImage(
   try {
     const rendered = await renderOwnedCardAttachment(ctx, subject);
     if (rendered) return rendered;
-
-    // Her level rides along so a `variant` she has stopped qualifying for
-    // degrades to the default. Tier 2 is the *fallback* path — the one that
-    // runs when card rendering is off — and it must not be the one surface
-    // that still paints locked artwork.
-    const worn = ctx.services.appearance.currentAppearance(
-      subject.species,
-      subject.waifu.variant,
-      { level: subject.waifu.level },
-    );
-    const file = resolveAppearanceAssetOrPath(ctx, worn.assetId, subject.species.imagePath);
-    return file === null ? null : { file, url: artworkAttachmentUrl(file) };
+    return wornArtwork(ctx, subject);
   } catch (err) {
     ctx.logger.warn(
       { err, tag: 'discord/owned-card-image', slug: subject.species.slug, waifuId: subject.waifu.id },
       'owned card image unavailable; falling back to a text-only embed',
+    );
+    return null;
+  }
+}
+
+/**
+ * Tier 2 of {@link ownedCardImage}: the raw artwork for the look she is
+ * wearing. Her level rides along so a `variant` she has stopped qualifying for
+ * degrades to the default — the fallback path must not be the one surface that
+ * still paints locked artwork. Throws; callers own the degradation.
+ */
+function wornArtwork(ctx: AppContext, subject: OwnedCardImageSubject): RenderedCardAttachment | null {
+  const worn = ctx.services.appearance.currentAppearance(
+    subject.species,
+    subject.waifu.variant,
+    { level: subject.waifu.level },
+  );
+  const file = resolveAppearanceAssetOrPath(ctx, worn.assetId, subject.species.imagePath);
+  return file === null ? null : { file, url: artworkAttachmentUrl(file) };
+}
+
+/**
+ * The raw artwork one owned copy is wearing, never the rendered card — for a
+ * surface that wants a small picture of her beside its own content (the
+ * Equipment home's thumbnail) rather than the full framed card.
+ *
+ * Same appearance selection as {@link ownedCardImage}'s fallback, because it
+ * is the same function. Never throws: `null` means text only.
+ */
+export function ownedArtworkImage(
+  ctx: AppContext,
+  subject: OwnedCardImageSubject,
+): RenderedCardAttachment | null {
+  try {
+    return wornArtwork(ctx, subject);
+  } catch (err) {
+    ctx.logger.warn(
+      { err, tag: 'discord/owned-artwork', slug: subject.species.slug, waifuId: subject.waifu.id },
+      'owned artwork unavailable; falling back to a text-only embed',
     );
     return null;
   }

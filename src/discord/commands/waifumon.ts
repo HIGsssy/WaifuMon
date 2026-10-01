@@ -67,6 +67,7 @@ import { resolveExistingAssetFile } from '../../modules/assets/assetContainment'
 import type { UiSplashConfig } from '../../modules/content/schemas';
 import type { EquipmentEntryState } from '../../modules/onboarding/onboardingState';
 import { onboardingCustomId } from '../onboardingPresenter';
+import { summaryGearLines, summaryStatParts } from '../equipmentPresenter';
 import {
   parseQuestRewards,
   type QuestRewardsPreview,
@@ -479,6 +480,16 @@ export async function handleProfile(
       { name: '★ Buddy', value: buddyLine, inline: false },
     )
     .setFooter({ text: `Hunter since ${player.createdAt.toDateString()}` });
+
+  // The active loadout, under the Buddy it belongs to. Display names and the
+  // service's own numbers only; locked players get no section. The stats line
+  // needs the Buddy above to be the one they were calculated for.
+  const equipment = await ctx.services.equipmentManagement?.summary(prov.playerId);
+  if (equipment?.unlocked) {
+    const lines = summaryGearLines(equipment);
+    if (buddy && equipment.buddy?.waifuId === buddy.waifu.id) lines.push(summaryStatParts(equipment).join(' · '));
+    embed.addFields({ name: '⚔️ Equipment', value: lines.join('\n'), inline: false });
+  }
 
   // "Today" recap moved off the main menu and onto the Profile screen, where
   // trainer/buddy status is the reason the player is looking. Read-only —

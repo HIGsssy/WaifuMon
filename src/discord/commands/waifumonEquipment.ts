@@ -12,6 +12,7 @@
  *    (`LoadoutConflictError`) repaints that slot as it now is.
  */
 import type { ButtonInteraction, StringSelectMenuInteraction } from 'discord.js';
+import { ownedArtworkImage } from '../assets/attachRenderedCard';
 import { respondEphemeral } from '../ephemeralSession';
 import {
   HOME_CONTEXT,
@@ -27,10 +28,12 @@ import {
   parseInstanceId,
   parsePage,
   unequipStatus,
+  type BuddyArtwork,
   type EquipmentContext,
 } from '../equipmentPresenter';
 import type { AppContext, Provisioned } from '../types';
 import type { EquipmentManagementService } from '../../modules/equipment/equipmentManagementService';
+import type { CombatStats } from '../../modules/equipment/equipmentMath';
 import { isGearBagFilter } from '../../modules/equipment/gearBag';
 import { isEquipmentSlot } from '../../modules/equipment/vocabulary';
 import {
@@ -45,7 +48,30 @@ type Interaction = ButtonInteraction | StringSelectMenuInteraction;
 
 const NO_LONGER_WORKS = 'That button no longer works.';
 
+/**
+ * The picture of the Buddy the stats were calculated for. Matched on the copy
+ * id, so a Buddy swapped between the two reads costs the picture rather than
+ * showing one Waifumon beside another's numbers. Never throws.
+ */
+export async function equipmentHomeArtwork(app: AppContext, playerId: number, stats: CombatStats): Promise<BuddyArtwork | null> {
+  if (!stats.buddy || !app.services.collection) return null;
+  try {
+    const entry = await app.services.collection.getBuddy(playerId);
+    if (entry?.waifu.id !== stats.buddy.waifuId) return null;
+    return ownedArtworkImage(app, entry);
+  } catch (err) {
+    app.logger.warn({ err, playerId }, 'equipment home: buddy artwork unavailable');
+    return null;
+  }
+}
+
+async function homeScreen(app: AppContext, service: EquipmentManagementService, playerId: number, status?: string) {
+  const { stats } = await service.home(playerId);
+  return buildEquipmentHome(stats, status, await equipmentHomeArtwork(app, playerId, stats));
+}
+
 async function renderContext(
+  app: AppContext,
   service: EquipmentManagementService,
   playerId: number,
   ctx: EquipmentContext,
@@ -53,7 +79,7 @@ async function renderContext(
 ) {
   switch (ctx.kind) {
     case 'home':
-      return buildEquipmentHome((await service.home(playerId)).stats, status);
+      return homeScreen(app, service, playerId, status);
     case 'slot':
       return buildSlotScreen(await service.slot(playerId, ctx.slot, ctx.page), status);
     case 'bag':
@@ -88,7 +114,7 @@ async function run(
       if (err instanceof EquipmentNotOwnedError || err instanceof EquipmentSlotMismatchError) {
         await respondEphemeral(
           interaction,
-          await renderContext(service, prov.playerId, recover.fallback ?? HOME_CONTEXT, STALE_ITEM),
+          await renderContext(ctx, service, prov.playerId, recover.fallback ?? HOME_CONTEXT, STALE_ITEM),
         );
         return;
       }
@@ -115,7 +141,7 @@ async function malformed(interaction: Interaction): Promise<void> {
 
 /** `eq|home`, and the menu's `onb|view|equipment`. */
 export function handleEquipmentHome(ctx: AppContext, i: ButtonInteraction, prov: Provisioned): Promise<void> {
-  return run(ctx, i, prov, async (s) => buildEquipmentHome((await s.home(prov.playerId)).stats));
+  return run(ctx, i, prov, (s) => homeScreen(ctx, s, prov.playerId));
 }
 
 /** `eq|slot|<slot>|<page>` and `eq|slotp|…`. */
@@ -145,7 +171,7 @@ export async function handleEquipmentPick(
   const id = parseInstanceId(i.values?.[0]);
   if (!back) return malformed(i);
   if (id === null) {
-    return run(ctx, i, prov, (s) => renderContext(s, prov.playerId, back, STALE_ITEM));
+    return run(ctx, i, prov, (s) => renderContext(ctx, s, prov.playerId, back, STALE_ITEM));
   }
   return run(ctx, i, prov, async (s) => buildItemDetail(await s.item(prov.playerId, id), back), { fallback: back });
 }

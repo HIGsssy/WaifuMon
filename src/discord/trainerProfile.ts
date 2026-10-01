@@ -41,6 +41,7 @@ import type { GameEvent, GameEventBus, GameEventHandler } from '../modules/event
 import type { PlayerCurrenciesRow, PlayerRow } from '../db/schema';
 import type { Logger } from '../shared/logger';
 import type { AppServices } from './types';
+import { summaryGearLines, summaryStatParts, type UnlockedEquipmentSummary } from './equipmentPresenter';
 
 /** Discord "Unknown Message" — the profile was deleted out from under us. */
 const UNKNOWN_MESSAGE = 10008;
@@ -117,6 +118,12 @@ export interface TrainerProfileInput {
    * the profile exactly as it was before cards: same fields, no image.
    */
   buddyCardUrl?: string | null;
+  /**
+   * The active loadout and its stats, from `equipmentManagement.summary`.
+   * Null (or absent) for a player without the Equipment unlock: the profile
+   * is then exactly what it was before Equipment existed.
+   */
+  equipment?: UnlockedEquipmentSummary | null;
   player: PlayerRow;
   currencies: Pick<PlayerCurrenciesRow, 'huntEnergy' | 'waifubux' | 'essence'>;
   careState: CareState;
@@ -188,6 +195,24 @@ export function buildTrainerProfileView(
     // `target` as well as the URL — an image with no buddy panel to belong to
     // would be a portrait of nobody.
     if (input.buddyCardUrl) embed.setImage(input.buddyCardUrl);
+  }
+
+  // ── Equipment ──
+  // Names and numbers come from the summary verbatim; nothing is multiplied
+  // here. Stats belong to the *active Buddy*, which need not be the Waifumon
+  // being cared for — and the panel beside this one, titled "Buddy", shows the
+  // care target. So when the two differ, the stats name their owner on the
+  // line directly above them, as the *active* Buddy, never just "Buddy".
+  const equipment = input.equipment;
+  if (equipment) {
+    const lines = summaryGearLines(equipment);
+    if (equipment.buddy) {
+      if (equipment.buddy.waifuId !== target?.waifu.id) {
+        lines.push(`Stats for active Buddy **${equipment.buddy.name}**:`);
+      }
+      lines.push(summaryStatParts(equipment).join(' · '));
+    }
+    embed.addFields({ name: '⚔️ Equipment', value: lines.join('\n'), inline: true });
   }
 
   // ── Collection ──
@@ -266,7 +291,7 @@ export type ResolveProfileChannelFn = (channelId: string) => Promise<ProfileChan
 export interface TrainerProfileDeps {
   services: Pick<
     AppServices,
-    'session' | 'players' | 'care' | 'collection' | 'progression' | 'appearance'
+    'session' | 'players' | 'care' | 'collection' | 'progression' | 'appearance' | 'equipmentManagement'
   >;
   resolveChannel: ResolveProfileChannelFn;
   /** Omit for a text-only profile — the behaviour before cards existed. */
@@ -330,6 +355,22 @@ export function createTrainerProfileService(
     }
   }
 
+  /**
+   * The Equipment panel's data, or nothing. Read fresh on every paint — never
+   * cached — so a gear or Buddy change shows on the next create or edit. Like
+   * the card, a failure costs the panel, never the profile.
+   */
+  async function equipmentSummary(playerId: number): Promise<UnlockedEquipmentSummary | null> {
+    if (!services.equipmentManagement) return null;
+    try {
+      const summary = await services.equipmentManagement.summary(playerId);
+      return summary.unlocked ? summary : null;
+    } catch (err) {
+      logger.warn({ err, playerId }, 'trainer profile: equipment summary failed; omitting the panel');
+      return null;
+    }
+  }
+
   /** Everything the view needs, gathered fresh at paint time. */
   async function buildView(
     event: GameEvent,
@@ -339,9 +380,10 @@ export function createTrainerProfileService(
     careActive: boolean;
   } | null> {
     const { player, currencies } = await services.players.getProfile(event.playerId);
-    const [careState, collectionProgress] = await Promise.all([
+    const [careState, collectionProgress, equipment] = await Promise.all([
       services.care.getState(event.playerId),
       services.collection.getDexStats(event.playerId),
+      equipmentSummary(event.playerId),
     ]);
     // Pure content lookup, no query. Suppressed for the default look so the
     // line only appears when the player actually chose something.
@@ -380,6 +422,7 @@ export function createTrainerProfileService(
       currencies,
       careState,
       collectionProgress,
+      equipment,
       buddyAppearanceName:
         worn && worn.unlock.type !== 'owned' ? worn.name : null,
       buddyCardUrl: card?.url ?? null,

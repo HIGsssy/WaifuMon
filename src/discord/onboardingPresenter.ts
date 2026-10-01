@@ -38,7 +38,7 @@ import {
   type EquipmentOnboardingStep,
 } from '../modules/onboarding/vocabulary';
 import { resolveArtworkAttachment } from './assets/resolveArtworkAttachment';
-import { buildEquipmentHome } from './equipmentPresenter';
+import { buildEquipmentHome, type BuddyArtwork } from './equipmentPresenter';
 import type { SessionPayload } from './ephemeralSession';
 import { buildCustomId, type AppContext } from './types';
 
@@ -192,9 +192,10 @@ export function buildOnboardingView(
   ctx: AppContext,
   view: EquipmentOnboardingView,
   content: OnboardingPresenterContent | null,
+  homeArtwork?: BuddyArtwork | null,
 ): SessionPayload {
   // An unlocked player reopening the onboarding lands on Equipment management.
-  if (view.kind === 'overview') return buildEquipmentHome(view.stats);
+  if (view.kind === 'overview') return buildEquipmentHome(view.stats, null, homeArtwork);
   if (view.kind === 'unavailable' || !content) {
     return {
       content: content?.flow.unavailableText ?? UNAVAILABLE_FALLBACK,

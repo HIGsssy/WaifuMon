@@ -14,7 +14,7 @@
  */
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { ownedCardImage } from '../../src/discord/assets/attachRenderedCard';
+import { ownedArtworkImage, ownedCardImage } from '../../src/discord/assets/attachRenderedCard';
 import { createAppearanceService } from '../../src/modules/appearance/appearanceService';
 import type { SpeciesRow } from '../../src/db/schema';
 import type { AppContext } from '../../src/discord/types';
@@ -148,5 +148,26 @@ describe('degrading', () => {
     } as unknown as AppContext;
 
     await expect(ownedCardImage(broken, subject('standard'))).resolves.toBeNull();
+  });
+});
+
+describe('ownedArtworkImage — the raw picture, never the card', () => {
+  it('is the same worn-look selection as the card fallback, even with cards on', async () => {
+    for (const variant of ['standard', 'level_20', 'level_50']) {
+      const art = ownedArtworkImage(ctxFor(true), subject(variant));
+      const fallback = await ownedCardImage(ctxFor(), subject(variant));
+      expect(attachedPath(art!.file)).toBe(attachedPath(fallback!.file));
+      expect(art!.url).toBe(`attachment://${art!.file.name}`);
+    }
+  });
+
+  it('returns null rather than throwing', () => {
+    const broken = {
+      config: { assetsDir: ASSETS_DIR },
+      logger: silentLogger(),
+      services: { appearance: { currentAppearance: () => { throw new Error('boom'); } } },
+    } as unknown as AppContext;
+    expect(ownedArtworkImage(broken, subject('standard'))).toBeNull();
+    expect(ownedArtworkImage(ctxFor(), subject('standard', { slug: 'no_such_species', imagePath: 'nope/nope.png' }))).toBeNull();
   });
 });

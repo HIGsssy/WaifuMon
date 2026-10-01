@@ -10,6 +10,7 @@
 import type { ButtonInteraction } from 'discord.js';
 import { respondEphemeral } from '../ephemeralSession';
 import { buildOnboardingView } from '../onboardingPresenter';
+import { equipmentHomeArtwork } from './waifumonEquipment';
 import type { AppContext, Provisioned } from '../types';
 import type { EquipmentOnboardingView } from '../../modules/onboarding/equipmentOnboardingService';
 import { EQUIPMENT_ONBOARDING_FLOW, isEquipmentOnboardingStep } from '../../modules/onboarding/vocabulary';
@@ -55,7 +56,9 @@ async function run(
         view = await service.complete(prov.playerId);
         break;
     }
-    await respondEphemeral(interaction, buildOnboardingView(ctx, view, service.content()));
+    // A finished player lands on the Equipment home, picture included.
+    const artwork = view.kind === 'overview' ? await equipmentHomeArtwork(ctx, prov.playerId, view.stats) : null;
+    await respondEphemeral(interaction, buildOnboardingView(ctx, view, service.content(), artwork));
   } catch (err) {
     if (err instanceof AppError) {
       await respondEphemeral(interaction, err.userMessage);

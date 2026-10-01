@@ -23,6 +23,7 @@
  */
 import {
   ActionRowBuilder,
+  type AttachmentBuilder,
   ButtonBuilder,
   ButtonStyle,
   EmbedBuilder,
@@ -31,6 +32,7 @@ import {
 import type { CombatStats } from '../modules/equipment/equipmentMath';
 import type {
   BagView,
+  EquipmentSummary,
   ItemView,
   SlotChangeOutcome,
   SlotView,
@@ -232,11 +234,48 @@ function withStatus(payload: SessionPayload, status: string | null | undefined):
   return status ? { ...payload, content: status } : payload;
 }
 
+// ── summary lines (inspect, Player Profile, Trainer Profile) ──────────────
+
+export type UnlockedEquipmentSummary = Extract<EquipmentSummary, { unlocked: true }>;
+
+/** Shown for an empty slot, and for a stat it leaves unavailable. */
+export const EMPTY_SLOT = '—';
+
+/**
+ * One line per slot: `⚔️ Rusty Pipe`, or `Attack: Rusty Pipe` when `labelled`.
+ * Display names only — the summary carries nothing else to show.
+ */
+export function summaryGearLines(summary: UnlockedEquipmentSummary, opts: { labelled?: boolean } = {}): string[] {
+  return EQUIPMENT_SLOTS.map((slot) => {
+    const name = summary.slots[slot]?.name ?? EMPTY_SLOT;
+    return opts.labelled ? `${SLOT_NAME[slot]}: ${name}` : `${SLOT_EMOJI[slot]} ${name}`;
+  });
+}
+
+/** `['ATK 336', 'DEF 231', 'HP 1344']`, verbatim from the summary; `—` when unavailable. */
+export function summaryStatParts(summary: UnlockedEquipmentSummary): string[] {
+  return EQUIPMENT_SLOTS.map((slot) => `${SLOT_STAT_LABEL[slot]} ${summary.stats[SLOT_STAT_KEY[slot]] ?? EMPTY_SLOT}`);
+}
+
 // ── home ──────────────────────────────────────────────────────────────────
 
-export function buildEquipmentHome(stats: CombatStats, status?: string | null): SessionPayload {
+/** The active Buddy's picture, as `ownedArtworkImage` draws it. */
+export interface BuddyArtwork {
+  file: AttachmentBuilder;
+  url: string;
+}
+
+export function buildEquipmentHome(
+  stats: CombatStats,
+  status?: string | null,
+  artwork?: BuddyArtwork | null,
+): SessionPayload {
   const embed = new EmbedBuilder().setTitle(EQUIPMENT_HOME_TITLE).setColor(COLOR);
   embed.addFields(buddyField(stats));
+  // A thumbnail, not a second card: the stats are what this screen is for.
+  // Never without a Buddy — a picture with no Buddy panel would be nobody.
+  const picture = stats.buddy ? artwork ?? null : null;
+  if (picture) embed.setThumbnail(picture.url);
   embed.addFields({
     name: 'Combat Stats',
     value: stats.buddy
@@ -261,7 +300,10 @@ export function buildEquipmentHome(stats: CombatStats, status?: string | null): 
       .setStyle(ButtonStyle.Primary),
   );
   const bag = new ButtonBuilder().setCustomId(eqId.bag()).setLabel('Gear Bag').setEmoji('🎒').setStyle(ButtonStyle.Secondary);
-  return withStatus({ embeds: [embed], components: [row(...slotButtons), row(bag, menuButton())], files: [] }, status);
+  return withStatus(
+    { embeds: [embed], components: [row(...slotButtons), row(bag, menuButton())], files: picture ? [picture.file] : [] },
+    status,
+  );
 }
 
 // ── slot management ───────────────────────────────────────────────────────

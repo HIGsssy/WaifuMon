@@ -95,6 +95,7 @@ import {
 } from '../ephemeralCleanup';
 import { gameEvent } from '../../modules/events/gameEvents';
 import { ownedCardImage } from '../assets/attachRenderedCard';
+import { summaryGearLines, summaryStatParts } from '../equipmentPresenter';
 import { respondEphemeral } from '../ephemeralSession';
 import { backButton, isStaleInteractionError, withBackRow } from '../ui';
 
@@ -1185,6 +1186,20 @@ export async function renderInspect(
           (isBuddy ? ' · **active**' : ' · _set her as Buddy to activate_'),
         inline: false,
       });
+    }
+    // Equipment belongs to the player's active Buddy, so it is shown on her
+    // card and no other: any other copy would be wearing gear she does not
+    // have. Matched on the id the stats were calculated for, not just
+    // `isBuddy`, so a Buddy swapped between the two reads shows nothing rather
+    // than another copy's numbers. Locked players see no section at all.
+    if (isBuddy && ctx.services.equipmentManagement) {
+      const equipment = await ctx.services.equipmentManagement.summary(prov.playerId);
+      if (equipment.unlocked && equipment.buddy?.waifuId === waifuId) {
+        embed.addFields(
+          { name: '⚔️ Combat Stats', value: summaryStatParts(equipment).join('\n'), inline: true },
+          { name: '🎒 Equipment', value: summaryGearLines(equipment, { labelled: true }).join('\n'), inline: true },
+        );
+      }
     }
     // The canonical collectible view: a player looking at one of her own
     // Waifumon sees the card, carrying her real level and her equipped look.
