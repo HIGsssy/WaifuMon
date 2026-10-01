@@ -24,6 +24,10 @@ import {
   createEssenceAwardService,
   type EssenceAwardService,
 } from '../currency/essenceAwardService';
+import type {
+  EquipmentRewardGrant,
+  EquipmentRewardService,
+} from '../equipment/equipmentRewardService';
 import type { InventoryService } from '../inventory/inventoryService';
 import type { ProgressionService } from '../progression/progressionService';
 import type { CollectionService } from '../collection/collectionService';
@@ -33,7 +37,7 @@ import {
   ItemOwnershipLimitError,
 } from '../../shared/errors';
 import type { AppliedBuddyBonus } from '../buddyBonus/buddyBonusEffects';
-import { normalizeWaifumonSelection, type Effect } from './types';
+import { equipmentSelectorOf, normalizeWaifumonSelection, type Effect } from './types';
 
 export interface EffectExecutorDeps {
   currency: CurrencyService;
@@ -48,6 +52,13 @@ export interface EffectExecutorDeps {
    * identical to the behaviour those fixtures already assert.
    */
   essenceAward?: EssenceAwardService | undefined;
+  /**
+   * The shared Equipment reward path, for `give_equipment`. Optional only so
+   * hand-built fixtures without gear keep working; an encounter that reaches a
+   * `give_equipment` effect without it fails the resolution loudly rather than
+   * paying nothing.
+   */
+  equipmentRewards?: EquipmentRewardService | undefined;
 }
 
 export interface EffectContext {
@@ -62,6 +73,14 @@ export interface EffectContext {
   buddySpeciesName: string | null;
   /** Encounter refId used on progression audit rows. */
   encounterId: number;
+  /** The encounter's slug — the source key on gear it grants. */
+  encounterSlug?: string | undefined;
+  /**
+   * The `world_encounter_active` row being resolved — the stable identity a
+   * `give_equipment` grant key is derived from. Absent only in fixtures that
+   * apply effects outside a resolution.
+   */
+  activeId?: number | undefined;
 }
 
 /**
@@ -174,7 +193,17 @@ export interface AppliedEffect {
   buddyXp?: AppliedBuddyXpDetail;
   /** Present only on an applied `player_xp`. */
   playerXp?: AppliedPlayerXpDetail;
+  /** Present only on an applied `give_equipment`. */
+  equipment?: AppliedEquipmentDetail;
 }
+
+/**
+ * What a `give_equipment` effect granted — the instance the Equipment service
+ * created (or, on a replay, found by grant key). Persisted with the rest of
+ * `effects_applied_json`; a presenter shows `displayName` and the formatted
+ * multiplier, never the affix key or raw basis points.
+ */
+export type AppliedEquipmentDetail = Omit<EquipmentRewardGrant, 'alreadyGranted'>;
 
 /**
  * Some effects are handled at the surface layer: chained encounters need a
@@ -217,7 +246,7 @@ export function createEffectExecutor(deps: EffectExecutorDeps) {
     const applied: AppliedEffect[] = [];
     const followUps: FollowUp[] = [];
 
-    for (const effect of effects) {
+    for (const [index, effect] of effects.entries()) {
       const record = (patch: Partial<AppliedEffect>): void => {
         applied.push({ effect, applied: true, ...patch });
       };
@@ -422,6 +451,27 @@ export function createEffectExecutor(deps: EffectExecutorDeps) {
               throw err;
             }
           }
+          break;
+        }
+        case 'give_equipment': {
+          if (!deps.equipmentRewards) {
+            throw new Error('give_equipment effect reached an executor without the equipment reward service');
+          }
+          // The executor names only the selector. The base definition, its
+          // multiplier and its affix are all decided inside the Equipment
+          // service; a bad selector throws and rolls the whole resolution back
+          // rather than paying a substitute.
+          const selector = equipmentSelectorOf(effect);
+          const grant = await deps.equipmentRewards.grantRandomEquipmentReward(tx, {
+            playerId: ctx.playerId,
+            selector,
+            source: { type: 'encounter', key: ctx.encounterSlug ?? String(ctx.encounterId) },
+            // One active row resolves once, and applies one branch's list, so
+            // its id plus the effect's position names this reward exactly.
+            grantKey: ctx.activeId != null ? `world_encounter:${ctx.activeId}:effect:${index}` : null,
+          });
+          const { alreadyGranted: _replayed, ...detail } = grant;
+          record({ amount: 1, equipment: detail });
           break;
         }
         case 'consume_item': {

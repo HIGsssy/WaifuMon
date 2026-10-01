@@ -61,6 +61,10 @@ import { DEFAULT_SP_RANGES_BY_RARITY } from '../power/seductivePower';
 // imports this module.
 import type { EquipmentOnboardingContent, NpcContent } from './onboardingSchemas';
 import type { EquipmentAffix } from '../equipment/affixCatalogue';
+import {
+  EQUIPMENT_REWARD_SELECTOR_SHAPE,
+  equipmentSelectorKey,
+} from '../equipment/rewardSelector';
 
 const slug = z
   .string()
@@ -1579,6 +1583,66 @@ export const BossRewardEntrySchema = z
   .strict();
 
 /**
+ * One weighted Equipment drop inside a reward group — boss or expedition, one
+ * shape for both.
+ *
+ * Gear entries sit in the group's `equipment` list, beside its item `entries`,
+ * and compete in the **same** weighted pick behind the **same**
+ * `chanceBasisPoints` gate: the group decides *whether* something drops and
+ * which entry it is, exactly as it always has. The entry's selector fields
+ * (the shared selector, `equipment/rewardSelector.ts` — optional `slot`,
+ * `rarity`, `definitionKeys`) decide which base definitions are eligible.
+ * Always one instance; strict, so an authored affix, multiplier or pool is
+ * refused rather than ignored — the Equipment service rolls those.
+ *
+ * Definitions live in the database, so the loader checks only the shape.
+ * Existence and enablement are checked where the database is in reach: an
+ * expedition's deploy, a boss payout, and the startup audit.
+ */
+export const EquipmentRewardEntrySchema = z
+  .object({
+    ...EQUIPMENT_REWARD_SELECTOR_SHAPE,
+    enabled: z.boolean().default(true),
+    weight: z.number().int().positive(),
+  })
+  .strict();
+export type EquipmentRewardEntry = z.infer<typeof EquipmentRewardEntrySchema>;
+
+/** The selector an Equipment reward entry carries — the entry minus its switch and weight. */
+export function equipmentEntrySelector(entry: EquipmentRewardEntry) {
+  const { enabled: _enabled, weight: _weight, ...selector } = entry;
+  return selector;
+}
+
+/**
+ * Group-level rules shared by boss and expedition reward groups: at least one
+ * entry of either kind, and no gear selector listed twice (which would
+ * silently double its weight, the same mistake the item check catches).
+ */
+function refineRewardGroup(
+  group: { entries: unknown[]; equipment?: EquipmentRewardEntry[] | undefined },
+  ctx: z.RefinementCtx,
+): void {
+  const equipment = group.equipment ?? [];
+  if (group.entries.length + equipment.length === 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'a reward group needs at least one item entry or equipment entry',
+      path: ['entries'],
+    });
+  }
+  const selectors = equipment.map((e) => equipmentSelectorKey(equipmentEntrySelector(e)));
+  const duplicate = selectors.findIndex((key, i) => selectors.indexOf(key) !== i);
+  if (duplicate >= 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'lists the same equipment selector twice — merge them into one entry with the combined weight',
+      path: ['equipment', duplicate],
+    });
+  }
+}
+
+/**
  * One independent draw against a pool.
  *
  * `rolls` and `chanceBasisPoints` compose: a group with `rolls: 2` and
@@ -1606,9 +1670,17 @@ export const BossRewardGroupSchema = z
      * out of `10000` does not.
      */
     chanceBasisPoints: z.number().int().gte(0).lte(10_000).default(10_000),
-    entries: z.array(BossRewardEntrySchema).min(1),
+    /** Item drops. May be empty when the group pays only gear. */
+    entries: z.array(BossRewardEntrySchema).default([]),
+    /**
+     * Gear drops, competing in the same weighted pick as `entries`. Optional
+     * rather than defaulted, so a table built in code without gear is still a
+     * table; absent and empty mean the same thing.
+     */
+    equipment: z.array(EquipmentRewardEntrySchema).optional(),
   })
-  .strict();
+  .strict()
+  .superRefine(refineRewardGroup);
 
 /**
  * A named boss reward table. Bosses reference it by `id` from `bosses.json`.
@@ -2538,9 +2610,17 @@ export const ExpeditionRewardGroupSchema = z
     rolls: z.number().int().positive().default(1),
     /** 10000 = always, 25 = 0.25%. Basis points, so a rare chance reads exactly. */
     chanceBasisPoints: z.number().int().gte(0).lte(10_000).default(10_000),
-    entries: z.array(ExpeditionRewardEntrySchema).min(1),
+    /** Item drops. May be empty when the group pays only gear. */
+    entries: z.array(ExpeditionRewardEntrySchema).default([]),
+    /**
+     * Gear drops, competing in the same weighted pick as `entries`. Optional
+     * rather than defaulted, so a table built in code without gear is still a
+     * table; absent and empty mean the same thing.
+     */
+    equipment: z.array(EquipmentRewardEntrySchema).optional(),
   })
-  .strict();
+  .strict()
+  .superRefine(refineRewardGroup);
 
 /** An inclusive integer range, drawn uniformly. `min === max` is a flat amount. */
 const ExpeditionAmountRangeSchema = z

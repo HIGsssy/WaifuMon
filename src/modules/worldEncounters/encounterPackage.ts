@@ -38,6 +38,7 @@ import { z } from 'zod';
 import { REGIONS } from '../locations/regions';
 import {
   EncounterInputSchema,
+  equipmentEffectIssues,
   normalizeWaifumonSelection,
   type EncounterInput,
   type LoadedEncounter,
@@ -46,6 +47,7 @@ import {
   matchesSpeciesFilter,
   type RandomSpeciesSelection,
 } from '../encounters/speciesSelection';
+import type { RewardableDefinition } from '../equipment/rewardSelector';
 import { VendorStockTemplateSchema, type VendorStockTemplate } from './vendorService';
 import type { WorldEncounterVendorRow } from '../../db/schema';
 
@@ -284,6 +286,13 @@ export interface ImportTargetState {
   speciesCatalog?: ReadonlyArray<CatalogSpecies>;
   /** Species slugs in each *enabled* region's encounter pool. */
   regionPools?: ReadonlyMap<string, ReadonlySet<string>>;
+  /**
+   * Every equipment definition on the target, enabled or not. When present, a
+   * `give_equipment` selector must match at least one enabled definition and
+   * name only real, enabled, matching ones. Optional: a target that omits it
+   * skips the check rather than guessing.
+   */
+  equipmentDefinitions?: ReadonlyArray<RewardableDefinition>;
 }
 
 /** One species as the selector check sees it. `race` is already resolved. */
@@ -659,6 +668,13 @@ export function planImport(raw: unknown, target: ImportTargetState): ImportPlan 
             }
             break;
           }
+          case 'give_equipment':
+            if (target.equipmentDefinitions) {
+              for (const message of equipmentEffectIssues(effect, target.equipmentDefinitions)) {
+                issues.push(issue('error', 'invalid_equipment_reward', subject, `choice[${i}] ${message}`));
+              }
+            }
+            break;
           case 'open_vendor':
             if (!knownVendors.has(effect.vendorKey)) {
               issues.push(

@@ -17,7 +17,8 @@ import type {
   PlayerExpeditionRow,
 } from '../../db/schema';
 import type { RaceCode } from '../cards/race';
-import type { ExpeditionRewardPayload } from './expeditionRewards';
+import type { EquipmentRewardGrant } from '../equipment/equipmentRewardService';
+import type { ExpeditionEquipmentPools, ExpeditionRewardPayload } from './expeditionRewards';
 import type { SuitabilityFactor } from './expeditionMath';
 import type { MatchAssessment } from './expeditionMatch';
 
@@ -76,6 +77,13 @@ export interface ExpeditionResolutionPlan {
   successTable: ExpeditionRewardTable | null;
   bonusTable: ExpeditionRewardTable | null;
   failureTable: ExpeditionRewardTable | null;
+  /**
+   * The base definitions each enabled Equipment entry may pay, resolved from
+   * the database at deploy — the gear half of "copied out of content". Absent
+   * when the tables pay no gear (and on every plan written before gear
+   * existed). Trimmed with the tables at resolution.
+   */
+  equipmentPools?: ExpeditionEquipmentPools;
 }
 
 /** One deployable copy, with the match quality the player is shown. */
@@ -245,6 +253,11 @@ export interface ExpeditionClaimResult {
   essenceGranted: number;
   /** Item stacks as granted, with the item names resolved for display. */
   itemsGranted: { slug: string; name: string; quantity: number }[];
+  /**
+   * Gear as granted — one instance per drop, keyed back to its draw by
+   * `drawKey` so a result screen can place it under the table that paid it.
+   */
+  equipmentGranted: (Omit<EquipmentRewardGrant, 'alreadyGranted'> & { drawKey: string })[];
   waifuLeveledUp: boolean;
 }
 

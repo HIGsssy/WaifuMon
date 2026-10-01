@@ -76,6 +76,8 @@ import {
 } from '../../src/modules/activity/activityFeedService';
 import type { EventVisibility } from '../../src/modules/events/gameEvents';
 import type { Rng } from '../../src/shared/random';
+import { createEquipmentRewardService } from '../../src/modules/equipment/equipmentRewardService';
+import { buildEquipmentServices, type EquipmentServices } from './equipmentFixtures';
 import type { Logger } from '../../src/shared/logger';
 import { silentLogger, type TestDb } from './testDb';
 
@@ -159,6 +161,14 @@ export interface App {
    * test sees a direct database edit on its next read.
    */
   resultPresentation: ReturnType<typeof createResultPresentationService>;
+  /**
+   * Equipment, rolling from the small `TEST_AFFIXES` catalogue (every N/R/SR
+   * pool covered). No definitions are seeded: a test defines the gear it
+   * rewards.
+   */
+  gear: EquipmentServices;
+  /** The shared reward path World Encounters, bosses and expeditions pay gear through. */
+  equipmentRewards: ReturnType<typeof createEquipmentRewardService>;
 }
 
 export interface BootstrapOptions {
@@ -193,6 +203,10 @@ export interface BootstrapOptions {
    * parameter to pass one through — so it has to be wired into the service.
    */
   worldEncounterRng?: Rng;
+  /** Drives each granted instance's multiplier and affix roll. */
+  equipmentRng?: Rng;
+  /** Drives the base-definition pick for World Encounter gear (bosses and expeditions derive theirs). */
+  equipmentRewardRng?: Rng;
 }
 
 /** Wires all services against a test database with the shipped content seeded. */
@@ -229,6 +243,12 @@ export async function bootstrapApp(
     },
   };
   await seedContent(t.db, content, t.logger);
+  const gear = buildEquipmentServices(t.db, opts.equipmentRng ? { rng: opts.equipmentRng } : {});
+  const equipmentRewards = createEquipmentRewardService({
+    equipment: gear.equipment,
+    getAffixes: gear.getAffixes,
+    ...(opts.equipmentRewardRng ? { rng: opts.equipmentRewardRng } : {}),
+  });
   const currency = createCurrencyService(t.db);
   const inventory = createInventoryService(t.db);
   // Wired exactly as production does, so integration tests exercise real Buddy
@@ -318,6 +338,7 @@ export async function bootstrapApp(
     collection,
     progression,
     availability,
+    equipmentRewards,
     getCurrentRegion: (playerId) => travel.getCurrentRegion(playerId),
   });
   const effects = createPlayerEffectsService(t.db);
@@ -353,6 +374,7 @@ export async function bootstrapApp(
     collection,
     getContent: () => content,
     buddyBonus,
+    equipmentRewards,
     logger: t.logger,
     ...(opts.bossRng ? { rng: opts.bossRng } : {}),
   });
@@ -406,6 +428,7 @@ export async function bootstrapApp(
     progression,
     collection,
     buddyBonus,
+    equipmentRewards,
     vendor: worldEncounterVendor,
     wildEncounters,
     getConfig: () => worldEncounterSettings.get(),
@@ -427,6 +450,8 @@ export async function bootstrapApp(
   await seedWorldEncounterVendors(t.db, { mode: 'reset' });
   return {
     content,
+    gear,
+    equipmentRewards,
     buddyBonus,
     gifts,
     bosses,

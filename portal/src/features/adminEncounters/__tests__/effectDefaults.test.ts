@@ -30,6 +30,7 @@ describe('newEffect', () => {
       buddy_xp: { amount: 10 },
       affection_gain: { amount: 5 },
       give_item: { quantity: 1 },
+      give_equipment: { quantity: 1 },
       consume_item: { quantity: 1 },
       trigger_encounter: {},
       [T]: {},

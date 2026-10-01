@@ -425,6 +425,39 @@ Concretely:
 | `weight` | positive integer, relative **within its group** |
 | `quantity` | positive integer stack size |
 
+### Equipment drops
+
+A group may also carry an `equipment` list beside (or instead of) `entries`.
+Gear entries compete in the **same** gate and weighted pick as the items:
+
+```jsonc
+{
+  "id": "gear",
+  "chanceBasisPoints": 800,          // 8% per roll
+  "entries": [],
+  "equipment": [
+    { "slot": "attack", "rarity": "R", "weight": 1 },                      // any R Attack
+    { "definitionKeys": ["combat_knife", "throbbing_mace"], "weight": 1 } // one of these
+  ]
+}
+```
+
+| Field | Rules |
+| --- | --- |
+| `slot` | optional — `attack`, `defense` or `health`; omitted means any slot |
+| `rarity` | optional — `N`, `R` or `SR`; omitted means any of those. SSR/UR are never random rewards |
+| `definitionKeys` | optional whitelist, combined with `slot`/`rarity`. Every key must exist, be enabled and match the slot/rarity — a bad key is an error, never silently dropped |
+| `weight`, `enabled` | as for item entries |
+
+A winning draw grants **one** instance. The base definition is chosen
+uniformly among the eligible ones, and the instance's multiplier and affix are
+rolled by the Equipment service — a table cannot name an affix, a pool or a
+multiplier. `boss_reward_gain` never scales gear. Definitions live in the
+database, so the loader checks only the selector's shape; the startup log
+names any selector this server cannot satisfy
+(`equipment/reward-selector-invalid`), and a payout that reaches one is
+refused as a whole rather than paying a substitute.
+
 ### Enabling and disabling
 
 Every level has its own `enabled` switch, and each one is narrower than the

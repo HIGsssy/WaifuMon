@@ -15,6 +15,7 @@ export interface NameLookups {
   encounter?: (slug: string) => string | undefined;
   vendor?: (key: string) => string | undefined;
   species?: (slug: string) => string | undefined;
+  equipment?: (key: string) => string | undefined;
 }
 
 /** Author-facing names for the effect-type picker, in the stored type's order. */
@@ -30,6 +31,7 @@ export const EFFECT_TYPE_LABELS: Record<string, string> = {
   buddy_xp: 'Buddy XP',
   affection_gain: 'Buddy Affection',
   give_item: 'Give an item',
+  give_equipment: 'Give equipment',
   consume_item: 'Consume an item',
   trigger_encounter: 'Continue to another encounter',
   trigger_waifumon_encounter: 'Waifumon sighting',
@@ -78,6 +80,15 @@ export function describeEffect(effect: Record<string, unknown>, names: NameLooku
       return `+${amount} Buddy Affection`;
     case 'give_item':
       return `Give ${num(effect.quantity)} × ${named(names.item, effect.slug, '(no item picked)')}`;
+    case 'give_equipment': {
+      const keys = Array.isArray(effect.definitionKeys) ? (effect.definitionKeys as string[]) : [];
+      const rarity = typeof effect.rarity === 'string' ? `${effect.rarity} ` : '';
+      const slot = typeof effect.slot === 'string' ? `${effect.slot} ` : '';
+      if (keys.length > 0) {
+        return `Give one of: ${keys.map((k) => named(names.equipment, k, k)).join(', ')}`;
+      }
+      return `Give random ${rarity}${slot}equipment`;
+    }
     case 'consume_item':
       return `Consume ${num(effect.quantity)} × ${named(names.item, effect.slug, '(no item picked)')}`;
     case 'trigger_encounter':

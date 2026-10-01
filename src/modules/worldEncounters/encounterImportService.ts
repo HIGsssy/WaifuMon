@@ -48,6 +48,7 @@ import {
   worldEncounters,
 } from '../../db/schema';
 import { AppError } from '../../shared/errors';
+import { listRewardableDefinitions } from '../equipment/equipmentRewardService';
 import { createWorldEncounterRepository } from './worldEncounterRepository';
 import type { WorldEncounterRepository } from './worldEncounterRepository';
 import { hydrateEncounter } from './hydrate';
@@ -144,15 +145,19 @@ export function createEncounterPromotionService(
 
   async function targetState(tx: DbOrTx = deps.db): Promise<ImportTargetState> {
     const content = deps.getContent();
-    const [existingEncounters, existingVendors] = await Promise.all([
+    const [existingEncounters, existingVendors, equipmentDefinitions] = await Promise.all([
       loadAllEncounters(tx),
       loadAllVendors(tx),
+      listRewardableDefinitions(tx),
     ]);
     return {
       existingEncounters,
       existingVendors,
       itemSlugs: new Set(content.items.map((i) => i.slug)),
       speciesSlugs: new Set(content.species.map((s) => s.slug)),
+      // Gear is database content, promoted separately: a package may only
+      // hand out definitions this server already has, enabled.
+      equipmentDefinitions,
       // What a random selector can match here, so the planner can prove an
       // empty candidate set before import rather than a player finding it.
       speciesCatalog: content.species.map((s) => ({

@@ -26,6 +26,7 @@ export const EFFECT_TYPES = [
   'buddy_xp',
   'affection_gain',
   'give_item',
+  'give_equipment',
   'consume_item',
   'trigger_encounter',
   'trigger_waifumon_encounter',
@@ -54,6 +55,8 @@ const DEFAULTS: Record<EffectType, Record<string, unknown>> = {
   buddy_xp: { amount: 10 },
   affection_gain: { amount: 5 },
   give_item: { quantity: 1 },
+  // `{ type, quantity: 1 }` alone is valid: any enabled N/R/SR definition.
+  give_equipment: { quantity: 1 },
   consume_item: { quantity: 1 },
   trigger_encounter: {},
   // `{ type }` alone is the valid legacy hunt-draw sighting.
@@ -75,6 +78,7 @@ const FIELDS: Record<EffectType, readonly string[]> = {
   buddy_xp: ['amount'],
   affection_gain: ['amount'],
   give_item: ['slug', 'quantity'],
+  give_equipment: ['slot', 'rarity', 'definitionKeys', 'quantity'],
   consume_item: ['slug', 'quantity'],
   trigger_encounter: ['encounterSlug'],
   trigger_waifumon_encounter: ['speciesSlug', 'selection'],

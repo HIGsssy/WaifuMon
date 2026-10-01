@@ -71,7 +71,9 @@ import {
   responseBonusFor,
   type DamageRange,
 } from './bossDamage';
-import { bossDrawInt } from './bossRandom';
+import { bossDrawInt, bossDrawRng } from './bossRandom';
+import type { EquipmentRewardService } from '../equipment/equipmentRewardService';
+import type { EquipmentSlot } from '../equipment/vocabulary';
 import { mergeGrants, rollBossRewards } from './bossRewards';
 import {
   appliedBuddyBonus,
@@ -113,6 +115,22 @@ export interface BossRewardGrantView {
   quantity: number;
 }
 
+/**
+ * One piece of gear a participation won, as it was granted. Stored on the
+ * participation's `reward_items` beside the item stacks (tagged
+ * `kind: 'equipment'`, which no item stack carries), frozen at payout.
+ * Presenters show `displayName` and the formatted multiplier only.
+ */
+export interface BossEquipmentRewardView {
+  kind: 'equipment';
+  equipmentId: number;
+  definitionKey: string;
+  displayName: string;
+  slot: EquipmentSlot;
+  rarity: string;
+  rolledMultiplierBp: number;
+}
+
 /** What the ephemeral preview shows before a player confirms. */
 export interface BossCommitPreview {
   encounter: BossEncounterRow;
@@ -134,6 +152,12 @@ export interface BossCommitPreview {
 export interface BossParticipationResult {
   participation: BossParticipationRow;
   rewards: BossRewardGrantView[];
+  /**
+   * Gear won, one entry per instance. Always set by the service (empty when
+   * none was won); optional only so hand-built result fixtures need not
+   * spell it out.
+   */
+  equipment?: BossEquipmentRewardView[];
   /**
    * The `boss_reward_gain` bonus that scaled this payout, or `null`.
    *
@@ -185,6 +209,12 @@ export interface BossEncounterServiceDeps {
    * `applyParticipationRewards`.
    */
   buddyBonus?: BuddyBonusService | undefined;
+  /**
+   * The shared Equipment reward path. Optional only so fixtures with gear-free
+   * tables need not build it; a payout that wins gear without it fails loudly
+   * rather than skipping the drop.
+   */
+  equipmentRewards?: EquipmentRewardService | undefined;
   logger: Logger;
   /**
    * Drives the shuffle and the downtime pick. Injected so a test can make the
@@ -339,7 +369,7 @@ export interface BossEncounterService {
 export function createBossEncounterService(
   deps: BossEncounterServiceDeps,
 ): BossEncounterService {
-  const { db, inventory, collection, getContent, logger } = deps;
+  const { db, inventory, collection, getContent, logger, equipmentRewards } = deps;
   const rng = deps.rng ?? defaultRng();
   const buddyBonus = deps.buddyBonus;
 
@@ -769,6 +799,38 @@ export function createBossEncounterService(
         granted.push({ slug: item.slug, name: item.name, quantity: grant.quantity });
       }
 
+      // Gear: the boss decided *that* it drops; the Equipment reward service
+      // picks the base definition and `grantEquipment` rolls the multiplier and
+      // affix. Never scaled by `boss_reward_gain` — a drop is one instance.
+      //
+      // Both the definition draw and the grant key derive from this
+      // participation and the draw's group/roll, so a payout retried after a
+      // crash picks the same definition and finds the same instance. A bad
+      // selector throws here, rolling back the whole payout — never a
+      // substitute item, never a silently skipped drop.
+      const equipmentWon: BossEquipmentRewardView[] = [];
+      for (const draw of roll.equipment) {
+        if (!equipmentRewards) {
+          throw new Error('boss reward table pays equipment but no equipment reward service is wired');
+        }
+        const reward = await equipmentRewards.grantRandomEquipmentReward(tx, {
+          playerId: participation.playerId,
+          selector: draw.selector,
+          source: { type: 'boss', key: encounter.bossId },
+          grantKey: `boss:${participation.id}:${draw.groupId}:${draw.roll}`,
+          rng: bossDrawRng(encounter.id, participation.id, `reward:${draw.groupId}:${draw.roll}:equipment`),
+        });
+        equipmentWon.push({
+          kind: 'equipment',
+          equipmentId: reward.equipmentId,
+          definitionKey: reward.definitionKey,
+          displayName: reward.displayName,
+          slot: reward.slot,
+          rarity: reward.rarity,
+          rolledMultiplierBp: reward.rolledMultiplierBp,
+        });
+      }
+
       // XP goes to the *snapshotted* copy, not to whoever is buddy now. A
       // released copy returns null and is recorded as zero.
       const award = await collection.awardWaifuXp(
@@ -786,7 +848,7 @@ export function createBossEncounterService(
           attackCount: participation.attackCount ?? config().attacksPerParticipation,
           totalDamage,
           xpAwarded,
-          rewardItems: granted as unknown as Record<string, unknown>[],
+          rewardItems: [...granted, ...equipmentWon] as unknown as Record<string, unknown>[],
           rewardStatus: 'applied',
           resolvedAt: now,
         })
@@ -925,6 +987,10 @@ export function createBossEncounterService(
     return rows.map((participation) => ({
       participation,
       rewardBonus: rewardBonusFor(participation),
+      equipment: ((participation.rewardItems ?? []) as Partial<BossEquipmentRewardView>[]).filter(
+        (e): e is BossEquipmentRewardView =>
+          e.kind === 'equipment' && typeof e.displayName === 'string' && typeof e.slot === 'string',
+      ),
       rewards: ((participation.rewardItems ?? []) as {
         slug?: string;
         name?: string;

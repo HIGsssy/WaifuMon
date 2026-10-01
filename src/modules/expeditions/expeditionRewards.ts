@@ -25,12 +25,21 @@
  * the success table pays for the same mission. Independence in the arithmetic,
  * not just in the description.
  *
+ * ── Equipment ──────────────────────────────────────────────────────────────
+ *
+ * A group's `equipment` entries compete in the same weighted pick as its
+ * items. When one wins, the base definition is chosen here — uniformly, with
+ * a derived draw, from the pool the plan snapshotted at deploy — and the
+ * instance (multiplier, affix) is created at claim by the Equipment service.
+ *
  * Every draw goes through `expeditionRandom`, so a resolution that is retried
  * after a crash reproduces the same payout rather than rolling a fresh one.
  * Nothing here reads a clock, a database or the content snapshot.
  */
 import { rollWeighted } from '../../shared/random';
-import type { ExpeditionRewardTable } from '../content/schemas';
+import { equipmentEntrySelector, type ExpeditionRewardTable } from '../content/schemas';
+import { equipmentSelectorKey, pickRewardDefinition } from '../equipment/rewardSelector';
+import type { EquipmentSlot } from '../equipment/vocabulary';
 import {
   expeditionDrawFraction,
   expeditionDrawInt,
@@ -45,6 +54,39 @@ const BASIS_POINTS = 10_000;
 export interface ExpeditionItemGrant {
   slug: string;
   quantity: number;
+}
+
+/** One base definition an Equipment entry may pay, as snapshotted at deploy. */
+export interface ExpeditionEquipmentCandidate {
+  key: string;
+  name: string;
+  slot: EquipmentSlot;
+  rarity: string;
+}
+
+/**
+ * Every enabled Equipment entry's eligible definitions, keyed by
+ * `equipmentSelectorKey`, resolved against the database **at deploy** and
+ * carried on the plan — the gear twin of copying the tables themselves. Lets
+ * resolution stay pure and deterministic, and means a definition disabled
+ * mid-mission is still paid to the mission that was promised it.
+ */
+export type ExpeditionEquipmentPools = Readonly<Record<string, readonly ExpeditionEquipmentCandidate[]>>;
+
+/**
+ * A gear drop the mission won, with its base definition already chosen.
+ *
+ * `drawKey` (`<kind>:<groupId>:<roll>`) is the drop's stable identity: the
+ * claim derives its grant key from it, so a claim retried after a failure
+ * finds the instance rather than minting a second. The instance itself — its
+ * multiplier and affix — does not exist until the claim.
+ */
+export interface ExpeditionEquipmentDraw {
+  drawKey: string;
+  definitionKey: string;
+  name: string;
+  slot: EquipmentSlot;
+  rarity: string;
 }
 
 /**
@@ -71,6 +113,7 @@ export interface ExpeditionTableRoll {
   waifuXp: number;
   playerXp: number;
   items: ExpeditionItemGrant[];
+  equipment: ExpeditionEquipmentDraw[];
   hitGroupIds: string[];
   warnings: ExpeditionRewardWarning[];
 }
@@ -82,6 +125,12 @@ export interface ExpeditionRewardPayload {
   waifuXp: number;
   playerXp: number;
   items: ExpeditionItemGrant[];
+  /**
+   * Gear won, base definition chosen, one instance each — granted at claim.
+   * Optional because rows resolved before gear existed do not carry it;
+   * absent means none.
+   */
+  equipment?: ExpeditionEquipmentDraw[];
   /**
    * What each contributing table paid, with its version.
    *
@@ -107,6 +156,7 @@ export interface ExpeditionRewardPayload {
     waifuXp: number;
     playerXp: number;
     items: ExpeditionItemGrant[];
+    equipment?: ExpeditionEquipmentDraw[];
   }[];
   warnings: ExpeditionRewardWarning[];
 }
@@ -116,6 +166,32 @@ export interface ExpeditionRewardPayload {
  * what keeps the success and bonus rolls independent.
  */
 export type RewardTableKind = 'success' | 'bonus' | 'failure';
+
+type ExpeditionRewardGroup = ExpeditionRewardTable['groups'][number];
+type PickableEntry =
+  | { kind: 'item'; entry: ExpeditionRewardGroup['entries'][number] }
+  | { kind: 'equipment'; entry: NonNullable<ExpeditionRewardGroup['equipment']>[number] };
+
+/**
+ * Every enabled Equipment entry's selector across these tables, deduplicated
+ * by `equipmentSelectorKey` — what deploy must resolve into
+ * {@link ExpeditionEquipmentPools}. Disabled groups and entries never roll, so
+ * they need no pool.
+ */
+export function equipmentSelectorsOf(tables: readonly (ExpeditionRewardTable | null)[]) {
+  const selectors = new Map<string, ReturnType<typeof equipmentEntrySelector>>();
+  for (const table of tables) {
+    for (const group of table?.groups ?? []) {
+      if (!group.enabled) continue;
+      for (const entry of group.equipment ?? []) {
+        if (!entry.enabled) continue;
+        const selector = equipmentEntrySelector(entry);
+        selectors.set(equipmentSelectorKey(selector), selector);
+      }
+    }
+  }
+  return selectors;
+}
 
 /**
  * Roll one table.
@@ -129,12 +205,15 @@ export function rollExpeditionTable(input: {
   table: ExpeditionRewardTable;
   expeditionId: number;
   kind: RewardTableKind;
+  /** Required only when the table has Equipment entries. */
+  equipmentPools?: ExpeditionEquipmentPools | undefined;
 }): ExpeditionTableRoll {
   const { table, expeditionId, kind } = input;
   const purpose = (suffix: string): ExpeditionDrawPurpose =>
     `${kind}:${suffix}` as ExpeditionDrawPurpose;
 
   const items: ExpeditionItemGrant[] = [];
+  const equipment: ExpeditionEquipmentDraw[] = [];
   const hitGroupIds: string[] = [];
   const warnings: ExpeditionRewardWarning[] = [];
 
@@ -153,8 +232,15 @@ export function rollExpeditionTable(input: {
     // Only enabled entries reach `rollWeighted`, which is where normalization
     // happens: the remaining weights are divided by their own total, so
     // disabling one entry redistributes its share in proportion. There is no
-    // hole in the distribution and no second number to keep in sync.
-    const eligible = group.entries.filter((entry) => entry.enabled);
+    // hole in the distribution and no second number to keep in sync. Gear
+    // entries join the same pick *after* the items, so a group with no gear
+    // draws exactly what it always drew.
+    const eligible: PickableEntry[] = [
+      ...group.entries.filter((entry) => entry.enabled).map((entry) => ({ kind: 'item' as const, entry })),
+      ...(group.equipment ?? [])
+        .filter((entry) => entry.enabled)
+        .map((entry) => ({ kind: 'equipment' as const, entry })),
+    ];
     if (eligible.length === 0) {
       warnings.push({
         tableId: table.id,
@@ -186,10 +272,37 @@ export function rollExpeditionTable(input: {
         if (gate >= group.chanceBasisPoints / BASIS_POINTS) continue;
       }
       const picked = rollWeighted(
-        eligible.map((entry) => ({ weight: entry.weight, value: entry })),
+        eligible.map((pickable) => ({ weight: pickable.entry.weight, value: pickable })),
         expeditionDrawRng(expeditionId, purpose(`${group.id}:${roll}:pick`)),
       );
-      items.push({ slug: picked.itemId, quantity: picked.quantity });
+      if (picked.kind === 'item') {
+        items.push({ slug: picked.entry.itemId, quantity: picked.entry.quantity });
+      } else {
+        // The base definition, chosen uniformly from the pool snapshotted at
+        // deploy with a draw of its own — derived, so a retried resolution
+        // chooses the same one. Multiplier and affix are left to the claim.
+        const selectorKey = equipmentSelectorKey(equipmentEntrySelector(picked.entry));
+        const pool = input.equipmentPools?.[selectorKey];
+        if (!pool || pool.length === 0) {
+          // Unreachable through `deploy`, which snapshots a non-empty pool for
+          // every enabled entry or refuses the mission. Loud, never a skip.
+          throw new Error(
+            `expedition ${expeditionId}: no snapshotted equipment pool for "${selectorKey}" ` +
+              `in table "${table.id}" group "${group.id}"`,
+          );
+        }
+        const chosen = pickRewardDefinition(
+          pool,
+          expeditionDrawRng(expeditionId, purpose(`${group.id}:${roll}:equipment`)),
+        );
+        equipment.push({
+          drawKey: `${kind}:${group.id}:${roll}`,
+          definitionKey: chosen.key,
+          name: chosen.name,
+          slot: chosen.slot,
+          rarity: chosen.rarity,
+        });
+      }
       hitGroupIds.push(group.id);
     }
   }
@@ -202,6 +315,7 @@ export function rollExpeditionTable(input: {
     waifuXp: table.waifuXp,
     playerXp: table.playerXp,
     items,
+    equipment,
     hitGroupIds,
     warnings,
   };
@@ -230,12 +344,17 @@ export function mergeGrants(
 export function mergeRolls(
   rolls: readonly { roll: ExpeditionTableRoll; kind: RewardTableKind }[],
 ): ExpeditionRewardPayload {
+  // Never merged: every gear drop is its own instance with its own grant key.
+  // Written only when something dropped, so a gear-free payout persists
+  // exactly the shape it always did.
+  const equipment = rolls.flatMap((r) => r.roll.equipment);
   return {
     waifubux: rolls.reduce((sum, r) => sum + r.roll.waifubux, 0),
     essence: rolls.reduce((sum, r) => sum + r.roll.essence, 0),
     waifuXp: rolls.reduce((sum, r) => sum + r.roll.waifuXp, 0),
     playerXp: rolls.reduce((sum, r) => sum + r.roll.playerXp, 0),
     items: mergeGrants(rolls.flatMap((r) => r.roll.items)),
+    ...(equipment.length > 0 ? { equipment } : {}),
     sources: rolls.map((r) => ({
       tableId: r.roll.tableId,
       tableVersion: r.roll.tableVersion,
@@ -247,6 +366,7 @@ export function mergeRolls(
       // Merged within the table, but deliberately *not* across tables: the
       // whole point is that the bonus stays separable from the success roll.
       items: mergeGrants(r.roll.items),
+      ...(r.roll.equipment.length > 0 ? { equipment: r.roll.equipment } : {}),
     })),
     warnings: rolls.flatMap((r) => r.roll.warnings),
   };
@@ -278,14 +398,16 @@ export function rollExpeditionRewards(input: {
   successTable: ExpeditionRewardTable | null;
   bonusTable: ExpeditionRewardTable | null;
   failureTable: ExpeditionRewardTable | null;
+  /** The plan's snapshotted gear pools; needed only when a table pays gear. */
+  equipmentPools?: ExpeditionEquipmentPools | undefined;
 }): ExpeditionRewardPayload {
-  const { outcome, expeditionId, successTable, bonusTable, failureTable } = input;
+  const { outcome, expeditionId, successTable, bonusTable, failureTable, equipmentPools } = input;
   const rolls: { roll: ExpeditionTableRoll; kind: RewardTableKind }[] = [];
 
   if (outcome === 'failure') {
     if (failureTable) {
       rolls.push({
-        roll: rollExpeditionTable({ table: failureTable, expeditionId, kind: 'failure' }),
+        roll: rollExpeditionTable({ table: failureTable, expeditionId, kind: 'failure', equipmentPools }),
         kind: 'failure',
       });
     }
@@ -294,14 +416,14 @@ export function rollExpeditionRewards(input: {
 
   if (successTable) {
     rolls.push({
-      roll: rollExpeditionTable({ table: successTable, expeditionId, kind: 'success' }),
+      roll: rollExpeditionTable({ table: successTable, expeditionId, kind: 'success', equipmentPools }),
       kind: 'success',
     });
   }
   // The bonus rides on top of the success roll above — it never replaces it.
   if (outcome === 'exceptional' && bonusTable) {
     rolls.push({
-      roll: rollExpeditionTable({ table: bonusTable, expeditionId, kind: 'bonus' }),
+      roll: rollExpeditionTable({ table: bonusTable, expeditionId, kind: 'bonus', equipmentPools }),
       kind: 'bonus',
     });
   }

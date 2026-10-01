@@ -1560,6 +1560,7 @@ export const WORLD_ENCOUNTER_EFFECT_TYPES = [
   'buddy_xp',
   'affection_gain',
   'give_item',
+  'give_equipment',
   'consume_item',
   'trigger_encounter',
   'trigger_waifumon_encounter',

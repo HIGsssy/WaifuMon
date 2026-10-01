@@ -162,6 +162,21 @@ export function formatMultiplier(bp: number): string {
   return `×${(bp / 10_000).toFixed(2)}`;
 }
 
+/**
+ * One Equipment drop, as every reward surface prints it:
+ * `⚔️ **Rusty Pipe of Poor Planning** · ATK ×0.45`.
+ *
+ * The generated display name and the formatted multiplier only — never the
+ * affix key, the pool or raw basis points.
+ */
+export function formatEquipmentDrop(drop: {
+  displayName: string;
+  slot: EquipmentSlot;
+  rolledMultiplierBp: number;
+}): string {
+  return `${SLOT_EMOJI[drop.slot]} **${drop.displayName}** · ${SLOT_STAT_LABEL[drop.slot]} ${formatMultiplier(drop.rolledMultiplierBp)}`;
+}
+
 /** `+38`, `-22`, `±0`. */
 export function formatDelta(delta: number): string {
   if (delta > 0) return `+${delta}`;

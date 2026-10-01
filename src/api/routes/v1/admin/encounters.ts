@@ -169,6 +169,20 @@ const referenceSchema = z.object({
   encounters: z.array(z.object({ slug: z.string(), name: z.string() })),
   species: z.array(z.object({ slug: z.string(), name: z.string(), rarity: z.string() })),
   vendors: z.array(z.object({ vendorKey: z.string(), name: z.string() })),
+  /**
+   * Every equipment definition, for the `give_equipment` picker. Disabled ones
+   * are listed (flagged) so a stored effect naming one still renders by name;
+   * the editor offers only enabled N/R/SR definitions for new picks.
+   */
+  equipmentDefinitions: z.array(
+    z.object({
+      key: z.string(),
+      name: z.string(),
+      slot: z.string(),
+      rarity: z.string(),
+      enabled: z.boolean(),
+    }),
+  ),
   /** Regions enabled in content — a subset of `regions`. */
   enabledRegions: z.array(z.string()),
   types: z.array(z.string()),
@@ -845,6 +859,10 @@ export const adminEncounterRoutes =
         // that silently stops matching the moment a second vendor ships.
         const vendorRows = (await ctx.services.worldEncounterVendor?.listDefinitions()) ?? [];
         const vendors = vendorRows.map((v) => ({ vendorKey: v.vendorKey, name: v.name }));
+        const definitionRows = (await ctx.services.equipmentDefinitions?.listDefinitions()) ?? [];
+        const equipmentDefinitions = definitionRows
+          .map(({ definition: d }) => ({ key: d.key, name: d.name, slot: d.slot, rarity: d.rarity, enabled: d.enabled }))
+          .sort((a, b) => a.name.localeCompare(b.name));
         return ok(req, {
           regions: [...REGIONS],
           regionNames: Object.fromEntries(content.regions.map((r) => [r.id, r.name])),
@@ -860,6 +878,7 @@ export const adminEncounterRoutes =
             .filter((sp) => sp.enabled !== false)
             .map((sp) => ({ slug: sp.slug, name: sp.name, rarity: sp.rarity })),
           vendors,
+          equipmentDefinitions,
           types: [...WORLD_ENCOUNTER_TYPES],
           rarities: [...WORLD_ENCOUNTER_RARITIES],
           lifecycles: [...WORLD_ENCOUNTER_LIFECYCLES],

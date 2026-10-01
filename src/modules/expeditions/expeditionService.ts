@@ -133,6 +133,7 @@ import {
   ExpeditionRegionBusyError,
   ExpeditionsDisabledError,
   ExpeditionWrongRegionError,
+  EquipmentRewardConfigError,
   WaifuUnavailableError,
   uniqueViolationConstraint,
 } from '../../shared/errors';
@@ -159,7 +160,15 @@ import { evaluateSuitability } from './expeditionMath';
 import { deploymentBlockers } from './expeditionEligibility';
 import { compareCandidates, evaluateMatch, parseStoredMatch } from './expeditionMatch';
 import { expeditionDrawFraction, EXPEDITION_LOGIC_VERSION } from './expeditionRandom';
-import { rollExpeditionRewards, type ExpeditionRewardPayload } from './expeditionRewards';
+import {
+  equipmentSelectorsOf,
+  rollExpeditionRewards,
+  type ExpeditionEquipmentCandidate,
+  type ExpeditionEquipmentPools,
+  type ExpeditionRewardPayload,
+} from './expeditionRewards';
+import type { EquipmentRewardService } from '../equipment/equipmentRewardService';
+import { describeEquipmentSelector } from '../equipment/rewardSelector';
 import {
   EXPEDITION_PLAN_VERSION,
   type ExpeditionBoard,
@@ -255,6 +264,12 @@ export interface ExpeditionServiceDeps {
    * exactly what such a fixture has.
    */
   availability?: WaifuAvailabilityService | undefined;
+  /**
+   * The shared Equipment reward path. Resolves each Equipment entry's pool at
+   * deploy and pays gear at claim. Optional only so gear-free fixtures need not
+   * build it; a mission whose tables pay gear is refused at deploy without it.
+   */
+  equipmentRewards?: EquipmentRewardService | undefined;
   /** Injectable clock. Only the board and display reads use it; see below. */
   now?: () => Date;
 }
@@ -271,6 +286,7 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
     collection,
     progression,
     getCurrentRegion,
+    equipmentRewards,
   } = deps;
   const availability = deps.availability ?? ALWAYS_AVAILABLE;
   /**
@@ -336,6 +352,48 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
       bonusTable: bonusTable?.enabled ? bonusTable : null,
       failureTable: failureTable?.enabled ? failureTable : null,
     };
+  }
+
+  /**
+   * Resolve every enabled Equipment entry in the plan's tables into the base
+   * definitions it may pay, through the database the deploy is running in.
+   *
+   * Deploy-time for the same reason the tables are snapshotted: a selector
+   * that names a missing, disabled or mismatched definition — or matches
+   * nothing — refuses the mission now, with nothing written, rather than
+   * leaving a player holding a mission that cannot pay out.
+   */
+  async function equipmentPoolsFor(
+    tx: DbOrTx,
+    definition: RegionalExpedition,
+    plan: ExpeditionResolutionPlan,
+  ): Promise<ExpeditionEquipmentPools | undefined> {
+    const selectors = equipmentSelectorsOf([plan.successTable, plan.bonusTable, plan.failureTable]);
+    if (selectors.size === 0) return undefined;
+    if (!equipmentRewards) {
+      throw new ExpeditionContentError(
+        `expedition "${definition.key}" pays equipment, but no equipment reward service is wired`,
+      );
+    }
+    const pools: Record<string, ExpeditionEquipmentCandidate[]> = {};
+    for (const [key, selector] of selectors) {
+      try {
+        const eligible = await equipmentRewards.eligibleDefinitions(tx, selector);
+        pools[key] = eligible.map((d) => ({
+          key: d.key,
+          name: d.name,
+          slot: d.slot as ExpeditionEquipmentCandidate['slot'],
+          rarity: d.rarity,
+        }));
+      } catch (err) {
+        if (!(err instanceof EquipmentRewardConfigError)) throw err;
+        throw new ExpeditionContentError(
+          `expedition "${definition.key}" has an invalid equipment reward ` +
+            `(${describeEquipmentSelector(selector)}): ${err.issues.map((i) => `${i.path} ${i.message}`).join('; ')}`,
+        );
+      }
+    }
+    return pools;
   }
 
   function planOf(row: PlayerExpeditionRow): ExpeditionResolutionPlan | null {
@@ -474,6 +532,7 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
       successTable: plan.successTable,
       bonusTable: plan.bonusTable,
       failureTable: plan.failureTable,
+      equipmentPools: plan.equipmentPools,
     });
     for (const warning of rewards.warnings) {
       logger.warn(
@@ -813,6 +872,8 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
           }
 
           const plan = buildPlan(definition);
+          const equipmentPools = await equipmentPoolsFor(tx, definition, plan);
+          if (equipmentPools) plan.equipmentPools = equipmentPools;
           const input = {
             definition,
             waifu: {
@@ -1014,6 +1075,30 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
           }
         }
 
+        // Gear: the base definition was chosen at resolution from the pool
+        // snapshotted at deploy; the Equipment service rolls the multiplier and
+        // affix now. `allowDisabled` because the mission was promised this
+        // definition while it was enabled — exactly the case that flag exists
+        // for. The grant key derives from this row and the drop's draw, so a
+        // claim that fails and is retried finds the same instance, and the
+        // conditional claim above already guarantees one payout.
+        const equipmentGranted: ExpeditionClaimResult['equipmentGranted'] = [];
+        for (const drop of rewards.equipment ?? []) {
+          if (!equipmentRewards) {
+            throw new ExpeditionContentError(
+              `expedition ${won.id} pays equipment, but no equipment reward service is wired`,
+            );
+          }
+          const { alreadyGranted: _replayed, ...grant } = await equipmentRewards.grantChosenEquipmentReward(tx, {
+            playerId,
+            definitionKey: drop.definitionKey,
+            allowDisabled: true,
+            source: { type: 'expedition', key: won.expeditionKey },
+            grantKey: `expedition:${won.id}:${drop.drawKey}`,
+          });
+          equipmentGranted.push({ ...grant, drawKey: drop.drawKey });
+        }
+
         // The balances the result reports, read through *this* transaction
         // after every grant above. `getBalances` would read on another pooled
         // connection, which cannot see these uncommitted grants and so shows
@@ -1032,6 +1117,7 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
           essenceAfter,
           essenceGranted,
           itemsGranted,
+          equipmentGranted,
           waifuLeveledUp,
         };
       });

@@ -942,6 +942,27 @@ export class EquipmentDefinitionDisabledError extends AppError {
   }
 }
 
+/**
+ * An authored Equipment reward selector (a World Encounter effect, a boss or
+ * expedition reward entry) names nothing that can be granted: a missing,
+ * disabled or mismatched explicit definition, or a slot/rarity with no enabled
+ * definition at all. A content error — never answered with another slot,
+ * another rarity or a starter item.
+ */
+export class EquipmentRewardConfigError extends AppError {
+  readonly issues: EquipmentIssue[];
+  constructor(issues: readonly EquipmentIssue[]) {
+    const list = Array.isArray(issues) ? issues : [];
+    const summary = list.map((i) => (i.path ? `${i.path}: ${i.message}` : i.message)).join('; ');
+    super(
+      'EQUIPMENT_REWARD_INVALID',
+      `Invalid equipment reward: ${summary || 'unknown problem'}`,
+      'That reward is misconfigured, so nothing was granted. Please tell an admin.',
+    );
+    this.issues = [...list];
+  }
+}
+
 export class EquipmentKeyTakenError extends AppError {
   constructor(key: string) {
     super(

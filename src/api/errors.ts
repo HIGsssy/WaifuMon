@@ -463,6 +463,12 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
    */
   EQUIPMENT_AFFIX_POOL_EMPTY: 500,
   /**
+   * An authored reward selector (encounter effect, boss or expedition entry)
+   * that names nothing grantable, found while paying out. Broken content, not
+   * a bad request — authoring paths refuse it earlier with their own errors.
+   */
+  EQUIPMENT_REWARD_INVALID: 500,
+  /**
    * The feature exists and the request is well-formed; the player has simply
    * not unlocked it yet. 422 rather than 403, matching `REGION_LOCKED` and
    * every other "you have not earned this yet" refusal in this table.

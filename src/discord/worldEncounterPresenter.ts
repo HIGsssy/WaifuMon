@@ -45,9 +45,11 @@ import type { CheckResolution, CheckSpec } from '../modules/worldEncounters/type
 import type {
   AppliedAffectionDetail,
   AppliedBuddyXpDetail,
+  AppliedEquipmentDetail,
   AppliedEssenceDetail,
   AppliedPlayerXpDetail,
 } from '../modules/worldEncounters/effectExecutor';
+import { formatEquipmentDrop } from './equipmentPresenter';
 
 /** Discord button rows cap at 5 buttons each. */
 const BUTTONS_PER_ROW = 5;
@@ -439,6 +441,7 @@ function formatAppliedEffect(entry: {
   essence?: AppliedEssenceDetail | undefined;
   buddyXp?: AppliedBuddyXpDetail | undefined;
   playerXp?: AppliedPlayerXpDetail | undefined;
+  equipment?: AppliedEquipmentDetail | undefined;
 }): string | null {
   const e = entry.effect;
   const amount = entry.amount;
@@ -497,6 +500,10 @@ function formatAppliedEffect(entry: {
     }
     case 'give_item':
       return `Received ${e.quantity} × ${e.slug}`;
+    case 'give_equipment':
+      // The generated instance, as the Equipment service named it. Absent
+      // only if the grant never happened, in which case nothing was found.
+      return entry.equipment ? `You found: ${formatEquipmentDrop(entry.equipment)}` : null;
     case 'consume_item':
       return entry.applied ? `Used ${e.quantity} × ${e.slug}` : null;
     case 'temp_buff':

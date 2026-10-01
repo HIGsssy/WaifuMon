@@ -39,6 +39,7 @@ import { resolveRace } from '../cards/race';
 import { AppError, PlayerNotFoundError } from '../../shared/errors';
 import { selectEncounterDetailed, type SelectionReason } from './engine';
 import { rollCheck, computeChance } from './checkResolver';
+import type { EquipmentRewardService } from '../equipment/equipmentRewardService';
 import { createEffectExecutor, type EffectExecutor, type AppliedEffect, type FollowUp } from './effectExecutor';
 import { hydrateEncounter } from './hydrate';
 import { outcomeKindOf, resolveOutcomeText } from './outcomeText';
@@ -333,6 +334,8 @@ export interface WorldEncounterServiceDeps {
   progression: ProgressionService;
   collection: CollectionService;
   buddyBonus: BuddyBonusService | null;
+  /** Pays `give_equipment` effects. See `EffectExecutorDeps.equipmentRewards`. */
+  equipmentRewards?: EquipmentRewardService | undefined;
   /**
    * Current runtime tuning. May be async: the values are a database row that
    * Portal Admin edits live, so this is `WorldEncounterSettingsService.get()`
@@ -425,6 +428,7 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
     // Passed straight through so an encounter's Essence payout is the same
     // award a hunt find is. Absent, the executor builds an unbonused one.
     ...(deps.essenceAward === undefined ? {} : { essenceAward: deps.essenceAward }),
+    ...(deps.equipmentRewards === undefined ? {} : { equipmentRewards: deps.equipmentRewards }),
   });
 
   /* ─────────────────── Player + buddy snapshot ─────────────────── */
@@ -802,6 +806,8 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
           buddyWaifuId: buddy?.waifuId ?? null,
           buddySpeciesName: buddy?.speciesName ?? null,
           encounterId: encounter.id,
+          encounterSlug: encounter.slug,
+          activeId: active.id,
         },
         effectsToApply,
       );

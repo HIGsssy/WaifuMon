@@ -14,6 +14,12 @@ import {
   SpeciesSelectionSchema,
   type RandomSpeciesSelection,
 } from '../encounters/speciesSelection';
+import {
+  EQUIPMENT_REWARD_SELECTOR_SHAPE,
+  equipmentSelectorIssues,
+  type EquipmentRewardSelector,
+  type RewardableDefinition,
+} from '../equipment/rewardSelector';
 import { OutcomeTextSchema } from './outcomeText';
 import {
   WORLD_ENCOUNTER_CHECK_TYPES,
@@ -64,6 +70,24 @@ export const EffectSchema = z.discriminatedUnion('type', [
    */
   z.object({ type: z.literal('affection_gain'), amount: gainAmount }),
   z.object({ type: z.literal('give_item'), slug, quantity: z.number().int().positive().max(99) }),
+  /**
+   * One random piece of gear. The author picks only *which kind* — an optional
+   * slot, an optional N/R/SR rarity, an optional whitelist of definition keys
+   * (the shared selector, `equipment/rewardSelector.ts`); the Equipment
+   * service picks the base definition uniformly and rolls its multiplier and
+   * affix. Strict, so an authored affix, multiplier or pool is refused rather
+   * than silently ignored. `quantity` is fixed at 1 for now.
+   *
+   * No chance field, like every other effect: a rare drop is a dedicated
+   * low-`baseChance` choice.
+   */
+  z
+    .object({
+      type: z.literal('give_equipment'),
+      ...EQUIPMENT_REWARD_SELECTOR_SHAPE,
+      quantity: z.literal(1).default(1),
+    })
+    .strict(),
   z.object({
     type: z.literal('consume_item'),
     slug,
@@ -139,6 +163,29 @@ export function normalizeWaifumonSelection(
   if (effect.selection) return effect.selection;
   if (effect.speciesSlug) return { mode: 'specific', speciesSlug: effect.speciesSlug };
   return { mode: 'legacy_random' };
+}
+
+export type EquipmentEncounterEffect = Extract<Effect, { type: 'give_equipment' }>;
+
+/** The selector a `give_equipment` effect carries — the effect minus its type and quantity. */
+export function equipmentSelectorOf(effect: EquipmentEncounterEffect): EquipmentRewardSelector {
+  const { type: _type, quantity: _quantity, ...selector } = effect;
+  return selector;
+}
+
+/**
+ * Authoring problems with a `give_equipment` effect against the target's
+ * definitions, as `give_equipment <path>: <message>` lines. Shared by the
+ * Portal save and the import planner so both refuse exactly what the runtime
+ * reward path would.
+ */
+export function equipmentEffectIssues(
+  effect: EquipmentEncounterEffect,
+  definitions: readonly RewardableDefinition[],
+): string[] {
+  return equipmentSelectorIssues(equipmentSelectorOf(effect), definitions).map(
+    (issue) => `give_equipment ${issue.path}: ${issue.message}`,
+  );
 }
 
 /* ─────────────────────── Requirements ─────────────────────── */

@@ -74,6 +74,11 @@ export interface AdminEncounterReference {
   encounters: Array<{ slug: string; name: string }>;
   species: Array<{ slug: string; name: string; rarity: string }>;
   vendors: Array<{ vendorKey: string; name: string }>;
+  /**
+   * Every equipment definition, for the `give_equipment` picker — disabled
+   * ones included and flagged. Optional so an older server still loads.
+   */
+  equipmentDefinitions?: Array<{ key: string; name: string; slot: string; rarity: string; enabled: boolean }>;
   /** Regions enabled in content. Optional so an older server still loads. */
   enabledRegions?: string[];
   types: string[];

@@ -19,7 +19,9 @@ import type {
   EncounterDeleteReferences,
   WorldEncounterRepository,
 } from './worldEncounterRepository';
-import { EncounterInputSchema, type EncounterInput } from './types';
+import { listRewardableDefinitions } from '../equipment/equipmentRewardService';
+import type { RewardableDefinition } from '../equipment/rewardSelector';
+import { EncounterInputSchema, equipmentEffectIssues, type EncounterInput } from './types';
 import { hydrateEncounter } from './hydrate';
 import type { LoadedEncounter } from './types';
 
@@ -152,6 +154,7 @@ function crossValidate(
   itemSlugs: Set<string>,
   existingSlugs: Set<string>,
   chainTargets: Set<string>,
+  equipmentDefinitions: readonly RewardableDefinition[] | undefined,
 ): string[] {
   const issues: string[] = [];
   if (input.chainedEncounterSlug === input.slug) {
@@ -180,6 +183,9 @@ function crossValidate(
         if (effect.encounterSlug === input.slug) {
           issues.push(`choice[${i}] triggers this same encounter (would loop).`);
         }
+      }
+      if (effect.type === 'give_equipment' && equipmentDefinitions) {
+        issues.push(...equipmentEffectIssues(effect, equipmentDefinitions).map((m) => `choice[${i}] ${m}`));
       }
     }
   }
@@ -230,6 +236,13 @@ export function parseEncounterInput(
    * eligibility can make an encounter reachable.
    */
   chainTargets: Set<string> = new Set(),
+  /**
+   * Every equipment definition, enabled or not. When given, a
+   * `give_equipment` selector must name real, enabled, matching definitions
+   * and match at least one — the same rule the reward path enforces at
+   * runtime. Omitted only by callers that cannot read the database.
+   */
+  equipmentDefinitions?: readonly RewardableDefinition[],
 ): EncounterInput {
   const parsed = EncounterInputSchema.safeParse(payload);
   if (!parsed.success) {
@@ -237,7 +250,7 @@ export function parseEncounterInput(
       parsed.error.issues.map((i) => `${i.path.join('.') || '<root>'}: ${i.message}`),
     );
   }
-  const cross = crossValidate(parsed.data, itemSlugs, existingSlugs, chainTargets);
+  const cross = crossValidate(parsed.data, itemSlugs, existingSlugs, chainTargets, equipmentDefinitions);
   if (cross.some((issue) => !issue.includes('not a known encounter yet'))) {
     // Only "unknown chained slug" is downgraded to a warning-style issue.
     throw new AdminEncounterValidationError(cross);
@@ -287,7 +300,13 @@ export function createWorldEncounterAdminService(
       if (opts.createOnly && existing.has(input.slug)) {
         throw new AdminEncounterSlugTakenError(input.slug);
       }
-      const validated = parseEncounterInput(input, items, existing, await chainTargets());
+      const validated = parseEncounterInput(
+        input,
+        items,
+        existing,
+        await chainTargets(),
+        await listRewardableDefinitions(db),
+      );
       const priorRow = opts.createOnly ? null : await repo.loadBySlug(validated.slug);
       const values = {
         slug: validated.slug,

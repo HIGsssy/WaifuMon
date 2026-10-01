@@ -43,6 +43,12 @@ import { createEncounterPromotionService } from './modules/worldEncounters/encou
 import { seedWorldEncounters } from './modules/worldEncounters/seed';
 import { createFeatureUnlockService } from './modules/features/featureUnlockService';
 import { createEquipmentService } from './modules/equipment/equipmentService';
+import {
+  auditRewardTableSelectors,
+  createEquipmentRewardService,
+  listRewardableDefinitions,
+} from './modules/equipment/equipmentRewardService';
+import { describeEquipmentSelector } from './modules/equipment/rewardSelector';
 import { buildAffixCatalogue } from './modules/equipment/affixCatalogue';
 import { readUnknownAffixKeys } from './modules/equipment/equipmentQueries';
 import { createEquipmentDefinitionService } from './modules/equipment/equipmentDefinitionService';
@@ -326,6 +332,10 @@ async function main(): Promise<void> {
     return affixCatalogue;
   };
   const equipment = createEquipmentService({ db, featureUnlocks, getAffixes });
+  // The one path World Encounters, bosses and expeditions hand out random gear
+  // through: they choose *whether* and *which kind*; it picks the base
+  // definition and `grantEquipment` rolls the instance.
+  const equipmentRewards = createEquipmentRewardService({ equipment, getAffixes });
   const equipmentDefinitions = createEquipmentDefinitionService(db);
   const combatStats = createCombatStatsService({
     db,
@@ -380,6 +390,7 @@ async function main(): Promise<void> {
     collection,
     progression,
     availability,
+    equipmentRewards,
     // The narrow location port. Passed as a bound method rather than the whole
     // service so expeditions cannot reach for a route or a pass.
     getCurrentRegion: (playerId) => travel.getCurrentRegion(playerId),
@@ -428,6 +439,7 @@ async function main(): Promise<void> {
         collection,
         getContent: () => contentSnapshot,
         buddyBonus,
+        equipmentRewards,
         logger,
       })
     : undefined;
@@ -582,6 +594,7 @@ async function main(): Promise<void> {
         progression,
         collection,
         buddyBonus,
+        equipmentRewards,
         vendor: worldEncounterVendorService,
         wildEncounters,
         // Read per roll, from the database, through a short-TTL cache — so a
@@ -652,6 +665,27 @@ async function main(): Promise<void> {
     }
   } catch (err) {
     logger.warn({ err }, 'equipment seed failed — equipment will run with whatever is in the DB');
+  }
+  try {
+    // Boss and expedition tables are files, gear definitions are rows: the
+    // loader can only shape-check a gear selector. Check them against this
+    // server now, so a bad one is heard about before a payout refuses it.
+    const findings = auditRewardTableSelectors(
+      [
+        ...contentSnapshot.bossRewards.map((t) => ({ ...t, label: `bossRewards["${t.id}"]` })),
+        ...contentSnapshot.expeditionRewards.map((t) => ({ ...t, label: `expeditionRewards["${t.id}"]` })),
+      ],
+      await listRewardableDefinitions(db),
+    );
+    for (const finding of findings) {
+      logger.error(
+        { tag: 'equipment/reward-selector-invalid', location: finding.location, issues: finding.issues },
+        `${finding.location} can never pay "${describeEquipmentSelector(finding.selector)}" on this server — ` +
+          'boss payouts and expedition deploys that reach it will be refused until it is fixed',
+      );
+    }
+  } catch (err) {
+    logger.warn({ err }, 'equipment reward selector audit failed');
   }
   try {
     // Affixes are file-backed, so nothing stops a deploy deleting one that

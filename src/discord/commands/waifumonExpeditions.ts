@@ -62,9 +62,11 @@ import type {
 } from '../../modules/expeditions/types';
 import type { MatchVerdict } from '../../modules/expeditions/expeditionMatch';
 import type {
+  ExpeditionEquipmentDraw,
   ExpeditionRewardPayload,
   RewardTableKind,
 } from '../../modules/expeditions/expeditionRewards';
+import { formatEquipmentDrop } from '../equipmentPresenter';
 import type { MatchQuality, RegionalExpedition } from '../../modules/content/schemas';
 
 type Rows = ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>[];
@@ -752,9 +754,12 @@ export function rewardLines(
     essence: number;
     waifuXp: number;
     items: { slug: string; quantity: number }[];
+    equipment?: ExpeditionEquipmentDraw[] | undefined;
   },
   itemNames: Map<string, string>,
   essenceOverride?: number,
+  /** Gear as the claim granted it, by `drawKey` — the generated name and roll. */
+  gear?: Map<string, ExpeditionClaimResult['equipmentGranted'][number]>,
 ): string[] {
   const lines: string[] = [];
   if (reward.waifubux > 0) lines.push(`💰 **${reward.waifubux}** WaifuBux`);
@@ -763,6 +768,12 @@ export function rewardLines(
   if (reward.waifuXp > 0) lines.push(`📈 **${reward.waifuXp}** WaifuMon XP`);
   for (const item of reward.items) {
     lines.push(`📦 **${itemNames.get(item.slug) ?? item.slug}** ×${item.quantity}`);
+  }
+  for (const drop of reward.equipment ?? []) {
+    // The instance as the Equipment service generated it. Before a claim
+    // there is no instance yet, only the base definition that was won.
+    const granted = gear?.get(drop.drawKey);
+    lines.push(granted ? formatEquipmentDrop(granted) : `🎁 **${drop.name}**`);
   }
   return lines;
 }
@@ -773,18 +784,26 @@ function sourcesOfKind(rewards: ExpeditionRewardPayload, kind: RewardTableKind) 
 
 function sumSources(
   sources: ExpeditionRewardPayload['sources'],
-): { waifubux: number; essence: number; waifuXp: number; items: { slug: string; quantity: number }[] } {
+): {
+  waifubux: number;
+  essence: number;
+  waifuXp: number;
+  items: { slug: string; quantity: number }[];
+  equipment: ExpeditionEquipmentDraw[];
+} {
   return {
     waifubux: sources.reduce((n, s) => n + s.waifubux, 0),
     essence: sources.reduce((n, s) => n + s.essence, 0),
     waifuXp: sources.reduce((n, s) => n + s.waifuXp, 0),
     items: sources.flatMap((s) => s.items),
+    equipment: sources.flatMap((s) => s.equipment ?? []),
   };
 }
 
 function resultScreen(result: ExpeditionClaimResult): Screen {
   const display = OUTCOME_DISPLAY[result.outcome];
   const itemNames = new Map(result.itemsGranted.map((i) => [i.slug, i.name]));
+  const gear = new Map(result.equipmentGranted.map((g) => [g.drawKey, g]));
 
   const embed = new EmbedBuilder()
     .setTitle(display.title)
@@ -817,8 +836,8 @@ function resultScreen(result: ExpeditionClaimResult): Screen {
    * once, below the blocks, as the amount actually credited.
    */
   if (bonus.length > 0) {
-    const normalLines = rewardLines(sumSources(normal), itemNames);
-    const bonusLines = rewardLines(sumSources(bonus), itemNames);
+    const normalLines = rewardLines(sumSources(normal), itemNames, undefined, gear);
+    const bonusLines = rewardLines(sumSources(bonus), itemNames, undefined, gear);
     embed.addFields({
       name: 'Normal Rewards',
       value: normalLines.length > 0 ? normalLines.join('\n') : '_Nothing._',
@@ -828,7 +847,7 @@ function resultScreen(result: ExpeditionClaimResult): Screen {
       value: bonusLines.length > 0 ? bonusLines.join('\n') : '_Nothing._',
     });
   } else if (result.outcome === 'failure') {
-    const lines = rewardLines(sumSources(consolation), itemNames);
+    const lines = rewardLines(sumSources(consolation), itemNames, undefined, gear);
     embed.addFields({
       // Named so a consolation never reads as "you got nothing" — that is the
       // whole difference between a setback and a punishment.
@@ -836,7 +855,7 @@ function resultScreen(result: ExpeditionClaimResult): Screen {
       value: lines.length > 0 ? lines.join('\n') : '_Nothing at all this time._',
     });
   } else {
-    const lines = rewardLines(sumSources(normal), itemNames);
+    const lines = rewardLines(sumSources(normal), itemNames, undefined, gear);
     embed.addFields({
       name: 'Rewards',
       value: lines.length > 0 ? lines.join('\n') : '_Nothing._',

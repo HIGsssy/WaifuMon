@@ -59,6 +59,7 @@ export function useNameLookups(
   return useMemo(() => {
     const items = new Map((reference?.items ?? []).map((i) => [i.slug, i.name]));
     const species = new Map((reference?.species ?? []).map((s) => [s.slug, s.name]));
+    const equipment = new Map((reference?.equipmentDefinitions ?? []).map((d) => [d.key, d.name]));
     const encounters = new Map(
       [...(reference?.encounters ?? []), ...(list?.encounters ?? []), ...extraEncounters].map(
         (e) => [e.slug, e.name],
@@ -71,6 +72,7 @@ export function useNameLookups(
     return {
       item: (slug) => items.get(slug),
       species: (slug) => species.get(slug),
+      equipment: (key) => equipment.get(key),
       encounter: (slug) => encounters.get(slug),
       vendor: (key) => vendorNames.get(key),
     };

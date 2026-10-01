@@ -50,6 +50,7 @@ import { formatBonusPercent, formatDamage } from '../modules/bosses/bossDamage';
 import type { BossContent, BossEncountersConfig } from '../modules/content/schemas';
 import { regionLabel } from '../modules/bosses/regions';
 import { buddyBonusLine } from '../modules/buddyBonus/buddyBonusEffects';
+import { formatEquipmentDrop } from './equipmentPresenter';
 import { buildCustomId } from './types';
 
 /** Boss-channel accent. Distinct from the rarity palette on purpose. */
@@ -535,6 +536,7 @@ export function buildMyResult(
   const rewards = entry.rewards
     .map((r) => (r.quantity > 1 ? `${r.quantity}× ${r.name}` : r.name))
     .join('\n• ');
+  const equipment = entry.equipment ?? [];
   return [
     `**${encounter.bossName}** — your result`,
     `${p.waifuName} (Level ${p.level}, ${p.currentSp} SP) dealt **${formatDamage(p.totalDamage ?? 0)}** damage ` +
@@ -546,6 +548,11 @@ export function buildMyResult(
       ? `**+${p.xpAwarded} XP** to ${p.waifuName}`
       : `${p.waifuName} is at max level — no XP was gained.`,
     entry.rewards.length > 0 ? `**Items**\n• ${rewards}` : '_No items this time._',
+    // The generated instance as the Equipment service named it — never the
+    // affix key or raw basis points.
+    equipment.length > 0
+      ? `**Equipment**\n${equipment.map((e) => `• You found: ${formatEquipmentDrop(e)}`).join('\n')}`
+      : null,
     // The committed copy's own bonus, when it scaled this payout. Resolved
     // from the participation snapshot by the encounter service — a Buddy swap
     // after committing never changes what is reported here.

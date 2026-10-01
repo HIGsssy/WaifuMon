@@ -32,7 +32,8 @@
  * here reads a clock or a database.
  */
 import { rollWeighted } from '../../shared/random';
-import type { BossRewardTable } from '../content/schemas';
+import { equipmentEntrySelector, type BossRewardTable } from '../content/schemas';
+import type { EquipmentRewardSelector } from '../equipment/rewardSelector';
 import { bossDrawFraction, bossDrawRng } from './bossRandom';
 
 /**
@@ -58,6 +59,20 @@ export interface BossRewardItemGrant {
 }
 
 /**
+ * A gear drop the roll won: *that* gear drops, and from which selector.
+ *
+ * The base definition is not chosen here — this module has no database. The
+ * payout hands the selector to the Equipment reward service, with a draw
+ * derived from `groupId` and `roll` so a retried payout picks the same
+ * definition, and a grant key from the same pair so it never pays twice.
+ */
+export interface BossEquipmentDraw {
+  groupId: string;
+  roll: number;
+  selector: EquipmentRewardSelector;
+}
+
+/**
  * A configuration problem found while rolling.
  *
  * Returned rather than logged, because this module is pure and its caller owns
@@ -75,6 +90,8 @@ export interface BossRewardRoll {
   buddyXp: number;
   /** Every stack won across every group. Empty is possible, if unusual. */
   items: BossRewardItemGrant[];
+  /** Every gear drop won, one instance each. */
+  equipment: BossEquipmentDraw[];
   /** Ids of the groups that produced a drop. Surfaced for logging and audit. */
   hitGroupIds: string[];
   /** Groups that were skipped because nothing in them could be drawn. */
@@ -98,6 +115,11 @@ export function applicableBuddyXp(
   return buddyLevel >= maxLevel ? 0 : configuredXp;
 }
 
+type BossRewardGroup = BossRewardTable['groups'][number];
+type PickableEntry =
+  | { kind: 'item'; entry: BossRewardGroup['entries'][number] }
+  | { kind: 'equipment'; entry: NonNullable<BossRewardGroup['equipment']>[number] };
+
 /**
  * The full payout for one participation.
  *
@@ -118,6 +140,7 @@ export function rollBossRewards(input: {
   const { table, encounterId, participationId, buddyLevel, maxLevel } = input;
 
   const items: BossRewardItemGrant[] = [];
+  const equipment: BossEquipmentDraw[] = [];
   const hitGroupIds: string[] = [];
   const warnings: BossRewardWarning[] = [];
 
@@ -125,8 +148,15 @@ export function rollBossRewards(input: {
     if (!group.enabled) continue;
 
     // Only enabled entries reach `rollWeighted`, which is where normalization
-    // happens: the remaining weights are divided by their own total.
-    const eligible = group.entries.filter((entry) => entry.enabled);
+    // happens: the remaining weights are divided by their own total. Gear
+    // entries join the same pick *after* the items, so a group with no gear
+    // draws exactly what it always drew.
+    const eligible: PickableEntry[] = [
+      ...group.entries.filter((entry) => entry.enabled).map((entry) => ({ kind: 'item' as const, entry })),
+      ...(group.equipment ?? [])
+        .filter((entry) => entry.enabled)
+        .map((entry) => ({ kind: 'equipment' as const, entry })),
+    ];
     if (eligible.length === 0) {
       warnings.push({
         groupId: group.id,
@@ -160,10 +190,14 @@ export function rollBossRewards(input: {
         if (gate >= group.chanceBasisPoints / BASIS_POINTS) continue;
       }
       const picked = rollWeighted(
-        eligible.map((entry) => ({ weight: entry.weight, value: entry })),
+        eligible.map((pickable) => ({ weight: pickable.entry.weight, value: pickable })),
         bossDrawRng(encounterId, participationId, `reward:${group.id}:${roll}:pick`),
       );
-      items.push({ slug: picked.itemId, quantity: picked.quantity });
+      if (picked.kind === 'item') {
+        items.push({ slug: picked.entry.itemId, quantity: picked.entry.quantity });
+      } else {
+        equipment.push({ groupId: group.id, roll, selector: equipmentEntrySelector(picked.entry) });
+      }
       hitGroupIds.push(group.id);
     }
   }
@@ -171,6 +205,7 @@ export function rollBossRewards(input: {
   return {
     buddyXp: applicableBuddyXp(table.buddyXp, buddyLevel, maxLevel),
     items,
+    equipment,
     hitGroupIds,
     warnings,
   };

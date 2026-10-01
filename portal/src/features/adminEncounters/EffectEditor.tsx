@@ -22,6 +22,7 @@ import {
   switchEffectType,
 } from './effectDefaults';
 import { EntitySelect, selectClass } from './EntitySelect';
+import { EquipmentRewardFields } from './EquipmentRewardFields';
 import { VendorEffectFields } from './VendorEffectFields';
 import { WaifumonSelectorEditor } from './WaifumonSelectorEditor';
 import { WAIFUMON_EFFECT } from './waifumonSelection';
@@ -184,6 +185,11 @@ export function EffectEditor({
               />
             </label>
           </>
+        )}
+        {type === 'give_equipment' && (
+          <div className="sm:col-span-2">
+            <EquipmentRewardFields effect={effect} reference={reference} onChange={onChange} />
+          </div>
         )}
         {type === 'trigger_encounter' && (
           <EntitySelect
