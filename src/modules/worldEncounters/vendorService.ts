@@ -113,6 +113,84 @@ export class VendorOutOfStockError extends AppError {
   }
 }
 
+export class VendorKeyTakenError extends AppError {
+  constructor(vendorKey: string) {
+    super(
+      'VENDOR_KEY_TAKEN',
+      `Vendor "${vendorKey}" already exists.`,
+      'A vendor with that key already exists.',
+    );
+  }
+}
+
+export class VendorInUseError extends AppError {
+  constructor(vendorKey: string, encounterSlugs: readonly string[]) {
+    super(
+      'VENDOR_IN_USE',
+      `Vendor "${vendorKey}" is opened by ${encounterSlugs.join(', ')}.`,
+      'Encounters still open this vendor — point them at another vendor first.',
+    );
+  }
+}
+
+/* ─────────────────────── Admin authoring ─────────────────────── */
+
+/**
+ * The authored fields of a vendor, as the Portal's vendor editor saves them.
+ *
+ * `stock` is exactly {@link VendorStockTemplateSchema} — the shape the runtime
+ * instantiates and the content package carries — so an admin write can never
+ * produce a template the engine or an import would read differently.
+ *
+ * `vendorKey` is not part of an update: instances reference a vendor by key
+ * with no foreign key, so renaming one would orphan every open shop.
+ */
+export const VendorDefinitionInputSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  description: z.string().max(2000).default(''),
+  stock: VendorStockTemplateSchema.default([]),
+});
+export type VendorDefinitionInput = z.infer<typeof VendorDefinitionInputSchema>;
+
+export const NewVendorDefinitionSchema = VendorDefinitionInputSchema.extend({
+  vendorKey: z
+    .string()
+    .min(1)
+    .max(64)
+    .regex(/^[a-z0-9_]+$/, 'vendorKey must be lowercase snake_case'),
+});
+export type NewVendorDefinition = z.infer<typeof NewVendorDefinitionSchema>;
+
+/**
+ * Rules the schema cannot express, as `{ path, message }` issues (the Portal's
+ * field-issue shape).
+ *
+ *   - Every stocked item must exist — `purchase` refuses unknown items, so an
+ *     unknown slug is a line nobody can ever buy.
+ *   - An item may be stocked once. `purchase` finds the *first* line for a
+ *     slug, so a second line for the same item could never be bought.
+ */
+export function vendorStockIssues(
+  stock: VendorStockTemplate,
+  itemSlugs: ReadonlySet<string>,
+): Array<{ path: string; message: string }> {
+  const issues: Array<{ path: string; message: string }> = [];
+  const seen = new Set<string>();
+  stock.forEach((entry, i) => {
+    if (!itemSlugs.has(entry.itemSlug)) {
+      issues.push({ path: `/stock/${i}/itemSlug`, message: `Unknown item "${entry.itemSlug}".` });
+    }
+    if (seen.has(entry.itemSlug)) {
+      issues.push({
+        path: `/stock/${i}/itemSlug`,
+        message: `"${entry.itemSlug}" is already stocked; each item may appear once.`,
+      });
+    }
+    seen.add(entry.itemSlug);
+  });
+  return issues;
+}
+
 /* ─────────────────────── Service ─────────────────────── */
 
 export interface VendorInstance {
@@ -142,6 +220,19 @@ export interface WorldEncounterVendorService {
    * only — no instance, no stock, nothing player-specific.
    */
   listDefinitions(): Promise<WorldEncounterVendorRow[]>;
+  /**
+   * Admin authoring. Definitions only: an open shop keeps the stock it was
+   * instantiated with, so an edit here reaches the *next* visit, never a
+   * player mid-purchase. Callers validate with {@link vendorStockIssues}.
+   */
+  createDefinition(input: NewVendorDefinition): Promise<WorldEncounterVendorRow>;
+  /** Null when no vendor has that key. The key itself is immutable. */
+  updateDefinition(
+    vendorKey: string,
+    input: VendorDefinitionInput,
+  ): Promise<WorldEncounterVendorRow | null>;
+  /** False when no vendor has that key. Callers refuse vendors still in use. */
+  deleteDefinition(vendorKey: string): Promise<boolean>;
   /** Create or fetch the vendor instance for one active encounter. Idempotent. */
   openForEncounter(
     tx: DbOrTx,
@@ -215,6 +306,48 @@ export function createWorldEncounterVendorService(
 
   async function listDefinitions(): Promise<WorldEncounterVendorRow[]> {
     return deps.db.select().from(worldEncounterVendors).orderBy(worldEncounterVendors.vendorKey);
+  }
+
+  async function createDefinition(input: NewVendorDefinition): Promise<WorldEncounterVendorRow> {
+    // `vendor_key` is UNIQUE: the conflict target makes a taken key a no-op
+    // at the database, with no read-then-write race.
+    const [row] = await deps.db
+      .insert(worldEncounterVendors)
+      .values({
+        vendorKey: input.vendorKey,
+        name: input.name,
+        description: input.description,
+        stockTemplateJson: input.stock as unknown as Record<string, unknown>[],
+      })
+      .onConflictDoNothing({ target: worldEncounterVendors.vendorKey })
+      .returning();
+    if (!row) throw new VendorKeyTakenError(input.vendorKey);
+    return row;
+  }
+
+  async function updateDefinition(
+    vendorKey: string,
+    input: VendorDefinitionInput,
+  ): Promise<WorldEncounterVendorRow | null> {
+    const [row] = await deps.db
+      .update(worldEncounterVendors)
+      .set({
+        name: input.name,
+        description: input.description,
+        stockTemplateJson: input.stock as unknown as Record<string, unknown>[],
+        updatedAt: sql`now()`,
+      })
+      .where(eq(worldEncounterVendors.vendorKey, vendorKey))
+      .returning();
+    return row ?? null;
+  }
+
+  async function deleteDefinition(vendorKey: string): Promise<boolean> {
+    const rows = await deps.db
+      .delete(worldEncounterVendors)
+      .where(eq(worldEncounterVendors.vendorKey, vendorKey))
+      .returning({ id: worldEncounterVendors.id });
+    return rows.length > 0;
   }
 
   function toVendorInstance(
@@ -360,7 +493,17 @@ export function createWorldEncounterVendorService(
       .where(eq(worldEncounterVendorInstances.activeEncounterId, activeEncounterId));
   }
 
-  return { getDefinition, listDefinitions, openForEncounter, getForEncounter, purchase, close };
+  return {
+    getDefinition,
+    listDefinitions,
+    createDefinition,
+    updateDefinition,
+    deleteDefinition,
+    openForEncounter,
+    getForEncounter,
+    purchase,
+    close,
+  };
 }
 
 /** A bootstrap vendor definition — the authored fields only. */

@@ -1,15 +1,22 @@
 /**
- * Choice editor — one row in the encounter's choices list.
+ * Choice editor — the full form for one choice, shown when its card is
+ * expanded (see `ChoiceCard`).
  *
- * Move-up / move-down / remove controls in the header, structured fields
- * for the choice's shape below. The effect trees delegate to
- * {@link EffectEditor}.
+ * Progressive disclosure throughout: a requirement's control appears only once
+ * that requirement is added; skill-check tuning only for a skill check; the
+ * failure result only when the choice can fail. Nothing is removed from the
+ * stored shape — a legacy check or a failure effect on an automatic choice is
+ * still shown, with a note, rather than hidden where it cannot be fixed.
  */
+import { useState } from 'react';
+
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { cn } from '@/lib/cn';
 import type { AdminEncounterReference, SelectorPreviewEncounter } from '@/api/adminEncounters';
-import { newEffect } from './effectDefaults';
-import { EffectEditor, type EffectShape } from './EffectEditor';
+import { EntitySelect, selectClass } from './EntitySelect';
+import type { EffectShape } from './EffectEditor';
+import { OutcomeEditor } from './OutcomeEditor';
 
 export interface ChoiceDraft {
   label: string;
@@ -52,6 +59,25 @@ const TEXTAREA_CLASS =
 /** Matches the server's limit (`OUTCOME_TEXT_MAX_LENGTH`). */
 const FLAVOR_MAX_LENGTH = 500;
 
+type RequirementKey = keyof ChoiceDraft['requirements'];
+
+const REQUIREMENT_LABELS: Record<RequirementKey, string> = {
+  requiresItem: 'Owns an item',
+  minPlayerLevel: 'Minimum player level',
+  minBuddyLevel: 'Minimum buddy level',
+  affinity: 'Buddy affinity',
+  raceAny: 'Buddy race',
+};
+
+/** Starting value when a requirement is added, so what is shown is what is saved. */
+const REQUIREMENT_DEFAULTS: Record<RequirementKey, unknown> = {
+  requiresItem: '',
+  minPlayerLevel: 1,
+  minBuddyLevel: 1,
+  affinity: '',
+  raceAny: [],
+};
+
 interface Props {
   index: number;
   choice: ChoiceDraft;
@@ -62,6 +88,72 @@ interface Props {
   onRemove: () => void;
   onMoveUp: (() => void) | undefined;
   onMoveDown: (() => void) | undefined;
+  /** Collapse back to the summary card. Absent when rendered on its own. */
+  onDone?: () => void | undefined;
+}
+
+/**
+ * Strip keys whose value is undefined, so exactOptionalPropertyTypes does not
+ * reject `{ foo: undefined }` on shapes that declare `foo?: T`.
+ */
+function stripUndefined<T extends Record<string, unknown>>(o: T): T {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(o)) if (v !== undefined) out[k] = v;
+  return out as T;
+}
+
+const titleCase = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/** Toggle chips for a small fixed vocabulary (races). */
+function ChipMultiSelect({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string;
+  options: readonly string[];
+  value: readonly string[];
+  onChange: (next: string[]) => void;
+}) {
+  return (
+    <div className="text-xs text-ink-muted" role="group" aria-label={label}>
+      <span className="block">{label}</span>
+      <div className="mt-1 flex flex-wrap gap-1">
+        {options.map((o) => {
+          const on = value.includes(o);
+          return (
+            <Button
+              key={o}
+              type="button"
+              size="sm"
+              variant={on ? 'accent' : 'outline'}
+              aria-pressed={on}
+              onClick={() => onChange(on ? value.filter((v) => v !== o) : [...value, o])}
+            >
+              {on && <span aria-hidden="true">✓</span>}
+              {titleCase(o)}
+            </Button>
+          );
+        })}
+        {/* Tags stored by older content that the vocabulary no longer lists. */}
+        {value
+          .filter((v) => !options.includes(v))
+          .map((v) => (
+            <Button
+              key={v}
+              type="button"
+              size="sm"
+              variant="default"
+              aria-pressed
+              onClick={() => onChange(value.filter((x) => x !== v))}
+            >
+              {v} ×
+            </Button>
+          ))}
+      </div>
+    </div>
+  );
 }
 
 export function ChoiceEditor({
@@ -73,18 +165,16 @@ export function ChoiceEditor({
   onRemove,
   onMoveUp,
   onMoveDown,
+  onDone,
 }: Props) {
   const patch = (changes: Partial<ChoiceDraft>) => onChange({ ...choice, ...changes });
-
-  // Strip keys whose value is undefined, so exactOptionalPropertyTypes
-  // does not reject `{ foo: undefined }` on shapes that declare `foo?: T`.
-  function stripUndefined<T extends Record<string, unknown>>(o: T): T {
-    const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(o)) if (v !== undefined) out[k] = v;
-    return out as T;
-  }
   const patchRequirements = (updates: Record<string, unknown>) =>
-    patch({ requirements: stripUndefined({ ...choice.requirements, ...updates }) as ChoiceDraft['requirements'] });
+    patch({
+      requirements: stripUndefined({
+        ...choice.requirements,
+        ...updates,
+      }) as ChoiceDraft['requirements'],
+    });
   const patchCheck = (updates: Record<string, unknown>) =>
     patch({ check: stripUndefined({ ...choice.check, ...updates }) as ChoiceDraft['check'] });
 
@@ -99,26 +189,75 @@ export function ChoiceEditor({
   const clamp01 = (n: number) => Math.max(0, Math.min(1, Number.isFinite(n) ? n : 0));
   const clampMaxSp = (n: number) => Math.max(0, Math.min(0.5, Number.isFinite(n) ? n : 0));
 
+  // Requirements the author has turned on. A requirement added but not yet
+  // filled in (an empty item) is kept visible via `pending` so its control
+  // does not vanish before a value is chosen.
+  const [pending, setPending] = useState<RequirementKey[]>([]);
+  const present = (Object.keys(REQUIREMENT_LABELS) as RequirementKey[]).filter(
+    (k) => choice.requirements[k] !== undefined || pending.includes(k),
+  );
+  const addable = (Object.keys(REQUIREMENT_LABELS) as RequirementKey[]).filter(
+    (k) => !present.includes(k),
+  );
+  const removeRequirement = (k: RequirementKey) => {
+    setPending((p) => p.filter((x) => x !== k));
+    patchRequirements({ [k]: undefined });
+  };
+
+  const affinities = reference?.affinities ?? [];
+  const races = reference?.races ?? [];
+  const itemOptions = (reference?.items ?? []).map((i) => ({
+    value: i.slug,
+    label: i.name,
+    hint: i.category,
+  }));
+
   return (
-    <div className="space-y-3 rounded-md border border-border bg-surface p-3">
-      <div className="flex items-center gap-2">
+    <div
+      className="space-y-3 rounded-md border border-border bg-surface p-3"
+      data-testid="choice-editor"
+    >
+      <div className="flex flex-wrap items-center gap-2">
         <h4 className="font-medium">Choice #{index + 1}</h4>
         <div className="flex-1" />
-        <Button type="button" size="sm" variant="outline" disabled={!onMoveUp} onClick={onMoveUp}>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          disabled={!onMoveUp}
+          onClick={onMoveUp}
+          aria-label="Move choice up"
+        >
           ↑
         </Button>
-        <Button type="button" size="sm" variant="outline" disabled={!onMoveDown} onClick={onMoveDown}>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          disabled={!onMoveDown}
+          onClick={onMoveDown}
+          aria-label="Move choice down"
+        >
           ↓
         </Button>
-        <Button type="button" size="sm" variant="outline" onClick={onRemove}>
+        <Button type="button" size="sm" variant="ghost" onClick={onRemove}>
           Remove
         </Button>
+        {onDone && (
+          <Button type="button" size="sm" variant="outline" onClick={onDone}>
+            Done
+          </Button>
+        )}
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid gap-3 sm:grid-cols-[1fr_8rem]">
         <label className="text-xs text-ink-muted">
           Label
-          <Input value={choice.label} onChange={(e) => patch({ label: e.target.value })} />
+          <Input
+            value={choice.label}
+            maxLength={80}
+            onChange={(e) => patch({ label: e.target.value })}
+          />
         </label>
         <label className="text-xs text-ink-muted">
           Emoji (optional)
@@ -129,88 +268,112 @@ export function ChoiceEditor({
         </label>
       </div>
 
-      <fieldset className="rounded-md border border-border p-3">
-        <legend className="px-1 text-xs uppercase text-ink-muted">Requirements</legend>
-        <div className="grid grid-cols-2 gap-3">
-          <label className="text-xs text-ink-muted">
-            Affinity
-            <select
-              value={choice.requirements.affinity ?? ''}
-              onChange={(e) =>
-                patchRequirements({ affinity: e.target.value || undefined })
-              }
-              className="w-full rounded-md border border-border bg-surface px-2 py-1 text-sm"
+      {/* ── Requirements ── */}
+      <fieldset className="space-y-2 rounded-md border border-border p-3">
+        <legend className="px-1 text-xs uppercase text-ink-muted">Who can pick it</legend>
+        {present.length === 0 && (
+          <p className="text-xs text-ink-muted">Anyone. Add a requirement to limit it.</p>
+        )}
+        {present.map((k) => (
+          <div key={k} className="flex items-end gap-2">
+            <div className="flex-1">
+              {k === 'requiresItem' && (
+                <EntitySelect
+                  label="Required item"
+                  value={choice.requirements.requiresItem ?? ''}
+                  options={itemOptions}
+                  placeholder="— pick an item —"
+                  searchLabel="Search required items"
+                  onChange={(slug) => patchRequirements({ requiresItem: slug || undefined })}
+                />
+              )}
+              {(k === 'minPlayerLevel' || k === 'minBuddyLevel') && (
+                <label className="text-xs text-ink-muted">
+                  {REQUIREMENT_LABELS[k]}
+                  <Input
+                    type="number"
+                    min="1"
+                    value={choice.requirements[k] ?? ''}
+                    onChange={(e) =>
+                      patchRequirements({
+                        [k]: e.target.value === '' ? undefined : Number(e.target.value),
+                      })
+                    }
+                    className="w-28"
+                  />
+                </label>
+              )}
+              {k === 'affinity' && (
+                <label className="text-xs text-ink-muted">
+                  Buddy affinity
+                  <select
+                    value={choice.requirements.affinity ?? ''}
+                    onChange={(e) => patchRequirements({ affinity: e.target.value || undefined })}
+                    className={selectClass}
+                  >
+                    <option value="">— pick an affinity —</option>
+                    {affinities.map((a) => (
+                      <option key={a} value={a}>
+                        {titleCase(a)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {k === 'raceAny' && (
+                <ChipMultiSelect
+                  label="Buddy race (any of)"
+                  options={races}
+                  value={choice.requirements.raceAny ?? []}
+                  onChange={(next) =>
+                    patchRequirements({ raceAny: next.length ? next : undefined })
+                  }
+                />
+              )}
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              aria-label={`Remove requirement: ${REQUIREMENT_LABELS[k]}`}
+              onClick={() => removeRequirement(k)}
             >
-              <option value="">— any —</option>
-              {(reference?.affinities ?? []).map((a) => (
-                <option key={a} value={a}>
-                  {a}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-xs text-ink-muted">
-            Required item slug (optional)
-            <Input
-              value={choice.requirements.requiresItem ?? ''}
-              onChange={(e) =>
-                patchRequirements({ requiresItem: e.target.value || undefined })
+              ×
+            </Button>
+          </div>
+        ))}
+        {addable.length > 0 && (
+          <select
+            aria-label="Add requirement"
+            value=""
+            onChange={(e) => {
+              const k = e.target.value as RequirementKey;
+              if (!k) return;
+              setPending((p) => [...p, k]);
+              // Numeric requirements start at a real value; pickers start empty
+              // and are only saved once something is picked.
+              if (k === 'minPlayerLevel' || k === 'minBuddyLevel') {
+                patchRequirements({ [k]: REQUIREMENT_DEFAULTS[k] });
               }
-            />
-          </label>
-          <label className="text-xs text-ink-muted">
-            Min player level
-            <Input
-              type="number"
-              min="1"
-              value={choice.requirements.minPlayerLevel ?? ''}
-              onChange={(e) =>
-                patchRequirements({
-                  minPlayerLevel: e.target.value === '' ? undefined : Number(e.target.value),
-                })
-              }
-            />
-          </label>
-          <label className="text-xs text-ink-muted">
-            Min buddy level
-            <Input
-              type="number"
-              min="1"
-              value={choice.requirements.minBuddyLevel ?? ''}
-              onChange={(e) =>
-                patchRequirements({
-                  minBuddyLevel: e.target.value === '' ? undefined : Number(e.target.value),
-                })
-              }
-            />
-          </label>
-          <label className="text-xs text-ink-muted col-span-2">
-            Race requirement (comma-separated)
-            <Input
-              value={(choice.requirements.raceAny ?? []).join(',')}
-              onChange={(e) => {
-                const raw = e.target.value.trim();
-                patchRequirements({
-                  raceAny:
-                    raw === ''
-                      ? undefined
-                      : raw
-                          .split(',')
-                          .map((s) => s.trim())
-                          .filter(Boolean),
-                });
-              }}
-              placeholder="e.g. valkyrie, demon"
-            />
-          </label>
-        </div>
+            }}
+            className={cn(selectClass, 'w-auto')}
+          >
+            <option value="">+ Add requirement…</option>
+            {addable.map((k) => (
+              <option key={k} value={k}>
+                {REQUIREMENT_LABELS[k]}
+              </option>
+            ))}
+          </select>
+        )}
       </fieldset>
 
+      {/* ── Resolution ── */}
       <fieldset className="rounded-md border border-border p-3">
-        <legend className="px-1 text-xs uppercase text-ink-muted">Check</legend>
-        <div className="grid grid-cols-2 gap-3">
+        <legend className="px-1 text-xs uppercase text-ink-muted">Resolution</legend>
+        <div className="grid gap-3 sm:grid-cols-2">
           <label className="text-xs text-ink-muted">
-            Type
+            Resolution
             <select
               value={choice.check.type}
               onChange={(e) => {
@@ -226,17 +389,19 @@ export function ChoiceEditor({
                   check: stripUndefined({
                     ...choice.check,
                     type: 'sp',
-                    baseChance: choice.check.baseChance ?? (choice.check.difficulty === undefined ? 0.4 : undefined),
+                    baseChance:
+                      choice.check.baseChance ??
+                      (choice.check.difficulty === undefined ? 0.4 : undefined),
                     maxSpModifier:
                       choice.check.maxSpModifier ??
                       (choice.check.difficulty === undefined ? 0.15 : undefined),
                   }) as ChoiceDraft['check'],
                 });
               }}
-              className="w-full rounded-md border border-border bg-surface px-2 py-1 text-sm"
+              className={selectClass}
             >
-              <option value="none">Auto (no check)</option>
-              <option value="sp">SP-based</option>
+              <option value="none">Automatic — always succeeds</option>
+              <option value="sp">Skill check — can fail</option>
             </select>
           </label>
 
@@ -252,9 +417,7 @@ export function ChoiceEditor({
                     step="1"
                     value={Math.round((choice.check.baseChance ?? 0.4) * 100)}
                     onChange={(e) =>
-                      patchCheck({
-                        baseChance: clamp01(Number(e.target.value) / 100),
-                      })
+                      patchCheck({ baseChance: clamp01(Number(e.target.value) / 100) })
                     }
                   />
                   <span className="text-ink-muted">%</span>
@@ -265,9 +428,7 @@ export function ChoiceEditor({
                 <input
                   type="checkbox"
                   checked={(choice.check.maxSpModifier ?? 0.15) > 0}
-                  onChange={(e) =>
-                    patchCheck({ maxSpModifier: e.target.checked ? 0.15 : 0 })
-                  }
+                  onChange={(e) => patchCheck({ maxSpModifier: e.target.checked ? 0.15 : 0 })}
                 />
                 Buddy Strength affects this check
               </label>
@@ -284,9 +445,7 @@ export function ChoiceEditor({
                       step="1"
                       value={Math.round((choice.check.maxSpModifier ?? 0.15) * 100)}
                       onChange={(e) =>
-                        patchCheck({
-                          maxSpModifier: clampMaxSp(Number(e.target.value) / 100),
-                        })
+                        patchCheck({ maxSpModifier: clampMaxSp(Number(e.target.value) / 100) })
                       }
                     />
                     <span className="text-ink-muted">%</span>
@@ -298,61 +457,44 @@ export function ChoiceEditor({
                 Affinity advantage (+15%)
                 <select
                   value={choice.check.affinityAdvantage ?? ''}
-                  onChange={(e) =>
-                    patchCheck({ affinityAdvantage: e.target.value || undefined })
-                  }
-                  className="w-full rounded-md border border-border bg-surface px-2 py-1 text-sm"
+                  onChange={(e) => patchCheck({ affinityAdvantage: e.target.value || undefined })}
+                  className={selectClass}
                 >
                   <option value="">— none —</option>
-                  {(reference?.affinities ?? []).map((a) => (
+                  {affinities.map((a) => (
                     <option key={a} value={a}>
-                      {a}
+                      {titleCase(a)}
                     </option>
                   ))}
                 </select>
               </label>
 
-              <label className="text-xs text-ink-muted col-span-2">
-                Race advantage (+10%, any matching race)
-                <Input
-                  value={(choice.check.raceAdvantage ?? []).join(',')}
-                  onChange={(e) => {
-                    const raw = e.target.value.trim();
-                    patchCheck({
-                      raceAdvantage:
-                        raw === ''
-                          ? undefined
-                          : raw
-                              .split(',')
-                              .map((s) => s.trim())
-                              .filter(Boolean),
-                    });
-                  }}
+              <div className="sm:col-span-2">
+                <ChipMultiSelect
+                  label="Race advantage (+10% if the buddy is any of these)"
+                  options={races}
+                  value={choice.check.raceAdvantage ?? []}
+                  onChange={(next) => patchCheck({ raceAdvantage: next.length ? next : undefined })}
                 />
-                <span className="mt-1 block text-[11px] text-ink-muted">
-                  Listing several races means “any of these matches” — the +10% is
-                  granted once, it does not stack per race.
-                </span>
-              </label>
+              </div>
 
-              <p className="col-span-2 text-[11px] text-ink-muted">
+              <p className="text-[11px] text-ink-muted sm:col-span-2">
                 Final chance = base {Math.round((choice.check.baseChance ?? 0.4) * 100)}% ± up to{' '}
                 {Math.round((choice.check.maxSpModifier ?? 0.15) * 100)}% from buddy SP
                 {choice.check.affinityAdvantage ? ' + 15% affinity' : ''}
-                {(choice.check.raceAdvantage ?? []).length > 0 ? ' + 10% race' : ''}
-                {' '}
-                + any Buddy Bonus, clamped to 5–95%. Use the Preview panel for exact numbers.
+                {(choice.check.raceAdvantage ?? []).length > 0 ? ' + 10% race' : ''} + any Buddy
+                Bonus, clamped to 5–95%. Use Preview for exact numbers.
               </p>
             </>
           )}
 
           {isLegacyModelSpCheck && (
             <>
-              <div className="col-span-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-[11px] text-ink-muted">
+              <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-[11px] text-ink-muted sm:col-span-2">
                 <strong>Legacy difficulty model.</strong> This check uses the older
-                SP-versus-difficulty formula and is left untouched. To move it to the
-                new base-chance model, change the Type to “Auto”, then back to
-                “SP-based”, and re-author it.
+                SP-versus-difficulty formula and is left untouched. To move it to the new
+                base-chance model, set Resolution to “Automatic”, then back to “Skill check”, and
+                re-author it.
               </div>
               <label className="text-xs text-ink-muted">
                 Difficulty
@@ -380,72 +522,83 @@ export function ChoiceEditor({
                 Affinity advantage
                 <select
                   value={choice.check.affinityAdvantage ?? ''}
-                  onChange={(e) =>
-                    patchCheck({ affinityAdvantage: e.target.value || undefined })
-                  }
-                  className="w-full rounded-md border border-border bg-surface px-2 py-1 text-sm"
+                  onChange={(e) => patchCheck({ affinityAdvantage: e.target.value || undefined })}
+                  className={selectClass}
                 >
                   <option value="">— none —</option>
-                  {(reference?.affinities ?? []).map((a) => (
+                  {affinities.map((a) => (
                     <option key={a} value={a}>
-                      {a}
+                      {titleCase(a)}
                     </option>
                   ))}
                 </select>
               </label>
-              <label className="text-xs text-ink-muted col-span-2">
-                Race advantage (comma-separated)
-                <Input
-                  value={(choice.check.raceAdvantage ?? []).join(',')}
-                  onChange={(e) => {
-                    const raw = e.target.value.trim();
-                    patchCheck({
-                      raceAdvantage:
-                        raw === ''
-                          ? undefined
-                          : raw
-                              .split(',')
-                              .map((s) => s.trim())
-                              .filter(Boolean),
-                    });
-                  }}
+              <div className="sm:col-span-2">
+                <ChipMultiSelect
+                  label="Race advantage"
+                  options={races}
+                  value={choice.check.raceAdvantage ?? []}
+                  onChange={(next) => patchCheck({ raceAdvantage: next.length ? next : undefined })}
                 />
-              </label>
+              </div>
             </>
           )}
         </div>
       </fieldset>
 
-      <fieldset className="rounded-md border border-border p-3" data-testid="flavor-fields">
-        <legend className="px-1 text-xs uppercase text-ink-muted">Outcome flavor</legend>
-        <div className="space-y-3">
-          <label className="block text-xs text-ink-muted">
-            Outcome Text
-            <textarea
-              rows={2}
-              maxLength={FLAVOR_MAX_LENGTH}
-              className={TEXTAREA_CLASS}
-              value={choice.outcomeText ?? ''}
-              onChange={(e) => patch({ outcomeText: e.target.value })}
-              placeholder="What happens after this choice resolves."
-            />
-          </label>
+      {/* ── Results ── */}
+      <div className="space-y-3" data-testid="flavor-fields">
+        <OutcomeEditor
+          title={isSpCheck ? 'On success' : 'Outcome'}
+          tone={isSpCheck ? 'success' : 'neutral'}
+          effects={choice.successEffects}
+          onChange={(successEffects) => patch({ successEffects })}
+          addLabel={isSpCheck ? '+ Add success effect' : '+ Add effect'}
+          newEffectType="waifubux_gain"
+          choiceIndex={index}
+          branch="success"
+          reference={reference}
+          encounterContext={encounterContext}
+        >
           {/*
             Hidden, not cleared, when there is no check: the draft keeps the
             branch text so re-enabling the check brings it straight back.
           */}
           {isSpCheck && (
-            <>
-              <label className="block text-xs text-ink-muted">
-                Success Text
-                <textarea
-                  rows={2}
-                  maxLength={FLAVOR_MAX_LENGTH}
-                  className={TEXTAREA_CLASS}
-                  value={choice.successText ?? ''}
-                  onChange={(e) => patch({ successText: e.target.value })}
-                />
-              </label>
+            <label className="block text-xs text-ink-muted">
+              Success Text
+              <textarea
+                rows={2}
+                maxLength={FLAVOR_MAX_LENGTH}
+                className={TEXTAREA_CLASS}
+                value={choice.successText ?? ''}
+                onChange={(e) => patch({ successText: e.target.value })}
+              />
+            </label>
+          )}
+        </OutcomeEditor>
+
+        {(isSpCheck || choice.failureEffects.length > 0) && (
+          <OutcomeEditor
+            title="On failure"
+            tone="failure"
+            effects={choice.failureEffects}
+            onChange={(failureEffects) => patch({ failureEffects })}
+            addLabel="+ Add failure effect"
+            newEffectType="waifubux_loss"
+            choiceIndex={index}
+            branch="failure"
+            reference={reference}
+            encounterContext={encounterContext}
+            runs={isSpCheck}
+            {...(isSpCheck
+              ? {}
+              : {
+                  notice:
+                    'This choice is automatic, so it always succeeds and these effects never run.',
+                })}
+          >
+            {isSpCheck && (
               <label className="block text-xs text-ink-muted">
                 Failure Text
                 <textarea
@@ -456,88 +609,29 @@ export function ChoiceEditor({
                   onChange={(e) => patch({ failureText: e.target.value })}
                 />
               </label>
-              <p className="text-[11px] text-ink-muted">
-                Success/Failure Text overrides Outcome Text for that result. Outcome Text is
-                used as the fallback.
-              </p>
-            </>
-          )}
-          <p className="text-[11px] text-ink-muted">
-            Optional, up to {FLAVOR_MAX_LENGTH} characters each. Presentation only — never
-            changes the check, effects or what follows.
-          </p>
-        </div>
-      </fieldset>
+            )}
+          </OutcomeEditor>
+        )}
 
-      <fieldset className="rounded-md border border-border p-3">
-        <legend className="px-1 text-xs uppercase text-ink-muted">Success effects</legend>
-        <div className="space-y-2">
-          {choice.successEffects.map((eff, i) => (
-            <EffectEditor
-              key={i}
-              effect={eff}
-              reference={reference}
-              encounterContext={encounterContext}
-              onChange={(next) => {
-                const list = [...choice.successEffects];
-                list[i] = next;
-                patch({ successEffects: list });
-              }}
-              onRemove={() => {
-                const list = choice.successEffects.filter((_, k) => k !== i);
-                patch({ successEffects: list });
-              }}
-            />
-          ))}
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() =>
-              patch({
-                successEffects: [...choice.successEffects, newEffect('waifubux_gain')],
-              })
-            }
-          >
-            + Add success effect
-          </Button>
-        </div>
-      </fieldset>
-
-      <fieldset className="rounded-md border border-border p-3">
-        <legend className="px-1 text-xs uppercase text-ink-muted">Failure effects</legend>
-        <div className="space-y-2">
-          {choice.failureEffects.map((eff, i) => (
-            <EffectEditor
-              key={i}
-              effect={eff}
-              reference={reference}
-              encounterContext={encounterContext}
-              onChange={(next) => {
-                const list = [...choice.failureEffects];
-                list[i] = next;
-                patch({ failureEffects: list });
-              }}
-              onRemove={() => {
-                const list = choice.failureEffects.filter((_, k) => k !== i);
-                patch({ failureEffects: list });
-              }}
-            />
-          ))}
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() =>
-              patch({
-                failureEffects: [...choice.failureEffects, newEffect('waifubux_loss')],
-              })
-            }
-          >
-            + Add failure effect
-          </Button>
-        </div>
-      </fieldset>
+        <label className="block text-xs text-ink-muted">
+          Outcome Text
+          <textarea
+            rows={2}
+            maxLength={FLAVOR_MAX_LENGTH}
+            className={TEXTAREA_CLASS}
+            value={choice.outcomeText ?? ''}
+            onChange={(e) => patch({ outcomeText: e.target.value })}
+            placeholder="What happens after this choice resolves."
+          />
+        </label>
+        <p className="text-[11px] text-ink-muted">
+          {isSpCheck
+            ? 'Success/Failure Text overrides Outcome Text for that result. Outcome Text is used as the fallback. '
+            : ''}
+          Optional, up to {FLAVOR_MAX_LENGTH} characters each. Presentation only — never changes the
+          check, effects or what follows.
+        </p>
+      </div>
     </div>
   );
 }

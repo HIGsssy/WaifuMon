@@ -274,6 +274,28 @@ export const handlers = [
   // `server.use(http.get('/api/v1/capabilities', () => data({ cards: false })))`.
   http.get('/api/v1/capabilities', () => data(fixtures.capabilities)),
 
+  // ── Admin: World Encounters ──────────────────────────────────────────────
+  // Empty defaults for the editor's supporting reads (the chain graph, the
+  // cooldown explanation, the vendor picker). Encounter tests spy on the API
+  // functions they care about; these keep every other read answered.
+  http.get('/api/v1/admin/encounters', () => data({ encounters: [] })),
+  http.get('/api/v1/admin/encounters/settings', () =>
+    data({
+      huntChance: 0.35,
+      travelChance: 0.2,
+      defaultExpirySeconds: 600,
+      forceTrigger: false,
+      updatedAt: null,
+      updatedBy: null,
+      bounds: { chance: { min: 0, max: 1 }, expirySeconds: { min: 30, max: 86_400 } },
+    }),
+  ),
+  http.get('/api/v1/admin/vendors', () => data({ vendors: [] })),
+  // No artwork on disk in tests: the preview shows its "missing" state.
+  http.get('/api/v1/admin/encounters/artwork', () =>
+    apiError(404, 'NOT_FOUND', 'No artwork at that path'),
+  ),
+
   // ── Admin: Waifumon Gallery ──────────────────────────────────────────────
   http.get('/api/v1/admin/gallery/species', () => data(fixtures.adminGalleryCatalog)),
 

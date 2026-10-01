@@ -121,6 +121,36 @@ const AdminEncounterPreviewPage = lazy(() =>
     default: m.AdminEncounterPreviewPage,
   })),
 );
+const WorldEncountersLayout = lazy(() =>
+  import('@/features/adminEncounters/WorldEncountersLayout').then((m) => ({
+    default: m.WorldEncountersLayout,
+  })),
+);
+const EncounterChainsPage = lazy(() =>
+  import('@/features/adminEncounters/EncounterChainsPage').then((m) => ({
+    default: m.EncounterChainsPage,
+  })),
+);
+const EncounterSettingsPage = lazy(() =>
+  import('@/features/adminEncounters/EncounterSettingsPage').then((m) => ({
+    default: m.EncounterSettingsPage,
+  })),
+);
+const ImportExportPage = lazy(() =>
+  import('@/features/adminEncounters/ImportExportPage').then((m) => ({
+    default: m.ImportExportPage,
+  })),
+);
+const VendorsListPage = lazy(() =>
+  import('@/features/adminEncounters/VendorsListPage').then((m) => ({
+    default: m.VendorsListPage,
+  })),
+);
+const VendorEditorPage = lazy(() =>
+  import('@/features/adminEncounters/VendorEditorPage').then((m) => ({
+    default: m.VendorEditorPage,
+  })),
+);
 // Result Presentations. Gated on its own permission — not `admin.access` or
 // any encounter permission — so a presentation-only editor reaches it.
 const ResultPresentationsPage = lazy(() =>
@@ -251,39 +281,92 @@ export const routes: RouteObject[] = [
           // somewhere useful rather than on the not-found page.
           { path: 'friends', element: <Navigate to="/players" replace /> },
 
-          // Admin — Encounter Manager. Nested `<RequirePortalPermission>` is a
-          // UX affordance; the API independently re-checks every request.
+          // Admin — World Encounters: one section with its own sub-navigation
+          // (Encounters · Chains · Vendors · Settings · Import / Export).
+          // Nested `<RequirePortalPermission>` is a UX affordance; the API
+          // independently re-checks every request.
           {
             path: 'admin/encounters',
             element: (
               <RequirePortalPermission permission="admin.access">
-                <AdminEncountersListPage />
+                <WorldEncountersLayout />
               </RequirePortalPermission>
             ),
-          },
-          {
-            path: 'admin/encounters/new',
-            element: (
-              <RequirePortalPermission permission="encounters.write">
-                <AdminEncounterEditorPage />
-              </RequirePortalPermission>
-            ),
-          },
-          {
-            path: 'admin/encounters/:id',
-            element: (
-              <RequirePortalPermission permission="encounters.read">
-                <AdminEncounterEditorPage />
-              </RequirePortalPermission>
-            ),
-          },
-          {
-            path: 'admin/encounters/:id/preview',
-            element: (
-              <RequirePortalPermission permission="encounters.read">
-                <AdminEncounterPreviewPage />
-              </RequirePortalPermission>
-            ),
+            children: [
+              { index: true, element: <AdminEncountersListPage /> },
+              {
+                path: 'new',
+                element: (
+                  <RequirePortalPermission permission="encounters.write">
+                    <AdminEncounterEditorPage />
+                  </RequirePortalPermission>
+                ),
+              },
+              {
+                path: 'chains',
+                element: (
+                  <RequirePortalPermission permission="encounters.read">
+                    <EncounterChainsPage />
+                  </RequirePortalPermission>
+                ),
+              },
+              {
+                path: 'settings',
+                element: (
+                  <RequirePortalPermission permission="encounters.read">
+                    <EncounterSettingsPage />
+                  </RequirePortalPermission>
+                ),
+              },
+              {
+                path: 'import-export',
+                element: (
+                  <RequirePortalPermission permission="encounters.read">
+                    <ImportExportPage />
+                  </RequirePortalPermission>
+                ),
+              },
+              {
+                path: 'vendors',
+                element: (
+                  <RequirePortalPermission permission="encounters.read">
+                    <VendorsListPage />
+                  </RequirePortalPermission>
+                ),
+              },
+              {
+                path: 'vendors/new',
+                element: (
+                  <RequirePortalPermission permission="encounters.write">
+                    <VendorEditorPage />
+                  </RequirePortalPermission>
+                ),
+              },
+              {
+                path: 'vendors/:vendorKey',
+                element: (
+                  <RequirePortalPermission permission="encounters.read">
+                    <VendorEditorPage />
+                  </RequirePortalPermission>
+                ),
+              },
+              {
+                path: ':id',
+                element: (
+                  <RequirePortalPermission permission="encounters.read">
+                    <AdminEncounterEditorPage />
+                  </RequirePortalPermission>
+                ),
+              },
+              {
+                path: ':id/preview',
+                element: (
+                  <RequirePortalPermission permission="encounters.read">
+                    <AdminEncounterPreviewPage />
+                  </RequirePortalPermission>
+                ),
+              },
+            ],
           },
 
           // Admin — Result Presentations. The API re-checks every request.

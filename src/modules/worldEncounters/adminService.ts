@@ -15,7 +15,10 @@ import { z } from 'zod';
 import type { Db } from '../../db/client';
 import type { LoadedContent } from '../content/schemas';
 import { createWorldEncounterRepository } from './worldEncounterRepository';
-import type { WorldEncounterRepository } from './worldEncounterRepository';
+import type {
+  EncounterDeleteReferences,
+  WorldEncounterRepository,
+} from './worldEncounterRepository';
 import { EncounterInputSchema, type EncounterInput } from './types';
 import { hydrateEncounter } from './hydrate';
 import type { LoadedEncounter } from './types';
@@ -27,12 +30,80 @@ export interface WorldEncounterAdminService {
   /**
    * Create or replace the encounter identified by `input.slug`. Returns the
    * hydrated record after the write.
+   *
+   * With `createOnly`, an existing slug is refused with
+   * {@link AdminEncounterSlugTakenError} instead of being replaced — the
+   * semantics of every "create" (the Portal's POST, clone). Replacing by
+   * slug stays available to callers that mean it (the legacy admin panel's
+   * single save form, content import).
    */
-  upsert(input: EncounterInput): Promise<LoadedEncounter>;
+  upsert(input: EncounterInput, opts?: { createOnly?: boolean }): Promise<LoadedEncounter>;
+  /**
+   * Activating runs the same reachability rule a save to `active` does, and
+   * throws {@link AdminEncounterValidationError} when it fails. Draft and
+   * disabled are always accepted.
+   */
   setLifecycle(id: number, lifecycle: 'draft' | 'active' | 'disabled'): Promise<void>;
   clone(id: number, newSlug: string): Promise<LoadedEncounter>;
-  /** Refuses when history rows exist — the caller should disable instead. */
-  remove(id: number): Promise<{ ok: boolean; reason?: string }>;
+  /**
+   * Refuses while anything references the encounter — history, a live or
+   * closed play session, or another encounter continuing to it — and says
+   * what, so the caller can explain. Nothing is written on a refusal.
+   */
+  remove(id: number): Promise<EncounterRemoveResult>;
+}
+
+export type EncounterDeleteBlockers = EncounterDeleteReferences;
+
+export type EncounterRemoveResult =
+  | { ok: true }
+  | { ok: false; reason: string; blockers: EncounterDeleteBlockers };
+
+/** True when any reference in `refs` stands in the way of a delete. */
+export function hasDeleteBlockers(refs: EncounterDeleteBlockers): boolean {
+  return (
+    refs.referencedBy.length > 0 ||
+    refs.historyCount > 0 ||
+    refs.pendingCount > 0 ||
+    refs.closedSessionCount > 0
+  );
+}
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/**
+ * One readable sentence per kind of blocker, plus what to do about it. Used
+ * as the refusal's `reason` (the legacy panel shows it verbatim) and as the
+ * API's user message.
+ */
+export function describeDeleteBlockers(refs: EncounterDeleteBlockers): string {
+  const parts: string[] = [];
+  if (refs.referencedBy.length > 0) {
+    const names = [...new Set(refs.referencedBy.map((r) => `"${r.name}"`))];
+    parts.push(
+      `${names.join(', ')} still continue${names.length === 1 ? 's' : ''} to it — remove ` +
+        `${names.length === 1 ? 'that link' : 'those links'} first.`,
+    );
+  }
+  if (refs.pendingCount > 0) {
+    const queued =
+      refs.queuedContinuationCount > 0
+        ? ` (${refs.queuedContinuationCount} queued as a chain follow-up)`
+        : '';
+    parts.push(
+      `${plural(refs.pendingCount, 'player has it open', 'players have it open')}${queued}.`,
+    );
+  }
+  if (refs.historyCount > 0) {
+    parts.push(`It has ${plural(refs.historyCount, 'recorded play', 'recorded plays')} in history.`);
+  } else if (refs.closedSessionCount > 0) {
+    parts.push(
+      `It has ${plural(refs.closedSessionCount, 'past session', 'past sessions')} (expired or abandoned).`,
+    );
+  }
+  const played = refs.historyCount + refs.closedSessionCount + refs.pendingCount;
+  const advice = played > 0 ? ' Disable it instead — played encounters are kept for the record.' : '';
+  return `This encounter cannot be deleted. ${parts.join(' ')}${advice}`;
 }
 
 export class AdminEncounterValidationError extends Error {
@@ -42,6 +113,33 @@ export class AdminEncounterValidationError extends Error {
     this.name = 'AdminEncounterValidationError';
     this.issues = issues;
   }
+}
+
+/** A create named a slug another encounter already has. Nothing was written. */
+export class AdminEncounterSlugTakenError extends AdminEncounterValidationError {
+  readonly slug: string;
+  constructor(slug: string) {
+    super([`An encounter with the slug "${slug}" already exists.`]);
+    this.name = 'AdminEncounterSlugTakenError';
+    this.slug = slug;
+  }
+}
+
+/** Postgres `foreign_key_violation` — a row still references the encounter. */
+function isForeignKeyViolation(err: unknown): boolean {
+  const e = err as { code?: unknown; cause?: { code?: unknown } } | null;
+  return e?.code === '23503' || e?.cause?.code === '23503';
+}
+
+const UNREACHABLE_ISSUE =
+  'Unreachable: not hunt- or travel-eligible, and no other encounter chains into it. ' +
+  'Enable a source, or add a trigger_encounter effect (or chainedEncounterSlug) ' +
+  'pointing at this slug from the encounter that should lead here.';
+
+/** Postgres `unique_violation` — a concurrent create won the slug first. */
+function isUniqueViolation(err: unknown): boolean {
+  const e = err as { code?: unknown; cause?: { code?: unknown } } | null;
+  return e?.code === '23505' || e?.cause?.code === '23505';
 }
 
 /**
@@ -100,12 +198,19 @@ function crossValidate(
   //
   // What the rule is actually protecting against is authoring an encounter
   // nothing can ever reach, so that is what it now checks.
-  if (!input.huntEligible && !input.travelEligible && !chainTargets.has(input.slug)) {
-    issues.push(
-      'Unreachable: not hunt- or travel-eligible, and no other encounter chains into it. ' +
-        'Enable a source, or add a trigger_encounter effect (or chainedEncounterSlug) ' +
-        'pointing at this slug from the encounter that should lead here.',
-    );
+  //
+  // Only for `active`. Draft and disabled encounters never spawn and are
+  // skipped as follow-ups, so their Hunt/Travel flags are inert — requiring
+  // one just to save a half-built chain node made authors tick a box they
+  // did not want. Activation (`setLifecycle`) re-runs the rule, so an
+  // unreachable encounter still cannot go live by either path.
+  if (
+    input.lifecycle === 'active' &&
+    !input.huntEligible &&
+    !input.travelEligible &&
+    !chainTargets.has(input.slug)
+  ) {
+    issues.push(UNREACHABLE_ISSUE);
   }
   return issues;
 }
@@ -176,11 +281,14 @@ export function createWorldEncounterAdminService(
       const row = await repo.loadBySlug(slug);
       return row ? hydrateEncounter(row) : null;
     },
-    async upsert(input) {
+    async upsert(input, opts = {}) {
       const items = await itemSlugs();
       const existing = await existingSlugs();
+      if (opts.createOnly && existing.has(input.slug)) {
+        throw new AdminEncounterSlugTakenError(input.slug);
+      }
       const validated = parseEncounterInput(input, items, existing, await chainTargets());
-      const priorRow = await repo.loadBySlug(validated.slug);
+      const priorRow = opts.createOnly ? null : await repo.loadBySlug(validated.slug);
       const values = {
         slug: validated.slug,
         name: validated.name,
@@ -198,37 +306,51 @@ export function createWorldEncounterAdminService(
         metadata: validated.metadata,
       };
       let id: number;
-      await db.transaction(async (tx) => {
-        if (priorRow) {
-          id = priorRow.encounter.id;
-          await repo.update(tx, id, values);
-        } else {
-          id = await repo.insert(tx, values);
+      try {
+        await db.transaction(async (tx) => {
+          if (priorRow) {
+            id = priorRow.encounter.id;
+            await repo.update(tx, id, values);
+          } else {
+            id = await repo.insert(tx, values);
+          }
+          await repo.replaceChildren(
+            tx,
+            id,
+            validated.regions,
+            validated.routes,
+            validated.choices.map((c, i) => ({
+              sortOrder: i,
+              label: c.label,
+              emoji: c.emoji,
+              requirementsJson: c.requirements as unknown as Record<string, unknown>,
+              checkJson: c.check as unknown as Record<string, unknown>,
+              successEffectsJson: c.successEffects as unknown as Record<string, unknown>[],
+              failureEffectsJson: c.failureEffects as unknown as Record<string, unknown>[],
+              outcomeText: c.outcomeText ?? null,
+              successText: c.successText ?? null,
+              failureText: c.failureText ?? null,
+            })),
+          );
+        });
+      } catch (err) {
+        if (opts.createOnly && isUniqueViolation(err)) {
+          throw new AdminEncounterSlugTakenError(validated.slug);
         }
-        await repo.replaceChildren(
-          tx,
-          id,
-          validated.regions,
-          validated.routes,
-          validated.choices.map((c, i) => ({
-            sortOrder: i,
-            label: c.label,
-            emoji: c.emoji,
-            requirementsJson: c.requirements as unknown as Record<string, unknown>,
-            checkJson: c.check as unknown as Record<string, unknown>,
-            successEffectsJson: c.successEffects as unknown as Record<string, unknown>[],
-            failureEffectsJson: c.failureEffects as unknown as Record<string, unknown>[],
-            outcomeText: c.outcomeText ?? null,
-            successText: c.successText ?? null,
-            failureText: c.failureText ?? null,
-          })),
-        );
-      });
+        throw err;
+      }
       const row = await repo.loadBySlug(validated.slug);
       if (!row) throw new Error('upsert: encounter vanished after write');
       return hydrateEncounter(row);
     },
     async setLifecycle(id, lifecycle) {
+      if (lifecycle === 'active') {
+        const row = await repo.loadById(id);
+        const e = row?.encounter;
+        if (e && !e.huntEligible && !e.travelEligible && !(await chainTargets()).has(e.slug)) {
+          throw new AdminEncounterValidationError([UNREACHABLE_ISSUE]);
+        }
+      }
       await db.transaction((tx) => repo.setLifecycle(tx, id, lifecycle));
     },
     async clone(id, newSlug) {
@@ -267,17 +389,33 @@ export function createWorldEncounterAdminService(
         })),
         metadata: original.metadata,
       });
-      return this.upsert(input);
+      // A clone is a create: a taken slug is refused, never overwritten.
+      return this.upsert(input, { createOnly: true });
     },
     async remove(id) {
-      const hasHistory = await repo.hasHistory(id);
-      if (hasHistory) {
-        return {
-          ok: false,
-          reason: 'This encounter has resolved history — disable instead of deleting.',
-        };
+      const row = await repo.loadById(id);
+      // Deleting what is already gone is a no-op, as it always was.
+      if (!row) return { ok: true };
+      const refusal = async (): Promise<EncounterRemoveResult | null> => {
+        const blockers = await repo.deleteReferences(id, row.encounter.slug);
+        return hasDeleteBlockers(blockers)
+          ? { ok: false, reason: describeDeleteBlockers(blockers), blockers }
+          : null;
+      };
+      const before = await refusal();
+      if (before) return before;
+      try {
+        await db.transaction((tx) => repo.deleteEncounter(tx, id));
+      } catch (err) {
+        // A player can open the encounter between the audit and the DELETE.
+        // The foreign key catches that; re-audit so the refusal names it
+        // rather than surfacing the raw constraint error as a 500.
+        if (isForeignKeyViolation(err)) {
+          const after = await refusal();
+          if (after) return after;
+        }
+        throw err;
       }
-      await db.transaction((tx) => repo.deleteEncounter(tx, id));
       return { ok: true };
     },
   };

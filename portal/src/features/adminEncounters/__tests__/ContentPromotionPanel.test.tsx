@@ -365,6 +365,27 @@ describe('a failed preview is never silent', () => {
     expect(preview).toHaveBeenCalledTimes(2);
   });
 
+  it('refreshes the encounter and vendor lists after a successful apply', async () => {
+    const invalidate = vi.spyOn(QueryClient.prototype, 'invalidateQueries');
+    const user = userEvent.setup();
+    render(<ContentPromotionPanel />, { wrapper: wrapper(PUBLISHER) });
+
+    await user.upload(screen.getByLabelText('Package file'), packageFile());
+    await user.click(screen.getByRole('button', { name: /preview import/i }));
+    // A preview writes nothing, so it refreshes nothing.
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /apply import/i })).toBeEnabled(),
+    );
+    expect(invalidate).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: /apply import/i }));
+    await waitFor(() => expect(invalidate).toHaveBeenCalledTimes(2));
+    expect(invalidate.mock.calls.map((c) => c[0]?.queryKey)).toEqual([
+      ['admin', 'encounters'],
+      ['admin', 'vendors'],
+    ]);
+  });
+
   it('shows a failed apply beside the buttons too', async () => {
     vi.spyOn(adminEncounters, 'applyAdminEncounterImport').mockRejectedValue(
       new PortalApiError({

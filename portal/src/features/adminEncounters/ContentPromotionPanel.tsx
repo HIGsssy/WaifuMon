@@ -23,7 +23,7 @@
  *     encounters on this server are simply untouched.
  */
 import { useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import {
   ENCOUNTER_IMPORT_MAX_BYTES,
@@ -35,6 +35,7 @@ import {
 } from '@/api/adminEncounters';
 import { isPortalApiError } from '@/api/client';
 import { describeIssue } from './waifumonSelection';
+import { VENDORS_QUERY_KEY } from '@/api/adminVendors';
 import { useHasPermission } from '@/auth/useSession';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -107,6 +108,7 @@ export function ContentPromotionPanel({
   // of the card: up there, a rejected preview left the button looking dead.
   const [importError, setImportError] = useState<string | null>(null);
   const [applied, setApplied] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
   const exportMutation = useMutation({
     mutationFn: (slugs: readonly string[]) =>
@@ -136,6 +138,10 @@ export function ContentPromotionPanel({
     onSuccess: (result) => {
       setImportError(null);
       setPlan(result.plan);
+      // Imported encounters and vendors show up everywhere at once — the
+      // list, chains, pickers and the vendor pages — without a reload.
+      void queryClient.invalidateQueries({ queryKey: ['admin', 'encounters'] });
+      void queryClient.invalidateQueries({ queryKey: VENDORS_QUERY_KEY });
       setApplied(
         `Imported: ${result.plan.counts.created} created, ` +
           `${result.plan.counts.updated} updated, ${result.plan.counts.unchanged} unchanged.`,
@@ -258,9 +264,7 @@ export function ContentPromotionPanel({
               // Apply needs a clean plan for *this* file, and the publish
               // permission. An Encounter Editor can prepare a promotion and
               // see exactly what it would do, but not perform it.
-              disabled={
-                !plan || !plan.ok || !canPublish || importBusy || applied !== null
-              }
+              disabled={!plan || !plan.ok || !canPublish || importBusy || applied !== null}
               onClick={() => applyMutation.mutate()}
             >
               {applyMutation.isPending ? 'Importing…' : 'Apply import'}
@@ -295,9 +299,7 @@ export function ContentPromotionPanel({
                 <Badge>{plan.counts.updated} updated</Badge>
                 <Badge>{plan.counts.unchanged} unchanged</Badge>
                 {plan.counts.vendorsCreated + plan.counts.vendorsUpdated > 0 ? (
-                  <Badge>
-                    {plan.counts.vendorsCreated + plan.counts.vendorsUpdated} vendor(s)
-                  </Badge>
+                  <Badge>{plan.counts.vendorsCreated + plan.counts.vendorsUpdated} vendor(s)</Badge>
                 ) : null}
                 {plan.label ? <Badge>from: {plan.label}</Badge> : null}
               </div>

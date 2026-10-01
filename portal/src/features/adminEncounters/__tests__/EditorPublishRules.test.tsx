@@ -150,6 +150,8 @@ async function open(effect: Record<string, unknown>, lifecycle: AdminEncounter['
   const user = userEvent.setup();
   render(<AdminEncounterEditorPage />, { wrapper: Providers });
   await screen.findByText('Edit — Trail End');
+  // The one choice starts collapsed to its summary.
+  await user.click(screen.getByRole('button', { name: 'Edit details' }));
   return user;
 }
 
@@ -172,7 +174,7 @@ describe('Specific Species with no species chosen', () => {
 
   it('cannot Publish', async () => {
     await open(UNCHOSEN, 'active');
-    expect(screen.getByLabelText('Lifecycle')).toHaveValue('active');
+    expect(screen.getByLabelText('Status')).toHaveValue('active');
     expect(saveButton()).toBeDisabled();
     expect(updateSpy).not.toHaveBeenCalled();
   });
@@ -212,7 +214,7 @@ describe('a valid Specific Species', () => {
 
   it('can Publish', async () => {
     const user = await open({ type: T, selection: { mode: 'specific', speciesSlug: 'lilith' } }, 'draft');
-    await user.selectOptions(screen.getByLabelText('Lifecycle'), 'active');
+    await user.selectOptions(screen.getByLabelText('Status'), 'active');
     await user.click(saveButton());
     await waitFor(() => expect(updateSpy).toHaveBeenCalled());
     expect(updateSpy.mock.calls[0]![1].lifecycle).toBe('active');
@@ -239,7 +241,7 @@ describe('a selector with zero candidates in every region', () => {
   it('cannot be published from draft: the active lifecycle is unavailable', async () => {
     await open(DEAD_SELECTOR, 'draft');
     await screen.findByTestId('publish-blockers');
-    const active = screen.getByRole('option', { name: /active/ }) as HTMLOptionElement;
+    const active = screen.getByRole('option', { name: /Active/ }) as HTMLOptionElement;
     expect(active.disabled).toBe(true);
     expect(active.textContent).toContain('(blocked)');
   });

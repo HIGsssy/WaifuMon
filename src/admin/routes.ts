@@ -539,7 +539,13 @@ export function registerRoutes(
     const encounter = await worldEncounters.get(id);
     if (!encounter) return reply.code(404).send({ ok: false, errors: ['Not found'] });
     const next = encounter.lifecycle === 'active' ? 'disabled' : 'active';
-    await worldEncounters.setLifecycle(id, next);
+    try {
+      await worldEncounters.setLifecycle(id, next);
+    } catch (err) {
+      // Activation refuses an unreachable encounter.
+      if (err instanceof AdminEncounterValidationError) return reply.code(400).send(toErrorBody(err));
+      throw err;
+    }
     return reply.send({ ok: true, message: `Encounter ${next}.` });
   });
 

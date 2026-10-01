@@ -292,6 +292,14 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
    * the reward already landed — so it reads as a conflict, not a failure.
    */
   GIFT_ALREADY_CLAIMED: 409,
+  /** Admin: deleting an encounter that has resolved history — disable it instead. */
+  ENCOUNTER_DELETE_UNSAFE: 409,
+  /** Admin: creating (or cloning to) a slug another encounter already has. */
+  ENCOUNTER_SLUG_TAKEN: 409,
+  /** Admin: creating a vendor under a key another vendor already has. */
+  VENDOR_KEY_TAKEN: 409,
+  /** Admin: deleting a vendor that encounters still open. */
+  VENDOR_IN_USE: 409,
 
   // --- Valid shape, business rule refused ---------------------------------
   INSUFFICIENT_FUNDS: 422,
