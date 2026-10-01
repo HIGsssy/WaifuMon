@@ -179,8 +179,9 @@ function statValue(value: number | null): string {
   return value == null ? 'unavailable' : `**${value}**`;
 }
 
-function itemLine(def: EquipmentDefinitionView): string {
-  return `${def.rarity} • ${SLOT_NAME[def.slot]} • ${formatMultiplier(def.multiplierBp)}`;
+/** `N • Attack • ×0.55` — the multiplier is the copy's own roll. */
+function itemLine(def: EquipmentDefinitionView, rolledMultiplierBp: number): string {
+  return `${def.rarity} • ${SLOT_NAME[def.slot]} • ${formatMultiplier(rolledMultiplierBp)}`;
 }
 
 /** ✅ equipped, ⭐ favourite, 🔒 locked — in that order, only those that apply. */
@@ -341,7 +342,7 @@ export function buildSlotScreen(view: SlotView, status?: string | null): Session
   embed.addFields({
     name: 'Currently Equipped',
     value: view.equipped
-      ? `**${view.equipped.definition.name}**\n${stat} ${formatMultiplier(view.equipped.definition.multiplierBp)}\nCurrent ${stat}: ${statValue(view.current)}`
+      ? `**${view.equipped.displayName}**\n${stat} ${formatMultiplier(view.equipped.rolledMultiplierBp)}\nCurrent ${stat}: ${statValue(view.current)}`
       : `Nothing equipped\n${stat} unavailable`,
   });
 
@@ -351,13 +352,15 @@ export function buildSlotScreen(view: SlotView, status?: string | null): Session
     embed.addFields({ name: 'Choose Equipment', value: `No other ${SLOT_NAME[slot]} Gear in your bag.` });
   } else {
     for (const c of candidates) {
-      const def = c.group.definition;
       const count = c.group.count > 1 ? ` ×${c.group.count}` : '';
       const would =
         c.preview.value != null
           ? `\nWould give: **${c.preview.value} ${stat}**${c.preview.delta != null ? ` (${formatDelta(c.preview.delta)})` : ''}`
           : '';
-      embed.addFields({ name: `${def.name}${count}`, value: `${stat} ${formatMultiplier(def.multiplierBp)}${would}` });
+      embed.addFields({
+        name: `${c.group.displayName}${count}`,
+        value: `${stat} ${formatMultiplier(c.group.rolledMultiplierBp)}${would}`,
+      });
     }
     const select = new StringSelectMenuBuilder()
       .setCustomId(eqId.pick(ctx))
@@ -368,8 +371,8 @@ export function buildSlotScreen(view: SlotView, status?: string | null): Session
           const value = c.preview.value != null ? ` · ${c.preview.value} ${stat}` : '';
           const delta = c.preview.delta != null ? ` (${formatDelta(c.preview.delta)})` : '';
           return {
-            label: `${def.name}${c.group.count > 1 ? ` ×${c.group.count}` : ''}`.slice(0, 100),
-            description: `${def.rarity} • ${stat} ${formatMultiplier(def.multiplierBp)}${value}${delta}`.slice(0, 100),
+            label: `${c.group.displayName}${c.group.count > 1 ? ` ×${c.group.count}` : ''}`.slice(0, 100),
+            description: `${def.rarity} • ${stat} ${formatMultiplier(c.group.rolledMultiplierBp)}${value}${delta}`.slice(0, 100),
             value: String(c.equipmentId),
           };
         }),
@@ -415,7 +418,7 @@ export function buildGearBag(view: BagView, status?: string | null): SessionPayl
         .map(({ group }) => {
           const { marks, partial } = groupMarks(group);
           return (
-            `${marks ? `${marks} ` : ''}**${group.definition.name}** ×${group.count}\n${itemLine(group.definition)}` +
+            `${marks ? `${marks} ` : ''}**${group.displayName}** ×${group.count}\n${itemLine(group.definition, group.rolledMultiplierBp)}` +
             (partial ? `\n${partial}` : '')
           );
         })
@@ -428,8 +431,8 @@ export function buildGearBag(view: BagView, status?: string | null): SessionPayl
           .setPlaceholder('Open an item…')
           .addOptions(
             entries.items.map(({ group, focusId }) => ({
-              label: `${group.definition.name} ×${group.count}`.slice(0, 100),
-              description: `${itemLine(group.definition)}${equippedNote(group)}`.slice(0, 100),
+              label: `${group.displayName} ×${group.count}`.slice(0, 100),
+              description: `${itemLine(group.definition, group.rolledMultiplierBp)}${equippedNote(group)}`.slice(0, 100),
               value: String(focusId),
             })),
           ),
@@ -464,10 +467,10 @@ export function buildItemDetail(view: ItemView, ctx: EquipmentContext, status?: 
     instance.isLocked ? '🔒 Locked' : '',
   ].filter(Boolean);
   const embed = new EmbedBuilder()
-    .setTitle(`${SLOT_EMOJI[slot]} ${def.name}`)
+    .setTitle(`${SLOT_EMOJI[slot]} ${instance.displayName}`)
     .setColor(COLOR)
     .setDescription(
-      [`${def.rarity} ${SLOT_NAME[slot]} Equipment`, `${stat} ${formatMultiplier(def.multiplierBp)}`, def.description ? `*${def.description}*` : '']
+      [`${def.rarity} ${SLOT_NAME[slot]} Equipment`, `${stat} ${formatMultiplier(instance.rolledMultiplierBp)}`, def.description ? `*${def.description}*` : '']
         .filter(Boolean)
         .join('\n'),
     );
@@ -535,7 +538,7 @@ export function buildItemDetail(view: ItemView, ctx: EquipmentContext, status?: 
 // ── outcome lines ─────────────────────────────────────────────────────────
 
 export function equipStatus(outcome: SlotChangeOutcome): string {
-  const name = outcome.item?.definition.name ?? 'that item';
+  const name = outcome.item?.displayName ?? 'that item';
   if (!outcome.changed) return `**${name}** is already equipped.`;
   // Without a Buddy there is no stat on either side: say what happened, not "— → —".
   if (outcome.before == null && outcome.after == null) return `✅ Equipped **${name}**.`;

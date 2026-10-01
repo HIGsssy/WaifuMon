@@ -43,6 +43,8 @@ import { createEncounterPromotionService } from './modules/worldEncounters/encou
 import { seedWorldEncounters } from './modules/worldEncounters/seed';
 import { createFeatureUnlockService } from './modules/features/featureUnlockService';
 import { createEquipmentService } from './modules/equipment/equipmentService';
+import { buildAffixCatalogue } from './modules/equipment/affixCatalogue';
+import { readUnknownAffixKeys } from './modules/equipment/equipmentQueries';
 import { createEquipmentDefinitionService } from './modules/equipment/equipmentDefinitionService';
 import { createCombatStatsService } from './modules/equipment/combatStatsService';
 import { createEquipmentManagementService } from './modules/equipment/equipmentManagementService';
@@ -299,12 +301,37 @@ async function main(): Promise<void> {
    * self-healing read and follows `maxLevel` through the live content getter.
    */
   const featureUnlocks = createFeatureUnlockService(db);
-  const equipment = createEquipmentService({ db, featureUnlocks });
+  // The affix catalogue follows content reloads; rebuilt only when the
+  // snapshot's list actually changes, not on every read.
+  // An owned item naming an affix the catalogue no longer has (deleted rather
+  // than retired) renders "[Unknown Affix]" and is logged — once per key per
+  // catalogue, so a busy Gear Bag cannot flood the log.
+  let affixSource: typeof contentSnapshot.equipmentAffixes | null = null;
+  let affixCatalogue = buildAffixCatalogue([]);
+  const getAffixes = () => {
+    if (contentSnapshot.equipmentAffixes !== affixSource) {
+      affixSource = contentSnapshot.equipmentAffixes;
+      const reported = new Set<string>();
+      affixCatalogue = buildAffixCatalogue(affixSource ?? [], {
+        onUnknownKey: (affixKey) => {
+          if (reported.has(affixKey)) return;
+          reported.add(affixKey);
+          logger.error(
+            { tag: 'equipment/unknown-affix', affixKey },
+            'owned equipment names an affix missing from content/equipment/affixes.json — restore it (disable, never delete)',
+          );
+        },
+      });
+    }
+    return affixCatalogue;
+  };
+  const equipment = createEquipmentService({ db, featureUnlocks, getAffixes });
   const equipmentDefinitions = createEquipmentDefinitionService(db);
   const combatStats = createCombatStatsService({
     db,
     resolveActiveBuddy: (tx, playerId) => collection.resolveActiveBuddy(tx, playerId),
     getMaxLevel: () => contentSnapshot.tables.waifuProgression.maxLevel,
+    getAffixes,
   });
   const equipmentPromotion = createEquipmentPromotionService({ db });
   /**
@@ -625,6 +652,19 @@ async function main(): Promise<void> {
     }
   } catch (err) {
     logger.warn({ err }, 'equipment seed failed — equipment will run with whatever is in the DB');
+  }
+  try {
+    // Affixes are file-backed, so nothing stops a deploy deleting one that
+    // players own. Say so loudly at startup rather than on first render.
+    const unknownAffixes = await readUnknownAffixKeys(db, getAffixes());
+    if (unknownAffixes.length > 0) {
+      logger.error(
+        { tag: 'equipment/unknown-affix', unknownAffixes },
+        'owned equipment references affixes missing from the catalogue — they render as [Unknown Affix]',
+      );
+    }
+  } catch (err) {
+    logger.warn({ err }, 'equipment affix reference check failed');
   }
   try {
     const readiness = await equipmentOnboarding.isReady();

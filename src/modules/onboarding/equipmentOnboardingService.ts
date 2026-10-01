@@ -20,6 +20,9 @@
  *  - The three hand-over steps each grant one starter, in their own
  *    transaction, with `allowDisabled` — the onboarding is an entitlement, not
  *    a drop, so retiring a starter from other sources never strands a player.
+ *    Each is a **fixed** grant (`STARTER_ROLLS`): the starters' multipliers are
+ *    the same for everyone and nothing here depends on RNG. A replayed grant
+ *    reads the original copy back, roll included.
  *  - Completion is one transaction: re-ensure the three grants, require a
  *    Buddy, unlock, then fill only the **empty** slots with the starters. No
  *    loadout is ever written before the unlock exists.
@@ -39,6 +42,7 @@ import type { EquipmentOnboardingContent, NpcContent } from '../content/onboardi
 import type { CombatStatsService } from '../equipment/combatStatsService';
 import type { CombatStats } from '../equipment/equipmentMath';
 import { toDefinitionView, type EquipmentDefinitionView } from '../equipment/equipmentQueries';
+import { isMultiplierInRange } from '../equipment/equipmentRoll';
 import type {
   EquipmentService,
   GrantKeyRecord,
@@ -56,6 +60,7 @@ import {
   EQUIPMENT_ONBOARDING_FLOW,
   EQUIPMENT_ONBOARDING_SOURCE_REF,
   STARTER_EQUIPMENT,
+  STARTER_ROLLS,
   STARTER_SLOTS,
   onboardingGrantKey,
   slotOfStep,
@@ -69,6 +74,10 @@ import {
 export interface StarterItemView {
   slot: EquipmentSlot;
   definition: EquipmentDefinitionView;
+  /** The fixed multiplier this starter is (or will be) granted with. */
+  multiplierBp: number;
+  /** The starter's name as granted — starters are unaffixed, so the base name. */
+  displayName: string;
 }
 
 export type UnavailableReason = 'disabled' | 'not_eligible' | 'not_ready';
@@ -100,6 +109,12 @@ export interface EquipmentOnboardingSnapshot {
 export interface OnboardingReadiness {
   ready: boolean;
   missingDefinitions: string[];
+  /**
+   * Starters whose definition's range no longer contains the fixed
+   * `STARTER_ROLLS` value (an admin retuned it). Their grant would be refused,
+   * so the flow is not ready rather than failing half-way through.
+   */
+  invalidStarterRolls: string[];
   contentMissing: boolean;
 }
 
@@ -173,8 +188,17 @@ export function createEquipmentOnboardingService(
   async function isReady(tx: DbOrTx = db): Promise<OnboardingReadiness> {
     const found = await readStarterDefinitions(tx);
     const missingDefinitions = STARTER_KEYS.filter((key) => !found.has(key));
+    const invalidStarterRolls = STARTER_SLOTS.filter((slot) => {
+      const definition = found.get(STARTER_EQUIPMENT[slot]);
+      return definition != null && !isMultiplierInRange(definition, STARTER_ROLLS[slot].rolledMultiplierBp);
+    }).map((slot) => STARTER_EQUIPMENT[slot]);
     const contentMissing = content() === null;
-    return { ready: missingDefinitions.length === 0 && !contentMissing, missingDefinitions, contentMissing };
+    return {
+      ready: missingDefinitions.length === 0 && invalidStarterRolls.length === 0 && !contentMissing,
+      missingDefinitions,
+      invalidStarterRolls,
+      contentMissing,
+    };
   }
 
   async function readStarters(tx: DbOrTx, playerId: number): Promise<Record<EquipmentSlot, GrantKeyRecord | null>> {
@@ -209,7 +233,7 @@ export function createEquipmentOnboardingService(
     if (state.phase === 'eligible_unavailable' && deps.isEnabled() && !readiness.ready) {
       deps.logger?.warn(
         { tag: 'equipment-onboarding/not-ready', playerId, ...readiness },
-        'equipment onboarding is enabled but not ready — starter definitions or narrative missing',
+        'equipment onboarding is enabled but not ready — starter definitions missing or out of range, or narrative missing',
       );
     }
     return { state, entry: equipmentEntryState(state), level, unlocked, starters };
@@ -242,7 +266,16 @@ export function createEquipmentOnboardingService(
     if (slot) {
       const definition = (await readStarterDefinitions(db)).get(STARTER_EQUIPMENT[slot]);
       if (!definition) return { kind: 'unavailable', reason: 'not_ready' };
-      return { kind: 'handover', step: slot, item: { slot, definition } };
+      return {
+        kind: 'handover',
+        step: slot,
+        item: {
+          slot,
+          definition,
+          multiplierBp: STARTER_ROLLS[slot].rolledMultiplierBp,
+          displayName: definition.name,
+        },
+      };
     }
     if (step === 'explain') {
       const stats = await combatStats.calculateCombatStats(playerId, {
@@ -258,17 +291,21 @@ export function createEquipmentOnboardingService(
     return { kind: 'overview', stats: await combatStats.calculateCombatStats(playerId) };
   }
 
+  /** One starter's grant — identical on every call, so retries are no-ops. */
+  function starterGrant(playerId: number, slot: EquipmentSlot) {
+    return {
+      playerId,
+      definitionKey: STARTER_EQUIPMENT[slot],
+      quantity: 1,
+      source: { type: 'onboarding' as const, key: EQUIPMENT_ONBOARDING_FLOW },
+      grantKey: onboardingGrantKey(playerId, slot),
+      allowDisabled: true,
+      roll: { kind: 'fixed' as const, ...STARTER_ROLLS[slot] },
+    };
+  }
+
   async function grantStarter(playerId: number, slot: EquipmentSlot): Promise<void> {
-    await db.transaction((tx) =>
-      equipment.grantEquipment(tx, {
-        playerId,
-        definitionKey: STARTER_EQUIPMENT[slot],
-        quantity: 1,
-        source: { type: 'onboarding', key: EQUIPMENT_ONBOARDING_FLOW },
-        grantKey: onboardingGrantKey(playerId, slot),
-        allowDisabled: true,
-      }),
-    );
+    await db.transaction((tx) => equipment.grantEquipment(tx, starterGrant(playerId, slot)));
   }
 
   async function open(playerId: number): Promise<EquipmentOnboardingView> {
@@ -295,14 +332,7 @@ export function createEquipmentOnboardingService(
       // 2. Re-ensure the three grants. Idempotent through their fixed keys;
       //    this only ever creates something if a grant is somehow missing.
       for (const slot of STARTER_SLOTS) {
-        await equipment.grantEquipment(tx, {
-          playerId,
-          definitionKey: STARTER_EQUIPMENT[slot],
-          quantity: 1,
-          source: { type: 'onboarding', key: EQUIPMENT_ONBOARDING_FLOW },
-          grantKey: onboardingGrantKey(playerId, slot),
-          allowDisabled: true,
-        });
+        await equipment.grantEquipment(tx, starterGrant(playerId, slot));
       }
 
       // 3. A Buddy is required to finish. Stop before unlocking or equipping.

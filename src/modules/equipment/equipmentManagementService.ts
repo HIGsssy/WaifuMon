@@ -40,6 +40,7 @@ export interface HomeView {
 
 /** One equipped item as a summary shows it: display data only. */
 export interface EquipmentSummarySlot {
+  /** The instance's display name, affix included. */
   name: string;
   rarity: string;
 }
@@ -100,9 +101,12 @@ export interface BagView {
 
 export interface ItemView {
   instance: EquipmentInstanceView;
-  /** Every copy of this definition the player holds (the item included). */
+  /**
+   * Every identical copy the player holds — same definition, roll and affix —
+   * the item included. A differently rolled copy is not "another copy".
+   */
   copies: number[];
-  /** Copies of this definition equipped right now (0 or 1 in V1). */
+  /** Of those, how many are equipped right now (0 or 1 in V1). */
   equippedCopies: number;
   /** What the item's slot holds now, or null. */
   slotEquipped: EquipmentInstanceView | null;
@@ -145,6 +149,15 @@ export interface EquipmentManagementDeps {
   >;
   combatStats: Pick<CombatStatsService, 'calculateCombatStats' | 'previewSlot'>;
   featureUnlocks: Pick<FeatureUnlockService, 'isUnlocked'>;
+}
+
+/** Whether an instance is a copy of a group: the same definition, roll and affix. */
+function isSameLoot(group: EquipmentGroup, instance: EquipmentInstanceView): boolean {
+  return (
+    group.definition.key === instance.definition.key &&
+    group.rolledMultiplierBp === instance.rolledMultiplierBp &&
+    group.affixKey === instance.affixKey
+  );
 }
 
 const SLOT_STAT: Readonly<Record<EquipmentSlot, keyof CombatStats['stats']>> = {
@@ -197,9 +210,11 @@ export function createEquipmentManagementService(deps: EquipmentManagementDeps):
       const loadout = await equipment.getActiveLoadout(playerId);
       const equipped = loadout.slots[slot];
       const groups = await equipment.listEquipmentGroups(playerId, { slot, sort: 'multiplier' });
-      // Another copy of what is already equipped would change nothing.
+      // Another copy identical to what is already equipped would change
+      // nothing. A copy of the same definition with a different roll or affix
+      // is different loot, and stays a candidate.
       const options = groups
-        .filter((g) => g.definition.key !== equipped?.definition.key)
+        .filter((g) => !(equipped && isSameLoot(g, equipped)))
         .map((group) => ({ group, equipmentId: group.representativeId }));
       const paged = paginate(options, page, SLOT_PAGE_SIZE);
       const preview = await combatStats.previewSlot(
@@ -244,7 +259,8 @@ export function createEquipmentManagementService(deps: EquipmentManagementDeps):
         equipment.getActiveLoadout(playerId),
         combatStats.previewSlot(playerId, instance.slot, [instance.id]),
       ]);
-      const group = groups[0];
+      // The group this exact copy belongs to — same definition, roll and affix.
+      const group = groups.find((g) => g.instanceIds.includes(instance.id));
       return {
         instance,
         copies: group?.instanceIds ?? [instance.id],

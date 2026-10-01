@@ -152,10 +152,14 @@ describe('0045 on a server at 0044', () => {
 
   it('works for an existing player straight away', async () => {
     const { rows: d } = await pool.query(
-      `insert into equipment_definitions (key, name, slot, rarity, attack_bp) values ('training_ring', 'Training Ring', 'attack', 'N', 5000) returning id`,
+      // The shape at the head of the journal (0046 replaced the fixed
+      // multiplier columns with a range and an instance roll).
+      `insert into equipment_definitions (key, name, slot, rarity, multiplier_min_bp, multiplier_max_bp, multiplier_step_bp)
+       values ('training_ring', 'Training Ring', 'attack', 'N', 5000, 5000, 100) returning id`,
     );
     const { rows: e } = await pool.query(
-      `insert into player_equipment (player_id, definition_id, slot, source_type) values ($1, $2, 'attack', 'admin') returning id`,
+      `insert into player_equipment (player_id, definition_id, slot, rolled_multiplier_bp, source_type)
+       values ($1, $2, 'attack', 5000, 'admin') returning id`,
       [playerId, d[0].id],
     );
     const { rows: l } = await pool.query(

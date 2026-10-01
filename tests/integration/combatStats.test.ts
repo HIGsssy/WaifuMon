@@ -47,6 +47,7 @@ beforeAll(async () => {
     db: t.db,
     resolveActiveBuddy: (tx, playerId) => app.collection.resolveActiveBuddy(tx, playerId),
     getMaxLevel: () => app.content.tables.waifuProgression.maxLevel,
+    getAffixes: svc.getAffixes,
   });
   await defineGear(svc, 'attack', 'attack2', 'defense', 'health');
   const [row] = await t.db.select().from(speciesTable).where(eq(speciesTable.enabled, true)).limit(1);

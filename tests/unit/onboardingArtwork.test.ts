@@ -96,7 +96,7 @@ function embedJson(p: Payload) {
 }
 
 const item = (equipmentId: number, definitionKey: string, name: string, multiplierBp: number): CombatSlotItem => ({
-  equipmentId, definitionKey, name, rarity: 'N', multiplierBp, rolledProperties: {},
+  equipmentId, definitionKey, name, definitionName: name, affixKey: null, rarity: 'N', multiplierBp, rolledProperties: {},
 });
 const STATS = assembleCombatStats({
   buddy: { waifuId: 9, speciesSlug: 'warband_princess', name: 'Warband Princess', level: 30, baseSp: 200, currentSp: 280 },
@@ -115,9 +115,11 @@ function handover(step: 'attack' | 'defense' | 'health', artworkPath: string | n
       slot: step,
       definition: {
         key: 'k', name: 'Thing', description: '', slot: step, rarity: 'N',
-        attackBp: 0, defenseBp: 0, healthBp: 0, multiplierBp: 4500,
+        multiplierMinBp: 4500, multiplierMaxBp: 4500, multiplierStepBp: 100,
         tags: [], regionId: null, artworkPath, enabled: true,
       },
+      multiplierBp: 4500,
+      displayName: 'Thing',
     },
   } as EquipmentOnboardingView;
 }
@@ -178,7 +180,15 @@ describe('onboarding step artwork', () => {
 });
 
 describe('Equipment definition artwork paths', () => {
-  const base = { key: 'rusty_pipe', name: 'Rusty Pipe', slot: 'attack', rarity: 'N', attackBp: 4500 };
+  const base = {
+    key: 'rusty_pipe',
+    name: 'Rusty Pipe',
+    slot: 'attack',
+    rarity: 'N',
+    multiplierMinBp: 4000,
+    multiplierMaxBp: 6000,
+    multiplierStepBp: 500,
+  };
 
   it('accepts assets under equipment/', () => {
     for (const artworkPath of ['equipment/rusty_pipe.webp', 'equipment/scrap_plate.png', 'equipment/dented_lunchbox.webp']) {

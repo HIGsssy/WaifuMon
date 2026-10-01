@@ -73,25 +73,6 @@ export function deriveStat(currentSp: number, multiplierBp: number): number {
   return remainder * 2 >= BASIS_POINTS ? quotient + 1 : quotient;
 }
 
-/** The multiplier a definition applies to its own slot's stat. */
-export function ownSlotMultiplierBp(definition: {
-  slot: EquipmentSlot | string;
-  attackBp: number;
-  defenseBp: number;
-  healthBp: number;
-}): number {
-  switch (definition.slot) {
-    case 'attack':
-      return definition.attackBp;
-    case 'defense':
-      return definition.defenseBp;
-    case 'health':
-      return definition.healthBp;
-    default:
-      throw new RangeError(`Unknown equipment slot "${definition.slot}"`);
-  }
-}
-
 // ── The CombatStats shape ─────────────────────────────────────────────────
 
 /** The Buddy whose Current SP the stats are derived from. */
@@ -109,9 +90,16 @@ export interface CombatBuddy {
 export interface CombatSlotItem {
   equipmentId: number;
   definitionKey: string;
+  /** The display name — base name plus affix suffix (`equipmentDisplayName`). */
   name: string;
+  /** The definition's base name, without any affix. */
+  definitionName: string;
+  affixKey: string | null;
   rarity: string;
-  /** The multiplier this item applies to its slot's stat. */
+  /**
+   * The multiplier this item applies to its slot's stat: the instance's own
+   * `rolled_multiplier_bp`, never anything read from the definition.
+   */
   multiplierBp: number;
   rolledProperties: Record<string, unknown>;
 }

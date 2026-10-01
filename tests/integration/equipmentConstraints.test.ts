@@ -131,8 +131,8 @@ describe('player_equipment', () => {
     const { rows } = await q(`select definition_id from player_equipment where id = $1`, [aliceAttack]);
     await expectPgError(
       q(
-        `insert into player_equipment (player_id, definition_id, slot, source_type, grant_key)
-         values ($1, $2, 'attack', 'admin', 'dup-test:0')`,
+        `insert into player_equipment (player_id, definition_id, slot, rolled_multiplier_bp, source_type, grant_key)
+         values ($1, $2, 'attack', 5000, 'admin', 'dup-test:0')`,
         [bob, rows[0].definition_id],
       ),
       UNIQUE,
@@ -143,11 +143,44 @@ describe('player_equipment', () => {
     const { rows } = await q(`select definition_id from player_equipment where id = $1`, [aliceAttack]);
     await expectPgError(
       q(
-        `insert into player_equipment (player_id, definition_id, slot, source_type) values ($1, $2, 'attack', 'lootbox')`,
+        `insert into player_equipment (player_id, definition_id, slot, rolled_multiplier_bp, source_type) values ($1, $2, 'attack', 5000, 'lootbox')`,
         [alice, rows[0].definition_id],
       ),
       CHECK,
     );
+  });
+
+  describe('rolled properties', () => {
+    const insertRoll = async (slot: string, bp: unknown, affix: unknown = null) => {
+      const { rows } = await q(`select definition_id from player_equipment where id = $1`, [aliceAttack]);
+      return q(
+        `insert into player_equipment (player_id, definition_id, slot, rolled_multiplier_bp, affix_key, source_type)
+         values ($1, $2, $3, $4, $5, 'admin')`,
+        [alice, rows[0].definition_id, slot, bp, affix],
+      );
+    };
+
+    it('requires a rolled multiplier on every instance', async () => {
+      const { rows } = await q(`select definition_id from player_equipment where id = $1`, [aliceAttack]);
+      await expectPgError(
+        q(
+          `insert into player_equipment (player_id, definition_id, slot, source_type) values ($1, $2, 'attack', 'admin')`,
+          [alice, rows[0].definition_id],
+        ),
+        '23502',
+      );
+    });
+
+    it('refuses a zero, negative or over-ceiling roll', async () => {
+      await expectPgError(insertRoll('attack', 0), CHECK);
+      await expectPgError(insertRoll('attack', -5), CHECK);
+      await expectPgError(insertRoll('attack', 20_001), CHECK);
+    });
+
+    it('refuses an affix key that is not a key', async () => {
+      await expectPgError(insertRoll('attack', 5_000, 'Of Doom'), CHECK);
+      await expectPgError(insertRoll('attack', 5_000, ''), CHECK);
+    });
   });
 
   it('refuses a removal without a reason', async () => {
@@ -160,32 +193,39 @@ describe('equipment_definitions', () => {
     await expectPgError(q(`delete from equipment_definitions where key = 'training_ring'`), FK);
   });
 
-  it('refuses a definition that does not affect its own stat', async () => {
-    await expectPgError(
-      q(`insert into equipment_definitions (key, name, slot, rarity, attack_bp) values ('bad', 'Bad', 'defense', 'N', 5000)`),
-      CHECK,
-    );
+  const def = (key: string, slot: string, min: number, max: number, step: number) =>
+    q(`insert into equipment_definitions (key, name, slot, rarity, multiplier_min_bp, multiplier_max_bp, multiplier_step_bp) values ($1, 'X', $2, 'N', $3, $4, $5)`, [key, slot, min, max, step]);
+
+  it('accepts a valid range', async () => {
+    await def('ok_range', 'attack', 4_000, 6_000, 500);
   });
 
-  it('refuses multipliers over the ceiling', async () => {
-    await expectPgError(
-      q(`insert into equipment_definitions (key, name, slot, rarity, attack_bp) values ('huge', 'Huge', 'attack', 'N', 20001)`),
-      CHECK,
-    );
+  it('refuses an invalid range: min <= 0, max < min, step <= 0, or a step that does not divide it', async () => {
+    await expectPgError(def('bad1', 'attack', 0, 5_000, 500), CHECK);
+    await expectPgError(def('bad2', 'attack', 6_000, 4_000, 500), CHECK);
+    await expectPgError(def('bad3', 'attack', 4_000, 6_000, 0), CHECK);
+    await expectPgError(def('bad4', 'attack', 4_000, 6_000, -500), CHECK);
+    await expectPgError(def('bad5', 'attack', 4_000, 6_000, 300), CHECK);
+  });
+
+  it('refuses a range over its slot\'s ceiling', async () => {
+    await expectPgError(def('huge', 'attack', 4_000, 20_500, 500), CHECK);
+    await def('big_hp', 'health', 40_000, 80_000, 10_000);
+    await expectPgError(def('huge_hp', 'health', 40_000, 90_000, 10_000), CHECK);
   });
 
   it('refuses an unknown slot, rarity or region', async () => {
     await expectPgError(
-      q(`insert into equipment_definitions (key, name, slot, rarity, attack_bp) values ('r1', 'R', 'relic', 'N', 1)`),
+      q(`insert into equipment_definitions (key, name, slot, rarity, multiplier_min_bp, multiplier_max_bp, multiplier_step_bp) values ('r1', 'R', 'relic', 'N', 1, 1, 1)`),
       CHECK,
     );
     await expectPgError(
-      q(`insert into equipment_definitions (key, name, slot, rarity, attack_bp) values ('r2', 'R', 'attack', 'Z', 1)`),
+      q(`insert into equipment_definitions (key, name, slot, rarity, multiplier_min_bp, multiplier_max_bp, multiplier_step_bp) values ('r2', 'R', 'attack', 'Z', 1, 1, 1)`),
       CHECK,
     );
     await expectPgError(
       q(
-        `insert into equipment_definitions (key, name, slot, rarity, attack_bp, region_id) values ('r3', 'R', 'attack', 'N', 1, 'narnia')`,
+        `insert into equipment_definitions (key, name, slot, rarity, multiplier_min_bp, multiplier_max_bp, multiplier_step_bp, region_id) values ('r3', 'R', 'attack', 'N', 1, 1, 1, 'narnia')`,
       ),
       CHECK,
     );
@@ -193,7 +233,7 @@ describe('equipment_definitions', () => {
 
   it('refuses a duplicate key', async () => {
     await expectPgError(
-      q(`insert into equipment_definitions (key, name, slot, rarity, attack_bp) values ('training_ring', 'X', 'attack', 'N', 1)`),
+      q(`insert into equipment_definitions (key, name, slot, rarity, multiplier_min_bp, multiplier_max_bp, multiplier_step_bp) values ('training_ring', 'X', 'attack', 'N', 1, 1, 1)`),
       UNIQUE,
     );
   });

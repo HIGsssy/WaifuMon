@@ -37,6 +37,7 @@ import {
   type UnloadedSpecies,
 } from './schemas';
 import { EquipmentOnboardingContentSchema, NpcsFileSchema } from './onboardingSchemas';
+import { EQUIPMENT_AFFIX_FILE, EquipmentAffixFileSchema } from '../equipment/affixCatalogue';
 
 function formatZodError(file: string, err: ZodError): string {
   const details = err.issues
@@ -1150,6 +1151,14 @@ export function readContentFiles(contentDir: string): LoadedContent {
     ? parseJsonFile(equipmentOnboardingPath, EquipmentOnboardingContentSchema)
     : null;
 
+  // The Equipment affix catalogue. Optional on disk: without it random
+  // Equipment grants are refused (no pool has an affix). A file that is
+  // present is validated as strictly as any other.
+  const equipmentAffixesPath = path.join(contentDir, ...EQUIPMENT_AFFIX_FILE.split('/'));
+  const equipmentAffixes = fs.existsSync(equipmentAffixesPath)
+    ? parseJsonFile(equipmentAffixesPath, EquipmentAffixFileSchema).affixes
+    : [];
+
   return {
     items: itemsFile.items,
     species: allSpecies,
@@ -1164,6 +1173,7 @@ export function readContentFiles(contentDir: string): LoadedContent {
     authoring: { species: allSpecies, unloadedSpecies, artworkDiagnostics: [] },
     npcs,
     onboarding: { equipment: equipmentOnboarding },
+    equipmentAffixes,
   };
 }
 

@@ -7,7 +7,8 @@ import { sql } from 'drizzle-orm';
 import { REGION_SQL_LIST } from '../modules/locations/regions';
 import {
   EQUIPMENT_EVENT_KIND_SQL_LIST,
-  EQUIPMENT_MULTIPLIER_BP_MAX,
+  EQUIPMENT_KEY_PATTERN,
+  EQUIPMENT_MULTIPLIER_CAP_SQL,
   EQUIPMENT_SLOT_SQL_LIST,
   EQUIPMENT_SOURCE_TYPE_SQL_LIST,
 } from '../modules/equipment/vocabulary';
@@ -2426,15 +2427,22 @@ export const equipmentDefinitions = pgTable(
     /** Waifumon rarity codes; V1 authoring admits N–UR only (see vocabulary). */
     rarity: text('rarity').notNull(),
     /**
-     * Stat multipliers in **basis points** — 8000 = ×0.80, 32000 = ×3.20.
+     * The range an instance's multiplier is rolled from, in **basis points**
+     * (8000 = ×0.80, 32000 = ×3.20): one of `min, min+step, …, max`. The
+     * multiplier always applies to the definition's own slot's stat — there is
+     * exactly one, so a definition cannot carry a multiplier for another slot.
+     *
      * Integers, never floats, for the reason `seductivePower.ts` records: the
      * errors in binary fractions land exactly where rounding decides between
-     * two integers a player can see. V1 requires the definition's own slot's
-     * multiplier to be positive and the other two to be zero.
+     * two integers a player can see.
+     *
+     * Authoring input, not combat input: an owned instance stores the value it
+     * rolled (`player_equipment.rolled_multiplier_bp`) and combat reads only
+     * that, so retuning a range never changes gear a player already has.
      */
-    attackBp: integer('attack_bp').notNull().default(0),
-    defenseBp: integer('defense_bp').notNull().default(0),
-    healthBp: integer('health_bp').notNull().default(0),
+    multiplierMinBp: integer('multiplier_min_bp').notNull(),
+    multiplierMaxBp: integer('multiplier_max_bp').notNull(),
+    multiplierStepBp: integer('multiplier_step_bp').notNull(),
     /**
      * Reserved for the data-driven effect system (`{ effectId, value,
      * qualifiers }`). V1 validation requires an empty array, so no inert
@@ -2474,16 +2482,14 @@ export const equipmentDefinitions = pgTable(
     check('equipment_definitions_slot_check', sql`${t.slot} in (${sql.raw(EQUIPMENT_SLOT_SQL_LIST)})`),
     check('equipment_definitions_rarity_check', sql`${t.rarity} in (${sql.raw(RARITY_SQL_LIST)})`),
     check(
-      'equipment_definitions_multipliers_check',
-      sql`${t.attackBp} >= 0 and ${t.defenseBp} >= 0 and ${t.healthBp} >= 0`,
+      'equipment_definitions_multiplier_range_check',
+      // The CASE guards the modulo: AND does not short-circuit in SQL, so a
+      // zero step must fail the check rather than raise division by zero.
+      sql`${t.multiplierMinBp} > 0 and ${t.multiplierMaxBp} >= ${t.multiplierMinBp} and (case when ${t.multiplierStepBp} > 0 then (${t.multiplierMaxBp} - ${t.multiplierMinBp}) % ${t.multiplierStepBp} = 0 else false end)`,
     ),
     check(
-      'equipment_definitions_bounds_check',
-      sql`${t.attackBp} <= ${sql.raw(String(EQUIPMENT_MULTIPLIER_BP_MAX.attack))} and ${t.defenseBp} <= ${sql.raw(String(EQUIPMENT_MULTIPLIER_BP_MAX.defense))} and ${t.healthBp} <= ${sql.raw(String(EQUIPMENT_MULTIPLIER_BP_MAX.health))}`,
-    ),
-    check(
-      'equipment_definitions_own_stat_check',
-      sql`(${t.slot} = 'attack' and ${t.attackBp} > 0) or (${t.slot} = 'defense' and ${t.defenseBp} > 0) or (${t.slot} = 'health' and ${t.healthBp} > 0)`,
+      'equipment_definitions_multiplier_bounds_check',
+      sql`${t.multiplierMaxBp} <= ${sql.raw(EQUIPMENT_MULTIPLIER_CAP_SQL)}`,
     ),
     check(
       'equipment_definitions_region_check',
@@ -2512,7 +2518,20 @@ export const playerEquipment = pgTable(
      * so the slot table's composite foreign key can prove slot compatibility.
      */
     slot: text('slot').notNull(),
-    /** Empty in V1; reserved for generated/rolled equipment. */
+    /**
+     * The multiplier this instance applies to its slot's stat, in basis
+     * points — **the** authoritative combat value. Rolled once at grant from
+     * the definition's range (or dictated by a fixed grant) and never
+     * recalculated: editing the definition's range changes future drops only.
+     */
+    rolledMultiplierBp: integer('rolled_multiplier_bp').notNull(),
+    /**
+     * Flavour suffix, by key into `content/equipment/affixes.json`; null for an
+     * unaffixed copy. The display name is derived from it on read, never
+     * stored. Flavour only — nothing in combat reads it.
+     */
+    affixKey: text('affix_key'),
+    /** Empty in V1; reserved for future rolled properties beyond the two above. */
     rolledProperties: jsonb('rolled_properties')
       .$type<Record<string, unknown>>()
       .notNull()
@@ -2552,6 +2571,14 @@ export const playerEquipment = pgTable(
     check(
       'player_equipment_source_type_check',
       sql`${t.sourceType} in (${sql.raw(EQUIPMENT_SOURCE_TYPE_SQL_LIST)})`,
+    ),
+    check(
+      'player_equipment_rolled_multiplier_check',
+      sql`${t.rolledMultiplierBp} > 0 and ${t.rolledMultiplierBp} <= ${sql.raw(EQUIPMENT_MULTIPLIER_CAP_SQL)}`,
+    ),
+    check(
+      'player_equipment_affix_key_check',
+      sql`${t.affixKey} is null or ${t.affixKey} ~ '${sql.raw(EQUIPMENT_KEY_PATTERN.source)}'`,
     ),
     // A removal always says why.
     check(

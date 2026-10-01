@@ -16,7 +16,9 @@ const valid = (over: Record<string, unknown> = {}) => ({
   name: 'Spiked Combat Ring',
   slot: 'attack',
   rarity: 'R',
-  attackBp: 7_200,
+  multiplierMinBp: 6_000,
+  multiplierMaxBp: 8_000,
+  multiplierStepBp: 500,
   ...over,
 });
 
@@ -34,9 +36,9 @@ describe('EquipmentDefinitionInputSchema', () => {
       description: '',
       slot: 'attack',
       rarity: 'R',
-      attackBp: 7_200,
-      defenseBp: 0,
-      healthBp: 0,
+      multiplierMinBp: 6_000,
+      multiplierMaxBp: 8_000,
+      multiplierStepBp: 500,
       secondaryEffects: [],
       tags: [],
       regionId: null,
@@ -49,8 +51,12 @@ describe('EquipmentDefinitionInputSchema', () => {
   });
 
   it('accepts one of each slot', () => {
-    expect(validateEquipmentDefinition(valid({ key: 'belt', slot: 'defense', attackBp: 0, defenseBp: 5_800 })).ok).toBe(true);
-    expect(validateEquipmentDefinition(valid({ key: 'corset', slot: 'health', attackBp: 0, healthBp: 31_000 })).ok).toBe(true);
+    expect(validateEquipmentDefinition(valid({ key: 'belt', slot: 'defense' })).ok).toBe(true);
+    expect(
+      validateEquipmentDefinition(
+        valid({ key: 'corset', slot: 'health', multiplierMinBp: 28_000, multiplierMaxBp: 34_000, multiplierStepBp: 2_000 }),
+      ).ok,
+    ).toBe(true);
   });
 
   it.each(['Spiked_Ring', 'spiked-ring', 'spiked ring', '_ring', 'ring_', 'a'.repeat(65), ''])(
@@ -68,32 +74,58 @@ describe('EquipmentDefinitionInputSchema', () => {
     expect(issuesOf(valid({ rarity })).some((i) => i.path === 'rarity')).toBe(true);
   });
 
-  it('requires a positive multiplier for its own slot', () => {
-    expect(issuesOf(valid({ attackBp: 0 }))).toContainEqual({
-      path: 'attackBp',
-      message: 'a attack definition must have a positive attackBp',
+  describe('multiplier range', () => {
+    const paths = (over: Record<string, unknown>) => issuesOf(valid(over)).map((i) => i.path);
+
+    it('accepts a valid min/max/step, and a single-value range', () => {
+      expect(validateEquipmentDefinition(valid()).ok).toBe(true);
+      expect(validateEquipmentDefinition(valid({ multiplierMinBp: 4_500, multiplierMaxBp: 4_500 })).ok).toBe(true);
     });
-  });
 
-  it('requires the other two multipliers to be zero in V1', () => {
-    const issues = issuesOf(valid({ defenseBp: 100, healthBp: 5 }));
-    expect(issues.map((i) => i.path).sort()).toEqual(['defenseBp', 'healthBp']);
-  });
+    it('requires all three fields — there is no default multiplier', () => {
+      for (const field of ['multiplierMinBp', 'multiplierMaxBp', 'multiplierStepBp']) {
+        expect(paths({ [field]: undefined })).toContain(field);
+      }
+    });
 
-  it('enforces the per-slot ceilings', () => {
-    expect(validateEquipmentDefinition(valid({ attackBp: 20_000 })).ok).toBe(true);
-    expect(issuesOf(valid({ attackBp: 20_001 })).some((i) => i.path === 'attackBp')).toBe(true);
-    expect(
-      validateEquipmentDefinition(valid({ slot: 'health', attackBp: 0, healthBp: 80_000 })).ok,
-    ).toBe(true);
-    expect(
-      issuesOf(valid({ slot: 'health', attackBp: 0, healthBp: 80_001 })).some((i) => i.path === 'healthBp'),
-    ).toBe(true);
-  });
+    it('refuses min > max', () => {
+      expect(issuesOf(valid({ multiplierMinBp: 8_000, multiplierMaxBp: 6_000 }))).toContainEqual({
+        path: 'multiplierMaxBp',
+        message: 'must be at least multiplierMinBp (8000)',
+      });
+    });
 
-  it('refuses fractional or negative basis points', () => {
-    expect(issuesOf(valid({ attackBp: 7_200.5 })).some((i) => i.path === 'attackBp')).toBe(true);
-    expect(issuesOf(valid({ defenseBp: -1 })).some((i) => i.path === 'defenseBp')).toBe(true);
+    it.each([0, -500])('refuses a step of %d', (multiplierStepBp) => {
+      expect(paths({ multiplierStepBp })).toContain('multiplierStepBp');
+    });
+
+    it.each([0, -1])('refuses a min of %d', (multiplierMinBp) => {
+      expect(paths({ multiplierMinBp })).toContain('multiplierMinBp');
+    });
+
+    it('refuses a range the step does not divide', () => {
+      expect(issuesOf(valid({ multiplierStepBp: 300 }))).toContainEqual({
+        path: 'multiplierStepBp',
+        message: 'must divide the range evenly (8000 - 6000 = 2000 is not a multiple of 300)',
+      });
+    });
+
+    it('enforces the per-slot ceilings', () => {
+      expect(validateEquipmentDefinition(valid({ multiplierMaxBp: 20_000 })).ok).toBe(true);
+      expect(paths({ multiplierMaxBp: 20_500 })).toContain('multiplierMaxBp');
+      const health = { slot: 'health', multiplierMinBp: 40_000, multiplierStepBp: 10_000 };
+      expect(validateEquipmentDefinition(valid({ ...health, multiplierMaxBp: 80_000 })).ok).toBe(true);
+      expect(paths({ ...health, multiplierMaxBp: 90_000 })).toContain('multiplierMaxBp');
+    });
+
+    it('refuses fractional basis points', () => {
+      expect(paths({ multiplierMinBp: 6_000.5 })).toContain('multiplierMinBp');
+      expect(paths({ multiplierStepBp: 0.5 })).toContain('multiplierStepBp');
+    });
+
+    it('has no field for another slot: the old per-stat fields are unknown', () => {
+      expect(issuesOf(valid({ defenseBp: 100 }))[0]!.message).toMatch(/unknown field\(s\): defenseBp/);
+    });
   });
 
   it('refuses secondary effects in V1', () => {
@@ -150,9 +182,9 @@ describe('EquipmentDefinitionInputSchema', () => {
   });
 
   it('prefixes issue paths for package entries', () => {
-    const result = validateEquipmentDefinition(valid({ attackBp: 0 }), 'definitions[3]');
+    const result = validateEquipmentDefinition(valid({ multiplierStepBp: 0 }), 'definitions[3]');
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.issues[0]!.path).toBe('definitions[3].attackBp');
+    if (!result.ok) expect(result.issues[0]!.path).toBe('definitions[3].multiplierStepBp');
   });
 
   it('throws EquipmentValidationError carrying every issue', () => {
@@ -170,8 +202,8 @@ describe('EquipmentDefinitionInputSchema', () => {
 describe('changedDefinitionFields', () => {
   it('names exactly the fields that differ', () => {
     const a = parseEquipmentDefinition(valid());
-    const b = parseEquipmentDefinition(valid({ name: 'Renamed', attackBp: 7_500, tags: ['ring'] }));
-    expect(changedDefinitionFields(a, b)).toEqual(['name', 'attackBp', 'tags']);
+    const b = parseEquipmentDefinition(valid({ name: 'Renamed', multiplierMaxBp: 9_000, tags: ['ring'] }));
+    expect(changedDefinitionFields(a, b)).toEqual(['name', 'multiplierMaxBp', 'tags']);
     expect(changedDefinitionFields(a, a)).toEqual([]);
   });
 });

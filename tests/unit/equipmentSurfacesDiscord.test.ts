@@ -41,6 +41,8 @@ const item = (equipmentId: number, name: string, multiplierBp: number): CombatSl
   equipmentId,
   definitionKey: name.toLowerCase().replace(/ /g, '_'),
   name,
+  definitionName: name,
+  affixKey: null,
   rarity: 'SR',
   multiplierBp,
   rolledProperties: { secret: 'roll' },

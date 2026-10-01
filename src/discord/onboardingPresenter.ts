@@ -154,9 +154,9 @@ function baseEmbed(title: string, npc: NpcContent | null, art: Art): EmbedBuilde
 
 function itemCard(item: StarterItemView): { name: string; value: string } {
   const { definition, slot } = item;
-  const lines = [`${SLOT_GEAR_LABEL[slot]} · ${formatMultiplier(definition.multiplierBp)}`];
+  const lines = [`${SLOT_GEAR_LABEL[slot]} · ${formatMultiplier(item.multiplierBp)}`];
   if (definition.description) lines.push(`*${definition.description}*`);
-  return { name: `${SLOT_EMOJI[slot]} ${definition.name}`, value: lines.join('\n') };
+  return { name: `${SLOT_EMOJI[slot]} ${item.displayName}`, value: lines.join('\n') };
 }
 
 /** Buddy, the three slots, and ATK/DEF/HP — shared by the completion screen and the overview. */

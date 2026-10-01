@@ -17,12 +17,54 @@ import {
 } from '../../src/modules/equipment/equipmentService';
 import { createEquipmentDefinitionService } from '../../src/modules/equipment/equipmentDefinitionService';
 import { createEquipmentPromotionService } from '../../src/modules/equipment/equipmentImportService';
+import {
+  EQUIPMENT_AFFIX_POOLS,
+  buildAffixCatalogue,
+  type EquipmentAffix,
+  type EquipmentAffixCatalogue,
+} from '../../src/modules/equipment/affixCatalogue';
+import type { Rng } from '../../src/shared/random';
+import { STARTER_EQUIPMENT, STARTER_ROLLS } from '../../src/modules/onboarding/vocabulary';
+import type { EquipmentSlot } from '../../src/modules/equipment/vocabulary';
 
-export function buildEquipmentServices(db: Db) {
+/**
+ * A small catalogue covering every pool, so any N/R/SR definition can roll.
+ * `attack.N` — the pool most tests' gear rolls from — has two enabled affixes
+ * and one retired; every other pool has exactly one enabled affix,
+ * `<slot>_<rarity>_flair` ("of Attack R Flair").
+ */
+export const TEST_AFFIX_LIST: EquipmentAffix[] = [
+  { key: 'poor_planning', suffix: 'of Poor Planning', pool: 'attack.N', enabled: true },
+  { key: 'mild_regret', suffix: 'of Mild Regret', pool: 'attack.N', enabled: true },
+  { key: 'retired_flair', suffix: 'of Retired Flair', pool: 'attack.N', enabled: false },
+  ...EQUIPMENT_AFFIX_POOLS.filter((pool) => pool !== 'attack.N').map((pool) => {
+    const [slot, rarity] = pool.split('.') as [string, string];
+    const title = (s: string) => s[0]!.toUpperCase() + s.slice(1);
+    return {
+      key: `${slot}_${rarity.toLowerCase()}_flair`,
+      suffix: `of ${title(slot)} ${rarity} Flair`,
+      pool,
+      enabled: true,
+    };
+  }),
+];
+export const TEST_AFFIXES: EquipmentAffixCatalogue = buildAffixCatalogue(TEST_AFFIX_LIST);
+
+/**
+ * Equipment services against a test database, rolling from {@link TEST_AFFIXES}
+ * unless told otherwise. Tests that check which affix lands pass a scripted or
+ * seeded RNG.
+ */
+export function buildEquipmentServices(
+  db: Db,
+  opts: { affixes?: EquipmentAffixCatalogue; rng?: Rng } = {},
+) {
   const featureUnlocks = createFeatureUnlockService(db);
+  const affixes = opts.affixes ?? TEST_AFFIXES;
   return {
     featureUnlocks,
-    equipment: createEquipmentService({ db, featureUnlocks }),
+    getAffixes: () => affixes,
+    equipment: createEquipmentService({ db, featureUnlocks, getAffixes: () => affixes, ...(opts.rng ? { rng: opts.rng } : {}) }),
     definitions: createEquipmentDefinitionService(db),
     promotion: createEquipmentPromotionService({ db }),
   };
@@ -40,12 +82,30 @@ export async function createPlayer(db: Db, tag = randomBytes(4).toString('hex'))
   return player!.id;
 }
 
-/** Authoring input for one definition per slot, plus overrides. */
+/** A single-value range: every roll is exactly `bp`, so stat assertions stay exact. */
+export function fixedRange(bp: number) {
+  return { multiplierMinBp: bp, multiplierMaxBp: bp, multiplierStepBp: 100 } as const;
+}
+
+/**
+ * Authoring input for one definition per slot, plus overrides. Single-value
+ * ranges, so a random grant of these is deterministic; `ranged` is the one
+ * definition whose roll actually varies (×0.40–×0.60 in ×0.05 steps).
+ */
 export const GEAR = {
-  attack: { key: 'training_ring', name: 'Training Ring', slot: 'attack', rarity: 'N', attackBp: 5_000 },
-  attack2: { key: 'plasma_coil_ring', name: 'Plasma Coil Ring', slot: 'attack', rarity: 'SR', attackBp: 8_600 },
-  defense: { key: 'padded_belt', name: 'Padded Belt', slot: 'defense', rarity: 'N', defenseBp: 4_000 },
-  health: { key: 'basic_harness', name: 'Basic Harness', slot: 'health', rarity: 'N', healthBp: 20_000 },
+  attack: { key: 'training_ring', name: 'Training Ring', slot: 'attack', rarity: 'N', ...fixedRange(5_000) },
+  attack2: { key: 'plasma_coil_ring', name: 'Plasma Coil Ring', slot: 'attack', rarity: 'SR', ...fixedRange(8_600) },
+  defense: { key: 'padded_belt', name: 'Padded Belt', slot: 'defense', rarity: 'N', ...fixedRange(4_000) },
+  health: { key: 'basic_harness', name: 'Basic Harness', slot: 'health', rarity: 'N', ...fixedRange(20_000) },
+  ranged: {
+    key: 'rusty_test_pipe',
+    name: 'Rusty Test Pipe',
+    slot: 'attack',
+    rarity: 'N',
+    multiplierMinBp: 4_000,
+    multiplierMaxBp: 6_000,
+    multiplierStepBp: 500,
+  },
 } as const;
 
 export async function defineGear(
@@ -61,7 +121,14 @@ export async function unlockEquipment(db: Db, svc: EquipmentServices, playerId: 
   );
 }
 
-/** Grant in its own transaction; returns the first new (or covered) instance id. */
+/**
+ * Grant in its own transaction; returns the first new (or covered) instance id.
+ *
+ * Setup helper, so the default is **deterministic**: an unaffixed fixed roll
+ * at the definition's range minimum (the exact multiplier, for the
+ * single-value `GEAR` ranges). A test about random generation asks for it —
+ * `{ roll: { kind: 'random' } }` — or dictates its own fixed roll.
+ */
 export async function grant(
   db: Db,
   svc: EquipmentServices,
@@ -69,15 +136,34 @@ export async function grant(
   definitionKey: string,
   over: Partial<GrantEquipmentInput> = {},
 ): Promise<number> {
+  let roll = over.roll;
+  if (roll === undefined) {
+    const definition = await svc.definitions.getByKey(definitionKey);
+    roll = definition
+      ? { kind: 'fixed', rolledMultiplierBp: definition.multiplierMinBp, affixKey: null }
+      : { kind: 'random' };
+  }
   const result = await db.transaction((tx) =>
     svc.equipment.grantEquipment(tx, {
       playerId,
       definitionKey,
       source: { type: 'admin', key: 'test' },
       ...over,
+      roll,
     }),
   );
   return result.instances[0]!.id;
+}
+
+/**
+ * Grant options pinning a seeded starter to its signed-off fixed roll — what
+ * the onboarding grants. The seeded starters are ranged, so a plain random
+ * grant of one would make a stat assertion depend on the dice.
+ */
+export function starterRoll(key: string): Pick<GrantEquipmentInput, 'roll'> {
+  const slot = (Object.keys(STARTER_EQUIPMENT) as EquipmentSlot[]).find((s) => STARTER_EQUIPMENT[s] === key);
+  if (!slot) throw new Error(`${key} is not a starter`);
+  return { roll: { kind: 'fixed', ...STARTER_ROLLS[slot] } };
 }
 
 /** Expect a Postgres error with this SQLSTATE (drizzle may wrap it). */

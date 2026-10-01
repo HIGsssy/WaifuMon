@@ -36,6 +36,20 @@ export const STARTER_EQUIPMENT: Readonly<Record<EquipmentSlot, string>> = Object
   health: 'dented_lunchbox',
 });
 
+/**
+ * The exact roll each starter is granted with — a fixed grant, never a random
+ * one, so the onboarding is deterministic: every player gets the same three
+ * numbers Patch's explanation is written around, and no RNG is involved.
+ * Each value must lie inside its definition's range (the grant validates it);
+ * unaffixed, so starters read as plain "Rusty Pipe" and so on.
+ */
+export const STARTER_ROLLS: Readonly<Record<EquipmentSlot, { rolledMultiplierBp: number; affixKey: null }>> =
+  Object.freeze({
+    attack: { rolledMultiplierBp: 4_500, affixKey: null },
+    defense: { rolledMultiplierBp: 3_500, affixKey: null },
+    health: { rolledMultiplierBp: 20_000, affixKey: null },
+  });
+
 /** Slots in hand-over order. Identical to the slot steps of the flow. */
 export const STARTER_SLOTS: readonly EquipmentSlot[] = ['attack', 'defense', 'health'];
 

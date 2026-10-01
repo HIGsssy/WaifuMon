@@ -323,6 +323,13 @@
       "when": 1819663200000,
       "tag": "0045_equipment_foundation",
       "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1819749600000,
+      "tag": "0046_equipment_rolled_instances",
+      "breakpoints": true
     }
   ]
 }

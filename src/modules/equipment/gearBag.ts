@@ -1,9 +1,9 @@
 /**
  * Gear Bag ordering, filtering and paging — pure, interface-agnostic.
  *
- * `equipmentService.listEquipmentGroups` already groups a player's gear by
- * definition (V1 gear has fixed stats, so identical copies are mechanically
- * one thing) and returns every group. This module only decides the order a
+ * `equipmentService.listEquipmentGroups` already groups a player's gear into
+ * truly identical copies (same definition, rolled multiplier and affix) and
+ * returns every group. This module only decides the order a
  * quick-management screen shows them in and slices out one page. It never
  * reads the database and never decides ownership: every id it hands back came
  * from the service's own grouping, and every action re-validates it.
@@ -26,8 +26,9 @@ const rank = (rarity: string) => (RARITIES as readonly string[]).indexOf(rarity)
 
 /**
  * Usability order: equipped first, then favourites, then slot order, then
- * rarity and multiplier (strongest first), then name — and the key last, so
- * the order is total and paging is stable.
+ * rarity and rolled multiplier (strongest first), then display name — and the
+ * key and affix last, so the order is total over group identity and paging is
+ * stable.
  */
 export function sortGearBagGroups(groups: readonly EquipmentGroup[]): EquipmentGroup[] {
   return [...groups].sort(
@@ -36,9 +37,10 @@ export function sortGearBagGroups(groups: readonly EquipmentGroup[]): EquipmentG
       Number(b.favoriteCount > 0) - Number(a.favoriteCount > 0) ||
       EQUIPMENT_SLOTS.indexOf(a.definition.slot) - EQUIPMENT_SLOTS.indexOf(b.definition.slot) ||
       rank(b.definition.rarity) - rank(a.definition.rarity) ||
-      b.definition.multiplierBp - a.definition.multiplierBp ||
-      a.definition.name.localeCompare(b.definition.name) ||
-      a.definition.key.localeCompare(b.definition.key),
+      b.rolledMultiplierBp - a.rolledMultiplierBp ||
+      a.displayName.localeCompare(b.displayName) ||
+      a.definition.key.localeCompare(b.definition.key) ||
+      (a.affixKey ?? '').localeCompare(b.affixKey ?? ''),
   );
 }
 

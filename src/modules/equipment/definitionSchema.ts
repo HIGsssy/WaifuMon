@@ -17,16 +17,17 @@ import { PRICE_CURRENCIES, type EquipmentDefinitionRow } from '../../db/schema';
 import { EquipmentValidationError, type EquipmentIssue } from '../../shared/errors';
 import { relativeArtworkPath } from '../assets/artworkPath';
 import { isRegion } from '../locations/regions';
+import { multiplierRangeIssues } from './equipmentRoll';
 import {
   EQUIPMENT_AUTHORING_RARITIES,
   EQUIPMENT_KEY_MAX_LENGTH,
   EQUIPMENT_KEY_PATTERN,
-  EQUIPMENT_MULTIPLIER_BP_MAX,
   EQUIPMENT_SLOTS,
   type EquipmentSlot,
 } from './vocabulary';
 
-const basisPoints = z.number().int('must be a whole number of basis points').nonnegative();
+/** Sign and range are checked by `multiplierRangeIssues`, with field paths. */
+const basisPoints = z.number().int('must be a whole number of basis points');
 
 const regionId = z.string().refine(isRegion, { message: 'unknown region' });
 
@@ -50,9 +51,15 @@ export const EquipmentDefinitionInputSchema = z
     slot: z.enum(EQUIPMENT_SLOTS),
     /** N–UR only in V1; LR and EX are withheld until the system matures. */
     rarity: z.enum(EQUIPMENT_AUTHORING_RARITIES),
-    attackBp: basisPoints.default(0),
-    defenseBp: basisPoints.default(0),
-    healthBp: basisPoints.default(0),
+    /**
+     * The range a new instance's multiplier is rolled from — one of
+     * `min, min+step, …, max` basis points, applied to this definition's own
+     * slot's stat. Required: there is no sensible default multiplier. Owned
+     * instances keep what they rolled when the range is retuned.
+     */
+    multiplierMinBp: basisPoints,
+    multiplierMaxBp: basisPoints,
+    multiplierStepBp: basisPoints,
     /**
      * Reserved for the data-driven effect system. V1 ships none, so an authored
      * effect is refused rather than stored inert.
@@ -71,34 +78,13 @@ export const EquipmentDefinitionInputSchema = z
   })
   .strict()
   .superRefine((def, ctx) => {
-    const multiplierField = { attack: 'attackBp', defense: 'defenseBp', health: 'healthBp' } as const;
-    for (const slot of EQUIPMENT_SLOTS) {
-      const field = multiplierField[slot];
-      const value = def[field];
-      if (value > EQUIPMENT_MULTIPLIER_BP_MAX[slot]) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: [field],
-          message: `must be at most ${EQUIPMENT_MULTIPLIER_BP_MAX[slot]} (×${EQUIPMENT_MULTIPLIER_BP_MAX[slot] / 10_000})`,
-        });
-      }
-      if (slot === def.slot) {
-        if (value <= 0) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: [field],
-            message: `a ${def.slot} definition must have a positive ${field}`,
-          });
-        }
-      } else if (value !== 0) {
-        // V1 gear converts SP into exactly the stat its slot names. Hybrid
-        // gear is a later design decision, not an accident to allow now.
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: [field],
-          message: `must be 0 on a ${def.slot} definition in V1`,
-        });
-      }
+    // One range, for the definition's own slot: V1 gear converts SP into
+    // exactly the stat its slot names, so there is no field in which to author
+    // a multiplier for another slot (an old `attackBp` is an unknown field).
+    // The rule is shared with the grant path, which refuses to roll from a
+    // range this would reject.
+    for (const issue of multiplierRangeIssues(def.slot, def)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: [issue.path], message: issue.message });
     }
     if (new Set(def.tags).size !== def.tags.length) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['tags'], message: 'contains duplicates' });
@@ -163,9 +149,9 @@ export function definitionColumnValues(input: EquipmentDefinitionInput) {
     description: input.description,
     slot: input.slot,
     rarity: input.rarity,
-    attackBp: input.attackBp,
-    defenseBp: input.defenseBp,
-    healthBp: input.healthBp,
+    multiplierMinBp: input.multiplierMinBp,
+    multiplierMaxBp: input.multiplierMaxBp,
+    multiplierStepBp: input.multiplierStepBp,
     secondaryEffects: input.secondaryEffects as Record<string, unknown>[],
     tags: input.tags,
     regionId: input.regionId,
@@ -190,9 +176,9 @@ export function definitionInputFromRow(row: EquipmentDefinitionRow): EquipmentDe
     description: row.description,
     slot: row.slot as EquipmentSlot,
     rarity: row.rarity as EquipmentDefinitionInput['rarity'],
-    attackBp: row.attackBp,
-    defenseBp: row.defenseBp,
-    healthBp: row.healthBp,
+    multiplierMinBp: row.multiplierMinBp,
+    multiplierMaxBp: row.multiplierMaxBp,
+    multiplierStepBp: row.multiplierStepBp,
     secondaryEffects: row.secondaryEffects,
     tags: row.tags,
     regionId: row.regionId as EquipmentDefinitionInput['regionId'],

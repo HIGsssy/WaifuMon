@@ -24,6 +24,7 @@ import {
 } from '../../shared/errors';
 import type { OwnedEntry } from '../collection/collectionService';
 import { currentSeductivePower } from '../power/seductivePower';
+import type { EquipmentAffixCatalogue } from './affixCatalogue';
 import {
   assembleCombatStats,
   emptySlots,
@@ -106,6 +107,8 @@ export interface CombatStatsServiceDeps {
   resolveActiveBuddy(tx: DbOrTx, playerId: number): Promise<OwnedEntry | null>;
   /** `tables.waifuProgression.maxLevel`, read live so a content reload is followed. */
   getMaxLevel(): number;
+  /** The affix catalogue, read live — names only; affixes never enter the arithmetic. */
+  getAffixes(): EquipmentAffixCatalogue;
 }
 
 export function createCombatStatsService(deps: CombatStatsServiceDeps): CombatStatsService {
@@ -154,7 +157,7 @@ export function createCombatStatsService(deps: CombatStatsServiceDeps): CombatSt
     const loadout = await readActiveLoadoutRow(tx, playerId);
     if (loadout) {
       for (const row of await readLoadoutSlotRows(tx, loadout.id)) {
-        slots[row.slot] = toCombatSlotItem(row.instance, row.definition);
+        slots[row.slot] = toCombatSlotItem(row.instance, row.definition, deps.getAffixes());
       }
     }
     for (const [slot, equipmentId] of Object.entries(overrides ?? {})) {
@@ -171,7 +174,7 @@ export function createCombatStatsService(deps: CombatStatsServiceDeps): CombatSt
       if (owned.instance.slot !== slot) {
         throw new EquipmentSlotMismatchError(equipmentId, slot, owned.instance.slot);
       }
-      slots[slot] = toCombatSlotItem(owned.instance, owned.definition);
+      slots[slot] = toCombatSlotItem(owned.instance, owned.definition, deps.getAffixes());
     }
     return { loadoutId: loadout?.id ?? null, slots };
   }
@@ -208,7 +211,7 @@ export function createCombatStatsService(deps: CombatStatsServiceDeps): CombatSt
         const preview = assembleCombatStats({
           buddy,
           loadoutId,
-          slots: { ...slots, [slot]: toCombatSlotItem(owned.instance, owned.definition) },
+          slots: { ...slots, [slot]: toCombatSlotItem(owned.instance, owned.definition, deps.getAffixes()) },
         });
         const value = preview.stats[key];
         candidates.push({

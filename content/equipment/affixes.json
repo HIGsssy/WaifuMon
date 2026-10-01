@@ -1,0 +1,2826 @@
+{
+  "format": "waifumon-equipment-affixes",
+  "version": 2,
+  "affixes": [
+    {
+      "key": "the_desperate_swings",
+      "suffix": "of the Desperate Swings",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "mild_inconvenience",
+      "suffix": "of Mild Inconvenience",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "ingrown_toenails",
+      "suffix": "of Ingrown Toenails",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "tetanus",
+      "suffix": "of Tetanus",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "recycled_disappointment",
+      "suffix": "of Recycled Disappointment",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "housecat_fury",
+      "suffix": "of Housecat Fury",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "unearned_confidence",
+      "suffix": "of Unearned Confidence",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "misdirected_rage",
+      "suffix": "of Misdirected Rage",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "cheeto_dust",
+      "suffix": "of Cheeto Dust",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "last_resort",
+      "suffix": "of Last Resort",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "discouraging_odours",
+      "suffix": "of Discouraging Odours",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "wet_cardboard",
+      "suffix": "of Wet Cardboard",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "mild_regret",
+      "suffix": "of Mild Regret",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "applied_stubbornness",
+      "suffix": "of Applied Stubbornness",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "two_left_hands",
+      "suffix": "of Two Left Hands",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "cracked_knuckles",
+      "suffix": "of Cracked Knuckles",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "lingering_athletes_foot",
+      "suffix": "of Lingering Athlete's Foot",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "questionable_hygiene",
+      "suffix": "of Questionable Hygiene",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "bathroom_graffiti",
+      "suffix": "of Bathroom Graffiti",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "dented_pride",
+      "suffix": "of Dented Pride",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "peer_pressure",
+      "suffix": "of Peer Pressure",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "reused_bandages",
+      "suffix": "of Reused Bandages",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "aggressive_flailing",
+      "suffix": "of Aggressive Flailing",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "broken_bottles",
+      "suffix": "of Broken Bottles",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "cheap_cologne",
+      "suffix": "of Cheap Cologne",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "half_hearted_effort",
+      "suffix": "of Half-Hearted Effort",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "simmering_resentment",
+      "suffix": "of Simmering Resentment",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "rotting_floorboards",
+      "suffix": "of Rotting Floorboards",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "the_cuckolds_lament",
+      "suffix": "of the Cuckold's Lament",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "unsanctioned_violence",
+      "suffix": "of Unsanctioned Violence",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "wet_cement",
+      "suffix": "of Wet Cement",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "nursing_a_grudge",
+      "suffix": "of Nursing a Grudge",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "the_spineless_swing",
+      "suffix": "of the Spineless Swing",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "murky_puddles",
+      "suffix": "of Murky Puddles",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "bitter_tears",
+      "suffix": "of Bitter Tears",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "yelled_insults",
+      "suffix": "of Yelled Insults",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "dropped_drawers",
+      "suffix": "of Dropped Drawers",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "pee_pants_panic",
+      "suffix": "of Pee Pants Panic",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "unscheduled_crying",
+      "suffix": "of Unscheduled Crying",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "the_wet_sock",
+      "suffix": "of the Wet Sock",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "clenched_teeth",
+      "suffix": "of Clenched Teeth",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "the_leaky_tap",
+      "suffix": "of the Leaky Tap",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "sagging_regret",
+      "suffix": "of Sagging Regret",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "the_flea_market",
+      "suffix": "of the Flea Market",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "soggy_biscuits",
+      "suffix": "of Soggy Biscuits",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "the_second_hand_strap",
+      "suffix": "of the Second-Hand Strap",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "the_dented_frying_pan",
+      "suffix": "of the Dented Frying Pan",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "inappropriate_boners",
+      "suffix": "of Inappropriate Boners",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "the_squash_racket",
+      "suffix": "of the Squash Racket",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "smelly_feet",
+      "suffix": "of Smelly Feet",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "the_trailer_park",
+      "suffix": "of the Trailer Park",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "shrugged_shoulders",
+      "suffix": "of Shrugged Shoulders",
+      "pool": "attack.N",
+      "enabled": true
+    },
+    {
+      "key": "throbbing_veins",
+      "suffix": "of Throbbing Veins",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "the_full_send",
+      "suffix": "of the Full Send",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "the_hard_place",
+      "suffix": "of the Hard Place",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "morning_wood",
+      "suffix": "of Morning Wood",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "the_second_date",
+      "suffix": "of the Second Date",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "consensual_bludgeoning",
+      "suffix": "of Consensual Bludgeoning",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "unwanted_advances",
+      "suffix": "of Unwanted Advances",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "aggressive_foreplay",
+      "suffix": "of Aggressive Foreplay",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "blue_balls",
+      "suffix": "of Blue Balls",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "the_rough_stuff",
+      "suffix": "of the Rough Stuff",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "filthy_talk",
+      "suffix": "of Filthy Talk",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "one_night_regret",
+      "suffix": "of One-Night Regret",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "the_money_shot",
+      "suffix": "of the Money Shot",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "power_bottoms",
+      "suffix": "of Power Bottoms",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "slaps_and_spanks",
+      "suffix": "of Slaps and Spanks",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "dirty_deals",
+      "suffix": "of Dirty Deals",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "the_pocket_rocket",
+      "suffix": "of the Pocket Rocket",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "last_call",
+      "suffix": "of Last Call",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "wet_whispers",
+      "suffix": "of Wet Whispers",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "blunt_force_charm",
+      "suffix": "of Blunt Force Charm",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "the_double_entendre",
+      "suffix": "of the Double Entendre",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "the_spitfire",
+      "suffix": "of the Spitfire",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "deep_impact",
+      "suffix": "of Deep Impact",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "bad_decisions",
+      "suffix": "of Bad Decisions",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "the_beer_goggles",
+      "suffix": "of the Beer Goggles",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "the_pounding_rhythm",
+      "suffix": "of the Pounding Rhythm",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "the_third_base",
+      "suffix": "of the Third Base",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "cheek_clapping",
+      "suffix": "of Cheek Clapping",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "the_piledriver",
+      "suffix": "of the Piledriver",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "questionable_consent_forms",
+      "suffix": "of Questionable Consent Forms",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "the_bar_fight",
+      "suffix": "of the Bar Fight",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "cheap_thrills",
+      "suffix": "of Cheap Thrills",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "rough_handling",
+      "suffix": "of Rough Handling",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "the_grunt_and_groan",
+      "suffix": "of the Grunt and Groan",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "uncomfortable_lengths",
+      "suffix": "of Uncomfortable Lengths",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "the_sweaty_grip",
+      "suffix": "of the Sweaty Grip",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "grinding_hips",
+      "suffix": "of Grinding Hips",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "whispered_filth",
+      "suffix": "of Whispered Filth",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "slap_and_tickle",
+      "suffix": "of Slap and Tickle",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "the_backseat",
+      "suffix": "of the Backseat",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "premature_enthusiasm",
+      "suffix": "of Premature Enthusiasm",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "the_docking_procedure",
+      "suffix": "of the Docking Procedure",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "the_second_helping",
+      "suffix": "of the Second Helping",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "wet_slaps",
+      "suffix": "of Wet Slaps",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "the_bedroom_voice",
+      "suffix": "of the Bedroom Voice",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "the_wrong_hole",
+      "suffix": "of the Wrong Hole",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "the_bounce_test",
+      "suffix": "of the Bounce Test",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "bumping_uglies",
+      "suffix": "of Bumping Uglies",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "the_sweaty_handshake",
+      "suffix": "of the Sweaty Handshake",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "unsolicited_comments",
+      "suffix": "of Unsolicited Comments",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "the_sloppy_blade",
+      "suffix": "of the Sloppy Blade",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "the_beer_stained_denial",
+      "suffix": "of the Beer-Stained Denial",
+      "pool": "attack.R",
+      "enabled": true
+    },
+    {
+      "key": "inevitable_climax",
+      "suffix": "of Inevitable Climax",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_screaming_o",
+      "suffix": "of the Screaming O",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "ruinous_intent",
+      "suffix": "of Ruinous Intent",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_last_word",
+      "suffix": "of the Last Word",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "sudden_impact",
+      "suffix": "of Sudden Impact",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "feral_rutting",
+      "suffix": "of Feral Rutting",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "devastating_charm",
+      "suffix": "of Devastating Charm",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_unhinged_idol",
+      "suffix": "of the Unhinged Idol",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "panty_dropping_force",
+      "suffix": "of Panty-Dropping Force",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "wrecking_ball_diplomacy",
+      "suffix": "of Wrecking Ball Diplomacy",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "legs_shaking_thunder",
+      "suffix": "of Legs-Shaking Thunder",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_broken_bedframe",
+      "suffix": "of the Broken Bedframe",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_squeaky_headboard",
+      "suffix": "of the Squeaky Headboard",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_apex_predator",
+      "suffix": "of the Apex Predator",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "unspeakable_acts",
+      "suffix": "of Unspeakable Acts",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_wetwork_specialist",
+      "suffix": "of the Wetwork Specialist",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_final_insertion",
+      "suffix": "of the Final Insertion",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "kneel_before_me_authority",
+      "suffix": "of Kneel-Before-Me Authority",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_locker_room_legend",
+      "suffix": "of the Locker Room Legend",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "consensual_devastation",
+      "suffix": "of Consensual Devastation",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_hit_it_and_quit_it",
+      "suffix": "of the Hit-It-And-Quit-It",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "rooftop_screaming",
+      "suffix": "of Rooftop Screaming",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_bedpost_notches",
+      "suffix": "of the Bedpost Notches",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "feminine_rage",
+      "suffix": "of Feminine Rage",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_aftermath",
+      "suffix": "of the Aftermath",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "unapologetic_thrusting",
+      "suffix": "of Unapologetic Thrusting",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_scream_test",
+      "suffix": "of the Scream Test",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "nuclear_foreplay",
+      "suffix": "of Nuclear Foreplay",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_body_count",
+      "suffix": "of the Body Count",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "certified_menace",
+      "suffix": "of Certified Menace",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_slap_fight",
+      "suffix": "of the Slap Fight",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_neighbours_complaint",
+      "suffix": "of the Neighbours' Complaint",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "lethal_intent",
+      "suffix": "of Lethal Intent",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "unfinished_business",
+      "suffix": "of Unfinished Business",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_velvet_guillotine",
+      "suffix": "of the Velvet Guillotine",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_overstimulated_scream",
+      "suffix": "of the Overstimulated Scream",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_ruined_makeup",
+      "suffix": "of the Ruined Makeup",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_wet_slap_chorus",
+      "suffix": "of the Wet Slap Chorus",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_headboard_complaint",
+      "suffix": "of the Headboard Complaint",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_landlords_concerns",
+      "suffix": "of the Landlord's Concerns",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_cum_drenched_menace",
+      "suffix": "of the Cum-Drenched Menace",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_stubborn_thrust",
+      "suffix": "of the Stubborn Thrust",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_deepthroat_doctrine",
+      "suffix": "of the Deepthroat Doctrine",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_slapprint_legacy",
+      "suffix": "of the Slapprint Legacy",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "unscheduled_orgasms",
+      "suffix": "of Unscheduled Orgasms",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_bed_slapping_ovation",
+      "suffix": "of the Bed-Slapping Ovation",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_squelching_advance",
+      "suffix": "of the Squelching Advance",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_bitten_lip",
+      "suffix": "of the Bitten Lip",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_chokehold_compliment",
+      "suffix": "of the Chokehold Compliment",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_spanking_scholarship",
+      "suffix": "of the Spanking Scholarship",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_tear_stained_pillow",
+      "suffix": "of the Tear-Stained Pillow",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_moaning_chorus",
+      "suffix": "of the Moaning Chorus",
+      "pool": "attack.SR",
+      "enabled": true
+    },
+    {
+      "key": "wet_paper",
+      "suffix": "of Wet Paper",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "wishful_thinking",
+      "suffix": "of Wishful Thinking",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "one_sad_layer",
+      "suffix": "of One Sad Layer",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "mostly_holes",
+      "suffix": "of Mostly Holes",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "sticky_duct_tape",
+      "suffix": "of Sticky Duct Tape",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "the_last_pube",
+      "suffix": "of the Last Pube",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "damp_newspaper",
+      "suffix": "of Damp Newspaper",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "mild_concern",
+      "suffix": "of Mild Concern",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "recycled_packaging",
+      "suffix": "of Recycled Packaging",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "half_a_hug",
+      "suffix": "of Half a Hug",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "chewed_edges",
+      "suffix": "of Chewed Edges",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "lingering_dampness",
+      "suffix": "of Lingering Dampness",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "the_broken_zipper",
+      "suffix": "of the Broken Zipper",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "empty_promises",
+      "suffix": "of Empty Promises",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "stained_padding",
+      "suffix": "of Stained Padding",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "rust_bubbles",
+      "suffix": "of Rust Bubbles",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "threadbare_cotton",
+      "suffix": "of Threadbare Cotton",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "questionable_coverage",
+      "suffix": "of Questionable Coverage",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "the_boyfriends_hoodie",
+      "suffix": "of the Boyfriend's Hoodie",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "patchy_holes",
+      "suffix": "of Patchy Holes",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "cheap_plastic",
+      "suffix": "of Cheap Plastic",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "melted_ice_pack",
+      "suffix": "of Melted Ice Pack",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "the_modesty_panel",
+      "suffix": "of the Modesty Panel",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "bad_posture",
+      "suffix": "of Bad Posture",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "gutter_water",
+      "suffix": "of Gutter Water",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "the_soggy_knee",
+      "suffix": "of the Soggy Knee",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "secondhand_kevlar",
+      "suffix": "of Secondhand Kevlar",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "hopeful_staples",
+      "suffix": "of Hopeful Staples",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "the_cracked_visor",
+      "suffix": "of the Cracked Visor",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "marginal_safety",
+      "suffix": "of Marginal Safety",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "friction_burns",
+      "suffix": "of Friction Burns",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "the_yellowed_hem",
+      "suffix": "of the Yellowed Hem",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "soggy_layers",
+      "suffix": "of Soggy Layers",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "the_crumpled_pie_tin",
+      "suffix": "of the Crumpled Pie Tin",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "lost_buttons",
+      "suffix": "of Lost Buttons",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "the_sagging_strap",
+      "suffix": "of the Sagging Strap",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "dried_pizza_grease",
+      "suffix": "of Dried Pizza Grease",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "worn_out_elastic",
+      "suffix": "of Worn-Out Elastic",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "sticky_patches",
+      "suffix": "of Sticky Patches",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "the_greasy_collar",
+      "suffix": "of the Greasy Collar",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "cracked_seams",
+      "suffix": "of Cracked Seams",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "damp_socks",
+      "suffix": "of Damp Socks",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "the_loosened_screw",
+      "suffix": "of the Loosened Screw",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "off_brand_duct_tape",
+      "suffix": "of Off-Brand Duct Tape",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "the_yellow_stains",
+      "suffix": "of the Yellow Stains",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "chewed_zippers",
+      "suffix": "of Chewed Zippers",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "peeling_lacquer",
+      "suffix": "of Peeling Lacquer",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "the_cardboard_box",
+      "suffix": "of the Cardboard Box",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "stapled_hems",
+      "suffix": "of Stapled Hems",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "the_sour_laundry",
+      "suffix": "of the Sour Laundry",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "moth_nibbles",
+      "suffix": "of Moth Nibbles",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "secondhand_sheets",
+      "suffix": "of Secondhand Sheets",
+      "pool": "defense.N",
+      "enabled": true
+    },
+    {
+      "key": "crotch_coverage",
+      "suffix": "of Crotch Coverage",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "protection_money",
+      "suffix": "of Protection Money",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "the_chastity_belt",
+      "suffix": "of the Chastity Belt",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "double_padding",
+      "suffix": "of Double Padding",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "the_second_skin",
+      "suffix": "of the Second Skin",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "rubbering_up",
+      "suffix": "of Rubbering Up",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "the_butt_guard",
+      "suffix": "of the Butt Guard",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "nursing_instinct",
+      "suffix": "of Nursing Instinct",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "the_spit_shield",
+      "suffix": "of the Spit Shield",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "cheeky_armour",
+      "suffix": "of Cheeky Armour",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "the_plate_of_shame",
+      "suffix": "of the Plate of Shame",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "safety_third",
+      "suffix": "of Safety Third",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "the_punching_bag",
+      "suffix": "of the Punching Bag",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "the_bullet_sponge",
+      "suffix": "of the Bullet Sponge",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "the_leather_fetish",
+      "suffix": "of the Leather Fetish",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "the_tighty_whities",
+      "suffix": "of the Tighty-Whities",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "emotional_armour",
+      "suffix": "of Emotional Armour",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "the_wet_t_shirt_contest",
+      "suffix": "of the Wet T-Shirt Contest",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "the_rubber_wall",
+      "suffix": "of the Rubber Wall",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "the_crunchy_carpet",
+      "suffix": "of the Crunchy Carpet",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "the_meat_shield",
+      "suffix": "of the Meat Shield",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "protective_custody",
+      "suffix": "of Protective Custody",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "the_gag_reflex_guard",
+      "suffix": "of the Gag Reflex Guard",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "the_lingerie_plate",
+      "suffix": "of the Lingerie Plate",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "the_incontinence_pad",
+      "suffix": "of the Incontinence Pad",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "the_crooked_bra_strap",
+      "suffix": "of the Crooked Bra Strap",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "the_cowards_prayer",
+      "suffix": "of the Coward's Prayer",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "the_bubble_wrap",
+      "suffix": "of the Bubble Wrap",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "the_bruise_budget",
+      "suffix": "of the Bruise Budget",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "the_sticky_situation",
+      "suffix": "of the Sticky Situation",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "the_well_worn_harness",
+      "suffix": "of the Well-Worn Harness",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "padding_and_prayers",
+      "suffix": "of Padding and Prayers",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "the_welded_bra",
+      "suffix": "of the Welded Bra",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "chafing_prevention",
+      "suffix": "of Chafing Prevention",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "the_wet_suit",
+      "suffix": "of the Wet Suit",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "anti_clap_armour",
+      "suffix": "of Anti-Clap Armour",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "the_butt_padding",
+      "suffix": "of the Butt Padding",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "the_sweaty_fetish",
+      "suffix": "of the Sweaty Fetish",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "strapped_in",
+      "suffix": "of Strapped In",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "the_gimp_mask",
+      "suffix": "of the Gimp Mask",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "the_latex_wrapping",
+      "suffix": "of the Latex Wrapping",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "the_rubber_snugness",
+      "suffix": "of the Rubber Snugness",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "the_chastity_doctrine",
+      "suffix": "of the Chastity Doctrine",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "the_modesty_vest",
+      "suffix": "of the Modesty Vest",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "the_face_guard",
+      "suffix": "of the Face Guard",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "covered_nipples",
+      "suffix": "of Covered Nipples",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "the_second_blouse",
+      "suffix": "of the Second Blouse",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "triple_wrapping",
+      "suffix": "of Triple Wrapping",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "the_groin_guard",
+      "suffix": "of the Groin Guard",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "the_walled_garden",
+      "suffix": "of the Walled Garden",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "the_studded_collar",
+      "suffix": "of the Studded Collar",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "the_spiked_bra",
+      "suffix": "of the Spiked Bra",
+      "pool": "defense.R",
+      "enabled": true
+    },
+    {
+      "key": "unwanted_boner_blockade",
+      "suffix": "of Unwanted Boner Blockade",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_no_touchy_policy",
+      "suffix": "of the No-Touchy Policy",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "aggressive_modesty",
+      "suffix": "of Aggressive Modesty",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_crotch_plate_doctrine",
+      "suffix": "of the Crotch-Plate Doctrine",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "denied_entry",
+      "suffix": "of Denied Entry",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_blue_balled_besieger",
+      "suffix": "of the Blue-Balled Besieger",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_flinch_proof_face",
+      "suffix": "of the Flinch-Proof Face",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_rubber_glove_doctrine",
+      "suffix": "of the Rubber Glove Doctrine",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_horny_proof_vest",
+      "suffix": "of the Horny-Proof Vest",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_purity_rings_promise",
+      "suffix": "of the Purity Ring's Promise",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "granny_panty_doctrine",
+      "suffix": "of Granny Panty Doctrine",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_bedroom_door_deadbolt",
+      "suffix": "of the Bedroom Door Deadbolt",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "not_tonight_i_have_a_headache",
+      "suffix": "of Not Tonight, I Have a Headache",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_headache_excuse",
+      "suffix": "of the Headache Excuse",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_friend_zone_fortress",
+      "suffix": "of the Friend Zone Fortress",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_wandering_hands_trap",
+      "suffix": "of the Wandering Hands Trap",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_mace_in_the_purse",
+      "suffix": "of the Mace in the Purse",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_kneejerk_reaction",
+      "suffix": "of the Kneejerk Reaction",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_consent_form_binder",
+      "suffix": "of the Consent Form Binder",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "two_layers_of_everything",
+      "suffix": "of Two Layers of Everything",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_diamond_crusted_chastity_belt",
+      "suffix": "of the Diamond-Crusted Chastity Belt",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_squeaky_latex_fetish",
+      "suffix": "of the Squeaky Latex Fetish",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_gimp_suit_doctrine",
+      "suffix": "of the Gimp Suit Doctrine",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_unpopped_cherry_guard",
+      "suffix": "of the Unpopped Cherry Guard",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_full_body_condom",
+      "suffix": "of the Full-Body Condom",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_jousting_padding",
+      "suffix": "of the Jousting Padding",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_iron_maiden",
+      "suffix": "of the Iron Maiden",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_last_minute_dodge",
+      "suffix": "of the Last-Minute Dodge",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_duck_and_cover",
+      "suffix": "of the Duck and Cover",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_padded_cell",
+      "suffix": "of the Padded Cell",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "virginitys_last_stand",
+      "suffix": "of Virginity's Last Stand",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_wet_blanket_policy",
+      "suffix": "of the Wet Blanket Policy",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "exquisite_torture",
+      "suffix": "of Exquisite Torture",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "absolute_denial",
+      "suffix": "of Absolute Denial",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_chastity_vow",
+      "suffix": "of the Chastity Vow",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_silent_treatment",
+      "suffix": "of the Silent Treatment",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "consequences_deferred",
+      "suffix": "of Consequences Deferred",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_wall_between_us",
+      "suffix": "of the Wall Between Us",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_velvet_iron",
+      "suffix": "of the Velvet Iron",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_perfect_fit",
+      "suffix": "of the Perfect Fit",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_caged_beast",
+      "suffix": "of the Caged Beast",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "ruthless_composure",
+      "suffix": "of Ruthless Composure",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "anatomical_perfection",
+      "suffix": "of Anatomical Perfection",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_unshaken",
+      "suffix": "of the Unshaken",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_last_defence",
+      "suffix": "of the Last Defence",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "professional_padding",
+      "suffix": "of Professional Padding",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "sanctified_leather",
+      "suffix": "of Sanctified Leather",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_scream_proof_barrier",
+      "suffix": "of the Scream-Proof Barrier",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_impossible_guard",
+      "suffix": "of the Impossible Guard",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_goddess_guard",
+      "suffix": "of the Goddess Guard",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "absolute_cock_block",
+      "suffix": "of Absolute Cock-Block",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_boner_tribunal",
+      "suffix": "of the Boner Tribunal",
+      "pool": "defense.SR",
+      "enabled": true
+    },
+    {
+      "key": "dubious_comfort",
+      "suffix": "of Dubious Comfort",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "the_soggy_sandwich",
+      "suffix": "of the Soggy Sandwich",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "leftovers",
+      "suffix": "of Leftovers",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "faint_hope",
+      "suffix": "of Faint Hope",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "sticky_residue",
+      "suffix": "of Sticky Residue",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "cold_gravy",
+      "suffix": "of Cold Gravy",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "the_dented_lid",
+      "suffix": "of the Dented Lid",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "half_eaten_snacks",
+      "suffix": "of Half-Eaten Snacks",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "melting_ice",
+      "suffix": "of Melting Ice",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "gym_sock_aroma",
+      "suffix": "of Gym Sock Aroma",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "the_forgotten_birthday",
+      "suffix": "of the Forgotten Birthday",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "lint_and_crumbs",
+      "suffix": "of Lint and Crumbs",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "old_band_aids",
+      "suffix": "of Old Band-Aids",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "chewed_pen_caps",
+      "suffix": "of Chewed Pen Caps",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "crumpled_receipts",
+      "suffix": "of Crumpled Receipts",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "backwash",
+      "suffix": "of Backwash",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "the_swamp_cooler",
+      "suffix": "of the Swamp Cooler",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "secondhand_soup",
+      "suffix": "of Secondhand Soup",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "stale_air",
+      "suffix": "of Stale Air",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "the_empty_thermos",
+      "suffix": "of the Empty Thermos",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "mystery_stains",
+      "suffix": "of Mystery Stains",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "expired_yogurt",
+      "suffix": "of Expired Yogurt",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "the_soggy_bottom",
+      "suffix": "of the Soggy Bottom",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "unwashed_fingers",
+      "suffix": "of Unwashed Fingers",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "airplane_blankets",
+      "suffix": "of Airplane Blankets",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "tangled_earbuds",
+      "suffix": "of Tangled Earbuds",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "the_petty_cash",
+      "suffix": "of the Petty Cash",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "pocket_lint",
+      "suffix": "of Pocket Lint",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "almost_fresh_air",
+      "suffix": "of Almost-Fresh Air",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "sour_milk",
+      "suffix": "of Sour Milk",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "feral_comfort",
+      "suffix": "of Feral Comfort",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "slightly_damp_comfort",
+      "suffix": "of Slightly Damp Comfort",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "the_sticky_fridge",
+      "suffix": "of the Sticky Fridge",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "curdled_cream",
+      "suffix": "of Curdled Cream",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "the_soggy_chip",
+      "suffix": "of the Soggy Chip",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "mildewed_wool",
+      "suffix": "of Mildewed Wool",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "hair_in_the_drain",
+      "suffix": "of Hair In The Drain",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "the_greasy_tupperware",
+      "suffix": "of the Greasy Tupperware",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "feral_lunch_meat",
+      "suffix": "of Feral Lunch Meat",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "the_damp_mattress",
+      "suffix": "of the Damp Mattress",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "crumb_filled_pockets",
+      "suffix": "of Crumb-Filled Pockets",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "old_cigarette_butts",
+      "suffix": "of Old Cigarette Butts",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "the_burnt_casserole",
+      "suffix": "of the Burnt Casserole",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "sour_gym_bags",
+      "suffix": "of Sour Gym Bags",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "the_cracked_canteen",
+      "suffix": "of the Cracked Canteen",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "secondhand_underwear",
+      "suffix": "of Secondhand Underwear",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "the_moldy_tarp",
+      "suffix": "of the Moldy Tarp",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "goopy_sauce",
+      "suffix": "of Goopy Sauce",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "the_stained_futon",
+      "suffix": "of the Stained Futon",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "sad_pizza_slices",
+      "suffix": "of Sad Pizza Slices",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "the_bitter_thermos",
+      "suffix": "of the Bitter Thermos",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "almost_clean_socks",
+      "suffix": "of Almost-Clean Socks",
+      "pool": "health.N",
+      "enabled": true
+    },
+    {
+      "key": "morning_after",
+      "suffix": "of Morning After",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "the_walk_of_shame",
+      "suffix": "of the Walk of Shame",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "liquid_courage",
+      "suffix": "of Liquid Courage",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "post_nut_clarity",
+      "suffix": "of Post-Nut Clarity",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "the_third_nap",
+      "suffix": "of the Third Nap",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "cuddly_menace",
+      "suffix": "of Cuddly Menace",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "snack_time",
+      "suffix": "of Snack Time",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "the_afterglow",
+      "suffix": "of the Afterglow",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "bedside_water",
+      "suffix": "of Bedside Water",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "the_horny_snack",
+      "suffix": "of the Horny Snack",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "tender_mercies",
+      "suffix": "of Tender Mercies",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "care_and_feeding",
+      "suffix": "of Care and Feeding",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "the_booty_call",
+      "suffix": "of the Booty Call",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "emotional_support",
+      "suffix": "of Emotional Support",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "the_netflix_queue",
+      "suffix": "of the Netflix Queue",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "spite_and_caffeine",
+      "suffix": "of Spite and Caffeine",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "the_wet_bar",
+      "suffix": "of the Wet Bar",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "the_pillow_fort",
+      "suffix": "of the Pillow Fort",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "comfort_eating",
+      "suffix": "of Comfort Eating",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "the_coping_mechanism",
+      "suffix": "of the Coping Mechanism",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "gentle_domming",
+      "suffix": "of Gentle Domming",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "the_after_party",
+      "suffix": "of the After-Party",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "snug_returns",
+      "suffix": "of Snug Returns",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "second_thoughts",
+      "suffix": "of Second Thoughts",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "the_milk_run",
+      "suffix": "of the Milk Run",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "cream_and_sugar",
+      "suffix": "of Cream and Sugar",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "the_bedtime_ritual",
+      "suffix": "of the Bedtime Ritual",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "the_snack_stash",
+      "suffix": "of the Snack Stash",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "soft_chaos",
+      "suffix": "of Soft Chaos",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "the_third_drink",
+      "suffix": "of the Third Drink",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "platonic_handholding",
+      "suffix": "of Platonic Handholding",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "the_hangover_shame",
+      "suffix": "of the Hangover Shame",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "the_snack_drawer",
+      "suffix": "of the Snack Drawer",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "the_cuddle_puddle",
+      "suffix": "of the Cuddle Puddle",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "the_bedtime_story",
+      "suffix": "of the Bedtime Story",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "the_horny_nap",
+      "suffix": "of the Horny Nap",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "wet_dreams",
+      "suffix": "of Wet Dreams",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "the_blushing_morning",
+      "suffix": "of the Blushing Morning",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "butter_soaked_toast",
+      "suffix": "of Butter-Soaked Toast",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "caffeine_shakes",
+      "suffix": "of Caffeine Shakes",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "the_greasy_breakfast",
+      "suffix": "of the Greasy Breakfast",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "the_cheat_day",
+      "suffix": "of the Cheat Day",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "snack_nudity",
+      "suffix": "of Snack Nudity",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "the_sexy_pillow",
+      "suffix": "of the Sexy Pillow",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "the_post_climax_snack",
+      "suffix": "of the Post-Climax Snack",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "the_lazy_handjob",
+      "suffix": "of the Lazy Handjob",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "cuddly_chaos",
+      "suffix": "of Cuddly Chaos",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "the_midnight_fridge_raid",
+      "suffix": "of the Midnight Fridge Raid",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "the_sated_stupor",
+      "suffix": "of the Sated Stupor",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "the_warm_crotch",
+      "suffix": "of the Warm Crotch",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "the_morning_shower",
+      "suffix": "of the Morning Shower",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "the_habitual_snacker",
+      "suffix": "of the Habitual Snacker",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "hydration_nation",
+      "suffix": "of Hydration Nation",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "the_hangover_cure",
+      "suffix": "of the Hangover Cure",
+      "pool": "health.R",
+      "enabled": true
+    },
+    {
+      "key": "perpetual_arousal",
+      "suffix": "of Perpetual Arousal",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "boundless_warmth",
+      "suffix": "of Boundless Warmth",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_undying_flame",
+      "suffix": "of the Undying Flame",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_iron_liver",
+      "suffix": "of the Iron Liver",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "immortal_appetite",
+      "suffix": "of Immortal Appetite",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_fountain_of_youth",
+      "suffix": "of the Fountain of Youth",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_gushing_spring",
+      "suffix": "of the Gushing Spring",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_sleeping_beauty",
+      "suffix": "of the Sleeping Beauty",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_waking_dream",
+      "suffix": "of the Waking Dream",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_lovers_reserve",
+      "suffix": "of the Lover's Reserve",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "unending_comfort",
+      "suffix": "of Unending Comfort",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_ageless_glow",
+      "suffix": "of the Ageless Glow",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_warmest_embrace",
+      "suffix": "of the Warmest Embrace",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_eternal_afternoon_nap",
+      "suffix": "of the Eternal Afternoon Nap",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_holy_hangover",
+      "suffix": "of the Holy Hangover",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "ambrosial_nectar",
+      "suffix": "of Ambrosial Nectar",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_bottomless_cup",
+      "suffix": "of the Bottomless Cup",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_never_empty_bowl",
+      "suffix": "of the Never-Empty Bowl",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_second_heartbeat",
+      "suffix": "of the Second Heartbeat",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_nine_lives",
+      "suffix": "of the Nine Lives",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_morning_after_pill",
+      "suffix": "of the Morning-After Pill",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_champagne_breakfast",
+      "suffix": "of the Champagne Breakfast",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_post_coital_nap",
+      "suffix": "of the Post-Coital Nap",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_silk_pillow_bite_marks",
+      "suffix": "of the Silk Pillow Bite Marks",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_aggressive_snuggling",
+      "suffix": "of the Aggressive Snuggling",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_wet_spot_collection",
+      "suffix": "of the Wet Spot Collection",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_sloppy_kiss_department",
+      "suffix": "of the Sloppy Kiss Department",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_aggressive_pillow_fort",
+      "suffix": "of the Aggressive Pillow Fort",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_mounted_butt_plug_collection",
+      "suffix": "of the Mounted Butt Plug Collection",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_platinum_fleshlight",
+      "suffix": "of the Platinum Fleshlight",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_golden_butt_plug",
+      "suffix": "of the Golden Butt Plug",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_diamond_studded_chastity_cage",
+      "suffix": "of the Diamond-Studded Chastity Cage",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_silk_rope_collection",
+      "suffix": "of the Silk Rope Collection",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_velvet_restraints",
+      "suffix": "of the Velvet Restraints",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_bodily_fluids_collection",
+      "suffix": "of the Bodily Fluids Collection",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_bedside_lube_fountain",
+      "suffix": "of the Bedside Lube Fountain",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_rose_petal_fuck_nest",
+      "suffix": "of the Rose-Petal Fuck Nest",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_champagne_fuck_palace",
+      "suffix": "of the Champagne Fuck Palace",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_party_sized_snack_tray",
+      "suffix": "of the Party-Sized Snack Tray",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_everlasting_cheese_platter",
+      "suffix": "of the Everlasting Cheese Platter",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_emergency_grapes",
+      "suffix": "of the Emergency Grapes",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_snack_induced_coma",
+      "suffix": "of the Snack-Induced Coma",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_third_dessert",
+      "suffix": "of the Third Dessert",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_feral_cheese_board",
+      "suffix": "of the Feral Cheese Board",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_horny_housecoat",
+      "suffix": "of the Horny Housecoat",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_harem_pants",
+      "suffix": "of the Harem Pants",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_crocs_and_socks",
+      "suffix": "of the Crocs and Socks",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_feral_blanket_burrito",
+      "suffix": "of the Feral Blanket Burrito",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_aggressive_blanket_stealing",
+      "suffix": "of the Aggressive Blanket Stealing",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_scented_candle_fetish",
+      "suffix": "of the Scented Candle Fetish",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_aggressive_aromatherapy",
+      "suffix": "of the Aggressive Aromatherapy",
+      "pool": "health.SR",
+      "enabled": true
+    },
+    {
+      "key": "the_wet_wipe_superstore",
+      "suffix": "of the Wet Wipe Superstore",
+      "pool": "health.SR",
+      "enabled": true
+    }
+  ]
+}

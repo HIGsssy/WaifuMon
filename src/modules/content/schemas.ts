@@ -60,6 +60,7 @@ import { DEFAULT_SP_RANGES_BY_RARITY } from '../power/seductivePower';
 // Type-only: the runtime schemas live beside `relativeArtworkPath`, which
 // imports this module.
 import type { EquipmentOnboardingContent, NpcContent } from './onboardingSchemas';
+import type { EquipmentAffix } from '../equipment/affixCatalogue';
 
 const slug = z
   .string()
@@ -2867,6 +2868,13 @@ export interface LoadedContent {
    * never offered, never half-rendered.
    */
   onboarding?: { equipment: EquipmentOnboardingContent | null } | undefined;
+  /**
+   * The Equipment affix catalogue from `content/equipment/affixes.json`.
+   * Optional on disk and here: absent means no affixes, so every random
+   * Equipment grant fails for want of a pool entry (fixed grants still work).
+   * Hand-built snapshots carry none.
+   */
+  equipmentAffixes?: EquipmentAffix[] | undefined;
 }
 
 /**

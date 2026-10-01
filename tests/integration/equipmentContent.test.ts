@@ -27,6 +27,7 @@ import {
 import { createTestDb, type TestDb } from '../helpers/testDb';
 import { CONTENT_DIR } from '../helpers/fixtures';
 import {
+  fixedRange,
   buildEquipmentServices,
   createPlayer,
   grant,
@@ -54,13 +55,13 @@ beforeEach(async () => {
   await t.pool.query('delete from equipment_import_log');
 });
 
-const ring = { key: 'spiked_ring', name: 'Spiked Ring', slot: 'attack', rarity: 'R', attackBp: 7_200 };
-const belt = { key: 'guard_belt', name: 'Guard Belt', slot: 'defense', rarity: 'N', defenseBp: 4_000 };
-const corset = { key: 'tactical_corset', name: 'Tactical Corset', slot: 'health', rarity: 'SR', healthBp: 31_000 };
+const ring = { key: 'spiked_ring', name: 'Spiked Ring', slot: 'attack', rarity: 'R', ...fixedRange(7_200) };
+const belt = { key: 'guard_belt', name: 'Guard Belt', slot: 'defense', rarity: 'N', ...fixedRange(4_000) };
+const corset = { key: 'tactical_corset', name: 'Tactical Corset', slot: 'health', rarity: 'SR', ...fixedRange(31_000) };
 
 const pkg = (definitions: unknown[], over: Record<string, unknown> = {}) => ({
   format: EQUIPMENT_PACKAGE_FORMAT,
-  version: 1,
+  version: 2,
   definitions,
   ...over,
 });
@@ -91,7 +92,7 @@ async function logCount(): Promise<number> {
 describe('equipmentDefinitionService', () => {
   it('creates, reads and lists with owned counts', async () => {
     const created = await svc.definitions.create(ring, { actorDiscordId: 'author' });
-    expect(created).toMatchObject({ key: 'spiked_ring', attackBp: 7_200, updatedBy: 'author', enabled: true });
+    expect(created).toMatchObject({ key: 'spiked_ring', multiplierMinBp: 7_200, updatedBy: 'author', enabled: true });
     await svc.definitions.create(belt);
     const player = await createPlayer(t.db);
     await grant(t.db, svc, player, 'spiked_ring');
@@ -111,15 +112,15 @@ describe('equipmentDefinitionService', () => {
   });
 
   it('refuses invalid content and duplicate keys', async () => {
-    await expect(svc.definitions.create({ ...ring, attackBp: 0 })).rejects.toBeInstanceOf(EquipmentValidationError);
+    await expect(svc.definitions.create({ ...ring, multiplierMinBp: 0 })).rejects.toBeInstanceOf(EquipmentValidationError);
     await svc.definitions.create(ring);
     await expect(svc.definitions.create(ring)).rejects.toBeInstanceOf(EquipmentKeyTakenError);
   });
 
   it('updates in place, but never renames a key', async () => {
     await svc.definitions.create(ring);
-    const updated = await svc.definitions.update('spiked_ring', { ...ring, attackBp: 7_500 }, { actorDiscordId: 'ed' });
-    expect(updated).toMatchObject({ attackBp: 7_500, updatedBy: 'ed' });
+    const updated = await svc.definitions.update('spiked_ring', { ...ring, ...fixedRange(7_500) }, { actorDiscordId: 'ed' });
+    expect(updated).toMatchObject({ multiplierMinBp: 7_500, updatedBy: 'ed' });
     await expect(svc.definitions.update('spiked_ring', { ...ring, key: 'renamed' })).rejects.toBeInstanceOf(
       EquipmentValidationError,
     );
@@ -130,7 +131,7 @@ describe('equipmentDefinitionService', () => {
 
   it('allows a slot change only while nobody owns the definition', async () => {
     await svc.definitions.create(ring);
-    const moved = { ...ring, slot: 'defense', attackBp: 0, defenseBp: 5_000 };
+    const moved = { ...ring, slot: 'defense', ...fixedRange(5_000) };
     await svc.definitions.update('spiked_ring', moved);
     await svc.definitions.update('spiked_ring', ring);
     await grant(t.db, svc, await createPlayer(t.db), 'spiked_ring');
@@ -176,7 +177,7 @@ describe('seedEquipmentDefinitions', () => {
       skipped: [],
     });
     // An admin edits the live definition…
-    await svc.definitions.update('spiked_ring', { ...ring, name: 'Admin Renamed', attackBp: 7_900 }, { actorDiscordId: 'admin' });
+    await svc.definitions.update('spiked_ring', { ...ring, name: 'Admin Renamed', ...fixedRange(7_900) }, { actorDiscordId: 'admin' });
     const [before] = await t.db.select().from(equipmentDefinitions).where(eq(equipmentDefinitions.key, 'spiked_ring'));
 
     // …and a restart re-seeds.
@@ -184,7 +185,7 @@ describe('seedEquipmentDefinitions', () => {
     expect(again).toEqual({ created: ['tactical_corset'], updated: [], skipped: ['spiked_ring', 'guard_belt'] });
     const [after] = await t.db.select().from(equipmentDefinitions).where(eq(equipmentDefinitions.key, 'spiked_ring'));
     expect(after).toEqual(before);
-    expect(after).toMatchObject({ name: 'Admin Renamed', attackBp: 7_900, updatedBy: 'admin' });
+    expect(after).toMatchObject({ name: 'Admin Renamed', multiplierMinBp: 7_900, updatedBy: 'admin' });
   });
 
   it('reset mode overwrites (tests only), but still refuses a slot change on owned gear', async () => {
@@ -198,7 +199,7 @@ describe('seedEquipmentDefinitions', () => {
     expect((await svc.definitions.getByKey('spiked_ring'))!.name).toBe('Spiked Ring');
 
     await grant(t.db, svc, await createPlayer(t.db), 'spiked_ring');
-    const moved = parseEquipmentDefinition({ ...ring, slot: 'defense', attackBp: 0, defenseBp: 5_000 });
+    const moved = parseEquipmentDefinition({ ...ring, slot: 'defense', ...fixedRange(5_000) });
     await expect(seedEquipmentDefinitions(t.db, { mode: 'reset', catalogue: [moved] })).rejects.toBeInstanceOf(
       EquipmentSlotLockedError,
     );
@@ -244,7 +245,7 @@ describe('package import and export', () => {
     expect(log).toMatchObject({
       actorDiscordUserId: 'op',
       packageFormat: EQUIPMENT_PACKAGE_FORMAT,
-      packageVersion: 1,
+      packageVersion: 2,
       packageLabel: 'staging 2026-09-30',
       sourceFilename: 'gear.json',
       createdCount: 1,
@@ -266,7 +267,7 @@ describe('package import and export', () => {
   it('refuses the whole package when any entry cannot apply — nothing lands, nothing is logged', async () => {
     await svc.definitions.create(ring);
     await grant(t.db, svc, await createPlayer(t.db), 'spiked_ring');
-    const moved = { ...ring, slot: 'defense', attackBp: 0, defenseBp: 5_000 };
+    const moved = { ...ring, slot: 'defense', ...fixedRange(5_000) };
     const err = await svc.promotion.applyImport(pkg([corset, moved])).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(EquipmentImportRejectedError);
     expect((err as EquipmentImportRejectedError).issues[0]!.path).toBe('definitions[1].slot');
@@ -277,7 +278,7 @@ describe('package import and export', () => {
 
   it('refuses a malformed package before touching the database', async () => {
     await expect(svc.promotion.applyImport(pkg([{ ...ring, id: 3 }]))).rejects.toBeInstanceOf(EquipmentValidationError);
-    await expect(svc.promotion.applyImport(pkg([ring], { version: 2 }))).rejects.toBeInstanceOf(EquipmentValidationError);
+    await expect(svc.promotion.applyImport(pkg([ring], { version: 1 }))).rejects.toBeInstanceOf(EquipmentValidationError);
     expect(await definitionCount()).toBe(0);
     expect(await logCount()).toBe(0);
   });
@@ -309,7 +310,7 @@ describe('package import and export', () => {
     try {
       await other.query('begin');
       await other.query(
-        `insert into equipment_definitions (key, name, slot, rarity, health_bp) values ('tactical_corset', 'Theirs', 'health', 'N', 20000)`,
+        `insert into equipment_definitions (key, name, slot, rarity, multiplier_min_bp, multiplier_max_bp, multiplier_step_bp) values ('tactical_corset', 'Theirs', 'health', 'N', 20000, 20000, 100)`,
       );
       const importing = svc.promotion.applyImport(pkg([ring, corset])).catch((e: unknown) => e);
       await waitForLockWaiter();
@@ -329,7 +330,7 @@ describe('package import and export', () => {
     expect(await logCount()).toBe(0);
 
     // "Refresh and retry" then succeeds against the server as it now is.
-    const retried = await svc.promotion.applyImport(pkg([ring, { ...corset, name: 'Theirs', rarity: 'N', healthBp: 20_000 }]));
+    const retried = await svc.promotion.applyImport(pkg([ring, { ...corset, name: 'Theirs', rarity: 'N', ...fixedRange(20_000) }]));
     expect(retried.plan.counts).toEqual({ create: 1, update: 0, unchanged: 1 });
   });
 
@@ -352,7 +353,7 @@ describe('package import and export', () => {
     await t.pool.query('delete from equipment_definitions');
     await svc.promotion.applyImport(exported);
     const [row] = await t.db.select().from(equipmentDefinitions);
-    expect(row).toMatchObject({ key: 'tactical_corset', healthBp: 31_000, rarity: 'SR' });
+    expect(row).toMatchObject({ key: 'tactical_corset', multiplierMinBp: 31_000, rarity: 'SR' });
     const [instances] = await t.db.select({ n: count() }).from(playerEquipment);
     expect(instances!.n).toBe(0);
   });

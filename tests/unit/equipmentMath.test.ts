@@ -11,7 +11,6 @@ import {
   deriveStat,
   emptySlots,
   EQUIPMENT_FORMULA_VERSION,
-  ownSlotMultiplierBp,
   type CombatBuddy,
   type CombatSlotItem,
 } from '../../src/modules/equipment/equipmentMath';
@@ -29,6 +28,8 @@ const item = (equipmentId: number, multiplierBp: number): CombatSlotItem => ({
   equipmentId,
   definitionKey: `gear_${equipmentId}`,
   name: `Gear ${equipmentId}`,
+  definitionName: `Gear ${equipmentId}`,
+  affixKey: null,
   rarity: 'R',
   multiplierBp,
   rolledProperties: {},
@@ -76,18 +77,6 @@ describe('deriveStat', () => {
   it('stays exact at the extremes', () => {
     expect(deriveStat(10_000, 80_000)).toBe(80_000);
     expect(deriveStat(401, 38_000)).toBe(1_524); // 1523.8
-  });
-});
-
-describe('ownSlotMultiplierBp', () => {
-  const def = { attackBp: 8_000, defenseBp: 6_000, healthBp: 30_000 };
-  it('picks the multiplier matching the slot', () => {
-    expect(ownSlotMultiplierBp({ ...def, slot: 'attack' })).toBe(8_000);
-    expect(ownSlotMultiplierBp({ ...def, slot: 'defense' })).toBe(6_000);
-    expect(ownSlotMultiplierBp({ ...def, slot: 'health' })).toBe(30_000);
-  });
-  it('refuses an unknown slot', () => {
-    expect(() => ownSlotMultiplierBp({ ...def, slot: 'relic' })).toThrow(RangeError);
   });
 });
 

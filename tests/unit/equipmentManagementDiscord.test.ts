@@ -69,10 +69,10 @@ const def = (key: string, slot: EquipmentSlot, bp: number, over: Partial<Equipme
   description: '',
   slot,
   rarity: 'N',
-  attackBp: slot === 'attack' ? bp : 0,
-  defenseBp: slot === 'defense' ? bp : 0,
-  healthBp: slot === 'health' ? bp : 0,
-  multiplierBp: bp,
+  // A single-value range at `bp`; the fixtures below give every copy that roll.
+  multiplierMinBp: bp,
+  multiplierMaxBp: bp,
+  multiplierStepBp: 100,
   tags: [],
   regionId: null,
   artworkPath: null,
@@ -84,8 +84,10 @@ const slotItem = (id: number, d: EquipmentDefinitionView): CombatSlotItem => ({
   equipmentId: id,
   definitionKey: d.key,
   name: d.name,
+  definitionName: d.name,
+  affixKey: null,
   rarity: d.rarity,
-  multiplierBp: d.multiplierBp,
+  multiplierBp: d.multiplierMinBp,
   rolledProperties: {},
 });
 
@@ -94,6 +96,9 @@ const instance = (id: number, d: EquipmentDefinitionView, over: Partial<Equipmen
     id,
     slot: d.slot,
     definition: d,
+    rolledMultiplierBp: d.multiplierMinBp,
+    affixKey: null,
+    displayName: d.name,
     rolledProperties: {},
     isFavorite: false,
     isLocked: false,
@@ -104,6 +109,9 @@ const instance = (id: number, d: EquipmentDefinitionView, over: Partial<Equipmen
 
 const group = (d: EquipmentDefinitionView, over: Partial<EquipmentGroup> = {}): EquipmentGroup => ({
   definition: d,
+  rolledMultiplierBp: d.multiplierMinBp,
+  affixKey: null,
+  displayName: d.name,
   count: 1,
   equippedCount: 0,
   favoriteCount: 0,

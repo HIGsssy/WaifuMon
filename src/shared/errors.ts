@@ -910,6 +910,28 @@ export class EquipmentDefinitionNotFoundError extends AppError {
 }
 
 /** A grant named a disabled definition — disabled means "stops being acquired". */
+/**
+ * A random grant needs an affix from the definition's pool (`slot.rarity`) and
+ * that pool has no enabled affix — or the definition's rarity has no pool at
+ * all. A content/configuration error: the grant is refused rather than handing
+ * out an unaffixed item or borrowing from another pool.
+ */
+export class EquipmentAffixPoolEmptyError extends AppError {
+  readonly pool: string;
+  readonly definitionKey: string;
+  constructor(definitionKey: string, pool: string, reason: 'empty' | 'unsupported') {
+    super(
+      'EQUIPMENT_AFFIX_POOL_EMPTY',
+      reason === 'unsupported'
+        ? `Equipment definition "${definitionKey}" derives affix pool "${pool}", which is not a supported pool`
+        : `Affix pool "${pool}" (for equipment definition "${definitionKey}") has no enabled affixes`,
+      'That equipment cannot be generated right now.',
+    );
+    this.pool = pool;
+    this.definitionKey = definitionKey;
+  }
+}
+
 export class EquipmentDefinitionDisabledError extends AppError {
   constructor(key: string) {
     super(

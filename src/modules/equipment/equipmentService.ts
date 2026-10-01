@@ -17,6 +17,11 @@
  *  - **Disabled definitions stop acquisition, not use.** A grant of a disabled
  *    definition is refused (unless the caller is paying out something already
  *    won); equipping an instance of one is allowed.
+ *  - **An instance owns its roll.** `grantEquipment` decides each copy's
+ *    multiplier and affix exactly once — rolled from the definition's range
+ *    (`equipmentRoll.ts`) or dictated and validated for a fixed grant — and
+ *    stores them on the row. Nothing ever recalculates them, and a retried
+ *    grant reads the original copies back instead of rolling again.
  *  - **Ownership is always re-validated.** An id from a client is looked up
  *    together with the player id and `removed_at IS NULL`; missing, foreign
  *    and removed instances all fail with the same `EquipmentNotOwnedError`.
@@ -53,8 +58,17 @@ import {
   FeatureLockedError,
   LoadoutConflictError,
 } from '../../shared/errors';
+import { defaultRng, type Rng } from '../../shared/random';
 import { recordDomainAdminAction } from '../admin/adminActionAudit';
 import type { FeatureUnlockService } from '../features/featureUnlockService';
+import type { EquipmentAffixCatalogue } from './affixCatalogue';
+import {
+  equipmentDisplayName,
+  multiplierRangeIssues,
+  rollEquipmentInstance,
+  validateFixedRoll,
+  type EquipmentRoll,
+} from './equipmentRoll';
 import {
   readActiveLoadoutRow,
   readActiveLoadoutView,
@@ -83,6 +97,20 @@ const DEFAULT_LOADOUT_NAME = 'Default';
 
 // ── Inputs and results ────────────────────────────────────────────────────
 
+/**
+ * How a grant decides its copies' rolled properties.
+ *
+ *  - `random` (the default) — normal loot. Each copy rolls its own multiplier
+ *    from the definition's range and its own affix from the catalogue.
+ *  - `fixed` — the caller dictates the exact multiplier and affix (or null)
+ *    for every copy: onboarding, admin tools, compensation. Validated against
+ *    the definition's current range and the catalogue; anything else is
+ *    refused with `EquipmentValidationError`, never clamped.
+ */
+export type EquipmentRollSpec =
+  | { kind: 'random' }
+  | { kind: 'fixed'; rolledMultiplierBp: number; affixKey: string | null };
+
 export interface GrantEquipmentInput {
   playerId: number;
   definitionKey: string;
@@ -103,6 +131,8 @@ export interface GrantEquipmentInput {
    * before an admin disabled the gear). Never for a fresh roll.
    */
   allowDisabled?: boolean;
+  /** Defaults to `{ kind: 'random' }`. */
+  roll?: EquipmentRollSpec;
 }
 
 export interface GrantEquipmentResult {
@@ -141,12 +171,18 @@ export interface EquipmentPage {
 }
 
 /**
- * Identical owned gear, grouped. V1 equipment has fixed stats, so every copy
- * of one definition is mechanically the same and grouping by definition is
- * exact; once rolled properties exist, groups will split on them too.
+ * Identical owned gear, grouped. Copies group only when everything a player
+ * can see about them matches — the definition, the rolled multiplier **and**
+ * the affix — so two Rusty Pipes at ×0.40 and ×0.60, or with different
+ * suffixes, are separate groups. Per-copy state (favourite, lock, equipped)
+ * is counted, never merged.
  */
 export interface EquipmentGroup {
   definition: EquipmentDefinitionView;
+  /** Shared by every copy in the group. */
+  rolledMultiplierBp: number;
+  affixKey: string | null;
+  displayName: string;
   count: number;
   equippedCount: number;
   favoriteCount: number;
@@ -205,6 +241,8 @@ export interface GrantKeyRecord {
   slot: EquipmentSlot;
   sourceType: string;
   definition: EquipmentDefinitionView;
+  rolledMultiplierBp: number;
+  affixKey: string | null;
   removed: boolean;
 }
 
@@ -288,15 +326,16 @@ export interface EquipmentService {
 export interface EquipmentServiceDeps {
   db: Db;
   featureUnlocks: Pick<FeatureUnlockService, 'isUnlocked'>;
+  /** The affix catalogue, read live so a content reload is followed. */
+  getAffixes(): EquipmentAffixCatalogue;
+  /** The RNG random grants roll with. Injected by tests; `Math.random` otherwise. */
+  rng?: Rng;
 }
 
 // ── Sorting and cursors ───────────────────────────────────────────────────
 
-/** The instance's own-slot multiplier, as SQL. */
-const OWN_MULTIPLIER_SQL = sql<number>`(case ${playerEquipment.slot}
-  when 'attack' then ${equipmentDefinitions.attackBp}
-  when 'defense' then ${equipmentDefinitions.defenseBp}
-  else ${equipmentDefinitions.healthBp} end)`;
+/** The instance's rolled multiplier — the only multiplier there is to sort by. */
+const OWN_MULTIPLIER_SQL = sql<number>`${playerEquipment.rolledMultiplierBp}`;
 
 /** Rarity ladder position, as SQL — N lowest, EX highest. */
 const RARITY_RANK_SQL = sql<number>`(case ${equipmentDefinitions.rarity} ${sql.raw(
@@ -320,7 +359,7 @@ const SORTS: Record<EquipmentSort, SortSpec> = {
     expr: OWN_MULTIPLIER_SQL,
     direction: 'desc',
     cast: 'int',
-    valueOf: (r) => ownMultiplier(r.instance, r.definition),
+    valueOf: (r) => r.instance.rolledMultiplierBp,
   },
   rarity: {
     expr: RARITY_RANK_SQL,
@@ -335,14 +374,6 @@ const SORTS: Record<EquipmentSort, SortSpec> = {
     valueOf: (r) => r.definition.name.toLowerCase(),
   },
 };
-
-function ownMultiplier(instance: PlayerEquipmentRow, definition: EquipmentDefinitionRow): number {
-  return instance.slot === 'attack'
-    ? definition.attackBp
-    : instance.slot === 'defense'
-      ? definition.defenseBp
-      : definition.healthBp;
-}
 
 interface CursorPayload {
   s: EquipmentSort;
@@ -388,6 +419,7 @@ function assertSlot(slot: unknown): asserts slot is EquipmentSlot {
 
 export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentService {
   const { db, featureUnlocks } = deps;
+  const rng = deps.rng ?? defaultRng();
 
   async function requireUnlocked(tx: DbOrTx, playerId: number): Promise<void> {
     if (!(await featureUnlocks.isUnlocked(playerId, 'equipment', tx))) {
@@ -506,6 +538,38 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
         )!;
   }
 
+  /**
+   * Each copy's rolled properties, decided once per grant. Random copies roll
+   * independently; fixed copies all get the validated, dictated roll.
+   */
+  function rollCopies(
+    definition: EquipmentDefinitionRow,
+    spec: EquipmentRollSpec | undefined,
+    quantity: number,
+  ): EquipmentRoll[] {
+    const affixes = deps.getAffixes();
+    const kind: unknown = spec?.kind ?? 'random';
+    if (kind === 'random') {
+      // A definition that reached the table another way with a range
+      // validation would reject is refused, not rolled from. An empty or
+      // unsupported affix pool throws `EquipmentAffixPoolEmptyError` from the
+      // roll itself — never an unaffixed item, never another pool.
+      const issues = multiplierRangeIssues(definition.slot, definition);
+      if (issues.length > 0) throw new EquipmentValidationError(issues);
+      return Array.from({ length: quantity }, () => rollEquipmentInstance(definition, { rng, affixes }));
+    }
+    if (kind !== 'fixed') {
+      throw new EquipmentValidationError([{ path: 'roll.kind', message: `unknown roll kind "${String(kind)}"` }]);
+    }
+    const { kind: _kind, ...fixed } = spec as Extract<EquipmentRollSpec, { kind: 'fixed' }>;
+    const issues = validateFixedRoll(definition, fixed, affixes);
+    if (issues.length > 0) throw new EquipmentValidationError(issues);
+    return Array.from({ length: quantity }, () => ({
+      rolledMultiplierBp: fixed.rolledMultiplierBp,
+      affixKey: fixed.affixKey,
+    }));
+  }
+
   function listEquipmentGroupsImpl(
     playerId: number,
     opts: EquipmentFilters & { sort?: EquipmentSort } = {},
@@ -516,6 +580,8 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
       const rows = await db
         .select({
           definition: equipmentDefinitions,
+          rolledMultiplierBp: playerEquipment.rolledMultiplierBp,
+          affixKey: playerEquipment.affixKey,
           count: sql<number>`count(*)::int`,
           equippedCount: sql<number>`count(${playerLoadoutSlots.equipmentId})::int`,
           favoriteCount: sql<number>`count(*) filter (where ${playerEquipment.isFavorite})::int`,
@@ -529,10 +595,16 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
         .innerJoin(equipmentDefinitions, eq(playerEquipment.definitionId, equipmentDefinitions.id))
         .leftJoin(playerLoadoutSlots, activeSlotJoin(activeLoadoutId))
         .where(and(...filterConditions(playerId, opts, activeLoadoutId)))
-        .groupBy(equipmentDefinitions.id);
+        // Everything a player can see about a copy, so materially different
+        // loot never collapses into one line.
+        .groupBy(equipmentDefinitions.id, playerEquipment.rolledMultiplierBp, playerEquipment.affixKey);
 
+      const affixes = deps.getAffixes();
       const groups: (EquipmentGroup & { newest: number })[] = rows.map((r) => ({
         definition: toDefinitionView(r.definition),
+        rolledMultiplierBp: r.rolledMultiplierBp,
+        affixKey: r.affixKey,
+        displayName: equipmentDisplayName(r.definition.name, r.affixKey, affixes),
         count: r.count,
         equippedCount: r.equippedCount,
         favoriteCount: r.favoriteCount,
@@ -542,18 +614,24 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
         newest: Number(r.newest),
       }));
       const rank = (g: EquipmentGroup) => (RARITIES as readonly string[]).indexOf(g.definition.rarity);
+      // Key, then roll, then affix: a total order over group identity, so
+      // ties in the chosen sort never shuffle between reads.
+      const identity = (a: EquipmentGroup, b: EquipmentGroup) =>
+        a.definition.key.localeCompare(b.definition.key) ||
+        b.rolledMultiplierBp - a.rolledMultiplierBp ||
+        (a.affixKey ?? '').localeCompare(b.affixKey ?? '');
       const sort = opts.sort ?? 'multiplier';
       groups.sort((a, b) => {
         switch (sort) {
           case 'acquired':
             return b.newest - a.newest;
           case 'rarity':
-            return rank(b) - rank(a) || a.definition.key.localeCompare(b.definition.key);
+            return rank(b) - rank(a) || identity(a, b);
           case 'name':
-            return a.definition.name.localeCompare(b.definition.name) || a.definition.key.localeCompare(b.definition.key);
+            return a.displayName.localeCompare(b.displayName) || identity(a, b);
           case 'multiplier':
           default:
-            return b.definition.multiplierBp - a.definition.multiplierBp || a.definition.key.localeCompare(b.definition.key);
+            return b.rolledMultiplierBp - a.rolledMultiplierBp || identity(a, b);
         }
       });
       return groups.map(({ newest: _newest, ...group }) => group);
@@ -587,10 +665,30 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
       }
 
       const copyKeys = grantKey === null ? null : Array.from({ length: quantity }, (_, i) => `${grantKey}:${i}`);
+
+      let rolls: EquipmentRoll[];
+      try {
+        rolls = rollCopies(definition, input.roll, quantity);
+      } catch (err) {
+        // A retry must return what the grant created the first time, even if
+        // the definition's range has since moved and the dictated roll no
+        // longer fits it. Only a complete replay is let through: if any copy
+        // is still missing, the refusal stands and nothing is created.
+        if (!(err instanceof EquipmentValidationError) || copyKeys === null) throw err;
+        const existing = await tx.select().from(playerEquipment).where(inArray(playerEquipment.grantKey, copyKeys));
+        if (existing.length < quantity) throw err;
+        // Placeholders only: every insert below conflicts and is discarded.
+        rolls = existing.map((row) => ({ rolledMultiplierBp: row.rolledMultiplierBp, affixKey: row.affixKey }));
+      }
+      // On a retry the insert below conflicts and these freshly rolled values
+      // are discarded: the copies read back carry the roll they were first
+      // granted with. A grant key therefore pins the roll, not just the count.
       const values = Array.from({ length: quantity }, (_, i) => ({
         playerId: input.playerId,
         definitionId: definition.id,
         slot: definition.slot,
+        rolledMultiplierBp: rolls[i]!.rolledMultiplierBp,
+        affixKey: rolls[i]!.affixKey,
         sourceType: input.source.type,
         sourceKey: input.source.key ?? null,
         grantKey: copyKeys?.[i] ?? null,
@@ -635,8 +733,12 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
           equipmentId: row.id,
           slot: row.slot as EquipmentSlot,
           actorDiscordId: input.actorDiscordId ?? null,
+          // Observability only — the row is the authoritative roll.
           metadata: {
             definitionKey: definition.key,
+            rolledMultiplierBp: row.rolledMultiplierBp,
+            affixKey: row.affixKey,
+            rollKind: input.roll?.kind ?? 'random',
             sourceType: input.source.type,
             sourceKey: input.source.key ?? null,
             grantKey: row.grantKey,
@@ -649,7 +751,7 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
       // copies since is a question for `listEquipment`, not for a payout.
       return {
         definition: toDefinitionView(definition),
-        instances: covered.map((row) => toInstanceView(row, definition, false)),
+        instances: covered.map((row) => toInstanceView(row, definition, false, deps.getAffixes())),
         newInstanceIds: inserted.map((row) => row.id),
         alreadyGranted: inserted.length === 0,
       };
@@ -697,7 +799,7 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
       const page = rows.slice(0, limit);
       const last = page[page.length - 1];
       return {
-        items: page.map((r) => toInstanceView(r.instance, r.definition, r.equippedId != null)),
+        items: page.map((r) => toInstanceView(r.instance, r.definition, r.equippedId != null, deps.getAffixes())),
         nextCursor:
           rows.length > limit && last
             ? encodeCursor({ s: sort, v: spec.valueOf(last), id: last.instance.id })
@@ -715,11 +817,11 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
         active != null &&
         (await currentSlotEquipmentId(db, active.id, owned.instance.slot as EquipmentSlot)) ===
           owned.instance.id;
-      return toInstanceView(owned.instance, owned.definition, equipped);
+      return toInstanceView(owned.instance, owned.definition, equipped, deps.getAffixes());
     },
 
     async getActiveLoadout(playerId) {
-      return readActiveLoadoutView(db, playerId);
+      return readActiveLoadoutView(db, playerId, deps.getAffixes());
     },
 
     ensureActiveLoadout,
@@ -742,7 +844,7 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
           throw new LoadoutConflictError(input.slot);
         }
         if (currentId === input.equipmentId) {
-          return { changed: false, previousEquipmentId: currentId, loadout: await readActiveLoadoutView(tx, playerId) };
+          return { changed: false, previousEquipmentId: currentId, loadout: await readActiveLoadoutView(tx, playerId, deps.getAffixes()) };
         }
 
         await tx
@@ -761,9 +863,9 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
           slot: input.slot,
           previousEquipmentId: currentId,
           actorDiscordId: opts.actorDiscordId ?? null,
-          metadata: { definitionKey: owned.definition.key },
+          metadata: { definitionKey: owned.definition.key, rolledMultiplierBp: owned.instance.rolledMultiplierBp },
         });
-        return { changed: true, previousEquipmentId: currentId, loadout: await readActiveLoadoutView(tx, playerId) };
+        return { changed: true, previousEquipmentId: currentId, loadout: await readActiveLoadoutView(tx, playerId, deps.getAffixes()) };
       });
     },
 
@@ -777,7 +879,7 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
           throw new LoadoutConflictError(input.slot);
         }
         if (currentId === null) {
-          return { changed: false, previousEquipmentId: null, loadout: await readActiveLoadoutView(tx, playerId) };
+          return { changed: false, previousEquipmentId: null, loadout: await readActiveLoadoutView(tx, playerId, deps.getAffixes()) };
         }
         await tx
           .delete(playerLoadoutSlots)
@@ -792,7 +894,7 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
           previousEquipmentId: currentId,
           actorDiscordId: opts.actorDiscordId ?? null,
         });
-        return { changed: true, previousEquipmentId: currentId, loadout: await readActiveLoadoutView(tx, playerId) };
+        return { changed: true, previousEquipmentId: currentId, loadout: await readActiveLoadoutView(tx, playerId, deps.getAffixes()) };
       });
     },
 
@@ -827,7 +929,7 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
         const equipped =
           active != null &&
           (await currentSlotEquipmentId(tx, active.id, owned.instance.slot as EquipmentSlot)) === equipmentId;
-        return toInstanceView(updated!, owned.definition, equipped);
+        return toInstanceView(updated!, owned.definition, equipped, deps.getAffixes());
       });
     },
 
@@ -909,6 +1011,8 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
           slot: instance.slot as EquipmentSlot,
           sourceType: instance.sourceType,
           definition: toDefinitionView(definition),
+          rolledMultiplierBp: instance.rolledMultiplierBp,
+          affixKey: instance.affixKey,
           removed: instance.removedAt != null,
         });
       }

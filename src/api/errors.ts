@@ -457,6 +457,12 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   /** Granting a definition that has been disabled — it is not obtainable now. */
   EQUIPMENT_DEFINITION_DISABLED: 422,
   /**
+   * A random grant whose affix pool (`slot.rarity`) has no enabled affix, or
+   * does not exist. A broken content set, not a bad request — the operator
+   * gets the pool in the log.
+   */
+  EQUIPMENT_AFFIX_POOL_EMPTY: 500,
+  /**
    * The feature exists and the request is well-formed; the player has simply
    * not unlocked it yet. 422 rather than 403, matching `REGION_LOCKED` and
    * every other "you have not earned this yet" refusal in this table.

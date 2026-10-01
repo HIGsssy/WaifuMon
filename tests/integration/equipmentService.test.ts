@@ -26,6 +26,7 @@ import {
 } from '../../src/shared/errors';
 import { createTestDb, type TestDb } from '../helpers/testDb';
 import {
+  fixedRange,
   buildEquipmentServices,
   createPlayer,
   defineGear,
@@ -88,9 +89,9 @@ describe('grantEquipment', () => {
     );
     expect(result.alreadyGranted).toBe(false);
     expect(result.newInstanceIds).toHaveLength(3);
-    expect(result.definition).toMatchObject({ key: 'plasma_coil_ring', slot: 'attack', multiplierBp: 8_600 });
+    expect(result.definition).toMatchObject({ key: 'plasma_coil_ring', slot: 'attack', multiplierMinBp: 8_600 });
     for (const instance of result.instances) {
-      expect(instance).toMatchObject({ slot: 'attack', sourceType: 'encounter', sourceKey: 'tp_narrow_ledge', equipped: false });
+      expect(instance).toMatchObject({ slot: 'attack', sourceType: 'encounter', sourceKey: 'tp_narrow_ledge', equipped: false, rolledMultiplierBp: 8_600, affixKey: 'attack_sr_flair' });
     }
     const rows = await t.db.select().from(playerEquipment).where(eq(playerEquipment.playerId, player));
     expect(rows.every((r) => r.grantedBy === 'admin-1' && r.grantKey === null && r.removedAt === null)).toBe(true);
@@ -140,7 +141,7 @@ describe('grantEquipment', () => {
   it('refuses an unknown or disabled definition, unless paying out an already-won reward', async () => {
     const player = await createPlayer(t.db);
     await expect(grant(t.db, svc, player, 'no_such_gear')).rejects.toBeInstanceOf(EquipmentDefinitionNotFoundError);
-    await svc.definitions.create({ key: 'retired_ring', name: 'Retired Ring', slot: 'attack', rarity: 'N', attackBp: 4_000, enabled: false });
+    await svc.definitions.create({ key: 'retired_ring', name: 'Retired Ring', slot: 'attack', rarity: 'N', ...fixedRange(4_000), enabled: false });
     await expect(grant(t.db, svc, player, 'retired_ring')).rejects.toBeInstanceOf(EquipmentDefinitionDisabledError);
     await expect(grant(t.db, svc, player, 'retired_ring', { allowDisabled: true })).resolves.toBeGreaterThan(0);
   });
@@ -341,7 +342,7 @@ describe('listing', () => {
 
   it('orders by multiplier, highest first', async () => {
     const page = await svc.equipment.listEquipment(player, { sort: 'multiplier' });
-    const multipliers = page.items.map((i) => i.definition.multiplierBp);
+    const multipliers = page.items.map((i) => i.rolledMultiplierBp);
     expect(multipliers).toEqual([...multipliers].sort((a, b) => b - a));
     expect(multipliers[0]).toBe(20_000);
   });

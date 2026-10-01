@@ -6,7 +6,7 @@
  * holds it to that — so the stat service can read loadouts through it without
  * depending on the service that mutates them.
  */
-import { and, asc, eq, isNull } from 'drizzle-orm';
+import { and, asc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import type { DbOrTx } from '../../db/client';
 import {
   equipmentDefinitions,
@@ -17,7 +17,9 @@ import {
   type PlayerEquipmentRow,
   type PlayerLoadoutRow,
 } from '../../db/schema';
-import { ownSlotMultiplierBp, type CombatSlotItem } from './equipmentMath';
+import type { EquipmentAffixCatalogue } from './affixCatalogue';
+import type { CombatSlotItem } from './equipmentMath';
+import { equipmentDisplayName } from './equipmentRoll';
 import type { EquipmentSlot } from './vocabulary';
 
 /** A definition as clients see it. Never carries the internal id. */
@@ -27,11 +29,13 @@ export interface EquipmentDefinitionView {
   description: string;
   slot: EquipmentSlot;
   rarity: string;
-  attackBp: number;
-  defenseBp: number;
-  healthBp: number;
-  /** The multiplier this definition applies to its own slot's stat. */
-  multiplierBp: number;
+  /**
+   * The range new instances roll from. **Not** a combat value: an owned
+   * instance's multiplier is `EquipmentInstanceView.rolledMultiplierBp`.
+   */
+  multiplierMinBp: number;
+  multiplierMaxBp: number;
+  multiplierStepBp: number;
   tags: string[];
   regionId: string | null;
   artworkPath: string | null;
@@ -43,6 +47,12 @@ export interface EquipmentInstanceView {
   id: number;
   slot: EquipmentSlot;
   definition: EquipmentDefinitionView;
+  /** The multiplier this copy applies to its slot's stat — the authoritative one. */
+  rolledMultiplierBp: number;
+  /** Flavour affix key, or null for an unaffixed copy. */
+  affixKey: string | null;
+  /** Base name plus affix suffix — what every surface shows. */
+  displayName: string;
   rolledProperties: Record<string, unknown>;
   isFavorite: boolean;
   isLocked: boolean;
@@ -67,10 +77,9 @@ export function toDefinitionView(row: EquipmentDefinitionRow): EquipmentDefiniti
     description: row.description,
     slot: row.slot as EquipmentSlot,
     rarity: row.rarity,
-    attackBp: row.attackBp,
-    defenseBp: row.defenseBp,
-    healthBp: row.healthBp,
-    multiplierBp: ownSlotMultiplierBp(row),
+    multiplierMinBp: row.multiplierMinBp,
+    multiplierMaxBp: row.multiplierMaxBp,
+    multiplierStepBp: row.multiplierStepBp,
     tags: row.tags,
     regionId: row.regionId,
     artworkPath: row.artworkPath,
@@ -82,11 +91,15 @@ export function toInstanceView(
   instance: PlayerEquipmentRow,
   definition: EquipmentDefinitionRow,
   equipped: boolean,
+  affixes: EquipmentAffixCatalogue,
 ): EquipmentInstanceView {
   return {
     id: instance.id,
     slot: instance.slot as EquipmentSlot,
     definition: toDefinitionView(definition),
+    rolledMultiplierBp: instance.rolledMultiplierBp,
+    affixKey: instance.affixKey,
+    displayName: equipmentDisplayName(definition.name, instance.affixKey, affixes),
     rolledProperties: instance.rolledProperties,
     isFavorite: instance.isFavorite,
     isLocked: instance.isLocked,
@@ -101,19 +114,42 @@ export function toInstanceView(
 export function toCombatSlotItem(
   instance: PlayerEquipmentRow,
   definition: EquipmentDefinitionRow,
+  affixes: EquipmentAffixCatalogue,
 ): CombatSlotItem {
   return {
     equipmentId: instance.id,
     definitionKey: definition.key,
-    name: definition.name,
+    name: equipmentDisplayName(definition.name, instance.affixKey, affixes),
+    definitionName: definition.name,
+    affixKey: instance.affixKey,
     rarity: definition.rarity,
-    // The *instance's* slot decides which multiplier applies. It equals the
-    // definition's by construction (copied at grant; slot is immutable once
-    // referenced), and reading it from the instance keeps that true even if
-    // a definition were edited underneath by hand.
-    multiplierBp: ownSlotMultiplierBp({ ...definition, slot: instance.slot }),
+    // The instance's own roll — the one authoritative multiplier. Nothing
+    // about the definition's current range is consulted, so retuning a
+    // definition never changes gear a player already owns.
+    multiplierBp: instance.rolledMultiplierBp,
     rolledProperties: instance.rolledProperties,
   };
+}
+
+/**
+ * Affix keys owned instances carry (removed ones included) that the catalogue
+ * cannot resolve, with how many instances carry each — the operational check
+ * for an affix deleted from content instead of retired. Reads only; the
+ * instances are never touched.
+ */
+export async function readUnknownAffixKeys(
+  tx: DbOrTx,
+  affixes: EquipmentAffixCatalogue,
+): Promise<{ affixKey: string; instances: number }[]> {
+  const rows = await tx
+    .select({ affixKey: playerEquipment.affixKey, instances: sql<number>`count(*)::int` })
+    .from(playerEquipment)
+    .where(isNotNull(playerEquipment.affixKey))
+    .groupBy(playerEquipment.affixKey)
+    .orderBy(asc(playerEquipment.affixKey));
+  return rows
+    .filter((r) => !affixes.get(r.affixKey!))
+    .map((r) => ({ affixKey: r.affixKey!, instances: r.instances }));
 }
 
 export async function readActiveLoadoutRow(
@@ -147,7 +183,11 @@ export async function readLoadoutSlotRows(
 }
 
 /** The player's active loadout as a view; a virtual empty one when none exists. */
-export async function readActiveLoadoutView(tx: DbOrTx, playerId: number): Promise<LoadoutView> {
+export async function readActiveLoadoutView(
+  tx: DbOrTx,
+  playerId: number,
+  affixes: EquipmentAffixCatalogue,
+): Promise<LoadoutView> {
   const loadout = await readActiveLoadoutRow(tx, playerId);
   const slots: Record<EquipmentSlot, EquipmentInstanceView | null> = {
     attack: null,
@@ -156,7 +196,7 @@ export async function readActiveLoadoutView(tx: DbOrTx, playerId: number): Promi
   };
   if (!loadout) return { loadoutId: null, name: 'Default', slots };
   for (const row of await readLoadoutSlotRows(tx, loadout.id)) {
-    slots[row.slot] = toInstanceView(row.instance, row.definition, true);
+    slots[row.slot] = toInstanceView(row.instance, row.definition, true, affixes);
   }
   return { loadoutId: loadout.id, name: loadout.name, slots };
 }

@@ -10,7 +10,9 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   EQUIPMENT_EVENT_KIND_SQL_LIST,
+  EQUIPMENT_KEY_PATTERN,
   EQUIPMENT_MULTIPLIER_BP_MAX,
+  EQUIPMENT_MULTIPLIER_CAP_SQL,
   EQUIPMENT_SLOT_SQL_LIST,
   EQUIPMENT_SOURCE_TYPE_SQL_LIST,
 } from '../../src/modules/equipment/vocabulary';
@@ -120,5 +122,34 @@ describe('0045 shape', () => {
     expect(code).not.toMatch(/\bUPDATE\b\s+"/i);
     expect(code).not.toMatch(/\bALTER TABLE\b/i);
     expect(code).not.toMatch(/\bDROP\b/i);
+  });
+});
+
+describe('0046 CHECKs mirror the vocabulary', () => {
+  const SQL_0046 = fs.readFileSync(
+    path.resolve(__dirname, '..', '..', 'drizzle', '0046_equipment_rolled_instances.sql'),
+    'utf8',
+  );
+  const line = (constraint: string) => {
+    const found = SQL_0046.split('\n').find((l) => l.includes(`ADD CONSTRAINT "${constraint}"`));
+    if (!found) throw new Error(`constraint ${constraint} not added in 0046`);
+    return found;
+  };
+
+  it.each(['equipment_definitions_multiplier_bounds_check', 'player_equipment_rolled_multiplier_check'])(
+    '%s caps each slot exactly as the vocabulary does',
+    (constraint) => {
+      expect(line(constraint)).toContain(EQUIPMENT_MULTIPLIER_CAP_SQL);
+    },
+  );
+
+  it('matches affix keys with the key pattern the catalogue validates', () => {
+    expect(line('player_equipment_affix_key_check')).toContain(`'${EQUIPMENT_KEY_PATTERN.source}'`);
+  });
+
+  it('guards the range modulo against a zero step, as the schema does', () => {
+    expect(line('equipment_definitions_multiplier_range_check')).toContain(
+      'case when "multiplier_step_bp" > 0 then ("multiplier_max_bp" - "multiplier_min_bp") % "multiplier_step_bp" = 0 else false end',
+    );
   });
 });

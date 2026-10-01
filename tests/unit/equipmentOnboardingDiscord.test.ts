@@ -49,6 +49,8 @@ const item = (equipmentId: number, definitionKey: string, name: string, multipli
   equipmentId,
   definitionKey,
   name,
+  definitionName: name,
+  affixKey: null,
   rarity: 'N',
   multiplierBp,
   rolledProperties: {},
@@ -135,9 +137,11 @@ describe('onboarding screens', () => {
         slot,
         definition: {
           key: 'k', name, description: 'flavour', slot, rarity: 'N',
-          attackBp: 0, defenseBp: 0, healthBp: 0, multiplierBp: bp,
+          multiplierMinBp: bp, multiplierMaxBp: bp, multiplierStepBp: 100,
           tags: [], regionId: null, artworkPath: null, enabled: true,
         },
+        multiplierBp: bp,
+        displayName: name,
       },
     };
     const payload = buildOnboardingView(ctx, view, CONTENT);

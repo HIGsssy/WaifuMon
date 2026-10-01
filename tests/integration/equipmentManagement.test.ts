@@ -37,7 +37,7 @@ import { createEquipmentOnboardingService } from '../../src/modules/onboarding/e
 import { EquipmentNotOwnedError, FeatureLockedError, LoadoutConflictError } from '../../src/shared/errors';
 import { createTestDb, silentLogger, type TestDb } from '../helpers/testDb';
 import { CONTENT_DIR, bootstrapApp, insertOwnedWaifu, provisionPlayer, type App } from '../helpers/fixtures';
-import { GEAR, buildEquipmentServices, grant, unlockEquipment, type EquipmentServices } from '../helpers/equipmentFixtures';
+import { fixedRange, GEAR, buildEquipmentServices, grant, starterRoll, unlockEquipment, type EquipmentServices } from '../helpers/equipmentFixtures';
 
 let t: TestDb;
 let app: App;
@@ -55,6 +55,7 @@ beforeAll(async () => {
     db: t.db,
     resolveActiveBuddy: (tx, playerId) => app.collection.resolveActiveBuddy(tx, playerId),
     getMaxLevel: () => app.content.tables.waifuProgression.maxLevel,
+    getAffixes: svc.getAffixes,
   });
   mgmt = createEquipmentManagementService({ equipment: svc.equipment, combatStats: combat, featureUnlocks: svc.featureUnlocks });
   ctx = { config: { assetsDir: './assets' }, logger: silentLogger(), services: { equipmentManagement: mgmt } } as unknown as AppContext;
@@ -81,9 +82,9 @@ async function setup(opts: { buddy?: boolean; unlocked?: boolean; starters?: boo
   if (opts.unlocked !== false) await unlockEquipment(t.db, svc, playerId);
   const ids: Record<string, number> = {};
   if (opts.starters !== false && opts.unlocked !== false) {
-    ids.pipe = await grant(t.db, svc, playerId, 'rusty_pipe');
-    ids.plate = await grant(t.db, svc, playerId, 'scrap_plate');
-    ids.box = await grant(t.db, svc, playerId, 'dented_lunchbox');
+    ids.pipe = await grant(t.db, svc, playerId, 'rusty_pipe', starterRoll('rusty_pipe'));
+    ids.plate = await grant(t.db, svc, playerId, 'scrap_plate', starterRoll('scrap_plate'));
+    ids.box = await grant(t.db, svc, playerId, 'dented_lunchbox', starterRoll('dented_lunchbox'));
     await svc.equipment.equip(playerId, { slot: 'attack', equipmentId: ids.pipe });
     await svc.equipment.equip(playerId, { slot: 'defense', equipmentId: ids.plate });
     await svc.equipment.equip(playerId, { slot: 'health', equipmentId: ids.box });
@@ -146,7 +147,7 @@ describe('access', () => {
 
   it('a locked player reaches no management screen and changes nothing, even with forged ids', async () => {
     const { playerId, prov } = await setup({ unlocked: false });
-    const pipe = await grant(t.db, svc, playerId, 'rusty_pipe'); // owning gear does not unlock it
+    const pipe = await grant(t.db, svc, playerId, 'rusty_pipe', starterRoll('rusty_pipe')); // owning gear does not unlock it
     const attempts: [string, (i: never) => Promise<void>][] = [
       ['home', (i) => handleEquipmentHome(ctx, i, prov)],
       ['slot', (i) => handleEquipmentSlot(ctx, i, prov, ['attack', '0'])],
@@ -234,7 +235,7 @@ describe('slot management', () => {
   it('equips a worse item when asked, showing the drop', async () => {
     const { playerId, prov } = await setup({ starters: false });
     const coil = await grant(t.db, svc, playerId, 'plasma_coil_ring');
-    const pipe = await grant(t.db, svc, playerId, 'rusty_pipe');
+    const pipe = await grant(t.db, svc, playerId, 'rusty_pipe', starterRoll('rusty_pipe'));
     await svc.equipment.equip(playerId, { slot: 'attack', equipmentId: coil });
     const c = click();
     await handleEquipmentEquip(ctx, c.i, prov, [String(pipe), String(coil), 's.attack.0']);
@@ -431,8 +432,8 @@ describe('favourite and lock', () => {
 describe('Gear Bag', () => {
   it('groups identical copies and opens the equipped copy when one is equipped', async () => {
     const { playerId, prov, ids } = await setup();
-    const extra1 = await grant(t.db, svc, playerId, 'rusty_pipe');
-    const extra2 = await grant(t.db, svc, playerId, 'rusty_pipe');
+    const extra1 = await grant(t.db, svc, playerId, 'rusty_pipe', starterRoll('rusty_pipe'));
+    const extra2 = await grant(t.db, svc, playerId, 'rusty_pipe', starterRoll('rusty_pipe'));
     const bag = click();
     await handleGearBag(ctx, bag.i, prov, ['attack', '0']);
     expect(bag.text()).toContain('Rusty Pipe** ×3');
@@ -485,7 +486,7 @@ describe('Gear Bag', () => {
     const granted: number[] = [];
     for (let i = 0; i < 12; i++) {
       const key = `shrink_ring_${String(i).padStart(2, '0')}`;
-      await svc.definitions.create({ key, name: `Shrink Ring ${i}`, slot: 'attack', rarity: 'N', attackBp: 2000 + i });
+      await svc.definitions.create({ key, name: `Shrink Ring ${i}`, slot: 'attack', rarity: 'N', ...fixedRange(2000 + i) });
       granted.push(await grant(t.db, svc, playerId, key));
     }
     const before = click();
@@ -509,7 +510,7 @@ describe('Gear Bag', () => {
     const { playerId, prov } = await setup();
     for (let i = 0; i < 30; i++) {
       const key = `bulk_ring_${String(i).padStart(2, '0')}`;
-      await svc.definitions.create({ key, name: `Bulk Ring ${i}`, slot: 'attack', rarity: 'N', attackBp: 1000 + i });
+      await svc.definitions.create({ key, name: `Bulk Ring ${i}`, slot: 'attack', rarity: 'N', ...fixedRange(1000 + i) });
       await grant(t.db, svc, playerId, key);
     }
     const all = await mgmt.bag(playerId, 'all', 0);

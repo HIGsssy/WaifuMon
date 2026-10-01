@@ -24,16 +24,16 @@ import {
 } from '../../src/modules/equipment/equipmentManagementService';
 import { createTestDb, type TestDb } from '../helpers/testDb';
 import { ASSETS_DIR, bootstrapApp, createEventHarness, insertOwnedWaifu, provisionPlayer, type App } from '../helpers/fixtures';
-import { buildEquipmentServices, grant, unlockEquipment, type EquipmentServices } from '../helpers/equipmentFixtures';
+import { fixedRange, buildEquipmentServices, grant, unlockEquipment, type EquipmentServices } from '../helpers/equipmentFixtures';
 
 const CHANNEL_ID = 'c-eq-surfaces';
 
 /** At Current SP 420: ATK 336, DEF 231, HP 1344. */
-const COIL = { key: 'surface_coil', name: 'Plasma Coil Ring', slot: 'attack', rarity: 'SR', attackBp: 8_000 } as const;
-const BELT = { key: 'surface_belt', name: 'Reinforced Battle Belt', slot: 'defense', rarity: 'R', defenseBp: 5_500 } as const;
-const CORSET = { key: 'surface_corset', name: 'Tactical Corset', slot: 'health', rarity: 'R', healthBp: 32_000 } as const;
+const COIL = { key: 'surface_coil', name: 'Plasma Coil Ring', slot: 'attack', rarity: 'SR', ...fixedRange(8_000) } as const;
+const BELT = { key: 'surface_belt', name: 'Reinforced Battle Belt', slot: 'defense', rarity: 'R', ...fixedRange(5_500) } as const;
+const CORSET = { key: 'surface_corset', name: 'Tactical Corset', slot: 'health', rarity: 'R', ...fixedRange(32_000) } as const;
 /** At Current SP 420: ATK 189. */
-const PIPE = { key: 'surface_pipe', name: 'Rusty Surface Pipe', slot: 'attack', rarity: 'N', attackBp: 4_500 } as const;
+const PIPE = { key: 'surface_pipe', name: 'Rusty Surface Pipe', slot: 'attack', rarity: 'N', ...fixedRange(4_500) } as const;
 
 let t: TestDb;
 let app: App;
@@ -58,6 +58,7 @@ beforeAll(async () => {
     db: t.db,
     resolveActiveBuddy: (tx, playerId) => app.collection.resolveActiveBuddy(tx, playerId),
     getMaxLevel: () => app.content.tables.waifuProgression.maxLevel,
+    getAffixes: svc.getAffixes,
   });
   mgmt = createEquipmentManagementService({ equipment: svc.equipment, combatStats: combat, featureUnlocks: svc.featureUnlocks });
   for (const g of [COIL, BELT, CORSET, PIPE]) await svc.definitions.create(g);

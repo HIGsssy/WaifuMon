@@ -86,6 +86,16 @@ export const EQUIPMENT_MULTIPLIER_BP_MAX: Readonly<Record<EquipmentSlot, number>
   health: 80_000,
 });
 
+/**
+ * The per-slot ceiling as a SQL expression over the row's own `slot` column —
+ * shared by the definition range CHECK and the instance roll CHECK, and
+ * mirrored literally in `drizzle/0046_equipment_rolled_instances.sql`.
+ */
+export const EQUIPMENT_MULTIPLIER_CAP_SQL =
+  `(case "slot" when 'attack' then ${EQUIPMENT_MULTIPLIER_BP_MAX.attack} ` +
+  `when 'defense' then ${EQUIPMENT_MULTIPLIER_BP_MAX.defense} ` +
+  `when 'health' then ${EQUIPMENT_MULTIPLIER_BP_MAX.health} else 0 end)`;
+
 function sqlList(values: readonly string[]): string {
   return values.map((v) => `'${v}'`).join(',');
 }

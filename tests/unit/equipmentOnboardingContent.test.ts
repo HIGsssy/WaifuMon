@@ -15,7 +15,13 @@ import { parseEquipmentDefinition } from '../../src/modules/equipment/definition
 import { loadEquipmentSeedCatalogue } from '../../src/modules/equipment/seed';
 import { createProgressionService } from '../../src/modules/progression/progressionService';
 import { equipmentOnboardingLevelLabels } from '../../src/modules/onboarding/onboardingState';
-import { EQUIPMENT_ONBOARDING_STEPS, STARTER_EQUIPMENT } from '../../src/modules/onboarding/vocabulary';
+import { isMultiplierInRange } from '../../src/modules/equipment/equipmentRoll';
+import {
+  EQUIPMENT_ONBOARDING_STEPS,
+  STARTER_EQUIPMENT,
+  STARTER_ROLLS,
+  STARTER_SLOTS,
+} from '../../src/modules/onboarding/vocabulary';
 import { ContentValidationError } from '../../src/shared/errors';
 import { CONTENT_DIR, loadShippedContent } from '../helpers/fixtures';
 
@@ -25,10 +31,16 @@ const shippedFlow = () => readJson('onboarding/equipment.json') as Record<string
 describe('shipped starter catalogue', () => {
   const catalogue = loadEquipmentSeedCatalogue(CONTENT_DIR);
 
+  const range = (min: number, max: number, step: number) => ({
+    multiplierMinBp: min,
+    multiplierMaxBp: max,
+    multiplierStepBp: step,
+  });
+
   it.each([
-    ['rusty_pipe', 'Rusty Pipe', 'Still hits. Still embarrassing.', 'attack', { attackBp: 4500, defenseBp: 0, healthBp: 0 }],
-    ['scrap_plate', 'Scrap Plate', 'Bolted together hope.', 'defense', { attackBp: 0, defenseBp: 3500, healthBp: 0 }],
-    ['dented_lunchbox', 'Dented Lunchbox', 'Keeps something alive.', 'health', { attackBp: 0, defenseBp: 0, healthBp: 20000 }],
+    ['rusty_pipe', 'Rusty Pipe', 'Still hits. Still embarrassing.', 'attack', range(4000, 6000, 500)],
+    ['scrap_plate', 'Scrap Plate', 'Bolted together hope.', 'defense', range(3000, 5000, 500)],
+    ['dented_lunchbox', 'Dented Lunchbox', 'Keeps something alive.', 'health', range(18000, 26000, 2000)],
   ])('%s is exactly as signed off', (key, name, description, slot, bp) => {
     const def = catalogue.find((d) => d.key === key)!;
     expect(def).toBeDefined();
@@ -38,6 +50,18 @@ describe('shipped starter catalogue', () => {
     expect(def.shopRegions).toEqual([]);
     // And it passes the authoring schema on its own, not only as a package.
     expect(() => parseEquipmentDefinition(def)).not.toThrow();
+  });
+
+  it('the onboarding grants each starter a fixed, unaffixed roll inside its range', () => {
+    expect(STARTER_ROLLS).toEqual({
+      attack: { rolledMultiplierBp: 4500, affixKey: null },
+      defense: { rolledMultiplierBp: 3500, affixKey: null },
+      health: { rolledMultiplierBp: 20000, affixKey: null },
+    });
+    for (const slot of STARTER_SLOTS) {
+      const def = catalogue.find((d) => d.key === STARTER_EQUIPMENT[slot])!;
+      expect(isMultiplierInRange(def, STARTER_ROLLS[slot].rolledMultiplierBp)).toBe(true);
+    }
   });
 
   it('matches the keys the onboarding grants, and nothing else', () => {

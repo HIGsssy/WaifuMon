@@ -14,12 +14,17 @@ import { parseEquipmentDefinition } from '../../src/modules/equipment/definition
 import { EquipmentValidationError } from '../../src/shared/errors';
 import type { EquipmentDefinitionRow } from '../../src/db/schema';
 
-const ring = { key: 'spiked_ring', name: 'Spiked Ring', slot: 'attack', rarity: 'R', attackBp: 7_200 };
-const belt = { key: 'guard_belt', name: 'Guard Belt', slot: 'defense', rarity: 'N', defenseBp: 4_000 };
+const range = (min: number, max: number, step: number) => ({
+  multiplierMinBp: min,
+  multiplierMaxBp: max,
+  multiplierStepBp: step,
+});
+const ring = { key: 'spiked_ring', name: 'Spiked Ring', slot: 'attack', rarity: 'R', ...range(6_000, 8_000, 500) };
+const belt = { key: 'guard_belt', name: 'Guard Belt', slot: 'defense', rarity: 'N', ...range(4_000, 4_000, 100) };
 
 const pkg = (definitions: unknown[], over: Record<string, unknown> = {}) => ({
   format: EQUIPMENT_PACKAGE_FORMAT,
-  version: 1,
+  version: 2,
   definitions,
   ...over,
 });
@@ -50,10 +55,29 @@ describe('parseEquipmentPackage', () => {
   });
 
   it('refuses an unknown version by name', () => {
-    expect(issuesOf(pkg([], { version: 2 }))).toContainEqual({
+    expect(issuesOf(pkg([], { version: 3 }))).toContainEqual({
       path: 'version',
-      message: 'this build reads version 1 only, got 2',
+      message: 'this build reads version 2 only, got 3',
     });
+  });
+
+  it('refuses a version-1 package, which predates multiplier ranges, and says what to do', () => {
+    const v1 = pkg([{ key: 'old_ring', name: 'Old Ring', slot: 'attack', rarity: 'R', attackBp: 7_200 }], { version: 1 });
+    const issues = issuesOf(v1);
+    expect(issues).toContainEqual({
+      path: 'version',
+      message:
+        'version 1 packages predate rolled multiplier ranges; re-export it from a migrated server (this build reads version 2)',
+    });
+  });
+
+  it('round-trips a definition range through build and parse', () => {
+    const built = buildEquipmentPackage([row({ key: 'spiked_ring', ...range(6_000, 8_000, 500) })], {
+      exportedAt: '2026-10-01T00:00:00Z',
+    });
+    expect(built.version).toBe(2);
+    expect(built.definitions[0]).toMatchObject(range(6_000, 8_000, 500));
+    expect(parseEquipmentPackage(JSON.parse(JSON.stringify(built))).definitions[0]).toMatchObject(range(6_000, 8_000, 500));
   });
 
   it('refuses a definition carrying a numeric id', () => {
@@ -71,13 +95,13 @@ describe('parseEquipmentPackage', () => {
   });
 
   it('collects every invalid entry before failing', () => {
-    const issues = issuesOf(pkg([{ ...ring, attackBp: 0 }, belt, { ...belt, key: 'x', rarity: 'EX' }]));
-    expect(issues.map((i) => i.path)).toEqual(['definitions[0].attackBp', 'definitions[2].rarity']);
+    const issues = issuesOf(pkg([{ ...ring, multiplierStepBp: 300 }, belt, { ...belt, key: 'x', rarity: 'EX' }]));
+    expect(issues.map((i) => i.path)).toEqual(['definitions[0].multiplierStepBp', 'definitions[2].rarity']);
   });
 
   it('refuses a non-object, a missing definitions array and unknown envelope fields', () => {
     expect(issuesOf([])).toEqual([{ path: '', message: 'a package must be a JSON object' }]);
-    expect(issuesOf({ format: EQUIPMENT_PACKAGE_FORMAT, version: 1 })).toContainEqual({
+    expect(issuesOf({ format: EQUIPMENT_PACKAGE_FORMAT, version: 2 })).toContainEqual({
       path: 'definitions',
       message: 'must be an array',
     });
@@ -92,9 +116,9 @@ function row(over: Partial<EquipmentDefinitionRow> & { key: string }): Equipment
     description: '',
     slot: 'attack',
     rarity: 'R',
-    attackBp: 7_000,
-    defenseBp: 0,
-    healthBp: 0,
+    multiplierMinBp: 7_000,
+    multiplierMaxBp: 7_000,
+    multiplierStepBp: 100,
     secondaryEffects: [],
     tags: [],
     regionId: null,
@@ -157,7 +181,7 @@ describe('planEquipmentImport', () => {
   });
 
   it('refuses a slot change on a definition players own', () => {
-    const moved = { ...ring, slot: 'defense', attackBp: 0, defenseBp: 5_000 };
+    const moved = { ...ring, slot: 'defense' };
     const plan = planEquipmentImport(parseEquipmentPackage(pkg([moved])), target([[ring, 2]]));
     expect(plan.ok).toBe(false);
     expect(plan.issues).toEqual([
@@ -169,10 +193,10 @@ describe('planEquipmentImport', () => {
   });
 
   it('allows a slot change on a definition nobody owns', () => {
-    const moved = { ...ring, slot: 'defense', attackBp: 0, defenseBp: 5_000 };
+    const moved = { ...ring, slot: 'defense', ...range(5_000, 5_000, 100) };
     const plan = planEquipmentImport(parseEquipmentPackage(pkg([moved])), target([[ring, 0]]));
     expect(plan.ok).toBe(true);
-    expect(plan.entries[0]!.changedFields).toEqual(['slot', 'attackBp', 'defenseBp']);
+    expect(plan.entries[0]!.changedFields).toEqual(['slot', 'multiplierMinBp', 'multiplierMaxBp', 'multiplierStepBp']);
   });
 
   it('never plans a delete for a target definition the package omits', () => {

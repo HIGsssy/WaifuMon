@@ -41,6 +41,7 @@ import {
   GEAR,
   buildEquipmentServices,
   grant,
+  starterRoll,
   type EquipmentServices,
 } from '../helpers/equipmentFixtures';
 
@@ -58,6 +59,7 @@ beforeAll(async () => {
     db: t.db,
     resolveActiveBuddy: (tx, playerId) => app.collection.resolveActiveBuddy(tx, playerId),
     getMaxLevel: () => app.content.tables.waifuProgression.maxLevel,
+    getAffixes: svc.getAffixes,
   });
   // The shipped seed, exactly as startup applies it.
   await seedEquipmentDefinitions(t.db, { catalogue: loadEquipmentSeedCatalogue(CONTENT_DIR) });
@@ -82,6 +84,7 @@ function onboarding(opts: { enabled?: boolean; db?: TestDb['db']; content?: App[
           db,
           resolveActiveBuddy: (tx, playerId) => app.collection.resolveActiveBuddy(tx, playerId),
           getMaxLevel: () => app.content.tables.waifuProgression.maxLevel,
+          getAffixes: services.getAffixes,
         })
       : combat,
     resolveActiveBuddy: (tx, playerId) => app.collection.resolveActiveBuddy(tx, playerId),
@@ -335,7 +338,7 @@ describe('existing gear', () => {
   it('a player who already owns a starter gets the onboarding copy too, and that copy is equipped', async () => {
     const onb = onboarding();
     const { playerId } = await setup();
-    const adminPipe = await grant(t.db, svc, playerId, 'rusty_pipe', { grantKey: `admin-pipe-${playerId}` });
+    const adminPipe = await grant(t.db, svc, playerId, 'rusty_pipe', { grantKey: `admin-pipe-${playerId}`, ...starterRoll('rusty_pipe') });
     await walkToExplain(onb, playerId);
     await onb.complete(playerId);
 

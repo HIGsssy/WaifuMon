@@ -28,7 +28,7 @@ import {
 } from '../../src/modules/testControls/stagingTestControlsService';
 import { createTestDb, type TestDb } from '../helpers/testDb';
 import { CONTENT_DIR, bootstrapApp, insertOwnedWaifu, provisionPlayer, type App } from '../helpers/fixtures';
-import { GEAR, buildEquipmentServices, grant, type EquipmentServices } from '../helpers/equipmentFixtures';
+import { GEAR, buildEquipmentServices, grant, starterRoll, type EquipmentServices } from '../helpers/equipmentFixtures';
 
 let t: TestDb;
 let app: App;
@@ -49,6 +49,7 @@ beforeAll(async () => {
     db: t.db,
     resolveActiveBuddy: (tx, playerId) => app.collection.resolveActiveBuddy(tx, playerId),
     getMaxLevel: () => app.content.tables.waifuProgression.maxLevel,
+    getAffixes: svc.getAffixes,
   });
   onb = createEquipmentOnboardingService({
     db: t.db,
@@ -134,7 +135,7 @@ describe('Reset Equipment onboarding', () => {
     );
     const coil = await grant(t.db, svc, playerId, 'plasma_coil_ring');
     await svc.equipment.equip(playerId, { slot: 'attack', equipmentId: coil });
-    const spare = await grant(t.db, svc, playerId, 'rusty_pipe', { grantKey: `spare-${playerId}` });
+    const spare = await grant(t.db, svc, playerId, 'rusty_pipe', { grantKey: `spare-${playerId}`, ...starterRoll('rusty_pipe') });
     await t.db.transaction((tx) =>
       svc.featureUnlocks.revoke(tx, { playerId, featureKey: 'equipment', actorDiscordId: 'a', reason: 'test' }),
     );

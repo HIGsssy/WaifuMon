@@ -31,8 +31,18 @@ import {
 
 /** Identifies the package kind, so a stray JSON file is refused early. */
 export const EQUIPMENT_PACKAGE_FORMAT = 'waifumon-equipment' as const;
-/** The only shape this build reads or writes. */
-export const EQUIPMENT_PACKAGE_VERSION = 1 as const;
+/**
+ * The only shape this build reads or writes.
+ *
+ * Version 2 replaced each definition's fixed `attackBp` / `defenseBp` /
+ * `healthBp` with a rolled range (`multiplierMinBp`, `multiplierMaxBp`,
+ * `multiplierStepBp`). A version-1 package is refused rather than converted:
+ * it predates ranges, so re-export it from a server that has migrated.
+ *
+ * The affix catalogue is deployed content (`content/equipment/affixes.json`),
+ * not database content, so it is not part of a package.
+ */
+export const EQUIPMENT_PACKAGE_VERSION = 2 as const;
 /** A sanity ceiling, far above any real catalogue. */
 export const EQUIPMENT_PACKAGE_MAX_DEFINITIONS = 1000;
 
@@ -68,9 +78,11 @@ export function parseEquipmentPackage(raw: unknown): EquipmentPackage {
     issues.push({
       path: 'version',
       message:
-        typeof body.version === 'number'
-          ? `this build reads version ${EQUIPMENT_PACKAGE_VERSION} only, got ${body.version}`
-          : `must be ${EQUIPMENT_PACKAGE_VERSION}`,
+        body.version === 1
+          ? `version 1 packages predate rolled multiplier ranges; re-export it from a migrated server (this build reads version ${EQUIPMENT_PACKAGE_VERSION})`
+          : typeof body.version === 'number'
+            ? `this build reads version ${EQUIPMENT_PACKAGE_VERSION} only, got ${body.version}`
+            : `must be ${EQUIPMENT_PACKAGE_VERSION}`,
     });
   }
   const unknown = Object.keys(body).filter((k) => !PACKAGE_FIELDS.has(k));
