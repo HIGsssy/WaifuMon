@@ -106,40 +106,49 @@ function primary(customId: string, label: string): ButtonBuilder {
 interface Art {
   files: AttachmentBuilder[];
   image: string | null;
-  thumbnail: string | null;
 }
 
-/** Step artwork as the image, NPC portrait as the thumbnail. Missing files degrade to text. */
-function artwork(ctx: AppContext, stem: string, imagePath: string | null, npc: NpcContent | null): Art {
-  const art: Art = { files: [], image: null, thumbnail: null };
-  const image = resolveArtworkAttachment(ctx, {
-    relativePath: imagePath,
-    stem,
-    logTag: 'equipment-onboarding',
-    logFields: { stem },
-  });
-  if (image) {
-    art.files.push(image.file);
-    art.image = image.url;
+/**
+ * The screen's one picture, always in the embed's image slot. First that
+ * resolves wins:
+ *
+ *   1. the step's scene art (`stepPath`);
+ *   2. a hand-over's item artwork (`itemPath`);
+ *   3. the NPC's portrait — the NPC's own, so any screen fronted by Patch
+ *      shows the same face;
+ *   4. nothing: text-only.
+ *
+ * A path whose file is missing or unsafe logs and falls through to the next,
+ * so missing scene art still shows Patch rather than nothing.
+ */
+function artwork(
+  ctx: AppContext,
+  stem: string,
+  npc: NpcContent | null,
+  stepPath: string | null,
+  itemPath: string | null = null,
+): Art {
+  const candidates = [
+    { relativePath: stepPath, stem, logTag: 'equipment-onboarding', logFields: { stem } },
+    { relativePath: itemPath, stem: `${stem}_item`, logTag: 'equipment-onboarding', logFields: { stem } },
+    {
+      relativePath: npc?.portraitPath ?? null,
+      stem: `npc_${npc?.key ?? 'unknown'}`,
+      logTag: 'npc-portrait',
+      logFields: { npc: npc?.key ?? null },
+    },
+  ];
+  for (const candidate of candidates) {
+    const resolved = resolveArtworkAttachment(ctx, candidate);
+    if (resolved) return { files: [resolved.file], image: resolved.url };
   }
-  const portrait = resolveArtworkAttachment(ctx, {
-    relativePath: npc?.portraitPath ?? null,
-    stem: `npc_${npc?.key ?? 'unknown'}`,
-    logTag: 'npc-portrait',
-    logFields: { npc: npc?.key ?? null },
-  });
-  if (portrait) {
-    art.files.push(portrait.file);
-    art.thumbnail = portrait.url;
-  }
-  return art;
+  return { files: [], image: null };
 }
 
 function baseEmbed(title: string, npc: NpcContent | null, art: Art): EmbedBuilder {
   const embed = new EmbedBuilder().setTitle(title).setColor(ONBOARDING_COLOR);
   if (npc) embed.setAuthor({ name: npc.title ? `${npc.name} · ${npc.title}` : npc.name });
   if (art.image) embed.setImage(art.image);
-  if (art.thumbnail) embed.setThumbnail(art.thumbnail);
   return embed;
 }
 
@@ -209,7 +218,7 @@ export function buildOnboardingView(
 
   switch (view.kind) {
     case 'intro': {
-      const art = artwork(ctx, 'onboarding_intro', steps.intro.artworkPath, npc);
+      const art = artwork(ctx, 'onboarding_intro', npc, steps.intro.artworkPath);
       const embed = baseEmbed(steps.intro.title, npc, art).setDescription(speech(npc, steps.intro));
       return {
         embeds: [embed],
@@ -219,7 +228,7 @@ export function buildOnboardingView(
     }
     case 'handover': {
       const step = steps[view.step];
-      const art = artwork(ctx, `onboarding_${view.step}`, step.artworkPath ?? view.item.definition.artworkPath, npc);
+      const art = artwork(ctx, `onboarding_${view.step}`, npc, step.artworkPath, view.item.definition.artworkPath);
       const embed = baseEmbed(step.title, npc, art)
         .setDescription(speech(npc, step))
         .addFields(itemCard(view.item));
@@ -232,7 +241,7 @@ export function buildOnboardingView(
     case 'explain': {
       const step = steps.explain;
       const { stats } = view;
-      const art = artwork(ctx, 'onboarding_explain', step.artworkPath, npc);
+      const art = artwork(ctx, 'onboarding_explain', npc, step.artworkPath);
       const embed = baseEmbed(step.title, npc, art).setDescription(speech(npc, step));
       const buddy = stats.buddy!;
       embed.addFields({ name: buddy.name, value: `Current SP: **${buddy.currentSp}**` });
@@ -253,7 +262,7 @@ export function buildOnboardingView(
     }
     case 'needs_buddy': {
       const noBuddy = steps.explain.noBuddy;
-      const art = artwork(ctx, 'onboarding_no_buddy', null, npc);
+      const art = artwork(ctx, 'onboarding_no_buddy', npc, noBuddy.artworkPath);
       const embed = baseEmbed(noBuddy.title, npc, art).setDescription(speech(npc, noBuddy));
       return {
         embeds: [embed],
@@ -272,7 +281,7 @@ export function buildOnboardingView(
     }
     case 'complete': {
       const step = steps.complete;
-      const art = artwork(ctx, 'onboarding_complete', step.artworkPath, npc);
+      const art = artwork(ctx, 'onboarding_complete', npc, step.artworkPath);
       const description = [speech(npc, step), ...keptLines(view.stats, view.report)].join('\n\n');
       const embed = baseEmbed(step.title, npc, art).setDescription(description);
       addLoadoutFields(embed, view.stats);

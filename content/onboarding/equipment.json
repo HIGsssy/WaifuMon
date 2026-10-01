@@ -48,7 +48,8 @@
       "noBuddy": {
         "title": "No Buddy, No Numbers",
         "narration": "Patch looks past you, then back at you.",
-        "say": "Gear’s only as good as whoever’s wearing it. Pick a Buddy from your Collection, then come find me."
+        "say": "Gear’s only as good as whoever’s wearing it. Pick a Buddy from your Collection, then come find me.",
+        "artworkPath": null
       }
     },
     "complete": {

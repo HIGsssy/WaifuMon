@@ -15,6 +15,7 @@
 import { z } from 'zod';
 import { PRICE_CURRENCIES, type EquipmentDefinitionRow } from '../../db/schema';
 import { EquipmentValidationError, type EquipmentIssue } from '../../shared/errors';
+import { relativeArtworkPath } from '../assets/artworkPath';
 import { isRegion } from '../locations/regions';
 import {
   EQUIPMENT_AUTHORING_RARITIES,
@@ -30,17 +31,12 @@ const basisPoints = z.number().int('must be a whole number of basis points').non
 const regionId = z.string().refine(isRegion, { message: 'unknown region' });
 
 /**
- * Artwork paths are relative to `ASSETS_DIR`. Shape only here — containment
- * is enforced again by the asset resolver whenever the file is actually read.
+ * Artwork paths are relative to `ASSETS_DIR` (by convention under
+ * `equipment/`). The shared authored-artwork shape, so a path accepted here is
+ * one the Discord resolver will serve; containment is enforced again whenever
+ * the file is actually read.
  */
-const artworkPath = z
-  .string()
-  .min(1)
-  .max(260)
-  .refine((p) => !p.split(/[\\/]/).includes('..'), { message: 'must not contain ".."' })
-  .refine((p) => !p.startsWith('/') && !p.startsWith('\\') && !/^[A-Za-z]:/.test(p), {
-    message: 'must be relative to the assets directory',
-  });
+const artworkPath = relativeArtworkPath;
 
 export const EquipmentDefinitionInputSchema = z
   .object({

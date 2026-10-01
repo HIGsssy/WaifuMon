@@ -77,7 +77,12 @@ const ExplainStepSchema = z
     ...stepShape,
     sayAfter: prose.optional(),
     noBuddy: z
-      .object({ title: embedTitle, narration: prose.optional(), say: prose.optional() })
+      .object({
+        title: embedTitle,
+        narration: prose.optional(),
+        say: prose.optional(),
+        artworkPath: relativeArtworkPath.nullable().default(null),
+      })
       .strict()
       .superRefine(requireSpeech),
   })
