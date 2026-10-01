@@ -332,6 +332,47 @@ describe('the player page', () => {
     );
   });
 
+  it('shows the Equipment onboarding state and asks before resetting it', async () => {
+    serve();
+    server.use(
+      http.get(PLAYER_URL, () =>
+        data(
+          playerState({
+            equipmentOnboarding: {
+              phase: 'in_progress',
+              nextStep: 'defense',
+              unlocked: false,
+              starters: [
+                { slot: 'attack', definitionKey: 'rusty_pipe', granted: true, removed: false },
+                { slot: 'defense', definitionKey: '', granted: false, removed: false },
+                { slot: 'health', definitionKey: '', granted: false, removed: false },
+              ],
+            },
+          }),
+        ),
+      ),
+    );
+    const user = userEvent.setup();
+    renderPlayerPage();
+    const list = await screen.findByRole('list', { name: 'Equipment onboarding state' });
+    expect(list).toHaveTextContent('Onboarding: in progress (next: defense)');
+    expect(list).toHaveTextContent('Starter attack (rusty_pipe)');
+
+    await user.click(screen.getByRole('button', { name: 'Reset Equipment Onboarding' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent('Revoke the Equipment feature unlock');
+    expect(posts).toEqual([]);
+    await user.click(within(dialog).getByRole('button', { name: 'Reset onboarding' }));
+    await waitFor(() => expect(posts.map((p) => p.path)).toEqual(['reset-equipment-onboarding']));
+  });
+
+  it('offers no onboarding reset on a server without the Equipment onboarding', async () => {
+    serve();
+    renderPlayerPage();
+    await screen.findByRole('button', { name: 'Reset Assteroid Belt Unlock Test State' });
+    expect(screen.queryByRole('button', { name: 'Reset Equipment Onboarding' })).toBeNull();
+  });
+
   it('shows the server refusal for a failed action', async () => {
     serve();
     server.use(

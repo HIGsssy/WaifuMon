@@ -119,6 +119,13 @@ export interface ProgressionServiceDeps {
    * XP source is covered the day it is written.
    */
   buddyBonus?: BuddyBonusService | undefined;
+  /**
+   * Extra reward labels for reaching `level`, appended after the
+   * `tables.json` ones — e.g. "Equipment training available" at 35. Injected
+   * so a feature can announce itself on every level-up screen without this
+   * module knowing the feature exists. Labels only: it grants nothing.
+   */
+  extraLevelRewardLabels?: ((level: number) => string[]) | undefined;
 }
 
 export function createProgressionService(deps: ProgressionServiceDeps): ProgressionService {
@@ -136,7 +143,10 @@ export function createProgressionService(deps: ProgressionServiceDeps): Progress
     getPrestigeTitle: (level) => prestigeTitleForLevel(level, config),
     computeDailyBonusItems: (level) => dailyBonusItemsForLevel(level, config),
     computeDailyRareChance: (level) => dailyRareItemChanceForLevel(level, config),
-    describeLevelRewards: (newLevel) => describeLevelRewards(newLevel, config),
+    describeLevelRewards: (newLevel) => [
+      ...describeLevelRewards(newLevel, config),
+      ...(deps.extraLevelRewardLabels?.(newLevel) ?? []),
+    ],
     async grantXp(tx, playerId, opts) {
       const [locked] = await tx
         .select()

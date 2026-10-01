@@ -68,6 +68,11 @@ import type { InventoryService } from '../inventory/inventoryService';
 import type { ProgressionService } from '../progression/progressionService';
 import type { TravelService } from '../travel/travelService';
 import type { Region } from '../locations/regions';
+import type { EquipmentService } from '../equipment/equipmentService';
+import type { EquipmentSlot } from '../equipment/vocabulary';
+import type { FeatureUnlockService } from '../features/featureUnlockService';
+import type { EquipmentOnboardingService } from '../onboarding/equipmentOnboardingService';
+import { STARTER_SLOTS, storedOnboardingGrantKey } from '../onboarding/vocabulary';
 
 /** The key-item destination the Belt controls are about. */
 export const BELT_REGION: Region = 'assteroid-belt';
@@ -95,6 +100,7 @@ export const TEST_CONTROL_ACTIONS = [
   'test_grant_travel_access',
   'test_staging_boost',
   'test_reset_assteroid_belt',
+  'test_reset_equipment_onboarding',
 ] as const;
 export type TestControlAction = (typeof TEST_CONTROL_ACTIONS)[number];
 
@@ -154,6 +160,16 @@ export interface TestControlsPlayerState {
   passes: { id: string; name: string; owned: boolean }[];
   /** `requiredLevel` is null for a destination with no level requirement. */
   routes: { regionId: string; name: string; unlocked: boolean; requiredLevel: number | null }[];
+  /**
+   * Equipment onboarding progress, derived exactly as the game derives it.
+   * Null when this deployment was built without the onboarding service.
+   */
+  equipmentOnboarding: {
+    phase: string;
+    nextStep: string | null;
+    unlocked: boolean;
+    starters: { slot: EquipmentSlot; definitionKey: string; granted: boolean; removed: boolean }[];
+  } | null;
 }
 
 export interface TestControlResult {
@@ -185,6 +201,13 @@ export interface StagingTestControlsService {
   grantStandardTravel(actor: TestControlsActor, playerId: number): Promise<TestControlResult>;
   stagingBoost(actor: TestControlsActor, playerId: number): Promise<TestControlResult>;
   resetAssteroidBelt(actor: TestControlsActor, playerId: number): Promise<TestControlResult>;
+  /**
+   * Return a player to the start of the Equipment onboarding: revoke the
+   * `equipment` unlock, remove the three onboarding starters (clearing them
+   * from every loadout) and release their grant keys so a replay grants fresh
+   * copies. Every other piece of equipment is left untouched.
+   */
+  resetEquipmentOnboarding(actor: TestControlsActor, playerId: number): Promise<TestControlResult>;
 }
 
 export interface StagingTestControlsDeps {
@@ -197,6 +220,10 @@ export interface StagingTestControlsDeps {
   logger: Logger;
   /** Checked at construction and on every operation. */
   config: TestAdminControlsConfig;
+  /** Equipment onboarding reset. Optional so a deployment without it still builds the rest. */
+  equipment?: Pick<EquipmentService, 'findByGrantKeys' | 'adminRemove' | 'adminReleaseGrantKeys'> | undefined;
+  featureUnlocks?: Pick<FeatureUnlockService, 'isUnlocked' | 'revoke'> | undefined;
+  equipmentOnboarding?: Pick<EquipmentOnboardingService, 'getState'> | undefined;
 }
 
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
@@ -552,11 +579,12 @@ export function createStagingTestControlsService(
     const slugs = gate ? [gate.beaconSlug, ...gate.components.map((c) => c.slug)] : [];
     const held = await quantities(db, playerId, slugs);
     const encounterIds = gate ? await componentEncounterIds(db, gate.components.map((c) => c.slug)) : [];
-    const [passIds, routeIds, legacy, cooldowns] = await Promise.all([
+    const [passIds, routeIds, legacy, cooldowns, onboarding] = await Promise.all([
       ownedPassIds(db, playerId),
       unlockedRouteIds(db, playerId),
       hasLegacyBeltRoute(db, playerId),
       activeCooldownCount(db, playerId, encounterIds),
+      deps.equipmentOnboarding?.getState(playerId) ?? null,
     ]);
     return {
       playerId: player.id,
@@ -592,6 +620,22 @@ export function createStagingTestControlsService(
         unlocked: routeIds.has(d.region.id),
         requiredLevel: d.requiredLevel,
       })),
+      equipmentOnboarding: onboarding
+        ? {
+            phase: onboarding.state.phase,
+            nextStep: onboarding.state.nextStep,
+            unlocked: onboarding.unlocked,
+            starters: STARTER_SLOTS.map((slot) => {
+              const record = onboarding.starters[slot];
+              return {
+                slot,
+                definitionKey: record?.definition.key ?? '',
+                granted: record != null,
+                removed: record?.removed ?? false,
+              };
+            }),
+          }
+        : null,
     };
   }
 
@@ -844,6 +888,69 @@ export function createStagingTestControlsService(
             changes.length === 0
               ? 'Belt unlock state was already clean — nothing to reset.'
               : 'Assteroid Belt unlock state reset. The Beacon can be built again from scratch.',
+        };
+      });
+    },
+
+    resetEquipmentOnboarding(actor, playerId) {
+      return run(actor, playerId, 'test_reset_equipment_onboarding', async (tx, { player }) => {
+        const { equipment, featureUnlocks } = deps;
+        if (!equipment || !featureUnlocks) {
+          throw new TestControlsInvalidError('Equipment is not available on this deployment.');
+        }
+        const reason = 'staging test control: reset equipment onboarding';
+        const changes: TestControlChange[] = [];
+
+        // 1. The unlock. Revoke is audited by the feature service itself, so it
+        //    only runs when there is an unlock to revoke — a no-op reset writes
+        //    only its own control row.
+        if (await featureUnlocks.isUnlocked(player.id, 'equipment', tx)) {
+          const { revoked } = await featureUnlocks.revoke(tx, {
+            playerId: player.id,
+            featureKey: 'equipment',
+            actorDiscordId: actor.discordUserId,
+            reason,
+          });
+          if (revoked) changes.push({ field: 'equipmentUnlocked', before: true, after: false });
+        }
+
+        // 2. The onboarding's own three instances, found by their fixed keys —
+        //    never any other gear. `adminRemove` clears them from every loadout.
+        const keys = STARTER_SLOTS.map((slot) => storedOnboardingGrantKey(player.id, slot));
+        const starters = await equipment.findByGrantKeys(tx, player.id, keys);
+        const removed: string[] = [];
+        for (const record of starters.values()) {
+          if (record.removed) continue;
+          await equipment.adminRemove(tx, {
+            playerId: player.id,
+            equipmentId: record.equipmentId,
+            reason,
+            actorDiscordId: actor.discordUserId,
+            overrideLock: true,
+          });
+          removed.push(record.definition.key);
+        }
+        if (removed.length > 0) changes.push({ field: 'onboardingStarters', before: removed.sort(), after: [] });
+
+        // 3. Release the keys (removed instances only), so the replay's grants
+        //    create fresh copies instead of finding these.
+        const { released } = await equipment.adminReleaseGrantKeys(tx, {
+          playerId: player.id,
+          grantKeys: keys,
+          actorDiscordId: actor.discordUserId,
+          reason,
+        });
+        if (released.length > 0) {
+          changes.push({ field: 'onboardingGrantKeys', before: released.map((r) => r.grantKey).sort(), after: [] });
+        }
+
+        return {
+          changes,
+          detail: { removedStarters: removed, releasedGrantKeys: released.map((r) => r.grantKey) },
+          message:
+            changes.length === 0
+              ? 'Equipment onboarding was already clean — nothing to reset.'
+              : 'Equipment onboarding reset. The player can replay it from the start.',
         };
       });
     },

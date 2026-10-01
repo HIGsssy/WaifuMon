@@ -53,12 +53,12 @@ describe('retired equipment item category', () => {
 });
 
 describe('shipped equipment seed catalogue', () => {
-  it('exists, is a valid package, and ships empty in Phase 1', () => {
+  it('exists, is a valid package, and ships exactly the three onboarding starters (Phase 2A)', () => {
     const file = path.join(CONTENT_DIR, EQUIPMENT_SEED_FILE);
     expect(fs.existsSync(file)).toBe(true);
     const pkg = parseEquipmentPackage(JSON.parse(fs.readFileSync(file, 'utf8')));
-    expect(pkg.definitions).toEqual([]);
-    expect(loadEquipmentSeedCatalogue(CONTENT_DIR)).toEqual([]);
+    expect(pkg.definitions.map((d) => d.key)).toEqual(['rusty_pipe', 'scrap_plate', 'dented_lunchbox']);
+    expect(loadEquipmentSeedCatalogue(CONTENT_DIR)).toEqual(pkg.definitions);
   });
 
   it('treats a missing seed file as an empty catalogue', () => {

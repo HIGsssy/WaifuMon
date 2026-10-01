@@ -120,6 +120,34 @@ describe('equipment and feature-unlock write boundaries', () => {
     }
   });
 
+  it('the onboarding modules write no equipment or feature table directly', () => {
+    const onboarding = FILES.filter((f) => f.rel.startsWith('modules/onboarding/'));
+    expect(onboarding.length).toBeGreaterThan(0);
+    for (const { rel, source } of onboarding) {
+      for (const rule of RULES) expect(writesTable(source, rule), `${rel} writes ${rule.table}`).toBe(false);
+    }
+  });
+
+  /**
+   * The two privileged equipment methods, each with exactly one caller
+   * module. `equipForOnboarding` is the only equip that runs inside another
+   * module's transaction — reachable from anywhere else, a reward path could
+   * auto-equip. `adminReleaseGrantKeys` re-arms a fixed grant key and belongs
+   * to the staging reset alone.
+   */
+  it.each([
+    ['equipForOnboarding', 'modules/onboarding/'],
+    ['adminReleaseGrantKeys', 'modules/testControls/'],
+  ])('%s is called only from %s', (method, allowedPrefix) => {
+    const call = new RegExp(String.raw`\.${method}\s*\(`);
+    const callers = FILES.filter((f) => f.rel !== EQUIPMENT_SERVICE && call.test(stripComments(f.source))).map(
+      (f) => f.rel,
+    );
+    expect(callers.filter((rel) => !rel.startsWith(allowedPrefix))).toEqual([]);
+    // Guard the guard: the designated caller really is detected.
+    expect(callers.some((rel) => rel.startsWith(allowedPrefix))).toBe(true);
+  });
+
   it('the grant path never touches a loadout', () => {
     const { source } = FILES.find((f) => f.rel === EQUIPMENT_SERVICE)!;
     const start = source.indexOf('async grantEquipment(');

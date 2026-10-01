@@ -34,7 +34,7 @@ import { formatNumber } from '@/lib/format';
 import { errorText } from './errorText';
 import { ConfirmDialog, DisabledNotice, StagingBanner } from './shared';
 
-type Confirmable = 'revokeBeacon' | 'stagingBoost' | 'resetBelt';
+type Confirmable = 'revokeBeacon' | 'stagingBoost' | 'resetBelt' | 'resetEquipmentOnboarding';
 
 export function TestControlsPlayerPage() {
   const params = useParams();
@@ -340,6 +340,33 @@ function Controls({ info, state }: { info: TestControlsInfo; state: TestControls
               <li className="text-ink-muted">Belt component encounter on cooldown</li>
             )}
           </ul>
+          {state.equipmentOnboarding && (
+            <>
+              <Button
+                className="mt-4"
+                size="sm"
+                variant="danger"
+                disabled={busy}
+                onClick={() => setConfirm('resetEquipmentOnboarding')}
+              >
+                Reset Equipment Onboarding
+              </Button>
+              <ul className="mt-4 space-y-1 text-sm" aria-label="Equipment onboarding state">
+                <li className="text-ink-muted">
+                  Onboarding: {state.equipmentOnboarding.phase.replace(/_/g, ' ')}
+                  {state.equipmentOnboarding.nextStep ? ` (next: ${state.equipmentOnboarding.nextStep})` : ''}
+                </li>
+                <Owned owned={state.equipmentOnboarding.unlocked} label="Equipment unlocked" />
+                {state.equipmentOnboarding.starters.map((s) => (
+                  <Owned
+                    key={s.slot}
+                    owned={s.granted && !s.removed}
+                    label={`Starter ${s.slot}${s.definitionKey ? ` (${s.definitionKey})` : ''}${s.removed ? ' — removed' : ''}`}
+                  />
+                ))}
+              </ul>
+            </>
+          )}
         </Card>
       </div>
 
@@ -376,6 +403,22 @@ function Controls({ info, state }: { info: TestControlsInfo; state: TestControls
         destructive
         pending={busy}
         onConfirm={() => submit(() => testControlMutations.resetAssteroidBelt(id))}
+      />
+      <ConfirmDialog
+        open={confirm === 'resetEquipmentOnboarding'}
+        onOpenChange={(open) => !open && setConfirm(null)}
+        title="Reset Equipment onboarding?"
+        description={`Returns ${state.displayName} to the start of the Equipment onboarding.`}
+        details={[
+          'Revoke the Equipment feature unlock',
+          'Remove the three onboarding starters (Rusty Pipe, Scrap Plate, Dented Lunchbox) and clear them from loadouts',
+          'Release their grant keys so a replay grants fresh copies',
+          'Nothing else — other equipment, level and items are untouched',
+        ]}
+        confirmLabel="Reset onboarding"
+        destructive
+        pending={busy}
+        onConfirm={() => submit(() => testControlMutations.resetEquipmentOnboarding(id))}
       />
       <ConfirmDialog
         open={confirm === 'revokeBeacon'}

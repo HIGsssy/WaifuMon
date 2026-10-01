@@ -106,6 +106,17 @@ const EnvSchema = z.object({
     .default('false')
     .transform((v) => v === 'true' || v === '1'),
   /**
+   * The Equipment onboarding (Patch, level 35+). Off by default: the starter
+   * definitions seed on startup either way, and the switch is turned on once
+   * the startup log reports the onboarding ready. Turning it off hides the
+   * onboarding only — an unlocked player keeps the unlock, the gear and the
+   * read-only Equipment overview.
+   */
+  EQUIPMENT_ONBOARDING_ENABLED: z
+    .enum(['true', 'false', '1', '0'])
+    .default('false')
+    .transform((v) => v === 'true' || v === '1'),
+  /**
    * Worker threads that draw card masters.
    *
    * Drawing one blocks its thread for ~750 ms of synchronous resvg, so it
@@ -421,6 +432,8 @@ export interface AppConfig {
   deploymentEnv?: DeploymentEnv | undefined;
   /** Optional so hand-built configs read as disabled. */
   testAdminControls?: TestAdminControlsConfig | undefined;
+  /** Optional so hand-built configs read as disabled. */
+  equipmentOnboarding?: { enabled: boolean } | undefined;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -521,5 +534,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       enabled: e.ENABLE_TEST_ADMIN_CONTROLS,
       deploymentEnv: e.DEPLOYMENT_ENV,
     },
+    equipmentOnboarding: { enabled: e.EQUIPMENT_ONBOARDING_ENABLED },
   };
 }

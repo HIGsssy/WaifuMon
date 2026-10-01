@@ -66,6 +66,7 @@ import {
   type LoadoutView,
 } from './equipmentQueries';
 import {
+  EQUIPMENT_SLOTS,
   EQUIPMENT_SOURCE_TYPES,
   isEquipmentSlot,
   type EquipmentEventKind,
@@ -196,6 +197,39 @@ export interface AdminRemoveResult {
   clearedLoadoutIds: number[];
 }
 
+/** One instance found by its stored grant key. Removed instances are included. */
+export interface GrantKeyRecord {
+  /** The stored key (`${grantKey}:${copy}`). */
+  grantKey: string;
+  equipmentId: number;
+  slot: EquipmentSlot;
+  sourceType: string;
+  definition: EquipmentDefinitionView;
+  removed: boolean;
+}
+
+export type OnboardingEquipSkipReason = 'not_owned' | 'removed' | 'slot_mismatch' | 'not_onboarding';
+
+/** What {@link EquipmentService.equipForOnboarding} did, slot by slot. */
+export interface OnboardingEquipResult {
+  /** Slots this call filled. */
+  equipped: { slot: EquipmentSlot; equipmentId: number }[];
+  /** Slots that already held exactly this instance (a replayed completion). */
+  alreadyEquipped: { slot: EquipmentSlot; equipmentId: number }[];
+  /** Slots that held something else, left exactly as they were. */
+  kept: { slot: EquipmentSlot; equipmentId: number }[];
+  /** Instances that could not be equipped, and why. Never thrown. */
+  skipped: { slot: EquipmentSlot; equipmentId: number; reason: OnboardingEquipSkipReason }[];
+}
+
+export interface ReleaseGrantKeysInput {
+  playerId: number;
+  /** Stored grant keys (`${grantKey}:${copy}`). */
+  grantKeys: readonly string[];
+  actorDiscordId: string;
+  reason: string;
+}
+
 export interface EquipmentService {
   grantEquipment(tx: DbOrTx, input: GrantEquipmentInput): Promise<GrantEquipmentResult>;
   listEquipment(playerId: number, opts?: ListEquipmentOptions): Promise<EquipmentPage>;
@@ -217,6 +251,38 @@ export interface EquipmentService {
     flags: { isFavorite?: boolean; isLocked?: boolean },
   ): Promise<EquipmentInstanceView>;
   adminRemove(tx: DbOrTx, input: AdminRemoveInput): Promise<AdminRemoveResult>;
+  /**
+   * The player's instances carrying any of these stored grant keys, removed
+   * ones included, keyed by grant key. A pure read through `tx`. Lets a
+   * scripted flow recover the exact copies it granted.
+   */
+  findByGrantKeys(tx: DbOrTx, playerId: number, grantKeys: readonly string[]): Promise<Map<string, GrantKeyRecord>>;
+  /**
+   * The Equipment onboarding's scripted equip, and the only equip that runs
+   * inside a caller's transaction. Normal rewards never equip; this exists so
+   * the onboarding can put its three starters on in the same transaction that
+   * unlocks the feature. Callable only from `modules/onboarding`
+   * (`equipmentBoundary.test.ts`).
+   *
+   *  - Requires the `equipment` unlock to be visible through `tx` — the
+   *    caller unlocks first, in the same transaction.
+   *  - Accepts only owned, unremoved instances granted by the onboarding
+   *    (`source_type = 'onboarding'`) in their own slot; anything else is
+   *    reported as skipped, never thrown.
+   *  - Fills **empty** slots only. An occupied slot is never overwritten.
+   *  - Idempotent: a replay reports every slot as already equipped or kept.
+   */
+  equipForOnboarding(
+    tx: DbOrTx,
+    playerId: number,
+    items: Partial<Record<EquipmentSlot, number>>,
+  ): Promise<OnboardingEquipResult>;
+  /**
+   * Staging reset only: clear the grant key from this player's **already
+   * removed** instances, so a fixed-key grant can create a fresh copy. Never
+   * touches a live instance. Audited. Callable only from `modules/testControls`.
+   */
+  adminReleaseGrantKeys(tx: DbOrTx, input: ReleaseGrantKeysInput): Promise<{ released: { equipmentId: number; grantKey: string }[] }>;
 }
 
 export interface EquipmentServiceDeps {
@@ -827,14 +893,136 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
 
       return { equipmentId: input.equipmentId, definitionKey: owned.definition.key, clearedLoadoutIds };
     },
+
+    async findByGrantKeys(tx, playerId, grantKeys) {
+      const found = new Map<string, GrantKeyRecord>();
+      if (grantKeys.length === 0) return found;
+      const rows = await tx
+        .select({ instance: playerEquipment, definition: equipmentDefinitions })
+        .from(playerEquipment)
+        .innerJoin(equipmentDefinitions, eq(playerEquipment.definitionId, equipmentDefinitions.id))
+        .where(and(eq(playerEquipment.playerId, playerId), inArray(playerEquipment.grantKey, [...grantKeys])));
+      for (const { instance, definition } of rows) {
+        found.set(instance.grantKey!, {
+          grantKey: instance.grantKey!,
+          equipmentId: instance.id,
+          slot: instance.slot as EquipmentSlot,
+          sourceType: instance.sourceType,
+          definition: toDefinitionView(definition),
+          removed: instance.removedAt != null,
+        });
+      }
+      return found;
+    },
+
+    async equipForOnboarding(tx, playerId, items) {
+      for (const slot of Object.keys(items)) assertSlot(slot);
+      await requireUnlocked(tx, playerId);
+      const loadout = await lockActiveLoadout(tx, playerId);
+      const result: OnboardingEquipResult = { equipped: [], alreadyEquipped: [], kept: [], skipped: [] };
+
+      for (const slot of EQUIPMENT_SLOTS) {
+        const equipmentId = items[slot];
+        if (equipmentId == null) continue;
+        // Read without the `removed_at` filter so a removed starter can be
+        // reported as removed rather than as someone else's.
+        const [row] = await tx
+          .select({ instance: playerEquipment, definition: equipmentDefinitions })
+          .from(playerEquipment)
+          .innerJoin(equipmentDefinitions, eq(playerEquipment.definitionId, equipmentDefinitions.id))
+          .where(and(eq(playerEquipment.id, equipmentId), eq(playerEquipment.playerId, playerId)))
+          .for('share', { of: playerEquipment });
+        const reason: OnboardingEquipSkipReason | null = !row
+          ? 'not_owned'
+          : row.instance.removedAt != null
+            ? 'removed'
+            : row.instance.slot !== slot
+              ? 'slot_mismatch'
+              : row.instance.sourceType !== 'onboarding'
+                ? 'not_onboarding'
+                : null;
+        if (reason) {
+          result.skipped.push({ slot, equipmentId, reason });
+          continue;
+        }
+
+        const currentId = await currentSlotEquipmentId(tx, loadout.id, slot);
+        if (currentId === equipmentId) {
+          result.alreadyEquipped.push({ slot, equipmentId });
+          continue;
+        }
+        if (currentId !== null) {
+          // The player's own choice. Never overwritten, never compared.
+          result.kept.push({ slot, equipmentId: currentId });
+          continue;
+        }
+
+        await tx.insert(playerLoadoutSlots).values({ loadoutId: loadout.id, playerId, slot, equipmentId });
+        await writeEvent(tx, {
+          playerId,
+          kind: 'equipped',
+          equipmentId,
+          loadoutId: loadout.id,
+          slot,
+          previousEquipmentId: null,
+          metadata: { definitionKey: row!.definition.key, reason: 'onboarding' },
+        });
+        result.equipped.push({ slot, equipmentId });
+      }
+
+      if (result.equipped.length > 0) {
+        await tx.update(playerLoadouts).set({ updatedAt: sql`now()` }).where(eq(playerLoadouts.id, loadout.id));
+      }
+      return result;
+    },
+
+    async adminReleaseGrantKeys(tx, input) {
+      if (!input.actorDiscordId) throw new RangeError('A grant-key release must name the acting admin');
+      if (!input.reason?.trim()) throw new RangeError('A grant-key release must give a reason');
+      if (input.grantKeys.length === 0) return { released: [] };
+
+      // Only instances that are already removed: a live instance keeps its key,
+      // so releasing can never let a grant create a second live copy.
+      const targets = await tx
+        .select({ id: playerEquipment.id, grantKey: playerEquipment.grantKey })
+        .from(playerEquipment)
+        .where(
+          and(
+            eq(playerEquipment.playerId, input.playerId),
+            inArray(playerEquipment.grantKey, [...input.grantKeys]),
+            isNotNull(playerEquipment.removedAt),
+          ),
+        )
+        .orderBy(asc(playerEquipment.id))
+        .for('update');
+      if (targets.length === 0) return { released: [] };
+
+      await tx
+        .update(playerEquipment)
+        .set({ grantKey: null, updatedAt: sql`now()` })
+        .where(inArray(playerEquipment.id, targets.map((t) => t.id)));
+      const released = targets.map((t) => ({ equipmentId: t.id, grantKey: t.grantKey! }));
+      await recordDomainAdminAction(tx, {
+        playerId: input.playerId,
+        action: 'release_equipment_grant_keys',
+        adminDiscordId: input.actorDiscordId,
+        before: released,
+        after: released.map((r) => ({ equipmentId: r.equipmentId, grantKey: null })),
+        detail: { reason: input.reason.trim() },
+      });
+      return { released };
+    },
   };
 
-  // The two methods that take a caller's `tx` run as one unit of their own —
+  // The methods that write through a caller's `tx` run as one unit of their own —
   // see `atomically`. Every other writer opens its own `db.transaction`.
   return {
     ...methods,
     grantEquipment: (tx, input) => atomically(tx, (inner) => methods.grantEquipment(inner, input)),
     adminRemove: (tx, input) => atomically(tx, (inner) => methods.adminRemove(inner, input)),
+    equipForOnboarding: (tx, playerId, items) =>
+      atomically(tx, (inner) => methods.equipForOnboarding(inner, playerId, items)),
+    adminReleaseGrantKeys: (tx, input) => atomically(tx, (inner) => methods.adminReleaseGrantKeys(inner, input)),
   };
 }
 

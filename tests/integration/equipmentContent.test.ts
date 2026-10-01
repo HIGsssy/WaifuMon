@@ -204,10 +204,21 @@ describe('seedEquipmentDefinitions', () => {
     );
   });
 
-  it('seeds the shipped (empty) catalogue as a no-op', async () => {
+  it('seeds the shipped starter catalogue once, and a restart changes nothing', async () => {
     const shipped = loadEquipmentSeedCatalogue(CONTENT_DIR);
-    expect(await seedEquipmentDefinitions(t.db, { catalogue: shipped })).toEqual({ created: [], updated: [], skipped: [] });
-    expect(await definitionCount()).toBe(0);
+    const starters = ['rusty_pipe', 'scrap_plate', 'dented_lunchbox'];
+    expect(await seedEquipmentDefinitions(t.db, { catalogue: shipped })).toEqual({
+      created: starters,
+      updated: [],
+      skipped: [],
+    });
+    expect(await definitionCount()).toBe(3);
+    expect(await seedEquipmentDefinitions(t.db, { catalogue: shipped })).toEqual({
+      created: [],
+      updated: [],
+      skipped: starters,
+    });
+    expect(await definitionCount()).toBe(3);
   });
 });
 

@@ -36,6 +36,7 @@ import {
   type SpeciesContent,
   type UnloadedSpecies,
 } from './schemas';
+import { EquipmentOnboardingContentSchema, NpcsFileSchema } from './onboardingSchemas';
 
 function formatZodError(file: string, err: ZodError): string {
   const details = err.issues
@@ -1072,6 +1073,24 @@ export function validateContentSet(content: LoadedContent): void {
   validateBossContent(content);
   validateExpeditionContent(content);
   validateKeyItemContent(content);
+  validateOnboardingContent(content);
+}
+
+/**
+ * Cross-file checks for onboarding narratives: the NPC an onboarding names
+ * must exist in `content/npcs.json`. No-op for hand-built snapshots that carry
+ * neither.
+ */
+export function validateOnboardingContent(content: LoadedContent): void {
+  const equipment = content.onboarding?.equipment;
+  if (!equipment) return;
+  const npcKeys = new Set((content.npcs ?? []).map((npc) => npc.key));
+  if (!npcKeys.has(equipment.npc)) {
+    throw new ContentValidationError(
+      `onboarding/equipment.json names unknown NPC "${equipment.npc}". ` +
+        `Add it to content/npcs.json (known NPCs: ${[...npcKeys].join(', ') || 'none'}).`,
+    );
+  }
 }
 
 /**
@@ -1121,6 +1140,16 @@ export function readContentFiles(contentDir: string): LoadedContent {
     readExpansionPacks(contentDir);
   const allSpecies = [...species, ...expansionSpecies];
 
+  // NPCs and onboarding narratives are optional on disk: without the
+  // narrative the Equipment onboarding is simply not ready and is never
+  // offered. A file that is present is validated as strictly as any other.
+  const npcsPath = path.join(contentDir, 'npcs.json');
+  const npcs = fs.existsSync(npcsPath) ? parseJsonFile(npcsPath, NpcsFileSchema) : [];
+  const equipmentOnboardingPath = path.join(contentDir, 'onboarding', 'equipment.json');
+  const equipmentOnboarding = fs.existsSync(equipmentOnboardingPath)
+    ? parseJsonFile(equipmentOnboardingPath, EquipmentOnboardingContentSchema)
+    : null;
+
   return {
     items: itemsFile.items,
     species: allSpecies,
@@ -1133,6 +1162,8 @@ export function readContentFiles(contentDir: string): LoadedContent {
     expansions,
     speciesOrigin,
     authoring: { species: allSpecies, unloadedSpecies, artworkDiagnostics: [] },
+    npcs,
+    onboarding: { equipment: equipmentOnboarding },
   };
 }
 

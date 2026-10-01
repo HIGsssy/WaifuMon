@@ -45,6 +45,8 @@ import { createFeatureUnlockService } from './modules/features/featureUnlockServ
 import { createEquipmentService } from './modules/equipment/equipmentService';
 import { createEquipmentDefinitionService } from './modules/equipment/equipmentDefinitionService';
 import { createCombatStatsService } from './modules/equipment/combatStatsService';
+import { createEquipmentOnboardingService } from './modules/onboarding/equipmentOnboardingService';
+import { equipmentOnboardingLevelLabels } from './modules/onboarding/onboardingState';
 import { createEquipmentPromotionService } from './modules/equipment/equipmentImportService';
 import {
   loadEquipmentSeedCatalogue,
@@ -194,10 +196,18 @@ async function main(): Promise<void> {
    * empty table (or a broken one) simply means the built-in screens.
    */
   const resultPresentation = createResultPresentationService({ db, logger });
+  const equipmentOnboardingEnabled = config.equipmentOnboarding?.enabled === true;
   const progression = createProgressionService({
     config: content.tables.progression,
     baseMaxEnergy: content.tables.energy.baseMax,
     buddyBonus,
+    // Announces the Equipment onboarding on the level-up screen that reaches
+    // its level. A label only — the onboarding itself waits in the main menu.
+    extraLevelRewardLabels: (level) =>
+      equipmentOnboardingLevelLabels(level, {
+        enabled: equipmentOnboardingEnabled,
+        label: contentSnapshot.onboarding?.equipment?.levelUpLabel,
+      }),
   });
   const quests = createQuestService({
     db,
@@ -296,6 +306,22 @@ async function main(): Promise<void> {
     getMaxLevel: () => contentSnapshot.tables.waifuProgression.maxLevel,
   });
   const equipmentPromotion = createEquipmentPromotionService({ db });
+  /**
+   * Equipment onboarding (Phase 2A): Patch, the three starters and the
+   * `equipment` unlock, delivered from the main menu. Gated by
+   * `EQUIPMENT_ONBOARDING_ENABLED`; the read-only overview it serves to
+   * unlocked players is not.
+   */
+  const equipmentOnboarding = createEquipmentOnboardingService({
+    db,
+    equipment,
+    featureUnlocks,
+    combatStats,
+    resolveActiveBuddy: (tx, playerId) => collection.resolveActiveBuddy(tx, playerId),
+    getContent: () => contentSnapshot,
+    isEnabled: () => equipmentOnboardingEnabled,
+    logger,
+  });
 
   const care = createCareService({
     db,
@@ -556,6 +582,7 @@ async function main(): Promise<void> {
       combatStats,
       equipmentPromotion,
       featureUnlocks,
+      equipmentOnboarding,
     },
   };
 
@@ -590,6 +617,14 @@ async function main(): Promise<void> {
     }
   } catch (err) {
     logger.warn({ err }, 'equipment seed failed — equipment will run with whatever is in the DB');
+  }
+  try {
+    const readiness = await equipmentOnboarding.isReady();
+    const fields = { tag: 'equipment-onboarding/readiness', enabled: equipmentOnboardingEnabled, ...readiness };
+    if (readiness.ready) logger.info(fields, 'equipment onboarding ready');
+    else logger.warn(fields, 'equipment onboarding NOT ready — it will not be offered');
+  } catch (err) {
+    logger.warn({ err }, 'equipment onboarding readiness check failed');
   }
 
   await registerCommands(config.discordToken, config.discordClientId, config.discordGuildId, logger);
@@ -1014,6 +1049,9 @@ async function main(): Promise<void> {
         getContent: () => ctx.content,
         logger,
         config: config.testAdminControls!,
+        equipment,
+        featureUnlocks,
+        equipmentOnboarding,
       })
     : undefined;
   if (testControls) {

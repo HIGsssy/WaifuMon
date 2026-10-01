@@ -1,6 +1,58 @@
 {
   "format": "waifumon-equipment",
   "version": 1,
-  "label": "Startup seed — inserted when missing, never overwritten",
-  "definitions": []
+  "label": "Startup seed — inserted when missing, never overwritten. Starter gear handed out by the Equipment onboarding.",
+  "definitions": [
+    {
+      "key": "rusty_pipe",
+      "name": "Rusty Pipe",
+      "description": "Still hits. Still embarrassing.",
+      "slot": "attack",
+      "rarity": "N",
+      "attackBp": 4500,
+      "defenseBp": 0,
+      "healthBp": 0,
+      "secondaryEffects": [],
+      "tags": ["starter", "onboarding"],
+      "regionId": null,
+      "artworkPath": null,
+      "enabled": true,
+      "shopRegions": [],
+      "buyPrice": null
+    },
+    {
+      "key": "scrap_plate",
+      "name": "Scrap Plate",
+      "description": "Bolted together hope.",
+      "slot": "defense",
+      "rarity": "N",
+      "attackBp": 0,
+      "defenseBp": 3500,
+      "healthBp": 0,
+      "secondaryEffects": [],
+      "tags": ["starter", "onboarding"],
+      "regionId": null,
+      "artworkPath": null,
+      "enabled": true,
+      "shopRegions": [],
+      "buyPrice": null
+    },
+    {
+      "key": "dented_lunchbox",
+      "name": "Dented Lunchbox",
+      "description": "Keeps something alive.",
+      "slot": "health",
+      "rarity": "N",
+      "attackBp": 0,
+      "defenseBp": 0,
+      "healthBp": 20000,
+      "secondaryEffects": [],
+      "tags": ["starter", "onboarding"],
+      "regionId": null,
+      "artworkPath": null,
+      "enabled": true,
+      "shopRegions": [],
+      "buyPrice": null
+    }
+  ]
 }

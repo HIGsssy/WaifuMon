@@ -65,6 +65,8 @@ import {
 } from '../../modules/buddyBonus/buddyBonusEffects';
 import { resolveExistingAssetFile } from '../../modules/assets/assetContainment';
 import type { UiSplashConfig } from '../../modules/content/schemas';
+import type { EquipmentEntryState } from '../../modules/onboarding/onboardingState';
+import { onboardingCustomId } from '../onboardingPresenter';
 import {
   parseQuestRewards,
   type QuestRewardsPreview,
@@ -80,6 +82,7 @@ import {
 export function menuComponents(
   care: CareState,
   questsEnabled: boolean,
+  equipmentEntry: EquipmentEntryState = 'hidden',
 ): ActionRowBuilder<ButtonBuilder>[] {
   const careButton = care.active
     ? new ButtonBuilder()
@@ -175,8 +178,59 @@ export function menuComponents(
         .setStyle(ButtonStyle.Secondary),
     );
   }
+  // Equipment: a Primary call to action while the onboarding is waiting (or
+  // part-done), then a plain entry to the read-only overview once unlocked.
+  // At most the fourth of this row's five buttons.
+  const equipmentButton = equipmentMenuButton(equipmentEntry);
+  if (equipmentButton) bottomRow.push(equipmentButton);
   rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(...bottomRow));
   return rows;
+}
+
+/** The main menu's Equipment button for an entry state, or null when hidden. */
+export function equipmentMenuButton(entry: EquipmentEntryState): ButtonBuilder | null {
+  switch (entry) {
+    case 'begin':
+    case 'resume':
+      return new ButtonBuilder()
+        .setCustomId(onboardingCustomId('open'))
+        .setLabel('Equipment ✨')
+        .setEmoji('🔧')
+        .setStyle(ButtonStyle.Primary);
+    case 'available':
+      return new ButtonBuilder()
+        .setCustomId(onboardingCustomId('view'))
+        .setLabel('Equipment')
+        .setEmoji('⚔️')
+        .setStyle(ButtonStyle.Secondary);
+    default:
+      return null;
+  }
+}
+
+/**
+ * The player's Equipment entry state. Never allowed to break the menu: a
+ * failure logs and hides the entry for this paint.
+ */
+async function loadEquipmentEntry(
+  ctx: AppContext,
+  playerId: number,
+): Promise<EquipmentEntryState> {
+  const service = ctx.services.equipmentOnboarding;
+  if (!service) return 'hidden';
+  try {
+    return (await service.getState(playerId)).entry;
+  } catch (err) {
+    ctx.logger.warn({ err, tag: 'equipment-onboarding/menu-state', playerId }, 'equipment entry state failed — hiding it');
+    return 'hidden';
+  }
+}
+
+/** The Actions legend's Equipment mention, while the entry is visible. */
+export function equipmentLegendLine(entry: EquipmentEntryState): string {
+  if (entry === 'begin' || entry === 'resume') return '\n🔧 **Equipment** — something new is waiting';
+  if (entry === 'available') return '\n⚔️ **Equipment** — your Buddy’s gear and combat stats';
+  return '';
 }
 
 const DEFAULT_MENU_FLAVOR =
@@ -263,6 +317,7 @@ async function renderMainMenu(
     .setColor(care.active ? 0xffb6d1 : 0xff6fa5);
   if (banner) embed.setImage(banner.url);
 
+  const equipmentEntry = await loadEquipmentEntry(ctx, prov.playerId);
   embed.addFields({
     name: '🎮 Actions',
     value:
@@ -270,7 +325,8 @@ async function renderMainMenu(
       '🎁 **Claim Daily** — energy refill, WaifuBux, and charms\n' +
       '🛍️ **Shop** — spend WaifuBux on capture charms\n' +
       '🎒 **Collection** — browse your captured Waifumon\n' +
-      '👤 **Profile** · 🎒 **Inventory** · 💗 **Care Mode**',
+      '👤 **Profile** · 🎒 **Inventory** · 💗 **Care Mode**' +
+      equipmentLegendLine(equipmentEntry),
   });
 
   embed.addFields({ name: '💗 Care Mode', value: renderCareStatusLines(care).join('\n') });
@@ -279,6 +335,16 @@ async function renderMainMenu(
   // through, and it is repainted rather than pushed, so a standing gift is
   // mentioned exactly once per visit instead of chasing the player with DMs.
   // Gifts never expire, so this stays until it is accepted.
+  // Equipment onboarding waiting: the same "mentioned once per visit" posture
+  // as the gift reminder below. It never opens itself.
+  const onboardingMenu = ctx.services.equipmentOnboarding?.content()?.flow.menu;
+  if (onboardingMenu && (equipmentEntry === 'begin' || equipmentEntry === 'resume')) {
+    embed.addFields({
+      name: onboardingMenu.fieldName,
+      value: equipmentEntry === 'begin' ? onboardingMenu.beginText : onboardingMenu.resumeText,
+    });
+  }
+
   const pendingGifts = await ctx.services.gifts.listPendingGifts(prov.playerId);
   if (pendingGifts.length > 0) {
     const names = pendingGifts
@@ -298,7 +364,7 @@ async function renderMainMenu(
   // the reason the player is there.
   await respondEphemeral(interaction, {
     embeds: [embed],
-    components: menuComponents(care, ctx.services.quests.config.enabled),
+    components: menuComponents(care, ctx.services.quests.config.enabled, equipmentEntry),
     files: banner ? [banner.file] : [],
   });
   await emitEvents(ctx, interaction, prov, carePendingDescriptors(ticks));

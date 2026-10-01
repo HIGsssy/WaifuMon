@@ -51,6 +51,7 @@ import {
 } from '../../../src/modules/testControls/stagingTestControlsService';
 import type { TestAdminControlsConfig } from '../../../src/config/config';
 import { ADMIN_ACTION_EVENT } from '../../../src/modules/admin/adminActionAudit';
+import { buildEquipmentServices } from '../../helpers/equipmentFixtures';
 
 const GUILD_ID = '311222333444555666';
 const OTHER_GUILD_ID = '322333444555666777';
@@ -120,6 +121,10 @@ beforeAll(async () => {
           getContent: () => app.content,
           logger: t.logger,
           config: controlsConfig,
+          ...(() => {
+            const equipmentServices = buildEquipmentServices(t.db);
+            return { equipment: equipmentServices.equipment, featureUnlocks: equipmentServices.featureUnlocks };
+          })(),
         })
       : undefined;
     return createPlatformApiServer({
@@ -772,6 +777,7 @@ describe('audit', () => {
       ['travel/grant-standard', {}],
       ['staging-boost', {}],
       ['reset-assteroid-belt', {}],
+      ['reset-equipment-onboarding', {}],
     ];
     for (const [path, body] of calls) {
       const res = await post(`${base(testerId)}/${path}`, body, ADMIN_ID);

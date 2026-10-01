@@ -57,6 +57,9 @@ import {
  * constant the domain module already uses.
  */
 import { DEFAULT_SP_RANGES_BY_RARITY } from '../power/seductivePower';
+// Type-only: the runtime schemas live beside `relativeArtworkPath`, which
+// imports this module.
+import type { EquipmentOnboardingContent, NpcContent } from './onboardingSchemas';
 
 const slug = z
   .string()
@@ -2853,6 +2856,17 @@ export interface LoadedContent {
    * treat its absence as "authored and runtime are the same thing".
    */
   authoring?: ContentAuthoring | undefined;
+  /**
+   * Reusable NPCs from `content/npcs.json`. Optional on disk; optional here
+   * for the same reason as `authoring` — hand-built snapshots carry none.
+   */
+  npcs?: NpcContent[] | undefined;
+  /**
+   * Feature onboarding narratives from `content/onboarding/`. A missing file
+   * is `null`, and an onboarding without its narrative is simply not ready —
+   * never offered, never half-rendered.
+   */
+  onboarding?: { equipment: EquipmentOnboardingContent | null } | undefined;
 }
 
 /**

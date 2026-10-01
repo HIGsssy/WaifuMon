@@ -97,6 +97,22 @@ const stateSchema = z.object({
       requiredLevel: z.number().int().nullable(),
     }),
   ),
+  /** Null when the deployment has no Equipment onboarding service. */
+  equipmentOnboarding: z
+    .object({
+      phase: z.string(),
+      nextStep: z.string().nullable(),
+      unlocked: z.boolean(),
+      starters: z.array(
+        z.object({
+          slot: z.string(),
+          definitionKey: z.string(),
+          granted: z.boolean(),
+          removed: z.boolean(),
+        }),
+      ),
+    })
+    .nullable(),
 });
 
 const resultSchema = z.object({
@@ -274,6 +290,12 @@ export function adminTestControlsRoutes(ctx: ApiContext): FastifyPluginAsyncZod 
     );
     mutation('reset-assteroid-belt', 'Reset the Assteroid Belt unlock test state', null, (a, id) =>
       service.resetAssteroidBelt(a, id),
+    );
+    mutation(
+      'reset-equipment-onboarding',
+      'Reset the Equipment onboarding: revoke the unlock, remove the onboarding starters, release their grant keys',
+      null,
+      (a, id) => service.resetEquipmentOnboarding(a, id),
     );
   };
 }

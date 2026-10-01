@@ -72,6 +72,12 @@ import {
   handleWorldEncounterVendorOpen,
 } from './commands/waifumonWorldEncounter';
 import {
+  handleEquipmentOverview,
+  handleOnboardingAdvance,
+  handleOnboardingComplete,
+  handleOnboardingOpen,
+} from './commands/waifumonOnboarding';
+import {
   handleBuddyAutocomplete,
   handleAppearanceCommand,
   handleAppearanceOpen,
@@ -351,6 +357,15 @@ export function createDiscordClient(ctx: AppContext): Client {
         handleWorldEncounterChoose(ctx, i, prov, args),
       'encw:continue': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleWorldEncounterContinue(ctx, i, prov, args),
+      // Equipment onboarding (Patch) and the read-only Equipment overview.
+      'onb:open': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleOnboardingOpen(ctx, i, prov, args),
+      'onb:adv': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleOnboardingAdvance(ctx, i, prov, args),
+      'onb:done': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleOnboardingComplete(ctx, i, prov, args),
+      'onb:view': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleEquipmentOverview(ctx, i, prov, args),
       // Lives in the `loc:` namespace because it resumes the Locations
       // screen — the encounter is over by the time it is clickable.
       'loc:journey': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>

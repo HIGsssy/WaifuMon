@@ -39,6 +39,13 @@ export interface TestControlsPlayerState {
   beltEncounterCooldowns: number;
   passes: { id: string; name: string; owned: boolean }[];
   routes: { regionId: string; name: string; unlocked: boolean; requiredLevel: number | null }[];
+  /** Null (or absent from an older server) when the deployment has no Equipment onboarding. */
+  equipmentOnboarding?: {
+    phase: string;
+    nextStep: string | null;
+    unlocked: boolean;
+    starters: { slot: string; definitionKey: string; granted: boolean; removed: boolean }[];
+  } | null;
 }
 
 export type TestControlAction =
@@ -50,7 +57,8 @@ export type TestControlAction =
   | 'test_revoke_transporter_beacon'
   | 'test_grant_travel_access'
   | 'test_staging_boost'
-  | 'test_reset_assteroid_belt';
+  | 'test_reset_assteroid_belt'
+  | 'test_reset_equipment_onboarding';
 
 export interface TestControlResult {
   action: TestControlAction;
@@ -91,4 +99,6 @@ export const testControlMutations = {
   stagingBoost: (id: number) => postData<TestControlResult>(`${player(id)}/staging-boost`),
   resetAssteroidBelt: (id: number) =>
     postData<TestControlResult>(`${player(id)}/reset-assteroid-belt`),
+  resetEquipmentOnboarding: (id: number) =>
+    postData<TestControlResult>(`${player(id)}/reset-equipment-onboarding`),
 } as const;

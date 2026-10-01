@@ -52,6 +52,7 @@ import type { EquipmentService } from '../modules/equipment/equipmentService';
 import type { EquipmentDefinitionService } from '../modules/equipment/equipmentDefinitionService';
 import type { CombatStatsService } from '../modules/equipment/combatStatsService';
 import type { EquipmentPromotionService } from '../modules/equipment/equipmentImportService';
+import type { EquipmentOnboardingService } from '../modules/onboarding/equipmentOnboardingService';
 import type { FeatureUnlockService } from '../modules/features/featureUnlockService';
 
 export interface AppServices {
@@ -220,6 +221,8 @@ export interface AppServices {
   combatStats?: CombatStatsService | undefined;
   equipmentPromotion?: EquipmentPromotionService | undefined;
   featureUnlocks?: FeatureUnlockService | undefined;
+  /** Equipment onboarding (Patch) and the read-only Equipment overview. */
+  equipmentOnboarding?: EquipmentOnboardingService | undefined;
 }
 
 export interface AppContext {
