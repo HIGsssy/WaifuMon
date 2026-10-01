@@ -169,6 +169,7 @@ import {
 } from './expeditionRewards';
 import type { EquipmentRewardService } from '../equipment/equipmentRewardService';
 import { describeEquipmentSelector } from '../equipment/rewardSelector';
+import { contentRewardTableSource, type RewardTableSource } from '../rewardTables/rewardTableStore';
 import {
   EXPEDITION_PLAN_VERSION,
   type ExpeditionBoard,
@@ -270,6 +271,12 @@ export interface ExpeditionServiceDeps {
    * build it; a mission whose tables pay gear is refused at deploy without it.
    */
   equipmentRewards?: EquipmentRewardService | undefined;
+  /**
+   * Where deploy reads reward tables. Production wires the database
+   * (`reward_tables`, authoritative once seeded); absent means the loaded
+   * content files, which is what a fixture without a seeded table store has.
+   */
+  rewardTables?: RewardTableSource | undefined;
   /** Injectable clock. Only the board and display reads use it; see below. */
   now?: () => Date;
 }
@@ -289,6 +296,7 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
     equipmentRewards,
   } = deps;
   const availability = deps.availability ?? ALWAYS_AVAILABLE;
+  const tableSource = deps.rewardTables ?? contentRewardTableSource(getContent);
   /**
    * Used for the board window and for rendering "time remaining" only.
    *
@@ -304,9 +312,9 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
     return getContent().expeditions.find((e) => e.key === key);
   }
 
-  function findTable(id: string | null): ExpeditionRewardTable | undefined {
+  async function findTable(tx: DbOrTx, id: string | null): Promise<ExpeditionRewardTable | undefined> {
     if (id == null) return undefined;
-    return getContent().expeditionRewards.find((t) => t.id === id);
+    return tableSource.expeditionTable(tx, id);
   }
 
   /**
@@ -318,8 +326,8 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
    * moment somebody presses Deploy, with nothing written, instead of twelve
    * hours later with a player waiting.
    */
-  function buildPlan(definition: RegionalExpedition): ExpeditionResolutionPlan {
-    const successTable = findTable(definition.rewardTable);
+  async function buildPlan(tx: DbOrTx, definition: RegionalExpedition): Promise<ExpeditionResolutionPlan> {
+    const successTable = await findTable(tx, definition.rewardTable);
     if (!successTable) {
       throw new ExpeditionContentError(
         `expedition "${definition.key}" names unknown reward table "${definition.rewardTable}"`,
@@ -334,8 +342,8 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
     // fatal. Both are optional by design, and refusing the deployment would
     // turn "we switched off the rare-find table for a week" into "nobody can
     // run this mission" — a much larger outage than the edit intended.
-    const bonusTable = findTable(definition.exceptionalRewardTable);
-    const failureTable = findTable(definition.failureRewardTable);
+    const bonusTable = await findTable(tx, definition.exceptionalRewardTable);
+    const failureTable = await findTable(tx, definition.failureRewardTable);
 
     return {
       planVersion: EXPEDITION_PLAN_VERSION,
@@ -871,7 +879,7 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
             );
           }
 
-          const plan = buildPlan(definition);
+          const plan = await buildPlan(tx, definition);
           const equipmentPools = await equipmentPoolsFor(tx, definition, plan);
           if (equipmentPools) plan.equipmentPools = equipmentPools;
           const input = {

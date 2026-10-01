@@ -90,6 +90,8 @@ const ALL_DEV_PERMISSIONS: readonly string[] = [
   'presentations.read',
   'presentations.write',
   'gallery.read',
+  'rewards.read',
+  'rewards.write',
   'system.metrics.read',
   // The page reports "disabled on this server" unless the API has the flag.
   'system.loadtest.run',

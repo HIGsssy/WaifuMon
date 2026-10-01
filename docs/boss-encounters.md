@@ -363,9 +363,17 @@ repeated.
 
 ### Where it lives
 
+The **live** boss reward tables are database rows (`reward_tables`, kind
+`boss`), edited in **Portal → Admin — Reward Tables**. The file
+
 ```text
 content/bossRewards.json
 ```
+
+is the shipped default: startup inserts any table missing from the database,
+and updates a table from the file only while nobody has edited it in the
+Portal. See [`docs/reward-tables.md`](reward-tables.md) for the full rule,
+export/import, and how an edit reaches Git.
 
 **Boss loot is completely independent of the Shop.** They are different
 acquisition sources for the same items, and neither has a vote in the other:
@@ -509,27 +517,35 @@ To add a second bonus tier, add a third group — do not add a rare item as a
 low-weight row in the standard group, which would make it displace ordinary
 drops and couple its odds to every future retune of that pool.
 
-### Does a restart apply the change?
+### When does an edit take effect?
 
-**No — Save + Reload is enough.** Edit `content/bossRewards.json` on disk, then
-press **Reload Content** in the admin panel (or restart, which does the same
-thing). The panel has no boss-loot *editor*, but its reload re-reads every
-content file and republishes `ctx.content`, and the reward table is resolved
-through that live getter at payout time — the same rule `bosses.json` follows.
+**At the next boss spawn — and never before.** A save in Portal Admin is live
+immediately: no restart, no reload. Editing `content/bossRewards.json` in Git
+reaches a server at its next start, and only for a table nobody has edited in
+the Portal.
 
-That puts boss loot on the *content* side of the repository's split rather than
-the *tuning* side: `tables.json` values are captured by service closures at
-construction and genuinely do need a restart, which is one more reason payouts
-do not live there.
+Each boss encounter **snapshots its reward table at spawn**
+(`boss_encounters.reward_snapshot`): the validated table, plus the base
+definitions every enabled Equipment entry could pay at that moment. Payout
+reads only the snapshot. So an edit after the announcement does not change:
 
-A reload is validated before it lands: an edit that breaks a rule in the table
-below is rejected and the previous content stays live.
+| | Effect of an edit |
+| --- | --- |
+| a boss already announced | none — pays from its snapshot |
+| participations already committed | none |
+| a payout retried after a crash | none — same snapshot, same deterministic draws, same gear instance |
+| the next boss | uses the edited table |
 
-What an edit can *never* do is change an encounter that has already been paid.
+A gear definition disabled after the spawn is still paid to that boss's
+participants — it was promised while live. A boss whose table is disabled, or
+has an enabled Equipment entry that cannot pay anything on this server, is not
+spawned (logged with the reason), exactly like a disabled table.
+
+Encounters spawned before migration 0047 have no snapshot; they pay once from
+the live table, the behaviour they were spawned under.
+
 Granted rewards are written onto `boss_participations.reward_items` inside the
-payout transaction, and the encounter row records the table id and version it
-spawned under. Editing the table changes future rolls only; a snapshot already
-taken stays payable and stays exactly as it was.
+payout transaction, so nothing can change a result already paid.
 
 ### When it is wrong
 
@@ -672,7 +688,8 @@ against, not a reason to pre-emptively retune.
 | Table | Holds |
 | --- | --- |
 | `guild_boss_state` | shuffle bag, next appearance, pause and suspension flags |
-| `boss_encounters` | one row per appearance, with the boss content snapshotted onto it |
+| `boss_encounters` | one row per appearance, with the boss content and its reward table (`reward_snapshot`) snapshotted onto it |
+| `reward_tables` | the live reward tables (kind `boss` / `expedition`), seeded from the shipped JSON — see [`docs/reward-tables.md`](reward-tables.md) |
 | `boss_participations` | one row per committed buddy — the immutable battle record |
 
 `boss_participations.waifu_id` carries **no foreign key**, matching
@@ -733,5 +750,6 @@ tiers · PvP · cross-server bosses · travel · scavenge mode.
 
 ## Related documentation
 
+- [`docs/reward-tables.md`](reward-tables.md) — live reward tables, Portal editing, seed rules and export/import
 - [`docs/content-authoring.md`](content-authoring.md) — appearances and card metadata
 - [`docs/admin-web.md`](admin-web.md) — the content admin panel

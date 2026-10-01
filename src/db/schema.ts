@@ -1125,6 +1125,14 @@ export const bossEncounters = pgTable(
     rewardTable: text('reward_table').notNull(),
     /** `rewardTables[key].version` as it stood when the encounter opened. */
     rewardTableVersion: text('reward_table_version').notNull(),
+    /**
+     * The validated reward table and each Equipment entry's eligible base
+     * definitions, frozen at spawn (`BossRewardSnapshot`). Payout reads only
+     * this, so an admin edit reaches future bosses and never one already
+     * announced. Null on encounters spawned before migration 0047, which pay
+     * from the live table.
+     */
+    rewardSnapshot: jsonb('reward_snapshot').$type<Record<string, unknown>>(),
     /** `BOSS_DAMAGE_FORMULA_VERSION` — which formula produced these numbers. */
     calcVersion: integer('calc_version').notNull(),
     /** `BOSS_AFFINITY_VERSION` — which advantage table applied. */
@@ -2757,3 +2765,46 @@ export type PlayerLoadoutSlotRow = typeof playerLoadoutSlots.$inferSelect;
 export type EquipmentEventRow = typeof equipmentEvents.$inferSelect;
 export type EquipmentImportLogRow = typeof equipmentImportLog.$inferSelect;
 export type PlayerFeatureUnlockRow = typeof playerFeatureUnlocks.$inferSelect;
+
+/**
+ * Live boss and expedition reward tables.
+ *
+ * Database-authoritative once seeded: the shipped `content/bossRewards.json`
+ * and `content/expeditionRewards.json` are the defaults the startup seed
+ * inserts, and it updates a row from them only while the row still holds
+ * what was last seeded (`contentHash === seedHash`). An admin edit makes the
+ * row diverge, and a deploy never overwrites it. See migration 0047 and
+ * `modules/rewardTables`.
+ *
+ * `definition` is the table as the file format writes it — one document, so
+ * group and entry order (part of every deterministic draw) is kept exactly.
+ */
+export const rewardTables = pgTable(
+  'reward_tables',
+  {
+    kind: text('kind').notNull(),
+    tableId: text('table_id').notNull(),
+    /** Mirrors `definition.enabled`, for listing without parsing. */
+    enabled: boolean('enabled').notNull(),
+    definition: jsonb('definition').$type<Record<string, unknown>>().notNull(),
+    /** Bumped on every write; a save must name the revision it edited. */
+    revision: integer('revision').notNull().default(1),
+    /** Semantic hash of `definition` as it stands. */
+    contentHash: text('content_hash').notNull(),
+    /** Hash of the shipped table last seeded into this row; null if never shipped. */
+    seedHash: text('seed_hash'),
+    /** Export order: file order for shipped tables, appended for new ones. */
+    position: integer('position').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Discord id of the admin, `seed`, or `import`. */
+    updatedBy: text('updated_by'),
+  },
+  (t) => [
+    primaryKey({ name: 'reward_tables_pk', columns: [t.kind, t.tableId] }),
+    check('reward_tables_kind_check', sql`${t.kind} in ('boss', 'expedition')`),
+    check('reward_tables_revision_check', sql`${t.revision} >= 1`),
+  ],
+);
+
+export type RewardTableRow = typeof rewardTables.$inferSelect;

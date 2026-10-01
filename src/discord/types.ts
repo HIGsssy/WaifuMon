@@ -55,6 +55,7 @@ import type { EquipmentPromotionService } from '../modules/equipment/equipmentIm
 import type { EquipmentOnboardingService } from '../modules/onboarding/equipmentOnboardingService';
 import type { EquipmentManagementService } from '../modules/equipment/equipmentManagementService';
 import type { FeatureUnlockService } from '../modules/features/featureUnlockService';
+import type { RewardTableService } from '../modules/rewardTables/rewardTableService';
 
 export interface AppServices {
   guilds: GuildService;
@@ -164,6 +165,12 @@ export interface AppServices {
    * instances. Present alongside {@link worldEncounter}.
    */
   worldEncounterVendor?: WorldEncounterVendorService | undefined;
+  /**
+   * Boss and expedition reward tables: Portal Admin authoring, validation,
+   * equipment previews and export/import. Optional; absent simply means the
+   * reward-table admin routes do not register.
+   */
+  rewardTables?: RewardTableService | undefined;
   /**
    * Spawns a wild Waifumon outside the hunt roll — the bridge behind
    * `trigger_waifumon_encounter`, and the seam quests, items, events,

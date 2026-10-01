@@ -954,6 +954,18 @@ describe('OpenAPI registration', () => {
       'PATCH /api/v1/admin/result-presentations/{id}',
       'POST /api/v1/admin/result-presentations',
       'POST /api/v1/admin/result-presentations/preview',
+      // Boss and expedition reward tables. Writes need `rewards.write` and
+      // name the revision they edited (409 when stale); delete is refused for
+      // a referenced or shipped table. `validate`, `equipment-preview` and
+      // `import/plan` write nothing but carry a body; they need `rewards.read`.
+      'DELETE /api/v1/admin/reward-tables/{kind}/{id}',
+      'POST /api/v1/admin/reward-tables/equipment-preview',
+      'POST /api/v1/admin/reward-tables/{kind}',
+      'POST /api/v1/admin/reward-tables/{kind}/import/apply',
+      'POST /api/v1/admin/reward-tables/{kind}/import/plan',
+      'POST /api/v1/admin/reward-tables/{kind}/validate',
+      'POST /api/v1/admin/reward-tables/{kind}/{id}/reset',
+      'PUT /api/v1/admin/reward-tables/{kind}/{id}',
       'PUT /api/v1/players/{playerId}/collection/owned/{waifuId}/appearance',
     ].sort());
   });

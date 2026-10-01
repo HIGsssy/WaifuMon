@@ -43,6 +43,7 @@ import { createPlayerService } from '../../src/modules/players/playerService';
 import { createShopService } from '../../src/modules/shop/shopService';
 import { createSessionService } from '../../src/modules/session/sessionService';
 import { createBossEncounterService } from '../../src/modules/bosses/bossEncounterService';
+import type { RewardTableSource } from '../../src/modules/rewardTables/rewardTableStore';
 import { createTravelService } from '../../src/modules/travel/travelService';
 import { createKeyItemService } from '../../src/modules/keyItems/keyItemService';
 import { createWorldEncounterService } from '../../src/modules/worldEncounters/worldEncounterService';
@@ -207,6 +208,13 @@ export interface BootstrapOptions {
   equipmentRng?: Rng;
   /** Drives the base-definition pick for World Encounter gear (bosses and expeditions derive theirs). */
   equipmentRewardRng?: Rng;
+  /**
+   * Where bosses and expeditions read reward tables. Absent: the in-memory
+   * `content` (the pre-0047 behaviour most fixtures rely on, since they edit
+   * `app.content.bossRewards` in place). Production wires
+   * `databaseRewardTableSource`; a test of the live table store passes it.
+   */
+  rewardTables?: RewardTableSource;
 }
 
 /** Wires all services against a test database with the shipped content seeded. */
@@ -339,6 +347,7 @@ export async function bootstrapApp(
     progression,
     availability,
     equipmentRewards,
+    ...(opts.rewardTables ? { rewardTables: opts.rewardTables } : {}),
     getCurrentRegion: (playerId) => travel.getCurrentRegion(playerId),
   });
   const effects = createPlayerEffectsService(t.db);
@@ -377,6 +386,7 @@ export async function bootstrapApp(
     equipmentRewards,
     logger: t.logger,
     ...(opts.bossRng ? { rng: opts.bossRng } : {}),
+    ...(opts.rewardTables ? { rewardTables: opts.rewardTables } : {}),
   });
   const worldEncounterVendor = createWorldEncounterVendorService({
     db: t.db,

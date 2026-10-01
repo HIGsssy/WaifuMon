@@ -151,6 +151,17 @@ const VendorEditorPage = lazy(() =>
     default: m.VendorEditorPage,
   })),
 );
+// Reward Tables (boss and expedition payouts). Gated on `rewards.read` only.
+const RewardTablesListPage = lazy(() =>
+  import('@/features/adminRewardTables/RewardTablesListPage').then((m) => ({
+    default: m.RewardTablesListPage,
+  })),
+);
+const RewardTableEditorPage = lazy(() =>
+  import('@/features/adminRewardTables/RewardTableEditorPage').then((m) => ({
+    default: m.RewardTableEditorPage,
+  })),
+);
 // Result Presentations. Gated on its own permission — not `admin.access` or
 // any encounter permission — so a presentation-only editor reaches it.
 const ResultPresentationsPage = lazy(() =>
@@ -367,6 +378,32 @@ export const routes: RouteObject[] = [
                 ),
               },
             ],
+          },
+
+          // Admin — Reward Tables. The API re-checks every request.
+          {
+            path: 'admin/reward-tables',
+            element: (
+              <RequirePortalPermission permission="rewards.read">
+                <RewardTablesListPage />
+              </RequirePortalPermission>
+            ),
+          },
+          {
+            path: 'admin/reward-tables/:kind/new',
+            element: (
+              <RequirePortalPermission permission="rewards.write">
+                <RewardTableEditorPage />
+              </RequirePortalPermission>
+            ),
+          },
+          {
+            path: 'admin/reward-tables/:kind/:id',
+            element: (
+              <RequirePortalPermission permission="rewards.read">
+                <RewardTableEditorPage />
+              </RequirePortalPermission>
+            ),
           },
 
           // Admin — Result Presentations. The API re-checks every request.

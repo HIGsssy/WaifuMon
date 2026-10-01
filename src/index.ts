@@ -49,6 +49,14 @@ import {
   listRewardableDefinitions,
 } from './modules/equipment/equipmentRewardService';
 import { describeEquipmentSelector } from './modules/equipment/rewardSelector';
+import { rewardTables as rewardTablesTable } from './db/schema';
+import {
+  databaseRewardTableSource,
+  loadShippedRewardTables,
+  parseRewardTableRow,
+  seedRewardTables,
+} from './modules/rewardTables/rewardTableStore';
+import { createRewardTableService } from './modules/rewardTables/rewardTableService';
 import { buildAffixCatalogue } from './modules/equipment/affixCatalogue';
 import { readUnknownAffixKeys } from './modules/equipment/equipmentQueries';
 import { createEquipmentDefinitionService } from './modules/equipment/equipmentDefinitionService';
@@ -163,6 +171,10 @@ async function main(): Promise<void> {
     logger,
   });
   const { content } = await reloadContent();
+  // Boss and expedition reward tables as shipped in Git, read raw so a seeded
+  // row exports back to the file it came from. The database is authoritative
+  // once seeded (below); these are the defaults and the "reset" target.
+  const shippedRewardTables = loadShippedRewardTables(config.contentDir);
 
   const currency = createCurrencyService(db);
   const inventory = createInventoryService(db);
@@ -391,6 +403,7 @@ async function main(): Promise<void> {
     progression,
     availability,
     equipmentRewards,
+    rewardTables: databaseRewardTableSource,
     // The narrow location port. Passed as a bound method rather than the whole
     // service so expeditions cannot reach for a route or a pass.
     getCurrentRegion: (playerId) => travel.getCurrentRegion(playerId),
@@ -440,6 +453,7 @@ async function main(): Promise<void> {
         getContent: () => contentSnapshot,
         buddyBonus,
         equipmentRewards,
+        rewardTables: databaseRewardTableSource,
         logger,
       })
     : undefined;
@@ -620,6 +634,11 @@ async function main(): Promise<void> {
           resolveExistingAssetFile(config.assetsDir, relative).status !== 'missing',
       }),
       worldEncounterVendor: worldEncounterVendorService,
+      rewardTables: createRewardTableService({
+        db,
+        getContent: () => contentSnapshot,
+        getShipped: () => shippedRewardTables,
+      }),
       worldEncounterSettings,
       wildEncounters,
       speciesSelector,
@@ -666,22 +685,57 @@ async function main(): Promise<void> {
   } catch (err) {
     logger.warn({ err }, 'equipment seed failed — equipment will run with whatever is in the DB');
   }
+  // Boss and expedition reward tables: insert any shipped table that is
+  // missing, and update one from Git only while its row still holds what was
+  // last seeded. A table edited in Portal Admin is never overwritten by a
+  // deploy — the divergence is logged, and exporting the table is how the
+  // edit reaches Git.
   try {
-    // Boss and expedition tables are files, gear definitions are rows: the
-    // loader can only shape-check a gear selector. Check them against this
-    // server now, so a bad one is heard about before a payout refuses it.
+    const rewardSeed = await seedRewardTables(db, shippedRewardTables);
+    if (rewardSeed.created.length > 0 || rewardSeed.updated.length > 0 || rewardSeed.adopted.length > 0) {
+      logger.info(
+        {
+          tag: 'reward-tables/seed',
+          created: rewardSeed.created,
+          updated: rewardSeed.updated,
+          adopted: rewardSeed.adopted,
+        },
+        'seeded reward tables from shipped content',
+      );
+    }
+    for (const d of rewardSeed.diverged) {
+      const fields = { tag: 'reward-tables/diverged', ...d };
+      if (d.shippedChanged) {
+        logger.warn(
+          fields,
+          `reward table ${d.kind}/${d.id} was edited in Portal Admin and Git has also changed it — ` +
+            'the shipped change was NOT applied. Export the live table to reconcile, or reset it to shipped.',
+        );
+      } else {
+        logger.info(fields, `reward table ${d.kind}/${d.id} keeps its Portal Admin edit (differs from Git)`);
+      }
+    }
+  } catch (err) {
+    logger.error({ err }, 'reward table seed failed — bosses and expeditions will use whatever is in the DB');
+  }
+  try {
+    // Reward tables and gear definitions are both rows, but nothing ties a
+    // gear selector to a definition. Check the live tables against this
+    // server now, so a bad one is heard about before a spawn skips it or a
+    // deploy refuses it.
+    const liveTables = await db.select().from(rewardTablesTable);
     const findings = auditRewardTableSelectors(
-      [
-        ...contentSnapshot.bossRewards.map((t) => ({ ...t, label: `bossRewards["${t.id}"]` })),
-        ...contentSnapshot.expeditionRewards.map((t) => ({ ...t, label: `expeditionRewards["${t.id}"]` })),
-      ],
+      liveTables.map((row) => ({
+        ...parseRewardTableRow(row),
+        label: `${row.kind === 'boss' ? 'bossRewards' : 'expeditionRewards'}["${row.tableId}"]`,
+      })),
       await listRewardableDefinitions(db),
     );
     for (const finding of findings) {
       logger.error(
         { tag: 'equipment/reward-selector-invalid', location: finding.location, issues: finding.issues },
         `${finding.location} can never pay "${describeEquipmentSelector(finding.selector)}" on this server — ` +
-          'boss payouts and expedition deploys that reach it will be refused until it is fixed',
+          'bosses paid from it will not spawn and expedition deploys that reach it will be refused until it is fixed',
       );
     }
   } catch (err) {

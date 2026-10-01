@@ -1337,3 +1337,73 @@ export class ExpeditionContentError extends AppError {
     );
   }
 }
+
+/* ─────────────────────── Reward tables (admin) ─────────────────────── */
+
+/** One problem with a submitted reward table, by path. */
+export interface RewardTableIssueDetail {
+  path: string;
+  message: string;
+  severity: 'error' | 'warning';
+}
+
+/** A boss or expedition reward table failed authoring validation; nothing was written. */
+export class RewardTableInvalidError extends AppError {
+  readonly issues: RewardTableIssueDetail[];
+  constructor(issues: readonly RewardTableIssueDetail[]) {
+    const list = Array.isArray(issues) ? issues : [];
+    const errors = list.filter((i) => i.severity === 'error');
+    const summary = errors.map((i) => `${i.path}: ${i.message}`).join('; ');
+    super(
+      'REWARD_TABLE_INVALID',
+      `Invalid reward table: ${summary || 'unknown problem'}`,
+      summary || 'That reward table is not valid.',
+    );
+    this.issues = [...list];
+  }
+}
+
+/**
+ * A save named a revision that is no longer current — someone else saved the
+ * table first. Nothing was written; the editor reloads rather than overwriting.
+ */
+export class RewardTableStaleError extends AppError {
+  constructor(
+    readonly kind: string,
+    readonly tableId: string,
+    readonly expectedRevision: number,
+    readonly currentRevision: number,
+    readonly updatedBy: string | null,
+    readonly updatedAt: Date,
+  ) {
+    super(
+      'REWARD_TABLE_STALE',
+      `Reward table ${kind}/"${tableId}" is at revision ${currentRevision}, not ${expectedRevision}`,
+      'This reward table was changed by someone else since you opened it. Reload to see their changes.',
+    );
+  }
+}
+
+export class RewardTableIdTakenError extends AppError {
+  constructor(kind: string, tableId: string) {
+    super(
+      'REWARD_TABLE_ID_TAKEN',
+      `A ${kind} reward table "${tableId}" already exists`,
+      'Another reward table already uses that id.',
+    );
+  }
+}
+
+/**
+ * Deleting a reward table that content pays from, or that ships in Git (the
+ * next startup would only seed it back). Disable it instead.
+ */
+export class RewardTableDeleteRefusedError extends AppError {
+  constructor(kind: string, tableId: string, reason: string) {
+    super(
+      'REWARD_TABLE_DELETE_REFUSED',
+      `Reward table ${kind}/"${tableId}" cannot be deleted: ${reason}`,
+      `This reward table cannot be deleted: ${reason}. Disable it instead.`,
+    );
+  }
+}

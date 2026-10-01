@@ -48,6 +48,7 @@ import {
   BossEncounterNotOpenError,
   BossNoActiveBuddyError,
   ContentValidationError,
+  EquipmentRewardConfigError,
   isUniqueViolation,
 } from '../../shared/errors';
 import type { Logger } from '../../shared/logger';
@@ -74,7 +75,21 @@ import {
 import { bossDrawInt, bossDrawRng } from './bossRandom';
 import type { EquipmentRewardService } from '../equipment/equipmentRewardService';
 import type { EquipmentSlot } from '../equipment/vocabulary';
-import { mergeGrants, rollBossRewards } from './bossRewards';
+import {
+  BOSS_REWARD_SNAPSHOT_VERSION,
+  mergeGrants,
+  parseBossRewardSnapshot,
+  rollBossRewards,
+  type BossRewardSnapshot,
+} from './bossRewards';
+import { listRewardableDefinitions } from '../equipment/equipmentRewardService';
+import {
+  describeEquipmentSelector,
+  equipmentSelectorKey,
+  pickRewardDefinition,
+} from '../equipment/rewardSelector';
+import { equipmentSelectorsOf, resolveEquipmentPools } from '../rewardTables/rewardTableCore';
+import { contentRewardTableSource, type RewardTableSource } from '../rewardTables/rewardTableStore';
 import {
   appliedBuddyBonus,
   applyPercentModifierInt,
@@ -85,7 +100,6 @@ import type { BuddyBonusService } from '../buddyBonus/buddyBonusService';
 import {
   drawFromBag,
   parseShuffleBagState,
-  type ShuffleBagCandidate,
   type ShuffleBagState,
 } from './bossShuffleBag';
 import { DEFAULT_REGION } from './regions';
@@ -180,6 +194,12 @@ export interface BossResolutionResult {
   applied: boolean;
 }
 
+/** A boss that may spawn now, with the reward snapshot its encounter would record. */
+interface SpawnCandidate {
+  boss: BossContent;
+  snapshot: BossRewardSnapshot;
+}
+
 export interface BossSpawnResult {
   encounter: BossEncounterRow;
   boss: BossContent;
@@ -215,6 +235,12 @@ export interface BossEncounterServiceDeps {
    * rather than skipping the drop.
    */
   equipmentRewards?: EquipmentRewardService | undefined;
+  /**
+   * Where spawn reads reward tables. Production wires the database
+   * (`reward_tables`, authoritative once seeded); absent means the loaded
+   * content files, which is what a fixture without a seeded table store has.
+   */
+  rewardTables?: RewardTableSource | undefined;
   logger: Logger;
   /**
    * Drives the shuffle and the downtime pick. Injected so a test can make the
@@ -371,6 +397,7 @@ export function createBossEncounterService(
 ): BossEncounterService {
   const { db, inventory, collection, getContent, logger, equipmentRewards } = deps;
   const rng = deps.rng ?? defaultRng();
+  const tableSource = deps.rewardTables ?? contentRewardTableSource(getContent);
   const buddyBonus = deps.buddyBonus;
 
   const config = (): BossEncountersConfig => getContent().tables.bossEncounters;
@@ -387,53 +414,93 @@ export function createBossEncounterService(
    * The skip is logged at error level with the fix in the message, because
    * from the outside a boss that quietly stops rotating is indistinguishable
    * from a broken scheduler.
+   *
+   * Each candidate carries the reward snapshot its encounter would record,
+   * read through `tx` — the spawn transaction — so what is announced is
+   * exactly what will be paid.
    */
-  function candidatesFor(region: string): BossContent[] {
-    const content = getContent();
-    const tables = new Map(content.bossRewards.map((t) => [t.id, t]));
-    return content.bosses.filter((b) => {
-      if (!b.enabled || b.region !== region) return false;
-      const table = tables.get(b.rewardTable);
-      if (!table) {
-        // The loader rejects this at boot, so reaching it means content was
-        // reloaded with a table removed while the process was running.
-        logger.error(
-          { tag: 'boss/reward-table-missing', bossId: b.id, rewardTable: b.rewardTable },
-          `boss "${b.id}" references reward table "${b.rewardTable}", which is not in ` +
-            'content/bossRewards.json — the boss will not spawn until it is added',
-        );
-        return false;
+  async function candidatesFor(tx: DbOrTx, region: string): Promise<SpawnCandidate[]> {
+    const bosses = getContent().bosses.filter((b) => b.enabled && b.region === region);
+    // One snapshot per table, shared by every boss paid from it.
+    const snapshots = new Map<string, BossRewardSnapshot | null>();
+    const out: SpawnCandidate[] = [];
+    for (const boss of bosses) {
+      if (!snapshots.has(boss.rewardTable)) {
+        snapshots.set(boss.rewardTable, await snapshotFor(tx, boss));
       }
-      if (!table.enabled) {
-        logger.error(
-          { tag: 'boss/reward-table-disabled', bossId: b.id, rewardTable: b.rewardTable },
-          `boss "${b.id}" will not spawn: its reward table "${b.rewardTable}" is disabled. ` +
-            `Set "enabled": true on that table in content/bossRewards.json, or disable the ` +
-            'boss itself to stop this message.',
-        );
-        return false;
-      }
-      return true;
-    });
-  }
-
-  function bagCandidates(region: string): ShuffleBagCandidate[] {
-    return candidatesFor(region).map((b) => ({ id: b.id, affinity: b.affinity }));
+      const snapshot = snapshots.get(boss.rewardTable);
+      if (snapshot) out.push({ boss, snapshot });
+    }
+    return out;
   }
 
   /**
-   * The reward table an encounter is paid from, by id.
+   * The reward snapshot a new encounter of `boss` would carry, or null — with
+   * the reason logged — when the boss must not spawn: its table is missing or
+   * disabled, or an enabled Equipment entry cannot pay anything on this server.
+   */
+  async function snapshotFor(tx: DbOrTx, boss: BossContent): Promise<BossRewardSnapshot | null> {
+    const table = await tableSource.bossTable(tx, boss.rewardTable);
+    if (!table) {
+      // The loader rejects this at boot for shipped tables, so reaching it
+      // means the live table store has no such table.
+      logger.error(
+        { tag: 'boss/reward-table-missing', bossId: boss.id, rewardTable: boss.rewardTable },
+        `boss "${boss.id}" references reward table "${boss.rewardTable}", which does not exist ` +
+          '— the boss will not spawn until it is added',
+      );
+      return null;
+    }
+    if (!table.enabled) {
+      logger.error(
+        { tag: 'boss/reward-table-disabled', bossId: boss.id, rewardTable: boss.rewardTable },
+        `boss "${boss.id}" will not spawn: its reward table "${boss.rewardTable}" is disabled. ` +
+          'Enable that table in Admin → Reward Tables, or disable the boss itself to stop this message.',
+      );
+      return null;
+    }
+    const selectors = equipmentSelectorsOf([table]);
+    if (selectors.size > 0 && !equipmentRewards) {
+      logger.error(
+        { tag: 'boss/reward-equipment-unwired', bossId: boss.id, rewardTable: boss.rewardTable },
+        `boss "${boss.id}" will not spawn: its reward table pays equipment but no equipment reward service is wired`,
+      );
+      return null;
+    }
+    try {
+      const equipmentPools =
+        selectors.size === 0 ? {} : resolveEquipmentPools(selectors, await listRewardableDefinitions(tx));
+      return { snapshotVersion: BOSS_REWARD_SNAPSHOT_VERSION, table, equipmentPools };
+    } catch (err) {
+      if (!(err instanceof EquipmentRewardConfigError)) throw err;
+      // Skipped like a disabled table: announcing a boss whose payout would
+      // be refused is worse than not announcing it.
+      logger.error(
+        {
+          tag: 'boss/reward-equipment-invalid',
+          bossId: boss.id,
+          rewardTable: boss.rewardTable,
+          issues: err.issues,
+        },
+        `boss "${boss.id}" will not spawn: reward table "${boss.rewardTable}" has an Equipment reward ` +
+          `that cannot pay anything on this server (${err.issues.map((i) => `${i.path} ${i.message}`).join('; ')})`,
+      );
+      return null;
+    }
+  }
+
+  /**
+   * The live reward table, for an encounter spawned before reward snapshots
+   * existed — the one-time fallback; every newer encounter pays from its
+   * snapshot.
    *
    * Deliberately does **not** check `enabled`: that switch governs whether new
-   * encounters may *spawn* against the table (see `candidatesFor`), not
-   * whether an encounter that already happened may be paid. Disabling a table
-   * must never strand participants who committed while it was live.
+   * encounters may *spawn* against the table, not whether an encounter that
+   * already happened may be paid.
    */
-  function rewardTableFor(key: string): BossRewardTable {
-    const table = getContent().bossRewards.find((t) => t.id === key);
+  async function liveRewardTable(key: string): Promise<BossRewardTable> {
+    const table = await tableSource.bossTable(db, key);
     if (!table) {
-      // Reachable only if content was edited between the announcement and the
-      // resolution. Loud, because the alternative is paying an arbitrary table.
       throw new ContentValidationError(`Boss reward table "${key}" no longer exists`);
     }
     return table;
@@ -489,11 +556,10 @@ export function createBossEncounterService(
   function encounterValuesFor(
     guildDbId: number,
     region: string,
-    boss: BossContent,
+    { boss, snapshot }: SpawnCandidate,
     scheduledAt: Date,
     forced: boolean,
   ): typeof bossEncounters.$inferInsert {
-    const table = rewardTableFor(boss.rewardTable);
     return {
       guildId: guildDbId,
       region,
@@ -502,7 +568,8 @@ export function createBossEncounterService(
       bossAffinity: boss.affinity,
       bossArtwork: boss.artwork,
       rewardTable: boss.rewardTable,
-      rewardTableVersion: bossRewardTableVersion(table),
+      rewardTableVersion: bossRewardTableVersion(snapshot.table),
+      rewardSnapshot: snapshot as unknown as Record<string, unknown>,
       calcVersion: BOSS_DAMAGE_FORMULA_VERSION,
       affinityVersion: BOSS_AFFINITY_VERSION,
       status: 'scheduled',
@@ -544,17 +611,19 @@ export function createBossEncounterService(
       if (active.length > 0) return null;
 
       const region = state.region;
-      const candidates = bagCandidates(region);
+      const pool = await candidatesFor(tx, region);
+      const candidates = pool.map(({ boss: b }) => ({ id: b.id, affinity: b.affinity }));
       const draw = drawFromBag(parseShuffleBagState(state.bagState), candidates, rng);
       if (!draw) {
         logger.warn({ guildId: guildDbId, region }, 'boss spawn skipped — no enabled bosses');
         return null;
       }
-      const boss = candidatesFor(region).find((b) => b.id === draw.bossId)!;
+      const candidate = pool.find((c) => c.boss.id === draw.bossId)!;
+      const { boss } = candidate;
 
       const encounter = await insertEncounter(
         tx,
-        encounterValuesFor(guildDbId, region, boss, now, false),
+        encounterValuesFor(guildDbId, region, candidate, now, false),
       );
       // Lost the race to another process. Roll nothing back explicitly — this
       // transaction simply commits no bag change, because we return before
@@ -699,7 +768,10 @@ export function createBossEncounterService(
   ): Promise<BossParticipationRow> {
     if (participation.rewardStatus === 'applied') return participation;
 
-    const table = rewardTableFor(encounter.rewardTable);
+    // The snapshot taken at spawn; only an encounter from before snapshots
+    // existed reads the live table.
+    const snapshot = parseBossRewardSnapshot(encounter.rewardSnapshot);
+    const table = snapshot?.table ?? (await liveRewardTable(encounter.rewardTable));
     const maxLevel = getContent().tables.waifuProgression.maxLevel;
 
     const performancePercent = bossDrawInt(
@@ -813,13 +885,32 @@ export function createBossEncounterService(
         if (!equipmentRewards) {
           throw new Error('boss reward table pays equipment but no equipment reward service is wired');
         }
-        const reward = await equipmentRewards.grantRandomEquipmentReward(tx, {
+        const common = {
           playerId: participation.playerId,
-          selector: draw.selector,
-          source: { type: 'boss', key: encounter.bossId },
+          source: { type: 'boss' as const, key: encounter.bossId },
           grantKey: `boss:${participation.id}:${draw.groupId}:${draw.roll}`,
-          rng: bossDrawRng(encounter.id, participation.id, `reward:${draw.groupId}:${draw.roll}:equipment`),
-        });
+        };
+        const drawRng = bossDrawRng(encounter.id, participation.id, `reward:${draw.groupId}:${draw.roll}:equipment`);
+        // Picked from the pool frozen at spawn, and paid even if that
+        // definition has since been disabled — it was promised while live.
+        // Only a pre-snapshot encounter selects against live definitions.
+        const pool = snapshot?.equipmentPools[equipmentSelectorKey(draw.selector)];
+        if (snapshot && (!pool || pool.length === 0)) {
+          throw new ContentValidationError(
+            `boss encounter ${encounter.id} snapshot has no equipment pool for "${describeEquipmentSelector(draw.selector)}"`,
+          );
+        }
+        const reward = pool
+          ? await equipmentRewards.grantChosenEquipmentReward(tx, {
+              ...common,
+              definitionKey: pickRewardDefinition(pool, drawRng).key,
+              allowDisabled: true,
+            })
+          : await equipmentRewards.grantRandomEquipmentReward(tx, {
+              ...common,
+              selector: draw.selector,
+              rng: drawRng,
+            });
         equipmentWon.push({
           kind: 'equipment',
           equipmentId: reward.equipmentId,
@@ -1115,12 +1206,14 @@ export function createBossEncounterService(
       await ensureState(guildDbId);
       const state = await ensureState(guildDbId);
       const region = state.region;
-      const pool = candidatesFor(region);
+      const pool = await candidatesFor(db, region);
       if (pool.length === 0) {
         throw new ContentValidationError(`No enabled bosses for region "${region}"`);
       }
-      const boss = bossId ? pool.find((b) => b.id === bossId) : pool[rng.intInclusive(0, pool.length - 1)];
-      if (!boss) {
+      const candidate = bossId
+        ? pool.find((c) => c.boss.id === bossId)
+        : pool[rng.intInclusive(0, pool.length - 1)];
+      if (!candidate) {
         throw new ContentValidationError(
           `Boss "${bossId}" is not an enabled boss in region "${region}"`,
         );
@@ -1130,9 +1223,10 @@ export function createBossEncounterService(
       // same forced boss must stay repeatable.
       const encounter = await insertEncounter(
         db,
-        encounterValuesFor(guildDbId, region, boss, now, true),
+        encounterValuesFor(guildDbId, region, candidate, now, true),
       );
       if (!encounter) throw new BossEncounterNotOpenError();
+      const { boss } = candidate;
       logger.warn(
         {
           tag: 'boss/force-spawn',

@@ -32,8 +32,10 @@
  * here reads a clock or a database.
  */
 import { rollWeighted } from '../../shared/random';
-import { equipmentEntrySelector, type BossRewardTable } from '../content/schemas';
+import { ContentValidationError } from '../../shared/errors';
+import { BossRewardTableSchema, equipmentEntrySelector, type BossRewardTable } from '../content/schemas';
 import type { EquipmentRewardSelector } from '../equipment/rewardSelector';
+import type { EquipmentRewardCandidate } from '../rewardTables/rewardTableCore';
 import { bossDrawFraction, bossDrawRng } from './bossRandom';
 
 /**
@@ -48,6 +50,42 @@ import { bossDrawFraction, bossDrawRng } from './bossRandom';
  * independent groups, and the draw keys changed with it.
  */
 export const BOSS_REWARD_LOGIC_VERSION = 2;
+
+/**
+ * What a boss encounter is paid from, frozen at spawn on
+ * `boss_encounters.reward_snapshot`.
+ *
+ * The validated table, plus every Equipment entry's eligible base definitions
+ * (keyed by `equipmentSelectorKey`). Payout reads only this, so an admin edit
+ * to the table — or to a gear definition — after the announcement changes
+ * nothing for that boss, its participations, or a payout retried after a crash.
+ */
+export interface BossRewardSnapshot {
+  snapshotVersion: typeof BOSS_REWARD_SNAPSHOT_VERSION;
+  table: BossRewardTable;
+  equipmentPools: Record<string, EquipmentRewardCandidate[]>;
+}
+
+export const BOSS_REWARD_SNAPSHOT_VERSION = 1;
+
+/**
+ * Read a stored snapshot. Null for an encounter spawned before snapshots
+ * existed (it pays from the live table). A snapshot this build cannot read is
+ * loud: paying from anything else would silently change what was promised.
+ */
+export function parseBossRewardSnapshot(raw: unknown): BossRewardSnapshot | null {
+  if (raw == null) return null;
+  const snap = raw as Partial<BossRewardSnapshot>;
+  const table = BossRewardTableSchema.safeParse(snap.table);
+  if (snap.snapshotVersion !== BOSS_REWARD_SNAPSHOT_VERSION || !table.success) {
+    throw new ContentValidationError('boss encounter reward snapshot is unreadable by this build');
+  }
+  return {
+    snapshotVersion: BOSS_REWARD_SNAPSHOT_VERSION,
+    table: table.data,
+    equipmentPools: (snap.equipmentPools ?? {}) as Record<string, EquipmentRewardCandidate[]>,
+  };
+}
 
 /** Basis-point denominator. 10000 bp = certainty. */
 const BASIS_POINTS = 10_000;

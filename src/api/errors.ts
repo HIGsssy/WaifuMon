@@ -195,6 +195,8 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   ROLE_GRANT_INVALID: 400,
   /** A promotion package failed validation against this server. */
   ENCOUNTER_IMPORT_REJECTED: 400,
+  /** Admin: a reward table (or import) failed validation — issues are in `details`. */
+  REWARD_TABLE_INVALID: 400,
   /** Nothing to export. */
   ENCOUNTER_EXPORT_EMPTY: 400,
   /**
@@ -300,6 +302,12 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   VENDOR_KEY_TAKEN: 409,
   /** Admin: deleting a vendor that encounters still open. */
   VENDOR_IN_USE: 409,
+  /** Admin: a reward table save named a revision someone else has since replaced. */
+  REWARD_TABLE_STALE: 409,
+  /** Admin: creating a reward table under an id that kind already has. */
+  REWARD_TABLE_ID_TAKEN: 409,
+  /** Admin: deleting a reward table that content references or Git ships — disable it instead. */
+  REWARD_TABLE_DELETE_REFUSED: 409,
 
   // --- Valid shape, business rule refused ---------------------------------
   INSUFFICIENT_FUNDS: 422,

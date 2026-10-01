@@ -1,5 +1,9 @@
 /**
- * The "Give equipment" effect: which *kind* of gear an encounter hands out.
+ * An Equipment reward selector: which *kind* of gear a reward hands out. Used
+ * by the World Encounter "Give equipment" effect and by Equipment rows in boss
+ * and expedition reward tables — both carry the same flat selector fields, and
+ * anything else on the object (an effect's `type`, a row's `weight`) is passed
+ * through untouched.
  *
  * The author picks only the selector the server's reward path takes — an
  * optional slot, an optional N/R/SR rarity, and optionally a short list of
@@ -8,10 +12,8 @@
  * them here. The server validates the selector on save (a disabled or
  * mismatched definition, or a selector nothing matches, is refused).
  */
-import type { AdminEncounterReference } from '@/api/adminEncounters';
 import { cn } from '@/lib/cn';
 import { selectClass } from './EntitySelect';
-import type { EffectShape } from './EffectEditor';
 
 /** Slots and rarities a random reward may name — mirrors the server's selector. */
 export const EQUIPMENT_REWARD_SLOTS = ['attack', 'defense', 'health'] as const;
@@ -19,20 +21,30 @@ export const EQUIPMENT_REWARD_RARITIES = ['N', 'R', 'SR'] as const;
 
 const SLOT_LABELS: Record<string, string> = { attack: 'Attack', defense: 'Defense', health: 'Health' };
 
-interface Props {
-  effect: EffectShape;
-  reference: AdminEncounterReference | undefined;
-  onChange: (next: EffectShape) => void;
+/** What the selector offers: every definition, enabled or not. */
+export interface EquipmentRewardReference {
+  equipmentDefinitions?: Array<{ key: string; name: string; slot: string; rarity: string; enabled: boolean }>;
+}
+
+interface Props<T extends Record<string, unknown>> {
+  /** The effect or reward row whose `slot` / `rarity` / `definitionKeys` this edits. */
+  effect: T;
+  reference: EquipmentRewardReference | undefined;
+  onChange: (next: T) => void;
 }
 
 /** Set, or (for "Any" / an empty list) remove, one selector field. */
-function withField(effect: EffectShape, field: string, value: unknown): EffectShape {
+function withField<T extends Record<string, unknown>>(effect: T, field: string, value: unknown): T {
   const { [field]: _removed, ...rest } = effect;
   const empty = value === '' || (Array.isArray(value) && value.length === 0);
-  return (empty ? rest : { ...rest, [field]: value }) as EffectShape;
+  return (empty ? rest : { ...rest, [field]: value }) as T;
 }
 
-export function EquipmentRewardFields({ effect, reference, onChange }: Props) {
+export function EquipmentRewardFields<T extends Record<string, unknown>>({
+  effect,
+  reference,
+  onChange,
+}: Props<T>) {
   const slot = typeof effect.slot === 'string' ? effect.slot : '';
   const rarity = typeof effect.rarity === 'string' ? effect.rarity : '';
   const chosen = Array.isArray(effect.definitionKeys) ? (effect.definitionKeys as string[]) : [];

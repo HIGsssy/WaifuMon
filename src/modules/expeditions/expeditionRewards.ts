@@ -36,6 +36,7 @@
  * after a crash reproduces the same payout rather than rolling a fresh one.
  * Nothing here reads a clock, a database or the content snapshot.
  */
+import type { EquipmentRewardCandidate } from '../rewardTables/rewardTableCore';
 import { rollWeighted } from '../../shared/random';
 import { equipmentEntrySelector, type ExpeditionRewardTable } from '../content/schemas';
 import { equipmentSelectorKey, pickRewardDefinition } from '../equipment/rewardSelector';
@@ -57,12 +58,7 @@ export interface ExpeditionItemGrant {
 }
 
 /** One base definition an Equipment entry may pay, as snapshotted at deploy. */
-export interface ExpeditionEquipmentCandidate {
-  key: string;
-  name: string;
-  slot: EquipmentSlot;
-  rarity: string;
-}
+export type ExpeditionEquipmentCandidate = EquipmentRewardCandidate;
 
 /**
  * Every enabled Equipment entry's eligible definitions, keyed by

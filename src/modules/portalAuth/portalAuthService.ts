@@ -52,6 +52,12 @@ export const ALL_PORTAL_PERMISSIONS = [
   // appearance, including disabled and not-yet-loaded content. No write
   // counterpart exists — the gallery edits nothing.
   'gallery.read',
+  // Boss and expedition reward tables. Enabled/disabled records with no
+  // publish step — a save is live for the next boss spawn or mission deploy,
+  // never for one already running — so `write` covers create, edit,
+  // enable/disable, reset, delete and import.
+  'rewards.read',
+  'rewards.write',
   // System Metrics: live process, host and database-pool telemetry. Owner-only
   // — see SYSTEM_METRICS_READ below for why it is not delegable.
   'system.metrics.read',
@@ -83,6 +89,9 @@ export const PORTAL_PERMISSION_DESCRIPTIONS: Readonly<Record<PortalPermission, s
   'presentations.write': 'Create, edit, enable/disable and delete Result Presentations.',
   'gallery.read':
     'View every Waifumon species and all artwork, including disabled, locked and unreleased content.',
+  'rewards.read': 'View boss and expedition reward tables, equipment previews and exports.',
+  'rewards.write':
+    'Edit, enable/disable, reset and import boss and expedition reward tables (affects future bosses and deployments only).',
   'system.metrics.read':
     'View live server metrics: memory, CPU, request latency and database load (guild owner only).',
   'system.loadtest.run':

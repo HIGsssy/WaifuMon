@@ -21,6 +21,7 @@ import {
   Compass,
   FlaskConical,
   Gauge,
+  Gift,
   Heart,
   Images,
   LayoutDashboard,
@@ -73,6 +74,12 @@ export const NAV_ITEMS: readonly NavItem[] = [
     label: 'Admin — Result Presentations',
     icon: Sparkles,
     requiresPermission: 'presentations.read',
+  },
+  {
+    to: '/admin/reward-tables',
+    label: 'Admin — Reward Tables',
+    icon: Gift,
+    requiresPermission: 'rewards.read',
   },
   {
     to: '/admin/gallery',

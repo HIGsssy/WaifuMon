@@ -330,6 +330,13 @@
       "when": 1819749600000,
       "tag": "0046_equipment_rolled_instances",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1819836000000,
+      "tag": "0047_reward_tables",
+      "breakpoints": true
     }
   ]
 }
