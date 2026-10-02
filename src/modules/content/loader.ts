@@ -1,0 +1,1506 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import type { ZodError, ZodType, ZodTypeDef } from 'zod';
+import { defaultAssetId } from '../appearance/appearanceContent';
+import {
+  assetPathWithin,
+  locateLegacyArtwork,
+  locateSpeciesArtwork,
+} from '../assets/speciesArtworkFile';
+import { resolveExistingAssetFile } from '../assets/assetContainment';
+import { archetypeToRace, DEFAULT_RACE } from '../cards/race';
+import { ContentValidationError } from '../../shared/errors';
+import type { Logger } from '../../shared/logger';
+import { DEFAULT_REGION, isRegion, REGION_EXCLUSIVE_TAG } from '../locations/regions';
+import {
+  BossesFileSchema,
+  BossRewardsFileSchema,
+  ExpeditionRewardsFileSchema,
+  ExpeditionsFileSchema,
+  DEFAULT_APPEARANCE_ID,
+  ExpansionContentSchema,
+  ItemsFileSchema,
+  RegionContentSchema,
+  SpeciesFileSchema,
+  TablesFileSchema,
+  type AppearanceContent,
+  type AssetId,
+  type BossContent,
+  type ExpansionContent,
+  type LoadedContent,
+  type ExpeditionRewardTable,
+  type KeyItemRecipeConfig,
+  type RegionalExpedition,
+  type RegionContent,
+  type SpeciesArtworkDiagnostic,
+  type SpeciesContent,
+  type UnloadedSpecies,
+} from './schemas';
+import { EquipmentOnboardingContentSchema, NpcsFileSchema } from './onboardingSchemas';
+import { EQUIPMENT_AFFIX_FILE, EquipmentAffixFileSchema } from '../equipment/affixCatalogue';
+
+function formatZodError(file: string, err: ZodError): string {
+  const details = err.issues
+    .map((i) => `  ${i.path.join('.') || '(root)'}: ${i.message}`)
+    .join('\n');
+  return `Content validation failed in ${file}:\n${details}`;
+}
+
+function parseJsonFile<T>(filePath: string, schema: ZodType<T, ZodTypeDef, unknown>): T {
+  if (!fs.existsSync(filePath)) {
+    throw new ContentValidationError(`Content file missing: ${filePath}`);
+  }
+  let raw: unknown;
+  try {
+    raw = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch (err) {
+    throw new ContentValidationError(`Invalid JSON in ${filePath}: ${(err as Error).message}`);
+  }
+  const parsed = schema.safeParse(raw);
+  if (!parsed.success) {
+    throw new ContentValidationError(formatZodError(filePath, parsed.error));
+  }
+  return parsed.data;
+}
+
+/**
+ * Resolves a content path under the assets root, rejecting lexical escapes
+ * (a malicious image_path in content JSON must not point outside ASSETS_DIR).
+ *
+ * Lexical only — no disk access, so it works for paths that may not exist.
+ * It is a *shape* check, not permission to read: code about to read or serve
+ * a file uses `resolveExistingAssetFile`, which also refuses symlinks that
+ * lead out of the assets directory.
+ */
+export function resolveAssetPath(assetsDir: string, imagePath: string): string {
+  const resolved = assetPathWithin(assetsDir, imagePath);
+  if (resolved === null) {
+    throw new ContentValidationError(
+      `image_path "${imagePath}" resolves outside the assets directory`,
+    );
+  }
+  return resolved;
+}
+
+/**
+ * Asset pre-flight.
+ *
+ * Two different severities, on purpose:
+ *   - a species whose **default** artwork resolves nowhere is disabled — a
+ *     species that cannot render at all is worse than one that is absent;
+ *   - a missing **non-default appearance** file drops just that appearance
+ *     with a warning and leaves the species enabled. Half-shipped artwork
+ *     should cost one gallery tile, not a whole Waifumon.
+ *
+ * Every existence question goes through the shared artwork resolver, so an
+ * appearance stored as WebP, PNG or both counts as present — the loader never
+ * decides which file format artwork must be in. The default look is resolved
+ * exactly as consumers will resolve it: the `owned` appearance, then the
+ * species' `standard`, then the legacy `imagePath`.
+ *
+ * Species with no authored catalog are covered by that same probe of their
+ * implicit `standard` appearance.
+ */
+export function validateSpeciesAssets(
+  species: SpeciesContent[],
+  assetsDir: string,
+  logger: Logger,
+): SpeciesContent[] {
+  return preflightSpeciesAssets(species, assetsDir, logger).species;
+}
+
+/**
+ * {@link validateSpeciesAssets}, plus a typed record of every decision it made.
+ *
+ * The returned species are identical to what `validateSpeciesAssets` returns —
+ * that function is this one with the diagnostics discarded. The diagnostics
+ * exist because the snapshot alone cannot say *why* it differs from the
+ * authored content: a dropped appearance is simply absent, and a disabled
+ * species looks the same as one an author switched off.
+ */
+export function preflightSpeciesAssets(
+  species: SpeciesContent[],
+  assetsDir: string,
+  logger: Logger,
+): { species: SpeciesContent[]; diagnostics: SpeciesArtworkDiagnostic[] } {
+  const diagnostics: SpeciesArtworkDiagnostic[] = [];
+  const checked = species.map((s) => {
+    // Shape check only: an `imagePath` that escapes the assets root is a
+    // content error and fails the load loudly, as it always has.
+    resolveAssetPath(assetsDir, s.imagePath);
+
+    const owned = s.appearances?.find((appearance) => appearance.unlock.type === 'owned');
+    const defaultAsset = owned
+      ? (owned.assetId ?? defaultAssetId(s.slug, owned.id))
+      : defaultAssetId(s.slug, DEFAULT_APPEARANCE_ID);
+    // Mirrors the consumers' fallback chain — the default look, then the
+    // species' `standard`, then the legacy `imagePath` — so a species is only
+    // disabled when nothing any consumer could fall back to exists.
+    const renderable =
+      locateSpeciesArtwork(assetsDir, defaultAsset) ??
+      locateSpeciesArtwork(assetsDir, defaultAssetId(s.slug, DEFAULT_APPEARANCE_ID)) ??
+      locateLegacyArtwork(assetsDir, s.imagePath);
+    if (!renderable) {
+      logger.warn({ slug: s.slug, imagePath: s.imagePath }, 'species image missing — disabling');
+      diagnostics.push({
+        code: 'species_disabled_default_artwork_missing',
+        slug: s.slug,
+        appearanceId: owned?.id ?? DEFAULT_APPEARANCE_ID,
+        assetId: defaultAsset,
+      });
+      return { ...s, enabled: false };
+    }
+
+    if (!s.appearances || s.appearances.length === 0) return s;
+
+    const kept: AppearanceContent[] = [];
+    for (const appearance of s.appearances) {
+      const assetId = appearance.assetId ?? defaultAssetId(s.slug, appearance.id);
+      // AssetId is the only artwork identity, for core and expansion species
+      // alike; the resolver decides which stored format backs it. imagePath
+      // is retained only as the default look's last-resort fallback.
+      if (locateSpeciesArtwork(assetsDir, assetId)) {
+        kept.push(appearance);
+        continue;
+      }
+      if (appearance.unlock.type === 'owned') {
+        // The default entry has no fallback to degrade to. Rather than disable
+        // a species that has a perfectly good `imagePath`, keep the entry and
+        // let the consumer's resolver fall back (Discord → species card,
+        // Portal → silhouette). Loud, because it is an authoring mistake.
+        logger.warn(
+          { slug: s.slug, appearanceId: appearance.id, assetId },
+          'default appearance artwork missing — consumers will fall back',
+        );
+        diagnostics.push({
+          code: 'default_appearance_artwork_missing',
+          slug: s.slug,
+          appearanceId: appearance.id,
+          assetId,
+        });
+        kept.push(appearance);
+        continue;
+      }
+      logger.warn(
+        { slug: s.slug, appearanceId: appearance.id, assetId },
+        'appearance artwork missing — appearance disabled',
+      );
+      diagnostics.push({
+        code: 'appearance_dropped_artwork_missing',
+        slug: s.slug,
+        appearanceId: appearance.id,
+        assetId,
+      });
+    }
+    return { ...s, appearances: kept };
+  });
+  return { species: checked, diagnostics };
+}
+
+/**
+ * Race pre-flight — diagnostics only, never a failure and never a mutation.
+ *
+ * Three cases, one of which is worth a log line:
+ *
+ *   - explicit `race` → nothing to say;
+ *   - no `race`, but `archetype` maps to one → the migration fallback working
+ *     as designed, and silent, because warning on it would fire for nearly
+ *     every species in the corpus and train everyone to ignore the channel;
+ *   - no `race` and `archetype` maps to nothing → warn, because this species
+ *     is now rendering with the `human` frame by default and only an author
+ *     can say whether that is right.
+ *
+ * Deliberately does **not** write the resolved race back onto the species. The
+ * JSON stays the source of truth; the renderer resolves per render. A loader
+ * that quietly filled the field in would make `race` look authored when it was
+ * guessed, and the guess would then survive an admin panel round-trip to disk.
+ */
+export function checkSpeciesRaces(species: SpeciesContent[], logger: Logger): void {
+  for (const offender of findUnresolvableRaces(species)) {
+    logger.warn(
+      {
+        tag: 'card-renderer/race-fallback',
+        slug: offender.slug,
+        archetype: offender.archetype,
+        fallbackRace: DEFAULT_RACE,
+      },
+      unresolvableRaceMessage(offender),
+    );
+  }
+}
+
+/** A species whose race can only be reached by falling back to the default. */
+export interface UnresolvableRace {
+  slug: string;
+  archetype: string;
+}
+
+/**
+ * Every species that would hit the `human` fallback — no explicit `race`, and
+ * an `archetype` that maps to nothing.
+ *
+ * Shared by two callers that want the same answer for opposite reasons, which
+ * is the point of hoisting it out of the warning path:
+ *
+ *   - **Runtime** (`checkSpeciesRaces`) logs and carries on. Bad content
+ *     reaching production must still render a card.
+ *   - **CI** (the content invariant test) fails the build. Shipped content
+ *     should never *rely* on the fallback; the fallback is for content that
+ *     escaped review, not a substitute for authoring `race`.
+ *
+ * Deduped by slug so one offender cannot be reported twice in a single pass.
+ */
+export function findUnresolvableRaces(species: SpeciesContent[]): UnresolvableRace[] {
+  const seen = new Set<string>();
+  const offenders: UnresolvableRace[] = [];
+  for (const s of species) {
+    if (s.race) continue;
+    if (archetypeToRace(s.archetype)) continue;
+    if (seen.has(s.slug)) continue;
+    seen.add(s.slug);
+    offenders.push({ slug: s.slug, archetype: s.archetype });
+  }
+  return offenders;
+}
+
+/** Shared wording so the CI failure reads exactly like the runtime warning. */
+export function unresolvableRaceMessage(offender: UnresolvableRace): string {
+  return (
+    `species "${offender.slug}": archetype "${offender.archetype}" maps to no race — ` +
+    `cards will render as "${DEFAULT_RACE}". Add an explicit "race" field to fix.`
+  );
+}
+
+/**
+ * Boss artwork pre-flight — a **warning**, never a disable.
+ *
+ * Deliberately the opposite severity from a missing species image. A species
+ * that cannot render has nothing to show and is disabled; a boss that cannot
+ * render still has a name, an affinity, a description and three pieces of
+ * prose, which is a complete encounter. Dropping the boss instead would take
+ * a guild's whole scouting window away over a missing file, and — worse — it
+ * would do so *after* an encounter had already been announced and committed
+ * to, since artwork is resolved at post time.
+ *
+ * So the path is nulled out and the announcement degrades to a text/embed
+ * encounter. Resolution, damage and rewards never touch artwork at all.
+ */
+export function validateBossAssets(
+  bosses: BossContent[],
+  assetsDir: string,
+  logger: Logger,
+): BossContent[] {
+  return bosses.map((boss) => {
+    if (!boss.artwork) return boss;
+    const found = resolveExistingAssetFile(assetsDir, boss.artwork);
+    if (found.status === 'unsafe') {
+      // Traversal or a symlink out of assets/ — the schema rejects the former,
+      // so this is the belt to those braces. Treated as missing, loudly.
+      logger.warn(
+        { bossId: boss.id, artwork: boss.artwork },
+        'boss artwork resolves outside the assets directory — encounter will render text-only',
+      );
+      return { ...boss, artwork: null };
+    }
+    if (found.status === 'available') return boss;
+    logger.warn(
+      { bossId: boss.id, artwork: boss.artwork },
+      'boss artwork missing — encounter will render text-only',
+    );
+    return { ...boss, artwork: null };
+  });
+}
+
+/**
+ * Boss cross-file invariants.
+ *
+ * Split out of `validateContentSet` only so the shipped-content test can call
+ * it against a hand-built set; the real loader always runs it as part of the
+ * whole-set validation.
+ *
+ * Everything here is fatal rather than a warning, and each for a specific
+ * reason:
+ *
+ *   - **Duplicate ids** would make `bossId` ambiguous on stored encounter rows,
+ *     which is the key a historical result is read back by.
+ *   - **An unknown reward table** mints an encounter nobody can be paid for,
+ *     and it fails at *resolution* — half an hour after the announcement, with
+ *     committed participants waiting.
+ *   - **An unknown reward item** is the same failure one level down: a payout
+ *     naming an item that cannot be granted.
+ *   - **No enabled boss for an enabled region** means the scheduler has
+ *     nothing to draw, which would look exactly like a silently broken
+ *     feature.
+ *
+ * A *disabled* reward item is deliberately **not** fatal, unlike the
+ * affection-gift loot table. The distinction is when the item is resolved: a
+ * gift freezes its slug at generation time and can therefore mint something
+ * unclaimable, whereas a boss reward is looked up and granted inside the payout
+ * transaction from the live `items` row — which still exists, and can still be
+ * added to an inventory, while it is disabled.
+ *
+ * The `items.enabled` flag is **retirement, not Shop availability** — the Shop
+ * decides stock from an item's `shopRegions` and price, and `items.enabled:
+ * false` withdraws an item from every source at once. A boss table may
+ * therefore legitimately be checked against it, and `adminContentService` does
+ * exactly that as a non-blocking warning, because a boss dropping a retired
+ * item is a content mistake worth hearing about but not one worth refusing to
+ * boot over. Nothing Shop-specific — `shopRegions`, `buyPrice` — is consulted
+ * here or anywhere else on the boss path.
+ *
+ * A *disabled reward table* is likewise not fatal on its own — a boss pointing
+ * at one is simply undrawable, and `bossEncounterService` logs an actionable
+ * error when it skips it. It becomes fatal only when it leaves an enabled
+ * region with nothing to draw at all, which is checked below alongside the
+ * disabled-boss case, because from the players' side those are one failure.
+ *
+ * Affinity and region identifiers are already closed enums in the schema, so
+ * they need no re-check here.
+ */
+export function validateBossContent(content: LoadedContent): void {
+  const { bosses, bossRewards, items, tables } = content;
+  const config = tables.bossEncounters;
+
+  const ids = bosses.map((b) => b.id);
+  const duplicate = ids.find((id, i) => ids.indexOf(id) !== i);
+  if (duplicate) throw new ContentValidationError(`Duplicate boss id: ${duplicate}`);
+
+  const rewardTables = new Map(bossRewards.map((t) => [t.id, t]));
+  const itemSlugs = new Set(items.map((i) => i.slug));
+
+  for (const boss of bosses) {
+    if (!rewardTables.has(boss.rewardTable)) {
+      throw new ContentValidationError(
+        `boss "${boss.id}" references unknown reward table: ${boss.rewardTable}. ` +
+          `Add it to content/bossRewards.json (known tables: ${[...rewardTables.keys()].join(', ') || 'none'}).`,
+      );
+    }
+  }
+
+  for (const table of bossRewards) {
+    for (const group of table.groups) {
+      for (const entry of group.entries) {
+        if (!itemSlugs.has(entry.itemId)) {
+          throw new ContentValidationError(
+            `bossRewards["${table.id}"].groups["${group.id}"] references unknown item slug: ${entry.itemId}`,
+          );
+        }
+      }
+    }
+  }
+
+  // The per-region check guards against boss content that was *mis-authored* —
+  // someone disabling the last Dominant boss, or moving a region's whole roster
+  // elsewhere. It deliberately does not fire on a content set that carries no
+  // boss content at all, because `bosses.json` is optional on disk: a
+  // deployment without it, an appearance-sync working directory, and an admin
+  // panel candidate set are all legitimate boss-free sets, and rejecting them
+  // would make an optional file mandatory by the back door.
+  //
+  // The stronger guarantee — that the *shipped* content always has a drawable
+  // boss for every enabled region — is asserted in `tests/unit/bossContent.ts`,
+  // which is the right place for an invariant about what we ship rather than
+  // about what the loader will accept.
+  if (!config.enabled || bosses.length === 0) return;
+  for (const region of config.regions) {
+    // "Drawable" is the union of both switches: a boss is only schedulable if
+    // it is itself enabled *and* the table it is paid from is. Checking them
+    // together is what makes disabling the last reward table produce a message
+    // that names the actual problem rather than a silent stop.
+    const drawable = bosses.filter(
+      (b) => b.enabled && b.region === region && rewardTables.get(b.rewardTable)?.enabled,
+    );
+    if (drawable.length === 0) {
+      const enabledInRegion = bosses.filter((b) => b.enabled && b.region === region);
+      const detail =
+        enabledInRegion.length === 0
+          ? 'no enabled boss belongs to it'
+          : `every enabled boss in it points at a disabled reward table ` +
+            `(${[...new Set(enabledInRegion.map((b) => b.rewardTable))].join(', ')}). ` +
+            'Re-enable the table in content/bossRewards.json, or disable ' +
+            'bossEncounters for this region.';
+      throw new ContentValidationError(
+        `bossEncounters is enabled for region "${region}" but ${detail}`,
+      );
+    }
+  }
+}
+
+/**
+ * Region, encounter-pool and travel invariants.
+ *
+ * Split out of `validateContentSet` for the same reason `validateBossContent`
+ * is: the admin panel validates a *candidate* content set held in memory with
+ * exactly the rules the bot enforces at boot, and a focused function is what a
+ * per-rule test can aim at.
+ *
+ * Every check here is fatal. The theme is that a region pool is the only thing
+ * standing between a player and an empty hunt, so anything that could make one
+ * silently under-deliver — a typo'd slug, a species withdrawn with its pack, a
+ * weight of zero — has to stop the boot rather than shrink a bucket nobody
+ * notices for a week.
+ */
+export function validateRegionContent(content: LoadedContent): void {
+  const { regions, expansions, species, items, tables, speciesOrigin } = content;
+  const travel = tables.travel;
+
+  // A content set with **no** region files at all is legitimate, not broken.
+  // It is the pre-travel deployment, the appearance-sync tool's working
+  // directory, and any partial candidate the admin panel assembles — the same
+  // reasoning that makes `bosses.json` optional on disk. Travel is simply
+  // inert: `buildTravelCatalog` finds no destinations and the Locations screen
+  // has nothing to show. Every rule below is about the *shape of a region set*
+  // and has nothing to say about a set that does not exist, so requiring a
+  // starting region here would turn an optional directory into a mandatory one
+  // by the back door. That the *shipped* content always has its regions is
+  // asserted in `tests/unit/regionContent.test.ts`, which is the right place
+  // for an invariant about what we ship rather than what the loader accepts.
+  if (regions.length === 0) return;
+
+  const duplicateRegion = regions.map((r) => r.id).find((id, i, a) => a.indexOf(id) !== i);
+  if (duplicateRegion) {
+    throw new ContentValidationError(
+      `Duplicate region id: ${duplicateRegion}. Each region may be defined by exactly ` +
+        'one file (a core file in content/regions/ or one expansion pack).',
+    );
+  }
+
+  // Rule 5: exactly one starting region, and it must be the one the database
+  // column defaults to. Two sources of truth are fine as long as they agree;
+  // silently disagreeing would spawn players outside the region the game
+  // believes they are in.
+  const starting = regions.filter((r) => r.starting);
+  if (starting.length !== 1) {
+    throw new ContentValidationError(
+      `Exactly one region must be marked "starting": true (found ${starting.length}` +
+        `${starting.length > 0 ? `: ${starting.map((r) => r.id).join(', ')}` : ''}). ` +
+        `It is where every new player begins and where travel always returns to.`,
+    );
+  }
+  const startingRegion = starting[0]!;
+  if (startingRegion.id !== DEFAULT_REGION) {
+    throw new ContentValidationError(
+      `Region "${startingRegion.id}" is marked as the starting region, but the ` +
+        `players.current_region column defaults to "${DEFAULT_REGION}". Change ` +
+        'DEFAULT_REGION in src/modules/locations/regions.ts and add a migration, ' +
+        'or move the "starting" flag.',
+    );
+  }
+  if (!startingRegion.enabled) {
+    throw new ContentValidationError(
+      `The starting region "${startingRegion.id}" must be enabled — every player is in it.`,
+    );
+  }
+
+  const speciesBySlug = new Map(species.map((s) => [s.slug, s]));
+  const expansionById = new Map(expansions.map((e) => [e.id, e]));
+
+  // `REGION_EXCLUSIVE_TAG` is shared with the hunt's global fallback, which
+  // refuses to draw a tagged species. The two enforcement points have to name
+  // the same string, so neither owns it — see `modules/locations/regions.ts`.
+  const exclusiveAppearances = new Map<string, string[]>();
+
+  for (const region of regions) {
+    // Rule: an enabled region must actually have somewhere to draw from. A
+    // region with no pool is a destination a player pays to reach and then
+    // hunts nothing in, which looks exactly like a broken feature.
+    if (region.enabled && region.encounterPool.length === 0) {
+      throw new ContentValidationError(
+        `Region "${region.id}" is enabled but defines no encounterPool. An enabled ` +
+          'region must list at least one species, or be disabled until it has content.',
+      );
+    }
+
+    const seen = new Set<string>();
+    for (const entry of region.encounterPool) {
+      if (seen.has(entry.species)) {
+        throw new ContentValidationError(
+          `Region "${region.id}" lists species "${entry.species}" in its encounterPool twice.`,
+        );
+      }
+      seen.add(entry.species);
+
+      // Rule 3: weights. The schema already rejects zero, negative and
+      // fractional values; this catches the one case it cannot see, which is
+      // an entry that inherits a species whose own weight is somehow unusable.
+      if (entry.weight !== undefined && (!Number.isInteger(entry.weight) || entry.weight <= 0)) {
+        throw new ContentValidationError(
+          `Region "${region.id}" gives species "${entry.species}" a weight of ` +
+            `${entry.weight}; encounter weights must be positive integers.`,
+        );
+      }
+
+      const found = speciesBySlug.get(entry.species);
+      if (!found) {
+        // Rule 7: distinguish "you typed it wrong" from "that pack is off".
+        // Same fatal outcome, very different fix, so the message must say which.
+        const origin = speciesOrigin[entry.species];
+        const pack = origin ? expansionById.get(origin) : undefined;
+        if (pack && !pack.enabled) {
+          throw new ContentValidationError(
+            `Region "${region.id}" references species "${entry.species}", which belongs ` +
+              `to the disabled expansion "${pack.id}". Enable the expansion in ` +
+              `content/expansions/${pack.id}/expansion.json, or remove her from the pool.`,
+          );
+        }
+        // Rule 1: unknown species reference.
+        throw new ContentValidationError(
+          `Region "${region.id}" references unknown species slug: ${entry.species}`,
+        );
+      }
+
+      if (region.enabled && found.tags.includes(REGION_EXCLUSIVE_TAG)) {
+        const list = exclusiveAppearances.get(entry.species) ?? [];
+        list.push(region.id);
+        exclusiveAppearances.set(entry.species, list);
+      }
+    }
+  }
+
+  // Shop membership lives on the item now: each `shopRegions` entry must name a
+  // region this content set actually defines. The schema already closes the ids
+  // to the canonical region enum; only this layer, holding every region file at
+  // once, can tell a *typo'd-but-canonical* id from one a region file backs.
+  const definedRegionIds = new Set(regions.map((r) => r.id));
+  for (const item of items) {
+    for (const regionId of item.shopRegions) {
+      if (!definedRegionIds.has(regionId)) {
+        throw new ContentValidationError(
+          `Item "${item.slug}".shopRegions references region "${regionId}", which no ` +
+            'region file defines. Add the region, or remove it from the item.',
+        );
+      }
+    }
+  }
+
+  // Rule 6: a region-exclusive species belongs to exactly one place. Counted
+  // across *enabled* regions only, because a disabled region is not a place a
+  // player can be — a species listed in one live region and one unreleased one
+  // is not yet in two places.
+  for (const [slug, regionIds] of exclusiveAppearances) {
+    if (regionIds.length > 1) {
+      throw new ContentValidationError(
+        `Species "${slug}" is tagged "${REGION_EXCLUSIVE_TAG}" but appears in the ` +
+          `encounter pools of ${regionIds.length} enabled regions ` +
+          `(${regionIds.join(', ')}). Drop the tag if she is meant to be shared, ` +
+          'or remove her from all but one pool.',
+      );
+    }
+  }
+
+  if (!travel.enabled) return;
+
+  // Rule 4: pass/route → region references. The schemas already close the
+  // region ids to the canonical set and tie routes to declared passes; what
+  // only this layer can see is whether the *content set* actually defines the
+  // regions those routes sell.
+  const regionById = new Map(regions.map((r) => [r.id, r]));
+  for (const route of travel.routes) {
+    const region = regionById.get(route.regionId);
+    if (!region) {
+      throw new ContentValidationError(
+        `travel.routes defines a route to region "${route.regionId}", which no region ` +
+          'file defines. Add content/regions/<id>.json, or ship the expansion that ' +
+          'introduces it.',
+      );
+    }
+  }
+  for (const pass of travel.passes) {
+    for (const regionId of pass.grantsRoutes) {
+      if (!regionById.has(regionId)) {
+        throw new ContentValidationError(
+          `travel.passes["${pass.id}"] grants a route to region "${regionId}", which ` +
+            'no region file defines.',
+        );
+      }
+    }
+  }
+  for (const gate of travel.keyItemRoutes) {
+    if (!regionById.has(gate.regionId)) {
+      throw new ContentValidationError(
+        `travel.keyItemRoutes gates region "${gate.regionId}", which no region file defines.`,
+      );
+    }
+  }
+}
+
+/**
+ * Every item slug a content-authored reward table can hand out, with where it
+ * was found. The list the key-item rules below check capped items against.
+ *
+ * World-encounter effects are not here: those are authored in the database
+ * through the admin panel, not in `content/`, so the loader cannot see them.
+ * The effect executor treats a capped item it cannot grant as an unapplied
+ * effect rather than a failed resolution for exactly that reason.
+ */
+function contentRewardSources(content: LoadedContent): Map<string, string> {
+  const { tables, expeditionRewards, bossRewards } = content;
+  const sources = new Map<string, string>();
+  const add = (slug: string, where: string) => {
+    if (!sources.has(slug)) sources.set(slug, where);
+  };
+  for (const slug of Object.keys(tables.dailyPackage.items)) add(slug, 'dailyPackage.items');
+  for (const sub of tables.hunt.itemFind.sub) add(sub.slug, 'hunt.itemFind');
+  for (const sub of tables.hunt.rareItemFind.sub) add(sub.slug, 'hunt.rareItemFind');
+  for (const bonus of tables.progression.dailyBonusItems) add(bonus.slug, 'progression.dailyBonusItems');
+  add(tables.progression.dailyRareItemChance.slug, 'progression.dailyRareItemChance');
+  for (const quest of tables.dailyQuests.pool) {
+    for (const item of quest.rewards.items) add(item.slug, `dailyQuests.pool[${quest.slug}]`);
+  }
+  for (const item of tables.dailyQuests.allCompleteBonus?.items ?? []) {
+    add(item.slug, 'dailyQuests.allCompleteBonus');
+  }
+  for (const entry of tables.affectionGifts.lootTable) add(entry.slug, 'affectionGifts.lootTable');
+  for (const table of expeditionRewards) {
+    for (const group of table.groups) {
+      for (const entry of group.entries) add(entry.itemId, `expeditionRewards["${table.id}"]`);
+    }
+  }
+  for (const table of bossRewards) {
+    for (const group of table.groups) {
+      for (const entry of group.entries) add(entry.itemId, `bossRewards["${table.id}"]`);
+    }
+  }
+  return sources;
+}
+
+/**
+ * Key-item recipes and key-item travel gates — the Transporter Beacon.
+ *
+ * Every rule here protects one of two promises: the beacon can always be
+ * *obtained* (a gate names an item some recipe builds from items that exist),
+ * and it can never be obtained *twice* (the output is a capped key item that no
+ * reward table also hands out, because a capped grant inside a payout would
+ * roll the whole payout back).
+ */
+export function validateKeyItemContent(content: LoadedContent): void {
+  const { items, tables } = content;
+  const bySlug = new Map(items.map((i) => [i.slug, i]));
+  const rewarded = contentRewardSources(content);
+
+  for (const item of items) {
+    if (item.maxOwned == null) continue;
+    const where = rewarded.get(item.slug);
+    if (where) {
+      throw new ContentValidationError(
+        `Item "${item.slug}" has maxOwned ${item.maxOwned} but is handed out by ${where}. ` +
+          'A capped item cannot be a reward: a grant past the cap would roll back the whole payout.',
+      );
+    }
+  }
+
+  const recipeByOutput = new Map<string, KeyItemRecipeConfig>();
+  for (const recipe of tables.keyItemRecipes) {
+    const output = bySlug.get(recipe.output);
+    if (!output) {
+      throw new ContentValidationError(
+        `keyItemRecipes["${recipe.id}"] produces unknown item "${recipe.output}"`,
+      );
+    }
+    if (output.category !== 'key' || output.maxOwned !== 1) {
+      throw new ContentValidationError(
+        `keyItemRecipes["${recipe.id}"] produces "${recipe.output}", which must be a ` +
+          '`key` item with maxOwned: 1 — a recipe builds one permanent item, once.',
+      );
+    }
+    for (const input of recipe.inputs) {
+      if (!bySlug.has(input.item)) {
+        throw new ContentValidationError(
+          `keyItemRecipes["${recipe.id}"] consumes unknown item "${input.item}"`,
+        );
+      }
+    }
+    recipeByOutput.set(recipe.output, recipe);
+  }
+
+  for (const gate of tables.travel.keyItemRoutes) {
+    const item = bySlug.get(gate.keyItem);
+    if (!item || item.category !== 'key' || item.maxOwned !== 1) {
+      throw new ContentValidationError(
+        `travel.keyItemRoutes["${gate.regionId}"] requires "${gate.keyItem}", which must be ` +
+          'an existing `key` item with maxOwned: 1',
+      );
+    }
+    if (!recipeByOutput.has(gate.keyItem)) {
+      throw new ContentValidationError(
+        `travel.keyItemRoutes["${gate.regionId}"] requires "${gate.keyItem}", but no ` +
+          'keyItemRecipes entry builds it — the region would be unreachable.',
+      );
+    }
+  }
+}
+
+/**
+ * Cross-file content invariants: slug uniqueness and every cross-reference
+ * (daily package, hunt find tables, progression bonuses, quest rewards)
+ * pointing at an item that actually exists.
+ *
+ * Kept separate from file I/O so the admin panel can validate a *candidate*
+ * content set — edits held in memory, before anything is written to disk —
+ * with exactly the same rules the bot enforces at startup. Throws
+ * `ContentValidationError` on the first violation.
+ */
+/**
+ * Expedition content cross-validation.
+ *
+ * Split out of `validateContentSet` for the same reason `validateBossContent`
+ * is: the admin panel validates a candidate set held in memory with exactly
+ * the rules the bot enforces at boot, and a focused function is what a
+ * per-rule test can aim at.
+ *
+ * Every check here is fatal, and each for a specific reason:
+ *
+ *   - **A duplicate key** would make `expedition_key` ambiguous on a deployed
+ *     row, which is the key a mission in flight is read back by.
+ *   - **A missing reward table** mints a mission nobody can be paid for. It
+ *     would fail at *deployment* rather than at resolution — which is better
+ *     than the boss case, because the snapshot is taken up front — but a
+ *     player pressing Deploy and getting an error is still a broken board.
+ *   - **A missing reward item** is the same failure one level down.
+ *   - **An off-ladder duration** is a mission nobody balanced. Durations are a
+ *     closed set precisely so a board cannot offer 47 minutes.
+ *
+ * (An item with the retired `equipment` category never reaches a reward table:
+ * `validateContentSet` refuses it in `items.json` itself.)
+ *
+ * A *disabled* reward item is deliberately not fatal, matching the boss rule
+ * and for the same reason: the grant resolves the live `items` row inside the
+ * payout transaction, and a disabled item still exists and can still be added
+ * to an inventory. `items.enabled` is retirement, not shop availability.
+ *
+ * A *disabled table* is likewise not fatal on its own — it is refused at
+ * deploy time with an actionable error. It becomes fatal only when an
+ * **enabled** definition names it, which is checked below, because from the
+ * player's side an enabled mission that cannot be deployed is just broken.
+ */
+/**
+ * Reads `content/expeditions/*.json` and `content/expeditionRewards.json`.
+ *
+ * Exported because the admin panel assembles a *candidate* content set for
+ * validation and has to see exactly what the bot sees. A panel that validated
+ * a `tables.json` edit without the expedition files in hand would happily
+ * accept removing the duration tier that every shipped mission names.
+ *
+ * Both sources are optional on disk. Their absence is a supported
+ * configuration — it is what ships until missions are authored — and every
+ * board simply renders empty.
+ */
+export function readExpeditionContent(contentDir: string): {
+  expeditions: RegionalExpedition[];
+  expeditionRewards: ExpeditionRewardTable[];
+} {
+  /**
+   * One file per region, scanned like `content/regions/`. The region is a
+   * property of the file; it is flattened onto each definition here so no
+   * consumer has to carry the pairing. The filename must agree with the
+   * `region` field, because a `thirstlands.json` that declares `waifu-valley`
+   * is a rename that went half-way.
+   */
+  const expeditionsDir = path.join(contentDir, 'expeditions');
+  const expeditions: RegionalExpedition[] = [];
+  if (fs.existsSync(expeditionsDir)) {
+    for (const file of listJsonFiles(expeditionsDir)) {
+      const filePath = path.join(expeditionsDir, file);
+      const parsed = parseJsonFile(filePath, ExpeditionsFileSchema);
+      const expectedRegion = file.replace(/\.json$/, '');
+      if (parsed.region !== expectedRegion) {
+        throw new ContentValidationError(
+          `content/expeditions/${file} declares region "${parsed.region}" but is named for ` +
+            `"${expectedRegion}". One region per file, and the name is the region.`,
+        );
+      }
+      for (const definition of parsed.expeditions) {
+        expeditions.push({ ...definition, region: parsed.region });
+      }
+    }
+  }
+
+  /**
+   * Payout tables, optional under the same conditions as the definitions:
+   * `validateExpeditionContent` refuses a mission whose table is absent, so a
+   * missing file can only coexist with an absent roster.
+   */
+  const expeditionRewardsPath = path.join(contentDir, 'expeditionRewards.json');
+  const expeditionRewards: ExpeditionRewardTable[] = fs.existsSync(expeditionRewardsPath)
+    ? parseJsonFile(expeditionRewardsPath, ExpeditionRewardsFileSchema)
+    : [];
+
+  return { expeditions, expeditionRewards };
+}
+
+export function validateExpeditionContent(content: LoadedContent): void {
+  const { expeditions, expeditionRewards, items, tables } = content;
+  const config = tables.expeditions;
+
+  const keys = expeditions.map((e) => e.key);
+  const duplicate = keys.find((k, i) => keys.indexOf(k) !== i);
+  if (duplicate) {
+    throw new ContentValidationError(
+      `Duplicate expedition key: ${duplicate}. Keys are globally unique across every ` +
+        'content/expeditions/<region>.json file, because a deployed row records only the key.',
+    );
+  }
+
+  const tablesById = new Map(expeditionRewards.map((t) => [t.id, t]));
+  const itemsBySlug = new Map(items.map((i) => [i.slug, i]));
+  const legalDurations = new Set(Object.values(config.durations));
+
+  for (const expedition of expeditions) {
+    if (!legalDurations.has(expedition.durationMinutes)) {
+      throw new ContentValidationError(
+        `expedition "${expedition.key}" has durationMinutes ${expedition.durationMinutes}, ` +
+          `which is not one of the configured tiers (${[...legalDurations].sort((a, b) => a - b).join(', ')}). ` +
+          'Add the tier to tables.json → expeditions.durations, or use an existing one.',
+      );
+    }
+
+    // Named tables must exist whether or not the definition is enabled: a
+    // disabled mission is one flag away from being live, and a dangling table
+    // reference that only fails on the day somebody enables it is the kind of
+    // break that lands on a weekend.
+    const named: [string, string | null][] = [
+      ['rewardTable', expedition.rewardTable],
+      ['exceptionalRewardTable', expedition.exceptionalRewardTable],
+      ['failureRewardTable', expedition.failureRewardTable],
+    ];
+    for (const [field, tableId] of named) {
+      if (tableId == null) continue;
+      const table = tablesById.get(tableId);
+      if (!table) {
+        throw new ContentValidationError(
+          `expedition "${expedition.key}".${field} references unknown reward table: ${tableId}. ` +
+            `Add it to content/expeditionRewards.json (known tables: ${[...tablesById.keys()].join(', ') || 'none'}).`,
+        );
+      }
+      // Only an *enabled* mission is refused for pointing at a switched-off
+      // table, because only an enabled mission can be deployed.
+      if (expedition.enabled && !table.enabled) {
+        throw new ContentValidationError(
+          `expedition "${expedition.key}" is enabled but its ${field} "${tableId}" is disabled. ` +
+            'Re-enable the table, or disable the expedition — an enabled mission that cannot ' +
+            'be deployed is a broken board entry, not a hidden one.',
+        );
+      }
+    }
+  }
+
+  /**
+   * Every region that participates must be able to fill the board.
+   *
+   * The board draws one mission per duration tier, so a region with missions
+   * on only three of the four tiers cannot produce a complete board — and the
+   * failure would otherwise surface as a permanently short board that nobody
+   * recognises as a content bug. Checked per region rather than globally,
+   * because the board is per region.
+   *
+   * A region with **no** enabled missions is not participating and is exempt:
+   * that is the shipped state of every region Phase 5 has not reached yet, and
+   * it renders as an empty board rather than a broken one.
+   */
+  const enabledByRegion = new Map<string, Set<number>>();
+  for (const expedition of expeditions) {
+    if (!expedition.enabled) continue;
+    const tiersPresent = enabledByRegion.get(expedition.region) ?? new Set<number>();
+    tiersPresent.add(expedition.durationMinutes);
+    enabledByRegion.set(expedition.region, tiersPresent);
+  }
+  for (const [region, tiersPresent] of enabledByRegion) {
+    const missing = [...legalDurations].filter((d) => !tiersPresent.has(d)).sort((a, b) => a - b);
+    if (missing.length > 0) {
+      throw new ContentValidationError(
+        `Region "${region}" has enabled expeditions but none on duration tier(s): ` +
+          `${missing.join(', ')}. The board shows one mission per tier, so a participating ` +
+          'region must author at least one enabled mission on every tier in ' +
+          'tables.json → expeditions.durations (or disable the region\'s missions entirely).',
+      );
+    }
+  }
+
+  for (const table of expeditionRewards) {
+    for (const group of table.groups) {
+      for (const entry of group.entries) {
+        if (!itemsBySlug.has(entry.itemId)) {
+          throw new ContentValidationError(
+            `expeditionRewards["${table.id}"].groups["${group.id}"] references unknown item: ` +
+              `${entry.itemId}. Reward tables name items from items.json; they never define them.`,
+          );
+        }
+      }
+    }
+  }
+}
+
+export function validateContentSet(content: LoadedContent): void {
+  const { items, species, tables } = content;
+
+  const dupSlug = (slugs: string[]): string | undefined =>
+    slugs.find((s, i) => slugs.indexOf(s) !== i);
+  const dupItem = dupSlug(items.map((i) => i.slug));
+  if (dupItem) throw new ContentValidationError(`Duplicate item slug: ${dupItem}`);
+
+  // `equipment` is a retired *item* category. Equipment shipped as its own
+  // database-backed system — definitions in `equipment_definitions`, owned
+  // copies as individual instances — and is never a quantity in
+  // `player_inventory`. The value survives in the item schema, the DB CHECK
+  // and the API enum only for compatibility, so this is where new use of it
+  // is refused, disabled items included: an item that exists at all can be
+  // named by a reward table.
+  const retiredEquipmentItems = items.filter((i) => i.category === 'equipment').map((i) => i.slug);
+  if (retiredEquipmentItems.length > 0) {
+    throw new ContentValidationError(
+      `items.json uses the retired "equipment" item category: ${retiredEquipmentItems.join(', ')}. ` +
+        'Equipment is its own system (equipment definitions and player-owned instances), not an ' +
+        'item — remove these items or give them another category.',
+    );
+  }
+  const dupSpecies = dupSlug(species.map((s) => s.slug));
+  if (dupSpecies) throw new ContentValidationError(`Duplicate species slug: ${dupSpecies}`);
+
+  // The check above sees only the *loaded* registry — core plus every enabled
+  // pack — so it already catches an enabled pack colliding with anything. The
+  // gap it cannot see is a **disabled** pack, whose species are deliberately
+  // absent from that list. `speciesOrigin` carries them anyway, precisely so
+  // this check is possible: a collision hiding inside a switched-off pack
+  // validates clean for months and then fails, or silently overwrites, on the
+  // day somebody flips `enabled`.
+  const loadedSlugs = new Set(species.map((s) => s.slug));
+  const disabledExpansions = new Set(
+    content.expansions.filter((e) => !e.enabled).map((e) => e.id),
+  );
+  for (const [packSlug, expansionId] of Object.entries(content.speciesOrigin)) {
+    if (!disabledExpansions.has(expansionId)) continue;
+    if (loadedSlugs.has(packSlug)) {
+      throw new ContentValidationError(
+        `Duplicate species slug "${packSlug}": defined by the disabled expansion ` +
+          `"${expansionId}" and also by loaded content. Species ids are globally unique ` +
+          'across core and every expansion, enabled or not — enabling that pack would ' +
+          'collide.',
+      );
+    }
+  }
+
+  // Appearance level gates are checked here rather than in the species schema
+  // because the ceiling lives in tables.json — the two files are only both in
+  // hand at this layer. A gate above `maxLevel` is unreachable content, which
+  // is an authoring mistake worth failing on rather than shipping a tile no
+  // player can ever earn.
+  const maxWaifuLevel = tables.waifuProgression.maxLevel;
+  for (const s of species) {
+    for (const appearance of s.appearances ?? []) {
+      if (appearance.unlock.type !== 'level') continue;
+      if (appearance.unlock.atLevel > maxWaifuLevel) {
+        throw new ContentValidationError(
+          `species "${s.slug}": appearance "${appearance.id}" unlocks at level ` +
+            `${appearance.unlock.atLevel}, above waifuProgression.maxLevel (${maxWaifuLevel})`,
+        );
+      }
+    }
+  }
+
+  const itemSlugs = new Set(items.map((i) => i.slug));
+  for (const slug of Object.keys(tables.dailyPackage.items)) {
+    if (!itemSlugs.has(slug)) {
+      throw new ContentValidationError(`dailyPackage references unknown item slug: ${slug}`);
+    }
+  }
+  for (const sub of tables.hunt.itemFind.sub) {
+    if (!itemSlugs.has(sub.slug)) {
+      throw new ContentValidationError(`hunt.itemFind references unknown item slug: ${sub.slug}`);
+    }
+  }
+  for (const sub of tables.hunt.rareItemFind.sub) {
+    if (!itemSlugs.has(sub.slug)) {
+      throw new ContentValidationError(
+        `hunt.rareItemFind references unknown item slug: ${sub.slug}`,
+      );
+    }
+  }
+  for (const bonus of tables.progression.dailyBonusItems) {
+    if (!itemSlugs.has(bonus.slug)) {
+      throw new ContentValidationError(
+        `progression.dailyBonusItems references unknown item slug: ${bonus.slug}`,
+      );
+    }
+  }
+  if (!itemSlugs.has(tables.progression.dailyRareItemChance.slug)) {
+    throw new ContentValidationError(
+      `progression.dailyRareItemChance references unknown item slug: ${tables.progression.dailyRareItemChance.slug}`,
+    );
+  }
+
+  // Daily-quest reward slugs.
+  for (const entry of tables.dailyQuests.pool) {
+    for (const item of entry.rewards.items) {
+      if (!itemSlugs.has(item.slug)) {
+        throw new ContentValidationError(
+          `dailyQuests.pool[${entry.slug}].rewards.items references unknown item slug: ${item.slug}`,
+        );
+      }
+    }
+  }
+  // Affection gifts: the loot table is rolled at *generation* time and the
+  // slug is frozen onto the gift row, so a dangling or disabled reference
+  // would mint a gift nobody can ever claim. Both are fatal here rather than
+  // deferred to a warning — a gift that cannot be handed over is worse than a
+  // loud startup failure. (Weight shape is the schema's job; this layer is the
+  // only one holding items.json and tables.json at the same time.)
+  if (tables.affectionGifts.enabled) {
+    const enabledItemSlugs = new Set(items.filter((i) => i.enabled).map((i) => i.slug));
+    for (const entry of tables.affectionGifts.lootTable) {
+      if (!itemSlugs.has(entry.slug)) {
+        throw new ContentValidationError(
+          `affectionGifts.lootTable references unknown item slug: ${entry.slug}`,
+        );
+      }
+      if (!enabledItemSlugs.has(entry.slug)) {
+        throw new ContentValidationError(
+          `affectionGifts.lootTable references disabled item slug: ${entry.slug}`,
+        );
+      }
+    }
+  }
+
+  if (tables.dailyQuests.allCompleteBonus) {
+    for (const item of tables.dailyQuests.allCompleteBonus.items) {
+      if (!itemSlugs.has(item.slug)) {
+        throw new ContentValidationError(
+          `dailyQuests.allCompleteBonus references unknown item slug: ${item.slug}`,
+        );
+      }
+    }
+  }
+
+  validateRegionContent(content);
+  validateBossContent(content);
+  validateExpeditionContent(content);
+  validateKeyItemContent(content);
+  validateOnboardingContent(content);
+}
+
+/**
+ * Cross-file checks for onboarding narratives: the NPC an onboarding names
+ * must exist in `content/npcs.json`. No-op for hand-built snapshots that carry
+ * neither.
+ */
+export function validateOnboardingContent(content: LoadedContent): void {
+  const equipment = content.onboarding?.equipment;
+  if (!equipment) return;
+  const npcKeys = new Set((content.npcs ?? []).map((npc) => npc.key));
+  if (!npcKeys.has(equipment.npc)) {
+    throw new ContentValidationError(
+      `onboarding/equipment.json names unknown NPC "${equipment.npc}". ` +
+        `Add it to content/npcs.json (known NPCs: ${[...npcKeys].join(', ') || 'none'}).`,
+    );
+  }
+}
+
+/**
+ * Reads every content JSON file under `contentDir` and schema-validates each
+ * one. Does **not** apply asset checks or cross-file checks — callers that
+ * want the full picture use `loadContent`.
+ */
+export function readContentFiles(contentDir: string): LoadedContent {
+  const itemsFile = parseJsonFile(path.join(contentDir, 'items.json'), ItemsFileSchema);
+  const tables = parseJsonFile(path.join(contentDir, 'tables.json'), TablesFileSchema);
+
+  const speciesDir = path.join(contentDir, 'species');
+  if (!fs.existsSync(speciesDir)) {
+    throw new ContentValidationError(`Species content directory missing: ${speciesDir}`);
+  }
+  const speciesFiles = listSpeciesFiles(speciesDir);
+  if (speciesFiles.length === 0) {
+    throw new ContentValidationError(`No species JSON files found in ${speciesDir}`);
+  }
+  const species = speciesFiles.flatMap((f) =>
+    parseJsonFile(path.join(speciesDir, f), SpeciesFileSchema),
+  );
+
+  /**
+   * Bosses are **optional on disk**. A deployment that predates the feature,
+   * or one that deliberately runs without it, has no `bosses.json` and loads
+   * with an empty list — the scheduler then finds nothing to draw and stays
+   * quiet. A file that *is* present is validated as strictly as every other.
+   */
+  const bossesPath = path.join(contentDir, 'bosses.json');
+  const bosses = fs.existsSync(bossesPath) ? parseJsonFile(bossesPath, BossesFileSchema) : [];
+
+  /**
+   * Boss reward tables are optional on disk for the same reason and under the
+   * same conditions as `bosses.json`. The two are only meaningful together:
+   * `validateBossContent` rejects a boss whose table is absent, so a missing
+   * file can only coexist with an absent roster.
+   */
+  const bossRewardsPath = path.join(contentDir, 'bossRewards.json');
+  const bossRewards = fs.existsSync(bossRewardsPath)
+    ? parseJsonFile(bossRewardsPath, BossRewardsFileSchema)
+    : [];
+
+  const { expeditions, expeditionRewards } = readExpeditionContent(contentDir);
+
+  const { regions, expansions, expansionSpecies, speciesOrigin, unloadedSpecies } =
+    readExpansionPacks(contentDir);
+  const allSpecies = [...species, ...expansionSpecies];
+
+  // NPCs and onboarding narratives are optional on disk: without the
+  // narrative the Equipment onboarding is simply not ready and is never
+  // offered. A file that is present is validated as strictly as any other.
+  const npcsPath = path.join(contentDir, 'npcs.json');
+  const npcs = fs.existsSync(npcsPath) ? parseJsonFile(npcsPath, NpcsFileSchema) : [];
+  const equipmentOnboardingPath = path.join(contentDir, 'onboarding', 'equipment.json');
+  const equipmentOnboarding = fs.existsSync(equipmentOnboardingPath)
+    ? parseJsonFile(equipmentOnboardingPath, EquipmentOnboardingContentSchema)
+    : null;
+
+  // The Equipment affix catalogue. Optional on disk: without it random
+  // Equipment grants are refused (no pool has an affix). A file that is
+  // present is validated as strictly as any other.
+  const equipmentAffixesPath = path.join(contentDir, ...EQUIPMENT_AFFIX_FILE.split('/'));
+  const equipmentAffixes = fs.existsSync(equipmentAffixesPath)
+    ? parseJsonFile(equipmentAffixesPath, EquipmentAffixFileSchema).affixes
+    : [];
+
+  return {
+    items: itemsFile.items,
+    species: allSpecies,
+    tables,
+    expeditions,
+    expeditionRewards,
+    bosses,
+    bossRewards,
+    regions,
+    expansions,
+    speciesOrigin,
+    authoring: { species: allSpecies, unloadedSpecies, artworkDiagnostics: [] },
+    npcs,
+    onboarding: { equipment: equipmentOnboarding },
+    equipmentAffixes,
+  };
+}
+
+/**
+ * One file that holds authored species, and where it came from.
+ *
+ * The `file` key is **relative to the content directory**, POSIX-separated —
+ * `species/starter.json`, `expansions/twin_peaks/species/locals.json` — rather
+ * than the bare basename the pipeline used before expansions existed. Two packs
+ * may legitimately name a file `locals.json`, so a basename stopped being an
+ * identifier the moment species could live outside `content/species/`.
+ */
+export interface SpeciesSource {
+  /** Content-relative POSIX path. Stable identity for a species file. */
+  file: string;
+  absolutePath: string;
+  /** Null for core files under `content/species/`. */
+  expansionId: string | null;
+  /** False only for files inside a pack whose manifest is switched off. */
+  enabled: boolean;
+}
+
+/** What one discovery pass over `content/regions/` + `content/expansions/` found. */
+export interface ExpansionScan {
+  regions: RegionContent[];
+  expansions: ExpansionContent[];
+  /** Species from *enabled* packs only, ready to merge into the registry. */
+  expansionSpecies: SpeciesContent[];
+  /** Every expansion species' origin, disabled packs included. */
+  speciesOrigin: Record<string, string>;
+  /**
+   * Species from *disabled* packs, already schema-validated by this same scan.
+   * Kept for inspection only (the Portal Admin Gallery) — never merged into
+   * the registry, so nothing reachable from gameplay can see them.
+   */
+  unloadedSpecies: UnloadedSpecies[];
+  /**
+   * Every species file found under `content/expansions/`, disabled packs
+   * included and flagged as such. Surfaced so the admin panel and the
+   * appearance synchroniser discover packs through this one scan rather than
+   * globbing the tree themselves — three scanners with three ideas about what
+   * counts as a pack is exactly how a disabled pack ends up half-live.
+   */
+  sources: SpeciesSource[];
+}
+
+/**
+ * Discovers core region files and expansion packs, and folds enabled packs'
+ * species into the registry.
+ *
+ * Two directories, one shape of answer:
+ *
+ *   - `content/regions/*.json` — core regions. Waifu Valley is a real file
+ *     here with a real, explicitly listed encounter pool, not an implicit
+ *     "everything that isn't somewhere else". Modelling the starting region
+ *     the same way as every other one is what lets the hunt fall back to a
+ *     *curated* pool instead of to the whole species table.
+ *   - `content/expansions/<pack>/` — packs. A directory is only a pack if it
+ *     contains `expansion.json`; anything else is a hard error naming the
+ *     folder, which is what stops content that was sitting on disk unloaded
+ *     from becoming live the moment discovery shipped.
+ *
+ * A **disabled** pack contributes its manifest and nothing else: no species,
+ * no region, no shop rows. Its species slugs are still recorded in
+ * `speciesOrigin` so validation can tell "that pack is off" from "you typed
+ * the slug wrong", which are the same failure with completely different fixes.
+ *
+ * Both directories are optional on disk. A deployment with neither loads with
+ * empty lists and travel stays inert — the pre-travel behavior, preserved.
+ */
+export function readExpansionPacks(contentDir: string): ExpansionScan {
+  const regions: RegionContent[] = [];
+  const expansions: ExpansionContent[] = [];
+  const expansionSpecies: SpeciesContent[] = [];
+  const speciesOrigin: Record<string, string> = {};
+  const unloadedSpecies: UnloadedSpecies[] = [];
+  const sources: SpeciesSource[] = [];
+
+  const regionsDir = path.join(contentDir, 'regions');
+  if (fs.existsSync(regionsDir)) {
+    for (const file of listJsonFiles(regionsDir)) {
+      regions.push(parseJsonFile(path.join(regionsDir, file), RegionContentSchema));
+    }
+  }
+
+  const expansionsDir = path.join(contentDir, 'expansions');
+  if (!fs.existsSync(expansionsDir)) {
+    return { regions, expansions, expansionSpecies, speciesOrigin, unloadedSpecies, sources };
+  }
+
+  const packDirs = fs
+    .readdirSync(expansionsDir, { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .map((e) => e.name)
+    .sort();
+
+  for (const dirName of packDirs) {
+    const packDir = path.join(expansionsDir, dirName);
+    const manifestPath = path.join(packDir, 'expansion.json');
+    if (!fs.existsSync(manifestPath)) {
+      throw new ContentValidationError(
+        `content/expansions/${dirName}/ has no expansion.json. Every directory under ` +
+          'content/expansions/ must declare itself with a manifest — add one with ' +
+          '"enabled": false to keep the pack on disk without activating it.',
+      );
+    }
+    const manifest = parseJsonFile(manifestPath, ExpansionContentSchema);
+    expansions.push(manifest);
+
+    // Species are read from a *disabled* pack too, but only so their slugs can
+    // be recorded. Reading them also means a disabled pack's files stay
+    // schema-validated, so re-enabling it is never a leap into the dark.
+    const packSpeciesDir = path.join(packDir, 'species');
+    const packSources: SpeciesSource[] = fs.existsSync(packSpeciesDir)
+      ? listJsonFiles(packSpeciesDir).map((f) => ({
+          file: ['expansions', dirName, 'species', f].join('/'),
+          absolutePath: path.join(packSpeciesDir, f),
+          expansionId: manifest.id,
+          enabled: manifest.enabled,
+        }))
+      : [];
+    sources.push(...packSources);
+    const packSpecies = packSources.flatMap((source) =>
+      parseJsonFile(source.absolutePath, SpeciesFileSchema),
+    );
+    for (const s of packSpecies) {
+      // Checked across *every* pack, enabled or not. Species ids are globally
+      // unique by rule, and a collision hiding inside a switched-off pack is
+      // the worst kind: it validates clean for months and then fails — or
+      // worse, silently overwrites — on the day somebody flips `enabled`.
+      const owner = speciesOrigin[s.slug];
+      if (owner) {
+        throw new ContentValidationError(
+          `Duplicate species slug "${s.slug}": defined by both expansion "${owner}" and ` +
+            `expansion "${manifest.id}". Species ids are globally unique across core and ` +
+            'every expansion, enabled or not.',
+        );
+      }
+      speciesOrigin[s.slug] = manifest.id;
+    }
+
+    if (!manifest.enabled) {
+      unloadedSpecies.push(...packSpecies.map((species) => ({ expansionId: manifest.id, species })));
+      continue;
+    }
+
+    expansionSpecies.push(...packSpecies);
+
+    const regionPath = path.join(packDir, 'region.json');
+    if (fs.existsSync(regionPath)) {
+      regions.push(parseJsonFile(regionPath, RegionContentSchema));
+    } else if (manifest.regionId) {
+      throw new ContentValidationError(
+        `Expansion "${manifest.id}" declares regionId "${manifest.regionId}" but ships ` +
+          `no region.json. Add content/expansions/${dirName}/region.json.`,
+      );
+    }
+  }
+
+  return { regions, expansions, expansionSpecies, speciesOrigin, unloadedSpecies, sources };
+}
+
+/**
+ * Every species file the runtime will actually load, in load order.
+ *
+ * Core files under `content/species/` first, then the files of each **enabled**
+ * expansion pack. A disabled pack contributes nothing: its files are discovered
+ * (so `readExpansionPacks` can still record their slugs for validation) but they
+ * are filtered out here, which is what keeps a switched-off pack invisible to
+ * every tool that edits or synchronises species.
+ *
+ * This is the one discovery the admin panel and the appearance synchroniser
+ * share with the loader, so a pack that is live for the bot is live for the
+ * tools on identical terms — and one that is not, is not.
+ */
+export function listSpeciesSources(contentDir: string): SpeciesSource[] {
+  const speciesDir = path.join(contentDir, 'species');
+  const core: SpeciesSource[] = fs.existsSync(speciesDir)
+    ? listJsonFiles(speciesDir).map((file) => ({
+        file: `species/${file}`,
+        absolutePath: path.join(speciesDir, file),
+        expansionId: null,
+        enabled: true,
+      }))
+    : [];
+  return [...core, ...readExpansionPacks(contentDir).sources.filter((s) => s.enabled)];
+}
+
+/** Sorted list of species JSON filenames (basenames) in a species directory. */
+export function listSpeciesFiles(speciesDir: string): string[] {
+  return listJsonFiles(speciesDir);
+}
+
+/** Sorted `.json` basenames in a directory. Sorted so loads are reproducible. */
+function listJsonFiles(dir: string): string[] {
+  return fs
+    .readdirSync(dir)
+    .filter((f) => f.endsWith('.json'))
+    .sort();
+}
+
+/**
+ * Warns about enabled species that no enabled region's pool lists.
+ *
+ * Be precise about what this means, because it is worse than it sounds: such a
+ * species is, for practical purposes, **unobtainable**. The hunt only reaches
+ * the global species table when *no* region pool covers the rolled rarity at
+ * all, and the shipped Waifu Valley pool covers every rarity — so an unpooled
+ * species is not "rarer", she simply never appears. That is almost always what
+ * has happened when someone adds a species to `content/species/` and forgets
+ * the region file.
+ *
+ * Still a warning rather than a failure, and deliberately so: failing the boot
+ * would mean a content author cannot land a Waifumon and her artwork in one
+ * commit and her pool entry in the next, turning a five-second fix into a
+ * production outage. The message therefore has to carry the weight the
+ * severity does not — it names the count, lists the slugs, and says the word
+ * "unobtainable" rather than the reassuring "fallback".
+ */
+function warnOnUnpooledSpecies(
+  species: SpeciesContent[],
+  regions: RegionContent[],
+  logger: Logger,
+): void {
+  if (regions.length === 0) return;
+  const pooled = new Set(
+    regions.filter((r) => r.enabled).flatMap((r) => r.encounterPool.map((e) => e.species)),
+  );
+  const orphans = species.filter((s) => s.enabled && !pooled.has(s.slug)).map((s) => s.slug);
+  if (orphans.length === 0) return;
+  logger.warn(
+    { tag: 'regions/unpooled-species', count: orphans.length, slugs: orphans },
+    `${orphans.length} enabled species are in no enabled region's encounter pool and are ` +
+      'therefore UNOBTAINABLE — no hunt can draw them. Add them to a region file in ' +
+      `content/regions/ or to an expansion's region.json. Affected: ${orphans.join(', ')}`,
+  );
+}
+
+/**
+ * The same `itemId` listed more than once inside one reward group.
+ *
+ * A **warning**, never a refusal, because weighted quantity variants are a
+ * legitimate authoring device: "three tokens, or just the one" is two genuine
+ * outcomes of different sizes, and `ExpeditionRewardTableSchema` already
+ * refuses the unambiguously broken case — the same item at the *same*
+ * quantity twice, which silently doubles its weight rather than saying
+ * anything. Making this one fatal as well would ban the useful shape to catch
+ * the mistake.
+ *
+ * But it is worth a line, because the mistake it catches is real and quiet.
+ * `valley-undercity-dive-bonus-v3` shipped with `chewed_gag_ball` at
+ * quantity 2 (weight 60) *and* quantity 1 (weight 15) in its `rare-find`
+ * group: a copy of the success table's `flooded-cache` group in which the
+ * third entry's item was never changed from the one above it. The table
+ * validated cleanly, the weights still summed, and the only symptom was a
+ * region paying out far more high-value salvage than anybody intended. So the
+ * message names the table, the group, the item and every quantity involved,
+ * and says the word "intentional" — the author reading it either recognises
+ * the variant they wrote or finds the entry they forgot to edit.
+ */
+export function warnOnRepeatedRewardItems(
+  expeditionRewards: ExpeditionRewardTable[],
+  logger: Logger,
+): void {
+  for (const table of expeditionRewards) {
+    for (const group of table.groups) {
+      const quantitiesByItem = new Map<string, number[]>();
+      for (const entry of group.entries) {
+        quantitiesByItem.set(entry.itemId, [
+          ...(quantitiesByItem.get(entry.itemId) ?? []),
+          entry.quantity,
+        ]);
+      }
+      for (const [itemId, quantities] of quantitiesByItem) {
+        if (quantities.length < 2) continue;
+        logger.warn(
+          { tag: 'expeditions/repeated-reward-item', table: table.id, group: group.id, itemId, quantities },
+          `expeditionRewards["${table.id}"].groups["${group.id}"] lists "${itemId}" ` +
+            `${quantities.length} times, at quantities ${quantities.join(', ')}. That is legal — ` +
+            'weighted quantity variants of one item are a real authoring device — but it is ' +
+            'also what a copy-pasted entry whose itemId was never changed looks like. Confirm ' +
+            'it is intentional, or correct the entry that was meant to name a different item.',
+        );
+      }
+    }
+  }
+}
+
+/**
+ * Loads and validates all content JSON. Bad content fails loudly with
+ * file+field errors — never silently.
+ */
+export function loadContent(contentDir: string, assetsDir: string, logger: Logger): LoadedContent {
+  const content = readContentFiles(contentDir);
+  validateContentSet(content);
+  checkSpeciesRaces(content.species, logger);
+
+  const { species: validatedSpecies, diagnostics: artworkDiagnostics } = preflightSpeciesAssets(
+    content.species,
+    assetsDir,
+    logger,
+  );
+  const validatedBosses = validateBossAssets(content.bosses, assetsDir, logger);
+  warnOnUnpooledSpecies(validatedSpecies, content.regions, logger);
+  warnOnRepeatedRewardItems(content.expeditionRewards, logger);
+
+  logger.info(
+    {
+      items: content.items.length,
+      species: validatedSpecies.length,
+      bosses: validatedBosses.length,
+      bossRewardTables: content.bossRewards.length,
+      regions: content.regions.filter((r) => r.enabled).length,
+      expansions: content.expansions.filter((e) => e.enabled).length,
+    },
+    'content loaded and validated',
+  );
+  return {
+    ...content,
+    species: validatedSpecies,
+    bosses: validatedBosses,
+    // `content.species` is still the pre-flight list: the pre-flight returns
+    // new objects for anything it changes and never mutates its input.
+    authoring: {
+      species: content.species,
+      unloadedSpecies: content.authoring?.unloadedSpecies ?? [],
+      artworkDiagnostics,
+    },
+  };
+}

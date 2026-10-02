@@ -1,0 +1,338 @@
+import type {
+  ButtonInteraction,
+  ChatInputCommandInteraction,
+  ModalSubmitInteraction,
+  StringSelectMenuInteraction,
+} from 'discord.js';
+import type { AppConfig } from '../config/config';
+import type { Db } from '../db/client';
+import type { Logger } from '../shared/logger';
+import type { LoadedContent } from '../modules/content/schemas';
+import type { GuildService } from '../modules/guilds/guildService';
+import type { PlayerService } from '../modules/players/playerService';
+import type { CurrencyService } from '../modules/currency/currencyService';
+import type { InventoryService } from '../modules/inventory/inventoryService';
+import type { DailyService } from '../modules/daily/dailyService';
+import type { ShopService } from '../modules/shop/shopService';
+import type { HuntService } from '../modules/hunt/huntService';
+import type { CaptureService } from '../modules/capture/captureService';
+import type { CareService } from '../modules/care/careService';
+import type { CollectionService } from '../modules/collection/collectionService';
+import type { ExpeditionService } from '../modules/expeditions/expeditionService';
+import type { WaifuAvailabilityService } from '../modules/collection/waifuAvailability';
+import type { AchievementService } from '../modules/achievements/achievementService';
+import type { LeaderboardService } from '../modules/leaderboards/leaderboardService';
+import type { AppearanceService } from '../modules/appearance/appearanceService';
+import type { PlayerEffectsService } from '../modules/effects/playerEffectsService';
+import type { ItemUseService } from '../modules/items/itemUseService';
+import type { AffectionGiftService } from '../modules/gifts/affectionGiftService';
+import type { ProgressionService } from '../modules/progression/progressionService';
+import type { QuestService } from '../modules/quests/questService';
+import type { SessionService } from '../modules/session/sessionService';
+import type { GameEventBus } from '../modules/events/gameEvents';
+import type { HuntSessionTracker } from '../modules/hunt/huntSession';
+import type { CollectionFilterTracker } from './collectionFilterTracker';
+import type { EphemeralRegistry } from './ephemeralCleanup';
+import type { OwnedCardWarmer } from '../modules/appearance/ownedCardWarm';
+import type { BossEncounterService } from '../modules/bosses/bossEncounterService';
+import type { TravelService } from '../modules/travel/travelService';
+import type { KeyItemService } from '../modules/keyItems/keyItemService';
+import type { BossAnnouncer } from '../modules/bosses/bossScheduler';
+import type { WorldEncounterService } from '../modules/worldEncounters/worldEncounterService';
+import type { WorldEncounterAdminService } from '../modules/worldEncounters/adminService';
+import type { WorldEncounterVendorService } from '../modules/worldEncounters/vendorService';
+import type { WildEncounterSpawner } from '../modules/encounters/wildEncounterSpawner';
+import type { SpeciesSelectorService } from '../modules/encounters/speciesSelection';
+import type { WorldEncounterSettingsService } from '../modules/worldEncounters/settingsService';
+import type { ResultPresentationService } from '../modules/resultPresentation/resultPresentationService';
+import type { AdminRoleGrantService } from '../modules/portalAuth/adminRoleGrantService';
+import type { EncounterPromotionService } from '../modules/worldEncounters/encounterImportService';
+import type { GuildRoleService } from '../modules/portalAuth/guildRoleService';
+import type { EquipmentService } from '../modules/equipment/equipmentService';
+import type { EquipmentDefinitionService } from '../modules/equipment/equipmentDefinitionService';
+import type { CombatStatsService } from '../modules/equipment/combatStatsService';
+import type { EquipmentPromotionService } from '../modules/equipment/equipmentImportService';
+import type { EquipmentOnboardingService } from '../modules/onboarding/equipmentOnboardingService';
+import type { EquipmentManagementService } from '../modules/equipment/equipmentManagementService';
+import type { FeatureUnlockService } from '../modules/features/featureUnlockService';
+import type { RewardTableService } from '../modules/rewardTables/rewardTableService';
+
+export interface AppServices {
+  guilds: GuildService;
+  players: PlayerService;
+  currency: CurrencyService;
+  inventory: InventoryService;
+  daily: DailyService;
+  shop: ShopService;
+  hunt: HuntService;
+  capture: CaptureService;
+  care: CareService;
+  collection: CollectionService;
+  /**
+   * Achievements (progression/badge, Phase 1). Derives per-player badge state
+   * from canonical state and persists first-earned timestamps. Always wired;
+   * definitions are content, so an empty catalog is a content decision.
+   */
+  achievements: AchievementService;
+  /**
+   * Guild-scoped leaderboards (Phase 1). Ranks a guild's players by a metric
+   * and returns values for the API layer to turn into ranks; raw values never
+   * leave the backend.
+   */
+  leaderboards: LeaderboardService;
+  /**
+   * Cosmetic appearance gallery, selection, and unlock bookkeeping. Reads
+   * waifu level; writes only `variant` and `seen_appearances`.
+   */
+  appearance: AppearanceService;
+  progression: ProgressionService;
+  quests: QuestService;
+  session: SessionService;
+  /** Active consumable buffs (Microdose charges). */
+  effects: PlayerEffectsService;
+  /** "Use" an inventory consumable (Energy Drink, Microdose). */
+  itemUse: ItemUseService;
+  /** Affection gifts: the daily buddy roll, and accepting what she is holding. */
+  gifts: AffectionGiftService;
+  /**
+   * Expeditions & Salvage — the domain engine.
+   *
+   * Always wired, unlike bosses: the feature's own gate is
+   * `tables.expeditions.enabled` plus the presence of expedition content, and
+   * both are checked inside the service. A deployment with no
+   * `content/expeditions/` directory has a working service that reports empty
+   * boards, which is the shipped state until missions are authored.
+   *
+   * Phase 3 wires the engine only. The Discord screens land in Phase 4.
+   */
+  expeditions: ExpeditionService;
+  /**
+   * Why an owned copy is not free right now, in the shared vocabulary.
+   *
+   * On the container so presentation layers ask *this* rather than querying
+   * feature tables directly — the inspect screen needs to say "On Expedition"
+   * without knowing that expeditions exist, and the next unavailable state
+   * should reach it with no edit to the screen at all.
+   */
+  availability: WaifuAvailabilityService;
+  /**
+   * Boss encounters (Stage 1).
+   *
+   * **Optional**, matching the feature's own content gate: a deployment with
+   * `bossEncounters.enabled = false` (or no `bosses.json`) wires nothing, and
+   * every boss handler treats an absent service as "that button is stale".
+   * Absent therefore means the feature does not exist rather than that it is
+   * switched off behind a flag the handlers have to keep checking.
+   */
+  bosses?: BossEncounterService | undefined;
+  /**
+   * Locations & Travel. Always wired — the feature's own gate is
+   * `tables.travel.enabled`, which the service reads from the live content
+   * snapshot, so switching travel off in content is a content decision rather
+   * than a different service graph.
+   */
+  travel: TravelService;
+  /**
+   * Key-item recipes — building the Transporter Beacon that gates the
+   * Assteroid Belt. Reached from that destination's Locations screen.
+   */
+  keyItems: KeyItemService;
+  /**
+   * World Encounters — the interactive-encounter feature (hunt/travel
+   * button flows, admin-authored definitions).
+   *
+   * Present exactly when `tables.worldEncounter.huntChance` or
+   * `travelChance` is above zero, or an admin uses the panel: the service is
+   * cheap to wire and every roll is a fast pool query, so we always wire it
+   * and let the config gate the *behaviour*. Absent only when the feature
+   * has been explicitly excluded from the service graph (test seams).
+   */
+  worldEncounter?: WorldEncounterService | undefined;
+  /**
+   * DB-backed admin CRUD for encounter definitions. Present when the world
+   * encounter feature is wired; the Portal Admin API and the legacy admin
+   * panel both go through this service.
+   */
+  worldEncounterAdmin?: WorldEncounterAdminService | undefined;
+  /**
+   * Export/import of encounter content between environments. Present
+   * alongside {@link worldEncounterAdmin}; absent simply means the promotion
+   * routes do not register.
+   */
+  encounterPromotion?: EncounterPromotionService | undefined;
+  /**
+   * Encounter vendor lifecycle — vendor definitions and per-encounter
+   * instances. Present alongside {@link worldEncounter}.
+   */
+  worldEncounterVendor?: WorldEncounterVendorService | undefined;
+  /**
+   * Boss and expedition reward tables: Portal Admin authoring, validation,
+   * equipment previews and export/import. Optional; absent simply means the
+   * reward-table admin routes do not register.
+   */
+  rewardTables?: RewardTableService | undefined;
+  /**
+   * Spawns a wild Waifumon outside the hunt roll — the bridge behind
+   * `trigger_waifumon_encounter`, and the seam quests, items, events,
+   * exploration and deity rewards will reuse. Optional so a deployment
+   * without the hunt graph simply cannot spawn one.
+   */
+  wildEncounters?: WildEncounterSpawner | undefined;
+  /**
+   * The strict species selector behind `selection` on
+   * `trigger_waifumon_encounter` — the *same* picker instance the spawner
+   * uses — exposed read-only so Portal previews and the simulator evaluate a
+   * selector exactly as the runtime would.
+   */
+  speciesSelector?: SpeciesSelectorService | undefined;
+  /**
+   * Live-tunable global encounter settings. The engine reads it on every roll
+   * and Portal Admin writes it, so a rate change lands without a redeploy.
+   */
+  worldEncounterSettings?: WorldEncounterSettingsService | undefined;
+  /**
+   * Authored presentation (flavor text, artwork) for lightweight outcomes —
+   * hunt finds and Let Her Go. Presentation only: consulted after gameplay
+   * commits, never by it. Optional: absent, every outcome renders its
+   * built-in presentation.
+   */
+  resultPresentation?: ResultPresentationService | undefined;
+  /**
+   * Portal Admin access delegated to Discord guild roles.
+   *
+   * Optional: a deployment without it simply has no delegation, and Portal
+   * Admin remains owner-only — the behaviour that shipped before grants
+   * existed. The owner-only management routes skip registration entirely when
+   * this is absent.
+   */
+  adminRoleGrants?: AdminRoleGrantService | undefined;
+  /**
+   * Live Discord role lookups behind those grants — which roles a member
+   * holds, and which roles a guild has. Absent means every role lookup answers
+   * "unknown", which grants nothing.
+   */
+  guildRoles?: GuildRoleService | undefined;
+  /**
+   * Equipment (Phase 1: the domain only). Wired in production so the startup
+   * seed runs and later phases have a service to call; no Discord handler or
+   * API route consumes these yet. Optional, like the World Encounter family,
+   * so a test context that builds `AppServices` by hand need not supply them.
+   *
+   *  - `equipment` — the one writer of owned instances and loadouts.
+   *  - `equipmentDefinitions` — authoring operations on the catalogue.
+   *  - `combatStats` — the one place ATK / DEF / HP are calculated.
+   *  - `equipmentPromotion` — package export and import.
+   *  - `featureUnlocks` — per-player account feature unlocks (Equipment first).
+   */
+  equipment?: EquipmentService | undefined;
+  equipmentDefinitions?: EquipmentDefinitionService | undefined;
+  combatStats?: CombatStatsService | undefined;
+  equipmentPromotion?: EquipmentPromotionService | undefined;
+  featureUnlocks?: FeatureUnlockService | undefined;
+  /** Equipment onboarding (Patch) and the read-only Equipment overview. */
+  equipmentOnboarding?: EquipmentOnboardingService | undefined;
+  /** Equipment management (home, slots, Gear Bag, item detail). Requires the unlock. */
+  equipmentManagement?: EquipmentManagementService | undefined;
+}
+
+export interface AppContext {
+  config: AppConfig;
+  logger: Logger;
+  db: Db;
+  /**
+   * In-memory content snapshot. Republished by the admin panel's Reload
+   * Content action, so handlers must read `ctx.content` at call time rather
+   * than destructuring it once at wiring time.
+   */
+  content: LoadedContent;
+  services: AppServices;
+  /**
+   * Central gameplay-event bus. Handlers emit onto it **after** their
+   * transaction commits; the Activity Feed and Trainer Profile subscribe.
+   * Subscribers can never fail a gameplay write (see `emitEvents`).
+   */
+  events: GameEventBus;
+  /**
+   * In-memory hunt-session bookkeeping (which players are "out hunting", and
+   * in which flavor location). Cosmetic only — nothing gameplay-relevant
+   * depends on it, and a restart just re-opens sessions.
+   */
+  huntSessions: HuntSessionTracker;
+  /**
+   * Filter/sort/page state for the grouped collection browser. Pure view
+   * state, never gameplay state — see `discord/collectionFilterTracker.ts`.
+   *
+   * Optional: when absent the collection screen lazily attaches a tracker of
+   * its own scoped to this context, so tests that build a bare `AppContext`
+   * still get correct (and mutually isolated) filter behaviour.
+   */
+  collectionFilters?: CollectionFilterTracker | undefined;
+  /**
+   * Tracked ephemeral interaction responses, per player, so Care Mode can
+   * sweep the clutter it replaces. In-memory and best-effort — see
+   * `discord/ephemeralCleanup.ts` for what Discord actually permits here.
+   *
+   * Optional for the same reason as `collectionFilters`: a context without one
+   * gets a lazily-attached registry of its own.
+   */
+  ephemerals?: EphemeralRegistry | undefined;
+  /**
+   * Background warming of owned card derivatives.
+   *
+   * Present only when card rendering is switched on, and never load-bearing: a
+   * capture must succeed identically whether or not anything is warming behind
+   * it. See `modules/appearance/ownedCardWarm.ts`.
+   */
+  cardWarmer?: OwnedCardWarmer | undefined;
+  /**
+   * The Discord side of boss encounters, so an admin command can republish an
+   * encounter's results without reaching for the scheduler. Present exactly
+   * when `services.bosses` is.
+   */
+  bossAnnouncer?: BossAnnouncer | undefined;
+}
+
+/** Guild + player DB ids resolved after the guard allows the interaction. */
+export interface Provisioned {
+  guildDbId: number;
+  playerId: number;
+}
+
+export type PlayerInteraction =
+  | ChatInputCommandInteraction
+  | ButtonInteraction
+  | StringSelectMenuInteraction
+  | ModalSubmitInteraction;
+
+export type CommandHandler = (
+  ctx: AppContext,
+  interaction: PlayerInteraction,
+  provisioned: Provisioned,
+) => Promise<void>;
+
+/** Custom ID scheme: wm|v1|<scope>|<action>|<...args> (plan §19). */
+export const CUSTOM_ID_PREFIX = 'wm';
+export const CUSTOM_ID_VERSION = 'v1';
+
+export interface ParsedCustomId {
+  scope: string;
+  action: string;
+  args: string[];
+}
+
+export function buildCustomId(scope: string, action: string, ...args: string[]): string {
+  return [CUSTOM_ID_PREFIX, CUSTOM_ID_VERSION, scope, action, ...args].join('|');
+}
+
+/**
+ * Returns null for foreign custom ids (not ours) and 'unknown_version' for a
+ * wm id from a different schema version.
+ */
+export function parseCustomId(customId: string): ParsedCustomId | 'unknown_version' | null {
+  const parts = customId.split('|');
+  if (parts[0] !== CUSTOM_ID_PREFIX) return null;
+  if (parts[1] !== CUSTOM_ID_VERSION) return 'unknown_version';
+  const [, , scope, action, ...args] = parts;
+  if (!scope || !action) return null;
+  return { scope, action, args };
+}

@@ -1,0 +1,550 @@
+/**
+ * World encounter presenter — the one place that turns an
+ * `EncounterActivation` into a Discord embed + button rows.
+ *
+ * Discord-independent code stops at the {@link WorldEncounterService};
+ * anything that touches `EmbedBuilder`, attachments, or the `enc-world:*`
+ * custom id scheme lives here so the engine has no opinion on presentation.
+ *
+ * Custom id scheme: `wm|v1|encw|<action>|<activeId>|<choiceId?>`
+ *   • `encw:choose`  — a choice button
+ *   • `encw:abandon` — future support; not wired today
+ *
+ * The follow-up row also paints ids owned by other screens — `loc:journey`
+ * and `hunt:return` — because those buttons *leave* the encounter. Their
+ * handlers live with the screens they return to, not here.
+ *
+ * Attachment filename is derived from the encounter slug (kebab-safe) plus the
+ * source file's real extension, so the embed's image ref is always
+ * predictable and a `.webp` is never announced as a `.png`.
+ */
+import {
+  ActionRowBuilder,
+  AttachmentBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  EmbedBuilder,
+} from 'discord.js';
+import { buddyBonusShortLine } from '../modules/buddyBonus/buddyBonusEffects';
+import { artworkAttachmentFilename } from '../modules/assets/artworkPath';
+import {
+  resolveArtworkAttachment,
+  type ResolvedArtworkAttachment,
+} from './assets/resolveArtworkAttachment';
+import { formatChancePercent, formatModifierPercent, formatRoll } from './rollFormat';
+import { buildCustomId } from './types';
+import type { AppContext } from './types';
+import type { SessionPayload } from './ephemeralSession';
+import type {
+  ChoiceView,
+  ContinuationOutcome,
+  EncounterActivation,
+  Resolution,
+} from '../modules/worldEncounters/worldEncounterService';
+import type { CheckResolution, CheckSpec } from '../modules/worldEncounters/types';
+import type {
+  AppliedAffectionDetail,
+  AppliedBuddyXpDetail,
+  AppliedEquipmentDetail,
+  AppliedEssenceDetail,
+  AppliedPlayerXpDetail,
+} from '../modules/worldEncounters/effectExecutor';
+import { formatEquipmentDrop } from './equipmentPresenter';
+
+/** Discord button rows cap at 5 buttons each. */
+const BUTTONS_PER_ROW = 5;
+/** Total encounter choices we render. Extra choices are truncated. */
+const MAX_CHOICES = 10;
+
+/**
+ * Safe attachment filename for an encounter's artwork: the slug as the stem,
+ * and the **source file's own extension** (a `.webp` is attached as `.webp`).
+ * Null when the source is not a supported image format.
+ */
+export function encounterArtworkFilename(slug: string, sourcePath: string): string | null {
+  return artworkAttachmentFilename(slug, sourcePath);
+}
+
+/**
+ * Best-effort artwork resolution through the shared authored-artwork
+ * resolver: the path is shape-checked, confined to `ASSETS_DIR`, and a missing
+ * file drops the attachment rather than failing the render.
+ */
+function resolveEncounterArtwork(
+  ctx: AppContext,
+  slug: string,
+  relative: string | null,
+): ResolvedArtworkAttachment | null {
+  return resolveArtworkAttachment(ctx, {
+    relativePath: relative,
+    stem: slug,
+    logTag: 'world-encounter',
+    logFields: { slug },
+  });
+}
+
+/** Options for {@link buildEncounterPresent}. */
+export interface EncounterPresentOptions {
+  /**
+   * A one-line summary of a reward the triggering hunt already granted
+   * ("+12 WaifuBux"), shown under **Along the way** so the encounter screen
+   * does not hide it. Pre-formatted by the caller from the committed result;
+   * this presenter neither reads nor recomputes rewards.
+   */
+  alongTheWay?: string | null | undefined;
+}
+
+/** Field name for the already-granted hunt reward on the encounter screen. */
+export const ALONG_THE_WAY_FIELD = 'Along the way';
+
+const RARITY_COLOR: Record<string, number> = {
+  common: 0x9ca3af,
+  uncommon: 0x22c55e,
+  rare: 0x3b82f6,
+  mythic: 0xa855f7,
+};
+
+const TYPE_LABEL: Record<string, string> = {
+  decision: 'Decision',
+  skill_check: 'Skill Check',
+  combat: 'Combat',
+  vendor: 'Vendor',
+  deity: 'Deity',
+  discovery: 'Discovery',
+};
+
+/** Build the "encounter appears" screen. */
+export function buildEncounterPresent(
+  ctx: AppContext,
+  activation: EncounterActivation,
+  options: EncounterPresentOptions = {},
+): SessionPayload {
+  const { encounter, buddy, buddyBonusPercent, choiceViews } = activation;
+  const embed = new EmbedBuilder()
+    .setTitle(`${TYPE_LABEL[encounter.type] ?? encounter.type} — ${encounter.name}`)
+    .setColor(RARITY_COLOR[encounter.rarity] ?? 0x9ca3af)
+    .setDescription(encounter.description || '*(no description)*');
+
+  const buddyLine = buddy
+    ? `**${buddy.speciesName}** · lvl ${buddy.level} · SP ${buddy.currentSp} · ${buddy.affinity}`
+    : 'No buddy equipped — SP checks will fail more often.';
+  const bonusLine =
+    buddyBonusPercent > 0 ? `\nBuddy Bonus: +${buddyBonusPercent.toFixed(1)}%` : '';
+  embed.addFields({ name: 'Buddy', value: buddyLine + bonusLine, inline: false });
+
+  // Additive: the encounter screen is unchanged except for this one field.
+  // The encounter's own artwork stays the only image.
+  if (options.alongTheWay) {
+    embed.addFields({ name: ALONG_THE_WAY_FIELD, value: options.alongTheWay, inline: false });
+  }
+
+  const artwork = resolveEncounterArtwork(ctx, encounter.slug, encounter.artworkPath);
+  const files: AttachmentBuilder[] = [];
+  if (artwork) {
+    embed.setImage(artwork.url);
+    files.push(artwork.file);
+  }
+
+  const rows = buildChoiceRows(activation.activeId, choiceViews);
+  return { embeds: [embed], components: rows, files };
+}
+
+/** Build the resolution screen: the outcome of the choice the player picked. */
+/**
+ * The Continue button found its queued follow-up no longer active (drafted,
+ * disabled or removed after it was queued). The chain simply ends: nothing is
+ * promised, no encounter is named, and the player gets the same way out as
+ * any terminal resolution — Continue Journey for a trip, Back to Hunting for
+ * a hunt. The button ids carry the closed continuation row's id; both
+ * handlers read `source`/regions from that row, which it copied from its
+ * parent.
+ */
+export function buildFollowUpSkipped(
+  outcome: Extract<ContinuationOutcome, { status: 'skipped' }>,
+): SessionPayload {
+  const embed = new EmbedBuilder()
+    .setTitle('The way on has closed')
+    .setColor(0x9ca3af)
+    .setDescription('Nothing more comes of this — for now.');
+  const row = new ActionRowBuilder<ButtonBuilder>();
+  if (outcome.journey) {
+    row.addComponents(
+      new ButtonBuilder()
+        .setCustomId(buildCustomId('loc', 'journey', String(outcome.activeId)))
+        .setLabel('🚶 Continue Journey')
+        .setStyle(ButtonStyle.Secondary),
+    );
+  }
+  if (outcome.huntReturn) {
+    row.addComponents(
+      new ButtonBuilder()
+        .setCustomId(buildCustomId('hunt', 'return', String(outcome.activeId)))
+        .setLabel('🏹 Back to Hunting')
+        .setStyle(ButtonStyle.Secondary),
+    );
+  }
+  return { embeds: [embed], components: row.components.length > 0 ? [row] : [], files: [] };
+}
+
+export function buildEncounterResolved(
+  ctx: AppContext,
+  activation: EncounterActivation,
+  resolution: Resolution,
+): SessionPayload {
+  const { encounter } = activation;
+  const embed = new EmbedBuilder()
+    .setTitle(`${encounter.name}`)
+    .setColor(RARITY_COLOR[encounter.rarity] ?? 0x9ca3af)
+    .setDescription(encounter.description || '*(no description)*');
+
+  const choiceLine = `**Chose:** ${resolution.choice.label}`;
+  const outcomeLine = resolution.check.rolled
+    ? `**Outcome:** ${resolution.check.success ? '✅ Success' : '❌ Failure'} (${formatChancePercent(resolution.check.chance)} chance)`
+    : '**Outcome:** Auto-resolved';
+
+  // Authored flavor, already resolved by the domain for this outcome — shown
+  // verbatim under the result heading and above the 🎲 Check block. Absent,
+  // the field is exactly what it was before flavor existed.
+  const flavor = resolution.resolvedOutcomeText ?? null;
+  const resultValue = flavor
+    ? `${choiceLine}\n${outcomeLine}\n\n${flavor}`
+    : `${choiceLine}\n${outcomeLine}`;
+  embed.addFields({ name: 'Result', value: resultValue, inline: false });
+
+  // The dice behind the outcome, on every choice that actually rolled. The
+  // numbers are the resolver's own — nothing here recomputes a probability —
+  // so what the player reads is exactly what decided their result.
+  const rollField = buildCheckRollField(resolution.check, resolution.choice.check);
+  if (rollField) embed.addFields(rollField);
+
+  const effects = resolution.effectsApplied
+    .map(formatAppliedEffect)
+    .filter((s): s is string => s != null);
+  if (effects.length > 0) {
+    embed.addFields({ name: 'Effects', value: effects.join('\n'), inline: false });
+  }
+
+  // A chained follow-up is announced only when it actually opened: one that
+  // was skipped (draft, disabled or missing) must not promise an encounter
+  // the Continue button will never lead to.
+  const shownFollowUps = resolution.followUps.filter(
+    (f) => f.kind !== 'trigger_encounter' || resolution.continuationActiveId != null,
+  );
+  if (shownFollowUps.length > 0) {
+    // The wild-Waifumon follow-up is narrated from the *spawn result*, not
+    // from the marker, so the embed never promises an encounter the
+    // one-active-encounter rule actually refused.
+    const followLines = shownFollowUps.map((f) =>
+      f.kind === 'trigger_waifumon_encounter' && resolution.wildEncounter
+        ? formatWildEncounter(resolution.wildEncounter)
+        : formatFollowUp(f),
+    );
+    embed.addFields({ name: 'What follows', value: followLines.join('\n'), inline: false });
+  }
+
+  const artwork = resolveEncounterArtwork(ctx, encounter.slug, encounter.artworkPath);
+  const files: AttachmentBuilder[] = [];
+  if (artwork) {
+    embed.setImage(artwork.url);
+    files.push(artwork.file);
+  }
+
+  // Continue / Vendor row: when the resolution opened a chained encounter,
+  // add the Continue button. When it opened a vendor, add an "Open shop"
+  // button that repaints as the vendor UI on click. Both buttons carry only
+  // the active row id; every state check is server-side.
+  const rows: ActionRowBuilder<ButtonBuilder>[] = [];
+  const followRow = new ActionRowBuilder<ButtonBuilder>();
+  if (resolution.continuationActiveId != null) {
+    followRow.addComponents(
+      new ButtonBuilder()
+        .setCustomId(buildCustomId('encw', 'continue', String(resolution.continuationActiveId)))
+        .setLabel('Continue →')
+        .setStyle(ButtonStyle.Primary),
+    );
+  }
+  if (resolution.vendorInstance) {
+    followRow.addComponents(
+      new ButtonBuilder()
+        .setCustomId(
+          buildCustomId('encv', 'open', String(activation.activeId)),
+        )
+        .setLabel('🛒 Open shop')
+        .setStyle(ButtonStyle.Success),
+    );
+  }
+  // A spawned wild Waifumon is already a row in `encounters` — this button
+  // only opens the capture screen for it. It carries the encounter id and
+  // nothing else; the handler re-reads species, attempts and expiry from the
+  // database, scoped to the clicking player.
+  if (resolution.wildEncounter?.encounterId != null) {
+    const label = resolution.wildEncounter.speciesName
+      ? `💗 Meet ${resolution.wildEncounter.speciesName}`
+      : '💗 Meet her';
+    followRow.addComponents(
+      new ButtonBuilder()
+        .setCustomId(
+          buildCustomId('enc', 'wild', String(resolution.wildEncounter.encounterId)),
+        )
+        .setLabel(label.slice(0, 80))
+        .setStyle(ButtonStyle.Primary),
+    );
+  }
+  // Continue Journey — a travel encounter interrupted a journey whose
+  // destination was already committed before the encounter rolled, so this
+  // resumes the arrival screen and nothing more.
+  //
+  // Only at a *terminal* resolution. When the choice opened a chained
+  // encounter, Continue takes precedence: the chain carries the same travel
+  // context forward (the continuation row copies `source` and both region
+  // columns), so this button reappears when the chain finally resolves.
+  // Offering both at once would ask the player to choose between finishing
+  // the story and finishing the trip.
+  if (resolution.journey && resolution.continuationActiveId == null) {
+    followRow.addComponents(
+      new ButtonBuilder()
+        .setCustomId(buildCustomId('loc', 'journey', String(activation.activeId)))
+        .setLabel('🚶 Continue Journey')
+        .setStyle(ButtonStyle.Secondary),
+    );
+  }
+  // Back to Hunting — the hunt-origin mirror of Continue Journey, and for the
+  // same reason: without it a resolved hunt encounter is a dead end with no
+  // way back to the Hunt screen.
+  //
+  // Navigation only. Unlike Continue Journey there is not even a committed
+  // move behind it: the hunt that spawned this encounter already charged its
+  // Energy and produced this screen as its result, so returning owes the
+  // player nothing and costs them nothing.
+  //
+  // Same precedence rule as Continue Journey — only at a *terminal*
+  // resolution. Mid-chain, Continue wins; `source` is copied onto each
+  // continuation row, so this reappears when the chain finally ends.
+  if (resolution.huntReturn && resolution.continuationActiveId == null) {
+    followRow.addComponents(
+      new ButtonBuilder()
+        .setCustomId(buildCustomId('hunt', 'return', String(activation.activeId)))
+        .setLabel('🏹 Back to Hunting')
+        .setStyle(ButtonStyle.Secondary),
+    );
+  }
+
+  if (followRow.components.length > 0) rows.push(followRow);
+
+  return { embeds: [embed], components: rows, files };
+}
+
+/* ─────────────────────── Check roll display ─────────────────────── */
+
+/** Human label for the affinity a check gives an advantage to. */
+function affinityLabel(affinity: string): string {
+  return affinity.charAt(0).toUpperCase() + affinity.slice(1);
+}
+
+/**
+ * The compact modifier breakdown, e.g. `Base 40% · SP +15% · Dominant +10%`.
+ *
+ * Only contributors that actually moved the number appear: a zero term is not
+ * "no bonus", it is a term that had nothing to say, and listing it would pad
+ * every result with rows the player can do nothing about. The base is always
+ * shown because it is the thing the modifiers modify.
+ *
+ * The terms come straight out of {@link CheckResolution.breakdown}; the check
+ * spec is read only to *name* the affinity term, never to recompute it.
+ */
+function buildModifierLine(check: CheckResolution, spec: CheckSpec | undefined): string {
+  const b = check.breakdown;
+  const parts = [`Base ${formatChancePercent(b.base)}`];
+  if (b.spTerm !== 0) parts.push(`SP ${formatModifierPercent(b.spTerm)}`);
+  if (b.levelTerm !== 0) parts.push(`Level ${formatModifierPercent(b.levelTerm)}`);
+  if (b.affinityMod !== 0) {
+    const name =
+      spec && spec.type === 'sp' && spec.affinityAdvantage
+        ? affinityLabel(spec.affinityAdvantage)
+        : 'Affinity';
+    parts.push(`${name} ${formatModifierPercent(b.affinityMod)}`);
+  }
+  if (b.raceMod !== 0) parts.push(`Race ${formatModifierPercent(b.raceMod)}`);
+  if (b.buddyBonusMod !== 0) parts.push(`Buddy Bonus ${formatModifierPercent(b.buddyBonusMod)}`);
+  if (b.baseBias !== 0) parts.push(`Bias ${formatModifierPercent(b.baseBias)}`);
+
+  // The resolver clamps the assembled chance into [5 %, 95 %]. When it bit,
+  // the terms above no longer add up to the chance shown — say so rather than
+  // letting the arithmetic look broken.
+  const raw =
+    b.base + b.spTerm + b.levelTerm + b.affinityMod + b.raceMod + b.buddyBonusMod + b.baseBias;
+  if (Math.abs(raw - check.chance) > 0.0005) parts.push('capped');
+
+  return parts.join(' · ');
+}
+
+/**
+ * The 🎲 Check field, or null when there was no roll to narrate.
+ *
+ * Null covers every non-probabilistic path — a `none` check, and any screen
+ * reached without resolving a choice at all (Continue Journey and Back to
+ * Hunting are navigation, so they never arrive here with `rolled` set). The
+ * chance and the roll are copied verbatim from the resolution the server
+ * already decided with, so the display can never disagree with the outcome.
+ */
+export function buildCheckRollField(
+  check: CheckResolution,
+  spec?: CheckSpec,
+): { name: string; value: string; inline: boolean } | null {
+  if (!check.rolled || check.checkType === 'none') return null;
+  return {
+    name: '🎲 Check',
+    value:
+      `Success Chance: **${formatChancePercent(check.chance)}**\n` +
+      `🎲 Roll: **${formatRoll(check.roll)}**\n` +
+      `Result: **${check.success ? 'Success' : 'Failure'}**\n` +
+      buildModifierLine(check, spec),
+    inline: false,
+  };
+}
+
+function buildChoiceRows(
+  activeId: number,
+  views: ChoiceView[],
+): ActionRowBuilder<ButtonBuilder>[] {
+  const rows: ActionRowBuilder<ButtonBuilder>[] = [];
+  const trimmed = views.slice(0, MAX_CHOICES);
+  for (let i = 0; i < trimmed.length; i += BUTTONS_PER_ROW) {
+    const chunk = trimmed.slice(i, i + BUTTONS_PER_ROW);
+    const row = new ActionRowBuilder<ButtonBuilder>();
+    for (const view of chunk) {
+      const button = new ButtonBuilder()
+        .setCustomId(buildCustomId('encw', 'choose', String(activeId), String(view.choice.id)))
+        .setLabel(view.choice.label.slice(0, 80))
+        .setStyle(view.available ? ButtonStyle.Primary : ButtonStyle.Secondary)
+        .setDisabled(!view.available);
+      if (view.choice.emoji) {
+        try {
+          button.setEmoji(view.choice.emoji);
+        } catch {
+          // Ignore invalid emoji; Discord rejects some raw strings.
+        }
+      }
+      row.addComponents(button);
+    }
+    rows.push(row);
+  }
+  return rows;
+}
+
+function formatAppliedEffect(entry: {
+  effect: import('../modules/worldEncounters/types').Effect;
+  applied: boolean;
+  amount?: number;
+  reason?: string;
+  affection?: AppliedAffectionDetail | undefined;
+  essence?: AppliedEssenceDetail | undefined;
+  buddyXp?: AppliedBuddyXpDetail | undefined;
+  playerXp?: AppliedPlayerXpDetail | undefined;
+  equipment?: AppliedEquipmentDetail | undefined;
+}): string | null {
+  const e = entry.effect;
+  const amount = entry.amount;
+  switch (e.type) {
+    case 'waifubux_gain':
+      return `+${amount ?? e.amount} Waifubux`;
+    case 'waifubux_loss':
+    case 'waifubux_loss_percent':
+      return amount && amount > 0 ? `−${amount} Waifubux` : null;
+    case 'essence_gain': {
+      // Same contract as `affection_gain` below: every figure is one the
+      // domain computed and handed over. `detail` is absent only on history
+      // rows written before the award carried its metadata, which fall back
+      // to the plain line they always printed.
+      const detail = entry.essence;
+      if (!detail) return `💎 +${amount ?? e.amount} Essence`;
+      const headline = `💎 +${detail.finalAmount} Essence`;
+      // The breakdown appears only when the bonus actually moved the number —
+      // `bonus` is non-null on exactly that condition, decided by the domain.
+      if (!detail.bonus) return headline;
+      return `${headline}\nBase: ${detail.baseAmount} · ${buddyBonusShortLine(detail.bonus)}`;
+    }
+    case 'essence_loss':
+      return amount && amount > 0 ? `−${amount} Essence` : null;
+    case 'energy_gain':
+      return `+${amount ?? e.amount} Energy`;
+    case 'energy_loss':
+      return amount && amount > 0 ? `−${amount} Energy` : null;
+    case 'player_xp': {
+      const detail = entry.playerXp;
+      if (!detail) return `+${amount ?? e.amount} Player XP`;
+      const headline = `+${detail.finalAmount} Player XP`;
+      if (!detail.bonus) return headline;
+      return `${headline}\nBase: ${detail.baseAmount} · ${buddyBonusShortLine(detail.bonus)}`;
+    }
+    case 'buddy_xp': {
+      if (!amount || amount <= 0) return null;
+      const detail = entry.buddyXp;
+      if (!detail) return `+${amount} Buddy XP`;
+      const headline = `⭐ ${detail.waifuName} gained +${detail.finalAmount} Buddy XP`;
+      if (!detail.bonus) return headline;
+      return `${headline}\nBase: ${detail.baseAmount} · ${buddyBonusShortLine(detail.bonus)}`;
+    }
+    case 'affection_gain': {
+      // Null when there was no Buddy to pay. The encounter still succeeded and
+      // its other effects still printed — this line simply is not one of them,
+      // which is the whole no-Buddy behaviour rendered.
+      const detail = entry.affection;
+      if (!detail || !entry.applied) return null;
+      const headline = `💕 ${detail.waifuName} gained +${detail.finalAmount} Affection`;
+      // The breakdown appears only when the bonus actually moved the number —
+      // `bonus` is non-null on exactly that condition, decided by the domain.
+      // Nothing here multiplies anything.
+      if (!detail.bonus) return headline;
+      return `${headline}\nBase: ${detail.baseAmount} · ${buddyBonusShortLine(detail.bonus)}`;
+    }
+    case 'give_item':
+      return `Received ${e.quantity} × ${e.slug}`;
+    case 'give_equipment':
+      // The generated instance, as the Equipment service named it. Absent
+      // only if the grant never happened, in which case nothing was found.
+      return entry.equipment ? `You found: ${formatEquipmentDrop(entry.equipment)}` : null;
+    case 'consume_item':
+      return entry.applied ? `Used ${e.quantity} × ${e.slug}` : null;
+    case 'temp_buff':
+      return `Blessing: ${e.key}`;
+    case 'trigger_encounter':
+    case 'trigger_waifumon_encounter':
+    case 'open_vendor':
+      return null; // rendered under "What follows"
+  }
+}
+
+/**
+ * Narration for a `trigger_waifumon_encounter` outcome. The spawn has already
+ * happened (or provably has not) server-side by the time this runs, so each
+ * line states what is true rather than teasing something that may not exist.
+ */
+function formatWildEncounter(w: NonNullable<Resolution['wildEncounter']>): string {
+  const who = w.speciesName ?? 'A wild Waifumon';
+  switch (w.status) {
+    case 'created':
+      return `**${who}** steps out of the trees…`;
+    case 'existing':
+      return `**${who}** is still waiting for you.`;
+    case 'blocked':
+      return 'Someone was drawn to the commotion — but you are already mid-encounter. Finish that one first.';
+    case 'unavailable':
+      return 'Something stirred in the undergrowth, then thought better of it.';
+  }
+}
+
+function formatFollowUp(f: { kind: string; payload: Record<string, unknown> }): string {
+  switch (f.kind) {
+    case 'trigger_encounter':
+      return `Another encounter awaits: ${String(f.payload.encounterSlug ?? '')}`;
+    case 'trigger_waifumon_encounter':
+      return f.payload.speciesSlug
+        ? `A wild ${String(f.payload.speciesSlug)} appears…`
+        : 'A wild waifumon appears…';
+    case 'open_vendor':
+      return `A vendor opens their wares: ${String(f.payload.vendorKey ?? '')}`;
+    default:
+      return f.kind;
+  }
+}
