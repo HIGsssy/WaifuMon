@@ -11,7 +11,7 @@
     }
   },
   "inventory": {
-    "captureCapacity": 200
+    "captureCapacity": 2000
   },
   "dailyPackage": {
     "waifubux": 125,
@@ -484,7 +484,7 @@
         "quantity": 1,
         "weight": 10
       }
-    ]
+    ]6 authored · 6 in runtime · 6 with artwork
   },
   "bossEncounters": {
     "enabled": true,
