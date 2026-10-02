@@ -68,6 +68,7 @@ import type { UiSplashConfig } from '../../modules/content/schemas';
 import type { EquipmentEntryState } from '../../modules/onboarding/onboardingState';
 import { onboardingCustomId } from '../onboardingPresenter';
 import { summaryGearLines, summaryStatParts } from '../equipmentPresenter';
+import { combatTrialsButton } from '../combatTrialPresenter';
 import {
   parseQuestRewards,
   type QuestRewardsPreview,
@@ -84,6 +85,7 @@ export function menuComponents(
   care: CareState,
   questsEnabled: boolean,
   equipmentEntry: EquipmentEntryState = 'hidden',
+  combatTrialsEnabled = false,
 ): ActionRowBuilder<ButtonBuilder>[] {
   const careButton = care.active
     ? new ButtonBuilder()
@@ -184,6 +186,10 @@ export function menuComponents(
   // At most the fourth of this row's five buttons.
   const equipmentButton = equipmentMenuButton(equipmentEntry);
   if (equipmentButton) bottomRow.push(equipmentButton);
+  // Combat Trials: only once Equipment is unlocked (`available`) — no gear
+  // means no combat stats. At most the fifth of this row's five buttons. The
+  // service re-checks the unlock on every click, so this is presentation only.
+  if (combatTrialsEnabled && equipmentEntry === 'available') bottomRow.push(combatTrialsButton());
   rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(...bottomRow));
   return rows;
 }
@@ -232,6 +238,11 @@ export function equipmentLegendLine(entry: EquipmentEntryState): string {
   if (entry === 'begin' || entry === 'resume') return '\n🔧 **Equipment** — something new is waiting';
   if (entry === 'available') return '\n⚔️ **Equipment** — your Buddy’s gear and combat stats';
   return '';
+}
+
+/** The Actions legend's Combat Trials mention, once Equipment is unlocked. */
+export function combatTrialsLegendLine(entry: EquipmentEntryState, enabled: boolean): string {
+  return enabled && entry === 'available' ? '\n⚔️ **Combat Trials** — put your gear to the test' : '';
 }
 
 const DEFAULT_MENU_FLAVOR =
@@ -319,6 +330,7 @@ async function renderMainMenu(
   if (banner) embed.setImage(banner.url);
 
   const equipmentEntry = await loadEquipmentEntry(ctx, prov.playerId);
+  const combatTrialsEnabled = ctx.services.combatTrials != null;
   embed.addFields({
     name: '🎮 Actions',
     value:
@@ -327,7 +339,8 @@ async function renderMainMenu(
       '🛍️ **Shop** — spend WaifuBux on capture charms\n' +
       '🎒 **Collection** — browse your captured Waifumon\n' +
       '👤 **Profile** · 🎒 **Inventory** · 💗 **Care Mode**' +
-      equipmentLegendLine(equipmentEntry),
+      equipmentLegendLine(equipmentEntry) +
+      combatTrialsLegendLine(equipmentEntry, combatTrialsEnabled),
   });
 
   embed.addFields({ name: '💗 Care Mode', value: renderCareStatusLines(care).join('\n') });
@@ -365,7 +378,7 @@ async function renderMainMenu(
   // the reason the player is there.
   await respondEphemeral(interaction, {
     embeds: [embed],
-    components: menuComponents(care, ctx.services.quests.config.enabled, equipmentEntry),
+    components: menuComponents(care, ctx.services.quests.config.enabled, equipmentEntry, combatTrialsEnabled),
     files: banner ? [banner.file] : [],
   });
   await emitEvents(ctx, interaction, prov, carePendingDescriptors(ticks));

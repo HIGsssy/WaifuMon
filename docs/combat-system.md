@@ -189,9 +189,9 @@ no enemies.
     {
       "key": "scrapyard_drone",
       "name": "Scrapyard Drone",
-      "attack": 25,
-      "defense": 10,
-      "hp": 120,
+      "attack": 55,
+      "defense": 30,
+      "hp": 300,
       "artworkPath": null,
       "enabled": true,
       "tags": ["starter", "initial_tuning"]
@@ -216,9 +216,10 @@ minimum-damage rule would make such an enemy hit for 1 anyway. Revisit this
 when utility enemies that use only abilities exist.
 
 The starter enemies (`scrapyard_drone`, `alley_bruiser`,
-`security_automaton`) are fixtures for tests and future UI work. Their stats
-are **initial tuning values, not balance**, and they are tagged
-`initial_tuning`.
+`security_automaton`) are the opponents of the three starter Combat Trials.
+Their stats are **initial tuning values, not final balance**, and they are
+tagged `initial_tuning`. See `docs/combat-trials.md` for the simulations behind
+them.
 
 ## Artwork conventions
 
@@ -252,5 +253,8 @@ are never copied into `assets/combat/`.
   for them.
 - `special` and `defend` actions, statuses, cooldowns, crits, dodge, speed,
   elements and affinities, healing, items, party and raid combat, PvP.
-- Persisted interactive fights, Combat Trial commands and UI, rewards,
-  first-clear tracking, enemy ladders, dungeon traversal.
+- Persisted interactive fights and dungeon traversal.
+
+Combat Trials (the first game feature on this engine: UI, persistence,
+first-clear rewards, the starter ladder) are documented in
+`docs/combat-trials.md`.

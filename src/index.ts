@@ -62,6 +62,10 @@ import { readUnknownAffixKeys } from './modules/equipment/equipmentQueries';
 import { createEquipmentDefinitionService } from './modules/equipment/equipmentDefinitionService';
 import { createCombatStatsService } from './modules/equipment/combatStatsService';
 import { createEquipmentManagementService } from './modules/equipment/equipmentManagementService';
+import {
+  combatTrialCatalogueFromContent,
+  createCombatTrialService,
+} from './modules/combatTrials/combatTrialService';
 import { createEquipmentOnboardingService } from './modules/onboarding/equipmentOnboardingService';
 import { equipmentOnboardingLevelLabels } from './modules/onboarding/onboardingState';
 import { createEquipmentPromotionService } from './modules/equipment/equipmentImportService';
@@ -368,6 +372,19 @@ async function main(): Promise<void> {
    * onboarding switch.
    */
   const equipmentManagement = createEquipmentManagementService({ equipment, combatStats, featureUnlocks });
+  /**
+   * Combat Trials: automatic fights against content-defined enemies, gated by
+   * the `equipment` unlock. Stats from `combatStats`, Trials and enemies from
+   * the live content snapshot.
+   */
+  const combatTrials = createCombatTrialService({
+    db,
+    featureUnlocks,
+    combatStats,
+    currency,
+    inventory,
+    getCatalogue: () => combatTrialCatalogueFromContent(contentSnapshot),
+  });
   const equipmentOnboarding = createEquipmentOnboardingService({
     db,
     equipment,
@@ -650,6 +667,7 @@ async function main(): Promise<void> {
       featureUnlocks,
       equipmentOnboarding,
       equipmentManagement,
+      combatTrials,
     },
   };
 

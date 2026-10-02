@@ -1438,3 +1438,56 @@ export class CombatStateInvalidError extends AppError {
     super('COMBAT_STATE_INVALID', message);
   }
 }
+
+/**
+ * A Combat Trial that cannot be fought: unknown, disabled, or its enemy is
+ * missing or disabled. Nothing is fought, recorded or paid.
+ */
+export class CombatTrialUnavailableError extends AppError {
+  readonly trialKey: string;
+  readonly reason: string;
+  constructor(trialKey: string, reason: string) {
+    super(
+      'COMBAT_TRIAL_UNAVAILABLE',
+      `Combat Trial "${String(trialKey)}" is unavailable (${String(reason)})`,
+      "That Trial isn't available right now.",
+    );
+    this.trialKey = String(trialKey);
+    this.reason = String(reason);
+  }
+}
+
+/** Combat needs an active Buddy, and none is set. Another copy is never chosen silently. */
+export class CombatBuddyRequiredError extends AppError {
+  constructor() {
+    super('COMBAT_BUDDY_REQUIRED', 'Combat requires an active Buddy', 'Choose an active Buddy before fighting.');
+  }
+}
+
+/**
+ * The player's combat stats are incomplete (an empty Attack, Defense or
+ * Health slot), so there is no ATK / DEF / HP to fight with.
+ */
+export class CombatLoadoutIncompleteError extends AppError {
+  constructor() {
+    super(
+      'COMBAT_LOADOUT_INCOMPLETE',
+      'Combat requires ATK, DEF and HP (incomplete loadout)',
+      'Equip Attack, Defense and Health gear before fighting.',
+    );
+  }
+}
+
+/**
+ * A Fight request key that already resolved a *different* Trial — a forged or
+ * corrupted button. The original attempt is untouched.
+ */
+export class CombatTrialRequestConflictError extends AppError {
+  constructor(requestKey: string) {
+    super(
+      'COMBAT_TRIAL_REQUEST_CONFLICT',
+      `Combat Trial request "${String(requestKey)}" was already used for another Trial`,
+      'That button no longer works — reopen Combat Trials.',
+    );
+  }
+}

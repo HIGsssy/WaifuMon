@@ -88,6 +88,12 @@ import {
   handleGearBag,
 } from './commands/waifumonEquipment';
 import {
+  handleCombatTrialFight,
+  handleCombatTrialsHome,
+  handleCombatTrialsNoop,
+  handleCombatTrialView,
+} from './commands/waifumonCombatTrials';
+import {
   handleBuddyAutocomplete,
   handleAppearanceCommand,
   handleAppearanceOpen,
@@ -395,6 +401,15 @@ export function createDiscordClient(ctx: AppContext): Client {
         handleEquipmentUnequip(ctx, i, prov, args),
       'eq:flag': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleEquipmentFlag(ctx, i, prov, args),
+      // Combat Trials. The service checks the Equipment unlock on every route.
+      'ct:home': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleCombatTrialsHome(ctx, i, prov, args),
+      'ct:noop': (i: ButtonInteraction, prov: Provisioned) => handleCombatTrialsNoop(ctx, i, prov),
+      'ct:view': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleCombatTrialView(ctx, i, prov, args),
+      // The only route that fights. Opening a Trial (`ct:view`) never does.
+      'ct:fight': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleCombatTrialFight(ctx, i, prov, args),
       // Lives in the `loc:` namespace because it resumes the Locations
       // screen — the encounter is over by the time it is clickable.
       'loc:journey': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>

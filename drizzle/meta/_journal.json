@@ -337,6 +337,13 @@
       "when": 1819836000000,
       "tag": "0047_reward_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1819922400000,
+      "tag": "0048_combat_trial_attempts",
+      "breakpoints": true
     }
   ]
 }

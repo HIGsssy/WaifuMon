@@ -39,6 +39,7 @@ import {
 } from '../modules/onboarding/vocabulary';
 import { resolveArtworkAttachment } from './assets/resolveArtworkAttachment';
 import { buildEquipmentHome, type BuddyArtwork } from './equipmentPresenter';
+import { COMBAT_TRIALS_CTA_TEXT, COMBAT_TRIALS_CTA_TITLE, combatTrialsButton } from './combatTrialPresenter';
 import type { SessionPayload } from './ephemeralSession';
 import { buildCustomId, type AppContext } from './types';
 
@@ -285,9 +286,17 @@ export function buildOnboardingView(
       const description = [speech(npc, step), ...keptLines(view.stats, view.report)].join('\n\n');
       const embed = baseEmbed(step.title, npc, art).setDescription(description);
       addLoadoutFields(embed, view.stats);
+      // Point the newly geared player at Combat Trials, where the gear is used.
+      // Presentation only: completion semantics are unchanged.
+      const trials = ctx.services?.combatTrials != null;
+      if (trials) embed.addFields({ name: COMBAT_TRIALS_CTA_TITLE, value: COMBAT_TRIALS_CTA_TEXT });
       return {
         embeds: [embed],
-        components: [row(backToMenuButton(step.button))],
+        components: [
+          trials
+            ? row(backToMenuButton(step.button), combatTrialsButton(ButtonStyle.Primary))
+            : row(backToMenuButton(step.button)),
+        ],
         files: art.files,
       };
     }

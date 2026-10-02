@@ -56,6 +56,7 @@ import type { EquipmentOnboardingService } from '../modules/onboarding/equipment
 import type { EquipmentManagementService } from '../modules/equipment/equipmentManagementService';
 import type { FeatureUnlockService } from '../modules/features/featureUnlockService';
 import type { RewardTableService } from '../modules/rewardTables/rewardTableService';
+import type { CombatTrialService } from '../modules/combatTrials/combatTrialService';
 
 export interface AppServices {
   guilds: GuildService;
@@ -233,6 +234,8 @@ export interface AppServices {
   equipmentOnboarding?: EquipmentOnboardingService | undefined;
   /** Equipment management (home, slots, Gear Bag, item detail). Requires the unlock. */
   equipmentManagement?: EquipmentManagementService | undefined;
+  /** Combat Trials (list, detail, Fight). Requires the `equipment` unlock. */
+  combatTrials?: CombatTrialService | undefined;
 }
 
 export interface AppContext {

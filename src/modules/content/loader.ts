@@ -39,6 +39,7 @@ import {
 import { EquipmentOnboardingContentSchema, NpcsFileSchema } from './onboardingSchemas';
 import { EQUIPMENT_AFFIX_FILE, EquipmentAffixFileSchema } from '../equipment/affixCatalogue';
 import { COMBAT_ENEMY_FILE, CombatEnemyFileSchema } from '../combat/enemyDefinitions';
+import { COMBAT_TRIAL_FILE, CombatTrialFileSchema } from '../combat/trialDefinitions';
 import { locateCombatArtwork } from '../combat/combatArtwork';
 
 function formatZodError(file: string, err: ZodError): string {
@@ -1077,6 +1078,7 @@ export function validateContentSet(content: LoadedContent): void {
   validateExpeditionContent(content);
   validateKeyItemContent(content);
   validateOnboardingContent(content);
+  validateCombatTrialContent(content);
 }
 
 /**
@@ -1093,6 +1095,45 @@ export function validateOnboardingContent(content: LoadedContent): void {
       `onboarding/equipment.json names unknown NPC "${equipment.npc}". ` +
         `Add it to content/npcs.json (known NPCs: ${[...npcKeys].join(', ') || 'none'}).`,
     );
+  }
+}
+
+/**
+ * Cross-file checks for Combat Trials: every Trial names an enemy that exists
+ * in `combat/enemies.json` (enabled or not — a disabled enemy only hides the
+ * Trial at runtime), and every first-clear reward item exists in
+ * `items.json`. Enabled Trials must also have unique `order` values so the
+ * ladder has one unambiguous sequence.
+ */
+export function validateCombatTrialContent(content: LoadedContent): void {
+  const trials = content.combatTrials ?? [];
+  if (trials.length === 0) return;
+  const enemyKeys = new Set((content.combatEnemies ?? []).map((e) => e.key));
+  const itemSlugs = new Set(content.items.map((i) => i.slug));
+  const orders = new Map<number, string>();
+  for (const trial of trials) {
+    if (!enemyKeys.has(trial.enemyKey)) {
+      throw new ContentValidationError(
+        `combat/trials.json: trial "${trial.key}" names unknown enemy "${trial.enemyKey}". ` +
+          'Add it to content/combat/enemies.json.',
+      );
+    }
+    for (const item of trial.firstClearRewards?.items ?? []) {
+      if (!itemSlugs.has(item.slug)) {
+        throw new ContentValidationError(
+          `combat/trials.json: trial "${trial.key}" first-clear reward names unknown item "${item.slug}".`,
+        );
+      }
+    }
+    if (trial.enabled) {
+      const other = orders.get(trial.order);
+      if (other !== undefined) {
+        throw new ContentValidationError(
+          `combat/trials.json: enabled trials "${other}" and "${trial.key}" share order ${trial.order}.`,
+        );
+      }
+      orders.set(trial.order, trial.key);
+    }
   }
 }
 
@@ -1169,6 +1210,14 @@ export function readContentFiles(contentDir: string): LoadedContent {
     ? parseJsonFile(combatEnemiesPath, CombatEnemyFileSchema).enemies
     : [];
 
+  // Combat Trials. Optional on disk like the enemies they name: without the
+  // file Combat Trials simply lists nothing. Cross-file references are
+  // checked by `validateCombatTrialContent`.
+  const combatTrialsPath = path.join(contentDir, ...COMBAT_TRIAL_FILE.split('/'));
+  const combatTrials = fs.existsSync(combatTrialsPath)
+    ? parseJsonFile(combatTrialsPath, CombatTrialFileSchema).trials
+    : [];
+
   return {
     items: itemsFile.items,
     species: allSpecies,
@@ -1185,6 +1234,7 @@ export function readContentFiles(contentDir: string): LoadedContent {
     onboarding: { equipment: equipmentOnboarding },
     equipmentAffixes,
     combatEnemies,
+    combatTrials,
   };
 }
 
@@ -1486,6 +1536,17 @@ function warnOnMissingCombatArtwork(content: LoadedContent, assetsDir: string, l
         { enemy: enemy.key, artworkPath: enemy.artworkPath, status: art.status },
         'combat enemy artwork unavailable; it will render text-only',
       );
+    }
+  }
+  for (const trial of content.combatTrials ?? []) {
+    for (const artworkPath of [trial.artworkPath, trial.backgroundArtworkPath]) {
+      const art = locateCombatArtwork(assetsDir, artworkPath);
+      if (art.status === 'missing' || art.status === 'unsafe') {
+        logger.warn(
+          { trial: trial.key, artworkPath, status: art.status },
+          'combat trial artwork unavailable; it will render without it',
+        );
+      }
     }
   }
 }

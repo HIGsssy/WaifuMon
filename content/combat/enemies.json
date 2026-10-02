@@ -5,9 +5,9 @@
     {
       "key": "scrapyard_drone",
       "name": "Scrapyard Drone",
-      "attack": 25,
-      "defense": 10,
-      "hp": 120,
+      "attack": 55,
+      "defense": 30,
+      "hp": 300,
       "artworkPath": null,
       "enabled": true,
       "tags": ["starter", "initial_tuning"]
@@ -15,9 +15,9 @@
     {
       "key": "alley_bruiser",
       "name": "Alley Bruiser",
-      "attack": 45,
-      "defense": 25,
-      "hp": 220,
+      "attack": 100,
+      "defense": 55,
+      "hp": 520,
       "artworkPath": null,
       "enabled": true,
       "tags": ["starter", "initial_tuning"]
@@ -25,9 +25,9 @@
     {
       "key": "security_automaton",
       "name": "Security Automaton",
-      "attack": 60,
-      "defense": 60,
-      "hp": 320,
+      "attack": 140,
+      "defense": 90,
+      "hp": 800,
       "artworkPath": null,
       "enabled": true,
       "tags": ["starter", "initial_tuning"]

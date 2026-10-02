@@ -468,6 +468,14 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   // --- Combat --------------------------------------------------------------
   /** Wrong turn, fight already over, or an action V1 does not execute. */
   COMBAT_ACTION_REJECTED: 409,
+  /** Unknown or disabled Trial, or its enemy is missing / disabled. */
+  COMBAT_TRIAL_UNAVAILABLE: 404,
+  /** No active Buddy to fight with. */
+  COMBAT_BUDDY_REQUIRED: 409,
+  /** An empty Attack, Defense or Health slot — no complete stats to fight with. */
+  COMBAT_LOADOUT_INCOMPLETE: 409,
+  /** A request key already spent on a different Trial. */
+  COMBAT_TRIAL_REQUEST_CONFLICT: 409,
   /** Granting a definition that has been disabled — it is not obtainable now. */
   EQUIPMENT_DEFINITION_DISABLED: 422,
   /**

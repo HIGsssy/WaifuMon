@@ -62,6 +62,7 @@ import { DEFAULT_SP_RANGES_BY_RARITY } from '../power/seductivePower';
 import type { EquipmentOnboardingContent, NpcContent } from './onboardingSchemas';
 import type { EquipmentAffix } from '../equipment/affixCatalogue';
 import type { CombatEnemyDefinition } from '../combat/enemyDefinitions';
+import type { CombatTrialDefinition } from '../combat/trialDefinitions';
 import {
   EQUIPMENT_REWARD_SELECTOR_SHAPE,
   equipmentSelectorKey,
@@ -2961,6 +2962,11 @@ export interface LoadedContent {
    * disk and here: absent means no enemies. Hand-built snapshots carry none.
    */
   combatEnemies?: CombatEnemyDefinition[] | undefined;
+  /**
+   * Combat Trials from `content/combat/trials.json`. Optional on disk and
+   * here: absent means no Trials. Hand-built snapshots carry none.
+   */
+  combatTrials?: CombatTrialDefinition[] | undefined;
 }
 
 /**

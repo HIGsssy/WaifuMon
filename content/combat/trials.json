@@ -1,0 +1,60 @@
+{
+  "format": "waifumon-combat-trials",
+  "version": 1,
+  "trials": [
+    {
+      "key": "trial_scrapyard_drone",
+      "name": "Trial 1 — Scrapyard Drone",
+      "description": "A patched-together sentry drone still guarding Patch's scrapyard. A good first test of your new gear.",
+      "enemyKey": "scrapyard_drone",
+      "enabled": true,
+      "order": 10,
+      "recommended": { "attack": 70, "defense": 55, "hp": 300 },
+      "artworkPath": null,
+      "backgroundArtworkPath": null,
+      "firstClearRewards": {
+        "waifubux": 100,
+        "items": [{ "slug": "sticky_joystick", "quantity": 2 }]
+      },
+      "tags": ["starter", "initial_tuning"]
+    },
+    {
+      "key": "trial_alley_bruiser",
+      "name": "Trial 2 — Alley Bruiser",
+      "description": "A back-alley heavy who hits harder than anything in the scrapyard. Starter gear can win with a strong Buddy; better gear makes it comfortable.",
+      "enemyKey": "alley_bruiser",
+      "enabled": true,
+      "order": 20,
+      "recommended": { "attack": 100, "defense": 80, "hp": 450 },
+      "artworkPath": null,
+      "backgroundArtworkPath": null,
+      "firstClearRewards": {
+        "waifubux": 200,
+        "items": [
+          { "slug": "crusted_magazine", "quantity": 2 },
+          { "slug": "cracked_butt_plug", "quantity": 1 }
+        ]
+      },
+      "tags": ["starter", "initial_tuning"]
+    },
+    {
+      "key": "trial_security_automaton",
+      "name": "Trial 3 — Security Automaton",
+      "description": "Armoured, patient and built to outlast intruders. Expect to need upgraded gear.",
+      "enemyKey": "security_automaton",
+      "enabled": true,
+      "order": 30,
+      "recommended": { "attack": 165, "defense": 140, "hp": 550 },
+      "artworkPath": null,
+      "backgroundArtworkPath": null,
+      "firstClearRewards": {
+        "waifubux": 350,
+        "items": [
+          { "slug": "still_buzzing_wand", "quantity": 1 },
+          { "slug": "glory_hole_ticket", "quantity": 1 }
+        ]
+      },
+      "tags": ["starter", "initial_tuning"]
+    }
+  ]
+}

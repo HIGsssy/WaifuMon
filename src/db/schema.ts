@@ -2808,3 +2808,67 @@ export const rewardTables = pgTable(
 );
 
 export type RewardTableRow = typeof rewardTables.$inferSelect;
+
+/**
+ * Combat Trial attempts — one row per resolved Trial fight (migration 0048).
+ *
+ * Written once, already finished: V1 Trials are automatic. Every stat and
+ * name is a **snapshot** of what was actually fought, so a content edit never
+ * rewrites history. `initialState` is the engine's serialisable
+ * `CombatState` at the start and `events` its structured event log.
+ *
+ * `requestKey` is the idempotency key (one per rendered Fight button), unique
+ * per player. `firstClear` marks the one attempt that first cleared the Trial,
+ * enforced by a partial unique index — the guard on the first-clear reward.
+ * See `modules/combatTrials/combatTrialService.ts` and `docs/combat-trials.md`.
+ */
+export const combatTrialAttempts = pgTable(
+  'combat_trial_attempts',
+  {
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    playerId: bigint('player_id', { mode: 'number' })
+      .notNull()
+      .references(() => players.id),
+    trialKey: text('trial_key').notNull(),
+    enemyKey: text('enemy_key').notNull(),
+    requestKey: text('request_key').notNull(),
+    result: text('result').notNull(),
+    endReason: text('end_reason').notNull(),
+    rounds: integer('rounds').notNull(),
+    actions: integer('actions').notNull(),
+    /** The Buddy copy that fought. No FK: history outlives a release. */
+    buddyWaifuId: bigint('buddy_waifu_id', { mode: 'number' }).notNull(),
+    playerName: text('player_name').notNull(),
+    playerAttack: integer('player_attack').notNull(),
+    playerDefense: integer('player_defense').notNull(),
+    playerMaxHp: integer('player_max_hp').notNull(),
+    playerRemainingHp: integer('player_remaining_hp').notNull(),
+    enemyName: text('enemy_name').notNull(),
+    enemyAttack: integer('enemy_attack').notNull(),
+    enemyDefense: integer('enemy_defense').notNull(),
+    enemyMaxHp: integer('enemy_max_hp').notNull(),
+    enemyRemainingHp: integer('enemy_remaining_hp').notNull(),
+    initialState: jsonb('initial_state').$type<Record<string, unknown>>().notNull(),
+    events: jsonb('events').$type<Record<string, unknown>[]>().notNull(),
+    firstClear: boolean('first_clear').notNull().default(false),
+    rewards: jsonb('rewards').$type<Record<string, unknown>>(),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp('completed_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check(
+      'combat_trial_attempts_result_check',
+      sql`${t.result} in ('player_victory','enemy_victory','draw')`,
+    ),
+    check('combat_trial_attempts_end_reason_check', sql`${t.endReason} in ('defeat','round_limit')`),
+    check('combat_trial_attempts_first_clear_check', sql`not ${t.firstClear} or ${t.result} = 'player_victory'`),
+    check('combat_trial_attempts_counts_check', sql`${t.rounds} >= 1 and ${t.actions} >= 0`),
+    uniqueIndex('combat_trial_attempts_request_uq').on(t.playerId, t.requestKey),
+    uniqueIndex('combat_trial_attempts_first_clear_uq')
+      .on(t.playerId, t.trialKey)
+      .where(sql`first_clear`),
+    index('combat_trial_attempts_player_trial_idx').on(t.playerId, t.trialKey, t.id.desc()),
+  ],
+);
+
+export type CombatTrialAttemptRow = typeof combatTrialAttempts.$inferSelect;
