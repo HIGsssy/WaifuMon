@@ -67,7 +67,11 @@ export async function equipmentHomeArtwork(app: AppContext, playerId: number, st
 
 async function homeScreen(app: AppContext, service: EquipmentManagementService, playerId: number, status?: string) {
   const { stats } = await service.home(playerId);
-  return buildEquipmentHome(stats, status, await equipmentHomeArtwork(app, playerId, stats));
+  return buildEquipmentHome(stats, status, await equipmentHomeArtwork(app, playerId, stats), {
+    // The home is only ever drawn for an unlocked player, so the Workshop is
+    // open whenever it is wired.
+    workshop: app.services.equipmentWorkshop != null,
+  });
 }
 
 async function renderContext(

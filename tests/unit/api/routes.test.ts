@@ -165,6 +165,7 @@ const ROUTES: Array<{ url: string; overrides: ApiContextOverrides }> = [
             huntEnergy: 20,
             waifubux: 300,
             essence: 12,
+            salvagedComponents: 0,
             updatedAt: new Date(),
           }),
         },
@@ -233,6 +234,7 @@ const ROUTES: Array<{ url: string; overrides: ApiContextOverrides }> = [
             huntEnergy: 20,
             waifubux: 300,
             essence: 12,
+            salvagedComponents: 0,
             updatedAt: new Date(),
           }),
         },
@@ -730,6 +732,7 @@ describe('response payloads', () => {
             huntEnergy: 10,
             waifubux: 100,
             essence: 5,
+            salvagedComponents: 0,
             updatedAt: new Date('2026-08-05T10:00:00.000Z'),
           }),
         },
@@ -901,7 +904,7 @@ describe('OpenAPI registration', () => {
    * Pinned as an explicit allowlist rather than relaxed to "any mutation",
    * so adding a second write verb is a deliberate, reviewable edit here.
    */
-  it('registers no mutation verbs in v1 beyond the cosmetic appearance and Equipment management writes', async () => {
+  it('registers no mutation verbs in v1 beyond the cosmetic appearance, Equipment management and Workshop writes', async () => {
     const spec = (await app.inject({ method: 'GET', url: '/api/v1/openapi.json' })).json();
     const mutations: string[] = [];
     for (const [path, item] of Object.entries(spec.paths) as Array<
@@ -974,6 +977,13 @@ describe('OpenAPI registration', () => {
       'POST /api/v1/players/{playerId}/equipment/items/{equipmentId}/equip',
       'POST /api/v1/players/{playerId}/equipment/loadout/{slot}/unequip',
       'PUT /api/v1/players/{playerId}/equipment/items/{equipmentId}/flags/{flag}',
+      // Patch's Workshop — self-only, unlock-gated, CSRF-protected, through
+      // the same Workshop service as Discord. `preview` writes nothing but
+      // carries the selection as a body. Dismantle and fabricate are keyed:
+      // a retried request replays rather than destroying or charging again.
+      'POST /api/v1/players/{playerId}/equipment/workshop/dismantle',
+      'POST /api/v1/players/{playerId}/equipment/workshop/dismantle/preview',
+      'POST /api/v1/players/{playerId}/equipment/workshop/fabricate',
     ].sort());
   });
 

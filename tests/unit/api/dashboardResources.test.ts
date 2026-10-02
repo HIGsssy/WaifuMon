@@ -65,6 +65,7 @@ const BALANCES = {
   huntEnergy: 18,
   waifubux: 1_820,
   essence: 46,
+  salvagedComponents: 0,
   updatedAt: new Date('2026-08-06T09:14:00.000Z'),
 };
 

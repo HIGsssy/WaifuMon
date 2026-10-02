@@ -61,6 +61,7 @@ import { DEFAULT_SP_RANGES_BY_RARITY } from '../power/seductivePower';
 // imports this module.
 import type { EquipmentOnboardingContent, NpcContent } from './onboardingSchemas';
 import type { EquipmentAffix } from '../equipment/affixCatalogue';
+import type { WorkshopConfig } from '../equipment/workshopConfig';
 import type { CombatEnemyDefinition } from '../combat/enemyDefinitions';
 import type { CombatTrialDefinition } from '../combat/trialDefinitions';
 import {
@@ -2957,6 +2958,13 @@ export interface LoadedContent {
    * Hand-built snapshots carry none.
    */
   equipmentAffixes?: EquipmentAffix[] | undefined;
+  /**
+   * Patch's Workshop from `content/equipment/workshop.json`: salvage yields
+   * and fabrication recipes. Optional on disk and here: absent (or null)
+   * means the Workshop salvages and fabricates nothing. Hand-built snapshots
+   * carry none.
+   */
+  equipmentWorkshop?: WorkshopConfig | null | undefined;
   /**
    * Combat enemy definitions from `content/combat/enemies.json`. Optional on
    * disk and here: absent means no enemies. Hand-built snapshots carry none.

@@ -8,6 +8,11 @@
  */
 import { getData, postData, putData } from './client';
 import type {
+  DismantlePreview,
+  DismantleResult,
+  FabricationResult,
+  WorkshopOverview,
+  WorkshopSlotChoice,
   EquipmentDetail,
   EquipmentItem,
   EquipmentOverview,
@@ -118,4 +123,49 @@ export function setEquipmentFlag(
   return putData<EquipmentItem>(`${base(playerId)}/items/${equipmentId}/flags/${flag}`, {
     value,
   });
+}
+
+// ── Patch's Workshop ────────────────────────────────────────────────────────
+//
+// Every cost, yield, balance and availability comes from the server; the
+// Portal sends the player's explicit choices and a request key, and renders
+// what comes back.
+
+export function getWorkshop(playerId: number, signal?: AbortSignal): Promise<WorkshopOverview> {
+  return getData<WorkshopOverview>(`${base(playerId)}/workshop`, signal ? { signal } : {});
+}
+
+/** Writes nothing: what dismantling exactly these copies would pay, or a refusal naming each problem. */
+export function previewDismantle(
+  playerId: number,
+  equipmentIds: number[],
+): Promise<DismantlePreview> {
+  return postData<DismantlePreview>(`${base(playerId)}/workshop/dismantle/preview`, {
+    equipmentIds,
+  });
+}
+
+/**
+ * Dismantle exactly the reviewed copies. `requestKey` is minted once per
+ * confirmation: a retry of the same confirmation replays instead of
+ * destroying or paying again. `expectedComponents` is the reviewed total.
+ */
+export function dismantleEquipment(
+  playerId: number,
+  body: { equipmentIds: number[]; requestKey: string; expectedComponents: number },
+): Promise<DismantleResult> {
+  return postData<DismantleResult>(`${base(playerId)}/workshop/dismantle`, body);
+}
+
+/** Fabricate one piece. A retry with the same `requestKey` returns the same item, charged once. */
+export function fabricateEquipment(
+  playerId: number,
+  body: { recipeKey: string; slot: WorkshopSlotChoice; requestKey: string },
+): Promise<FabricationResult> {
+  return postData<FabricationResult>(`${base(playerId)}/workshop/fabricate`, body);
+}
+
+/** A fresh idempotency key for one confirmation. */
+export function newRequestKey(): string {
+  return `portal:${crypto.randomUUID()}`;
 }

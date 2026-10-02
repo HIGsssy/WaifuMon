@@ -11,6 +11,8 @@ import {
   EQUIPMENT_MULTIPLIER_CAP_SQL,
   EQUIPMENT_SLOT_SQL_LIST,
   EQUIPMENT_SOURCE_TYPE_SQL_LIST,
+  WORKSHOP_OPERATION_KIND_SQL_LIST,
+  WORKSHOP_SLOT_CHOICE_SQL_LIST,
 } from '../modules/equipment/vocabulary';
 import { FEATURE_KEY_SQL_LIST, FEATURE_UNLOCK_SOURCE_SQL_LIST } from '../modules/features/vocabulary';
 import {
@@ -302,12 +304,21 @@ export const playerCurrencies = pgTable(
     huntEnergy: integer('hunt_energy').notNull().default(0),
     waifubux: integer('waifubux').notNull().default(0),
     essence: integer('essence').notNull().default(0),
+    /**
+     * Salvaged Components — the Equipment-only material Patch pays for
+     * dismantled gear and charges for fabrication (`0049`). A balance beside
+     * the currencies rather than an inventory item, so no inventory flow can
+     * sell, trade, gift or consume it. Only `currencyService` moves it, and
+     * only the Workshop calls those methods.
+     */
+    salvagedComponents: integer('salvaged_components').notNull().default(0),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     check('player_currencies_hunt_energy_check', sql`${t.huntEnergy} >= 0`),
     check('player_currencies_waifubux_check', sql`${t.waifubux} >= 0`),
     check('player_currencies_essence_check', sql`${t.essence} >= 0`),
+    check('player_currencies_salvaged_components_check', sql`${t.salvagedComponents} >= 0`),
   ],
 );
 
@@ -2716,6 +2727,72 @@ export const equipmentImportLog = pgTable(
   },
   (t) => [index('equipment_import_log_applied_idx').on(t.appliedAt)],
 );
+
+/**
+ * Patch's Workshop — one row per confirmed dismantle or fabrication.
+ *
+ * Both the idempotency record and the audit ledger, the `key_item_constructions`
+ * / `combat_trial_attempts` pattern: `request_key` is the caller's key for one
+ * confirmation (a rendered Discord button, a Portal dialog), unique per
+ * player, so a retried confirmation reads this row back instead of destroying
+ * more gear, paying again or rerolling. `fingerprint` is what the key was
+ * spent on; the same key for a different request is refused.
+ *
+ * Authoritative for nothing but "this request already happened": the balance
+ * lives in `player_currencies`, the gear in `player_equipment`, and both were
+ * changed in the transaction that wrote this row. The deltas and `*_after`
+ * columns are a snapshot for audit and for replaying the result screen.
+ *
+ * Written only by `equipmentWorkshopService.ts` (`equipmentBoundary.test.ts`).
+ */
+export const equipmentWorkshopOperations = pgTable(
+  'equipment_workshop_operations',
+  {
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    playerId: bigint('player_id', { mode: 'number' })
+      .notNull()
+      .references(() => players.id),
+    requestKey: text('request_key').notNull(),
+    kind: text('kind').notNull(),
+    /** Canonical description of the request (`dismantle:3,8,12`, `fabricate:improved_rebuild:attack`). */
+    fingerprint: text('fingerprint').notNull(),
+    /** Fabrication only: the recipe, its rarity, and the slot asked for. */
+    recipeKey: text('recipe_key'),
+    rarity: text('rarity'),
+    slotChoice: text('slot_choice'),
+    /** Signed: + for a dismantle's yield, − for a fabrication's cost. */
+    componentsDelta: integer('components_delta').notNull(),
+    /** 0 for a dismantle (never a WaifuBux faucet), − for a fabrication. */
+    waifubuxDelta: integer('waifubux_delta').notNull(),
+    componentsAfter: integer('components_after').notNull(),
+    waifubuxAfter: integer('waifubux_after').notNull(),
+    /** Dismantled instances, or the one fabricated instance. */
+    equipmentIds: bigint('equipment_ids', { mode: 'number' }).array().notNull(),
+    /** Non-authoritative detail for audit and the replayed result screen. */
+    metadata: jsonb('metadata').$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('equipment_workshop_operations_request_uq').on(t.playerId, t.requestKey),
+    index('equipment_workshop_operations_player_created_idx').on(t.playerId, t.createdAt),
+    check('equipment_workshop_operations_kind_check', sql`${t.kind} in (${sql.raw(WORKSHOP_OPERATION_KIND_SQL_LIST)})`),
+    check(
+      'equipment_workshop_operations_slot_choice_check',
+      sql`${t.slotChoice} is null or ${t.slotChoice} in (${sql.raw(WORKSHOP_SLOT_CHOICE_SQL_LIST)})`,
+    ),
+    check(
+      'equipment_workshop_operations_shape_check',
+      sql`(${t.kind} = 'dismantle' and ${t.recipeKey} is null and ${t.slotChoice} is null and ${t.componentsDelta} > 0 and ${t.waifubuxDelta} = 0 and cardinality(${t.equipmentIds}) >= 1)
+        or (${t.kind} = 'fabricate' and ${t.recipeKey} is not null and ${t.slotChoice} is not null and ${t.componentsDelta} < 0 and ${t.waifubuxDelta} <= 0 and cardinality(${t.equipmentIds}) = 1)`,
+    ),
+    check(
+      'equipment_workshop_operations_after_check',
+      sql`${t.componentsAfter} >= 0 and ${t.waifubuxAfter} >= 0`,
+    ),
+  ],
+);
+
+export type EquipmentWorkshopOperationRow = typeof equipmentWorkshopOperations.$inferSelect;
 
 /**
  * Account features a player has unlocked — Equipment first.

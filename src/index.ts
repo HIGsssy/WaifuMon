@@ -62,6 +62,7 @@ import { readUnknownAffixKeys } from './modules/equipment/equipmentQueries';
 import { createEquipmentDefinitionService } from './modules/equipment/equipmentDefinitionService';
 import { createCombatStatsService } from './modules/equipment/combatStatsService';
 import { createEquipmentManagementService } from './modules/equipment/equipmentManagementService';
+import { createEquipmentWorkshopService } from './modules/equipment/equipmentWorkshopService';
 import {
   combatTrialCatalogueFromContent,
   createCombatTrialService,
@@ -373,6 +374,20 @@ async function main(): Promise<void> {
    */
   const equipmentManagement = createEquipmentManagementService({ equipment, combatStats, featureUnlocks });
   /**
+   * Patch's Workshop: dismantle gear for Salvaged Components, spend them (and
+   * WaifuBux) on fabrication through the shared random-reward path. Yields and
+   * recipes follow `content/equipment/workshop.json` through content reloads.
+   */
+  const equipmentWorkshop = createEquipmentWorkshopService({
+    db,
+    featureUnlocks,
+    equipment,
+    equipmentRewards,
+    currency,
+    getAffixes,
+    getConfig: () => contentSnapshot.equipmentWorkshop ?? null,
+  });
+  /**
    * Combat Trials: automatic fights against content-defined enemies, gated by
    * the `equipment` unlock. Stats from `combatStats`, Trials and enemies from
    * the live content snapshot.
@@ -668,6 +683,7 @@ async function main(): Promise<void> {
       equipmentOnboarding,
       equipmentManagement,
       combatTrials,
+      equipmentWorkshop,
     },
   };
 

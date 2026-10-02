@@ -21,6 +21,13 @@ import { dataSchema, ok } from '../../plugins/responseEnvelope';
 import type { FastifyPluginAsyncZod } from '../../plugins/typeProvider';
 import { commonErrorResponses, errorSchema, notFoundResponse, playerIdParams } from '../../schemas/common';
 import {
+  dismantleBody,
+  dismantlePreviewBody,
+  dismantlePreviewSchema,
+  dismantleResultSchema,
+  fabricateBody,
+  fabricationResultSchema,
+  workshopOverviewSchema,
   equipmentBrowseQuery,
   equipmentDetailSchema,
   equipmentFlagParams,
@@ -39,6 +46,14 @@ import { BASIS_POINTS, SLOT_STAT } from '../../../modules/equipment/equipmentMat
 import { rollQualityPercent } from '../../../modules/equipment/equipmentRoll';
 import { EQUIPMENT_SOURCE_LABELS, type EquipmentSourceType } from '../../../modules/equipment/vocabulary';
 import type { SlotChangeOutcome } from '../../../modules/equipment/equipmentManagementService';
+import {
+  dismantleBlocker,
+  type DismantleLine,
+  type FabricationOutcome,
+} from '../../../modules/equipment/equipmentWorkshopService';
+import { salvageYieldOf, type WorkshopConfig } from '../../../modules/equipment/workshopConfig';
+import { EquipmentDismantleRefusedError } from '../../../shared/errors';
+import { ApiErrorWithDetails } from '../../errors';
 
 const lockedResponse = {
   422: errorSchema.describe('`FEATURE_LOCKED` — Equipment is not unlocked for this player.'),
@@ -46,8 +61,12 @@ const lockedResponse = {
 
 const toMultiplier = (bp: number) => bp / BASIS_POINTS;
 
-/** The one projection of an owned copy the Portal sees. */
-export function toEquipmentItemResource(view: EquipmentInstanceView) {
+/**
+ * The one projection of an owned copy the Portal sees. `workshop` is the live
+ * Workshop configuration: dismantle eligibility is decided here, by the same
+ * rule the dismantle route enforces, so the Portal never re-derives it.
+ */
+export function toEquipmentItemResource(view: EquipmentInstanceView, workshop: WorkshopConfig | null) {
   const def = view.definition;
   return {
     id: view.id,
@@ -64,17 +83,69 @@ export function toEquipmentItemResource(view: EquipmentInstanceView) {
     locked: view.isLocked,
     acquiredAt: view.acquiredAt,
     source: EQUIPMENT_SOURCE_LABELS[view.sourceType as EquipmentSourceType] ?? 'Unknown',
+    salvage: {
+      components: salvageYieldOf(workshop, def.rarity),
+      blockedBy: dismantleBlocker(view, workshop),
+    },
   };
 }
 
-function toSlotChange(outcome: SlotChangeOutcome) {
+function toSlotChange(outcome: SlotChangeOutcome, workshop: WorkshopConfig | null) {
   return {
     slot: outcome.slot,
     changed: outcome.changed,
-    item: outcome.item ? toEquipmentItemResource(outcome.item) : null,
+    item: outcome.item ? toEquipmentItemResource(outcome.item, workshop) : null,
     before: outcome.before,
     after: outcome.after,
   };
+}
+
+function toDismantleLine(line: DismantleLine) {
+  return {
+    id: line.equipmentId,
+    name: line.displayName,
+    rarity: line.rarity as Rarity,
+    slot: line.slot,
+    multiplier: toMultiplier(line.rolledMultiplierBp),
+    components: line.components,
+  };
+}
+
+function toFabricationResult(outcome: FabricationOutcome) {
+  return {
+    replayed: outcome.replayed,
+    recipe: { ...outcome.recipe, rarity: outcome.recipe.rarity as Rarity },
+    slotChoice: outcome.slotChoice,
+    cost: outcome.cost,
+    item: {
+      id: outcome.item.equipmentId,
+      name: outcome.item.displayName,
+      baseName: outcome.item.name,
+      slot: outcome.item.slot,
+      rarity: outcome.item.rarity as Rarity,
+      multiplier: toMultiplier(outcome.item.rolledMultiplierBp),
+      affix: outcome.item.affixSuffix,
+    },
+    balances: outcome.balances,
+  };
+}
+
+/**
+ * A refused dismantle names every offending copy in `details.problems`, so the
+ * Portal can point at them. Only ids the caller sent and a reason — nothing
+ * about anyone else's gear.
+ */
+async function withDismantleProblems<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    if (err instanceof EquipmentDismantleRefusedError) {
+      throw new ApiErrorWithDetails(err.code, err.message, err.userMessage, {
+        problems: err.problems.map((p) => ({ id: p.equipmentId, reason: p.reason })),
+      });
+    }
+    throw err;
+  }
 }
 
 const SORT_TO_SERVICE: Readonly<Record<string, EquipmentSort>> = {
@@ -93,6 +164,7 @@ export const equipmentRoutes =
     const mgmt = ctx.services.equipmentManagement;
     // Not wired (a test context without Equipment): the paths do not exist.
     if (!mgmt) return;
+    const workshopConfig = () => ctx.getContent().equipmentWorkshop ?? null;
 
     app.get(
       '/players/:playerId/equipment',
@@ -128,9 +200,9 @@ export const equipmentRoutes =
           stats: { ...stats.stats },
           unavailableReason: stats.unavailableReason,
           slots: {
-            attack: loadout.slots.attack ? toEquipmentItemResource(loadout.slots.attack) : null,
-            defense: loadout.slots.defense ? toEquipmentItemResource(loadout.slots.defense) : null,
-            health: loadout.slots.health ? toEquipmentItemResource(loadout.slots.health) : null,
+            attack: loadout.slots.attack ? toEquipmentItemResource(loadout.slots.attack, workshopConfig()) : null,
+            defense: loadout.slots.defense ? toEquipmentItemResource(loadout.slots.defense, workshopConfig()) : null,
+            health: loadout.slots.health ? toEquipmentItemResource(loadout.slots.health, workshopConfig()) : null,
           },
         });
       },
@@ -169,7 +241,11 @@ export const equipmentRoutes =
           cursor: q.cursor ?? null,
           limit: q.limit,
         });
-        return ok(req, { items: page.items.map(toEquipmentItemResource), nextCursor: page.nextCursor });
+        const config = workshopConfig();
+        return ok(req, {
+          items: page.items.map((item) => toEquipmentItemResource(item, config)),
+          nextCursor: page.nextCursor,
+        });
       },
     );
 
@@ -194,14 +270,14 @@ export const equipmentRoutes =
       async (req) => {
         const view = await mgmt.item(requirePlayer(req).id, req.params.equipmentId);
         return ok(req, {
-          item: toEquipmentItemResource(view.instance),
+          item: toEquipmentItemResource(view.instance, workshopConfig()),
           identicalCopies: view.copies.length,
           comparison: {
             stat: SLOT_STAT[view.instance.slot],
             current: view.current,
             withItem: view.preview.value,
             delta: view.preview.delta,
-            equippedItem: view.slotEquipped ? toEquipmentItemResource(view.slotEquipped) : null,
+            equippedItem: view.slotEquipped ? toEquipmentItemResource(view.slotEquipped, workshopConfig()) : null,
             hasBuddy: view.stats.buddy != null,
           },
         });
@@ -230,7 +306,7 @@ export const equipmentRoutes =
       },
       async (req) => {
         const outcome = await mgmt.equip(requirePlayer(req).id, req.params.equipmentId, req.body.expectedCurrentId);
-        return ok(req, toSlotChange(outcome));
+        return ok(req, toSlotChange(outcome, workshopConfig()));
       },
     );
 
@@ -256,7 +332,7 @@ export const equipmentRoutes =
       },
       async (req) => {
         const outcome = await mgmt.unequip(requirePlayer(req).id, req.params.slot, req.body.expectedCurrentId);
-        return ok(req, toSlotChange(outcome));
+        return ok(req, toSlotChange(outcome, workshopConfig()));
       },
     );
 
@@ -282,7 +358,146 @@ export const equipmentRoutes =
       },
       async (req) => {
         const view = await mgmt.setFlag(requirePlayer(req).id, req.params.equipmentId, req.params.flag, req.body.value);
-        return ok(req, toEquipmentItemResource(view));
+        return ok(req, toEquipmentItemResource(view, workshopConfig()));
+      },
+    );
+
+    // ── Patch's Workshop ────────────────────────────────────────────────────
+    //
+    // Thin projections over `equipmentWorkshopService`, the same service the
+    // Discord Workshop calls: every cost, yield, eligibility rule and balance
+    // check lives there. Unlock-gated like every Equipment route.
+
+    const workshop = ctx.services.equipmentWorkshop;
+    if (!workshop) return;
+
+    app.get(
+      '/players/:playerId/equipment/workshop',
+      {
+        schema: {
+          tags: ['Equipment'],
+          summary: "Patch's Workshop overview",
+          description:
+            'Salvaged Components and WaifuBux balances, salvage yields by rarity, and the enabled ' +
+            'fabrication recipes with live per-slot availability from the current definitions.',
+          params: playerIdParams,
+          response: {
+            200: dataSchema(workshopOverviewSchema),
+            ...lockedResponse,
+            ...notFoundResponse,
+            ...commonErrorResponses,
+          },
+        },
+      },
+      async (req) => {
+        const view = await workshop.overview(requirePlayer(req).id);
+        return ok(req, {
+          balances: view.balances,
+          salvageYields: view.salvageYields.map((y) => ({ rarity: y.rarity as Rarity, components: y.components })),
+          recipes: view.recipes.map((r) => ({ ...r, rarity: r.rarity as Rarity })),
+        });
+      },
+    );
+
+    app.post(
+      '/players/:playerId/equipment/workshop/dismantle/preview',
+      {
+        schema: {
+          tags: ['Equipment'],
+          summary: 'Review a dismantle',
+          description:
+            'What dismantling exactly these copies would pay. Writes nothing. Refused — with every ' +
+            'offending copy in `details.problems` — exactly when the dismantle itself would be.',
+          params: playerIdParams,
+          body: dismantlePreviewBody,
+          response: {
+            200: dataSchema(dismantlePreviewSchema),
+            409: errorSchema.describe('`EQUIPMENT_DISMANTLE_REFUSED` — a selected copy is protected, gone or unsalvageable.'),
+            ...lockedResponse,
+            ...notFoundResponse,
+            ...commonErrorResponses,
+          },
+        },
+      },
+      async (req) => {
+        const preview = await withDismantleProblems(() =>
+          workshop.previewDismantle(requirePlayer(req).id, req.body.equipmentIds),
+        );
+        return ok(req, {
+          ...preview,
+          byRarity: preview.byRarity.map((l) => ({ ...l, rarity: l.rarity as Rarity })),
+          items: preview.items.map(toDismantleLine),
+        });
+      },
+    );
+
+    app.post(
+      '/players/:playerId/equipment/workshop/dismantle',
+      {
+        schema: {
+          tags: ['Equipment'],
+          summary: 'Dismantle Equipment',
+          description:
+            'Destroy exactly these copies for Salvaged Components — all or nothing. Equipped, ' +
+            'favourite and locked copies are refused, never forced. `requestKey` makes a retry ' +
+            'return the original result instead of destroying or paying again.',
+          params: playerIdParams,
+          body: dismantleBody,
+          response: {
+            200: dataSchema(dismantleResultSchema),
+            409: errorSchema.describe(
+              '`EQUIPMENT_DISMANTLE_REFUSED`, `WORKSHOP_PREVIEW_STALE` or `WORKSHOP_REQUEST_CONFLICT`. Nothing was dismantled.',
+            ),
+            ...lockedResponse,
+            ...notFoundResponse,
+            ...commonErrorResponses,
+          },
+        },
+      },
+      async (req) => {
+        const outcome = await withDismantleProblems(() =>
+          workshop.dismantle(requirePlayer(req).id, {
+            equipmentIds: req.body.equipmentIds,
+            requestKey: req.body.requestKey,
+            ...(req.body.expectedComponents !== undefined ? { expectedComponents: req.body.expectedComponents } : {}),
+          }),
+        );
+        return ok(req, {
+          ...outcome,
+          byRarity: outcome.byRarity.map((l) => ({ ...l, rarity: l.rarity as Rarity })),
+          items: outcome.items.map(toDismantleLine),
+        });
+      },
+    );
+
+    app.post(
+      '/players/:playerId/equipment/workshop/fabricate',
+      {
+        schema: {
+          tags: ['Equipment'],
+          summary: 'Fabricate Equipment',
+          description:
+            'Spend a recipe’s Salvaged Components and WaifuBux for one random piece of its rarity, in ' +
+            'the chosen slot (or any). Refused before any charge when nothing is eligible or a ' +
+            'balance is short. `requestKey` makes a retry return the same item, charged once.',
+          params: playerIdParams,
+          body: fabricateBody,
+          response: {
+            200: dataSchema(fabricationResultSchema),
+            409: errorSchema.describe('`WORKSHOP_REQUEST_CONFLICT` — the key was used for a different request.'),
+            ...lockedResponse,
+            ...notFoundResponse,
+            ...commonErrorResponses,
+          },
+        },
+      },
+      async (req) => {
+        const outcome = await workshop.fabricate(requirePlayer(req).id, {
+          recipeKey: req.body.recipeKey,
+          slot: req.body.slot,
+          requestKey: req.body.requestKey,
+        });
+        return ok(req, toFabricationResult(outcome));
       },
     );
   };

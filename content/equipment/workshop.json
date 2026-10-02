@@ -1,0 +1,38 @@
+{
+  "format": "waifumon-equipment-workshop",
+  "version": 1,
+  "salvageYields": {
+    "N": 1,
+    "R": 4,
+    "SR": 12
+  },
+  "recipes": [
+    {
+      "key": "standard_rebuild",
+      "name": "Standard Rebuild",
+      "description": "Patch bolts something serviceable together out of the scrap pile.",
+      "rarity": "N",
+      "componentCost": 5,
+      "waifubuxCost": 250,
+      "enabled": true
+    },
+    {
+      "key": "improved_rebuild",
+      "name": "Improved Rebuild",
+      "description": "Better parts, fewer sparks. Mostly.",
+      "rarity": "R",
+      "componentCost": 15,
+      "waifubuxCost": 750,
+      "enabled": true
+    },
+    {
+      "key": "advanced_rebuild",
+      "name": "Advanced Rebuild",
+      "description": "Patch's best work. Don't ask where the parts came from.",
+      "rarity": "SR",
+      "componentCost": 40,
+      "waifubuxCost": 2000,
+      "enabled": true
+    }
+  ]
+}

@@ -74,6 +74,15 @@ export const queryKeys = {
     ['player', playerId, 'equipment', 'bag', query] as const,
   equipmentDetail: (playerId: number, equipmentId: number) =>
     ['player', playerId, 'equipment', 'item', equipmentId] as const,
+  /** Patch's Workshop — under the Equipment prefix, so every gear change refreshes its balances too. */
+  workshop: (playerId: number) => ['player', playerId, 'equipment', 'workshop'] as const,
+  /**
+   * A dismantle review: the selection is the resource. Deliberately *outside*
+   * the Equipment prefix — the dismantle it reviews invalidates that prefix,
+   * and re-asking about copies that were just destroyed would only fail.
+   */
+  dismantlePreview: (playerId: number, equipmentIds: readonly number[]) =>
+    ['player', playerId, 'dismantle-preview', [...equipmentIds]] as const,
 
   /** A player's own achievements — player-scoped like the rest of the wall. */
   achievements: (playerId: number) => ['player', playerId, 'achievements'] as const,

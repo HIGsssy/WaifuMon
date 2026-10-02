@@ -18,6 +18,10 @@ import {
 
 import { PLAYER_POLICY } from '../cachePolicy';
 import {
+  dismantleEquipment,
+  fabricateEquipment,
+  getWorkshop,
+  previewDismantle,
   equipItem,
   getEquipmentDetail,
   getEquipmentOverview,
@@ -28,7 +32,14 @@ import {
   type GearBagQuery,
 } from '../equipment';
 import { queryKeys } from '../queryKeys';
-import type { EquipmentDetail, EquipmentOverview, EquipmentSlot } from '../types';
+import type {
+  DismantlePreview,
+  EquipmentDetail,
+  EquipmentOverview,
+  EquipmentSlot,
+  WorkshopOverview,
+  WorkshopSlotChoice,
+} from '../types';
 
 export function useEquipmentOverview(playerId: number): UseQueryResult<EquipmentOverview> {
   return useQuery({
@@ -85,4 +96,61 @@ export function useEquipmentActions(playerId: number) {
   });
 
   return { equip, unequip, flag };
+}
+
+/** Patch's Workshop overview. Only mounted for an unlocked player (the page gates on the overview). */
+export function useWorkshop(playerId: number): UseQueryResult<WorkshopOverview> {
+  return useQuery({
+    queryKey: queryKeys.workshop(playerId),
+    queryFn: ({ signal }) => getWorkshop(playerId, signal),
+    ...PLAYER_POLICY,
+  });
+}
+
+/**
+ * The review of one explicit selection. A POST that writes nothing, cached by
+ * the selection, and never retried: a refusal (a protected or vanished copy)
+ * is an answer to show, not a fault to retry.
+ */
+export function useDismantlePreview(
+  playerId: number,
+  equipmentIds: number[] | null,
+): UseQueryResult<DismantlePreview> {
+  return useQuery({
+    queryKey: queryKeys.dismantlePreview(playerId, equipmentIds ?? []),
+    queryFn: () => previewDismantle(playerId, equipmentIds!),
+    enabled: equipmentIds != null && equipmentIds.length > 0,
+    retry: false,
+    staleTime: 0,
+    gcTime: 0,
+  });
+}
+
+/**
+ * Workshop actions. Like the other Equipment actions they refresh the whole
+ * Equipment subtree once they settle — success or failure — so the Gear Bag,
+ * loadout, counts and balances all come back from the server. The player
+ * record (WaifuBux elsewhere in the Portal) is refreshed too.
+ */
+export function useWorkshopActions(playerId: number) {
+  const client = useQueryClient();
+  const refresh = () =>
+    Promise.all([
+      client.invalidateQueries({ queryKey: queryKeys.equipment(playerId) }),
+      client.invalidateQueries({ queryKey: queryKeys.playerRecord(playerId) }),
+      client.invalidateQueries({ queryKey: queryKeys.playerProfile(playerId) }),
+    ]);
+
+  const dismantle = useMutation({
+    mutationFn: (v: { equipmentIds: number[]; requestKey: string; expectedComponents: number }) =>
+      dismantleEquipment(playerId, v),
+    onSettled: refresh,
+  });
+  const fabricate = useMutation({
+    mutationFn: (v: { recipeKey: string; slot: WorkshopSlotChoice; requestKey: string }) =>
+      fabricateEquipment(playerId, v),
+    onSettled: refresh,
+  });
+
+  return { dismantle, fabricate };
 }

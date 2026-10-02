@@ -9,7 +9,9 @@
  * the action routes — clients do not render it.
  */
 import { z } from 'zod';
-import { EQUIPMENT_SLOTS } from '../../modules/equipment/vocabulary';
+import { EQUIPMENT_SLOTS, WORKSHOP_SLOT_CHOICES } from '../../modules/equipment/vocabulary';
+import { WORKSHOP_REQUEST_KEY_PATTERN } from '../../modules/equipment/equipmentWorkshopService';
+import { MAX_DISMANTLE_BATCH } from '../../modules/equipment/equipmentService';
 import { BROWSE_DEFAULT_PAGE_SIZE, BROWSE_MAX_PAGE_SIZE } from '../../modules/equipment/equipmentManagementService';
 import { idParam, isoDateTime, raritySchema } from './common';
 
@@ -36,7 +38,20 @@ export const equipmentItemSchema = z.object({
   favorite: z.boolean(),
   locked: z.boolean(),
   acquiredAt: isoDateTime,
-  source: z.string().describe('Human-friendly acquisition source, e.g. "Boss".'),
+  source: z.string().describe('Human-friendly acquisition source, e.g. "Boss" or "Fabricated by Patch".'),
+  salvage: z
+    .object({
+      components: z
+        .number()
+        .int()
+        .nullable()
+        .describe('Salvaged Components Patch pays for this copy; null for a rarity Patch cannot salvage.'),
+      blockedBy: z
+        .enum(['equipped', 'favorite', 'locked', 'unsupported_rarity'])
+        .nullable()
+        .describe('Why this copy cannot be dismantled right now; null when it can.'),
+    })
+    .describe('Dismantle eligibility, decided by the server. The dismantle route re-checks it.'),
 });
 
 const statValue = z.number().int().nullable();
@@ -141,3 +156,117 @@ export const slotChangeBody = z.object({
 });
 
 export const flagBody = z.object({ value: z.boolean() });
+
+// ── Patch's Workshop ────────────────────────────────────────────────────────
+
+export const workshopSlotChoiceSchema = z.enum(WORKSHOP_SLOT_CHOICES);
+
+const balancesSchema = z.object({
+  components: z.number().int().describe('Salvaged Components.'),
+  waifubux: z.number().int(),
+});
+
+export const workshopOverviewSchema = z.object({
+  balances: balancesSchema,
+  salvageYields: z
+    .array(z.object({ rarity: raritySchema, components: z.number().int() }))
+    .describe('Components per dismantled copy, by rarity. A rarity not listed cannot be dismantled.'),
+  recipes: z.array(
+    z.object({
+      key: z.string().describe('Recipe handle for the fabricate route.'),
+      name: z.string(),
+      description: z.string().nullable(),
+      rarity: raritySchema.describe('The rarity this recipe guarantees.'),
+      componentCost: z.number().int(),
+      waifubuxCost: z.number().int(),
+      slots: z
+        .array(
+          z.object({
+            choice: workshopSlotChoiceSchema,
+            eligibleCount: z.number().int().describe('Base definitions this choice could produce.'),
+            available: z.boolean(),
+          }),
+        )
+        .describe('Attack, Defense, Health and Any, in that order — from live definitions.'),
+      available: z.boolean().describe('At least one slot choice can be fabricated.'),
+      affordable: z.boolean(),
+      shortfall: balancesSchema.describe('How far short the player is; zeros when affordable.'),
+    }),
+  ),
+});
+
+const dismantleLineSchema = z.object({
+  id: z.number().int().describe('Opaque instance handle.'),
+  name: z.string(),
+  rarity: raritySchema,
+  slot: equipmentSlotSchema,
+  multiplier: z.number(),
+  components: z.number().int(),
+});
+
+const rarityLineSchema = z.object({ rarity: raritySchema, count: z.number().int(), components: z.number().int() });
+
+export const dismantlePreviewSchema = z.object({
+  count: z.number().int(),
+  byRarity: z.array(rarityLineSchema),
+  totalComponents: z.number().int(),
+  items: z.array(dismantleLineSchema),
+  balances: balancesSchema,
+  componentsAfter: z.number().int(),
+});
+
+export const dismantleResultSchema = z.object({
+  replayed: z.boolean().describe('True when this request key was already applied; nothing new happened.'),
+  count: z.number().int(),
+  byRarity: z.array(rarityLineSchema),
+  totalComponents: z.number().int(),
+  items: z.array(dismantleLineSchema),
+  balances: balancesSchema,
+});
+
+export const fabricationResultSchema = z.object({
+  replayed: z.boolean().describe('True when this request key was already applied: the same item, charged once.'),
+  recipe: z.object({ key: z.string(), name: z.string(), rarity: raritySchema }),
+  slotChoice: workshopSlotChoiceSchema,
+  cost: balancesSchema,
+  item: z.object({
+    id: z.number().int().describe('Opaque instance handle — open it with the item route.'),
+    name: z.string().describe('Display name: base name plus affix suffix.'),
+    baseName: z.string(),
+    slot: equipmentSlotSchema,
+    rarity: raritySchema,
+    multiplier: z.number(),
+    affix: z.string().nullable().describe('The affix text, e.g. "of Poor Planning".'),
+  }),
+  balances: balancesSchema,
+});
+
+const requestKey = z
+  .string()
+  .regex(WORKSHOP_REQUEST_KEY_PATTERN, 'must be 8–100 letters, digits, "_", ":", "." or "-"')
+  .describe('Idempotency key, one per confirmation. A retry with the same key returns the original result.');
+
+const equipmentIdList = z
+  .array(z.number().int().positive())
+  .min(1)
+  .max(MAX_DISMANTLE_BATCH)
+  .describe(`Explicit instance ids, at most ${MAX_DISMANTLE_BATCH}. Duplicates are refused.`);
+
+export const dismantlePreviewBody = z.object({ equipmentIds: equipmentIdList });
+
+export const dismantleBody = z.object({
+  equipmentIds: equipmentIdList,
+  requestKey,
+  expectedComponents: z
+    .number()
+    .int()
+    .nonnegative()
+    .optional()
+    .describe('The total the player reviewed; refused with 409 WORKSHOP_PREVIEW_STALE if it changed.'),
+});
+
+export const fabricateBody = z.object({
+  recipeKey: z.string().min(1).max(64),
+  slot: workshopSlotChoiceSchema,
+  requestKey,
+});

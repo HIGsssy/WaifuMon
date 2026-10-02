@@ -38,6 +38,11 @@ import {
 } from './schemas';
 import { EquipmentOnboardingContentSchema, NpcsFileSchema } from './onboardingSchemas';
 import { EQUIPMENT_AFFIX_FILE, EquipmentAffixFileSchema } from '../equipment/affixCatalogue';
+import {
+  EQUIPMENT_WORKSHOP_FILE,
+  EquipmentWorkshopFileSchema,
+  workshopConfigFromFile,
+} from '../equipment/workshopConfig';
 import { COMBAT_ENEMY_FILE, CombatEnemyFileSchema } from '../combat/enemyDefinitions';
 import { COMBAT_TRIAL_FILE, CombatTrialFileSchema } from '../combat/trialDefinitions';
 import { locateCombatArtwork } from '../combat/combatArtwork';
@@ -1202,6 +1207,14 @@ export function readContentFiles(contentDir: string): LoadedContent {
     ? parseJsonFile(equipmentAffixesPath, EquipmentAffixFileSchema).affixes
     : [];
 
+  // Patch's Workshop: salvage yields and fabrication recipes. Optional on
+  // disk: without it nothing can be dismantled and nothing fabricated. A file
+  // that is present is validated as strictly as any other.
+  const equipmentWorkshopPath = path.join(contentDir, ...EQUIPMENT_WORKSHOP_FILE.split('/'));
+  const equipmentWorkshop = fs.existsSync(equipmentWorkshopPath)
+    ? workshopConfigFromFile(parseJsonFile(equipmentWorkshopPath, EquipmentWorkshopFileSchema))
+    : null;
+
   // Combat enemies. Optional on disk: without the file there is simply
   // nothing to fight. A file that is present is validated as strictly as any
   // other.
@@ -1233,6 +1246,7 @@ export function readContentFiles(contentDir: string): LoadedContent {
     npcs,
     onboarding: { equipment: equipmentOnboarding },
     equipmentAffixes,
+    equipmentWorkshop,
     combatEnemies,
     combatTrials,
   };

@@ -1491,3 +1491,116 @@ export class CombatTrialRequestConflictError extends AppError {
     );
   }
 }
+
+/* ─────────────────────── Patch's Workshop ───────────────────────
+ *
+ * Constructors tolerate junk arguments, as above: `tests/unit/api/errors.test.ts`
+ * instantiates every subclass generically.
+ */
+
+export class InsufficientComponentsError extends AppError {
+  constructor(required: number, balance: number) {
+    super(
+      'INSUFFICIENT_COMPONENTS',
+      `Needs ${String(required)} Salvaged Components, has ${String(balance)}`,
+      `You need ${String(required)} Salvaged Components but only have ${String(balance)}.`,
+    );
+  }
+}
+
+/** Why one selected copy cannot be dismantled. */
+export type DismantleProblemReason =
+  | 'not_owned'
+  | 'duplicate'
+  | 'equipped'
+  | 'favorite'
+  | 'locked'
+  | 'unsupported_rarity';
+
+export interface DismantleProblem {
+  equipmentId: number;
+  reason: DismantleProblemReason;
+}
+
+const DISMANTLE_REASON_TEXT: Readonly<Record<DismantleProblemReason, string>> = {
+  not_owned: 'is no longer in your Gear Bag',
+  duplicate: 'was selected twice',
+  equipped: 'is equipped — unequip it first',
+  favorite: 'is a favourite — unfavourite it first',
+  locked: 'is locked — unlock it first',
+  unsupported_rarity: "is a rarity Patch can't salvage yet",
+};
+
+/**
+ * A dismantle selection that cannot go through as a whole. All-or-nothing: one
+ * protected or invalid copy refuses the batch, nothing is destroyed and
+ * nothing is credited. `problems` names every offending copy.
+ */
+export class EquipmentDismantleRefusedError extends AppError {
+  readonly problems: DismantleProblem[];
+  constructor(problems: readonly DismantleProblem[]) {
+    const list = Array.isArray(problems) ? [...problems] : [];
+    const first = list[0];
+    const more = list.length > 1 ? ` (and ${list.length - 1} more)` : '';
+    super(
+      'EQUIPMENT_DISMANTLE_REFUSED',
+      `Dismantle refused: ${list.map((p) => `${p.equipmentId}:${p.reason}`).join(', ') || 'no problems listed'}`,
+      first
+        ? `Nothing was dismantled: one selected item ${(DISMANTLE_REASON_TEXT as Record<string, string>)[String(first.reason)] ?? 'cannot be dismantled'}${more}.`
+        : 'Nothing was dismantled.',
+    );
+    this.problems = list;
+  }
+}
+
+/** A dismantle request that selects nothing, or more than one batch may hold. */
+export class EquipmentDismantleSelectionError extends AppError {
+  constructor(message: string) {
+    super('EQUIPMENT_DISMANTLE_SELECTION_INVALID', String(message), String(message));
+  }
+}
+
+/** Unknown or disabled fabrication recipe. */
+export class WorkshopRecipeUnavailableError extends AppError {
+  constructor(recipeKey: string) {
+    super(
+      'WORKSHOP_RECIPE_UNAVAILABLE',
+      `Workshop recipe "${String(recipeKey)}" is unknown or disabled`,
+      "Patch isn't taking that order right now.",
+    );
+  }
+}
+
+/** No enabled base definition matches the recipe's rarity and the chosen slot. */
+export class WorkshopNoEligibleEquipmentError extends AppError {
+  constructor(rarity: string, slot: string) {
+    const what = slot === 'any' ? `${String(rarity)} Equipment` : `${String(rarity)} ${String(slot)} Equipment`;
+    super(
+      'WORKSHOP_NO_ELIGIBLE_EQUIPMENT',
+      `No eligible definition for ${what}`,
+      `Patch has no blueprints for ${what} yet. Nothing was charged.`,
+    );
+  }
+}
+
+/** A request key already spent on a different Workshop request. */
+export class WorkshopRequestConflictError extends AppError {
+  constructor(requestKey: string) {
+    super(
+      'WORKSHOP_REQUEST_CONFLICT',
+      `Workshop request "${String(requestKey)}" was already used for a different request`,
+      'That confirmation was already used — reopen the Workshop.',
+    );
+  }
+}
+
+/** The dismantle the player confirmed no longer matches what they reviewed. */
+export class WorkshopPreviewStaleError extends AppError {
+  constructor(expected: number, actual: number) {
+    super(
+      'WORKSHOP_PREVIEW_STALE',
+      `Dismantle preview expected ${String(expected)} components, would pay ${String(actual)}`,
+      'Salvage values changed since you reviewed this. Nothing was dismantled — review it again.',
+    );
+  }
+}

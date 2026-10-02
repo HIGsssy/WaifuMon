@@ -27,6 +27,7 @@ export type EquipmentSlot = (typeof EQUIPMENT_SLOTS)[number];
  *
  * Several are reserved for systems that do not exist yet (`dungeon`, `raid`,
  * `quest`) so that shipping them needs no migration of this column.
+ * `fabrication` is a copy Patch built in the Workshop (`0049`).
  */
 export const EQUIPMENT_SOURCE_TYPES = [
   'onboarding',
@@ -39,6 +40,7 @@ export const EQUIPMENT_SOURCE_TYPES = [
   'dungeon',
   'raid',
   'quest',
+  'fabrication',
 ] as const;
 export type EquipmentSourceType = (typeof EQUIPMENT_SOURCE_TYPES)[number];
 
@@ -57,15 +59,21 @@ export const EQUIPMENT_SOURCE_LABELS: Readonly<Record<EquipmentSourceType, strin
   dungeon: 'Dungeon',
   raid: 'Raid',
   quest: 'Quest',
+  fabrication: 'Fabricated by Patch',
 });
 
-/** Rows in the append-only `equipment_events` ledger. */
+/**
+ * Rows in the append-only `equipment_events` ledger. `dismantled` is a copy
+ * the player broke down at Patch's Workshop (`0049`) — a player action,
+ * distinct from an admin `removed`.
+ */
 export const EQUIPMENT_EVENT_KINDS = [
   'granted',
   'equipped',
   'unequipped',
   'removed',
   'flag_changed',
+  'dismantled',
 ] as const;
 export type EquipmentEventKind = (typeof EQUIPMENT_EVENT_KINDS)[number];
 
@@ -113,6 +121,20 @@ export const EQUIPMENT_MULTIPLIER_CAP_SQL =
   `when 'defense' then ${EQUIPMENT_MULTIPLIER_BP_MAX.defense} ` +
   `when 'health' then ${EQUIPMENT_MULTIPLIER_BP_MAX.health} else 0 end)`;
 
+/**
+ * Patch's Workshop (`equipment_workshop_operations`, `0049`): what one
+ * confirmed operation did, and the slot a fabrication asked for — a real slot,
+ * or `any` ("Surprise Me").
+ */
+export const WORKSHOP_OPERATION_KINDS = ['dismantle', 'fabricate'] as const;
+export type WorkshopOperationKind = (typeof WORKSHOP_OPERATION_KINDS)[number];
+export const WORKSHOP_SLOT_CHOICES = [...EQUIPMENT_SLOTS, 'any'] as const;
+export type WorkshopSlotChoice = (typeof WORKSHOP_SLOT_CHOICES)[number];
+
+export function isWorkshopSlotChoice(value: unknown): value is WorkshopSlotChoice {
+  return typeof value === 'string' && (WORKSHOP_SLOT_CHOICES as readonly string[]).includes(value);
+}
+
 function sqlList(values: readonly string[]): string {
   return values.map((v) => `'${v}'`).join(',');
 }
@@ -120,6 +142,8 @@ function sqlList(values: readonly string[]): string {
 export const EQUIPMENT_SLOT_SQL_LIST = sqlList(EQUIPMENT_SLOTS);
 export const EQUIPMENT_SOURCE_TYPE_SQL_LIST = sqlList(EQUIPMENT_SOURCE_TYPES);
 export const EQUIPMENT_EVENT_KIND_SQL_LIST = sqlList(EQUIPMENT_EVENT_KINDS);
+export const WORKSHOP_OPERATION_KIND_SQL_LIST = sqlList(WORKSHOP_OPERATION_KINDS);
+export const WORKSHOP_SLOT_CHOICE_SQL_LIST = sqlList(WORKSHOP_SLOT_CHOICES);
 
 export function isEquipmentSlot(value: unknown): value is EquipmentSlot {
   return typeof value === 'string' && (EQUIPMENT_SLOTS as readonly string[]).includes(value);

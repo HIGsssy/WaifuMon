@@ -57,6 +57,7 @@ import type { EquipmentManagementService } from '../modules/equipment/equipmentM
 import type { FeatureUnlockService } from '../modules/features/featureUnlockService';
 import type { RewardTableService } from '../modules/rewardTables/rewardTableService';
 import type { CombatTrialService } from '../modules/combatTrials/combatTrialService';
+import type { EquipmentWorkshopService } from '../modules/equipment/equipmentWorkshopService';
 
 export interface AppServices {
   guilds: GuildService;
@@ -236,6 +237,8 @@ export interface AppServices {
   equipmentManagement?: EquipmentManagementService | undefined;
   /** Combat Trials (list, detail, Fight). Requires the `equipment` unlock. */
   combatTrials?: CombatTrialService | undefined;
+  /** Patch's Workshop (dismantle, fabricate). Requires the `equipment` unlock. */
+  equipmentWorkshop?: EquipmentWorkshopService | undefined;
 }
 
 export interface AppContext {

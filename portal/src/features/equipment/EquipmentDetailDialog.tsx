@@ -251,8 +251,8 @@ export function EquipmentDetailDialog({
   onClose,
 }: {
   playerId: number;
-  /** The card that was opened; shown as the heading while the detail loads. */
-  target: EquipmentItem | null;
+  /** The card (or fabricated item) that was opened; its name heads the dialog while the detail loads. */
+  target: Pick<EquipmentItem, 'id' | 'name'> | null;
   onClose: () => void;
 }) {
   const detail = useEquipmentDetail(playerId, target?.id ?? null);

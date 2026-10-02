@@ -775,8 +775,17 @@ export interface EquipmentItem {
   favorite: boolean;
   locked: boolean;
   acquiredAt: string;
+  /** Human-friendly acquisition source, e.g. "Boss" or "Fabricated by Patch". */
   source: string;
+  /**
+   * Dismantle eligibility, decided by the server: what Patch pays for this copy
+   * (null for a rarity Patch cannot salvage) and why it cannot be dismantled
+   * right now (null when it can). The dismantle route re-checks it.
+   */
+  salvage: { components: number | null; blockedBy: DismantleBlocker | null };
 }
+
+export type DismantleBlocker = 'equipped' | 'favorite' | 'locked' | 'unsupported_rarity';
 
 export interface EquipmentStats {
   attack: number | null;
@@ -820,4 +829,87 @@ export interface EquipmentSlotChange {
   item: EquipmentItem | null;
   before: number | null;
   after: number | null;
+}
+
+// ── Patch's Workshop ────────────────────────────────────────────────────────
+
+export type WorkshopSlotChoice = EquipmentSlot | 'any';
+
+export interface WorkshopBalances {
+  /** Salvaged Components. */
+  components: number;
+  waifubux: number;
+}
+
+export interface WorkshopRecipe {
+  /** Opaque handle for the fabricate route. */
+  key: string;
+  name: string;
+  description: string | null;
+  rarity: Rarity;
+  componentCost: number;
+  waifubuxCost: number;
+  /** Attack, Defense, Health, Any — live from the server's definitions. */
+  slots: { choice: WorkshopSlotChoice; eligibleCount: number; available: boolean }[];
+  available: boolean;
+  affordable: boolean;
+  shortfall: WorkshopBalances;
+}
+
+export interface WorkshopOverview {
+  balances: WorkshopBalances;
+  salvageYields: { rarity: Rarity; components: number }[];
+  recipes: WorkshopRecipe[];
+}
+
+export interface DismantleLine {
+  id: number;
+  name: string;
+  rarity: Rarity;
+  slot: EquipmentSlot;
+  multiplier: number;
+  components: number;
+}
+
+export interface DismantleRarityLine {
+  rarity: Rarity;
+  count: number;
+  components: number;
+}
+
+export interface DismantlePreview {
+  count: number;
+  byRarity: DismantleRarityLine[];
+  totalComponents: number;
+  items: DismantleLine[];
+  balances: WorkshopBalances;
+  componentsAfter: number;
+}
+
+export interface DismantleResult {
+  replayed: boolean;
+  count: number;
+  byRarity: DismantleRarityLine[];
+  totalComponents: number;
+  items: DismantleLine[];
+  balances: WorkshopBalances;
+}
+
+export type DismantleProblemReason = DismantleBlocker | 'not_owned' | 'duplicate';
+
+export interface FabricationResult {
+  replayed: boolean;
+  recipe: { key: string; name: string; rarity: Rarity };
+  slotChoice: WorkshopSlotChoice;
+  cost: WorkshopBalances;
+  item: {
+    id: number;
+    name: string;
+    baseName: string;
+    slot: EquipmentSlot;
+    rarity: Rarity;
+    multiplier: number;
+    affix: string | null;
+  };
+  balances: WorkshopBalances;
 }

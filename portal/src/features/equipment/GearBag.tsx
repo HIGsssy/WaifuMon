@@ -29,6 +29,7 @@ import {
   type ActiveFilterChip,
   type FilterGroup,
 } from '@/components/waifumon/FilterToolbar';
+import { DismantleSelectCard } from './DismantleSelectCard';
 import { EquipmentItemCard } from './EquipmentItemCard';
 import { DEFAULT_FILTERS, type GearBagFilters } from './filters';
 import { SLOTS, SLOT_LABEL } from './format';
@@ -54,6 +55,7 @@ export function GearBag({
   onSearchDraftChange,
   search,
   onOpen,
+  selection,
 }: {
   playerId: number;
   filters: GearBagFilters;
@@ -62,6 +64,11 @@ export function GearBag({
   onSearchDraftChange: (value: string) => void;
   search: string;
   onOpen: (item: EquipmentItem) => void;
+  /**
+   * Dismantle selection mode: every card becomes a checkbox (protected copies
+   * disabled, with the reason) instead of opening the detail view.
+   */
+  selection?: { ids: ReadonlySet<number>; onToggle: (item: EquipmentItem) => void } | undefined;
 }) {
   const query: GearBagQuery = {
     slot: filters.slot,
@@ -228,7 +235,16 @@ export function GearBag({
           <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3" aria-label="Gear Bag items">
             {items.map((item) => (
               <li key={item.id}>
-                <EquipmentItemCard item={item} onOpen={onOpen} className="h-full" />
+                {selection ? (
+                  <DismantleSelectCard
+                    item={item}
+                    selected={selection.ids.has(item.id)}
+                    onToggle={selection.onToggle}
+                    className="h-full"
+                  />
+                ) : (
+                  <EquipmentItemCard item={item} onOpen={onOpen} className="h-full" />
+                )}
               </li>
             ))}
           </ul>

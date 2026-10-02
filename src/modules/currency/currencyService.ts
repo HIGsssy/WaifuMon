@@ -2,6 +2,7 @@ import { and, eq, gte, sql } from 'drizzle-orm';
 import type { Db, DbOrTx } from '../../db/client';
 import { playerCurrencies, type PlayerCurrenciesRow } from '../../db/schema';
 import {
+  InsufficientComponentsError,
   InsufficientEnergyError,
   InsufficientEssenceError,
   InsufficientFundsError,
@@ -35,6 +36,13 @@ export interface CurrencyService {
    * the wrong one for "charge for an action".
    */
   spendHuntEnergy(tx: DbOrTx, playerId: number, amount: number): Promise<PlayerCurrenciesRow>;
+  /**
+   * Salvaged Components — Patch's Workshop's material. Same shape as WaifuBux:
+   * the spend is conditional (`WHERE salvaged_components >= amount`) and throws
+   * {@link InsufficientComponentsError}. Only the Workshop calls these.
+   */
+  grantSalvagedComponents(tx: DbOrTx, playerId: number, amount: number): Promise<PlayerCurrenciesRow>;
+  spendSalvagedComponents(tx: DbOrTx, playerId: number, amount: number): Promise<PlayerCurrenciesRow>;
 }
 
 function assertPositiveInt(amount: number): void {
@@ -159,6 +167,43 @@ export function createCurrencyService(db: Db): CurrencyService {
           .where(eq(playerCurrencies.playerId, playerId));
         if (!current) throw new PlayerNotFoundError(playerId);
         throw new InsufficientEnergyError();
+      }
+      return row;
+    },
+
+    async grantSalvagedComponents(tx, playerId, amount) {
+      assertPositiveInt(amount);
+      const [row] = await tx
+        .update(playerCurrencies)
+        .set({
+          salvagedComponents: sql`${playerCurrencies.salvagedComponents} + ${amount}`,
+          updatedAt: sql`now()`,
+        })
+        .where(eq(playerCurrencies.playerId, playerId))
+        .returning();
+      if (!row) throw new PlayerNotFoundError(playerId);
+      return row;
+    },
+
+    async spendSalvagedComponents(tx, playerId, amount) {
+      assertPositiveInt(amount);
+      const [row] = await tx
+        .update(playerCurrencies)
+        .set({
+          salvagedComponents: sql`${playerCurrencies.salvagedComponents} - ${amount}`,
+          updatedAt: sql`now()`,
+        })
+        .where(
+          and(eq(playerCurrencies.playerId, playerId), gte(playerCurrencies.salvagedComponents, amount)),
+        )
+        .returning();
+      if (!row) {
+        const [current] = await tx
+          .select({ salvagedComponents: playerCurrencies.salvagedComponents })
+          .from(playerCurrencies)
+          .where(eq(playerCurrencies.playerId, playerId));
+        if (!current) throw new PlayerNotFoundError(playerId);
+        throw new InsufficientComponentsError(amount, current.salvagedComponents);
       }
       return row;
     },

@@ -10,13 +10,21 @@
  * display-name search) — the arithmetic here is test scaffolding standing in
  * for the server's combat-stat service, not something the Portal does.
  */
-import { http } from 'msw';
+import { HttpResponse, http } from 'msw';
 
 import type {
+  DismantleBlocker,
+  DismantleLine,
+  DismantleProblemReason,
+  DismantleRarityLine,
   EquipmentItem,
   EquipmentOverview,
   EquipmentSlot,
   EquipmentStat,
+  FabricationResult,
+  Rarity,
+  WorkshopRecipe,
+  WorkshopSlotChoice,
 } from '@/api/types';
 import { apiError, data } from './handlers';
 
@@ -47,9 +55,52 @@ export function gearItem(
     locked: false,
     acquiredAt: `2026-09-${String(10 + (nextId % 15)).padStart(2, '0')}T12:00:00.000Z`,
     source: 'Boss',
+    // Placeholder: the fake recomputes it on every read, as the server does.
+    salvage: { components: null, blockedBy: null },
     ...overrides,
   };
 }
+
+/** The recipe the fake serves, minus what the fake derives (affordability). */
+export type FakeRecipe = Omit<WorkshopRecipe, 'affordable' | 'shortfall' | 'available'>;
+
+const slotsOf = (counts: Partial<Record<WorkshopSlotChoice, number>>) =>
+  (['attack', 'defense', 'health', 'any'] as const).map((choice) => ({
+    choice,
+    eligibleCount: counts[choice] ?? 0,
+    available: (counts[choice] ?? 0) > 0,
+  }));
+
+/** The V1 recipes, with Health missing above N — the catalogue as it is today. */
+export const DEFAULT_RECIPES: FakeRecipe[] = [
+  {
+    key: 'standard_rebuild',
+    name: 'Standard Rebuild',
+    description: 'Patch bolts something serviceable together.',
+    rarity: 'N',
+    componentCost: 5,
+    waifubuxCost: 250,
+    slots: slotsOf({ attack: 6, defense: 6, health: 1, any: 13 }),
+  },
+  {
+    key: 'improved_rebuild',
+    name: 'Improved Rebuild',
+    description: 'Better parts, fewer sparks.',
+    rarity: 'R',
+    componentCost: 15,
+    waifubuxCost: 750,
+    slots: slotsOf({ attack: 3, defense: 3, health: 0, any: 6 }),
+  },
+  {
+    key: 'advanced_rebuild',
+    name: 'Advanced Rebuild',
+    description: "Patch's best work.",
+    rarity: 'SR',
+    componentCost: 40,
+    waifubuxCost: 2000,
+    slots: slotsOf({ attack: 1, defense: 1, health: 0, any: 2 }),
+  },
+];
 
 export interface EquipmentBackendOptions {
   unlocked?: boolean;
@@ -57,6 +108,11 @@ export interface EquipmentBackendOptions {
   buddy?: { waifuId: number; name: string; level: number; currentSp: number } | null;
   items?: EquipmentItem[];
   equipped?: Partial<Record<EquipmentSlot, number>>;
+  /** Workshop balances and content. */
+  components?: number;
+  waifubux?: number;
+  salvageYields?: Partial<Record<Rarity, number>>;
+  recipes?: FakeRecipe[];
 }
 
 export function createEquipmentBackend(opts: EquipmentBackendOptions = {}) {
@@ -75,12 +131,40 @@ export function createEquipmentBackend(opts: EquipmentBackendOptions = {}) {
     bagRequests: [] as URLSearchParams[],
     /** Set to make the next mutation fail with this error instead. */
     failNextMutation: null as { status: number; code: string; message: string } | null,
+    components: opts.components ?? 0,
+    waifubux: opts.waifubux ?? 0,
+    salvageYields: opts.salvageYields ?? ({ N: 1, R: 4, SR: 12 } as Partial<Record<Rarity, number>>),
+    recipes: opts.recipes ?? DEFAULT_RECIPES,
+    /** Every Workshop write the page sent, in order: body and addressed player. */
+    workshopRequests: [] as { path: string; body: Record<string, unknown>; playerId: string }[],
+    /** Results by request key — the server's idempotency, so a retry replays. */
+    operations: new Map<string, unknown>(),
+    /** What the next fabrication produces. */
+    nextFabricated: null as Partial<EquipmentItem> | null,
   };
 
-  const view = (item: (typeof state.items)[number]): EquipmentItem => ({
-    ...item,
-    equipped: state.slots[item.slot] === item.id,
-  });
+  const blockerOf = (item: EquipmentItem & { equipped: boolean }): DismantleBlocker | null =>
+    item.equipped
+      ? 'equipped'
+      : item.favorite
+        ? 'favorite'
+        : item.locked
+          ? 'locked'
+          : state.salvageYields[item.rarity] == null
+            ? 'unsupported_rarity'
+            : null;
+
+  const view = (item: (typeof state.items)[number]): EquipmentItem => {
+    const equipped = state.slots[item.slot] === item.id;
+    const withEquipped = { ...item, equipped };
+    return {
+      ...withEquipped,
+      salvage: {
+        components: state.salvageYields[item.rarity] ?? null,
+        blockedBy: blockerOf(withEquipped),
+      },
+    };
+  };
   const find = (id: number) => state.items.find((item) => item.id === id);
   const statFor = (itemId: number | null): number | null => {
     const item = itemId == null ? undefined : find(itemId);
@@ -115,6 +199,85 @@ export function createEquipmentBackend(opts: EquipmentBackendOptions = {}) {
       slots,
     };
   }
+
+  const balances = () => ({ components: state.components, waifubux: state.waifubux });
+
+  function workshopOverview() {
+    return {
+      balances: balances(),
+      salvageYields: (Object.entries(state.salvageYields) as [Rarity, number][]).map(([rarity, components]) => ({
+        rarity,
+        components,
+      })),
+      recipes: state.recipes.map((r) => {
+        const shortfall = {
+          components: Math.max(0, r.componentCost - state.components),
+          waifubux: Math.max(0, r.waifubuxCost - state.waifubux),
+        };
+        return {
+          ...r,
+          available: r.slots.some((s) => s.available),
+          affordable: shortfall.components === 0 && shortfall.waifubux === 0,
+          shortfall,
+        };
+      }),
+    };
+  }
+
+  /** The server's all-or-nothing check, in its order. */
+  function assess(ids: number[]) {
+    const problems: { id: number; reason: DismantleProblemReason }[] = [];
+    const lines: DismantleLine[] = [];
+    const seen = new Set<number>();
+    for (const id of ids) {
+      if (seen.has(id)) {
+        problems.push({ id, reason: 'duplicate' });
+        continue;
+      }
+      seen.add(id);
+      const item = find(id);
+      if (!item) {
+        problems.push({ id, reason: 'not_owned' });
+        continue;
+      }
+      const v = view(item);
+      if (v.salvage.blockedBy) problems.push({ id, reason: v.salvage.blockedBy });
+      else {
+        lines.push({
+          id,
+          name: v.name,
+          rarity: v.rarity,
+          slot: v.slot,
+          multiplier: v.multiplier,
+          components: v.salvage.components!,
+        });
+      }
+    }
+    const byRarity: DismantleRarityLine[] = [];
+    for (const line of lines) {
+      const entry = byRarity.find((b) => b.rarity === line.rarity);
+      if (entry) {
+        entry.count += 1;
+        entry.components += line.components;
+      } else byRarity.push({ rarity: line.rarity, count: 1, components: line.components });
+    }
+    byRarity.sort((a, b) => RARITY_ORDER.indexOf(a.rarity) - RARITY_ORDER.indexOf(b.rarity));
+    const total = lines.reduce((sum, l) => sum + l.components, 0);
+    return { problems, lines, byRarity, total };
+  }
+
+  const refused = (problems: { id: number; reason: DismantleProblemReason }[]) =>
+    HttpResponse.json(
+      {
+        error: {
+          code: 'EQUIPMENT_DISMANTLE_REFUSED',
+          message: `Nothing was dismantled: one selected item can't be dismantled.`,
+          details: { problems },
+        },
+        requestId: 'test-request-id',
+      },
+      { status: 409 },
+    );
 
   const handlers = [
     http.get('/api/v1/players/:playerId/equipment', () => data(overview())),
@@ -249,6 +412,115 @@ export function createEquipmentBackend(opts: EquipmentBackendOptions = {}) {
         return data(view(item));
       },
     ),
+
+    http.get('/api/v1/players/:playerId/equipment/workshop', () => {
+      if (!state.unlocked) return locked();
+      return data(workshopOverview());
+    }),
+
+    http.post('/api/v1/players/:playerId/equipment/workshop/dismantle/preview', async ({ request, params }) => {
+      if (!state.unlocked) return locked();
+      const body = (await request.json()) as { equipmentIds: number[] };
+      state.workshopRequests.push({
+        path: 'preview',
+        body,
+        playerId: String(params.playerId),
+      });
+      const { problems, lines, byRarity, total } = assess(body.equipmentIds);
+      if (problems.length > 0) return refused(problems);
+      return data({
+        count: lines.length,
+        byRarity,
+        totalComponents: total,
+        items: lines,
+        balances: balances(),
+        componentsAfter: state.components + total,
+      });
+    }),
+
+    http.post('/api/v1/players/:playerId/equipment/workshop/dismantle', async ({ request, params }) => {
+      if (!state.unlocked) return locked();
+      const body = (await request.json()) as { equipmentIds: number[]; requestKey: string; expectedComponents?: number };
+      state.workshopRequests.push({
+        path: 'dismantle',
+        body,
+        playerId: String(params.playerId),
+      });
+      const fail = injected();
+      if (fail) return fail;
+      const previous = state.operations.get(body.requestKey);
+      if (previous) return data({ ...(previous as object), replayed: true, balances: balances() });
+      const { problems, lines, byRarity, total } = assess(body.equipmentIds);
+      if (problems.length > 0) return refused(problems);
+      if (body.expectedComponents !== undefined && body.expectedComponents !== total) {
+        return apiError(409, 'WORKSHOP_PREVIEW_STALE', 'Salvage values changed since you reviewed this.');
+      }
+      state.items = state.items.filter((item) => !body.equipmentIds.includes(item.id));
+      state.components += total;
+      const result = { replayed: false, count: lines.length, byRarity, totalComponents: total, items: lines, balances: balances() };
+      state.operations.set(body.requestKey, result);
+      return data(result);
+    }),
+
+    http.post('/api/v1/players/:playerId/equipment/workshop/fabricate', async ({ request, params }) => {
+      if (!state.unlocked) return locked();
+      const body = (await request.json()) as { recipeKey: string; slot: WorkshopSlotChoice; requestKey: string };
+      state.workshopRequests.push({
+        path: 'fabricate',
+        body,
+        playerId: String(params.playerId),
+      });
+      const fail = injected();
+      if (fail) return fail;
+      const previous = state.operations.get(body.requestKey) as FabricationResult | undefined;
+      if (previous) return data({ ...previous, replayed: true, balances: balances() });
+      const recipe = state.recipes.find((r) => r.key === body.recipeKey);
+      if (!recipe) return apiError(404, 'WORKSHOP_RECIPE_UNAVAILABLE', "Patch isn't taking that order right now.");
+      if (!recipe.slots.find((s) => s.choice === body.slot)?.available) {
+        return apiError(422, 'WORKSHOP_NO_ELIGIBLE_EQUIPMENT', `Patch has no blueprints for that yet. Nothing was charged.`);
+      }
+      if (state.components < recipe.componentCost) {
+        return apiError(
+          422,
+          'INSUFFICIENT_COMPONENTS',
+          `You need ${recipe.componentCost} Salvaged Components but only have ${state.components}.`,
+        );
+      }
+      if (state.waifubux < recipe.waifubuxCost) {
+        return apiError(422, 'INSUFFICIENT_FUNDS', `You need ${recipe.waifubuxCost} WaifuBux but only have ${state.waifubux}.`);
+      }
+      state.components -= recipe.componentCost;
+      state.waifubux -= recipe.waifubuxCost;
+      const slot: EquipmentSlot = body.slot === 'any' ? 'attack' : body.slot;
+      const made = gearItem({
+        name: 'Fabricated Thing of Fresh Solder',
+        baseName: 'Fabricated Thing',
+        slot,
+        rarity: recipe.rarity,
+        multiplier: 0.75,
+        source: 'Fabricated by Patch',
+        ...state.nextFabricated,
+      });
+      state.items.push(made);
+      const result: FabricationResult = {
+        replayed: false,
+        recipe: { key: recipe.key, name: recipe.name, rarity: recipe.rarity },
+        slotChoice: body.slot,
+        cost: { components: recipe.componentCost, waifubux: recipe.waifubuxCost },
+        item: {
+          id: made.id,
+          name: made.name,
+          baseName: made.baseName,
+          slot: made.slot,
+          rarity: made.rarity,
+          multiplier: made.multiplier,
+          affix: made.name.startsWith(`${made.baseName} `) ? made.name.slice(made.baseName.length + 1) : null,
+        },
+        balances: balances(),
+      };
+      state.operations.set(body.requestKey, result);
+      return data(result);
+    }),
   ];
 
   return { state, handlers };

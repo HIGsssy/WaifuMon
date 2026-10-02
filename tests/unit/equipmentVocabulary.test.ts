@@ -15,6 +15,8 @@ import {
   EQUIPMENT_MULTIPLIER_CAP_SQL,
   EQUIPMENT_SLOT_SQL_LIST,
   EQUIPMENT_SOURCE_TYPE_SQL_LIST,
+  WORKSHOP_OPERATION_KIND_SQL_LIST,
+  WORKSHOP_SLOT_CHOICE_SQL_LIST,
 } from '../../src/modules/equipment/vocabulary';
 import {
   FEATURE_KEY_SQL_LIST,
@@ -23,21 +25,36 @@ import {
 import { RARITIES } from '../../src/db/schema';
 import { REGION_SQL_LIST } from '../../src/modules/locations/regions';
 
-const SQL = fs.readFileSync(
-  path.resolve(__dirname, '..', '..', 'drizzle', '0045_equipment_foundation.sql'),
-  'utf8',
-);
+const DRIZZLE = path.resolve(__dirname, '..', '..', 'drizzle');
+const SQL = fs.readFileSync(path.join(DRIZZLE, '0045_equipment_foundation.sql'), 'utf8');
 
-/** The `in (...)` list of the named CHECK constraint. */
+/**
+ * Every migration from 0045 on, in order. A later migration may widen a list
+ * (0049 adds source `fabrication` and event kind `dismantled`) by dropping
+ * and re-adding the constraint, so what the database enforces is the
+ * **last** definition of each.
+ */
+const LATER_MIGRATIONS = fs
+  .readdirSync(DRIZZLE)
+  .filter((f) => /^\d{4}_.*\.sql$/.test(f) && f >= '0045')
+  .sort()
+  .map((f) => ({ file: f, sql: fs.readFileSync(path.join(DRIZZLE, f), 'utf8') }));
+
+/** The `in (...)` list of the named CHECK constraint, as last defined. */
 function checkList(constraint: string): string {
-  const line = SQL.split('\n').find((l) => l.includes(`"${constraint}"`));
-  if (!line) throw new Error(`constraint ${constraint} not found in 0045`);
-  const match = /\bin \(([^)]*)\)/.exec(line);
-  if (!match) throw new Error(`constraint ${constraint} has no IN list`);
-  return match[1]!;
+  let found: string | null = null;
+  for (const { sql } of LATER_MIGRATIONS) {
+    for (const line of sql.split('\n')) {
+      if (!line.includes(`"${constraint}"`) || !/CHECK/.test(line)) continue;
+      const match = /\bin \(([^)]*)\)/.exec(line);
+      if (match) found = match[1]!;
+    }
+  }
+  if (found == null) throw new Error(`constraint ${constraint} has no IN list in 0045 or later`);
+  return found;
 }
 
-describe('0045 CHECK lists mirror the vocabulary', () => {
+describe('0045 CHECK lists (as later widened) mirror the vocabulary', () => {
   it.each([
     ['equipment_definitions_slot_check', EQUIPMENT_SLOT_SQL_LIST],
     ['player_equipment_slot_check', EQUIPMENT_SLOT_SQL_LIST],
@@ -49,6 +66,8 @@ describe('0045 CHECK lists mirror the vocabulary', () => {
     ['player_feature_unlocks_source_check', FEATURE_UNLOCK_SOURCE_SQL_LIST],
     ['equipment_definitions_rarity_check', RARITIES.map((r) => `'${r}'`).join(',')],
     ['equipment_definitions_region_check', REGION_SQL_LIST],
+    ['equipment_workshop_operations_kind_check', WORKSHOP_OPERATION_KIND_SQL_LIST],
+    ['equipment_workshop_operations_slot_choice_check', WORKSHOP_SLOT_CHOICE_SQL_LIST],
   ])('%s', (constraint, expected) => {
     expect(checkList(constraint)).toBe(expected);
   });
@@ -151,5 +170,29 @@ describe('0046 CHECKs mirror the vocabulary', () => {
     expect(line('equipment_definitions_multiplier_range_check')).toContain(
       'case when "multiplier_step_bp" > 0 then ("multiplier_max_bp" - "multiplier_min_bp") % "multiplier_step_bp" = 0 else false end',
     );
+  });
+});
+
+describe('0049 (Patch\'s Workshop) mirrors the schema', () => {
+  const sql = fs.readFileSync(path.join(DRIZZLE, '0049_equipment_workshop.sql'), 'utf8');
+  const schemaSource = fs.readFileSync(path.resolve(__dirname, '..', '..', 'src', 'db', 'schema.ts'), 'utf8');
+
+  it('declares the same workshop indexes in both places', () => {
+    const own = (name: string) => name.startsWith('equipment_workshop_operations_');
+    const inSchema = [...schemaSource.matchAll(/\b(?:uniqueIndex|index)\('([a-z0-9_]+)'\)/g)].map((m) => m[1]!).filter(own).sort();
+    const inMigration = [...sql.matchAll(/CREATE (?:UNIQUE )?INDEX IF NOT EXISTS "([a-z0-9_]+)"/g)].map((m) => m[1]!).sort();
+    expect(inMigration).toEqual(inSchema);
+  });
+
+  it('keeps Salvaged Components non-negative in both places', () => {
+    expect(sql).toContain('"player_currencies_salvaged_components_check" CHECK ("player_currencies"."salvaged_components" >= 0)');
+    expect(schemaSource).toContain("check('player_currencies_salvaged_components_check'");
+  });
+
+  it('is idempotent: every CREATE is IF NOT EXISTS and every ADD CONSTRAINT is dropped first', () => {
+    for (const create of sql.match(/CREATE (UNIQUE )?(TABLE|INDEX)[^\n]*/g) ?? []) expect(create).toMatch(/IF NOT EXISTS/);
+    for (const [, name] of sql.matchAll(/ADD CONSTRAINT "([a-z0-9_]+)"/g)) {
+      expect(sql).toContain(`DROP CONSTRAINT IF EXISTS "${name}"`);
+    }
   });
 });

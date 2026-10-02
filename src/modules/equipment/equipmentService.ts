@@ -51,12 +51,15 @@ import {
 import {
   EquipmentDefinitionDisabledError,
   EquipmentDefinitionNotFoundError,
+  EquipmentDismantleRefusedError,
+  EquipmentDismantleSelectionError,
   EquipmentLockedError,
   EquipmentNotOwnedError,
   EquipmentSlotMismatchError,
   EquipmentValidationError,
   FeatureLockedError,
   LoadoutConflictError,
+  type DismantleProblem,
 } from '../../shared/errors';
 import { defaultRng, type Rng } from '../../shared/random';
 import { recordDomainAdminAction } from '../admin/adminActionAudit';
@@ -290,6 +293,47 @@ export interface ReleaseGrantKeysInput {
   reason: string;
 }
 
+/** Most copies one dismantle may destroy. Selection is always explicit. */
+export const MAX_DISMANTLE_BATCH = 50;
+
+export interface DismantleInput {
+  playerId: number;
+  /** Explicit instance ids, as the player selected them. */
+  equipmentIds: readonly number[];
+  /**
+   * Components a copy of this rarity is worth, or null when the rarity cannot
+   * be salvaged. The caller's configuration; this service only applies it.
+   */
+  yieldOf(rarity: string): number | null;
+  actorDiscordId?: string | null;
+  /** Non-authoritative audit detail copied into every `dismantled` event. */
+  metadata?: Record<string, unknown>;
+}
+
+/** One copy a dismantle covers, as it was the moment it was checked. */
+export interface DismantleCopy {
+  equipmentId: number;
+  slot: EquipmentSlot;
+  definition: EquipmentDefinitionView;
+  rolledMultiplierBp: number;
+  affixKey: string | null;
+  displayName: string;
+  components: number;
+}
+
+export interface DismantleAssessment {
+  /** The copies that could go, in selection order. */
+  copies: DismantleCopy[];
+  /** Every copy that cannot, and why. Empty means the batch is valid. */
+  problems: DismantleProblem[];
+  totalComponents: number;
+}
+
+export interface DismantleResult {
+  copies: DismantleCopy[];
+  totalComponents: number;
+}
+
 export interface EquipmentService {
   grantEquipment(tx: DbOrTx, input: GrantEquipmentInput): Promise<GrantEquipmentResult>;
   listEquipment(playerId: number, opts?: ListEquipmentOptions): Promise<EquipmentPage>;
@@ -311,6 +355,25 @@ export interface EquipmentService {
     flags: { isFavorite?: boolean; isLocked?: boolean },
   ): Promise<EquipmentInstanceView>;
   adminRemove(tx: DbOrTx, input: AdminRemoveInput): Promise<AdminRemoveResult>;
+  /**
+   * Whether a dismantle of exactly these copies would go through, and what it
+   * would pay — a pure read, no locks. The same checks
+   * {@link EquipmentService.dismantle} repeats under its locks.
+   */
+  assessDismantle(tx: DbOrTx, input: DismantleInput): Promise<DismantleAssessment>;
+  /**
+   * Player dismantling (Patch's Workshop): soft-remove every selected copy and
+   * record a `dismantled` event for each — **all or nothing**. Requires the
+   * `equipment` unlock. Refuses the whole batch with
+   * `EquipmentDismantleRefusedError` if any copy is missing / foreign /
+   * removed, selected twice, equipped in any loadout, favourite, locked, or of
+   * a rarity `yieldOf` cannot value. There is no override: admin removal is
+   * {@link EquipmentService.adminRemove}.
+   *
+   * Pays nothing itself — the caller credits `totalComponents` in the same
+   * transaction. Locks loadouts, then instances, like every other path.
+   */
+  dismantle(tx: DbOrTx, input: DismantleInput): Promise<DismantleResult>;
   /**
    * The player's instances carrying any of these stored grant keys, removed
    * ones included, keyed by grant key. A pure read through `tx`. Lets a
@@ -708,6 +771,95 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
     })();
   }
 
+  function validateSelection(ids: readonly number[]): void {
+    if (!Array.isArray(ids) || ids.length === 0) {
+      throw new EquipmentDismantleSelectionError('Select at least one item to dismantle.');
+    }
+    if (ids.length > MAX_DISMANTLE_BATCH) {
+      throw new EquipmentDismantleSelectionError(`Dismantle at most ${MAX_DISMANTLE_BATCH} items at a time.`);
+    }
+    if (!ids.every((id) => Number.isSafeInteger(id) && id > 0)) {
+      throw new EquipmentDismantleSelectionError('That selection is not valid.');
+    }
+  }
+
+  /**
+   * The checks behind both `assessDismantle` and `dismantle`. With `lock`, the
+   * player's loadouts and then the selected instances are locked `FOR UPDATE`
+   * first — the equip / admin-removal order — so a concurrent equip, flag
+   * change or second dismantle waits, and this sees what it will change.
+   */
+  async function assess(tx: DbOrTx, input: DismantleInput, lock: boolean): Promise<DismantleAssessment> {
+    validateSelection(input.equipmentIds);
+    const ids = [...input.equipmentIds];
+    const unique = [...new Set(ids)];
+    if (lock) {
+      await tx
+        .select({ id: playerLoadouts.id })
+        .from(playerLoadouts)
+        .where(eq(playerLoadouts.playerId, input.playerId))
+        .orderBy(asc(playerLoadouts.id))
+        .for('update');
+    }
+    const query = tx
+      .select({ instance: playerEquipment, definition: equipmentDefinitions })
+      .from(playerEquipment)
+      .innerJoin(equipmentDefinitions, eq(playerEquipment.definitionId, equipmentDefinitions.id))
+      .where(
+        and(
+          inArray(playerEquipment.id, unique),
+          eq(playerEquipment.playerId, input.playerId),
+          isNull(playerEquipment.removedAt),
+        ),
+      )
+      .orderBy(asc(playerEquipment.id));
+    const rows = lock ? await query.for('update', { of: playerEquipment }) : await query;
+    const slotted = await tx
+      .select({ equipmentId: playerLoadoutSlots.equipmentId })
+      .from(playerLoadoutSlots)
+      .where(and(eq(playerLoadoutSlots.playerId, input.playerId), inArray(playerLoadoutSlots.equipmentId, unique)));
+    const equipped = new Set(slotted.map((r) => r.equipmentId));
+    const byId = new Map(rows.map((r) => [r.instance.id, r]));
+
+    const problems: DismantleProblem[] = [];
+    const copies: DismantleCopy[] = [];
+    const seen = new Set<number>();
+    const affixes = deps.getAffixes();
+    for (const id of ids) {
+      if (seen.has(id)) {
+        problems.push({ equipmentId: id, reason: 'duplicate' });
+        continue;
+      }
+      seen.add(id);
+      const row = byId.get(id);
+      if (!row) {
+        problems.push({ equipmentId: id, reason: 'not_owned' });
+        continue;
+      }
+      // Protection first, so the player is told the flag they can change.
+      if (equipped.has(id)) problems.push({ equipmentId: id, reason: 'equipped' });
+      else if (row.instance.isFavorite) problems.push({ equipmentId: id, reason: 'favorite' });
+      else if (row.instance.isLocked) problems.push({ equipmentId: id, reason: 'locked' });
+      else {
+        const components = input.yieldOf(row.definition.rarity);
+        if (components == null || !Number.isInteger(components) || components <= 0) {
+          problems.push({ equipmentId: id, reason: 'unsupported_rarity' });
+        } else {
+          copies.push({
+            equipmentId: id,
+            slot: row.instance.slot as EquipmentSlot,
+            definition: toDefinitionView(row.definition),
+            rolledMultiplierBp: row.instance.rolledMultiplierBp,
+            affixKey: row.instance.affixKey,
+            displayName: equipmentDisplayName(row.definition.name, row.instance.affixKey, affixes),
+            components,
+          });
+        }
+      }
+    }
+    return { copies, problems, totalComponents: copies.reduce((sum, c) => sum + c.components, 0) };
+  }
+
   const methods: EquipmentService = {
     async grantEquipment(tx, input) {
       const quantity = input.quantity ?? 1;
@@ -1067,6 +1219,56 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
       return { equipmentId: input.equipmentId, definitionKey: owned.definition.key, clearedLoadoutIds };
     },
 
+    async assessDismantle(tx, input) {
+      return assess(tx, input, false);
+    },
+
+    async dismantle(tx, input) {
+      await requireUnlocked(tx, input.playerId);
+      const { copies, problems, totalComponents } = await assess(tx, input, true);
+      if (problems.length > 0) throw new EquipmentDismantleRefusedError(problems);
+
+      const ids = copies.map((c) => c.equipmentId);
+      // Conditional on still being live and unprotected: the rows are locked,
+      // so this can only fall short if a caller bypassed the lock — and then
+      // nothing is half-destroyed, because the whole call throws.
+      const removed = await tx
+        .update(playerEquipment)
+        .set({ removedAt: sql`now()`, removedReason: 'dismantled', updatedAt: sql`now()` })
+        .where(
+          and(
+            inArray(playerEquipment.id, ids),
+            eq(playerEquipment.playerId, input.playerId),
+            isNull(playerEquipment.removedAt),
+            eq(playerEquipment.isFavorite, false),
+            eq(playerEquipment.isLocked, false),
+          ),
+        )
+        .returning({ id: playerEquipment.id });
+      if (removed.length !== ids.length) {
+        throw new Error(`dismantle of ${ids.length} copies removed ${removed.length}; refusing a partial batch`);
+      }
+      for (const copy of copies) {
+        await writeEvent(tx, {
+          playerId: input.playerId,
+          kind: 'dismantled',
+          equipmentId: copy.equipmentId,
+          slot: copy.slot,
+          actorDiscordId: input.actorDiscordId ?? null,
+          // Observability only.
+          metadata: {
+            ...(input.metadata ?? {}),
+            definitionKey: copy.definition.key,
+            rarity: copy.definition.rarity,
+            rolledMultiplierBp: copy.rolledMultiplierBp,
+            affixKey: copy.affixKey,
+            components: copy.components,
+          },
+        });
+      }
+      return { copies, totalComponents };
+    },
+
     async findByGrantKeys(tx, playerId, grantKeys) {
       const found = new Map<string, GrantKeyRecord>();
       if (grantKeys.length === 0) return found;
@@ -1195,6 +1397,7 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
     ...methods,
     grantEquipment: (tx, input) => atomically(tx, (inner) => methods.grantEquipment(inner, input)),
     adminRemove: (tx, input) => atomically(tx, (inner) => methods.adminRemove(inner, input)),
+    dismantle: (tx, input) => atomically(tx, (inner) => methods.dismantle(inner, input)),
     equipForOnboarding: (tx, playerId, items) =>
       atomically(tx, (inner) => methods.equipForOnboarding(inner, playerId, items)),
     adminReleaseGrantKeys: (tx, input) => atomically(tx, (inner) => methods.adminReleaseGrantKeys(inner, input)),

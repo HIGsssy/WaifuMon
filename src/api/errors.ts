@@ -465,6 +465,25 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   /** The caller's view of a slot is stale; refetch and retry. */
   LOADOUT_CONFLICT: 409,
 
+  // --- Patch's Workshop ---------------------------------------------------
+  /** Short of Salvaged Components — a refused business rule, nothing consumed. */
+  INSUFFICIENT_COMPONENTS: 422,
+  /**
+   * A selected copy is protected (equipped / favourite / locked), gone, listed
+   * twice or of an unsalvageable rarity. The whole batch is refused and the
+   * offending copies are named in `details.problems`.
+   */
+  EQUIPMENT_DISMANTLE_REFUSED: 409,
+  /** Empty or oversized selection — a malformed request. */
+  EQUIPMENT_DISMANTLE_SELECTION_INVALID: 400,
+  WORKSHOP_RECIPE_UNAVAILABLE: 404,
+  /** Well-formed, but no base definition exists for that rarity/slot yet. */
+  WORKSHOP_NO_ELIGIBLE_EQUIPMENT: 422,
+  /** A request key already spent on a different request. */
+  WORKSHOP_REQUEST_CONFLICT: 409,
+  /** The reviewed yield no longer matches; review again. */
+  WORKSHOP_PREVIEW_STALE: 409,
+
   // --- Combat --------------------------------------------------------------
   /** Wrong turn, fight already over, or an action V1 does not execute. */
   COMBAT_ACTION_REJECTED: 409,

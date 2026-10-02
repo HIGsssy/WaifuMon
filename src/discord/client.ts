@@ -88,6 +88,17 @@ import {
   handleGearBag,
 } from './commands/waifumonEquipment';
 import {
+  handleDismantleConfirm,
+  handleDismantleList,
+  handleDismantleSelect,
+  handleFabricateConfirm,
+  handleFabricateList,
+  handleFabricateRecipe,
+  handleFabricateReview,
+  handleWorkshopHome,
+  handleWorkshopNoop,
+} from './commands/waifumonWorkshop';
+import {
   handleCombatTrialFight,
   handleCombatTrialsHome,
   handleCombatTrialsNoop,
@@ -401,6 +412,22 @@ export function createDiscordClient(ctx: AppContext): Client {
         handleEquipmentUnequip(ctx, i, prov, args),
       'eq:flag': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleEquipmentFlag(ctx, i, prov, args),
+      // Patch's Workshop. The service checks the Equipment unlock on every
+      // route; only the two `*cf`/`fc` Confirm buttons write, each keyed by
+      // the nonce its review minted.
+      'pw:home': (i: ButtonInteraction, prov: Provisioned) => handleWorkshopHome(ctx, i, prov),
+      'pw:noop': (i: ButtonInteraction, prov: Provisioned) => handleWorkshopNoop(ctx, i, prov),
+      'pw:dis': (i: ButtonInteraction, prov: Provisioned, args: string[]) => handleDismantleList(ctx, i, prov, args),
+      'pw:disp': (i: ButtonInteraction, prov: Provisioned, args: string[]) => handleDismantleList(ctx, i, prov, args),
+      'pw:dsel': (i: StringSelectMenuInteraction, prov: Provisioned, args: string[]) =>
+        handleDismantleSelect(ctx, i, prov, args),
+      'pw:dcf': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleDismantleConfirm(ctx, i, prov, args),
+      'pw:fab': (i: ButtonInteraction, prov: Provisioned) => handleFabricateList(ctx, i, prov),
+      'pw:fr': (i: ButtonInteraction, prov: Provisioned, args: string[]) => handleFabricateRecipe(ctx, i, prov, args),
+      'pw:fs': (i: ButtonInteraction, prov: Provisioned, args: string[]) => handleFabricateReview(ctx, i, prov, args),
+      'pw:fc': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleFabricateConfirm(ctx, i, prov, args),
       // Combat Trials. The service checks the Equipment unlock on every route.
       'ct:home': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleCombatTrialsHome(ctx, i, prov, args),

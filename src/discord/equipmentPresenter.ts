@@ -281,10 +281,20 @@ export interface BuddyArtwork {
   url: string;
 }
 
+/** Patch's Workshop entry on the Equipment home. Only ever drawn for an unlocked player. */
+function visitPatchButton(): ButtonBuilder {
+  return new ButtonBuilder()
+    .setCustomId(buildCustomId('pw', 'home'))
+    .setLabel('Visit Patch')
+    .setEmoji('🔧')
+    .setStyle(ButtonStyle.Secondary);
+}
+
 export function buildEquipmentHome(
   stats: CombatStats,
   status?: string | null,
   artwork?: BuddyArtwork | null,
+  opts: { workshop?: boolean } = {},
 ): SessionPayload {
   const embed = new EmbedBuilder().setTitle(EQUIPMENT_HOME_TITLE).setColor(COLOR);
   embed.addFields(buddyField(stats));
@@ -317,7 +327,11 @@ export function buildEquipmentHome(
   );
   const bag = new ButtonBuilder().setCustomId(eqId.bag()).setLabel('Gear Bag').setEmoji('🎒').setStyle(ButtonStyle.Secondary);
   return withStatus(
-    { embeds: [embed], components: [row(...slotButtons), row(bag, menuButton())], files: picture ? [picture.file] : [] },
+    {
+      embeds: [embed],
+      components: [row(...slotButtons), row(bag, ...(opts.workshop ? [visitPatchButton()] : []), menuButton())],
+      files: picture ? [picture.file] : [],
+    },
     status,
   );
 }

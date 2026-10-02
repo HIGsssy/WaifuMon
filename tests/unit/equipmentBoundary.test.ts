@@ -17,6 +17,11 @@
  *                                             import and the startup seed
  *   equipment_import_log                    → equipmentImportService.ts only
  *   player_feature_unlocks                  → featureUnlockService.ts only
+ *   equipment_workshop_operations           → equipmentWorkshopService.ts only
+ *
+ * Patch's Workshop destroys and creates gear only through the service
+ * (`dismantle`, and the shared reward path for fabrication); it writes its own
+ * operation ledger and nothing else.
  *
  * The detector recognises every way this codebase writes a table — drizzle
  * builders (bare, `schema.`-qualified or via an aliased import), `sql`
@@ -55,6 +60,11 @@ const RULES: readonly TableRule[] = [
   { ident: 'equipmentDefinitions', table: 'equipment_definitions', writers: CATALOGUE_WRITERS },
   { ident: 'equipmentImportLog', table: 'equipment_import_log', writers: ['modules/equipment/equipmentImportService.ts'] },
   { ident: 'playerFeatureUnlocks', table: 'player_feature_unlocks', writers: ['modules/features/featureUnlockService.ts'] },
+  {
+    ident: 'equipmentWorkshopOperations',
+    table: 'equipment_workshop_operations',
+    writers: ['modules/equipment/equipmentWorkshopService.ts'],
+  },
 ];
 
 /** Files that must write nothing at all. */
