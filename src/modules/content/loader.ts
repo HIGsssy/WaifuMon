@@ -38,6 +38,8 @@ import {
 } from './schemas';
 import { EquipmentOnboardingContentSchema, NpcsFileSchema } from './onboardingSchemas';
 import { EQUIPMENT_AFFIX_FILE, EquipmentAffixFileSchema } from '../equipment/affixCatalogue';
+import { COMBAT_ENEMY_FILE, CombatEnemyFileSchema } from '../combat/enemyDefinitions';
+import { locateCombatArtwork } from '../combat/combatArtwork';
 
 function formatZodError(file: string, err: ZodError): string {
   const details = err.issues
@@ -1159,6 +1161,14 @@ export function readContentFiles(contentDir: string): LoadedContent {
     ? parseJsonFile(equipmentAffixesPath, EquipmentAffixFileSchema).affixes
     : [];
 
+  // Combat enemies. Optional on disk: without the file there is simply
+  // nothing to fight. A file that is present is validated as strictly as any
+  // other.
+  const combatEnemiesPath = path.join(contentDir, ...COMBAT_ENEMY_FILE.split('/'));
+  const combatEnemies = fs.existsSync(combatEnemiesPath)
+    ? parseJsonFile(combatEnemiesPath, CombatEnemyFileSchema).enemies
+    : [];
+
   return {
     items: itemsFile.items,
     species: allSpecies,
@@ -1174,6 +1184,7 @@ export function readContentFiles(contentDir: string): LoadedContent {
     npcs,
     onboarding: { equipment: equipmentOnboarding },
     equipmentAffixes,
+    combatEnemies,
   };
 }
 
@@ -1463,6 +1474,23 @@ export function warnOnRepeatedRewardItems(
 }
 
 /**
+ * Combat art is optional: an enemy whose authored artwork is missing (or
+ * resolves outside the assets root) still fights, text-only. Say so once at
+ * load rather than on every fight. Enemies with `artworkPath: null` are silent.
+ */
+function warnOnMissingCombatArtwork(content: LoadedContent, assetsDir: string, logger: Logger): void {
+  for (const enemy of content.combatEnemies ?? []) {
+    const art = locateCombatArtwork(assetsDir, enemy.artworkPath);
+    if (art.status === 'missing' || art.status === 'unsafe') {
+      logger.warn(
+        { enemy: enemy.key, artworkPath: enemy.artworkPath, status: art.status },
+        'combat enemy artwork unavailable; it will render text-only',
+      );
+    }
+  }
+}
+
+/**
  * Loads and validates all content JSON. Bad content fails loudly with
  * file+field errors — never silently.
  */
@@ -1479,6 +1507,7 @@ export function loadContent(contentDir: string, assetsDir: string, logger: Logge
   const validatedBosses = validateBossAssets(content.bosses, assetsDir, logger);
   warnOnUnpooledSpecies(validatedSpecies, content.regions, logger);
   warnOnRepeatedRewardItems(content.expeditionRewards, logger);
+  warnOnMissingCombatArtwork(content, assetsDir, logger);
 
   logger.info(
     {

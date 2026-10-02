@@ -1407,3 +1407,34 @@ export class RewardTableDeleteRefusedError extends AppError {
     );
   }
 }
+
+/**
+ * Why the combat engine refused a submitted action. Stable codes, so an
+ * interactive surface (a Discord button, a dungeon client) can tell "not your
+ * turn" from "the fight is over" without parsing the message.
+ */
+export type CombatActionRejection =
+  | 'combat_finished'
+  | 'not_actor_turn'
+  | 'unknown_actor'
+  | 'unsupported_action';
+
+/** The combat engine refused one submitted action. The state is unchanged. */
+export class CombatActionRejectedError extends AppError {
+  readonly reason: CombatActionRejection;
+  constructor(reason: CombatActionRejection, message: string) {
+    super('COMBAT_ACTION_REJECTED', message, "That move isn't available right now.");
+    this.reason = reason;
+  }
+}
+
+/**
+ * A combat state or combatant that breaks the engine's invariants — negative
+ * or fractional stats, HP above max, an unknown turn or status. A programming
+ * or persistence error, never a player mistake.
+ */
+export class CombatStateInvalidError extends AppError {
+  constructor(message: string) {
+    super('COMBAT_STATE_INVALID', message);
+  }
+}

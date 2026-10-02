@@ -230,6 +230,8 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
    */
   CARD_ASSET_MISSING: 500,
   CARD_TEMPLATE_INVALID: 500,
+  /** A combat state that breaks the engine's invariants — corrupted or mis-built, never caller input. */
+  COMBAT_STATE_INVALID: 500,
 
   // --- Unknown resource ---------------------------------------------------
   PLAYER_NOT_FOUND: 404,
@@ -462,6 +464,10 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   EQUIPMENT_LOCKED: 409,
   /** The caller's view of a slot is stale; refetch and retry. */
   LOADOUT_CONFLICT: 409,
+
+  // --- Combat --------------------------------------------------------------
+  /** Wrong turn, fight already over, or an action V1 does not execute. */
+  COMBAT_ACTION_REJECTED: 409,
   /** Granting a definition that has been disabled — it is not obtainable now. */
   EQUIPMENT_DEFINITION_DISABLED: 422,
   /**

@@ -1,0 +1,36 @@
+{
+  "format": "waifumon-combat-enemies",
+  "version": 1,
+  "enemies": [
+    {
+      "key": "scrapyard_drone",
+      "name": "Scrapyard Drone",
+      "attack": 25,
+      "defense": 10,
+      "hp": 120,
+      "artworkPath": null,
+      "enabled": true,
+      "tags": ["starter", "initial_tuning"]
+    },
+    {
+      "key": "alley_bruiser",
+      "name": "Alley Bruiser",
+      "attack": 45,
+      "defense": 25,
+      "hp": 220,
+      "artworkPath": null,
+      "enabled": true,
+      "tags": ["starter", "initial_tuning"]
+    },
+    {
+      "key": "security_automaton",
+      "name": "Security Automaton",
+      "attack": 60,
+      "defense": 60,
+      "hp": 320,
+      "artworkPath": null,
+      "enabled": true,
+      "tags": ["starter", "initial_tuning"]
+    }
+  ]
+}

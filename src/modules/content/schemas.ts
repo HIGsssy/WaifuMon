@@ -61,6 +61,7 @@ import { DEFAULT_SP_RANGES_BY_RARITY } from '../power/seductivePower';
 // imports this module.
 import type { EquipmentOnboardingContent, NpcContent } from './onboardingSchemas';
 import type { EquipmentAffix } from '../equipment/affixCatalogue';
+import type { CombatEnemyDefinition } from '../combat/enemyDefinitions';
 import {
   EQUIPMENT_REWARD_SELECTOR_SHAPE,
   equipmentSelectorKey,
@@ -2955,6 +2956,11 @@ export interface LoadedContent {
    * Hand-built snapshots carry none.
    */
   equipmentAffixes?: EquipmentAffix[] | undefined;
+  /**
+   * Combat enemy definitions from `content/combat/enemies.json`. Optional on
+   * disk and here: absent means no enemies. Hand-built snapshots carry none.
+   */
+  combatEnemies?: CombatEnemyDefinition[] | undefined;
 }
 
 /**
