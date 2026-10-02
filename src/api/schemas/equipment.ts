@@ -168,6 +168,17 @@ const balancesSchema = z.object({
 
 export const workshopOverviewSchema = z.object({
   balances: balancesSchema,
+  artwork: z
+    .object({
+      source: z
+        .enum(['workshop', 'patch'])
+        .describe('`workshop` — the Workshop’s own artwork; `patch` — Patch’s portrait, its fallback.'),
+    })
+    .nullable()
+    .describe(
+      'The image to show, already resolved on the server, or null for text-only. Fetch the bytes ' +
+        'from `GET …/equipment/workshop/artwork`; no path is ever exposed.',
+    ),
   salvageYields: z
     .array(z.object({ rarity: raritySchema, components: z.number().int() }))
     .describe('Components per dismantled copy, by rarity. A rarity not listed cannot be dismantled.'),

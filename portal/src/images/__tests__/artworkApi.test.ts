@@ -162,10 +162,36 @@ describe('gallery appearance artwork', () => {
     } as OwnedWaifu;
 
     const hero = artworkUrlFor(speciesAsset(subject, waifu), 256);
-    const tile = artworkUrlFor(appearanceArtworkAsset(3, 77, appearance('level_10', 'level_10'))!, 256);
+    const tile = artworkUrlFor(
+      appearanceArtworkAsset(3, 77, appearance('level_10', 'level_10'))!,
+      256,
+    );
 
     expect(hero).toContain('selected=level_30');
     expect(tile).toContain('appearance=level_10');
     expect(hero).not.toBe(tile);
+  });
+});
+
+describe("Patch's Workshop artwork", () => {
+  const provider = createArtworkApiProvider();
+  const workshop = (source: string, playerId = 1) =>
+    ({ kind: 'ui', slug: 'equipment-workshop', workshop: { playerId, source } }) as const;
+
+  it('resolves to the self-only Workshop artwork route, sizes ignored', () => {
+    expect(provider.resolve(workshop('workshop'), 512)).toEqual({
+      url: '/api/v1/players/1/equipment/workshop/artwork?source=workshop',
+      isFallback: false,
+      providerId: ARTWORK_API_ID,
+    });
+    expect(artworkUrlFor(workshop('patch', 7))).toBe(
+      '/api/v1/players/7/equipment/workshop/artwork?source=patch',
+    );
+  });
+
+  it('refuses a malformed identity rather than building a URL from it', () => {
+    expect(artworkUrlFor(workshop('../x'))).toBeNull();
+    expect(artworkUrlFor(workshop('workshop', 0))).toBeNull();
+    expect(artworkUrlFor({ kind: 'ui', slug: 'equipment-workshop' })).toBeNull();
   });
 });

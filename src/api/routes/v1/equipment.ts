@@ -14,6 +14,7 @@
  * A locked player reads `{ unlocked: false }` from the overview and
  * `422 FEATURE_LOCKED` from everything else — no counts, no gear.
  */
+import { z } from 'zod';
 import type { Rarity } from '../../../db/schema';
 import type { ApiContext } from '../../context';
 import { requirePlayer } from '../../plugins/playerScope';
@@ -51,9 +52,17 @@ import {
   type DismantleLine,
   type FabricationOutcome,
 } from '../../../modules/equipment/equipmentWorkshopService';
-import { salvageYieldOf, type WorkshopConfig } from '../../../modules/equipment/workshopConfig';
-import { EquipmentDismantleRefusedError } from '../../../shared/errors';
-import { ApiErrorWithDetails } from '../../errors';
+import {
+  salvageYieldOf,
+  workshopArtworkCandidates,
+  type WorkshopArtworkSource,
+  type WorkshopConfig,
+} from '../../../modules/equipment/workshopConfig';
+import { locateArtworkFile } from '../../../modules/assets/artworkFile';
+import type { ArtworkFile } from '../../../modules/assets/speciesArtworkFile';
+import { sendArtwork } from '../../artworkResponse';
+import { EquipmentDismantleRefusedError, FeatureLockedError } from '../../../shared/errors';
+import { ApiErrorWithDetails, ApiNotFoundError } from '../../errors';
 
 const lockedResponse = {
   422: errorSchema.describe('`FEATURE_LOCKED` — Equipment is not unlocked for this player.'),
@@ -146,6 +155,40 @@ async function withDismantleProblems<T>(fn: () => Promise<T>): Promise<T> {
     }
     throw err;
   }
+}
+
+/** Caller-dependent (self-only, unlock-gated) bytes: never a shared cache. */
+const WORKSHOP_ARTWORK_CACHE = 'private, max-age=300, must-revalidate';
+
+interface WarnLog {
+  warn(obj: Record<string, unknown>, msg: string): void;
+}
+
+/**
+ * The Workshop image that is actually on disk: the configured Workshop
+ * artwork, else Patch's portrait (`workshopArtworkCandidates`), checked with
+ * the shared shape / containment / existence rules. A missing or unsafe file
+ * is logged and skipped, so the Workshop always renders — text-only at worst.
+ */
+function locateWorkshopArtwork(
+  assetsDir: string | undefined,
+  config: WorkshopConfig | null,
+  patch: { portraitPath?: string | null | undefined } | null,
+  log: WarnLog,
+): { source: WorkshopArtworkSource; file: ArtworkFile } | null {
+  if (assetsDir === undefined) return null;
+  for (const candidate of workshopArtworkCandidates(config, patch)) {
+    const located = locateArtworkFile(assetsDir, candidate.relativePath);
+    if (located.status === 'available') {
+      const { absolutePath, extension, contentType } = located;
+      return { source: candidate.source, file: { absolutePath, extension, contentType } };
+    }
+    log.warn(
+      { tag: 'equipment-workshop/artwork-unavailable', source: candidate.source, artwork: candidate.relativePath, status: located.status },
+      'Workshop artwork unavailable — falling back',
+    );
+  }
+  return null;
 }
 
 const SORT_TO_SERVICE: Readonly<Record<string, EquipmentSort>> = {
@@ -370,6 +413,9 @@ export const equipmentRoutes =
 
     const workshop = ctx.services.equipmentWorkshop;
     if (!workshop) return;
+    const patchNpc = () => ctx.getContent().npcs?.find((n) => n.key === 'patch') ?? null;
+    const workshopArtwork = (log: WarnLog) =>
+      locateWorkshopArtwork(ctx.assetsDir, workshopConfig(), patchNpc(), log);
 
     app.get(
       '/players/:playerId/equipment/workshop',
@@ -391,11 +437,51 @@ export const equipmentRoutes =
       },
       async (req) => {
         const view = await workshop.overview(requirePlayer(req).id);
+        const artwork = workshopArtwork(req.log);
         return ok(req, {
           balances: view.balances,
+          artwork: artwork ? { source: artwork.source } : null,
           salvageYields: view.salvageYields.map((y) => ({ rarity: y.rarity as Rarity, components: y.components })),
           recipes: view.recipes.map((r) => ({ ...r, rarity: r.rarity as Rarity })),
         });
+      },
+    );
+
+    app.get(
+      '/players/:playerId/equipment/workshop/artwork',
+      {
+        schema: {
+          tags: ['Equipment'],
+          summary: "Patch's Workshop artwork",
+          description:
+            'The Workshop’s image bytes: its configured artwork, else Patch’s portrait. ' +
+            '`404` when neither file exists — the Workshop is then text-only. Self-only and ' +
+            'unlock-gated like the overview; ETag / 304 like every artwork route.',
+          params: playerIdParams,
+          querystring: z
+            .object({
+              source: z
+                .enum(['workshop', 'patch'])
+                .optional()
+                .describe('Client cache discriminator only — the server always serves the current best image.'),
+            })
+            .strict(),
+          response: {
+            304: z.null().describe('Unchanged — the ETag matched.'),
+            ...lockedResponse,
+            ...notFoundResponse,
+            ...commonErrorResponses,
+          },
+        },
+      },
+      async (req, reply) => {
+        const playerId = requirePlayer(req).id;
+        // The unlock gate before any file is touched.
+        if (!(await workshop.isAvailable(playerId))) throw new FeatureLockedError('equipment');
+        const artwork = workshopArtwork(req.log);
+        if (!artwork || ctx.assetsDir === undefined) throw new ApiNotFoundError('No Workshop artwork is configured.');
+        await sendArtwork(ctx.assetsDir, { headers: req.headers, query: {} }, reply, artwork.file, WORKSHOP_ARTWORK_CACHE);
+        return reply;
       },
     );
 

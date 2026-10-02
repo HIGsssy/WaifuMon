@@ -29,10 +29,20 @@
  * Components. Dismantling never pays WaifuBux, so the WaifuBux side cannot
  * loop at all.
  *
+ * ## Artwork
+ *
+ * One optional image (`artworkPath`, relative to `ASSETS_DIR`, convention
+ * `equipment/workshop/<name>.webp`) shown by both Discord and the Portal.
+ * Validated with the shared `relativeArtworkPath` rules. Presentation falls
+ * back Workshop artwork → Patch's NPC portrait → text-only
+ * ({@link workshopArtworkCandidates}); a missing file is warned about and
+ * skipped, never fatal.
+ *
  * Kept free of database imports so the content loader can validate the file.
  */
 import { z } from 'zod';
 import { RARITIES } from '../../db/schema';
+import { relativeArtworkPath } from '../assets/artworkPath';
 import { EQUIPMENT_AFFIX_RARITIES } from './affixCatalogue';
 import { EQUIPMENT_KEY_MAX_LENGTH, EQUIPMENT_KEY_PATTERN } from './vocabulary';
 
@@ -70,6 +80,8 @@ export const EquipmentWorkshopFileSchema = z
   .object({
     format: z.literal(EQUIPMENT_WORKSHOP_FILE_FORMAT),
     version: z.literal(EQUIPMENT_WORKSHOP_FILE_VERSION),
+    /** Optional Workshop image under `ASSETS_DIR`. Null (or absent): no Workshop artwork. */
+    artworkPath: relativeArtworkPath.nullable().default(null),
     salvageYields: z
       .record(z.string(), z.number().int().min(1).max(MAX_YIELD))
       .superRefine((yields, ctx) => {
@@ -108,10 +120,41 @@ export interface WorkshopConfig {
   /** Components per dismantled copy, by rarity. A missing rarity cannot be dismantled. */
   salvageYields: Readonly<Record<string, number>>;
   recipes: readonly WorkshopRecipe[];
+  /** Validated relative artwork path, or null. Optional so hand-built configs may omit it. */
+  artworkPath?: string | null | undefined;
 }
 
 export function workshopConfigFromFile(file: EquipmentWorkshopFile): WorkshopConfig {
-  return { salvageYields: { ...file.salvageYields }, recipes: [...file.recipes] };
+  return {
+    salvageYields: { ...file.salvageYields },
+    recipes: [...file.recipes],
+    artworkPath: file.artworkPath ?? null,
+  };
+}
+
+/** Which image a Workshop screen shows. */
+export type WorkshopArtworkSource = 'workshop' | 'patch';
+
+export interface WorkshopArtworkCandidate {
+  source: WorkshopArtworkSource;
+  relativePath: string;
+}
+
+/**
+ * The images a Workshop screen may show, best first: the Workshop's own
+ * artwork, then Patch's NPC portrait. Configured paths only — whether a file
+ * is actually there is the caller's check (Discord attaches, the API streams),
+ * and a caller that finds none renders text-only. The one fallback rule both
+ * surfaces follow.
+ */
+export function workshopArtworkCandidates(
+  config: Pick<WorkshopConfig, 'artworkPath'> | null,
+  patch: { portraitPath?: string | null | undefined } | null,
+): WorkshopArtworkCandidate[] {
+  const candidates: WorkshopArtworkCandidate[] = [];
+  if (config?.artworkPath) candidates.push({ source: 'workshop', relativePath: config.artworkPath });
+  if (patch?.portraitPath) candidates.push({ source: 'patch', relativePath: patch.portraitPath });
+  return candidates;
 }
 
 /** Components a copy of `rarity` dismantles for, or null when that rarity is not salvageable. */

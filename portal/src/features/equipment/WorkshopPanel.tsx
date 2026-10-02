@@ -1,8 +1,10 @@
 /**
  * Patch's Workshop — the card at the top of the Gear Bag.
  *
- * Balances, salvage values and the two actions. Every number is the server's
- * (`GET …/equipment/workshop`); the panel only lays them out. The page owns
+ * Balances, salvage values, the two actions and — when the server resolved
+ * one — the Workshop's image (its own artwork, else Patch's portrait). Every
+ * number and the image choice are the server's (`GET …/equipment/workshop`);
+ * the panel only lays them out, and the bytes come through the image resolver. The page owns
  * what the actions do: Dismantle switches the Gear Bag into explicit
  * selection, Fabricate opens the fabrication dialog.
  */
@@ -12,6 +14,7 @@ import { useWorkshop } from '@/api/hooks/useEquipment';
 import { ErrorState } from '@/components/layout/ErrorState';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Artwork } from '@/components/media/Artwork';
 import { formatNumber } from '@/lib/format';
 import { COMPONENTS_LABEL, WORKSHOP_TITLE } from './workshopText';
 
@@ -60,6 +63,19 @@ export function WorkshopPanel({
         </div>
       ) : (
         <>
+          {workshop.data.artwork && (
+            <Artwork
+              asset={{
+                kind: 'ui',
+                slug: 'equipment-workshop',
+                workshop: { playerId, source: workshop.data.artwork.source },
+              }}
+              name={WORKSHOP_TITLE}
+              aspect="aspect-[16/9]"
+              className="mt-3 rounded-xl sm:max-w-md"
+              displayWidth={448}
+            />
+          )}
           <dl className="tabular mt-3 grid grid-cols-2 gap-3 sm:max-w-md">
             <div className="rounded-xl border border-border bg-surface-sunken p-3">
               <dt className="text-xs text-ink-muted">{COMPONENTS_LABEL}</dt>

@@ -113,6 +113,8 @@ export interface EquipmentBackendOptions {
   waifubux?: number;
   salvageYields?: Partial<Record<Rarity, number>>;
   recipes?: FakeRecipe[];
+  /** Which image the fake server says it resolved; null for text-only. */
+  workshopArtwork?: 'workshop' | 'patch' | null;
 }
 
 export function createEquipmentBackend(opts: EquipmentBackendOptions = {}) {
@@ -135,6 +137,7 @@ export function createEquipmentBackend(opts: EquipmentBackendOptions = {}) {
     waifubux: opts.waifubux ?? 0,
     salvageYields: opts.salvageYields ?? ({ N: 1, R: 4, SR: 12 } as Partial<Record<Rarity, number>>),
     recipes: opts.recipes ?? DEFAULT_RECIPES,
+    workshopArtwork: opts.workshopArtwork ?? null,
     /** Every Workshop write the page sent, in order: body and addressed player. */
     workshopRequests: [] as { path: string; body: Record<string, unknown>; playerId: string }[],
     /** Results by request key — the server's idempotency, so a retry replays. */
@@ -205,6 +208,7 @@ export function createEquipmentBackend(opts: EquipmentBackendOptions = {}) {
   function workshopOverview() {
     return {
       balances: balances(),
+      artwork: state.workshopArtwork ? { source: state.workshopArtwork } : null,
       salvageYields: (Object.entries(state.salvageYields) as [Rarity, number][]).map(([rarity, components]) => ({
         rarity,
         components,

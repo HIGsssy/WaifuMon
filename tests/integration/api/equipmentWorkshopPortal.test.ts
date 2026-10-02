@@ -8,6 +8,9 @@
  * nothing internal), the Gear Bag's server-decided dismantle eligibility,
  * preview → confirm, refusal details, idempotent retries, and fabrication.
  */
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { eq, inArray } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { PortalSession, PortalSessionService } from '../../../src/api/portalSession';
@@ -25,6 +28,15 @@ import { createTestDb, type TestDb } from '../../helpers/testDb';
 let t: TestDb;
 let app: App;
 let api: ZodFastify;
+
+/** A private assets root: a Workshop image and a Patch portrait, nothing else. */
+const assetsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wm-workshop-api-'));
+const WORKSHOP_BYTES = Buffer.from('RIFF-workshop-webp');
+const PORTRAIT_BYTES = Buffer.from('PNG-patch-portrait');
+fs.mkdirSync(path.join(assetsDir, 'equipment', 'workshop'), { recursive: true });
+fs.mkdirSync(path.join(assetsDir, 'npcs'), { recursive: true });
+fs.writeFileSync(path.join(assetsDir, 'equipment', 'workshop', 'patch-workshop.webp'), WORKSHOP_BYTES);
+fs.writeFileSync(path.join(assetsDir, 'npcs', 'patch.png'), PORTRAIT_BYTES);
 
 const sessions = new Map<string, { playerId: number; guildDbId: number }>();
 
@@ -175,6 +187,7 @@ beforeAll(async () => {
         equipmentWorkshop,
       } as never,
       getContent: () => app.content,
+      assetsDir,
     },
   });
 });
@@ -182,6 +195,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await api?.close();
   await t?.cleanup();
+  fs.rmSync(assetsDir, { recursive: true, force: true });
 });
 
 /* ─────────────────────────── gate and scope ─────────────────────────── */
@@ -483,5 +497,107 @@ describe('fabricate', () => {
     const res = await call(p, 'POST', '/workshop/fabricate', { recipeKey: 'standard_rebuild', slot: 'defense', requestKey: key });
     expect([res.status, res.body.error.code]).toEqual([409, 'WORKSHOP_REQUEST_CONFLICT']);
     expect(await balances(p)).toEqual({ components: 15, waifubux: 750 });
+  });
+});
+
+/* ─────────────────────────── artwork ─────────────────────────── */
+
+describe('Workshop artwork', () => {
+  /** Point the live content at an image (or none) for one test, then restore it. */
+  async function withArt(
+    artworkPath: string | null,
+    portraitPath: string | null,
+    run: () => Promise<void>,
+  ): Promise<void> {
+    const config = app.content.equipmentWorkshop!;
+    const npcs = app.content.npcs;
+    const before = config.artworkPath;
+    config.artworkPath = artworkPath;
+    app.content.npcs = (npcs ?? []).map((n) => (n.key === 'patch' ? { ...n, portraitPath } : n));
+    try {
+      await run();
+    } finally {
+      config.artworkPath = before;
+      app.content.npcs = npcs;
+    }
+  }
+
+  async function bytes(p: Player) {
+    const res = await api.inject({
+      method: 'GET',
+      url: `/api/v1/players/${p.playerId}/equipment/workshop/artwork`,
+      headers: headers(p),
+    });
+    return res;
+  }
+
+  it('with no image configured the overview is text-only and the artwork route 404s', async () => {
+    const p = await newPlayer();
+    await withArt(null, null, async () => {
+      expect((await call(p, 'GET', '/workshop')).body.data.artwork).toBeNull();
+      expect((await bytes(p)).statusCode).toBe(404);
+    });
+  });
+
+  it('serves the configured Workshop artwork, which wins over Patch’s portrait', async () => {
+    const p = await newPlayer();
+    await withArt('equipment/workshop/patch-workshop.webp', 'npcs/patch.png', async () => {
+      const overview = await call(p, 'GET', '/workshop');
+      expect(overview.body.data.artwork).toEqual({ source: 'workshop' });
+      // A source, never a path.
+      expect(overview.raw).not.toContain('equipment/workshop');
+      expect(overview.raw).not.toContain('npcs/patch');
+      const res = await bytes(p);
+      expect(res.statusCode).toBe(200);
+      expect(res.headers['content-type']).toBe('image/webp');
+      expect(res.headers['cache-control']).toContain('private');
+      expect(res.rawPayload.equals(WORKSHOP_BYTES)).toBe(true);
+      const again = await api.inject({
+        method: 'GET',
+        url: `/api/v1/players/${p.playerId}/equipment/workshop/artwork`,
+        headers: { ...headers(p), 'if-none-match': String(res.headers.etag) },
+      });
+      expect(again.statusCode).toBe(304);
+    });
+  });
+
+  it('falls back to Patch’s portrait when the Workshop file is missing or unsafe', async () => {
+    const p = await newPlayer();
+    for (const artworkPath of ['equipment/workshop/not-there.webp', '../outside.webp', null]) {
+      await withArt(artworkPath, 'npcs/patch.png', async () => {
+        expect((await call(p, 'GET', '/workshop')).body.data.artwork).toEqual({ source: 'patch' });
+        const res = await bytes(p);
+        expect(res.statusCode).toBe(200);
+        expect(res.headers['content-type']).toBe('image/png');
+        expect(res.rawPayload.equals(PORTRAIT_BYTES)).toBe(true);
+      });
+    }
+  });
+
+  it('nothing on disk is text-only, and the Workshop still works', async () => {
+    const p = await newPlayer();
+    await withArt('equipment/workshop/gone.webp', 'npcs/gone.png', async () => {
+      const res = await call(p, 'GET', '/workshop');
+      expect(res.status).toBe(200);
+      expect(res.body.data.artwork).toBeNull();
+      expect(res.body.data.recipes).toHaveLength(3);
+      expect((await bytes(p)).statusCode).toBe(404);
+    });
+  });
+
+  it('is unlock-gated and self-only', async () => {
+    const locked = await newPlayer({ unlocked: false });
+    const p = await newPlayer();
+    const other = await newPlayer();
+    await withArt('equipment/workshop/patch-workshop.webp', null, async () => {
+      const lockedRes = await bytes(locked);
+      expect(lockedRes.statusCode).toBe(422);
+      const foreign = await api.inject({
+        method: 'GET',
+        url: `/api/v1/players/${other.playerId}/equipment/workshop/artwork`,
+        headers: headers(p),
+      });
+      expect(foreign.statusCode).toBe(403);
+    });
   });
 });

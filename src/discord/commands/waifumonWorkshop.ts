@@ -19,6 +19,7 @@
  */
 import { randomBytes } from 'node:crypto';
 import type { ButtonInteraction, StringSelectMenuInteraction } from 'discord.js';
+import { resolveArtworkAttachment } from '../assets/resolveArtworkAttachment';
 import { respondEphemeral } from '../ephemeralSession';
 import { lockedFeatureView } from '../equipmentPresenter';
 import {
@@ -33,10 +34,12 @@ import {
   buildWorkshopHome,
   decodeIds,
   parseSlotChoice,
+  type WorkshopArt,
 } from '../workshopPresenter';
 import type { AppContext, Provisioned } from '../types';
 import type { NpcContent } from '../../modules/content/onboardingSchemas';
 import { DISMANTLE_PAGE_SIZE, type EquipmentWorkshopService } from '../../modules/equipment/equipmentWorkshopService';
+import { workshopArtworkCandidates } from '../../modules/equipment/workshopConfig';
 import {
   AppError,
   EquipmentDismantleRefusedError,
@@ -70,6 +73,25 @@ function patch(ctx: AppContext): NpcContent | null {
   return ctx.content.npcs?.find((n) => n.key === 'patch') ?? null;
 }
 
+/**
+ * The Workshop's one picture: its configured artwork, else Patch's portrait,
+ * else none (`workshopArtworkCandidates`). A missing or unsafe file is logged
+ * by the resolver and skipped — artwork never costs a player the screen.
+ */
+export function workshopArt(ctx: AppContext): WorkshopArt | null {
+  const candidates = workshopArtworkCandidates(ctx.content.equipmentWorkshop ?? null, patch(ctx));
+  for (const c of candidates) {
+    const resolved = resolveArtworkAttachment(ctx, {
+      relativePath: c.relativePath,
+      stem: c.source === 'workshop' ? 'patch_workshop' : 'npc_patch',
+      logTag: c.source === 'workshop' ? 'equipment-workshop' : 'npc-portrait',
+      logFields: { source: c.source },
+    });
+    if (resolved) return resolved;
+  }
+  return null;
+}
+
 function parsePage(raw: string | undefined): number | null {
   if (raw === undefined) return 0;
   if (!/^\d{1,4}$/.test(raw)) return null;
@@ -77,7 +99,7 @@ function parsePage(raw: string | undefined): number | null {
 }
 
 async function homeScreen(ctx: AppContext, s: EquipmentWorkshopService, playerId: number, status?: string) {
-  return buildWorkshopHome(await s.overview(playerId), patch(ctx), status);
+  return buildWorkshopHome(await s.overview(playerId), patch(ctx), status, workshopArt(ctx));
 }
 
 async function listScreen(ctx: AppContext, s: EquipmentWorkshopService, playerId: number, page: number, status?: string) {
@@ -197,7 +219,15 @@ export async function handleDismantleSelect(
     ctx,
     i,
     prov,
-    async (s) => buildDismantleReview(await s.previewDismantle(prov.playerId, ids), ids, page, mintWorkshopNonce(), patch(ctx)),
+    async (s) =>
+      buildDismantleReview(
+        await s.previewDismantle(prov.playerId, ids),
+        ids,
+        page,
+        mintWorkshopNonce(),
+        patch(ctx),
+        workshopArt(ctx),
+      ),
     dismantleRecovery(ctx, prov, page),
   );
 }
@@ -221,6 +251,7 @@ export async function handleDismantleConfirm(ctx: AppContext, i: ButtonInteracti
           expectedComponents: Number(rawTotal),
         }),
         patch(ctx),
+        workshopArt(ctx),
       ),
     dismantleRecovery(ctx, prov, 0),
   );
@@ -251,7 +282,7 @@ export async function handleFabricateReview(ctx: AppContext, i: ButtonInteractio
     const view = await s.overview(prov.playerId);
     const recipe = view.recipes.find((r) => r.key === recipeKey);
     if (!recipe) return buildRecipeList(view, patch(ctx), RECIPE_GONE);
-    return buildFabricationReview(recipe, slot, view.balances, mintWorkshopNonce(), patch(ctx));
+    return buildFabricationReview(recipe, slot, view.balances, mintWorkshopNonce(), patch(ctx), null, workshopArt(ctx));
   });
 }
 
@@ -272,7 +303,7 @@ export async function handleFabricateConfirm(ctx: AppContext, i: ButtonInteracti
       });
       const view = await s.overview(prov.playerId);
       const again = view.recipes.find((r) => r.key === recipeKey)?.slots.find((c) => c.choice === slot)?.available ?? false;
-      return buildFabricationResult(outcome, patch(ctx), again);
+      return buildFabricationResult(outcome, patch(ctx), again, workshopArt(ctx));
     },
     fabricationRecovery(ctx, prov, recipeKey),
   );

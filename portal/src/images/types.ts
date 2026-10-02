@@ -94,6 +94,13 @@ export interface AssetId {
    * never an authorization input. Ignored without `owned`.
    */
   appearanceId?: string | undefined;
+  /**
+   * Patch's Workshop image for this player — whichever picture the API said it
+   * resolved (`source`: the Workshop's artwork or Patch's portrait). Like
+   * `owned`, a logical address the API serves through its own self-only,
+   * unlock-gated route; never a path. `source` is a cache discriminator only.
+   */
+  workshop?: { playerId: number; source: string } | undefined;
 }
 
 export interface ResolvedImage {
@@ -200,5 +207,7 @@ export function assetKey(id: AssetId, bucket: ImageSizeBucket | null = null): st
   // it must never share a memo entry with the player identity of the same art.
   // Prefixed only when set, so every existing key is byte-for-byte unchanged.
   const admin = id.adminGallery === true ? 'admin-gallery|' : '';
-  return `${admin}${id.kind}:${id.slug}:${id.variant ?? DEFAULT_VARIANT}:${id.baseArtwork === true ? 'base' : ''}:${id.href ?? ''}:${owned}:${appearance}:${bucket ?? 'full'}`;
+  // Prefixed only when set, like `admin`, so existing keys are unchanged.
+  const workshop = id.workshop ? `workshop:${id.workshop.playerId}:${id.workshop.source}|` : '';
+  return `${workshop}${admin}${id.kind}:${id.slug}:${id.variant ?? DEFAULT_VARIANT}:${id.baseArtwork === true ? 'base' : ''}:${id.href ?? ''}:${owned}:${appearance}:${bucket ?? 'full'}`;
 }

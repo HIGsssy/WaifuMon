@@ -3,7 +3,10 @@
  * rails, against a service double. The transactional half (real dismantles,
  * charges, retries, races) is `tests/integration/equipmentWorkshop.test.ts`.
  */
-import { describe, expect, it, vi } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import { buildEquipmentHome, eqId } from '../../src/discord/equipmentPresenter';
 import {
   DISMANTLE_REPLAYED,
@@ -27,6 +30,7 @@ import {
   handleFabricateRecipe,
   handleFabricateReview,
   handleWorkshopHome,
+  workshopArt,
   workshopRequestKey,
 } from '../../src/discord/commands/waifumonWorkshop';
 import { handleEquipmentHome } from '../../src/discord/commands/waifumonEquipment';
@@ -586,5 +590,98 @@ describe('pw:* handlers', () => {
     await handleFabricateRecipe(appCtx(svc), i as never, prov, ['gone_rebuild']);
     expect(painted[0]?.content).toBe("Patch isn't taking that order right now.");
     expect(byLabel(painted[0]!, 'Improved Rebuild')).toBeDefined();
+  });
+});
+
+// ── artwork ───────────────────────────────────────────────────────────────
+
+describe('Workshop artwork', () => {
+  const assetsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wm-workshop-art-'));
+  fs.mkdirSync(path.join(assetsDir, 'equipment', 'workshop'), { recursive: true });
+  fs.mkdirSync(path.join(assetsDir, 'npcs'), { recursive: true });
+  fs.writeFileSync(path.join(assetsDir, 'equipment', 'workshop', 'patch-workshop.webp'), 'webp');
+  fs.writeFileSync(path.join(assetsDir, 'npcs', 'patch.png'), 'png');
+  afterAll(() => fs.rmSync(assetsDir, { recursive: true, force: true }));
+
+  const WORKSHOP_ART = 'equipment/workshop/patch-workshop.webp';
+  const PORTRAIT = 'npcs/patch.png';
+
+  function artCtx(artworkPath: string | null, portraitPath: string | null) {
+    const logger = { ...silentLogger(), warn: vi.fn(), error: vi.fn() };
+    const ctx = {
+      config: { assetsDir },
+      logger,
+      content: {
+        npcs: [{ ...PATCH, portraitPath }],
+        equipmentWorkshop: { salvageYields: {}, recipes: [], artworkPath },
+      },
+      services: { equipmentWorkshop: workshop() },
+    } as unknown as AppContext;
+    return { ctx, logger };
+  }
+
+  it('uses the configured Workshop artwork, over Patch’s portrait', () => {
+    const { ctx } = artCtx(WORKSHOP_ART, PORTRAIT);
+    expect(workshopArt(ctx)?.url).toBe('attachment://patch_workshop.webp');
+  });
+
+  it('falls back to Patch’s portrait when no Workshop artwork is configured', () => {
+    const { ctx, logger } = artCtx(null, PORTRAIT);
+    expect(workshopArt(ctx)?.url).toBe('attachment://npc_patch.png');
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it('a missing Workshop file warns and falls back to the portrait', () => {
+    const { ctx, logger } = artCtx('equipment/workshop/not-there.webp', PORTRAIT);
+    expect(workshopArt(ctx)?.url).toBe('attachment://npc_patch.png');
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ tag: 'equipment-workshop/artwork-missing' }),
+      expect.any(String),
+    );
+  });
+
+  it('an unsafe path never touches the filesystem and falls back', () => {
+    const { ctx, logger } = artCtx('../outside.webp', PORTRAIT);
+    expect(workshopArt(ctx)?.url).toBe('attachment://npc_patch.png');
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ tag: 'equipment-workshop/artwork-unsafe' }),
+      expect.any(String),
+    );
+  });
+
+  it('nothing available → text-only, never an error', () => {
+    expect(workshopArt(artCtx(null, null).ctx)).toBeNull();
+    expect(workshopArt(artCtx('equipment/workshop/gone.webp', 'npcs/gone.png').ctx)).toBeNull();
+  });
+
+  it('the home, reviews and results carry exactly one image when art is configured', async () => {
+    const { ctx } = artCtx(WORKSHOP_ART, PORTRAIT);
+    const art = workshopArt(ctx)!;
+    const screens = [
+      buildWorkshopHome(overview(), PATCH, null, art),
+      buildDismantleReview(preview(), [1, 2], 0, 'abcdefgh', PATCH, art),
+      buildDismantleResult({ replayed: false, count: 2, byRarity: [], totalComponents: 2, items: [], balances: { components: 2, waifubux: 0 } }, PATCH, art),
+      buildFabricationReview(recipe(), 'attack', { components: 18, waifubux: 4_250 }, 'abcdefgh', PATCH, null, art),
+      buildFabricationResult(fabrication(), PATCH, true, art),
+    ];
+    for (const p of screens) {
+      expect((embedOf(p) as { image?: { url: string } }).image?.url).toBe('attachment://patch_workshop.webp');
+      expect(p.files).toHaveLength(1);
+    }
+    // The long lists stay text-only.
+    expect(buildDismantleList({ items: [], page: 0, totalPages: 1, totalItems: 0 }, PATCH).files).toEqual([]);
+    expect(buildRecipeList(overview(), PATCH).files).toEqual([]);
+
+    // And the handler wires it: the Workshop home attaches the configured image.
+    const { i, painted } = interaction();
+    await handleWorkshopHome(ctx, i as never, prov);
+    expect((embedOf(painted[0]!) as { image?: { url: string } }).image?.url).toBe('attachment://patch_workshop.webp');
+    expect(painted[0]!.files).toHaveLength(1);
+  });
+
+  it('without art the screens are text-only', () => {
+    const p = buildWorkshopHome(overview(), PATCH);
+    expect((embedOf(p) as { image?: unknown }).image).toBeUndefined();
+    expect(p.files).toEqual([]);
   });
 });

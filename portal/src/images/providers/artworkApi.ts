@@ -14,7 +14,22 @@ export const ARTWORK_API_ID = 'artworkApi';
 const SAFE_SLUG = /^[a-z0-9_]+$/;
 const SAFE_VARIANT = /^[a-z0-9_]+$/;
 
+const SAFE_SOURCE = /^[a-z]+$/;
+
+/**
+ * Patch's Workshop image: the API resolved which picture (Workshop artwork or
+ * Patch's portrait) and serves it from a self-only route. No size buckets —
+ * authored art has no pre-generated renditions.
+ */
+function workshopArtworkUrl(id: AssetId): string | null {
+  const w = id.workshop;
+  if (!w || !Number.isSafeInteger(w.playerId) || w.playerId <= 0 || !SAFE_SOURCE.test(w.source))
+    return null;
+  return `${portalEnv.apiUrl}/v1/players/${w.playerId}/equipment/workshop/artwork?source=${w.source}`;
+}
+
 export function artworkUrlFor(id: AssetId, bucket: ImageSizeBucket | null = null): string | null {
+  if (id.workshop) return workshopArtworkUrl(id);
   if (!id.baseArtwork) return null;
   if (id.kind !== 'species' && id.kind !== 'waifumon') return null;
   if (!SAFE_SLUG.test(id.slug)) return null;

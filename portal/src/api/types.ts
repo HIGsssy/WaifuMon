@@ -858,6 +858,12 @@ export interface WorkshopRecipe {
 
 export interface WorkshopOverview {
   balances: WorkshopBalances;
+  /**
+   * The image the server resolved — the Workshop's artwork, else Patch's
+   * portrait — or null for text-only. A source, never a path: the bytes come
+   * through the image resolver.
+   */
+  artwork: { source: 'workshop' | 'patch' } | null;
   salvageYields: { rarity: Rarity; components: number }[];
   recipes: WorkshopRecipe[];
 }

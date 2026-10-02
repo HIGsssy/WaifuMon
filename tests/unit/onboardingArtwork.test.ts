@@ -253,19 +253,26 @@ describe('which picture a screen shows', () => {
     expect(logger.warn).not.toHaveBeenCalled();
   });
 
-  it('shipped content renders text-only and quietly — no art is required yet', () => {
-    const { ctx, logger } = makeCtx();
+  it('shipped content resolves against the real assets/ tree, quietly', () => {
+    // Every shipped onboarding path must point at a file that exists in the
+    // repository's assets/ — a path that validates but resolves nowhere (e.g.
+    // one prefixed with "assets/") would otherwise fail silently to text-only.
+    const logger = { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() };
+    const ctx = { config: { assetsDir: path.resolve(__dirname, '..', '..', 'assets') }, logger } as unknown as AppContext;
     const content = { flow: SHIPPED_FLOW, npc: SHIPPED_PATCH };
+    const shown = (view: EquipmentOnboardingView) => fileNames(buildOnboardingView(ctx, view, content));
+    // Only the explanation ships scene art today; every other step is text-only.
+    expect(shown({ kind: 'explain', stats: STATS } as EquipmentOnboardingView)).toEqual(['onboarding_explain.webp']);
     for (const view of [
       { kind: 'intro' },
       handover('attack', null),
-      { kind: 'explain', stats: STATS },
       { kind: 'needs_buddy' },
       { kind: 'complete', stats: STATS, report: null },
     ] as EquipmentOnboardingView[]) {
-      expect(buildOnboardingView(ctx, view, content).files).toEqual([]);
+      expect(shown(view)).toEqual([]);
     }
     expect(logger.warn).not.toHaveBeenCalled();
+    expect(logger.error).not.toHaveBeenCalled();
   });
 });
 

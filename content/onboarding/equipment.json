@@ -44,7 +44,7 @@
       "say": "Your Buddy supplies the SP. Gear turns it into something useful.",
       "sayAfter": "That’s the whole trick. Better Buddy, better gear, bigger numbers.",
       "button": "Gear up",
-      "artworkPath": "assets/npc/patches.webp",
+      "artworkPath": "npc/patches.webp",
       "noBuddy": {
         "title": "No Buddy, No Numbers",
         "narration": "Patch looks past you, then back at you.",

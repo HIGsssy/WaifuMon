@@ -22,8 +22,20 @@
  * a Discord retry replays the one operation it made. A Discord dismantle
  * batch is one list page (≤ 10 copies) so the confirm id fits Discord's
  * 100-character limit; the service itself accepts larger explicit batches.
+ *
+ * Artwork: one optional large image (the Workshop's artwork, else Patch's
+ * portrait — the handler resolves which) on the home, the dismantle review
+ * and result, and the fabrication review and result. Never more than one
+ * image per screen; the long lists stay text-only.
  */
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, StringSelectMenuBuilder } from 'discord.js';
+import {
+  ActionRowBuilder,
+  type AttachmentBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  EmbedBuilder,
+  StringSelectMenuBuilder,
+} from 'discord.js';
 import type { NpcContent } from '../modules/content/onboardingSchemas';
 import type {
   DismantleBlocker,
@@ -128,6 +140,20 @@ function balanceLine(b: { components: number; waifubux: number }): string {
   return `${COMPONENTS}: **${formatAmount(b.components)}**\nWaifuBux: **${formatAmount(b.waifubux)}**`;
 }
 
+/** The one picture a Workshop screen may carry, as `resolveArtworkAttachment` returns it. */
+export interface WorkshopArt {
+  file: AttachmentBuilder;
+  /** `attachment://…` */
+  url: string;
+}
+
+/** Set the screen's single large image, if any, and return the files to attach. */
+function withArt(embed: EmbedBuilder, art: WorkshopArt | null | undefined): AttachmentBuilder[] {
+  if (!art) return [];
+  embed.setImage(art.url);
+  return [art.file];
+}
+
 function withStatus(payload: SessionPayload, status: string | null | undefined): SessionPayload {
   return status ? { ...payload, content: status } : payload;
 }
@@ -142,7 +168,12 @@ function pager(page: number, totalPages: number): ButtonBuilder[] {
 
 // ── home ──────────────────────────────────────────────────────────────────
 
-export function buildWorkshopHome(view: WorkshopOverview, npc: NpcContent | null, status?: string | null): SessionPayload {
+export function buildWorkshopHome(
+  view: WorkshopOverview,
+  npc: NpcContent | null,
+  status?: string | null,
+  art?: WorkshopArt | null,
+): SessionPayload {
   const embed = baseEmbed(WORKSHOP_TITLE, npc)
     .setDescription(`**${npc?.name ?? 'Patch'}:** “Bring me what you don't need. I'll build you something you might.”`)
     .addFields({ name: 'Your balances', value: balanceLine(view.balances) });
@@ -152,6 +183,7 @@ export function buildWorkshopHome(view: WorkshopOverview, npc: NpcContent | null
       value: view.salvageYields.map((y) => `${y.rarity} → ${y.components}`).join(' · '),
     });
   }
+  const files = withArt(embed, art);
   return withStatus(
     {
       embeds: [embed],
@@ -162,7 +194,7 @@ export function buildWorkshopHome(view: WorkshopOverview, npc: NpcContent | null
           button(eqId.home(), 'Back'),
         ),
       ],
-      files: [],
+      files,
     },
     status,
   );
@@ -236,6 +268,7 @@ export function buildDismantleReview(
   page: number,
   nonce: string,
   npc: NpcContent | null,
+  art?: WorkshopArt | null,
 ): SessionPayload {
   const pieces = `${preview.count} piece${preview.count === 1 ? '' : 's'}`;
   const embed = baseEmbed(`Dismantle ${pieces}?`, npc)
@@ -258,24 +291,29 @@ export function buildDismantleReview(
     });
   const confirmId = pwId.dismantleConfirm(nonce, preview.totalComponents, ids);
   const cancel = button(pwId.dismantle(page), 'Cancel');
+  const files = withArt(embed, art);
   if (confirmId.length > MAX_CUSTOM_ID) {
     return {
       content: 'That selection is too large for one confirmation — pick fewer copies.',
       embeds: [embed],
       components: [row(cancel)],
-      files: [],
+      files,
     };
   }
   return {
     embeds: [embed],
     components: [row(button(confirmId, 'Confirm', ButtonStyle.Danger), cancel)],
-    files: [],
+    files,
   };
 }
 
 export const DISMANTLE_REPLAYED = 'Patch already took those — here’s what you got.';
 
-export function buildDismantleResult(outcome: DismantleOutcome, npc: NpcContent | null): SessionPayload {
+export function buildDismantleResult(
+  outcome: DismantleOutcome,
+  npc: NpcContent | null,
+  art?: WorkshopArt | null,
+): SessionPayload {
   const pieces = `${outcome.count} piece${outcome.count === 1 ? '' : 's'}`;
   const embed = baseEmbed(`🪛 Dismantled ${pieces}`, npc)
     .setDescription(
@@ -286,11 +324,12 @@ export function buildDismantleResult(outcome: DismantleOutcome, npc: NpcContent 
       ].join('\n'),
     )
     .addFields({ name: 'Your balances', value: balanceLine(outcome.balances) });
+  const files = withArt(embed, art);
   return withStatus(
     {
       embeds: [embed],
       components: [row(button(pwId.dismantle(0), 'Dismantle more'), workshopButton(), equipmentButton())],
-      files: [],
+      files,
     },
     outcome.replayed ? DISMANTLE_REPLAYED : null,
   );
@@ -387,6 +426,7 @@ export function buildFabricationReview(
   nonce: string,
   npc: NpcContent | null,
   status?: string | null,
+  art?: WorkshopArt | null,
 ): SessionPayload {
   const choice = recipe.slots.find((s) => s.choice === slot);
   const after = {
@@ -413,8 +453,9 @@ export function buildFabricationReview(
     'Confirm',
     ButtonStyle.Success,
   ).setDisabled(blocked || confirmId.length > MAX_CUSTOM_ID);
+  const files = withArt(embed, art);
   return withStatus(
-    { embeds: [embed], components: [row(confirm, button(pwId.recipe(recipe.key), 'Cancel'))], files: [] },
+    { embeds: [embed], components: [row(confirm, button(pwId.recipe(recipe.key), 'Cancel'))], files },
     status,
   );
 }
@@ -425,6 +466,7 @@ export function buildFabricationResult(
   outcome: FabricationOutcome,
   npc: NpcContent | null,
   againAvailable: boolean,
+  art?: WorkshopArt | null,
 ): SessionPayload {
   const { item } = outcome;
   const embed = baseEmbed(`✨ ${item.displayName}`, npc)
@@ -442,5 +484,6 @@ export function buildFabricationResult(
     button(pwId.review(outcome.recipe.key, outcome.slotChoice), 'Fabricate Again').setDisabled(!againAvailable),
     workshopButton(),
   ];
-  return withStatus({ embeds: [embed], components: [row(...actions)], files: [] }, outcome.replayed ? FABRICATION_REPLAYED : null);
+  const files = withArt(embed, art);
+  return withStatus({ embeds: [embed], components: [row(...actions)], files }, outcome.replayed ? FABRICATION_REPLAYED : null);
 }

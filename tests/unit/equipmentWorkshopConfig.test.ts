@@ -9,6 +9,7 @@ import {
   EquipmentWorkshopFileSchema,
   salvageYieldList,
   salvageYieldOf,
+  workshopArtworkCandidates,
   workshopConfigFromFile,
 } from '../../src/modules/equipment/workshopConfig';
 import { dismantleBlocker } from '../../src/modules/equipment/equipmentWorkshopService';
@@ -43,6 +44,8 @@ describe('the shipped Workshop file', () => {
   it('is valid and carries the V1 tuning', () => {
     const config = workshopConfigFromFile(EquipmentWorkshopFileSchema.parse(SHIPPED));
     expect(config.salvageYields).toEqual({ N: 1, R: 4, SR: 12 });
+    // No Workshop image ships yet: null, never a placeholder path.
+    expect(config.artworkPath).toBeNull();
     expect(
       config.recipes.map((r) => [r.key, r.name, r.rarity, r.componentCost, r.waifubuxCost, r.enabled]),
     ).toEqual([
@@ -111,5 +114,45 @@ describe('yields', () => {
     expect(dismantleBlocker(item({ isLocked: true }), config)).toBe('locked');
     expect(dismantleBlocker(item({ rarity: 'SSR' }), config)).toBe('unsupported_rarity');
     expect(dismantleBlocker(item(), null)).toBe('unsupported_rarity');
+  });
+});
+
+describe('artwork', () => {
+  it('accepts a safe relative image path under the convention', () => {
+    const parsed = EquipmentWorkshopFileSchema.parse(file({ artworkPath: 'equipment/workshop/patch-workshop.webp' }));
+    expect(workshopConfigFromFile(parsed).artworkPath).toBe('equipment/workshop/patch-workshop.webp');
+  });
+
+  it('allows null, and treats an absent field as null', () => {
+    expect(workshopConfigFromFile(EquipmentWorkshopFileSchema.parse(file({ artworkPath: null }))).artworkPath).toBeNull();
+    expect(workshopConfigFromFile(EquipmentWorkshopFileSchema.parse(file())).artworkPath).toBeNull();
+  });
+
+  it.each([
+    ['traversal', '../secrets/patch.webp'],
+    ['nested traversal', 'equipment/../../etc/passwd.png'],
+    ['an absolute path', '/etc/patch.webp'],
+    ['a URL', 'https://example.com/patch.webp'],
+    ['a backslash', 'equipment\\workshop\\patch.webp'],
+    ['a non-image extension', 'equipment/workshop/patch.svg'],
+    ['an empty string', ''],
+  ])('refuses %s', (_label, artworkPath) => {
+    expect(issues(file({ artworkPath })).join('\n')).toMatch(/artworkPath/);
+  });
+
+  const workshop = { artworkPath: 'equipment/workshop/patch-workshop.webp' };
+  const patch = { portraitPath: 'npcs/patch.png' };
+
+  it('prefers the Workshop artwork over Patch’s portrait', () => {
+    expect(workshopArtworkCandidates(workshop, patch)).toEqual([
+      { source: 'workshop', relativePath: 'equipment/workshop/patch-workshop.webp' },
+      { source: 'patch', relativePath: 'npcs/patch.png' },
+    ]);
+  });
+
+  it('falls back to Patch’s portrait, then to nothing (text-only)', () => {
+    expect(workshopArtworkCandidates({ artworkPath: null }, patch)).toEqual([{ source: 'patch', relativePath: 'npcs/patch.png' }]);
+    expect(workshopArtworkCandidates(null, { portraitPath: null })).toEqual([]);
+    expect(workshopArtworkCandidates(null, null)).toEqual([]);
   });
 });

@@ -50,6 +50,34 @@ enforces that.
 - The file is optional. Without it nothing can be dismantled or fabricated.
 - Retuning is a deploy. There is no admin editor in V1.
 
+## Artwork
+
+`artworkPath` is optional. When set, it is a path relative to `ASSETS_DIR`,
+validated with the shared `relativeArtworkPath` rules. By convention it lives at
+`assets/equipment/workshop/<name>.webp`. The shipped value is `null` until a
+real file exists.
+
+Every Workshop screen uses one fallback order, defined in
+`workshopArtworkCandidates`:
+
+1. the Workshop artwork;
+2. Patch's NPC portrait (`content/npcs.json`);
+3. text only.
+
+If a file is missing or its path is unsafe, the screen logs it and moves to the
+next option. Workshop access never fails because of artwork.
+
+- **Discord** shows one large image on the home screen, the dismantle review
+  and result, and the fabrication review and result. The dismantle list and
+  recipe list have no image.
+- **The API** includes `artwork: { source: 'workshop' | 'patch' } | null` in
+  the overview. It never includes a path. The bytes come from
+  `GET …/equipment/workshop/artwork`, which is self-only, needs the unlock,
+  supports ETag/304, uses `private` caching, and returns 404 when no image
+  exists.
+- **The Portal** passes a logical asset to `<Artwork>`. The `artworkApi`
+  provider turns that asset into the route above.
+
 ## Rules
 
 - **Gate:** every read and action needs the permanent `equipment` unlock. The

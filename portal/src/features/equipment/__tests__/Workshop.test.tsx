@@ -98,6 +98,32 @@ describe('Workshop overview', () => {
   });
 });
 
+describe('Workshop artwork', () => {
+  it.each([
+    ['the Workshop artwork', 'workshop'],
+    ['Patch’s portrait (the fallback)', 'patch'],
+  ] as const)(
+    'shows %s the server resolved, through the image resolver',
+    async (_label, source) => {
+      setup({ workshopArtwork: source });
+      const panel = await workshopRegion();
+      const img = await within(panel).findByRole('img');
+      // The same route whichever picture won — never a filesystem path.
+      expect(img.getAttribute('src')).toBe(
+        `/api/v1/players/${PLAYER_ID}/equipment/workshop/artwork?source=${source}`,
+      );
+      expect(img.getAttribute('src')).not.toMatch(/\.(webp|png|jpe?g|gif)/);
+    },
+  );
+
+  it('is text-only when the server resolved no image', async () => {
+    setup({ workshopArtwork: null });
+    const panel = await workshopRegion();
+    await within(panel).findByTestId('workshop-components');
+    expect(within(panel).queryByRole('img')).toBeNull();
+  });
+});
+
 /* ─────────────────────────── dismantling ─────────────────────────── */
 
 describe('dismantling', () => {

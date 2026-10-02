@@ -1,6 +1,7 @@
 {
   "format": "waifumon-equipment-workshop",
   "version": 1,
+  "artworkPath": null,
   "salvageYields": {
     "N": 1,
     "R": 4,
