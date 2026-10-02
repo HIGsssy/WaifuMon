@@ -66,6 +66,7 @@ import {
   equipmentDisplayName,
   multiplierRangeIssues,
   rollEquipmentInstance,
+  UNKNOWN_AFFIX_LABEL,
   validateFixedRoll,
   type EquipmentRoll,
 } from './equipmentRoll';
@@ -144,13 +145,34 @@ export interface GrantEquipmentResult {
   alreadyGranted: boolean;
 }
 
-export type EquipmentSort = 'acquired' | 'multiplier' | 'rarity' | 'name';
+/**
+ * `acquired` is newest first and `oldest` its reverse; `slot` is slot order
+ * (Attack, Defense, Health); `quality` is roll quality, best first
+ * (`rollQualityPercent`). Every sort ties on the instance id, so paging is
+ * stable.
+ */
+export type EquipmentSort = 'acquired' | 'oldest' | 'multiplier' | 'rarity' | 'name' | 'slot' | 'quality';
+export const EQUIPMENT_SORTS: readonly EquipmentSort[] = [
+  'acquired',
+  'oldest',
+  'multiplier',
+  'rarity',
+  'name',
+  'slot',
+  'quality',
+];
 
 export interface EquipmentFilters {
   slot?: EquipmentSlot;
   rarity?: string;
   /** Case-insensitive substring of the name or key. */
   q?: string;
+  /**
+   * Case-insensitive substring of the player-facing display name — base name
+   * plus affix suffix, exactly as `equipmentDisplayName` renders it. Never
+   * matches a definition or affix key.
+   */
+  search?: string;
   definitionKey?: string;
   /** Filter on membership of the *active* loadout. */
   equipped?: boolean;
@@ -350,11 +372,39 @@ interface SortSpec {
   valueOf(row: { instance: PlayerEquipmentRow; definition: EquipmentDefinitionRow }): number | string;
 }
 
+/** Slot order, as SQL — Attack, Defense, Health. */
+const SLOT_RANK_SQL = sql<number>`(case ${playerEquipment.slot} ${sql.raw(
+  EQUIPMENT_SLOTS.map((slot, i) => `when '${slot}' then ${i}`).join(' '),
+)} else -1 end)`;
+
+/**
+ * Roll quality in basis points of the range (0–10000), as SQL — the same
+ * formula as `rollQualityPercent`, at finer resolution and in integers so a
+ * keyset cursor compares exactly. A single-value range is the top; a roll a
+ * retune left outside the range is clamped.
+ */
+const ROLL_QUALITY_SQL = sql<number>`(case when ${equipmentDefinitions.multiplierMaxBp} <= ${equipmentDefinitions.multiplierMinBp} then 10000 else greatest(0, least(10000, ((${playerEquipment.rolledMultiplierBp} - ${equipmentDefinitions.multiplierMinBp}) * 10000) / (${equipmentDefinitions.multiplierMaxBp} - ${equipmentDefinitions.multiplierMinBp}))) end)`;
+
+function rollQualityBp(r: { instance: PlayerEquipmentRow; definition: EquipmentDefinitionRow }): number {
+  const { multiplierMinBp: min, multiplierMaxBp: max } = r.definition;
+  if (max <= min) return 10_000;
+  // Postgres integer division truncates toward zero; so does Math.trunc.
+  return Math.max(0, Math.min(10_000, Math.trunc(((r.instance.rolledMultiplierBp - min) * 10_000) / (max - min))));
+}
+
 const SORTS: Record<EquipmentSort, SortSpec> = {
   // Newest first. The identity id *is* acquisition order, and unlike
   // `acquired_at` it has no sub-millisecond precision for a JS Date to lose
   // inside a cursor.
   acquired: { expr: null, direction: 'desc', cast: 'int', valueOf: (r) => r.instance.id },
+  oldest: { expr: null, direction: 'asc', cast: 'int', valueOf: (r) => r.instance.id },
+  slot: {
+    expr: SLOT_RANK_SQL,
+    direction: 'asc',
+    cast: 'int',
+    valueOf: (r) => (EQUIPMENT_SLOTS as readonly string[]).indexOf(r.instance.slot),
+  },
+  quality: { expr: ROLL_QUALITY_SQL, direction: 'desc', cast: 'int', valueOf: rollQualityBp },
   multiplier: {
     expr: OWN_MULTIPLIER_SQL,
     direction: 'desc',
@@ -492,6 +542,24 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
     return row?.equipmentId ?? null;
   }
 
+  /**
+   * The display name as SQL: `equipmentDisplayName`, evaluated per row. The
+   * affix catalogue is deployed content rather than a table, so its suffixes
+   * travel as bound parameters of a CASE — keys never reach the comparison,
+   * only the text a player sees.
+   */
+  function displayNameSql(): SQL {
+    const affixes = deps.getAffixes().all();
+    const suffix =
+      affixes.length === 0
+        ? sql`${UNKNOWN_AFFIX_LABEL}::text`
+        : sql`(case ${playerEquipment.affixKey} ${sql.join(
+            affixes.map((a) => sql`when ${a.key}::text then ${a.suffix}::text`),
+            sql` `,
+          )} else ${UNKNOWN_AFFIX_LABEL}::text end)`;
+    return sql`(case when ${playerEquipment.affixKey} is null then ${equipmentDefinitions.name} else ${equipmentDefinitions.name} || ' ' || ${suffix} end)`;
+  }
+
   function filterConditions(
     playerId: number,
     filters: EquipmentFilters,
@@ -508,6 +576,8 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
     }
     if (filters.favorite !== undefined) conditions.push(eq(playerEquipment.isFavorite, filters.favorite));
     if (filters.locked !== undefined) conditions.push(eq(playerEquipment.isLocked, filters.locked));
+    const search = filters.search?.trim();
+    if (search) conditions.push(ilike(displayNameSql(), `%${escapeLike(search)}%`));
     const q = filters.q?.trim();
     if (q) {
       const pattern = `%${escapeLike(q)}%`;
@@ -759,7 +829,8 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
 
     async listEquipment(playerId, opts = {}) {
       const sort = opts.sort ?? 'acquired';
-      const spec = SORTS[sort];
+      // Own keys only: a client-supplied `constructor` is not a sort.
+      const spec = Object.hasOwn(SORTS, sort) ? SORTS[sort] : undefined;
       if (!spec) throw new EquipmentValidationError([{ path: 'sort', message: `unknown sort "${String(sort)}"` }]);
       const limit = Math.min(Math.max(Math.trunc(opts.limit ?? DEFAULT_PAGE_SIZE), 1), MAX_PAGE_SIZE);
 

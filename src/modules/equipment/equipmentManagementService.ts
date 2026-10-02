@@ -17,8 +17,14 @@ import { FeatureLockedError, EquipmentNotOwnedError } from '../../shared/errors'
 import type { FeatureUnlockService } from '../features/featureUnlockService';
 import type { CombatStatsService, SlotCandidatePreview } from './combatStatsService';
 import type { CombatStats, CombatStatValues } from './equipmentMath';
-import type { EquipmentInstanceView } from './equipmentQueries';
-import type { EquipmentGroup, EquipmentService } from './equipmentService';
+import type { EquipmentInstanceView, LoadoutView } from './equipmentQueries';
+import type {
+  EquipmentFilters,
+  EquipmentGroup,
+  EquipmentPage,
+  EquipmentService,
+  EquipmentSort,
+} from './equipmentService';
 import {
   GEAR_BAG_PAGE_SIZE,
   filterGearBagGroups,
@@ -33,6 +39,41 @@ import { EQUIPMENT_SLOTS, type EquipmentSlot } from './vocabulary';
 
 /** Slot screens list this many candidates per page. */
 export const SLOT_PAGE_SIZE = 10;
+
+/** A per-copy Gear Bag page asks for this many unless told otherwise… */
+export const BROWSE_DEFAULT_PAGE_SIZE = 24;
+/** …and never more than this, whatever it asks for. */
+export const BROWSE_MAX_PAGE_SIZE = 50;
+
+/**
+ * The Equipment overview a richer management screen (the Portal) opens on:
+ * the authoritative stats and the active loadout as owned-instance views, so
+ * each equipped copy carries its flags and its definition's range.
+ *
+ * Like `summary`, a locked player reads `{ unlocked: false }` and nothing
+ * else — no counts, no loadout, no hint of gear owned before the unlock.
+ */
+export type EquipmentOverview =
+  | { unlocked: false }
+  | { unlocked: true; stats: CombatStats; loadout: LoadoutView };
+
+/**
+ * One per-copy Gear Bag query. Only these filters exist: the definition-key
+ * filter and the key-matching `q` stay internal, so a client can search
+ * nothing but the display name.
+ */
+export interface BrowseQuery {
+  slot?: EquipmentFilters['slot'];
+  rarity?: string;
+  equipped?: boolean;
+  favorite?: boolean;
+  locked?: boolean;
+  /** Display-name substring: base name or affix suffix. */
+  search?: string;
+  sort?: EquipmentSort;
+  cursor?: string | null;
+  limit?: number;
+}
 
 export interface HomeView {
   stats: CombatStats;
@@ -130,6 +171,10 @@ export type EquipmentFlag = 'favorite' | 'locked';
 export interface EquipmentManagementService {
   home(playerId: number): Promise<HomeView>;
   /** Never throws `FeatureLockedError`: a locked player reads `{ unlocked: false }`. */
+  overview(playerId: number): Promise<EquipmentOverview>;
+  /** One bounded, per-copy page of the Gear Bag — no grouping. */
+  browse(playerId: number, query: BrowseQuery): Promise<EquipmentPage>;
+  /** Never throws `FeatureLockedError`: a locked player reads `{ unlocked: false }`. */
   summary(playerId: number): Promise<EquipmentSummary>;
   slot(playerId: number, slot: EquipmentSlot, page: number): Promise<SlotView>;
   bag(playerId: number, filter: GearBagFilter, page: number): Promise<BagView>;
@@ -145,7 +190,7 @@ export interface EquipmentManagementService {
 export interface EquipmentManagementDeps {
   equipment: Pick<
     EquipmentService,
-    'listEquipmentGroups' | 'getActiveLoadout' | 'getOwned' | 'equip' | 'unequip' | 'setFlags'
+    'listEquipment' | 'listEquipmentGroups' | 'getActiveLoadout' | 'getOwned' | 'equip' | 'unequip' | 'setFlags'
   >;
   combatStats: Pick<CombatStatsService, 'calculateCombatStats' | 'previewSlot'>;
   featureUnlocks: Pick<FeatureUnlockService, 'isUnlocked'>;
@@ -186,6 +231,34 @@ export function createEquipmentManagementService(deps: EquipmentManagementDeps):
     async home(playerId) {
       await requireUnlocked(playerId);
       return { stats: await combatStats.calculateCombatStats(playerId) };
+    },
+
+    async overview(playerId) {
+      if (!(await featureUnlocks.isUnlocked(playerId, 'equipment'))) return { unlocked: false };
+      const [stats, loadout] = await Promise.all([
+        combatStats.calculateCombatStats(playerId),
+        equipment.getActiveLoadout(playerId),
+      ]);
+      return { unlocked: true, stats, loadout };
+    },
+
+    async browse(playerId, query) {
+      await requireUnlocked(playerId);
+      const requested = query.limit ?? BROWSE_DEFAULT_PAGE_SIZE;
+      const limit = Number.isInteger(requested) ? Math.min(Math.max(requested, 1), BROWSE_MAX_PAGE_SIZE) : BROWSE_DEFAULT_PAGE_SIZE;
+      // Copied field by field, so nothing a caller adds to the query object
+      // (a `q`, a `definitionKey`) reaches the service.
+      return equipment.listEquipment(playerId, {
+        ...(query.slot !== undefined ? { slot: query.slot } : {}),
+        ...(query.rarity !== undefined ? { rarity: query.rarity } : {}),
+        ...(query.equipped !== undefined ? { equipped: query.equipped } : {}),
+        ...(query.favorite !== undefined ? { favorite: query.favorite } : {}),
+        ...(query.locked !== undefined ? { locked: query.locked } : {}),
+        ...(query.search !== undefined ? { search: query.search } : {}),
+        sort: query.sort ?? 'acquired',
+        cursor: query.cursor ?? null,
+        limit,
+      });
     },
 
     async summary(playerId) {

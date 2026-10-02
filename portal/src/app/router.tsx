@@ -45,6 +45,9 @@ const BuddyPage = lazy(() =>
 const ExpeditionsPage = lazy(() =>
   import('@/features/expeditions/ExpeditionsPage').then((m) => ({ default: m.ExpeditionsPage })),
 );
+const EquipmentPage = lazy(() =>
+  import('@/features/equipment/EquipmentPage').then((m) => ({ default: m.EquipmentPage })),
+);
 const InventoryPage = lazy(() =>
   import('@/features/inventory/InventoryPage').then((m) => ({ default: m.InventoryPage })),
 );
@@ -260,6 +263,7 @@ export const routes: RouteObject[] = [
           { path: 'buddy', element: <BuddyPage /> },
           { path: 'expeditions', element: <ExpeditionsPage /> },
           { path: 'inventory', element: <InventoryPage /> },
+          { path: 'equipment', element: <EquipmentPage /> },
           { path: 'shop', element: <ShopPage /> },
           { path: 'encyclopedia', element: <EncyclopediaPage /> },
           { path: 'encyclopedia/:slug', element: <SpeciesDetailPage /> },

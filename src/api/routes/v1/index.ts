@@ -27,6 +27,7 @@ import { currencyRoutes } from './currency';
 import { dailyRoutes } from './daily';
 import { effectsRoutes } from './effects';
 import { encounterRoutes } from './encounter';
+import { equipmentRoutes } from './equipment';
 import { expeditionRoutes } from './expeditions';
 import { guildRoutes } from './guilds';
 import { inventoryRoutes } from './inventory';
@@ -93,6 +94,9 @@ export const v1Routes =
     await app.register(sessionRoutes(ctx));
     // A player's own achievement wall (self-scoped).
     await app.register(achievementRoutes(ctx));
+    // A player's own Equipment (self-scoped). Skipped when the management
+    // service is not wired.
+    await app.register(equipmentRoutes(ctx));
 
     // Guild-scoped leaderboards. No `:playerId` param; scope comes from the
     // Portal session (or the bearer token's named guild), like the directory.

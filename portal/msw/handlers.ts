@@ -194,6 +194,9 @@ export const handlers = [
   }),
 
   http.get('/api/v1/players/:playerId/collection/buddy', () => data(fixtures.buddyEntry)),
+  // Equipment: locked by default, which is stateless and requests nothing
+  // further. Equipment page tests install `createEquipmentBackend` instead.
+  http.get('/api/v1/players/:playerId/equipment', () => data({ unlocked: false })),
 
   // ── Appearances ───────────────────────────────────────────────────────────
   http.get('/api/v1/players/:playerId/collection/owned/:waifuId/appearances', ({ params }) => {

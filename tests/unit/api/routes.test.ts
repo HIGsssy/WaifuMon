@@ -901,7 +901,7 @@ describe('OpenAPI registration', () => {
    * Pinned as an explicit allowlist rather than relaxed to "any mutation",
    * so adding a second write verb is a deliberate, reviewable edit here.
    */
-  it('registers no mutation verbs in v1 beyond the cosmetic appearance write', async () => {
+  it('registers no mutation verbs in v1 beyond the cosmetic appearance and Equipment management writes', async () => {
     const spec = (await app.inject({ method: 'GET', url: '/api/v1/openapi.json' })).json();
     const mutations: string[] = [];
     for (const [path, item] of Object.entries(spec.paths) as Array<
@@ -967,6 +967,13 @@ describe('OpenAPI registration', () => {
       'POST /api/v1/admin/reward-tables/{kind}/{id}/reset',
       'PUT /api/v1/admin/reward-tables/{kind}/{id}',
       'PUT /api/v1/players/{playerId}/collection/owned/{waifuId}/appearance',
+      // A player's own Equipment management — self-only through the player
+      // scope, unlock-gated, and every write goes through the same management
+      // service as Discord: equip / unequip (stale-slot guarded) and the
+      // per-copy favourite / lock flags.
+      'POST /api/v1/players/{playerId}/equipment/items/{equipmentId}/equip',
+      'POST /api/v1/players/{playerId}/equipment/loadout/{slot}/unequip',
+      'PUT /api/v1/players/{playerId}/equipment/items/{equipmentId}/flags/{flag}',
     ].sort());
   });
 

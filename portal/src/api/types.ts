@@ -749,3 +749,75 @@ export interface ExpeditionOverview {
   /** Current region first, then unlocked regions in travel order. */
   regions: ExpeditionRegion[];
 }
+
+// ── Equipment ───────────────────────────────────────────────────────────────
+
+export type EquipmentSlot = 'attack' | 'defense' | 'health';
+export type EquipmentStat = 'attack' | 'defense' | 'maxHp';
+
+/**
+ * One owned copy. Multipliers are plain numbers (`0.8` is ×0.80); `id` is an
+ * opaque handle for the action routes and is never rendered.
+ */
+export interface EquipmentItem {
+  id: number;
+  /** Display name — base name plus affix suffix. */
+  name: string;
+  baseName: string;
+  description: string;
+  slot: EquipmentSlot;
+  rarity: Rarity;
+  multiplier: number;
+  range: { min: number; max: number };
+  /** Display only, 0–100, computed by the API. */
+  rollQuality: number;
+  equipped: boolean;
+  favorite: boolean;
+  locked: boolean;
+  acquiredAt: string;
+  source: string;
+}
+
+export interface EquipmentStats {
+  attack: number | null;
+  defense: number | null;
+  maxHp: number | null;
+}
+
+export type EquipmentOverview =
+  | { unlocked: false }
+  | {
+      unlocked: true;
+      buddy: { waifuId: number; name: string; level: number; currentSp: number } | null;
+      stats: EquipmentStats;
+      unavailableReason: 'no_buddy' | 'incomplete_loadout' | null;
+      slots: Record<EquipmentSlot, EquipmentItem | null>;
+    };
+
+export interface EquipmentPage {
+  items: EquipmentItem[];
+  nextCursor: string | null;
+}
+
+export interface EquipmentComparison {
+  stat: EquipmentStat;
+  current: number | null;
+  withItem: number | null;
+  delta: number | null;
+  equippedItem: EquipmentItem | null;
+  hasBuddy: boolean;
+}
+
+export interface EquipmentDetail {
+  item: EquipmentItem;
+  identicalCopies: number;
+  comparison: EquipmentComparison;
+}
+
+export interface EquipmentSlotChange {
+  slot: EquipmentSlot;
+  changed: boolean;
+  item: EquipmentItem | null;
+  before: number | null;
+  after: number | null;
+}

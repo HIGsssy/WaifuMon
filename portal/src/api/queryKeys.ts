@@ -13,6 +13,7 @@
  * Every key is built here so a typo cannot silently create a second cache entry
  * for the same resource.
  */
+import type { GearBagQuery } from './equipment';
 import type { ItemCategory, LeaderboardMetric, Rarity } from './types';
 
 export const queryKeys = {
@@ -60,6 +61,19 @@ export const queryKeys = {
    */
   ownedSlugs: (playerId: number, ownedCount?: number | undefined) =>
     ['player', playerId, 'collection', 'ownedSlugs', ownedCount ?? 'unknown'] as const,
+
+  /**
+   * A player's own Equipment, under one prefix: every equip, unequip or flag
+   * change invalidates the overview, every Gear Bag query and every open
+   * detail at once, so stats, slots, cards and comparisons never disagree.
+   */
+  equipment: (playerId: number) => ['player', playerId, 'equipment'] as const,
+  equipmentOverview: (playerId: number) => ['player', playerId, 'equipment', 'overview'] as const,
+  /** The query is part of the key: each filter/sort combination is its own list. */
+  gearBag: (playerId: number, query: GearBagQuery) =>
+    ['player', playerId, 'equipment', 'bag', query] as const,
+  equipmentDetail: (playerId: number, equipmentId: number) =>
+    ['player', playerId, 'equipment', 'item', equipmentId] as const,
 
   /** A player's own achievements — player-scoped like the rest of the wall. */
   achievements: (playerId: number) => ['player', playerId, 'achievements'] as const,

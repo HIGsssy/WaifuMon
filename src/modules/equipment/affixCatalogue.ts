@@ -133,6 +133,11 @@ export interface EquipmentAffixCatalogue {
   resolveOwned(key: string): EquipmentAffix | undefined;
   /** Enabled affixes of one pool, in catalogue order — what a random roll may pick. */
   rollable(pool: string): readonly EquipmentAffix[];
+  /**
+   * Every catalogued affix, retired ones included, in catalogue order — what a
+   * display-name search must know to match a suffix an owned copy renders.
+   */
+  all(): readonly EquipmentAffix[];
 }
 
 export interface AffixCatalogueOptions {
@@ -160,6 +165,7 @@ export function buildAffixCatalogue(
       return affix;
     },
     rollable: (pool) => byPool.get(pool) ?? [],
+    all: () => affixes,
   };
 }
 

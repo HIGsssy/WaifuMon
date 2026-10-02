@@ -19,6 +19,7 @@ describe('AppShell', () => {
       'Collection',
       'Buddy',
       'Inventory',
+      'Equipment',
       'Shop',
       'Encyclopedia',
       'Guide',

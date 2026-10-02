@@ -180,3 +180,27 @@ export function equipmentDisplayName(
   const affix = affixes.resolveOwned(affixKey);
   return `${baseName} ${affix ? affix.suffix : UNKNOWN_AFFIX_LABEL}`;
 }
+
+/**
+ * Roll quality — where a copy's roll sits within its definition's configured
+ * range, as a whole percentage. **Display only**: nothing in combat, rewards
+ * or ordering of loot reads it, and it never replaces the multiplier itself.
+ *
+ *   quality = (rolled − min) / (max − min), mapped to 0–100 and rounded
+ *
+ * A single-value range (`min == max`) is 100%: the copy rolled the best — the
+ * only — value there was. Uses the definition's *current* range, so a copy
+ * that a later retune left outside it is clamped into 0–100 rather than
+ * reported as −20% or 130%.
+ *
+ * `ROLL_QUALITY_SQL` in `equipmentService.ts` sorts by the same formula.
+ */
+export function rollQualityPercent(
+  range: Pick<MultiplierRange, 'multiplierMinBp' | 'multiplierMaxBp'>,
+  rolledMultiplierBp: number,
+): number {
+  const { multiplierMinBp: min, multiplierMaxBp: max } = range;
+  if (max <= min) return 100;
+  const ratio = (rolledMultiplierBp - min) / (max - min);
+  return Math.round(Math.min(Math.max(ratio, 0), 1) * 100);
+}

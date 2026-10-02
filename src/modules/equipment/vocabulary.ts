@@ -42,6 +42,23 @@ export const EQUIPMENT_SOURCE_TYPES = [
 ] as const;
 export type EquipmentSourceType = (typeof EQUIPMENT_SOURCE_TYPES)[number];
 
+/**
+ * How a source reads to a player ("Found: Boss"). The type alone — never the
+ * source key, grant key or audit payload behind it.
+ */
+export const EQUIPMENT_SOURCE_LABELS: Readonly<Record<EquipmentSourceType, string>> = Object.freeze({
+  onboarding: 'Equipment onboarding',
+  boss: 'Boss',
+  encounter: 'Encounter',
+  expedition: 'Expedition',
+  shop: 'Shop',
+  admin: 'Granted',
+  event: 'Event',
+  dungeon: 'Dungeon',
+  raid: 'Raid',
+  quest: 'Quest',
+});
+
 /** Rows in the append-only `equipment_events` ledger. */
 export const EQUIPMENT_EVENT_KINDS = [
   'granted',
