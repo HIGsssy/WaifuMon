@@ -17,6 +17,7 @@ import {
   items,
   playerEquipment,
   playerExpeditions,
+  players,
   species as speciesTable,
   type SpeciesRow,
 } from '../../src/db/schema';
@@ -35,7 +36,7 @@ import type { ExpeditionRewardPayload } from '../../src/modules/expeditions/expe
 import { ExpeditionAlreadyClaimedError, ExpeditionContentError } from '../../src/shared/errors';
 import { seededRng } from '../../src/shared/random';
 import { CONTENT_DIR, bootstrapApp, insertOwnedWaifu, provisionPlayer, type App } from '../helpers/fixtures';
-import { TEST_AFFIXES } from '../helpers/equipmentFixtures';
+import { TEST_AFFIXES, unlockEquipment } from '../helpers/equipmentFixtures';
 import { createTestDb, type TestDb } from '../helpers/testDb';
 
 let t: TestDb;
@@ -81,9 +82,11 @@ const gearGroup = (equipment: Record<string, unknown>[], chanceBasisPoints = 10_
   equipment: equipment.map((e) => ({ weight: 1, ...e })),
 });
 
-async function playerWithWaifu() {
+/** A player and a copy to deploy. Gear needs the Equipment feature, so they have it unless told otherwise. */
+async function playerWithWaifu({ unlocked = true } = {}) {
   userSeq += 1;
   const { playerId } = await provisionPlayer(app, 'g-exp-gear', `u-exp-gear-${userSeq}`);
+  if (unlocked) await unlockEquipment(t.db, app.gear, playerId);
   const waifu = await insertOwnedWaifu(t.db, { playerId, speciesId: demon.id, level: 10 });
   return { playerId, waifuId: waifu.id };
 }
@@ -265,6 +268,70 @@ describe('everything else is unchanged', () => {
     expect(result.rewards).not.toHaveProperty('equipment');
     expect(result.rewards.sources[0]).not.toHaveProperty('equipment');
     expect(result.equipmentGranted).toEqual([]);
+  });
+});
+
+describe('Equipment eligibility is decided at deploy', () => {
+  it('a locked deploy (even past Level 35) snapshots no gear; ordinary rewards are unchanged', async () => {
+    installSuccessTable([gearGroup([{ rarity: 'R' }])]);
+    const { playerId, waifuId } = await playerWithWaifu({ unlocked: false });
+    await t.db.update(players).set({ level: 60 }).where(eq(players.id, playerId));
+    const id = await finishedMission(playerId, waifuId);
+
+    const plan = (await rowOf(id)).resolutionPlan as unknown as ExpeditionResolutionPlan;
+    expect(plan.equipmentWithheld).toBe(true);
+    expect(plan).not.toHaveProperty('equipmentPools');
+    expect(plan.successTable!.groups.map((g) => g.id)).toEqual(['salvage']);
+
+    const result = await app.expeditions.claim(playerId, id);
+    expect(result.rewards.waifubux).toBe(200);
+    expect(result.itemsGranted).toEqual([{ slug: 'exp_gear_scrap', name: 'Gear Scrap', quantity: 2 }]);
+    expect(result.equipmentGranted).toEqual([]);
+    expect(result.rewards.sources.flatMap((s) => s.equipment ?? [])).toEqual([]);
+    expect(await gearOf(playerId)).toEqual([]);
+  });
+
+  it('a mixed group pays its items to a locked player instead of drawing gear', async () => {
+    installSuccessTable([
+      {
+        id: 'mixed',
+        chanceBasisPoints: 10_000,
+        entries: [{ itemId: 'exp_gear_scrap', weight: 1, quantity: 1 }],
+        equipment: [{ weight: 50, rarity: 'R' }],
+      },
+    ]);
+    const { playerId, waifuId } = await playerWithWaifu({ unlocked: false });
+    const result = await app.expeditions.claim(playerId, await finishedMission(playerId, waifuId));
+    expect(result.itemsGranted).toEqual([{ slug: 'exp_gear_scrap', name: 'Gear Scrap', quantity: 3 }]);
+    expect(result.equipmentGranted).toEqual([]);
+  });
+
+  it('unlocking after a locked deploy does not add gear at claim, and the claim stays single', async () => {
+    installSuccessTable([gearGroup([{ rarity: 'R' }])]);
+    const { playerId, waifuId } = await playerWithWaifu({ unlocked: false });
+    const id = await finishedMission(playerId, waifuId);
+    await unlockEquipment(t.db, app.gear, playerId);
+    const result = await app.expeditions.claim(playerId, id);
+    expect(result.equipmentGranted).toEqual([]);
+    await expect(app.expeditions.claim(playerId, id)).rejects.toBeInstanceOf(ExpeditionAlreadyClaimedError);
+    expect(await gearOf(playerId)).toEqual([]);
+  });
+
+  it('an unlocked deploy keeps its promised gear even if the unlock is revoked before the claim', async () => {
+    installSuccessTable([gearGroup([{ rarity: 'R' }])]);
+    const { playerId, waifuId } = await playerWithWaifu();
+    const id = await finishedMission(playerId, waifuId);
+    const plan = (await rowOf(id)).resolutionPlan as unknown as ExpeditionResolutionPlan;
+    expect(plan.equipmentWithheld).toBeUndefined();
+    expect(Object.keys(plan.equipmentPools!)).toHaveLength(1);
+
+    await t.db.transaction((tx) =>
+      app.gear.featureUnlocks.revoke(tx, { playerId, featureKey: 'equipment', actorDiscordId: 'a', reason: 'staging reset' }),
+    );
+    const result = await app.expeditions.claim(playerId, id);
+    expect(result.equipmentGranted).toHaveLength(1);
+    await expect(app.expeditions.claim(playerId, id)).rejects.toBeInstanceOf(ExpeditionAlreadyClaimedError);
+    expect(await gearOf(playerId)).toHaveLength(1);
   });
 });
 

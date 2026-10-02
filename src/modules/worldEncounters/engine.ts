@@ -13,12 +13,12 @@
  * not accidentally quadruple mythic frequency).
  */
 import { rollWeighted, type Rng, type WeightedEntry } from '../../shared/random';
-import type { LoadedEncounter } from './types';
+import { encounterRequiresEquipment, type LoadedEncounter } from './types';
 import type {
   EncounterWithChildren,
   WorldEncounterRepository,
 } from './worldEncounterRepository';
-import { hydrateEncounter } from './hydrate';
+import { hydrateChoice, hydrateEncounter } from './hydrate';
 
 /**
  * Weight multipliers by rarity. Common encounters are the bread and butter;
@@ -43,6 +43,11 @@ export interface SelectContext {
   toRegion?: string | null;
   /** Encounter ids the player is currently on cooldown for. */
   cooldownIds: Set<number>;
+  /**
+   * The player has the Equipment feature. Without it, an encounter whose
+   * every choice pays gear is not selectable — see `encounterRequiresEquipment`.
+   */
+  equipmentUnlocked: boolean;
   /**
    * Optional pre-loaded pool — the engine's tests pass this directly to
    * exercise selection without needing a live DB. When omitted the engine
@@ -92,6 +97,8 @@ export type SelectionReason =
   | 'no_region_match'
   /** Survived region, but none covers this travel edge. */
   | 'no_route_match'
+  /** Survived route, but every survivor pays only gear and the player lacks Equipment. */
+  | 'equipment_locked'
   /** Survived every filter, but every survivor had a non-positive weight. */
   | 'no_positive_weight';
 
@@ -143,11 +150,19 @@ export async function selectEncounterDetailed(
       ? afterRegion.filter((row) => matchesRoute(row, ctx.fromRegion, ctx.toRegion))
       : afterRegion;
 
+  // An encounter that offers nothing but gear is skipped for a player without
+  // the Equipment feature: every choice would be unavailable, leaving it
+  // pending with nothing to press. One with any other choice still surfaces,
+  // and its gear choices gate themselves like any other requirement.
+  const afterEquipment = ctx.equipmentUnlocked
+    ? afterRoute
+    : afterRoute.filter((row) => !encounterRequiresEquipment({ choices: row.choices.map(hydrateChoice) }));
+
   // Player-level gates live on individual choices, not the encounter itself —
   // so an encounter with only high-level choices still surfaces to a low-level
   // player and the choices filter themselves.
   const pool: WeightedEntry<EncounterWithChildren>[] = [];
-  for (const row of afterRoute) {
+  for (const row of afterEquipment) {
     const weight = effectiveWeight(row);
     if (weight <= 0) continue;
     pool.push({ weight, value: row });
@@ -171,7 +186,9 @@ export async function selectEncounterDetailed(
             ? 'no_region_match'
             : afterRoute.length === 0
               ? 'no_route_match'
-              : 'no_positive_weight';
+              : afterEquipment.length === 0
+                ? 'equipment_locked'
+                : 'no_positive_weight';
     return { encounter: null, reason, ...counts };
   }
 

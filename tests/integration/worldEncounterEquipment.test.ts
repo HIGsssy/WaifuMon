@@ -13,6 +13,7 @@ import {
   activeWorldEncounters,
   playerCurrencies,
   playerEquipment,
+  players,
   worldEncounterChoices,
   worldEncounterHistory,
   worldEncounters,
@@ -27,10 +28,13 @@ import { planImport, type EncounterPackage } from '../../src/modules/worldEncoun
 import type { Effect } from '../../src/modules/worldEncounters/types';
 import type { EncounterActivation } from '../../src/modules/worldEncounters/worldEncounterService';
 import { EquipmentRewardConfigError } from '../../src/shared/errors';
-import { WorldEncounterResolvedError } from '../../src/modules/worldEncounters/worldEncounterService';
+import {
+  WorldEncounterChoiceForbiddenError,
+  WorldEncounterResolvedError,
+} from '../../src/modules/worldEncounters/worldEncounterService';
 import { seededRng } from '../../src/shared/random';
 import { CONTENT_DIR, bootstrapApp, provisionPlayer, type App } from '../helpers/fixtures';
-import { TEST_AFFIXES } from '../helpers/equipmentFixtures';
+import { TEST_AFFIXES, unlockEquipment } from '../helpers/equipmentFixtures';
 import { createTestDb, type TestDb } from '../helpers/testDb';
 
 let t: TestDb;
@@ -44,6 +48,8 @@ beforeAll(async () => {
   app = await bootstrapApp(t, { equipmentRng: seededRng(7), equipmentRewardRng: seededRng(8) });
   await seedEquipmentDefinitions(t.db, { mode: 'insert-missing', catalogue: loadEquipmentSeedCatalogue(CONTENT_DIR) });
   ({ playerId, guildDbId } = await provisionPlayer(app, 'g-we-gear', 'u-we-gear'));
+  // Gear choices need the Equipment feature; this player has it.
+  await unlockEquipment(t.db, app.gear, playerId);
 });
 afterAll(async () => {
   await t.cleanup();
@@ -308,5 +314,163 @@ describe('presentation', () => {
     expect(text).not.toContain(affix.key);
     expect(text).not.toContain(String(entry.equipment!.rolledMultiplierBp));
     expect(text).not.toContain('attack.R');
+  });
+});
+
+/* ───────────── players without the Equipment feature ───────────── */
+
+describe('a player without the Equipment feature', () => {
+  let lockedSeq = 0;
+  async function lockedPlayer(level = 50): Promise<number> {
+    lockedSeq += 1;
+    const { playerId: id } = await provisionPlayer(app, 'g-we-gear', `u-we-gear-locked-${lockedSeq}`);
+    await t.db.update(players).set({ level }).where(eq(players.id, id)); // past 35: level is not the gate
+    return id;
+  }
+
+  /** An encounter whose choices pay these effects on success, plus a pending row for `owner`. */
+  async function encounterFor(owner: number, choices: Effect[][], slug?: string) {
+    seq += 1;
+    const encounterSlug = slug ?? `tv_gear_locked_${seq}`;
+    const [encounter] = await t.db
+      .insert(worldEncounters)
+      .values({
+        slug: encounterSlug,
+        name: 'Abandoned Gear Cache',
+        description: 'A locker, ajar.',
+        type: 'decision',
+        rarity: 'common',
+        weight: 10,
+        lifecycle: 'active',
+        huntEligible: false,
+        travelEligible: false,
+        cooldownSeconds: 0,
+        choicesRequired: true,
+      })
+      .returning();
+    const choiceIds: number[] = [];
+    for (const [i, effects] of choices.entries()) {
+      const [choice] = await t.db
+        .insert(worldEncounterChoices)
+        .values({
+          encounterId: encounter!.id,
+          sortOrder: i,
+          label: `Choice ${i}`,
+          checkJson: { type: 'none' },
+          successEffectsJson: effects as unknown as Record<string, unknown>[],
+          failureEffectsJson: [],
+        })
+        .returning();
+      choiceIds.push(choice!.id);
+    }
+    const [active] = await t.db
+      .insert(activeWorldEncounters)
+      .values({
+        playerId: owner,
+        encounterId: encounter!.id,
+        source: 'hunt',
+        regionId: 'waifu-valley',
+        guildId: guildDbId,
+        channelId: 'c-we-gear',
+        contextJson: {},
+        expiresAt: new Date(Date.now() + 10 * 60_000),
+      })
+      .returning();
+    return { activeId: active!.id, choiceIds, encounterId: encounter!.id, slug: encounterSlug };
+  }
+
+  const bux: Effect = { type: 'waifubux_gain', amount: 25 } as Effect;
+  const knife = gear({ definitionKeys: ['combat_knife'] });
+  const ownedBy = (id: number) => t.db.select().from(playerEquipment).where(eq(playerEquipment.playerId, id));
+  const historyOf = (id: number) => t.db.select().from(worldEncounterHistory).where(eq(worldEncounterHistory.playerId, id));
+  const statusOf = async (activeId: number) =>
+    (await t.db.select().from(activeWorldEncounters).where(eq(activeWorldEncounters.id, activeId)))[0]!.status;
+
+  it('sees a gear choice as unavailable; every other choice is untouched', async () => {
+    const locked = await lockedPlayer();
+    const { activeId } = await encounterFor(locked, [[knife], [bux]]);
+    const activation = (await app.worldEncounter.getActivationById(activeId, locked))!;
+    expect(activation.choiceViews.map((v) => [v.available, v.unavailableReason])).toEqual([
+      [false, 'Requires Equipment'],
+      [true, null],
+    ]);
+  });
+
+  it('cannot resolve the gear choice — refused before anything applies — and can still take another', async () => {
+    const locked = await lockedPlayer();
+    const { activeId, choiceIds } = await encounterFor(locked, [[knife, bux], [bux]]);
+    const [before] = await t.db.select().from(playerCurrencies).where(eq(playerCurrencies.playerId, locked));
+
+    await expect(app.worldEncounter.resolveChoice({ activeId, playerId: locked, choiceId: choiceIds[0]! })).rejects.toBeInstanceOf(
+      WorldEncounterChoiceForbiddenError,
+    );
+    expect(await statusOf(activeId)).toBe('pending');
+    expect(await ownedBy(locked)).toEqual([]);
+    expect(await historyOf(locked)).toEqual([]);
+    const [unchanged] = await t.db.select().from(playerCurrencies).where(eq(playerCurrencies.playerId, locked));
+    expect(unchanged?.waifubux).toBe(before?.waifubux);
+
+    const resolution = await app.worldEncounter.resolveChoice({ activeId, playerId: locked, choiceId: choiceIds[1]! });
+    expect(resolution.effectsApplied.map((e) => e.effect.type)).toEqual(['waifubux_gain']);
+    expect(await statusOf(activeId)).toBe('resolved');
+    expect(await ownedBy(locked)).toEqual([]);
+  });
+
+  it('an unlocked player resolves the very same gear choice normally', async () => {
+    const { activeId, choiceIds } = await encounterFor(playerId, [[knife], [bux]]);
+    const activation = (await app.worldEncounter.getActivationById(activeId, playerId))!;
+    expect(activation.choiceViews.every((v) => v.available)).toBe(true);
+    const resolution = await app.worldEncounter.resolveChoice({ activeId, playerId, choiceId: choiceIds[0]! });
+    const entry = resolution.effectsApplied.find((e) => e.effect.type === 'give_equipment')!;
+    expect(entry.applied).toBe(true);
+    expect(entry.equipment!.definitionKey).toBe('combat_knife');
+  });
+
+  it('a chain into a gear-only encounter ends cleanly instead of opening something unresolvable', async () => {
+    const locked = await lockedPlayer();
+    const vault = await encounterFor(playerId, [[knife]]); // the follow-up's definition; its row is irrelevant
+    await t.db.update(activeWorldEncounters).set({ status: 'expired' }).where(eq(activeWorldEncounters.id, vault.activeId));
+    const chain: Effect = { type: 'trigger_encounter', encounterSlug: vault.slug } as Effect;
+    const { activeId, choiceIds } = await encounterFor(locked, [[bux, chain]]);
+
+    const resolution = await app.worldEncounter.resolveChoice({ activeId, playerId: locked, choiceId: choiceIds[0]! });
+    expect(resolution.continuationActiveId).toBeNull();
+    expect(resolution.skippedFollowUp).toMatchObject({ encounterSlug: vault.slug, reason: 'equipment_locked' });
+    const pending = await t.db
+      .select()
+      .from(activeWorldEncounters)
+      .where(and(eq(activeWorldEncounters.playerId, locked), eq(activeWorldEncounters.status, 'pending')));
+    expect(pending).toEqual([]);
+
+    // The same chain opens for an unlocked player.
+    const open = await encounterFor(playerId, [[bux, chain]]);
+    const unlocked = await app.worldEncounter.resolveChoice({ activeId: open.activeId, playerId, choiceId: open.choiceIds[0]! });
+    expect(unlocked.skippedFollowUp).toBeNull();
+    expect(unlocked.continuationActiveId).not.toBeNull();
+  });
+
+  it('a queued gear-only continuation is closed at Continue, not left pending', async () => {
+    const locked = await lockedPlayer();
+    const parent = await encounterFor(locked, [[bux]]);
+    await app.worldEncounter.resolveChoice({ activeId: parent.activeId, playerId: locked, choiceId: parent.choiceIds[0]! });
+    const vault = await encounterFor(locked, [[knife]]);
+    await t.db
+      .update(activeWorldEncounters)
+      .set({ continuationOfId: parent.activeId })
+      .where(eq(activeWorldEncounters.id, vault.activeId));
+
+    const outcome = await app.worldEncounter.openContinuation(vault.activeId, locked);
+    expect(outcome).toMatchObject({ status: 'skipped', skippedFollowUp: { reason: 'equipment_locked' } });
+    expect(await statusOf(vault.activeId)).toBe('abandoned');
+    expect(await ownedBy(locked)).toEqual([]);
+  });
+
+  it('after the unlock, the gear choice is available and pays', async () => {
+    const locked = await lockedPlayer();
+    await unlockEquipment(t.db, app.gear, locked);
+    const { activeId, choiceIds } = await encounterFor(locked, [[knife]]);
+    const resolution = await app.worldEncounter.resolveChoice({ activeId, playerId: locked, choiceId: choiceIds[0]! });
+    expect(resolution.effectsApplied[0]!.equipment!.definitionKey).toBe('combat_knife');
+    expect(await ownedBy(locked)).toHaveLength(1);
   });
 });

@@ -10,8 +10,11 @@ import {
   rewardTableHash,
   rewardTableReferences,
   validateRewardTable,
+  withoutEquipmentRewards,
   type RewardTableValidationContext,
 } from '../../src/modules/rewardTables/rewardTableCore';
+import { rollBossRewards } from '../../src/modules/bosses/bossRewards';
+import { BossRewardTableSchema } from '../../src/modules/content/schemas';
 import { EquipmentRewardConfigError } from '../../src/shared/errors';
 import type { RewardableDefinition } from '../../src/modules/equipment/rewardSelector';
 
@@ -248,5 +251,55 @@ describe('Equipment pools', () => {
     expect(() => resolveEquipmentPools(new Map([['k', { slot: 'health' as const }]]), DEFS)).toThrow(
       EquipmentRewardConfigError,
     );
+  });
+});
+
+describe('withoutEquipmentRewards — the table a player without Equipment rolls', () => {
+  const mixed = {
+    id: 'mixed',
+    rolls: 3,
+    entries: [
+      { itemId: 'basic_charm', weight: 3, quantity: 1 },
+      { itemId: 'mythic_contract', weight: 1, quantity: 1 },
+    ],
+    equipment: [{ slot: 'attack', weight: 4 }],
+  };
+  const table = BossRewardTableSchema.parse(
+    bossTable([itemGroup(), mixed, gearGroup([{ rarity: 'R' }], { chanceBasisPoints: 5_000 })]),
+  );
+
+  it('removes every gear entry, drops gear-only groups, keeps ids, and leaves the input alone', () => {
+    const before = JSON.stringify(table);
+    const stripped = withoutEquipmentRewards(table);
+    expect(stripped.groups.map((g) => g.id)).toEqual(['items', 'mixed']);
+    expect(stripped.groups.every((g) => g.equipment === undefined)).toBe(true);
+    expect(equipmentSelectorsOf([stripped]).size).toBe(0);
+    expect(JSON.stringify(table)).toBe(before);
+  });
+
+  it('keeps an already-empty group, so the misconfiguration warning still fires', () => {
+    const broken = BossRewardTableSchema.parse(bossTable([itemGroup([{ itemId: 'basic_charm', weight: 1, quantity: 1, enabled: false }])]));
+    expect(withoutEquipmentRewards(broken).groups.map((g) => g.id)).toEqual(['items']);
+  });
+
+  it('rolls deterministically: gear never drops, and the result is exactly the gear-disabled table', () => {
+    const disabled = BossRewardTableSchema.parse(
+      JSON.parse(JSON.stringify(table), (key, value) =>
+        key === 'equipment' ? (value as { enabled: boolean }[]).map((e) => ({ ...e, enabled: false })) : value,
+      ),
+    );
+    const stripped = withoutEquipmentRewards(table);
+    for (let participationId = 1; participationId <= 200; participationId += 1) {
+      const input = { encounterId: 7, participationId, buddyLevel: 1, maxLevel: 100 };
+      const locked = rollBossRewards({ ...input, table: stripped });
+      expect(locked.equipment).toEqual([]);
+      expect(locked).toEqual(rollBossRewards({ ...input, table: stripped }));
+      const off = rollBossRewards({ ...input, table: disabled });
+      expect(locked.items).toEqual(off.items);
+      expect(locked.warnings).toEqual([]);
+      // A group with no gear draws exactly what an eligible player's does.
+      const full = rollBossRewards({ ...input, table });
+      expect(locked.items[0]).toEqual(full.items[0]);
+    }
   });
 });

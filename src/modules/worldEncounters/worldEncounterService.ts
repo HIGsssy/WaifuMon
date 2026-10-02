@@ -41,7 +41,7 @@ import { selectEncounterDetailed, type SelectionReason } from './engine';
 import { rollCheck, computeChance } from './checkResolver';
 import type { EquipmentRewardService } from '../equipment/equipmentRewardService';
 import { createEffectExecutor, type EffectExecutor, type AppliedEffect, type FollowUp } from './effectExecutor';
-import { hydrateEncounter } from './hydrate';
+import { hydrateChoice, hydrateEncounter } from './hydrate';
 import { outcomeKindOf, resolveOutcomeText } from './outcomeText';
 import type { WorldEncounterVendorService } from './vendorService';
 import type {
@@ -52,8 +52,10 @@ import type {
 import type { SpeciesFilter } from '../encounters/speciesSelection';
 import {
   createWorldEncounterRepository,
+  type EncounterWithChildren,
   type WorldEncounterRepository,
 } from './worldEncounterRepository';
+import { choicePaysEquipment, encounterRequiresEquipment } from './types';
 import type {
   BuddyProfile,
   CheckResolution,
@@ -286,7 +288,11 @@ export interface Resolution {
  */
 export interface SkippedFollowUp {
   encounterSlug: string;
-  reason: 'inactive' | 'missing';
+  /**
+   * `equipment_locked`: every choice of the follow-up pays gear and the player
+   * does not have the Equipment feature (see `encounterRequiresEquipment`).
+   */
+  reason: 'inactive' | 'missing' | 'equipment_locked';
   /** The follow-up's lifecycle when `inactive`; null when `missing`. */
   lifecycle: string | null;
 }
@@ -325,6 +331,23 @@ export function followUpBlock(
     return { encounterSlug: slug, reason: 'inactive', lifecycle: target.lifecycle };
   }
   return null;
+}
+
+/**
+ * {@link followUpBlock}, plus the Equipment rule: a follow-up offering nothing
+ * but gear is skipped for a player who cannot receive gear, instead of opening
+ * an encounter they could not resolve.
+ */
+export function followUpBlockFor(
+  slug: string,
+  loaded: EncounterWithChildren | null,
+  equipmentUnlocked: boolean,
+): SkippedFollowUp | null {
+  const blocked = followUpBlock(slug, loaded?.encounter ?? null);
+  if (blocked || equipmentUnlocked) return blocked;
+  return encounterRequiresEquipment({ choices: loaded!.choices.map(hydrateChoice) })
+    ? { encounterSlug: slug, reason: 'equipment_locked', lifecycle: loaded!.encounter.lifecycle }
+    : null;
 }
 
 export interface WorldEncounterServiceDeps {
@@ -606,7 +629,9 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
   ): Promise<EncounterActivation | null> {
     const now = opts.now ?? new Date();
     const cooldownIds = await repo.getCooldownEncounterIds(opts.playerId, now);
+    const gearUnlocked = await equipmentUnlocked(deps.db, opts.playerId);
     const selection = await selectEncounterDetailed(repo, opts.rng ?? rng, {
+      equipmentUnlocked: gearUnlocked,
       playerId: opts.playerId,
       playerLevel: opts.playerLevel,
       source: opts.source,
@@ -686,12 +711,11 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
           encounter: chosen,
           buddy,
           buddyBonusPercent,
-          choiceViews: buildChoiceViews(chosen, {
-            playerId: opts.playerId,
-            playerLevel: opts.playerLevel,
-            buddy,
-            buddyBonusPercent,
-          }),
+          choiceViews: buildChoiceViews(
+            chosen,
+            { playerId: opts.playerId, playerLevel: opts.playerLevel, buddy, buddyBonusPercent },
+            gearUnlocked,
+          ),
         };
       } catch (err) {
         if (isUniquePendingViolation(err)) {
@@ -716,9 +740,25 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
 
   /* ─────────────────── Choice availability ─────────────────── */
 
+  /**
+   * Whether gear may drop for this player — the Equipment reward service's
+   * answer, so encounters gate on exactly what bosses and expeditions do.
+   * Without that service no `give_equipment` could pay anyway.
+   */
+  async function equipmentUnlocked(tx: DbOrTx, playerId: number): Promise<boolean> {
+    return deps.equipmentRewards ? deps.equipmentRewards.canReceiveRandomEquipmentRewards(tx, playerId) : false;
+  }
+
+  /**
+   * `equipmentUnlocked` is an implicit requirement rather than an authored
+   * one: a choice that pays gear (on either outcome) needs the Equipment
+   * feature, so it can never resolve into a reward it cannot pay. Kept out of
+   * `EncounterCheckContext`, which the authoring previews share.
+   */
   function isChoiceAvailable(
     choice: LoadedChoice,
     ctx: EncounterCheckContext,
+    equipmentUnlocked: boolean,
   ): { available: boolean; reason: string | null } {
     const r = choice.requirements;
     if (r.affinity && (!ctx.buddy || ctx.buddy.affinity !== r.affinity)) {
@@ -734,6 +774,9 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
     if (r.minBuddyLevel && (!ctx.buddy || ctx.buddy.level < r.minBuddyLevel)) {
       return { available: false, reason: `Requires buddy level ${r.minBuddyLevel}` };
     }
+    if (!equipmentUnlocked && choicePaysEquipment(choice)) {
+      return { available: false, reason: 'Requires Equipment' };
+    }
     // `requiresItem` needs the inventory table, which the resolve path re-
     // checks with a lock. Here we approve optimistically and rely on the
     // consume_item effect to fail-soft if the item is gone.
@@ -743,9 +786,10 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
   function buildChoiceViews(
     encounter: LoadedEncounter,
     ctx: EncounterCheckContext,
+    equipmentUnlocked: boolean,
   ): ChoiceView[] {
     return encounter.choices.map((choice) => {
-      const { available, reason } = isChoiceAvailable(choice, ctx);
+      const { available, reason } = isChoiceAvailable(choice, ctx, equipmentUnlocked);
       const preview = computeChance(choice.check, ctx);
       return { choice, available, unavailableReason: reason, previewChance: preview.chance };
     });
@@ -786,7 +830,10 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
         (await deps.buddyBonus?.percentFor(tx, opts.playerId, CHECK_BONUS_EFFECT_ID)) ?? 0;
       const ctx: EncounterCheckContext = { playerId: opts.playerId, playerLevel, buddy, buddyBonusPercent };
 
-      const availability = isChoiceAvailable(choice, ctx);
+      // Read in this transaction: the authoritative gate, whatever the
+      // buttons painted earlier showed.
+      const gearUnlocked = await equipmentUnlocked(tx, opts.playerId);
+      const availability = isChoiceAvailable(choice, ctx, gearUnlocked);
       if (!availability.available) {
         throw new WorldEncounterChoiceForbiddenError(availability.reason ?? 'requirements not met');
       }
@@ -850,7 +897,7 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
         );
         if (nextSlug.length > 0 && nextSlug !== encounter.slug) {
           const nextLoaded = await repo.loadBySlug(nextSlug);
-          skippedFollowUp = followUpBlock(nextSlug, nextLoaded?.encounter ?? null);
+          skippedFollowUp = followUpBlockFor(nextSlug, nextLoaded, gearUnlocked);
           if (skippedFollowUp) {
             logSkippedFollowUp('resolve', skippedFollowUp, {
               playerId: opts.playerId,
@@ -1062,7 +1109,9 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
       buddy: ctx.buddy,
       buddyBonusPercent: ctx.buddyBonusPercent ?? 0,
     };
-    return { encounter, choiceViews: buildChoiceViews(encounter, previewCtx) };
+    // No real player: preview as one who has Equipment, like the authoring
+    // previews, so gear choices show their odds.
+    return { encounter, choiceViews: buildChoiceViews(encounter, previewCtx, true) };
   }
 
   /* ─────────────────── Retrieval helpers ─────────────────── */
@@ -1092,12 +1141,11 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
       encounter,
       buddy,
       buddyBonusPercent,
-      choiceViews: buildChoiceViews(encounter, {
-        playerId,
-        playerLevel: playerRow?.level ?? 1,
-        buddy,
-        buddyBonusPercent,
-      }),
+      choiceViews: buildChoiceViews(
+        encounter,
+        { playerId, playerLevel: playerRow?.level ?? 1, buddy, buddyBonusPercent },
+        await equipmentUnlocked(deps.db, playerId),
+      ),
     };
   }
 
@@ -1156,7 +1204,7 @@ export function createWorldEncounterService(deps: WorldEncounterServiceDeps) {
       if (row.continuationOfId == null) return { row, skip: null };
       const loaded = await repo.loadById(row.encounterId);
       const slug = loaded?.encounter.slug ?? `#${row.encounterId}`;
-      const skip = followUpBlock(slug, loaded?.encounter ?? null);
+      const skip = followUpBlockFor(slug, loaded, await equipmentUnlocked(tx, playerId));
       if (skip) {
         await tx
           .update(activeWorldEncounters)

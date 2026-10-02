@@ -255,6 +255,7 @@ export async function bootstrapApp(
   const equipmentRewards = createEquipmentRewardService({
     equipment: gear.equipment,
     getAffixes: gear.getAffixes,
+    featureUnlocks: gear.featureUnlocks,
     ...(opts.equipmentRewardRng ? { rng: opts.equipmentRewardRng } : {}),
   });
   const currency = createCurrencyService(t.db);

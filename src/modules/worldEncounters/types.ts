@@ -188,6 +188,26 @@ export function equipmentEffectIssues(
   );
 }
 
+/**
+ * Whether either outcome of a choice pays gear. Such a choice is unavailable
+ * to a player without the Equipment feature: random gear needs the unlock
+ * (`EquipmentRewardService.canReceiveRandomEquipmentRewards`), and a choice
+ * must never resolve into a reward it cannot pay.
+ */
+export function choicePaysEquipment(choice: Pick<LoadedChoice, 'successEffects' | 'failureEffects'>): boolean {
+  return [...choice.successEffects, ...choice.failureEffects].some((effect) => effect.type === 'give_equipment');
+}
+
+/**
+ * Whether every choice of an encounter pays gear — so a player without the
+ * Equipment feature could pick none of them. Such an encounter is never
+ * offered to that player (selection and chained follow-ups both skip it)
+ * rather than left pending with nothing to press.
+ */
+export function encounterRequiresEquipment(encounter: Pick<LoadedEncounter, 'choices'>): boolean {
+  return encounter.choices.length > 0 && encounter.choices.every(choicePaysEquipment);
+}
+
 /* ─────────────────────── Requirements ─────────────────────── */
 
 /**

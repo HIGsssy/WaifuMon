@@ -252,6 +252,29 @@ type GroupWithEquipment = {
 };
 
 /**
+ * The table as a player without the Equipment feature rolls it: every group's
+ * Equipment entries removed, so gear is never in the pick to begin with.
+ *
+ * A group's item entries then share its whole weight — the same
+ * renormalisation as disabling those entries — and the group keeps its id, so
+ * every draw (keyed on group id and roll) stays exactly where it was. A group
+ * that only ever paid gear is dropped rather than left with no entries, which
+ * the rollers would otherwise report as a misconfigured table. A group that
+ * was already empty is left alone so that warning still fires.
+ *
+ * Pure: the caller's table is not mutated.
+ */
+export function withoutEquipmentRewards<T extends AnyRewardTable>(table: T): T {
+  const groups = table.groups.flatMap((group) => {
+    const paysGear = group.enabled && (group.equipment ?? []).some((entry) => entry.enabled);
+    const { equipment: _equipment, ...itemsOnly } = group;
+    if (paysGear && !group.entries.some((entry) => entry.enabled)) return [];
+    return [itemsOnly];
+  });
+  return { ...table, groups } as T;
+}
+
+/**
  * Every Equipment selector these tables can roll, deduplicated by
  * `equipmentSelectorKey`. Disabled groups and entries never roll, so they need
  * no pool.

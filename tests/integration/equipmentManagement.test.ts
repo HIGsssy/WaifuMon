@@ -631,4 +631,25 @@ describe('management service', () => {
       await expect(call()).rejects.toBeInstanceOf(FeatureLockedError);
     }
   });
+
+  it('legacy gear owned while locked stays put and unusable, then is ordinary gear once unlocked', async () => {
+    // Not a supported acquisition path (random rewards need the unlock) —
+    // staging, admin or test state. Nothing deletes or migrates it.
+    const { playerId } = await setup({ unlocked: false });
+    const coil = await grant(t.db, svc, playerId, 'plasma_coil_ring');
+    // The domain service refuses on its own, not just the management layer.
+    await expect(svc.equipment.equip(playerId, { slot: 'attack', equipmentId: coil })).rejects.toBeInstanceOf(FeatureLockedError);
+    await expect(svc.equipment.unequip(playerId, { slot: 'attack' })).rejects.toBeInstanceOf(FeatureLockedError);
+    await expect(svc.equipment.setFlags(playerId, coil, { isLocked: true })).rejects.toBeInstanceOf(FeatureLockedError);
+    expect(await slots(playerId)).toEqual({});
+
+    await unlockEquipment(t.db, svc, playerId);
+    const bag = await mgmt.bag(playerId, 'all', 0);
+    expect(bag.entries.items.map((e) => e.focusId)).toEqual([coil]);
+    const outcome = await mgmt.equip(playerId, coil, null);
+    expect(outcome.changed).toBe(true);
+    expect(await slots(playerId)).toEqual({ attack: coil });
+    const [row] = await t.db.select().from(playerEquipment).where(eq(playerEquipment.id, coil));
+    expect(row!.removedAt).toBeNull();
+  });
 });

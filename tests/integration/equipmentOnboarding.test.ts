@@ -334,6 +334,43 @@ describe('retries and races', () => {
 
 /* ─────────────────────────── existing gear ─────────────────────────── */
 
+describe('random Equipment rewards', () => {
+  const eligible = (id: number) => t.db.transaction((tx) => app.equipmentRewards.canReceiveRandomEquipmentRewards(tx, id));
+
+  it('stay closed through every onboarding step and open the moment completion unlocks', async () => {
+    const onb = onboarding();
+    const { playerId } = await setup();
+    expect(await eligible(playerId)).toBe(false); // Level 35 only makes the onboarding available
+    await onb.advance(playerId, 'intro');
+    await onb.advance(playerId, 'attack');
+    await onb.advance(playerId, 'defense');
+    expect(await eligible(playerId)).toBe(false); // starters handed over, still not unlocked
+    await onb.advance(playerId, 'health');
+    expect(await eligible(playerId)).toBe(false);
+
+    // The starters were granted while locked, each its deterministic unaffixed roll.
+    const starters = (await instancesOf(playerId)).map((i) => [i.slot, i.rolledMultiplierBp, i.affixKey, i.sourceType]);
+    expect(starters.sort()).toEqual([
+      ['attack', 4_500, null, 'onboarding'],
+      ['defense', 3_500, null, 'onboarding'],
+      ['health', 20_000, null, 'onboarding'],
+    ]);
+
+    await onb.complete(playerId);
+    expect(await eligible(playerId)).toBe(true);
+    const slotsBefore = await equippedSlots(playerId);
+    const reward = await t.db.transaction((tx) =>
+      app.equipmentRewards.grantRandomEquipmentReward(tx, {
+        playerId,
+        selector: { slot: 'attack', rarity: 'R' },
+        source: { type: 'encounter', key: 'test' },
+      }),
+    );
+    expect((await instancesOf(playerId)).map((i) => i.id)).toContain(reward.equipmentId);
+    expect(await equippedSlots(playerId)).toEqual(slotsBefore); // a reward never equips
+  });
+});
+
 describe('existing gear', () => {
   it('a player who already owns a starter gets the onboarding copy too, and that copy is equipped', async () => {
     const onb = onboarding();

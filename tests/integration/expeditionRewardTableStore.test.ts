@@ -27,6 +27,7 @@ import { databaseRewardTableSource } from '../../src/modules/rewardTables/reward
 import { ExpeditionContentError } from '../../src/shared/errors';
 import { seededRng } from '../../src/shared/random';
 import { CONTENT_DIR, bootstrapApp, insertOwnedWaifu, provisionPlayer, type App } from '../helpers/fixtures';
+import { unlockEquipment } from '../helpers/equipmentFixtures';
 import { createTestDb, type TestDb } from '../helpers/testDb';
 
 const TABLE = 'db_success';
@@ -68,6 +69,7 @@ async function setLive(table: Record<string, unknown>) {
 async function playerWithWaifu() {
   userSeq += 1;
   const { playerId } = await provisionPlayer(app, 'g-exp-store', `u-exp-store-${userSeq}`);
+  await unlockEquipment(t.db, app.gear, playerId); // gear is snapshotted only for players with Equipment
   const waifu = await insertOwnedWaifu(t.db, { playerId, speciesId: demon.id, level: 10 });
   return { playerId, waifuId: waifu.id };
 }

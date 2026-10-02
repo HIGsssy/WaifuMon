@@ -347,7 +347,7 @@ async function main(): Promise<void> {
   // The one path World Encounters, bosses and expeditions hand out random gear
   // through: they choose *whether* and *which kind*; it picks the base
   // definition and `grantEquipment` rolls the instance.
-  const equipmentRewards = createEquipmentRewardService({ equipment, getAffixes });
+  const equipmentRewards = createEquipmentRewardService({ equipment, getAffixes, featureUnlocks });
   const equipmentDefinitions = createEquipmentDefinitionService(db);
   const combatStats = createCombatStatsService({
     db,

@@ -466,6 +466,14 @@ names any selector this server cannot satisfy
 (`equipment/reward-selector-invalid`), and a payout that reaches one is
 refused as a whole rather than paying a substitute.
 
+Gear only drops for a participant who has the permanent `equipment` feature
+unlock (granted when the Equipment onboarding completes — Level 35 alone is
+not enough). It is checked per participant at payout: a participant without it
+rolls the snapshot with every gear entry removed, so each group's items share
+its whole weight (exactly as if the gear were disabled), a group that only
+pays gear is skipped, and every other draw lands where it always did. Nothing
+is rolled and then withheld, and the result never mentions gear.
+
 ### Enabling and disabling
 
 Every level has its own `enabled` switch, and each one is narrower than the

@@ -169,6 +169,7 @@ import {
 } from './expeditionRewards';
 import type { EquipmentRewardService } from '../equipment/equipmentRewardService';
 import { describeEquipmentSelector } from '../equipment/rewardSelector';
+import { withoutEquipmentRewards } from '../rewardTables/rewardTableCore';
 import { contentRewardTableSource, type RewardTableSource } from '../rewardTables/rewardTableStore';
 import {
   EXPEDITION_PLAN_VERSION,
@@ -402,6 +403,16 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
       }
     }
     return pools;
+  }
+
+  /** Strip every Equipment entry from a plan's tables, for a player who cannot receive gear. */
+  function withholdEquipment(plan: ExpeditionResolutionPlan): void {
+    const tables = [plan.successTable, plan.bonusTable, plan.failureTable];
+    if (equipmentSelectorsOf(tables).size === 0) return;
+    plan.successTable = plan.successTable && withoutEquipmentRewards(plan.successTable);
+    plan.bonusTable = plan.bonusTable && withoutEquipmentRewards(plan.bonusTable);
+    plan.failureTable = plan.failureTable && withoutEquipmentRewards(plan.failureTable);
+    plan.equipmentWithheld = true;
   }
 
   function planOf(row: PlayerExpeditionRow): ExpeditionResolutionPlan | null {
@@ -880,6 +891,13 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
           }
 
           const plan = await buildPlan(tx, definition);
+          // Gear is decided here, once, like the rest of the plan: a player
+          // without the Equipment feature deploys a plan with no gear in it,
+          // and unlocking before the claim adds none. One who has it gets the
+          // pools snapshotted below and keeps them whatever content does next.
+          if (equipmentRewards && !(await equipmentRewards.canReceiveRandomEquipmentRewards(tx, playerId))) {
+            withholdEquipment(plan);
+          }
           const equipmentPools = await equipmentPoolsFor(tx, definition, plan);
           if (equipmentPools) plan.equipmentPools = equipmentPools;
           const input = {
@@ -1101,6 +1119,9 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
             playerId,
             definitionKey: drop.definitionKey,
             allowDisabled: true,
+            // Eligibility was decided at deploy: gear is only in this plan
+            // because the player could receive it then.
+            promised: true,
             source: { type: 'expedition', key: won.expeditionKey },
             grantKey: `expedition:${won.id}:${drop.drawKey}`,
           });

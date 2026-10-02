@@ -23,19 +23,23 @@ import {
 import { buildMyResult } from '../../src/discord/bossPresenter';
 import type { BossEquipmentRewardView } from '../../src/modules/bosses/bossEncounterService';
 import { bossDrawRng } from '../../src/modules/bosses/bossRandom';
+import { parseBossRewardSnapshot, rollBossRewards } from '../../src/modules/bosses/bossRewards';
+import { withoutEquipmentRewards } from '../../src/modules/rewardTables/rewardTableCore';
 import { listRewardableDefinitions } from '../../src/modules/equipment/equipmentRewardService';
 import { loadEquipmentSeedCatalogue, seedEquipmentDefinitions } from '../../src/modules/equipment/seed';
 import { eligibleRewardDefinitions, pickRewardDefinition } from '../../src/modules/equipment/rewardSelector';
 import type { BossRewardTable } from '../../src/modules/content/schemas';
 import { seededRng } from '../../src/shared/random';
 import { CONTENT_DIR, bootstrapApp, insertOwnedWaifu, provisionPlayer, type App } from '../helpers/fixtures';
-import { TEST_AFFIXES } from '../helpers/equipmentFixtures';
+import { TEST_AFFIXES, unlockEquipment } from '../helpers/equipmentFixtures';
 import { createTestDb, type TestDb } from '../helpers/testDb';
 
 let t: TestDb;
 let app: App;
 let guildDbId: number;
 let playerIds: number[] = [];
+/** A participant in the same guild who has never unlocked Equipment. */
+let lockedId: number;
 let shippedTables: BossRewardTable[];
 
 const MINUTE = 60_000;
@@ -48,6 +52,10 @@ beforeAll(async () => {
   for (let i = 0; i < 4; i += 1) players4.push(await provisionPlayer(app, 'g-boss-gear', `u-boss-gear-${i}`));
   guildDbId = players4[0]!.guildDbId;
   playerIds = players4.map((p) => p.playerId);
+  // Gear drops only for players with the Equipment feature; these four have it.
+  for (const playerId of playerIds) await unlockEquipment(t.db, app.gear, playerId);
+  ({ playerId: lockedId } = await provisionPlayer(app, 'g-boss-gear', 'u-boss-gear-locked'));
+  await t.db.update(players).set({ level: 50 }).where(eq(players.id, lockedId)); // past 35, still locked
   shippedTables = JSON.parse(JSON.stringify(app.content.bossRewards));
 });
 afterAll(async () => {
@@ -120,8 +128,12 @@ async function openEncounter(): Promise<BossEncounterRow> {
 
 /** Open, commit `count` players, resolve. Returns each participant's gear, in commit order. */
 async function fight(count = 1) {
+  return fightWith(playerIds.slice(0, count));
+}
+
+async function fightWith(ids: number[]) {
   const encounter = await openEncounter();
-  for (const [i, playerId] of playerIds.slice(0, count).entries()) {
+  for (const [i, playerId] of ids.entries()) {
     await giveBuddy(playerId);
     await app.bosses.commit(encounter.id, guildDbId, playerId, { discordUserId: `u-${i}`, trainerName: `T${i}` });
   }
@@ -199,6 +211,96 @@ describe('a gear entry in a boss table', () => {
     const entry = result.participants[0]!;
     expect(entry.rewards.map((r) => r.slug)).toEqual(['energy_drink']);
     expect(entry.equipment).toHaveLength(1);
+  });
+});
+
+describe('a participant without the Equipment feature', () => {
+  const itemGroup = {
+    id: 'standard-item',
+    enabled: true,
+    rolls: 1,
+    chanceBasisPoints: 10_000,
+    entries: [{ itemId: 'energy_drink', enabled: true, weight: 1, quantity: 1 }],
+  };
+
+  it('gets the ordinary rewards and no gear — never told gear was won', async () => {
+    withGroups([itemGroup, certainGear([{ slot: 'attack', rarity: 'R' }])]);
+    const { encounter, result } = await fightWith([lockedId]);
+    const entry = result.participants[0]!;
+    expect(entry.participation.rewardStatus).toBe('applied');
+    expect(entry.rewards.map((r) => r.slug)).toEqual(['energy_drink']);
+    expect(entry.participation.xpAwarded).toBeGreaterThan(0);
+    expect(entry.equipment).toEqual([]);
+    expect(await ownedGear(lockedId)).toEqual([]);
+    expect((entry.participation.rewardItems as { kind?: string }[]).some((r) => r.kind === 'equipment')).toBe(false);
+    const text = buildMyResult(encounter, entry);
+    expect(text).not.toContain('Equipment');
+    expect(text).not.toContain('Combat Knife');
+  });
+
+  it('fights beside an unlocked participant, who still gets gear from the same table', async () => {
+    withGroups([itemGroup, certainGear([{ slot: 'attack', rarity: 'R' }])]);
+    const { result } = await fightWith([playerIds[0]!, lockedId]);
+    const [unlocked, locked] = result.participants;
+    expect(unlocked!.equipment).toHaveLength(1);
+    expect(await ownedGear(playerIds[0]!)).toHaveLength(1);
+    expect(locked!.equipment).toEqual([]);
+    expect(await ownedGear(lockedId)).toEqual([]);
+  });
+
+  it('a mixed group renormalises over its items, exactly as the pure roll of the gear-free snapshot', async () => {
+    withGroups([
+      {
+        id: 'mixed',
+        enabled: true,
+        rolls: 4,
+        chanceBasisPoints: 10_000,
+        entries: [
+          { itemId: 'energy_drink', enabled: true, weight: 1, quantity: 1 },
+          { itemId: 'basic_charm', enabled: true, weight: 1, quantity: 1 },
+        ],
+        equipment: [{ enabled: true, weight: 6, slot: 'attack' }],
+      },
+    ]);
+    const { encounter, result } = await fightWith([lockedId]);
+    const entry = result.participants[0]!;
+    const [row] = await t.db.select().from(bossEncounters).where(eq(bossEncounters.id, encounter.id));
+    const table = parseBossRewardSnapshot(row!.rewardSnapshot)?.table ?? app.content.bossRewards[0]!;
+    const expected = rollBossRewards({
+      table: withoutEquipmentRewards(table),
+      encounterId: encounter.id,
+      participationId: entry.participation.id,
+      buddyLevel: entry.participation.level,
+      maxLevel: app.content.tables.waifuProgression.maxLevel,
+    });
+    expect(expected.equipment).toEqual([]);
+    const total = (slug: string) => expected.items.filter((i) => i.slug === slug).length;
+    expect(entry.rewards.map((r) => [r.slug, r.quantity]).sort()).toEqual(
+      ['basic_charm', 'energy_drink']
+        .filter((slug) => total(slug) > 0)
+        .map((slug) => [slug, total(slug)])
+        .sort(),
+    );
+    expect(await ownedGear(lockedId)).toEqual([]);
+  });
+
+  it('resolving again changes nothing', async () => {
+    withGroups([itemGroup, certainGear([{ rarity: 'R' }])]);
+    const { encounter } = await fightWith([lockedId]);
+    const again = await app.bosses.resolve(encounter.id);
+    expect(again?.applied ?? false).toBe(false);
+    expect(await ownedGear(lockedId)).toEqual([]);
+  });
+
+  it('unlocking later does not reach back into a resolved payout, and the next boss pays gear', async () => {
+    withGroups([certainGear([{ rarity: 'R' }])]);
+    const lateUnlock = (await provisionPlayer(app, 'g-boss-gear', `u-boss-gear-late-${Date.now()}`)).playerId;
+    await fightWith([lateUnlock]);
+    await unlockEquipment(t.db, app.gear, lateUnlock);
+    expect(await ownedGear(lateUnlock)).toEqual([]);
+    const { result } = await fightWith([lateUnlock]);
+    expect(result.participants[0]!.equipment).toHaveLength(1);
+    expect(await ownedGear(lateUnlock)).toHaveLength(1);
   });
 });
 

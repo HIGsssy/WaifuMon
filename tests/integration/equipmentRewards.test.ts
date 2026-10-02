@@ -6,7 +6,7 @@
  */
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { equipmentEvents, playerEquipment } from '../../src/db/schema';
+import { equipmentEvents, playerEquipment, players } from '../../src/db/schema';
 import { affixPoolOf } from '../../src/modules/equipment/affixCatalogue';
 import {
   createEquipmentRewardService,
@@ -14,10 +14,18 @@ import {
 } from '../../src/modules/equipment/equipmentRewardService';
 import { isMultiplierInRange } from '../../src/modules/equipment/equipmentRoll';
 import { loadEquipmentSeedCatalogue, seedEquipmentDefinitions } from '../../src/modules/equipment/seed';
-import { EquipmentRewardConfigError } from '../../src/shared/errors';
+import { EquipmentRewardConfigError, FeatureLockedError } from '../../src/shared/errors';
 import { seededRng, type Rng } from '../../src/shared/random';
 import { CONTENT_DIR } from '../helpers/fixtures';
-import { TEST_AFFIXES, buildEquipmentServices, createPlayer, type EquipmentServices } from '../helpers/equipmentFixtures';
+import {
+  TEST_AFFIXES,
+  buildEquipmentServices,
+  createPlayer,
+  grant,
+  starterRoll,
+  unlockEquipment,
+  type EquipmentServices,
+} from '../helpers/equipmentFixtures';
 import { createTestDb, type TestDb } from '../helpers/testDb';
 
 let t: TestDb;
@@ -41,7 +49,7 @@ beforeAll(async () => {
   // The instance roll (multiplier, affix) is seeded, not scripted: these tests
   // assert it is *valid* and *stable*, never which value it landed on.
   svc = buildEquipmentServices(t.db, { rng: seededRng(99) });
-  rewards = createEquipmentRewardService({ equipment: svc.equipment, getAffixes: svc.getAffixes, rng: pickRng });
+  rewards = createEquipmentRewardService({ equipment: svc.equipment, getAffixes: svc.getAffixes, featureUnlocks: svc.featureUnlocks, rng: pickRng });
   await seedEquipmentDefinitions(t.db, { mode: 'insert-missing', catalogue: loadEquipmentSeedCatalogue(CONTENT_DIR) });
 });
 afterAll(async () => {
@@ -50,6 +58,8 @@ afterAll(async () => {
 beforeEach(async () => {
   picks = [];
   playerId = await createPlayer(t.db);
+  // Random gear needs the Equipment feature; the eligibility rule has its own tests below.
+  await unlockEquipment(t.db, svc, playerId);
   for (const key of ['throbbing_mace', 'combat_knife', 'kevlar_carrier']) await svc.definitions.setEnabled(key, true);
 });
 
@@ -141,6 +151,68 @@ describe('selection', () => {
       return out;
     };
     expect(await run()).toEqual(await run());
+  });
+});
+
+describe('eligibility: the Equipment feature unlock', () => {
+  const eligible = (id: number) => t.db.transaction((tx) => rewards.canReceiveRandomEquipmentRewards(tx, id));
+  const gearOf = (id: number) => t.db.select().from(playerEquipment).where(eq(playerEquipment.playerId, id));
+
+  it('a player without the unlock is not eligible; one with it is', async () => {
+    const locked = await createPlayer(t.db);
+    expect(await eligible(locked)).toBe(false);
+    expect(await eligible(playerId)).toBe(true);
+  });
+
+  it('level 35 and beyond is not enough — only the unlock counts', async () => {
+    const veteran = await createPlayer(t.db);
+    await t.db.update(players).set({ level: 80 }).where(eq(players.id, veteran));
+    expect(await eligible(veteran)).toBe(false);
+    await unlockEquipment(t.db, svc, veteran);
+    expect(await eligible(veteran)).toBe(true);
+  });
+
+  it('both reward grants refuse a locked player and persist nothing', async () => {
+    const locked = await createPlayer(t.db);
+    const common = { playerId: locked, source: { type: 'boss' as const, key: 'test' } };
+    await expect(
+      t.db.transaction((tx) => rewards.grantRandomEquipmentReward(tx, { ...common, selector: {}, grantKey: 'lock:a' })),
+    ).rejects.toBeInstanceOf(FeatureLockedError);
+    await expect(
+      t.db.transaction((tx) =>
+        rewards.grantChosenEquipmentReward(tx, { ...common, definitionKey: 'combat_knife', grantKey: 'lock:b' }),
+      ),
+    ).rejects.toBeInstanceOf(FeatureLockedError);
+    expect(await gearOf(locked)).toEqual([]);
+  });
+
+  it('a reward the source promised while the player was eligible still pays', async () => {
+    const revoked = await createPlayer(t.db);
+    const reward = await t.db.transaction((tx) =>
+      rewards.grantChosenEquipmentReward(tx, {
+        playerId: revoked,
+        definitionKey: 'combat_knife',
+        source: { type: 'expedition', key: 'test' },
+        grantKey: 'promised:1',
+        promised: true,
+      }),
+    );
+    expect(reward.definitionKey).toBe('combat_knife');
+    expect((await gearOf(revoked)).map((r) => r.id)).toEqual([reward.equipmentId]);
+  });
+
+  it('explicit grants — onboarding starters, admin — still use the core path without the unlock', async () => {
+    const locked = await createPlayer(t.db);
+    await t.db.update(players).set({ level: 35 }).where(eq(players.id, locked));
+    const starter = await grant(t.db, svc, locked, 'rusty_pipe', {
+      source: { type: 'onboarding', key: 'equipment' },
+      ...starterRoll('rusty_pipe'),
+    });
+    const admin = await grant(t.db, svc, locked, 'combat_knife');
+    const rows = await gearOf(locked);
+    expect(rows.map((r) => r.id).sort()).toEqual([starter, admin].sort());
+    expect(rows.find((r) => r.id === starter)!).toMatchObject({ sourceType: 'onboarding', rolledMultiplierBp: 4_500, affixKey: null });
+    expect(await eligible(locked)).toBe(false);
   });
 });
 

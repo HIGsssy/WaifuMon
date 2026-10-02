@@ -84,6 +84,12 @@ export interface ExpeditionResolutionPlan {
    * existed). Trimmed with the tables at resolution.
    */
   equipmentPools?: ExpeditionEquipmentPools;
+  /**
+   * The tables paid gear, but the player did not have the Equipment feature
+   * at deploy, so every Equipment entry was removed from them. Audit only —
+   * resolution reads the (already stripped) tables.
+   */
+  equipmentWithheld?: true;
 }
 
 /** One deployable copy, with the match quality the player is shown. */

@@ -22,6 +22,25 @@
  *
  * Every write happens through the caller's transaction, so a failed grant
  * rolls back the resolution that asked for it.
+ *
+ * ## Eligibility: the permanent `equipment` unlock
+ *
+ * Random gear is for players who have the Equipment feature — the unlock the
+ * onboarding grants on completion. Level alone is not enough: Level 35 only
+ * makes the onboarding available. {@link EquipmentRewardService.canReceiveRandomEquipmentRewards}
+ * is the one answer every reward source asks, and each source asks it at the
+ * moment it decides what can drop, so a locked player's draw never contains
+ * gear in the first place (nothing is rolled and then thrown away):
+ *
+ *  - bosses — per participant, at payout, before the roll;
+ *  - expeditions — at deploy, before the plan is snapshotted;
+ *  - World Encounters — a choice that pays gear is unavailable.
+ *
+ * Both grant methods re-check it as a backstop and refuse a locked player
+ * with `FeatureLockedError`, except a reward the source already {@link
+ * GrantChosenEquipmentRewardInput.promised promised} while the player was
+ * eligible. The rule lives here, not in `grantEquipment`: onboarding
+ * starters, admin and restore grants are explicit and never ask.
  */
 import { asc } from 'drizzle-orm';
 import type { DbOrTx } from '../../db/client';
@@ -31,7 +50,8 @@ import type { EquipmentAffixCatalogue } from './affixCatalogue';
 import { equipmentDisplayName } from './equipmentRoll';
 import type { EquipmentService, GrantKeyRecord } from './equipmentService';
 import type { EquipmentDefinitionView, EquipmentInstanceView } from './equipmentQueries';
-import type { EquipmentIssue } from '../../shared/errors';
+import { FeatureLockedError, type EquipmentIssue } from '../../shared/errors';
+import type { FeatureUnlockService } from '../features/featureUnlockService';
 import {
   eligibleRewardDefinitions,
   equipmentSelectorIssues,
@@ -91,9 +111,20 @@ export interface GrantChosenEquipmentRewardInput extends RewardGrantCommon {
    * while it was enabled (an expedition whose pool was snapshotted at deploy).
    */
   allowDisabled?: boolean;
+  /**
+   * The source checked {@link EquipmentRewardService.canReceiveRandomEquipmentRewards}
+   * when it promised this reward (an expedition, at deploy) and the promise
+   * stands: skip the payout-time eligibility backstop.
+   */
+  promised?: boolean;
 }
 
 export interface EquipmentRewardService {
+  /**
+   * Whether normal random gear may drop for this player: the permanent
+   * `equipment` feature unlock, read through `tx`. Never the player's level.
+   */
+  canReceiveRandomEquipmentRewards(tx: DbOrTx, playerId: number): Promise<boolean>;
   /** Select a base definition for `selector` and grant one random instance of it. */
   grantRandomEquipmentReward(tx: DbOrTx, input: GrantRandomEquipmentRewardInput): Promise<EquipmentRewardGrant>;
   /** Grant one random instance of a definition the source selected earlier. */
@@ -108,6 +139,8 @@ export interface EquipmentRewardService {
 export interface EquipmentRewardServiceDeps {
   equipment: Pick<EquipmentService, 'grantEquipment' | 'findByGrantKeys'>;
   getAffixes(): EquipmentAffixCatalogue;
+  /** The eligibility rule: random gear needs the `equipment` unlock. */
+  featureUnlocks: Pick<FeatureUnlockService, 'isUnlocked'>;
   /** Picks the base definition when a caller supplies no RNG. Injected by tests. */
   rng?: Rng;
 }
@@ -197,6 +230,15 @@ function fromInstance(
 export function createEquipmentRewardService(deps: EquipmentRewardServiceDeps): EquipmentRewardService {
   const rng = deps.rng ?? defaultRng();
 
+  async function canReceiveRandomEquipmentRewards(tx: DbOrTx, playerId: number): Promise<boolean> {
+    return deps.featureUnlocks.isUnlocked(playerId, 'equipment', tx);
+  }
+
+  /** The backstop: a source that asked first never reaches this throw. */
+  async function requireEligible(tx: DbOrTx, playerId: number): Promise<void> {
+    if (!(await canReceiveRandomEquipmentRewards(tx, playerId))) throw new FeatureLockedError('equipment');
+  }
+
   function fromRecord(record: GrantKeyRecord): EquipmentRewardGrant {
     return {
       equipmentId: record.equipmentId,
@@ -238,9 +280,13 @@ export function createEquipmentRewardService(deps: EquipmentRewardServiceDeps): 
   }
 
   return {
+    canReceiveRandomEquipmentRewards,
+
     async grantRandomEquipmentReward(tx, input) {
+      // A replay returns what was already paid, whatever the unlock says now.
       const replay = await alreadyPaid(tx, input.playerId, input.grantKey);
       if (replay) return replay;
+      await requireEligible(tx, input.playerId);
       const eligible = eligibleRewardDefinitions(input.selector, await listRewardableDefinitions(tx));
       const chosen = pickRewardDefinition(eligible, input.rng ?? rng);
       return grantOne(tx, { ...input, definitionKey: chosen.key });
@@ -249,7 +295,9 @@ export function createEquipmentRewardService(deps: EquipmentRewardServiceDeps): 
     async grantChosenEquipmentReward(tx, input) {
       const replay = await alreadyPaid(tx, input.playerId, input.grantKey);
       if (replay) return replay;
-      return grantOne(tx, input);
+      if (!input.promised) await requireEligible(tx, input.playerId);
+      const { promised: _promised, ...grant } = input;
+      return grantOne(tx, grant);
     },
 
     async eligibleDefinitions(tx, selector) {

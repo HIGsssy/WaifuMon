@@ -88,7 +88,7 @@ import {
   equipmentSelectorKey,
   pickRewardDefinition,
 } from '../equipment/rewardSelector';
-import { equipmentSelectorsOf, resolveEquipmentPools } from '../rewardTables/rewardTableCore';
+import { equipmentSelectorsOf, resolveEquipmentPools, withoutEquipmentRewards } from '../rewardTables/rewardTableCore';
 import { contentRewardTableSource, type RewardTableSource } from '../rewardTables/rewardTableStore';
 import {
   appliedBuddyBonus,
@@ -788,8 +788,17 @@ export function createBossEncounterService(
       affinityBonus: participation.affinityBonus,
       responseBonus: participation.responseBonus,
     });
+    // Gear drops only for a participant who has the Equipment feature, read at
+    // payout. A locked participant rolls the snapshot with its gear entries
+    // removed — not a roll whose gear is thrown away — so the item share of
+    // each group renormalises exactly as disabling the gear would, every draw
+    // keeps its key, and nothing says gear was won. The snapshot still decides
+    // *which* definitions an eligible participant can get.
+    const gearEligible = equipmentRewards
+      ? await equipmentRewards.canReceiveRandomEquipmentRewards(db, participation.playerId)
+      : true;
     const roll = rollBossRewards({
-      table,
+      table: gearEligible ? table : withoutEquipmentRewards(table),
       encounterId: encounter.id,
       participationId: participation.id,
       buddyLevel: participation.level,

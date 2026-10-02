@@ -33,6 +33,7 @@ import {
 } from '../../src/modules/rewardTables/rewardTableStore';
 import { seededRng } from '../../src/shared/random';
 import { CONTENT_DIR, bootstrapApp, insertOwnedWaifu, provisionPlayer, type App } from '../helpers/fixtures';
+import { unlockEquipment } from '../helpers/equipmentFixtures';
 import { createTestDb, type TestDb } from '../helpers/testDb';
 
 const TABLE = 'standard-scouting-v1';
@@ -57,6 +58,8 @@ beforeAll(async () => {
   const p = await provisionPlayer(app, 'g-boss-snap', 'u-boss-snap');
   guildDbId = p.guildDbId;
   playerId = p.playerId;
+  // Gear drops only for players with the Equipment feature.
+  await unlockEquipment(t.db, app.gear, playerId);
 });
 afterAll(async () => {
   await t.cleanup();

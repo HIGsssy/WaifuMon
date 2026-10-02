@@ -96,6 +96,14 @@ Both snapshots include the base definitions each Equipment entry could pay at
 that moment, so a definition disabled afterwards is still paid to whoever was
 promised it.
 
+Equipment entries pay only players with the permanent `equipment` feature
+unlock (`EquipmentRewardService.canReceiveRandomEquipmentRewards`). A boss
+checks each participant at payout; a mission checks at deploy and, for a
+locked player, snapshots its tables without gear (`equipmentWithheld` on the
+plan) — unlocking before the claim adds none, and an unlocked deploy keeps its
+gear. In both cases the remaining entries renormalise as if the gear were
+disabled.
+
 ## Getting an edit into Git
 
 **Export** on the list page downloads the live tables of one kind in the

@@ -13,6 +13,7 @@ import {
   matchesRegion,
   matchesRoute,
   selectEncounter,
+  selectEncounterDetailed,
 } from '../../../src/modules/worldEncounters/engine';
 import type { EncounterWithChildren } from '../../../src/modules/worldEncounters/worldEncounterRepository';
 
@@ -121,6 +122,7 @@ describe('selectEncounter', () => {
       source: 'hunt',
       regionId: 'waifu-valley',
       cooldownIds: new Set(),
+      equipmentUnlocked: true,
       candidates: [],
     });
     expect(result).toBeNull();
@@ -137,6 +139,7 @@ describe('selectEncounter', () => {
         source: 'hunt',
         regionId: 'waifu-valley',
         cooldownIds: new Set([1]),
+        equipmentUnlocked: true,
         candidates: [a, b],
       });
       expect(chosen?.id).toBe(2);
@@ -154,6 +157,7 @@ describe('selectEncounter', () => {
         source: 'hunt',
         regionId: 'waifu-valley',
         cooldownIds: new Set(),
+        equipmentUnlocked: true,
         candidates: [inRegion, outOfRegion],
       });
       expect(chosen?.id).toBe(1);
@@ -183,6 +187,7 @@ describe('selectEncounter', () => {
         fromRegion: 'waifu-valley',
         toRegion: 'twin-peeks',
         cooldownIds: new Set(),
+        equipmentUnlocked: true,
         candidates: [forward, reverse],
       });
       expect(chosen?.id).toBe(1);
@@ -202,6 +207,7 @@ describe('selectEncounter', () => {
       fromRegion: 'waifu-valley',
       toRegion: 'twin-peeks',
       cooldownIds: new Set(),
+      equipmentUnlocked: true,
       // The engine trusts the pre-filtered pool; simulate that here.
       candidates: [travelOnly],
     });
@@ -224,6 +230,7 @@ describe('selectEncounter', () => {
         source: 'hunt',
         regionId: 'waifu-valley',
         cooldownIds: new Set(),
+        equipmentUnlocked: true,
         candidates: [heavy, light],
       });
       const id = chosen?.id ?? -1;
@@ -234,5 +241,58 @@ describe('selectEncounter', () => {
     const lightShare = (counts.get(2) ?? 0) / N;
     expect(heavyShare).toBeGreaterThan(0.95);
     expect(lightShare).toBeLessThan(0.05);
+  });
+});
+
+describe('Equipment-only encounters', () => {
+  /** A choice row whose success pays `effects`. */
+  const choiceRow = (encounterId: number, id: number, effects: unknown[]) => ({
+    id,
+    encounterId,
+    sortOrder: id,
+    label: `Choice ${id}`,
+    emoji: null,
+    requirementsJson: {},
+    checkJson: { type: 'none' },
+    successEffectsJson: effects,
+    failureEffectsJson: [],
+    outcomeText: null,
+    successText: null,
+    failureText: null,
+  });
+  const gear = { type: 'give_equipment', quantity: 1, slot: 'attack' };
+  const bux = { type: 'waifubux_gain', amount: 10 };
+  const withChoices = (id: number, ...choices: unknown[][]): EncounterWithChildren => ({
+    ...makeCandidate({ id }),
+    choices: choices.map((effects, i) => choiceRow(id, i + 1, effects)) as EncounterWithChildren['choices'],
+  });
+  const select = (candidates: EncounterWithChildren[], equipmentUnlocked: boolean, seed = 1) =>
+    selectEncounterDetailed(stubRepo, seededRng(seed), {
+      playerId: 1,
+      playerLevel: 50, // level is not the gate
+      source: 'hunt',
+      regionId: 'waifu-valley',
+      cooldownIds: new Set(),
+      equipmentUnlocked,
+      candidates,
+    });
+
+  it('are never selected for a player without the Equipment feature, and say why when nothing is left', async () => {
+    const gearOnly = withChoices(1, [gear], [gear, bux]);
+    const outcome = await select([gearOnly], false);
+    expect(outcome.encounter).toBeNull();
+    expect(outcome.reason).toBe('equipment_locked');
+    for (let seed = 1; seed <= 20; seed++) {
+      expect((await select([gearOnly, withChoices(2, [bux])], false, seed)).encounter?.id).toBe(2);
+    }
+  });
+
+  it('an encounter with any non-gear choice still surfaces to a locked player', async () => {
+    const mixed = withChoices(3, [gear], [bux]);
+    expect((await select([mixed], false)).encounter?.id).toBe(3);
+  });
+
+  it('are selected normally once unlocked', async () => {
+    expect((await select([withChoices(1, [gear])], true)).encounter?.id).toBe(1);
   });
 });
