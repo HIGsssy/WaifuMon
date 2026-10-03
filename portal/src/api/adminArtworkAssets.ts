@@ -182,7 +182,9 @@ export interface EnemyArtworkEntry {
 export const ARTWORK_ASSETS_QUERY_KEY = ['admin', 'artwork-assets'] as const;
 export const ENEMY_ARTWORK_QUERY_KEY = ['admin', 'dungeons', 'enemy-artwork'] as const;
 
-const base = '/admin/artwork';
+// Under `/v1` like every other resource: the client's base URL is `/api`.
+const base = '/v1/admin/artwork';
+const enemyBase = '/v1/admin/dungeons/enemy-artwork';
 const withSignal = (signal?: AbortSignal) => (signal ? { signal } : {});
 /** Uploads carry megabytes; give them longer than a JSON call. */
 const uploadTimeout = () => Math.max(requestTimeoutMs(), 60_000);
@@ -289,7 +291,7 @@ export function scenePreviewBlob(request: ScenePreviewRequest): Promise<Blob> {
 }
 
 export function listEnemyArtwork(signal?: AbortSignal): Promise<{ enemies: EnemyArtworkEntry[] }> {
-  return getData('/admin/dungeons/enemy-artwork', withSignal(signal));
+  return getData(enemyBase, withSignal(signal));
 }
 
 export function saveEnemyArtwork(
@@ -301,7 +303,7 @@ export function saveEnemyArtwork(
     expectedRevision: number;
   },
 ): Promise<EnemyArtworkEntry> {
-  return putData<EnemyArtworkEntry>(`/admin/dungeons/enemy-artwork/${key}`, input);
+  return putData<EnemyArtworkEntry>(`${enemyBase}/${key}`, input);
 }
 
 export function formatBytes(bytes: number): string {

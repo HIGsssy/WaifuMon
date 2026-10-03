@@ -199,6 +199,58 @@ describe('browse', () => {
   });
 });
 
+describe('an empty library', () => {
+  it('is an empty state, not an error', async () => {
+    assets = [];
+    renderPage();
+    expect(await screen.findByTestId('asset-grid-summary')).toHaveTextContent(
+      'No artwork has been uploaded yet',
+    );
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByText('Could not load artwork')).not.toBeInTheDocument();
+    // Uploading is still offered, and nothing is selected.
+    expect(screen.getByTestId('asset-upload')).toBeInTheDocument();
+    expect(screen.getByTestId('asset-manage-empty')).toBeInTheDocument();
+  });
+
+  it('a filter with no matches says so, differently', async () => {
+    const user = renderPage();
+    await card(assets[0]!);
+    await user.selectOptions(screen.getByLabelText('Filter by category'), 'npc_portrait');
+    await waitFor(() =>
+      expect(screen.getByTestId('asset-grid-summary')).toHaveTextContent('No artwork matches'),
+    );
+  });
+});
+
+describe('when the list really fails', () => {
+  it('says why: the server’s message, its code and the HTTP status', async () => {
+    listSpy.mockRejectedValue(
+      new PortalApiError({
+        status: 404,
+        code: 'NOT_FOUND',
+        message: 'Not found.',
+        requestId: 'req-42',
+      }),
+    );
+    renderPage();
+    const alert = within(await screen.findByRole('alert'));
+    expect(alert.getByText('Could not load artwork')).toBeInTheDocument();
+    expect(alert.getByTestId('error-reason')).toHaveTextContent('Not found.');
+    expect(alert.getByTestId('error-code')).toHaveTextContent(
+      'NOT_FOUND · HTTP 404 · request req-42',
+    );
+  });
+
+  it('names a server failure and a network failure too', async () => {
+    listSpy.mockRejectedValue(
+      new PortalApiError({ status: 500, code: 'INTERNAL_ERROR', message: 'Internal error.' }),
+    );
+    renderPage();
+    expect(await screen.findByTestId('error-code')).toHaveTextContent('INTERNAL_ERROR · HTTP 500');
+  });
+});
+
 describe('upload', () => {
   it('uploads the chosen file under the chosen category and name, then selects it', async () => {
     const user = renderPage();

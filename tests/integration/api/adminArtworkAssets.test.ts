@@ -174,6 +174,20 @@ const saveZone = async (patch: Record<string, unknown>) => {
   return call('PUT', `/admin/dungeons/zones/${ZONE}`, { zone: { ...current.zone, ...patch }, expectedRevision: current.revision });
 };
 
+describe('with nothing uploaded yet', () => {
+  it('lists an empty library as a success, exactly as the Portal asks for it', async () => {
+    // The Browse panel's request, and the pickers'.
+    for (const url of ['/admin/artwork/assets?limit=120', '/admin/artwork/assets?limit=120&status=active&category=dungeon_background']) {
+      const res = await call('GET', url);
+      expect(res.statusCode, `${url} ${res.body}`).toBe(200);
+      expect(res.json().data).toEqual({ assets: [], total: 0 });
+    }
+    expect((await call('GET', '/admin/artwork/meta')).statusCode).toBe(200);
+    // Nothing shipped in Git is listed here: shipped art is a separate system.
+    expect(filesUnder(storageDir)).toEqual([]);
+  });
+});
+
 describe('upload', () => {
   it('accepts PNG, WebP and JPEG, and records what the bytes are', async () => {
     const cases = [

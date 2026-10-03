@@ -95,13 +95,20 @@ export function AssetGrid({
         )}
       </div>
       {query.isError && (
-        <ErrorState variant="inline" title="Could not load artwork" error={query.error} />
+        <ErrorState
+          variant="inline"
+          showReason
+          title="Could not load artwork"
+          error={query.error}
+        />
       )}
       {query.isSuccess && (
         <p className="text-xs text-ink-muted" role="status" data-testid="asset-grid-summary">
-          {assets.length === 0
-            ? 'No artwork matches. Upload some, or change the filter.'
-            : `${assets.length} of ${query.data.total} shown`}
+          {assets.length > 0
+            ? `${assets.length} of ${query.data.total} shown`
+            : filter === '' && search.trim() === ''
+              ? 'No artwork has been uploaded yet. Shipped artwork is still used wherever nothing is uploaded.'
+              : 'No artwork matches. Upload some, or change the filter.'}
         </p>
       )}
       <ul className="grid min-h-0 flex-1 grid-cols-2 gap-3 overflow-y-auto sm:grid-cols-3 lg:grid-cols-4">

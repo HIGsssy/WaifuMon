@@ -231,7 +231,14 @@ function ManagePanel({
   });
 
   if (detail.isError)
-    return <ErrorState variant="inline" title="Could not load this artwork" error={detail.error} />;
+    return (
+      <ErrorState
+        variant="inline"
+        showReason
+        title="Could not load this artwork"
+        error={detail.error}
+      />
+    );
   if (!detail.data) return <p className="text-xs text-ink-muted">Loading…</p>;
   const { asset, references, events } = detail.data;
   const inUse =
@@ -430,13 +437,18 @@ function ManagePanel({
             </div>
           )}
           {remove.isError && !inUse && (
-            <ErrorState variant="inline" title="Could not delete" error={remove.error} />
+            <ErrorState variant="inline" showReason title="Could not delete" error={remove.error} />
           )}
           {rename.isError && (
-            <ErrorState variant="inline" title="Could not save" error={rename.error} />
+            <ErrorState variant="inline" showReason title="Could not save" error={rename.error} />
           )}
           {toggle.isError && (
-            <ErrorState variant="inline" title="Could not change status" error={toggle.error} />
+            <ErrorState
+              variant="inline"
+              showReason
+              title="Could not change status"
+              error={toggle.error}
+            />
           )}
         </>
       )}

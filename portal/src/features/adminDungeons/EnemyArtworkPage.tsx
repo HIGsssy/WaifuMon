@@ -177,6 +177,7 @@ function EnemyEditor({ enemy, readOnly }: { enemy: EnemyArtworkEntry; readOnly: 
       {save.isError && (
         <ErrorState
           variant="inline"
+          showReason
           title={
             stale
               ? 'Someone else saved this enemy’s artwork first — it has been reloaded'
@@ -211,7 +212,12 @@ export function EnemyArtworkPage() {
         }
       />
       {query.isError && (
-        <ErrorState variant="inline" title="Could not load enemies" error={query.error} />
+        <ErrorState
+          variant="inline"
+          showReason
+          title="Could not load enemies"
+          error={query.error}
+        />
       )}
       {query.isSuccess && enemies.length === 0 && (
         <Card className="p-4 text-sm text-ink-muted">No enemies are defined on this server.</Card>

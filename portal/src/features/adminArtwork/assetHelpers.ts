@@ -27,7 +27,10 @@ export function describeUploadError(error: unknown): string {
     }
     if (error.status === 403) return 'You do not have permission to upload artwork.';
     if (error.isTransportError) return 'Could not reach the server. Try again in a moment.';
-    if (error.message) return error.message;
+    // A server that does not know the route yet (an older API build) answers 404.
+    if (error.status === 404)
+      return `The server has no upload route (HTTP 404, ${error.code}) — is the API up to date?`;
+    if (error.message) return `${error.message} (${error.code}, HTTP ${error.status})`;
   }
   return 'The upload failed.';
 }
