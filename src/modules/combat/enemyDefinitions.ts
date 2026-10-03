@@ -17,10 +17,18 @@
  * `artworkPath` is relative to the assets root, conventionally
  * `combat/enemies/<key>.webp` (see `combatArtwork.ts`); null means text-only.
  *
+ * `spriteArtworkPath` is a separate, optional **transparent** cut-out of the
+ * enemy (conventionally `combat/sprites/<key>.webp`), meant to be layered
+ * over a dungeon background; `spritePlacement` is where it stands by default.
+ * Both are the shipped defaults: artwork uploaded through Portal Admin
+ * (`combat_enemy_artwork`, see `modules/artworkAssets`) overrides them
+ * without a commit. An enemy needs neither.
+ *
  * Kept free of database imports so the content loader can validate the file.
  */
 import { z } from 'zod';
 import { relativeArtworkPath } from '../assets/artworkPath';
+import { SpritePlacementSchema } from '../artworkAssets/scenePlacement';
 import type { CombatantInput } from './combatState';
 
 /** Relative to the content directory. */
@@ -47,6 +55,8 @@ export const CombatEnemyDefinitionSchema = z
     defense: stat(0),
     hp: stat(1),
     artworkPath: relativeArtworkPath.nullable().default(null),
+    spriteArtworkPath: relativeArtworkPath.nullable().default(null),
+    spritePlacement: SpritePlacementSchema.nullable().default(null),
     enabled: z.boolean(),
     tags: z.array(key).max(20).default([]),
   })

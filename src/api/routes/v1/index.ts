@@ -44,6 +44,7 @@ import { adminEncounterPromotionRoutes } from './admin/encounterPromotion';
 import { adminVendorRoutes } from './admin/vendors';
 import { adminRewardTableRoutes } from './admin/rewardTables';
 import { adminDungeonRoutes } from './admin/dungeons';
+import { adminArtworkAssetRoutes } from './admin/artworkAssets';
 import { adminResultPresentationRoutes } from './admin/resultPresentations';
 import { adminGalleryRoutes } from './admin/gallery';
 import { adminSystemMetricsRoutes } from './admin/systemMetrics';
@@ -142,6 +143,10 @@ export const v1Routes =
     // Admin: dungeon zones, the progression currency and the generation
     // preview. Skipped when the dungeon services are not wired.
     await app.register(adminDungeonRoutes(ctx));
+
+    // Admin: managed artwork (uploads, the scene preview) and enemy artwork.
+    // Skipped when the artwork asset service is not wired.
+    await app.register(adminArtworkAssetRoutes(ctx));
 
     // Admin: Result Presentations (hunt-find and release flavor/artwork).
     // Skipped when the presentation service is not wired.

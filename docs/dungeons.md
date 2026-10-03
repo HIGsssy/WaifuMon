@@ -231,6 +231,10 @@ must be standing in to see the zone and **start** a run:
 Region availability applies **only to starting a run** — see
 [Region and travel](#region-and-travel).
 
+**Zones stored before this field existed** are given a one-time compatibility
+value so none silently disappears — see
+[Region compatibility backfill](#region-compatibility-backfill).
+
 ### Artwork
 
 A zone has two optional images, both paths relative to the assets root:
@@ -246,6 +250,20 @@ supported image extension — and a leading `assets/` is refused with a message
 saying to drop it. A path whose file does not exist yet is **not** an error:
 the zone saves, and every screen falls back to the next image or to text.
 `.webp` is the convention; `.png` and the other supported formats work.
+
+Those two paths are the **shipped** artwork. A zone can also use artwork
+uploaded through the Portal, with no commit — see
+[managed-artwork.md](managed-artwork.md):
+
+| Field | |
+| --- | --- |
+| `artworkAssetId` | An uploaded image that overrides `artworkPath` while the asset is active. |
+| `backgroundAssetId` | The same for `backgroundArtworkPath`. |
+| `backgrounds` | The **background pool**: `{ id, assetId \| artworkPath, weight, enabled, minDepth, maxDepth }` entries. Each node of a run draws one by weight from those covering its depth, once, when the run is generated. Empty means every node uses the zone background. |
+
+Precedence is always managed asset → shipped path → the next image. An asset
+id must name an asset that exists (an error otherwise); a disabled one is a
+warning and the shipped path shows instead.
 
 ### Pools
 
@@ -656,6 +674,9 @@ that snapshot and nothing else:
 | the active Buddy is changed | none — the run keeps its Buddy, name and artwork |
 | the Buddy levels up | none |
 | the zone, an enemy, an event or a reward table is edited | none (the content snapshot) |
+| the background pool, an enemy's sprite or its placement is edited | none — each node's background and each enemy's artwork references and placement were snapshotted |
+| the image behind an uploaded asset is **replaced** | the run shows the new image; its choice of asset does not change |
+| an uploaded asset the run uses is disabled or deleted | the screen falls back to the next image |
 
 Equipment management is **not** blocked while a run is active. It simply does
 not reach the run. There is no swapping gear inside a run.
@@ -848,32 +869,38 @@ reset), Start Run is disabled, and a stale Start click is refused by the
 service and lands on the home. With none left and a run in progress, Resume
 and Abandon work as always: the allowance only gates a *new* run.
 
-**Artwork precedence.** The large image is the first of these whose file is
-actually deployed; a missing or unsafe file is skipped, never an error:
+**Artwork precedence.** The large image is the first of these that is actually
+available; a missing, disabled or unsafe image is skipped, never an error. Each
+"artwork" is a managed asset while one is set and active, else the shipped
+path (`src/discord/dungeonArtwork.ts`):
 
-| Screen | 1 | 2 | 3 | 4 |
-| --- | --- | --- | --- | --- |
-| Fight (combat, elite, miniboss, boss) | the enemy's artwork | zone artwork | zone background | text only |
-| Event | the event's own artwork | zone artwork | zone background | text only |
-| Rest, Cache, Exit | zone artwork | zone background | text only | |
-| Zone screen (before Start) | zone artwork | zone background | text only | |
-| Delve home, no run | the first listed zone's artwork, then its background, then the next zone's | | text only | |
-| Delve home, active run | as the node the run is on | | | |
+| Screen | 1 | 2 | 3 | 4 | 5 | 6 |
+| --- | --- | --- | --- | --- | --- | --- |
+| Fight (combat, elite, miniboss, boss) | the node's background with the enemy's **sprite** composed over it | the enemy's full artwork | the node's background alone | zone artwork | zone background | text only |
+| Event, Rest, Cache, Exit | the event's own artwork | the node's background alone | zone artwork | zone background | text only | |
+| Zone screen (before Start) | zone artwork | zone background | text only | | | |
+| Delve home, no run | the first listed zone's artwork, then its background, then the next zone's | | text only | | | |
+| Delve home, active run | as the node the run is on | | | | | |
 
-Only events have artwork of their own; rest, cache and exit nodes have none, so
-"node-specific artwork" is the event's. One list is built per screen
-(`[event, enemy, zone, background]`) — a fight has no event and an event has no
-enemy, which is what gives the two rows above.
+"The node's background" is the one that node drew from the zone's background
+pool when the run was generated; for the composed scene, a node that drew none
+uses the zone background. A zone with no pool and enemies with no sprites
+behaves exactly as before: enemy artwork, zone artwork, zone background, text.
+An enemy is never composed onto a node that is not a fight. Only events have
+artwork of their own among the non-combat nodes.
 
 The Buddy is the thumbnail on every screen: the run's **snapshotted** Buddy
-during a run, the live active Buddy on the zone screen. Nothing is composited.
+during a run, the live active Buddy on the zone screen. The composed scene is
+rendered once per distinct combination and cached
+([managed-artwork.md](managed-artwork.md#sprites-backgrounds-and-scenes)).
 
-**Which artwork an active run shows.** The run's own snapshot: `zone.artworkPath`
-and `backgroundArtworkPath`, and each enemy's and event's artwork path, as they
-were when the run started. Editing a zone's artwork changes the zone screen and
-new runs at once and leaves runs in progress showing what they started with.
-The *file* behind a path is read live, so replacing the image at the same path
-reaches everything.
+**Which artwork an active run shows.** The run's own snapshot: the zone's
+paths and asset ids, each enemy's and event's artwork, each node's background
+and each enemy's sprite placement, as they were when the run started. Editing
+any of them changes the zone screen and new runs at once and leaves runs in
+progress showing what they started with; a repaint never re-rolls anything.
+The *image* behind a path or an asset id is read live, so replacing it reaches
+everything.
 
 Gear Score is not shown anywhere. The player sees real ATK / DEF / HP and
 depth.
@@ -1106,24 +1133,58 @@ bands is — order is part of every deterministic draw.
 
 A zone created in the Portal is never touched by the seed.
 
-**New fields and existing rows.** Region availability, rest rules and the
-artwork refinements live inside the zone document; there is no migration. A
-row written before them still parses — `availableRegions` reads as `[]`,
-`generation.rest` as "no rule" — and that has consequences worth knowing:
+**New fields and existing rows.** Region availability, rest rules, managed
+artwork and the background pool live inside the zone document. A row written
+before one of them still parses — `generation.rest` reads as "no rule",
+`backgrounds` as empty, the asset ids as unset:
 
 - A row still equal to what was last seeded (never edited in the Portal) is
-  updated to the new shipped zone on the next start, regions and rest rules
-  included.
-- A row **edited in the Portal is left alone**, as always. It keeps its own
-  generation rules — and, having no `availableRegions`, it is **available
-  nowhere**: it drops off every player's Delve list and cannot be started until
-  an admin opens it, chooses a region and saves. The server says so twice at
-  startup: `dungeon-zones/diverged` (the row differs from Git) and
-  `dungeon-zones/invalid` (an enabled zone has no region). Runs already active
-  in it are unaffected.
-- The same is true of a zone created in the Portal before this change.
+  updated to the new shipped zone on the next start.
+- A row **edited in the Portal is left alone**, as always, and simply has the
+  defaults for the fields it predates.
 
-Nothing is overwritten to "fix" this; divergence protection is not bypassed.
+### Region compatibility backfill
+
+`availableRegions` is the one new field whose default is not harmless: missing
+it reads as `[]`, which now means "nowhere". Left alone, a Portal-edited or
+Portal-only zone stored before the field existed would drop off every player's
+Delve list. So that one field gets a **one-time** compatibility value, without
+weakening divergence protection:
+
+1. **Migration `0053_dungeon_region_compat`** marks
+   `dungeon_zones.region_compat = 'pending'` on every row whose stored document
+   has no `availableRegions` key. Rows store the *parsed* zone, so any row a
+   build that knows the field has written carries the key — an empty list
+   included. Key absent therefore means, exactly, "written before the field
+   existed".
+2. **At startup, before the seed**, `backfillDungeonZoneRegions` resolves each
+   `pending` row and adds **only that field**:
+
+   | Row | Gets | `region_compat` |
+   | --- | --- | --- |
+   | a shipped zone (untouched or edited) whose shipped copy names regions | the shipped zone's regions — Scrapheap Gauntlet → `flaccid-foothills` | `shipped` |
+   | a Portal-only zone, or one whose shipped copy names none | **every enabled region** — the old effective behaviour, with no thematic guess and never an unreleased region | `all_enabled_regions` |
+
+   No history exists that records where a zone used to appear (it appeared
+   everywhere), so there is nothing more specific to preserve.
+3. Everything else in the document is untouched. `content_hash` is recomputed;
+   an untouched shipped row's `seed_hash` follows it (it stays "shipped"), an
+   edited row's `seed_hash` does not move (it stays "edited" and the seed still
+   refuses to overwrite it). `revision` is bumped, so an editor opened before
+   the restart cannot save over the result; `updated_by` / `updated_at` still
+   name the last real author.
+4. Each backfill is logged — `dungeon-zones/region-backfill`, at `info` for
+   `shipped` and `warn` for `all_enabled_regions`, with the key, the regions
+   and the row's origin. A marked row that cannot be parsed is logged
+   (`dungeon-zones/region-backfill-failed`) and left marked.
+5. A zone given `all_enabled_regions` shows **Review regions** in the zone
+   list and a notice in its Availability section until an admin saves it,
+   which clears the mark.
+
+It cannot run twice: only `pending` rows are read, and nothing sets `pending`
+after the migration. From then on the semantics are strict again —
+`availableRegions: []` saved in the Portal is an explicit "nowhere" and is
+never refilled, and an enabled zone with no region is still refused.
 
 **Export** on the Dungeons page downloads every live zone in the file format.
 Commit it over the shipped file and each server whose row matches adopts it.
@@ -1135,13 +1196,17 @@ enabled zone that cannot generate on that server.
 ## Admin Portal
 
 Permissions: `dungeons.read` (view, validate, preview, simulate, export) and
-`dungeons.write` (create, edit, enable/disable, edit the currency).
+`dungeons.write` (create, edit, enable/disable, edit the currency, enemy
+artwork). Picking or uploading managed artwork inside an editor additionally
+needs `artwork.read` / `artwork.write`.
 
 | Page | |
 | --- | --- |
 | `/admin/dungeons` | Zones — name, enabled, where each is available, node range, pools, revision, last update — with enable/disable, export, the Delve settings and the progression currency card. |
 | `/admin/dungeons/new`, `/admin/dungeons/zones/:key` | The zone editor. |
 | `/admin/dungeons/preview` | Generate one run from a seed, or simulate 1,000. |
+| `/admin/dungeons/enemies` | Enemy Artwork — full artwork, sprite and default sprite placement per enemy, with a composed preview. |
+| `/admin/artwork` | Artwork Assets — upload, browse and manage uploaded images ([managed-artwork.md](managed-artwork.md)). |
 
 The editor is organised by what an admin is deciding, not by where a field
 lives in the document:
@@ -1150,7 +1215,9 @@ lives in the document:
 | --- | --- |
 | **Basics** | key, name, order, enabled, description, tags |
 | **Availability** | the regions the zone can be started in — checkboxes showing region names, storing region ids |
-| **Artwork** | zone artwork and background: the path, a **Browse…** picker, *Use convention*, *Clear*, the expected path, and a preview of what is at the path now |
+| **Zone Artwork** | zone artwork and background, each as an uploaded override (**Select…**, **Upload…**, **Clear**, preview) above its shipped path (the path, a **Browse…** picker, *Use convention*, *Clear*, the expected path, and a preview of what is at the path now) |
+| **Background Pool** | the backgrounds nodes draw from: add an uploaded or a shipped image; weight, depth range, enabled |
+| **Scene Rules** | the artwork precedence, and a composed preview of any of the zone's backgrounds with any of its enemies' sprites |
 | **Layout** | min / max nodes, ends on a boss, branch count, chance and length |
 | **Extraction** | extraction depth, guaranteed points, which node types offer it, extraction windows |
 | **Rest & Recovery** | rest healing, minimum and maximum rest nodes, earliest and latest rest depth, **Always Rest Before Boss** |
@@ -1170,8 +1237,8 @@ whose field it names, once.
 mechanism: the dungeon routes expose `artwork`, `artwork/browse` and
 `artwork/search` under `dungeons.read`, rooted by the server at `dungeons/` —
 so the picker can list `dungeons/zones/` and `dungeons/backgrounds/` and
-nothing else in the assets tree. It browses and selects only; nothing uploads.
-The path can still be typed. The preview tells three states apart: no artwork
+nothing else in the assets tree. It browses and selects **shipped** files only;
+uploads are the managed-artwork fields beside it. The path can still be typed. The preview tells three states apart: no artwork
 set, a path with no file behind it (saved anyway; screens fall back), and the
 image.
 
@@ -1257,13 +1324,18 @@ All under `/api/v1/admin/dungeons`.
 | GET | `/artwork/browse?path=` | one folder under `dungeons/` for the picker |
 | GET | `/artwork/search?q=` | search artwork under `dungeons/` |
 | POST | `/validate` | dry run |
-| POST | `/preview` | `{ key \| zone, seed? }` → one generated graph and its `structure` summary |
+| POST | `/preview` | `{ key \| zone, seed? }` → one generated graph and its `structure` summary, including the background each node drew (`structure.scenes`) |
 | POST | `/simulate` | `{ key \| zone, runs, firstSeed }` → report, with rest / extraction spread and the Rest → Boss rate |
 | GET | `/export` | the file format |
 | GET | `/settings` | Delve-wide settings: `dailyRunLimit` and its bounds |
 | PUT | `/settings` | `{ dailyRunLimit }` — a whole number 0–50; `0` closes Delve to new runs |
 | GET | `/currencies` | progression currencies |
 | PUT | `/currencies/:key` | edit display metadata (`expectedRevision`) |
+| GET | `/enemy-artwork` | every enemy's shipped and managed artwork |
+| PUT | `/enemy-artwork/:key` | set an enemy's managed full artwork, sprite and placement (`expectedRevision`) |
+
+Managed artwork itself is under `/api/v1/admin/artwork` — see
+[managed-artwork.md](managed-artwork.md#api).
 
 ## Not built yet
 
@@ -1284,7 +1356,9 @@ Also deferred within this area:
 - paying a table's Essence and XP from a dungeon;
 - tag-driven generation, editing events in the Portal, zone import and
   reset-to-shipped, a "global" availability option, per-region daily limits,
-  artwork upload (the picker browses what is deployed), structural rules beyond
-  Rest → Boss, and delete protection on reward tables that a zone
-  references;
+  structural rules beyond Rest → Boss, and delete protection on reward tables
+  that a zone references;
+- managed artwork for events, per-zone sprite placement overrides, and
+  promoting uploaded artwork between environments — see
+  [managed-artwork.md](managed-artwork.md#not-built-yet);
 - an Admin view of a run and its history (the data is stored; nothing shows it).

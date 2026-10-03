@@ -79,6 +79,8 @@ const ALL_DEV_PERMISSIONS: readonly string[] = [
   'rewards.write',
   'dungeons.read',
   'dungeons.write',
+  'artwork.read',
+  'artwork.write',
   'system.metrics.read',
   // The page reports "disabled on this server" unless the API has the flag.
   'system.loadtest.run',

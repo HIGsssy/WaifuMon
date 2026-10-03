@@ -58,6 +58,9 @@ import type { FeatureUnlockService } from '../modules/features/featureUnlockServ
 import type { RewardTableService } from '../modules/rewardTables/rewardTableService';
 import type { CombatTrialService } from '../modules/combatTrials/combatTrialService';
 import type { EquipmentWorkshopService } from '../modules/equipment/equipmentWorkshopService';
+import type { ArtworkAssetService } from '../modules/artworkAssets/artworkAssetService';
+import type { EnemyArtworkService } from '../modules/artworkAssets/enemyArtworkService';
+import type { SceneCompositionService } from '../modules/artworkAssets/sceneComposition';
 import type { DungeonZoneService } from '../modules/dungeons/dungeonZoneService';
 import type { DungeonRunService } from '../modules/dungeons/dungeonRunService';
 import type { DungeonPlayService } from '../modules/dungeons/dungeonPlayService';
@@ -252,6 +255,12 @@ export interface AppServices {
   dungeonPlay?: DungeonPlayService | undefined;
   /** The daily Delve allowance and Delve-wide settings (Portal Admin, test controls). */
   dungeonAllowance?: DungeonAllowanceService | undefined;
+  /** Managed artwork: images uploaded through Portal Admin, referenced by id. */
+  artworkAssets?: ArtworkAssetService | undefined;
+  /** Managed artwork overrides for combat enemies (full art, sprite, sprite placement). */
+  enemyArtwork?: EnemyArtworkService | undefined;
+  /** Composes a background and a sprite into one cached scene image. */
+  sceneComposition?: SceneCompositionService | undefined;
   /** Progression currencies (the dungeon's Ascension-related resource): metadata, balances, ledger. */
   progressionCurrency?: ProgressionCurrencyService | undefined;
 }

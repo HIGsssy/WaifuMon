@@ -54,6 +54,12 @@ export interface DungeonZoneValidationContext {
   currencies: ReadonlyMap<string, { enabled: boolean }>;
   /** The region catalogue, by region id — what `availableRegions` may name. */
   regions: ReadonlyMap<string, { name: string; enabled: boolean }>;
+  /**
+   * Managed artwork assets, by id — what `artworkAssetId`, `backgroundAssetId`
+   * and a background's `assetId` may name. Omitted, asset references are not
+   * checked (a caller with no asset table to check against).
+   */
+  assets?: ReadonlyMap<string, { name: string; status: 'active' | 'disabled' | 'deleted' }> | undefined;
   /** Skip the trial runs — for callers that are about to generate anyway. */
   skipTrialRuns?: boolean;
 }
@@ -153,6 +159,28 @@ export function validateDungeonZone(input: unknown, ctx: DungeonZoneValidationCo
     if (zone.enabled) error('availableRegions', message);
     else warning('availableRegions', message);
   }
+
+  // Managed artwork. A reference to nothing is an authoring mistake; a
+  // disabled asset is a choice — the zone simply shows its shipped art.
+  if (ctx.assets) {
+    const assets = ctx.assets;
+    const checkAsset = (path: string, id: string | null) => {
+      if (id === null) return;
+      const asset = assets.get(id);
+      if (!asset || asset.status === 'deleted') error(path, 'that artwork no longer exists — choose another or clear it');
+      else if (asset.status === 'disabled') {
+        warning(path, `artwork "${asset.name}" is disabled, so the shipped artwork is shown instead`);
+      }
+    };
+    checkAsset('artworkAssetId', zone.artworkAssetId);
+    checkAsset('backgroundAssetId', zone.backgroundAssetId);
+    zone.backgrounds.forEach((bg, i) => checkAsset(`backgrounds[${i}].assetId`, bg.assetId));
+  }
+  zone.backgrounds.forEach((bg, i) => {
+    if (bg.enabled && bg.minDepth > finalDepths.max) {
+      warning(`backgrounds[${i}].minDepth`, `no run reaches depth ${bg.minDepth} (the deepest is ${finalDepths.max})`);
+    }
+  });
 
   // ── 3. reachability ───────────────────────────────────────────────────────
   const rest = restRulesOf(gen);

@@ -65,6 +65,12 @@ export const ALL_PORTAL_PERMISSIONS = [
   // enable/disable. Preview and simulation write nothing and need only `read`.
   'dungeons.read',
   'dungeons.write',
+  // Managed artwork: images uploaded through the Portal and referenced by id
+  // from authored content. `read` lists, previews and picks assets (and
+  // renders scene previews); `write` uploads, replaces, renames, disables and
+  // deletes. Uploading is never available to a player.
+  'artwork.read',
+  'artwork.write',
   // System Metrics: live process, host and database-pool telemetry. Owner-only
   // — see SYSTEM_METRICS_READ below for why it is not delegable.
   'system.metrics.read',
@@ -102,6 +108,8 @@ export const PORTAL_PERMISSION_DESCRIPTIONS: Readonly<Record<PortalPermission, s
   'dungeons.read': 'View dungeon zones, pools and the progression currency, and run generation previews.',
   'dungeons.write':
     'Create, edit and enable/disable dungeon zones and rename the progression currency (affects future runs only).',
+  'artwork.read': 'Browse and preview uploaded artwork, and pick it in editors.',
+  'artwork.write': 'Upload, replace, rename, disable and delete managed artwork.',
   'system.metrics.read':
     'View live server metrics: memory, CPU, request latency and database load (guild owner only).',
   'system.loadtest.run':

@@ -16,12 +16,17 @@
  *
  * A zone that exists only in the database is never touched by the seed.
  *
+ * One exception to "an edited row is left alone", and it runs once:
+ * {@link backfillDungeonZoneRegions} gives a row stored before
+ * `availableRegions` existed a compatibility value for that one field, so the
+ * zone does not silently become available nowhere. It runs before the seed.
+ *
  * Rows store the *parsed* definition — every default spelled out — so the
  * editor, an export and a run snapshot all see the same complete document.
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { eq, sql } from 'drizzle-orm';
+import { asc, eq, sql } from 'drizzle-orm';
 import type { Db, DbOrTx } from '../../db/client';
 import { dungeonZones, type DungeonZoneRow } from '../../db/schema';
 import { ContentValidationError } from '../../shared/errors';
@@ -190,4 +195,139 @@ export async function seedDungeonZones(
     });
   }
   return result;
+}
+
+/** What the one-time region backfill gave a zone. */
+export type DungeonRegionBackfillSource = 'shipped' | 'all_enabled_regions';
+
+export interface DungeonRegionBackfill {
+  key: string;
+  source: DungeonRegionBackfillSource;
+  regions: string[];
+  /** Whether the row held an admin edit (or was Portal-only) — its content was kept as it was. */
+  origin: 'shipped' | 'edited' | 'custom';
+  revision: number;
+}
+
+export interface DungeonRegionBackfillResult {
+  backfilled: DungeonRegionBackfill[];
+  /** Marked rows that turned out to carry the field already; only the mark was cleared. */
+  alreadyPresent: string[];
+  /** Marked rows this build cannot parse; left marked, and reported. */
+  failed: { key: string; error: string }[];
+}
+
+/**
+ * The one-time compatibility step for zones stored before `availableRegions`
+ * existed (migration 0053 marks them `region_compat = 'pending'`).
+ *
+ * Such a zone was, in effect, available everywhere; read by the current
+ * schema its missing field defaults to "nowhere". Per marked row, the missing
+ * field — and nothing else in the document — is filled with:
+ *
+ *   - the shipped zone's regions, when a zone of that key ships with some;
+ *   - otherwise every *enabled* region, which preserves the old behaviour
+ *     without guessing a theme. The row is left marked `all_enabled_regions`
+ *     so the Portal can ask an admin to review it.
+ *
+ * Divergence is preserved exactly: an untouched shipped row stays untouched
+ * (its `seed_hash` follows its `content_hash`), an edited row stays edited
+ * (its `seed_hash` is not moved), a Portal-only row stays Portal-only. The
+ * revision is bumped, so an editor opened before the restart cannot save over
+ * the result; `updated_by` and `updated_at` keep saying who last *authored* it.
+ *
+ * Only `pending` rows are read, and nothing sets `pending` after the
+ * migration: an empty list saved later is an explicit "nowhere" and stays one.
+ * Idempotent; safe to run on every start.
+ */
+export async function backfillDungeonZoneRegions(
+  db: Db,
+  shipped: readonly ShippedDungeonZone[],
+  regions: readonly DungeonRegionRef[],
+): Promise<DungeonRegionBackfillResult> {
+  const result: DungeonRegionBackfillResult = { backfilled: [], alreadyPresent: [], failed: [] };
+  const pending = await db
+    .select({ key: dungeonZones.zoneKey })
+    .from(dungeonZones)
+    .where(eq(dungeonZones.regionCompat, 'pending'))
+    .orderBy(asc(dungeonZones.zoneKey));
+  const enabledRegions = regions.filter((r) => r.enabled).map((r) => r.id);
+
+  for (const { key } of pending) {
+    await db.transaction(async (tx) => {
+      const row = await readDungeonZoneRow(tx, key, true);
+      if (!row || row.regionCompat !== 'pending') return;
+      if (Object.prototype.hasOwnProperty.call(row.definition, 'availableRegions')) {
+        await tx.update(dungeonZones).set({ regionCompat: null }).where(eq(dungeonZones.zoneKey, key));
+        result.alreadyPresent.push(key);
+        return;
+      }
+      const shippedRegions = shipped.find((z) => z.key === key)?.definition.availableRegions ?? [];
+      const source: DungeonRegionBackfillSource = shippedRegions.length > 0 ? 'shipped' : 'all_enabled_regions';
+      const availableRegions = source === 'shipped' ? [...shippedRegions] : enabledRegions;
+      const parsed = DungeonZoneDefinitionSchema.safeParse({ ...row.definition, availableRegions });
+      if (!parsed.success) {
+        result.failed.push({
+          key,
+          error: parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '),
+        });
+        return;
+      }
+      const contentHash = dungeonZoneHash(parsed.data);
+      const untouched = row.seedHash !== null && row.contentHash === row.seedHash;
+      const [updated] = await tx
+        .update(dungeonZones)
+        .set({
+          // The stored document plus the one field: nothing else is rewritten.
+          definition: { ...row.definition, availableRegions },
+          contentHash,
+          ...(untouched ? { seedHash: contentHash } : {}),
+          revision: sql`${dungeonZones.revision} + 1`,
+          regionCompat: source,
+        })
+        .where(eq(dungeonZones.zoneKey, key))
+        .returning({ revision: dungeonZones.revision });
+      result.backfilled.push({
+        key,
+        source,
+        regions: availableRegions,
+        origin: row.seedHash === null ? 'custom' : untouched ? 'shipped' : 'edited',
+        revision: updated!.revision,
+      });
+    });
+  }
+  return result;
+}
+
+/** Say, at startup, exactly what the compatibility backfill did. Silent when it did nothing. */
+export function reportDungeonRegionBackfill(
+  logger: {
+    info(fields: Record<string, unknown>, message: string): void;
+    warn(fields: Record<string, unknown>, message: string): void;
+    error(fields: Record<string, unknown>, message: string): void;
+  },
+  result: DungeonRegionBackfillResult,
+): void {
+  for (const b of result.backfilled) {
+    const fields = { tag: 'dungeon-zones/region-backfill', ...b };
+    if (b.source === 'shipped') {
+      logger.info(
+        fields,
+        `dungeon zone ${b.key} predates region availability — given its shipped regions (${b.regions.join(', ')}); ` +
+          'nothing else in the zone was changed',
+      );
+    } else {
+      logger.warn(
+        fields,
+        `dungeon zone ${b.key} predates region availability and has no shipped regions — opened in every enabled ` +
+          `region (${b.regions.join(', ') || 'none'}) to keep it available. Review its regions in Portal Admin.`,
+      );
+    }
+  }
+  for (const f of result.failed) {
+    logger.error(
+      { tag: 'dungeon-zones/region-backfill-failed', ...f },
+      `dungeon zone ${f.key} predates region availability but could not be backfilled — it stays unavailable until fixed`,
+    );
+  }
 }

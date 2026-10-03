@@ -102,6 +102,7 @@ import {
   PlayerNotFoundError,
 } from '../../shared/errors';
 import type { Logger } from '../../shared/logger';
+import { resolveEnemyVisual, type EnemyVisual } from '../artworkAssets/enemyArtworkService';
 import type { CombatEvent, CombatRules } from '../combat/combatTypes';
 import { regionLabel } from '../locations/regions';
 import type { CurrencyService } from '../currency/currencyService';
@@ -114,6 +115,7 @@ import type { ProgressionCurrencyService } from '../progressionCurrency/progress
 import type { DungeonAllowanceService, DungeonDailyAllowance } from './dungeonAllowanceService';
 import type { DungeonGraphNode } from './dungeonGenerator';
 import { toDungeonRun, type DungeonRun, type DungeonRunService } from './dungeonRunService';
+import type { DungeonSceneBackground } from './dungeonScenes';
 import {
   NO_REWARDS,
   availableNodes,
@@ -170,6 +172,9 @@ export interface DungeonZoneCard {
   description: string;
   artworkPath: string | null;
   backgroundArtworkPath: string | null;
+  /** Managed overrides of the two paths; each wins while its asset is active. */
+  artworkAssetId: string | null;
+  backgroundAssetId: string | null;
   /** The shallowest and deepest final depth a run of this zone can have. */
   minDepth: number;
   maxDepth: number;
@@ -188,8 +193,19 @@ export interface DungeonNodeView {
   terminal: boolean;
   /** Whether the player may extract here once the node is completed. */
   extraction: boolean;
-  enemy: { key: string; name: string; attack: number; defense: number; hp: number; artworkPath: string | null } | null;
+  enemy: {
+    key: string;
+    name: string;
+    attack: number;
+    defense: number;
+    hp: number;
+    artworkPath: string | null;
+    /** Full art, sprite and sprite placement: the run's snapshot of managed art over the shipped values. */
+    visual: EnemyVisual;
+  } | null;
   event: { key: string; name: string; description: string; artworkPath: string | null } | null;
+  /** The background this node drew when the run was generated; null to use the zone's. */
+  background: DungeonSceneBackground | null;
   /** For a rest node: the share of max HP it restores. */
   restHealBasisPoints: number | null;
 }
@@ -203,6 +219,8 @@ export interface DungeonRunView {
     description: string;
     artworkPath: string | null;
     backgroundArtworkPath: string | null;
+    artworkAssetId: string | null;
+    backgroundAssetId: string | null;
   };
   /** The snapshotted Buddy and stats — not the player's live ones. */
   fighter: DungeonFighter;
@@ -405,6 +423,7 @@ export function createDungeonPlayService(deps: DungeonPlayServiceDeps): DungeonP
         defense: enemy.defense,
         hp: enemy.hp,
         artworkPath: enemy.artworkPath,
+        visual: resolveEnemyVisual(enemy, run.snapshot.enemyArtwork?.[enemy.key]),
       },
       event: event && {
         key: event.key,
@@ -412,6 +431,7 @@ export function createDungeonPlayService(deps: DungeonPlayServiceDeps): DungeonP
         description: event.description,
         artworkPath: event.artworkPath,
       },
+      background: run.snapshot.scenes?.nodes[node.id]?.background ?? null,
       restHealBasisPoints: node.type === 'rest' ? restHealBasisPoints(run.snapshot) : null,
     };
   }
@@ -449,6 +469,9 @@ export function createDungeonPlayService(deps: DungeonPlayServiceDeps): DungeonP
         description: zone.description,
         artworkPath: zone.artworkPath,
         backgroundArtworkPath: zone.backgroundArtworkPath,
+        // A zone snapshotted before managed artwork existed has neither.
+        artworkAssetId: zone.artworkAssetId ?? null,
+        backgroundAssetId: zone.backgroundAssetId ?? null,
       },
       fighter: run.fighter,
       currentHp: run.currentHp,
@@ -480,6 +503,8 @@ export function createDungeonPlayService(deps: DungeonPlayServiceDeps): DungeonP
       description: zone.description,
       artworkPath: zone.artworkPath,
       backgroundArtworkPath: zone.backgroundArtworkPath,
+      artworkAssetId: zone.artworkAssetId,
+      backgroundAssetId: zone.backgroundAssetId,
       minDepth: depths.min,
       maxDepth: depths.max,
       hasBoss: zone.generation.boss.required,

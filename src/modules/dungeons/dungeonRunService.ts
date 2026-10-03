@@ -44,6 +44,8 @@ import {
   PlayerNotFoundError,
   uniqueViolationConstraint,
 } from '../../shared/errors';
+import type { EnemyArtworkService } from '../artworkAssets/enemyArtworkService';
+import type { SpritePlacement } from '../artworkAssets/scenePlacement';
 import type { CombatEnemyDefinition } from '../combat/enemyDefinitions';
 import type { ExpeditionRewardTable } from '../content/schemas';
 import { listRewardableDefinitions } from '../equipment/equipmentRewardService';
@@ -63,6 +65,7 @@ import {
   type DungeonContentRef,
   type DungeonGraph,
 } from './dungeonGenerator';
+import { selectDungeonScenes, type DungeonRunScenes } from './dungeonScenes';
 import {
   loadDungeonValidationContext,
   randomDungeonSeed,
@@ -117,6 +120,27 @@ export interface DungeonRunSnapshot {
   } | null;
   /** Every table the run can pay from. Null for one that was disabled: it pays nothing. */
   rewardTables: Record<string, DungeonRewardTableSnapshot | null>;
+  /**
+   * The background each node drew, chosen once from the run seed. Absent on a
+   * run generated before backgrounds existed: its nodes use the zone's.
+   */
+  scenes?: DungeonRunScenes;
+  /**
+   * The Portal artwork override of every enemy the graph placed, as it stood:
+   * full-art asset, sprite asset and sprite placement. Absent entries (and an
+   * absent map, on an older run) mean shipped artwork only.
+   *
+   * These are *logical* references. Replacing the image behind an asset id
+   * shows the new image in this run too; the run's choice of which asset,
+   * which background and where the sprite stands never changes.
+   */
+  enemyArtwork?: Record<string, DungeonEnemyArtworkSnapshot>;
+}
+
+export interface DungeonEnemyArtworkSnapshot {
+  artworkAssetId: string | null;
+  spriteAssetId: string | null;
+  spritePlacement: SpritePlacement | null;
 }
 
 export interface DungeonRun {
@@ -177,6 +201,8 @@ export interface DungeonRunServiceDeps {
   db: Db;
   getContent: () => DungeonContentSource;
   currencies: Pick<ProgressionCurrencyService, 'get'>;
+  /** Managed enemy artwork, snapshotted onto a run. Optional: without it, runs use shipped art. */
+  enemyArtwork?: Pick<EnemyArtworkService, 'getMany'> | undefined;
 }
 
 export function toDungeonRun(row: DungeonRunRow): DungeonRun {
@@ -311,6 +337,8 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
           const pick = <T extends { key: string }>(list: readonly T[] | undefined, keys: string[]) =>
             Object.fromEntries((list ?? []).filter((c) => keys.includes(c.key)).map((c) => [c.key, c]));
           const currency = await deps.currencies.get(zone.rewards.currencyKey, tx);
+          const enemyKeys = enemyKeysOf(graph);
+          const managedArtwork = (await deps.enemyArtwork?.getMany(enemyKeys, tx)) ?? {};
 
           const snapshot: DungeonRunSnapshot = {
             format: DUNGEON_RUN_SNAPSHOT_FORMAT,
@@ -319,7 +347,7 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
             zoneRevision: row.revision,
             zoneContentHash: row.contentHash,
             catalogue: { enemies: named('enemies'), events: named('events') },
-            enemies: pick(content.combatEnemies, enemyKeysOf(graph)),
+            enemies: pick(content.combatEnemies, enemyKeys),
             events: pick(content.dungeonEvents, eventKeysOf(graph)),
             currency: currency && {
               key: currency.key,
@@ -330,6 +358,14 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
               enabled: currency.enabled,
             },
             rewardTables: await snapshotRewardTables(tx, zone, graph),
+            // Scene choices are made here, once, from the run's own seed.
+            scenes: selectDungeonScenes(zone, graph, runSeed),
+            enemyArtwork: Object.fromEntries(
+              Object.entries(managedArtwork).map(([key, o]) => [
+                key,
+                { artworkAssetId: o.artworkAssetId, spriteAssetId: o.spriteAssetId, spritePlacement: o.spritePlacement },
+              ]),
+            ),
           };
 
           const [inserted] = await tx

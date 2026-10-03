@@ -4,6 +4,7 @@
  * commands → Discord login. Fail fast and loud before Discord login.
  * The optional admin web panel starts last, and only when enabled.
  */
+import fs from 'node:fs';
 import { startAdminServer } from './admin/server';
 import { startPlatformApi } from './api/server';
 import { withIdentityCache } from './api/identity';
@@ -59,11 +60,17 @@ import {
 import { createRewardTableService } from './modules/rewardTables/rewardTableService';
 import { regionLabel } from './modules/locations/regions';
 import {
+  backfillDungeonZoneRegions,
+  reportDungeonRegionBackfill,
   dungeonRegionsFromContent,
   loadShippedDungeonZones,
   seedDungeonZones,
 } from './modules/dungeons/dungeonZoneStore';
 import { createDungeonZoneService } from './modules/dungeons/dungeonZoneService';
+import { createArtworkAssetService } from './modules/artworkAssets/artworkAssetService';
+import { createLocalArtworkStorage } from './modules/artworkAssets/artworkStorage';
+import { createEnemyArtworkService } from './modules/artworkAssets/enemyArtworkService';
+import { createSceneCompositionService } from './modules/artworkAssets/sceneComposition';
 import { createDungeonRunService } from './modules/dungeons/dungeonRunService';
 import { createDungeonPlayService } from './modules/dungeons/dungeonPlayService';
 import { createDungeonAllowanceService } from './modules/dungeons/dungeonAllowanceService';
@@ -422,15 +429,48 @@ async function main(): Promise<void> {
    * follow the live content snapshot through reloads.
    */
   const progressionCurrency = createProgressionCurrencyService(db);
+  /**
+   * Managed artwork: uploads live in `MANAGED_ASSETS_DIR` (persistent, backed
+   * up with the database), composed scenes in `ART_CACHE_DIR` (disposable).
+   * Shipped artwork under `assets/` is untouched and remains the fallback.
+   */
+  const artworkStorage = createLocalArtworkStorage(config.managedAssetsDir);
+  const artworkAssets = createArtworkAssetService({ db, storage: artworkStorage, logger });
+  const enemyArtwork = createEnemyArtworkService({
+    db,
+    getEnemies: () => contentSnapshot.combatEnemies ?? [],
+    assets: artworkAssets,
+  });
+  const sceneComposition = createSceneCompositionService({ cacheDir: config.artCacheDir, logger });
+  try {
+    // Fail loudly now, not on an admin's first upload: a volume owned by the
+    // wrong uid is the usual cause.
+    for (const dir of [config.managedAssetsDir, config.artCacheDir]) {
+      fs.mkdirSync(dir, { recursive: true });
+      fs.accessSync(dir, fs.constants.W_OK);
+    }
+    logger.info(
+      { tag: 'artwork-assets/storage', storage: artworkStorage.description, cacheDir: config.artCacheDir },
+      'managed artwork storage ready',
+    );
+  } catch (err) {
+    logger.error(
+      { tag: 'artwork-assets/storage-unwritable', err, managedAssetsDir: config.managedAssetsDir, artCacheDir: config.artCacheDir },
+      'managed artwork storage is not writable — uploads and composed scenes will fail; shipped artwork is unaffected. ' +
+        'Check MANAGED_ASSETS_DIR / ART_CACHE_DIR and the volume ownership (docs/managed-artwork.md).',
+    );
+  }
   const dungeonZones = createDungeonZoneService({
     db,
     getContent: () => contentSnapshot,
     getShipped: () => shippedDungeonZones,
+    assets: artworkAssets,
   });
   const dungeonRuns = createDungeonRunService({
     db,
     getContent: () => contentSnapshot,
     currencies: progressionCurrency,
+    enemyArtwork,
   });
   const dungeonAllowance = createDungeonAllowanceService({ db, timezone: config.dailyTimezone, logger });
   const dungeonPlay = createDungeonPlayService({
@@ -736,6 +776,9 @@ async function main(): Promise<void> {
       dungeonPlay,
       dungeonAllowance,
       progressionCurrency,
+      artworkAssets,
+      enemyArtwork,
+      sceneComposition,
     },
   };
 
@@ -808,6 +851,15 @@ async function main(): Promise<void> {
   // update one from Git only while its row still holds what was last seeded,
   // and never overwrite a zone edited in Portal Admin.
   try {
+    // First, and once: zones stored before `availableRegions` existed get a
+    // compatibility value for that field (migration 0053 marked them), so
+    // none silently becomes available nowhere. Nothing else in them changes.
+    const compat = await backfillDungeonZoneRegions(
+      db,
+      shippedDungeonZones,
+      dungeonRegionsFromContent(contentSnapshot),
+    );
+    reportDungeonRegionBackfill(logger, compat);
     const zoneSeed = await seedDungeonZones(db, shippedDungeonZones);
     if (zoneSeed.created.length > 0 || zoneSeed.updated.length > 0 || zoneSeed.adopted.length > 0) {
       logger.info(

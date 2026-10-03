@@ -112,6 +112,14 @@ const zoneArtworkPath = relativeArtworkPath.refine((p) => !/^assets\//i.test(p),
   message: 'is relative to the assets folder — drop the leading "assets/" (e.g. dungeons/zones/<key>.webp)',
 });
 
+/** A managed artwork asset id (`artwork_assets.id`). Existence is checked in `zoneValidation.ts`. */
+const artworkAssetId = z
+  .string()
+  .uuid('must be a managed artwork asset id')
+  .transform((v) => v.toLowerCase());
+
+export const DUNGEON_MAX_BACKGROUNDS = 50;
+
 /** The stable key of the currency dungeons pay unless a zone says otherwise. */
 export const DEFAULT_PROGRESSION_CURRENCY_KEY = 'ascension_currency';
 
@@ -171,6 +179,36 @@ export const DungeonEventPoolEntrySchema = z
 export type DungeonEventPoolEntry = z.infer<typeof DungeonEventPoolEntrySchema>;
 
 export type DungeonPoolEntry = DungeonEnemyPoolEntry | DungeonEventPoolEntry;
+
+/**
+ * One background a zone's nodes may be drawn against. Names exactly one
+ * image: a managed asset (`assetId`, uploaded in the Portal) or shipped
+ * artwork (`artworkPath`, under `assets/`). `weight` and the depth range work
+ * as they do for a pool entry; which background a node gets is decided once,
+ * when the run is generated (`dungeonScenes.ts`), never per render.
+ */
+export const DungeonBackgroundEntrySchema = z
+  .object({
+    /** Stable within the zone; recorded on every node that drew it. */
+    id: key,
+    enabled: z.boolean().default(true),
+    weight,
+    ...depthRangeShape,
+    assetId: artworkAssetId.nullable().default(null),
+    artworkPath: zoneArtworkPath.nullable().default(null),
+  })
+  .strict()
+  .superRefine((entry, ctx) => {
+    refineDepthRange(entry, ctx);
+    if ((entry.assetId === null) === (entry.artworkPath === null)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['assetId'],
+        message: 'a background names exactly one image: a managed asset or a shipped artwork path',
+      });
+    }
+  });
+export type DungeonBackgroundEntry = z.infer<typeof DungeonBackgroundEntrySchema>;
 
 const pool = <T extends z.ZodTypeAny>(entry: T) => z.array(entry).max(200).default([]);
 
@@ -467,6 +505,19 @@ export const DungeonZoneDefinitionSchema = z
     /** Conventionally `dungeons/backgrounds/<key>.webp`. */
     backgroundArtworkPath: zoneArtworkPath.nullable().default(null),
     /**
+     * Managed (Portal-uploaded) overrides for the two paths above. Each wins
+     * over its path while the asset is active; when it is unset, disabled or
+     * deleted the shipped path shows instead.
+     */
+    artworkAssetId: artworkAssetId.nullable().default(null),
+    backgroundAssetId: artworkAssetId.nullable().default(null),
+    /**
+     * Backgrounds a run's nodes are drawn against, chosen per node by weight
+     * within its depth range when the run is generated. Empty means every
+     * node uses the zone background.
+     */
+    backgrounds: z.array(DungeonBackgroundEntrySchema).max(DUNGEON_MAX_BACKGROUNDS).default([]),
+    /**
      * The regions (stable ids, e.g. `flaccid-foothills`) a player must be
      * standing in to see the zone and **start** a run. Nothing else reads it:
      * an active run is playable wherever the player goes. An empty list is
@@ -491,6 +542,7 @@ export const DungeonZoneDefinitionSchema = z
       duplicateIds(zone.pools[poolKey], ['pools', poolKey], 'pool entry', ctx);
     }
     duplicateIds(zone.rewards.bands, ['rewards', 'bands'], 'reward band', ctx);
+    duplicateIds(zone.backgrounds, ['backgrounds'], 'background', ctx);
     zone.availableRegions.forEach((region, i) => {
       if (zone.availableRegions.indexOf(region) !== i) {
         ctx.addIssue({
@@ -604,4 +656,9 @@ export function possibleFinalDepths(gen: DungeonGeneration): { min: number; max:
   // unforked range so the callers' checks stay meaningful; the trial runs
   // surface the real problem.
   return max === 0 ? { min: gen.minNodes, max: gen.maxNodes } : { min, max };
+}
+
+/** A zone's background pool. Zones snapshotted before it existed have none. */
+export function backgroundsOf(zone: Pick<DungeonZoneDefinition, 'backgrounds'>): DungeonBackgroundEntry[] {
+  return zone.backgrounds ?? [];
 }

@@ -37,6 +37,7 @@ import {
   timestamp,
   unique,
   uniqueIndex,
+  uuid,
 } from 'drizzle-orm/pg-core';
 
 export const RARITIES = ['N', 'R', 'SR', 'SSR', 'UR', 'LR', 'EX'] as const;
@@ -2962,6 +2963,8 @@ export type CombatTrialAttemptRow = typeof combatTrialAttempts.$inferSelect;
  *
  * `zoneKey` is stable for the life of the zone: runs record it by value.
  */
+export type DungeonZoneRegionCompat = 'pending' | 'shipped' | 'all_enabled_regions';
+
 export const dungeonZones = pgTable(
   'dungeon_zones',
   {
@@ -2980,10 +2983,21 @@ export const dungeonZones = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     /** Discord id of the admin, or `seed`. */
     updatedBy: text('updated_by'),
+    /**
+     * Region-availability compatibility (migration 0053). `pending` marks a
+     * row stored before `availableRegions` existed; the startup backfill
+     * resolves it once to `shipped` or `all_enabled_regions`. Null for every
+     * zone authored since, and again after the next Portal save.
+     */
+    regionCompat: text('region_compat').$type<DungeonZoneRegionCompat>(),
   },
   (t) => [
     check('dungeon_zones_key_check', sql`${t.zoneKey} ~ '^[a-z0-9]+(_[a-z0-9]+)*$'`),
     check('dungeon_zones_revision_check', sql`${t.revision} >= 1`),
+    check(
+      'dungeon_zones_region_compat_check',
+      sql`${t.regionCompat} is null or ${t.regionCompat} in ('pending','shipped','all_enabled_regions')`,
+    ),
   ],
 );
 
@@ -3226,3 +3240,131 @@ export const dungeonDailyUsage = pgTable(
   ],
 );
 export type DungeonDailyUsageRow = typeof dungeonDailyUsage.$inferSelect;
+
+export const ARTWORK_ASSET_CATEGORIES = [
+  'dungeon_zone',
+  'dungeon_background',
+  'enemy_sprite',
+  'enemy_art',
+  'event_art',
+  'npc_portrait',
+  'equipment_art',
+] as const;
+export type ArtworkAssetCategory = (typeof ARTWORK_ASSET_CATEGORIES)[number];
+
+export const ARTWORK_ASSET_STATUSES = ['active', 'disabled', 'deleted'] as const;
+export type ArtworkAssetStatus = (typeof ARTWORK_ASSET_STATUSES)[number];
+
+export const ARTWORK_ASSET_MIME_TYPES = ['image/png', 'image/webp', 'image/jpeg'] as const;
+export type ArtworkAssetMimeType = (typeof ARTWORK_ASSET_MIME_TYPES)[number];
+
+/**
+ * Managed artwork (migration 0054): an image uploaded through Portal Admin.
+ *
+ * The row is the logical asset and its metadata; the bytes live in the
+ * artwork storage under `storageKey`. Authored content references `id`.
+ * Replacing the image keeps the id and bumps `version` / `contentHash`.
+ * See `modules/artworkAssets`.
+ */
+export const artworkAssets = pgTable(
+  'artwork_assets',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    category: text('category').$type<ArtworkAssetCategory>().notNull(),
+    /** Display label. Never a path. */
+    name: text('name').notNull(),
+    /** The uploader's base file name. Informational; never used on disk. */
+    originalFilename: text('original_filename').notNull(),
+    mimeType: text('mime_type').$type<ArtworkAssetMimeType>().notNull(),
+    width: integer('width').notNull(),
+    height: integer('height').notNull(),
+    hasAlpha: boolean('has_alpha').notNull().default(false),
+    fileSize: integer('file_size').notNull(),
+    /** Server-generated: `<category>/<id>/<contentHash>.<ext>`. */
+    storageKey: text('storage_key').notNull(),
+    /** sha256 of the stored bytes. */
+    contentHash: text('content_hash').notNull(),
+    version: integer('version').notNull().default(1),
+    status: text('status').$type<ArtworkAssetStatus>().notNull().default('active'),
+    uploadedBy: text('uploaded_by'),
+    updatedBy: text('updated_by'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    replacedAt: timestamp('replaced_at', { withTimezone: true }),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  },
+  (t) => [
+    check(
+      'artwork_assets_category_check',
+      sql`${t.category} in ('dungeon_zone','dungeon_background','enemy_sprite','enemy_art','event_art','npc_portrait','equipment_art')`,
+    ),
+    check('artwork_assets_mime_check', sql`${t.mimeType} in ('image/png','image/webp','image/jpeg')`),
+    check('artwork_assets_status_check', sql`${t.status} in ('active','disabled','deleted')`),
+    check('artwork_assets_dimensions_check', sql`${t.width} >= 1 and ${t.height} >= 1 and ${t.fileSize} >= 1`),
+    check('artwork_assets_version_check', sql`${t.version} >= 1`),
+    check('artwork_assets_deleted_check', sql`(${t.status} = 'deleted') = (${t.deletedAt} is not null)`),
+    index('artwork_assets_category_idx').on(t.category, t.status, t.updatedAt.desc()),
+  ],
+);
+export type ArtworkAssetRow = typeof artworkAssets.$inferSelect;
+
+export const ARTWORK_ASSET_EVENT_ACTIONS = [
+  'upload',
+  'replace',
+  'update',
+  'disable',
+  'enable',
+  'delete',
+  'reference_added',
+  'reference_removed',
+] as const;
+export type ArtworkAssetEventAction = (typeof ARTWORK_ASSET_EVENT_ACTIONS)[number];
+
+/** Append-only audit trail for managed artwork (migration 0054). Never bytes. */
+export const artworkAssetEvents = pgTable(
+  'artwork_asset_events',
+  {
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    assetId: uuid('asset_id')
+      .notNull()
+      .references(() => artworkAssets.id),
+    action: text('action').$type<ArtworkAssetEventAction>().notNull(),
+    /** Discord id of the admin; null for a bearer/script caller. */
+    actor: text('actor'),
+    oldHash: text('old_hash'),
+    newHash: text('new_hash'),
+    details: jsonb('details').$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check(
+      'artwork_asset_events_action_check',
+      sql`${t.action} in ('upload','replace','update','disable','enable','delete','reference_added','reference_removed')`,
+    ),
+    index('artwork_asset_events_asset_idx').on(t.assetId, t.id.desc()),
+  ],
+);
+export type ArtworkAssetEventRow = typeof artworkAssetEvents.$inferSelect;
+
+/**
+ * Managed artwork for a combat enemy (migration 0054) — an overlay on the
+ * file-authored enemy, keyed by its key. No row means shipped art only.
+ */
+export const combatEnemyArtwork = pgTable(
+  'combat_enemy_artwork',
+  {
+    enemyKey: text('enemy_key').primaryKey(),
+    artworkAssetId: uuid('artwork_asset_id').references(() => artworkAssets.id),
+    spriteAssetId: uuid('sprite_asset_id').references(() => artworkAssets.id),
+    /** `SpritePlacement`; null for the default. */
+    spritePlacement: jsonb('sprite_placement').$type<Record<string, unknown>>(),
+    revision: integer('revision').notNull().default(1),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedBy: text('updated_by'),
+  },
+  (t) => [
+    check('combat_enemy_artwork_key_check', sql`${t.enemyKey} ~ '^[a-z0-9]+(_[a-z0-9]+)*$'`),
+    check('combat_enemy_artwork_revision_check', sql`${t.revision} >= 1`),
+  ],
+);
+export type CombatEnemyArtworkRow = typeof combatEnemyArtwork.$inferSelect;

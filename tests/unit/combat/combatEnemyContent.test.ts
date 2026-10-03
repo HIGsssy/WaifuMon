@@ -76,7 +76,7 @@ describe('shipped starter enemies', () => {
 describe('CombatEnemyFileSchema', () => {
   it('accepts a minimal valid enemy and defaults artwork and tags', () => {
     const parsed = CombatEnemyFileSchema.parse(file([enemy]));
-    expect(parsed.enemies[0]).toEqual({ ...enemy, artworkPath: null, tags: [] });
+    expect(parsed.enemies[0]).toEqual({ ...enemy, artworkPath: null, spriteArtworkPath: null, spritePlacement: null, tags: [] });
   });
 
   it('refuses duplicate keys', () => {

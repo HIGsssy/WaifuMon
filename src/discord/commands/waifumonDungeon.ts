@@ -11,9 +11,9 @@
  * the service replays it; a stale button (the other side of a fork, a run that
  * has ended) is refused and the run is repainted as it now stands.
  */
-import path from 'node:path';
-import { AttachmentBuilder, type ButtonInteraction } from 'discord.js';
+import type { ButtonInteraction } from 'discord.js';
 import { ownedArtworkImage } from '../assets/attachRenderedCard';
+import { dungeonRunSceneArtwork, dungeonZoneArtwork } from '../dungeonArtwork';
 import type { TrialArt, TrialArtwork } from '../combatTrialPresenter';
 import {
   RUN_ACTIVE_NOTICE,
@@ -30,7 +30,6 @@ import {
 } from '../dungeonPresenter';
 import { respondEphemeral, type SessionPayload } from '../ephemeralSession';
 import type { AppContext, Provisioned } from '../types';
-import { locateCombatArtwork } from '../../modules/combat/combatArtwork';
 import type { DungeonPlayService, DungeonRunView } from '../../modules/dungeons/dungeonPlayService';
 import {
   AppError,
@@ -50,26 +49,6 @@ const MALFORMED = 'That button is malformed — re-open Delve from /waifumon.';
 const RUN_ID_PATTERN = /^[1-9]\d{0,15}$/;
 const NODE_ID_PATTERN = /^n\d{1,3}$/;
 const ZONE_KEY_PATTERN = /^[a-z0-9]+(?:_[a-z0-9]+)*$/;
-
-/**
- * The large picture, first match wins: the node's event artwork, the enemy's
- * artwork, the zone's artwork, the zone's background. Missing or unsafe files
- * are skipped, so a screen renders text-only rather than failing.
- */
-export function dungeonSceneArtwork(
-  ctx: AppContext,
-  candidates: readonly (string | null | undefined)[],
-): TrialArtwork | null {
-  for (const relative of candidates) {
-    const found = locateCombatArtwork(ctx.config.assetsDir, relative);
-    if (found.status !== 'available') continue;
-    // Named after the file that was found, so the attachment says which one it is.
-    const base = path.basename(found.absolutePath, path.extname(found.absolutePath)).replace(/[^A-Za-z0-9]+/g, '-');
-    const name = `dungeon-${base}.${found.extension}`;
-    return { file: new AttachmentBuilder(found.absolutePath, { name }), url: `attachment://${name}` };
-  }
-  return null;
-}
 
 /**
  * The run's *snapshotted* Buddy, by the copy the run started with — not
@@ -106,13 +85,9 @@ function options(ctx: AppContext, art: TrialArt, status?: string | null): Dungeo
 }
 
 async function runArt(ctx: AppContext, playerId: number, view: DungeonRunView): Promise<TrialArt> {
+  // The scene and its precedence are `dungeonArtwork.ts`; the Buddy is the thumbnail.
   return {
-    scene: dungeonSceneArtwork(ctx, [
-      view.node.event?.artworkPath,
-      view.node.enemy?.artworkPath,
-      view.zone.artworkPath,
-      view.zone.backgroundArtworkPath,
-    ]),
+    scene: await dungeonRunSceneArtwork(ctx, view),
     buddy: await fighterArtwork(ctx, playerId, view.fighter.waifuId),
   };
 }
@@ -127,7 +102,7 @@ async function homeScreen(ctx: AppContext, service: DungeonPlayService, playerId
   // artwork deployed — its zone art, else its background, else text only.
   const art = view.activeRun
     ? await runArt(ctx, playerId, view.activeRun)
-    : { scene: dungeonSceneArtwork(ctx, view.zones.flatMap((z) => [z.artworkPath, z.backgroundArtworkPath])) };
+    : { scene: await dungeonZoneArtwork(ctx, view.zones) };
   return buildDungeonHome(view, options(ctx, art, status));
 }
 
@@ -140,7 +115,7 @@ async function zoneScreen(
 ) {
   const view = await service.zone(playerId, zoneKey);
   const art = {
-    scene: dungeonSceneArtwork(ctx, [view.zone.artworkPath, view.zone.backgroundArtworkPath]),
+    scene: await dungeonZoneArtwork(ctx, [view.zone]),
     buddy: await buddyArtwork(ctx, playerId, view.stats.buddy?.waifuId ?? null),
   };
   return buildZoneDetail(view, options(ctx, art, status));

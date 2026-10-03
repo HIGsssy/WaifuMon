@@ -9,12 +9,19 @@ services:
   waifumon-card-cache-init:
     image: alpine:3
     user: '0:0'
+    # The same step initialises the two managed-artwork volumes
+    # (docs/managed-artwork.md): uploads, and the composed-scene cache.
     command:
       - sh
       - -c
-      - 'chown ${WAIFUMON_UID:-1000}:${WAIFUMON_GID:-1000} /cache && chmod 755 /cache'
+      - >-
+        for d in /cache /managed-assets /art-cache; do
+        chown ${WAIFUMON_UID:-1000}:${WAIFUMON_GID:-1000} "$$d" && chmod 755 "$$d" || exit 1;
+        done
     volumes:
       - waifumon-card-cache:/cache
+      - waifumon-managed-assets:/managed-assets
+      - waifumon-art-cache:/art-cache
     restart: 'no'
 
   waifumon-bot:
@@ -24,6 +31,10 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       ASSETS_DIR: /app/assets
       CONTENT_DIR: /app/content
+      # Artwork uploaded through Portal Admin, and the composed-scene cache.
+      # Both are named volumes below; neither is under the Git checkout.
+      MANAGED_ASSETS_DIR: /data/waifumon-assets
+      ART_CACHE_DIR: /data/waifumon-art-cache
       # Docker-internal bind. Host publication below remains loopback by
       # default; this only lets the Portal web container reach the API.
       PLATFORM_API_HOST: 0.0.0.0
@@ -55,6 +66,13 @@ services:
       # timestamped backups here. Mounted rather than baked in so edits survive
       # a rebuild and stay visible to git. Harmless when the panel is disabled.
       - ./content:/app/content
+      # Managed artwork: STATEFUL application data, like the database. It
+      # survives rebuilds, deploys and restarts because it is a named volume;
+      # it must be backed up together with waifumon-pgdata (the rows that
+      # describe these files live there). docs/managed-artwork.md.
+      - waifumon-managed-assets:/data/waifumon-assets
+      # Composed scenes. Disposable: anything in it is re-rendered on demand.
+      - waifumon-art-cache:/data/waifumon-art-cache
     # Admin web panel. Two separate binds have to line up, both driven from .env:
     #   ADMIN_WEB_HOST         the bind *inside* the container's network
     #                          namespace. Must be 0.0.0.0 under Docker —
@@ -157,3 +175,9 @@ volumes:
   # `docker compose down` / `up`; a `docker compose down -v` (or an explicit
   # `docker volume rm`) discards it, and the renderer rebuilds it on demand.
   waifumon-card-cache:
+  # Artwork uploaded through Portal Admin. NOT disposable: `docker compose
+  # down -v` destroys every upload while the database still references them.
+  # Back it up with waifumon-pgdata. docs/managed-artwork.md.
+  waifumon-managed-assets:
+  # Composed scene cache (background + sprite renders). Safe to delete.
+  waifumon-art-cache:

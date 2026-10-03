@@ -1843,3 +1843,52 @@ export class ProgressionCurrencyRequestConflictError extends AppError {
     );
   }
 }
+
+/** An artwork upload that is not an acceptable image. `reason` is safe to show the admin. */
+export class ArtworkUploadInvalidError extends AppError {
+  readonly reason: string;
+  constructor(reason: string) {
+    const text = typeof reason === 'string' && reason ? reason : 'The file is not an acceptable image.';
+    super('ARTWORK_UPLOAD_INVALID', `Artwork upload refused: ${text}`, text);
+    this.reason = text;
+  }
+}
+
+/** What still points at a managed artwork asset. */
+export interface ArtworkAssetReference {
+  kind: 'dungeon_zone' | 'combat_enemy';
+  key: string;
+  /** Display name where one is known. */
+  name: string | null;
+  /** The field holding the reference, e.g. `backgrounds[2].assetId`. */
+  field: string;
+}
+
+/** Deleting a managed artwork asset that authored content still references. */
+export class ArtworkAssetInUseError extends AppError {
+  readonly references: ArtworkAssetReference[];
+  constructor(assetId: string, references: ArtworkAssetReference[]) {
+    const list = Array.isArray(references) ? references : [];
+    super(
+      'ARTWORK_ASSET_IN_USE',
+      `Artwork asset ${String(assetId)} is still referenced by ${list.length} place(s)`,
+      'That artwork is still in use. Clear every reference to it first, or disable it instead.',
+    );
+    this.references = list;
+  }
+}
+
+/** An enemy artwork save named a revision someone else has since replaced. */
+export class EnemyArtworkStaleError extends AppError {
+  readonly expectedRevision: number;
+  readonly currentRevision: number;
+  constructor(enemyKey: string, expectedRevision: number, currentRevision: number) {
+    super(
+      'ENEMY_ARTWORK_STALE',
+      `Enemy artwork for "${String(enemyKey)}" was saved at revision ${currentRevision}, not ${expectedRevision}`,
+      'Someone else saved this enemy\'s artwork first. Reload and try again.',
+    );
+    this.expectedRevision = expectedRevision;
+    this.currentRevision = currentRevision;
+  }
+}

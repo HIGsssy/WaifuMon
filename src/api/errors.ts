@@ -324,6 +324,12 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   DUNGEON_ZONE_KEY_TAKEN: 409,
   /** Admin: a currency metadata save named a stale revision. */
   PROGRESSION_CURRENCY_STALE: 409,
+  /** Admin: an uploaded file is not an acceptable image (type, size, dimensions). */
+  ARTWORK_UPLOAD_INVALID: 400,
+  /** Admin: deleting managed artwork that a zone or enemy still references. */
+  ARTWORK_ASSET_IN_USE: 409,
+  /** Admin: an enemy artwork save named a stale revision. */
+  ENEMY_ARTWORK_STALE: 409,
   /** One active dungeon run per player; this player already has one. */
   DUNGEON_RUN_ACTIVE: 409,
   /** Every Delve run of the current game day has been started. */

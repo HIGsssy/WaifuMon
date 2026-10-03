@@ -85,6 +85,8 @@ beforeAll(async () => {
       // "which look?" assertions below are about real files on disk.
       assetsDir: ASSETS_DIR,
       contentDir: process.cwd(),
+      managedAssetsDir: process.cwd(),
+      artCacheDir: process.cwd(),
       dailyTimezone: 'UTC',
       discordToken: 'x',
       discordClientId: 'x',

@@ -177,6 +177,17 @@ const DungeonZoneEditorPage = lazy(() =>
     default: m.DungeonZoneEditorPage,
   })),
 );
+const EnemyArtworkPage = lazy(() =>
+  import('@/features/adminDungeons/EnemyArtworkPage').then((m) => ({
+    default: m.EnemyArtworkPage,
+  })),
+);
+// Managed artwork: images uploaded through the Portal. Gated on `artwork.read`.
+const ArtworkAssetsPage = lazy(() =>
+  import('@/features/adminArtwork/ArtworkAssetsPage').then((m) => ({
+    default: m.ArtworkAssetsPage,
+  })),
+);
 const DungeonPreviewPage = lazy(() =>
   import('@/features/adminDungeons/DungeonPreviewPage').then((m) => ({
     default: m.DungeonPreviewPage,
@@ -457,6 +468,25 @@ export const routes: RouteObject[] = [
             element: (
               <RequirePortalPermission permission="dungeons.read">
                 <DungeonZoneEditorPage />
+              </RequirePortalPermission>
+            ),
+          },
+
+          {
+            path: 'admin/dungeons/enemies',
+            element: (
+              <RequirePortalPermission permission="dungeons.read">
+                <EnemyArtworkPage />
+              </RequirePortalPermission>
+            ),
+          },
+
+          // Admin — Artwork Assets (uploads). The API re-checks every request.
+          {
+            path: 'admin/artwork',
+            element: (
+              <RequirePortalPermission permission="artwork.read">
+                <ArtworkAssetsPage />
               </RequirePortalPermission>
             ),
           },

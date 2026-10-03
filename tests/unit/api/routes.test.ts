@@ -997,6 +997,17 @@ describe('OpenAPI registration', () => {
       'POST /api/v1/players/{playerId}/equipment/workshop/dismantle',
       'POST /api/v1/players/{playerId}/equipment/workshop/dismantle/preview',
       'POST /api/v1/players/{playerId}/equipment/workshop/fabricate',
+      // Managed artwork (`artwork.write`): upload, replace, rename, disable and
+      // delete. Delete is refused while anything references the asset. The
+      // scene preview writes only the render cache and needs `artwork.read`.
+      'POST /api/v1/admin/artwork/assets',
+      'PUT /api/v1/admin/artwork/assets/{id}/file',
+      'PATCH /api/v1/admin/artwork/assets/{id}',
+      'PUT /api/v1/admin/artwork/assets/{id}/enabled',
+      'DELETE /api/v1/admin/artwork/assets/{id}',
+      'POST /api/v1/admin/artwork/scene-preview',
+      // An enemy's managed artwork and sprite placement. `dungeons.write`.
+      'PUT /api/v1/admin/dungeons/enemy-artwork/{key}',
     ].sort());
   });
 

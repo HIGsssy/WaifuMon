@@ -11,7 +11,14 @@
  * `combatRules`, so the HP arithmetic the tests assert is exact. The daily
  * allowance is real, on a clock the test controls (`world.clock.now`).
  */
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { eq } from 'drizzle-orm';
+import { createArtworkAssetService, type ArtworkAssetService } from '../../src/modules/artworkAssets/artworkAssetService';
+import { createLocalArtworkStorage } from '../../src/modules/artworkAssets/artworkStorage';
+import { createEnemyArtworkService, type EnemyArtworkService } from '../../src/modules/artworkAssets/enemyArtworkService';
+import { createSceneCompositionService, type SceneCompositionService } from '../../src/modules/artworkAssets/sceneComposition';
 import type { DungeonZoneDefinitionInput } from '../../src/modules/dungeons/zoneDefinition';
 import { players, species as speciesTable } from '../../src/db/schema';
 import { CombatEnemyDefinitionSchema, type CombatEnemyDefinition } from '../../src/modules/combat/enemyDefinitions';
@@ -155,6 +162,12 @@ export interface DungeonWorld {
   runs: DungeonRunService;
   play: DungeonPlayService;
   allowance: DungeonAllowanceService;
+  /** Managed artwork, stored in a temp directory removed by `cleanup`. */
+  assets: ArtworkAssetService;
+  enemyArtwork: EnemyArtworkService;
+  scenes: SceneCompositionService;
+  /** Where the managed artwork and the scene cache live for this world. */
+  artworkDir: string;
   /** The clock the daily allowance reads. Reassign `.now` to cross a reset. */
   clock: { now: Date };
   /** The content the services read. Reassign `.current` to "reload" it. */
@@ -200,8 +213,12 @@ export async function createDungeonWorld(
     getAffixes: svc.getAffixes,
   });
   const currencies = createProgressionCurrencyService(t.db);
-  const zones = createDungeonZoneService({ db: t.db, getContent: () => content.current, getShipped: () => [] });
-  const runs = createDungeonRunService({ db: t.db, getContent: () => content.current, currencies });
+  const artworkDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wm-dg-artwork-'));
+  const assets = createArtworkAssetService({ db: t.db, storage: createLocalArtworkStorage(path.join(artworkDir, 'managed')) });
+  const enemyArtwork = createEnemyArtworkService({ db: t.db, getEnemies: () => content.current.combatEnemies ?? [], assets });
+  const scenes = createSceneCompositionService({ cacheDir: path.join(artworkDir, 'cache') });
+  const zones = createDungeonZoneService({ db: t.db, getContent: () => content.current, getShipped: () => [], assets });
+  const runs = createDungeonRunService({ db: t.db, getContent: () => content.current, currencies, enemyArtwork });
   const clock = { now: new Date('2026-03-10T12:00:00Z') };
   const allowance = createDungeonAllowanceService({ db: t.db, timezone: TEST_DAILY_TIMEZONE, now: () => clock.now });
   const play = createDungeonPlayService({
@@ -236,6 +253,10 @@ export async function createDungeonWorld(
     runs,
     play,
     allowance,
+    assets,
+    enemyArtwork,
+    scenes,
+    artworkDir,
     clock,
     content,
     async player(opts = {}) {
@@ -272,7 +293,10 @@ export async function createDungeonWorld(
       throw new Error(`no seed under 5000 gives ${zoneKey} the graph this test needs`);
     },
     balance: (playerId) => currencies.getBalance(playerId, CURRENCY),
-    cleanup: () => t.cleanup(),
+    cleanup: async () => {
+      fs.rmSync(artworkDir, { recursive: true, force: true });
+      await t.cleanup();
+    },
   };
 }
 

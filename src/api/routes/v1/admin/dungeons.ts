@@ -101,6 +101,7 @@ const summarySchema = z.object({
   matchesShipped: z.boolean().nullable(),
   updatedAt: z.string(),
   updatedBy: z.string().nullable(),
+  regionBackfill: z.enum(['shipped', 'all_enabled_regions']).nullable(),
 });
 
 const detailSchema = summarySchema.extend({ zone: zoneBody, issues: z.array(issueSchema) });
@@ -178,6 +179,19 @@ const previewSchema = z.object({
     availableRegions: z.array(z.object({ id: z.string(), name: z.string().nullable() })),
     artworkPath: z.string().nullable(),
     backgroundArtworkPath: z.string().nullable(),
+    artworkAssetId: z.string().nullable(),
+    backgroundAssetId: z.string().nullable(),
+    scenes: z.object({
+      version: z.number().int(),
+      nodes: z.record(
+        z.string(),
+        z.object({
+          background: z
+            .object({ entryId: z.string(), assetId: z.string().nullable(), artworkPath: z.string().nullable() })
+            .nullable(),
+        }),
+      ),
+    }),
     restNodes: z.array(z.object({ id: z.string(), depth: z.number().int(), extraction: z.boolean() })),
     extractionNodes: z.array(z.object({ id: z.string(), depth: z.number().int(), type: nodeTypeSchema })),
     bossNodeId: z.string().nullable(),

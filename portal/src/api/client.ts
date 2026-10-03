@@ -371,6 +371,19 @@ export async function postData<T>(
   return response.data.data;
 }
 
+/**
+ * `POST` answering with bytes rather than an envelope (a rendered preview).
+ * CSRF is attached by the request interceptor like any other write.
+ */
+export async function postBlob(
+  url: string,
+  body?: unknown,
+  config?: AxiosRequestConfig,
+): Promise<Blob> {
+  const response = await apiClient.post<Blob>(url, body ?? {}, { ...config, responseType: 'blob' });
+  return response.data;
+}
+
 export async function putData<T>(
   url: string,
   body?: unknown,

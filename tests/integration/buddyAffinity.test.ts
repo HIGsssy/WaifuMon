@@ -64,6 +64,8 @@ beforeAll(async () => {
     config: {
       assetsDir: ASSETS_DIR,
       contentDir: process.cwd(),
+      managedAssetsDir: process.cwd(),
+      artCacheDir: process.cwd(),
       dailyTimezone: 'UTC',
       discordToken: 'x',
       discordClientId: 'x',

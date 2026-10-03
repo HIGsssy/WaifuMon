@@ -25,6 +25,7 @@ import {
   Gift,
   Heart,
   Images,
+  ImageUp,
   LayoutDashboard,
   LibraryBig,
   Map as MapIcon,
@@ -89,6 +90,12 @@ export const NAV_ITEMS: readonly NavItem[] = [
     label: 'Admin — Dungeons',
     icon: Castle,
     requiresPermission: 'dungeons.read',
+  },
+  {
+    to: '/admin/artwork',
+    label: 'Admin — Artwork Assets',
+    icon: ImageUp,
+    requiresPermission: 'artwork.read',
   },
   {
     to: '/admin/gallery',

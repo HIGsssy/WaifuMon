@@ -61,6 +61,8 @@ const enemy = (key: string, attack: number, defense: number, hp: number) => ({
   defense,
   hp,
   artworkPath: null,
+  spriteArtworkPath: null,
+  spritePlacement: null,
   enabled: true,
   tags: [],
 });

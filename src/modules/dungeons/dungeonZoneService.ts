@@ -19,12 +19,19 @@
 import { randomInt } from 'node:crypto';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import type { Db, DbOrTx } from '../../db/client';
-import { dungeonZones, progressionCurrencies, rewardTables, type DungeonZoneRow } from '../../db/schema';
+import {
+  artworkAssets,
+  dungeonZones,
+  progressionCurrencies,
+  rewardTables,
+  type DungeonZoneRow,
+} from '../../db/schema';
 import {
   DungeonZoneInvalidError,
   DungeonZoneKeyTakenError,
   DungeonZoneStaleError,
 } from '../../shared/errors';
+import { zoneDocumentAssetSlots, type ArtworkAssetService } from '../artworkAssets/artworkAssetService';
 import type { CombatEnemyDefinition } from '../combat/enemyDefinitions';
 import {
   generateDungeon,
@@ -33,6 +40,7 @@ import {
   type DungeonContentCatalogue,
   type DungeonGraph,
 } from './dungeonGenerator';
+import { selectDungeonScenes, type DungeonRunScenes } from './dungeonScenes';
 import { simulateDungeonGeneration, type DungeonSimulationReport } from './dungeonSimulation';
 import {
   dungeonCatalogueFromContent,
@@ -91,6 +99,12 @@ export interface DungeonZoneSummary {
   matchesShipped: boolean | null;
   updatedAt: Date;
   updatedBy: string | null;
+  /**
+   * Set while the zone's regions are a one-time compatibility value nobody
+   * has reviewed: `all_enabled_regions` means it predates region availability
+   * and was opened everywhere. Cleared by the next save.
+   */
+  regionBackfill: 'shipped' | 'all_enabled_regions' | null;
 }
 
 export interface DungeonZoneDetail extends DungeonZoneSummary {
@@ -117,6 +131,10 @@ export interface DungeonPreviewStructure {
   availableRegions: { id: string; name: string | null }[];
   artworkPath: string | null;
   backgroundArtworkPath: string | null;
+  artworkAssetId: string | null;
+  backgroundAssetId: string | null;
+  /** The background each node drew for this seed — what a real run would snapshot. */
+  scenes: DungeonRunScenes;
   restNodes: { id: string; depth: number; extraction: boolean }[];
   extractionNodes: { id: string; depth: number; type: DungeonNodeType }[];
   bossNodeId: string | null;
@@ -186,6 +204,8 @@ export interface DungeonZoneServiceDeps {
   getContent: () => DungeonContentSource;
   /** This build's shipped zones. */
   getShipped: () => readonly ShippedDungeonZone[];
+  /** Managed artwork, for the reference audit trail. Optional: without it, nothing is recorded. */
+  assets?: Pick<ArtworkAssetService, 'recordReferenceChanges'> | undefined;
 }
 
 /**
@@ -220,8 +240,12 @@ export async function loadDungeonValidationContext(
   const currencies = await tx
     .select({ key: progressionCurrencies.currencyKey, enabled: progressionCurrencies.enabled })
     .from(progressionCurrencies);
+  const assets = await tx
+    .select({ id: artworkAssets.id, name: artworkAssets.name, status: artworkAssets.status })
+    .from(artworkAssets);
   return {
     catalogue,
+    assets: new Map(assets.map((a) => [a.id, { name: a.name, status: a.status }])),
     rewardTables: new Map(tables.map((t) => [t.id, { enabled: t.enabled }])),
     currencies: new Map(currencies.map((c) => [c.key, { enabled: c.enabled }])),
     regions: new Map(regions.map((r) => [r.id, { name: r.name, enabled: r.enabled }])),
@@ -264,6 +288,7 @@ export function createDungeonZoneService(deps: DungeonZoneServiceDeps): DungeonZ
       matchesShipped: shipped ? shipped.hash === row.contentHash : null,
       updatedAt: row.updatedAt,
       updatedBy: row.updatedBy,
+      regionBackfill: row.regionCompat === 'pending' ? null : row.regionCompat,
     };
   }
 
@@ -307,12 +332,23 @@ export function createDungeonZoneService(deps: DungeonZoneServiceDeps): DungeonZ
         revision: sql`${dungeonZones.revision} + 1`,
         updatedAt: new Date(),
         updatedBy: actor,
+        // An admin has now chosen the regions deliberately.
+        regionCompat: null,
       })
       .where(and(eq(dungeonZones.zoneKey, row.zoneKey), eq(dungeonZones.revision, row.revision)))
       .returning();
     // The row is locked, so this only fails if the lock was not taken — still
     // answered as stale rather than as a silent no-op.
     if (!updated) throw new DungeonZoneStaleError(row.zoneKey, row.revision, -1, null, new Date());
+    await deps.assets?.recordReferenceChanges(
+      tx,
+      {
+        entity: `dungeon_zone:${row.zoneKey}`,
+        before: zoneDocumentAssetSlots(row.definition),
+        after: zoneDocumentAssetSlots(zone),
+      },
+      actor,
+    );
     return updated;
   }
 
@@ -414,6 +450,11 @@ export function createDungeonZoneService(deps: DungeonZoneServiceDeps): DungeonZ
           .onConflictDoNothing()
           .returning();
         if (!inserted) throw new DungeonZoneKeyTakenError(zone.key);
+        await deps.assets?.recordReferenceChanges(
+          tx,
+          { entity: `dungeon_zone:${zone.key}`, before: [], after: zoneDocumentAssetSlots(zone) },
+          actor,
+        );
         return detailOf(tx, inserted);
       });
     },
@@ -464,6 +505,9 @@ export function createDungeonZoneService(deps: DungeonZoneServiceDeps): DungeonZ
         availableRegions: zone.availableRegions.map((id) => ({ id, name: regionNames.get(id) ?? null })),
         artworkPath: zone.artworkPath,
         backgroundArtworkPath: zone.backgroundArtworkPath,
+        artworkAssetId: zone.artworkAssetId,
+        backgroundAssetId: zone.backgroundAssetId,
+        scenes: selectDungeonScenes(zone, graph, chosen),
         restNodes: graph.nodes.filter((n) => n.type === 'rest').map((n) => ({ id: n.id, depth: n.depth, extraction: n.extraction })),
         extractionNodes: graph.nodes.filter((n) => n.extraction).map((n) => ({ id: n.id, depth: n.depth, type: n.type })),
         bossNodeId: graph.nodes.find((n) => n.boss)?.id ?? null,

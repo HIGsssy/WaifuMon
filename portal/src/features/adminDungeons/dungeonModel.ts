@@ -4,6 +4,7 @@
  * issues to the part of the form that shows them.
  */
 import type {
+  DungeonBackgroundDoc,
   DungeonNodeType,
   DungeonPoolEntryDoc,
   DungeonPoolKey,
@@ -44,6 +45,9 @@ export function newZone(): DungeonZoneDoc {
     order: 0,
     artworkPath: null,
     backgroundArtworkPath: null,
+    artworkAssetId: null,
+    backgroundAssetId: null,
+    backgrounds: [],
     tags: ['initial_tuning'],
     availableRegions: [],
     generation: {
@@ -97,6 +101,36 @@ export function newPoolEntry(
     tags: [],
   };
   return pool === 'event' ? { ...entry, eventKey: contentKey } : { ...entry, enemyKey: contentKey };
+}
+
+/** A background pool entry for a freshly chosen image. */
+export function newBackground(
+  image: { assetId: string; name?: string } | { artworkPath: string },
+  existing: readonly DungeonBackgroundDoc[],
+): DungeonBackgroundDoc {
+  const label =
+    'assetId' in image
+      ? (image.name ?? 'background')
+      : (image.artworkPath.split('/').pop() ?? 'background');
+  const base =
+    label
+      .toLowerCase()
+      .replace(/\.[a-z0-9]+$/, '')
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .slice(0, 48) || 'background';
+  return {
+    id: uniqueId(
+      base,
+      existing.map((b) => b.id),
+    ),
+    enabled: true,
+    weight: 10,
+    minDepth: 1,
+    maxDepth: null,
+    assetId: 'assetId' in image ? image.assetId : null,
+    artworkPath: 'assetId' in image ? null : image.artworkPath,
+  };
 }
 
 export function newRewardBand(existing: readonly DungeonRewardBandDoc[]): DungeonRewardBandDoc {

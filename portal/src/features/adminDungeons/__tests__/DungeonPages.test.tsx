@@ -12,6 +12,7 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router';
 
+import * as artworkApi from '@/api/adminArtworkAssets';
 import * as api from '@/api/adminDungeons';
 import type {
   DungeonPreview,
@@ -371,6 +372,9 @@ beforeEach(() => {
   vi.spyOn(api, 'listProgressionCurrencies').mockImplementation(async () => ({
     currencies: [currency],
   }));
+  // The editor's scene preview lists enemy sprites; this zone's enemies have none.
+  vi.spyOn(artworkApi, 'listEnemyArtwork').mockImplementation(async () => ({ enemies: [] }));
+  vi.spyOn(artworkApi, 'scenePreviewBlob').mockImplementation(async () => new Blob(['scene']));
   validateSpy = vi.spyOn(api, 'validateDungeonZone').mockImplementation(async () => ({ issues }));
   updateSpy = vi.spyOn(api, 'updateDungeonZone').mockImplementation(async (_key, zone, rev) => ({
     ...DETAIL,
@@ -630,7 +634,9 @@ describe('zone editor', () => {
     expect(titles).toEqual([
       'Basics',
       'Availability',
-      'Artwork',
+      'Zone Artwork',
+      'Background Pool',
+      'Scene Rules',
       'Layout',
       'Extraction',
       'Rest & Recovery',

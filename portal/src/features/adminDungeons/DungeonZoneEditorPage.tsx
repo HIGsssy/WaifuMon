@@ -62,9 +62,11 @@ import { ErrorState } from '@/components/layout/ErrorState';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useHasPermission } from '@/auth/useSession';
+import { AssetField } from '@/features/adminArtwork/AssetField';
 import { selectClass } from '@/features/adminEncounters/EntitySelect';
 import { DungeonGraphView } from './DungeonGraphView';
 import { ZoneArtworkField } from './ZoneArtworkField';
+import { ZoneBackgroundPool, ZoneScenePreview } from './ZoneBackgroundPool';
 import { ZoneOriginBadge } from './DungeonsListPage';
 import {
   DUNGEON_KEY_PATTERN,
@@ -101,6 +103,9 @@ const SECTION_PREFIXES = [
   'tags',
   'artworkPath',
   'backgroundArtworkPath',
+  'artworkAssetId',
+  'backgroundAssetId',
+  'backgrounds',
   'availableRegions',
   'nodeSettings',
   'generation',
@@ -695,35 +700,124 @@ function DungeonZoneEditor({ zoneKey }: { zoneKey: string | undefined }) {
           disabled={readOnly}
           onChange={(availableRegions) => set({ availableRegions })}
         />
+        {loaded?.regionBackfill === 'all_enabled_regions' && (
+          <p className="text-xs text-danger" role="status" data-testid="region-backfill-notice">
+            This zone was made before regions existed, so it was opened in every released region to
+            keep it available. Choose the regions it belongs in and save.
+          </p>
+        )}
         <Issues issues={issuesAt(issues, 'availableRegions')} />
       </Section>
 
       <Section
-        title="Artwork"
-        hint="Shown on the Delve screens. A fight shows the enemy first; everything else falls back to the zone artwork, then the background, then text only."
+        title="Zone Artwork"
+        hint="Shown on the Delve screens. Uploaded artwork wins over the shipped file while it is active; clear it to fall back to the shipped path, then to text only."
         testId="zone-artwork"
       >
         <div className="grid gap-4 md:grid-cols-2">
-          <ZoneArtworkField
-            label="Artwork"
-            testId="zone-artwork-main"
-            value={form.artworkPath}
-            expectedPath={zoneArtworkConvention(form.key)}
-            disabled={readOnly}
-            onChange={(artworkPath) => set({ artworkPath })}
-          />
-          <ZoneArtworkField
-            label="Background artwork"
-            testId="zone-artwork-background"
-            value={form.backgroundArtworkPath}
-            expectedPath={zoneBackgroundConvention(form.key)}
-            disabled={readOnly}
-            onChange={(backgroundArtworkPath) => set({ backgroundArtworkPath })}
-          />
+          <div className="space-y-3">
+            <AssetField
+              label="Zone artwork"
+              testId="zone-artwork-asset"
+              category="dungeon_zone"
+              value={form.artworkAssetId ?? null}
+              fallback={
+                form.artworkPath ? `the shipped file ${form.artworkPath}` : 'the shipped path below'
+              }
+              disabled={readOnly}
+              onChange={(artworkAssetId) => set({ artworkAssetId })}
+            />
+            <ZoneArtworkField
+              label="Artwork"
+              testId="zone-artwork-main"
+              value={form.artworkPath}
+              expectedPath={zoneArtworkConvention(form.key)}
+              disabled={readOnly}
+              onChange={(artworkPath) => set({ artworkPath })}
+            />
+          </div>
+          <div className="space-y-3">
+            <AssetField
+              label="Zone background"
+              testId="zone-background-asset"
+              category="dungeon_background"
+              value={form.backgroundAssetId ?? null}
+              fallback={
+                form.backgroundArtworkPath
+                  ? `the shipped file ${form.backgroundArtworkPath}`
+                  : 'the shipped path below'
+              }
+              disabled={readOnly}
+              onChange={(backgroundAssetId) => set({ backgroundAssetId })}
+            />
+            <ZoneArtworkField
+              label="Background artwork"
+              testId="zone-artwork-background"
+              value={form.backgroundArtworkPath}
+              expectedPath={zoneBackgroundConvention(form.key)}
+              disabled={readOnly}
+              onChange={(backgroundArtworkPath) => set({ backgroundArtworkPath })}
+            />
+          </div>
         </div>
         <Issues
-          issues={['artworkPath', 'backgroundArtworkPath'].flatMap((p) => issuesAt(issues, p))}
+          issues={[
+            'artworkPath',
+            'backgroundArtworkPath',
+            'artworkAssetId',
+            'backgroundAssetId',
+          ].flatMap((p) => issuesAt(issues, p))}
         />
+      </Section>
+
+      <Section
+        title="Background Pool"
+        hint="Backgrounds this zone’s rooms are drawn against. Each node of a run draws one by weight from those covering its depth, once, when the run is generated."
+        testId="zone-backgrounds"
+      >
+        <ZoneBackgroundPool
+          backgrounds={form.backgrounds ?? []}
+          issues={issues}
+          readOnly={readOnly}
+          onChange={(backgrounds) => set({ backgrounds })}
+        />
+        <Issues issues={issues.filter((i) => i.path === 'backgrounds')} />
+      </Section>
+
+      <Section
+        title="Scene Rules"
+        hint="What a Delve screen shows, first match wins."
+        testId="zone-scene-rules"
+      >
+        <div className="grid gap-4 text-xs text-ink-muted md:grid-cols-2">
+          <div>
+            <p className="font-medium text-ink">A fight</p>
+            <ol className="ml-4 list-decimal space-y-0.5">
+              <li>The node’s background with the enemy’s sprite over it</li>
+              <li>The enemy’s full artwork</li>
+              <li>The node’s background on its own</li>
+              <li>The zone artwork, then the zone background</li>
+              <li>Text only</li>
+            </ol>
+          </div>
+          <div>
+            <p className="font-medium text-ink">Event, rest, reward, exit</p>
+            <ol className="ml-4 list-decimal space-y-0.5">
+              <li>The event’s own artwork</li>
+              <li>The node’s background on its own</li>
+              <li>The zone artwork, then the zone background</li>
+              <li>Text only</li>
+            </ol>
+          </div>
+        </div>
+        <p className="text-xs text-ink-muted">
+          Sprites and where they stand are set per enemy under{' '}
+          <Link to="/admin/dungeons/enemies" className="text-accent underline">
+            Enemy Artwork
+          </Link>
+          . A run keeps the backgrounds, sprites and placement it started with.
+        </p>
+        <ZoneScenePreview zone={form} />
       </Section>
 
       <Section

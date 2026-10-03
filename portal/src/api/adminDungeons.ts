@@ -143,6 +143,16 @@ export interface DungeonGenerationDoc {
   maxConsecutiveSameEnemy: number | null;
 }
 
+/** One background a zone's nodes may be drawn against: a managed asset or a shipped path. */
+export interface DungeonBackgroundDoc extends DepthRange {
+  id: string;
+  enabled: boolean;
+  weight: number;
+  /** A managed (uploaded) asset id — exactly one of this and `artworkPath` is set. */
+  assetId: string | null;
+  artworkPath: string | null;
+}
+
 export interface DungeonZoneDoc {
   /** Stable. Cannot be changed after the zone is created. */
   key: string;
@@ -152,6 +162,11 @@ export interface DungeonZoneDoc {
   order: number;
   artworkPath: string | null;
   backgroundArtworkPath: string | null;
+  /** Uploaded overrides of the two paths above. Absent on a zone saved before managed artwork existed. */
+  artworkAssetId?: string | null;
+  backgroundAssetId?: string | null;
+  /** Backgrounds a run's nodes draw from, by weight within a depth range. */
+  backgrounds?: DungeonBackgroundDoc[];
   tags: string[];
   /** Region ids the zone can be started in. Absent on a zone saved before regions existed. */
   availableRegions?: string[];
@@ -187,6 +202,11 @@ export interface DungeonZoneSummary {
   matchesShipped: boolean | null;
   updatedAt: string;
   updatedBy: string | null;
+  /**
+   * `all_enabled_regions`: the zone predates region availability and was
+   * opened in every enabled region to keep it available — review its regions.
+   */
+  regionBackfill?: 'shipped' | 'all_enabled_regions' | null;
 }
 
 export interface DungeonZoneDetail extends DungeonZoneSummary {
@@ -280,6 +300,16 @@ export interface DungeonPreviewStructure {
   availableRegions: Array<{ id: string; name: string | null }>;
   artworkPath: string | null;
   backgroundArtworkPath: string | null;
+  artworkAssetId?: string | null;
+  backgroundAssetId?: string | null;
+  /** The background each node drew for this seed — what a real run would snapshot. */
+  scenes?: {
+    version: number;
+    nodes: Record<
+      string,
+      { background: { entryId: string; assetId: string | null; artworkPath: string | null } | null }
+    >;
+  };
   restNodes: Array<{ id: string; depth: number; extraction: boolean }>;
   extractionNodes: Array<{ id: string; depth: number; type: DungeonNodeType }>;
   bossNodeId: string | null;

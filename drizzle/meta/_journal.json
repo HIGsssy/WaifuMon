@@ -372,6 +372,20 @@
       "when": 1820268000000,
       "tag": "0052_dungeon_daily_runs",
       "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1820354400000,
+      "tag": "0053_dungeon_region_compat",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1820440800000,
+      "tag": "0054_artwork_assets",
+      "breakpoints": true
     }
   ]
 }

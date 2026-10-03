@@ -20,5 +20,15 @@ COPY drizzle ./drizzle
 # if the host directory IS mounted — see docs/admin-web.md.
 COPY --chown=node:node content ./content
 # Assets are volume-mounted at /app/assets (ASSETS_DIR).
+#
+# Managed artwork (uploads) and the composed-scene cache live outside the app
+# tree. The directories exist and are owned by `node` so the paths work even
+# without compose — but uploads only survive a rebuild when
+# /data/waifumon-assets is a mounted volume, as docker-compose.yml makes it.
+# See docs/managed-artwork.md.
+ENV MANAGED_ASSETS_DIR=/data/waifumon-assets \
+    ART_CACHE_DIR=/data/waifumon-art-cache
+RUN mkdir -p /data/waifumon-assets /data/waifumon-art-cache \
+    && chown -R node:node /data/waifumon-assets /data/waifumon-art-cache
 USER node
 CMD ["node", "dist/index.js"]

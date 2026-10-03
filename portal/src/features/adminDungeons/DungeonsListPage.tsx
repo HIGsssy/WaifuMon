@@ -103,6 +103,9 @@ export function DungeonsListPage() {
             <Button variant="outline" asChild>
               <Link to="/admin/dungeons/preview">Generation preview</Link>
             </Button>
+            <Button variant="outline" asChild>
+              <Link to="/admin/dungeons/enemies">Enemy artwork</Link>
+            </Button>
             <Button
               variant="outline"
               disabled={exporting.isPending}
@@ -165,6 +168,14 @@ export function DungeonsListPage() {
                   </Link>
                   <span className="font-mono text-xs text-ink-subtle">{z.key}</span>
                   <ZoneOriginBadge summary={z} />
+                  {z.regionBackfill === 'all_enabled_regions' && (
+                    <Badge
+                      variant="danger"
+                      title="Made before regions existed: opened in every released region. Review its regions."
+                    >
+                      Review regions
+                    </Badge>
+                  )}
                   {z.enabled ? (
                     <Badge variant="default">Enabled</Badge>
                   ) : (

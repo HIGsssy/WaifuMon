@@ -102,6 +102,7 @@ describe('proxied responses carry exactly one copy of each header', () => {
     expect(proxied.map((b) => b.selector).sort()).toEqual([
       '= /health',
       '^~ /api',
+      '^~ /api/v1/admin/artwork/',
       '^~ /api/v1/admin/encounters/import/',
       '^~ /auth/',
     ]);
