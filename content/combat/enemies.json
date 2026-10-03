@@ -8,7 +8,7 @@
       "attack": 55,
       "defense": 30,
       "hp": 300,
-      "artworkPath": null,
+      "artworkPath": "combat/enemies/scrapyard_drone.webp",
       "enabled": true,
       "tags": ["starter", "initial_tuning"]
     },
@@ -18,7 +18,7 @@
       "attack": 100,
       "defense": 55,
       "hp": 520,
-      "artworkPath": null,
+      "artworkPath": "combat/enemies/alley_bruiser.webp",
       "enabled": true,
       "tags": ["starter", "initial_tuning"]
     },
@@ -28,7 +28,7 @@
       "attack": 140,
       "defense": 90,
       "hp": 800,
-      "artworkPath": null,
+      "artworkPath": "combat/enemies/security_automaton.webp",
       "enabled": true,
       "tags": ["starter", "initial_tuning"]
     }
