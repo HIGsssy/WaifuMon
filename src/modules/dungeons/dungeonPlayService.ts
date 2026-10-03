@@ -25,6 +25,16 @@
  * still active when the day rolls over simply carries on; it was paid for on
  * the day it started.
  *
+ * ## Region availability
+ *
+ * A zone names the regions it can be started in (`availableRegions`). The home
+ * lists only the enabled zones available where the player is standing
+ * (`players.current_region`), and `start` checks the same thing again inside
+ * its transaction against the locked player row — the listing is never
+ * trusted. That is the only place region matters: an active run is playable,
+ * resumable and finishable wherever the player travels, and a later edit to
+ * the zone's regions does not reach it.
+ *
  * ## Snapshot semantics
  *
  * `start` snapshots the active Buddy and her Equipment-derived ATK / DEF /
@@ -93,6 +103,7 @@ import {
 } from '../../shared/errors';
 import type { Logger } from '../../shared/logger';
 import type { CombatEvent, CombatRules } from '../combat/combatTypes';
+import { regionLabel } from '../locations/regions';
 import type { CurrencyService } from '../currency/currencyService';
 import type { CombatStatsService } from '../equipment/combatStatsService';
 import type { CombatStats, CombatStatsUnavailableReason } from '../equipment/equipmentMath';
@@ -218,7 +229,14 @@ export interface DungeonRunView {
   completedAt: Date | null;
 }
 
+export interface DungeonRegionView {
+  id: string;
+  name: string;
+}
+
 export interface DungeonHomeView {
+  /** Where the player is standing. `zones` holds only what can be started here. */
+  region: DungeonRegionView;
   zones: DungeonZoneCard[];
   activeRun: DungeonRunView | null;
   /** An active run that has no fighter snapshot: it can only be abandoned. */
@@ -308,6 +326,8 @@ export interface DungeonPlayServiceDeps {
   inventory: Pick<InventoryService, 'addItem'>;
   equipmentRewards: Pick<EquipmentRewardService, 'grantChosenEquipmentReward'>;
   logger?: Pick<Logger, 'debug' | 'info' | 'warn' | 'error'>;
+  /** A region's display name, from the region catalogue. Defaults to a title-cased id. */
+  regionName?: ((regionId: string) => string) | undefined;
   /**
    * Overrides for the rules a dungeon fight is created under. Production
    * leaves this unset — fights use the engine's defaults, damage variance
@@ -467,6 +487,17 @@ export function createDungeonPlayService(deps: DungeonPlayServiceDeps): DungeonP
       balance: meta ? await deps.currencies.getBalance(playerId, meta.key, tx) : 0,
       defeatRetentionBasisPoints: zone.rewards.defeatCurrencyRetentionBasisPoints,
     };
+  }
+
+  /** Where the player is standing, by the player row — the same source travel writes. */
+  async function currentRegion(tx: DbOrTx, playerId: number): Promise<DungeonRegionView> {
+    const [row] = await tx.select({ region: players.currentRegion }).from(players).where(eq(players.id, playerId));
+    if (!row) throw new PlayerNotFoundError(playerId);
+    return regionView(row.region);
+  }
+
+  function regionView(id: string): DungeonRegionView {
+    return { id, name: (deps.regionName ?? regionLabel)(id) };
   }
 
   async function activeRow(tx: DbOrTx, playerId: number): Promise<DungeonRunRow | undefined> {
@@ -809,9 +840,23 @@ export function createDungeonPlayService(deps: DungeonPlayServiceDeps): DungeonP
       await requireUnlocked(playerId, tx);
       // Serialise a player's starts, so a double-click meets the checks below
       // (the active run, then the allowance) rather than the unique index.
-      const [player] = await tx.select({ id: players.id }).from(players).where(eq(players.id, playerId)).for('update');
+      const [player] = await tx
+        .select({ id: players.id, region: players.currentRegion })
+        .from(players)
+        .where(eq(players.id, playerId))
+        .for('update');
       if (!player) throw new PlayerNotFoundError(playerId);
       if (await activeRow(tx, playerId)) throw new DungeonRunActiveError(playerId);
+
+      // The zone must be open and startable from where the player stands — read
+      // off the locked player row, so travel cannot slip between check and start.
+      const zoneRow = await readDungeonZoneRow(tx, zoneKey);
+      if (!zoneRow) throw new DungeonZoneUnavailableError(zoneKey, 'missing');
+      if (!zoneRow.enabled) throw new DungeonZoneUnavailableError(zoneKey, 'disabled');
+      const region = regionView(player.region);
+      if (!parseDungeonZoneRow(zoneRow).availableRegions.includes(region.id)) {
+        throw new DungeonZoneUnavailableError(zoneKey, 'region', region.name);
+      }
 
       const fighter = fighterFromCombatStats(await deps.combatStats.snapshotCombatStats(tx, playerId));
       // Spent before the run is generated so an exhausted allowance is refused
@@ -837,6 +882,8 @@ export function createDungeonPlayService(deps: DungeonPlayServiceDeps): DungeonP
             depthCount: run.graph.depthCount,
             fighter,
             daily: { periodKey: daily.periodKey, limit: daily.limit, used: daily.used },
+            // Where the run was started. For audit only: nothing reads it back.
+            region: region.id,
           },
         },
         {
@@ -873,6 +920,7 @@ export function createDungeonPlayService(deps: DungeonPlayServiceDeps): DungeonP
 
     async home(playerId) {
       await requireUnlocked(playerId);
+      const region = await currentRegion(db, playerId);
       const rows = await db
         .select()
         .from(dungeonZones)
@@ -881,7 +929,10 @@ export function createDungeonPlayService(deps: DungeonPlayServiceDeps): DungeonP
       const zones: DungeonZoneCard[] = [];
       for (const row of rows) {
         try {
-          zones.push(await zoneCard(db, playerId, parseDungeonZoneRow(row)));
+          const zone = parseDungeonZoneRow(row);
+          // Only what can be started here. A zone elsewhere is not listed at all.
+          if (!zone.availableRegions.includes(region.id)) continue;
+          zones.push(await zoneCard(db, playerId, zone));
         } catch (err) {
           deps.logger?.error({ err, tag: 'dungeons/unreadable-zone', zone: row.zoneKey }, 'dungeon zone could not be read — hidden');
         }
@@ -894,6 +945,7 @@ export function createDungeonPlayService(deps: DungeonPlayServiceDeps): DungeonP
         deps.allowance.status(playerId),
       ]);
       return {
+        region,
         zones,
         activeRun: run && playable ? await runView(db, run) : null,
         unplayableRunId: run && !playable ? run.id : null,
@@ -907,8 +959,13 @@ export function createDungeonPlayService(deps: DungeonPlayServiceDeps): DungeonP
       const row = await readDungeonZoneRow(db, zoneKey);
       if (!row) throw new DungeonZoneUnavailableError(zoneKey, 'missing');
       if (!row.enabled) throw new DungeonZoneUnavailableError(zoneKey, 'disabled');
+      const definition = parseDungeonZoneRow(row);
+      const region = await currentRegion(db, playerId);
+      if (!definition.availableRegions.includes(region.id)) {
+        throw new DungeonZoneUnavailableError(zoneKey, 'region', region.name);
+      }
       const [zone, stats, active, daily] = await Promise.all([
-        zoneCard(db, playerId, parseDungeonZoneRow(row)),
+        zoneCard(db, playerId, definition),
         deps.combatStats.calculateCombatStats(playerId),
         activeRow(db, playerId),
         deps.allowance.status(playerId),

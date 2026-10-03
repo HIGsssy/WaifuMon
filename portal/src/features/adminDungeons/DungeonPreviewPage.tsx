@@ -222,6 +222,13 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
+/** `{ "1": 17, "2": 83 }` of 100 → `1: 17% · 2: 83%`. */
+function formatDistribution(counts: Record<string, number>, total: number): string {
+  const entries = Object.entries(counts).sort(([a], [b]) => Number(a) - Number(b));
+  if (entries.length === 0 || total === 0) return '—';
+  return entries.map(([n, runs]) => `${n}: ${formatPercent(runs / total)}`).join(' · ');
+}
+
 function SimulationReport({ report }: { report: DungeonSimulationReport }) {
   const failures = Object.entries(report.failures);
   return (
@@ -245,6 +252,18 @@ function SimulationReport({ report }: { report: DungeonSimulationReport }) {
         <Stat label="Runs with a rest" value={formatPercent(report.restRate)} />
         <Stat label="Runs with an extraction point" value={formatPercent(report.extractionRate)} />
         <Stat label="Extraction points per run" value={report.averageExtractionPoints.toFixed(2)} />
+        <Stat
+          label="Rest immediately before the boss"
+          value={formatPercent(report.restBeforeBossRate)}
+        />
+        <Stat
+          label="Rests per run"
+          value={formatDistribution(report.restCountDistribution, report.valid)}
+        />
+        <Stat
+          label="Extraction points per run (spread)"
+          value={formatDistribution(report.extractionCountDistribution, report.valid)}
+        />
       </dl>
       {failures.length > 0 && (
         <ul className="text-xs text-danger" data-testid="simulation-failures">

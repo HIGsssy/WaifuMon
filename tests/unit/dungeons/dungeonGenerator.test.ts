@@ -272,6 +272,162 @@ describe('constraints', () => {
   });
 });
 
+describe('rest rules', () => {
+  const rests = (g: DungeonGraph) => g.nodes.filter((n) => n.type === 'rest');
+  const boss = (g: DungeonGraph) => g.nodes.find((n) => n.terminal)!;
+  const beforeBoss = (g: DungeonGraph) => g.nodes.filter((n) => n.depth === boss(g).depth - 1);
+  /** Every route from the start to the final node, as lists of node ids. */
+  const routes = (g: DungeonGraph): string[][] => {
+    const walk = (id: string): string[][] => {
+      const next = successors(g, id);
+      return next.length === 0 ? [[id]] : next.flatMap((n) => walk(n.id).map((rest) => [id, ...rest]));
+    };
+    return walk(g.startNodeId);
+  };
+  /** The base zone with its generic rest guarantee removed, so only the rest rules speak. */
+  const withRest = (rest: Record<string, unknown>, generation: Record<string, unknown> = {}) =>
+    testZone({ generation: { required: [{ types: ['reward'], min: 1 }], rest, ...generation } as never });
+
+  it('guarantees a rest immediately before the boss on every route, with forks required', () => {
+    // Forks in every run, as long as they come: the hardest case for "no branch bypasses it".
+    const zone = withRest({ beforeBoss: true }, { branching: { minBranches: 1, maxBranches: 1, chanceBasisPoints: 10_000, maxLength: 2 } });
+    for (const graph of graphs(zone)) {
+      expect(validateDungeonGraph(zone, graph)).toEqual([]);
+      // One node at that depth — the fork has rejoined — and it is a rest.
+      expect(beforeBoss(graph)).toHaveLength(1);
+      expect(beforeBoss(graph)[0]!.type).toBe('rest');
+      // Walked route by route: the second-to-last node is always that rest.
+      const all = routes(graph);
+      expect(all.length).toBeGreaterThan(1);
+      for (const route of all) {
+        expect(route.at(-1)).toBe(boss(graph).id);
+        expect(nodeOf(graph, route.at(-2)!)).toMatchObject({ type: 'rest', id: beforeBoss(graph)[0]!.id });
+      }
+      // The only edge into the boss comes from it.
+      expect(graph.edges.filter((e) => e.to === boss(graph).id).map((e) => e.from)).toEqual([beforeBoss(graph)[0]!.id]);
+    }
+  });
+
+  it('lets a fork reach the boss directly when the rule is off — which is what the rule prevents', () => {
+    const zone = withRest({}, { branching: { minBranches: 1, maxBranches: 1, chanceBasisPoints: 10_000, maxLength: 2 } });
+    expect(graphs(zone).some((g) => beforeBoss(g).length === 2)).toBe(true);
+  });
+
+  it('counts the rest before the boss toward the minimum and maximum: with max 1 there is exactly one', () => {
+    const zone = withRest({ minNodes: 1, maxNodes: 1, beforeBoss: true });
+    for (const graph of graphs(zone)) {
+      expect(rests(graph)).toHaveLength(1);
+      expect(rests(graph)[0]!.depth).toBe(boss(graph).depth - 1);
+      expect(validateDungeonGraph(zone, graph)).toEqual([]);
+    }
+  });
+
+  it('adds only what the minimum still needs beyond the rest before the boss', () => {
+    const zone = withRest({ minNodes: 2, maxNodes: 2, beforeBoss: true }, { noConsecutive: [] });
+    for (const graph of graphs(zone)) {
+      expect(rests(graph)).toHaveLength(2);
+      expect(mainPath(graph).filter((n) => n.type === 'rest')).toHaveLength(2);
+      expect(beforeBoss(graph)[0]!.type).toBe('rest');
+    }
+  });
+
+  it('honours the minimum on the main path and the maximum over the whole run', () => {
+    const zone = withRest({ minNodes: 1, maxNodes: 2 }, { nodeWeights: { rest: 60 } });
+    const all = graphs(zone);
+    for (const graph of all) {
+      expect(mainPath(graph).filter((n) => n.type === 'rest').length).toBeGreaterThanOrEqual(1);
+      expect(rests(graph).length).toBeLessThanOrEqual(2);
+    }
+    // The weight would place far more than two if the maximum did not hold.
+    expect(all.some((g) => rests(g).length === 2)).toBe(true);
+    const unlimited = graphs(withRest({ minNodes: 1 }, { nodeWeights: { rest: 60 } }));
+    expect(unlimited.some((g) => rests(g).length > 2)).toBe(true);
+  });
+
+  it('with a maximum of zero places no rest at all, whatever the weight', () => {
+    const zone = withRest({ maxNodes: 0 }, { extraction: { minDepth: 3, nodeTypes: ['rest', 'exit'], minPoints: 1 } });
+    for (const graph of graphs(zone)) expect(rests(graph)).toHaveLength(0);
+  });
+
+  it('keeps every rest inside the rest depth range', () => {
+    const zone = withRest({ minNodes: 1, minDepth: 2, maxDepth: 3 }, { nodeWeights: { rest: 40 } });
+    for (const graph of graphs(zone)) {
+      expect(rests(graph).length).toBeGreaterThanOrEqual(1);
+      for (const r of rests(graph)) {
+        expect(r.depth).toBeGreaterThanOrEqual(2);
+        expect(r.depth).toBeLessThanOrEqual(3);
+      }
+    }
+  });
+
+  it('lets the rest before the boss satisfy an extraction window instead of adding another point', () => {
+    const zone = withRest(
+      { minNodes: 1, maxNodes: 1, beforeBoss: true },
+      { extraction: { minDepth: 3, nodeTypes: ['rest', 'exit'], minPoints: 1, windows: [{ minDepth: 3, maxDepth: null, required: true }] } },
+    );
+    for (const graph of graphs(zone)) {
+      // Runs end at depth 4 or deeper, so the rest before the boss is at depth 3+: it is the extraction point.
+      const points = mainPath(graph).filter((n) => n.extraction);
+      expect(points.map((n) => n.id)).toEqual([beforeBoss(graph)[0]!.id]);
+      expect(rests(graph)).toHaveLength(1);
+    }
+  });
+
+  it('keeps extraction and rest separate: a zone can rest without extracting there, and extract at a bare exit', () => {
+    const zone = withRest(
+      { minNodes: 1, maxNodes: 1, beforeBoss: true },
+      { extraction: { minDepth: 3, nodeTypes: ['exit'], minPoints: 1 } },
+    );
+    for (const graph of graphs(zone)) {
+      expect(rests(graph).every((n) => !n.extraction)).toBe(true);
+      const points = graph.nodes.filter((n) => n.extraction);
+      expect(points.length).toBeGreaterThanOrEqual(1);
+      expect(points.every((n) => n.type === 'exit')).toBe(true);
+    }
+  });
+
+  it('stays deterministic: the same zone and seed give the same graph', () => {
+    const zone = withRest({ minNodes: 1, maxNodes: 2, beforeBoss: true });
+    for (const seed of [0, 1, 7, 12345, MAX_DUNGEON_SEED]) {
+      expect(generateDungeon(zone, catalogue, seed)).toEqual(generateDungeon(zone, catalogue, seed));
+    }
+    expect(new Set(graphs(zone).map((g) => JSON.stringify(g.nodes.map((n) => [n.depth, n.type])))).size).toBeGreaterThan(50);
+  });
+
+  it('generates exactly what it did before rest rules existed when a zone declares none', () => {
+    const legacy = testZone();
+    delete (legacy.generation as { rest?: unknown }).rest;
+    for (const seed of [1, 2, 3, 99, 4242]) {
+      expect(generateDungeon(legacy, catalogue, seed)).toEqual(generateDungeon(testZone(), catalogue, seed));
+    }
+    expect(testZone().generation.rest).toEqual({ minNodes: 0, maxNodes: null, minDepth: 1, maxDepth: null, beforeBoss: false });
+  });
+
+  it('fails cleanly, by name, when a rest cannot sit before the boss', () => {
+    // Rests may go no deeper than depth 2, but every run ends at depth 4 or later.
+    const zone = withRest({ beforeBoss: true, maxDepth: 2 });
+    const failure = (() => {
+      try {
+        generateDungeon(zone, catalogue, 1);
+      } catch (err) {
+        return err;
+      }
+      return null;
+    })();
+    expect(failure).toBeInstanceOf(DungeonGenerationError);
+    expect((failure as DungeonGenerationError).diagnostics.lastFailure).toMatch(/a rest cannot sit before the boss at depth \d+/);
+  });
+
+  it('the independent validator reports each broken rest rule', () => {
+    const plain = testZone();
+    const graph = graphs(plain).find((g) => beforeBoss(g).some((n) => n.type !== 'rest') && rests(g).length >= 1)!;
+    expect(validateDungeonGraph(withRest({ beforeBoss: true }), graph).join(' ')).toMatch(/node before the boss is not a single rest/);
+    expect(validateDungeonGraph(withRest({ maxNodes: 0 }), graph).join(' ')).toMatch(/rest nodes is above the maximum of 0/);
+    expect(validateDungeonGraph(withRest({ minNodes: 9 }), graph).join(' ')).toMatch(/below the minimum of 9/);
+    expect(validateDungeonGraph(withRest({ minDepth: 30 }), graph).join(' ')).toMatch(/outside the rest depth range/);
+  });
+});
+
 describe('pools and depth', () => {
   it('draws content only from the pool of the node type, inside the entry depth range', () => {
     for (const graph of graphs()) {

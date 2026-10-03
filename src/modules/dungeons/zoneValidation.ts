@@ -31,7 +31,9 @@ import {
   DUNGEON_POOL_KEYS,
   DUNGEON_WEIGHTED_NODE_TYPES,
   DungeonZoneDefinitionSchema,
+  depthInRange,
   possibleFinalDepths,
+  restRulesOf,
   type DungeonNodeType,
   type DungeonZoneDefinition,
 } from './zoneDefinition';
@@ -50,6 +52,8 @@ export interface DungeonZoneValidationContext {
   rewardTables: ReadonlyMap<string, { enabled: boolean }>;
   /** Progression currencies, by stable key. */
   currencies: ReadonlyMap<string, { enabled: boolean }>;
+  /** The region catalogue, by region id — what `availableRegions` may name. */
+  regions: ReadonlyMap<string, { name: string; enabled: boolean }>;
   /** Skip the trial runs — for callers that are about to generate anyway. */
   skipTrialRuns?: boolean;
 }
@@ -136,7 +140,70 @@ export function validateDungeonZone(input: unknown, ctx: DungeonZoneValidationCo
     warning('rewards.currencyKey', `currency "${zone.rewards.currencyKey}" is disabled, so runs will not pay it`);
   }
 
+  zone.availableRegions.forEach((id, i) => {
+    const region = ctx.regions.get(id);
+    if (!region) error(`availableRegions[${i}]`, `"${id}" is not a region`);
+    else if (!region.enabled) {
+      warning(`availableRegions[${i}]`, `region "${region.name}" is not released, so no player can be there`);
+    }
+  });
+  if (zone.availableRegions.length === 0) {
+    const message = 'choose at least one region — a zone with none cannot be started anywhere';
+    // A disabled zone may be saved half-authored; an enabled one must be reachable.
+    if (zone.enabled) error('availableRegions', message);
+    else warning('availableRegions', message);
+  }
+
   // ── 3. reachability ───────────────────────────────────────────────────────
+  const rest = restRulesOf(gen);
+  if (rest.minDepth > deepestInterior && (rest.minNodes > 0 || rest.beforeBoss || gen.nodeWeights.rest > 0)) {
+    error(
+      'generation.rest.minDepth',
+      `a rest cannot appear before depth ${rest.minDepth}, but no run has a node that deep (the deepest is ${deepestInterior})`,
+    );
+  }
+  if (rest.minNodes > finalDepths.min - 1) {
+    error('generation.rest.minNodes', `the shortest run has only ${finalDepths.min - 1} nodes before the final one`);
+  }
+  gen.limits.forEach((limit, j) => {
+    if (limit.types.length === 1 && limit.types[0] === 'rest' && limit.max < Math.max(rest.minNodes, rest.beforeBoss ? 1 : 0)) {
+      error(
+        `generation.limits[${j}].max`,
+        `at most ${limit.max} rest contradicts the rest rules (${rest.beforeBoss ? 'a rest before the boss' : `at least ${rest.minNodes}`})`,
+      );
+    }
+  });
+  if (rest.beforeBoss) {
+    const at = 'generation.rest.beforeBoss';
+    if (!gen.boss.required) {
+      error(at, 'a rest before the boss needs a boss — switch "Ends on a boss" on, or this off');
+    } else {
+      if (rest.maxNodes === 0) error('generation.rest.maxNodes', 'a rest before the boss needs at least one rest allowed');
+      // The rest sits at (final depth − 1) of whatever length the run rolls.
+      const first = finalDepths.min - 1;
+      const last = finalDepths.max - 1;
+      if (first < 2) {
+        error(at, `the shortest run has ${finalDepths.min} depths — too short for a start, a rest and a boss; raise Min nodes`);
+      }
+      const generic = gen.depthRanges.rest;
+      const blocked: number[] = [];
+      for (let depth = Math.max(first, 1); depth <= last; depth++) {
+        if (!depthInRange(depth, rest) || !depthInRange(depth, generic)) blocked.push(depth);
+      }
+      if (blocked.length > 0) {
+        error(
+          at,
+          `runs end at depth ${finalDepths.min}–${finalDepths.max}, so the rest before the boss sits at depth ` +
+            `${first}–${last}; the rest depth range excludes depth ${blocked.join(', ')}`,
+        );
+      }
+      const { minBranches, maxLength } = gen.branching;
+      if (minBranches > 0 && gen.maxNodes - minBranches < 3 + minBranches + Math.max(0, minBranches - 1)) {
+        error(at, `no run is long enough for ${minBranches} required fork(s) and a rest before the boss that no fork bypasses (forks up to ${maxLength} long)`);
+      }
+    }
+  }
+
   if (gen.extraction.minDepth > deepestInterior) {
     error(
       'generation.extraction.minDepth',

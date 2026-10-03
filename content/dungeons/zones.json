@@ -11,6 +11,7 @@
       "artworkPath": "dungeons/zones/scrapheap_gauntlet.webp",
       "backgroundArtworkPath": "dungeons/backgrounds/scrapheap_gauntlet.webp",
       "tags": ["initial_tuning", "robotic", "salvage"],
+      "availableRegions": ["flaccid-foothills"],
       "generation": {
         "minNodes": 6,
         "maxNodes": 9,
@@ -26,18 +27,16 @@
         },
         "nodeWeights": { "combat": 60, "elite": 10, "event": 12, "reward": 10, "rest": 8, "miniboss": 0, "exit": 0 },
         "boss": { "required": true },
+        "rest": { "minNodes": 1, "maxNodes": 2, "minDepth": 2, "maxDepth": null, "beforeBoss": true },
         "depthRanges": {
           "elite": { "minDepth": 5, "maxDepth": null },
-          "rest": { "minDepth": 2, "maxDepth": null },
           "reward": { "minDepth": 2, "maxDepth": null }
         },
         "required": [
-          { "types": ["rest"], "min": 1 },
           { "types": ["reward", "event"], "min": 1 }
         ],
         "limits": [
           { "types": ["elite"], "max": 1 },
-          { "types": ["rest"], "max": 1 },
           { "types": ["reward"], "max": 2 }
         ],
         "noConsecutive": ["rest", "reward", "elite"],

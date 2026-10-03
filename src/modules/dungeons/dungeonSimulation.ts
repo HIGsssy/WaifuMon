@@ -62,6 +62,12 @@ export interface DungeonSimulationReport {
   /** Share of valid runs with at least one extraction point. */
   extractionRate: number;
   averageExtractionPoints: number;
+  /** Valid runs by how many rest nodes they hold: `{ "1": 34, "2": 66 }`. */
+  restCountDistribution: Record<string, number>;
+  /** Valid runs by how many extraction points they hold. */
+  extractionCountDistribution: Record<string, number>;
+  /** Share of valid runs whose node before the final one is a single rest no route can skip. */
+  restBeforeBossRate: number;
   enemies: ContentAppearance[];
   events: ContentAppearance[];
 }
@@ -96,6 +102,9 @@ export function simulateDungeonGeneration(
   let runsWithBranch = 0;
   let extractionTotal = 0;
   let runsWithExtraction = 0;
+  let runsWithRestBeforeBoss = 0;
+  const restCountDistribution: Record<string, number> = {};
+  const extractionCountDistribution: Record<string, number> = {};
 
   for (let i = 0; i < runs; i++) {
     let graph;
@@ -120,6 +129,11 @@ export function simulateDungeonGeneration(
     const extraction = graph.nodes.filter((n) => n.extraction).length;
     extractionTotal += extraction;
     if (extraction > 0) runsWithExtraction += 1;
+    extractionCountDistribution[extraction] = (extractionCountDistribution[extraction] ?? 0) + 1;
+    const rests = graph.nodes.filter((n) => n.type === 'rest').length;
+    restCountDistribution[rests] = (restCountDistribution[rests] ?? 0) + 1;
+    const beforeFinal = graph.nodes.filter((n) => n.depth === graph.depthCount - 1);
+    if (beforeFinal.length === 1 && beforeFinal[0]!.type === 'rest') runsWithRestBeforeBoss += 1;
 
     const typesSeen = new Set<DungeonNodeType>();
     const contentSeen = new Set<string>();
@@ -171,6 +185,9 @@ export function simulateDungeonGeneration(
     restRate: nodeTypeRunRate.rest,
     extractionRate: per(runsWithExtraction, valid),
     averageExtractionPoints: per(extractionTotal, valid),
+    restCountDistribution,
+    extractionCountDistribution,
+    restBeforeBossRate: per(runsWithRestBeforeBoss, valid),
     enemies: appearanceList(appearances.enemy),
     events: appearanceList(appearances.event),
   };

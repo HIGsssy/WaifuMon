@@ -30,12 +30,15 @@
  *      fit are dropped; a required one that does not fit fails the attempt.
  *   2. **Layout.** Place the forks, build the slots and the edges.
  *   3. **Reserve.** The final slot is the boss (or an `exit` when no boss is
- *      required). Then one extraction point per `extraction.windows` entry
- *      (an optional window that has no free slot is skipped), then any further
- *      guaranteed extraction points, then each `required` group, are placed on
+ *      required). With `rest.beforeBoss`, the slot before it is a rest — that
+ *      depth was kept off every fork in step 2, so every route to the boss
+ *      passes through it; nothing is drawn for it. Then one extraction point
+ *      per `extraction.windows` entry (an optional window that has no free
+ *      slot is skipped), then any further guaranteed extraction points, then
+ *      rests up to `rest.minNodes`, then each `required` group, are placed on
  *      main-path slots — the ones no route can skip. A zone with no windows
- *      draws nothing for them, so it generates exactly as it did before they
- *      existed.
+ *      and no rest rules draws nothing for them, so it generates exactly as
+ *      it did before they existed.
  *   4. **Fill.** Every remaining slot, in depth order, takes a weighted pick
  *      among the types that are *legal* there. Weights choose; legality
  *      (depth ranges, an eligible pool, limits, adjacency) filters.
@@ -55,6 +58,8 @@ import {
   DUNGEON_WEIGHTED_NODE_TYPES,
   depthInRange,
   poolForNodeType,
+  reservedTailDepths,
+  restRulesOf,
   rewardBandFor,
   type DungeonNodeType,
   type DungeonPoolEntry,
@@ -191,6 +196,7 @@ export function nodeTypeAllowedAtDepth(
   if (!terminal) {
     if (type === 'boss') return false;
     if (!depthInRange(depth, zone.generation.depthRanges[type])) return false;
+    if (type === 'rest' && !depthInRange(depth, restRulesOf(zone.generation))) return false;
     if (type === 'exit' && depth < zone.generation.extraction.minDepth) return false;
   }
   const pool = poolForNodeType(type);
@@ -236,15 +242,19 @@ function buildSlots(zone: DungeonZoneDefinition, rng: Rng): Slot[] {
   // Forks live strictly between the first and final depth, with a rejoin node
   // between any two, so they need `sum + (count - 1)` of the `depthCount - 2`
   // interior depths. Drop optional forks until they fit.
+  // A rest that must precede the boss takes the last interior depth off the
+  // table for forks: both lanes of a fork there would reach the boss directly.
+  const reservedTail = reservedTailDepths(gen);
   const depthCountFor = () => total - lengths.reduce((a, b) => a + b, 0);
   const slackFor = () =>
-    depthCountFor() - 2 - (lengths.reduce((a, b) => a + b, 0) + Math.max(0, lengths.length - 1));
-  while (lengths.length > 0 && (depthCountFor() < 2 || slackFor() < 0)) {
+    depthCountFor() - 2 - reservedTail - (lengths.reduce((a, b) => a + b, 0) + Math.max(0, lengths.length - 1));
+  while (lengths.length > 0 && (depthCountFor() < 2 + reservedTail || slackFor() < 0)) {
     if (lengths.length <= minBranches) fail('required branches do not fit in the run length');
     lengths.pop();
   }
   const depthCount = depthCountFor();
   if (depthCount < 2) fail('run is too short for a start and a final node');
+  if (depthCount < 2 + reservedTail) fail('run is too short for a start, a rest before the boss, and the boss');
 
   // 2. Layout. Spread the spare interior depths across the gaps before each fork.
   const forked = new Set<number>();
@@ -302,8 +312,10 @@ function assignTypes(
   const countOf = (types: readonly DungeonNodeType[], mainPathOnly: boolean) =>
     slots.filter((s) => s.type !== null && types.includes(s.type) && (!mainPathOnly || s.mainPath)).length;
 
+  const restRules = restRulesOf(gen);
   const legal = (type: DungeonNodeType, slot: Slot): boolean => {
     if (!nodeTypeAllowedAtDepth(zone, type, slot.depth, catalogue)) return false;
+    if (type === 'rest' && restRules.maxNodes !== null && countOf(['rest'], false) >= restRules.maxNodes) return false;
     for (const limit of gen.limits) {
       if (limit.types.includes(type) && countOf(limit.types, false) >= limit.max) return false;
     }
@@ -358,6 +370,16 @@ function assignTypes(
   }
   final.type = finalType;
 
+  if (reservedTailDepths(gen) > 0) {
+    // The one slot at the depth before the boss. Structural, so nothing is
+    // drawn — but it is still a rest, and must be a legal one.
+    const approach = slots.find((s) => s.depth === final.depth - 1 && s.mainPath);
+    if (!approach || !legal('rest', approach)) {
+      fail(`a rest cannot sit before the boss at depth ${final.depth - 1}`);
+    }
+    approach.type = 'rest';
+  }
+
   const { minDepth, nodeTypes: extractionTypes, minPoints } = gen.extraction;
   const offersExtraction = (s: Slot) =>
     s.type !== null && !s.terminal && s.depth >= minDepth && extractionTypes.includes(s.type);
@@ -373,6 +395,9 @@ function assignTypes(
   }
   while (slots.filter((s) => s.mainPath && offersExtraction(s)).length < minPoints) {
     reserve(extractionTypes, (s) => s.depth >= minDepth, 'a guaranteed extraction point');
+  }
+  while (countOf(['rest'], true) < restRules.minNodes) {
+    reserve(['rest'], () => true, 'a required rest');
   }
   for (const group of gen.required) {
     while (countOf(group.types, true) < group.min) {
@@ -662,6 +687,27 @@ export function validateDungeonGraph(zone: DungeonZoneDefinition, graph: Dungeon
       out.push(`${count} ${group.types.join('/')} nodes on the main path is below the required ${group.min}`);
     }
   }
+  const restRules = restRulesOf(gen);
+  const rests = nodes.filter((n) => n.type === 'rest');
+  for (const node of rests) {
+    if (!depthInRange(node.depth, restRules)) {
+      out.push(`rest node ${node.id} is outside the rest depth range at depth ${node.depth}`);
+    }
+  }
+  if (restRules.maxNodes !== null && rests.length > restRules.maxNodes) {
+    out.push(`${rests.length} rest nodes is above the maximum of ${restRules.maxNodes}`);
+  }
+  const mainPathRests = rests.filter(mainPath).length;
+  if (mainPathRests < restRules.minNodes) {
+    out.push(`${mainPathRests} rest nodes on the main path is below the minimum of ${restRules.minNodes}`);
+  }
+  if (reservedTailDepths(gen) > 0 && terminals[0]) {
+    const before = nodes.filter((n) => n.depth === terminals[0]!.depth - 1);
+    if (before.length !== 1 || before[0]!.type !== 'rest') {
+      out.push('the node before the boss is not a single rest that every route passes through');
+    }
+  }
+
   const extractionPoints = nodes.filter((n) => n.extraction && mainPath(n)).length;
   if (extractionPoints < gen.extraction.minPoints) {
     out.push(`${extractionPoints} main-path extraction points is below the required ${gen.extraction.minPoints}`);

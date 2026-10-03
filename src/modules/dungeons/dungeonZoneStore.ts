@@ -26,6 +26,7 @@ import type { Db, DbOrTx } from '../../db/client';
 import { dungeonZones, type DungeonZoneRow } from '../../db/schema';
 import { ContentValidationError } from '../../shared/errors';
 import type { CombatEnemyDefinition } from '../combat/enemyDefinitions';
+import { REGIONS, regionLabel } from '../locations/regions';
 import type { DungeonContentCatalogue } from './dungeonGenerator';
 import type { DungeonEventDefinition } from './eventDefinitions';
 import {
@@ -73,6 +74,28 @@ export function parseDungeonZoneRow(row: Pick<DungeonZoneRow, 'zoneKey' | 'defin
     );
   }
   return parsed.data;
+}
+
+/** A region as dungeon authoring needs it. */
+export interface DungeonRegionRef {
+  id: string;
+  name: string;
+  enabled: boolean;
+}
+
+/**
+ * The region catalogue zones may name: the loaded region content (core files
+ * plus enabled expansion packs), in its authored order. A deployment that
+ * ships no region files still has the closed set of region ids.
+ */
+export function dungeonRegionsFromContent(content: {
+  regions?: readonly { id: string; name: string; enabled: boolean; order?: number }[] | undefined;
+}): DungeonRegionRef[] {
+  const regions = content.regions ?? [];
+  if (regions.length === 0) return REGIONS.map((id) => ({ id, name: regionLabel(id), enabled: true }));
+  return [...regions]
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.id.localeCompare(b.id))
+    .map((r) => ({ id: r.id, name: r.name, enabled: r.enabled }));
 }
 
 export async function readDungeonZoneRow(tx: DbOrTx, key: string, lock = false): Promise<DungeonZoneRow | undefined> {

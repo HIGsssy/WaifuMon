@@ -1688,11 +1688,23 @@ export class DungeonZoneKeyTakenError extends AppError {
 
 /** A run was asked for in a zone that does not exist or is switched off. */
 export class DungeonZoneUnavailableError extends AppError {
-  constructor(zoneKey: string, reason: 'missing' | 'disabled') {
+  /**
+   * `region`: the zone exists and is enabled, but cannot be started from where
+   * the player is standing. `regionName` is that place, for the message.
+   */
+  constructor(
+    zoneKey: string,
+    readonly reason: 'missing' | 'disabled' | 'region',
+    regionName?: string,
+  ) {
     super(
       'DUNGEON_ZONE_UNAVAILABLE',
-      `Dungeon zone "${zoneKey}" is ${reason}`,
-      'That dungeon is not open right now.',
+      reason === 'region'
+        ? `Dungeon zone "${zoneKey}" is not available in the player's current region`
+        : `Dungeon zone "${zoneKey}" is ${reason}`,
+      reason === 'region'
+        ? `That Delve isn’t available in ${typeof regionName === 'string' && regionName ? regionName : 'this region'}.`
+        : 'That dungeon is not open right now.',
     );
   }
 }

@@ -8,6 +8,11 @@
  */
 import type { ArtworkSource } from '@/api/adminArtwork';
 import {
+  browseDungeonArtwork,
+  dungeonArtworkBlob,
+  searchDungeonArtwork,
+} from '@/api/adminDungeons';
+import {
   adminEncounterArtworkBlob,
   browseAdminEncounterArtwork,
   searchAdminEncounterArtwork,
@@ -17,6 +22,14 @@ import {
   resultPresentationArtworkBlob,
   searchResultPresentationArtwork,
 } from '@/api/adminResultPresentations';
+
+/** Dungeon zones: `dungeons.read`, `dungeons/`. */
+export const dungeonArtworkSource: ArtworkSource = {
+  scope: 'dungeons',
+  browse: (path, signal) => browseDungeonArtwork(path, signal),
+  search: (query, signal) => searchDungeonArtwork(query, signal),
+  loadImage: (path) => dungeonArtworkBlob(path),
+};
 
 /** Result Presentations: `presentations.read`, `results/`. */
 export const resultPresentationArtworkSource: ArtworkSource = {

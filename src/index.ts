@@ -57,7 +57,12 @@ import {
   seedRewardTables,
 } from './modules/rewardTables/rewardTableStore';
 import { createRewardTableService } from './modules/rewardTables/rewardTableService';
-import { loadShippedDungeonZones, seedDungeonZones } from './modules/dungeons/dungeonZoneStore';
+import { regionLabel } from './modules/locations/regions';
+import {
+  dungeonRegionsFromContent,
+  loadShippedDungeonZones,
+  seedDungeonZones,
+} from './modules/dungeons/dungeonZoneStore';
 import { createDungeonZoneService } from './modules/dungeons/dungeonZoneService';
 import { createDungeonRunService } from './modules/dungeons/dungeonRunService';
 import { createDungeonPlayService } from './modules/dungeons/dungeonPlayService';
@@ -432,6 +437,8 @@ async function main(): Promise<void> {
     db,
     runs: dungeonRuns,
     allowance: dungeonAllowance,
+    regionName: (regionId) =>
+      dungeonRegionsFromContent(contentSnapshot).find((r) => r.id === regionId)?.name ?? regionLabel(regionId),
     featureUnlocks,
     combatStats,
     currencies: progressionCurrency,

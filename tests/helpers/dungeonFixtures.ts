@@ -30,6 +30,7 @@ export function testZoneInput(): DungeonZoneDefinitionInput {
     enabled: true,
     order: 0,
     tags: ['test'],
+    availableRegions: ['waifu-valley'],
     generation: {
       minNodes: 6,
       maxNodes: 10,
@@ -92,5 +93,11 @@ export function testValidationContext(catalogue = testCatalogue()) {
     catalogue,
     rewardTables: new Map([['loot', { enabled: true }], ['closed', { enabled: false }]]),
     currencies: new Map([['ascension_currency', { enabled: true }]]),
+    regions: new Map([
+      ['waifu-valley', { name: 'Waifu Valley', enabled: true }],
+      ['twin-peeks', { name: 'Twin Peeks', enabled: true }],
+      ['flaccid-foothills', { name: 'Flaccid Foothills', enabled: true }],
+      ['sealed-vault', { name: 'Sealed Vault', enabled: false }],
+    ]),
   };
 }

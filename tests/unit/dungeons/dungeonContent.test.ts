@@ -9,7 +9,11 @@ import { readContentFiles } from '../../../src/modules/content/loader';
 import { validateDungeonGraph, generateDungeon } from '../../../src/modules/dungeons/dungeonGenerator';
 import { PLAYTHROUGH_POLICIES, simulateDungeonPlaythroughs, type PlaythroughSnapshot } from '../../../src/modules/dungeons/dungeonPlaythrough';
 import { simulateDungeonGeneration } from '../../../src/modules/dungeons/dungeonSimulation';
-import { dungeonCatalogueFromContent, loadShippedDungeonZones } from '../../../src/modules/dungeons/dungeonZoneStore';
+import {
+  dungeonCatalogueFromContent,
+  dungeonRegionsFromContent,
+  loadShippedDungeonZones,
+} from '../../../src/modules/dungeons/dungeonZoneStore';
 import { DUNGEON_EVENT_FILE, DungeonEventFileSchema } from '../../../src/modules/dungeons/eventDefinitions';
 import { depthInRange } from '../../../src/modules/dungeons/zoneDefinition';
 import { validateDungeonZone } from '../../../src/modules/dungeons/zoneValidation';
@@ -56,6 +60,7 @@ describe('Scrapheap Gauntlet', () => {
       catalogue,
       rewardTables: new Map(content.expeditionRewards.map((t) => [t.id, { enabled: t.enabled }])),
       currencies: new Map([['ascension_currency', { enabled: true }]]),
+      regions: new Map(dungeonRegionsFromContent(content).map((r) => [r.id, { name: r.name, enabled: r.enabled }])),
     });
     expect(issues).toEqual([]);
   });
@@ -107,9 +112,11 @@ describe('Scrapheap Gauntlet', () => {
     expect(report.nodeTypeRunRate.elite).toBeGreaterThan(0.05);
     expect(report.nodeTypeRunRate.elite).toBeLessThan(0.6);
     // Combat-heavy: the most common type by a clear margin.
-    for (const type of ['elite', 'event', 'reward', 'rest'] as const) {
+    for (const type of ['elite', 'event', 'reward'] as const) {
       expect(report.nodeTypeShare.combat).toBeGreaterThan(report.nodeTypeShare[type] * 2);
     }
+    // Rests are structural now (one before every boss), so they are common — but fights still lead.
+    expect(report.nodeTypeShare.combat).toBeGreaterThan(report.nodeTypeShare.rest);
     // Every authored enemy and event shows up.
     expect(report.enemies.map((e) => e.key).sort()).toEqual(
       ['alley_bruiser', 'scrapheap_colossus', 'scrapyard_drone', 'security_automaton'].sort(),
@@ -150,15 +157,32 @@ describe('Scrapheap Gauntlet', () => {
         { minDepth: 6, maxDepth: null, required: false },
       ],
     });
-    // One rest per run: the early window takes it, so the later way out is a bare exit — no heal.
-    expect(gauntlet.generation.limits).toContainEqual({ types: ['rest'], max: 1 });
-    expect(gauntlet.generation.required).toContainEqual({ types: ['rest'], min: 1 });
     expect(gauntlet.generation.nodeWeights.exit).toBe(0);
   });
 
-  it('generates 5000 seeds with none invalid, each with its rest, its early extraction and its boss', () => {
-    let twoPoints = 0;
-    let longRuns = 0;
+  it('is open in Flaccid Foothills only', () => {
+    expect(gauntlet.availableRegions).toEqual(['flaccid-foothills']);
+    expect(dungeonRegionsFromContent(content).find((r) => r.id === 'flaccid-foothills')).toMatchObject({
+      name: 'Flaccid Foothills',
+      enabled: true,
+    });
+  });
+
+  it('authors its rests as rest rules: one to two, from depth 2, always one before the boss', () => {
+    expect(gauntlet.nodeSettings.rest.healBasisPoints).toBe(3000);
+    expect(gauntlet.generation.rest).toEqual({ minNodes: 1, maxNodes: 2, minDepth: 2, maxDepth: null, beforeBoss: true });
+    // Nothing about rests is left in the generic rules to disagree with that.
+    expect(gauntlet.generation.depthRanges.rest).toBeUndefined();
+    expect(gauntlet.generation.required.some((g) => g.types.includes('rest'))).toBe(false);
+    expect(gauntlet.generation.limits.some((l) => l.types.includes('rest'))).toBe(false);
+    expect(gauntlet.generation.noConsecutive).toContain('rest');
+  });
+
+  it('generates 5000 seeds with none invalid: Rest → Boss every time, an early way out, one or two rests', () => {
+    const restCounts: Record<number, number> = {};
+    const pointCounts: Record<number, number> = {};
+    let branched = 0;
+    let nodes = 0;
     for (let seed = 1; seed <= 5000; seed++) {
       const graph = generateDungeon(gauntlet, catalogue, seed);
       expect(validateDungeonGraph(gauntlet, graph), `seed ${seed}`).toEqual([]);
@@ -166,34 +190,53 @@ describe('Scrapheap Gauntlet', () => {
       for (const n of graph.nodes) perDepth.set(n.depth, (perDepth.get(n.depth) ?? 0) + 1);
       const main = graph.nodes.filter((n) => perDepth.get(n.depth) === 1);
       const points = main.filter((n) => n.extraction);
+      const rests = graph.nodes.filter((n) => n.type === 'rest');
+      const boss = graph.nodes.find((n) => n.boss)!;
+      nodes += graph.nodes.length;
+      if (graph.nodes.some((n) => n.outgoing.length > 1)) branched += 1;
 
-      // Required behaviour: one boss at the end, exactly one rest, a reward or event on the main path.
+      // One boss, at the end.
       expect(graph.nodes.filter((n) => n.boss).map((n) => n.id)).toEqual([graph.terminalNodeId]);
-      expect(graph.nodes.filter((n) => n.type === 'rest')).toHaveLength(1);
+      // Rest → Boss: exactly one node at the depth before the boss, it is a rest, and
+      // it is the only thing that leads to the boss — so no branch can bypass it.
+      const before = graph.nodes.filter((n) => n.depth === boss.depth - 1);
+      expect(before, `seed ${seed}`).toHaveLength(1);
+      expect(before[0]!.type).toBe('rest');
+      expect(graph.edges.filter((e) => e.to === boss.id).map((e) => e.from)).toEqual([before[0]!.id]);
+      // One or two rests, never adjacent, never before depth 2 — and the one before the boss is one of them.
+      expect([1, 2]).toContain(rests.length);
+      for (const r of rests) expect(r.depth).toBeGreaterThanOrEqual(2);
+      if (rests.length === 2) expect(Math.abs(rests[0]!.depth - rests[1]!.depth)).toBeGreaterThan(1);
+      restCounts[rests.length] = (restCounts[rests.length] ?? 0) + 1;
       expect(main.some((n) => n.type === 'reward' || n.type === 'event')).toBe(true);
 
-      // The first way out is the rest, at depth 3 or 4, and nothing but drones stands before depth 3.
+      // The first way out is at depth 3 or 4 — a rest, or a bare exit when a rest cannot sit there.
       expect(points.length, `seed ${seed}`).toBeGreaterThanOrEqual(1);
-      expect(points.length).toBeLessThanOrEqual(2);
-      expect(points[0]).toMatchObject({ type: 'rest' });
+      expect(points.length).toBeLessThanOrEqual(3);
       expect([3, 4]).toContain(points[0]!.depth);
+      expect(['rest', 'exit']).toContain(points[0]!.type);
+      pointCounts[points.length] = (pointCounts[points.length] ?? 0) + 1;
       for (const n of graph.nodes) {
         if (n.content?.kind === 'enemy' && n.depth <= 2) expect(n.content.key).toBe('scrapyard_drone');
         if (n.type === 'elite') expect(n.depth).toBeGreaterThanOrEqual(5);
-        // Extraction is never on the final node, and only ever a rest or an exit.
         if (n.extraction) expect(n.terminal).toBe(false);
       }
-      // A second way out, when there is one, is a bare exit at depth 6 or deeper.
-      if (points[1]) {
-        expect(points[1]).toMatchObject({ type: 'exit' });
-        expect(points[1].depth).toBeGreaterThanOrEqual(6);
-        twoPoints += 1;
-      }
-      if (graph.depthCount >= 8) longRuns += 1;
+      // Every run long enough to have an interior depth 6 has a way out there: the rest before the boss.
+      if (graph.depthCount >= 7) expect(points.some((n) => n.depth >= 6)).toBe(true);
     }
-    // Most runs long enough to have a depth-6 interior node get the later one.
-    expect(twoPoints).toBeGreaterThan(5000 * 0.5);
-    expect(twoPoints).toBeGreaterThan(longRuns);
+    // The shortest runs have one rest doing both jobs; most have two.
+    expect(restCounts[2]).toBeGreaterThan(restCounts[1]!);
+    expect(restCounts[1]).toBeGreaterThan(0);
+    expect(pointCounts[2]).toBeGreaterThan(5000 * 0.8);
+    expect(nodes / 5000).toBeGreaterThan(7);
+    expect(nodes / 5000).toBeLessThan(8);
+    expect(branched / 5000).toBeGreaterThan(0.2);
+    expect(branched / 5000).toBeLessThan(0.4);
+    // The simulation report says the same thing.
+    const report = simulateDungeonGeneration(gauntlet, catalogue, { runs: 5000 });
+    expect(report).toMatchObject({ invalid: 0, restBeforeBossRate: 1, restRate: 1, extractionRate: 1 });
+    expect(Object.keys(report.restCountDistribution).sort()).toEqual(['1', '2']);
+    expect(Object.values(report.restCountDistribution).reduce((a, b) => a + b, 0)).toBe(5000);
   });
 
   describe('initial tuning for a newly eligible player (Current SP 185)', () => {

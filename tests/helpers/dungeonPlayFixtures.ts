@@ -103,6 +103,8 @@ export function playZoneDoc(key: string, patch: (zone: DungeonZoneDefinitionInpu
     enabled: true,
     order: 500,
     tags: ['test'],
+    // Where every test player starts (`DEFAULT_REGION`).
+    availableRegions: ['waifu-valley'],
     generation: {
       minNodes: 6,
       maxNodes: 8,

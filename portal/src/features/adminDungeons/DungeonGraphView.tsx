@@ -22,6 +22,77 @@ function leadsTo(node: DungeonGraphNode, graph: DungeonGraph): string[] {
   });
 }
 
+/**
+ * What this graph did with the zone's structural rules — regions it is open
+ * in, where its rests and ways out fell, and whether the Rest → Boss guarantee
+ * held. Computed by the server from the graph, not assumed from the zone, so a
+ * guarantee the generator broke would show here as broken.
+ */
+function StructureSummary({ structure }: { structure: DungeonPreview['structure'] }) {
+  const { restBeforeBoss } = structure;
+  const depths = (nodes: Array<{ depth: number }>) =>
+    nodes.length === 0 ? 'none' : nodes.map((n) => `depth ${n.depth}`).join(', ');
+  return (
+    <dl
+      className="grid gap-x-4 gap-y-1 rounded-lg border border-border bg-surface-sunken px-3 py-2 text-xs sm:grid-cols-2"
+      data-testid="dungeon-structure"
+    >
+      <div>
+        <dt className="inline text-ink-muted">Available in: </dt>
+        <dd className="inline text-ink" data-testid="structure-regions">
+          {structure.availableRegions.length === 0
+            ? 'no region'
+            : structure.availableRegions.map((r) => r.name ?? `${r.id} (unknown)`).join(', ')}
+        </dd>
+      </div>
+      <div>
+        <dt className="inline text-ink-muted">Artwork: </dt>
+        <dd className="inline font-mono text-ink">
+          {structure.artworkPath ?? structure.backgroundArtworkPath ?? 'none'}
+        </dd>
+      </div>
+      <div>
+        <dt className="inline text-ink-muted">Rest nodes: </dt>
+        <dd className="inline text-ink" data-testid="structure-rests">
+          {structure.restNodes.length} ({depths(structure.restNodes)})
+        </dd>
+      </div>
+      <div>
+        <dt className="inline text-ink-muted">Extraction points: </dt>
+        <dd className="inline text-ink" data-testid="structure-extraction">
+          {structure.extractionNodes.length === 0
+            ? 'none'
+            : structure.extractionNodes
+                .map((n) => `${NODE_TYPE_LABELS[n.type]} at depth ${n.depth}`)
+                .join(', ')}
+        </dd>
+      </div>
+      <div>
+        <dt className="inline text-ink-muted">Final boss: </dt>
+        <dd className="inline text-ink">{structure.bossNodeId ?? 'none — ends on an exit'}</dd>
+      </div>
+      <div>
+        <dt className="inline text-ink-muted">Rest before Boss: </dt>
+        <dd
+          className={cn(
+            'inline',
+            restBeforeBoss.required && !restBeforeBoss.satisfied ? 'text-danger' : 'text-ink',
+          )}
+          data-testid="structure-rest-before-boss"
+        >
+          {restBeforeBoss.required
+            ? restBeforeBoss.satisfied
+              ? 'guaranteed — satisfied'
+              : 'guaranteed — NOT satisfied (this is a generator bug)'
+            : restBeforeBoss.satisfied
+              ? 'not required (this run happens to have one)'
+              : 'not required'}
+        </dd>
+      </div>
+    </dl>
+  );
+}
+
 export function DungeonGraphView({ preview }: { preview: DungeonPreview }) {
   const { graph, names } = preview;
   const rows = nodesByDepth(graph.nodes);
@@ -37,6 +108,7 @@ export function DungeonGraphView({ preview }: { preview: DungeonPreview }) {
         {extractionPoints === 1 ? '' : 's'}
         {graph.attempts > 1 ? ` · took ${graph.attempts} attempts` : ''}
       </p>
+      <StructureSummary structure={preview.structure} />
       <ol className="space-y-2">
         {rows.map((row) => (
           <li

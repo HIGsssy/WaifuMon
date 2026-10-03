@@ -28,12 +28,15 @@ import {
   DUNGEON_NODE_TYPES,
   DUNGEON_POOL_KEYS,
   DUNGEON_WEIGHTED_NODE_TYPES,
+  NO_REST_RULES,
   createDungeonZone,
   getDungeonReference,
   getDungeonZone,
   previewDungeon,
   updateDungeonZone,
   validateDungeonZone,
+  zoneArtworkConvention,
+  zoneBackgroundConvention,
   type AmountRange,
   type DepthRange,
   type DungeonBonusDoc,
@@ -44,6 +47,8 @@ import {
   type DungeonPoolEntryDoc,
   type DungeonPoolKey,
   type DungeonReferenceData,
+  type DungeonRegionRef,
+  type DungeonRestRules,
   type DungeonRewardBandDoc,
   type DungeonZoneDetail,
   type DungeonZoneDoc,
@@ -59,6 +64,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useHasPermission } from '@/auth/useSession';
 import { selectClass } from '@/features/adminEncounters/EntitySelect';
 import { DungeonGraphView } from './DungeonGraphView';
+import { ZoneArtworkField } from './ZoneArtworkField';
 import { ZoneOriginBadge } from './DungeonsListPage';
 import {
   DUNGEON_KEY_PATTERN,
@@ -95,6 +101,8 @@ const SECTION_PREFIXES = [
   'tags',
   'artworkPath',
   'backgroundArtworkPath',
+  'availableRegions',
+  'nodeSettings',
   'generation',
   'pools',
   'rewards',
@@ -259,6 +267,62 @@ function ExtractionWindows({
   );
 }
 
+/**
+ * The regions a zone is open in, as checkboxes: names shown, stable ids stored,
+ * in the catalogue's order. An id the catalogue no longer has stays visible
+ * (and checked) so it can be seen and removed rather than silently carried.
+ */
+function RegionChecks({
+  regions,
+  value,
+  onChange,
+  disabled,
+}: {
+  regions: DungeonRegionRef[];
+  value: string[];
+  onChange: (next: string[]) => void;
+  disabled: boolean;
+}) {
+  const unknown = value.filter((id) => !regions.some((r) => r.id === id));
+  const options = [
+    ...regions,
+    ...unknown.map((id) => ({ id, name: id, enabled: true, unknown: true })),
+  ];
+  return (
+    <fieldset className="text-xs text-ink-muted" data-testid="region-checks">
+      <legend>Available in</legend>
+      <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
+        {options.map((region) => (
+          <label key={region.id} className="flex items-center gap-1 text-sm text-ink">
+            <input
+              type="checkbox"
+              aria-label={`Available in ${region.name}`}
+              checked={value.includes(region.id)}
+              disabled={disabled}
+              onChange={(e) =>
+                // Kept in catalogue order, so a toggle never reorders the document.
+                onChange(
+                  options
+                    .map((r) => r.id)
+                    .filter((id) => (id === region.id ? e.target.checked : value.includes(id))),
+                )
+              }
+            />
+            {region.name}
+            {'unknown' in region && <span className="text-xs text-danger">(unknown region)</span>}
+            {!region.enabled && <span className="text-xs text-ink-subtle">(not released)</span>}
+          </label>
+        ))}
+      </div>
+      {value.length === 0 && (
+        <p className="mt-2 text-xs text-ink-subtle">
+          No region selected — the zone cannot be started anywhere.
+        </p>
+      )}
+    </fieldset>
+  );
+}
+
 /** An optional depth or count: empty means "no limit". */
 function OptionalNumberField({
   label,
@@ -266,19 +330,21 @@ function OptionalNumberField({
   onChange,
   disabled,
   placeholder = 'no limit',
+  min = 1,
 }: {
   label: string;
   value: number | null;
   onChange: (next: number | null) => void;
   disabled: boolean;
   placeholder?: string;
+  min?: number;
 }) {
   return (
     <label className="text-xs text-ink-muted">
       {label}
       <Input
         type="number"
-        min={1}
+        min={min}
         aria-label={label}
         className="w-24"
         placeholder={placeholder}
@@ -480,6 +546,8 @@ function DungeonZoneEditor({ zoneKey }: { zoneKey: string | undefined }) {
   const setPool = (pool: DungeonPoolKey, entries: DungeonPoolEntryDoc[]) =>
     set({ pools: { ...form.pools, [pool]: entries } });
   const tables = reference?.rewardTables ?? [];
+  const rest = gen.rest ?? NO_REST_RULES;
+  const setRest = (patch: Partial<DungeonRestRules>) => setGen({ rest: { ...rest, ...patch } });
 
   const setDepthRange = (type: DungeonNodeType, patch: Partial<DepthRange>) => {
     const next = { minDepth: 1, maxDepth: null, ...gen.depthRanges[type], ...patch };
@@ -531,7 +599,11 @@ function DungeonZoneEditor({ zoneKey }: { zoneKey: string | undefined }) {
         </Card>
       )}
 
-      <Section title="Zone" testId="zone-fields">
+      <Section
+        title="Basics"
+        hint="What the zone is called and whether players can see it. Where it is open, its artwork and how its runs are generated are below."
+        testId="zone-fields"
+      >
         <div className="flex flex-wrap items-end gap-3">
           <label className="text-xs text-ink-muted">
             Key
@@ -593,38 +665,6 @@ function DungeonZoneEditor({ zoneKey }: { zoneKey: string | undefined }) {
             onChange={(e) => set({ description: e.target.value })}
           />
         </label>
-        <div className="grid gap-3 md:grid-cols-2">
-          <label className="text-xs text-ink-muted">
-            Artwork
-            <Input
-              aria-label="Artwork path"
-              placeholder={`dungeons/zones/${form.key || '<key>'}.webp`}
-              value={form.artworkPath ?? ''}
-              disabled={readOnly}
-              onChange={(e) =>
-                set({ artworkPath: e.target.value.trim() === '' ? null : e.target.value.trim() })
-              }
-            />
-          </label>
-          <label className="text-xs text-ink-muted">
-            Background artwork
-            <Input
-              aria-label="Background artwork path"
-              placeholder={`dungeons/backgrounds/${form.key || '<key>'}.webp`}
-              value={form.backgroundArtworkPath ?? ''}
-              disabled={readOnly}
-              onChange={(e) =>
-                set({
-                  backgroundArtworkPath:
-                    e.target.value.trim() === '' ? null : e.target.value.trim(),
-                })
-              }
-            />
-          </label>
-        </div>
-        <p className="text-xs text-ink-subtle">
-          Paths are relative to the assets folder. A zone can be saved before its artwork exists.
-        </p>
         <label className="block text-xs text-ink-muted">
           Tags (comma separated)
           <Input
@@ -638,21 +678,57 @@ function DungeonZoneEditor({ zoneKey }: { zoneKey: string | undefined }) {
           />
         </label>
         <Issues
-          issues={[
-            'key',
-            'name',
-            'description',
-            'order',
-            'tags',
-            'artworkPath',
-            'backgroundArtworkPath',
-          ].flatMap((p) => issuesAt(issues, p))}
+          issues={['key', 'name', 'description', 'order', 'tags'].flatMap((p) =>
+            issuesAt(issues, p),
+          )}
         />
       </Section>
 
       <Section
-        title="Run shape"
-        hint="How long a run is, how often it forks, and where a player may leave with what they carry."
+        title="Availability"
+        hint="The regions a player must be standing in to see this zone and start a run. A run already started is playable wherever they travel afterwards."
+        testId="zone-availability"
+      >
+        <RegionChecks
+          regions={reference?.regions ?? []}
+          value={form.availableRegions ?? []}
+          disabled={readOnly}
+          onChange={(availableRegions) => set({ availableRegions })}
+        />
+        <Issues issues={issuesAt(issues, 'availableRegions')} />
+      </Section>
+
+      <Section
+        title="Artwork"
+        hint="Shown on the Delve screens. A fight shows the enemy first; everything else falls back to the zone artwork, then the background, then text only."
+        testId="zone-artwork"
+      >
+        <div className="grid gap-4 md:grid-cols-2">
+          <ZoneArtworkField
+            label="Artwork"
+            testId="zone-artwork-main"
+            value={form.artworkPath}
+            expectedPath={zoneArtworkConvention(form.key)}
+            disabled={readOnly}
+            onChange={(artworkPath) => set({ artworkPath })}
+          />
+          <ZoneArtworkField
+            label="Background artwork"
+            testId="zone-artwork-background"
+            value={form.backgroundArtworkPath}
+            expectedPath={zoneBackgroundConvention(form.key)}
+            disabled={readOnly}
+            onChange={(backgroundArtworkPath) => set({ backgroundArtworkPath })}
+          />
+        </div>
+        <Issues
+          issues={['artworkPath', 'backgroundArtworkPath'].flatMap((p) => issuesAt(issues, p))}
+        />
+      </Section>
+
+      <Section
+        title="Layout"
+        hint="How long a generated run is, whether it ends on a boss, and how often it forks. Every run is generated fresh inside these limits."
         testId="zone-shape"
       >
         <div className="flex flex-wrap items-end gap-3">
@@ -715,6 +791,21 @@ function DungeonZoneEditor({ zoneKey }: { zoneKey: string | undefined }) {
             onChange={(maxLength) => setGen({ branching: { ...gen.branching, maxLength } })}
           />
         </div>
+        <Issues
+          issues={[
+            'generation.minNodes',
+            'generation.maxNodes',
+            'generation.branching',
+            'generation.boss',
+          ].flatMap((p) => issuesAt(issues, p))}
+        />
+      </Section>
+
+      <Section
+        title="Extraction"
+        hint="Where a player may leave with what they carry. A node offers extraction when it is deep enough and of a checked type — a Rest that also offers extraction and a bare Exit are both possible, and independent of the Rest rules below."
+        testId="zone-extraction"
+      >
         <div className="flex flex-wrap items-end gap-3">
           <NumberField
             label="Extraction from depth"
@@ -744,20 +835,88 @@ function DungeonZoneEditor({ zoneKey }: { zoneKey: string | undefined }) {
           readOnly={readOnly}
           onChange={(windows) => setGen({ extraction: { ...gen.extraction, windows } })}
         />
-        <Issues
-          issues={[
-            'generation.minNodes',
-            'generation.maxNodes',
-            'generation.branching',
-            'generation.extraction',
-            'generation.boss',
-          ].flatMap((p) => issuesAt(issues, p))}
-        />
+        <Issues issues={issuesAt(issues, 'generation.extraction')} />
       </Section>
 
       <Section
-        title="Node types"
-        hint="Weight is preference among the types that are legal at a slot. Depths and “no repeats” are legality — a weight never overrides them."
+        title="Rest & Recovery"
+        hint="How much a Rest heals, and where the generator places them. These are guardrails for every generated run, not a fixed map."
+        testId="zone-rest"
+      >
+        <div className="flex flex-wrap items-end gap-3">
+          <NumberField
+            label="Rest heals (% of max HP)"
+            step={0.01}
+            className="w-44"
+            value={basisPointsToPercent(form.nodeSettings?.rest.healBasisPoints ?? 3000)}
+            disabled={readOnly}
+            onChange={(percent) =>
+              set({ nodeSettings: { rest: { healBasisPoints: percentToBasisPoints(percent) } } })
+            }
+          />
+        </div>
+        <p className="text-xs text-ink-subtle">
+          A rest restores this share of the fighter’s max HP, never above max. Runs already in
+          progress keep the value they started with.
+        </p>
+        <div className="flex flex-wrap items-end gap-3">
+          <NumberField
+            label="Minimum Rest nodes"
+            className="w-36"
+            value={rest.minNodes}
+            disabled={readOnly}
+            onChange={(minNodes) => setRest({ minNodes })}
+          />
+          <OptionalNumberField
+            label="Maximum Rest nodes"
+            min={0}
+            value={rest.maxNodes}
+            disabled={readOnly}
+            onChange={(maxNodes) => setRest({ maxNodes })}
+          />
+          <NumberField
+            label="Earliest Rest depth"
+            min={1}
+            className="w-36"
+            value={rest.minDepth}
+            disabled={readOnly}
+            onChange={(minDepth) => setRest({ minDepth })}
+          />
+          <OptionalNumberField
+            label="Latest Rest depth"
+            value={rest.maxDepth}
+            disabled={readOnly}
+            onChange={(maxDepth) => setRest({ maxDepth })}
+          />
+        </div>
+        <p className="text-xs text-ink-subtle">
+          The minimum is guaranteed on the main path, where no branch can skip it. The maximum
+          counts every Rest in the run. Depth 1 is the first node.
+        </p>
+        <label className="flex items-start gap-2 text-sm text-ink">
+          <input
+            type="checkbox"
+            className="mt-1"
+            aria-label="Always Rest before final Boss"
+            checked={rest.beforeBoss}
+            disabled={readOnly}
+            onChange={(e) => setRest({ beforeBoss: e.target.checked })}
+          />
+          <span>
+            Always Rest Before Boss
+            <span className="block text-xs text-ink-muted">
+              Guarantees the final approach is Rest → Boss on every generated run. That depth is
+              kept off every branch, so no route can bypass it. It counts toward the minimum and
+              maximum above — it is not an extra Rest.
+            </span>
+          </span>
+        </label>
+        <Issues issues={['generation.rest', 'nodeSettings'].flatMap((p) => issuesAt(issues, p))} />
+      </Section>
+
+      <Section
+        title="Node types & weights"
+        hint="Weight is preference among the types that are legal at a slot. Depths and “no repeats” are legality — a weight never overrides them. Rest depths here and in Rest & Recovery both apply."
         testId="zone-node-types"
       >
         <div className="space-y-2">
@@ -818,129 +977,6 @@ function DungeonZoneEditor({ zoneKey }: { zoneKey: string | undefined }) {
             'generation.noConsecutive',
           ].flatMap((p) => issuesAt(issues, p))}
         />
-      </Section>
-
-      <Section
-        title="Hard constraints"
-        hint="Guarantees are counted on the main path only — a node on a fork can be walked around. Limits count the whole run."
-        testId="zone-constraints"
-      >
-        {gen.required.map((group, i) => (
-          <div key={i} className="flex flex-wrap items-end gap-3" data-testid="required-row">
-            <NumberField
-              label={`Guarantee ${i + 1}: at least`}
-              min={1}
-              className="w-28"
-              value={group.min}
-              disabled={readOnly}
-              onChange={(min) =>
-                setGen({ required: gen.required.map((g, j) => (j === i ? { ...g, min } : g)) })
-              }
-            />
-            <TypeChecks
-              label={`Guarantee ${i + 1} of`}
-              value={group.types}
-              disabled={readOnly}
-              onChange={(types) =>
-                setGen({ required: gen.required.map((g, j) => (j === i ? { ...g, types } : g)) })
-              }
-            />
-            {canWrite && (
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                aria-label={`Remove guarantee ${i + 1}`}
-                onClick={() => setGen({ required: gen.required.filter((_, j) => j !== i) })}
-              >
-                Remove
-              </Button>
-            )}
-            <Issues issues={issuesAt(issues, `generation.required[${i}]`)} />
-          </div>
-        ))}
-        {gen.limits.map((limit, i) => (
-          <div key={i} className="flex flex-wrap items-end gap-3" data-testid="limit-row">
-            <NumberField
-              label={`Limit ${i + 1}: at most`}
-              className="w-28"
-              value={limit.max}
-              disabled={readOnly}
-              onChange={(max) =>
-                setGen({ limits: gen.limits.map((l, j) => (j === i ? { ...l, max } : l)) })
-              }
-            />
-            <TypeChecks
-              label={`Limit ${i + 1} of`}
-              value={limit.types}
-              disabled={readOnly}
-              onChange={(types) =>
-                setGen({ limits: gen.limits.map((l, j) => (j === i ? { ...l, types } : l)) })
-              }
-            />
-            {canWrite && (
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                aria-label={`Remove limit ${i + 1}`}
-                onClick={() => setGen({ limits: gen.limits.filter((_, j) => j !== i) })}
-              >
-                Remove
-              </Button>
-            )}
-            <Issues issues={issuesAt(issues, `generation.limits[${i}]`)} />
-          </div>
-        ))}
-        {canWrite && (
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() => setGen({ required: [...gen.required, { types: ['rest'], min: 1 }] })}
-            >
-              Add guarantee
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() => setGen({ limits: [...gen.limits, { types: ['elite'], max: 1 }] })}
-            >
-              Add limit
-            </Button>
-          </div>
-        )}
-        <OptionalNumberField
-          label="Same enemy in a row, at most"
-          value={gen.maxConsecutiveSameEnemy}
-          disabled={readOnly}
-          onChange={(maxConsecutiveSameEnemy) => setGen({ maxConsecutiveSameEnemy })}
-        />
-        <Issues issues={issuesAt(issues, 'generation.maxConsecutiveSameEnemy')} />
-      </Section>
-
-      <Section
-        title="Node behaviour"
-        hint="What a node does when a player resolves it, apart from its rewards."
-        testId="zone-node-settings"
-      >
-        <NumberField
-          label="Rest heals (% of max HP)"
-          step={0.01}
-          className="w-44"
-          value={basisPointsToPercent(form.nodeSettings?.rest.healBasisPoints ?? 3000)}
-          disabled={readOnly}
-          onChange={(percent) =>
-            set({ nodeSettings: { rest: { healBasisPoints: percentToBasisPoints(percent) } } })
-          }
-        />
-        <p className="text-xs text-ink-subtle">
-          A rest restores this share of the fighter’s max HP, never above max. Runs already in
-          progress keep the value they started with.
-        </p>
-        <Issues issues={issuesAt(issues, 'nodeSettings')} />
       </Section>
 
       {DUNGEON_POOL_KEYS.map((pool) => (
@@ -1045,6 +1081,107 @@ function DungeonZoneEditor({ zoneKey }: { zoneKey: string | undefined }) {
         <Issues
           issues={['rewards.completion', 'rewards.extraction'].flatMap((p) => issuesAt(issues, p))}
         />
+      </Section>
+
+      <Section
+        title="Advanced rules"
+        hint="Extra guarantees and limits by node type — for example “at least one Cache or Event”. Guarantees are counted on the main path only (a node on a fork can be walked around); limits count the whole run. Rest counts belong in Rest & Recovery."
+        testId="zone-constraints"
+      >
+        {gen.required.map((group, i) => (
+          <div key={i} className="flex flex-wrap items-end gap-3" data-testid="required-row">
+            <NumberField
+              label={`Guarantee ${i + 1}: at least`}
+              min={1}
+              className="w-28"
+              value={group.min}
+              disabled={readOnly}
+              onChange={(min) =>
+                setGen({ required: gen.required.map((g, j) => (j === i ? { ...g, min } : g)) })
+              }
+            />
+            <TypeChecks
+              label={`Guarantee ${i + 1} of`}
+              value={group.types}
+              disabled={readOnly}
+              onChange={(types) =>
+                setGen({ required: gen.required.map((g, j) => (j === i ? { ...g, types } : g)) })
+              }
+            />
+            {canWrite && (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                aria-label={`Remove guarantee ${i + 1}`}
+                onClick={() => setGen({ required: gen.required.filter((_, j) => j !== i) })}
+              >
+                Remove
+              </Button>
+            )}
+            <Issues issues={issuesAt(issues, `generation.required[${i}]`)} />
+          </div>
+        ))}
+        {gen.limits.map((limit, i) => (
+          <div key={i} className="flex flex-wrap items-end gap-3" data-testid="limit-row">
+            <NumberField
+              label={`Limit ${i + 1}: at most`}
+              className="w-28"
+              value={limit.max}
+              disabled={readOnly}
+              onChange={(max) =>
+                setGen({ limits: gen.limits.map((l, j) => (j === i ? { ...l, max } : l)) })
+              }
+            />
+            <TypeChecks
+              label={`Limit ${i + 1} of`}
+              value={limit.types}
+              disabled={readOnly}
+              onChange={(types) =>
+                setGen({ limits: gen.limits.map((l, j) => (j === i ? { ...l, types } : l)) })
+              }
+            />
+            {canWrite && (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                aria-label={`Remove limit ${i + 1}`}
+                onClick={() => setGen({ limits: gen.limits.filter((_, j) => j !== i) })}
+              >
+                Remove
+              </Button>
+            )}
+            <Issues issues={issuesAt(issues, `generation.limits[${i}]`)} />
+          </div>
+        ))}
+        {canWrite && (
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => setGen({ required: [...gen.required, { types: ['rest'], min: 1 }] })}
+            >
+              Add guarantee
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => setGen({ limits: [...gen.limits, { types: ['elite'], max: 1 }] })}
+            >
+              Add limit
+            </Button>
+          </div>
+        )}
+        <OptionalNumberField
+          label="Same enemy in a row, at most"
+          value={gen.maxConsecutiveSameEnemy}
+          disabled={readOnly}
+          onChange={(maxConsecutiveSameEnemy) => setGen({ maxConsecutiveSameEnemy })}
+        />
+        <Issues issues={issuesAt(issues, 'generation.maxConsecutiveSameEnemy')} />
       </Section>
 
       <Card className="space-y-3 p-4" data-testid="zone-save">

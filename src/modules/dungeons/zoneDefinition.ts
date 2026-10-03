@@ -93,6 +93,25 @@ export const DUNGEON_WEIGHT_MAX = 1_000_000;
 export const DUNGEON_CURRENCY_MAX = 1_000_000;
 export const BASIS_POINTS = 10_000;
 
+/**
+ * The asset folders the Admin artwork picker may browse for a zone. Zone art
+ * lives under `dungeons/zones/` and `dungeons/backgrounds/`.
+ */
+export const DUNGEON_ARTWORK_ROOTS = ['dungeons'] as const;
+
+/** A region id as the region catalogue writes it: kebab-case. */
+export const DUNGEON_REGION_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+export const DUNGEON_MAX_REGIONS = 50;
+
+/**
+ * Zone artwork: the shared authored-artwork rules (relative, no traversal, a
+ * supported image extension), plus one mistake worth naming — the value is
+ * relative to the assets root, so it never starts with `assets/`.
+ */
+const zoneArtworkPath = relativeArtworkPath.refine((p) => !/^assets\//i.test(p), {
+  message: 'is relative to the assets folder — drop the leading "assets/" (e.g. dungeons/zones/<key>.webp)',
+});
+
 /** The stable key of the currency dungeons pay unless a zone says otherwise. */
 export const DEFAULT_PROGRESSION_CURRENCY_KEY = 'ascension_currency';
 
@@ -252,6 +271,47 @@ export type DungeonNodeSettings = z.infer<typeof DungeonNodeSettingsSchema>;
 
 const typeList = z.array(nodeType).min(1).max(DUNGEON_NODE_TYPES.length);
 
+/**
+ * Where and how often Rest nodes appear — the Rest half of "Rest & Recovery"
+ * (how much one heals is `nodeSettings.rest`). Applied on top of the generic
+ * `depthRanges`, `required` and `limits`: a rest must satisfy both. Every
+ * default is "no rule", so a zone without this block generates exactly as it
+ * did before it existed.
+ *
+ *   - `minNodes` — at least this many rests on the **main path**, where no
+ *     route can skip them. `maxNodes` — at most this many in the whole run
+ *     (null: no limit).
+ *   - `minDepth` / `maxDepth` — the depths a rest may sit at.
+ *   - `beforeBoss` — the node immediately before the final boss is always a
+ *     rest. That depth is kept off every fork, so it is the one node every
+ *     route to the boss passes through. It is an ordinary rest in every other
+ *     respect: it counts toward `minNodes` and `maxNodes`, must lie inside the
+ *     depth range, and offers extraction if rests do.
+ *
+ * Whether a rest is also an extraction point is not decided here — that is
+ * `extraction.nodeTypes`. Rest and extraction are separate concepts.
+ */
+export const DungeonRestRulesSchema = z
+  .object({
+    minNodes: z.number().int().min(0).max(DUNGEON_MAX_NODES).default(0),
+    maxNodes: z.number().int().min(0).max(DUNGEON_MAX_NODES).nullable().default(null),
+    ...depthRangeShape,
+    beforeBoss: z.boolean().default(false),
+  })
+  .strict()
+  .superRefine((rest, ctx) => {
+    refineDepthRange(rest, ctx);
+    if (rest.maxNodes !== null && rest.minNodes > rest.maxNodes) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['minNodes'],
+        message: `minNodes ${rest.minNodes} is above maxNodes ${rest.maxNodes}`,
+      });
+    }
+  })
+  .default({});
+export type DungeonRestRules = z.infer<typeof DungeonRestRulesSchema>;
+
 export const DungeonGenerationSchema = z
   .object({
     /** Total nodes in a run, branch alternates included. */
@@ -320,6 +380,8 @@ export const DungeonGenerationSchema = z
      * node is. `false` — no boss; the final node is an `exit`.
      */
     boss: z.object({ required: z.boolean().default(true) }).strict().default({}),
+    /** Rest placement: how many, at which depths, and whether one always precedes the boss. */
+    rest: DungeonRestRulesSchema,
     /** The depths a type may appear at. A type with no entry may appear anywhere. */
     depthRanges: z
       .record(nodeType, z.object(depthRangeShape).strict().superRefine(refineDepthRange))
@@ -401,9 +463,21 @@ export const DungeonZoneDefinitionSchema = z
     /** List order, ascending. */
     order: z.number().int().min(0).max(100_000).default(0),
     /** Relative to the assets root, conventionally `dungeons/zones/<key>.webp`. */
-    artworkPath: relativeArtworkPath.nullable().default(null),
+    artworkPath: zoneArtworkPath.nullable().default(null),
     /** Conventionally `dungeons/backgrounds/<key>.webp`. */
-    backgroundArtworkPath: relativeArtworkPath.nullable().default(null),
+    backgroundArtworkPath: zoneArtworkPath.nullable().default(null),
+    /**
+     * The regions (stable ids, e.g. `flaccid-foothills`) a player must be
+     * standing in to see the zone and **start** a run. Nothing else reads it:
+     * an active run is playable wherever the player goes. An empty list is
+     * "available nowhere" — there is no global option — and validation refuses
+     * it on an enabled zone. Whether an id names a real region is checked
+     * against the region catalogue in `zoneValidation.ts`.
+     */
+    availableRegions: z
+      .array(z.string().min(1).max(64).regex(DUNGEON_REGION_ID_PATTERN, 'must be a region id like "waifu-valley"'))
+      .max(DUNGEON_MAX_REGIONS)
+      .default([]),
     tags,
     generation: DungeonGenerationSchema,
     /** Per-node-type behaviour, e.g. how much a rest heals. */
@@ -417,6 +491,15 @@ export const DungeonZoneDefinitionSchema = z
       duplicateIds(zone.pools[poolKey], ['pools', poolKey], 'pool entry', ctx);
     }
     duplicateIds(zone.rewards.bands, ['rewards', 'bands'], 'reward band', ctx);
+    zone.availableRegions.forEach((region, i) => {
+      if (zone.availableRegions.indexOf(region) !== i) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['availableRegions', i],
+          message: `duplicate region "${region}"`,
+        });
+      }
+    });
   });
 
 export type DungeonZoneDefinition = z.infer<typeof DungeonZoneDefinitionSchema>;
@@ -457,6 +540,19 @@ export function dungeonZoneHash(zone: unknown): string {
   return createHash('sha256').update(canonicalJson(parsed)).digest('hex');
 }
 
+/** A zone's rest rules. Zones snapshotted before they existed have none. */
+export function restRulesOf(gen: DungeonGeneration): DungeonRestRules {
+  return gen.rest ?? { minNodes: 0, maxNodes: null, minDepth: 1, maxDepth: null, beforeBoss: false };
+}
+
+/**
+ * Depths just before the final node that no fork may occupy: one when a rest
+ * must precede the boss (so every route passes through it), otherwise none.
+ */
+export function reservedTailDepths(gen: DungeonGeneration): number {
+  return restRulesOf(gen).beforeBoss && gen.boss.required ? 1 : 0;
+}
+
 /** True when `depth` falls inside an inclusive, possibly open-ended range. */
 export function depthInRange(
   depthValue: number,
@@ -490,6 +586,7 @@ export function rewardBandFor(
  */
 export function possibleFinalDepths(gen: DungeonGeneration): { min: number; max: number } {
   const { minBranches, maxBranches, maxLength } = gen.branching;
+  const reserved = reservedTailDepths(gen);
   let min = Number.POSITIVE_INFINITY;
   let max = 0;
   for (let total = gen.minNodes; total <= gen.maxNodes; total++) {
@@ -497,7 +594,7 @@ export function possibleFinalDepths(gen: DungeonGeneration): { min: number; max:
       for (let alternates = branches; alternates <= branches * maxLength; alternates++) {
         const depthCount = total - alternates;
         const interiorNeeded = alternates + Math.max(0, branches - 1);
-        if (depthCount < 2 || depthCount - 2 < interiorNeeded) continue;
+        if (depthCount < 2 + reserved || depthCount - 2 - reserved < interiorNeeded) continue;
         min = Math.min(min, depthCount);
         max = Math.max(max, depthCount);
       }

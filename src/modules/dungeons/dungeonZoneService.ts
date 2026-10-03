@@ -36,8 +36,10 @@ import {
 import { simulateDungeonGeneration, type DungeonSimulationReport } from './dungeonSimulation';
 import {
   dungeonCatalogueFromContent,
+  dungeonRegionsFromContent,
   parseDungeonZoneRow,
   readDungeonZoneRow,
+  type DungeonRegionRef,
   type ShippedDungeonZone,
 } from './dungeonZoneStore';
 import type { DungeonEventDefinition } from './eventDefinitions';
@@ -48,6 +50,8 @@ import {
   DUNGEON_ZONE_FILE_VERSION,
   DungeonZoneDefinitionSchema,
   dungeonZoneHash,
+  restRulesOf,
+  type DungeonNodeType,
   type DungeonZoneDefinition,
 } from './zoneDefinition';
 import {
@@ -79,6 +83,8 @@ export interface DungeonZoneSummary {
   poolCount: number;
   poolEntryCount: number;
   rewardBandCount: number;
+  /** Region ids the zone can be started in. */
+  availableRegions: string[];
   revision: number;
   origin: DungeonZoneOrigin;
   /** Whether the row equals this build's shipped zone; null when none ships. */
@@ -99,6 +105,27 @@ export interface DungeonReferenceData {
   events: { key: string; name: string; enabled: boolean; tags: string[] }[];
   rewardTables: { id: string; enabled: boolean }[];
   currencies: { key: string; singularName: string; pluralName: string; enabled: boolean }[];
+  /** The region catalogue, in its authored order. */
+  regions: DungeonRegionRef[];
+}
+
+/**
+ * What a generated graph did with the zone's structural rules — computed from
+ * the graph, never assumed from the zone, so the preview shows what happened.
+ */
+export interface DungeonPreviewStructure {
+  availableRegions: { id: string; name: string | null }[];
+  artworkPath: string | null;
+  backgroundArtworkPath: string | null;
+  restNodes: { id: string; depth: number; extraction: boolean }[];
+  extractionNodes: { id: string; depth: number; type: DungeonNodeType }[];
+  bossNodeId: string | null;
+  restBeforeBoss: {
+    /** Whether the zone asks for it. */
+    required: boolean;
+    /** Whether the node before the final one is a single rest no route can skip. */
+    satisfied: boolean;
+  };
 }
 
 /** Either a saved zone by key, or an unsaved draft. */
@@ -110,6 +137,7 @@ export interface DungeonPreview {
   graph: DungeonGraph;
   /** Display names for the content the graph selected. */
   names: { enemies: Record<string, string>; events: Record<string, string> };
+  structure: DungeonPreviewStructure;
 }
 
 export interface DungeonZoneExport {
@@ -148,6 +176,8 @@ export interface DungeonZoneService {
 export interface DungeonContentSource {
   combatEnemies?: readonly CombatEnemyDefinition[] | undefined;
   dungeonEvents?: readonly DungeonEventDefinition[] | undefined;
+  /** Region content. Absent or empty falls back to the closed set of region ids. */
+  regions?: readonly { id: string; name: string; enabled: boolean; order?: number }[] | undefined;
 }
 
 export interface DungeonZoneServiceDeps {
@@ -181,6 +211,7 @@ export function randomDungeonSeed(): number {
 export async function loadDungeonValidationContext(
   tx: DbOrTx,
   catalogue: DungeonContentCatalogue,
+  regions: readonly DungeonRegionRef[],
 ): Promise<DungeonZoneValidationContext> {
   const tables = await tx
     .select({ id: rewardTables.tableId, enabled: rewardTables.enabled })
@@ -193,12 +224,20 @@ export async function loadDungeonValidationContext(
     catalogue,
     rewardTables: new Map(tables.map((t) => [t.id, { enabled: t.enabled }])),
     currencies: new Map(currencies.map((c) => [c.key, { enabled: c.enabled }])),
+    regions: new Map(regions.map((r) => [r.id, { name: r.name, enabled: r.enabled }])),
   };
+}
+
+/** Whether the node before the final one is a single rest that no route can skip. */
+export function restPrecedesFinalNode(graph: DungeonGraph): boolean {
+  const before = graph.nodes.filter((n) => n.depth === graph.depthCount - 1);
+  return before.length === 1 && before[0]!.type === 'rest';
 }
 
 export function createDungeonZoneService(deps: DungeonZoneServiceDeps): DungeonZoneService {
   const { db } = deps;
   const catalogue = () => dungeonCatalogueFromContent(deps.getContent());
+  const regions = () => dungeonRegionsFromContent(deps.getContent());
   const shippedFor = (key: string) => deps.getShipped().find((z) => z.key === key);
 
   function originOf(row: DungeonZoneRow): DungeonZoneOrigin {
@@ -219,6 +258,7 @@ export function createDungeonZoneService(deps: DungeonZoneServiceDeps): DungeonZ
       poolCount: DUNGEON_POOL_KEYS.filter((p) => zone.pools[p].length > 0).length,
       poolEntryCount: DUNGEON_POOL_KEYS.reduce((n, p) => n + zone.pools[p].length, 0),
       rewardBandCount: zone.rewards.bands.length,
+      availableRegions: zone.availableRegions,
       revision: row.revision,
       origin: originOf(row),
       matchesShipped: shipped ? shipped.hash === row.contentHash : null,
@@ -229,13 +269,13 @@ export function createDungeonZoneService(deps: DungeonZoneServiceDeps): DungeonZ
 
   async function detailOf(tx: DbOrTx, row: DungeonZoneRow): Promise<DungeonZoneDetail> {
     const zone = parseDungeonZoneRow(row);
-    const ctx = await loadDungeonValidationContext(tx, catalogue());
+    const ctx = await loadDungeonValidationContext(tx, catalogue(), regions());
     return { ...summaryOf(row, zone), zone, issues: validateDungeonZone(zone, ctx).issues };
   }
 
   /** Validate for a write and return the parsed zone, or throw with every issue. */
   async function assertWritable(tx: DbOrTx, key: string, input: unknown): Promise<DungeonZoneDefinition> {
-    const ctx = await loadDungeonValidationContext(tx, catalogue());
+    const ctx = await loadDungeonValidationContext(tx, catalogue(), regions());
     const { zone, issues } = validateDungeonZone(input, ctx);
     if (zone && zone.key !== key) {
       issues.unshift({ path: 'key', message: `the zone key is "${key}" and cannot be changed`, severity: 'error' });
@@ -335,11 +375,12 @@ export function createDungeonZoneService(deps: DungeonZoneServiceDeps): DungeonZ
           pluralName: c.pluralName,
           enabled: c.enabled,
         })),
+        regions: regions(),
       };
     },
 
     async validate(input, key) {
-      const ctx = await loadDungeonValidationContext(db, catalogue());
+      const ctx = await loadDungeonValidationContext(db, catalogue(), regions());
       const { zone, issues } = validateDungeonZone(input, ctx);
       if (key && zone && zone.key !== key) {
         issues.unshift({ path: 'key', message: `the zone key is "${key}" and cannot be changed`, severity: 'error' });
@@ -418,7 +459,17 @@ export function createDungeonZoneService(deps: DungeonZoneServiceDeps): DungeonZ
         const into = node.content.kind === 'enemy' ? names.enemies : names.events;
         into[node.content.key] = from.get(node.content.key)?.name ?? node.content.key;
       }
-      return { zoneKey: zone.key, seed: chosen, graph, names };
+      const regionNames = new Map(regions().map((r) => [r.id, r.name]));
+      const structure: DungeonPreviewStructure = {
+        availableRegions: zone.availableRegions.map((id) => ({ id, name: regionNames.get(id) ?? null })),
+        artworkPath: zone.artworkPath,
+        backgroundArtworkPath: zone.backgroundArtworkPath,
+        restNodes: graph.nodes.filter((n) => n.type === 'rest').map((n) => ({ id: n.id, depth: n.depth, extraction: n.extraction })),
+        extractionNodes: graph.nodes.filter((n) => n.extraction).map((n) => ({ id: n.id, depth: n.depth, type: n.type })),
+        bossNodeId: graph.nodes.find((n) => n.boss)?.id ?? null,
+        restBeforeBoss: { required: restRulesOf(zone.generation).beforeBoss, satisfied: restPrecedesFinalNode(graph) },
+      };
+      return { zoneKey: zone.key, seed: chosen, graph, names, structure };
     },
 
     async simulate(target, options) {

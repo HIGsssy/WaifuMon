@@ -6,8 +6,10 @@
  * and authoritative from then on (see `modules/dungeons`). These routes edit
  * them:
  *
- *   - `dungeons.read`  — list, get, reference data, validate (dry run),
- *     preview, simulate, export, the currency list and the Delve settings.
+ *   - `dungeons.read`  — list, get, reference data (regions included),
+ *     validate (dry run), preview, simulate, export, the currency list, the
+ *     Delve settings, and the artwork picker (bytes, browse, search — rooted
+ *     at `dungeons/`, never the whole assets tree).
  *   - `dungeons.write` — create, update, enable/disable, the currency's
  *     display metadata, and the Delve settings (the shared daily run limit).
  *
@@ -31,6 +33,16 @@ import { commonErrorResponses, errorSchema, notFoundResponse } from '../../../sc
 import { requirePortalPermission } from '../../../plugins/portalPermissions';
 import { ApiErrorWithDetails } from '../../../errors';
 import {
+  adminArtworkBrowseQuery,
+  adminArtworkQuery,
+  adminArtworkSearchQuery,
+  artworkDirectorySchema,
+  artworkSearchSchema,
+  browseAdminArtwork,
+  searchAdminArtwork,
+  sendAdminArtwork,
+} from '../../../adminArtwork';
+import {
   AppError,
   DungeonGenerationError,
   DungeonZoneInvalidError,
@@ -50,7 +62,11 @@ import type {
   DungeonZoneSummary,
   DungeonZoneTarget,
 } from '../../../../modules/dungeons/dungeonZoneService';
-import { DUNGEON_KEY_PATTERN, DUNGEON_NODE_TYPES } from '../../../../modules/dungeons/zoneDefinition';
+import {
+  DUNGEON_ARTWORK_ROOTS,
+  DUNGEON_KEY_PATTERN,
+  DUNGEON_NODE_TYPES,
+} from '../../../../modules/dungeons/zoneDefinition';
 import type {
   ProgressionCurrency,
   ProgressionCurrencyService,
@@ -79,6 +95,7 @@ const summarySchema = z.object({
   poolCount: z.number().int(),
   poolEntryCount: z.number().int(),
   rewardBandCount: z.number().int(),
+  availableRegions: z.array(z.string()),
   revision: z.number().int(),
   origin: z.enum(['shipped', 'edited', 'custom']),
   matchesShipped: z.boolean().nullable(),
@@ -156,6 +173,16 @@ const previewSchema = z.object({
   seed: z.number().int(),
   graph: graphSchema,
   names: z.object({ enemies: z.record(z.string(), z.string()), events: z.record(z.string(), z.string()) }),
+  /** What this graph did with the zone's structural rules, read off the graph. */
+  structure: z.object({
+    availableRegions: z.array(z.object({ id: z.string(), name: z.string().nullable() })),
+    artworkPath: z.string().nullable(),
+    backgroundArtworkPath: z.string().nullable(),
+    restNodes: z.array(z.object({ id: z.string(), depth: z.number().int(), extraction: z.boolean() })),
+    extractionNodes: z.array(z.object({ id: z.string(), depth: z.number().int(), type: nodeTypeSchema })),
+    bossNodeId: z.string().nullable(),
+    restBeforeBoss: z.object({ required: z.boolean(), satisfied: z.boolean() }),
+  }),
 });
 
 const perType = z.record(nodeTypeSchema, z.number());
@@ -188,6 +215,9 @@ const simulationSchema = z.object({
   restRate: z.number(),
   extractionRate: z.number(),
   averageExtractionPoints: z.number(),
+  restCountDistribution: z.record(z.string(), z.number().int()),
+  extractionCountDistribution: z.record(z.string(), z.number().int()),
+  restBeforeBossRate: z.number(),
   enemies: z.array(appearanceSchema),
   events: z.array(appearanceSchema),
 });
@@ -315,7 +345,7 @@ export const adminDungeonRoutes =
         preValidation: gate('dungeons.read'),
         schema: {
           tags,
-          summary: 'Enemies, events, reward tables and currencies the zone editor offers',
+          summary: 'Enemies, events, reward tables, currencies and regions the zone editor offers',
           response: {
             200: dataSchema(
               z.object({
@@ -331,6 +361,7 @@ export const adminDungeonRoutes =
                     enabled: z.boolean(),
                   }),
                 ),
+                regions: z.array(z.object({ id: z.string(), name: z.string(), enabled: z.boolean() })),
               }),
             ),
             ...commonErrorResponses,
@@ -522,6 +553,55 @@ export const adminDungeonRoutes =
         if (!detail) throw zoneNotFound(req.params.key);
         return ok(req, toDetail(detail));
       },
+    );
+
+    /**
+     * Zone artwork for the editor: the bytes of one authored path, and the
+     * picker (one folder at a time, and a bounded search). Read-only and
+     * rooted at {@link DUNGEON_ARTWORK_ROOTS}, so `dungeons.read` never lists
+     * the rest of the assets tree. A path that is unsafe is 400; a well-formed
+     * path with no file is 404 — which is what a typo looks like.
+     */
+    const assetsDir = ctx.assetsDir ?? './assets';
+    app.get(
+      '/admin/dungeons/artwork',
+      {
+        preValidation: gate('dungeons.read'),
+        schema: {
+          tags,
+          summary: 'Stream zone artwork for the editor preview',
+          querystring: adminArtworkQuery,
+          response: { ...notFoundResponse, ...commonErrorResponses },
+        },
+      },
+      async (req, reply) => sendAdminArtwork(reply, assetsDir, req.query.path),
+    );
+    app.get(
+      '/admin/dungeons/artwork/browse',
+      {
+        preValidation: gate('dungeons.read'),
+        schema: {
+          tags,
+          summary: 'List one folder of dungeon artwork for the picker',
+          querystring: adminArtworkBrowseQuery,
+          response: { 200: dataSchema(artworkDirectorySchema), ...notFoundResponse, ...commonErrorResponses },
+        },
+      },
+      async (req) => ok(req, await browseAdminArtwork(assetsDir, DUNGEON_ARTWORK_ROOTS, req.query.path)),
+    );
+    app.get(
+      '/admin/dungeons/artwork/search',
+      {
+        preValidation: gate('dungeons.read'),
+        schema: {
+          tags,
+          summary: 'Search dungeon artwork by file name or folder',
+          querystring: adminArtworkSearchQuery,
+          response: { 200: dataSchema(artworkSearchSchema), ...commonErrorResponses },
+        },
+      },
+      async (req) =>
+        ok(req, await searchAdminArtwork(assetsDir, DUNGEON_ARTWORK_ROOTS, req.query.q, req.query.limit)),
     );
 
     // Delve-wide settings. Registered only where the allowance service is wired.

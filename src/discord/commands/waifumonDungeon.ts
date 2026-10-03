@@ -123,7 +123,11 @@ async function runScreen(ctx: AppContext, playerId: number, view: DungeonRunView
 
 async function homeScreen(ctx: AppContext, service: DungeonPlayService, playerId: number, status?: string | null) {
   const view = await service.home(playerId);
-  const art = view.activeRun ? await runArt(ctx, playerId, view.activeRun) : {};
+  // With a run: the run's own scene. Without: the first listed zone that has
+  // artwork deployed — its zone art, else its background, else text only.
+  const art = view.activeRun
+    ? await runArt(ctx, playerId, view.activeRun)
+    : { scene: dungeonSceneArtwork(ctx, view.zones.flatMap((z) => [z.artworkPath, z.backgroundArtworkPath])) };
   return buildDungeonHome(view, options(ctx, art, status));
 }
 
@@ -190,7 +194,10 @@ async function run(
         if (!(err instanceof DungeonZoneUnavailableError)) {
           ctx.logger.error({ err, tag: 'dungeons/start-failed', playerId: prov.playerId }, 'dungeon run could not be generated');
         }
-        await respondEphemeral(interaction, await homeScreen(ctx, service, prov.playerId, ZONE_UNAVAILABLE));
+        // Not startable from here: say where "here" is, over the zones that are.
+        const notice =
+          err instanceof DungeonZoneUnavailableError && err.reason === 'region' ? err.userMessage : ZONE_UNAVAILABLE;
+        await respondEphemeral(interaction, await homeScreen(ctx, service, prov.playerId, notice));
         return;
       }
       if (err instanceof DungeonRunNotFoundError) {

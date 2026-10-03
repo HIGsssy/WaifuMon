@@ -9,6 +9,9 @@
  * Driven with the bearer token under `adminBearer: true`, like
  * `adminRewardTables.test.ts`; permission is checked with a non-owner session.
  */
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createPlatformApiServer } from '../../../src/api/server';
 import type { ZodFastify } from '../../../src/api/plugins/typeProvider';
@@ -36,6 +39,18 @@ const CURRENCY = 'ascension_currency';
 let t: TestDb;
 let app: App;
 let api: ZodFastify;
+/** A small assets tree: one deployed zone image, and a file in another area's folder. */
+const assetsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'dg-admin-assets-'));
+const assetsDir = path.join(assetsRoot, 'assets');
+for (const [file, bytes] of [
+  ['dungeons/zones/deployed.webp', 'webp-bytes'],
+  ['dungeons/backgrounds/.keep', ''],
+  ['results/secret.webp', 'not for this picker'],
+] as const) {
+  fs.mkdirSync(path.join(assetsDir, path.dirname(file)), { recursive: true });
+  fs.writeFileSync(path.join(assetsDir, file), bytes);
+}
+fs.writeFileSync(path.join(assetsRoot, 'outside.webp'), 'outside the assets root');
 
 beforeAll(async () => {
   t = await createTestDb();
@@ -93,6 +108,7 @@ beforeAll(async () => {
       authorization: portalAuthorization,
     },
     ctx: {
+      assetsDir,
       services: { ...app, dungeonZones, progressionCurrency, dungeonAllowance },
       getContent: () => app.content,
       portalAuthorization,
@@ -102,6 +118,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  fs.rmSync(assetsRoot, { recursive: true, force: true });
   await api?.close();
   await t.cleanup();
 });
@@ -142,6 +159,15 @@ const draft = async (key: string, mutate: (zone: Zone) => void = () => {}) => {
   zone.order = 50;
   mutate(zone);
   return zone;
+};
+
+/** Create is refused with 400, nothing is stored; returns the error paths. */
+const rejected = async (key: string, mutate: (zone: Zone) => void) => {
+  const res = await call('POST', '/admin/dungeons/zones', { zone: await draft(key, mutate) });
+  expect(res.statusCode, key).toBe(400);
+  expect(errorOf(res).code).toBe('DUNGEON_ZONE_INVALID');
+  expect((await call('GET', `/admin/dungeons/zones/${key}`)).statusCode).toBe(404);
+  return errorPaths(res);
 };
 
 describe('permissions', () => {
@@ -317,14 +343,6 @@ describe('create, edit, disable', () => {
 });
 
 describe('validation', () => {
-  const rejected = async (key: string, mutate: (zone: Zone) => void) => {
-    const res = await call('POST', '/admin/dungeons/zones', { zone: await draft(key, mutate) });
-    expect(res.statusCode, key).toBe(400);
-    expect(errorOf(res).code).toBe('DUNGEON_ZONE_INVALID');
-    expect((await call('GET', `/admin/dungeons/zones/${key}`)).statusCode).toBe(404);
-    return errorPaths(res);
-  };
-
   it('rejects minNodes above maxNodes', async () => {
     expect(await rejected('bad_nodes', (z) => (z.generation.minNodes = 12))).toContain('generation.minNodes');
   });
@@ -357,7 +375,7 @@ describe('validation', () => {
   it('rejects a required node type with no eligible pool', async () => {
     expect(
       await rejected('no_miniboss', (z) => z.generation.required.push({ types: ['miniboss'], min: 1 })),
-    ).toContain('generation.required[2]');
+    ).toContain('generation.required[1]');
   });
 
   it('rejects an extraction depth outside the run', async () => {
@@ -542,13 +560,174 @@ describe('progression currency', () => {
   });
 });
 
+describe('regions', () => {
+  it('offers the region catalogue as reference data: stable ids and display names', async () => {
+    const ref = data<{ regions: { id: string; name: string; enabled: boolean }[] }>(await call('GET', '/admin/dungeons/reference'));
+    expect(ref.regions.map((r) => r.id)).toEqual(expect.arrayContaining(['waifu-valley', 'flaccid-foothills', 'thirstlands']));
+    expect(ref.regions.find((r) => r.id === 'flaccid-foothills')).toEqual({ id: 'flaccid-foothills', name: 'Flaccid Foothills', enabled: true });
+  });
+
+  it('ships Scrapheap in Flaccid Foothills, on the list and in the document', async () => {
+    const zone = await getZone();
+    expect(zone.zone.availableRegions).toEqual(['flaccid-foothills']);
+    const list = data<{ zones: { key: string; availableRegions: string[] }[] }>(await call('GET', '/admin/dungeons/zones'));
+    expect(list.zones.find((z) => z.key === ZONE)!.availableRegions).toEqual(['flaccid-foothills']);
+  });
+
+  it('saves several regions and returns them', async () => {
+    const zone = await draft('multi_region', (z) => (z.availableRegions = ['waifu-valley', 'flaccid-foothills', 'thirstlands']));
+    const created = await call('POST', '/admin/dungeons/zones', { zone });
+    expect(created.statusCode).toBe(200);
+    expect(data<Detail>(created).zone.availableRegions).toEqual(['waifu-valley', 'flaccid-foothills', 'thirstlands']);
+  });
+
+  it('refuses an unknown region, a duplicate and an enabled zone with none, by path', async () => {
+    expect(await rejected('region_unknown', (z) => (z.availableRegions = ['flaccid-foothills', 'sunken-mall']))).toEqual(['availableRegions[1]']);
+    expect(await rejected('region_duplicate', (z) => (z.availableRegions = ['thirstlands', 'thirstlands']))).toEqual(['availableRegions[1]']);
+    expect(await rejected('region_none', (z) => (z.availableRegions = []))).toEqual(['availableRegions']);
+    // A disabled draft with none saves, with a warning.
+    const zone = await draft('region_none_draft', (z) => Object.assign(z, { availableRegions: [], enabled: false }));
+    const res = await call('POST', '/admin/dungeons/zones', { zone });
+    expect(res.statusCode).toBe(200);
+    expect(data<Detail>(res).issues).toContainEqual(expect.objectContaining({ path: 'availableRegions', severity: 'warning' }));
+  });
+});
+
+describe('rest rules', () => {
+  it('ships Scrapheap with its rest rules, and saves an edit to them', async () => {
+    const current = await getZone();
+    expect(current.zone.generation.rest).toEqual({ minNodes: 1, maxNodes: 2, minDepth: 2, maxDepth: null, beforeBoss: true });
+    const zone = await draft('rest_edit', (z) => (z.generation.rest = { minNodes: 1, maxNodes: 1, minDepth: 3, maxDepth: null, beforeBoss: true }));
+    const res = await call('POST', '/admin/dungeons/zones', { zone });
+    expect(res.statusCode).toBe(200);
+    expect(data<Detail>(res).zone.generation.rest).toEqual({ minNodes: 1, maxNodes: 1, minDepth: 3, maxDepth: null, beforeBoss: true });
+  });
+
+  it('refuses impossible rest rules with a path the editor can show them at', async () => {
+    expect(await rejected('rest_min_max', (z) => Object.assign(z.generation.rest, { minNodes: 3, maxNodes: 2 }))).toEqual(['generation.rest.minNodes']);
+    expect(await rejected('rest_depths', (z) => Object.assign(z.generation.rest, { minDepth: 6, maxDepth: 3 }))).toContain('generation.rest.maxDepth');
+    expect(await rejected('rest_no_boss', (z) => (z.generation.boss.required = false))).toContain('generation.rest.beforeBoss');
+    expect(await rejected('rest_none_allowed', (z) => Object.assign(z.generation.rest, { minNodes: 0, maxNodes: 0 }))).toContain('generation.rest.maxNodes');
+    // Runs end at depth 5–9, so the rest before the boss sits at 4–8: a latest depth of 6 excludes 7 and 8.
+    const res = await call('POST', '/admin/dungeons/validate', { zone: await draft('rest_range', (z) => (z.generation.rest.maxDepth = 6)) });
+    const issue = data<{ issues: { path: string; message: string; severity: string }[] }>(res).issues.find((i) => i.path === 'generation.rest.beforeBoss')!;
+    expect(issue).toMatchObject({ severity: 'error' });
+    expect(issue.message).toMatch(/sits at depth 4–8; the rest depth range excludes depth 7, 8/);
+  });
+});
+
+describe('zone artwork', () => {
+  it('refuses unsafe artwork paths on both fields, and a leading assets/', async () => {
+    for (const bad of ['../secrets.webp', '/etc/passwd.webp', 'dungeons/zones/x.exe', 'https://example.com/x.webp', 'assets/dungeons/zones/x.webp']) {
+      expect(await rejected('art_bad_main', (z) => (z.artworkPath = bad)), bad).toEqual(['artworkPath']);
+      expect(await rejected('art_bad_bg', (z) => (z.backgroundArtworkPath = bad)), bad).toEqual(['backgroundArtworkPath']);
+    }
+  });
+
+  it('saves the conventional paths whether or not the files exist yet', async () => {
+    const zone = await draft('art_ok', (z) => {
+      z.artworkPath = 'dungeons/zones/art_ok.webp';
+      z.backgroundArtworkPath = 'dungeons/backgrounds/art_ok.webp';
+    });
+    const res = await call('POST', '/admin/dungeons/zones', { zone });
+    expect(res.statusCode).toBe(200);
+    expect(data<Detail>(res).zone).toMatchObject({ artworkPath: 'dungeons/zones/art_ok.webp', backgroundArtworkPath: 'dungeons/backgrounds/art_ok.webp' });
+  });
+
+  it('serves the bytes of a deployed file, 404s a missing one and 400s an unsafe path', async () => {
+    const ok = await call('GET', '/admin/dungeons/artwork?path=dungeons/zones/deployed.webp');
+    expect(ok.statusCode).toBe(200);
+    expect(ok.headers['content-type']).toBe('image/webp');
+    expect(ok.body).toBe('webp-bytes');
+    expect((await call('GET', '/admin/dungeons/artwork?path=dungeons/zones/not_there.webp')).statusCode).toBe(404);
+    expect((await call('GET', `/admin/dungeons/artwork?path=${encodeURIComponent('../outside.webp')}`)).statusCode).toBe(400);
+    expect((await call('GET', '/admin/dungeons/artwork?path=dungeons/zones/deployed.exe')).statusCode).toBe(400);
+    expect((await call('GET', '/admin/dungeons/artwork')).statusCode).toBe(400);
+  });
+
+  it('browses and searches the dungeon folders only — never the rest of the assets tree', async () => {
+    interface Listing { path: string; directories: { path: string }[]; files: { path: string }[] }
+    const top = data<Listing>(await call('GET', '/admin/dungeons/artwork/browse'));
+    expect(top.path).toBe('dungeons');
+    expect(top.directories.map((d) => d.path).sort()).toEqual(['dungeons/backgrounds', 'dungeons/zones']);
+    const zonesFolder = data<Listing>(await call('GET', '/admin/dungeons/artwork/browse?path=dungeons/zones'));
+    expect(zonesFolder.files.map((f) => f.path)).toEqual(['dungeons/zones/deployed.webp']);
+    // Another area's folder is not this picker's to list.
+    expect((await call('GET', '/admin/dungeons/artwork/browse?path=results')).statusCode).toBe(400);
+    expect((await call('GET', `/admin/dungeons/artwork/browse?path=${encodeURIComponent('dungeons/../results')}`)).statusCode).toBe(400);
+    const found = data<{ results: { path: string }[] }>(await call('GET', '/admin/dungeons/artwork/search?q=deployed'));
+    expect(found.results.map((r) => r.path)).toEqual(['dungeons/zones/deployed.webp']);
+    expect(data<{ results: unknown[] }>(await call('GET', '/admin/dungeons/artwork/search?q=secret')).results).toEqual([]);
+  });
+
+  it('gates the artwork routes behind dungeons.read', async () => {
+    const cookies = { wm_portal_session: NON_OWNER_TOKEN, wm_portal_csrf: 'csrf-token' };
+    for (const url of ['/admin/dungeons/artwork?path=dungeons/zones/deployed.webp', '/admin/dungeons/artwork/browse', '/admin/dungeons/artwork/search?q=x']) {
+      expect((await api.inject({ method: 'GET', url: `/api/v1${url}` })).statusCode, url).toBe(401);
+      expect((await api.inject({ method: 'GET', url: `/api/v1${url}`, cookies })).statusCode, url).toBe(403);
+    }
+  });
+});
+
 describe('generation preview', () => {
   interface Preview {
     zoneKey: string;
     seed: number;
     graph: { nodes: { id: string; type: string; depth: number; boss: boolean; extraction: boolean; content: { key: string } | null }[]; edges: unknown[] };
     names: { enemies: Record<string, string>; events: Record<string, string> };
+    structure: {
+      availableRegions: { id: string; name: string | null }[];
+      artworkPath: string | null;
+      backgroundArtworkPath: string | null;
+      restNodes: { id: string; depth: number; extraction: boolean }[];
+      extractionNodes: { id: string; depth: number; type: string }[];
+      bossNodeId: string | null;
+      restBeforeBoss: { required: boolean; satisfied: boolean };
+    };
   }
+
+  it('reports what each generated run did with the structural rules — Rest → Boss holds on every seed', async () => {
+    for (let seed = 1; seed <= 60; seed++) {
+      const preview = data<Preview>(await call('POST', '/admin/dungeons/preview', { key: ZONE, seed }));
+      const { nodes } = preview.graph;
+      const boss = nodes.find((n) => n.boss)!;
+      const { structure } = preview;
+      expect(structure.availableRegions).toEqual([{ id: 'flaccid-foothills', name: 'Flaccid Foothills' }]);
+      expect(structure.artworkPath).toBe('dungeons/zones/scrapheap_gauntlet.webp');
+      expect(structure.bossNodeId).toBe(boss.id);
+      expect(structure.restBeforeBoss, `seed ${seed}`).toEqual({ required: true, satisfied: true });
+      // Read off the graph, not assumed: the lists match the nodes.
+      expect(structure.restNodes.map((n) => n.id)).toEqual(nodes.filter((n) => n.type === 'rest').map((n) => n.id));
+      expect(structure.extractionNodes.map((n) => n.id)).toEqual(nodes.filter((n) => n.extraction).map((n) => n.id));
+      expect(nodes.filter((n) => n.depth === boss.depth - 1).map((n) => n.type)).toEqual(['rest']);
+    }
+  });
+
+  it('previews a draft with the rule switched off as not required, and with regions it does not know as unnamed', async () => {
+    const zone = await draft('preview_off', (z) => {
+      z.generation.rest.beforeBoss = false;
+      z.availableRegions = ['thirstlands'];
+    });
+    const preview = data<Preview>(await call('POST', '/admin/dungeons/preview', { zone, seed: 3 }));
+    expect(preview.structure.restBeforeBoss.required).toBe(false);
+    expect(preview.structure.availableRegions).toEqual([{ id: 'thirstlands', name: 'Thirstlands' }]);
+  });
+
+  it('simulates 1,000 runs and reports rest and extraction spread and the Rest → Boss rate', async () => {
+    const report = data<{
+      invalid: number;
+      valid: number;
+      restBeforeBossRate: number;
+      restCountDistribution: Record<string, number>;
+      extractionCountDistribution: Record<string, number>;
+      branchRate: number;
+    }>(await call('POST', '/admin/dungeons/simulate', { key: ZONE, runs: 1000, firstSeed: 1 }));
+    expect(report).toMatchObject({ invalid: 0, valid: 1000, restBeforeBossRate: 1 });
+    expect(Object.keys(report.restCountDistribution).sort()).toEqual(['1', '2']);
+    expect(Object.values(report.restCountDistribution).reduce((a, b) => a + b, 0)).toBe(1000);
+    expect(Object.values(report.extractionCountDistribution).reduce((a, b) => a + b, 0)).toBe(1000);
+    expect(report.extractionCountDistribution['0']).toBeUndefined();
+  });
 
   it('reproduces the same graph from an explicit seed', async () => {
     const a = data<Preview>(await call('POST', '/admin/dungeons/preview', { key: ZONE, seed: 2026 }));

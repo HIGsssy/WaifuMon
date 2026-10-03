@@ -9,7 +9,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { AttachmentBuilder } from 'discord.js';
+import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { players } from '../../src/db/schema';
 
 vi.mock('../../src/discord/assets/attachRenderedCard', () => ({
   ownedArtworkImage: vi.fn(() => ({
@@ -35,6 +37,7 @@ import {
   handleDungeonZone,
 } from '../../src/discord/commands/waifumonDungeon';
 import {
+  NO_ZONES,
   DAILY_LIMIT_NOTICE,
   DELVE_CLOSED_NOTICE,
   DUNGEON_TITLE,
@@ -318,7 +321,7 @@ describe('daily runs', () => {
 
   it('shows the allowance on the home and counts it down as runs are started', async () => {
     const { playerId, prov } = await fresh();
-    expect(embedOf(await home(prov)).description).toMatch(/^Daily Runs: \*\*3 \/ 3\*\* remaining\n/);
+    expect(embedOf(await home(prov)).description).toMatch(/^Current location: \*\*Waifu Valley\*\*\nDaily Runs: \*\*3 \/ 3\*\* remaining\n/);
     await spend(playerId, 1);
     expect(embedOf(await home(prov)).description).toContain('Daily Runs: **2 / 3** remaining');
     expect(fieldOf(await zoneScreen(prov), 'Daily runs')!.value).toContain('Daily Runs: **2 / 3** remaining');
@@ -699,6 +702,186 @@ describe('artwork', () => {
     expect(embedOf(screen).image).toBeUndefined();
     expect(embedOf(screen).thumbnail?.url).toBe('attachment://waifumon-buddy.webp');
     expect(screen.files).toHaveLength(1);
+  });
+});
+
+describe('artwork precedence', () => {
+  /** The large image of a screen, as the attachment name. */
+  const imageOf = (p: Payload) => embedOf(p).image?.url;
+  const ART = 'dc_art';
+  const BACKGROUND_ONLY = DOOMED;
+  beforeAll(async () => {
+    // A zone with both images deployed, and an event that has artwork of its own.
+    await w.zone(ART, (z) => {
+      z.name = 'Gallery';
+      z.artworkPath = 'dungeons/zones/dc_art.webp';
+      z.backgroundArtworkPath = 'dungeons/backgrounds/dc_art.webp';
+      z.pools.event = [{ id: 'shrine', eventKey: 'shrine', weight: 10 }];
+    });
+    for (const file of ['dungeons/zones/dc_art.webp', 'dungeons/backgrounds/dc_art.webp', 'dungeons/events/shrine.webp']) {
+      fs.mkdirSync(path.join(assetsDir, path.dirname(file)), { recursive: true });
+      fs.writeFileSync(path.join(assetsDir, file), 'webp');
+    }
+  });
+  const onFirst = async (zoneKey: string, type: string) => {
+    const seed = await w.seedFor(zoneKey, (g) => g.nodes[0]!.type === type);
+    const started = await begin(zoneKey, seed);
+    return paint(started.prov, started.run);
+  };
+
+  it('combat: the enemy’s artwork, then the zone’s, then the background, then text', async () => {
+    // Grunt has artwork deployed: it wins over the zone's.
+    expect(imageOf(await onFirst(ART, 'combat'))).toBe('attachment://dungeon-grunt.webp');
+    // Sentinel has none: the zone artwork.
+    await w.zone('dc_art_sentinel', (z) => {
+      z.artworkPath = 'dungeons/zones/dc_art.webp';
+      z.backgroundArtworkPath = 'dungeons/backgrounds/dc_art.webp';
+      z.pools.combat = [{ id: 'sentinel', enemyKey: 'sentinel', weight: 10 }];
+    });
+    expect(imageOf(await onFirst('dc_art_sentinel', 'combat'))).toBe('attachment://dungeon-dc-art.webp');
+    // Zone artwork not deployed: the background. (DOOMED ships only its background file.)
+    await w.zone('dc_bg_sentinel', (z) => {
+      z.artworkPath = 'dungeons/zones/not_deployed.webp';
+      z.backgroundArtworkPath = 'dungeons/backgrounds/dc_doomed.webp';
+      z.pools.combat = [{ id: 'sentinel', enemyKey: 'sentinel', weight: 10 }];
+    });
+    expect(imageOf(await onFirst('dc_bg_sentinel', 'combat'))).toBe('attachment://dungeon-dc-doomed.webp');
+    // Nothing deployed at all: text only.
+    expect(imageOf(await onFirst(BARE, 'combat'))).toBeUndefined();
+  });
+
+  it('event: the event’s own artwork first, then the zone’s — never an enemy’s', async () => {
+    const original = w.content.current;
+    try {
+      // With artwork of its own, the event shows it.
+      w.content.current = {
+        ...original,
+        dungeonEvents: original.dungeonEvents!.map((e) => (e.key === 'shrine' ? { ...e, artworkPath: 'dungeons/events/shrine.webp' } : e)),
+      };
+      expect(imageOf(await onFirst(ART, 'event'))).toBe('attachment://dungeon-shrine.webp');
+    } finally {
+      w.content.current = original;
+    }
+    // Without, the zone artwork.
+    expect(imageOf(await onFirst(ART, 'event'))).toBe('attachment://dungeon-dc-art.webp');
+  });
+
+  it('rest and reward: the zone’s artwork, then the background', async () => {
+    for (const type of ['rest', 'reward']) {
+      const typed = await w.seedFor(ART, (g) => g.nodes[1]?.type === type && g.nodes.filter((n) => n.depth === 2).length === 1);
+      const next = await begin(ART, typed);
+      const first = await w.play.resolveNode(next.playerId, next.run.id, next.run.node.id);
+      const entered = await w.play.enterNode(next.playerId, next.run.id, first.run.next[0]!.id);
+      expect(entered.run.node.type).toBe(type);
+      expect(imageOf(await paint(next.prov, entered.run)), type).toBe('attachment://dungeon-dc-art.webp');
+    }
+  });
+
+  it('the Delve home and the zone screen: zone artwork, then background, then text', async () => {
+    const { playerId } = await w.player();
+    const prov = { playerId, guildDbId: 1 } as Provisioned;
+    const zone = async (key: string) => {
+      const c = click();
+      await handleDungeonZone(ctx, c.i, prov, [key]);
+      return c.last();
+    };
+    expect(imageOf(await zone(ART))).toBe('attachment://dungeon-dc-art.webp');
+    expect(imageOf(await zone(BACKGROUND_ONLY))).toBe('attachment://dungeon-dc-doomed.webp');
+    expect(imageOf(await zone(BARE))).toBeUndefined();
+    // The home shows the first listed zone that has artwork deployed, and attaches it.
+    const home = click();
+    await handleDungeonHome(ctx, home.i, prov);
+    expect(imageOf(home.last())).toMatch(/^attachment:\/\/dungeon-dc-(main|art|doomed)\.webp$/);
+    expect(home.last().files).toHaveLength(1);
+  });
+
+  it('an active run shows the artwork its zone had when it started, not a later edit', async () => {
+    const key = 'dc_art_snapshot';
+    await w.zone(key, (z) => {
+      z.artworkPath = 'dungeons/zones/dc_art.webp';
+      z.pools.combat = [{ id: 'sentinel', enemyKey: 'sentinel', weight: 10 }];
+    });
+    const seed = await w.seedFor(key, (g) => g.nodes[0]!.type === 'combat');
+    const started = await begin(key, seed);
+    const current = (await w.zones.get(key))!;
+    await w.zones.update(key, { zone: { ...current.zone, artworkPath: 'dungeons/zones/dc_main.webp' }, expectedRevision: current.revision }, 'admin');
+    // The run: its snapshot. A new look at the zone: the edit.
+    expect(imageOf(await paint(started.prov, started.run))).toBe('attachment://dungeon-dc-art.webp');
+    const fresh = await w.player();
+    const c = click();
+    await handleDungeonZone(ctx, c.i, { playerId: fresh.playerId, guildDbId: 1 } as Provisioned, [key]);
+    expect(imageOf(c.last())).toBe('attachment://dungeon-dc-main.webp');
+  });
+});
+
+describe('regions', () => {
+  const HILLS = 'dc_hills';
+  beforeAll(async () => {
+    await w.zone(HILLS, (z) => {
+      z.name = 'Hill Works';
+      z.availableRegions = ['flaccid-foothills'];
+    });
+  });
+  const moveTo = (playerId: number, region: string) =>
+    w.t.db.update(players).set({ currentRegion: region }).where(eq(players.id, playerId));
+  const home = async (prov: Provisioned) => {
+    const c = click();
+    await handleDungeonHome(ctx, c.i, prov);
+    return c.last();
+  };
+
+  it('names the current location and lists only the Delves open there', async () => {
+    const { playerId } = await w.player();
+    const prov = { playerId, guildDbId: 1 } as Provisioned;
+    const valley = await home(prov);
+    expect(embedOf(valley).description).toContain('Current location: **Waifu Valley**');
+    expect(fieldOf(valley, 'Available Delves')!.value).toBe('Open in Waifu Valley:');
+    // Valley zones are listed (the screen shows the first five); the Foothills one is not among them.
+    expect(labelsOf(valley).length).toBeGreaterThan(1);
+    expect(labelsOf(valley)).not.toContain('Hill Works');
+    expect(fieldOf(valley, 'Hill Works')).toBeUndefined();
+
+    await moveTo(playerId, 'flaccid-foothills');
+    const hills = await home(prov);
+    expect(embedOf(hills).description).toContain('Current location: **Flaccid Foothills**');
+    expect(labelsOf(hills)).toEqual(['Hill Works', 'Back to Waifumon']);
+    expect(fieldOf(hills, 'Rust Warrens')).toBeUndefined();
+  });
+
+  it('says so when no Delve is available in the region, with no zone buttons and no disabled clutter', async () => {
+    const { playerId } = await w.player();
+    await moveTo(playerId, 'twin-peeks');
+    const screen = await home({ playerId, guildDbId: 1 } as Provisioned);
+    expect(embedOf(screen).description).toContain('Current location: **Twin Peeks**');
+    expect(embedOf(screen).description).toContain(NO_ZONES);
+    expect(NO_ZONES).toBe('There are no Delves available in this region.');
+    expect(labelsOf(screen)).toEqual(['Back to Waifumon']);
+    expect(fieldOf(screen, 'Available Delves')).toBeUndefined();
+  });
+
+  it('refuses a stale or forged Start and zone button from the wrong region, and lands on the home', async () => {
+    const { playerId } = await w.player();
+    const prov = { playerId, guildDbId: 1 } as Provisioned;
+    for (const handler of [handleDungeonStart, handleDungeonZone]) {
+      const c = click();
+      await handler(ctx, c.i, prov, [HILLS]);
+      expect(c.last().content).toBe('That Delve isn’t available in Waifu Valley.');
+      expect(embedOf(c.last()).title).toBe(DUNGEON_TITLE);
+    }
+    expect(await w.play.activeRun(playerId)).toBeNull();
+    expect((await w.allowance.status(playerId)).used).toBe(0);
+  });
+
+  it('keeps Resume working after the player travels away from where the run started', async () => {
+    const { playerId, prov, run } = await begin(MAIN);
+    await moveTo(playerId, 'twin-peeks');
+    const screen = await home(prov);
+    expect(labelsOf(screen)).toEqual(['Resume', 'Abandon', 'Back to Waifumon']);
+    const resumed = await press(prov, screen, 'Resume', handleDungeonRun);
+    expect(embedOf(resumed).title).toMatch(/^Rust Warrens — Depth 1 \//);
+    const c = click();
+    await handleDungeonResolve(ctx, c.i, prov, [String(run.id), run.node.id]);
+    expect((await w.play.run(playerId, run.id)).nodeStatus).toBe('completed');
   });
 });
 

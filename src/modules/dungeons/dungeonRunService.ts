@@ -68,7 +68,12 @@ import {
   randomDungeonSeed,
   type DungeonContentSource,
 } from './dungeonZoneService';
-import { dungeonCatalogueFromContent, parseDungeonZoneRow, readDungeonZoneRow } from './dungeonZoneStore';
+import {
+  dungeonCatalogueFromContent,
+  dungeonRegionsFromContent,
+  parseDungeonZoneRow,
+  readDungeonZoneRow,
+} from './dungeonZoneStore';
 import type { DungeonEventDefinition } from './eventDefinitions';
 import type {
   DungeonFighter,
@@ -285,7 +290,7 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
           const content = deps.getContent();
           const catalogue = dungeonCatalogueFromContent(content);
           // The generation below is the real trial, so the validator's own are skipped.
-          const ctx = await loadDungeonValidationContext(tx, catalogue);
+          const ctx = await loadDungeonValidationContext(tx, catalogue, dungeonRegionsFromContent(content));
           const { zone, issues } = validateDungeonZone(parseDungeonZoneRow(row), { ...ctx, skipTrialRuns: true });
           if (!zone || hasErrors(issues)) throw new DungeonZoneInvalidError(issues);
 

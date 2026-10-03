@@ -51,6 +51,13 @@ if (process.argv.includes('--json')) {
   console.log(`  nodes: avg ${report.averageNodeCount.toFixed(2)} (min ${report.minNodeCount}, max ${report.maxNodeCount}), avg depth ${report.averageDepth.toFixed(2)}`);
   console.log(`  branch rate ${pct(report.branchRate)}, boss ${pct(report.bossRate)}, rest ${pct(report.restRate)}`);
   console.log(`  extraction: ${pct(report.extractionRate)} of runs, avg ${report.averageExtractionPoints.toFixed(2)} points`);
+  const spread = (counts: Record<string, number>) =>
+    Object.entries(counts)
+      .sort(([x], [y]) => Number(x) - Number(y))
+      .map(([n, runs]) => `${n}: ${pct(runs / (report.valid || 1))}`)
+      .join(', ');
+  console.log(`  rests per run: ${spread(report.restCountDistribution)}; rest immediately before the boss: ${pct(report.restBeforeBossRate)}`);
+  console.log(`  extraction points per run: ${spread(report.extractionCountDistribution)}`);
   console.log('  node types (share of nodes / runs with at least one):');
   for (const type of DUNGEON_NODE_TYPES) {
     console.log(`    ${type.padEnd(9)} ${pct(report.nodeTypeShare[type]).padStart(6)}  ${pct(report.nodeTypeRunRate[type]).padStart(6)}`);

@@ -57,7 +57,7 @@ import { buildCustomId } from './types';
 export const DUNGEON_TITLE = '⛏️ Delve';
 export const DUNGEON_LABEL = 'Delve';
 export const LOCKED_DUNGEONS = '🔒 Delves unlock once you have Equipment.';
-export const NO_ZONES = 'No dungeons are open right now. Check back soon.';
+export const NO_ZONES = 'There are no Delves available in this region.';
 export const ZONE_UNAVAILABLE = 'That dungeon isn’t open right now.';
 export const RUN_ACTIVE_NOTICE = 'You’re already in a dungeon — here’s your run.';
 export const RUN_NOT_FOUND = 'That run could not be found.';
@@ -291,6 +291,7 @@ export function buildDungeonHome(view: DungeonHomeView, opts: DungeonScreenOptio
     .setColor(COLOR)
     .setDescription(
       [
+        `Current location: **${view.region.name}**`,
         dailyRunsLine(view.daily),
         '',
         view.zones.length
@@ -299,7 +300,9 @@ export function buildDungeonHome(view: DungeonHomeView, opts: DungeonScreenOptio
       ].join('\n'),
     );
   const shown = view.zones.slice(0, 5);
+  if (shown.length) embed.addFields({ name: 'Available Delves', value: `Open in ${view.region.name}:` });
   for (const zone of shown) embed.addFields(zoneField(zone));
+  applyArt(embed, opts.art ?? {});
   const blocked = blockerLine(view.blocker);
   if (blocked) embed.addFields({ name: '⚠️ Can’t start yet', value: blocked });
   const spent = dailyLimitLine(view.daily);
@@ -313,7 +316,7 @@ export function buildDungeonHome(view: DungeonHomeView, opts: DungeonScreenOptio
     components.push(row(...shown.map((z) => button(dgId.zone(z.key), z.name, ButtonStyle.Primary))));
   }
   components.push(row(menuButton()));
-  return { content: opts.status ?? '', embeds: [embed], components, files: [] };
+  return { content: opts.status ?? '', embeds: [embed], components, files: files(opts.art ?? {}) };
 }
 
 // ── zone detail ─────────────────────────────────────────────────────────────

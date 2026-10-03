@@ -7,7 +7,8 @@
  * out. Every write names the `revision` it edited; a save that lost a race
  * comes back as a 409 `DUNGEON_ZONE_STALE` rather than overwriting.
  */
-import { getData, postData, putData } from './client';
+import type { ArtworkDirectory, ArtworkSearchResults } from './adminArtwork';
+import { apiClient, getData, postData, putData } from './client';
 
 export type DungeonNodeType =
   'combat' | 'elite' | 'event' | 'reward' | 'rest' | 'miniboss' | 'boss' | 'exit';
@@ -94,6 +95,27 @@ export interface DungeonExtractionWindow {
   required: boolean;
 }
 
+/**
+ * Rest placement. `minNodes` is counted on the main path, `maxNodes` over the
+ * whole run (null: no limit). With `beforeBoss` the node before the final boss
+ * is always a rest that no branch can bypass — and it counts toward both.
+ */
+export interface DungeonRestRules {
+  minNodes: number;
+  maxNodes: number | null;
+  minDepth: number;
+  maxDepth: number | null;
+  beforeBoss: boolean;
+}
+
+export const NO_REST_RULES: DungeonRestRules = {
+  minNodes: 0,
+  maxNodes: null,
+  minDepth: 1,
+  maxDepth: null,
+  beforeBoss: false,
+};
+
 export interface DungeonGenerationDoc {
   minNodes: number;
   maxNodes: number;
@@ -112,6 +134,8 @@ export interface DungeonGenerationDoc {
   };
   nodeWeights: Record<DungeonWeightedNodeType, number>;
   boss: { required: boolean };
+  /** Where and how often rests appear. Absent on a zone saved before rest rules existed. */
+  rest?: DungeonRestRules;
   depthRanges: Partial<Record<DungeonNodeType, DepthRange>>;
   required: Array<{ types: DungeonNodeType[]; min: number }>;
   limits: Array<{ types: DungeonNodeType[]; max: number }>;
@@ -129,6 +153,8 @@ export interface DungeonZoneDoc {
   artworkPath: string | null;
   backgroundArtworkPath: string | null;
   tags: string[];
+  /** Region ids the zone can be started in. Absent on a zone saved before regions existed. */
+  availableRegions?: string[];
   generation: DungeonGenerationDoc;
   /** What a node type does when resolved. `healBasisPoints`: 3000 = 30% of max HP. */
   nodeSettings: { rest: { healBasisPoints: number } };
@@ -154,6 +180,7 @@ export interface DungeonZoneSummary {
   poolCount: number;
   poolEntryCount: number;
   rewardBandCount: number;
+  availableRegions: string[];
   revision: number;
   origin: DungeonZoneOrigin;
   /** Null when this build ships no zone with this key. */
@@ -181,6 +208,14 @@ export interface DungeonReferenceData {
   events: DungeonContentRef[];
   rewardTables: Array<{ id: string; enabled: boolean }>;
   currencies: Array<{ key: string; singularName: string; pluralName: string; enabled: boolean }>;
+  /** The region catalogue, in its authored order. `enabled: false` is not released. */
+  regions: DungeonRegionRef[];
+}
+
+export interface DungeonRegionRef {
+  id: string;
+  name: string;
+  enabled: boolean;
 }
 
 export interface ProgressionCurrency {
@@ -237,6 +272,18 @@ export interface DungeonPreview {
   seed: number;
   graph: DungeonGraph;
   names: { enemies: Record<string, string>; events: Record<string, string> };
+  /** What this graph did with the zone's structural rules, read off the graph by the server. */
+  structure: DungeonPreviewStructure;
+}
+
+export interface DungeonPreviewStructure {
+  availableRegions: Array<{ id: string; name: string | null }>;
+  artworkPath: string | null;
+  backgroundArtworkPath: string | null;
+  restNodes: Array<{ id: string; depth: number; extraction: boolean }>;
+  extractionNodes: Array<{ id: string; depth: number; type: DungeonNodeType }>;
+  bossNodeId: string | null;
+  restBeforeBoss: { required: boolean; satisfied: boolean };
 }
 
 export interface DungeonContentAppearance {
@@ -268,6 +315,11 @@ export interface DungeonSimulationReport {
   restRate: number;
   extractionRate: number;
   averageExtractionPoints: number;
+  /** Valid runs by rest count / extraction-point count: `{ "1": 34, "2": 66 }`. */
+  restCountDistribution: Record<string, number>;
+  extractionCountDistribution: Record<string, number>;
+  /** Share of valid runs whose node before the final one is a rest no route can skip. */
+  restBeforeBossRate: number;
   enemies: DungeonContentAppearance[];
   events: DungeonContentAppearance[];
 }
@@ -349,6 +401,41 @@ export function simulateDungeon(
   firstSeed = 1,
 ): Promise<DungeonSimulationReport> {
   return postData(`${base}/simulate`, { ...target, runs, firstSeed });
+}
+
+/** Where zone artwork conventionally lives, relative to the assets root. */
+export const zoneArtworkConvention = (key: string) => `dungeons/zones/${key || '<zone-key>'}.webp`;
+export const zoneBackgroundConvention = (key: string) =>
+  `dungeons/backgrounds/${key || '<zone-key>'}.webp`;
+
+/** Bytes of one authored artwork path, for the editor preview. 404 when no file is there. */
+export async function dungeonArtworkBlob(path: string): Promise<Blob> {
+  const response = await apiClient.get<Blob>(`${base}/artwork`, {
+    params: { path },
+    responseType: 'blob',
+  });
+  return response.data;
+}
+
+/** One folder of dungeon artwork for the picker (`dungeons/` only, server-chosen). */
+export function browseDungeonArtwork(
+  path: string | undefined,
+  signal?: AbortSignal,
+): Promise<ArtworkDirectory> {
+  return getData<ArtworkDirectory>(`${base}/artwork/browse`, {
+    params: path ? { path } : {},
+    ...(signal ? { signal } : {}),
+  });
+}
+
+export function searchDungeonArtwork(
+  query: string,
+  signal?: AbortSignal,
+): Promise<ArtworkSearchResults> {
+  return getData<ArtworkSearchResults>(`${base}/artwork/search`, {
+    params: { q: query },
+    ...(signal ? { signal } : {}),
+  });
 }
 
 /** Delve-wide settings, with the bounds the server enforces. */

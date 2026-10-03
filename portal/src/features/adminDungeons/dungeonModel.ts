@@ -45,6 +45,7 @@ export function newZone(): DungeonZoneDoc {
     artworkPath: null,
     backgroundArtworkPath: null,
     tags: ['initial_tuning'],
+    availableRegions: [],
     generation: {
       minNodes: 6,
       maxNodes: 9,
@@ -52,8 +53,9 @@ export function newZone(): DungeonZoneDoc {
       extraction: { minDepth: 4, nodeTypes: ['rest', 'exit'], minPoints: 1, windows: [] },
       nodeWeights: { combat: 60, elite: 10, event: 10, reward: 10, rest: 10, miniboss: 0, exit: 0 },
       boss: { required: true },
+      rest: { minNodes: 1, maxNodes: 2, minDepth: 2, maxDepth: null, beforeBoss: false },
       depthRanges: { elite: { minDepth: 2, maxDepth: null } },
-      required: [{ types: ['rest'], min: 1 }],
+      required: [],
       limits: [],
       noConsecutive: ['rest'],
       maxConsecutiveSameEnemy: 2,

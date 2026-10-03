@@ -50,6 +50,11 @@ const REFERENCE: DungeonReferenceData = {
       enabled: true,
     },
   ],
+  regions: [
+    { id: 'waifu-valley', name: 'Waifu Valley', enabled: true },
+    { id: 'flaccid-foothills', name: 'Flaccid Foothills', enabled: true },
+    { id: 'thirstlands', name: 'Thirstlands', enabled: true },
+  ],
 };
 
 const ZONE: DungeonZoneDoc = {
@@ -61,6 +66,7 @@ const ZONE: DungeonZoneDoc = {
   artworkPath: 'dungeons/zones/scrapheap_gauntlet.webp',
   backgroundArtworkPath: null,
   tags: ['initial_tuning'],
+  availableRegions: ['flaccid-foothills'],
   generation: {
     minNodes: 6,
     maxNodes: 9,
@@ -68,6 +74,7 @@ const ZONE: DungeonZoneDoc = {
     extraction: { minDepth: 4, nodeTypes: ['rest', 'exit'], minPoints: 1 },
     nodeWeights: { combat: 60, elite: 10, event: 12, reward: 10, rest: 8, miniboss: 0, exit: 0 },
     boss: { required: true },
+    rest: { minNodes: 1, maxNodes: 2, minDepth: 2, maxDepth: null, beforeBoss: false },
     depthRanges: { elite: { minDepth: 3, maxDepth: null } },
     required: [{ types: ['rest'], min: 1 }],
     limits: [{ types: ['elite'], max: 1 }],
@@ -152,6 +159,7 @@ const SUMMARY: DungeonZoneSummary = {
   poolCount: 3,
   poolEntryCount: 4,
   rewardBandCount: 1,
+  availableRegions: ['flaccid-foothills'],
   revision: 3,
   origin: 'shipped',
   matchesShipped: true,
@@ -175,6 +183,15 @@ const CURRENCY: ProgressionCurrency = {
 const previewFor = (seed: number): DungeonPreview => ({
   zoneKey: 'scrapheap_gauntlet',
   seed,
+  structure: {
+    availableRegions: [{ id: 'flaccid-foothills', name: 'Flaccid Foothills' }],
+    artworkPath: 'dungeons/zones/scrapheap_gauntlet.webp',
+    backgroundArtworkPath: null,
+    restNodes: [{ id: 'n4', depth: 3, extraction: true }],
+    extractionNodes: [{ id: 'n4', depth: 3, type: 'rest' }],
+    bossNodeId: 'n5',
+    restBeforeBoss: { required: true, satisfied: true },
+  },
   names: {
     enemies: { scrapyard_drone: 'Scrapyard Drone', scrapheap_colossus: 'Scrapheap Colossus' },
     events: {},
@@ -273,6 +290,8 @@ let enabledSpy: MockInstance<typeof api.setDungeonZoneEnabled>;
 let currencySpy: MockInstance<typeof api.updateProgressionCurrency>;
 let previewSpy: MockInstance<typeof api.previewDungeon>;
 let validateSpy: MockInstance<typeof api.validateDungeonZone>;
+let artworkSpy: MockInstance<typeof api.dungeonArtworkBlob>;
+let browseSpy: MockInstance<typeof api.browseDungeonArtwork>;
 let settings: api.DungeonSettings;
 let settingsSpy: MockInstance<typeof api.updateDungeonSettings>;
 
@@ -294,6 +313,49 @@ beforeEach(() => {
     ],
   });
   vi.spyOn(api, 'getDungeonZone').mockResolvedValue(DETAIL);
+  // jsdom has no object URLs; the artwork preview and the picker's thumbnails need them.
+  const statics = URL as unknown as {
+    createObjectURL?: () => string;
+    revokeObjectURL?: () => void;
+  };
+  statics.createObjectURL = () => 'blob:mock';
+  statics.revokeObjectURL = () => {};
+  // Only the zone artwork is "deployed"; any other path has no file behind it.
+  artworkSpy = vi.spyOn(api, 'dungeonArtworkBlob').mockImplementation(async (path) => {
+    if (path === 'dungeons/zones/scrapheap_gauntlet.webp') return new Blob(['webp']);
+    throw new PortalApiError({
+      status: 404,
+      code: 'NOT_FOUND',
+      message: 'No artwork file at that path.',
+    });
+  });
+  browseSpy = vi.spyOn(api, 'browseDungeonArtwork').mockImplementation(async (path) =>
+    path === 'dungeons/zones' || path === undefined
+      ? {
+          path: 'dungeons/zones',
+          parent: 'dungeons',
+          breadcrumbs: [
+            { name: 'dungeons', path: 'dungeons' },
+            { name: 'zones', path: 'dungeons/zones' },
+          ],
+          directories: [],
+          files: [
+            {
+              name: 'scrapheap_gauntlet.webp',
+              path: 'dungeons/zones/scrapheap_gauntlet.webp',
+              folder: 'dungeons/zones',
+              extension: 'webp',
+            },
+            {
+              name: 'rust_warrens.webp',
+              path: 'dungeons/zones/rust_warrens.webp',
+              folder: 'dungeons/zones',
+              extension: 'webp',
+            },
+          ],
+        }
+      : { path: path, parent: 'dungeons', breadcrumbs: [], directories: [], files: [] },
+  );
   settings = {
     dailyRunLimit: 3,
     dailyRunLimitMin: 0,
@@ -395,6 +457,15 @@ describe('zone list', () => {
     expect(first.getByText(/Revision 3 · updated .* by seed/)).toBeInTheDocument();
     expect(within(rows[1]!).getByText('Disabled')).toBeInTheDocument();
     expect(within(rows[1]!).getByText('Portal only')).toBeInTheDocument();
+  });
+
+  it('shows where each zone is available, by region name', async () => {
+    renderAt('/admin/dungeons');
+    await waitFor(() =>
+      expect(screen.getAllByTestId('zone-regions')[0]).toHaveTextContent(
+        'Available in: Flaccid Foothills',
+      ),
+    );
   });
 
   it('disables a zone with the revision it listed, and offers no delete', async () => {
@@ -550,6 +621,287 @@ describe('zone editor', () => {
     await user.click(screen.getByRole('button', { name: 'Save zone' }));
     await waitFor(() => expect(updateSpy).toHaveBeenCalledTimes(1));
     expect(savedZone().nodeSettings).toEqual({ rest: { healBasisPoints: 4500 } });
+  });
+
+  it('is organised into named sections', async () => {
+    renderAt(EDITOR);
+    await screen.findByTestId('zone-fields');
+    const titles = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent);
+    expect(titles).toEqual([
+      'Basics',
+      'Availability',
+      'Artwork',
+      'Layout',
+      'Extraction',
+      'Rest & Recovery',
+      'Node types & weights',
+      'Combat pool',
+      'Elite pool',
+      'Miniboss pool',
+      'Boss pool',
+      'Event pool',
+      'Rewards',
+      'Advanced rules',
+    ]);
+  });
+
+  it('selects regions by name and saves their stable ids, in catalogue order', async () => {
+    const user = renderAt(EDITOR);
+    const section = within(await screen.findByTestId('zone-availability'));
+    expect(section.getByLabelText('Available in Flaccid Foothills')).toBeChecked();
+    expect(section.getByLabelText('Available in Waifu Valley')).not.toBeChecked();
+    // Thirstlands is clicked first, Waifu Valley second: the document stays in catalogue order.
+    await user.click(section.getByLabelText('Available in Thirstlands'));
+    await user.click(section.getByLabelText('Available in Waifu Valley'));
+    await readyToSave();
+    await user.click(screen.getByRole('button', { name: 'Save zone' }));
+    await waitFor(() => expect(updateSpy).toHaveBeenCalledTimes(1));
+    expect(savedZone().availableRegions).toEqual([
+      'waifu-valley',
+      'flaccid-foothills',
+      'thirstlands',
+    ]);
+  });
+
+  it('says a zone with no region cannot be started, and shows the server’s refusal there', async () => {
+    const user = renderAt(EDITOR);
+    const section = within(await screen.findByTestId('zone-availability'));
+    issues = [
+      {
+        path: 'availableRegions',
+        message: 'choose at least one region — a zone with none cannot be started anywhere',
+        severity: 'error',
+      },
+    ];
+    await user.click(section.getByLabelText('Available in Flaccid Foothills'));
+    expect(section.getByText(/No region selected/)).toBeInTheDocument();
+    expect(await section.findByText(/choose at least one region/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save zone' })).toBeDisabled());
+  });
+
+  it('keeps a region the catalogue no longer has visible, so it can be removed', async () => {
+    vi.spyOn(api, 'getDungeonZone').mockResolvedValue({
+      ...DETAIL,
+      zone: { ...ZONE, availableRegions: ['flaccid-foothills', 'sunken-mall'] },
+    });
+    const user = renderAt(EDITOR);
+    const section = within(await screen.findByTestId('zone-availability'));
+    expect(section.getByLabelText('Available in sunken-mall')).toBeChecked();
+    expect(section.getByText('(unknown region)')).toBeInTheDocument();
+    await user.click(section.getByLabelText('Available in sunken-mall'));
+    await readyToSave();
+    await user.click(screen.getByRole('button', { name: 'Save zone' }));
+    await waitFor(() => expect(updateSpy).toHaveBeenCalledTimes(1));
+    expect(savedZone().availableRegions).toEqual(['flaccid-foothills']);
+  });
+
+  it('previews the artwork at the stored path, and tells missing from unset', async () => {
+    renderAt(EDITOR);
+    const main = within(await screen.findByTestId('zone-artwork-main'));
+    const background = within(screen.getByTestId('zone-artwork-background'));
+    expect(main.getByLabelText('Artwork path')).toHaveValue(
+      'dungeons/zones/scrapheap_gauntlet.webp',
+    );
+    // The file exists: the image. Nothing set: the empty state, and nothing fetched.
+    expect(await main.findByTestId('zone-artwork-main-preview-image')).toBeInTheDocument();
+    expect(background.getByTestId('zone-artwork-background-preview-empty')).toHaveTextContent(
+      'No artwork set',
+    );
+    expect(artworkSpy).toHaveBeenCalledWith('dungeons/zones/scrapheap_gauntlet.webp');
+    // The expected relative path, and the file it means on the server.
+    expect(
+      main.getByText('dungeons/zones/scrapheap_gauntlet.webp', { selector: 'span' }),
+    ).toBeInTheDocument();
+    expect(main.getByText('assets/dungeons/zones/scrapheap_gauntlet.webp')).toBeInTheDocument();
+    expect(
+      background.getByText('assets/dungeons/backgrounds/scrapheap_gauntlet.webp'),
+    ).toBeInTheDocument();
+  });
+
+  it('fills the conventional path, shows a path with no file as missing, and still saves it', async () => {
+    const user = renderAt(EDITOR);
+    const background = within(await screen.findByTestId('zone-artwork-background'));
+    await user.click(
+      background.getByRole('button', { name: 'Use the conventional background artwork path' }),
+    );
+    expect(background.getByLabelText('Background artwork path')).toHaveValue(
+      'dungeons/backgrounds/scrapheap_gauntlet.webp',
+    );
+    expect(
+      await background.findByTestId('zone-artwork-background-preview-missing'),
+    ).toHaveTextContent('No file at dungeons/backgrounds/scrapheap_gauntlet.webp yet');
+    await readyToSave();
+    await user.click(screen.getByRole('button', { name: 'Save zone' }));
+    await waitFor(() => expect(updateSpy).toHaveBeenCalledTimes(1));
+    expect(savedZone().backgroundArtworkPath).toBe('dungeons/backgrounds/scrapheap_gauntlet.webp');
+    // Clear puts it back to "no artwork".
+    await user.click(background.getByRole('button', { name: 'Clear background artwork' }));
+    expect(background.getByLabelText('Background artwork path')).toHaveValue('');
+  });
+
+  it('picks artwork from the browser, rooted at the dungeon folders', async () => {
+    const user = renderAt(EDITOR);
+    const main = within(await screen.findByTestId('zone-artwork-main'));
+    await user.click(main.getByRole('button', { name: 'Browse artwork' }));
+    const dialog = within(await screen.findByRole('dialog'));
+    // It opens in the folder of the current path.
+    await waitFor(() =>
+      expect(browseSpy).toHaveBeenCalledWith('dungeons/zones', expect.anything()),
+    );
+    await user.click(await dialog.findByRole('button', { name: /rust_warrens\.webp/ }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(main.getByLabelText('Artwork path')).toHaveValue('dungeons/zones/rust_warrens.webp');
+  });
+
+  it('warns about a leading assets/ and shows the server’s refusal of an unsafe path', async () => {
+    const user = renderAt(EDITOR);
+    const main = within(await screen.findByTestId('zone-artwork-main'));
+    await type(user, 'Artwork path', 'assets/dungeons/zones/x.webp');
+    expect(main.getByRole('alert')).toHaveTextContent('drop the leading “assets/”');
+    issues = [
+      {
+        path: 'artworkPath',
+        message: 'must be a relative path with no ".." segments',
+        severity: 'error',
+      },
+    ];
+    await type(user, 'Artwork path', '../secrets.webp');
+    expect(
+      await within(screen.getByTestId('zone-artwork')).findByText(/no "\.\." segments/),
+    ).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save zone' })).toBeDisabled());
+    expect(updateSpy).not.toHaveBeenCalled();
+  });
+
+  it('edits the Rest rules: counts, depth range and Rest before Boss', async () => {
+    const user = renderAt(EDITOR);
+    const section = within(await screen.findByTestId('zone-rest'));
+    expect(section.getByLabelText('Minimum Rest nodes')).toHaveValue(1);
+    expect(section.getByLabelText('Maximum Rest nodes')).toHaveValue(2);
+    expect(section.getByLabelText('Earliest Rest depth')).toHaveValue(2);
+    expect(section.getByLabelText('Latest Rest depth')).toHaveValue(null);
+    expect(section.getByLabelText('Always Rest before final Boss')).not.toBeChecked();
+    expect(section.getByText(/Guarantees the final approach is Rest → Boss/)).toBeInTheDocument();
+
+    await type(user, 'Minimum Rest nodes', '2');
+    await type(user, 'Maximum Rest nodes', '3');
+    await type(user, 'Earliest Rest depth', '3');
+    await type(user, 'Latest Rest depth', '8');
+    await user.click(section.getByLabelText('Always Rest before final Boss'));
+    await type(user, 'Rest heals (% of max HP)', '35');
+    await readyToSave();
+    await user.click(screen.getByRole('button', { name: 'Save zone' }));
+    await waitFor(() => expect(updateSpy).toHaveBeenCalledTimes(1));
+    expect(savedZone().generation.rest).toEqual({
+      minNodes: 2,
+      maxNodes: 3,
+      minDepth: 3,
+      maxDepth: 8,
+      beforeBoss: true,
+    });
+    expect(savedZone().nodeSettings).toEqual({ rest: { healBasisPoints: 3500 } });
+    // An emptied maximum or latest depth is "no limit", not zero.
+    await type(user, 'Maximum Rest nodes', '');
+    await type(user, 'Latest Rest depth', '');
+    await readyToSave();
+    await user.click(screen.getByRole('button', { name: 'Save zone' }));
+    await waitFor(() => expect(updateSpy).toHaveBeenCalledTimes(2));
+    expect(updateSpy.mock.calls[1]![1].generation.rest).toMatchObject({
+      maxNodes: null,
+      maxDepth: null,
+    });
+  });
+
+  it('opens a zone saved before rest rules and regions existed, with nothing assumed', async () => {
+    const { rest: _rest, ...generation } = ZONE.generation;
+    const { availableRegions: _regions, ...legacy } = ZONE;
+    vi.spyOn(api, 'getDungeonZone').mockResolvedValue({
+      ...DETAIL,
+      zone: { ...legacy, generation },
+    });
+    renderAt(EDITOR);
+    const section = within(await screen.findByTestId('zone-rest'));
+    expect(section.getByLabelText('Minimum Rest nodes')).toHaveValue(0);
+    expect(section.getByLabelText('Maximum Rest nodes')).toHaveValue(null);
+    expect(section.getByLabelText('Always Rest before final Boss')).not.toBeChecked();
+    expect(
+      within(screen.getByTestId('zone-availability')).getByText(/No region selected/),
+    ).toBeInTheDocument();
+  });
+
+  it('shows an impossible Rest rule in Rest & Recovery and refuses to save', async () => {
+    const user = renderAt(EDITOR);
+    issues = [
+      {
+        path: 'generation.rest.beforeBoss',
+        message:
+          'runs end at depth 5–9, so the rest before the boss sits at depth 4–8; the rest depth range excludes depth 7, 8',
+        severity: 'error',
+      },
+    ];
+    await type(user, 'Latest Rest depth', '6');
+    await user.click(screen.getByLabelText('Always Rest before final Boss'));
+    const section = within(screen.getByTestId('zone-rest'));
+    expect(
+      await section.findByText(/the rest depth range excludes depth 7, 8/),
+    ).toBeInTheDocument();
+    // Shown once, where it belongs — not repeated in the save summary.
+    expect(
+      within(screen.getByTestId('zone-save')).queryByText(/excludes depth 7, 8/),
+    ).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save zone' })).toBeDisabled());
+  });
+
+  it('round-trips regions, artwork and Rest rules through save and reload', async () => {
+    const user = renderAt(EDITOR);
+    await user.click(await screen.findByLabelText('Available in Thirstlands'));
+    await user.click(screen.getByLabelText('Always Rest before final Boss'));
+    await type(user, 'Background artwork path', 'dungeons/backgrounds/scrapheap_gauntlet.webp');
+    await readyToSave();
+    await user.click(screen.getByRole('button', { name: 'Save zone' }));
+    await waitFor(() =>
+      expect(updateSpy).toHaveBeenCalledWith('scrapheap_gauntlet', expect.anything(), 3),
+    );
+    // The editor adopts what the server returned: saved, clean, at the next revision.
+    await waitFor(() =>
+      expect(screen.getByTestId('validation-status')).toHaveTextContent('No unsaved changes.'),
+    );
+    expect(screen.getByLabelText('Available in Thirstlands')).toBeChecked();
+    expect(screen.getByLabelText('Always Rest before final Boss')).toBeChecked();
+    expect(screen.getByLabelText('Background artwork path')).toHaveValue(
+      'dungeons/backgrounds/scrapheap_gauntlet.webp',
+    );
+    // A second save carries the new revision.
+    await user.click(screen.getByLabelText('Available in Thirstlands'));
+    await readyToSave();
+    await user.click(screen.getByRole('button', { name: 'Save zone' }));
+    await waitFor(() =>
+      expect(updateSpy).toHaveBeenLastCalledWith('scrapheap_gauntlet', expect.anything(), 4),
+    );
+    expect(updateSpy.mock.calls[1]![1].availableRegions).toEqual(['flaccid-foothills']);
+  });
+
+  it('a stale save of the new fields is refused and nothing is overwritten', async () => {
+    updateSpy.mockRejectedValueOnce(
+      new PortalApiError({
+        status: 409,
+        code: 'DUNGEON_ZONE_STALE',
+        message: 'stale',
+        details: { currentRevision: 4, updatedBy: '999' },
+      }),
+    );
+    const user = renderAt(EDITOR);
+    await user.click(await screen.findByLabelText('Available in Thirstlands'));
+    await user.click(screen.getByLabelText('Always Rest before final Boss'));
+    await readyToSave();
+    await user.click(screen.getByRole('button', { name: 'Save zone' }));
+    expect(await screen.findByTestId('stale-banner')).toHaveTextContent('revision 4');
+    expect(screen.getByRole('button', { name: 'Save zone' })).toBeDisabled();
+    // Reloading shows their version: the unsaved region and rule are gone.
+    await user.click(screen.getByRole('button', { name: 'Reload latest version' }));
+    await waitFor(() => expect(screen.queryByTestId('stale-banner')).not.toBeInTheDocument());
+    expect(screen.getByLabelText('Available in Thirstlands')).not.toBeChecked();
+    expect(screen.getByLabelText('Always Rest before final Boss')).not.toBeChecked();
   });
 
   it('adds, edits and removes extraction windows', async () => {
@@ -991,6 +1343,9 @@ describe('generation preview', () => {
       restRate: 1,
       extractionRate: 1,
       averageExtractionPoints: 1.05,
+      restCountDistribution: { '1': 170, '2': 828 },
+      extractionCountDistribution: { '1': 70, '2': 928 },
+      restBeforeBossRate: 1,
       enemies: [{ key: 'scrapyard_drone', nodes: 2865, runs: 892, runRate: 0.892 }],
       events: [],
     });
@@ -1009,5 +1364,42 @@ describe('generation preview', () => {
     ).toBeInTheDocument();
     expect(report.getByText('scrapyard_drone')).toBeInTheDocument();
     expect(report.getByText('89.2%')).toBeInTheDocument();
+    // The structural rules, over the whole sample.
+    expect(report.getByText('Rest immediately before the boss').nextSibling).toHaveTextContent(
+      '100.0%',
+    );
+    expect(report.getByText('Rests per run').nextSibling).toHaveTextContent('1: 17.0% · 2: 83.0%');
+    expect(report.getByText('Extraction points per run (spread)').nextSibling).toHaveTextContent(
+      '1: 7.0% · 2: 93.0%',
+    );
+  });
+
+  it('shows what the generated run did with the structural rules', async () => {
+    const user = renderAt('/admin/dungeons/preview?zone=scrapheap_gauntlet&seed=5');
+    await user.click(await screen.findByRole('button', { name: 'Generate this seed' }));
+    const structure = within(await screen.findByTestId('dungeon-structure'));
+    expect(structure.getByTestId('structure-regions')).toHaveTextContent('Flaccid Foothills');
+    expect(structure.getByTestId('structure-rests')).toHaveTextContent('1 (depth 3)');
+    expect(structure.getByTestId('structure-extraction')).toHaveTextContent('Rest at depth 3');
+    expect(structure.getByText('n5')).toBeInTheDocument();
+    expect(structure.getByText('dungeons/zones/scrapheap_gauntlet.webp')).toBeInTheDocument();
+    expect(structure.getByTestId('structure-rest-before-boss')).toHaveTextContent(
+      'guaranteed — satisfied',
+    );
+  });
+
+  it('makes a broken Rest → Boss guarantee impossible to miss', async () => {
+    previewSpy.mockImplementation(async (_target, seed) => ({
+      ...previewFor(seed ?? 1),
+      structure: {
+        ...previewFor(1).structure,
+        restBeforeBoss: { required: true, satisfied: false },
+      },
+    }));
+    const user = renderAt('/admin/dungeons/preview?zone=scrapheap_gauntlet&seed=5');
+    await user.click(await screen.findByRole('button', { name: 'Generate this seed' }));
+    expect(await screen.findByTestId('structure-rest-before-boss')).toHaveTextContent(
+      'NOT satisfied (this is a generator bug)',
+    );
   });
 });

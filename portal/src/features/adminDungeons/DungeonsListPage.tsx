@@ -17,6 +17,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   DUNGEONS_QUERY_KEY,
   exportDungeonZones,
+  getDungeonReference,
   getDungeonSettings,
   listDungeonZones,
   listProgressionCurrencies,
@@ -74,6 +75,13 @@ export function DungeonsListPage() {
     queryFn: ({ signal }) => listDungeonZones(signal),
   });
   const zones = query.data?.zones ?? [];
+  // Region names for the list. Shared with the editor's cache; ids show until it loads.
+  const reference = useQuery({
+    queryKey: [...DUNGEONS_QUERY_KEY, 'reference'],
+    queryFn: ({ signal }) => getDungeonReference(signal),
+    staleTime: 60_000,
+  }).data;
+  const regionNames = new Map((reference?.regions ?? []).map((r) => [r.id, r.name]));
   const exporting = useMutation({
     mutationFn: exportDungeonZones,
     onSuccess: (exported) =>
@@ -168,6 +176,11 @@ export function DungeonsListPage() {
                   ({z.poolEntryCount} entr{z.poolEntryCount === 1 ? 'y' : 'ies'}) ·{' '}
                   {z.rewardBandCount} depth band
                   {z.rewardBandCount === 1 ? '' : 's'}
+                </p>
+                <p className="text-xs text-ink-muted" data-testid="zone-regions">
+                  {z.availableRegions.length === 0
+                    ? 'Available nowhere — choose a region in the editor'
+                    : `Available in: ${z.availableRegions.map((id) => regionNames.get(id) ?? id).join(', ')}`}
                 </p>
                 <p className="text-xs text-ink-subtle">
                   Revision {z.revision} · updated {formatUpdated(z.updatedAt)}
