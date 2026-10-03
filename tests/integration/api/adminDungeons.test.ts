@@ -660,6 +660,38 @@ describe('zone artwork', () => {
     expect(data<{ results: unknown[] }>(await call('GET', '/admin/dungeons/artwork/search?q=secret')).results).toEqual([]);
   });
 
+  it('with no shipped dungeon artwork at all, browsing is an empty success — not a server error', async () => {
+    // What a server looks like before any dungeon art has been committed: no assets/dungeons/.
+    const dungeons = path.join(assetsDir, 'dungeons');
+    const parked = path.join(assetsRoot, 'dungeons-parked');
+    fs.renameSync(dungeons, parked);
+    try {
+      const top = await call('GET', '/admin/dungeons/artwork/browse');
+      expect(top.statusCode, top.body).toBe(200);
+      expect(top.json().data).toEqual({
+        path: 'dungeons',
+        parent: null,
+        breadcrumbs: [{ name: 'dungeons', path: 'dungeons' }],
+        directories: [],
+        files: [],
+        missing: true,
+      });
+      // A folder inside it (where the picker opens for a configured path) is "no such folder": 404, with a reason.
+      const inner = await call('GET', '/admin/dungeons/artwork/browse?path=dungeons/backgrounds');
+      expect(inner.statusCode).toBe(404);
+      expect(inner.json().error.message).toBe('No shipped artwork exists under "dungeons/" yet.');
+      // Search finds nothing, quietly; the configured path's preview is a plain 404.
+      expect(data<{ results: unknown[] }>(await call('GET', '/admin/dungeons/artwork/search?q=scrapheap')).results).toEqual([]);
+      expect((await call('GET', '/admin/dungeons/artwork?path=dungeons/backgrounds/scrapheap_gauntlet.webp')).statusCode).toBe(404);
+      // The zone itself still loads and saves: missing art is never an error.
+      expect((await call('GET', `/admin/dungeons/zones/${ZONE}`)).statusCode).toBe(200);
+    } finally {
+      fs.renameSync(parked, dungeons);
+    }
+    // Back in place, it is an ordinary listing again.
+    expect((await call('GET', '/admin/dungeons/artwork/browse')).json().data).toMatchObject({ path: 'dungeons', missing: false });
+  });
+
   it('gates the artwork routes behind dungeons.read', async () => {
     const cookies = { wm_portal_session: NON_OWNER_TOKEN, wm_portal_csrf: 'csrf-token' };
     for (const url of ['/admin/dungeons/artwork?path=dungeons/zones/deployed.webp', '/admin/dungeons/artwork/browse', '/admin/dungeons/artwork/search?q=x']) {

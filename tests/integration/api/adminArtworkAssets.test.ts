@@ -569,6 +569,64 @@ describe('reference integrity', () => {
   });
 });
 
+describe('shipped and managed artwork are separate stores', () => {
+  it('the dungeon shipped-art browser reads ASSETS_DIR only — never managed uploads or the scene cache', async () => {
+    const uploadedBg = await uploaded(await solidImage(64, 64, RED), { filename: 'managed-only-marker.png', name: 'Managed Only Marker' });
+    const row = await storedRow(uploadedBg.id);
+
+    // Browse: exactly what is under <ASSETS_DIR>/dungeons, and nothing uploaded.
+    const top = (await call('GET', '/admin/dungeons/artwork/browse')).json().data;
+    expect(top).toMatchObject({ path: 'dungeons', missing: false });
+    expect(top.directories.map((d: Asset) => d.path)).toEqual(['dungeons/backgrounds']);
+    const folder = (await call('GET', '/admin/dungeons/artwork/browse?path=dungeons/backgrounds')).json().data;
+    expect(folder.files.map((f: Asset) => f.path)).toEqual(['dungeons/backgrounds/shipped.png']);
+    // Search never finds an upload by name, file name, id or hash.
+    for (const q of ['managed-only-marker', 'Marker', uploadedBg.id, uploadedBg.contentHash.slice(0, 12), 'dungeon_background']) {
+      expect((await call('GET', `/admin/dungeons/artwork/search?q=${encodeURIComponent(q)}`)).json().data.results, q).toEqual([]);
+    }
+    // The shipped-path byte route cannot be pointed at a managed file or the cache.
+    for (const p of [row.storageKey, `../managed/${row.storageKey}`, `../cache/x.webp`, `dungeons/../../managed/${row.storageKey}`]) {
+      const res = await call('GET', `/admin/dungeons/artwork?path=${encodeURIComponent(p)}`);
+      expect([400, 404], p).toContain(res.statusCode);
+    }
+    // And the shipped file it does serve comes from the assets tree.
+    const shipped = await call('GET', '/admin/dungeons/artwork?path=dungeons/backgrounds/shipped.png');
+    expect(shipped.statusCode).toBe(200);
+    expect(shipped.rawPayload.equals(fs.readFileSync(path.join(assetsDir, 'dungeons', 'backgrounds', 'shipped.png')))).toBe(true);
+
+    // The other direction: the managed list knows nothing of shipped files.
+    const managed = (await call('GET', '/admin/artwork/assets?q=shipped&limit=200')).json().data.assets;
+    expect(managed).toEqual([]);
+  });
+
+  it('managed upload, select, preview and composition work with no shipped dungeon artwork at all', async () => {
+    const parked = path.join(root, 'dungeons-parked');
+    fs.renameSync(path.join(assetsDir, 'dungeons'), parked);
+    try {
+      expect((await call('GET', '/admin/dungeons/artwork/browse')).json().data).toMatchObject({ missing: true, files: [] });
+      const bg = await uploaded(await solidImage(320, 180, BLUE), { filename: 'no-shipped-bg.png' });
+      const sprite = await uploaded(await transparentSprite(120, 120, RED), { category: 'enemy_sprite', filename: 'no-shipped-sprite.png' });
+      expect(((await call('GET', '/admin/artwork/assets?q=no-shipped')).json().data.assets as Asset[]).map((a) => a.id).sort()).toEqual(
+        [bg.id, sprite.id].sort(),
+      );
+      expect((await getFile(bg.id)).statusCode).toBe(200);
+      const scene = await call('POST', '/admin/artwork/scene-preview', {
+        background: { assetId: bg.id },
+        sprite: { assetId: sprite.id },
+        placement: { anchor: 'center', scaleBasisPoints: 8000, offsetX: 0, offsetY: 0 },
+      });
+      expect(scene.statusCode, scene.body).toBe(200);
+      expect(isNear(await pixelAt(scene.rawPayload, 600, 337), RED)).toBe(true);
+      // A zone can use the upload while its shipped path points at nothing.
+      const saved = await saveZone({ backgroundAssetId: bg.id, backgroundArtworkPath: 'dungeons/backgrounds/scrapheap_gauntlet.webp' });
+      expect(saved.statusCode, saved.body).toBe(200);
+      await saveZone({ backgroundAssetId: null });
+    } finally {
+      fs.renameSync(parked, path.join(assetsDir, 'dungeons'));
+    }
+  });
+});
+
 describe('enemy artwork', () => {
   const enemyKey = () => (app.content.combatEnemies ?? [])[0]!.key;
   const entry = async (key: string) =>

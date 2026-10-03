@@ -1238,7 +1238,13 @@ mechanism: the dungeon routes expose `artwork`, `artwork/browse` and
 `artwork/search` under `dungeons.read`, rooted by the server at `dungeons/` —
 so the picker can list `dungeons/zones/` and `dungeons/backgrounds/` and
 nothing else in the assets tree. It browses and selects **shipped** files only;
-uploads are the managed-artwork fields beside it. The path can still be typed. The preview tells three states apart: no artwork
+uploads are the managed-artwork fields beside it. The path can still be typed.
+It reads `ASSETS_DIR` and nothing else — never the managed-upload store or the
+scene cache. When `assets/dungeons/` does not exist (no dungeon art has been
+committed yet) the browse route answers `200` with an empty listing and
+`missing: true`, and the picker says *No shipped artwork exists under
+dungeons/ yet*; a real failure reads *Could not load shipped artwork* with the
+server's reason. The preview tells three states apart: no artwork
 set, a path with no file behind it (saved anyway; screens fall back), and the
 image.
 

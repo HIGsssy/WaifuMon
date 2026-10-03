@@ -32,7 +32,7 @@
  * authorization and turn {@link ArtworkBrowseError} into a response.
  */
 import type { Dirent } from 'node:fs';
-import { readdir, realpath, stat } from 'node:fs/promises';
+import { lstat, readdir, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { relativeAssetPath } from '../content/schemas';
 import {
@@ -73,6 +73,12 @@ export interface ArtworkDirectoryListing {
   breadcrumbs: ArtworkFolderEntry[];
   directories: ArtworkFolderEntry[];
   files: ArtworkFileEntry[];
+  /**
+   * True when {@link path} is a browse root that does not exist on disk yet —
+   * no artwork has been shipped there. A normal, empty answer rather than an
+   * error: "nothing here yet" is not "the browser failed".
+   */
+  missing: boolean;
 }
 
 export interface ArtworkSearchResult {
@@ -182,6 +188,16 @@ async function realRoot(assetsDir: string, root: string): Promise<string | null>
   return info?.isDirectory() ? real : null;
 }
 
+/** True when nothing at all exists at `p` — as opposed to something that may not be browsed. */
+async function isAbsent(p: string): Promise<boolean> {
+  try {
+    await lstat(p);
+    return false;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === 'ENOENT';
+  }
+}
+
 type Classified = { kind: 'dir'; real: string } | { kind: 'file'; extension: ArtworkExtension } | null;
 
 /**
@@ -246,7 +262,14 @@ export async function browseArtworkDirectory(
         present.push({ name: root, path: root });
       }
     }
-    return { path: '', parent: null, breadcrumbs: [], directories: present.sort(byName), files: [] };
+    return {
+      path: '',
+      parent: null,
+      breadcrumbs: [],
+      directories: present.sort(byName),
+      files: [],
+      missing: false,
+    };
   }
 
   const target = folder === '' ? roots[0]! : folder;
@@ -256,7 +279,24 @@ export async function browseArtworkDirectory(
   }
   const rootReal = await realRoot(assetsDir, root);
   if (!rootReal) {
-    throw new ArtworkBrowseError('not_found', `The artwork folder "${root}" does not exist on the server.`);
+    // The root itself: nothing has been shipped under it yet. That is an
+    // empty listing, said plainly. A folder *inside* a root that is not there
+    // is still "no such folder", so a picker opened on a stale path falls
+    // back to the root and lands on this answer.
+    if (target === root && (await isAbsent(path.resolve(assetsDir, root)))) {
+      return {
+        path: root,
+        parent: roots.length === 1 ? null : '',
+        breadcrumbs: crumbs(root),
+        directories: [],
+        files: [],
+        missing: true,
+      };
+    }
+    // Something is there but may not be browsed (a file, or a link that
+    // leaves the assets directory), or the request named a folder inside a
+    // root that does not exist.
+    throw new ArtworkBrowseError('not_found', `No shipped artwork exists under "${root}/" yet.`);
   }
 
   const dirReal = await realOrNull(path.resolve(assetsDir, target));
@@ -292,6 +332,7 @@ export async function browseArtworkDirectory(
     breadcrumbs: crumbs(target),
     directories: directories.sort(byName),
     files: files.sort(byName),
+    missing: false,
   };
 }
 

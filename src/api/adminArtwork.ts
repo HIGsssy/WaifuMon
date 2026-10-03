@@ -98,6 +98,8 @@ export const artworkDirectorySchema = z.object({
   breadcrumbs: z.array(folderEntrySchema),
   directories: z.array(folderEntrySchema),
   files: z.array(fileEntrySchema),
+  /** The folder is a browse root with nothing shipped under it yet (not an error). */
+  missing: z.boolean(),
 });
 
 /** Response payload of a search route. */

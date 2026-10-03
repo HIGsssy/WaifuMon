@@ -56,9 +56,14 @@ function describeError(error: unknown): string {
   if (isPortalApiError(error)) {
     if (error.status === 403) return 'You do not have permission to browse this artwork.';
     if (error.isTransportError) return 'Could not reach the server. Try again in a moment.';
-    if (error.message) return error.message;
+    // A real failure, named as one — with the server's reason, so "the folder
+    // is empty" is never mistaken for "the browser broke" or the reverse.
+    const reason = [error.message, `${error.code}, HTTP ${error.status}`]
+      .filter(Boolean)
+      .join(' — ');
+    return `Could not load shipped artwork. ${reason}`;
   }
-  return 'Something went wrong loading artwork.';
+  return 'Could not load shipped artwork.';
 }
 
 /** A 400 or 404 — the folder is bad or gone, as opposed to the API failing. */
@@ -256,6 +261,15 @@ export function ArtworkBrowser({ source, selectedPath, onSelect }: ArtworkBrowse
                   )}
                 </div>
               )
+            ) : dir?.missing ? (
+              <p
+                className="py-8 text-center text-sm text-ink-muted"
+                role="status"
+                data-testid="artwork-browser-none-shipped"
+              >
+                No shipped artwork exists under {dir.path}/ yet. Files added to assets/{dir.path}/
+                appear here once they are deployed.
+              </p>
             ) : dir && dir.directories.length === 0 && dir.files.length === 0 ? (
               <p className="py-8 text-center text-sm text-ink-muted">This folder has no artwork.</p>
             ) : dir ? (

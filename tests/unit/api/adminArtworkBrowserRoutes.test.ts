@@ -109,6 +109,7 @@ describe('picker routes', () => {
       breadcrumbs: [{ name: 'results', path: 'results' }],
       directories: [{ name: 'hunt', path: 'results/hunt' }],
       files: [{ name: 'nothing1.webp', path: 'results/nothing1.webp', folder: 'results', extension: 'webp' }],
+      missing: false,
     });
   });
 

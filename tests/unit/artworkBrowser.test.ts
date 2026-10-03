@@ -164,8 +164,42 @@ describe('browsing', () => {
     expect((await refusal(browse('results/purse-2.webp'))).kind).toBe('not_found');
   });
 
-  it('404s a root that is missing on disk', async () => {
-    expect((await refusal(browse('', ['nothing-here']))).kind).toBe('not_found');
+  it('a root with nothing shipped under it yet is an empty listing, not an error', async () => {
+    expect(await browse('', ['nothing-here'])).toEqual({
+      path: 'nothing-here',
+      parent: null,
+      breadcrumbs: [{ name: 'nothing-here', path: 'nothing-here' }],
+      directories: [],
+      files: [],
+      missing: true,
+    });
+    // Asked for by name, it is the same answer.
+    expect((await browse('nothing-here', ['nothing-here'])).missing).toBe(true);
+    // With several roots it sits under the top level like any other root.
+    expect(await browse('absent', ['results', 'absent'])).toMatchObject({ path: 'absent', parent: '', missing: true });
+    // A real, populated or merely empty folder is never "missing".
+    expect((await browse('')).missing).toBe(false);
+    fs.mkdirSync(path.join(assets, 'empty-root'));
+    try {
+      expect(await browse('', ['empty-root'])).toMatchObject({ directories: [], files: [], missing: false });
+    } finally {
+      fs.rmdirSync(path.join(assets, 'empty-root'));
+    }
+  });
+
+  it('a folder inside a root that does not exist is still "no such folder"', async () => {
+    const err = await refusal(browse('nothing-here/backgrounds', ['nothing-here']));
+    expect(err.kind).toBe('not_found');
+    expect(err.message).toBe('No shipped artwork exists under "nothing-here/" yet.');
+  });
+
+  it('a root that exists as a file, not a folder, is refused rather than called empty', async () => {
+    fs.writeFileSync(path.join(assets, 'file-root'), 'x');
+    try {
+      expect((await refusal(browse('', ['file-root']))).kind).toBe('not_found');
+    } finally {
+      fs.unlinkSync(path.join(assets, 'file-root'));
+    }
   });
 
   it('with several roots, the top level lists the roots that exist and no files', async () => {
@@ -179,6 +213,7 @@ describe('browsing', () => {
         { name: 'waifumon', path: 'waifumon' },
       ],
       files: [],
+      missing: false,
     });
     expect((await browse('results', ['waifumon', 'results'])).parent).toBe('');
   });

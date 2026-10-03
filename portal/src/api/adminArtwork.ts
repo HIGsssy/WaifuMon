@@ -34,6 +34,8 @@ export interface ArtworkDirectory {
   breadcrumbs: ArtworkFolder[];
   directories: ArtworkFolder[];
   files: ArtworkFile[];
+  /** A browse root with nothing shipped under it yet — an empty answer, not an error. */
+  missing?: boolean;
 }
 
 export interface ArtworkSearchResults {

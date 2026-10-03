@@ -331,9 +331,52 @@ describe('failures', () => {
     );
     await user.click(screen.getByRole('button', { name: 'Open folder essence' }));
     const error = await screen.findByTestId('artwork-browser-error');
-    expect(error).toHaveTextContent('Server exploded.');
+    // Named as a failure, with the server's reason — never as an empty folder.
+    expect(error).toHaveTextContent(
+      'Could not load shipped artwork. Server exploded. — INTERNAL, HTTP 500',
+    );
     await user.click(within(error).getByRole('button', { name: 'Go to the top level' }));
     expect(await screen.findByTestId('artwork-file-results/rarefind.webp')).toBeInTheDocument();
+  });
+
+  it('a root with nothing shipped yet is an empty state, not an error', async () => {
+    source.browse.mockResolvedValue({
+      path: 'dungeons',
+      parent: null,
+      breadcrumbs: [{ name: 'dungeons', path: 'dungeons' }],
+      directories: [],
+      files: [],
+      missing: true,
+    });
+    renderPicker();
+    const none = await screen.findByTestId('artwork-browser-none-shipped');
+    expect(none).toHaveTextContent('No shipped artwork exists under dungeons/ yet.');
+    expect(none).toHaveTextContent('assets/dungeons/');
+    expect(screen.queryByTestId('artwork-browser-error')).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('opened on a path inside a root that does not exist, falls back to that empty state', async () => {
+    source.browse.mockImplementation(async (path?: string) => {
+      if (path) {
+        throw new PortalApiError({
+          status: 404,
+          code: 'NOT_FOUND',
+          message: 'No shipped artwork exists under "dungeons/" yet.',
+        });
+      }
+      return {
+        path: 'dungeons',
+        parent: null,
+        breadcrumbs: [],
+        directories: [],
+        files: [],
+        missing: true,
+      };
+    });
+    renderPicker('dungeons/backgrounds/scrapheap_gauntlet.webp');
+    expect(await screen.findByTestId('artwork-browser-none-shipped')).toBeInTheDocument();
+    expect(screen.queryByTestId('artwork-browser-error')).toBeNull();
   });
 
   it('explains a permission refusal', async () => {
