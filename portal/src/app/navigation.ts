@@ -18,6 +18,7 @@ import {
   Backpack,
   BookOpen,
   CalendarDays,
+  Castle,
   Compass,
   FlaskConical,
   Gauge,
@@ -82,6 +83,12 @@ export const NAV_ITEMS: readonly NavItem[] = [
     label: 'Admin — Reward Tables',
     icon: Gift,
     requiresPermission: 'rewards.read',
+  },
+  {
+    to: '/admin/dungeons',
+    label: 'Admin — Dungeons',
+    icon: Castle,
+    requiresPermission: 'dungeons.read',
   },
   {
     to: '/admin/gallery',

@@ -969,6 +969,17 @@ describe('OpenAPI registration', () => {
       'POST /api/v1/admin/reward-tables/{kind}/validate',
       'POST /api/v1/admin/reward-tables/{kind}/{id}/reset',
       'PUT /api/v1/admin/reward-tables/{kind}/{id}',
+      // Dungeon zones and the progression currency. Writes need
+      // `dungeons.write` and name the revision they edited (409 when stale);
+      // there is no delete. `validate`, `preview` and `simulate` write nothing
+      // but carry a body; they need `dungeons.read`.
+      'POST /api/v1/admin/dungeons/preview',
+      'POST /api/v1/admin/dungeons/simulate',
+      'POST /api/v1/admin/dungeons/validate',
+      'POST /api/v1/admin/dungeons/zones',
+      'PUT /api/v1/admin/dungeons/currencies/{key}',
+      'PUT /api/v1/admin/dungeons/zones/{key}',
+      'PUT /api/v1/admin/dungeons/zones/{key}/enabled',
       'PUT /api/v1/players/{playerId}/collection/owned/{waifuId}/appearance',
       // A player's own Equipment management — self-only through the player
       // scope, unlock-gated, and every write goes through the same management

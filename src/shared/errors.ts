@@ -1604,3 +1604,184 @@ export class WorkshopPreviewStaleError extends AppError {
     );
   }
 }
+
+/* ───────────────────────────── Dungeons ───────────────────────────── */
+
+/** Why the dungeon generator could not produce a run. */
+export interface DungeonGenerationDiagnostics {
+  zoneKey: string;
+  seed: number;
+  /** Attempts made before giving up. */
+  attempts: number;
+  /** How many attempts failed for each reason. */
+  failures: Record<string, number>;
+  /** The reason the last attempt failed. */
+  lastFailure: string;
+}
+
+/**
+ * The authored rules of a zone could not produce a legal run for this seed
+ * within the retry bound. Never a partial dungeon: nothing was generated.
+ */
+export class DungeonGenerationError extends AppError {
+  constructor(readonly diagnostics: DungeonGenerationDiagnostics) {
+    super(
+      'DUNGEON_GENERATION_FAILED',
+      `Dungeon zone "${diagnostics.zoneKey}" could not generate a run for seed ${diagnostics.seed} ` +
+        `in ${diagnostics.attempts} attempts: ${diagnostics.lastFailure}`,
+      `This dungeon could not be generated: ${diagnostics.lastFailure}.`,
+    );
+  }
+}
+
+/** One problem with a submitted dungeon zone, by path. */
+export interface DungeonZoneIssueDetail {
+  path: string;
+  message: string;
+  severity: 'error' | 'warning';
+}
+
+/** A dungeon zone failed authoring validation; nothing was written. */
+export class DungeonZoneInvalidError extends AppError {
+  readonly issues: DungeonZoneIssueDetail[];
+  constructor(issues: readonly DungeonZoneIssueDetail[]) {
+    const list = Array.isArray(issues) ? issues : [];
+    const summary = list
+      .filter((i) => i.severity === 'error')
+      .map((i) => `${i.path}: ${i.message}`)
+      .join('; ');
+    super(
+      'DUNGEON_ZONE_INVALID',
+      `Invalid dungeon zone: ${summary || 'unknown problem'}`,
+      summary || 'That dungeon zone is not valid.',
+    );
+    this.issues = [...list];
+  }
+}
+
+/** A save named a revision someone else has since replaced. Nothing was written. */
+export class DungeonZoneStaleError extends AppError {
+  constructor(
+    readonly zoneKey: string,
+    readonly expectedRevision: number,
+    readonly currentRevision: number,
+    readonly updatedBy: string | null,
+    readonly updatedAt: Date,
+  ) {
+    super(
+      'DUNGEON_ZONE_STALE',
+      `Dungeon zone "${zoneKey}" is at revision ${currentRevision}, not ${expectedRevision}`,
+      'This dungeon zone was changed by someone else since you opened it. Reload to see their changes.',
+    );
+  }
+}
+
+export class DungeonZoneKeyTakenError extends AppError {
+  constructor(zoneKey: string) {
+    super(
+      'DUNGEON_ZONE_KEY_TAKEN',
+      `A dungeon zone "${zoneKey}" already exists`,
+      'Another dungeon zone already uses that key.',
+    );
+  }
+}
+
+/** A run was asked for in a zone that does not exist or is switched off. */
+export class DungeonZoneUnavailableError extends AppError {
+  constructor(zoneKey: string, reason: 'missing' | 'disabled') {
+    super(
+      'DUNGEON_ZONE_UNAVAILABLE',
+      `Dungeon zone "${zoneKey}" is ${reason}`,
+      'That dungeon is not open right now.',
+    );
+  }
+}
+
+/** One active run per player. */
+export class DungeonRunActiveError extends AppError {
+  constructor(playerId: number) {
+    super(
+      'DUNGEON_RUN_ACTIVE',
+      `Player ${playerId} already has an active dungeon run`,
+      'You are already in a dungeon. Finish or abandon that run first.',
+    );
+  }
+}
+
+/* ─────────────────────── Progression currency ─────────────────────── */
+
+export class ProgressionCurrencyNotFoundError extends AppError {
+  constructor(currencyKey: string) {
+    super(
+      'PROGRESSION_CURRENCY_NOT_FOUND',
+      `Progression currency "${currencyKey}" not found`,
+      'That currency does not exist.',
+    );
+  }
+}
+
+/** A grant was asked for in a currency that is switched off. */
+export class ProgressionCurrencyDisabledError extends AppError {
+  constructor(currencyKey: string) {
+    super(
+      'PROGRESSION_CURRENCY_DISABLED',
+      `Progression currency "${currencyKey}" is disabled`,
+      'That currency is not available right now.',
+    );
+  }
+}
+
+export class ProgressionCurrencyInvalidError extends AppError {
+  readonly issues: { path: string; message: string }[];
+  constructor(issues: readonly { path: string; message: string }[]) {
+    const list = Array.isArray(issues) ? issues : [];
+    const summary = list.map((i) => `${i.path}: ${i.message}`).join('; ');
+    super(
+      'PROGRESSION_CURRENCY_INVALID',
+      `Invalid currency metadata: ${summary || 'unknown problem'}`,
+      summary || 'That currency metadata is not valid.',
+    );
+    this.issues = [...list];
+  }
+}
+
+export class ProgressionCurrencyStaleError extends AppError {
+  constructor(
+    readonly currencyKey: string,
+    readonly expectedRevision: number,
+    readonly currentRevision: number,
+  ) {
+    super(
+      'PROGRESSION_CURRENCY_STALE',
+      `Progression currency "${currencyKey}" is at revision ${currentRevision}, not ${expectedRevision}`,
+      'This currency was changed by someone else since you opened it. Reload to see their changes.',
+    );
+  }
+}
+
+/** A spend the balance cannot cover. `name` is the currency's display name. */
+export class InsufficientProgressionCurrencyError extends AppError {
+  constructor(
+    readonly currencyKey: string,
+    required: number,
+    balance: number,
+    name: string,
+  ) {
+    super(
+      'INSUFFICIENT_PROGRESSION_CURRENCY',
+      `Needs ${required} ${currencyKey}, has ${balance}`,
+      `You need ${required} ${name} but only have ${balance}.`,
+    );
+  }
+}
+
+/** A request key already spent on a different change to the same balance. */
+export class ProgressionCurrencyRequestConflictError extends AppError {
+  constructor(requestKey: string) {
+    super(
+      'PROGRESSION_CURRENCY_REQUEST_CONFLICT',
+      `Progression currency request "${String(requestKey)}" was already used for a different change`,
+      'That request was already used.',
+    );
+  }
+}

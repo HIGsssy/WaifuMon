@@ -58,6 +58,9 @@ import type { FeatureUnlockService } from '../modules/features/featureUnlockServ
 import type { RewardTableService } from '../modules/rewardTables/rewardTableService';
 import type { CombatTrialService } from '../modules/combatTrials/combatTrialService';
 import type { EquipmentWorkshopService } from '../modules/equipment/equipmentWorkshopService';
+import type { DungeonZoneService } from '../modules/dungeons/dungeonZoneService';
+import type { DungeonRunService } from '../modules/dungeons/dungeonRunService';
+import type { ProgressionCurrencyService } from '../modules/progressionCurrency/progressionCurrencyService';
 
 export interface AppServices {
   guilds: GuildService;
@@ -239,6 +242,12 @@ export interface AppServices {
   combatTrials?: CombatTrialService | undefined;
   /** Patch's Workshop (dismantle, fabricate). Requires the `equipment` unlock. */
   equipmentWorkshop?: EquipmentWorkshopService | undefined;
+  /** Dungeon zone authoring, generation preview and simulation (Portal Admin). */
+  dungeonZones?: DungeonZoneService | undefined;
+  /** Generated dungeon run snapshots. Nothing player-facing starts a run yet. */
+  dungeonRuns?: DungeonRunService | undefined;
+  /** Progression currencies (the dungeon's Ascension-related resource): metadata, balances, ledger. */
+  progressionCurrency?: ProgressionCurrencyService | undefined;
 }
 
 export interface AppContext {

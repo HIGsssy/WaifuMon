@@ -1,0 +1,72 @@
+{
+  "format": "waifumon-dungeon-zones",
+  "version": 1,
+  "zones": [
+    {
+      "key": "scrapheap_gauntlet",
+      "name": "Scrapheap Gauntlet",
+      "description": "A run through the yard's automated defences to whatever is still guarding the far gate. First zone, initial tuning: every number here is a starting point.",
+      "enabled": true,
+      "order": 10,
+      "artworkPath": "dungeons/zones/scrapheap_gauntlet.webp",
+      "backgroundArtworkPath": "dungeons/backgrounds/scrapheap_gauntlet.webp",
+      "tags": ["initial_tuning", "robotic", "salvage"],
+      "generation": {
+        "minNodes": 6,
+        "maxNodes": 9,
+        "branching": { "minBranches": 0, "maxBranches": 1, "chanceBasisPoints": 3000, "maxLength": 1 },
+        "extraction": { "minDepth": 4, "nodeTypes": ["rest", "exit"], "minPoints": 1 },
+        "nodeWeights": { "combat": 60, "elite": 10, "event": 12, "reward": 10, "rest": 8, "miniboss": 0, "exit": 0 },
+        "boss": { "required": true },
+        "depthRanges": {
+          "elite": { "minDepth": 3, "maxDepth": null },
+          "rest": { "minDepth": 2, "maxDepth": null },
+          "reward": { "minDepth": 2, "maxDepth": null }
+        },
+        "required": [
+          { "types": ["rest"], "min": 1 },
+          { "types": ["reward", "event"], "min": 1 }
+        ],
+        "limits": [
+          { "types": ["elite"], "max": 1 },
+          { "types": ["rest"], "max": 2 },
+          { "types": ["reward"], "max": 2 }
+        ],
+        "noConsecutive": ["rest", "reward", "elite"],
+        "maxConsecutiveSameEnemy": 2
+      },
+      "pools": {
+        "combat": [
+          { "id": "drone", "enemyKey": "scrapyard_drone", "weight": 50, "minDepth": 1, "maxDepth": 4, "tags": ["robotic"] },
+          { "id": "bruiser", "enemyKey": "alley_bruiser", "weight": 35, "minDepth": 2, "maxDepth": 7, "tags": ["organic"] },
+          { "id": "automaton", "enemyKey": "security_automaton", "weight": 20, "minDepth": 4, "maxDepth": null, "tags": ["robotic"] }
+        ],
+        "elite": [
+          { "id": "elite_automaton", "enemyKey": "security_automaton", "weight": 10, "minDepth": 3, "maxDepth": null, "tags": ["robotic"] }
+        ],
+        "miniboss": [],
+        "boss": [
+          { "id": "colossus", "enemyKey": "scrapheap_colossus", "weight": 10, "minDepth": 1, "maxDepth": null, "tags": ["robotic", "temporary"] }
+        ],
+        "event": [
+          { "id": "cache", "eventKey": "abandoned_cache", "weight": 10, "minDepth": 1, "maxDepth": null, "tags": ["salvage"] },
+          { "id": "terminal", "eventKey": "flickering_terminal", "weight": 10, "minDepth": 1, "maxDepth": null, "tags": ["robotic"] },
+          { "id": "catwalk", "eventKey": "unstable_catwalk", "weight": 6, "minDepth": 3, "maxDepth": null, "tags": ["trap", "high_risk"] }
+        ]
+      },
+      "rewards": {
+        "currencyKey": "ascension_currency",
+        "defeatCurrencyRetentionBasisPoints": 2500,
+        "bands": [
+          { "id": "early", "minDepth": 1, "maxDepth": 3, "currency": { "min": 1, "max": 2 } },
+          { "id": "mid", "minDepth": 4, "maxDepth": 6, "currency": { "min": 2, "max": 4 } },
+          { "id": "deep", "minDepth": 7, "maxDepth": null, "currency": { "min": 3, "max": 6 } },
+          { "id": "elite", "minDepth": 1, "maxDepth": null, "nodeTypes": ["elite"], "currency": { "min": 4, "max": 6 } },
+          { "id": "boss", "minDepth": 1, "maxDepth": null, "nodeTypes": ["boss"], "currency": { "min": 10, "max": 15 } }
+        ],
+        "completion": { "currency": { "min": 5, "max": 5 } },
+        "extraction": {}
+      }
+    }
+  ]
+}

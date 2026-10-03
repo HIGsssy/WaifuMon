@@ -43,6 +43,7 @@ import { adminAccessRoutes } from './admin/access';
 import { adminEncounterPromotionRoutes } from './admin/encounterPromotion';
 import { adminVendorRoutes } from './admin/vendors';
 import { adminRewardTableRoutes } from './admin/rewardTables';
+import { adminDungeonRoutes } from './admin/dungeons';
 import { adminResultPresentationRoutes } from './admin/resultPresentations';
 import { adminGalleryRoutes } from './admin/gallery';
 import { adminSystemMetricsRoutes } from './admin/systemMetrics';
@@ -137,6 +138,10 @@ export const v1Routes =
     // Admin: boss and expedition reward tables. Skipped when the reward-table
     // service is not wired.
     await app.register(adminRewardTableRoutes(ctx));
+
+    // Admin: dungeon zones, the progression currency and the generation
+    // preview. Skipped when the dungeon services are not wired.
+    await app.register(adminDungeonRoutes(ctx));
 
     // Admin: Result Presentations (hunt-find and release flavor/artwork).
     // Skipped when the presentation service is not wired.

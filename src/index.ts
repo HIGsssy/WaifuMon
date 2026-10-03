@@ -57,6 +57,10 @@ import {
   seedRewardTables,
 } from './modules/rewardTables/rewardTableStore';
 import { createRewardTableService } from './modules/rewardTables/rewardTableService';
+import { loadShippedDungeonZones, seedDungeonZones } from './modules/dungeons/dungeonZoneStore';
+import { createDungeonZoneService } from './modules/dungeons/dungeonZoneService';
+import { createDungeonRunService } from './modules/dungeons/dungeonRunService';
+import { createProgressionCurrencyService } from './modules/progressionCurrency/progressionCurrencyService';
 import { buildAffixCatalogue } from './modules/equipment/affixCatalogue';
 import { readUnknownAffixKeys } from './modules/equipment/equipmentQueries';
 import { createEquipmentDefinitionService } from './modules/equipment/equipmentDefinitionService';
@@ -180,6 +184,9 @@ async function main(): Promise<void> {
   // row exports back to the file it came from. The database is authoritative
   // once seeded (below); these are the defaults and the "reset" target.
   const shippedRewardTables = loadShippedRewardTables(config.contentDir);
+  // Dungeon zones follow the same model: the shipped file is the default and
+  // the "matches Git" reference; the database row is authoritative once seeded.
+  const shippedDungeonZones = loadShippedDungeonZones(config.contentDir);
 
   const currency = createCurrencyService(db);
   const inventory = createInventoryService(db);
@@ -399,6 +406,23 @@ async function main(): Promise<void> {
     currency,
     inventory,
     getCatalogue: () => combatTrialCatalogueFromContent(contentSnapshot),
+  });
+  /**
+   * Dungeons: the generation + authoring foundation. Zones are authored in
+   * Portal Admin; the run service can generate and snapshot a run, but nothing
+   * player-facing starts one yet. Enemies and events follow the live content
+   * snapshot through reloads.
+   */
+  const progressionCurrency = createProgressionCurrencyService(db);
+  const dungeonZones = createDungeonZoneService({
+    db,
+    getContent: () => contentSnapshot,
+    getShipped: () => shippedDungeonZones,
+  });
+  const dungeonRuns = createDungeonRunService({
+    db,
+    getContent: () => contentSnapshot,
+    currencies: progressionCurrency,
   });
   const equipmentOnboarding = createEquipmentOnboardingService({
     db,
@@ -684,6 +708,9 @@ async function main(): Promise<void> {
       equipmentManagement,
       combatTrials,
       equipmentWorkshop,
+      dungeonZones,
+      dungeonRuns,
+      progressionCurrency,
     },
   };
 
@@ -751,6 +778,45 @@ async function main(): Promise<void> {
     }
   } catch (err) {
     logger.error({ err }, 'reward table seed failed — bosses and expeditions will use whatever is in the DB');
+  }
+  // Dungeon zones, seeded like reward tables: insert a missing shipped zone,
+  // update one from Git only while its row still holds what was last seeded,
+  // and never overwrite a zone edited in Portal Admin.
+  try {
+    const zoneSeed = await seedDungeonZones(db, shippedDungeonZones);
+    if (zoneSeed.created.length > 0 || zoneSeed.updated.length > 0 || zoneSeed.adopted.length > 0) {
+      logger.info(
+        { tag: 'dungeon-zones/seed', created: zoneSeed.created, updated: zoneSeed.updated, adopted: zoneSeed.adopted },
+        'seeded dungeon zones from shipped content',
+      );
+    }
+    for (const d of zoneSeed.diverged) {
+      const fields = { tag: 'dungeon-zones/diverged', ...d };
+      if (d.shippedChanged) {
+        logger.warn(
+          fields,
+          `dungeon zone ${d.key} was edited in Portal Admin and Git has also changed it — ` +
+            'the shipped change was NOT applied. Export the live zones to reconcile.',
+        );
+      } else {
+        logger.info(fields, `dungeon zone ${d.key} keeps its Portal Admin edit (differs from Git)`);
+      }
+    }
+    // A seeded zone is not validated against this server by the seed itself;
+    // say so now rather than when the first run is refused.
+    for (const zone of await dungeonZones.list()) {
+      if (!zone.enabled) continue;
+      const detail = await dungeonZones.get(zone.key);
+      const errors = detail?.issues.filter((i) => i.severity === 'error') ?? [];
+      if (errors.length > 0) {
+        logger.error(
+          { tag: 'dungeon-zones/invalid', zone: zone.key, issues: errors },
+          `dungeon zone ${zone.key} is enabled but cannot generate runs on this server until it is fixed`,
+        );
+      }
+    }
+  } catch (err) {
+    logger.error({ err }, 'dungeon zone seed failed — dungeons will use whatever is in the DB');
   }
   try {
     // Reward tables and gear definitions are both rows, but nothing ties a

@@ -351,6 +351,13 @@
       "when": 1820008800000,
       "tag": "0049_equipment_workshop",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1820095200000,
+      "tag": "0050_dungeon_foundation",
+      "breakpoints": true
     }
   ]
 }

@@ -165,6 +165,23 @@ const RewardTableEditorPage = lazy(() =>
     default: m.RewardTableEditorPage,
   })),
 );
+// Dungeons (zones, the progression currency, generation preview). Gated on
+// `dungeons.read` only.
+const DungeonsListPage = lazy(() =>
+  import('@/features/adminDungeons/DungeonsListPage').then((m) => ({
+    default: m.DungeonsListPage,
+  })),
+);
+const DungeonZoneEditorPage = lazy(() =>
+  import('@/features/adminDungeons/DungeonZoneEditorPage').then((m) => ({
+    default: m.DungeonZoneEditorPage,
+  })),
+);
+const DungeonPreviewPage = lazy(() =>
+  import('@/features/adminDungeons/DungeonPreviewPage').then((m) => ({
+    default: m.DungeonPreviewPage,
+  })),
+);
 // Result Presentations. Gated on its own permission — not `admin.access` or
 // any encounter permission — so a presentation-only editor reaches it.
 const ResultPresentationsPage = lazy(() =>
@@ -406,6 +423,40 @@ export const routes: RouteObject[] = [
             element: (
               <RequirePortalPermission permission="rewards.read">
                 <RewardTableEditorPage />
+              </RequirePortalPermission>
+            ),
+          },
+
+          // Admin — Dungeons. The API re-checks every request.
+          {
+            path: 'admin/dungeons',
+            element: (
+              <RequirePortalPermission permission="dungeons.read">
+                <DungeonsListPage />
+              </RequirePortalPermission>
+            ),
+          },
+          {
+            path: 'admin/dungeons/preview',
+            element: (
+              <RequirePortalPermission permission="dungeons.read">
+                <DungeonPreviewPage />
+              </RequirePortalPermission>
+            ),
+          },
+          {
+            path: 'admin/dungeons/new',
+            element: (
+              <RequirePortalPermission permission="dungeons.write">
+                <DungeonZoneEditorPage />
+              </RequirePortalPermission>
+            ),
+          },
+          {
+            path: 'admin/dungeons/zones/:key',
+            element: (
+              <RequirePortalPermission permission="dungeons.read">
+                <DungeonZoneEditorPage />
               </RequirePortalPermission>
             ),
           },

@@ -38,7 +38,13 @@ describe('shipped starter enemies', () => {
   );
 
   it('loads the three starter enemies, enabled, text-only', () => {
-    expect(shipped.enemies.map((e) => e.key)).toEqual(['scrapyard_drone', 'alley_bruiser', 'security_automaton']);
+    // The three starters, then the temporary dungeon boss (see content/dungeons/zones.json).
+    expect(shipped.enemies.map((e) => e.key)).toEqual([
+      'scrapyard_drone',
+      'alley_bruiser',
+      'security_automaton',
+      'scrapheap_colossus',
+    ]);
     for (const e of shipped.enemies) {
       expect(e.enabled).toBe(true);
       expect(e.artworkPath).toBeNull();

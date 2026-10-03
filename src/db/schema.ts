@@ -2949,3 +2949,182 @@ export const combatTrialAttempts = pgTable(
 );
 
 export type CombatTrialAttemptRow = typeof combatTrialAttempts.$inferSelect;
+
+/**
+ * Dungeon zones (migration 0050) — the authored input of the dungeon
+ * generator.
+ *
+ * Database-authoritative once seeded, on the `reward_tables` model: the
+ * shipped `content/dungeons/zones.json` holds the defaults, and the startup
+ * seed updates a row from it only while the row still holds what was last
+ * seeded (`contentHash === seedHash`). `definition` is the zone as the file
+ * format writes it; see `modules/dungeons/zoneDefinition.ts`.
+ *
+ * `zoneKey` is stable for the life of the zone: runs record it by value.
+ */
+export const dungeonZones = pgTable(
+  'dungeon_zones',
+  {
+    zoneKey: text('zone_key').primaryKey(),
+    /** Mirrors `definition.enabled`, for listing without parsing. */
+    enabled: boolean('enabled').notNull(),
+    definition: jsonb('definition').$type<Record<string, unknown>>().notNull(),
+    /** Bumped on every write; a save must name the revision it edited. */
+    revision: integer('revision').notNull().default(1),
+    contentHash: text('content_hash').notNull(),
+    /** Hash of the shipped zone last seeded into this row; null if never shipped. */
+    seedHash: text('seed_hash'),
+    /** Mirrors `definition.order`. */
+    position: integer('position').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Discord id of the admin, or `seed`. */
+    updatedBy: text('updated_by'),
+  },
+  (t) => [
+    check('dungeon_zones_key_check', sql`${t.zoneKey} ~ '^[a-z0-9]+(_[a-z0-9]+)*$'`),
+    check('dungeon_zones_revision_check', sql`${t.revision} >= 1`),
+  ],
+);
+
+export type DungeonZoneRow = typeof dungeonZones.$inferSelect;
+
+/**
+ * Display metadata for a progression currency (migration 0050). `currencyKey`
+ * is the stable reference; every other column is what an admin may rename.
+ */
+export const progressionCurrencies = pgTable(
+  'progression_currencies',
+  {
+    currencyKey: text('currency_key').primaryKey(),
+    singularName: text('singular_name').notNull(),
+    pluralName: text('plural_name').notNull(),
+    description: text('description').notNull().default(''),
+    /** Emoji or short icon text; null for none. */
+    icon: text('icon'),
+    enabled: boolean('enabled').notNull().default(true),
+    revision: integer('revision').notNull().default(1),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedBy: text('updated_by'),
+  },
+  (t) => [
+    check('progression_currencies_key_check', sql`${t.currencyKey} ~ '^[a-z0-9]+(_[a-z0-9]+)*$'`),
+    check('progression_currencies_revision_check', sql`${t.revision} >= 1`),
+  ],
+);
+
+export type ProgressionCurrencyRow = typeof progressionCurrencies.$inferSelect;
+
+/**
+ * A player's balance of one progression currency. Created by the first grant;
+ * no row means zero. Only `progressionCurrencyService` moves it — it is not an
+ * inventory item, so no shop, sale, gift or consumable flow can.
+ */
+export const playerProgressionBalances = pgTable(
+  'player_progression_balances',
+  {
+    playerId: bigint('player_id', { mode: 'number' })
+      .notNull()
+      .references(() => players.id),
+    currencyKey: text('currency_key')
+      .notNull()
+      .references(() => progressionCurrencies.currencyKey),
+    balance: integer('balance').notNull().default(0),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ name: 'player_progression_balances_pk', columns: [t.playerId, t.currencyKey] }),
+    check('player_progression_balances_balance_check', sql`${t.balance} >= 0`),
+  ],
+);
+
+/** Append-only record of every progression-currency change. */
+export const progressionCurrencyLedger = pgTable(
+  'progression_currency_ledger',
+  {
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    playerId: bigint('player_id', { mode: 'number' })
+      .notNull()
+      .references(() => players.id),
+    currencyKey: text('currency_key')
+      .notNull()
+      .references(() => progressionCurrencies.currencyKey),
+    /** Positive for a grant, negative for a spend. */
+    delta: integer('delta').notNull(),
+    balanceAfter: integer('balance_after').notNull(),
+    /** What moved it, e.g. `dungeon_extraction`, `admin_grant`. */
+    reason: text('reason').notNull(),
+    /** What it moved for, e.g. `dungeon_run:42`. */
+    sourceRef: text('source_ref'),
+    /** Idempotency key, unique per player and currency when present. */
+    requestKey: text('request_key'),
+    metadata: jsonb('metadata').$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check('progression_currency_ledger_delta_check', sql`${t.delta} <> 0`),
+    check('progression_currency_ledger_after_check', sql`${t.balanceAfter} >= 0`),
+    uniqueIndex('progression_currency_ledger_request_uq')
+      .on(t.playerId, t.currencyKey, t.requestKey)
+      .where(sql`request_key is not null`),
+    index('progression_currency_ledger_player_idx').on(t.playerId, t.currencyKey, t.id.desc()),
+  ],
+);
+
+export type ProgressionCurrencyLedgerRow = typeof progressionCurrencyLedger.$inferSelect;
+
+export const DUNGEON_RUN_STATUSES = ['active', 'extracted', 'defeated', 'completed', 'abandoned'] as const;
+export type DungeonRunStatus = (typeof DUNGEON_RUN_STATUSES)[number];
+
+/**
+ * A generated dungeon run (migration 0050).
+ *
+ * `graph` is authoritative for the run; `seed` and `zoneSnapshot` are there to
+ * reproduce it and to keep an Admin edit away from a run already generated.
+ * One active run per player, by the partial unique index.
+ *
+ * `currentNodeId`, `currentHp`, `unbankedCurrency` and `securedRewards` are
+ * where progress will live once runs are playable; nothing advances them yet.
+ */
+export const dungeonRuns = pgTable(
+  'dungeon_runs',
+  {
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    playerId: bigint('player_id', { mode: 'number' })
+      .notNull()
+      .references(() => players.id),
+    /** No FK: a run outlives whatever later happens to its zone. */
+    zoneKey: text('zone_key').notNull(),
+    zoneRevision: integer('zone_revision').notNull(),
+    /** Unsigned 32-bit — the range `seededRng` uses. */
+    seed: bigint('seed', { mode: 'number' }).notNull(),
+    generatorVersion: integer('generator_version').notNull(),
+    status: text('status').$type<DungeonRunStatus>().notNull().default('active'),
+    graph: jsonb('graph').$type<Record<string, unknown>>().notNull(),
+    zoneSnapshot: jsonb('zone_snapshot').$type<Record<string, unknown>>().notNull(),
+    currentNodeId: text('current_node_id'),
+    currentHp: integer('current_hp'),
+    unbankedCurrency: integer('unbanked_currency').notNull().default(0),
+    securedRewards: jsonb('secured_rewards').$type<Record<string, unknown>[]>().notNull().default([]),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+  },
+  (t) => [
+    check(
+      'dungeon_runs_status_check',
+      sql`${t.status} in ('active','extracted','defeated','completed','abandoned')`,
+    ),
+    check('dungeon_runs_seed_check', sql`${t.seed} >= 0 and ${t.seed} <= 4294967295`),
+    check('dungeon_runs_unbanked_check', sql`${t.unbankedCurrency} >= 0`),
+    check('dungeon_runs_hp_check', sql`${t.currentHp} is null or ${t.currentHp} >= 0`),
+    check('dungeon_runs_completed_check', sql`(${t.status} = 'active') = (${t.completedAt} is null)`),
+    uniqueIndex('dungeon_runs_one_active_uq')
+      .on(t.playerId)
+      .where(sql`status = 'active'`),
+    index('dungeon_runs_player_idx').on(t.playerId, t.id.desc()),
+  ],
+);
+
+export type DungeonRunRow = typeof dungeonRuns.$inferSelect;

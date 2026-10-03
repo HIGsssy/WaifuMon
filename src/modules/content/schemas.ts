@@ -64,6 +64,7 @@ import type { EquipmentAffix } from '../equipment/affixCatalogue';
 import type { WorkshopConfig } from '../equipment/workshopConfig';
 import type { CombatEnemyDefinition } from '../combat/enemyDefinitions';
 import type { CombatTrialDefinition } from '../combat/trialDefinitions';
+import type { DungeonEventDefinition } from '../dungeons/eventDefinitions';
 import {
   EQUIPMENT_REWARD_SELECTOR_SHAPE,
   equipmentSelectorKey,
@@ -2975,6 +2976,11 @@ export interface LoadedContent {
    * here: absent means no Trials. Hand-built snapshots carry none.
    */
   combatTrials?: CombatTrialDefinition[] | undefined;
+  /**
+   * Dungeon events from `content/dungeons/events.json` — what a zone's event
+   * pool may place. Optional on disk and here: absent means none.
+   */
+  dungeonEvents?: DungeonEventDefinition[] | undefined;
 }
 
 /**

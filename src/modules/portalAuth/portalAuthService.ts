@@ -58,6 +58,13 @@ export const ALL_PORTAL_PERMISSIONS = [
   // enable/disable, reset, delete and import.
   'rewards.read',
   'rewards.write',
+  // Dungeon authoring: zones, their pools and reward bands, the progression
+  // currency's display metadata, and the generation preview. Enabled/disabled
+  // records with no publish step — a save reaches the next run generated,
+  // never one already stored — so `write` covers create, edit and
+  // enable/disable. Preview and simulation write nothing and need only `read`.
+  'dungeons.read',
+  'dungeons.write',
   // System Metrics: live process, host and database-pool telemetry. Owner-only
   // — see SYSTEM_METRICS_READ below for why it is not delegable.
   'system.metrics.read',
@@ -92,6 +99,9 @@ export const PORTAL_PERMISSION_DESCRIPTIONS: Readonly<Record<PortalPermission, s
   'rewards.read': 'View boss and expedition reward tables, equipment previews and exports.',
   'rewards.write':
     'Edit, enable/disable, reset and import boss and expedition reward tables (affects future bosses and deployments only).',
+  'dungeons.read': 'View dungeon zones, pools and the progression currency, and run generation previews.',
+  'dungeons.write':
+    'Create, edit and enable/disable dungeon zones and rename the progression currency (affects future runs only).',
   'system.metrics.read':
     'View live server metrics: memory, CPU, request latency and database load (guild owner only).',
   'system.loadtest.run':

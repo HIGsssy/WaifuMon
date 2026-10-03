@@ -55,7 +55,7 @@ export function rewardTableFile(kind: RewardTableKind): string {
 // ── hashing ─────────────────────────────────────────────────────────────────
 
 /** JSON with object keys sorted at every depth and array order kept. */
-function canonicalJson(value: unknown): string {
+export function canonicalJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
   if (value !== null && typeof value === 'object') {
     const entries = Object.entries(value as Record<string, unknown>)

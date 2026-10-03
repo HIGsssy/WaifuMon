@@ -197,6 +197,10 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   ENCOUNTER_IMPORT_REJECTED: 400,
   /** Admin: a reward table (or import) failed validation — issues are in `details`. */
   REWARD_TABLE_INVALID: 400,
+  /** Admin: a dungeon zone failed validation — issues are in `details`. */
+  DUNGEON_ZONE_INVALID: 400,
+  /** Admin: progression currency metadata failed validation. */
+  PROGRESSION_CURRENCY_INVALID: 400,
   /** Nothing to export. */
   ENCOUNTER_EXPORT_EMPTY: 400,
   /**
@@ -245,6 +249,7 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   ROLE_GRANT_NOT_FOUND: 404,
   SPECIES_NOT_FOUND: 404,
   TABLE_NOT_FOUND: 404,
+  PROGRESSION_CURRENCY_NOT_FOUND: 404,
   SESSION_NOT_FOUND: 404,
   BUDDY_NOT_SET: 404,
   /**
@@ -310,9 +315,29 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   REWARD_TABLE_ID_TAKEN: 409,
   /** Admin: deleting a reward table that content references or Git ships — disable it instead. */
   REWARD_TABLE_DELETE_REFUSED: 409,
+  /** Admin: a dungeon zone save named a revision someone else has since replaced. */
+  DUNGEON_ZONE_STALE: 409,
+  /** Admin: creating a dungeon zone under a key another zone already has. */
+  DUNGEON_ZONE_KEY_TAKEN: 409,
+  /** Admin: a currency metadata save named a stale revision. */
+  PROGRESSION_CURRENCY_STALE: 409,
+  /** One active dungeon run per player; this player already has one. */
+  DUNGEON_RUN_ACTIVE: 409,
+  /** A request key reused for a different progression-currency change. */
+  PROGRESSION_CURRENCY_REQUEST_CONFLICT: 409,
 
   // --- Valid shape, business rule refused ---------------------------------
   INSUFFICIENT_FUNDS: 422,
+  INSUFFICIENT_PROGRESSION_CURRENCY: 422,
+  /**
+   * The zone's authored rules cannot produce a legal run for the seed. The
+   * request is well-formed; it is the zone that needs fixing — the diagnostics
+   * are in `details` for the Admin preview.
+   */
+  DUNGEON_GENERATION_FAILED: 422,
+  /** The zone is missing or disabled — nothing to run. */
+  DUNGEON_ZONE_UNAVAILABLE: 422,
+  PROGRESSION_CURRENCY_DISABLED: 422,
   INSUFFICIENT_ESSENCE: 422,
   INSUFFICIENT_ITEMS: 422,
   /** Not enough of the input charm to run even one 10:1 exchange conversion. */

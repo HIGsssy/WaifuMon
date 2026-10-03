@@ -1,0 +1,27 @@
+{
+  "format": "waifumon-dungeon-events",
+  "version": 1,
+  "events": [
+    {
+      "key": "abandoned_cache",
+      "name": "Abandoned Cache",
+      "description": "A sealed supply crate, half buried under scrap. Placeholder — choices and effects arrive with playable runs.",
+      "enabled": true,
+      "tags": ["salvage", "initial_tuning"]
+    },
+    {
+      "key": "flickering_terminal",
+      "name": "Flickering Terminal",
+      "description": "A maintenance console still drawing power from somewhere. Placeholder — choices and effects arrive with playable runs.",
+      "enabled": true,
+      "tags": ["robotic", "initial_tuning"]
+    },
+    {
+      "key": "unstable_catwalk",
+      "name": "Unstable Catwalk",
+      "description": "The only way across groans under its own weight. Placeholder — choices and effects arrive with playable runs.",
+      "enabled": true,
+      "tags": ["trap", "high_risk", "initial_tuning"]
+    }
+  ]
+}

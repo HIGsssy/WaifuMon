@@ -31,6 +31,16 @@
       "artworkPath": "combat/enemies/security_automaton.webp",
       "enabled": true,
       "tags": ["starter", "initial_tuning"]
+    },
+    {
+      "key": "scrapheap_colossus",
+      "name": "Scrapheap Colossus",
+      "attack": 190,
+      "defense": 120,
+      "hp": 1500,
+      "artworkPath": null,
+      "enabled": true,
+      "tags": ["boss", "temporary", "initial_tuning"]
     }
   ]
 }
