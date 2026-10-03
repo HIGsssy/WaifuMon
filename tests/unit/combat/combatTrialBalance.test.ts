@@ -1,7 +1,11 @@
 /**
- * Initial balance of the shipped Trial ladder — deterministic simulations
- * through the real engine, with stats derived exactly as `combatStatsService`
- * derives them (`currentSeductivePower` → `deriveStat`).
+ * Initial balance of the shipped Trial ladder — seeded simulations through the
+ * real engine, with stats derived exactly as `combatStatsService` derives them
+ * (`currentSeductivePower` → `deriveStat`).
+ *
+ * Fights carry the engine's damage variance (90%–110% per hit), so each
+ * matchup is played over {@link SEEDS} seeds: "wins" means it wins at least
+ * half of them, and the comfortable cases must win every one.
  *
  * These are tuning guards, not exact pins: they assert the *shape* the ladder
  * is meant to have, so a retune that keeps the intent keeps passing.
@@ -53,17 +57,25 @@ type Build = keyof typeof BUILDS;
 const BASE_SP = [90, 100, 110, 125, 140, 155, 170, 185];
 const SP = BASE_SP.map((b) => currentSeductivePower(b, 35, 50));
 
-function fight(trialIndex: number, build: Build, currentSp: number): CombatResult {
+/** Seeded fights per matchup. Fixed seeds, so the file is deterministic. */
+const SEEDS = 200;
+
+function fight(trialIndex: number, build: Build, currentSp: number, seed = 1): CombatResult {
   const [atk, def, hp] = BUILDS[build];
   const { enemy } = ladder[trialIndex]!;
   const state = createCombatState({
     player: { id: 'buddy:1', name: 'Buddy', attack: deriveStat(currentSp, atk), defense: deriveStat(currentSp, def), maxHp: deriveStat(currentSp, hp) },
     enemy: enemyCombatantInput(enemy),
   });
-  return simulateCombat(state, { player: basicAttackController, enemy: basicAttackController }, { rng: seededRng(1) });
+  return simulateCombat(state, { player: basicAttackController, enemy: basicAttackController }, { rng: seededRng(seed) });
 }
 
-const wins = (trialIndex: number, build: Build) => SP.filter((sp) => fight(trialIndex, build, sp).result === 'player_victory');
+const fights = (trialIndex: number, build: Build, sp: number) =>
+  Array.from({ length: SEEDS }, (_, seed) => fight(trialIndex, build, sp, seed));
+const winRate = (trialIndex: number, build: Build, sp: number) =>
+  fights(trialIndex, build, sp).filter((r) => r.result === 'player_victory').length / SEEDS;
+/** The SP values at which the build wins the Trial at least half the time. */
+const wins = (trialIndex: number, build: Build) => SP.filter((sp) => winRate(trialIndex, build, sp) >= 0.5);
 const hpLeft = (r: CombatResult) => r.finalState.player.currentHp / r.finalState.player.maxHp;
 
 describe('the shipped Trial ladder', () => {
@@ -74,9 +86,11 @@ describe('the shipped Trial ladder', () => {
 
   it('Trial 1: starter gear wins comfortably across the whole range', () => {
     for (const sp of SP) {
-      const r = fight(0, 'starter', sp);
-      expect(r.result, `SP ${sp}`).toBe('player_victory');
-      expect(hpLeft(r), `SP ${sp}`).toBeGreaterThan(0.4);
+      // Every seed, not most: variance must not turn the first Trial into a coin flip.
+      for (const r of fights(0, 'starter', sp)) {
+        expect(r.result, `SP ${sp}`).toBe('player_victory');
+        expect(hpLeft(r), `SP ${sp}`).toBeGreaterThan(0.4);
+      }
     }
   });
 
@@ -91,10 +105,10 @@ describe('the shipped Trial ladder', () => {
   });
 
   it('Trial 2 is meaningfully harder than Trial 1', () => {
+    const meanHpLeft = (results: CombatResult[]) =>
+      results.reduce((sum, r) => sum + (r.result === 'player_victory' ? hpLeft(r) : 0), 0) / results.length;
     for (const sp of SP) {
-      const one = fight(0, 'starter', sp);
-      const two = fight(1, 'starter', sp);
-      expect(two.result === 'player_victory' ? hpLeft(two) : 0).toBeLessThan(hpLeft(one));
+      expect(meanHpLeft(fights(1, 'starter', sp)), `SP ${sp}`).toBeLessThan(meanHpLeft(fights(0, 'starter', sp)));
     }
   });
 
@@ -107,6 +121,13 @@ describe('the shipped Trial ladder', () => {
     expect(r.length).toBeGreaterThan(improved.length);
     // Below this the Buddy needs better than mid-roll R gear.
     expect(r).not.toContain(SP[0]);
+  });
+
+  it('variance only blurs the edges: almost every matchup is still decided one way', () => {
+    // A ladder where most cells were coin flips would make the recommendations meaningless.
+    const rates = [0, 1, 2].flatMap((t) => (Object.keys(BUILDS) as Build[]).flatMap((b) => SP.map((sp) => winRate(t, b, sp))));
+    const decided = rates.filter((r) => r <= 0.05 || r >= 0.95).length;
+    expect(decided / rates.length).toBeGreaterThan(0.85);
   });
 
   it('Trial 3 requires stronger stats than Trial 1', () => {

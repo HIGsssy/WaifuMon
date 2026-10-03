@@ -52,6 +52,7 @@ import {
 import type { TestAdminControlsConfig } from '../../../src/config/config';
 import { ADMIN_ACTION_EVENT } from '../../../src/modules/admin/adminActionAudit';
 import { buildEquipmentServices } from '../../helpers/equipmentFixtures';
+import { createDungeonAllowanceService } from '../../../src/modules/dungeons/dungeonAllowanceService';
 
 const GUILD_ID = '311222333444555666';
 const OTHER_GUILD_ID = '322333444555666777';
@@ -125,6 +126,7 @@ beforeAll(async () => {
             const equipmentServices = buildEquipmentServices(t.db);
             return { equipment: equipmentServices.equipment, featureUnlocks: equipmentServices.featureUnlocks };
           })(),
+          dungeonAllowance: createDungeonAllowanceService({ db: t.db, timezone: 'UTC' }),
         })
       : undefined;
     return createPlatformApiServer({
@@ -778,6 +780,7 @@ describe('audit', () => {
       ['staging-boost', {}],
       ['reset-assteroid-belt', {}],
       ['reset-equipment-onboarding', {}],
+      ['reset-delve-usage', {}],
     ];
     for (const [path, body] of calls) {
       const res = await post(`${base(testerId)}/${path}`, body, ADMIN_ID);

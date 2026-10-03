@@ -199,6 +199,8 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   REWARD_TABLE_INVALID: 400,
   /** Admin: a dungeon zone failed validation — issues are in `details`. */
   DUNGEON_ZONE_INVALID: 400,
+  /** Admin: a Delve setting outside its bounds. */
+  DUNGEON_SETTINGS_INVALID: 400,
   /** Admin: progression currency metadata failed validation. */
   PROGRESSION_CURRENCY_INVALID: 400,
   /** Nothing to export. */
@@ -250,6 +252,7 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   SPECIES_NOT_FOUND: 404,
   TABLE_NOT_FOUND: 404,
   PROGRESSION_CURRENCY_NOT_FOUND: 404,
+  DUNGEON_RUN_NOT_FOUND: 404,
   SESSION_NOT_FOUND: 404,
   BUDDY_NOT_SET: 404,
   /**
@@ -323,6 +326,10 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   PROGRESSION_CURRENCY_STALE: 409,
   /** One active dungeon run per player; this player already has one. */
   DUNGEON_RUN_ACTIVE: 409,
+  /** Every Delve run of the current game day has been started. */
+  DUNGEON_DAILY_LIMIT: 409,
+  /** A dungeon run generated without a fighter snapshot cannot be played. */
+  DUNGEON_RUN_UNPLAYABLE: 409,
   /** A request key reused for a different progression-currency change. */
   PROGRESSION_CURRENCY_REQUEST_CONFLICT: 409,
 

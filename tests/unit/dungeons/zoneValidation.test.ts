@@ -132,6 +132,31 @@ describe('reachability', () => {
     );
   });
 
+  it('accepts extraction windows that every run can hold, and rejects the ones it cannot', () => {
+    const windows = (...w: { minDepth: number; maxDepth: number | null; required?: boolean }[]) => ({
+      generation: { extraction: { windows: w } },
+    });
+    expect(issuesOf(windows({ minDepth: 3, maxDepth: 3 }, { minDepth: 6, maxDepth: null, required: false }))).toEqual([]);
+    // The shortest run ends at depth 4: a required window from depth 4 cannot always be placed…
+    expect(errorsAt(issuesOf(windows({ minDepth: 4, maxDepth: null })))).toContain('generation.extraction.windows[0]');
+    // …but an optional one there is fine.
+    expect(issuesOf(windows({ minDepth: 4, maxDepth: null, required: false }))).toEqual([]);
+    // A window that ends above the extraction depth, or starts past every run, can never hold
+    // anything: an error when it is required, a warning when it is optional (it is just dead).
+    expect(errorsAt(issuesOf(windows({ minDepth: 1, maxDepth: 2 })))).toContain('generation.extraction.windows[0]');
+    expect(errorsAt(issuesOf(windows({ minDepth: 30, maxDepth: null })))).toContain('generation.extraction.windows[0]');
+    const dead = issuesOf(windows({ minDepth: 1, maxDepth: 2, required: false }, { minDepth: 30, maxDepth: null, required: false }));
+    expect(errorsAt(dead)).toEqual([]);
+    expect(warningsAt(dead)).toEqual(['generation.extraction.windows[0]', 'generation.extraction.windows[1]']);
+    // Schema: an inverted window, an unknown field.
+    expect(errorsAt(issuesOf(windows({ minDepth: 5, maxDepth: 3 }))).some((p) => p.startsWith('generation.extraction.windows'))).toBe(true);
+    expect(
+      errorsAt(issuesOf({ generation: { extraction: { windows: [{ minDepth: 3, maxDepth: 3, bogus: 1 } as never] } } })).some((p) =>
+        p.startsWith('generation.extraction.windows'),
+      ),
+    ).toBe(true);
+  });
+
   it('rejects a required node type with no eligible pool', () => {
     const issues = issuesOf({ generation: { required: [{ types: ['miniboss'], min: 1 }] }, pools: { miniboss: [] } });
     expect(errorsAt(issues)).toContain('generation.required[0]');

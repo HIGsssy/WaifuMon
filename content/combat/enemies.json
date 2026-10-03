@@ -35,9 +35,9 @@
     {
       "key": "scrapheap_colossus",
       "name": "Scrapheap Colossus",
-      "attack": 190,
-      "defense": 120,
-      "hp": 1500,
+      "attack": 170,
+      "defense": 110,
+      "hp": 1200,
       "artworkPath": null,
       "enabled": true,
       "tags": ["boss", "temporary", "initial_tuning"]

@@ -30,8 +30,12 @@
  *      fit are dropped; a required one that does not fit fails the attempt.
  *   2. **Layout.** Place the forks, build the slots and the edges.
  *   3. **Reserve.** The final slot is the boss (or an `exit` when no boss is
- *      required). Then the guaranteed extraction points, then each `required`
- *      group, are placed on main-path slots — the ones no route can skip.
+ *      required). Then one extraction point per `extraction.windows` entry
+ *      (an optional window that has no free slot is skipped), then any further
+ *      guaranteed extraction points, then each `required` group, are placed on
+ *      main-path slots — the ones no route can skip. A zone with no windows
+ *      draws nothing for them, so it generates exactly as it did before they
+ *      existed.
  *   4. **Fill.** Every remaining slot, in depth order, takes a weighted pick
  *      among the types that are *legal* there. Weights choose; legality
  *      (depth ranges, an eligible pool, limits, adjacency) filters.
@@ -160,6 +164,13 @@ export function eligiblePoolEntries(
       depthInRange(depth, entry) &&
       lookup.get(contentKeyOf(entry))?.enabled === true,
   );
+}
+
+/** A zone's extraction windows. Zones snapshotted before windows existed have none. */
+export function extractionWindowsOf(
+  zone: DungeonZoneDefinition,
+): readonly { minDepth: number; maxDepth: number | null; required: boolean }[] {
+  return zone.generation.extraction.windows ?? [];
 }
 
 /**
@@ -315,15 +326,28 @@ function assignTypes(
     );
   };
 
-  /** Put one node of `types` on a free main-path slot that `accepts` it. */
-  const reserve = (types: readonly DungeonNodeType[], accepts: (slot: Slot) => boolean, what: string) => {
+  /**
+   * Put one node of `types` on a free main-path slot that `accepts` it. With
+   * no such slot: fails the attempt, or — when `optional` — places nothing,
+   * draws nothing and returns false.
+   */
+  const reserve = (
+    types: readonly DungeonNodeType[],
+    accepts: (slot: Slot) => boolean,
+    what: string,
+    optional = false,
+  ): boolean => {
     const candidates = slots
       .filter((s) => s.type === null && s.mainPath && !s.terminal && accepts(s))
       .map((slot) => ({ slot, types: types.filter((t) => legal(t, slot)) }))
       .filter((c) => c.types.length > 0);
-    if (candidates.length === 0) fail(`no main-path slot can hold ${what}`);
+    if (candidates.length === 0) {
+      if (optional) return false;
+      fail(`no main-path slot can hold ${what}`);
+    }
     const chosen = candidates[rng.intInclusive(0, candidates.length - 1)]!;
     chosen.slot.type = pickType(chosen.types);
+    return true;
   };
 
   // 3. Reserve. The final node first: its type is structural.
@@ -337,6 +361,16 @@ function assignTypes(
   const { minDepth, nodeTypes: extractionTypes, minPoints } = gen.extraction;
   const offersExtraction = (s: Slot) =>
     s.type !== null && !s.terminal && s.depth >= minDepth && extractionTypes.includes(s.type);
+  for (const window of extractionWindowsOf(zone)) {
+    const inWindow = (s: Slot) => s.depth >= minDepth && depthInRange(s.depth, window);
+    if (slots.some((s) => s.mainPath && offersExtraction(s) && inWindow(s))) continue;
+    reserve(
+      extractionTypes,
+      inWindow,
+      `an extraction point at depth ${window.minDepth}–${window.maxDepth ?? 'end'}`,
+      !window.required,
+    );
+  }
   while (slots.filter((s) => s.mainPath && offersExtraction(s)).length < minPoints) {
     reserve(extractionTypes, (s) => s.depth >= minDepth, 'a guaranteed extraction point');
   }
@@ -631,6 +665,12 @@ export function validateDungeonGraph(zone: DungeonZoneDefinition, graph: Dungeon
   const extractionPoints = nodes.filter((n) => n.extraction && mainPath(n)).length;
   if (extractionPoints < gen.extraction.minPoints) {
     out.push(`${extractionPoints} main-path extraction points is below the required ${gen.extraction.minPoints}`);
+  }
+  for (const window of extractionWindowsOf(zone)) {
+    if (!window.required) continue;
+    if (!nodes.some((n) => n.extraction && mainPath(n) && depthInRange(n.depth, window))) {
+      out.push(`no main-path extraction point at depth ${window.minDepth}–${window.maxDepth ?? 'end'}`);
+    }
   }
 
   if (gen.maxConsecutiveSameEnemy !== null) {

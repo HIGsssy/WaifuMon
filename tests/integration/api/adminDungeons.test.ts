@@ -14,6 +14,7 @@ import { createPlatformApiServer } from '../../../src/api/server';
 import type { ZodFastify } from '../../../src/api/plugins/typeProvider';
 import type { PortalSession, PortalSessionService } from '../../../src/api/portalSession';
 import { dungeonRuns } from '../../../src/db/schema';
+import { createDungeonAllowanceService } from '../../../src/modules/dungeons/dungeonAllowanceService';
 import { createDungeonZoneService } from '../../../src/modules/dungeons/dungeonZoneService';
 import { loadShippedDungeonZones, seedDungeonZones } from '../../../src/modules/dungeons/dungeonZoneStore';
 import { createGuildOwnershipService } from '../../../src/modules/portalAuth/guildOwnershipService';
@@ -46,6 +47,7 @@ beforeAll(async () => {
   await seedDungeonZones(t.db, shipped);
   const dungeonZones = createDungeonZoneService({ db: t.db, getContent: () => app.content, getShipped: () => shipped });
   const progressionCurrency = createProgressionCurrencyService(t.db);
+  const dungeonAllowance = createDungeonAllowanceService({ db: t.db, timezone: 'UTC' });
 
   const guildOwnership = createGuildOwnershipService({ fetchOwnerId: async () => OWNER_ID });
   const portalAuthorization = createPortalAuthorizationService({ guildOwnership });
@@ -91,7 +93,7 @@ beforeAll(async () => {
       authorization: portalAuthorization,
     },
     ctx: {
-      services: { ...app, dungeonZones, progressionCurrency },
+      services: { ...app, dungeonZones, progressionCurrency, dungeonAllowance },
       getContent: () => app.content,
       portalAuthorization,
       adminBearerAllowed: true,
@@ -147,7 +149,7 @@ describe('permissions', () => {
     expect((await api.inject({ method: 'GET', url: '/api/v1/admin/dungeons/zones' })).statusCode).toBe(401);
     const cookies = { wm_portal_session: NON_OWNER_TOKEN, wm_portal_csrf: 'csrf-token' };
     const headers = { 'x-csrf-token': 'csrf-token' };
-    for (const url of ['/admin/dungeons/zones', '/admin/dungeons/currencies', '/admin/dungeons/reference']) {
+    for (const url of ['/admin/dungeons/zones', '/admin/dungeons/currencies', '/admin/dungeons/reference', '/admin/dungeons/settings']) {
       expect((await api.inject({ method: 'GET', url: `/api/v1${url}`, cookies })).statusCode).toBe(403);
     }
     const writes: [string, string, unknown][] = [
@@ -156,6 +158,7 @@ describe('permissions', () => {
       ['POST', '/admin/dungeons/zones', { zone: {} }],
       ['POST', '/admin/dungeons/preview', { key: ZONE }],
       ['PUT', `/admin/dungeons/currencies/${CURRENCY}`, { singularName: 'X', pluralName: 'Xs', enabled: true, expectedRevision: 1 }],
+      ['PUT', '/admin/dungeons/settings', { dailyRunLimit: 9 }],
     ];
     for (const [method, url, payload] of writes) {
       const res = await api.inject({ method: method as 'PUT', url: `/api/v1${url}`, cookies, headers, payload: payload as object });
@@ -176,7 +179,7 @@ describe('zone list and detail', () => {
       maxNodes: 9,
       poolCount: 4,
       poolEntryCount: 8,
-      rewardBandCount: 5,
+      rewardBandCount: 6,
       revision: 1,
       origin: 'shipped',
       matchesShipped: true,
@@ -434,6 +437,46 @@ describe('validation', () => {
     expect((await call('GET', '/admin/dungeons/zones/dry_run')).statusCode).toBe(404);
     const clean = data<{ issues: unknown[] }>(await call('POST', '/admin/dungeons/validate', { zone: await draft('dry_ok') }));
     expect(clean.issues).toEqual([]);
+  });
+});
+
+describe('Delve settings', () => {
+  interface Settings {
+    dailyRunLimit: number;
+    dailyRunLimitMin: number;
+    dailyRunLimitMax: number;
+    updatedAt: string | null;
+    updatedBy: string | null;
+  }
+  const getSettings = async () => data<Settings>(await call('GET', '/admin/dungeons/settings'));
+
+  it('reads the shared daily run limit with its bounds, and was not changed by a refused write', async () => {
+    expect(await getSettings()).toMatchObject({ dailyRunLimit: 3, dailyRunLimitMin: 0, dailyRunLimitMax: 50, updatedBy: null });
+  });
+
+  it('saves a new limit, which the allowance then uses', async () => {
+    const res = await call('PUT', '/admin/dungeons/settings', { dailyRunLimit: 5 });
+    expect(res.statusCode).toBe(200);
+    expect(data<Settings>(res)).toMatchObject({ dailyRunLimit: 5 });
+    expect((await getSettings()).dailyRunLimit).toBe(5);
+    const allowance = createDungeonAllowanceService({ db: t.db, timezone: 'UTC' });
+    expect(await allowance.status(1)).toMatchObject({ limit: 5, used: 0, remaining: 5 });
+    // 0 is accepted: it closes Delve to new runs.
+    expect(data<Settings>(await call('PUT', '/admin/dungeons/settings', { dailyRunLimit: 0 }))).toMatchObject({ dailyRunLimit: 0 });
+    expect(await allowance.status(1)).toMatchObject({ limit: 0, remaining: 0 });
+    await call('PUT', '/admin/dungeons/settings', { dailyRunLimit: 3 });
+  });
+
+  it('refuses a fraction, a negative, a value past the cap, a string and an unknown field — and keeps the old value', async () => {
+    for (const dailyRunLimit of [2.5, -1, 51]) {
+      const res = await call('PUT', '/admin/dungeons/settings', { dailyRunLimit });
+      expect(res.statusCode, String(dailyRunLimit)).toBe(400);
+      expect(errorOf(res).code).toBe('DUNGEON_SETTINGS_INVALID');
+    }
+    expect((await call('PUT', '/admin/dungeons/settings', { dailyRunLimit: '4' })).statusCode).toBe(400);
+    expect((await call('PUT', '/admin/dungeons/settings', { dailyRunLimit: 4, perZone: true })).statusCode).toBe(400);
+    expect((await call('PUT', '/admin/dungeons/settings', {})).statusCode).toBe(400);
+    expect((await getSettings()).dailyRunLimit).toBe(3);
   });
 });
 

@@ -66,6 +66,11 @@ export interface CombatRules {
    * standing. See `combatEngine.ts` for the round convention.
    */
   maxRounds: number;
+  /**
+   * The range each hit's damage factor is rolled in (see `combatMath.ts`).
+   * `{ 10000, 10000 }` is a fight with no variance.
+   */
+  damageVariance: { minBasisPoints: number; maxBasisPoints: number };
 }
 
 export interface CombatState {
@@ -129,7 +134,12 @@ export type CombatEvent =
       round: number;
       actor: CombatActor;
       target: CombatActor;
+      /** What the hit dealt: `baseAmount` × the rolled factor, rounded. */
       amount: number;
+      /** The deterministic damage before variance. */
+      baseAmount: number;
+      /** The damage factor rolled for this hit, in basis points. */
+      varianceBasisPoints: number;
       targetHpBefore: number;
       targetHpAfter: number;
     }
@@ -146,10 +156,9 @@ export interface CombatStep {
 
 /**
  * Everything the engine may consult that is not state. Randomness comes
- * **only** from `rng` — combat code never calls `Math.random()`. V1 basic
- * attacks are deterministic and draw nothing, but every entry point takes the
- * context so crits, procs and AI choices can start drawing without a
- * signature change.
+ * **only** from `rng` — combat code never calls `Math.random()`. A basic
+ * attack draws exactly once, for its damage factor; with a seeded `rng` the
+ * same state and action sequence reproduce the same fight.
  */
 export interface CombatContext {
   rng: Rng;

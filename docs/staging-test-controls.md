@@ -63,6 +63,7 @@ Targets must belong to the guild the session has selected. Any other id gets a 4
 | Revoke Beacon | The existing `travel.revokeRoute('assteroid-belt')`: takes the beacon, removes any legacy route row, and sends a player standing in the Belt to Waifu Valley. |
 | Grant All Standard Travel | Every pass in the travel catalog and every **pass/route** destination. Never the Beacon or any key-item destination. Idempotent. |
 | Prepare Player for Current Content | Level 40, +10,000 WaifuBux, Energy to max, standard travel. No Beacon, no Belt components, no expeditions, Waifumon or achievements. |
+| Reset Today's Delve Runs | Deletes the player's `dungeon_daily_usage` row for the current game day, restoring the full daily allowance. Runs, rewards, an active run and other days are untouched. No-op when nothing was started. |
 | Reset Assteroid Belt | Returns the player to Waifu Valley if in the Belt. Removes the Beacon, the recipe's components (from `tables.keyItemRecipes`), any legacy `assteroid-belt` route row, and cooldowns on the world encounters that award a component. Nothing else. |
 
 ## Audit

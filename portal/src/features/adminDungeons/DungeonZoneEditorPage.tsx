@@ -38,6 +38,7 @@ import {
   type DepthRange,
   type DungeonBonusDoc,
   type DungeonContentRef,
+  type DungeonExtractionWindow,
   type DungeonGenerationDoc,
   type DungeonNodeType,
   type DungeonPoolEntryDoc,
@@ -181,6 +182,80 @@ function NumberField({
         onBlur={() => setText(null)}
       />
     </label>
+  );
+}
+
+/**
+ * Where guaranteed extraction points go. Each window holds one main-path
+ * extraction node between its depths; an optional window is skipped in a run
+ * too short to have room for it.
+ */
+function ExtractionWindows({
+  windows,
+  readOnly,
+  onChange,
+}: {
+  windows: DungeonExtractionWindow[];
+  readOnly: boolean;
+  onChange: (next: DungeonExtractionWindow[]) => void;
+}) {
+  const update = (i: number, patch: Partial<DungeonExtractionWindow>) =>
+    onChange(windows.map((w, j) => (j === i ? { ...w, ...patch } : w)));
+  return (
+    <div className="space-y-2" data-testid="extraction-windows">
+      <p className="text-xs text-ink-muted">
+        Extraction windows — each guarantees one extraction point on the main path between its
+        depths. With none, guaranteed points land at any depth from the extraction depth.
+      </p>
+      {windows.map((w, i) => (
+        <div key={i} className="flex flex-wrap items-end gap-3">
+          <NumberField
+            label={`Window ${i + 1} min depth`}
+            min={1}
+            value={w.minDepth}
+            disabled={readOnly}
+            onChange={(minDepth) => update(i, { minDepth })}
+          />
+          <OptionalNumberField
+            label={`Window ${i + 1} max depth`}
+            value={w.maxDepth}
+            disabled={readOnly}
+            onChange={(maxDepth) => update(i, { maxDepth })}
+          />
+          <label className="flex items-center gap-1 pb-2 text-xs text-ink-muted">
+            <input
+              type="checkbox"
+              aria-label={`Window ${i + 1} required in every run`}
+              checked={w.required}
+              disabled={readOnly}
+              onChange={(e) => update(i, { required: e.target.checked })}
+            />
+            Required in every run
+          </label>
+          {!readOnly && (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              aria-label={`Remove window ${i + 1}`}
+              onClick={() => onChange(windows.filter((_, j) => j !== i))}
+            >
+              Remove
+            </Button>
+          )}
+        </div>
+      ))}
+      {!readOnly && windows.length < 5 && (
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() => onChange([...windows, { minDepth: 1, maxDepth: null, required: false }])}
+        >
+          Add extraction window
+        </Button>
+      )}
+    </div>
   );
 }
 
@@ -664,6 +739,11 @@ function DungeonZoneEditor({ zoneKey }: { zoneKey: string | undefined }) {
           types={DUNGEON_WEIGHTED_NODE_TYPES}
           onChange={(nodeTypes) => setGen({ extraction: { ...gen.extraction, nodeTypes } })}
         />
+        <ExtractionWindows
+          windows={gen.extraction.windows ?? []}
+          readOnly={readOnly}
+          onChange={(windows) => setGen({ extraction: { ...gen.extraction, windows } })}
+        />
         <Issues
           issues={[
             'generation.minNodes',
@@ -839,6 +919,28 @@ function DungeonZoneEditor({ zoneKey }: { zoneKey: string | undefined }) {
           onChange={(maxConsecutiveSameEnemy) => setGen({ maxConsecutiveSameEnemy })}
         />
         <Issues issues={issuesAt(issues, 'generation.maxConsecutiveSameEnemy')} />
+      </Section>
+
+      <Section
+        title="Node behaviour"
+        hint="What a node does when a player resolves it, apart from its rewards."
+        testId="zone-node-settings"
+      >
+        <NumberField
+          label="Rest heals (% of max HP)"
+          step={0.01}
+          className="w-44"
+          value={basisPointsToPercent(form.nodeSettings?.rest.healBasisPoints ?? 3000)}
+          disabled={readOnly}
+          onChange={(percent) =>
+            set({ nodeSettings: { rest: { healBasisPoints: percentToBasisPoints(percent) } } })
+          }
+        />
+        <p className="text-xs text-ink-subtle">
+          A rest restores this share of the fighter’s max HP, never above max. Runs already in
+          progress keep the value they started with.
+        </p>
+        <Issues issues={issuesAt(issues, 'nodeSettings')} />
       </Section>
 
       {DUNGEON_POOL_KEYS.map((pool) => (

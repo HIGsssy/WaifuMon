@@ -3539,5 +3539,62 @@
         ]
       }
     ]
+  },
+  {
+    "id": "dungeon-scrapheap-elite-v1",
+    "enabled": true,
+    "version": "dungeon-scrapheap-elite-initial_tuning-1",
+    "groups": [
+      {
+        "id": "elite-salvage",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 1500,
+        "entries": [],
+        "equipment": [
+          { "rarity": "N", "weight": 80 },
+          { "rarity": "R", "weight": 20 }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "dungeon-scrapheap-cache-v1",
+    "enabled": true,
+    "version": "dungeon-scrapheap-cache-initial_tuning-1",
+    "waifubux": { "min": 15, "max": 30 },
+    "groups": [
+      {
+        "id": "cache-salvage",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 2500,
+        "entries": [],
+        "equipment": [
+          { "rarity": "N", "weight": 90 },
+          { "rarity": "R", "weight": 10 }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "dungeon-scrapheap-boss-v1",
+    "enabled": true,
+    "version": "dungeon-scrapheap-boss-initial_tuning-1",
+    "waifubux": { "min": 40, "max": 80 },
+    "groups": [
+      {
+        "id": "colossus-salvage",
+        "enabled": true,
+        "rolls": 1,
+        "chanceBasisPoints": 5000,
+        "entries": [],
+        "equipment": [
+          { "rarity": "N", "weight": 55 },
+          { "rarity": "R", "weight": 40 },
+          { "rarity": "SR", "weight": 5 }
+        ]
+      }
+    ]
   }
 ]

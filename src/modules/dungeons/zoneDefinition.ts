@@ -102,6 +102,9 @@ const key = z
   .regex(DUNGEON_KEY_PATTERN, 'must be lower_snake_case');
 const tags = z.array(key).max(20).default([]);
 const weight = z.number().int().min(0).max(DUNGEON_WEIGHT_MAX);
+/** Guaranteed-extraction depth windows a zone may declare. */
+export const DUNGEON_MAX_EXTRACTION_WINDOWS = 5;
+
 const depth = z.number().int().min(1).max(DUNGEON_MAX_NODES);
 const nodeType = z.enum(DUNGEON_NODE_TYPES);
 const basisPoints = z.number().int().min(0).max(BASIS_POINTS);
@@ -224,6 +227,29 @@ export const DungeonRewardsSchema = z
   .strict();
 export type DungeonRewards = z.infer<typeof DungeonRewardsSchema>;
 
+/** Initial tuning: a rest restores 30% of max HP unless the zone says otherwise. */
+export const DEFAULT_REST_HEAL_BASIS_POINTS = 3000;
+
+/**
+ * What a node of a given type *does* when it is resolved, per zone — the
+ * tunable behaviour that is not a reward. One entry per node type that has
+ * any; a new type with settings (a vendor's stock, a shrine's price) adds its
+ * own key here.
+ */
+export const DungeonNodeSettingsSchema = z
+  .object({
+    rest: z
+      .object({
+        /** Share of the fighter's *max* HP a rest restores (3000 = 30%). Never above max HP. */
+        healBasisPoints: basisPoints.default(DEFAULT_REST_HEAL_BASIS_POINTS),
+      })
+      .strict()
+      .default({}),
+  })
+  .strict()
+  .default({});
+export type DungeonNodeSettings = z.infer<typeof DungeonNodeSettingsSchema>;
+
 const typeList = z.array(nodeType).min(1).max(DUNGEON_NODE_TYPES.length);
 
 export const DungeonGenerationSchema = z
@@ -251,12 +277,30 @@ export const DungeonGenerationSchema = z
      * the final node never does (finishing it is completion). An `exit` node
      * is itself only legal from `minDepth`. `minPoints` guarantees that many
      * extraction nodes on the main path — ones no route can skip.
+     *
+     * `windows` says *where* guaranteed points go: each window holds one
+     * main-path extraction node between its `minDepth` and `maxDepth`. A
+     * `required` window must be placeable in every run (the shortest
+     * included); an optional one is placed when the run is long enough to
+     * have a free main-path slot there and skipped otherwise — "an early way
+     * out always, a later one where the run has room". Windows count toward
+     * `minPoints`. Without any, guaranteed points land at any depth from
+     * `minDepth`.
      */
     extraction: z
       .object({
         minDepth: depth,
         nodeTypes: z.array(nodeType).max(DUNGEON_NODE_TYPES.length).default(['exit']),
         minPoints: z.number().int().min(0).max(DUNGEON_MAX_NODES).default(0),
+        windows: z
+          .array(
+            z
+              .object({ ...depthRangeShape, required: z.boolean().default(true) })
+              .strict()
+              .superRefine(refineDepthRange),
+          )
+          .max(DUNGEON_MAX_EXTRACTION_WINDOWS)
+          .default([]),
       })
       .strict(),
     /** Preference among the types legal at a slot. Zero means "never by chance". */
@@ -362,6 +406,8 @@ export const DungeonZoneDefinitionSchema = z
     backgroundArtworkPath: relativeArtworkPath.nullable().default(null),
     tags,
     generation: DungeonGenerationSchema,
+    /** Per-node-type behaviour, e.g. how much a rest heals. */
+    nodeSettings: DungeonNodeSettingsSchema,
     pools: DungeonPoolsSchema,
     rewards: DungeonRewardsSchema,
   })

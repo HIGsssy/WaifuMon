@@ -4,6 +4,7 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import { basicAttackController, type CombatController } from '../../../src/modules/combat/combatController';
+import { NO_DAMAGE_VARIANCE } from '../../../src/modules/combat/combatMath';
 import { createCombatState } from '../../../src/modules/combat/combatState';
 import { simulateCombat } from '../../../src/modules/combat/combatSimulator';
 import type { CombatState } from '../../../src/modules/combat/combatTypes';
@@ -17,7 +18,8 @@ function fight(p: { attack: number; defense: number; maxHp: number }, e: { attac
   return createCombatState({
     player: { id: 'buddy:7', name: 'Mira', ...p },
     enemy: { id: 'enemy:drone', name: 'Drone', ...e },
-    ...(maxRounds !== undefined ? { rules: { maxRounds } } : {}),
+    // No damage variance: the arithmetic below is exact. Variance has its own file.
+    rules: { damageVariance: NO_DAMAGE_VARIANCE, ...(maxRounds !== undefined ? { maxRounds } : {}) },
   });
 }
 

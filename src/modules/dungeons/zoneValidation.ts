@@ -22,6 +22,7 @@
 import { DungeonGenerationError } from '../../shared/errors';
 import {
   eligiblePoolEntries,
+  extractionWindowsOf,
   generateDungeon,
   nodeTypeAllowedAtDepth,
   type DungeonContentCatalogue,
@@ -148,7 +149,26 @@ export function validateDungeonZone(input: unknown, ctx: DungeonZoneValidationCo
         `${gen.extraction.minDepth} or deeper to hold a guaranteed extraction point`,
     );
   }
-  if (gen.extraction.minPoints > 0 && gen.extraction.nodeTypes.every((t) => t === 'boss')) {
+  extractionWindowsOf(zone).forEach((window, i) => {
+    const path = `generation.extraction.windows[${i}]`;
+    // A window nothing can be placed in: fatal when required, dead weight when optional.
+    const unplaceable = window.required ? error : warning;
+    if (window.maxDepth !== null && window.maxDepth < gen.extraction.minDepth) {
+      unplaceable(path, `the window ends at depth ${window.maxDepth}, above the extraction depth ${gen.extraction.minDepth}`);
+    } else if (Math.max(window.minDepth, gen.extraction.minDepth) > deepestInterior) {
+      unplaceable(path, `no run has a node at depth ${window.minDepth} or deeper that can offer extraction (the deepest is ${deepestInterior})`);
+    } else if (window.required && Math.max(window.minDepth, gen.extraction.minDepth) > finalDepths.min - 1) {
+      error(
+        path,
+        `the shortest run ends at depth ${finalDepths.min}, so a required window starting at depth ` +
+          `${window.minDepth} cannot always be placed — make it optional or start it shallower`,
+      );
+    }
+  });
+  if (
+    (gen.extraction.minPoints > 0 || extractionWindowsOf(zone).length > 0) &&
+    gen.extraction.nodeTypes.every((t) => t === 'boss')
+  ) {
     error('generation.extraction.nodeTypes', 'a guaranteed extraction point needs a node type that offers extraction');
   }
 

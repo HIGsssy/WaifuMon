@@ -60,6 +60,8 @@ import { createRewardTableService } from './modules/rewardTables/rewardTableServ
 import { loadShippedDungeonZones, seedDungeonZones } from './modules/dungeons/dungeonZoneStore';
 import { createDungeonZoneService } from './modules/dungeons/dungeonZoneService';
 import { createDungeonRunService } from './modules/dungeons/dungeonRunService';
+import { createDungeonPlayService } from './modules/dungeons/dungeonPlayService';
+import { createDungeonAllowanceService } from './modules/dungeons/dungeonAllowanceService';
 import { createProgressionCurrencyService } from './modules/progressionCurrency/progressionCurrencyService';
 import { buildAffixCatalogue } from './modules/equipment/affixCatalogue';
 import { readUnknownAffixKeys } from './modules/equipment/equipmentQueries';
@@ -408,10 +410,11 @@ async function main(): Promise<void> {
     getCatalogue: () => combatTrialCatalogueFromContent(contentSnapshot),
   });
   /**
-   * Dungeons: the generation + authoring foundation. Zones are authored in
-   * Portal Admin; the run service can generate and snapshot a run, but nothing
-   * player-facing starts one yet. Enemies and events follow the live content
-   * snapshot through reloads.
+   * Dungeons. Zones are authored in Portal Admin; the run service generates
+   * and snapshots a run; the play service is what a player drives — it starts
+   * runs with a fighter snapshot from `combatStats` and resolves nodes through
+   * the combat engine and the shared Equipment reward path. Enemies and events
+   * follow the live content snapshot through reloads.
    */
   const progressionCurrency = createProgressionCurrencyService(db);
   const dungeonZones = createDungeonZoneService({
@@ -423,6 +426,19 @@ async function main(): Promise<void> {
     db,
     getContent: () => contentSnapshot,
     currencies: progressionCurrency,
+  });
+  const dungeonAllowance = createDungeonAllowanceService({ db, timezone: config.dailyTimezone, logger });
+  const dungeonPlay = createDungeonPlayService({
+    db,
+    runs: dungeonRuns,
+    allowance: dungeonAllowance,
+    featureUnlocks,
+    combatStats,
+    currencies: progressionCurrency,
+    currency,
+    inventory,
+    equipmentRewards,
+    logger,
   });
   const equipmentOnboarding = createEquipmentOnboardingService({
     db,
@@ -710,6 +726,8 @@ async function main(): Promise<void> {
       equipmentWorkshop,
       dungeonZones,
       dungeonRuns,
+      dungeonPlay,
+      dungeonAllowance,
       progressionCurrency,
     },
   };
@@ -1288,6 +1306,7 @@ async function main(): Promise<void> {
         equipment,
         featureUnlocks,
         equipmentOnboarding,
+        dungeonAllowance,
       })
     : undefined;
   if (testControls) {

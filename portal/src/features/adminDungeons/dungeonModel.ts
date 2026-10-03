@@ -49,7 +49,7 @@ export function newZone(): DungeonZoneDoc {
       minNodes: 6,
       maxNodes: 9,
       branching: { minBranches: 0, maxBranches: 1, chanceBasisPoints: 3000, maxLength: 1 },
-      extraction: { minDepth: 4, nodeTypes: ['rest', 'exit'], minPoints: 1 },
+      extraction: { minDepth: 4, nodeTypes: ['rest', 'exit'], minPoints: 1, windows: [] },
       nodeWeights: { combat: 60, elite: 10, event: 10, reward: 10, rest: 10, miniboss: 0, exit: 0 },
       boss: { required: true },
       depthRanges: { elite: { minDepth: 2, maxDepth: null } },
@@ -58,6 +58,7 @@ export function newZone(): DungeonZoneDoc {
       noConsecutive: ['rest'],
       maxConsecutiveSameEnemy: 2,
     },
+    nodeSettings: { rest: { healBasisPoints: 3000 } },
     pools: { combat: [], elite: [], miniboss: [], boss: [], event: [] },
     rewards: {
       currencyKey: DEFAULT_CURRENCY_KEY,

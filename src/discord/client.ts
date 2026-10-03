@@ -105,6 +105,18 @@ import {
   handleCombatTrialView,
 } from './commands/waifumonCombatTrials';
 import {
+  handleDungeonAbandon,
+  handleDungeonAbandonConfirm,
+  handleDungeonEnter,
+  handleDungeonExtract,
+  handleDungeonExtractConfirm,
+  handleDungeonHome,
+  handleDungeonResolve,
+  handleDungeonRun,
+  handleDungeonStart,
+  handleDungeonZone,
+} from './commands/waifumonDungeon';
+import {
   handleBuddyAutocomplete,
   handleAppearanceCommand,
   handleAppearanceOpen,
@@ -437,6 +449,20 @@ export function createDiscordClient(ctx: AppContext): Client {
       // The only route that fights. Opening a Trial (`ct:view`) never does.
       'ct:fight': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleCombatTrialFight(ctx, i, prov, args),
+      // Dungeons. The service checks the Equipment unlock and locks the run
+      // on every route; `zone`, `run` and the two confirmations change nothing.
+      'dg:home': (i: ButtonInteraction, prov: Provisioned) => handleDungeonHome(ctx, i, prov),
+      'dg:zone': (i: ButtonInteraction, prov: Provisioned, args: string[]) => handleDungeonZone(ctx, i, prov, args),
+      'dg:start': (i: ButtonInteraction, prov: Provisioned, args: string[]) => handleDungeonStart(ctx, i, prov, args),
+      'dg:run': (i: ButtonInteraction, prov: Provisioned, args: string[]) => handleDungeonRun(ctx, i, prov, args),
+      'dg:enter': (i: ButtonInteraction, prov: Provisioned, args: string[]) => handleDungeonEnter(ctx, i, prov, args),
+      'dg:go': (i: ButtonInteraction, prov: Provisioned, args: string[]) => handleDungeonResolve(ctx, i, prov, args),
+      'dg:exq': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleDungeonExtractConfirm(ctx, i, prov, args),
+      'dg:ex': (i: ButtonInteraction, prov: Provisioned, args: string[]) => handleDungeonExtract(ctx, i, prov, args),
+      'dg:abq': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleDungeonAbandonConfirm(ctx, i, prov, args),
+      'dg:ab': (i: ButtonInteraction, prov: Provisioned, args: string[]) => handleDungeonAbandon(ctx, i, prov, args),
       // Lives in the `loc:` namespace because it resumes the Locations
       // screen — the encounter is over by the time it is clickable.
       'loc:journey': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>

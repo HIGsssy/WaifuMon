@@ -73,6 +73,7 @@ import type { EquipmentSlot } from '../equipment/vocabulary';
 import type { FeatureUnlockService } from '../features/featureUnlockService';
 import type { EquipmentOnboardingService } from '../onboarding/equipmentOnboardingService';
 import { STARTER_SLOTS, storedOnboardingGrantKey } from '../onboarding/vocabulary';
+import type { DungeonAllowanceService } from '../dungeons/dungeonAllowanceService';
 
 /** The key-item destination the Belt controls are about. */
 export const BELT_REGION: Region = 'assteroid-belt';
@@ -101,6 +102,7 @@ export const TEST_CONTROL_ACTIONS = [
   'test_staging_boost',
   'test_reset_assteroid_belt',
   'test_reset_equipment_onboarding',
+  'test_reset_delve_usage',
 ] as const;
 export type TestControlAction = (typeof TEST_CONTROL_ACTIONS)[number];
 
@@ -170,6 +172,11 @@ export interface TestControlsPlayerState {
     unlocked: boolean;
     starters: { slot: EquipmentSlot; definitionKey: string; granted: boolean; removed: boolean }[];
   } | null;
+  /**
+   * Today's Delve allowance, as the game computes it. Null when this
+   * deployment was built without the dungeon allowance service.
+   */
+  delve: { limit: number; used: number; remaining: number; periodKey: string } | null;
 }
 
 export interface TestControlResult {
@@ -208,6 +215,12 @@ export interface StagingTestControlsService {
    * copies. Every other piece of equipment is left untouched.
    */
   resetEquipmentOnboarding(actor: TestControlsActor, playerId: number): Promise<TestControlResult>;
+  /**
+   * Forget the Delve runs the player has started today, restoring the full
+   * daily allowance. Touches only today's usage row: runs, rewards and any
+   * active run are left exactly as they are.
+   */
+  resetDelveUsage(actor: TestControlsActor, playerId: number): Promise<TestControlResult>;
 }
 
 export interface StagingTestControlsDeps {
@@ -224,6 +237,8 @@ export interface StagingTestControlsDeps {
   equipment?: Pick<EquipmentService, 'findByGrantKeys' | 'adminRemove' | 'adminReleaseGrantKeys'> | undefined;
   featureUnlocks?: Pick<FeatureUnlockService, 'isUnlocked' | 'revoke'> | undefined;
   equipmentOnboarding?: Pick<EquipmentOnboardingService, 'getState'> | undefined;
+  /** Daily Delve usage reset. Optional for the same reason. */
+  dungeonAllowance?: Pick<DungeonAllowanceService, 'status' | 'resetUsage'> | undefined;
 }
 
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
@@ -579,12 +594,13 @@ export function createStagingTestControlsService(
     const slugs = gate ? [gate.beaconSlug, ...gate.components.map((c) => c.slug)] : [];
     const held = await quantities(db, playerId, slugs);
     const encounterIds = gate ? await componentEncounterIds(db, gate.components.map((c) => c.slug)) : [];
-    const [passIds, routeIds, legacy, cooldowns, onboarding] = await Promise.all([
+    const [passIds, routeIds, legacy, cooldowns, onboarding, delve] = await Promise.all([
       ownedPassIds(db, playerId),
       unlockedRouteIds(db, playerId),
       hasLegacyBeltRoute(db, playerId),
       activeCooldownCount(db, playerId, encounterIds),
       deps.equipmentOnboarding?.getState(playerId) ?? null,
+      deps.dungeonAllowance?.status(playerId) ?? null,
     ]);
     return {
       playerId: player.id,
@@ -636,6 +652,7 @@ export function createStagingTestControlsService(
             }),
           }
         : null,
+      delve: delve && { limit: delve.limit, used: delve.used, remaining: delve.remaining, periodKey: delve.periodKey },
     };
   }
 
@@ -951,6 +968,22 @@ export function createStagingTestControlsService(
             changes.length === 0
               ? 'Equipment onboarding was already clean — nothing to reset.'
               : 'Equipment onboarding reset. The player can replay it from the start.',
+        };
+      });
+    },
+
+    resetDelveUsage(actor, playerId) {
+      return run(actor, playerId, 'test_reset_delve_usage', async (tx, { player }) => {
+        const allowance = deps.dungeonAllowance;
+        if (!allowance) throw new TestControlsInvalidError('Delve is not available on this deployment.');
+        const { periodKey, cleared } = await allowance.resetUsage(tx, player.id);
+        return {
+          changes: cleared > 0 ? [{ field: 'delveRunsStarted', before: cleared, after: 0 }] : [],
+          detail: { periodKey, cleared },
+          message:
+            cleared > 0
+              ? `Today's Delve usage reset (${cleared} run${cleared === 1 ? '' : 's'} forgotten). The full daily allowance is available again.`
+              : 'No Delve runs started today — nothing to reset.',
         };
       });
     },

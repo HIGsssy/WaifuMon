@@ -1,5 +1,6 @@
 /**
- * Dungeon authoring: the zone list (enable/disable, the progression currency),
+ * Dungeon authoring: the zone list (enable/disable, the Delve settings, the
+ * progression currency),
  * the zone editor — rules, pools, depth bands, server issues shown where they
  * belong, saving with the loaded revision, the stale-save refusal — and the
  * generation preview.
@@ -73,6 +74,7 @@ const ZONE: DungeonZoneDoc = {
     noConsecutive: ['rest'],
     maxConsecutiveSameEnemy: 2,
   },
+  nodeSettings: { rest: { healBasisPoints: 3000 } },
   pools: {
     combat: [
       {
@@ -271,6 +273,8 @@ let enabledSpy: MockInstance<typeof api.setDungeonZoneEnabled>;
 let currencySpy: MockInstance<typeof api.updateProgressionCurrency>;
 let previewSpy: MockInstance<typeof api.previewDungeon>;
 let validateSpy: MockInstance<typeof api.validateDungeonZone>;
+let settings: api.DungeonSettings;
+let settingsSpy: MockInstance<typeof api.updateDungeonSettings>;
 
 beforeEach(() => {
   issues = [];
@@ -290,6 +294,18 @@ beforeEach(() => {
     ],
   });
   vi.spyOn(api, 'getDungeonZone').mockResolvedValue(DETAIL);
+  settings = {
+    dailyRunLimit: 3,
+    dailyRunLimitMin: 0,
+    dailyRunLimitMax: 50,
+    updatedAt: null,
+    updatedBy: null,
+  };
+  vi.spyOn(api, 'getDungeonSettings').mockImplementation(async () => settings);
+  settingsSpy = vi.spyOn(api, 'updateDungeonSettings').mockImplementation(async (patch) => {
+    settings = { ...settings, ...patch, updatedAt: '2026-10-03T12:00:00.000Z', updatedBy: '777' };
+    return settings;
+  });
   vi.spyOn(api, 'listProgressionCurrencies').mockImplementation(async () => ({
     currencies: [currency],
   }));
@@ -400,6 +416,61 @@ describe('zone list', () => {
   });
 });
 
+describe('Delve settings', () => {
+  it('shows the shared daily run limit and saves a new one', async () => {
+    const user = renderAt('/admin/dungeons');
+    const card = within(await screen.findByTestId('delve-settings-card'));
+    expect(card.getByLabelText('Daily run limit')).toHaveValue('3');
+    expect(card.getByTestId('delve-settings-sample')).toHaveTextContent(
+      'Daily Runs: 3 / 3 remaining',
+    );
+    expect(card.getByRole('button', { name: 'Save limit' })).toBeDisabled();
+
+    await type(user, 'Daily run limit', '5');
+    expect(card.getByTestId('delve-settings-sample')).toHaveTextContent(
+      'Daily Runs: 5 / 5 remaining',
+    );
+    await user.click(card.getByRole('button', { name: 'Save limit' }));
+    await waitFor(() => expect(settingsSpy).toHaveBeenCalledWith({ dailyRunLimit: 5 }));
+    // The saved value is what the card now shows, with who saved it.
+    await waitFor(() =>
+      expect(
+        within(screen.getByTestId('delve-settings-card')).getByLabelText('Daily run limit'),
+      ).toHaveValue('5'),
+    );
+    expect(screen.getByTestId('delve-settings-card')).toHaveTextContent('by 777');
+  });
+
+  it('refuses a fraction, a negative and a value past the cap without sending anything', async () => {
+    const user = renderAt('/admin/dungeons');
+    const card = within(await screen.findByTestId('delve-settings-card'));
+    for (const bad of ['2.5', '-1', '51', 'three', '']) {
+      await type(user, 'Daily run limit', bad);
+      expect(card.getByRole('button', { name: 'Save limit' })).toBeDisabled();
+      expect(card.getByRole('alert')).toHaveTextContent('Enter a whole number from 0 to 50.');
+    }
+    expect(settingsSpy).not.toHaveBeenCalled();
+  });
+
+  it('says what 0 means before it is saved', async () => {
+    const user = renderAt('/admin/dungeons');
+    const card = within(await screen.findByTestId('delve-settings-card'));
+    await type(user, 'Daily run limit', '0');
+    expect(card.getByTestId('delve-settings-sample')).toHaveTextContent(
+      'Delve is closed to new runs',
+    );
+    await user.click(card.getByRole('button', { name: 'Save limit' }));
+    await waitFor(() => expect(settingsSpy).toHaveBeenCalledWith({ dailyRunLimit: 0 }));
+  });
+
+  it('is read-only without write permission', async () => {
+    renderAt('/admin/dungeons', ['dungeons.read']);
+    const card = within(await screen.findByTestId('delve-settings-card'));
+    expect(card.getByLabelText('Daily run limit')).toBeDisabled();
+    expect(card.queryByRole('button', { name: 'Save limit' })).not.toBeInTheDocument();
+  });
+});
+
 describe('progression currency', () => {
   it('shows the key as fixed text and saves renamed display metadata with the loaded revision', async () => {
     const user = renderAt('/admin/dungeons');
@@ -461,6 +532,7 @@ describe('zone editor', () => {
     expect(screen.getByLabelText('Min nodes')).toHaveValue(6);
     expect(screen.getByLabelText('Branch chance (%)')).toHaveValue(30);
     expect(screen.getByLabelText('Kept on defeat (%)')).toHaveValue(25);
+    expect(screen.getByLabelText('Rest heals (% of max HP)')).toHaveValue(30);
     expect(screen.getByLabelText('Elite min depth')).toHaveValue(3);
     expect(screen.getByLabelText('Combat pool 1 enemy')).toHaveValue('scrapyard_drone');
     expect(screen.getByLabelText('Extraction offered at: Rest')).toBeChecked();
@@ -469,6 +541,40 @@ describe('zone editor', () => {
       expect(screen.getByTestId('validation-status')).toHaveTextContent('No unsaved changes.'),
     );
     expect(screen.getByRole('button', { name: 'Save zone' })).toBeDisabled();
+  });
+
+  it('saves the rest heal as basis points', async () => {
+    const user = renderAt(EDITOR);
+    await type(user, 'Rest heals (% of max HP)', '45');
+    await readyToSave();
+    await user.click(screen.getByRole('button', { name: 'Save zone' }));
+    await waitFor(() => expect(updateSpy).toHaveBeenCalledTimes(1));
+    expect(savedZone().nodeSettings).toEqual({ rest: { healBasisPoints: 4500 } });
+  });
+
+  it('adds, edits and removes extraction windows', async () => {
+    const user = renderAt(EDITOR);
+    await user.click(await screen.findByRole('button', { name: 'Add extraction window' }));
+    await user.click(screen.getByRole('button', { name: 'Add extraction window' }));
+    await type(user, 'Window 1 min depth', '3');
+    await type(user, 'Window 1 max depth', '4');
+    await user.click(screen.getByLabelText('Window 1 required in every run'));
+    await type(user, 'Window 2 min depth', '6');
+    await readyToSave();
+    await user.click(screen.getByRole('button', { name: 'Save zone' }));
+    await waitFor(() => expect(updateSpy).toHaveBeenCalledTimes(1));
+    expect(savedZone().generation.extraction).toEqual({
+      minDepth: 4,
+      nodeTypes: ['rest', 'exit'],
+      minPoints: 1,
+      windows: [
+        { minDepth: 3, maxDepth: 4, required: true },
+        { minDepth: 6, maxDepth: null, required: false },
+      ],
+    });
+    await user.click(screen.getByRole('button', { name: 'Remove window 1' }));
+    expect(screen.queryByLabelText('Window 2 min depth')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Window 1 min depth')).toHaveValue(6);
   });
 
   it('saves edits to the fields, rules and retention with the loaded revision', async () => {

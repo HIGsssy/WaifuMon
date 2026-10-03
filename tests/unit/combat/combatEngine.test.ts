@@ -4,6 +4,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { resolveCombatAction, startCombat } from '../../../src/modules/combat/combatEngine';
+import { DEFAULT_DAMAGE_VARIANCE, NO_DAMAGE_VARIANCE } from '../../../src/modules/combat/combatMath';
 import { createCombatState, DEFAULT_MAX_ROUNDS } from '../../../src/modules/combat/combatState';
 import type { CombatAction, CombatState } from '../../../src/modules/combat/combatTypes';
 import {
@@ -15,11 +16,12 @@ import { seededRng } from '../../../src/shared/random';
 const ctx = { rng: seededRng(1) };
 const attack = (actor: 'player' | 'enemy'): CombatAction => ({ type: 'basic_attack', actor });
 
+/** A fight with no damage variance, so the arithmetic below is exact. Variance has its own file. */
 function fight(over: { player?: Partial<Parameters<typeof createCombatState>[0]['player']>; enemy?: Partial<Parameters<typeof createCombatState>[0]['enemy']>; maxRounds?: number } = {}): CombatState {
   return createCombatState({
     player: { id: 'buddy:1', name: 'Mira', attack: 50, defense: 25, maxHp: 200, ...over.player },
     enemy: { id: 'enemy:drone', name: 'Drone', attack: 30, defense: 25, maxHp: 120, ...over.enemy },
-    ...(over.maxRounds !== undefined ? { rules: { maxRounds: over.maxRounds } } : {}),
+    rules: { damageVariance: NO_DAMAGE_VARIANCE, ...(over.maxRounds !== undefined ? { maxRounds: over.maxRounds } : {}) },
   });
 }
 
@@ -39,6 +41,33 @@ describe('createCombatState', () => {
     expect(s).toMatchObject({ round: 1, turn: 'player', status: 'active', rules: { maxRounds: DEFAULT_MAX_ROUNDS } });
     expect(s.player).toMatchObject({ currentHp: 200, maxHp: 200, statuses: [], cooldowns: {} });
     expect(DEFAULT_MAX_ROUNDS).toBe(30);
+  });
+
+  it('carries the default damage variance unless the rules say otherwise', () => {
+    const plain = createCombatState({
+      player: { id: 'buddy:1', name: 'Mira', attack: 50, defense: 25, maxHp: 200 },
+      enemy: { id: 'enemy:drone', name: 'Drone', attack: 30, defense: 25, maxHp: 120 },
+    });
+    expect(plain.rules.damageVariance).toEqual({ minBasisPoints: 9_000, maxBasisPoints: 11_000 });
+    expect(plain.rules.damageVariance).toEqual(DEFAULT_DAMAGE_VARIANCE);
+    expect(fight().rules.damageVariance).toEqual({ minBasisPoints: 10_000, maxBasisPoints: 10_000 });
+  });
+
+  it('rejects malformed damage variance instead of guessing', () => {
+    const withVariance = (damageVariance: unknown) => () =>
+      createCombatState({
+        player: { id: 'buddy:1', name: 'Mira', attack: 50, defense: 25, maxHp: 200 },
+        enemy: { id: 'enemy:drone', name: 'Drone', attack: 30, defense: 25, maxHp: 120 },
+        rules: { damageVariance: damageVariance as never },
+      });
+    expect(withVariance({ minBasisPoints: 11_000, maxBasisPoints: 9_000 })).toThrow(CombatStateInvalidError);
+    expect(withVariance({ minBasisPoints: 0, maxBasisPoints: 10_000 })).toThrow(CombatStateInvalidError);
+    expect(withVariance({ minBasisPoints: 9_000.5, maxBasisPoints: 11_000 })).toThrow(CombatStateInvalidError);
+    expect(withVariance({ minBasisPoints: 9_000, maxBasisPoints: 30_001 })).toThrow(CombatStateInvalidError);
+    expect(withVariance({ minBasisPoints: 9_000 })).toThrow(CombatStateInvalidError);
+    // A persisted state that lost its rules is refused, not defaulted.
+    const stripped = { ...fight(), rules: { maxRounds: 30 } } as unknown as CombatState;
+    expect(() => resolveCombatAction(stripped, attack('player'), ctx)).toThrow(CombatStateInvalidError);
   });
 
   it('rejects malformed stats', () => {
@@ -61,7 +90,7 @@ describe('resolveCombatAction', () => {
     expect(state).toMatchObject({ round: 1, turn: 'enemy', status: 'active' });
     expect(events).toEqual([
       { type: 'action_started', round: 1, actor: 'player', action: 'basic_attack' },
-      { type: 'damage', round: 1, actor: 'player', target: 'enemy', amount: 40, targetHpBefore: 120, targetHpAfter: 80 },
+      { type: 'damage', round: 1, actor: 'player', target: 'enemy', amount: 40, baseAmount: 40, varianceBasisPoints: 10_000, targetHpBefore: 120, targetHpAfter: 80 },
       { type: 'turn_started', round: 1, actor: 'enemy' },
     ]);
     // Input untouched.

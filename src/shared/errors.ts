@@ -1708,6 +1708,52 @@ export class DungeonRunActiveError extends AppError {
   }
 }
 
+/** Every Delve run of the current game day has been started. Resets with the day. */
+export class DungeonDailyLimitError extends AppError {
+  constructor(
+    playerId: number,
+    readonly limit: number,
+    readonly used: number,
+    readonly periodKey: string,
+  ) {
+    super(
+      'DUNGEON_DAILY_LIMIT',
+      `Player ${playerId} has started ${used} of ${limit} dungeon runs for ${periodKey}`,
+      limit > 0
+        ? 'You’ve used all of today’s Delve runs. They come back at the daily reset.'
+        : 'Delve is closed to new runs right now.',
+    );
+  }
+}
+
+/** A Delve setting outside its bounds. */
+export class DungeonSettingsInvalidError extends AppError {
+  readonly issues: string[];
+  constructor(issues: string[]) {
+    const list = Array.isArray(issues) ? issues : [];
+    super('DUNGEON_SETTINGS_INVALID', `Dungeon settings invalid: ${list.join(' ')}`, list.join(' ') || 'Invalid Delve settings.');
+    this.issues = list;
+  }
+}
+
+/** The run does not exist, or belongs to another player. One error for both. */
+export class DungeonRunNotFoundError extends AppError {
+  constructor(runId: number) {
+    super('DUNGEON_RUN_NOT_FOUND', `Dungeon run ${String(runId)} not found for this player`, 'That run could not be found.');
+  }
+}
+
+/** The run was generated without a fighter snapshot, so there is nothing to play it with. */
+export class DungeonRunUnplayableError extends AppError {
+  constructor(runId: number) {
+    super(
+      'DUNGEON_RUN_UNPLAYABLE',
+      `Dungeon run ${String(runId)} has no fighter snapshot`,
+      'That run cannot be played. Abandon it and start a new one.',
+    );
+  }
+}
+
 /* ─────────────────────── Progression currency ─────────────────────── */
 
 export class ProgressionCurrencyNotFoundError extends AppError {

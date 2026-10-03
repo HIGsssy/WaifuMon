@@ -7,9 +7,9 @@
  * them:
  *
  *   - `dungeons.read`  — list, get, reference data, validate (dry run),
- *     preview, simulate, export, and the currency list.
- *   - `dungeons.write` — create, update, enable/disable, and the currency's
- *     display metadata.
+ *     preview, simulate, export, the currency list and the Delve settings.
+ *   - `dungeons.write` — create, update, enable/disable, the currency's
+ *     display metadata, and the Delve settings (the shared daily run limit).
  *
  * Every zone write is validated in the writing transaction and is optimistic:
  * it names the `revision` it edited, and a save that lost a race answers
@@ -38,6 +38,10 @@ import {
   ProgressionCurrencyInvalidError,
   ProgressionCurrencyStaleError,
 } from '../../../../shared/errors';
+import {
+  DUNGEON_DAILY_RUN_LIMIT_BOUNDS,
+  type DungeonSettings,
+} from '../../../../modules/dungeons/dungeonAllowanceService';
 import { MAX_DUNGEON_SEED } from '../../../../modules/dungeons/dungeonGenerator';
 import { MAX_SIMULATION_RUNS } from '../../../../modules/dungeons/dungeonSimulation';
 import type {
@@ -101,6 +105,23 @@ const currencySchema = z.object({
   revision: z.number().int(),
   updatedAt: z.string(),
   updatedBy: z.string().nullable(),
+});
+
+/** Delve-wide settings, with the bounds the editor needs to offer them. */
+const settingsSchema = z.object({
+  dailyRunLimit: z.number().int(),
+  dailyRunLimitMin: z.number().int(),
+  dailyRunLimitMax: z.number().int(),
+  updatedAt: z.string().nullable(),
+  updatedBy: z.string().nullable(),
+});
+
+const toSettings = (s: DungeonSettings): z.infer<typeof settingsSchema> => ({
+  dailyRunLimit: s.dailyRunLimit,
+  dailyRunLimitMin: DUNGEON_DAILY_RUN_LIMIT_BOUNDS.min,
+  dailyRunLimitMax: DUNGEON_DAILY_RUN_LIMIT_BOUNDS.max,
+  updatedAt: s.updatedAt?.toISOString() ?? null,
+  updatedBy: s.updatedBy,
 });
 
 const graphSchema = z.object({
@@ -502,6 +523,44 @@ export const adminDungeonRoutes =
         return ok(req, toDetail(detail));
       },
     );
+
+    // Delve-wide settings. Registered only where the allowance service is wired.
+    const allowance = ctx.services.dungeonAllowance;
+    if (allowance) {
+      app.get(
+        '/admin/dungeons/settings',
+        {
+          preValidation: gate('dungeons.read'),
+          schema: {
+            tags,
+            summary: 'Delve-wide settings: the daily run limit shared by every zone',
+            response: { 200: dataSchema(settingsSchema), ...commonErrorResponses },
+          },
+        },
+        async (req) => ok(req, toSettings(await allowance.getSettings())),
+      );
+
+      app.put(
+        '/admin/dungeons/settings',
+        {
+          preValidation: gate('dungeons.write'),
+          schema: {
+            tags,
+            summary:
+              'Set the daily Delve run limit (runs a player may start per game day, across all zones). ' +
+              '0 closes Delve to new runs; active runs are unaffected',
+            // Only the type is enforced here: a fraction or an out-of-bounds value is
+            // refused by the service with 400 DUNGEON_SETTINGS_INVALID.
+            body: z.object({ dailyRunLimit: z.number() }).strict(),
+            response: {
+              200: dataSchema(settingsSchema),
+              ...commonErrorResponses,
+            },
+          },
+        },
+        async (req) => ok(req, toSettings(await allowance.updateSettings(req.body, actorOf(req)))),
+      );
+    }
 
     app.get(
       '/admin/dungeons/currencies',

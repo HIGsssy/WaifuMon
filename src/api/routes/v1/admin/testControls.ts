@@ -113,6 +113,15 @@ const stateSchema = z.object({
       ),
     })
     .nullable(),
+  /** Null when the deployment has no dungeon allowance service. */
+  delve: z
+    .object({
+      limit: z.number().int(),
+      used: z.number().int(),
+      remaining: z.number().int(),
+      periodKey: z.string(),
+    })
+    .nullable(),
 });
 
 const resultSchema = z.object({
@@ -296,6 +305,12 @@ export function adminTestControlsRoutes(ctx: ApiContext): FastifyPluginAsyncZod 
       'Reset the Equipment onboarding: revoke the unlock, remove the onboarding starters, release their grant keys',
       null,
       (a, id) => service.resetEquipmentOnboarding(a, id),
+    );
+    mutation(
+      'reset-delve-usage',
+      'Reset today’s Delve usage: the player gets the full daily run allowance back',
+      null,
+      (a, id) => service.resetDelveUsage(a, id),
     );
   };
 }

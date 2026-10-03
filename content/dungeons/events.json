@@ -5,23 +5,26 @@
     {
       "key": "abandoned_cache",
       "name": "Abandoned Cache",
-      "description": "A sealed supply crate, half buried under scrap. Placeholder — choices and effects arrive with playable runs.",
+      "description": "A sealed supply crate, half buried under scrap.",
       "enabled": true,
-      "tags": ["salvage", "initial_tuning"]
+      "tags": ["salvage", "initial_tuning"],
+      "paysReward": true
     },
     {
       "key": "flickering_terminal",
       "name": "Flickering Terminal",
-      "description": "A maintenance console still drawing power from somewhere. Placeholder — choices and effects arrive with playable runs.",
+      "description": "A maintenance console still drawing power from somewhere — enough to run a repair cycle.",
       "enabled": true,
-      "tags": ["robotic", "initial_tuning"]
+      "tags": ["robotic", "initial_tuning"],
+      "hpChangeBasisPoints": 1000
     },
     {
       "key": "unstable_catwalk",
       "name": "Unstable Catwalk",
-      "description": "The only way across groans under its own weight. Placeholder — choices and effects arrive with playable runs.",
+      "description": "The only way across groans under its own weight, and some of it gives.",
       "enabled": true,
-      "tags": ["trap", "high_risk", "initial_tuning"]
+      "tags": ["trap", "high_risk", "initial_tuning"],
+      "hpChangeBasisPoints": -1500
     }
   ]
 }

@@ -1,9 +1,10 @@
 /**
  * Dungeon event definitions — deployed content in `content/dungeons/events.json`.
  *
- * The minimum the generator needs to place an `event` node: something to name,
- * show and switch off. An event has no choices or effects yet; those arrive
- * with playable runs, as new fields on this shape.
+ * What the generator needs to place an `event` node — something to name, show
+ * and switch off — plus the V1 resolution: an event has no choices; resolving
+ * it applies one authored HP change and, optionally, pays the node's reward
+ * band. Both default to nothing, which makes an event pure narrative.
  *
  * Deliberately not a World Encounter. Those are spawned into a channel, expire
  * on a timer, carry cooldowns and per-guild history, and resolve through an
@@ -34,6 +35,14 @@ export const DungeonEventDefinitionSchema = z
     enabled: z.boolean(),
     artworkPath: relativeArtworkPath.nullable().default(null),
     tags: z.array(key).max(20).default([]),
+    /**
+     * HP change as a share of the fighter's max HP, in basis points: positive
+     * heals (never above max), negative hurts. An event never drops the
+     * fighter below 1 HP — only combat ends a run.
+     */
+    hpChangeBasisPoints: z.number().int().min(-10_000).max(10_000).default(0),
+    /** Whether resolving the event pays the node's reward band. */
+    paysReward: z.boolean().default(false),
   })
   .strict();
 

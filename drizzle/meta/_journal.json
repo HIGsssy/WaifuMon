@@ -358,6 +358,20 @@
       "when": 1820095200000,
       "tag": "0050_dungeon_foundation",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1820181600000,
+      "tag": "0051_dungeon_playable_runs",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1820268000000,
+      "tag": "0052_dungeon_daily_runs",
+      "breakpoints": true
     }
   ]
 }

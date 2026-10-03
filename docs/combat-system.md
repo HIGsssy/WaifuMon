@@ -70,6 +70,35 @@ but damage never reaches zero. `round` is `Math.round`, so halves round up.
 This rounding happens only in `combatMath.ts`. HP and damage are always
 integers.
 
+### Damage variance
+
+That deterministic number is the **base** damage. Every hit then rolls a
+factor, so a matchup is no longer always won or always lost at a stat
+threshold:
+
+```
+base   = max(MIN_DAMAGE, round(rawDamage))                    exactly as above
+roll   = rng.intInclusive(minBasisPoints, maxBasisPoints)     9000..11000 by default
+damage = max(MIN_DAMAGE, floor((base × roll + 5000) / 10000))
+```
+
+The order is fixed: **round the base, roll, multiply the rounded base, round
+the product half-up (in integer arithmetic), clamp to the minimum.** Base 7 at
+×0.90 is 6.3 → 6; at ×1.10 it is 7.7 → 8; base 5 at ×0.90 is 4.5 → 5; base 1 is
+never less than 1.
+
+- The range lives in the fight's rules — `rules.damageVariance:
+  { minBasisPoints, maxBasisPoints }` — and is stored on the state, so a
+  resumed fight keeps it. `createCombatState` fills in
+  `DEFAULT_DAMAGE_VARIANCE` (90%–110%); `NO_DAMAGE_VARIANCE` (100%–100%) gives
+  the old fixed numbers for tools and tests. A state whose range is missing or
+  malformed is refused (`CombatStateInvalidError`), never defaulted.
+- `rollBasicAttackDamage` in `combatMath.ts` is the one place a damage roll is
+  made. Exactly one draw per hit; a refused action draws nothing.
+- The `damage` event reports `baseAmount`, `varianceBasisPoints` and `amount`.
+- There are no crits, misses, dodges, accuracy or status rolls. Variance is the
+  only randomness in the engine.
+
 ## Round semantics
 
 - Round 1 opens with the **player's** turn.
@@ -108,7 +137,7 @@ round.
 | `combat_started` | `player`, `enemy` snapshots (`id, name, currentHp, maxHp`) |
 | `turn_started` | `actor` |
 | `action_started` | `actor`, `action` |
-| `damage` | `actor`, `target`, `amount`, `targetHpBefore`, `targetHpAfter` |
+| `damage` | `actor`, `target`, `amount`, `baseAmount`, `varianceBasisPoints`, `targetHpBefore`, `targetHpAfter` |
 | `combatant_defeated` | `actor` (the one who fell) |
 | `combat_ended` | `result`, `reason` (`defeat` \| `round_limit`) |
 
@@ -151,13 +180,28 @@ normal play the resolver's round cap ends the fight first.
 Combat code never calls `Math.random()` (the boundary test checks this). All
 randomness comes from `context.rng`, which uses the shared `Rng` interface in
 `src/shared/random.ts`. Tests pass `seededRng(seed)`, and production callers
-will pass `defaultRng()` from the application layer. V1 basic attacks draw
-nothing, but every entry point already takes the context, so crits, procs,
-ability variance, AI choices and status chances can be added without changing
-signatures.
+pass their own. A basic attack draws exactly once, for its damage factor;
+every entry point already takes the context, so crits, procs, AI choices and
+status chances can be added without changing signatures.
 
-For replayable or persisted fights, store a seed together with the number of
-RNG draws so far. This is not built yet.
+**Reproducibility.** The same starting state, the same action sequence and the
+same seed produce the same fight, event for event. Who supplies the seed:
+
+| Caller | RNG | Consequence |
+| --- | --- | --- |
+| Dungeon fight | `seededRng(dungeonCombatSeed(run seed, node id))` | A node's fight is fixed by the run; it cannot be rerolled (`docs/dungeons.md`). |
+| Combat Trial | `defaultRng()` | Each attempt is a fresh fight; the stored attempt is the record. |
+| Tests, balance tools | `seededRng(seed)` | Deterministic. |
+
+For an interactive fight parked between button presses, store the seed
+together with the number of RNG draws so far. This is not built yet.
+
+**Combat Trials under variance.** Trials use the same engine and the same
+rules — there is no deterministic mode for them. The ladder keeps its shape:
+across the 72 matchups the balance test covers (3 Trials × 3 builds × 8 SP
+values), 71 are still decided the same way every time and one edge case
+(Trial 2, improved N gear, Current SP 167) goes from an always-win to about
+63%. A Trial can be retried freely, so the edge only costs a retry.
 
 ## Building combatants
 

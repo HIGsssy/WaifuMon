@@ -3084,8 +3084,10 @@ export type DungeonRunStatus = (typeof DUNGEON_RUN_STATUSES)[number];
  * reproduce it and to keep an Admin edit away from a run already generated.
  * One active run per player, by the partial unique index.
  *
- * `currentNodeId`, `currentHp`, `unbankedCurrency` and `securedRewards` are
- * where progress will live once runs are playable; nothing advances them yet.
+ * `currentNodeId`, `currentHp`, `unbankedCurrency`, `securedRewards` and
+ * `nodeStates` are the run's progress, advanced only by `dungeonPlayService`.
+ * `fighter` is the Buddy and stats snapshotted at start (migration 0051); null
+ * for a run generated without a player loadout, which cannot be played.
  */
 export const dungeonRuns = pgTable(
   'dungeon_runs',
@@ -3107,6 +3109,11 @@ export const dungeonRuns = pgTable(
     currentHp: integer('current_hp'),
     unbankedCurrency: integer('unbanked_currency').notNull().default(0),
     securedRewards: jsonb('secured_rewards').$type<Record<string, unknown>[]>().notNull().default([]),
+    fighter: jsonb('fighter').$type<Record<string, unknown>>(),
+    /** Node id → lifecycle state and, once completed, its resolution. */
+    nodeStates: jsonb('node_states').$type<Record<string, unknown>>().notNull().default({}),
+    /** How the run ended and what was banked; null while active. */
+    settlement: jsonb('settlement').$type<Record<string, unknown>>(),
     startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     completedAt: timestamp('completed_at', { withTimezone: true }),
@@ -3120,6 +3127,7 @@ export const dungeonRuns = pgTable(
     check('dungeon_runs_unbanked_check', sql`${t.unbankedCurrency} >= 0`),
     check('dungeon_runs_hp_check', sql`${t.currentHp} is null or ${t.currentHp} >= 0`),
     check('dungeon_runs_completed_check', sql`(${t.status} = 'active') = (${t.completedAt} is null)`),
+    check('dungeon_runs_settlement_check', sql`${t.status} <> 'active' or ${t.settlement} is null`),
     uniqueIndex('dungeon_runs_one_active_uq')
       .on(t.playerId)
       .where(sql`status = 'active'`),
@@ -3128,3 +3136,93 @@ export const dungeonRuns = pgTable(
 );
 
 export type DungeonRunRow = typeof dungeonRuns.$inferSelect;
+
+export const DUNGEON_RUN_EVENT_TYPES = [
+  'run_started',
+  'node_entered',
+  'combat_resolved',
+  'rest_resolved',
+  'event_resolved',
+  'reward_resolved',
+  'exit_resolved',
+  'extraction',
+  'defeat',
+  'completion',
+  'abandon',
+  'currency_banked',
+] as const;
+export type DungeonRunEventType = (typeof DUNGEON_RUN_EVENT_TYPES)[number];
+
+/**
+ * Append-only history of a dungeon run (migration 0051): one structured row
+ * per thing that happened, written in the transaction that made it happen.
+ */
+export const dungeonRunEvents = pgTable(
+  'dungeon_run_events',
+  {
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    runId: bigint('run_id', { mode: 'number' })
+      .notNull()
+      .references(() => dungeonRuns.id),
+    playerId: bigint('player_id', { mode: 'number' })
+      .notNull()
+      .references(() => players.id),
+    type: text('type').$type<DungeonRunEventType>().notNull(),
+    nodeId: text('node_id'),
+    payload: jsonb('payload').$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check(
+      'dungeon_run_events_type_check',
+      sql`${t.type} in ('run_started','node_entered','combat_resolved','rest_resolved','event_resolved','reward_resolved','exit_resolved','extraction','defeat','completion','abandon','currency_banked')`,
+    ),
+    index('dungeon_run_events_run_idx').on(t.runId, t.id),
+  ],
+);
+
+export type DungeonRunEventRow = typeof dungeonRunEvents.$inferSelect;
+
+/**
+ * Delve-wide settings (migration 0052): one row, edited in Portal Admin.
+ * `dailyRunLimit` is shared by every zone; 0 closes Delve to new runs.
+ */
+export const dungeonSettings = pgTable(
+  'dungeon_settings',
+  {
+    id: integer('id').primaryKey().default(1),
+    dailyRunLimit: integer('daily_run_limit').notNull().default(3),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Discord id of whoever last saved. Null when seeded. */
+    updatedBy: text('updated_by'),
+  },
+  (t) => [
+    check('dungeon_settings_singleton_check', sql`${t.id} = 1`),
+    check('dungeon_settings_daily_run_limit_check', sql`${t.dailyRunLimit} >= 0 and ${t.dailyRunLimit} <= 50`),
+  ],
+);
+export type DungeonSettingsRow = typeof dungeonSettings.$inferSelect;
+
+/**
+ * Dungeon runs a player started on one game day (migration 0052).
+ * `periodKey` is the calendar date in `DAILY_TIMEZONE`, as `daily_claims`
+ * keys on. Stored usage, never a refilled counter: a day with no row is a
+ * full allowance.
+ */
+export const dungeonDailyUsage = pgTable(
+  'dungeon_daily_usage',
+  {
+    playerId: bigint('player_id', { mode: 'number' })
+      .notNull()
+      .references(() => players.id),
+    periodKey: date('period_key').notNull(),
+    runsStarted: integer('runs_started').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ name: 'dungeon_daily_usage_pk', columns: [t.playerId, t.periodKey] }),
+    check('dungeon_daily_usage_runs_started_check', sql`${t.runsStarted} >= 0`),
+  ],
+);
+export type DungeonDailyUsageRow = typeof dungeonDailyUsage.$inferSelect;

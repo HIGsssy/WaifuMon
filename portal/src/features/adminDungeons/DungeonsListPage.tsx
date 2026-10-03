@@ -1,6 +1,7 @@
 /**
- * Admin — Dungeons: every dungeon zone, where it stands relative to Git, and
- * the progression currency dungeons pay.
+ * Admin — Dungeons: every dungeon zone, where it stands relative to Git, the
+ * Delve-wide settings (the daily run limit every zone shares), and the
+ * progression currency dungeons pay.
  *
  * Zones are database rows seeded from `content/dungeons/zones.json`. A zone
  * edited here is never overwritten by a deploy; **Export** writes the file
@@ -16,10 +17,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   DUNGEONS_QUERY_KEY,
   exportDungeonZones,
+  getDungeonSettings,
   listDungeonZones,
   listProgressionCurrencies,
   setDungeonZoneEnabled,
+  updateDungeonSettings,
   updateProgressionCurrency,
+  type DungeonSettings,
   type DungeonZoneSummary,
   type ProgressionCurrency,
   type ProgressionCurrencyMetadata,
@@ -193,8 +197,109 @@ export function DungeonsListPage() {
         </Card>
       )}
 
+      <SettingsPanel canWrite={canWrite} />
       <CurrencyPanel canWrite={canWrite} />
     </div>
+  );
+}
+
+/** Delve-wide settings: one daily run limit, shared by every zone. */
+function SettingsPanel({ canWrite }: { canWrite: boolean }) {
+  const query = useQuery({
+    queryKey: [...DUNGEONS_QUERY_KEY, 'settings'],
+    queryFn: ({ signal }) => getDungeonSettings(signal),
+  });
+  return (
+    <div className="space-y-2">
+      <h2 className="text-sm font-semibold uppercase text-ink-muted">Delve settings</h2>
+      <p className="text-xs text-ink-muted">
+        How many runs a player may start per game day, counted across every zone. Starting a run
+        uses one; resuming, extracting, finishing, dying and abandoning never give one back. It
+        resets with the daily claim and is separate from Energy.
+      </p>
+      {query.isPending && <Skeleton className="h-20 w-full" />}
+      {query.isError && (
+        <ErrorState
+          variant="inline"
+          title="Could not load the Delve settings"
+          error={query.error}
+        />
+      )}
+      {query.data && (
+        <SettingsCard
+          key={`${query.data.dailyRunLimit}:${query.data.updatedAt ?? ''}`}
+          settings={query.data}
+          canWrite={canWrite}
+        />
+      )}
+    </div>
+  );
+}
+
+function SettingsCard({ settings, canWrite }: { settings: DungeonSettings; canWrite: boolean }) {
+  const queryClient = useQueryClient();
+  const [text, setText] = useState(String(settings.dailyRunLimit));
+  const value = Number(text);
+  // Whole numbers inside the server's bounds only — nothing is rounded or clamped for the admin.
+  const valid =
+    /^\d+$/.test(text.trim()) &&
+    value >= settings.dailyRunLimitMin &&
+    value <= settings.dailyRunLimitMax;
+  const dirty = valid && value !== settings.dailyRunLimit;
+  const save = useMutation({
+    mutationFn: () => updateDungeonSettings({ dailyRunLimit: value }),
+    onSettled: () =>
+      void queryClient.invalidateQueries({ queryKey: [...DUNGEONS_QUERY_KEY, 'settings'] }),
+  });
+
+  return (
+    <Card className="space-y-3 p-4" data-testid="delve-settings-card">
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="text-xs text-ink-muted">
+          Daily run limit
+          <Input
+            aria-label="Daily run limit"
+            className="w-32"
+            inputMode="numeric"
+            value={text}
+            disabled={!canWrite}
+            onChange={(e) => setText(e.target.value)}
+          />
+        </label>
+        {canWrite && (
+          <Button
+            type="button"
+            variant="accent"
+            size="sm"
+            disabled={!dirty || save.isPending}
+            onClick={() => save.mutate()}
+          >
+            {save.isPending ? 'Saving…' : 'Save limit'}
+          </Button>
+        )}
+      </div>
+      {!valid && (
+        <p className="text-xs text-danger" role="alert">
+          Enter a whole number from {settings.dailyRunLimitMin} to {settings.dailyRunLimitMax}.
+        </p>
+      )}
+      <p className="text-xs text-ink-subtle" data-testid="delve-settings-sample">
+        {valid && value === 0
+          ? 'Delve is closed to new runs. Runs already in progress can still be finished.'
+          : `Shown to players as: Daily Runs: ${valid ? value : settings.dailyRunLimit} / ${
+              valid ? value : settings.dailyRunLimit
+            } remaining`}
+      </p>
+      {settings.updatedAt && (
+        <p className="text-xs text-ink-subtle">
+          Updated {formatUpdated(settings.updatedAt)}
+          {settings.updatedBy ? ` by ${settings.updatedBy}` : ''}
+        </p>
+      )}
+      {save.isError && (
+        <ErrorState variant="inline" title="Could not save the Delve settings" error={save.error} />
+      )}
+    </Card>
   );
 }
 

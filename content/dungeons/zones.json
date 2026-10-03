@@ -15,11 +15,19 @@
         "minNodes": 6,
         "maxNodes": 9,
         "branching": { "minBranches": 0, "maxBranches": 1, "chanceBasisPoints": 3000, "maxLength": 1 },
-        "extraction": { "minDepth": 4, "nodeTypes": ["rest", "exit"], "minPoints": 1 },
+        "extraction": {
+          "minDepth": 3,
+          "nodeTypes": ["rest", "exit"],
+          "minPoints": 1,
+          "windows": [
+            { "minDepth": 3, "maxDepth": 4, "required": true },
+            { "minDepth": 6, "maxDepth": null, "required": false }
+          ]
+        },
         "nodeWeights": { "combat": 60, "elite": 10, "event": 12, "reward": 10, "rest": 8, "miniboss": 0, "exit": 0 },
         "boss": { "required": true },
         "depthRanges": {
-          "elite": { "minDepth": 3, "maxDepth": null },
+          "elite": { "minDepth": 5, "maxDepth": null },
           "rest": { "minDepth": 2, "maxDepth": null },
           "reward": { "minDepth": 2, "maxDepth": null }
         },
@@ -29,20 +37,21 @@
         ],
         "limits": [
           { "types": ["elite"], "max": 1 },
-          { "types": ["rest"], "max": 2 },
+          { "types": ["rest"], "max": 1 },
           { "types": ["reward"], "max": 2 }
         ],
         "noConsecutive": ["rest", "reward", "elite"],
         "maxConsecutiveSameEnemy": 2
       },
+      "nodeSettings": { "rest": { "healBasisPoints": 3000 } },
       "pools": {
         "combat": [
           { "id": "drone", "enemyKey": "scrapyard_drone", "weight": 50, "minDepth": 1, "maxDepth": 4, "tags": ["robotic"] },
-          { "id": "bruiser", "enemyKey": "alley_bruiser", "weight": 35, "minDepth": 2, "maxDepth": 7, "tags": ["organic"] },
-          { "id": "automaton", "enemyKey": "security_automaton", "weight": 20, "minDepth": 4, "maxDepth": null, "tags": ["robotic"] }
+          { "id": "bruiser", "enemyKey": "alley_bruiser", "weight": 35, "minDepth": 3, "maxDepth": 7, "tags": ["organic"] },
+          { "id": "automaton", "enemyKey": "security_automaton", "weight": 20, "minDepth": 5, "maxDepth": null, "tags": ["robotic"] }
         ],
         "elite": [
-          { "id": "elite_automaton", "enemyKey": "security_automaton", "weight": 10, "minDepth": 3, "maxDepth": null, "tags": ["robotic"] }
+          { "id": "elite_automaton", "enemyKey": "security_automaton", "weight": 10, "minDepth": 5, "maxDepth": null, "tags": ["robotic"] }
         ],
         "miniboss": [],
         "boss": [
@@ -61,10 +70,11 @@
           { "id": "early", "minDepth": 1, "maxDepth": 3, "currency": { "min": 1, "max": 2 } },
           { "id": "mid", "minDepth": 4, "maxDepth": 6, "currency": { "min": 2, "max": 4 } },
           { "id": "deep", "minDepth": 7, "maxDepth": null, "currency": { "min": 3, "max": 6 } },
-          { "id": "elite", "minDepth": 1, "maxDepth": null, "nodeTypes": ["elite"], "currency": { "min": 4, "max": 6 } },
-          { "id": "boss", "minDepth": 1, "maxDepth": null, "nodeTypes": ["boss"], "currency": { "min": 10, "max": 15 } }
+          { "id": "elite", "minDepth": 1, "maxDepth": null, "nodeTypes": ["elite"], "equipmentRewardTable": "dungeon-scrapheap-elite-v1", "currency": { "min": 4, "max": 6 } },
+          { "id": "cache", "minDepth": 1, "maxDepth": null, "nodeTypes": ["reward"], "equipmentRewardTable": "dungeon-scrapheap-cache-v1", "currency": { "min": 3, "max": 5 } },
+          { "id": "boss", "minDepth": 1, "maxDepth": null, "nodeTypes": ["boss"], "equipmentRewardTable": "dungeon-scrapheap-boss-v1", "currency": { "min": 10, "max": 15 } }
         ],
-        "completion": { "currency": { "min": 5, "max": 5 } },
+        "completion": { "currency": { "min": 10, "max": 10 } },
         "extraction": {}
       }
     }

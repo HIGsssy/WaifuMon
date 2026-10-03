@@ -366,6 +366,37 @@ describe('the player page', () => {
     await waitFor(() => expect(posts.map((p) => p.path)).toEqual(['reset-equipment-onboarding']));
   });
 
+  it('shows today’s Delve runs and resets them with one click', async () => {
+    serve();
+    server.use(
+      http.get(PLAYER_URL, () =>
+        data(playerState({ delve: { limit: 3, used: 2, remaining: 1, periodKey: '2026-10-03' } })),
+      ),
+    );
+    const user = userEvent.setup();
+    renderPlayerPage();
+    const list = await screen.findByRole('list', { name: 'Delve daily runs' });
+    expect(list).toHaveTextContent('Daily Delve runs: 1 / 3 remaining (2 started on 2026-10-03)');
+    await user.click(screen.getByRole('button', { name: 'Reset Today’s Delve Runs' }));
+    await waitFor(() => expect(posts.map((p) => p.path)).toEqual(['reset-delve-usage']));
+  });
+
+  it('disables the Delve reset when nothing was started, and hides it without the dungeon service', async () => {
+    serve();
+    server.use(
+      http.get(PLAYER_URL, () =>
+        data(playerState({ delve: { limit: 3, used: 0, remaining: 3, periodKey: '2026-10-03' } })),
+      ),
+    );
+    const { unmount } = renderPlayerPage();
+    expect(await screen.findByRole('button', { name: 'Reset Today’s Delve Runs' })).toBeDisabled();
+    unmount();
+    server.use(http.get(PLAYER_URL, () => data(playerState())));
+    renderPlayerPage();
+    await screen.findByRole('button', { name: 'Reset Assteroid Belt Unlock Test State' });
+    expect(screen.queryByRole('button', { name: 'Reset Today’s Delve Runs' })).toBeNull();
+  });
+
   it('offers no onboarding reset on a server without the Equipment onboarding', async () => {
     serve();
     renderPlayerPage();

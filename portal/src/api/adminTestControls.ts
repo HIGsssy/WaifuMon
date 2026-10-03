@@ -46,6 +46,8 @@ export interface TestControlsPlayerState {
     unlocked: boolean;
     starters: { slot: string; definitionKey: string; granted: boolean; removed: boolean }[];
   } | null;
+  /** Today's Delve allowance. Null (or absent from an older server) without the dungeon service. */
+  delve?: { limit: number; used: number; remaining: number; periodKey: string } | null;
 }
 
 export type TestControlAction =
@@ -58,7 +60,8 @@ export type TestControlAction =
   | 'test_grant_travel_access'
   | 'test_staging_boost'
   | 'test_reset_assteroid_belt'
-  | 'test_reset_equipment_onboarding';
+  | 'test_reset_equipment_onboarding'
+  | 'test_reset_delve_usage';
 
 export interface TestControlResult {
   action: TestControlAction;
@@ -101,4 +104,5 @@ export const testControlMutations = {
     postData<TestControlResult>(`${player(id)}/reset-assteroid-belt`),
   resetEquipmentOnboarding: (id: number) =>
     postData<TestControlResult>(`${player(id)}/reset-equipment-onboarding`),
+  resetDelveUsage: (id: number) => postData<TestControlResult>(`${player(id)}/reset-delve-usage`),
 } as const;

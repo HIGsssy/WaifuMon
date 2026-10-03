@@ -21,11 +21,12 @@
  *
  * Inputs are never mutated; every call returns a new state. A refused action
  * throws `CombatActionRejectedError` (with a stable `reason`) and leaves the
- * caller's state exactly as it was. Randomness, when a mechanic needs it, is
- * drawn from `context.rng` only — V1 basic attacks draw nothing.
+ * caller's state exactly as it was. Randomness is drawn from `context.rng`
+ * only: one draw per basic attack, for its damage factor (`combatMath.ts`).
+ * A refused action draws nothing.
  */
 import { CombatActionRejectedError } from '../../shared/errors';
-import { basicAttackDamage, hpAfterDamage } from './combatMath';
+import { hpAfterDamage, rollBasicAttackDamage } from './combatMath';
 import { assertValidCombatState, combatantSnapshot, opponentOf } from './combatState';
 import {
   isCombatActor,
@@ -66,16 +67,12 @@ export function startCombat(state: CombatState): CombatStep {
 /**
  * Resolve one submitted action. Validates the state and the action, applies
  * it, and either ends the fight or hands the turn to the other side.
- *
- * `context` is unused by V1 basic attacks; it is part of the signature so
- * random mechanics can arrive without changing any caller.
  */
 export function resolveCombatAction(
   state: CombatState,
   action: CombatAction,
   context: CombatContext,
 ): CombatStep {
-  void context;
   assertValidCombatState(state);
   if (state.status !== 'active') {
     throw new CombatActionRejectedError('combat_finished', `combat already ended: ${state.status}`);
@@ -92,7 +89,7 @@ export function resolveCombatAction(
   }
   switch (action.type) {
     case 'basic_attack':
-      return resolveBasicAttack(state, actor);
+      return resolveBasicAttack(state, actor, context);
     default:
       throw new CombatActionRejectedError(
         'unsupported_action',
@@ -101,11 +98,16 @@ export function resolveCombatAction(
   }
 }
 
-function resolveBasicAttack(state: CombatState, actor: CombatActor): CombatStep {
+function resolveBasicAttack(state: CombatState, actor: CombatActor, context: CombatContext): CombatStep {
   const target = opponentOf(actor);
   const attacker = state[actor];
   const defender = state[target];
-  const amount = basicAttackDamage(attacker.attack, defender.defense);
+  const { base, varianceBasisPoints, amount } = rollBasicAttackDamage(
+    attacker.attack,
+    defender.defense,
+    state.rules.damageVariance,
+    context.rng,
+  );
   const targetHpAfter = hpAfterDamage(defender.currentHp, amount);
 
   const afterHit: CombatState = {
@@ -120,6 +122,8 @@ function resolveBasicAttack(state: CombatState, actor: CombatActor): CombatStep 
       actor,
       target,
       amount,
+      baseAmount: base,
+      varianceBasisPoints,
       targetHpBefore: defender.currentHp,
       targetHpAfter,
     },

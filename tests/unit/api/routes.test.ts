@@ -978,6 +978,8 @@ describe('OpenAPI registration', () => {
       'POST /api/v1/admin/dungeons/validate',
       'POST /api/v1/admin/dungeons/zones',
       'PUT /api/v1/admin/dungeons/currencies/{key}',
+      // Delve-wide settings (the shared daily run limit). `dungeons.write`.
+      'PUT /api/v1/admin/dungeons/settings',
       'PUT /api/v1/admin/dungeons/zones/{key}',
       'PUT /api/v1/admin/dungeons/zones/{key}/enabled',
       'PUT /api/v1/players/{playerId}/collection/owned/{waifuId}/appearance',

@@ -7,6 +7,7 @@
  * numbers.
  */
 import { CombatStateInvalidError } from '../../shared/errors';
+import { DEFAULT_DAMAGE_VARIANCE, isValidDamageVariance } from './combatMath';
 import {
   COMBAT_RESULTS,
   isCombatActor,
@@ -51,8 +52,9 @@ export function createCombatant(input: CombatantInput): CombatantState {
 }
 
 /**
- * A fresh fight: round 1, the player's turn, both sides as given. Throws
- * `CombatStateInvalidError` for malformed stats or a side already at 0 HP.
+ * A fresh fight: round 1, the player's turn, both sides as given, under the
+ * default rules unless `rules` overrides them. Throws `CombatStateInvalidError`
+ * for malformed stats, malformed rules, or a side already at 0 HP.
  */
 export function createCombatState(input: {
   player: CombatantInput;
@@ -63,7 +65,10 @@ export function createCombatState(input: {
     round: 1,
     turn: 'player',
     status: 'active',
-    rules: { maxRounds: input.rules?.maxRounds ?? DEFAULT_MAX_ROUNDS },
+    rules: {
+      maxRounds: input.rules?.maxRounds ?? DEFAULT_MAX_ROUNDS,
+      damageVariance: { ...(input.rules?.damageVariance ?? DEFAULT_DAMAGE_VARIANCE) },
+    },
     player: createCombatant(input.player),
     enemy: createCombatant(input.enemy),
   };
@@ -111,6 +116,9 @@ export function assertValidCombatState(value: unknown): asserts value is CombatS
   const s = value;
   if (!isPlainObject(s.rules) || !isNonNegativeInt(s.rules.maxRounds) || s.rules.maxRounds < 1) {
     fail('rules.maxRounds must be a positive integer');
+  }
+  if (!isValidDamageVariance(s.rules.damageVariance)) {
+    fail('rules.damageVariance must be integer basis points with 1 <= min <= max');
   }
   if (!isNonNegativeInt(s.round) || s.round < 1) fail(`round must be a positive integer, got ${String(s.round)}`);
   if (s.round > s.rules.maxRounds) {

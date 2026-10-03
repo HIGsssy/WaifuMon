@@ -1,11 +1,12 @@
 /**
  * Dungeon runs — generating one for a player and storing it.
  *
- * This is the persistence foundation only. A run is created `active`, on its
- * start node, with nothing banked; nothing here moves it through the graph,
- * fights, pays or extracts. Those arrive with playable runs and will advance
- * the columns this service initialises (`current_node_id`, `current_hp`,
- * `unbanked_currency`, `secured_rewards`).
+ * Generation and storage only. A run is created `active`, on its start node,
+ * with nothing banked; nothing here moves it through the graph, fights, pays
+ * or extracts — that is `dungeonPlayService`, which starts runs through
+ * {@link DungeonRunService.startRun} with the player's fighter snapshot and
+ * then advances `current_node_id`, `current_hp`, `unbanked_currency`,
+ * `secured_rewards` and `node_states`.
  *
  * ## Starting a run
  *
@@ -69,6 +70,12 @@ import {
 } from './dungeonZoneService';
 import { dungeonCatalogueFromContent, parseDungeonZoneRow, readDungeonZoneRow } from './dungeonZoneStore';
 import type { DungeonEventDefinition } from './eventDefinitions';
+import type {
+  DungeonFighter,
+  DungeonNodeStates,
+  DungeonSecuredReward,
+  DungeonSettlement,
+} from './dungeonRunState';
 import { DUNGEON_POOL_KEYS, DungeonZoneDefinitionSchema, type DungeonZoneDefinition } from './zoneDefinition';
 import { hasErrors, validateDungeonZone } from './zoneValidation';
 
@@ -120,7 +127,12 @@ export interface DungeonRun {
   currentNodeId: string | null;
   currentHp: number | null;
   unbankedCurrency: number;
-  securedRewards: Record<string, unknown>[];
+  securedRewards: DungeonSecuredReward[];
+  /** The Buddy and stats snapshotted at start; null for a run that cannot be played. */
+  fighter: DungeonFighter | null;
+  nodeStates: DungeonNodeStates;
+  /** How the run ended; null while it is active. */
+  settlement: DungeonSettlement | null;
   startedAt: Date;
   updatedAt: Date;
   completedAt: Date | null;
@@ -130,15 +142,27 @@ export interface DungeonRunService {
   /**
    * Generate and store a run. `seed` is for reproduction; omitted, one is drawn.
    *
+   * With a `fighter` the run starts *entered* on its first node at full HP and
+   * can be played. Without one it is a generated snapshot only. Pass `tx` to
+   * make the insert part of a larger transaction (the caller then owns the
+   * mapping of a lost race at the one-active-run index).
+   *
    * @throws {DungeonZoneUnavailableError} for a missing or disabled zone.
    * @throws {DungeonZoneInvalidError} when the zone no longer validates here.
    * @throws {DungeonGenerationError} when the rules cannot produce a run.
    * @throws {DungeonRunActiveError} when the player already has an active run.
    */
-  startRun(input: { playerId: number; zoneKey: string; seed?: number }): Promise<DungeonRun>;
+  startRun(
+    input: { playerId: number; zoneKey: string; seed?: number; fighter?: DungeonFighter },
+    tx?: DbOrTx,
+  ): Promise<DungeonRun>;
   getRun(runId: number): Promise<DungeonRun | null>;
   getActiveRun(playerId: number): Promise<DungeonRun | null>;
-  /** End the player's active run without paying anything. Null when there is none. */
+  /**
+   * End the player's active run without settling it: nothing is banked. The
+   * player-facing abandon is `dungeonPlayService.abandon`, which settles.
+   * Null when there is none.
+   */
   abandonActiveRun(playerId: number): Promise<DungeonRun | null>;
   /** Regenerate a run's graph from its stored seed and snapshot. */
   reproduceGraph(run: Pick<DungeonRun, 'seed' | 'snapshot'>): DungeonGraph;
@@ -150,7 +174,7 @@ export interface DungeonRunServiceDeps {
   currencies: Pick<ProgressionCurrencyService, 'get'>;
 }
 
-function toRun(row: DungeonRunRow): DungeonRun {
+export function toDungeonRun(row: DungeonRunRow): DungeonRun {
   return {
     id: row.id,
     playerId: row.playerId,
@@ -164,7 +188,10 @@ function toRun(row: DungeonRunRow): DungeonRun {
     currentNodeId: row.currentNodeId,
     currentHp: row.currentHp,
     unbankedCurrency: row.unbankedCurrency,
-    securedRewards: row.securedRewards,
+    securedRewards: row.securedRewards as unknown as DungeonSecuredReward[],
+    fighter: (row.fighter as unknown as DungeonFighter | null) ?? null,
+    nodeStates: row.nodeStates as unknown as DungeonNodeStates,
+    settlement: (row.settlement as unknown as DungeonSettlement | null) ?? null,
     startedAt: row.startedAt,
     updatedAt: row.updatedAt,
     completedAt: row.completedAt,
@@ -244,9 +271,9 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
   }
 
   return {
-    async startRun({ playerId, zoneKey, seed }) {
+    async startRun({ playerId, zoneKey, seed, fighter }, outer) {
       try {
-        return await db.transaction(async (tx) => {
+        const body = async (tx: DbOrTx) => {
           const [player] = await tx.select({ id: players.id }).from(players).where(eq(players.id, playerId));
           if (!player) throw new PlayerNotFoundError(playerId);
           if (await activeRow(tx, playerId)) throw new DungeonRunActiveError(playerId);
@@ -311,10 +338,25 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
               graph: graph as unknown as Record<string, unknown>,
               zoneSnapshot: snapshot as unknown as Record<string, unknown>,
               currentNodeId: graph.startNodeId,
+              ...(fighter
+                ? {
+                    fighter: fighter as unknown as Record<string, unknown>,
+                    currentHp: fighter.maxHp,
+                    nodeStates: {
+                      [graph.startNodeId]: {
+                        status: 'entered',
+                        enteredAt: new Date().toISOString(),
+                        completedAt: null,
+                        resolution: null,
+                      },
+                    } satisfies DungeonNodeStates,
+                  }
+                : {}),
             })
             .returning();
-          return toRun(inserted!);
-        });
+          return toDungeonRun(inserted!);
+        };
+        return outer ? await body(outer) : await db.transaction(body);
       } catch (err) {
         // The loser of two concurrent starts meets the index, not the check.
         if (uniqueViolationConstraint(err) === 'dungeon_runs_one_active_uq') throw new DungeonRunActiveError(playerId);
@@ -324,12 +366,12 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
 
     async getRun(runId) {
       const [row] = await db.select().from(dungeonRuns).where(eq(dungeonRuns.id, runId));
-      return row ? toRun(row) : null;
+      return row ? toDungeonRun(row) : null;
     },
 
     async getActiveRun(playerId) {
       const row = await activeRow(db, playerId);
-      return row ? toRun(row) : null;
+      return row ? toDungeonRun(row) : null;
     },
 
     async abandonActiveRun(playerId) {
@@ -342,7 +384,7 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
           .set({ status: 'abandoned', completedAt: now, updatedAt: now })
           .where(eq(dungeonRuns.id, row.id))
           .returning();
-        return toRun(updated!);
+        return toDungeonRun(updated!);
       });
     },
 

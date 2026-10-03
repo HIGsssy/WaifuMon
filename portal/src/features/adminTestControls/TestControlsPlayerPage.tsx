@@ -367,6 +367,26 @@ function Controls({ info, state }: { info: TestControlsInfo; state: TestControls
               </ul>
             </>
           )}
+          {state.delve && (
+            <>
+              {/* Not destructive: it only forgets today's count, so no confirmation. */}
+              <Button
+                className="mt-4"
+                size="sm"
+                variant="outline"
+                disabled={busy || state.delve.used === 0}
+                onClick={() => submit(() => testControlMutations.resetDelveUsage(id))}
+              >
+                Reset Today’s Delve Runs
+              </Button>
+              <ul className="mt-4 space-y-1 text-sm" aria-label="Delve daily runs">
+                <li className="text-ink-muted">
+                  Daily Delve runs: {state.delve.remaining} / {state.delve.limit} remaining (
+                  {state.delve.used} started on {state.delve.periodKey})
+                </li>
+              </ul>
+            </>
+          )}
         </Card>
       </div>
 

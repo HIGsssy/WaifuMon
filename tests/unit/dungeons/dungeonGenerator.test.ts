@@ -200,6 +200,56 @@ describe('constraints', () => {
     }
   });
 
+  it('places a guaranteed extraction point inside each required window, on the main path', () => {
+    const zone = testZone({
+      generation: { extraction: { windows: [{ minDepth: 3, maxDepth: 3, required: true }] } },
+    });
+    for (const graph of graphs(zone)) {
+      const early = mainPath(graph).filter((n) => n.extraction && n.depth === 3);
+      expect(early).toHaveLength(1);
+      expect(validateDungeonGraph(zone, graph)).toEqual([]);
+    }
+    // Without the window the guaranteed point wanders deeper.
+    expect(graphs().some((g) => !mainPath(g).some((n) => n.extraction && n.depth === 3))).toBe(true);
+  });
+
+  it('places an optional window when the run has room for it and skips it when it does not', () => {
+    const zone = testZone({
+      generation: {
+        extraction: {
+          windows: [
+            { minDepth: 3, maxDepth: 3, required: true },
+            { minDepth: 6, maxDepth: null, required: false },
+          ],
+        },
+      },
+    });
+    const all = graphs(zone);
+    const late = (g: DungeonGraph) => mainPath(g).filter((n) => n.extraction && n.depth >= 6);
+    const withRoom = all.filter((g) => mainPath(g).some((n) => !n.terminal && n.depth >= 6));
+    const without = all.filter((g) => !withRoom.includes(g));
+    expect(withRoom.length).toBeGreaterThan(0);
+    expect(without.length).toBeGreaterThan(0);
+    // Room for one is not a promise of one — the slot must also be legal for a
+    // rest or an exit — but most long runs get it, and no short run fails for lacking it.
+    expect(withRoom.filter((g) => late(g).length >= 1).length / withRoom.length).toBeGreaterThan(0.9);
+    for (const g of without) expect(late(g)).toHaveLength(0);
+    for (const g of all) {
+      expect(mainPath(g).some((n) => n.extraction && n.depth === 3)).toBe(true);
+      expect(validateDungeonGraph(zone, g)).toEqual([]);
+    }
+  });
+
+  it('generates exactly what it did before windows existed when a zone declares none', () => {
+    // A run snapshotted before windows has no `windows` key at all.
+    const legacy = testZone();
+    delete (legacy.generation.extraction as { windows?: unknown }).windows;
+    for (const seed of [1, 2, 3, 99, 4242]) {
+      expect(generateDungeon(legacy, catalogue, seed)).toEqual(generateDungeon(testZone(), catalogue, seed));
+      expect(validateDungeonGraph(legacy, generateDungeon(legacy, catalogue, seed))).toEqual([]);
+    }
+  });
+
   it('never places an exit above the extraction depth', () => {
     const zone = testZone({ generation: { nodeWeights: { exit: 40 }, extraction: { minDepth: 4 } } });
     const all = graphs(zone);
@@ -362,6 +412,17 @@ describe('validateDungeonGraph', () => {
     const graph = base();
     graph.edges[0]!.to = graph.startNodeId;
     expect(validateDungeonGraph(zone, graph).join('\n')).toMatch(/does not go one depth deeper/);
+  });
+
+  it('reports a required extraction window left empty', () => {
+    const plain = generateDungeon(testZone(), catalogue, SEEDS.find((seed) => {
+      const g = generateDungeon(testZone(), catalogue, seed);
+      return !mainPath(g).some((n) => n.extraction && n.depth === 3);
+    })!);
+    const windowed = testZone({ generation: { extraction: { windows: [{ minDepth: 3, maxDepth: 3, required: true }] } } });
+    expect(validateDungeonGraph(windowed, plain).join(' ')).toMatch(/no main-path extraction point at depth 3–3/);
+    const optional = testZone({ generation: { extraction: { windows: [{ minDepth: 3, maxDepth: 3, required: false }] } } });
+    expect(validateDungeonGraph(optional, plain)).toEqual([]);
   });
 
   it('reports a second boss, a wrong extraction flag and a foreign pool entry', () => {

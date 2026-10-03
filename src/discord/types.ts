@@ -60,6 +60,8 @@ import type { CombatTrialService } from '../modules/combatTrials/combatTrialServ
 import type { EquipmentWorkshopService } from '../modules/equipment/equipmentWorkshopService';
 import type { DungeonZoneService } from '../modules/dungeons/dungeonZoneService';
 import type { DungeonRunService } from '../modules/dungeons/dungeonRunService';
+import type { DungeonPlayService } from '../modules/dungeons/dungeonPlayService';
+import type { DungeonAllowanceService } from '../modules/dungeons/dungeonAllowanceService';
 import type { ProgressionCurrencyService } from '../modules/progressionCurrency/progressionCurrencyService';
 
 export interface AppServices {
@@ -244,8 +246,12 @@ export interface AppServices {
   equipmentWorkshop?: EquipmentWorkshopService | undefined;
   /** Dungeon zone authoring, generation preview and simulation (Portal Admin). */
   dungeonZones?: DungeonZoneService | undefined;
-  /** Generated dungeon run snapshots. Nothing player-facing starts a run yet. */
+  /** Generated dungeon run snapshots: generation and storage only. */
   dungeonRuns?: DungeonRunService | undefined;
+  /** Playable dungeon runs (start, navigate, resolve, extract). Requires the `equipment` unlock. */
+  dungeonPlay?: DungeonPlayService | undefined;
+  /** The daily Delve allowance and Delve-wide settings (Portal Admin, test controls). */
+  dungeonAllowance?: DungeonAllowanceService | undefined;
   /** Progression currencies (the dungeon's Ascension-related resource): metadata, balances, ledger. */
   progressionCurrency?: ProgressionCurrencyService | undefined;
 }

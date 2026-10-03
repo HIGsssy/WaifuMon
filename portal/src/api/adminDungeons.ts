@@ -87,6 +87,13 @@ export interface DungeonBonusDoc {
   rewardTable: string | null;
 }
 
+/** `required` must be placeable in every run; an optional one is skipped when the run has no room. */
+export interface DungeonExtractionWindow {
+  minDepth: number;
+  maxDepth: number | null;
+  required: boolean;
+}
+
 export interface DungeonGenerationDoc {
   minNodes: number;
   maxNodes: number;
@@ -96,7 +103,13 @@ export interface DungeonGenerationDoc {
     chanceBasisPoints: number;
     maxLength: number;
   };
-  extraction: { minDepth: number; nodeTypes: DungeonNodeType[]; minPoints: number };
+  extraction: {
+    minDepth: number;
+    nodeTypes: DungeonNodeType[];
+    minPoints: number;
+    /** Depth windows that each hold a guaranteed main-path extraction point. */
+    windows?: DungeonExtractionWindow[];
+  };
   nodeWeights: Record<DungeonWeightedNodeType, number>;
   boss: { required: boolean };
   depthRanges: Partial<Record<DungeonNodeType, DepthRange>>;
@@ -117,6 +130,8 @@ export interface DungeonZoneDoc {
   backgroundArtworkPath: string | null;
   tags: string[];
   generation: DungeonGenerationDoc;
+  /** What a node type does when resolved. `healBasisPoints`: 3000 = 30% of max HP. */
+  nodeSettings: { rest: { healBasisPoints: number } };
   pools: Record<DungeonEnemyPoolKey | 'event', DungeonPoolEntryDoc[]>;
   rewards: {
     currencyKey: string;
@@ -334,6 +349,24 @@ export function simulateDungeon(
   firstSeed = 1,
 ): Promise<DungeonSimulationReport> {
   return postData(`${base}/simulate`, { ...target, runs, firstSeed });
+}
+
+/** Delve-wide settings, with the bounds the server enforces. */
+export interface DungeonSettings {
+  /** Runs a player may start per game day, across all zones. 0 closes Delve to new runs. */
+  dailyRunLimit: number;
+  dailyRunLimitMin: number;
+  dailyRunLimitMax: number;
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
+
+export function getDungeonSettings(signal?: AbortSignal): Promise<DungeonSettings> {
+  return getData(`${base}/settings`, opts(signal));
+}
+
+export function updateDungeonSettings(patch: { dailyRunLimit: number }): Promise<DungeonSettings> {
+  return putData(`${base}/settings`, patch);
 }
 
 export function listProgressionCurrencies(

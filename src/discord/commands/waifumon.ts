@@ -69,6 +69,7 @@ import type { EquipmentEntryState } from '../../modules/onboarding/onboardingSta
 import { onboardingCustomId } from '../onboardingPresenter';
 import { summaryGearLines, summaryStatParts } from '../equipmentPresenter';
 import { combatTrialsButton } from '../combatTrialPresenter';
+import { dungeonMenuButton } from '../dungeonPresenter';
 import {
   parseQuestRewards,
   type QuestRewardsPreview,
@@ -86,6 +87,7 @@ export function menuComponents(
   questsEnabled: boolean,
   equipmentEntry: EquipmentEntryState = 'hidden',
   combatTrialsEnabled = false,
+  dungeonsEnabled = false,
 ): ActionRowBuilder<ButtonBuilder>[] {
   const careButton = care.active
     ? new ButtonBuilder()
@@ -190,9 +192,19 @@ export function menuComponents(
   // means no combat stats. At most the fifth of this row's five buttons. The
   // service re-checks the unlock on every click, so this is presentation only.
   if (combatTrialsEnabled && equipmentEntry === 'available') bottomRow.push(combatTrialsButton());
-  rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(...bottomRow));
+  // Delve: the same gate as Combat Trials, and likewise re-checked by its
+  // service on every click. The bottom row can already be full (Locations,
+  // Quests, Change Target, Equipment, Combat Trials), so the entry spills
+  // onto a fourth row rather than push a sixth button into this one.
+  if (dungeonsEnabled && equipmentEntry === 'available') bottomRow.push(dungeonMenuButton());
+  for (let i = 0; i < bottomRow.length; i += MENU_ROW_SIZE) {
+    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(...bottomRow.slice(i, i + MENU_ROW_SIZE)));
+  }
   return rows;
 }
+
+/** Discord's limit on buttons in one action row. */
+const MENU_ROW_SIZE = 5;
 
 /** The main menu's Equipment button for an entry state, or null when hidden. */
 export function equipmentMenuButton(entry: EquipmentEntryState): ButtonBuilder | null {
@@ -243,6 +255,11 @@ export function equipmentLegendLine(entry: EquipmentEntryState): string {
 /** The Actions legend's Combat Trials mention, once Equipment is unlocked. */
 export function combatTrialsLegendLine(entry: EquipmentEntryState, enabled: boolean): string {
   return enabled && entry === 'available' ? '\n⚔️ **Combat Trials** — put your gear to the test' : '';
+}
+
+/** The Actions legend's Delve mention, once Equipment is unlocked. */
+export function dungeonLegendLine(entry: EquipmentEntryState, enabled: boolean): string {
+  return enabled && entry === 'available' ? '\n⛏️ **Delve** — take your Buddy into a dungeon' : '';
 }
 
 const DEFAULT_MENU_FLAVOR =
@@ -331,6 +348,7 @@ async function renderMainMenu(
 
   const equipmentEntry = await loadEquipmentEntry(ctx, prov.playerId);
   const combatTrialsEnabled = ctx.services.combatTrials != null;
+  const dungeonsEnabled = ctx.services.dungeonPlay != null;
   embed.addFields({
     name: '🎮 Actions',
     value:
@@ -340,7 +358,8 @@ async function renderMainMenu(
       '🎒 **Collection** — browse your captured Waifumon\n' +
       '👤 **Profile** · 🎒 **Inventory** · 💗 **Care Mode**' +
       equipmentLegendLine(equipmentEntry) +
-      combatTrialsLegendLine(equipmentEntry, combatTrialsEnabled),
+      combatTrialsLegendLine(equipmentEntry, combatTrialsEnabled) +
+      dungeonLegendLine(equipmentEntry, dungeonsEnabled),
   });
 
   embed.addFields({ name: '💗 Care Mode', value: renderCareStatusLines(care).join('\n') });
@@ -378,7 +397,13 @@ async function renderMainMenu(
   // the reason the player is there.
   await respondEphemeral(interaction, {
     embeds: [embed],
-    components: menuComponents(care, ctx.services.quests.config.enabled, equipmentEntry, combatTrialsEnabled),
+    components: menuComponents(
+      care,
+      ctx.services.quests.config.enabled,
+      equipmentEntry,
+      combatTrialsEnabled,
+      dungeonsEnabled,
+    ),
     files: banner ? [banner.file] : [],
   });
   await emitEvents(ctx, interaction, prov, carePendingDescriptors(ticks));

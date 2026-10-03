@@ -17,6 +17,7 @@ import {
 } from '../../src/modules/dungeons/dungeonZoneStore';
 import { dungeonZoneHash, type DungeonZoneDefinition } from '../../src/modules/dungeons/zoneDefinition';
 import type { LoadedContent } from '../../src/modules/content/schemas';
+import { loadEquipmentSeedCatalogue, seedEquipmentDefinitions } from '../../src/modules/equipment/seed';
 import { createProgressionCurrencyService } from '../../src/modules/progressionCurrency/progressionCurrencyService';
 import { loadShippedRewardTables, seedRewardTables } from '../../src/modules/rewardTables/rewardTableStore';
 import {
@@ -44,6 +45,8 @@ beforeAll(async () => {
   t = await createTestDb();
   app = await bootstrapApp(t);
   content = app.content;
+  // The shipped zone's gear tables need definitions to pay from.
+  await seedEquipmentDefinitions(t.db, { catalogue: loadEquipmentSeedCatalogue(CONTENT_DIR) });
   await seedRewardTables(t.db, loadShippedRewardTables(CONTENT_DIR));
   shipped = loadShippedDungeonZones(CONTENT_DIR);
   await seedDungeonZones(t.db, shipped);
@@ -268,7 +271,7 @@ describe('snapshot semantics', () => {
     const saved = (await zones.update(ZONE, { zone: edited, expectedRevision: current.revision }, 'admin'))!;
     try {
       const run = await runs.startRun({ playerId: await newPlayer(), zoneKey: ZONE, seed: 12 });
-      expect(Object.keys(run.snapshot.rewardTables)).toEqual([tableId]);
+      expect(Object.keys(run.snapshot.rewardTables)).toContain(tableId);
       expect(run.snapshot.rewardTables[tableId]!.table.id).toBe(tableId);
 
       await t.db.update(rewardTables).set({ enabled: false }).where(eq(rewardTables.tableId, tableId));
