@@ -172,6 +172,11 @@ const DungeonsListPage = lazy(() =>
     default: m.DungeonsListPage,
   })),
 );
+const DungeonCreatePage = lazy(() =>
+  import('@/features/adminDungeons/DungeonCreatePage').then((m) => ({
+    default: m.DungeonCreatePage,
+  })),
+);
 const DungeonZoneEditorPage = lazy(() =>
   import('@/features/adminDungeons/DungeonZoneEditorPage').then((m) => ({
     default: m.DungeonZoneEditorPage,
@@ -459,7 +464,7 @@ export const routes: RouteObject[] = [
             path: 'admin/dungeons/new',
             element: (
               <RequirePortalPermission permission="dungeons.write">
-                <DungeonZoneEditorPage />
+                <DungeonCreatePage />
               </RequirePortalPermission>
             ),
           },

@@ -1,5 +1,6 @@
 /**
- * Admin — Dungeons: every dungeon zone, where it stands relative to Git, the
+ * Admin — Dungeons: every dungeon at a glance — how it is laid out, where it
+ * is open, how long a run is — where it stands relative to Git, the
  * Delve-wide settings (the daily run limit every zone shares), and the
  * progression currency dungeons pay.
  *
@@ -19,6 +20,7 @@ import {
   exportDungeonZones,
   getDungeonReference,
   getDungeonSettings,
+  layoutModeOf,
   listDungeonZones,
   listProgressionCurrencies,
   setDungeonZoneEnabled,
@@ -39,6 +41,9 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useHasPermission } from '@/auth/useSession';
 import { cn } from '@/lib/cn';
+
+import { ArtThumb } from './ArtThumb';
+import { zoneSize } from './dungeonModel';
 
 /** Where a zone stands relative to Git, in one badge. */
 export function ZoneOriginBadge({ summary }: { summary: Pick<DungeonZoneSummary, 'origin'> }) {
@@ -97,11 +102,11 @@ export function DungeonsListPage() {
     <div className="space-y-4">
       <PageHeader
         title="Dungeons"
-        description="Zones the dungeon generator builds runs from. Edits reach the next run generated; a run already generated keeps the zone it started with."
+        description="Every dungeon players can delve. Edits reach the next run started; a run already started keeps the dungeon it started with."
         actions={
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" asChild>
-              <Link to="/admin/dungeons/preview">Generation preview</Link>
+              <Link to="/admin/dungeons/preview">Preview dungeon</Link>
             </Button>
             <Button variant="outline" asChild>
               <Link to="/admin/dungeons/enemies">Enemy artwork</Link>
@@ -115,7 +120,7 @@ export function DungeonsListPage() {
             </Button>
             {canWrite && (
               <Button asChild variant="accent">
-                <Link to="/admin/dungeons/new">New zone</Link>
+                <Link to="/admin/dungeons/new">Create dungeon</Link>
               </Button>
             )}
           </div>
@@ -145,7 +150,7 @@ export function DungeonsListPage() {
         />
       )}
       {query.data && zones.length === 0 && (
-        <Card className="p-6 text-center text-sm text-ink-muted">No dungeon zones yet.</Card>
+        <Card className="p-6 text-center text-sm text-ink-muted">No dungeons yet.</Card>
       )}
       {zones.length > 0 && (
         <Card className="divide-y divide-border">
@@ -155,6 +160,11 @@ export function DungeonsListPage() {
               className="flex flex-wrap items-start gap-3 px-4 py-3"
               data-testid="dungeon-zone-row"
             >
+              <ArtThumb
+                image={{ assetId: z.artworkAssetId ?? null, artworkPath: z.artworkPath ?? null }}
+                label={`${z.name} cover`}
+                testId={`zone-thumb-${z.key}`}
+              />
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <Link
@@ -166,7 +176,9 @@ export function DungeonsListPage() {
                   >
                     {z.name}
                   </Link>
-                  <span className="font-mono text-xs text-ink-subtle">{z.key}</span>
+                  <Badge variant="solid" data-testid="zone-mode-badge">
+                    {layoutModeOf(z) === 'authored' ? 'Authored' : 'Procedural'}
+                  </Badge>
                   <ZoneOriginBadge summary={z} />
                   {z.regionBackfill === 'all_enabled_regions' && (
                     <Badge
@@ -182,19 +194,18 @@ export function DungeonsListPage() {
                     <Badge variant="danger">Disabled</Badge>
                   )}
                 </div>
-                <p className="mt-1 text-xs text-ink-muted">
-                  {z.minNodes}–{z.maxNodes} nodes · {z.poolCount} pool{z.poolCount === 1 ? '' : 's'}{' '}
-                  ({z.poolEntryCount} entr{z.poolEntryCount === 1 ? 'y' : 'ies'}) ·{' '}
-                  {z.rewardBandCount} depth band
-                  {z.rewardBandCount === 1 ? '' : 's'}
-                </p>
-                <p className="text-xs text-ink-muted" data-testid="zone-regions">
-                  {z.availableRegions.length === 0
-                    ? 'Available nowhere — choose a region in the editor'
-                    : `Available in: ${z.availableRegions.map((id) => regionNames.get(id) ?? id).join(', ')}`}
+                <p className="mt-1 text-sm text-ink-muted" data-testid="zone-glance">
+                  {layoutModeOf(z) === 'authored' ? 'Authored' : 'Procedural'} ·{' '}
+                  <span data-testid="zone-regions">
+                    {z.availableRegions.length === 0
+                      ? 'Available nowhere — choose a region in the editor'
+                      : z.availableRegions.map((id) => regionNames.get(id) ?? id).join(', ')}
+                  </span>{' '}
+                  · {zoneSize(z)}
                 </p>
                 <p className="text-xs text-ink-subtle">
-                  Revision {z.revision} · updated {formatUpdated(z.updatedAt)}
+                  <span className="font-mono">{z.key}</span> · revision {z.revision} · updated{' '}
+                  {formatUpdated(z.updatedAt)}
                   {z.updatedBy ? ` by ${z.updatedBy}` : ''}
                 </p>
               </div>

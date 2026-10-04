@@ -12,7 +12,9 @@
  *
  *   1. load the zone row as it stands, and refuse a missing or disabled one;
  *   2. validate it against this server (references and reachability);
- *   3. generate from the seed with the same generator the Admin preview uses;
+ *   3. build the graph the same way the Admin preview does — generated from
+ *      the seed for a procedural zone, compiled from its rooms for an authored
+ *      one (`buildDungeonGraph`); from here on the two are the same thing;
  *   4. resolve everything the graph selected — enemies, events, the currency,
  *      and each reward table with the Equipment definitions it may pay;
  *   5. store the graph and that snapshot.
@@ -56,16 +58,16 @@ import {
   type EquipmentRewardCandidate,
 } from '../rewardTables/rewardTableCore';
 import { parseRewardTableRow } from '../rewardTables/rewardTableStore';
+import { AuthoredLayoutError, buildDungeonGraph, selectRunScenes } from './authoredLayout';
 import {
   DUNGEON_GENERATOR_VERSION,
   enemyKeysOf,
   eventKeysOf,
-  generateDungeon,
   type DungeonContentCatalogue,
   type DungeonContentRef,
   type DungeonGraph,
 } from './dungeonGenerator';
-import { selectDungeonScenes, type DungeonRunScenes } from './dungeonScenes';
+import type { DungeonRunScenes } from './dungeonScenes';
 import {
   loadDungeonValidationContext,
   randomDungeonSeed,
@@ -237,6 +239,16 @@ export function catalogueFromSnapshot(snapshot: DungeonRunSnapshot): DungeonCont
   };
 }
 
+/** The zone's graph, with an illegal authored layout reported as the invalid zone it is. */
+function buildRunGraph(zone: DungeonZoneDefinition, catalogue: DungeonContentCatalogue, seed: number): DungeonGraph {
+  try {
+    return buildDungeonGraph(zone, catalogue, seed);
+  } catch (err) {
+    if (!(err instanceof AuthoredLayoutError)) throw err;
+    throw new DungeonZoneInvalidError(err.issues.map((i) => ({ ...i, severity: 'error' as const })));
+  }
+}
+
 export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRunService {
   const { db } = deps;
 
@@ -252,6 +264,11 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
       if (!bandIds.has(band.id)) continue;
       if (band.rewardTable) ids.add(band.rewardTable);
       if (band.equipmentRewardTable) ids.add(band.equipmentRewardTable);
+    }
+    // An authored room that pays its own reward names its tables on the node.
+    for (const node of graph.nodes) {
+      if (node.reward?.rewardTable) ids.add(node.reward.rewardTable);
+      if (node.reward?.equipmentRewardTable) ids.add(node.reward.equipmentRewardTable);
     }
     for (const bonus of [zone.rewards.completion, zone.rewards.extraction]) {
       if (bonus.rewardTable) ids.add(bonus.rewardTable);
@@ -321,7 +338,7 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
           if (!zone || hasErrors(issues)) throw new DungeonZoneInvalidError(issues);
 
           const runSeed = seed ?? randomDungeonSeed();
-          const graph = generateDungeon(zone, catalogue, runSeed);
+          const graph = buildRunGraph(zone, catalogue, runSeed);
 
           const named = (pool: 'enemies' | 'events') => {
             const keys = new Set<string>();
@@ -359,7 +376,7 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
             },
             rewardTables: await snapshotRewardTables(tx, zone, graph),
             // Scene choices are made here, once, from the run's own seed.
-            scenes: selectDungeonScenes(zone, graph, runSeed),
+            scenes: selectRunScenes(zone, graph, runSeed),
             enemyArtwork: Object.fromEntries(
               Object.entries(managedArtwork).map(([key, o]) => [
                 key,
@@ -430,7 +447,7 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
     },
 
     reproduceGraph(run) {
-      return generateDungeon(
+      return buildDungeonGraph(
         DungeonZoneDefinitionSchema.parse(run.snapshot.zone),
         catalogueFromSnapshot(run.snapshot),
         run.seed,

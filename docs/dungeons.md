@@ -1,31 +1,39 @@
 # Dungeons
 
-A dungeon run is a short generated graph of gameplay nodes. Admins author
-**zones**; the generator turns an enabled zone and a seed into a legal run; the
-run is stored as a snapshot; the player walks it node by node in Discord
-(**⛏️ Delve** on the main menu).
+A dungeon run is a short graph of gameplay nodes. Admins author **zones**; an
+enabled zone becomes a legal run graph; the run is stored as a snapshot; the
+player walks it node by node in Discord (**⛏️ Delve** on the main menu).
+
+A zone's graph is made one of two ways — its [layout mode](#layout-modes):
 
 ```text
-Admin-authored zone (rules + pools + rewards)
-        ↓
-seeded deterministic generator
-        ↓
-generated run graph
-        ↓
-snapshot (dungeon_runs)  +  fighter snapshot (Buddy, ATK / DEF / max HP)
-        ↓
-enter node → resolve node → carry HP, rewards and currency forward
-        ↓
-extract · complete · defeated · abandon  →  bank the progression currency
+Procedural zone (rules + pools)          Authored zone (rooms built by hand)
+        ↓                                        ↓
+seeded deterministic generator           room-graph compiler
+        ↓                                        ↓
+        └──────────────→  run graph  ←───────────┘
+                             ↓
+        snapshot (dungeon_runs)  +  fighter snapshot (Buddy, ATK / DEF / max HP)
+                             ↓
+        enter node → resolve node → carry HP, rewards and currency forward
+                             ↓
+        extract · complete · defeated · abandon  →  bank the progression currency
 ```
 
+Everything below the join is one implementation. There is no "authored play
+service": after run start nothing knows which mode a run came from.
+
 Authoring and generation are the first half of this document;
-[Playing a run](#playing-a-run) is the second.
+[Playing a run](#playing-a-run) is the second. To just make a dungeon, start
+with the two how-to guides:
+[authored](#how-to-create-a-simple-authored-dungeon) and
+[procedural](#how-to-create-a-simple-procedural-dungeon).
 
 | Piece | Where |
 | --- | --- |
 | Zone shape and schema | `src/modules/dungeons/zoneDefinition.ts` |
 | Generator and graph validator | `src/modules/dungeons/dungeonGenerator.ts` |
+| Authored layouts: rules, compiler, the one graph builder | `src/modules/dungeons/authoredLayout.ts` |
 | Authoring validation | `src/modules/dungeons/zoneValidation.ts` |
 | Simulation | `src/modules/dungeons/dungeonSimulation.ts` |
 | Seeding shipped zones | `src/modules/dungeons/dungeonZoneStore.ts` |
@@ -54,12 +62,127 @@ and in a run's snapshot.
 | `name`, `description`, `order`, `tags` | Display and listing. |
 | `enabled` | A disabled zone cannot start a run. It can still be previewed. |
 | `artworkPath`, `backgroundArtworkPath` | Relative to the assets root; conventionally `dungeons/zones/<key>.webp` and `dungeons/backgrounds/<key>.webp`. The file does not have to exist for the zone to be saved or enabled. |
-| `generation` | The rules — below. |
+| `layoutMode` | `procedural` or `authored` — see [Layout modes](#layout-modes). Absent on a zone stored before the field existed, which is procedural. |
+| `generation` | The generator's rules — below. Kept, unused, on an authored zone. |
+| `authored` | The hand-built rooms: `{ startRoomId, rooms }`. Kept, unused, on a procedural zone. |
 | `nodeSettings` | What a node type does when resolved. `rest.healBasisPoints`: the share of max HP a rest restores (3000 = 30%). |
-| `pools` | `combat`, `elite`, `miniboss`, `boss` (enemy keys) and `event` (event keys). |
+| `pools` | `combat`, `elite`, `miniboss`, `boss` (enemy keys) and `event` (event keys). What the generator draws from; unused by an authored zone. |
 | `rewards` | Currency key, defeat retention, depth bands, completion and extraction bonuses. |
 
 Zones are never deleted; they are disabled.
+
+## Layout modes
+
+Every zone is explicitly one of two things.
+
+| | Procedural | Authored (room by room) |
+| --- | --- | --- |
+| The graph comes from | the seeded generator, fresh per run | the rooms an admin laid out, the same every run |
+| An admin edits | run length, pools, weights, rules | the rooms and the links between them |
+| The seed decides | the layout, the content, the backgrounds, fights and reward rolls | fights and reward rolls only |
+| Preview | one generated run per seed; simulation over many | the layout itself, plus a layout check |
+
+The mode is chosen when the zone is created. Changing it later is possible but
+deliberate: a save that changes `layoutMode` is refused unless it carries
+`confirmLayoutChange` (the Portal asks first). **Nothing is deleted by a
+change** — `generation` + `pools` and `authored` both stay in the document,
+whichever is in use — so a zone can be changed back.
+
+### One run graph
+
+`buildDungeonGraph(zone, catalogue, seed)` in `authoredLayout.ts` is the only
+place that chooses:
+
+```text
+layoutMode === 'procedural'  →  generateDungeon(zone, catalogue, seed)
+layoutMode === 'authored'    →  compileAuthoredDungeon(zone, seed)
+```
+
+Both return the same `DungeonGraph` ([The graph](#the-graph)). A real run
+(`dungeonRunService.startRun`), a reproduction, the Admin preview and the
+balance playtest all call it. After that the graph is stored and
+`dungeonPlayService` reads only the stored graph and snapshot: navigation,
+combat, HP, rest, rewards, extraction, completion, defeat, artwork, run events
+and settlement are the same code for both modes.
+
+Three things a generated node reads off the *zone* — its reward band, how much
+a rest heals, its background — an authored room may set for itself. Those
+travel **on the node** (`reward`, `restHealBasisPoints`, plus `roomId` and
+`name`) and in the run's scene snapshot, so the play code reads them off the
+run and never asks which mode it is in. A room that sets none of them inherits
+exactly what a generated node of its type and depth would get.
+
+### The authored room model
+
+`authored: { startRoomId, rooms }`. One room compiles to one node.
+
+| Room field | |
+| --- | --- |
+| `id` | Stable within the zone, `lower_snake_case`. Other rooms point at it. |
+| `name` | What the author calls it. Shown to players on rooms that have no enemy or event to name (`Rest — Repair Bay`). |
+| `type` | `combat`, `elite`, `miniboss`, `boss`, `event`, `reward`, `rest` or `exit` — the same node types, with the same behaviour. |
+| `next` | Ids of the rooms it leads to: up to 3. Empty on the final room only. |
+| `enemyKey` | The enemy fought — fights only. Chosen, not drawn from a pool. |
+| `eventKey` | The event met — event rooms only. |
+| `reward` | `{ rewardTable, equipmentRewardTable, currency: { min, max } }`, in place of a reward band. Null uses the zone's band for the room's type and depth. |
+| `healBasisPoints` | Rest rooms: its own heal. Null uses `nodeSettings.rest`. |
+| `extraction` | Whether the player may leave from here once the room is done. An interior `exit` always may; the final room never does. |
+| `backgroundAssetId`, `backgroundArtworkPath` | The room's own background. Null uses the zone's default. |
+| `scene` | `{ spriteAssetId, artworkAssetId, spritePlacement }` — the room's own picture of its enemy. Each field alone: null uses the enemy's. |
+| `notes` | For authors; never shown to a player. |
+
+Fields that do not apply to a room's type are ignored. Rewards go through the
+same reward tables, Equipment pools and currency rolls as a band — there is no
+second reward engine.
+
+**What makes a layout legal** (`validateAuthoredLayout`):
+
+- exactly one start room, and every room reachable from it;
+- every `next` names a room that exists, and no room leads to itself;
+- no loops — an authored layout is a DAG, as a generated one is;
+- exactly one final room (a room with no `next`), and it is a **Boss** or an
+  **Exit**; a Boss is only ever the final room;
+- every fight names an enemy and every event room names an event;
+- the final room does not offer extraction — finishing it is completion.
+
+A reference to something that does not exist (an enemy, an event, a reward
+table, an image) is always an error. Everything else — a broken layout, a
+disabled enemy — is an error on an **enabled** zone and a warning on a
+**disabled** one, so a layout can be saved half-built while it is switched off
+and cannot be switched on, or started, until it is whole.
+
+**Compiling.** Nodes are numbered `n1…` in depth order, then the author's
+order. A room's depth is the *longest* route to it from the start, so depth
+only increases along any route even when one side of a fork is longer than the
+other. Branches are just rooms with more than one `next`; a rejoin is two rooms
+naming the same `next`. The compiler draws nothing: the same layout compiles to
+the same graph for every seed.
+
+**Snapshot.** An authored run stores its compiled graph and its zone exactly
+as a generated run does. Editing the rooms afterwards reaches the next run
+started and never one in progress.
+
+**The shipped example.** `service_tunnel_example` in
+`content/dungeons/zones.json` is an eight-room authored dungeon with a fork
+that rejoins, built from the Scrapheap enemies and reward tables. It ships
+**disabled** and tagged `authoring_example`, `initial_tuning`: it exists to be
+opened in the editor and to exercise authored runs, and no player sees it
+unless someone enables it. Scrapheap Gauntlet stays procedural.
+
+### Fixed rooms on a procedural zone
+
+A procedural zone can pin three rooms without becoming authored:
+
+| Anchor | Field | |
+| --- | --- | --- |
+| First room | `generation.firstNodeType` | Every run opens on this type (its content still comes from the type's pool). Null leaves it to the weights. |
+| Before the boss | `generation.rest.beforeBoss` | A Rest every route passes through — see [Rest rules](#rest-rules). |
+| Final room | `generation.boss.required` | A Boss from the boss pool, or a closing Exit. |
+
+`firstNodeType` is structural like the other two: nothing is drawn for it, so
+a zone without one generates exactly as it did before the field existed, and a
+type that cannot stand at depth 1 is refused by validation. That is the whole
+of it — there is no placement scripting.
 
 ### Node types
 
@@ -265,6 +388,46 @@ Precedence is always managed asset → shipped path → the next image. An asset
 id must name an asset that exists (an error otherwise); a disabled one is a
 warning and the shipped path shows instead.
 
+In the Portal these are two pictures, not four fields: the **Zone cover**
+(`artworkAssetId` over `artworkPath`) and the **Default background**
+(`backgroundAssetId` over `backgroundArtworkPath`).
+
+#### Artwork inheritance
+
+What a room is drawn against — final precedence, first match wins.
+
+**Background**
+
+```text
+authored:    room background  →  zone default background  →  zone cover  →  text only
+procedural:  the background the node drew from the pool  →  zone cover  →  zone default background  →  text only
+```
+
+An authored room with no background of its own is *recorded* as using the zone
+default when the run starts, so the default shows before the cover does. A
+procedural zone keeps its existing order for a node that drew nothing from the
+pool (zone cover, then zone background) — this work did not change it.
+
+**A fight** (combat, elite, miniboss, boss) composes the enemy over that
+background:
+
+```text
+sprite:     room sprite override  →  enemy's managed sprite  →  enemy's shipped sprite
+            (no sprite at all)    →  full art: room override → enemy managed → enemy shipped
+            (no art at all)       →  the background on its own  →  zone cover  →  text only
+
+placement:  room placement override  →  enemy's managed placement  →  enemy's shipped placement  →  system default
+```
+
+Each of a room's three overrides stands alone: a room may move the sprite
+without replacing it. Two limits worth knowing: an override asset that is
+disabled or deleted falls through to the enemy's **shipped** file for that
+slot (not to the enemy's managed asset), and a room's own background that
+cannot be loaded on a non-fight room falls through to the zone cover.
+
+All of it is snapshotted at run start, like the rest of a run. Clearing an
+override restores what the room inherits — for the next run started.
+
 ### Pools
 
 Each entry: `id` (unique in its pool, recorded on every node drawn from it),
@@ -409,7 +572,7 @@ Each node:
 | Field | |
 | --- | --- |
 | `id` | `n1`, `n2`, … in depth order. |
-| `depth`, `lane` | |
+| `depth`, `lane` | `lane` is the node's position among those at its depth. |
 | `type` | A node type. |
 | `outgoing` | Ids of the edges leaving it. `edges` is `[{ id, from, to }]`. |
 | `content` | `{ kind: 'enemy' \| 'event', key }`, or null. |
@@ -417,8 +580,14 @@ Each node:
 | `rewardBandId` | The band it pays from, or null. |
 | `extraction` | Whether the player may extract here. |
 | `terminal`, `boss` | |
+| `roomId`, `name`, `reward`, `restHealBasisPoints` | Only on a node compiled from an authored room: which room, and what it chose for itself. |
 
 The graph is plain JSON: no functions, no runtime objects.
+
+An **authored** zone produces this same shape, with two differences that follow
+from being hand-built: an edge may skip a depth (a room sits at the depth of
+the longest route to it), and a depth may hold up to as many nodes as a room
+has ways on. `source` is null — authored content is chosen, not drawn.
 
 ### Algorithm
 
@@ -1133,6 +1302,14 @@ bands is — order is part of every deterministic draw.
 
 A zone created in the Portal is never touched by the seed.
 
+**Layout mode needs no migration.** `layoutMode`, `authored` and
+`generation.firstNodeType` default to procedural, no rooms and no fixed first
+room, and are **left out of the content hash while they hold those defaults**.
+So a zone that does not use them hashes exactly as it did before they existed:
+no stored row looks edited, no shipped zone looks changed, and Scrapheap needs
+no rewrite. (`tests/unit/dungeons/authoredLayout.test.ts` pins Scrapheap's
+hash.)
+
 **New fields and existing rows.** Region availability, rest rules, managed
 artwork and the background pool live inside the zone document. A row written
 before one of them still parses — `generation.rest` reads as "no rule",
@@ -1202,35 +1379,147 @@ needs `artwork.read` / `artwork.write`.
 
 | Page | |
 | --- | --- |
-| `/admin/dungeons` | Zones — name, enabled, where each is available, node range, pools, revision, last update — with enable/disable, export, the Delve settings and the progression currency card. |
-| `/admin/dungeons/new`, `/admin/dungeons/zones/:key` | The zone editor. |
-| `/admin/dungeons/preview` | Generate one run from a seed, or simulate 1,000. |
+| `/admin/dungeons` | Every dungeon at a glance — a **Procedural** / **Authored** badge, where it is available, its size (`6–9 rooms` generated, `8 rooms` authored), its cover thumbnail, enabled state and shipped / edited status — with enable/disable, export, the Delve settings and the progression currency card. |
+| `/admin/dungeons/new` | **Create dungeon** — the three-question wizard. |
+| `/admin/dungeons/zones/:key` | The editor: shared basics, then the generator settings *or* the room editor, by layout mode. |
+| `/admin/dungeons/preview` | **Preview dungeon** — a generated run per seed (and a 1,000-run simulation) for a procedural zone; the layout and a layout check for an authored one. |
 | `/admin/dungeons/enemies` | Enemy Artwork — full artwork, sprite and default sprite placement per enemy, with a composed preview. |
-| `/admin/artwork` | Artwork Assets — upload, browse and manage uploaded images ([managed-artwork.md](managed-artwork.md)). |
+| `/admin/artwork` | Artwork Assets — the library: browse all assets, replace, disable, delete safely, inspect references ([managed-artwork.md](managed-artwork.md)). Normal dungeon authoring should rarely need it. |
 
-The editor is organised by what an admin is deciding, not by where a field
-lives in the document:
+### Authoring principles
+
+The editor is built around what an author is deciding, not around where a field
+lives in the document. In practice:
+
+- **Create first, configure after.** A dungeon exists after three answers;
+  everything else is edited on something that already works.
+- **Defaults do the work.** A room uses the dungeon's background, the enemy's
+  own artwork and placement, the dungeon's reward for that kind of room, and
+  the dungeon's rest heal, until the author asks for something different.
+  "Use default" is the starting state, never a field to fill in.
+- **Only what applies is shown.** A fight has no heal control; a rest has no
+  enemy picker.
+- **Artwork is chosen where it is used.** Every image field offers *Select…*,
+  *Upload…* and *Clear* in place. Nobody types an asset id, and nobody has to
+  know whether an image was uploaded or shipped.
+- **Tuning is folded away, not removed.** Raw weights, depth bounds and
+  generator rules live under *Advanced*, closed by default, opened
+  automatically when a problem is inside.
+- **Problems are sentences, shown where they are.** `Room "Repair Bay" points
+  to a room that no longer exists.` — on that room's card.
+- **Nothing saves behind the author's back.** Edits change a draft; **Save
+  dungeon** writes it with the loaded revision; closing or reloading the tab
+  with unsaved changes warns.
+
+### Create dungeon
+
+Name, **Available in** (one region; more can be ticked later), and **Layout**
+(*Procedural* or *Build room-by-room* — neither preselected). The key is made
+from the name and shown folded away; it can be overridden there and never
+changed afterwards. **Create** saves a small working starter, **disabled**,
+and opens the editor on it:
+
+| Layout | Starter |
+| --- | --- |
+| Procedural | one combat pool, one boss, a Rest before the boss that is also the way out, default weights, 5–7 rooms |
+| Room by room | Start → Combat → Rest (extraction) → Boss |
+
+Both starters validate cleanly as created.
+
+### The editor — shared
 
 | Section | Holds |
 | --- | --- |
-| **Basics** | key, name, order, enabled, description, tags |
-| **Availability** | the regions the zone can be started in — checkboxes showing region names, storing region ids |
-| **Zone Artwork** | zone artwork and background, each as an uploaded override (**Select…**, **Upload…**, **Clear**, preview) above its shipped path (the path, a **Browse…** picker, *Use convention*, *Clear*, the expected path, and a preview of what is at the path now) |
-| **Background Pool** | the backgrounds nodes draw from: add an uploaded or a shipped image; weight, depth range, enabled |
-| **Scene Rules** | the artwork precedence, and a composed preview of any of the zone's backgrounds with any of its enemies' sprites |
-| **Layout** | min / max nodes, ends on a boss, branch count, chance and length |
-| **Extraction** | extraction depth, guaranteed points, which node types offer it, extraction windows |
-| **Rest & Recovery** | rest healing, minimum and maximum rest nodes, earliest and latest rest depth, **Always Rest Before Boss** |
-| **Node types & weights** | per type: weight, depth range, "never twice in a row" |
-| **Pools** (combat, elite, miniboss, boss, event) | entries with enemy or event, weight and min / max depth |
-| **Rewards** | currency, defeat retention, depth bands, completion and extraction bonuses |
-| **Advanced rules** | extra guarantees and limits by node type (e.g. "at least one Cache or Event"), same enemy in a row |
+| **Basics** | name, enabled, description, **Available in** (region checkboxes), tags. The daily run limit and the progression currency are global and live on the Dungeons page. |
+| **Artwork** | **Zone cover** and **Default background**, each a preview with *Select…* / *Upload…* / *Clear*. When nothing is uploaded and a shipped image exists, that image is shown as what is in use. |
+| *(layout-specific sections — below)* | |
+| **Internal details** *(folded)* | the key, list order, shipped / edited status, the shipped artwork paths (path, *Browse…*, *Use convention*), and **Change layout…** |
+
+### The editor — room by room
+
+**Rooms** draws the layout as an outline walked from the start room: the trunk
+at the left, each way of a fork indented under the room that offers it
+(*Branch A*, *Branch B*…), and a `↳ continues to …` pointer where ways rejoin
+a room, which is drawn once, back at the fork's level. Rooms nothing leads to
+are listed last, marked *Not connected*. There is no canvas.
+
+Each room card shows its type, name, what it holds (the enemy, the event, the
+heal, the payout), a thumbnail of its background, *Start* / *Final room* /
+*Extraction* badges, any problems with it, and:
+
+| Action | Does |
+| --- | --- |
+| **Edit** | opens the room's editor inline |
+| **Duplicate** | a copy slotted in right after it (a copied Boss becomes a Miniboss — only one room ends the dungeon) |
+| **Delete** | removes it and closes the gap: whatever led to it now leads where it led |
+| **Add next room** | a new room after it, taking over where it led (on the Boss: *Add room before*) |
+| **Add branch** | another way on from it; the new room rejoins where the existing way leads next |
+
+**+ Add room** at the bottom adds one just before the final room.
+
+The room editor shows only what the type uses:
+
+| Room | Controls |
+| --- | --- |
+| Combat / Elite / Miniboss / Boss | enemy · reward (dungeon default, or its own tables and currency range) · *Extraction after this fight* (not on the final room) · **Scene** |
+| Rest | heal % (dungeon default, or its own) · extraction · label · background |
+| Reward | reward table, Equipment reward table, currency range · extraction · background |
+| Event | event · reward (when the event pays one) · extraction · background |
+| Exit | what it does (a way out, or the final room) · label · background |
+
+**Scene** starts as *Room background: the dungeon's default — Enemy artwork:
+Use enemy default — Placement: Use enemy default*. **Override scene** reveals
+the enemy sprite, full art and placement for this room only; **Use enemy
+defaults** removes them. **Preview Scene** renders the room through the
+production compositor from the unsaved draft.
+
+*Connections & notes* (folded) holds the raw links for making paths rejoin
+somewhere else — rooms that already lead to this one are not offered, so a
+loop cannot be made there — plus *Make this the start room* and the notes.
+
+Below the rooms: **Rest** (the default heal) and **Rewards & defaults**
+(currency, defeat retention, completion and extraction bonuses, and the bands
+that pay any room without a reward of its own).
+
+### The editor — procedural
+
+| | Basic (shown) | Advanced (folded) |
+| --- | --- | --- |
+| **Run length & branching** | min / max rooms, branch chance | min / max branches, max branch length |
+| **Fixed rooms** | first room, ends on a Boss, always Rest before Boss — with a one-line summary of every run's shape | |
+| **Pools** (combat, elite, miniboss, boss, event) | which enemies / events | per entry: weight, depth range, id, tags, enabled |
+| **Rest & Recovery** | how much a Rest heals | minimum / maximum Rests, earliest / latest depth |
+| **Extraction** | extraction depth, guaranteed points, a sentence describing the early / later ways out | which room types offer it, extraction windows |
+| **Rewards** | currency, defeat retention, depth bands, bonuses | |
+| **Backgrounds** | the background pool and a composed preview | how a scene is chosen (the precedence) |
+| **Advanced generator rules** | | room type weights, depth ranges, "never twice in a row", guarantees and limits by type, same enemy in a row |
+
+Every control that existed before still exists and saves the same document; a
+procedural zone opened and saved without changes is written back exactly as it
+was loaded. One convenience was added: the first entry put into an empty
+elite, miniboss or event pool gives that room type a starting weight if it had
+none, so adding an enemy is enough for it to appear.
 
 Percentages are shown where the document stores basis points (branch chance,
 defeat retention, rest healing). Enemies, events, reward tables, currencies and
-regions are offered from the server rather than typed as keys. Rules that
-shape generation carry helper text saying so; an issue is shown in the section
-whose field it names, once.
+regions are offered from the server rather than typed as keys.
+
+### Inline artwork workflow
+
+Every image field — zone cover, default background, a pool background, a
+room's background, a room's enemy sprite and full art — is the same control:
+
+1. **Upload…** opens the file picker;
+2. the file is uploaded and validated, and an asset is created in the right
+   category;
+3. it is selected in the field straight away;
+4. its preview is shown.
+
+**Select…** opens the asset library filtered to that category; **Clear**
+returns the field to what it inherits and says what that is. The author never
+leaves the editor and never sees an asset id. The upload is immediate (the
+asset exists in the library at once); *using* it is part of the draft and is
+only saved with **Save dungeon**.
 
 **Artwork picker.** The Portal's existing artwork browser
 (`components/admin/ArtworkPicker`) is reused through its per-area source
@@ -1252,7 +1541,10 @@ image.
 
 Every save is validated on the server, in the saving transaction, and the editor
 runs the same checks as you type. Issues carry a path
-(`pools.combat[2].enemyKey`) and are shown on the part of the form they name.
+(`pools.combat[2].enemyKey`, `authored.rooms[3].next`) that the editor uses to
+place them — on the section, or on the room's card — and a message written for
+the author. The path is never what is shown: a shape error reads
+`Shortest run: …` or `Room "Repair Bay": …`, never `generation.minNodes`.
 
 1. **Schema** — bounds, `minNodes ≤ maxNodes`, no negative weights, not every
    weight zero, depth ranges the right way round, unique pool entry and band
@@ -1272,6 +1564,11 @@ runs the same checks as you type. Issues carry a path
 On an enabled zone a failed trial run is an error. On a disabled zone it is a
 warning, so work in progress can be saved. Disabling always succeeds.
 
+An **authored** zone skips 3 and 4 — there is no generator to reason about —
+and is checked against [the layout rules](#the-authored-room-model) and each
+room's references instead, with the same enabled-is-error, disabled-is-warning
+split. Its pools and generator rules are not validated: they are not in use.
+
 ### Concurrency
 
 Every zone and currency has a `revision`. A save sends the revision it loaded;
@@ -1280,7 +1577,15 @@ current revision and writes nothing. The editor then offers to reload.
 
 ### Preview
 
-Choose a zone and, optionally, a seed. Without one a seed is drawn and shown,
+**Preview dungeon** adapts to the layout mode.
+
+*Authored:* **Show layout** draws the compiled graph exactly as a run would
+get it — room names, forks, the rejoin, each room's own reward and heal — with
+a **Layout check** card listing the saved zone's problems (or saying there are
+none). There is no seed field and no simulation: nothing is random, and no
+generation metrics are invented for it.
+
+*Procedural:* choose a zone and, optionally, a seed. Without one a seed is drawn and shown,
 so the same run can be generated again. The preview shows the seed, every node
 by depth with its type and its enemy or event, forks, the boss and the
 extraction points. A zone that cannot generate shows the generator's reasons.
@@ -1307,12 +1612,68 @@ seeds `firstSeed, firstSeed + 1, …` and reports node counts, node-type
 distribution, branch rate, boss, rest and extraction occurrence, enemy and event
 appearance rates, and the invalid-generation rate with reasons.
 
-- Portal: **Simulate 1,000 runs** on the preview page (a live zone).
+- Portal: **Simulate 1,000 runs** on the preview page (a live, procedural zone).
+  An authored zone has no generation to simulate: the route answers `400`, and
+  the page offers the layout check instead.
 - CLI: `npm run dungeons:simulate -- --zone scrapheap_gauntlet --runs 5000`
   (the zone as shipped in Git; no database needed).
 
 That is *generation* only. For how runs *play* — completion, defeat, currency
-and gear — see [Balance simulation](#balance-simulation).
+and gear — see [Balance simulation](#balance-simulation); the playtest builds
+its graph through the same `buildDungeonGraph`, so
+`npm run dungeons:playtest -- --zone service_tunnel_example` plays an authored
+layout too.
+
+## How to create a simple authored dungeon
+
+1. **Dungeons → Create dungeon.** Type a name, choose where it is available,
+   choose **Build room-by-room**, press **Create**. You land in the editor
+   with four rooms: Start → Combat → Rest → Boss. It is switched off, so no
+   player can see it.
+2. **Set the two pictures** under *Artwork*: a **Zone cover** and a **Default
+   background**. *Upload…* each one. Every room now has a background.
+3. **Edit a room.** Press **Edit** on a card, pick its **Enemy**, give it a
+   name if you like. Leave *Scene* and *Reward* alone — they already use the
+   defaults.
+4. **Make it longer.** **Add next room** on a card adds a room after it. Change
+   the new room's **Room type** to what you want (Rest, Reward, Event…).
+5. **Offer a choice.** **Add branch** on a room adds a second way on from it.
+   The two ways rejoin by themselves at the next room.
+6. **Give players a way out.** On a Rest (or any room), tick **Players may
+   extract from this room**.
+7. **Check a room's look.** Open a room and press **Preview Scene**.
+8. **Save dungeon.** If something is wrong it is written on the room it is
+   about, and Save waits until it is fixed.
+9. **Preview dungeon** (top right) to see the whole layout, then tick
+   **Enabled** and save when you want players in.
+
+Only if you want to: give one room its own background, its own reward, a
+different heal, or **Override scene** to change how its enemy looks there.
+
+## How to create a simple procedural dungeon
+
+1. **Dungeons → Create dungeon.** Type a name, choose where it is available,
+   choose **Procedural**, press **Create**. You land in the editor with one
+   combat pool, one boss, and a Rest before the boss. It is switched off.
+2. **Set the two pictures** under *Artwork*: **Zone cover** and **Default
+   background**.
+3. **Choose who is fought.** In **Combat pool**, press **Add enemy** and pick
+   one — repeat for as much variety as you want. Check the **Boss pool** names
+   the boss you want.
+4. **Set the length** under *Run length & branching*: the fewest and most
+   rooms a run has, and how often the path forks.
+5. **Check the fixed rooms**: *Ends on a Boss* and *Always Rest Before Boss*
+   are on; **First room** can pin how every run opens.
+6. **Optional variety.** Add entries to the Elite or Event pools and those
+   rooms start appearing; add more images under *Backgrounds* and rooms start
+   drawing them.
+7. **Save dungeon**, then **Preview dungeon** → *Generate with a random seed*
+   a few times to see what runs look like. *Simulate 1,000 runs* shows the
+   spread.
+8. Tick **Enabled** and save when you want players in.
+
+You never need to open an *Advanced* section to do any of this. They are for
+tuning afterwards: weights, depth limits, guarantees.
 
 ## API
 
@@ -1362,9 +1723,14 @@ Also deferred within this area:
 - paying a table's Essence and XP from a dungeon;
 - tag-driven generation, editing events in the Portal, zone import and
   reset-to-shipped, a "global" availability option, per-region daily limits,
-  structural rules beyond Rest → Boss, and delete protection on reward tables
-  that a zone references;
-- managed artwork for events, per-zone sprite placement overrides, and
-  promoting uploaded artwork between environments — see
+  structural rules beyond the three fixed rooms (first room, Rest → Boss,
+  Boss), and delete protection on reward tables that a zone references;
+- for authored dungeons: a drag-and-drop canvas, looping maps, more than one
+  final room, more than three ways on from a room, room scripting, per-room
+  shipped-path backgrounds in the Portal (the field exists; only uploads are
+  offered), and a combat playtest in the Portal (the CLI playtest works);
+- managed artwork for events, and promoting uploaded artwork between
+  environments (per-room sprite and placement overrides exist for authored
+  rooms; a procedural zone has none) — see
   [managed-artwork.md](managed-artwork.md#not-built-yet);
 - an Admin view of a run and its history (the data is stored; nothing shows it).

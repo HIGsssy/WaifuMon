@@ -170,9 +170,12 @@ function percent(basisPoints: number): string {
   return `${Number((basisPoints / (BASIS_POINTS / 100)).toFixed(2))}%`;
 }
 
-/** `Fight — Alley Bruiser`, `Event — Flickering Terminal`, `Rest`. */
+/**
+ * `Fight — Alley Bruiser`, `Event — Flickering Terminal`, `Rest`. A room an
+ * author named and that holds no enemy or event shows its name: `Rest — Repair Bay`.
+ */
 export function nodeTitle(node: DungeonNodeView): string {
-  const what = node.enemy?.name ?? node.event?.name;
+  const what = node.enemy?.name ?? node.event?.name ?? node.label;
   return what ? `${NODE_LABEL[node.type]} — ${what}` : NODE_LABEL[node.type];
 }
 

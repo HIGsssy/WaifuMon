@@ -64,6 +64,7 @@ import {
   type DungeonNodeType,
   type DungeonPoolEntry,
   type DungeonPoolKey,
+  type DungeonRoomReward,
   type DungeonWeightedNodeType,
   type DungeonZoneDefinition,
 } from './zoneDefinition';
@@ -92,8 +93,11 @@ export interface DungeonGraphNode {
   id: string;
   /** 1-based. */
   depth: number;
-  /** 0 on the main path and one side of a fork, 1 on the other. */
-  lane: 0 | 1;
+  /**
+   * Position among the nodes at its depth. Generated: 0 on the main path and
+   * one side of a fork, 1 on the other. Authored: the room's index at its depth.
+   */
+  lane: number;
   type: DungeonNodeType;
   /** Ids of the edges leaving this node. Empty only on the terminal node. */
   outgoing: string[];
@@ -108,6 +112,19 @@ export interface DungeonGraphNode {
   /** The last node of the run. */
   terminal: boolean;
   boss: boolean;
+  /**
+   * Set on nodes compiled from an authored room (`authoredLayout.ts`); absent
+   * on generated ones. They carry what the room chose by hand, so the run
+   * reads it off the node and never needs to know how the graph was made.
+   */
+  /** The authored room this node came from. */
+  roomId?: string;
+  /** The room's display name. */
+  name?: string;
+  /** The room's own payout, used in place of a reward band. */
+  reward?: DungeonRoomReward;
+  /** A rest room's own heal, in place of the zone's `nodeSettings.rest`. */
+  restHealBasisPoints?: number;
 }
 
 export interface DungeonGraphEdge {
@@ -272,7 +289,7 @@ function buildSlots(zone: DungeonZoneDefinition, rng: Rng): Slot[] {
   const byDepth: Slot[][] = [];
   for (let depth = 1; depth <= depthCount; depth++) {
     const lanes: (0 | 1)[] = forked.has(depth) ? [0, 1] : [0];
-    const row = lanes.map((lane): Slot => ({
+    const row = lanes.map((lane: 0 | 1): Slot => ({
       index: slots.length + lane,
       depth,
       lane,
@@ -378,6 +395,15 @@ function assignTypes(
       fail(`a rest cannot sit before the boss at depth ${final.depth - 1}`);
     }
     approach.type = 'rest';
+  }
+
+  // A fixed opening. Structural like the two above: nothing is drawn for it,
+  // so a zone without one generates exactly as it did before it existed.
+  const firstType = gen.firstNodeType ?? null;
+  const first = slots[0]!;
+  if (firstType !== null && first.type === null) {
+    if (!legal(firstType, first)) fail(`the first node cannot be a ${firstType}`);
+    first.type = firstType;
   }
 
   const { minDepth, nodeTypes: extractionTypes, minPoints } = gen.extraction;
@@ -705,6 +731,14 @@ export function validateDungeonGraph(zone: DungeonZoneDefinition, graph: Dungeon
     const before = nodes.filter((n) => n.depth === terminals[0]!.depth - 1);
     if (before.length !== 1 || before[0]!.type !== 'rest') {
       out.push('the node before the boss is not a single rest that every route passes through');
+    }
+  }
+
+  const firstType = gen.firstNodeType ?? null;
+  if (firstType !== null && start[0] && start[0].type !== firstType && !start[0].terminal) {
+    // The node before the boss is spoken for first, when the run is that short.
+    if (!(reservedTailDepths(gen) > 0 && start[0].depth === depthCount - 1)) {
+      out.push(`the first node is a ${start[0].type}, not the required ${firstType}`);
     }
   }
 

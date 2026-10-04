@@ -352,8 +352,15 @@ function rollCurrency(range: { min: number; max: number }, drawId: number): numb
   return range.max <= 0 ? 0 : expeditionDrawInt(drawId, 'success:dungeon-currency', range.min, range.max);
 }
 
-/** The snapshotted band a node pays from, or null. Never the live zone. */
-export function bandOf(snapshot: DungeonRunSnapshot, node: DungeonGraphNode): DungeonRewardBand | null {
+/**
+ * What a node pays from, or null: an authored room's own reward when it has
+ * one, else the snapshotted band. Never the live zone.
+ */
+export function bandOf(
+  snapshot: DungeonRunSnapshot,
+  node: DungeonGraphNode,
+): Pick<DungeonRewardBand, 'rewardTable' | 'equipmentRewardTable' | 'currency'> | null {
+  if (node.reward) return node.reward;
   if (node.rewardBandId == null) return null;
   return snapshot.zone.rewards.bands.find((b) => b.id === node.rewardBandId) ?? null;
 }
@@ -419,7 +426,9 @@ export function eventEffect(event: DungeonEventDefinition | null): { hpChangeBas
   return { hpChangeBasisPoints: event?.hpChangeBasisPoints ?? 0, paysReward: event?.paysReward ?? false };
 }
 
-export function restHealBasisPoints(snapshot: DungeonRunSnapshot): number {
+/** What a rest restores: the node's own heal (an authored room's) when it has one, else the zone's. */
+export function restHealBasisPoints(snapshot: DungeonRunSnapshot, node?: Pick<DungeonGraphNode, 'restHealBasisPoints'>): number {
+  if (node?.restHealBasisPoints != null) return node.restHealBasisPoints;
   // Zones snapshotted before `nodeSettings` existed heal nothing rather than guess.
   return snapshot.zone.nodeSettings?.rest.healBasisPoints ?? 0;
 }

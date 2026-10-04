@@ -252,9 +252,9 @@ describe('zone artwork', () => {
     renderAt(EDITOR);
     const field = within(await screen.findByTestId('zone-artwork-asset'));
     expect(field.getByTestId('zone-artwork-asset-fallback')).toHaveTextContent(
-      'No uploaded artwork — uses the shipped file dungeons/zones/scrapheap_gauntlet.webp.',
+      'No uploaded artwork — uses the image shipped with the game.',
     );
-    // The shipped path field is still there and still editable.
+    // The shipped path field is still there and still editable, under Internal details.
     expect(screen.getByLabelText('Artwork path')).toHaveValue(
       'dungeons/zones/scrapheap_gauntlet.webp',
     );
@@ -263,7 +263,7 @@ describe('zone artwork', () => {
   it('selects an existing asset from the picker — by clicking it, never by typing an id', async () => {
     const user = renderAt(EDITOR);
     const field = within(await screen.findByTestId('zone-artwork-asset'));
-    await user.click(field.getByRole('button', { name: 'Select zone artwork' }));
+    await user.click(field.getByRole('button', { name: 'Select zone cover' }));
     // The picker opens on this field's category.
     const dialog = within(await screen.findByRole('dialog'));
     expect(dialog.getByLabelText('Filter by category')).toHaveValue('dungeon_zone');
@@ -276,7 +276,7 @@ describe('zone artwork', () => {
     );
     expect(await field.findByTestId('zone-artwork-asset-preview-image')).toHaveAttribute(
       'alt',
-      'Zone artwork: Gauntlet Banner',
+      'Zone cover: Gauntlet Banner',
     );
     await save(user);
     expect(savedZone()).toMatchObject({
@@ -329,9 +329,9 @@ describe('zone artwork', () => {
     expect(await field.findByTestId('zone-artwork-asset-selected')).toHaveTextContent(
       'Gauntlet Banner',
     );
-    await user.click(field.getByRole('button', { name: 'Clear zone artwork' }));
+    await user.click(field.getByRole('button', { name: 'Clear zone cover' }));
     expect(field.getByTestId('zone-artwork-asset-fallback')).toHaveTextContent(
-      'uses the shipped file dungeons/zones/scrapheap_gauntlet.webp',
+      'uses the image shipped with the game',
     );
     await save(user);
     expect(savedZone()).toMatchObject({
@@ -350,7 +350,7 @@ describe('zone artwork', () => {
     renderAt(EDITOR);
     expect(
       await within(await screen.findByTestId('zone-artwork-asset')).findByText(
-        /disabled, so the shipped file/,
+        /disabled, so the image shipped with the game/,
       ),
     ).toBeInTheDocument();
     await waitFor(() =>
@@ -367,10 +367,10 @@ describe('zone artwork', () => {
     expect(field.getByTestId('zone-artwork-asset-selected')).toHaveTextContent(
       'Uploaded artwork is selected.',
     );
-    expect(field.queryByRole('button', { name: 'Select zone artwork' })).not.toBeInTheDocument();
-    expect(field.queryByRole('button', { name: 'Upload zone artwork' })).not.toBeInTheDocument();
+    expect(field.queryByRole('button', { name: 'Select zone cover' })).not.toBeInTheDocument();
+    expect(field.queryByRole('button', { name: 'Upload zone cover' })).not.toBeInTheDocument();
     // They can still clear it back to the shipped path.
-    expect(field.getByRole('button', { name: 'Clear zone artwork' })).toBeInTheDocument();
+    expect(field.getByRole('button', { name: 'Clear zone cover' })).toBeInTheDocument();
   });
 });
 

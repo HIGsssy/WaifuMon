@@ -77,6 +77,13 @@
  *
  * An action that lost a race or names something illegal changes nothing and
  * comes back `refused` with the run as it now stands.
+ *
+ * ## Procedural and authored zones
+ *
+ * There is one play service. A run's graph is built once, at start — generated
+ * for a procedural zone, compiled from its rooms for an authored one
+ * (`authoredLayout.buildDungeonGraph`) — and everything here reads that stored
+ * graph. Nothing below asks which mode a run came from.
  */
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import type { Db, DbOrTx } from '../../db/client';
@@ -102,7 +109,7 @@ import {
   PlayerNotFoundError,
 } from '../../shared/errors';
 import type { Logger } from '../../shared/logger';
-import { resolveEnemyVisual, type EnemyVisual } from '../artworkAssets/enemyArtworkService';
+import { resolveEnemyVisual, roomEnemyArtwork, type EnemyVisual } from '../artworkAssets/enemyArtworkService';
 import type { CombatEvent, CombatRules } from '../combat/combatTypes';
 import { regionLabel } from '../locations/regions';
 import type { CurrencyService } from '../currency/currencyService';
@@ -145,10 +152,10 @@ import {
   type DungeonSettlement,
 } from './dungeonRunState';
 import { parseDungeonZoneRow, readDungeonZoneRow } from './dungeonZoneStore';
+import { zoneEndsOnBoss, zoneRunLength } from './authoredLayout';
 import {
   BASIS_POINTS,
   isEnemyNodeType,
-  possibleFinalDepths,
   type DungeonNodeType,
   type DungeonZoneDefinition,
 } from './zoneDefinition';
@@ -208,6 +215,8 @@ export interface DungeonNodeView {
   background: DungeonSceneBackground | null;
   /** For a rest node: the share of max HP it restores. */
   restHealBasisPoints: number | null;
+  /** What the author named the room; null on a generated node, or an unnamed room. */
+  label: string | null;
 }
 
 export interface DungeonRunView {
@@ -423,7 +432,10 @@ export function createDungeonPlayService(deps: DungeonPlayServiceDeps): DungeonP
         defense: enemy.defense,
         hp: enemy.hp,
         artworkPath: enemy.artworkPath,
-        visual: resolveEnemyVisual(enemy, run.snapshot.enemyArtwork?.[enemy.key]),
+        visual: resolveEnemyVisual(
+          enemy,
+          roomEnemyArtwork(run.snapshot.enemyArtwork?.[enemy.key], run.snapshot.scenes?.nodes[node.id]?.enemy),
+        ),
       },
       event: event && {
         key: event.key,
@@ -432,7 +444,8 @@ export function createDungeonPlayService(deps: DungeonPlayServiceDeps): DungeonP
         artworkPath: event.artworkPath,
       },
       background: run.snapshot.scenes?.nodes[node.id]?.background ?? null,
-      restHealBasisPoints: node.type === 'rest' ? restHealBasisPoints(run.snapshot) : null,
+      restHealBasisPoints: node.type === 'rest' ? restHealBasisPoints(run.snapshot, node) : null,
+      label: node.name ?? null,
     };
   }
 
@@ -496,7 +509,7 @@ export function createDungeonPlayService(deps: DungeonPlayServiceDeps): DungeonP
 
   async function zoneCard(tx: DbOrTx, playerId: number, zone: DungeonZoneDefinition): Promise<DungeonZoneCard> {
     const meta = await deps.currencies.get(zone.rewards.currencyKey, tx);
-    const depths = possibleFinalDepths(zone.generation);
+    const depths = zoneRunLength(zone);
     return {
       key: zone.key,
       name: zone.name,
@@ -507,7 +520,7 @@ export function createDungeonPlayService(deps: DungeonPlayServiceDeps): DungeonP
       backgroundAssetId: zone.backgroundAssetId,
       minDepth: depths.min,
       maxDepth: depths.max,
-      hasBoss: zone.generation.boss.required,
+      hasBoss: zoneEndsOnBoss(zone),
       currency: meta && { key: meta.key, singularName: meta.singularName, pluralName: meta.pluralName, icon: meta.icon },
       balance: meta ? await deps.currencies.getBalance(playerId, meta.key, tx) : 0,
       defeatRetentionBasisPoints: zone.rewards.defeatCurrencyRetentionBasisPoints,
@@ -812,7 +825,7 @@ export function createDungeonPlayService(deps: DungeonPlayServiceDeps): DungeonP
       if (!won) ended = { outcome: 'defeated', cause: fight.result === 'enemy_victory' ? 'hp_zero' : 'stalemate' };
       else if (node.terminal) ended = { outcome: 'completed', cause: 'boss_defeated' };
     } else if (node.type === 'rest') {
-      const healBasisPoints = restHealBasisPoints(snapshot);
+      const healBasisPoints = restHealBasisPoints(snapshot, node);
       const hpBefore = w.currentHp;
       w.currentHp = hpAfterRest(w.fighter, hpBefore, healBasisPoints);
       const resolution = { kind: 'rest' as const, healBasisPoints, hpBefore, hpAfter: w.currentHp };

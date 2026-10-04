@@ -76,6 +76,48 @@
         "completion": { "currency": { "min": 10, "max": 10 } },
         "extraction": {}
       }
+    },
+    {
+      "key": "service_tunnel_example",
+      "name": "Service Tunnel (Authoring Example)",
+      "description": "A hand-built dungeon: every run walks the same rooms. Ships disabled — it exists to show a room-by-room layout with a branch that rejoins, and to exercise authored runs end to end. Initial tuning throughout.",
+      "enabled": false,
+      "order": 900,
+      "tags": ["authoring_example", "initial_tuning"],
+      "availableRegions": ["flaccid-foothills"],
+      "layoutMode": "authored",
+      "nodeSettings": { "rest": { "healBasisPoints": 3000 } },
+      "authored": {
+        "startRoomId": "tunnel_mouth",
+        "rooms": [
+          { "id": "tunnel_mouth", "name": "Tunnel Mouth", "type": "combat", "enemyKey": "scrapyard_drone", "next": ["maintenance_console"] },
+          { "id": "maintenance_console", "name": "Maintenance Console", "type": "event", "eventKey": "flickering_terminal", "next": ["pump_room"] },
+          { "id": "pump_room", "name": "Pump Room", "type": "combat", "enemyKey": "scrapyard_drone", "next": ["repair_bay"] },
+          { "id": "repair_bay", "name": "Repair Bay", "type": "rest", "extraction": true, "next": ["security_post", "salvage_cache"], "notes": "The one way out before the boss. The layout forks here." },
+          {
+            "id": "security_post", "name": "Security Post", "type": "elite", "enemyKey": "security_automaton", "next": ["antechamber"],
+            "reward": { "equipmentRewardTable": "dungeon-scrapheap-elite-v1", "currency": { "min": 4, "max": 6 } }
+          },
+          {
+            "id": "salvage_cache", "name": "Salvage Cache", "type": "reward", "next": ["antechamber"],
+            "reward": { "equipmentRewardTable": "dungeon-scrapheap-cache-v1", "currency": { "min": 3, "max": 5 } }
+          },
+          { "id": "antechamber", "name": "Antechamber", "type": "rest", "healBasisPoints": 2000, "next": ["far_gate"], "notes": "Both branches rejoin here. A shorter rest than the Repair Bay." },
+          {
+            "id": "far_gate", "name": "Far Gate", "type": "boss", "enemyKey": "scrapheap_colossus",
+            "reward": { "equipmentRewardTable": "dungeon-scrapheap-boss-v1", "currency": { "min": 10, "max": 15 } }
+          }
+        ]
+      },
+      "rewards": {
+        "currencyKey": "ascension_currency",
+        "defeatCurrencyRetentionBasisPoints": 2500,
+        "bands": [
+          { "id": "fights", "minDepth": 1, "maxDepth": null, "nodeTypes": ["combat"], "currency": { "min": 1, "max": 3 } }
+        ],
+        "completion": { "currency": { "min": 10, "max": 10 } },
+        "extraction": {}
+      }
     }
   ]
 }

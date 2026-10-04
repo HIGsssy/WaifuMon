@@ -16,6 +16,7 @@
  * Pure: no database, no assets, no image library.
  */
 import { rollWeighted, seededRng } from '../../shared/random';
+import type { SpritePlacement } from '../artworkAssets/scenePlacement';
 import type { DungeonGraph } from './dungeonGenerator';
 import { backgroundsOf, depthInRange, type DungeonZoneDefinition } from './zoneDefinition';
 
@@ -28,8 +29,17 @@ export interface DungeonSceneBackground {
   artworkPath: string | null;
 }
 
+/** An authored room's own picture of its enemy. Each field alone: null inherits the enemy's. */
+export interface DungeonSceneEnemyOverride {
+  spriteAssetId: string | null;
+  artworkAssetId: string | null;
+  spritePlacement: SpritePlacement | null;
+}
+
 export interface DungeonNodeScene {
   background: DungeonSceneBackground | null;
+  /** Authored rooms only: what the room shows instead of its enemy's default art. */
+  enemy?: DungeonSceneEnemyOverride;
 }
 
 export interface DungeonRunScenes {

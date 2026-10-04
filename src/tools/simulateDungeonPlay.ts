@@ -25,7 +25,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { readContentFiles } from '../modules/content/loader';
 import { DEFAULT_DUNGEON_DAILY_RUN_LIMIT } from '../modules/dungeons/dungeonAllowanceService';
-import { generateDungeon } from '../modules/dungeons/dungeonGenerator';
+import { buildDungeonGraph } from '../modules/dungeons/authoredLayout';
 import {
   PLAYTHROUGH_POLICIES,
   simulateDungeonPlaythroughs,
@@ -108,7 +108,7 @@ function graphReport() {
   for (let i = 0; i < runs; i++) {
     let graph;
     try {
-      graph = generateDungeon(zone!, catalogue, firstSeed + i);
+      graph = buildDungeonGraph(zone!, catalogue, firstSeed + i);
     } catch {
       invalid += 1;
       continue;

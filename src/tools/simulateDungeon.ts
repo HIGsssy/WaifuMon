@@ -20,7 +20,7 @@ import process from 'node:process';
 import { readContentFiles } from '../modules/content/loader';
 import { simulateDungeonGeneration } from '../modules/dungeons/dungeonSimulation';
 import { dungeonCatalogueFromContent, loadShippedDungeonZones } from '../modules/dungeons/dungeonZoneStore';
-import { DUNGEON_NODE_TYPES } from '../modules/dungeons/zoneDefinition';
+import { DUNGEON_NODE_TYPES, layoutModeOf } from '../modules/dungeons/zoneDefinition';
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -33,6 +33,15 @@ const zoneKey = arg('zone') ?? zones[0]?.key;
 const zone = zones.find((z) => z.key === zoneKey);
 if (!zone) {
   console.error(`No shipped dungeon zone "${String(zoneKey)}". Shipped: ${zones.map((z) => z.key).join(', ') || 'none'}`);
+  process.exit(1);
+}
+
+if (layoutModeOf(zone.definition) === 'authored') {
+  // An authored zone is not generated: every run walks the same rooms.
+  console.error(
+    `"${zone.key}" is an authored (room-by-room) dungeon — there is no generation to simulate. ` +
+      `Use \`npm run dungeons:playtest -- --zone ${zone.key}\` to play its layout.`,
+  );
   process.exit(1);
 }
 

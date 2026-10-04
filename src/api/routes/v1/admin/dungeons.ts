@@ -65,6 +65,7 @@ import type {
 import {
   DUNGEON_ARTWORK_ROOTS,
   DUNGEON_KEY_PATTERN,
+  DUNGEON_LAYOUT_MODES,
   DUNGEON_NODE_TYPES,
 } from '../../../../modules/dungeons/zoneDefinition';
 import type {
@@ -90,8 +91,12 @@ const summarySchema = z.object({
   enabled: z.boolean(),
   order: z.number().int(),
   tags: z.array(z.string()),
+  layoutMode: z.enum(DUNGEON_LAYOUT_MODES),
   minNodes: z.number().int(),
   maxNodes: z.number().int(),
+  roomCount: z.number().int().nullable(),
+  artworkAssetId: z.string().nullable(),
+  artworkPath: z.string().nullable(),
   poolCount: z.number().int(),
   poolEntryCount: z.number().int(),
   rewardBandCount: z.number().int(),
@@ -164,6 +169,17 @@ const graphSchema = z.object({
       extraction: z.boolean(),
       terminal: z.boolean(),
       boss: z.boolean(),
+      // Set on nodes compiled from an authored room.
+      roomId: z.string().optional(),
+      name: z.string().optional(),
+      reward: z
+        .object({
+          rewardTable: z.string().nullable(),
+          equipmentRewardTable: z.string().nullable(),
+          currency: z.object({ min: z.number().int(), max: z.number().int() }),
+        })
+        .optional(),
+      restHealBasisPoints: z.number().int().optional(),
     }),
   ),
   edges: z.array(z.object({ id: z.string(), from: z.string(), to: z.string() })),
@@ -171,6 +187,7 @@ const graphSchema = z.object({
 
 const previewSchema = z.object({
   zoneKey: z.string(),
+  layoutMode: z.enum(DUNGEON_LAYOUT_MODES),
   seed: z.number().int(),
   graph: graphSchema,
   names: z.object({ enemies: z.record(z.string(), z.string()), events: z.record(z.string(), z.string()) }),
@@ -189,6 +206,13 @@ const previewSchema = z.object({
           background: z
             .object({ entryId: z.string(), assetId: z.string().nullable(), artworkPath: z.string().nullable() })
             .nullable(),
+          enemy: z
+            .object({
+              spriteAssetId: z.string().nullable(),
+              artworkAssetId: z.string().nullable(),
+              spritePlacement: z.record(z.string(), z.unknown()).nullable(),
+            })
+            .optional(),
         }),
       ),
     }),
@@ -439,7 +463,8 @@ export const adminDungeonRoutes =
         schema: {
           tags,
           summary:
-            'Generate one run of a saved zone (`key`) or an unsaved draft (`zone`) without persisting it. ' +
+            'One run of a saved zone (`key`) or an unsaved draft (`zone`), without persisting it: generated for ' +
+            'a procedural zone, the authored layout itself for an authored one. ' +
             'The same `seed` always produces the same graph; omitted, a seed is drawn and returned',
           body: z.object({ ...targetShape, seed: seedSchema.optional() }).refine(exactlyOneTarget, targetMessage),
           response: {
@@ -464,8 +489,9 @@ export const adminDungeonRoutes =
         schema: {
           tags,
           summary:
-            'Generate many runs of a zone and summarise node counts, type distribution, branch and extraction ' +
-            'rates, enemy appearances and the invalid-generation rate. Persists nothing',
+            'Generate many runs of a procedural zone and summarise node counts, type distribution, branch and ' +
+            'extraction rates, enemy appearances and the invalid-generation rate. Persists nothing. An authored ' +
+            'zone has a fixed layout and is refused with 400',
           body: z
             .object({
               ...targetShape,
@@ -527,7 +553,12 @@ export const adminDungeonRoutes =
             'Replace a dungeon zone. `expectedRevision` must be the revision you loaded; ' +
             'a stale save is refused with 409 DUNGEON_ZONE_STALE rather than overwriting',
           params: keyParams,
-          body: z.object({ zone: zoneBody, expectedRevision: revisionSchema }),
+          body: z.object({
+            zone: zoneBody,
+            expectedRevision: revisionSchema,
+            /** Required for a save that changes the zone's layout mode. */
+            confirmLayoutChange: z.boolean().optional(),
+          }),
           response: {
             200: dataSchema(detailSchema),
             ...notFoundResponse,

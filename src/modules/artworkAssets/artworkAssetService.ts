@@ -211,6 +211,20 @@ export function zoneDocumentAssetSlots(definition: unknown): ArtworkReferenceSlo
       });
     });
   }
+  // An authored room's own background, and its override of its enemy's art.
+  const rooms = (doc.authored as { rooms?: unknown } | null | undefined)?.rooms;
+  if (Array.isArray(rooms)) {
+    rooms.forEach((entry, i) => {
+      const room = (entry ?? {}) as { id?: unknown; backgroundAssetId?: unknown; scene?: unknown };
+      const at = `authored.rooms[${typeof room.id === 'string' ? room.id : i}]`;
+      const scene = (room.scene ?? {}) as { spriteAssetId?: unknown; artworkAssetId?: unknown };
+      slots.push(
+        { field: `${at}.backgroundAssetId`, assetId: id(room.backgroundAssetId) },
+        { field: `${at}.scene.spriteAssetId`, assetId: id(scene.spriteAssetId) },
+        { field: `${at}.scene.artworkAssetId`, assetId: id(scene.artworkAssetId) },
+      );
+    });
+  }
   return slots;
 }
 

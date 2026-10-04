@@ -11,8 +11,14 @@
  *   - **Lifecycle** is enable/disable. There is no delete: a zone key is
  *     recorded on every run that used it. Disabling is always allowed, even
  *     for a zone whose content has since broken.
- *   - **Preview** and **simulate** call the same generator a real run does and
- *     persist nothing.
+ *   - **Preview** builds the graph the way a real run does — generated for a
+ *     procedural zone, compiled from its rooms for an authored one — and
+ *     persists nothing. **Simulate** is the generator's distribution over many
+ *     seeds, so it exists for procedural zones only.
+ *   - **Layout mode** is chosen when a zone is created. A save that would
+ *     change it is refused unless it says so (`confirmLayoutChange`). Nothing
+ *     is deleted either way: the generator settings and the rooms both stay in
+ *     the document, whichever one is in use.
  *
  * Nothing here touches a run already generated: a run snapshots its zone.
  */
@@ -27,6 +33,7 @@ import {
   type DungeonZoneRow,
 } from '../../db/schema';
 import {
+  AppError,
   DungeonZoneInvalidError,
   DungeonZoneKeyTakenError,
   DungeonZoneStaleError,
@@ -34,13 +41,19 @@ import {
 import { zoneDocumentAssetSlots, type ArtworkAssetService } from '../artworkAssets/artworkAssetService';
 import type { CombatEnemyDefinition } from '../combat/enemyDefinitions';
 import {
-  generateDungeon,
+  AuthoredLayoutError,
+  analyseAuthoredLayout,
+  buildDungeonGraph,
+  selectRunScenes,
+  zoneRunLength,
+} from './authoredLayout';
+import {
   isValidDungeonSeed,
   MAX_DUNGEON_SEED,
   type DungeonContentCatalogue,
   type DungeonGraph,
 } from './dungeonGenerator';
-import { selectDungeonScenes, type DungeonRunScenes } from './dungeonScenes';
+import type { DungeonRunScenes } from './dungeonScenes';
 import { simulateDungeonGeneration, type DungeonSimulationReport } from './dungeonSimulation';
 import {
   dungeonCatalogueFromContent,
@@ -57,8 +70,11 @@ import {
   DUNGEON_ZONE_FILE_FORMAT,
   DUNGEON_ZONE_FILE_VERSION,
   DungeonZoneDefinitionSchema,
+  authoredLayoutOf,
   dungeonZoneHash,
+  layoutModeOf,
   restRulesOf,
+  type DungeonLayoutMode,
   type DungeonNodeType,
   type DungeonZoneDefinition,
 } from './zoneDefinition';
@@ -85,8 +101,19 @@ export interface DungeonZoneSummary {
   enabled: boolean;
   order: number;
   tags: string[];
+  /** How the zone's runs are laid out. */
+  layoutMode: DungeonLayoutMode;
+  /**
+   * Rooms a run walks, shortest to longest: the generator's node range for a
+   * procedural zone, the shortest and longest route for an authored one.
+   */
   minNodes: number;
   maxNodes: number;
+  /** Rooms in an authored layout; null for a procedural zone. */
+  roomCount: number | null;
+  /** The zone cover, for a thumbnail: the managed asset where set, else the shipped path. */
+  artworkAssetId: string | null;
+  artworkPath: string | null;
   /** Pools with at least one entry. */
   poolCount: number;
   poolEntryCount: number;
@@ -151,6 +178,8 @@ export type DungeonZoneTarget = { key: string } | { zone: unknown };
 
 export interface DungeonPreview {
   zoneKey: string;
+  /** How the graph was made. An authored graph is the same for every seed. */
+  layoutMode: DungeonLayoutMode;
   seed: number;
   graph: DungeonGraph;
   /** Display names for the content the graph selected. */
@@ -171,9 +200,13 @@ export interface DungeonZoneService {
   /** Dry run: every issue a save of `zone` would raise, without writing. */
   validate(zone: unknown, key?: string): Promise<DungeonZoneIssue[]>;
   create(zone: unknown, actor: string | null): Promise<DungeonZoneDetail>;
+  /**
+   * `confirmLayoutChange` must be set for a save that changes the zone's
+   * layout mode; without it such a save is refused and nothing is written.
+   */
   update(
     key: string,
-    input: { zone: unknown; expectedRevision: number },
+    input: { zone: unknown; expectedRevision: number; confirmLayoutChange?: boolean | undefined },
     actor: string | null,
   ): Promise<DungeonZoneDetail | null>;
   /** Switch a zone on or off. Off always succeeds; on is validated like a save. */
@@ -182,8 +215,13 @@ export interface DungeonZoneService {
     input: { enabled: boolean; expectedRevision: number },
     actor: string | null,
   ): Promise<DungeonZoneDetail | null>;
-  /** Generate one run without persisting anything. Null when `key` names no zone. */
+  /**
+   * One run's graph, without persisting anything: generated for a procedural
+   * zone, the authored layout itself for an authored one. Null when `key`
+   * names no zone.
+   */
   preview(target: DungeonZoneTarget, seed?: number): Promise<DungeonPreview | null>;
+  /** Procedural zones only: an authored zone has no generation to measure, and is refused. */
   simulate(
     target: DungeonZoneTarget,
     options: { runs: number; firstSeed?: number },
@@ -271,14 +309,20 @@ export function createDungeonZoneService(deps: DungeonZoneServiceDeps): DungeonZ
 
   function summaryOf(row: DungeonZoneRow, zone: DungeonZoneDefinition): DungeonZoneSummary {
     const shipped = shippedFor(row.zoneKey);
+    const mode = layoutModeOf(zone);
+    const authored = mode === 'authored';
     return {
       key: row.zoneKey,
       name: zone.name,
       enabled: row.enabled,
       order: zone.order,
       tags: zone.tags,
-      minNodes: zone.generation.minNodes,
-      maxNodes: zone.generation.maxNodes,
+      layoutMode: mode,
+      minNodes: authored ? zoneRunLength(zone).min : zone.generation.minNodes,
+      maxNodes: authored ? zoneRunLength(zone).max : zone.generation.maxNodes,
+      roomCount: authored ? authoredLayoutOf(zone).rooms.length : null,
+      artworkAssetId: zone.artworkAssetId,
+      artworkPath: zone.artworkPath,
       poolCount: DUNGEON_POOL_KEYS.filter((p) => zone.pools[p].length > 0).length,
       poolEntryCount: DUNGEON_POOL_KEYS.reduce((n, p) => n + zone.pools[p].length, 0),
       rewardBandCount: zone.rewards.bands.length,
@@ -368,7 +412,7 @@ export function createDungeonZoneService(deps: DungeonZoneServiceDeps): DungeonZ
     const parsed = DungeonZoneDefinitionSchema.safeParse(target.zone);
     if (!parsed.success) {
       throw new DungeonZoneInvalidError(
-        parsed.error.issues.map((i) => ({ path: zodIssuePath(i.path), message: i.message, severity: 'error' })),
+        parsed.error.issues.map((i) => ({ path: zodIssuePath(i.path), message: i.message, severity: 'error' as const })),
       );
     }
     return parsed.data;
@@ -459,12 +503,26 @@ export function createDungeonZoneService(deps: DungeonZoneServiceDeps): DungeonZ
       });
     },
 
-    async update(key, { zone: input, expectedRevision }, actor) {
+    async update(key, { zone: input, expectedRevision, confirmLayoutChange }, actor) {
       return db.transaction(async (tx) => {
         const row = await readDungeonZoneRow(tx, key, true);
         if (!row) return null;
         assertRevision(row, expectedRevision);
         const zone = await assertWritable(tx, key, input);
+        const before = layoutModeOf(parseDungeonZoneRow(row));
+        const after = layoutModeOf(zone);
+        if (before !== after && confirmLayoutChange !== true) {
+          const name = (mode: DungeonLayoutMode) => (mode === 'authored' ? 'room-by-room' : 'procedural');
+          throw new DungeonZoneInvalidError([
+            {
+              path: 'layoutMode',
+              message:
+                `This would change the dungeon from ${name(before)} to ${name(after)}. ` +
+                'Confirm the layout change to save it. Nothing is deleted: the generator settings and the rooms are both kept.',
+              severity: 'error',
+            },
+          ]);
+        }
         return detailOf(tx, await writeRow(tx, row, zone, actor));
       });
     },
@@ -492,7 +550,13 @@ export function createDungeonZoneService(deps: DungeonZoneServiceDeps): DungeonZ
         ]);
       }
       const content = catalogue();
-      const graph = generateDungeon(zone, content, chosen);
+      let graph: DungeonGraph;
+      try {
+        graph = buildDungeonGraph(zone, content, chosen);
+      } catch (err) {
+        if (!(err instanceof AuthoredLayoutError)) throw err;
+        throw new DungeonZoneInvalidError(err.issues.map((i) => ({ ...i, severity: 'error' as const })));
+      }
       const names = { enemies: {} as Record<string, string>, events: {} as Record<string, string> };
       for (const node of graph.nodes) {
         if (!node.content) continue;
@@ -507,18 +571,30 @@ export function createDungeonZoneService(deps: DungeonZoneServiceDeps): DungeonZ
         backgroundArtworkPath: zone.backgroundArtworkPath,
         artworkAssetId: zone.artworkAssetId,
         backgroundAssetId: zone.backgroundAssetId,
-        scenes: selectDungeonScenes(zone, graph, chosen),
+        scenes: selectRunScenes(zone, graph, chosen),
         restNodes: graph.nodes.filter((n) => n.type === 'rest').map((n) => ({ id: n.id, depth: n.depth, extraction: n.extraction })),
         extractionNodes: graph.nodes.filter((n) => n.extraction).map((n) => ({ id: n.id, depth: n.depth, type: n.type })),
         bossNodeId: graph.nodes.find((n) => n.boss)?.id ?? null,
-        restBeforeBoss: { required: restRulesOf(zone.generation).beforeBoss, satisfied: restPrecedesFinalNode(graph) },
+        restBeforeBoss: {
+          // A generator guarantee: an authored layout promises only what its rooms show.
+          required: layoutModeOf(zone) !== 'authored' && restRulesOf(zone.generation).beforeBoss,
+          satisfied: restPrecedesFinalNode(graph),
+        },
       };
-      return { zoneKey: zone.key, seed: chosen, graph, names, structure };
+      return { zoneKey: zone.key, layoutMode: layoutModeOf(zone), seed: chosen, graph, names, structure };
     },
 
     async simulate(target, options) {
       const zone = await resolveTarget(target);
       if (!zone) return null;
+      if (layoutModeOf(zone) === 'authored') {
+        const rooms = analyseAuthoredLayout(zone).reachable.length;
+        throw new AppError(
+          'VALIDATION_ERROR',
+          `dungeon zone "${zone.key}" is authored: there is no generation to simulate`,
+          `This dungeon is built room by room, so every run walks the same ${rooms} rooms — there is nothing to simulate. Use Preview to see the layout.`,
+        );
+      }
       return simulateDungeonGeneration(zone, catalogue(), options);
     },
 

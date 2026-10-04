@@ -8,6 +8,7 @@
  * comes back as a 409 `DUNGEON_ZONE_STALE` rather than overwriting.
  */
 import type { ArtworkDirectory, ArtworkSearchResults } from './adminArtwork';
+import type { SpritePlacement } from './adminArtworkAssets';
 import { apiClient, getData, postData, putData } from './client';
 
 export type DungeonNodeType =
@@ -45,6 +46,19 @@ export const DUNGEON_POOL_KEYS: readonly DungeonPoolKey[] = [
 ];
 
 export type DungeonZoneOrigin = 'shipped' | 'edited' | 'custom';
+
+/**
+ * How a zone's runs are laid out: `procedural` generates a fresh graph per run
+ * from the generator's rules; `authored` walks the rooms an admin built.
+ * Absent on a zone saved before the choice existed, which is procedural.
+ */
+export type DungeonLayoutMode = 'procedural' | 'authored';
+export const layoutModeOf = (zone: { layoutMode?: DungeonLayoutMode }): DungeonLayoutMode =>
+  zone.layoutMode ?? 'procedural';
+
+/** Ways on from one authored room. */
+export const DUNGEON_MAX_ROOM_EXITS = 3;
+export const DUNGEON_MAX_ROOMS = 40;
 
 export interface DungeonZoneIssue {
   /** `pools.combat[2].enemyKey`, `generation.minNodes`, `generation`… */
@@ -134,6 +148,8 @@ export interface DungeonGenerationDoc {
   };
   nodeWeights: Record<DungeonWeightedNodeType, number>;
   boss: { required: boolean };
+  /** A fixed opening: every run's first room is this type. Null or absent leaves it to the weights. */
+  firstNodeType?: DungeonWeightedNodeType | null;
   /** Where and how often rests appear. Absent on a zone saved before rest rules existed. */
   rest?: DungeonRestRules;
   depthRanges: Partial<Record<DungeonNodeType, DepthRange>>;
@@ -153,6 +169,49 @@ export interface DungeonBackgroundDoc extends DepthRange {
   artworkPath: string | null;
 }
 
+/** What one authored room pays, in place of the zone's default rewards. */
+export interface DungeonRoomRewardDoc {
+  rewardTable: string | null;
+  equipmentRewardTable: string | null;
+  currency: AmountRange;
+}
+
+/** A room's own picture of its enemy. Each field alone: null uses the enemy's default. */
+export interface DungeonRoomSceneDoc {
+  spriteAssetId: string | null;
+  artworkAssetId: string | null;
+  spritePlacement: SpritePlacement | null;
+}
+
+/**
+ * One room of a room-by-room dungeon. Everything optional inherits: no
+ * `reward` pays the dungeon's default, no `healBasisPoints` heals the
+ * dungeon's default, no background uses the dungeon's, no `scene` uses the
+ * enemy's own artwork.
+ */
+export interface DungeonRoomDoc {
+  /** Stable within the dungeon; other rooms point at it. */
+  id: string;
+  name: string;
+  type: DungeonNodeType;
+  /** Ids of the rooms this one leads to. Empty on the final room. */
+  next: string[];
+  enemyKey: string | null;
+  eventKey: string | null;
+  reward: DungeonRoomRewardDoc | null;
+  healBasisPoints: number | null;
+  extraction: boolean;
+  backgroundAssetId: string | null;
+  backgroundArtworkPath: string | null;
+  scene: DungeonRoomSceneDoc | null;
+  notes: string;
+}
+
+export interface DungeonAuthoredLayoutDoc {
+  startRoomId: string | null;
+  rooms: DungeonRoomDoc[];
+}
+
 export interface DungeonZoneDoc {
   /** Stable. Cannot be changed after the zone is created. */
   key: string;
@@ -170,6 +229,9 @@ export interface DungeonZoneDoc {
   tags: string[];
   /** Region ids the zone can be started in. Absent on a zone saved before regions existed. */
   availableRegions?: string[];
+  layoutMode?: DungeonLayoutMode;
+  /** The hand-built rooms. Kept, unused, on a procedural zone. */
+  authored?: DungeonAuthoredLayoutDoc;
   generation: DungeonGenerationDoc;
   /** What a node type does when resolved. `healBasisPoints`: 3000 = 30% of max HP. */
   nodeSettings: { rest: { healBasisPoints: number } };
@@ -190,8 +252,15 @@ export interface DungeonZoneSummary {
   enabled: boolean;
   order: number;
   tags: string[];
+  layoutMode?: DungeonLayoutMode;
+  /** Rooms a run walks, shortest to longest. */
   minNodes: number;
   maxNodes: number;
+  /** Rooms in a room-by-room layout; null for a procedural zone. */
+  roomCount?: number | null;
+  /** The zone cover, for a thumbnail. */
+  artworkAssetId?: string | null;
+  artworkPath?: string | null;
   poolCount: number;
   poolEntryCount: number;
   rewardBandCount: number;
@@ -272,6 +341,11 @@ export interface DungeonGraphNode {
   extraction: boolean;
   terminal: boolean;
   boss: boolean;
+  /** Set on nodes that came from an authored room. */
+  roomId?: string;
+  name?: string;
+  reward?: DungeonRoomRewardDoc;
+  restHealBasisPoints?: number;
 }
 
 export interface DungeonGraph {
@@ -289,6 +363,8 @@ export interface DungeonGraph {
 
 export interface DungeonPreview {
   zoneKey: string;
+  /** How the graph was made. A room-by-room graph is the same for every seed. */
+  layoutMode?: DungeonLayoutMode;
   seed: number;
   graph: DungeonGraph;
   names: { enemies: Record<string, string>; events: Record<string, string> };
@@ -393,12 +469,21 @@ export function createDungeonZone(zone: DungeonZoneDoc): Promise<DungeonZoneDeta
   return postData(`${base}/zones`, { zone });
 }
 
+/**
+ * `confirmLayoutChange` must be passed for a save that changes the zone's
+ * layout mode — the server refuses such a save without it.
+ */
 export function updateDungeonZone(
   key: string,
   zone: DungeonZoneDoc,
   expectedRevision: number,
+  options: { confirmLayoutChange?: boolean } = {},
 ): Promise<DungeonZoneDetail> {
-  return putData(zoneUrl(key), { zone, expectedRevision });
+  return putData(zoneUrl(key), {
+    zone,
+    expectedRevision,
+    ...(options.confirmLayoutChange ? { confirmLayoutChange: true } : {}),
+  });
 }
 
 export function setDungeonZoneEnabled(

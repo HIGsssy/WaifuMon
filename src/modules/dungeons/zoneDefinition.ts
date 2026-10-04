@@ -25,6 +25,7 @@
  */
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
+import { SpritePlacementSchema } from '../artworkAssets/scenePlacement';
 import { relativeArtworkPath } from '../assets/artworkPath';
 import { canonicalJson } from '../rewardTables/rewardTableCore';
 
@@ -85,8 +86,27 @@ export function poolForNodeType(type: DungeonNodeType): DungeonPoolKey | null {
   return type === 'event' ? 'event' : null;
 }
 
+/**
+ * How a zone's run graph comes to be.
+ *
+ *   - `procedural` — the seeded generator builds a fresh graph per run from
+ *     `generation` and `pools`;
+ *   - `authored` — an admin laid the rooms out by hand (`authored`), and every
+ *     run walks that same graph.
+ *
+ * Either way a run starts from the same {@link DungeonGraph} shape, so nothing
+ * after run start knows which one it was. A zone stored before the field
+ * existed is procedural.
+ */
+export const DUNGEON_LAYOUT_MODES = ['procedural', 'authored'] as const;
+export type DungeonLayoutMode = (typeof DUNGEON_LAYOUT_MODES)[number];
+
 /** Sanity ceilings — a V1 dungeon is a short graph, not a map. */
 export const DUNGEON_MAX_NODES = 40;
+/** An authored layout is held to the same size as a generated one. */
+export const DUNGEON_MAX_ROOMS = DUNGEON_MAX_NODES;
+/** Ways on from one authored room — the choices a player is offered at once. */
+export const DUNGEON_MAX_ROOM_EXITS = 3;
 export const DUNGEON_MAX_BRANCHES = 4;
 export const DUNGEON_MAX_BRANCH_LENGTH = 3;
 export const DUNGEON_WEIGHT_MAX = 1_000_000;
@@ -418,6 +438,13 @@ export const DungeonGenerationSchema = z
      * node is. `false` — no boss; the final node is an `exit`.
      */
     boss: z.object({ required: z.boolean().default(true) }).strict().default({}),
+    /**
+     * A fixed opening: every run's first node is this type (its content still
+     * comes from the type's pool). Null leaves the first node to the weights.
+     * With `rest.beforeBoss` and `boss.required` this is the whole of the
+     * "mandatory rooms" a procedural zone can pin: start, pre-boss, boss.
+     */
+    firstNodeType: z.enum(DUNGEON_WEIGHTED_NODE_TYPES).nullable().default(null),
     /** Rest placement: how many, at which depths, and whether one always precedes the boss. */
     rest: DungeonRestRulesSchema,
     /** The depths a type may appear at. A type with no entry may appear anywhere. */
@@ -470,6 +497,95 @@ export const DungeonGenerationSchema = z
     }
   });
 export type DungeonGeneration = z.infer<typeof DungeonGenerationSchema>;
+
+/**
+ * What a zone with no generator settings gets: the smallest block that
+ * parses. An authored zone never reads it; a procedural zone left on it has
+ * empty pools and is refused by validation, not silently generated.
+ */
+const DEFAULT_GENERATION = {
+  minNodes: 2,
+  maxNodes: 2,
+  extraction: { minDepth: 1 },
+  nodeWeights: { combat: 1 },
+} as const;
+
+/** What one authored room pays, in place of the zone's reward bands. */
+export const DungeonRoomRewardSchema = z
+  .object({
+    /** Ordinary rewards: WaifuBux, items, and any gear the table carries. */
+    rewardTable: rewardTableRef,
+    /** A further table rolled for Equipment. */
+    equipmentRewardTable: rewardTableRef,
+    /** Unbanked progression currency. */
+    currency: amountRange.default(noCurrency),
+  })
+  .strict();
+export type DungeonRoomReward = z.infer<typeof DungeonRoomRewardSchema>;
+
+/** A room's own picture of its enemy, over the enemy's defaults. Each field alone: null inherits. */
+export const DungeonRoomSceneSchema = z
+  .object({
+    spriteAssetId: artworkAssetId.nullable().default(null),
+    artworkAssetId: artworkAssetId.nullable().default(null),
+    spritePlacement: SpritePlacementSchema.nullable().default(null),
+  })
+  .strict();
+export type DungeonRoomScene = z.infer<typeof DungeonRoomSceneSchema>;
+
+/**
+ * One room of an authored layout. It compiles to exactly one node of the run
+ * graph (`authoredLayout.ts`), so a room *is* a node with its content chosen
+ * by hand rather than drawn from a pool.
+ *
+ * Everything optional inherits: no `reward` pays the zone's reward band for
+ * the room's type and depth, no `healBasisPoints` heals what the zone's rests
+ * heal, no background uses the zone's default, no `scene` uses the enemy's
+ * own artwork and placement. Fields that do not apply to the room's type are
+ * ignored.
+ */
+export const DungeonAuthoredRoomSchema = z
+  .object({
+    /** Stable within the zone. Other rooms point at it; a run records it on the node. */
+    id: key,
+    /** What the author calls it. Shown to players on rooms that have no enemy or event to name. */
+    name: z.string().trim().max(100).default(''),
+    type: nodeType,
+    /** Ids of the rooms this one leads to. Empty on the final room only. */
+    next: z.array(key).max(DUNGEON_MAX_ROOM_EXITS).default([]),
+    /** The enemy fought here — combat, elite, miniboss and boss rooms. */
+    enemyKey: key.nullable().default(null),
+    /** The event met here — event rooms. */
+    eventKey: key.nullable().default(null),
+    reward: DungeonRoomRewardSchema.nullable().default(null),
+    /** Rest rooms: the share of max HP restored, overriding `nodeSettings.rest`. */
+    healBasisPoints: basisPoints.nullable().default(null),
+    /** Whether the player may leave from here once the room is done. An `exit` room always may. */
+    extraction: z.boolean().default(false),
+    /** The room's own background; managed asset first, then shipped path, then the zone's default. */
+    backgroundAssetId: artworkAssetId.nullable().default(null),
+    backgroundArtworkPath: zoneArtworkPath.nullable().default(null),
+    scene: DungeonRoomSceneSchema.nullable().default(null),
+    /** For authors only; never shown to a player. */
+    notes: z.string().trim().max(500).default(''),
+  })
+  .strict();
+export type DungeonAuthoredRoom = z.infer<typeof DungeonAuthoredRoomSchema>;
+
+/**
+ * A hand-built layout: the rooms and where a run begins. Whether the rooms
+ * form a legal dungeon — one start, one final room, no loops, nothing
+ * unreachable — is checked in `authoredLayout.ts`, so a half-built layout
+ * still parses and can be saved on a disabled zone.
+ */
+export const DungeonAuthoredLayoutSchema = z
+  .object({
+    startRoomId: key.nullable().default(null),
+    rooms: z.array(DungeonAuthoredRoomSchema).max(DUNGEON_MAX_ROOMS).default([]),
+  })
+  .strict()
+  .default({});
+export type DungeonAuthoredLayout = z.infer<typeof DungeonAuthoredLayoutSchema>;
 
 function duplicateIds(
   entries: readonly { id: string }[],
@@ -530,14 +646,21 @@ export const DungeonZoneDefinitionSchema = z
       .max(DUNGEON_MAX_REGIONS)
       .default([]),
     tags,
-    generation: DungeonGenerationSchema,
+    /** Where the run graph comes from. Chosen when the zone is created. */
+    layoutMode: z.enum(DUNGEON_LAYOUT_MODES).default('procedural'),
+    /** The generator's rules. Kept, unused, on an authored zone. */
+    generation: DungeonGenerationSchema.default(DEFAULT_GENERATION),
     /** Per-node-type behaviour, e.g. how much a rest heals. */
     nodeSettings: DungeonNodeSettingsSchema,
-    pools: DungeonPoolsSchema,
+    /** What the generator draws from. Kept, unused, on an authored zone. */
+    pools: DungeonPoolsSchema.default({}),
+    /** The hand-built rooms. Kept, unused, on a procedural zone. */
+    authored: DungeonAuthoredLayoutSchema,
     rewards: DungeonRewardsSchema,
   })
   .strict()
   .superRefine((zone, ctx) => {
+    duplicateIds(zone.authored.rooms, ['authored', 'rooms'], 'room', ctx);
     for (const poolKey of DUNGEON_POOL_KEYS) {
       duplicateIds(zone.pools[poolKey], ['pools', poolKey], 'pool entry', ctx);
     }
@@ -589,7 +712,29 @@ export const DungeonZoneFileSchema = z
  */
 export function dungeonZoneHash(zone: unknown): string {
   const parsed = DungeonZoneDefinitionSchema.parse(zone);
-  return createHash('sha256').update(canonicalJson(parsed)).digest('hex');
+  // Fields added after zones were first stored are left out of the hash while
+  // they hold their default, so a zone that does not use them hashes exactly
+  // as it did before they existed — a deploy does not make every stored row
+  // look edited, or every shipped zone look changed.
+  const { layoutMode, authored, generation, ...rest } = parsed;
+  const { firstNodeType, ...gen } = generation;
+  const hashed = {
+    ...rest,
+    generation: firstNodeType === null ? gen : generation,
+    ...(layoutMode === 'procedural' ? {} : { layoutMode }),
+    ...(authored.startRoomId === null && authored.rooms.length === 0 ? {} : { authored }),
+  };
+  return createHash('sha256').update(canonicalJson(hashed)).digest('hex');
+}
+
+/** A zone's layout mode. Zones snapshotted before the field existed are procedural. */
+export function layoutModeOf(zone: Pick<DungeonZoneDefinition, 'layoutMode'>): DungeonLayoutMode {
+  return zone.layoutMode ?? 'procedural';
+}
+
+/** A zone's authored rooms; none on a zone snapshotted before they existed. */
+export function authoredLayoutOf(zone: Pick<DungeonZoneDefinition, 'authored'>): DungeonAuthoredLayout {
+  return zone.authored ?? { startRoomId: null, rooms: [] };
 }
 
 /** A zone's rest rules. Zones snapshotted before they existed have none. */

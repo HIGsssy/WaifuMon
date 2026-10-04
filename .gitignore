@@ -23,6 +23,9 @@ assets/.thumbnails/
 assets/.card-cache/
 assets/standby/
 assets/drafts/
+# dungeon/Delve art staging — mirrors the assets tree (dungeons/…, combat/…).
+# Promoted by copying the subtree into assets/; never read by the game.
+delvedrafts/
 # local database/data
 data/
 drafts/

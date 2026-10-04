@@ -26,7 +26,8 @@
  * cashed out, whether or not their policy did.
  */
 import { DungeonGenerationError } from '../../shared/errors';
-import { generateDungeon, type DungeonContentCatalogue, type DungeonGraphNode } from './dungeonGenerator';
+import { buildDungeonGraph } from './authoredLayout';
+import type { DungeonContentCatalogue, DungeonGraphNode } from './dungeonGenerator';
 import type { DungeonRunSnapshot } from './dungeonRunService';
 import {
   dungeonCombatSeed,
@@ -97,7 +98,7 @@ export function playDungeon(
   seed: number,
   policy: PlaythroughPolicy,
 ): PlaythroughResult {
-  const graph = generateDungeon(content.zone, catalogue, seed);
+  const graph = buildDungeonGraph(content.zone, catalogue, seed);
   const snapshot = content as DungeonRunSnapshot;
   const combatant: DungeonFighter = {
     formulaVersion: 0,
@@ -155,7 +156,7 @@ export function playDungeon(
       if (fight.result !== 'player_victory') return end('defeated', enemy.key);
       pay(rollNodeRewards(snapshot, graph, node));
     } else if (node.type === 'rest') {
-      hp = hpAfterRest(combatant, hp, restHealBasisPoints(snapshot));
+      hp = hpAfterRest(combatant, hp, restHealBasisPoints(snapshot, node));
     } else if (node.type === 'event') {
       hp = hpAfterEvent(combatant, hp, eventEffect(eventOf(snapshot, node)).hpChangeBasisPoints);
       pay(rollNodeRewards(snapshot, graph, node));

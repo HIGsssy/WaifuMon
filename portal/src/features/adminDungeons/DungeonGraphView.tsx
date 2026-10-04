@@ -1,7 +1,8 @@
 /**
- * A generated dungeon, drawn as it is structured: one row per depth, a fork as
- * two cards side by side. Read-only — the same view serves the preview page
- * and the zone editor's draft preview.
+ * A run graph, drawn as it is structured: one row per depth, a fork as cards
+ * side by side. Read-only — the same view serves the preview page and the
+ * editor's draft preview, for a generated dungeon and a room-by-room one
+ * alike (they are the same graph by the time they get here).
  */
 import type { DungeonGraph, DungeonGraphNode, DungeonPreview } from '@/api/adminDungeons';
 import { Badge } from '@/components/ui/badge';
@@ -28,7 +29,14 @@ function leadsTo(node: DungeonGraphNode, graph: DungeonGraph): string[] {
  * held. Computed by the server from the graph, not assumed from the zone, so a
  * guarantee the generator broke would show here as broken.
  */
-function StructureSummary({ structure }: { structure: DungeonPreview['structure'] }) {
+function StructureSummary({
+  structure,
+  authored,
+}: {
+  structure: DungeonPreview['structure'];
+  /** A room-by-room layout makes no generator guarantees to report on. */
+  authored: boolean;
+}) {
   const { restBeforeBoss } = structure;
   const depths = (nodes: Array<{ depth: number }>) =>
     nodes.length === 0 ? 'none' : nodes.map((n) => `depth ${n.depth}`).join(', ');
@@ -71,7 +79,7 @@ function StructureSummary({ structure }: { structure: DungeonPreview['structure'
         <dt className="inline text-ink-muted">Final boss: </dt>
         <dd className="inline text-ink">{structure.bossNodeId ?? 'none — ends on an exit'}</dd>
       </div>
-      <div>
+      <div className={authored ? 'hidden' : undefined}>
         <dt className="inline text-ink-muted">Rest before Boss: </dt>
         <dd
           className={cn(
@@ -98,17 +106,24 @@ export function DungeonGraphView({ preview }: { preview: DungeonPreview }) {
   const rows = nodesByDepth(graph.nodes);
   const branches = graph.nodes.filter((n) => n.outgoing.length > 1).length;
   const extractionPoints = graph.nodes.filter((n) => n.extraction).length;
+  const authored = preview.layoutMode === 'authored';
 
   return (
     <div className="space-y-3" data-testid="dungeon-graph">
       <p className="text-xs text-ink-muted" data-testid="dungeon-graph-summary">
-        Seed <span className="font-mono text-ink">{preview.seed}</span> · {graph.nodes.length} nodes
-        · depth {graph.depthCount} · {branches} branch{branches === 1 ? '' : 'es'} ·{' '}
-        {extractionPoints} extraction point
+        {authored ? (
+          'Room-by-room layout'
+        ) : (
+          <>
+            Seed <span className="font-mono text-ink">{preview.seed}</span>
+          </>
+        )}{' '}
+        · {graph.nodes.length} {authored ? 'rooms' : 'nodes'} · depth {graph.depthCount} ·{' '}
+        {branches} branch{branches === 1 ? '' : 'es'} · {extractionPoints} extraction point
         {extractionPoints === 1 ? '' : 's'}
         {graph.attempts > 1 ? ` · took ${graph.attempts} attempts` : ''}
       </p>
-      <StructureSummary structure={preview.structure} />
+      <StructureSummary structure={preview.structure} authored={authored} />
       <ol className="space-y-2">
         {rows.map((row) => (
           <li
@@ -119,7 +134,13 @@ export function DungeonGraphView({ preview }: { preview: DungeonPreview }) {
             <span className="w-16 shrink-0 pt-2 text-xs text-ink-subtle">
               Depth {row[0]!.depth}
             </span>
-            <div className={cn('grid flex-1 gap-2', row.length > 1 && 'grid-cols-2')}>
+            <div
+              className={cn(
+                'grid flex-1 gap-2',
+                row.length === 2 && 'grid-cols-2',
+                row.length > 2 && 'grid-cols-3',
+              )}
+            >
               {row.map((node) => {
                 const name = contentName(node, names);
                 const next = leadsTo(node, graph);
@@ -136,16 +157,26 @@ export function DungeonGraphView({ preview }: { preview: DungeonPreview }) {
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-mono text-xs text-ink-subtle">{node.id}</span>
                       <span className="font-medium text-ink">{NODE_TYPE_LABELS[node.type]}</span>
+                      {node.name && <span className="text-ink">{node.name}</span>}
                       {name && <span className="text-ink-muted">{name}</span>}
                       {node.boss && <Badge variant="danger">Boss</Badge>}
                       {node.extraction && <Badge variant="outline">Extraction</Badge>}
                       {row.length > 1 && (
-                        <Badge variant="outline">Branch {node.lane === 0 ? 'A' : 'B'}</Badge>
+                        <Badge variant="outline">
+                          Branch {String.fromCharCode(65 + node.lane)}
+                        </Badge>
                       )}
                     </div>
                     <p className="mt-1 text-xs text-ink-subtle">
                       {node.terminal ? 'End of the run' : `→ ${next.join(', ')}`}
-                      {node.rewardBandId ? ` · pays band “${node.rewardBandId}”` : ''}
+                      {node.reward
+                        ? ' · pays its own reward'
+                        : node.rewardBandId
+                          ? ` · pays band “${node.rewardBandId}”`
+                          : ''}
+                      {node.restHealBasisPoints !== undefined
+                        ? ` · heals ${node.restHealBasisPoints / 100}%`
+                        : ''}
                     </p>
                   </div>
                 );

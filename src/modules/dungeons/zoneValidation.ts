@@ -17,9 +17,19 @@
  *      any failed seed is an error. On a disabled zone it is a warning, so a
  *      zone can always be saved switched off while it is being worked on.
  *
+ * An **authored** zone has no generator to reason about: steps 3 and 4 are
+ * replaced by the layout's own rules (`authoredLayout.ts` — one start, one
+ * final room, no loops, nothing unreachable) and by each room's references.
+ * Layout problems are errors on an enabled zone and warnings on a disabled
+ * one, for the same reason trial runs are.
+ *
+ * Messages are written for the author: they name rooms by what they are
+ * called and say what to do, never a document path.
+ *
  * Pure: the caller supplies the content, tables and currencies to check against.
  */
 import { DungeonGenerationError } from '../../shared/errors';
+import { analyseAuthoredLayout, roomLabel, validateAuthoredLayout } from './authoredLayout';
 import {
   eligiblePoolEntries,
   extractionWindowsOf,
@@ -31,9 +41,13 @@ import {
   DUNGEON_POOL_KEYS,
   DUNGEON_WEIGHTED_NODE_TYPES,
   DungeonZoneDefinitionSchema,
+  authoredLayoutOf,
   depthInRange,
+  isEnemyNodeType,
+  layoutModeOf,
   possibleFinalDepths,
   restRulesOf,
+  rewardBandFor,
   type DungeonNodeType,
   type DungeonZoneDefinition,
 } from './zoneDefinition';
@@ -70,6 +84,60 @@ export interface DungeonZoneValidation {
   issues: DungeonZoneIssue[];
 }
 
+/** What a schema path is called on the editor, so a shape error reads as a sentence. */
+const FIELD_LABELS: readonly (readonly [RegExp, string])[] = [
+  [/^key$/, 'Key'],
+  [/^name$/, 'Name'],
+  [/^description$/, 'Description'],
+  [/^order$/, 'Order'],
+  [/^tags/, 'Tags'],
+  [/^availableRegions/, 'Available in'],
+  [/^artworkAssetId$|^artworkPath$/, 'Zone cover'],
+  [/^backgroundAssetId$|^backgroundArtworkPath$/, 'Default background'],
+  [/^backgrounds/, 'Background pool'],
+  [/^generation\.minNodes$/, 'Shortest run'],
+  [/^generation\.maxNodes$/, 'Longest run'],
+  [/^generation\.branching/, 'Branching'],
+  [/^generation\.extraction/, 'Extraction'],
+  [/^generation\.rest/, 'Rest rules'],
+  [/^generation\.nodeWeights/, 'Room type weights'],
+  [/^generation\.depthRanges/, 'Room type depths'],
+  [/^generation\.required/, 'Guarantees'],
+  [/^generation\.limits/, 'Limits'],
+  [/^generation\.firstNodeType/, 'First room'],
+  [/^generation/, 'Generation rules'],
+  [/^nodeSettings\.rest/, 'Rest heal'],
+  [/^pools\.(\w+)/, 'Enemy and event pools'],
+  [/^rewards\.bands/, 'Reward bands'],
+  [/^rewards\.completion/, 'Completion bonus'],
+  [/^rewards\.extraction/, 'Extraction bonus'],
+  [/^rewards/, 'Rewards'],
+  [/^authored\.startRoomId/, 'Start room'],
+];
+
+/**
+ * A schema issue in the author's terms: `Room "Repair Bay": …` for anything
+ * inside a room, the editor's own label for a field it shows, and the bare
+ * message otherwise. The path is kept beside it for the editor to place it.
+ */
+function describeSchemaIssue(input: unknown, path: readonly (string | number)[], message: string): string {
+  const text = zodIssuePath(path);
+  if (path[0] === 'authored' && path[1] === 'rooms' && typeof path[2] === 'number') {
+    const room = (input as { authored?: { rooms?: unknown[] } } | null)?.authored?.rooms?.[path[2]] as
+      | { id?: unknown; name?: unknown }
+      | undefined;
+    const called =
+      typeof room?.name === 'string' && room.name.trim() !== ''
+        ? room.name.trim()
+        : typeof room?.id === 'string' && room.id !== ''
+          ? room.id
+          : `#${path[2] + 1}`;
+    return `Room "${called}": ${message}`;
+  }
+  const label = FIELD_LABELS.find(([pattern]) => pattern.test(text))?.[1];
+  return label ? `${label}: ${message}` : message;
+}
+
 /** Seeds the trial runs use. Fixed, so validating the same zone twice agrees. */
 export const ZONE_TRIAL_SEEDS = 200;
 
@@ -90,7 +158,7 @@ export function validateDungeonZone(input: unknown, ctx: DungeonZoneValidationCo
       zone: null,
       issues: parsed.error.issues.map((i) => ({
         path: zodIssuePath(i.path),
-        message: i.message,
+        message: describeSchemaIssue(input, i.path, i.message),
         severity: 'error',
       })),
     };
@@ -101,12 +169,18 @@ export function validateDungeonZone(input: unknown, ctx: DungeonZoneValidationCo
   const error = (path: string, message: string) => issues.push({ path, message, severity: 'error' });
   const warning = (path: string, message: string) => issues.push({ path, message, severity: 'warning' });
 
-  const finalDepths = possibleFinalDepths(gen);
+  const authored = layoutModeOf(zone) === 'authored';
+  const layout = authored ? analyseAuthoredLayout(zone) : null;
+  /** How deep a run goes. An authored layout too broken to measure constrains nothing. */
+  const finalDepths = layout
+    ? (layout.routeLength ?? { min: 1, max: Number.POSITIVE_INFINITY })
+    : possibleFinalDepths(gen);
   /** The deepest depth a non-final node can ever sit at. */
   const deepestInterior = finalDepths.max - 1;
 
   // ── 2. references ─────────────────────────────────────────────────────────
-  for (const poolKey of DUNGEON_POOL_KEYS) {
+  // Pools feed the generator; an authored zone keeps them but never draws from them.
+  for (const poolKey of authored ? [] : DUNGEON_POOL_KEYS) {
     const lookup = poolKey === 'event' ? ctx.catalogue.events : ctx.catalogue.enemies;
     const what = poolKey === 'event' ? 'event' : 'enemy';
     zone.pools[poolKey].forEach((entry, i) => {
@@ -133,7 +207,8 @@ export function validateDungeonZone(input: unknown, ctx: DungeonZoneValidationCo
   zone.rewards.bands.forEach((band, i) => {
     checkTable(`rewards.bands[${i}].rewardTable`, band.rewardTable);
     checkTable(`rewards.bands[${i}].equipmentRewardTable`, band.equipmentRewardTable);
-    if (band.enabled && band.minDepth > finalDepths.max) {
+    // Depth tuning is a generator concern: an authored layout pays what its rooms say.
+    if (!authored && band.enabled && band.minDepth > finalDepths.max) {
       warning(`rewards.bands[${i}].minDepth`, `no run reaches depth ${band.minDepth} (the deepest is ${finalDepths.max})`);
     }
   });
@@ -176,6 +251,11 @@ export function validateDungeonZone(input: unknown, ctx: DungeonZoneValidationCo
     checkAsset('backgroundAssetId', zone.backgroundAssetId);
     zone.backgrounds.forEach((bg, i) => checkAsset(`backgrounds[${i}].assetId`, bg.assetId));
   }
+  if (authored) {
+    validateAuthoredRooms(zone, ctx, issues);
+    return { zone, issues };
+  }
+
   zone.backgrounds.forEach((bg, i) => {
     if (bg.enabled && bg.minDepth > finalDepths.max) {
       warning(`backgrounds[${i}].minDepth`, `no run reaches depth ${bg.minDepth} (the deepest is ${finalDepths.max})`);
@@ -267,6 +347,19 @@ export function validateDungeonZone(input: unknown, ctx: DungeonZoneValidationCo
     error('generation.extraction.nodeTypes', 'a guaranteed extraction point needs a node type that offers extraction');
   }
 
+  const firstType = gen.firstNodeType ?? null;
+  if (firstType !== null && !nodeTypeAllowedAtDepth(zone, firstType, 1, ctx.catalogue)) {
+    error(
+      'generation.firstNodeType',
+      `Every run is set to start with a ${firstType} room, but a ${firstType} cannot be placed first: ` +
+        (firstType === 'exit'
+          ? 'an Exit is only legal from the extraction depth'
+          : firstType === 'rest'
+            ? 'the Rest rules do not allow a Rest at depth 1'
+            : `nothing in its pool or reward bands is available at depth 1, or its depth range starts later`),
+    );
+  }
+
   const isRequired = (type: DungeonNodeType) => gen.required.some((g) => g.types.includes(type));
   /** Whether `type` can be placed at any interior depth of any run. */
   const placeable = (type: DungeonNodeType): boolean => {
@@ -353,4 +446,71 @@ export function validateDungeonZone(input: unknown, ctx: DungeonZoneValidationCo
   }
 
   return { zone, issues };
+}
+
+/**
+ * An authored zone's rooms: the layout's own rules, then what each room names.
+ *
+ * A reference to something that does not exist is always an error. Everything
+ * else — a broken layout, a disabled enemy — is an error on an enabled zone
+ * and a warning on a disabled one, so a layout can be saved while it is being
+ * built and cannot be switched on until it is whole.
+ */
+function validateAuthoredRooms(
+  zone: DungeonZoneDefinition,
+  ctx: DungeonZoneValidationContext,
+  issues: DungeonZoneIssue[],
+): void {
+  const draft: DungeonZoneIssue['severity'] = zone.enabled ? 'error' : 'warning';
+  for (const issue of validateAuthoredLayout(zone)) issues.push({ ...issue, severity: draft });
+
+  const { depths } = analyseAuthoredLayout(zone);
+  authoredLayoutOf(zone).rooms.forEach((room, i) => {
+    const at = `authored.rooms[${i}]`;
+    const called = `Room "${roomLabel(room)}"`;
+    const push = (path: string, message: string, severity: DungeonZoneIssue['severity']) =>
+      issues.push({ path: `${at}.${path}`, message, severity });
+
+    if (isEnemyNodeType(room.type) && room.enemyKey !== null) {
+      const enemy = ctx.catalogue.enemies.get(room.enemyKey);
+      if (!enemy) push('enemyKey', `${called} uses an enemy that no longer exists — choose another.`, 'error');
+      else if (!enemy.enabled) push('enemyKey', `${called} uses ${enemy.name}, which is disabled — choose another enemy.`, draft);
+    }
+    if (room.type === 'event' && room.eventKey !== null) {
+      const event = ctx.catalogue.events.get(room.eventKey);
+      if (!event) push('eventKey', `${called} uses an event that no longer exists — choose another.`, 'error');
+      else if (!event.enabled) push('eventKey', `${called} uses ${event.name}, which is disabled — choose another event.`, draft);
+    }
+
+    for (const field of ['rewardTable', 'equipmentRewardTable'] as const) {
+      const id = room.reward?.[field] ?? null;
+      if (id === null) continue;
+      const table = ctx.rewardTables.get(id);
+      if (!table) push(`reward.${field}`, `${called} pays from reward table "${id}", which does not exist.`, 'error');
+      else if (!table.enabled) push(`reward.${field}`, `${called} pays from reward table "${id}", which is disabled — it pays nothing.`, 'warning');
+    }
+    const depth = depths.get(room.id);
+    if (room.type === 'reward' && room.reward === null && depth !== undefined) {
+      if (rewardBandFor(zone.rewards.bands, 'reward', depth) === null) {
+        push('reward', `${called} is a Reward room that pays nothing — give it a reward, or add a default reward for Reward rooms.`, 'warning');
+      }
+    }
+
+    if (ctx.assets) {
+      const slots = [
+        ['backgroundAssetId', room.backgroundAssetId, 'background'],
+        ['scene.spriteAssetId', room.scene?.spriteAssetId ?? null, 'enemy sprite'],
+        ['scene.artworkAssetId', room.scene?.artworkAssetId ?? null, 'enemy artwork'],
+      ] as const;
+      for (const [field, id, what] of slots) {
+        if (id === null) continue;
+        const asset = ctx.assets.get(id);
+        if (!asset || asset.status === 'deleted') {
+          push(field, `${called}: its ${what} no longer exists — choose another or clear it.`, 'error');
+        } else if (asset.status === 'disabled') {
+          push(field, `${called}: its ${what} "${asset.name}" is disabled, so the default is shown instead.`, 'warning');
+        }
+      }
+    }
+  });
 }

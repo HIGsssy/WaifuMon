@@ -286,11 +286,9 @@ const previewFor = (seed: number): DungeonPreview => ({
 let issues: DungeonZoneIssue[];
 let currency: ProgressionCurrency;
 let updateSpy: MockInstance<typeof api.updateDungeonZone>;
-let createSpy: MockInstance<typeof api.createDungeonZone>;
 let enabledSpy: MockInstance<typeof api.setDungeonZoneEnabled>;
 let currencySpy: MockInstance<typeof api.updateProgressionCurrency>;
 let previewSpy: MockInstance<typeof api.previewDungeon>;
-let validateSpy: MockInstance<typeof api.validateDungeonZone>;
 let artworkSpy: MockInstance<typeof api.dungeonArtworkBlob>;
 let browseSpy: MockInstance<typeof api.browseDungeonArtwork>;
 let settings: api.DungeonSettings;
@@ -375,14 +373,14 @@ beforeEach(() => {
   // The editor's scene preview lists enemy sprites; this zone's enemies have none.
   vi.spyOn(artworkApi, 'listEnemyArtwork').mockImplementation(async () => ({ enemies: [] }));
   vi.spyOn(artworkApi, 'scenePreviewBlob').mockImplementation(async () => new Blob(['scene']));
-  validateSpy = vi.spyOn(api, 'validateDungeonZone').mockImplementation(async () => ({ issues }));
+  vi.spyOn(api, 'validateDungeonZone').mockImplementation(async () => ({ issues }));
   updateSpy = vi.spyOn(api, 'updateDungeonZone').mockImplementation(async (_key, zone, rev) => ({
     ...DETAIL,
     zone,
     name: zone.name,
     revision: rev + 1,
   }));
-  createSpy = vi.spyOn(api, 'createDungeonZone').mockImplementation(async (zone) => ({
+  vi.spyOn(api, 'createDungeonZone').mockImplementation(async (zone) => ({
     ...DETAIL,
     key: zone.key,
     name: zone.name,
@@ -428,7 +426,6 @@ function renderAt(path: string, permissions = ['dungeons.read', 'dungeons.write'
     <Routes>
       <Route path="/admin/dungeons" element={<DungeonsListPage />} />
       <Route path="/admin/dungeons/preview" element={<DungeonPreviewPage />} />
-      <Route path="/admin/dungeons/new" element={<DungeonZoneEditorPage />} />
       <Route path="/admin/dungeons/zones/:key" element={<DungeonZoneEditorPage />} />
     </Routes>,
     { wrapper: Wrapper },
@@ -457,8 +454,11 @@ describe('zone list', () => {
     expect(first.getByRole('link', { name: 'Scrapheap Gauntlet' })).toHaveAttribute('href', EDITOR);
     expect(first.getByText('Enabled')).toBeInTheDocument();
     expect(first.getByText('Shipped')).toBeInTheDocument();
-    expect(first.getByText(/6–9 nodes · 3 pools \(4 entries\) · 1 depth band/)).toBeInTheDocument();
-    expect(first.getByText(/Revision 3 · updated .* by seed/)).toBeInTheDocument();
+    expect(first.getByTestId('zone-glance')).toHaveTextContent(
+      'Procedural · Flaccid Foothills · 6–9 rooms',
+    );
+    expect(first.getByTestId('zone-mode-badge')).toHaveTextContent('Procedural');
+    expect(first.getByText(/revision 3 · updated .* by seed/)).toBeInTheDocument();
     expect(within(rows[1]!).getByText('Disabled')).toBeInTheDocument();
     expect(within(rows[1]!).getByText('Portal only')).toBeInTheDocument();
   });
@@ -466,9 +466,7 @@ describe('zone list', () => {
   it('shows where each zone is available, by region name', async () => {
     renderAt('/admin/dungeons');
     await waitFor(() =>
-      expect(screen.getAllByTestId('zone-regions')[0]).toHaveTextContent(
-        'Available in: Flaccid Foothills',
-      ),
+      expect(screen.getAllByTestId('zone-regions')[0]).toHaveTextContent('Flaccid Foothills'),
     );
   });
 
@@ -615,39 +613,38 @@ describe('zone editor', () => {
     await waitFor(() =>
       expect(screen.getByTestId('validation-status')).toHaveTextContent('No unsaved changes.'),
     );
-    expect(screen.getByRole('button', { name: 'Save zone' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Save dungeon' })).toBeDisabled();
   });
 
   it('saves the rest heal as basis points', async () => {
     const user = renderAt(EDITOR);
     await type(user, 'Rest heals (% of max HP)', '45');
     await readyToSave();
-    await user.click(screen.getByRole('button', { name: 'Save zone' }));
+    await user.click(screen.getByRole('button', { name: 'Save dungeon' }));
     await waitFor(() => expect(updateSpy).toHaveBeenCalledTimes(1));
     expect(savedZone().nodeSettings).toEqual({ rest: { healBasisPoints: 4500 } });
   });
 
-  it('is organised into named sections', async () => {
+  it('is organised into named sections: basics first, generator tuning last', async () => {
     renderAt(EDITOR);
     await screen.findByTestId('zone-fields');
     const titles = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent);
     expect(titles).toEqual([
       'Basics',
-      'Availability',
-      'Zone Artwork',
-      'Background Pool',
-      'Scene Rules',
-      'Layout',
-      'Extraction',
-      'Rest & Recovery',
-      'Node types & weights',
+      'Artwork',
+      'Run length & branching',
+      'Fixed rooms',
       'Combat pool',
       'Elite pool',
       'Miniboss pool',
       'Boss pool',
       'Event pool',
+      'Rest & Recovery',
+      'Extraction',
       'Rewards',
-      'Advanced rules',
+      'Backgrounds',
+      'Room types & weights',
+      'Guarantees & limits',
     ]);
   });
 
@@ -660,7 +657,7 @@ describe('zone editor', () => {
     await user.click(section.getByLabelText('Available in Thirstlands'));
     await user.click(section.getByLabelText('Available in Waifu Valley'));
     await readyToSave();
-    await user.click(screen.getByRole('button', { name: 'Save zone' }));
+    await user.click(screen.getByRole('button', { name: 'Save dungeon' }));
     await waitFor(() => expect(updateSpy).toHaveBeenCalledTimes(1));
     expect(savedZone().availableRegions).toEqual([
       'waifu-valley',
@@ -682,7 +679,9 @@ describe('zone editor', () => {
     await user.click(section.getByLabelText('Available in Flaccid Foothills'));
     expect(section.getByText(/No region selected/)).toBeInTheDocument();
     expect(await section.findByText(/choose at least one region/)).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Save zone' })).toBeDisabled());
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Save dungeon' })).toBeDisabled(),
+    );
   });
 
   it('keeps a region the catalogue no longer has visible, so it can be removed', async () => {
@@ -696,7 +695,7 @@ describe('zone editor', () => {
     expect(section.getByText('(unknown region)')).toBeInTheDocument();
     await user.click(section.getByLabelText('Available in sunken-mall'));
     await readyToSave();
-    await user.click(screen.getByRole('button', { name: 'Save zone' }));
+    await user.click(screen.getByRole('button', { name: 'Save dungeon' }));
     await waitFor(() => expect(updateSpy).toHaveBeenCalledTimes(1));
     expect(savedZone().availableRegions).toEqual(['flaccid-foothills']);
   });
@@ -737,7 +736,7 @@ describe('zone editor', () => {
       await background.findByTestId('zone-artwork-background-preview-missing'),
     ).toHaveTextContent('No file at dungeons/backgrounds/scrapheap_gauntlet.webp yet');
     await readyToSave();
-    await user.click(screen.getByRole('button', { name: 'Save zone' }));
+    await user.click(screen.getByRole('button', { name: 'Save dungeon' }));
     await waitFor(() => expect(updateSpy).toHaveBeenCalledTimes(1));
     expect(savedZone().backgroundArtworkPath).toBe('dungeons/backgrounds/scrapheap_gauntlet.webp');
     // Clear puts it back to "no artwork".
@@ -773,9 +772,11 @@ describe('zone editor', () => {
     ];
     await type(user, 'Artwork path', '../secrets.webp');
     expect(
-      await within(screen.getByTestId('zone-artwork')).findByText(/no "\.\." segments/),
+      await within(screen.getByTestId('zone-internal')).findByText(/no "\.\." segments/),
     ).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Save zone' })).toBeDisabled());
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Save dungeon' })).toBeDisabled(),
+    );
     expect(updateSpy).not.toHaveBeenCalled();
   });
 
@@ -786,17 +787,19 @@ describe('zone editor', () => {
     expect(section.getByLabelText('Maximum Rest nodes')).toHaveValue(2);
     expect(section.getByLabelText('Earliest Rest depth')).toHaveValue(2);
     expect(section.getByLabelText('Latest Rest depth')).toHaveValue(null);
-    expect(section.getByLabelText('Always Rest before final Boss')).not.toBeChecked();
-    expect(section.getByText(/Guarantees the final approach is Rest → Boss/)).toBeInTheDocument();
+    // Rest → Boss is a fixed room, set beside the other two.
+    const anchors = within(screen.getByTestId('zone-anchors'));
+    expect(anchors.getByLabelText('Always Rest before final Boss')).not.toBeChecked();
+    expect(anchors.getByText(/Guarantees the final approach is Rest → Boss/)).toBeInTheDocument();
 
     await type(user, 'Minimum Rest nodes', '2');
     await type(user, 'Maximum Rest nodes', '3');
     await type(user, 'Earliest Rest depth', '3');
     await type(user, 'Latest Rest depth', '8');
-    await user.click(section.getByLabelText('Always Rest before final Boss'));
+    await user.click(anchors.getByLabelText('Always Rest before final Boss'));
     await type(user, 'Rest heals (% of max HP)', '35');
     await readyToSave();
-    await user.click(screen.getByRole('button', { name: 'Save zone' }));
+    await user.click(screen.getByRole('button', { name: 'Save dungeon' }));
     await waitFor(() => expect(updateSpy).toHaveBeenCalledTimes(1));
     expect(savedZone().generation.rest).toEqual({
       minNodes: 2,
@@ -810,7 +813,7 @@ describe('zone editor', () => {
     await type(user, 'Maximum Rest nodes', '');
     await type(user, 'Latest Rest depth', '');
     await readyToSave();
-    await user.click(screen.getByRole('button', { name: 'Save zone' }));
+    await user.click(screen.getByRole('button', { name: 'Save dungeon' }));
     await waitFor(() => expect(updateSpy).toHaveBeenCalledTimes(2));
     expect(updateSpy.mock.calls[1]![1].generation.rest).toMatchObject({
       maxNodes: null,
@@ -829,13 +832,13 @@ describe('zone editor', () => {
     const section = within(await screen.findByTestId('zone-rest'));
     expect(section.getByLabelText('Minimum Rest nodes')).toHaveValue(0);
     expect(section.getByLabelText('Maximum Rest nodes')).toHaveValue(null);
-    expect(section.getByLabelText('Always Rest before final Boss')).not.toBeChecked();
+    expect(screen.getByLabelText('Always Rest before final Boss')).not.toBeChecked();
     expect(
       within(screen.getByTestId('zone-availability')).getByText(/No region selected/),
     ).toBeInTheDocument();
   });
 
-  it('shows an impossible Rest rule in Rest & Recovery and refuses to save', async () => {
+  it('shows an impossible Rest → Boss rule beside that switch and refuses to save', async () => {
     const user = renderAt(EDITOR);
     issues = [
       {
@@ -847,15 +850,20 @@ describe('zone editor', () => {
     ];
     await type(user, 'Latest Rest depth', '6');
     await user.click(screen.getByLabelText('Always Rest before final Boss'));
-    const section = within(screen.getByTestId('zone-rest'));
+    const section = within(screen.getByTestId('zone-anchors'));
     expect(
       await section.findByText(/the rest depth range excludes depth 7, 8/),
     ).toBeInTheDocument();
-    // Shown once, where it belongs — not repeated in the save summary.
+    // Shown once, where it belongs — not repeated under Rest or in the save summary.
+    expect(
+      within(screen.getByTestId('zone-rest')).queryByText(/excludes depth 7, 8/),
+    ).not.toBeInTheDocument();
     expect(
       within(screen.getByTestId('zone-save')).queryByText(/excludes depth 7, 8/),
     ).not.toBeInTheDocument();
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Save zone' })).toBeDisabled());
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Save dungeon' })).toBeDisabled(),
+    );
   });
 
   it('round-trips regions, artwork and Rest rules through save and reload', async () => {
@@ -864,7 +872,7 @@ describe('zone editor', () => {
     await user.click(screen.getByLabelText('Always Rest before final Boss'));
     await type(user, 'Background artwork path', 'dungeons/backgrounds/scrapheap_gauntlet.webp');
     await readyToSave();
-    await user.click(screen.getByRole('button', { name: 'Save zone' }));
+    await user.click(screen.getByRole('button', { name: 'Save dungeon' }));
     await waitFor(() =>
       expect(updateSpy).toHaveBeenCalledWith('scrapheap_gauntlet', expect.anything(), 3),
     );
@@ -880,7 +888,7 @@ describe('zone editor', () => {
     // A second save carries the new revision.
     await user.click(screen.getByLabelText('Available in Thirstlands'));
     await readyToSave();
-    await user.click(screen.getByRole('button', { name: 'Save zone' }));
+    await user.click(screen.getByRole('button', { name: 'Save dungeon' }));
     await waitFor(() =>
       expect(updateSpy).toHaveBeenLastCalledWith('scrapheap_gauntlet', expect.anything(), 4),
     );
@@ -900,9 +908,9 @@ describe('zone editor', () => {
     await user.click(await screen.findByLabelText('Available in Thirstlands'));
     await user.click(screen.getByLabelText('Always Rest before final Boss'));
     await readyToSave();
-    await user.click(screen.getByRole('button', { name: 'Save zone' }));
+    await user.click(screen.getByRole('button', { name: 'Save dungeon' }));
     expect(await screen.findByTestId('stale-banner')).toHaveTextContent('revision 4');
-    expect(screen.getByRole('button', { name: 'Save zone' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Save dungeon' })).toBeDisabled();
     // Reloading shows their version: the unsaved region and rule are gone.
     await user.click(screen.getByRole('button', { name: 'Reload latest version' }));
     await waitFor(() => expect(screen.queryByTestId('stale-banner')).not.toBeInTheDocument());
@@ -919,7 +927,7 @@ describe('zone editor', () => {
     await user.click(screen.getByLabelText('Window 1 required in every run'));
     await type(user, 'Window 2 min depth', '6');
     await readyToSave();
-    await user.click(screen.getByRole('button', { name: 'Save zone' }));
+    await user.click(screen.getByRole('button', { name: 'Save dungeon' }));
     await waitFor(() => expect(updateSpy).toHaveBeenCalledTimes(1));
     expect(savedZone().generation.extraction).toEqual({
       minDepth: 4,
@@ -948,7 +956,7 @@ describe('zone editor', () => {
     await user.click(screen.getByLabelText('Reward never twice in a row'));
     await user.click(screen.getByLabelText('Extraction offered at: Reward'));
     await readyToSave();
-    await user.click(screen.getByRole('button', { name: 'Save zone' }));
+    await user.click(screen.getByRole('button', { name: 'Save dungeon' }));
 
     await waitFor(() => expect(updateSpy).toHaveBeenCalledTimes(1));
     expect(updateSpy.mock.calls[0]![0]).toBe('scrapheap_gauntlet');
@@ -987,7 +995,7 @@ describe('zone editor', () => {
     await user.click(screen.getByLabelText('Guarantee 2 of: Event'));
     await user.click(screen.getByRole('button', { name: 'Remove limit 1' }));
     await readyToSave();
-    await user.click(screen.getByRole('button', { name: 'Save zone' }));
+    await user.click(screen.getByRole('button', { name: 'Save dungeon' }));
 
     await waitFor(() => expect(updateSpy).toHaveBeenCalledTimes(1));
     const gen = savedZone().generation;
@@ -1021,7 +1029,7 @@ describe('zone editor', () => {
       1,
     );
     await readyToSave();
-    await user.click(screen.getByRole('button', { name: 'Save zone' }));
+    await user.click(screen.getByRole('button', { name: 'Save dungeon' }));
 
     await waitFor(() => expect(updateSpy).toHaveBeenCalledTimes(1));
     const pools = savedZone().pools;
@@ -1079,7 +1087,7 @@ describe('zone editor', () => {
     await type(user, 'Completion bonus currency min', '8');
     await type(user, 'Completion bonus currency max', '8');
     await readyToSave();
-    await user.click(screen.getByRole('button', { name: 'Save zone' }));
+    await user.click(screen.getByRole('button', { name: 'Save dungeon' }));
 
     await waitFor(() => expect(updateSpy).toHaveBeenCalledTimes(1));
     const rewards = savedZone().rewards;
@@ -1154,7 +1162,7 @@ describe('zone editor', () => {
     expect(
       within(screen.getByTestId('zone-save')).getByText(/trial runs could not be generated/),
     ).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Save zone' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Save dungeon' })).toBeDisabled();
     expect(updateSpy).not.toHaveBeenCalled();
   });
 
@@ -1165,7 +1173,7 @@ describe('zone editor', () => {
     const user = renderAt(EDITOR);
     await type(user, 'Zone name', 'Changed');
     await readyToSave();
-    await user.click(screen.getByRole('button', { name: 'Save zone' }));
+    await user.click(screen.getByRole('button', { name: 'Save dungeon' }));
     await waitFor(() => expect(updateSpy).toHaveBeenCalledTimes(1));
   });
 
@@ -1181,12 +1189,12 @@ describe('zone editor', () => {
     const user = renderAt(EDITOR);
     await type(user, 'Zone name', 'My edit');
     await readyToSave();
-    await user.click(screen.getByRole('button', { name: 'Save zone' }));
+    await user.click(screen.getByRole('button', { name: 'Save dungeon' }));
 
     const banner = await screen.findByTestId('stale-banner');
     expect(banner).toHaveTextContent('revision 4');
     expect(banner).toHaveTextContent('saved by 222');
-    expect(screen.getByRole('button', { name: 'Save zone' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Save dungeon' })).toBeDisabled();
 
     vi.mocked(api.getDungeonZone).mockResolvedValue({
       ...DETAIL,
@@ -1200,36 +1208,9 @@ describe('zone editor', () => {
     // The next save names the revision that was reloaded.
     await type(user, 'Zone name', 'Merged by hand');
     await readyToSave();
-    await user.click(screen.getByRole('button', { name: 'Save zone' }));
+    await user.click(screen.getByRole('button', { name: 'Save dungeon' }));
     await waitFor(() => expect(updateSpy).toHaveBeenCalledTimes(2));
     expect(updateSpy.mock.calls[1]![2]).toBe(4);
-  });
-
-  it('creates a zone under a key that is typed once, and only checks a usable key', async () => {
-    const user = renderAt('/admin/dungeons/new');
-    expect(await screen.findByTestId('validation-status')).toHaveTextContent(
-      'Give the zone a lower_snake_case key',
-    );
-    expect(screen.getByRole('button', { name: 'Create zone' })).toBeDisabled();
-    await type(user, 'Zone key', 'Rust Warrens');
-    expect(validateSpy).not.toHaveBeenCalled();
-
-    await type(user, 'Zone key', 'rust_warrens');
-    await type(user, 'Zone name', 'Rust Warrens');
-    await readyToSave();
-    await user.click(screen.getByRole('button', { name: 'Create zone' }));
-    await waitFor(() => expect(createSpy).toHaveBeenCalledTimes(1));
-    expect(createSpy.mock.calls[0]![0]).toMatchObject({
-      key: 'rust_warrens',
-      name: 'Rust Warrens',
-      enabled: false,
-    });
-    // Once created, the editor moves to the saved zone, where the key is fixed text.
-    await waitFor(() =>
-      expect(api.getDungeonZone).toHaveBeenCalledWith('rust_warrens', expect.anything()),
-    );
-    expect(await screen.findByTestId('zone-key')).toBeInTheDocument();
-    expect(screen.queryByLabelText('Zone key')).not.toBeInTheDocument();
   });
 
   it('previews the unsaved draft without saving it', async () => {
@@ -1247,7 +1228,7 @@ describe('zone editor', () => {
     expect(await screen.findByLabelText('Zone name')).toBeDisabled();
     expect(screen.getByLabelText('Combat weight')).toBeDisabled();
     expect(screen.getByLabelText('Combat pool 1 enemy')).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Save zone' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Save dungeon' })).toBeDisabled();
     expect(screen.queryByRole('button', { name: 'Add enemy' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Add depth band' })).not.toBeInTheDocument();
     expect(screen.getByText('You do not have write permission.')).toBeInTheDocument();

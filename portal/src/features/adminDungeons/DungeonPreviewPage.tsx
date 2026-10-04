@@ -1,10 +1,15 @@
 /**
- * Admin — Dungeon generation preview: generate one run of a saved zone and
- * look at it, or generate hundreds and look at the distribution.
+ * Admin — Preview dungeon: see the run graph of a saved dungeon exactly as a
+ * player's run would get it.
  *
- * A dry run. It calls the same generator a real run will and persists
- * nothing — no player run is created. The same seed always produces the same
- * graph, so a seed worth discussing can be pasted to someone else.
+ *   - **Procedural** — generate one run from a seed, or hundreds and look at
+ *     the distribution. The same seed always produces the same graph, so a
+ *     seed worth discussing can be pasted to someone else.
+ *   - **Room by room** — there is nothing to generate: the layout is shown as
+ *     it is, with the layout check beside it. No seed, no simulation.
+ *
+ * A dry run either way. It builds the graph the way a real run does and
+ * persists nothing — no player run is created.
  */
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
@@ -14,6 +19,8 @@ import {
   DUNGEONS_QUERY_KEY,
   DUNGEON_NODE_TYPES,
   MAX_DUNGEON_SEED,
+  getDungeonZone,
+  layoutModeOf,
   listDungeonZones,
   previewDungeon,
   simulateDungeon,
@@ -29,6 +36,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { selectClass } from '@/features/adminEncounters/EntitySelect';
 import { DungeonGraphView } from './DungeonGraphView';
 import { NODE_TYPE_LABELS, formatPercent } from './dungeonModel';
+import { Issues } from './zoneFormParts';
 
 const SIMULATION_RUNS = 1000;
 
@@ -84,6 +92,13 @@ export function DungeonPreviewPage() {
   });
   const zones = zonesQuery.data?.zones ?? [];
   const zoneKey = params.get('zone') ?? zones[0]?.key ?? '';
+  const authored = zones.some((z) => z.key === zoneKey && layoutModeOf(z) === 'authored');
+  // A room-by-room dungeon is checked rather than simulated: its saved problems, if any.
+  const layoutCheck = useQuery({
+    queryKey: [...DUNGEONS_QUERY_KEY, 'zone', zoneKey],
+    queryFn: ({ signal }) => getDungeonZone(zoneKey, signal),
+    enabled: authored,
+  });
   const [seedText, setSeedText] = useState(params.get('seed') ?? '');
   const { seed, error: seedError } = parseSeed(seedText);
 
@@ -109,8 +124,8 @@ export function DungeonPreviewPage() {
   return (
     <div className="space-y-4">
       <PageHeader
-        title="Dungeon generation preview"
-        description="A dry run of the generator. Nothing is saved and no player run is created."
+        title="Preview dungeon"
+        description="A dry run: the rooms a player would walk. Nothing is saved and no player run is created."
         actions={
           <Button variant="outline" asChild>
             <Link to="/admin/dungeons">Back to dungeons</Link>
@@ -127,7 +142,7 @@ export function DungeonPreviewPage() {
         />
       )}
       {zonesQuery.data && zones.length === 0 && (
-        <Card className="p-6 text-center text-sm text-ink-muted">No dungeon zones to preview.</Card>
+        <Card className="p-6 text-center text-sm text-ink-muted">No dungeons to preview.</Card>
       )}
 
       {zones.length > 0 && (
@@ -149,47 +164,79 @@ export function DungeonPreviewPage() {
                 ))}
               </select>
             </label>
-            <label className="text-xs text-ink-muted">
-              Seed
-              <Input
-                aria-label="Seed"
-                className="w-44 font-mono"
-                inputMode="numeric"
-                placeholder="random"
-                value={seedText}
-                onChange={(e) => setSeedText(e.target.value)}
-              />
-            </label>
-            <Button
-              type="button"
-              variant="accent"
-              disabled={preview.isPending || seedError !== null}
-              onClick={() => generate(seed)}
-            >
-              {seedText.trim() === '' ? 'Generate with a random seed' : 'Generate this seed'}
-            </Button>
-            {seed !== undefined && (
+            {authored ? (
               <Button
                 type="button"
-                variant="outline"
+                variant="accent"
                 disabled={preview.isPending}
-                onClick={() => generate(undefined)}
+                onClick={() => preview.mutate(undefined)}
               >
-                New random seed
+                Show layout
               </Button>
+            ) : (
+              <>
+                <label className="text-xs text-ink-muted">
+                  Seed
+                  <Input
+                    aria-label="Seed"
+                    className="w-44 font-mono"
+                    inputMode="numeric"
+                    placeholder="random"
+                    value={seedText}
+                    onChange={(e) => setSeedText(e.target.value)}
+                  />
+                </label>
+                <Button
+                  type="button"
+                  variant="accent"
+                  disabled={preview.isPending || seedError !== null}
+                  onClick={() => generate(seed)}
+                >
+                  {seedText.trim() === '' ? 'Generate with a random seed' : 'Generate this seed'}
+                </Button>
+                {seed !== undefined && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={preview.isPending}
+                    onClick={() => generate(undefined)}
+                  >
+                    New random seed
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={simulation.isPending}
+                  onClick={() => simulation.mutate()}
+                >
+                  {simulation.isPending
+                    ? 'Simulating…'
+                    : `Simulate ${SIMULATION_RUNS.toLocaleString()} runs`}
+                </Button>
+              </>
             )}
-            <Button
-              type="button"
-              variant="outline"
-              disabled={simulation.isPending}
-              onClick={() => simulation.mutate()}
-            >
-              {simulation.isPending
-                ? 'Simulating…'
-                : `Simulate ${SIMULATION_RUNS.toLocaleString()} runs`}
-            </Button>
           </div>
-          {seedError && <p className="text-xs text-danger">{seedError}</p>}
+          {!authored && seedError && <p className="text-xs text-danger">{seedError}</p>}
+          {authored && (
+            <p className="text-xs text-ink-muted" data-testid="authored-preview-note">
+              This dungeon is built room by room: every run walks the same rooms, so there is no
+              seed to choose and nothing to simulate.
+            </p>
+          )}
+        </Card>
+      )}
+
+      {authored && layoutCheck.data && (
+        <Card className="space-y-2 p-4" data-testid="layout-check">
+          <h2 className="text-sm font-semibold uppercase text-ink-muted">Layout check</h2>
+          {layoutCheck.data.issues.length === 0 ? (
+            <p className="text-sm text-ink">
+              No problems: one start, one final room, every room reachable, no loops.
+            </p>
+          ) : (
+            <Issues issues={layoutCheck.data.issues} />
+          )}
         </Card>
       )}
 

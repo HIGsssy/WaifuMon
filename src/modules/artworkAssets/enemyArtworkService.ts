@@ -99,6 +99,27 @@ export function resolveEnemyVisual(
   };
 }
 
+type ManagedEnemyArtwork = Pick<EnemyArtworkOverride, 'artworkAssetId' | 'spriteAssetId' | 'spritePlacement'>;
+
+/**
+ * An authored room's override laid over the enemy's managed artwork, field by
+ * field: the room's value where it set one, else the enemy's. The result goes
+ * through {@link resolveEnemyVisual}, so the whole precedence reads
+ *
+ *     room override  →  enemy managed  →  enemy shipped  →  system default
+ */
+export function roomEnemyArtwork(
+  managed: ManagedEnemyArtwork | null | undefined,
+  room: Partial<ManagedEnemyArtwork> | null | undefined,
+): ManagedEnemyArtwork | null {
+  if (!room) return managed ?? null;
+  return {
+    artworkAssetId: room.artworkAssetId ?? managed?.artworkAssetId ?? null,
+    spriteAssetId: room.spriteAssetId ?? managed?.spriteAssetId ?? null,
+    spritePlacement: room.spritePlacement ?? managed?.spritePlacement ?? null,
+  };
+}
+
 function toOverride(row: CombatEnemyArtworkRow): EnemyArtworkOverride {
   const placement = row.spritePlacement ? SpritePlacementSchema.safeParse(row.spritePlacement) : null;
   return {

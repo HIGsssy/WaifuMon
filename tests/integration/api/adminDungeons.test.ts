@@ -826,3 +826,120 @@ describe('generation preview', () => {
     expect(await t.db.select().from(dungeonRuns)).toEqual([]);
   });
 });
+
+describe('layout modes', () => {
+  const EXAMPLE = 'service_tunnel_example';
+
+  it('lists each zone with its layout mode, and an authored one with its room count and cover', async () => {
+    const list = data<{ zones: Record<string, unknown>[] }>(await call('GET', '/admin/dungeons/zones'));
+    expect(list.zones.find((z) => z.key === ZONE)).toMatchObject({
+      layoutMode: 'procedural',
+      roomCount: null,
+      minNodes: 6,
+      maxNodes: 9,
+      artworkPath: 'dungeons/zones/scrapheap_gauntlet.webp',
+      artworkAssetId: null,
+    });
+    expect(list.zones.find((z) => z.key === EXAMPLE)).toMatchObject({
+      layoutMode: 'authored',
+      enabled: false,
+      roomCount: 8,
+      minNodes: 7,
+      maxNodes: 7,
+      origin: 'shipped',
+      tags: ['authoring_example', 'initial_tuning'],
+    });
+  });
+
+  it('serves the shipped example with its rooms and no problems', async () => {
+    const detail = await getZone(EXAMPLE);
+    expect(detail.issues).toEqual([]);
+    expect(detail.zone.authored.startRoomId).toBe('tunnel_mouth');
+    expect(detail.zone.authored.rooms.map((r: Zone) => r.type)).toEqual([
+      'combat', 'event', 'combat', 'rest', 'elite', 'reward', 'rest', 'boss',
+    ]);
+  });
+
+  it('creates a room-by-room zone from nothing but basics and rooms', async () => {
+    const res = await call('POST', '/admin/dungeons/zones', {
+      zone: {
+        key: 'wizard_made',
+        name: 'Wizard Made',
+        enabled: false,
+        availableRegions: ['flaccid-foothills'],
+        layoutMode: 'authored',
+        authored: {
+          startRoomId: 'start',
+          rooms: [
+            { id: 'start', name: 'Start', type: 'combat', enemyKey: 'scrapyard_drone', next: ['boss'] },
+            { id: 'boss', name: 'Boss', type: 'boss', enemyKey: 'scrapheap_colossus' },
+          ],
+        },
+        rewards: { defeatCurrencyRetentionBasisPoints: 2500 },
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(data<Record<string, unknown>>(res)).toMatchObject({ layoutMode: 'authored', roomCount: 2, origin: 'custom', issues: [] });
+  });
+
+  it('previews an authored zone as its layout, the same for every seed', async () => {
+    const one = data<Record<string, any>>(await call('POST', '/admin/dungeons/preview', { key: EXAMPLE, seed: 1 }));
+    const two = data<Record<string, any>>(await call('POST', '/admin/dungeons/preview', { key: EXAMPLE, seed: 2 }));
+    expect(one.layoutMode).toBe('authored');
+    expect(one.graph.nodes.map((n: Zone) => n.name)).toEqual([
+      'Tunnel Mouth', 'Maintenance Console', 'Pump Room', 'Repair Bay', 'Security Post', 'Salvage Cache', 'Antechamber', 'Far Gate',
+    ]);
+    expect(one.graph.nodes.find((n: Zone) => n.roomId === 'antechamber').restHealBasisPoints).toBe(2000);
+    expect(one.graph.nodes.find((n: Zone) => n.roomId === 'far_gate').reward).toMatchObject({ currency: { min: 10, max: 15 } });
+    expect(two.graph.nodes).toEqual(one.graph.nodes);
+    // The example ships with no artwork of its own: its rooms have no background until one is uploaded.
+    expect(one.structure.scenes.nodes.n1.background).toBeNull();
+    // Give the draft a default background and every room without its own inherits it.
+    const withArt = { ...clone((await getZone(EXAMPLE)).zone), backgroundArtworkPath: 'dungeons/backgrounds/service_tunnel_example.webp' };
+    const drawn = data<Record<string, any>>(await call('POST', '/admin/dungeons/preview', { zone: withArt, seed: 1 }));
+    expect(drawn.structure.scenes.nodes.n1.background).toEqual({
+      entryId: 'zone_default',
+      assetId: null,
+      artworkPath: 'dungeons/backgrounds/service_tunnel_example.webp',
+    });
+    expect(data<Record<string, any>>(await call('POST', '/admin/dungeons/preview', { key: ZONE, seed: 1 })).layoutMode).toBe('procedural');
+  });
+
+  it('answers a broken draft with what is wrong, in words an author can act on', async () => {
+    const zone = clone((await getZone(EXAMPLE)).zone);
+    zone.authored.rooms[6].next = ['nowhere'];
+    const res = await call('POST', '/admin/dungeons/preview', { zone });
+    expect(res.statusCode).toBe(400);
+    expect(errorOf(res).details!.issues).toEqual(
+      expect.arrayContaining([expect.objectContaining({ path: 'authored.rooms[6].next', message: 'Room "Antechamber" points to a room that no longer exists.' })]),
+    );
+  });
+
+  it('does not simulate generation for an authored zone', async () => {
+    const res = await call('POST', '/admin/dungeons/simulate', { key: EXAMPLE, runs: 10 });
+    expect(res.statusCode).toBe(400);
+    expect(errorOf(res).code).toBe('VALIDATION_ERROR');
+  });
+
+  it('refuses an unconfirmed change of layout mode with 400, and applies a confirmed one', async () => {
+    const created = data<Detail>(await call('POST', '/admin/dungeons/zones', { zone: await draft('mode_switch', (z) => (z.enabled = false)) }));
+    const zone = { ...clone(created.zone), layoutMode: 'authored', authored: clone((await getZone(EXAMPLE)).zone.authored) };
+    const refused = await call('PUT', '/admin/dungeons/zones/mode_switch', { zone, expectedRevision: created.revision });
+    expect(refused.statusCode).toBe(400);
+    expect(errorPaths(refused)).toEqual(['layoutMode']);
+    const confirmed = await call('PUT', '/admin/dungeons/zones/mode_switch', {
+      zone,
+      expectedRevision: created.revision,
+      confirmLayoutChange: true,
+    });
+    expect(confirmed.statusCode).toBe(200);
+    expect(data<Record<string, any>>(confirmed)).toMatchObject({ layoutMode: 'authored', roomCount: 8 });
+    expect(data<Detail>(confirmed).zone.generation).toEqual(created.zone.generation);
+  });
+
+  it('keeps Scrapheap procedural and unedited after all of the above', async () => {
+    const detail = await getZone();
+    expect(detail.zone.layoutMode).toBe('procedural');
+    expect(detail.zone.authored).toEqual({ startRoomId: null, rooms: [] });
+  });
+});

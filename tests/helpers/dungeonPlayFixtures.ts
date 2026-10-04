@@ -20,6 +20,12 @@ import { createLocalArtworkStorage } from '../../src/modules/artworkAssets/artwo
 import { createEnemyArtworkService, type EnemyArtworkService } from '../../src/modules/artworkAssets/enemyArtworkService';
 import { createSceneCompositionService, type SceneCompositionService } from '../../src/modules/artworkAssets/sceneComposition';
 import type { DungeonZoneDefinitionInput } from '../../src/modules/dungeons/zoneDefinition';
+
+/** A procedural zone document: the generator's blocks are always written out. */
+export type PlayZoneDoc = DungeonZoneDefinitionInput & {
+  generation: NonNullable<DungeonZoneDefinitionInput['generation']>;
+  pools: NonNullable<DungeonZoneDefinitionInput['pools']>;
+};
 import { players, species as speciesTable } from '../../src/db/schema';
 import { CombatEnemyDefinitionSchema, type CombatEnemyDefinition } from '../../src/modules/combat/enemyDefinitions';
 import type { LoadedContent } from '../../src/modules/content/schemas';
@@ -102,8 +108,8 @@ const TABLES = [
  *   any node   2 currency          reward node  5 currency + gear + 11 WaifuBux + 2 items
  *   boss      10 currency          completion   7 currency
  */
-export function playZoneDoc(key: string, patch: (zone: DungeonZoneDefinitionInput) => void = () => {}): DungeonZoneDefinitionInput {
-  const zone: DungeonZoneDefinitionInput = {
+export function playZoneDoc(key: string, patch: (zone: PlayZoneDoc) => void = () => {}): PlayZoneDoc {
+  const zone: PlayZoneDoc = {
     key,
     name: `Zone ${key}`,
     description: 'For tests.',
@@ -152,6 +158,44 @@ export function playZoneDoc(key: string, patch: (zone: DungeonZoneDefinitionInpu
   return zone;
 }
 
+/**
+ * The base *authored* test zone — the same payouts as {@link playZoneDoc},
+ * laid out by hand:
+ *
+ *   entrance (fight)  →  pit (trap event)  →  camp (rest 10%, extraction)
+ *        →  post (elite, pays 4)  |  vault (reward, pays 5 + gear + loot)
+ *        →  landing (rest, the zone's 30%)  →  throne (boss)
+ *
+ *   entrance 2 (band)   post 4 / vault 5   boss 10 (band)   completion 7
+ */
+export function authoredZoneDoc(key: string, patch: (zone: DungeonZoneDefinitionInput) => void = () => {}): DungeonZoneDefinitionInput {
+  const { generation: _generation, pools: _pools, ...base } = playZoneDoc(key);
+  const zone: DungeonZoneDefinitionInput = {
+    ...base,
+    layoutMode: 'authored',
+    authored: {
+      startRoomId: 'entrance',
+      rooms: [
+        { id: 'entrance', name: 'Entrance', type: 'combat', enemyKey: 'grunt', next: ['pit'] },
+        { id: 'pit', name: 'Pit', type: 'event', eventKey: 'trap', next: ['camp'] },
+        { id: 'camp', name: 'Camp', type: 'rest', healBasisPoints: 1000, extraction: true, next: ['post', 'vault'] },
+        { id: 'post', name: 'Guard Post', type: 'elite', enemyKey: 'sentinel', next: ['landing'], reward: { currency: { min: 4, max: 4 } } },
+        {
+          id: 'vault',
+          name: 'Vault',
+          type: 'reward',
+          next: ['landing'],
+          reward: { rewardTable: LOOT_TABLE, equipmentRewardTable: GEAR_TABLE, currency: { min: 5, max: 5 } },
+        },
+        { id: 'landing', name: 'Landing', type: 'rest', next: ['throne'] },
+        { id: 'throne', name: 'Throne', type: 'boss', enemyKey: 'overlord' },
+      ],
+    },
+  };
+  patch(zone);
+  return zone;
+}
+
 export interface DungeonWorld {
   t: TestDb;
   app: App;
@@ -175,7 +219,7 @@ export interface DungeonWorld {
   /** A fresh, eligible player. `buddy`, `unlocked` and `starters` default to true. */
   player(opts?: { buddy?: boolean; unlocked?: boolean; starters?: boolean }): Promise<{ playerId: number; buddyId: number | null }>;
   /** Create a zone from {@link playZoneDoc}. */
-  zone(key: string, patch?: (zone: DungeonZoneDefinitionInput) => void): Promise<void>;
+  zone(key: string, patch?: (zone: PlayZoneDoc) => void): Promise<void>;
   /** The first seed from 1 whose graph for `zoneKey` satisfies `accept`. */
   seedFor(zoneKey: string, accept: (graph: DungeonGraph) => boolean): Promise<number>;
   balance(playerId: number): Promise<number>;
