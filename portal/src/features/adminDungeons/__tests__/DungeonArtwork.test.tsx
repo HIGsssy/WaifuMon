@@ -552,6 +552,7 @@ describe('scene rules and preview', () => {
         background: { assetId: caveBg.id, artworkPath: null },
         sprite: { assetId: droneSprite.id, artworkPath: null },
         placement,
+        playerBuddy: {},
       }),
     );
 

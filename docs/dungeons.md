@@ -1067,7 +1067,7 @@ path (`src/discord/dungeonArtwork.ts`):
 
 | Screen | 1 | 2 | 3 | 4 | 5 | 6 |
 | --- | --- | --- | --- | --- | --- | --- |
-| Fight (combat, elite, miniboss, boss) | the node's background with the enemy's **sprite** composed over it | the enemy's full artwork | the node's background alone | zone artwork | zone background | text only |
+| Fight (combat, elite, miniboss, boss) | the node's background with the run's **Buddy** (left) and the enemy's **sprite** composed over it | the enemy's full artwork | the node's background alone | zone artwork | zone background | text only |
 | Event, Rest, Cache, Exit | the event's own artwork | the node's background alone | zone artwork | zone background | text only | |
 | Zone screen (before Start) | zone artwork | zone background | text only | | | |
 | Delve home, no run | the first listed zone's artwork, then its background, then the next zone's | | text only | | | |
@@ -1077,7 +1077,13 @@ path (`src/discord/dungeonArtwork.ts`):
 pool when the run was generated; for the composed scene, a node that drew none
 uses the zone background. A zone with no pool and enemies with no sprites
 behaves exactly as before: enemy artwork, zone artwork, zone background, text.
-An enemy is never composed onto a node that is not a fight. Only events have
+An enemy is never composed onto a node that is not a fight.
+
+The Buddy in a fight scene is a reserved runtime actor, not authored content:
+the species comes from the run's fighter snapshot, the image from
+`assets/waifumon/<slug>/<slug>_sprite.webp`, and the position (bottom-left) from
+the compositor. A species without that file simply is not drawn. See
+[managed-artwork.md](managed-artwork.md#sprites-backgrounds-and-scenes). Only events have
 artwork of their own among the non-combat nodes.
 
 The Buddy is the thumbnail on every screen: the run's **snapshotted** Buddy

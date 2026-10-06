@@ -5,6 +5,11 @@
  * screen uses — the Portal draws nothing itself — so what an admin sees here
  * is the image a player gets. There is no drag-and-drop: placement is a
  * preset, a scale and two offsets.
+ *
+ * A scene with an enemy sprite is a fight, and a fight also shows the player's
+ * Buddy in the reserved left side. She is not authored and has no controls
+ * here; the preview draws a stand-in so an enemy placed on top of her is seen,
+ * and says so when the server measures a collision.
  */
 import { useState } from 'react';
 
@@ -14,7 +19,9 @@ import {
   SPRITE_ANCHORS,
   SPRITE_ANCHOR_LABELS,
   scenePreviewBlob,
+  scenePreviewBuddy,
   type ArtworkLayerRef,
+  type ScenePreviewBuddy,
   type ScenePreviewRequest,
   type SpriteAnchor,
   type SpritePlacement,
@@ -125,7 +132,6 @@ export function PlacementControls({
 
 const hasImage = (ref: ArtworkLayerRef | null | undefined) =>
   Boolean(ref?.assetId || ref?.artworkPath);
-const loadScene = (source: string) => scenePreviewBlob(JSON.parse(source) as ScenePreviewRequest);
 
 /** The composed scene for a background and (optionally) a sprite. */
 export function ScenePreview({
@@ -143,14 +149,24 @@ export function ScenePreview({
     ? {
         background: background!,
         ...(hasImage(sprite)
-          ? { sprite: sprite!, placement: placement ?? DEFAULT_SPRITE_PLACEMENT }
+          ? { sprite: sprite!, placement: placement ?? DEFAULT_SPRITE_PLACEMENT, playerBuddy: {} }
           : {}),
       }
     : null;
+  // What the server said about the Buddy in the picture for one request.
+  const [drawn, setDrawn] = useState<{ source: string; buddy: ScenePreviewBuddy | null } | null>(
+    null,
+  );
+  const loadScene = async (from: string) => {
+    const blob = await scenePreviewBlob(JSON.parse(from) as ScenePreviewRequest);
+    setDrawn({ source: from, buddy: scenePreviewBuddy(blob) });
+    return blob;
+  };
   // The request is the source: any change to it is a new picture. Debounced so
   // nudging an offset does not render a scene per keystroke.
   const source = useDebouncedValue(request ? JSON.stringify(request) : null, 300);
   const { width, height } = FALLBACK_ARTWORK_META.scene;
+  const buddy = drawn && drawn.source === source ? drawn.buddy : null;
   return (
     <div className="space-y-1" data-testid={testId}>
       <AuthoredArtwork
@@ -168,6 +184,18 @@ export function ScenePreview({
         Rendered by the server exactly as Discord shows it: {width}×{height}. The sprite keeps its
         proportions and never leaves the frame.
       </p>
+      {buddy && (
+        <p className="text-xs text-ink-subtle" data-testid={`${testId}-buddy`}>
+          The player’s Buddy always stands bottom-left; it is not placed here. Shown with a stand-in
+          sprite ({buddy.speciesSlug}) — a run shows the player’s own.
+        </p>
+      )}
+      {buddy?.collision && (
+        <p className="text-xs text-danger" role="alert" data-testid={`${testId}-buddy-collision`}>
+          This sprite covers about {buddy.overlapPercent}% of the player’s Buddy. Move it right, or
+          scale it down, so both can be seen.
+        </p>
+      )}
     </div>
   );
 }

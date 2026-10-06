@@ -203,6 +203,29 @@ sprite.
 Width follows from the sprite's own aspect ratio — it is never stretched — and
 the result is clamped inside the canvas.
 
+**The player's Buddy.** A fight scene has one more actor, and it is not
+authored anywhere — not on a zone, a room or an enemy, and not in the enemy
+catalogue. It is resolved at render time:
+
+| | |
+| --- | --- |
+| Who | the run's fighter snapshot — `dungeon_runs.fighter.speciesSlug`, frozen at run start. Changing the active Buddy mid-run changes nothing. |
+| Image | the species' dungeon sprite, by convention: `assets/waifumon/<slug>/<slug>_sprite.webp` (`speciesDungeonSpritePath`). It is the `AssetId` variant `<slug>_sprite` in the existing species artwork layout — no second registry, no stored path. |
+| Where | the reserved player side: `PLAYER_BUDDY_PLACEMENT` — `bottom-left`, 80% of the scene's height, no offsets — through the same `layoutSprite` arithmetic as an enemy (`layoutPlayerBuddy`). |
+| Bound | never wider than 40% of the canvas (`PLAYER_BUDDY_MAX_WIDTH_SHARE`); a wide sprite shrinks in proportion and stays on the floor line. |
+
+Both constants live in `scenePlacement.ts`; moving her is changing them and
+nothing else. A species with no sprite file is left out of the scene — the
+frame still renders, `dungeons/buddy-sprite-missing` is logged once per species
+with the slug and the expected path, and her card art is **never** substituted.
+A sprite file that will not decode is handled the same way
+(`scene/player-buddy-omitted`).
+
+Enemy placement is unchanged: all six anchors remain. An enemy at its default
+(`bottom-right`) never touches her. One authored into the left side is allowed
+and drawn over her; the scene preview draws a stand-in Buddy and warns when the
+enemy's box covers 15% or more of hers (`PLAYER_BUDDY_COLLISION_SHARE`).
+
 **Background pool.** A zone's `backgrounds` is a list of
 `{ id, assetId | artworkPath, weight, enabled, minDepth, maxDepth }` — each
 names exactly one image, managed or shipped. When a run is **generated**, every
@@ -213,8 +236,12 @@ stream — and therefore every existing seed's graph — is untouched. A node no
 background covers uses the zone background.
 
 **Composition** (`sceneComposition.ts`) is independent of dungeons: it takes a
-background layer, an optional sprite layer with a placement, and an output
-size, and returns a cached raster.
+background layer, an optional sprite layer with a placement, an optional
+player-Buddy layer, and an output size, and returns a cached raster.
+
+- **Layer order**, bottom to top (`SCENE_LAYER_ORDER`): background → player
+  Buddy → enemy sprite. There are no scene overlays; combat text and controls
+  are the Discord embed's, outside the image.
 
 - **Direct raster composition with `sharp`** — not SVG. No SVG document is
   built and no uploaded markup is ever interpreted; layout is integers from
@@ -222,7 +249,8 @@ size, and returns a cached raster.
 - **Output**: 1200×675 (16:9) WebP — the one canonical scene size. The
   background is scaled to cover and cropped, the sprite scaled by height.
 - **Cache**: `sha256(renderer version, background hash, sprite hash,
-  placement, output size)` names a file under `ART_CACHE_DIR`. The same inputs
+  placement, output size)` — plus the Buddy sprite's hash and her reserved
+  layout when she is in the scene — names a file under `ART_CACHE_DIR`. The same inputs
   reuse it; a replaced asset has a new hash and so a new key. Nothing is
   rendered up front. The directory can be emptied at any time — a missing file
   is rendered again. Concurrent requests for one scene share one render.
@@ -239,12 +267,13 @@ packages. No browser renderer is involved.
 
 | Screen | 1 | 2 | 3 | 4 | 5 | 6 |
 | --- | --- | --- | --- | --- | --- | --- |
-| Fight | background + enemy sprite, composed | enemy full artwork | the node's background alone | zone artwork | zone background | text |
+| Fight | background + the run's Buddy + enemy sprite, composed | enemy full artwork | the node's background alone | zone artwork | zone background | text |
 | Event, rest, reward, exit | the event's own artwork | the node's background alone | zone artwork | zone background | text | |
 
 For the composed scene the background is the node's snapshotted one, else the
-zone background. An enemy is never composed onto a non-combat node. The Buddy
-remains the thumbnail.
+zone background. Neither an enemy nor the Buddy is composed onto a non-combat
+node, and a fight that falls back past the composed scene (an enemy with no
+sprite) shows no Buddy sprite either. Her card art remains the thumbnail.
 
 **Snapshots.** When a run starts it records, in `dungeon_runs.zone_snapshot`:
 `scenes` (each node's chosen background — pool entry id, asset id or path) and
@@ -308,7 +337,7 @@ Under `/api/v1/admin`.
 | PATCH | `/artwork/assets/:id` | `artwork.write` | `{ name?, category? }` |
 | PUT | `/artwork/assets/:id/enabled` | `artwork.write` | `{ enabled }` → asset and its references |
 | DELETE | `/artwork/assets/:id` | `artwork.write` | 409 while referenced |
-| POST | `/artwork/scene-preview` | `artwork.read` | `{ background, sprite?, placement? }` → WebP |
+| POST | `/artwork/scene-preview` | `artwork.read` | `{ background, sprite?, placement?, playerBuddy?: { speciesSlug? } }` → WebP. With `playerBuddy`, a Buddy is drawn in the reserved side (the named species, else the first with a sprite) and `x-scene-player-buddy`, `-overlap` (0–100) and `-collision` headers report her and the enemy's overlap |
 | PUT | `/enemies/:key` | `enemies.write` | an enemy save carries `artworkAssetId`, `spriteAssetId`, `spritePlacement` ([enemies.md](enemies.md#admin-api)) |
 
 ## Not built yet

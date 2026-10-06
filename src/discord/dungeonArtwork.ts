@@ -10,7 +10,8 @@
  * ## Precedence — a fight (combat, elite, miniboss, boss)
  *
  *   1. the **composed scene**: the node's snapshotted background (else the
- *      zone background) with the enemy's sprite layered over it;
+ *      zone background) with the run's Buddy on the reserved left side and
+ *      the enemy's sprite layered over it;
  *   2. the enemy's full artwork;
  *   3. the node's snapshotted background on its own;
  *   4. the zone artwork;
@@ -25,8 +26,19 @@
  *   4. the zone background;
  *   5. text only.
  *
- * An enemy is never composed onto a node that is not a fight. The Buddy stays
- * the thumbnail throughout; that is the caller's.
+ * An enemy is never composed onto a node that is not a fight — and neither is
+ * the Buddy: she is in the picture only where the composed fight scene is.
+ * Her card art stays the thumbnail throughout; that is the caller's.
+ *
+ * ## The player's Buddy
+ *
+ * A reserved runtime actor, never authored into a zone, room or enemy. Who she
+ * is comes from the run's fighter snapshot (`view.fighter.speciesSlug`, frozen
+ * at start — never the player's live active Buddy), her image from the species
+ * sprite convention `waifumon/<slug>/<slug>_sprite.webp`, and where she stands
+ * from the compositor (`layoutPlayerBuddy`). A species with no sprite file is
+ * logged once and the scene is composed without her; her card art is never
+ * substituted.
  *
  * Which background a node has, which sprite an enemy has and where it stands
  * all come from the run's snapshot (`DungeonRunView`), so a screen never
@@ -37,7 +49,9 @@ import path from 'node:path';
 import { AttachmentBuilder } from 'discord.js';
 import { ARTWORK_MIME_EXTENSIONS } from '../modules/artworkAssets/imageInspection';
 import type { SpritePlacement } from '../modules/artworkAssets/scenePlacement';
-import { resolveArtworkLayer, type ArtworkRef } from '../modules/artworkAssets/sceneLayers';
+import type { SceneLayer } from '../modules/artworkAssets/sceneComposition';
+import { playerBuddySpriteLayer, resolveArtworkLayer, type ArtworkRef } from '../modules/artworkAssets/sceneLayers';
+import { speciesDungeonSpritePath } from '../modules/assets/speciesArtworkFile';
 import { locateCombatArtwork } from '../modules/combat/combatArtwork';
 import type { DungeonRunView } from '../modules/dungeons/dungeonPlayService';
 import type { TrialArtwork } from './combatTrialPresenter';
@@ -71,11 +85,30 @@ async function plainArtwork(ctx: ArtContext, ref: ArtworkRef): Promise<TrialArtw
   return (await managedArtwork(ctx, ref.assetId)) ?? shippedArtwork(ctx, ref.artworkPath);
 }
 
-/** A background, optionally with a sprite over it, through the shared compositor. */
+/** Species already warned about, so a missing sprite is one log line, not one per screen. */
+const warnedMissingBuddySprites = new Set<string>();
+
+/** The run's Buddy as a scene layer, from the species sprite convention. Null — and a warning — when she has none. */
+function playerBuddyActor(ctx: ArtContext, speciesSlug: string | null | undefined): { layer: SceneLayer; label: string } | null {
+  if (!speciesSlug) return null;
+  const layer = playerBuddySpriteLayer(ctx.config.assetsDir, speciesSlug);
+  if (layer) return { layer, label: speciesSlug };
+  if (!warnedMissingBuddySprites.has(speciesSlug)) {
+    warnedMissingBuddySprites.add(speciesSlug);
+    ctx.logger.warn(
+      { tag: 'dungeons/buddy-sprite-missing', speciesSlug, expectedPath: speciesDungeonSpritePath(speciesSlug) },
+      'dungeon Buddy sprite not found — fight scenes for this species render without her',
+    );
+  }
+  return null;
+}
+
+/** A background, optionally with a sprite (and the player's Buddy) over it, through the shared compositor. */
 async function composedArtwork(
   ctx: ArtContext,
   backgrounds: readonly (ArtworkRef | null | undefined)[],
   sprite?: { ref: ArtworkRef; placement: SpritePlacement },
+  playerBuddy?: { layer: SceneLayer; label: string } | null,
 ): Promise<TrialArtwork | null> {
   const scenes = ctx.services.sceneComposition;
   if (!scenes) return null;
@@ -89,6 +122,7 @@ async function composedArtwork(
     const scene = await scenes.compose({
       background,
       sprite: spriteLayer && sprite ? { layer: spriteLayer, placement: sprite.placement } : null,
+      playerBuddy: playerBuddy ?? null,
     });
     if (scene) return attachment(scene.absolutePath, `dungeon-scene-${scene.cacheKey.slice(0, 16)}.webp`);
   }
@@ -152,7 +186,12 @@ export async function dungeonRunSceneArtwork(ctx: ArtContext, view: DungeonRunVi
     return firstArtwork(ctx, [
       () =>
         sprite.assetId || sprite.artworkPath
-          ? composedArtwork(ctx, [nodeBackground, zoneBackground], { ref: sprite, placement: visual.spritePlacement })
+          ? composedArtwork(
+              ctx,
+              [nodeBackground, zoneBackground],
+              { ref: sprite, placement: visual.spritePlacement },
+              playerBuddyActor(ctx, view.fighter?.speciesSlug),
+            )
           : null,
       () => plainArtwork(ctx, { assetId: visual.artworkAssetId, artworkPath: visual.artworkPath }),
       ...tail,

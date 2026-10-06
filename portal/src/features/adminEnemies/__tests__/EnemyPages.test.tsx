@@ -866,6 +866,7 @@ describe('enemy editor', () => {
         background: { assetId: nightBg.id },
         sprite: { assetId: droneSprite.id, artworkPath: null },
         placement: { anchor: 'bottom-left', scaleBasisPoints: 6000, offsetX: 40, offsetY: 0 },
+        playerBuddy: {},
       }),
     );
     expect(await placement.findByTestId('scene-preview-image')).toBeInTheDocument();
@@ -886,6 +887,38 @@ describe('enemy editor', () => {
     await save(user);
     await waitFor(() => expect(updateSpy).toHaveBeenCalledTimes(2));
     expect(savedEnemy().spritePlacement).toBeNull();
+  });
+
+  it('shows the reserved player Buddy in the preview and flags an enemy placed over her', async () => {
+    const buddySpy = vi.spyOn(artworkApi, 'scenePreviewBuddy').mockReturnValue(null);
+    const user = renderAt(HOUND);
+    const placement = within(await screen.findByTestId('enemy-placement'));
+    await user.click(placement.getByRole('button', { name: 'Select preview background' }));
+    await user.click(
+      await within(await screen.findByRole('dialog')).findByTestId(`asset-card-${nightBg.id}`),
+    );
+    // A fight preview always asks for the Buddy; she is never one of the placement controls.
+    await waitFor(() =>
+      expect(sceneSpy).toHaveBeenLastCalledWith(expect.objectContaining({ playerBuddy: {} })),
+    );
+    expect(await placement.findByTestId('scene-preview-image')).toBeInTheDocument();
+    // Nothing reported (no sprite deployed for any species): no note, no warning.
+    expect(placement.queryByTestId('scene-preview-buddy')).not.toBeInTheDocument();
+
+    // Clear of her: the note, without a warning.
+    buddySpy.mockReturnValue({ speciesSlug: 'alley_catgirl', overlapPercent: 0, collision: false });
+    await user.click(placement.getByLabelText('Use default placement'));
+    await user.selectOptions(placement.getByLabelText('Sprite position'), 'center');
+    expect(await placement.findByTestId('scene-preview-buddy')).toHaveTextContent('alley_catgirl');
+    expect(placement.queryByTestId('scene-preview-buddy-collision')).not.toBeInTheDocument();
+
+    // Every anchor is still offered; standing on her is flagged, not forbidden.
+    buddySpy.mockReturnValue({ speciesSlug: 'alley_catgirl', overlapPercent: 63, collision: true });
+    await user.selectOptions(placement.getByLabelText('Sprite position'), 'bottom-left');
+    expect(await placement.findByTestId('scene-preview-buddy-collision')).toHaveTextContent('63%');
+    expect(within(placement.getByLabelText('Sprite position')).getAllByRole('option')).toHaveLength(
+      6,
+    );
   });
 
   it('groups usage by the content that names the enemy, linking to dungeons', async () => {

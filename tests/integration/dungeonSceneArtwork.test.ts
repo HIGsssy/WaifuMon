@@ -8,13 +8,16 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import sharp from 'sharp';
+import { and, eq, ne } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { players, species as speciesTable } from '../../src/db/schema';
 import { dungeonRunSceneArtwork, dungeonZoneArtwork } from '../../src/discord/dungeonArtwork';
 import type { AppContext } from '../../src/discord/types';
-import type { SpritePlacement } from '../../src/modules/artworkAssets/scenePlacement';
+import { layoutPlayerBuddy, layoutSprite, type SpritePlacement } from '../../src/modules/artworkAssets/scenePlacement';
 import type { DungeonRunView } from '../../src/modules/dungeons/dungeonPlayService';
 import type { LoadedContent } from '../../src/modules/content/schemas';
 import { createDungeonWorld, type DungeonWorld } from '../helpers/dungeonPlayFixtures';
+import { insertOwnedWaifu } from '../helpers/fixtures';
 import { BLUE, GREEN, RED, isNear, opaqueSprite, pixelAt, solidImage, transparentSprite } from '../helpers/imageFixtures';
 import { silentLogger } from '../helpers/testDb';
 
@@ -365,6 +368,192 @@ describe('snapshot semantics', () => {
     // And with no artwork services wired at all, shipped art still shows.
     const bare = { ...ctx, services: {} } as unknown as AppContext;
     expect((await dungeonRunSceneArtwork(bare, view))!.file.name).toBe('dungeon-grunt.webp');
+  });
+});
+
+describe('the player Buddy in a fight scene', () => {
+  /** A stand-in Buddy sprite: 200×300, so its reserved box is known. */
+  const BUDDY = { width: 200, height: 300 };
+  const buddyBox = layoutPlayerBuddy(BUDDY);
+  const buddyAt = { x: buddyBox.left + Math.floor(buddyBox.width / 2), y: buddyBox.top + Math.floor(buddyBox.height / 2) };
+  const spriteFile = (slug: string) => path.join(assetsDir, 'waifumon', slug, `${slug}_sprite.webp`);
+  const written: string[] = [];
+  const shipSprite = async (slug: string, colour = GREEN) => {
+    fs.mkdirSync(path.dirname(spriteFile(slug)), { recursive: true });
+    fs.writeFileSync(spriteFile(slug), await opaqueSprite(BUDDY.width, BUDDY.height, colour, 'webp'));
+    written.push(slug);
+  };
+  // Every other suite in this file runs with no Buddy sprites deployed.
+  const unship = () => {
+    for (const slug of written.splice(0)) fs.rmSync(path.join(assetsDir, 'waifumon', slug), { recursive: true, force: true });
+  };
+  const RIGHT: SpritePlacement = { anchor: 'bottom-right', scaleBasisPoints: 5000, offsetX: 0, offsetY: 0 };
+  // Its own uploads: an earlier suite deletes the managed store to prove the fallbacks.
+  const own = { bgBlue: '', sprite: '', block: '' };
+  beforeAll(async () => {
+    const up = async (bytes: Buffer, category: Parameters<typeof w.assets.upload>[0]['category'], filename: string) =>
+      (await w.assets.upload({ bytes, category, filename }, 'admin')).id;
+    own.bgBlue = await up(await solidImage(800, 450, BLUE), 'dungeon_background', 'buddy-blue.png');
+    own.sprite = await up(await transparentSprite(300, 300, RED), 'enemy_sprite', 'buddy-grunt-sprite.png');
+    own.block = await up(await opaqueSprite(300, 300, RED), 'enemy_sprite', 'buddy-grunt-block.png');
+  });
+  const capturing = () => {
+    const warnings: Record<string, unknown>[] = [];
+    const logger = { ...silentLogger(), warn: (fields: Record<string, unknown>) => void warnings.push(fields) };
+    return { warnings, ctx: { ...ctx, logger } as unknown as AppContext };
+  };
+
+  it('draws the run’s Buddy — her species’ sprite — on the reserved left side, with the enemy where it was authored', async () => {
+    try {
+      await setEnemyArt('grunt', { spriteAssetId: own.sprite, spritePlacement: RIGHT });
+      await zone('sc_buddy', [{ id: 'blue', weight: 1, assetId: own.bgBlue }]);
+      const { view } = await startOn('sc_buddy');
+      const slug = view.fighter.speciesSlug;
+      expect(slug).toMatch(/^[a-z0-9_]+$/);
+
+      const without = (await picture(view))!;
+      expect(isNear(await colourAt(without.bytes, buddyAt.x, buddyAt.y), BLUE)).toBe(true);
+
+      // The file the convention names, for the species the run snapshotted.
+      await shipSprite(slug);
+      expect(fs.existsSync(path.join(assetsDir, 'waifumon', slug, `${slug}_sprite.webp`))).toBe(true);
+      const scene = (await picture(view))!;
+      expect(scene.name).toMatch(/^dungeon-scene-/);
+      expect(scene.name).not.toBe(without.name);
+      expect(isNear(await colourAt(scene.bytes, buddyAt.x, buddyAt.y), GREEN)).toBe(true);
+      // Left side, on the floor line; nothing of her right of the reserved box.
+      expect(buddyBox.left + buddyBox.width).toBeLessThan(600);
+      expect(isNear(await colourAt(scene.bytes, buddyBox.left + buddyBox.width + 20, buddyAt.y), BLUE)).toBe(true);
+      expect(isNear(await colourAt(scene.bytes, buddyAt.x, buddyBox.top - 20), BLUE)).toBe(true);
+
+      // The enemy is still placed by the authored data alone, same pixels as without her.
+      expect(view.node.enemy!.visual.spritePlacement).toEqual(RIGHT);
+      const enemyBox = layoutSprite({ width: 300, height: 300 }, RIGHT);
+      const enemyAt = [enemyBox.left + Math.floor(enemyBox.width / 2), enemyBox.top + Math.floor(enemyBox.height / 2)] as const;
+      expect(isNear(await colourAt(scene.bytes, ...enemyAt), RED)).toBe(true);
+      expect(isNear(await colourAt(without.bytes, ...enemyAt), RED)).toBe(true);
+
+      // Nothing about her is authored or snapshotted as a path: the run stores who she is.
+      const run = (await w.runs.getRun(view.id))!;
+      expect(JSON.stringify(run.snapshot)).not.toContain('_sprite');
+      expect(JSON.stringify(run.fighter)).not.toContain('_sprite');
+      expect(run.fighter!.speciesSlug).toBe(slug);
+    } finally {
+      unship();
+    }
+  });
+
+  it('composes Buddy under enemy when an author places the enemy into her side', async () => {
+    try {
+      const over: SpritePlacement = { anchor: 'bottom-left', scaleBasisPoints: 3000, offsetX: 0, offsetY: 0 };
+      await setEnemyArt('grunt', { spriteAssetId: own.block, spritePlacement: over });
+      await zone('sc_buddy_z', [{ id: 'blue', weight: 1, assetId: own.bgBlue }]);
+      const { view } = await startOn('sc_buddy_z');
+      await shipSprite(view.fighter.speciesSlug);
+      const scene = (await picture(view))!;
+      const enemyBox = layoutSprite({ width: 300, height: 300 }, over);
+      const x = enemyBox.left + Math.floor(enemyBox.width / 2);
+      // background → Buddy → enemy.
+      expect(isNear(await colourAt(scene.bytes, x, enemyBox.top + Math.floor(enemyBox.height / 2)), RED)).toBe(true);
+      expect(isNear(await colourAt(scene.bytes, x, buddyBox.top + 20), GREEN)).toBe(true);
+      expect(isNear(await colourAt(scene.bytes, 30, 30), BLUE)).toBe(true);
+    } finally {
+      unship();
+      await setEnemyArt('grunt', { spriteAssetId: own.sprite, spritePlacement: CENTER });
+    }
+  });
+
+  it('a species with no sprite still gets its frame: she is left out, with a warning naming the species, never her card art', async () => {
+    await setEnemyArt('grunt', { spriteAssetId: own.sprite, spritePlacement: CENTER });
+    await zone('sc_buddy_missing', [{ id: 'blue', weight: 1, assetId: own.bgBlue }]);
+    const { view } = await startOn('sc_buddy_missing');
+    const ghost = { ...view, fighter: { ...view.fighter, speciesSlug: 'spriteless_species' } } as DungeonRunView;
+    // Card art exists for her; it must not be used as the sprite.
+    fs.mkdirSync(path.join(assetsDir, 'waifumon', 'spriteless_species'), { recursive: true });
+    fs.writeFileSync(path.join(assetsDir, 'waifumon', 'spriteless_species', 'standard.webp'), await solidImage(200, 300, YELLOW, 'webp'));
+    try {
+      const { warnings, ctx: logged } = capturing();
+      const art = (await dungeonRunSceneArtwork(logged, ghost))!;
+      expect(art.file.name).toMatch(/^dungeon-scene-/);
+      const bytes = fs.readFileSync(art.file.attachment as string);
+      expect(isNear(await colourAt(bytes, 600, 337), RED)).toBe(true);
+      expect(isNear(await colourAt(bytes, buddyAt.x, buddyAt.y), BLUE)).toBe(true);
+      expect(warnings).toEqual([
+        expect.objectContaining({
+          tag: 'dungeons/buddy-sprite-missing',
+          speciesSlug: 'spriteless_species',
+          expectedPath: 'waifumon/spriteless_species/spriteless_species_sprite.webp',
+        }),
+      ]);
+      // Once per species, not once per screen.
+      await dungeonRunSceneArtwork(logged, ghost);
+      expect(warnings).toHaveLength(1);
+
+      // A sprite file that is not an image: still a frame, still without her.
+      fs.writeFileSync(spriteFile('spriteless_species'), Buffer.from('not an image'));
+      const broken = (await dungeonRunSceneArtwork(logged, ghost))!;
+      expect(broken.file.name).toBe(art.file.name);
+    } finally {
+      fs.rmSync(path.join(assetsDir, 'waifumon', 'spriteless_species'), { recursive: true, force: true });
+    }
+  });
+
+  it('changing the active Buddy outside the dungeon does not change the Buddy an active run shows', async () => {
+    try {
+      await setEnemyArt('grunt', { spriteAssetId: own.sprite, spritePlacement: RIGHT });
+      await zone('sc_buddy_swap', [{ id: 'blue', weight: 1, assetId: own.bgBlue }]);
+      const { playerId, view } = await startOn('sc_buddy_swap');
+      const started = view.fighter.speciesSlug;
+      const [other] = await w.t.db
+        .select()
+        .from(speciesTable)
+        .where(and(eq(speciesTable.enabled, true), ne(speciesTable.slug, started)))
+        .limit(1);
+      await shipSprite(started, GREEN);
+      await shipSprite(other!.slug, YELLOW);
+      const before = (await picture(view))!;
+      expect(isNear(await colourAt(before.bytes, buddyAt.x, buddyAt.y), GREEN)).toBe(true);
+
+      // The player makes a different WaifuMon their Buddy mid-run.
+      const swapped = await insertOwnedWaifu(w.t.db, { playerId, speciesId: other!.id, level: 5, baseSp: 50, nickname: 'Understudy' });
+      await w.t.db.update(players).set({ buddyWaifuId: swapped.id }).where(eq(players.id, playerId));
+
+      const after = await w.play.run(playerId, view.id);
+      expect(after.fighter).toMatchObject({ speciesSlug: started, waifuId: view.fighter.waifuId });
+      const scene = (await picture(after))!;
+      expect(scene.name).toBe(before.name);
+      expect(isNear(await colourAt(scene.bytes, buddyAt.x, buddyAt.y), GREEN)).toBe(true);
+    } finally {
+      unship();
+    }
+  });
+
+  it('is not drawn on a node that is not a fight, nor where the fight falls back from the composed scene', async () => {
+    try {
+      await setEnemyArt('grunt', { spriteAssetId: own.sprite, spritePlacement: CENTER });
+      await zone('sc_buddy_noncombat', [{ id: 'blue', weight: 1, assetId: own.bgBlue }]);
+      const { view } = await startOn('sc_buddy_noncombat');
+      await shipSprite(view.fighter.speciesSlug);
+      expect(isNear(await colourAt((await picture(view))!.bytes, buddyAt.x, buddyAt.y), GREEN)).toBe(true);
+
+      for (const type of ['rest', 'reward']) {
+        const fresh = await startOn('sc_buddy_noncombat');
+        const at = await advanceTo(fresh.playerId, fresh.view, (v) => v.node.type === type);
+        const scene = (await picture(at))!;
+        expect(scene.name, type).toMatch(/^dungeon-scene-/);
+        for (const [x, y] of [[buddyAt.x, buddyAt.y], [600, 337], [30, 30]] as const) {
+          expect(isNear(await colourAt(scene.bytes, x, y), BLUE), `${type} ${x},${y}`).toBe(true);
+        }
+      }
+
+      // An enemy with no sprite shows its full art, as before — no Buddy pasted onto it.
+      await setEnemyArt('grunt', { spriteAssetId: null, artworkAssetId: null });
+      const next = await startOn('sc_buddy_noncombat');
+      expect((await picture(next.view))!.name).toBe('dungeon-grunt.webp');
+    } finally {
+      unship();
+      await setEnemyArt('grunt', { spriteAssetId: own.sprite, artworkAssetId: null, spritePlacement: CENTER });
+    }
   });
 });
 

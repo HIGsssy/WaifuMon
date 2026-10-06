@@ -1011,6 +1011,7 @@ describe('room artwork', () => {
         background: { assetId: null, artworkPath: 'dungeons/backgrounds/blacksite.webp' },
         sprite: { assetId: droneSprite.id, artworkPath: null },
         placement: { anchor: 'bottom-left', scaleBasisPoints: 7000, offsetX: 10, offsetY: 0 },
+        playerBuddy: {},
       }),
     );
     expect(await editor.findByTestId('room-scene-preview-image')).toBeInTheDocument();

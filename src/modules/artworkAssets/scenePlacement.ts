@@ -16,6 +16,20 @@
  *   - `offsetX` / `offsetY` — pixels in scene space, positive right / down,
  *     applied after the anchor. The result is clamped inside the canvas.
  *
+ * ## The player's Buddy
+ *
+ * A fight scene has one more actor that is **not** authored: the run's Buddy.
+ * She has no placement in any zone, room or enemy — she always stands in the
+ * reserved player side, bottom-left ({@link PLAYER_BUDDY_PLACEMENT}), laid out
+ * by {@link layoutPlayerBuddy} with the same arithmetic as an enemy and one
+ * extra bound: she never grows wider than {@link PLAYER_BUDDY_MAX_WIDTH_SHARE}
+ * of the canvas, so a wide sprite cannot spill into the enemy's side. Moving
+ * her is a change to those two constants and nothing else.
+ *
+ * Enemy placement is untouched: all six anchors stay available. An enemy
+ * authored into the Buddy's side is not refused — {@link layoutOverlapShare}
+ * measures the collision so the preview can show and flag it.
+ *
  * Pure: the compositor, the validators and the Portal preview all read the
  * same numbers from {@link layoutSprite}.
  */
@@ -55,6 +69,21 @@ export type SpritePlacement = z.infer<typeof SpritePlacementSchema>;
 /** An enemy with no authored placement stands bottom-right at 85% height. */
 export const DEFAULT_SPRITE_PLACEMENT: SpritePlacement = SpritePlacementSchema.parse({});
 
+/**
+ * Where the player's Buddy stands in every fight scene: on the floor line at
+ * the left edge, at 80% of the scene's height — a little under an enemy's
+ * default 85%, which suits the full-body 1350px-tall WaifuMon sprites. Fixed;
+ * never authored.
+ */
+export const PLAYER_BUDDY_PLACEMENT: SpritePlacement = SpritePlacementSchema.parse({
+  anchor: 'bottom-left',
+  scaleBasisPoints: 8000,
+});
+/** The widest the Buddy may be drawn, as a share of the canvas: the reserved player side. */
+export const PLAYER_BUDDY_MAX_WIDTH_SHARE = 0.4;
+/** An enemy covering at least this share of the Buddy's box is reported as a collision. */
+export const PLAYER_BUDDY_COLLISION_SHARE = 0.15;
+
 export interface SpriteLayout {
   left: number;
   top: number;
@@ -67,18 +96,21 @@ const clamp = (value: number, min: number, max: number) => Math.min(Math.max(val
 /**
  * The rectangle a sprite of `source` size occupies in a scene of `output`
  * size. Integer pixels, aspect ratio preserved, always fully inside the
- * canvas.
+ * canvas. `bounds.maxWidth` caps the width below the canvas's, shrinking in
+ * proportion like a sprite too wide for the canvas.
  */
 export function layoutSprite(
   source: { width: number; height: number },
   placement: SpritePlacement,
   output: SceneOutputSpec = SCENE_OUTPUT,
+  bounds: { maxWidth?: number } = {},
 ): SpriteLayout {
   const aspect = source.width / source.height;
+  const maxWidth = Math.max(1, Math.min(output.width, bounds.maxWidth ?? output.width));
   let height = Math.max(1, Math.round((output.height * placement.scaleBasisPoints) / 10_000));
   let width = Math.max(1, Math.round(height * aspect));
-  if (width > output.width) {
-    width = output.width;
+  if (width > maxWidth) {
+    width = maxWidth;
     height = Math.max(1, Math.round(width / aspect));
   }
   height = Math.min(height, output.height);
@@ -98,4 +130,22 @@ export function layoutSprite(
     width,
     height,
   };
+}
+
+/** The rectangle the player's Buddy occupies: the reserved left side, whatever her sprite's shape. */
+export function layoutPlayerBuddy(
+  source: { width: number; height: number },
+  output: SceneOutputSpec = SCENE_OUTPUT,
+): SpriteLayout {
+  return layoutSprite(source, PLAYER_BUDDY_PLACEMENT, output, {
+    maxWidth: Math.round(output.width * PLAYER_BUDDY_MAX_WIDTH_SHARE),
+  });
+}
+
+/** How much of `of` the rectangle `by` covers, 0–1. */
+export function layoutOverlapShare(of: SpriteLayout, by: SpriteLayout): number {
+  const w = Math.min(of.left + of.width, by.left + by.width) - Math.max(of.left, by.left);
+  const h = Math.min(of.top + of.height, by.top + by.height) - Math.max(of.top, by.top);
+  if (w <= 0 || h <= 0) return 0;
+  return (w * h) / (of.width * of.height);
 }

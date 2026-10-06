@@ -116,5 +116,34 @@ describe('every helper calls the route the API serves', () => {
     const blob = await api.scenePreviewBlob({ background: { assetId: ID } });
     expect(scene[0]!.url).toBe('POST /api/v1/admin/artwork/scene-preview');
     expect(blob).toBeInstanceOf(Blob);
+    // No Buddy headers: nothing is reported about one.
+    expect(api.scenePreviewBuddy(blob)).toBeNull();
+  });
+
+  it('reads what the server reports about the Buddy drawn into a preview', async () => {
+    server.use(
+      http.post(
+        '/api/v1/admin/artwork/scene-preview',
+        () =>
+          new HttpResponse(new Blob(['bytes']), {
+            headers: {
+              'content-type': 'image/webp',
+              'x-scene-player-buddy': 'alley_catgirl',
+              'x-scene-player-buddy-overlap': '42',
+              'x-scene-player-buddy-collision': 'true',
+            },
+          }),
+      ),
+    );
+    const blob = await api.scenePreviewBlob({
+      background: { assetId: ID },
+      sprite: { assetId: ID },
+      playerBuddy: {},
+    });
+    expect(api.scenePreviewBuddy(blob)).toEqual({
+      speciesSlug: 'alley_catgirl',
+      overlapPercent: 42,
+      collision: true,
+    });
   });
 });

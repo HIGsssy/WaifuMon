@@ -15,7 +15,6 @@ import {
   deleteData,
   getData,
   patchData,
-  postBlob,
   postData,
   putData,
   requestTimeoutMs,
@@ -254,11 +253,48 @@ export interface ScenePreviewRequest {
   background: ArtworkLayerRef;
   sprite?: ArtworkLayerRef | null;
   placement?: SpritePlacement;
+  /**
+   * Draw a Buddy in the reserved player side, as a fight shows her. She is
+   * never authored: the server picks a stand-in unless a species is named.
+   */
+  playerBuddy?: { speciesSlug?: string } | null;
+}
+
+/** What the server reported about the Buddy it drew into a preview. */
+export interface ScenePreviewBuddy {
+  /** The species whose sprite stood in for the player's Buddy. */
+  speciesSlug: string;
+  /** How much of her the enemy sprite covers, 0–100. */
+  overlapPercent: number;
+  /** True when that is enough to count as the enemy standing on her. */
+  collision: boolean;
+}
+
+const previewBuddies = new WeakMap<Blob, ScenePreviewBuddy>();
+
+/** The Buddy drawn into a preview from {@link scenePreviewBlob}; null when there was none. */
+export function scenePreviewBuddy(blob: Blob): ScenePreviewBuddy | null {
+  return previewBuddies.get(blob) ?? null;
 }
 
 /** The composed scene exactly as a player screen would show it. */
-export function scenePreviewBlob(request: ScenePreviewRequest): Promise<Blob> {
-  return postBlob(`${base}/scene-preview`, request);
+export async function scenePreviewBlob(request: ScenePreviewRequest): Promise<Blob> {
+  const response = await apiClient.post<Blob>(`${base}/scene-preview`, request, {
+    responseType: 'blob',
+  });
+  const header = (name: string): string | null => {
+    const value: unknown = (response.headers as Record<string, unknown> | undefined)?.[name];
+    return typeof value === 'string' ? value : null;
+  };
+  const speciesSlug = header('x-scene-player-buddy');
+  if (speciesSlug) {
+    previewBuddies.set(response.data, {
+      speciesSlug,
+      overlapPercent: Number(header('x-scene-player-buddy-overlap')) || 0,
+      collision: header('x-scene-player-buddy-collision') === 'true',
+    });
+  }
+  return response.data;
 }
 
 export function formatBytes(bytes: number): string {

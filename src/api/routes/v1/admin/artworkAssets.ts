@@ -50,10 +50,12 @@ import {
   ARTWORK_MAX_DIMENSION,
   ARTWORK_UPLOAD_MAX_BYTES,
 } from '../../../../modules/artworkAssets/imageInspection';
-import { resolveArtworkLayer } from '../../../../modules/artworkAssets/sceneLayers';
+import { playerBuddySpriteLayer, resolveArtworkLayer } from '../../../../modules/artworkAssets/sceneLayers';
 import {
+  PLAYER_BUDDY_COLLISION_SHARE,
   SCENE_HEIGHT,
   SCENE_WIDTH,
+  layoutOverlapShare,
   SPRITE_ANCHORS,
   SPRITE_OFFSET_X_MAX,
   SPRITE_OFFSET_Y_MAX,
@@ -468,12 +470,19 @@ export const adminArtworkAssetRoutes =
             tags,
             summary:
               'Compose a background and (optionally) a sprite exactly as a player screen would, and return the ' +
-              'image. Persists nothing but the render cache',
+              'image. Persists nothing but the render cache. With `playerBuddy`, a Buddy is drawn in the reserved ' +
+              'player side as a fight shows her (the named species, else a stand-in), and the ' +
+              '`x-scene-player-buddy*` headers report who was drawn and how much of her the enemy sprite covers',
             body: z
               .object({
                 background: layerRefSchema,
                 sprite: layerRefSchema.nullable().optional(),
                 placement: SpritePlacementSchema.optional(),
+                playerBuddy: z
+                  .object({ speciesSlug: z.string().regex(/^[a-z0-9_]+$/).max(100).optional() })
+                  .strict()
+                  .nullable()
+                  .optional(),
               })
               .strict(),
             response: { ...notFoundResponse, ...commonErrorResponses },
@@ -491,19 +500,47 @@ export const adminArtworkAssetRoutes =
           if (req.body.sprite && !spriteLayer) {
             throw new AppError('NOT_FOUND', 'Scene sprite not found', 'That sprite image is not available.');
           }
-          const scene = await scenes.compose({
+          // The Buddy is never authored: a preview only chooses *whose* sprite stands in
+          // for the player's. A species with no sprite just leaves her out, as in a run.
+          let playerBuddy: { layer: NonNullable<ReturnType<typeof playerBuddySpriteLayer>>; label: string } | null = null;
+          if (req.body.playerBuddy) {
+            const candidates = req.body.playerBuddy.speciesSlug
+              ? [req.body.playerBuddy.speciesSlug]
+              : ctx
+                  .getContent()
+                  .species.map((s) => s.slug)
+                  .sort();
+            for (const slug of candidates) {
+              const layer = playerBuddySpriteLayer(assetsDir, slug);
+              if (layer) {
+                playerBuddy = { layer, label: slug };
+                break;
+              }
+            }
+          }
+          const request = {
             background,
             sprite: spriteLayer
               ? { layer: spriteLayer, placement: req.body.placement ?? SpritePlacementSchema.parse({}) }
               : null,
-          });
+            playerBuddy,
+          };
+          const scene = await scenes.compose(request);
           if (!scene) {
             throw new AppError('VALIDATION_ERROR', 'Scene could not be composed', 'Those images could not be composed.');
           }
-          imageHeaders(reply, scene.contentType)
+          const image = imageHeaders(reply, scene.contentType)
             .header('etag', `"${scene.cacheKey}"`)
-            .header('cache-control', 'private, no-cache')
-            .send(await readFile(scene.absolutePath));
+            .header('cache-control', 'private, no-cache');
+          if (playerBuddy && scene.playerBuddy) {
+            const boxes = await scenes.layouts(request);
+            const overlap = boxes.playerBuddy && boxes.sprite ? layoutOverlapShare(boxes.playerBuddy, boxes.sprite) : 0;
+            image
+              .header('x-scene-player-buddy', playerBuddy.label)
+              .header('x-scene-player-buddy-overlap', String(Math.round(overlap * 100)))
+              .header('x-scene-player-buddy-collision', String(overlap >= PLAYER_BUDDY_COLLISION_SHARE));
+          }
+          image.send(await readFile(scene.absolutePath));
           return reply;
         },
       );

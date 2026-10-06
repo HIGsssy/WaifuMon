@@ -12,6 +12,7 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { locateArtworkFile } from '../assets/artworkFile';
+import { speciesDungeonSpritePath } from '../assets/speciesArtworkFile';
 import type { ArtworkAssetService } from './artworkAssetService';
 import type { SceneLayer } from './sceneComposition';
 
@@ -38,6 +39,16 @@ export function shippedArtworkLayer(assetsDir: string, relativePath: string | nu
   }
   const hash = createHash('sha256').update(`shipped:${relativePath}:${stat.size}:${stat.mtimeMs}`).digest('hex');
   return { hash, load: () => readFile(located.absolutePath).catch(() => null) };
+}
+
+/**
+ * A species' dungeon sprite (`waifumon/<slug>/<slug>_sprite.webp`) as the
+ * player-Buddy layer of a fight scene. Null when the file is not there — or
+ * the slug is not one — so the scene is composed without her.
+ */
+export function playerBuddySpriteLayer(assetsDir: string, speciesSlug: string | null | undefined): SceneLayer | null {
+  if (!speciesSlug || !/^[a-z0-9_]+$/.test(speciesSlug)) return null;
+  return shippedArtworkLayer(assetsDir, speciesDungeonSpritePath(speciesSlug));
 }
 
 export async function resolveArtworkLayer(

@@ -25,7 +25,7 @@ import { createPortalAuthorizationService } from '../../../src/modules/portalAut
 import { createProgressionCurrencyService } from '../../../src/modules/progressionCurrency/progressionCurrencyService';
 import { loadShippedRewardTables, seedRewardTables } from '../../../src/modules/rewardTables/rewardTableStore';
 import { CONTENT_DIR, bootstrapApp, provisionPlayer, type App } from '../../helpers/fixtures';
-import { BLUE, GREEN, RED, isNear, pixelAt, solidImage, transparentSprite } from '../../helpers/imageFixtures';
+import { BLUE, GREEN, RED, isNear, opaqueSprite, pixelAt, solidImage, transparentSprite } from '../../helpers/imageFixtures';
 import { createCapturedLogger, createProbes, TEST_TOKEN } from '../../helpers/platformApiFixtures';
 import { createTestDb, type TestDb } from '../../helpers/testDb';
 
@@ -676,6 +676,75 @@ describe('scene preview', () => {
         placement: { anchor: 'center', scaleBasisPoints: 8000, offsetX: 9999, offsetY: 0 },
       })).statusCode,
     ).toBe(400);
+  });
+});
+
+describe('scene preview: the reserved player Buddy', () => {
+  const spriteDir = (slug: string) => path.join(assetsDir, 'waifumon', slug);
+  const ship = async (slug: string) => {
+    fs.mkdirSync(spriteDir(slug), { recursive: true });
+    fs.writeFileSync(path.join(spriteDir(slug), `${slug}_sprite.webp`), await opaqueSprite(200, 300, GREEN, 'webp'));
+  };
+
+  it('draws a stand-in Buddy bottom-left on request, and reports whether the enemy collides with her', async () => {
+    const slugs = app.content.species.map((s) => s.slug).sort();
+    const bg = await uploaded(await solidImage(800, 450, BLUE), { filename: 'buddy-preview-bg.png' });
+    const sprite = await uploaded(await opaqueSprite(200, 300, RED), { category: 'enemy_sprite', filename: 'buddy-preview-sprite.png' });
+    const preview = (placement: Record<string, unknown>, playerBuddy?: Record<string, unknown> | null) =>
+      call('POST', '/admin/artwork/scene-preview', {
+        background: { assetId: bg.id },
+        sprite: { assetId: sprite.id },
+        placement: { anchor: 'bottom-right', scaleBasisPoints: 5000, offsetX: 0, offsetY: 0, ...placement },
+        ...(playerBuddy !== undefined ? { playerBuddy } : {}),
+      });
+    // Where a 200×300 Buddy stands: the compositor's reserved box.
+    const at = { x: 228, y: 391 };
+
+    // No species has a sprite deployed: the preview is the scene without her, and says nothing.
+    const none = await preview({}, {});
+    expect(none.statusCode, none.body).toBe(200);
+    expect(none.headers['x-scene-player-buddy']).toBeUndefined();
+    expect(isNear(await pixelAt(none.rawPayload, at.x, at.y), BLUE)).toBe(true);
+
+    await ship(slugs[1]!);
+    await ship(slugs[2]!);
+    try {
+      // Not asked for: no Buddy, exactly the scene it always was.
+      const plain = await preview({});
+      expect(plain.headers.etag).toBe(none.headers.etag);
+      expect(plain.headers['x-scene-player-buddy']).toBeUndefined();
+
+      // Asked for: the first species with a sprite stands in, clear of a right-side enemy.
+      const clear = await preview({}, {});
+      expect(clear.statusCode, clear.body).toBe(200);
+      expect(clear.headers).toMatchObject({
+        'x-scene-player-buddy': slugs[1],
+        'x-scene-player-buddy-overlap': '0',
+        'x-scene-player-buddy-collision': 'false',
+      });
+      expect(clear.headers.etag).not.toBe(plain.headers.etag);
+      expect(isNear(await pixelAt(clear.rawPayload, at.x, at.y), GREEN)).toBe(true);
+      expect(isNear(await pixelAt(clear.rawPayload, 1000, 500), RED)).toBe(true);
+
+      // A named species is used as given.
+      expect((await preview({}, { speciesSlug: slugs[2] })).headers['x-scene-player-buddy']).toBe(slugs[2]);
+      // One without a sprite: no Buddy, still a picture.
+      const spriteless = await preview({}, { speciesSlug: slugs[0] });
+      expect(spriteless.statusCode).toBe(200);
+      expect(spriteless.headers['x-scene-player-buddy']).toBeUndefined();
+
+      // The left anchors are still accepted — and flagged, with the enemy drawn over her.
+      const over = await preview({ anchor: 'bottom-left', scaleBasisPoints: 8000 }, {});
+      expect(over.statusCode, over.body).toBe(200);
+      expect(over.headers).toMatchObject({ 'x-scene-player-buddy-overlap': '100', 'x-scene-player-buddy-collision': 'true' });
+      expect(isNear(await pixelAt(over.rawPayload, at.x, at.y), RED)).toBe(true);
+
+      // She is not a placement: nothing about where she stands is accepted.
+      expect((await preview({}, { anchor: 'right' })).statusCode).toBe(400);
+      expect((await preview({}, { speciesSlug: '../x' })).statusCode).toBe(400);
+    } finally {
+      fs.rmSync(path.join(assetsDir, 'waifumon'), { recursive: true, force: true });
+    }
   });
 });
 

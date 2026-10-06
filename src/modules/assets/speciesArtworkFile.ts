@@ -54,6 +54,26 @@ export function speciesArtworkStem(assetId: AssetId): string {
   return `${assetId.kind}/${assetId.slug}/${assetId.variant}`;
 }
 
+/**
+ * The species' **dungeon sprite**: the cut-out a Delve fight scene stands on
+ * the player's side. It lives beside the species' other artwork, under the
+ * same `AssetId` layout, as the variant `<slug>_sprite`:
+ *
+ *     waifumon/<slug>/<slug>_sprite.webp
+ *
+ * A convention, not a registry — every species has one by name, and a species
+ * without the file simply has no sprite. It is not an appearance: nothing
+ * unlocks it and the Portal never lists it.
+ */
+export function speciesDungeonSpriteAssetId(speciesSlug: string): AssetId {
+  return { kind: 'waifumon', slug: speciesSlug, variant: `${speciesSlug}_sprite` };
+}
+
+/** {@link speciesDungeonSpriteAssetId} as a path relative to the assets root. Always WebP. */
+export function speciesDungeonSpritePath(speciesSlug: string): string {
+  return `${speciesArtworkStem(speciesDungeonSpriteAssetId(speciesSlug))}.webp`;
+}
+
 /** One candidate relative path per supported format, in preference order. */
 export function speciesArtworkCandidatePaths(assetId: AssetId): string[] {
   const stem = speciesArtworkStem(assetId);
