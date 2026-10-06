@@ -405,7 +405,7 @@ describe('manage', () => {
       within(manage.getByTestId('asset-references')).getByRole('link', {
         name: 'Enemy scrapyard_drone',
       }),
-    ).toHaveAttribute('href', '/admin/dungeons/enemies');
+    ).toHaveAttribute('href', '/admin/enemies/scrapyard_drone');
     expect(deleteSpy).not.toHaveBeenCalled();
   });
 

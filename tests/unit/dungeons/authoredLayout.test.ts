@@ -338,12 +338,26 @@ describe('zone validation of an authored zone', () => {
     ]);
   });
 
-  it('refuses a disabled enemy on an enabled zone — an authored room cannot draw another', () => {
+  it('a room keeps an enemy that was disabled after it was placed — with a warning, not an error', () => {
     const ctx = testValidationContext(testCatalogue({ disabledEnemies: ['grunt'] }));
+    // A read, a run start: every reference is an existing one.
     const issues = validateDungeonZone(authored(linear()), ctx).issues;
-    expect(issues.filter((i) => i.severity === 'error').map((i) => i.message)).toEqual([
-      'Room "Combat (start)" uses grunt, which is disabled — choose another enemy.',
-      'Room "Combat (second)" uses grunt, which is disabled — choose another enemy.',
+    expect(issues.filter((i) => i.severity === 'error')).toEqual([]);
+    expect(issues.filter((i) => i.path.endsWith('enemyKey')).map((i) => [i.severity, i.message])).toEqual([
+      ['warning', 'Room "Combat (start)" uses grunt, which is disabled. The room still fights it — choose another enemy, or re-enable this one.'],
+      ['warning', 'Room "Combat (second)" uses grunt, which is disabled. The room still fights it — choose another enemy, or re-enable this one.'],
+    ]);
+    // A save of a zone that already named it: the same.
+    const kept = validateDungeonZone(authored(linear()), { ...ctx, previousEnemyKeys: new Set(['grunt']) }).issues;
+    expect(kept.filter((i) => i.severity === 'error')).toEqual([]);
+  });
+
+  it('refuses a disabled enemy that is being added — only an existing reference survives', () => {
+    const ctx = testValidationContext(testCatalogue({ disabledEnemies: ['grunt'] }));
+    const added = validateDungeonZone(authored(linear()), { ...ctx, previousEnemyKeys: new Set() }).issues;
+    expect(added.filter((i) => i.severity === 'error').map((i) => i.message)).toEqual([
+      'Room "Combat (start)": grunt is disabled and cannot be added. Enable it in Enemies first, or choose another enemy.',
+      'Room "Combat (second)": grunt is disabled and cannot be added. Enable it in Enemies first, or choose another enemy.',
     ]);
   });
 

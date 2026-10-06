@@ -45,6 +45,7 @@ import { adminVendorRoutes } from './admin/vendors';
 import { adminRewardTableRoutes } from './admin/rewardTables';
 import { adminDungeonRoutes } from './admin/dungeons';
 import { adminArtworkAssetRoutes } from './admin/artworkAssets';
+import { adminEnemyRoutes } from './admin/enemies';
 import { adminResultPresentationRoutes } from './admin/resultPresentations';
 import { adminGalleryRoutes } from './admin/gallery';
 import { adminSystemMetricsRoutes } from './admin/systemMetrics';
@@ -147,6 +148,7 @@ export const v1Routes =
     // Admin: managed artwork (uploads, the scene preview) and enemy artwork.
     // Skipped when the artwork asset service is not wired.
     await app.register(adminArtworkAssetRoutes(ctx));
+    await app.register(adminEnemyRoutes(ctx));
 
     // Admin: Result Presentations (hunt-find and release flavor/artwork).
     // Skipped when the presentation service is not wired.

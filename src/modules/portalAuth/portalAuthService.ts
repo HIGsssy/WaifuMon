@@ -65,6 +65,13 @@ export const ALL_PORTAL_PERMISSIONS = [
   // enable/disable. Preview and simulation write nothing and need only `read`.
   'dungeons.read',
   'dungeons.write',
+  // The Enemy Catalogue: combat enemies as shared content, referenced by
+  // dungeons and Combat Trials. Its own pair on purpose — balancing enemies
+  // and laying out dungeons are different jobs, so neither implies the other.
+  // `write` covers create, edit, enable/disable, duplicate and delete. The
+  // Dungeon editor's enemy pickers need only `dungeons.read`.
+  'enemies.read',
+  'enemies.write',
   // Managed artwork: images uploaded through the Portal and referenced by id
   // from authored content. `read` lists, previews and picks assets (and
   // renders scene previews); `write` uploads, replaces, renames, disables and
@@ -108,6 +115,9 @@ export const PORTAL_PERMISSION_DESCRIPTIONS: Readonly<Record<PortalPermission, s
   'dungeons.read': 'View dungeon zones, pools and the progression currency, and run generation previews.',
   'dungeons.write':
     'Create, edit and enable/disable dungeon zones and rename the progression currency (affects future runs only).',
+  'enemies.read': 'View the Enemy Catalogue: stats, artwork and where each enemy is used.',
+  'enemies.write':
+    'Create, edit, enable/disable, duplicate and delete enemies (affects future dungeon runs and Combat Trial fights only).',
   'artwork.read': 'Browse and preview uploaded artwork, and pick it in editors.',
   'artwork.write': 'Upload, replace, rename, disable and delete managed artwork.',
   'system.metrics.read':

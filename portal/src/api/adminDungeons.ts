@@ -9,6 +9,7 @@
  */
 import type { ArtworkDirectory, ArtworkSearchResults } from './adminArtwork';
 import type { SpritePlacement } from './adminArtworkAssets';
+import type { EnemyRef } from './adminEnemies';
 import { apiClient, getData, postData, putData } from './client';
 
 export type DungeonNodeType =
@@ -293,7 +294,11 @@ export interface DungeonContentRef {
 
 export interface DungeonReferenceData {
   nodeTypes: DungeonNodeType[];
-  enemies: DungeonContentRef[];
+  /**
+   * Every enemy as a picker shows it — stats, tags and the artwork in effect.
+   * The same rows the Enemy Catalogue serves, readable with `dungeons.read`.
+   */
+  enemies: EnemyRef[];
   events: DungeonContentRef[];
   rewardTables: Array<{ id: string; enabled: boolean }>;
   currencies: Array<{ key: string; singularName: string; pluralName: string; enabled: boolean }>;

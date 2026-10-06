@@ -72,19 +72,8 @@ const zone = (key: string, backgrounds: unknown[], patch: Record<string, unknown
     Object.assign(z, { backgrounds, ...patch });
   });
 
-const setEnemyArt = async (key: string, art: { artworkAssetId?: string | null; spriteAssetId?: string | null; spritePlacement?: SpritePlacement | null }) => {
-  const current = await w.enemyArtwork.get(key);
-  await w.enemyArtwork.save(
-    key,
-    {
-      artworkAssetId: art.artworkAssetId ?? null,
-      spriteAssetId: art.spriteAssetId ?? null,
-      spritePlacement: art.spritePlacement ?? null,
-      expectedRevision: current?.managed?.revision ?? 0,
-    },
-    'admin',
-  );
-};
+const setEnemyArt = (key: string, art: { artworkAssetId?: string | null; spriteAssetId?: string | null; spritePlacement?: SpritePlacement | null }) =>
+  w.setEnemyArtwork(key, art);
 
 /** Walk until the player stands on a node that satisfies `want`, without resolving it. */
 async function advanceTo(playerId: number, from: DungeonRunView, want: (v: DungeonRunView) => boolean): Promise<DungeonRunView> {

@@ -26,6 +26,7 @@ import type {
 import { PortalApiError } from '@/api/client';
 import { SessionContext } from '@/auth/SessionContext';
 import type { SessionState } from '@/auth/types';
+import { enemyFixture } from '@/features/adminArtwork/__tests__/artworkFixtures';
 
 import { DungeonPreviewPage } from '../DungeonPreviewPage';
 import { DungeonZoneEditorPage } from '../DungeonZoneEditorPage';
@@ -34,9 +35,22 @@ import { DungeonsListPage } from '../DungeonsListPage';
 const REFERENCE: DungeonReferenceData = {
   nodeTypes: [...api.DUNGEON_NODE_TYPES],
   enemies: [
-    { key: 'scrapyard_drone', name: 'Scrapyard Drone', enabled: true, tags: [] },
-    { key: 'alley_bruiser', name: 'Alley Bruiser', enabled: true, tags: [] },
-    { key: 'scrapheap_colossus', name: 'Scrapheap Colossus', enabled: true, tags: ['boss'] },
+    enemyFixture({
+      key: 'scrapyard_drone',
+      name: 'Scrapyard Drone',
+      attack: 12,
+      defense: 4,
+      hp: 60,
+    }),
+    enemyFixture({ key: 'alley_bruiser', name: 'Alley Bruiser', attack: 18, defense: 9, hp: 140 }),
+    enemyFixture({
+      key: 'scrapheap_colossus',
+      name: 'Scrapheap Colossus',
+      attack: 55,
+      defense: 30,
+      hp: 300,
+      tags: ['boss'],
+    }),
   ],
   events: [{ key: 'abandoned_cache', name: 'Abandoned Cache', enabled: true, tags: [] }],
   rewardTables: [
@@ -370,8 +384,6 @@ beforeEach(() => {
   vi.spyOn(api, 'listProgressionCurrencies').mockImplementation(async () => ({
     currencies: [currency],
   }));
-  // The editor's scene preview lists enemy sprites; this zone's enemies have none.
-  vi.spyOn(artworkApi, 'listEnemyArtwork').mockImplementation(async () => ({ enemies: [] }));
   vi.spyOn(artworkApi, 'scenePreviewBlob').mockImplementation(async () => new Blob(['scene']));
   vi.spyOn(api, 'validateDungeonZone').mockImplementation(async () => ({ issues }));
   updateSpy = vi.spyOn(api, 'updateDungeonZone').mockImplementation(async (_key, zone, rev) => ({
@@ -434,6 +446,18 @@ function renderAt(path: string, permissions = ['dungeons.read', 'dungeons.write'
 }
 
 const EDITOR = '/admin/dungeons/zones/scrapheap_gauntlet';
+/** Add enemies to a pool the way an author does: open its picker, tick them by name, confirm. */
+const pickEnemies = async (
+  user: ReturnType<typeof userEvent.setup>,
+  pool: ReturnType<typeof within>,
+  names: string[],
+) => {
+  await user.click(pool.getByRole('button', { name: '+ Add Enemy' }));
+  const picker = within(await screen.findByTestId('enemy-picker'));
+  for (const name of names) await user.click(picker.getByRole('button', { name }));
+  await user.click(picker.getByRole('button', { name: /^Add \d+ enem/ }));
+  await waitFor(() => expect(screen.queryByTestId('enemy-picker')).not.toBeInTheDocument());
+};
 const savedZone = () => updateSpy.mock.calls[0]![1];
 const type = async (user: ReturnType<typeof userEvent.setup>, label: string, value: string) => {
   const field = await screen.findByLabelText(label);
@@ -461,6 +485,19 @@ describe('zone list', () => {
     expect(first.getByText(/revision 3 · updated .* by seed/)).toBeInTheDocument();
     expect(within(rows[1]!).getByText('Disabled')).toBeInTheDocument();
     expect(within(rows[1]!).getByText('Portal only')).toBeInTheDocument();
+  });
+
+  it('links to the Enemies section for someone who can open it, and to no Enemy Artwork page', async () => {
+    renderAt('/admin/dungeons', ['dungeons.read', 'dungeons.write', 'enemies.read']);
+    await screen.findAllByTestId('dungeon-zone-row');
+    expect(screen.getByRole('link', { name: 'Enemies' })).toHaveAttribute('href', '/admin/enemies');
+    expect(screen.queryByRole('link', { name: /Enemy artwork/i })).not.toBeInTheDocument();
+  });
+
+  it('offers no Enemies link to a dungeon-only admin', async () => {
+    renderAt('/admin/dungeons');
+    await screen.findAllByTestId('dungeon-zone-row');
+    expect(screen.queryByRole('link', { name: 'Enemies' })).not.toBeInTheDocument();
   });
 
   it('shows where each zone is available, by region name', async () => {
@@ -607,7 +644,12 @@ describe('zone editor', () => {
     expect(screen.getByLabelText('Kept on defeat (%)')).toHaveValue(25);
     expect(screen.getByLabelText('Rest heals (% of max HP)')).toHaveValue(30);
     expect(screen.getByLabelText('Elite min depth')).toHaveValue(3);
-    expect(screen.getByLabelText('Combat pool 1 enemy')).toHaveValue('scrapyard_drone');
+    const firstEntry = within(
+      within(screen.getByTestId('pool-combat')).getAllByTestId('pool-entry')[0]!,
+    );
+    expect(firstEntry.getByTestId('pool-entry-name')).toHaveTextContent('Scrapyard Drone');
+    expect(firstEntry.getByTestId('pool-entry-stats')).toHaveTextContent('ATK 12 · DEF 4 · HP 60');
+    expect(firstEntry.getByTestId('pool-entry-odds')).toHaveTextContent('Weight 50 · Depth 1–4');
     expect(screen.getByLabelText('Extraction offered at: Rest')).toBeChecked();
     expect(screen.getByLabelText('Extraction offered at: Combat')).not.toBeChecked();
     await waitFor(() =>
@@ -1009,18 +1051,19 @@ describe('zone editor', () => {
     expect(gen.limits).toEqual([]);
   });
 
-  it('edits pools from pickers: add, change the enemy, depths, weight, disable, remove', async () => {
+  it('edits pools from pickers: add an enemy, depths, weight, disable, remove', async () => {
     const user = renderAt(EDITOR);
     const combat = within(await screen.findByTestId('pool-combat'));
-    await user.click(combat.getByRole('button', { name: 'Add enemy' }));
-    await user.selectOptions(combat.getByLabelText('Combat pool 3 enemy'), 'alley_bruiser');
+    // Nobody types an enemy key: enemies are picked by name.
+    expect(combat.queryByRole('combobox')).not.toBeInTheDocument();
+    await pickEnemies(user, combat, ['Alley Bruiser']);
     await type(user, 'Combat pool 3 weight', '5');
     await type(user, 'Combat pool 3 min depth', '4');
     await type(user, 'Combat pool 3 max depth', '8');
     await type(user, 'Combat pool 1 max depth', '');
     await user.click(combat.getByLabelText('Combat pool 2 enabled'));
     const elite = within(screen.getByTestId('pool-elite'));
-    await user.click(elite.getByRole('button', { name: 'Add enemy' }));
+    await pickEnemies(user, elite, ['Scrapyard Drone']);
     const events = within(screen.getByTestId('pool-event'));
     await user.click(events.getByRole('button', { name: 'Remove Event pool 1' }));
     // Events are offered from the event list, not the enemy list.
@@ -1227,9 +1270,10 @@ describe('zone editor', () => {
     renderAt(EDITOR, ['dungeons.read']);
     expect(await screen.findByLabelText('Zone name')).toBeDisabled();
     expect(screen.getByLabelText('Combat weight')).toBeDisabled();
-    expect(screen.getByLabelText('Combat pool 1 enemy')).toBeDisabled();
+    expect(screen.getByLabelText('Combat pool 1 weight')).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Save dungeon' })).toBeDisabled();
-    expect(screen.queryByRole('button', { name: 'Add enemy' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '+ Add Enemy' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Remove Combat pool/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Add depth band' })).not.toBeInTheDocument();
     expect(screen.getByText('You do not have write permission.')).toBeInTheDocument();
   });

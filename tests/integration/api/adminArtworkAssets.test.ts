@@ -2,7 +2,7 @@
  * Managed artwork over the Admin API, against a real database and a real
  * (temporary) storage directory: uploads and their validation, metadata,
  * replacement and cache invalidation, reference integrity, the audit trail,
- * enemy artwork, the scene preview, and who may do any of it.
+ * the scene preview, and who may do any of it.
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -16,7 +16,6 @@ import type { PortalSession, PortalSessionService } from '../../../src/api/porta
 import { artworkAssetEvents, artworkAssets } from '../../../src/db/schema';
 import { createArtworkAssetService, type ArtworkAssetService } from '../../../src/modules/artworkAssets/artworkAssetService';
 import { createLocalArtworkStorage } from '../../../src/modules/artworkAssets/artworkStorage';
-import { createEnemyArtworkService } from '../../../src/modules/artworkAssets/enemyArtworkService';
 import { ARTWORK_UPLOAD_MAX_BYTES } from '../../../src/modules/artworkAssets/imageInspection';
 import { createSceneCompositionService } from '../../../src/modules/artworkAssets/sceneComposition';
 import { createDungeonZoneService } from '../../../src/modules/dungeons/dungeonZoneService';
@@ -71,7 +70,6 @@ beforeAll(async () => {
   await seedDungeonZones(t.db, shipped);
 
   assets = createArtworkAssetService({ db: t.db, storage: createLocalArtworkStorage(storageDir) });
-  const enemyArtwork = createEnemyArtworkService({ db: t.db, getEnemies: () => app.content.combatEnemies ?? [], assets });
   const sceneComposition = createSceneCompositionService({ cacheDir });
   const dungeonZones = createDungeonZoneService({ db: t.db, getContent: () => app.content, getShipped: () => shipped, assets });
   const progressionCurrency = createProgressionCurrencyService(t.db);
@@ -122,7 +120,7 @@ beforeAll(async () => {
     },
     ctx: {
       assetsDir,
-      services: { ...app, dungeonZones, progressionCurrency, artworkAssets: assets, enemyArtwork, sceneComposition },
+      services: { ...app, dungeonZones, progressionCurrency, artworkAssets: assets, sceneComposition },
       getContent: () => app.content,
       portalAuthorization,
       adminBearerAllowed: true,
@@ -627,81 +625,6 @@ describe('shipped and managed artwork are separate stores', () => {
   });
 });
 
-describe('enemy artwork', () => {
-  const enemyKey = () => (app.content.combatEnemies ?? [])[0]!.key;
-  const entry = async (key: string) =>
-    ((await call('GET', '/admin/dungeons/enemy-artwork')).json().data.enemies as Asset[]).find((e) => e.key === key)!;
-
-  it('lists every enemy with its shipped art and no override', async () => {
-    const enemies = (await call('GET', '/admin/dungeons/enemy-artwork')).json().data.enemies as Asset[];
-    expect(enemies.map((e) => e.key)).toEqual((app.content.combatEnemies ?? []).map((e) => e.key));
-    const first = enemies[0]!;
-    expect(first.managed).toBeNull();
-    expect(first.visual).toMatchObject({
-      artworkAssetId: null,
-      spriteAssetId: null,
-      artworkPath: first.artworkPath,
-      spritePlacement: { anchor: 'bottom-right', scaleBasisPoints: 8500, offsetX: 0, offsetY: 0 },
-    });
-  });
-
-  it('sets a sprite, full art and placement; clears back to shipped; and is optimistic', async () => {
-    const key = enemyKey();
-    const sprite = await uploaded(await transparentSprite(200, 300), { category: 'enemy_sprite', filename: 'sprite.png' });
-    const full = await uploaded(await solidImage(400, 400, RED), { category: 'enemy_art', filename: 'full.png' });
-    const placement = { anchor: 'bottom-center', scaleBasisPoints: 7000, offsetX: -40, offsetY: 10 };
-
-    const saved = await call('PUT', `/admin/dungeons/enemy-artwork/${key}`, {
-      artworkAssetId: full.id,
-      spriteAssetId: sprite.id,
-      spritePlacement: placement,
-      expectedRevision: 0,
-    });
-    expect(saved.statusCode, saved.body).toBe(200);
-    expect(saved.json().data).toMatchObject({
-      key,
-      managed: { artworkAssetId: full.id, spriteAssetId: sprite.id, spritePlacement: placement, revision: 1 },
-      visual: { artworkAssetId: full.id, spriteAssetId: sprite.id, spritePlacement: placement },
-    });
-    // The shipped path is still there underneath.
-    expect(saved.json().data.visual.artworkPath).toBe((await entry(key)).artworkPath);
-
-    // The sprite now knows the enemy uses it, and cannot be deleted.
-    expect((await call('GET', `/admin/artwork/assets/${sprite.id}`)).json().data.references).toEqual([
-      { kind: 'combat_enemy', key, name: null, field: 'spriteAssetId' },
-    ]);
-    expect((await call('DELETE', `/admin/artwork/assets/${sprite.id}`)).statusCode).toBe(409);
-
-    // A stale save is refused, not merged.
-    const stale = await call('PUT', `/admin/dungeons/enemy-artwork/${key}`, {
-      artworkAssetId: null,
-      spriteAssetId: null,
-      spritePlacement: null,
-      expectedRevision: 0,
-    });
-    expect(stale.statusCode).toBe(409);
-    expect(stale.json().error).toMatchObject({ code: 'ENEMY_ARTWORK_STALE', details: { expectedRevision: 0, currentRevision: 1 } });
-
-    // Out-of-range placement, an unknown asset and an unknown enemy are refused.
-    const bad = (body: Record<string, unknown>, k = key) =>
-      call('PUT', `/admin/dungeons/enemy-artwork/${k}`, { artworkAssetId: null, spriteAssetId: null, spritePlacement: null, expectedRevision: 1, ...body });
-    expect((await bad({ spritePlacement: { ...placement, scaleBasisPoints: 20_000 } })).statusCode).toBe(400);
-    expect((await bad({ spritePlacement: { ...placement, anchor: 'top' } })).statusCode).toBe(400);
-    expect((await bad({ spriteAssetId: '00000000-0000-4000-8000-0000000000cc' })).statusCode).toBe(400);
-    expect((await bad({}, 'no_such_enemy')).statusCode).toBe(404);
-    expect((await entry(key)).managed.revision).toBe(1);
-
-    // Clearing the override falls back to shipped art and the default placement, and frees the assets.
-    const cleared = await bad({});
-    expect(cleared.json().data).toMatchObject({
-      managed: { artworkAssetId: null, spriteAssetId: null, spritePlacement: null, revision: 2 },
-      visual: { artworkAssetId: null, spriteAssetId: null, spritePlacement: { anchor: 'bottom-right', scaleBasisPoints: 8500 } },
-    });
-    expect(await eventsOf(sprite.id)).toEqual(['upload', 'reference_added', 'reference_removed']);
-    expect((await call('DELETE', `/admin/artwork/assets/${sprite.id}`)).statusCode).toBe(200);
-  });
-});
-
 describe('scene preview', () => {
   it('composes a managed background and sprite with the production renderer', async () => {
     const bg = await uploaded(await solidImage(800, 450, BLUE), { filename: 'preview-bg.png' });
@@ -773,7 +696,7 @@ describe('permissions and CSRF', () => {
     const asset = await uploaded(await png(), { filename: 'guarded.png' });
     const before = filesUnder(storageDir);
     const player = asCookie(NON_OWNER_TOKEN, true);
-    for (const url of ['/admin/artwork/assets', '/admin/artwork/meta', `/admin/artwork/assets/${asset.id}`, `/admin/artwork/assets/${asset.id}/file`, '/admin/dungeons/enemy-artwork']) {
+    for (const url of ['/admin/artwork/assets', '/admin/artwork/meta', `/admin/artwork/assets/${asset.id}`, `/admin/artwork/assets/${asset.id}/file`]) {
       const res = await api.inject({ method: 'GET', url: `/api/v1${url}`, ...player });
       expect(res.statusCode, url).toBe(403);
       expect(res.json().error.code).toBe('PORTAL_PERMISSION_DENIED');
@@ -791,7 +714,6 @@ describe('permissions and CSRF', () => {
       ['PUT', `/admin/artwork/assets/${asset.id}/enabled`, { enabled: false }],
       ['DELETE', `/admin/artwork/assets/${asset.id}`, undefined],
       ['POST', '/admin/artwork/scene-preview', { background: { assetId: asset.id } }],
-      ['PUT', '/admin/dungeons/enemy-artwork/scrapyard_drone', { artworkAssetId: null, spriteAssetId: null, spritePlacement: null, expectedRevision: 0 }],
     ] as const) {
       const res = await api.inject({ method, url: `/api/v1${url}`, ...player, ...(payload ? { payload } : {}) });
       expect(res.statusCode, `${method} ${url}`).toBe(403);

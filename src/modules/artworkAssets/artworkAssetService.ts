@@ -30,7 +30,7 @@ import {
   ARTWORK_ASSET_CATEGORIES,
   artworkAssetEvents,
   artworkAssets,
-  combatEnemyArtwork,
+  combatEnemies,
   dungeonZones,
   type ArtworkAssetCategory,
   type ArtworkAssetEventAction,
@@ -272,13 +272,18 @@ export function createArtworkAssetService(deps: ArtworkAssetServiceDeps): Artwor
       }
     }
     const enemies = await tx
-      .select()
-      .from(combatEnemyArtwork)
-      .where(or(eq(combatEnemyArtwork.artworkAssetId, wanted), eq(combatEnemyArtwork.spriteAssetId, wanted)))
-      .orderBy(asc(combatEnemyArtwork.enemyKey));
+      .select({
+        key: combatEnemies.enemyKey,
+        name: combatEnemies.name,
+        artworkAssetId: combatEnemies.artworkAssetId,
+        spriteAssetId: combatEnemies.spriteAssetId,
+      })
+      .from(combatEnemies)
+      .where(or(eq(combatEnemies.artworkAssetId, wanted), eq(combatEnemies.spriteAssetId, wanted)))
+      .orderBy(asc(combatEnemies.enemyKey));
     for (const enemy of enemies) {
-      if (enemy.artworkAssetId === wanted) out.push({ kind: 'combat_enemy', key: enemy.enemyKey, name: null, field: 'artworkAssetId' });
-      if (enemy.spriteAssetId === wanted) out.push({ kind: 'combat_enemy', key: enemy.enemyKey, name: null, field: 'spriteAssetId' });
+      if (enemy.artworkAssetId === wanted) out.push({ kind: 'combat_enemy', key: enemy.key, name: enemy.name, field: 'artworkAssetId' });
+      if (enemy.spriteAssetId === wanted) out.push({ kind: 'combat_enemy', key: enemy.key, name: enemy.name, field: 'spriteAssetId' });
     }
     return out;
   }

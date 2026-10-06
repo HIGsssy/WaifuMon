@@ -69,7 +69,15 @@ import {
 import { createDungeonZoneService } from './modules/dungeons/dungeonZoneService';
 import { createArtworkAssetService } from './modules/artworkAssets/artworkAssetService';
 import { createLocalArtworkStorage } from './modules/artworkAssets/artworkStorage';
-import { createEnemyArtworkService } from './modules/artworkAssets/enemyArtworkService';
+import { combatTrialEnemyReferences, dungeonZoneEnemyReferences } from './modules/enemies/enemyReferences';
+import { createEnemyCatalogueService } from './modules/enemies/enemyService';
+import {
+  mergeLegacyEnemyArtwork,
+  reportCombatEnemySeed,
+  seedCombatEnemies,
+  shippedCombatEnemies,
+  type ShippedCombatEnemy,
+} from './modules/enemies/enemyStore';
 import { createSceneCompositionService } from './modules/artworkAssets/sceneComposition';
 import { createDungeonRunService } from './modules/dungeons/dungeonRunService';
 import { createDungeonPlayService } from './modules/dungeons/dungeonPlayService';
@@ -82,7 +90,7 @@ import { createCombatStatsService } from './modules/equipment/combatStatsService
 import { createEquipmentManagementService } from './modules/equipment/equipmentManagementService';
 import { createEquipmentWorkshopService } from './modules/equipment/equipmentWorkshopService';
 import {
-  combatTrialCatalogueFromContent,
+  combatTrialCatalogueFromEnemies,
   createCombatTrialService,
 } from './modules/combatTrials/combatTrialService';
 import { createEquipmentOnboardingService } from './modules/onboarding/equipmentOnboardingService';
@@ -419,7 +427,9 @@ async function main(): Promise<void> {
     combatStats,
     currency,
     inventory,
-    getCatalogue: () => combatTrialCatalogueFromContent(contentSnapshot),
+    // Trials are shipped content; the enemies they name come from the Enemy
+    // Catalogue, read per call so a Portal edit reaches the next fight.
+    getCatalogue: () => combatTrialCatalogueFromEnemies(contentSnapshot.combatTrials, enemyCatalogue),
   });
   /**
    * Dungeons. Zones are authored in Portal Admin; the run service generates
@@ -436,11 +446,45 @@ async function main(): Promise<void> {
    */
   const artworkStorage = createLocalArtworkStorage(config.managedAssetsDir);
   const artworkAssets = createArtworkAssetService({ db, storage: artworkStorage, logger });
-  const enemyArtwork = createEnemyArtworkService({
+  /**
+   * The Enemy Catalogue. `combat_enemies` is authoritative; the shipped
+   * `content/combat/enemies.json` is seeded into it below and after every
+   * content reload. Dungeons and Combat Trials both read enemies from here.
+   */
+  let shippedEnemies: { source: unknown; list: ShippedCombatEnemy[] } | null = null;
+  const getShippedEnemies = (): ShippedCombatEnemy[] => {
+    // Hashed once per content snapshot; a reload publishes a new array.
+    if (!shippedEnemies || shippedEnemies.source !== contentSnapshot.combatEnemies) {
+      shippedEnemies = {
+        source: contentSnapshot.combatEnemies,
+        list: shippedCombatEnemies(contentSnapshot.combatEnemies),
+      };
+    }
+    return shippedEnemies.list;
+  };
+  const enemyCatalogue = createEnemyCatalogueService({
     db,
-    getEnemies: () => contentSnapshot.combatEnemies ?? [],
+    getShipped: getShippedEnemies,
     assets: artworkAssets,
+    referenceSources: [
+      dungeonZoneEnemyReferences,
+      combatTrialEnemyReferences(() => contentSnapshot.combatTrials),
+    ],
   });
+  /** Seed shipped enemies and say what happened. Never throws: a failed seed leaves the rows as they were. */
+  const seedEnemyCatalogue = async (): Promise<void> => {
+    try {
+      const seed = await seedCombatEnemies(db, getShippedEnemies());
+      // Once: managed artwork saved before the catalogue existed moves onto the enemy rows.
+      const merge = await mergeLegacyEnemyArtwork(db);
+      reportCombatEnemySeed(logger, seed, merge);
+    } catch (err) {
+      logger.error(
+        { tag: 'combat-enemies/seed-failed', err },
+        'enemy catalogue seed failed — dungeons and Combat Trials will use whatever enemies are in the DB',
+      );
+    }
+  };
   const sceneComposition = createSceneCompositionService({ cacheDir: config.artCacheDir, logger });
   try {
     // Fail loudly now, not on an admin's first upload: a volume owned by the
@@ -465,12 +509,13 @@ async function main(): Promise<void> {
     getContent: () => contentSnapshot,
     getShipped: () => shippedDungeonZones,
     assets: artworkAssets,
+    enemies: enemyCatalogue,
   });
   const dungeonRuns = createDungeonRunService({
     db,
     getContent: () => contentSnapshot,
     currencies: progressionCurrency,
-    enemyArtwork,
+    enemies: enemyCatalogue,
   });
   const dungeonAllowance = createDungeonAllowanceService({ db, timezone: config.dailyTimezone, logger });
   const dungeonPlay = createDungeonPlayService({
@@ -777,7 +822,7 @@ async function main(): Promise<void> {
       dungeonAllowance,
       progressionCurrency,
       artworkAssets,
-      enemyArtwork,
+      enemies: enemyCatalogue,
       sceneComposition,
     },
   };
@@ -847,6 +892,10 @@ async function main(): Promise<void> {
   } catch (err) {
     logger.error({ err }, 'reward table seed failed — bosses and expeditions will use whatever is in the DB');
   }
+  // The Enemy Catalogue, seeded the same way and *before* the zones that name
+  // enemies are checked: a new enemy in content/combat/enemies.json is a row
+  // (and selectable in the Dungeon editor) from this line on.
+  await seedEnemyCatalogue();
   // Dungeon zones, seeded like reward tables: insert a missing shipped zone,
   // update one from Git only while its row still holds what was last seeded,
   // and never overwrite a zone edited in Portal Admin.
@@ -1105,6 +1154,8 @@ async function main(): Promise<void> {
         // Keep the appearance service's view in step: newly-authored artwork
         // must be selectable (and retroactively unlockable) immediately.
         contentSnapshot = result.content;
+        // Enemies added to the reloaded file become catalogue rows now, not at the next restart.
+        await seedEnemyCatalogue();
         return result;
       },
     }),

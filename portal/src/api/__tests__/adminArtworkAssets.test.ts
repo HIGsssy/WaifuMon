@@ -74,10 +74,6 @@ describe('every helper calls the route the API serves', () => {
     const file = record('get', '/api/v1/admin/artwork/assets/:id/file', null, true);
     await api.artworkAssetBlob(api.artworkAssetSource(ASSET));
     expect(file[0]!.url).toBe(`GET /api/v1/admin/artwork/assets/${ID}/file?v=${'a'.repeat(64)}`);
-
-    const enemies = record('get', '/api/v1/admin/dungeons/enemy-artwork', { enemies: [] });
-    await expect(api.listEnemyArtwork()).resolves.toEqual({ enemies: [] });
-    expect(enemies[0]!.url).toBe('GET /api/v1/admin/dungeons/enemy-artwork');
   });
 
   it('uploads and replaces with the file as the body and its type as the content type', async () => {
@@ -120,16 +116,5 @@ describe('every helper calls the route the API serves', () => {
     const blob = await api.scenePreviewBlob({ background: { assetId: ID } });
     expect(scene[0]!.url).toBe('POST /api/v1/admin/artwork/scene-preview');
     expect(blob).toBeInstanceOf(Blob);
-
-    const enemy = record('put', '/api/v1/admin/dungeons/enemy-artwork/:key', {
-      key: 'scrapyard_drone',
-    });
-    await api.saveEnemyArtwork('scrapyard_drone', {
-      artworkAssetId: null,
-      spriteAssetId: ID,
-      spritePlacement: null,
-      expectedRevision: 0,
-    });
-    expect(enemy[0]!.url).toBe('PUT /api/v1/admin/dungeons/enemy-artwork/scrapyard_drone');
   });
 });

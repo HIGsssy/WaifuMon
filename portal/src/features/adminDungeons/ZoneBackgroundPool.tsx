@@ -7,19 +7,15 @@
  * that cover its depth; the choice is stored on the run and never re-rolled.
  */
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 
-import {
-  ENEMY_ARTWORK_QUERY_KEY,
-  listEnemyArtwork,
-  type ArtworkLayerRef,
-} from '@/api/adminArtworkAssets';
+import type { ArtworkLayerRef } from '@/api/adminArtworkAssets';
 import {
   dungeonArtworkBlob,
   type DungeonBackgroundDoc,
   type DungeonZoneDoc,
   type DungeonZoneIssue,
 } from '@/api/adminDungeons';
+import type { EnemyRef } from '@/api/adminEnemies';
 import { ArtworkPickerDialog } from '@/components/admin/ArtworkPicker';
 import { dungeonArtworkSource } from '@/components/admin/artworkSources';
 import { AuthoredArtwork } from '@/components/media/AuthoredArtwork';
@@ -238,15 +234,16 @@ const ZONE_BACKGROUND = '__zone__';
 
 /**
  * Preview one of the zone's backgrounds with one of its enemies' sprites,
- * through the production compositor.
+ * through the production compositor. `enemies` is the editor's reference
+ * data, which carries each enemy's artwork as it stands.
  */
-export function ZoneScenePreview({ zone }: { zone: DungeonZoneDoc }) {
-  const enemies =
-    useQuery({
-      queryKey: ENEMY_ARTWORK_QUERY_KEY,
-      queryFn: ({ signal }) => listEnemyArtwork(signal),
-      staleTime: 30_000,
-    }).data?.enemies ?? [];
+export function ZoneScenePreview({
+  zone,
+  enemies,
+}: {
+  zone: DungeonZoneDoc;
+  enemies: readonly EnemyRef[];
+}) {
   const pool = zone.backgrounds ?? [];
   const inZone = new Set(
     (['combat', 'elite', 'miniboss', 'boss'] as const).flatMap((p) =>
@@ -307,7 +304,7 @@ export function ZoneScenePreview({ zone }: { zone: DungeonZoneDoc }) {
       {withSprite.length === 0 && (
         <p className="text-xs text-ink-subtle" data-testid="zone-scene-no-sprites">
           No enemy in this zone’s pools has a sprite yet — fights show the enemy’s full artwork. Add
-          sprites under Enemy Artwork.
+          sprites on the Enemies page.
         </p>
       )}
       <ScenePreview

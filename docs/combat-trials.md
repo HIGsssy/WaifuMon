@@ -15,7 +15,7 @@ not change the engine.
 | Concern | Location |
 | --- | --- |
 | Trial content | `content/combat/trials.json` |
-| Enemy content | `content/combat/enemies.json` |
+| Enemies | The Enemy Catalogue ([enemies.md](enemies.md)); shipped defaults in `content/combat/enemies.json` |
 | Trial schema and catalogue | `src/modules/combat/trialDefinitions.ts` |
 | Service (gate, read models, fight, persistence, rewards) | `src/modules/combatTrials/combatTrialService.ts` |
 | Discord presenter | `src/discord/combatTrialPresenter.ts` |
@@ -83,6 +83,11 @@ The content loader (`validateCombatTrialContent`) checks:
 - every `enemyKey` exists in `enemies.json`;
 - every reward item slug exists in `items.json`;
 - enabled Trials have distinct `order` values.
+
+At runtime the enemy is read from the Enemy Catalogue on every call, so an
+enemy edited in Portal Admin is what the next fight uses. A Trial whose enemy
+is missing or disabled there is unavailable. Recorded attempts keep the enemy
+they fought ([enemies.md](enemies.md#combat-trials)).
 
 A file that fails any check stops the load, with the file and field in the
 error. Both files are optional: with no Trial file, the list is empty.

@@ -1,8 +1,8 @@
 /**
  * Managed artwork in dungeon authoring: choosing and uploading zone artwork
  * from inside the zone editor, clearing it back to the shipped path, editing
- * the background pool, the scene preview — and an enemy's full artwork,
- * sprite and sprite placement.
+ * the background pool, and the scene preview with an enemy's sprite. (An
+ * enemy's own artwork is edited on its page: see `adminEnemies/__tests__`.)
  */
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
@@ -12,9 +12,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router';
 
 import * as artworkApi from '@/api/adminArtworkAssets';
-import type { ArtworkAsset, EnemyArtworkEntry } from '@/api/adminArtworkAssets';
+import type { ArtworkAsset } from '@/api/adminArtworkAssets';
 import * as api from '@/api/adminDungeons';
 import type { DungeonZoneDetail, DungeonZoneDoc } from '@/api/adminDungeons';
+import type { EnemyRef } from '@/api/adminEnemies';
 import { PortalApiError } from '@/api/client';
 import { SessionContext } from '@/auth/SessionContext';
 import type { SessionState } from '@/auth/types';
@@ -27,7 +28,6 @@ import {
 
 import { DungeonZoneEditorPage } from '../DungeonZoneEditorPage';
 import { DungeonsListPage } from '../DungeonsListPage';
-import { EnemyArtworkPage } from '../EnemyArtworkPage';
 import { newZone } from '../dungeonModel';
 
 const ZONE: DungeonZoneDoc = {
@@ -94,12 +94,11 @@ const detailOf = (
 });
 
 let assets: ArtworkAsset[];
-let enemies: EnemyArtworkEntry[];
+let enemies: EnemyRef[];
 let stored: DungeonZoneDetail;
 let updateSpy: MockInstance<typeof api.updateDungeonZone>;
 let uploadSpy: MockInstance<typeof artworkApi.uploadArtworkAsset>;
 let sceneSpy: MockInstance<typeof artworkApi.scenePreviewBlob>;
-let saveEnemySpy: MockInstance<typeof artworkApi.saveEnemyArtwork>;
 let zoneArt: ArtworkAsset;
 let nightBg: ArtworkAsset;
 let caveBg: ArtworkAsset;
@@ -118,9 +117,10 @@ beforeEach(() => {
   ];
   stored = detailOf(ZONE);
 
-  vi.spyOn(api, 'getDungeonReference').mockResolvedValue({
+  // Enemy sprites and placement reach the editor with the reference data.
+  vi.spyOn(api, 'getDungeonReference').mockImplementation(async () => ({
     nodeTypes: [...api.DUNGEON_NODE_TYPES],
-    enemies: enemies.map((e) => ({ key: e.key, name: e.name, enabled: true, tags: [] })),
+    enemies,
     events: [],
     rewardTables: [],
     currencies: [
@@ -132,7 +132,7 @@ beforeEach(() => {
       },
     ],
     regions: [{ id: 'flaccid-foothills', name: 'Flaccid Foothills', enabled: true }],
-  });
+  }));
   vi.spyOn(api, 'getDungeonZone').mockImplementation(async () => stored);
   vi.spyOn(api, 'listDungeonZones').mockImplementation(async () => ({ zones: [stored] }));
   vi.spyOn(api, 'validateDungeonZone').mockResolvedValue({ issues: [] });
@@ -180,33 +180,10 @@ beforeEach(() => {
   sceneSpy = vi
     .spyOn(artworkApi, 'scenePreviewBlob')
     .mockImplementation(async () => new Blob(['scene']));
-  vi.spyOn(artworkApi, 'listEnemyArtwork').mockImplementation(async () => ({ enemies }));
-  saveEnemySpy = vi.spyOn(artworkApi, 'saveEnemyArtwork').mockImplementation(async (key, input) => {
-    const current = enemies.find((e) => e.key === key)!;
-    const next: EnemyArtworkEntry = {
-      ...current,
-      managed: {
-        artworkAssetId: input.artworkAssetId,
-        spriteAssetId: input.spriteAssetId,
-        spritePlacement: input.spritePlacement,
-        revision: input.expectedRevision + 1,
-        updatedAt: '2026-10-03T12:00:00.000Z',
-        updatedBy: '777',
-      },
-      visual: {
-        ...current.visual,
-        artworkAssetId: input.artworkAssetId,
-        spriteAssetId: input.spriteAssetId,
-        spritePlacement: input.spritePlacement ?? artworkApi.DEFAULT_SPRITE_PLACEMENT,
-      },
-    };
-    enemies = enemies.map((e) => (e.key === key ? next : e));
-    return next;
-  });
 });
 afterEach(() => vi.restoreAllMocks());
 
-const ALL = ['dungeons.read', 'dungeons.write', 'artwork.read', 'artwork.write'];
+const ALL = ['dungeons.read', 'dungeons.write', 'artwork.read', 'artwork.write', 'enemies.read'];
 function renderAt(path: string, permissions = ALL) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const session = {
@@ -226,7 +203,6 @@ function renderAt(path: string, permissions = ALL) {
     <Routes>
       <Route path="/admin/dungeons" element={<DungeonsListPage />} />
       <Route path="/admin/dungeons/zones/:key" element={<DungeonZoneEditorPage />} />
-      <Route path="/admin/dungeons/enemies" element={<EnemyArtworkPage />} />
     </Routes>,
     { wrapper: Wrapper },
   );
@@ -502,10 +478,7 @@ describe('scene rules and preview', () => {
       rules.getByText('The node’s background with the enemy’s sprite over it'),
     ).toBeInTheDocument();
     expect(rules.getByText('The event’s own artwork')).toBeInTheDocument();
-    expect(rules.getByRole('link', { name: 'Enemy Artwork' })).toHaveAttribute(
-      'href',
-      '/admin/dungeons/enemies',
-    );
+    expect(rules.getByRole('link', { name: 'Enemies' })).toHaveAttribute('href', '/admin/enemies');
   });
 
   it('previews the zone background alone, then with an enemy’s sprite at that enemy’s placement', async () => {
@@ -622,183 +595,5 @@ describe('region compatibility notice', () => {
     renderAt(EDITOR);
     await screen.findByTestId('zone-availability');
     expect(screen.queryByTestId('region-backfill-notice')).not.toBeInTheDocument();
-  });
-});
-
-describe('enemy artwork', () => {
-  const ENEMIES = '/admin/dungeons/enemies';
-
-  it('shows Full Artwork, Sprite and Default Sprite Placement, falling back to shipped art', async () => {
-    renderAt(ENEMIES);
-    await screen.findByTestId('enemy-artwork-editor');
-    expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
-      'Full Artwork',
-      'Sprite',
-      'Default Sprite Placement',
-    ]);
-    expect(screen.getByTestId('enemy-art-asset-fallback')).toHaveTextContent(
-      'the shipped file combat/enemies/scrapyard_drone.webp',
-    );
-    expect(screen.getByTestId('enemy-sprite-asset-fallback')).toHaveTextContent('uses no sprite');
-    expect(screen.getByTestId('enemy-no-sprite')).toBeInTheDocument();
-    // The defaults: bottom right at 85%.
-    expect(screen.getByLabelText('Sprite position')).toHaveValue('bottom-right');
-    expect(screen.getByLabelText('Scale (%)')).toHaveValue(85);
-    expect(screen.getByRole('button', { name: 'Save enemy artwork' })).toBeDisabled();
-  });
-
-  it('selects a sprite and sets its placement, previews the scene, and saves', async () => {
-    const user = renderAt(ENEMIES);
-    const sprite = within(await screen.findByTestId('enemy-sprite-asset'));
-    await user.click(sprite.getByRole('button', { name: 'Select sprite' }));
-    expect(
-      within(await screen.findByRole('dialog')).getByLabelText('Filter by category'),
-    ).toHaveValue('enemy_sprite');
-    await pick(user, droneSprite);
-    expect(await sprite.findByTestId('enemy-sprite-asset-selected')).toHaveTextContent(
-      'Drone Sprite · Enemy sprite',
-    );
-
-    await user.selectOptions(screen.getByLabelText('Sprite position'), 'bottom-center');
-    const scale = screen.getByLabelText('Scale (%)');
-    await user.clear(scale);
-    await user.type(scale, '70');
-    const offsetX = screen.getByLabelText('Offset X (px)');
-    await user.clear(offsetX);
-    await user.type(offsetX, '-40');
-
-    // The preview needs a background; choosing one composes the scene on the server.
-    const background = within(screen.getByTestId('enemy-preview-background'));
-    await user.click(background.getByRole('button', { name: 'Select preview background' }));
-    await pick(user, nightBg);
-    const placement = { anchor: 'bottom-center', scaleBasisPoints: 7000, offsetX: -40, offsetY: 0 };
-    await waitFor(() =>
-      expect(sceneSpy).toHaveBeenLastCalledWith({
-        background: { assetId: nightBg.id },
-        sprite: { assetId: droneSprite.id, artworkPath: null },
-        placement,
-      }),
-    );
-    expect(await screen.findByTestId('scene-preview-image')).toBeInTheDocument();
-
-    expect(screen.getByTestId('enemy-artwork-status')).toHaveTextContent('Unsaved changes.');
-    await user.click(screen.getByRole('button', { name: 'Save enemy artwork' }));
-    await waitFor(() =>
-      expect(saveEnemySpy).toHaveBeenCalledWith('scrapyard_drone', {
-        artworkAssetId: null,
-        spriteAssetId: droneSprite.id,
-        spritePlacement: placement,
-        // No override existed yet.
-        expectedRevision: 0,
-      }),
-    );
-    await waitFor(() =>
-      expect(screen.getByTestId('enemy-artwork-status')).toHaveTextContent('Saved.'),
-    );
-  });
-
-  it('keeps placement inside its bounds whatever is typed', async () => {
-    const user = renderAt(ENEMIES);
-    await screen.findByTestId('enemy-artwork-editor');
-    const scale = screen.getByLabelText('Scale (%)');
-    await user.clear(scale);
-    await user.type(scale, '500');
-    await user.tab();
-    expect(scale).toHaveValue(100);
-    const offsetY = screen.getByLabelText('Offset Y (px)');
-    await user.clear(offsetY);
-    await user.type(offsetY, '-9999');
-    await user.tab();
-    expect(offsetY).toHaveValue(-337);
-    await user.click(screen.getByRole('button', { name: 'Save enemy artwork' }));
-    await waitFor(() => expect(saveEnemySpy).toHaveBeenCalled());
-    expect(saveEnemySpy.mock.calls[0]![1].spritePlacement).toEqual({
-      anchor: 'bottom-right',
-      scaleBasisPoints: 10_000,
-      offsetX: 0,
-      offsetY: -337,
-    });
-  });
-
-  it('clears an override back to the shipped art and placement, naming the revision it edited', async () => {
-    const custom = { anchor: 'left' as const, scaleBasisPoints: 6000, offsetX: 10, offsetY: 0 };
-    enemies = [
-      enemyFixture({
-        key: 'scrapyard_drone',
-        name: 'Scrapyard Drone',
-        managed: {
-          artworkAssetId: zoneArt.id,
-          spriteAssetId: droneSprite.id,
-          spritePlacement: custom,
-          revision: 4,
-          updatedAt: '2026-10-02T12:00:00.000Z',
-          updatedBy: '777',
-        },
-        visual: {
-          artworkAssetId: zoneArt.id,
-          artworkPath: 'combat/enemies/scrapyard_drone.webp',
-          spriteAssetId: droneSprite.id,
-          spriteArtworkPath: null,
-          spritePlacement: custom,
-        },
-      }),
-    ];
-    const user = renderAt(ENEMIES);
-    expect(await screen.findByLabelText('Sprite position')).toHaveValue('left');
-    await user.click(
-      within(screen.getByTestId('enemy-art-asset')).getByRole('button', {
-        name: 'Clear full artwork',
-      }),
-    );
-    await user.click(
-      within(screen.getByTestId('enemy-sprite-asset')).getByRole('button', {
-        name: 'Clear sprite',
-      }),
-    );
-    await user.click(screen.getByRole('button', { name: 'Use the shipped placement' }));
-    expect(screen.getByTestId('enemy-art-asset-fallback')).toHaveTextContent(
-      'the shipped file combat/enemies/scrapyard_drone.webp',
-    );
-    expect(screen.getByLabelText('Sprite position')).toHaveValue('bottom-right');
-
-    await user.click(screen.getByRole('button', { name: 'Save enemy artwork' }));
-    await waitFor(() =>
-      expect(saveEnemySpy).toHaveBeenCalledWith('scrapyard_drone', {
-        artworkAssetId: null,
-        spriteAssetId: null,
-        spritePlacement: null,
-        expectedRevision: 4,
-      }),
-    );
-  });
-
-  it('switches enemy, and is read-only without the write permission', async () => {
-    const user = renderAt(ENEMIES, ['dungeons.read', 'artwork.read']);
-    await screen.findByTestId('enemy-artwork-editor');
-    await user.selectOptions(screen.getByLabelText('Enemy'), 'scrapheap_colossus');
-    expect(await screen.findByTestId('enemy-art-asset-fallback')).toHaveTextContent(
-      'combat/enemies/scrapheap_colossus.webp',
-    );
-    expect(screen.queryByRole('button', { name: 'Save enemy artwork' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Select sprite' })).not.toBeInTheDocument();
-    expect(screen.getByLabelText('Sprite position')).toBeDisabled();
-  });
-
-  it('tells the author when someone else saved first', async () => {
-    saveEnemySpy.mockRejectedValueOnce(
-      new PortalApiError({
-        status: 409,
-        code: 'ENEMY_ARTWORK_STALE',
-        message: "Someone else saved this enemy's artwork first.",
-      }),
-    );
-    const user = renderAt(ENEMIES);
-    await user.selectOptions(await screen.findByLabelText('Sprite position'), 'center');
-    await user.click(screen.getByRole('button', { name: 'Save enemy artwork' }));
-    expect(
-      await screen.findByText(
-        /Someone else saved this enemy’s artwork first — it has been reloaded/,
-      ),
-    ).toBeInTheDocument();
   });
 });

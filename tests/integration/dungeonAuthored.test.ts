@@ -428,10 +428,8 @@ async function picture(view: DungeonRunView) {
   const bytes = typeof source === 'string' ? fs.readFileSync(source) : source;
   return { name: art.file.name!, bytes: await sharp(bytes).png().toBuffer() };
 }
-const setGruntArt = async (art: { spriteAssetId: string | null; spritePlacement: SpritePlacement | null }) => {
-  const current = await w.enemyArtwork.get('grunt');
-  await w.enemyArtwork.save('grunt', { artworkAssetId: null, ...art, expectedRevision: current?.managed?.revision ?? 0 }, 'admin');
-};
+const setGruntArt = (art: { spriteAssetId: string | null; spritePlacement: SpritePlacement | null }) =>
+  w.setEnemyArtwork('grunt', art);
 
 describe('artwork inheritance', () => {
   beforeAll(() => setGruntArt({ spriteAssetId: ids.sprite, spritePlacement: CENTER }));

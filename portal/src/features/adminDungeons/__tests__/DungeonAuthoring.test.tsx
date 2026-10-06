@@ -13,7 +13,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router';
 
 import * as artworkApi from '@/api/adminArtworkAssets';
-import type { ArtworkAsset, EnemyArtworkEntry } from '@/api/adminArtworkAssets';
+import type { ArtworkAsset } from '@/api/adminArtworkAssets';
 import * as api from '@/api/adminDungeons';
 import type {
   DungeonPreview,
@@ -22,6 +22,7 @@ import type {
   DungeonZoneDoc,
   DungeonZoneIssue,
 } from '@/api/adminDungeons';
+import type { EnemyRef } from '@/api/adminEnemies';
 import { PortalApiError } from '@/api/client';
 import { SessionContext } from '@/auth/SessionContext';
 import type { SessionState } from '@/auth/types';
@@ -239,7 +240,7 @@ const authoredPreview: DungeonPreview = {
 let zones: Record<string, DungeonZoneDetail>;
 let issues: DungeonZoneIssue[];
 let assets: ArtworkAsset[];
-let enemies: EnemyArtworkEntry[];
+let enemies: EnemyRef[];
 let droneSprite: ArtworkAsset;
 let labBackground: ArtworkAsset;
 let createSpy: MockInstance<typeof api.createDungeonZone>;
@@ -271,16 +272,21 @@ beforeEach(() => {
         spritePlacement: { anchor: 'bottom-left', scaleBasisPoints: 7000, offsetX: 10, offsetY: 0 },
       },
     }),
-    enemyFixture({ key: 'scrapheap_colossus', name: 'Scrapheap Colossus' }),
+    enemyFixture({ key: 'alley_bruiser', name: 'Alley Bruiser', attack: 18, defense: 9, hp: 140 }),
+    enemyFixture({
+      key: 'scrapheap_colossus',
+      name: 'Scrapheap Colossus',
+      attack: 55,
+      defense: 30,
+      hp: 300,
+      tags: ['boss'],
+    }),
   ];
 
-  vi.spyOn(api, 'getDungeonReference').mockResolvedValue({
+  // The editor reads enemies — stats and artwork alike — from the reference data.
+  vi.spyOn(api, 'getDungeonReference').mockImplementation(async () => ({
     nodeTypes: [...api.DUNGEON_NODE_TYPES],
-    enemies: [
-      { key: 'scrapyard_drone', name: 'Scrapyard Drone', enabled: true, tags: [] },
-      { key: 'alley_bruiser', name: 'Alley Bruiser', enabled: true, tags: [] },
-      { key: 'scrapheap_colossus', name: 'Scrapheap Colossus', enabled: true, tags: ['boss'] },
-    ],
+    enemies,
     events: [{ key: 'abandoned_cache', name: 'Abandoned Cache', enabled: true, tags: [] }],
     rewardTables: [{ id: 'cache-v1', enabled: true }],
     currencies: [
@@ -290,7 +296,7 @@ beforeEach(() => {
       { id: 'flaccid-foothills', name: 'Flaccid Foothills', enabled: true },
       { id: 'base-80085', name: 'Base 80085', enabled: true },
     ],
-  });
+  }));
   vi.spyOn(api, 'listDungeonZones').mockImplementation(async () => ({
     zones: Object.values(zones),
   }));
@@ -343,7 +349,6 @@ beforeEach(() => {
   sceneSpy = vi
     .spyOn(artworkApi, 'scenePreviewBlob')
     .mockImplementation(async () => new Blob(['scene']));
-  vi.spyOn(artworkApi, 'listEnemyArtwork').mockImplementation(async () => ({ enemies }));
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -625,7 +630,9 @@ describe('room list', () => {
     await userEvent
       .setup()
       .click(card('Tunnel Mouth').getByRole('button', { name: 'Edit Tunnel Mouth' }));
-    expect(within(screen.getByTestId('room-editor')).getByLabelText('Enemy')).toBeDisabled();
+    expect(
+      within(screen.getByTestId('room-editor')).getByRole('button', { name: /^Enemy:/ }),
+    ).toBeDisabled();
   });
 });
 
@@ -741,7 +748,10 @@ describe('editing a room', () => {
     const user = renderAt(LAB);
     await screen.findByTestId('zone-rooms');
     const editor = await edit(user, 'Tunnel Mouth');
-    expect(editor.getByLabelText('Enemy')).toHaveValue('scrapyard_drone');
+    expect(editor.getByRole('button', { name: 'Enemy: Scrapyard Drone' })).toBeInTheDocument();
+    // The enemy's stats are shown, and are not something a room can edit.
+    expect(editor.getByTestId('room-enemy-stats')).toHaveTextContent('ATK 10 · DEF 5 · HP 100');
+    expect(editor.queryByLabelText('ATK')).not.toBeInTheDocument();
     expect(editor.getByTestId('room-scene')).toBeInTheDocument();
     expect(editor.getByTestId('room-reward')).toBeInTheDocument();
     expect(editor.getByLabelText('Extraction available')).not.toBeChecked();
@@ -749,7 +759,13 @@ describe('editing a room', () => {
     expect(editor.queryByTestId('room-heal')).not.toBeInTheDocument();
     expect(editor.queryByLabelText('Heal (% of max HP)')).not.toBeInTheDocument();
 
-    await user.selectOptions(editor.getByLabelText('Enemy'), 'alley_bruiser');
+    await user.click(editor.getByRole('button', { name: 'Enemy: Scrapyard Drone' }));
+    await user.click(
+      within(await screen.findByTestId('enemy-picker')).getByRole('button', {
+        name: 'Alley Bruiser',
+      }),
+    );
+    expect(editor.getByTestId('room-enemy-stats')).toHaveTextContent('ATK 18 · DEF 9 · HP 140');
     await user.click(editor.getByLabelText('Extraction available'));
     await save(user);
     expect(roomsOf(savedZone())[0]).toMatchObject({ enemyKey: 'alley_bruiser', extraction: true });
@@ -759,7 +775,7 @@ describe('editing a room', () => {
     const user = renderAt(LAB);
     await screen.findByTestId('zone-rooms');
     const editor = await edit(user, 'Repair Bay');
-    expect(editor.queryByLabelText('Enemy')).not.toBeInTheDocument();
+    expect(editor.queryByTestId('room-enemy')).not.toBeInTheDocument();
     expect(editor.queryByTestId('room-reward')).not.toBeInTheDocument();
     expect(editor.queryByText(/Enemy artwork/)).not.toBeInTheDocument();
     expect(editor.getByTestId('room-background')).toBeInTheDocument();
@@ -782,7 +798,7 @@ describe('editing a room', () => {
     const editor = await edit(user, 'Salvage Cache');
     expect(editor.getByLabelText('Equipment reward table')).toHaveValue('cache-v1');
     expect(editor.getByLabelText('Currency min')).toHaveValue(3);
-    expect(editor.queryByLabelText('Enemy')).not.toBeInTheDocument();
+    expect(editor.queryByTestId('room-enemy')).not.toBeInTheDocument();
     await user.selectOptions(editor.getByLabelText('Reward table'), 'cache-v1');
     await save(user);
     expect(roomsOf(savedZone())[3]!.reward).toEqual({
@@ -815,7 +831,7 @@ describe('editing a room', () => {
     const user = renderAt(LAB);
     await screen.findByTestId('zone-rooms');
     const editor = await edit(user, 'Far Gate');
-    expect(editor.getByLabelText('Enemy')).toHaveValue('scrapheap_colossus');
+    expect(editor.getByRole('button', { name: 'Enemy: Scrapheap Colossus' })).toBeInTheDocument();
     expect(editor.queryByLabelText('Extraction available')).not.toBeInTheDocument();
     expect(editor.getByText('A Boss is the final room: it leads nowhere.')).toBeInTheDocument();
     expect(card('Far Gate').queryByRole('button', { name: /Add branch/ })).not.toBeInTheDocument();
@@ -1135,8 +1151,6 @@ describe('procedural editor', () => {
       'First room',
       'Final boss required',
       'Always Rest before final Boss',
-      'Combat pool 1 enemy',
-      'Boss pool 1 enemy',
       'Rest heals (% of max HP)',
       'Extraction from depth',
       'Kept on defeat (%)',
@@ -1231,8 +1245,11 @@ describe('procedural editor', () => {
     await screen.findByTestId('zone-shape');
     // The fixture's event weight is 10 already; its miniboss weight is 0.
     await user.click(
-      within(screen.getByTestId('pool-miniboss')).getByRole('button', { name: 'Add enemy' }),
+      within(screen.getByTestId('pool-miniboss')).getByRole('button', { name: '+ Add Enemy' }),
     );
+    const picker = within(await screen.findByTestId('enemy-picker'));
+    await user.click(picker.getByRole('button', { name: 'Alley Bruiser' }));
+    await user.click(picker.getByRole('button', { name: 'Add 1 enemy' }));
     await user.click(
       within(screen.getByTestId('pool-event')).getByRole('button', { name: 'Add event' }),
     );

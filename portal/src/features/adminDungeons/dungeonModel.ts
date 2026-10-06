@@ -12,7 +12,6 @@ import {
   type DungeonNodeType,
   type DungeonPoolEntryDoc,
   type DungeonPoolKey,
-  type DungeonReferenceData,
   type DungeonRewardBandDoc,
   type DungeonRoomDoc,
   type DungeonZoneDoc,
@@ -272,7 +271,8 @@ export interface NewDungeonInput {
  */
 export function starterZone(
   input: NewDungeonInput,
-  reference: Pick<DungeonReferenceData, 'enemies'>,
+  // Only what a starter needs of an enemy: which exist, which are enabled, which are bosses.
+  reference: { enemies: readonly DungeonContentRef[] },
 ): DungeonZoneDoc {
   const first = enabledFirst(reference.enemies)[0];
   const boss = starterBoss(reference.enemies);

@@ -9,8 +9,9 @@
  *     the upload limits, and the scene preview.
  *   - `artwork.write` — upload, replace, rename / re-categorise,
  *     disable / enable, delete.
- *   - `dungeons.read` / `dungeons.write` — an enemy's managed artwork
- *     (full art, sprite, sprite placement), which is dungeon authoring.
+ *
+ * An enemy's artwork is set on the enemy itself (`admin/enemies.ts`); these
+ * routes only hold the images it points at.
  *
  * ## Uploads
  *
@@ -45,7 +46,6 @@ import {
   type ArtworkAsset,
   type ArtworkAssetService,
 } from '../../../../modules/artworkAssets/artworkAssetService';
-import type { EnemyArtworkEntry } from '../../../../modules/artworkAssets/enemyArtworkService';
 import {
   ARTWORK_MAX_DIMENSION,
   ARTWORK_UPLOAD_MAX_BYTES,
@@ -62,7 +62,7 @@ import {
   SpritePlacementSchema,
 } from '../../../../modules/artworkAssets/scenePlacement';
 import { ARTWORK_PATH_MAX_LENGTH } from '../../../../modules/assets/artworkPath';
-import { AppError, ArtworkAssetInUseError, EnemyArtworkStaleError } from '../../../../shared/errors';
+import { AppError, ArtworkAssetInUseError } from '../../../../shared/errors';
 
 const UPLOAD_CONTENT_TYPES = ['image/png', 'image/webp', 'image/jpeg', 'application/octet-stream'];
 
@@ -106,39 +106,6 @@ const eventSchema = z.object({
   createdAt: z.string(),
 });
 
-const placementSchema = z.object({
-  anchor: z.enum(SPRITE_ANCHORS),
-  scaleBasisPoints: z.number().int(),
-  offsetX: z.number().int(),
-  offsetY: z.number().int(),
-});
-
-const enemyArtworkSchema = z.object({
-  key: z.string(),
-  name: z.string(),
-  enabled: z.boolean(),
-  artworkPath: z.string().nullable(),
-  spriteArtworkPath: z.string().nullable(),
-  shippedPlacement: placementSchema.nullable(),
-  managed: z
-    .object({
-      artworkAssetId: z.string().nullable(),
-      spriteAssetId: z.string().nullable(),
-      spritePlacement: placementSchema.nullable(),
-      revision: z.number().int(),
-      updatedAt: z.string(),
-      updatedBy: z.string().nullable(),
-    })
-    .nullable(),
-  visual: z.object({
-    artworkAssetId: z.string().nullable(),
-    artworkPath: z.string().nullable(),
-    spriteAssetId: z.string().nullable(),
-    spriteArtworkPath: z.string().nullable(),
-    spritePlacement: placementSchema,
-  }),
-});
-
 /** A scene layer named by a managed asset, a shipped path, or both (the asset wins). */
 const layerRefSchema = z
   .object({
@@ -153,20 +120,6 @@ function toAsset(a: ArtworkAsset): z.infer<typeof assetSchema> {
     createdAt: a.createdAt.toISOString(),
     updatedAt: a.updatedAt.toISOString(),
     replacedAt: a.replacedAt?.toISOString() ?? null,
-  };
-}
-
-function toEnemy(e: EnemyArtworkEntry): z.infer<typeof enemyArtworkSchema> {
-  return {
-    ...e,
-    managed: e.managed && {
-      artworkAssetId: e.managed.artworkAssetId,
-      spriteAssetId: e.managed.spriteAssetId,
-      spritePlacement: e.managed.spritePlacement,
-      revision: e.managed.revision,
-      updatedAt: e.managed.updatedAt.toISOString(),
-      updatedBy: e.managed.updatedBy,
-    },
   };
 }
 
@@ -193,12 +146,6 @@ async function translate<T>(work: () => Promise<T>): Promise<T> {
     if (err instanceof ArtworkAssetInUseError) {
       throw new ApiErrorWithDetails(err.code, err.message, err.userMessage, { references: err.references });
     }
-    if (err instanceof EnemyArtworkStaleError) {
-      throw new ApiErrorWithDetails(err.code, err.message, err.userMessage, {
-        expectedRevision: err.expectedRevision,
-        currentRevision: err.currentRevision,
-      });
-    }
     throw err;
   }
 }
@@ -211,7 +158,6 @@ export const adminArtworkAssetRoutes =
     if (!service) return;
     const assets: ArtworkAssetService = service;
     const scenes = ctx.services.sceneComposition;
-    const enemyArtwork = ctx.services.enemyArtwork;
     const assetsDir = ctx.assetsDir ?? './assets';
 
     // The upload body is the file. Scoped to this plugin: no other route
@@ -219,7 +165,7 @@ export const adminArtworkAssetRoutes =
     app.addContentTypeParser(UPLOAD_CONTENT_TYPES, { parseAs: 'buffer' }, (_req, body, done) => done(null, body));
 
     const gate =
-      (permission: 'artwork.read' | 'artwork.write' | 'dungeons.read' | 'dungeons.write') =>
+      (permission: 'artwork.read' | 'artwork.write') =>
       async (req: FastifyRequest): Promise<void> => {
         if (!authorization) {
           throw new AppError(
@@ -559,61 +505,6 @@ export const adminArtworkAssetRoutes =
             .header('cache-control', 'private, no-cache')
             .send(await readFile(scene.absolutePath));
           return reply;
-        },
-      );
-    }
-
-    if (enemyArtwork) {
-      const enemyTags = ['Admin — Dungeons'];
-      const enemyParams = z.object({ key: z.string().min(1).max(64).regex(/^[a-z0-9]+(?:_[a-z0-9]+)*$/) });
-      const enemyNotFound = (key: string) => new AppError('NOT_FOUND', `Enemy "${key}" not found`, 'Not found.');
-
-      app.get(
-        '/admin/dungeons/enemy-artwork',
-        {
-          preValidation: gate('dungeons.read'),
-          schema: {
-            tags: enemyTags,
-            summary: "Every enemy's artwork: the shipped paths, the managed override, and what is in effect",
-            response: {
-              200: dataSchema(z.object({ enemies: z.array(enemyArtworkSchema) })),
-              ...commonErrorResponses,
-            },
-          },
-        },
-        async (req) => ok(req, { enemies: (await enemyArtwork.list()).map(toEnemy) }),
-      );
-
-      app.put(
-        '/admin/dungeons/enemy-artwork/:key',
-        {
-          preValidation: gate('dungeons.write'),
-          schema: {
-            tags: enemyTags,
-            summary:
-              "Set an enemy's managed full artwork, sprite and default sprite placement. Null clears a field back " +
-              'to the shipped value. `expectedRevision` is 0 for an enemy with no override yet',
-            params: enemyParams,
-            body: z
-              .object({
-                artworkAssetId: z.string().uuid().nullable(),
-                spriteAssetId: z.string().uuid().nullable(),
-                spritePlacement: SpritePlacementSchema.nullable(),
-                expectedRevision: z.number().int().min(0),
-              })
-              .strict(),
-            response: {
-              200: dataSchema(enemyArtworkSchema),
-              409: errorSchema.describe('ENEMY_ARTWORK_STALE — someone saved first.'),
-              ...notFoundResponse,
-              ...commonErrorResponses,
-            },
-          },
-        },
-        async (req) => {
-          const saved = await translate(() => enemyArtwork.save(req.params.key, req.body, actorOf(req)));
-          if (!saved) throw enemyNotFound(req.params.key);
-          return ok(req, toEnemy(saved));
         },
       );
     }

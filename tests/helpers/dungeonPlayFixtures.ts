@@ -17,7 +17,10 @@ import path from 'node:path';
 import { eq } from 'drizzle-orm';
 import { createArtworkAssetService, type ArtworkAssetService } from '../../src/modules/artworkAssets/artworkAssetService';
 import { createLocalArtworkStorage } from '../../src/modules/artworkAssets/artworkStorage';
-import { createEnemyArtworkService, type EnemyArtworkService } from '../../src/modules/artworkAssets/enemyArtworkService';
+import type { SpritePlacement } from '../../src/modules/artworkAssets/scenePlacement';
+import { createEnemyCatalogueService, type EnemyCatalogueService } from '../../src/modules/enemies/enemyService';
+import { dungeonZoneEnemyReferences } from '../../src/modules/enemies/enemyReferences';
+import { seedCombatEnemies, shippedCombatEnemies } from '../../src/modules/enemies/enemyStore';
 import { createSceneCompositionService, type SceneCompositionService } from '../../src/modules/artworkAssets/sceneComposition';
 import type { DungeonZoneDefinitionInput } from '../../src/modules/dungeons/zoneDefinition';
 
@@ -208,7 +211,15 @@ export interface DungeonWorld {
   allowance: DungeonAllowanceService;
   /** Managed artwork, stored in a temp directory removed by `cleanup`. */
   assets: ArtworkAssetService;
-  enemyArtwork: EnemyArtworkService;
+  /** The Enemy Catalogue, seeded with {@link TEST_ENEMIES}; zones and runs read enemies from it. */
+  enemies: EnemyCatalogueService;
+  /** Set an enemy's managed artwork and placement, leaving everything else as it is. */
+  setEnemyArtwork(
+    key: string,
+    art: { artworkAssetId?: string | null; spriteAssetId?: string | null; spritePlacement?: SpritePlacement | null },
+  ): Promise<void>;
+  /** Switch an enemy on or off in the catalogue. */
+  setEnemyEnabled(key: string, enabled: boolean): Promise<void>;
   scenes: SceneCompositionService;
   /** Where the managed artwork and the scene cache live for this world. */
   artworkDir: string;
@@ -259,10 +270,17 @@ export async function createDungeonWorld(
   const currencies = createProgressionCurrencyService(t.db);
   const artworkDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wm-dg-artwork-'));
   const assets = createArtworkAssetService({ db: t.db, storage: createLocalArtworkStorage(path.join(artworkDir, 'managed')) });
-  const enemyArtwork = createEnemyArtworkService({ db: t.db, getEnemies: () => content.current.combatEnemies ?? [], assets });
+  const shippedEnemies = shippedCombatEnemies(TEST_ENEMIES);
+  await seedCombatEnemies(t.db, shippedEnemies);
+  const enemies = createEnemyCatalogueService({
+    db: t.db,
+    getShipped: () => shippedEnemies,
+    assets,
+    referenceSources: [dungeonZoneEnemyReferences],
+  });
   const scenes = createSceneCompositionService({ cacheDir: path.join(artworkDir, 'cache') });
-  const zones = createDungeonZoneService({ db: t.db, getContent: () => content.current, getShipped: () => [], assets });
-  const runs = createDungeonRunService({ db: t.db, getContent: () => content.current, currencies, enemyArtwork });
+  const zones = createDungeonZoneService({ db: t.db, getContent: () => content.current, getShipped: () => [], assets, enemies });
+  const runs = createDungeonRunService({ db: t.db, getContent: () => content.current, currencies, enemies });
   const clock = { now: new Date('2026-03-10T12:00:00Z') };
   const allowance = createDungeonAllowanceService({ db: t.db, timezone: TEST_DAILY_TIMEZONE, now: () => clock.now });
   const play = createDungeonPlayService({
@@ -298,7 +316,33 @@ export async function createDungeonWorld(
     play,
     allowance,
     assets,
-    enemyArtwork,
+    enemies,
+    async setEnemyArtwork(key, art) {
+      const current = (await enemies.get(key))!;
+      await enemies.update(
+        key,
+        {
+          enemy: {
+            name: current.name,
+            description: current.description,
+            enabled: current.enabled,
+            attack: current.attack,
+            defense: current.defense,
+            hp: current.hp,
+            tags: current.tags,
+            artworkAssetId: art.artworkAssetId ?? null,
+            spriteAssetId: art.spriteAssetId ?? null,
+            spritePlacement: art.spritePlacement ?? null,
+          },
+          expectedRevision: current.revision,
+        },
+        'admin',
+      );
+    },
+    async setEnemyEnabled(key, enabled) {
+      const current = (await enemies.get(key))!;
+      if (current.enabled !== enabled) await enemies.setEnabled(key, { enabled, expectedRevision: current.revision }, 'admin');
+    },
     scenes,
     artworkDir,
     clock,

@@ -57,6 +57,7 @@ const FIGHTER: DungeonFighter = {
 const enemy = (key: string, attack: number, defense: number, hp: number) => ({
   key,
   name: key,
+  description: '',
   attack,
   defense,
   hp,

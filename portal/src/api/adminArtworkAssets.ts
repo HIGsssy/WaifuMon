@@ -1,7 +1,7 @@
 /**
  * Portal admin API client for managed artwork — images uploaded through the
- * Portal and referenced from authored content by id — plus enemy artwork and
- * the scene preview.
+ * Portal and referenced from authored content by id — plus the scene preview.
+ * (An enemy's own artwork is saved with the enemy: see `adminEnemies.ts`.)
  *
  * Maps 1:1 to `src/api/routes/v1/admin/artworkAssets.ts`. An upload sends the
  * file itself as the request body; the server reads the type from the bytes
@@ -152,39 +152,10 @@ export interface ArtworkLayerRef {
   artworkPath?: string | null;
 }
 
-export interface EnemyArtworkEntry {
-  key: string;
-  name: string;
-  enabled: boolean;
-  /** Shipped (Git) values. */
-  artworkPath: string | null;
-  spriteArtworkPath: string | null;
-  shippedPlacement: SpritePlacement | null;
-  /** The Portal override; null when none was ever saved. */
-  managed: {
-    artworkAssetId: string | null;
-    spriteAssetId: string | null;
-    spritePlacement: SpritePlacement | null;
-    revision: number;
-    updatedAt: string;
-    updatedBy: string | null;
-  } | null;
-  /** What is in effect. */
-  visual: {
-    artworkAssetId: string | null;
-    artworkPath: string | null;
-    spriteAssetId: string | null;
-    spriteArtworkPath: string | null;
-    spritePlacement: SpritePlacement;
-  };
-}
-
 export const ARTWORK_ASSETS_QUERY_KEY = ['admin', 'artwork-assets'] as const;
-export const ENEMY_ARTWORK_QUERY_KEY = ['admin', 'dungeons', 'enemy-artwork'] as const;
 
 // Under `/v1` like every other resource: the client's base URL is `/api`.
 const base = '/v1/admin/artwork';
-const enemyBase = '/v1/admin/dungeons/enemy-artwork';
 const withSignal = (signal?: AbortSignal) => (signal ? { signal } : {});
 /** Uploads carry megabytes; give them longer than a JSON call. */
 const uploadTimeout = () => Math.max(requestTimeoutMs(), 60_000);
@@ -288,22 +259,6 @@ export interface ScenePreviewRequest {
 /** The composed scene exactly as a player screen would show it. */
 export function scenePreviewBlob(request: ScenePreviewRequest): Promise<Blob> {
   return postBlob(`${base}/scene-preview`, request);
-}
-
-export function listEnemyArtwork(signal?: AbortSignal): Promise<{ enemies: EnemyArtworkEntry[] }> {
-  return getData(enemyBase, withSignal(signal));
-}
-
-export function saveEnemyArtwork(
-  key: string,
-  input: {
-    artworkAssetId: string | null;
-    spriteAssetId: string | null;
-    spritePlacement: SpritePlacement | null;
-    expectedRevision: number;
-  },
-): Promise<EnemyArtworkEntry> {
-  return putData<EnemyArtworkEntry>(`${enemyBase}/${key}`, input);
 }
 
 export function formatBytes(bytes: number): string {

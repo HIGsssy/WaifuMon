@@ -3347,8 +3347,10 @@ export const artworkAssetEvents = pgTable(
 export type ArtworkAssetEventRow = typeof artworkAssetEvents.$inferSelect;
 
 /**
- * Managed artwork for a combat enemy (migration 0054) — an overlay on the
- * file-authored enemy, keyed by its key. No row means shipped art only.
+ * LEGACY (migration 0054): managed artwork for a combat enemy, from when
+ * enemies were file content only. The enemy row (`combat_enemies`) owns these
+ * references now; rows here are copied across once at startup and kept as a
+ * read-only record. Nothing writes this table any more.
  */
 export const combatEnemyArtwork = pgTable(
   'combat_enemy_artwork',
@@ -3361,6 +3363,8 @@ export const combatEnemyArtwork = pgTable(
     revision: integer('revision').notNull().default(1),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     updatedBy: text('updated_by'),
+    /** When this row was copied into `combat_enemies` (migration 0055); null until then. */
+    mergedAt: timestamp('merged_at', { withTimezone: true }),
   },
   (t) => [
     check('combat_enemy_artwork_key_check', sql`${t.enemyKey} ~ '^[a-z0-9]+(_[a-z0-9]+)*$'`),
@@ -3368,3 +3372,56 @@ export const combatEnemyArtwork = pgTable(
   ],
 );
 export type CombatEnemyArtworkRow = typeof combatEnemyArtwork.$inferSelect;
+
+/**
+ * The central Enemy Catalogue (migration 0055): one row per combat enemy,
+ * referenced by key from dungeon zones, Combat Trials and anything later.
+ *
+ * Seeded from `content/combat/enemies.json` like reward tables and dungeon
+ * zones — `seedHash` is the hash of the shipped enemy last seeded into the
+ * row (null for an enemy created in the Portal), `contentHash` the hash of
+ * what the row holds now. The hash covers the portable definition only:
+ * the managed asset ids are local to one environment and stay out of it.
+ */
+export const combatEnemies = pgTable(
+  'combat_enemies',
+  {
+    enemyKey: text('enemy_key').primaryKey(),
+    name: text('name').notNull(),
+    description: text('description').notNull().default(''),
+    enabled: boolean('enabled').notNull(),
+    attack: integer('attack').notNull(),
+    defense: integer('defense').notNull(),
+    hp: integer('hp').notNull(),
+    tags: jsonb('tags').$type<string[]>().notNull().default([]),
+    /** Shipped full artwork, relative to the assets root. */
+    artworkPath: text('artwork_path'),
+    /** Shipped transparent sprite, relative to the assets root. */
+    spriteArtworkPath: text('sprite_artwork_path'),
+    /** Managed full artwork; wins over `artworkPath`. */
+    artworkAssetId: uuid('artwork_asset_id').references(() => artworkAssets.id),
+    /** Managed sprite; wins over `spriteArtworkPath`. */
+    spriteAssetId: uuid('sprite_asset_id').references(() => artworkAssets.id),
+    /** `SpritePlacement`; null for the system default. */
+    spritePlacement: jsonb('sprite_placement').$type<Record<string, unknown>>(),
+    /** Bumped on every write; a save must name the revision it edited. */
+    revision: integer('revision').notNull().default(1),
+    contentHash: text('content_hash').notNull(),
+    seedHash: text('seed_hash'),
+    /** List order: the shipped file's order, then creation order. */
+    position: integer('position').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Discord id of the admin, or `seed`. */
+    updatedBy: text('updated_by'),
+  },
+  (t) => [
+    check('combat_enemies_key_check', sql`${t.enemyKey} ~ '^[a-z0-9]+(_[a-z0-9]+)*$'`),
+    check('combat_enemies_revision_check', sql`${t.revision} >= 1`),
+    check('combat_enemies_attack_check', sql`${t.attack} >= 1`),
+    check('combat_enemies_defense_check', sql`${t.defense} >= 0`),
+    check('combat_enemies_hp_check', sql`${t.hp} >= 1`),
+    index('combat_enemies_position_idx').on(t.position, t.enemyKey),
+  ],
+);
+export type CombatEnemyRow = typeof combatEnemies.$inferSelect;

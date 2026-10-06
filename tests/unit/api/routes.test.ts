@@ -1006,8 +1006,16 @@ describe('OpenAPI registration', () => {
       'PUT /api/v1/admin/artwork/assets/{id}/enabled',
       'DELETE /api/v1/admin/artwork/assets/{id}',
       'POST /api/v1/admin/artwork/scene-preview',
-      // An enemy's managed artwork and sprite placement. `dungeons.write`.
-      'PUT /api/v1/admin/dungeons/enemy-artwork/{key}',
+      // The Enemy Catalogue (`enemies.write`): create, save, enable/disable,
+      // duplicate and delete. Writes name the revision they edited (409 when
+      // stale); delete is refused for a referenced or shipped enemy.
+      // `validate` writes nothing but carries a body; it needs `enemies.read`.
+      'DELETE /api/v1/admin/enemies/{key}',
+      'POST /api/v1/admin/enemies',
+      'POST /api/v1/admin/enemies/validate',
+      'POST /api/v1/admin/enemies/{key}/duplicate',
+      'PUT /api/v1/admin/enemies/{key}',
+      'PUT /api/v1/admin/enemies/{key}/enabled',
     ].sort());
   });
 

@@ -251,13 +251,9 @@ describe('a start that fails consumes nothing', () => {
   });
 
   it('generation failure — after the attempt was taken in the transaction — rolls the attempt back', async () => {
-    // Remove the only boss from the content the generator sees: the zone still
-    // reads, but no run can be generated for it.
-    const original = w.content.current;
-    w.content.current = {
-      ...original,
-      combatEnemies: original.combatEnemies!.map((e) => (e.key === 'overlord' ? { ...e, enabled: false } : e)),
-    };
+    // Switch off the only boss in the Enemy Catalogue: the zone still reads,
+    // but no run can be generated for it.
+    await w.setEnemyEnabled('overlord', false);
     const { playerId } = await w.player();
     try {
       await startAndAbandon(playerId, DOOMED); // still generates: its boss is the brute
@@ -265,7 +261,7 @@ describe('a start that fails consumes nothing', () => {
       expect(failure).toBeInstanceOf(Error);
       expect(failure).not.toBeInstanceOf(DungeonDailyLimitError);
     } finally {
-      w.content.current = original;
+      await w.setEnemyEnabled('overlord', true);
     }
     expect(await daily(playerId)).toMatchObject({ used: 1, remaining: 2 });
     expect(await runRows(playerId)).toHaveLength(1);

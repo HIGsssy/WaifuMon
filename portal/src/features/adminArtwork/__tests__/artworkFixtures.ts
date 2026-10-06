@@ -1,8 +1,5 @@
-import type {
-  ArtworkAsset,
-  ArtworkAssetCategory,
-  EnemyArtworkEntry,
-} from '@/api/adminArtworkAssets';
+import type { ArtworkAsset, ArtworkAssetCategory } from '@/api/adminArtworkAssets';
+import type { EnemyRef } from '@/api/adminEnemies';
 
 let seq = 0;
 const hex = (n: number, length: number) => n.toString(16).padStart(length, '0');
@@ -31,15 +28,14 @@ export function assetFixture(
   };
 }
 
-export function enemyFixture(
-  over: Partial<EnemyArtworkEntry> & { key: string; name: string },
-): EnemyArtworkEntry {
+/** One enemy as the pickers and the Dungeon editor's reference data carry it. */
+export function enemyFixture(over: Partial<EnemyRef> & { key: string; name: string }): EnemyRef {
   return {
     enabled: true,
-    artworkPath: `combat/enemies/${over.key}.webp`,
-    spriteArtworkPath: null,
-    shippedPlacement: null,
-    managed: null,
+    attack: 10,
+    defense: 5,
+    hp: 100,
+    tags: [],
     visual: {
       artworkAssetId: null,
       artworkPath: `combat/enemies/${over.key}.webp`,

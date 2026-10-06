@@ -46,7 +46,7 @@ import {
   PlayerNotFoundError,
   uniqueViolationConstraint,
 } from '../../shared/errors';
-import type { EnemyArtworkService } from '../artworkAssets/enemyArtworkService';
+import type { EnemyCatalogueService } from '../enemies/enemyService';
 import type { SpritePlacement } from '../artworkAssets/scenePlacement';
 import type { CombatEnemyDefinition } from '../combat/enemyDefinitions';
 import type { ExpeditionRewardTable } from '../content/schemas';
@@ -128,8 +128,10 @@ export interface DungeonRunSnapshot {
    */
   scenes?: DungeonRunScenes;
   /**
-   * The Portal artwork override of every enemy the graph placed, as it stood:
-   * full-art asset, sprite asset and sprite placement. Absent entries (and an
+   * The managed artwork of every enemy the graph placed, as it stood: the
+   * full-art asset and the sprite asset. (The sprite placement is part of the
+   * enemy definition in `enemies`; `spritePlacement` here is only set on runs
+   * started before the Enemy Catalogue existed.) Absent entries (and an
    * absent map, on an older run) mean shipped artwork only.
    *
    * These are *logical* references. Replacing the image behind an asset id
@@ -203,8 +205,12 @@ export interface DungeonRunServiceDeps {
   db: Db;
   getContent: () => DungeonContentSource;
   currencies: Pick<ProgressionCurrencyService, 'get'>;
-  /** Managed enemy artwork, snapshotted onto a run. Optional: without it, runs use shipped art. */
-  enemyArtwork?: Pick<EnemyArtworkService, 'getMany'> | undefined;
+  /**
+   * The Enemy Catalogue: the enemies a run draws from and freezes, with their
+   * managed artwork. Optional only for tools and tests that run without one —
+   * they fall back to `getContent().combatEnemies` and shipped art.
+   */
+  enemies?: Pick<EnemyCatalogueService, 'snapshot'> | undefined;
 }
 
 export function toDungeonRun(row: DungeonRunRow): DungeonRun {
@@ -330,7 +336,10 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
           if (!row) throw new DungeonZoneUnavailableError(zoneKey, 'missing');
           if (!row.enabled) throw new DungeonZoneUnavailableError(zoneKey, 'disabled');
 
-          const content = deps.getContent();
+          // The catalogue is read here, inside the run's own transaction, and
+          // never again: what it says now is what this run fights for good.
+          const live = await deps.enemies?.snapshot(tx);
+          const content = live ? { ...deps.getContent(), combatEnemies: live.definitions } : deps.getContent();
           const catalogue = dungeonCatalogueFromContent(content);
           // The generation below is the real trial, so the validator's own are skipped.
           const ctx = await loadDungeonValidationContext(tx, catalogue, dungeonRegionsFromContent(content));
@@ -355,7 +364,9 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
             Object.fromEntries((list ?? []).filter((c) => keys.includes(c.key)).map((c) => [c.key, c]));
           const currency = await deps.currencies.get(zone.rewards.currencyKey, tx);
           const enemyKeys = enemyKeysOf(graph);
-          const managedArtwork = (await deps.enemyArtwork?.getMany(enemyKeys, tx)) ?? {};
+          const managedArtwork = Object.fromEntries(
+            Object.entries(live?.artwork ?? {}).filter(([key]) => enemyKeys.includes(key)),
+          );
 
           const snapshot: DungeonRunSnapshot = {
             format: DUNGEON_RUN_SNAPSHOT_FORMAT,

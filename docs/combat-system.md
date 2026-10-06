@@ -221,9 +221,12 @@ Then call `createCombatState({ player, enemy, rules? })`.
 
 ## Enemy content
 
-`content/combat/enemies.json` is loaded by the content loader into
-`LoadedContent.combatEnemies`. The file is optional; if it is absent there are
-no enemies.
+Enemies live in the Enemy Catalogue (`combat_enemies`), authored in Portal
+Admin — see [enemies.md](enemies.md). `content/combat/enemies.json` is the
+shipped default: the content loader validates it into
+`LoadedContent.combatEnemies`, and startup seeds it into the catalogue. The
+combat systems read enemies from the catalogue, not from `LoadedContent`. The
+file is optional; if it is absent no enemies are shipped.
 
 ```json
 {

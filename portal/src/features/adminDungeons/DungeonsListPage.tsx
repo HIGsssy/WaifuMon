@@ -75,6 +75,8 @@ const formatUpdated = (iso: string) =>
 export function DungeonsListPage() {
   const queryClient = useQueryClient();
   const canWrite = useHasPermission('dungeons.write');
+  // Enemies are their own section; the shortcut is only shown to someone who can open it.
+  const canSeeEnemies = useHasPermission('enemies.read');
   const query = useQuery({
     queryKey: [...DUNGEONS_QUERY_KEY, 'zones'],
     queryFn: ({ signal }) => listDungeonZones(signal),
@@ -108,9 +110,11 @@ export function DungeonsListPage() {
             <Button variant="outline" asChild>
               <Link to="/admin/dungeons/preview">Preview dungeon</Link>
             </Button>
-            <Button variant="outline" asChild>
-              <Link to="/admin/dungeons/enemies">Enemy artwork</Link>
-            </Button>
+            {canSeeEnemies && (
+              <Button variant="outline" asChild>
+                <Link to="/admin/enemies">Enemies</Link>
+              </Button>
+            )}
             <Button
               variant="outline"
               disabled={exporting.isPending}

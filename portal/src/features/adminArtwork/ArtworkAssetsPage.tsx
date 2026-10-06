@@ -64,7 +64,10 @@ const ACTION_LABELS: Record<string, string> = {
 function referenceLink(ref: ArtworkAssetReference): { to: string; label: string } {
   return ref.kind === 'dungeon_zone'
     ? { to: `/admin/dungeons/zones/${ref.key}`, label: `Zone ${ref.name ?? ref.key}` }
-    : { to: '/admin/dungeons/enemies', label: `Enemy ${ref.key}` };
+    : {
+        to: `/admin/enemies/${encodeURIComponent(ref.key)}`,
+        label: `Enemy ${ref.name ?? ref.key}`,
+      };
 }
 
 function References({ references }: { references: ArtworkAssetReference[] }) {

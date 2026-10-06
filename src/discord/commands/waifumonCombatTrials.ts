@@ -191,7 +191,12 @@ export async function handleCombatTrialFight(ctx: AppContext, i: ButtonInteracti
     prov,
     async (s) => {
       const outcome = await s.fight(prov.playerId, trialKey, fightRequestKey(nonce));
-      const enemy = ctx.content.combatEnemies?.find((e) => e.key === outcome.attempt.enemyKey) ?? null;
+      // The catalogue is where enemies live; shipped content is the fallback
+      // for a deployment (or a test) running without one.
+      const enemy =
+        (await ctx.services.enemies?.definition(outcome.attempt.enemyKey)) ??
+        ctx.content.combatEnemies?.find((e) => e.key === outcome.attempt.enemyKey) ??
+        null;
       return buildFightResult(outcome, {
         againNonce: outcome.trial ? mintFightNonce() : null,
         itemName: itemNameResolver(ctx),

@@ -176,15 +176,35 @@ export interface CombatTrialServiceDeps {
   combatStats: Pick<CombatStatsService, 'calculateCombatStats' | 'snapshotCombatStats'>;
   currency: Pick<CurrencyService, 'grantWaifubux'>;
   inventory: Pick<InventoryService, 'addItem'>;
-  /** Read live, so a content reload is followed. */
-  getCatalogue(): CombatTrialCatalogue;
+  /**
+   * Read on every call, never cached here: the Trials are shipped content
+   * (a reload is followed) and the enemies come from the Enemy Catalogue (an
+   * edit in Portal Admin reaches the next fight). May be async for that read.
+   */
+  getCatalogue(): CombatTrialCatalogue | Promise<CombatTrialCatalogue>;
   /** Combat randomness. V1 basic attacks draw nothing; injected for when they do. */
   rng?: () => Rng;
 }
 
 const catalogueCache = new WeakMap<LoadedContent, CombatTrialCatalogue>();
 
-/** The Trial catalogue for a content snapshot, built once per snapshot. */
+/**
+ * The Trial catalogue joined to the **Enemy Catalogue** — what the running
+ * game uses. `enemies` is read from the database on each call, so the stats a
+ * fight uses are the ones an admin last saved.
+ */
+export async function combatTrialCatalogueFromEnemies(
+  trials: readonly CombatTrialDefinition[] | undefined,
+  enemies: { definitions(): Promise<CombatEnemyDefinition[]> },
+): Promise<CombatTrialCatalogue> {
+  return createCombatTrialCatalogue(trials ?? [], createCombatEnemyCatalogue(await enemies.definitions()));
+}
+
+/**
+ * The Trial catalogue for a content snapshot alone, built once per snapshot:
+ * shipped Trials against shipped enemies. For content checks and tests; the
+ * running game uses {@link combatTrialCatalogueFromEnemies}.
+ */
 export function combatTrialCatalogueFromContent(content: LoadedContent): CombatTrialCatalogue {
   let catalogue = catalogueCache.get(content);
   if (!catalogue) {
@@ -247,8 +267,8 @@ export function createCombatTrialService(deps: CombatTrialServiceDeps): CombatTr
     }
   }
 
-  function resolveOrThrow(trialKey: string) {
-    const resolved = deps.getCatalogue().resolve(trialKey);
+  async function resolveOrThrow(trialKey: string) {
+    const resolved = (await deps.getCatalogue()).resolve(trialKey);
     if (resolved.status === 'unavailable') throw new CombatTrialUnavailableError(trialKey, resolved.reason);
     return resolved;
   }
@@ -323,7 +343,7 @@ export function createCombatTrialService(deps: CombatTrialServiceDeps): CombatTr
 
     async list(playerId) {
       await requireUnlocked(playerId);
-      const available = deps.getCatalogue().available();
+      const available = (await deps.getCatalogue()).available();
       const progress = await progressFor(
         db,
         playerId,
@@ -340,7 +360,7 @@ export function createCombatTrialService(deps: CombatTrialServiceDeps): CombatTr
 
     async detail(playerId, trialKey) {
       await requireUnlocked(playerId);
-      const { trial, enemy } = resolveOrThrow(trialKey);
+      const { trial, enemy } = await resolveOrThrow(trialKey);
       const [stats, progress] = await Promise.all([
         deps.combatStats.calculateCombatStats(playerId),
         progressFor(db, playerId, [trial.key]),
@@ -375,11 +395,11 @@ export function createCombatTrialService(deps: CombatTrialServiceDeps): CombatTr
           return {
             attempt: toAttemptView(existing),
             replayed: true,
-            trial: deps.getCatalogue().get(existing.trialKey) ?? null,
+            trial: (await deps.getCatalogue()).get(existing.trialKey) ?? null,
           };
         }
 
-        const { trial, enemy } = resolveOrThrow(trialKey);
+        const { trial, enemy } = await resolveOrThrow(trialKey);
 
         const stats = await deps.combatStats.snapshotCombatStats(tx, playerId);
         if (stats.buddy == null) throw new CombatBuddyRequiredError();

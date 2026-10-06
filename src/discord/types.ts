@@ -59,7 +59,7 @@ import type { RewardTableService } from '../modules/rewardTables/rewardTableServ
 import type { CombatTrialService } from '../modules/combatTrials/combatTrialService';
 import type { EquipmentWorkshopService } from '../modules/equipment/equipmentWorkshopService';
 import type { ArtworkAssetService } from '../modules/artworkAssets/artworkAssetService';
-import type { EnemyArtworkService } from '../modules/artworkAssets/enemyArtworkService';
+import type { EnemyCatalogueService } from '../modules/enemies/enemyService';
 import type { SceneCompositionService } from '../modules/artworkAssets/sceneComposition';
 import type { DungeonZoneService } from '../modules/dungeons/dungeonZoneService';
 import type { DungeonRunService } from '../modules/dungeons/dungeonRunService';
@@ -257,8 +257,8 @@ export interface AppServices {
   dungeonAllowance?: DungeonAllowanceService | undefined;
   /** Managed artwork: images uploaded through Portal Admin, referenced by id. */
   artworkAssets?: ArtworkAssetService | undefined;
-  /** Managed artwork overrides for combat enemies (full art, sprite, sprite placement). */
-  enemyArtwork?: EnemyArtworkService | undefined;
+  /** The Enemy Catalogue: DB-backed combat enemies, shared by dungeons and Combat Trials. */
+  enemies?: EnemyCatalogueService | undefined;
   /** Composes a background and a sprite into one cached scene image. */
   sceneComposition?: SceneCompositionService | undefined;
   /** Progression currencies (the dungeon's Ascension-related resource): metadata, balances, ledger. */

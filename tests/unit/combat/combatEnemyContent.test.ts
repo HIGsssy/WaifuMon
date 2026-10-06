@@ -37,18 +37,28 @@ describe('shipped starter enemies', () => {
     JSON.parse(fs.readFileSync(path.join(CONTENT_DIR, COMBAT_ENEMY_FILE), 'utf8')),
   );
 
-  it('loads the three starter enemies, enabled, text-only', () => {
+  it('still ships the original enemies first, with the keys and stats everything references', () => {
     // The three starters, then the temporary dungeon boss (see content/dungeons/zones.json).
-    expect(shipped.enemies.map((e) => e.key)).toEqual([
-      'scrapyard_drone',
-      'alley_bruiser',
-      'security_automaton',
-      'scrapheap_colossus',
+    // Enemies added since follow them; the file is the catalogue's shipped default.
+    expect(shipped.enemies.slice(0, 4).map((e) => [e.key, e.attack, e.defense, e.hp])).toEqual([
+      ['scrapyard_drone', 55, 30, 300],
+      ['alley_bruiser', 100, 55, 520],
+      ['security_automaton', 140, 90, 800],
+      ['scrapheap_colossus', 170, 110, 1200],
     ]);
-    for (const e of shipped.enemies) {
+    for (const e of shipped.enemies.slice(0, 4)) {
       expect(e.enabled).toBe(true);
-      expect(e.artworkPath).toBeNull();
       expect(e.tags).toContain('initial_tuning');
+    }
+  });
+
+  it('every shipped enemy has a unique key and fightable stats', () => {
+    expect(new Set(shipped.enemies.map((e) => e.key)).size).toBe(shipped.enemies.length);
+    for (const e of shipped.enemies) {
+      expect(e.attack, e.key).toBeGreaterThanOrEqual(1);
+      expect(e.defense, e.key).toBeGreaterThanOrEqual(0);
+      expect(e.hp, e.key).toBeGreaterThanOrEqual(1);
+      expect(e.description, e.key).toBe('');
     }
   });
 
@@ -76,7 +86,7 @@ describe('shipped starter enemies', () => {
 describe('CombatEnemyFileSchema', () => {
   it('accepts a minimal valid enemy and defaults artwork and tags', () => {
     const parsed = CombatEnemyFileSchema.parse(file([enemy]));
-    expect(parsed.enemies[0]).toEqual({ ...enemy, artworkPath: null, spriteArtworkPath: null, spritePlacement: null, tags: [] });
+    expect(parsed.enemies[0]).toEqual({ ...enemy, description: '', artworkPath: null, spriteArtworkPath: null, spritePlacement: null, tags: [] });
   });
 
   it('refuses duplicate keys', () => {

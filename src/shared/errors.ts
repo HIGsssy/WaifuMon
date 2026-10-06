@@ -1878,17 +1878,76 @@ export class ArtworkAssetInUseError extends AppError {
   }
 }
 
-/** An enemy artwork save named a revision someone else has since replaced. */
-export class EnemyArtworkStaleError extends AppError {
-  readonly expectedRevision: number;
-  readonly currentRevision: number;
-  constructor(enemyKey: string, expectedRevision: number, currentRevision: number) {
+/** One problem with an enemy definition. `path` is the field, e.g. `attack`. */
+export interface EnemyIssueDetail {
+  path: string;
+  message: string;
+  severity: 'error' | 'warning';
+}
+
+/** An enemy failed authoring validation; nothing was written. */
+export class EnemyInvalidError extends AppError {
+  readonly issues: EnemyIssueDetail[];
+  constructor(issues: readonly EnemyIssueDetail[]) {
+    const list = Array.isArray(issues) ? issues : [];
+    const summary = list
+      .filter((i) => i.severity === 'error')
+      .map((i) => (i.path ? `${i.path}: ${i.message}` : i.message))
+      .join('; ');
+    super('ENEMY_INVALID', `Invalid enemy: ${summary || 'unknown problem'}`, summary || 'That enemy is not valid.');
+    this.issues = [...list];
+  }
+}
+
+/** An enemy save named a revision someone else has since replaced. Nothing was written. */
+export class EnemyStaleError extends AppError {
+  constructor(
+    readonly enemyKey: string,
+    readonly expectedRevision: number,
+    readonly currentRevision: number,
+    readonly updatedBy: string | null,
+    readonly updatedAt: Date,
+  ) {
     super(
-      'ENEMY_ARTWORK_STALE',
-      `Enemy artwork for "${String(enemyKey)}" was saved at revision ${currentRevision}, not ${expectedRevision}`,
-      'Someone else saved this enemy\'s artwork first. Reload and try again.',
+      'ENEMY_STALE',
+      `Enemy "${String(enemyKey)}" is at revision ${currentRevision}, not ${expectedRevision}`,
+      'This enemy was changed by someone else since you opened it. Reload to see their changes.',
     );
-    this.expectedRevision = expectedRevision;
-    this.currentRevision = currentRevision;
+  }
+}
+
+export class EnemyKeyTakenError extends AppError {
+  constructor(enemyKey: string) {
+    super('ENEMY_KEY_TAKEN', `An enemy "${String(enemyKey)}" already exists`, 'Another enemy already uses that key.');
+  }
+}
+
+/** Where an enemy is used: one place in one piece of authored content. */
+export interface EnemyReference {
+  /** What kind of content names the enemy. New systems add their own kind. */
+  kind: 'dungeon_zone' | 'combat_trial' | (string & {});
+  /** That content's own key. */
+  key: string;
+  name: string | null;
+  /** The slot inside it, in admin words: `combat pool`, `room "Gatehouse"`, `primary enemy`. */
+  usage: string;
+}
+
+/** Deleting an enemy that authored content still names, or that Git ships. */
+export class EnemyInUseError extends AppError {
+  readonly references: EnemyReference[];
+  readonly shipped: boolean;
+  constructor(enemyKey: string, references: readonly EnemyReference[], shipped = false) {
+    const list = Array.isArray(references) ? references : [];
+    super(
+      'ENEMY_IN_USE',
+      `Enemy "${String(enemyKey)}" cannot be deleted: ` +
+        (list.length > 0 ? `it is referenced in ${list.length} place(s)` : 'it ships with the game'),
+      list.length > 0
+        ? 'That enemy is still in use. Disable it instead, or remove every reference first.'
+        : 'That enemy ships with the game and would come back on the next restart. Disable it instead.',
+    );
+    this.references = [...list];
+    this.shipped = shipped === true;
   }
 }

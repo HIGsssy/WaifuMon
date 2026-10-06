@@ -54,6 +54,7 @@ import {
   DUNGEON_DAILY_RUN_LIMIT_BOUNDS,
   type DungeonSettings,
 } from '../../../../modules/dungeons/dungeonAllowanceService';
+import { enemyRefSchema } from './enemies';
 import { MAX_DUNGEON_SEED } from '../../../../modules/dungeons/dungeonGenerator';
 import { MAX_SIMULATION_RUNS } from '../../../../modules/dungeons/dungeonSimulation';
 import type {
@@ -388,7 +389,7 @@ export const adminDungeonRoutes =
             200: dataSchema(
               z.object({
                 nodeTypes: z.array(nodeTypeSchema),
-                enemies: z.array(contentRefSchema),
+                enemies: z.array(enemyRefSchema),
                 events: z.array(contentRefSchema),
                 rewardTables: z.array(z.object({ id: z.string(), enabled: z.boolean() })),
                 currencies: z.array(

@@ -182,9 +182,21 @@ const DungeonZoneEditorPage = lazy(() =>
     default: m.DungeonZoneEditorPage,
   })),
 );
-const EnemyArtworkPage = lazy(() =>
-  import('@/features/adminDungeons/EnemyArtworkPage').then((m) => ({
-    default: m.EnemyArtworkPage,
+// The Enemy Catalogue: combat enemies as shared content. Gated on
+// `enemies.read`; the editor is read-only without `enemies.write`.
+const EnemiesListPage = lazy(() =>
+  import('@/features/adminEnemies/EnemiesListPage').then((m) => ({
+    default: m.EnemiesListPage,
+  })),
+);
+const EnemyCreatePage = lazy(() =>
+  import('@/features/adminEnemies/EnemyCreatePage').then((m) => ({
+    default: m.EnemyCreatePage,
+  })),
+);
+const EnemyEditorPage = lazy(() =>
+  import('@/features/adminEnemies/EnemyEditorPage').then((m) => ({
+    default: m.EnemyEditorPage,
   })),
 );
 // Managed artwork: images uploaded through the Portal. Gated on `artwork.read`.
@@ -477,11 +489,32 @@ export const routes: RouteObject[] = [
             ),
           },
 
+          // Enemy artwork used to be its own page under Dungeons. It is part of
+          // the enemy editor now; the old path still lands somewhere useful.
+          { path: 'admin/dungeons/enemies', element: <Navigate to="/admin/enemies" replace /> },
+
+          // Admin — Enemies. The API re-checks every request.
           {
-            path: 'admin/dungeons/enemies',
+            path: 'admin/enemies',
             element: (
-              <RequirePortalPermission permission="dungeons.read">
-                <EnemyArtworkPage />
+              <RequirePortalPermission permission="enemies.read">
+                <EnemiesListPage />
+              </RequirePortalPermission>
+            ),
+          },
+          {
+            path: 'admin/enemies/new',
+            element: (
+              <RequirePortalPermission permission="enemies.write">
+                <EnemyCreatePage />
+              </RequirePortalPermission>
+            ),
+          },
+          {
+            path: 'admin/enemies/:key',
+            element: (
+              <RequirePortalPermission permission="enemies.read">
+                <EnemyEditorPage />
               </RequirePortalPermission>
             ),
           },

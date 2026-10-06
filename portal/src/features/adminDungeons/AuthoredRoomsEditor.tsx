@@ -15,15 +15,8 @@
  * Nothing here saves. Every change edits the draft; the page's Save writes it.
  */
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 
-import {
-  DEFAULT_SPRITE_PLACEMENT,
-  ENEMY_ARTWORK_QUERY_KEY,
-  listEnemyArtwork,
-  type ArtworkLayerRef,
-  type EnemyArtworkEntry,
-} from '@/api/adminArtworkAssets';
+import { DEFAULT_SPRITE_PLACEMENT, type ArtworkLayerRef } from '@/api/adminArtworkAssets';
 import {
   DUNGEON_MAX_ROOMS,
   DUNGEON_MAX_ROOM_EXITS,
@@ -37,11 +30,15 @@ import {
   type DungeonZoneDoc,
   type DungeonZoneIssue,
 } from '@/api/adminDungeons';
+import type { EnemyRef } from '@/api/adminEnemies';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { AssetField } from '@/features/adminArtwork/AssetField';
 import { PlacementControls, ScenePreview } from '@/features/adminArtwork/ScenePreview';
+import { EnemyPicker } from '@/features/adminEnemies/EnemyPicker';
+import { statLine } from '@/features/adminEnemies/enemyModel';
+import { ViewEnemyLink } from '@/features/adminEnemies/enemyParts';
 import { selectClass } from '@/features/adminEncounters/EntitySelect';
 import { cn } from '@/lib/cn';
 
@@ -116,12 +113,8 @@ export function AuthoredRoomsEditor({
   const layout: DungeonAuthoredLayoutDoc = form.authored ?? NO_ROOMS;
   const [editing, setEditing] = useState<string | null>(null);
   const setLayout = (next: DungeonAuthoredLayoutDoc) => set({ authored: next });
-  const enemies =
-    useQuery({
-      queryKey: ENEMY_ARTWORK_QUERY_KEY,
-      queryFn: ({ signal }) => listEnemyArtwork(signal),
-      staleTime: 30_000,
-    }).data?.enemies ?? [];
+  // The reference data carries each enemy's stats and artwork as they stand.
+  const enemies = reference?.enemies ?? [];
 
   const rows = roomOutline(layout);
   const drawn = rows.filter((row) => !row.rejoin);
@@ -342,13 +335,14 @@ function RoomEditor({
   /** The dungeon ends here. */
   final: boolean;
   reference: DungeonReferenceData | undefined;
-  /** The chosen enemy's artwork as it stands, for the defaults and the preview. */
-  enemy: EnemyArtworkEntry | null;
+  /** The chosen enemy as the catalogue has it: its stats, and its artwork for the defaults and the preview. */
+  enemy: EnemyRef | null;
   readOnly: boolean;
   onChange: (next: DungeonRoomDoc) => void;
   onMakeStart: () => void;
 }) {
   const [previewing, setPreviewing] = useState(false);
+  const [pickingEnemy, setPickingEnemy] = useState(false);
   const patch = (change: Partial<DungeonRoomDoc>) => onChange({ ...room, ...change });
   const fight = isFightType(room.type);
   const title = roomTitle(room);
@@ -418,28 +412,47 @@ function RoomEditor({
         </label>
 
         {fight && (
-          <label className="text-xs text-ink-muted">
-            Enemy
-            <select
-              aria-label="Enemy"
-              className={selectClass}
-              value={room.enemyKey ?? ''}
-              disabled={readOnly}
-              onChange={(e) => patch({ enemyKey: e.target.value === '' ? null : e.target.value })}
-            >
-              <option value="">Choose an enemy</option>
-              {room.enemyKey !== null &&
-                !(reference?.enemies ?? []).some((o) => o.key === room.enemyKey) && (
-                  <option value={room.enemyKey}>{room.enemyKey} (unknown)</option>
-                )}
-              {(reference?.enemies ?? []).map((o) => (
-                <option key={o.key} value={o.key}>
-                  {o.name}
-                  {o.enabled ? '' : ' (disabled)'}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="space-y-1 text-xs text-ink-muted" data-testid="room-enemy">
+            <span className="block">Enemy</span>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <Button
+                type="button"
+                variant="outline"
+                aria-label={`Enemy: ${
+                  room.enemyKey === null
+                    ? 'none chosen'
+                    : (enemy?.name ?? (reference ? 'unknown enemy' : 'loading'))
+                }`}
+                aria-haspopup="dialog"
+                disabled={readOnly}
+                onClick={() => setPickingEnemy(true)}
+              >
+                {room.enemyKey === null
+                  ? 'Choose an enemy…'
+                  : (enemy?.name ?? (reference ? '(unknown enemy)' : 'Loading…'))}
+              </Button>
+              {enemy && (
+                <>
+                  <span data-testid="room-enemy-stats">{statLine(enemy)}</span>
+                  <ViewEnemyLink enemyKey={enemy.key} name={enemy.name} />
+                </>
+              )}
+            </div>
+            {enemy && !enemy.enabled && (
+              <p className="text-danger" role="status" data-testid="room-enemy-disabled">
+                This enemy is disabled. The room keeps it and still fights it — choose another, or
+                enable it on the Enemies page.
+              </p>
+            )}
+            <EnemyPicker
+              open={pickingEnemy}
+              title={`Choose the enemy of ${title}`}
+              enemies={reference?.enemies ?? []}
+              selectedKey={room.enemyKey}
+              onClose={() => setPickingEnemy(false)}
+              onPick={([enemyKey]) => patch({ enemyKey: enemyKey ?? null })}
+            />
+          </div>
         )}
 
         {room.type === 'event' && (

@@ -76,6 +76,14 @@ export interface DungeonZoneValidationContext {
   assets?: ReadonlyMap<string, { name: string; status: 'active' | 'disabled' | 'deleted' }> | undefined;
   /** Skip the trial runs — for callers that are about to generate anyway. */
   skipTrialRuns?: boolean;
+  /**
+   * The enemies the stored zone already names — given by a caller that is
+   * about to *write* (an empty set for a new zone). A disabled enemy outside
+   * it is a new reference and is refused; one inside it is an existing
+   * reference, kept with a warning. Omitted (a read, a run start), every
+   * reference to a disabled enemy is an existing one.
+   */
+  previousEnemyKeys?: ReadonlySet<string> | undefined;
 }
 
 export interface DungeonZoneValidation {
@@ -189,7 +197,12 @@ export function validateDungeonZone(input: unknown, ctx: DungeonZoneValidationCo
       const at = `pools.${poolKey}[${i}]`;
       const found = lookup.get(contentKey);
       if (!found) error(`${at}.${field}`, `"${contentKey}" is not a known ${what}`);
-      else if (!found.enabled && entry.enabled) {
+      else if (!found.enabled && what === 'enemy' && ctx.previousEnemyKeys && !ctx.previousEnemyKeys.has(contentKey)) {
+        error(
+          `${at}.${field}`,
+          `${found.name} is disabled and cannot be added. Enable it in Enemies first, or choose another enemy.`,
+        );
+      } else if (!found.enabled && entry.enabled) {
         warning(`${at}.${field}`, `${what} "${contentKey}" is disabled, so this entry is never drawn`);
       }
       if (entry.enabled && entry.minDepth > finalDepths.max) {
@@ -474,7 +487,22 @@ function validateAuthoredRooms(
     if (isEnemyNodeType(room.type) && room.enemyKey !== null) {
       const enemy = ctx.catalogue.enemies.get(room.enemyKey);
       if (!enemy) push('enemyKey', `${called} uses an enemy that no longer exists — choose another.`, 'error');
-      else if (!enemy.enabled) push('enemyKey', `${called} uses ${enemy.name}, which is disabled — choose another enemy.`, draft);
+      else if (!enemy.enabled && ctx.previousEnemyKeys && !ctx.previousEnemyKeys.has(room.enemyKey)) {
+        push(
+          'enemyKey',
+          `${called}: ${enemy.name} is disabled and cannot be added. Enable it in Enemies first, or choose another enemy.`,
+          'error',
+        );
+      } else if (!enemy.enabled) {
+        // An existing reference survives the enemy being switched off: the room
+        // is hand-placed, so there is nothing to fall back to. It keeps fighting
+        // the enemy as it stands, and says so until an admin swaps it.
+        push(
+          'enemyKey',
+          `${called} uses ${enemy.name}, which is disabled. The room still fights it — choose another enemy, or re-enable this one.`,
+          'warning',
+        );
+      }
     }
     if (room.type === 'event' && room.eventKey !== null) {
       const event = ctx.catalogue.events.get(room.eventKey);

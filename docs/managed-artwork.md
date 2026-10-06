@@ -67,8 +67,10 @@ and new hash where relevant, and a timestamp. A reference event names the
 entity and field (`dungeon_zone:scrapheap_gauntlet`, `backgroundAssetId`).
 Image bytes are never logged.
 
-`combat_enemy_artwork` holds an enemy's managed artwork — see
-[Sprites, backgrounds and scenes](#sprites-backgrounds-and-scenes).
+An enemy's managed artwork is two columns on its `combat_enemies` row — see
+[Sprites, backgrounds and scenes](#sprites-backgrounds-and-scenes). The older
+`combat_enemy_artwork` overlay table is kept as a record and no longer written
+([enemies.md](enemies.md#the-old-overlay-table)).
 
 ## Storage, Docker and backups
 
@@ -177,18 +179,17 @@ to Discord's CDN too.
 ## Sprites, backgrounds and scenes
 
 **Enemy sprite.** A transparent cut-out of the enemy, separate from its full
-artwork, meant to be layered over a background. Enemies are file content, so
-the shipped defaults are fields in `content/combat/enemies.json`
-(`spriteArtworkPath`, `spritePlacement`, alongside `artworkPath`) and the
-managed values are an overlay row in `combat_enemy_artwork`:
+artwork, meant to be layered over a background. Both images live on the enemy
+in the Enemy Catalogue ([enemies.md](enemies.md)):
 
 | | Managed (Portal) | Shipped (Git) |
 | --- | --- | --- |
 | Full artwork | `artwork_asset_id` | `artworkPath` |
 | Sprite | `sprite_asset_id` | `spriteArtworkPath` |
-| Placement | `sprite_placement` | `spritePlacement`, else the default |
 
-Each managed field is optional and wins while set. No enemy needs a sprite.
+Each managed image is optional and wins while set. The placement is a single
+value on the enemy (`sprite_placement`), null for the default. No enemy needs a
+sprite.
 
 **Placement** (`scenePlacement.ts`) is a preset, not a canvas:
 
@@ -260,8 +261,8 @@ placement). These are *logical* references:
 
 ## Security
 
-- Every route needs `artwork.read` or `artwork.write` (enemy artwork:
-  `dungeons.read` / `dungeons.write`), checked per request. Ordinary players
+- Every route needs `artwork.read` or `artwork.write`, checked per request
+  (setting an enemy's artwork is an enemy save: `enemies.write`). Ordinary players
   hold neither; the shared API token is refused unless
   `PLATFORM_API_ADMIN_BEARER` is on.
 - Writes from a cookie session carry the CSRF token like every other admin
@@ -284,7 +285,7 @@ placement). These are *logical* references:
 | --- | --- | --- |
 | `/admin/artwork` — Artwork Assets | `artwork.read` | **Upload** (category, optional name, file), **Browse** (category filter, search, thumbnails, dimensions / type / size), **Manage** the selected asset: rename, move category, replace, disable / enable, delete, copy id, where it is used, history. |
 | `/admin/dungeons/zones/:key` | `dungeons.read` | **Zone Artwork** (uploaded override + shipped path for both images), **Background Pool**, **Scene Rules** with a composed preview. |
-| `/admin/dungeons/enemies` — Enemy Artwork | `dungeons.read` | Per enemy: **Full Artwork**, **Sprite**, **Default Sprite Placement** with a composed preview over a background of the admin's choice. |
+| `/admin/enemies/:key` — Enemy editor | `enemies.read` | Per enemy: **Full artwork**, **Transparent sprite** and **Default placement**, uploaded or selected in place. `/admin/dungeons/enemies` redirects to `/admin/enemies`. |
 
 An artwork field offers **Select…** (a picker opened on that field's
 category), **Upload…** (validate → store → create → selected, without leaving
@@ -308,8 +309,7 @@ Under `/api/v1/admin`.
 | PUT | `/artwork/assets/:id/enabled` | `artwork.write` | `{ enabled }` → asset and its references |
 | DELETE | `/artwork/assets/:id` | `artwork.write` | 409 while referenced |
 | POST | `/artwork/scene-preview` | `artwork.read` | `{ background, sprite?, placement? }` → WebP |
-| GET | `/dungeons/enemy-artwork` | `dungeons.read` | every enemy: shipped, managed, in effect |
-| PUT | `/dungeons/enemy-artwork/:key` | `dungeons.write` | `{ artworkAssetId, spriteAssetId, spritePlacement, expectedRevision }` |
+| PUT | `/enemies/:key` | `enemies.write` | an enemy save carries `artworkAssetId`, `spriteAssetId`, `spritePlacement` ([enemies.md](enemies.md#admin-api)) |
 
 ## Not built yet
 

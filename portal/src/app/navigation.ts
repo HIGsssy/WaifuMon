@@ -32,6 +32,7 @@ import {
   Medal,
   Settings,
   Shield,
+  Skull,
   Sparkles,
   Store,
   Swords,
@@ -90,6 +91,13 @@ export const NAV_ITEMS: readonly NavItem[] = [
     label: 'Admin — Dungeons',
     icon: Castle,
     requiresPermission: 'dungeons.read',
+  },
+  {
+    // The Enemy Catalogue: shared by dungeons and Combat Trials, owned by neither.
+    to: '/admin/enemies',
+    label: 'Admin — Enemies',
+    icon: Skull,
+    requiresPermission: 'enemies.read',
   },
   {
     to: '/admin/artwork',

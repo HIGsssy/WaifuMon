@@ -433,8 +433,14 @@ override restores what the room inherits — for the next run started.
 Each entry: `id` (unique in its pool, recorded on every node drawn from it),
 `enemyKey` or `eventKey`, `enabled`, `weight`, `minDepth`, `maxDepth`, `tags`.
 
-Entries **reference** enemies (`content/combat/enemies.json`) by key. No stat is
-copied into a zone.
+Dungeons reference the central Enemy Catalogue. Entries name enemies by key
+([enemies.md](enemies.md)); no stat is copied into a zone, and a zone owns only
+membership, weight and depth. The editor's **+ Add Enemy** opens a searchable
+picker over the catalogue.
+
+A disabled enemy cannot be added to a zone. A zone that already names one keeps
+the reference, with a warning: the generator stops drawing it from a pool, and
+a hand-placed room keeps fighting it until an admin picks another.
 
 An entry is eligible at a depth when it is enabled, has a weight above zero, is
 in its depth range, and names content that exists and is enabled.
@@ -1383,7 +1389,7 @@ needs `artwork.read` / `artwork.write`.
 | `/admin/dungeons/new` | **Create dungeon** — the three-question wizard. |
 | `/admin/dungeons/zones/:key` | The editor: shared basics, then the generator settings *or* the room editor, by layout mode. |
 | `/admin/dungeons/preview` | **Preview dungeon** — a generated run per seed (and a 1,000-run simulation) for a procedural zone; the layout and a layout check for an authored one. |
-| `/admin/dungeons/enemies` | Enemy Artwork — full artwork, sprite and default sprite placement per enemy, with a composed preview. |
+| `/admin/enemies` | The Enemy Catalogue — stats, tags, artwork, sprite placement and usage per enemy ([enemies.md](enemies.md)). `/admin/dungeons/enemies` redirects here. |
 | `/admin/artwork` | Artwork Assets — the library: browse all assets, replace, disable, delete safely, inspect references ([managed-artwork.md](managed-artwork.md)). Normal dungeon authoring should rarely need it. |
 
 ### Authoring principles
@@ -1698,8 +1704,10 @@ All under `/api/v1/admin/dungeons`.
 | PUT | `/settings` | `{ dailyRunLimit }` — a whole number 0–50; `0` closes Delve to new runs |
 | GET | `/currencies` | progression currencies |
 | PUT | `/currencies/:key` | edit display metadata (`expectedRevision`) |
-| GET | `/enemy-artwork` | every enemy's shipped and managed artwork |
-| PUT | `/enemy-artwork/:key` | set an enemy's managed full artwork, sprite and placement (`expectedRevision`) |
+
+`GET /reference` returns the Enemy Catalogue's picker rows as `enemies` (key,
+name, enabled, ATK / DEF / HP, tags, artwork). Enemies themselves are edited
+under `/api/v1/admin/enemies` — see [enemies.md](enemies.md).
 
 Managed artwork itself is under `/api/v1/admin/artwork` — see
 [managed-artwork.md](managed-artwork.md#api).

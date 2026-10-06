@@ -8,6 +8,7 @@
  * still here and still saved the same way, folded under **Advanced** so an
  * ordinary dungeon never has to open it.
  */
+import { useState } from 'react';
 import { Link } from 'react-router';
 
 import {
@@ -20,6 +21,7 @@ import {
   type DungeonExtractionWindow,
   type DungeonGenerationDoc,
   type DungeonNodeType,
+  type DungeonEnemyPoolKey,
   type DungeonPoolEntryDoc,
   type DungeonPoolKey,
   type DungeonReferenceData,
@@ -28,8 +30,14 @@ import {
   type DungeonZoneDoc,
   type DungeonZoneIssue,
 } from '@/api/adminDungeons';
+import type { EnemyRef } from '@/api/adminEnemies';
+import { useHasPermission } from '@/auth/useSession';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { EnemyPicker } from '@/features/adminEnemies/EnemyPicker';
+import { statLine } from '@/features/adminEnemies/enemyModel';
+import { ViewEnemyLink } from '@/features/adminEnemies/enemyParts';
 import { selectClass } from '@/features/adminEncounters/EntitySelect';
 
 import { RewardsSection } from './RewardsSection';
@@ -140,6 +148,7 @@ export function ProceduralSettings({
   readOnly: boolean;
 }) {
   const canWrite = !readOnly;
+  const canSeeEnemies = useHasPermission('enemies.read');
   const gen = form.generation;
   const setGen = (patch: Partial<DungeonGenerationDoc>) =>
     set({ generation: { ...gen, ...patch } });
@@ -324,17 +333,28 @@ export function ProceduralSettings({
         />
       </Section>
 
-      {DUNGEON_POOL_KEYS.map((pool) => (
-        <PoolCard
-          key={pool}
-          pool={pool}
-          entries={form.pools[pool]}
-          options={(pool === 'event' ? reference?.events : reference?.enemies) ?? []}
-          issues={issuesAt(issues, `pools.${pool}`)}
-          disabled={readOnly}
-          onChange={(entries) => setPool(pool, entries)}
-        />
-      ))}
+      {DUNGEON_POOL_KEYS.map((pool) =>
+        pool === 'event' ? (
+          <PoolCard
+            key={pool}
+            entries={form.pools[pool]}
+            options={reference?.events ?? []}
+            issues={issuesAt(issues, `pools.${pool}`)}
+            disabled={readOnly}
+            onChange={(entries) => setPool(pool, entries)}
+          />
+        ) : (
+          <EnemyPoolCard
+            key={pool}
+            pool={pool}
+            entries={form.pools[pool]}
+            enemies={reference?.enemies}
+            issues={issuesAt(issues, `pools.${pool}`)}
+            disabled={readOnly}
+            onChange={(entries) => setPool(pool, entries)}
+          />
+        ),
+      )}
 
       <Section title="Rest & Recovery" hint="How much a Rest room heals." testId="zone-rest">
         <div className="flex flex-wrap items-end gap-3">
@@ -500,12 +520,16 @@ export function ProceduralSettings({
           </div>
           <p className="text-xs text-ink-muted">
             Sprites and where they stand are set per enemy under{' '}
-            <Link to="/admin/dungeons/enemies" className="text-accent underline">
-              Enemy Artwork
-            </Link>
+            {canSeeEnemies ? (
+              <Link to="/admin/enemies" className="text-accent underline">
+                Enemies
+              </Link>
+            ) : (
+              'Enemies'
+            )}
             . A run keeps the backgrounds, sprites and placement it started with.
           </p>
-          <ZoneScenePreview zone={form} />
+          <ZoneScenePreview zone={form} enemies={reference?.enemies ?? []} />
         </Advanced>
       </Section>
 
@@ -741,23 +765,107 @@ const POOL_HINTS: Record<DungeonPoolKey, string> = {
   event: 'Non-combat rooms. Leave empty for a dungeon without events.',
 };
 
-function PoolCard({
+/** `Depth 1–4`, `Depth 3+`, or `any depth` — where in a run an entry may be drawn. */
+function depthLabel(entry: DepthRange): string {
+  if (entry.maxDepth !== null) return `Depth ${entry.minDepth}–${entry.maxDepth}`;
+  return entry.minDepth > 1 ? `Depth ${entry.minDepth}+` : 'any depth';
+}
+
+/** Weight, depths, id, tags and the on/off switch of one pool entry — the same for enemies and events. */
+function EntryTuning({
+  label,
+  entry,
+  summary,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  entry: DungeonPoolEntryDoc;
+  summary: string;
+  disabled: boolean;
+  onChange: (patch: Partial<DungeonPoolEntryDoc>) => void;
+}) {
+  return (
+    <details className="text-xs text-ink-muted" data-testid="pool-entry-tuning">
+      <summary className="cursor-pointer">{summary}</summary>
+      <div className="mt-2 flex flex-wrap items-end gap-3">
+        <label className="text-xs text-ink-muted">
+          Entry id
+          <Input
+            aria-label={`${label} id`}
+            className="w-40 font-mono"
+            value={entry.id}
+            disabled={disabled}
+            onChange={(e) => onChange({ id: e.target.value })}
+          />
+        </label>
+        <NumberField
+          label={`${label} weight`}
+          value={entry.weight}
+          disabled={disabled}
+          onChange={(weight) => onChange({ weight })}
+        />
+        <NumberField
+          label={`${label} min depth`}
+          min={1}
+          value={entry.minDepth}
+          disabled={disabled}
+          onChange={(minDepth) => onChange({ minDepth })}
+        />
+        <OptionalNumberField
+          label={`${label} max depth`}
+          value={entry.maxDepth}
+          disabled={disabled}
+          onChange={(maxDepth) => onChange({ maxDepth })}
+        />
+        <label className="text-xs text-ink-muted">
+          Tags
+          <Input
+            aria-label={`${label} tags`}
+            className="w-40"
+            key={entry.tags.join(',')}
+            defaultValue={entry.tags.join(', ')}
+            disabled={disabled}
+            onBlur={(e) => onChange({ tags: parseTags(e.target.value) })}
+          />
+        </label>
+        <label className="flex items-center gap-1 pb-2 text-xs text-ink-muted">
+          <input
+            type="checkbox"
+            aria-label={`${label} enabled`}
+            checked={entry.enabled}
+            disabled={disabled}
+            onChange={(e) => onChange({ enabled: e.target.checked })}
+          />
+          Enabled
+        </label>
+      </div>
+    </details>
+  );
+}
+
+/**
+ * One of the four enemy pools. Enemies are chosen from the catalogue with the
+ * picker and shown with their stats, which belong to the enemy and are not
+ * edited here — an entry only says how often and how deep it is drawn.
+ */
+function EnemyPoolCard({
   pool,
   entries,
-  options,
+  enemies,
   issues,
   disabled,
   onChange,
 }: {
-  pool: DungeonPoolKey;
+  pool: DungeonEnemyPoolKey;
   entries: DungeonPoolEntryDoc[];
-  options: DungeonContentRef[];
+  /** Undefined until the reference data has loaded. */
+  enemies: EnemyRef[] | undefined;
   issues: DungeonZoneIssue[];
   disabled: boolean;
   onChange: (next: DungeonPoolEntryDoc[]) => void;
 }) {
-  const field = pool === 'event' ? 'eventKey' : 'enemyKey';
-  const what = pool === 'event' ? 'Event' : 'Enemy';
+  const [picking, setPicking] = useState(false);
   const update = (i: number, patch: Partial<DungeonPoolEntryDoc>) =>
     onChange(entries.map((e, j) => (j === i ? { ...e, ...patch } : e)));
 
@@ -765,7 +873,105 @@ function PoolCard({
     <Section title={POOL_LABELS[pool]} hint={POOL_HINTS[pool]} testId={`pool-${pool}`}>
       {entries.length === 0 && <p className="text-xs text-ink-subtle">No entries.</p>}
       {entries.map((entry, i) => {
-        const current = entry[field] ?? '';
+        const enemy = enemies?.find((e) => e.key === entry.enemyKey);
+        const label = `${POOL_LABELS[pool]} ${i + 1}`;
+        return (
+          <div
+            key={i}
+            className="space-y-1 border-t border-border pt-2 first:border-t-0 first:pt-0"
+            data-testid="pool-entry"
+          >
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span className="text-sm font-medium text-ink" data-testid="pool-entry-name">
+                {enemy ? enemy.name : enemies ? '(unknown enemy)' : 'Loading…'}
+              </span>
+              {enemy && !enemy.enabled && (
+                <Badge variant="danger" data-testid="pool-entry-disabled">
+                  disabled — not drawn
+                </Badge>
+              )}
+              {!entry.enabled && <Badge variant="outline">switched off in this pool</Badge>}
+              {enemy && (
+                <span className="text-xs text-ink-muted" data-testid="pool-entry-stats">
+                  {statLine(enemy)}
+                </span>
+              )}
+              <span className="text-xs text-ink-muted" data-testid="pool-entry-odds">
+                Weight {entry.weight} · {depthLabel(entry)}
+              </span>
+              {enemy && <ViewEnemyLink enemyKey={enemy.key} name={enemy.name} />}
+              {!disabled && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  aria-label={`Remove ${label}`}
+                  onClick={() => onChange(entries.filter((_, j) => j !== i))}
+                >
+                  Remove
+                </Button>
+              )}
+            </div>
+            <EntryTuning
+              label={label}
+              entry={entry}
+              summary="Weight, depth & tuning"
+              disabled={disabled}
+              onChange={(patch) => update(i, patch)}
+            />
+            <Issues issues={issuesAt(issues, `pools.${pool}[${i}]`)} />
+          </div>
+        );
+      })}
+      <Issues issues={issues.filter((i) => i.path === `pools.${pool}`)} />
+      {!disabled && (
+        <Button type="button" size="sm" variant="outline" onClick={() => setPicking(true)}>
+          + Add Enemy
+        </Button>
+      )}
+      <EnemyPicker
+        open={picking}
+        title={`Add enemies to the ${POOL_LABELS[pool].toLowerCase()}`}
+        enemies={enemies ?? []}
+        multiple
+        onClose={() => setPicking(false)}
+        onPick={(keys) =>
+          // One entry per enemy, each with an id of its own derived from the enemy.
+          onChange(
+            keys.reduce<DungeonPoolEntryDoc[]>(
+              (next, key) => [...next, newPoolEntry(pool, key, next)],
+              entries,
+            ),
+          )
+        }
+      />
+    </Section>
+  );
+}
+
+/** The event pool: events are few and have no stats, so a plain list of selects does. */
+function PoolCard({
+  entries,
+  options,
+  issues,
+  disabled,
+  onChange,
+}: {
+  entries: DungeonPoolEntryDoc[];
+  options: DungeonContentRef[];
+  issues: DungeonZoneIssue[];
+  disabled: boolean;
+  onChange: (next: DungeonPoolEntryDoc[]) => void;
+}) {
+  const pool = 'event' as const;
+  const update = (i: number, patch: Partial<DungeonPoolEntryDoc>) =>
+    onChange(entries.map((e, j) => (j === i ? { ...e, ...patch } : e)));
+
+  return (
+    <Section title={POOL_LABELS[pool]} hint={POOL_HINTS[pool]} testId={`pool-${pool}`}>
+      {entries.length === 0 && <p className="text-xs text-ink-subtle">No entries.</p>}
+      {entries.map((entry, i) => {
+        const current = entry.eventKey ?? '';
         const known = options.some((o) => o.key === current);
         const label = `${POOL_LABELS[pool]} ${i + 1}`;
         return (
@@ -776,18 +982,16 @@ function PoolCard({
           >
             <div className="flex flex-wrap items-end gap-3">
               <label className="text-xs text-ink-muted">
-                {what}
+                Event
                 <select
-                  aria-label={`${label} ${what.toLowerCase()}`}
+                  aria-label={`${label} event`}
                   className={selectClass}
                   value={current}
                   disabled={disabled}
-                  onChange={(e) => update(i, { [field]: e.target.value })}
+                  onChange={(e) => update(i, { eventKey: e.target.value })}
                 >
                   {!known && (
-                    <option value={current}>
-                      {current || `Choose an ${what.toLowerCase()}`} (unknown)
-                    </option>
+                    <option value={current}>{current || 'Choose an event'} (unknown)</option>
                   )}
                   {options.map((o) => (
                     <option key={o.key} value={o.key}>
@@ -809,67 +1013,17 @@ function PoolCard({
                 </Button>
               )}
             </div>
-            <details className="text-xs text-ink-muted" data-testid="pool-entry-tuning">
-              <summary className="cursor-pointer">
-                Weight {entry.weight}
-                {entry.minDepth > 1 || entry.maxDepth !== null
+            <EntryTuning
+              label={label}
+              entry={entry}
+              summary={`Weight ${entry.weight}${
+                entry.minDepth > 1 || entry.maxDepth !== null
                   ? ` · depth ${entry.minDepth}–${entry.maxDepth ?? 'end'}`
-                  : ' · any depth'}
-                {entry.enabled ? '' : ' · switched off'}
-              </summary>
-              <div className="mt-2 flex flex-wrap items-end gap-3">
-                <label className="text-xs text-ink-muted">
-                  Entry id
-                  <Input
-                    aria-label={`${label} id`}
-                    className="w-40 font-mono"
-                    value={entry.id}
-                    disabled={disabled}
-                    onChange={(e) => update(i, { id: e.target.value })}
-                  />
-                </label>
-                <NumberField
-                  label={`${label} weight`}
-                  value={entry.weight}
-                  disabled={disabled}
-                  onChange={(weight) => update(i, { weight })}
-                />
-                <NumberField
-                  label={`${label} min depth`}
-                  min={1}
-                  value={entry.minDepth}
-                  disabled={disabled}
-                  onChange={(minDepth) => update(i, { minDepth })}
-                />
-                <OptionalNumberField
-                  label={`${label} max depth`}
-                  value={entry.maxDepth}
-                  disabled={disabled}
-                  onChange={(maxDepth) => update(i, { maxDepth })}
-                />
-                <label className="text-xs text-ink-muted">
-                  Tags
-                  <Input
-                    aria-label={`${label} tags`}
-                    className="w-40"
-                    key={entry.tags.join(',')}
-                    defaultValue={entry.tags.join(', ')}
-                    disabled={disabled}
-                    onBlur={(e) => update(i, { tags: parseTags(e.target.value) })}
-                  />
-                </label>
-                <label className="flex items-center gap-1 pb-2 text-xs text-ink-muted">
-                  <input
-                    type="checkbox"
-                    aria-label={`${label} enabled`}
-                    checked={entry.enabled}
-                    disabled={disabled}
-                    onChange={(e) => update(i, { enabled: e.target.checked })}
-                  />
-                  Enabled
-                </label>
-              </div>
-            </details>
+                  : ' · any depth'
+              }${entry.enabled ? '' : ' · switched off'}`}
+              disabled={disabled}
+              onChange={(patch) => update(i, patch)}
+            />
             <Issues issues={issuesAt(issues, `pools.${pool}[${i}]`)} />
           </div>
         );
@@ -883,7 +1037,7 @@ function PoolCard({
           disabled={options.length === 0}
           onClick={() => onChange([...entries, newPoolEntry(pool, options[0]?.key ?? '', entries)])}
         >
-          Add {what.toLowerCase()}
+          Add event
         </Button>
       )}
     </Section>

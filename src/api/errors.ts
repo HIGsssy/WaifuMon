@@ -199,6 +199,8 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   REWARD_TABLE_INVALID: 400,
   /** Admin: a dungeon zone failed validation — issues are in `details`. */
   DUNGEON_ZONE_INVALID: 400,
+  /** Admin: an enemy failed validation — issues are in `details`. */
+  ENEMY_INVALID: 400,
   /** Admin: a Delve setting outside its bounds. */
   DUNGEON_SETTINGS_INVALID: 400,
   /** Admin: progression currency metadata failed validation. */
@@ -328,8 +330,12 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   ARTWORK_UPLOAD_INVALID: 400,
   /** Admin: deleting managed artwork that a zone or enemy still references. */
   ARTWORK_ASSET_IN_USE: 409,
-  /** Admin: an enemy artwork save named a stale revision. */
-  ENEMY_ARTWORK_STALE: 409,
+  /** Admin: an enemy save named a revision someone else has since replaced. */
+  ENEMY_STALE: 409,
+  /** Admin: creating an enemy under a key another enemy already has. */
+  ENEMY_KEY_TAKEN: 409,
+  /** Admin: deleting an enemy that content references or Git ships — disable it instead. */
+  ENEMY_IN_USE: 409,
   /** One active dungeon run per player; this player already has one. */
   DUNGEON_RUN_ACTIVE: 409,
   /** Every Delve run of the current game day has been started. */

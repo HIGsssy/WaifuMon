@@ -39,7 +39,10 @@ import {
   DungeonZoneStaleError,
 } from '../../shared/errors';
 import { zoneDocumentAssetSlots, type ArtworkAssetService } from '../artworkAssets/artworkAssetService';
+import { resolveEnemyVisual } from '../artworkAssets/enemyArtworkService';
 import type { CombatEnemyDefinition } from '../combat/enemyDefinitions';
+import { zoneDocumentEnemyReferences } from '../enemies/enemyReferences';
+import type { EnemyCatalogueService, EnemyRef } from '../enemies/enemyService';
 import {
   AuthoredLayoutError,
   analyseAuthoredLayout,
@@ -142,7 +145,8 @@ export interface DungeonZoneDetail extends DungeonZoneSummary {
 
 /** What the editor's pickers offer. */
 export interface DungeonReferenceData {
-  enemies: { key: string; name: string; enabled: boolean; tags: string[] }[];
+  /** The Enemy Catalogue's picker rows: stats and artwork included. */
+  enemies: EnemyRef[];
   events: { key: string; name: string; enabled: boolean; tags: string[] }[];
   rewardTables: { id: string; enabled: boolean }[];
   currencies: { key: string; singularName: string; pluralName: string; enabled: boolean }[];
@@ -244,6 +248,11 @@ export interface DungeonZoneServiceDeps {
   getShipped: () => readonly ShippedDungeonZone[];
   /** Managed artwork, for the reference audit trail. Optional: without it, nothing is recorded. */
   assets?: Pick<ArtworkAssetService, 'recordReferenceChanges'> | undefined;
+  /**
+   * The Enemy Catalogue — where enemies come from. Optional only for tools and
+   * tests that run without one: they fall back to `getContent().combatEnemies`.
+   */
+  enemies?: Pick<EnemyCatalogueService, 'definitions' | 'reference'> | undefined;
 }
 
 /**
@@ -298,7 +307,15 @@ export function restPrecedesFinalNode(graph: DungeonGraph): boolean {
 
 export function createDungeonZoneService(deps: DungeonZoneServiceDeps): DungeonZoneService {
   const { db } = deps;
-  const catalogue = () => dungeonCatalogueFromContent(deps.getContent());
+  /** Loaded content, with the enemies read from the catalogue as it stands right now. */
+  const content = async (tx: DbOrTx = db): Promise<DungeonContentSource> => {
+    const base = deps.getContent();
+    return deps.enemies ? { ...base, combatEnemies: await deps.enemies.definitions(tx) } : base;
+  };
+  const catalogue = async (tx: DbOrTx = db) => dungeonCatalogueFromContent(await content(tx));
+  /** The enemies a stored zone already names: what a save may keep even when disabled. */
+  const enemyKeysOfDocument = (key: string, definition: unknown): Set<string> =>
+    new Set(zoneDocumentEnemyReferences(key, definition).map((r) => r.enemyKey));
   const regions = () => dungeonRegionsFromContent(deps.getContent());
   const shippedFor = (key: string) => deps.getShipped().find((z) => z.key === key);
 
@@ -338,14 +355,19 @@ export function createDungeonZoneService(deps: DungeonZoneServiceDeps): DungeonZ
 
   async function detailOf(tx: DbOrTx, row: DungeonZoneRow): Promise<DungeonZoneDetail> {
     const zone = parseDungeonZoneRow(row);
-    const ctx = await loadDungeonValidationContext(tx, catalogue(), regions());
+    const ctx = await loadDungeonValidationContext(tx, await catalogue(tx), regions());
     return { ...summaryOf(row, zone), zone, issues: validateDungeonZone(zone, ctx).issues };
   }
 
   /** Validate for a write and return the parsed zone, or throw with every issue. */
-  async function assertWritable(tx: DbOrTx, key: string, input: unknown): Promise<DungeonZoneDefinition> {
-    const ctx = await loadDungeonValidationContext(tx, catalogue(), regions());
-    const { zone, issues } = validateDungeonZone(input, ctx);
+  async function assertWritable(
+    tx: DbOrTx,
+    key: string,
+    input: unknown,
+    previousEnemyKeys: ReadonlySet<string>,
+  ): Promise<DungeonZoneDefinition> {
+    const ctx = await loadDungeonValidationContext(tx, await catalogue(tx), regions());
+    const { zone, issues } = validateDungeonZone(input, { ...ctx, previousEnemyKeys });
     if (zone && zone.key !== key) {
       issues.unshift({ path: 'key', message: `the zone key is "${key}" and cannot be changed`, severity: 'error' });
     }
@@ -433,7 +455,7 @@ export function createDungeonZoneService(deps: DungeonZoneServiceDeps): DungeonZ
     },
 
     async reference() {
-      const content = deps.getContent();
+      const loaded = await content();
       const tables = await db
         .select({ id: rewardTables.tableId, enabled: rewardTables.enabled })
         .from(rewardTables)
@@ -446,8 +468,20 @@ export function createDungeonZoneService(deps: DungeonZoneServiceDeps): DungeonZ
       const refs = (list: readonly { key: string; name: string; enabled: boolean; tags: string[] }[] | undefined) =>
         (list ?? []).map((c) => ({ key: c.key, name: c.name, enabled: c.enabled, tags: c.tags }));
       return {
-        enemies: refs(content.combatEnemies),
-        events: refs(content.dungeonEvents),
+        // One read model for every enemy picker: the catalogue's own.
+        enemies: deps.enemies
+          ? await deps.enemies.reference()
+          : (loaded.combatEnemies ?? []).map((e) => ({
+              key: e.key,
+              name: e.name,
+              enabled: e.enabled,
+              attack: e.attack,
+              defense: e.defense,
+              hp: e.hp,
+              tags: e.tags,
+              visual: resolveEnemyVisual(e, null),
+            })),
+        events: refs(loaded.dungeonEvents),
         rewardTables: tables,
         currencies: currencies.map((c) => ({
           key: c.currencyKey,
@@ -460,8 +494,11 @@ export function createDungeonZoneService(deps: DungeonZoneServiceDeps): DungeonZ
     },
 
     async validate(input, key) {
-      const ctx = await loadDungeonValidationContext(db, catalogue(), regions());
-      const { zone, issues } = validateDungeonZone(input, ctx);
+      const ctx = await loadDungeonValidationContext(db, await catalogue(), regions());
+      // Against the stored zone when there is one; a draft for a new zone names nothing yet.
+      const stored = key ? await readDungeonZoneRow(db, key) : undefined;
+      const previousEnemyKeys = stored ? enemyKeysOfDocument(stored.zoneKey, stored.definition) : new Set<string>();
+      const { zone, issues } = validateDungeonZone(input, { ...ctx, previousEnemyKeys });
       if (key && zone && zone.key !== key) {
         issues.unshift({ path: 'key', message: `the zone key is "${key}" and cannot be changed`, severity: 'error' });
       }
@@ -476,7 +513,7 @@ export function createDungeonZoneService(deps: DungeonZoneServiceDeps): DungeonZ
             { path: 'key', message: `"${key}" is reserved — choose another zone key`, severity: 'error' },
           ]);
         }
-        const zone = await assertWritable(tx, key, input);
+        const zone = await assertWritable(tx, key, input, new Set());
         const hash = dungeonZoneHash(zone);
         const [inserted] = await tx
           .insert(dungeonZones)
@@ -508,7 +545,7 @@ export function createDungeonZoneService(deps: DungeonZoneServiceDeps): DungeonZ
         const row = await readDungeonZoneRow(tx, key, true);
         if (!row) return null;
         assertRevision(row, expectedRevision);
-        const zone = await assertWritable(tx, key, input);
+        const zone = await assertWritable(tx, key, input, enemyKeysOfDocument(key, row.definition));
         const before = layoutModeOf(parseDungeonZoneRow(row));
         const after = layoutModeOf(zone);
         if (before !== after && confirmLayoutChange !== true) {
@@ -535,7 +572,9 @@ export function createDungeonZoneService(deps: DungeonZoneServiceDeps): DungeonZ
         const next = { ...parseDungeonZoneRow(row), enabled };
         // Switching off is the emergency stop: it must work on a zone whose
         // content has since broken, so only switching on is validated.
-        const zone = enabled ? await assertWritable(tx, key, next) : next;
+        const zone = enabled
+          ? await assertWritable(tx, key, next, enemyKeysOfDocument(key, row.definition))
+          : next;
         return detailOf(tx, await writeRow(tx, row, zone, actor));
       });
     },
@@ -549,7 +588,7 @@ export function createDungeonZoneService(deps: DungeonZoneServiceDeps): DungeonZ
           { path: 'seed', message: `seed must be an integer from 0 to ${MAX_DUNGEON_SEED}`, severity: 'error' },
         ]);
       }
-      const content = catalogue();
+      const content = await catalogue();
       let graph: DungeonGraph;
       try {
         graph = buildDungeonGraph(zone, content, chosen);
@@ -595,7 +634,7 @@ export function createDungeonZoneService(deps: DungeonZoneServiceDeps): DungeonZ
           `This dungeon is built room by room, so every run walks the same ${rooms} rooms — there is nothing to simulate. Use Preview to see the layout.`,
         );
       }
-      return simulateDungeonGeneration(zone, catalogue(), options);
+      return simulateDungeonGeneration(zone, await catalogue(), options);
     },
 
     async export() {
