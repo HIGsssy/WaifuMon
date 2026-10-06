@@ -201,26 +201,32 @@ describe('retries', () => {
 
 describe('failure leaves no partial resolution', () => {
   it('a selector with nothing eligible rolls back every effect, the history and the resolution', async () => {
-    const [before] = await t.db.select().from(playerCurrencies).where(eq(playerCurrencies.playerId, playerId));
-    const gearBefore = (await gearOf()).length;
-    const { activeId, choiceId, encounterId } = await activeEncounterWith([
-      { type: 'waifubux_gain', amount: 500 },
-      gear({ rarity: 'N' }),
-      gear({ slot: 'health', rarity: 'SR' }),
-    ]);
-    await expect(app.worldEncounter.resolveChoice({ activeId, playerId, choiceId })).rejects.toBeInstanceOf(
-      EquipmentRewardConfigError,
-    );
-    const [after] = await t.db.select().from(playerCurrencies).where(eq(playerCurrencies.playerId, playerId));
-    expect(after!.waifubux).toBe(before!.waifubux);
-    expect((await gearOf()).length).toBe(gearBefore);
-    const [active] = await t.db.select().from(activeWorldEncounters).where(eq(activeWorldEncounters.id, activeId));
-    expect(active!.status).toBe('pending');
-    const history = await t.db
-      .select()
-      .from(worldEncounterHistory)
-      .where(eq(worldEncounterHistory.encounterId, encounterId));
-    expect(history).toEqual([]);
+    // Every slot/rarity now ships content, so empty the SR Health pool deliberately.
+    await app.gear.definitions.setEnabled('glitch_earring', false);
+    try {
+      const [before] = await t.db.select().from(playerCurrencies).where(eq(playerCurrencies.playerId, playerId));
+      const gearBefore = (await gearOf()).length;
+      const { activeId, choiceId, encounterId } = await activeEncounterWith([
+        { type: 'waifubux_gain', amount: 500 },
+        gear({ rarity: 'N' }),
+        gear({ slot: 'health', rarity: 'SR' }),
+      ]);
+      await expect(app.worldEncounter.resolveChoice({ activeId, playerId, choiceId })).rejects.toBeInstanceOf(
+        EquipmentRewardConfigError,
+      );
+      const [after] = await t.db.select().from(playerCurrencies).where(eq(playerCurrencies.playerId, playerId));
+      expect(after!.waifubux).toBe(before!.waifubux);
+      expect((await gearOf()).length).toBe(gearBefore);
+      const [active] = await t.db.select().from(activeWorldEncounters).where(eq(activeWorldEncounters.id, activeId));
+      expect(active!.status).toBe('pending');
+      const history = await t.db
+        .select()
+        .from(worldEncounterHistory)
+        .where(eq(worldEncounterHistory.encounterId, encounterId));
+      expect(history).toEqual([]);
+    } finally {
+      await app.gear.definitions.setEnabled('glitch_earring', true);
+    }
   });
 
   it('a whitelist naming a since-disabled definition is refused, not substituted', async () => {
@@ -251,7 +257,6 @@ describe('authoring', () => {
 
   it.each([
     ['an unknown definition', { definitionKeys: ['imaginary_blade'] }, /imaginary_blade/],
-    ['a slot/rarity with nothing in it', { slot: 'health', rarity: 'R' }, /no enabled equipment definition/],
     ['an explicit key of the wrong rarity', { rarity: 'N', definitionKeys: ['combat_knife'] }, /is R/],
   ])('refuses %s at save time', async (_label, selector, pattern) => {
     const err = await app.worldEncounterAdmin
@@ -259,6 +264,22 @@ describe('authoring', () => {
       .catch((e: unknown) => e);
     expect(err).toBeInstanceOf(AdminEncounterValidationError);
     expect(String((err as AdminEncounterValidationError).issues ?? (err as Error).message)).toMatch(pattern);
+  });
+
+  it('refuses a slot/rarity with nothing in it at save time', async () => {
+    // Every slot/rarity now ships content, so empty the SR Health pool deliberately.
+    await app.gear.definitions.setEnabled('glitch_earring', false);
+    try {
+      const err = await app.worldEncounterAdmin
+        .upsert(encounterInput({ type: 'give_equipment', slot: 'health', rarity: 'SR' }) as never)
+        .catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(AdminEncounterValidationError);
+      expect(String((err as AdminEncounterValidationError).issues ?? (err as Error).message)).toMatch(
+        /no enabled equipment definition/,
+      );
+    } finally {
+      await app.gear.definitions.setEnabled('glitch_earring', true);
+    }
   });
 
   it('refuses an authored affix or multiplier outright', async () => {

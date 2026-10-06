@@ -240,6 +240,8 @@ describe('bad content fails at deploy', () => {
     ['a definition of the wrong slot', { slot: 'defense', definitionKeys: ['combat_knife'] }],
   ])('refuses %s, writing nothing', async (_label, selector) => {
     await app.gear.definitions.setEnabled('combat_knife', _label !== 'a disabled definition');
+    // Every slot/rarity now ships content, so empty the SR Health pool deliberately.
+    await app.gear.definitions.setEnabled('glitch_earring', _label !== 'nothing eligible');
     installSuccessTable([gearGroup([selector])]);
     const { playerId, waifuId } = await playerWithWaifu();
     await expect(app.expeditions.deploy(playerId, 'gear_run', waifuId)).rejects.toBeInstanceOf(ExpeditionContentError);

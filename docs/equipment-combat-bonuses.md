@@ -104,6 +104,35 @@ Families overlap across slots on purpose — an Attack, a Defense and a Health
 piece can each roll Crit Chance, and the three add up. Not everything rolls
 everywhere: Armor Pen and Crit Damage can come from two slots, not three.
 
+### Health gear progression
+
+Health now ships a full **N / R / SR** catalogue, mirroring the Attack and
+Defense content shape (6 N, 3 R, 1 SR). Every definition goes through the same
+shared reward selector and Workshop fabrication path by `slot` + `rarity`, so
+no slot-specific wiring is needed: R and SR Health are reward- and
+fabrication-capable purely because the pools are no longer empty. Health keeps
+its own ×0.20 (2000bp) multiplier step; the bands overlap across rarities on
+purpose (a strong N meets a weak R, a strong R meets a weak SR).
+
+| Item | Rarity | HP multiplier band |
+| --- | --- | --- |
+| Dented Lunchbox (starter) | N | ×1.80 – ×2.60 |
+| "Do Not Pet" Patch | N | ×1.90 – ×2.70 |
+| Ex's Hoodie String | N | ×2.00 – ×2.80 |
+| Emotional Support Rock | N | ×2.10 – ×2.90 |
+| Lucky Charm Cord | N | ×2.20 – ×3.00 |
+| Screaming Keychain | N | ×2.30 – ×3.10 |
+| Bloodied Bandana | R | ×2.80 – ×3.40 |
+| Pocket Saint | R | ×3.00 – ×3.60 |
+| Emergency Condom Tin | R | ×3.20 – ×3.80 |
+| Glitch Earring | SR | ×3.80 – ×4.60 |
+
+The onboarding Dented Lunchbox is unchanged: a fixed, bonus-free ×2.00 grant.
+A *random* Dented Lunchbox still exists in the N pool and follows the ordinary
+N rules (random multiplier in its band, 65% for one bonus). Health bonus
+eligibility is unchanged — Crit Chance, Crit Damage, Double Attack, Lifesteal
+(no Armor Pen).
+
 ### Validation
 
 A file that fails any of these stops the content load, with the path named:

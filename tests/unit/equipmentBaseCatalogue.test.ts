@@ -17,6 +17,7 @@ import {
   multiplierRangeIssues,
 } from '../../src/modules/equipment/equipmentRoll';
 import { loadEquipmentSeedCatalogue } from '../../src/modules/equipment/seed';
+import { eligibleRewardDefinitions } from '../../src/modules/equipment/rewardSelector';
 import { STARTER_EQUIPMENT, STARTER_ROLLS } from '../../src/modules/onboarding/vocabulary';
 import { CONTENT_DIR, loadShippedContent } from '../helpers/fixtures';
 
@@ -51,20 +52,56 @@ const DEFENSE: Row[] = [
   ['phase_cloak', 'Phase Cloak', 'Not invisible. Just “harder to commit to hitting.”', 'SR', 8500, 11000],
 ];
 
-const AUTHORED = [
-  ...ATTACK.map((row) => ['attack', ...row] as const),
-  ...DEFENSE.map((row) => ['defense', ...row] as const),
+// Health keeps its own ×0.20 (2000bp) step convention; the ranges overlap
+// across rarities on purpose (strong N meets weak R, strong R meets weak SR).
+const HEALTH: Row[] = [
+  ['dented_lunchbox', 'Dented Lunchbox', 'Keeps something alive.', 'N', 18000, 26000],
+  ['do_not_pet_patch', '"Do Not Pet" Patch', 'Iron-on warning. Nobody listens. Especially not you.', 'N', 19000, 27000],
+  ['exs_hoodie_string', "Ex's Hoodie String", 'Tied around your wrist. Still smells of bad decisions.', 'N', 20000, 28000],
+  ['emotional_support_rock', 'Emotional Support Rock', 'Smooth. Heavy. Judgemental. Fits in a pocket.', 'N', 21000, 29000],
+  ['lucky_charm_cord', 'Lucky Charm Cord', 'A frayed string of mismatched beads. You swear it helps. It might.', 'N', 22000, 30000],
+  ['screaming_keychain', 'Screaming Keychain', 'Tiny plastic figure that yells when you press it. You press it a lot.', 'N', 23000, 31000],
+  ['bloodied_bandana', 'Bloodied Bandana', 'Tied around your arm or neck. Looks cooler than it performs.', 'R', 28000, 34000],
+  ['pocket_saint', 'Pocket Saint', 'Tiny cracked figurine. Offers comfort and questionable advice.', 'R', 30000, 36000],
+  ['emergency_condom_tin', 'Emergency Condom Tin', 'Still sealed. Used more as a good-luck charm than anything else.', 'R', 32000, 38000],
+  ['glitch_earring', 'Glitch Earring', 'Flickers when danger is close. Or when the Wi-Fi is bad.', 'SR', 38000, 46000],
 ];
 
-describe('base Attack/Defense catalogue', () => {
-  it('ships all 20 Attack/Defense definitions, with unique keys', () => {
+const AUTHORED = [
+  ...ATTACK.map((row) => ['attack', ...row, 500] as const),
+  ...DEFENSE.map((row) => ['defense', ...row, 500] as const),
+  ...HEALTH.map((row) => ['health', ...row, 2000] as const),
+];
+
+describe('base Attack/Defense/Health catalogue', () => {
+  it('ships all 30 definitions, with unique keys', () => {
     const keys = catalogue.map((d) => d.key);
     expect(new Set(keys).size).toBe(keys.length);
     expect(catalogue.filter((d) => d.slot === 'attack').map((d) => d.key)).toEqual(ATTACK.map((r) => r[0]));
     expect(catalogue.filter((d) => d.slot === 'defense').map((d) => d.key)).toEqual(DEFENSE.map((r) => r[0]));
+    expect(catalogue.filter((d) => d.slot === 'health').map((d) => d.key)).toEqual(HEALTH.map((r) => r[0]));
   });
 
-  it.each(AUTHORED)('%s %s is exactly as authored', (slot, key, name, description, rarity, min, max) => {
+  it('Health ships a full N/R/SR progression (6/3/1)', () => {
+    const byRarity = (rarity: string) => catalogue.filter((d) => d.slot === 'health' && d.rarity === rarity);
+    expect(byRarity('N')).toHaveLength(6);
+    expect(byRarity('R')).toHaveLength(3);
+    expect(byRarity('SR')).toHaveLength(1);
+  });
+
+  // Rewards and Workshop fabrication both draw from `eligibleRewardDefinitions`,
+  // so a non-empty shipped pool per rarity is exactly what makes every Health
+  // tier obtainable and fabricable — no slot-specific wiring.
+  it.each([
+    ['N', ['dented_lunchbox', 'do_not_pet_patch', 'emotional_support_rock', 'exs_hoodie_string', 'lucky_charm_cord', 'screaming_keychain']],
+    ['R', ['bloodied_bandana', 'emergency_condom_tin', 'pocket_saint']],
+    ['SR', ['glitch_earring']],
+  ] as const)('the shared %s Health pool is obtainable', (rarity, expected) => {
+    const pool = eligibleRewardDefinitions({ slot: 'health', rarity }, catalogue);
+    expect(pool.map((d) => d.key)).toEqual(expected);
+  });
+
+  it.each(AUTHORED)('%s %s is exactly as authored', (slot, key, name, description, rarity, min, max, step) => {
     const def = catalogue.find((d) => d.key === key)!;
     expect(def).toBeDefined();
     expect(def).toMatchObject({
@@ -74,12 +111,12 @@ describe('base Attack/Defense catalogue', () => {
       rarity,
       multiplierMinBp: min,
       multiplierMaxBp: max,
-      multiplierStepBp: 500,
+      multiplierStepBp: step,
       enabled: true,
       artworkPath: null,
     });
     expect(multiplierRangeIssues(def.slot, def)).toEqual([]);
-    expect((max - min) % 500).toBe(0);
+    expect((max - min) % step).toBe(0);
     expect(() => parseEquipmentDefinition(def)).not.toThrow();
   });
 
@@ -93,7 +130,7 @@ describe('base Attack/Defense catalogue', () => {
   });
 
   it('higher rarities keep higher ceilings within each slot', () => {
-    for (const slot of ['attack', 'defense'] as const) {
+    for (const slot of ['attack', 'defense', 'health'] as const) {
       const ceiling = (rarity: string) =>
         Math.max(...catalogue.filter((d) => d.slot === slot && d.rarity === rarity).map((d) => d.multiplierMaxBp));
       expect(ceiling('R'), slot).toBeGreaterThan(ceiling('N'));
@@ -128,7 +165,7 @@ describe('starters stay compatible', () => {
       tags: ['starter', 'onboarding'],
     });
     expect(STARTER_ROLLS.health.rolledMultiplierBp).toBe(20000);
-    expect(catalogue.filter((d) => d.slot === 'health').map((d) => d.key)).toEqual(['dented_lunchbox']);
+    expect(catalogue.filter((d) => d.slot === 'health' && d.key === 'dented_lunchbox')).toHaveLength(1);
   });
 });
 

@@ -332,28 +332,34 @@ describe('retries and failures', () => {
   });
 
   it('a selector nothing can satisfy refuses the payout as a whole', async () => {
-    withGroups([
-      {
-        id: 'standard-item',
-        enabled: true,
-        rolls: 1,
-        chanceBasisPoints: 10_000,
-        entries: [{ itemId: 'energy_drink', enabled: true, weight: 1, quantity: 1 }],
-      },
-      certainGear([{ slot: 'health', rarity: 'SR' }]),
-    ]);
-    const encounter = await openEncounter();
-    await giveBuddy(playerIds[0]!);
-    await app.bosses.commit(encounter.id, guildDbId, playerIds[0]!, { discordUserId: 'u-0', trainerName: 'T0' });
-    await expect(app.bosses.resolve(encounter.id)).rejects.toThrow(/no enabled equipment definition/);
-    const [participation] = await t.db
-      .select()
-      .from(bossParticipations)
-      .where(eq(bossParticipations.encounterId, encounter.id));
-    expect(participation!.rewardStatus).toBe('pending');
-    expect(await ownedGear(playerIds[0]!)).toEqual([]);
-    const inventory = await t.db.select().from(playerInventory).where(and(eq(playerInventory.playerId, playerIds[0]!)));
-    expect(inventory).toEqual([]);
+    // Every slot/rarity now ships content, so empty the SR Health pool deliberately.
+    await app.gear.definitions.setEnabled('glitch_earring', false);
+    try {
+      withGroups([
+        {
+          id: 'standard-item',
+          enabled: true,
+          rolls: 1,
+          chanceBasisPoints: 10_000,
+          entries: [{ itemId: 'energy_drink', enabled: true, weight: 1, quantity: 1 }],
+        },
+        certainGear([{ slot: 'health', rarity: 'SR' }]),
+      ]);
+      const encounter = await openEncounter();
+      await giveBuddy(playerIds[0]!);
+      await app.bosses.commit(encounter.id, guildDbId, playerIds[0]!, { discordUserId: 'u-0', trainerName: 'T0' });
+      await expect(app.bosses.resolve(encounter.id)).rejects.toThrow(/no enabled equipment definition/);
+      const [participation] = await t.db
+        .select()
+        .from(bossParticipations)
+        .where(eq(bossParticipations.encounterId, encounter.id));
+      expect(participation!.rewardStatus).toBe('pending');
+      expect(await ownedGear(playerIds[0]!)).toEqual([]);
+      const inventory = await t.db.select().from(playerInventory).where(and(eq(playerInventory.playerId, playerIds[0]!)));
+      expect(inventory).toEqual([]);
+    } finally {
+      await app.gear.definitions.setEnabled('glitch_earring', true);
+    }
   });
 });
 

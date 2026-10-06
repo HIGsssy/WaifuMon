@@ -59,8 +59,8 @@ describe('shipped equipment seed catalogue', () => {
     const pkg = parseEquipmentPackage(JSON.parse(fs.readFileSync(file, 'utf8')));
     const keys = pkg.definitions.map((d) => d.key);
     expect(keys).toEqual(expect.arrayContaining(['rusty_pipe', 'scrap_plate', 'dented_lunchbox']));
-    // 10 Attack + 10 Defense + the one Health starter; the per-item content is pinned in equipmentBaseCatalogue.test.ts.
-    expect(keys).toHaveLength(21);
+    // 10 Attack + 10 Defense + 10 Health (N/R/SR progression); the per-item content is pinned in equipmentBaseCatalogue.test.ts.
+    expect(keys).toHaveLength(30);
     expect(loadEquipmentSeedCatalogue(CONTENT_DIR)).toEqual(pkg.definitions);
   });
 

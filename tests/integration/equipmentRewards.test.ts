@@ -131,7 +131,31 @@ describe('selection', () => {
   });
 
   it('uses whatever Health definitions exist, without special-casing', async () => {
-    expect((await grantRandom({ slot: 'health' })).definitionKey).toBe('dented_lunchbox');
+    // N Health: all six are reachable through the shared selector.
+    const nHealth = ['dented_lunchbox', 'do_not_pet_patch', 'emotional_support_rock', 'exs_hoodie_string', 'lucky_charm_cord', 'screaming_keychain'];
+    const seenN = new Set<string>();
+    for (let i = 0; i < nHealth.length; i += 1) {
+      picks = [i];
+      const reward = await grantRandom({ slot: 'health', rarity: 'N' });
+      expect(reward.slot).toBe('health');
+      expect(reward.rarity).toBe('N');
+      seenN.add(reward.definitionKey);
+    }
+    expect(seenN).toEqual(new Set(nHealth));
+
+    // R Health: all three are reachable.
+    const rHealth = ['bloodied_bandana', 'emergency_condom_tin', 'pocket_saint'];
+    const seenR = new Set<string>();
+    for (let i = 0; i < rHealth.length; i += 1) {
+      picks = [i];
+      const reward = await grantRandom({ slot: 'health', rarity: 'R' });
+      expect(reward.rarity).toBe('R');
+      seenR.add(reward.definitionKey);
+    }
+    expect(seenR).toEqual(new Set(rHealth));
+
+    // SR Health: the single definition.
+    expect((await grantRandom({ slot: 'health', rarity: 'SR' })).definitionKey).toBe('glitch_earring');
   });
 
   it('is deterministic for an injected RNG', async () => {
@@ -233,8 +257,15 @@ describe('refusals', () => {
   });
   it('rejects an explicit key of the wrong slot', () => refused({ slot: 'defense', definitionKeys: ['combat_knife'] }, /attack gear/));
   it('rejects an explicit key of the wrong rarity', () => refused({ rarity: 'N', definitionKeys: ['combat_knife'] }, /is R/));
-  it('fails clearly when nothing is eligible — no substitute, no starter', () =>
-    refused({ slot: 'health', rarity: 'SR' }, /no enabled equipment definition matches "Any SR Health Equipment"/));
+  it('fails clearly when nothing is eligible — no substitute, no starter', async () => {
+    // Every slot/rarity now ships content, so empty the SR Health pool deliberately.
+    await svc.definitions.setEnabled('glitch_earring', false);
+    try {
+      await refused({ slot: 'health', rarity: 'SR' }, /no enabled equipment definition matches "Any SR Health Equipment"/);
+    } finally {
+      await svc.definitions.setEnabled('glitch_earring', true);
+    }
+  });
   it('rejects a malformed selector', () => refused({ rarity: 'SSR' }, /rarity/));
 });
 
