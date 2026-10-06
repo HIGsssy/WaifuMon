@@ -41,6 +41,176 @@
       "artworkPath": null,
       "enabled": true,
       "tags": ["boss", "temporary", "initial_tuning"]
+    },
+    {
+      "key": "discord_lurker",
+      "name": "Discord Lurker",
+      "attack": 40,
+      "defense": 20,
+      "hp": 280,
+      "artworkPath": null,
+      "enabled": true,
+      "tags": ["internet_archetype", "tier_1"]
+    },
+    {
+      "key": "fedora_imp",
+      "name": "Fedora Imp",
+      "attack": 50,
+      "defense": 25,
+      "hp": 320,
+      "artworkPath": null,
+      "enabled": true,
+      "tags": ["internet_archetype", "tier_1"]
+    },
+    {
+      "key": "wojak_shade",
+      "name": "Wojak Shade",
+      "attack": 45,
+      "defense": 22,
+      "hp": 300,
+      "artworkPath": null,
+      "enabled": true,
+      "tags": ["internet_archetype", "tier_1"]
+    },
+    {
+      "key": "scambot",
+      "name": "Scambot",
+      "attack": 55,
+      "defense": 28,
+      "hp": 350,
+      "artworkPath": null,
+      "enabled": true,
+      "tags": ["internet_archetype", "tier_1"]
+    },
+    {
+      "key": "simp_swarm",
+      "name": "Simp Swarm",
+      "attack": 60,
+      "defense": 30,
+      "hp": 380,
+      "artworkPath": null,
+      "enabled": true,
+      "tags": ["internet_archetype", "tier_1"]
+    },
+    {
+      "key": "thirsty_commenter",
+      "name": "Thirsty Commenter",
+      "attack": 85,
+      "defense": 45,
+      "hp": 480,
+      "artworkPath": null,
+      "enabled": true,
+      "tags": ["internet_archetype", "tier_2", "parasocial"]
+    },
+    {
+      "key": "reddit_mod_clone",
+      "name": "Reddit Mod Clone",
+      "attack": 95,
+      "defense": 60,
+      "hp": 520,
+      "artworkPath": null,
+      "enabled": true,
+      "tags": ["internet_archetype", "tier_2"]
+    },
+    {
+      "key": "twitch_chatspammer",
+      "name": "Twitch Chatspammer",
+      "attack": 75,
+      "defense": 40,
+      "hp": 450,
+      "artworkPath": null,
+      "enabled": true,
+      "tags": ["internet_archetype", "tier_2"]
+    },
+    {
+      "key": "algorithm_wraith",
+      "name": "Algorithm Wraith",
+      "attack": 100,
+      "defense": 55,
+      "hp": 550,
+      "artworkPath": null,
+      "enabled": true,
+      "tags": ["internet_archetype", "tier_2", "unpredictable"]
+    },
+    {
+      "key": "desperate_dm_goblin",
+      "name": "Desperate DM Goblin",
+      "attack": 90,
+      "defense": 50,
+      "hp": 500,
+      "artworkPath": null,
+      "enabled": true,
+      "tags": ["internet_archetype", "tier_2", "parasocial"]
+    },
+    {
+      "key": "onlyfans_knockoff",
+      "name": "OnlyFans Knockoff",
+      "attack": 120,
+      "defense": 70,
+      "hp": 650,
+      "artworkPath": null,
+      "enabled": true,
+      "tags": ["internet_archetype", "tier_3", "grifter"]
+    },
+    {
+      "key": "influencer_drone",
+      "name": "Influencer Drone",
+      "attack": 130,
+      "defense": 80,
+      "hp": 700,
+      "artworkPath": null,
+      "enabled": true,
+      "tags": ["internet_archetype", "tier_3", "parasite"]
+    },
+    {
+      "key": "grifter_phantom",
+      "name": "Grifter Phantom",
+      "attack": 135,
+      "defense": 85,
+      "hp": 750,
+      "artworkPath": null,
+      "enabled": true,
+      "tags": ["internet_archetype", "tier_3", "grifter"]
+    },
+    {
+      "key": "mommy_roleplay_echo",
+      "name": "Mommy Roleplay Echo",
+      "attack": 125,
+      "defense": 75,
+      "hp": 680,
+      "artworkPath": null,
+      "enabled": true,
+      "tags": ["internet_archetype", "tier_3", "parasocial"]
+    },
+    {
+      "key": "catfish_illusionist",
+      "name": "Catfish Illusionist",
+      "attack": 140,
+      "defense": 90,
+      "hp": 800,
+      "artworkPath": null,
+      "enabled": true,
+      "tags": ["internet_archetype", "tier_3"]
+    },
+    {
+      "key": "verification_seeker",
+      "name": "Verification Seeker",
+      "attack": 150,
+      "defense": 100,
+      "hp": 900,
+      "artworkPath": null,
+      "enabled": true,
+      "tags": ["internet_archetype", "tier_4", "elite"]
+    },
+    {
+      "key": "ecosystem_sucker",
+      "name": "Ecosystem Sucker",
+      "attack": 160,
+      "defense": 110,
+      "hp": 1000,
+      "artworkPath": null,
+      "enabled": true,
+      "tags": ["internet_archetype", "tier_4", "elite", "multiplier"]
     }
   ]
 }

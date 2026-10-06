@@ -518,5 +518,18 @@
     "repelledText": "The Hypnodoll's spiraling eyes flicker and her hypnotic field collapses. All around her, containment pods pop open. A dozen extremely confused men stumble out. One looks around. 'Where am I?' Another checks his watch. 'DUDE. IT'S TUESDAY?!' The Hypnodoll backs away, frantically rebooting her charm protocols. Your Waifumon smacks you on the shoulder. 'And YOU almost fell for it.'",
     "unchallengedText": "The Hypnodoll smiles. Her eyes spiral. 'Come with me.' You immediately take a step forward. Your Waifumon grabs you by the collar and drags you backward. 'Nope.' The Hypnodoll tries again. 'But he wants to—' 'NOPE.' You're carried away while protesting that you were totally about to resist on your own.",
     "description": "An alluring synthetic predator equipped with an illegally powerful hypnotic charm system and an alarming collection of containment pods. The Hypnodoll specializes in convincing men that following the mysterious woman with glowing spiral eyes into an unmarked room is somehow an excellent idea."
+  },
+  {
+    "id": "count_jackula",
+    "name": "Count Jack-ula",
+    "affinity": "primal",
+    "region": "waifu-valley",
+    "enabled": true,
+    "artwork": "bosses/count-jackula_boss.webp",
+    "rewardTable": "standard-scouting-v1",
+    "scoutingText": "A pale vampire emerges from the fog, slicking back his hair and flashing what he clearly believes is an irresistible smile. 'Ahhh... fresh blood.' He spots your Waifumon and immediately straightens his cape. 'And by blood, I mean... hello, ladies.' Your Waifumon takes one look at him and whispers, 'Why does he smell like lotion?' Count Jack-ula freezes. 'That's none of your business.'",
+    "repelledText": "Count Jack-ula crashes backward into his coffin, cape tangled around his legs. 'WAIT!' he cries as the lid begins to close. 'You can't reject me! I've had centuries of experience with women!' Your Waifumon raises an eyebrow. The vampire pauses. '...Fine. Centuries of observing women.' The coffin slams shut.",
+    "unchallengedText": "Count Jack-ula waits dramatically beneath the moonlight, practicing seductive poses against a tombstone. After twenty minutes without anyone approaching, he sighs. 'Perhaps they're intimidated by my raw vampiric sexuality.' A nearby skeleton shakes its head. Jack-ula points at it. 'Nobody asked you, Gary.' He climbs back into his coffin.",
+    "description": "An immortal vampire creep who has spent centuries mastering the dark arts while learning absolutely nothing about women. Count Jack-ula lurks through the night armed with cheap cologne, a suspicious amount of lotion, and the unwavering belief that the cape is working."
   }
 ]

@@ -26,6 +26,9 @@ assets/drafts/
 # dungeon/Delve art staging — mirrors the assets tree (dungeons/…, combat/…).
 # Promoted by copying the subtree into assets/; never read by the game.
 delvedrafts/
+# WaifuMon combat-sprite staging — mirrors assets/waifumon/<slug>/combat_sprite.png.
+# Promoted by copying <slug>/combat_sprite.png into the matching assets folder.
+waifumon_sprites/
 # local database/data
 data/
 drafts/
@@ -64,3 +67,15 @@ drafts/proposed/flaccid-foothills.json
 drafts/proposed/thirstlands.json
 drafts/proposed/twin-peeks.json
 drafts/proposed/waifu-valley.json
+
+.projectmem/events.jsonl
+.projectmem/watch.pid
+.projectmem/watch.log
+.projectmem/structure.json
+AGENTS.md
+CLAUDE.md
+.codex/
+.projectmem/
+.vscode/
+
+
