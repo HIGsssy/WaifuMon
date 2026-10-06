@@ -1209,19 +1209,27 @@ export function readContentFiles(contentDir: string): LoadedContent {
   // Equipment grants are refused (no pool has an affix). A file that is
   // present is validated as strictly as any other.
   const equipmentAffixesPath = path.join(contentDir, ...EQUIPMENT_AFFIX_FILE.split('/'));
-  const equipmentAffixes = fs.existsSync(equipmentAffixesPath)
+  const hasEquipmentAffixes = fs.existsSync(equipmentAffixesPath);
+  const equipmentAffixes = hasEquipmentAffixes
     ? parseJsonFile(equipmentAffixesPath, EquipmentAffixFileSchema).affixes
     : [];
 
   // Equipment combat bonuses: rarity bonus-count rules, the five bonus
-  // families' ranges and per-slot eligibility. Optional on disk: without it
-  // random gear rolls no mechanical bonus. A file that is present is
-  // validated as strictly as any other — including that every pool can
-  // supply its rarity's distinct bonuses.
+  // families' ranges and per-slot eligibility. Fail-closed: the rarity
+  // contracts (N 0–1, R exactly 1, SR exactly 2 distinct) are gameplay rules,
+  // so wherever random gear can be generated the catalogue is REQUIRED — a
+  // missing or invalid file is a content/startup failure, never a silent
+  // weakening of R/SR gear. "Where gear can roll" is exactly where the affix
+  // catalogue is deployed (an affix-less pool refuses the grant outright), so
+  // the catalogue is required iff affixes are present, and optional otherwise
+  // (a content set without the equipment feature). A present file is validated
+  // as strictly as any other — including that every pool can supply its
+  // rarity's distinct bonuses.
   const equipmentCombatBonusesPath = path.join(contentDir, ...EQUIPMENT_COMBAT_BONUS_FILE.split('/'));
-  const equipmentCombatBonuses = fs.existsSync(equipmentCombatBonusesPath)
-    ? combatBonusCatalogueFromFile(parseJsonFile(equipmentCombatBonusesPath, EquipmentCombatBonusFileSchema))
-    : null;
+  const equipmentCombatBonuses =
+    hasEquipmentAffixes || fs.existsSync(equipmentCombatBonusesPath)
+      ? combatBonusCatalogueFromFile(parseJsonFile(equipmentCombatBonusesPath, EquipmentCombatBonusFileSchema))
+      : null;
 
   // Patch's Workshop: salvage yields and fabrication recipes. Optional on
   // disk: without it nothing can be dismantled and nothing fabricated. A file

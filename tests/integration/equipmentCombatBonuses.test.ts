@@ -27,11 +27,14 @@ import {
   type CombatTrialService,
 } from '../../src/modules/combatTrials/combatTrialService';
 import {
+  COMBAT_BONUSES_DISABLED,
+  CombatBonusCatalogueMissingError,
   EQUIPMENT_COMBAT_BONUS_FILE,
   EquipmentCombatBonusFileSchema,
   combatBonusCatalogueFromFile,
   type CombatBonus,
   type CombatBonusCatalogue,
+  type CombatBonusConfig,
 } from '../../src/modules/equipment/combatBonuses';
 import { createCombatStatsService, type CombatStatsService } from '../../src/modules/equipment/combatStatsService';
 import {
@@ -74,8 +77,8 @@ const rng: Rng = {
 const SHIPPED: CombatBonusCatalogue = combatBonusCatalogueFromFile(
   EquipmentCombatBonusFileSchema.parse(JSON.parse(fs.readFileSync(path.join(CONTENT_DIR, EQUIPMENT_COMBAT_BONUS_FILE), 'utf8'))),
 );
-/** What the Equipment service reads; a test may swap it to "reload" content. */
-let bonusCatalogue: CombatBonusCatalogue | null = SHIPPED;
+/** What the Equipment service reads; a test may swap it to "reload" content, disable the feature, or drop the catalogue. */
+let bonusCatalogue: CombatBonusConfig | null = SHIPPED;
 
 /** One definition per rarity under test. Single-value ranges: the multiplier draw is always step 0. */
 const DEFS = {
@@ -245,10 +248,10 @@ describe('random grants roll by rarity and store the result', () => {
 
   it('records the rolled bonuses on the granted event', async () => {
     const p = await setup();
-    pick(MULT, AFFIX, 4, 3); // lifesteal, R 150–300 step 25 → step 3 = 225
+    pick(MULT, AFFIX, 4, 3); // lifesteal, R 75–150 step 25 → step 3 = 150
     const id = await random(p, DEFS.knife);
     const [event] = await t.db.select().from(equipmentEvents).where(eq(equipmentEvents.equipmentId, id));
-    expect(event!.metadata).toMatchObject({ rollKind: 'random', combatBonuses: [{ stat: 'lifesteal_bp', valueBp: 225 }] });
+    expect(event!.metadata).toMatchObject({ rollKind: 'random', combatBonuses: [{ stat: 'lifesteal_bp', valueBp: 150 }] });
   });
 
   it('a random copy of a starter definition follows the normal N rules', async () => {
@@ -256,7 +259,7 @@ describe('random grants roll by rarity and store the result', () => {
     // rusty_pipe is ranged (4000–6000): multiplier step 2, then the affix, the N roll, family, magnitude.
     pick(2, AFFIX, N_BONUS, 4, 0);
     const id = await random(p, { key: 'rusty_pipe' });
-    expect(await bonusesOf(p, id)).toEqual([{ stat: 'lifesteal_bp', valueBp: 100 }]);
+    expect(await bonusesOf(p, id)).toEqual([{ stat: 'lifesteal_bp', valueBp: 50 }]); // N lifesteal 50–100 step 25 → step 0 = 50
   });
 
   it('an SSR definition still cannot be rolled randomly at all', async () => {
@@ -264,10 +267,18 @@ describe('random grants roll by rarity and store the result', () => {
     await expect(random(p, DEFS.relic)).rejects.toBeInstanceOf(EquipmentAffixPoolEmptyError);
   });
 
-  it('without a deployed catalogue random gear rolls no bonus', async () => {
+  it('with the feature disabled random gear rolls no bonus', async () => {
+    const p = await setup();
+    bonusCatalogue = COMBAT_BONUSES_DISABLED;
+    expect(await bonusesOf(p, await random(p, DEFS.rail))).toEqual([]);
+  });
+
+  it('fails closed when no catalogue is deployed rather than rolling bonus-free R/SR gear', async () => {
     const p = await setup();
     bonusCatalogue = null;
-    expect(await bonusesOf(p, await random(p, DEFS.rail))).toEqual([]);
+    // A missing catalogue must never silently hand out an SR item without its two bonuses.
+    await expect(random(p, DEFS.rail)).rejects.toBeInstanceOf(CombatBonusCatalogueMissingError);
+    expect((await svc.equipment.listEquipment(p)).items).toHaveLength(0);
   });
 
   it('refuses, rather than duplicating a stat, when a pool cannot supply distinct families', async () => {
@@ -284,7 +295,7 @@ describe('a grant key pins the bonuses', () => {
     pick(MULT, AFFIX, 0, 1, 8, 5);
     const first = await random(p, DEFS.rail, { grantKey: `cb-replay-${p}` });
     // The retry would roll armor pen + lifesteal at the range tops, if it rolled.
-    pick(MULT, AFFIX, 3, 3, 10, 10);
+    pick(MULT, AFFIX, 3, 3, 10, 4);
     const again = await random(p, DEFS.rail, { grantKey: `cb-replay-${p}` });
     expect(again).toBe(first);
     expect(await bonusesOf(p, first)).toEqual([
@@ -298,13 +309,13 @@ describe('a grant key pins the bonuses', () => {
     const p = await setup();
     const selector = { definitionKeys: [DEFS.rail.key] };
     // The definition pick (one candidate), then the roll: lifesteal, then crit chance of the rest.
-    pick(0, MULT, AFFIX, 4, 0, 10, 0);
+    pick(0, MULT, AFFIX, 4, 0, 4, 0);
     const first = await t.db.transaction((tx) =>
       rewards.grantRandomEquipmentReward(tx, { playerId: p, selector, source: { type: 'dungeon', key: 'test' }, grantKey: `cb-reward-${p}` }),
     );
     expect(first.combatBonuses).toEqual([
       { stat: 'crit_chance_bp', valueBp: 450 },
-      { stat: 'lifesteal_bp', valueBp: 500 },
+      { stat: 'lifesteal_bp', valueBp: 200 },
     ]);
     pick(0, MULT, AFFIX, 1, 1, 3, 3);
     const again = await t.db.transaction((tx) =>

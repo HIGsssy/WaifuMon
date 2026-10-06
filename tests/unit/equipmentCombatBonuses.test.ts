@@ -12,6 +12,8 @@ import { EQUIPMENT_AFFIX_POOLS, buildAffixCatalogue, type EquipmentAffix } from 
 import {
   COMBAT_BONUS_RARITIES,
   COMBAT_BONUS_STATS,
+  COMBAT_BONUSES_DISABLED,
+  CombatBonusCatalogueMissingError,
   CombatBonusPoolError,
   EQUIPMENT_COMBAT_BONUS_FILE,
   EquipmentCombatBonusFileSchema,
@@ -29,6 +31,7 @@ import {
   sortCombatBonuses,
   type CombatBonus,
   type CombatBonusCatalogue,
+  type CombatBonusConfig,
   type CombatBonusStat,
   type EquipmentCombatBonusFile,
 } from '../../src/modules/equipment/combatBonuses';
@@ -68,7 +71,7 @@ function scripted(...picks: number[]): Rng & { draws: number } {
 }
 
 const gear = (slot: string, rarity: string) => ({ slot, rarity });
-const roll = (slot: string, rarity: string, rng: Rng, catalogue: CombatBonusCatalogue | null = SHIPPED) =>
+const roll = (slot: string, rarity: string, rng: Rng, catalogue: CombatBonusConfig | null = SHIPPED) =>
   rollCombatBonuses(gear(slot, rarity), { rng, catalogue });
 
 describe('the shipped combat-bonus catalogue', () => {
@@ -101,7 +104,7 @@ describe('the shipped combat-bonus catalogue', () => {
       crit_damage_bonus_bp: [50, [500, 1_000], [800, 1_500], [1_200, 2_000]],
       double_attack_chance_bp: [25, [50, 200], [150, 350], [300, 600]],
       armor_penetration_bp: [50, [200, 500], [400, 800], [700, 1_200]],
-      lifesteal_bp: [25, [100, 200], [150, 300], [250, 500]],
+      lifesteal_bp: [25, [50, 100], [75, 150], [100, 200]],
     });
   });
 
@@ -305,11 +308,23 @@ describe('rarity controls the bonus count', () => {
     const rng = scripted();
     expect(roll('attack', rarity, rng)).toEqual([]);
     expect(rng.draws).toBe(0);
+    // A rarity above the bonus tiers has no contract, so even a missing
+    // catalogue draws nothing — there is nothing to fail closed on.
+    expect(roll('attack', rarity, scripted(), null)).toEqual([]);
   });
 
-  it('without a catalogue nothing is rolled', () => {
+  it.each(['N', 'R', 'SR'])('fails closed for %s gear when no catalogue is deployed, before drawing', (rarity) => {
     const rng = scripted();
-    expect(roll('attack', 'SR', rng, null)).toEqual([]);
+    // A missing catalogue must never let supported gear roll zero bonuses:
+    // R would silently lose its guaranteed bonus and SR its two.
+    expect(() => roll('attack', rarity, rng, null)).toThrow(CombatBonusCatalogueMissingError);
+    expect(() => roll('attack', rarity, rng, null)).toThrow(/catalogue is required to roll attack\./);
+    expect(rng.draws).toBe(0);
+  });
+
+  it.each(['N', 'R', 'SR'])('rolls nothing for %s gear when the feature is explicitly disabled', (rarity) => {
+    const rng = scripted();
+    expect(roll('attack', rarity, rng, COMBAT_BONUSES_DISABLED)).toEqual([]);
     expect(rng.draws).toBe(0);
   });
 
@@ -349,6 +364,23 @@ describe('rarity controls the magnitude', () => {
 
   it('an SR roll is stronger than an N roll of the same family can be', () => {
     for (const b of SHIPPED.bonuses) expect(b.ranges.SR.minBp).toBeGreaterThan(b.ranges.N.minBp);
+  });
+
+  it('rolls the retuned Lifesteal ranges on their 25bp steps, deterministically', () => {
+    const lifesteal = family('lifesteal_bp');
+    // The retuned, deliberately modest ranges: N 0.50–1.00%, R 0.75–1.50%, SR 1.00–2.00%.
+    expect(lifesteal.ranges).toEqual({ N: { minBp: 50, maxBp: 100 }, R: { minBp: 75, maxBp: 150 }, SR: { minBp: 100, maxBp: 200 } });
+    expect(combatBonusValues(lifesteal, 'N')).toEqual([50, 75, 100]);
+    expect(combatBonusValues(lifesteal, 'R')).toEqual([75, 100, 125, 150]);
+    expect(combatBonusValues(lifesteal, 'SR')).toEqual([100, 125, 150, 175, 200]);
+    // Lifesteal is index 4 of every slot's pool; R draws family then magnitude.
+    expect(roll('attack', 'R', scripted(4, 0))).toEqual([{ stat: 'lifesteal_bp', valueBp: 75 }]);
+    expect(roll('attack', 'R', scripted(4, 3))).toEqual([{ stat: 'lifesteal_bp', valueBp: 150 }]);
+    expect(() => roll('attack', 'R', scripted(4, 4))).toThrow(/outside \[0, 3\]/);
+    // The three-slot SR-max stack (the strongest obtainable Lifesteal) stays under the cap.
+    const stacked = aggregateCombatBonuses(Array.from({ length: 3 }, () => ({ combatBonuses: [{ stat: 'lifesteal_bp', valueBp: 200 }] })));
+    expect(stacked.modifiers.lifestealBp).toBe(600);
+    expect(stacked.capped).toEqual([]);
   });
 
   it('a random instance roll draws multiplier, then affix, then bonuses', () => {

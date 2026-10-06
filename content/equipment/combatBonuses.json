@@ -52,9 +52,9 @@
       "enabled": true,
       "stepBp": 25,
       "ranges": {
-        "N": { "minBp": 100, "maxBp": 200 },
-        "R": { "minBp": 150, "maxBp": 300 },
-        "SR": { "minBp": 250, "maxBp": 500 }
+        "N": { "minBp": 50, "maxBp": 100 },
+        "R": { "minBp": 75, "maxBp": 150 },
+        "SR": { "minBp": 100, "maxBp": 200 }
       }
     }
   ],

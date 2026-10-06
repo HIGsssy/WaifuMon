@@ -96,7 +96,7 @@ const three = (stat: CombatBonusStat, rarity: CombatBonusRarity, roll: Roll): Co
 
 interface Build {
   key: string;
-  group: 'baseline' | 'stacking' | 'synergy';
+  group: 'baseline' | 'stacking' | 'synergy' | 'lifesteal';
   /** Baselines belong to one tier; the rest run on every tier. */
   tier?: Tier['key'];
   /** Cannot drop under the shipped slot eligibility. */
@@ -104,6 +104,11 @@ interface Build {
   /** Per item: attack, defense, health. */
   items: CombatBonus[][];
 }
+
+/** One lifesteal bonus on the attack piece only — isolates a single slot's roll. */
+const ls1 = (rarity: CombatBonusRarity, roll: Roll): CombatBonus[][] => [[b('lifesteal_bp', rarity, roll)], [], []];
+/** Lifesteal on the attack and defense pieces — the realistic two-slot stack. */
+const ls2 = (rarity: CombatBonusRarity, roll: Roll): CombatBonus[][] => [[b('lifesteal_bp', rarity, roll)], [b('lifesteal_bp', rarity, roll)], []];
 
 const BUILDS: Build[] = [
   { key: 'none', group: 'baseline', items: [[], [], []] },
@@ -186,6 +191,21 @@ const BUILDS: Build[] = [
       [b('lifesteal_bp', 'SR'), b('crit_damage_bonus_bp', 'SR')],
     ],
   },
+
+  // Lifesteal-only, isolated by amount — retuning check. One slot at N/R/SR
+  // (typical and max), the realistic two-slot stack, and the three-slot
+  // ceiling (all three slots are lifesteal-eligible, so this is obtainable).
+  { key: 'ls_none', group: 'lifesteal', items: [[], [], []] },
+  { key: 'ls_1n_typ', group: 'lifesteal', items: ls1('N', 'typical') },
+  { key: 'ls_1n_max', group: 'lifesteal', items: ls1('N', 'max') },
+  { key: 'ls_1r_typ', group: 'lifesteal', items: ls1('R', 'typical') },
+  { key: 'ls_1r_max', group: 'lifesteal', items: ls1('R', 'max') },
+  { key: 'ls_1sr_typ', group: 'lifesteal', items: ls1('SR', 'typical') },
+  { key: 'ls_1sr_max', group: 'lifesteal', items: ls1('SR', 'max') },
+  { key: 'ls_2slot_sr_typ', group: 'lifesteal', items: ls2('SR', 'typical') },
+  { key: 'ls_2slot_sr_max', group: 'lifesteal', items: ls2('SR', 'max') },
+  { key: 'ls_3slot_sr_typ', group: 'lifesteal', items: three('lifesteal_bp', 'SR', 'typical') },
+  { key: 'ls_3slot_sr_max', group: 'lifesteal', items: three('lifesteal_bp', 'SR', 'max') },
 ];
 
 // ── content ─────────────────────────────────────────────────────────────────
@@ -377,6 +397,7 @@ const report = {
   baseline: want('baseline') ? matrix('baseline') : [],
   stacking: want('stacking') ? matrix('stacking') : [],
   synergy: want('synergy') ? matrix('synergy') : [],
+  lifesteal: want('lifesteal') ? matrix('lifesteal') : [],
   srVsR: want('srvsr') ? srVsR() : [],
   armorPenetration: want('armorpen') ? armorPenReport() : [],
 };
@@ -414,6 +435,7 @@ if (process.argv.includes('--json')) {
   print('Baselines', report.baseline);
   print('Stacking (three items, one family)', report.stacking);
   print('Synergy', report.synergy);
+  print('Lifesteal only (by amount; R and SR primary gear)', report.lifesteal);
   print('R → SR: primary vs bonus', report.srVsR);
   if (report.armorPenetration.length > 0) {
     console.log('\n== Armor Penetration by enemy DEF (ATK = SP 300 on R gear) ==');

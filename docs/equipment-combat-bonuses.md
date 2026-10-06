@@ -82,9 +82,11 @@ steps. Rarity controls magnitude.
 | Crit Damage | 0.5% | +5% – +10% | +8% – +15% | +12% – +20% |
 | Double Attack | 0.25% | 0.50% – 2.00% | 1.50% – 3.50% | 3.00% – 6.00% |
 | Armor Pen | 0.5% | 2% – 5% | 4% – 8% | 7% – 12% |
-| Lifesteal | 0.25% | 1.00% – 2.00% | 1.50% – 3.00% | 2.50% – 5.00% |
+| Lifesteal | 0.25% | 0.50% – 1.00% | 0.75% – 1.50% | 1.00% – 2.00% |
 
-Every value in a range is equally likely. All of this is `initial_tuning`.
+Every value in a range is equally likely. Lifesteal was retuned down to these
+deliberately modest ranges (persistent-HP Delve made the first draft far too
+strong); the other four families are still at their `initial_tuning` values.
 
 ### Eligibility — which slot rolls what
 
@@ -113,8 +115,13 @@ A file that fails any of these stops the content load, with the path named:
   families** — so R always has a bonus to roll and SR never needs the same
   family twice. Disabling a family is checked against this too.
 
-If the file is missing altogether, random gear rolls no bonus and startup logs
-`equipment/combat-bonuses-missing` at error level.
+The catalogue is **required content wherever random gear can be generated**:
+because an affix-less pool refuses the grant outright, the catalogue is
+required exactly when `equipment/affixes.json` is deployed. A missing or
+invalid catalogue there is a fail-closed content/startup failure — random R/SR
+gear is never handed out without the bonuses its rarity contract guarantees.
+A content set without the equipment feature (no affixes) may omit it, and a
+test can turn the feature off explicitly with `COMBAT_BONUSES_DISABLED`.
 
 ## The roll
 
@@ -290,12 +297,29 @@ tier reaches. So the bonuses widen an existing gap rather than create it —
 but at the low-SP edge the widening is the difference between impossible and
 occasional.
 
-**Lifesteal is the one to watch.** Three SR-max Lifesteal pieces (15%) on R
-primaries at SP 240 take Delve completion from 0% to 80%, restoring about 277
-HP per run (44% of max HP). Double Attack + Lifesteal on SR primaries at SP
-185 takes it from 0% to 71%. Typical rolls are far milder (R-typical ×3,
-6.75%: 0% → 3%). Nothing was retuned; this is the report the first balance
-pass should start from.
+**Lifesteal was retuned here.** The first draft (N 1–2%, R 1.5–3%, SR 2.5–5%)
+made sustain dominate persistent-HP Delve: three SR-max Lifesteal pieces (15%)
+on R primaries at SP 240 took Delve completion from 0% to 80%, restoring about
+277 HP per run (44% of max HP). The shipped ranges are far lower — N 0.50–1.00%,
+R 0.75–1.50%, SR 1.00–2.00% — and the strongest obtainable total is three
+SR-max pieces at 6% (Lifesteal is eligible on all three slots). Re-simulated at
+the new ranges (R primaries):
+
+| Lifesteal build (total) | SP 240 Delve done | Healing / run | % of max HP |
+| --- | --- | --- | --- |
+| none | 0% | 0 | 0% |
+| one R typical (1.25%) | 0% | ~19 | ~3% |
+| one SR max (2%) | 0% | ~34 | ~5% |
+| two-slot SR max (4%) | 1% | ~70 | ~11% |
+| three-slot SR max (6%, the ceiling) | 2% | ~106 | ~17% |
+
+So a build with essentially no completion chance no longer jumps to a high one
+on Lifesteal alone (0% → 2% at the 6% ceiling, versus 0% → 80% before), while
+a sustain build is still rewarded: Lifesteal steadily improves HP-at-exit and
+per-run healing across a full Delve. Crit, Crit Damage, Double Attack, Armor
+Pen, the primary multipliers, enemy stats and the Delve layout were left
+unchanged; the interaction cases (Crit + Crit Damage, Crit + Double, Double +
+Lifesteal, Armor Pen + Crit) were re-simulated and exposed no anomaly.
 
 **Armor Penetration scales with enemy DEF**, as designed: 12% is worth +2.3%
 damage into DEF 20, +4.2% into DEF 55 and +7.4% into DEF 110.

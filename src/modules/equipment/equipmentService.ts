@@ -69,7 +69,7 @@ import {
   CombatBonusPoolError,
   readStoredCombatBonuses,
   type CombatBonus,
-  type CombatBonusCatalogue,
+  type CombatBonusConfig,
 } from './combatBonuses';
 import {
   equipmentDisplayName,
@@ -429,10 +429,12 @@ export interface EquipmentServiceDeps {
   getAffixes(): EquipmentAffixCatalogue;
   /**
    * The combat-bonus catalogue, read live so a content reload is followed.
-   * Null (or no getter) means no catalogue is deployed: random grants then
-   * roll no mechanical bonus at any rarity. Production always supplies it.
+   * Returns the validated catalogue in production (required at content load),
+   * `COMBAT_BONUSES_DISABLED` to turn the feature off, or `null`/no getter.
+   * A `null` catalogue is fail-closed: rolling a supported rarity throws
+   * rather than silently producing bonus-free R/SR gear.
    */
-  getCombatBonuses?(): CombatBonusCatalogue | null;
+  getCombatBonuses?(): CombatBonusConfig | null;
   /** The RNG random grants roll with. Injected by tests; `Math.random` otherwise. */
   rng?: Rng;
 }

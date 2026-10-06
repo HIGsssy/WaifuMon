@@ -23,6 +23,18 @@ import {
 } from '../../src/modules/equipment/equipmentRoll';
 import { EquipmentAffixPoolEmptyError } from '../../src/shared/errors';
 import { seededRng, type Rng } from '../../src/shared/random';
+import { COMBAT_BONUSES_DISABLED } from '../../src/modules/equipment/combatBonuses';
+
+/**
+ * These cases exercise the multiplier and affix draws, which are independent of
+ * combat bonuses. The feature is explicitly turned off (an intentional test
+ * config — never a missing catalogue, which is now fail-closed), so the roll
+ * draws no bonus and the scripted draw counts stay unchanged. A test about
+ * bonuses passes its own catalogue instead.
+ */
+const realRollEquipmentInstance = rollEquipmentInstance;
+const rollInst: typeof rollEquipmentInstance = (definition, opts) =>
+  realRollEquipmentInstance(definition, { combatBonuses: COMBAT_BONUSES_DISABLED, ...opts });
 
 const RANGE = { multiplierMinBp: 4_000, multiplierMaxBp: 6_000, multiplierStepBp: 500 } as const;
 const def = (slot: string, rarity: string, over: Partial<MultiplierRange> = {}) => ({
@@ -98,7 +110,7 @@ describe('rollEquipmentInstance — multiplier', () => {
     const rng = seededRng(42);
     const seen = new Set<number>();
     for (let i = 0; i < 500; i++) {
-      const { rolledMultiplierBp } = rollEquipmentInstance(PIPE, { rng, affixes: AFFIXES });
+      const { rolledMultiplierBp } = rollInst(PIPE, { rng, affixes: AFFIXES });
       expect(multiplierValues(RANGE)).toContain(rolledMultiplierBp);
       seen.add(rolledMultiplierBp);
     }
@@ -106,21 +118,21 @@ describe('rollEquipmentInstance — multiplier', () => {
   });
 
   it('maps an injected pick to exactly that step', () => {
-    expect(rollEquipmentInstance(PIPE, { rng: scripted(0, 0), affixes: AFFIXES }).rolledMultiplierBp).toBe(4_000);
-    expect(rollEquipmentInstance(PIPE, { rng: scripted(3, 0), affixes: AFFIXES }).rolledMultiplierBp).toBe(5_500);
-    expect(rollEquipmentInstance(PIPE, { rng: scripted(4, 0), affixes: AFFIXES }).rolledMultiplierBp).toBe(6_000);
+    expect(rollInst(PIPE, { rng: scripted(0, 0), affixes: AFFIXES }).rolledMultiplierBp).toBe(4_000);
+    expect(rollInst(PIPE, { rng: scripted(3, 0), affixes: AFFIXES }).rolledMultiplierBp).toBe(5_500);
+    expect(rollInst(PIPE, { rng: scripted(4, 0), affixes: AFFIXES }).rolledMultiplierBp).toBe(6_000);
   });
 
   it('is deterministic for a seeded RNG', () => {
     const roll = (seed: number) => {
       const rng = seededRng(seed);
-      return Array.from({ length: 10 }, () => rollEquipmentInstance(PIPE, { rng, affixes: AFFIXES }));
+      return Array.from({ length: 10 }, () => rollInst(PIPE, { rng, affixes: AFFIXES }));
     };
     expect(roll(7)).toEqual(roll(7));
   });
 
   it('refuses to roll from an invalid range', () => {
-    expect(() => rollEquipmentInstance({ ...PIPE, multiplierStepBp: 0 }, { rng: seededRng(1), affixes: AFFIXES })).toThrow(RangeError);
+    expect(() => rollInst({ ...PIPE, multiplierStepBp: 0 }, { rng: seededRng(1), affixes: AFFIXES })).toThrow(RangeError);
   });
 });
 
@@ -132,7 +144,7 @@ describe('rollEquipmentInstance — affix pool', () => {
       const pool = `${slot}.${rarity}`;
       const seen = new Set<string>();
       for (let i = 0; i < 200; i++) {
-        const { affixKey } = rollEquipmentInstance(def(slot, rarity), { rng, affixes: AFFIXES });
+        const { affixKey } = rollInst(def(slot, rarity), { rng, affixes: AFFIXES });
         expect(AFFIXES.get(affixKey!)?.pool).toBe(pool);
         seen.add(affixKey!);
       }
@@ -143,18 +155,18 @@ describe('rollEquipmentInstance — affix pool', () => {
   );
 
   it('picks uniformly by index from the pool, in catalogue order', () => {
-    expect(rollEquipmentInstance(def('defense', 'R'), { rng: scripted(0, 2), affixes: AFFIXES }).affixKey).toBe('defense_r_3');
-    expect(rollEquipmentInstance(def('defense', 'R'), { rng: scripted(0, 0), affixes: AFFIXES }).affixKey).toBe('defense_r_1');
+    expect(rollInst(def('defense', 'R'), { rng: scripted(0, 2), affixes: AFFIXES }).affixKey).toBe('defense_r_3');
+    expect(rollInst(def('defense', 'R'), { rng: scripted(0, 0), affixes: AFFIXES }).affixKey).toBe('defense_r_1');
   });
 
   it('chooses the affix independently of the multiplier', () => {
     // Top multiplier with the first affix; bottom multiplier with the last.
-    expect(rollEquipmentInstance(PIPE, { rng: scripted(4, 0), affixes: AFFIXES })).toEqual({
+    expect(rollInst(PIPE, { rng: scripted(4, 0), affixes: AFFIXES })).toEqual({
       rolledMultiplierBp: 6_000,
       affixKey: 'attack_n_1',
       combatBonuses: [],
     });
-    expect(rollEquipmentInstance(PIPE, { rng: scripted(0, 2), affixes: AFFIXES })).toEqual({
+    expect(rollInst(PIPE, { rng: scripted(0, 2), affixes: AFFIXES })).toEqual({
       rolledMultiplierBp: 4_000,
       affixKey: 'attack_n_3',
       combatBonuses: [],
@@ -169,7 +181,7 @@ describe('rollEquipmentInstance — affix pool', () => {
     ]);
     let err: unknown;
     try {
-      rollEquipmentInstance(def('attack', 'R'), { rng: scripted(0, 0), affixes: lopsided });
+      rollInst(def('attack', 'R'), { rng: scripted(0, 0), affixes: lopsided });
     } catch (e) {
       err = e;
     }
@@ -179,7 +191,7 @@ describe('rollEquipmentInstance — affix pool', () => {
   });
 
   it('fails explicitly for a rarity that has no pool', () => {
-    expect(() => rollEquipmentInstance(def('attack', 'SSR'), { rng: seededRng(1), affixes: AFFIXES })).toThrow(
+    expect(() => rollInst(def('attack', 'SSR'), { rng: seededRng(1), affixes: AFFIXES })).toThrow(
       /attack\.SSR.*not a supported pool/,
     );
   });
@@ -187,7 +199,7 @@ describe('rollEquipmentInstance — affix pool', () => {
   it('consumes no randomness when it refuses', () => {
     const calls: number[] = [];
     const counting: Rng = { next: () => 0, intInclusive: (min) => (calls.push(min), min) };
-    expect(() => rollEquipmentInstance(def('attack', 'UR'), { rng: counting, affixes: AFFIXES })).toThrow();
+    expect(() => rollInst(def('attack', 'UR'), { rng: counting, affixes: AFFIXES })).toThrow();
     expect(calls).toEqual([]);
   });
 });

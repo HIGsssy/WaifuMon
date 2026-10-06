@@ -25,7 +25,7 @@ import {
   rollCombatBonuses,
   sortCombatBonuses,
   type CombatBonus,
-  type CombatBonusCatalogue,
+  type CombatBonusConfig,
 } from './combatBonuses';
 import { EQUIPMENT_MULTIPLIER_BP_MAX, isEquipmentSlot, type EquipmentSlot } from './vocabulary';
 
@@ -95,8 +95,9 @@ export type RollableDefinition = MultiplierRange & { key: string; slot: Equipmen
  * the definition's own pool (`slot.rarity`). Every random item is affixed;
  * there is no fallback to another rarity, slot or pool. Last, the rarity's
  * mechanical combat bonuses (`rollCombatBonuses`): none or one at N, one at
- * R, two distinct families at SR. Without a bonus catalogue (`null` — no file
- * deployed) the copy rolls none.
+ * R, two distinct families at SR. With the feature explicitly disabled the
+ * copy rolls none; a `null` catalogue for a supported rarity is a fail-closed
+ * error, never a silently weaker item.
  *
  * The affix is checked before anything is drawn, so a failed roll consumes no
  * randomness.
@@ -104,12 +105,14 @@ export type RollableDefinition = MultiplierRange & { key: string; slot: Equipmen
  * @throws {EquipmentAffixPoolEmptyError} when the derived pool is not a
  * supported pool, or has no enabled affix — a content error, never papered
  * over with an unaffixed item.
+ * @throws {CombatBonusCatalogueMissingError} when a supported rarity is rolled
+ * with no catalogue deployed (and the feature is not explicitly disabled).
  * @throws {RangeError} for a range that is not valid — a definition that
  * reached the grant path without passing validation is a bug to surface.
  */
 export function rollEquipmentInstance(
   definition: RollableDefinition,
-  opts: { rng: Rng; affixes: EquipmentAffixCatalogue; combatBonuses?: CombatBonusCatalogue | null },
+  opts: { rng: Rng; affixes: EquipmentAffixCatalogue; combatBonuses?: CombatBonusConfig | null },
 ): EquipmentRoll {
   const issues = multiplierRangeIssues(definition.slot, definition);
   if (issues.length > 0) {

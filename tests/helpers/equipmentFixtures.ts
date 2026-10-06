@@ -23,7 +23,7 @@ import {
   type EquipmentAffix,
   type EquipmentAffixCatalogue,
 } from '../../src/modules/equipment/affixCatalogue';
-import type { CombatBonusCatalogue } from '../../src/modules/equipment/combatBonuses';
+import { COMBAT_BONUSES_DISABLED, type CombatBonusConfig } from '../../src/modules/equipment/combatBonuses';
 import type { Rng } from '../../src/shared/random';
 import { STARTER_EQUIPMENT, STARTER_ROLLS } from '../../src/modules/onboarding/vocabulary';
 import type { EquipmentSlot } from '../../src/modules/equipment/vocabulary';
@@ -56,13 +56,15 @@ export const TEST_AFFIXES: EquipmentAffixCatalogue = buildAffixCatalogue(TEST_AF
  * unless told otherwise. Tests that check which affix lands pass a scripted or
  * seeded RNG.
  *
- * No combat-bonus catalogue by default, so random grants roll **no** secondary
- * bonus and existing scripted rolls keep their draw counts; a test about
- * bonuses passes `combatBonuses` (a getter, so it can be swapped mid-test).
+ * Combat bonuses are **disabled** by default (`COMBAT_BONUSES_DISABLED`), so
+ * random grants roll **no** secondary bonus and existing scripted rolls keep
+ * their draw counts — an intentional feature-off config, not a (now
+ * fail-closed) missing catalogue. A test about bonuses passes `combatBonuses`
+ * (a getter, so it can be swapped mid-test).
  */
 export function buildEquipmentServices(
   db: Db,
-  opts: { affixes?: EquipmentAffixCatalogue; rng?: Rng; combatBonuses?: () => CombatBonusCatalogue | null } = {},
+  opts: { affixes?: EquipmentAffixCatalogue; rng?: Rng; combatBonuses?: () => CombatBonusConfig | null } = {},
 ) {
   const featureUnlocks = createFeatureUnlockService(db);
   const affixes = opts.affixes ?? TEST_AFFIXES;
@@ -73,7 +75,7 @@ export function buildEquipmentServices(
       db,
       featureUnlocks,
       getAffixes: () => affixes,
-      ...(opts.combatBonuses ? { getCombatBonuses: opts.combatBonuses } : {}),
+      getCombatBonuses: opts.combatBonuses ?? (() => COMBAT_BONUSES_DISABLED),
       ...(opts.rng ? { rng: opts.rng } : {}),
     }),
     definitions: createEquipmentDefinitionService(db),

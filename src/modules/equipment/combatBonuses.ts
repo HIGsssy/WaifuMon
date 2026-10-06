@@ -381,6 +381,37 @@ export class CombatBonusPoolError extends RangeError {
 }
 
 /**
+ * Explicit "the combat-bonus feature is turned off" — deliberately distinct
+ * from a missing catalogue (`null`). A disabled roll draws nothing and rolls
+ * nothing at every rarity. Production never uses it; tests that do not
+ * exercise bonuses pass it instead of omitting the catalogue, so a genuinely
+ * missing catalogue stays a fail-closed error rather than a silent zero roll.
+ */
+export const COMBAT_BONUSES_DISABLED = Symbol.for('waifumon.combatBonusesDisabled');
+export type CombatBonusConfig = CombatBonusCatalogue | typeof COMBAT_BONUSES_DISABLED;
+
+/**
+ * A random roll for a supported rarity was attempted with no catalogue
+ * deployed. Fail-closed: normal R/SR gear must never be generated without the
+ * bonuses its rarity contract guarantees, so this surfaces loudly rather than
+ * quietly producing a weaker item. Production makes it unreachable by
+ * requiring the catalogue at content load; a deliberately bonus-free test
+ * uses {@link COMBAT_BONUSES_DISABLED}.
+ */
+export class CombatBonusCatalogueMissingError extends Error {
+  constructor(
+    readonly slot: string,
+    readonly rarity: string,
+  ) {
+    super(
+      `combat-bonus catalogue is required to roll ${slot}.${rarity} gear but none is deployed — ` +
+        `deploy content/${EQUIPMENT_COMBAT_BONUS_FILE} (or pass COMBAT_BONUSES_DISABLED to turn the feature off)`,
+    );
+    this.name = 'CombatBonusCatalogueMissingError';
+  }
+}
+
+/**
  * Roll the combat bonuses of one new random instance:
  *
  *   1. the rarity's rule — a rarity without one (SSR and above) rolls none;
@@ -388,19 +419,28 @@ export class CombatBonusPoolError extends RangeError {
  *   3. `bonusCount` distinct families, each uniform among those left;
  *   4. each family's magnitude, uniform over the rarity's discrete values.
  *
- * Returned in canonical order. All randomness comes from `rng`; with `null`
- * for the catalogue (no file deployed) nothing is drawn and nothing rolled.
+ * Returned in canonical order. All randomness comes from `rng`.
  *
+ * Fail-closed on the catalogue: `COMBAT_BONUSES_DISABLED` rolls nothing (the
+ * feature is off), but a `null` catalogue for a supported rarity (N/R/SR)
+ * throws rather than silently weakening the item.
+ *
+ * @throws {CombatBonusCatalogueMissingError} when a supported rarity is rolled
+ * with no catalogue deployed (and the feature is not explicitly disabled).
  * @throws {CombatBonusPoolError} when the pool has fewer distinct families
  * than the rule needs — checked before anything is drawn. Catalogue
  * validation makes this unreachable for a loaded file.
  */
 export function rollCombatBonuses(
   definition: { slot: string; rarity: string },
-  opts: { rng: Rng; catalogue: CombatBonusCatalogue | null },
+  opts: { rng: Rng; catalogue: CombatBonusConfig | null },
 ): CombatBonus[] {
   const { rng, catalogue } = opts;
-  if (!catalogue || !isCombatBonusRarity(definition.rarity)) return [];
+  if (catalogue === COMBAT_BONUSES_DISABLED) return [];
+  // A rarity above the bonus tiers (SSR and up) has no rule at all, so it
+  // rolls nothing even without a catalogue — there is nothing to fail closed on.
+  if (!isCombatBonusRarity(definition.rarity)) return [];
+  if (!catalogue) throw new CombatBonusCatalogueMissingError(definition.slot, definition.rarity);
   const rule = catalogue.rarityRules[definition.rarity];
   if (rule.bonusCount === 0 || rule.bonusChanceBp <= 0) return [];
   const pool = eligibleCombatBonusFamilies(catalogue, definition.slot, definition.rarity);

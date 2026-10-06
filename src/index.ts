@@ -378,13 +378,9 @@ async function main(): Promise<void> {
     return affixCatalogue;
   };
   // Rarity-driven secondary combat bonuses for random gear, followed live.
+  // The catalogue is required at content load (fail-closed), so the snapshot
+  // always carries it; the `?? null` is only a type guard.
   const getCombatBonuses = () => contentSnapshot.equipmentCombatBonuses ?? null;
-  if (getCombatBonuses() == null) {
-    logger.error(
-      { tag: 'equipment/combat-bonuses-missing' },
-      'content/equipment/combatBonuses.json is missing — random Equipment will roll no combat bonuses',
-    );
-  }
   const equipment = createEquipmentService({ db, featureUnlocks, getAffixes, getCombatBonuses });
   // The one path World Encounters, bosses and expeditions hand out random gear
   // through: they choose *whether* and *which kind*; it picks the base
