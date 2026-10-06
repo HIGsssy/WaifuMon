@@ -13,8 +13,9 @@
  *   - resolving a fight, recording it, first-clear tracking and the one-time
  *     first-clear reward.
  *
- * It never calculates a stat. The player's ATK / DEF / HP come from
- * `combatStatsService` (the one place Equipment multipliers are applied), the
+ * It never calculates a stat. The player's ATK / DEF / HP and combat
+ * modifiers come from `combatStatsService` (the one place Equipment
+ * multipliers are applied and bonuses aggregated), the
  * enemy's from its content definition, and the fight from the existing
  * engine: `createCombatState` → `simulateCombat` with basic-attack
  * controllers. V1 auto combat is a client of the same action resolver a
@@ -30,14 +31,27 @@
  *      back (`replayed: true`); nothing is fought or paid again;
  *   3. Trial and enemy still enabled;
  *   4. stats snapshotted inside the transaction (`snapshotCombatStats`);
- *   5. engine runs; the attempt row is written with a snapshot of both sides;
+ *   5. engine runs on `seededRng(combatTrialSeed(...))`; the attempt row is
+ *      written with a snapshot of both sides, the player's modifiers (inside
+ *      `initial_state`) and the seed;
  *   6. on a first `player_victory`, `first_clear = true` and the reward is
  *      paid in the same transaction. The partial unique index on
  *      `(player_id, trial_key) WHERE first_clear` backs the row lock: a
  *      second first-clear cannot commit.
  *
  * Any failure rolls the whole thing back — no attempt, no reward.
+ *
+ * ## Determinism
+ *
+ * Every random draw of a fight — damage variance, Crits, Double Attacks —
+ * comes from one seed, {@link combatTrialSeed}: a hash of the player, the
+ * Trial and the request key. Nothing about it is random, so an attempt that
+ * failed to commit and is retried with the same key fights the *same* fight,
+ * and a stored attempt can be reproduced from `initial_state` + `combat_seed`
+ * ({@link replayCombatTrialAttempt}). A request key resolves once: a retry
+ * reads the stored attempt back and can never re-roll for a better result.
  */
+import { createHash } from 'node:crypto';
 import { and, count, desc, eq, inArray, max, sql } from 'drizzle-orm';
 import type { Db, DbOrTx } from '../../db/client';
 import { combatTrialAttempts, items, players, type CombatTrialAttemptRow } from '../../db/schema';
@@ -50,7 +64,7 @@ import {
   FeatureLockedError,
   PlayerNotFoundError,
 } from '../../shared/errors';
-import { defaultRng, type Rng } from '../../shared/random';
+import { seededRng, type Rng } from '../../shared/random';
 import type { LoadedContent } from '../content/schemas';
 import type { CurrencyService } from '../currency/currencyService';
 import type { CombatStatsService } from '../equipment/combatStatsService';
@@ -58,9 +72,17 @@ import type { CombatStats } from '../equipment/equipmentMath';
 import type { FeatureUnlockService } from '../features/featureUnlockService';
 import type { InventoryService } from '../inventory/inventoryService';
 import { basicAttackController } from '../combat/combatController';
+import { ZERO_COMBAT_MODIFIERS, clampCombatModifiers } from '../combat/combatMath';
 import { simulateCombat } from '../combat/combatSimulator';
 import { createCombatState } from '../combat/combatState';
-import type { CombatEndReason, CombatEvent, CombatResultKind } from '../combat/combatTypes';
+import type {
+  CombatEndReason,
+  CombatEvent,
+  CombatModifiers,
+  CombatResult,
+  CombatResultKind,
+  CombatState,
+} from '../combat/combatTypes';
 import {
   createCombatEnemyCatalogue,
   enemyCombatantInput,
@@ -79,6 +101,48 @@ export const COMBAT_TRIAL_FEATURE = 'equipment' as const;
 
 /** Longest accepted idempotency key. Discord nonces are far shorter. */
 export const COMBAT_TRIAL_REQUEST_KEY_MAX_LENGTH = 128;
+
+/**
+ * Versioned salt for a Trial fight's seed. Frozen: changing it would make a
+ * retried request fight differently than its first try would have.
+ */
+export const COMBAT_TRIAL_SEED_SALT = 'waifumon.trial.combat.v1';
+
+/**
+ * The seed of one Trial attempt: the first 32 bits of
+ * `md5("<player id>:<trial key>:<request key>:combat:<salt>")`. Stable request
+ * data only — the same request always fights the same fight.
+ */
+export function combatTrialSeed(
+  playerId: number,
+  trialKey: string,
+  requestKey: string,
+  salt: string = COMBAT_TRIAL_SEED_SALT,
+): number {
+  const digest = createHash('md5').update(`${playerId}:${trialKey}:${requestKey}:combat:${salt}`, 'utf8').digest('hex');
+  return Number.parseInt(digest.slice(0, 8), 16);
+}
+
+/** Run a Trial fight from its starting state and seed. Pure. */
+export function runCombatTrialFight(initial: CombatState, combatSeed: number, rngOf: (seed: number) => Rng = seededRng): CombatResult {
+  return simulateCombat(
+    initial,
+    { player: basicAttackController, enemy: basicAttackController },
+    { rng: rngOf(combatSeed) },
+  );
+}
+
+/**
+ * Re-fight a stored attempt from its `initial_state` and `combat_seed` — the
+ * audit path. Returns null for an attempt recorded before Trials were seeded
+ * (no seed), which can only be replayed from its stored `events`.
+ */
+export function replayCombatTrialAttempt(
+  row: Pick<CombatTrialAttemptRow, 'initialState' | 'combatSeed'>,
+): CombatResult | null {
+  if (row.combatSeed == null) return null;
+  return runCombatTrialFight(row.initialState as unknown as CombatState, row.combatSeed);
+}
 
 // ── read models ───────────────────────────────────────────────────────────
 
@@ -120,6 +184,12 @@ export interface CombatTrialSideSnapshot {
   defense: number;
   maxHp: number;
   remainingHp: number;
+  /**
+   * The combat modifiers this side fought with — the aggregated, capped
+   * totals frozen at fight start. All zero for an enemy and for an attempt
+   * recorded before modifiers existed.
+   */
+  modifiers: CombatModifiers;
 }
 
 /** A recorded attempt. Every number is the stored snapshot, never recomputed. */
@@ -138,6 +208,8 @@ export interface CombatTrialAttemptView {
   /** What this attempt paid; null when it paid nothing. */
   rewards: CombatTrialReward | null;
   events: CombatEvent[];
+  /** The seed the fight's draws came from; null for a pre-seeding attempt. */
+  combatSeed: number | null;
   startedAt: Date;
   completedAt: Date;
 }
@@ -182,8 +254,12 @@ export interface CombatTrialServiceDeps {
    * edit in Portal Admin reaches the next fight). May be async for that read.
    */
   getCatalogue(): CombatTrialCatalogue | Promise<CombatTrialCatalogue>;
-  /** Combat randomness. V1 basic attacks draw nothing; injected for when they do. */
-  rng?: () => Rng;
+  /**
+   * The generator for a fight's seed. Defaults to `seededRng`; injected only
+   * by tests that need to script draws. Production never overrides it — a
+   * fight must be a function of its stored seed.
+   */
+  rngForSeed?: (seed: number) => Rng;
 }
 
 const catalogueCache = new WeakMap<LoadedContent, CombatTrialCatalogue>();
@@ -225,6 +301,18 @@ function hasReward(reward: CombatTrialReward | null): reward is CombatTrialRewar
   return reward != null && (reward.waifubux > 0 || reward.items.length > 0);
 }
 
+/** A side's snapshotted modifiers out of a stored `initial_state`; zero when it has none. */
+function storedModifiers(row: CombatTrialAttemptRow, side: 'player' | 'enemy'): CombatModifiers {
+  const state = row.initialState as { player?: { modifiers?: unknown }; enemy?: { modifiers?: unknown } } | null;
+  const stored = state?.[side]?.modifiers;
+  if (stored == null || typeof stored !== 'object') return { ...ZERO_COMBAT_MODIFIERS };
+  try {
+    return clampCombatModifiers(stored as Partial<CombatModifiers>);
+  } catch {
+    return { ...ZERO_COMBAT_MODIFIERS };
+  }
+}
+
 export function toAttemptView(row: CombatTrialAttemptRow): CombatTrialAttemptView {
   return {
     id: row.id,
@@ -241,6 +329,7 @@ export function toAttemptView(row: CombatTrialAttemptRow): CombatTrialAttemptVie
       defense: row.playerDefense,
       maxHp: row.playerMaxHp,
       remainingHp: row.playerRemainingHp,
+      modifiers: storedModifiers(row, 'player'),
     },
     enemy: {
       name: row.enemyName,
@@ -248,10 +337,12 @@ export function toAttemptView(row: CombatTrialAttemptRow): CombatTrialAttemptVie
       defense: row.enemyDefense,
       maxHp: row.enemyMaxHp,
       remainingHp: row.enemyRemainingHp,
+      modifiers: storedModifiers(row, 'enemy'),
     },
     firstClear: row.firstClear,
     rewards: (row.rewards as CombatTrialReward | null) ?? null,
     events: row.events as unknown as CombatEvent[],
+    combatSeed: row.combatSeed ?? null,
     startedAt: row.startedAt,
     completedAt: row.completedAt,
   };
@@ -259,7 +350,7 @@ export function toAttemptView(row: CombatTrialAttemptRow): CombatTrialAttemptVie
 
 export function createCombatTrialService(deps: CombatTrialServiceDeps): CombatTrialService {
   const { db } = deps;
-  const rng = deps.rng ?? defaultRng;
+  const rngForSeed = deps.rngForSeed ?? seededRng;
 
   async function requireUnlocked(playerId: number, tx: DbOrTx = db): Promise<void> {
     if (!(await deps.featureUnlocks.isUnlocked(playerId, COMBAT_TRIAL_FEATURE, tx))) {
@@ -407,14 +498,17 @@ export function createCombatTrialService(deps: CombatTrialServiceDeps): CombatTr
 
         // Numbers only from here on: the engine never sees Equipment.
         const initial = createCombatState({
-          player: playerCombatantInput({ buddy: stats.buddy, stats: stats.stats }),
+          player: playerCombatantInput({
+            buddy: stats.buddy,
+            stats: stats.stats,
+            modifiers: stats.combatModifiers,
+          }),
           enemy: enemyCombatantInput(enemy),
         });
-        const outcome = simulateCombat(
-          initial,
-          { player: basicAttackController, enemy: basicAttackController },
-          { rng: rng() },
-        );
+        // Seeded from the request, never from the clock or Math.random: the
+        // same request is the same fight, however often it is tried.
+        const combatSeed = combatTrialSeed(playerId, trial.key, requestKey);
+        const outcome = runCombatTrialFight(initial, combatSeed, rngForSeed);
 
         let firstClear = false;
         if (outcome.result === 'player_victory') {
@@ -458,6 +552,7 @@ export function createCombatTrialService(deps: CombatTrialServiceDeps): CombatTr
             enemyRemainingHp: end.enemy.currentHp,
             initialState: initial as unknown as Record<string, unknown>,
             events: outcome.events as unknown as Record<string, unknown>[],
+            combatSeed,
             firstClear,
             rewards: reward as unknown as Record<string, unknown> | null,
           })

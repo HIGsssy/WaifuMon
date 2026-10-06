@@ -23,6 +23,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/compone
 import { Skeleton } from '@/components/ui/skeleton';
 import { RarityBadge } from '@/components/waifumon/RarityBadge';
 import { formatNumber } from '@/lib/format';
+import { CombatBonusLines } from './CombatBonuses';
 import { SLOT_LABEL, SLOT_STAT, STAT_LABEL, formatMultiplier } from './format';
 import { COMPONENTS_LABEL, SLOT_CHOICE_LABEL } from './workshopText';
 
@@ -239,6 +240,14 @@ function ResultStep({
           </dd>
           <dt className="text-ink-muted">Affix</dt>
           <dd className="text-right text-ink">{item.affix ?? 'None'}</dd>
+          {item.combatBonuses.length > 0 && (
+            <>
+              <dt className="text-ink-muted">Combat Bonuses</dt>
+              <dd className="text-right">
+                <CombatBonusLines bonuses={item.combatBonuses} className="text-sm text-ink" />
+              </dd>
+            </>
+          )}
         </dl>
       </div>
       <p className="tabular mt-3 text-sm text-ink-muted" data-testid="fabricate-remaining">

@@ -756,6 +756,38 @@ export type EquipmentSlot = 'attack' | 'defense' | 'health';
 export type EquipmentStat = 'attack' | 'defense' | 'maxHp';
 
 /**
+ * One secondary combat bonus a copy rolled. `text` is the server's ready-made
+ * line ("+4.25% Crit Chance") and is what the Portal renders; `stat` is a
+ * stable identifier for keys, never shown to a player.
+ */
+export interface CombatBonus {
+  stat:
+    | 'crit_chance'
+    | 'crit_damage'
+    | 'double_attack'
+    | 'armor_penetration'
+    | 'lifesteal';
+  label: string;
+  percent: number;
+  text: string;
+}
+
+/**
+ * One row of the loadout's cumulative combat bonuses, formatted by the server
+ * (`{ label: 'Crit', value: '9.75%' }`). Rows that total zero are not sent.
+ */
+export interface CombatModifierRow {
+  key:
+    | 'crit_chance'
+    | 'crit_damage'
+    | 'double_attack'
+    | 'armor_penetration'
+    | 'lifesteal';
+  label: string;
+  value: string;
+}
+
+/**
  * One owned copy. Multipliers are plain numbers (`0.8` is ×0.80); `id` is an
  * opaque handle for the action routes and is never rendered.
  */
@@ -771,6 +803,8 @@ export interface EquipmentItem {
   range: { min: number; max: number };
   /** Display only, 0–100, computed by the API. */
   rollQuality: number;
+  /** This copy's rolled secondary bonuses: none, one or two. */
+  combatBonuses: CombatBonus[];
   equipped: boolean;
   favorite: boolean;
   locked: boolean;
@@ -799,6 +833,8 @@ export type EquipmentOverview =
       unlocked: true;
       buddy: { waifuId: number; name: string; level: number; currentSp: number } | null;
       stats: EquipmentStats;
+      /** Cumulative combat bonuses of everything equipped; empty when none. */
+      combatModifiers: CombatModifierRow[];
       unavailableReason: 'no_buddy' | 'incomplete_loadout' | null;
       slots: Record<EquipmentSlot, EquipmentItem | null>;
     };
@@ -874,6 +910,7 @@ export interface DismantleLine {
   rarity: Rarity;
   slot: EquipmentSlot;
   multiplier: number;
+  combatBonuses: CombatBonus[];
   components: number;
 }
 
@@ -916,6 +953,7 @@ export interface FabricationResult {
     rarity: Rarity;
     multiplier: number;
     affix: string | null;
+    combatBonuses: CombatBonus[];
   };
   balances: WorkshopBalances;
 }

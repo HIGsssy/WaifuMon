@@ -47,9 +47,11 @@ import {
   type DungeonSettlement,
 } from '../modules/dungeons/dungeonRunState';
 import { BASIS_POINTS, type DungeonNodeType } from '../modules/dungeons/zoneDefinition';
+import { fighterModifiers } from '../modules/dungeons/dungeonRunState';
+import { formatCombatBonus } from '../modules/equipment/combatBonuses';
 import { EQUIPMENT_SLOTS } from '../modules/equipment/vocabulary';
 import { formatProgressionAmount } from '../modules/progressionCurrency/progressionCurrencyService';
-import { blockerLine, summarizeCombatEvents, type TrialArt } from './combatTrialPresenter';
+import { blockerLine, modifiersLine, summarizeCombatEvents, type TrialArt } from './combatTrialPresenter';
 import type { SessionPayload } from './ephemeralSession';
 import { EMPTY_SLOT, SLOT_EMOJI } from './equipmentPresenter';
 import { buildCustomId } from './types';
@@ -187,7 +189,11 @@ function fighterBlock(fighter: DungeonFighter, currentHp: number): string {
   return [
     `HP **${currentHp} / ${fighter.maxHp}**`,
     `ATK ${fighter.attack} · DEF ${fighter.defense}`,
-  ].join('\n');
+    // The snapshot taken at run start — not the player's live loadout.
+    modifiersLine(fighterModifiers(fighter)),
+  ]
+    .filter((l): l is string => l != null)
+    .join('\n');
 }
 
 /** What a node or bonus paid, one line each. Item names resolved by the caller. */
@@ -198,7 +204,10 @@ export function rewardLines(
 ): string[] {
   const lines: string[] = [];
   if (rewards.currency > 0) lines.push(`+${currencyAmount(currency, rewards.currency)} _(unbanked)_`);
-  for (const gear of rewards.equipment) lines.push(`${SLOT_EMOJI[gear.slot]} **${gear.displayName}** (${gear.rarity}) — secured`);
+  for (const gear of rewards.equipment) {
+    const bonuses = (gear.combatBonuses ?? []).map((b) => ` · ${formatCombatBonus(b)}`).join('');
+    lines.push(`${SLOT_EMOJI[gear.slot]} **${gear.displayName}** (${gear.rarity})${bonuses} — secured`);
+  }
   if (rewards.waifubux > 0) lines.push(`+${rewards.waifubux} WaifuBux`);
   for (const item of rewards.items) lines.push(`+${item.quantity} ${itemName(item.slug)}`);
   return lines;
@@ -336,8 +345,11 @@ export function buildZoneDetail(view: DungeonZoneDetailView, opts: DungeonScreen
       value: [
         `Current SP **${stats.buddy.currentSp}**`,
         `ATK ${stats.stats.attack ?? EMPTY_SLOT} · DEF ${stats.stats.defense ?? EMPTY_SLOT} · HP ${stats.stats.maxHp ?? EMPTY_SLOT}`,
+        modifiersLine(stats.combatModifiers),
         ...gear,
-      ].join('\n'),
+      ]
+        .filter((l): l is string => l != null)
+        .join('\n'),
       inline: true,
     });
   } else {
@@ -425,7 +437,10 @@ function resolutionBlock(view: DungeonRunView, opts: DungeonScreenOptions): { na
           `Your HP: ${r.hpBefore} → **${r.hpAfter}** / ${view.fighter.maxHp}`,
           `${r.enemyName}: ${r.enemyHpAfter} / ${r.enemyMaxHp}`,
           `Rounds: ${r.rounds}`,
-        ].join('\n'),
+          r.lifestealHealed ? `Lifesteal: +${r.lifestealHealed} HP` : null,
+        ]
+          .filter((l): l is string => l != null)
+          .join('\n'),
       });
       if (view.combatEvents?.length) {
         fields.push({ name: 'Combat summary', value: truncate(summarizeCombatEvents(view.combatEvents).join('\n'), 1024) });

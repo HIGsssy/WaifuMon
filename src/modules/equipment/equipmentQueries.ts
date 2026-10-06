@@ -18,6 +18,7 @@ import {
   type PlayerLoadoutRow,
 } from '../../db/schema';
 import type { EquipmentAffixCatalogue } from './affixCatalogue';
+import { readStoredCombatBonuses, type CombatBonus } from './combatBonuses';
 import type { CombatSlotItem } from './equipmentMath';
 import { equipmentDisplayName } from './equipmentRoll';
 import type { EquipmentSlot } from './vocabulary';
@@ -53,6 +54,11 @@ export interface EquipmentInstanceView {
   affixKey: string | null;
   /** Base name plus affix suffix — what every surface shows. */
   displayName: string;
+  /**
+   * This copy's rolled combat bonuses (0–2), exactly as stored. Empty for a
+   * copy with none — including every copy that predates the system.
+   */
+  combatBonuses: CombatBonus[];
   rolledProperties: Record<string, unknown>;
   isFavorite: boolean;
   isLocked: boolean;
@@ -100,6 +106,7 @@ export function toInstanceView(
     rolledMultiplierBp: instance.rolledMultiplierBp,
     affixKey: instance.affixKey,
     displayName: equipmentDisplayName(definition.name, instance.affixKey, affixes),
+    combatBonuses: readStoredCombatBonuses(instance.combatBonuses),
     rolledProperties: instance.rolledProperties,
     isFavorite: instance.isFavorite,
     isLocked: instance.isLocked,
@@ -127,6 +134,8 @@ export function toCombatSlotItem(
     // about the definition's current range is consulted, so retuning a
     // definition never changes gear a player already owns.
     multiplierBp: instance.rolledMultiplierBp,
+    // Likewise the stored bonus rolls — never re-rolled, never re-ranged.
+    combatBonuses: readStoredCombatBonuses(instance.combatBonuses),
     rolledProperties: instance.rolledProperties,
   };
 }

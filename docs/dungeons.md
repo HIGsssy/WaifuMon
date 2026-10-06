@@ -837,15 +837,21 @@ Equipment-derived stats at that moment:
 
 - Buddy: copy id, species, display name, level, Current SP;
 - ATK, DEF, max HP — exactly what `combatStatsService` calculated;
-- the three equipped items: instance id, definition, display name, rarity and
-  multiplier.
+- `modifiers` — the loadout's aggregated, capped combat modifiers (Crit
+  Chance, Crit Damage bonus, Double Attack Chance, Armor Penetration,
+  Lifesteal), exactly `stats.combatModifiers`;
+- the three equipped items: instance id, definition, display name, rarity,
+  multiplier and each item's own rolled combat bonuses.
+
+A run started before modifiers existed has no `modifiers` key; it reads as
+all-zero (`fighterModifiers`) and stays playable.
 
 The run starts at full HP on its first node. From then on the run fights with
 that snapshot and nothing else:
 
 | After a run starts… | Effect on that run |
 | --- | --- |
-| gear is equipped, unequipped, dismantled or fabricated | none |
+| gear is equipped, unequipped, dismantled or fabricated | none — ATK / DEF / HP **and** the combat modifiers stay as snapshotted |
 | the active Buddy is changed | none — the run keeps its Buddy, name and artwork |
 | the Buddy levels up | none |
 | the zone, an enemy, an event or a reward table is edited | none (the content snapshot) |
@@ -885,9 +891,15 @@ side of a fork is gone.
 | `exit` | Nothing. An extraction point, or the end of a run with no boss. |
 
 **Combat.** No dungeon-specific math. The fight is an ordinary `CombatState` —
-the snapshotted ATK / DEF / max HP at the run's **current** HP, against the
-snapshotted enemy at full HP — run by `simulateCombat` with the basic-attack
-controllers. The engine's structured events are stored in the run history and
+the snapshotted ATK / DEF / max HP and combat modifiers at the run's
+**current** HP, against the snapshotted enemy at full HP — run by
+`simulateCombat` with the basic-attack controllers. Crits, Double Attacks,
+Armor Penetration and Lifesteal are the engine's (`docs/combat-system.md`);
+the Dungeon adds no rule of its own. Lifesteal matters more here than in a
+Trial because HP carries from room to room: whatever a fight healed is
+already inside the `hpAfter` the next node starts from, and the node's
+resolution records it as `lifestealHealed`. The seed below covers every draw
+of the fight — variance, Crit and Double Attack. The engine's structured events are stored in the run history and
 shown only as the short Combat Trials summary.
 
 **Damage variance.** The engine rolls each hit between 90% and 110% of its
@@ -917,7 +929,8 @@ rng        = seededRng(combatSeed)
 - Round limit with both sides standing: also a defeat (`cause: stalemate`). A
   fight that cannot be won is not retried forever.
 
-**HP persists.** Nothing heals after an ordinary fight.
+**HP persists.** Nothing heals after an ordinary fight. Lifesteal heals
+*during* one, and the HP it restored carries forward with everything else.
 
 ```text
 Start:          370 / 370
@@ -944,7 +957,10 @@ roller expeditions use). Asking again gives the same answer.
 Gear goes through the one Equipment reward path
 (`equipmentRewards.grantChosenEquipmentReward`): the table picks the base
 definition from the pool snapshotted at start; the Equipment service rolls the
-multiplier and affix. Source type `dungeon`, source key the zone.
+multiplier, the affix and the rarity-driven secondary combat bonuses
+(`docs/equipment-combat-bonuses.md`). There is no Dungeon-specific bonus
+rolling; a drop's bonuses are recorded on the run's reward entry and shown on
+its reward line. Source type `dungeon`, source key the zone.
 
 ### Ending a run
 

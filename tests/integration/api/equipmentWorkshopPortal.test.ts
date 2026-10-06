@@ -440,6 +440,8 @@ describe('fabricate', () => {
         rarity: 'R',
         multiplier: 0.7,
         affix: 'of Attack R Flair',
+        // The test services deploy no combat-bonus catalogue, so nothing is rolled.
+        combatBonuses: [],
       },
       balances: { components: 5, waifubux: 250 },
     });

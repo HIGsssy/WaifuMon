@@ -437,3 +437,167 @@ describe('actions', () => {
     expect(stat('attack')).toHaveTextContent('361');
   });
 });
+
+/* ─────────────────────────── combat bonuses ─────────────────────────── */
+
+describe('secondary combat bonuses', () => {
+  const CRIT = {
+    stat: 'crit_chance',
+    label: 'Crit Chance',
+    percent: 4.25,
+    text: '+4.25% Crit Chance',
+  } as const;
+  const CRIT_DMG = {
+    stat: 'crit_damage',
+    label: 'Crit Damage',
+    percent: 12.5,
+    text: '+12.5% Crit Damage',
+  } as const;
+  const LIFESTEAL = {
+    stat: 'lifesteal',
+    label: 'Lifesteal',
+    percent: 2,
+    text: '+2% Lifesteal',
+  } as const;
+
+  /** An N copy with none, an R copy with one (equipped), an SR copy with two. */
+  function setupBonuses(opts: Pick<EquipmentBackendOptions, 'combatModifiers'> = {}) {
+    const items = {
+      ring: gearItem({ name: 'Training Ring', slot: 'attack', rarity: 'N' }),
+      knife: gearItem({
+        name: 'Combat Knife',
+        slot: 'attack',
+        rarity: 'R',
+        multiplier: 0.8,
+        combatBonuses: [CRIT],
+      }),
+      coil: gearItem({
+        name: 'Plasma Coil Ring',
+        slot: 'attack',
+        rarity: 'SR',
+        multiplier: 0.86,
+        combatBonuses: [CRIT_DMG, LIFESTEAL],
+      }),
+    };
+    const backend = createEquipmentBackend({
+      ...opts,
+      items: Object.values(items),
+      equipped: { attack: items.knife.id },
+    });
+    server.use(...backend.handlers);
+    const user = userEvent.setup();
+    renderRoutes({ routes, initialEntries: ['/equipment'] });
+    return { ...backend, items, user };
+  }
+
+  const bonusRows = (within_: HTMLElement) =>
+    within(within_)
+      .queryAllByTestId('combat-bonus')
+      .map((row) => row.textContent);
+
+  it('an N item with no bonus shows nothing extra, on its card or in its detail', async () => {
+    const { user } = setupBonuses();
+    const list = await bagList();
+    const ring = within(list).getByRole('button', { name: /Training Ring/ });
+    expect(within(ring).getByText('ATK ×0.50')).toBeInTheDocument();
+    expect(within(ring).queryByTestId('combat-bonuses')).toBeNull();
+    expect(ring).not.toHaveTextContent(/bonus/i);
+
+    const dialog = await openFromBag(user, /Training Ring/);
+    expect(within(dialog).getByText('Multiplier').nextSibling).toHaveTextContent('ATK ×0.50');
+    expect(within(dialog).queryByRole('region', { name: 'Combat Bonuses' })).toBeNull();
+  });
+
+  it('an R item with one bonus shows that row under its multiplier and in its detail', async () => {
+    const { user } = setupBonuses();
+    const list = await bagList();
+    const knife = within(list).getByRole('button', { name: /Combat Knife/ });
+    expect(within(knife).getByText('ATK ×0.80')).toBeInTheDocument();
+    expect(bonusRows(knife)).toEqual(['+4.25% Crit Chance']);
+
+    const dialog = await openFromBag(user, /Combat Knife/);
+    expect(within(dialog).getByText('ATK ×0.80')).toBeInTheDocument();
+    const section = within(dialog).getByRole('region', { name: 'Combat Bonuses' });
+    expect(bonusRows(section)).toEqual(['+4.25% Crit Chance']);
+  });
+
+  it('an SR item with two bonuses shows both rows, as the server worded them', async () => {
+    const { user } = setupBonuses();
+    const list = await bagList();
+    const coil = within(list).getByRole('button', { name: /Plasma Coil Ring/ });
+    expect(bonusRows(coil)).toEqual(['+12.5% Crit Damage', '+2% Lifesteal']);
+
+    const dialog = await openFromBag(user, /Plasma Coil Ring/);
+    const section = within(dialog).getByRole('region', { name: 'Combat Bonuses' });
+    expect(bonusRows(section)).toEqual(['+12.5% Crit Damage', '+2% Lifesteal']);
+    // Never the bonus family's identifier or a basis-point value.
+    for (const leak of ['crit_damage', 'lifesteal', '1250'])
+      expect(dialog.textContent).not.toContain(leak);
+  });
+
+  it('shows the loadout’s cumulative totals from the server, and the equipped copy’s own bonuses', async () => {
+    setupBonuses({
+      combatModifiers: [
+        { key: 'crit_chance', label: 'Crit', value: '9.75%' },
+        { key: 'crit_damage', label: 'Crit DMG', value: '167.5%' },
+      ],
+    });
+    await screen.findByRole('heading', { name: 'Current loadout' });
+    const totals = screen.getByRole('list', { name: 'Combat Bonuses' });
+    expect(
+      within(totals)
+        .getAllByRole('listitem')
+        .map((li) => li.textContent),
+    ).toEqual(['Crit: 9.75%', 'Crit DMG: 167.5%']);
+    expect(screen.getByTestId('loadout-combat-bonuses')).not.toHaveTextContent(/Bp/);
+    expect(bonusRows(slotCell('Attack'))).toEqual(['+4.25% Crit Chance']);
+  });
+
+  it('omits the cumulative totals when the loadout has none', async () => {
+    setupBonuses({ combatModifiers: [] });
+    await screen.findByRole('heading', { name: 'Current loadout' });
+    expect(stat('attack')).toHaveTextContent('336');
+    expect(screen.queryByTestId('loadout-combat-bonuses')).toBeNull();
+    expect(screen.queryByRole('list', { name: 'Combat Bonuses' })).toBeNull();
+  });
+
+  it('compares both sides’ bonuses side by side, without scoring them', async () => {
+    const { user } = setupBonuses();
+    const dialog = await openFromBag(user, /Plasma Coil Ring/);
+    const comparison = within(dialog).getByRole('region', { name: 'Comparison' });
+    const current = within(comparison).getByRole('group', { name: 'Current' });
+    expect(current).toHaveTextContent('Combat Knife');
+    expect(current).toHaveTextContent('ATK ×0.80');
+    expect(bonusRows(current)).toEqual(['+4.25% Crit Chance']);
+    const candidate = within(comparison).getByRole('group', { name: 'Candidate' });
+    expect(candidate).toHaveTextContent('Plasma Coil Ring');
+    expect(candidate).toHaveTextContent('ATK ×0.86');
+    expect(bonusRows(candidate)).toEqual(['+12.5% Crit Damage', '+2% Lifesteal']);
+    // Differing bonus families are listed, not ranked.
+    expect(within(comparison).getByTestId('bonus-comparison')).not.toHaveTextContent(
+      /better|worse|upgrade|downgrade|score/i,
+    );
+  });
+
+  it('compares a bonus-less candidate against an equipped copy that has one', async () => {
+    const { user } = setupBonuses();
+    const dialog = await openFromBag(user, /Training Ring/);
+    const comparison = within(dialog).getByRole('region', { name: 'Comparison' });
+    expect(bonusRows(within(comparison).getByRole('group', { name: 'Current' }))).toEqual([
+      '+4.25% Crit Chance',
+    ]);
+    const candidate = within(comparison).getByRole('group', { name: 'Candidate' });
+    expect(bonusRows(candidate)).toEqual([]);
+    expect(candidate).toHaveTextContent('No combat bonuses');
+  });
+
+  it('leaves the comparison as it was when neither side has a bonus', async () => {
+    const { user } = setup();
+    const dialog = await openFromBag(user, /Combat Knife of Bad Decisions/);
+    const comparison = within(dialog).getByRole('region', { name: 'Comparison' });
+    expect(
+      within(comparison).getByText('Compared with Training Ring (×0.50).'),
+    ).toBeInTheDocument();
+    expect(within(comparison).queryByTestId('bonus-comparison')).toBeNull();
+  });
+});

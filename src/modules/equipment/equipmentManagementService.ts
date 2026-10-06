@@ -15,6 +15,7 @@
  */
 import { FeatureLockedError, EquipmentNotOwnedError } from '../../shared/errors';
 import type { FeatureUnlockService } from '../features/featureUnlockService';
+import type { CombatBonus } from './combatBonuses';
 import type { CombatStatsService, SlotCandidatePreview } from './combatStatsService';
 import type { CombatStats, CombatStatValues } from './equipmentMath';
 import type { EquipmentInstanceView, LoadoutView } from './equipmentQueries';
@@ -197,11 +198,16 @@ export interface EquipmentManagementDeps {
 }
 
 /** Whether an instance is a copy of a group: the same definition, roll and affix. */
+function sameCombatBonuses(a: readonly CombatBonus[], b: readonly CombatBonus[]): boolean {
+  return a.length === b.length && a.every((bonus, i) => bonus.stat === b[i]!.stat && bonus.valueBp === b[i]!.valueBp);
+}
+
 function isSameLoot(group: EquipmentGroup, instance: EquipmentInstanceView): boolean {
   return (
     group.definition.key === instance.definition.key &&
     group.rolledMultiplierBp === instance.rolledMultiplierBp &&
-    group.affixKey === instance.affixKey
+    group.affixKey === instance.affixKey &&
+    sameCombatBonuses(group.combatBonuses, instance.combatBonuses)
   );
 }
 

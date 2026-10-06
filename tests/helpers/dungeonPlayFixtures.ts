@@ -241,11 +241,16 @@ export interface DungeonWorld {
 export const TEST_DAILY_TIMEZONE = 'UTC';
 
 export async function createDungeonWorld(
-  opts: { combatRules?: Partial<CombatRules> | null; logger?: Parameters<typeof createDungeonPlayService>[0]['logger'] } = {},
+  opts: {
+    combatRules?: Partial<CombatRules> | null;
+    logger?: Parameters<typeof createDungeonPlayService>[0]['logger'];
+    /** Passed to the Equipment service: random gear then rolls secondary bonuses. */
+    equipment?: Parameters<typeof buildEquipmentServices>[1];
+  } = {},
 ): Promise<DungeonWorld> {
   const t = await createTestDb();
   const app = await bootstrapApp(t);
-  const svc = buildEquipmentServices(t.db);
+  const svc = buildEquipmentServices(t.db, opts.equipment ?? {});
   const content = { current: { ...app.content, combatEnemies: TEST_ENEMIES, dungeonEvents: TEST_EVENTS } as LoadedContent };
 
   await seedEquipmentDefinitions(t.db, { catalogue: loadEquipmentSeedCatalogue(CONTENT_DIR) });

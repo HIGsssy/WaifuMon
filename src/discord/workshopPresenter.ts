@@ -49,7 +49,15 @@ import type {
 import type { Page } from '../modules/equipment/gearBag';
 import { isWorkshopSlotChoice, type WorkshopSlotChoice } from '../modules/equipment/vocabulary';
 import type { SessionPayload } from './ephemeralSession';
-import { SLOT_EMOJI, SLOT_NAME, SLOT_STAT_LABEL, eqId, formatMultiplier, indicators } from './equipmentPresenter';
+import {
+  SLOT_EMOJI,
+  SLOT_NAME,
+  SLOT_STAT_LABEL,
+  combatBonusLines,
+  eqId,
+  formatMultiplier,
+  indicators,
+} from './equipmentPresenter';
 import { buildCustomId } from './types';
 
 const COLOR = 0x92400e;
@@ -206,7 +214,8 @@ function candidateLine(c: DismantleCandidate): string {
   const marks = indicators({ equipped: c.item.equipped, favorite: c.item.isFavorite, locked: c.item.isLocked });
   const def = c.item.definition;
   const head = `${SLOT_EMOJI[c.item.slot]} **${c.item.displayName}**${marks ? ` ${marks}` : ''}`;
-  const facts = `${def.rarity} • ${SLOT_STAT_LABEL[c.item.slot]} ${formatMultiplier(c.item.rolledMultiplierBp)}`;
+  const bonuses = combatBonusLines(c.item.combatBonuses).map((line) => ` • ${line}`).join('');
+  const facts = `${def.rarity} • ${SLOT_STAT_LABEL[c.item.slot]} ${formatMultiplier(c.item.rolledMultiplierBp)}${bonuses}`;
   return c.blockedBy
     ? `${head}\n${facts} • 🚫 ${BLOCKER_TEXT[c.blockedBy]}`
     : `${head}\n${facts} • +${c.components} ${COMPONENTS}`;
@@ -285,7 +294,11 @@ export function buildDismantleReview(
     .addFields({
       name: 'Selected',
       value: preview.items
-        .map((i) => `${SLOT_EMOJI[i.slot]} ${i.displayName} · ${i.rarity} · ${SLOT_STAT_LABEL[i.slot]} ${formatMultiplier(i.rolledMultiplierBp)}`)
+        .map(
+          (i) =>
+            `${SLOT_EMOJI[i.slot]} ${i.displayName} · ${i.rarity} · ${SLOT_STAT_LABEL[i.slot]} ${formatMultiplier(i.rolledMultiplierBp)}` +
+            combatBonusLines(i.combatBonuses).map((line) => ` · ${line}`).join(''),
+        )
         .join('\n')
         .slice(0, 1024),
     });
@@ -476,6 +489,9 @@ export function buildFabricationResult(
       { name: 'Slot', value: `${SLOT_EMOJI[item.slot]} ${SLOT_NAME[item.slot]}`, inline: true },
       { name: 'Multiplier', value: `${SLOT_STAT_LABEL[item.slot]} ${formatMultiplier(item.rolledMultiplierBp)}`, inline: true },
       { name: 'Affix', value: item.affixSuffix ?? 'None', inline: true },
+      ...(item.combatBonuses.length > 0
+        ? [{ name: 'Combat Bonuses', value: combatBonusLines(item.combatBonuses).join('\n'), inline: true }]
+        : []),
       { name: 'Recipe', value: `${outcome.recipe.name} · ${SLOT_CHOICE_NAME[outcome.slotChoice]}`, inline: true },
       { name: 'Remaining', value: balanceLine(outcome.balances) },
     );

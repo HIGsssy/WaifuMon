@@ -18,7 +18,14 @@
  * that will require a complete loadout at entry; existing gameplay does not
  * read these numbers at all. `null` rather than `0` so no consumer can mistake
  * "not equipped" for "equipped with something useless".
+ *
+ * **Combat modifiers** (formula version 2) are the equipped items' secondary
+ * bonuses, summed and capped by `aggregateCombatBonuses` — never here, never
+ * by a caller. They are derived on every calculation and stored only inside
+ * a snapshot (a Trial attempt, a Delve run).
  */
+import type { CombatModifiers } from '../combat/combatTypes';
+import { aggregateCombatBonuses, type CombatBonus } from './combatBonuses';
 import {
   EQUIPMENT_MULTIPLIER_BP_MAX,
   EQUIPMENT_SLOTS,
@@ -33,7 +40,7 @@ import {
  * definition's multiplier is retuned. Carried on every `CombatStats`, so a
  * snapshot taken today stays interpretable after the formula moves.
  */
-export const EQUIPMENT_FORMULA_VERSION = 1;
+export const EQUIPMENT_FORMULA_VERSION = 2;
 
 /** 10000 bp = ×1.00. */
 export const BASIS_POINTS = 10_000;
@@ -101,6 +108,8 @@ export interface CombatSlotItem {
    * `rolled_multiplier_bp`, never anything read from the definition.
    */
   multiplierBp: number;
+  /** The instance's own rolled combat bonuses; empty for a copy with none. */
+  combatBonuses: CombatBonus[];
   rolledProperties: Record<string, unknown>;
 }
 
@@ -127,6 +136,12 @@ export interface CombatStats {
     slots: Record<EquipmentSlot, CombatSlotItem | null>;
   };
   stats: CombatStatValues;
+  /**
+   * The equipped items' combat bonuses, added up and capped
+   * (`aggregateCombatBonuses`). All zero when nothing equipped carries one.
+   * Counts whatever is equipped, complete loadout or not.
+   */
+  combatModifiers: CombatModifiers;
   /** Slots with nothing equipped, in slot order. */
   missingSlots: EquipmentSlot[];
   /** A Buddy is present and every slot is filled. */
@@ -174,6 +189,7 @@ export function assembleCombatStats(input: {
     buddy,
     loadout: { loadoutId, slots },
     stats,
+    combatModifiers: aggregateCombatBonuses(EQUIPMENT_SLOTS.map((slot) => slots[slot])).modifiers,
     missingSlots,
     isComplete: unavailableReason == null,
     unavailableReason,

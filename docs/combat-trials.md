@@ -156,6 +156,13 @@ The player's numbers come only from `combatStatsService`:
 the fight. The Trial service never applies an Equipment multiplier, and the
 presenter never builds stats. The engine only ever receives numbers.
 
+That includes the loadout's **combat modifiers** — Crit Chance, Crit Damage,
+Double Attack, Armor Penetration and Lifesteal, aggregated and capped by
+`aggregateCombatBonuses` (`docs/equipment-combat-bonuses.md`). The detail
+screen shows the live totals; the fight passes `stats.combatModifiers` to the
+engine with ATK / DEF / HP. There is no Trial-specific modifier logic: what a
+Crit or a Double Attack does is `docs/combat-system.md`.
+
 ## Result presentation
 
 `summarizeCombatEvents` (in the presenter) turns the structured event list
@@ -207,8 +214,9 @@ There is one row per resolved fight. It is written once, already finished.
 | `rounds`, `actions` | Engine counts |
 | `buddy_waifu_id`, `player_name`, `player_attack/defense/max_hp/remaining_hp` | Player side, snapshotted |
 | `enemy_name`, `enemy_attack/defense/max_hp/remaining_hp` | Enemy side, snapshotted |
-| `initial_state` | The engine's serialisable `CombatState` at the start |
+| `initial_state` | The engine's serialisable `CombatState` at the start — including `player.modifiers`, the aggregated modifier totals the attempt fought with |
 | `events` | The engine's structured event list |
+| `combat_seed` | The seed every random draw of the fight came from (migration 0056). Null for an attempt fought before Trials were seeded |
 | `first_clear` | True on exactly the attempt that first cleared the Trial |
 | `rewards` | JSON snapshot of what that attempt paid; null otherwise |
 | `started_at`, `completed_at` | |
@@ -225,6 +233,24 @@ The table has these indexes and checks:
 enemy, renaming a Trial or swapping Buddy afterwards never changes a stored
 attempt. The result screen for a replayed request is built from the row,
 except for the Trial's display name, which is read live.
+
+The modifier totals are part of that snapshot: they live in
+`initial_state.player.modifiers`, are surfaced as `attempt.player.modifiers`,
+and equipping, dismantling or fabricating gear afterwards never rewrites them.
+An attempt recorded before modifiers existed reads as all-zero.
+
+**Reproducing an attempt.** A fight is a pure function of `initial_state` and
+`combat_seed`:
+
+```text
+combat_seed = first 32 bits of md5("<player id>:<trial key>:<request key>:combat:waifumon.trial.combat.v1")
+rng         = seededRng(combat_seed)
+```
+
+`replayCombatTrialAttempt(row)` re-runs it and returns the same events — the
+same damage variance, Crits, Double Attacks, final HP and result. Attempts
+with a null `combat_seed` predate seeding: they are replayable from `events`
+but not reproducible.
 
 There is no history browser yet. The table already supports one: it records
 every attempt, in order, with full events.
@@ -271,7 +297,13 @@ the request key.
 - A **double-click** or a **Discord retry** of the same button uses the same
   key. The first request fights and records. The others read that attempt back
   (`replayed: true`) and repaint it with "That fight was already resolved."
-- **Fight Again** has a new nonce, so it is a genuine new fight.
+- **Fight Again** has a new nonce, so it is a genuine new fight, with its own
+  seed.
+- **A retry can never re-roll.** The seed is derived from the player, the
+  Trial and the request key — nothing random, nothing from the clock. A
+  request whose transaction failed and is retried fights the *identical*
+  fight, and one that committed is read back. Trials used to draw from
+  unseeded randomness; they no longer do.
 - A failed fight (locked, no Buddy, Trial gone) writes nothing. The same key
   works once the problem is fixed, and a stale row never blocks future fights.
 - Reusing a key for a *different* Trial is refused with

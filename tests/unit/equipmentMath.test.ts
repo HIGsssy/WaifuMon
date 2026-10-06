@@ -32,6 +32,7 @@ const item = (equipmentId: number, multiplierBp: number): CombatSlotItem => ({
   affixKey: null,
   rarity: 'R',
   multiplierBp,
+  combatBonuses: [],
   rolledProperties: {},
 });
 

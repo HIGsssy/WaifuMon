@@ -96,7 +96,7 @@ function embedJson(p: Payload) {
 }
 
 const item = (equipmentId: number, definitionKey: string, name: string, multiplierBp: number): CombatSlotItem => ({
-  equipmentId, definitionKey, name, definitionName: name, affixKey: null, rarity: 'N', multiplierBp, rolledProperties: {},
+  equipmentId, definitionKey, name, definitionName: name, affixKey: null, rarity: 'N', multiplierBp, combatBonuses: [], rolledProperties: {},
 });
 const STATS = assembleCombatStats({
   buddy: { waifuId: 9, speciesSlug: 'warband_princess', name: 'Warband Princess', level: 30, baseSp: 200, currentSp: 280 },

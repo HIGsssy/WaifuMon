@@ -88,6 +88,7 @@ const slotItem = (id: number, d: EquipmentDefinitionView): CombatSlotItem => ({
   affixKey: null,
   rarity: d.rarity,
   multiplierBp: d.multiplierMinBp,
+  combatBonuses: [],
   rolledProperties: {},
 });
 
@@ -99,6 +100,7 @@ const instance = (id: number, d: EquipmentDefinitionView, over: Partial<Equipmen
     rolledMultiplierBp: d.multiplierMinBp,
     affixKey: null,
     displayName: d.name,
+    combatBonuses: [],
     rolledProperties: {},
     isFavorite: false,
     isLocked: false,
@@ -111,6 +113,7 @@ const group = (d: EquipmentDefinitionView, over: Partial<EquipmentGroup> = {}): 
   definition: d,
   rolledMultiplierBp: d.multiplierMinBp,
   affixKey: null,
+  combatBonuses: [],
   displayName: d.name,
   count: 1,
   equippedCount: 0,

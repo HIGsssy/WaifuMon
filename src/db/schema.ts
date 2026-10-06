@@ -2552,7 +2552,19 @@ export const playerEquipment = pgTable(
      * stored. Flavour only — nothing in combat reads it.
      */
     affixKey: text('affix_key'),
-    /** Empty in V1; reserved for future rolled properties beyond the two above. */
+    /**
+     * The mechanical combat bonuses this instance rolled (migration 0056):
+     * `[{ stat, valueBp }]`, at most two, distinct families, in canonical
+     * order. Integer basis points (425 = 4.25%). Authoritative and never
+     * recomputed, like the multiplier. `[]` is a copy with none — every row
+     * that predates the column, every onboarding starter. A collection, not a
+     * pair of scalar columns, because SR gear carries two.
+     */
+    combatBonuses: jsonb('combat_bonuses')
+      .$type<{ stat: string; valueBp: number }[]>()
+      .notNull()
+      .default([]),
+    /** Empty in V1; reserved for future rolled properties beyond the above. */
     rolledProperties: jsonb('rolled_properties')
       .$type<Record<string, unknown>>()
       .notNull()
@@ -2600,6 +2612,10 @@ export const playerEquipment = pgTable(
     check(
       'player_equipment_affix_key_check',
       sql`${t.affixKey} is null or ${t.affixKey} ~ '${sql.raw(EQUIPMENT_KEY_PATTERN.source)}'`,
+    ),
+    check(
+      'player_equipment_combat_bonuses_check',
+      sql`jsonb_typeof(${t.combatBonuses}) = 'array' and jsonb_array_length(${t.combatBonuses}) <= 2`,
     ),
     // A removal always says why.
     check(
@@ -2928,6 +2944,13 @@ export const combatTrialAttempts = pgTable(
     enemyRemainingHp: integer('enemy_remaining_hp').notNull(),
     initialState: jsonb('initial_state').$type<Record<string, unknown>>().notNull(),
     events: jsonb('events').$type<Record<string, unknown>[]>().notNull(),
+    /**
+     * The seed every random draw of this fight came from (migration 0056),
+     * derived from the player, Trial and request key. With `initialState` it
+     * reproduces the fight exactly. Null for an attempt fought before Trials
+     * were seeded — replayable from `events`, not reproducible.
+     */
+    combatSeed: bigint('combat_seed', { mode: 'number' }),
     firstClear: boolean('first_clear').notNull().default(false),
     rewards: jsonb('rewards').$type<Record<string, unknown>>(),
     startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),

@@ -90,7 +90,11 @@ describe('resolveCombatAction', () => {
     expect(state).toMatchObject({ round: 1, turn: 'enemy', status: 'active' });
     expect(events).toEqual([
       { type: 'action_started', round: 1, actor: 'player', action: 'basic_attack' },
-      { type: 'damage', round: 1, actor: 'player', target: 'enemy', amount: 40, baseAmount: 40, varianceBasisPoints: 10_000, targetHpBefore: 120, targetHpAfter: 80 },
+      {
+        type: 'damage', round: 1, actor: 'player', target: 'enemy', amount: 40, baseAmount: 40, varianceBasisPoints: 10_000, targetHpBefore: 120, targetHpAfter: 80,
+        // No modifiers: DEF is used as-is, nothing crits, nothing is a bonus hit.
+        targetDefense: 25, effectiveDefense: 25, armorPenetrationBp: 0, variedAmount: 40, critical: false, critMultiplierBp: 10_000, bonusAttack: false,
+      },
       { type: 'turn_started', round: 1, actor: 'enemy' },
     ]);
     // Input untouched.

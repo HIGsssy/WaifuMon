@@ -393,6 +393,13 @@
       "when": 1820527200000,
       "tag": "0055_combat_enemies",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1820613600000,
+      "tag": "0056_equipment_combat_bonuses",
+      "breakpoints": true
     }
   ]
 }

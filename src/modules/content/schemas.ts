@@ -61,6 +61,7 @@ import { DEFAULT_SP_RANGES_BY_RARITY } from '../power/seductivePower';
 // imports this module.
 import type { EquipmentOnboardingContent, NpcContent } from './onboardingSchemas';
 import type { EquipmentAffix } from '../equipment/affixCatalogue';
+import type { CombatBonusCatalogue } from '../equipment/combatBonuses';
 import type { WorkshopConfig } from '../equipment/workshopConfig';
 import type { CombatEnemyDefinition } from '../combat/enemyDefinitions';
 import type { CombatTrialDefinition } from '../combat/trialDefinitions';
@@ -2959,6 +2960,13 @@ export interface LoadedContent {
    * Hand-built snapshots carry none.
    */
   equipmentAffixes?: EquipmentAffix[] | undefined;
+  /**
+   * Equipment combat bonuses from `content/equipment/combatBonuses.json`:
+   * rarity bonus-count rules, bonus-family ranges and slot eligibility.
+   * Optional on disk and here: absent (or null) means random gear rolls no
+   * mechanical bonus. Hand-built snapshots carry none.
+   */
+  equipmentCombatBonuses?: CombatBonusCatalogue | null | undefined;
   /**
    * Patch's Workshop from `content/equipment/workshop.json`: salvage yields
    * and fabrication recipes. Optional on disk and here: absent (or null)

@@ -41,6 +41,27 @@ export interface CombatStatusState {
   stacks: number;
 }
 
+/**
+ * A combatant's secondary combat modifiers, in **basis points** (10000 =
+ * 100%). Final values: whoever built the combatant already aggregated and
+ * capped them (`aggregateCombatBonuses` for a player; an enemy has none), and
+ * the engine only reads them. All zero is a combatant with no modifiers —
+ * exactly the pre-modifier engine. See `combatMath.ts` for what each one does
+ * and for the caps.
+ */
+export interface CombatModifiers {
+  /** Chance a hit is a Crit. Base 0. */
+  critChanceBp: number;
+  /** Added to the base Crit multiplier (`BASE_CRIT_DAMAGE_BP`, ×1.50). */
+  critDamageBonusBp: number;
+  /** Chance a normal basic attack is followed by one bonus basic attack. */
+  doubleAttackChanceBp: number;
+  /** Share of the target's DEF ignored before damage is calculated. */
+  armorPenetrationBp: number;
+  /** Share of the HP damage actually dealt that heals the attacker. */
+  lifestealBp: number;
+}
+
 export interface CombatantState {
   /** Caller-chosen stable id (`buddy:123`, `enemy:scrapyard_drone`). Opaque to the engine. */
   id: string;
@@ -52,6 +73,12 @@ export interface CombatantState {
 
   attack: number;
   defense: number;
+
+  /**
+   * Secondary combat modifiers. A state persisted before modifiers existed
+   * has no such key and fights as all-zero (`modifiersOf`).
+   */
+  modifiers: CombatModifiers;
 
   /** Always empty in V1. */
   statuses: CombatStatusState[];
@@ -134,14 +161,62 @@ export type CombatEvent =
       round: number;
       actor: CombatActor;
       target: CombatActor;
-      /** What the hit dealt: `baseAmount` × the rolled factor, rounded. */
+      /**
+       * The hit's final damage: `baseAmount` × the rolled factor, then the
+       * Crit multiplier when `critical`. Nominal — the HP actually removed is
+       * `targetHpBefore - targetHpAfter`.
+       */
       amount: number;
-      /** The deterministic damage before variance. */
+      /** The deterministic damage before variance, against `effectiveDefense`. */
       baseAmount: number;
       /** The damage factor rolled for this hit, in basis points. */
       varianceBasisPoints: number;
       targetHpBefore: number;
       targetHpAfter: number;
+      /*
+       * Everything below was added with combat modifiers. Events recorded
+       * before then carry none of it; a reader treats a missing flag as false.
+       */
+      /** The target's DEF, untouched. */
+      targetDefense: number;
+      /** The DEF the damage formula used, after Armor Penetration. */
+      effectiveDefense: number;
+      /** The attacker's Armor Penetration applied to this hit. */
+      armorPenetrationBp: number;
+      /** `baseAmount` × the rolled factor — the damage before any Crit. */
+      variedAmount: number;
+      critical: boolean;
+      /** The multiplier applied: the attacker's Crit multiplier on a Crit, 10000 otherwise. */
+      critMultiplierBp: number;
+      /** True for the extra hit of a Double Attack. */
+      bonusAttack: boolean;
+    }
+  /** The damage event just before this one was a Crit. */
+  | {
+      type: 'critical_hit';
+      round: number;
+      actor: CombatActor;
+      target: CombatActor;
+      critMultiplierBp: number;
+      amount: number;
+    }
+  /** `actor`'s Double Attack triggered; a bonus `damage` event follows. */
+  | { type: 'bonus_attack_triggered'; round: number; actor: CombatActor; doubleAttackChanceBp: number }
+  /** `actor` healed from the hit just dealt. Only emitted when HP was restored. */
+  | {
+      type: 'lifesteal_heal';
+      round: number;
+      actor: CombatActor;
+      /** HP actually restored, after the max-HP clamp. */
+      amount: number;
+      /** The heal before the max-HP clamp. */
+      rawAmount: number;
+      /** The HP damage the heal was calculated from. */
+      damageDealt: number;
+      lifestealBp: number;
+      hpBefore: number;
+      hpAfter: number;
+      bonusAttack: boolean;
     }
   | { type: 'combatant_defeated'; round: number; actor: CombatActor }
   | { type: 'combat_ended'; round: number; result: CombatResultKind; reason: CombatEndReason };
@@ -157,8 +232,9 @@ export interface CombatStep {
 /**
  * Everything the engine may consult that is not state. Randomness comes
  * **only** from `rng` — combat code never calls `Math.random()`. A basic
- * attack draws exactly once, for its damage factor; with a seeded `rng` the
- * same state and action sequence reproduce the same fight.
+ * attack draws for its damage factor, then for a Crit and for a Double Attack
+ * only when the attacker has that chance (see `combatEngine.ts`); with a
+ * seeded `rng` the same state and action sequence reproduce the same fight.
  */
 export interface CombatContext {
   rng: Rng;

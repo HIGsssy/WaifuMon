@@ -141,6 +141,7 @@ describe('the fighter snapshot', () => {
     affixKey: null,
     rarity: 'N',
     multiplierBp,
+    combatBonuses: [],
     rolledProperties: {},
   });
   const buddy = { waifuId: 7, speciesSlug: 'nurse', name: 'Nebula Nurse', level: 35, baseSp: 100, currentSp: 185 };

@@ -7,13 +7,19 @@
  * numbers.
  */
 import { CombatStateInvalidError } from '../../shared/errors';
-import { DEFAULT_DAMAGE_VARIANCE, isValidDamageVariance } from './combatMath';
+import {
+  DEFAULT_DAMAGE_VARIANCE,
+  ZERO_COMBAT_MODIFIERS,
+  isValidCombatModifiers,
+  isValidDamageVariance,
+} from './combatMath';
 import {
   COMBAT_RESULTS,
   isCombatActor,
   type CombatActor,
   type CombatantSnapshot,
   type CombatantState,
+  type CombatModifiers,
   type CombatRules,
   type CombatState,
 } from './combatTypes';
@@ -30,6 +36,16 @@ export interface CombatantInput {
   maxHp: number;
   /** Defaults to `maxHp`. */
   currentHp?: number;
+  /**
+   * Final, already-capped modifiers. Defaults to none. A value outside the
+   * safety caps is refused, never clamped here: capping is the aggregator's job.
+   */
+  modifiers?: CombatModifiers;
+}
+
+/** A combatant's modifiers; all-zero for a state persisted before they existed. */
+export function modifiersOf(combatant: Pick<CombatantState, 'modifiers'>): CombatModifiers {
+  return (combatant.modifiers as CombatModifiers | undefined) ?? ZERO_COMBAT_MODIFIERS;
 }
 
 export function opponentOf(actor: CombatActor): CombatActor {
@@ -44,6 +60,7 @@ export function createCombatant(input: CombatantInput): CombatantState {
     maxHp: input.maxHp,
     attack: input.attack,
     defense: input.defense,
+    modifiers: { ...(input.modifiers ?? ZERO_COMBAT_MODIFIERS) },
     statuses: [],
     cooldowns: {},
   };
@@ -106,6 +123,9 @@ export function assertValidCombatant(value: unknown, label: string): asserts val
   const currentHp = c.currentHp as number;
   if (maxHp < 1) fail(`${label}.maxHp must be at least 1`);
   if (currentHp > maxHp) fail(`${label}.currentHp ${currentHp} exceeds maxHp ${maxHp}`);
+  if (c.modifiers !== undefined && !isValidCombatModifiers(c.modifiers)) {
+    fail(`${label}.modifiers must be whole basis points within the combat modifier caps`);
+  }
   if (!Array.isArray(c.statuses)) fail(`${label}.statuses must be an array`);
   if (!isPlainObject(c.cooldowns)) fail(`${label}.cooldowns must be an object`);
 }

@@ -45,6 +45,7 @@ const item = (equipmentId: number, name: string, multiplierBp: number): CombatSl
   affixKey: null,
   rarity: 'SR',
   multiplierBp,
+  combatBonuses: [],
   rolledProperties: { secret: 'roll' },
 });
 

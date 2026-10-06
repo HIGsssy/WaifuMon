@@ -21,6 +21,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatNumber } from '@/lib/format';
+import { CombatBonusLines } from './CombatBonuses';
 import { BLOCKER_TEXT, COMPONENTS_LABEL } from './workshopText';
 
 const PROBLEM_TEXT: Readonly<Record<DismantleProblemReason, string>> = {
@@ -136,12 +137,17 @@ function Body({
           {COMPONENTS_LABEL} after: {formatNumber(data.componentsAfter)}
         </p>
       </div>
-      <details className="mt-3 text-sm text-ink-muted">
+      {/* Open from the start when a copy carries bonuses: that is what is being scrapped. */}
+      <details
+        className="mt-3 text-sm text-ink-muted"
+        open={data.items.some((i) => i.combatBonuses.length > 0) || undefined}
+      >
         <summary className="cursor-pointer">Selected items</summary>
-        <ul className="mt-1 space-y-0.5">
+        <ul className="mt-1 space-y-1" aria-label="Selected items">
           {data.items.map((i) => (
             <li key={i.id}>
               {i.name} · {i.rarity} · +{i.components}
+              <CombatBonusLines bonuses={i.combatBonuses} className="pl-3" />
             </li>
           ))}
         </ul>

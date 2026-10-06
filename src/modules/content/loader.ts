@@ -39,6 +39,11 @@ import {
 import { EquipmentOnboardingContentSchema, NpcsFileSchema } from './onboardingSchemas';
 import { EQUIPMENT_AFFIX_FILE, EquipmentAffixFileSchema } from '../equipment/affixCatalogue';
 import {
+  EQUIPMENT_COMBAT_BONUS_FILE,
+  EquipmentCombatBonusFileSchema,
+  combatBonusCatalogueFromFile,
+} from '../equipment/combatBonuses';
+import {
   EQUIPMENT_WORKSHOP_FILE,
   EquipmentWorkshopFileSchema,
   workshopConfigFromFile,
@@ -1208,6 +1213,16 @@ export function readContentFiles(contentDir: string): LoadedContent {
     ? parseJsonFile(equipmentAffixesPath, EquipmentAffixFileSchema).affixes
     : [];
 
+  // Equipment combat bonuses: rarity bonus-count rules, the five bonus
+  // families' ranges and per-slot eligibility. Optional on disk: without it
+  // random gear rolls no mechanical bonus. A file that is present is
+  // validated as strictly as any other — including that every pool can
+  // supply its rarity's distinct bonuses.
+  const equipmentCombatBonusesPath = path.join(contentDir, ...EQUIPMENT_COMBAT_BONUS_FILE.split('/'));
+  const equipmentCombatBonuses = fs.existsSync(equipmentCombatBonusesPath)
+    ? combatBonusCatalogueFromFile(parseJsonFile(equipmentCombatBonusesPath, EquipmentCombatBonusFileSchema))
+    : null;
+
   // Patch's Workshop: salvage yields and fabrication recipes. Optional on
   // disk: without it nothing can be dismantled and nothing fabricated. A file
   // that is present is validated as strictly as any other.
@@ -1255,6 +1270,7 @@ export function readContentFiles(contentDir: string): LoadedContent {
     npcs,
     onboarding: { equipment: equipmentOnboarding },
     equipmentAffixes,
+    equipmentCombatBonuses,
     equipmentWorkshop,
     combatEnemies,
     combatTrials,

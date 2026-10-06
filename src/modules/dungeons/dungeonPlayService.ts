@@ -132,6 +132,7 @@ import {
   eventEffect,
   eventOf,
   fighterFromCombatStats,
+  fighterModifiers,
   fightEnemy,
   hpAfterEvent,
   hpAfterRest,
@@ -663,6 +664,7 @@ export function createDungeonPlayService(deps: DungeonPlayServiceDeps): DungeonP
         slot: grant.slot,
         rarity: grant.rarity,
         rolledMultiplierBp: grant.rolledMultiplierBp,
+        combatBonuses: grant.combatBonuses,
       });
     }
 
@@ -812,7 +814,12 @@ export function createDungeonPlayService(deps: DungeonPlayServiceDeps): DungeonP
         payload: {
           nodeType: node.type,
           enemy: { key: enemy.key, name: enemy.name, attack: enemy.attack, defense: enemy.defense, hp: enemy.hp },
-          fighter: { attack: w.fighter.attack, defense: w.fighter.defense, maxHp: w.fighter.maxHp },
+          fighter: {
+            attack: w.fighter.attack,
+            defense: w.fighter.defense,
+            maxHp: w.fighter.maxHp,
+            modifiers: fighterModifiers(w.fighter),
+          },
           ...summary,
           actions,
           combatSeed,

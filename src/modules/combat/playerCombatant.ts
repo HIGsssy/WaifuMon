@@ -4,11 +4,13 @@
  * The caller supplies stats it already calculated — in practice
  * `combatStatsService.calculateCombatStats` (or `snapshotCombatStats` for a
  * fight frozen at entry). Combat never calls Equipment; it only accepts the
- * shape `CombatStats` already has, structurally, so there is no import in
- * either direction.
+ * shape `CombatStats` already has, structurally, so combat imports nothing
+ * from Equipment. (Equipment imports the modifier caps from `combatMath.ts`:
+ * the caps are combat rules, and `aggregateCombatBonuses` applies them.)
  */
 import { CombatStateInvalidError } from '../../shared/errors';
 import type { CombatantInput } from './combatState';
+import type { CombatModifiers } from './combatTypes';
 
 /** Structurally `CombatStats['stats']` — null means the slot is empty. */
 export interface PlayerCombatStatValues {
@@ -32,6 +34,8 @@ export interface PlayerCombatBuddy {
 export function playerCombatantInput(input: {
   buddy: PlayerCombatBuddy | null;
   stats: PlayerCombatStatValues;
+  /** Structurally `CombatStats['combatModifiers']` — aggregated and capped. Omitted = none. */
+  modifiers?: CombatModifiers;
 }): CombatantInput {
   const { buddy, stats } = input;
   if (buddy == null) throw new CombatStateInvalidError('player combatant needs an active Buddy');
@@ -44,5 +48,6 @@ export function playerCombatantInput(input: {
     attack: stats.attack,
     defense: stats.defense,
     maxHp: stats.maxHp,
+    ...(input.modifiers ? { modifiers: input.modifiers } : {}),
   };
 }

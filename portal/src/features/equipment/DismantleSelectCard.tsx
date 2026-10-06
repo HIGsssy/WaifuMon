@@ -9,6 +9,7 @@
 import type { EquipmentItem } from '@/api/types';
 import { RarityBadge } from '@/components/waifumon/RarityBadge';
 import { cn } from '@/lib/cn';
+import { CombatBonusLines } from './CombatBonuses';
 import { EquipmentStateMarks } from './EquipmentItemCard';
 import { SLOT_LABEL, SLOT_STAT, STAT_LABEL, formatMultiplier } from './format';
 import { BLOCKER_TEXT, COMPONENTS_LABEL } from './workshopText';
@@ -44,7 +45,9 @@ export function DismantleSelectCard({
         checked={selected}
         disabled={blocked != null}
         onChange={() => onToggle(item)}
-        aria-describedby={`${inputId}-info`}
+        aria-describedby={
+          item.combatBonuses.length > 0 ? `${inputId}-info ${inputId}-bonuses` : `${inputId}-info`
+        }
       />
       <span className="flex min-w-0 flex-1 flex-col gap-1.5">
         <span className="flex items-start justify-between gap-3">
@@ -68,6 +71,7 @@ export function DismantleSelectCard({
             </span>
           )}
         </span>
+        <CombatBonusLines id={`${inputId}-bonuses`} bonuses={item.combatBonuses} />
       </span>
     </label>
   );

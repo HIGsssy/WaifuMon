@@ -37,8 +37,9 @@ import type {
   CombatTrialProgress,
   CombatTrialSummary,
 } from '../modules/combatTrials/combatTrialService';
-import type { CombatEvent, CombatResultKind } from '../modules/combat/combatTypes';
+import type { CombatEvent, CombatModifiers, CombatResultKind } from '../modules/combat/combatTypes';
 import type { CombatTrialDefinition, CombatTrialReward } from '../modules/combat/trialDefinitions';
+import { combatModifierRows } from '../modules/equipment/combatBonuses';
 import { EQUIPMENT_SLOTS } from '../modules/equipment/vocabulary';
 import type { SessionPayload } from './ephemeralSession';
 import { EMPTY_SLOT, SLOT_EMOJI } from './equipmentPresenter';
@@ -171,8 +172,10 @@ export function summarizeCombatEvents(events: readonly CombatEvent[]): string[] 
   const start = events.find((e): e is Extract<CombatEvent, { type: 'combat_started' }> => e.type === 'combat_started');
   const name = (actor: 'player' | 'enemy') => (start ? start[actor].name : actor === 'player' ? 'Your Buddy' : 'The enemy');
   const hits = events.filter((e): e is Extract<CombatEvent, { type: 'damage' }> => e.type === 'damage');
+  // Flags are read loosely: events recorded before modifiers existed have none.
   const hitLine = (e: Extract<CombatEvent, { type: 'damage' }>) =>
-    `R${e.round} · ${name(e.actor)} hits ${name(e.target)} for **${e.amount}** (${e.targetHpBefore} → ${e.targetHpAfter})`;
+    `R${e.round} · ${name(e.actor)} ${e.critical === true ? '**crits**' : 'hits'} ${name(e.target)} for **${e.amount}**` +
+    ` (${e.targetHpBefore} → ${e.targetHpAfter})${e.bonusAttack === true ? ' · bonus attack' : ''}`;
 
   const lines = hits.slice(0, SUMMARY_OPENING_HITS).map(hitLine);
   const ended = events.find((e): e is Extract<CombatEvent, { type: 'combat_ended' }> => e.type === 'combat_ended');
@@ -184,7 +187,37 @@ export function summarizeCombatEvents(events: readonly CombatEvent[]): string[] 
   if (finalBlow) lines.push(`💥 ${name(finalBlow.target)} is defeated.`);
   else if (ended?.reason === 'round_limit') lines.push(`⏱️ Round limit reached — both still standing.`);
   if (lines.length === 0) lines.push('No blows were landed.');
+  const totals = combatBonusTotalsLine(events, name('player'));
+  if (totals) lines.push(totals);
   return lines;
+}
+
+/**
+ * What the player's secondary bonuses did over a whole fight, on one line —
+ * `Crits 3 · Bonus attacks 1 · Lifesteal +12 HP` — or null when none fired.
+ * The summary elides the middle of a fight, so this is where they are counted.
+ */
+export function combatBonusTotalsLine(events: readonly CombatEvent[], playerName = 'Your Buddy'): string | null {
+  let crits = 0;
+  let bonusAttacks = 0;
+  let healed = 0;
+  for (const e of events) {
+    if (e.type === 'critical_hit' && e.actor === 'player') crits += 1;
+    else if (e.type === 'bonus_attack_triggered' && e.actor === 'player') bonusAttacks += 1;
+    else if (e.type === 'lifesteal_heal' && e.actor === 'player') healed += e.amount;
+  }
+  const parts = [
+    crits > 0 ? `Crits ${crits}` : null,
+    bonusAttacks > 0 ? `Bonus attacks ${bonusAttacks}` : null,
+    healed > 0 ? `Lifesteal +${healed} HP` : null,
+  ].filter((p): p is string => p != null);
+  return parts.length > 0 ? `✨ ${playerName}: ${parts.join(' · ')}` : null;
+}
+
+/** A side's combat bonuses on one line (`Crit 9.75% · Lifesteal 2.5%`), or null when it has none. */
+export function modifiersLine(modifiers: CombatModifiers | null | undefined): string | null {
+  const rows = combatModifierRows(modifiers);
+  return rows.length > 0 ? rows.map((r) => `${r.label} ${r.value}`).join(' · ') : null;
 }
 
 // ── list ──────────────────────────────────────────────────────────────────
@@ -280,7 +313,9 @@ export function buildTrialDetail(
     const gear = EQUIPMENT_SLOTS.map((slot) => `${SLOT_EMOJI[slot]} ${stats.loadout.slots[slot]?.name ?? EMPTY_SLOT}`);
     embed.addFields({
       name: `Your Buddy — ${truncate(stats.buddy.name, 200)}`,
-      value: [`Current SP **${stats.buddy.currentSp}**`, statsLine(stats.stats), ...gear].join('\n'),
+      value: [`Current SP **${stats.buddy.currentSp}**`, statsLine(stats.stats), modifiersLine(stats.combatModifiers), ...gear]
+        .filter((l): l is string => l != null)
+        .join('\n'),
       inline: true,
     });
   } else {
@@ -332,7 +367,9 @@ export function buildTrialDetail(
 // ── result ────────────────────────────────────────────────────────────────
 
 function hpBlock(side: CombatTrialAttemptView['player']): string {
-  return `**${side.name}**\nHP: ${side.remainingHp} / ${side.maxHp}`;
+  // The modifiers this attempt was fought with — its snapshot, not the live loadout.
+  const bonuses = modifiersLine(side.modifiers);
+  return `**${side.name}**\nHP: ${side.remainingHp} / ${side.maxHp}${bonuses ? `\n${bonuses}` : ''}`;
 }
 
 export interface FightResultOptions {

@@ -195,6 +195,40 @@ describe('dismantling', () => {
     expect(screen.queryByRole('region', { name: 'Dismantle selection' })).toBeNull();
   });
 
+  it('shows a copy’s combat bonuses while selecting and again in the review, so the player sees what is scrapped', async () => {
+    const { user, state, items } = setup();
+    state.items.find((i) => i.id === items.knife.id)!.combatBonuses = [
+      { stat: 'crit_chance', label: 'Crit Chance', percent: 4.25, text: '+4.25% Crit Chance' },
+      { stat: 'lifesteal', label: 'Lifesteal', percent: 2, text: '+2% Lifesteal' },
+    ];
+    await startDismantling(user);
+    const knife = await box(/Combat Knife/);
+    expect(knife).toHaveAccessibleDescription(expect.stringContaining('+4.25% Crit Chance'));
+    expect(knife).toHaveAccessibleDescription(expect.stringContaining('+2% Lifesteal'));
+    // A copy without bonuses gets no extra row.
+    const plateCard = (await box(/Scrap Plate/)).closest('[data-testid="dismantle-card"]')!;
+    expect(within(plateCard as HTMLElement).queryByTestId('combat-bonuses')).toBeNull();
+
+    await user.click(knife);
+    await user.click(await box(/Scrap Plate/));
+    await user.click(screen.getByRole('button', { name: 'Review dismantle' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Dismantle selected Equipment?' });
+    await within(dialog).findByTestId('dismantle-total');
+    const lines = within(within(dialog).getByRole('list', { name: 'Selected items' })).getAllByRole(
+      'listitem',
+    );
+    const knifeLine = lines.find((li) => li.textContent?.includes('Combat Knife'))!;
+    expect(
+      within(knifeLine)
+        .getAllByTestId('combat-bonus')
+        .map((row) => row.textContent),
+    ).toEqual(['+4.25% Crit Chance', '+2% Lifesteal']);
+    const plateLine = lines.find((li) => li.textContent?.includes('Scrap Plate'))!;
+    expect(within(plateLine).queryByTestId('combat-bonuses')).toBeNull();
+    // The list is open without a click when something with bonuses is in it.
+    expect(knifeLine.closest('details')).toHaveAttribute('open');
+  });
+
   it('cancel destroys nothing', async () => {
     const { user, state } = setup();
     await startDismantling(user);
@@ -323,6 +357,57 @@ describe('fabrication', () => {
     expect(
       await within(await bagList()).findByText('Combat Knife of Bad Decisions'),
     ).toBeInTheDocument();
+  });
+
+  it('reveals the secondary combat bonuses the fabricated item rolled', async () => {
+    const { user, state } = setup({ components: 40, waifubux: 2_000 });
+    state.nextFabricated = {
+      name: 'Plasma Coil Ring',
+      baseName: 'Plasma Coil Ring',
+      multiplier: 0.9,
+      combatBonuses: [
+        { stat: 'crit_chance', label: 'Crit Chance', percent: 4.25, text: '+4.25% Crit Chance' },
+        {
+          stat: 'armor_penetration',
+          label: 'Armor Penetration',
+          percent: 6,
+          text: '+6% Armor Penetration',
+        },
+      ],
+    };
+    const dialog = await openFabricate(user);
+    await user.click(within(dialog).getByRole('button', { name: 'Choose Advanced Rebuild' }));
+    await user.click(
+      within(within(dialog).getByRole('group', { name: 'Slot' })).getByRole('button', {
+        name: 'Attack',
+      }),
+    );
+    await user.click(within(dialog).getByRole('button', { name: 'Confirm' }));
+    const result = await within(dialog).findByTestId('fabricate-result');
+    expect(result).toHaveTextContent('ATK ×0.90');
+    expect(within(result).getByText('Combat Bonuses')).toBeInTheDocument();
+    expect(
+      within(result)
+        .getAllByTestId('combat-bonus')
+        .map((row) => row.textContent),
+    ).toEqual(['+4.25% Crit Chance', '+6% Armor Penetration']);
+    for (const leak of ['crit_chance', 'armor_penetration'])
+      expect(dialog.textContent).not.toContain(leak);
+  });
+
+  it('a fabricated item that rolled no bonus shows no Combat Bonuses row', async () => {
+    const { user } = setup({ components: 40, waifubux: 2_000 });
+    const dialog = await openFabricate(user);
+    await user.click(within(dialog).getByRole('button', { name: 'Choose Standard Rebuild' }));
+    await user.click(
+      within(within(dialog).getByRole('group', { name: 'Slot' })).getByRole('button', {
+        name: 'Attack',
+      }),
+    );
+    await user.click(within(dialog).getByRole('button', { name: 'Confirm' }));
+    const result = await within(dialog).findByTestId('fabricate-result');
+    expect(within(result).queryByText('Combat Bonuses')).toBeNull();
+    expect(within(result).queryByTestId('combat-bonuses')).toBeNull();
   });
 
   it('Fabricate Again returns to Confirm with a fresh request key', async () => {

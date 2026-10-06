@@ -44,6 +44,7 @@ import { combatTrialsLegendLine, menuComponents } from '../../src/discord/comman
 import { buildOnboardingView } from '../../src/discord/onboardingPresenter';
 import { parseCustomId, type AppContext, type Provisioned } from '../../src/discord/types';
 import { basicAttackController } from '../../src/modules/combat/combatController';
+import { ZERO_COMBAT_MODIFIERS } from '../../src/modules/combat/combatMath';
 import { simulateCombat } from '../../src/modules/combat/combatSimulator';
 import { createCombatState } from '../../src/modules/combat/combatState';
 import type { CombatResult } from '../../src/modules/combat/combatTypes';
@@ -120,6 +121,7 @@ const item = (equipmentId: number, name: string, multiplierBp: number): CombatSl
   affixKey: null,
   rarity: 'N',
   multiplierBp,
+  combatBonuses: [],
   rolledProperties: {},
 });
 const STARTERS = {
@@ -162,8 +164,9 @@ function attemptFrom(result: CombatResult, over: Partial<CombatTrialAttemptView>
     rounds: result.rounds,
     actions: result.actions,
     buddyWaifuId: 9,
-    player: { name: player.name, attack: player.attack, defense: player.defense, maxHp: start.player.maxHp, remainingHp: player.currentHp },
-    enemy: { name: enemy.name, attack: enemy.attack, defense: enemy.defense, maxHp: start.enemy.maxHp, remainingHp: enemy.currentHp },
+    player: { name: player.name, attack: player.attack, defense: player.defense, maxHp: start.player.maxHp, remainingHp: player.currentHp, modifiers: { ...ZERO_COMBAT_MODIFIERS } },
+    enemy: { name: enemy.name, attack: enemy.attack, defense: enemy.defense, maxHp: start.enemy.maxHp, remainingHp: enemy.currentHp, modifiers: { ...ZERO_COMBAT_MODIFIERS } },
+    combatSeed: null,
     firstClear: false,
     rewards: null,
     events: result.events,

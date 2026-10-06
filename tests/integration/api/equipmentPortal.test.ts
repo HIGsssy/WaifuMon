@@ -201,6 +201,102 @@ afterAll(async () => {
   await t?.cleanup();
 });
 
+/* ─────────────────────────── combat bonuses ─────────────────────────── */
+
+describe('secondary combat bonuses', () => {
+  /** An equipped R-style ring with one bonus, an SR coil with two, and a plain belt. */
+  async function bonusBag(p: Player) {
+    const id = {
+      ring: await grant(t.db, app.gear, p.playerId, 'training_ring', {
+        roll: { kind: 'fixed', rolledMultiplierBp: 5_000, affixKey: null, combatBonuses: [{ stat: 'crit_chance_bp', valueBp: 425 }] },
+      }),
+      belt: await grant(t.db, app.gear, p.playerId, 'padded_belt'),
+      harness: await grant(t.db, app.gear, p.playerId, 'basic_harness', {
+        roll: {
+          kind: 'fixed',
+          rolledMultiplierBp: 20_000,
+          affixKey: null,
+          combatBonuses: [
+            { stat: 'crit_chance_bp', valueBp: 550 },
+            { stat: 'crit_damage_bonus_bp', valueBp: 1_750 },
+          ],
+        },
+      }),
+      plasma: await grant(t.db, app.gear, p.playerId, 'plasma_coil_ring', {
+        roll: {
+          kind: 'fixed',
+          rolledMultiplierBp: 8_600,
+          affixKey: null,
+          combatBonuses: [
+            { stat: 'armor_penetration_bp', valueBp: 750 },
+            { stat: 'lifesteal_bp', valueBp: 400 },
+          ],
+        },
+      }),
+    };
+    await app.gear.equipment.equip(p.playerId, { slot: 'attack', equipmentId: id.ring });
+    await app.gear.equipment.equip(p.playerId, { slot: 'defense', equipmentId: id.belt });
+    await app.gear.equipment.equip(p.playerId, { slot: 'health', equipmentId: id.harness });
+    return id;
+  }
+
+  it('an item lists its own rolled bonuses: none, one or two', async () => {
+    const p = await newPlayer();
+    const id = await bonusBag(p);
+    const byId = new Map((await listAll(p, 'limit=50')).map((i) => [i.id, i]));
+    expect(byId.get(id.belt).combatBonuses).toEqual([]);
+    expect(byId.get(id.ring).combatBonuses).toEqual([{ stat: 'crit_chance', label: 'Crit Chance', percent: 4.25, text: '+4.25% Crit Chance' }]);
+    expect(byId.get(id.plasma).combatBonuses).toEqual([
+      { stat: 'armor_penetration', label: 'Armor Pen', percent: 7.5, text: '+7.5% Armor Pen' },
+      { stat: 'lifesteal', label: 'Lifesteal', percent: 4, text: '+4% Lifesteal' },
+    ]);
+  });
+
+  it('the overview carries the capped cumulative totals from the combat service', async () => {
+    const p = await newPlayer();
+    await bonusBag(p);
+    const o = (await call(p, 'GET', '')).body.data;
+    expect((await combat.calculateCombatStats(p.playerId)).combatModifiers).toMatchObject({ critChanceBp: 975, critDamageBonusBp: 1_750 });
+    // Zero rows are omitted; Crit DMG is the total multiplier.
+    expect(o.combatModifiers).toEqual([
+      { key: 'crit_chance', label: 'Crit', value: '9.75%' },
+      { key: 'crit_damage', label: 'Crit DMG', value: '167.5%' },
+    ]);
+    expect(o.slots.health.combatBonuses.map((b: { text: string }) => b.text)).toEqual(['+5.5% Crit Chance', '+17.5% Crit Damage']);
+  });
+
+  it('a loadout without bonuses has no totals', async () => {
+    const p = await newPlayer();
+    await stockBag(p);
+    expect((await call(p, 'GET', '')).body.data.combatModifiers).toEqual([]);
+  });
+
+  it('the detail comparison carries both sides’ bonuses, unscored', async () => {
+    const p = await newPlayer();
+    const id = await bonusBag(p);
+    const d = (await call(p, 'GET', `/items/${id.plasma}`)).body.data;
+    expect(d.item.combatBonuses.map((b: { text: string }) => b.text)).toEqual(['+7.5% Armor Pen', '+4% Lifesteal']);
+    expect(d.comparison.equippedItem.combatBonuses.map((b: { text: string }) => b.text)).toEqual(['+4.25% Crit Chance']);
+    expect(d.comparison).toMatchObject({ stat: 'attack', hasBuddy: true });
+    expect(Object.keys(d.comparison).sort()).toEqual(['current', 'delta', 'equippedItem', 'hasBuddy', 'stat', 'withItem']);
+  });
+
+  it('copies that differ only in their bonuses are not counted as identical', async () => {
+    const p = await newPlayer();
+    const id = await bonusBag(p);
+    await grant(t.db, app.gear, p.playerId, 'training_ring');
+    expect((await call(p, 'GET', `/items/${id.ring}`)).body.data.identicalCopies).toBe(1);
+  });
+
+  it('never sends basis points or storage keys', async () => {
+    const p = await newPlayer();
+    const id = await bonusBag(p);
+    for (const raw of [(await call(p, 'GET', '')).raw, (await call(p, 'GET', '/items')).raw, (await call(p, 'GET', `/items/${id.plasma}`)).raw]) {
+      for (const leak of ['Bp"', '_bp', 'valueBp', '"425"', ':425', ':1750', ':750']) expect(raw).not.toContain(leak);
+    }
+  });
+});
+
 /* ─────────────────────────── feature gate ─────────────────────────── */
 
 describe('a player who has not unlocked Equipment', () => {

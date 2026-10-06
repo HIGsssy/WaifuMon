@@ -48,10 +48,18 @@ import { createHash } from 'node:crypto';
 import { CombatBuddyRequiredError, CombatLoadoutIncompleteError } from '../../shared/errors';
 import { seededRng } from '../../shared/random';
 import { basicAttackController } from '../combat/combatController';
+import { ZERO_COMBAT_MODIFIERS, clampCombatModifiers } from '../combat/combatMath';
 import { simulateCombat } from '../combat/combatSimulator';
 import { createCombatState } from '../combat/combatState';
-import type { CombatEndReason, CombatEvent, CombatResultKind, CombatRules } from '../combat/combatTypes';
+import type {
+  CombatEndReason,
+  CombatEvent,
+  CombatModifiers,
+  CombatResultKind,
+  CombatRules,
+} from '../combat/combatTypes';
 import { enemyCombatantInput, type CombatEnemyDefinition } from '../combat/enemyDefinitions';
+import type { CombatBonus } from '../equipment/combatBonuses';
 import type { CombatStats } from '../equipment/equipmentMath';
 import { EQUIPMENT_SLOTS, type EquipmentSlot } from '../equipment/vocabulary';
 import { expeditionDrawInt } from '../expeditions/expeditionRandom';
@@ -75,6 +83,8 @@ export interface DungeonFighterGear {
   name: string;
   rarity: string;
   multiplierBp: number;
+  /** The item's own rolled combat bonuses at the start. Absent on a run started before they existed. */
+  combatBonuses?: CombatBonus[];
 }
 
 /**
@@ -92,7 +102,23 @@ export interface DungeonFighter {
   attack: number;
   defense: number;
   maxHp: number;
+  /**
+   * The aggregated, capped combat modifiers the run fights with, frozen at
+   * start like ATK / DEF / HP: later gear changes never reach an active run.
+   * Absent on a run started before modifiers existed — read through
+   * {@link fighterModifiers}, which treats that as none.
+   */
+  modifiers?: CombatModifiers;
   gear: Record<EquipmentSlot, DungeonFighterGear>;
+}
+
+/** The modifiers a run's fighter fights with; all zero for a pre-modifier snapshot. */
+export function fighterModifiers(fighter: Pick<DungeonFighter, 'modifiers'>): CombatModifiers {
+  try {
+    return clampCombatModifiers(fighter.modifiers);
+  } catch {
+    return { ...ZERO_COMBAT_MODIFIERS };
+  }
 }
 
 /**
@@ -116,6 +142,7 @@ export function fighterFromCombatStats(stats: CombatStats): DungeonFighter {
       name: item.name,
       rarity: item.rarity,
       multiplierBp: item.multiplierBp,
+      combatBonuses: item.combatBonuses.map((b) => ({ ...b })),
     };
   }
   return {
@@ -128,6 +155,7 @@ export function fighterFromCombatStats(stats: CombatStats): DungeonFighter {
     attack,
     defense,
     maxHp,
+    modifiers: { ...stats.combatModifiers },
     gear,
   };
 }
@@ -165,6 +193,8 @@ export interface DungeonEquipmentGrant {
   slot: EquipmentSlot;
   rarity: string;
   rolledMultiplierBp: number;
+  /** The drop's rolled combat bonuses. Absent on a drop recorded before they existed. */
+  combatBonuses?: CombatBonus[];
 }
 
 /** What resolving something paid, as granted. */
@@ -199,6 +229,10 @@ export type DungeonNodeResolution =
       hpAfter: number;
       enemyMaxHp: number;
       enemyHpAfter: number;
+      /** HP Lifesteal restored during the fight (already inside `hpAfter`). Absent on older nodes. */
+      lifestealHealed?: number;
+      playerCrits?: number;
+      playerBonusAttacks?: number;
       rewards: DungeonRewards;
     }
   | { kind: 'rest'; healBasisPoints: number; hpBefore: number; hpAfter: number }
@@ -456,20 +490,26 @@ export interface DungeonCombatOutcome {
   hpAfter: number;
   enemyMaxHp: number;
   enemyHpAfter: number;
-  /** The seed the fight's damage rolls were drawn from. */
+  /** The seed the fight's draws (variance, Crit, Double Attack) came from. */
   combatSeed: number;
+  /** HP the fighter's Lifesteal restored during the fight. */
+  lifestealHealed: number;
+  /** Player Crits landed. */
+  playerCrits: number;
+  /** Player bonus strikes from Double Attack. */
+  playerBonusAttacks: number;
   /** The engine's structured events — kept for the run history, never shown raw. */
   events: CombatEvent[];
 }
 
 /**
  * Fight one enemy with the existing engine: the fighter's snapshotted stats
- * at the run's current HP, the snapshotted enemy at full HP, basic attacks on
+ * and combat modifiers at the run's current HP, the snapshotted enemy at full HP, basic attacks on
  * both sides, damage rolls drawn from `seededRng(combatSeed)`. `rules`
  * overrides the engine's default rules; production passes none.
  */
 export function fightEnemy(
-  fighter: DungeonFighter,
+  fighter: Pick<DungeonFighter, 'waifuId' | 'name' | 'attack' | 'defense' | 'maxHp' | 'modifiers'>,
   currentHp: number,
   enemy: CombatEnemyDefinition,
   combatSeed: number,
@@ -483,6 +523,7 @@ export function fightEnemy(
       defense: fighter.defense,
       maxHp: fighter.maxHp,
       currentHp,
+      modifiers: fighterModifiers(fighter),
     },
     enemy: enemyCombatantInput(enemy),
     ...(rules ? { rules } : {}),
@@ -502,6 +543,12 @@ export function fightEnemy(
     enemyMaxHp: initial.enemy.maxHp,
     enemyHpAfter: outcome.finalState.enemy.currentHp,
     combatSeed,
+    lifestealHealed: outcome.events.reduce(
+      (sum, e) => (e.type === 'lifesteal_heal' && e.actor === 'player' ? sum + e.amount : sum),
+      0,
+    ),
+    playerCrits: outcome.events.filter((e) => e.type === 'critical_hit' && e.actor === 'player').length,
+    playerBonusAttacks: outcome.events.filter((e) => e.type === 'bonus_attack_triggered' && e.actor === 'player').length,
     events: outcome.events,
   };
 }

@@ -1,0 +1,82 @@
+{
+  "format": "waifumon-equipment-combat-bonuses",
+  "version": 1,
+  "rarityRules": {
+    "N": { "bonusChanceBp": 6500, "bonusCount": 1 },
+    "R": { "bonusChanceBp": 10000, "bonusCount": 1 },
+    "SR": { "bonusChanceBp": 10000, "bonusCount": 2 }
+  },
+  "bonuses": [
+    {
+      "stat": "crit_chance_bp",
+      "enabled": true,
+      "stepBp": 25,
+      "ranges": {
+        "N": { "minBp": 100, "maxBp": 300 },
+        "R": { "minBp": 250, "maxBp": 500 },
+        "SR": { "minBp": 450, "maxBp": 800 }
+      }
+    },
+    {
+      "stat": "crit_damage_bonus_bp",
+      "enabled": true,
+      "stepBp": 50,
+      "ranges": {
+        "N": { "minBp": 500, "maxBp": 1000 },
+        "R": { "minBp": 800, "maxBp": 1500 },
+        "SR": { "minBp": 1200, "maxBp": 2000 }
+      }
+    },
+    {
+      "stat": "double_attack_chance_bp",
+      "enabled": true,
+      "stepBp": 25,
+      "ranges": {
+        "N": { "minBp": 50, "maxBp": 200 },
+        "R": { "minBp": 150, "maxBp": 350 },
+        "SR": { "minBp": 300, "maxBp": 600 }
+      }
+    },
+    {
+      "stat": "armor_penetration_bp",
+      "enabled": true,
+      "stepBp": 50,
+      "ranges": {
+        "N": { "minBp": 200, "maxBp": 500 },
+        "R": { "minBp": 400, "maxBp": 800 },
+        "SR": { "minBp": 700, "maxBp": 1200 }
+      }
+    },
+    {
+      "stat": "lifesteal_bp",
+      "enabled": true,
+      "stepBp": 25,
+      "ranges": {
+        "N": { "minBp": 100, "maxBp": 200 },
+        "R": { "minBp": 150, "maxBp": 300 },
+        "SR": { "minBp": 250, "maxBp": 500 }
+      }
+    }
+  ],
+  "eligibility": {
+    "attack": [
+      "crit_chance_bp",
+      "crit_damage_bonus_bp",
+      "double_attack_chance_bp",
+      "armor_penetration_bp",
+      "lifesteal_bp"
+    ],
+    "defense": [
+      "crit_chance_bp",
+      "double_attack_chance_bp",
+      "armor_penetration_bp",
+      "lifesteal_bp"
+    ],
+    "health": [
+      "crit_chance_bp",
+      "crit_damage_bonus_bp",
+      "double_attack_chance_bp",
+      "lifesteal_bp"
+    ]
+  }
+}

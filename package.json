@@ -19,6 +19,7 @@
     "expeditions:due": "tsx src/tools/expeditionDevClock.ts",
     "dungeons:simulate": "tsx src/tools/simulateDungeon.ts",
     "dungeons:playtest": "tsx src/tools/simulateDungeonPlay.ts",
+    "combat:simulate-bonuses": "tsx src/tools/simulateCombatBonuses.ts",
     "artwork:build": "tsx src/tools/buildArtwork.ts",
     "artwork:check": "npm run artwork:build -- --all --only full --check",
     "assets:thumbs": "npm run artwork:build -- --all --only thumbnails",

@@ -412,7 +412,15 @@ describe('history is a snapshot', () => {
     const replay = await trials.fight(playerId, 't_win', 'k-edit');
     expect(replay.replayed).toBe(true);
     expect(replay.attempt).toEqual(before.attempt);
-    expect(replay.attempt.enemy).toEqual({ name: 'Weakling', attack: 1, defense: 0, maxHp: 10, remainingHp: 0 });
+    expect(replay.attempt.enemy).toEqual({
+      name: 'Weakling',
+      attack: 1,
+      defense: 0,
+      maxHp: 10,
+      remainingHp: 0,
+      // Enemies carry no combat modifiers.
+      modifiers: { critChanceBp: 0, critDamageBonusBp: 0, doubleAttackChanceBp: 0, armorPenetrationBp: 0, lifestealBp: 0 },
+    });
     expect((await trials.list(playerId)).trials[0]!.progress.cleared).toBe(true);
   });
 

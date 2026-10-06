@@ -7,16 +7,18 @@
  *     → one chosen uniformly
  *     → `grantEquipment(… random …)`: multiplier, affix, instance, audit
  *
- * Reward sources never roll a multiplier or an affix and never see a pool:
- * this service picks only the **base definition**, and `grantEquipment` owns
- * everything after that.
+ * Reward sources never roll a multiplier, an affix or a combat bonus and never
+ * see a pool: this service picks only the **base definition**, and
+ * `grantEquipment` owns everything after that — including the rarity-driven
+ * secondary bonuses, so Workshop, Dungeon, boss, expedition and encounter gear
+ * all get them from the one roll.
  *
  * ## Idempotency
  *
  * A grant key pins the whole reward, not just the instance count. Before
  * selecting anything, a keyed grant looks its first copy up by key; when the
  * reward was already paid it returns that instance — same definition, same
- * multiplier, same affix — without drawing again. That matters because
+ * multiplier, same affix, same combat bonuses — without drawing again. That matters because
  * `grantEquipment` refuses a key that was used for a *different* definition,
  * so a retry that re-selected could fail where it should replay.
  *
@@ -47,6 +49,7 @@ import type { DbOrTx } from '../../db/client';
 import { equipmentDefinitions } from '../../db/schema';
 import { defaultRng, type Rng } from '../../shared/random';
 import type { EquipmentAffixCatalogue } from './affixCatalogue';
+import type { CombatBonus } from './combatBonuses';
 import { equipmentDisplayName } from './equipmentRoll';
 import type { EquipmentService, GrantKeyRecord } from './equipmentService';
 import type { EquipmentDefinitionView, EquipmentInstanceView } from './equipmentQueries';
@@ -77,6 +80,8 @@ export interface EquipmentRewardGrant {
   rarity: string;
   rolledMultiplierBp: number;
   affixKey: string | null;
+  /** The copy's rolled combat bonuses (0–2), as stored. */
+  combatBonuses: CombatBonus[];
   /** True when the grant key had already been paid and this is that instance. */
   alreadyGranted: boolean;
 }
@@ -223,6 +228,7 @@ function fromInstance(
     rarity: definition.rarity,
     rolledMultiplierBp: instance.rolledMultiplierBp,
     affixKey: instance.affixKey,
+    combatBonuses: instance.combatBonuses,
     alreadyGranted,
   };
 }
@@ -249,6 +255,7 @@ export function createEquipmentRewardService(deps: EquipmentRewardServiceDeps): 
       rarity: record.definition.rarity,
       rolledMultiplierBp: record.rolledMultiplierBp,
       affixKey: record.affixKey,
+      combatBonuses: record.combatBonuses,
       alreadyGranted: true,
     };
   }

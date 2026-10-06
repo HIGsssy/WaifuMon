@@ -29,6 +29,8 @@ import {
   EmbedBuilder,
   StringSelectMenuBuilder,
 } from 'discord.js';
+import type { CombatModifiers } from '../modules/combat/combatTypes';
+import { combatModifierRows, formatCombatBonus, type CombatBonus } from '../modules/equipment/combatBonuses';
 import type { CombatStats } from '../modules/equipment/equipmentMath';
 import type {
   BagView,
@@ -162,19 +164,47 @@ export function formatMultiplier(bp: number): string {
   return `×${(bp / 10_000).toFixed(2)}`;
 }
 
+/** A copy's rolled combat bonuses, one per line (`+4.25% Crit Chance`). Empty array for none. */
+export function combatBonusLines(bonuses: readonly CombatBonus[] | null | undefined): string[] {
+  return (bonuses ?? []).map(formatCombatBonus);
+}
+
+/** The bonus lines as a block that follows a multiplier line; `''` when the copy has none. */
+function bonusBlock(bonuses: readonly CombatBonus[] | null | undefined): string {
+  const lines = combatBonusLines(bonuses);
+  return lines.length > 0 ? `\n${lines.join('\n')}` : '';
+}
+
+/**
+ * A loadout's cumulative combat bonuses as an embed field, or null when the
+ * equipped gear carries none. `Crit: 9.75% · Crit DMG: 167.5%` — Crit DMG is
+ * the total multiplier. Shared by Equipment, Trials and Delve.
+ */
+export function combatModifiersField(
+  modifiers: CombatModifiers | null | undefined,
+  name = 'Combat Bonuses',
+): { name: string; value: string } | null {
+  const rows = combatModifierRows(modifiers);
+  if (rows.length === 0) return null;
+  return { name, value: rows.map((r) => `${r.label}: **${r.value}**`).join(' · ') };
+}
+
 /**
  * One Equipment drop, as every reward surface prints it:
- * `⚔️ **Rusty Pipe of Poor Planning** · ATK ×0.45`.
+ * `⚔️ **Rusty Pipe of Poor Planning** · ATK ×0.45`, followed by the copy's
+ * rolled combat bonuses when it has any (`· +4.25% Crit Chance`).
  *
- * The generated display name and the formatted multiplier only — never the
- * affix key, the pool or raw basis points.
+ * The generated display name and formatted values only — never the affix
+ * key, the pool, a stat key or raw basis points.
  */
 export function formatEquipmentDrop(drop: {
   displayName: string;
   slot: EquipmentSlot;
   rolledMultiplierBp: number;
+  combatBonuses?: readonly CombatBonus[] | null | undefined;
 }): string {
-  return `${SLOT_EMOJI[drop.slot]} **${drop.displayName}** · ${SLOT_STAT_LABEL[drop.slot]} ${formatMultiplier(drop.rolledMultiplierBp)}`;
+  const bonuses = combatBonusLines(drop.combatBonuses).map((line) => ` · ${line}`).join('');
+  return `${SLOT_EMOJI[drop.slot]} **${drop.displayName}** · ${SLOT_STAT_LABEL[drop.slot]} ${formatMultiplier(drop.rolledMultiplierBp)}${bonuses}`;
 }
 
 /** `+38`, `-22`, `±0`. */
@@ -308,12 +338,14 @@ export function buildEquipmentHome(
       ? EQUIPMENT_SLOTS.map((slot) => `${SLOT_STAT_LABEL[slot]} ${statValue(stats.stats[SLOT_STAT_KEY[slot]])}`).join(' · ')
       : 'Unavailable without a Buddy.',
   });
+  const totals = combatModifiersField(stats.combatModifiers);
+  if (totals) embed.addFields(totals);
   for (const slot of EQUIPMENT_SLOTS) {
     const item = stats.loadout.slots[slot];
     embed.addFields({
       name: `${SLOT_EMOJI[slot]} ${SLOT_NAME[slot]}`,
       value: item
-        ? `${item.name}\n${formatMultiplier(item.multiplierBp)}`
+        ? `${item.name}\n${formatMultiplier(item.multiplierBp)}${bonusBlock(item.combatBonuses)}`
         : `Nothing equipped\n${SLOT_STAT_LABEL[slot]} unavailable`,
       inline: true,
     });
@@ -371,7 +403,7 @@ export function buildSlotScreen(view: SlotView, status?: string | null): Session
   embed.addFields({
     name: 'Currently Equipped',
     value: view.equipped
-      ? `**${view.equipped.displayName}**\n${stat} ${formatMultiplier(view.equipped.rolledMultiplierBp)}\nCurrent ${stat}: ${statValue(view.current)}`
+      ? `**${view.equipped.displayName}**\n${stat} ${formatMultiplier(view.equipped.rolledMultiplierBp)}${bonusBlock(view.equipped.combatBonuses)}\nCurrent ${stat}: ${statValue(view.current)}`
       : `Nothing equipped\n${stat} unavailable`,
   });
 
@@ -388,7 +420,7 @@ export function buildSlotScreen(view: SlotView, status?: string | null): Session
           : '';
       embed.addFields({
         name: `${c.group.displayName}${count}`,
-        value: `${stat} ${formatMultiplier(c.group.rolledMultiplierBp)}${would}`,
+        value: `${stat} ${formatMultiplier(c.group.rolledMultiplierBp)}${bonusBlock(c.group.combatBonuses)}${would}`,
       });
     }
     const select = new StringSelectMenuBuilder()
@@ -448,6 +480,7 @@ export function buildGearBag(view: BagView, status?: string | null): SessionPayl
           const { marks, partial } = groupMarks(group);
           return (
             `${marks ? `${marks} ` : ''}**${group.displayName}** ×${group.count}\n${itemLine(group.definition, group.rolledMultiplierBp)}` +
+            bonusBlock(group.combatBonuses) +
             (partial ? `\n${partial}` : '')
           );
         })
@@ -504,6 +537,8 @@ export function buildItemDetail(view: ItemView, ctx: EquipmentContext, status?: 
         .join('\n'),
     );
   if (flags.length > 0) embed.addFields({ name: 'Status', value: flags.join(' · ') });
+  const bonuses = combatBonusLines(instance.combatBonuses);
+  if (bonuses.length > 0) embed.addFields({ name: 'Combat Bonuses', value: bonuses.join('\n') });
   embed.addFields({
     name: 'Current Buddy',
     value: stats.buddy ? `${stats.buddy.name} — ${stats.buddy.currentSp} SP` : NO_BUDDY_LINE,
@@ -520,6 +555,17 @@ export function buildItemDetail(view: ItemView, ctx: EquipmentContext, status?: 
               `Difference: ${preview.delta != null ? formatDelta(preview.delta) : '—'}`,
           },
     );
+  }
+  // Secondary bonuses side by side, never scored: a Crit roll and an Armor
+  // Pen roll are different things, and which is better is the player's call.
+  if (!instance.equipped && view.slotEquipped) {
+    const mine = combatBonusLines(view.slotEquipped.combatBonuses);
+    if (mine.length > 0 || bonuses.length > 0) {
+      embed.addFields(
+        { name: `Equipped: ${view.slotEquipped.displayName}`.slice(0, 256), value: [`${stat} ${formatMultiplier(view.slotEquipped.rolledMultiplierBp)}`, ...mine].join('\n'), inline: true },
+        { name: 'This item', value: [`${stat} ${formatMultiplier(instance.rolledMultiplierBp)}`, ...bonuses].join('\n'), inline: true },
+      );
+    }
   }
   const copyIndex = view.copies.indexOf(instance.id);
   embed.addFields({

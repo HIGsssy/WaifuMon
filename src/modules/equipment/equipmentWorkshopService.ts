@@ -66,6 +66,7 @@ import type { FeatureUnlockService } from '../features/featureUnlockService';
 import { affixPoolOf, type EquipmentAffixCatalogue } from './affixCatalogue';
 import { listRewardableDefinitions, type EquipmentRewardService } from './equipmentRewardService';
 import type { EquipmentInstanceView } from './equipmentQueries';
+import type { CombatBonus } from './combatBonuses';
 import { equipmentDisplayName } from './equipmentRoll';
 import type { DismantleCopy, EquipmentService } from './equipmentService';
 import { paginate, type Page } from './gearBag';
@@ -166,6 +167,8 @@ export interface DismantleLine {
   rarity: string;
   slot: EquipmentSlot;
   rolledMultiplierBp: number;
+  /** The copy's rolled combat bonuses — what the player is about to scrap. */
+  combatBonuses: CombatBonus[];
   components: number;
 }
 
@@ -199,6 +202,8 @@ export interface FabricatedItem {
   rolledMultiplierBp: number;
   /** The affix's display text ("of Poor Planning"), never its key. */
   affixSuffix: string | null;
+  /** The copy's rolled combat bonuses (0–2), read back from the instance. */
+  combatBonuses: CombatBonus[];
 }
 
 export interface FabricationOutcome {
@@ -312,6 +317,7 @@ function summarise(copies: readonly DismantleCopy[]): { byRarity: DismantleRarit
     rarity: c.definition.rarity,
     slot: c.slot,
     rolledMultiplierBp: c.rolledMultiplierBp,
+    combatBonuses: c.combatBonuses,
     components: c.components,
   }));
   return { byRarity, items };
@@ -390,6 +396,7 @@ export function createEquipmentWorkshopService(deps: EquipmentWorkshopDeps): Equ
       rarity: record.definition.rarity,
       rolledMultiplierBp: record.rolledMultiplierBp,
       affixSuffix: affix?.suffix ?? null,
+      combatBonuses: record.combatBonuses,
     };
   }
 
@@ -616,6 +623,7 @@ export function createEquipmentWorkshopService(deps: EquipmentWorkshopDeps): Equ
               eligibleDefinitions: pool.length,
               rolledMultiplierBp: grant.rolledMultiplierBp,
               affixKey: grant.affixKey,
+              combatBonuses: grant.combatBonuses,
             },
           })
           .returning();

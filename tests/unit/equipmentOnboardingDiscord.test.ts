@@ -53,6 +53,7 @@ const item = (equipmentId: number, definitionKey: string, name: string, multipli
   affixKey: null,
   rarity: 'N',
   multiplierBp,
+  combatBonuses: [],
   rolledProperties: {},
 });
 const STARTERS = {

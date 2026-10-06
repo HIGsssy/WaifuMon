@@ -73,6 +73,12 @@ export interface PlaythroughResult {
   /** Gear drops by rarity. */
   equipment: Record<string, number>;
   fights: number;
+  /** Combat rounds fought, all fights. */
+  rounds: number;
+  /** HP the fighter's Lifesteal restored, all fights. */
+  lifestealHealed: number;
+  playerCrits: number;
+  playerBonusAttacks: number;
   /** Depth of the first extraction opportunity the run survived to; null when it never reached one. */
   firstExtractionDepth: number | null;
   /** Extraction opportunities the run survived to, the one it left at included. */
@@ -94,7 +100,7 @@ export type PlaythroughSnapshot = Pick<DungeonRunSnapshot, 'zone' | 'enemies' | 
 export function playDungeon(
   content: PlaythroughSnapshot,
   catalogue: DungeonContentCatalogue,
-  fighter: Pick<DungeonFighter, 'attack' | 'defense' | 'maxHp'>,
+  fighter: Pick<DungeonFighter, 'attack' | 'defense' | 'maxHp' | 'modifiers'>,
   seed: number,
   policy: PlaythroughPolicy,
 ): PlaythroughResult {
@@ -115,6 +121,10 @@ export function playDungeon(
   let earned = 0;
   let waifubux = 0;
   let fights = 0;
+  let rounds = 0;
+  let lifestealHealed = 0;
+  let playerCrits = 0;
+  let playerBonusAttacks = 0;
   let firstExtractionDepth: number | null = null;
   let extractionOpportunities = 0;
   const equipment: Record<string, number> = {};
@@ -140,6 +150,10 @@ export function playDungeon(
       waifubux,
       equipment,
       fights,
+      rounds,
+      lifestealHealed,
+      playerCrits,
+      playerBonusAttacks,
       firstExtractionDepth,
       extractionOpportunities,
       defeatedBy,
@@ -152,6 +166,10 @@ export function playDungeon(
       const enemy = enemyOf(snapshot, node)!;
       const fight = fightEnemy(combatant, hp, enemy, dungeonCombatSeed(graph.seed, node.id));
       fights += 1;
+      rounds += fight.rounds;
+      lifestealHealed += fight.lifestealHealed;
+      playerCrits += fight.playerCrits;
+      playerBonusAttacks += fight.playerBonusAttacks;
       hp = fight.hpAfter;
       if (fight.result !== 'player_victory') return end('defeated', enemy.key);
       pay(rollNodeRewards(snapshot, graph, node));
@@ -200,6 +218,12 @@ export interface PlaythroughReport {
   averageFirstExtractionDepth: number | null;
   /** Extraction opportunities a run survived to, on average. */
   averageExtractionOpportunities: number;
+  /** Fights per run, and combat rounds per fight. */
+  averageFights: number;
+  averageRoundsPerFight: number;
+  /** HP Lifesteal restored per fight, and per run. */
+  averageLifestealPerFight: number;
+  averageLifestealPerRun: number;
   averageEarned: number;
   averageBanked: number;
   averageWaifubux: number;
@@ -219,7 +243,7 @@ export interface PlaythroughReport {
 export function simulateDungeonPlaythroughs(
   content: PlaythroughSnapshot,
   catalogue: DungeonContentCatalogue,
-  fighter: Pick<DungeonFighter, 'attack' | 'defense' | 'maxHp'>,
+  fighter: Pick<DungeonFighter, 'attack' | 'defense' | 'maxHp' | 'modifiers'>,
   opts: { runs: number; firstSeed?: number; policy: PlaythroughPolicy },
 ): PlaythroughReport {
   const results: PlaythroughResult[] = [];
@@ -267,6 +291,10 @@ export function simulateDungeonPlaythroughs(
       ? reached.reduce((total, r) => total + r.firstExtractionDepth!, 0) / reached.length
       : null,
     averageExtractionOpportunities: sum((r) => r.extractionOpportunities) / n,
+    averageFights: sum((r) => r.fights) / n,
+    averageRoundsPerFight: sum((r) => r.rounds) / (sum((r) => r.fights) || 1),
+    averageLifestealPerFight: sum((r) => r.lifestealHealed) / (sum((r) => r.fights) || 1),
+    averageLifestealPerRun: sum((r) => r.lifestealHealed) / n,
     averageEarned: sum((r) => r.earned) / n,
     averageBanked: sum((r) => r.banked) / n,
     averageWaifubux: sum((r) => r.waifubux) / n,

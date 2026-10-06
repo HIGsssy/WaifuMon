@@ -13,6 +13,7 @@
 import { HttpResponse, http } from 'msw';
 
 import type {
+  CombatModifierRow,
   DismantleBlocker,
   DismantleLine,
   DismantleProblemReason,
@@ -50,6 +51,7 @@ export function gearItem(
     multiplier: 0.5,
     range: { min: 0.4, max: 0.6 },
     rollQuality: 50,
+    combatBonuses: [],
     equipped: false,
     favorite: false,
     locked: false,
@@ -115,6 +117,11 @@ export interface EquipmentBackendOptions {
   recipes?: FakeRecipe[];
   /** Which image the fake server says it resolved; null for text-only. */
   workshopArtwork?: 'workshop' | 'patch' | null;
+  /**
+   * The loadout's cumulative combat bonuses as the server would format them.
+   * Scripted, not derived: totalling and capping are the server's combat rules.
+   */
+  combatModifiers?: CombatModifierRow[];
 }
 
 export function createEquipmentBackend(opts: EquipmentBackendOptions = {}) {
@@ -138,6 +145,7 @@ export function createEquipmentBackend(opts: EquipmentBackendOptions = {}) {
     salvageYields: opts.salvageYields ?? ({ N: 1, R: 4, SR: 12 } as Partial<Record<Rarity, number>>),
     recipes: opts.recipes ?? DEFAULT_RECIPES,
     workshopArtwork: opts.workshopArtwork ?? null,
+    combatModifiers: opts.combatModifiers ?? [],
     /** Every Workshop write the page sent, in order: body and addressed player. */
     workshopRequests: [] as { path: string; body: Record<string, unknown>; playerId: string }[],
     /** Results by request key — the server's idempotency, so a retry replays. */
@@ -198,6 +206,7 @@ export function createEquipmentBackend(opts: EquipmentBackendOptions = {}) {
         defense: statFor(state.slots.defense),
         maxHp: statFor(state.slots.health),
       },
+      combatModifiers: state.combatModifiers,
       unavailableReason: !state.buddy ? 'no_buddy' : missing ? 'incomplete_loadout' : null,
       slots,
     };
@@ -253,6 +262,7 @@ export function createEquipmentBackend(opts: EquipmentBackendOptions = {}) {
           rarity: v.rarity,
           slot: v.slot,
           multiplier: v.multiplier,
+          combatBonuses: v.combatBonuses,
           components: v.salvage.components!,
         });
       }
@@ -519,6 +529,7 @@ export function createEquipmentBackend(opts: EquipmentBackendOptions = {}) {
           rarity: made.rarity,
           multiplier: made.multiplier,
           affix: made.name.startsWith(`${made.baseName} `) ? made.name.slice(made.baseName.length + 1) : null,
+          combatBonuses: made.combatBonuses,
         },
         balances: balances(),
       };

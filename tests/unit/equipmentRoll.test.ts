@@ -152,10 +152,12 @@ describe('rollEquipmentInstance — affix pool', () => {
     expect(rollEquipmentInstance(PIPE, { rng: scripted(4, 0), affixes: AFFIXES })).toEqual({
       rolledMultiplierBp: 6_000,
       affixKey: 'attack_n_1',
+      combatBonuses: [],
     });
     expect(rollEquipmentInstance(PIPE, { rng: scripted(0, 2), affixes: AFFIXES })).toEqual({
       rolledMultiplierBp: 4_000,
       affixKey: 'attack_n_3',
+      combatBonuses: [],
     });
   });
 

@@ -40,9 +40,20 @@ import {
   flagBody,
   slotChangeBody,
   slotChangeSchema,
+  type CombatBonusFamilyId,
 } from '../../schemas/equipment';
 import type { EquipmentInstanceView } from '../../../modules/equipment/equipmentQueries';
 import type { EquipmentSort } from '../../../modules/equipment/equipmentService';
+import type { CombatModifiers } from '../../../modules/combat/combatTypes';
+import {
+  COMBAT_BONUS_LABELS,
+  COMBAT_BONUS_MODIFIER,
+  COMBAT_BONUS_STATS,
+  combatModifierRows,
+  formatCombatBonus,
+  type CombatBonus,
+  type CombatBonusStat,
+} from '../../../modules/equipment/combatBonuses';
 import { BASIS_POINTS, SLOT_STAT } from '../../../modules/equipment/equipmentMath';
 import { rollQualityPercent } from '../../../modules/equipment/equipmentRoll';
 import { EQUIPMENT_SOURCE_LABELS, type EquipmentSourceType } from '../../../modules/equipment/vocabulary';
@@ -70,6 +81,32 @@ const lockedResponse = {
 
 const toMultiplier = (bp: number) => bp / BASIS_POINTS;
 
+const BONUS_FAMILY_ID: Readonly<Record<CombatBonusStat, CombatBonusFamilyId>> = {
+  crit_chance_bp: 'crit_chance',
+  crit_damage_bonus_bp: 'crit_damage',
+  double_attack_chance_bp: 'double_attack',
+  armor_penetration_bp: 'armor_penetration',
+  lifesteal_bp: 'lifesteal',
+};
+const MODIFIER_FAMILY_ID = Object.fromEntries(
+  COMBAT_BONUS_STATS.map((stat) => [COMBAT_BONUS_MODIFIER[stat], BONUS_FAMILY_ID[stat]]),
+) as Readonly<Record<keyof CombatModifiers, CombatBonusFamilyId>>;
+
+/** A loadout's cumulative totals as the Portal shows them. Zero rows are already omitted. */
+export function toCombatModifierResources(modifiers: CombatModifiers) {
+  return combatModifierRows(modifiers).map((row) => ({ key: MODIFIER_FAMILY_ID[row.key], label: row.label, value: row.value }));
+}
+
+/** A copy's rolled bonuses as the Portal shows them: percentages and ready text, never basis points. */
+export function toCombatBonusResources(bonuses: readonly CombatBonus[]) {
+  return bonuses.map((bonus) => ({
+    stat: BONUS_FAMILY_ID[bonus.stat],
+    label: COMBAT_BONUS_LABELS[bonus.stat],
+    percent: bonus.valueBp / 100,
+    text: formatCombatBonus(bonus),
+  }));
+}
+
 /**
  * The one projection of an owned copy the Portal sees. `workshop` is the live
  * Workshop configuration: dismantle eligibility is decided here, by the same
@@ -87,6 +124,7 @@ export function toEquipmentItemResource(view: EquipmentInstanceView, workshop: W
     multiplier: toMultiplier(view.rolledMultiplierBp),
     range: { min: toMultiplier(def.multiplierMinBp), max: toMultiplier(def.multiplierMaxBp) },
     rollQuality: rollQualityPercent(def, view.rolledMultiplierBp),
+    combatBonuses: toCombatBonusResources(view.combatBonuses),
     equipped: view.equipped,
     favorite: view.isFavorite,
     locked: view.isLocked,
@@ -116,6 +154,7 @@ function toDismantleLine(line: DismantleLine) {
     rarity: line.rarity as Rarity,
     slot: line.slot,
     multiplier: toMultiplier(line.rolledMultiplierBp),
+    combatBonuses: toCombatBonusResources(line.combatBonuses),
     components: line.components,
   };
 }
@@ -134,6 +173,7 @@ function toFabricationResult(outcome: FabricationOutcome) {
       rarity: outcome.item.rarity as Rarity,
       multiplier: toMultiplier(outcome.item.rolledMultiplierBp),
       affix: outcome.item.affixSuffix,
+      combatBonuses: toCombatBonusResources(outcome.item.combatBonuses),
     },
     balances: outcome.balances,
   };
@@ -241,6 +281,7 @@ export const equipmentRoutes =
               }
             : null,
           stats: { ...stats.stats },
+          combatModifiers: toCombatModifierResources(stats.combatModifiers),
           unavailableReason: stats.unavailableReason,
           slots: {
             attack: loadout.slots.attack ? toEquipmentItemResource(loadout.slots.attack, workshopConfig()) : null,

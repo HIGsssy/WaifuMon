@@ -90,8 +90,10 @@ next option. Workshop access never fails because of artwork.
   `removed_reason = 'dismantled'` and gets a `dismantled` equipment event.
 - **Fabricate** guarantees the recipe's rarity. The player picks Attack,
   Defense, Health or Any. The base definition is drawn uniformly from the
-  enabled definitions that match. The multiplier and affix are the normal
-  roll. If no definition matches, the request is refused before any charge,
+  enabled definitions that match. The multiplier, the affix and the
+  rarity-driven secondary combat bonuses are the normal roll
+  (`docs/equipment-combat-bonuses.md`) — the Workshop has no bonus logic of
+  its own, and a retried request returns the same item, bonuses included. If no definition matches, the request is refused before any charge,
   and another slot is never substituted. The instance records
   `source_type = 'fabrication'` and `source_key = <recipe key>`, and the
   Portal shows it as "Fabricated by Patch".

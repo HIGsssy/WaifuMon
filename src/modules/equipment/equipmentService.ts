@@ -18,7 +18,7 @@
  *    definition is refused (unless the caller is paying out something already
  *    won); equipping an instance of one is allowed.
  *  - **An instance owns its roll.** `grantEquipment` decides each copy's
- *    multiplier and affix exactly once — rolled from the definition's range
+ *    multiplier, affix and combat bonuses exactly once — rolled from the definition's range
  *    (`equipmentRoll.ts`) or dictated and validated for a fixed grant — and
  *    stores them on the row. Nothing ever recalculates them, and a retried
  *    grant reads the original copies back instead of rolling again.
@@ -66,7 +66,14 @@ import { recordDomainAdminAction } from '../admin/adminActionAudit';
 import type { FeatureUnlockService } from '../features/featureUnlockService';
 import type { EquipmentAffixCatalogue } from './affixCatalogue';
 import {
+  CombatBonusPoolError,
+  readStoredCombatBonuses,
+  type CombatBonus,
+  type CombatBonusCatalogue,
+} from './combatBonuses';
+import {
   equipmentDisplayName,
+  fixedRollCombatBonuses,
   multiplierRangeIssues,
   rollEquipmentInstance,
   UNKNOWN_AFFIX_LABEL,
@@ -105,15 +112,18 @@ const DEFAULT_LOADOUT_NAME = 'Default';
  * How a grant decides its copies' rolled properties.
  *
  *  - `random` (the default) — normal loot. Each copy rolls its own multiplier
- *    from the definition's range and its own affix from the catalogue.
- *  - `fixed` — the caller dictates the exact multiplier and affix (or null)
- *    for every copy: onboarding, admin tools, compensation. Validated against
- *    the definition's current range and the catalogue; anything else is
- *    refused with `EquipmentValidationError`, never clamped.
+ *    from the definition's range, its own affix from the catalogue, and its
+ *    own combat bonuses by its rarity's rules (`combatBonuses.ts`).
+ *  - `fixed` — the caller dictates the exact multiplier, affix (or null) and
+ *    combat bonuses for every copy: onboarding, admin tools, compensation,
+ *    restores. `combatBonuses` omitted means **none** — a fixed grant never
+ *    rolls. Validated against the definition's current range, the affix
+ *    catalogue and the bonus shape; anything else is refused with
+ *    `EquipmentValidationError`, never clamped.
  */
 export type EquipmentRollSpec =
   | { kind: 'random' }
-  | { kind: 'fixed'; rolledMultiplierBp: number; affixKey: string | null };
+  | { kind: 'fixed'; rolledMultiplierBp: number; affixKey: string | null; combatBonuses?: CombatBonus[] };
 
 export interface GrantEquipmentInput {
   playerId: number;
@@ -197,9 +207,9 @@ export interface EquipmentPage {
 
 /**
  * Identical owned gear, grouped. Copies group only when everything a player
- * can see about them matches — the definition, the rolled multiplier **and**
- * the affix — so two Rusty Pipes at ×0.40 and ×0.60, or with different
- * suffixes, are separate groups. Per-copy state (favourite, lock, equipped)
+ * can see about them matches — the definition, the rolled multiplier, the
+ * affix **and** the combat bonuses — so two Rusty Pipes at ×0.40 and ×0.60,
+ * with different suffixes, or with different bonus rolls, are separate groups. Per-copy state (favourite, lock, equipped)
  * is counted, never merged.
  */
 export interface EquipmentGroup {
@@ -207,6 +217,8 @@ export interface EquipmentGroup {
   /** Shared by every copy in the group. */
   rolledMultiplierBp: number;
   affixKey: string | null;
+  /** Shared by every copy in the group, like the multiplier and affix. */
+  combatBonuses: CombatBonus[];
   displayName: string;
   count: number;
   equippedCount: number;
@@ -268,6 +280,7 @@ export interface GrantKeyRecord {
   definition: EquipmentDefinitionView;
   rolledMultiplierBp: number;
   affixKey: string | null;
+  combatBonuses: CombatBonus[];
   removed: boolean;
 }
 
@@ -317,6 +330,7 @@ export interface DismantleCopy {
   definition: EquipmentDefinitionView;
   rolledMultiplierBp: number;
   affixKey: string | null;
+  combatBonuses: CombatBonus[];
   displayName: string;
   components: number;
 }
@@ -413,6 +427,12 @@ export interface EquipmentServiceDeps {
   featureUnlocks: Pick<FeatureUnlockService, 'isUnlocked'>;
   /** The affix catalogue, read live so a content reload is followed. */
   getAffixes(): EquipmentAffixCatalogue;
+  /**
+   * The combat-bonus catalogue, read live so a content reload is followed.
+   * Null (or no getter) means no catalogue is deployed: random grants then
+   * roll no mechanical bonus at any rarity. Production always supplies it.
+   */
+  getCombatBonuses?(): CombatBonusCatalogue | null;
   /** The RNG random grants roll with. Injected by tests; `Math.random` otherwise. */
   rng?: Rng;
 }
@@ -689,7 +709,17 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
       // roll itself — never an unaffixed item, never another pool.
       const issues = multiplierRangeIssues(definition.slot, definition);
       if (issues.length > 0) throw new EquipmentValidationError(issues);
-      return Array.from({ length: quantity }, () => rollEquipmentInstance(definition, { rng, affixes }));
+      const combatBonuses = deps.getCombatBonuses?.() ?? null;
+      try {
+        return Array.from({ length: quantity }, () =>
+          rollEquipmentInstance(definition, { rng, affixes, combatBonuses }),
+        );
+      } catch (err) {
+        // A pool that cannot supply its rarity's distinct bonuses is a content
+        // error (catalogue validation refuses it); never a duplicated stat.
+        if (!(err instanceof CombatBonusPoolError)) throw err;
+        throw new EquipmentValidationError([{ path: 'combatBonuses', message: err.message }]);
+      }
     }
     if (kind !== 'fixed') {
       throw new EquipmentValidationError([{ path: 'roll.kind', message: `unknown roll kind "${String(kind)}"` }]);
@@ -700,6 +730,8 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
     return Array.from({ length: quantity }, () => ({
       rolledMultiplierBp: fixed.rolledMultiplierBp,
       affixKey: fixed.affixKey,
+      // Dictated, never rolled: absent means the copy has no bonuses.
+      combatBonuses: fixedRollCombatBonuses(fixed.combatBonuses),
     }));
   }
 
@@ -715,6 +747,7 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
           definition: equipmentDefinitions,
           rolledMultiplierBp: playerEquipment.rolledMultiplierBp,
           affixKey: playerEquipment.affixKey,
+          combatBonuses: playerEquipment.combatBonuses,
           count: sql<number>`count(*)::int`,
           equippedCount: sql<number>`count(${playerLoadoutSlots.equipmentId})::int`,
           favoriteCount: sql<number>`count(*) filter (where ${playerEquipment.isFavorite})::int`,
@@ -730,13 +763,19 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
         .where(and(...filterConditions(playerId, opts, activeLoadoutId)))
         // Everything a player can see about a copy, so materially different
         // loot never collapses into one line.
-        .groupBy(equipmentDefinitions.id, playerEquipment.rolledMultiplierBp, playerEquipment.affixKey);
+        .groupBy(
+          equipmentDefinitions.id,
+          playerEquipment.rolledMultiplierBp,
+          playerEquipment.affixKey,
+          playerEquipment.combatBonuses,
+        );
 
       const affixes = deps.getAffixes();
       const groups: (EquipmentGroup & { newest: number })[] = rows.map((r) => ({
         definition: toDefinitionView(r.definition),
         rolledMultiplierBp: r.rolledMultiplierBp,
         affixKey: r.affixKey,
+        combatBonuses: readStoredCombatBonuses(r.combatBonuses),
         displayName: equipmentDisplayName(r.definition.name, r.affixKey, affixes),
         count: r.count,
         equippedCount: r.equippedCount,
@@ -747,12 +786,14 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
         newest: Number(r.newest),
       }));
       const rank = (g: EquipmentGroup) => (RARITIES as readonly string[]).indexOf(g.definition.rarity);
-      // Key, then roll, then affix: a total order over group identity, so
-      // ties in the chosen sort never shuffle between reads.
+      // Key, then roll, then affix, then bonuses: a total order over group
+      // identity, so ties in the chosen sort never shuffle between reads.
+      const bonusKey = (g: EquipmentGroup) => g.combatBonuses.map((b) => `${b.stat}:${b.valueBp}`).join(',');
       const identity = (a: EquipmentGroup, b: EquipmentGroup) =>
         a.definition.key.localeCompare(b.definition.key) ||
         b.rolledMultiplierBp - a.rolledMultiplierBp ||
-        (a.affixKey ?? '').localeCompare(b.affixKey ?? '');
+        (a.affixKey ?? '').localeCompare(b.affixKey ?? '') ||
+        bonusKey(a).localeCompare(bonusKey(b));
       const sort = opts.sort ?? 'multiplier';
       groups.sort((a, b) => {
         switch (sort) {
@@ -851,6 +892,7 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
             definition: toDefinitionView(row.definition),
             rolledMultiplierBp: row.instance.rolledMultiplierBp,
             affixKey: row.instance.affixKey,
+            combatBonuses: readStoredCombatBonuses(row.instance.combatBonuses),
             displayName: equipmentDisplayName(row.definition.name, row.instance.affixKey, affixes),
             components,
           });
@@ -900,7 +942,11 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
         const existing = await tx.select().from(playerEquipment).where(inArray(playerEquipment.grantKey, copyKeys));
         if (existing.length < quantity) throw err;
         // Placeholders only: every insert below conflicts and is discarded.
-        rolls = existing.map((row) => ({ rolledMultiplierBp: row.rolledMultiplierBp, affixKey: row.affixKey }));
+        rolls = existing.map((row) => ({
+          rolledMultiplierBp: row.rolledMultiplierBp,
+          affixKey: row.affixKey,
+          combatBonuses: readStoredCombatBonuses(row.combatBonuses),
+        }));
       }
       // On a retry the insert below conflicts and these freshly rolled values
       // are discarded: the copies read back carry the roll they were first
@@ -911,6 +957,7 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
         slot: definition.slot,
         rolledMultiplierBp: rolls[i]!.rolledMultiplierBp,
         affixKey: rolls[i]!.affixKey,
+        combatBonuses: rolls[i]!.combatBonuses,
         sourceType: input.source.type,
         sourceKey: input.source.key ?? null,
         grantKey: copyKeys?.[i] ?? null,
@@ -960,6 +1007,7 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
             definitionKey: definition.key,
             rolledMultiplierBp: row.rolledMultiplierBp,
             affixKey: row.affixKey,
+            combatBonuses: row.combatBonuses,
             rollKind: input.roll?.kind ?? 'random',
             sourceType: input.source.type,
             sourceKey: input.source.key ?? null,
@@ -1262,6 +1310,7 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
             rarity: copy.definition.rarity,
             rolledMultiplierBp: copy.rolledMultiplierBp,
             affixKey: copy.affixKey,
+            combatBonuses: copy.combatBonuses,
             components: copy.components,
           },
         });
@@ -1286,6 +1335,7 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
           definition: toDefinitionView(definition),
           rolledMultiplierBp: instance.rolledMultiplierBp,
           affixKey: instance.affixKey,
+          combatBonuses: readStoredCombatBonuses(instance.combatBonuses),
           removed: instance.removedAt != null,
         });
       }

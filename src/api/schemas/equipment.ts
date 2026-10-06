@@ -3,8 +3,8 @@
  *
  * What a player may see about their own gear and nothing more: display name,
  * slot, rarity, the copy's rolled multiplier and its definition's range as
- * plain multipliers (`0.8`, never `8000` basis points), roll quality, and the
- * three per-copy flags. Definition keys, affix keys, grant keys, source keys
+ * plain multipliers (`0.8`, never `8000` basis points), roll quality, its
+ * rolled combat bonuses as percentages, and the three per-copy flags. Definition keys, affix keys, grant keys, source keys
  * and audit payloads never appear. The instance `id` is an opaque handle for
  * the action routes — clients do not render it.
  */
@@ -16,6 +16,29 @@ import { BROWSE_DEFAULT_PAGE_SIZE, BROWSE_MAX_PAGE_SIZE } from '../../modules/eq
 import { idParam, isoDateTime, raritySchema } from './common';
 
 export const equipmentSlotSchema = z.enum(EQUIPMENT_SLOTS);
+
+/**
+ * The five bonus families as the API names them — the same id on an item's
+ * bonus and on a loadout total. Not the storage keys: nothing here says
+ * "basis points".
+ */
+export const COMBAT_BONUS_FAMILY_IDS = ['crit_chance', 'crit_damage', 'double_attack', 'armor_penetration', 'lifesteal'] as const;
+export type CombatBonusFamilyId = (typeof COMBAT_BONUS_FAMILY_IDS)[number];
+
+/** One rolled secondary bonus on one copy. */
+export const combatBonusSchema = z.object({
+  stat: z.enum(COMBAT_BONUS_FAMILY_IDS).describe('Stable bonus-family identifier.'),
+  label: z.string().describe('Player-facing family name, e.g. "Crit Chance".'),
+  percent: z.number().describe('The rolled value as a percentage, e.g. 4.25 for +4.25%.'),
+  text: z.string().describe('Ready to display: "+4.25% Crit Chance".'),
+});
+
+/** One row of a loadout's cumulative combat bonuses. Zero rows are omitted. */
+export const combatModifierRowSchema = z.object({
+  key: z.enum(COMBAT_BONUS_FAMILY_IDS).describe('The bonus family this total is for.'),
+  label: z.string().describe('Short label, e.g. "Crit" or "Crit DMG".'),
+  value: z.string().describe('Ready to display, e.g. "9.75%". Crit DMG is the total Crit multiplier, base included.'),
+});
 
 export const equipmentItemSchema = z.object({
   id: z.number().int().describe('Opaque handle for the action routes. Not for display.'),
@@ -34,6 +57,9 @@ export const equipmentItemSchema = z.object({
     .min(0)
     .max(100)
     .describe('Display only: (rolled − min) / (max − min) as 0–100; 100 for a single-value range.'),
+  combatBonuses: z
+    .array(combatBonusSchema)
+    .describe('This copy’s rolled secondary combat bonuses: none, one or two. Empty for gear without any.'),
   equipped: z.boolean(),
   favorite: z.boolean(),
   locked: z.boolean(),
@@ -75,6 +101,9 @@ export const equipmentOverviewSchema = z.discriminatedUnion('unlocked', [
       })
       .nullable(),
     stats: equipmentStatsSchema.describe('Null per stat when its slot is empty or there is no Buddy.'),
+    combatModifiers: z
+      .array(combatModifierRowSchema)
+      .describe('Cumulative combat bonuses of everything equipped, capped by the combat rules. Empty when none.'),
     unavailableReason: z.enum(['no_buddy', 'incomplete_loadout']).nullable(),
     slots: z.object({
       attack: equipmentItemSchema.nullable(),
@@ -107,7 +136,7 @@ export const equipmentDetailSchema = z.object({
   identicalCopies: z
     .number()
     .int()
-    .describe('Copies the player holds with the same definition, roll and affix — this one included.'),
+    .describe('Copies the player holds with the same definition, roll, affix and bonuses — this one included.'),
   comparison: equipmentComparisonSchema,
 });
 
@@ -212,6 +241,7 @@ const dismantleLineSchema = z.object({
   rarity: raritySchema,
   slot: equipmentSlotSchema,
   multiplier: z.number(),
+  combatBonuses: z.array(combatBonusSchema),
   components: z.number().int(),
 });
 
@@ -248,6 +278,7 @@ export const fabricationResultSchema = z.object({
     rarity: raritySchema,
     multiplier: z.number(),
     affix: z.string().nullable().describe('The affix text, e.g. "of Poor Planning".'),
+    combatBonuses: z.array(combatBonusSchema).describe('The secondary bonuses this copy rolled.'),
   }),
   balances: balancesSchema,
 });

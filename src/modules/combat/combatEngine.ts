@@ -22,12 +22,29 @@
  * Inputs are never mutated; every call returns a new state. A refused action
  * throws `CombatActionRejectedError` (with a stable `reason`) and leaves the
  * caller's state exactly as it was. Randomness is drawn from `context.rng`
- * only: one draw per basic attack, for its damage factor (`combatMath.ts`).
- * A refused action draws nothing.
+ * only (`combatMath.ts`). A refused action draws nothing.
+ *
+ * ## A basic attack
+ *
+ * One or two **strikes**. Each strike, in order: Armor Penetration → base
+ * damage → variance draw → Crit draw → damage → Lifesteal. Then, only after
+ * the *normal* strike and only if the target still stands, the attacker's
+ * Double Attack chance is drawn; a success adds exactly one bonus strike,
+ * which uses the same ATK and modifiers, rolls its own variance and Crit,
+ * lifesteals — and never rolls Double Attack itself. No chains.
+ *
+ * Draw order per basic attack, so a seed reproduces a fight:
+ *
+ *   1. variance                      — always
+ *   2. Crit                          — only if critChanceBp > 0
+ *   3. Double Attack                 — only if doubleAttackChanceBp > 0 and the target survived
+ *   4. bonus strike variance, Crit   — only if (3) triggered
+ *
+ * A combatant with no modifiers therefore draws exactly once, as before.
  */
 import { CombatActionRejectedError } from '../../shared/errors';
-import { hpAfterDamage, rollBasicAttackDamage } from './combatMath';
-import { assertValidCombatState, combatantSnapshot, opponentOf } from './combatState';
+import { hpAfterDamage, lifestealAmount, rollChance, rollStrike } from './combatMath';
+import { assertValidCombatState, combatantSnapshot, modifiersOf, opponentOf } from './combatState';
 import {
   isCombatActor,
   type CombatAction,
@@ -98,42 +115,96 @@ export function resolveCombatAction(
   }
 }
 
-function resolveBasicAttack(state: CombatState, actor: CombatActor, context: CombatContext): CombatStep {
+/**
+ * One strike from `actor`: damage into the target, then Lifesteal back into
+ * the attacker. Appends its events and returns the state after it.
+ */
+function resolveStrike(
+  state: CombatState,
+  actor: CombatActor,
+  context: CombatContext,
+  events: CombatEvent[],
+  bonusAttack: boolean,
+): CombatState {
   const target = opponentOf(actor);
   const attacker = state[actor];
   const defender = state[target];
-  const { base, varianceBasisPoints, amount } = rollBasicAttackDamage(
-    attacker.attack,
-    defender.defense,
-    state.rules.damageVariance,
-    context.rng,
-  );
-  const targetHpAfter = hpAfterDamage(defender.currentHp, amount);
+  const modifiers = modifiersOf(attacker);
+  const strike = rollStrike(attacker.attack, defender.defense, modifiers, state.rules.damageVariance, context.rng);
+  const targetHpAfter = hpAfterDamage(defender.currentHp, strike.amount);
 
-  const afterHit: CombatState = {
-    ...state,
-    [target]: { ...defender, currentHp: targetHpAfter },
-  };
-  const events: CombatEvent[] = [
-    { type: 'action_started', round: state.round, actor, action: 'basic_attack' },
-    {
-      type: 'damage',
+  events.push({
+    type: 'damage',
+    round: state.round,
+    actor,
+    target,
+    amount: strike.amount,
+    baseAmount: strike.base,
+    varianceBasisPoints: strike.varianceBasisPoints,
+    targetHpBefore: defender.currentHp,
+    targetHpAfter,
+    targetDefense: strike.targetDefense,
+    effectiveDefense: strike.effectiveDefense,
+    armorPenetrationBp: strike.armorPenetrationBp,
+    variedAmount: strike.variedAmount,
+    critical: strike.critical,
+    critMultiplierBp: strike.critMultiplierBp,
+    bonusAttack,
+  });
+  if (strike.critical) {
+    events.push({
+      type: 'critical_hit',
       round: state.round,
       actor,
       target,
-      amount,
-      baseAmount: base,
-      varianceBasisPoints,
-      targetHpBefore: defender.currentHp,
-      targetHpAfter,
-    },
-  ];
-
-  if (targetHpAfter === 0) {
-    events.push({ type: 'combatant_defeated', round: state.round, actor: target });
-    return finish(afterHit, actor === 'player' ? 'player_victory' : 'enemy_victory', 'defeat', events);
+      critMultiplierBp: strike.critMultiplierBp,
+      amount: strike.amount,
+    });
   }
-  return advanceTurn(afterHit, events);
+
+  // Lifesteal reads the HP actually removed, not the nominal damage.
+  const damageDealt = defender.currentHp - targetHpAfter;
+  const rawHeal = lifestealAmount(damageDealt, modifiers.lifestealBp);
+  const heal = Math.min(rawHeal, attacker.maxHp - attacker.currentHp);
+  if (heal > 0) {
+    events.push({
+      type: 'lifesteal_heal',
+      round: state.round,
+      actor,
+      amount: heal,
+      rawAmount: rawHeal,
+      damageDealt,
+      lifestealBp: modifiers.lifestealBp,
+      hpBefore: attacker.currentHp,
+      hpAfter: attacker.currentHp + heal,
+      bonusAttack,
+    });
+  }
+
+  return {
+    ...state,
+    [actor]: heal > 0 ? { ...attacker, currentHp: attacker.currentHp + heal } : attacker,
+    [target]: { ...defender, currentHp: targetHpAfter },
+  };
+}
+
+function resolveBasicAttack(state: CombatState, actor: CombatActor, context: CombatContext): CombatStep {
+  const target = opponentOf(actor);
+  const events: CombatEvent[] = [{ type: 'action_started', round: state.round, actor, action: 'basic_attack' }];
+
+  let next = resolveStrike(state, actor, context, events, false);
+  // Only the normal strike may roll Double Attack, and only at a standing target.
+  const doubleAttackChanceBp = modifiersOf(state[actor]).doubleAttackChanceBp;
+  if (next[target].currentHp > 0 && rollChance(doubleAttackChanceBp, context.rng)) {
+    events.push({ type: 'bonus_attack_triggered', round: state.round, actor, doubleAttackChanceBp });
+    next = resolveStrike(next, actor, context, events, true);
+  }
+
+  if (next[target].currentHp === 0) {
+    events.push({ type: 'combatant_defeated', round: state.round, actor: target });
+    return finish(next, actor === 'player' ? 'player_victory' : 'enemy_victory', 'defeat', events);
+  }
+  return advanceTurn(next, events);
 }
 
 /** Hand the turn to the other side, applying the round convention and the round cap. */

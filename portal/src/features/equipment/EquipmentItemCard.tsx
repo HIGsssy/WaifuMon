@@ -2,14 +2,15 @@
  * One owned copy in the Gear Bag — or one filled slot in the loadout.
  *
  * Shows everything a quick decision needs: the full name, rarity, slot, this
- * copy's own multiplier, the definition's range, roll quality, and the three
- * per-copy states. The whole card is the button that opens the detail view.
+ * copy's own multiplier, the definition's range, roll quality, its secondary
+ * combat bonuses (when it rolled any), and the three per-copy states. The whole card is the button that opens the detail view.
  */
 import { CheckCircle2, Lock, Star } from 'lucide-react';
 
 import type { EquipmentItem } from '@/api/types';
 import { RarityBadge } from '@/components/waifumon/RarityBadge';
 import { cn } from '@/lib/cn';
+import { CombatBonusLines } from './CombatBonuses';
 import {
   SLOT_ICON,
   SLOT_LABEL,
@@ -87,6 +88,7 @@ export function EquipmentItemCard({
           Range {formatRange(item.range)}
         </span>
       </span>
+      <CombatBonusLines bonuses={item.combatBonuses} className="text-sm text-ink" />
     </button>
   );
 }

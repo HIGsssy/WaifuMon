@@ -23,6 +23,7 @@ import {
   type EquipmentAffix,
   type EquipmentAffixCatalogue,
 } from '../../src/modules/equipment/affixCatalogue';
+import type { CombatBonusCatalogue } from '../../src/modules/equipment/combatBonuses';
 import type { Rng } from '../../src/shared/random';
 import { STARTER_EQUIPMENT, STARTER_ROLLS } from '../../src/modules/onboarding/vocabulary';
 import type { EquipmentSlot } from '../../src/modules/equipment/vocabulary';
@@ -54,17 +55,27 @@ export const TEST_AFFIXES: EquipmentAffixCatalogue = buildAffixCatalogue(TEST_AF
  * Equipment services against a test database, rolling from {@link TEST_AFFIXES}
  * unless told otherwise. Tests that check which affix lands pass a scripted or
  * seeded RNG.
+ *
+ * No combat-bonus catalogue by default, so random grants roll **no** secondary
+ * bonus and existing scripted rolls keep their draw counts; a test about
+ * bonuses passes `combatBonuses` (a getter, so it can be swapped mid-test).
  */
 export function buildEquipmentServices(
   db: Db,
-  opts: { affixes?: EquipmentAffixCatalogue; rng?: Rng } = {},
+  opts: { affixes?: EquipmentAffixCatalogue; rng?: Rng; combatBonuses?: () => CombatBonusCatalogue | null } = {},
 ) {
   const featureUnlocks = createFeatureUnlockService(db);
   const affixes = opts.affixes ?? TEST_AFFIXES;
   return {
     featureUnlocks,
     getAffixes: () => affixes,
-    equipment: createEquipmentService({ db, featureUnlocks, getAffixes: () => affixes, ...(opts.rng ? { rng: opts.rng } : {}) }),
+    equipment: createEquipmentService({
+      db,
+      featureUnlocks,
+      getAffixes: () => affixes,
+      ...(opts.combatBonuses ? { getCombatBonuses: opts.combatBonuses } : {}),
+      ...(opts.rng ? { rng: opts.rng } : {}),
+    }),
     definitions: createEquipmentDefinitionService(db),
     promotion: createEquipmentPromotionService({ db }),
   };

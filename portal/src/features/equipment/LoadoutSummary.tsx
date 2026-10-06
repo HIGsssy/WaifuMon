@@ -1,6 +1,6 @@
 /**
- * The top of `/equipment`: the active Buddy, ATK / DEF / HP, and the three
- * active-loadout slots.
+ * The top of `/equipment`: the active Buddy, ATK / DEF / HP, the loadout's
+ * cumulative combat bonuses, and the three active-loadout slots.
  *
  * Every number is the overview response's, which the API reads from the
  * combat-stat service — the same Buddy and the same arithmetic Discord shows.
@@ -93,6 +93,21 @@ function StatTiles({ overview }: { overview: Unlocked }) {
       </dl>
       {overview.unavailableReason === 'incomplete_loadout' && (
         <p className="mt-2 text-xs text-ink-subtle">An empty slot leaves its stat unavailable.</p>
+      )}
+      {overview.combatModifiers.length > 0 && (
+        <div className="mt-3" data-testid="loadout-combat-bonuses">
+          <h3 className="text-xs tracking-wide text-ink-subtle uppercase">Combat Bonuses</h3>
+          <ul
+            className="tabular mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-sm text-ink"
+            aria-label="Combat Bonuses"
+          >
+            {overview.combatModifiers.map((row) => (
+              <li key={row.key}>
+                <span className="text-ink-muted">{row.label}:</span> {row.value}
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </Card>
   );

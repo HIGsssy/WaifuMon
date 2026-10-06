@@ -1,6 +1,7 @@
 /**
- * Inspect one owned copy: its roll, its range, roll quality, its states, a
- * comparison against what its slot holds now, and the four actions.
+ * Inspect one owned copy: its roll, its range, roll quality, its secondary
+ * combat bonuses, its states, a comparison against what its slot holds now,
+ * and the four actions.
  *
  * The comparison is the API's `previewSlot` result, verbatim. Without an
  * active Buddy there is nothing to compare, and the dialog says so rather than
@@ -23,6 +24,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/compone
 import { Skeleton } from '@/components/ui/skeleton';
 import { RarityBadge } from '@/components/waifumon/RarityBadge';
 import { formatDate } from '@/lib/format';
+import { CombatBonusLines } from './CombatBonuses';
 import { EquipmentStateMarks } from './EquipmentItemCard';
 import {
   SLOT_LABEL,
@@ -54,6 +56,24 @@ function changeMessage(verb: string, change: EquipmentSlotChange): string {
   return `${verb}. ${stat} ${formatStat(change.before)} → ${formatStat(change.after)}.`;
 }
 
+/** One side of the gear comparison: the copy's multiplier, then its own bonuses. */
+function ComparisonSide({ heading, item }: { heading: string; item: EquipmentItem }) {
+  return (
+    <div className="min-w-0" role="group" aria-label={heading}>
+      <p className="text-xs tracking-wide text-ink-subtle uppercase">{heading}</p>
+      <p className="text-xs break-words text-ink-muted">{item.name}</p>
+      <p className="tabular font-semibold text-ink">
+        {STAT_LABEL[SLOT_STAT[item.slot]]} {formatMultiplier(item.multiplier)}
+      </p>
+      {item.combatBonuses.length > 0 ? (
+        <CombatBonusLines bonuses={item.combatBonuses} className="text-sm text-ink" />
+      ) : (
+        <p className="text-xs text-ink-subtle">No combat bonuses</p>
+      )}
+    </div>
+  );
+}
+
 function Comparison({ detail }: { detail: EquipmentDetail }) {
   const { comparison: c, item } = detail;
   const stat = STAT_LABEL[c.stat];
@@ -80,34 +100,51 @@ function Comparison({ detail }: { detail: EquipmentDetail }) {
     );
   }
 
+  // Secondary bonuses are listed side by side, never scored: a Crit roll and a
+  // Lifesteal roll are different things, and which is better is the player's call.
+  const equipped = c.equippedItem;
+  const showBonuses =
+    equipped != null && (equipped.combatBonuses.length > 0 || item.combatBonuses.length > 0);
+
   return (
-    <dl className="tabular grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 rounded-xl border border-border bg-surface-sunken p-3 text-sm">
-      <dt className="text-ink-muted">Current {stat}</dt>
-      <dd className="text-right text-ink">{formatStat(c.current)}</dd>
-      <dt className="text-ink-muted">With this item</dt>
-      <dd className="text-right font-semibold text-ink">{formatStat(c.withItem)}</dd>
-      {c.delta != null && (
-        <>
-          <dt className="text-ink-muted">Change</dt>
-          <dd
-            className={
-              c.delta > 0
-                ? 'text-right font-semibold text-success'
-                : c.delta < 0
-                  ? 'text-right font-semibold text-danger'
-                  : 'text-right text-ink-muted'
-            }
-          >
-            {formatDelta(c.delta)}
-          </dd>
-        </>
+    <>
+      <dl className="tabular grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 rounded-xl border border-border bg-surface-sunken p-3 text-sm">
+        <dt className="text-ink-muted">Current {stat}</dt>
+        <dd className="text-right text-ink">{formatStat(c.current)}</dd>
+        <dt className="text-ink-muted">With this item</dt>
+        <dd className="text-right font-semibold text-ink">{formatStat(c.withItem)}</dd>
+        {c.delta != null && (
+          <>
+            <dt className="text-ink-muted">Change</dt>
+            <dd
+              className={
+                c.delta > 0
+                  ? 'text-right font-semibold text-success'
+                  : c.delta < 0
+                    ? 'text-right font-semibold text-danger'
+                    : 'text-right text-ink-muted'
+              }
+            >
+              {formatDelta(c.delta)}
+            </dd>
+          </>
+        )}
+        <dt className="col-span-2 mt-1 text-xs text-ink-subtle">
+          {c.equippedItem
+            ? `Compared with ${c.equippedItem.name} (${formatMultiplier(c.equippedItem.multiplier)}).`
+            : `Your ${SLOT_LABEL[item.slot]} slot is empty.`}
+        </dt>
+      </dl>
+      {showBonuses && (
+        <div
+          className="mt-2 grid grid-cols-2 gap-3 rounded-xl border border-border bg-surface-sunken p-3 text-sm"
+          data-testid="bonus-comparison"
+        >
+          <ComparisonSide heading="Current" item={equipped} />
+          <ComparisonSide heading="Candidate" item={item} />
+        </div>
       )}
-      <dt className="col-span-2 mt-1 text-xs text-ink-subtle">
-        {c.equippedItem
-          ? `Compared with ${c.equippedItem.name} (${formatMultiplier(c.equippedItem.multiplier)}).`
-          : `Your ${SLOT_LABEL[item.slot]} slot is empty.`}
-      </dt>
-    </dl>
+    </>
   );
 }
 
@@ -157,6 +194,13 @@ function DetailBody({ playerId, detail }: { playerId: number; detail: EquipmentD
           </>
         )}
       </dl>
+
+      {item.combatBonuses.length > 0 && (
+        <section aria-label="Combat Bonuses" className="mt-4">
+          <h3 className="text-xs tracking-wide text-ink-subtle uppercase">Combat Bonuses</h3>
+          <CombatBonusLines bonuses={item.combatBonuses} className="mt-1 text-sm text-ink" />
+        </section>
+      )}
 
       <section aria-label="Comparison" className="mt-4">
         <Comparison detail={detail} />

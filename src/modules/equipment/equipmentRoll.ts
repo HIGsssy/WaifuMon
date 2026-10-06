@@ -3,8 +3,12 @@
  *
  * A definition describes a *range* of multipliers (`min`…`max` in `step`s of
  * basis points); each owned instance stores the one value it rolled
- * (`player_equipment.rolled_multiplier_bp`) and, optionally, a flavour affix
- * (`affix_key`). The instance's value is the only one combat ever reads.
+ * (`player_equipment.rolled_multiplier_bp`), optionally a flavour affix
+ * (`affix_key`), and 0–2 mechanical combat bonuses (`combat_bonuses`, see
+ * `combatBonuses.ts`). The instance's values are the only ones combat reads.
+ *
+ * A random roll, in draw order: multiplier → affix → combat bonuses (the
+ * rarity's bonus chance, the distinct families, each magnitude).
  *
  * Every source of loot — onboarding today, bosses, expeditions and shops later
  * — goes through {@link rollEquipmentInstance} (via `grantEquipment`), so RNG
@@ -16,6 +20,13 @@
 import { EquipmentAffixPoolEmptyError, type EquipmentIssue } from '../../shared/errors';
 import type { Rng } from '../../shared/random';
 import { affixPoolOf, isEquipmentAffixPool, type EquipmentAffixCatalogue } from './affixCatalogue';
+import {
+  combatBonusListIssues,
+  rollCombatBonuses,
+  sortCombatBonuses,
+  type CombatBonus,
+  type CombatBonusCatalogue,
+} from './combatBonuses';
 import { EQUIPMENT_MULTIPLIER_BP_MAX, isEquipmentSlot, type EquipmentSlot } from './vocabulary';
 
 /** A definition's configured multiplier range, in basis points. */
@@ -29,6 +40,8 @@ export interface MultiplierRange {
 export interface EquipmentRoll {
   rolledMultiplierBp: number;
   affixKey: string | null;
+  /** 0–2 mechanical bonuses, canonical order. Empty for a copy with none. */
+  combatBonuses: CombatBonus[];
 }
 
 const isInt = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v);
@@ -80,7 +93,10 @@ export type RollableDefinition = MultiplierRange & { key: string; slot: Equipmen
  * Roll the properties of one new instance: a uniformly chosen discrete
  * multiplier, and — independently — a uniformly chosen **enabled** affix from
  * the definition's own pool (`slot.rarity`). Every random item is affixed;
- * there is no fallback to another rarity, slot or pool.
+ * there is no fallback to another rarity, slot or pool. Last, the rarity's
+ * mechanical combat bonuses (`rollCombatBonuses`): none or one at N, one at
+ * R, two distinct families at SR. Without a bonus catalogue (`null` — no file
+ * deployed) the copy rolls none.
  *
  * The affix is checked before anything is drawn, so a failed roll consumes no
  * randomness.
@@ -93,7 +109,7 @@ export type RollableDefinition = MultiplierRange & { key: string; slot: Equipmen
  */
 export function rollEquipmentInstance(
   definition: RollableDefinition,
-  opts: { rng: Rng; affixes: EquipmentAffixCatalogue },
+  opts: { rng: Rng; affixes: EquipmentAffixCatalogue; combatBonuses?: CombatBonusCatalogue | null },
 ): EquipmentRoll {
   const issues = multiplierRangeIssues(definition.slot, definition);
   if (issues.length > 0) {
@@ -107,7 +123,8 @@ export function rollEquipmentInstance(
   const steps = (definition.multiplierMaxBp - definition.multiplierMinBp) / definition.multiplierStepBp;
   const rolledMultiplierBp = definition.multiplierMinBp + opts.rng.intInclusive(0, steps) * definition.multiplierStepBp;
   const affixKey = candidates[opts.rng.intInclusive(0, candidates.length - 1)]!.key;
-  return { rolledMultiplierBp, affixKey };
+  const combatBonuses = rollCombatBonuses(definition, { rng: opts.rng, catalogue: opts.combatBonuses ?? null });
+  return { rolledMultiplierBp, affixKey, combatBonuses };
 }
 
 /**
@@ -117,6 +134,11 @@ export function rollEquipmentInstance(
  * pool** — the caller names a key, never a pool. Retired (disabled) affixes
  * are allowed, deliberately: restoring a copy someone lost is exactly what a
  * fixed grant is for, and random acquisition never sees them.
+ *
+ * `combatBonuses` is optional — omitted means none, which is what every
+ * onboarding starter is. When given it is stored exactly as dictated (shape
+ * and safety ceiling checked by `combatBonusListIssues`, never the rarity
+ * ranges), so a restore reproduces a copy whatever the ranges are today.
  *
  * Checks the runtime shape too: this is the gate a client-influenced value
  * would have to pass, so a string, float or extra field is refused rather
@@ -128,11 +150,11 @@ export function validateFixedRoll(
   affixes: EquipmentAffixCatalogue,
 ): EquipmentIssue[] {
   if (roll == null || typeof roll !== 'object' || Array.isArray(roll)) {
-    return [{ path: 'roll', message: 'must be an object with rolledMultiplierBp and affixKey' }];
+    return [{ path: 'roll', message: 'must be an object with rolledMultiplierBp, affixKey and optional combatBonuses' }];
   }
   const r = roll as Record<string, unknown>;
   const issues: EquipmentIssue[] = [];
-  const unknown = Object.keys(r).filter((k) => k !== 'rolledMultiplierBp' && k !== 'affixKey');
+  const unknown = Object.keys(r).filter((k) => k !== 'rolledMultiplierBp' && k !== 'affixKey' && k !== 'combatBonuses');
   if (unknown.length > 0) issues.push({ path: 'roll', message: `unknown field(s): ${unknown.join(', ')}` });
   if (!isMultiplierInRange(definition, r.rolledMultiplierBp as number)) {
     issues.push({
@@ -154,7 +176,13 @@ export function validateFixedRoll(
       });
     }
   }
+  if (r.combatBonuses !== undefined) issues.push(...combatBonusListIssues(r.combatBonuses, 'roll.combatBonuses'));
   return issues;
+}
+
+/** The bonuses a validated fixed roll stores: the dictated list in canonical order, or none. */
+export function fixedRollCombatBonuses(combatBonuses: readonly CombatBonus[] | undefined): CombatBonus[] {
+  return sortCombatBonuses(combatBonuses ?? []);
 }
 
 /** Shown in place of a suffix whose key the catalogue no longer knows. */
