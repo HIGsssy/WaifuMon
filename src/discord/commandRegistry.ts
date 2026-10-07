@@ -26,6 +26,7 @@ import {
   ADMIN_CHARM_CHOICES,
   ADMIN_MAX_CHARM_GRANT,
   ADMIN_MAX_ESSENCE_GRANT,
+  ADMIN_MAX_ITEM_GRANT,
 } from './commands/waifumonAdminPlayer';
 
 export function buildCommandDefinitions() {
@@ -197,6 +198,31 @@ export function buildCommandDefinitions() {
                 .setRequired(true)
                 .setMinValue(1)
                 .setMaxValue(ADMIN_MAX_CHARM_GRANT),
+            ),
+        )
+        // Production support tool, unlike its neighbours: any ordinary
+        // inventory item, picked by autocomplete from the live catalogue.
+        .addSubcommand((s) =>
+          s
+            .setName('grant-item')
+            .setDescription('Grant any inventory item to a player')
+            .addUserOption((o) =>
+              o.setName('user').setDescription('Target player').setRequired(true),
+            )
+            .addStringOption((o) =>
+              o
+                .setName('item')
+                .setDescription('Item to grant — type to search by name or key')
+                .setRequired(true)
+                .setAutocomplete(true),
+            )
+            .addIntegerOption((o) =>
+              o
+                .setName('quantity')
+                .setDescription(`How many (1–${ADMIN_MAX_ITEM_GRANT}) — defaults to 1`)
+                .setRequired(false)
+                .setMinValue(1)
+                .setMaxValue(ADMIN_MAX_ITEM_GRANT),
             ),
         ),
     )

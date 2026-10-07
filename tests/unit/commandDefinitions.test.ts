@@ -13,6 +13,7 @@ import {
   ADMIN_CHARM_CHOICES,
   ADMIN_MAX_CHARM_GRANT,
   ADMIN_MAX_ESSENCE_GRANT,
+  ADMIN_MAX_ITEM_GRANT,
 } from '../../src/discord/commands/waifumonAdminPlayer';
 
 /** Discord application-command option types used below. */
@@ -64,9 +65,9 @@ describe('/waifumon-admin player', () => {
     expect(cmd.dm_permission).toBe(false);
   });
 
-  it('exposes energy, essence and charms', () => {
+  it('exposes energy, essence, charms and grant-item', () => {
     const subs = (playerGroup().options ?? []).map((o: any) => o.name).sort();
-    expect(subs).toEqual(['charms', 'energy', 'essence']);
+    expect(subs).toEqual(['charms', 'energy', 'essence', 'grant-item']);
     for (const sub of playerGroup().options ?? []) {
       expect(sub.type).toBe(SUB_COMMAND);
     }
@@ -101,6 +102,27 @@ describe('/waifumon-admin player', () => {
     expect(choices.map((c: any) => c.value)).toEqual(ADMIN_CHARM_CHOICES.map((c) => c.value));
     // Discord hard-caps choice lists at 25.
     expect(choices.length).toBeLessThanOrEqual(25);
+  });
+
+  it('registers grant-item with an autocompleted item and a quantity defaulting to 1', () => {
+    const grant = optionNamed(playerGroup().options, 'grant-item');
+    expect(grant.options.map((o: any) => o.name)).toEqual(['user', 'item', 'quantity']);
+
+    const item = optionNamed(grant.options, 'item');
+    expect(item.required).toBe(true);
+    expect(item.autocomplete).toBe(true);
+    // Autocomplete and a fixed choice list are mutually exclusive in Discord.
+    expect(item.choices ?? []).toHaveLength(0);
+
+    const quantity = optionNamed(grant.options, 'quantity');
+    expect(quantity.required).toBeFalsy();
+    expect(quantity.min_value).toBe(1);
+    expect(quantity.max_value).toBe(ADMIN_MAX_ITEM_GRANT);
+
+    for (const option of grant.options) {
+      expect(option.description.length).toBeGreaterThan(0);
+      expect(option.description.length).toBeLessThanOrEqual(100);
+    }
   });
 
   it('leaves the energy amount optional so the bare command means "reset"', () => {
