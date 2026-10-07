@@ -1082,7 +1082,9 @@ An enemy is never composed onto a node that is not a fight.
 The Buddy in a fight scene is a reserved runtime actor, not authored content:
 the species comes from the run's fighter snapshot, the image from
 `assets/waifumon/<slug>/<slug>_sprite.webp`, and the position (bottom-left) from
-the compositor. A species without that file simply is not drawn. See
+the compositor. She is drawn on every fight picture, whichever fallback wins —
+an enemy with no sprite does not remove her. A species without that file
+simply is not drawn; one whose content sets `spriteFacing: "left"` is mirrored. See
 [managed-artwork.md](managed-artwork.md#sprites-backgrounds-and-scenes). Only events have
 artwork of their own among the non-combat nodes.
 

@@ -212,7 +212,8 @@ catalogue. It is resolved at render time:
 | Who | the run's fighter snapshot — `dungeon_runs.fighter.speciesSlug`, frozen at run start. Changing the active Buddy mid-run changes nothing. |
 | Image | the species' dungeon sprite, by convention: `assets/waifumon/<slug>/<slug>_sprite.webp` (`speciesDungeonSpritePath`). It is the `AssetId` variant `<slug>_sprite` in the existing species artwork layout — no second registry, no stored path. |
 | Where | the reserved player side: `PLAYER_BUDDY_PLACEMENT` — `bottom-left`, 80% of the scene's height, no offsets — through the same `layoutSprite` arithmetic as an enemy (`layoutPlayerBuddy`). |
-| Bound | never wider than 40% of the canvas (`PLAYER_BUDDY_MAX_WIDTH_SHARE`); a wide sprite shrinks in proportion and stays on the floor line. |
+| Bound | never wider than 40% of the canvas (`PLAYER_BUDDY_MAX_WIDTH_SHARE`); a wide sprite shrinks in proportion and stays on the floor line. Together with the height this is a reserved 480×540 region the sprite is fitted inside. |
+| Facing | drawn as authored unless the species' content sets `spriteFacing: "left"`, in which case she is mirrored inside the same box (`mirrorsPlayerBuddy`). |
 
 Both constants live in `scenePlacement.ts`; moving her is changing them and
 nothing else. A species with no sprite file is left out of the scene — the
@@ -220,6 +221,23 @@ frame still renders, `dungeons/buddy-sprite-missing` is logged once per species
 with the slug and the expected path, and her card art is **never** substituted.
 A sprite file that will not decode is handled the same way
 (`scene/player-buddy-omitted`).
+
+**Sprite facing convention.** The shipped set is mixed: most sprites are
+front-on, and the rest turn either way with no rule. So nothing is mirrored by
+default. `spriteFacing` (`"left"` / `"right"`, optional, on a species in
+`content/species/*.json`) records which way a sprite clearly looks; omit it for
+a front-on sprite. It describes the art, not the dungeon: the Buddy stands on
+the left and should look right (`PLAYER_BUDDY_FACING`), so only a `left`-facing
+sprite is flipped, by the compositor, from the one file. New sprites should be
+drawn front-on or facing right; set the field for any that face left.
+
+**She does not depend on the enemy.** The Buddy is resolved on her own and
+drawn on whichever picture a fight ends up showing. With an enemy sprite that
+is the composed scene. Without one, the fallbacks below are whole pictures
+rather than actor layers (enemy full art is an opaque 3:2 scene), so she is
+composed in front of that picture, used as the scene's background and
+therefore cover-cropped to 1200×675. With no Buddy sprite every fallback is
+the plain image it always was.
 
 Enemy placement is unchanged: all six anchors remain. An enemy at its default
 (`bottom-right`) never touches her. One authored into the left side is allowed
@@ -272,8 +290,9 @@ packages. No browser renderer is involved.
 
 For the composed scene the background is the node's snapshotted one, else the
 zone background. Neither an enemy nor the Buddy is composed onto a non-combat
-node, and a fight that falls back past the composed scene (an enemy with no
-sprite) shows no Buddy sprite either. Her card art remains the thumbnail.
+node. On a fight the Buddy is drawn over every column of the row above — the
+enemy's full artwork, the node's background, the zone artwork and the zone
+background included. Her card art remains the thumbnail.
 
 **Snapshots.** When a run starts it records, in `dungeon_runs.zone_snapshot`:
 `scenes` (each node's chosen background — pool entry id, asset id or path) and

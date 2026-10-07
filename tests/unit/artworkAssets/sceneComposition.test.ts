@@ -26,11 +26,13 @@ import {
   layoutOverlapShare,
   layoutPlayerBuddy,
   layoutSprite,
+  mirrorsPlayerBuddy,
   type SpritePlacement,
 } from '../../../src/modules/artworkAssets/scenePlacement';
 import { speciesDungeonSpriteAssetId, speciesDungeonSpritePath } from '../../../src/modules/assets/speciesArtworkFile';
 import { playerBuddySpriteLayer } from '../../../src/modules/artworkAssets/sceneLayers';
-import { BLUE, GREEN, RED, isNear, opaqueSprite, pixelAt, solidImage, transparentSprite } from '../../helpers/imageFixtures';
+import { SpeciesContentSchema } from '../../../src/modules/content/schemas';
+import { BLUE, GREEN, RED, isNear, opaqueSprite, pixelAt, solidImage, transparentSprite, twoToneSprite } from '../../helpers/imageFixtures';
 
 const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wm-scene-cache-'));
 afterAll(() => fs.rmSync(cacheDir, { recursive: true, force: true }));
@@ -390,6 +392,93 @@ describe('the player Buddy: a reserved left-side actor', () => {
     expect(isNear(await pixelAt(out, shared.x, shared.y), RED)).toBe(true);
     expect(isNear(await pixelAt(out, shared.x, buddyBox.top + 20), GREEN)).toBe(true);
     expect(isNear(await pixelAt(out, shared.x, buddyBox.top - 20), BLUE)).toBe(true);
+  });
+
+  it('needs no enemy: a Buddy over a background alone is a scene', async () => {
+    const out = await renderScene({ background: await solidImage(1200, 675, BLUE), playerBuddy: { bytes: await opaqueSprite(200, 300, GREEN, 'webp') } });
+    const box = layoutPlayerBuddy({ width: 200, height: 300 });
+    const at = centre(box);
+    expect(await sharp(out).metadata()).toMatchObject({ format: 'webp', width: SCENE_WIDTH, height: SCENE_HEIGHT });
+    expect(isNear(await pixelAt(out, at.x, at.y), GREEN)).toBe(true);
+    expect(isNear(await pixelAt(out, box.left + box.width + 20, at.y), BLUE)).toBe(true);
+    expect(isNear(await pixelAt(out, 900, 400), BLUE)).toBe(true);
+  });
+
+  describe('facing', () => {
+    const YELLOW = { r: 230, g: 220, b: 30 };
+
+    it('mirrors only a sprite authored as facing away from the enemy', () => {
+      expect(mirrorsPlayerBuddy('left')).toBe(true);
+      expect(mirrorsPlayerBuddy('right')).toBe(false);
+      // No stated facing — the front-on majority — is never mirrored.
+      expect(mirrorsPlayerBuddy(undefined)).toBe(false);
+      expect(mirrorsPlayerBuddy(null)).toBe(false);
+    });
+
+    it('is optional species metadata: absent by default, and only left or right', () => {
+      const species = { slug: 'alley_catgirl', name: 'Alley Catgirl', rarity: 'N', archetype: 'catgirl', contentRating: 'suggestive', imagePath: 'waifumon/alley_catgirl/standard.png' };
+      const parsed = SpeciesContentSchema.safeParse(species);
+      expect(parsed.success, JSON.stringify(parsed.error?.issues)).toBe(true);
+      expect(parsed.data!.spriteFacing).toBeUndefined();
+      expect(SpeciesContentSchema.parse({ ...species, spriteFacing: 'left' }).spriteFacing).toBe('left');
+      expect(SpeciesContentSchema.parse({ ...species, spriteFacing: 'right' }).spriteFacing).toBe('right');
+      expect(SpeciesContentSchema.safeParse({ ...species, spriteFacing: 'up' }).success).toBe(false);
+    });
+
+    it('flips her pixels inside the same reserved box, and nothing else in the scene', async () => {
+      const background = await solidImage(1200, 675, BLUE);
+      // Green on her left, yellow on her right.
+      const buddy = await twoToneSprite(200, 300, GREEN, YELLOW);
+      const enemy = { bytes: await twoToneSprite(200, 300, RED, YELLOW, 'png'), placement: placement({ scaleBasisPoints: 5000 }) };
+      const box = layoutPlayerBuddy({ width: 200, height: 300 });
+      const y = box.top + Math.floor(box.height / 2);
+      const leftX = box.left + Math.floor(box.width / 4);
+      const rightX = box.left + Math.floor((box.width * 3) / 4);
+      const enemyBox = layoutSprite({ width: 200, height: 300 }, enemy.placement);
+      const enemyLeft = [enemyBox.left + Math.floor(enemyBox.width / 4), enemyBox.top + Math.floor(enemyBox.height / 2)] as const;
+
+      const plain = await renderScene({ background, playerBuddy: { bytes: buddy }, sprite: enemy });
+      expect(isNear(await pixelAt(plain, leftX, y), GREEN)).toBe(true);
+      expect(isNear(await pixelAt(plain, rightX, y), YELLOW)).toBe(true);
+      // `mirror: false` is the same picture as leaving it out.
+      expect((await renderScene({ background, playerBuddy: { bytes: buddy, mirror: false }, sprite: enemy })).equals(plain)).toBe(true);
+
+      const mirrored = await renderScene({ background, playerBuddy: { bytes: buddy, mirror: true }, sprite: enemy });
+      expect(isNear(await pixelAt(mirrored, leftX, y), YELLOW)).toBe(true);
+      expect(isNear(await pixelAt(mirrored, rightX, y), GREEN)).toBe(true);
+      // Same box: just outside it is background either way.
+      for (const out of [plain, mirrored]) {
+        expect(isNear(await pixelAt(out, box.left - 10, y), BLUE)).toBe(true);
+        expect(isNear(await pixelAt(out, box.left + box.width + 10, y), BLUE)).toBe(true);
+        // The enemy is never mirrored.
+        expect(isNear(await pixelAt(out, ...enemyLeft), RED)).toBe(true);
+      }
+    });
+
+    it('is part of the cache key only when she is mirrored', () => {
+      const background = layer('flip-bg', null);
+      const buddy = layer('flip-buddy', null);
+      const plain = sceneCacheKey({ background, playerBuddy: { layer: buddy } });
+      expect(sceneCacheKey({ background, playerBuddy: { layer: buddy, mirror: false } })).toBe(plain);
+      expect(sceneCacheKey({ background, playerBuddy: { layer: buddy, mirror: true } })).not.toBe(plain);
+    });
+  });
+
+  it('keeps every shape of sprite inside the player region, at full height unless it is too wide to fit', () => {
+    const region = { left: 48, right: 48 + Math.round(SCENE_WIDTH * PLAYER_BUDDY_MAX_WIDTH_SHARE), floor: SCENE_HEIGHT - 14, height: 540 };
+    // The real set: every sprite is 1350 tall, from 403 to 1957 wide.
+    for (let width = 400; width <= 2000; width += 50) {
+      const box = layoutPlayerBuddy({ width, height: 1350 });
+      expect(box.left, String(width)).toBe(region.left);
+      expect(box.left + box.width, String(width)).toBeLessThanOrEqual(region.right);
+      expect(box.top + box.height, String(width)).toBe(region.floor);
+      expect(box.height, String(width)).toBeLessThanOrEqual(region.height);
+      // Fitted, not merely capped: it touches the region's top or its right edge.
+      expect(box.height === region.height || box.width === region.right - region.left, String(width)).toBe(true);
+    }
+    // Up to 1200px wide (140 of the 175 shipped sprites) she is drawn at the full 80% height.
+    expect(layoutPlayerBuddy({ width: 1200, height: 1350 })).toMatchObject({ width: 480, height: 540 });
+    expect(layoutPlayerBuddy({ width: 1957, height: 1350 })).toMatchObject({ width: 480, height: 331 });
   });
 
   describe('through the service', () => {

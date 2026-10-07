@@ -13,10 +13,17 @@
  *      zone background) with the run's Buddy on the reserved left side and
  *      the enemy's sprite layered over it;
  *   2. the enemy's full artwork;
- *   3. the node's snapshotted background on its own;
+ *   3. the node's snapshotted background;
  *   4. the zone artwork;
  *   5. the zone background;
  *   6. text only.
+ *
+ * The Buddy does not depend on the enemy. She is resolved once, on her own,
+ * and drawn on whichever of 1–5 wins: the enemy's art being incomplete only
+ * changes what she stands in front of. Steps 2–5 are whole pictures rather
+ * than actor layers — enemy full art is an opaque scene of its own — so there
+ * she is composed over that picture as the scene's background. Without a
+ * Buddy sprite each step is exactly the plain image it always was.
  *
  * ## Precedence — event, rest, reward, exit
  *
@@ -27,7 +34,7 @@
  *   5. text only.
  *
  * An enemy is never composed onto a node that is not a fight — and neither is
- * the Buddy: she is in the picture only where the composed fight scene is.
+ * the Buddy: she is in the picture on fights only.
  * Her card art stays the thumbnail throughout; that is the caller's.
  *
  * ## The player's Buddy
@@ -36,9 +43,10 @@
  * is comes from the run's fighter snapshot (`view.fighter.speciesSlug`, frozen
  * at start — never the player's live active Buddy), her image from the species
  * sprite convention `waifumon/<slug>/<slug>_sprite.webp`, and where she stands
- * from the compositor (`layoutPlayerBuddy`). A species with no sprite file is
- * logged once and the scene is composed without her; her card art is never
- * substituted.
+ * from the compositor (`layoutPlayerBuddy`). A species whose content says its
+ * sprite faces left (`spriteFacing`) is mirrored to look at the enemy. A
+ * species with no sprite file is logged once and the scene is composed without
+ * her; her card art is never substituted.
  *
  * Which background a node has, which sprite an enemy has and where it stands
  * all come from the run's snapshot (`DungeonRunView`), so a screen never
@@ -48,7 +56,7 @@
 import path from 'node:path';
 import { AttachmentBuilder } from 'discord.js';
 import { ARTWORK_MIME_EXTENSIONS } from '../modules/artworkAssets/imageInspection';
-import type { SpritePlacement } from '../modules/artworkAssets/scenePlacement';
+import { mirrorsPlayerBuddy, type SpritePlacement } from '../modules/artworkAssets/scenePlacement';
 import type { SceneLayer } from '../modules/artworkAssets/sceneComposition';
 import { playerBuddySpriteLayer, resolveArtworkLayer, type ArtworkRef } from '../modules/artworkAssets/sceneLayers';
 import { speciesDungeonSpritePath } from '../modules/assets/speciesArtworkFile';
@@ -57,7 +65,8 @@ import type { DungeonRunView } from '../modules/dungeons/dungeonPlayService';
 import type { TrialArtwork } from './combatTrialPresenter';
 import type { AppContext } from './types';
 
-type ArtContext = Pick<AppContext, 'config' | 'services' | 'logger'>;
+type ArtContext = Pick<AppContext, 'config' | 'services' | 'logger'> & Partial<Pick<AppContext, 'content'>>;
+type BuddyActor = { layer: SceneLayer; mirror: boolean; label: string };
 
 function attachment(source: string | Buffer, name: string): TrialArtwork {
   return { file: new AttachmentBuilder(source, { name }), url: `attachment://${name}` };
@@ -89,10 +98,14 @@ async function plainArtwork(ctx: ArtContext, ref: ArtworkRef): Promise<TrialArtw
 const warnedMissingBuddySprites = new Set<string>();
 
 /** The run's Buddy as a scene layer, from the species sprite convention. Null — and a warning — when she has none. */
-function playerBuddyActor(ctx: ArtContext, speciesSlug: string | null | undefined): { layer: SceneLayer; label: string } | null {
+function playerBuddyActor(ctx: ArtContext, speciesSlug: string | null | undefined): BuddyActor | null {
   if (!speciesSlug) return null;
   const layer = playerBuddySpriteLayer(ctx.config.assetsDir, speciesSlug);
-  if (layer) return { layer, label: speciesSlug };
+  if (layer) {
+    // How the art faces is the species' own metadata; which way she should look is the scene's.
+    const facing = ctx.content?.species.find((s) => s.slug === speciesSlug)?.spriteFacing;
+    return { layer, mirror: mirrorsPlayerBuddy(facing), label: speciesSlug };
+  }
   if (!warnedMissingBuddySprites.has(speciesSlug)) {
     warnedMissingBuddySprites.add(speciesSlug);
     ctx.logger.warn(
@@ -107,8 +120,10 @@ function playerBuddyActor(ctx: ArtContext, speciesSlug: string | null | undefine
 async function composedArtwork(
   ctx: ArtContext,
   backgrounds: readonly (ArtworkRef | null | undefined)[],
-  sprite?: { ref: ArtworkRef; placement: SpritePlacement },
-  playerBuddy?: { layer: SceneLayer; label: string } | null,
+  sprite?: { ref: ArtworkRef; placement: SpritePlacement } | null,
+  playerBuddy?: BuddyActor | null,
+  /** Answer null unless the Buddy made it into the picture. */
+  options: { requireBuddy?: boolean } = {},
 ): Promise<TrialArtwork | null> {
   const scenes = ctx.services.sceneComposition;
   if (!scenes) return null;
@@ -124,9 +139,24 @@ async function composedArtwork(
       sprite: spriteLayer && sprite ? { layer: spriteLayer, placement: sprite.placement } : null,
       playerBuddy: playerBuddy ?? null,
     });
-    if (scene) return attachment(scene.absolutePath, `dungeon-scene-${scene.cacheKey.slice(0, 16)}.webp`);
+    if (scene && (scene.playerBuddy || !options.requireBuddy)) {
+      return attachment(scene.absolutePath, `dungeon-scene-${scene.cacheKey.slice(0, 16)}.webp`);
+    }
   }
   return null;
+}
+
+/**
+ * A fallback picture with the Buddy in front of it — the picture as the
+ * scene's background — or, when she has no sprite or cannot be drawn, the
+ * picture exactly as it is.
+ */
+async function artworkWithBuddy(ctx: ArtContext, ref: ArtworkRef, buddy: BuddyActor | null): Promise<TrialArtwork | null> {
+  if (buddy) {
+    const composed = await composedArtwork(ctx, [ref], null, buddy, { requireBuddy: true });
+    if (composed) return composed;
+  }
+  return plainArtwork(ctx, ref);
 }
 
 /** The first candidate that produces a picture. A candidate that throws is logged and skipped. */
@@ -183,18 +213,17 @@ export async function dungeonRunSceneArtwork(ctx: ArtContext, view: DungeonRunVi
   if (enemy) {
     const { visual } = enemy;
     const sprite: ArtworkRef = { assetId: visual.spriteAssetId, artworkPath: visual.spriteArtworkPath };
+    // Resolved once and on her own: nothing below decides whether she is drawn.
+    const buddy = playerBuddyActor(ctx, view.fighter?.speciesSlug);
     return firstArtwork(ctx, [
       () =>
         sprite.assetId || sprite.artworkPath
-          ? composedArtwork(
-              ctx,
-              [nodeBackground, zoneBackground],
-              { ref: sprite, placement: visual.spritePlacement },
-              playerBuddyActor(ctx, view.fighter?.speciesSlug),
-            )
+          ? composedArtwork(ctx, [nodeBackground, zoneBackground], { ref: sprite, placement: visual.spritePlacement }, buddy)
           : null,
-      () => plainArtwork(ctx, { assetId: visual.artworkAssetId, artworkPath: visual.artworkPath }),
-      ...tail,
+      () => artworkWithBuddy(ctx, { assetId: visual.artworkAssetId, artworkPath: visual.artworkPath }, buddy),
+      () => composedArtwork(ctx, [nodeBackground], null, buddy),
+      () => artworkWithBuddy(ctx, zoneArt, buddy),
+      () => artworkWithBuddy(ctx, zoneBackground, buddy),
     ]);
   }
   return firstArtwork(ctx, [() => shippedArtwork(ctx, node.event?.artworkPath), ...tail]);

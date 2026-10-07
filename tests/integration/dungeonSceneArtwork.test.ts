@@ -18,7 +18,7 @@ import type { DungeonRunView } from '../../src/modules/dungeons/dungeonPlayServi
 import type { LoadedContent } from '../../src/modules/content/schemas';
 import { createDungeonWorld, type DungeonWorld } from '../helpers/dungeonPlayFixtures';
 import { insertOwnedWaifu } from '../helpers/fixtures';
-import { BLUE, GREEN, RED, isNear, opaqueSprite, pixelAt, solidImage, transparentSprite } from '../helpers/imageFixtures';
+import { BLUE, GREEN, RED, isNear, opaqueSprite, pixelAt, solidImage, transparentSprite, twoToneSprite } from '../helpers/imageFixtures';
 import { silentLogger } from '../helpers/testDb';
 
 const YELLOW = { r: 230, g: 220, b: 30 };
@@ -528,7 +528,93 @@ describe('the player Buddy in a fight scene', () => {
     }
   });
 
-  it('is not drawn on a node that is not a fight, nor where the fight falls back from the composed scene', async () => {
+  it('stays in the picture when the enemy has no sprite: over its full art, then the node background, zone art and zone background', async () => {
+    try {
+      const fullArt = (await w.assets.upload({ bytes: await solidImage(600, 400, PURPLE), category: 'enemy_art', filename: 'buddy-grunt-full.png' }, 'admin')).id;
+      const zoneArtId = (await w.assets.upload({ bytes: await solidImage(600, 400, YELLOW), category: 'dungeon_zone', filename: 'buddy-zone.png' }, 'admin')).id;
+      const zoneBgId = (await w.assets.upload({ bytes: await solidImage(640, 360, PURPLE), category: 'dungeon_background', filename: 'buddy-zone-bg.png' }, 'admin')).id;
+      /** She is drawn in her reserved box, in front of a picture of this colour. */
+      const expectBuddyOver = async (view: DungeonRunView, colour: typeof BLUE, label: string) => {
+        const scene = (await picture(view))!;
+        expect(scene.name, label).toMatch(/^dungeon-scene-/);
+        expect(await sharp(scene.bytes).metadata(), label).toMatchObject({ width: 1200, height: 675 });
+        expect(isNear(await colourAt(scene.bytes, buddyAt.x, buddyAt.y), GREEN), label).toBe(true);
+        for (const [x, y] of [[900, 337], [600, 60], [buddyBox.left + buddyBox.width + 20, buddyAt.y]] as const) {
+          expect(isNear(await colourAt(scene.bytes, x, y), colour), `${label} ${x},${y}`).toBe(true);
+        }
+      };
+
+      // 2. Managed full art — the fallback still wins over the backgrounds, now with her in front of it.
+      await setEnemyArt('grunt', { spriteAssetId: null, artworkAssetId: fullArt });
+      await zone('sc_buddy_full', [{ id: 'blue', weight: 1, assetId: own.bgBlue }], { artworkAssetId: zoneArtId, backgroundAssetId: zoneBgId });
+      const full = await startOn('sc_buddy_full');
+      // Without a Buddy sprite it is exactly the plain full art it always was.
+      expect((await picture(full.view))!.name).toMatch(/^dungeon-art-/);
+      await shipSprite(full.view.fighter.speciesSlug);
+      await expectBuddyOver(full.view, PURPLE, 'managed full art');
+
+      // …and the shipped full art (purple) when no managed art is set.
+      await setEnemyArt('grunt', { spriteAssetId: null, artworkAssetId: null });
+      const shippedArt = await startOn('sc_buddy_full');
+      await expectBuddyOver(shippedArt.view, PURPLE, 'shipped full art');
+
+      // 3. No enemy art at all: the node's background, with her on it.
+      await setEnemyArt('sentinel', { spriteAssetId: null, artworkAssetId: null });
+      await zone('sc_buddy_node_bg', [{ id: 'blue', weight: 1, assetId: own.bgBlue }], { artworkAssetId: zoneArtId, backgroundAssetId: zoneBgId }, 'sentinel');
+      await expectBuddyOver((await startOn('sc_buddy_node_bg')).view, BLUE, 'node background');
+
+      // 4. No pool: the zone artwork. 5. No zone artwork either: the zone background.
+      await zone('sc_buddy_zone_art', [], { artworkAssetId: zoneArtId, backgroundAssetId: zoneBgId }, 'sentinel');
+      await expectBuddyOver((await startOn('sc_buddy_zone_art')).view, YELLOW, 'zone artwork');
+      await zone('sc_buddy_zone_bg', [], { artworkAssetId: null, artworkPath: null, backgroundAssetId: zoneBgId }, 'sentinel');
+      await expectBuddyOver((await startOn('sc_buddy_zone_bg')).view, PURPLE, 'zone background');
+
+      // A Buddy sprite that will not decode: every fallback is the plain image again.
+      fs.writeFileSync(spriteFile(full.view.fighter.speciesSlug), Buffer.from('not an image'));
+      expect((await picture(shippedArt.view))!.name).toBe('dungeon-grunt.webp');
+    } finally {
+      unship();
+      await setEnemyArt('grunt', { spriteAssetId: own.sprite, artworkAssetId: null, spritePlacement: CENTER });
+    }
+  });
+
+  it('mirrors a species whose sprite faces left — by its content metadata, in her same box', async () => {
+    try {
+      await setEnemyArt('grunt', { spriteAssetId: own.sprite, spritePlacement: RIGHT });
+      await zone('sc_buddy_flip', [{ id: 'blue', weight: 1, assetId: own.bgBlue }]);
+      const { view } = await startOn('sc_buddy_flip');
+      const slug = view.fighter.speciesSlug;
+      // Green on her left, yellow on her right.
+      fs.mkdirSync(path.dirname(spriteFile(slug)), { recursive: true });
+      fs.writeFileSync(spriteFile(slug), await twoToneSprite(BUDDY.width, BUDDY.height, GREEN, YELLOW));
+      written.push(slug);
+      const leftX = buddyBox.left + Math.floor(buddyBox.width / 4);
+      const rightX = buddyBox.left + Math.floor((buddyBox.width * 3) / 4);
+      const facing = (spriteFacing?: 'left' | 'right') =>
+        ({
+          ...ctx,
+          content: { ...ctx.content, species: ctx.content.species.map((s) => (s.slug === slug ? { ...s, spriteFacing } : s)) },
+        }) as unknown as AppContext;
+      const render = async (using: AppContext) => fs.readFileSync((await dungeonRunSceneArtwork(using, view))!.file.attachment as string);
+
+      // No stated facing, and facing right: drawn as authored.
+      const asIs = await render(ctx);
+      expect(isNear(await colourAt(asIs, leftX, buddyAt.y), GREEN)).toBe(true);
+      expect(isNear(await colourAt(asIs, rightX, buddyAt.y), YELLOW)).toBe(true);
+      expect((await render(facing('right'))).equals(asIs)).toBe(true);
+
+      // Facing left: mirrored to look at the enemy, from the one sprite file.
+      const mirrored = await render(facing('left'));
+      expect(isNear(await colourAt(mirrored, leftX, buddyAt.y), YELLOW)).toBe(true);
+      expect(isNear(await colourAt(mirrored, rightX, buddyAt.y), GREEN)).toBe(true);
+      expect(isNear(await colourAt(mirrored, buddyBox.left + buddyBox.width + 20, buddyAt.y), BLUE)).toBe(true);
+      expect(fs.readdirSync(path.dirname(spriteFile(slug)))).toEqual([`${slug}_sprite.webp`]);
+    } finally {
+      unship();
+    }
+  });
+
+  it('is not drawn on a node that is not a fight', async () => {
     try {
       await setEnemyArt('grunt', { spriteAssetId: own.sprite, spritePlacement: CENTER });
       await zone('sc_buddy_noncombat', [{ id: 'blue', weight: 1, assetId: own.bgBlue }]);
@@ -545,14 +631,8 @@ describe('the player Buddy in a fight scene', () => {
           expect(isNear(await colourAt(scene.bytes, x, y), BLUE), `${type} ${x},${y}`).toBe(true);
         }
       }
-
-      // An enemy with no sprite shows its full art, as before — no Buddy pasted onto it.
-      await setEnemyArt('grunt', { spriteAssetId: null, artworkAssetId: null });
-      const next = await startOn('sc_buddy_noncombat');
-      expect((await picture(next.view))!.name).toBe('dungeon-grunt.webp');
     } finally {
       unship();
-      await setEnemyArt('grunt', { spriteAssetId: own.sprite, artworkAssetId: null, spritePlacement: CENTER });
     }
   });
 });

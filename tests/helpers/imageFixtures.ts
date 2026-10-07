@@ -39,6 +39,21 @@ export async function transparentSprite(width: number, height: number, color: Rg
   return (format === 'png' ? image.png() : image.webp({ lossless: true })).toBuffer();
 }
 
+/**
+ * A fully opaque sprite whose left half is one colour and right half another —
+ * so a horizontal mirror is visible in the pixels.
+ */
+export async function twoToneSprite(width: number, height: number, left: Rgba, right: Rgba, format: 'png' | 'webp' = 'webp'): Promise<Buffer> {
+  const half = Math.floor(width / 2);
+  const side = (w: number, color: Rgba) =>
+    sharp({ create: { width: w, height, channels: 4, background: { ...color, alpha: 1 } } }).png().toBuffer();
+  const image = sharp({ create: { width, height, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).composite([
+    { input: await side(half, left), left: 0, top: 0 },
+    { input: await side(width - half, right), left: half, top: 0 },
+  ]);
+  return (format === 'png' ? image.png() : image.webp({ lossless: true })).toBuffer();
+}
+
 /** The RGB of one pixel of an encoded image. */
 export async function pixelAt(bytes: Buffer, x: number, y: number): Promise<[number, number, number]> {
   const { data, info } = await sharp(bytes).removeAlpha().raw().toBuffer({ resolveWithObject: true });

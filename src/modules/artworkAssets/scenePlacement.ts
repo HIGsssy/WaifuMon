@@ -26,6 +26,11 @@
  * of the canvas, so a wide sprite cannot spill into the enemy's side. Moving
  * her is a change to those two constants and nothing else.
  *
+ * Together they are a reserved bounding region — 480×540 on the canonical
+ * canvas, standing on the floor line from the left margin — and the sprite is
+ * fitted inside it in proportion. Mirroring ({@link mirrorsPlayerBuddy}) flips
+ * her pixels inside that same box; it never moves or resizes it.
+ *
  * Enemy placement is untouched: all six anchors stay available. An enemy
  * authored into the Buddy's side is not refused — {@link layoutOverlapShare}
  * measures the collision so the preview can show and flag it.
@@ -79,6 +84,18 @@ export const PLAYER_BUDDY_PLACEMENT: SpritePlacement = SpritePlacementSchema.par
   anchor: 'bottom-left',
   scaleBasisPoints: 8000,
 });
+/**
+ * The way the Buddy should look from the reserved side: towards the enemy. A
+ * sprite authored as facing the other way is mirrored; one with no stated
+ * facing (front-on, the usual WaifuMon sprite) is drawn as it is.
+ */
+export const PLAYER_BUDDY_FACING = 'right' as const;
+
+/** Whether a sprite with this authored facing is mirrored when it is the player's Buddy. */
+export function mirrorsPlayerBuddy(spriteFacing: 'left' | 'right' | null | undefined): boolean {
+  return spriteFacing != null && spriteFacing !== PLAYER_BUDDY_FACING;
+}
+
 /** The widest the Buddy may be drawn, as a share of the canvas: the reserved player side. */
 export const PLAYER_BUDDY_MAX_WIDTH_SHARE = 0.4;
 /** An enemy covering at least this share of the Buddy's box is reported as a collision. */

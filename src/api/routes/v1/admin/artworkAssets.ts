@@ -56,6 +56,7 @@ import {
   SCENE_HEIGHT,
   SCENE_WIDTH,
   layoutOverlapShare,
+  mirrorsPlayerBuddy,
   SPRITE_ANCHORS,
   SPRITE_OFFSET_X_MAX,
   SPRITE_OFFSET_Y_MAX,
@@ -502,18 +503,22 @@ export const adminArtworkAssetRoutes =
           }
           // The Buddy is never authored: a preview only chooses *whose* sprite stands in
           // for the player's. A species with no sprite just leaves her out, as in a run.
-          let playerBuddy: { layer: NonNullable<ReturnType<typeof playerBuddySpriteLayer>>; label: string } | null = null;
+          let playerBuddy: {
+            layer: NonNullable<ReturnType<typeof playerBuddySpriteLayer>>;
+            mirror: boolean;
+            label: string;
+          } | null = null;
           if (req.body.playerBuddy) {
+            const species = ctx.getContent().species;
             const candidates = req.body.playerBuddy.speciesSlug
               ? [req.body.playerBuddy.speciesSlug]
-              : ctx
-                  .getContent()
-                  .species.map((s) => s.slug)
-                  .sort();
+              : species.map((s) => s.slug).sort();
             for (const slug of candidates) {
               const layer = playerBuddySpriteLayer(assetsDir, slug);
               if (layer) {
-                playerBuddy = { layer, label: slug };
+                // Mirrored exactly as a run would mirror that species.
+                const facing = species.find((s) => s.slug === slug)?.spriteFacing;
+                playerBuddy = { layer, mirror: mirrorsPlayerBuddy(facing), label: slug };
                 break;
               }
             }

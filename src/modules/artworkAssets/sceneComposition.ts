@@ -18,6 +18,10 @@
  * stays whole. There are no scene overlays and no UI layer: text and controls
  * are the Discord embed's, outside the image.
  *
+ * The Buddy may be mirrored (`playerBuddy.mirror`) so one sprite file serves a
+ * species drawn facing either way; the flip happens inside her reserved box.
+ * She needs no enemy: a request with a Buddy and no `sprite` is a valid scene.
+ *
  * The Buddy is decoration on top of a scene that is complete without her: if
  * her image is gone or will not decode, the scene is composed without her
  * (and cached under the Buddy-less key) rather than not at all.
@@ -80,10 +84,11 @@ export interface SceneRequest {
   sprite?: { layer: SceneLayer; placement: SpritePlacement } | null;
   /**
    * The player's Buddy, drawn in the reserved left side under the enemy. No
-   * placement: where she stands is the compositor's. `label` (a species slug)
-   * only names her in a warning.
+   * placement: where she stands is the compositor's. `mirror` flips her
+   * horizontally inside her box (a sprite drawn facing away from the enemy).
+   * `label` (a species slug) only names her in a warning.
    */
-  playerBuddy?: { layer: SceneLayer; label?: string } | null;
+  playerBuddy?: { layer: SceneLayer; mirror?: boolean; label?: string } | null;
   /** Defaults to the canonical scene size. */
   output?: SceneOutputSpec;
 }
@@ -146,6 +151,8 @@ export function sceneCacheKey(request: SceneRequest): string {
       p.offsetX,
       p.offsetY,
       PLAYER_BUDDY_MAX_WIDTH_SHARE,
+      // Only when set, so an unmirrored Buddy keeps the key she had.
+      ...(request.playerBuddy.mirror ? ['mirrored'] : []),
     ]);
   }
   return createHash('sha256').update(JSON.stringify(identity)).digest('hex');
@@ -155,7 +162,7 @@ export function sceneCacheKey(request: SceneRequest): string {
 export async function renderScene(input: {
   background: Buffer;
   sprite?: { bytes: Buffer; placement: SpritePlacement } | null;
-  playerBuddy?: { bytes: Buffer } | null;
+  playerBuddy?: { bytes: Buffer; mirror?: boolean } | null;
   output?: SceneOutputSpec;
 }): Promise<Buffer> {
   const output = input.output ?? SCENE_OUTPUT;
@@ -170,11 +177,13 @@ export async function renderScene(input: {
   const overlay = async (
     bytes: Buffer,
     layout: (source: { width: number; height: number }) => SpriteLayout,
+    mirror = false,
   ): Promise<sharp.OverlayOptions> => {
     const meta = await decode(bytes).metadata();
     if (!meta.width || !meta.height) throw new Error('sprite has no dimensions');
     const box = layout({ width: meta.width, height: meta.height });
     const sprite = await decode(bytes)
+      .flop(mirror)
       .ensureAlpha()
       // `fill` into a box already computed at the sprite's own aspect ratio.
       .resize(box.width, box.height, { fit: 'fill' })
@@ -185,7 +194,9 @@ export async function renderScene(input: {
 
   // Pushed in SCENE_LAYER_ORDER: the Buddy first, the enemy over her.
   const layers: sharp.OverlayOptions[] = [];
-  if (input.playerBuddy) layers.push(await overlay(input.playerBuddy.bytes, (source) => layoutPlayerBuddy(source, output)));
+  if (input.playerBuddy) {
+    layers.push(await overlay(input.playerBuddy.bytes, (source) => layoutPlayerBuddy(source, output), input.playerBuddy.mirror === true));
+  }
   if (input.sprite) {
     const { placement } = input.sprite;
     layers.push(await overlay(input.sprite.bytes, (source) => layoutSprite(source, placement, output)));
@@ -233,11 +244,11 @@ export function createSceneCompositionService(deps: SceneCompositionDeps): Scene
       sprite = { bytes, placement: SpritePlacementSchema.parse(request.sprite.placement) };
     }
 
-    let playerBuddy: { bytes: Buffer } | null = null;
+    let playerBuddy: { bytes: Buffer; mirror: boolean } | null = null;
     if (request.playerBuddy) {
       const bytes = await request.playerBuddy.layer.load();
       if (!bytes) return withoutBuddy(request, 'sprite file unavailable');
-      playerBuddy = { bytes };
+      playerBuddy = { bytes, mirror: request.playerBuddy.mirror === true };
     }
 
     let rendered: Buffer;

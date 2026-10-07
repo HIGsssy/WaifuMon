@@ -739,6 +739,19 @@ describe('scene preview: the reserved player Buddy', () => {
       expect(over.headers).toMatchObject({ 'x-scene-player-buddy-overlap': '100', 'x-scene-player-buddy-collision': 'true' });
       expect(isNear(await pixelAt(over.rawPayload, at.x, at.y), RED)).toBe(true);
 
+      // A species whose sprite faces left is mirrored, as a run would draw her: a different picture, same box.
+      const species = app.content.species.find((s) => s.slug === slugs[1])!;
+      species.spriteFacing = 'left';
+      try {
+        const mirrored = await preview({}, {});
+        expect(mirrored.headers).toMatchObject({ 'x-scene-player-buddy': slugs[1], 'x-scene-player-buddy-overlap': '0' });
+        expect(mirrored.headers.etag).not.toBe(clear.headers.etag);
+        expect(isNear(await pixelAt(mirrored.rawPayload, at.x, at.y), GREEN)).toBe(true);
+      } finally {
+        delete species.spriteFacing;
+      }
+      expect((await preview({}, {})).headers.etag).toBe(clear.headers.etag);
+
       // She is not a placement: nothing about where she stands is accepted.
       expect((await preview({}, { anchor: 'right' })).statusCode).toBe(400);
       expect((await preview({}, { speciesSlug: '../x' })).statusCode).toBe(400);

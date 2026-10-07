@@ -735,6 +735,10 @@ export const BuddyBonusSchema = z
 
 export type BuddyBonusContent = z.infer<typeof BuddyBonusSchema>;
 
+/** Directions a species sprite can be authored as facing. See `spriteFacing`. */
+export const SPRITE_FACINGS = ['left', 'right'] as const;
+export type SpriteFacing = (typeof SPRITE_FACINGS)[number];
+
 const SpeciesBaseSchema = z.object({
   slug,
   name: z.string().min(1),
@@ -759,6 +763,17 @@ const SpeciesBaseSchema = z.object({
   race: z.enum(RACE_CODES).optional(),
   /** Card-face presentation metadata. See {@link SpeciesCardMetaSchema}. */
   card: SpeciesCardMetaSchema.optional(),
+  /**
+   * Which way the species' cut-out sprite (`<slug>_sprite.webp`) looks, when
+   * it clearly looks one way. Omitted — the case for every front-facing sprite,
+   * and the default — means "no particular direction": never mirrored.
+   *
+   * It describes the art, not a scene. A consumer that stands the sprite
+   * somewhere decides what to do with it: a Delve fight puts the Buddy on the
+   * left, so it mirrors a `left`-facing sprite to look at the enemy
+   * (`mirrorsPlayerBuddy`). One sprite file serves both directions.
+   */
+  spriteFacing: z.enum(SPRITE_FACINGS).optional(),
   baseCaptureRate: z.number().gt(0).lte(1).nullable().default(null),
   description: z.string().default(''),
   tags: z.array(z.string()).default([]),
