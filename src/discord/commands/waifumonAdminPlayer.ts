@@ -25,18 +25,28 @@
 import {
   MessageFlags,
   PermissionFlagsBits,
+  type AutocompleteInteraction,
   type ChatInputCommandInteraction,
 } from 'discord.js';
 import { eq } from 'drizzle-orm';
 import { items, playerProgressionEvents } from '../../db/schema';
 import type { AppContext } from '../types';
 import { ADMIN_ACTION_EVENT } from '../../modules/admin/adminActionAudit';
+import {
+  ADMIN_GRANT_ITEM_ACTION,
+  ADMIN_MAX_ITEM_GRANT,
+  AdminItemGrantError,
+  grantItemToPlayer,
+  searchGrantableItems,
+} from '../../modules/admin/adminItemGrantService';
+import { AppError } from '../../shared/errors';
 
 const EPHEMERAL = { flags: MessageFlags.Ephemeral } as const;
 
 /** Per-invocation grant ceilings. Deliberately low: this is test prep. */
 export const ADMIN_MAX_ESSENCE_GRANT = 10_000;
 export const ADMIN_MAX_CHARM_GRANT = 1_000;
+export { ADMIN_MAX_ITEM_GRANT };
 
 /** Audit vocabulary for `player_progression_events.event_type` — shared with the Portal. */
 export { ADMIN_ACTION_EVENT };
@@ -350,4 +360,119 @@ export async function handleAdminPlayerCharms(
     }),
     ...EPHEMERAL,
   });
+}
+
+/** Autocomplete label: the player-facing name, with the category to tell near-names apart. */
+function grantItemChoiceName(item: { name: string; category: string }): string {
+  return `${item.name} · ${item.category}`.slice(0, 100);
+}
+
+/**
+ * Autocomplete for `/waifumon-admin player grant-item` — searches the live
+ * content catalogue by display name or key and submits the stable item slug.
+ * Read-only, and silent for anyone who could not run the command anyway.
+ */
+export async function handleAdminGrantItemAutocomplete(
+  ctx: AppContext,
+  interaction: AutocompleteInteraction,
+): Promise<void> {
+  const focused = interaction.options.getFocused(true);
+  const allowed = interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild) === true;
+  if (!allowed || focused.name !== 'item') {
+    await interaction.respond([]);
+    return;
+  }
+  const matches = searchGrantableItems(ctx.content.items, String(focused.value));
+  await interaction.respond(
+    matches.map((item) => ({ name: grantItemChoiceName(item), value: item.slug })),
+  );
+}
+
+/**
+ * /waifumon-admin player grant-item — grant any ordinary inventory item.
+ *
+ * A production support tool, so it differs from the live-testing helpers above
+ * in two ways: it never provisions an account (granting to someone who has
+ * never played is far more likely a mis-picked user than an intent), and it
+ * acknowledges the interaction *before* the grant, so a command whose token has
+ * already died fails without granting instead of granting without answering.
+ * The rules themselves live in `grantItemToPlayer`.
+ */
+export async function handleAdminPlayerGrantItem(
+  ctx: AppContext,
+  interaction: ChatInputCommandInteraction,
+): Promise<void> {
+  if (!(await ensureAdmin(interaction))) return;
+
+  const user = interaction.options.getUser('user', true);
+  if (user.bot) {
+    await interaction.reply({ content: 'Bots do not have Waifumon accounts.', ...EPHEMERAL });
+    return;
+  }
+  const itemSlug = interaction.options.getString('item', true).trim();
+  const quantity = interaction.options.getInteger('quantity', false) ?? 1;
+  const check = validateAmount(quantity, ADMIN_MAX_ITEM_GRANT, 'Quantity');
+  if (!check.ok) {
+    await interaction.reply({ content: check.error, ...EPHEMERAL });
+    return;
+  }
+
+  await interaction.deferReply(EPHEMERAL);
+
+  const context = {
+    tag: 'admin/player-action',
+    action: ADMIN_GRANT_ITEM_ACTION,
+    adminDiscordId: interaction.user.id,
+    targetDiscordId: user.id,
+    guildId: interaction.guildId!,
+    interactionId: interaction.id,
+    itemSlug,
+    amount: quantity,
+  };
+
+  let content: string;
+  try {
+    const playerId = await ctx.services.players.findPlayerId(interaction.guildId!, user.id);
+    if (playerId == null) {
+      throw new AdminItemGrantError(
+        'ADMIN_GRANT_PLAYER_NOT_FOUND',
+        `<@${user.id}> has not started Waifumon in this server — nothing was granted.`,
+      );
+    }
+    const granted = await grantItemToPlayer(
+      { db: ctx.db, inventory: ctx.services.inventory, logger: ctx.logger },
+      {
+        playerId,
+        itemSlug,
+        quantity,
+        actor: {
+          adminDiscordId: interaction.user.id,
+          targetDiscordId: user.id,
+          guildId: interaction.guildId!,
+          interactionId: interaction.id,
+        },
+      },
+    );
+    content = confirmation({
+      emoji: granted.item.emoji ?? '🎁',
+      action: `Granted ${granted.quantity} × ${granted.item.name}`,
+      mention: `<@${user.id}>`,
+      before: granted.before,
+      after: granted.after,
+      unit: granted.item.name,
+    });
+  } catch (err) {
+    if (err instanceof AppError) {
+      ctx.logger.warn(
+        { ...context, result: 'refused', code: err.code },
+        'admin item grant refused',
+      );
+      content = err.userMessage;
+    } else {
+      // Never surface SQL or internals; the transaction rolled back.
+      ctx.logger.error({ ...context, result: 'failed', err }, 'admin item grant failed');
+      content = 'Something went wrong — nothing was granted.';
+    }
+  }
+  await interaction.editReply({ content });
 }

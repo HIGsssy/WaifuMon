@@ -116,9 +116,11 @@ import {
   handleAdminSetAnnounceChannel,
 } from './commands/waifumonAdmin';
 import {
+  handleAdminGrantItemAutocomplete,
   handleAdminPlayerCharms,
   handleAdminPlayerEnergy,
   handleAdminPlayerEssence,
+  handleAdminPlayerGrantItem,
 } from './commands/waifumonAdminPlayer';
 import {
   handleBossCancel,
@@ -206,6 +208,8 @@ export function createDiscordClient(ctx: AppContext): Client {
         handleAdminPlayerEssence(ctx, i),
       'waifumon-admin:player:charms': (i: ChatInputCommandInteraction) =>
         handleAdminPlayerCharms(ctx, i),
+      'waifumon-admin:player:grant-item': (i: ChatInputCommandInteraction) =>
+        handleAdminPlayerGrantItem(ctx, i),
       // Boss encounters — configuration and live operations.
       'waifumon-admin:boss:set-channel': (i: ChatInputCommandInteraction) =>
         handleBossSetChannel(ctx, i),
@@ -233,6 +237,8 @@ export function createDiscordClient(ctx: AppContext): Client {
         handleInspectAutocomplete(ctx, i, playerId),
       'wm:care': (i: AutocompleteInteraction, playerId: number | null) =>
         handleCareAutocomplete(ctx, i, playerId),
+      'waifumon-admin:player:grant-item': (i: AutocompleteInteraction) =>
+        handleAdminGrantItemAutocomplete(ctx, i),
     },
     componentHandlers: {
       'menu:hunt': (i: ButtonInteraction, prov: Provisioned) => handleHunt(ctx, i, prov),
