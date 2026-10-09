@@ -197,6 +197,27 @@ export async function handleBossStatus(
  * disturbs the affinity spacing. The reply says so, because "did my test
  * change the rotation?" is the first thing an operator will wonder.
  */
+/**
+ * Record a manual spawn or end in the Boss Management audit trail, beside the
+ * ones made from the Portal. Best-effort: the action has already happened, and
+ * a failed audit write must not turn it into an error reply.
+ */
+async function auditOperatorAction(
+  ctx: AppContext,
+  event: {
+    bossKey: string;
+    action: 'manual_spawn' | 'schedule_override' | 'manual_end';
+    actor: string;
+    details: Record<string, unknown>;
+  },
+): Promise<void> {
+  try {
+    await ctx.services.bossDefinitions?.recordOperatorAction(event);
+  } catch (err) {
+    ctx.logger.warn({ tag: 'boss/audit-failed', action: event.action, bossKey: event.bossKey, err }, 'boss audit entry was not written');
+  }
+}
+
 export async function handleBossSpawn(
   ctx: AppContext,
   interaction: ChatInputCommandInteraction,
@@ -217,7 +238,10 @@ export async function handleBossSpawn(
   const bossId = interaction.options.getString('boss') ?? undefined;
   const id = await guildDbId(ctx, interaction);
   try {
-    const spawn = await svc.forceSpawn(id, bossId);
+    // Naming a boss is a deliberate test of *that* boss, so it spawns even
+    // outside its availability schedule (and the log says so). With no boss
+    // named, the pick is among those available right now.
+    const spawn = await svc.forceSpawn(id, bossId, new Date(), { ignoreSchedule: bossId !== undefined });
     // Announce immediately rather than waiting up to a minute for the tick —
     // an operator testing a boss wants to see it now. The same
     // post-then-record ordering the scheduler uses, for the same reason.
@@ -234,6 +258,20 @@ export async function handleBossSpawn(
       }),
     );
     const opened = await svc.beginScouting(spawn.encounter.id, channelId, message.id);
+    await auditOperatorAction(ctx, {
+      bossKey: spawn.boss.id,
+      action: 'manual_spawn',
+      actor: interaction.user.id,
+      details: { via: 'discord', guildDbId: id, encounterId: opened.id, scheduleOverridden: spawn.scheduleOverridden === true },
+    });
+    if (spawn.scheduleOverridden) {
+      await auditOperatorAction(ctx, {
+        bossKey: spawn.boss.id,
+        action: 'schedule_override',
+        actor: interaction.user.id,
+        details: { via: 'discord', guildDbId: id, encounterId: opened.id, scheduleOverridden: true },
+      });
+    }
     await interaction.reply({
       content:
         `Force-spawned **${spawn.boss.name}** (#${opened.id}) in <#${channelId}>.\n` +
@@ -301,6 +339,18 @@ export async function handleBossEnd(
     );
     return;
   }
+  await auditOperatorAction(ctx, {
+    bossKey: active.bossId,
+    action: 'manual_end',
+    actor: interaction.user.id,
+    details: {
+      via: 'discord',
+      guildDbId: id,
+      encounterId: active.id,
+      participantCount: result.participants.length,
+      outcome: result.encounter.status,
+    },
+  });
   await ctx.bossAnnouncer?.publishResults(active.id).catch((err: unknown) => {
     ctx.logger.error(
       { tag: 'boss/publish-failed', encounterId: active.id, err },

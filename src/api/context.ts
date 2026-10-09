@@ -20,6 +20,7 @@ import type { PortalAuthorizationService } from '../modules/portalAuth/portalAut
 import type { MetricsSources } from './routes/metrics';
 import type { LoadTestController } from '../modules/loadTest/controller';
 import type { StagingTestControlsService } from '../modules/testControls/stagingTestControlsService';
+import type { BossScheduler } from '../modules/bosses/bossScheduler';
 
 export interface ApiContext {
   services: AppServices;
@@ -107,4 +108,11 @@ export interface ApiContext {
    * other deployment — production included — those paths 404.
    */
   testControls?: StagingTestControlsService | undefined;
+  /**
+   * This process's boss scheduler, once it has started (it starts after the
+   * Discord login, so the holder is filled in later). Boss Management reads
+   * its recorded status for diagnostics and asks it for a pass after a manual
+   * spawn or end. Absent, or with no `scheduler`, when this process runs none.
+   */
+  bossRuntime?: { scheduler?: BossScheduler | undefined } | undefined;
 }

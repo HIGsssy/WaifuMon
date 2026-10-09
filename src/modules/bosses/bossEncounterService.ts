@@ -34,6 +34,7 @@ import {
   bossEncounters,
   bossParticipations,
   guildBossState,
+  guilds,
   items,
   type Affinity,
   type BossEncounterRow,
@@ -47,6 +48,7 @@ import {
   BossEncounterNotFoundError,
   BossEncounterNotOpenError,
   BossNoActiveBuddyError,
+  BossSpawnRefusedError,
   ContentValidationError,
   isUniqueViolation,
 } from '../../shared/errors';
@@ -87,6 +89,15 @@ import {
   type ShuffleBagState,
 } from './bossShuffleBag';
 import { DEFAULT_REGION } from './regions';
+import {
+  bossContentFromDefinition,
+  contentBossDefinitionSource,
+  type BossDefinition,
+  type BossDefinitionSource,
+  type BossEncounterSnapshot,
+  type SourcedBossDefinition,
+} from './bossDefinitions';
+import { evaluateBossSchedule, type BossAvailability } from './bossSchedule';
 
 const MS_PER_MINUTE = 60_000;
 
@@ -163,6 +174,66 @@ export interface BossSpawnResult {
   refilled: boolean;
   /** True when spacing had to be sacrificed to the bag guarantee. */
   affinityRepeat: boolean;
+  /** True for a manual spawn that was only possible because the schedule was overridden. */
+  scheduleOverridden?: boolean;
+}
+
+/** A boss that may spawn now, with the definition revision it was read at. */
+interface SpawnCandidate {
+  boss: BossContent;
+  /** Null when the definition did not come from a row. */
+  revision: number | null;
+}
+
+/**
+ * Why a definition is, or is not, drawable for a guild right now. Exactly one
+ * verdict per boss, decided in this order — the first rule that fails names it.
+ */
+export type BossSpawnVerdict =
+  /** Active, in the guild's region, inside its schedule, and payable. */
+  | 'eligible'
+  /** Draft or Disabled. */
+  | 'not_active'
+  /** Active, but not assigned to the guild's region. */
+  | 'other_region'
+  /** Active and in region, but outside its availability schedule. */
+  | 'outside_schedule'
+  /** Its reward table is missing or disabled in `content/bossRewards.json`. */
+  | 'reward_table_unavailable';
+
+export interface BossSpawnExplanation {
+  definition: BossDefinition;
+  verdict: BossSpawnVerdict;
+  /** Operator-facing detail for a verdict that needs one; null otherwise. */
+  detail: string | null;
+  availability: BossAvailability;
+}
+
+/** Everything that decides whether, and what, a guild's next automatic spawn draws. */
+export interface BossSpawnDiagnostics {
+  /** False when `bossEncounters.enabled` is off in content. */
+  enabled: boolean;
+  region: string;
+  /** The guild's scheduler state; null when it has never been configured. */
+  state: GuildBossStateRow | null;
+  /** Whether the guild has a boss channel. Without one nothing is scheduled or announced. */
+  channelConfigured: boolean;
+  active: BossEncounterRow | null;
+  /**
+   * True while the guild's respawn cooldown (`next_spawn_at`) is still running.
+   * It holds back every eligible boss alike — the cooldown is per guild.
+   */
+  cooldownActive: boolean;
+  bosses: BossSpawnExplanation[];
+}
+
+export interface BossForceSpawnOptions {
+  /**
+   * Spawn a boss that is outside its availability schedule. A deliberate
+   * operator override; without it such a spawn is refused with
+   * `BossSpawnRefusedError('outside_schedule')`.
+   */
+  ignoreSchedule?: boolean | undefined;
 }
 
 export interface BossEncounterServiceDeps {
@@ -185,6 +256,12 @@ export interface BossEncounterServiceDeps {
    * `applyParticipationRewards`.
    */
   buddyBonus?: BuddyBonusService | undefined;
+  /**
+   * Where spawn reads boss definitions. Production wires the database
+   * (`boss_definitions`, authoritative); absent means the loaded
+   * `bosses.json`, which is what a fixture without a bootstrapped table has.
+   */
+  definitions?: BossDefinitionSource | undefined;
   logger: Logger;
   /**
    * Drives the shuffle and the downtime pick. Injected so a test can make the
@@ -219,7 +296,21 @@ export interface BossEncounterService {
    * Admin force-spawn. Bypasses the due check and, deliberately, the shuffle
    * bag: a forced boss is marked `forced` and leaves the rotation untouched.
    */
-  forceSpawn(guildDbId: number, bossId?: string, now?: Date): Promise<BossSpawnResult>;
+  forceSpawn(
+    guildDbId: number,
+    bossId?: string,
+    now?: Date,
+    opts?: BossForceSpawnOptions,
+  ): Promise<BossSpawnResult>;
+  /**
+   * Why each boss is or is not drawable for this guild at `now`, plus the
+   * guild-level state the spawner also checks. Reads only; logs nothing.
+   */
+  explainSpawn(guildDbId: number, now?: Date): Promise<BossSpawnDiagnostics>;
+  /** Every encounter still occupying a guild's active slot, oldest first. */
+  listActive(guildDbId?: number): Promise<BossEncounterRow[]>;
+  /** A guild's finished encounters, most recent first. */
+  listRecent(guildDbId: number, limit?: number): Promise<BossEncounterRow[]>;
   /**
    * Open the scouting window: stamps the start and the deadline, and records
    * the announcement's message id. Idempotent — a second call on an encounter
@@ -342,53 +433,130 @@ export function createBossEncounterService(
   const { db, inventory, collection, getContent, logger } = deps;
   const rng = deps.rng ?? defaultRng();
   const buddyBonus = deps.buddyBonus;
+  const definitionSource = deps.definitions ?? contentBossDefinitionSource(getContent);
 
   const config = (): BossEncountersConfig => getContent().tables.bossEncounters;
 
   /**
-   * Bosses that may actually be drawn for a region, in content order.
+   * Bosses that may actually be drawn for a region at `now`, in list order.
    *
-   * Two switches, not one: the boss's own `enabled`, and the `enabled` of the
-   * reward table it is paid from. A boss whose table is switched off is
-   * **not** spawned — appearing and then handing out nothing is a worse
-   * failure than not appearing, and it would only be discovered at resolution
-   * by the players who committed.
+   * Three separate conditions, all required: the definition is **Active**, it
+   * is assigned to the region and inside its **availability schedule**, and
+   * the reward table it is paid from is present and enabled. A boss whose
+   * table is switched off is **not** spawned — appearing and then handing out
+   * nothing is a worse failure than not appearing, and it would only be
+   * discovered at resolution by the players who committed.
    *
-   * The skip is logged at error level with the fix in the message, because
-   * from the outside a boss that quietly stops rotating is indistinguishable
-   * from a broken scheduler.
+   * The schedule only ever *removes* a boss from the draw. It does not start
+   * an encounter, end one, or move the guild's cooldown.
+   *
+   * A reward-table skip is logged at error level with the fix in the message,
+   * because from the outside a boss that quietly stops rotating is
+   * indistinguishable from a broken scheduler.
    */
-  function candidatesFor(region: string): BossContent[] {
-    const content = getContent();
-    const tables = new Map(content.bossRewards.map((t) => [t.id, t]));
-    return content.bosses.filter((b) => {
-      if (!b.enabled || b.region !== region) return false;
-      const table = tables.get(b.rewardTable);
-      if (!table) {
-        // The loader rejects this at boot, so reaching it means content was
-        // reloaded with a table removed while the process was running.
-        logger.error(
-          { tag: 'boss/reward-table-missing', bossId: b.id, rewardTable: b.rewardTable },
-          `boss "${b.id}" references reward table "${b.rewardTable}", which is not in ` +
-            'content/bossRewards.json — the boss will not spawn until it is added',
-        );
-        return false;
+  async function candidatesFor(tx: DbOrTx, region: string, now: Date): Promise<SpawnCandidate[]> {
+    const out: SpawnCandidate[] = [];
+    for (const entry of await explainDefinitions(tx, region, now)) {
+      if (entry.verdict === 'reward_table_unavailable' && entry.problem) {
+        logger.error(entry.problem.fields, entry.problem.message);
       }
-      if (!table.enabled) {
-        logger.error(
-          { tag: 'boss/reward-table-disabled', bossId: b.id, rewardTable: b.rewardTable },
-          `boss "${b.id}" will not spawn: its reward table "${b.rewardTable}" is disabled. ` +
-            `Set "enabled": true on that table in content/bossRewards.json, or disable the ` +
-            'boss itself to stop this message.',
-        );
-        return false;
+      if (entry.verdict === 'eligible') {
+        out.push({ boss: bossContentFromDefinition(entry.definition), revision: entry.revision });
       }
-      return true;
-    });
+    }
+    return out;
   }
 
-  function bagCandidates(region: string): ShuffleBagCandidate[] {
-    return candidatesFor(region).map((b) => ({ id: b.id, affinity: b.affinity }));
+  interface RewardProblem {
+    fields: Record<string, unknown>;
+    message: string;
+  }
+  interface ExplainedDefinition extends BossSpawnExplanation {
+    revision: number | null;
+    problem: RewardProblem | null;
+  }
+
+  /**
+   * The verdict for every definition, in list order. The one place the spawn
+   * conditions are evaluated — the draw, a manual spawn and the diagnostics all
+   * read it, so none of them can disagree about why a boss is excluded.
+   *
+   * `ignoreSchedule` skips only the schedule condition; status, region and the
+   * reward table are never overridable.
+   */
+  async function explainDefinitions(
+    tx: DbOrTx,
+    region: string,
+    now: Date,
+    opts: { ignoreSchedule?: boolean | undefined } = {},
+  ): Promise<ExplainedDefinition[]> {
+    const sourced: SourcedBossDefinition[] = await definitionSource.list(tx);
+    const tables = new Map(getContent().bossRewards.map((t) => [t.id, t]));
+    const out: ExplainedDefinition[] = [];
+    for (const { definition, revision } of sourced) {
+      const availability = evaluateBossSchedule(definition.schedule, now);
+      const base = { definition, revision, availability, problem: null };
+      if (definition.status !== 'active') {
+        out.push({ ...base, verdict: 'not_active', detail: null });
+        continue;
+      }
+      if (!(definition.regions as readonly string[]).includes(region)) {
+        out.push({ ...base, verdict: 'other_region', detail: null });
+        continue;
+      }
+      if (!availability.availableNow && !opts.ignoreSchedule) {
+        out.push({ ...base, verdict: 'outside_schedule', detail: availability.unavailableReason });
+        continue;
+      }
+      const table = tables.get(definition.rewardTable);
+      if (!table) {
+        // The loader rejects this at boot for shipped bosses, so reaching it
+        // means a definition names a table the content file does not have.
+        out.push({
+          ...base,
+          verdict: 'reward_table_unavailable',
+          detail: `Reward table "${definition.rewardTable}" is not in content/bossRewards.json.`,
+          problem: {
+            fields: { tag: 'boss/reward-table-missing', bossId: definition.id, rewardTable: definition.rewardTable },
+            message:
+              `boss "${definition.id}" references reward table "${definition.rewardTable}", which is not in ` +
+              'content/bossRewards.json — the boss will not spawn until it is added',
+          },
+        });
+        continue;
+      }
+      if (!table.enabled) {
+        out.push({
+          ...base,
+          verdict: 'reward_table_unavailable',
+          detail: `Reward table "${definition.rewardTable}" is disabled.`,
+          problem: {
+            fields: { tag: 'boss/reward-table-disabled', bossId: definition.id, rewardTable: definition.rewardTable },
+            message:
+              `boss "${definition.id}" will not spawn: its reward table "${definition.rewardTable}" is disabled. ` +
+              `Set "enabled": true on that table in content/bossRewards.json, or disable the ` +
+              'boss itself to stop this message.',
+          },
+        });
+        continue;
+      }
+      out.push({ ...base, verdict: 'eligible', detail: null });
+    }
+    return out;
+  }
+
+  /** The prose frozen onto an encounter at spawn, or null for one that predates it. */
+  function parseBossSnapshot(value: unknown): BossEncounterSnapshot | null {
+    if (!value || typeof value !== 'object') return null;
+    const raw = value as Record<string, unknown>;
+    const text = (key: string) => (typeof raw[key] === 'string' ? (raw[key] as string) : '');
+    return {
+      scoutingText: text('scoutingText'),
+      repelledText: text('repelledText'),
+      unchallengedText: text('unchallengedText'),
+      description: text('description'),
+      definitionRevision: typeof raw.definitionRevision === 'number' ? raw.definitionRevision : null,
+    };
   }
 
   /**
@@ -459,11 +627,20 @@ export function createBossEncounterService(
   function encounterValuesFor(
     guildDbId: number,
     region: string,
-    boss: BossContent,
+    { boss, revision }: SpawnCandidate,
     scheduledAt: Date,
     forced: boolean,
   ): typeof bossEncounters.$inferInsert {
     const table = rewardTableFor(boss.rewardTable);
+    // The prose is frozen with everything else: an admin edit after this
+    // point reaches the next encounter, never this one.
+    const bossSnapshot: BossEncounterSnapshot = {
+      scoutingText: boss.scoutingText,
+      repelledText: boss.repelledText,
+      unchallengedText: boss.unchallengedText,
+      description: boss.description,
+      definitionRevision: revision,
+    };
     return {
       guildId: guildDbId,
       region,
@@ -473,6 +650,7 @@ export function createBossEncounterService(
       bossArtwork: boss.artwork,
       rewardTable: boss.rewardTable,
       rewardTableVersion: bossRewardTableVersion(table),
+      bossSnapshot: bossSnapshot as unknown as Record<string, unknown>,
       calcVersion: BOSS_DAMAGE_FORMULA_VERSION,
       affinityVersion: BOSS_AFFINITY_VERSION,
       status: 'scheduled',
@@ -514,17 +692,25 @@ export function createBossEncounterService(
       if (active.length > 0) return null;
 
       const region = state.region;
-      const candidates = bagCandidates(region);
+      const pool = await candidatesFor(tx, region, now);
+      const candidates: ShuffleBagCandidate[] = pool.map(({ boss: b }) => ({ id: b.id, affinity: b.affinity }));
       const draw = drawFromBag(parseShuffleBagState(state.bagState), candidates, rng);
       if (!draw) {
-        logger.warn({ guildId: guildDbId, region }, 'boss spawn skipped — no enabled bosses');
+        // Nothing is written: the cooldown that made this guild due stays
+        // exactly where it was, so the first boss to become available spawns
+        // on the next pass rather than after a fresh downtime.
+        logger.warn(
+          { guildId: guildDbId, region },
+          'boss spawn skipped — no enabled bosses are available right now',
+        );
         return null;
       }
-      const boss = candidatesFor(region).find((b) => b.id === draw.bossId)!;
+      const candidate = pool.find((c) => c.boss.id === draw.bossId)!;
+      const { boss } = candidate;
 
       const encounter = await insertEncounter(
         tx,
-        encounterValuesFor(guildDbId, region, boss, now, false),
+        encounterValuesFor(guildDbId, region, candidate, now, false),
       );
       // Lost the race to another process. Roll nothing back explicitly — this
       // transaction simply commits no bag change, because we return before
@@ -1040,21 +1226,58 @@ export function createBossEncounterService(
     },
 
     bossFor(encounter) {
-      return getContent().bosses.find((b) => b.id === encounter.bossId);
+      // The prose frozen at spawn wins. Only an encounter from before prose
+      // was snapshotted reads the live definition, as it always did.
+      const frozen = parseBossSnapshot(encounter.bossSnapshot);
+      if (frozen) {
+        return {
+          id: encounter.bossId,
+          name: encounter.bossName,
+          affinity: encounter.bossAffinity as Affinity,
+          region: encounter.region as BossContent['region'],
+          enabled: true,
+          artwork: encounter.bossArtwork,
+          rewardTable: encounter.rewardTable,
+          scoutingText: frozen.scoutingText,
+          repelledText: frozen.repelledText,
+          unchallengedText: frozen.unchallengedText,
+          description: frozen.description,
+        };
+      }
+      const live = definitionSource.peek(encounter.bossId);
+      return live ? bossContentFromDefinition(live) : undefined;
     },
 
     spawnIfDue,
 
-    async forceSpawn(guildDbId, bossId, now = new Date()) {
-      await ensureState(guildDbId);
+    async forceSpawn(guildDbId, bossId, now = new Date(), opts = {}) {
       const state = await ensureState(guildDbId);
       const region = state.region;
-      const pool = candidatesFor(region);
+      const explained = await explainDefinitions(db, region, now, { ignoreSchedule: opts.ignoreSchedule });
+      const pool: SpawnCandidate[] = explained.flatMap((e) =>
+        e.verdict === 'eligible' ? [{ boss: bossContentFromDefinition(e.definition), revision: e.revision }] : [],
+      );
+      const named = bossId ? explained.find((e) => e.definition.id === bossId) : undefined;
+      if (named?.verdict === 'outside_schedule') {
+        throw new BossSpawnRefusedError(
+          'outside_schedule',
+          `${named.definition.name} is outside its availability schedule right now. ` +
+            'Spawning it anyway is a deliberate override.',
+        );
+      }
+      if (named?.verdict === 'reward_table_unavailable') {
+        throw new BossSpawnRefusedError(
+          'reward_table_unavailable',
+          `${named.definition.name} cannot spawn: ${named.detail ?? 'its reward table is unavailable.'}`,
+        );
+      }
       if (pool.length === 0) {
         throw new ContentValidationError(`No enabled bosses for region "${region}"`);
       }
-      const boss = bossId ? pool.find((b) => b.id === bossId) : pool[rng.intInclusive(0, pool.length - 1)];
-      if (!boss) {
+      const candidate = bossId
+        ? pool.find((c) => c.boss.id === bossId)
+        : pool[rng.intInclusive(0, pool.length - 1)];
+      if (!candidate) {
         throw new ContentValidationError(
           `Boss "${bossId}" is not an enabled boss in region "${region}"`,
         );
@@ -1064,19 +1287,90 @@ export function createBossEncounterService(
       // same forced boss must stay repeatable.
       const encounter = await insertEncounter(
         db,
-        encounterValuesFor(guildDbId, region, boss, now, true),
+        encounterValuesFor(guildDbId, region, candidate, now, true),
       );
       if (!encounter) throw new BossEncounterNotOpenError();
+      const { boss } = candidate;
+      const scheduleOverridden =
+        explained.find((e) => e.definition.id === boss.id)?.availability.availableNow === false;
       logger.warn(
         {
           tag: 'boss/force-spawn',
           guildId: guildDbId,
           encounterId: encounter.id,
           bossId: boss.id,
+          scheduleOverridden,
         },
         'boss encounter force-spawned by an admin (shuffle bag untouched)',
       );
-      return { encounter, boss, refilled: false, affinityRepeat: false };
+      return { encounter, boss, refilled: false, affinityRepeat: false, scheduleOverridden };
+    },
+
+    async explainSpawn(guildDbId, now = new Date()) {
+      const [state] = await db
+        .select()
+        .from(guildBossState)
+        .where(eq(guildBossState.guildId, guildDbId));
+      const region = state?.region ?? DEFAULT_REGION;
+      const [active] = await db
+        .select()
+        .from(bossEncounters)
+        .where(
+          and(
+            eq(bossEncounters.guildId, guildDbId),
+            inArray(bossEncounters.status, [...BOSS_ACTIVE_STATUSES]),
+          ),
+        )
+        .limit(1);
+      const explained = await explainDefinitions(db, region, now);
+      const [guild] = await db
+        .select({ bossChannelId: guilds.bossChannelId })
+        .from(guilds)
+        .where(eq(guilds.id, guildDbId));
+      return {
+        enabled: config().enabled,
+        region,
+        state: state ?? null,
+        channelConfigured: Boolean(guild?.bossChannelId),
+        active: active ?? null,
+        cooldownActive:
+          state?.nextSpawnAt !== null &&
+          state?.nextSpawnAt !== undefined &&
+          state.nextSpawnAt.getTime() > now.getTime(),
+        bosses: explained.map(({ definition, verdict, detail, availability }) => ({
+          definition,
+          verdict,
+          detail,
+          availability,
+        })),
+      };
+    },
+
+    async listActive(guildDbId) {
+      return db
+        .select()
+        .from(bossEncounters)
+        .where(
+          and(
+            inArray(bossEncounters.status, [...BOSS_ACTIVE_STATUSES]),
+            ...(guildDbId === undefined ? [] : [eq(bossEncounters.guildId, guildDbId)]),
+          ),
+        )
+        .orderBy(asc(bossEncounters.id));
+    },
+
+    async listRecent(guildDbId, limit = 25) {
+      return db
+        .select()
+        .from(bossEncounters)
+        .where(
+          and(
+            eq(bossEncounters.guildId, guildDbId),
+            inArray(bossEncounters.status, ['resolved', 'cancelled']),
+          ),
+        )
+        .orderBy(desc(bossEncounters.id))
+        .limit(Math.max(1, Math.min(100, limit)));
     },
 
     async beginScouting(encounterId, channelId, messageId, now = new Date()) {

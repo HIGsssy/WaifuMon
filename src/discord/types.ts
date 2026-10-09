@@ -35,6 +35,7 @@ import type { CollectionFilterTracker } from './collectionFilterTracker';
 import type { EphemeralRegistry } from './ephemeralCleanup';
 import type { OwnedCardWarmer } from '../modules/appearance/ownedCardWarm';
 import type { BossEncounterService } from '../modules/bosses/bossEncounterService';
+import type { BossDefinitionService } from '../modules/bosses/bossDefinitionService';
 import type { TravelService } from '../modules/travel/travelService';
 import type { KeyItemService } from '../modules/keyItems/keyItemService';
 import type { BossAnnouncer } from '../modules/bosses/bossScheduler';
@@ -117,6 +118,8 @@ export interface AppServices {
    * switched off behind a flag the handlers have to keep checking.
    */
   bosses?: BossEncounterService | undefined;
+  /** Boss Management: DB-backed boss definitions and their availability schedules (Portal Admin). */
+  bossDefinitions?: BossDefinitionService | undefined;
   /**
    * Locations & Travel. Always wired — the feature's own gate is
    * `tables.travel.enabled`, which the service reads from the live content

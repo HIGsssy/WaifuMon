@@ -19,6 +19,7 @@ import {
   BookOpen,
   CalendarDays,
   Compass,
+  Crown,
   FlaskConical,
   Gauge,
   Heart,
@@ -79,6 +80,13 @@ export const NAV_ITEMS: readonly NavItem[] = [
     label: 'Admin — Waifumon Gallery',
     icon: Images,
     requiresPermission: 'gallery.read',
+  },
+  {
+    // Boss definitions, their availability schedules, and live boss activity.
+    to: '/admin/bosses',
+    label: 'Admin — Boss Management',
+    icon: Crown,
+    requiresPermission: 'bosses.read',
   },
   {
     // Owner-only: `system.metrics.read` is not grantable, so a delegated admin

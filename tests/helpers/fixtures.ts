@@ -43,6 +43,7 @@ import { createPlayerService } from '../../src/modules/players/playerService';
 import { createShopService } from '../../src/modules/shop/shopService';
 import { createSessionService } from '../../src/modules/session/sessionService';
 import { createBossEncounterService } from '../../src/modules/bosses/bossEncounterService';
+import type { BossDefinitionSource } from '../../src/modules/bosses/bossDefinitions';
 import { createTravelService } from '../../src/modules/travel/travelService';
 import { createKeyItemService } from '../../src/modules/keyItems/keyItemService';
 import { createWorldEncounterService } from '../../src/modules/worldEncounters/worldEncounterService';
@@ -185,6 +186,12 @@ export interface BootstrapOptions {
    * the window to minutes without editing `content/tables.json`.
    */
   bossEncounters?: Partial<LoadedContent['tables']['bossEncounters']>;
+  /**
+   * Where bosses read their definitions. Absent: the loaded `bosses.json`
+   * (so a test can edit `app.content.bosses` in place). Production wires
+   * `createDatabaseBossDefinitionSource()`.
+   */
+  bossDefinitions?: BossDefinitionSource;
   /**
    * Drives the world-encounter trigger roll and the weighted draw that follows
    * it. A test that wants to prove `forceTrigger` overrides a *losing* roll
@@ -355,6 +362,7 @@ export async function bootstrapApp(
     buddyBonus,
     logger: t.logger,
     ...(opts.bossRng ? { rng: opts.bossRng } : {}),
+    ...(opts.bossDefinitions ? { definitions: opts.bossDefinitions } : {}),
   });
   const worldEncounterVendor = createWorldEncounterVendorService({
     db: t.db,
