@@ -1,7 +1,7 @@
 /**
  * Where the Enemy pages live: the real route table's `/admin/enemies` routes
  * and their permissions, the old Enemy Artwork path redirecting to the list,
- * and the navigation entry between Dungeons and Artwork Assets.
+ * and the navigation entry between Dungeons and Boss Management.
  */
 import { Suspense, type ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -103,11 +103,11 @@ describe('enemy routes', () => {
 });
 
 describe('navigation', () => {
-  it('lists Enemies between Dungeons and Artwork Assets, for `enemies.read`', () => {
+  it('lists Enemies between Dungeons and Boss Management, for `enemies.read`', () => {
     const labels = NAV_ITEMS.map((item) => item.label);
     const at = labels.indexOf('Admin — Enemies');
     expect(labels[at - 1]).toBe('Admin — Dungeons');
-    expect(labels[at + 1]).toBe('Admin — Artwork Assets');
+    expect(labels[at + 1]).toBe('Admin — Boss Management');
     expect(NAV_ITEMS[at]).toMatchObject({
       to: '/admin/enemies',
       requiresPermission: 'enemies.read',

@@ -1951,3 +1951,91 @@ export class EnemyInUseError extends AppError {
     this.shipped = shipped === true;
   }
 }
+
+// ── Boss Management (Portal Admin) ───────────────────────────────────────────
+
+/** One problem with a boss definition. `path` is the field, e.g. `schedule.weekly[0].windows`. */
+export interface BossDefinitionIssueDetail {
+  path: string;
+  message: string;
+  severity: 'error' | 'warning';
+}
+
+/** A boss definition (or an import) failed validation; nothing was written. */
+export class BossDefinitionInvalidError extends AppError {
+  readonly issues: BossDefinitionIssueDetail[];
+  constructor(issues: readonly BossDefinitionIssueDetail[]) {
+    const list = Array.isArray(issues) ? issues : [];
+    const summary = list
+      .filter((i) => i.severity === 'error')
+      .map((i) => (i.path ? `${i.path}: ${i.message}` : i.message))
+      .join('; ');
+    super(
+      'BOSS_DEFINITION_INVALID',
+      `Invalid boss definition: ${summary || 'unknown problem'}`,
+      summary || 'That boss is not valid.',
+    );
+    this.issues = [...list];
+  }
+}
+
+/** A boss save named a revision someone else has since replaced. Nothing was written. */
+export class BossDefinitionStaleError extends AppError {
+  constructor(
+    readonly bossKey: string,
+    readonly expectedRevision: number,
+    readonly currentRevision: number,
+    readonly updatedBy: string | null,
+    readonly updatedAt: Date,
+  ) {
+    super(
+      'BOSS_DEFINITION_STALE',
+      `Boss "${String(bossKey)}" is at revision ${currentRevision}, not ${expectedRevision}`,
+      'This boss was changed by someone else since you opened it. Reload to see their changes.',
+    );
+  }
+}
+
+export class BossDefinitionKeyTakenError extends AppError {
+  constructor(bossKey: string) {
+    super(
+      'BOSS_DEFINITION_KEY_TAKEN',
+      `A boss "${String(bossKey)}" already exists`,
+      'Another boss already uses that id.',
+    );
+  }
+}
+
+/** Deleting a boss that has encounter history, or that ships with the game. */
+export class BossDefinitionInUseError extends AppError {
+  readonly encounterCount: number;
+  readonly shipped: boolean;
+  constructor(bossKey: string, encounterCount: number, shipped = false) {
+    const count = typeof encounterCount === 'number' && Number.isFinite(encounterCount) ? encounterCount : 0;
+    super(
+      'BOSS_DEFINITION_IN_USE',
+      `Boss "${String(bossKey)}" cannot be deleted: ` +
+        (count > 0 ? `it has ${count} recorded encounter(s)` : 'it ships with the game'),
+      count > 0
+        ? 'That boss has encounter history. Disable it instead — its past encounters keep their records.'
+        : 'That boss ships with the game and would come back on the next restart. Disable it instead.',
+    );
+    this.encounterCount = count;
+    this.shipped = shipped === true;
+  }
+}
+
+/**
+ * A manual spawn the spawner will not perform as asked.
+ *
+ * `reason` says which rule refused it. `outside_schedule` is the one an admin
+ * may deliberately override; the others have to be fixed first.
+ */
+export class BossSpawnRefusedError extends AppError {
+  readonly reason: string;
+  constructor(reason: string, message: string) {
+    const text = typeof message === 'string' ? message : 'That boss cannot be spawned right now.';
+    super('BOSS_SPAWN_REFUSED', `Boss spawn refused (${String(reason)}): ${text}`, text);
+    this.reason = String(reason);
+  }
+}

@@ -44,6 +44,7 @@ import { createShopService } from '../../src/modules/shop/shopService';
 import { createSessionService } from '../../src/modules/session/sessionService';
 import { createBossEncounterService } from '../../src/modules/bosses/bossEncounterService';
 import type { RewardTableSource } from '../../src/modules/rewardTables/rewardTableStore';
+import type { BossDefinitionSource } from '../../src/modules/bosses/bossDefinitions';
 import { createTravelService } from '../../src/modules/travel/travelService';
 import { createKeyItemService } from '../../src/modules/keyItems/keyItemService';
 import { createWorldEncounterService } from '../../src/modules/worldEncounters/worldEncounterService';
@@ -215,6 +216,12 @@ export interface BootstrapOptions {
    * `databaseRewardTableSource`; a test of the live table store passes it.
    */
   rewardTables?: RewardTableSource;
+  /**
+   * Where bosses read their definitions. Absent: the loaded `bosses.json`
+   * (so a test can edit `app.content.bosses` in place). Production wires
+   * `createDatabaseBossDefinitionSource()`.
+   */
+  bossDefinitions?: BossDefinitionSource;
 }
 
 /** Wires all services against a test database with the shipped content seeded. */
@@ -388,6 +395,7 @@ export async function bootstrapApp(
     logger: t.logger,
     ...(opts.bossRng ? { rng: opts.bossRng } : {}),
     ...(opts.rewardTables ? { rewardTables: opts.rewardTables } : {}),
+    ...(opts.bossDefinitions ? { definitions: opts.bossDefinitions } : {}),
   });
   const worldEncounterVendor = createWorldEncounterVendorService({
     db: t.db,

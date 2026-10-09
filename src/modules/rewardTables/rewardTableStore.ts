@@ -31,7 +31,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, sql } from 'drizzle-orm';
 import type { Db, DbOrTx } from '../../db/client';
 import { rewardTables, type RewardTableRow } from '../../db/schema';
 import { ContentValidationError } from '../../shared/errors';
@@ -259,4 +259,13 @@ export async function seedRewardTables(
     });
   }
   return result;
+}
+
+/** The boss reward tables that exist, in list order — what Boss Management offers and validates against. */
+export async function listBossRewardTableOptions(tx: DbOrTx): Promise<{ id: string; enabled: boolean }[]> {
+  return tx
+    .select({ id: rewardTables.tableId, enabled: rewardTables.enabled })
+    .from(rewardTables)
+    .where(eq(rewardTables.kind, 'boss'))
+    .orderBy(asc(rewardTables.position), asc(rewardTables.tableId));
 }

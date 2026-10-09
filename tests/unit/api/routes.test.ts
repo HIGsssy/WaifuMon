@@ -1016,6 +1016,22 @@ describe('OpenAPI registration', () => {
       'POST /api/v1/admin/enemies/{key}/duplicate',
       'PUT /api/v1/admin/enemies/{key}',
       'PUT /api/v1/admin/enemies/{key}/enabled',
+      // Boss Management (`bosses.write`): create, save, lifecycle, duplicate,
+      // delete and apply an import — writes name the revision they edited —
+      // plus Spawn Now and End Encounter, which go through the boss encounter
+      // service. `validate`, `schedule/preview` and `import/plan` write
+      // nothing but carry a body; they need `bosses.read`.
+      'DELETE /api/v1/admin/bosses/{id}',
+      'POST /api/v1/admin/bosses',
+      'POST /api/v1/admin/bosses/encounters/{encounterId}/end',
+      'POST /api/v1/admin/bosses/import/apply',
+      'POST /api/v1/admin/bosses/import/plan',
+      'POST /api/v1/admin/bosses/schedule/preview',
+      'POST /api/v1/admin/bosses/validate',
+      'POST /api/v1/admin/bosses/{id}/duplicate',
+      'POST /api/v1/admin/bosses/{id}/spawn',
+      'PUT /api/v1/admin/bosses/{id}',
+      'PUT /api/v1/admin/bosses/{id}/status',
     ].sort());
   });
 

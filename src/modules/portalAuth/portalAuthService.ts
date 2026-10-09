@@ -72,6 +72,17 @@ export const ALL_PORTAL_PERMISSIONS = [
   // Dungeon editor's enemy pickers need only `dungeons.read`.
   'enemies.read',
   'enemies.write',
+  // Boss Management. Three grants, because authoring and operating are
+  // different jobs: `write` covers the definitions — create, edit, lifecycle
+  // (Draft/Active/Disabled), duplicate, delete and import — and reaches only
+  // future encounters. `operate` covers the live controls, Spawn Now and End
+  // Encounter, which act on a server's players immediately (a public
+  // announcement, an early payout). Neither implies the other, the same split
+  // `encounters.write` / `encounters.publish` makes. Reward tables stay under
+  // `rewards.*`.
+  'bosses.read',
+  'bosses.write',
+  'bosses.operate',
   // Managed artwork: images uploaded through the Portal and referenced by id
   // from authored content. `read` lists, previews and picks assets (and
   // renders scene previews); `write` uploads, replaces, renames, disables and
@@ -118,6 +129,12 @@ export const PORTAL_PERMISSION_DESCRIPTIONS: Readonly<Record<PortalPermission, s
   'enemies.read': 'View the Enemy Catalogue: stats, artwork and where each enemy is used.',
   'enemies.write':
     'Create, edit, enable/disable, duplicate and delete enemies (affects future dungeon runs and Combat Trial fights only).',
+  'bosses.read':
+    'View Boss Management: boss definitions, availability schedules, active and past encounters, and scheduler diagnostics.',
+  'bosses.write':
+    'Create, edit, activate/disable, duplicate, delete and import boss definitions (affects future encounters only).',
+  'bosses.operate':
+    'Manually spawn a boss (including outside its schedule) and end the active boss encounter on this server.',
   'artwork.read': 'Browse and preview uploaded artwork, and pick it in editors.',
   'artwork.write': 'Upload, replace, rename, disable and delete managed artwork.',
   'system.metrics.read':

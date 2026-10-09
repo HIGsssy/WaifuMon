@@ -1145,6 +1145,13 @@ export const bossEncounters = pgTable(
      * from the live table.
      */
     rewardSnapshot: jsonb('reward_snapshot').$type<Record<string, unknown>>(),
+    /**
+     * The boss's player-facing prose, frozen at spawn (`BossEncounterSnapshot`,
+     * migration 0057). An admin edit to the definition reaches the next
+     * encounter and never one already drawn. Null on encounters spawned before
+     * the migration, which read the live definition.
+     */
+    bossSnapshot: jsonb('boss_snapshot').$type<Record<string, unknown>>(),
     /** `BOSS_DAMAGE_FORMULA_VERSION` — which formula produced these numbers. */
     calcVersion: integer('calc_version').notNull(),
     /** `BOSS_AFFINITY_VERSION` — which advantage table applied. */
@@ -2137,6 +2144,8 @@ export type PlayerActiveEffectRow = typeof playerActiveEffects.$inferSelect;
 export type AffectionGiftRollRow = typeof affectionGiftRolls.$inferSelect;
 export type AffectionGiftRow = typeof affectionGifts.$inferSelect;
 export type GuildBossStateRow = typeof guildBossState.$inferSelect;
+export type BossDefinitionRow = typeof bossDefinitions.$inferSelect;
+export type BossDefinitionEventRow = typeof bossDefinitionEvents.$inferSelect;
 export type BossEncounterRow = typeof bossEncounters.$inferSelect;
 export type BossParticipationRow = typeof bossParticipations.$inferSelect;
 export type RegionEncounterPoolRow = typeof regionEncounterPools.$inferSelect;
@@ -3448,3 +3457,97 @@ export const combatEnemies = pgTable(
   ],
 );
 export type CombatEnemyRow = typeof combatEnemies.$inferSelect;
+
+/**
+ * Boss definitions (migration 0057). Authoritative: the scheduler draws from
+ * this table. `content/bosses.json` is bootstrap data — a boss whose key has
+ * no row is inserted at startup, and a row is never updated from the file.
+ */
+export const BOSS_DEFINITION_STATUSES = ['draft', 'active', 'disabled'] as const;
+export type BossDefinitionStatus = (typeof BOSS_DEFINITION_STATUSES)[number];
+
+/** How a definition's row came to exist. Informational; never changes afterwards. */
+export const BOSS_DEFINITION_SOURCES = ['bootstrap', 'portal', 'import'] as const;
+export type BossDefinitionSource = (typeof BOSS_DEFINITION_SOURCES)[number];
+
+export const bossDefinitions = pgTable(
+  'boss_definitions',
+  {
+    /** The boss id snapshotted onto every encounter row (`boss_encounters.boss_id`). Never reused. */
+    bossKey: text('boss_key').primaryKey(),
+    name: text('name').notNull(),
+    affinity: text('affinity').$type<Affinity>().notNull(),
+    /** Regions whose guilds may draw this boss. */
+    regions: jsonb('regions').$type<string[]>().notNull().default([]),
+    /** Only `active` bosses spawn. */
+    status: text('status').$type<BossDefinitionStatus>().notNull().default('draft'),
+    /** Relative to the assets root; null renders a text-only encounter. */
+    artwork: text('artwork'),
+    /** A `reward_tables` id of kind `boss`. Empty only on a draft. */
+    rewardTable: text('reward_table').notNull().default(''),
+    scoutingText: text('scouting_text').notNull().default(''),
+    repelledText: text('repelled_text').notNull().default(''),
+    unchallengedText: text('unchallenged_text').notNull().default(''),
+    description: text('description').notNull().default(''),
+    /** `BossSchedule` — owned by `modules/bosses/bossSchedule.ts`. */
+    schedule: jsonb('schedule').$type<Record<string, unknown>>().notNull(),
+    /** Bumped on every write; a save must name the revision it edited. */
+    revision: integer('revision').notNull().default(1),
+    source: text('source').$type<BossDefinitionSource>().notNull().default('portal'),
+    /** List order: the shipped file's order, then creation order. */
+    position: integer('position').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Discord id of the admin, or `bootstrap`. */
+    updatedBy: text('updated_by'),
+  },
+  (t) => [
+    check('boss_definitions_key_check', sql`${t.bossKey} ~ '^[a-z0-9_]+$'`),
+    check('boss_definitions_status_check', sql`${t.status} in ('draft','active','disabled')`),
+    check(
+      'boss_definitions_affinity_check',
+      sql`${t.affinity} in ('dominant','submissive','caregiver','primal','switch')`,
+    ),
+    check('boss_definitions_source_check', sql`${t.source} in ('bootstrap','portal','import')`),
+    check('boss_definitions_revision_check', sql`${t.revision} >= 1`),
+    index('boss_definitions_position_idx').on(t.position, t.bossKey),
+    index('boss_definitions_status_idx').on(t.status),
+  ],
+);
+
+export const BOSS_DEFINITION_EVENT_ACTIONS = [
+  'bootstrap',
+  'create',
+  'update',
+  'status',
+  'duplicate',
+  'delete',
+  'import',
+  'manual_spawn',
+  'schedule_override',
+  'manual_end',
+] as const;
+export type BossDefinitionEventAction = (typeof BOSS_DEFINITION_EVENT_ACTIONS)[number];
+
+/** Append-only audit trail for Boss Management (migration 0057). */
+export const bossDefinitionEvents = pgTable(
+  'boss_definition_events',
+  {
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    /** No foreign key: the trail outlives a deleted definition. */
+    bossKey: text('boss_key').notNull(),
+    action: text('action').$type<BossDefinitionEventAction>().notNull(),
+    /** Discord id of the admin; null for a bearer/script caller. */
+    actor: text('actor'),
+    details: jsonb('details').$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check(
+      'boss_definition_events_action_check',
+      sql`${t.action} in ('bootstrap','create','update','status','duplicate','delete','import','manual_spawn','schedule_override','manual_end')`,
+    ),
+    index('boss_definition_events_boss_idx').on(t.bossKey, t.id.desc()),
+    index('boss_definition_events_recent_idx').on(t.id.desc()),
+  ],
+);

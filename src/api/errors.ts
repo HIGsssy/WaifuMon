@@ -201,6 +201,8 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   DUNGEON_ZONE_INVALID: 400,
   /** Admin: an enemy failed validation — issues are in `details`. */
   ENEMY_INVALID: 400,
+  /** Admin: a boss definition (or import) failed validation — issues are in `details`. */
+  BOSS_DEFINITION_INVALID: 400,
   /** Admin: a Delve setting outside its bounds. */
   DUNGEON_SETTINGS_INVALID: 400,
   /** Admin: progression currency metadata failed validation. */
@@ -330,6 +332,14 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   ARTWORK_UPLOAD_INVALID: 400,
   /** Admin: deleting managed artwork that a zone or enemy still references. */
   ARTWORK_ASSET_IN_USE: 409,
+  /** Admin: a boss save named a revision someone else has since replaced. */
+  BOSS_DEFINITION_STALE: 409,
+  /** Admin: creating a boss under an id another boss already has. */
+  BOSS_DEFINITION_KEY_TAKEN: 409,
+  /** Admin: deleting a boss with encounter history, or one Git ships — disable it instead. */
+  BOSS_DEFINITION_IN_USE: 409,
+  /** Admin: a manual spawn the spawner refused (`details.reason`; `outside_schedule` may be overridden). */
+  BOSS_SPAWN_REFUSED: 409,
   /** Admin: an enemy save named a revision someone else has since replaced. */
   ENEMY_STALE: 409,
   /** Admin: creating an enemy under a key another enemy already has. */

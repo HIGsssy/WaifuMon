@@ -56,6 +56,7 @@ import {
   loadShippedRewardTables,
   parseRewardTableRow,
   seedRewardTables,
+  listBossRewardTableOptions,
 } from './modules/rewardTables/rewardTableStore';
 import { createRewardTableService } from './modules/rewardTables/rewardTableService';
 import { regionLabel } from './modules/locations/regions';
@@ -140,7 +141,13 @@ import { createQuestService } from './modules/quests/questService';
 import { createSessionService } from './modules/session/sessionService';
 import { createGameEventBus, emitGameEvents, gameEvent } from './modules/events/gameEvents';
 import { createBossEncounterService } from './modules/bosses/bossEncounterService';
-import { createBossScheduler } from './modules/bosses/bossScheduler';
+import { createBossScheduler, type BossScheduler } from './modules/bosses/bossScheduler';
+import {
+  bootstrapBossDefinitions,
+  bossContentFromDefinition,
+  createDatabaseBossDefinitionSource,
+} from './modules/bosses/bossDefinitions';
+import { createBossDefinitionService } from './modules/bosses/bossDefinitionService';
 import { createBossAnnouncer } from './discord/bossAnnouncer';
 import { createHuntSessionTracker } from './modules/hunt/huntSession';
 import { createCollectionFilterTracker } from './discord/collectionFilterTracker';
@@ -613,6 +620,62 @@ async function main(): Promise<void> {
    * service uses, so an admin "Save + Reload" makes a newly-authored boss
    * drawable without a restart.
    */
+  /**
+   * Boss definitions. `boss_definitions` is authoritative; `bosses.json` is
+   * bootstrap data, inserted below (and after a content reload) for any boss
+   * that has no row yet and never written again. Always built — definitions
+   * stay editable in Portal Admin even while boss encounters are switched off.
+   */
+  const bossDefinitionSource = createDatabaseBossDefinitionSource();
+  const bossDefinitions = createBossDefinitionService({
+    db,
+    getShippedIds: () => contentSnapshot.bosses.map((b) => b.id),
+    getEnabledRegions: () => contentSnapshot.tables.bossEncounters.regions,
+    listRewardTables: listBossRewardTableOptions,
+    artworkExists: (relative) => resolveExistingAssetFile(config.assetsDir, relative).status === 'available',
+  });
+  /** Insert shipped bosses that have no row. Never throws: a failed bootstrap leaves the rows as they were. */
+  const bootstrapBosses = async (): Promise<void> => {
+    try {
+      const result = await bootstrapBossDefinitions(db, contentSnapshot.bosses);
+      if (result.created.length > 0) {
+        logger.info(
+          {
+            tag: 'boss-definitions/bootstrap',
+            initial: result.initial,
+            created: result.created,
+            existing: result.existing,
+          },
+          `imported ${result.created.length} boss definition(s) from content/bosses.json; ` +
+            `${result.existing} already in the database were left untouched`,
+        );
+      }
+      if (result.heldBack.length > 0) {
+        // Not an error, but an operator has to act for these to appear.
+        logger.warn(
+          { tag: 'boss-definitions/held-back', bosses: result.heldBack },
+          `${result.heldBack.length} boss(es) newly added to content/bosses.json were imported DISABLED ` +
+            `(${result.heldBack.join(', ')}) — activate them in Portal Admin → Boss Management`,
+        );
+      }
+      bossDefinitions.noteBootstrap({ at: new Date(), error: null, created: result.created, heldBack: result.heldBack });
+      await bossDefinitions.refresh();
+    } catch (err) {
+      bossDefinitions.noteBootstrap({
+        at: new Date(),
+        error: err instanceof Error ? err.message : String(err),
+        created: [],
+        heldBack: [],
+      });
+      logger.error(
+        { tag: 'boss-definitions/bootstrap-failed', err },
+        'boss definition bootstrap failed — bosses will use whatever definitions are in the DB; ' +
+          'Boss Management → Diagnostics lists any shipped boss that has no definition',
+      );
+    }
+  };
+  /** Filled in once the scheduler exists (after login); Boss Management reads its status. */
+  const bossRuntime: { scheduler?: BossScheduler | undefined } = {};
   const bosses = content.tables.bossEncounters.enabled
     ? createBossEncounterService({
         db,
@@ -622,6 +685,7 @@ async function main(): Promise<void> {
         buddyBonus,
         equipmentRewards,
         rewardTables: databaseRewardTableSource,
+        definitions: bossDefinitionSource,
         logger,
       })
     : undefined;
@@ -804,7 +868,13 @@ async function main(): Promise<void> {
       worldEncounterVendor: worldEncounterVendorService,
       rewardTables: createRewardTableService({
         db,
-        getContent: () => contentSnapshot,
+        // "Which bosses pay from this table" is answered from the live boss
+        // definitions, not from the bootstrap file.
+        getContent: () => ({
+          items: contentSnapshot.items,
+          expeditions: contentSnapshot.expeditions,
+          bosses: bossDefinitions.cached().map(bossContentFromDefinition),
+        }),
         getShipped: () => shippedRewardTables,
       }),
       worldEncounterSettings,
@@ -827,6 +897,7 @@ async function main(): Promise<void> {
       progressionCurrency,
       artworkAssets,
       enemies: enemyCatalogue,
+      bossDefinitions,
       sceneComposition,
     },
   };
@@ -900,6 +971,10 @@ async function main(): Promise<void> {
   // enemies are checked: a new enemy in content/combat/enemies.json is a row
   // (and selectable in the Dungeon editor) from this line on.
   await seedEnemyCatalogue();
+  // Boss definitions: a shipped boss with no row is inserted; a row that
+  // exists is never touched. Runs before the scheduler starts, so the first
+  // pass already draws from the database.
+  await bootstrapBosses();
   // Dungeon zones, seeded like reward tables: insert a missing shipped zone,
   // update one from Git only while its row still holds what was last seeded,
   // and never overwrite a zone edited in Portal Admin.
@@ -1138,6 +1213,7 @@ async function main(): Promise<void> {
         });
       })()
     : undefined;
+  bossRuntime.scheduler = bossScheduler;
   bossScheduler?.start();
 
   // Admin "Save + Reload" re-seeds Postgres *and* republishes the in-memory
@@ -1160,6 +1236,8 @@ async function main(): Promise<void> {
         contentSnapshot = result.content;
         // Enemies added to the reloaded file become catalogue rows now, not at the next restart.
         await seedEnemyCatalogue();
+        // A boss newly added to the reloaded file is inserted; existing rows stay as they are.
+        await bootstrapBosses();
         return result;
       },
     }),
@@ -1454,6 +1532,7 @@ async function main(): Promise<void> {
       // Fail-closed by default: the shared Platform API token stays a read
       // credential unless an operator has deliberately made it administrative.
       adminBearerAllowed: config.platformApi.adminBearer,
+      bossRuntime,
       ...(loadTesting === undefined
         ? {}
         : { loadTesting, loadTestingOperatorIds: config.loadTesting?.operatorDiscordIds ?? [] }),

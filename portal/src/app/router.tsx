@@ -199,6 +199,23 @@ const EnemyEditorPage = lazy(() =>
     default: m.EnemyEditorPage,
   })),
 );
+// Boss Management: boss definitions, availability schedules and live boss
+// activity. Gated on `bosses.read`; definition edits need `bosses.write`; Spawn Now and End Encounter need `bosses.operate`.
+const BossesListPage = lazy(() =>
+  import('@/features/adminBosses/BossesListPage').then((m) => ({
+    default: m.BossesListPage,
+  })),
+);
+const BossEditorPage = lazy(() =>
+  import('@/features/adminBosses/BossEditorPage').then((m) => ({
+    default: m.BossEditorPage,
+  })),
+);
+const BossActivityPage = lazy(() =>
+  import('@/features/adminBosses/BossActivityPage').then((m) => ({
+    default: m.BossActivityPage,
+  })),
+);
 // Managed artwork: images uploaded through the Portal. Gated on `artwork.read`.
 const ArtworkAssetsPage = lazy(() =>
   import('@/features/adminArtwork/ArtworkAssetsPage').then((m) => ({
@@ -515,6 +532,41 @@ export const routes: RouteObject[] = [
             element: (
               <RequirePortalPermission permission="enemies.read">
                 <EnemyEditorPage />
+              </RequirePortalPermission>
+            ),
+          },
+
+          // Admin — Boss Management. The API re-checks every request. `new` and
+          // `activity` are reserved ids on the server, so neither shadows a boss.
+          {
+            path: 'admin/bosses',
+            element: (
+              <RequirePortalPermission permission="bosses.read">
+                <BossesListPage />
+              </RequirePortalPermission>
+            ),
+          },
+          {
+            path: 'admin/bosses/new',
+            element: (
+              <RequirePortalPermission permission="bosses.write">
+                <BossEditorPage />
+              </RequirePortalPermission>
+            ),
+          },
+          {
+            path: 'admin/bosses/activity',
+            element: (
+              <RequirePortalPermission permission="bosses.read">
+                <BossActivityPage />
+              </RequirePortalPermission>
+            ),
+          },
+          {
+            path: 'admin/bosses/:id',
+            element: (
+              <RequirePortalPermission permission="bosses.read">
+                <BossEditorPage />
               </RequirePortalPermission>
             ),
           },

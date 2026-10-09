@@ -20,6 +20,7 @@ import {
   CalendarDays,
   Castle,
   Compass,
+  Crown,
   FlaskConical,
   Gauge,
   Gift,
@@ -98,6 +99,13 @@ export const NAV_ITEMS: readonly NavItem[] = [
     label: 'Admin — Enemies',
     icon: Skull,
     requiresPermission: 'enemies.read',
+  },
+  {
+    // Boss definitions, their availability schedules, and live boss activity.
+    to: '/admin/bosses',
+    label: 'Admin — Boss Management',
+    icon: Crown,
+    requiresPermission: 'bosses.read',
   },
   {
     to: '/admin/artwork',
