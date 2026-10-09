@@ -531,5 +531,70 @@
     "repelledText": "Count Jack-ula crashes backward into his coffin, cape tangled around his legs. 'WAIT!' he cries as the lid begins to close. 'You can't reject me! I've had centuries of experience with women!' Your Waifumon raises an eyebrow. The vampire pauses. '...Fine. Centuries of observing women.' The coffin slams shut.",
     "unchallengedText": "Count Jack-ula waits dramatically beneath the moonlight, practicing seductive poses against a tombstone. After twenty minutes without anyone approaching, he sighs. 'Perhaps they're intimidated by my raw vampiric sexuality.' A nearby skeleton shakes its head. Jack-ula points at it. 'Nobody asked you, Gary.' He climbs back into his coffin.",
     "description": "An immortal vampire creep who has spent centuries mastering the dark arts while learning absolutely nothing about women. Count Jack-ula lurks through the night armed with cheap cologne, a suspicious amount of lotion, and the unwavering belief that the cape is working."
+  },
+  {
+    "id": "franken_simp",
+    "name": "Franken-Simp",
+    "affinity": "submissive",
+    "region": "waifu-valley",
+    "enabled": true,
+    "artwork": "bosses/franken-simp_boss.webp",
+    "rewardTable": "standard-scouting-v1",
+    "scoutingText": "Lightning splits the sky as a towering, stitched-together monstrosity lurches from the shadows. He raises his massive arms, opens his mouth, and groans... 'Aaaaaare there... goth girls here?' Before you can answer, he spots your Waifumon and bellows, 'SHE CAN FIX MEEEE!' Unfortunately, he's decided you're standing between him and true love.",
+    "repelledText": "Franken-Simp collapses to his knees, his stitches popping as he reaches dramatically toward the heavens. 'BUT... I WAS... A NICE GUYYYY!' With one final spark from his neck bolts, he slumps to the ground. Somewhere in the distance, a goth Waifu leaves him on read.",
+    "unchallengedText": "You quietly back away as Franken-Simp wanders through the graveyard, dragging his feet and mumbling, 'Goth girls... where goth girls...' He stops to offer a bouquet of dead roses to a suspiciously feminine tombstone. The tombstone does not respond. He takes this as playing hard to get.",
+    "description": "A stitched abomination assembled from history's most powerful simps. His creator sought to conquer death, but accidentally created an undead romantic disaster whose only purpose is finding a goth Waifu willing to fix him. Unfortunately, not even resurrection could give him game."
+  },
+  {
+    "id": "creeper_black_lagoon",
+    "name": "The Creeper from the Black Lagoon",
+    "affinity": "dominant",
+    "region": "waifu-valley",
+    "enabled": true,
+    "artwork": "bosses/creeper-black-lagoon_boss.webp",
+    "rewardTable": "standard-scouting-v1",
+    "scoutingText": "The swamp bubbles ominously. Two enormous yellow eyes rise from the murky water, followed by a slimy, scaly creature wearing fogged-up swimming goggles. 'Oh, hey, bro! Didn't see you there. Just doing laps.' He has been standing in the same spot for forty-seven minutes. Suddenly, he notices your Waifumon. 'WAIT! IS SHE A MERMAID?!' His gills flare, his tail thrashes, and he lunges forward. Apparently, it's mating season. Again.",
+    "repelledText": "The Creeper crashes backward into the lagoon with an enormous splash. 'WHOA, BRO! PERSONAL SPACE!' he shrieks, despite having absolutely no concept of it himself. As he sinks beneath the surface, a soggy citation floats to the top. It reads: 'FINAL WARNING — NO LOITERING NEAR THE MERMAID GROTTO.' Somewhere underwater, he can still be heard insisting, 'I WAS JUST SWIMMING!'",
+    "unchallengedText": "You decide this particular swamp isn't worth the trouble. As you turn to leave, the Creeper slowly submerges until only his eyes remain above the water. 'Cool, cool. I'll just finish my laps.' Ten minutes later, he's still in exactly the same spot, holding a waterproof pair of binoculars. A nearby sign reads: 'PUBLIC SWIMMING AREA CLOSED DUE TO ONE SPECIFIC GUY.'",
+    "description": "A suspicious amphibious monstrosity lurking in the murky depths of the Black Lagoon. He claims to be an avid swimmer, despite never having been observed completing a single lap. Frequently spotted near mermaid habitats, women's swimming areas, and suspiciously convenient underwater hiding spots. His greatest natural predators are lifeguards, security guards, and women who know how to file complaints."
+  },
+  {
+    "id": "jekyll_mr_slide_into_your_dms",
+    "name": "Dr. Jekyll & Mr. Slide-Into-Your-DMs",
+    "affinity": "switch",
+    "region": "waifu-valley",
+    "enabled": true,
+    "artwork": "bosses/jekyll-mr-slide-into-your-dms_boss.webp",
+    "rewardTable": "standard-scouting-v1",
+    "scoutingText": "A distinguished gentleman steps from the shadows of a Victorian laboratory, adjusting his spectacles. 'Good evening. I am Dr. Jekyll, a humble scholar of chemistry and human behavior.' Suddenly, his pocket vibrates. He glances at a glowing phone. 'Oh dear... she's online.' His hands tremble as he downs a bubbling purple serum. His spine twists, his monocle shatters, and his mustache curls into a sinister grin. 'HEYYYY BEAUTIFUL 😍🔥😍 YOU UP???' Seventeen notifications explode across the laboratory. Your Waifumon has already blocked him twice. He considers this flirting.",
+    "repelledText": "Mr. Slide-Into-Your-DMs staggers backward as his phone erupts with notifications. 'MESSAGE NOT DELIVERED?! BUT I SENT THE GOOD MORNING TEXT!' His monstrous form shrinks, his posture straightens, and Dr. Jekyll returns, staring at the phone in horror. 'Good heavens... did I really send forty-three fire emojis?' He quietly deletes his account. Unfortunately, the backup account is already typing.",
+    "unchallengedText": "You decide not to engage and quietly leave the laboratory. Behind you, Dr. Jekyll notices a new profile picture. 'What a fascinating young lady...' His hand slowly reaches for the purple serum. Moments later, a distant scream echoes through the streets: 'HEY QUEEN! I SAW YOUR STORY! YOU LOOK AMAZING! WHY YOU LEAVING ME ON READ?!' Somewhere, a Waifu activates Do Not Disturb.",
+    "description": "A brilliant Victorian chemist who developed an experimental serum intended to separate humanity's noble impulses from its darkest desires. Unfortunately, the formula merely transformed him into an aggressively flirtatious digital menace. By day, Dr. Jekyll is a refined gentleman. By night, Mr. Slide-Into-Your-DMs terrorizes Waifumon inboxes with unsolicited compliments, excessive emojis, and an unshakeable belief that 'seen' means 'interested.' His greatest weakness is the block button."
+  },
+  {
+    "id": "the_mummysboy",
+    "name": "The Mummysboy",
+    "affinity": "submissive",
+    "region": "waifu-valley",
+    "enabled": true,
+    "artwork": "bosses/the-mummysboy_boss.webp",
+    "rewardTable": "standard-scouting-v1",
+    "scoutingText": "The ancient sarcophagus trembles. Golden seals shatter, sand swirls through the chamber, and a terrifying voice echoes from within. 'WHO DARES DISTURB THE ETERNAL SLUMBER OF THE GREAT PHARAOH?!' The lid crashes open, revealing a bandage-wrapped figure clutching a lunchbox. 'Wait... you're not my mummy.' He looks around nervously. 'Did she send you? She said I wasn't supposed to talk to strangers.' Spotting your Waifumon, he gasps. 'A GIRL?! MUMMY NEVER SAID THERE'D BE GIRLS!' He raises his cursed staff and squeaks, 'I'M TELLING MY MUMMY!'",
+    "repelledText": "The Mummysboy tumbles backward into his sarcophagus, scattering ancient treasures and individually wrapped snacks. 'MUMMYYYY! THEY'RE BEING MEAN TO MEEEE!' A spectral voice booms from beyond the veil. 'DID YOU REMEMBER TO TAKE YOUR CURSE MEDICINE, SWEETIE?' He sniffles. 'NOOO...' The chamber falls silent. Then comes the terrifying sound of an ancient Egyptian mother counting to three. The sarcophagus slams shut immediately.",
+    "unchallengedText": "You quietly retreat from the tomb as the Mummysboy examines a neatly folded papyrus note. 'Remember to eat your vegetables, don't summon any demons, and be home before the third moon. Love, Mummy.' He smiles, carefully tucks the note into his bandages, and pulls out a sandwich with the crusts removed. Behind you, an ancient stone door creaks shut beneath a glowing inscription: 'MY MUMMY SAYS I'M SPECIAL.'",
+    "description": "An ancient pharaoh resurrected after three thousand years of slumber, cursed with unimaginable magical power and absolutely zero independence. His royal sarcophagus contains enchanted snacks, clean underwear, emergency tissues, and detailed instructions from his mother. Despite commanding legions of undead servants, he refuses to make important decisions without consulting Mummy first. His greatest fear isn't death, divine judgment, or eternal damnation. It's disappointing his mother."
+  },
+  {
+    "id": "registered_hex_offender",
+    "name": "The Registered Hex Offender",
+    "affinity": "dominant",
+    "region": "waifu-valley",
+    "enabled": true,
+    "artwork": "bosses/registered-hex-offender_boss.webp",
+    "rewardTable": "standard-scouting-v1",
+    "scoutingText": "A thick purple fog rolls across the path as a hunched wizard emerges from the shadows, dragging a suspiciously sticky spellbook. 'BEHOLD! I AM THE MASTER OF FORBIDDEN HEXES!' He raises his staff dramatically, accidentally dropping a stack of magical restraining orders. 'Those are completely unrelated.' Your Waifumon narrows her eyes as he begins chanting. 'By moonlit thighs and enchanted lace, I summon affection to this place!' Nothing happens. His staff flashes red. 'WARNING: SPELLCASTING PRIVILEGES REVOKED.' The wizard panics. 'THAT'S AN ADMINISTRATIVE ERROR!' He reaches for an illegal backup wand. Oh, this is definitely going to be a problem.",
+    "repelledText": "The Registered Hex Offender crashes backward as his own spell rebounds, wrapping him in glowing magical caution tape. 'YOU CAN'T DO THIS! I KNOW THE HEAD WIZARD!' A spectral parchment materializes overhead: 'NOTICE OF VIOLATION — UNAUTHORIZED HEXING, THIRD OFFENSE.' His enchanted ankle monitor begins screaming. Somewhere in the distance, the Arcane Compliance Department dispatches a squad of armored magical-girl enforcers. 'I WAS JUST ASKING FOR HER TRUE NAME!' he protests as a portal opens beneath him. Case closed. Again.",
+    "unchallengedText": "You wisely decide that this particular wizard isn't worth the paperwork. As you walk away, he attempts to mount his broomstick. A loud mechanical voice announces, 'PLEASE BLOW INTO THE ARCANE IGNITION INTERLOCK.' He sighs, blows into the enchanted crystal, and receives a flashing red rejection. 'I ONLY HAD TWO POTIONS!' he yells. Forced to walk, he shuffles toward a nearby magical-girl academy before his ankle monitor emits an ear-splitting alarm. 'FIVE HUNDRED FEET?! THAT'S PRACTICALLY THE WHOLE TOWN!' A squad of spectral compliance officers immediately gives chase.",
+    "description": "A disgraced sorcerer whose extensive history of inappropriate spellcasting has earned him a permanent place on the Arcane Offender Registry. His wizarding license has been revoked, his magical restraining orders are laminated, and his broomstick requires an enchanted ignition interlock. Prohibited from approaching magical-girl academies, he insists every incident was merely a misunderstanding involving experimental charm magic. His most powerful spell is 'Plausible Deniability,' which has never once succeeded. His greatest weakness is the Arcane Compliance Department."
   }
 ]
