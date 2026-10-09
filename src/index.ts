@@ -81,7 +81,9 @@ import { createQuestService } from './modules/quests/questService';
 import { createSessionService } from './modules/session/sessionService';
 import { createGameEventBus, emitGameEvents, gameEvent } from './modules/events/gameEvents';
 import { createBossEncounterService } from './modules/bosses/bossEncounterService';
-import { createBossScheduler } from './modules/bosses/bossScheduler';
+import { createBossScheduler, type BossScheduler } from './modules/bosses/bossScheduler';
+import { bootstrapBossDefinitions, createDatabaseBossDefinitionSource } from './modules/bosses/bossDefinitions';
+import { createBossDefinitionService } from './modules/bosses/bossDefinitionService';
 import { createBossAnnouncer } from './discord/bossAnnouncer';
 import { createHuntSessionTracker } from './modules/hunt/huntSession';
 import { createCollectionFilterTracker } from './discord/collectionFilterTracker';
@@ -337,6 +339,63 @@ async function main(): Promise<void> {
    * service uses, so an admin "Save + Reload" makes a newly-authored boss
    * drawable without a restart.
    */
+  /**
+   * Boss definitions. `boss_definitions` is authoritative; `bosses.json` is
+   * bootstrap data, inserted below (and after a content reload) for any boss
+   * that has no row yet and never written again. Always built — definitions
+   * stay editable in Portal Admin even while boss encounters are switched off.
+   */
+  const bossDefinitionSource = createDatabaseBossDefinitionSource();
+  const bossDefinitions = createBossDefinitionService({
+    db,
+    getShippedIds: () => contentSnapshot.bosses.map((b) => b.id),
+    getEnabledRegions: () => contentSnapshot.tables.bossEncounters.regions,
+    // Boss reward tables are content here: `content/bossRewards.json`.
+    listRewardTables: async () => contentSnapshot.bossRewards.map((t) => ({ id: t.id, enabled: t.enabled })),
+    artworkExists: (relative) => resolveExistingAssetFile(config.assetsDir, relative).status === 'available',
+  });
+  /** Insert shipped bosses that have no row. Never throws: a failed bootstrap leaves the rows as they were. */
+  const bootstrapBosses = async (): Promise<void> => {
+    try {
+      const result = await bootstrapBossDefinitions(db, contentSnapshot.bosses);
+      if (result.created.length > 0) {
+        logger.info(
+          {
+            tag: 'boss-definitions/bootstrap',
+            initial: result.initial,
+            created: result.created,
+            existing: result.existing,
+          },
+          `imported ${result.created.length} boss definition(s) from content/bosses.json; ` +
+            `${result.existing} already in the database were left untouched`,
+        );
+      }
+      if (result.heldBack.length > 0) {
+        // Not an error, but an operator has to act for these to appear.
+        logger.warn(
+          { tag: 'boss-definitions/held-back', bosses: result.heldBack },
+          `${result.heldBack.length} boss(es) newly added to content/bosses.json were imported DISABLED ` +
+            `(${result.heldBack.join(', ')}) — activate them in Portal Admin → Boss Management`,
+        );
+      }
+      bossDefinitions.noteBootstrap({ at: new Date(), error: null, created: result.created, heldBack: result.heldBack });
+      await bossDefinitions.refresh();
+    } catch (err) {
+      bossDefinitions.noteBootstrap({
+        at: new Date(),
+        error: err instanceof Error ? err.message : String(err),
+        created: [],
+        heldBack: [],
+      });
+      logger.error(
+        { tag: 'boss-definitions/bootstrap-failed', err },
+        'boss definition bootstrap failed — bosses will use whatever definitions are in the DB; ' +
+          'Boss Management → Diagnostics lists any shipped boss that has no definition',
+      );
+    }
+  };
+  /** Filled in once the scheduler exists (after login); Boss Management reads its status. */
+  const bossRuntime: { scheduler?: BossScheduler | undefined } = {};
   const bosses = content.tables.bossEncounters.enabled
     ? createBossEncounterService({
         db,
@@ -344,6 +403,7 @@ async function main(): Promise<void> {
         collection,
         getContent: () => contentSnapshot,
         buddyBonus,
+        definitions: bossDefinitionSource,
         logger,
       })
     : undefined;
@@ -490,6 +550,7 @@ async function main(): Promise<void> {
         timezone: config.dailyTimezone,
       }),
       ...(bosses === undefined ? {} : { bosses }),
+      bossDefinitions,
       worldEncounter: createWorldEncounterService({
         db,
         currency,
@@ -547,6 +608,11 @@ async function main(): Promise<void> {
   } catch (err) {
     logger.warn({ err }, 'world encounter seed failed — feature will run with whatever is in the DB');
   }
+
+  // Boss definitions: a shipped boss with no row is inserted; a row that
+  // exists is never touched. Runs before the scheduler starts, so the first
+  // pass already draws from the database.
+  await bootstrapBosses();
 
   await registerCommands(config.discordToken, config.discordClientId, config.discordGuildId, logger);
 
@@ -693,6 +759,7 @@ async function main(): Promise<void> {
         });
       })()
     : undefined;
+  bossRuntime.scheduler = bossScheduler;
   bossScheduler?.start();
 
   // Admin "Save + Reload" re-seeds Postgres *and* republishes the in-memory
@@ -713,6 +780,8 @@ async function main(): Promise<void> {
         // Keep the appearance service's view in step: newly-authored artwork
         // must be selectable (and retroactively unlockable) immediately.
         contentSnapshot = result.content;
+        // A boss newly added to the reloaded file is inserted (disabled); existing rows stay as they are.
+        await bootstrapBosses();
         return result;
       },
     }),
@@ -1003,6 +1072,7 @@ async function main(): Promise<void> {
       // Fail-closed by default: the shared Platform API token stays a read
       // credential unless an operator has deliberately made it administrative.
       adminBearerAllowed: config.platformApi.adminBearer,
+      bossRuntime,
       ...(loadTesting === undefined
         ? {}
         : { loadTesting, loadTestingOperatorIds: config.loadTesting?.operatorDiscordIds ?? [] }),

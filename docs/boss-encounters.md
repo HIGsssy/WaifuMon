@@ -84,7 +84,7 @@ exempted from that rule automatically.
 | --- | --- |
 | `/waifumon-admin boss status` | Current encounter, next appearance, shuffle-bag depth, and any warning |
 | `/waifumon-admin boss clear-channel` | Turns bosses off for this server. A live encounter still resolves and pays out |
-| `/waifumon-admin boss spawn [boss]` | Force-spawn for testing. **Does not consume the shuffle bag** |
+| `/waifumon-admin boss spawn [boss]` | Force-spawn for testing. **Does not consume the shuffle bag**. Naming a boss spawns it even outside its availability schedule; with none named, the pick is among bosses available now |
 | `/waifumon-admin boss end` | Ends the active encounter now. Anyone who committed is still paid in full |
 | `/waifumon-admin boss repair` | Reposts a deleted announcement onto the **same** encounter — never creates a second one |
 | `/waifumon-admin boss pause` / `resume` | Stops or restarts scheduling. A live encounter still resolves while paused |
@@ -136,7 +136,16 @@ claimed by a single conditional `UPDATE`.
 
 ### Adding a boss
 
-Bosses live in `content/bosses.json` — one array, one object per boss:
+Boss definitions are database rows, authored in **Portal Admin → Boss
+Management** — including each boss's availability schedule. See
+[`docs/boss-management.md`](boss-management.md).
+
+`content/bosses.json` is **bootstrap data**: a boss in the file that has no
+row yet is inserted at startup, and a row that exists is never changed from
+the file. Adding a boss here still works for a fresh server (on an existing
+one it arrives Disabled, to be activated in the Portal); editing one here does
+not reach a server that already has it. The file's shape — one array, one
+object per boss:
 
 ```json
 {
@@ -211,8 +220,8 @@ Payout tables are **not** here — they live in `content/bossRewards.json`. See
 
 Retuning these takes effect on the next **restart** — the same rule every other
 `tables.json` block follows, because service closures capture their config at
-construction. Adding or editing a *boss* takes effect on **Save + Reload**,
-because boss content is read through a live getter.
+construction. Editing a *boss* in Boss Management takes effect at the next
+spawn: the scheduler reads `boss_definitions` on every draw.
 
 ### The encounter cycle
 
@@ -639,7 +648,9 @@ against, not a reason to pre-emptively retune.
 | Table | Holds |
 | --- | --- |
 | `guild_boss_state` | shuffle bag, next appearance, pause and suspension flags |
-| `boss_encounters` | one row per appearance, with the boss content snapshotted onto it |
+| `boss_definitions` | the boss definitions the scheduler draws from, with their lifecycle status and availability schedule — see [`docs/boss-management.md`](boss-management.md) |
+| `boss_definition_events` | append-only audit trail of definition changes and manual spawn / end actions |
+| `boss_encounters` | one row per appearance, with the boss content (name, affinity, artwork, and its prose in `boss_snapshot`) snapshotted onto it |
 | `boss_participations` | one row per committed buddy — the immutable battle record |
 
 `boss_participations.waifu_id` carries **no foreign key**, matching
@@ -700,5 +711,6 @@ tiers · PvP · cross-server bosses · travel · scavenge mode.
 
 ## Related documentation
 
+- [`docs/boss-management.md`](boss-management.md) — boss definitions, availability schedules, Spawn Now / End Encounter and scheduler diagnostics
 - [`docs/content-authoring.md`](content-authoring.md) — appearances and card metadata
 - [`docs/admin-web.md`](admin-web.md) — the content admin panel

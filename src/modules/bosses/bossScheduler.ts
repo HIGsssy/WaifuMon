@@ -109,12 +109,35 @@ export interface BossSchedulerDeps {
   now?: () => Date;
 }
 
+/**
+ * What this process has actually observed its own scheduler do. Every field is
+ * a recorded fact about a pass that ran here — nothing is inferred, and a
+ * process that runs no scheduler has no status to report at all.
+ */
+export interface BossSchedulerStatus {
+  /** Whether the interval is armed in this process. */
+  running: boolean;
+  intervalMs: number;
+  /** Passes completed since this process started, failed ones included. */
+  passes: number;
+  lastPassStartedAt: Date | null;
+  /** The last pass that ran to the end without throwing. */
+  lastPassCompletedAt: Date | null;
+  lastPassDurationMs: number | null;
+  /** Guilds with a boss channel configured, and how many of those passed the channel check, on the last pass. */
+  lastPassGuilds: number | null;
+  lastPassUsableGuilds: number | null;
+  /** The most recent pass-level failure; cleared by the next pass that completes. */
+  lastError: { at: Date; message: string } | null;
+}
+
 export interface BossScheduler {
   /** Run one full pass. Exported so a test drives the loop deterministically. */
   tick(): Promise<void>;
   start(): void;
   stop(): void;
   readonly running: boolean;
+  status(): BossSchedulerStatus;
 }
 
 const DEFAULT_INTERVAL_MS = 60_000;
@@ -139,6 +162,15 @@ export function createBossScheduler(deps: BossSchedulerDeps): BossScheduler {
 
   let timer: NodeJS.Timeout | undefined;
   let inFlight = false;
+  const observed: Omit<BossSchedulerStatus, 'running' | 'intervalMs'> = {
+    passes: 0,
+    lastPassStartedAt: null,
+    lastPassCompletedAt: null,
+    lastPassDurationMs: null,
+    lastPassGuilds: null,
+    lastPassUsableGuilds: null,
+    lastError: null,
+  };
 
   /** Guilds that have opted in. A null channel means bosses are simply off. */
   async function configuredGuilds(): Promise<GuildRow[]> {
@@ -313,6 +345,14 @@ export function createBossScheduler(deps: BossSchedulerDeps): BossScheduler {
       // silently lost.
       if (!channelId) continue;
       try {
+        // Re-read immediately before posting. The list above may be seconds
+        // old by now (earlier announcements, a slow Discord call), and an
+        // admin — in Discord, or in the Portal, possibly in another process —
+        // can end a `scheduled` encounter at any moment. Posting for one that
+        // is no longer scheduled would leave a live-looking announcement for
+        // an encounter that is already over.
+        const current = await encounters.getEncounter(encounter.id);
+        if (current?.status !== 'scheduled') continue;
         const messageId = await announcer.postAnnouncement(encounter, channelId);
         const opened = await encounters.beginScouting(
           encounter.id,
@@ -368,6 +408,7 @@ export function createBossScheduler(deps: BossSchedulerDeps): BossScheduler {
     }
     inFlight = true;
     const started = Date.now();
+    observed.lastPassStartedAt = new Date(started);
     try {
       const guildRows = await configuredGuilds();
       const channelByGuild = new Map<number, string>();
@@ -394,6 +435,11 @@ export function createBossScheduler(deps: BossSchedulerDeps): BossScheduler {
       await spawnDue([...channelByGuild.keys()]);
       await announceScheduled(channelByGuild);
 
+      observed.lastPassCompletedAt = new Date();
+      observed.lastPassDurationMs = Date.now() - started;
+      observed.lastPassGuilds = guildRows.length;
+      observed.lastPassUsableGuilds = channelByGuild.size;
+      observed.lastError = null;
       logger.debug(
         {
           tag: 'boss/tick',
@@ -407,7 +453,9 @@ export function createBossScheduler(deps: BossSchedulerDeps): BossScheduler {
       // A pass that dies takes nothing with it — every decision it might have
       // made is re-derivable from the database next minute.
       logger.error({ tag: 'boss/tick-failed', err }, 'boss scheduler pass failed');
+      observed.lastError = { at: new Date(), message: err instanceof Error ? err.message : String(err) };
     } finally {
+      observed.passes += 1;
       inFlight = false;
     }
   }
@@ -416,6 +464,9 @@ export function createBossScheduler(deps: BossSchedulerDeps): BossScheduler {
     tick,
     get running() {
       return timer !== undefined;
+    },
+    status() {
+      return { running: timer !== undefined, intervalMs, ...observed };
     },
     start() {
       if (timer) return;

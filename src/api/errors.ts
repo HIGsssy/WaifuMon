@@ -195,6 +195,8 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   ROLE_GRANT_INVALID: 400,
   /** A promotion package failed validation against this server. */
   ENCOUNTER_IMPORT_REJECTED: 400,
+  /** Admin: a boss definition (or import) failed validation — issues are in `details`. */
+  BOSS_DEFINITION_INVALID: 400,
   /** Nothing to export. */
   ENCOUNTER_EXPORT_EMPTY: 400,
   /**
@@ -368,6 +370,14 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
    * request, and the same class as ACTIVE_ENCOUNTER above.
    */
   BOSS_ENCOUNTER_NOT_OPEN: 409,
+  /** Admin: a boss save named a revision someone else has since replaced. */
+  BOSS_DEFINITION_STALE: 409,
+  /** Admin: creating a boss under an id another boss already has. */
+  BOSS_DEFINITION_KEY_TAKEN: 409,
+  /** Admin: deleting a boss with encounter history, or one Git ships — disable it instead. */
+  BOSS_DEFINITION_IN_USE: 409,
+  /** Admin: a manual spawn the spawner refused (`details.reason`; `outside_schedule` may be overridden). */
+  BOSS_SPAWN_REFUSED: 409,
   /** One buddy per confrontation; this player already has one committed. */
   BOSS_ALREADY_COMMITTED: 409,
   /** Well-formed, but there is no active buddy to send. */

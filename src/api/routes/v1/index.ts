@@ -41,6 +41,7 @@ import { adminEncounterRoutes } from './admin/encounters';
 import { adminAccessRoutes } from './admin/access';
 import { adminEncounterPromotionRoutes } from './admin/encounterPromotion';
 import { adminVendorRoutes } from './admin/vendors';
+import { adminBossRoutes } from './admin/bosses';
 import { adminResultPresentationRoutes } from './admin/resultPresentations';
 import { adminGalleryRoutes } from './admin/gallery';
 import { adminSystemMetricsRoutes } from './admin/systemMetrics';
@@ -128,6 +129,10 @@ export const v1Routes =
     // Admin: the vendors `open_vendor` effects open. Skipped when either the
     // vendor or the encounter admin service is not wired.
     await app.register(adminVendorRoutes(ctx));
+
+    // Admin: Boss Management (definitions, schedules, activity, diagnostics).
+    // Skipped when the boss definition service is not wired.
+    await app.register(adminBossRoutes(ctx));
 
     // Admin: Result Presentations (hunt-find and release flavor/artwork).
     // Skipped when the presentation service is not wired.

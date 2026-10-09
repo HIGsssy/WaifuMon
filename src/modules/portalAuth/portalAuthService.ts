@@ -52,6 +52,16 @@ export const ALL_PORTAL_PERMISSIONS = [
   // appearance, including disabled and not-yet-loaded content. No write
   // counterpart exists — the gallery edits nothing.
   'gallery.read',
+  // Boss Management. Three grants, because authoring and operating are
+  // different jobs: `write` covers the definitions — create, edit, lifecycle
+  // (Draft/Active/Disabled), duplicate, delete and import — and reaches only
+  // future encounters. `operate` covers the live controls, Spawn Now and End
+  // Encounter, which act on a server's players immediately (a public
+  // announcement, an early payout). Neither implies the other, the same split
+  // `encounters.write` / `encounters.publish` makes.
+  'bosses.read',
+  'bosses.write',
+  'bosses.operate',
   // System Metrics: live process, host and database-pool telemetry. Owner-only
   // — see SYSTEM_METRICS_READ below for why it is not delegable.
   'system.metrics.read',
@@ -83,6 +93,12 @@ export const PORTAL_PERMISSION_DESCRIPTIONS: Readonly<Record<PortalPermission, s
   'presentations.write': 'Create, edit, enable/disable and delete Result Presentations.',
   'gallery.read':
     'View every Waifumon species and all artwork, including disabled, locked and unreleased content.',
+  'bosses.read':
+    'View Boss Management: boss definitions, availability schedules, active and past encounters, and scheduler diagnostics.',
+  'bosses.write':
+    'Create, edit, activate/disable, duplicate, delete and import boss definitions (affects future encounters only).',
+  'bosses.operate':
+    'Manually spawn a boss (including outside its schedule) and end the active boss encounter on this server.',
   'system.metrics.read':
     'View live server metrics: memory, CPU, request latency and database load (guild owner only).',
   'system.loadtest.run':
