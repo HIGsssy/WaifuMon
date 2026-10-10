@@ -7,6 +7,8 @@
  * 404 mapping, and the fact that each route calls the service it claims to.
  * Real data flows through `tests/integration/api/readEndpoints.test.ts`.
  */
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createPlatformApiServer } from '../../../src/api/server';
 import type { ZodFastify } from '../../../src/api/plugins/typeProvider';
@@ -904,6 +906,23 @@ describe('OpenAPI registration', () => {
    * Pinned as an explicit allowlist rather than relaxed to "any mutation",
    * so adding a second write verb is a deliberate, reviewable edit here.
    */
+  it('REGRESSION: no slash-terminated proxy location in the Portal’s nginx config shadows a route', async () => {
+    // For a `proxy_pass` location whose prefix ends in "/", nginx answers a
+    // request for the prefix *without* that slash with a 301 to the slashed
+    // URL. `location ^~ /api/v1/admin/bosses/artwork/` did that to
+    // GET /api/v1/admin/bosses/artwork?path=…, so every shipped boss picture
+    // read as missing in the Portal. No such location may sit on a real route.
+    const template = readFileSync(resolve(__dirname, '../../../portal/nginx.conf.template'), 'utf8');
+    const slashed = [...template.matchAll(/location\s+(?:\^~\s+)?(\/[^\s{]*\/)\s*\{([\s\S]*?)\n {2}\}/g)]
+      .filter((m) => m[2]!.includes('proxy_pass'))
+      .map((m) => m[1]!);
+    expect(slashed).toContain('/api/v1/admin/encounters/import/'); // the pattern does find them
+    const spec = (await app.inject({ method: 'GET', url: '/api/v1/openapi.json' })).json();
+    const routes = new Set(Object.keys(spec.paths));
+    expect(routes.has('/api/v1/admin/bosses/artwork')).toBe(true);
+    expect(slashed.filter((prefix) => routes.has(prefix.slice(0, -1)))).toEqual([]);
+  });
+
   it('registers no mutation verbs in v1 beyond the cosmetic appearance, Equipment management and Workshop writes', async () => {
     const spec = (await app.inject({ method: 'GET', url: '/api/v1/openapi.json' })).json();
     const mutations: string[] = [];

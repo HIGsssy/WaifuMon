@@ -633,32 +633,43 @@ export const adminBossRoutes =
       },
     );
 
-    app.get(
-      '/admin/bosses/artwork',
-      {
-        preValidation: gate('bosses.read'),
-        schema: {
-          tags,
-          summary: 'The bytes of a shipped boss artwork file, by its path relative to the assets directory',
-          querystring: z.object({ path: z.string().min(1).max(300) }),
-          response: { ...notFoundResponse, ...commonErrorResponses },
+    /**
+     * Shipped artwork bytes. Registered at `/admin/bosses/artwork` and again
+     * with a trailing slash: a reverse proxy with a slash-terminated prefix
+     * location over this path answers the bare URL with a permanent redirect
+     * to the slashed one (nginx does, for a `proxy_pass` location), and a
+     * browser keeps a 301. The slashed form must therefore serve the same
+     * picture, not a 404 that reads as "the file is missing".
+     */
+    const shippedArtworkSchema = {
+      tags,
+      summary: 'The bytes of a shipped boss artwork file, by its path relative to the assets directory',
+      querystring: z.object({ path: z.string().min(1).max(300) }),
+      response: { ...notFoundResponse, ...commonErrorResponses },
+    };
+    for (const url of ['/admin/bosses/artwork', '/admin/bosses/artwork/'] as const) {
+      app.get(
+        url,
+        {
+          preValidation: gate('bosses.read'),
+          schema: url.endsWith('/') ? { ...shippedArtworkSchema, hide: true } : shippedArtworkSchema,
         },
-      },
-      async (req, reply) => {
-        const type = IMAGE_TYPES[path.extname(req.query.path).toLowerCase()];
-        const found = ctx.assetsDir && type ? resolveExistingAssetFile(ctx.assetsDir, req.query.path) : null;
-        if (!found || found.status !== 'available') throw notFound(req.query.path);
-        // Data, never a document — the same headers managed artwork is served with.
-        (reply as unknown as BinaryReply)
-          .header('content-type', type!)
-          .header('x-content-type-options', 'nosniff')
-          .header('content-security-policy', "default-src 'none'; sandbox")
-          .header('cross-origin-resource-policy', 'same-origin')
-          .header('cache-control', 'private, max-age=300')
-          .send(await fs.promises.readFile(found.absolutePath));
-        return reply;
-      },
-    );
+        async (req, reply) => {
+          const type = IMAGE_TYPES[path.extname(req.query.path).toLowerCase()];
+          const found = ctx.assetsDir && type ? resolveExistingAssetFile(ctx.assetsDir, req.query.path) : null;
+          if (!found || found.status !== 'available') throw notFound(req.query.path);
+          // Data, never a document — the same headers managed artwork is served with.
+          (reply as unknown as BinaryReply)
+            .header('content-type', type!)
+            .header('x-content-type-options', 'nosniff')
+            .header('content-security-policy', "default-src 'none'; sandbox")
+            .header('cross-origin-resource-policy', 'same-origin')
+            .header('cache-control', 'private, max-age=300')
+            .send(await fs.promises.readFile(found.absolutePath));
+          return reply;
+        },
+      );
+    }
 
     if (artwork) {
       const assetParams = z.object({ assetId: z.string().uuid() });
