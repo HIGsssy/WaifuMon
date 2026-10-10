@@ -102,7 +102,7 @@ describe('proxied responses carry exactly one copy of each header', () => {
     expect(proxied.map((b) => b.selector).sort()).toEqual([
       '= /health',
       '^~ /api',
-      '^~ /api/v1/admin/bosses/artwork/',
+      '^~ /api/v1/admin/bosses/artwork/assets',
       '^~ /api/v1/admin/bosses/import/',
       '^~ /api/v1/admin/encounters/import/',
       '^~ /auth/',
@@ -246,8 +246,32 @@ describe('request body size', () => {
       return Number(body.match(/client_max_body_size\s+(\d+)m;/)?.[1] ?? 0);
     };
     // ARTWORK_UPLOAD_MAX_BYTES is 8 MiB; BOSS_IMPORT_BODY_LIMIT_BYTES is 2 MiB.
-    expect(limitOf('^~ /api/v1/admin/bosses/artwork/')).toBeGreaterThan(8);
+    expect(limitOf('^~ /api/v1/admin/bosses/artwork/assets')).toBeGreaterThan(8);
     expect(limitOf('^~ /api/v1/admin/bosses/import/')).toBeGreaterThan(2);
+  });
+
+  it('REGRESSION: no location redirects the shipped boss artwork request away from its route', () => {
+    // The Portal loads a shipped boss picture from exactly this path (plus
+    // `?path=`): `bossArtworkBlob` in src/api/adminBosses.ts.
+    const SHIPPED_ARTWORK = '/api/v1/admin/bosses/artwork';
+    const client = fs.readFileSync(path.join(PORTAL_DIR, 'src', 'api', 'adminBosses.ts'), 'utf8');
+    expect(client).toContain("const base = '/v1/admin/bosses';");
+    expect(client).toMatch(/apiClient\.get<Blob>\(`\$\{base\}\/artwork`,/);
+    // nginx answers a request for a proxied, slash-terminated prefix *minus its
+    // slash* with a 301 to the slashed URL. A location `…/bosses/artwork/` did
+    // exactly that to every shipped picture, which then read as missing.
+    const prefixes = blocks
+      .filter((b) => b.body.includes('proxy_pass'))
+      .map((b) => b.selector.replace(/^\^~\s+/, ''))
+      .filter((selector) => selector.startsWith('/'));
+    expect(prefixes).not.toContain(`${SHIPPED_ARTWORK}/`);
+    // The upload path is still raised, by a prefix that cannot redirect.
+    expect(prefixes).toContain(`${SHIPPED_ARTWORK}/assets`);
+    // And the request is served by the general API proxy: its longest matching prefix.
+    const longest = prefixes
+      .filter((p) => SHIPPED_ARTWORK.startsWith(p))
+      .sort((a, b) => b.length - a.length)[0];
+    expect(longest).toBe('/api');
   });
 
   it('leaves every other path on the default', () => {

@@ -708,6 +708,47 @@ describe('existing shipped artwork keeps working', () => {
     expect((await call('GET', `/admin/bosses/artwork?path=${encodeURIComponent('../secret.webp')}`)).statusCode).toBe(404);
   });
 
+  it('REGRESSION: shipped artwork is served at the URL a redirecting proxy sends the Portal to', async () => {
+    // The deployed failure: nginx had a slash-terminated location over this
+    // route and answered GET …/bosses/artwork?path=… with a 301 to
+    // …/bosses/artwork/?path=…, which the API did not serve — so every
+    // existing boss picture read as missing. Both forms must serve the file,
+    // because a browser keeps a 301 after the proxy is corrected.
+    const real = 'bosses/candy-gobbler_boss.webp'; // the shipped naming: hyphens, `_boss` suffix
+    fs.writeFileSync(path.join(assetsDir, real), await solidImage(48, 48, BLUE, 'webp'));
+    const expected = fs.readFileSync(path.join(assetsDir, real));
+    await createBoss('regression_gobbler', { name: 'Regression Gobbler', artwork: real });
+    expect(await data('/admin/bosses/regression_gobbler')).toMatchObject({ artwork: real, artworkAssetId: null });
+
+    for (const url of ['/admin/bosses/artwork', '/admin/bosses/artwork/']) {
+      const res = await call('GET', `${url}?path=${encodeURIComponent(real)}`);
+      expect(res.statusCode, url).toBe(200);
+      expect(res.headers['content-type'], url).toBe('image/webp');
+      expect(res.rawPayload.equals(expected), url).toBe(true);
+      // Same rules on both: nothing outside the assets directory, and no anonymous or unprivileged reads.
+      expect((await call('GET', `${url}?path=${encodeURIComponent('../secret.webp')}`)).statusCode, url).toBe(404);
+      expect((await call('GET', `${url}?path=bosses/absent.webp`)).statusCode, url).toBe(404);
+      expect((await api.inject({ method: 'GET', url: `/api/v1${url}?path=${encodeURIComponent(real)}` })).statusCode, url).toBe(401);
+      expect((await api.inject({ method: 'GET', url: `/api/v1${url}?path=${encodeURIComponent(real)}`, ...asCookie('token-player') })).statusCode, url).toBe(403);
+      expect((await api.inject({ method: 'GET', url: `/api/v1${url}?path=${encodeURIComponent(real)}`, ...asCookie('token-reader') })).statusCode, url).toBe(200);
+    }
+    // The slashed alias is not a second documented route, and shadows no boss.
+    expect((await call('GET', '/admin/bosses/artwork')).statusCode).toBe(400);
+    fs.rmSync(path.join(assetsDir, real));
+  });
+
+  it('a boss with only a shipped path resolves it everywhere, with no managed artwork involved', async () => {
+    await createBoss('plain_shipped', { name: 'Plain Shipped', artwork: SHIPPED });
+    // The API hands the Portal the path itself — never a URL — and no asset id.
+    const listed = (await data('/admin/bosses')).bosses.find((b: Json) => b.id === 'plain_shipped');
+    expect(listed).toMatchObject({ artwork: SHIPPED, artworkAssetId: null });
+    expect((await data('/admin/bosses/plain_shipped')).issues).toEqual([]);
+    // The library sees the same file, present, used by that boss.
+    const entry = (await data('/admin/bosses/artwork/library')).shipped.find((s: Json) => s.path === SHIPPED);
+    expect(entry).toMatchObject({ exists: true, usedBy: [expect.objectContaining({ id: 'plain_shipped' })] });
+    expect(await t.db.select().from(artworkAssets)).toEqual([]);
+  });
+
   it('a save that never mentions managed artwork works exactly as before', async () => {
     const res = await call('POST', '/admin/bosses', { id: 'old_shape', boss: body({ artwork: SHIPPED }) });
     expect(res.statusCode, res.body).toBe(200);
