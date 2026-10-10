@@ -334,10 +334,64 @@ structurally valid. A reader refuses a version or a member it does not know.
 **Phase 1A** ships the format, export
 (`GET /admin/dungeons/definitions/:key/export`), read-only inspection
 (`POST /admin/dungeons/package/inspect`) and round-trip tests.
-**Phase 1B** adds the importer: plan, conflicts, apply, import log. An
+**Phase 1B.4A** adds the JSON importer: plan, conflicts, apply, import log. An
 existing enemy that differs from a bundled one must be surfaced as a conflict
 and never silently overwritten — which is why each dependency carries a hash
 computed exactly as the Enemy Catalogue computes it.
+
+Import plans are read-only, verify the existing package reader's hashes and
+manifest, compare the draft and layout, and validate the target's references.
+The plan includes `planHash`, `packageHash`, `target.expectedRevision`,
+`target.status`, changed fields, per-enemy status and per-path issues.
+`publishable` describes the current target dependencies, before proposed enemy
+creation. Reward tables are checked for missing items and invalid Equipment
+selectors too. Only enemies carry source definition hashes: tables, regions and
+currencies are named by key, so differing source definitions cannot be compared
+and are reported as an explicit limitation.
+
+Apply takes `{ package, requestId, expectedPlanHash, expectedRevision, decisions }`.
+`requestId` is a fresh UUID for one reviewed apply request; keep the whole request
+unchanged when retrying. `expectedRevision` is null for a new dungeon, otherwise
+the revision returned by the plan. Decisions are required:
+
+```json
+{
+  "dungeon": "create",
+  "enemies": { "new_enemy": "create", "differing_enemy": "use_existing" },
+  "allowMissingDependencies": false
+}
+```
+
+`dungeon` must match the plan: `create`, `replace` or `unchanged`. Identical
+gameplay with a different layout still needs `replace`. Missing bundled enemies
+require `create`; differing existing enemies require `use_existing`. Import
+never updates an existing enemy. To retain missing direct enemies, tables,
+regions or currencies in an incomplete draft, explicitly set
+`allowMissingDependencies: true` and use `leave_missing` for missing enemies.
+Structural package errors and broken target reward-table dependencies remain
+blocking. Missing artwork is a warning, never silently substituted; managed
+references resolve by category/hash and stored bytes, and shipped paths must
+resolve to files inside the assets root. Artwork remains optional under the
+existing publication rules; other missing dependencies still block publishing.
+
+Application locks the request, dungeon and referenced enemy identities,
+locks existing target/dependency rows, and re-plans. Any reviewed state change
+returns `409 DUNGEON_IMPORT_STALE`. Enemy creation, the draft, import history
+and the `imported` authoring event commit together. New dungeons start disabled
+and unpublished; replacements preserve enabled state and the published pointer.
+Published revisions and active runs are never written. An identical import
+does not bump the draft revision. Exact retries return the original receipt
+(`replayed: true`), even after later edits; reuse of a request ID for a different
+package, plan, decisions or administrator returns
+`409 DUNGEON_IMPORT_REQUEST_CONFLICT`.
+
+Migration `0061_dungeon_import_history` stores the package ID/hash, source
+environment, dungeon key, timestamp, actor, decisions and compact result, plus
+the idempotency request identity/hash. It stores no dungeon/package payload.
+Rejected transactions leave no successful import history. JSON-only transfer
+is supported; ZIP files and asset bytes, reward tables, items, currencies,
+regions and Equipment definitions must be installed separately. The Portal
+import interface is deferred to Phase 1B.4B.
 
 ## Admin API
 
@@ -351,7 +405,20 @@ All under `/api/v1/admin/dungeons`.
 | `POST /definitions/:key/publish`, `POST /definitions/:key/rollback` | `dungeons.publish` |
 | `GET /definitions/:key/revisions`, `…/revisions/:number`, `…/history`, `…/export` | `dungeons.read` |
 | `GET /reference`, `POST /validate`, `POST /package/inspect`, `POST /sandbox` | `dungeons.read` |
+| `POST /import/plan`, `POST /import/apply` | `dungeons.write` |
+| `GET /definitions/:key/import-history?limit=100` | `dungeons.read` |
 | `/artwork*`, `/settings`, `/currencies*` | unchanged |
+
+Import POST bodies have a 2 MiB ceiling and are permission-checked before
+parsing. Planning takes `{ package }`, returns the plan under `data`, and writes
+nothing. Apply returns `importId`, `dungeonKey`, `result`
+(`created`/`replaced`/`unchanged`), `draftRevision`, `createdEnemies`, `issues`,
+`publishable` and `replayed`. History returns `{ imports: [...] }`, newest first,
+with `limit` from 1 to 500. An invalid package plan returns 200 with
+`validPackage: false` and issues; invalid apply decisions/content return
+400 `DUNGEON_IMPORT_INVALID` for service-level refusals; malformed request bodies
+use the API's normal field-validation errors. Normal Portal session, CSRF and administrative
+permission checks apply to all routes.
 
 `POST /sandbox` plays a draft, a published revision or an inline definition
 through the sandbox with a synthetic fighter and returns the view, state,

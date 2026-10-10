@@ -56,6 +56,8 @@ import {
 } from '../../shared/errors';
 import type { Logger } from '../../shared/logger';
 import type { CombatEnemyDefinition } from '../combat/enemyDefinitions';
+import type { ArtworkStorage } from '../artworkAssets/artworkStorage';
+import { createDungeonImportService, type DungeonImportService } from './package/dungeonImportService';
 import {
   DUNGEON_ACTION_TYPES,
   DungeonDefinitionSchema,
@@ -176,7 +178,7 @@ export interface PublishedDungeon {
   definition: DungeonDefinition;
 }
 
-export interface DungeonContentService {
+export interface DungeonContentService extends DungeonImportService {
   list(): Promise<DungeonSummary[]>;
   get(key: string): Promise<DungeonDetail | null>;
   reference(): Promise<DungeonReferenceData>;
@@ -231,6 +233,8 @@ export interface DungeonContentServiceDeps {
   assetsDir?: string | undefined;
   /** Written into exported packages: `staging`, `production`, `development`. */
   environment?: string | undefined;
+  getItemSlugs?: (() => readonly string[]) | undefined;
+  artworkStorage?: Pick<ArtworkStorage, 'exists'> | undefined;
   logger?: Pick<Logger, 'debug' | 'info' | 'warn' | 'error'> | undefined;
 }
 
@@ -369,6 +373,7 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
   }
 
   const service: DungeonContentService = {
+    ...createDungeonImportService({ ...deps, reservedKeys: RESERVED_DUNGEON_KEYS }),
     validationContext,
 
     async list() {

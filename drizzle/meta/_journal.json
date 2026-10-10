@@ -428,6 +428,13 @@
       "when": 1820959200000,
       "tag": "0060_dungeon_reward_claims",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1821045600000,
+      "tag": "0061_dungeon_import_history",
+      "breakpoints": true
     }
   ]
 }

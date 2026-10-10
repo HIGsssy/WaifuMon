@@ -998,6 +998,8 @@ describe('OpenAPI registration', () => {
       // `validate`, `package/inspect` and `sandbox` write nothing but carry a
       // body; they need `dungeons.read`.
       'POST /api/v1/admin/dungeons/definitions',
+      'POST /api/v1/admin/dungeons/import/apply',
+      'POST /api/v1/admin/dungeons/import/plan',
       'POST /api/v1/admin/dungeons/definitions/{key}/publish',
       'POST /api/v1/admin/dungeons/definitions/{key}/rollback',
       'POST /api/v1/admin/dungeons/package/inspect',

@@ -336,6 +336,7 @@ describe('what dungeons hold on to', () => {
       'dungeon_content_events',
       'dungeon_daily_usage',
       'dungeon_definitions',
+      'dungeon_import_history',
       'dungeon_revisions',
       'dungeon_run_events',
       'dungeon_run_events_prototype',

@@ -139,6 +139,9 @@ export async function createDungeonWorld(
   const content = createDungeonContentService({
     db: t.db,
     enemies,
+    getItemSlugs: () => app.content.items.map(item => item.slug),
+    assetsDir: artworkDir,
+    artworkStorage: createLocalArtworkStorage(path.join(artworkDir, 'managed')),
     getRegions: () => app.content.regions.map((r) => ({ id: r.id, name: r.name, enabled: r.enabled })),
     environment: 'test',
   });

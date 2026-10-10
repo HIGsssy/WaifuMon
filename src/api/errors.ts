@@ -199,6 +199,7 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   REWARD_TABLE_INVALID: 400,
   /** Admin: a dungeon definition failed validation — issues are in `details`. */
   DUNGEON_INVALID: 400,
+  DUNGEON_IMPORT_INVALID: 400,
   /** Admin: an enemy failed validation — issues are in `details`. */
   ENEMY_INVALID: 400,
   /** Admin: a boss definition (or import) failed validation — issues are in `details`. */
@@ -326,6 +327,8 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   REWARD_TABLE_DELETE_REFUSED: 409,
   /** Admin: a dungeon draft save or publish named a revision someone else has since replaced. */
   DUNGEON_DRAFT_STALE: 409,
+  DUNGEON_IMPORT_STALE: 409,
+  DUNGEON_IMPORT_REQUEST_CONFLICT: 409,
   /** Admin: creating a dungeon under a key another dungeon already has. */
   DUNGEON_KEY_TAKEN: 409,
   /** Admin: a currency metadata save named a stale revision. */

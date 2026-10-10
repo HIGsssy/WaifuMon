@@ -511,6 +511,8 @@ async function main(): Promise<void> {
     db,
     enemies: enemyCatalogue,
     getRegions: dungeonRegions,
+    getItemSlugs: () => contentSnapshot.items.map(item => item.slug),
+    artworkStorage,
     assetsDir: config.assetsDir,
     environment: config.deploymentEnv,
     logger,

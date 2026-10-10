@@ -21,6 +21,7 @@ import type { ZodFastify } from '../../../src/api/plugins/typeProvider';
 import type { PortalSession, PortalSessionService } from '../../../src/api/portalSession';
 import { dungeonContentEvents, dungeonDefinitions, dungeonRevisions, dungeonRunEvents, dungeonRuns } from '../../../src/db/schema';
 import { readDungeonPackage } from '../../../src/modules/dungeons/package/dungeonPackage';
+import { randomUUID } from 'node:crypto';
 import { DUNGEON_ISSUE_CODES } from '../../../src/modules/dungeons/validation/dungeonValidation';
 import { createGuildOwnershipService } from '../../../src/modules/portalAuth/guildOwnershipService';
 import {
@@ -217,6 +218,38 @@ const as = (token: string, method: Method, url: string, payload?: unknown) =>
 const data = <T>(res: { json(): unknown }) => (res.json() as { data: T }).data;
 const errorOf = (res: { json(): unknown }) => (res.json() as ErrorBody).error;
 const errorCodes = (issues: readonly Issue[]) => issues.filter((i) => i.severity === 'error').map((i) => i.code);
+
+describe('package import API', () => {
+  it('requires write permission for planning and application before body parsing', async () => {
+    for (const endpoint of ['plan', 'apply']) {
+      expect((await as(READER_TOKEN, 'POST', `/admin/dungeons/import/${endpoint}`, { package: {} })).statusCode).toBe(403);
+      expect((await as(PUBLISHER_TOKEN, 'POST', `/admin/dungeons/import/${endpoint}`, { package: {} })).statusCode).toBe(403);
+      const unauthenticated = await api.inject({ method: 'POST', url: `/api/v1/admin/dungeons/import/${endpoint}`, headers: { 'content-type': 'application/json' }, payload: '{broken-json' });
+      expect(unauthenticated.statusCode).toBe(401);
+    }
+  });
+  it('plans, applies, retries and reads history using the authenticated administrator', async () => {
+    await w.content.create({ definition: testDungeonInput('import_api_source') }, 'source');
+    const pkg = await w.content.exportPackage('import_api_source', 'draft', 'source');
+    const planResponse = await as(WRITER_TOKEN, 'POST', '/admin/dungeons/import/plan', { package: pkg });
+    expect(planResponse.statusCode).toBe(200);
+    const plan = data<Json>(planResponse);
+    expect(plan.target.status).toBe('identical');
+    const body = { package: pkg, requestId: randomUUID(), expectedPlanHash: plan.planHash, expectedRevision: plan.target.expectedRevision, decisions: { dungeon: 'unchanged', enemies: {}, allowMissingDependencies: false } };
+    const applied = await as(WRITER_TOKEN, 'POST', '/admin/dungeons/import/apply', body);
+    expect(applied.statusCode).toBe(200);expect(data<Json>(applied).result).toBe('unchanged');
+    const retry = await as(WRITER_TOKEN, 'POST', '/admin/dungeons/import/apply', body);expect(data<Json>(retry)).toMatchObject({ replayed: true, importId: data<Json>(applied).importId });
+    const history = await as(READER_TOKEN, 'GET', '/admin/dungeons/definitions/import_api_source/import-history?limit=5');
+    expect(history.statusCode).toBe(200);expect(data<Json>(history).imports[0]).toMatchObject({ packageId: pkg.packageId, actor: WRITER_ID, sourceEnvironment: 'test' });
+    expect((await as(WRITER_TOKEN, 'POST', '/admin/dungeons/import/apply', { ...body, expectedRevision: 100, requestId: randomUUID() })).statusCode).toBe(409);
+  });
+  it('returns actionable malformed-package issues and enforces payload limits', async () => {
+    const plan = await as(WRITER_TOKEN, 'POST', '/admin/dungeons/import/plan', { package: {} });expect(plan.statusCode).toBe(200);expect(data<Json>(plan)).toMatchObject({ validPackage: false, issues: [{ code: 'package_format', severity: 'error', path: 'format' }] });
+    const large = { package: 'x'.repeat(2 * 1024 * 1024 + 1) };
+    expect((await as(WRITER_TOKEN, 'POST', '/admin/dungeons/import/plan', large)).statusCode).toBe(413);
+    expect((await as(READER_TOKEN, 'POST', '/admin/dungeons/import/plan', large)).statusCode).toBe(403);
+  });
+});
 const base = (key: string) => `/admin/dungeons/definitions/${key}`;
 const getDungeon = async (key: string) => data<Detail>(await call('GET', base(key)));
 const getRevisions = async (key: string) => data<{ revisions: Revision[] }>(await call('GET', `${base(key)}/revisions`)).revisions;

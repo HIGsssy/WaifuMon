@@ -3097,6 +3097,7 @@ export const DUNGEON_CONTENT_EVENT_ACTIONS = [
   'enabled',
   'disabled',
   'exported',
+  'imported',
   'deleted',
 ] as const;
 export type DungeonContentEventAction = (typeof DUNGEON_CONTENT_EVENT_ACTIONS)[number];
@@ -3120,13 +3121,28 @@ export const dungeonContentEvents = pgTable(
   (t) => [
     check(
       'dungeon_content_events_action_check',
-      sql`${t.action} in ('created','draft_saved','published','rolled_back','enabled','disabled','exported','deleted')`,
+      sql`${t.action} in ('created','draft_saved','published','rolled_back','enabled','disabled','exported','imported','deleted')`,
     ),
     index('dungeon_content_events_key_idx').on(t.dungeonKey, t.id.desc()),
   ],
 );
 
 export type DungeonContentEventRow = typeof dungeonContentEvents.$inferSelect;
+
+/** One successful import request, also the durable idempotency receipt. No package payload. */
+export const dungeonImportHistory = pgTable('dungeon_import_history', {
+  id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+  requestId: uuid('request_id').notNull().unique(),
+  requestHash: text('request_hash').notNull(),
+  packageId: uuid('package_id').notNull(),
+  packageHash: text('package_hash').notNull(),
+  sourceEnvironment: text('source_environment').notNull(),
+  dungeonKey: text('dungeon_key').notNull(),
+  actor: text('actor'),
+  decisions: jsonb('decisions').$type<Record<string, unknown>>().notNull(),
+  result: jsonb('result').$type<Record<string, unknown>>().notNull(),
+  importedAt: timestamp('imported_at', { withTimezone: true }).notNull().defaultNow(),
+}, t => [index('dungeon_import_history_key_idx').on(t.dungeonKey, t.id.desc())]);
 
 /**
  * Display metadata for a progression currency (migration 0050). `currencyKey`

@@ -51,6 +51,7 @@ import {
   AppError,
   DungeonDraftStaleError,
   DungeonInvalidError,
+  DungeonImportError,
   DungeonNotFoundError,
   DungeonRevisionNotFoundError,
   ProgressionCurrencyInvalidError,
@@ -80,6 +81,7 @@ import { DungeonEngineContentError } from '../../../../modules/dungeons/engine/c
 import { autoPlayDungeonSandbox, createDungeonSandbox } from '../../../../modules/dungeons/engine/sandbox';
 import type { DungeonInput, EngineDependencies } from '../../../../modules/dungeons/engine/types';
 import { dungeonPackageFilename, readDungeonPackage } from '../../../../modules/dungeons/package/dungeonPackage';
+import { DungeonImportApplySchema, DungeonImportPlanSchema, DungeonImportResultSchema, DungeonImportHistorySchema } from '../../../../modules/dungeons/package/dungeonImportService';
 import { hasErrors } from '../../../../modules/dungeons/validation/dungeonValidation';
 import type {
   ProgressionCurrency,
@@ -398,6 +400,7 @@ function toCurrency(c: ProgressionCurrency): z.infer<typeof currencySchema> {
  * `details`: per-path issues, and the revision a stale save lost to.
  */
 function withDetails(err: unknown): unknown {
+  if (err instanceof DungeonImportError) return new ApiErrorWithDetails(err.code, err.message, err.userMessage, { issues: err.issues });
   if (err instanceof DungeonInvalidError || err instanceof ProgressionCurrencyInvalidError) {
     return new ApiErrorWithDetails(err.code, err.message, err.userMessage, { issues: err.issues });
   }
@@ -435,6 +438,9 @@ export const adminDungeonRoutes =
     if (!contentService || !currencyService) return;
     const dungeons: DungeonContentService = contentService;
     const currencies: ProgressionCurrencyService = currencyService;
+    /** The actor comes from the authenticated session, never the body. */
+    const actorOf = (req: FastifyRequest) => req.portalSession?.discordUserId ?? null;
+    const tags = ['Admin — Dungeons'];
 
     const gate =
       (permission: 'dungeons.read' | 'dungeons.write' | 'dungeons.publish') =>
@@ -451,9 +457,21 @@ export const adminDungeonRoutes =
         });
       };
 
-    /** The actor comes from the authenticated session, never the body. */
-    const actorOf = (req: FastifyRequest) => req.portalSession?.discordUserId ?? null;
-    const tags = ['Admin — Dungeons'];
+    app.post('/admin/dungeons/import/plan', {
+      bodyLimit: DUNGEON_DEFINITION_BODY_LIMIT_BYTES,
+      onRequest: gate('dungeons.write'),
+      schema: { tags, summary: 'Read-only dungeon package import plan, target conflicts and dependencies', body: z.object({ package: z.unknown() }).strict(), response: { 200: dataSchema(DungeonImportPlanSchema), ...tooLargeResponse, ...commonErrorResponses } },
+    }, async req => ok(req, await translate(() => dungeons.planImport(req.body.package))));
+    app.post('/admin/dungeons/import/apply', {
+      bodyLimit: DUNGEON_DEFINITION_BODY_LIMIT_BYTES,
+      onRequest: gate('dungeons.write'),
+      schema: { tags, summary: 'Apply explicit import decisions to the draft only, with a durable retry receipt', body: DungeonImportApplySchema, response: { 200: dataSchema(DungeonImportResultSchema), 409: errorSchema, ...tooLargeResponse, ...commonErrorResponses } },
+    }, async req => ok(req, await translate(() => dungeons.applyImport(req.body, actorOf(req)))));
+    app.get('/admin/dungeons/definitions/:key/import-history', {
+      preValidation: gate('dungeons.read'),
+      schema: { tags, summary: 'Successful dungeon imports and decisions, newest first', params: keyParams, querystring: z.object({ limit: z.coerce.number().int().min(1).max(500).default(100) }), response: { 200: dataSchema(DungeonImportHistorySchema), ...commonErrorResponses } },
+    }, async req => ok(req, { imports: (await dungeons.importHistory(req.params.key, req.query.limit)).map(r => ({ ...r, importedAt: r.importedAt.toISOString() })) }));
+
 
     app.get(
       '/admin/dungeons/definitions',

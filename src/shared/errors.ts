@@ -1607,6 +1607,12 @@ export class WorkshopPreviewStaleError extends AppError {
 
 /* ───────────────────────────── Dungeons ───────────────────────────── */
 
+export class DungeonImportError extends AppError {
+  constructor(code: 'DUNGEON_IMPORT_INVALID' | 'DUNGEON_IMPORT_STALE' | 'DUNGEON_IMPORT_REQUEST_CONFLICT', readonly issues: readonly DungeonIssueDetail[]) {
+    super(code, issues.map(i => `${i.path}: ${i.message}`).join('; '), code === 'DUNGEON_IMPORT_STALE' ? 'The import target changed. Review a new import plan.' : 'The dungeon import was refused. Nothing was written.');
+  }
+}
+
 /** One problem with a dungeon definition, by path. `code` is stable; see `dungeonValidation.ts`. */
 export interface DungeonIssueDetail {
   code: string;
