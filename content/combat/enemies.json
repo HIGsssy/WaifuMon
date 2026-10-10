@@ -63,8 +63,8 @@
       "tags": ["internet_archetype", "tier_1"]
     },
     {
-      "key": "wojak_shade",
-      "name": "Wojak Shade",
+      "key": "suspect_slime",
+      "name": "Suspect Slime",
       "attack": 45,
       "defense": 22,
       "hp": 300,
@@ -88,6 +88,16 @@
       "attack": 60,
       "defense": 30,
       "hp": 380,
+      "artworkPath": null,
+      "enabled": true,
+      "tags": ["internet_archetype", "tier_1"]
+    },
+    {
+      "key": "sacre_blue_balls",
+      "name": "Sacre Blue Balls",
+      "attack": 60,
+      "defense": 30,
+      "hp": 370,
       "artworkPath": null,
       "enabled": true,
       "tags": ["internet_archetype", "tier_1"]

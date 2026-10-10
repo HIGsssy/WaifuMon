@@ -22,6 +22,7 @@ assets/.thumbnails/
 # Regenerated on demand; safe to delete at any time.
 assets/.card-cache/
 assets/standby/
+content/standby/
 assets/drafts/
 # dungeon/Delve art staging — mirrors the assets tree (dungeons/…, combat/…).
 # Promoted by copying the subtree into assets/; never read by the game.
