@@ -259,14 +259,14 @@ describe('boss and region artwork', () => {
     expect(log.warn).toHaveBeenCalledTimes(2);
   });
 
-  it('boss post-time artwork degrades to text-only for an escaping link', () => {
+  it('boss post-time artwork degrades to text-only for an escaping link', async () => {
     const log = logger();
     const ctx = { config: { assetsDir: assets }, logger: log } as unknown as AppContext;
     const row = (bossArtwork: string) => ({ id: 1, bossArtwork }) as unknown as BossEncounterRow;
-    expect(resolveBossArtwork(ctx, row('results/scene.png'))).toEqual({
+    expect(await resolveBossArtwork(ctx, row('results/scene.png'))).toEqual({
       artworkPath: path.join(assets, 'results/scene.png'),
     });
-    expect(resolveBossArtwork(ctx, row('results/escape.png'))).toEqual({});
+    expect(await resolveBossArtwork(ctx, row('results/escape.png'))).toEqual({});
     expect(log.error).toHaveBeenCalledWith(
       expect.objectContaining({ tag: 'boss/artwork-unsafe' }),
       expect.any(String),

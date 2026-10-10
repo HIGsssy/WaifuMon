@@ -5,13 +5,19 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router';
 
-import { bossArtworkBlob, type BossIssue, type BossStatus } from '@/api/adminBosses';
+import type { BossIssue, BossStatus } from '@/api/adminBosses';
 import { AuthoredArtwork } from '@/components/media/AuthoredArtwork';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 
-import { BOSSES_PATH, BOSS_ACTIVITY_PATH, STATUS_LABELS } from './bossModel';
+import {
+  BOSSES_PATH,
+  BOSS_ACTIVITY_PATH,
+  STATUS_LABELS,
+  bossArtworkSource,
+  loadBossArtwork,
+} from './bossModel';
 
 /** The two halves of Boss Management: what bosses are, and what they are doing. */
 export function BossTabs({ current }: { current: 'bosses' | 'activity' }) {
@@ -42,20 +48,22 @@ export function BossStatusBadge({ status }: { status: BossStatus }) {
   );
 }
 
-/** A small picture of a boss's shipped artwork, or "No art". */
+/** A small picture of a boss's artwork (uploaded, else shipped), or "No art". */
 export function BossThumb({
   path,
+  assetId,
   label,
   testId,
 }: {
   path: string | null;
+  assetId?: string | null;
   label: string;
   testId: string;
 }) {
   return (
     <AuthoredArtwork
-      source={path}
-      load={bossArtworkBlob}
+      source={bossArtworkSource({ artwork: path, artworkAssetId: assetId })}
+      load={loadBossArtwork}
       className="flex h-12 w-20 shrink-0 items-center justify-center overflow-hidden rounded border border-border bg-surface-sunken text-[10px] text-ink-subtle"
       testIdPrefix={testId}
       emptyLabel="No art"

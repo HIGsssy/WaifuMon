@@ -370,6 +370,10 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
    * request, and the same class as ACTIVE_ENCOUNTER above.
    */
   BOSS_ENCOUNTER_NOT_OPEN: 409,
+  /** Admin: an uploaded file is not an acceptable image (type, size, dimensions). */
+  ARTWORK_UPLOAD_INVALID: 400,
+  /** Admin: deleting managed artwork that a boss still references. */
+  ARTWORK_ASSET_IN_USE: 409,
   /** Admin: a boss save named a revision someone else has since replaced. */
   BOSS_DEFINITION_STALE: 409,
   /** Admin: creating a boss under an id another boss already has. */

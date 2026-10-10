@@ -1,3 +1,4 @@
+import os from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
 import { ConfigError } from '../shared/errors';
@@ -16,6 +17,14 @@ const EnvSchema = z.object({
     }),
   ASSETS_DIR: z.string().min(1).default('./assets'),
   CONTENT_DIR: z.string().min(1).default('./content'),
+  /**
+   * Where artwork uploaded through Portal Admin is stored. Stateful
+   * application data: it must be on persistent storage and in backups, and
+   * never inside the Git working tree. Docker sets `/data/waifumon-assets`
+   * (a named volume); outside Docker the default is under the user's home.
+   * See docs/boss-management.md.
+   */
+  MANAGED_ASSETS_DIR: z.string().min(1).optional(),
   DAILY_TIMEZONE: z
     .string()
     .default('UTC')
@@ -407,6 +416,8 @@ export interface AppConfig {
   assetsDir: string;
   /** Absolute path to the content JSON root. */
   contentDir: string;
+  /** Absolute path to the managed (uploaded) artwork store. Persistent. */
+  managedAssetsDir: string;
   dailyTimezone: string;
   logLevel: string;
   adminWeb: AdminWebConfig;
@@ -481,6 +492,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     databaseUrl: e.DATABASE_URL,
     assetsDir: path.resolve(e.ASSETS_DIR),
     contentDir: path.resolve(e.CONTENT_DIR),
+    managedAssetsDir: path.resolve(e.MANAGED_ASSETS_DIR ?? path.join(os.homedir(), '.waifumon', 'managed-assets')),
     dailyTimezone: e.DAILY_TIMEZONE,
     logLevel: e.LOG_LEVEL,
     adminWeb: {

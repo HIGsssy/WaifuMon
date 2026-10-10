@@ -15,7 +15,7 @@
  */
 import type { QueryClient } from '@tanstack/react-query';
 
-import { apiClient, deleteData, getData, postData, putData } from './client';
+import { apiClient, deleteData, getData, postData, putData, requestTimeoutMs } from './client';
 
 /** The server's bounds, so a typo is caught before the round trip. */
 export const BOSS_ID_PATTERN = /^[a-z0-9_]+$/;
@@ -101,7 +101,10 @@ export interface BossInput {
   affinity: string;
   regions: string[];
   status: BossStatus;
+  /** Shipped artwork: a path under the assets root. The fallback behind `artworkAssetId`. */
   artwork: string | null;
+  /** Uploaded artwork (an id from the boss artwork library). Wins over `artwork` while it is usable. */
+  artworkAssetId: string | null;
   rewardTable: string;
   scoutingText: string;
   repelledText: string;
@@ -144,6 +147,8 @@ export interface BossReference {
   rewardTables: Array<{ id: string; enabled: boolean }>;
   /** Shipped artwork paths, e.g. `bosses/x.webp`. */
   artwork: string[];
+  /** Whether this server stores uploaded boss artwork (the library, upload and delete). */
+  managedArtwork?: boolean;
   defaultTimezone: string;
   /** `tables.json` → `bossEncounters`. Shared by every boss; not editable here. */
   tuning: {
@@ -369,6 +374,76 @@ export async function bossArtworkBlob(path: string): Promise<Blob> {
     responseType: 'blob',
   });
   return response.data;
+}
+
+/** A boss that shows a piece of artwork. */
+export interface BossArtworkUser {
+  id: string;
+  name: string;
+  status: BossStatus;
+}
+
+/** An image uploaded as boss artwork. */
+export interface BossArtworkAsset {
+  id: string;
+  name: string;
+  originalFilename: string;
+  mimeType: string;
+  width: number;
+  height: number;
+  fileSize: number;
+  contentHash: string;
+  version: number;
+  status: 'active' | 'disabled' | 'deleted';
+  uploadedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BossArtworkLibrary {
+  /** Files in Git (`assets/bosses/…`), plus any other path a boss names. Not deletable here. */
+  shipped: Array<{ path: string; exists: boolean; usedBy: BossArtworkUser[] }>;
+  /** Images uploaded through the Portal. */
+  managed: Array<{ asset: BossArtworkAsset; usedBy: BossArtworkUser[] }>;
+  limits: { mimeTypes: string[]; maxBytes: number; maxDimension: number; storedMaxEdge: number };
+}
+
+/** `details` of a 409 `ARTWORK_ASSET_IN_USE`. */
+export interface BossArtworkInUseDetails {
+  references?: Array<{ kind: string; key: string; name: string | null; field: string }>;
+}
+
+/** Everything a boss can show, with which bosses show it, and the upload limits. */
+export function getBossArtworkLibrary(signal?: AbortSignal): Promise<BossArtworkLibrary> {
+  return getData(`${base}/artwork/library`, opts(signal));
+}
+
+/** Bytes of one uploaded boss image, for a thumbnail or preview. */
+export async function bossArtworkAssetBlob(assetId: string): Promise<Blob> {
+  const response = await apiClient.get<Blob>(
+    `${base}/artwork/assets/${encodeURIComponent(assetId)}/file`,
+    { responseType: 'blob' },
+  );
+  return response.data;
+}
+
+/** Upload a new boss image. The body is the file; the server reads its type from the bytes. */
+export async function uploadBossArtwork(file: File, name?: string): Promise<BossArtworkAsset> {
+  const declared = ['image/webp', 'image/png', 'image/jpeg'].includes(file.type)
+    ? file.type
+    : 'application/octet-stream';
+  const { asset } = await postData<{ asset: BossArtworkAsset }>(`${base}/artwork/assets`, file, {
+    params: { filename: file.name, ...(name?.trim() ? { name: name.trim() } : {}) },
+    headers: { 'Content-Type': declared },
+    // Uploads carry megabytes; give them longer than a JSON call.
+    timeout: Math.max(requestTimeoutMs(), 60_000),
+  });
+  return asset;
+}
+
+/** Delete an uploaded boss image. 409 `ARTWORK_ASSET_IN_USE` while a boss still shows it. */
+export function deleteBossArtwork(assetId: string): Promise<{ deleted: true }> {
+  return deleteData(`${base}/artwork/assets/${encodeURIComponent(assetId)}`);
 }
 
 export function exportBosses(): Promise<BossExport> {

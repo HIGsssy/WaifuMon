@@ -88,6 +88,7 @@ export function bossFixture(over: Partial<BossDetail> & { id: string; name: stri
     regions: ['waifu-valley'],
     status: 'active',
     artwork: `bosses/${over.id}.webp`,
+    artworkAssetId: null,
     rewardTable: 'boss_standard',
     scoutingText: 'It has been sighted.',
     repelledText: 'It was driven off.',
@@ -122,6 +123,7 @@ export function inputOfDetail(boss: BossDetail): BossInput {
     regions: boss.regions,
     status: boss.status,
     artwork: boss.artwork,
+    artworkAssetId: boss.artworkAssetId,
     rewardTable: boss.rewardTable,
     scoutingText: boss.scoutingText,
     repelledText: boss.repelledText,
@@ -238,6 +240,12 @@ export function installBossApi(initial: BossDetail[]) {
       .mockImplementation(async () => ({ bosses: Object.values(store) })),
     reference: vi.spyOn(api, 'getBossReference').mockImplementation(async () => REFERENCE),
     artwork: vi.spyOn(api, 'bossArtworkBlob').mockImplementation(async () => new Blob(['art'])),
+    assetArtwork: vi
+      .spyOn(api, 'bossArtworkAssetBlob')
+      .mockImplementation(async () => new Blob(['uploaded art'])),
+    library: vi.spyOn(api, 'getBossArtworkLibrary').mockImplementation(unscripted),
+    uploadArtwork: vi.spyOn(api, 'uploadBossArtwork').mockImplementation(unscripted),
+    deleteArtwork: vi.spyOn(api, 'deleteBossArtwork').mockImplementation(unscripted),
     get: vi.spyOn(api, 'getBoss').mockImplementation(async (id) => found(id)),
     create: vi
       .spyOn(api, 'createBoss')

@@ -1215,3 +1215,37 @@ export class BossSpawnRefusedError extends AppError {
     this.reason = String(reason);
   }
 }
+
+/** An artwork upload that is not an acceptable image. `reason` is safe to show the admin. */
+export class ArtworkUploadInvalidError extends AppError {
+  readonly reason: string;
+  constructor(reason: string) {
+    const text = typeof reason === 'string' && reason ? reason : 'The file is not an acceptable image.';
+    super('ARTWORK_UPLOAD_INVALID', `Artwork upload refused: ${text}`, text);
+    this.reason = text;
+  }
+}
+
+/** What still points at a managed artwork asset. */
+export interface ArtworkAssetReference {
+  kind: 'boss';
+  key: string;
+  /** Display name where one is known. */
+  name: string | null;
+  /** The field holding the reference, e.g. `backgrounds[2].assetId`. */
+  field: string;
+}
+
+/** Deleting a managed artwork asset that authored content still references. */
+export class ArtworkAssetInUseError extends AppError {
+  readonly references: ArtworkAssetReference[];
+  constructor(assetId: string, references: ArtworkAssetReference[]) {
+    const list = Array.isArray(references) ? references : [];
+    super(
+      'ARTWORK_ASSET_IN_USE',
+      `Artwork asset ${String(assetId)} is still referenced by ${list.length} place(s)`,
+      'That artwork is still in use. Clear every reference to it first, or disable it instead.',
+    );
+    this.references = list;
+  }
+}

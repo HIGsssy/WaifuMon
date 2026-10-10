@@ -11,6 +11,8 @@ import {
   BOSS_PROSE_MAX_LENGTH,
   RESERVED_BOSS_IDS,
   WEEKDAYS,
+  bossArtworkAssetBlob,
+  bossArtworkBlob,
   type BossAvailability,
   type BossAvailabilityWindow,
   type BossDateRange,
@@ -333,6 +335,8 @@ export interface BossForm {
   description: string;
   /** A shipped artwork path, or empty for none. */
   artwork: string;
+  /** An uploaded image's id, or empty for none. Shown instead of `artwork` while set. */
+  artworkAssetId: string;
   status: BossStatus;
   regions: string[];
   affinity: string;
@@ -352,6 +356,7 @@ export function blankBossForm(reference: {
     name: '',
     description: '',
     artwork: '',
+    artworkAssetId: '',
     status: 'draft',
     regions: [],
     affinity: reference.affinities[0] ?? '',
@@ -368,6 +373,7 @@ export function formOf(boss: BossDetail): BossForm {
     name: boss.name,
     description: boss.description,
     artwork: boss.artwork ?? '',
+    artworkAssetId: boss.artworkAssetId ?? '',
     status: boss.status,
     regions: boss.regions,
     affinity: boss.affinity,
@@ -387,6 +393,7 @@ export function inputOf(form: BossForm): BossInput {
     regions: form.regions,
     status: form.status,
     artwork: form.artwork.trim() === '' ? null : form.artwork.trim(),
+    artworkAssetId: form.artworkAssetId === '' ? null : form.artworkAssetId,
     rewardTable: form.rewardTable,
     scoutingText: form.scoutingText.trim(),
     repelledText: form.repelledText.trim(),
@@ -489,6 +496,29 @@ export function describeEvent(event: BossEvent): string {
   if (event.action === 'update' && changed.length > 0) return `${label}: ${changed.join(', ')}`;
   if (typeof d.encounterId === 'number') return `${label} — encounter #${d.encounterId}`;
   return label;
+}
+
+// ── artwork ─────────────────────────────────────────────────────────────────
+
+const UPLOADED_PREFIX = 'uploaded:';
+
+/**
+ * What a boss shows, as one preview source: its uploaded image when it has
+ * one, else its shipped path, else nothing.
+ */
+export function bossArtworkSource(artwork: {
+  artwork?: string | null | undefined;
+  artworkAssetId?: string | null | undefined;
+}): string | null {
+  if (artwork.artworkAssetId) return `${UPLOADED_PREFIX}${artwork.artworkAssetId}`;
+  return artwork.artwork ? artwork.artwork : null;
+}
+
+/** Fetches the bytes behind a {@link bossArtworkSource}. */
+export function loadBossArtwork(source: string): Promise<Blob> {
+  return source.startsWith(UPLOADED_PREFIX)
+    ? bossArtworkAssetBlob(source.slice(UPLOADED_PREFIX.length))
+    : bossArtworkBlob(source);
 }
 
 /** A boss id suggested from its name: lowercase snake_case, at most 64 characters. */

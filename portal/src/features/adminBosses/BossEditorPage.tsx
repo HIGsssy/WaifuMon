@@ -25,7 +25,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   BOSSES_QUERY_KEY,
   BOSS_STATUSES,
-  bossArtworkBlob,
   createBoss,
   getBoss,
   getBossReference,
@@ -42,7 +41,6 @@ import { isPortalApiError } from '@/api/client';
 import { useHasPermission } from '@/auth/useSession';
 import { ErrorState } from '@/components/layout/ErrorState';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { AuthoredArtwork } from '@/components/media/AuthoredArtwork';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -69,6 +67,7 @@ import {
   type BossForm,
   keyFromName,
 } from './bossModel';
+import { BossArtworkSection } from './BossArtworkSection';
 import { BossIssues, Section } from './bossParts';
 import { ScheduleEditor } from './ScheduleEditor';
 
@@ -84,6 +83,7 @@ const SECTION_PATHS = [
   'name',
   'description',
   'artwork',
+  'artworkAssetId',
   'status',
   'regions',
   'affinity',
@@ -150,9 +150,6 @@ function BossFields({
   const { tuning } = reference;
 
   // What the boss already names stays selectable even if this server no longer offers it.
-  const artworkOptions = [
-    ...new Set([...reference.artwork, ...(form.artwork ? [form.artwork] : [])]),
-  ];
   const regions = [
     ...reference.regions,
     ...form.regions
@@ -171,7 +168,7 @@ function BossFields({
     <>
       <Section
         title="Identity"
-        hint="What the boss is called, what it looks like, and whether it can spawn."
+        hint="What the boss is called and whether it can spawn."
         testId="boss-identity"
       >
         <div className="flex flex-wrap items-end gap-3">
@@ -219,41 +216,16 @@ function BossFields({
           />
         </label>
         <BossIssues issues={at('description')} testId="boss-description-issues" />
-        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_16rem]">
-          <div>
-            <label className="block text-xs text-ink-muted">
-              Artwork
-              <select
-                aria-label="Boss artwork"
-                className={selectClass}
-                value={form.artwork}
-                disabled={readOnly}
-                onChange={(e) => set({ artwork: e.target.value })}
-              >
-                <option value="">No artwork</option>
-                {artworkOptions.map((path) => (
-                  <option key={path} value={path}>
-                    {path}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <p className="mt-1 text-xs text-ink-subtle">
-              Files shipped under <span className="font-mono">assets/bosses/</span>. A boss without
-              artwork is announced without a picture.
-            </p>
-            <BossIssues issues={at('artwork')} testId="boss-artwork-issues" />
-          </div>
-          <AuthoredArtwork
-            source={form.artwork || null}
-            load={bossArtworkBlob}
-            testIdPrefix="boss-artwork-preview"
-            emptyLabel="No artwork chosen"
-            missingLabel={(path) => `No file at ${path} on this server.`}
-            alt={() => `${form.name || 'Boss'} artwork`}
-          />
-        </div>
       </Section>
+
+      <BossArtworkSection
+        form={form}
+        set={set}
+        readOnly={readOnly}
+        shippedPaths={reference.artwork}
+        managed={reference.managedArtwork === true}
+        issues={issues}
+      />
 
       <Section
         title="Regions"

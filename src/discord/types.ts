@@ -36,6 +36,8 @@ import type { EphemeralRegistry } from './ephemeralCleanup';
 import type { OwnedCardWarmer } from '../modules/appearance/ownedCardWarm';
 import type { BossEncounterService } from '../modules/bosses/bossEncounterService';
 import type { BossDefinitionService } from '../modules/bosses/bossDefinitionService';
+import type { BossArtworkService } from '../modules/bosses/bossArtworkService';
+import type { ArtworkAssetService } from '../modules/artworkAssets/artworkAssetService';
 import type { TravelService } from '../modules/travel/travelService';
 import type { KeyItemService } from '../modules/keyItems/keyItemService';
 import type { BossAnnouncer } from '../modules/bosses/bossScheduler';
@@ -120,6 +122,10 @@ export interface AppServices {
   bosses?: BossEncounterService | undefined;
   /** Boss Management: DB-backed boss definitions and their availability schedules (Portal Admin). */
   bossDefinitions?: BossDefinitionService | undefined;
+  /** Boss artwork library and uploads. */
+  bossArtwork?: BossArtworkService | undefined;
+  /** Managed artwork: images uploaded through Portal Admin, referenced by id. */
+  artworkAssets?: ArtworkAssetService | undefined;
   /**
    * Locations & Travel. Always wired — the feature's own gate is
    * `tables.travel.enabled`, which the service reads from the live content

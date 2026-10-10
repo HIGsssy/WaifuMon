@@ -4,6 +4,7 @@
  * commands → Discord login. Fail fast and loud before Discord login.
  * The optional admin web panel starts last, and only when enabled.
  */
+import fs from 'node:fs';
 import { startAdminServer } from './admin/server';
 import { startPlatformApi } from './api/server';
 import { withIdentityCache } from './api/identity';
@@ -84,6 +85,9 @@ import { createBossEncounterService } from './modules/bosses/bossEncounterServic
 import { createBossScheduler, type BossScheduler } from './modules/bosses/bossScheduler';
 import { bootstrapBossDefinitions, createDatabaseBossDefinitionSource } from './modules/bosses/bossDefinitions';
 import { createBossDefinitionService } from './modules/bosses/bossDefinitionService';
+import { createBossArtworkService } from './modules/bosses/bossArtworkService';
+import { createArtworkAssetService } from './modules/artworkAssets/artworkAssetService';
+import { createLocalArtworkStorage } from './modules/artworkAssets/artworkStorage';
 import { createBossAnnouncer } from './discord/bossAnnouncer';
 import { createHuntSessionTracker } from './modules/hunt/huntSession';
 import { createCollectionFilterTracker } from './discord/collectionFilterTracker';
@@ -345,6 +349,25 @@ async function main(): Promise<void> {
    * that has no row yet and never written again. Always built — definitions
    * stay editable in Portal Admin even while boss encounters are switched off.
    */
+  /**
+   * Managed artwork: images uploaded through Portal Admin (boss artwork). The
+   * bytes live in `MANAGED_ASSETS_DIR` — persistent, backed up, outside Git —
+   * and the rows in `artwork_assets`. Shipped artwork under `assets/` is
+   * untouched and remains the fallback.
+   */
+  const artworkStorage = createLocalArtworkStorage(config.managedAssetsDir);
+  const artworkAssets = createArtworkAssetService({ db, storage: artworkStorage, logger });
+  try {
+    fs.mkdirSync(config.managedAssetsDir, { recursive: true });
+    fs.accessSync(config.managedAssetsDir, fs.constants.W_OK);
+    logger.info({ tag: 'artwork-assets/storage', storage: artworkStorage.description }, 'managed artwork storage ready');
+  } catch (err) {
+    logger.error(
+      { tag: 'artwork-assets/storage-unwritable', err, managedAssetsDir: config.managedAssetsDir },
+      'managed artwork storage is not writable — boss artwork uploads will fail; shipped artwork is unaffected. ' +
+        'Check MANAGED_ASSETS_DIR and the volume ownership (docs/boss-management.md).',
+    );
+  }
   const bossDefinitionSource = createDatabaseBossDefinitionSource();
   const bossDefinitions = createBossDefinitionService({
     db,
@@ -353,7 +376,10 @@ async function main(): Promise<void> {
     // Boss reward tables are content here: `content/bossRewards.json`.
     listRewardTables: async () => contentSnapshot.bossRewards.map((t) => ({ id: t.id, enabled: t.enabled })),
     artworkExists: (relative) => resolveExistingAssetFile(config.assetsDir, relative).status === 'available',
+    assets: artworkAssets,
   });
+  /** The boss artwork library: shipped files plus uploads in the managed artwork store. */
+  const bossArtwork = createBossArtworkService({ db, assets: artworkAssets, assetsDir: config.assetsDir });
   /** Insert shipped bosses that have no row. Never throws: a failed bootstrap leaves the rows as they were. */
   const bootstrapBosses = async (): Promise<void> => {
     try {
@@ -551,6 +577,8 @@ async function main(): Promise<void> {
       }),
       ...(bosses === undefined ? {} : { bosses }),
       bossDefinitions,
+      bossArtwork,
+      artworkAssets,
       worldEncounter: createWorldEncounterService({
         db,
         currency,

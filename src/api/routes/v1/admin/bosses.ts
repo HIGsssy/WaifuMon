@@ -12,6 +12,18 @@
  *   - `bosses.operate` — **Spawn Now** and **End Encounter**, which act on a
  *     server's players at once. Separate from `write`: neither implies the other.
  *
+ * ## Artwork
+ *
+ * A boss shows a shipped file (`artwork`, a path under `assets/`) or an image
+ * uploaded here (`artworkAssetId`); the upload wins while it is usable and the
+ * shipped path stays as the fallback. Uploads are managed artwork assets in
+ * the `boss_art` category (`modules/artworkAssets`, `bossArtworkService.ts`).
+ * Browsing the library and reading its bytes need `bosses.read`; uploading and
+ * deleting need `bosses.write` — never `bosses.operate`. *Assigning* artwork
+ * is an ordinary boss save. The upload body **is** the file, as on
+ * `/admin/artwork/assets`: the declared `Content-Type` only selects the
+ * parser, the type is read from the bytes, and `filename` is only a label.
+ *
  * Every definition write names the revision it edited; a stale one is refused
  * with `409 BOSS_DEFINITION_STALE` rather than overwriting. Validation
  * failures are `400 BOSS_DEFINITION_INVALID` with per-field `details.issues`.
@@ -38,6 +50,7 @@ import { resolveGuildScope } from '../../../plugins/guildScope';
 import { ApiErrorWithDetails } from '../../../errors';
 import {
   AppError,
+  ArtworkAssetInUseError,
   BossChannelNotConfiguredError,
   BossDefinitionInUseError,
   BossDefinitionInvalidError,
@@ -48,13 +61,24 @@ import {
 } from '../../../../shared/errors';
 import {
   AFFINITIES,
+  ARTWORK_ASSET_STATUSES,
   BOSS_DEFINITION_EVENT_ACTIONS,
   BOSS_DEFINITION_SOURCES,
   BOSS_DEFINITION_STATUSES,
   BOSS_ENCOUNTER_STATUSES,
   type BossEncounterRow,
 } from '../../../../db/schema';
+import {
+  ARTWORK_ASSET_NAME_MAX_LENGTH,
+  type ArtworkAsset,
+} from '../../../../modules/artworkAssets/artworkAssetService';
+import { ARTWORK_MAX_DIMENSION, ARTWORK_UPLOAD_MAX_BYTES } from '../../../../modules/artworkAssets/imageInspection';
 import { resolveExistingAssetFile } from '../../../../modules/assets/assetContainment';
+import {
+  BOSS_ARTWORK_MAX_EDGE,
+  type BossArtworkService,
+  type BossArtworkUser,
+} from '../../../../modules/bosses/bossArtworkService';
 import { BOSS_KEY_MAX_LENGTH, BOSS_KEY_PATTERN } from '../../../../modules/bosses/bossDefinitions';
 import type {
   BossDefinitionDetail,
@@ -118,6 +142,8 @@ const definitionSchema = z.object({
   regions: z.array(z.string()),
   status: z.enum(BOSS_DEFINITION_STATUSES),
   artwork: z.string().nullable(),
+  /** A managed (uploaded) image; wins over `artwork` while it is usable. */
+  artworkAssetId: z.string().nullable(),
   rewardTable: z.string(),
   scoutingText: z.string(),
   repelledText: z.string(),
@@ -260,7 +286,63 @@ const diagnosticsSchema = z.object({
   ),
 });
 
+const artworkUserSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  status: z.enum(BOSS_DEFINITION_STATUSES),
+});
+
+/** An uploaded boss image. No storage key: that never leaves the asset service. */
+const artworkAssetSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  originalFilename: z.string(),
+  mimeType: z.string(),
+  width: z.number().int(),
+  height: z.number().int(),
+  fileSize: z.number().int(),
+  /** sha256 of the bytes — the `?v=` of its file URL and its ETag. */
+  contentHash: z.string(),
+  version: z.number().int(),
+  status: z.enum(ARTWORK_ASSET_STATUSES),
+  uploadedBy: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+const managedArtworkSchema = z.object({ asset: artworkAssetSchema, usedBy: z.array(artworkUserSchema) });
+
+const artworkReferenceSchema = z.object({
+  kind: z.enum(['dungeon_zone', 'combat_enemy', 'boss']),
+  key: z.string(),
+  name: z.string().nullable(),
+  field: z.string(),
+});
+
 const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
+
+function toArtworkAsset(a: ArtworkAsset): z.infer<typeof artworkAssetSchema> {
+  return {
+    id: a.id,
+    name: a.name,
+    originalFilename: a.originalFilename,
+    mimeType: a.mimeType,
+    width: a.width,
+    height: a.height,
+    fileSize: a.fileSize,
+    contentHash: a.contentHash,
+    version: a.version,
+    status: a.status,
+    uploadedBy: a.uploadedBy,
+    createdAt: a.createdAt.toISOString(),
+    updatedAt: a.updatedAt.toISOString(),
+  };
+}
+
+const toManagedArtwork = (entry: { asset: ArtworkAsset; usedBy: BossArtworkUser[] }) => ({
+  asset: toArtworkAsset(entry.asset),
+  usedBy: entry.usedBy,
+});
 
 function toAvailability(a: BossAvailability): z.infer<typeof availabilitySchema> {
   const window = (w: BossAvailability['currentWindow']) => (w ? { start: iso(w.start), end: iso(w.end) } : null);
@@ -367,6 +449,9 @@ async function translate<T>(work: () => Promise<T>): Promise<T> {
     if (err instanceof BossSpawnRefusedError) {
       throw new ApiErrorWithDetails(err.code, err.message, err.userMessage, { reason: err.reason });
     }
+    if (err instanceof ArtworkAssetInUseError) {
+      throw new ApiErrorWithDetails(err.code, err.message, err.userMessage, { references: err.references });
+    }
     throw err;
   }
 }
@@ -381,9 +466,26 @@ const conflictResponse = {
 
 /** A reply that sends bytes; the route's typed responses only describe its JSON errors. */
 interface BinaryReply {
+  code(status: number): BinaryReply;
   header(name: string, value: string): BinaryReply;
-  send(payload: Buffer): unknown;
+  send(payload?: Buffer): unknown;
 }
+
+/**
+ * Body ceiling for the two import routes. An export of the whole roster is
+ * every boss's prose and schedule in one document — past the API's 64 KB
+ * default once a few dozen bosses exist — and an import must be able to take
+ * back what an export produced. Only these routes are raised.
+ *
+ * They, and the artwork upload, check permission at `onRequest` rather than
+ * `preValidation` like the rest of this file: Fastify parses the body before
+ * `preValidation`, so a caller with no permission would otherwise still make
+ * the server read megabytes (the same choice `encounterPromotion.ts` makes).
+ */
+export const BOSS_IMPORT_BODY_LIMIT_BYTES = 2 * 1024 * 1024;
+
+/** Content types an artwork upload may declare. The type that counts is read from the bytes. */
+const UPLOAD_CONTENT_TYPES = ['image/png', 'image/webp', 'image/jpeg', 'application/octet-stream'];
 
 const IMAGE_TYPES: Record<string, string> = {
   '.webp': 'image/webp',
@@ -416,6 +518,11 @@ export const adminBossRoutes =
     const definitions: BossDefinitionService = service;
     /** Absent when `bossEncounters.enabled` is off: definitions stay editable, nothing can be spawned. */
     const encounters: BossEncounterService | undefined = ctx.services.bosses;
+    /** Absent on a server without managed artwork: bosses keep their shipped artwork and nothing is uploaded. */
+    const artwork: BossArtworkService | undefined = ctx.services.bossArtwork;
+
+    // An artwork upload's body is the file. Scoped to this plugin.
+    app.addContentTypeParser(UPLOAD_CONTENT_TYPES, { parseAs: 'buffer' }, (_req, body, done) => done(null, body));
 
     const gate =
       (permission: 'bosses.read' | 'bosses.write' | 'bosses.operate') =>
@@ -485,6 +592,8 @@ export const adminBossRoutes =
                 affinities: z.array(z.string()),
                 rewardTables: z.array(z.object({ id: z.string(), enabled: z.boolean() })),
                 artwork: z.array(z.string()),
+                /** Whether this server can store uploaded boss artwork (the `/admin/bosses/artwork/…` routes). */
+                managedArtwork: z.boolean(),
                 defaultTimezone: z.string(),
                 /** `tables.json` → `bossEncounters`. Shared by every boss; not editable here. */
                 tuning: z.object({
@@ -512,6 +621,7 @@ export const adminBossRoutes =
           affinities: [...AFFINITIES],
           rewardTables: tables,
           artwork: listBossArtwork(ctx.assetsDir),
+          managedArtwork: artwork !== undefined,
           defaultTimezone: DEFAULT_BOSS_SCHEDULE_TIMEZONE,
           tuning: {
             enabled: config.enabled,
@@ -551,6 +661,199 @@ export const adminBossRoutes =
       },
     );
 
+    if (artwork) {
+      const assetParams = z.object({ assetId: z.string().uuid() });
+      const artworkNotFound = (id: string) =>
+        new AppError('NOT_FOUND', `Boss artwork ${id} not found`, 'That artwork was not found.');
+
+      app.get(
+        '/admin/bosses/artwork/library',
+        {
+          preValidation: gate('bosses.read'),
+          schema: {
+            tags,
+            summary:
+              'Everything a boss can show: the shipped files under `assets/bosses/` (plus any other path a boss ' +
+              'names) and the images uploaded here, each with the bosses that use it, and the upload limits',
+            response: {
+              200: dataSchema(
+                z.object({
+                  shipped: z.array(z.object({ path: z.string(), exists: z.boolean(), usedBy: z.array(artworkUserSchema) })),
+                  managed: z.array(managedArtworkSchema),
+                  limits: z.object({
+                    mimeTypes: z.array(z.string()),
+                    maxBytes: z.number().int(),
+                    /** Longest edge an upload may have. */
+                    maxDimension: z.number().int(),
+                    /** Longest edge a stored image keeps; a larger upload is scaled down. */
+                    storedMaxEdge: z.number().int(),
+                  }),
+                }),
+              ),
+              ...commonErrorResponses,
+            },
+          },
+        },
+        async (req) => {
+          const library = await artwork.library();
+          return ok(req, {
+            shipped: library.shipped,
+            managed: library.managed.map(toManagedArtwork),
+            limits: {
+              mimeTypes: ['image/webp', 'image/png', 'image/jpeg'],
+              maxBytes: ARTWORK_UPLOAD_MAX_BYTES,
+              maxDimension: ARTWORK_MAX_DIMENSION,
+              storedMaxEdge: BOSS_ARTWORK_MAX_EDGE,
+            },
+          });
+        },
+      );
+
+      app.get(
+        '/admin/bosses/artwork/assets/:assetId',
+        {
+          preValidation: gate('bosses.read'),
+          schema: {
+            tags,
+            summary: 'One uploaded boss image: its metadata, the bosses using it, every reference, and its history',
+            params: assetParams,
+            response: {
+              200: dataSchema(
+                managedArtworkSchema.extend({
+                  /** Everything that blocks deletion — bosses, and encounters still open. */
+                  references: z.array(artworkReferenceSchema),
+                  events: z.array(
+                    z.object({
+                      id: z.number().int(),
+                      action: z.string(),
+                      actor: z.string().nullable(),
+                      details: z.record(z.string(), z.unknown()),
+                      createdAt: z.string(),
+                    }),
+                  ),
+                }),
+              ),
+              ...notFoundResponse,
+              ...commonErrorResponses,
+            },
+          },
+        },
+        async (req) => {
+          const found = await artwork.get(req.params.assetId);
+          if (!found) throw artworkNotFound(req.params.assetId);
+          return ok(req, {
+            ...toManagedArtwork(found),
+            references: found.references,
+            events: found.events.map((e) => ({
+              id: e.id,
+              action: e.action,
+              actor: e.actor,
+              details: e.details,
+              createdAt: e.createdAt.toISOString(),
+            })),
+          });
+        },
+      );
+
+      app.get(
+        '/admin/bosses/artwork/assets/:assetId/file',
+        {
+          preValidation: gate('bosses.read'),
+          schema: {
+            tags,
+            summary:
+              'The bytes of an uploaded boss image. ETag is the content hash; with `?v=<hash>` naming the current ' +
+              'hash the response is immutable',
+            params: assetParams,
+            querystring: z.object({ v: z.string().max(64).optional() }),
+            response: { ...notFoundResponse, ...commonErrorResponses },
+          },
+        },
+        async (req, reply) => {
+          const found = await artwork.read(req.params.assetId);
+          if (!found) throw artworkNotFound(req.params.assetId);
+          const etag = `"${found.asset.contentHash}"`;
+          const out = (reply as unknown as BinaryReply)
+            .header('content-type', found.asset.mimeType)
+            .header('x-content-type-options', 'nosniff')
+            .header('content-security-policy', "default-src 'none'; sandbox")
+            .header('cross-origin-resource-policy', 'same-origin')
+            .header('etag', etag)
+            .header(
+              'cache-control',
+              req.query.v === found.asset.contentHash ? 'private, max-age=31536000, immutable' : 'private, no-cache',
+            );
+          if (req.headers['if-none-match'] === etag) {
+            out.code(304).send();
+            return reply;
+          }
+          out.send(found.bytes);
+          return reply;
+        },
+      );
+
+      app.post(
+        '/admin/bosses/artwork/assets',
+        {
+          bodyLimit: ARTWORK_UPLOAD_MAX_BYTES,
+          onRequest: gate('bosses.write'),
+          schema: {
+            tags,
+            summary:
+              'Upload boss artwork (WebP, PNG or JPEG) as the raw request body. The type is read from the bytes; ' +
+              'the image is stored as WebP, scaled down when its longest edge is over the stored maximum. ' +
+              '`filename` is kept only as a label. Assign it by saving a boss with its `artworkAssetId`',
+            querystring: z.object({
+              filename: z.string().max(300).optional(),
+              name: z.string().max(ARTWORK_ASSET_NAME_MAX_LENGTH).optional(),
+            }),
+            response: {
+              200: dataSchema(z.object({ asset: artworkAssetSchema })),
+              413: errorSchema.describe('PAYLOAD_TOO_LARGE — over the upload limit.'),
+              ...commonErrorResponses,
+            },
+          },
+        },
+        async (req) => {
+          if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+            throw new AppError(
+              'VALIDATION_ERROR',
+              'Upload body missing',
+              'Send the image as the request body, with an image Content-Type.',
+            );
+          }
+          const asset = await artwork.upload({ bytes: req.body, ...req.query }, actorOf(req));
+          return ok(req, { asset: toArtworkAsset(asset) });
+        },
+      );
+
+      app.delete(
+        '/admin/bosses/artwork/assets/:assetId',
+        {
+          preValidation: gate('bosses.write'),
+          schema: {
+            tags,
+            summary:
+              'Delete an uploaded boss image. Refused with 409 ARTWORK_ASSET_IN_USE (details.references) while a ' +
+              'boss, or an encounter still open, uses it — reassign those bosses first. Shipped files are not ' +
+              'deleted here',
+            params: assetParams,
+            response: {
+              200: dataSchema(z.object({ deleted: z.literal(true) })),
+              409: errorSchema.describe('ARTWORK_ASSET_IN_USE — reassign the bosses in details.references first.'),
+              ...notFoundResponse,
+              ...commonErrorResponses,
+            },
+          },
+        },
+        async (req) => {
+          const deleted = await translate(() => artwork.delete(req.params.assetId, actorOf(req)));
+          if (!deleted) throw artworkNotFound(req.params.assetId);
+          return ok(req, { deleted: true as const });
+        },
+      );
+    }
+
     app.get(
       '/admin/bosses/export',
       {
@@ -575,14 +878,19 @@ export const adminBossRoutes =
     app.post(
       '/admin/bosses/import/plan',
       {
-        preValidation: gate('bosses.read'),
+        bodyLimit: BOSS_IMPORT_BODY_LIMIT_BYTES,
+        onRequest: gate('bosses.read'),
         schema: {
           tags,
           summary:
             'Dry run of an import: per boss, whether it would be created, conflicts with an existing boss (and in ' +
             'which fields), is unchanged, or is invalid. Writes nothing',
           body: z.object({ document: z.unknown() }),
-          response: { 200: dataSchema(importPlanSchema), ...commonErrorResponses },
+          response: {
+            200: dataSchema(importPlanSchema),
+            413: errorSchema.describe('PAYLOAD_TOO_LARGE — over the import limit (details.maxBytes).'),
+            ...commonErrorResponses,
+          },
         },
       },
       async (req) => ok(req, await definitions.planImport(req.body.document)),
@@ -591,7 +899,8 @@ export const adminBossRoutes =
     app.post(
       '/admin/bosses/import/apply',
       {
-        preValidation: gate('bosses.write'),
+        bodyLimit: BOSS_IMPORT_BODY_LIMIT_BYTES,
+        onRequest: gate('bosses.write'),
         schema: {
           tags,
           summary:
@@ -611,6 +920,7 @@ export const adminBossRoutes =
                 unchanged: z.array(z.string()),
               }),
             ),
+            413: errorSchema.describe('PAYLOAD_TOO_LARGE — over the import limit (details.maxBytes).'),
             ...conflictResponse,
             ...commonErrorResponses,
           },

@@ -24,6 +24,7 @@ import {
   real,
   text,
   timestamp,
+  uuid,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
 
@@ -1107,6 +1108,13 @@ export const bossEncounters = pgTable(
     bossAffinity: text('boss_affinity').notNull(),
     /** Relative artwork path at announcement time; null = text-only encounter. */
     bossArtwork: text('boss_artwork'),
+    /**
+     * The boss's managed artwork at spawn (migration 0046), a logical
+     * `artwork_assets` id: it wins over `bossArtwork` while the asset is
+     * active, and its image is read live. No foreign key — the encounter is
+     * history and must not pin an asset an admin later removes.
+     */
+    bossArtworkAssetId: uuid('boss_artwork_asset_id'),
     rewardTable: text('reward_table').notNull(),
     /** `rewardTables[key].version` as it stood when the encounter opened. */
     rewardTableVersion: text('reward_table_version').notNull(),
@@ -2366,6 +2374,114 @@ export const loadTestRuns = pgTable(
 
 export type LoadTestRunRow = typeof loadTestRuns.$inferSelect;
 
+export const ARTWORK_ASSET_CATEGORIES = [
+  'dungeon_zone',
+  'dungeon_background',
+  'enemy_sprite',
+  'enemy_art',
+  'event_art',
+  'npc_portrait',
+  'equipment_art',
+  'boss_art',
+] as const;
+export type ArtworkAssetCategory = (typeof ARTWORK_ASSET_CATEGORIES)[number];
+
+export const ARTWORK_ASSET_STATUSES = ['active', 'disabled', 'deleted'] as const;
+export type ArtworkAssetStatus = (typeof ARTWORK_ASSET_STATUSES)[number];
+
+export const ARTWORK_ASSET_MIME_TYPES = ['image/png', 'image/webp', 'image/jpeg'] as const;
+export type ArtworkAssetMimeType = (typeof ARTWORK_ASSET_MIME_TYPES)[number];
+
+/**
+ * Managed artwork (migration 0046 here; 0054 on the Delve line): an image
+ * uploaded through Portal Admin. On this branch only boss artwork (`boss_art`)
+ * is uploaded; the other categories are the shared vocabulary.
+ *
+ * The row is the logical asset and its metadata; the bytes live in the
+ * artwork storage under `storageKey`. Authored content references `id`.
+ * Replacing the image keeps the id and bumps `version` / `contentHash`.
+ * See `modules/artworkAssets`.
+ */
+export const artworkAssets = pgTable(
+  'artwork_assets',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    category: text('category').$type<ArtworkAssetCategory>().notNull(),
+    /** Display label. Never a path. */
+    name: text('name').notNull(),
+    /** The uploader's base file name. Informational; never used on disk. */
+    originalFilename: text('original_filename').notNull(),
+    mimeType: text('mime_type').$type<ArtworkAssetMimeType>().notNull(),
+    width: integer('width').notNull(),
+    height: integer('height').notNull(),
+    hasAlpha: boolean('has_alpha').notNull().default(false),
+    fileSize: integer('file_size').notNull(),
+    /** Server-generated: `<category>/<id>/<contentHash>.<ext>`. */
+    storageKey: text('storage_key').notNull(),
+    /** sha256 of the stored bytes. */
+    contentHash: text('content_hash').notNull(),
+    version: integer('version').notNull().default(1),
+    status: text('status').$type<ArtworkAssetStatus>().notNull().default('active'),
+    uploadedBy: text('uploaded_by'),
+    updatedBy: text('updated_by'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    replacedAt: timestamp('replaced_at', { withTimezone: true }),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  },
+  (t) => [
+    check(
+      'artwork_assets_category_check',
+      sql`${t.category} in ('dungeon_zone','dungeon_background','enemy_sprite','enemy_art','event_art','npc_portrait','equipment_art','boss_art')`,
+    ),
+    check('artwork_assets_mime_check', sql`${t.mimeType} in ('image/png','image/webp','image/jpeg')`),
+    check('artwork_assets_status_check', sql`${t.status} in ('active','disabled','deleted')`),
+    check('artwork_assets_dimensions_check', sql`${t.width} >= 1 and ${t.height} >= 1 and ${t.fileSize} >= 1`),
+    check('artwork_assets_version_check', sql`${t.version} >= 1`),
+    check('artwork_assets_deleted_check', sql`(${t.status} = 'deleted') = (${t.deletedAt} is not null)`),
+    index('artwork_assets_category_idx').on(t.category, t.status, t.updatedAt.desc()),
+  ],
+);
+export type ArtworkAssetRow = typeof artworkAssets.$inferSelect;
+
+export const ARTWORK_ASSET_EVENT_ACTIONS = [
+  'upload',
+  'replace',
+  'update',
+  'disable',
+  'enable',
+  'delete',
+  'reference_added',
+  'reference_removed',
+] as const;
+export type ArtworkAssetEventAction = (typeof ARTWORK_ASSET_EVENT_ACTIONS)[number];
+
+/** Append-only audit trail for managed artwork (migration 0046). Never bytes. */
+export const artworkAssetEvents = pgTable(
+  'artwork_asset_events',
+  {
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    assetId: uuid('asset_id')
+      .notNull()
+      .references(() => artworkAssets.id),
+    action: text('action').$type<ArtworkAssetEventAction>().notNull(),
+    /** Discord id of the admin; null for a bearer/script caller. */
+    actor: text('actor'),
+    oldHash: text('old_hash'),
+    newHash: text('new_hash'),
+    details: jsonb('details').$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check(
+      'artwork_asset_events_action_check',
+      sql`${t.action} in ('upload','replace','update','disable','enable','delete','reference_added','reference_removed')`,
+    ),
+    index('artwork_asset_events_asset_idx').on(t.assetId, t.id.desc()),
+  ],
+);
+export type ArtworkAssetEventRow = typeof artworkAssetEvents.$inferSelect;
+
 /**
  * Boss definitions (migration 0045). Authoritative: the scheduler draws from
  * this table. `content/bosses.json` is bootstrap data — a boss whose key has
@@ -2391,6 +2507,11 @@ export const bossDefinitions = pgTable(
     status: text('status').$type<BossDefinitionStatus>().notNull().default('draft'),
     /** Relative to the assets root; null renders a text-only encounter. */
     artwork: text('artwork'),
+    /**
+     * Managed artwork uploaded through the Portal (migration 0046). Wins over
+     * `artwork` while the asset is active; `artwork` stays as the fallback.
+     */
+    artworkAssetId: uuid('artwork_asset_id').references(() => artworkAssets.id),
     /** A `reward_tables` id of kind `boss`. Empty only on a draft. */
     rewardTable: text('reward_table').notNull().default(''),
     scoutingText: text('scouting_text').notNull().default(''),
@@ -2420,6 +2541,7 @@ export const bossDefinitions = pgTable(
     check('boss_definitions_revision_check', sql`${t.revision} >= 1`),
     index('boss_definitions_position_idx').on(t.position, t.bossKey),
     index('boss_definitions_status_idx').on(t.status),
+    index('boss_definitions_artwork_asset_idx').on(t.artworkAssetId),
   ],
 );
 

@@ -181,6 +181,8 @@ export interface BossSpawnResult {
 /** A boss that may spawn now, with the definition revision it was read at. */
 interface SpawnCandidate {
   boss: BossContent;
+  /** The definition's managed artwork, frozen onto the encounter beside the shipped path. */
+  artworkAssetId: string | null;
   /** Null when the definition did not come from a row. */
   revision: number | null;
 }
@@ -461,7 +463,11 @@ export function createBossEncounterService(
         logger.error(entry.problem.fields, entry.problem.message);
       }
       if (entry.verdict === 'eligible') {
-        out.push({ boss: bossContentFromDefinition(entry.definition), revision: entry.revision });
+        out.push({
+          boss: bossContentFromDefinition(entry.definition),
+          artworkAssetId: entry.definition.artworkAssetId,
+          revision: entry.revision,
+        });
       }
     }
     return out;
@@ -627,7 +633,7 @@ export function createBossEncounterService(
   function encounterValuesFor(
     guildDbId: number,
     region: string,
-    { boss, revision }: SpawnCandidate,
+    { boss, artworkAssetId, revision }: SpawnCandidate,
     scheduledAt: Date,
     forced: boolean,
   ): typeof bossEncounters.$inferInsert {
@@ -648,6 +654,7 @@ export function createBossEncounterService(
       bossName: boss.name,
       bossAffinity: boss.affinity,
       bossArtwork: boss.artwork,
+      bossArtworkAssetId: artworkAssetId,
       rewardTable: boss.rewardTable,
       rewardTableVersion: bossRewardTableVersion(table),
       bossSnapshot: bossSnapshot as unknown as Record<string, unknown>,
@@ -1255,7 +1262,15 @@ export function createBossEncounterService(
       const region = state.region;
       const explained = await explainDefinitions(db, region, now, { ignoreSchedule: opts.ignoreSchedule });
       const pool: SpawnCandidate[] = explained.flatMap((e) =>
-        e.verdict === 'eligible' ? [{ boss: bossContentFromDefinition(e.definition), revision: e.revision }] : [],
+        e.verdict === 'eligible'
+          ? [
+              {
+                boss: bossContentFromDefinition(e.definition),
+                artworkAssetId: e.definition.artworkAssetId,
+                revision: e.revision,
+              },
+            ]
+          : [],
       );
       const named = bossId ? explained.find((e) => e.definition.id === bossId) : undefined;
       if (named?.verdict === 'outside_schedule') {

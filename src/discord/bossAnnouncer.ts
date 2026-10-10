@@ -193,7 +193,7 @@ export function createBossAnnouncer(deps: BossAnnouncerDeps): BossAnnouncer {
           config: ctx.content.tables.bossEncounters,
           participantCount: 0,
           now: new Date(),
-          ...resolveBossArtwork(ctx, encounter),
+          ...(await resolveBossArtwork(ctx, encounter)),
         }),
       );
       return message.id;
@@ -220,7 +220,7 @@ export function createBossAnnouncer(deps: BossAnnouncerDeps): BossAnnouncer {
           config: ctx.content.tables.bossEncounters,
           participantCount,
           now: new Date(),
-          ...resolveBossArtwork(ctx, encounter),
+          ...(await resolveBossArtwork(ctx, encounter)),
         }),
       );
     },
@@ -273,7 +273,7 @@ export function createBossAnnouncer(deps: BossAnnouncerDeps): BossAnnouncer {
               totalAttacks:
                 encounter.participantCount *
                 ctx.content.tables.bossEncounters.attacksPerParticipation,
-              ...resolveBossArtwork(ctx, encounter),
+              ...(await resolveBossArtwork(ctx, encounter)),
             }),
           );
           await encounters.markCompletionEdited(encounterId, new Date());
@@ -338,7 +338,7 @@ export function createBossAnnouncer(deps: BossAnnouncerDeps): BossAnnouncer {
             encounter.participantCount *
             ctx.content.tables.bossEncounters.attacksPerParticipation,
           firstOnScene,
-          ...resolveBossArtwork(ctx, encounter),
+          ...(await resolveBossArtwork(ctx, encounter)),
         }),
       );
       await encounters.markResultsPublished(encounterId, sent.id, listing.pageSize, new Date());

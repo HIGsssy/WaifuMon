@@ -154,6 +154,7 @@ beforeAll(async () => {
       // guard refusing to attach it rather than about a missing file.
       assetsDir: ASSETS_DIR,
       contentDir: process.cwd(),
+      managedAssetsDir: process.cwd(),
       dailyTimezone: 'UTC',
       discordToken: 'x',
       discordClientId: 'x',

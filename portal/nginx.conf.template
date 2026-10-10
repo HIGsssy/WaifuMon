@@ -157,6 +157,42 @@ server {
     proxy_set_header X-Forwarded-Proto ${PORTAL_FORWARDED_PROTO};
   }
 
+  # Boss artwork (docs/boss-management.md): an upload's body is the image,
+  # up to 8 MiB (ARTWORK_UPLOAD_MAX_BYTES), on its own path under Boss
+  # Management. Set a little above the API's limit for the same reason as the
+  # import routes above: the API's own JSON 413 names the limit.
+  location ^~ /api/v1/admin/bosses/artwork/ {
+    include /etc/nginx/security-headers.conf;
+    client_max_body_size 9m;
+    proxy_hide_header X-Content-Type-Options;
+    proxy_hide_header X-Frame-Options;
+    proxy_hide_header Referrer-Policy;
+    proxy_pass ${PORTAL_API_UPSTREAM};
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto ${PORTAL_FORWARDED_PROTO};
+  }
+
+  # Boss import (plan + apply) carries a whole roster export: every boss's
+  # prose and schedule. The API caps these two routes at 2 MiB
+  # (BOSS_IMPORT_BODY_LIMIT_BYTES in src/api/routes/v1/admin/bosses.ts); set a
+  # little above that so the API's JSON 413 is what a caller sees.
+  location ^~ /api/v1/admin/bosses/import/ {
+    include /etc/nginx/security-headers.conf;
+    client_max_body_size 3m;
+    proxy_hide_header X-Content-Type-Options;
+    proxy_hide_header X-Frame-Options;
+    proxy_hide_header Referrer-Policy;
+    proxy_pass ${PORTAL_API_UPSTREAM};
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto ${PORTAL_FORWARDED_PROTO};
+  }
+
   location ^~ /api {
     include /etc/nginx/security-headers.conf;
     # Strip the upstream's copies before adding ours. @fastify/helmet sends
