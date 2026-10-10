@@ -3,7 +3,7 @@
  * copy's own bonus rows (none, one, two), the loadout's cumulative totals,
  * the side-by-side comparison, a fabricated item, a drop line, and the Trial
  * screens. Delve's screens are covered against a real run in
- * `tests/integration/dungeonCombatModifiers.test.ts`.
+ * `tests/integration/dungeonDiscord.test.ts`.
  */
 import { describe, expect, it } from 'vitest';
 import {

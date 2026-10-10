@@ -340,6 +340,8 @@ placement). These are *logical* references:
 
 ## Admin Portal
 
+> **Dungeon overhaul, Phase 1A.** The `/admin/dungeons/zones/:key` row describes the prototype zone editor, whose API is gone. Dungeons now reference managed artwork by category and content hash (see `docs/dungeons.md`); the Portal editor that sets them arrives in Phase 1B.
+
 | Page | Permission | |
 | --- | --- | --- |
 | `/admin/artwork` — Artwork Assets | `artwork.read` | **Upload** (category, optional name, file), **Browse** (category filter, search, thumbnails, dimensions / type / size), **Manage** the selected asset: rename, move category, replace, disable / enable, delete, copy id, where it is used, history. |

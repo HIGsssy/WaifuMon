@@ -107,11 +107,11 @@ import {
 import {
   handleDungeonAbandon,
   handleDungeonAbandonConfirm,
-  handleDungeonEnter,
+  handleDungeonAct,
   handleDungeonExtract,
   handleDungeonExtractConfirm,
   handleDungeonHome,
-  handleDungeonResolve,
+  handleDungeonMove,
   handleDungeonRun,
   handleDungeonStart,
   handleDungeonZone,
@@ -461,8 +461,10 @@ export function createDiscordClient(ctx: AppContext): Client {
       'dg:zone': (i: ButtonInteraction, prov: Provisioned, args: string[]) => handleDungeonZone(ctx, i, prov, args),
       'dg:start': (i: ButtonInteraction, prov: Provisioned, args: string[]) => handleDungeonStart(ctx, i, prov, args),
       'dg:run': (i: ButtonInteraction, prov: Provisioned, args: string[]) => handleDungeonRun(ctx, i, prov, args),
-      'dg:enter': (i: ButtonInteraction, prov: Provisioned, args: string[]) => handleDungeonEnter(ctx, i, prov, args),
-      'dg:go': (i: ButtonInteraction, prov: Provisioned, args: string[]) => handleDungeonResolve(ctx, i, prov, args),
+      // `dg:enter` and `dg:go` (the node-based runtime) are gone on purpose: a
+      // button from before the cutover gets the registry's "no longer works".
+      'dg:act': (i: ButtonInteraction, prov: Provisioned, args: string[]) => handleDungeonAct(ctx, i, prov, args),
+      'dg:mv': (i: ButtonInteraction, prov: Provisioned, args: string[]) => handleDungeonMove(ctx, i, prov, args),
       'dg:exq': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleDungeonExtractConfirm(ctx, i, prov, args),
       'dg:ex': (i: ButtonInteraction, prov: Provisioned, args: string[]) => handleDungeonExtract(ctx, i, prov, args),

@@ -197,8 +197,8 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   ENCOUNTER_IMPORT_REJECTED: 400,
   /** Admin: a reward table (or import) failed validation — issues are in `details`. */
   REWARD_TABLE_INVALID: 400,
-  /** Admin: a dungeon zone failed validation — issues are in `details`. */
-  DUNGEON_ZONE_INVALID: 400,
+  /** Admin: a dungeon definition failed validation — issues are in `details`. */
+  DUNGEON_INVALID: 400,
   /** Admin: an enemy failed validation — issues are in `details`. */
   ENEMY_INVALID: 400,
   /** Admin: a boss definition (or import) failed validation — issues are in `details`. */
@@ -257,6 +257,8 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   TABLE_NOT_FOUND: 404,
   PROGRESSION_CURRENCY_NOT_FOUND: 404,
   DUNGEON_RUN_NOT_FOUND: 404,
+  DUNGEON_NOT_FOUND: 404,
+  DUNGEON_REVISION_NOT_FOUND: 404,
   SESSION_NOT_FOUND: 404,
   BUDDY_NOT_SET: 404,
   /**
@@ -322,10 +324,10 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   REWARD_TABLE_ID_TAKEN: 409,
   /** Admin: deleting a reward table that content references or Git ships — disable it instead. */
   REWARD_TABLE_DELETE_REFUSED: 409,
-  /** Admin: a dungeon zone save named a revision someone else has since replaced. */
-  DUNGEON_ZONE_STALE: 409,
-  /** Admin: creating a dungeon zone under a key another zone already has. */
-  DUNGEON_ZONE_KEY_TAKEN: 409,
+  /** Admin: a dungeon draft save or publish named a revision someone else has since replaced. */
+  DUNGEON_DRAFT_STALE: 409,
+  /** Admin: creating a dungeon under a key another dungeon already has. */
+  DUNGEON_KEY_TAKEN: 409,
   /** Admin: a currency metadata save named a stale revision. */
   PROGRESSION_CURRENCY_STALE: 409,
   /** Admin: an uploaded file is not an acceptable image (type, size, dimensions). */
@@ -350,22 +352,14 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   DUNGEON_RUN_ACTIVE: 409,
   /** Every Delve run of the current game day has been started. */
   DUNGEON_DAILY_LIMIT: 409,
-  /** A dungeon run generated without a fighter snapshot cannot be played. */
-  DUNGEON_RUN_UNPLAYABLE: 409,
   /** A request key reused for a different progression-currency change. */
   PROGRESSION_CURRENCY_REQUEST_CONFLICT: 409,
 
   // --- Valid shape, business rule refused ---------------------------------
   INSUFFICIENT_FUNDS: 422,
   INSUFFICIENT_PROGRESSION_CURRENCY: 422,
-  /**
-   * The zone's authored rules cannot produce a legal run for the seed. The
-   * request is well-formed; it is the zone that needs fixing — the diagnostics
-   * are in `details` for the Admin preview.
-   */
-  DUNGEON_GENERATION_FAILED: 422,
-  /** The zone is missing or disabled — nothing to run. */
-  DUNGEON_ZONE_UNAVAILABLE: 422,
+  /** The dungeon is missing, unpublished, disabled or not available here — nothing to run. */
+  DUNGEON_UNAVAILABLE: 422,
   PROGRESSION_CURRENCY_DISABLED: 422,
   INSUFFICIENT_ESSENCE: 422,
   INSUFFICIENT_ITEMS: 422,

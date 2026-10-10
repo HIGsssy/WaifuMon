@@ -708,8 +708,24 @@ export const playerWaifus = pgTable(
     giftRollCounter: integer('gift_roll_counter').notNull().default(0),
     caughtAt: timestamp('caught_at', { withTimezone: true }).notNull().defaultNow(),
     releasedAt: timestamp('released_at', { withTimezone: true }),
+    /**
+     * How this copy was obtained when it was not an ordinary capture, e.g.
+     * `dungeon_recruit` (migration 0059). Null for every capture so far: the
+     * capture flow does not write it. Provenance only — nothing reads it to
+     * decide ownership.
+     */
+    acquiredVia: text('acquired_via'),
+    /**
+     * Idempotency key of a direct grant (migration 0059), unique when present,
+     * so a retried guaranteed recruitment cannot create a second copy. Null
+     * for captures, which are made idempotent by their encounter.
+     */
+    grantKey: text('grant_key'),
   },
   (t) => [
+    uniqueIndex('player_waifus_grant_key_uq')
+      .on(t.grantKey)
+      .where(sql`grant_key is not null`),
     index('player_waifus_player_idx').on(t.playerId),
     index('player_waifus_player_species_idx').on(t.playerId, t.speciesId),
     check('player_waifus_level_check', sql`${t.level} >= 1`),
@@ -2991,56 +3007,126 @@ export const combatTrialAttempts = pgTable(
 export type CombatTrialAttemptRow = typeof combatTrialAttempts.$inferSelect;
 
 /**
- * Dungeon zones (migration 0050) — the authored input of the dungeon
- * generator.
+ * Dungeons (migration 0059) — one row per dungeon: its mutable **draft**, the
+ * editor's layout of it, and the pointer to the published revision new runs
+ * start on.
  *
- * Database-authoritative once seeded, on the `reward_tables` model: the
- * shipped `content/dungeons/zones.json` holds the defaults, and the startup
- * seed updates a row from it only while the row still holds what was last
- * seeded (`contentHash === seedHash`). `definition` is the zone as the file
- * format writes it; see `modules/dungeons/zoneDefinition.ts`.
+ * `draft` is the definition as `modules/dungeons/content/dungeonDefinition.ts`
+ * writes it and `layout` is the canvas layout beside it; the two are separate
+ * documents so that moving a room is not a gameplay change. `draftRevision` is
+ * the optimistic lock: a save must name the revision it edited.
  *
- * `zoneKey` is stable for the life of the zone: runs record it by value.
+ * A dungeon is open to players when it is `enabled` **and** has a published
+ * revision. Publishing never happens as a side effect of a save or an import.
+ *
+ * `dungeonKey` is stable for the life of the dungeon: runs, revisions and
+ * packages name it by value.
  */
-export type DungeonZoneRegionCompat = 'pending' | 'shipped' | 'all_enabled_regions';
-
-export const dungeonZones = pgTable(
-  'dungeon_zones',
+export const dungeonDefinitions = pgTable(
+  'dungeon_definitions',
   {
-    zoneKey: text('zone_key').primaryKey(),
-    /** Mirrors `definition.enabled`, for listing without parsing. */
-    enabled: boolean('enabled').notNull(),
-    definition: jsonb('definition').$type<Record<string, unknown>>().notNull(),
-    /** Bumped on every write; a save must name the revision it edited. */
-    revision: integer('revision').notNull().default(1),
-    contentHash: text('content_hash').notNull(),
-    /** Hash of the shipped zone last seeded into this row; null if never shipped. */
-    seedHash: text('seed_hash'),
-    /** Mirrors `definition.order`. */
+    dungeonKey: text('dungeon_key').primaryKey(),
+    /** Off takes a published dungeon away from new runs without unpublishing it. */
+    enabled: boolean('enabled').notNull().default(true),
+    draft: jsonb('draft').$type<Record<string, unknown>>().notNull(),
+    layout: jsonb('layout').$type<Record<string, unknown>>().notNull().default({}),
+    /** Bumped on every draft or layout write. */
+    draftRevision: integer('draft_revision').notNull().default(1),
+    /** Gameplay content hash of `draft`; layout is not part of it. */
+    draftHash: text('draft_hash').notNull(),
+    /** The revision new runs start on; null while unpublished. FK in the migration. */
+    publishedRevisionId: bigint('published_revision_id', { mode: 'number' }),
     position: integer('position').notNull().default(0),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-    /** Discord id of the admin, or `seed`. */
+    /** Discord id of the admin who last wrote the draft. */
     updatedBy: text('updated_by'),
-    /**
-     * Region-availability compatibility (migration 0053). `pending` marks a
-     * row stored before `availableRegions` existed; the startup backfill
-     * resolves it once to `shipped` or `all_enabled_regions`. Null for every
-     * zone authored since, and again after the next Portal save.
-     */
-    regionCompat: text('region_compat').$type<DungeonZoneRegionCompat>(),
   },
   (t) => [
-    check('dungeon_zones_key_check', sql`${t.zoneKey} ~ '^[a-z0-9]+(_[a-z0-9]+)*$'`),
-    check('dungeon_zones_revision_check', sql`${t.revision} >= 1`),
-    check(
-      'dungeon_zones_region_compat_check',
-      sql`${t.regionCompat} is null or ${t.regionCompat} in ('pending','shipped','all_enabled_regions')`,
-    ),
+    check('dungeon_definitions_key_check', sql`${t.dungeonKey} ~ '^[a-z0-9]+(_[a-z0-9]+)*$'`),
+    check('dungeon_definitions_draft_revision_check', sql`${t.draftRevision} >= 1`),
   ],
 );
 
-export type DungeonZoneRow = typeof dungeonZones.$inferSelect;
+export type DungeonDefinitionRow = typeof dungeonDefinitions.$inferSelect;
+
+export const DUNGEON_REVISION_SOURCES = ['editor', 'import'] as const;
+export type DungeonRevisionSource = (typeof DUNGEON_REVISION_SOURCES)[number];
+
+/**
+ * A published dungeon revision (migration 0059): the content as it stood when
+ * an admin pressed Publish. **Immutable** — the application has no code path
+ * that updates one, and a trigger refuses any that tries. A run names the
+ * revision it started on and reads nothing else, so a later publish or a
+ * rollback never reaches a run in progress.
+ */
+export const dungeonRevisions = pgTable(
+  'dungeon_revisions',
+  {
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    dungeonKey: text('dungeon_key')
+      .notNull()
+      .references(() => dungeonDefinitions.dungeonKey),
+    /** 1, 2, 3… per dungeon. */
+    number: integer('number').notNull(),
+    content: jsonb('content').$type<Record<string, unknown>>().notNull(),
+    contentHash: text('content_hash').notNull(),
+    /** The layout as it stood, for reference. Never read by a run. */
+    layout: jsonb('layout').$type<Record<string, unknown>>().notNull().default({}),
+    /** Where the published draft came from. */
+    source: text('source').$type<DungeonRevisionSource>().notNull().default('editor'),
+    /** The draft revision that was published. */
+    draftRevision: integer('draft_revision').notNull(),
+    publishedBy: text('published_by'),
+    publishedAt: timestamp('published_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check('dungeon_revisions_number_check', sql`${t.number} >= 1`),
+    check('dungeon_revisions_source_check', sql`${t.source} in ('editor','import')`),
+    uniqueIndex('dungeon_revisions_key_number_uq').on(t.dungeonKey, t.number),
+  ],
+);
+
+export type DungeonRevisionRow = typeof dungeonRevisions.$inferSelect;
+
+export const DUNGEON_CONTENT_EVENT_ACTIONS = [
+  'created',
+  'draft_saved',
+  'published',
+  'rolled_back',
+  'enabled',
+  'disabled',
+  'exported',
+  'deleted',
+] as const;
+export type DungeonContentEventAction = (typeof DUNGEON_CONTENT_EVENT_ACTIONS)[number];
+
+/**
+ * Append-only audit trail of dungeon authoring (migration 0059), in the shape
+ * of `boss_definition_events`. No FK on `dungeonKey`: the trail outlives the
+ * dungeon it describes.
+ */
+export const dungeonContentEvents = pgTable(
+  'dungeon_content_events',
+  {
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    dungeonKey: text('dungeon_key').notNull(),
+    action: text('action').$type<DungeonContentEventAction>().notNull(),
+    /** Discord id of the admin, or a system actor. */
+    actor: text('actor'),
+    details: jsonb('details').$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check(
+      'dungeon_content_events_action_check',
+      sql`${t.action} in ('created','draft_saved','published','rolled_back','enabled','disabled','exported','deleted')`,
+    ),
+    index('dungeon_content_events_key_idx').on(t.dungeonKey, t.id.desc()),
+  ],
+);
+
+export type DungeonContentEventRow = typeof dungeonContentEvents.$inferSelect;
 
 /**
  * Display metadata for a progression currency (migration 0050). `currencyKey`
@@ -3131,16 +3217,21 @@ export const DUNGEON_RUN_STATUSES = ['active', 'extracted', 'defeated', 'complet
 export type DungeonRunStatus = (typeof DUNGEON_RUN_STATUSES)[number];
 
 /**
- * A generated dungeon run (migration 0050).
+ * A dungeon run (rebuilt in migration 0059).
  *
- * `graph` is authoritative for the run; `seed` and `zoneSnapshot` are there to
- * reproduce it and to keep an Admin edit away from a run already generated.
+ * `revisionId` pins the published revision the run began on; the run reads
+ * its rooms and sequences from that revision and nothing else. The mutable
+ * global content it also depends on — enemy stats, reward tables — is copied
+ * into `dependencySnapshot` at start, and the Buddy's stats into `fighter`, so
+ * no later edit or gear change reaches it.
+ *
+ * `step`, `cursor`, `currentHp`, `flags`, `roomStates`, `unbankedCurrency` and
+ * `recent` are the engine's state (`modules/dungeons/engine/types.ts`),
+ * advanced only by `dungeonRunService` under a row lock. `step` goes up by one
+ * per applied interaction and is what a Discord button names, so a stale
+ * button changes nothing.
+ *
  * One active run per player, by the partial unique index.
- *
- * `currentNodeId`, `currentHp`, `unbankedCurrency`, `securedRewards` and
- * `nodeStates` are the run's progress, advanced only by `dungeonPlayService`.
- * `fighter` is the Buddy and stats snapshotted at start (migration 0051); null
- * for a run generated without a player loadout, which cannot be played.
  */
 export const dungeonRuns = pgTable(
   'dungeon_runs',
@@ -3149,22 +3240,28 @@ export const dungeonRuns = pgTable(
     playerId: bigint('player_id', { mode: 'number' })
       .notNull()
       .references(() => players.id),
-    /** No FK: a run outlives whatever later happens to its zone. */
-    zoneKey: text('zone_key').notNull(),
-    zoneRevision: integer('zone_revision').notNull(),
+    /** No FK: a run outlives whatever later happens to its dungeon. */
+    dungeonKey: text('dungeon_key').notNull(),
+    revisionId: bigint('revision_id', { mode: 'number' })
+      .notNull()
+      .references(() => dungeonRevisions.id),
     /** Unsigned 32-bit — the range `seededRng` uses. */
     seed: bigint('seed', { mode: 'number' }).notNull(),
-    generatorVersion: integer('generator_version').notNull(),
     status: text('status').$type<DungeonRunStatus>().notNull().default('active'),
-    graph: jsonb('graph').$type<Record<string, unknown>>().notNull(),
-    zoneSnapshot: jsonb('zone_snapshot').$type<Record<string, unknown>>().notNull(),
-    currentNodeId: text('current_node_id'),
-    currentHp: integer('current_hp'),
+    step: integer('step').notNull().default(0),
+    /** `{ roomId, actionId, waveIndex, cameFrom }`. */
+    cursor: jsonb('cursor').$type<Record<string, unknown>>().notNull(),
+    currentHp: integer('current_hp').notNull(),
+    /** Run-scoped quest flags. */
+    flags: jsonb('flags').$type<Record<string, boolean>>().notNull().default({}),
+    /** Room id → visits, completion and each action's record. */
+    roomStates: jsonb('room_states').$type<Record<string, unknown>>().notNull().default({}),
     unbankedCurrency: integer('unbanked_currency').notNull().default(0),
+    /** What the latest step did, for redisplay. */
+    recent: jsonb('recent').$type<Record<string, unknown>[]>().notNull().default([]),
     securedRewards: jsonb('secured_rewards').$type<Record<string, unknown>[]>().notNull().default([]),
-    fighter: jsonb('fighter').$type<Record<string, unknown>>(),
-    /** Node id → lifecycle state and, once completed, its resolution. */
-    nodeStates: jsonb('node_states').$type<Record<string, unknown>>().notNull().default({}),
+    fighter: jsonb('fighter').$type<Record<string, unknown>>().notNull(),
+    dependencySnapshot: jsonb('dependency_snapshot').$type<Record<string, unknown>>().notNull(),
     /** How the run ended and what was banked; null while active. */
     settlement: jsonb('settlement').$type<Record<string, unknown>>(),
     startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
@@ -3177,14 +3274,16 @@ export const dungeonRuns = pgTable(
       sql`${t.status} in ('active','extracted','defeated','completed','abandoned')`,
     ),
     check('dungeon_runs_seed_check', sql`${t.seed} >= 0 and ${t.seed} <= 4294967295`),
+    check('dungeon_runs_step_check', sql`${t.step} >= 0`),
     check('dungeon_runs_unbanked_check', sql`${t.unbankedCurrency} >= 0`),
-    check('dungeon_runs_hp_check', sql`${t.currentHp} is null or ${t.currentHp} >= 0`),
+    check('dungeon_runs_hp_check', sql`${t.currentHp} >= 0`),
     check('dungeon_runs_completed_check', sql`(${t.status} = 'active') = (${t.completedAt} is null)`),
     check('dungeon_runs_settlement_check', sql`${t.status} <> 'active' or ${t.settlement} is null`),
     uniqueIndex('dungeon_runs_one_active_uq')
       .on(t.playerId)
       .where(sql`status = 'active'`),
     index('dungeon_runs_player_idx').on(t.playerId, t.id.desc()),
+    index('dungeon_runs_revision_idx').on(t.revisionId),
   ],
 );
 
@@ -3192,23 +3291,28 @@ export type DungeonRunRow = typeof dungeonRuns.$inferSelect;
 
 export const DUNGEON_RUN_EVENT_TYPES = [
   'run_started',
-  'node_entered',
-  'combat_resolved',
-  'rest_resolved',
-  'event_resolved',
-  'reward_resolved',
-  'exit_resolved',
+  'room_entered',
+  'action_skipped',
+  'action_declined',
+  'combat_wave_resolved',
+  'action_completed',
+  'action_failed',
+  'room_completed',
+  'room_retreated',
+  'connection_taken',
   'extraction',
   'defeat',
   'completion',
   'abandon',
   'currency_banked',
+  'rewards_granted',
 ] as const;
 export type DungeonRunEventType = (typeof DUNGEON_RUN_EVENT_TYPES)[number];
 
 /**
- * Append-only history of a dungeon run (migration 0051): one structured row
- * per thing that happened, written in the transaction that made it happen.
+ * Append-only history of a dungeon run (rebuilt in migration 0059): one
+ * structured row per thing that happened, written in the transaction that made
+ * it happen. `step` is the run step that produced it.
  */
 export const dungeonRunEvents = pgTable(
   'dungeon_run_events',
@@ -3220,15 +3324,17 @@ export const dungeonRunEvents = pgTable(
     playerId: bigint('player_id', { mode: 'number' })
       .notNull()
       .references(() => players.id),
+    step: integer('step').notNull(),
     type: text('type').$type<DungeonRunEventType>().notNull(),
-    nodeId: text('node_id'),
+    roomId: text('room_id'),
+    actionId: text('action_id'),
     payload: jsonb('payload').$type<Record<string, unknown>>().notNull().default({}),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     check(
       'dungeon_run_events_type_check',
-      sql`${t.type} in ('run_started','node_entered','combat_resolved','rest_resolved','event_resolved','reward_resolved','exit_resolved','extraction','defeat','completion','abandon','currency_banked')`,
+      sql`${t.type} in ('run_started','room_entered','action_skipped','action_declined','combat_wave_resolved','action_completed','action_failed','room_completed','room_retreated','connection_taken','extraction','defeat','completion','abandon','currency_banked','rewards_granted')`,
     ),
     index('dungeon_run_events_run_idx').on(t.runId, t.id),
   ],

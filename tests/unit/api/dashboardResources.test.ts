@@ -102,6 +102,8 @@ const WAIFU = {
   baseSp: 96,
   caughtAt: new Date('2026-02-02T00:00:00.000Z'),
   releasedAt: null,
+  acquiredVia: null,
+  grantKey: null,
 };
 
 const STANDARD_APPEARANCE = {

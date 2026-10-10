@@ -38,7 +38,7 @@ describe('shipped starter enemies', () => {
   );
 
   it('still ships the original enemies first, with the keys and stats everything references', () => {
-    // The three starters, then the temporary dungeon boss (see content/dungeons/zones.json).
+    // The three starters, then the temporary dungeon boss.
     // Enemies added since follow them; the file is the catalogue's shipped default.
     expect(shipped.enemies.slice(0, 4).map((e) => [e.key, e.attack, e.defense, e.hp])).toEqual([
       ['scrapyard_drone', 55, 30, 300],

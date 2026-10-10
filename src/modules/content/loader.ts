@@ -50,7 +50,6 @@ import {
 } from '../equipment/workshopConfig';
 import { COMBAT_ENEMY_FILE, CombatEnemyFileSchema } from '../combat/enemyDefinitions';
 import { COMBAT_TRIAL_FILE, CombatTrialFileSchema } from '../combat/trialDefinitions';
-import { DUNGEON_EVENT_FILE, DungeonEventFileSchema } from '../dungeons/eventDefinitions';
 import { locateCombatArtwork } from '../combat/combatArtwork';
 
 function formatZodError(file: string, err: ZodError): string {
@@ -1255,14 +1254,6 @@ export function readContentFiles(contentDir: string): LoadedContent {
     ? parseJsonFile(combatTrialsPath, CombatTrialFileSchema).trials
     : [];
 
-  // Dungeon events. Optional on disk like the combat content: without the
-  // file no zone can place an event node. Zones themselves are database rows
-  // seeded from `dungeons/zones.json` (see `modules/dungeons/dungeonZoneStore`).
-  const dungeonEventsPath = path.join(contentDir, ...DUNGEON_EVENT_FILE.split('/'));
-  const dungeonEvents = fs.existsSync(dungeonEventsPath)
-    ? parseJsonFile(dungeonEventsPath, DungeonEventFileSchema).events
-    : [];
-
   return {
     items: itemsFile.items,
     species: allSpecies,
@@ -1282,7 +1273,6 @@ export function readContentFiles(contentDir: string): LoadedContent {
     equipmentWorkshop,
     combatEnemies,
     combatTrials,
-    dungeonEvents,
   };
 }
 

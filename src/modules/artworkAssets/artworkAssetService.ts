@@ -34,7 +34,6 @@ import {
   bossDefinitions,
   bossEncounters,
   combatEnemies,
-  dungeonZones,
   type ArtworkAssetCategory,
   type ArtworkAssetEventAction,
   type ArtworkAssetMimeType,
@@ -46,6 +45,8 @@ import {
   ArtworkUploadInvalidError,
   type ArtworkAssetReference,
 } from '../../shared/errors';
+import type { DungeonArtworkRef, DungeonDefinition } from '../dungeons/content/dungeonDefinition';
+import { readDungeonContentDocuments } from '../dungeons/dungeonContentService';
 import { artworkStorageKey, type ArtworkStorage } from './artworkStorage';
 import { displayNameFromFilename, inspectImage, sanitizeOriginalFilename } from './imageInspection';
 import type { SceneLayer } from './sceneComposition';
@@ -197,38 +198,23 @@ function cleanName(raw: string | undefined, fallback: string): string {
   return name || fallback;
 }
 
-/** Every asset id a stored zone document references, with the field holding it. */
-export function zoneDocumentAssetSlots(definition: unknown): ArtworkReferenceSlot[] {
-  const doc = (definition ?? {}) as Record<string, unknown>;
-  const id = (value: unknown) => (isArtworkAssetId(value) ? value.toLowerCase() : null);
-  const slots: ArtworkReferenceSlot[] = [
-    { field: 'artworkAssetId', assetId: id(doc.artworkAssetId) },
-    { field: 'backgroundAssetId', assetId: id(doc.backgroundAssetId) },
-  ];
-  if (Array.isArray(doc.backgrounds)) {
-    doc.backgrounds.forEach((entry, i) => {
-      const entryId = (entry as { id?: unknown } | null)?.id;
-      slots.push({
-        field: `backgrounds[${typeof entryId === 'string' ? entryId : i}].assetId`,
-        assetId: id((entry as { assetId?: unknown } | null)?.assetId),
-      });
-    });
-  }
-  // An authored room's own background, and its override of its enemy's art.
-  const rooms = (doc.authored as { rooms?: unknown } | null | undefined)?.rooms;
-  if (Array.isArray(rooms)) {
-    rooms.forEach((entry, i) => {
-      const room = (entry ?? {}) as { id?: unknown; backgroundAssetId?: unknown; scene?: unknown };
-      const at = `authored.rooms[${typeof room.id === 'string' ? room.id : i}]`;
-      const scene = (room.scene ?? {}) as { spriteAssetId?: unknown; artworkAssetId?: unknown };
-      slots.push(
-        { field: `${at}.backgroundAssetId`, assetId: id(room.backgroundAssetId) },
-        { field: `${at}.scene.spriteAssetId`, assetId: id(scene.spriteAssetId) },
-        { field: `${at}.scene.artworkAssetId`, assetId: id(scene.artworkAssetId) },
-      );
-    });
-  }
-  return slots;
+/**
+ * Where one dungeon document references a managed image. Dungeons name managed
+ * artwork by category and content hash — never by id, which differs per
+ * environment — so a reference is to *the bytes*, whichever asset holds them.
+ */
+export function dungeonDocumentArtworkFields(
+  definition: DungeonDefinition,
+  wanted: { category: string; contentHash: string },
+): string[] {
+  const fields: string[] = [];
+  const check = (ref: DungeonArtworkRef | null, field: string) => {
+    if (ref?.kind === 'managed' && ref.category === wanted.category && ref.contentHash === wanted.contentHash) fields.push(field);
+  };
+  check(definition.artwork, 'artwork');
+  check(definition.background, 'background');
+  for (const room of definition.rooms) check(room.background, `rooms[${room.id}].background`);
+  return fields;
 }
 
 export function createArtworkAssetService(deps: ArtworkAssetServiceDeps): ArtworkAssetService {
@@ -261,17 +247,17 @@ export function createArtworkAssetService(deps: ArtworkAssetServiceDeps): Artwor
   async function referencesOf(tx: DbOrTx, id: string): Promise<ArtworkAssetReference[]> {
     const wanted = id.toLowerCase();
     const out: ArtworkAssetReference[] = [];
-    // Zones are a handful of documents; scanning them is simpler and safer
-    // than a JSON path query that has to track the document shape.
-    const zones = await tx
-      .select({ key: dungeonZones.zoneKey, definition: dungeonZones.definition })
-      .from(dungeonZones)
-      .orderBy(asc(dungeonZones.zoneKey));
-    for (const zone of zones) {
-      for (const slot of zoneDocumentAssetSlots(zone.definition)) {
-        if (slot.assetId !== wanted) continue;
-        const name = (zone.definition as { name?: unknown }).name;
-        out.push({ kind: 'dungeon_zone', key: zone.key, name: typeof name === 'string' ? name : null, field: slot.field });
+    // Dungeons are a handful of documents; scanning them is simpler and
+    // safer than a JSON path query that has to track the document shape.
+    const [asset] = await tx
+      .select({ category: artworkAssets.category, contentHash: artworkAssets.contentHash })
+      .from(artworkAssets)
+      .where(eq(artworkAssets.id, wanted));
+    if (asset) {
+      for (const doc of await readDungeonContentDocuments(tx)) {
+        for (const field of dungeonDocumentArtworkFields(doc.definition, asset)) {
+          out.push({ kind: 'dungeon_zone', key: doc.dungeonKey, name: doc.name, field: `${doc.source}.${field}` });
+        }
       }
     }
     const enemies = await tx

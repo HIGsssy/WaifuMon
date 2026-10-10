@@ -65,6 +65,11 @@ export const ALL_PORTAL_PERMISSIONS = [
   // enable/disable. Preview and simulation write nothing and need only `read`.
   'dungeons.read',
   'dungeons.write',
+  // Dungeons are drafts plus immutable published revisions. Saving a draft is
+  // `write`; moving what players get — publishing a draft, or rolling back to
+  // an earlier revision — is its own grant, the same split
+  // `encounters.write` / `encounters.publish` makes.
+  'dungeons.publish',
   // The Enemy Catalogue: combat enemies as shared content, referenced by
   // dungeons and Combat Trials. Its own pair on purpose — balancing enemies
   // and laying out dungeons are different jobs, so neither implies the other.
@@ -123,9 +128,10 @@ export const PORTAL_PERMISSION_DESCRIPTIONS: Readonly<Record<PortalPermission, s
   'rewards.read': 'View boss and expedition reward tables, equipment previews and exports.',
   'rewards.write':
     'Edit, enable/disable, reset and import boss and expedition reward tables (affects future bosses and deployments only).',
-  'dungeons.read': 'View dungeon zones, pools and the progression currency, and run generation previews.',
+  'dungeons.read': 'View dungeons, their revisions and the progression currency, validate drafts and run sandbox playthroughs.',
   'dungeons.write':
-    'Create, edit and enable/disable dungeon zones and rename the progression currency (affects future runs only).',
+    'Create and edit dungeon drafts, enable/disable dungeons and rename the progression currency (affects future runs only).',
+  'dungeons.publish': 'Publish dungeons and roll them back.',
   'enemies.read': 'View the Enemy Catalogue: stats, artwork and where each enemy is used.',
   'enemies.write':
     'Create, edit, enable/disable, duplicate and delete enemies (affects future dungeon runs and Combat Trial fights only).',

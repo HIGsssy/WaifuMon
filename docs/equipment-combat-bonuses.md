@@ -25,7 +25,7 @@ how gear gets them, how they are stored, and how they add up.
 | The instance roll (multiplier → affix → bonuses) | `src/modules/equipment/equipmentRoll.ts` |
 | Storage | `player_equipment.combat_bonuses` (`drizzle/0056_equipment_combat_bonuses.sql`) |
 | Combat rules: base Crit, caps, formulas | `src/modules/combat/combatMath.ts` |
-| Balance tool | `npm run combat:simulate-bonuses` (`src/tools/simulateCombatBonuses.ts`) |
+| Balance tool | Removed with the Delve prototype it simulated (dungeon overhaul Phase 1A). `npm run dungeons:sandbox` plays a dungeon package; a bonus-balance report over the new engine is not rebuilt yet |
 
 ## Affixes and bonuses are separate
 
@@ -297,6 +297,8 @@ could be dropped. The bonus catalogue ships with the deploy, like the affix
 catalogue.
 
 ## Balance (initial tuning, measured)
+
+> **Removed.** This tool simulated the prototype Delve zones and went with them in the dungeon overhaul (Phase 1A); the text below describes how the figures in this document were produced.
 
 `npm run combat:simulate-bonuses` plays the shipped Trials and the shipped
 Delve zone through the real engine for a matrix of Current SP × primary tier ×

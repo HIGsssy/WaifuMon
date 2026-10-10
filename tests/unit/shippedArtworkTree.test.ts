@@ -19,13 +19,13 @@ import { locateArtworkFile } from '../../src/modules/assets/artworkFile';
 import { browseArtworkDirectory, searchArtwork } from '../../src/modules/assets/artworkBrowser';
 import { conventionalCombatArtworkPath } from '../../src/modules/combat/combatArtwork';
 import { CombatEnemyFileSchema } from '../../src/modules/combat/enemyDefinitions';
-import { loadShippedDungeonZones } from '../../src/modules/dungeons/dungeonZoneStore';
-import { DUNGEON_ARTWORK_ROOTS } from '../../src/modules/dungeons/zoneDefinition';
 
 const REPO = path.resolve(__dirname, '..', '..');
 const ASSETS = path.join(REPO, 'assets');
 const CONTENT = path.join(REPO, 'content');
 const onDisk = (relative: string) => fs.existsSync(path.join(ASSETS, relative));
+/** The root the Admin dungeon artwork picker is confined to (`api/routes/v1/admin/dungeons.ts`). */
+const DUNGEON_ARTWORK_ROOTS = ['dungeons'] as const;
 
 describe('known shipped artwork resolves through the shared resolver', () => {
   it('the onboarding NPC portrait', () => {
@@ -78,37 +78,6 @@ describe('the shipped-art browser works against the real tree', () => {
     // Whichever it is today, the answer agrees with the disk — and is never an error.
     expect(listing.missing).toBe(!onDisk('dungeons'));
     if (listing.missing) expect(listing).toMatchObject({ directories: [], files: [] });
-  });
-});
-
-describe('shipped dungeon zones', () => {
-  const zones = loadShippedDungeonZones(CONTENT);
-
-  it('follow the convention dungeons/{zones,backgrounds}/<zone_key>.webp — the key verbatim', () => {
-    expect(zones.length).toBeGreaterThan(0);
-    for (const { key, definition } of zones) {
-      if (definition.artworkPath !== null) expect(definition.artworkPath).toBe(`dungeons/zones/${key}.webp`);
-      if (definition.backgroundArtworkPath !== null) {
-        expect(definition.backgroundArtworkPath).toBe(`dungeons/backgrounds/${key}.webp`);
-      }
-    }
-  });
-
-  it('every configured path is either deployed or cleanly "missing" — and the resolver agrees with the disk', () => {
-    for (const { definition } of zones) {
-      const paths = [
-        definition.artworkPath,
-        definition.backgroundArtworkPath,
-        ...definition.backgrounds.map((b) => b.artworkPath),
-      ].filter((p): p is string => p !== null);
-      for (const relative of paths) {
-        const located = locateArtworkFile(ASSETS, relative);
-        expect(['available', 'missing'], relative).toContain(located.status);
-        expect(located.status === 'available', relative).toBe(onDisk(relative));
-        // Every shipped zone path lies under a root the Admin browser can show.
-        expect(DUNGEON_ARTWORK_ROOTS.some((root) => relative.startsWith(`${root}/`)), relative).toBe(true);
-      }
-    }
   });
 });
 

@@ -1,55 +1,52 @@
 /**
- * Dungeon screens: the home (zones, or the active run), a zone's detail, the
- * run screen (the node the player is on, its result, the path ahead and the
- * end of the run) and the two confirmations. Pure builders from
- * `DungeonPlayService` read models.
+ * Dungeon screens: the home (dungeons, or the active run), a dungeon's detail,
+ * the run screen (what the latest step did, the pending action or the ways on,
+ * and the end of the run) and the two confirmations. Pure builders from
+ * `DungeonRunService` read models.
  *
  * Every number shown is copied from the service — the run's *snapshotted*
  * Buddy and stats, never the player's live ones. Combat events are formatted
  * with the Combat Trials summary; the full log is never dumped. Gear Score is
- * not a thing here: the player sees real ATK / DEF / HP and depth.
+ * not a thing here: the player sees real ATK / DEF / HP and rooms cleared.
  *
  * The progression currency is always named from its configured metadata
  * (singular, plural, icon). No name is written in this file.
  *
  * Custom ids (`dg` scope):
  *
- *   dg|home                      zones, or the active run
- *   dg|zone|<zoneKey>            zone detail
- *   dg|start|<zoneKey>           start a run
- *   dg|run|<runId>               the run as it stands (Resume)
- *   dg|enter|<runId>|<nodeId>    move onto an available node
- *   dg|go|<runId>|<nodeId>       resolve the node the player is on
- *   dg|exq|<runId>|<nodeId>      extraction confirmation
- *   dg|ex|<runId>|<nodeId>       extract
- *   dg|abq|<runId>               abandon confirmation
- *   dg|ab|<runId>                abandon
+ *   dg|home                         dungeons, or the active run
+ *   dg|zone|<dungeonKey>            dungeon detail (`zone`: older menu buttons still route)
+ *   dg|start|<dungeonKey>           start a run
+ *   dg|run|<runId>                  the run as it stands (Resume, back from a confirmation)
+ *   dg|act|<runId>|<step>|<code>    the pending action: a = advance, d = decline
+ *   dg|mv|<runId>|<step>|<connId>   take a connection
+ *   dg|exq|<runId>                  extraction confirmation
+ *   dg|ex|<runId>|<step>            extract
+ *   dg|abq|<runId>                  abandon confirmation
+ *   dg|ab|<runId>                   abandon
  *
- * Run and node ids are the idempotency keys: a second click of the same
- * button names the same transition, which the service replays.
+ * `<step>` is the run's step when the button was drawn. The service refuses an
+ * input whose step is not the run's current one, so a stale or double-clicked
+ * button changes nothing. Abandoning carries no step: it is always allowed.
  */
-import { ActionRowBuilder, type AttachmentBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from 'discord.js';
+import { ActionRowBuilder, type AttachmentBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, embedLength } from 'discord.js';
+import { BASIS_POINTS, type DungeonActionType } from '../modules/dungeons/content/dungeonDefinition';
 import type { DungeonDailyAllowance } from '../modules/dungeons/dungeonAllowanceService';
+import { fighterModifiers, type DungeonFighter } from '../modules/dungeons/dungeonFighter';
 import type {
   DungeonActionResult,
+  DungeonCard,
   DungeonCurrencyView,
+  DungeonDetailView,
   DungeonHomeView,
-  DungeonNodeView,
   DungeonRunView,
-  DungeonZoneCard,
-  DungeonZoneDetailView,
-} from '../modules/dungeons/dungeonPlayService';
-import {
-  hasRewards,
-  type DungeonFighter,
-  type DungeonRewards,
-  type DungeonSecuredReward,
-  type DungeonSettlement,
-} from '../modules/dungeons/dungeonRunState';
-import { BASIS_POINTS, type DungeonNodeType } from '../modules/dungeons/zoneDefinition';
-import { fighterModifiers } from '../modules/dungeons/dungeonRunState';
-import { formatCombatBonus } from '../modules/equipment/combatBonuses';
-import { EQUIPMENT_SLOTS } from '../modules/equipment/vocabulary';
+  DungeonSecuredReward,
+  DungeonSettlement,
+} from '../modules/dungeons/dungeonRunService';
+import type { DungeonRecentEntry, DungeonWaveResult } from '../modules/dungeons/engine/types';
+import type { DungeonActionView, DungeonConnectionView } from '../modules/dungeons/engine/view';
+import { formatCombatBonus, type CombatBonus } from '../modules/equipment/combatBonuses';
+import { EQUIPMENT_SLOTS, type EquipmentSlot } from '../modules/equipment/vocabulary';
 import { formatProgressionAmount } from '../modules/progressionCurrency/progressionCurrencyService';
 import { blockerLine, modifiersLine, summarizeCombatEvents, type TrialArt } from './combatTrialPresenter';
 import type { SessionPayload } from './ephemeralSession';
@@ -63,8 +60,9 @@ export const NO_ZONES = 'There are no Delves available in this region.';
 export const ZONE_UNAVAILABLE = 'That dungeon isn’t open right now.';
 export const RUN_ACTIVE_NOTICE = 'You’re already in a dungeon — here’s your run.';
 export const RUN_NOT_FOUND = 'That run could not be found.';
-export const REPLAYED_NOTICE = 'That was already resolved — here’s how it went.';
+export const STALE_STEP_NOTICE = 'That button is from an earlier moment — here’s where you are.';
 export const STALE_NOTICE = 'That path is no longer available — here’s where you are.';
+export const LOCKED_NOTICE = 'That way is locked.';
 export const RUN_OVER_NOTICE = 'That run is over — here’s how it ended.';
 export const NOT_EXTRACTABLE_NOTICE = 'You can’t extract from here.';
 export const DAILY_LIMIT_NOTICE = 'You’ve used all of today’s Delve runs.';
@@ -79,48 +77,56 @@ const COLOR_NEUTRAL = 0x6b7280;
 
 export const dgId = {
   home: () => buildCustomId('dg', 'home'),
-  zone: (zoneKey: string) => buildCustomId('dg', 'zone', zoneKey),
-  start: (zoneKey: string) => buildCustomId('dg', 'start', zoneKey),
+  zone: (dungeonKey: string) => buildCustomId('dg', 'zone', dungeonKey),
+  start: (dungeonKey: string) => buildCustomId('dg', 'start', dungeonKey),
   run: (runId: number) => buildCustomId('dg', 'run', String(runId)),
-  enter: (runId: number, nodeId: string) => buildCustomId('dg', 'enter', String(runId), nodeId),
-  resolve: (runId: number, nodeId: string) => buildCustomId('dg', 'go', String(runId), nodeId),
-  extractConfirm: (runId: number, nodeId: string) => buildCustomId('dg', 'exq', String(runId), nodeId),
-  extract: (runId: number, nodeId: string) => buildCustomId('dg', 'ex', String(runId), nodeId),
+  /** `step` is the step the screen was drawn for; the service refuses any other. */
+  advance: (runId: number, step: number) => buildCustomId('dg', 'act', String(runId), String(step), 'a'),
+  decline: (runId: number, step: number) => buildCustomId('dg', 'act', String(runId), String(step), 'd'),
+  move: (runId: number, step: number, connectionId: string) =>
+    buildCustomId('dg', 'mv', String(runId), String(step), connectionId),
+  extractConfirm: (runId: number) => buildCustomId('dg', 'exq', String(runId)),
+  extract: (runId: number, step: number) => buildCustomId('dg', 'ex', String(runId), String(step)),
   abandonConfirm: (runId: number) => buildCustomId('dg', 'abq', String(runId)),
   abandon: (runId: number) => buildCustomId('dg', 'ab', String(runId)),
 };
 
-const NODE_LABEL: Readonly<Record<DungeonNodeType, string>> = {
+const ACTION_HEADING: Readonly<Record<DungeonActionType, string>> = {
   combat: 'Fight',
-  elite: 'Elite',
-  miniboss: 'Miniboss',
   boss: 'Boss',
-  event: 'Event',
+  rest: 'Rest',
+  gate: 'Barred way',
+  set_flag: 'Something stirs',
+  leave: 'Way on',
   reward: 'Cache',
-  rest: 'Rest',
-  exit: 'Exit',
 };
-const NODE_EMOJI: Readonly<Record<DungeonNodeType, string>> = {
+const ACTION_EMOJI: Readonly<Record<DungeonActionType, string>> = {
   combat: '⚔️',
-  elite: '💢',
-  miniboss: '👹',
   boss: '👑',
-  event: '❓',
-  reward: '🎁',
   rest: '🔥',
-  exit: '🚪',
+  gate: '🚪',
+  set_flag: '✨',
+  leave: '🚪',
+  reward: '🎁',
 };
-/** The button that resolves a node the player is standing on. */
-const RESOLVE_LABEL: Readonly<Record<DungeonNodeType, string>> = {
+/** The button that carries out a pending action, when its author wrote no label. */
+const ACTION_BUTTON: Readonly<Record<DungeonActionType, string>> = {
   combat: 'Fight',
-  elite: 'Fight',
-  miniboss: 'Fight',
   boss: 'Fight',
-  event: 'Investigate',
-  reward: 'Open',
   rest: 'Rest',
-  exit: 'Step through',
+  gate: 'Try the way',
+  set_flag: 'Continue',
+  leave: 'Move on',
+  reward: 'Open',
 };
+
+/** Discord: five buttons to a row, five rows to a message. Three rows are the connections'. */
+const BUTTONS_PER_ROW = 5;
+const CONNECTION_ROWS = 3;
+const MAX_CONNECTION_BUTTONS = BUTTONS_PER_ROW * CONNECTION_ROWS;
+/** Wave results shown in full after a step that fought several. */
+const MAX_WAVE_FIELDS = 3;
+const EMBED_TOTAL_LIMIT = 6000;
 
 function row(...components: ButtonBuilder[]): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(...components);
@@ -159,7 +165,7 @@ function applyArt(embed: EmbedBuilder, art: TrialArt): void {
 
 // ── formatting ──────────────────────────────────────────────────────────────
 
-/** `💠 12 Shards` from the configured metadata; a bare number when the zone's currency is gone. */
+/** `💠 12 Shards` from the configured metadata; a bare number when the dungeon's currency is gone. */
 export function currencyAmount(currency: DungeonCurrencyView | null, amount: number): string {
   return currency ? formatProgressionAmount(currency, amount) : amount.toLocaleString('en-US');
 }
@@ -172,22 +178,9 @@ function percent(basisPoints: number): string {
   return `${Number((basisPoints / (BASIS_POINTS / 100)).toFixed(2))}%`;
 }
 
-/**
- * `Fight — Alley Bruiser`, `Event — Flickering Terminal`, `Rest`. A room an
- * author named and that holds no enemy or event shows its name: `Rest — Repair Bay`.
- */
-export function nodeTitle(node: DungeonNodeView): string {
-  const what = node.enemy?.name ?? node.event?.name ?? node.label;
-  return what ? `${NODE_LABEL[node.type]} — ${what}` : NODE_LABEL[node.type];
-}
-
-function depthRange(zone: DungeonZoneCard): string {
-  return zone.minDepth === zone.maxDepth ? `${zone.minDepth}` : `${zone.minDepth}–${zone.maxDepth}`;
-}
-
-function fighterBlock(fighter: DungeonFighter, currentHp: number): string {
+function fighterBlock(fighter: DungeonFighter, currentHp: number, maxHp: number = fighter.maxHp): string {
   return [
-    `HP **${currentHp} / ${fighter.maxHp}**`,
+    `HP **${currentHp} / ${maxHp}**`,
     `ATK ${fighter.attack} · DEF ${fighter.defense}`,
     // The snapshot taken at run start — not the player's live loadout.
     modifiersLine(fighterModifiers(fighter)),
@@ -196,28 +189,62 @@ function fighterBlock(fighter: DungeonFighter, currentHp: number): string {
     .join('\n');
 }
 
-/** What a node or bonus paid, one line each. Item names resolved by the caller. */
+function slotEmoji(slot: string): string {
+  return SLOT_EMOJI[slot as EquipmentSlot] ?? '🎁';
+}
+
+/** What a step paid: the plan's unbanked currency, and what was handed over for good. */
+export interface DungeonRewardSummary {
+  currency: number;
+  waifubux: number;
+  items: readonly { slug: string; quantity: number }[];
+  equipment: readonly { displayName: string; slot: string; rarity: string; combatBonuses?: unknown[] | undefined }[];
+}
+
+function hasRewards(rewards: DungeonRewardSummary): boolean {
+  return rewards.currency > 0 || rewards.waifubux > 0 || rewards.items.length > 0 || rewards.equipment.length > 0;
+}
+
+/** What a step paid, one line each. Item names resolved by the caller. */
 export function rewardLines(
-  rewards: DungeonRewards,
+  rewards: DungeonRewardSummary,
   currency: DungeonCurrencyView | null,
   itemName: (slug: string) => string,
 ): string[] {
   const lines: string[] = [];
   if (rewards.currency > 0) lines.push(`+${currencyAmount(currency, rewards.currency)} _(unbanked)_`);
   for (const gear of rewards.equipment) {
-    const bonuses = (gear.combatBonuses ?? []).map((b) => ` · ${formatCombatBonus(b)}`).join('');
-    lines.push(`${SLOT_EMOJI[gear.slot]} **${gear.displayName}** (${gear.rarity})${bonuses} — secured`);
+    const bonuses = ((gear.combatBonuses ?? []) as CombatBonus[]).map((b) => ` · ${formatCombatBonus(b)}`).join('');
+    lines.push(`${slotEmoji(gear.slot)} **${gear.displayName}** (${gear.rarity})${bonuses} — secured`);
   }
   if (rewards.waifubux > 0) lines.push(`+${rewards.waifubux} WaifuBux`);
   for (const item of rewards.items) lines.push(`+${item.quantity} ${itemName(item.slug)}`);
   return lines;
 }
 
+/**
+ * What the latest step paid: the unbanked currency its reward actions planned
+ * (`recent`), and the gear, WaifuBux and items actually handed over
+ * (`latestSecured`). Null when the step opened no reward.
+ */
+function latestRewards(view: DungeonRunView): DungeonRewardSummary | null {
+  const planned = view.core.recent.filter((r): r is Extract<DungeonRecentEntry, { kind: 'reward' }> => r.kind === 'reward');
+  if (planned.length === 0 && view.latestSecured.length === 0) return null;
+  const summary = { currency: 0, waifubux: 0, items: [] as { slug: string; quantity: number }[], equipment: [] as DungeonRewardSummary['equipment'][number][] };
+  for (const r of planned) summary.currency += r.plan.currency;
+  for (const s of view.latestSecured) {
+    if (s.kind === 'equipment') summary.equipment.push(s);
+    else if (s.kind === 'waifubux') summary.waifubux += s.amount;
+    else summary.items.push({ slug: s.slug, quantity: s.quantity });
+  }
+  return summary;
+}
+
 /** A short roll-up of everything the run has secured so far. */
 export function securedSummary(secured: readonly DungeonSecuredReward[], itemName: (slug: string) => string): string {
   if (secured.length === 0) return 'Nothing yet.';
   const lines: string[] = [];
-  for (const s of secured) if (s.kind === 'equipment') lines.push(`${SLOT_EMOJI[s.slot]} ${s.displayName} (${s.rarity})`);
+  for (const s of secured) if (s.kind === 'equipment') lines.push(`${slotEmoji(s.slot)} ${s.displayName} (${s.rarity})`);
   const bux = secured.reduce((sum, s) => sum + (s.kind === 'waifubux' ? s.amount : 0), 0);
   if (bux > 0) lines.push(`${bux} WaifuBux`);
   const itemTotals = new Map<string, number>();
@@ -243,13 +270,27 @@ export function dailyLimitLine(daily: DungeonDailyAllowance): string | null {
 
 // ── home ────────────────────────────────────────────────────────────────────
 
-function zoneField(zone: DungeonZoneCard): { name: string; value: string } {
+function roomName(view: DungeonRunView): string {
+  return view.core.room.name || view.core.room.id;
+}
+
+function roomsLine(view: DungeonRunView): string {
+  return `${view.core.roomsCompleted} / ${view.core.roomCount}`;
+}
+
+function roomCountText(dungeon: DungeonCard): string {
+  return `**${dungeon.roomCount}** ${dungeon.roomCount === 1 ? 'room' : 'rooms'}`;
+}
+
+function dungeonField(dungeon: DungeonCard): { name: string; value: string } {
   const lines = [
-    zone.description ? `_${truncate(zone.description, 300)}_` : null,
-    `Depth: **${depthRange(zone)}** nodes${zone.hasBoss ? ' · ends in a boss' : ''}`,
-    zone.currency ? `Pays: ${currencyName(zone.currency)} · you hold **${currencyAmount(zone.currency, zone.balance)}**` : null,
+    dungeon.description ? `_${truncate(dungeon.description, 300)}_` : null,
+    `${roomCountText(dungeon)}${dungeon.hasBoss ? ' · ends in a boss' : ''}`,
+    dungeon.currency
+      ? `Pays: ${currencyName(dungeon.currency)} · you hold **${currencyAmount(dungeon.currency, dungeon.balance)}**`
+      : null,
   ].filter((l): l is string => l != null);
-  return { name: truncate(zone.name, 256), value: lines.join('\n') };
+  return { name: truncate(dungeon.name, 256), value: lines.join('\n') };
 }
 
 export interface DungeonScreenOptions {
@@ -258,7 +299,7 @@ export interface DungeonScreenOptions {
   status?: string | null;
 }
 
-/** The home: the active run when there is one, otherwise the open zones. */
+/** The home: the active run when there is one, otherwise the dungeons open here. */
 export function buildDungeonHome(view: DungeonHomeView, opts: DungeonScreenOptions): SessionPayload {
   const run = view.activeRun;
   if (run) {
@@ -269,7 +310,7 @@ export function buildDungeonHome(view: DungeonHomeView, opts: DungeonScreenOptio
         [
           dailyRunsLine(view.daily),
           '',
-          `You have a run in progress in **${run.zone.name}**.`,
+          `You have a run in progress in **${run.dungeon.name}**.`,
           // Resuming never needs an attempt: the run was paid for when it started.
           view.daily.remaining <= 0 ? 'Out of new runs for today — this one is still yours to finish.' : null,
         ]
@@ -277,9 +318,9 @@ export function buildDungeonHome(view: DungeonHomeView, opts: DungeonScreenOptio
           .join('\n'),
       )
       .addFields(
-        { name: 'Where', value: `Depth ${run.depth} / ${run.depthCount} — ${nodeTitle(run.node)}`, inline: true },
-        { name: truncate(run.fighter.name, 200), value: fighterBlock(run.fighter, run.currentHp), inline: true },
-        { name: `Unbanked ${currencyName(run.currency)}`, value: currencyAmount(run.currency, run.unbankedCurrency) },
+        { name: 'Where', value: truncate(`${roomName(run)} — ${roomsLine(run)} rooms cleared`, 1024), inline: true },
+        { name: truncate(run.fighter.name, 200), value: fighterBlock(run.fighter, run.core.hp, run.core.maxHp), inline: true },
+        { name: `Unbanked ${currencyName(run.currency)}`, value: currencyAmount(run.currency, run.core.unbankedCurrency) },
         { name: 'Secured', value: securedSummary(run.secured, opts.itemName) },
       );
     const art = opts.art ?? {};
@@ -306,14 +347,14 @@ export function buildDungeonHome(view: DungeonHomeView, opts: DungeonScreenOptio
         `Current location: **${view.region.name}**`,
         dailyRunsLine(view.daily),
         '',
-        view.zones.length
+        view.dungeons.length
           ? 'Take your Buddy into a dungeon. HP carries from fight to fight — push deeper for more, or get out while you can.'
           : NO_ZONES,
       ].join('\n'),
     );
-  const shown = view.zones.slice(0, 5);
+  const shown = view.dungeons.slice(0, BUTTONS_PER_ROW);
   if (shown.length) embed.addFields({ name: 'Available Delves', value: `Open in ${view.region.name}:` });
-  for (const zone of shown) embed.addFields(zoneField(zone));
+  for (const dungeon of shown) embed.addFields(dungeonField(dungeon));
   applyArt(embed, opts.art ?? {});
   const blocked = blockerLine(view.blocker);
   if (blocked) embed.addFields({ name: '⚠️ Can’t start yet', value: blocked });
@@ -321,22 +362,17 @@ export function buildDungeonHome(view: DungeonHomeView, opts: DungeonScreenOptio
   if (spent) embed.addFields({ name: '⏳ No runs left today', value: spent });
 
   const components: ActionRowBuilder<ButtonBuilder>[] = [];
-  if (view.unplayableRunId != null) {
-    embed.addFields({ name: 'Stuck run', value: 'You have a run that cannot be played. Abandon it to start a new one.' });
-    components.push(row(button(dgId.abandon(view.unplayableRunId), 'Abandon stuck run', ButtonStyle.Danger)));
-  } else if (shown.length) {
-    components.push(row(...shown.map((z) => button(dgId.zone(z.key), z.name, ButtonStyle.Primary))));
-  }
+  if (shown.length) components.push(row(...shown.map((d) => button(dgId.zone(d.key), d.name, ButtonStyle.Primary))));
   components.push(row(menuButton()));
   return { content: opts.status ?? '', embeds: [embed], components, files: files(opts.art ?? {}) };
 }
 
-// ── zone detail ─────────────────────────────────────────────────────────────
+// ── dungeon detail ──────────────────────────────────────────────────────────
 
-export function buildZoneDetail(view: DungeonZoneDetailView, opts: DungeonScreenOptions): SessionPayload {
-  const { zone, stats, blocker } = view;
-  const embed = new EmbedBuilder().setTitle(truncate(zone.name, 256)).setColor(COLOR);
-  if (zone.description) embed.setDescription(zone.description);
+export function buildDungeonDetail(view: DungeonDetailView, opts: DungeonScreenOptions): SessionPayload {
+  const { dungeon, stats, blocker } = view;
+  const embed = new EmbedBuilder().setTitle(truncate(dungeon.name, 256)).setColor(COLOR);
+  if (dungeon.description) embed.setDescription(truncate(dungeon.description, 4096));
 
   if (stats.buddy) {
     const gear = EQUIPMENT_SLOTS.map((slot) => `${SLOT_EMOJI[slot]} ${stats.loadout.slots[slot]?.name ?? EMPTY_SLOT}`);
@@ -358,10 +394,10 @@ export function buildZoneDetail(view: DungeonZoneDetailView, opts: DungeonScreen
   embed.addFields({
     name: 'The run',
     value: [
-      `Depth: **${depthRange(zone)}** nodes${zone.hasBoss ? ', ending in a boss' : ''}`,
+      `${roomCountText(dungeon)}${dungeon.hasBoss ? ', ending in a boss' : ''}`,
       'HP carries between fights.',
-      zone.currency
-        ? `${currencyName(zone.currency)} are banked when you extract or finish. If you fall, you keep ${percent(zone.defeatRetentionBasisPoints)}.`
+      dungeon.currency
+        ? `${currencyName(dungeon.currency)} are banked when you extract or finish. If you fall, you keep ${percent(dungeon.defeatRetentionBasisPoints)}.`
         : null,
       'Gear you find is yours at once.',
     ]
@@ -369,7 +405,7 @@ export function buildZoneDetail(view: DungeonZoneDetailView, opts: DungeonScreen
       .join('\n'),
     inline: true,
   });
-  if (zone.currency) embed.addFields({ name: 'You hold', value: currencyAmount(zone.currency, zone.balance) });
+  if (dungeon.currency) embed.addFields({ name: 'You hold', value: currencyAmount(dungeon.currency, dungeon.balance) });
   embed.addFields({ name: 'Locked in', value: EQUIPMENT_NOTE });
   const blocked = blockerLine(blocker);
   if (blocked) embed.addFields({ name: '⚠️ Can’t start yet', value: blocked });
@@ -387,7 +423,7 @@ export function buildZoneDetail(view: DungeonZoneDetailView, opts: DungeonScreen
   if (view.activeRunId != null) {
     actions.push(button(dgId.run(view.activeRunId), 'Resume Run', ButtonStyle.Primary, '▶️'));
   } else {
-    actions.push(button(dgId.start(zone.key), 'Start Run', ButtonStyle.Success, '⛏️').setDisabled(blocker != null || spent != null));
+    actions.push(button(dgId.start(dungeon.key), 'Start Run', ButtonStyle.Success, '⛏️').setDisabled(blocker != null || spent != null));
     if (blocker === 'no_buddy') {
       actions.push(button(buildCustomId('menu', 'collection'), 'Open Collection', ButtonStyle.Primary, '🎒'));
     } else if (blocker === 'incomplete_loadout') {
@@ -404,77 +440,165 @@ export function buildZoneDetail(view: DungeonZoneDetailView, opts: DungeonScreen
 
 // ── run screen ──────────────────────────────────────────────────────────────
 
-/** What the node the player is standing on holds, before it is resolved. */
-function nodeBrief(view: DungeonRunView): string {
-  const { node } = view;
-  if (node.enemy) {
-    return `**${node.enemy.name}**\nATK ${node.enemy.attack} · DEF ${node.enemy.defense} · HP ${node.enemy.hp}`;
-  }
-  if (node.event) return `**${node.event.name}**\n${node.event.description}`.trim();
-  if (node.type === 'rest') {
-    return `A quiet corner. Resting restores **${percent(node.restHealBasisPoints ?? 0)}** of max HP.`;
-  }
-  if (node.type === 'reward') return 'A sealed cache.';
-  return node.terminal ? 'The way out.' : 'A way back to the surface.';
+type Field = { name: string; value: string; inline?: boolean };
+
+const WAVE_WORD: Readonly<Record<DungeonWaveResult['result'], string>> = {
+  player_victory: '🏆 Victory',
+  enemy_victory: '💀 Defeat',
+  draw: '⏱️ Stalemate',
+};
+
+function waveWord(wave: DungeonWaveResult): string {
+  return WAVE_WORD[wave.result] ?? '⏱️ Stalemate';
 }
 
-/** What resolving the current node did. */
-function resolutionBlock(view: DungeonRunView, opts: DungeonScreenOptions): { name: string; value: string }[] {
-  const r = view.resolution;
-  if (!r) return [];
-  const fields: { name: string; value: string }[] = [];
-  const paid = (rewards: DungeonRewards) => {
-    if (hasRewards(rewards)) {
-      fields.push({ name: 'Rewards', value: truncate(rewardLines(rewards, view.currency, opts.itemName).join('\n'), 1024) });
-    }
+function waveField(view: DungeonRunView, wave: DungeonWaveResult, waveCount: number): Field {
+  const of = waveCount > 1 ? ` (wave ${wave.waveIndex + 1} of ${waveCount})` : '';
+  return {
+    name: truncate(`${waveWord(wave)} — ${wave.enemyName}${of}`, 256),
+    value: truncate(
+      [
+        `Your HP: ${wave.hpBefore} → **${wave.hpAfter}** / ${view.core.maxHp}`,
+        `${wave.enemyName}: ${wave.enemyHpAfter} / ${wave.enemyMaxHp}`,
+        `Rounds: ${wave.rounds}`,
+        wave.lifestealHealed ? `Lifesteal: +${wave.lifestealHealed} HP` : null,
+      ]
+        .filter((l): l is string => l != null)
+        .join('\n'),
+      1024,
+    ),
   };
-  switch (r.kind) {
-    case 'combat': {
-      const word = r.result === 'player_victory' ? '🏆 Victory' : r.result === 'enemy_victory' ? '💀 Defeat' : '⏱️ Stalemate';
-      fields.push({
-        name: `${word} — ${truncate(r.enemyName, 200)}`,
-        value: [
-          `Your HP: ${r.hpBefore} → **${r.hpAfter}** / ${view.fighter.maxHp}`,
-          `${r.enemyName}: ${r.enemyHpAfter} / ${r.enemyMaxHp}`,
-          `Rounds: ${r.rounds}`,
-          r.lifestealHealed ? `Lifesteal: +${r.lifestealHealed} HP` : null,
-        ]
-          .filter((l): l is string => l != null)
+}
+
+/**
+ * What the latest step did. Fights, rests and rewards are fields; the small
+ * things (a gate, a refusal, turning back, a room finished) are lines for the
+ * description. Flags and plain movement are the author's plumbing and are not shown.
+ */
+function recentBlock(view: DungeonRunView, opts: DungeonScreenOptions): { lines: string[]; fields: Field[] } {
+  const lines: string[] = [];
+  const fields: Field[] = [];
+  const { recent, room } = view.core;
+  const nameOf = (roomId: string) => (roomId === room.id ? roomName(view) : roomId);
+
+  const waves = recent.filter((r): r is Extract<DungeonRecentEntry, { kind: 'wave' }> => r.kind === 'wave');
+  const earlier = waves.slice(0, Math.max(0, waves.length - MAX_WAVE_FIELDS));
+  if (earlier.length > 0) {
+    fields.push({
+      name: `Earlier waves (${earlier.length})`,
+      value: truncate(
+        earlier
+          .map(({ wave }) => `${waveWord(wave)} — ${wave.enemyName}: HP ${wave.hpBefore} → ${wave.hpAfter}, ${wave.rounds} rounds`)
           .join('\n'),
-      });
-      if (view.combatEvents?.length) {
-        fields.push({ name: 'Combat summary', value: truncate(summarizeCombatEvents(view.combatEvents).join('\n'), 1024) });
-      }
-      paid(r.rewards);
-      break;
-    }
-    case 'rest':
-      fields.push({
-        name: '🔥 Rested',
-        value: `HP ${r.hpBefore} → **${r.hpAfter}** / ${view.fighter.maxHp} (+${r.hpAfter - r.hpBefore})`,
-      });
-      break;
-    case 'event': {
-      const delta = r.hpAfter - r.hpBefore;
-      fields.push({
-        name: `❓ ${truncate(view.node.event?.name ?? 'Event', 200)}`,
-        value:
-          delta === 0
-            ? 'Nothing here changes your footing.'
-            : `HP ${r.hpBefore} → **${r.hpAfter}** / ${view.fighter.maxHp} (${delta > 0 ? '+' : ''}${delta})`,
-      });
-      paid(r.rewards);
-      break;
-    }
-    case 'reward':
-      if (hasRewards(r.rewards)) paid(r.rewards);
-      else fields.push({ name: '🎁 Cache', value: 'Empty.' });
-      break;
-    case 'exit':
-      fields.push({ name: '🚪 Exit', value: 'The way out is open.' });
-      break;
+        1024,
+      ),
+    });
   }
-  return fields;
+  for (const { wave, waveCount } of waves.slice(earlier.length)) fields.push(waveField(view, wave, waveCount));
+  // The events are the last wave's; the earlier waves have their numbers above.
+  if (waves.length > 0 && view.combatEvents?.length) {
+    fields.push({ name: 'Combat summary', value: truncate(summarizeCombatEvents(view.combatEvents).join('\n'), 1024) || '—' });
+  }
+
+  for (const entry of recent) {
+    switch (entry.kind) {
+      case 'rest':
+        fields.push({
+          name: '🔥 Rested',
+          value: `HP ${entry.hpBefore} → **${entry.hpAfter}** / ${view.core.maxHp} (+${entry.hpAfter - entry.hpBefore})`,
+        });
+        break;
+      case 'gate':
+        lines.push(entry.passed ? '🚪 The way opens.' : `🔒 ${truncate(entry.blockedText || 'The way is barred.', 300)}`);
+        break;
+      case 'declined':
+        lines.push('You pass it by.');
+        break;
+      case 'retreated':
+        lines.push(`↩ You turn back to **${truncate(nameOf(entry.toRoomId), 100)}**.`);
+        break;
+      case 'room_completed':
+        lines.push(`✅ **${truncate(nameOf(entry.roomId), 100)}** is cleared.`);
+        break;
+      default:
+        break;
+    }
+  }
+
+  const rewards = latestRewards(view);
+  if (rewards) {
+    fields.push(
+      hasRewards(rewards)
+        ? { name: '🎁 Rewards', value: truncate(rewardLines(rewards, view.currency, opts.itemName).join('\n'), 1024) }
+        : { name: '🎁 Cache', value: 'Empty.' },
+    );
+  }
+  return { lines, fields };
+}
+
+function isFight(action: DungeonActionView): boolean {
+  return action.type === 'combat' || action.type === 'boss';
+}
+
+/** What the pending action holds, before it is carried out. */
+function actionBrief(action: DungeonActionView): string {
+  const heading = `${ACTION_EMOJI[action.type]} **${truncate(action.label || ACTION_HEADING[action.type], 100)}**`;
+  if (isFight(action)) {
+    const wave = action.wave;
+    if (!wave) return heading;
+    return [
+      heading,
+      `**${wave.enemy.name}**`,
+      `ATK ${wave.enemy.attack} · DEF ${wave.enemy.defense} · HP ${wave.enemy.hp}`,
+      wave.count > 1 ? `Wave ${wave.index + 1} of ${wave.count}` : null,
+    ]
+      .filter((l): l is string => l != null)
+      .join('\n');
+  }
+  switch (action.type) {
+    case 'rest':
+      return `${heading}\nA quiet corner. Resting restores **${percent(action.healBasisPoints ?? 0)}** of max HP.`;
+    case 'reward':
+      return `${heading}\nA sealed cache.`;
+    case 'gate':
+      return `${heading}\nThe way ahead is barred.`;
+    default:
+      return heading;
+  }
+}
+
+function actionButtons(view: DungeonRunView, action: DungeonActionView): ButtonBuilder[] {
+  const fight = isFight(action);
+  const fallback = fight && (action.wave?.index ?? 0) > 0 ? 'Next wave' : ACTION_BUTTON[action.type];
+  const buttons = [
+    button(
+      dgId.advance(view.id, view.step),
+      action.label || fallback,
+      fight ? ButtonStyle.Danger : ButtonStyle.Primary,
+      ACTION_EMOJI[action.type],
+    ),
+  ];
+  if (action.optional) buttons.push(button(dgId.decline(view.id, view.step), 'Skip', ButtonStyle.Secondary));
+  return buttons;
+}
+
+function connectionLabel(connection: DungeonConnectionView): string {
+  return connection.label || `→ ${connection.toRoomName}`;
+}
+
+function connectionButton(view: DungeonRunView, connection: DungeonConnectionView): ButtonBuilder {
+  const id = dgId.move(view.id, view.step, connection.id);
+  if (!connection.open) return button(id, connectionLabel(connection), ButtonStyle.Secondary, '🔒').setDisabled(true);
+  // A way back to a room already finished reads differently from a way on.
+  return connection.toRoomCompleted
+    ? button(id, connectionLabel(connection), ButtonStyle.Secondary, '↩️')
+    : button(id, connectionLabel(connection), ButtonStyle.Primary);
+}
+
+function chunk<T>(items: readonly T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
 }
 
 const OUTCOME_TITLE: Readonly<Record<DungeonSettlement['outcome'], string>> = {
@@ -488,39 +612,39 @@ const OUTCOME_TITLE: Readonly<Record<DungeonSettlement['outcome'], string>> = {
 export function settlementLines(view: DungeonRunView): string[] {
   const s = view.settlement;
   if (!s) return [];
-  const total = s.earned + s.bonusCurrency;
-  const lines = [`Depth reached: **${s.depth} / ${view.depthCount}**`, `HP: ${s.finalHp} / ${view.fighter.maxHp}`];
+  const lines = [`Rooms cleared: **${roomsLine(view)}**`, `HP: ${s.finalHp} / ${view.core.maxHp}`];
   if (s.cause === 'stalemate') lines.push('The fight ran out the clock — you were forced back.');
   lines.push(`Earned: ${currencyAmount(view.currency, s.earned)}`);
-  if (s.bonusCurrency > 0) {
-    lines.push(`${s.outcome === 'completed' ? 'Completion' : 'Extraction'} bonus: +${currencyAmount(view.currency, s.bonusCurrency)}`);
-  }
   if (s.bankingSkipped) {
     lines.push(`Banked: nothing — ${currencyName(view.currency)} cannot be banked right now.`);
   } else if (s.retentionBasisPoints < BASIS_POINTS) {
     lines.push(`Kept (${percent(s.retentionBasisPoints)}): **${currencyAmount(view.currency, s.banked)}** · Lost: ${currencyAmount(view.currency, s.lost)}`);
   } else {
-    lines.push(`Banked: **${currencyAmount(view.currency, s.banked)}**${total === 0 ? '' : ' — all of it'}`);
+    lines.push(`Banked: **${currencyAmount(view.currency, s.banked)}**${s.earned === 0 ? '' : ' — all of it'}`);
   }
   if (s.balanceAfter != null) lines.push(`You now hold ${currencyAmount(view.currency, s.balanceAfter)}.`);
   return lines;
 }
 
+/** Discord refuses an embed over 6000 characters in all; the description gives way first. */
+function fitEmbed(embed: EmbedBuilder): void {
+  const over = embedLength(embed.data) - EMBED_TOTAL_LIMIT;
+  const description = embed.data.description;
+  if (over > 0 && description) embed.setDescription(truncate(description, Math.max(1, description.length - over)));
+}
+
 /**
- * The run screen. One builder for every state of a run: standing on an
- * unresolved node, looking at its result with the path ahead, and the end.
+ * The run screen. One builder for every state of a run: what the latest step
+ * did, then the action waiting for the player, or the ways out of a finished
+ * room, or how the run ended.
  */
 export function buildRunScreen(view: DungeonRunView, opts: DungeonScreenOptions): SessionPayload {
-  const over = view.status !== 'active';
-  const { node } = view;
+  const { core } = view;
+  const over = core.phase === 'ended';
+  const outcome = view.settlement?.outcome ?? core.end?.outcome ?? (view.status === 'active' ? null : view.status);
   const embed = new EmbedBuilder()
     .setTitle(
-      truncate(
-        over && view.settlement
-          ? `${OUTCOME_TITLE[view.settlement.outcome]} — ${view.zone.name}`
-          : `${view.zone.name} — Depth ${view.depth} / ${view.depthCount}`,
-        256,
-      ),
+      truncate(over && outcome ? `${OUTCOME_TITLE[outcome]} — ${view.dungeon.name}` : `${view.dungeon.name} — ${roomName(view)}`, 256),
     )
     .setColor(
       over
@@ -532,35 +656,71 @@ export function buildRunScreen(view: DungeonRunView, opts: DungeonScreenOptions)
         : COLOR,
     );
 
-  if (view.nodeStatus === 'entered' && !over) {
-    embed.setDescription(`${NODE_EMOJI[node.type]} **${NODE_LABEL[node.type]}**\n${nodeBrief(view)}`);
-  } else {
-    embed.setDescription(`${NODE_EMOJI[node.type]} ${nodeTitle(node)}`);
-    embed.addFields(...resolutionBlock(view, opts));
-  }
+  const latest = recentBlock(view, opts);
+  const body: string[] = [...latest.lines];
+  if (body.length) body.push('');
+  const shown = core.connections;
+  // Open ways get the buttons first: a locked one is disabled anyway, and is listed below.
+  const ordered = [...shown.filter((c) => c.open), ...shown.filter((c) => !c.open)];
+  const buttoned = ordered.slice(0, MAX_CONNECTION_BUTTONS);
+  const overflow = ordered.slice(MAX_CONNECTION_BUTTONS);
 
-  embed.addFields({ name: truncate(view.fighter.name, 200), value: fighterBlock(view.fighter, view.currentHp), inline: true });
   if (over) {
-    embed.addFields({ name: 'Result', value: settlementLines(view).join('\n') || '—' });
-    const bonus = view.settlement?.bonusRewards;
-    if (bonus && hasRewards({ ...bonus, currency: 0 })) {
-      embed.addFields({ name: 'Bonus rewards', value: rewardLines({ ...bonus, currency: 0 }, view.currency, opts.itemName).join('\n') });
+    body.push(`Your run ended in **${truncate(roomName(view), 200)}**.`);
+  } else {
+    if (core.room.description) body.push(`_${truncate(core.room.description, 1000)}_`, '');
+    if (core.phase === 'action' && core.action) {
+      body.push(actionBrief(core.action));
+    } else if (core.stuck) {
+      body.push('⚠️ **There is no way forward from here.** Nothing is left to do in this room, no way out of it is open and you cannot extract — abandoning the run is all that is left.');
+    } else if (shown.some((c) => c.open)) {
+      body.push('**Where to?**');
+    } else {
+      body.push('No way on is open from here.');
     }
-    embed.addFields({ name: 'Secured — yours to keep', value: securedSummary(view.secured, opts.itemName) });
+  }
+  embed.setDescription(truncate(body.join('\n').trim() || '—', 4096));
+  embed.addFields(...latest.fields);
+
+  embed.addFields({ name: truncate(view.fighter.name, 200), value: fighterBlock(view.fighter, core.hp, core.maxHp), inline: true });
+  if (over) {
+    embed.addFields(
+      { name: 'Result', value: truncate(settlementLines(view).join('\n'), 1024) || '—' },
+      { name: 'Secured — yours to keep', value: securedSummary(view.secured, opts.itemName) },
+    );
   } else {
     embed.addFields(
-      { name: `Unbanked ${currencyName(view.currency)}`, value: currencyAmount(view.currency, view.unbankedCurrency), inline: true },
+      { name: `Unbanked ${currencyName(view.currency)}`, value: currencyAmount(view.currency, core.unbankedCurrency), inline: true },
       { name: 'Secured', value: securedSummary(view.secured, opts.itemName), inline: true },
+      { name: 'Rooms cleared', value: roomsLine(view), inline: true },
     );
-    if (node.extraction) {
+    const locked = shown.filter((c) => !c.open);
+    if (locked.length) {
+      embed.addFields({
+        name: '🔒 Locked',
+        value: truncate(
+          locked.map((c) => `**${truncate(connectionLabel(c), 80)}** — ${truncate(c.lockedText || 'Locked.', 200)}`).join('\n'),
+          1024,
+        ),
+      });
+    }
+    const unbuttoned = overflow.filter((c) => c.open);
+    if (unbuttoned.length) {
+      embed.addFields({
+        name: `More ways (${unbuttoned.length}) — too many to show as buttons`,
+        value: truncate(unbuttoned.map((c) => truncate(connectionLabel(c), 80)).join('\n'), 1024),
+      });
+    }
+    if (core.room.extraction) {
       embed.addFields({
         name: '🚪 Extraction point',
-        value: view.canExtract
-          ? `You can leave here and bank all ${currencyAmount(view.currency, view.unbankedCurrency)}.`
-          : 'You can leave from here once this node is done.',
+        value: core.canExtract
+          ? `You can leave here and bank all ${currencyAmount(view.currency, core.unbankedCurrency)}.`
+          : 'You can leave from here once this room is done.',
       });
     }
   }
+  fitEmbed(embed);
 
   const art = opts.art ?? {};
   applyArt(embed, art);
@@ -568,32 +728,16 @@ export function buildRunScreen(view: DungeonRunView, opts: DungeonScreenOptions)
   const components: ActionRowBuilder<ButtonBuilder>[] = [];
   if (over) {
     components.push(row(homeButton('Delve Again'), menuButton()));
-  } else if (view.nodeStatus === 'entered') {
-    const fights = node.enemy != null;
-    components.push(
-      row(
-        button(
-          dgId.resolve(view.id, node.id),
-          RESOLVE_LABEL[node.type],
-          fights ? ButtonStyle.Danger : ButtonStyle.Primary,
-          NODE_EMOJI[node.type],
-        ),
-      ),
-      row(button(dgId.abandonConfirm(view.id), 'Abandon', ButtonStyle.Secondary), menuButton()),
-    );
   } else {
-    const paths = view.next.map((n) =>
-      button(
-        dgId.enter(view.id, n.id),
-        view.next.length === 1 ? `Continue — ${nodeTitle(n)}` : nodeTitle(n),
-        ButtonStyle.Primary,
-        NODE_EMOJI[n.type],
-      ),
-    );
-    if (view.next.length > 1) embed.addFields({ name: 'Path ahead', value: view.next.map((n) => `${NODE_EMOJI[n.type]} ${nodeTitle(n)}`).join('\n') });
-    if (view.canExtract) paths.push(button(dgId.extractConfirm(view.id, node.id), 'Extract', ButtonStyle.Success, '🚪'));
-    if (paths.length) components.push(row(...paths));
-    components.push(row(button(dgId.abandonConfirm(view.id), 'Abandon', ButtonStyle.Secondary), menuButton()));
+    if (core.phase === 'action' && core.action) {
+      components.push(row(...actionButtons(view, core.action)));
+    } else {
+      for (const group of chunk(buttoned, BUTTONS_PER_ROW)) components.push(row(...group.map((c) => connectionButton(view, c))));
+    }
+    const last: ButtonBuilder[] = [];
+    if (core.canExtract) last.push(button(dgId.extractConfirm(view.id), 'Extract', ButtonStyle.Success, '🚪'));
+    last.push(button(dgId.abandonConfirm(view.id), 'Abandon', core.stuck ? ButtonStyle.Danger : ButtonStyle.Secondary), menuButton());
+    components.push(row(...last));
   }
   return { content: opts.status ?? '', embeds: [embed], components, files: files(art) };
 }
@@ -601,10 +745,13 @@ export function buildRunScreen(view: DungeonRunView, opts: DungeonScreenOptions)
 /** The status line for an action's result; null when it simply happened. */
 export function actionNotice(result: Pick<DungeonActionResult, 'status' | 'refusal'>): string | null {
   if (result.status === 'applied') return null;
-  if (result.status === 'replayed') return REPLAYED_NOTICE;
   switch (result.refusal) {
+    case 'stale':
+      return STALE_STEP_NOTICE;
     case 'run_over':
       return RUN_OVER_NOTICE;
+    case 'locked':
+      return LOCKED_NOTICE;
     case 'not_extractable':
       return NOT_EXTRACTABLE_NOTICE;
     default:
@@ -614,13 +761,14 @@ export function actionNotice(result: Pick<DungeonActionResult, 'status' | 'refus
 
 // ── confirmations ───────────────────────────────────────────────────────────
 
+/** The Extract button carries the step this confirmation was drawn for. */
 export function buildExtractConfirm(view: DungeonRunView): SessionPayload {
   const embed = new EmbedBuilder()
-    .setTitle(`🚪 Extract from ${truncate(view.zone.name, 200)}?`)
+    .setTitle(truncate(`🚪 Extract from ${view.dungeon.name}?`, 256))
     .setColor(COLOR_GOOD)
     .setDescription(
       [
-        `You'll bank all **${currencyAmount(view.currency, view.unbankedCurrency)}** and the run ends here, at depth ${view.depth} / ${view.depthCount}.`,
+        `You'll bank all **${currencyAmount(view.currency, view.core.unbankedCurrency)}** and the run ends here, in ${truncate(roomName(view), 200)} with ${roomsLine(view)} rooms cleared.`,
         'Everything you have secured is already yours.',
         'There is no coming back to this run.',
       ].join('\n'),
@@ -630,7 +778,7 @@ export function buildExtractConfirm(view: DungeonRunView): SessionPayload {
     embeds: [embed],
     components: [
       row(
-        button(dgId.extract(view.id, view.node.id), 'Extract', ButtonStyle.Success, '🚪'),
+        button(dgId.extract(view.id, view.step), 'Extract', ButtonStyle.Success, '🚪'),
         button(dgId.run(view.id), 'Keep Going', ButtonStyle.Secondary),
       ),
     ],
@@ -640,13 +788,13 @@ export function buildExtractConfirm(view: DungeonRunView): SessionPayload {
 
 export function buildAbandonConfirm(view: DungeonRunView): SessionPayload {
   const embed = new EmbedBuilder()
-    .setTitle(`🏳️ Abandon ${truncate(view.zone.name, 200)}?`)
+    .setTitle(truncate(`🏳️ Abandon ${view.dungeon.name}?`, 256))
     .setColor(COLOR_BAD)
     .setDescription(
       [
-        `Abandoning counts as a defeat: you keep ${percent(view.defeatRetentionBasisPoints)} of your **${currencyAmount(view.currency, view.unbankedCurrency)}** unbanked.`,
+        `Abandoning counts as a defeat: you keep ${percent(view.defeatRetentionBasisPoints)} of your **${currencyAmount(view.currency, view.core.unbankedCurrency)}** unbanked.`,
         'Everything you have secured is already yours.',
-        view.canExtract ? 'You are on an extraction point — extracting banks all of it instead.' : null,
+        view.core.canExtract ? 'You are on an extraction point — extracting banks all of it instead.' : null,
       ]
         .filter((l): l is string => l != null)
         .join('\n'),

@@ -1,15 +1,17 @@
 /**
  * Dungeon button handlers (`dg:*`).
  *
- * Thin: every handler acts on `prov.playerId`, asks `DungeonPlayService`
+ * Thin: every handler acts on `prov.playerId`, asks `DungeonRunService`
  * (which checks the Equipment unlock, locks the run and re-reads all state)
  * and hands the read model to `dungeonPresenter`. Nothing about a run is
  * decided here.
  *
- * Idempotency: buttons carry the run id and node id, which *are* the
- * transition. A double-click or a Discord retry names the same transition and
- * the service replays it; a stale button (the other side of a fork, a run that
- * has ended) is refused and the run is repainted as it now stands.
+ * Idempotency: a button that moves a run carries the run id and the step it
+ * was drawn for, passed on as `expectedStep`. A double-click, a Discord retry
+ * or a button from an earlier screen names a step the run has left; the
+ * service refuses it as `stale`, changes nothing, and the run is repainted as
+ * it now stands. Abandoning carries no step — it is always allowed, and a
+ * second click finds the run already over.
  */
 import type { ButtonInteraction } from 'discord.js';
 import { ownedArtworkImage } from '../assets/attachRenderedCard';
@@ -21,34 +23,36 @@ import {
   ZONE_UNAVAILABLE,
   actionNotice,
   buildAbandonConfirm,
+  buildDungeonDetail,
   buildDungeonHome,
   buildExtractConfirm,
   buildRunScreen,
-  buildZoneDetail,
   lockedDungeonsView,
   type DungeonScreenOptions,
 } from '../dungeonPresenter';
 import { respondEphemeral, type SessionPayload } from '../ephemeralSession';
 import type { AppContext, Provisioned } from '../types';
-import type { DungeonPlayService, DungeonRunView } from '../../modules/dungeons/dungeonPlayService';
+import type { DungeonRunService, DungeonRunView } from '../../modules/dungeons/dungeonRunService';
+import type { DungeonInput } from '../../modules/dungeons/engine/types';
 import {
   AppError,
   CombatBuddyRequiredError,
   CombatLoadoutIncompleteError,
   DungeonDailyLimitError,
-  DungeonGenerationError,
+  DungeonInvalidError,
   DungeonRunActiveError,
   DungeonRunNotFoundError,
-  DungeonZoneInvalidError,
-  DungeonZoneUnavailableError,
+  DungeonUnavailableError,
   FeatureLockedError,
 } from '../../shared/errors';
 
 const NO_LONGER_WORKS = 'That button no longer works.';
 const MALFORMED = 'That button is malformed — re-open Delve from /waifumon.';
 const RUN_ID_PATTERN = /^[1-9]\d{0,15}$/;
-const NODE_ID_PATTERN = /^n\d{1,3}$/;
-const ZONE_KEY_PATTERN = /^[a-z0-9]+(?:_[a-z0-9]+)*$/;
+const STEP_PATTERN = /^\d{1,7}$/;
+const CONNECTION_ID_PATTERN = /^[a-z0-9]+(?:[_-][a-z0-9]+)*$/;
+const CONNECTION_ID_MAX_LENGTH = 40;
+const DUNGEON_KEY_PATTERN = /^[a-z0-9]+(?:_[a-z0-9]+)*$/;
 
 /**
  * The run's *snapshotted* Buddy, by the copy the run started with — not
@@ -64,7 +68,7 @@ async function fighterArtwork(ctx: AppContext, playerId: number, waifuId: number
   }
 }
 
-/** The live active Buddy's artwork, for the pre-run zone screen. Never throws. */
+/** The live active Buddy's artwork, for the pre-run dungeon screen. Never throws. */
 async function buddyArtwork(ctx: AppContext, playerId: number, waifuId: number | null): Promise<TrialArtwork | null> {
   if (waifuId == null || !ctx.services.collection) return null;
   try {
@@ -96,29 +100,29 @@ async function runScreen(ctx: AppContext, playerId: number, view: DungeonRunView
   return buildRunScreen(view, options(ctx, await runArt(ctx, playerId, view), status));
 }
 
-async function homeScreen(ctx: AppContext, service: DungeonPlayService, playerId: number, status?: string | null) {
+async function homeScreen(ctx: AppContext, service: DungeonRunService, playerId: number, status?: string | null) {
   const view = await service.home(playerId);
-  // With a run: the run's own scene. Without: the first listed zone that has
-  // artwork deployed — its zone art, else its background, else text only.
+  // With a run: the run's own scene. Without: the first listed dungeon that has
+  // artwork deployed — its artwork, else its background, else text only.
   const art = view.activeRun
     ? await runArt(ctx, playerId, view.activeRun)
-    : { scene: await dungeonZoneArtwork(ctx, view.zones) };
+    : { scene: await dungeonZoneArtwork(ctx, view.dungeons) };
   return buildDungeonHome(view, options(ctx, art, status));
 }
 
-async function zoneScreen(
+async function detailScreen(
   ctx: AppContext,
-  service: DungeonPlayService,
+  service: DungeonRunService,
   playerId: number,
-  zoneKey: string,
+  dungeonKey: string,
   status?: string | null,
 ) {
-  const view = await service.zone(playerId, zoneKey);
+  const view = await service.dungeon(playerId, dungeonKey);
   const art = {
-    scene: await dungeonZoneArtwork(ctx, [view.zone]),
+    scene: await dungeonZoneArtwork(ctx, [view.dungeon]),
     buddy: await buddyArtwork(ctx, playerId, view.stats.buddy?.waifuId ?? null),
   };
-  return buildZoneDetail(view, options(ctx, art, status));
+  return buildDungeonDetail(view, options(ctx, art, status));
 }
 
 /**
@@ -130,10 +134,10 @@ async function run(
   ctx: AppContext,
   interaction: ButtonInteraction,
   prov: Provisioned,
-  action: (service: DungeonPlayService) => Promise<SessionPayload | string>,
-  recover: { zoneKey?: string } = {},
+  action: (service: DungeonRunService) => Promise<SessionPayload | string>,
+  recover: { dungeonKey?: string } = {},
 ): Promise<void> {
-  const service = ctx.services.dungeonPlay;
+  const service = ctx.services.dungeonRuns;
   if (!service) {
     await respondEphemeral(interaction, NO_LONGER_WORKS);
     return;
@@ -161,17 +165,12 @@ async function run(
         await respondEphemeral(interaction, await homeScreen(ctx, service, prov.playerId, err.userMessage));
         return;
       }
-      if (
-        err instanceof DungeonZoneUnavailableError ||
-        err instanceof DungeonZoneInvalidError ||
-        err instanceof DungeonGenerationError
-      ) {
-        if (!(err instanceof DungeonZoneUnavailableError)) {
-          ctx.logger.error({ err, tag: 'dungeons/start-failed', playerId: prov.playerId }, 'dungeon run could not be generated');
+      if (err instanceof DungeonUnavailableError || err instanceof DungeonInvalidError) {
+        if (err instanceof DungeonInvalidError) {
+          ctx.logger.error({ err, tag: 'dungeons/start-failed', playerId: prov.playerId }, 'dungeon run could not be started');
         }
-        // Not startable from here: say where "here" is, over the zones that are.
-        const notice =
-          err instanceof DungeonZoneUnavailableError && err.reason === 'region' ? err.userMessage : ZONE_UNAVAILABLE;
+        // Not startable from here: say where "here" is, over the dungeons that are.
+        const notice = err instanceof DungeonUnavailableError && err.reason === 'region' ? err.userMessage : ZONE_UNAVAILABLE;
         await respondEphemeral(interaction, await homeScreen(ctx, service, prov.playerId, notice));
         return;
       }
@@ -179,8 +178,8 @@ async function run(
         await respondEphemeral(interaction, await homeScreen(ctx, service, prov.playerId, RUN_NOT_FOUND));
         return;
       }
-      if ((err instanceof CombatBuddyRequiredError || err instanceof CombatLoadoutIncompleteError) && recover.zoneKey) {
-        await respondEphemeral(interaction, await zoneScreen(ctx, service, prov.playerId, recover.zoneKey, err.userMessage));
+      if ((err instanceof CombatBuddyRequiredError || err instanceof CombatLoadoutIncompleteError) && recover.dungeonKey) {
+        await respondEphemeral(interaction, await detailScreen(ctx, service, prov.playerId, recover.dungeonKey, err.userMessage));
         return;
       }
     } catch (inner) {
@@ -199,87 +198,112 @@ async function run(
   }
 }
 
-function parseRun(args: string[], withNode: boolean): { runId: number; nodeId: string } | null {
-  const [rawRun, rawNode] = args;
-  if (!rawRun || !RUN_ID_PATTERN.test(rawRun)) return null;
-  if (withNode && (!rawNode || !NODE_ID_PATTERN.test(rawNode))) return null;
-  return { runId: Number(rawRun), nodeId: rawNode ?? '' };
+function parseRunId(raw: string | undefined): number | null {
+  return raw && RUN_ID_PATTERN.test(raw) ? Number(raw) : null;
 }
 
-/** `dg|home` — zones, or the active run; also the main menu's ⛏️ Delve. */
+/** `<runId>` alone: no further argument is accepted. */
+function parseRun(args: string[]): { runId: number } | null {
+  const runId = parseRunId(args[0]);
+  return runId == null || args.length !== 1 ? null : { runId };
+}
+
+/** `<runId>|<step>` and exactly `extra` further arguments, returned as `rest`. */
+function parseRunStep(args: string[], extra: number): { runId: number; step: number; rest: string[] } | null {
+  const [rawRun, rawStep, ...rest] = args;
+  const runId = parseRunId(rawRun);
+  if (runId == null || !rawStep || !STEP_PATTERN.test(rawStep) || rest.length !== extra) return null;
+  return { runId, step: Number(rawStep), rest };
+}
+
+function parseDungeonKey(args: string[]): string | null {
+  const key = args[0];
+  return key && args.length === 1 && DUNGEON_KEY_PATTERN.test(key) ? key : null;
+}
+
+/** One step of a run, then the run as it now stands — with a notice when the input was refused. */
+async function step(ctx: AppContext, service: DungeonRunService, playerId: number, runId: number, input: DungeonInput) {
+  const result = await service.act(playerId, runId, input);
+  return runScreen(ctx, playerId, result.run, actionNotice(result));
+}
+
+/** `dg|home` — dungeons, or the active run; also the main menu's ⛏️ Delve. */
 export async function handleDungeonHome(ctx: AppContext, i: ButtonInteraction, prov: Provisioned) {
   return run(ctx, i, prov, (s) => homeScreen(ctx, s, prov.playerId));
 }
 
-/** `dg|zone|<zoneKey>` — the zone screen. Never starts a run. */
+/** `dg|zone|<dungeonKey>` — the dungeon screen. Never starts a run. */
 export async function handleDungeonZone(ctx: AppContext, i: ButtonInteraction, prov: Provisioned, args: string[]) {
-  const zoneKey = args[0];
-  if (!zoneKey || !ZONE_KEY_PATTERN.test(zoneKey)) return respondEphemeral(i, MALFORMED);
-  return run(ctx, i, prov, (s) => zoneScreen(ctx, s, prov.playerId, zoneKey));
+  const dungeonKey = parseDungeonKey(args);
+  if (!dungeonKey) return respondEphemeral(i, MALFORMED);
+  return run(ctx, i, prov, (s) => detailScreen(ctx, s, prov.playerId, dungeonKey));
 }
 
-/** `dg|start|<zoneKey>` — spend a daily run, generate a run and snapshot the fighter. */
+/** `dg|start|<dungeonKey>` — spend a daily run, pin the revision and snapshot the fighter. */
 export async function handleDungeonStart(ctx: AppContext, i: ButtonInteraction, prov: Provisioned, args: string[]) {
-  const zoneKey = args[0];
-  if (!zoneKey || !ZONE_KEY_PATTERN.test(zoneKey)) return respondEphemeral(i, MALFORMED);
-  return run(ctx, i, prov, async (s) => runScreen(ctx, prov.playerId, await s.start(prov.playerId, zoneKey)), { zoneKey });
+  const dungeonKey = parseDungeonKey(args);
+  if (!dungeonKey) return respondEphemeral(i, MALFORMED);
+  return run(ctx, i, prov, async (s) => runScreen(ctx, prov.playerId, await s.start(prov.playerId, dungeonKey)), { dungeonKey });
 }
 
 /** `dg|run|<runId>` — the run as it stands (Resume, and "back" from a confirmation). */
 export async function handleDungeonRun(ctx: AppContext, i: ButtonInteraction, prov: Provisioned, args: string[]) {
-  const parsed = parseRun(args, false);
+  const parsed = parseRun(args);
   if (!parsed) return respondEphemeral(i, MALFORMED);
   return run(ctx, i, prov, async (s) => runScreen(ctx, prov.playerId, await s.run(prov.playerId, parsed.runId)));
 }
 
-/** `dg|enter|<runId>|<nodeId>` — step onto an available node. */
-export async function handleDungeonEnter(ctx: AppContext, i: ButtonInteraction, prov: Provisioned, args: string[]) {
-  const parsed = parseRun(args, true);
-  if (!parsed) return respondEphemeral(i, MALFORMED);
-  return run(ctx, i, prov, async (s) => {
-    const result = await s.enterNode(prov.playerId, parsed.runId, parsed.nodeId);
-    // Re-entering the node you are already on is just the screen again.
-    const notice = result.status === 'replayed' ? null : actionNotice(result);
-    return runScreen(ctx, prov.playerId, result.run, notice);
-  });
+/** `dg|act|<runId>|<step>|<a|d>` — carry out the pending action (fight, rest, open…) or decline it. */
+export async function handleDungeonAct(ctx: AppContext, i: ButtonInteraction, prov: Provisioned, args: string[]) {
+  const parsed = parseRunStep(args, 1);
+  const code = parsed?.rest[0];
+  if (!parsed || (code !== 'a' && code !== 'd')) return respondEphemeral(i, MALFORMED);
+  return run(ctx, i, prov, (s) =>
+    step(ctx, s, prov.playerId, parsed.runId, { type: code === 'a' ? 'advance' : 'decline', expectedStep: parsed.step }),
+  );
 }
 
-/** `dg|go|<runId>|<nodeId>` — resolve the node: fight, rest, event, reward or exit. */
-export async function handleDungeonResolve(ctx: AppContext, i: ButtonInteraction, prov: Provisioned, args: string[]) {
-  const parsed = parseRun(args, true);
-  if (!parsed) return respondEphemeral(i, MALFORMED);
-  return run(ctx, i, prov, async (s) => {
-    const result = await s.resolveNode(prov.playerId, parsed.runId, parsed.nodeId);
-    return runScreen(ctx, prov.playerId, result.run, actionNotice(result));
-  });
+/** `dg|mv|<runId>|<step>|<connectionId>` — take a connection out of a finished room. */
+export async function handleDungeonMove(ctx: AppContext, i: ButtonInteraction, prov: Provisioned, args: string[]) {
+  const parsed = parseRunStep(args, 1);
+  const connectionId = parsed?.rest[0];
+  if (
+    !parsed ||
+    !connectionId ||
+    connectionId.length > CONNECTION_ID_MAX_LENGTH ||
+    !CONNECTION_ID_PATTERN.test(connectionId)
+  ) {
+    return respondEphemeral(i, MALFORMED);
+  }
+  return run(ctx, i, prov, (s) =>
+    step(ctx, s, prov.playerId, parsed.runId, { type: 'move', connectionId, expectedStep: parsed.step }),
+  );
 }
 
-/** `dg|exq|<runId>|<nodeId>` — ask before extracting. Changes nothing. */
+/** `dg|exq|<runId>` — ask before extracting. Changes nothing. */
 export async function handleDungeonExtractConfirm(ctx: AppContext, i: ButtonInteraction, prov: Provisioned, args: string[]) {
-  const parsed = parseRun(args, true);
+  const parsed = parseRun(args);
   if (!parsed) return respondEphemeral(i, MALFORMED);
   return run(ctx, i, prov, async (s) => {
     const view = await s.run(prov.playerId, parsed.runId);
-    if (!view.canExtract || view.node.id !== parsed.nodeId) {
+    if (!view.core.canExtract) {
       return runScreen(ctx, prov.playerId, view, actionNotice({ status: 'refused', refusal: view.status === 'active' ? 'not_extractable' : 'run_over' }));
     }
+    // The confirmation's Extract button carries the step read here.
     return buildExtractConfirm(view);
   });
 }
 
-/** `dg|ex|<runId>|<nodeId>` — extract: bank everything and end the run. */
+/** `dg|ex|<runId>|<step>` — extract: bank everything and end the run. */
 export async function handleDungeonExtract(ctx: AppContext, i: ButtonInteraction, prov: Provisioned, args: string[]) {
-  const parsed = parseRun(args, true);
+  const parsed = parseRunStep(args, 0);
   if (!parsed) return respondEphemeral(i, MALFORMED);
-  return run(ctx, i, prov, async (s) => {
-    const result = await s.extract(prov.playerId, parsed.runId, parsed.nodeId);
-    return runScreen(ctx, prov.playerId, result.run, actionNotice(result));
-  });
+  return run(ctx, i, prov, (s) => step(ctx, s, prov.playerId, parsed.runId, { type: 'extract', expectedStep: parsed.step }));
 }
 
 /** `dg|abq|<runId>` — ask before abandoning. Changes nothing. */
 export async function handleDungeonAbandonConfirm(ctx: AppContext, i: ButtonInteraction, prov: Provisioned, args: string[]) {
-  const parsed = parseRun(args, false);
+  const parsed = parseRun(args);
   if (!parsed) return respondEphemeral(i, MALFORMED);
   return run(ctx, i, prov, async (s) => {
     const view = await s.run(prov.playerId, parsed.runId);
@@ -288,14 +312,9 @@ export async function handleDungeonAbandonConfirm(ctx: AppContext, i: ButtonInte
   });
 }
 
-/** `dg|ab|<runId>` — abandon: settled like a defeat. */
+/** `dg|ab|<runId>` — abandon: settled like a defeat. No step: abandoning is always allowed. */
 export async function handleDungeonAbandon(ctx: AppContext, i: ButtonInteraction, prov: Provisioned, args: string[]) {
-  const parsed = parseRun(args, false);
+  const parsed = parseRun(args);
   if (!parsed) return respondEphemeral(i, MALFORMED);
-  return run(ctx, i, prov, async (s) => {
-    const result = await s.abandon(prov.playerId, parsed.runId);
-    // A run with no fighter has no screen of its own: back to the zones.
-    if (!result) return homeScreen(ctx, s, prov.playerId);
-    return runScreen(ctx, prov.playerId, result.run, actionNotice(result));
-  });
+  return run(ctx, i, prov, (s) => step(ctx, s, prov.playerId, parsed.runId, { type: 'abandon' }));
 }

@@ -14,15 +14,15 @@ import type { PortalSession, PortalSessionService } from '../../../src/api/porta
 import { createArtworkAssetService } from '../../../src/modules/artworkAssets/artworkAssetService';
 import { createLocalArtworkStorage } from '../../../src/modules/artworkAssets/artworkStorage';
 import { CombatEnemyFileSchema } from '../../../src/modules/combat/enemyDefinitions';
-import { createDungeonZoneService } from '../../../src/modules/dungeons/dungeonZoneService';
-import { loadShippedDungeonZones, seedDungeonZones } from '../../../src/modules/dungeons/dungeonZoneStore';
-import { combatTrialEnemyReferences, dungeonZoneEnemyReferences } from '../../../src/modules/enemies/enemyReferences';
+import { createDungeonContentService } from '../../../src/modules/dungeons/dungeonContentService';
+import { combatTrialEnemyReferences, dungeonEnemyReferences } from '../../../src/modules/enemies/enemyReferences';
 import { createEnemyCatalogueService } from '../../../src/modules/enemies/enemyService';
 import { seedCombatEnemies, shippedCombatEnemies } from '../../../src/modules/enemies/enemyStore';
 import { createGuildOwnershipService } from '../../../src/modules/portalAuth/guildOwnershipService';
 import { createPortalAuthorizationService } from '../../../src/modules/portalAuth/portalAuthService';
 import { createProgressionCurrencyService } from '../../../src/modules/progressionCurrency/progressionCurrencyService';
 import { loadShippedRewardTables, seedRewardTables } from '../../../src/modules/rewardTables/rewardTableStore';
+import { singleRoomDungeon } from '../../helpers/dungeonFixtures';
 import { CONTENT_DIR, bootstrapApp, provisionPlayer, type App } from '../../helpers/fixtures';
 import { solidImage, transparentSprite } from '../../helpers/imageFixtures';
 import { createCapturedLogger, createProbes, TEST_TOKEN } from '../../helpers/platformApiFixtures';
@@ -35,7 +35,10 @@ const NON_OWNER_ID = '999999999999999881';
 const OWNER_TOKEN = 'token-owner';
 const NON_OWNER_TOKEN = 'token-non-owner';
 const CSRF = 'csrf-token';
-const ZONE = 'scrapheap_gauntlet';
+const DUNGEON = 'api_depths';
+const DUNGEON_NAME = 'Api Depths';
+/** Where the dungeon below names its second wave, as the enemy's Usage section words it. */
+const SECOND_WAVE_USAGE = 'draft: room "Hall" combat "guards", wave 2';
 
 let t: TestDb;
 let app: App;
@@ -48,26 +51,39 @@ beforeAll(async () => {
   await provisionPlayer(app, GUILD_ID, OWNER_ID);
   await provisionPlayer(app, GUILD_ID, NON_OWNER_ID);
   await seedRewardTables(t.db, loadShippedRewardTables(CONTENT_DIR));
-  // What startup does: enemies first, then the zones that name them.
+  // What startup does: enemies first, then the dungeons that name them.
   const shippedEnemies = shippedCombatEnemies(app.content.combatEnemies);
   await seedCombatEnemies(t.db, shippedEnemies);
-  const shippedZones = loadShippedDungeonZones(CONTENT_DIR);
-  await seedDungeonZones(t.db, shippedZones);
 
   const assets = createArtworkAssetService({ db: t.db, storage: createLocalArtworkStorage(path.join(root, 'managed')) });
   const enemies = createEnemyCatalogueService({
     db: t.db,
     getShipped: () => shippedEnemies,
     assets,
-    referenceSources: [dungeonZoneEnemyReferences, combatTrialEnemyReferences(() => app.content.combatTrials)],
+    referenceSources: [dungeonEnemyReferences, combatTrialEnemyReferences(() => app.content.combatTrials)],
   });
-  const dungeonZones = createDungeonZoneService({
+  const dungeonContent = createDungeonContentService({
     db: t.db,
-    getContent: () => app.content,
-    getShipped: () => shippedZones,
-    assets,
     enemies,
+    getRegions: () => app.content.regions.map((r) => ({ id: r.id, name: r.name, enabled: r.enabled })),
+    environment: 'test',
   });
+  // A dungeon draft that names two shipped enemies: one in a fight, one as its boss.
+  await dungeonContent.create(
+    {
+      definition: singleRoomDungeon(
+        [
+          { id: 'guards', type: 'combat', waves: [{ enemy: { key: 'scrapyard_drone' } }] },
+          { id: 'chief', type: 'boss', waves: [{ enemy: { key: 'scrapheap_colossus' } }] },
+        ],
+        (d) => {
+          d.key = DUNGEON;
+          d.name = DUNGEON_NAME;
+        },
+      ),
+    },
+    'test',
+  );
   const progressionCurrency = createProgressionCurrencyService(t.db);
 
   const guildOwnership = createGuildOwnershipService({ fetchOwnerId: async () => OWNER_ID });
@@ -115,7 +131,7 @@ beforeAll(async () => {
       authorization: portalAuthorization,
     },
     ctx: {
-      services: { ...app, dungeonZones, progressionCurrency, artworkAssets: assets, enemies },
+      services: { ...app, dungeonContent, progressionCurrency, artworkAssets: assets, enemies },
       getContent: () => app.content,
       portalAuthorization,
       adminBearerAllowed: true,
@@ -139,6 +155,15 @@ const call = (method: 'GET' | 'POST' | 'PUT' | 'DELETE', url: string, payload?: 
   });
 const data = async (url: string): Promise<Json> => (await call('GET', url)).json().data;
 const getEnemy = (key: string) => data(`/admin/enemies/${key}`);
+const getDungeon = () => data(`/admin/dungeons/definitions/${DUNGEON}`);
+/** The enemies the dungeon's fight fields, wave by wave. */
+const guardsOf = (definition: Json): string[] => definition.rooms[0].actions[0].waves.map((wave: Json) => wave.enemy.key);
+/** The definition with one more wave on its fight. */
+const withWave = (definition: Json, enemyKey: string): Json => {
+  const next = JSON.parse(JSON.stringify(definition)) as Json;
+  next.rooms[0].actions[0].waves.push({ enemy: { key: enemyKey } });
+  return next;
+};
 const body = (over: Json = {}) => ({ name: 'Api Made', enabled: true, attack: 30, defense: 15, hp: 300, tags: ['api'], ...over });
 const fields = (e: Json) => ({ name: e.name, description: e.description, enabled: e.enabled, attack: e.attack, defense: e.defense, hp: e.hp, tags: e.tags });
 async function save(key: string, change: Json) {
@@ -184,10 +209,13 @@ describe('the shipped enemies', () => {
     const shipped = app.content.combatEnemies ?? [];
     const dungeon = await data('/admin/dungeons/reference');
     const central = await data('/admin/enemies/reference');
-    // One read model: the Dungeon editor is handed the catalogue's own rows.
-    expect(dungeon.enemies).toEqual(central.enemies);
+    // One catalogue: the Dungeon reference lists the same enemies, in the same order, with the same stats…
+    expect(dungeon.enemies).toEqual(
+      central.enemies.map((e: Json) => ({ key: e.key, name: e.name, enabled: e.enabled, attack: e.attack, defense: e.defense, hp: e.hp })),
+    );
     expect(dungeon.enemies.map((e: Json) => e.key)).toEqual(shipped.map((e) => e.key));
-    expect(dungeon.enemies.find((e: Json) => e.key === 'ecosystem_sucker')).toEqual({
+    // …and the picker row (tags, artwork) is the catalogue's own.
+    expect(central.enemies.find((e: Json) => e.key === 'ecosystem_sucker')).toEqual({
       key: 'ecosystem_sucker',
       name: 'Ecosystem Sucker',
       enabled: true,
@@ -203,21 +231,21 @@ describe('the shipped enemies', () => {
         spritePlacement: { anchor: 'bottom-right', scaleBasisPoints: 8500, offsetX: 0, offsetY: 0 },
       },
     });
-    expect(dungeon.enemies.find((e: Json) => e.key === 'scrapyard_drone').visual.artworkPath).toBe('combat/enemies/scrapyard_drone.webp');
+    expect(central.enemies.find((e: Json) => e.key === 'scrapyard_drone').visual.artworkPath).toBe('combat/enemies/scrapyard_drone.webp');
   });
 
-  it('show where they are used: the shipped zone and the shipped Trials', async () => {
+  it('show where they are used: a dungeon and the shipped Trials', async () => {
     const drone = await getEnemy('scrapyard_drone');
     expect(drone.references).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ kind: 'dungeon_zone', key: ZONE, name: 'Scrapheap Gauntlet' }),
+        { kind: 'dungeon_zone', key: DUNGEON, name: DUNGEON_NAME, usage: 'draft: room "Hall" combat "guards"' },
         expect.objectContaining({ kind: 'combat_trial', usage: 'primary enemy' }),
       ]),
     );
     expect(drone.usageCount).toBe(drone.references.length);
     expect((await data('/admin/enemies/scrapyard_drone/references')).references).toEqual(drone.references);
     const boss = await getEnemy('scrapheap_colossus');
-    expect(boss.references).toContainEqual({ kind: 'dungeon_zone', key: ZONE, name: 'Scrapheap Gauntlet', usage: 'boss pool' });
+    expect(boss.references).toContainEqual({ kind: 'dungeon_zone', key: DUNGEON, name: DUNGEON_NAME, usage: 'draft: room "Hall" boss "chief"' });
   });
 });
 
@@ -301,7 +329,7 @@ describe('create, edit, disable', () => {
     expect(back).toMatchObject({ matchesShipped: true, attack: 45 });
   });
 
-  it('disables and re-enables; a disabled enemy stays listed, flagged, and out of new dungeon content', async () => {
+  it('disables and re-enables; a disabled enemy stays listed, and dungeon content that names it is flagged', async () => {
     const current = await getEnemy('api_made');
     const off = await call('PUT', '/admin/enemies/api_made/enabled', { enabled: false, expectedRevision: current.revision });
     expect(off.statusCode, off.body).toBe(200);
@@ -309,35 +337,50 @@ describe('create, edit, disable', () => {
     expect((await data('/admin/enemies')).enemies.find((e: Json) => e.key === 'api_made').enabled).toBe(false);
     expect((await data('/admin/dungeons/reference')).enemies.find((e: Json) => e.key === 'api_made').enabled).toBe(false);
 
-    // The Dungeon editor cannot add it…
-    const zone = await data(`/admin/dungeons/zones/${ZONE}`);
-    const withDisabled = { ...zone.zone, pools: { ...zone.zone.pools, elite: [...zone.zone.pools.elite, { id: 'api_made', enemyKey: 'api_made', weight: 5 }] } };
-    const refused = await call('PUT', `/admin/dungeons/zones/${ZONE}`, { zone: withDisabled, expectedRevision: zone.revision });
-    expect(refused.statusCode).toBe(400);
-    expect(refused.json().error.details.issues).toContainEqual(
-      expect.objectContaining({ severity: 'error', message: expect.stringContaining('is disabled and cannot be added') }),
+    // The Dungeon editor is told: a definition that adds it is flagged, by a stable code…
+    const dungeon = await getDungeon();
+    const withDisabled = withWave(dungeon.draft, 'api_made');
+    const flagged = await call('POST', '/admin/dungeons/validate', { definition: withDisabled });
+    expect(flagged.statusCode, flagged.body).toBe(200);
+    expect(flagged.json().data.issues).toContainEqual(
+      expect.objectContaining({
+        code: 'enemy_disabled',
+        path: 'rooms[0].actions[0].waves[1].enemy',
+        severity: 'warning',
+        message: expect.stringContaining('"api_made" is disabled'),
+      }),
     );
 
     const stale = await call('PUT', '/admin/enemies/api_made/enabled', { enabled: true, expectedRevision: current.revision });
     expect(stale.json().error.code).toBe('ENEMY_STALE');
     const on = await call('PUT', '/admin/enemies/api_made/enabled', { enabled: true, expectedRevision: current.revision + 1 });
     expect(on.json().data.enabled).toBe(true);
-    // …and can once it is back.
-    const accepted = await call('PUT', `/admin/dungeons/zones/${ZONE}`, { zone: withDisabled, expectedRevision: zone.revision });
+    // …and is not once it is back.
+    const accepted = await call('PUT', `/admin/dungeons/definitions/${DUNGEON}/draft`, {
+      definition: withDisabled,
+      expectedRevision: dungeon.draftRevision,
+    });
     expect(accepted.statusCode, accepted.body).toBe(200);
-    expect((await getEnemy('api_made')).references).toEqual([{ kind: 'dungeon_zone', key: ZONE, name: 'Scrapheap Gauntlet', usage: 'elite pool' }]);
+    expect(accepted.json().data.issues.filter((i: Json) => i.code === 'enemy_disabled')).toEqual([]);
+    expect((await getEnemy('api_made')).references).toEqual([{ kind: 'dungeon_zone', key: DUNGEON, name: DUNGEON_NAME, usage: SECOND_WAVE_USAGE }]);
   });
 
-  it('disabling an enemy a zone already uses keeps the reference and warns on both sides', async () => {
+  it('disabling an enemy a dungeon already uses keeps the reference and warns on both sides', async () => {
     const current = await getEnemy('api_made');
     const off = (await call('PUT', '/admin/enemies/api_made/enabled', { enabled: false, expectedRevision: current.revision })).json().data;
     expect(off.issues).toEqual([expect.objectContaining({ path: 'enabled', severity: 'warning' })]);
-    const zone = await data(`/admin/dungeons/zones/${ZONE}`);
-    expect(zone.zone.pools.elite.map((e: Json) => e.enemyKey)).toContain('api_made');
-    expect(zone.issues).toContainEqual(expect.objectContaining({ severity: 'warning', message: expect.stringContaining('"api_made" is disabled') }));
-    // The zone still saves with the reference in place.
-    const resaved = await call('PUT', `/admin/dungeons/zones/${ZONE}`, { zone: zone.zone, expectedRevision: zone.revision });
+    const dungeon = await getDungeon();
+    expect(guardsOf(dungeon.draft)).toContain('api_made');
+    expect(dungeon.issues).toContainEqual(
+      expect.objectContaining({ code: 'enemy_disabled', severity: 'warning', message: expect.stringContaining('"api_made" is disabled') }),
+    );
+    // The dungeon still saves with the reference in place.
+    const resaved = await call('PUT', `/admin/dungeons/definitions/${DUNGEON}/draft`, {
+      definition: dungeon.draft,
+      expectedRevision: dungeon.draftRevision,
+    });
     expect(resaved.statusCode, resaved.body).toBe(200);
+    expect(guardsOf(resaved.json().data.draft)).toContain('api_made');
     await call('PUT', '/admin/enemies/api_made/enabled', { enabled: true, expectedRevision: off.revision });
   });
 });
@@ -369,7 +412,7 @@ describe('duplicate, delete, export', () => {
     expect(refused.statusCode).toBe(409);
     expect(refused.json().error).toMatchObject({
       code: 'ENEMY_IN_USE',
-      details: { shipped: false, references: [{ kind: 'dungeon_zone', key: ZONE, name: 'Scrapheap Gauntlet', usage: 'elite pool' }] },
+      details: { shipped: false, references: [{ kind: 'dungeon_zone', key: DUNGEON, name: DUNGEON_NAME, usage: SECOND_WAVE_USAGE }] },
     });
     const shipped = await getEnemy('fedora_imp');
     const shippedRefusal = await call('DELETE', `/admin/enemies/fedora_imp?expectedRevision=${shipped.revision}`);

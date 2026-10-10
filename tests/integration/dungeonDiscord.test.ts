@@ -1,17 +1,18 @@
 /**
- * Dungeons on Discord: the main-menu entry, the home, the zone screen, Start
- * Run, the node and result screens, branch buttons, extraction, defeat,
- * completion, abandon, the configured currency name, artwork fallback, and
- * what a stale or double-clicked button paints — driven through the real
- * handlers and presenter against the real service and database.
+ * Delve on Discord: the home, the dungeon screen, Start Run, the run screen
+ * (fights and their waves, optional actions, the ways on, locked ways),
+ * extraction, abandoning, what a stale or double-clicked button paints, the
+ * locked view, malformed custom ids, Discord's component limits, and resuming
+ * a run after a restart — driven through the real handlers and presenter
+ * against the real services and database.
  */
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { AttachmentBuilder } from 'discord.js';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { players } from '../../src/db/schema';
+import { dungeonRunEvents, dungeonRuns } from '../../src/db/schema';
 
 vi.mock('../../src/discord/assets/attachRenderedCard', () => ({
   ownedArtworkImage: vi.fn(() => ({
@@ -21,40 +22,39 @@ vi.mock('../../src/discord/assets/attachRenderedCard', () => ({
 }));
 
 import {
-  dungeonLegendLine,
-  menuComponents,
-} from '../../src/discord/commands/waifumon';
-import {
   handleDungeonAbandon,
   handleDungeonAbandonConfirm,
-  handleDungeonEnter,
+  handleDungeonAct,
   handleDungeonExtract,
   handleDungeonExtractConfirm,
   handleDungeonHome,
-  handleDungeonResolve,
+  handleDungeonMove,
   handleDungeonRun,
   handleDungeonStart,
   handleDungeonZone,
 } from '../../src/discord/commands/waifumonDungeon';
 import {
-  NO_ZONES,
-  DAILY_LIMIT_NOTICE,
-  DELVE_CLOSED_NOTICE,
   DUNGEON_TITLE,
   EQUIPMENT_NOTE,
   LOCKED_DUNGEONS,
-  REPLAYED_NOTICE,
-  RUN_ACTIVE_NOTICE,
   RUN_NOT_FOUND,
   RUN_OVER_NOTICE,
-  STALE_NOTICE,
-  ZONE_UNAVAILABLE,
+  STALE_STEP_NOTICE,
   dgId,
 } from '../../src/discord/dungeonPresenter';
 import { parseCustomId, type AppContext, type Provisioned } from '../../src/discord/types';
-import type { DungeonRunView } from '../../src/modules/dungeons/dungeonPlayService';
-import type { EquipmentEntryState } from '../../src/modules/onboarding/onboardingState';
-import { CURRENCY, atCompleted, createDungeonWorld, walk, type DungeonWorld } from '../helpers/dungeonPlayFixtures';
+import { createDungeonAllowanceService } from '../../src/modules/dungeons/dungeonAllowanceService';
+import { createDungeonContentService } from '../../src/modules/dungeons/dungeonContentService';
+import { createDungeonRunService } from '../../src/modules/dungeons/dungeonRunService';
+import { dungeonEnemyReferences } from '../../src/modules/enemies/enemyReferences';
+import { createEnemyCatalogueService } from '../../src/modules/enemies/enemyService';
+import { shippedCombatEnemies } from '../../src/modules/enemies/enemyStore';
+import { createCombatStatsService } from '../../src/modules/equipment/combatStatsService';
+import { createEquipmentRewardService } from '../../src/modules/equipment/equipmentRewardService';
+import { createProgressionCurrencyService } from '../../src/modules/progressionCurrency/progressionCurrencyService';
+import { FIXED_RULES, TEST_ENEMIES, singleRoomDungeon, testDungeonInput } from '../helpers/dungeonFixtures';
+import { TEST_DAILY_TIMEZONE, createDungeonWorld, type DungeonWorld } from '../helpers/dungeonWorld';
+import { buildEquipmentServices } from '../helpers/equipmentFixtures';
 import { silentLogger } from '../helpers/testDb';
 
 interface ButtonJson {
@@ -76,43 +76,46 @@ interface Payload {
   components?: { toJSON(): { components: ButtonJson[] } }[];
   files?: unknown[];
 }
+type Handler = (ctx: AppContext, i: never, prov: Provisioned, args: string[]) => Promise<unknown>;
 
 const MAIN = 'dc_main';
-const DOOMED = 'dc_doomed';
-const BARE = 'dc_bare';
+const HUB = 'dc_hub';
+const MALFORMED = 'That button is malformed — re-open Delve from /waifumon.';
+/** Discord's limits: a custom id, the buttons of one row, the rows of one message. */
+const MAX_CUSTOM_ID = 100;
+const MAX_ROW_BUTTONS = 5;
+const MAX_ROWS = 5;
+/** What the starter build loses to a grunt or a sentinel under the fixed rules (`dungeonFixtures`). */
+const WAVE_DAMAGE = 36;
+const MAX_HP = 370;
+/** Seven ways out of one room, each with an id as long as a connection id may be. */
+const HUB_WAYS = Array.from({ length: 7 }, (_, n) => `way_${n + 1}_${'x'.repeat(40 - `way_${n + 1}_`.length)}`);
 
 let w: DungeonWorld;
 let ctx: AppContext;
-const assetsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dg-assets-'));
+/** Every screen any test painted, for the component-limit check at the end. */
+const everyScreen: Payload[] = [];
+const assetsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dg-discord-assets-'));
 
 beforeAll(async () => {
   w = await createDungeonWorld();
-  await w.zone(MAIN, (z) => {
-    z.name = 'Rust Warrens';
-    z.description = 'Pipes, mostly.';
-    z.artworkPath = 'dungeons/zones/dc_main.webp';
-    z.backgroundArtworkPath = 'dungeons/backgrounds/dc_main.webp';
-  });
-  await w.zone(DOOMED, (z) => {
-    z.name = 'Dead End';
-    z.pools.boss = [{ id: 'brute', enemyKey: 'brute', weight: 10 }];
-    // No zone artwork on disk: only the background is deployed.
-    z.artworkPath = 'dungeons/zones/dc_doomed.webp';
-    z.backgroundArtworkPath = 'dungeons/backgrounds/dc_doomed.webp';
-  });
-  await w.zone(BARE, (z) => {
-    z.name = 'Bare Rock';
-    z.pools.combat = [{ id: 'sentinel', enemyKey: 'sentinel', weight: 10 }];
-  });
-  for (const file of ['combat/enemies/grunt.webp', 'dungeons/zones/dc_main.webp', 'dungeons/backgrounds/dc_doomed.webp']) {
-    fs.mkdirSync(path.join(assetsDir, path.dirname(file)), { recursive: true });
-    fs.writeFileSync(path.join(assetsDir, file), 'webp');
-  }
+  const main = testDungeonInput(MAIN);
+  main.name = 'Rust Warrens';
+  main.description = 'Pipes, mostly.';
+  await w.publish(main);
+  await w.publish(
+    singleRoomDungeon([{ id: 'pull', type: 'set_flag', flag: 'lever' }], (d) => {
+      d.key = HUB;
+      d.name = 'Seven Doors';
+      d.rooms = [d.rooms[0]!, ...HUB_WAYS.map((_, n) => ({ id: `out_${n + 1}`, name: `Out ${n + 1}`, kind: 'exit' as const }))];
+      d.connections = HUB_WAYS.map((id, n) => ({ id, from: 'hall', to: `out_${n + 1}` }));
+    }),
+  );
   ctx = {
     config: { assetsDir },
     logger: silentLogger(),
-    content: w.content.current,
-    services: { dungeonPlay: w.play, collection: w.app.collection },
+    content: w.app.content,
+    services: { dungeonRuns: w.runs, dungeonContent: w.content, dungeonAllowance: w.allowance, collection: w.app.collection },
   } as unknown as AppContext;
 });
 afterAll(async () => {
@@ -123,781 +126,710 @@ afterAll(async () => {
 function click() {
   const painted: Payload[] = [];
   const paint = vi.fn(async (body: unknown) => {
-    painted.push(typeof body === 'string' ? { content: body } : (body as Payload));
+    const payload = typeof body === 'string' ? { content: body } : (body as Payload);
+    painted.push(payload);
+    everyScreen.push(payload);
   });
   const i = { replied: false, deferred: false, isButton: () => true, isStringSelectMenu: () => false, update: paint, reply: paint, editReply: paint, followUp: paint };
   return { i: i as never, last: () => painted[painted.length - 1]! };
 }
 const embedOf = (p: Payload) => p.embeds![0]!.toJSON();
-const buttonsOf = (p: Payload) => (p.components ?? []).flatMap((row) => row.toJSON().components);
+const rowsOf = (p: Payload) => (p.components ?? []).map((row) => row.toJSON().components);
+const buttonsOf = (p: Payload) => rowsOf(p).flat();
 const labelsOf = (p: Payload) => buttonsOf(p).map((b) => b.label);
 const fieldOf = (p: Payload, name: string | RegExp) =>
   embedOf(p).fields?.find((f) => (typeof name === 'string' ? f.name === name : name.test(f.name)));
 const textOf = (p: Payload) => {
-  const e = embedOf(p);
+  const e = p.embeds?.[0]?.toJSON() ?? {};
   return [p.content, e.title, e.description, ...(e.fields ?? []).flatMap((f) => [f.name, f.value])].join('\n');
 };
-const argsOf = (id: string) => {
+/** What a screen shows, without the attachment objects: comparable across two paints. */
+const shapeOf = (p: Payload) => ({ content: p.content, embeds: (p.embeds ?? []).map((e) => e.toJSON()), rows: rowsOf(p) });
+const partsOf = (id: string) => {
   const parsed = parseCustomId(id);
   if (!parsed || parsed === 'unknown_version') throw new Error(`not a wm id: ${id}`);
-  return parsed.args;
+  return parsed;
 };
-/** Click the button with `label` on `screen` through `handler`. */
-async function press(
-  prov: Provisioned,
-  screen: Payload,
-  label: string | RegExp,
-  handler: (ctx: AppContext, i: never, prov: Provisioned, args: string[]) => Promise<unknown>,
-): Promise<Payload> {
+const argsOf = (id: string) => partsOf(id).args;
+/** `dg|act|12|0|a` — a custom id without the prefix and version every wm id carries. */
+const routeOf = (button: ButtonJson) => {
+  const { scope, action, args } = partsOf(button.custom_id!);
+  return [scope, action, ...args].join('|');
+};
+const buttonOf = (screen: Payload, label: string | RegExp): ButtonJson => {
   const button = buttonsOf(screen).find((b) => (typeof label === 'string' ? b.label === label : label.test(b.label ?? '')));
   if (!button) throw new Error(`no button ${String(label)} among ${labelsOf(screen).join(', ')}`);
+  return button;
+};
+const HANDLERS: Readonly<Record<string, Handler>> = {
+  zone: handleDungeonZone,
+  start: handleDungeonStart,
+  run: handleDungeonRun,
+  act: handleDungeonAct,
+  mv: handleDungeonMove,
+  exq: handleDungeonExtractConfirm,
+  ex: handleDungeonExtract,
+  abq: handleDungeonAbandonConfirm,
+  ab: handleDungeonAbandon,
+};
+/** Click one button, routed by its own custom id the way `client.ts` routes it. */
+async function clickButton(prov: Provisioned, button: ButtonJson, on: AppContext = ctx): Promise<Payload> {
+  const { scope, action, args } = partsOf(button.custom_id!);
+  expect(scope).toBe('dg');
   const c = click();
-  await handler(ctx, c.i, prov, argsOf(button.custom_id!));
+  if (action === 'home') await handleDungeonHome(on, c.i, prov);
+  else await HANDLERS[action]!(on, c.i, prov, args);
   return c.last();
 }
-async function paint(prov: Provisioned, run: Pick<DungeonRunView, 'id'>): Promise<Payload> {
+const press = (prov: Provisioned, screen: Payload, label: string | RegExp) => clickButton(prov, buttonOf(screen, label));
+async function call(handler: Handler, prov: Provisioned, args: string[], on: AppContext = ctx): Promise<Payload> {
   const c = click();
-  await handleDungeonRun(ctx, c.i, prov, [String(run.id)]);
+  await handler(on, c.i, prov, args);
   return c.last();
 }
-async function begin(zoneKey = MAIN, seed?: number) {
-  const { playerId } = await w.player();
-  const prov = { playerId, guildDbId: 1 } as Provisioned;
-  const run = await w.play.start(playerId, zoneKey, seed !== undefined ? { seed } : {});
-  return { playerId, prov, run };
+async function home(prov: Provisioned): Promise<Payload> {
+  const c = click();
+  await handleDungeonHome(ctx, c.i, prov);
+  return c.last();
+}
+async function newPlayer(opts: Parameters<DungeonWorld['player']>[0] = {}) {
+  const { playerId } = await w.player(opts);
+  return { playerId, prov: { playerId, guildDbId: 1 } as Provisioned };
+}
+/** A fresh player on the first screen of a run. */
+async function begin(dungeonKey = MAIN) {
+  const { playerId, prov } = await newPlayer();
+  const screen = await call(handleDungeonStart, prov, [dungeonKey]);
+  const run = (await w.runs.activeRun(playerId))!;
+  return { playerId, prov, screen, runId: run.id };
+}
+const runRow = async (runId: number) => (await w.t.db.select().from(dungeonRuns).where(eq(dungeonRuns.id, runId)))[0]!;
+const eventsOf = (runId: number, type: (typeof dungeonRunEvents.$inferSelect)['type']) =>
+  w.t.db
+    .select()
+    .from(dungeonRunEvents)
+    .where(and(eq(dungeonRunEvents.runId, runId), eq(dungeonRunEvents.type, type)));
+const allEvents = (runId: number) =>
+  w.t.db.select().from(dungeonRunEvents).where(eq(dungeonRunEvents.runId, runId)).orderBy(dungeonRunEvents.id);
+/** The button that carries out the pending action: the one `dg|act|…|a` on the screen. */
+const advanceButton = (screen: Payload) => buttonsOf(screen).find((b) => /^dg\|act\|\d+\|\d+\|a$/.test(routeOf(b)));
+const moveButtons = (screen: Payload) => buttonsOf(screen).filter((b) => routeOf(b).startsWith('dg|mv|'));
+/** Carry out pending actions until the room offers its ways on (or the run ends). */
+async function clearRoom(prov: Provisioned, screen: Payload): Promise<Payload> {
+  let current = screen;
+  for (let guard = 0; guard < 20; guard++) {
+    const next = advanceButton(current);
+    if (!next) return current;
+    current = await clickButton(prov, next);
+  }
+  throw new Error(`the room never finished: ${labelsOf(current).join(', ')}`);
+}
+/** gate → locker room → bulkhead, every room cleared: the extraction point, with the boss door still sealed. */
+async function reachBulkhead() {
+  const started = await begin();
+  const gate = await clearRoom(started.prov, started.screen);
+  const locker = await clearRoom(started.prov, await press(started.prov, gate, 'Side door'));
+  const bulkhead = await clearRoom(started.prov, await press(started.prov, locker, '→ Bulkhead'));
+  return { ...started, screen: bulkhead };
 }
 
-/* ───────────────────────── main menu ───────────────────────── */
-
-describe('main-menu entry', () => {
-  const care = { active: false, enabled: true, currentEnergy: 5 } as never;
-  const menu = (entry: EquipmentEntryState, dungeons = true, careState = care) =>
-    menuComponents(careState, true, entry, true, dungeons).map((row) => row.toJSON().components as ButtonJson[]);
-
-  it('offers ⛏️ Delve once Equipment is unlocked', () => {
-    const button = menu('available').flat().find((b) => b.custom_id === dgId.home());
-    expect(button).toMatchObject({ label: 'Delve', emoji: { name: '⛏️' } });
-    expect(dungeonLegendLine('available', true)).toContain('Delve');
-  });
-
-  it.each(['hidden', 'begin', 'resume'] as const)('is absent without the unlock (%s)', (entry) => {
-    expect(menu(entry).flat().some((b) => b.custom_id?.includes('|dg|'))).toBe(false);
-    expect(dungeonLegendLine(entry, true)).toBe('');
-  });
-
-  it('is absent when the service is not wired, and defaults off for older callers', () => {
-    expect(menu('available', false).flat().some((b) => b.custom_id?.includes('|dg|'))).toBe(false);
-    const older = menuComponents(care, true, 'available', true).flatMap((r) => r.toJSON().components as ButtonJson[]);
-    expect(older.some((b) => b.custom_id?.includes('|dg|'))).toBe(false);
-  });
-
-  it('spills onto a fourth row rather than overfill the third', () => {
-    const rows = menu('available', true, { active: true, enabled: true, currentEnergy: 5 } as never);
-    expect(rows).toHaveLength(4);
-    for (const row of rows) expect(row.length).toBeLessThanOrEqual(5);
-    expect(rows[3]!.map((b) => b.custom_id)).toEqual([dgId.home()]);
-    // With room to spare it stays on the third.
-    expect(menu('available')).toHaveLength(3);
-  });
-});
-
-/* ───────────────────────── home and zone ───────────────────────── */
+/* ───────────────────────── home and dungeon screen ───────────────────────── */
 
 describe('the home', () => {
-  it('lists the open zones with a button each, the depth range and the balance', async () => {
-    const { playerId } = await w.player();
-    const c = click();
-    await handleDungeonHome(ctx, c.i, { playerId, guildDbId: 1 } as Provisioned);
-    const screen = c.last();
+  it('lists the published dungeons with a button each', async () => {
+    const { prov } = await newPlayer();
+    const screen = await home(prov);
     expect(embedOf(screen).title).toBe(DUNGEON_TITLE);
-    const zone = fieldOf(screen, 'Rust Warrens')!;
-    expect(zone.value).toContain('Pipes, mostly.');
-    expect(zone.value).toMatch(/Depth: \*\*\d+–\d+\*\* nodes · ends in a boss/);
-    expect(zone.value).toContain('you hold **0 Ascension Tokens**');
-    expect(buttonsOf(screen).find((b) => b.label === 'Rust Warrens')!.custom_id).toBe(dgId.zone(MAIN));
+    expect(embedOf(screen).description).toContain('Current location: **Waifu Valley**');
+    const card = fieldOf(screen, 'Rust Warrens')!;
+    expect(card.value).toContain('_Pipes, mostly._');
+    expect(card.value).toContain('**5** rooms · ends in a boss');
+    expect(card.value).toContain('you hold **0 Ascension Tokens**');
+    expect(buttonOf(screen, 'Rust Warrens').custom_id).toBe(dgId.zone(MAIN));
+    expect(routeOf(buttonOf(screen, 'Rust Warrens'))).toBe(`dg|zone|${MAIN}`);
+    expect(routeOf(buttonOf(screen, 'Seven Doors'))).toBe(`dg|zone|${HUB}`);
     expect(labelsOf(screen)).toContain('Back to Waifumon');
   });
 
-  it('shows the locked screen to a player without Equipment, on every route', async () => {
-    const { playerId } = await w.player({ unlocked: false });
-    const prov = { playerId, guildDbId: 1 } as Provisioned;
-    for (const go of [
-      (c: ReturnType<typeof click>) => handleDungeonHome(ctx, c.i, prov),
-      (c: ReturnType<typeof click>) => handleDungeonZone(ctx, c.i, prov, [MAIN]),
-      (c: ReturnType<typeof click>) => handleDungeonStart(ctx, c.i, prov, [MAIN]),
-      (c: ReturnType<typeof click>) => handleDungeonResolve(ctx, c.i, prov, ['1', 'n1']),
-    ]) {
-      const c = click();
-      await go(c);
-      expect(c.last().content).toBe(LOCKED_DUNGEONS);
-    }
+  it('does not list a dungeon that was never published, or one that is disabled', async () => {
+    const draft = testDungeonInput('dc_draft');
+    draft.name = 'Still A Draft';
+    await w.content.create({ definition: draft }, 'test');
+    const off = testDungeonInput('dc_off');
+    off.name = 'Switched Off';
+    await w.publish(off);
+    await w.content.setEnabled('dc_off', false, 'test');
+
+    const { prov } = await newPlayer();
+    const screen = await home(prov);
+    expect(labelsOf(screen)).not.toContain('Still A Draft');
+    expect(labelsOf(screen)).not.toContain('Switched Off');
+    expect(textOf(screen)).not.toMatch(/Still A Draft|Switched Off/);
+    expect(labelsOf(screen)).toEqual(expect.arrayContaining(['Rust Warrens', 'Seven Doors']));
   });
 
-  it('shows the active run with Resume and Abandon instead of the zones', async () => {
-    const { prov, run } = await begin();
-    const c = click();
-    await handleDungeonHome(ctx, c.i, prov);
-    const screen = c.last();
-    expect(embedOf(screen).description).toContain('Rust Warrens');
-    expect(fieldOf(screen, 'Where')!.value).toMatch(/^Depth 1 \/ \d+ — /);
-    expect(fieldOf(screen, 'Nebula Nurse')!.value).toContain('HP **370 / 370**');
+  it('shows the active run with Resume and Abandon instead of the dungeons', async () => {
+    const { prov, runId } = await begin();
+    const screen = await home(prov);
+    expect(embedOf(screen).description).toContain('You have a run in progress in **Rust Warrens**.');
+    expect(fieldOf(screen, 'Where')!.value).toBe('Gate — 0 / 5 rooms cleared');
+    expect(fieldOf(screen, 'Nebula Nurse')!.value).toContain(`HP **${MAX_HP} / ${MAX_HP}**`);
     expect(fieldOf(screen, 'Unbanked Ascension Tokens')!.value).toBe('0 Ascension Tokens');
     expect(fieldOf(screen, 'Secured')!.value).toBe('Nothing yet.');
     expect(labelsOf(screen)).toEqual(['Resume', 'Abandon', 'Back to Waifumon']);
-    expect(buttonsOf(screen)[0]!.custom_id).toBe(dgId.run(run.id));
+    expect(routeOf(buttonOf(screen, 'Resume'))).toBe(`dg|run|${runId}`);
+    expect(routeOf(buttonOf(screen, 'Abandon'))).toBe(`dg|abq|${runId}`);
 
-    const resumed = await press(prov, screen, 'Resume', handleDungeonRun);
-    expect(embedOf(resumed).title).toMatch(/^Rust Warrens — Depth 1 \/ \d+$/);
+    const resumed = await press(prov, screen, 'Resume');
+    expect(embedOf(resumed).title).toBe('Rust Warrens — Gate');
   });
 });
 
-describe('the zone screen', () => {
-  it('shows the Buddy, the rules of the run and Start Run', async () => {
-    const { playerId } = await w.player();
-    const c = click();
-    await handleDungeonZone(ctx, c.i, { playerId, guildDbId: 1 } as Provisioned, [MAIN]);
-    const screen = c.last();
+describe('the dungeon screen', () => {
+  it('shows the Buddy, the rules of the run and Start Run — and starts nothing', async () => {
+    const { playerId, prov } = await newPlayer();
+    const screen = await press(prov, await home(prov), 'Rust Warrens');
     expect(embedOf(screen).title).toBe('Rust Warrens');
     expect(fieldOf(screen, 'Your Buddy — Nebula Nurse')!.value).toContain('ATK 83 · DEF 65 · HP 370');
+    expect(fieldOf(screen, 'The run')!.value).toContain('**5** rooms, ending in a boss');
     expect(fieldOf(screen, 'The run')!.value).toContain('If you fall, you keep 25%.');
     expect(fieldOf(screen, 'Locked in')!.value).toBe(EQUIPMENT_NOTE);
     expect(buttonsOf(screen)[0]).toMatchObject({ label: 'Start Run', custom_id: dgId.start(MAIN) });
+    expect(routeOf(buttonsOf(screen)[0]!)).toBe(`dg|start|${MAIN}`);
     expect(buttonsOf(screen)[0]!.disabled).toBeFalsy();
-    expect(embedOf(screen).image?.url).toBe('attachment://dungeon-dc-main.webp');
     expect(embedOf(screen).thumbnail?.url).toBe('attachment://waifumon-buddy.webp');
+    expect(await w.runs.activeRun(playerId)).toBeNull();
   });
 
   it('disables Start Run and points at the fix when the loadout is incomplete', async () => {
-    const { playerId } = await w.player({ starters: false });
-    const c = click();
-    await handleDungeonZone(ctx, c.i, { playerId, guildDbId: 1 } as Provisioned, [MAIN]);
-    const screen = c.last();
+    const { playerId, prov } = await newPlayer({ starters: false });
+    const screen = await call(handleDungeonZone, prov, [MAIN]);
     expect(buttonsOf(screen)[0]).toMatchObject({ label: 'Start Run', disabled: true });
     expect(labelsOf(screen)).toContain('Equipment');
     expect(textOf(screen)).toContain('Can’t start yet');
     // A forged Start click is refused by the service and lands back here.
-    const forged = click();
-    await handleDungeonStart(ctx, forged.i, { playerId, guildDbId: 1 } as Provisioned, [MAIN]);
-    expect(forged.last().content).toBe('Equip Attack, Defense and Health gear before fighting.');
-    expect(await w.play.activeRun(playerId)).toBeNull();
-  });
-
-  it('answers an unknown zone with the home, and a malformed key with a refusal', async () => {
-    const { playerId } = await w.player();
-    const prov = { playerId, guildDbId: 1 } as Provisioned;
-    const c = click();
-    await handleDungeonStart(ctx, c.i, prov, ['no_such_zone']);
-    expect(c.last().content).toBe(ZONE_UNAVAILABLE);
-    expect(embedOf(c.last()).title).toBe(DUNGEON_TITLE);
-    const bad = click();
-    await handleDungeonZone(ctx, bad.i, prov, ['Not A Key']);
-    expect(bad.last().content).toContain('malformed');
+    const forged = await call(handleDungeonStart, prov, [MAIN]);
+    expect(forged.content).toBe('Equip Attack, Defense and Health gear before fighting.');
+    expect(embedOf(forged).title).toBe('Rust Warrens');
+    expect(await w.runs.activeRun(playerId)).toBeNull();
   });
 });
 
-/* ───────────────────────── daily runs ───────────────────────── */
+/* ───────────────────────── fights and stale buttons ───────────────────────── */
 
-describe('daily runs', () => {
-  const home = async (prov: Provisioned) => {
-    const c = click();
-    await handleDungeonHome(ctx, c.i, prov);
-    return c.last();
-  };
-  const zoneScreen = async (prov: Provisioned, zoneKey = MAIN) => {
-    const c = click();
-    await handleDungeonZone(ctx, c.i, prov, [zoneKey]);
-    return c.last();
-  };
-  const spend = async (playerId: number, runs: number) => {
-    for (let i = 0; i < runs; i++) {
-      const run = await w.play.start(playerId, MAIN);
-      await w.play.abandon(playerId, run.id);
-    }
-  };
-  const fresh = async () => {
-    const { playerId } = await w.player();
-    return { playerId, prov: { playerId, guildDbId: 1 } as Provisioned };
-  };
+describe('a fight', () => {
+  it('Start Run shows the first fight, with a Fight button drawn for step 0', async () => {
+    const { prov } = await newPlayer();
+    const detail = await call(handleDungeonZone, prov, [MAIN]);
+    const screen = await press(prov, detail, 'Start Run');
+    const run = (await w.runs.activeRun(prov.playerId))!;
 
-  it('shows the allowance on the home and counts it down as runs are started', async () => {
-    const { playerId, prov } = await fresh();
-    expect(embedOf(await home(prov)).description).toMatch(/^Current location: \*\*Waifu Valley\*\*\nDaily Runs: \*\*3 \/ 3\*\* remaining\n/);
-    await spend(playerId, 1);
-    expect(embedOf(await home(prov)).description).toContain('Daily Runs: **2 / 3** remaining');
-    expect(fieldOf(await zoneScreen(prov), 'Daily runs')!.value).toContain('Daily Runs: **2 / 3** remaining');
-    expect(fieldOf(await zoneScreen(prov), 'Daily runs')!.value).toContain('Shared across every dungeon');
-    // The other zone shows the same, shared allowance.
-    expect(fieldOf(await zoneScreen(prov, DOOMED), 'Daily runs')!.value).toContain('Daily Runs: **2 / 3** remaining');
-  });
-
-  it('shows the configured limit, never a written 3', async () => {
-    const { playerId, prov } = await fresh();
-    await w.allowance.updateSettings({ dailyRunLimit: 7 });
-    try {
-      await spend(playerId, 2);
-      const screen = await home(prov);
-      expect(embedOf(screen).description).toContain('Daily Runs: **5 / 7** remaining');
-      expect(textOf(screen)).not.toMatch(/\/ 3\b/);
-    } finally {
-      await w.allowance.updateSettings({ dailyRunLimit: 3 });
-    }
-  });
-
-  it('with none left and no run: says so, disables Start Run, and refuses a forged Start', async () => {
-    const { playerId, prov } = await fresh();
-    await spend(playerId, 3);
-    const screen = await home(prov);
-    expect(embedOf(screen).description).toContain('Daily Runs: **0 / 3** remaining');
-    const spent = fieldOf(screen, '⏳ No runs left today')!;
-    expect(spent.value).toContain(DAILY_LIMIT_NOTICE);
-    // When they come back, as a Discord timestamp of the next reset.
-    expect(spent.value).toMatch(/<t:\d+:R>/);
-    // The zones are still listed (to look at), but a zone cannot be started.
-    const zone = await press(prov, screen, 'Rust Warrens', handleDungeonZone);
-    expect(buttonsOf(zone)[0]).toMatchObject({ label: 'Start Run', disabled: true });
-    expect(fieldOf(zone, '⏳ No runs left today')!.value).toContain(DAILY_LIMIT_NOTICE);
-    expect(fieldOf(zone, 'Daily runs')).toBeUndefined();
-
-    // A stale or forged Start click reaches the service, which refuses it.
-    const forged = click();
-    await handleDungeonStart(ctx, forged.i, prov, [MAIN]);
-    expect(forged.last().content).toBe('You’ve used all of today’s Delve runs. They come back at the daily reset.');
-    expect(embedOf(forged.last()).title).toBe(DUNGEON_TITLE);
-    expect(embedOf(forged.last()).description).toContain('Daily Runs: **0 / 3** remaining');
-    expect(await w.play.activeRun(playerId)).toBeNull();
-    expect((await w.allowance.status(playerId)).used).toBe(3);
-  });
-
-  it('with none left and a run in progress: Resume and Abandon still work', async () => {
-    const { playerId, prov } = await fresh();
-    await spend(playerId, 2);
-    const run = await w.play.start(playerId, MAIN);
-    const screen = await home(prov);
-    expect(embedOf(screen).description).toContain('Daily Runs: **0 / 3** remaining');
-    expect(embedOf(screen).description).toContain('this one is still yours to finish');
-    expect(labelsOf(screen)).toEqual(['Resume', 'Abandon', 'Back to Waifumon']);
-    for (const b of buttonsOf(screen)) expect(b.disabled).toBeFalsy();
-    const resumed = await press(prov, screen, 'Resume', handleDungeonRun);
-    expect(embedOf(resumed).title).toMatch(/^Rust Warrens — Depth 1 \//);
-    // The zone screen offers Resume, not a disabled Start.
-    const zone = await zoneScreen(prov);
-    expect(buttonsOf(zone)[0]).toMatchObject({ label: 'Resume Run', custom_id: dgId.run(run.id) });
-    expect(buttonsOf(zone)[0]!.disabled).toBeFalsy();
-    // The run plays on through the buttons.
-    const c = click();
-    await handleDungeonResolve(ctx, c.i, prov, [String(run.id), run.node.id]);
-    expect((await w.play.run(playerId, run.id)).nodeStatus).toBe('completed');
-    expect((await w.allowance.status(playerId)).used).toBe(3);
-  });
-
-  it('a double-clicked Start Run uses one daily run', async () => {
-    const { playerId, prov } = await fresh();
-    const zone = await zoneScreen(prov);
-    const [a, b] = [click(), click()];
-    await Promise.all([handleDungeonStart(ctx, a.i, prov, [MAIN]), handleDungeonStart(ctx, b.i, prov, [MAIN])]);
-    // Both clicks land on the same run screen; one of them with the "already in a dungeon" notice.
-    expect(embedOf(a.last()).title).toBe(embedOf(b.last()).title);
-    expect([a.last().content, b.last().content].filter((t) => t === RUN_ACTIVE_NOTICE)).toHaveLength(1);
-    expect(await w.allowance.status(playerId)).toMatchObject({ used: 1, remaining: 2 });
-    expect(buttonsOf(zone)[0]!.label).toBe('Start Run');
-  });
-
-  it('says Delve is closed when the limit is 0', async () => {
-    const { prov } = await fresh();
-    await w.allowance.updateSettings({ dailyRunLimit: 0 });
-    try {
-      const screen = await home(prov);
-      expect(embedOf(screen).description).toContain('Daily Runs: **0 / 0** remaining');
-      expect(fieldOf(screen, '⏳ No runs left today')!.value).toBe(DELVE_CLOSED_NOTICE);
-      const forged = click();
-      await handleDungeonStart(ctx, forged.i, prov, [MAIN]);
-      expect(forged.last().content).toBe(DELVE_CLOSED_NOTICE);
-    } finally {
-      await w.allowance.updateSettings({ dailyRunLimit: 3 });
-    }
-  });
-});
-
-/* ───────────────────────── a run ───────────────────────── */
-
-describe('Start Run and the node screen', () => {
-  it('starts the run and shows the first node with the snapshotted Buddy', async () => {
-    const seed = await w.seedFor(MAIN, (g) => g.nodes[0]!.type === 'combat');
-    const { playerId } = await w.player();
-    const prov = { playerId, guildDbId: 1 } as Provisioned;
-    const run = await w.play.start(playerId, MAIN, { seed });
-    const screen = await paint(prov, run);
-
-    expect(embedOf(screen).title).toBe(`Rust Warrens — Depth 1 / ${run.depthCount}`);
-    expect(embedOf(screen).description).toBe('⚔️ **Fight**\n**Grunt**\nATK 60 · DEF 0 · HP 150');
-    expect(fieldOf(screen, 'Nebula Nurse')!.value).toBe('HP **370 / 370**\nATK 83 · DEF 65');
-    expect(fieldOf(screen, 'Unbanked Ascension Tokens')!.value).toBe('0 Ascension Tokens');
+    expect(embedOf(screen).title).toBe('Rust Warrens — Gate');
+    expect(embedOf(screen).description).toContain('**Fight**');
+    expect(embedOf(screen).description).toContain('**Grunt**');
+    expect(embedOf(screen).description).toContain('ATK 60 · DEF 0 · HP 150');
+    expect(embedOf(screen).description).toContain('Wave 1 of 2');
+    expect(fieldOf(screen, 'Nebula Nurse')!.value).toContain(`HP **${MAX_HP} / ${MAX_HP}**`);
+    expect(fieldOf(screen, 'Rooms cleared')!.value).toBe('0 / 5');
     expect(labelsOf(screen)).toEqual(['Fight', 'Abandon', 'Back to Waifumon']);
-    expect(buttonsOf(screen)[0]!.custom_id).toBe(dgId.resolve(run.id, run.node.id));
-    // Enemy artwork wins over the zone's for a fight; the Buddy is the thumbnail.
-    expect(embedOf(screen).image?.url).toBe('attachment://dungeon-grunt.webp');
-    expect(embedOf(screen).thumbnail?.url).toBe('attachment://waifumon-buddy.webp');
-    expect(screen.files).toHaveLength(2);
-    // No Gear Score anywhere.
-    expect(textOf(screen)).not.toMatch(/gear score/i);
+    const fight = buttonOf(screen, 'Fight');
+    expect(fight.custom_id).toBe(dgId.advance(run.id, 0));
+    expect(routeOf(fight)).toBe(`dg|act|${run.id}|0|a`);
+    expect(fight.emoji?.name).toBe('⚔️');
+    // A fight is not optional: there is nothing to skip.
+    expect(labelsOf(screen)).not.toContain('Skip');
+    expect(await runRow(run.id)).toMatchObject({ status: 'active', step: 0, currentHp: MAX_HP });
   });
 
-  it('Start Run from the zone screen paints the run, and a second click resumes it', async () => {
-    const { playerId } = await w.player();
-    const prov = { playerId, guildDbId: 1 } as Provisioned;
-    const zone = click();
-    await handleDungeonZone(ctx, zone.i, prov, [MAIN]);
-    const started = await press(prov, zone.last(), 'Start Run', handleDungeonStart);
-    expect(embedOf(started).title).toMatch(/^Rust Warrens — Depth 1 \//);
-    const active = (await w.play.activeRun(playerId))!;
+  it('pressing Fight advances one wave, and the next screen’s button is a next-wave button drawn for step 1', async () => {
+    const { prov, screen, runId } = await begin();
+    const after = await press(prov, screen, 'Fight');
 
-    const again = await press(prov, zone.last(), 'Start Run', handleDungeonStart);
-    expect(again.content).toBe(RUN_ACTIVE_NOTICE);
-    expect(embedOf(again).title).toBe(embedOf(started).title);
-    expect((await w.play.activeRun(playerId))!.id).toBe(active.id);
+    expect(after.content).toBe('');
+    const wave = fieldOf(after, '🏆 Victory — Grunt (wave 1 of 2)')!;
+    expect(wave.value).toContain(`Your HP: ${MAX_HP} → **${MAX_HP - WAVE_DAMAGE}** / ${MAX_HP}`);
+    expect(fieldOf(after, 'Nebula Nurse')!.value).toContain(`HP **${MAX_HP - WAVE_DAMAGE} / ${MAX_HP}**`);
+    expect(embedOf(after).description).toContain('Wave 2 of 2');
+    expect(await runRow(runId)).toMatchObject({ status: 'active', step: 1, currentHp: MAX_HP - WAVE_DAMAGE });
+
+    // Wave 2 reads as the next wave, not as a fresh fight — and names step 1.
+    expect(labelsOf(after)).toEqual(['Next wave', 'Abandon', 'Back to Waifumon']);
+    const next = buttonOf(after, 'Next wave');
+    expect(next.custom_id).toBe(dgId.advance(runId, 1));
+    expect(routeOf(next)).toBe(`dg|act|${runId}|1|a`);
+    expect(labelsOf(after)).not.toContain('Fight');
+    expect(await eventsOf(runId, 'combat_wave_resolved')).toHaveLength(1);
+  });
+
+  it('pressing the same, now stale, step-0 button again changes nothing and says so', async () => {
+    const { prov, screen, runId } = await begin();
+    const stale = buttonOf(screen, 'Fight');
+    expect(routeOf(stale)).toBe(`dg|act|${runId}|0|a`);
+    const fresh = await clickButton(prov, stale);
+    const before = await runRow(runId);
+    expect(before).toMatchObject({ step: 1, currentHp: MAX_HP - WAVE_DAMAGE });
+
+    // The double click, a Discord retry, or the button on an older message.
+    for (let again = 0; again < 2; again++) {
+      const repainted = await clickButton(prov, stale);
+      expect(repainted.content).toBe(STALE_STEP_NOTICE);
+      // The run as it now stands: same HP, same step, the same next-wave button.
+      expect(fieldOf(repainted, 'Nebula Nurse')!.value).toContain(`HP **${MAX_HP - WAVE_DAMAGE} / ${MAX_HP}**`);
+      expect(routeOf(buttonOf(repainted, 'Next wave'))).toBe(`dg|act|${runId}|1|a`);
+      expect(shapeOf(repainted).rows).toEqual(shapeOf(fresh).rows);
+    }
+    const after = await runRow(runId);
+    expect(after).toMatchObject({ status: 'active', step: 1, currentHp: MAX_HP - WAVE_DAMAGE });
+    expect(after).toEqual(before);
+    // One fight was fought, once.
+    expect(await eventsOf(runId, 'combat_wave_resolved')).toHaveLength(1);
+
+    // A stale decline is refused the same way.
+    const declined = await call(handleDungeonAct, prov, [String(runId), '0', 'd']);
+    expect(declined.content).toBe(STALE_STEP_NOTICE);
+    expect(await runRow(runId)).toEqual(before);
+  });
+
+  it('the second wave finishes the fight; the room then pays and offers its ways on', async () => {
+    const { prov, screen, runId } = await begin();
+    const second = await press(prov, await press(prov, screen, 'Fight'), 'Next wave');
+    expect(fieldOf(second, /^🏆 Victory — (Grunt|Sentinel) \(wave 2 of 2\)$/)!.value).toContain(
+      `Your HP: ${MAX_HP - WAVE_DAMAGE} → **${MAX_HP - 2 * WAVE_DAMAGE}** / ${MAX_HP}`,
+    );
+    expect(await eventsOf(runId, 'combat_wave_resolved')).toHaveLength(2);
+
+    const done = await clearRoom(prov, second);
+    expect(advanceButton(done)).toBeUndefined();
+    expect(fieldOf(done, 'Unbanked Ascension Tokens')!.value).toBe('2 Ascension Tokens');
+    expect(fieldOf(done, 'Rooms cleared')!.value).toBe('1 / 5');
+    expect(embedOf(done).description).toContain('**Where to?**');
+    expect((await runRow(runId)).currentHp).toBe(MAX_HP - 2 * WAVE_DAMAGE);
   });
 });
 
-describe('combat', () => {
-  it('shows a compact result and the way on, and replays a double-click', async () => {
-    const seed = await w.seedFor(MAIN, (g) => g.nodes[0]!.type === 'combat' && g.nodes.filter((n) => n.depth === 2).length === 1);
-    const { prov, run } = await begin(MAIN, seed);
-    const node = await paint(prov, run);
-    const result = await press(prov, node, 'Fight', handleDungeonResolve);
+/* ───────────────────────── ways on ───────────────────────── */
 
-    expect(result.content).toBe('');
-    expect(embedOf(result).description).toBe('⚔️ Fight — Grunt');
-    const fight = fieldOf(result, '🏆 Victory — Grunt')!;
-    expect(fight.value).toBe('Your HP: 370 → **334** / 370\nGrunt: 0 / 150\nRounds: 2');
-    const summary = fieldOf(result, 'Combat summary')!.value.split('\n');
-    expect(summary.length).toBeLessThanOrEqual(7);
-    expect(summary.at(-1)).toBe('💥 Grunt is defeated.');
-    expect(fieldOf(result, 'Rewards')!.value).toBe('+2 Ascension Tokens _(unbanked)_');
-    expect(fieldOf(result, 'Unbanked Ascension Tokens')!.value).toBe('2 Ascension Tokens');
-    expect(fieldOf(result, 'Nebula Nurse')!.value).toContain('HP **334 / 370**');
-    const [onward] = buttonsOf(result);
-    expect(onward!.label).toMatch(/^Continue — /);
-    expect(onward!.custom_id).toBe(dgId.enter(run.id, (await w.play.run(prov.playerId, run.id)).next[0]!.id));
+describe('the ways on', () => {
+  it('offers one button per open connection, each naming the run, the step and the connection', async () => {
+    const { prov, screen, runId } = await begin();
+    const gate = await clearRoom(prov, screen);
+    const { step } = await runRow(runId);
 
-    const twice = await press(prov, node, 'Fight', handleDungeonResolve);
-    expect(twice.content).toBe(REPLAYED_NOTICE);
-    expect(fieldOf(twice, '🏆 Victory — Grunt')!.value).toBe(fight.value);
-    expect((await w.play.run(prov.playerId, run.id)).unbankedCurrency).toBe(2);
-
-    const next = await press(prov, result, /^Continue — /, handleDungeonEnter);
-    expect(embedOf(next).title).toBe(`Rust Warrens — Depth 2 / ${run.depthCount}`);
-    expect(next.content).toBe('');
+    const ways = moveButtons(gate);
+    expect(ways.map((b) => [b.label, routeOf(b), b.disabled ?? false])).toEqual([
+      ['→ Pump Room', `dg|mv|${runId}|${step}|c_main`, false],
+      ['Side door', `dg|mv|${runId}|${step}|c_side`, false],
+    ]);
+    expect(ways.map((b) => b.custom_id)).toEqual([dgId.move(runId, step, 'c_main'), dgId.move(runId, step, 'c_side')]);
+    // The gate is no extraction point: there is nothing to extract from.
+    expect(labelsOf(gate)).toEqual(['→ Pump Room', 'Side door', 'Abandon', 'Back to Waifumon']);
   });
 
-  it('offers a button per branch at a fork, and refuses the road not taken', async () => {
-    const { playerId, prov, run } = await begin();
-    const atFork = await walk(w.play, playerId, run, { stopAt: (v) => v.next.length > 1 });
-    const screen = await paint(prov, run);
-    const paths = buttonsOf(screen).filter((b) => b.custom_id?.includes('|enter|'));
-    expect(paths.map((b) => b.custom_id)).toEqual(atFork.next.map((n) => dgId.enter(run.id, n.id)));
-    for (const b of paths) expect(b.label).not.toMatch(/^Continue/);
-    expect(fieldOf(screen, 'Path ahead')!.value.split('\n')).toHaveLength(2);
+  it('moving takes the connection into the next room, and an optional action can be skipped', async () => {
+    const { prov, screen, runId } = await begin();
+    const gate = await clearRoom(prov, screen);
+    const before = await runRow(runId);
 
-    const taken = await press(prov, screen, paths[0]!.label!, handleDungeonEnter);
-    expect(embedOf(taken).title).toContain(`Depth ${atFork.depth + 1}`);
-    const other = click();
-    await handleDungeonEnter(ctx, other.i, prov, argsOf(paths[1]!.custom_id!));
-    expect(other.last().content).toBe(STALE_NOTICE);
-    expect((await w.play.run(playerId, run.id)).node.id).toBe(atFork.next[0]!.id);
+    const locker = await press(prov, gate, 'Side door');
+    expect(locker.content).toBe('');
+    expect(embedOf(locker).title).toBe('Rust Warrens — Locker Room');
+    const after = await runRow(runId);
+    expect(after.step).toBe(before.step + 1);
+    expect(after.cursor).toMatchObject({ roomId: 'locker_room', cameFrom: 'gate' });
+    expect(await eventsOf(runId, 'connection_taken')).toHaveLength(1);
+
+    // The locker is optional: Open, or Skip — both drawn for this step.
+    expect(labelsOf(locker)).toEqual(['Open', 'Skip', 'Abandon', 'Back to Waifumon']);
+    expect(routeOf(buttonOf(locker, 'Open'))).toBe(`dg|act|${runId}|${after.step}|a`);
+    expect(routeOf(buttonOf(locker, 'Skip'))).toBe(`dg|act|${runId}|${after.step}|d`);
+    const skipped = await clearRoom(prov, await press(prov, locker, 'Skip'));
+    expect(fieldOf(skipped, 'Unbanked Ascension Tokens')!.value).toBe('2 Ascension Tokens');
+
+    // The way back to the gate reads as a way back; the way on as a way on.
+    expect(moveButtons(skipped).map((b) => [b.label, b.emoji?.name ?? null])).toEqual([
+      ['→ Gate', '↩️'],
+      ['→ Bulkhead', null],
+    ]);
+
+    // The button that brought us here is stale now: nothing moves.
+    const stale = await clickButton(prov, buttonOf(gate, 'Side door'));
+    expect(stale.content).toBe(STALE_STEP_NOTICE);
+    expect(embedOf(stale).title).toBe('Rust Warrens — Locker Room');
+    expect(await eventsOf(runId, 'connection_taken')).toHaveLength(1);
+  });
+
+  it('renders a locked connection disabled, with its reason, beside the open ones', async () => {
+    const { prov, screen, runId } = await reachBulkhead();
+    const { step } = await runRow(runId);
+    expect(embedOf(screen).title).toBe('Rust Warrens — Bulkhead');
+
+    const ways = moveButtons(screen);
+    expect(ways.map((b) => [b.label, routeOf(b), b.disabled ?? false, b.emoji?.name ?? null])).toEqual([
+      ['Back to the pumps', `dg|mv|${runId}|${step}|c_bulk_pump`, false, null],
+      ['→ The Den', `dg|mv|${runId}|${step}|c_boss`, true, '🔒'],
+    ]);
+    expect(fieldOf(screen, '🔒 Locked')!.value).toBe('**→ The Den** — The bulkhead is sealed.');
+
+    // A forged click on the locked way is refused by the service: the player stays put.
+    const forged = await call(handleDungeonMove, prov, [String(runId), String(step), 'c_boss']);
+    expect(forged.content).toBe('That way is locked.');
+    expect(embedOf(forged).title).toBe('Rust Warrens — Bulkhead');
+    expect(await runRow(runId)).toMatchObject({ step, status: 'active' });
+    expect((await runRow(runId)).cursor).toMatchObject({ roomId: 'bulkhead' });
+  });
+
+  it('opening the valve unlocks the boss door', async () => {
+    const { prov, screen } = await reachBulkhead();
+    const pumps = await clearRoom(prov, await press(prov, screen, 'Back to the pumps'));
+    const back = await press(prov, pumps, '→ Bulkhead');
+    const den = buttonOf(back, '→ The Den');
+    expect(den.disabled ?? false).toBe(false);
+    expect(fieldOf(back, '🔒 Locked')).toBeUndefined();
+    const boss = await clickButton(prov, den);
+    expect(embedOf(boss).title).toBe('Rust Warrens — The Den');
+    expect(embedOf(boss).description).toContain('**Overlord**');
+    expect(buttonOf(boss, 'Fight').emoji?.name).toBe('👑');
   });
 });
 
-describe('rest, reward and extraction', () => {
-  it('shows the rest result and offers Extract beside the way on', async () => {
-    const seed = await w.seedFor(MAIN, (g) => g.nodes[0]!.type === 'combat' && g.nodes[1]!.type === 'rest' && g.nodes[1]!.extraction);
-    const { playerId, prov, run } = await begin(MAIN, seed);
-    const first = (await w.play.resolveNode(playerId, run.id, run.node.id)).run;
-    await w.play.enterNode(playerId, run.id, first.next[0]!.id);
-    const node = await paint(prov, run);
-    expect(embedOf(node).description).toBe('🔥 **Rest**\nA quiet corner. Resting restores **30%** of max HP.');
-    expect(fieldOf(node, '🚪 Extraction point')!.value).toBe('You can leave from here once this node is done.');
-    expect(labelsOf(node)).not.toContain('Extract');
+/* ───────────────────────── extraction and abandoning ───────────────────────── */
 
-    const rested = await press(prov, node, 'Rest', handleDungeonResolve);
-    expect(fieldOf(rested, '🔥 Rested')!.value).toBe('HP 334 → **370** / 370 (+36)');
-    expect(fieldOf(rested, '🚪 Extraction point')!.value).toBe('You can leave here and bank all 2 Ascension Tokens.');
-    expect(labelsOf(rested)).toContain('Extract');
+describe('extraction', () => {
+  it('asks first, then ends the run and banks everything', async () => {
+    const { playerId, prov, screen, runId } = await reachBulkhead();
+    // Gate 2, the locker's 5 and the vault's 7.
+    expect(fieldOf(screen, 'Unbanked Ascension Tokens')!.value).toBe('14 Ascension Tokens');
+    expect(fieldOf(screen, '🚪 Extraction point')!.value).toBe('You can leave here and bank all 14 Ascension Tokens.');
+    expect(routeOf(buttonOf(screen, 'Extract'))).toBe(`dg|exq|${runId}`);
+    const before = await runRow(runId);
 
-    const confirm = await press(prov, rested, 'Extract', handleDungeonExtractConfirm);
+    // The confirmation changes nothing, and its Extract button carries the step it was drawn for.
+    const confirm = await press(prov, screen, 'Extract');
     expect(embedOf(confirm).title).toBe('🚪 Extract from Rust Warrens?');
-    expect(embedOf(confirm).description).toContain('bank all **2 Ascension Tokens**');
+    expect(embedOf(confirm).description).toContain('bank all **14 Ascension Tokens**');
     expect(labelsOf(confirm)).toEqual(['Extract', 'Keep Going']);
-    // Asking changes nothing.
-    expect((await w.play.run(playerId, run.id)).status).toBe('active');
-    expect(embedOf(await press(prov, confirm, 'Keep Going', handleDungeonRun)).title).toMatch(/^Rust Warrens — Depth 2/);
+    expect(routeOf(buttonOf(confirm, 'Extract'))).toBe(`dg|ex|${runId}|${before.step}`);
+    expect(routeOf(buttonOf(confirm, 'Keep Going'))).toBe(`dg|run|${runId}`);
+    expect(await runRow(runId)).toEqual(before);
+    expect(await w.balance(playerId)).toBe(0);
 
-    const out = await press(prov, confirm, 'Extract', handleDungeonExtract);
-    expect(embedOf(out).title).toBe('🚪 Extracted — Rust Warrens');
-    const result = fieldOf(out, 'Result')!.value;
-    expect(result).toContain(`Depth reached: **2 / ${run.depthCount}**`);
-    expect(result).toContain('Banked: **2 Ascension Tokens** — all of it');
-    expect(result).toContain('You now hold 2 Ascension Tokens.');
-    expect(labelsOf(out)).toEqual(['Delve Again', 'Back to Waifumon']);
+    // Keep Going is the run as it stands.
+    const kept = await press(prov, confirm, 'Keep Going');
+    expect(shapeOf(kept)).toEqual(shapeOf(screen));
 
-    const twice = await press(prov, confirm, 'Extract', handleDungeonExtract);
-    expect(twice.content).toBe(REPLAYED_NOTICE);
-    expect(await w.balance(playerId)).toBe(2);
-    // A leftover Continue from before is told the run is over.
-    const stale = await press(prov, rested, /^(Continue — |Fight|Event|Cache)/, handleDungeonEnter);
-    expect(stale.content).toBe(RUN_OVER_NOTICE);
-  });
-
-  it('shows what a cache paid, with the gear marked secured', async () => {
-    // The cache must be somewhere to walk *to*, so not the very first node.
-    const seed = await w.seedFor(MAIN, (g) => g.nodes[0]!.type !== 'reward');
-    const { playerId, prov, run } = await begin(MAIN, seed);
-    const before = await walk(w.play, playerId, run, { stopAt: (v) => v.next.some((n) => n.type === 'reward') });
-    await w.play.enterNode(playerId, run.id, before.next.find((n) => n.type === 'reward')!.id);
-    const node = await paint(prov, run);
-    expect(embedOf(node).description).toBe('🎁 **Cache**\nA sealed cache.');
-
-    const opened = await press(prov, node, 'Open', handleDungeonResolve);
-    const lines = fieldOf(opened, 'Rewards')!.value.split('\n');
-    expect(lines[0]).toBe('+5 Ascension Tokens _(unbanked)_');
-    expect(lines[1]).toMatch(/^.+ \*\*.+\*\* \(N\) — secured$/);
-    expect(lines.slice(2)).toEqual(['+11 WaifuBux', '+2 Sticky Joystick']);
-    const secured = fieldOf(opened, 'Secured')!.value;
-    expect(secured).toContain('11 WaifuBux');
-    expect(secured).toContain('2 Sticky Joystick');
-  });
-
-  it('refuses the extraction prompt where there is nothing to extract from', async () => {
-    const { prov, run } = await begin();
-    const c = click();
-    await handleDungeonExtractConfirm(ctx, c.i, prov, [String(run.id), run.node.id]);
-    expect(c.last().content).toBe('You can’t extract from here.');
-    expect(embedOf(c.last()).title).toMatch(/^Rust Warrens — Depth 1/);
-  });
-});
-
-describe('the end of a run', () => {
-  it('shows a completion with the bonus and everything banked', async () => {
-    const { playerId, prov, run } = await begin();
-    const atBoss = await walk(w.play, playerId, run, { stopAt: (v) => v.next.some((n) => n.boss) });
-    await w.play.enterNode(playerId, run.id, atBoss.next[0]!.id);
-    const node = await paint(prov, run);
-    expect(embedOf(node).description).toBe('👑 **Boss**\n**Overlord**\nATK 60 · DEF 0 · HP 300');
-
-    const done = await press(prov, node, 'Fight', handleDungeonResolve);
-    const earned = atBoss.unbankedCurrency + 10;
-    expect(embedOf(done).title).toBe('👑 Dungeon Complete — Rust Warrens');
-    expect(fieldOf(done, '🏆 Victory — Overlord')).toBeDefined();
+    const done = await press(prov, confirm, 'Extract');
+    expect(done.content).toBe('');
+    expect(embedOf(done).title).toBe('🚪 Extracted — Rust Warrens');
     const result = fieldOf(done, 'Result')!.value;
-    expect(result).toContain(`Depth reached: **${run.depthCount} / ${run.depthCount}**`);
-    expect(result).toContain(`Earned: ${earned} Ascension Tokens`);
-    expect(result).toContain('Completion bonus: +7 Ascension Tokens');
-    expect(result).toContain(`Banked: **${earned + 7} Ascension Tokens** — all of it`);
-    expect(fieldOf(done, 'Secured — yours to keep')).toBeDefined();
-    // Nothing to click Extract on: the run is simply over.
+    expect(result).toContain('Rooms cleared: **3 / 5**');
+    expect(result).toContain('Earned: 14 Ascension Tokens');
+    expect(result).toContain('Banked: **14 Ascension Tokens** — all of it');
+    expect(result).toContain('You now hold 14 Ascension Tokens.');
     expect(labelsOf(done)).toEqual(['Delve Again', 'Back to Waifumon']);
+    expect(routeOf(buttonOf(done, 'Delve Again'))).toBe('dg|home');
+
+    const ended = await runRow(runId);
+    expect(ended).toMatchObject({ status: 'extracted', unbankedCurrency: 0 });
+    expect(ended.completedAt).not.toBeNull();
+    expect(await w.balance(playerId)).toBe(14);
+    expect(await w.runs.activeRun(playerId)).toBeNull();
+    expect(await eventsOf(runId, 'extraction')).toHaveLength(1);
+
+    // A second click on Extract banks nothing more.
+    const again = await clickButton(prov, buttonOf(confirm, 'Extract'));
+    expect(again.content).toBe(STALE_STEP_NOTICE);
+    expect(embedOf(again).title).toBe('🚪 Extracted — Rust Warrens');
+    expect(await w.balance(playerId)).toBe(14);
+    expect(await eventsOf(runId, 'extraction')).toHaveLength(1);
+    expect(await eventsOf(runId, 'currency_banked')).toHaveLength(1);
   });
 
-  it('shows a defeat with what was kept, what was lost and what stays secured', async () => {
-    const { playerId, prov, run } = await begin(DOOMED);
-    const atBoss = await walk(w.play, playerId, run, { stopAt: (v) => v.next.some((n) => n.boss) });
-    await w.play.enterNode(playerId, run.id, atBoss.next[0]!.id);
-    const lost = await press(prov, await paint(prov, run), 'Fight', handleDungeonResolve);
+  it('is not offered, and is refused when forged, away from an extraction point', async () => {
+    const { playerId, prov, screen, runId } = await begin();
+    const gate = await clearRoom(prov, screen);
+    expect(labelsOf(gate)).not.toContain('Extract');
+    const { step } = await runRow(runId);
 
-    const earned = atBoss.unbankedCurrency;
-    const kept = Math.trunc(earned / 4);
-    expect(embedOf(lost).title).toBe('💀 Defeated — Dead End');
-    expect(fieldOf(lost, '💀 Defeat — Brute')!.value).toContain('→ **0** / 370');
-    const result = fieldOf(lost, 'Result')!.value;
-    expect(result).toContain(`Depth reached: **${run.depthCount} / ${run.depthCount}**`);
-    expect(result).toContain(`Earned: ${earned} Ascension Tokens`);
-    expect(result).toContain(`Kept (25%): **${kept} Ascension Token${kept === 1 ? '' : 's'}** · Lost: ${earned - kept} Ascension Token`);
-    expect(fieldOf(lost, 'Secured — yours to keep')!.value).toMatch(/\(N\)/);
-    expect(labelsOf(lost)).toEqual(['Delve Again', 'Back to Waifumon']);
-    // The zone's own artwork is not deployed, so the background stands in.
-    expect(embedOf(lost).image?.url).toBe('attachment://dungeon-dc-doomed.webp');
+    const asked = await call(handleDungeonExtractConfirm, prov, [String(runId)]);
+    expect(asked.content).toBe('You can’t extract from here.');
+    expect(embedOf(asked).title).toBe('Rust Warrens — Gate');
+    const forged = await call(handleDungeonExtract, prov, [String(runId), String(step)]);
+    expect(forged.content).toBe('You can’t extract from here.');
+    expect(await runRow(runId)).toMatchObject({ status: 'active', step, unbankedCurrency: 2 });
+    expect(await w.balance(playerId)).toBe(0);
   });
+});
 
-  it('asks before abandoning, then settles like a defeat', async () => {
-    const { playerId, prov, run } = await begin();
-    const mid = await walk(w.play, playerId, run, { stopAt: atCompleted('reward') });
-    const screen = await paint(prov, run);
-    const confirm = await press(prov, screen, 'Abandon', handleDungeonAbandonConfirm);
+describe('abandoning', () => {
+  it('asks first, then ends the run as abandoned and keeps the defeat share', async () => {
+    const { playerId, prov, screen, runId } = await reachBulkhead();
+    const before = await runRow(runId);
+    expect(routeOf(buttonOf(screen, 'Abandon'))).toBe(`dg|abq|${runId}`);
+
+    const confirm = await press(prov, screen, 'Abandon');
     expect(embedOf(confirm).title).toBe('🏳️ Abandon Rust Warrens?');
-    expect(embedOf(confirm).description).toContain(`you keep 25% of your **${mid.unbankedCurrency} Ascension Tokens**`);
+    expect(embedOf(confirm).description).toContain('you keep 25% of your **14 Ascension Tokens** unbanked');
+    expect(embedOf(confirm).description).toContain('You are on an extraction point');
     expect(labelsOf(confirm)).toEqual(['Abandon Run', 'Back to Run']);
-    expect((await w.play.run(playerId, run.id)).status).toBe('active');
+    expect(routeOf(buttonOf(confirm, 'Abandon Run'))).toBe(`dg|ab|${runId}`);
+    expect(routeOf(buttonOf(confirm, 'Back to Run'))).toBe(`dg|run|${runId}`);
+    expect(await runRow(runId)).toEqual(before);
+    expect(shapeOf(await press(prov, confirm, 'Back to Run'))).toEqual(shapeOf(screen));
 
-    const gone = await press(prov, confirm, 'Abandon Run', handleDungeonAbandon);
-    expect(embedOf(gone).title).toBe('🏳️ Run Abandoned — Rust Warrens');
-    expect(fieldOf(gone, 'Result')!.value).toContain('Kept (25%)');
-    expect(await w.balance(playerId)).toBe(Math.trunc(mid.unbankedCurrency / 4));
+    const done = await press(prov, confirm, 'Abandon Run');
+    expect(embedOf(done).title).toBe('🏳️ Run Abandoned — Rust Warrens');
+    // A quarter of 14, rounded down.
+    expect(fieldOf(done, 'Result')!.value).toContain('Kept (25%): **3 Ascension Tokens** · Lost: 11 Ascension Tokens');
+    expect(labelsOf(done)).toEqual(['Delve Again', 'Back to Waifumon']);
+    expect(await runRow(runId)).toMatchObject({ status: 'abandoned', unbankedCurrency: 0 });
+    expect(await w.balance(playerId)).toBe(3);
+    expect(await w.runs.activeRun(playerId)).toBeNull();
 
-    const twice = await press(prov, confirm, 'Abandon Run', handleDungeonAbandon);
-    expect(twice.content).toBe(REPLAYED_NOTICE);
-    // The old run screen's buttons now answer with the ending.
-    const stale = await press(prov, screen, /^(Continue — |Fight|Event|Rest|Boss)/, handleDungeonEnter);
-    expect(stale.content).toBe(RUN_OVER_NOTICE);
-    // And the home is back to the zones.
-    const home = click();
-    await handleDungeonHome(ctx, home.i, prov);
-    expect(labelsOf(home.last())).toContain('Rust Warrens');
+    // A second click finds the run already over and pays nothing more.
+    const again = await clickButton(prov, buttonOf(confirm, 'Abandon Run'));
+    expect(again.content).toBe(RUN_OVER_NOTICE);
+    expect(embedOf(again).title).toBe('🏳️ Run Abandoned — Rust Warrens');
+    expect(await w.balance(playerId)).toBe(3);
+    expect(await eventsOf(runId, 'abandon')).toHaveLength(1);
+    // …and so does asking to abandon it again.
+    const asked = await call(handleDungeonAbandonConfirm, prov, [String(runId)]);
+    expect(asked.content).toBe(RUN_OVER_NOTICE);
+  });
+
+  it('can be done from the very first screen, with nothing earned', async () => {
+    const { playerId, prov, screen, runId } = await begin();
+    const done = await press(prov, await press(prov, screen, 'Abandon'), 'Abandon Run');
+    expect(embedOf(done).title).toBe('🏳️ Run Abandoned — Rust Warrens');
+    expect(await runRow(runId)).toMatchObject({ status: 'abandoned' });
+    expect(await w.balance(playerId)).toBe(0);
+    // The home is the dungeons again.
+    expect(labelsOf(await home(prov))).toContain('Rust Warrens');
   });
 });
 
-/* ───────────────────────── display rules ───────────────────────── */
+/* ───────────────────────── refusals ───────────────────────── */
 
-describe('the progression currency', () => {
-  it('is always shown under its configured name and icon', async () => {
-    const { playerId, prov, run } = await begin();
-    await w.play.resolveNode(playerId, run.id, run.node.id);
-    const meta = (await w.currencies.get(CURRENCY))!;
-    const renamed = (await w.currencies.updateMetadata(
-      CURRENCY,
-      { metadata: { singularName: 'Gleam', pluralName: 'Gleams', description: '', icon: '💠', enabled: true }, expectedRevision: meta.revision },
-      'admin',
-    ))!;
-    try {
-      const screens: Payload[] = [await paint(prov, run)];
-      const home = click();
-      await handleDungeonHome(ctx, home.i, prov);
-      screens.push(home.last());
-      const confirm = click();
-      await handleDungeonAbandonConfirm(ctx, confirm.i, prov, [String(run.id)]);
-      screens.push(confirm.last());
-      const gone = click();
-      await handleDungeonAbandon(ctx, gone.i, prov, [String(run.id)]);
-      screens.push(gone.last());
-      const fresh = await w.player();
-      const zone = click();
-      await handleDungeonZone(ctx, zone.i, { playerId: fresh.playerId, guildDbId: 1 } as Provisioned, [MAIN]);
-      screens.push(zone.last());
-
-      for (const screen of screens) {
-        expect(textOf(screen)).toMatch(/💠 (\d+ )?Gleams?/);
-        expect(textOf(screen)).not.toMatch(/Ascension/i);
-      }
-      expect(fieldOf(screens[0]!, 'Unbanked 💠 Gleams')).toBeDefined();
-      expect(await w.balance(playerId)).toBeGreaterThanOrEqual(0);
-    } finally {
-      await w.currencies.updateMetadata(
-        CURRENCY,
-        { metadata: { singularName: meta.singularName, pluralName: meta.pluralName, description: meta.description, icon: meta.icon, enabled: true }, expectedRevision: renamed.revision },
-        'admin',
-      );
+describe('malformed custom ids', () => {
+  it('get the malformed message, on every route, and touch nothing', async () => {
+    const { prov, runId } = await begin();
+    const before = await runRow(runId);
+    const events = await allEvents(runId);
+    const id = String(runId);
+    const cases: [string, Handler, string[]][] = [
+      ['act: no arguments', handleDungeonAct, []],
+      ['act: run id is not a number', handleDungeonAct, ['abc', '0', 'a']],
+      ['act: run id is zero', handleDungeonAct, ['0', '0', 'a']],
+      ['act: run id is negative', handleDungeonAct, [`-${id}`, '0', 'a']],
+      ['act: step is not a number', handleDungeonAct, [id, 'x', 'a']],
+      ['act: step is negative', handleDungeonAct, [id, '-1', 'a']],
+      ['act: step is missing', handleDungeonAct, [id]],
+      ['act: code is missing', handleDungeonAct, [id, '0']],
+      ['act: unknown code', handleDungeonAct, [id, '0', 'x']],
+      ['act: a trailing argument', handleDungeonAct, [id, '0', 'a', 'extra']],
+      ['mv: connection is missing', handleDungeonMove, [id, '0']],
+      ['mv: connection id has a space', handleDungeonMove, [id, '0', 'Bad Id']],
+      ['mv: connection id is upper case', handleDungeonMove, [id, '0', 'C_MAIN']],
+      ['mv: connection id is too long', handleDungeonMove, [id, '0', 'c'.repeat(41)]],
+      ['mv: a trailing argument', handleDungeonMove, [id, '0', 'c_main', 'extra']],
+      ['ex: step is missing', handleDungeonExtract, [id]],
+      ['ex: a trailing argument', handleDungeonExtract, [id, '0', 'extra']],
+      ['exq: run id is missing', handleDungeonExtractConfirm, []],
+      ['exq: a trailing argument', handleDungeonExtractConfirm, [id, '0']],
+      ['abq: run id is not a number', handleDungeonAbandonConfirm, ['run']],
+      ['ab: run id is missing', handleDungeonAbandon, []],
+      ['ab: a trailing argument', handleDungeonAbandon, [id, '0']],
+      ['run: run id has a decimal', handleDungeonRun, ['1.5']],
+      ['run: a trailing argument', handleDungeonRun, [id, '0']],
+      ['zone: key is missing', handleDungeonZone, []],
+      ['zone: key has a space', handleDungeonZone, ['Not A Key']],
+      ['zone: a trailing argument', handleDungeonZone, [MAIN, 'extra']],
+      ['start: key is upper case', handleDungeonStart, ['DC_MAIN']],
+      ['start: key is a path', handleDungeonStart, ['../dc_main']],
+    ];
+    for (const [name, handler, args] of cases) {
+      const painted = await call(handler, prov, args);
+      expect(painted.content, name).toBe(MALFORMED);
+      // A bare refusal: no screen, no buttons.
+      expect(painted.embeds ?? [], name).toEqual([]);
+      expect(buttonsOf(painted), name).toEqual([]);
     }
-  });
-});
-
-describe('artwork', () => {
-  it('falls back from event art to the zone, and to nothing when no file is deployed', async () => {
-    // An event with no artwork of its own shows the zone's.
-    const seed = await w.seedFor(MAIN, (g) => g.nodes[0]!.type === 'event');
-    const onEvent = await begin(MAIN, seed);
-    expect(embedOf(await paint(onEvent.prov, onEvent.run)).image?.url).toBe('attachment://dungeon-dc-main.webp');
-
-    // A zone with no artwork, fighting an enemy with none: text only, Buddy thumbnail intact.
-    const bareSeed = await w.seedFor(BARE, (g) => g.nodes[0]!.type === 'combat');
-    const bare = await begin(BARE, bareSeed);
-    const screen = await paint(bare.prov, bare.run);
-    expect(embedOf(screen).image).toBeUndefined();
-    expect(embedOf(screen).thumbnail?.url).toBe('attachment://waifumon-buddy.webp');
-    expect(screen.files).toHaveLength(1);
-  });
-});
-
-describe('artwork precedence', () => {
-  /** The large image of a screen, as the attachment name. */
-  const imageOf = (p: Payload) => embedOf(p).image?.url;
-  const ART = 'dc_art';
-  const BACKGROUND_ONLY = DOOMED;
-  beforeAll(async () => {
-    // A zone with both images deployed, and an event that has artwork of its own.
-    await w.zone(ART, (z) => {
-      z.name = 'Gallery';
-      z.artworkPath = 'dungeons/zones/dc_art.webp';
-      z.backgroundArtworkPath = 'dungeons/backgrounds/dc_art.webp';
-      z.pools.event = [{ id: 'shrine', eventKey: 'shrine', weight: 10 }];
-    });
-    for (const file of ['dungeons/zones/dc_art.webp', 'dungeons/backgrounds/dc_art.webp', 'dungeons/events/shrine.webp']) {
-      fs.mkdirSync(path.join(assetsDir, path.dirname(file)), { recursive: true });
-      fs.writeFileSync(path.join(assetsDir, file), 'webp');
-    }
-  });
-  const onFirst = async (zoneKey: string, type: string) => {
-    const seed = await w.seedFor(zoneKey, (g) => g.nodes[0]!.type === type);
-    const started = await begin(zoneKey, seed);
-    return paint(started.prov, started.run);
-  };
-
-  it('combat: the enemy’s artwork, then the zone’s, then the background, then text', async () => {
-    // Grunt has artwork deployed: it wins over the zone's.
-    expect(imageOf(await onFirst(ART, 'combat'))).toBe('attachment://dungeon-grunt.webp');
-    // Sentinel has none: the zone artwork.
-    await w.zone('dc_art_sentinel', (z) => {
-      z.artworkPath = 'dungeons/zones/dc_art.webp';
-      z.backgroundArtworkPath = 'dungeons/backgrounds/dc_art.webp';
-      z.pools.combat = [{ id: 'sentinel', enemyKey: 'sentinel', weight: 10 }];
-    });
-    expect(imageOf(await onFirst('dc_art_sentinel', 'combat'))).toBe('attachment://dungeon-dc-art.webp');
-    // Zone artwork not deployed: the background. (DOOMED ships only its background file.)
-    await w.zone('dc_bg_sentinel', (z) => {
-      z.artworkPath = 'dungeons/zones/not_deployed.webp';
-      z.backgroundArtworkPath = 'dungeons/backgrounds/dc_doomed.webp';
-      z.pools.combat = [{ id: 'sentinel', enemyKey: 'sentinel', weight: 10 }];
-    });
-    expect(imageOf(await onFirst('dc_bg_sentinel', 'combat'))).toBe('attachment://dungeon-dc-doomed.webp');
-    // Nothing deployed at all: text only.
-    expect(imageOf(await onFirst(BARE, 'combat'))).toBeUndefined();
+    expect(await runRow(runId)).toEqual(before);
+    expect(await allEvents(runId)).toEqual(events);
+    expect(await eventsOf(runId, 'combat_wave_resolved')).toEqual([]);
   });
 
-  it('event: the event’s own artwork first, then the zone’s — never an enemy’s', async () => {
-    const original = w.content.current;
-    try {
-      // With artwork of its own, the event shows it.
-      w.content.current = {
-        ...original,
-        dungeonEvents: original.dungeonEvents!.map((e) => (e.key === 'shrine' ? { ...e, artworkPath: 'dungeons/events/shrine.webp' } : e)),
-      };
-      expect(imageOf(await onFirst(ART, 'event'))).toBe('attachment://dungeon-shrine.webp');
-    } finally {
-      w.content.current = original;
-    }
-    // Without, the zone artwork.
-    expect(imageOf(await onFirst(ART, 'event'))).toBe('attachment://dungeon-dc-art.webp');
-  });
-
-  it('rest and reward: the zone’s artwork, then the background', async () => {
-    for (const type of ['rest', 'reward']) {
-      const typed = await w.seedFor(ART, (g) => g.nodes[1]?.type === type && g.nodes.filter((n) => n.depth === 2).length === 1);
-      const next = await begin(ART, typed);
-      const first = await w.play.resolveNode(next.playerId, next.run.id, next.run.node.id);
-      const entered = await w.play.enterNode(next.playerId, next.run.id, first.run.next[0]!.id);
-      expect(entered.run.node.type).toBe(type);
-      expect(imageOf(await paint(next.prov, entered.run)), type).toBe('attachment://dungeon-dc-art.webp');
-    }
-  });
-
-  it('the Delve home and the zone screen: zone artwork, then background, then text', async () => {
-    const { playerId } = await w.player();
-    const prov = { playerId, guildDbId: 1 } as Provisioned;
-    const zone = async (key: string) => {
-      const c = click();
-      await handleDungeonZone(ctx, c.i, prov, [key]);
-      return c.last();
-    };
-    expect(imageOf(await zone(ART))).toBe('attachment://dungeon-dc-art.webp');
-    expect(imageOf(await zone(BACKGROUND_ONLY))).toBe('attachment://dungeon-dc-doomed.webp');
-    expect(imageOf(await zone(BARE))).toBeUndefined();
-    // The home shows the first listed zone that has artwork deployed, and attaches it.
-    const home = click();
-    await handleDungeonHome(ctx, home.i, prov);
-    expect(imageOf(home.last())).toMatch(/^attachment:\/\/dungeon-dc-(main|art|doomed)\.webp$/);
-    expect(home.last().files).toHaveLength(1);
-  });
-
-  it('an active run shows the artwork its zone had when it started, not a later edit', async () => {
-    const key = 'dc_art_snapshot';
-    await w.zone(key, (z) => {
-      z.artworkPath = 'dungeons/zones/dc_art.webp';
-      z.pools.combat = [{ id: 'sentinel', enemyKey: 'sentinel', weight: 10 }];
-    });
-    const seed = await w.seedFor(key, (g) => g.nodes[0]!.type === 'combat');
-    const started = await begin(key, seed);
-    const current = (await w.zones.get(key))!;
-    await w.zones.update(key, { zone: { ...current.zone, artworkPath: 'dungeons/zones/dc_main.webp' }, expectedRevision: current.revision }, 'admin');
-    // The run: its snapshot. A new look at the zone: the edit.
-    expect(imageOf(await paint(started.prov, started.run))).toBe('attachment://dungeon-dc-art.webp');
-    const fresh = await w.player();
-    const c = click();
-    await handleDungeonZone(ctx, c.i, { playerId: fresh.playerId, guildDbId: 1 } as Provisioned, [key]);
-    expect(imageOf(c.last())).toBe('attachment://dungeon-dc-main.webp');
-  });
-});
-
-describe('regions', () => {
-  const HILLS = 'dc_hills';
-  beforeAll(async () => {
-    await w.zone(HILLS, (z) => {
-      z.name = 'Hill Works';
-      z.availableRegions = ['flaccid-foothills'];
-    });
-  });
-  const moveTo = (playerId: number, region: string) =>
-    w.t.db.update(players).set({ currentRegion: region }).where(eq(players.id, playerId));
-  const home = async (prov: Provisioned) => {
-    const c = click();
-    await handleDungeonHome(ctx, c.i, prov);
-    return c.last();
-  };
-
-  it('names the current location and lists only the Delves open there', async () => {
-    const { playerId } = await w.player();
-    const prov = { playerId, guildDbId: 1 } as Provisioned;
-    const valley = await home(prov);
-    expect(embedOf(valley).description).toContain('Current location: **Waifu Valley**');
-    expect(fieldOf(valley, 'Available Delves')!.value).toBe('Open in Waifu Valley:');
-    // Valley zones are listed (the screen shows the first five); the Foothills one is not among them.
-    expect(labelsOf(valley).length).toBeGreaterThan(1);
-    expect(labelsOf(valley)).not.toContain('Hill Works');
-    expect(fieldOf(valley, 'Hill Works')).toBeUndefined();
-
-    await moveTo(playerId, 'flaccid-foothills');
-    const hills = await home(prov);
-    expect(embedOf(hills).description).toContain('Current location: **Flaccid Foothills**');
-    expect(labelsOf(hills)).toEqual(['Hill Works', 'Back to Waifumon']);
-    expect(fieldOf(hills, 'Rust Warrens')).toBeUndefined();
-  });
-
-  it('says so when no Delve is available in the region, with no zone buttons and no disabled clutter', async () => {
-    const { playerId } = await w.player();
-    await moveTo(playerId, 'twin-peeks');
-    const screen = await home({ playerId, guildDbId: 1 } as Provisioned);
-    expect(embedOf(screen).description).toContain('Current location: **Twin Peeks**');
-    expect(embedOf(screen).description).toContain(NO_ZONES);
-    expect(NO_ZONES).toBe('There are no Delves available in this region.');
-    expect(labelsOf(screen)).toEqual(['Back to Waifumon']);
-    expect(fieldOf(screen, 'Available Delves')).toBeUndefined();
-  });
-
-  it('refuses a stale or forged Start and zone button from the wrong region, and lands on the home', async () => {
-    const { playerId } = await w.player();
-    const prov = { playerId, guildDbId: 1 } as Provisioned;
-    for (const handler of [handleDungeonStart, handleDungeonZone]) {
-      const c = click();
-      await handler(ctx, c.i, prov, [HILLS]);
-      expect(c.last().content).toBe('That Delve isn’t available in Waifu Valley.');
-      expect(embedOf(c.last()).title).toBe(DUNGEON_TITLE);
-    }
-    expect(await w.play.activeRun(playerId)).toBeNull();
-    expect((await w.allowance.status(playerId)).used).toBe(0);
-  });
-
-  it('keeps Resume working after the player travels away from where the run started', async () => {
-    const { playerId, prov, run } = await begin(MAIN);
-    await moveTo(playerId, 'twin-peeks');
-    const screen = await home(prov);
-    expect(labelsOf(screen)).toEqual(['Resume', 'Abandon', 'Back to Waifumon']);
-    const resumed = await press(prov, screen, 'Resume', handleDungeonRun);
-    expect(embedOf(resumed).title).toMatch(/^Rust Warrens — Depth 1 \//);
-    const c = click();
-    await handleDungeonResolve(ctx, c.i, prov, [String(run.id), run.node.id]);
-    expect((await w.play.run(playerId, run.id)).nodeStatus).toBe('completed');
-  });
-});
-
-describe('bad buttons', () => {
-  it('answers a forged or foreign run id without touching anything', async () => {
+  it('a well-formed id for a run that is not the player’s is "not found", over the home', async () => {
     const mine = await begin();
-    const other = await begin();
-    const c = click();
-    await handleDungeonResolve(ctx, c.i, mine.prov, [String(other.run.id), other.run.node.id]);
-    expect(c.last().content).toBe(RUN_NOT_FOUND);
-    expect((await w.play.run(other.playerId, other.run.id)).nodeStatus).toBe('entered');
-
-    for (const args of [['abc', 'n1'], ['1'], ['1', 'x1'], []]) {
-      const bad = click();
-      await handleDungeonResolve(ctx, bad.i, mine.prov, args);
-      expect(bad.last().content).toContain('malformed');
+    const other = await newPlayer();
+    for (const [handler, args] of [
+      [handleDungeonRun, [String(mine.runId)]],
+      [handleDungeonAct, [String(mine.runId), '0', 'a']],
+      [handleDungeonAbandon, [String(mine.runId)]],
+      [handleDungeonRun, ['999999']],
+    ] as [Handler, string[]][]) {
+      const painted = await call(handler, other.prov, args);
+      expect(painted.content).toBe(RUN_NOT_FOUND);
+      expect(embedOf(painted).title).toBe(DUNGEON_TITLE);
     }
+    expect(await runRow(mine.runId)).toMatchObject({ status: 'active', step: 0, currentHp: MAX_HP });
+  });
+});
+
+describe('a player without the Equipment unlock', () => {
+  it('gets the locked view on every route, and no run', async () => {
+    const mine = await begin();
+    const { playerId, prov } = await newPlayer({ unlocked: false });
+    const id = String(mine.runId);
+    const routes: [string, () => Promise<Payload>][] = [
+      ['home', () => home(prov)],
+      ['zone', () => call(handleDungeonZone, prov, [MAIN])],
+      ['start', () => call(handleDungeonStart, prov, [MAIN])],
+      ['run', () => call(handleDungeonRun, prov, [id])],
+      ['act', () => call(handleDungeonAct, prov, [id, '0', 'a'])],
+      ['mv', () => call(handleDungeonMove, prov, [id, '0', 'c_main'])],
+      ['exq', () => call(handleDungeonExtractConfirm, prov, [id])],
+      ['ex', () => call(handleDungeonExtract, prov, [id, '0'])],
+      ['abq', () => call(handleDungeonAbandonConfirm, prov, [id])],
+      ['ab', () => call(handleDungeonAbandon, prov, [id])],
+    ];
+    for (const [name, go] of routes) {
+      const painted = await go();
+      expect(painted.content, name).toBe(LOCKED_DUNGEONS);
+      expect(painted.embeds, name).toEqual([]);
+      expect(labelsOf(painted), name).toEqual(['Back to Waifumon']);
+    }
+    expect(await w.t.db.select().from(dungeonRuns).where(eq(dungeonRuns.playerId, playerId))).toEqual([]);
+    expect(await runRow(mine.runId)).toMatchObject({ status: 'active', step: 0 });
+  });
+});
+
+/* ───────────────────────── restart ───────────────────────── */
+
+describe('after a restart', () => {
+  /** What a process start builds: every service new, over the same database. */
+  function restart(): AppContext {
+    const svc = buildEquipmentServices(w.t.db, {});
+    const shipped = shippedCombatEnemies(TEST_ENEMIES);
+    const enemies = createEnemyCatalogueService({ db: w.t.db, getShipped: () => shipped, assets: w.assets, referenceSources: [dungeonEnemyReferences] });
+    const content = createDungeonContentService({
+      db: w.t.db,
+      enemies,
+      getRegions: () => w.app.content.regions.map((r) => ({ id: r.id, name: r.name, enabled: r.enabled })),
+      environment: 'test',
+    });
+    const allowance = createDungeonAllowanceService({ db: w.t.db, timezone: TEST_DAILY_TIMEZONE, now: () => w.clock.now });
+    const runs = createDungeonRunService({
+      db: w.t.db,
+      content,
+      enemies,
+      allowance,
+      combatRules: FIXED_RULES,
+      featureUnlocks: svc.featureUnlocks,
+      combatStats: createCombatStatsService({
+        db: w.t.db,
+        resolveActiveBuddy: (tx, playerId) => w.app.collection.resolveActiveBuddy(tx, playerId),
+        getMaxLevel: () => w.app.content.tables.waifuProgression.maxLevel,
+        getAffixes: svc.getAffixes,
+      }),
+      currencies: createProgressionCurrencyService(w.t.db),
+      currency: w.app.currency,
+      inventory: w.app.inventory,
+      equipmentRewards: createEquipmentRewardService({ equipment: svc.equipment, getAffixes: svc.getAffixes, featureUnlocks: svc.featureUnlocks }),
+    });
+    expect(runs).not.toBe(w.runs);
+    return {
+      config: { assetsDir },
+      logger: silentLogger(),
+      content: w.app.content,
+      services: { dungeonRuns: runs, dungeonContent: content, dungeonAllowance: allowance, collection: w.app.collection },
+    } as unknown as AppContext;
+  }
+
+  it('dg|run|<id> shows the same screen, mid-fight, and the run carries on from there', async () => {
+    const { prov, screen, runId } = await begin();
+    await press(prov, screen, 'Fight');
+    const before = await call(handleDungeonRun, prov, [String(runId)]);
+    expect(routeOf(buttonOf(before, 'Next wave'))).toBe(`dg|act|${runId}|1|a`);
+    const stored = await runRow(runId);
+
+    const restarted = restart();
+    const after = await call(handleDungeonRun, prov, [String(runId)], restarted);
+    expect(shapeOf(after)).toEqual(shapeOf(before));
+    expect(await runRow(runId)).toEqual(stored);
+
+    // The step-0 button from before the restart is still stale…
+    const stale = await clickButton(prov, buttonOf(screen, 'Fight'), restarted);
+    expect(stale.content).toBe(STALE_STEP_NOTICE);
+    expect(await runRow(runId)).toEqual(stored);
+    // …and the current one still works, with the same fight it would have had.
+    const fought = await clickButton(prov, buttonOf(after, 'Next wave'), restarted);
+    expect(fieldOf(fought, 'Nebula Nurse')!.value).toContain(`HP **${MAX_HP - 2 * WAVE_DAMAGE} / ${MAX_HP}**`);
+    expect(await runRow(runId)).toMatchObject({ step: 2, currentHp: MAX_HP - 2 * WAVE_DAMAGE });
+    expect(await eventsOf(runId, 'combat_wave_resolved')).toHaveLength(2);
+  });
+
+  it('a run at its ways on, and one that has ended, both read the same', async () => {
+    const live = await reachBulkhead();
+    const liveBefore = await call(handleDungeonRun, live.prov, [String(live.runId)]);
+    const over = await reachBulkhead();
+    await press(over.prov, await press(over.prov, over.screen, 'Extract'), 'Extract');
+    const overBefore = await call(handleDungeonRun, over.prov, [String(over.runId)]);
+    expect(embedOf(overBefore).title).toBe('🚪 Extracted — Rust Warrens');
+
+    const restarted = restart();
+    expect(shapeOf(await call(handleDungeonRun, live.prov, [String(live.runId)], restarted))).toEqual(shapeOf(liveBefore));
+    expect(shapeOf(await call(handleDungeonRun, over.prov, [String(over.runId)], restarted))).toEqual(shapeOf(overBefore));
+    // The home finds the run again, too.
+    const c = click();
+    await handleDungeonHome(restarted, c.i, live.prov);
+    expect(routeOf(buttonOf(c.last(), 'Resume'))).toBe(`dg|run|${live.runId}`);
+  });
+});
+
+/* ───────────────────────── Discord's limits ───────────────────────── */
+
+describe('component limits', () => {
+  it('a room with more ways out than one row holds wraps them, five to a row', async () => {
+    const { prov, screen, runId } = await begin(HUB);
+    const hub = await clearRoom(prov, screen);
+    const { step } = await runRow(runId);
+    const ways = moveButtons(hub);
+    expect(ways.map(routeOf)).toEqual(HUB_WAYS.map((id) => `dg|mv|${runId}|${step}|${id}`));
+    expect(rowsOf(hub).map((row) => row.length)).toEqual([5, 2, 2]);
+    // The longest id a connection may have still fits, and still routes.
+    expect(Math.max(...ways.map((b) => b.custom_id!.length))).toBeLessThanOrEqual(MAX_CUSTOM_ID);
+    const out = await clickButton(prov, ways[6]!);
+    expect(embedOf(out).title).toBe('👑 Dungeon Complete — Seven Doors');
+    expect(await runRow(runId)).toMatchObject({ status: 'completed' });
+  });
+
+  it('every custom id on every screen painted above fits, and no message is over-full', () => {
+    // Every kind of screen was painted by the tests above; this is the roll-call.
+    const routes = new Set<string>();
+    let checked = 0;
+    for (const screen of everyScreen) {
+      const rows = rowsOf(screen);
+      expect(rows.length, textOf(screen)).toBeLessThanOrEqual(MAX_ROWS);
+      for (const row of rows) {
+        expect(row.length, labelsOf(screen).join(', ')).toBeGreaterThan(0);
+        expect(row.length, labelsOf(screen).join(', ')).toBeLessThanOrEqual(MAX_ROW_BUTTONS);
+        for (const button of row) {
+          expect(typeof button.custom_id, button.label).toBe('string');
+          expect(button.custom_id!.length, button.custom_id).toBeLessThanOrEqual(MAX_CUSTOM_ID);
+          expect(button.label!.length, button.label).toBeLessThanOrEqual(80);
+          const { scope, action } = partsOf(button.custom_id!);
+          routes.add(`${scope}|${action}`);
+          checked += 1;
+        }
+      }
+      // No two buttons of one message share an id: Discord refuses the message.
+      const ids = buttonsOf(screen).map((b) => b.custom_id);
+      expect(new Set(ids).size, ids.join(', ')).toBe(ids.length);
+    }
+    expect(checked).toBeGreaterThan(100);
+    // All ten dungeon routes were drawn at least once.
+    expect([...routes].filter((r) => r.startsWith('dg|')).sort()).toEqual(
+      ['dg|ab', 'dg|abq', 'dg|act', 'dg|ex', 'dg|exq', 'dg|home', 'dg|mv', 'dg|run', 'dg|start', 'dg|zone'].sort(),
+    );
   });
 });

@@ -6,7 +6,7 @@
  */
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { combatEnemies, combatEnemyArtwork, combatTrialAttempts } from '../../src/db/schema';
+import { combatEnemies, combatEnemyArtwork, combatTrialAttempts, dungeonRuns } from '../../src/db/schema';
 import { CombatEnemyDefinitionSchema, type CombatEnemyDefinition } from '../../src/modules/combat/enemyDefinitions';
 import { CombatTrialDefinitionSchema } from '../../src/modules/combat/trialDefinitions';
 import {
@@ -14,7 +14,8 @@ import {
   createCombatTrialService,
   type CombatTrialService,
 } from '../../src/modules/combatTrials/combatTrialService';
-import { combatTrialEnemyReferences, dungeonZoneEnemyReferences } from '../../src/modules/enemies/enemyReferences';
+import { combatTrialEnemyReferences, dungeonEnemyReferences } from '../../src/modules/enemies/enemyReferences';
+import type { DungeonDependencySnapshot } from '../../src/modules/dungeons/dungeonRunService';
 import { createEnemyCatalogueService } from '../../src/modules/enemies/enemyService';
 import {
   combatEnemyHash,
@@ -25,13 +26,13 @@ import {
 } from '../../src/modules/enemies/enemyStore';
 import {
   CombatTrialUnavailableError,
-  DungeonZoneInvalidError,
   EnemyInUseError,
   EnemyInvalidError,
   EnemyKeyTakenError,
   EnemyStaleError,
 } from '../../src/shared/errors';
-import { authoredZoneDoc, createDungeonWorld, type DungeonWorld } from '../helpers/dungeonPlayFixtures';
+import { singleRoomDungeon } from '../helpers/dungeonFixtures';
+import { createDungeonWorld, type DungeonWorld } from '../helpers/dungeonWorld';
 import { loadShippedContent } from '../helpers/fixtures';
 import { solidImage, transparentSprite } from '../helpers/imageFixtures';
 
@@ -80,6 +81,31 @@ const upload = async (kind: 'sprite' | 'art', filename: string) =>
       'admin-1',
     )
   ).id;
+
+
+type Waves = ({ enemy: { key: string } } | { enemy: { pool: { key: string; weight: number }[] } })[];
+/** A one-room dungeon — room "Hall" — whose fight `guards` fields `waves`, with an optional boss `chief` after it. */
+const fightDungeon = (key: string, name: string, waves: Waves, boss?: Waves) =>
+  singleRoomDungeon(
+    [
+      { id: 'guards', type: 'combat', waves },
+      ...(boss ? [{ id: 'chief', type: 'boss' as const, waves: boss }] : []),
+    ],
+    (d) => {
+      d.key = key;
+      d.name = name;
+    },
+  );
+const errorsOf = (issues: readonly { severity: string }[]) => issues.filter((i) => i.severity === 'error');
+const wavesOf = (definition: { rooms: { actions: unknown[] }[] }) =>
+  (definition.rooms[0]!.actions[0] as { waves: { enemy: { key: string } }[] }).waves.map((wave) => wave.enemy.key);
+async function setEnemyEnabled(key: string, enabled: boolean) {
+  const current = (await w.enemies.get(key))!;
+  await w.enemies.setEnabled(key, { enabled, expectedRevision: current.revision }, 'admin-1');
+}
+const runRow = async (runId: number) => (await w.t.db.select().from(dungeonRuns).where(eq(dungeonRuns.id, runId)))[0]!;
+/** What a run froze when it started. */
+const snapshotOf = async (runId: number) => (await runRow(runId)).dependencySnapshot as unknown as DungeonDependencySnapshot;
 
 beforeAll(async () => {
   w = await createDungeonWorld();
@@ -173,19 +199,22 @@ describe('seeding shipped enemies', () => {
   });
 
   it('REGRESSION: an enemy newly added to the shipped file is in the catalogue and the Dungeon editor at once', async () => {
-    const before = (await w.zones.reference()).enemies.map((e) => e.key);
+    const before = (await w.content.reference()).enemies.map((e) => e.key);
     expect(before).not.toContain('fresh_from_json');
     // What a deploy does: the file gained an enemy, startup seeds it.
     await seed(def({ key: 'fresh_from_json', name: 'Fresh From JSON', attack: 77, defense: 33, hp: 444, tags: ['tier_2'] }));
 
-    const ref = (await w.zones.reference()).enemies.find((e) => e.key === 'fresh_from_json');
-    expect(ref).toMatchObject({ name: 'Fresh From JSON', enabled: true, attack: 77, defense: 33, hp: 444, tags: ['tier_2'] });
-    expect((await w.enemies.list()).map((e) => e.key)).toContain('fresh_from_json');
-    // …and a zone may use it straight away, with no restart in between.
-    await w.zone('fresh_zone', (z) => {
-      z.pools.combat = [{ id: 'fresh', enemyKey: 'fresh_from_json', weight: 10 }];
-    });
-    expect((await w.zones.get('fresh_zone'))!.issues.filter((i) => i.severity === 'error')).toEqual([]);
+    const ref = (await w.content.reference()).enemies.find((e) => e.key === 'fresh_from_json');
+    expect(ref).toMatchObject({ name: 'Fresh From JSON', enabled: true, attack: 77, defense: 33, hp: 444 });
+    const listed = (await w.enemies.list()).find((e) => e.key === 'fresh_from_json');
+    expect(listed).toMatchObject({ name: 'Fresh From JSON', tags: ['tier_2'] });
+    // …and a dungeon may use it straight away, with no restart in between.
+    const created = await w.content.create(
+      { definition: fightDungeon('fresh_dungeon', 'Fresh Dungeon', [{ enemy: { key: 'fresh_from_json' } }]) },
+      'test',
+    );
+    expect(errorsOf(created.issues)).toEqual([]);
+    expect(errorsOf((await w.content.get('fresh_dungeon'))!.issues)).toEqual([]);
   });
 
   it('every enemy in the shipped content file validates and seeds', async () => {
@@ -194,7 +223,7 @@ describe('seeding shipped enemies', () => {
     const result = await seed(...shipped);
     expect(result.created).toEqual(shipped.map((e) => e.key));
     const listed = new Map((await w.enemies.list()).map((e) => [e.key, e]));
-    const picker = new Map((await w.zones.reference()).enemies.map((e) => [e.key, e]));
+    const picker = new Map((await w.content.reference()).enemies.map((e) => [e.key, e]));
     for (const enemy of shipped) {
       expect(listed.get(enemy.key), enemy.key).toMatchObject({
         name: enemy.name,
@@ -379,28 +408,29 @@ describe('authoring', () => {
 
   it('lists where an enemy is used, and refuses to delete it while it is — or while Git ships it', async () => {
     await w.enemies.create('ref_target', input({ name: 'Ref Target' }), 'admin-1');
-    await w.zone('ref_zone', (z) => {
-      z.name = 'Reference Zone';
-      z.pools.combat = [
-        { id: 'a', enemyKey: 'ref_target', weight: 10 },
-        { id: 'b', enemyKey: 'ref_target', weight: 5, minDepth: 2 },
-      ];
-      z.pools.boss = [{ id: 'boss', enemyKey: 'ref_target', weight: 10 }];
-    });
-    await w.zones.create(
-      authoredZoneDoc('ref_rooms', (z) => {
-        z.name = 'Reference Rooms';
-        z.authored!.rooms![0]!.enemyKey = 'ref_target';
-      }),
+    // A draft that names it three ways: a fixed wave, a pooled wave and a boss…
+    await w.content.create(
+      {
+        definition: fightDungeon(
+          'ref_draft',
+          'Reference Draft',
+          [{ enemy: { key: 'ref_target' } }, { enemy: { pool: [{ key: 'ref_target', weight: 3 }, { key: 'grunt', weight: 1 }] } }],
+          [{ enemy: { key: 'ref_target' } }],
+        ),
+      },
       'test',
     );
+    // …and a published dungeon, which holds it in its draft and in the revision players get.
+    await w.publish(fightDungeon('ref_live', 'Reference Live', [{ enemy: { key: 'ref_target' } }]));
     const references = (await w.enemies.references('ref_target'))!;
     expect(references).toEqual([
-      { kind: 'dungeon_zone', key: 'ref_rooms', name: 'Reference Rooms', usage: 'room "Entrance" (combat)' },
-      { kind: 'dungeon_zone', key: 'ref_zone', name: 'Reference Zone', usage: 'combat pool' },
-      { kind: 'dungeon_zone', key: 'ref_zone', name: 'Reference Zone', usage: 'boss pool' },
+      { kind: 'dungeon_zone', key: 'ref_draft', name: 'Reference Draft', usage: 'draft: room "Hall" combat "guards", wave 1' },
+      { kind: 'dungeon_zone', key: 'ref_draft', name: 'Reference Draft', usage: 'draft: room "Hall" combat "guards", wave 2 (pool)' },
+      { kind: 'dungeon_zone', key: 'ref_draft', name: 'Reference Draft', usage: 'draft: room "Hall" boss "chief"' },
+      { kind: 'dungeon_zone', key: 'ref_live', name: 'Reference Live', usage: 'draft: room "Hall" combat "guards"' },
+      { kind: 'dungeon_zone', key: 'ref_live', name: 'Reference Live', usage: 'published: room "Hall" combat "guards"' },
     ]);
-    expect((await w.enemies.list()).find((e) => e.key === 'ref_target')!.usageCount).toBe(3);
+    expect((await w.enemies.list()).find((e) => e.key === 'ref_target')!.usageCount).toBe(5);
     expect(await w.enemies.references('nobody')).toBeNull();
 
     const current = (await w.enemies.get('ref_target'))!;
@@ -426,7 +456,7 @@ describe('authoring', () => {
       db: w.t.db,
       getShipped: () => [],
       referenceSources: [
-        dungeonZoneEnemyReferences,
+        dungeonEnemyReferences,
         combatTrialEnemyReferences(() => [{ key: 'trial_2', name: 'Combat Trial 2', enemyKey: 'ref_target' }]),
       ],
     });
@@ -436,7 +466,7 @@ describe('authoring', () => {
       name: 'Combat Trial 2',
       usage: 'primary enemy',
     });
-    // Unreferenced by a zone, but a Trial names it: still protected.
+    // Unreferenced by a dungeon, but a Trial names it: still protected.
     await service.create('trial_only', input(), 'admin-1');
     const guarded = createEnemyCatalogueService({
       db: w.t.db,
@@ -475,90 +505,70 @@ describe('authoring', () => {
 });
 
 describe('dungeons read the catalogue', () => {
-  it('a Portal-made enemy is selectable in a procedural pool and an authored room', async () => {
+  it('a Portal-made enemy is selectable in a fixed wave and a pooled one, and a run fights it', async () => {
     await w.enemies.create('picked', input({ name: 'Picked', attack: 60, defense: 0, hp: 150 }), 'admin-1');
-    expect((await w.zones.reference()).enemies.find((e) => e.key === 'picked')).toMatchObject({ name: 'Picked', enabled: true, attack: 60, hp: 150 });
+    expect((await w.content.reference()).enemies.find((e) => e.key === 'picked')).toMatchObject({ name: 'Picked', enabled: true, attack: 60, hp: 150 });
 
-    await w.zone('picked_pool', (z) => {
-      z.pools.combat = [{ id: 'picked', enemyKey: 'picked', weight: 10 }];
-    });
-    await w.zones.create(
-      authoredZoneDoc('picked_rooms', (z) => {
-        z.authored!.rooms![0]!.enemyKey = 'picked';
-      }),
+    await w.content.create(
+      {
+        definition: fightDungeon('picked_pool', 'Picked Pool', [
+          { enemy: { pool: [{ key: 'picked', weight: 10 }, { key: 'grunt', weight: 1 }] } },
+        ]),
+      },
       'test',
     );
+    await w.publish(fightDungeon('picked_rooms', 'Picked Rooms', [{ enemy: { key: 'picked' } }]));
     for (const key of ['picked_pool', 'picked_rooms']) {
-      expect((await w.zones.get(key))!.issues.filter((i) => i.severity === 'error'), key).toEqual([]);
+      expect(errorsOf((await w.content.get(key))!.issues), key).toEqual([]);
     }
     const { playerId } = await w.player();
-    const run = (await w.runs.getRun((await w.play.start(playerId, 'picked_rooms')).id))!;
-    expect(run.snapshot.enemies.picked).toMatchObject({ key: 'picked', name: 'Picked', attack: 60 });
+    const started = await w.runs.start(playerId, 'picked_rooms');
+    expect((await snapshotOf(started.id)).enemies.picked).toMatchObject({ key: 'picked', name: 'Picked', attack: 60 });
+    expect(started.enemy).toMatchObject({ key: 'picked', name: 'Picked', attack: 60, hp: 150 });
   });
 
-  it('a disabled enemy cannot be added to a zone, but a zone that already names it keeps it — with a warning', async () => {
+  it('a dungeon that names a disabled enemy keeps it — with a warning — and a run still fights it as snapshotted', async () => {
     await w.enemies.create('retired', input({ name: 'Retired', attack: 60, defense: 0, hp: 150 }), 'admin-1');
-    await w.zone('retired_pool', (z) => {
-      z.pools.combat = [
-        { id: 'grunt', enemyKey: 'grunt', weight: 10 },
-        { id: 'retired', enemyKey: 'retired', weight: 10 },
-      ];
-    });
-    await w.zones.create(
-      authoredZoneDoc('retired_rooms', (z) => {
-        z.authored!.rooms![0]!.enemyKey = 'retired';
-      }),
-      'test',
-    );
-    await w.setEnemyEnabled('retired', false);
+    await w.publish(fightDungeon('retired_rooms', 'Retired Rooms', [{ enemy: { key: 'grunt' } }, { enemy: { key: 'retired' } }]));
+    expect((await w.content.get('retired_rooms'))!.issues.filter((i) => i.code === 'enemy_disabled')).toEqual([]);
+    await setEnemyEnabled('retired', false);
 
     // Existing references: still there, still saveable, and flagged.
-    const pool = (await w.zones.get('retired_pool'))!;
-    expect(pool.zone.pools.combat.map((e) => e.enemyKey)).toEqual(['grunt', 'retired']);
-    expect(pool.issues).toContainEqual(expect.objectContaining({ path: 'pools.combat[1].enemyKey', severity: 'warning' }));
-    const rooms = (await w.zones.get('retired_rooms'))!;
-    expect(rooms.issues).toContainEqual(
-      expect.objectContaining({ path: 'authored.rooms[0].enemyKey', severity: 'warning', message: expect.stringContaining('Retired, which is disabled') }),
+    const detail = (await w.content.get('retired_rooms'))!;
+    expect(wavesOf(detail.draft)).toEqual(['grunt', 'retired']);
+    expect(detail.issues).toContainEqual(
+      expect.objectContaining({
+        code: 'enemy_disabled',
+        path: 'rooms[0].actions[0].waves[1].enemy',
+        severity: 'warning',
+        message: expect.stringContaining('"retired" is disabled'),
+      }),
     );
-    const resaved = await w.zones.update('retired_pool', { zone: { ...pool.zone, description: 'Edited.' }, expectedRevision: pool.revision }, 'admin');
-    expect(resaved!.zone.pools.combat.map((e) => e.enemyKey)).toEqual(['grunt', 'retired']);
+    const resaved = await w.content.saveDraft(
+      'retired_rooms',
+      { definition: { ...detail.draft, description: 'Edited.' }, expectedRevision: detail.draftRevision },
+      'admin',
+    );
+    expect(wavesOf(resaved.draft)).toEqual(['grunt', 'retired']);
+    expect(resaved.draft.description).toBe('Edited.');
     // The enemy's own page says the same from the other side.
     expect((await w.enemies.get('retired'))!.issues).toContainEqual(expect.objectContaining({ path: 'enabled', severity: 'warning' }));
 
-    // New references: refused, in a new zone and in an existing one alike.
-    await expect(
-      w.zone('retired_new', (z) => {
-        z.pools.elite = [{ id: 'retired', enemyKey: 'retired', weight: 10 }];
-      }),
-    ).rejects.toBeInstanceOf(DungeonZoneInvalidError);
-    const other = (await w.zones.get('picked_pool'))!;
-    const added = { ...other.zone, pools: { ...other.zone.pools, boss: [{ id: 'retired', enemyKey: 'retired', weight: 10 }] } };
-    const refused = await w.zones.update('picked_pool', { zone: added, expectedRevision: other.revision }, 'admin').catch((e: unknown) => e);
-    expect(refused).toBeInstanceOf(DungeonZoneInvalidError);
-    expect((refused as DungeonZoneInvalidError).issues).toContainEqual(
-      expect.objectContaining({ path: 'pools.boss[0].enemyKey', severity: 'error', message: expect.stringContaining('is disabled and cannot be added') }),
+    // A dry run of a new dungeon that names it reports the same stable code.
+    const report = await w.content.validate(fightDungeon('retired_new', 'Retired New', [{ enemy: { key: 'retired' } }]));
+    expect(report.issues).toContainEqual(
+      expect.objectContaining({ code: 'enemy_disabled', path: 'rooms[0].actions[0].waves[0].enemy', severity: 'warning' }),
     );
-    expect(await w.zones.validate(added, 'picked_pool')).toContainEqual(expect.objectContaining({ path: 'pools.boss[0].enemyKey', severity: 'error' }));
-    await expect(
-      w.zones.create(
-        authoredZoneDoc('retired_new_rooms', (z) => {
-          z.authored!.rooms![0]!.enemyKey = 'retired';
-        }),
-        'test',
-      ),
-    ).rejects.toBeInstanceOf(DungeonZoneInvalidError);
 
-    // In play: the generator stops drawing it; a hand-placed room still fights it.
-    const a = await w.player();
-    const drawn = (await w.runs.getRun((await w.play.start(a.playerId, 'retired_pool')).id))!;
-    expect(Object.keys(drawn.snapshot.enemies)).not.toContain('retired');
-    const b = await w.player();
-    const placed = (await w.runs.getRun((await w.play.start(b.playerId, 'retired_rooms')).id))!;
-    expect(placed.snapshot.enemies.retired).toMatchObject({ key: 'retired', enabled: false });
+    // In play: the published revision still fields it, frozen as the catalogue has it now.
+    const { playerId } = await w.player();
+    const started = await w.runs.start(playerId, 'retired_rooms');
+    expect((await snapshotOf(started.id)).enemies.retired).toMatchObject({ key: 'retired', enabled: false });
 
     // Re-enabling restores it everywhere, with nothing to repair.
-    await w.setEnemyEnabled('retired', true);
-    expect((await w.zones.get('retired_pool'))!.issues.filter((i) => i.path.includes('enemyKey'))).toEqual([]);
+    await setEnemyEnabled('retired', true);
+    expect((await w.content.get('retired_rooms'))!.issues.filter((i) => i.code === 'enemy_disabled')).toEqual([]);
+    expect((await w.enemies.get('retired'))!.issues).toEqual([]);
   });
 
   it('a run freezes the enemy it started with; a later edit reaches only new runs', async () => {
@@ -566,37 +576,31 @@ describe('dungeons read the catalogue', () => {
     const sprite = await upload('sprite', 'bruiser.png');
     const placement = { anchor: 'center', scaleBasisPoints: 5000, offsetX: 0, offsetY: 0 } as const;
     await edit('bruiser', { spriteAssetId: sprite, spritePlacement: placement });
-    await w.zones.create(
-      authoredZoneDoc('bruiser_rooms', (z) => {
-        z.authored!.rooms![0]!.enemyKey = 'bruiser';
-      }),
-      'test',
-    );
+    await w.publish(fightDungeon('bruiser_rooms', 'Bruiser Rooms', [{ enemy: { key: 'bruiser' } }]));
 
     const first = await w.player();
-    const started = await w.play.start(first.playerId, 'bruiser_rooms');
-    const before = (await w.runs.getRun(started.id))!;
-    expect(before.snapshot.enemies.bruiser).toMatchObject({ attack: 100, name: 'Bruiser', spritePlacement: placement });
-    expect(before.snapshot.enemyArtwork!.bruiser).toMatchObject({ spriteAssetId: sprite });
-    expect(started.node.enemy).toMatchObject({ attack: 100, visual: { spriteAssetId: sprite, spritePlacement: placement } });
+    const started = await w.runs.start(first.playerId, 'bruiser_rooms');
+    const before = await runRow(started.id);
+    const frozen = before.dependencySnapshot as unknown as DungeonDependencySnapshot;
+    expect(frozen.enemies.bruiser).toMatchObject({ attack: 100, name: 'Bruiser', spritePlacement: placement });
+    expect(frozen.enemyArtwork.bruiser).toMatchObject({ spriteAssetId: sprite });
+    expect(started.enemy).toMatchObject({ attack: 100, visual: { spriteAssetId: sprite, spritePlacement: placement } });
 
     const other = await upload('sprite', 'bruiser-2.png');
     await edit('bruiser', { attack: 120, name: 'Bruiser Prime', spriteAssetId: other, spritePlacement: null });
 
     // The run in progress is untouched — stored and as the player sees it.
-    const after = (await w.runs.getRun(started.id))!;
-    expect(after).toEqual(before);
-    expect((await w.play.activeRun(first.playerId))!.node.enemy).toMatchObject({
+    expect(await runRow(started.id)).toEqual(before);
+    expect((await w.runs.activeRun(first.playerId))!.enemy).toMatchObject({
       attack: 100,
       name: 'Bruiser',
       visual: { spriteAssetId: sprite, spritePlacement: placement },
     });
-    expect(w.runs.reproduceGraph(after)).toEqual(before.graph);
 
     // A new run gets the enemy as it is now.
     const second = await w.player();
-    const fresh = await w.play.start(second.playerId, 'bruiser_rooms');
-    expect(fresh.node.enemy).toMatchObject({ attack: 120, name: 'Bruiser Prime', visual: { spriteAssetId: other } });
+    const fresh = await w.runs.start(second.playerId, 'bruiser_rooms');
+    expect(fresh.enemy).toMatchObject({ attack: 120, name: 'Bruiser Prime', visual: { spriteAssetId: other } });
   });
 });
 
@@ -650,13 +654,13 @@ describe('Combat Trials read the catalogue', () => {
     expect(ghost).toBeInstanceOf(CombatTrialUnavailableError);
     expect(ghost).toMatchObject({ reason: 'enemy_missing', trialKey: 't_ghost' });
 
-    await w.setEnemyEnabled('trial_weak', false);
+    await setEnemyEnabled('trial_weak', false);
     expect((await trials.list(playerId)).trials).toEqual([]);
     const off = await trials.fight(playerId, 't_weak', 'k-off').catch((e: unknown) => e);
     expect(off).toMatchObject({ code: 'COMBAT_TRIAL_UNAVAILABLE', reason: 'enemy_disabled' });
     expect(await attempts(playerId)).toEqual([]);
 
-    await w.setEnemyEnabled('trial_weak', true);
+    await setEnemyEnabled('trial_weak', true);
     expect((await trials.fight(playerId, 't_weak', 'k-on')).attempt.result).toBe('player_victory');
   });
 });

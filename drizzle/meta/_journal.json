@@ -414,6 +414,13 @@
       "when": 1820786400000,
       "tag": "0058_boss_artwork_assets",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1820872800000,
+      "tag": "0059_dungeon_overhaul_foundation",
+      "breakpoints": true
     }
   ]
 }

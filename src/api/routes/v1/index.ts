@@ -142,8 +142,9 @@ export const v1Routes =
     // service is not wired.
     await app.register(adminRewardTableRoutes(ctx));
 
-    // Admin: dungeon zones, the progression currency and the generation
-    // preview. Skipped when the dungeon services are not wired.
+    // Admin: dungeon drafts, publication, export and sandbox, plus the Delve
+    // settings and progression currency. Skipped when the dungeon services
+    // are not wired.
     await app.register(adminDungeonRoutes(ctx));
 
     // Admin: managed artwork (uploads, the scene preview) and enemy artwork.

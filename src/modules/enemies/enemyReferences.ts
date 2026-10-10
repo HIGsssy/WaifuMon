@@ -8,14 +8,15 @@
  *
  * Two sources exist today:
  *
- *   - dungeon zones — the stored zone documents, both the procedural pools
- *     and the authored rooms (a zone keeps both whichever layout it uses);
+ *   - dungeons — every stored dungeon document: each draft, and each
+ *     published revision new runs start on. A wave may name one enemy or draw
+ *     from a weighted pool; both count;
  *   - Combat Trials — the shipped Trial definitions.
  */
-import { asc } from 'drizzle-orm';
 import type { DbOrTx } from '../../db/client';
-import { dungeonZones } from '../../db/schema';
 import type { EnemyReference } from '../../shared/errors';
+import { isCombatAction, type DungeonDefinition } from '../dungeons/content/dungeonDefinition';
+import { readDungeonContentDocuments } from '../dungeons/dungeonContentService';
 
 export type { EnemyReference };
 
@@ -27,53 +28,38 @@ export interface EnemyReferenceEntry extends EnemyReference {
 /** Every place one system names an enemy. Reads inside the caller's transaction. */
 export type EnemyReferenceSource = (tx: DbOrTx) => Promise<EnemyReferenceEntry[]>;
 
-const ENEMY_POOLS = ['combat', 'elite', 'miniboss', 'boss'] as const;
-
-/** The enemies one stored zone document names, de-duplicated per slot. */
-export function zoneDocumentEnemyReferences(
-  zoneKey: string,
-  definition: unknown,
+/** The enemies one dungeon document names, de-duplicated per place. */
+export function dungeonDocumentEnemyReferences(
+  dungeonKey: string,
+  definition: DungeonDefinition,
+  source: 'draft' | 'published',
 ): EnemyReferenceEntry[] {
-  const doc = (definition ?? {}) as {
-    name?: unknown;
-    pools?: Record<string, unknown>;
-    authored?: { rooms?: unknown };
-  };
-  const name = typeof doc.name === 'string' ? doc.name : null;
   const out: EnemyReferenceEntry[] = [];
   const seen = new Set<string>();
-  const add = (enemyKey: unknown, usage: string) => {
-    if (typeof enemyKey !== 'string' || enemyKey === '') return;
-    const id = `${enemyKey}\u0000${usage}`;
-    if (seen.has(id)) return;
-    seen.add(id);
-    out.push({ enemyKey, kind: 'dungeon_zone', key: zoneKey, name, usage });
-  };
-  for (const pool of ENEMY_POOLS) {
-    const entries = doc.pools?.[pool];
-    if (!Array.isArray(entries)) continue;
-    for (const entry of entries) add((entry as { enemyKey?: unknown } | null)?.enemyKey, `${pool} pool`);
-  }
-  const rooms = doc.authored?.rooms;
-  if (Array.isArray(rooms)) {
-    for (const raw of rooms) {
-      const room = (raw ?? {}) as { id?: unknown; name?: unknown; type?: unknown; enemyKey?: unknown };
-      const label = typeof room.name === 'string' && room.name.trim() !== '' ? room.name : String(room.id ?? '?');
-      const type = typeof room.type === 'string' ? ` (${room.type})` : '';
-      add(room.enemyKey, `room "${label}"${type}`);
+  for (const room of definition.rooms) {
+    for (const action of room.actions) {
+      if (!isCombatAction(action)) continue;
+      action.waves.forEach((wave, index) => {
+        const pooled = 'pool' in wave.enemy;
+        const keys = 'key' in wave.enemy ? [wave.enemy.key] : wave.enemy.pool.map((e) => e.key);
+        const wavePart = action.waves.length > 1 ? `, wave ${index + 1}` : '';
+        const usage = `${source}: room "${room.name || room.id}" ${action.type} "${action.id}"${wavePart}${pooled ? ' (pool)' : ''}`;
+        for (const enemyKey of keys) {
+          const id = `${enemyKey}\u0000${usage}`;
+          if (seen.has(id)) continue;
+          seen.add(id);
+          // The kind is the one the Portal already knows as "a dungeon".
+          out.push({ enemyKey, kind: 'dungeon_zone', key: dungeonKey, name: definition.name, usage });
+        }
+      });
     }
   }
   return out;
 }
 
-/** Zones are a handful of documents; scanning them tracks the shape better than a JSON path query. */
-export const dungeonZoneEnemyReferences: EnemyReferenceSource = async (tx) => {
-  const zones = await tx
-    .select({ key: dungeonZones.zoneKey, definition: dungeonZones.definition })
-    .from(dungeonZones)
-    .orderBy(asc(dungeonZones.position), asc(dungeonZones.zoneKey));
-  return zones.flatMap((zone) => zoneDocumentEnemyReferences(zone.key, zone.definition));
-};
+/** Dungeons are a handful of documents; scanning them tracks the shape better than a JSON path query. */
+export const dungeonEnemyReferences: EnemyReferenceSource = async (tx) =>
+  (await readDungeonContentDocuments(tx)).flatMap((doc) => dungeonDocumentEnemyReferences(doc.dungeonKey, doc.definition, doc.source));
 
 /** Combat Trials name one enemy each; they are shipped content, read from the live snapshot. */
 export function combatTrialEnemyReferences(

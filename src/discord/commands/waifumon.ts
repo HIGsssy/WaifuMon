@@ -348,7 +348,7 @@ async function renderMainMenu(
 
   const equipmentEntry = await loadEquipmentEntry(ctx, prov.playerId);
   const combatTrialsEnabled = ctx.services.combatTrials != null;
-  const dungeonsEnabled = ctx.services.dungeonPlay != null;
+  const dungeonsEnabled = ctx.services.dungeonRuns != null;
   embed.addFields({
     name: '🎮 Actions',
     value:

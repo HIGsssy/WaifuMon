@@ -1607,101 +1607,88 @@ export class WorkshopPreviewStaleError extends AppError {
 
 /* ───────────────────────────── Dungeons ───────────────────────────── */
 
-/** Why the dungeon generator could not produce a run. */
-export interface DungeonGenerationDiagnostics {
-  zoneKey: string;
-  seed: number;
-  /** Attempts made before giving up. */
-  attempts: number;
-  /** How many attempts failed for each reason. */
-  failures: Record<string, number>;
-  /** The reason the last attempt failed. */
-  lastFailure: string;
-}
-
-/**
- * The authored rules of a zone could not produce a legal run for this seed
- * within the retry bound. Never a partial dungeon: nothing was generated.
- */
-export class DungeonGenerationError extends AppError {
-  constructor(readonly diagnostics: DungeonGenerationDiagnostics) {
-    super(
-      'DUNGEON_GENERATION_FAILED',
-      `Dungeon zone "${diagnostics.zoneKey}" could not generate a run for seed ${diagnostics.seed} ` +
-        `in ${diagnostics.attempts} attempts: ${diagnostics.lastFailure}`,
-      `This dungeon could not be generated: ${diagnostics.lastFailure}.`,
-    );
-  }
-}
-
-/** One problem with a submitted dungeon zone, by path. */
-export interface DungeonZoneIssueDetail {
+/** One problem with a dungeon definition, by path. `code` is stable; see `dungeonValidation.ts`. */
+export interface DungeonIssueDetail {
+  code: string;
   path: string;
   message: string;
   severity: 'error' | 'warning';
 }
 
-/** A dungeon zone failed authoring validation; nothing was written. */
-export class DungeonZoneInvalidError extends AppError {
-  readonly issues: DungeonZoneIssueDetail[];
-  constructor(issues: readonly DungeonZoneIssueDetail[]) {
+/** A dungeon definition failed validation; nothing was written or published. */
+export class DungeonInvalidError extends AppError {
+  readonly issues: DungeonIssueDetail[];
+  constructor(issues: readonly DungeonIssueDetail[]) {
     const list = Array.isArray(issues) ? issues : [];
     const summary = list
       .filter((i) => i.severity === 'error')
       .map((i) => `${i.path}: ${i.message}`)
       .join('; ');
     super(
-      'DUNGEON_ZONE_INVALID',
-      `Invalid dungeon zone: ${summary || 'unknown problem'}`,
-      summary || 'That dungeon zone is not valid.',
+      'DUNGEON_INVALID',
+      `Invalid dungeon: ${summary || 'unknown problem'}`,
+      summary || 'That dungeon is not valid.',
     );
     this.issues = [...list];
   }
 }
 
-/** A save named a revision someone else has since replaced. Nothing was written. */
-export class DungeonZoneStaleError extends AppError {
+/** A draft save or a publish named a draft revision someone else has since replaced. */
+export class DungeonDraftStaleError extends AppError {
   constructor(
-    readonly zoneKey: string,
+    readonly dungeonKey: string,
     readonly expectedRevision: number,
     readonly currentRevision: number,
     readonly updatedBy: string | null,
     readonly updatedAt: Date,
   ) {
     super(
-      'DUNGEON_ZONE_STALE',
-      `Dungeon zone "${zoneKey}" is at revision ${currentRevision}, not ${expectedRevision}`,
-      'This dungeon zone was changed by someone else since you opened it. Reload to see their changes.',
+      'DUNGEON_DRAFT_STALE',
+      `Dungeon "${dungeonKey}" draft is at revision ${currentRevision}, not ${expectedRevision}`,
+      'This dungeon was changed by someone else since you opened it. Reload to see their changes.',
     );
   }
 }
 
-export class DungeonZoneKeyTakenError extends AppError {
-  constructor(zoneKey: string) {
+export class DungeonKeyTakenError extends AppError {
+  constructor(dungeonKey: string) {
+    super('DUNGEON_KEY_TAKEN', `A dungeon "${dungeonKey}" already exists`, 'Another dungeon already uses that key.');
+  }
+}
+
+export class DungeonNotFoundError extends AppError {
+  constructor(dungeonKey: string) {
+    super('DUNGEON_NOT_FOUND', `Dungeon "${dungeonKey}" not found`, 'That dungeon could not be found.');
+  }
+}
+
+/** A rollback or an export named a published revision the dungeon does not have. */
+export class DungeonRevisionNotFoundError extends AppError {
+  constructor(dungeonKey: string, revision: number) {
     super(
-      'DUNGEON_ZONE_KEY_TAKEN',
-      `A dungeon zone "${zoneKey}" already exists`,
-      'Another dungeon zone already uses that key.',
+      'DUNGEON_REVISION_NOT_FOUND',
+      `Dungeon "${dungeonKey}" has no published revision ${String(revision)}`,
+      'That published revision could not be found.',
     );
   }
 }
 
-/** A run was asked for in a zone that does not exist or is switched off. */
-export class DungeonZoneUnavailableError extends AppError {
+/** A run was asked for in a dungeon that does not exist, is unpublished, or is switched off. */
+export class DungeonUnavailableError extends AppError {
   /**
-   * `region`: the zone exists and is enabled, but cannot be started from where
-   * the player is standing. `regionName` is that place, for the message.
+   * `region`: the dungeon is open, but cannot be started from where the
+   * player is standing. `regionName` is that place, for the message.
    */
   constructor(
-    zoneKey: string,
-    readonly reason: 'missing' | 'disabled' | 'region',
+    dungeonKey: string,
+    readonly reason: 'missing' | 'unpublished' | 'disabled' | 'region',
     regionName?: string,
   ) {
     super(
-      'DUNGEON_ZONE_UNAVAILABLE',
+      'DUNGEON_UNAVAILABLE',
       reason === 'region'
-        ? `Dungeon zone "${zoneKey}" is not available in the player's current region`
-        : `Dungeon zone "${zoneKey}" is ${reason}`,
+        ? `Dungeon "${dungeonKey}" is not available in the player's current region`
+        : `Dungeon "${dungeonKey}" is ${reason}`,
       reason === 'region'
         ? `That Delve isn’t available in ${typeof regionName === 'string' && regionName ? regionName : 'this region'}.`
         : 'That dungeon is not open right now.',
@@ -1752,17 +1739,6 @@ export class DungeonSettingsInvalidError extends AppError {
 export class DungeonRunNotFoundError extends AppError {
   constructor(runId: number) {
     super('DUNGEON_RUN_NOT_FOUND', `Dungeon run ${String(runId)} not found for this player`, 'That run could not be found.');
-  }
-}
-
-/** The run was generated without a fighter snapshot, so there is nothing to play it with. */
-export class DungeonRunUnplayableError extends AppError {
-  constructor(runId: number) {
-    super(
-      'DUNGEON_RUN_UNPLAYABLE',
-      `Dungeon run ${String(runId)} has no fighter snapshot`,
-      'That run cannot be played. Abandon it and start a new one.',
-    );
   }
 }
 

@@ -1,366 +1,472 @@
 /**
- * Dungeon runs against a real database: a generated run is stored whole, an
- * Admin edit never reaches a run already generated, a new run uses the new
- * configuration, one active run per player, and the shipped zones are seeded
- * without overwriting an edit.
+ * Dungeon runs against a real database: the live effects adapter, the row
+ * lock and step check, revision pinning, dependency snapshots and settlement.
  */
-import { eq } from 'drizzle-orm';
+import { and, eq, like } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { dungeonRuns, dungeonZones, rewardTables } from '../../src/db/schema';
-import { validateDungeonGraph } from '../../src/modules/dungeons/dungeonGenerator';
-import { createDungeonRunService, type DungeonRunService } from '../../src/modules/dungeons/dungeonRunService';
-import { createDungeonZoneService, type DungeonZoneService } from '../../src/modules/dungeons/dungeonZoneService';
 import {
-  loadShippedDungeonZones,
-  seedDungeonZones,
-  type ShippedDungeonZone,
-} from '../../src/modules/dungeons/dungeonZoneStore';
-import { dungeonZoneHash, type DungeonZoneDefinition } from '../../src/modules/dungeons/zoneDefinition';
-import type { LoadedContent } from '../../src/modules/content/schemas';
-import { loadEquipmentSeedCatalogue, seedEquipmentDefinitions } from '../../src/modules/equipment/seed';
-import { createProgressionCurrencyService } from '../../src/modules/progressionCurrency/progressionCurrencyService';
-import { loadShippedRewardTables, seedRewardTables } from '../../src/modules/rewardTables/rewardTableStore';
+  dungeonDailyUsage,
+  dungeonRunEvents,
+  dungeonRuns,
+  items,
+  playerCurrencies,
+  playerEquipment,
+  playerInventory,
+  players,
+  progressionCurrencyLedger,
+} from '../../src/db/schema';
+import type { DungeonDefinitionInput } from '../../src/modules/dungeons/content/dungeonDefinition';
+import type { DungeonRunView } from '../../src/modules/dungeons/dungeonRunService';
+import type { DungeonInput } from '../../src/modules/dungeons/engine/types';
 import {
-  DungeonGenerationError,
+  CombatBuddyRequiredError,
+  CombatLoadoutIncompleteError,
+  DungeonDailyLimitError,
   DungeonRunActiveError,
-  DungeonZoneInvalidError,
-  DungeonZoneUnavailableError,
-  PlayerNotFoundError,
+  DungeonRunNotFoundError,
+  DungeonUnavailableError,
+  FeatureLockedError,
 } from '../../src/shared/errors';
-import { CONTENT_DIR, bootstrapApp, provisionPlayer, type App } from '../helpers/fixtures';
-import { createTestDb, type TestDb } from '../helpers/testDb';
+import { CURRENCY, STARTER, singleRoomDungeon, testDungeonInput } from '../helpers/dungeonFixtures';
+import { GEAR_TABLE, LOOT_TABLE, createDungeonWorld, type DungeonWorld } from '../helpers/dungeonWorld';
 
-const ZONE = 'scrapheap_gauntlet';
-let t: TestDb;
-let app: App;
-let content: LoadedContent;
-let shipped: ShippedDungeonZone[];
-let zones: DungeonZoneService;
-let runs: DungeonRunService;
-let users = 0;
-const newPlayer = async () => (await provisionPlayer(app, 'g-dungeon', `u-${++users}`)).playerId;
-const liveZone = async (key = ZONE) => (await zones.get(key))!;
-
+let w: DungeonWorld;
 beforeAll(async () => {
-  t = await createTestDb();
-  app = await bootstrapApp(t);
-  content = app.content;
-  // The shipped zone's gear tables need definitions to pay from.
-  await seedEquipmentDefinitions(t.db, { catalogue: loadEquipmentSeedCatalogue(CONTENT_DIR) });
-  await seedRewardTables(t.db, loadShippedRewardTables(CONTENT_DIR));
-  shipped = loadShippedDungeonZones(CONTENT_DIR);
-  await seedDungeonZones(t.db, shipped);
-  zones = createDungeonZoneService({ db: t.db, getContent: () => content, getShipped: () => shipped });
-  runs = createDungeonRunService({
-    db: t.db,
-    getContent: () => content,
-    currencies: createProgressionCurrencyService(t.db),
-  });
+  w = await createDungeonWorld();
+  await w.allowance.updateSettings({ dailyRunLimit: 50 }, 'test');
+  await w.publish();
 });
 afterAll(async () => {
-  await t.cleanup();
+  await w.cleanup();
 });
+
+let n = 0;
+type Actions = NonNullable<DungeonDefinitionInput['rooms'][number]['actions']>;
+/** Publish a one-room dungeon under a fresh key and return the key. */
+async function oneRoom(actions: Actions, patch: (d: DungeonDefinitionInput) => void = () => {}): Promise<string> {
+  const key = `room_${++n}`;
+  const definition = singleRoomDungeon(actions, (d) => {
+    d.key = key;
+    patch(d);
+  });
+  await w.publish(definition);
+  return key;
+}
+const fight = (id: string, enemies: string[], extra: Record<string, unknown> = {}): Actions[number] => ({
+  id,
+  type: 'combat',
+  waves: enemies.map((key) => ({ enemy: { key } })),
+  ...extra,
+});
+
+/** Apply inputs in order, each naming the step the previous screen showed. */
+async function play(playerId: number, view: DungeonRunView, inputs: DungeonInput[]): Promise<DungeonRunView> {
+  let current = view;
+  for (const input of inputs) {
+    const result = await w.act(playerId, current, input);
+    expect(result, JSON.stringify(input)).toMatchObject({ status: 'applied', refusal: null });
+    current = result.run;
+  }
+  return current;
+}
+const waveRows = (runId: number) =>
+  w.t.db.select().from(dungeonRunEvents).where(and(eq(dungeonRunEvents.runId, runId), eq(dungeonRunEvents.type, 'combat_wave_resolved')));
+
+const MAIN_ROUTE: DungeonInput[] = [
+  { type: 'advance' }, { type: 'advance' }, { type: 'advance' },
+  { type: 'move', connectionId: 'c_main' }, { type: 'advance' }, { type: 'advance' },
+  { type: 'move', connectionId: 'c_pump_bulk' }, { type: 'advance' },
+  { type: 'move', connectionId: 'c_boss' }, { type: 'advance' }, { type: 'advance' },
+];
 
 describe('starting a run', () => {
-  it('stores the generated graph, the seed, the zone revision and the initial state', async () => {
-    const playerId = await newPlayer();
-    const run = await runs.startRun({ playerId, zoneKey: ZONE, seed: 4242 });
+  it('pins the published revision, snapshots the fighter and dependencies, and stands in the entrance', async () => {
+    const { playerId, buddyId } = await w.player();
+    const run = await w.runs.start(playerId, 'test_tunnels', { seed: 11 });
     expect(run).toMatchObject({
-      playerId,
-      zoneKey: ZONE,
-      seed: 4242,
       status: 'active',
-      zoneRevision: 1,
-      currentNodeId: run.graph.startNodeId,
-      currentHp: null,
-      unbankedCurrency: 0,
-      securedRewards: [],
-      completedAt: null,
+      step: 0,
+      dungeon: { key: 'test_tunnels', name: 'Test Tunnels', revision: 1 },
+      fighter: { waifuId: buddyId, ...STARTER },
+      core: {
+        hp: STARTER.maxHp,
+        maxHp: STARTER.maxHp,
+        phase: 'action',
+        room: { id: 'gate', visits: 1, completed: false },
+        action: { id: 'guards', type: 'combat', wave: { index: 0, count: 2, enemy: { key: 'grunt' } } },
+        roomCount: 5,
+      },
+      enemy: { key: 'grunt', name: 'Grunt', hp: 150 },
+      secured: [],
+      settlement: null,
     });
-    expect(validateDungeonGraph(run.snapshot.zone, run.graph)).toEqual([]);
-
-    const [row] = await t.db.select().from(dungeonRuns).where(eq(dungeonRuns.id, run.id));
-    expect(row!.graph).toEqual(run.graph);
-    expect(await runs.getRun(run.id)).toEqual(run);
-    expect(await runs.getActiveRun(playerId)).toEqual(run);
+    const [row] = await w.t.db.select().from(dungeonRuns).where(eq(dungeonRuns.id, run.id));
+    expect(row).toMatchObject({ dungeonKey: 'test_tunnels', seed: 11, step: 0, status: 'active', currentHp: 370 });
+    expect(Object.keys((row!.dependencySnapshot as { enemies: object }).enemies).sort()).toEqual(['grunt', 'overlord', 'sentinel', 'warden']);
+    const history = await w.runs.history(run.id);
+    expect(history.map((e) => [e.step, e.type])).toEqual([[0, 'run_started'], [0, 'room_entered']]);
+    expect(history[0]!.payload).toMatchObject({ dungeonKey: 'test_tunnels', revision: 1, seed: 11, region: 'waifu-valley' });
   });
 
-  it('snapshots the enemies, events and currency the graph selected', async () => {
-    const run = await runs.startRun({ playerId: await newPlayer(), zoneKey: ZONE, seed: 7 });
-    const enemyKeys = [...new Set(run.graph.nodes.flatMap((n) => (n.content?.kind === 'enemy' ? [n.content.key] : [])))];
-    expect(Object.keys(run.snapshot.enemies).sort()).toEqual(enemyKeys.sort());
-    for (const key of enemyKeys) {
-      expect(run.snapshot.enemies[key]).toEqual(content.combatEnemies!.find((e) => e.key === key));
-    }
-    expect(run.snapshot.currency).toMatchObject({ key: 'ascension_currency' });
-    expect(run.snapshot.zone.rewards.defeatCurrencyRetentionBasisPoints).toBe(2500);
-    expect(run.snapshot.zoneContentHash).toBe(dungeonZoneHash(run.snapshot.zone));
-  });
-
-  it('draws a seed when none is given, and different runs differ', async () => {
-    const a = await runs.startRun({ playerId: await newPlayer(), zoneKey: ZONE });
-    const b = await runs.startRun({ playerId: await newPlayer(), zoneKey: ZONE });
-    expect(Number.isInteger(a.seed)).toBe(true);
-    expect(a.seed).not.toBe(b.seed);
-  });
-
-  it('refuses a missing zone, a disabled zone and an unknown player', async () => {
-    const playerId = await newPlayer();
-    await expect(runs.startRun({ playerId, zoneKey: 'nowhere' })).rejects.toBeInstanceOf(DungeonZoneUnavailableError);
-    await expect(runs.startRun({ playerId: 999_999, zoneKey: ZONE })).rejects.toBeInstanceOf(PlayerNotFoundError);
-
-    const current = await liveZone();
-    const off = (await zones.setEnabled(ZONE, { enabled: false, expectedRevision: current.revision }, 'admin'))!;
-    try {
-      await expect(runs.startRun({ playerId, zoneKey: ZONE })).rejects.toBeInstanceOf(DungeonZoneUnavailableError);
-    } finally {
-      await zones.setEnabled(ZONE, { enabled: true, expectedRevision: off.revision }, 'admin');
-    }
-    expect(await runs.getActiveRun(playerId)).toBeNull();
-  });
-});
-
-describe('one active run per player', () => {
-  it('refuses a second run while one is active, and allows one after it ends', async () => {
-    const playerId = await newPlayer();
-    const first = await runs.startRun({ playerId, zoneKey: ZONE });
-    await expect(runs.startRun({ playerId, zoneKey: ZONE })).rejects.toBeInstanceOf(DungeonRunActiveError);
-
-    const ended = (await runs.abandonActiveRun(playerId))!;
-    expect(ended).toMatchObject({ id: first.id, status: 'abandoned' });
-    expect(ended.completedAt).not.toBeNull();
-    expect(await runs.abandonActiveRun(playerId)).toBeNull();
-
-    const second = await runs.startRun({ playerId, zoneKey: ZONE });
-    expect(second.id).not.toBe(first.id);
-  });
-
-  it('lets exactly one of several concurrent starts through', async () => {
-    const playerId = await newPlayer();
-    const results = await Promise.allSettled(
-      Array.from({ length: 5 }, () => runs.startRun({ playerId, zoneKey: ZONE })),
-    );
+  it('allows one active run per player, even under a double click', async () => {
+    const { playerId } = await w.player();
+    const results = await Promise.allSettled([w.runs.start(playerId, 'test_tunnels'), w.runs.start(playerId, 'test_tunnels'), w.runs.start(playerId, 'test_tunnels')]);
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
-    for (const r of results) {
-      if (r.status === 'rejected') expect(r.reason).toBeInstanceOf(DungeonRunActiveError);
+    for (const r of results) if (r.status === 'rejected') expect(r.reason).toBeInstanceOf(DungeonRunActiveError);
+    // Only the run that started spent a daily attempt.
+    const [usage] = await w.t.db.select().from(dungeonDailyUsage).where(eq(dungeonDailyUsage.playerId, playerId));
+    expect(usage!.runsStarted).toBe(1);
+  });
+
+  it('refuses a locked player, a player without a Buddy or a full loadout, and spends nothing', async () => {
+    const locked = await w.player({ unlocked: false });
+    await expect(w.runs.start(locked.playerId, 'test_tunnels')).rejects.toBeInstanceOf(FeatureLockedError);
+    const noBuddy = await w.player({ buddy: false });
+    await expect(w.runs.start(noBuddy.playerId, 'test_tunnels')).rejects.toBeInstanceOf(CombatBuddyRequiredError);
+    const noGear = await w.player({ starters: false });
+    await expect(w.runs.start(noGear.playerId, 'test_tunnels')).rejects.toBeInstanceOf(CombatLoadoutIncompleteError);
+    for (const { playerId } of [locked, noBuddy, noGear]) {
+      expect(await w.t.db.select().from(dungeonDailyUsage).where(eq(dungeonDailyUsage.playerId, playerId))).toEqual([]);
+      expect(await w.t.db.select().from(dungeonRuns).where(eq(dungeonRuns.playerId, playerId))).toEqual([]);
     }
   });
 
-  it('is enforced by the database, not only by the service', async () => {
-    const playerId = await newPlayer();
-    const run = await runs.startRun({ playerId, zoneKey: ZONE });
-    const duplicate = {
-      playerId,
-      zoneKey: ZONE,
-      zoneRevision: 1,
-      seed: 1,
-      generatorVersion: 1,
-      graph: {},
-      zoneSnapshot: {},
-    };
-    await expect(t.db.insert(dungeonRuns).values(duplicate)).rejects.toThrow();
-    // A finished run does not count.
-    await t.db
-      .update(dungeonRuns)
-      .set({ status: 'completed', completedAt: new Date() })
-      .where(eq(dungeonRuns.id, run.id));
-    await expect(t.db.insert(dungeonRuns).values(duplicate)).resolves.toBeDefined();
+  it('refuses a dungeon that is missing, unpublished, disabled or not available where the player stands', async () => {
+    const { playerId } = await w.player();
+    await expect(w.runs.start(playerId, 'nowhere')).rejects.toMatchObject({ reason: 'missing' });
+    await w.content.create({ definition: testDungeonInput('draft_only') }, 'test');
+    await expect(w.runs.start(playerId, 'draft_only')).rejects.toMatchObject({ reason: 'unpublished' });
+    await w.publish(testDungeonInput('switched_off'));
+    await w.content.setEnabled('switched_off', false, 'test');
+    await expect(w.runs.start(playerId, 'switched_off')).rejects.toMatchObject({ reason: 'disabled' });
+    const elsewhere = testDungeonInput('elsewhere');
+    elsewhere.availableRegions = ['flaccid-foothills'];
+    await w.publish(elsewhere);
+    const err = await w.runs.start(playerId, 'elsewhere').catch((e) => e);
+    expect(err).toBeInstanceOf(DungeonUnavailableError);
+    expect(err).toMatchObject({ reason: 'region' });
+    const home = await w.runs.home(playerId);
+    expect(home.dungeons.map((d) => d.key)).toContain('test_tunnels');
+    expect(home.dungeons.map((d) => d.key)).not.toEqual(expect.arrayContaining(['draft_only', 'switched_off', 'elsewhere']));
   });
 
-  it('refuses an unknown status and a seed outside the generator range', async () => {
-    const base = {
-      playerId: await newPlayer(),
-      zoneKey: ZONE,
-      zoneRevision: 1,
-      seed: 1,
-      generatorVersion: 1,
-      graph: {},
-      zoneSnapshot: {},
-    };
-    await expect(
-      t.db.insert(dungeonRuns).values({ ...base, status: 'paused' as never, completedAt: new Date() }),
-    ).rejects.toThrow();
-    await expect(t.db.insert(dungeonRuns).values({ ...base, seed: 4294967296 })).rejects.toThrow();
+  it('keeps an active run playable after the player travels away', async () => {
+    const { playerId } = await w.player();
+    const run = await w.runs.start(playerId, 'test_tunnels');
+    await w.t.db.update(players).set({ currentRegion: 'flaccid-foothills' }).where(eq(players.id, playerId));
+    expect((await w.act(playerId, run, { type: 'advance' })).status).toBe('applied');
+    expect((await w.runs.home(playerId)).activeRun?.id).toBe(run.id);
+  });
+
+  it('spends the daily allowance only on a start that succeeds', async () => {
+    await w.allowance.updateSettings({ dailyRunLimit: 1 }, 'test');
+    try {
+      const { playerId } = await w.player();
+      const run = await w.runs.start(playerId, 'test_tunnels');
+      await w.runs.act(playerId, run.id, { type: 'abandon' });
+      await expect(w.runs.start(playerId, 'test_tunnels')).rejects.toBeInstanceOf(DungeonDailyLimitError);
+      expect(await w.runs.dailyAllowance(playerId)).toMatchObject({ limit: 1, used: 1, remaining: 0 });
+    } finally {
+      await w.allowance.updateSettings({ dailyRunLimit: 50 }, 'test');
+    }
   });
 });
 
-describe('snapshot semantics', () => {
-  it('keeps an active run exactly as generated after the zone is edited, and gives new runs the new config', async () => {
-    const playerId = await newPlayer();
-    const before = await runs.startRun({ playerId, zoneKey: ZONE, seed: 99 });
+describe('playing a run', () => {
+  it('plays the main route to the exit: HP carried, currency banked once, history complete', async () => {
+    const { playerId } = await w.player();
+    const start = await w.runs.start(playerId, 'test_tunnels', { seed: 3 });
+    const end = await play(playerId, start, MAIN_ROUTE);
+    expect(end).toMatchObject({
+      status: 'completed',
+      step: MAIN_ROUTE.length,
+      core: { phase: 'ended', hp: 370 - 36 - 36 - 36 + 92 - 72 - 108, roomsCompleted: 4 },
+      settlement: { outcome: 'completed', cause: 'exit_reached', roomId: 'den', earned: 12, retentionBasisPoints: 10_000, banked: 12, lost: 0, bankingSkipped: null, balanceAfter: 12 },
+    });
+    expect(end.completedAt).toBeInstanceOf(Date);
+    expect(await w.balance(playerId)).toBe(12);
+    const ledger = await w.t.db.select().from(progressionCurrencyLedger).where(eq(progressionCurrencyLedger.playerId, playerId));
+    expect(ledger).toEqual([expect.objectContaining({ delta: 12, reason: 'dungeon_completion', requestKey: `dungeon_run:${start.id}:settlement`, currencyKey: CURRENCY })]);
 
-    const current = await liveZone();
-    const edited: DungeonZoneDefinition = {
-      ...current.zone,
-      name: 'Scrapheap Gauntlet II',
-      generation: { ...current.zone.generation, minNodes: 9, maxNodes: 9 },
-      rewards: { ...current.zone.rewards, defeatCurrencyRetentionBasisPoints: 5000 },
-    };
-    const saved = (await zones.update(ZONE, { zone: edited, expectedRevision: current.revision }, 'admin'))!;
-    expect(saved.revision).toBe(current.revision + 1);
-
-    try {
-      const after = (await runs.getRun(before.id))!;
-      expect(after).toEqual(before);
-      expect(after.zoneRevision).toBe(current.revision);
-      expect(after.snapshot.zone.name).toBe('Scrapheap Gauntlet');
-      expect(after.snapshot.zone.rewards.defeatCurrencyRetentionBasisPoints).toBe(2500);
-
-      const fresh = await runs.startRun({ playerId: await newPlayer(), zoneKey: ZONE, seed: 99 });
-      expect(fresh.zoneRevision).toBe(saved.revision);
-      expect(fresh.graph.nodes).toHaveLength(9);
-      expect(fresh.snapshot.zone.name).toBe('Scrapheap Gauntlet II');
-      expect(fresh.snapshot.zone.rewards.defeatCurrencyRetentionBasisPoints).toBe(5000);
-      expect(fresh.graph).not.toEqual(before.graph);
-    } finally {
-      await zones.update(ZONE, { zone: current.zone, expectedRevision: saved.revision }, 'admin');
-    }
+    const history = await w.runs.history(start.id);
+    expect(history.filter((e) => e.type === 'combat_wave_resolved').map((e) => [e.step, e.roomId, e.actionId, e.payload.waveIndex])).toEqual([
+      [1, 'gate', 'guards', 0],
+      [2, 'gate', 'guards', 1],
+      [5, 'pump_room', 'bruiser', 0],
+      [8, 'bulkhead', 'sentry', 0],
+      [10, 'den', 'overlord', 0],
+    ]);
+    expect(history.at(-2)).toMatchObject({ type: 'completion', step: MAIN_ROUTE.length });
+    expect(history.at(-1)).toMatchObject({ type: 'currency_banked', payload: { amount: 12, balanceAfter: 12 } });
+    // Finished: a new run may start.
+    expect((await w.runs.start(playerId, 'test_tunnels')).status).toBe('active');
   });
 
-  it('does not rewrite an active snapshot when a referenced enemy is disabled afterwards', async () => {
-    const run = await runs.startRun({ playerId: await newPlayer(), zoneKey: ZONE, seed: 5 });
-    const bossKey = run.graph.nodes.find((n) => n.boss)!.content!.key;
-    const original = content;
-    content = {
-      ...content,
-      combatEnemies: content.combatEnemies!.map((e) => (e.key === bossKey ? { ...e, enabled: false, name: 'Gone' } : e)),
-    };
-    try {
-      const after = (await runs.getRun(run.id))!;
-      expect(after).toEqual(run);
-      expect(after.snapshot.enemies[bossKey]).toMatchObject({ enabled: true, name: 'Scrapheap Colossus' });
-      expect(after.graph.nodes.find((n) => n.boss)!.content).toEqual({ kind: 'enemy', key: bossKey });
-      // A new run cannot be generated without its boss — and says so, with nothing stored.
-      const playerId = await newPlayer();
-      await expect(runs.startRun({ playerId, zoneKey: ZONE })).rejects.toBeInstanceOf(DungeonZoneInvalidError);
-      expect(await runs.getActiveRun(playerId)).toBeNull();
-    } finally {
-      content = original;
-    }
+  it('resumes between waves after a restart, from nothing but the row', async () => {
+    const { playerId } = await w.player();
+    const start = await w.runs.start(playerId, 'test_tunnels', { seed: 3 });
+    const afterWave1 = (await w.act(playerId, start, { type: 'advance' })).run;
+    expect(afterWave1.core).toMatchObject({ hp: 334, action: { id: 'guards', wave: { index: 1, count: 2 } } });
+
+    // A brand-new service over the same database: no memory of the run.
+    const restarted = w.restartedRuns();
+    const resumed = await restarted.run(playerId, start.id);
+    expect(resumed.step).toBe(1);
+    expect(resumed.core).toEqual(afterWave1.core);
+    expect(resumed.combatEvents).toEqual(afterWave1.combatEvents);
+    expect((await restarted.home(playerId)).activeRun?.core.action?.wave?.index).toBe(1);
+
+    const afterWave2 = await restarted.act(playerId, start.id, { type: 'advance', expectedStep: resumed.step });
+    expect(afterWave2.run.core).toMatchObject({ hp: 298, action: { id: 'pay' } });
+    expect((await waveRows(start.id)).map((r) => (r.payload as { waveIndex: number }).waveIndex)).toEqual([0, 1]);
   });
 
-  it('reproduces an equivalent graph from the stored seed and snapshot, even after content moves on', async () => {
-    const run = await runs.startRun({ playerId: await newPlayer(), zoneKey: ZONE, seed: 31337 });
-    expect(runs.reproduceGraph(run)).toEqual(run.graph);
-
-    const current = await liveZone();
-    const edited = { ...current.zone, generation: { ...current.zone.generation, minNodes: 6, maxNodes: 6 } };
-    const saved = (await zones.update(ZONE, { zone: edited, expectedRevision: current.revision }, 'admin'))!;
-    const original = content;
-    content = { ...content, combatEnemies: content.combatEnemies!.map((e) => ({ ...e, enabled: false })) };
+  it('reproduces a stored fight exactly from its recorded seed and HP', async () => {
+    const real = await createDungeonWorld({ combatRules: null });
     try {
-      const stored = (await runs.getRun(run.id))!;
-      expect(runs.reproduceGraph(stored)).toEqual(run.graph);
+      await real.allowance.updateSettings({ dailyRunLimit: 50 }, 'test');
+      await real.publish();
+      const a = await real.player();
+      const b = await real.player();
+      const first = (await real.act(a.playerId, await real.runs.start(a.playerId, 'test_tunnels', { seed: 99 }), { type: 'advance' })).run;
+      const second = (await real.act(b.playerId, await real.runs.start(b.playerId, 'test_tunnels', { seed: 99 }), { type: 'advance' })).run;
+      // Same seed, same stats, same HP in: the same fight, roll for roll.
+      const wave = (run: DungeonRunView) => run.core.recent.find((r) => r.kind === 'wave');
+      expect(wave(second)).toEqual(wave(first));
+      expect(second.core.hp).toBe(first.core.hp);
+      expect(second.combatEvents!.map((e) => e.type)).toEqual(first.combatEvents!.map((e) => e.type));
+      expect(first.core.hp).toBeLessThan(370);
+      const other = (await real.act(a.playerId, first, { type: 'abandon' })).run;
+      expect(other.status).toBe('abandoned');
     } finally {
-      content = original;
-      await zones.update(ZONE, { zone: current.zone, expectedRevision: saved.revision }, 'admin');
+      await real.cleanup();
     }
-  });
-
-  it('snapshots the reward tables a run can pay from, and keeps them when the table changes', async () => {
-    const tableId = content.expeditionRewards[0]!.id;
-    const current = await liveZone();
-    const edited: DungeonZoneDefinition = {
-      ...current.zone,
-      rewards: {
-        ...current.zone.rewards,
-        bands: current.zone.rewards.bands.map((b) => (b.id === 'boss' ? { ...b, rewardTable: tableId } : b)),
-        completion: { ...current.zone.rewards.completion, rewardTable: tableId },
-      },
-    };
-    const saved = (await zones.update(ZONE, { zone: edited, expectedRevision: current.revision }, 'admin'))!;
-    try {
-      const run = await runs.startRun({ playerId: await newPlayer(), zoneKey: ZONE, seed: 12 });
-      expect(Object.keys(run.snapshot.rewardTables)).toContain(tableId);
-      expect(run.snapshot.rewardTables[tableId]!.table.id).toBe(tableId);
-
-      await t.db.update(rewardTables).set({ enabled: false }).where(eq(rewardTables.tableId, tableId));
-      expect((await runs.getRun(run.id))!.snapshot.rewardTables[tableId]).toEqual(run.snapshot.rewardTables[tableId]);
-      // A run started while the table is off is promised nothing from it.
-      const later = await runs.startRun({ playerId: await newPlayer(), zoneKey: ZONE, seed: 12 });
-      expect(later.snapshot.rewardTables[tableId]).toBeNull();
-    } finally {
-      await t.db.update(rewardTables).set({ enabled: true }).where(eq(rewardTables.tableId, tableId));
-      await zones.update(ZONE, { zone: current.zone, expectedRevision: saved.revision }, 'admin');
-    }
-  });
-
-  it('stores nothing when generation fails', async () => {
-    const current = await liveZone();
-    // Saved disabled so the editor allows it, then switched on directly — the
-    // state a zone is in when its content breaks underneath it.
-    const broken = {
-      ...current.zone,
-      key: 'jammed_zone',
-      enabled: false,
-      generation: {
-        ...current.zone.generation,
-        nodeWeights: { combat: 0, elite: 0, event: 0, reward: 0, rest: 10, miniboss: 0, exit: 0 },
-        required: [],
-        limits: [],
-      },
-    };
-    await zones.create(broken, 'admin');
-    await t.db.update(dungeonZones).set({ enabled: true }).where(eq(dungeonZones.zoneKey, 'jammed_zone'));
-    const playerId = await newPlayer();
-    await expect(runs.startRun({ playerId, zoneKey: 'jammed_zone' })).rejects.toBeInstanceOf(DungeonGenerationError);
-    expect(await runs.getActiveRun(playerId)).toBeNull();
   });
 });
 
-describe('seeding shipped zones', () => {
-  const hashOf = async (key: string) => (await t.db.select().from(dungeonZones).where(eq(dungeonZones.zoneKey, key)))[0]!;
-  const shippedZone = () => shipped.find((z) => z.key === ZONE)!;
-  const variant = (name: string): ShippedDungeonZone => {
-    const definition = { ...shippedZone().definition, name };
-    return { key: ZONE, definition, hash: dungeonZoneHash(definition) };
-  };
+describe('interaction safety', () => {
+  it('refuses a stale interaction: no second fight, no second step, no change', async () => {
+    const { playerId } = await w.player();
+    const start = await w.runs.start(playerId, 'test_tunnels');
+    const first = await w.act(playerId, start, { type: 'advance' });
+    expect(first).toMatchObject({ status: 'applied', run: { step: 1, core: { hp: 334 } } });
 
-  it('is idempotent, and reports an untouched zone as shipped', async () => {
-    const result = await seedDungeonZones(t.db, shipped);
-    expect(result).toMatchObject({ created: [], updated: [], adopted: [], diverged: [], unchanged: shipped.length });
-    expect(await liveZone()).toMatchObject({ origin: 'shipped', matchesShipped: true });
+    // The same Discord button again: it still names step 0.
+    const again = await w.act(playerId, start, { type: 'advance' });
+    expect(again).toMatchObject({ status: 'refused', refusal: 'stale', run: { step: 1, core: { hp: 334 } } });
+    expect(again.run.core).toEqual(first.run.core);
+    expect(await waveRows(start.id)).toHaveLength(1);
+    const [row] = await w.t.db.select().from(dungeonRuns).where(eq(dungeonRuns.id, start.id));
+    expect(row).toMatchObject({ step: 1, currentHp: 334 });
   });
 
-  it('updates an untouched row when the shipped zone changes', async () => {
-    const before = await hashOf(ZONE);
-    const result = await seedDungeonZones(t.db, [variant('Scrapheap Gauntlet (retuned)')]);
-    expect(result.updated).toEqual([ZONE]);
-    const after = await hashOf(ZONE);
-    expect(after.revision).toBe(before.revision + 1);
-    expect(after.updatedBy).toBe('seed');
-    expect((await liveZone()).name).toBe('Scrapheap Gauntlet (retuned)');
-    // Back to the real shipped file for the tests below.
-    expect((await seedDungeonZones(t.db, shipped)).updated).toEqual([ZONE]);
+  it('lets exactly one of many concurrent submissions of the same step win', async () => {
+    const { playerId } = await w.player();
+    const start = await w.runs.start(playerId, 'test_tunnels');
+    const results = await Promise.all(Array.from({ length: 6 }, () => w.act(playerId, start, { type: 'advance' })));
+    expect(results.filter((r) => r.status === 'applied')).toHaveLength(1);
+    expect(results.filter((r) => r.status === 'refused').map((r) => r.refusal)).toEqual(Array(5).fill('stale'));
+    for (const r of results) expect(r.run).toMatchObject({ step: 1, core: { hp: 334 } });
+    expect(await waveRows(start.id)).toHaveLength(1);
   });
 
-  it('never overwrites an admin edit, reports the divergence, and adopts it once Git catches up', async () => {
-    const current = await liveZone();
-    const edited = { ...current.zone, description: 'Edited in the Portal.' };
-    const saved = (await zones.update(ZONE, { zone: edited, expectedRevision: current.revision }, 'admin-7'))!;
-    expect(saved).toMatchObject({ origin: 'edited', matchesShipped: false });
-
-    // Git unchanged: the edit simply stays.
-    const quiet = await seedDungeonZones(t.db, shipped);
-    expect(quiet.diverged).toEqual([{ key: ZONE, shippedChanged: false, updatedBy: 'admin-7', revision: saved.revision }]);
-    // Git changed too: still not applied, and flagged.
-    const loud = await seedDungeonZones(t.db, [variant('Changed in Git')]);
-    expect(loud.diverged[0]).toMatchObject({ key: ZONE, shippedChanged: true });
-    expect((await liveZone()).zone.description).toBe('Edited in the Portal.');
-    expect((await liveZone()).name).toBe('Scrapheap Gauntlet');
-
-    // The edit is exported and committed: the row counts as shipped again, revision untouched.
-    const committed: ShippedDungeonZone = { key: ZONE, definition: saved.zone, hash: dungeonZoneHash(saved.zone) };
-    const adopted = await seedDungeonZones(t.db, [committed]);
-    expect(adopted.adopted).toEqual([ZONE]);
-    expect((await hashOf(ZONE)).revision).toBe(saved.revision);
-    expect((await seedDungeonZones(t.db, shipped)).updated).toEqual([ZONE]);
+  it('cannot move the cursor twice: racing two different moves takes one path', async () => {
+    const { playerId } = await w.player();
+    const start = await w.runs.start(playerId, 'test_tunnels');
+    const fork = await play(playerId, start, [{ type: 'advance' }, { type: 'advance' }, { type: 'advance' }]);
+    expect(fork.core.connections.map((c) => c.id)).toEqual(['c_main', 'c_side']);
+    const [a, b] = await Promise.all([
+      w.act(playerId, fork, { type: 'move', connectionId: 'c_main' }),
+      w.act(playerId, fork, { type: 'move', connectionId: 'c_side' }),
+    ]);
+    expect([a.status, b.status].sort()).toEqual(['applied', 'refused']);
+    const taken = await w.runs.run(playerId, start.id);
+    expect(taken.step).toBe(4);
+    expect(['pump_room', 'locker_room']).toContain(taken.core.room.id);
+    const moves = (await w.runs.history(start.id)).filter((e) => e.type === 'connection_taken');
+    expect(moves).toHaveLength(1);
   });
 
-  it('leaves a zone that exists only in the database alone', async () => {
-    const custom = { ...(await liveZone()).zone, key: 'portal_only', name: 'Portal Only', enabled: false };
-    await zones.create(custom, 'admin');
-    await seedDungeonZones(t.db, shipped);
-    expect(await liveZone('portal_only')).toMatchObject({ origin: 'custom', matchesShipped: null, name: 'Portal Only' });
+  it('pays a reward exactly once under repeated and concurrent presses', async () => {
+    const key = await oneRoom([
+      { id: 'loot', type: 'reward', reward: { rewardTable: LOOT_TABLE, equipmentRewardTable: GEAR_TABLE, currency: { min: 3, max: 3 } } },
+      { id: 'r', type: 'rest' },
+    ]);
+    const { playerId } = await w.player();
+    const start = await w.runs.start(playerId, key);
+    const [before] = await w.t.db.select().from(playerCurrencies).where(eq(playerCurrencies.playerId, playerId));
+    const gearBefore = await w.t.db.select().from(playerEquipment).where(eq(playerEquipment.playerId, playerId));
+
+    const results = await Promise.all(Array.from({ length: 5 }, () => w.act(playerId, start, { type: 'advance' })));
+    expect(results.filter((r) => r.status === 'applied')).toHaveLength(1);
+    await w.act(playerId, start, { type: 'advance' });
+
+    const run = await w.runs.run(playerId, start.id);
+    expect(run).toMatchObject({ step: 1, core: { unbankedCurrency: 3, action: { id: 'r' } } });
+    const claimKey = `run:${start.id}:hall:loot`;
+    expect(run.secured).toEqual([
+      expect.objectContaining({ kind: 'equipment', source: claimKey, step: 1, slot: 'attack', rarity: 'N', rewardIndex: 0 }),
+      { kind: 'waifubux', source: claimKey, step: 1, amount: 11 },
+      { kind: 'item', source: claimKey, step: 1, slug: 'sticky_joystick', quantity: 2 },
+    ]);
+    expect(run.latestSecured).toEqual(run.secured);
+
+    const [after] = await w.t.db.select().from(playerCurrencies).where(eq(playerCurrencies.playerId, playerId));
+    expect(after!.waifubux - before!.waifubux).toBe(11);
+    const inventory = await w.t.db
+      .select({ quantity: playerInventory.quantity })
+      .from(playerInventory)
+      .innerJoin(items, eq(items.id, playerInventory.itemId))
+      .where(and(eq(playerInventory.playerId, playerId), eq(items.slug, 'sticky_joystick')));
+    expect(inventory).toEqual([{ quantity: 2 }]);
+    const gear = await w.t.db.select().from(playerEquipment).where(eq(playerEquipment.playerId, playerId));
+    expect(gear).toHaveLength(gearBefore.length + 1);
+    const granted = await w.t.db.select().from(playerEquipment).where(like(playerEquipment.grantKey, `dungeon:${claimKey}:0%`));
+    expect(granted).toHaveLength(1);
+    expect((await w.runs.history(start.id)).filter((e) => e.type === 'rewards_granted')).toHaveLength(1);
+  });
+
+  it('answers another player’s run, and a run that does not exist, the same way', async () => {
+    const owner = await w.player();
+    const stranger = await w.player();
+    const run = await w.runs.start(owner.playerId, 'test_tunnels');
+    await expect(w.runs.act(stranger.playerId, run.id, { type: 'advance', expectedStep: 0 })).rejects.toBeInstanceOf(DungeonRunNotFoundError);
+    await expect(w.runs.run(stranger.playerId, run.id)).rejects.toBeInstanceOf(DungeonRunNotFoundError);
+    await expect(w.runs.act(owner.playerId, 999_999, { type: 'advance' })).rejects.toBeInstanceOf(DungeonRunNotFoundError);
+    expect((await w.runs.run(owner.playerId, run.id)).step).toBe(0);
+  });
+});
+
+describe('what a run is pinned to', () => {
+  it('finishes on the revision it started with while new runs get the new one, and rollback only moves new runs', async () => {
+    const key = `pinned_${++n}`;
+    const v1 = singleRoomDungeon([fight('a', ['grunt']), fight('b', ['grunt'])], (d) => void (d.key = key));
+    await w.publish(v1);
+    const early = await w.player();
+    const run1 = await w.runs.start(early.playerId, key);
+
+    // Revision 2 is a different dungeon: one unbeatable fight.
+    await w.republish(singleRoomDungeon([fight('doom', ['brute'])], (d) => void (d.key = key)));
+    const midway = await w.runs.run(early.playerId, run1.id);
+    expect(midway).toMatchObject({ dungeon: { revision: 1 }, core: { action: { id: 'a', wave: { enemy: { key: 'grunt' } } } } });
+
+    const late = await w.player();
+    const run2 = await w.runs.start(late.playerId, key);
+    expect(run2).toMatchObject({ dungeon: { revision: 2 }, core: { action: { id: 'doom', wave: { enemy: { key: 'brute' } } } } });
+
+    // Roll back: new runs are on revision 1 again; the revision-2 run is not touched.
+    await w.content.rollback(key, { revision: 1 }, 'test');
+    const third = await w.player();
+    expect(await w.runs.start(third.playerId, key)).toMatchObject({ dungeon: { revision: 1 }, core: { action: { id: 'a' } } });
+    expect(await w.runs.run(late.playerId, run2.id)).toMatchObject({ dungeon: { revision: 2 }, core: { action: { id: 'doom' } } });
+    expect((await w.content.revisions(key))!.map((r) => [r.number, r.current, r.activeRuns])).toEqual([[2, false, 1], [1, true, 2]]);
+
+    // The first run plays out revision 1 to the end.
+    const done = await play(early.playerId, midway, [{ type: 'advance' }, { type: 'advance' }, { type: 'move', connectionId: 'c_out' }]);
+    expect(done).toMatchObject({ status: 'completed', dungeon: { revision: 1 } });
+    expect((await w.act(late.playerId, run2, { type: 'advance' })).run.status).toBe('defeated');
+  });
+
+  it('freezes enemy stats when the run starts: a balance edit reaches new runs only', async () => {
+    const key = await oneRoom([fight('a', ['sentinel', 'sentinel'])]);
+    const early = await w.player();
+    const run = await w.runs.start(early.playerId, key);
+
+    const current = (await w.enemies.get('sentinel'))!;
+    await w.enemies.update(
+      'sentinel',
+      {
+        enemy: {
+          name: 'Sentinel Prime',
+          description: current.description,
+          enabled: current.enabled,
+          attack: 100_000,
+          defense: current.defense,
+          hp: 1_000_000,
+          tags: current.tags,
+          artworkAssetId: null,
+          spriteAssetId: null,
+          spritePlacement: null,
+        },
+        expectedRevision: current.revision,
+      },
+      'balance-team',
+    );
+    try {
+      // The run already under way still fights the Sentinel it was promised.
+      const fought = await play(early.playerId, run, [{ type: 'advance' }, { type: 'advance' }]);
+      expect(fought).toMatchObject({ status: 'active', core: { hp: 370 - 72, phase: 'connections' } });
+      expect(fought.core.recent.find((r) => r.kind === 'wave')).toMatchObject({ wave: { enemyName: 'Sentinel', enemyMaxHp: 160 } });
+
+      // A run started now gets the new stats without anything being republished.
+      const late = await w.player();
+      const fresh = await w.runs.start(late.playerId, key);
+      expect(fresh.enemy).toMatchObject({ name: 'Sentinel Prime', hp: 1_000_000 });
+      expect((await w.act(late.playerId, fresh, { type: 'advance' })).run.status).toBe('defeated');
+    } finally {
+      const edited = (await w.enemies.get('sentinel'))!;
+      await w.enemies.update(
+        'sentinel',
+        { enemy: { name: 'Sentinel', description: edited.description, enabled: true, attack: 60, defense: 0, hp: 160, tags: edited.tags, artworkAssetId: null, spriteAssetId: null, spritePlacement: null }, expectedRevision: edited.revision },
+        'balance-team',
+      );
+    }
+  });
+
+  it('freezes the fighter: changing gear mid-run does not change the run', async () => {
+    const { playerId } = await w.player();
+    const run = await w.runs.start(playerId, 'test_tunnels');
+    await w.svc.equipment.unequip(playerId, { slot: 'attack' });
+    const after = await w.act(playerId, run, { type: 'advance' });
+    expect(after.run).toMatchObject({ fighter: STARTER, core: { hp: 334 } });
+  });
+});
+
+describe('ending a run', () => {
+  const paid = (extra: Actions = []): Actions => [{ id: 'pay', type: 'reward', reward: { currency: { min: 8, max: 8 } } }, ...extra];
+
+  it('extracts from a finished extraction room, banking everything', async () => {
+    const key = await oneRoom(paid(), (d) => void (d.rooms[0]!.extraction = true));
+    const { playerId } = await w.player();
+    const start = await w.runs.start(playerId, key);
+    expect((await w.act(playerId, start, { type: 'extract' })).refusal).toBe('not_extractable');
+    const done = (await w.act(playerId, start, { type: 'advance' })).run;
+    expect(done.core).toMatchObject({ canExtract: true, unbankedCurrency: 8 });
+    const out = await w.act(playerId, done, { type: 'extract' });
+    expect(out.run).toMatchObject({ status: 'extracted', settlement: { outcome: 'extracted', cause: 'extraction', earned: 8, banked: 8, lost: 0, balanceAfter: 8 } });
+    expect(await w.balance(playerId)).toBe(8);
+    expect((await w.act(playerId, out.run, { type: 'advance' })).refusal).toBe('run_over');
+  });
+
+  it('keeps the retention share on defeat', async () => {
+    const key = await oneRoom(paid([fight('doom', ['brute'])]));
+    const { playerId } = await w.player();
+    const end = await play(playerId, await w.runs.start(playerId, key), [{ type: 'advance' }, { type: 'advance' }]);
+    expect(end).toMatchObject({ status: 'defeated', core: { hp: 0 }, settlement: { cause: 'hp_zero', earned: 8, retentionBasisPoints: 2500, banked: 2, lost: 6, balanceAfter: 2 } });
+    expect(await w.balance(playerId)).toBe(2);
+  });
+
+  it('settles an abandon like a defeat, once, whatever step the button named', async () => {
+    const key = await oneRoom(paid([fight('a', ['grunt'])]));
+    const { playerId } = await w.player();
+    const start = await w.runs.start(playerId, key);
+    await w.act(playerId, start, { type: 'advance' });
+    // Abandon carries no step: it is always allowed.
+    const [a, b] = await Promise.all([w.runs.act(playerId, start.id, { type: 'abandon' }), w.runs.act(playerId, start.id, { type: 'abandon' })]);
+    expect([a.status, b.status].sort()).toEqual(['applied', 'refused']);
+    expect(await w.runs.run(playerId, start.id)).toMatchObject({ status: 'abandoned', settlement: { cause: 'abandoned', earned: 8, banked: 2, lost: 6 } });
+    expect(await w.balance(playerId)).toBe(2);
+    expect(await w.t.db.select().from(progressionCurrencyLedger).where(eq(progressionCurrencyLedger.playerId, playerId))).toHaveLength(1);
+  });
+
+  it('ends the run without banking when the currency was switched off under it, and says so', async () => {
+    const key = await oneRoom(paid(), (d) => {
+      d.rooms[0]!.extraction = true;
+      d.settings = { progressionCurrency: null, defeatCurrencyRetentionBasisPoints: 2500 };
+    });
+    const { playerId } = await w.player();
+    const done = await play(playerId, await w.runs.start(playerId, key), [{ type: 'advance' }, { type: 'extract' }]);
+    expect(done).toMatchObject({ status: 'extracted', currency: null, settlement: { earned: 8, banked: 0, lost: 8, bankingSkipped: 'no_currency', balanceAfter: null } });
+    expect(await w.balance(playerId)).toBe(0);
   });
 });

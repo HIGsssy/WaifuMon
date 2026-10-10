@@ -18,12 +18,15 @@ import { createArtworkAssetService, type ArtworkAssetService } from '../../../sr
 import { createLocalArtworkStorage } from '../../../src/modules/artworkAssets/artworkStorage';
 import { ARTWORK_UPLOAD_MAX_BYTES } from '../../../src/modules/artworkAssets/imageInspection';
 import { createSceneCompositionService } from '../../../src/modules/artworkAssets/sceneComposition';
-import { createDungeonZoneService } from '../../../src/modules/dungeons/dungeonZoneService';
-import { loadShippedDungeonZones, seedDungeonZones } from '../../../src/modules/dungeons/dungeonZoneStore';
+import { createDungeonContentService } from '../../../src/modules/dungeons/dungeonContentService';
+import { dungeonEnemyReferences } from '../../../src/modules/enemies/enemyReferences';
+import { createEnemyCatalogueService } from '../../../src/modules/enemies/enemyService';
+import { seedCombatEnemies, shippedCombatEnemies } from '../../../src/modules/enemies/enemyStore';
 import { createGuildOwnershipService } from '../../../src/modules/portalAuth/guildOwnershipService';
 import { createPortalAuthorizationService } from '../../../src/modules/portalAuth/portalAuthService';
 import { createProgressionCurrencyService } from '../../../src/modules/progressionCurrency/progressionCurrencyService';
 import { loadShippedRewardTables, seedRewardTables } from '../../../src/modules/rewardTables/rewardTableStore';
+import { TEST_ENEMIES, singleRoomDungeon } from '../../helpers/dungeonFixtures';
 import { CONTENT_DIR, bootstrapApp, provisionPlayer, type App } from '../../helpers/fixtures';
 import { BLUE, GREEN, RED, isNear, opaqueSprite, pixelAt, solidImage, transparentSprite } from '../../helpers/imageFixtures';
 import { createCapturedLogger, createProbes, TEST_TOKEN } from '../../helpers/platformApiFixtures';
@@ -36,7 +39,8 @@ const NON_OWNER_ID = '999999999999999991';
 const OWNER_TOKEN = 'token-owner';
 const NON_OWNER_TOKEN = 'token-non-owner';
 const CSRF = 'csrf-token';
-const ZONE = 'scrapheap_gauntlet';
+const DUNGEON = 'art_depths';
+const DUNGEON_NAME = 'Art Depths';
 
 let t: TestDb;
 let app: App;
@@ -66,12 +70,34 @@ beforeAll(async () => {
   await provisionPlayer(app, GUILD_ID, OWNER_ID);
   await provisionPlayer(app, GUILD_ID, NON_OWNER_ID);
   await seedRewardTables(t.db, loadShippedRewardTables(CONTENT_DIR));
-  const shipped = loadShippedDungeonZones(CONTENT_DIR);
-  await seedDungeonZones(t.db, shipped);
 
   assets = createArtworkAssetService({ db: t.db, storage: createLocalArtworkStorage(storageDir) });
   const sceneComposition = createSceneCompositionService({ cacheDir });
-  const dungeonZones = createDungeonZoneService({ db: t.db, getContent: () => app.content, getShipped: () => shipped, assets });
+  const shippedEnemies = shippedCombatEnemies(TEST_ENEMIES);
+  await seedCombatEnemies(t.db, shippedEnemies);
+  const enemies = createEnemyCatalogueService({
+    db: t.db,
+    getShipped: () => shippedEnemies,
+    assets,
+    referenceSources: [dungeonEnemyReferences],
+  });
+  const dungeonContent = createDungeonContentService({
+    db: t.db,
+    enemies,
+    getRegions: () => app.content.regions.map((r) => ({ id: r.id, name: r.name, enabled: r.enabled })),
+    assetsDir,
+    environment: 'test',
+  });
+  // One dungeon draft — rooms `hall` and `out` — for the artwork references below.
+  await dungeonContent.create(
+    {
+      definition: singleRoomDungeon([{ id: 'guards', type: 'combat', waves: [{ enemy: { key: 'grunt' } }] }], (d) => {
+        d.key = DUNGEON;
+        d.name = DUNGEON_NAME;
+      }),
+    },
+    'test',
+  );
   const progressionCurrency = createProgressionCurrencyService(t.db);
 
   const guildOwnership = createGuildOwnershipService({ fetchOwnerId: async () => OWNER_ID });
@@ -120,7 +146,7 @@ beforeAll(async () => {
     },
     ctx: {
       assetsDir,
-      services: { ...app, dungeonZones, progressionCurrency, artworkAssets: assets, sceneComposition },
+      services: { ...app, dungeonContent, enemies, progressionCurrency, artworkAssets: assets, sceneComposition },
       getContent: () => app.content,
       portalAuthorization,
       adminBearerAllowed: true,
@@ -166,11 +192,24 @@ const getFile = (id: string, headers: Record<string, string> = {}, v?: string) =
 const storedRow = async (id: string) => (await t.db.select().from(artworkAssets).where(eq(artworkAssets.id, id)))[0]!;
 const eventsOf = async (id: string) =>
   (await t.db.select().from(artworkAssetEvents).where(eq(artworkAssetEvents.assetId, id)).orderBy(artworkAssetEvents.id)).map((e) => e.action);
-const getZone = async () => (await call('GET', `/admin/dungeons/zones/${ZONE}`)).json().data;
-const saveZone = async (patch: Record<string, unknown>) => {
-  const current = await getZone();
-  return call('PUT', `/admin/dungeons/zones/${ZONE}`, { zone: { ...current.zone, ...patch }, expectedRevision: current.revision });
+const getDungeon = async () => (await call('GET', `/admin/dungeons/definitions/${DUNGEON}`)).json().data;
+/** Save the dungeon's draft with `patch` applied; `hallBackground` sets the first room's backdrop. */
+const saveDungeon = async ({ hallBackground, ...patch }: Record<string, unknown>) => {
+  const current = await getDungeon();
+  const definition = { ...current.draft, ...patch };
+  if (hallBackground !== undefined) {
+    definition.rooms = current.draft.rooms.map((room: Asset) => (room.id === 'hall' ? { ...room, background: hallBackground } : room));
+  }
+  return call('PUT', `/admin/dungeons/definitions/${DUNGEON}/draft`, { definition, expectedRevision: current.draftRevision });
 };
+/** How a dungeon names a managed image: by category and the hash of its bytes, never its id. */
+const managed = (asset: Asset, name?: string) => ({
+  kind: 'managed',
+  category: asset.category,
+  contentHash: asset.contentHash,
+  ...(name ? { name } : {}),
+});
+const artworkIssues = (detail: Asset) => (detail.issues as Asset[]).filter((i) => i.code === 'artwork_missing');
 
 describe('with nothing uploaded yet', () => {
   it('lists an empty library as a success, exactly as the Portal asks for it', async () => {
@@ -459,37 +498,57 @@ describe('serving and cache invalidation', () => {
 });
 
 describe('reference integrity', () => {
-  it('a zone may only reference artwork that exists', async () => {
-    const res = await saveZone({ backgroundAssetId: '00000000-0000-4000-8000-0000000000aa' });
-    expect(res.statusCode).toBe(400);
-    expect(res.json().error.details.issues).toContainEqual(
-      expect.objectContaining({ path: 'backgroundAssetId', severity: 'error' }),
+  it('a dungeon names managed artwork by a well-formed hash; one this environment lacks is flagged, not stored silently', async () => {
+    // A reference that is not a sha256 (an asset id, say) is an unreadable shape: refused.
+    for (const bad of [
+      { kind: 'managed', category: 'dungeon_background', contentHash: '00000000-0000-4000-8000-0000000000aa' },
+      { kind: 'managed', category: 'dungeon_background', contentHash: 'not-a-hash' },
+      { kind: 'managed', contentHash: 'a'.repeat(64) },
+    ]) {
+      const res = await saveDungeon({ background: bad });
+      expect(res.statusCode, JSON.stringify(bad)).toBe(400);
+      expect(res.json().error.code).toBe('DUNGEON_INVALID');
+      expect(res.json().error.details.issues).toContainEqual(
+        expect.objectContaining({ code: 'schema', severity: 'error', path: expect.stringContaining('background') }),
+      );
+    }
+    const room = await saveDungeon({ hallBackground: { kind: 'managed', category: 'dungeon_background', contentHash: 'nope' } });
+    expect(room.statusCode).toBe(400);
+    expect(room.json().error.details.issues).toContainEqual(
+      expect.objectContaining({ code: 'schema', severity: 'error', path: 'rooms[0].background.contentHash' }),
     );
-    const pool = await saveZone({ backgrounds: [{ id: 'ghost', weight: 1, assetId: '00000000-0000-4000-8000-0000000000bb' }] });
-    expect(pool.json().error.details.issues).toContainEqual(expect.objectContaining({ path: 'backgrounds[0].assetId' }));
-    expect((await saveZone({ artworkAssetId: 'not-a-uuid' })).statusCode).toBe(400);
+    expect((await getDungeon()).draft).toMatchObject({ artwork: null, background: null });
+
+    // A well-formed hash no asset here holds: reported by the dry run, with the stable code.
+    const ghost = { kind: 'managed', category: 'dungeon_background', contentHash: 'b'.repeat(64), name: 'ghost.png' };
+    const dry = await call('POST', '/admin/dungeons/validate', { definition: { ...(await getDungeon()).draft, background: ghost } });
+    expect(dry.json().data.issues).toContainEqual(
+      expect.objectContaining({ code: 'artwork_missing', severity: 'warning', message: expect.stringContaining('ghost.png') }),
+    );
   });
 
   it('a referenced asset cannot be deleted, can be disabled, and is released once cleared', async () => {
-    const art = await uploaded(await solidImage(300, 300, RED), { category: 'dungeon_zone', filename: 'zone.png' });
-    const bg = await uploaded(await solidImage(640, 360, BLUE), { filename: 'bg.png', name: 'Scrap Night' });
-    const saved = await saveZone({
-      artworkAssetId: art.id,
-      backgroundAssetId: bg.id,
-      backgrounds: [
-        { id: 'night', weight: 40, assetId: bg.id, maxDepth: 4 },
-        { id: 'shipped', weight: 20, artworkPath: 'dungeons/backgrounds/shipped.png', minDepth: 5 },
-      ],
+    // Bytes no other asset in this file holds: a dungeon's reference is to the bytes, whichever asset has them.
+    const art = await uploaded(await solidImage(302, 302, RED), { category: 'dungeon_zone', filename: 'zone.png' });
+    const bg = await uploaded(await solidImage(642, 362, BLUE), { filename: 'bg.png', name: 'Scrap Night' });
+    const saved = await saveDungeon({
+      artwork: managed(art),
+      background: managed(bg, 'Scrap Night'),
+      hallBackground: managed(bg, 'Scrap Night'),
     });
     expect(saved.statusCode, saved.body).toBe(200);
-    expect(saved.json().data.zone).toMatchObject({ artworkAssetId: art.id, backgroundAssetId: bg.id });
-    expect(saved.json().data.zone.backgrounds).toHaveLength(2);
+    expect(saved.json().data.draft).toMatchObject({ artwork: managed(art), background: managed(bg, 'Scrap Night') });
+    expect(saved.json().data.draft.rooms[0].background).toEqual(managed(bg, 'Scrap Night'));
+    expect(artworkIssues(saved.json().data)).toEqual([]);
 
     // The asset knows what uses it.
     const detail = (await call('GET', `/admin/artwork/assets/${bg.id}`)).json().data;
     expect(detail.references).toEqual([
-      { kind: 'dungeon_zone', key: ZONE, name: expect.any(String), field: 'backgroundAssetId' },
-      { kind: 'dungeon_zone', key: ZONE, name: expect.any(String), field: 'backgrounds[night].assetId' },
+      { kind: 'dungeon_zone', key: DUNGEON, name: DUNGEON_NAME, field: 'draft.background' },
+      { kind: 'dungeon_zone', key: DUNGEON, name: DUNGEON_NAME, field: 'draft.rooms[hall].background' },
+    ]);
+    expect((await call('GET', `/admin/artwork/assets/${art.id}`)).json().data.references).toEqual([
+      { kind: 'dungeon_zone', key: DUNGEON, name: DUNGEON_NAME, field: 'draft.artwork' },
     ]);
 
     // Deleting it is refused, with the references, and changes nothing.
@@ -500,26 +559,29 @@ describe('reference integrity', () => {
     expect((await getFile(bg.id)).statusCode).toBe(200);
     expect((await storedRow(bg.id)).status).toBe('active');
 
-    // Disabling is allowed, says what it affects, and the zone is told (a warning, not an error).
+    // Disabling is allowed, says what it affects, and the dungeon is told (a warning, not an error).
     const disabled = await call('PUT', `/admin/artwork/assets/${bg.id}/enabled`, { enabled: false });
     expect(disabled.json().data).toMatchObject({ asset: { status: 'disabled' } });
     expect(disabled.json().data.references).toHaveLength(2);
-    const zone = await getZone();
-    expect(zone.issues).toContainEqual(
-      expect.objectContaining({ path: 'backgroundAssetId', severity: 'warning', message: expect.stringContaining('Scrap Night') }),
+    const dungeon = await getDungeon();
+    expect(dungeon.issues).toContainEqual(
+      expect.objectContaining({ code: 'artwork_missing', path: 'artwork', severity: 'warning', message: expect.stringContaining('Scrap Night') }),
     );
-    expect(zone.issues.filter((i: Asset) => i.severity === 'error')).toEqual([]);
+    expect(dungeon.issues.filter((i: Asset) => i.severity === 'error')).toEqual([]);
     // Players no longer get it; the admin still can preview it.
     expect(await assets.readUsable(bg.id)).toBeNull();
     expect(await assets.layer(bg.id)).toBeNull();
     expect((await getFile(bg.id)).statusCode).toBe(200);
     await call('PUT', `/admin/artwork/assets/${bg.id}/enabled`, { enabled: true });
     expect(await assets.readUsable(bg.id)).not.toBeNull();
+    expect(artworkIssues(await getDungeon())).toEqual([]);
 
-    // Clearing every reference releases it: the override falls back to the shipped path.
-    const cleared = await saveZone({ backgroundAssetId: null, backgrounds: [] });
+    // Clearing every reference releases it.
+    const cleared = await saveDungeon({ background: null, hallBackground: null });
     expect(cleared.statusCode).toBe(200);
-    expect(cleared.json().data.zone).toMatchObject({ backgroundAssetId: null, artworkAssetId: art.id });
+    expect(cleared.json().data.draft).toMatchObject({ background: null, artwork: managed(art) });
+    expect(cleared.json().data.draft.rooms[0].background).toBeNull();
+    expect((await call('GET', `/admin/artwork/assets/${bg.id}`)).json().data.references).toEqual([]);
     const key = (await storedRow(bg.id)).storageKey;
     const deleted = await call('DELETE', `/admin/artwork/assets/${bg.id}`);
     expect(deleted.json().data).toEqual({ deleted: true });
@@ -528,42 +590,48 @@ describe('reference integrity', () => {
     expect(fs.existsSync(path.join(storageDir, ...key.split('/')))).toBe(false);
     // Soft: the row and its history remain.
     expect(await storedRow(bg.id)).toMatchObject({ status: 'deleted' });
-    expect(await eventsOf(bg.id)).toEqual([
-      'upload',
-      'reference_added',
-      'reference_added',
-      'disable',
-      'enable',
-      'reference_removed',
-      'reference_removed',
-      'delete',
+    expect(await eventsOf(bg.id)).toEqual(['upload', 'disable', 'enable', 'delete']);
+    // A deleted asset no longer backs a reference: naming its bytes again is flagged.
+    const again = await saveDungeon({ background: managed(bg, 'Scrap Night') });
+    expect(again.statusCode, again.body).toBe(200);
+    expect(artworkIssues(again.json().data)).toEqual([
+      expect.objectContaining({ severity: 'warning', message: expect.stringContaining(bg.contentHash.slice(0, 12)) }),
     ]);
-    // A deleted asset can no longer be referenced or replaced.
-    expect((await saveZone({ backgroundAssetId: bg.id })).statusCode).toBe(400);
     expect((await call('DELETE', `/admin/artwork/assets/${bg.id}`)).statusCode).toBe(404);
 
-    await saveZone({ artworkAssetId: null });
+    await saveDungeon({ artwork: null, background: null });
   });
 
   it('records who changed a reference, from the session — never the bytes', async () => {
-    const asset = await uploaded(await solidImage(64, 64, GREEN), { filename: 'audited.png' });
-    const current = await getZone();
+    const asset = await uploaded(await transparentSprite(120, 160, GREEN), { category: 'enemy_sprite', filename: 'audited.png' });
+    const current = (await call('GET', '/admin/enemies/grunt')).json().data;
     const res = await api.inject({
       method: 'PUT',
-      url: `/api/v1/admin/dungeons/zones/${ZONE}`,
+      url: '/api/v1/admin/enemies/grunt',
       cookies: { wm_portal_session: OWNER_TOKEN, wm_portal_csrf: CSRF },
       headers: { 'x-portal-csrf': CSRF },
-      payload: { zone: { ...current.zone, artworkAssetId: asset.id }, expectedRevision: current.revision },
+      payload: {
+        enemy: {
+          name: current.name,
+          description: current.description,
+          enabled: current.enabled,
+          attack: current.attack,
+          defense: current.defense,
+          hp: current.hp,
+          tags: current.tags,
+          spriteAssetId: asset.id,
+        },
+        expectedRevision: current.revision,
+      },
     });
     expect(res.statusCode, res.body).toBe(200);
     const [event] = (await call('GET', `/admin/artwork/assets/${asset.id}`)).json().data.events;
     expect(event).toMatchObject({
       action: 'reference_added',
       actor: OWNER_ID,
-      details: { entity: `dungeon_zone:${ZONE}`, field: 'artworkAssetId', from: null, to: asset.id },
+      details: { entity: 'combat_enemy:grunt', field: 'spriteAssetId', from: null, to: asset.id },
     });
     expect(event.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
-    await saveZone({ artworkAssetId: null });
   });
 });
 
@@ -615,10 +683,17 @@ describe('shipped and managed artwork are separate stores', () => {
       });
       expect(scene.statusCode, scene.body).toBe(200);
       expect(isNear(await pixelAt(scene.rawPayload, 600, 337), RED)).toBe(true);
-      // A zone can use the upload while its shipped path points at nothing.
-      const saved = await saveZone({ backgroundAssetId: bg.id, backgroundArtworkPath: 'dungeons/backgrounds/scrapheap_gauntlet.webp' });
+      // A dungeon can use the upload while a shipped path beside it points at nothing.
+      const saved = await saveDungeon({
+        background: managed(bg),
+        hallBackground: { kind: 'shipped', path: 'dungeons/backgrounds/shipped.png' },
+      });
       expect(saved.statusCode, saved.body).toBe(200);
-      await saveZone({ backgroundAssetId: null });
+      // Only the shipped file is reported missing; the upload is usable.
+      expect(artworkIssues(saved.json().data)).toEqual([
+        expect.objectContaining({ severity: 'warning', message: expect.stringContaining('dungeons/backgrounds/shipped.png') }),
+      ]);
+      await saveDungeon({ background: null, hallBackground: null });
     } finally {
       fs.renameSync(parked, path.join(assetsDir, 'dungeons'));
     }

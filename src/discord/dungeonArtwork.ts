@@ -7,15 +7,15 @@
  * not decode) is skipped, so a screen falls through to the next candidate and
  * finally to text. Artwork is decoration; it never costs a player a screen.
  *
- * ## Precedence — a fight (combat, elite, miniboss, boss)
+ * ## Precedence — a fight (the run has an enemy in the picture)
  *
- *   1. the **composed scene**: the node's snapshotted background (else the
- *      zone background) with the run's Buddy on the reserved left side and
- *      the enemy's sprite layered over it;
+ *   1. the **composed scene**: the room's background (else the dungeon
+ *      background) with the run's Buddy on the reserved left side and the
+ *      enemy's sprite layered over it;
  *   2. the enemy's full artwork;
- *   3. the node's snapshotted background;
- *   4. the zone artwork;
- *   5. the zone background;
+ *   3. the room's background;
+ *   4. the dungeon artwork;
+ *   5. the dungeon background;
  *   6. text only.
  *
  * The Buddy does not depend on the enemy. She is resolved once, on her own,
@@ -25,21 +25,23 @@
  * she is composed over that picture as the scene's background. Without a
  * Buddy sprite each step is exactly the plain image it always was.
  *
- * ## Precedence — event, rest, reward, exit
+ * A fight is whenever `view.enemy` is set: the enemy about to be fought, else
+ * the one just fought this step.
  *
- *   1. the event's own artwork;
- *   2. the node's snapshotted background on its own;
- *   3. the zone artwork;
- *   4. the zone background;
- *   5. text only.
+ * ## Precedence — anything else (rest, reward, choosing a way on, the end)
  *
- * An enemy is never composed onto a node that is not a fight — and neither is
- * the Buddy: she is in the picture on fights only.
+ *   1. the room's background on its own;
+ *   2. the dungeon artwork;
+ *   3. the dungeon background;
+ *   4. text only.
+ *
+ * An enemy is never composed onto a screen that is not a fight — and neither
+ * is the Buddy: she is in the picture on fights only.
  * Her card art stays the thumbnail throughout; that is the caller's.
  *
  * ## The player's Buddy
  *
- * A reserved runtime actor, never authored into a zone, room or enemy. Who she
+ * A reserved runtime actor, never authored into a dungeon, room or enemy. Who she
  * is comes from the run's fighter snapshot (`view.fighter.speciesSlug`, frozen
  * at start — never the player's live active Buddy), her image from the species
  * sprite convention `waifumon/<slug>/<slug>_sprite.webp`, and where she stands
@@ -48,7 +50,7 @@
  * species with no sprite file is logged once and the scene is composed without
  * her; her card art is never substituted.
  *
- * Which background a node has, which sprite an enemy has and where it stands
+ * Which background a room has, which sprite an enemy has and where it stands
  * all come from the run's snapshot (`DungeonRunView`), so a screen never
  * chooses — it only renders. A composed scene is rendered once and cached
  * (`sceneComposition.ts`); later screens attach the cached file.
@@ -61,7 +63,7 @@ import type { SceneLayer } from '../modules/artworkAssets/sceneComposition';
 import { playerBuddySpriteLayer, resolveArtworkLayer, type ArtworkRef } from '../modules/artworkAssets/sceneLayers';
 import { speciesDungeonSpritePath } from '../modules/assets/speciesArtworkFile';
 import { locateCombatArtwork } from '../modules/combat/combatArtwork';
-import type { DungeonRunView } from '../modules/dungeons/dungeonPlayService';
+import type { DungeonRunView } from '../modules/dungeons/dungeonRunService';
 import type { TrialArtwork } from './combatTrialPresenter';
 import type { AppContext } from './types';
 
@@ -175,41 +177,23 @@ async function firstArtwork(
   return null;
 }
 
-/** Zone artwork, then the zone background, then nothing — the home and zone screens. */
+/** Dungeon artwork, then the dungeon background, then nothing — the home and dungeon screens. */
 export async function dungeonZoneArtwork(
   ctx: ArtContext,
-  zones: readonly {
-    artworkPath: string | null;
-    backgroundArtworkPath: string | null;
-    artworkAssetId?: string | null;
-    backgroundAssetId?: string | null;
-  }[],
+  dungeons: readonly { artwork: ArtworkRef; background: ArtworkRef }[],
 ): Promise<TrialArtwork | null> {
   return firstArtwork(
     ctx,
-    zones.flatMap((zone) => [
-      () => plainArtwork(ctx, { assetId: zone.artworkAssetId, artworkPath: zone.artworkPath }),
-      () => plainArtwork(ctx, { assetId: zone.backgroundAssetId, artworkPath: zone.backgroundArtworkPath }),
-    ]),
+    dungeons.flatMap((dungeon) => [() => plainArtwork(ctx, dungeon.artwork), () => plainArtwork(ctx, dungeon.background)]),
   );
 }
 
-/** The scene for a run's current node. See the module comment for the order. */
+/** The scene for where a run stands. See the module comment for the order. */
 export async function dungeonRunSceneArtwork(ctx: ArtContext, view: DungeonRunView): Promise<TrialArtwork | null> {
-  const { node, zone } = view;
-  const zoneArt: ArtworkRef = { assetId: zone.artworkAssetId, artworkPath: zone.artworkPath };
-  const zoneBackground: ArtworkRef = { assetId: zone.backgroundAssetId, artworkPath: zone.backgroundArtworkPath };
-  const nodeBackground: ArtworkRef | null = node.background && {
-    assetId: node.background.assetId,
-    artworkPath: node.background.artworkPath,
-  };
-  const tail = [
-    () => composedArtwork(ctx, [nodeBackground]),
-    () => plainArtwork(ctx, zoneArt),
-    () => plainArtwork(ctx, zoneBackground),
-  ];
+  const { artwork: dungeonArt, background: dungeonBackground } = view.dungeon;
+  const roomBackground: ArtworkRef | null = view.roomBackground ?? null;
 
-  const enemy = node.enemy;
+  const enemy = view.enemy;
   if (enemy) {
     const { visual } = enemy;
     const sprite: ArtworkRef = { assetId: visual.spriteAssetId, artworkPath: visual.spriteArtworkPath };
@@ -218,13 +202,17 @@ export async function dungeonRunSceneArtwork(ctx: ArtContext, view: DungeonRunVi
     return firstArtwork(ctx, [
       () =>
         sprite.assetId || sprite.artworkPath
-          ? composedArtwork(ctx, [nodeBackground, zoneBackground], { ref: sprite, placement: visual.spritePlacement }, buddy)
+          ? composedArtwork(ctx, [roomBackground, dungeonBackground], { ref: sprite, placement: visual.spritePlacement }, buddy)
           : null,
       () => artworkWithBuddy(ctx, { assetId: visual.artworkAssetId, artworkPath: visual.artworkPath }, buddy),
-      () => composedArtwork(ctx, [nodeBackground], null, buddy),
-      () => artworkWithBuddy(ctx, zoneArt, buddy),
-      () => artworkWithBuddy(ctx, zoneBackground, buddy),
+      () => composedArtwork(ctx, [roomBackground], null, buddy),
+      () => artworkWithBuddy(ctx, dungeonArt, buddy),
+      () => artworkWithBuddy(ctx, dungeonBackground, buddy),
     ]);
   }
-  return firstArtwork(ctx, [() => shippedArtwork(ctx, node.event?.artworkPath), ...tail]);
+  return firstArtwork(ctx, [
+    () => composedArtwork(ctx, [roomBackground]),
+    () => plainArtwork(ctx, dungeonArt),
+    () => plainArtwork(ctx, dungeonBackground),
+  ]);
 }

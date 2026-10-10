@@ -94,6 +94,7 @@ const ALL_DEV_PERMISSIONS: readonly string[] = [
   'rewards.write',
   'dungeons.read',
   'dungeons.write',
+  'dungeons.publish',
   'enemies.read',
   'enemies.write',
   'bosses.read',

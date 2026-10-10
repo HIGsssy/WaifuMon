@@ -63,9 +63,8 @@ import type { BossArtworkService } from '../modules/bosses/bossArtworkService';
 import type { EnemyCatalogueService } from '../modules/enemies/enemyService';
 import type { BossDefinitionService } from '../modules/bosses/bossDefinitionService';
 import type { SceneCompositionService } from '../modules/artworkAssets/sceneComposition';
-import type { DungeonZoneService } from '../modules/dungeons/dungeonZoneService';
+import type { DungeonContentService } from '../modules/dungeons/dungeonContentService';
 import type { DungeonRunService } from '../modules/dungeons/dungeonRunService';
-import type { DungeonPlayService } from '../modules/dungeons/dungeonPlayService';
 import type { DungeonAllowanceService } from '../modules/dungeons/dungeonAllowanceService';
 import type { ProgressionCurrencyService } from '../modules/progressionCurrency/progressionCurrencyService';
 
@@ -249,12 +248,10 @@ export interface AppServices {
   combatTrials?: CombatTrialService | undefined;
   /** Patch's Workshop (dismantle, fabricate). Requires the `equipment` unlock. */
   equipmentWorkshop?: EquipmentWorkshopService | undefined;
-  /** Dungeon zone authoring, generation preview and simulation (Portal Admin). */
-  dungeonZones?: DungeonZoneService | undefined;
-  /** Generated dungeon run snapshots: generation and storage only. */
+  /** Dungeon authoring: drafts, publication, rollback, audit and export (Portal Admin). */
+  dungeonContent?: DungeonContentService | undefined;
+  /** Playable dungeon runs (start, step, extract, abandon). Requires the `equipment` unlock. */
   dungeonRuns?: DungeonRunService | undefined;
-  /** Playable dungeon runs (start, navigate, resolve, extract). Requires the `equipment` unlock. */
-  dungeonPlay?: DungeonPlayService | undefined;
   /** The daily Delve allowance and Delve-wide settings (Portal Admin, test controls). */
   dungeonAllowance?: DungeonAllowanceService | undefined;
   /** Managed artwork: images uploaded through Portal Admin, referenced by id. */

@@ -1,0 +1,543 @@
+{
+  "format": "waifumon-dungeon-package",
+  "schemaVersion": 1,
+  "packageId": "6f1d2a3c-5b7e-4c8d-9a10-2f3e4d5c6b7a",
+  "exportedAt": "2026-10-10T00:00:00.000Z",
+  "source": {
+    "environment": "development",
+    "dungeonKey": "service_tunnels",
+    "origin": "draft",
+    "draftRevision": 1,
+    "publishedRevision": null
+  },
+  "contentHash": "sha256:1c6fa06bc5ef51e612f4ed334e67fe2411183a72b55e0832859286241d02d955",
+  "dungeon": {
+    "key": "service_tunnels",
+    "name": "The Service Tunnels",
+    "description": "Maintenance level nine. The pumps still run, and something has been feeding on what they drag in.",
+    "availableRegions": [
+      "flaccid-foothills"
+    ],
+    "entranceRoomId": "gate",
+    "artwork": null,
+    "background": {
+      "kind": "shipped",
+      "path": "encounters/door_within_door.webp"
+    },
+    "settings": {
+      "progressionCurrency": "ascension_currency",
+      "defeatCurrencyRetentionBasisPoints": 2500
+    },
+    "flags": [
+      {
+        "key": "valve_opened",
+        "scope": "run",
+        "description": "The pump room valve has been turned; the bulkhead to the den will open."
+      },
+      {
+        "key": "found_keycard",
+        "scope": "run",
+        "description": "The locker room keycard; opens the vault in the bulkhead."
+      }
+    ],
+    "rooms": [
+      {
+        "id": "gate",
+        "name": "Tunnel Gate",
+        "description": "A roll-up door, half jammed. Two shapes are waiting behind it.",
+        "kind": "room",
+        "extraction": false,
+        "background": null,
+        "actions": [
+          {
+            "type": "combat",
+            "id": "gate_guards",
+            "label": "Force the gate",
+            "optional": false,
+            "outcomes": {},
+            "waves": [
+              {
+                "enemy": {
+                  "key": "scrapyard_drone"
+                }
+              },
+              {
+                "enemy": {
+                  "pool": [
+                    {
+                      "key": "scrapyard_drone",
+                      "weight": 3
+                    },
+                    {
+                      "key": "discord_lurker",
+                      "weight": 2
+                    },
+                    {
+                      "key": "suspect_slime",
+                      "weight": 1
+                    }
+                  ]
+                }
+              }
+            ],
+            "advance": "confirm"
+          },
+          {
+            "type": "reward",
+            "id": "gate_scrap",
+            "label": "Pick over the wreckage",
+            "optional": false,
+            "outcomes": {},
+            "reward": {
+              "rewardTable": null,
+              "equipmentRewardTable": null,
+              "currency": {
+                "min": 1,
+                "max": 2
+              }
+            }
+          }
+        ]
+      },
+      {
+        "id": "pump_room",
+        "name": "Pump Room",
+        "description": "The floor hums. A wheel valve the size of a dinner table sits in the far wall.",
+        "kind": "room",
+        "extraction": false,
+        "background": null,
+        "actions": [
+          {
+            "type": "combat",
+            "id": "pump_bruiser",
+            "label": "",
+            "optional": false,
+            "outcomes": {},
+            "waves": [
+              {
+                "enemy": {
+                  "key": "alley_bruiser"
+                }
+              }
+            ],
+            "advance": "confirm"
+          },
+          {
+            "type": "rest",
+            "id": "pump_breather",
+            "label": "Catch your breath",
+            "optional": true,
+            "outcomes": {},
+            "healBasisPoints": 2500
+          },
+          {
+            "type": "set_flag",
+            "id": "pump_valve",
+            "label": "",
+            "optional": false,
+            "outcomes": {},
+            "flag": "valve_opened",
+            "scope": "run",
+            "value": true
+          }
+        ]
+      },
+      {
+        "id": "locker_room",
+        "name": "Locker Room",
+        "description": "Rows of dented lockers. One still has its key in it.",
+        "kind": "room",
+        "extraction": false,
+        "background": null,
+        "actions": [
+          {
+            "type": "reward",
+            "id": "locker_cache",
+            "label": "Open the tool locker",
+            "optional": true,
+            "outcomes": {},
+            "reward": {
+              "rewardTable": null,
+              "equipmentRewardTable": "dungeon-scrapheap-cache-v1",
+              "currency": {
+                "min": 3,
+                "max": 5
+              }
+            }
+          },
+          {
+            "type": "set_flag",
+            "id": "locker_keycard",
+            "label": "",
+            "optional": false,
+            "outcomes": {},
+            "flag": "found_keycard",
+            "scope": "run",
+            "value": true
+          }
+        ]
+      },
+      {
+        "id": "bulkhead",
+        "name": "The Bulkhead",
+        "description": "A pressure door, a side vault, and a machine that has been told to guard both.",
+        "kind": "room",
+        "extraction": true,
+        "background": null,
+        "actions": [
+          {
+            "type": "gate",
+            "id": "vault_door",
+            "label": "",
+            "optional": false,
+            "outcomes": {
+              "blocked": {
+                "type": "action",
+                "actionId": "bulkhead_sentry"
+              }
+            },
+            "requires": {
+              "type": "flag",
+              "flag": "found_keycard",
+              "scope": "run",
+              "equals": true
+            },
+            "blockedText": "The side vault wants a keycard you do not have."
+          },
+          {
+            "type": "reward",
+            "id": "vault",
+            "label": "Empty the vault",
+            "optional": false,
+            "outcomes": {},
+            "reward": {
+              "rewardTable": null,
+              "equipmentRewardTable": null,
+              "currency": {
+                "min": 4,
+                "max": 6
+              }
+            }
+          },
+          {
+            "type": "combat",
+            "id": "bulkhead_sentry",
+            "label": "",
+            "optional": false,
+            "outcomes": {},
+            "waves": [
+              {
+                "enemy": {
+                  "key": "scrapyard_drone"
+                }
+              },
+              {
+                "enemy": {
+                  "key": "security_automaton"
+                }
+              }
+            ],
+            "advance": "auto"
+          }
+        ]
+      },
+      {
+        "id": "colossus_den",
+        "name": "The Den",
+        "description": "Everything the pumps ever swallowed, welded into one shape.",
+        "kind": "exit",
+        "extraction": false,
+        "background": null,
+        "actions": [
+          {
+            "type": "boss",
+            "id": "colossus",
+            "label": "",
+            "optional": false,
+            "outcomes": {},
+            "waves": [
+              {
+                "enemy": {
+                  "key": "scrapheap_colossus"
+                }
+              }
+            ],
+            "advance": "confirm"
+          },
+          {
+            "type": "reward",
+            "id": "hoard",
+            "label": "Claim the hoard",
+            "optional": false,
+            "outcomes": {},
+            "reward": {
+              "rewardTable": null,
+              "equipmentRewardTable": "dungeon-scrapheap-boss-v1",
+              "currency": {
+                "min": 8,
+                "max": 12
+              }
+            }
+          }
+        ]
+      }
+    ],
+    "connections": [
+      {
+        "id": "c_main",
+        "from": "gate",
+        "to": "pump_room",
+        "label": "Main tunnel",
+        "kind": "path",
+        "lockedText": ""
+      },
+      {
+        "id": "c_side",
+        "from": "gate",
+        "to": "locker_room",
+        "label": "Side door",
+        "kind": "path",
+        "lockedText": ""
+      },
+      {
+        "id": "c_back",
+        "from": "locker_room",
+        "to": "gate",
+        "label": "Back to the gate",
+        "kind": "shortcut",
+        "lockedText": ""
+      },
+      {
+        "id": "c_locker_bulk",
+        "from": "locker_room",
+        "to": "bulkhead",
+        "label": "Crawlway",
+        "kind": "path",
+        "lockedText": ""
+      },
+      {
+        "id": "c_pump_bulk",
+        "from": "pump_room",
+        "to": "bulkhead",
+        "label": "Down the drain line",
+        "kind": "path",
+        "lockedText": ""
+      },
+      {
+        "id": "c_bulk_pump",
+        "from": "bulkhead",
+        "to": "pump_room",
+        "label": "Back to the pumps",
+        "kind": "path",
+        "lockedText": ""
+      },
+      {
+        "id": "c_boss",
+        "from": "bulkhead",
+        "to": "colossus_den",
+        "label": "Through the bulkhead",
+        "kind": "path",
+        "requires": {
+          "type": "flag",
+          "flag": "valve_opened",
+          "scope": "run",
+          "equals": true
+        },
+        "lockedText": "The bulkhead is sealed. Something upstream has to give first."
+      }
+    ]
+  },
+  "editor": {
+    "layout": {
+      "viewport": {
+        "x": 0,
+        "y": 0,
+        "zoom": 1
+      },
+      "rooms": {
+        "gate": {
+          "x": 0,
+          "y": 120
+        },
+        "pump_room": {
+          "x": 320,
+          "y": 0
+        },
+        "locker_room": {
+          "x": 320,
+          "y": 260
+        },
+        "bulkhead": {
+          "x": 640,
+          "y": 120
+        },
+        "colossus_den": {
+          "x": 960,
+          "y": 120
+        }
+      },
+      "notes": [
+        {
+          "id": "note-1",
+          "x": 600,
+          "y": 320,
+          "text": "Boss door needs the valve: the locker route doubles back."
+        }
+      ]
+    }
+  },
+  "dependencies": {
+    "enemies": [
+      {
+        "key": "alley_bruiser",
+        "contentHash": "b90911921a95195e22df119cec55e84221f852d69f8f9aecf2135d8c18619404"
+      },
+      {
+        "key": "discord_lurker",
+        "contentHash": "1213b3c19a4787606aed61ecb2a1bb4a8c4f4df7d984975aef1a810ba37fa560"
+      },
+      {
+        "key": "scrapheap_colossus",
+        "contentHash": "e82e3d2012864c238953610324891a655903181cf1b296fc6baf24ce6cf9b2b5"
+      },
+      {
+        "key": "scrapyard_drone",
+        "contentHash": "e2d2498e76102e885c99d9f8a0fc2a19aaa87a79039ccc588682cd81d3b87193"
+      },
+      {
+        "key": "security_automaton",
+        "contentHash": "35cab7af41616bd3ab357437ebd25151b8953c6302c1a07aa7a63685b7b70005"
+      },
+      {
+        "key": "suspect_slime",
+        "contentHash": "ebb5b083528ffeb5eb2669a4d239c6d751e982720d56a609dd7715eca254a3e2"
+      }
+    ],
+    "rewardTables": [
+      {
+        "kind": "expedition",
+        "id": "dungeon-scrapheap-boss-v1"
+      },
+      {
+        "kind": "expedition",
+        "id": "dungeon-scrapheap-cache-v1"
+      }
+    ],
+    "regions": [
+      "flaccid-foothills"
+    ],
+    "currencies": [
+      "ascension_currency"
+    ],
+    "species": [],
+    "items": [],
+    "equipment": []
+  },
+  "assets": [
+    {
+      "kind": "shipped",
+      "path": "encounters/door_within_door.webp"
+    }
+  ],
+  "bundled": {
+    "enemies": [
+      {
+        "key": "alley_bruiser",
+        "name": "Alley Bruiser",
+        "description": "",
+        "attack": 100,
+        "defense": 55,
+        "hp": 520,
+        "artworkPath": "combat/enemies/alley_bruiser.webp",
+        "spriteArtworkPath": null,
+        "spritePlacement": null,
+        "enabled": true,
+        "tags": [
+          "starter",
+          "initial_tuning"
+        ]
+      },
+      {
+        "key": "discord_lurker",
+        "name": "Discord Lurker",
+        "description": "",
+        "attack": 40,
+        "defense": 20,
+        "hp": 280,
+        "artworkPath": null,
+        "spriteArtworkPath": null,
+        "spritePlacement": null,
+        "enabled": true,
+        "tags": [
+          "internet_archetype",
+          "tier_1"
+        ]
+      },
+      {
+        "key": "scrapheap_colossus",
+        "name": "Scrapheap Colossus",
+        "description": "",
+        "attack": 170,
+        "defense": 110,
+        "hp": 1200,
+        "artworkPath": null,
+        "spriteArtworkPath": null,
+        "spritePlacement": null,
+        "enabled": true,
+        "tags": [
+          "boss",
+          "temporary",
+          "initial_tuning"
+        ]
+      },
+      {
+        "key": "scrapyard_drone",
+        "name": "Scrapyard Drone",
+        "description": "",
+        "attack": 55,
+        "defense": 30,
+        "hp": 300,
+        "artworkPath": "combat/enemies/scrapyard_drone.webp",
+        "spriteArtworkPath": null,
+        "spritePlacement": null,
+        "enabled": true,
+        "tags": [
+          "starter",
+          "initial_tuning"
+        ]
+      },
+      {
+        "key": "security_automaton",
+        "name": "Security Automaton",
+        "description": "",
+        "attack": 140,
+        "defense": 90,
+        "hp": 800,
+        "artworkPath": "combat/enemies/security_automaton.webp",
+        "spriteArtworkPath": null,
+        "spritePlacement": null,
+        "enabled": true,
+        "tags": [
+          "starter",
+          "initial_tuning"
+        ]
+      },
+      {
+        "key": "suspect_slime",
+        "name": "Suspect Slime",
+        "description": "",
+        "attack": 45,
+        "defense": 22,
+        "hp": 300,
+        "artworkPath": null,
+        "spriteArtworkPath": null,
+        "spritePlacement": null,
+        "enabled": true,
+        "tags": [
+          "internet_archetype",
+          "tier_1"
+        ]
+      }
+    ]
+  }
+}
