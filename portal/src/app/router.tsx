@@ -165,7 +165,7 @@ const RewardTableEditorPage = lazy(() =>
     default: m.RewardTableEditorPage,
   })),
 );
-// Dungeons (zones, the progression currency, generation preview). Gated on
+// Dungeons (drafts, revisions and publication). Gated on
 // `dungeons.read` only.
 const DungeonsListPage = lazy(() =>
   import('@/features/adminDungeons/DungeonsListPage').then((m) => ({
@@ -220,11 +220,6 @@ const BossActivityPage = lazy(() =>
 const ArtworkAssetsPage = lazy(() =>
   import('@/features/adminArtwork/ArtworkAssetsPage').then((m) => ({
     default: m.ArtworkAssetsPage,
-  })),
-);
-const DungeonPreviewPage = lazy(() =>
-  import('@/features/adminDungeons/DungeonPreviewPage').then((m) => ({
-    default: m.DungeonPreviewPage,
   })),
 );
 // Result Presentations. Gated on its own permission — not `admin.access` or
@@ -485,7 +480,7 @@ export const routes: RouteObject[] = [
             path: 'admin/dungeons/preview',
             element: (
               <RequirePortalPermission permission="dungeons.read">
-                <DungeonPreviewPage />
+                <Navigate to="/admin/dungeons" replace />
               </RequirePortalPermission>
             ),
           },
@@ -494,6 +489,14 @@ export const routes: RouteObject[] = [
             element: (
               <RequirePortalPermission permission="dungeons.write">
                 <DungeonCreatePage />
+              </RequirePortalPermission>
+            ),
+          },
+          {
+            path: 'admin/dungeons/definitions/:key',
+            element: (
+              <RequirePortalPermission permission="dungeons.read">
+                <DungeonZoneEditorPage />
               </RequirePortalPermission>
             ),
           },

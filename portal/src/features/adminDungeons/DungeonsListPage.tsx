@@ -1,33 +1,16 @@
-/**
- * Admin — Dungeons: every dungeon at a glance — how it is laid out, where it
- * is open, how long a run is — where it stands relative to Git, the
- * Delve-wide settings (the daily run limit every zone shares), and the
- * progression currency dungeons pay.
- *
- * Zones are database rows seeded from `content/dungeons/zones.json`. A zone
- * edited here is never overwritten by a deploy; **Export** writes the file
- * format back so the edit can be committed to Git.
- *
- * There is no delete. A zone is switched off instead — runs already generated
- * keep the zone they started with either way.
- */
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-
 import {
   DUNGEONS_QUERY_KEY,
-  exportDungeonZones,
-  getDungeonReference,
+  listDungeons,
+  setDungeonEnabled,
   getDungeonSettings,
-  layoutModeOf,
-  listDungeonZones,
-  listProgressionCurrencies,
-  setDungeonZoneEnabled,
   updateDungeonSettings,
+  listProgressionCurrencies,
   updateProgressionCurrency,
   type DungeonSettings,
-  type DungeonZoneSummary,
+  type DungeonSummary,
   type ProgressionCurrency,
   type ProgressionCurrencyMetadata,
 } from '@/api/adminDungeons';
@@ -40,202 +23,70 @@ import { ErrorState } from '@/components/layout/ErrorState';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useHasPermission } from '@/auth/useSession';
-import { cn } from '@/lib/cn';
-
-import { ArtThumb } from './ArtThumb';
-import { zoneSize } from './dungeonModel';
-
-/** Where a zone stands relative to Git, in one badge. */
-export function ZoneOriginBadge({ summary }: { summary: Pick<DungeonZoneSummary, 'origin'> }) {
-  if (summary.origin === 'custom') return <Badge variant="outline">Portal only</Badge>;
-  if (summary.origin === 'shipped') return <Badge variant="default">Shipped</Badge>;
-  return (
-    <Badge
-      variant="solid"
-      title="Edited here; deploys will not overwrite it. Export to commit it to Git."
-    >
-      Edited — differs from Git
-    </Badge>
-  );
-}
-
-function downloadJson(filename: string, data: unknown): void {
-  const blob = new Blob([`${JSON.stringify(data, null, 2)}\n`], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  URL.revokeObjectURL(url);
-}
-
-const formatUpdated = (iso: string) =>
-  new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-
+const formatUpdated = (iso: string) => new Date(iso).toLocaleString();
 export function DungeonsListPage() {
-  const queryClient = useQueryClient();
+  const client = useQueryClient();
   const canWrite = useHasPermission('dungeons.write');
-  // Enemies are their own section; the shortcut is only shown to someone who can open it.
-  const canSeeEnemies = useHasPermission('enemies.read');
   const query = useQuery({
-    queryKey: [...DUNGEONS_QUERY_KEY, 'zones'],
-    queryFn: ({ signal }) => listDungeonZones(signal),
-  });
-  const zones = query.data?.zones ?? [];
-  // Region names for the list. Shared with the editor's cache; ids show until it loads.
-  const reference = useQuery({
-    queryKey: [...DUNGEONS_QUERY_KEY, 'reference'],
-    queryFn: ({ signal }) => getDungeonReference(signal),
-    staleTime: 60_000,
-  }).data;
-  const regionNames = new Map((reference?.regions ?? []).map((r) => [r.id, r.name]));
-  const exporting = useMutation({
-    mutationFn: exportDungeonZones,
-    onSuccess: (exported) =>
-      downloadJson(exported.file.split('/').pop() ?? 'zones.json', exported.document),
+    queryKey: [...DUNGEONS_QUERY_KEY, 'definitions'],
+    queryFn: ({ signal }) => listDungeons(signal),
   });
   const toggle = useMutation({
-    mutationFn: (zone: DungeonZoneSummary) =>
-      setDungeonZoneEnabled(zone.key, !zone.enabled, zone.revision),
-    onSettled: () => void queryClient.invalidateQueries({ queryKey: DUNGEONS_QUERY_KEY }),
+    mutationFn: (d: DungeonSummary) => setDungeonEnabled(d.key, !d.enabled),
+    onSuccess: () => client.invalidateQueries({ queryKey: DUNGEONS_QUERY_KEY }),
   });
-
   return (
     <div className="space-y-4">
       <PageHeader
         title="Dungeons"
-        description="Every dungeon players can delve. Edits reach the next run started; a run already started keeps the dungeon it started with."
+        description="Manage drafts and published revisions. Saving a draft never publishes it."
         actions={
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" asChild>
-              <Link to="/admin/dungeons/preview">Preview dungeon</Link>
+          canWrite && (
+            <Button asChild>
+              <Link to="/admin/dungeons/new">Create dungeon</Link>
             </Button>
-            {canSeeEnemies && (
-              <Button variant="outline" asChild>
-                <Link to="/admin/enemies">Enemies</Link>
-              </Button>
-            )}
-            <Button
-              variant="outline"
-              disabled={exporting.isPending}
-              onClick={() => exporting.mutate()}
-            >
-              Export zones
-            </Button>
-            {canWrite && (
-              <Button asChild variant="accent">
-                <Link to="/admin/dungeons/new">Create dungeon</Link>
-              </Button>
-            )}
-          </div>
+          )
         }
       />
-
-      {exporting.isError && (
-        <ErrorState variant="inline" title="Could not export" error={exporting.error} />
-      )}
-      {toggle.isError && (
-        <ErrorState
-          variant="inline"
-          title={
-            isPortalApiError(toggle.error) && toggle.error.code === 'DUNGEON_ZONE_STALE'
-              ? 'That zone was changed by someone else — the list has been refreshed'
-              : 'Could not change the zone'
-          }
-          error={toggle.error}
-        />
-      )}
-      {query.isPending && <Skeleton className="h-32 w-full" />}
+      {query.isPending && <Skeleton className="h-32" />}
       {query.isError && (
         <ErrorState
-          title="Could not load dungeon zones"
+          title="Could not load dungeons"
           error={query.error}
           onRetry={() => void query.refetch()}
         />
       )}
-      {query.data && zones.length === 0 && (
-        <Card className="p-6 text-center text-sm text-ink-muted">No dungeons yet.</Card>
+      {toggle.isError && (
+        <ErrorState title="Could not change dungeon availability" error={toggle.error} />
       )}
-      {zones.length > 0 && (
-        <Card className="divide-y divide-border">
-          {zones.map((z) => (
-            <div
-              key={z.key}
-              className="flex flex-wrap items-start gap-3 px-4 py-3"
-              data-testid="dungeon-zone-row"
+      {query.data?.dungeons.length === 0 && <Card className="p-6">No dungeons yet.</Card>}
+      {query.data?.dungeons.map((d) => (
+        <Card key={d.key} className="flex flex-wrap items-center gap-3 p-4">
+          <div className="flex-1">
+            <Link
+              className="font-medium hover:underline"
+              to={`/admin/dungeons/definitions/${encodeURIComponent(d.key)}`}
             >
-              <ArtThumb
-                image={{ assetId: z.artworkAssetId ?? null, artworkPath: z.artworkPath ?? null }}
-                label={`${z.name} cover`}
-                testId={`zone-thumb-${z.key}`}
-              />
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Link
-                    to={`/admin/dungeons/zones/${encodeURIComponent(z.key)}`}
-                    className={cn(
-                      'font-medium text-ink hover:underline',
-                      !z.enabled && 'text-ink-muted',
-                    )}
-                  >
-                    {z.name}
-                  </Link>
-                  <Badge variant="solid" data-testid="zone-mode-badge">
-                    {layoutModeOf(z) === 'authored' ? 'Authored' : 'Procedural'}
-                  </Badge>
-                  <ZoneOriginBadge summary={z} />
-                  {z.regionBackfill === 'all_enabled_regions' && (
-                    <Badge
-                      variant="danger"
-                      title="Made before regions existed: opened in every released region. Review its regions."
-                    >
-                      Review regions
-                    </Badge>
-                  )}
-                  {z.enabled ? (
-                    <Badge variant="default">Enabled</Badge>
-                  ) : (
-                    <Badge variant="danger">Disabled</Badge>
-                  )}
-                </div>
-                <p className="mt-1 text-sm text-ink-muted" data-testid="zone-glance">
-                  {layoutModeOf(z) === 'authored' ? 'Authored' : 'Procedural'} ·{' '}
-                  <span data-testid="zone-regions">
-                    {z.availableRegions.length === 0
-                      ? 'Available nowhere — choose a region in the editor'
-                      : z.availableRegions.map((id) => regionNames.get(id) ?? id).join(', ')}
-                  </span>{' '}
-                  · {zoneSize(z)}
-                </p>
-                <p className="text-xs text-ink-subtle">
-                  <span className="font-mono">{z.key}</span> · revision {z.revision} · updated{' '}
-                  {formatUpdated(z.updatedAt)}
-                  {z.updatedBy ? ` by ${z.updatedBy}` : ''}
-                </p>
-              </div>
-              <div className="flex gap-2">
-                {canWrite && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={toggle.isPending}
-                    aria-label={`${z.enabled ? 'Disable' : 'Enable'} ${z.name}`}
-                    onClick={() => toggle.mutate(z)}
-                  >
-                    {z.enabled ? 'Disable' : 'Enable'}
-                  </Button>
-                )}
-                <Button size="sm" variant="outline" asChild>
-                  <Link to={`/admin/dungeons/zones/${encodeURIComponent(z.key)}`}>
-                    {canWrite ? 'Edit' : 'View'}
-                  </Link>
-                </Button>
-              </div>
-            </div>
-          ))}
+              {d.name}
+            </Link>
+            <p className="text-sm text-ink-muted">
+              {d.key} · Draft {d.draftRevision} ·{' '}
+              {d.published ? `Published ${d.published.number}` : 'Unpublished'} · {d.roomCount}{' '}
+              rooms
+            </p>
+            <p className="text-xs text-ink-subtle">Validation available on the management page</p>
+          </div>
+          <Badge>{d.enabled ? 'Enabled' : 'Disabled'}</Badge>
+          <Badge variant="outline">
+            {d.draftDiffers ? 'Unpublished changes' : 'Draft matches publication'}
+          </Badge>
+          {canWrite && (
+            <Button disabled={toggle.isPending} onClick={() => toggle.mutate(d)}>
+              {d.enabled ? 'Disable' : 'Enable'} {d.name}
+            </Button>
+          )}
         </Card>
-      )}
-
+      ))}
       <SettingsPanel canWrite={canWrite} />
       <CurrencyPanel canWrite={canWrite} />
     </div>
