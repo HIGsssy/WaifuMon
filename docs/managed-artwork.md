@@ -1,7 +1,7 @@
 # Managed artwork
 
-Artwork an admin uploads through the Portal, used by dungeon zones and enemies
-without a commit or a deploy — plus the scene compositor that layers an enemy
+Artwork an admin uploads through the Portal, used by dungeon zones, enemies
+and bosses without a commit or a deploy — plus the scene compositor that layers an enemy
 sprite over a dungeon background for Discord.
 
 Code: `src/modules/artworkAssets/`, `src/api/routes/v1/admin/artworkAssets.ts`,
@@ -50,7 +50,7 @@ Postgres.
 | Column | |
 | --- | --- |
 | `id` | UUID. The stable logical id that authored content references. |
-| `category` | `dungeon_zone`, `dungeon_background`, `enemy_sprite`, `enemy_art`, `event_art`, `npc_portrait`, `equipment_art`. Drives pickers; nothing else. |
+| `category` | `dungeon_zone`, `dungeon_background`, `enemy_sprite`, `enemy_art`, `event_art`, `npc_portrait`, `equipment_art`, `boss_art`. Drives pickers; nothing else. `boss_art` is uploaded and picked in Boss Management ([boss-management.md](boss-management.md#artwork)). |
 | `name` | Display label, editable. |
 | `original_filename` | The uploader's base file name — a label only. |
 | `mime_type`, `width`, `height`, `has_alpha`, `file_size` | Read from the bytes on upload. |
@@ -110,6 +110,16 @@ docker run --rm -v waifumon_waifumon-managed-assets:/data:ro -v "$PWD":/backup a
 (The volume's full name carries the compose project prefix; `docker volume ls`
 shows it.) `waifumon-art-cache` needs no backup.
 
+Restore both, with the bot stopped (`docker compose stop waifumon-bot`), and
+never one environment's backup over another's:
+
+```sh
+docker compose exec -T postgres psql -U "$POSTGRES_USER" "$POSTGRES_DB" < waifumon.sql
+docker run --rm -v waifumon_waifumon-managed-assets:/data -v "$PWD":/backup alpine \
+  sh -c 'cd /data && tar xzf /backup/waifumon-managed-assets.tgz'
+docker compose up -d waifumon-card-cache-init waifumon-bot
+```
+
 A database restored without its artwork volume is safe but bare: every managed
 reference falls back to shipped art, the server logs
 `artwork-assets/missing-file` per asset it tries to read, and the Artwork
@@ -155,7 +165,8 @@ A refusal is `400 ARTWORK_UPLOAD_INVALID` with a sentence the admin can act on.
   the references, the Portal says how many places now fall back, and each
   affected zone shows a warning. Re-enabling restores it.
 - **Delete** is refused with `409 ARTWORK_ASSET_IN_USE` (and the list of
-  references) while a zone or enemy still references the asset — clear them
+  references) while a zone, an enemy, a boss or a boss encounter that is
+  still open references the asset — clear them
   first, or disable instead. Otherwise it is a soft delete: the file is
   removed, the row and its history stay.
 

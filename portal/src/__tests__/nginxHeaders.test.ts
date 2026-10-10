@@ -103,6 +103,8 @@ describe('proxied responses carry exactly one copy of each header', () => {
       '= /health',
       '^~ /api',
       '^~ /api/v1/admin/artwork/',
+      '^~ /api/v1/admin/bosses/artwork/',
+      '^~ /api/v1/admin/bosses/import/',
       '^~ /api/v1/admin/encounters/import/',
       '^~ /auth/',
     ]);
@@ -235,6 +237,18 @@ describe('request body size', () => {
     const match = importBlock?.body.match(/client_max_body_size\s+(\d+)m;/);
     expect(match).toBeTruthy();
     expect(Number(match![1])).toBeGreaterThan(8);
+  });
+
+  it('lets a boss artwork upload and a boss roster import through to the API’s own limits', () => {
+    // Without these the 1 MB default answers first, with an HTML page: an
+    // ordinary boss image, or an export of a few dozen bosses, never arrives.
+    const limitOf = (selector: string) => {
+      const body = blocks.find((b) => b.selector === selector)?.body ?? '';
+      return Number(body.match(/client_max_body_size\s+(\d+)m;/)?.[1] ?? 0);
+    };
+    // ARTWORK_UPLOAD_MAX_BYTES is 8 MiB; BOSS_IMPORT_BODY_LIMIT_BYTES is 2 MiB.
+    expect(limitOf('^~ /api/v1/admin/bosses/artwork/')).toBeGreaterThan(8);
+    expect(limitOf('^~ /api/v1/admin/bosses/import/')).toBeGreaterThan(2);
   });
 
   it('leaves every other path on the default', () => {

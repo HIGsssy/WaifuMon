@@ -1134,6 +1134,13 @@ export const bossEncounters = pgTable(
     bossAffinity: text('boss_affinity').notNull(),
     /** Relative artwork path at announcement time; null = text-only encounter. */
     bossArtwork: text('boss_artwork'),
+    /**
+     * The boss's managed artwork at spawn (migration 0058), a logical
+     * `artwork_assets` id: it wins over `bossArtwork` while the asset is
+     * active, and its image is read live. No foreign key — the encounter is
+     * history and must not pin an asset an admin later removes.
+     */
+    bossArtworkAssetId: uuid('boss_artwork_asset_id'),
     rewardTable: text('reward_table').notNull(),
     /** `rewardTables[key].version` as it stood when the encounter opened. */
     rewardTableVersion: text('reward_table_version').notNull(),
@@ -3281,6 +3288,7 @@ export const ARTWORK_ASSET_CATEGORIES = [
   'event_art',
   'npc_portrait',
   'equipment_art',
+  'boss_art',
 ] as const;
 export type ArtworkAssetCategory = (typeof ARTWORK_ASSET_CATEGORIES)[number];
 
@@ -3328,7 +3336,7 @@ export const artworkAssets = pgTable(
   (t) => [
     check(
       'artwork_assets_category_check',
-      sql`${t.category} in ('dungeon_zone','dungeon_background','enemy_sprite','enemy_art','event_art','npc_portrait','equipment_art')`,
+      sql`${t.category} in ('dungeon_zone','dungeon_background','enemy_sprite','enemy_art','event_art','npc_portrait','equipment_art','boss_art')`,
     ),
     check('artwork_assets_mime_check', sql`${t.mimeType} in ('image/png','image/webp','image/jpeg')`),
     check('artwork_assets_status_check', sql`${t.status} in ('active','disabled','deleted')`),
@@ -3483,6 +3491,11 @@ export const bossDefinitions = pgTable(
     status: text('status').$type<BossDefinitionStatus>().notNull().default('draft'),
     /** Relative to the assets root; null renders a text-only encounter. */
     artwork: text('artwork'),
+    /**
+     * Managed artwork uploaded through the Portal (migration 0058). Wins over
+     * `artwork` while the asset is active; `artwork` stays as the fallback.
+     */
+    artworkAssetId: uuid('artwork_asset_id').references(() => artworkAssets.id),
     /** A `reward_tables` id of kind `boss`. Empty only on a draft. */
     rewardTable: text('reward_table').notNull().default(''),
     scoutingText: text('scouting_text').notNull().default(''),
@@ -3512,6 +3525,7 @@ export const bossDefinitions = pgTable(
     check('boss_definitions_revision_check', sql`${t.revision} >= 1`),
     index('boss_definitions_position_idx').on(t.position, t.bossKey),
     index('boss_definitions_status_idx').on(t.status),
+    index('boss_definitions_artwork_asset_idx').on(t.artworkAssetId),
   ],
 );
 

@@ -93,7 +93,7 @@ const assetSchema = z.object({
 });
 
 const referenceSchema = z.object({
-  kind: z.enum(['dungeon_zone', 'combat_enemy']),
+  kind: z.enum(['dungeon_zone', 'combat_enemy', 'boss']),
   key: z.string(),
   name: z.string().nullable(),
   field: z.string(),

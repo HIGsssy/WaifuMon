@@ -247,7 +247,12 @@ export function BossesListPage() {
               className="flex flex-wrap items-start gap-3 px-4 py-3"
               data-testid="boss-row"
             >
-              <BossThumb path={b.artwork} label={`${b.name} artwork`} testId={`boss-art-${b.id}`} />
+              <BossThumb
+                path={b.artwork}
+                assetId={b.artworkAssetId}
+                label={`${b.name} artwork`}
+                testId={`boss-art-${b.id}`}
+              />
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <Link

@@ -59,8 +59,38 @@ const REPELLED_COLOR = 0x4ba36b;
 const UNCHALLENGED_COLOR = 0x6c6c78;
 
 /** Filename the artwork attachment carries. Safe: derived from the boss id. */
-export function bossArtworkFilename(bossId: string): string {
-  return `boss-${bossId}.webp`;
+export function bossArtworkFilename(bossId: string, extension = 'webp'): string {
+  return `boss-${bossId}.${extension}`;
+}
+
+/** Managed (uploaded) boss artwork, already read: the bytes and the extension their type calls for. */
+export interface BossArtworkImage {
+  bytes: Buffer;
+  extension: string;
+}
+
+/** What a renderer is told about the boss's picture. Both absent is a text-only encounter. */
+export interface BossArtworkInput {
+  /** Absolute path to shipped artwork that exists on disk. */
+  artworkPath?: string | undefined;
+  /** Managed artwork. Wins over `artworkPath` when both are present. */
+  artworkImage?: BossArtworkImage | undefined;
+}
+
+/** The attachment for a boss's picture — uploaded bytes first, else the shipped file — or null for none. */
+function bossArtworkAttachment(
+  bossId: string,
+  input: BossArtworkInput,
+): { file: AttachmentBuilder; filename: string } | null {
+  if (input.artworkImage) {
+    const filename = bossArtworkFilename(bossId, input.artworkImage.extension);
+    return { file: new AttachmentBuilder(input.artworkImage.bytes, { name: filename }), filename };
+  }
+  if (input.artworkPath) {
+    const filename = bossArtworkFilename(bossId);
+    return { file: new AttachmentBuilder(input.artworkPath, { name: filename }), filename };
+  }
+  return null;
 }
 
 /** `<t:1730000000:R>` — "in 42 minutes", localized by Discord for each reader. */
@@ -136,6 +166,8 @@ export interface AnnouncementInput {
    * is the whole point of degrading rather than failing.
    */
   artworkPath?: string | undefined;
+  /** Managed (uploaded) artwork, already read. Wins over `artworkPath`. */
+  artworkImage?: BossArtworkImage | undefined;
 }
 
 /** The Commit Buddy row. Disabled once the window is closed. */
@@ -211,10 +243,10 @@ export function buildAnnouncement(input: AnnouncementInput): BaseMessageOptions 
   });
 
   const files: AttachmentBuilder[] = [];
-  if (input.artworkPath) {
-    const filename = bossArtworkFilename(encounter.bossId);
-    files.push(new AttachmentBuilder(input.artworkPath, { name: filename }));
-    embed.setImage(`attachment://${filename}`);
+  const artwork = bossArtworkAttachment(encounter.bossId, input);
+  if (artwork) {
+    files.push(artwork.file);
+    embed.setImage(`attachment://${artwork.filename}`);
   }
 
   return {
@@ -233,6 +265,8 @@ export interface CompletedAnnouncementInput {
   totalDamage: number;
   totalAttacks: number;
   artworkPath?: string | undefined;
+  /** Managed (uploaded) artwork, already read. Wins over `artworkPath`. */
+  artworkImage?: BossArtworkImage | undefined;
 }
 
 /**
@@ -315,10 +349,10 @@ export function buildCompletedAnnouncement(
   });
 
   const files: AttachmentBuilder[] = [];
-  if (input.artworkPath) {
-    const filename = bossArtworkFilename(encounter.bossId);
-    files.push(new AttachmentBuilder(input.artworkPath, { name: filename }));
-    embed.setImage(`attachment://${filename}`);
+  const artwork = bossArtworkAttachment(encounter.bossId, input);
+  if (artwork) {
+    files.push(artwork.file);
+    embed.setImage(`attachment://${artwork.filename}`);
   }
 
   return {
@@ -421,6 +455,8 @@ export interface ResultsInput {
   totalAttacks: number;
   firstOnScene: BossParticipationRow | null;
   artworkPath?: string | undefined;
+  /** Managed (uploaded) artwork, already read. Wins over `artworkPath`. */
+  artworkImage?: BossArtworkImage | undefined;
 }
 
 /**
@@ -504,10 +540,10 @@ export function buildResults(input: ResultsInput): BaseMessageOptions {
   embed.setFooter({ text: encounterMarker(encounter.id) });
 
   const files: AttachmentBuilder[] = [];
-  if (input.artworkPath) {
-    const filename = bossArtworkFilename(encounter.bossId);
-    files.push(new AttachmentBuilder(input.artworkPath, { name: filename }));
-    embed.setThumbnail(`attachment://${filename}`);
+  const artwork = bossArtworkAttachment(encounter.bossId, input);
+  if (artwork) {
+    files.push(artwork.file);
+    embed.setThumbnail(`attachment://${artwork.filename}`);
   }
 
   return {

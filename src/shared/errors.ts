@@ -1856,7 +1856,7 @@ export class ArtworkUploadInvalidError extends AppError {
 
 /** What still points at a managed artwork asset. */
 export interface ArtworkAssetReference {
-  kind: 'dungeon_zone' | 'combat_enemy';
+  kind: 'dungeon_zone' | 'combat_enemy' | 'boss';
   key: string;
   /** Display name where one is known. */
   name: string | null;

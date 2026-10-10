@@ -59,6 +59,7 @@ import type { RewardTableService } from '../modules/rewardTables/rewardTableServ
 import type { CombatTrialService } from '../modules/combatTrials/combatTrialService';
 import type { EquipmentWorkshopService } from '../modules/equipment/equipmentWorkshopService';
 import type { ArtworkAssetService } from '../modules/artworkAssets/artworkAssetService';
+import type { BossArtworkService } from '../modules/bosses/bossArtworkService';
 import type { EnemyCatalogueService } from '../modules/enemies/enemyService';
 import type { BossDefinitionService } from '../modules/bosses/bossDefinitionService';
 import type { SceneCompositionService } from '../modules/artworkAssets/sceneComposition';
@@ -262,6 +263,8 @@ export interface AppServices {
   enemies?: EnemyCatalogueService | undefined;
   /** Boss Management: DB-backed boss definitions and their availability schedules (Portal Admin). */
   bossDefinitions?: BossDefinitionService | undefined;
+  /** Boss artwork library and uploads. Absent on a build without managed artwork. */
+  bossArtwork?: BossArtworkService | undefined;
   /** Composes a background and a sprite into one cached scene image. */
   sceneComposition?: SceneCompositionService | undefined;
   /** Progression currencies (the dungeon's Ascension-related resource): metadata, balances, ledger. */

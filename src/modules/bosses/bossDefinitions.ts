@@ -63,7 +63,19 @@ export const BossDefinitionSchema = z
     /** Regions whose guilds may draw this boss. */
     regions: z.array(z.enum(REGIONS)).default([]),
     status: z.enum(BOSS_DEFINITION_STATUSES).default('draft'),
+    /** Shipped artwork: a path under the assets root. The fallback when `artworkAssetId` is unset or unusable. */
     artwork: relativeAssetPath.nullable().default(null),
+    /**
+     * Managed artwork uploaded through the Portal (an `artwork_assets` id).
+     * Wins over `artwork` while the asset is active. Ids belong to one
+     * environment: an export carries them, another server will not know them.
+     */
+    artworkAssetId: z
+      .string()
+      .uuid()
+      .transform((id) => id.toLowerCase())
+      .nullable()
+      .default(null),
     rewardTable: z.string().trim().max(200).default(''),
     scoutingText: prose,
     repelledText: prose,
@@ -94,6 +106,7 @@ export function bossDefinitionFromContent(boss: BossContent): BossDefinition {
     regions: [boss.region],
     status: boss.enabled ? 'active' : 'disabled',
     artwork: boss.artwork,
+    artworkAssetId: null,
     rewardTable: boss.rewardTable,
     scoutingText: boss.scoutingText,
     repelledText: boss.repelledText,
@@ -129,6 +142,7 @@ export function bossDefinitionOf(row: BossDefinitionRow): BossDefinition {
     regions: row.regions,
     status: row.status,
     artwork: row.artwork,
+    artworkAssetId: row.artworkAssetId,
     rewardTable: row.rewardTable,
     scoutingText: row.scoutingText,
     repelledText: row.repelledText,
@@ -153,6 +167,7 @@ export function bossColumnsOf(definition: BossDefinition) {
     regions: [...definition.regions] as string[],
     status: definition.status,
     artwork: definition.artwork,
+    artworkAssetId: definition.artworkAssetId,
     rewardTable: definition.rewardTable,
     scoutingText: definition.scoutingText,
     repelledText: definition.repelledText,

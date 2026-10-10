@@ -22,7 +22,9 @@
 import { count, desc, eq, max, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { Db, DbOrTx } from '../../db/client';
+import type { ArtworkAssetService } from '../artworkAssets/artworkAssetService';
 import {
+  artworkAssets,
   bossDefinitionEvents,
   bossDefinitions,
   bossEncounters,
@@ -277,6 +279,12 @@ export interface BossDefinitionServiceDeps {
   getEnabledRegions: () => readonly string[];
   /** Whether a relative artwork path resolves to a file. Absent: artwork is not checked. */
   artworkExists?: ((relativePath: string) => boolean) | undefined;
+  /**
+   * Managed artwork. With it, a boss's `artworkAssetId` is checked against the
+   * assets that exist and every change of it lands in the asset's own audit
+   * trail. Absent (a server without managed artwork): a boss cannot name one.
+   */
+  assets?: Pick<ArtworkAssetService, 'getMany' | 'recordReferenceChanges'> | undefined;
 }
 
 const BossInputSchema = BossDefinitionSchema.omit({ id: true });
@@ -311,6 +319,7 @@ const COMPARED_FIELDS = [
   'regions',
   'status',
   'artwork',
+  'artworkAssetId',
   'rewardTable',
   'scoutingText',
   'repelledText',
@@ -395,7 +404,34 @@ export function createBossDefinitionService(deps: BossDefinitionServiceDeps): Bo
     }
 
     if (definition.artwork && deps.artworkExists && !deps.artworkExists(definition.artwork)) {
-      issues.push(warning('artwork', `No file at "${definition.artwork}" — the encounter will render without artwork.`));
+      issues.push(
+        warning(
+          'artwork',
+          definition.artworkAssetId
+            ? `No file at "${definition.artwork}" — there is no shipped fallback behind the uploaded artwork.`
+            : `No file at "${definition.artwork}" — the encounter will render without artwork.`,
+        ),
+      );
+    }
+    if (definition.artworkAssetId) {
+      const asset = deps.assets
+        ? (await deps.assets.getMany([definition.artworkAssetId], tx)).get(definition.artworkAssetId)
+        : undefined;
+      if (!asset || asset.status === 'deleted') {
+        // An id from another environment (an import) or a removed upload.
+        issues.push(
+          error('artworkAssetId', 'That uploaded artwork does not exist on this server — choose another image or clear it.'),
+        );
+      } else if (asset.status === 'disabled') {
+        issues.push(
+          warning(
+            'artworkAssetId',
+            `The uploaded artwork "${asset.name}" is disabled, so the encounter falls back to ${
+              definition.artwork ? 'the shipped file' : 'no picture'
+            }.`,
+          ),
+        );
+      }
     }
 
     const schedule = validateBossSchedule(definition.schedule);
@@ -407,6 +443,17 @@ export function createBossDefinitionService(deps: BossDefinitionServiceDeps): Bo
       }
     }
     return issues;
+  }
+
+  /**
+   * Hold the managed artwork a write is about to name until that write
+   * commits. Deleting an asset locks its row and then looks for references, so
+   * whichever of the two goes first, the other sees it: the delete finds this
+   * boss, or this save finds the asset gone. Without it both could pass.
+   */
+  async function holdArtwork(tx: DbOrTx, assetId: string | null): Promise<void> {
+    if (!assetId || !deps.assets) return;
+    await tx.select({ id: artworkAssets.id }).from(artworkAssets).where(eq(artworkAssets.id, assetId)).for('share');
   }
 
   /** Parse an input into a definition. Collects, never throws. */
@@ -435,7 +482,10 @@ export function createBossDefinitionService(deps: BossDefinitionServiceDeps): Bo
     now: Date,
   ): Promise<BossDefinition> {
     const { definition, issues } = parse(id, input, creating);
-    if (definition) issues.push(...(await serverIssues(tx, definition, now)));
+    if (definition) {
+      await holdArtwork(tx, definition.artworkAssetId);
+      issues.push(...(await serverIssues(tx, definition, now)));
+    }
     if (!definition || hasErrors(issues)) throw new BossDefinitionInvalidError(issues);
     return definition;
   }
@@ -444,6 +494,26 @@ export function createBossDefinitionService(deps: BossDefinitionServiceDeps): Bo
     if (row.revision !== expectedRevision) {
       throw new BossDefinitionStaleError(row.bossKey, expectedRevision, row.revision, row.updatedBy, row.updatedAt);
     }
+  }
+
+  /** A boss's managed-artwork reference, as the asset audit trail records it. */
+  async function recordArtworkReference(
+    tx: DbOrTx,
+    key: string,
+    before: string | null,
+    after: string | null,
+    actor: string | null,
+  ): Promise<void> {
+    if (before === after) return;
+    await deps.assets?.recordReferenceChanges(
+      tx,
+      {
+        entity: `boss:${key}`,
+        before: [{ field: 'artworkAssetId', assetId: before }],
+        after: [{ field: 'artworkAssetId', assetId: after }],
+      },
+      actor,
+    );
   }
 
   const changedFieldsOf = (before: BossDefinition, after: BossDefinition): string[] =>
@@ -519,7 +589,11 @@ export function createBossDefinitionService(deps: BossDefinitionServiceDeps): Bo
       const row = typeof raw.id === 'string' ? await readBossDefinitionRow(tx, id, lock) : undefined;
       const { definition, issues: entryIssues } = parse(id, rest, !row);
       if (typeof raw.id !== 'string') entryIssues.push(error('id', 'every boss needs an id'));
-      if (definition) entryIssues.push(...(await serverIssues(tx, definition, now)));
+      if (definition) {
+        // Only an import being applied holds anything; a plan is a dry run.
+        if (lock) await holdArtwork(tx, definition.artworkAssetId);
+        entryIssues.push(...(await serverIssues(tx, definition, now)));
+      }
       const changedFields = definition && row ? changedFieldsOf(bossDefinitionOf(row), definition) : [];
       const action: BossImportAction =
         !definition || hasErrors(entryIssues)
@@ -581,6 +655,7 @@ export function createBossDefinitionService(deps: BossDefinitionServiceDeps): Bo
         const inserted = await insertBossDefinitionRow(tx, definition, { source: 'portal', actor });
         if (!inserted) throw new BossDefinitionKeyTakenError(id);
         await recordBossEvent(tx, { bossKey: id, action: 'create', actor, details: { status: definition.status } });
+        await recordArtworkReference(tx, id, null, definition.artworkAssetId, actor);
         return detailOf(tx, inserted, now);
       });
       await refresh();
@@ -602,6 +677,7 @@ export function createBossDefinitionService(deps: BossDefinitionServiceDeps): Bo
           actor,
           details: { revision: updated.revision, changed },
         });
+        await recordArtworkReference(tx, key, before.artworkAssetId, definition.artworkAssetId, actor);
         // A status change made through a full save is still a lifecycle change.
         if (before.status !== definition.status) {
           await recordBossEvent(tx, {
@@ -659,6 +735,7 @@ export function createBossDefinitionService(deps: BossDefinitionServiceDeps): Bo
         const inserted = await insertBossDefinitionRow(tx, definition, { source: 'portal', actor });
         if (!inserted) throw new BossDefinitionKeyTakenError(input.id);
         await recordBossEvent(tx, { bossKey: input.id, action: 'duplicate', actor, details: { from: sourceKey } });
+        await recordArtworkReference(tx, input.id, null, definition.artworkAssetId, actor);
         return detailOf(tx, inserted, now);
       });
       await refresh();
@@ -681,6 +758,7 @@ export function createBossDefinitionService(deps: BossDefinitionServiceDeps): Bo
           actor,
           details: { name: row.name, status: row.status, revision: row.revision },
         });
+        await recordArtworkReference(tx, key, row.artworkAssetId, null, actor);
         return true;
       });
       await refresh();
@@ -723,6 +801,7 @@ export function createBossDefinitionService(deps: BossDefinitionServiceDeps): Bo
             const inserted = await insertBossDefinitionRow(tx, definition, { source: 'import', actor });
             if (!inserted) throw new BossDefinitionKeyTakenError(entry.id);
             await recordBossEvent(tx, { bossKey: entry.id, action: 'import', actor, details: { result: 'created' } });
+            await recordArtworkReference(tx, entry.id, null, definition.artworkAssetId, actor);
             out.created.push(entry.id);
             continue;
           }
@@ -740,6 +819,7 @@ export function createBossDefinitionService(deps: BossDefinitionServiceDeps): Bo
             throw new BossDefinitionStaleError(entry.id, expected ?? -1, row.revision, row.updatedBy, row.updatedAt);
           }
           const updated = await writeRow(tx, row, definition, actor);
+          await recordArtworkReference(tx, entry.id, row.artworkAssetId, definition.artworkAssetId, actor);
           await recordBossEvent(tx, {
             bossKey: entry.id,
             action: 'import',

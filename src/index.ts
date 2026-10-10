@@ -69,6 +69,7 @@ import {
 } from './modules/dungeons/dungeonZoneStore';
 import { createDungeonZoneService } from './modules/dungeons/dungeonZoneService';
 import { createArtworkAssetService } from './modules/artworkAssets/artworkAssetService';
+import { createBossArtworkService } from './modules/bosses/bossArtworkService';
 import { createLocalArtworkStorage } from './modules/artworkAssets/artworkStorage';
 import { combatTrialEnemyReferences, dungeonZoneEnemyReferences } from './modules/enemies/enemyReferences';
 import { createEnemyCatalogueService } from './modules/enemies/enemyService';
@@ -633,7 +634,10 @@ async function main(): Promise<void> {
     getEnabledRegions: () => contentSnapshot.tables.bossEncounters.regions,
     listRewardTables: listBossRewardTableOptions,
     artworkExists: (relative) => resolveExistingAssetFile(config.assetsDir, relative).status === 'available',
+    assets: artworkAssets,
   });
+  /** The boss artwork library: shipped files plus uploads in the managed artwork store. */
+  const bossArtwork = createBossArtworkService({ db, assets: artworkAssets, assetsDir: config.assetsDir });
   /** Insert shipped bosses that have no row. Never throws: a failed bootstrap leaves the rows as they were. */
   const bootstrapBosses = async (): Promise<void> => {
     try {
@@ -898,6 +902,7 @@ async function main(): Promise<void> {
       artworkAssets,
       enemies: enemyCatalogue,
       bossDefinitions,
+      bossArtwork,
       sceneComposition,
     },
   };

@@ -2,7 +2,7 @@
  * Managed artwork — images uploaded through Portal Admin.
  *
  * The `artwork_assets` row is the logical asset; the bytes live in the
- * {@link ArtworkStorage}. Authored content (a zone, an enemy) holds the
+ * {@link ArtworkStorage}. Authored content (a zone, an enemy, a boss) holds the
  * asset's **id**, so:
  *
  *   - **Upload** validates the bytes (`inspectImage`), stores them under a
@@ -28,8 +28,11 @@ import { and, asc, desc, eq, ilike, inArray, ne, or, sql, type SQL } from 'drizz
 import type { Db, DbOrTx } from '../../db/client';
 import {
   ARTWORK_ASSET_CATEGORIES,
+  BOSS_ACTIVE_STATUSES,
   artworkAssetEvents,
   artworkAssets,
+  bossDefinitions,
+  bossEncounters,
   combatEnemies,
   dungeonZones,
   type ArtworkAssetCategory,
@@ -284,6 +287,24 @@ export function createArtworkAssetService(deps: ArtworkAssetServiceDeps): Artwor
     for (const enemy of enemies) {
       if (enemy.artworkAssetId === wanted) out.push({ kind: 'combat_enemy', key: enemy.key, name: enemy.name, field: 'artworkAssetId' });
       if (enemy.spriteAssetId === wanted) out.push({ kind: 'combat_enemy', key: enemy.key, name: enemy.name, field: 'spriteAssetId' });
+    }
+    const bosses = await tx
+      .select({ key: bossDefinitions.bossKey, name: bossDefinitions.name })
+      .from(bossDefinitions)
+      .where(eq(bossDefinitions.artworkAssetId, wanted))
+      .orderBy(asc(bossDefinitions.bossKey));
+    for (const boss of bosses) out.push({ kind: 'boss', key: boss.key, name: boss.name, field: 'artworkAssetId' });
+    // An encounter that is still open froze the asset at spawn and keeps
+    // re-rendering its announcement with it until it resolves.
+    const live = await tx
+      .select({ id: bossEncounters.id, key: bossEncounters.bossId, name: bossEncounters.bossName })
+      .from(bossEncounters)
+      .where(
+        and(eq(bossEncounters.bossArtworkAssetId, wanted), inArray(bossEncounters.status, [...BOSS_ACTIVE_STATUSES])),
+      )
+      .orderBy(asc(bossEncounters.id));
+    for (const encounter of live) {
+      out.push({ kind: 'boss', key: encounter.key, name: encounter.name, field: `liveEncounter[${encounter.id}]` });
     }
     return out;
   }

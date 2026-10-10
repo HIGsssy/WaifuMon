@@ -24,10 +24,12 @@ availability schedules, and the admin controls.
 | Concern | Location |
 | --- | --- |
 | Bootstrap data | `content/bosses.json` |
-| Tables | `boss_definitions`, `boss_definition_events`, `boss_encounters.boss_snapshot` (migration `0057_boss_definitions.sql`) |
+| Tables | `boss_definitions`, `boss_definition_events`, `boss_encounters.boss_snapshot` (migration `0057_boss_definitions.sql`); `boss_definitions.artwork_asset_id`, `boss_encounters.boss_artwork_asset_id` (migration `0058_boss_artwork_assets.sql`) |
 | Definition shape, bootstrap, runtime source | `src/modules/bosses/bossDefinitions.ts` |
 | Availability schedules (pure) | `src/modules/bosses/bossSchedule.ts` |
 | Authoring service | `src/modules/bosses/bossDefinitionService.ts` |
+| Artwork library and uploads | `src/modules/bosses/bossArtworkService.ts` (over `src/modules/artworkAssets/`) |
+| Artwork at announcement time | `src/discord/bossArtwork.ts` |
 | Spawn conditions and diagnostics | `src/modules/bosses/bossEncounterService.ts` (`explainSpawn`) |
 | Admin API | `src/api/routes/v1/admin/bosses.ts` |
 | Portal pages | `portal/src/features/adminBosses/` |
@@ -97,7 +99,8 @@ import overwrite against a revision someone else has replaced is refused with
 
 The editor exposes what the runtime actually reads:
 
-- identity — id, name, description, artwork path, status;
+- identity — id, name, description, status;
+- artwork — a shipped path and/or an uploaded image ([Artwork](#artwork));
 - regions the boss may appear in (today only `waifu-valley` hosts bosses);
 - affinity (the only per-boss combat attribute);
 - the boss reward table it pays from (edited in **Reward Tables**, not here);
@@ -188,11 +191,150 @@ A window makes a boss *eligible*; it does not make it spawn. And:
 
 ## Editing never reaches a live encounter
 
-An encounter freezes its boss at spawn: name, affinity, artwork, reward table
-and reward snapshot (as before), and now also the four pieces of prose
+An encounter freezes its boss at spawn: name, affinity, artwork (the shipped
+path and the uploaded image's id), reward table and reward snapshot (as
+before), and now also the four pieces of prose
 (`boss_encounters.boss_snapshot`). Editing, disabling or rescheduling a boss
 affects the **next** encounter only. Encounters spawned before migration 0057
 have no prose snapshot and read the live definition, as they always did.
+
+## Artwork
+
+A boss has two artwork fields, and both are supported side by side:
+
+| | Shipped | Uploaded (managed) |
+| --- | --- | --- |
+| Field | `artwork` — a path under `assets/`, e.g. `bosses/iron-matron_boss.webp` | `artworkAssetId` — the id of a managed artwork asset |
+| Lives in | Git (`assets/bosses/`) | the managed artwork store (`MANAGED_ASSETS_DIR`), outside Git |
+| Arrives by | commit → deploy | **Upload new artwork** in the boss editor |
+| Deleted by | a commit | the artwork library, when no boss uses it |
+
+Nothing shipped was migrated and nothing needs to be: a boss that only has
+`artwork` behaves exactly as it did. Resolution, wherever a boss is shown:
+
+```
+the uploaded image, while it is set, active and its file is readable
+→ the shipped path
+→ no picture (a text/embed-only announcement)
+```
+
+So an upload *overrides* the shipped file and the shipped path stays behind it
+as the fallback; **Clear uploaded artwork** goes back to it.
+
+**Storage.** An upload is an ordinary managed artwork asset
+([managed-artwork.md](managed-artwork.md)) in the `boss_art` category: the row
+is in `artwork_assets`, the bytes are in `MANAGED_ASSETS_DIR` under a
+server-generated key (`boss_art/<asset id>/<sha256>.webp`), and the same
+volume, backup and restore rules apply. Asset ids belong to one environment —
+an export carries `artworkAssetId`, and a server that does not have that asset
+refuses the boss at that field. Clear it (or keep a shipped `artwork` path)
+for bosses that travel between environments.
+
+**Uploads.** WebP, PNG or JPEG, up to 8 MiB and 4096 px per edge, validated
+from the bytes by the shared `inspectImage` (signature, decode, dimensions; no
+SVG, GIF or animation). The client's file name and `Content-Type` are never
+trusted; the name is reduced to a label. Boss uploads are additionally
+**normalised**: stored as WebP, scaled down to at most 2048 px on the longest
+edge (`BOSS_ARTWORK_MAX_EDGE`). A WebP already within that is stored untouched.
+
+**The editor's Artwork section** shows what players will see (a preview, and
+the path or the upload's name and id), the shipped-file picker, **Upload new
+artwork**, **Clear uploaded artwork**, and the **artwork library**: every
+upload and every shipped file with the bosses that use it. Choosing or
+uploading changes the form only — the boss changes when it is saved. With
+`bosses.read` alone the section and the library are visible and nothing in
+them can be changed.
+
+**Safe deletion.** An upload cannot be deleted while a boss names it, or while
+an encounter still open froze it: `409 ARTWORK_ASSET_IN_USE` with the
+references, and the library disables Delete and names the bosses. Reassign
+those bosses first. Deleting removes the file and keeps the row and its
+history. The same guard holds on the general Artwork Assets page, which lists
+bosses among an asset's references. Shipped files are never deleted from the
+Portal.
+
+**In Discord.** `resolveBossArtwork` reads the encounter's frozen references
+at every render (announcement, participant-count edits, completion, results):
+the upload's bytes are attached as `boss-<id>.webp`, else the shipped file as
+before. Replacing or disabling an asset reaches an open encounter's next
+render; reassigning the boss does not — the encounter keeps the image it
+froze.
+
+| Method | Path | Permission | |
+| --- | --- | --- | --- |
+| GET | `/admin/bosses/artwork?path=` | `bosses.read` | bytes of a shipped file (unchanged) |
+| GET | `/admin/bosses/artwork/library` | `bosses.read` | shipped files and uploads with their users, and the upload limits |
+| GET | `/admin/bosses/artwork/assets/:assetId` | `bosses.read` | one upload: metadata, users, references, history |
+| GET | `/admin/bosses/artwork/assets/:assetId/file?v=` | `bosses.read` | the bytes |
+| POST | `/admin/bosses/artwork/assets?filename=&name=` | `bosses.write` | upload — the body is the image |
+| DELETE | `/admin/bosses/artwork/assets/:assetId` | `bosses.write` | 409 while in use |
+| PUT | `/admin/bosses/:id` | `bosses.write` | a boss save carries `artwork` and `artworkAssetId` |
+
+These routes reach `boss_art` assets only. `reference.managedArtwork` tells
+the editor whether the server has a managed artwork store at all.
+
+## Migration history: two lines that must converge
+
+Boss Management and boss artwork exist on two branches with **different
+migration histories**. `Assteroid` is production; `Delve` is staging and
+carries Equipment, Reward Tables, Dungeons and Enemies, which production does
+not have yet. The same schema was therefore shipped twice, under different
+numbers:
+
+| What | Assteroid (production) | Delve (staging) |
+| --- | --- | --- |
+| Boss definitions | `0045_boss_definitions` — `when` 1819620000000 | `0057_boss_definitions` — 1820700000000 |
+| Managed artwork tables | `0046_boss_artwork_assets` — 1819640000000 | `0054_artwork_assets` — 1820440800000 (also creates `combat_enemy_artwork`) |
+| Boss artwork columns, `boss_art` category | the same `0046_boss_artwork_assets` | `0058_boss_artwork_assets` — 1820786400000 |
+| First migration only Delve has | — | `0045_equipment_foundation` — 1819663200000 |
+
+**A migration's number says nothing about what it is.** Assteroid's `0045` and
+`0046` are not Delve's `0045` (`equipment_foundation`) and `0046`
+(`equipment_rolled_instances`). A migration is identified by its **tag** (the
+file name) and ordered by its journal **`when`**, never by its number.
+
+Why the timestamps are what they are: drizzle's migrator reads the newest
+applied migration's `when` once, then applies every journal entry whose `when`
+is greater. Both Assteroid backports were given a `when` *after* production's
+last migration and *before* Delve's first own one, so on production every Delve
+migration is still "newer" and still runs when Delve arrives. Had Delve's
+`0054` / `0058` been copied to production under their own timestamps,
+production would have treated Delve's `0045`–`0057` as already applied and
+skipped them for good (measured on a throwaway database: 22 tables never
+created).
+
+When the branches are merged, all of this must hold:
+
+1. **Keep every migration file from both branches.** Two files share the
+   prefix `0045` and two share `0046`; they have different tags, so there is
+   no file conflict and none may be dropped or renamed.
+2. **Keep every `when` exactly as it is.** Do not renumber, re-timestamp or
+   regenerate.
+3. **Order `drizzle/meta/_journal.json` by `when`**, which puts Assteroid's
+   `0045_boss_definitions` and `0046_boss_artwork_assets` directly after
+   `0044_retire_teleporter_wreck` and before Delve's `0045_equipment_foundation`.
+   `idx` is then simply the position.
+4. **Leave the SQL idempotent.** Convergence relies on it: on production,
+   Delve's `0054`, `0057` and `0058` find the tables, columns, foreign key
+   (`boss_definitions_artwork_asset_id_artwork_assets_id_fk`), check constraint
+   and index already there and change nothing, while `0054` still creates
+   `combat_enemy_artwork`. On staging, the two Assteroid entries are older
+   than what is applied and are skipped — the same objects already exist from
+   `0054`, `0057` and `0058`.
+5. **Take Delve's application code** for the managed artwork service, the
+   artwork category list and the asset reference type: Assteroid's copies are
+   the same code trimmed to bosses.
+
+Verified on disposable databases, comparing every column, constraint and index
+with a database that only ever knew Delve: production path (Assteroid →
+`0046` → merged history), staging path (Delve at `0058` → merged history, a
+no-op) and a fresh database on the merged history all end identical, with
+existing rows intact. Re-run that check against the real merged journal before
+the merge is deployed anywhere.
+
+Until the merge, each environment runs its own branch: never deploy an
+Assteroid-line build onto the staging database or a Delve-line build onto
+production.
 
 ## Activity
 
@@ -267,6 +409,22 @@ differ), `unchanged` or `invalid`. Applying:
 
 A package with any invalid boss is refused whole.
 
+The two import routes accept a body of up to 2 MiB
+(`BOSS_IMPORT_BODY_LIMIT_BYTES`); every other boss route keeps the API's 64 KB
+default. A whole-roster export is every boss's prose and schedule in one
+document and outgrows 64 KB at a few dozen bosses, so an import must be able
+to take back what an export produced. Over the limit is `413
+PAYLOAD_TOO_LARGE` with `details.maxBytes`. The Portal's Nginx allows 3 MB on
+`/api/v1/admin/bosses/import/` and 9 MB on `/api/v1/admin/bosses/artwork/` (its
+default is 1 MB), so the API's own limits are the ones a caller meets. These
+routes, and the artwork upload, check permission before the body is read.
+
+A boss in a package that names managed artwork (`artworkAssetId`) is checked
+like a save: an id this server does not have — another environment's, or a
+deleted upload — makes that boss `invalid` with an issue at `artworkAssetId`.
+Clear the field in the package (the shipped `artwork` path is kept) or upload
+the image here and select it after importing.
+
 ## Audit trail
 
 `boss_definition_events` is append-only: `bootstrap`, `create`, `update` (with
@@ -275,15 +433,24 @@ the changed fields), `status` (from → to), `duplicate`, `delete`, `import`,
 admin's Discord id and a timestamp. The trail outlives a deleted boss. It is
 shown per boss in the editor and is available at `GET /admin/bosses/events`.
 
+Artwork is audited on both sides. Assigning, reassigning or clearing a boss's
+upload is an `update` here with `artworkAssetId` among the changed fields, and
+a `reference_added` / `reference_removed` row (entity `boss:<id>`) in the
+asset's own trail, `artwork_asset_events` — which is also where an image's
+`upload` and `delete` are recorded, with the admin's Discord id.
+
 ## Permissions
 
 | Permission | Allows |
 | --- | --- |
 | `bosses.read` | The list, editor (read-only), schedule previews, export, the audit trail, Activity and Diagnostics. |
-| `bosses.write` | Create, edit, lifecycle, duplicate, delete and import definitions. Reaches future encounters only. |
+| `bosses.write` | Create, edit, lifecycle, duplicate, delete and import definitions — including assigning artwork — and upload or delete boss artwork. Reaches future encounters only. |
 | `bosses.operate` | **Spawn Now** and **End Encounter** — the controls that act on a server's players immediately. |
 
-`write` and `operate` are independent: neither implies the other. The guild
-owner holds both.
+`write` and `operate` are independent: neither implies the other, so being
+able to spawn or end encounters does not allow uploading, deleting or
+assigning artwork. The guild owner holds both. Boss artwork needs no
+`artwork.*` grant; a holder of `artwork.write` can also manage `boss_art`
+assets from the general Artwork Assets page, under the same delete guard.
 
 Reward tables remain under `rewards.read` / `rewards.write`.

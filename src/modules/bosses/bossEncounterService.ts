@@ -208,6 +208,8 @@ export interface BossResolutionResult {
 /** A boss that may spawn now, with the reward snapshot its encounter would record. */
 interface SpawnCandidate {
   boss: BossContent;
+  /** The definition's managed artwork, frozen onto the encounter beside the shipped path. */
+  artworkAssetId: string | null;
   snapshot: BossRewardSnapshot;
   /** The definition revision the boss was read at; null when it did not come from a row. */
   revision: number | null;
@@ -523,6 +525,7 @@ export function createBossEncounterService(
       if (entry.verdict === 'eligible' && entry.snapshot) {
         out.push({
           boss: bossContentFromDefinition(entry.definition),
+          artworkAssetId: entry.definition.artworkAssetId,
           snapshot: entry.snapshot,
           revision: entry.revision,
         });
@@ -752,7 +755,7 @@ export function createBossEncounterService(
   function encounterValuesFor(
     guildDbId: number,
     region: string,
-    { boss, snapshot, revision }: SpawnCandidate,
+    { boss, artworkAssetId, snapshot, revision }: SpawnCandidate,
     scheduledAt: Date,
     forced: boolean,
   ): typeof bossEncounters.$inferInsert {
@@ -772,6 +775,7 @@ export function createBossEncounterService(
       bossName: boss.name,
       bossAffinity: boss.affinity,
       bossArtwork: boss.artwork,
+      bossArtworkAssetId: artworkAssetId,
       rewardTable: boss.rewardTable,
       rewardTableVersion: bossRewardTableVersion(snapshot.table),
       rewardSnapshot: snapshot as unknown as Record<string, unknown>,
@@ -1448,7 +1452,14 @@ export function createBossEncounterService(
       const explained = await explainDefinitions(db, region, now, { ignoreSchedule: opts.ignoreSchedule });
       const pool: SpawnCandidate[] = explained.flatMap((e) =>
         e.verdict === 'eligible' && e.snapshot
-          ? [{ boss: bossContentFromDefinition(e.definition), snapshot: e.snapshot, revision: e.revision }]
+          ? [
+              {
+                boss: bossContentFromDefinition(e.definition),
+                artworkAssetId: e.definition.artworkAssetId,
+                snapshot: e.snapshot,
+                revision: e.revision,
+              },
+            ]
           : [],
       );
       const named = bossId ? explained.find((e) => e.definition.id === bossId) : undefined;

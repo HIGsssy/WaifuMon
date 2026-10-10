@@ -396,6 +396,7 @@ describe('boss creation', () => {
         regions: ['waifu-valley'],
         status: 'draft',
         artwork: 'bosses/neon_hydra.webp',
+        artworkAssetId: null,
         rewardTable: 'boss_standard',
         scoutingText: 'A shimmer in the dark.',
         repelledText: '',

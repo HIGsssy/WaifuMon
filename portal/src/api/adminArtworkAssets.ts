@@ -27,7 +27,8 @@ export type ArtworkAssetCategory =
   | 'enemy_art'
   | 'event_art'
   | 'npc_portrait'
-  | 'equipment_art';
+  | 'equipment_art'
+  | 'boss_art';
 
 export const ARTWORK_CATEGORY_LABELS: Record<ArtworkAssetCategory, string> = {
   dungeon_zone: 'Dungeon zone art',
@@ -37,6 +38,7 @@ export const ARTWORK_CATEGORY_LABELS: Record<ArtworkAssetCategory, string> = {
   event_art: 'Event art',
   npc_portrait: 'NPC portrait',
   equipment_art: 'Equipment art',
+  boss_art: 'Boss art',
 };
 export const ARTWORK_CATEGORIES = Object.keys(ARTWORK_CATEGORY_LABELS) as ArtworkAssetCategory[];
 
@@ -64,7 +66,7 @@ export interface ArtworkAsset {
 }
 
 export interface ArtworkAssetReference {
-  kind: 'dungeon_zone' | 'combat_enemy';
+  kind: 'dungeon_zone' | 'combat_enemy' | 'boss';
   key: string;
   name: string | null;
   field: string;

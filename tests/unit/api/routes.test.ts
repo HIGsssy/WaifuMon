@@ -1020,9 +1020,13 @@ describe('OpenAPI registration', () => {
       // delete and apply an import — writes name the revision they edited —
       // plus Spawn Now and End Encounter, which go through the boss encounter
       // service. `validate`, `schedule/preview` and `import/plan` write
-      // nothing but carry a body; they need `bosses.read`.
+      // nothing but carry a body; they need `bosses.read`. Boss artwork
+      // upload and delete (`bosses.write`) go through the managed artwork
+      // store; the upload body is the image.
+      'DELETE /api/v1/admin/bosses/artwork/assets/{assetId}',
       'DELETE /api/v1/admin/bosses/{id}',
       'POST /api/v1/admin/bosses',
+      'POST /api/v1/admin/bosses/artwork/assets',
       'POST /api/v1/admin/bosses/encounters/{encounterId}/end',
       'POST /api/v1/admin/bosses/import/apply',
       'POST /api/v1/admin/bosses/import/plan',

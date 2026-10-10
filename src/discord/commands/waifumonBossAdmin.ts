@@ -254,7 +254,7 @@ export async function handleBossSpawn(
         config: ctx.content.tables.bossEncounters,
         participantCount: 0,
         now: new Date(),
-        ...resolveBossArtwork(ctx, spawn.encounter),
+        ...(await resolveBossArtwork(ctx, spawn.encounter)),
       }),
     );
     const opened = await svc.beginScouting(spawn.encounter.id, channelId, message.id);
@@ -407,7 +407,7 @@ export async function handleBossRepair(
       config: ctx.content.tables.bossEncounters,
       participantCount,
       now: new Date(),
-      ...resolveBossArtwork(ctx, active),
+      ...(await resolveBossArtwork(ctx, active)),
     }),
   );
   await svc.repairMessage(active.id, channelId, message.id);
