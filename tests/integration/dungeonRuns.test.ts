@@ -3,7 +3,7 @@
  * lock and step check, revision pinning, dependency snapshots and settlement.
  */
 import { and, eq, like } from 'drizzle-orm';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   dungeonDailyUsage,
   dungeonRunEvents,
@@ -186,7 +186,7 @@ describe('playing a run', () => {
     expect(end.completedAt).toBeInstanceOf(Date);
     expect(await w.balance(playerId)).toBe(12);
     const ledger = await w.t.db.select().from(progressionCurrencyLedger).where(eq(progressionCurrencyLedger.playerId, playerId));
-    expect(ledger).toEqual([expect.objectContaining({ delta: 12, reason: 'dungeon_completion', requestKey: `dungeon_run:${start.id}:settlement`, currencyKey: CURRENCY })]);
+    expect(ledger).toEqual([expect.objectContaining({ delta: 12, reason: 'dungeon_completion', requestKey: `dungeon_run:v1:${start.id}:settlement`, currencyKey: CURRENCY })]);
 
     const history = await w.runs.history(start.id);
     expect(history.filter((e) => e.type === 'combat_wave_resolved').map((e) => [e.step, e.roomId, e.actionId, e.payload.waveIndex])).toEqual([
@@ -424,6 +424,72 @@ describe('what a run is pinned to', () => {
 
 describe('ending a run', () => {
   const paid = (extra: Actions = []): Actions => [{ id: 'pay', type: 'reward', reward: { currency: { min: 8, max: 8 } } }, ...extra];
+
+  it.each([8, 9])('settles independently of prototype keys with historical amount %i, then retries once', async (historicalAmount) => {
+    const key = await oneRoom(paid(), (d) => void (d.rooms[0]!.extraction = true));
+    const { playerId } = await w.player();
+    const start = await w.runs.start(playerId, key);
+    const historicalKey = `dungeon_run:${start.id}:settlement`;
+    await w.t.db.transaction((tx) => w.currencies.grant(tx, { playerId, currencyKey: CURRENCY, amount: historicalAmount, reason: 'dungeon_extraction', requestKey: historicalKey }));
+    const [historical] = await w.t.db.select().from(progressionCurrencyLedger).where(eq(progressionCurrencyLedger.playerId, playerId));
+    const ready = (await w.act(playerId, start, { type: 'advance' })).run;
+    const endings = await Promise.all([w.act(playerId, ready, { type: 'extract' }), w.act(playerId, ready, { type: 'extract' })]);
+    expect(endings.filter((r) => r.status === 'applied')).toHaveLength(1);
+    expect(await w.balance(playerId)).toBe(historicalAmount + 8);
+    const requestKey = `dungeon_run:v1:${start.id}:settlement`;
+    const retry = await w.t.db.transaction((tx) => w.currencies.grant(tx, { playerId, currencyKey: CURRENCY, amount: 8, reason: 'dungeon_extraction', requestKey }));
+    expect(retry).toMatchObject({ replayed: true, balance: historicalAmount + 8 });
+    const ledger = await w.t.db.select().from(progressionCurrencyLedger).where(eq(progressionCurrencyLedger.playerId, playerId));
+    expect(ledger).toHaveLength(2);
+    expect(ledger.find((r) => r.requestKey === historicalKey)).toEqual(historical);
+    expect(ledger.find((r) => r.requestKey === requestKey)?.delta).toBe(8);
+  });
+
+  it('claims all reward types once through retreat, concurrent presses, restart and re-entry', async () => {
+    const definition = singleRoomDungeon([], (d) => {
+      d.key = `retreat_claim_${++n}`;
+      d.rooms[0]!.extraction = true;
+      d.rooms.push({ id: 'loot', actions: [{ id: 'pay', type: 'reward', reward: { rewardTable: LOOT_TABLE, equipmentRewardTable: GEAR_TABLE, currency: { min: 10, max: 10 } }, outcomes: { claimed: { type: 'retreat' } } }] });
+      d.connections!.push({ id: 'to_loot', from: 'hall', to: 'loot' });
+    });
+    await w.publish(definition);
+    const { playerId } = await w.player();
+    const start = await w.runs.start(playerId, definition.key);
+    const ready = (await w.act(playerId, start, { type: 'move', connectionId: 'to_loot' })).run;
+    const [before] = await w.t.db.select().from(playerCurrencies).where(eq(playerCurrencies.playerId, playerId));
+    const gearBefore = await w.t.db.select().from(playerEquipment).where(eq(playerEquipment.playerId, playerId));
+    const failure = vi.spyOn(w.app.inventory, 'addItem').mockRejectedValueOnce(new Error('test grant failure'));
+    try {
+      await expect(w.act(playerId, ready, { type: 'advance' })).rejects.toThrow('test grant failure');
+    } finally {
+      failure.mockRestore();
+    }
+    const [failed] = await w.t.db.select().from(dungeonRuns).where(eq(dungeonRuns.id, start.id));
+    expect(failed).toMatchObject({ step: ready.step, rewardClaims: {}, unbankedCurrency: 0 });
+    expect((await w.t.db.select().from(playerCurrencies).where(eq(playerCurrencies.playerId, playerId)))[0]!.waifubux).toBe(before!.waifubux);
+    const presses = await Promise.all(Array.from({ length: 4 }, () => w.act(playerId, ready, { type: 'advance' })));
+    expect(presses.filter((r) => r.status === 'applied')).toHaveLength(1);
+    const restarted = w.restartedRuns();
+    let run = await restarted.run(playerId, start.id);
+    expect(run.core).toMatchObject({ room: { id: 'hall' }, unbankedCurrency: 10 });
+    for (let cycle = 0; cycle < 3; cycle++) {
+      run = (await restarted.act(playerId, run.id, { type: 'move', connectionId: 'to_loot', expectedStep: run.step })).run;
+      expect((await w.act(playerId, ready, { type: 'advance' })).refusal).toBe('stale');
+      run = (await restarted.act(playerId, run.id, { type: 'advance', expectedStep: run.step })).run;
+      expect(run.core).toMatchObject({ room: { id: 'hall' }, unbankedCurrency: 10 });
+    }
+    expect((await w.t.db.select().from(playerCurrencies).where(eq(playerCurrencies.playerId, playerId)))[0]!.waifubux).toBe(before!.waifubux + 11);
+    const [joystick] = await w.t.db.select().from(items).where(eq(items.slug, 'sticky_joystick'));
+    const [inventory] = await w.t.db.select().from(playerInventory).where(and(eq(playerInventory.playerId, playerId), eq(playerInventory.itemId, joystick!.id)));
+    expect(inventory!.quantity).toBe(2);
+    expect(await w.t.db.select().from(playerEquipment).where(eq(playerEquipment.playerId, playerId))).toHaveLength(gearBefore.length + 1);
+    expect((await w.runs.history(run.id)).filter((e) => e.type === 'rewards_granted')).toHaveLength(1);
+    const [stored] = await w.t.db.select().from(dungeonRuns).where(eq(dungeonRuns.id, run.id));
+    expect(Object.keys(stored!.rewardClaims)).toEqual([`run:${run.id}:loot:pay`]);
+    const out = await w.act(playerId, run, { type: 'extract' });
+    expect(out.run.settlement?.banked).toBe(10);
+    expect(await w.balance(playerId)).toBe(10);
+  });
 
   it('extracts from a finished extraction room, banking everything', async () => {
     const key = await oneRoom(paid(), (d) => void (d.rooms[0]!.extraction = true));

@@ -9,6 +9,7 @@ import { dungeonRngSource } from '../../../src/modules/dungeons/engine/seeds';
 import { startDungeonRun, stepDungeon } from '../../../src/modules/dungeons/engine/step';
 import type { DungeonEngineContext, DungeonRunState } from '../../../src/modules/dungeons/engine/types';
 import { describeDungeonRun } from '../../../src/modules/dungeons/engine/view';
+import { validateDungeonDefinition } from '../../../src/modules/dungeons/validation/dungeonValidation';
 import {
   FIXED_RULES,
   STARTER,
@@ -33,6 +34,38 @@ function context(definition: ReturnType<typeof testDungeon>): DungeonEngineConte
 }
 
 describe('room sequences', () => {
+  it('keeps claims independent of retreat and resume, while preserving routing', () => {
+    const definition = singleRoomDungeon([], (d) => {
+      d.rooms[0]!.extraction = true;
+      d.rooms.push({ id: 'loot', actions: [{ id: 'pay', type: 'reward', reward: { currency: { min: 10, max: 10 } }, outcomes: { claimed: { type: 'retreat' } } }] });
+      d.connections!.push({ id: 'to_loot', from: 'hall', to: 'loot' });
+    });
+    expect(validateDungeonDefinition(definition).issues.filter((i) => i.severity === 'error')).toEqual([]);
+    const ctx = context(definition);
+    let state = startDungeonRun(ctx, 3).state;
+    const apply = (input: Parameters<typeof stepDungeon>[1]) => {
+      const result = stepDungeon(state, { ...input, expectedStep: state.step }, ctx);
+      expect(result.status).toBe('applied');
+      state = result.state;
+      return result;
+    };
+    apply({ type: 'move', connectionId: 'to_loot' });
+    const claimStep = state.step;
+    apply({ type: 'advance' });
+    expect(state.cursor.roomId).toBe('hall');
+    expect(state.rewardClaims['run:unit:loot:pay']?.currency).toBe(10);
+    // Claim protection is independent of action records and survives serialization.
+    state = JSON.parse(JSON.stringify(state)) as DungeonRunState;
+    state.rooms.loot!.actions = {};
+    apply({ type: 'move', connectionId: 'to_loot' });
+    expect(stepDungeon(state, { type: 'advance', expectedStep: claimStep }, ctx).refusal).toBe('stale');
+    expect(apply({ type: 'advance' }).effects).toEqual([]);
+    expect(state.cursor.roomId).toBe('hall');
+    expect(state.unbankedCurrency).toBe(10);
+    const end = apply({ type: 'extract' });
+    expect(end.effects).toEqual([expect.objectContaining({ requestKey: 'dungeon_run:v1:unit:settlement', end: expect.objectContaining({ banked: 10 }) })]);
+  });
+
   it('runs a room’s actions in order and completes the room after the last', async () => {
     const sandbox = testSandbox(singleRoomDungeon([fight('a', ['grunt']), { id: 'r', type: 'rest' }, fight('b', ['grunt'])]));
     expect(sandbox.view.action?.id).toBe('a');

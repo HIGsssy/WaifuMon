@@ -48,7 +48,7 @@ import {
 } from '../content/dungeonDefinition';
 import { DungeonEngineContentError, fightWave, selectWaveEnemy } from './combat';
 import { conditionFacts, evaluateCondition } from './conditions';
-import { hpAfterRest, planHasSecuredRewards, rewardClaimKey, rollRewardPlan, settleCurrency } from './rewards';
+import { hpAfterRest, planHasSecuredRewards, rewardClaimKey, rollRewardPlan, settleCurrency, settlementRequestKey } from './rewards';
 import { FAILURE_OUTCOMES, destinationFor, forwardIndex } from './routing';
 import { dungeonRngSource } from './seeds';
 import type {
@@ -129,7 +129,7 @@ function endRun(w: Work, outcome: DungeonRunOutcome, cause: DungeonRunEnd['cause
   state.cursor = { ...state.cursor, actionId: null, waveIndex: 0 };
   w.effects.push({
     type: 'settle_run',
-    requestKey: `dungeon_run:${w.ctx.runKey}:settlement`,
+    requestKey: settlementRequestKey(w.ctx.runKey),
     end,
     currencyKey: w.ctx.definition.settings.progressionCurrency,
   });
@@ -214,7 +214,7 @@ function follow(
       }
       const rs = roomState(w, room.id);
       // The action is unfinished business: it is asked again on return.
-      delete rs.actions[action.id];
+      if (action.type !== 'reward' || rs.actions[action.id]?.outcome !== 'claimed') delete rs.actions[action.id];
       rs.resumeAt = action.id;
       w.state.recent.push({ kind: 'retreated', fromRoomId: room.id, toRoomId: back });
       w.log.push({ type: 'room_retreated', roomId: room.id, actionId: action.id, payload: { to: back } });
@@ -389,17 +389,21 @@ function resolveWithInput(w: Work, room: DungeonRoom, index: number, action: Dun
     }
     case 'reward': {
       const place = { roomId: room.id, actionId: action.id };
-      const plan = rollRewardPlan(action.reward, place, w.ctx.dependencies, w.rng);
       const claimKey = rewardClaimKey(w.ctx.runKey, room.id, action.id);
-      w.state.unbankedCurrency += plan.currency;
-      if (planHasSecuredRewards(plan)) w.effects.push({ type: 'grant_rewards', claimKey, ...place, plan });
+      const alreadyClaimed = Object.hasOwn(w.state.rewardClaims, claimKey);
+      const plan = alreadyClaimed ? w.state.rewardClaims[claimKey]! : rollRewardPlan(action.reward, place, w.ctx.dependencies, w.rng);
+      if (!alreadyClaimed) {
+        w.state.rewardClaims[claimKey] = plan;
+        w.state.unbankedCurrency += plan.currency;
+        if (planHasSecuredRewards(plan)) w.effects.push({ type: 'grant_rewards', claimKey, ...place, plan });
+        w.state.recent.push({ kind: 'reward', ...place, claimKey, plan });
+      }
       record(w, room, action, { status: 'completed', outcome: 'claimed', detail: { kind: 'reward', claimKey, plan } });
-      w.state.recent.push({ kind: 'reward', ...place, claimKey, plan });
       w.log.push({
         type: 'action_completed',
         roomId: room.id,
         actionId: action.id,
-        payload: { actionType: 'reward', outcome: 'claimed', claimKey, plan },
+        payload: { actionType: 'reward', outcome: 'claimed', claimKey, plan, alreadyClaimed },
       });
       return follow(w, room, index, action, 'claimed');
     }
@@ -458,6 +462,7 @@ export function startDungeonRun(
     hp: ctx.fighter.maxHp,
     flags: {},
     rooms: {},
+    rewardClaims: {},
     unbankedCurrency: 0,
     recent: [],
     end: null,

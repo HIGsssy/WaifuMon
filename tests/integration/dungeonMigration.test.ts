@@ -46,8 +46,9 @@ beforeAll(async () => {
   before = fs.mkdtempSync(path.join(os.tmpdir(), 'wm-migrate-'));
   fs.mkdirSync(path.join(before, 'meta'));
   const journal = JSON.parse(fs.readFileSync(path.join(DRIZZLE, 'meta', '_journal.json'), 'utf8')) as Journal;
-  const kept = journal.entries.filter((e) => e.tag !== TAG);
-  expect(kept).toHaveLength(journal.entries.length - 1);
+  const cutover = journal.entries.findIndex((e) => e.tag === TAG);
+  const kept = journal.entries.slice(0, cutover);
+  expect(kept.at(-1)?.tag).toBe('0058_boss_artwork_assets');
   fs.writeFileSync(path.join(before, 'meta', '_journal.json'), JSON.stringify({ ...journal, entries: kept }));
   for (const entry of kept) fs.copyFileSync(path.join(DRIZZLE, `${entry.tag}.sql`), path.join(before, `${entry.tag}.sql`));
   await runMigrations(db, silentLogger(), before);
@@ -97,9 +98,9 @@ describe('migration 0059 over prototype data', () => {
   it('follows 0058 in the journal by `when`, which is what the migrator orders on', () => {
     const journal = JSON.parse(fs.readFileSync(path.join(DRIZZLE, 'meta', '_journal.json'), 'utf8')) as Journal;
     const entry = journal.entries.find((e) => e.tag === TAG)!;
-    const others = journal.entries.filter((e) => e.tag !== TAG);
+    const others = journal.entries.filter((e) => e.idx < entry.idx);
     expect(entry.when).toBeGreaterThan(Math.max(...others.map((e) => e.when)));
-    expect(entry.idx).toBe(journal.entries.length - 1);
+    expect(entry.idx).toBe(59);
   });
 
   it('settles every active prototype run as an extraction and banks its currency in full, through the ledger', async () => {
@@ -162,5 +163,32 @@ describe('migration 0059 over prototype data', () => {
     expect(Number((await rows<{ n: string }>(sql`select count(*) as n from dungeon_runs_prototype`))[0]!.n)).toBe(4);
     expect(Number((await rows<{ n: string }>(sql`select count(*) as n from progression_currency_ledger`))[0]!.n)).toBe(2);
     expect(Number((await rows<{ n: string }>(sql`select count(*) as n from dungeon_runs`))[0]!.n)).toBe(0);
+  });
+
+  it('recovers an existing claim from history even when retreat erased the action record', async () => {
+    await db.execute(sql`insert into dungeon_definitions (dungeon_key, draft, draft_hash) values ('claim_backfill', '{}'::jsonb, 'test')`);
+    const [revision] = await rows<{ id: string }>(sql`
+      insert into dungeon_revisions (dungeon_key, number, content, content_hash, draft_revision)
+      values ('claim_backfill', 1, '{}'::jsonb, 'test', 1) returning id`);
+    const [run] = await rows<{ id: string }>(sql`
+      insert into dungeon_runs (player_id, dungeon_key, revision_id, seed, cursor, current_hp, fighter, dependency_snapshot)
+      select id, 'claim_backfill', ${revision!.id}, 1, '{}'::jsonb, 100, '{}'::jsonb, '{}'::jsonb
+      from players where discord_user_id = 'u-holder' returning id`);
+    const claimKey = `run:${run!.id}:loot:pay`;
+    const plan = { currency: 10, waifubux: 11, items: [{ slug: 'sticky_joystick', quantity: 2 }], equipment: [] };
+    await db.execute(sql`
+      insert into dungeon_run_events (run_id, player_id, step, type, room_id, action_id, payload)
+      select ${run!.id}, player_id, 2, 'action_completed', 'loot', 'pay',
+             ${JSON.stringify({ actionType: 'reward', outcome: 'claimed', claimKey, plan })}::jsonb
+      from dungeon_runs where id = ${run!.id}`);
+    const ledgerBefore = await rows(sql`select * from progression_currency_ledger order by id`);
+    const backfill = fs.readFileSync(path.join(DRIZZLE, '0060_dungeon_reward_claims.sql'), 'utf8').split('--> statement-breakpoint')[1]!;
+    await db.execute(sql.raw(backfill));
+    expect(await rows(sql`select reward_claims, room_states from dungeon_runs where id = ${run!.id}`)).toEqual([
+      { reward_claims: { [claimKey]: plan }, room_states: {} },
+    ]);
+    await db.execute(sql.raw(backfill));
+    expect(await rows(sql`select reward_claims from dungeon_runs where id = ${run!.id}`)).toEqual([{ reward_claims: { [claimKey]: plan } }]);
+    expect(await rows(sql`select * from progression_currency_ledger order by id`)).toEqual(ledgerBefore);
   });
 });

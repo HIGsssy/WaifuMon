@@ -3256,6 +3256,8 @@ export const dungeonRuns = pgTable(
     flags: jsonb('flags').$type<Record<string, boolean>>().notNull().default({}),
     /** Room id → visits, completion and each action's record. */
     roomStates: jsonb('room_states').$type<Record<string, unknown>>().notNull().default({}),
+    /** Reward claims survive retreat and room resume independently. */
+    rewardClaims: jsonb('reward_claims').$type<Record<string, unknown>>().notNull().default({}),
     unbankedCurrency: integer('unbanked_currency').notNull().default(0),
     /** What the latest step did, for redisplay. */
     recent: jsonb('recent').$type<Record<string, unknown>[]>().notNull().default([]),

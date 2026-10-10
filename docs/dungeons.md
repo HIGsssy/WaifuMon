@@ -253,10 +253,13 @@ second for gear) plus a range of the dungeon's progression currency.
 - Progression currency is **unbanked** until settlement: all of it on
   extraction or completion, `defeatCurrencyRetentionBasisPoints` on defeat or
   abandon.
-- Idempotency: the grant shares the step's transaction and step check; gear
+- Idempotency: `dungeon_runs.reward_claims` stores each paid plan by its
+  run/room/action claim key, independently of retreat and room resume state.
+  A repeated action follows its routing but pays nothing again. Claims and
+  grants share the step transaction and run lock; gear
   carries a grant key derived from the action's claim key
   (`run:<runId>:<roomId>:<actionId>`); banking carries the ledger request key
-  `dungeon_run:<runId>:settlement`.
+  `dungeon_run:v1:<runId>:settlement`, distinct from historical prototype keys.
 
 Limitations until Phase 2: no guaranteed individual items, no fixed-stat
 gear, no dungeon-specific tables, no once-per-player policy, no claims table.
@@ -370,6 +373,10 @@ recorded effects and log. It writes nothing and resolves no reward tables.
 
 Covered by `tests/integration/dungeonMigration.test.ts`, which stops at 0058,
 plants prototype data and then applies 0059.
+
+Migration `0060_dungeon_reward_claims` adds the independent claim map and
+backfills paid plans from run history, including claims whose action records
+were erased by retreat. Historical currency ledger entries are unchanged.
 
 ## Not in Phase 1A
 

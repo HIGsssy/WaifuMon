@@ -79,6 +79,11 @@ export function rewardClaimKey(runKey: string, roomId: string, actionId: string)
   return `run:${runKey}:${roomId}:${actionId}`;
 }
 
+/** Separate from the retired prototype's unversioned ledger namespace. */
+export function settlementRequestKey(runKey: string): string {
+  return `dungeon_run:v1:${runKey}:settlement`;
+}
+
 /** The grant key of one gear drop of a claim. */
 export function equipmentGrantKey(claimKey: string, rewardIndex: number): string {
   return `dungeon:${claimKey}:${rewardIndex}`;

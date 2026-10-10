@@ -189,6 +189,8 @@ export interface DungeonRunState {
   /** Run-scoped flags. Unset means false. */
   flags: Record<string, boolean>;
   rooms: Record<string, DungeonRoomState>;
+  /** Paid plans by stable claim key; navigation never clears these. */
+  rewardClaims: Record<string, DungeonRewardPlan>;
   unbankedCurrency: number;
   /** What the latest applied step did. Replaced, not appended, each step. */
   recent: DungeonRecentEntry[];
@@ -241,7 +243,7 @@ export type DungeonEffect =
     }
   | {
       type: 'settle_run';
-      /** `dungeon_run:<runKey>:settlement`. */
+      /** `dungeon_run:v1:<runKey>:settlement`. */
       requestKey: string;
       end: DungeonRunEnd;
       currencyKey: string | null;
