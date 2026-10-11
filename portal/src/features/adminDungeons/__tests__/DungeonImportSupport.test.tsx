@@ -29,7 +29,9 @@ it('displays read-only import history and actual decisions', async () => {
       },
     ],
   });
+  const user = userEvent.setup();
   renderAt(undefined, ['dungeons.read']);
+  await user.click(await screen.findByRole('button', { name: 'History & export' }));
   await screen.findByText('Package: pkg-4');
   expect(screen.getByText('Result: replaced · Draft revision 5')).toBeInTheDocument();
   expect(screen.getByText('Enemy slime: use_existing')).toBeInTheDocument();
@@ -43,6 +45,7 @@ it('shows history errors and lets administrators retry reads', async () => {
     .mockResolvedValueOnce({ imports: [] });
   const user = userEvent.setup();
   renderAt();
+  await user.click(await screen.findByRole('button', { name: 'History & export' }));
   await screen.findByText('History unavailable');
   await user.click(screen.getByRole('button', { name: 'Try again' }));
   await screen.findByText('No imports yet.');
@@ -56,6 +59,7 @@ it('downloads untouched server packages with distinct origins and feedback', asy
   });
   const user = userEvent.setup();
   renderAt();
+  await user.click(await screen.findByRole('button', { name: 'History & export' }));
   await user.click(await screen.findByRole('button', { name: 'Export saved draft' }));
   await screen.findByText('Download started: tunnels.draft.dungeon.json');
   await user.click(screen.getByRole('button', { name: 'Export current published package' }));

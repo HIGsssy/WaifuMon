@@ -99,7 +99,7 @@ describe('map interaction and persistence', () => {
     await user.click(screen.getByRole('button', { name: 'Add room' }));
     await user.click(screen.getByRole('button', { name: 'Drag connection' }));
     const id = definition().connections[0]!.id;
-    await user.click(screen.getByRole('button', { name: new RegExp(`Select connection ${id}`) }));
+    await user.click(screen.getByRole('button', { name: 'Select connection Entrance → New room' }));
     await user.type(screen.getByLabelText('Connection label'), 'Shortcut');
     await user.selectOptions(screen.getByLabelText('Connection kind'), 'shortcut');
     expect(definition().connections[0]).toMatchObject({ id, label: 'Shortcut', kind: 'shortcut' });

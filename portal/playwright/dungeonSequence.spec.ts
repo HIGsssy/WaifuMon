@@ -39,6 +39,7 @@ test('construct and save a multi-action room, then reopen its configuration', as
       };
     else if (path.endsWith('/revisions')) data = { revisions: [] };
     else if (path.endsWith('/history')) data = { events: [] };
+    else if (path.endsWith('/import-history')) data = { imports: [] };
     else if (path.endsWith('/validate'))
       data = {
         definition: route.request().postDataJSON().definition,

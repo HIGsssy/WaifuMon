@@ -26,7 +26,8 @@ test('drag, connect cyclic rooms, save and reopen the real canvas', async ({ pag
       ],
     },
     layout: {
-      rooms: { entrance: { x: 80, y: 40 }, exit: { x: 420, y: 240 } },
+      // Both rooms sit inside the canvas at every tested width, beside the inspector.
+      rooms: { entrance: { x: 40, y: 40 }, exit: { x: 130, y: 260 } },
       viewport: { x: 0, y: 0, zoom: 1 },
       notes: [],
     },
@@ -57,6 +58,7 @@ test('drag, connect cyclic rooms, save and reopen the real canvas', async ({ pag
       };
     else if (path.endsWith('/revisions')) data = { revisions: [] };
     else if (path.endsWith('/history')) data = { events: [] };
+    else if (path.endsWith('/import-history')) data = { imports: [] };
     else if (path.endsWith('/validate'))
       data = {
         definition: route.request().postDataJSON().definition,
@@ -115,7 +117,7 @@ test('drag, connect cyclic rooms, save and reopen the real canvas', async ({ pag
     ['entrance', 'exit'],
     ['exit', 'entrance'],
   ]);
-  expect(stored.layout.rooms!.entrance!.x).toBeGreaterThan(100);
+  expect(stored.layout.rooms!.entrance!.x).toBeGreaterThan(60);
   const savedPosition = stored.layout.rooms!.entrance!;
   await page.reload();
   await expect(entrance).toHaveCSS(

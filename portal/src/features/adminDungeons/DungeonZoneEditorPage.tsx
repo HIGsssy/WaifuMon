@@ -1,5 +1,5 @@
 /** Dungeon draft management and room map editor. */
-import { useContext, useEffect, useState } from 'react';
+import { useContext, useEffect, useState, type CSSProperties } from 'react';
 import { Link, useParams, useBlocker, UNSAFE_DataRouterContext } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as api from '@/api/adminDungeons';
@@ -9,13 +9,14 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { ErrorState } from '@/components/layout/ErrorState';
-import { PageHeader } from '@/components/layout/PageHeader';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { AssetPickerDialog } from '@/features/adminArtwork/AssetPickerDialog';
 import { ZoneArtworkField } from './ZoneArtworkField';
 import { DungeonIssues, errorIssues } from './zoneFormParts';
 import { DungeonGraphView } from './DungeonGraphView';
 import { DungeonImportHistory } from './DungeonImportHistory';
+import { DungeonEditorHeader, type DungeonEditorView } from './DungeonEditorHeader';
+import { useViewportFill } from './useViewportFill';
 
 function downloadPackage(
   pkg: api.DungeonPackage,
@@ -41,7 +42,7 @@ export function DungeonZoneEditorPage() {
   });
   return (
     <div className="space-y-4">
-      <Link to="/admin/dungeons">Back to dungeons</Link>
+      {!query.data && <Link to="/admin/dungeons">Back to dungeons</Link>}
       {query.isPending && <p>Loading dungeon…</p>}
       {query.isError && (
         <ErrorState
@@ -70,6 +71,9 @@ function Management({ initial }: { initial: api.DungeonDetail }) {
   const [conflict, setConflict] = useState(false);
   const [rollbackTarget, setRollbackTarget] = useState<number | null>(null);
   const [viewRevision, setViewRevision] = useState<number | null>(null);
+  const [view, setView] = useState<DungeonEditorView>('map');
+  const [problemsRequest, setProblemsRequest] = useState(0);
+  const workspace = useViewportFill<HTMLDivElement>();
   const [validation, setValidation] = useState<{
     signature: string;
     report: api.DungeonValidation;
@@ -214,35 +218,10 @@ function Management({ initial }: { initial: api.DungeonDetail }) {
     setDraft({ ...draft, ...p });
     setNotice('');
   };
-  return (
-    <div className="space-y-4">
-      {dataRouter && <UnsavedNavigationGuard dirty={dirty} />}
-      <PageHeader
-        title={loaded.name}
-        description={`${loaded.key} · ${loaded.enabled ? 'Enabled' : 'Disabled'} · Draft ${loaded.draftRevision} · ${loaded.published ? `Published ${loaded.published.number}` : 'Unpublished'}`}
-      />
-      {dirty && <p role="status">Unsaved dungeon changes</p>}
-      {gameplayDirty && !report && <p>Validation pending for current edits.</p>}
-      {notice && <p role="status">{notice}</p>}
-      {conflict && (
-        <Card className="space-y-2 p-4">
-          <p role="alert">
-            A newer draft exists. Your edits are preserved; saving and publishing are blocked until
-            you reload.
-          </p>
-          <Button disabled={busy} onClick={() => reload.mutate()}>
-            Reload latest draft (discard local edits)
-          </Button>
-        </Card>
-      )}
-      {errors.map((error, n) => (
-        <div key={n}>
-          <ErrorState title="Dungeon request failed" error={error} />
-          <DungeonIssues issues={errorIssues(error)} />
-        </div>
-      ))}
-      <Card className="space-y-3 p-4">
-        <h2>Draft metadata</h2>
+  const settings = (
+    <div className="space-y-5">
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold">Dungeon settings</h2>
         <p className="text-sm text-ink-muted">
           Progression currency: {draft.settings.progressionCurrency ?? 'None'} · Defeat retention:{' '}
           {draft.settings.defeatCurrencyRetentionBasisPoints / 100}% · {draft.flags.length} flags
@@ -296,26 +275,9 @@ function Management({ initial }: { initial: api.DungeonDetail }) {
             </label>
           ))}
         </fieldset>
-        <div className="flex gap-2">
-          {canWrite && (
-            <Button
-              disabled={!dirty || !draft.name.trim() || busy || conflict}
-              onClick={() => save.mutate()}
-            >
-              Save draft
-            </Button>
-          )}
-          <Button
-            variant="outline"
-            disabled={busy || validate.isPending || conflict}
-            onClick={() => validate.mutate(draft)}
-          >
-            Validate draft
-          </Button>
-        </div>
-      </Card>
-      <Card className="space-y-3 p-4">
-        <h2>Artwork</h2>
+      </section>
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold">Artwork</h2>
         <ArtworkField
           label="Artwork"
           field="artwork"
@@ -330,134 +292,191 @@ function Management({ initial }: { initial: api.DungeonDetail }) {
           disabled={!canWrite || busy || conflict}
           onChange={(ref) => patch({ background: ref })}
         />
-      </Card>
-      <Card className="space-y-3 p-4">
-        <h2>Validation and publication</h2>
-        {dirty && (
-          <p>
-            Save your draft changes before publishing or rolling back. Validation below describes{' '}
-            {report ? 'your current edits' : 'the saved draft'}.
-          </p>
-        )}
-        <DungeonIssues issues={issues} />
-        {issues.length === 0 && <p>No validation issues.</p>}
-        {canPublish ? (
-          <Button
-            disabled={dirty || busy || conflict || issues.some((i) => i.severity === 'error')}
-            onClick={() => publish.mutate()}
-          >
-            Publish draft
-          </Button>
-        ) : (
-          <p>Publishing and rollback require dungeons.publish permission.</p>
-        )}
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            disabled={exporting.isPending || dirty}
-            onClick={() => exporting.mutate('draft')}
-          >
-            Export saved draft
-          </Button>
-          {loaded.published && (
-            <Button
-              variant="outline"
-              disabled={exporting.isPending}
-              onClick={() => exporting.mutate('published')}
-            >
-              Export current published package
-            </Button>
-          )}
-        </div>
-      </Card>
-      <DungeonGraphView
-        reference={reference.data}
-        definition={draft}
-        layout={layout}
-        issues={issues}
-        disabled={!canWrite || busy || conflict}
-        onChange={(definition, nextLayout) => {
-          setDraft(definition);
-          setLayout(nextLayout);
-          setNotice('');
+      </section>
+    </div>
+  );
+  return (
+    <div
+      ref={workspace.ref}
+      style={{ '--dungeon-workspace-height': `${workspace.height ?? 640}px` } as CSSProperties}
+      className="flex flex-col gap-3 lg:-mx-6 lg:h-(--dungeon-workspace-height)"
+      data-testid="dungeon-workspace"
+    >
+      {dataRouter && <UnsavedNavigationGuard dirty={dirty} />}
+      <DungeonEditorHeader
+        name={loaded.name}
+        dungeonKey={loaded.key}
+        enabled={loaded.enabled}
+        draftRevision={loaded.draftRevision}
+        publishedRevision={loaded.published?.number ?? null}
+        dirty={dirty}
+        validationPending={gameplayDirty && !report}
+        notice={notice}
+        errorCount={issues.filter((i) => i.severity === 'error').length}
+        warningCount={issues.filter((i) => i.severity !== 'error').length}
+        canWrite={canWrite}
+        canPublish={canPublish}
+        saveDisabled={!dirty || !draft.name.trim() || busy || conflict}
+        publishDisabled={dirty || busy || conflict || issues.some((i) => i.severity === 'error')}
+        validateDisabled={busy || validate.isPending || conflict}
+        view={view}
+        onSave={() => save.mutate()}
+        onPublish={() => publish.mutate()}
+        onValidate={() => validate.mutate(draft)}
+        onShowProblems={() => {
+          setView('map');
+          setProblemsRequest((n) => n + 1);
         }}
+        onViewChange={setView}
       />
-      <Card className="space-y-2 p-4">
-        <h2>Published revisions</h2>
-        {revisions.isPending && <p>Loading revisions…</p>}
-        {revisions.isError && (
-          <ErrorState
-            title="Could not load revisions"
-            error={revisions.error}
-            onRetry={() => void revisions.refetch()}
-          />
-        )}
-        {revisions.data?.revisions.length === 0 && <p>No published revisions.</p>}
-        {revisions.data?.revisions.map((r) => (
-          <div key={r.number} className="flex flex-wrap items-center gap-2">
-            <span>
-              Revision {r.number}
-              {r.current ? ' (current)' : ''} · {r.activeRuns} active runs
-            </span>
-            <Button variant="outline" onClick={() => setViewRevision(r.number)}>
-              View revision {r.number}
-            </Button>
-            <Button
-              variant="outline"
-              disabled={exporting.isPending}
-              onClick={() => exporting.mutate({ revision: r.number })}
-            >
-              Export revision {r.number}
-            </Button>
-            {canPublish && !r.current && (
-              <Button
-                disabled={busy || dirty || conflict}
-                onClick={() => setRollbackTarget(r.number)}
-              >
-                Roll back to revision {r.number}
+      {(conflict || errors.length > 0) && (
+        <div className="max-h-48 shrink-0 space-y-2 overflow-y-auto">
+          {conflict && (
+            <Card className="space-y-2 p-4">
+              <p role="alert">
+                A newer draft exists. Your edits are preserved; saving and publishing are blocked
+                until you reload.
+              </p>
+              <Button disabled={busy} onClick={() => reload.mutate()}>
+                Reload latest draft (discard local edits)
               </Button>
-            )}
-          </div>
-        ))}
-        {revision.isPending && viewRevision !== null && <p>Loading revision…</p>}
-        {revision.isError && <ErrorState title="Could not load revision" error={revision.error} />}
-        {revision.data && (
-          <details open>
-            <summary>Revision {revision.data.number} content and layout</summary>
-            <pre className="max-h-80 overflow-auto text-xs">
-              {JSON.stringify(
-                { content: revision.data.content, layout: revision.data.layout },
-                null,
-                2,
-              )}
-            </pre>
-          </details>
-        )}
-      </Card>
-      <DungeonImportHistory dungeonKey={loaded.key} />
-      <Card className="space-y-2 p-4">
-        <h2>Content history</h2>
-        {history.isPending && <p>Loading history…</p>}
-        {history.isError && (
-          <ErrorState
-            title="Could not load history"
-            error={history.error}
-            onRetry={() => void history.refetch()}
-          />
-        )}
-        {history.data?.events.length === 0 && <p>No history yet.</p>}
-        <ul>
-          {history.data?.events.map((e) => (
-            <li key={e.id}>
-              {new Date(e.createdAt).toLocaleString()} · {e.action} · {e.actor ?? 'system'}
-              <details>
-                <summary>Details</summary>
-                <pre className="overflow-auto text-xs">{JSON.stringify(e.details, null, 2)}</pre>
-              </details>
-            </li>
+            </Card>
+          )}
+          {errors.map((error, n) => (
+            <div key={n}>
+              <ErrorState title="Dungeon request failed" error={error} />
+              <DungeonIssues issues={errorIssues(error)} />
+            </div>
           ))}
-        </ul>
-      </Card>
+        </div>
+      )}
+      {/* Kept mounted behind the secondary view so selection and the canvas survive a visit. */}
+      <div hidden={view !== 'map'} className="min-h-0 lg:flex-1">
+        <DungeonGraphView
+          reference={reference.data}
+          definition={draft}
+          layout={layout}
+          issues={issues}
+          disabled={!canWrite || busy || conflict}
+          settings={settings}
+          problemsRequest={problemsRequest}
+          onChange={(definition, nextLayout) => {
+            setDraft(definition);
+            setLayout(nextLayout);
+            setNotice('');
+          }}
+        />
+      </div>
+      {view === 'manage' && (
+        <div
+          role="region"
+          aria-label="History and export"
+          className="min-h-0 space-y-4 lg:flex-1 lg:overflow-y-auto lg:overscroll-contain"
+        >
+          <Card className="space-y-3 p-4">
+            <h2>Export</h2>
+            {dirty && <p>Save your draft changes before exporting the draft or rolling back.</p>}
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                disabled={exporting.isPending || dirty}
+                onClick={() => exporting.mutate('draft')}
+              >
+                Export saved draft
+              </Button>
+              {loaded.published && (
+                <Button
+                  variant="outline"
+                  disabled={exporting.isPending}
+                  onClick={() => exporting.mutate('published')}
+                >
+                  Export current published package
+                </Button>
+              )}
+            </div>
+          </Card>
+          <Card className="space-y-2 p-4">
+            <h2>Published revisions</h2>
+            {revisions.isPending && <p>Loading revisions…</p>}
+            {revisions.isError && (
+              <ErrorState
+                title="Could not load revisions"
+                error={revisions.error}
+                onRetry={() => void revisions.refetch()}
+              />
+            )}
+            {revisions.data?.revisions.length === 0 && <p>No published revisions.</p>}
+            {revisions.data?.revisions.map((r) => (
+              <div key={r.number} className="flex flex-wrap items-center gap-2">
+                <span>
+                  Revision {r.number}
+                  {r.current ? ' (current)' : ''} · {r.activeRuns} active runs
+                </span>
+                <Button variant="outline" onClick={() => setViewRevision(r.number)}>
+                  View revision {r.number}
+                </Button>
+                <Button
+                  variant="outline"
+                  disabled={exporting.isPending}
+                  onClick={() => exporting.mutate({ revision: r.number })}
+                >
+                  Export revision {r.number}
+                </Button>
+                {canPublish && !r.current && (
+                  <Button
+                    disabled={busy || dirty || conflict}
+                    onClick={() => setRollbackTarget(r.number)}
+                  >
+                    Roll back to revision {r.number}
+                  </Button>
+                )}
+              </div>
+            ))}
+            {revision.isPending && viewRevision !== null && <p>Loading revision…</p>}
+            {revision.isError && (
+              <ErrorState title="Could not load revision" error={revision.error} />
+            )}
+            {revision.data && (
+              <details open>
+                <summary>Revision {revision.data.number} content and layout</summary>
+                <pre className="max-h-80 overflow-auto text-xs">
+                  {JSON.stringify(
+                    { content: revision.data.content, layout: revision.data.layout },
+                    null,
+                    2,
+                  )}
+                </pre>
+              </details>
+            )}
+          </Card>
+          <DungeonImportHistory dungeonKey={loaded.key} />
+          <Card className="space-y-2 p-4">
+            <h2>Content history</h2>
+            {history.isPending && <p>Loading history…</p>}
+            {history.isError && (
+              <ErrorState
+                title="Could not load history"
+                error={history.error}
+                onRetry={() => void history.refetch()}
+              />
+            )}
+            {history.data?.events.length === 0 && <p>No history yet.</p>}
+            <ul>
+              {history.data?.events.map((e) => (
+                <li key={e.id}>
+                  {new Date(e.createdAt).toLocaleString()} · {e.action} · {e.actor ?? 'system'}
+                  <details>
+                    <summary>Details</summary>
+                    <pre className="overflow-auto text-xs">
+                      {JSON.stringify(e.details, null, 2)}
+                    </pre>
+                  </details>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        </div>
+      )}
       <Dialog
         open={rollbackTarget !== null}
         onOpenChange={(open) => {

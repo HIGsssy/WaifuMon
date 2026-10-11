@@ -36,7 +36,7 @@ it.each(['/admin/dungeons/definitions/tunnels', '/admin/dungeons/zones/tunnels']
   'serves management at %s',
   async (path) => {
     at(path, ['dungeons.read']);
-    expect(await screen.findByText('Draft metadata')).toBeInTheDocument();
+    expect(await screen.findByText('Dungeon settings')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Save draft' })).not.toBeInTheDocument();
   },
 );

@@ -159,6 +159,7 @@ describe('Phase 1B.1 dungeon management', () => {
   it('requires confirmation naming the rollback revision and supports cancellation', async () => {
     const user = userEvent.setup();
     renderAt();
+    await user.click(await screen.findByRole('button', { name: 'History & export' }));
     await user.click(await screen.findByRole('button', { name: 'Roll back to revision 1' }));
     expect(api.rollbackDungeon).not.toHaveBeenCalled();
     expect(screen.getByRole('dialog')).toHaveTextContent('Roll back Tunnels to revision 1?');
@@ -173,6 +174,7 @@ describe('Phase 1B.1 dungeon management', () => {
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
     const user = userEvent.setup();
     renderAt();
+    await user.click(await screen.findByRole('button', { name: 'History & export' }));
     await user.click(await screen.findByRole('button', { name: 'View revision 1' }));
     expect(await screen.findByText('Revision 1 content and layout')).toBeInTheDocument();
     expect(screen.getByText(/draft_saved/)).toBeInTheDocument();
@@ -186,7 +188,7 @@ describe('Phase 1B.1 dungeon management', () => {
     await user.type(screen.getByLabelText('Dungeon name'), 'Service Tunnels');
     await user.click(await screen.findByLabelText('Waifu Valley'));
     await user.click(screen.getByRole('button', { name: 'Create draft' }));
-    expect(await screen.findByText('Draft metadata')).toBeInTheDocument();
+    expect(await screen.findByText('Dungeon settings')).toBeInTheDocument();
     expect(api.createDungeon).toHaveBeenCalledWith(
       expect.objectContaining({
         key: 'service_tunnels',
