@@ -184,6 +184,7 @@ export const REFERENCE_ROLE_LABELS = {
   success: 'Mission reward',
   bonus: 'Exceptional bonus',
   failure: 'Failure consolation',
+  dungeon: 'Dungeon legacy reward',
 } as const;
 
 const SLOT_LABELS: Record<string, string> = { attack: 'Attack', defense: 'Defense', health: 'Health' };

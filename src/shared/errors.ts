@@ -1748,6 +1748,17 @@ export class DungeonRunNotFoundError extends AppError {
   }
 }
 
+/** A promised item is unavailable; the whole dungeon step must roll back. */
+export class DungeonRewardItemUnavailableError extends AppError {
+  constructor(readonly runId: number, readonly claimKey: string, readonly slug: string) {
+    super(
+      'DUNGEON_REWARD_ITEM_UNAVAILABLE',
+      `Dungeon run ${runId} reward "${claimKey}" requires unavailable item "${slug}"`,
+      "This dungeon reward can't be delivered right now. Your progress is safe. Please try again later.",
+    );
+  }
+}
+
 /* ─────────────────────── Progression currency ─────────────────────── */
 
 export class ProgressionCurrencyNotFoundError extends AppError {

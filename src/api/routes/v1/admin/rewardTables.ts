@@ -56,7 +56,7 @@ const issueSchema = z.object({
 });
 
 const referenceSchema = z.object({
-  role: z.enum(['boss', 'success', 'bonus', 'failure']),
+  role: z.enum(['boss', 'success', 'bonus', 'failure', 'dungeon']),
   key: z.string(),
   name: z.string(),
   enabled: z.boolean(),

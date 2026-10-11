@@ -23,7 +23,7 @@ export interface RewardTableIssue {
 }
 
 export interface RewardTableReference {
-  role: 'boss' | 'success' | 'bonus' | 'failure';
+  role: 'boss' | 'success' | 'bonus' | 'failure' | 'dungeon';
   key: string;
   name: string;
   enabled: boolean;

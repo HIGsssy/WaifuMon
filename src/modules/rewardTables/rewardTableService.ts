@@ -168,7 +168,18 @@ export interface RewardTableServiceDeps {
   getContent: () => Pick<LoadedContent, 'items' | 'bosses' | 'expeditions'>;
   /** This build's shipped tables. */
   getShipped: () => readonly ShippedRewardTable[];
+  /** Database-backed consumers, read in the caller's transaction. */
+  referenceSources?: readonly RewardTableReferenceSource[];
 }
+
+export interface RewardTableReferenceEntry extends RewardTableReference {
+  kind: RewardTableKind;
+  tableId: string;
+}
+
+export type RewardTableReferenceSource = (tx: DbOrTx) => Promise<RewardTableReferenceEntry[]>;
+
+type ReferenceLookup = (kind: RewardTableKind, id: string) => RewardTableReference[];
 
 /**
  * Ids a new table may not take: they are path segments of the admin routes
@@ -191,15 +202,35 @@ export function createRewardTableService(deps: RewardTableServiceDeps): RewardTa
     return deps.getShipped().find((t) => t.kind === kind && t.id === id);
   }
 
-  function referencesOf(kind: RewardTableKind, id: string): RewardTableReference[] {
-    return rewardTableReferences(kind, id, deps.getContent());
+  /** Load each provider once per operation, including list/import batches. */
+  async function referenceLookup(tx: DbOrTx): Promise<ReferenceLookup> {
+    const byTable = new Map<string, RewardTableReference[]>();
+    for (const source of deps.referenceSources ?? []) {
+      for (const { kind, tableId, ...reference } of await source(tx)) {
+        const key = `${kind}/${tableId}`;
+        const refs = byTable.get(key) ?? [];
+        refs.push(reference);
+        byTable.set(key, refs);
+      }
+    }
+    const content = deps.getContent();
+    return (kind, id) => referencesOf(kind, id, content, byTable);
   }
 
-  function validationContext(kind: RewardTableKind, id: string, definitions: readonly RewardableDefinition[]) {
+  function referencesOf(
+    kind: RewardTableKind,
+    id: string,
+    content: ReturnType<RewardTableServiceDeps['getContent']>,
+    byTable: ReadonlyMap<string, RewardTableReference[]>,
+  ): RewardTableReference[] {
+    return [...rewardTableReferences(kind, id, content), ...(byTable.get(`${kind}/${id}`) ?? [])];
+  }
+
+  function validationContext(kind: RewardTableKind, id: string, definitions: readonly RewardableDefinition[], references: ReferenceLookup) {
     return {
       itemSlugs: new Set(deps.getContent().items.map((i) => i.slug)),
       definitions,
-      references: referencesOf(kind, id),
+      references: references(kind, id),
     };
   }
 
@@ -208,7 +239,7 @@ export function createRewardTableService(deps: RewardTableServiceDeps): RewardTa
     return row.contentHash === row.seedHash ? 'shipped' : 'edited';
   }
 
-  function summaryOf(row: RewardTableRow): RewardTableSummary {
+  function summaryOf(row: RewardTableRow, references: ReferenceLookup): RewardTableSummary {
     const kind = row.kind as RewardTableKind;
     const def = row.definition as {
       version?: unknown;
@@ -227,18 +258,18 @@ export function createRewardTableService(deps: RewardTableServiceDeps): RewardTa
       groupCount: groups.length,
       itemRowCount: groups.reduce((n, g) => n + (g.entries?.length ?? 0), 0),
       equipmentRowCount: groups.reduce((n, g) => n + (g.equipment?.length ?? 0), 0),
-      references: referencesOf(kind, row.tableId),
+      references: references(kind, row.tableId),
       updatedAt: row.updatedAt,
       updatedBy: row.updatedBy,
     };
   }
 
-  function detailOf(row: RewardTableRow, definitions: readonly RewardableDefinition[]): RewardTableDetail {
+  function detailOf(row: RewardTableRow, definitions: readonly RewardableDefinition[], references: ReferenceLookup): RewardTableDetail {
     const kind = row.kind as RewardTableKind;
     return {
-      ...summaryOf(row),
+      ...summaryOf(row, references),
       table: row.definition,
-      issues: validateRewardTable(kind, row.definition, validationContext(kind, row.tableId, definitions)).issues,
+      issues: validateRewardTable(kind, row.definition, validationContext(kind, row.tableId, definitions, references)).issues,
     };
   }
 
@@ -261,8 +292,9 @@ export function createRewardTableService(deps: RewardTableServiceDeps): RewardTa
     id: string,
     input: unknown,
     definitions: readonly RewardableDefinition[],
+    references: ReferenceLookup,
   ): { table: AnyRewardTable; issues: RewardTableIssue[] } {
-    const { table, issues } = validateRewardTable(kind, input, validationContext(kind, id, definitions));
+    const { table, issues } = validateRewardTable(kind, input, validationContext(kind, id, definitions, references));
     if (table && table.id !== id) {
       issues.unshift({ path: 'id', message: `the table id is "${id}" and cannot be changed`, severity: 'error' });
     }
@@ -368,19 +400,21 @@ export function createRewardTableService(deps: RewardTableServiceDeps): RewardTa
         .from(rewardTables)
         .where(kind ? eq(rewardTables.kind, kind) : undefined)
         .orderBy(asc(rewardTables.kind), asc(rewardTables.position), asc(rewardTables.tableId));
-      return rows.map(summaryOf);
+      const references = await referenceLookup(db);
+      return rows.map((row) => summaryOf(row, references));
     },
 
     async get(kind, id) {
       const row = await readRow(db, kind, id);
       if (!row) return null;
-      return detailOf(row, await listRewardableDefinitions(db));
+      return detailOf(row, await listRewardableDefinitions(db), await referenceLookup(db));
     },
 
     async validate(kind, table, id) {
       const definitions = await listRewardableDefinitions(db);
       const tableId = id ?? idOf(table) ?? '';
-      const { issues, table: parsed } = validateRewardTable(kind, table, validationContext(kind, tableId, definitions));
+      const references = await referenceLookup(db);
+      const { issues, table: parsed } = validateRewardTable(kind, table, validationContext(kind, tableId, definitions, references));
       if (id && parsed && parsed.id !== id) {
         issues.unshift({ path: 'id', message: `the table id is "${id}" and cannot be changed`, severity: 'error' });
       }
@@ -396,11 +430,12 @@ export function createRewardTableService(deps: RewardTableServiceDeps): RewardTa
             { path: 'id', message: `"${id}" is reserved — choose another table id`, severity: 'error' },
           ]);
         }
-        assertWritable(kind, id, input, definitions);
+        const references = await referenceLookup(tx);
+        assertWritable(kind, id, input, definitions, references);
         if (await readRow(tx, kind, id)) throw new RewardTableIdTakenError(kind, id);
         const definition = input as Record<string, unknown>;
         const row = await insertRow(tx, kind, definition, rewardTableHash(kind, definition), actor);
-        return detailOf(row, definitions);
+        return detailOf(row, definitions, references);
       });
     },
 
@@ -410,10 +445,11 @@ export function createRewardTableService(deps: RewardTableServiceDeps): RewardTa
         if (!row) return null;
         assertRevision(row, expectedRevision);
         const definitions = await listRewardableDefinitions(tx);
-        assertWritable(kind, id, input, definitions);
+        const references = await referenceLookup(tx);
+        assertWritable(kind, id, input, definitions, references);
         const definition = input as Record<string, unknown>;
         const updated = await writeRow(tx, row, definition, rewardTableHash(kind, definition), actor);
-        return detailOf(updated, definitions);
+        return detailOf(updated, definitions, references);
       });
     },
 
@@ -431,11 +467,12 @@ export function createRewardTableService(deps: RewardTableServiceDeps): RewardTa
         if (!row) return null;
         assertRevision(row, expectedRevision);
         const definitions = await listRewardableDefinitions(tx);
-        assertWritable(kind, id, shipped.definition, definitions);
+        const references = await referenceLookup(tx);
+        assertWritable(kind, id, shipped.definition, definitions, references);
         const updated = await writeRow(tx, row, shipped.definition, shipped.hash, actor, {
           seedHash: shipped.hash,
         });
-        return detailOf(updated, definitions);
+        return detailOf(updated, definitions, references);
       });
     },
 
@@ -444,12 +481,12 @@ export function createRewardTableService(deps: RewardTableServiceDeps): RewardTa
         const row = await readRow(tx, kind, id, true);
         if (!row) return false;
         assertRevision(row, expectedRevision);
-        const refs = referencesOf(kind, id);
+        const refs = (await referenceLookup(tx))(kind, id);
         if (refs.length > 0) {
           throw new RewardTableDeleteRefusedError(
             kind,
             id,
-            `it is used by ${refs.map((r) => `${r.role === 'boss' ? 'boss' : 'mission'} "${r.key}"`).join(', ')}`,
+            `it is used by ${refs.map((r) => `${r.role === 'boss' ? 'boss' : r.role === 'dungeon' ? 'dungeon' : 'mission'} "${r.key}"`).join(', ')}`,
           );
         }
         if (shippedFor(kind, id) || row.seedHash !== null) {
@@ -559,6 +596,7 @@ export function createRewardTableService(deps: RewardTableServiceDeps): RewardTa
       issues.push({ path: 'tables', message: 'the package contains no tables', severity: 'error' });
     }
     const definitions = await listRewardableDefinitions(tx);
+    const references = await referenceLookup(tx);
     const seen = new Set<string>();
     const entries: RewardTableImportPlanEntry[] = [];
     for (const [index, input] of tables.entries()) {
@@ -567,7 +605,7 @@ export function createRewardTableService(deps: RewardTableServiceDeps): RewardTa
         issues.push({ path: `tables[${index}].id`, message: `"${id}" appears twice in the package`, severity: 'error' });
       }
       seen.add(id);
-      const { table, issues: tableIssues } = validateRewardTable(kind, input, validationContext(kind, id, definitions));
+      const { table, issues: tableIssues } = validateRewardTable(kind, input, validationContext(kind, id, definitions, references));
       const row = table ? await readRow(tx, kind, id, lock) : undefined;
       const invalid = !table || tableIssues.some((i) => i.severity === 'error');
       const action: RewardTableImportAction = invalid

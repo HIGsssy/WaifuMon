@@ -61,6 +61,7 @@ import {
 import { createRewardTableService } from './modules/rewardTables/rewardTableService';
 import { regionLabel } from './modules/locations/regions';
 import { createDungeonContentService } from './modules/dungeons/dungeonContentService';
+import { dungeonRewardTableReferences } from './modules/dungeons/dungeonRewardTableReferences';
 import { validateDungeonDefinition } from './modules/dungeons/validation/dungeonValidation';
 import { createArtworkAssetService } from './modules/artworkAssets/artworkAssetService';
 import { createBossArtworkService } from './modules/bosses/bossArtworkService';
@@ -868,6 +869,7 @@ async function main(): Promise<void> {
           bosses: bossDefinitions.cached().map(bossContentFromDefinition),
         }),
         getShipped: () => shippedRewardTables,
+        referenceSources: [dungeonRewardTableReferences],
       }),
       worldEncounterSettings,
       wildEncounters,

@@ -12,12 +12,15 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createPlatformApiServer } from '../../../src/api/server';
 import type { ZodFastify } from '../../../src/api/plugins/typeProvider';
 import type { PortalSession, PortalSessionService } from '../../../src/api/portalSession';
+import { createDungeonContentService } from '../../../src/modules/dungeons/dungeonContentService';
+import { dungeonRewardTableReferences } from '../../../src/modules/dungeons/dungeonRewardTableReferences';
 import { loadEquipmentSeedCatalogue, seedEquipmentDefinitions } from '../../../src/modules/equipment/seed';
 import { createGuildOwnershipService } from '../../../src/modules/portalAuth/guildOwnershipService';
 import { createPortalAuthorizationService } from '../../../src/modules/portalAuth/portalAuthService';
 import { createRewardTableService } from '../../../src/modules/rewardTables/rewardTableService';
 import { loadShippedRewardTables, seedRewardTables } from '../../../src/modules/rewardTables/rewardTableStore';
 import { CONTENT_DIR, bootstrapApp, provisionPlayer, type App } from '../../helpers/fixtures';
+import { singleRoomDungeon } from '../../helpers/dungeonFixtures';
 import { createCapturedLogger, createProbes, TEST_TOKEN } from '../../helpers/platformApiFixtures';
 import { createTestDb, type TestDb } from '../../helpers/testDb';
 
@@ -40,7 +43,7 @@ beforeAll(async () => {
   await seedEquipmentDefinitions(t.db, { mode: 'insert-missing', catalogue: loadEquipmentSeedCatalogue(CONTENT_DIR) });
   const shipped = loadShippedRewardTables(CONTENT_DIR);
   await seedRewardTables(t.db, shipped);
-  const rewardTables = createRewardTableService({ db: t.db, getContent: () => app.content, getShipped: () => shipped });
+  const rewardTables = createRewardTableService({ db: t.db, getContent: () => app.content, getShipped: () => shipped, referenceSources: [dungeonRewardTableReferences] });
 
   const guildOwnership = createGuildOwnershipService({ fetchOwnerId: async () => OWNER_ID });
   const portalAuthorization = createPortalAuthorizationService({ guildOwnership });
@@ -169,6 +172,37 @@ describe('reads', () => {
 });
 
 describe('writes', () => {
+  it('serializes dungeon references, refuses deletion and allows disabling with the dungeon warning', async () => {
+    const id = 'http-dungeon-reward';
+    const key = 'http_dungeon';
+    expect((await call('POST', '/admin/reward-tables/expedition', { table: { id, groups: [] } })).statusCode).toBe(200);
+    const dungeons = createDungeonContentService({ db: t.db, enemies: { definitions: async () => [] }, getRegions: () => app.content.regions });
+    const definition = singleRoomDungeon([{ id: 'loot', type: 'reward', reward: { equipmentRewardTable: id } }], (d) => {
+      d.key = key;
+      d.settings = { progressionCurrency: null };
+    });
+    const draft = await dungeons.create({ definition }, OWNER_ID);
+    const expected = [{ role: 'dungeon', key, name: definition.name, enabled: true }];
+    const url = `/admin/reward-tables/expedition/${id}`;
+    const detail = await call('GET', url);
+    expect(detail.statusCode, detail.body).toBe(200);
+    expect(data<{ references: unknown[] }>(detail).references).toEqual(expected);
+    const list = await call('GET', '/admin/reward-tables?kind=expedition');
+    expect(list.statusCode, list.body).toBe(200);
+    expect(data<{ tables: { id: string; references: unknown[] }[] }>(list).tables.find((r) => r.id === id)!.references).toEqual(expected);
+    const deletion = await call('DELETE', `${url}?expectedRevision=1`);
+    expect(deletion.statusCode).toBe(409);
+    expect(deletion.json()).toMatchObject({ error: { code: 'REWARD_TABLE_DELETE_REFUSED', message: expect.stringContaining(`dungeon "${key}"`) } });
+    const disabled = await call('PUT', url, { table: { id, groups: [], enabled: false }, expectedRevision: 1 });
+    expect(disabled.statusCode, disabled.body).toBe(200);
+    expect(data<{ enabled: boolean; issues: unknown[]; references: unknown[] }>(disabled)).toMatchObject({
+      enabled: false, references: expected,
+      issues: [{ path: 'enabled', severity: 'warning', message: expect.stringContaining(`dungeon "${definition.name}" (${key})`) }],
+    });
+    const { issues: _issues, ...stored } = draft;
+    expect(await dungeons.get(key)).toMatchObject(stored);
+  });
+
   it('saves, then refuses a stale save with 409 and the current revision', async () => {
     const detail = data<Detail>(await call('GET', `/admin/reward-tables/boss/${BOSS_TABLE}`));
     const saved = await call('PUT', `/admin/reward-tables/boss/${BOSS_TABLE}`, {

@@ -234,6 +234,7 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   CONFIG_INVALID: 500,
   CONTENT_INVALID: 500,
   DB_UNAVAILABLE: 503,
+  DUNGEON_REWARD_ITEM_UNAVAILABLE: 503,
   /**
    * The card SVG kit is missing a file, or the base template is not the shape
    * the composer expects. A broken deploy, never caller-triggerable — 500, and

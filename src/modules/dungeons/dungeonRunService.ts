@@ -68,6 +68,7 @@ import {
 import {
   DungeonDailyLimitError,
   DungeonInvalidError,
+  DungeonRewardItemUnavailableError,
   DungeonRunActiveError,
   DungeonRunNotFoundError,
   DungeonUnavailableError,
@@ -607,13 +608,13 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
             for (const grant of plan.items) {
               const itemId = idBySlug.get(grant.slug);
               if (itemId === undefined) {
-                // The seeder disables items, never deletes them; a missing row
-                // must not cost the player the rest of the reward.
+                // Abort the step so grants, claim, cursor and history all roll
+                // back. Restoring the item lets the same interaction retry.
                 deps.logger?.error(
                   { tag: 'dungeons/missing-item', runId: row.id, claimKey, slug: grant.slug },
-                  'dungeon reward names an item that is not in the database — skipped',
+                  'dungeon reward names an item that is not in the database — delivery aborted',
                 );
-                continue;
+                throw new DungeonRewardItemUnavailableError(row.id, claimKey, grant.slug);
               }
               await deps.inventory.addItem(tx, row.playerId, itemId, grant.quantity);
               granted.push(grant);

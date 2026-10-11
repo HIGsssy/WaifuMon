@@ -14,14 +14,17 @@ import {
   playerInventory,
   players,
   progressionCurrencyLedger,
+  rewardTables,
 } from '../../src/db/schema';
 import type { DungeonDefinitionInput } from '../../src/modules/dungeons/content/dungeonDefinition';
 import type { DungeonRunView } from '../../src/modules/dungeons/dungeonRunService';
 import type { DungeonInput } from '../../src/modules/dungeons/engine/types';
+import { rewardTableHash } from '../../src/modules/rewardTables/rewardTableCore';
 import {
   CombatBuddyRequiredError,
   CombatLoadoutIncompleteError,
   DungeonDailyLimitError,
+  DungeonRewardItemUnavailableError,
   DungeonRunActiveError,
   DungeonRunNotFoundError,
   DungeonUnavailableError,
@@ -424,6 +427,101 @@ describe('what a run is pinned to', () => {
 
 describe('ending a run', () => {
   const paid = (extra: Actions = []): Actions => [{ id: 'pay', type: 'reward', reward: { currency: { min: 8, max: 8 } } }, ...extra];
+
+  it('rolls back a missing reward item and delivers the same step exactly once after restoration', async () => {
+    const slug = 'test_missing_dungeon_reward';
+    const item = { slug, name: 'Missing dungeon reward', category: 'material' };
+    const [available] = await w.t.db.insert(items).values(item).returning();
+    const tableId = 'test-dungeon-missing-item';
+    const definition = {
+      id: tableId,
+      enabled: true,
+      waifubux: { min: 11, max: 11 },
+      groups: ['sticky_joystick', slug].map((itemId, i) => ({
+        id: `item_${i}`, enabled: true, rolls: 1, chanceBasisPoints: 10_000,
+        entries: [{ itemId, weight: 1, quantity: i + 2, enabled: true }],
+      })),
+    };
+    await w.t.db.insert(rewardTables).values({
+      kind: 'expedition', tableId, enabled: true, definition, contentHash: rewardTableHash('expedition', definition),
+    });
+    const key = await oneRoom([
+      { id: 'paid', type: 'reward', reward: { rewardTable: LOOT_TABLE, equipmentRewardTable: GEAR_TABLE, currency: { min: 3, max: 3 } } },
+      { id: 'loot', type: 'reward', reward: { rewardTable: tableId, equipmentRewardTable: GEAR_TABLE, currency: { min: 7, max: 7 } } },
+      { id: 'r', type: 'rest' },
+    ]);
+    const { playerId } = await w.player();
+    const start = await w.runs.start(playerId, key, { seed: 71 });
+    const ready = (await w.act(playerId, start, { type: 'advance' })).run;
+    const runRow = async () => (await w.t.db.select().from(dungeonRuns).where(eq(dungeonRuns.id, start.id)))[0]!;
+    const currencyRows = () => w.t.db.select().from(playerCurrencies).where(eq(playerCurrencies.playerId, playerId));
+    const inventoryRows = () => w.t.db.select().from(playerInventory).where(eq(playerInventory.playerId, playerId)).orderBy(playerInventory.itemId);
+    const gearRows = () => w.t.db.select().from(playerEquipment).where(eq(playerEquipment.playerId, playerId)).orderBy(playerEquipment.id);
+    const before = await runRow();
+    const currenciesBefore = await currencyRows();
+    const inventoryBefore = await inventoryRows();
+    const gearBefore = await gearRows();
+    const historyBefore = await w.runs.history(start.id);
+    const priorClaimKey = `run:${start.id}:hall:paid`;
+    const claimKey = `run:${start.id}:hall:loot`;
+    expect(Object.keys(before.rewardClaims)).toEqual([priorClaimKey]);
+
+    // The table was snapshotted with both items; now one definition disappears.
+    await w.t.db.delete(items).where(eq(items.id, available!.id));
+    const addItem = vi.spyOn(w.app.inventory, 'addItem');
+    try {
+      const attempt = w.act(playerId, ready, { type: 'advance' });
+      await expect(attempt).rejects.toBeInstanceOf(DungeonRewardItemUnavailableError);
+      await expect(attempt).rejects.toMatchObject({
+        code: 'DUNGEON_REWARD_ITEM_UNAVAILABLE',
+        runId: start.id, claimKey, slug,
+        message: expect.stringContaining(slug),
+        userMessage: "This dungeon reward can't be delivered right now. Your progress is safe. Please try again later.",
+      });
+      // The valid item grant really ran before the missing item was reached.
+      expect(addItem).toHaveBeenCalledTimes(1);
+      expect(addItem).toHaveBeenCalledWith(expect.anything(), playerId, inventoryBefore[0]!.itemId, 2);
+    } finally {
+      addItem.mockRestore();
+    }
+    // Exact equality includes the cursor, step, claims, HP, state and receipts.
+    expect(await runRow()).toEqual(before);
+    expect(await currencyRows()).toEqual(currenciesBefore);
+    expect(await inventoryRows()).toEqual(inventoryBefore);
+    expect(await gearRows()).toEqual(gearBefore);
+    expect(await w.runs.history(start.id)).toEqual(historyBefore);
+    expect(await w.runs.run(playerId, start.id)).toEqual(ready);
+
+    // Restore by slug with a new database id; retry the original interaction.
+    const [restored] = await w.t.db.insert(items).values(item).returning();
+    const retries = await Promise.all(Array.from({ length: 4 }, () => w.act(playerId, ready, { type: 'advance' })));
+    expect(retries.filter((r) => r.status === 'applied')).toHaveLength(1);
+    expect(retries.filter((r) => r.status === 'refused').map((r) => r.refusal)).toEqual(Array(3).fill('stale'));
+    expect((await w.act(playerId, ready, { type: 'advance' })).refusal).toBe('stale');
+    const delivered = await runRow();
+    expect(delivered).toMatchObject({ step: ready.step + 1, status: 'active', cursor: { actionId: 'r' }, unbankedCurrency: 10 });
+    expect(Object.keys(delivered.rewardClaims).sort()).toEqual([priorClaimKey, claimKey].sort());
+    expect(delivered.rewardClaims[priorClaimKey]).toEqual(before.rewardClaims[priorClaimKey]);
+    expect(delivered.rewardClaims[claimKey]).toMatchObject({ currency: 7, waifubux: 11, items: [{ slug: 'sticky_joystick', quantity: 2 }, { slug, quantity: 3 }] });
+    expect((await currencyRows())[0]!.waifubux).toBe(currenciesBefore[0]!.waifubux + 11);
+    expect(await inventoryRows()).toEqual([
+      { ...inventoryBefore[0]!, quantity: inventoryBefore[0]!.quantity + 2 },
+      { playerId, itemId: restored!.id, quantity: 3 },
+    ]);
+    expect(await gearRows()).toHaveLength(gearBefore.length + 1);
+    expect(await w.t.db.select().from(playerEquipment).where(eq(playerEquipment.grantKey, `dungeon:${claimKey}:0:0`))).toHaveLength(1);
+    const run = await w.runs.run(playerId, start.id);
+    expect(run.secured.filter((r) => r.source === priorClaimKey)).toEqual(ready.secured);
+    expect(run.latestSecured).toEqual([
+      expect.objectContaining({ kind: 'equipment', source: claimKey, step: ready.step + 1, rewardIndex: 0 }),
+      { kind: 'waifubux', source: claimKey, step: ready.step + 1, amount: 11 },
+      { kind: 'item', source: claimKey, step: ready.step + 1, slug: 'sticky_joystick', quantity: 2 },
+      { kind: 'item', source: claimKey, step: ready.step + 1, slug, quantity: 3 },
+    ]);
+    const history = await w.runs.history(start.id);
+    expect(history.filter((e) => e.type === 'rewards_granted' && e.payload.claimKey === claimKey)).toHaveLength(1);
+    expect(history.filter((e) => e.type === 'action_completed' && e.payload.claimKey === claimKey)).toHaveLength(1);
+  });
 
   it.each([8, 9])('settles independently of prototype keys with historical amount %i, then retries once', async (historicalAmount) => {
     const key = await oneRoom(paid(), (d) => void (d.rooms[0]!.extraction = true));

@@ -5,8 +5,10 @@
  */
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { rewardTables } from '../../src/db/schema';
+import { dungeonDefinitions, dungeonRevisions, rewardTables } from '../../src/db/schema';
 import type { LoadedContent } from '../../src/modules/content/schemas';
+import { createDungeonContentService, type DungeonContentService } from '../../src/modules/dungeons/dungeonContentService';
+import { dungeonRewardTableReferences } from '../../src/modules/dungeons/dungeonRewardTableReferences';
 import { loadEquipmentSeedCatalogue, seedEquipmentDefinitions } from '../../src/modules/equipment/seed';
 import { rewardTableHash, type RewardTableKind } from '../../src/modules/rewardTables/rewardTableCore';
 import {
@@ -26,12 +28,14 @@ import {
   RewardTableStaleError,
 } from '../../src/shared/errors';
 import { CONTENT_DIR, bootstrapApp, type App } from '../helpers/fixtures';
+import { singleRoomDungeon } from '../helpers/dungeonFixtures';
 import { createTestDb, type TestDb } from '../helpers/testDb';
 
 let t: TestDb;
 let app: App;
 let shipped: ShippedRewardTable[];
 let service: RewardTableService;
+let dungeons: DungeonContentService;
 
 const ADMIN = '111111111111111111';
 
@@ -70,7 +74,12 @@ beforeAll(async () => {
     ],
     expeditions: app.content.expeditions,
   };
-  service = createRewardTableService({ db: t.db, getContent: () => content, getShipped: () => shipped });
+  service = createRewardTableService({ db: t.db, getContent: () => content, getShipped: () => shipped, referenceSources: [dungeonRewardTableReferences] });
+  dungeons = createDungeonContentService({
+    db: t.db,
+    enemies: { definitions: async () => [] },
+    getRegions: () => app.content.regions,
+  });
 });
 afterAll(async () => {
   await t.cleanup();
@@ -387,5 +396,130 @@ describe('export and import', () => {
     );
     expect(await row('boss', 'good')).toBeUndefined();
     expect((await service.planImport('boss', { not: 'an array' })).issues[0]!.path).toBe('tables');
+  });
+});
+
+describe('legacy dungeon reward-table references', () => {
+  const draft = async (key: string, reward: { rewardTable?: string; equipmentRewardTable?: string }) => {
+    const definition = singleRoomDungeon([{ id: 'loot', type: 'reward', reward }], (d) => {
+      d.key = key;
+      d.name = `Dungeon ${key}`;
+      d.settings = { progressionCurrency: null };
+    });
+    return dungeons.create({ definition }, ADMIN);
+  };
+  const removeDraftReward = async (key: string) => {
+    const current = (await dungeons.get(key))!;
+    const definition = { ...current.draft, rooms: current.draft.rooms.map((room) => ({ ...room, actions: [] })) };
+    return dungeons.saveDraft(key, { definition, expectedRevision: current.draftRevision }, ADMIN);
+  };
+
+  it.each(['rewardTable', 'equipmentRewardTable'] as const)('protects a draft reference in %s', async (field) => {
+    const id = `draft-${field}`;
+    const key = field === 'rewardTable' ? 'draft_reward' : 'draft_equipment';
+    await service.create('expedition', { id, groups: [] }, ADMIN);
+    await draft(key, { [field]: id });
+    const deletion = service.delete('expedition', id, 1);
+    await expect(deletion).rejects.toBeInstanceOf(RewardTableDeleteRefusedError);
+    await expect(deletion).rejects.toThrow(`dungeon "${key}"`);
+    expect(await row('expedition', id)).toBeDefined();
+    expect((await service.get('expedition', id))!.references).toEqual([
+      { role: 'dungeon', key, name: `Dungeon ${key}`, enabled: true },
+    ]);
+  });
+
+  it.each(['rewardTable', 'equipmentRewardTable'] as const)('protects a published %s reference after the draft removes it', async (field) => {
+    const id = `published-${field}`;
+    const key = field === 'rewardTable' ? 'published_reward' : 'published_equipment';
+    await service.create('expedition', { id, groups: [] }, ADMIN);
+    const created = await draft(key, { [field]: id });
+    await dungeons.publish(key, { expectedRevision: created.draftRevision }, ADMIN);
+    await removeDraftReward(key);
+    await expect(service.delete('expedition', id, 1)).rejects.toThrow(`dungeon "${key}"`);
+    expect((await service.get('expedition', id))!.references.map((r) => r.key)).toEqual([key]);
+  });
+
+  it('protects historical revisions after a newer publish and while the dungeon is disabled', async () => {
+    const id = 'historical-dungeon-table';
+    const key = 'historical_reward';
+    await service.create('expedition', { id, groups: [] }, ADMIN);
+    const created = await draft(key, { rewardTable: id });
+    await dungeons.publish(key, { expectedRevision: created.draftRevision }, ADMIN);
+    const saved = await removeDraftReward(key);
+    await dungeons.publish(key, { expectedRevision: saved.draftRevision }, ADMIN);
+    await dungeons.setEnabled(key, false, ADMIN);
+    expect((await dungeons.revisions(key))!.map((r) => r.current)).toEqual([true, false]);
+    await expect(service.delete('expedition', id, 1)).rejects.toThrow(`dungeon "${key}"`);
+    expect((await service.get('expedition', id))!.references).toEqual([
+      { role: 'dungeon', key, name: `Dungeon ${key}`, enabled: false },
+    ]);
+  });
+
+  it('reports multiple dungeons once each across fields, actions, drafts and revisions, and warns on disabling', async () => {
+    const id = 'shared-dungeon-table';
+    const table = { id, groups: [] };
+    await service.create('expedition', table, ADMIN);
+    const first = await draft('shared_alpha', { rewardTable: id, equipmentRewardTable: id });
+    const repeated = { ...first.draft, rooms: first.draft.rooms.map((room) => ({ ...room, actions: room.actions.flatMap((a) => [a, { ...a, id: 'loot_again' }]) })) };
+    const saved = await dungeons.saveDraft('shared_alpha', { definition: repeated, expectedRevision: first.draftRevision }, ADMIN);
+    await dungeons.publish('shared_alpha', { expectedRevision: saved.draftRevision }, ADMIN);
+    await draft('shared_beta', { equipmentRewardTable: id });
+    await draft('shared_disabled', { rewardTable: id });
+    await dungeons.setEnabled('shared_disabled', false, ADMIN);
+    const draftsBefore = await t.db.select().from(dungeonDefinitions).orderBy(dungeonDefinitions.dungeonKey);
+    const revisionsBefore = await t.db.select().from(dungeonRevisions).orderBy(dungeonRevisions.id);
+    const expected = [
+      { role: 'dungeon', key: 'shared_alpha', name: 'Dungeon shared_alpha', enabled: true },
+      { role: 'dungeon', key: 'shared_beta', name: 'Dungeon shared_beta', enabled: true },
+      { role: 'dungeon', key: 'shared_disabled', name: 'Dungeon shared_disabled', enabled: false },
+    ];
+    expect((await service.get('expedition', id))!.references).toEqual(expected);
+    expect((await service.list('expedition')).find((r) => r.id === id)!.references).toEqual(expected);
+    await expect(service.delete('expedition', id, 1)).rejects.toThrow(/dungeon "shared_alpha", dungeon "shared_beta", dungeon "shared_disabled"/);
+    const disabled = { ...table, enabled: false };
+    const warnings = await service.validate('expedition', disabled);
+    expect(warnings).toEqual(['shared_alpha', 'shared_beta'].map((key) => ({
+      path: 'enabled', severity: 'warning',
+      message: `dungeon "Dungeon ${key}" (${key}) has legacy rewards using this table; new runs pay no rewards from it while disabled (existing runs keep their snapshot)`,
+    })));
+    expect((await service.planImport('expedition', [disabled])).entries[0]!.issues).toEqual(warnings);
+    const updated = (await service.update('expedition', id, { table: disabled, expectedRevision: 1 }, ADMIN))!;
+    expect(updated).toMatchObject({ enabled: false, references: expected, issues: warnings });
+    expect((await service.get('expedition', id))!.issues).toEqual(warnings);
+    expect(await t.db.select().from(dungeonDefinitions).orderBy(dungeonDefinitions.dungeonKey)).toEqual(draftsBefore);
+    expect(await t.db.select().from(dungeonRevisions).orderBy(dungeonRevisions.id)).toEqual(revisionsBefore);
+  });
+
+  it('keeps unreferenced custom expedition tables deletable and dungeon references scoped to expedition kind', async () => {
+    const id = 'unreferenced-expedition';
+    await service.create('expedition', { id, groups: [] }, ADMIN);
+    expect(await service.delete('expedition', id, 1)).toBe(true);
+    expect(await row('expedition', id)).toBeUndefined();
+    const sharedId = 'same-id-both-kinds';
+    await service.create('expedition', { id: sharedId, groups: [] }, ADMIN);
+    await service.create('boss', simpleBoss(sharedId), ADMIN);
+    await draft('kind_scoped', { rewardTable: sharedId });
+    expect((await service.get('boss', sharedId))!.references).toEqual([]);
+    expect(await service.delete('boss', sharedId, 1)).toBe(true);
+    await expect(service.delete('expedition', sharedId, 1)).rejects.toBeInstanceOf(RewardTableDeleteRefusedError);
+  });
+
+  it.each(['success', 'bonus', 'failure'] as const)('preserves expedition %s deletion protections and disable warnings', async (role) => {
+    const id = `mission-${role}-protection`;
+    await service.create('expedition', { id, groups: [] }, ADMIN);
+    const original = content.expeditions;
+    content.expeditions = [...original, {
+      ...original[0]!, key: `test-${role}`, name: 'Test Mission', enabled: true,
+      ...(role === 'success' ? { rewardTable: id } : role === 'bonus' ? { exceptionalRewardTable: id } : { failureRewardTable: id }),
+    }];
+    try {
+      expect((await service.get('expedition', id))!.references).toEqual([{ role, key: `test-${role}`, name: 'Test Mission', enabled: true }]);
+      await expect(service.delete('expedition', id, 1)).rejects.toThrow(`mission "test-${role}"`);
+      const updated = (await service.update('expedition', id, { table: { id, groups: [], enabled: false }, expectedRevision: 1 }, ADMIN))!;
+      expect(updated.enabled).toBe(false);
+      expect(updated.issues).toEqual([expect.objectContaining({ path: 'enabled', severity: 'warning', message: expect.stringContaining('mission "Test Mission"') })]);
+    } finally {
+      content.expeditions = original;
+    }
   });
 });

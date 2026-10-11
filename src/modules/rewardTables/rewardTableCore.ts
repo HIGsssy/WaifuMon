@@ -84,9 +84,9 @@ export function rewardTableHash(kind: RewardTableKind, table: unknown): string {
 
 /** Something in content that pays from a reward table. */
 export interface RewardTableReference {
-  /** `boss` for a boss; the mission field otherwise. */
-  role: 'boss' | 'success' | 'bonus' | 'failure';
-  /** Boss id or expedition key. */
+  /** `boss`, a mission field, or a dungeon's legacy rewards. */
+  role: 'boss' | 'success' | 'bonus' | 'failure' | 'dungeon';
+  /** Boss id, expedition key or dungeon key. */
   key: string;
   name: string;
   enabled: boolean;
@@ -225,6 +225,8 @@ function disabledReferenceMessage(ref: RewardTableReference): string {
       return `mission "${ref.name}" (${ref.key}) pays no exceptional bonus while this table is disabled`;
     case 'failure':
       return `mission "${ref.name}" (${ref.key}) pays no failure consolation while this table is disabled`;
+    case 'dungeon':
+      return `dungeon "${ref.name}" (${ref.key}) has legacy rewards using this table; new runs pay no rewards from it while disabled (existing runs keep their snapshot)`;
   }
 }
 

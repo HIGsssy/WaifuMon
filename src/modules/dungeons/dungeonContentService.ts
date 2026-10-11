@@ -60,6 +60,7 @@ import type { ArtworkStorage } from '../artworkAssets/artworkStorage';
 import { resolveEnemyVisual, type ManagedEnemyArtwork } from '../artworkAssets/enemyArtworkService';
 import { managedArtworkIndex, managedArtworkKey, resolveManagedArtworkIds } from '../artworkAssets/managedArtworkLookup';
 import { createDungeonImportService, type DungeonImportService } from './package/dungeonImportService';
+import { assertDungeonRewardDependencies } from './dungeonRewardValidation';
 import {
   DUNGEON_ACTION_TYPES,
   DungeonDefinitionSchema,
@@ -524,8 +525,10 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
         if (row.draftRevision !== input.expectedRevision) {
           throw new DungeonDraftStaleError(key, input.expectedRevision, row.draftRevision, row.updatedBy, row.updatedAt);
         }
-        const { definition, issues } = validateDungeonDefinition(row.draft, await validationContext(tx));
-        if (!definition || hasErrors(issues)) throw new DungeonInvalidError(issues);
+        const definition = parseStoredDefinition(key, row.draft);
+        await assertDungeonRewardDependencies(tx, definition);
+        const { issues } = validateDungeonDefinition(definition, await validationContext(tx));
+        if (hasErrors(issues)) throw new DungeonInvalidError(issues);
 
         const current = await publishedInfo(tx, row);
         const active = await activeRunCounts(tx, key);
@@ -580,6 +583,7 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
           .from(dungeonRevisions)
           .where(and(eq(dungeonRevisions.dungeonKey, key), eq(dungeonRevisions.number, input.revision)));
         if (!target) throw new DungeonRevisionNotFoundError(key, input.revision);
+        await assertDungeonRewardDependencies(tx, parseStoredDefinition(key, target.content));
         const active = await activeRunCounts(tx, key);
         const current = await publishedInfo(tx, row);
         if (current?.id === target.id) {

@@ -3,8 +3,9 @@
  * lock, explicit publication, immutable revisions, rollback, audit, export.
  */
 import { eq, sql } from 'drizzle-orm';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { dungeonContentEvents, dungeonDefinitions, dungeonRevisions } from '../../src/db/schema';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { dungeonContentEvents, dungeonDefinitions, dungeonRevisions, dungeonRuns, equipmentDefinitions, items, rewardTables } from '../../src/db/schema';
+import { rewardTableHash } from '../../src/modules/rewardTables/rewardTableCore';
 import { dungeonContentHash, readDungeonPackage, serializeDungeonPackage } from '../../src/modules/dungeons/package/dungeonPackage';
 import {
   DungeonDraftStaleError,
@@ -14,7 +15,7 @@ import {
   DungeonRevisionNotFoundError,
   EnemyInUseError,
 } from '../../src/shared/errors';
-import { testDungeon, testDungeonInput } from '../helpers/dungeonFixtures';
+import { singleRoomDungeon, testDungeon, testDungeonInput } from '../helpers/dungeonFixtures';
 import { createDungeonWorld, type DungeonWorld } from '../helpers/dungeonWorld';
 
 let w: DungeonWorld;
@@ -236,6 +237,210 @@ describe('rollback', () => {
     const key = fresh();
     await w.publish(testDungeonInput(key));
     await expect(w.content.rollback(key, { revision: 7 }, 'admin')).rejects.toBeInstanceOf(DungeonRevisionNotFoundError);
+  });
+});
+
+describe('legacy reward publication integrity', () => {
+  const table = async (id: string, groups: unknown[], enabled = true) => {
+    const definition = { id, enabled, groups };
+    await w.t.db.insert(rewardTables).values({ kind: 'expedition', tableId: id, enabled, definition, contentHash: rewardTableHash('expedition', definition) });
+    return definition;
+  };
+  const lootGroup = (slug: string) => ({ id: 'item', entries: [{ itemId: slug, weight: 1, quantity: 1 }] });
+  const gearGroup = (selector: Record<string, unknown>) => ({ id: 'gear', entries: [], equipment: [{ ...selector, weight: 1 }] });
+  const dungeon = (key: string, reward: { rewardTable?: string; equipmentRewardTable?: string }) => singleRoomDungeon([
+    { id: 'loot', type: 'reward', reward },
+    { id: 'rest', type: 'rest' },
+  ], (d) => { d.key = key; d.name = `Dungeon ${key}`; });
+  const stored = async (key: string) => ({
+    definitions: await w.t.db.select().from(dungeonDefinitions).where(eq(dungeonDefinitions.dungeonKey, key)),
+    revisions: await w.t.db.select().from(dungeonRevisions).where(eq(dungeonRevisions.dungeonKey, key)).orderBy(dungeonRevisions.id),
+    events: await w.t.db.select().from(dungeonContentEvents).where(eq(dungeonContentEvents.dungeonKey, key)).orderBy(dungeonContentEvents.id),
+    runs: await w.t.db.select().from(dungeonRuns).where(eq(dungeonRuns.dungeonKey, key)).orderBy(dungeonRuns.id),
+  });
+
+  it.each(['rewardTable', 'equipmentRewardTable'] as const)('refuses capped items through %s without moving a published pointer', async (field) => {
+    const key = fresh();
+    const slug = `capped_${key}`;
+    await w.t.db.insert(items).values({ slug, name: 'Capped prize', category: 'material', maxOwned: 1 });
+    const id = `rewards-${key}`;
+    await table(id, [lootGroup(slug)]);
+    await w.publish(dungeon(key, {}));
+    const saved = await w.content.saveDraft(key, { definition: dungeon(key, { [field]: id }), expectedRevision: 1 }, 'admin');
+    const before = await stored(key);
+    const error = await w.content.publish(key, { expectedRevision: saved.draftRevision }, 'admin').catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(DungeonInvalidError);
+    expect((error as DungeonInvalidError).issues).toContainEqual(expect.objectContaining({
+      code: 'reward_item_capped', severity: 'error', message: expect.stringContaining(slug),
+    }));
+    expect((error as Error).message).toContain(key);
+    expect((error as Error).message).toContain(id);
+    expect(await stored(key)).toEqual(before);
+  });
+
+  it.each(['rewardTable', 'equipmentRewardTable'] as const)('refuses missing inventory items through %s', async (field) => {
+    const key = fresh();
+    const id = `rewards-${key}`;
+    await table(id, [lootGroup('missing_prize')]);
+    const created = await w.content.create({ definition: dungeon(key, { [field]: id }) }, 'admin');
+    const before = await stored(key);
+    const error = await w.content.publish(key, { expectedRevision: created.draftRevision }, 'admin').catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(DungeonInvalidError);
+    expect((error as DungeonInvalidError).issues).toContainEqual(expect.objectContaining({ code: 'item_missing', severity: 'error', message: expect.stringContaining('missing_prize') }));
+    expect((error as Error).message).toContain(id);
+    expect((error as Error).message).toContain(key);
+    expect(await stored(key)).toEqual(before);
+  });
+
+  it.each([
+    { definitionKeys: ['missing_gear'] },
+    { definitionKeys: ['rusty_pipe'], slot: 'defense' },
+    { definitionKeys: ['rusty_pipe'], rarity: 'R' },
+    { slot: 'attack', rarity: 'SR' },
+  ])('refuses an invalid or empty equipment selection %j', async (selector) => {
+    const key = fresh();
+    const id = `rewards-${key}`;
+    await table(id, [gearGroup(selector)]);
+    // The last selector is made empty against the live database.
+    const disabled = 'definitionKeys' in selector ? [] : await w.t.db.update(equipmentDefinitions).set({ enabled: false })
+      .where(sql`${equipmentDefinitions.slot} = 'attack' and ${equipmentDefinitions.rarity} = 'SR' and ${equipmentDefinitions.enabled} = true`).returning();
+    try {
+      const created = await w.content.create({ definition: dungeon(key, { equipmentRewardTable: id }) }, 'admin');
+      const before = await stored(key);
+      const error = await w.content.publish(key, { expectedRevision: created.draftRevision }, 'admin').catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(DungeonInvalidError);
+      expect((error as DungeonInvalidError).issues).toContainEqual(expect.objectContaining({ code: 'reward_dependency_invalid', severity: 'error', path: expect.stringContaining('.equipment[0]') }));
+      expect((error as Error).message).toContain(id);
+      expect((error as Error).message).toContain(key);
+      expect(await stored(key)).toEqual(before);
+    } finally {
+      for (const row of disabled) await w.t.db.update(equipmentDefinitions).set({ enabled: true }).where(eq(equipmentDefinitions.key, row.key));
+    }
+  });
+
+  it('rejects a malformed equipment selector as a typed dependency error', async () => {
+    const key = fresh();
+    const id = `rewards-${key}`;
+    await w.t.db.insert(rewardTables).values({ kind: 'expedition', tableId: id, enabled: true, contentHash: 'invalid', definition: { id, groups: [gearGroup({ definitionKeys: [] })] } });
+    const created = await w.content.create({ definition: dungeon(key, { rewardTable: id }) }, 'admin');
+    const before = await stored(key);
+    await expect(w.content.publish(key, { expectedRevision: created.draftRevision }, 'admin')).rejects.toMatchObject({
+      issues: [expect.objectContaining({ code: 'reward_dependency_invalid', path: expect.stringContaining('definitionKeys'), message: expect.stringContaining(id) })],
+    });
+    expect(await stored(key)).toEqual(before);
+  });
+
+  it('publishes valid rewards without changing hashes and preserves disabled-table no-payout semantics', async () => {
+    const key = fresh();
+    const id = `rewards-${key}`;
+    await table(id, [lootGroup('sticky_joystick'), gearGroup({ definitionKeys: ['rusty_pipe'] })]);
+    const definition = dungeon(key, { rewardTable: id, equipmentRewardTable: id });
+    const published = await w.publish(definition);
+    expect(published.revision.contentHash).toBe(dungeonContentHash(definition));
+    expect(published.revision.number).toBe(1);
+    expect((await w.content.revision(key, 1))!.content).toEqual(definition);
+    expect(await w.content.publish(key, { expectedRevision: 1 }, 'admin')).toMatchObject({ unchanged: true, revision: { revisionId: published.revision.revisionId } });
+    const disabledKey = fresh();
+    const disabledId = `rewards-${disabledKey}`;
+    await table(disabledId, [lootGroup('sticky_joystick')], false);
+    const off = await w.publish(dungeon(disabledKey, { rewardTable: disabledId }));
+    expect(off.dungeon.issues).toContainEqual(expect.objectContaining({ code: 'reward_table_disabled', severity: 'warning' }));
+  });
+
+  it.each(['missing', 'boss'] as const)('rejects a %s expedition table with dungeon and table context', async (kind) => {
+    const key = fresh();
+    const id = `rewards-${key}`;
+    if (kind === 'boss') {
+      const definition = { id, buddyXp: 10, groups: [lootGroup('sticky_joystick')] };
+      await w.t.db.insert(rewardTables).values({ kind, tableId: id, enabled: true, definition, contentHash: rewardTableHash(kind, definition) });
+    }
+    const created = await w.content.create({ definition: dungeon(key, { rewardTable: id }) }, 'admin');
+    const before = await stored(key);
+    await expect(w.content.publish(key, { expectedRevision: created.draftRevision }, 'admin')).rejects.toMatchObject({
+      issues: [expect.objectContaining({ code: 'reward_table_missing', message: expect.stringContaining(`(${key}), reward table "${id}"`) })],
+    });
+    expect(await stored(key)).toEqual(before);
+  });
+
+  it('revalidates unchanged publication and rollback requests without modifying an already published revision', async () => {
+    const key = fresh();
+    const slug = `prize_${key}`;
+    await w.t.db.insert(items).values({ slug, name: 'Prize', category: 'material' });
+    const id = `rewards-${key}`;
+    await table(id, [lootGroup(slug)]);
+    await w.publish(dungeon(key, { rewardTable: id }));
+    await w.t.db.update(items).set({ maxOwned: 1 }).where(eq(items.slug, slug));
+    const before = await stored(key);
+    await expect(w.content.publish(key, { expectedRevision: 1 }, 'admin')).rejects.toBeInstanceOf(DungeonInvalidError);
+    await expect(w.content.rollback(key, { revision: 1 }, 'admin')).rejects.toBeInstanceOf(DungeonInvalidError);
+    expect(await stored(key)).toEqual(before);
+  });
+
+  it('holds dependency locks through publication and releases them at commit', async () => {
+    const key = fresh();
+    const slug = `locked_${key}`;
+    await w.t.db.insert(items).values({ slug, name: 'Locked prize', category: 'material' });
+    const id = `rewards-${key}`;
+    await table(id, [lootGroup(slug), gearGroup({ definitionKeys: ['rusty_pipe'] })]);
+    const created = await w.content.create({ definition: dungeon(key, { rewardTable: id }) }, 'admin');
+    let release!: () => void;
+    let entered!: () => void;
+    const paused = new Promise<void>((resolve) => { release = resolve; });
+    const validating = new Promise<void>((resolve) => { entered = resolve; });
+    const original = w.enemies.definitions.bind(w.enemies);
+    // General dungeon validation follows reward validation, while its locks
+    // must still be held before the immutable revision/pointer are written.
+    const hold = vi.spyOn(w.enemies, 'definitions').mockImplementationOnce(async (tx) => {
+      entered();
+      await paused;
+      return original(tx);
+    });
+    const publishing = w.content.publish(key, { expectedRevision: created.draftRevision }, 'admin');
+    const writes = [
+      sql`select 1 from ${rewardTables} where ${rewardTables.kind} = 'expedition' and ${rewardTables.tableId} = ${id} for update nowait`,
+      sql`select 1 from ${items} where ${items.slug} = ${slug} for update nowait`,
+      sql`select 1 from ${equipmentDefinitions} where ${equipmentDefinitions.key} = 'rusty_pipe' for update nowait`,
+    ];
+    try {
+      await Promise.race([validating, publishing.then(() => { throw new Error('publication did not pause during validation'); })]);
+      for (const query of writes) {
+        await expect(w.t.db.transaction((tx) => tx.execute(query))).rejects.toMatchObject({ code: '55P03' });
+      }
+    } finally {
+      release();
+      hold.mockRestore();
+      await publishing;
+    }
+    expect(await publishing).toMatchObject({ unchanged: false, revision: { number: 1 } });
+    for (const query of writes) await w.t.db.transaction((tx) => tx.execute(query));
+  });
+
+  it.each(['cap', 'missing_item', 'disabled_gear'] as const)('rejects re-publication and historical rollback after %s changes, preserving revisions and active runs', async (change) => {
+    const key = fresh();
+    const id = `rewards-${key}`;
+    const slug = `prize_${key}`;
+    const [item] = await w.t.db.insert(items).values({ slug, name: 'Uncapped prize', category: 'material' }).returning();
+    await table(id, [lootGroup(slug), gearGroup({ definitionKeys: ['rusty_pipe'] })]);
+    const definition = dungeon(key, { rewardTable: id });
+    await w.publish(definition);
+    const { playerId } = await w.player();
+    await w.runs.start(playerId, key, { seed: 43 });
+    await w.republish(dungeon(key, {}));
+    if (change === 'cap') await w.t.db.update(items).set({ maxOwned: 1 }).where(eq(items.id, item!.id));
+    else if (change === 'missing_item') await w.t.db.delete(items).where(eq(items.id, item!.id));
+    else await w.t.db.update(equipmentDefinitions).set({ enabled: false }).where(eq(equipmentDefinitions.key, 'rusty_pipe'));
+    try {
+      const before = await stored(key);
+      await expect(w.content.rollback(key, { revision: 1 }, 'admin')).rejects.toBeInstanceOf(DungeonInvalidError);
+      expect(await stored(key)).toEqual(before);
+      const saved = await w.content.saveDraft(key, { definition, expectedRevision: 2 }, 'admin');
+      const beforePublish = await stored(key);
+      await expect(w.content.publish(key, { expectedRevision: saved.draftRevision }, 'admin')).rejects.toBeInstanceOf(DungeonInvalidError);
+      expect(await stored(key)).toEqual(beforePublish);
+      expect((await w.content.revisions(key))!.map((r) => [r.number, r.current])).toEqual([[2, true], [1, false]]);
+    } finally {
+      if (change === 'disabled_gear') await w.t.db.update(equipmentDefinitions).set({ enabled: true }).where(eq(equipmentDefinitions.key, 'rusty_pipe'));
+    }
   });
 });
 
