@@ -2,6 +2,7 @@
 import { useContext, useEffect, useState, type CSSProperties } from 'react';
 import { Link, useParams, useBlocker, UNSAFE_DataRouterContext } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import * as api from '@/api/adminDungeons';
 import { isPortalApiError } from '@/api/client';
 import { useHasPermission } from '@/auth/useSession';
@@ -12,7 +13,9 @@ import { ErrorState } from '@/components/layout/ErrorState';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { AssetPickerDialog } from '@/features/adminArtwork/AssetPickerDialog';
 import { ZoneArtworkField } from './ZoneArtworkField';
-import { DungeonIssues, errorIssues } from './zoneFormParts';
+import { errorIssues } from './zoneFormParts';
+import { RunFlagsEditor } from './RunFlagsEditor';
+import { friendlyIssue, incompleteIssues } from './dungeonText';
 import { DungeonGraphView } from './DungeonGraphView';
 import { DungeonImportHistory } from './DungeonImportHistory';
 import { DungeonEditorHeader, type DungeonEditorView } from './DungeonEditorHeader';
@@ -73,6 +76,7 @@ function Management({ initial }: { initial: api.DungeonDetail }) {
   const [viewRevision, setViewRevision] = useState<number | null>(null);
   const [view, setView] = useState<DungeonEditorView>('map');
   const [problemsRequest, setProblemsRequest] = useState(0);
+  const [advancedSettings, setAdvancedSettings] = useState(false);
   const workspace = useViewportFill<HTMLDivElement>();
   const [validation, setValidation] = useState<{
     signature: string;
@@ -186,9 +190,14 @@ function Management({ initial }: { initial: api.DungeonDetail }) {
   });
   const busy = save.isPending || publish.isPending || rollback.isPending || reload.isPending;
   const report = validation?.signature === JSON.stringify(draft) ? validation.report : null;
-  const issues = report?.issues ?? (gameplayDirty ? [] : loaded.issues);
+  // A fight with no enemy chosen cannot be stored at all, so the editor says so
+  // itself; the server's verdict on everything else resumes once it is chosen.
+  const incomplete = incompleteIssues(draft);
+  const serverIssues = report?.issues ?? (gameplayDirty ? [] : loaded.issues);
+  const issues = incomplete.length ? incomplete : serverIssues;
+  const blocksPublish = issues.some((i) => i.severity === 'error');
   useEffect(() => {
-    if (!gameplayDirty || conflict) return;
+    if (!gameplayDirty || conflict || incomplete.length) return;
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
       void api
@@ -205,7 +214,7 @@ function Management({ initial }: { initial: api.DungeonDetail }) {
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [draft, gameplayDirty, conflict]);
+  }, [draft, gameplayDirty, conflict, incomplete.length]);
   const errors = [
     save.error,
     publish.error,
@@ -224,7 +233,7 @@ function Management({ initial }: { initial: api.DungeonDetail }) {
         <h2 className="text-sm font-semibold">Dungeon settings</h2>
         <p className="text-sm text-ink-muted">
           Progression currency: {draft.settings.progressionCurrency ?? 'None'} · Defeat retention:{' '}
-          {draft.settings.defeatCurrencyRetentionBasisPoints / 100}% · {draft.flags.length} flags
+          {draft.settings.defeatCurrencyRetentionBasisPoints / 100}%
         </p>
         <label className="block">
           Name
@@ -293,6 +302,36 @@ function Management({ initial }: { initial: api.DungeonDetail }) {
           onChange={(ref) => patch({ background: ref })}
         />
       </section>
+      <section className="space-y-3">
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-expanded={advancedSettings}
+          onClick={() => setAdvancedSettings(!advancedSettings)}
+        >
+          {advancedSettings ? <ChevronDown /> : <ChevronRight />} Advanced
+        </Button>
+        {draft.flags.length > 0 && !advancedSettings && (
+          <span className="ml-1 text-xs text-ink-muted">
+            Remembers {draft.flags.length} {draft.flags.length === 1 ? 'thing' : 'things'}
+          </span>
+        )}
+        {advancedSettings && (
+          <div className="space-y-3 rounded-lg border border-border p-3">
+            <RunFlagsEditor
+              definition={draft}
+              disabled={!canWrite || busy || conflict}
+              onChange={(definition) => {
+                setDraft(definition);
+                setNotice('');
+              }}
+            />
+            <p className="font-mono text-[0.7rem] break-all text-ink-subtle">
+              Dungeon key: {draft.key}
+            </p>
+          </div>
+        )}
+      </section>
     </div>
   );
   return (
@@ -310,14 +349,15 @@ function Management({ initial }: { initial: api.DungeonDetail }) {
         draftRevision={loaded.draftRevision}
         publishedRevision={loaded.published?.number ?? null}
         dirty={dirty}
-        validationPending={gameplayDirty && !report}
+        validationPending={gameplayDirty && !report && incomplete.length === 0}
         notice={notice}
-        errorCount={issues.filter((i) => i.severity === 'error').length}
+        finishCount={incomplete.length}
+        errorCount={incomplete.length ? 0 : issues.filter((i) => i.severity === 'error').length}
         warningCount={issues.filter((i) => i.severity !== 'error').length}
         canWrite={canWrite}
         canPublish={canPublish}
-        saveDisabled={!dirty || !draft.name.trim() || busy || conflict}
-        publishDisabled={dirty || busy || conflict || issues.some((i) => i.severity === 'error')}
+        saveDisabled={!dirty || !draft.name.trim() || busy || conflict || incomplete.length > 0}
+        publishDisabled={dirty || busy || conflict || blocksPublish}
         validateDisabled={busy || validate.isPending || conflict}
         view={view}
         onSave={() => save.mutate()}
@@ -345,7 +385,16 @@ function Management({ initial }: { initial: api.DungeonDetail }) {
           {errors.map((error, n) => (
             <div key={n}>
               <ErrorState title="Dungeon request failed" error={error} />
-              <DungeonIssues issues={errorIssues(error)} />
+              <ul className="list-disc pl-5 text-sm text-danger">
+                {errorIssues(error).map((issue, i) => {
+                  const text = friendlyIssue(issue, draft, reference.data);
+                  return (
+                    <li key={i} title={`${issue.code} · ${issue.path} · ${issue.message}`}>
+                      {text.title} {text.help}
+                    </li>
+                  );
+                })}
+              </ul>
             </div>
           ))}
         </div>

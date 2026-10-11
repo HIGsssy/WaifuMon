@@ -158,9 +158,9 @@ test('the outline focuses rooms on the canvas and secondary functions keep the w
   await expect(page.getByLabel('Room name', { exact: true })).toHaveValue('Far vault');
   // Being shown a room is not an edit.
   await expect(page.getByText('Unsaved dungeon changes')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Select connection Entrance → Guard post' }).click();
+  await page.getByRole('button', { name: 'Select path Entrance → Guard post' }).click();
   await expect(page.locator('.react-flow__node[data-id="entrance"]')).toBeInViewport();
-  await expect(page.getByLabel('Destination room')).toHaveValue('guard');
+  await expect(page.getByLabel('Path button text')).toBeVisible();
 
   // Collapsing the outline hands its width to the canvas.
   const wide = await box(page, 'Dungeon map canvas');
@@ -175,7 +175,7 @@ test('the outline focuses rooms on the canvas and secondary functions keep the w
   await expect(page.getByRole('button', { name: 'Save draft', exact: true })).toBeInViewport();
   await expect(page.getByRole('button', { name: 'Publish draft', exact: true })).toBeInViewport();
   await page.getByRole('button', { name: 'Map', exact: true }).click();
-  await expect(page.getByLabel('Destination room')).toHaveValue('guard');
+  await expect(page.getByLabel('Path button text')).toBeVisible();
   await expect(page.locator('.react-flow__node')).toHaveCount(3);
 });
 

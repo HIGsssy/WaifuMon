@@ -53,6 +53,18 @@ export const revision: api.DungeonRevision = {
   current: false,
   activeRuns: 1,
 };
+export const reference: api.DungeonReferenceData = {
+  actionTypes: ['reward'],
+  reservedActionTypes: {},
+  enemies: [
+    { key: 'slime', name: 'Slime', enabled: true, attack: 1, defense: 1, hp: 10 },
+    { key: 'golem', name: 'Rust Golem', enabled: true, attack: 9, defense: 5, hp: 90 },
+    { key: 'retired', name: 'Old Sentry', enabled: false, attack: 3, defense: 1, hp: 20 },
+  ],
+  rewardTables: [{ id: 'loot', enabled: true }],
+  currencies: [],
+  regions: [{ id: 'waifu-valley', name: 'Waifu Valley', enabled: true }],
+};
 export function install() {
   vi.spyOn(api, 'getDungeonImportHistory').mockResolvedValue({ imports: [] });
   let stored = fixture();
@@ -60,14 +72,7 @@ export function install() {
   vi.spyOn(api, 'listDungeons').mockImplementation(async () => ({
     dungeons: [structuredClone(stored)],
   }));
-  vi.spyOn(api, 'getDungeonReference').mockResolvedValue({
-    actionTypes: ['reward'],
-    reservedActionTypes: {},
-    enemies: [],
-    rewardTables: [],
-    currencies: [],
-    regions: [{ id: 'waifu-valley', name: 'Waifu Valley', enabled: true }],
-  });
+  vi.spyOn(api, 'getDungeonReference').mockResolvedValue(reference);
   vi.spyOn(api, 'getDungeonSettings').mockResolvedValue({
     dailyRunLimit: 3,
     dailyRunLimitMin: 0,
@@ -176,6 +181,24 @@ export function install() {
       stored = next;
     },
   };
+}
+/** Session and query context for rendering part of the editor on its own. */
+export function renderWith(ui: ReactNode, permissions = PERMISSIONS) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  const session = {
+    status: 'ready',
+    session: { playerId: 1, guildDbId: 1, displayName: 'Author', avatarUrl: null, permissions },
+    error: null,
+  } as unknown as SessionState;
+  return render(
+    <QueryClientProvider client={client}>
+      <SessionContext.Provider value={session}>
+        <MemoryRouter>{ui}</MemoryRouter>
+      </SessionContext.Provider>
+    </QueryClientProvider>,
+  );
 }
 export function renderAt(path = '/admin/dungeons/definitions/tunnels', permissions = PERMISSIONS) {
   const client = new QueryClient({

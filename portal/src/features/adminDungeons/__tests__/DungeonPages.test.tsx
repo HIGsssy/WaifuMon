@@ -108,8 +108,10 @@ describe('Phase 1B.1 dungeon management', () => {
     world.stored = { ...fixture(), issues: [issue] };
     renderAt();
     expect(
-      (await screen.findAllByText(/error: rooms\[0\].actions\[0\].waves\[0\].enemy/))[0],
+      await screen.findByText('Entrance: wave 1 uses an enemy that no longer exists.'),
     ).toBeInTheDocument();
+    expect(screen.getByText('Fix before publishing')).toBeInTheDocument();
+    expect(screen.getByText('Fix the listed items to publish.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Publish draft' })).toBeDisabled();
   });
   it('shows validation returned for local draft edits', async () => {
@@ -122,8 +124,10 @@ describe('Phase 1B.1 dungeon management', () => {
     });
     renderAt();
     await screen.findByLabelText('Dungeon name');
-    await user.click(screen.getByRole('button', { name: 'Validate draft' }));
-    expect((await screen.findAllByText(/warning: rooms/))[0]).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Check again' }));
+    expect(await screen.findByText('Worth a look')).toBeInTheDocument();
+    // A warning is advice: it never blocks publishing.
+    expect(screen.getByRole('button', { name: 'Publish draft' })).toBeEnabled();
   });
   it('keeps publication separate from write permission', async () => {
     renderAt(undefined, ['dungeons.read', 'dungeons.write']);
@@ -154,7 +158,7 @@ describe('Phase 1B.1 dungeon management', () => {
     await screen.findByLabelText('Dungeon name');
     await user.click(screen.getByRole('button', { name: 'Publish draft' }));
     expect(await screen.findByText('Cannot publish')).toBeInTheDocument();
-    expect(screen.getByText(/Enemy ghost is missing/)).toBeInTheDocument();
+    expect(screen.getByText(/wave 1 uses an enemy that no longer exists/)).toBeInTheDocument();
   });
   it('requires confirmation naming the rollback revision and supports cancellation', async () => {
     const user = userEvent.setup();

@@ -15,6 +15,8 @@ export interface DungeonEditorHeaderProps {
   dirty: boolean;
   validationPending: boolean;
   notice: string;
+  /** Items that stop the draft being saved at all. */
+  finishCount: number;
   errorCount: number;
   warningCount: number;
   canWrite: boolean;
@@ -31,17 +33,25 @@ export interface DungeonEditorHeaderProps {
 }
 
 export function DungeonEditorHeader(props: DungeonEditorHeaderProps) {
-  const problems = props.errorCount + props.warningCount;
-  const problemLabel =
-    problems === 0
-      ? 'No validation problems'
-      : [
-          props.errorCount && `${props.errorCount} ${props.errorCount === 1 ? 'error' : 'errors'}`,
-          props.warningCount &&
-            `${props.warningCount} ${props.warningCount === 1 ? 'warning' : 'warnings'}`,
-        ]
-          .filter(Boolean)
-          .join(', ');
+  const plural = (n: number, word: string) => `${n} ${word}`;
+  const todo = props.finishCount
+    ? plural(props.finishCount, 'to finish')
+    : props.errorCount
+      ? plural(props.errorCount, 'to fix')
+      : props.warningCount
+        ? plural(props.warningCount, 'to review')
+        : 'Nothing to fix';
+  const blocking = props.finishCount + props.errorCount;
+  // Why the next step is unavailable, said out loud rather than left as a greyed button.
+  const hint = props.finishCount
+    ? 'Choose an enemy for every wave to save.'
+    : props.dirty
+      ? props.canPublish
+        ? 'Save the draft before publishing.'
+        : ''
+      : props.errorCount && props.canPublish
+        ? 'Fix the listed items to publish.'
+        : '';
   return (
     <header className="shrink-0 space-y-2 bg-canvas md:sticky md:top-16 md:z-20 lg:static">
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
@@ -58,23 +68,22 @@ export function DungeonEditorHeader(props: DungeonEditorHeaderProps) {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button
-            variant={props.errorCount ? 'danger' : 'outline'}
+            variant={blocking ? 'danger' : 'outline'}
             size="sm"
-            aria-label={`Validation: ${problemLabel}. Show problems`}
+            aria-label={`Checklist: ${todo}. Show it`}
             onClick={props.onShowProblems}
           >
-            {problems === 0 ? <CircleCheck /> : <TriangleAlert />}
-            {problems === 0
-              ? 'No problems'
-              : `${problems} ${problems === 1 ? 'problem' : 'problems'}`}
+            {blocking + props.warningCount === 0 ? <CircleCheck /> : <TriangleAlert />}
+            {todo}
           </Button>
           <Button
             variant="ghost"
             size="sm"
+            title="Check the dungeon for problems again"
             disabled={props.validateDisabled}
             onClick={props.onValidate}
           >
-            Validate draft
+            Check again
           </Button>
           {props.canWrite && (
             <Button variant="accent" disabled={props.saveDisabled} onClick={props.onSave}>
@@ -82,11 +91,7 @@ export function DungeonEditorHeader(props: DungeonEditorHeaderProps) {
             </Button>
           )}
           {props.canPublish ? (
-            <Button
-              disabled={props.publishDisabled}
-              title={props.dirty ? 'Save your draft changes before publishing.' : undefined}
-              onClick={props.onPublish}
-            >
+            <Button disabled={props.publishDisabled} onClick={props.onPublish}>
               Publish draft
             </Button>
           ) : (
@@ -111,7 +116,8 @@ export function DungeonEditorHeader(props: DungeonEditorHeaderProps) {
               Unsaved dungeon changes
             </Badge>
           )}
-          {props.validationPending && <span>Validation pending for current edits.</span>}
+          {props.validationPending && <span>Checking your changes…</span>}
+          {hint && <span>{hint}</span>}
           {props.notice && <span role="status">{props.notice}</span>}
         </div>
         <div className="flex gap-1" role="group" aria-label="Editor view">

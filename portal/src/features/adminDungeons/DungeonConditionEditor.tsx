@@ -1,5 +1,14 @@
+/**
+ * A rule in plain words — "Vault is completed", "Lever pulled has happened" —
+ * over the existing condition schema. It reads and writes the same nested
+ * `flag` / `room_completed` / `all` / `any` / `not` data and never reshapes
+ * what it was given.
+ */
 import type { DungeonCondition, DungeonDefinition } from '@/api/adminDungeons';
 import { Button } from '@/components/ui/button';
+import { roomLabel } from './dungeonText';
+
+const select = 'rounded-md border border-border bg-surface px-2 py-1.5 text-sm text-ink';
 
 export function DungeonConditionEditor({
   value,
@@ -11,106 +20,118 @@ export function DungeonConditionEditor({
   value?: DungeonCondition | undefined;
   definition: DungeonDefinition;
   onChange: (value: DungeonCondition | undefined) => void;
+  /** Reads as the start of a sentence, e.g. "This path opens when". */
   label: string;
   allowEmpty?: boolean;
 }) {
   const flagOptions = definition.flags.filter((f) => f.scope === 'run');
   const firstFlag = flagOptions[0]?.key ?? '';
+  const firstRoom = definition.rooms[0]?.id ?? '';
+  // A new rule starts from something that exists, so it is valid as created.
+  const simple = (): DungeonCondition =>
+    firstFlag
+      ? { type: 'flag', flag: firstFlag, scope: 'run', equals: true }
+      : { type: 'room_completed', roomId: firstRoom };
   const initial = (type: string): DungeonCondition | undefined => {
     if (type === 'none') return undefined;
-    if (type === 'room_completed') return { type, roomId: definition.rooms[0]?.id ?? '' };
-    if (type === 'all' || type === 'any')
-      return { type, conditions: [{ type: 'flag', flag: firstFlag, scope: 'run', equals: true }] };
-    if (type === 'not')
-      return { type, condition: { type: 'flag', flag: firstFlag, scope: 'run', equals: true } };
+    if (type === 'room_completed') return { type, roomId: firstRoom };
+    if (type === 'all' || type === 'any') return { type, conditions: [simple()] };
+    if (type === 'not') return { type, condition: simple() };
     return { type: 'flag', flag: firstFlag, scope: 'run', equals: true };
   };
   return (
-    <fieldset className="space-y-2 rounded border border-border p-2">
-      <legend>{label}</legend>
-      <label>
-        Condition type{' '}
-        <select
-          aria-label={`${label} type`}
-          value={value?.type ?? 'none'}
-          onChange={(e) => onChange(initial(e.target.value))}
-        >
-          {allowEmpty && <option value="none">Always / no condition</option>}
-          <option value="flag">Run flag</option>
-          <option value="room_completed">Room completed</option>
-          <option value="all">All conditions</option>
-          <option value="any">Any condition</option>
-          <option value="not">Not</option>
-        </select>
-      </label>
+    <fieldset className="space-y-2 rounded-md border border-border p-2">
+      <legend className="px-1 text-xs font-medium text-ink-muted">{label}</legend>
+      <select
+        aria-label={`${label} type`}
+        className={`${select} w-full`}
+        value={value?.type ?? 'none'}
+        onChange={(e) => onChange(initial(e.target.value))}
+      >
+        {allowEmpty && <option value="none">Always</option>}
+        <option value="room_completed">A room is completed</option>
+        <option value="flag" disabled={!firstFlag && value?.type !== 'flag'}>
+          Something was remembered
+        </option>
+        <option value="all">All of these are true</option>
+        <option value="any">Any of these is true</option>
+        <option value="not">This is not true</option>
+      </select>
+      {!firstFlag && (!value || value.type !== 'flag') && (
+        <p className="text-xs text-ink-subtle">
+          To make a rule about something that happened, first add a “Remember something” activity to
+          a room.
+        </p>
+      )}
       {value?.type === 'flag' && (
         <>
           {value.scope === 'player' ? (
             <p role="alert">
-              Player flag conditions are unsupported.
+              This rule checks something remembered across runs, which is not supported yet.{' '}
               <Button variant="outline" onClick={() => onChange({ ...value, scope: 'run' })}>
-                Use run flag condition
+                Check it within this run instead
               </Button>
             </p>
           ) : (
-            <label>
-              Flag{' '}
+            <div className="flex flex-wrap items-center gap-2">
               <select
                 aria-label={`${label} flag`}
+                className={`${select} min-w-0 flex-1`}
                 value={value.flag}
                 onChange={(e) => onChange({ ...value, flag: e.target.value })}
               >
-                <option value="">Choose a run flag</option>
+                <option value="">Choose what was remembered…</option>
                 {value.flag && !flagOptions.some((f) => f.key === value.flag) && (
-                  <option value={value.flag}>Undeclared: {value.flag}</option>
+                  <option value={value.flag}>Missing ({value.flag})</option>
                 )}
                 {flagOptions.map((f) => (
                   <option key={f.key} value={f.key}>
-                    {f.description || f.key}
+                    {f.description || 'Unnamed note'}
                   </option>
                 ))}
               </select>
-            </label>
+              <select
+                aria-label={`${label} equals`}
+                className={select}
+                value={String(value.equals ?? true)}
+                onChange={(e) => onChange({ ...value, equals: e.target.value === 'true' })}
+              >
+                <option value="true">has happened</option>
+                <option value="false">has not happened</option>
+              </select>
+            </div>
           )}
-          {!flagOptions.some((f) => f.key === value.flag) && (
-            <p role="alert">Declare a run flag or choose an existing one.</p>
+          {value.scope !== 'player' && !flagOptions.some((f) => f.key === value.flag) && (
+            <p role="alert" className="text-xs text-danger">
+              Choose something this dungeon remembers.
+            </p>
           )}
-          <label>
-            Expected value{' '}
-            <select
-              aria-label={`${label} equals`}
-              value={String(value.equals ?? true)}
-              onChange={(e) => onChange({ ...value, equals: e.target.value === 'true' })}
-            >
-              <option value="true">True</option>
-              <option value="false">False</option>
-            </select>
-          </label>
         </>
       )}
       {value?.type === 'room_completed' && (
-        <label>
-          Room{' '}
+        <div className="flex flex-wrap items-center gap-2">
           <select
             aria-label={`${label} room`}
+            className={`${select} min-w-0 flex-1`}
             value={value.roomId}
             onChange={(e) => onChange({ ...value, roomId: e.target.value })}
           >
             {!definition.rooms.some((r) => r.id === value.roomId) && (
-              <option value={value.roomId}>Missing: {value.roomId}</option>
+              <option value={value.roomId}>Missing room</option>
             )}
             {definition.rooms.map((r) => (
               <option key={r.id} value={r.id}>
-                {r.name || r.id}
+                {roomLabel(r)}
               </option>
             ))}
           </select>
-        </label>
+          <span className="text-sm">is completed</span>
+        </div>
       )}
       {(value?.type === 'all' || value?.type === 'any') && (
         <>
           {value.conditions.map((child, index) => (
-            <div key={index}>
+            <div key={index} className="space-y-1">
               <DungeonConditionEditor
                 value={child}
                 definition={definition}
@@ -124,23 +145,30 @@ export function DungeonConditionEditor({
                   })
                 }
               />
-              <Button
-                variant="outline"
-                onClick={() =>
-                  onChange({ ...value, conditions: value.conditions.filter((_, i) => i !== index) })
-                }
-              >
-                Remove {label} condition {index + 1}
-              </Button>
+              {value.conditions.length > 1 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label={`Remove ${label} ${index + 1}`}
+                  onClick={() =>
+                    onChange({
+                      ...value,
+                      conditions: value.conditions.filter((_, i) => i !== index),
+                    })
+                  }
+                >
+                  Remove this rule
+                </Button>
+              )}
             </div>
           ))}
           <Button
             variant="outline"
-            onClick={() =>
-              onChange({ ...value, conditions: [...value.conditions, initial('flag')!] })
-            }
+            size="sm"
+            aria-label={`Add to ${label}`}
+            onClick={() => onChange({ ...value, conditions: [...value.conditions, simple()] })}
           >
-            Add {label} condition
+            Add another rule
           </Button>
         </>
       )}
@@ -148,7 +176,7 @@ export function DungeonConditionEditor({
         <DungeonConditionEditor
           value={value.condition}
           definition={definition}
-          label={`${label} negated`}
+          label={`${label} (not)`}
           allowEmpty={false}
           onChange={(next) => next && onChange({ ...value, condition: next })}
         />

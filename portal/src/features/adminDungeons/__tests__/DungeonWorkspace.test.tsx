@@ -67,7 +67,7 @@ describe('dungeon editor workspace', () => {
     await user.click(inspector().getByRole('button', { name: 'Show dungeon settings' }));
     expect(inspector().getByLabelText('Dungeon name')).toBeInTheDocument();
   });
-  it('names connections by their rooms and selects them from the outline', async () => {
+  it('names paths by their rooms and selects them from the outline', async () => {
     const draft = fixture().draft;
     world.stored = {
       ...fixture(),
@@ -82,34 +82,55 @@ describe('dungeon editor workspace', () => {
     };
     const user = userEvent.setup();
     renderAt();
+    await user.click(await screen.findByRole('button', { name: 'Select path Entrance → Vault' }));
+    expect(inspector().getByLabelText('Open path')).toBeChecked();
     await user.click(
-      await screen.findByRole('button', { name: 'Select connection Entrance → Vault' }),
+      screen.getByRole('button', { name: 'Select path Entrance → Vault (Side door)' }),
     );
-    expect(inspector().getByLabelText('Destination room')).toHaveValue('r_vault');
-    await user.click(
-      screen.getByRole('button', { name: 'Select connection Side door (Entrance → Vault)' }),
-    );
-    expect(inspector().getByLabelText('Connection label')).toHaveValue('Side door');
-    expect(outline().queryByText(/c_0f3a|c_77be/)).not.toBeInTheDocument();
+    expect(inspector().getByLabelText('Path button text')).toHaveValue('Side door');
+    for (const pane of [
+      screen.getByRole('navigation', { name: 'Dungeon outline' }),
+      screen.getByRole('complementary', { name: 'Map inspector' }),
+    ])
+      expect(pane).not.toHaveTextContent(/c_0f3a|c_77be|r_vault/);
   });
-  it('counts problems in the header and reveals the located list', async () => {
+  it('counts what is left to do in the header and reveals the checklist', async () => {
     world.stored = { ...fixture(), issues: [issue, { ...issue, severity: 'warning', path: '' }] };
     const user = userEvent.setup();
     renderAt();
-    const problems = await screen.findByRole('button', {
-      name: 'Validation: 1 error, 1 warning. Show problems',
-    });
-    expect(problems).toHaveTextContent('2 problems');
-    const section = outline().getByRole('button', { name: /^Problems/ });
+    const todo = await screen.findByRole('button', { name: 'Checklist: 1 to fix. Show it' });
+    const section = outline().getByRole('button', { name: /^To do/ });
     await user.click(section);
     expect(section).toHaveAttribute('aria-expanded', 'false');
     await user.click(screen.getByRole('button', { name: 'Hide outline' }));
-    await user.click(problems);
+    await user.click(todo);
     expect(section).toHaveAttribute('aria-expanded', 'true');
     expect(screen.queryByRole('button', { name: 'Show outline' })).not.toBeInTheDocument();
-    await user.click(outline().getByRole('button', { name: 'Locate issue 1' }));
+    expect(outline().getByText('Fix before publishing')).toBeInTheDocument();
+    expect(outline().getByText('Worth a look')).toBeInTheDocument();
+    await user.click(
+      outline().getByRole('button', {
+        name: 'Show me: Entrance: wave 1 uses an enemy that no longer exists.',
+      }),
+    );
     expect(inspector().getByLabelText('Room name')).toHaveValue('Entrance');
-    expect(outline().getAllByText(/Enemy ghost is missing/)).toHaveLength(2);
+  });
+  it('keeps what the dungeon remembers in dungeon-level Advanced settings, not in rooms', async () => {
+    const user = userEvent.setup();
+    renderAt();
+    await screen.findByLabelText('Dungeon name');
+    expect(screen.queryByText('Things this dungeon remembers')).not.toBeInTheDocument();
+    await user.click(inspector().getByRole('button', { name: 'Advanced' }));
+    await user.click(inspector().getByRole('button', { name: 'Add something to remember' }));
+    await user.clear(inspector().getByLabelText('Remembered thing 1'));
+    await user.type(inspector().getByLabelText('Remembered thing 1'), 'Lever pulled');
+    await user.click(screen.getByRole('button', { name: 'Select room Entrance' }));
+    expect(inspector().queryByText(/remembers|flag/i)).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Save draft' }));
+    await screen.findByText('Draft saved. Publication is unchanged.');
+    expect(world.stored.draft.flags).toEqual([
+      expect.objectContaining({ scope: 'run', description: 'Lever pulled' }),
+    ]);
   });
   it('collapses and restores the outline without losing the selection', async () => {
     const user = userEvent.setup();

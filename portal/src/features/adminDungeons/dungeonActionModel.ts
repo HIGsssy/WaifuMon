@@ -1,6 +1,6 @@
 import type {
   DungeonAction,
-  DungeonReferenceData,
+  DungeonDefinition,
   DungeonRoom,
   DungeonIssue,
 } from '@/api/adminDungeons';
@@ -31,18 +31,24 @@ export function actionId(actions: DungeonAction[], uuid = () => crypto.randomUUI
     if (!ids.has(id)) return id;
   }
 }
+/**
+ * A new action with the type's defaults. Nothing is guessed on the author's
+ * behalf: a fight starts with one wave and no enemy chosen, which the editor
+ * asks for before the draft can be saved.
+ */
 export function createAction(
   type: ActionType,
   actions: DungeonAction[],
-  reference?: DungeonReferenceData,
+  definition?: Pick<DungeonDefinition, 'entranceRoomId' | 'flags'>,
 ): DungeonAction {
+  const flag = definition?.flags.find((f) => f.scope === 'run')?.key ?? '';
   const base = { id: actionId(actions), type, label: '', optional: false, outcomes: {} };
   switch (type) {
     case 'combat':
     case 'boss':
       return {
         ...base,
-        waves: [{ enemy: { key: reference?.enemies.find((e) => e.enabled)?.key ?? '' } }],
+        waves: [{ enemy: { key: '' } }],
         advance: 'confirm',
       };
     case 'reward':
@@ -55,11 +61,13 @@ export function createAction(
     case 'gate':
       return {
         ...base,
-        requires: { type: 'flag', flag: '', scope: 'run', equals: true },
+        requires: flag
+          ? { type: 'flag', flag, scope: 'run', equals: true }
+          : { type: 'room_completed', roomId: definition?.entranceRoomId ?? '' },
         blockedText: '',
       };
     case 'set_flag':
-      return { ...base, flag: '', scope: 'run', value: true };
+      return { ...base, flag, scope: 'run', value: true };
     case 'leave':
       return base;
   }
@@ -104,15 +112,4 @@ export function actionIssues(issues: DungeonIssue[], roomIndex: number, actionIn
   return issues.filter(
     (i) => i.path === prefix || i.path.startsWith(`${prefix}.`) || i.path.startsWith(`${prefix}[`),
   );
-}
-export function actionSummary(action: DungeonAction) {
-  if (action.type === 'combat' || action.type === 'boss')
-    return `${action.waves?.length ?? 0} waves · ${action.advance ?? 'confirm'}`;
-  if (action.type === 'reward')
-    return `${action.reward?.rewardTable ?? 'No table'} · currency ${action.reward?.currency.min ?? 0}–${action.reward?.currency.max ?? 0}`;
-  if (action.type === 'rest') return `Heal ${(action.healBasisPoints ?? 3000) / 100}%`;
-  if (action.type === 'set_flag')
-    return `${action.flag || 'Choose flag'} = ${action.value ?? true}`;
-  if (action.type === 'gate') return 'Condition gate';
-  return action.connectionId ? `Connection ${action.connectionId}` : 'Complete room';
 }

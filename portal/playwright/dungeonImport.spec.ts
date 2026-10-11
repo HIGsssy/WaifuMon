@@ -116,13 +116,11 @@ test('upload, review an enemy conflict, import a draft and open it', async ({ pa
   });
   await page.goto('/admin/dungeons');
   await page.getByRole('button', { name: 'Import Dungeon', exact: true }).click();
-  await page
-    .getByLabel('Dungeon package file')
-    .setInputFiles({
-      name: 'dungeon.json',
-      mimeType: 'application/json',
-      buffer: Buffer.from(JSON.stringify(pkg)),
-    });
+  await page.getByLabel('Dungeon package file').setInputFiles({
+    name: 'dungeon.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify(pkg)),
+  });
   await expect(page.getByText('Source environment: staging')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Apply import as draft' })).toBeDisabled();
   await page.getByLabel('Approve create dungeon draft').check();
@@ -134,5 +132,7 @@ test('upload, review an enemy conflict, import a draft and open it', async ({ pa
   await page.getByRole('link', { name: 'Open imported dungeon draft' }).click();
   await expect(page).toHaveURL(/\/definitions\/imported$/);
   await expect(page.getByRole('heading', { name: 'Imported dungeon' })).toBeVisible();
-  await expect(page.getByText('Disabled · Draft 1 · Unpublished')).toBeVisible();
+  // The editor header states each of these as its own badge.
+  for (const badge of ['Disabled', 'Draft 1', 'Unpublished'])
+    await expect(page.getByText(badge, { exact: true })).toBeVisible();
 });
