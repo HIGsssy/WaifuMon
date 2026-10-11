@@ -55,6 +55,7 @@
  */
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import type { Db, DbOrTx } from '../../db/client';
+import { managedArtworkKey, resolveManagedArtworkIds } from '../artworkAssets/managedArtworkLookup';
 import {
   artworkAssets,
   dungeonRunEvents,
@@ -324,7 +325,6 @@ const BANK_REASON = {
   abandoned: 'dungeon_abandon',
 } as const;
 
-const managedArtworkKey = (ref: { category: string; contentHash: string }) => `${ref.category}:${ref.contentHash}`;
 
 /** A definition's artwork reference as the artwork layer resolves one. */
 export function resolveDungeonArtwork(ref: DungeonArtworkRef | null, managed: Readonly<Record<string, string | null>>): ArtworkRef {
@@ -390,20 +390,10 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
 
   /** Which active managed asset each `<category>:<hash>` reference resolves to here. */
   async function resolveManagedArtwork(tx: DbOrTx, refs: readonly DungeonArtworkRef[]): Promise<Record<string, string | null>> {
-    const managed = refs.filter((r): r is Extract<DungeonArtworkRef, { kind: 'managed' }> => r.kind === 'managed');
-    const out: Record<string, string | null> = Object.fromEntries(managed.map((r) => [managedArtworkKey(r), null]));
-    if (managed.length === 0) return out;
-    const rows = await tx
-      .select({ id: artworkAssets.id, category: artworkAssets.category, contentHash: artworkAssets.contentHash })
-      .from(artworkAssets)
-      .where(and(eq(artworkAssets.status, 'active'), inArray(artworkAssets.contentHash, [...new Set(managed.map((r) => r.contentHash))])))
-      .orderBy(asc(artworkAssets.createdAt));
-    for (const row of rows) {
-      const key = managedArtworkKey(row);
-      // Uploads are not deduplicated: the oldest active match is the one a reference means.
-      if (key in out && out[key] == null) out[key] = row.id;
-    }
-    return out;
+    return resolveManagedArtworkIds(
+      tx,
+      refs.filter((r): r is Extract<DungeonArtworkRef, { kind: 'managed' }> => r.kind === 'managed'),
+    );
   }
 
   async function card(tx: DbOrTx, playerId: number, definition: DungeonDefinition): Promise<DungeonCard> {

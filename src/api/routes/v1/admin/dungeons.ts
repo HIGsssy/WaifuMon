@@ -30,7 +30,8 @@
  * verifies a file on its own terms.
  */
 import { z } from 'zod';
-import type { FastifyRequest } from 'fastify';
+import { readFile } from 'node:fs/promises';
+import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { ApiContext } from '../../../context';
 import type { FastifyPluginAsyncZod } from '../../../plugins/typeProvider';
 import { dataSchema, ok } from '../../../plugins/responseEnvelope';
@@ -75,8 +76,18 @@ import {
   DUNGEON_ID_MAX_LENGTH,
   DUNGEON_KEY_MAX_LENGTH,
   DUNGEON_KEY_PATTERN,
+  DungeonArtworkRefSchema,
+  type DungeonArtworkRef,
   type DungeonDefinition,
 } from '../../../../modules/dungeons/content/dungeonDefinition';
+import { resolveEnemyVisual } from '../../../../modules/artworkAssets/enemyArtworkService';
+import { locateCombatArtwork } from '../../../../modules/combat/combatArtwork';
+import {
+  composeFightScene,
+  playerBuddySpriteLayer,
+  type ArtworkRef,
+} from '../../../../modules/artworkAssets/sceneLayers';
+import { mirrorsPlayerBuddy } from '../../../../modules/artworkAssets/scenePlacement';
 import { DungeonEngineContentError } from '../../../../modules/dungeons/engine/combat';
 import { autoPlayDungeonSandbox, createDungeonSandbox } from '../../../../modules/dungeons/engine/sandbox';
 import type { DungeonInput, EngineDependencies } from '../../../../modules/dungeons/engine/types';
@@ -200,6 +211,8 @@ const referenceSchema = z.object({
       attack: z.number().int(),
       defense: z.number().int(),
       hp: z.number().int(),
+      sprite: z.boolean(),
+      artwork: z.boolean(),
     }),
   ),
   rewardTables: z.array(z.object({ id: z.string(), enabled: z.boolean() })),
@@ -428,6 +441,10 @@ async function translate<T>(work: () => Promise<T>): Promise<T> {
     throw withDetails(err);
   }
 }
+
+/** Reply shape for a binary body; the zod provider only types JSON replies. */
+type BinaryReply = { header(k: string, v: string): BinaryReply; send(payload: Buffer): unknown };
+const binaryReply = (reply: FastifyReply) => reply as unknown as BinaryReply;
 
 export const adminDungeonRoutes =
   (ctx: ApiContext): FastifyPluginAsyncZod =>
@@ -996,6 +1013,132 @@ export const adminDungeonRoutes =
       async (req) =>
         ok(req, await searchAdminArtwork(assetsDir, DUNGEON_ARTWORK_ROOTS, req.query.q, req.query.limit)),
     );
+
+    /**
+     * What a run would actually show, for the editor. Both resolve artwork by
+     * the rules gameplay uses (`managedArtworkLookup`, `composeFightScene`),
+     * so a preview that appears is a picture players get, and a 404 is a
+     * picture they do not.
+     */
+    const artworkAssets = ctx.services.artworkAssets;
+    const scenes = ctx.services.sceneComposition;
+    const enemyCatalogue = ctx.services.enemies;
+    const resolvedArtwork = async (ref: DungeonArtworkRef | null | undefined): Promise<ArtworkRef | null> => {
+      if (!ref) return null;
+      if (ref.kind === 'shipped') return { artworkPath: ref.path };
+      const assetId = await contentService.resolveManagedArtwork(ref);
+      return assetId ? { assetId } : null;
+    };
+    if (artworkAssets) {
+      app.get(
+        '/admin/dungeons/artwork/managed',
+        {
+          preValidation: gate('dungeons.read'),
+          schema: {
+            tags,
+            summary:
+              'Stream the managed image a dungeon reference (category + content hash) resolves to on this server, ' +
+              'as a run would resolve it. 404 when no active asset holds or held those bytes',
+            querystring: z.object({
+              category: z.string().min(1).max(40),
+              contentHash: z.string().regex(/^[a-f0-9]{64}$/),
+            }),
+            response: { ...notFoundResponse, ...commonErrorResponses },
+          },
+        },
+        async (req, reply) => {
+          const resolved = await resolvedArtwork({ kind: 'managed', ...req.query });
+          const found = resolved?.assetId ? await artworkAssets.readUsable(resolved.assetId) : null;
+          if (!found) {
+            throw new AppError('NOT_FOUND', 'Managed dungeon artwork not available', 'That image is not available on this server.');
+          }
+          binaryReply(reply)
+            .header('content-type', found.asset.mimeType)
+            .header('x-content-type-options', 'nosniff')
+            .header('cache-control', 'private, no-cache')
+            .send(found.bytes);
+          return reply;
+        },
+      );
+    }
+    if (scenes && enemyCatalogue) {
+      app.post(
+        '/admin/dungeons/scene-preview',
+        {
+          preValidation: gate('dungeons.read'),
+          schema: {
+            tags,
+            summary:
+              'The picture a fight against one enemy shows, composed as a run composes it: the first usable ' +
+              'background (else a plain stage), a stand-in Buddy and the enemy sprite — or, for an enemy with no ' +
+              'usable sprite, its full artwork alone, unchanged and without the Buddy. `x-dungeon-scene` is `sprite` or `full-art`; ' +
+              '`x-dungeon-scene-background` is the index of the background used, or `plain`. Persists nothing ' +
+              'but the render cache',
+            body: z
+              .object({
+                enemyKey: z.string().min(1).max(100),
+                /** In fallback order: the room's own background, the dungeon background, the dungeon artwork. */
+                backgrounds: z.array(DungeonArtworkRefSchema.nullable()).max(4).default([]),
+              })
+              .strict(),
+            response: { ...notFoundResponse, ...commonErrorResponses },
+          },
+        },
+        async (req, reply) => {
+          const catalogue = await enemyCatalogue.snapshot();
+          const enemy = catalogue.definitions.find((e) => e.key === req.body.enemyKey);
+          if (!enemy) throw new AppError('NOT_FOUND', `Enemy ${req.body.enemyKey} not found`, 'That enemy is not in the Enemy Catalogue.');
+          const visual = resolveEnemyVisual(enemy, catalogue.artwork[enemy.key]);
+          // The Buddy is the player's, never authored: any species with a sprite stands in.
+          const species = ctx.getContent().species;
+          let playerBuddy: { layer: NonNullable<ReturnType<typeof playerBuddySpriteLayer>>; mirror: boolean; label: string } | null = null;
+          for (const slug of species.map((s) => s.slug).sort()) {
+            const layer = playerBuddySpriteLayer(assetsDir, slug);
+            if (layer) {
+              playerBuddy = { layer, mirror: mirrorsPlayerBuddy(species.find((s) => s.slug === slug)?.spriteFacing), label: slug };
+              break;
+            }
+          }
+          const backgrounds = await Promise.all(req.body.backgrounds.map((ref) => resolvedArtwork(ref)));
+          const layers = { assets: artworkAssets, assetsDir, scenes };
+          if (visual.spriteAssetId || visual.spriteArtworkPath) {
+            const composed = await composeFightScene(layers, {
+              backgrounds,
+              sprite: { ref: { assetId: visual.spriteAssetId, artworkPath: visual.spriteArtworkPath }, placement: visual.spritePlacement },
+              playerBuddy,
+            });
+            if (composed) {
+              binaryReply(reply)
+                .header('content-type', composed.scene.contentType)
+                .header('x-content-type-options', 'nosniff')
+                .header('cache-control', 'private, no-cache')
+                .header('x-dungeon-scene', 'sprite')
+                .header('x-dungeon-scene-background', String(composed.background))
+                .send(await readFile(composed.scene.absolutePath));
+              return reply;
+            }
+          }
+          // No usable sprite: the enemy's full artwork is the whole picture, as it is — no Buddy over it.
+          const managedArt = (await artworkAssets?.readUsable(visual.artworkAssetId)) ?? null;
+          const shippedArt = managedArt ? null : locateCombatArtwork(assetsDir, visual.artworkPath);
+          const art = managedArt
+            ? { bytes: managedArt.bytes, contentType: managedArt.asset.mimeType as string }
+            : shippedArt?.status === 'available'
+              ? { bytes: await readFile(shippedArt.absolutePath), contentType: shippedArt.contentType }
+              : null;
+          if (!art) {
+            throw new AppError('NOT_FOUND', 'Enemy has no usable artwork', 'This enemy has no sprite or artwork that can be shown.');
+          }
+          binaryReply(reply)
+            .header('content-type', art.contentType)
+            .header('x-content-type-options', 'nosniff')
+            .header('cache-control', 'private, no-cache')
+            .header('x-dungeon-scene', 'full-art')
+            .send(art.bytes);
+          return reply;
+        },
+      );
+    }
 
     // Delve-wide settings. Registered only where the allowance service is wired.
     const allowance = ctx.services.dungeonAllowance;

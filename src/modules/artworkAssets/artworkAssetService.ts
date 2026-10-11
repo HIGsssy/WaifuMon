@@ -26,6 +26,7 @@
 import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, ilike, inArray, ne, or, sql, type SQL } from 'drizzle-orm';
 import type { Db, DbOrTx } from '../../db/client';
+import { managedArtworkHashesOf } from './managedArtworkLookup';
 import {
   ARTWORK_ASSET_CATEGORIES,
   BOSS_ACTIVE_STATUSES,
@@ -121,7 +122,10 @@ export interface ArtworkAssetService {
     input: { bytes: Buffer; filename?: string | undefined },
     actor: string | null,
   ): Promise<ArtworkAsset | null>;
-  /** Rename or re-categorise. */
+  /**
+   * Rename or re-categorise.
+   * @throws {ArtworkAssetInUseError} moving category while a dungeon references the asset.
+   */
   update(
     id: string,
     patch: { name?: string | undefined; category?: ArtworkAssetCategory | undefined },
@@ -254,8 +258,13 @@ export function createArtworkAssetService(deps: ArtworkAssetServiceDeps): Artwor
       .from(artworkAssets)
       .where(eq(artworkAssets.id, wanted));
     if (asset) {
+      // A dungeon may still name the bytes this asset held before its image was replaced.
+      const hashes = await managedArtworkHashesOf(tx, wanted, asset.contentHash);
       for (const doc of await readDungeonContentDocuments(tx)) {
-        for (const field of dungeonDocumentArtworkFields(doc.definition, asset)) {
+        const fields = new Set(
+          hashes.flatMap((contentHash) => dungeonDocumentArtworkFields(doc.definition, { category: asset.category, contentHash })),
+        );
+        for (const field of fields) {
           out.push({ kind: 'dungeon_zone', key: doc.dungeonKey, name: doc.name, field: `${doc.source}.${field}` });
         }
       }
@@ -423,6 +432,12 @@ export function createArtworkAssetService(deps: ArtworkAssetServiceDeps): Artwor
         const name = patch.name === undefined ? row.name : cleanName(patch.name, row.name);
         const category = patch.category ?? row.category;
         if (name === row.name && category === row.category) return toAsset(row);
+        if (category !== row.category) {
+          // A dungeon names this image by category and hash — current or pre-replacement — and
+          // would silently lose it, published revisions included. Other users hold the id.
+          const dungeons = (await referencesOf(tx, row.id)).filter((r) => r.kind === 'dungeon_zone');
+          if (dungeons.length > 0) throw new ArtworkAssetInUseError(row.id, dungeons, 'recategorise');
+        }
         const [updated] = await tx
           .update(artworkAssets)
           .set({ name, category, updatedBy: actor, updatedAt: new Date() })

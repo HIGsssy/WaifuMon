@@ -2,7 +2,7 @@
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { Db, DbOrTx } from '../../../db/client';
 import {
@@ -167,7 +167,17 @@ export interface DungeonImportDeps {
   getItemSlugs?: (() => readonly string[]) | undefined;
   assetsDir?: string | undefined;
   artworkStorage?: Pick<ArtworkStorage, 'exists'> | undefined;
+  /**
+   * The asset each managed reference (`<category>:<hash>`) means here, by the
+   * lookup validation and runs share (`managedArtworkLookup`). Injected: this
+   * module is reachable from the engine's import graph.
+   */
+  resolveManagedArtwork: (
+    tx: DbOrTx,
+    refs: readonly { category: string; contentHash: string }[],
+  ) => Promise<Record<string, string | null>>;
 }
+const managedArtworkKey = (ref: { category: string; contentHash: string }) => `${ref.category}:${ref.contentHash}`;
 export function importHash(value: unknown): string {
   return `sha256:${createHash('sha256').update(canonicalJson(value)).digest('hex')}`;
 }
@@ -276,24 +286,20 @@ export function createDungeonImportService(deps: DungeonImportDeps): DungeonImpo
         : await currencyQuery
       : [];
     const managedRefs = dependency.artwork.filter((a) => a.kind === 'managed');
+    // The asset each reference means here, by the lookup validation and runs share — an image
+    // replaced since the package was exported included — so the plan reports what a player gets.
+    const managedIds = await deps.resolveManagedArtwork(tx, managedRefs);
+    const managedAssetIds = [...new Set(Object.values(managedIds).filter((id): id is string => id != null))];
     const managedQuery = tx
       .select()
       .from(artworkAssets)
-      .where(
-        and(
-          eq(artworkAssets.status, 'active'),
-          or(
-            ...managedRefs.map((a) =>
-              and(sql`${artworkAssets.category} = ${a.category}`, eq(artworkAssets.contentHash, a.contentHash)),
-            ),
-          ),
-        ),
-      )
+      .where(and(eq(artworkAssets.status, 'active'), inArray(artworkAssets.id, managedAssetIds)))
       .orderBy(asc(artworkAssets.id));
-    const managed = managedRefs.length ? (lock ? await managedQuery.for('share') : await managedQuery) : [];
+    const managed = managedAssetIds.length ? (lock ? await managedQuery.for('share') : await managedQuery) : [];
     const managedState = await Promise.all(
       managed.map(async (a) => ({
         id: a.id,
+        name: a.name,
         category: a.category,
         hash: a.contentHash,
         version: a.version,
@@ -318,7 +324,9 @@ export function createDungeonImportService(deps: DungeonImportDeps): DungeonImpo
       rewardTables: new Map(tables.map((t) => [t.tableId, { enabled: t.enabled }])),
       currencies: new Map(currencies.map((c) => [c.currencyKey, { enabled: c.enabled }])),
       regions: new Map(regions.map((r) => [r.id, { enabled: r.enabled }])),
-      managedArtwork: new Set(managedState.filter((a) => a.present).map((a) => `${a.category}:${a.hash}`)),
+      managedArtwork: new Set(
+        managedRefs.map(managedArtworkKey).filter((key) => managedState.some((a) => a.id === managedIds[key] && a.present)),
+      ),
       shippedArtworkExists: ship,
     };
     // Gear selectors may name keys or whole pools. Lock the selector catalogue only when a table uses gear.
@@ -368,6 +376,16 @@ export function createDungeonImportService(deps: DungeonImportDeps): DungeonImpo
           path: `dependencies.${member}`,
           message: `Phase 1A dungeons do not reference ${member} directly; this reserved manifest member must be empty.`,
         });
+    for (const ref of managedRefs) {
+      const asset = managedState.find((a) => a.id === managedIds[managedArtworkKey(ref)] && a.present);
+      if (asset && asset.hash !== ref.contentHash)
+        issues.push({
+          code: 'artwork_replaced',
+          severity: 'warning',
+          path: 'assets',
+          message: `Managed ${ref.category} artwork ${ref.contentHash.slice(0, 12)}… (${ref.name ?? 'unnamed'}) is no longer stored here: its image was replaced, and the dungeon will show the replacement (${asset.name}).`,
+        });
+    }
     if (managed.length && !deps.artworkStorage)
       issues.push({
         code: 'artwork_unverified',

@@ -155,6 +155,10 @@ export interface DungeonReferenceData {
     attack: number;
     defense: number;
     hp: number;
+    /** A transparent combat sprite is configured: fights compose it over the background. */
+    sprite?: boolean;
+    /** Full artwork is configured: what a fight shows when there is no usable sprite. */
+    artwork?: boolean;
   }>;
   rewardTables: Array<{ id: string; enabled: boolean }>;
   currencies: Array<{ key: string; singularName: string; pluralName: string; enabled: boolean }>;
@@ -345,6 +349,56 @@ export async function dungeonArtworkBlob(path: string): Promise<Blob> {
     responseType: 'blob',
   });
   return response.data;
+}
+
+/**
+ * Bytes of the uploaded image a dungeon reference resolves to on this server,
+ * found the way a run finds it. 404 when players would not get it either.
+ */
+export async function managedDungeonArtworkBlob(
+  category: string,
+  contentHash: string,
+): Promise<Blob> {
+  const response = await apiClient.get<Blob>(`${base}/artwork/managed`, {
+    params: { category, contentHash },
+    responseType: 'blob',
+  });
+  return response.data;
+}
+
+/** One preview source string per reference, so a preview reloads exactly when the reference changes. */
+export const dungeonArtworkSource = (ref: DungeonArtworkRef | null | undefined): string | null =>
+  !ref
+    ? null
+    : ref.kind === 'shipped'
+      ? `shipped:${ref.path}`
+      : `managed:${ref.category}:${ref.contentHash}`;
+export interface DungeonScenePreview {
+  image: Blob;
+  /** `sprite`: the enemy's combat sprite on a background. `full-art`: no usable sprite, so its full artwork. */
+  mode: 'sprite' | 'full-art';
+  /** Which of the offered backgrounds was used (its index), or the plain stage when none could be. */
+  background: number | 'plain' | null;
+}
+/**
+ * The picture a fight against one enemy shows, composed by the same renderer
+ * a run uses. `backgrounds` are in fallback order (room, dungeon background,
+ * dungeon artwork). Rejects with a 404 when the enemy has nothing to show.
+ */
+export async function previewDungeonScene(
+  input: { enemyKey: string; backgrounds: Array<DungeonArtworkRef | null> },
+  signal?: AbortSignal,
+): Promise<DungeonScenePreview> {
+  const response = await apiClient.post<Blob>(`${base}/scene-preview`, input, {
+    responseType: 'blob',
+    ...(signal ? { signal } : {}),
+  });
+  const used = String(response.headers['x-dungeon-scene-background'] ?? '');
+  return {
+    image: response.data,
+    mode: response.headers['x-dungeon-scene'] === 'full-art' ? 'full-art' : 'sprite',
+    background: used === 'plain' ? 'plain' : used === '' ? null : Number(used),
+  };
 }
 
 /** One folder of dungeon artwork for the picker (`dungeons/` only, server-chosen). */

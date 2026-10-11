@@ -11,11 +11,10 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { ErrorState } from '@/components/layout/ErrorState';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { AssetPickerDialog } from '@/features/adminArtwork/AssetPickerDialog';
-import { ZoneArtworkField } from './ZoneArtworkField';
 import { errorIssues } from './zoneFormParts';
 import { RunFlagsEditor } from './RunFlagsEditor';
 import { friendlyIssue, incompleteIssues } from './dungeonText';
+import { DungeonBackgroundField } from './DungeonBackgroundField';
 import { DungeonGraphView } from './DungeonGraphView';
 import { DungeonImportHistory } from './DungeonImportHistory';
 import { DungeonEditorHeader, type DungeonEditorView } from './DungeonEditorHeader';
@@ -286,20 +285,24 @@ function Management({ initial }: { initial: api.DungeonDetail }) {
         </fieldset>
       </section>
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold">Artwork</h2>
-        <ArtworkField
-          label="Artwork"
-          field="artwork"
-          draft={draft}
-          disabled={!canWrite || busy || conflict}
-          onChange={(ref) => patch({ artwork: ref })}
-        />
-        <ArtworkField
-          label="Background artwork"
-          field="background"
-          draft={draft}
+        <h2 className="text-sm font-semibold">Pictures</h2>
+        <DungeonBackgroundField
+          label="Scene background"
+          hint="Shown behind every room and fight in this dungeon, unless a room has its own."
+          testId="dungeon-background"
+          category="dungeon_background"
+          value={draft.background}
           disabled={!canWrite || busy || conflict}
           onChange={(ref) => patch({ background: ref })}
+        />
+        <DungeonBackgroundField
+          label="Dungeon artwork"
+          hint="The cover picture players see when choosing this dungeon."
+          testId="dungeon-artwork"
+          category="dungeon_zone"
+          value={draft.artwork}
+          disabled={!canWrite || busy || conflict}
+          onChange={(ref) => patch({ artwork: ref })}
         />
       </section>
       <section className="space-y-3">
@@ -565,70 +568,4 @@ function UnsavedNavigationGuard({ dirty }: { dirty: boolean }) {
     }
   }, [blocker]);
   return null;
-}
-function ArtworkField({
-  label,
-  field,
-  draft,
-  disabled,
-  onChange,
-}: {
-  label: string;
-  field: 'artwork' | 'background';
-  draft: api.DungeonDefinition;
-  disabled: boolean;
-  onChange: (ref: api.DungeonArtworkRef | null) => void;
-}) {
-  const [picker, setPicker] = useState(false);
-  const canBrowse = useHasPermission('artwork.read');
-  const value = draft[field];
-  return (
-    <div className="space-y-2">
-      <ZoneArtworkField
-        label={label}
-        testId={`dungeon-${field}`}
-        value={value?.kind === 'shipped' ? value.path : null}
-        expectedPath={
-          field === 'artwork'
-            ? api.zoneArtworkConvention(draft.key)
-            : api.zoneBackgroundConvention(draft.key)
-        }
-        disabled={disabled}
-        onChange={(path) => onChange(path ? { kind: 'shipped', path } : null)}
-      />
-      {value?.kind === 'managed' && (
-        <p>
-          {label}: {value.name ?? value.category} · {value.contentHash}
-          <Button disabled={disabled} variant="ghost" onClick={() => onChange(null)}>
-            Clear uploaded {label.toLowerCase()}
-          </Button>
-        </p>
-      )}
-      {!disabled && canBrowse && (
-        <Button variant="outline" onClick={() => setPicker(true)}>
-          Choose uploaded {label.toLowerCase()}
-        </Button>
-      )}
-      {canBrowse && (
-        <Link className="block text-sm underline" to="/admin/artwork">
-          Manage uploaded artwork
-        </Link>
-      )}
-      <AssetPickerDialog
-        open={picker}
-        title={`Choose ${label.toLowerCase()}`}
-        category={field === 'artwork' ? 'dungeon_zone' : 'dungeon_background'}
-        selectedId={null}
-        onClose={() => setPicker(false)}
-        onSelect={(asset) =>
-          onChange({
-            kind: 'managed',
-            category: asset.category,
-            contentHash: asset.contentHash,
-            name: asset.name,
-          })
-        }
-      />
-    </div>
-  );
 }

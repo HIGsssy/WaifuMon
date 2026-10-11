@@ -5,19 +5,13 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight, Plus } from 'lucide-react';
-import type {
-  DungeonArtworkRef,
-  DungeonDefinition,
-  DungeonReferenceData,
-  DungeonRoom,
-} from '@/api/adminDungeons';
-import { useHasPermission } from '@/auth/useSession';
+import type { DungeonDefinition, DungeonReferenceData, DungeonRoom } from '@/api/adminDungeons';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { AssetPickerDialog } from '@/features/adminArtwork/AssetPickerDialog';
 import { ActivityCard } from './ActivityCard';
+import { DungeonBackgroundField } from './DungeonBackgroundField';
 import {
   createAction,
   duplicateAction,
@@ -42,56 +36,6 @@ const heading = 'text-xs font-semibold tracking-wide text-ink-muted uppercase';
 const field = 'block space-y-1 text-sm';
 const COMMON: ActionType[] = ['combat', 'boss', 'reward', 'rest'];
 const UNCOMMON: ActionType[] = ['set_flag', 'gate', 'leave'];
-
-function BackgroundField({
-  value,
-  disabled,
-  onChange,
-}: {
-  value: DungeonArtworkRef | null | undefined;
-  disabled: boolean;
-  onChange: (ref: DungeonArtworkRef | null) => void;
-}) {
-  const [picker, setPicker] = useState(false);
-  const canBrowse = useHasPermission('artwork.read');
-  return (
-    <div className="space-y-1 text-sm">
-      <span>Background picture</span>
-      <p className="text-xs text-ink-muted">
-        {!value && 'Uses the dungeon’s background.'}
-        {value?.kind === 'managed' && `Uploaded: ${value.name ?? 'artwork'}`}
-        {value?.kind === 'shipped' && `File: ${value.path}`}
-      </p>
-      <div className="flex flex-wrap gap-2">
-        {canBrowse && (
-          <Button variant="outline" size="sm" disabled={disabled} onClick={() => setPicker(true)}>
-            Choose room background
-          </Button>
-        )}
-        {value && (
-          <Button variant="ghost" size="sm" disabled={disabled} onClick={() => onChange(null)}>
-            Use the dungeon’s background
-          </Button>
-        )}
-      </div>
-      <AssetPickerDialog
-        open={picker}
-        title="Choose room background"
-        category="dungeon_background"
-        selectedId={null}
-        onClose={() => setPicker(false)}
-        onSelect={(asset) =>
-          onChange({
-            kind: 'managed',
-            category: asset.category,
-            contentHash: asset.contentHash,
-            name: asset.name,
-          })
-        }
-      />
-    </div>
-  );
-}
 
 export function RoomInspector({
   room,
@@ -216,8 +160,13 @@ export function RoomInspector({
             onChange={(e) => patchRoom({ description: e.target.value })}
           />
         </label>
-        <BackgroundField
+        <DungeonBackgroundField
+          label="Room background"
+          hint="The scene behind this room and its fights."
+          testId="room-background"
+          category="dungeon_background"
           value={room.background}
+          inherited={{ from: 'the dungeon’s scene background', value: definition.background }}
           disabled={disabled}
           onChange={(background) => patchRoom({ background })}
         />

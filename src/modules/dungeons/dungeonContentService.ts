@@ -57,6 +57,8 @@ import {
 import type { Logger } from '../../shared/logger';
 import type { CombatEnemyDefinition } from '../combat/enemyDefinitions';
 import type { ArtworkStorage } from '../artworkAssets/artworkStorage';
+import { resolveEnemyVisual, type ManagedEnemyArtwork } from '../artworkAssets/enemyArtworkService';
+import { managedArtworkIndex, managedArtworkKey, resolveManagedArtworkIds } from '../artworkAssets/managedArtworkLookup';
 import { createDungeonImportService, type DungeonImportService } from './package/dungeonImportService';
 import {
   DUNGEON_ACTION_TYPES,
@@ -147,7 +149,18 @@ export interface DungeonContentEvent {
 export interface DungeonReferenceData {
   actionTypes: readonly string[];
   reservedActionTypes: Readonly<Record<string, string>>;
-  enemies: { key: string; name: string; enabled: boolean; attack: number; defense: number; hp: number }[];
+  enemies: {
+    key: string;
+    name: string;
+    enabled: boolean;
+    attack: number;
+    defense: number;
+    hp: number;
+    /** A transparent combat sprite is configured (managed or shipped): fights compose it over the background. */
+    sprite: boolean;
+    /** Full artwork is configured: what a fight shows when there is no usable sprite. */
+    artwork: boolean;
+  }[];
   rewardTables: { id: string; enabled: boolean }[];
   currencies: { key: string; singularName: string; pluralName: string; enabled: boolean }[];
   regions: { id: string; name: string; enabled: boolean }[];
@@ -182,6 +195,8 @@ export interface DungeonContentService extends DungeonImportService {
   list(): Promise<DungeonSummary[]>;
   get(key: string): Promise<DungeonDetail | null>;
   reference(): Promise<DungeonReferenceData>;
+  /** The active managed asset a dungeon artwork reference means here, as a run would resolve it; null when none. */
+  resolveManagedArtwork(ref: { category: string; contentHash: string }): Promise<string | null>;
   /** Dry run against this server. Writes nothing. */
   validate(definition: unknown): Promise<DungeonValidationReport>;
   /** @throws {DungeonInvalidError | DungeonKeyTakenError} */
@@ -226,7 +241,11 @@ export interface DungeonContentService extends DungeonImportService {
 
 export interface DungeonContentServiceDeps {
   db: Db;
-  enemies: { definitions(tx?: DbOrTx): Promise<CombatEnemyDefinition[]> };
+  enemies: {
+    definitions(tx?: DbOrTx): Promise<CombatEnemyDefinition[]>;
+    /** Definitions with their managed artwork. Optional: a caller with only `definitions` reports no artwork. */
+    snapshot?(tx?: DbOrTx): Promise<{ definitions: CombatEnemyDefinition[]; artwork: Record<string, ManagedEnemyArtwork> }>;
+  };
   /** Regions, from loaded content. */
   getRegions: () => readonly { id: string; name: string; enabled: boolean }[];
   /** Where shipped artwork lives; omitted, shipped paths are not checked. */
@@ -261,7 +280,7 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
       deps.enemies.definitions(tx),
       tx.select({ id: rewardTables.tableId, enabled: rewardTables.enabled }).from(rewardTables).where(eq(rewardTables.kind, 'expedition')),
       tx.select({ key: progressionCurrencies.currencyKey, enabled: progressionCurrencies.enabled }).from(progressionCurrencies),
-      tx.select({ category: artworkAssets.category, hash: artworkAssets.contentHash }).from(artworkAssets).where(eq(artworkAssets.status, 'active')),
+      managedArtworkIndex(tx),
     ]);
     const assetsDir = deps.assetsDir;
     return {
@@ -269,7 +288,8 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
       rewardTables: new Map(tables.map((t) => [t.id, { enabled: t.enabled }])),
       currencies: new Map(currencies.map((c) => [c.key, { enabled: c.enabled }])),
       regions: new Map(deps.getRegions().map((r) => [r.id, { enabled: r.enabled }])),
-      managedArtwork: new Set(managed.map((m) => `${m.category}:${m.hash}`)),
+      // The same lookup a run uses, so a reference is flagged exactly when a player would lose the picture.
+      managedArtwork: new Set(managed.keys()),
       shippedArtworkExists: assetsDir
         ? (relative) => {
             const root = path.resolve(assetsDir);
@@ -373,7 +393,7 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
   }
 
   const service: DungeonContentService = {
-    ...createDungeonImportService({ ...deps, reservedKeys: RESERVED_DUNGEON_KEYS }),
+    ...createDungeonImportService({ ...deps, reservedKeys: RESERVED_DUNGEON_KEYS, resolveManagedArtwork: resolveManagedArtworkIds }),
     validationContext,
 
     async list() {
@@ -388,16 +408,32 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
       return row ? detailOf(db, row) : null;
     },
 
+    async resolveManagedArtwork(ref) {
+      return (await managedArtworkIndex(db)).get(managedArtworkKey(ref)) ?? null;
+    },
+
     async reference() {
-      const [enemies, tables, currencies] = await Promise.all([
-        deps.enemies.definitions(db),
+      const [catalogue, tables, currencies] = await Promise.all([
+        deps.enemies.snapshot ? deps.enemies.snapshot(db) : deps.enemies.definitions(db).then((definitions) => ({ definitions, artwork: {} as Record<string, ManagedEnemyArtwork> })),
         db.select({ id: rewardTables.tableId, enabled: rewardTables.enabled }).from(rewardTables).where(eq(rewardTables.kind, 'expedition')).orderBy(asc(rewardTables.position), asc(rewardTables.tableId)),
         db.select().from(progressionCurrencies).orderBy(asc(progressionCurrencies.currencyKey)),
       ]);
       return {
         actionTypes: DUNGEON_ACTION_TYPES,
         reservedActionTypes: RESERVED_ACTION_TYPES,
-        enemies: enemies.map((e) => ({ key: e.key, name: e.name, enabled: e.enabled, attack: e.attack, defense: e.defense, hp: e.hp })),
+        enemies: catalogue.definitions.map((e) => {
+          const visual = resolveEnemyVisual(e, catalogue.artwork[e.key]);
+          return {
+            key: e.key,
+            name: e.name,
+            enabled: e.enabled,
+            attack: e.attack,
+            defense: e.defense,
+            hp: e.hp,
+            sprite: Boolean(visual.spriteAssetId || visual.spriteArtworkPath),
+            artwork: Boolean(visual.artworkAssetId || visual.artworkPath),
+          };
+        }),
         rewardTables: tables,
         currencies: currencies.map((c) => ({ key: c.currencyKey, singularName: c.singularName, pluralName: c.pluralName, enabled: c.enabled })),
         regions: deps.getRegions().map((r) => ({ id: r.id, name: r.name, enabled: r.enabled })),

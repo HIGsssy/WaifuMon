@@ -1849,12 +1849,18 @@ export interface ArtworkAssetReference {
 /** Deleting a managed artwork asset that authored content still references. */
 export class ArtworkAssetInUseError extends AppError {
   readonly references: ArtworkAssetReference[];
-  constructor(assetId: string, references: ArtworkAssetReference[]) {
+  /**
+   * @param refused what was refused: a delete (the default), or a move to
+   *   another category while dungeons name the asset by category and hash.
+   */
+  constructor(assetId: string, references: ArtworkAssetReference[], refused: 'delete' | 'recategorise' = 'delete') {
     const list = Array.isArray(references) ? references : [];
     super(
       'ARTWORK_ASSET_IN_USE',
       `Artwork asset ${String(assetId)} is still referenced by ${list.length} place(s)`,
-      'That artwork is still in use. Clear every reference to it first, or disable it instead.',
+      refused === 'recategorise'
+        ? 'That artwork is used by a dungeon, which finds it by its category. Clear it from every dungeon first, or upload it again under the other category.'
+        : 'That artwork is still in use. Clear every reference to it first, or disable it instead.',
     );
     this.references = list;
   }

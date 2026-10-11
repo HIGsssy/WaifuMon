@@ -9,21 +9,24 @@
  *
  * ## Precedence — a fight (the run has an enemy in the picture)
  *
- *   1. the **composed scene**: the room's background (else the dungeon
- *      background) with the run's Buddy on the reserved left side and the
- *      enemy's sprite layered over it;
- *   2. the enemy's full artwork;
+ *   1. the **composed scene** — whenever the enemy has a sprite: the room's
+ *      background, else the dungeon background, else the dungeon artwork,
+ *      else a plain generated stage, with the run's Buddy on the reserved
+ *      left side and the enemy's sprite layered over it. A dungeon with no
+ *      usable background therefore never costs an enemy its sprite;
+ *   2. the enemy's full artwork, alone — only for an enemy with no usable
+ *      sprite. It is an opaque scene of its own with the enemy already in it,
+ *      so the Buddy is not drawn: she would look pasted over it;
  *   3. the room's background;
  *   4. the dungeon artwork;
  *   5. the dungeon background;
  *   6. text only.
  *
- * The Buddy does not depend on the enemy. She is resolved once, on her own,
- * and drawn on whichever of 1–5 wins: the enemy's art being incomplete only
- * changes what she stands in front of. Steps 2–5 are whole pictures rather
- * than actor layers — enemy full art is an opaque scene of its own — so there
- * she is composed over that picture as the scene's background. Without a
- * Buddy sprite each step is exactly the plain image it always was.
+ * The Buddy is resolved once, on her own. She is drawn in the composed scene
+ * (1) and over the backgrounds of 3–5, which are places rather than character
+ * art, composed as the scene's background; never over the enemy's full
+ * artwork (2). Without a Buddy sprite each of 3–5 is exactly the plain image
+ * it always was.
  *
  * A fight is whenever `view.enemy` is set: the enemy about to be fought, else
  * the one just fought this step.
@@ -60,7 +63,12 @@ import { AttachmentBuilder } from 'discord.js';
 import { ARTWORK_MIME_EXTENSIONS } from '../modules/artworkAssets/imageInspection';
 import { mirrorsPlayerBuddy, type SpritePlacement } from '../modules/artworkAssets/scenePlacement';
 import type { SceneLayer } from '../modules/artworkAssets/sceneComposition';
-import { playerBuddySpriteLayer, resolveArtworkLayer, type ArtworkRef } from '../modules/artworkAssets/sceneLayers';
+import {
+  composeFightScene,
+  playerBuddySpriteLayer,
+  resolveArtworkLayer,
+  type ArtworkRef,
+} from '../modules/artworkAssets/sceneLayers';
 import { speciesDungeonSpritePath } from '../modules/assets/speciesArtworkFile';
 import { locateCombatArtwork } from '../modules/combat/combatArtwork';
 import type { DungeonRunView } from '../modules/dungeons/dungeonRunService';
@@ -148,6 +156,23 @@ async function composedArtwork(
   return null;
 }
 
+/** The enemy's sprite and the Buddy on the first usable background, else on the plain stage. */
+async function spriteScene(
+  ctx: ArtContext,
+  backgrounds: readonly (ArtworkRef | null | undefined)[],
+  sprite: ArtworkRef,
+  placement: SpritePlacement,
+  playerBuddy: BuddyActor | null,
+): Promise<TrialArtwork | null> {
+  const scenes = ctx.services.sceneComposition;
+  if (!scenes) return null;
+  const composed = await composeFightScene(
+    { assets: ctx.services.artworkAssets, assetsDir: ctx.config.assetsDir, scenes },
+    { backgrounds, sprite: { ref: sprite, placement }, playerBuddy },
+  );
+  return composed && attachment(composed.scene.absolutePath, `dungeon-scene-${composed.scene.cacheKey.slice(0, 16)}.webp`);
+}
+
 /**
  * A fallback picture with the Buddy in front of it — the picture as the
  * scene's background — or, when she has no sprite or cannot be drawn, the
@@ -200,11 +225,9 @@ export async function dungeonRunSceneArtwork(ctx: ArtContext, view: DungeonRunVi
     // Resolved once and on her own: nothing below decides whether she is drawn.
     const buddy = playerBuddyActor(ctx, view.fighter?.speciesSlug);
     return firstArtwork(ctx, [
-      () =>
-        sprite.assetId || sprite.artworkPath
-          ? composedArtwork(ctx, [roomBackground, dungeonBackground], { ref: sprite, placement: visual.spritePlacement }, buddy)
-          : null,
-      () => artworkWithBuddy(ctx, { assetId: visual.artworkAssetId, artworkPath: visual.artworkPath }, buddy),
+      () => (sprite.assetId || sprite.artworkPath ? spriteScene(ctx, [roomBackground, dungeonBackground, dungeonArt], sprite, visual.spritePlacement, buddy) : null),
+      // Full character art is shown as it is: no Buddy over an opaque scene.
+      () => plainArtwork(ctx, { assetId: visual.artworkAssetId, artworkPath: visual.artworkPath }),
       () => composedArtwork(ctx, [roomBackground], null, buddy),
       () => artworkWithBuddy(ctx, dungeonArt, buddy),
       () => artworkWithBuddy(ctx, dungeonBackground, buddy),

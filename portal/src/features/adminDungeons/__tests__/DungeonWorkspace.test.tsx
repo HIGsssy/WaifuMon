@@ -50,7 +50,8 @@ describe('dungeon editor workspace', () => {
       'EntranceStart',
     );
     expect(inspector().getByLabelText('Dungeon name')).toHaveValue('Tunnels');
-    expect(inspector().getByLabelText('Artwork path')).toBeInTheDocument();
+    expect(inspector().getByText('Scene background')).toBeInTheDocument();
+    expect(inspector().getByText('Dungeon artwork')).toBeInTheDocument();
   });
   it('swaps the inspector between dungeon settings and the selected room beside the canvas', async () => {
     const user = userEvent.setup();

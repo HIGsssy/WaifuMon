@@ -1019,6 +1019,9 @@ describe('reference data', () => {
         attack: enemy.attack,
         defense: enemy.defense,
         hp: enemy.hp,
+        // Whether a combat sprite / full artwork is configured, for the editor's fight preview.
+        sprite: expect.any(Boolean),
+        artwork: expect.any(Boolean),
       });
     }
     // Regions: stable ids and display names, from the region catalogue.
@@ -1035,7 +1038,7 @@ describe('reference data', () => {
     await w.enemies.create('ref_newcomer', { name: 'Newcomer', enabled: true, attack: 12, defense: 3, hp: 40, tags: [] }, 'admin-1');
     const offered = async () =>
       data<{ enemies: Json[] }>(await call('GET', '/admin/dungeons/reference')).enemies.find((e) => e.key === 'ref_newcomer');
-    expect(await offered()).toEqual({ key: 'ref_newcomer', name: 'Newcomer', enabled: true, attack: 12, defense: 3, hp: 40 });
+    expect(await offered()).toEqual({ key: 'ref_newcomer', name: 'Newcomer', enabled: true, attack: 12, defense: 3, hp: 40, sprite: false, artwork: false });
     const current = (await w.enemies.get('ref_newcomer'))!;
     await w.enemies.setEnabled('ref_newcomer', { enabled: false, expectedRevision: current.revision }, 'admin-1');
     expect(await offered()).toMatchObject({ enabled: false });

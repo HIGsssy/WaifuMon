@@ -170,6 +170,32 @@ A refusal is `400 ARTWORK_UPLOAD_INVALID` with a sentence the admin can act on.
   first, or disable instead. Otherwise it is a soft delete: the file is
   removed, the row and its history stay.
 
+**Dungeons name an image by its bytes, not its id.** A dungeon definition
+references managed artwork by category + content hash (so a package can move
+between environments), and Replace changes the hash. The reference keeps
+resolving: to an active asset holding exactly those bytes, else to the asset
+that most recently replaced those bytes away, while it is active
+(`managedArtworkLookup.ts`; the full rules are in
+[dungeons.md](dungeons.md#managed-artwork-references-and-replace)). In
+practice:
+
+- Replacing an image changes how every dungeon using it looks — published
+  revisions and runs in progress included — while no saved revision changes.
+- Disabling it removes the picture from those dungeons until it is re-enabled.
+  The reference never moves to a different asset that happened to hold the
+  same bytes once.
+- Delete is refused while a dungeon names the asset's current hash or an
+  earlier hash that still belongs to it.
+- Replacement history lives in `artwork_asset_events` and stays in this
+  environment. It is not exported with a dungeon.
+- An asset cannot be moved to another category while a dungeon (draft or
+  published revision) names it, by its current bytes or earlier ones: the
+  category is part of the reference, so the move would orphan it. The API
+  answers `409 ARTWORK_ASSET_IN_USE` with the dungeons in
+  `details.references`. Clear it from those dungeons first, or upload the
+  image again under the other category. Renaming is always allowed, and
+  references held by id (enemies, bosses) do not block a move.
+
 A zone cannot be saved pointing at an asset that does not exist
 (`backgroundAssetId: that artwork no longer exists…`); pointing at a disabled
 one is a warning.
@@ -242,13 +268,13 @@ the left and should look right (`PLAYER_BUDDY_FACING`), so only a `left`-facing
 sprite is flipped, by the compositor, from the one file. New sprites should be
 drawn front-on or facing right; set the field for any that face left.
 
-**She does not depend on the enemy.** The Buddy is resolved on her own and
-drawn on whichever picture a fight ends up showing. With an enemy sprite that
-is the composed scene. Without one, the fallbacks below are whole pictures
-rather than actor layers (enemy full art is an opaque 3:2 scene), so she is
-composed in front of that picture, used as the scene's background and
-therefore cover-cropped to 1200×675. With no Buddy sprite every fallback is
-the plain image it always was.
+**Where she is drawn.** The Buddy is resolved on her own. She is drawn in the
+composed scene (an enemy with a usable sprite) and, when the enemy has neither
+sprite nor full artwork, in front of the background that is shown instead —
+used as the scene's background and therefore cover-cropped to 1200×675. She is
+**not** drawn over an enemy's full artwork: that is an opaque character scene
+of its own, shown alone and as uploaded. With no Buddy sprite every fallback
+is the plain image.
 
 Enemy placement is unchanged: all six anchors remain. An enemy at its default
 (`bottom-right`) never touches her. One authored into the left side is allowed
@@ -296,14 +322,15 @@ packages. No browser renderer is involved.
 
 | Screen | 1 | 2 | 3 | 4 | 5 | 6 |
 | --- | --- | --- | --- | --- | --- | --- |
-| Fight | background + the run's Buddy + enemy sprite, composed | enemy full artwork | the node's background alone | zone artwork | zone background | text |
+| Fight | background + the run's Buddy + enemy sprite, composed (a plain generated stage when no background resolves) | enemy full artwork, alone — only when it has no usable sprite | the room's background + Buddy | dungeon artwork + Buddy | dungeon background + Buddy | text |
 | Event, rest, reward, exit | the event's own artwork | the node's background alone | zone artwork | zone background | text | |
 
-For the composed scene the background is the node's snapshotted one, else the
-zone background. Neither an enemy nor the Buddy is composed onto a non-combat
-node. On a fight the Buddy is drawn over every column of the row above — the
-enemy's full artwork, the node's background, the zone artwork and the zone
-background included. Her card art remains the thumbnail.
+For the composed scene the background is the room's, else the dungeon
+background, else the dungeon artwork, else the plain stage — an enemy with a
+sprite is never shown as full artwork for want of a background. Neither an
+enemy nor the Buddy is composed onto a non-combat screen. On a fight the Buddy
+is in every column except the enemy's full artwork. Her card art remains the
+thumbnail.
 
 **Snapshots.** When a run starts it records, in `dungeon_runs.zone_snapshot`:
 `scenes` (each node's chosen background — pool entry id, asset id or path) and

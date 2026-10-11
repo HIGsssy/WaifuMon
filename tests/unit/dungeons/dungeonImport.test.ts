@@ -38,6 +38,7 @@ describe('dungeon import boundary', () => {
       db: { transaction } as unknown as DungeonImportDeps['db'],
       reservedKeys: new Set(),
       getRegions: () => [],
+      resolveManagedArtwork: async () => ({}),
     });
     // A valid plan would try to query this deliberately empty transaction.
     const plan = await importer.planImport(malformed);

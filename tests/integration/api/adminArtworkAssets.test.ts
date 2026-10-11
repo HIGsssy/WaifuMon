@@ -939,3 +939,130 @@ describe('performance sanity', () => {
     fs.rmSync(path.join(root, 'perf-cache'), { recursive: true, force: true });
   });
 });
+
+describe('dungeon pictures as a run resolves them', () => {
+  const replaceImage = (id: string, bytes: Buffer) =>
+    api.inject({
+      method: 'PUT',
+      url: `/api/v1/admin/artwork/assets/${id}/file?filename=replaced.png`,
+      headers: { ...AUTH_BEARER, 'content-type': 'image/png' },
+      payload: bytes,
+    });
+  const managedBytes = (ref: { category: string; contentHash: string }) =>
+    call('GET', `/admin/dungeons/artwork/managed?category=${ref.category}&contentHash=${ref.contentHash}`);
+  const setGruntArtwork = async (fields: { spriteAssetId: string | null; artworkAssetId: string | null }) => {
+    const current = (await call('GET', '/admin/enemies/grunt')).json().data;
+    const res = await call('PUT', '/admin/enemies/grunt', {
+      enemy: {
+        name: current.name,
+        description: current.description,
+        enabled: current.enabled,
+        attack: current.attack,
+        defense: current.defense,
+        hp: current.hp,
+        tags: current.tags,
+        ...fields,
+      },
+      expectedRevision: current.revision,
+    });
+    expect(res.statusCode, res.body).toBe(200);
+  };
+  const scene = (backgrounds: unknown[]) => call('POST', '/admin/dungeons/scene-preview', { enemyKey: 'grunt', backgrounds });
+  const gruntReference = async () =>
+    (await call('GET', '/admin/dungeons/reference')).json().data.enemies.find((e: Asset) => e.key === 'grunt');
+
+  it('a dungeon keeps its background when the image is replaced in the asset manager', async () => {
+    const first = await solidImage(644, 364, BLUE);
+    const bg = await uploaded(first, { filename: 'tunnels.png', name: 'Tunnels' });
+    const reference = managed(bg, 'Tunnels');
+    expect((await saveDungeon({ background: reference, hallBackground: reference })).statusCode).toBe(200);
+    expect((await managedBytes(reference)).rawPayload.equals(first)).toBe(true);
+
+    // The artist uploads a new version of the same picture: the asset keeps its id, its bytes change.
+    const second = await solidImage(648, 368, GREEN);
+    const replaced: Asset = (await replaceImage(bg.id, second)).json().data.asset;
+    expect(replaced.contentHash).not.toBe(bg.contentHash);
+
+    // The dungeon still names the old bytes, untouched — and still resolves, to the new look.
+    const dungeon = await getDungeon();
+    expect(dungeon.draft.background).toEqual(reference);
+    expect(artworkIssues(dungeon)).toEqual([]);
+    const dry = await call('POST', '/admin/dungeons/validate', { definition: dungeon.draft });
+    expect(artworkIssues(dry.json().data)).toEqual([]);
+    const served = await managedBytes(reference);
+    expect(served.statusCode, served.body).toBe(200);
+    expect(served.rawPayload.equals(second)).toBe(true);
+    expect((await managedBytes(managed(replaced))).rawPayload.equals(second)).toBe(true);
+
+    // Nor moved to another category, which would orphan the reference; a rename is fine.
+    const moved = await call('PATCH', `/admin/artwork/assets/${bg.id}`, { category: 'dungeon_zone' });
+    expect(moved.statusCode, moved.body).toBe(409);
+    expect(moved.json().error).toMatchObject({ code: 'ARTWORK_ASSET_IN_USE' });
+    expect(moved.json().error.details.references.map((r: Asset) => r.field)).toEqual(['draft.background', 'draft.rooms[hall].background']);
+    expect((await call('PATCH', `/admin/artwork/assets/${bg.id}`, { name: 'Tunnels v2' })).statusCode).toBe(200);
+    expect((await managedBytes(reference)).statusCode).toBe(200);
+
+    // It is still in use, so it still cannot be deleted from under the dungeon.
+    const detail = (await call('GET', `/admin/artwork/assets/${bg.id}`)).json().data;
+    expect(detail.references.map((r: Asset) => r.field)).toEqual(['draft.background', 'draft.rooms[hall].background']);
+    expect((await call('DELETE', `/admin/artwork/assets/${bg.id}`)).statusCode).toBe(409);
+
+    // Switched off, players lose it — and the editor is told the truth, by warning and by preview.
+    await call('PUT', `/admin/artwork/assets/${bg.id}/enabled`, { enabled: false });
+    expect((await managedBytes(reference)).statusCode).toBe(404);
+    expect(artworkIssues(await getDungeon())).toHaveLength(1);
+    await call('PUT', `/admin/artwork/assets/${bg.id}/enabled`, { enabled: true });
+    expect((await managedBytes(reference)).statusCode).toBe(200);
+
+    // Bytes no asset here ever held are simply not found.
+    expect((await managedBytes({ category: 'dungeon_background', contentHash: 'c'.repeat(64) })).statusCode).toBe(404);
+    expect((await managedBytes({ category: 'dungeon_background', contentHash: 'nope' })).statusCode).toBe(400);
+    await saveDungeon({ background: null, hallBackground: null });
+  });
+
+  it('previews a fight as a run composes it: sprite first, on the first usable background', async () => {
+    const room = await uploaded(await solidImage(652, 372, BLUE), { filename: 'room.png' });
+    const dungeon = await uploaded(await solidImage(656, 376, GREEN), { filename: 'dungeon.png' });
+    const sprite = await uploaded(await transparentSprite(304, 304, RED), { category: 'enemy_sprite', filename: 'grunt-sprite.png' });
+    const artBytes = await solidImage(660, 380, GREEN);
+    const art = await uploaded(artBytes, { category: 'enemy_art', filename: 'grunt-art.png' });
+    await setGruntArtwork({ spriteAssetId: sprite.id, artworkAssetId: art.id });
+    expect(await gruntReference()).toMatchObject({ sprite: true, artwork: true });
+
+    const ghost = { kind: 'managed', category: 'dungeon_background', contentHash: 'd'.repeat(64) };
+    const withRoom = await scene([managed(room), managed(dungeon)]);
+    expect(withRoom.statusCode, withRoom.body).toBe(200);
+    expect(withRoom.headers).toMatchObject({ 'content-type': 'image/webp', 'x-dungeon-scene': 'sprite', 'x-dungeon-scene-background': '0' });
+    expect(isNear(await pixelAt(withRoom.rawPayload, 1180, 15), BLUE)).toBe(true);
+
+    // A room background that is gone falls through to the dungeon's; with none at all, the plain stage.
+    const fallen = await scene([ghost, managed(dungeon)]);
+    expect(fallen.headers['x-dungeon-scene-background']).toBe('1');
+    expect(isNear(await pixelAt(fallen.rawPayload, 1180, 15), GREEN)).toBe(true);
+    const bare = await scene([null, ghost]);
+    expect(bare.headers).toMatchObject({ 'x-dungeon-scene': 'sprite', 'x-dungeon-scene-background': 'plain' });
+    const [r, g, b] = await pixelAt(bare.rawPayload, 1180, 15);
+    expect(Math.max(r, g, b)).toBeLessThan(80);
+
+    // No sprite: the full artwork is the picture — the image itself, not a scene with the Buddy
+    // composed over it — and the reference data says so up front.
+    await setGruntArtwork({ spriteAssetId: null, artworkAssetId: art.id });
+    expect(await gruntReference()).toMatchObject({ sprite: false, artwork: true });
+    const fullArt = await scene([managed(room)]);
+    expect(fullArt.headers).toMatchObject({ 'x-dungeon-scene': 'full-art', 'content-type': 'image/png' });
+    expect(fullArt.headers['x-dungeon-scene-background']).toBeUndefined();
+    expect(fullArt.rawPayload.equals(artBytes)).toBe(true);
+
+    // A sprite that is switched off is not usable either: the same fallback a player gets.
+    await setGruntArtwork({ spriteAssetId: sprite.id, artworkAssetId: art.id });
+    await call('PUT', `/admin/artwork/assets/${sprite.id}/enabled`, { enabled: false });
+    expect((await scene([managed(room)])).headers['x-dungeon-scene']).toBe('full-art');
+    await call('PUT', `/admin/artwork/assets/${sprite.id}/enabled`, { enabled: true });
+
+    // Nothing to show at all, and an enemy that does not exist.
+    await setGruntArtwork({ spriteAssetId: null, artworkAssetId: null });
+    expect(await gruntReference()).toMatchObject({ sprite: false });
+    expect((await scene([managed(room)])).statusCode).toBe(404);
+    expect((await call('POST', '/admin/dungeons/scene-preview', { enemyKey: 'no_such_enemy', backgrounds: [] })).statusCode).toBe(404);
+  });
+});

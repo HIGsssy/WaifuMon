@@ -228,6 +228,44 @@ Publishing or rolling back changes what **new** runs get. An enemy balance
 edit reaches new runs without republishing anything, and never a run already
 under way.
 
+### Managed artwork references and Replace
+
+A definition names a managed picture by `category` + content hash, and the
+asset manager's **Replace** keeps the asset while changing its hash. A
+reference is resolved to an asset on this server by one lookup
+(`artworkAssets/managedArtworkLookup.ts`), shared by validation, the editor
+preview, the run snapshot, the import review and the asset delete guard:
+
+1. an **active asset holding exactly those bytes** (the oldest, if several
+   uploads are identical);
+2. else the asset that **most recently replaced those bytes away**, while it is
+   active. This follows one asset through any number of replacements.
+
+Otherwise the reference resolves to nothing: `artwork_missing` (a warning) in
+the editor, and the screen falls back as if no picture were set.
+
+- **Replacing an image changes how an existing dungeon looks, published
+  revisions included, without changing any saved revision.** The definition
+  keeps the hash it was saved with; nothing is rewritten, and nothing needs
+  republishing. To pin a dungeon to a specific picture, upload it as a new
+  asset instead of replacing.
+- Every dungeon naming the reference moves together. The lookup reads only
+  `artwork_assets` and the append-only `artwork_asset_events`, so it gives the
+  same answer after a restart.
+- Rule 2 never chooses between assets. If several assets once held the same
+  bytes, the reference belongs to the one that held them last; if that asset
+  is disabled or deleted the reference resolves to nothing rather than moving
+  to another asset's new picture. The same bytes in another category are a
+  different reference.
+- A run pins the **asset** each reference resolved to when it started
+  (`dependency_snapshot.artwork`), and reads that asset's image live. A
+  replacement therefore shows in a run already under way; a disabled asset
+  shows nothing until it is re-enabled; a run started while a reference did
+  not resolve has no picture for it, even if it resolves later.
+- An asset cannot be deleted, or moved to another category, while a draft or
+  published revision names any hash that resolves, or would resolve when
+  re-enabled, to it (`409 ARTWORK_ASSET_IN_USE`).
+
 ## Live runs
 
 `dungeonRunService.act(playerId, runId, input)` is the only way a run moves:
@@ -282,6 +320,22 @@ dg|ex|<runId>|<step>                  extract
 dg|abq|<runId>                        abandon confirmation
 dg|ab|<runId>                         abandon (always allowed; no step)
 ```
+
+### What a fight shows
+
+`dungeonArtwork.ts`, per wave, from the enemy's own artwork (the Enemy
+Catalogue; there is no per-wave override):
+
+| The enemy has | The picture |
+| --- | --- |
+| a usable combat sprite | room background → dungeon background → dungeon artwork → a plain generated stage, with the run's Buddy and the enemy sprite composed over it |
+| no usable sprite, full artwork | the enemy's full artwork **alone**, as uploaded: no background and no Buddy (she would look pasted over an opaque character scene) |
+| neither | the room background, else the dungeon artwork, else the dungeon background, with the Buddy over it; else text only |
+
+"Usable" means it resolves now: a disabled or missing sprite counts as none.
+Each wave is decided on its own, so one fight can move between the rows.
+Sprite placement, mirroring and scale are unchanged by which row applies. The
+editor's wave preview (`POST /scene-preview`) follows the same rules.
 
 `<step>` is the run's step when the screen was drawn. Ids stay under Discord's
 100 characters (ids in a definition are at most 40). Connections are laid out
@@ -373,6 +427,24 @@ blocking. Missing artwork is a warning, never silently substituted; managed
 references resolve by category/hash and stored bytes, and shipped paths must
 resolve to files inside the assets root. Artwork remains optional under the
 existing publication rules; other missing dependencies still block publishing.
+
+**Managed artwork across environments.** A package carries each managed
+reference exactly as the dungeon was saved — category, content hash and
+display name; no asset id, no image bytes and no replacement history. Export
+does not rewrite a reference whose image has since been replaced. The target
+resolves it with its *own* assets and its *own* replacement history (the
+lookup above), so:
+
+- it resolves when the target has an active asset holding those exact bytes;
+- if a target asset held those bytes and was since replaced there, it follows
+  that asset and the review adds the warning `artwork_replaced`, naming it;
+- otherwise it is `artwork_missing`. An unrelated image is never matched.
+
+Known limitation: if an image was replaced in the source after the dungeon was
+saved, the package still names the **old** bytes. Uploading the current picture
+to the target does not satisfy it. Either re-choose the image in the source
+dungeon (so it is saved with the current hash) and export again, or upload the
+original bytes to the target. The package format is unchanged.
 
 Application locks the request, dungeon and referenced enemy identities,
 locks existing target/dependency rows, and re-plans. Any reviewed state change

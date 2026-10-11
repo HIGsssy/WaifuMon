@@ -395,7 +395,9 @@ export const adminArtworkAssetRoutes =
         preValidation: gate('artwork.write'),
         schema: {
           tags,
-          summary: 'Rename an asset or move it to another category',
+          summary:
+            'Rename an asset or move it to another category. A category move is refused with 409 ARTWORK_ASSET_IN_USE ' +
+            '(details.references) while a dungeon references the asset, since dungeons name it by category and content hash',
           params: idParams,
           body: z
             .object({
@@ -407,7 +409,7 @@ export const adminArtworkAssetRoutes =
         },
       },
       async (req) => {
-        const asset = await assets.update(req.params.id, req.body, actorOf(req));
+        const asset = await translate(() => assets.update(req.params.id, req.body, actorOf(req)));
         if (!asset) throw notFound(req.params.id);
         return ok(req, { asset: toAsset(asset) });
       },

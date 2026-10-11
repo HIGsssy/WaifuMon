@@ -10,7 +10,13 @@ import { DungeonZoneEditorPage } from '../DungeonZoneEditorPage';
 import { DungeonCreatePage } from '../DungeonCreatePage';
 import { DungeonsListPage } from '../DungeonsListPage';
 import { starterDungeon } from '../dungeonModel';
-export const PERMISSIONS = ['dungeons.read', 'dungeons.write', 'dungeons.publish', 'artwork.read'];
+export const PERMISSIONS = [
+  'dungeons.read',
+  'dungeons.write',
+  'dungeons.publish',
+  'artwork.read',
+  'enemies.read',
+];
 export const issue: api.DungeonIssue = {
   code: 'enemy_missing',
   severity: 'error',
@@ -57,8 +63,26 @@ export const reference: api.DungeonReferenceData = {
   actionTypes: ['reward'],
   reservedActionTypes: {},
   enemies: [
-    { key: 'slime', name: 'Slime', enabled: true, attack: 1, defense: 1, hp: 10 },
-    { key: 'golem', name: 'Rust Golem', enabled: true, attack: 9, defense: 5, hp: 90 },
+    {
+      key: 'slime',
+      name: 'Slime',
+      enabled: true,
+      attack: 1,
+      defense: 1,
+      hp: 10,
+      sprite: true,
+      artwork: true,
+    },
+    {
+      key: 'golem',
+      name: 'Rust Golem',
+      enabled: true,
+      attack: 9,
+      defense: 5,
+      hp: 90,
+      sprite: false,
+      artwork: true,
+    },
     { key: 'retired', name: 'Old Sentry', enabled: false, attack: 3, defense: 1, hp: 20 },
   ],
   rewardTables: [{ id: 'loot', enabled: true }],
@@ -173,6 +197,12 @@ export function install() {
     enabled,
   }));
   vi.spyOn(api, 'dungeonArtworkBlob').mockResolvedValue(new Blob(['art']));
+  vi.spyOn(api, 'managedDungeonArtworkBlob').mockResolvedValue(new Blob(['art']));
+  vi.spyOn(api, 'previewDungeonScene').mockResolvedValue({
+    image: new Blob(['scene']),
+    mode: 'sprite',
+    background: 1,
+  });
   return {
     get stored() {
       return stored;

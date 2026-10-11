@@ -10,6 +10,7 @@ import type {
   ActionDestination,
   CombatWave,
   DungeonAction,
+  DungeonArtworkRef,
   DungeonDefinition,
   DungeonReferenceData,
   DungeonRoom,
@@ -18,6 +19,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { DungeonConditionEditor } from './DungeonConditionEditor';
+import { EnemyAppearance } from './EnemyAppearance';
 import { EnemyPicker } from './EnemyPicker';
 import { ACTION_OUTCOMES, moveEntry, type ActionType } from './dungeonActionModel';
 import {
@@ -132,10 +134,13 @@ function DestinationEditor({
 function FightEditor({
   action,
   reference,
+  backgrounds,
   onChange,
 }: {
   action: DungeonAction;
   reference?: DungeonReferenceData | undefined;
+  /** The backgrounds a fight here falls back through, for the appearance preview. */
+  backgrounds: Array<DungeonArtworkRef | null | undefined>;
   onChange: (action: DungeonAction) => void;
 }) {
   const waves = action.waves ?? [];
@@ -181,12 +186,22 @@ function FightEditor({
               )}
             </div>
             {!pool && 'key' in wave.enemy && (
-              <EnemyPicker
-                label={`Wave ${w + 1} enemy`}
-                value={wave.enemy.key}
-                reference={reference}
-                onChange={(key) => setWave(w, { enemy: { key } })}
-              />
+              <>
+                <EnemyPicker
+                  label={`Wave ${w + 1} enemy`}
+                  value={wave.enemy.key}
+                  reference={reference}
+                  onChange={(key) => setWave(w, { enemy: { key } })}
+                />
+                {wave.enemy.key && (
+                  <EnemyAppearance
+                    enemyKey={wave.enemy.key}
+                    wave={w + 1}
+                    reference={reference}
+                    backgrounds={backgrounds}
+                  />
+                )}
+              </>
             )}
             {pool && (
               <div className="space-y-2 rounded-md border border-border p-2">
@@ -286,7 +301,14 @@ function Essentials({
   switch (action.type) {
     case 'combat':
     case 'boss':
-      return <FightEditor action={action} reference={reference} onChange={onChange} />;
+      return (
+        <FightEditor
+          action={action}
+          reference={reference}
+          backgrounds={[room.background, definition.background, definition.artwork]}
+          onChange={onChange}
+        />
+      );
     case 'rest':
       return (
         <label className={field}>

@@ -211,7 +211,17 @@ describe('the shipped enemies', () => {
     const central = await data('/admin/enemies/reference');
     // One catalogue: the Dungeon reference lists the same enemies, in the same order, with the same stats…
     expect(dungeon.enemies).toEqual(
-      central.enemies.map((e: Json) => ({ key: e.key, name: e.name, enabled: e.enabled, attack: e.attack, defense: e.defense, hp: e.hp })),
+      central.enemies.map((e: Json) => ({
+        key: e.key,
+        name: e.name,
+        enabled: e.enabled,
+        attack: e.attack,
+        defense: e.defense,
+        hp: e.hp,
+        // Whether a fight composes a sprite or falls back to full artwork, from the same visual the catalogue shows.
+        sprite: Boolean(e.visual.spriteAssetId || e.visual.spriteArtworkPath),
+        artwork: Boolean(e.visual.artworkAssetId || e.visual.artworkPath),
+      })),
     );
     expect(dungeon.enemies.map((e: Json) => e.key)).toEqual(shipped.map((e) => e.key));
     // …and the picker row (tags, artwork) is the catalogue's own.

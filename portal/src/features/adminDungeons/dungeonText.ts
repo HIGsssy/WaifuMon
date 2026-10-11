@@ -291,6 +291,11 @@ export function friendlyIssue(
       title = 'The dungeon is not available in any region.';
       help = 'Tick at least one region in Dungeon settings so players can start it.';
       break;
+    case 'artwork_missing':
+      title = 'A picture this dungeon uses can’t be found on this server.';
+      help =
+        'Players won’t see it. Check the pictures in Dungeon settings and each room’s background: the missing one is marked. Choose it again or clear it.';
+      break;
     case 'retreat_from_entrance':
       title = `${R}: the ${activity} can send players back, but this is the start room.`;
       help = 'There is nowhere to go back to. Choose what happens instead under Advanced options.';

@@ -13,10 +13,77 @@ import type {
 } from '../src/api/adminDungeons';
 
 export const ENEMIES = [
-  { key: 'slime', name: 'Scrapyard Drone', enabled: true, attack: 6, defense: 2, hp: 40 },
-  { key: 'golem', name: 'Rust Golem', enabled: true, attack: 9, defense: 5, hp: 90 },
-  { key: 'warden', name: 'The Warden', enabled: true, attack: 14, defense: 8, hp: 220 },
-  { key: 'retired', name: 'Old Sentry', enabled: false, attack: 3, defense: 1, hp: 20 },
+  {
+    key: 'slime',
+    name: 'Scrapyard Drone',
+    enabled: true,
+    attack: 6,
+    defense: 2,
+    hp: 40,
+    sprite: true,
+    artwork: true,
+  },
+  {
+    key: 'golem',
+    name: 'Rust Golem',
+    enabled: true,
+    attack: 9,
+    defense: 5,
+    hp: 90,
+    sprite: false,
+    artwork: true,
+  },
+  {
+    key: 'warden',
+    name: 'The Warden',
+    enabled: true,
+    attack: 14,
+    defense: 8,
+    hp: 220,
+    sprite: true,
+    artwork: true,
+  },
+  {
+    key: 'retired',
+    name: 'Old Sentry',
+    enabled: false,
+    attack: 3,
+    defense: 1,
+    hp: 20,
+    sprite: false,
+    artwork: false,
+  },
+];
+/** A real, decodable image for every picture the stand-in serves. */
+const PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR4nGNkYPj/n4GBgYGJAQoAHxcCAr7uqmIAAAAASUVORK5CYII=',
+  'base64',
+);
+const hash = (letter: string) => letter.repeat(64);
+const asset = (id: string, name: string, category: string, contentHash: string) => ({
+  id,
+  category,
+  name,
+  originalFilename: `${name.toLowerCase().replace(/\s+/g, '_')}.png`,
+  mimeType: 'image/png',
+  width: 1200,
+  height: 675,
+  hasAlpha: false,
+  fileSize: 204800,
+  contentHash,
+  version: 1,
+  status: 'active',
+  uploadedBy: '777',
+  updatedBy: '777',
+  createdAt: '2026-10-01T12:00:00.000Z',
+  updatedAt: '2026-10-01T12:00:00.000Z',
+  replacedAt: null,
+});
+/** The uploaded pictures this server holds. Anything else a dungeon names is "not on this server". */
+export const LIBRARY = [
+  asset('00000001-0000-4000-8000-000000000001', 'Night Tunnels', 'dungeon_background', hash('a')),
+  asset('00000002-0000-4000-8000-000000000002', 'Boiler Room', 'dungeon_background', hash('b')),
+  asset('00000003-0000-4000-8000-000000000003', 'Tunnels Cover', 'dungeon_zone', hash('c')),
 ];
 const REGIONS = [{ id: 'waifu-valley', name: 'Waifu Valley', enabled: true }];
 const TABLES = [{ id: 'tunnel_loot', enabled: true }];
@@ -27,6 +94,8 @@ const context = {
   regions: index(REGIONS, (r) => r.id),
   rewardTables: index(TABLES, (t) => t.id),
   currencies: new Map<string, { enabled: boolean }>(),
+  // What the real service passes: every uploaded picture a reference resolves to here.
+  managedArtwork: new Set(LIBRARY.map((a) => `${a.category}:${a.contentHash}`)),
 };
 interface Validation {
   definition: unknown | null;
@@ -55,6 +124,8 @@ export async function serveDungeon(
   const state = {
     saves: 0,
     publishes: 0,
+    /** Every fight preview the editor asked for. */
+    scenes: [] as Array<{ enemyKey: string; backgrounds: unknown[] }>,
     detail: {
       key: definition.key,
       name: definition.name,
@@ -73,6 +144,16 @@ export async function serveDungeon(
       issues: (await validate(definition)).issues,
     } as DungeonDetail,
   };
+  await page.route('**/api/v1/admin/artwork/**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith('/file'))
+      return route.fulfill({ contentType: 'image/png', body: PNG });
+    const category = url.searchParams.get('category');
+    const assets = LIBRARY.filter((a) => !category || a.category === category);
+    await route.fulfill({
+      json: { data: { assets, total: assets.length }, meta: { requestId: 'dungeon-backend' } },
+    });
+  });
   await page.route('**/api/v1/admin/dungeons/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
     const meta = { requestId: 'dungeon-backend' };
@@ -88,6 +169,44 @@ export async function serveDungeon(
           meta,
         },
       });
+    const missing = () =>
+      route.fulfill({
+        status: 404,
+        json: { error: { code: 'NOT_FOUND', message: 'Not found.' }, meta },
+      });
+    if (path.endsWith('/artwork/managed')) {
+      const query = new URL(route.request().url()).searchParams;
+      const held = LIBRARY.some(
+        (a) => a.category === query.get('category') && a.contentHash === query.get('contentHash'),
+      );
+      return held ? route.fulfill({ contentType: 'image/png', body: PNG }) : missing();
+    }
+    if (path.endsWith('/artwork')) return missing();
+    if (path.endsWith('/scene-preview')) {
+      const input = route.request().postDataJSON() as {
+        enemyKey: string;
+        backgrounds: Array<{ kind: string; category?: string; contentHash?: string } | null>;
+      };
+      state.scenes.push(input);
+      const enemy = ENEMIES.find((e) => e.key === input.enemyKey);
+      if (!enemy || (!enemy.sprite && !enemy.artwork)) return missing();
+      // The same fallback a run uses: the first background this server actually holds.
+      const used = input.backgrounds.findIndex(
+        (ref) =>
+          ref?.kind === 'managed' &&
+          LIBRARY.some((a) => a.category === ref.category && a.contentHash === ref.contentHash),
+      );
+      return route.fulfill({
+        contentType: 'image/png',
+        body: PNG,
+        headers: enemy.sprite
+          ? {
+              'x-dungeon-scene': 'sprite',
+              'x-dungeon-scene-background': used < 0 ? 'plain' : String(used),
+            }
+          : { 'x-dungeon-scene': 'full-art' },
+      });
+    }
     let data: unknown = state.detail;
     if (path.endsWith('/reference'))
       data = {
