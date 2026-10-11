@@ -58,6 +58,12 @@ function locations(config: string): Array<{ selector: string; body: string }> {
 }
 
 const blocks = locations(template);
+it('permits 2 MiB dungeon import requests without broadening the general API limit', () => {
+  const imports = blocks.find((b) => b.selector === '^~ /api/v1/admin/dungeons/import/');
+  expect(imports?.body).toContain('client_max_body_size 2m;');
+  expect(imports?.body).toContain('proxy_pass ${PORTAL_API_UPSTREAM};');
+  expect(blocks.find((b) => b.selector === '^~ /api')?.body).not.toContain('client_max_body_size');
+});
 /** Locations that emit a body a browser renders or reads. */
 const contentBlocks = blocks.filter(
   (b) => b.body.includes('proxy_pass') || b.body.includes('try_files'),
@@ -105,6 +111,7 @@ describe('proxied responses carry exactly one copy of each header', () => {
       '^~ /api/v1/admin/artwork/',
       '^~ /api/v1/admin/bosses/artwork/assets',
       '^~ /api/v1/admin/bosses/import/',
+      '^~ /api/v1/admin/dungeons/import/',
       '^~ /api/v1/admin/encounters/import/',
       '^~ /auth/',
     ]);

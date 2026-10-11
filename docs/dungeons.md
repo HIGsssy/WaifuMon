@@ -390,8 +390,24 @@ environment, dungeon key, timestamp, actor, decisions and compact result, plus
 the idempotency request identity/hash. It stores no dungeon/package payload.
 Rejected transactions leave no successful import history. JSON-only transfer
 is supported; ZIP files and asset bytes, reward tables, items, currencies,
-regions and Equipment definitions must be installed separately. The Portal
-import interface is deferred to Phase 1B.4B.
+regions and Equipment definitions must be installed separately.
+
+Phase 1B.4B adds **Import Dungeon** to the Portal dungeon list. Selecting a
+JSON file plans it without writing; draft and enemy decisions, warning
+acknowledgement and permitted incomplete-draft acceptance precede Apply.
+The Portal checks UTF-8 bytes for both wrapped plan and actual apply bodies.
+Uncertain responses retain the exact submitted payload and request ID for
+retry, with package/decision changes locked. Keep the page open until a
+receipt is confirmed: retry state is held in memory, not persisted across
+browser sessions. A definitive conflict requires an explicit new plan and
+review. Import history is read-only on the dungeon management page.
+Exports distinguish saved draft, current publication and numbered revisions.
+
+The shipped Portal Nginx template sets `client_max_body_size 2m` only for
+`/api/v1/admin/dungeons/import/`. Any additional ingress/proxy in a deployment
+must also permit request bodies through 2 MiB. Template changes take effect
+only when that environment's Portal proxy configuration is updated; no
+deployment is performed by the editor implementation.
 
 ## Admin API
 

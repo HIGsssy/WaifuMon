@@ -54,6 +54,7 @@ export const revision: api.DungeonRevision = {
   activeRuns: 1,
 };
 export function install() {
+  vi.spyOn(api, 'getDungeonImportHistory').mockResolvedValue({ imports: [] });
   let stored = fixture();
   vi.spyOn(api, 'getDungeon').mockImplementation(async () => structuredClone(stored));
   vi.spyOn(api, 'listDungeons').mockImplementation(async () => ({

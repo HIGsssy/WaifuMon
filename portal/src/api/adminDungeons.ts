@@ -15,7 +15,9 @@ export type ActionDestination =
   | { type: 'action'; actionId: string }
   | { type: 'leave'; connectionId: string }
   | { type: 'end_run'; outcome: 'completed' | 'defeated' };
-export type CombatWave = { enemy: { key: string } | { pool: Array<{ key: string; weight: number }> } };
+export type CombatWave = {
+  enemy: { key: string } | { pool: Array<{ key: string; weight: number }> };
+};
 export interface DungeonReward {
   rewardTable: string | null;
   equipmentRewardTable: string | null;
@@ -164,10 +166,82 @@ export interface DungeonPackage {
   dungeon: DungeonDefinition;
   [field: string]: unknown;
 }
+export interface DungeonImportPlan {
+  validPackage: boolean;
+  packageId: string | null;
+  packageHash: string | null;
+  sourceEnvironment: string | null;
+  dungeonKey: string | null;
+  contentHash: string | null;
+  planHash: string | null;
+  target: {
+    status: 'new' | 'different' | 'identical';
+    expectedRevision: number | null;
+    currentContentHash: string | null;
+    changedFields: string[];
+  } | null;
+  enemies: Array<{
+    key: string;
+    status: 'identical' | 'different' | 'existing_unverified' | 'missing_bundled' | 'missing';
+    currentRevision: number | null;
+    currentHash: string | null;
+    incomingHash: string | null;
+    changedFields: string[];
+  }>;
+  issues: DungeonIssue[];
+  publishable: boolean;
+}
+export interface DungeonImportDecisions {
+  dungeon: 'create' | 'replace' | 'unchanged';
+  enemies: Record<string, 'create' | 'use_existing' | 'leave_missing'>;
+  allowMissingDependencies: boolean;
+}
+export interface DungeonImportApplyInput {
+  package: unknown;
+  requestId: string;
+  expectedPlanHash: string;
+  expectedRevision: number | null;
+  decisions: DungeonImportDecisions;
+}
+export interface DungeonImportResult {
+  importId: number;
+  dungeonKey: string;
+  result: 'created' | 'replaced' | 'unchanged';
+  draftRevision: number;
+  createdEnemies: string[];
+  issues: DungeonIssue[];
+  publishable: boolean;
+  replayed: boolean;
+}
+export interface DungeonImportHistory {
+  imports: Array<{
+    id: number;
+    packageId: string;
+    packageHash: string;
+    sourceEnvironment: string;
+    dungeonKey: string;
+    actor: string | null;
+    importedAt: string;
+    decisions: Record<string, unknown>;
+    result: Record<string, unknown>;
+  }>;
+}
 export const DUNGEONS_QUERY_KEY = ['admin', 'dungeons'] as const;
 const base = '/v1/admin/dungeons';
 const definitionUrl = (key: string) => `${base}/definitions/${encodeURIComponent(key)}`;
 const opts = (signal?: AbortSignal) => (signal ? { signal } : {});
+export function planDungeonImport(pkg: unknown, signal?: AbortSignal): Promise<DungeonImportPlan> {
+  return postData(`${base}/import/plan`, { package: pkg }, opts(signal));
+}
+export function applyDungeonImport(input: DungeonImportApplyInput): Promise<DungeonImportResult> {
+  return postData(`${base}/import/apply`, input);
+}
+export function getDungeonImportHistory(
+  key: string,
+  signal?: AbortSignal,
+): Promise<DungeonImportHistory> {
+  return getData(`${definitionUrl(key)}/import-history`, opts(signal));
+}
 export function listDungeons(signal?: AbortSignal): Promise<{ dungeons: DungeonSummary[] }> {
   return getData(`${base}/definitions`, opts(signal));
 }

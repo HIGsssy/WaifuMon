@@ -15,16 +15,23 @@ import { AssetPickerDialog } from '@/features/adminArtwork/AssetPickerDialog';
 import { ZoneArtworkField } from './ZoneArtworkField';
 import { DungeonIssues, errorIssues } from './zoneFormParts';
 import { DungeonGraphView } from './DungeonGraphView';
+import { DungeonImportHistory } from './DungeonImportHistory';
 
-function downloadPackage(pkg: api.DungeonPackage) {
+function downloadPackage(
+  pkg: api.DungeonPackage,
+  origin: 'draft' | 'published' | { revision: number },
+) {
+  const label = typeof origin === 'string' ? origin : `published-r${origin.revision}`;
+  const filename = `${pkg.dungeon.key}.${label}.dungeon.json`;
   const url = URL.createObjectURL(
     new Blob([JSON.stringify(pkg, null, 2)], { type: 'application/json' }),
   );
   const anchor = document.createElement('a');
   anchor.href = url;
-  anchor.download = `${pkg.dungeon.key}.dungeon.json`;
+  anchor.download = filename;
   anchor.click();
   URL.revokeObjectURL(url);
+  return filename;
 }
 export function DungeonZoneEditorPage() {
   const { key = '' } = useParams();
@@ -167,8 +174,9 @@ function Management({ initial }: { initial: api.DungeonDetail }) {
   const exporting = useMutation({
     mutationFn: (origin: 'draft' | 'published' | { revision: number }) =>
       api.exportDungeonPackage(loaded.key, origin),
-    onSuccess: (pkg) => {
-      downloadPackage(pkg);
+    onSuccess: (pkg, origin) => {
+      const filename = downloadPackage(pkg, origin);
+      setNotice(`Download started: ${filename}`);
       refresh();
     },
   });
@@ -357,7 +365,7 @@ function Management({ initial }: { initial: api.DungeonDetail }) {
               disabled={exporting.isPending}
               onClick={() => exporting.mutate('published')}
             >
-              Export published package
+              Export current published package
             </Button>
           )}
         </div>
@@ -426,6 +434,7 @@ function Management({ initial }: { initial: api.DungeonDetail }) {
           </details>
         )}
       </Card>
+      <DungeonImportHistory dungeonKey={loaded.key} />
       <Card className="space-y-2 p-4">
         <h2>Content history</h2>
         {history.isPending && <p>Loading history…</p>}

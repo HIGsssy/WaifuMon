@@ -23,8 +23,10 @@ import { ErrorState } from '@/components/layout/ErrorState';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useHasPermission } from '@/auth/useSession';
+import { DungeonImportPanel } from './DungeonImportPanel';
 const formatUpdated = (iso: string) => new Date(iso).toLocaleString();
 export function DungeonsListPage() {
+  const [importing, setImporting] = useState(false);
   const client = useQueryClient();
   const canWrite = useHasPermission('dungeons.write');
   const query = useQuery({
@@ -42,12 +44,18 @@ export function DungeonsListPage() {
         description="Manage drafts and published revisions. Saving a draft never publishes it."
         actions={
           canWrite && (
-            <Button asChild>
-              <Link to="/admin/dungeons/new">Create dungeon</Link>
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" disabled={importing} onClick={() => setImporting(true)}>
+                Import Dungeon
+              </Button>
+              <Button asChild>
+                <Link to="/admin/dungeons/new">Create dungeon</Link>
+              </Button>
+            </div>
           )
         }
       />
+      {importing && <DungeonImportPanel onCancel={() => setImporting(false)} />}
       {query.isPending && <Skeleton className="h-32" />}
       {query.isError && (
         <ErrorState

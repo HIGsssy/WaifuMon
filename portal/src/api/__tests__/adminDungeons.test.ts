@@ -20,6 +20,34 @@ function record(method: 'get' | 'post' | 'put', path: string) {
 }
 const base = '/api/v1/admin/dungeons';
 describe('Phase 1A dungeon API contracts', () => {
+  it('uses the authenticated import endpoints and preserves exact apply input', async () => {
+    const pkg = {
+      format: 'waifumon-dungeon-package',
+      schemaVersion: 1,
+      dungeon: starterDungeon('tunnels', 'Tunnels', []),
+    };
+    const plan = record('post', base + '/import/plan');
+    await api.planDungeonImport(pkg);
+    expect(plan[0]!.body).toEqual({ package: pkg });
+    const apply = record('post', base + '/import/apply');
+    const input: api.DungeonImportApplyInput = {
+      package: pkg,
+      requestId: 'one-operation',
+      expectedPlanHash: 'reviewed-hash',
+      expectedRevision: 4,
+      decisions: {
+        dungeon: 'replace',
+        enemies: { slime: 'create' },
+        allowMissingDependencies: false,
+      },
+    };
+    await api.applyDungeonImport(input);
+    await api.applyDungeonImport(input);
+    expect(apply.map((c) => c.body)).toEqual([input, input]);
+    const history = record('get', base + '/definitions/tunnels/import-history');
+    await api.getDungeonImportHistory('tunnels');
+    expect(history).toHaveLength(1);
+  });
   it('propagates stale revisions without retrying or overwriting', async () => {
     let attempts = 0;
     server.use(
