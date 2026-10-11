@@ -243,7 +243,10 @@ export interface ReadDungeonPackageResult {
 }
 
 function sameSet(a: readonly string[], b: readonly string[]): boolean {
-  return a.length === b.length && [...a].sort().join('\n') === [...b].sort().join('\n');
+  if (a.length !== b.length) return false;
+  const sortedA = [...a].sort();
+  const sortedB = [...b].sort();
+  return sortedA.every((key, index) => key === sortedB[index]);
 }
 
 /**
@@ -329,12 +332,13 @@ export function readDungeonPackage(raw: unknown): ReadDungeonPackageResult {
   }
 
   const declaredEnemy = new Map(declared.enemies.map((e) => [e.key, e.contentHash]));
+  const referencedEnemies = new Set(actual.enemies);
   const bundledKeys = new Set<string>();
   pkg.bundled.enemies.forEach((enemy, i) => {
     const path = `bundled.enemies[${i}]`;
     if (bundledKeys.has(enemy.key)) error('package_bundle_duplicate', path, `enemy "${enemy.key}" is bundled more than once`);
     bundledKeys.add(enemy.key);
-    if (!declaredEnemy.has(enemy.key)) {
+    if (!referencedEnemies.has(enemy.key)) {
       error('package_bundle_unreferenced', path, `bundled enemy "${enemy.key}" is not one the dungeon names`);
       return;
     }

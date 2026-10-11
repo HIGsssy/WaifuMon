@@ -143,6 +143,50 @@ describe('round trips', () => {
 describe('reading a package', () => {
   const codes = (raw: unknown) => reread(raw).issues.map((i) => i.code);
 
+  function newlineDependencies(member: 'enemies' | 'rewardTables' | 'regions') {
+    const definition = build().dungeon;
+    for (const room of definition.rooms) room.actions = [];
+    if (member === 'enemies') definition.rooms[0]!.actions = [{
+      id: 'fight', type: 'combat', waves: [{ enemy: { key: 'a\nb' } }, { enemy: { key: 'c' } }],
+    } as never];
+    else if (member === 'rewardTables') definition.rooms[0]!.actions = [{
+      id: 'reward', type: 'reward', reward: { rewardTable: 'a\nb', equipmentRewardTable: 'c' },
+    } as never];
+    else definition.availableRegions = ['a\nb', 'c'];
+    return build({ definition, enemies: new Map() });
+  }
+
+  it.each(['enemies', 'rewardTables', 'regions'] as const)('rejects newline delimiter collisions in %s manifests', (member) => {
+    const pkg = newlineDependencies(member);
+    if (member === 'enemies') pkg.dependencies.enemies = ['a', 'b\nc'].map((key) => ({ key, contentHash: null }));
+    else if (member === 'rewardTables') pkg.dependencies.rewardTables = ['a', 'b\nc'].map((id) => ({ kind: 'expedition', id }));
+    else pkg.dependencies.regions = ['a', 'b\nc'];
+    const result = reread(pkg);
+    expect(result.ok).toBe(false);
+    expect(result.issues).toContainEqual(expect.objectContaining({ code: 'package_dependencies_mismatch', path: `dependencies.${member}` }));
+  });
+
+  it.each(['enemies', 'rewardTables', 'regions'] as const)('accepts correct newline-containing %s manifests and stable serialization', (member) => {
+    const pkg = newlineDependencies(member);
+    // Manifest membership is independent of order, including embedded delimiters.
+    pkg.dependencies[member].reverse();
+    const text = serializeDungeonPackage(pkg);
+    const result = readDungeonPackage(text);
+    expect(result.ok).toBe(true);
+    expect(result.package).toEqual(pkg);
+    expect(serializeDungeonPackage(result.package!)).toBe(text);
+  });
+
+  it('rejects a bundled enemy even when an invalid manifest falsely declares it referenced', () => {
+    const pkg = newlineDependencies('enemies');
+    pkg.dependencies.enemies = ['a', 'b\nc'].map((key) => ({ key, contentHash: null }));
+    pkg.bundled.enemies = [{ ...TEST_ENEMIES[0]!, key: 'a' }];
+    const result = reread(pkg);
+    expect(result.ok).toBe(false);
+    expect(result.issues).toContainEqual(expect.objectContaining({ code: 'package_dependencies_mismatch', path: 'dependencies.enemies' }));
+    expect(result.issues).toContainEqual(expect.objectContaining({ code: 'package_bundle_unreferenced', path: 'bundled.enemies[0]' }));
+  });
+
   it('refuses things that are not a dungeon package, by code', () => {
     expect(readDungeonPackage('{not json').issues[0]).toMatchObject({ code: 'package_not_json', severity: 'error' });
     expect(codes([])).toEqual(['package_format']);

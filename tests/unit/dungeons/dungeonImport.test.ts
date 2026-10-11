@@ -1,10 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { DungeonDefinitionSchema } from '../../../src/modules/dungeons/content/dungeonDefinition';
 import { buildDungeonPackage, dungeonContentHash } from '../../../src/modules/dungeons/package/dungeonPackage';
 import {
   DungeonImportApplySchema,
   importHash,
   readImportPackage,
+  createDungeonImportService,
+  type DungeonImportDeps,
 } from '../../../src/modules/dungeons/package/dungeonImportService';
 import { testDungeonInput, TEST_ENEMIES } from '../../helpers/dungeonFixtures';
 const pkg = () =>
@@ -19,6 +21,42 @@ const pkg = () =>
     enemies: new Map(TEST_ENEMIES.map((e) => [e.key, e])),
   });
 describe('dungeon import boundary', () => {
+  it('rejects colliding manifests before planning enemy decisions or entering the write transaction', async () => {
+    const definition = DungeonDefinitionSchema.parse(testDungeonInput('collision_import'));
+    for (const room of definition.rooms) room.actions = [];
+    definition.rooms[0]!.actions = [{
+      id: 'fight', type: 'combat', waves: [{ enemy: { key: 'a\nb' } }, { enemy: { key: 'c' } }],
+    } as never];
+    const malformed = buildDungeonPackage({
+      definition,
+      source: { environment: 'staging', origin: 'draft', draftRevision: 1, publishedRevision: null },
+    });
+    malformed.dependencies.enemies = ['a', 'b\nc'].map((key) => ({ key, contentHash: null }));
+    malformed.bundled.enemies = [{ ...TEST_ENEMIES[0]!, key: 'a' }];
+    const transaction = vi.fn(async (work: (tx: object) => Promise<unknown>) => work({}));
+    const importer = createDungeonImportService({
+      db: { transaction } as unknown as DungeonImportDeps['db'],
+      reservedKeys: new Set(),
+      getRegions: () => [],
+    });
+    // A valid plan would try to query this deliberately empty transaction.
+    const plan = await importer.planImport(malformed);
+    expect(plan).toMatchObject({ validPackage: false, target: null, planHash: null, enemies: [], publishable: false });
+    expect(plan.issues.map((i) => i.code)).toEqual(
+      expect.arrayContaining(['package_dependencies_mismatch', 'package_bundle_unreferenced']),
+    );
+    transaction.mockClear();
+    await expect(importer.applyImport({
+      package: malformed,
+      requestId: '123e4567-e89b-42d3-a456-426614174000',
+      expectedPlanHash: `sha256:${'a'.repeat(64)}`,
+      expectedRevision: null,
+      decisions: {
+        dungeon: 'create', enemies: { a: 'create', 'b\nc': 'leave_missing' }, allowMissingDependencies: true,
+      },
+    }, 'admin')).rejects.toMatchObject({ code: 'DUNGEON_IMPORT_INVALID' });
+    expect(transaction).not.toHaveBeenCalled();
+  });
   it('verifies schemas, content hashes and recomputed manifests', () => {
     const valid = pkg();
     expect(readImportPackage(JSON.stringify(valid)).ok).toBe(true);
