@@ -1,5 +1,6 @@
 /** Phase 1A dungeon authoring API. All calls use the shared authenticated client. */
 import type { ArtworkDirectory, ArtworkSearchResults } from './adminArtwork';
+import type { DungeonRewardGrant } from './adminDungeonLootTables';
 import { apiClient, getData, postData, putData } from './client';
 
 export type DungeonArtworkRef =
@@ -23,6 +24,14 @@ export interface DungeonReward {
   equipmentRewardTable: string | null;
   currency: { min: number; max: number };
 }
+/** New-format activity rewards: what a fight or treasure pays once, on success. */
+export interface DungeonRewardBundle {
+  guaranteed: Array<{ id: string; grant: DungeonRewardGrant }>;
+  /** Each rolls on its own; 1–9999 basis points. */
+  chances: Array<{ id: string; chanceBasisPoints: number; grant: DungeonRewardGrant }>;
+  /** Dungeon loot tables by key, each rolled `draws` times (1–10). */
+  tables: Array<{ id: string; table: string; draws: number }>;
+}
 export interface DungeonAction {
   id: string;
   type: string;
@@ -40,7 +49,9 @@ export interface DungeonAction {
   scope?: 'run' | 'player';
   value?: boolean;
   connectionId?: string;
+  /** Legacy treasure reward. A treasure carries this or `rewards`, never both. */
   reward?: DungeonReward;
+  rewards?: DungeonRewardBundle;
   [field: string]: unknown;
 }
 export interface DungeonRoom {
@@ -69,7 +80,12 @@ export interface DungeonDefinition {
   entranceRoomId: string;
   artwork: DungeonArtworkRef | null;
   background: DungeonArtworkRef | null;
-  settings: { progressionCurrency: string | null; defeatCurrencyRetentionBasisPoints: number };
+  settings: {
+    progressionCurrency: string | null;
+    defeatCurrencyRetentionBasisPoints: number;
+    /** Absent: abandoning keeps what defeat keeps. */
+    abandonCurrencyRetentionBasisPoints?: number;
+  };
   flags: Array<{ key: string; scope: 'run' | 'player'; description?: string }>;
   rooms: DungeonRoom[];
   connections: DungeonConnection[];

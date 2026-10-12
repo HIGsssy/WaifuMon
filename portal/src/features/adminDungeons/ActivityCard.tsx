@@ -18,6 +18,8 @@ import type {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { isLegacyTreasure, paysRewards } from '@/features/adminDungeonLoot/bundleModel';
+import { ActivityRewards } from './ActivityRewards';
 import { DungeonConditionEditor } from './DungeonConditionEditor';
 import { EnemyAppearance } from './EnemyAppearance';
 import { EnemyPicker } from './EnemyPicker';
@@ -325,6 +327,8 @@ function Essentials({
         </label>
       );
     case 'reward': {
+      // A new-format treasure is all rewards: the Rewards section below is its editor.
+      if (!isLegacyTreasure(action)) return null;
       const reward = action.reward ?? {
         rewardTable: null,
         equipmentRewardTable: null,
@@ -393,6 +397,12 @@ function Essentials({
               only.
             </p>
           )}
+          <p className={hint} data-testid="legacy-treasure-note">
+            This treasure uses the older reward settings, shown here exactly as they are stored. It
+            keeps paying them until it is converted to the new Rewards (guaranteed rewards, chance
+            drops and loot tables). Converting is a separate, deliberate step that is not available
+            yet, so the two kinds of reward are never mixed on one treasure.
+          </p>
         </div>
       );
     }
@@ -808,6 +818,24 @@ export function ActivityCard({
             onChange={onChange}
             onDefinitionChange={onDefinitionChange}
           />
+        </fieldset>
+      )}
+      {/* Outside the fieldset: a reader may still expand the rewards, see the odds and test-roll. */}
+      {open && paysRewards(action) && !isLegacyTreasure(action) && (
+        <div className="px-2.5 pb-2.5">
+          <ActivityRewards
+            action={action}
+            room={room}
+            definition={definition}
+            reference={reference}
+            issues={issues}
+            readOnly={disabled}
+            onChange={onChange}
+          />
+        </div>
+      )}
+      {open && (
+        <fieldset disabled={disabled} className="space-y-3 px-2.5 pb-2.5">
           <div className="flex flex-wrap items-center gap-1 border-t border-border pt-2">
             <Button
               variant="ghost"

@@ -110,17 +110,27 @@ interface Validation {
 const VALIDATOR = '../../src/modules/dungeons/validation/dungeonValidation';
 let validator:
   Promise<{ validateDungeonDefinition: (raw: unknown, ctx: unknown) => Validation }> | undefined;
-export async function validate(definition: unknown): Promise<Validation> {
+/** `rewards` adds the loot, item and equipment catalogues the reward checks need. */
+export async function validate(definition: unknown, rewards?: object): Promise<Validation> {
   validator ??= import(VALIDATOR);
-  return (await validator).validateDungeonDefinition(definition, context);
+  return (await validator).validateDungeonDefinition(definition, { ...context, ...rewards });
 }
 const hasErrors = (issues: DungeonIssue[]) => issues.some((i) => i.severity === 'error');
 
+/** Loot the dungeon's rewards may use; see `dungeonLootBackend.ts`. */
+export interface DungeonLootCatalogue {
+  /** The reference rows the editor lists. */
+  reference: () => { lootTables: unknown[]; items: unknown[] };
+  /** The validation context for reward dependencies, as the catalogue stands now. */
+  context: () => Promise<object>;
+}
 export async function serveDungeon(
   page: Page,
   definition: DungeonDefinition,
   layout: DungeonLayout = { rooms: {}, notes: [] },
+  loot?: DungeonLootCatalogue,
 ) {
+  const check = async (draft: unknown) => validate(draft, await loot?.context());
   const state = {
     saves: 0,
     publishes: 0,
@@ -141,7 +151,7 @@ export async function serveDungeon(
       updatedBy: null,
       draft: definition,
       layout,
-      issues: (await validate(definition)).issues,
+      issues: (await check(definition)).issues,
     } as DungeonDetail,
   };
   await page.route('**/api/v1/admin/artwork/**', async (route) => {
@@ -216,12 +226,17 @@ export async function serveDungeon(
         actionTypes: [],
         reservedActionTypes: {},
         enemies: ENEMIES,
+        lootTables: [],
+        items: [],
+        ...loot?.reference(),
       };
+    // Answered by `serveLoot` when a spec uses loot; otherwise there is none.
+    else if (path.includes('/loot-tables')) data = { tables: [] };
     else if (path.endsWith('/revisions')) data = { revisions: [] };
     else if (path.endsWith('/import-history')) data = { imports: [] };
     else if (path.endsWith('/history')) data = { events: [] };
     else if (path.endsWith('/validate')) {
-      const report = await validate(route.request().postDataJSON().definition);
+      const report = await check(route.request().postDataJSON().definition);
       data = {
         definition: report.definition,
         contentHash: 'hash',
@@ -230,7 +245,7 @@ export async function serveDungeon(
       };
     } else if (path.endsWith('/draft')) {
       const input = route.request().postDataJSON();
-      const report = await validate(input.definition);
+      const report = await check(input.definition);
       // The real service stores only a draft whose shape parses.
       if (!report.definition) return refuse(report.issues);
       const draft = report.definition as DungeonDefinition;
@@ -245,7 +260,7 @@ export async function serveDungeon(
       };
       data = state.detail;
     } else if (path.endsWith('/publish')) {
-      const report = await validate(state.detail.draft);
+      const report = await check(state.detail.draft);
       if (!report.definition || hasErrors(report.issues)) return refuse(report.issues);
       state.publishes++;
       const revision = {

@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { vi } from 'vitest';
 import * as api from '@/api/adminDungeons';
+import * as lootApi from '@/api/adminDungeonLootTables';
 import { SessionContext } from '@/auth/SessionContext';
 import type { SessionState } from '@/auth/types';
 import { DungeonZoneEditorPage } from '../DungeonZoneEditorPage';
@@ -92,6 +93,23 @@ export const reference: api.DungeonReferenceData = {
   regions: [{ id: 'waifu-valley', name: 'Waifu Valley', enabled: true }],
 };
 export function install() {
+  // The Rewards section of a fight or treasure reads the loot catalogue and asks for odds.
+  vi.spyOn(lootApi, 'listDungeonLootTables').mockResolvedValue({ tables: [] });
+  vi.spyOn(lootApi, 'validateDungeonLootTable').mockResolvedValue({
+    valid: true,
+    body: null,
+    contentHash: null,
+    issues: [],
+    equipmentPools: {},
+  });
+  vi.spyOn(lootApi, 'testRollDungeonRewards').mockResolvedValue({
+    seed: 1,
+    roll: null,
+    analysis: null,
+    issues: [],
+    items: {},
+    equipmentPools: {},
+  });
   vi.spyOn(api, 'getDungeonImportHistory').mockResolvedValue({ imports: [] });
   let stored = fixture();
   vi.spyOn(api, 'getDungeon').mockImplementation(async () => structuredClone(stored));

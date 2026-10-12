@@ -177,6 +177,17 @@ const DungeonCreatePage = lazy(() =>
     default: m.DungeonCreatePage,
   })),
 );
+// Dungeon Loot Tables: the dungeon-only loot catalogue. Same permissions as dungeons.
+const LootTablesListPage = lazy(() =>
+  import('@/features/adminDungeonLoot/LootTablesListPage').then((m) => ({
+    default: m.LootTablesListPage,
+  })),
+);
+const LootTableEditorPage = lazy(() =>
+  import('@/features/adminDungeonLoot/LootTableEditorPage').then((m) => ({
+    default: m.LootTableEditorPage,
+  })),
+);
 const DungeonZoneEditorPage = lazy(() =>
   import('@/features/adminDungeons/DungeonZoneEditorPage').then((m) => ({
     default: m.DungeonZoneEditorPage,
@@ -489,6 +500,30 @@ export const routes: RouteObject[] = [
             element: (
               <RequirePortalPermission permission="dungeons.write">
                 <DungeonCreatePage />
+              </RequirePortalPermission>
+            ),
+          },
+          {
+            path: 'admin/dungeons/loot',
+            element: (
+              <RequirePortalPermission permission="dungeons.read">
+                <LootTablesListPage />
+              </RequirePortalPermission>
+            ),
+          },
+          {
+            path: 'admin/dungeons/loot/new',
+            element: (
+              <RequirePortalPermission permission="dungeons.write">
+                <LootTableEditorPage />
+              </RequirePortalPermission>
+            ),
+          },
+          {
+            path: 'admin/dungeons/loot/:key',
+            element: (
+              <RequirePortalPermission permission="dungeons.read">
+                <LootTableEditorPage />
               </RequirePortalPermission>
             ),
           },

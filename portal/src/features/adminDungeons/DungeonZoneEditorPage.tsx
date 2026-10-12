@@ -15,6 +15,8 @@ import { errorIssues } from './zoneFormParts';
 import { RunFlagsEditor } from './RunFlagsEditor';
 import { friendlyIssue, incompleteIssues } from './dungeonText';
 import { DungeonBackgroundField } from './DungeonBackgroundField';
+import { LootTableSheet } from '@/features/adminDungeonLoot/LootTableSheet';
+import { LootTableSheetContext } from '@/features/adminDungeonLoot/lootSheetContext';
 import { DungeonGraphView } from './DungeonGraphView';
 import { DungeonImportHistory } from './DungeonImportHistory';
 import { DungeonEditorHeader, type DungeonEditorView } from './DungeonEditorHeader';
@@ -81,10 +83,15 @@ function Management({ initial }: { initial: api.DungeonDetail }) {
     signature: string;
     report: api.DungeonValidation;
   } | null>(null);
+  /** A loot table opened beside the dungeon, and whether it has unsaved edits of its own. */
+  const [lootTable, setLootTable] = useState<string | null>(null);
+  const [lootDirty, setLootDirty] = useState(false);
   const gameplayDirty = JSON.stringify(draft) !== JSON.stringify(loaded.draft);
   const dirty = gameplayDirty || JSON.stringify(layout) !== JSON.stringify(loaded.layout);
+  // Leaving the page would lose either kind of unsaved work.
+  const unsaved = dirty || lootDirty;
   useEffect(() => {
-    if (!dirty) return;
+    if (!unsaved) return;
     const unload = (event: BeforeUnloadEvent) => {
       event.preventDefault();
       event.returnValue = '';
@@ -102,7 +109,7 @@ function Management({ initial }: { initial: api.DungeonDetail }) {
       window.removeEventListener('beforeunload', unload);
       document.removeEventListener('click', navigate, true);
     };
-  }, [dirty, dataRouter]);
+  }, [unsaved, dataRouter]);
   const prefix = [...api.DUNGEONS_QUERY_KEY, 'definition', loaded.key];
   const reference = useQuery({
     queryKey: [...api.DUNGEONS_QUERY_KEY, 'reference'],
@@ -344,7 +351,14 @@ function Management({ initial }: { initial: api.DungeonDetail }) {
       className="flex flex-col gap-3 lg:-mx-6 lg:h-(--dungeon-workspace-height)"
       data-testid="dungeon-workspace"
     >
-      {dataRouter && <UnsavedNavigationGuard dirty={dirty} />}
+      {dataRouter && <UnsavedNavigationGuard dirty={unsaved} />}
+      {lootTable && (
+        <LootTableSheet
+          tableKey={lootTable}
+          onClose={() => setLootTable(null)}
+          onDirtyChange={setLootDirty}
+        />
+      )}
       <DungeonEditorHeader
         name={loaded.name}
         dungeonKey={loaded.key}
@@ -404,20 +418,22 @@ function Management({ initial }: { initial: api.DungeonDetail }) {
       )}
       {/* Kept mounted behind the secondary view so selection and the canvas survive a visit. */}
       <div hidden={view !== 'map'} className="min-h-0 lg:flex-1">
-        <DungeonGraphView
-          reference={reference.data}
-          definition={draft}
-          layout={layout}
-          issues={issues}
-          disabled={!canWrite || busy || conflict}
-          settings={settings}
-          problemsRequest={problemsRequest}
-          onChange={(definition, nextLayout) => {
-            setDraft(definition);
-            setLayout(nextLayout);
-            setNotice('');
-          }}
-        />
+        <LootTableSheetContext.Provider value={setLootTable}>
+          <DungeonGraphView
+            reference={reference.data}
+            definition={draft}
+            layout={layout}
+            issues={issues}
+            disabled={!canWrite || busy || conflict}
+            settings={settings}
+            problemsRequest={problemsRequest}
+            onChange={(definition, nextLayout) => {
+              setDraft(definition);
+              setLayout(nextLayout);
+              setNotice('');
+            }}
+          />
+        </LootTableSheetContext.Provider>
       </div>
       {view === 'manage' && (
         <div

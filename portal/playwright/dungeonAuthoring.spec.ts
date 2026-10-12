@@ -6,9 +6,11 @@
 import { expect, test, type Page } from '@playwright/test';
 import { starterDungeon } from '../src/features/adminDungeons/dungeonModel';
 import { serveDungeon, validate } from './dungeonBackend';
+import { ITEMS, lootTable, rewardContext, serveLoot } from './dungeonLootBackend';
 import { stubApi } from './stubApi';
 
-test.skip(({ isMobile }) => isMobile, 'desktop authoring flow');
+// The canvas flows are desktop work; the long-rewards check at the end runs at every width.
+const desktopOnly = (isMobile: boolean) => test.skip(isMobile, 'desktop authoring flow');
 const SHOTS = process.env.DUNGEON_SHOTS;
 
 async function open(
@@ -38,7 +40,9 @@ for (const viewport of [
 ]) {
   test(`a first-time author builds Entrance → Combat → Rest → Boss → Exit at ${viewport.width}×${viewport.height}`, async ({
     page,
+    isMobile,
   }) => {
+    desktopOnly(isMobile);
     await page.setViewportSize(viewport);
     const backend = await open(page);
     const name = page.getByLabel('Room name', { exact: true });
@@ -142,7 +146,9 @@ for (const viewport of [
 
 test('branches, connects an existing room, locks a path and refuses repeated connections', async ({
   page,
+  isMobile,
 }) => {
+  desktopOnly(isMobile);
   await page.setViewportSize({ width: 1366, height: 768 });
   const backend = await open(page, ['dungeons.read', 'dungeons.write']);
   // Without the publish permission the action is not offered at all.
@@ -157,7 +163,9 @@ test('branches, connects an existing room, locks a path and refuses repeated con
     .getByRole('button', { name: 'Add next room' })
     .click();
   await page.getByRole('button', { name: 'Treasure room', exact: true }).click();
-  await page.getByLabel('Reward table', { exact: true }).selectOption('tunnel_loot');
+  // A new treasure is set up under Rewards; the older reward-table fields are not offered.
+  await expect(page.getByLabel('Reward table', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Rewards: No rewards yet' })).toBeVisible();
   await addNext(page, 'Combat', 'Exit');
   await expect(page.locator('.react-flow__edge')).toHaveCount(3);
 
@@ -228,7 +236,9 @@ test('branches, connects an existing room, locks a path and refuses repeated con
 
 test('the checklist explains unfinished work in plain language and leads to it', async ({
   page,
+  isMobile,
 }) => {
+  desktopOnly(isMobile);
   await page.setViewportSize({ width: 1366, height: 768 });
   await open(page);
   await addNext(page, 'Entrance', 'Empty');
@@ -244,4 +254,309 @@ test('the checklist explains unfinished work in plain language and leads to it',
   await expect(page.getByLabel('Room name', { exact: true })).toHaveValue('Main Hall');
   await addNext(page, 'Main Hall', 'Exit');
   await expect(todo.getByText('Main Hall has no way out.')).toHaveCount(0);
+});
+
+// ── Rewards (Phase 2, T14) ──────────────────────────────────────────────────
+
+const HOARD = {
+  guaranteed: [
+    {
+      id: 'scrap',
+      grant: { type: 'item' as const, item: 'bent_gear', quantity: { min: 2, max: 4 } },
+    },
+  ],
+  chances: [
+    {
+      id: 'essence',
+      chanceBasisPoints: 3000,
+      grant: {
+        type: 'currency' as const,
+        currency: 'essence' as const,
+        amount: { min: 5, max: 10 },
+      },
+    },
+  ],
+  pools: [
+    {
+      id: 'gear',
+      name: 'Boss gear',
+      draws: 1,
+      entries: [
+        {
+          id: 'rare',
+          weight: 60,
+          grant: { type: 'equipment' as const, selector: { rarity: 'R' as const } },
+        },
+        {
+          id: 'epic',
+          weight: 15,
+          grant: { type: 'equipment' as const, selector: { rarity: 'SR' as const } },
+        },
+        { id: 'none', weight: 25, nothing: true as const },
+      ],
+    },
+  ],
+};
+/** The dungeon editor over a loot catalogue, with rewards checked and rolled by the real server code. */
+async function openWithLoot(
+  page: Page,
+  definition = starterDungeon('usability', 'Service Tunnels', ['waifu-valley']),
+) {
+  await stubApi(page, {
+    session: { permissions: ['dungeons.read', 'dungeons.write', 'dungeons.publish'] },
+  });
+  const tables = [
+    await lootTable('scrapheap_boss_hoard', 'Scrapheap Boss Hoard', HOARD, { tier: 'boss' }),
+  ];
+  const catalogue = {
+    reference: () => ({
+      items: ITEMS,
+      lootTables: tables.map((t) => ({
+        key: t.key,
+        name: t.name,
+        tier: t.tier,
+        archived: t.archivedAt !== null,
+        contentHash: t.contentHash,
+      })),
+    }),
+    context: () => rewardContext(tables),
+  };
+  const backend = await serveDungeon(page, definition, undefined, catalogue);
+  const loot = await serveLoot(page, tables, {}, 'loot-tables');
+  await page.goto('/admin/dungeons/definitions/usability');
+  return { backend, loot, catalogue };
+}
+
+test('an author gives a boss guaranteed loot, a chance drop and a shared loot table', async ({
+  page,
+  isMobile,
+}) => {
+  desktopOnly(isMobile);
+  await page.setViewportSize({ width: 1366, height: 768 });
+  const { backend, loot, catalogue } = await openWithLoot(page);
+  await expect(page.locator('.react-flow__node')).toHaveCount(1);
+
+  await addNext(page, 'Entrance', 'Boss');
+  await page.getByLabel('Wave 1 enemy', { exact: true }).selectOption('warden');
+  // The Boss template shows where loot goes, already open and with nothing invented.
+  const rewards = page.getByTestId('activity-rewards');
+  await expect(rewards.getByRole('button', { name: 'Rewards: No rewards yet' })).toHaveAttribute(
+    'aria-expanded',
+    'true',
+  );
+  await expect(rewards.getByTestId('payout-timing')).toHaveText(
+    'Paid once, when the player wins the boss fight. A lost fight pays nothing.',
+  );
+
+  // Guaranteed: 500 WaifuBux.
+  await rewards.getByRole('button', { name: '+ Add guaranteed reward', exact: true }).click();
+  await page.getByRole('radio', { name: 'WaifuBux', exact: true }).click();
+  await page.getByLabel('Amount', { exact: true }).fill('500');
+  await page.getByRole('button', { name: 'Add reward', exact: true }).click();
+  // A chance drop: 25% Velvet Charm, found among the charms.
+  await rewards.getByRole('button', { name: '+ Add chance drop', exact: true }).click();
+  await page.getByLabel('Chance percent', { exact: true }).fill('25');
+  await page.getByRole('radio', { name: 'Item', exact: true }).click();
+  await page.getByRole('button', { name: 'Charms', exact: true }).click();
+  await page
+    .getByTestId('item-picker')
+    .getByRole('button', { name: /Velvet Charm/ })
+    .click();
+  await page.getByRole('button', { name: 'Add chance drop', exact: true }).click();
+  // A shared loot table, by name, rolled twice.
+  await rewards.getByRole('button', { name: '+ Add loot table', exact: true }).click();
+  await page.getByLabel('Search loot tables', { exact: true }).fill('hoard');
+  await page.getByRole('button', { name: 'Add Scrapheap Boss Hoard', exact: true }).click();
+  await page.getByLabel('Times Scrapheap Boss Hoard is rolled', { exact: true }).selectOption('2');
+
+  await expect(rewards.getByTestId('rewards-summary')).toHaveText(
+    '500 WaifuBux · 25% 1 Velvet Charm · Scrapheap Boss Hoard ×2',
+  );
+  await expect(rewards.getByTestId('risk-chip')).toHaveText(['At risk', 'Kept', 'Kept']);
+  // This dungeon keeps nothing on defeat, and the explanation says so.
+  await expect(rewards.getByTestId('risk-explanation')).toContainText(
+    'the player keeps 0% on defeat and 0% on abandoning',
+  );
+  // Exact odds for the whole bundle, the shared table included, from the server's analyser.
+  await expect(rewards.getByTestId('odds-summary')).toHaveText(
+    'On average: 4.5 Essence, 500 WaifuBux, 6 Bent Gear, 0.25 Velvet Charm and 1.5 gear pieces.',
+  );
+  await expect(rewards.getByTestId('odds-risk')).toContainText('500 WaifuBux');
+
+  // Test Roll uses the unsaved bundle and gives nothing to anyone.
+  await rewards.getByRole('button', { name: 'Test roll', exact: true }).click();
+  const roll = page.getByTestId('test-roll');
+  await expect(roll).toContainText('awards nothing to any player');
+  await expect(roll.getByTestId('test-roll-got')).toContainText('At risk 500 WaifuBux');
+  await expect(roll.getByTestId('roll-group')).toHaveText([
+    'This activity’s own rewards',
+    'Scrapheap Boss Hoard, roll 1 of 2',
+    'Scrapheap Boss Hoard, roll 2 of 2',
+  ]);
+  expect(loot.testRolls.at(-1)).toMatchObject({
+    target: { bundle: { tables: [{ table: 'scrapheap_boss_hoard', draws: 2 }] } },
+    progressionCurrency: null,
+  });
+  expect(backend.saves).toBe(0);
+  await page.getByRole('button', { name: 'Close test roll', exact: true }).click();
+
+  // The table opens beside the dungeon; the unsaved dungeon is untouched behind it.
+  await rewards.getByRole('button', { name: 'Open table Scrapheap Boss Hoard' }).click();
+  const sheet = page.getByTestId('loot-table-sheet');
+  await expect(sheet.getByLabel('Table name', { exact: true })).toHaveValue('Scrapheap Boss Hoard');
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/rewards-open-table.png` });
+  await page.getByRole('button', { name: 'Close loot table', exact: true }).click();
+  await expect(sheet).toHaveCount(0);
+  await expect(rewards.getByTestId('rewards-summary')).toContainText('Scrapheap Boss Hoard ×2');
+
+  // Nothing technical was shown along the way.
+  const text = await page.locator('[data-testid="dungeon-workspace"]').innerText();
+  expect(text).not.toMatch(/\b[gct]_[0-9a-f]{32}\b/);
+  expect(text).not.toMatch(/basis|weight|selector|scrapheap_boss_hoard/i);
+  if (SHOTS) {
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.waitForTimeout(600);
+    await page.screenshot({ path: `${SHOTS}/rewards-boss.png` });
+  }
+
+  await addNext(page, 'Boss', 'Exit');
+  await page.getByRole('button', { name: 'Save draft', exact: true }).click();
+  await expect(page.getByText('Draft saved. Publication is unchanged.')).toBeVisible();
+  const boss = backend.detail.draft.rooms.find((r) => r.name === 'Boss')!.actions[0]!;
+  expect(boss.waves).toEqual([{ enemy: { key: 'warden' } }]);
+  expect(boss.rewards!.guaranteed.map((e) => e.grant)).toEqual([
+    { type: 'currency', currency: 'waifubux', amount: { min: 500, max: 500 } },
+  ]);
+  expect(boss.rewards!.chances.map((e) => [e.chanceBasisPoints, e.grant])).toEqual([
+    [2500, { type: 'item', item: 'velvet_charm', quantity: { min: 1, max: 1 } }],
+  ]);
+  expect(boss.rewards!.tables.map((t) => [t.table, t.draws])).toEqual([
+    ['scrapheap_boss_hoard', 2],
+  ]);
+  // The server's own validator, with the catalogues, finds nothing wrong with it.
+  const report = await validate(backend.detail.draft, await catalogue.context());
+  expect(report.issues.filter((i) => i.severity === 'error')).toEqual([]);
+  expect(backend.publishes).toBe(0);
+
+  // Reopened, the draft still carries the bundle.
+  await page.reload();
+  await page.getByRole('button', { name: 'Select room Boss', exact: true }).click();
+  await expect(
+    page.getByRole('button', {
+      name: /^Activity 1: Boss fight\. The Warden\. Rewards: 500 WaifuBux · 25% 1 Velvet Charm · Scrapheap Boss Hoard ×2/,
+    }),
+  ).toBeVisible();
+});
+
+test('a reward the dungeon cannot pay is explained in words and blocks publishing, not saving', async ({
+  page,
+  isMobile,
+}) => {
+  desktopOnly(isMobile);
+  await page.setViewportSize({ width: 1366, height: 768 });
+  const { backend } = await openWithLoot(page);
+  await addNext(page, 'Entrance', 'Boss');
+  await page.getByLabel('Wave 1 enemy', { exact: true }).selectOption('warden');
+  await addNext(page, 'Boss', 'Exit');
+  await page.getByRole('button', { name: 'Select room Boss', exact: true }).click();
+  const rewards = page.getByTestId('activity-rewards');
+  // This dungeon has no Baddie Shard currency, so it cannot pay Shards.
+  await rewards.getByRole('button', { name: '+ Add guaranteed reward', exact: true }).click();
+  await page.getByRole('radio', { name: 'Baddie Shards', exact: true }).click();
+  await page.getByLabel('Amount', { exact: true }).fill('40');
+  await page.getByRole('button', { name: 'Add reward', exact: true }).click();
+  await expect(rewards.getByTestId('guaranteed-row')).toContainText(
+    'Fix: This dungeon has no Baddie Shard currency set, so it cannot pay Shards.',
+  );
+  const todo = page.getByRole('navigation', { name: 'Dungeon outline' });
+  await expect(todo).toContainText('Boss: “40 Baddie Shards” in the boss fight needs attention.');
+  await expect(todo).not.toContainText(/rooms\[|reward_shards|g_[0-9a-f]{8}/);
+  await expect(page.getByRole('button', { name: 'Publish draft', exact: true })).toBeDisabled();
+  // The draft can still be saved, so the author can come back to it.
+  await page.getByRole('button', { name: 'Save draft', exact: true }).click();
+  await expect(page.getByText('Draft saved. Publication is unchanged.')).toBeVisible();
+  expect(backend.saves).toBe(1);
+  await expect(page.getByRole('button', { name: 'Publish draft', exact: true })).toBeDisabled();
+});
+
+test('a long reward list stays usable and does not overflow at any width', async ({ page }) => {
+  const definition = starterDungeon('usability', 'Service Tunnels', ['waifu-valley']);
+  const grant = (n: number) => ({
+    type: 'item' as const,
+    item: n % 2 ? 'bent_gear' : 'velvet_charm',
+    quantity: { min: n + 1, max: n + 3 },
+  });
+  definition.rooms.push({
+    id: 'r_boss',
+    name: 'Boss',
+    kind: 'room',
+    extraction: false,
+    actions: [
+      {
+        id: 'a_boss',
+        type: 'boss',
+        label: '',
+        optional: false,
+        outcomes: {},
+        advance: 'confirm',
+        waves: [
+          { enemy: { key: 'slime' } },
+          { enemy: { key: 'golem' } },
+          { enemy: { key: 'warden' } },
+        ],
+        rewards: {
+          guaranteed: Array.from({ length: 10 }, (_, n) => ({ id: `g_${n}`, grant: grant(n) })),
+          chances: Array.from({ length: 8 }, (_, n) => ({
+            id: `c_${n}`,
+            chanceBasisPoints: 250 * (n + 1),
+            grant: grant(n),
+          })),
+          tables: [1, 2, 3].map((draws) => ({
+            id: `t_${draws}`,
+            table: 'scrapheap_boss_hoard',
+            draws,
+          })),
+        },
+      },
+    ],
+  });
+  definition.rooms.push({
+    id: 'r_exit',
+    name: 'Exit',
+    kind: 'exit',
+    extraction: false,
+    actions: [],
+  });
+  definition.connections.push(
+    { id: 'c_1', from: 'entrance', to: 'r_boss' },
+    { id: 'c_2', from: 'r_boss', to: 'r_exit' },
+  );
+  await openWithLoot(page, definition);
+  await page.getByRole('button', { name: 'Select room Boss', exact: true }).click();
+  const rewards = page.getByTestId('activity-rewards');
+  await expect(rewards.getByTestId('guaranteed-row')).toHaveCount(10);
+  await expect(rewards.getByTestId('chance-row')).toHaveCount(8);
+  await expect(rewards.getByTestId('table-row')).toHaveCount(3);
+  await expect(rewards.getByTestId('odds-summary')).toContainText('On average:');
+  // Three waves are still edited above the rewards, exactly as before.
+  await expect(page.getByLabel('Wave 3 enemy', { exact: true })).toHaveValue('warden');
+  // Collapsing the section brings the list back to one line.
+  const toggle = rewards.getByRole('button', { name: /^Rewards: / });
+  await toggle.click();
+  await expect(rewards.getByTestId('guaranteed-row')).toHaveCount(0);
+  await toggle.click();
+  // Every control is reachable, and nothing forces sideways scrolling.
+  const last = rewards.getByRole('button', { name: 'Test roll', exact: true });
+  await last.scrollIntoViewIfNeeded();
+  await expect(last).toBeInViewport();
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(overflow).toBeLessThanOrEqual(1);
+  const widest = await rewards.evaluate((el) =>
+    Math.max(...[...el.querySelectorAll('li')].map((li) => li.scrollWidth - li.clientWidth)),
+  );
+  expect(widest).toBeLessThanOrEqual(1);
+  if (SHOTS)
+    await page.screenshot({ path: `${SHOTS}/rewards-long-${page.viewportSize()!.width}.png` });
 });

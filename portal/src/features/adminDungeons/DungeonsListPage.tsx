@@ -43,16 +43,21 @@ export function DungeonsListPage() {
         title="Dungeons"
         description="Manage drafts and published revisions. Saving a draft never publishes it."
         actions={
-          canWrite && (
-            <div className="flex gap-2">
-              <Button variant="outline" disabled={importing} onClick={() => setImporting(true)}>
-                Import Dungeon
-              </Button>
-              <Button asChild>
-                <Link to="/admin/dungeons/new">Create dungeon</Link>
-              </Button>
-            </div>
-          )
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" asChild>
+              <Link to="/admin/dungeons/loot">Dungeon Loot Tables</Link>
+            </Button>
+            {canWrite && (
+              <>
+                <Button variant="outline" disabled={importing} onClick={() => setImporting(true)}>
+                  Import Dungeon
+                </Button>
+                <Button asChild>
+                  <Link to="/admin/dungeons/new">Create dungeon</Link>
+                </Button>
+              </>
+            )}
+          </div>
         }
       />
       {importing && <DungeonImportPanel onCancel={() => setImporting(false)} />}

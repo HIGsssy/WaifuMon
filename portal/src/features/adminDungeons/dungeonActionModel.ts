@@ -52,10 +52,8 @@ export function createAction(
         advance: 'confirm',
       };
     case 'reward':
-      return {
-        ...base,
-        reward: { rewardTable: null, equipmentRewardTable: null, currency: { min: 0, max: 0 } },
-      };
+      // New treasures use the reward bundle. Existing legacy `reward` treasures are left as stored.
+      return { ...base, rewards: { guaranteed: [], chances: [], tables: [] } };
     case 'rest':
       return { ...base, healBasisPoints: 3000 };
     case 'gate':

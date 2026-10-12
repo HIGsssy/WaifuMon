@@ -23,6 +23,8 @@ import type {
   DungeonReferenceData,
   DungeonRoom,
 } from '@/api/adminDungeons';
+import { bundleIssueText, rewardsSummary } from '@/features/adminDungeonLoot/bundleModel';
+import { rewardNames } from '@/features/adminDungeonLoot/lootModel';
 import type { ActionType } from './dungeonActionModel';
 import type { MapSelection } from './dungeonMapModel';
 
@@ -80,6 +82,9 @@ export function conditionText(
   }
 }
 
+const bundleSummary = (action: DungeonAction, reference: DungeonReferenceData | undefined) =>
+  rewardsSummary(action.rewards!, rewardNames(reference?.items), reference?.lootTables);
+
 /** One sentence for a collapsed activity card. */
 export function activitySummary(
   action: DungeonAction,
@@ -88,11 +93,14 @@ export function activitySummary(
 ): string {
   switch (action.type) {
     case 'combat':
-    case 'boss':
-      return (action.waves ?? []).map((w) => waveText(w, reference)).join(', then ');
+    case 'boss': {
+      const fight = (action.waves ?? []).map((w) => waveText(w, reference)).join(', then ');
+      return action.rewards ? `${fight}. Rewards: ${bundleSummary(action, reference)}` : fight;
+    }
     case 'rest':
       return `Restore ${(action.healBasisPoints ?? 3000) / 100}% HP`;
     case 'reward': {
+      if (action.rewards) return bundleSummary(action, reference);
       const reward = action.reward;
       const parts = [reward?.rewardTable, reward?.equipmentRewardTable].filter(Boolean);
       if (reward && reward.currency.max > 0)
@@ -217,6 +225,27 @@ export function friendlyIssue(
 
   let title: string;
   let help = '';
+  // A problem with one of an activity's new-format rewards: say which reward, in words.
+  const bundle = issue.path.includes('.rewards') ? action?.rewards : undefined;
+  if (bundle && issue.code !== 'reward_empty') {
+    const found = bundleIssueText(
+      issue,
+      bundle,
+      rewardNames(reference?.items),
+      reference?.items ?? [],
+      reference?.lootTables,
+    );
+    return {
+      issue,
+      level: issue.severity === 'error' ? 'fix' : 'review',
+      title: found.subject
+        ? `${R}: ${found.subject} in the ${activity} needs attention.`
+        : `${R}: the ${activity}’s rewards need attention.`,
+      help: found.text,
+      target: room ? { kind: 'room', id: room.id } : null,
+      actionId: action?.id ?? null,
+    };
+  }
   switch (unchosenEnemy ? INCOMPLETE_CODE : issue.code) {
     case INCOMPLETE_CODE:
       title = `${R} needs an enemy for wave ${wave}.`;

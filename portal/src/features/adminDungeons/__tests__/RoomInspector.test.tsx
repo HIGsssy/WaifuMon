@@ -161,12 +161,20 @@ describe('what happens here', () => {
     await user.clear(screen.getByLabelText('Restore HP percent'));
     await user.type(screen.getByLabelText('Restore HP percent'), '45');
     await user.click(screen.getByRole('button', { name: 'Add Treasure' }));
-    await user.selectOptions(screen.getByLabelText('Reward table'), 'loot');
+    // A new treasure uses the Rewards section, never the older reward-table fields.
+    expect(screen.queryByLabelText('Reward table')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '+ Add guaranteed reward' }));
+    await user.click(screen.getByRole('radio', { name: 'WaifuBux' }));
+    await user.clear(screen.getByLabelText('Amount'));
+    await user.type(screen.getByLabelText('Amount'), '50');
+    await user.click(screen.getByRole('button', { name: 'Add reward' }));
     const [rest, treasure] = actions().map((a) => a.id);
     expect(
       screen.getByRole('button', { name: /^Activity 1: Rest\. Restore 45% HP/ }),
     ).toBeVisible();
-    expect(screen.getByRole('button', { name: /^Activity 2: Treasure\. loot/ })).toBeVisible();
+    expect(
+      screen.getByRole('button', { name: /^Activity 2: Treasure\. 50 WaifuBux/ }),
+    ).toBeVisible();
     await user.click(screen.getByRole('button', { name: 'Move activity 2 up' }));
     expect(actions().map((a) => a.id)).toEqual([treasure, rest]);
     await user.click(screen.getByRole('button', { name: 'Duplicate activity 1' }));
