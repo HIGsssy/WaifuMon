@@ -31,9 +31,8 @@
  *
  * ## Versioning
  *
- * `schemaVersion` is the format's version. Later content (dungeon events,
- * encounters, dungeon loot tables, bundled asset bytes) is added as new
- * optional members; a reader refuses a version it does not know and — because
+ * `schemaVersion` is the format's version. V1 retains its original shape and bytes; v2 adds
+ * required reward evidence and manifests. A reader refuses a version it does not know and — because
  * the envelope is strict — a member it does not understand, rather than
  * importing half a dungeon.
  *
@@ -54,12 +53,18 @@ import {
   type DungeonDefinition,
 } from '../content/dungeonDefinition';
 import { DungeonLayoutSchema, EMPTY_DUNGEON_LAYOUT, pruneDungeonLayout, type DungeonLayout } from '../content/dungeonLayout';
+import { eligibleRewardDefinitions, equipmentSelectorKey } from '../../equipment/rewardSelector';
+import {
+  DungeonRewardSnapshotSchema, dungeonLootBodyHash, hasDungeonRewardBundles,
+  readDungeonRewardSnapshot, resolveDungeonRewardDependencies, type DungeonRewardSnapshot,
+} from '../content/dungeonRewardSnapshot';
+import { validateDungeonRewards } from '../validation/dungeonRewardValidation';
 import { validateDungeonDefinition, type DungeonIssue } from '../validation/dungeonValidation';
 
 export const DUNGEON_PACKAGE_FORMAT = 'waifumon-dungeon-package' as const;
-export const DUNGEON_PACKAGE_SCHEMA_VERSION = 1 as const;
+export const DUNGEON_PACKAGE_SCHEMA_VERSION = 2 as const;
 /** The versions this build can read. */
-export const DUNGEON_PACKAGE_SUPPORTED_VERSIONS: readonly number[] = [1];
+export const DUNGEON_PACKAGE_SUPPORTED_VERSIONS: readonly number[] = [1, 2];
 export const DUNGEON_PACKAGE_MAX_BUNDLED_ENEMIES = 2000;
 
 const sha256 = z.string().regex(/^sha256:[a-f0-9]{64}$/, 'must be "sha256:" and 64 hex digits');
@@ -80,10 +85,10 @@ export const DungeonPackageDependenciesSchema = z
   .strict();
 export type DungeonPackageDependencies = z.infer<typeof DungeonPackageDependenciesSchema>;
 
-export const DungeonPackageSchema = z
+export const DungeonPackageV1Schema = z
   .object({
     format: z.literal(DUNGEON_PACKAGE_FORMAT),
-    schemaVersion: z.literal(DUNGEON_PACKAGE_SCHEMA_VERSION),
+    schemaVersion: z.literal(1),
     packageId: z.string().uuid(),
     exportedAt: z.string().datetime(),
     source: z
@@ -109,6 +114,30 @@ export const DungeonPackageSchema = z
       .default({ enemies: [] }),
   })
   .strict();
+/** All v2 manifest members are required: defaults must not conceal an incomplete file. */
+export const DungeonPackageV2DependenciesSchema = DungeonPackageDependenciesSchema.extend({
+  enemies: DungeonPackageDependenciesSchema.shape.enemies.removeDefault(),
+  rewardTables: DungeonPackageDependenciesSchema.shape.rewardTables.removeDefault(),
+  regions: z.array(key), currencies: z.array(key), species: z.array(key), items: z.array(key),
+  dungeonLootTables: z.array(z.object({ key, contentHash: z.string().regex(/^[a-f0-9]{64}$/) }).strict()),
+  equipment: z.array(z.object({ selectorKey: z.string(), candidateKeys: z.array(key).min(1) }).strict()),
+});
+export const DungeonPackageV2Schema = DungeonPackageV1Schema.extend({
+  schemaVersion: z.literal(DUNGEON_PACKAGE_SCHEMA_VERSION),
+  dependencies: DungeonPackageV2DependenciesSchema,
+  bundled: z.object({
+    enemies: z.array(CombatEnemyDefinitionSchema).max(DUNGEON_PACKAGE_MAX_BUNDLED_ENEMIES),
+    dungeonLootTables: z.array(DungeonRewardSnapshotSchema.shape.tables.valueSchema.extend({
+      /** T6 did not pin these fields. Unknown for revision exports. */
+      description: z.string().nullable(),
+      origin: z.enum(['portal', 'import', 'seed', 'converted']).nullable(),
+    })),
+  }).strict(),
+  /** Complete T6 evidence, including resolver version, candidate metadata and provenance. */
+  rewardSnapshot: DungeonRewardSnapshotSchema,
+  rewardSnapshotHash: sha256.nullable(),
+});
+export const DungeonPackageSchema = z.discriminatedUnion('schemaVersion', [DungeonPackageV1Schema, DungeonPackageV2Schema]);
 export type DungeonPackage = z.infer<typeof DungeonPackageSchema>;
 
 // ── hashing ─────────────────────────────────────────────────────────────────
@@ -141,6 +170,10 @@ export interface BuildDungeonPackageInput {
    * dependency, with a null hash.
    */
   enemies?: ReadonlyMap<string, CombatEnemyDefinition> | undefined;
+  /** Required for v2: resolved current dependencies for drafts, pinned T6 evidence for revisions. */
+  rewardSnapshot?: DungeonRewardSnapshot | undefined;
+  /** Current catalogue display/provenance fields for a draft; never used for revisions. */
+  lootTableMetadata?: ReadonlyMap<string, { description: string; origin: 'portal' | 'import' | 'seed' | 'converted' }> | undefined;
   /** Defaults to now. */
   exportedAt?: Date | undefined;
   /** Defaults to a fresh UUID. */
@@ -176,9 +209,9 @@ export function buildDungeonPackage(input: BuildDungeonPackageInput): DungeonPac
   );
   // Parsed once more on the way out, so members are in the schema's own order
   // and a package reads back byte for byte the way it was written.
-  return DungeonPackageSchema.parse({
+  const legacy = {
     format: DUNGEON_PACKAGE_FORMAT,
-    schemaVersion: DUNGEON_PACKAGE_SCHEMA_VERSION,
+    schemaVersion: 1,
     packageId: input.packageId ?? randomUUID(),
     exportedAt: (input.exportedAt ?? new Date()).toISOString(),
     source: { ...input.source, dungeonKey: definition.key },
@@ -193,7 +226,35 @@ export function buildDungeonPackage(input: BuildDungeonPackageInput): DungeonPac
         return enemy ? [CombatEnemyDefinitionSchema.parse(enemy)] : [];
       }),
     },
+  };
+  if (!hasDungeonRewardBundles(definition)) return DungeonPackageV1Schema.parse(legacy);
+  const snapshot = readDungeonRewardSnapshot(input.rewardSnapshot);
+  if (!snapshot) throw new Error('Cannot export v2 rewards: reward snapshot is missing, invalid or unsupported.');
+  const pkg = DungeonPackageV2Schema.parse({
+    ...legacy,
+    schemaVersion: 2,
+    dependencies: { ...legacy.dependencies, ...rewardManifests(snapshot) },
+    bundled: { ...legacy.bundled, dungeonLootTables: Object.keys(snapshot.tables).sort().map((key) => ({
+      ...snapshot.tables[key],
+      description: input.source.origin === 'draft' ? input.lootTableMetadata?.get(key)?.description ?? null : null,
+      origin: input.source.origin === 'draft' ? input.lootTableMetadata?.get(key)?.origin ?? null : null,
+    })) },
+    rewardSnapshot: snapshot,
+    rewardSnapshotHash: input.source.origin === 'revision' ? snapshot.hash : null,
   });
+  const read = readDungeonPackage(pkg);
+  if (!read.ok) throw new Error(`Cannot export v2 rewards: ${read.issues.filter((i) => i.severity === 'error').map((i) => `${i.path}: ${i.message}`).join('; ')}`);
+  return pkg;
+}
+
+function rewardManifests(snapshot: DungeonRewardSnapshot) {
+  return {
+    dungeonLootTables: Object.keys(snapshot.tables).sort().map((key) => ({ key, contentHash: dungeonLootBodyHash(snapshot.tables[key]!.body) })),
+    items: Object.keys(snapshot.items).sort(),
+    equipment: Object.keys(snapshot.equipmentPools).sort().map((selectorKey) => ({
+      selectorKey, candidateKeys: snapshot.equipmentPools[selectorKey]!.map((c) => c.key).sort(),
+    })),
+  };
 }
 
 /**
@@ -223,6 +284,8 @@ export const DUNGEON_PACKAGE_ISSUE_CODES = [
   'package_bundle_unreferenced',
   'package_bundle_hash_mismatch',
   'package_bundle_duplicate',
+  'package_bundle_missing',
+  'package_reward_snapshot_invalid',
 ] as const;
 export type DungeonPackageIssueCode = (typeof DUNGEON_PACKAGE_ISSUE_CODES)[number];
 
@@ -347,6 +410,64 @@ export function readDungeonPackage(raw: unknown): ReadDungeonPackageResult {
       error('package_bundle_hash_mismatch', path, `bundled enemy "${enemy.key}" does not match the hash in the dependency manifest`);
     }
   });
+
+  if (pkg.schemaVersion === 2) {
+    const snapshot = pkg.rewardSnapshot;
+    if (!hasDungeonRewardBundles(pkg.dungeon))
+      error('package_reward_snapshot_invalid', 'dungeon', 'v2 requires a Phase 2 reward bundle');
+    if (!readDungeonRewardSnapshot(snapshot) ||
+        pkg.rewardSnapshotHash !== (pkg.source.origin === 'revision' ? snapshot.hash : null))
+      error('package_reward_snapshot_invalid', 'rewardSnapshotHash', 'reward snapshot hash or origin does not match the exported snapshot');
+
+    const referenced = new Set(pkg.dungeon.rooms.flatMap((room) => room.actions.flatMap((action) =>
+      'rewards' in action && action.rewards ? action.rewards.tables.map((ref) => ref.table) : [],
+    )));
+    const bundled = new Map<string, DungeonRewardSnapshot['tables'][string]>();
+    pkg.bundled.dungeonLootTables.forEach((table, i) => {
+      const path = `bundled.dungeonLootTables[${i}]`;
+      if (bundled.has(table.key)) error('package_bundle_duplicate', path, `loot table "${table.key}" is bundled more than once`);
+      bundled.set(table.key, table);
+      if (!referenced.has(table.key)) error('package_bundle_unreferenced', path, `loot table "${table.key}" is not referenced by the dungeon`);
+      if (dungeonLootBodyHash(table.body) !== table.contentHash)
+        error('package_bundle_hash_mismatch', path, `loot table "${table.key}" body does not match its content hash`);
+      const { description: _description, origin: _origin, ...pinned } = table;
+      if (!snapshot.tables[table.key] || canonicalJson(snapshot.tables[table.key]) !== canonicalJson(pinned))
+        error('package_reward_snapshot_invalid', path, `loot table "${table.key}" differs from the reward snapshot`);
+    });
+    for (const key of referenced)
+      if (!bundled.has(key)) error('package_bundle_missing', 'bundled.dungeonLootTables', `required loot table "${key}" is missing`);
+    if (!sameSet(Object.keys(snapshot.tables), [...referenced]))
+      error('package_dependencies_mismatch', 'rewardSnapshot.tables', 'snapshot tables do not match the dungeon references');
+    for (const [key, table] of Object.entries(snapshot.tables))
+      if (key !== table.key || dungeonLootBodyHash(table.body) !== table.contentHash)
+        error('package_reward_snapshot_invalid', `rewardSnapshot.tables.${key}`, 'snapshot table key or content hash is incorrect');
+
+    const context = {
+      lootTables: new Map([...bundled].map(([key, t]) => [key, { ...t, archivedAt: null, revision: t.sourceRevision }])),
+      items: new Map(Object.entries(snapshot.items).map(([key, item]) => [key, { ...item, enabled: true, maxOwned: null }])),
+      resolveEquipmentSelector: (selector: Parameters<typeof equipmentSelectorKey>[0]) => {
+        const candidates = (snapshot.equipmentPools[equipmentSelectorKey(selector)] ?? []).map((c) => ({ ...c, enabled: true }));
+        if (new Set(candidates.map((c) => c.key)).size !== candidates.length) throw new Error('duplicate candidates');
+        const eligible = eligibleRewardDefinitions(selector, candidates);
+        if (eligible.length !== candidates.length) throw new Error('ineligible candidate');
+        return eligible;
+      },
+    };
+    const resolved = resolveDungeonRewardDependencies(pkg.dungeon, context);
+    if (!resolved.snapshot || !sameSet(Object.keys(resolved.items), Object.keys(snapshot.items)) ||
+        !sameSet(Object.keys(resolved.equipment), Object.keys(snapshot.equipmentPools)))
+      error('package_reward_snapshot_invalid', 'rewardSnapshot', 'reward snapshot has missing, extra or invalid item/equipment dependencies');
+    const expected = rewardManifests(snapshot);
+    for (const member of ['dungeonLootTables', 'items', 'equipment'] as const) {
+      // Canonical sorted manifests also reject duplicate keys and candidate identities.
+      if (canonicalJson(pkg.dependencies[member]) !== canonicalJson(expected[member]))
+        error('package_dependencies_mismatch', `dependencies.${member}`, `the declared ${member} do not match the exported rewards`);
+    }
+    if (pkg.dependencies.species.length)
+      error('package_dependencies_mismatch', 'dependencies.species', 'dungeon rewards do not reference species');
+    for (const issue of validateDungeonRewards(pkg.dungeon, context).issues)
+      issues.push({ ...issue, path: `dungeon.${issue.path}` });
+  }
 
   return { package: pkg, issues, ok: issues.every((i) => i.severity !== 'error') };
 }

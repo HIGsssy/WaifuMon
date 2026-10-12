@@ -194,9 +194,9 @@ describe('reading a package', () => {
   });
 
   it('refuses a schema version it does not know, saying which it supports', () => {
-    const result = reread({ ...build(), schemaVersion: 2 });
+    const result = reread({ ...build(), schemaVersion: 3 });
     expect(result.ok).toBe(false);
-    expect(result.issues).toEqual([expect.objectContaining({ code: 'package_schema_version', message: expect.stringContaining('supported: 1') })]);
+    expect(result.issues).toEqual([expect.objectContaining({ code: 'package_schema_version', message: expect.stringContaining('supported: 1, 2') })]);
   });
 
   it('refuses a member it does not understand rather than importing half a dungeon', () => {
@@ -290,5 +290,15 @@ describe('the shipped example', () => {
     expect(side.state.rooms.pump_room).toMatchObject({ completed: true });
     expect(side.state.flags).toEqual({ found_keycard: true, valve_opened: true });
     expect(side.effects.map((e) => e.type)).toEqual(['settle_run']);
+  });
+});
+
+// Fixture generated with the untouched Delve a5c3bd62 v1 implementation.
+describe('v1 golden compatibility', () => {
+  it('retains original bytes, definition hash and enemy hashes', () => {
+    const golden = fs.readFileSync(path.join(__dirname, 'fixtures/packageV1.json'), 'utf8');
+    const pkg = build({ layout: undefined, packageId: '00000000-0000-4000-8000-000000000016', exportedAt: new Date('2026-10-12T00:00:00Z') });
+    expect(serializeDungeonPackage(pkg)).toBe(golden);
+    expect(readDungeonPackage(golden)).toEqual({ package: pkg, issues: [], ok: true });
   });
 });

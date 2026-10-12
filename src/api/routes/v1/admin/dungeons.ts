@@ -98,7 +98,7 @@ import { DungeonPreviewTablesSchema } from '../../../../modules/dungeons/dungeon
 import type { DungeonRewardSnapshot } from '../../../../modules/dungeons/content/dungeonRewardSnapshot';
 import type { DungeonInput, EngineDependencies } from '../../../../modules/dungeons/engine/types';
 import { dungeonPackageFilename, readDungeonPackage } from '../../../../modules/dungeons/package/dungeonPackage';
-import { DungeonImportApplySchema, DungeonImportPlanSchema, DungeonImportResultSchema, DungeonImportHistorySchema } from '../../../../modules/dungeons/package/dungeonImportService';
+import { DungeonImportApplySchema, DungeonImportPlanRequestSchema, DungeonImportPlanSchema, DungeonImportResultSchema, DungeonImportHistorySchema } from '../../../../modules/dungeons/package/dungeonImportService';
 import { hasErrors } from '../../../../modules/dungeons/validation/dungeonValidation';
 import type {
   ProgressionCurrency,
@@ -618,8 +618,8 @@ export const adminDungeonRoutes =
     app.post('/admin/dungeons/import/plan', {
       bodyLimit: DUNGEON_DEFINITION_BODY_LIMIT_BYTES,
       onRequest: gate('dungeons.write'),
-      schema: { tags, summary: 'Read-only dungeon package import plan, target conflicts and dependencies', body: z.object({ package: z.unknown() }).strict(), response: { 200: dataSchema(DungeonImportPlanSchema), ...tooLargeResponse, ...commonErrorResponses } },
-    }, async req => ok(req, await translate(() => dungeons.planImport(req.body.package))));
+      schema: { tags, summary: 'Read-only dungeon package import plan, target conflicts and dependencies', body: DungeonImportPlanRequestSchema, response: { 200: dataSchema(DungeonImportPlanSchema), ...tooLargeResponse, ...commonErrorResponses } },
+    }, async req => ok(req, await translate(() => dungeons.planImport(req.body.package, req.body.lootTables))));
     app.post('/admin/dungeons/import/apply', {
       bodyLimit: DUNGEON_DEFINITION_BODY_LIMIT_BYTES,
       onRequest: gate('dungeons.write'),

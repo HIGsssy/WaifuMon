@@ -1,5 +1,15 @@
 import type { DungeonImportDecisions, DungeonImportPlan } from '@/api/adminDungeons';
 
+export const INCOMPLETE_REWARD_CODES = [
+  'reward_item_missing',
+  'reward_item_disabled',
+  'reward_item_capped',
+  'reward_equipment_empty',
+  'reward_table_archived',
+  'reward_table_invalid',
+  'reward_shards_unset',
+] as const;
+
 export const IMPORT_BODY_LIMIT = 2 * 1024 * 1024;
 export const requestBytes = (body: unknown) =>
   new TextEncoder().encode(JSON.stringify(body)).byteLength;
@@ -26,18 +36,34 @@ export function importBlockers(plan: DungeonImportPlan, decisions: DungeonImport
     }
     return !(
       decisions.allowMissingDependencies &&
-      ['reward_table_missing', 'region_missing', 'currency_missing'].includes(issue.code)
+      (['reward_table_missing', 'region_missing', 'currency_missing'].includes(issue.code) ||
+        (!!plan.lootTables && (INCOMPLETE_REWARD_CODES as readonly string[]).includes(issue.code)))
     );
   });
 }
 export function decisionsComplete(plan: DungeonImportPlan, decisions: DungeonImportDecisions) {
-  return plan.enemies.every(
-    (e) =>
-      e.status === 'identical' ||
-      (e.status === 'different' || e.status === 'existing_unverified'
-        ? decisions.enemies[e.key] === 'use_existing'
-        : (e.status === 'missing_bundled' && decisions.enemies[e.key] === 'create') ||
-          (decisions.enemies[e.key] === 'leave_missing' && decisions.allowMissingDependencies)),
+  const lootComplete = (plan.lootTables ?? []).every((table) => {
+    const choice =
+      decisions.lootTables && Object.hasOwn(decisions.lootTables, table.key)
+        ? decisions.lootTables[table.key]
+        : table.decision;
+    return (
+      choice !== null &&
+      choice !== undefined &&
+      (choice.action !== 'copy' || choice.key.length > 0) &&
+      (choice.action !== 'leave_missing' || decisions.allowMissingDependencies)
+    );
+  });
+  return (
+    lootComplete &&
+    plan.enemies.every(
+      (e) =>
+        e.status === 'identical' ||
+        (e.status === 'different' || e.status === 'existing_unverified'
+          ? decisions.enemies[e.key] === 'use_existing'
+          : (e.status === 'missing_bundled' && decisions.enemies[e.key] === 'create') ||
+            (decisions.enemies[e.key] === 'leave_missing' && decisions.allowMissingDependencies)),
+    )
   );
 }
 export function packageInformation(pkg: unknown) {

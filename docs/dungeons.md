@@ -2,13 +2,17 @@
 
 Hand-authored dungeons: a map of rooms and connections, each room holding an
 ordered sequence of actions, played one step per Discord interaction by a pure
-engine. This document describes the system as of **Phase 1A** of the dungeon
-overhaul (migration `0059`). The prototype it replaced — procedural zones, one
+engine. This document describes the system through **Phase 2 Dungeon Rewards**
+(migrations `0059`–`0064`). The prototype it replaced — procedural zones, one
 node = one resolution — is gone; its documentation is in Git history.
 
-Phase 1A is the runtime foundation. The graphical editor, the package
-importer, the full reward system, standalone events and Waifumon encounters
-are later phases and are called out where they matter.
+The graphical Portal editor, package v1/v2 importer and Dungeon Loot catalogue
+are implemented. Standalone events and WaifuMon encounters remain future phases.
+See the [Dungeon Rewards creator guide](dungeons/dungeon-rewards-guide.md) for
+authoring and the [release assessment](dungeons/phase2-release-readiness.md) for
+verification and staging requirements. The original [audit](dungeons/phase2-rewards-audit.md)
+and [design](dungeons/phase2-rewards-design.md) retain historical context;
+this page describes current behaviour.
 
 ## At a glance
 
@@ -20,6 +24,10 @@ are later phases and are called out where they matter.
 | Package format and export | `src/modules/dungeons/package/dungeonPackage.ts` |
 | Drafts, publish, rollback, audit | `src/modules/dungeons/dungeonContentService.ts` |
 | Live runs | `src/modules/dungeons/dungeonRunService.ts` |
+| Dungeon Loot catalogue | `src/modules/dungeons/dungeonLootTableService.ts` |
+| Reward schemas and publication snapshots | `src/modules/dungeons/content/dungeonRewards.ts`, `dungeonRewardSnapshot.ts` |
+| Shared resolver and exact odds | `src/modules/dungeons/engine/lootResolver.ts` |
+| Portal editors | `portal/src/features/adminDungeons/`, `adminDungeonLoot/` |
 | Daily allowance (unchanged) | `src/modules/dungeons/dungeonAllowanceService.ts` |
 | Admin API | `src/api/routes/v1/admin/dungeons.ts` |
 | Discord | `src/discord/commands/waifumonDungeon.ts`, `dungeonPresenter.ts`, `dungeonArtwork.ts` |
@@ -39,18 +47,18 @@ branch, rejoin and **cycle**. A room is a `room` or an `exit`; an exit room
 ends the run as completed when its sequence finishes. Any room may be an
 `extraction` point. `entranceRoomId` names where a run begins.
 
-**The room sequence.** Each room has an ordered `actions[]` list. Phase 1A
+**The room sequence.** Each room has an ordered `actions[]` list. Supported
 action types:
 
 | Type | What it does | Outcomes |
 | --- | --- | --- |
-| `combat` | One or more sequential waves, one enemy each | `victory`, `defeat` |
-| `boss` | The same, presented as a boss | `victory`, `defeat` |
+| `combat` | Sequential waves; optional rewards after final victory | `victory`, `defeat` |
+| `boss` | The same, presented as a boss; no automatic loot multiplier | `victory`, `defeat` |
 | `rest` | Restores `healBasisPoints` of max HP | `done` |
 | `gate` | Tests a condition | `passed`, `blocked` |
 | `set_flag` | Sets a run-scoped flag | `done` |
 | `leave` | Completes the room; with `connectionId`, walks through it | — |
-| `reward` | Pays an existing reward table and/or a currency range | `claimed` |
+| `reward` | Treasure: a new reward bundle or legacy tables/currency | `claimed` |
 
 Every action also takes `when` (a condition: the action is skipped silently
 when false), `optional` (the player may decline; outcome `declined`), a
@@ -209,7 +217,9 @@ of scope.
   carry validation errors.
 - **Publish** is explicit and needs `dungeons.publish`. It re-validates
   against this server with errors blocking, writes revision *n+1* and moves
-  the pointer. Publishing an unchanged draft writes nothing.
+  the pointer. It freezes reward dependencies and compares both the definition
+  and its reward gameplay identity. A loot-body or eligible-equipment change
+  can require a new revision without changing the definition ("Loot changed").
 - **Rollback** moves the pointer to an earlier revision after re-validating
   it. Nothing is copied.
 - A dungeon is **open** to players when it is `enabled` and has a published
@@ -220,9 +230,11 @@ of scope.
 | Content | Frozen at | Held in |
 | --- | --- | --- |
 | Rooms, connections, sequences | Publish | `dungeon_runs.revision_id` |
-| Enemy stats, reward tables, resolved managed artwork | Run start | `dungeon_runs.dependency_snapshot` |
+| Dungeon loot bodies, eligible gear keys and reward item metadata | Publish | `dungeon_revisions.reward_snapshot` |
+| Enemy stats, legacy expedition tables, resolved managed artwork | Run start | `dungeon_runs.dependency_snapshot` |
 | Buddy stats and gear | Run start | `dungeon_runs.fighter` |
-| Items, species, Equipment definitions | Never — resolved by slug at grant time | — |
+| Equipment ranges, affix and combat-bonus generation rules | Grant time, live; per-drop seeded RNG | Equipment services |
+| Item existence/caps and equipment-definition existence | Checked again at grant time | Shared catalogues |
 
 Publishing or rolling back changes what **new** runs get. An enemy balance
 edit reaches new runs without republishing anything, and never a run already
@@ -282,15 +294,16 @@ Unchanged from the prototype: the `equipment` unlock gate, the Buddy and
 complete-loadout requirement, one active run per player, the shared daily
 allowance spent in the start transaction, region availability at start only.
 
-### Rewards in Phase 1A
+### Legacy Treasure compatibility
 
 A `reward` action pays an existing `expedition` reward table (and optionally a
 second for gear) plus a range of the dungeon's progression currency.
 
 - Gear, WaifuBux and items are **secured**: granted in the step's transaction.
 - Progression currency is **unbanked** until settlement: all of it on
-  extraction or completion, `defeatCurrencyRetentionBasisPoints` on defeat or
-  abandon.
+  extraction or completion, `defeatCurrencyRetentionBasisPoints` on defeat.
+  Abandon uses `abandonCurrencyRetentionBasisPoints` when present, otherwise
+  the defeat rate, preserving old definitions.
 - Idempotency: `dungeon_runs.reward_claims` stores each paid plan by its
   run/room/action claim key, independently of retreat and room resume state.
   A repeated action follows its routing but pays nothing again. Claims and
@@ -299,9 +312,50 @@ second for gear) plus a range of the dungeon's progression currency.
   (`run:<runId>:<roomId>:<actionId>`); banking carries the ledger request key
   `dungeon_run:v1:<runId>:settlement`, distinct from historical prototype keys.
 
-Limitations until Phase 2: no guaranteed individual items, no fixed-stat
-gear, no dungeon-specific tables, no once-per-player policy, no claims table.
-The claim key is already in its Phase 2 shape.
+Legacy plans, RNG streams, content hashes and equipment keys remain compatible.
+A missing legacy item now fails the complete step rather than being silently
+lost. Legacy tables are guarded against deletion and validated transitively on
+publish/rollback. Explicit per-Treasure conversion previews new tables and
+changes the draft only; converted WaifuBux become at risk after publication,
+and converted rolls use the new RNG streams.
+
+### Phase 2 rewards
+
+Combat and Boss may have an optional `rewards` bundle. Treasure has exactly
+one of legacy `reward` and new `rewards`. A bundle combines `guaranteed`,
+independent `chances` and repeated `tables` references. Dungeon Loot bodies
+combine guaranteed/chance entries and weighted `pools`, with explicit Nothing
+outcomes and picks with replacement. They are separate from expedition and
+guild-boss tables; Phase 2 ships no dungeon-loot seeder.
+
+Final-wave victory or opening Treasure claims rewards once. The claim remains
+`run:<runId>:<roomId>:<actionId>` through retreat, re-entry and restart. Test Roll,
+sandbox and gameplay use the same pure resolver. Items (charms and salvage
+included), equipment, Essence and affection are secured in the locked step
+transaction. Affection goes to the pinned participating copy even after a Buddy
+swap. That copy cannot be released or converted during its run. Affection and
+Essence use the participating Buddy's bonuses pinned at start.
+
+Shards (the configured progression currency) and new-format WaifuBux stay at
+risk. Extract/completion bank 100%; defeat and abandon apply their configured
+retention separately to each currency, rounding down. New Portal dungeons
+explicitly set defeat 50% and abandon 0%. Existing balances are never reduced.
+Disconnect does not end a run. Missing/disabled progression currency still
+causes recorded skipped Shard banking; WaifuBux settle independently.
+
+Editing, archiving or deleting a Dungeon Loot table never changes any published
+snapshot, including for new runs on that revision. Gear candidates stay frozen,
+but stat ranges and affix/combat-bonus rules remain live. A failed secured grant
+rolls back every grant, claim, step and successful receipt. Gear has stable drop
+keys and seeds; retries reproduce properties while live generation rules stay
+unchanged. Discord displays committed receipts and settlement amounts.
+
+Reward Health checks current publications and older revisions with active runs
+for missing/capped items, missing gear and invalid snapshots, read-only and with
+counts rather than player identities. It does not flag ordinary live table edits
+as broken publication loot. It does not inspect every unused historical revision
+or guarantee validity of live gear-generation catalogues. No fixed-stat reward
+authoring, once-per-player claims, nested tables or unique draws are added.
 
 ## Discord
 
@@ -318,8 +372,10 @@ dg|mv|<runId>|<step>|<connectionId>   take a connection
 dg|exq|<runId>                        extraction confirmation
 dg|ex|<runId>|<step>                  extract
 dg|abq|<runId>                        abandon confirmation
-dg|ab|<runId>                         abandon (always allowed; no step)
+dg|ab|<runId>|<step>                  abandon the quoted step
 ```
+
+Old abandon buttons without a step reopen confirmation before settling.
 
 ### What a fight shows
 
@@ -367,8 +423,9 @@ optional rooms to be visited.
 
 ## The Dungeon Content Package
 
-One dungeon as a portable file (`format: "waifumon-dungeon-package"`,
-`schemaVersion: 1`):
+One dungeon as portable JSON (`format: "waifumon-dungeon-package"`). New reward
+bundles export as `schemaVersion: 2`; legacy-only definitions still export as v1.
+Both versions are read and verified. The v1 foundation is:
 
 | Member | Content |
 | --- | --- |
@@ -450,7 +507,7 @@ Application locks the request, dungeon and referenced enemy identities,
 locks existing target/dependency rows, and re-plans. Any reviewed state change
 returns `409 DUNGEON_IMPORT_STALE`. Enemy creation, the draft, import history
 and the `imported` authoring event commit together. New dungeons start disabled
-and unpublished; replacements preserve enabled state and the published pointer.
+and unpublished; **v1** replacements preserve enabled state and the published pointer.
 Published revisions and active runs are never written. An identical import
 does not bump the draft revision. Exact retries return the original receipt
 (`replayed: true`), even after later edits; reuse of a request ID for a different
@@ -461,7 +518,7 @@ Migration `0061_dungeon_import_history` stores the package ID/hash, source
 environment, dungeon key, timestamp, actor, decisions and compact result, plus
 the idempotency request identity/hash. It stores no dungeon/package payload.
 Rejected transactions leave no successful import history. JSON-only transfer
-is supported; ZIP files and asset bytes, reward tables, items, currencies,
+is supported; ZIP files and asset bytes, legacy reward tables, items, currencies,
 regions and Equipment definitions must be installed separately.
 
 Phase 1B.4B adds **Import Dungeon** to the Portal dungeon list. Selecting a
@@ -481,6 +538,38 @@ must also permit request bodies through 2 MiB. Template changes take effect
 only when that environment's Portal proxy configuration is updated; no
 deployment is performed by the editor implementation.
 
+### Package v2 rewards and conflict review
+
+V2 adds the complete verified `rewardSnapshot`, nullable `rewardSnapshotHash`,
+bundled Dungeon Loot bodies with hashes/source revisions, and exact table,
+item and equipment-candidate manifests. Revision exports use frozen bodies and
+candidates; draft exports validate current catalogues and refuse broken reward
+dependencies. Description/origin are null where the publication did not store
+them. Display metadata/provenance are outside the gameplay hash; table bodies,
+item slugs and candidate identities are hashed.
+
+Missing tables default to create, identical bodies to reuse, and differing
+bodies require copy-under-a-free-key or explicit use-existing. Copies rewrite
+every reference and change the definition hash; use-existing warns that rewards
+differ. Target gear candidates are compared with the source. Global items,
+equipment, regions, currencies and asset bytes are not imported. Explicit
+incomplete drafts cannot publish until repaired. Import refuses v1 envelopes
+containing new reward bundles.
+
+Plan requests optionally carry `lootTables`; apply carries the same choices
+under `decisions.lootTables`, for example
+`{ "boss_hoard": { "action": "copy", "key": "boss_hoard_imported" } }`.
+Choices, destination rows and dependency state enter the plan hash. Apply
+re-plans under locks; a stale plan needs fresh review. Catalogue locks protect
+missing-key and equipment-insertion races. Table creation/history, enemies,
+draft, audit and receipt commit together. Existing tables are never overwritten;
+exact retries return the original receipt.
+
+**V2 create and replacement leave the target disabled and unpublished.**
+Replacement preserves historical revisions and active runs but clears the
+current publication pointer. Review, publish and enable explicitly. Active
+runs stay pinned. This differs intentionally from v1 replacement.
+
 ## Admin API
 
 All under `/api/v1/admin/dungeons`.
@@ -495,6 +584,10 @@ All under `/api/v1/admin/dungeons`.
 | `GET /reference`, `POST /validate`, `POST /package/inspect`, `POST /sandbox` | `dungeons.read` |
 | `POST /import/plan`, `POST /import/apply` | `dungeons.write` |
 | `GET /definitions/:key/import-history?limit=100` | `dungeons.read` |
+| `GET /reward-health`, `POST /loot-tables/validate`, `POST /loot-tables/test-roll` | `dungeons.read` |
+| Loot-table list/get/where-used/history | `dungeons.read` |
+| Loot-table create/update/archive/restore/delete/duplicate | `dungeons.write` |
+| `POST /definitions/:key/treasure-conversion/plan`, `…/apply` | `dungeons.write` |
 | `/artwork*`, `/settings`, `/currencies*` | unchanged |
 
 Import POST bodies have a 2 MiB ceiling and are permission-checked before
@@ -510,7 +603,9 @@ permission checks apply to all routes.
 
 `POST /sandbox` plays a draft, a published revision or an inline definition
 through the sandbox with a synthetic fighter and returns the view, state,
-recorded effects and log. It writes nothing and resolves no reward tables.
+recorded effects and log. New rewards use a validated ephemeral draft snapshot
+or verified published snapshot, without player grants or writes. Legacy
+expedition loot is not resolved by this reward preview path.
 
 ## Migration 0059
 
@@ -533,13 +628,26 @@ Migration `0060_dungeon_reward_claims` adds the independent claim map and
 backfills paid plans from run history, including claims whose action records
 were erased by retreat. Historical currency ledger entries are unchanged.
 
-## Not in Phase 1A
+## Phase 2 migrations and rollout
 
-- The Portal editor. The existing Portal dungeon pages still target the
-  removed zone endpoints: the zone list shows an error; the Delve settings and
-  currency panels on that page keep working. Authoring is through the API.
-- Package import (plan/apply), import log, conflict handling.
-- Reward bundles, claims, dungeon loot tables (Phase 2).
-- Standalone events, choices, persistent flags, shared rules module (Phase 3).
-- Waifumon encounters, rescue, recruitment (Phase 4).
+`0062_dungeon_loot_tables` creates the catalogue, immutable keys and append-only
+events. `0063_dungeon_reward_snapshots` adds paired nullable snapshot/gameplay
+hash columns; legacy revisions stay null. `0064_dungeon_unbanked_waifubux` adds
+a nonnegative integer defaulting to 0, preserving old runs. Journal indices and
+increasing `when` values must stay ordered; include all preceding migrations.
+T16–T18 require no further migration.
+
+Deployment order: database through 0064, then matching backend/bot, then Portal.
+Backend startup runs migrations before services. Coordinate this before exposing
+the new Portal or creating v2 content; old backends cannot interpret v2 bundles
+or runs. Build the Portal from repository root with
+`podman build -f portal/Dockerfile .`; its production build excludes local env
+files and verifies the public bundle. Preserve the import proxy's 2 MiB limit
+through any additional ingress. Complete the release assessment's staging
+checklist before considering production.
+
+## Still out of scope
+
+- Standalone events, choices, persistent flags and shared rules (Phase 3).
+- WaifuMon encounters, rescue and recruitment (Phase 4).
 - Re-running a completed room's sequence on re-entry.

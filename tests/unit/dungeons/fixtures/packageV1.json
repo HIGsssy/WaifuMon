@@ -1,0 +1,431 @@
+{
+  "format": "waifumon-dungeon-package",
+  "schemaVersion": 1,
+  "packageId": "00000000-0000-4000-8000-000000000016",
+  "exportedAt": "2026-10-12T00:00:00.000Z",
+  "source": {
+    "environment": "staging",
+    "dungeonKey": "test_tunnels",
+    "origin": "draft",
+    "draftRevision": 4,
+    "publishedRevision": 2
+  },
+  "contentHash": "sha256:df17d7e4b16b928a446973b1876d50e90a3af02501f0184f7c07968521855d5f",
+  "dungeon": {
+    "key": "test_tunnels",
+    "name": "Test Tunnels",
+    "description": "For tests.",
+    "availableRegions": [
+      "waifu-valley"
+    ],
+    "entranceRoomId": "gate",
+    "artwork": null,
+    "background": null,
+    "settings": {
+      "progressionCurrency": "ascension_currency",
+      "defeatCurrencyRetentionBasisPoints": 2500
+    },
+    "flags": [
+      {
+        "key": "valve_opened",
+        "scope": "run",
+        "description": ""
+      },
+      {
+        "key": "found_keycard",
+        "scope": "run",
+        "description": ""
+      }
+    ],
+    "rooms": [
+      {
+        "id": "gate",
+        "name": "Gate",
+        "description": "",
+        "kind": "room",
+        "extraction": false,
+        "background": null,
+        "actions": [
+          {
+            "type": "combat",
+            "id": "guards",
+            "label": "",
+            "optional": false,
+            "outcomes": {},
+            "waves": [
+              {
+                "enemy": {
+                  "key": "grunt"
+                }
+              },
+              {
+                "enemy": {
+                  "pool": [
+                    {
+                      "key": "grunt",
+                      "weight": 3
+                    },
+                    {
+                      "key": "sentinel",
+                      "weight": 1
+                    }
+                  ]
+                }
+              }
+            ],
+            "advance": "confirm"
+          },
+          {
+            "type": "reward",
+            "id": "pay",
+            "label": "",
+            "optional": false,
+            "outcomes": {},
+            "reward": {
+              "rewardTable": null,
+              "equipmentRewardTable": null,
+              "currency": {
+                "min": 2,
+                "max": 2
+              }
+            }
+          }
+        ]
+      },
+      {
+        "id": "pump_room",
+        "name": "Pump Room",
+        "description": "",
+        "kind": "room",
+        "extraction": false,
+        "background": null,
+        "actions": [
+          {
+            "type": "combat",
+            "id": "bruiser",
+            "label": "",
+            "optional": false,
+            "outcomes": {},
+            "waves": [
+              {
+                "enemy": {
+                  "key": "sentinel"
+                }
+              }
+            ],
+            "advance": "confirm"
+          },
+          {
+            "type": "rest",
+            "id": "breather",
+            "label": "",
+            "optional": true,
+            "outcomes": {},
+            "healBasisPoints": 2500
+          },
+          {
+            "type": "set_flag",
+            "id": "valve",
+            "label": "",
+            "optional": false,
+            "outcomes": {},
+            "flag": "valve_opened",
+            "scope": "run",
+            "value": true
+          }
+        ]
+      },
+      {
+        "id": "locker_room",
+        "name": "Locker Room",
+        "description": "",
+        "kind": "room",
+        "extraction": false,
+        "background": null,
+        "actions": [
+          {
+            "type": "reward",
+            "id": "locker",
+            "label": "",
+            "optional": true,
+            "outcomes": {},
+            "reward": {
+              "rewardTable": null,
+              "equipmentRewardTable": null,
+              "currency": {
+                "min": 5,
+                "max": 5
+              }
+            }
+          },
+          {
+            "type": "set_flag",
+            "id": "keycard",
+            "label": "",
+            "optional": false,
+            "outcomes": {},
+            "flag": "found_keycard",
+            "scope": "run",
+            "value": true
+          }
+        ]
+      },
+      {
+        "id": "bulkhead",
+        "name": "Bulkhead",
+        "description": "",
+        "kind": "room",
+        "extraction": true,
+        "background": null,
+        "actions": [
+          {
+            "type": "gate",
+            "id": "vault_door",
+            "label": "",
+            "optional": false,
+            "outcomes": {
+              "blocked": {
+                "type": "action",
+                "actionId": "sentry"
+              }
+            },
+            "requires": {
+              "type": "flag",
+              "flag": "found_keycard",
+              "scope": "run",
+              "equals": true
+            },
+            "blockedText": "The vault wants a keycard."
+          },
+          {
+            "type": "reward",
+            "id": "vault",
+            "label": "",
+            "optional": false,
+            "outcomes": {},
+            "reward": {
+              "rewardTable": null,
+              "equipmentRewardTable": null,
+              "currency": {
+                "min": 7,
+                "max": 7
+              }
+            }
+          },
+          {
+            "type": "combat",
+            "id": "sentry",
+            "label": "",
+            "optional": false,
+            "outcomes": {},
+            "waves": [
+              {
+                "enemy": {
+                  "key": "warden"
+                }
+              }
+            ],
+            "advance": "confirm"
+          }
+        ]
+      },
+      {
+        "id": "den",
+        "name": "The Den",
+        "description": "",
+        "kind": "exit",
+        "extraction": false,
+        "background": null,
+        "actions": [
+          {
+            "type": "boss",
+            "id": "overlord",
+            "label": "",
+            "optional": false,
+            "outcomes": {},
+            "waves": [
+              {
+                "enemy": {
+                  "key": "overlord"
+                }
+              }
+            ],
+            "advance": "confirm"
+          },
+          {
+            "type": "reward",
+            "id": "hoard",
+            "label": "",
+            "optional": false,
+            "outcomes": {},
+            "reward": {
+              "rewardTable": null,
+              "equipmentRewardTable": null,
+              "currency": {
+                "min": 10,
+                "max": 10
+              }
+            }
+          }
+        ]
+      }
+    ],
+    "connections": [
+      {
+        "id": "c_main",
+        "from": "gate",
+        "to": "pump_room",
+        "label": "",
+        "kind": "path",
+        "lockedText": ""
+      },
+      {
+        "id": "c_side",
+        "from": "gate",
+        "to": "locker_room",
+        "label": "Side door",
+        "kind": "path",
+        "lockedText": ""
+      },
+      {
+        "id": "c_back",
+        "from": "locker_room",
+        "to": "gate",
+        "label": "",
+        "kind": "shortcut",
+        "lockedText": ""
+      },
+      {
+        "id": "c_locker_bulk",
+        "from": "locker_room",
+        "to": "bulkhead",
+        "label": "",
+        "kind": "path",
+        "lockedText": ""
+      },
+      {
+        "id": "c_pump_bulk",
+        "from": "pump_room",
+        "to": "bulkhead",
+        "label": "",
+        "kind": "path",
+        "lockedText": ""
+      },
+      {
+        "id": "c_bulk_pump",
+        "from": "bulkhead",
+        "to": "pump_room",
+        "label": "Back to the pumps",
+        "kind": "path",
+        "lockedText": ""
+      },
+      {
+        "id": "c_boss",
+        "from": "bulkhead",
+        "to": "den",
+        "label": "",
+        "kind": "path",
+        "requires": {
+          "type": "flag",
+          "flag": "valve_opened",
+          "scope": "run",
+          "equals": true
+        },
+        "lockedText": "The bulkhead is sealed."
+      }
+    ]
+  },
+  "editor": {
+    "layout": {
+      "rooms": {},
+      "notes": []
+    }
+  },
+  "dependencies": {
+    "enemies": [
+      {
+        "key": "grunt",
+        "contentHash": "04ffeb304b18ce1229aa341030004ba5c7c946d0967f9eb1c96887563dc39252"
+      },
+      {
+        "key": "overlord",
+        "contentHash": "ee74512d1514eb682994da6e9c3c3d5f09c424bd1b40e17e390feada208961ef"
+      },
+      {
+        "key": "sentinel",
+        "contentHash": "1475366ef1b4292b0c50b1df76b74455f76b1f5c6867ca2e740e9acbfeb1d1f0"
+      },
+      {
+        "key": "warden",
+        "contentHash": "db339ca72b64a59b40cf047708c7c3d3fdbe6cc67b21d967641de6e51538beb9"
+      }
+    ],
+    "rewardTables": [],
+    "regions": [
+      "waifu-valley"
+    ],
+    "currencies": [
+      "ascension_currency"
+    ],
+    "species": [],
+    "items": [],
+    "equipment": []
+  },
+  "assets": [],
+  "bundled": {
+    "enemies": [
+      {
+        "key": "grunt",
+        "name": "Grunt",
+        "description": "",
+        "attack": 60,
+        "defense": 0,
+        "hp": 150,
+        "artworkPath": "combat/enemies/grunt.webp",
+        "spriteArtworkPath": null,
+        "spritePlacement": null,
+        "enabled": true,
+        "tags": []
+      },
+      {
+        "key": "overlord",
+        "name": "Overlord",
+        "description": "",
+        "attack": 60,
+        "defense": 0,
+        "hp": 300,
+        "artworkPath": null,
+        "spriteArtworkPath": null,
+        "spritePlacement": null,
+        "enabled": true,
+        "tags": []
+      },
+      {
+        "key": "sentinel",
+        "name": "Sentinel",
+        "description": "",
+        "attack": 60,
+        "defense": 0,
+        "hp": 160,
+        "artworkPath": null,
+        "spriteArtworkPath": null,
+        "spritePlacement": null,
+        "enabled": true,
+        "tags": []
+      },
+      {
+        "key": "warden",
+        "name": "Warden",
+        "description": "",
+        "attack": 60,
+        "defense": 0,
+        "hp": 170,
+        "artworkPath": null,
+        "spriteArtworkPath": null,
+        "spritePlacement": null,
+        "enabled": true,
+        "tags": []
+      }
+    ]
+  }
+}

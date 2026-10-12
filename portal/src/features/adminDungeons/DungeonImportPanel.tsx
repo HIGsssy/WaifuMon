@@ -2,6 +2,8 @@ import { useContext, useEffect, useRef, useState } from 'react';
 import { Link, UNSAFE_DataRouterContext, useBlocker } from 'react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import * as api from '@/api/adminDungeons';
+import { DUNGEON_LOOT_TABLES_QUERY_KEY } from '@/api/adminDungeonLootTables';
+import { DungeonLootImportReview } from './DungeonLootImportReview';
 import { isPortalApiError } from '@/api/client';
 import { useHasPermission } from '@/auth/useSession';
 import { Button } from '@/components/ui/button';
@@ -9,6 +11,7 @@ import { Card } from '@/components/ui/card';
 import { ErrorState } from '@/components/layout/ErrorState';
 import {
   decisionsComplete,
+  INCOMPLETE_REWARD_CODES,
   draftOperation,
   importBlockers,
   IMPORT_BODY_LIMIT,
@@ -39,8 +42,11 @@ export function DungeonImportPanel({ onCancel }: { onCancel: () => void }) {
   const client = useQueryClient();
   const [phase, setPhase] = useState<Phase>('empty');
   const [selected, setSelected] = useState<{ name: string; pkg: unknown } | null>(null);
+  const [previewConfirmed, setPreviewConfirmed] = useState(false);
   const [plan, setPlan] = useState<api.DungeonImportPlan | null>(null);
   const [enemies, setEnemies] = useState<api.DungeonImportDecisions['enemies']>({});
+  const [lootTables, setLootTables] = useState<api.DungeonLootImportDecisions>({});
+  const reviewedLootTables = useRef<api.DungeonLootImportDecisions>({});
   const [allowMissing, setAllowMissing] = useState(false);
   const [approveDraft, setApproveDraft] = useState(false);
   const [acknowledge, setAcknowledge] = useState(false);
@@ -76,27 +82,39 @@ export function DungeonImportPanel({ onCancel }: { onCancel: () => void }) {
       document.removeEventListener('click', holdNavigation, true);
     };
   }, [locked, dataRouter]);
-  const review = async (pkg: unknown, token: number) => {
+  const review = async (pkg: unknown, token: number, retainChoices = false) => {
     setPhase('planning');
+    setPreviewConfirmed(false);
     setError(null);
-    setPlan(null);
-    setEnemies({});
-    setAllowMissing(false);
+    if (!retainChoices) {
+      setPlan(null);
+      setEnemies({});
+      setLootTables({});
+      setAllowMissing(false);
+    }
     setApproveDraft(false);
     setAcknowledge(false);
     operation.current = null;
     try {
-      if (requestBytes({ package: pkg }) > IMPORT_BODY_LIMIT)
+      const choices = retainChoices && plan?.lootTables ? structuredClone(lootTables) : undefined;
+      if (
+        requestBytes({ package: pkg, ...(choices ? { lootTables: choices } : {}) }) >
+        IMPORT_BODY_LIMIT
+      )
         throw new Error('The wrapped planning request exceeds 2 MiB. Select a smaller package.');
-      const next = await api.planDungeonImport(pkg);
+      const next = choices
+        ? await api.planDungeonImport(pkg, undefined, choices)
+        : await api.planDungeonImport(pkg);
       if (token === generation.current) {
         setPlan(next);
+        setPreviewConfirmed(true);
+        reviewedLootTables.current = choices ?? {};
         setPhase('ready');
       }
     } catch (e) {
       if (token === generation.current) {
         setError(e);
-        setPhase('rejected');
+        setPhase(retainChoices && plan?.lootTables ? 'ready' : 'rejected');
       }
     } finally {
       busy.current = false;
@@ -136,10 +154,15 @@ export function DungeonImportPanel({ onCancel }: { onCancel: () => void }) {
     dungeon: plan ? draftOperation(plan) : 'create',
     enemies,
     allowMissingDependencies: allowMissing,
+    ...(plan?.lootTables ? { lootTables } : {}),
   };
+  const lootChoicesChanged =
+    JSON.stringify(lootTables) !== JSON.stringify(reviewedLootTables.current);
   const blockers = plan ? importBlockers(plan, decisions) : [];
   const warnings = plan?.issues.filter((i) => i.severity === 'warning') ?? [];
   const eligible =
+    previewConfirmed &&
+    !lootChoicesChanged &&
     !!plan?.validPackage &&
     !!plan.planHash &&
     !!plan.target &&
@@ -180,6 +203,7 @@ export function DungeonImportPanel({ onCancel }: { onCancel: () => void }) {
         !['created', 'replaced', 'unchanged'].includes(receipt.result) ||
         !Number.isInteger(receipt.draftRevision) ||
         receipt.draftRevision <= 0 ||
+        (plan?.lootTables && !Array.isArray(receipt.createdLootTables)) ||
         !Array.isArray(receipt.createdEnemies) ||
         !receipt.createdEnemies.every((key) => typeof key === 'string') ||
         !Array.isArray(receipt.issues) ||
@@ -198,6 +222,8 @@ export function DungeonImportPanel({ onCancel }: { onCancel: () => void }) {
       setPhase('success');
       operation.current = null;
       void client.invalidateQueries({ queryKey: api.DUNGEONS_QUERY_KEY });
+      if (receipt.createdLootTables?.length)
+        void client.invalidateQueries({ queryKey: DUNGEON_LOOT_TABLES_QUERY_KEY });
     } catch (e) {
       setError(e);
       if (
@@ -296,8 +322,10 @@ export function DungeonImportPanel({ onCancel }: { onCancel: () => void }) {
               )}
               {draftOperation(plan) === 'replace' && (
                 <p className="text-danger">
-                  Replacement overwrites existing draft changes. Published revisions and active runs
-                  remain untouched.
+                  Replacement overwrites existing draft changes.{' '}
+                  {plan.lootTables &&
+                    'This import also disables the dungeon and clears its current publication. '}
+                  Stored revisions and active runs remain untouched.
                 </p>
               )}
               <label className="block">
@@ -354,11 +382,55 @@ export function DungeonImportPanel({ onCancel }: { onCancel: () => void }) {
                   )}
                 </div>
               ))}
+              <DungeonLootImportReview
+                plan={plan}
+                choices={lootTables}
+                onChange={(key, choice) => {
+                  setLootTables((previous) => {
+                    const next = { ...previous };
+                    if (choice)
+                      Object.defineProperty(next, key, {
+                        value: choice,
+                        enumerable: true,
+                        writable: true,
+                        configurable: true,
+                      });
+                    else delete next[key];
+                    return next;
+                  });
+                  setApproveDraft(false);
+                  setAcknowledge(false);
+                }}
+              />
+              {plan.lootTables && (lootChoicesChanged || !previewConfirmed) && (
+                <div>
+                  <p>
+                    Loot choices need a current preview. Confirm the references and dependencies
+                    before applying.
+                  </p>
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      if (!busy.current && selected) {
+                        busy.current = true;
+                        void review(selected.pkg, ++generation.current, true);
+                      }
+                    }}
+                  >
+                    Preview loot choices
+                  </Button>
+                </div>
+              )}
               {(plan.enemies.some(
                 (e) => e.status === 'missing' || e.status === 'missing_bundled',
               ) ||
-                plan.issues.some((i) =>
-                  ['reward_table_missing', 'region_missing', 'currency_missing'].includes(i.code),
+                plan.issues.some(
+                  (i) =>
+                    ['reward_table_missing', 'region_missing', 'currency_missing'].includes(
+                      i.code,
+                    ) ||
+                    (!!plan.lootTables &&
+                      (INCOMPLETE_REWARD_CODES as readonly string[]).includes(i.code)),
                 )) && (
                 <label className="block">
                   <input
@@ -366,8 +438,8 @@ export function DungeonImportPanel({ onCancel }: { onCancel: () => void }) {
                     checked={allowMissing}
                     onChange={(e) => setAllowMissing(e.target.checked)}
                   />{' '}
-                  Accept permitted missing dependencies as an incomplete draft. Install them before
-                  publication.
+                  Accept permitted missing dependencies and unavailable rewards as an incomplete
+                  draft. Repair them before publication.
                 </label>
               )}
               {warnings.length > 0 && (
@@ -390,7 +462,9 @@ export function DungeonImportPanel({ onCancel }: { onCancel: () => void }) {
                   ? 'Warning'
                   : blockers.includes(issue)
                     ? 'Blocking error'
-                    : 'Dependency addressed by decisions'}
+                    : plan.lootTables && allowMissing
+                      ? 'Publication blocker accepted for incomplete draft'
+                      : 'Dependency addressed by decisions'}
                 : {issue.message} <span className="text-xs">({issue.path})</span>
               </li>
             ))}
@@ -398,8 +472,8 @@ export function DungeonImportPanel({ onCancel }: { onCancel: () => void }) {
           {!plan.issues.length && <p>Valid: no validation issues reported.</p>}
           {!plan.publishable && (
             <p>
-              Publication is not currently ready; the plan checks dependencies before approved enemy
-              creation.
+              Publication is not currently ready; repair the reported dependencies before
+              publishing.
             </p>
           )}
         </>
@@ -449,6 +523,13 @@ export function DungeonImportPanel({ onCancel }: { onCancel: () => void }) {
             Draft revision {result.draftRevision}. No publication performed.
             {result.replayed ? ' Original receipt confirmed by retry.' : ''}
           </p>
+          {!!result.createdLootTables?.length && (
+            <p>Created loot tables: {result.createdLootTables.join(', ')}</p>
+          )}
+          {!!result.reusedLootTables?.length && (
+            <p>Reused loot tables: {result.reusedLootTables.join(', ')}</p>
+          )}
+          {result.contentHash && <p>Imported content hash: {result.contentHash}</p>}
           {result.createdEnemies.length > 0 && (
             <p>Created enemies: {result.createdEnemies.join(', ')}</p>
           )}
@@ -477,7 +558,7 @@ export function DungeonImportPanel({ onCancel }: { onCancel: () => void }) {
             onClick={() => {
               if (!busy.current) {
                 busy.current = true;
-                void review(selected.pkg, ++generation.current);
+                void review(selected.pkg, ++generation.current, true);
               }
             }}
           >

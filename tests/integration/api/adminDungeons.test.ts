@@ -21,7 +21,9 @@ import type { ZodFastify } from '../../../src/api/plugins/typeProvider';
 import type { PortalSession, PortalSessionService } from '../../../src/api/portalSession';
 import { dungeonContentEvents, dungeonDefinitions, dungeonRevisions, dungeonRunEvents, dungeonRuns, items } from '../../../src/db/schema';
 import { createDungeonLootTableService } from '../../../src/modules/dungeons/dungeonLootTableService';
-import { readDungeonPackage } from '../../../src/modules/dungeons/package/dungeonPackage';
+import { buildDungeonPackage, readDungeonPackage } from '../../../src/modules/dungeons/package/dungeonPackage';
+import { resolveDungeonRewardDependencies } from '../../../src/modules/dungeons/content/dungeonRewardSnapshot';
+import { DungeonLootTableBodySchema } from '../../../src/modules/dungeons/content/dungeonRewards';
 import { randomUUID } from 'node:crypto';
 import { DUNGEON_ISSUE_CODES } from '../../../src/modules/dungeons/validation/dungeonValidation';
 import { createGuildOwnershipService } from '../../../src/modules/portalAuth/guildOwnershipService';
@@ -30,7 +32,7 @@ import {
   type PortalAuthorizationService,
   type PortalPermission,
 } from '../../../src/modules/portalAuth/portalAuthService';
-import { CURRENCY, STARTER, TEST_ENEMIES, testDungeonInput } from '../../helpers/dungeonFixtures';
+import { CURRENCY, STARTER, TEST_ENEMIES, testDungeonInput, singleRoomDungeon } from '../../helpers/dungeonFixtures';
 import { createDungeonWorld, type DungeonWorld } from '../../helpers/dungeonWorld';
 import { provisionPlayer } from '../../helpers/fixtures';
 import { createCapturedLogger, createProbes, TEST_TOKEN } from '../../helpers/platformApiFixtures';
@@ -221,7 +223,60 @@ const data = <T>(res: { json(): unknown }) => (res.json() as { data: T }).data;
 const errorOf = (res: { json(): unknown }) => (res.json() as ErrorBody).error;
 const errorCodes = (issues: readonly Issue[]) => issues.filter((i) => i.severity === 'error').map((i) => i.code);
 
+let v2ApiSerial = 0;
+function v2ApiPackage() {
+  const key = `api_v2_import_${++v2ApiSerial}`;
+  const table = `${key}_loot`;
+  const body = DungeonLootTableBodySchema.parse({ guaranteed: [{ id: 'coins', grant: { type: 'currency', currency: 'waifubux', amount: { min: 7, max: 9 } } }], chances: [], pools: [] });
+  const definition = singleRoomDungeon([{ id: 'hoard', type: 'reward', rewards: { guaranteed: [], chances: [], tables: [{ id: 'loot', table, draws: 1 }] } }], d => { d.key = key; d.flags = []; });
+  const rewardSnapshot = resolveDungeonRewardDependencies(definition, { lootTables: new Map([[table, { name: 'Coin hoard', body, archivedAt: null }]]) }).snapshot!;
+  return { pkg: buildDungeonPackage({ definition, rewardSnapshot, source: { environment: 'staging', origin: 'revision', draftRevision: null, publishedRevision: 1 } }), table, body };
+}
 describe('package import API', () => {
+  it('v2 conflict preview and copy application return reward-aware contracts and an unchanged destination table', async () => {
+    const { pkg, table, body } = v2ApiPackage();
+    const loot = createDungeonLootTableService({ db: w.t.db });
+    const targetBody = DungeonLootTableBodySchema.parse({ ...body, guaranteed: [{ id: 'coins', grant: { type: 'currency', currency: 'waifubux', amount: { min: 99, max: 99 } } }] });
+    await loot.create({ key: table, name: 'Target coins', body: targetBody }, 'author');
+    const first = data<Json>(await as(WRITER_TOKEN, 'POST', '/admin/dungeons/import/plan', { package: pkg }));
+    expect(first.lootTables).toMatchObject([{ key: table, status: 'different', decision: null, incomingBody: body, currentBody: targetBody }]);
+    const lootTables = { [table]: { action: 'copy', key: `${table}_copy` } };
+    const preview = await as(WRITER_TOKEN, 'POST', '/admin/dungeons/import/plan', { package: pkg, lootTables });
+    expect(preview.statusCode).toBe(200);
+    const plan = data<Json>(preview); expect(plan.resultingContentHash).not.toBe(pkg.contentHash);
+    const request = { package: pkg, requestId: randomUUID(), expectedPlanHash: plan.planHash, expectedRevision: null, decisions: { dungeon: 'create', enemies: {}, lootTables, allowMissingDependencies: false } };
+    const response = await as(WRITER_TOKEN, 'POST', '/admin/dungeons/import/apply', request);
+    expect(response.statusCode, response.body).toBe(200);
+    expect(data<Json>(response)).toMatchObject({ createdLootTables: [`${table}_copy`], contentHash: plan.resultingContentHash, tableKeyChanges: { [table]: `${table}_copy` }, sourceSchemaVersion: 2 });
+    expect((await loot.get(table))!.body).toEqual(targetBody);
+    expect((await w.content.get(pkg.dungeon.key))).toMatchObject({ enabled: false, published: null, draftHash: plan.resultingContentHash });
+    expect(data<Json>(await as(WRITER_TOKEN, 'POST', '/admin/dungeons/import/apply', request))).toMatchObject({ replayed: true, importId: data<Json>(response).importId });
+  });
+  it('v2 preview/apply enforce write permission, CSRF and strict copy decisions', async () => {
+    const { pkg } = v2ApiPackage();
+    const plan = data<Json>(await as(WRITER_TOKEN, 'POST', '/admin/dungeons/import/plan', { package: pkg }));
+    const request = { package: pkg, requestId: randomUUID(), expectedPlanHash: plan.planHash, expectedRevision: null, decisions: { dungeon: 'create', enemies: {}, allowMissingDependencies: false } };
+    for (const endpoint of ['plan', 'apply']) {
+      const payload = endpoint === 'plan' ? { package: pkg } : request;
+      expect((await as(READER_TOKEN, 'POST', `/admin/dungeons/import/${endpoint}`, payload)).statusCode).toBe(403);
+      const missingCsrf = await api.inject({ method: 'POST', url: `/api/v1/admin/dungeons/import/${endpoint}`, cookies: { wm_portal_session: WRITER_TOKEN }, payload });
+      expect(missingCsrf.statusCode).toBe(403);
+    }
+    expect((await as(WRITER_TOKEN, 'POST', '/admin/dungeons/import/plan', { package: pkg, lootTables: { unknown: { action: 'copy', key: 'Invalid Key' } } })).statusCode).toBe(400);
+    expect((await as(WRITER_TOKEN, 'POST', '/admin/dungeons/import/apply', { ...request, decisions: { ...request.decisions, lootTables: { unknown: { action: 'overwrite' } } } })).statusCode).toBe(400);
+  });
+  it('v2 table changes return a stale-plan conflict and tampered packages fail explicitly', async () => {
+    const { pkg, table, body } = v2ApiPackage(); const loot = createDungeonLootTableService({ db: w.t.db });
+    await loot.create({ key: table, name: 'Same table', body }, 'author');
+    const plan = data<Json>(await as(WRITER_TOKEN, 'POST', '/admin/dungeons/import/plan', { package: pkg }));
+    await loot.archive(table, { expectedRevision: 1 }, 'author');
+    const request = { package: pkg, requestId: randomUUID(), expectedPlanHash: plan.planHash, expectedRevision: null, decisions: { dungeon: 'create', enemies: {}, allowMissingDependencies: false } };
+    const stale = await as(WRITER_TOKEN, 'POST', '/admin/dungeons/import/apply', request); expect(stale.statusCode).toBe(409); expect(errorOf(stale).code).toBe('DUNGEON_IMPORT_STALE');
+    const tampered = { ...pkg, contentHash: `sha256:${'0'.repeat(64)}` };
+    const read = data<Json>(await as(WRITER_TOKEN, 'POST', '/admin/dungeons/import/plan', { package: tampered })); expect(read.validPackage).toBe(false);
+    expect((await as(WRITER_TOKEN, 'POST', '/admin/dungeons/import/apply', { ...request, package: tampered })).statusCode).toBe(400);
+    expect(await w.content.get(pkg.dungeon.key)).toBeNull();
+  });
   it('requires write permission for planning and application before body parsing', async () => {
     for (const endpoint of ['plan', 'apply']) {
       expect((await as(READER_TOKEN, 'POST', `/admin/dungeons/import/${endpoint}`, { package: {} })).statusCode).toBe(403);
@@ -1281,7 +1336,7 @@ describe('reward dependency reporting', () => {
     const listed = data<{ dungeons: Json[] }>(await call('GET', '/admin/dungeons/definitions')).dungeons;
     expect(listed.find((d) => d.key === KEY)).toMatchObject(changed);
     // Dungeons with no v2 rewards report nothing.
-    for (const other of listed.filter((d) => d.key !== KEY)) {
+    for (const other of listed.filter((d) => d.key !== KEY && !d.key.startsWith('api_v2_import_'))) {
       expect(other, other.key).toMatchObject({ draftGameplayHash: null, dependencyChanges: [] });
     }
 

@@ -110,6 +110,7 @@ import {
   type DungeonDefinition,
 } from './content/dungeonDefinition';
 import { DungeonLayoutSchema, EMPTY_DUNGEON_LAYOUT, pruneDungeonLayout, type DungeonLayout } from './content/dungeonLayout';
+import { validateDungeonRewards } from './validation/dungeonRewardValidation';
 import { buildDungeonPackage, dungeonContentHash, type DungeonPackage } from './package/dungeonPackage';
 import {
   hasErrors,
@@ -859,7 +860,7 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
   }
 
   const service: DungeonContentService = {
-    ...createDungeonImportService({ ...deps, reservedKeys: RESERVED_DUNGEON_KEYS, resolveManagedArtwork: resolveManagedArtworkIds }),
+    ...createDungeonImportService({ ...deps, loadRewardContext: loadDungeonRewardContext, reservedKeys: RESERVED_DUNGEON_KEYS, resolveManagedArtwork: resolveManagedArtworkIds }),
     validationContext,
 
     async list() {
@@ -1340,40 +1341,69 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
     },
 
     async exportPackage(key, origin, actor) {
-      const [row] = await db.select().from(dungeonDefinitions).where(eq(dungeonDefinitions.dungeonKey, key));
-      if (!row) throw new DungeonNotFoundError(key);
-      const published = await publishedInfo(db, row);
-      let definition: DungeonDefinition;
-      let layout: DungeonLayout;
-      let revisionNumber: number | null = published?.number ?? null;
-      if (origin === 'draft') {
-        definition = parseStoredDefinition(key, row.draft);
-        layout = parseStoredLayout(row.layout);
-      } else {
-        const wanted = origin === 'published' ? published?.number : origin.revision;
-        const [revision] =
-          wanted == null
-            ? []
-            : await db.select().from(dungeonRevisions).where(and(eq(dungeonRevisions.dungeonKey, key), eq(dungeonRevisions.number, wanted)));
-        if (!revision) throw new DungeonRevisionNotFoundError(key, wanted ?? 0);
-        definition = parseStoredDefinition(key, revision.content);
-        layout = parseStoredLayout(revision.layout);
-        revisionNumber = revision.number;
-      }
-      const enemies = new Map((await deps.enemies.definitions(db)).map((e) => [e.key, e]));
-      const pkg = buildDungeonPackage({
-        definition,
-        layout,
-        enemies,
-        source: {
-          environment: deps.environment ?? 'development',
-          origin: origin === 'draft' ? 'draft' : 'revision',
-          draftRevision: origin === 'draft' ? row.draftRevision : null,
-          publishedRevision: origin === 'draft' ? (published?.number ?? null) : revisionNumber,
-        },
-      });
-      await audit(db, key, 'exported', actor, { packageId: pkg.packageId, contentHash: pkg.contentHash, origin: pkg.source.origin, revision: pkg.source.publishedRevision });
-      return pkg;
+      return db.transaction(async (tx) => {
+        const [row] = await tx.select().from(dungeonDefinitions).where(eq(dungeonDefinitions.dungeonKey, key));
+        if (!row) throw new DungeonNotFoundError(key);
+        const published = await publishedInfo(tx, row);
+        let rewardSnapshot: DungeonRewardSnapshot | undefined;
+        let lootTableMetadata: Parameters<typeof buildDungeonPackage>[0]['lootTableMetadata'];
+        let definition: DungeonDefinition;
+        let layout: DungeonLayout;
+        let revisionNumber: number | null = published?.number ?? null;
+        if (origin === 'draft') {
+          definition = parseStoredDefinition(key, row.draft);
+          layout = parseStoredLayout(row.layout);
+          if (hasDungeonRewardBundles(definition)) {
+            const context = await loadDungeonRewardContext(tx);
+            const { issues } = validateDungeonRewards(definition, context);
+            if (hasErrors(issues)) throw new DungeonInvalidError(issues);
+            const snapshot = resolveDungeonRewardDependencies(definition, context).snapshot;
+            if (!snapshot) throw new DungeonInvalidError([{ code: 'reward_snapshot_invalid', severity: 'error', path: 'rewards', message: 'Draft reward dependencies cannot be exported. Repair its loot tables, items and equipment.' }]);
+            rewardSnapshot = snapshot;
+            const tables = await tx.select({ key: dungeonLootTables.tableKey, description: dungeonLootTables.description, origin: dungeonLootTables.origin })
+              .from(dungeonLootTables).where(inArray(dungeonLootTables.tableKey, Object.keys(snapshot.tables)));
+            lootTableMetadata = new Map(tables.map((table) => [table.key, table]));
+          }
+        } else {
+          const wanted = origin === 'published' ? published?.number : origin.revision;
+          const [revision] =
+            wanted == null
+              ? []
+              : await tx.select().from(dungeonRevisions).where(and(eq(dungeonRevisions.dungeonKey, key), eq(dungeonRevisions.number, wanted)));
+          if (!revision) throw new DungeonRevisionNotFoundError(key, wanted ?? 0);
+          definition = parseStoredDefinition(key, revision.content);
+          layout = parseStoredLayout(revision.layout);
+          revisionNumber = revision.number;
+          if (hasDungeonRewardBundles(definition)) {
+            const snapshot = readDungeonRewardSnapshot(revision.rewardSnapshot);
+            if (!snapshot || revision.contentHash !== dungeonContentHash(definition) || revision.gameplayHash !== dungeonGameplayHash(revision.contentHash, snapshot.hash))
+              throw new DungeonInvalidError([{ code: 'reward_snapshot_invalid', severity: 'error', path: 'rewardSnapshot', message: `Revision ${revision.number} has a missing, invalid or unsupported reward snapshot. Export refused.` }]);
+            rewardSnapshot = snapshot;
+          }
+        }
+        const enemies = new Map((await deps.enemies.definitions(tx)).map((e) => [e.key, e]));
+        let pkg: DungeonPackage;
+        try {
+          pkg = buildDungeonPackage({
+            definition,
+            layout,
+            enemies,
+            rewardSnapshot,
+            lootTableMetadata,
+            source: {
+              environment: deps.environment ?? 'development',
+              origin: origin === 'draft' ? 'draft' : 'revision',
+              draftRevision: origin === 'draft' ? row.draftRevision : null,
+              publishedRevision: origin === 'draft' ? (published?.number ?? null) : revisionNumber,
+            },
+          });
+        } catch (err) {
+          if (!rewardSnapshot) throw err;
+          throw new DungeonInvalidError([{ code: 'reward_snapshot_invalid', severity: 'error', path: 'rewardSnapshot', message: err instanceof Error ? err.message : String(err) }]);
+        }
+        await audit(tx, key, 'exported', actor, { packageId: pkg.packageId, contentHash: pkg.contentHash, origin: pkg.source.origin, revision: pkg.source.publishedRevision });
+        return pkg;
+      }, { isolationLevel: 'repeatable read' });
     },
 
     async openDungeons(tx = db) {

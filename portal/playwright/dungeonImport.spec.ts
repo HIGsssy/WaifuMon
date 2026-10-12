@@ -136,3 +136,181 @@ test('upload, review an enemy conflict, import a draft and open it', async ({ pa
   for (const badge of ['Disabled', 'Draft 1', 'Unpublished'])
     await expect(page.getByText(badge, { exact: true })).toBeVisible();
 });
+
+for (const action of ['copy', 'use_existing'] as const) {
+  test(`v2 import reviews ${action} loot choices and confirms a stale plan again`, async ({
+    page,
+  }) => {
+    await stubApi(page, { session: { permissions: ['dungeons.read', 'dungeons.write'] } });
+    const sourceHash = `sha256:${'a'.repeat(64)}`;
+    const reviewedHash = `sha256:${'b'.repeat(64)}`;
+    const body = (amount: number) => ({
+      guaranteed: [
+        {
+          id: 'coins',
+          grant: {
+            type: 'currency' as const,
+            currency: 'waifubux' as const,
+            amount: { min: amount, max: amount },
+          },
+        },
+      ],
+      chances: [],
+      pools: [],
+    });
+    const draft = starterDungeon('v2_imported', 'Imported reward dungeon', []);
+    const pkg = { format: 'waifumon-dungeon-package', schemaVersion: 2, dungeon: draft };
+    let plans = 0;
+    let applies = 0;
+    let reviewedChoice: { action: 'copy'; key: string } | { action: 'use_existing' } | null = null;
+    await page.route('**/api/v1/admin/dungeons/**', async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      let data: unknown = {};
+      if (path.endsWith('/import/plan')) {
+        plans++;
+        const request = route.request().postDataJSON();
+        expect(request.package).toEqual(pkg);
+        reviewedChoice = request.lootTables?.coin_hoard ?? null;
+        if (reviewedChoice)
+          expect(reviewedChoice).toEqual(
+            action === 'copy' ? { action, key: 'my_coin_copy' } : { action },
+          );
+        const plan: DungeonImportPlan = {
+          validPackage: true,
+          packageId: 'source-package',
+          packageHash: sourceHash,
+          sourceEnvironment: 'staging',
+          dungeonKey: draft.key,
+          contentHash: sourceHash,
+          planHash: reviewedChoice ? reviewedHash : sourceHash,
+          target: {
+            status: 'new',
+            expectedRevision: null,
+            currentContentHash: null,
+            changedFields: [],
+          },
+          enemies: [],
+          lootTables: [
+            {
+              key: 'coin_hoard',
+              name: 'Coin hoard',
+              status: 'different',
+              currentRevision: plans > 2 ? 3 : 2,
+              currentHash: 'destination',
+              incomingHash: 'source',
+              currentName: 'Local coins',
+              archived: false,
+              incomingBody: body(7),
+              currentBody: body(99),
+              decision: reviewedChoice,
+              targetKey: reviewedChoice?.action === 'copy' ? reviewedChoice.key : 'coin_hoard',
+              suggestedCopyKey: 'coin_hoard_imported',
+            },
+          ],
+          equipmentChanges: [],
+          resultingContentHash: action === 'copy' && reviewedChoice ? reviewedHash : sourceHash,
+          issues: !reviewedChoice
+            ? [
+                {
+                  code: 'loot_table_decision_required',
+                  severity: 'error',
+                  path: 'lootTables.coin_hoard',
+                  message: 'Choose a loot decision.',
+                },
+              ]
+            : action === 'use_existing'
+              ? [
+                  {
+                    code: 'loot_table_rewards_differ',
+                    severity: 'warning',
+                    path: 'lootTables.coin_hoard',
+                    message: 'Destination rewards differ.',
+                  },
+                ]
+              : [],
+          publishable: reviewedChoice !== null,
+        };
+        data = plan;
+      } else if (path.endsWith('/import/apply')) {
+        applies++;
+        const input = route.request().postDataJSON();
+        expect(input).toMatchObject({
+          package: pkg,
+          expectedPlanHash: reviewedHash,
+          decisions: { lootTables: { coin_hoard: reviewedChoice } },
+        });
+        if (applies === 1) {
+          await route.fulfill({
+            status: 409,
+            json: {
+              error: { code: 'DUNGEON_IMPORT_STALE', message: 'Loot table changed during review.' },
+            },
+          });
+          return;
+        }
+        data = {
+          importId: 1,
+          dungeonKey: draft.key,
+          result: 'created',
+          draftRevision: 1,
+          createdEnemies: [],
+          createdLootTables: action === 'copy' ? ['my_coin_copy'] : [],
+          reusedLootTables: action === 'use_existing' ? ['coin_hoard'] : [],
+          contentHash: action === 'copy' ? reviewedHash : sourceHash,
+          issues: [],
+          publishable: true,
+          replayed: false,
+        };
+      } else if (path.endsWith('/definitions')) data = { dungeons: [] };
+      else if (path.endsWith('/reward-health')) data = { dungeons: [] };
+      else if (path.endsWith('/currencies')) data = { currencies: [] };
+      else if (path.endsWith('/settings'))
+        data = {
+          dailyRunLimit: 3,
+          dailyRunLimitMin: 0,
+          dailyRunLimitMax: 50,
+          updatedAt: null,
+          updatedBy: null,
+        };
+      await route.fulfill({ json: { data, meta: { requestId: 'import-v2-e2e' } } });
+    });
+    await page.goto('/admin/dungeons');
+    await page.getByRole('button', { name: 'Import Dungeon', exact: true }).click();
+    await page.getByLabel('Dungeon package file').setInputFiles({
+      name: 'v2.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(JSON.stringify(pkg)),
+    });
+    await expect(page.getByText('Guaranteed: 7 WaifuBux')).toBeVisible();
+    await expect(page.getByText('Guaranteed: 99 WaifuBux')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Apply import as draft' })).toBeDisabled();
+    await page.getByLabel('Decision for loot table Coin hoard').selectOption(action);
+    if (action === 'copy') await page.getByLabel('New key for Coin hoard').fill('my_coin_copy');
+    else
+      await expect(
+        page.getByText(/Using destination rewards can give different amounts/),
+      ).toBeVisible();
+    await page.getByRole('button', { name: 'Preview loot choices' }).click();
+    await expect(page.getByText(/Loot choices need/)).toHaveCount(0);
+    await page.getByLabel('Approve create dungeon draft').check();
+    if (action === 'use_existing')
+      await page.getByLabel(/Acknowledge all reported warnings/).check();
+    await page.getByRole('button', { name: 'Apply import as draft' }).click();
+    await expect(page.getByText('Import conflict — review again')).toBeVisible();
+    await page.getByRole('button', { name: 'Review a new plan' }).click();
+    await expect(page.getByRole('button', { name: 'Apply import as draft' })).toBeDisabled();
+    if (action === 'copy')
+      await expect(page.getByLabel('New key for Coin hoard')).toHaveValue('my_coin_copy');
+    else
+      await expect(page.getByLabel('Decision for loot table Coin hoard')).toHaveValue(
+        'use_existing',
+      );
+    await page.getByLabel('Approve create dungeon draft').check();
+    if (action === 'use_existing')
+      await page.getByLabel(/Acknowledge all reported warnings/).check();
+    await page.getByRole('button', { name: 'Apply import as draft' }).click();
+    await expect(page.getByText(/Import successful/)).toBeVisible();
+    expect(plans).toBe(3);
+    expect(applies).toBe(2);
+  });
+}
