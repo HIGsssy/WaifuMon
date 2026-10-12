@@ -62,6 +62,7 @@ export interface DungeonRunCoreView {
   stuck: boolean;
   flags: Record<string, boolean>;
   unbankedCurrency: number;
+  unbankedWaifubux: number;
   roomsCompleted: number;
   roomCount: number;
   /** What the latest step did. */
@@ -145,6 +146,7 @@ export function describeDungeonRun(
     stuck: active && !at && !extractable && !connections.some((c) => c.open),
     flags: { ...state.flags },
     unbankedCurrency: state.unbankedCurrency,
+    unbankedWaifubux: state.unbankedWaifubux ?? 0,
     roomsCompleted: Object.values(state.rooms).filter((r) => r.completed).length,
     roomCount: ctx.definition.rooms.length,
     recent: state.recent,

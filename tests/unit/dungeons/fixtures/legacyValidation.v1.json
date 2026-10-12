@@ -1,0 +1,80 @@
+[
+  {
+    "name": "valid",
+    "issues": []
+  },
+  {
+    "name": "missing_tables",
+    "issues": []
+  },
+  {
+    "name": "disabled_tables",
+    "issues": []
+  },
+  {
+    "name": "empty_reward",
+    "issues": [
+      {
+        "code": "reward_empty",
+        "severity": "warning",
+        "path": "rooms[0].actions[1].reward",
+        "message": "action \"cache\" pays nothing: it names no reward table and no currency"
+      }
+    ]
+  },
+  {
+    "name": "unset_currency",
+    "issues": [
+      {
+        "code": "reward_currency_unset",
+        "severity": "warning",
+        "path": "rooms[0].actions[1].reward.currency",
+        "message": "action \"pay\" pays currency, but the dungeon names no progression currency to bank it as"
+      },
+      {
+        "code": "reward_currency_unset",
+        "severity": "warning",
+        "path": "rooms[2].actions[0].reward.currency",
+        "message": "action \"locker\" pays currency, but the dungeon names no progression currency to bank it as"
+      },
+      {
+        "code": "reward_currency_unset",
+        "severity": "warning",
+        "path": "rooms[3].actions[1].reward.currency",
+        "message": "action \"vault\" pays currency, but the dungeon names no progression currency to bank it as"
+      },
+      {
+        "code": "reward_currency_unset",
+        "severity": "warning",
+        "path": "rooms[4].actions[1].reward.currency",
+        "message": "action \"hoard\" pays currency, but the dungeon names no progression currency to bank it as"
+      }
+    ]
+  },
+  {
+    "name": "missing_currency",
+    "issues": [
+      {
+        "code": "currency_missing",
+        "severity": "error",
+        "path": "settings.progressionCurrency",
+        "message": "\"ascension_currency\" is not a progression currency"
+      }
+    ]
+  },
+  {
+    "name": "disabled_currency",
+    "issues": [
+      {
+        "code": "currency_disabled",
+        "severity": "warning",
+        "path": "settings.progressionCurrency",
+        "message": "progression currency \"ascension_currency\" is disabled; nothing can be banked"
+      }
+    ]
+  },
+  {
+    "name": "no_context",
+    "issues": []
+  }
+]

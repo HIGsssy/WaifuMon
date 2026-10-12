@@ -79,6 +79,7 @@ import {
 import type { EventVisibility } from '../../src/modules/events/gameEvents';
 import type { Rng } from '../../src/shared/random';
 import { createEquipmentRewardService } from '../../src/modules/equipment/equipmentRewardService';
+import { createDungeonAvailabilityProvider } from '../../src/modules/dungeons/dungeonAvailability';
 import { buildEquipmentServices, type EquipmentServices } from './equipmentFixtures';
 import type { Logger } from '../../src/shared/logger';
 import { silentLogger, type TestDb } from './testDb';
@@ -313,6 +314,7 @@ export async function bootstrapApp(
   const availability = createWaifuAvailabilityService({
     bulkProviders: [
       createCoreAvailabilityProvider(),
+      createDungeonAvailabilityProvider(),
       (tx, playerId, waifuIds) =>
         expeditions?.unavailabilityFor(tx, playerId, waifuIds) ?? Promise.resolve(new Map()),
     ],

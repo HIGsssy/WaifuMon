@@ -112,6 +112,12 @@ export interface GrantChosenEquipmentRewardInput extends RewardGrantCommon {
   /** A definition the source already selected through this module. */
   definitionKey: string;
   /**
+   * Optional unsigned 32-bit seed for multiplier, affix and combat bonuses.
+   * Generation inputs remain live; a committed grant-key replay always
+   * returns the stored instance without using this seed.
+   */
+  rollSeed?: number;
+  /**
    * Pay it even if it has since been disabled — for a reward that was won
    * while it was enabled (an expedition whose pool was snapshotted at deploy).
    */
@@ -271,7 +277,7 @@ export function createEquipmentRewardService(deps: EquipmentRewardServiceDeps): 
 
   async function grantOne(
     tx: DbOrTx,
-    input: RewardGrantCommon & { definitionKey: string; allowDisabled?: boolean },
+    input: RewardGrantCommon & { definitionKey: string; allowDisabled?: boolean; rollSeed?: number },
   ): Promise<EquipmentRewardGrant> {
     const result = await deps.equipment.grantEquipment(tx, {
       playerId: input.playerId,
@@ -281,6 +287,7 @@ export function createEquipmentRewardService(deps: EquipmentRewardServiceDeps): 
       grantKey: input.grantKey ?? null,
       actorDiscordId: input.actorDiscordId ?? null,
       ...(input.allowDisabled ? { allowDisabled: true } : {}),
+      ...(input.rollSeed !== undefined ? { rollSeed: input.rollSeed } : {}),
       roll: { kind: 'random' },
     });
     return fromInstance(result.definition, result.instances[0]!, result.alreadyGranted);

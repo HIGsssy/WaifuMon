@@ -14,6 +14,7 @@
 import type { CombatEvent } from '../../combat/combatTypes';
 import type { DungeonDefinition } from '../content/dungeonDefinition';
 import { dungeonRngSource } from './seeds';
+import { isDungeonRewardPlanV2 } from './rewards';
 import { startDungeonRun, stepDungeon } from './step';
 import type {
   DungeonEffect,
@@ -37,6 +38,14 @@ export function sandboxEffectsPort(recorded: DungeonEffect[] = []): DungeonEffec
     async apply(effect): Promise<DungeonEffectReceipt> {
       recorded.push(effect);
       if (effect.type === 'grant_rewards') {
+        if (isDungeonRewardPlanV2(effect.plan)) {
+          return {
+            type: 'grant_rewards', claimKey: effect.claimKey,
+            waifubux: 0,
+            items: effect.plan.secured.items.map(({ item, quantity }) => ({ slug: item, quantity })),
+            equipment: [], plan: effect.plan,
+          };
+        }
         return {
           type: 'grant_rewards',
           claimKey: effect.claimKey,
@@ -79,6 +88,7 @@ export interface DungeonSandbox {
 export interface DungeonSandboxOptions {
   definition: DungeonDefinition;
   dependencies: EngineDependencies;
+  rewards?: DungeonEngineContext['rewards'];
   fighter: EngineFighter;
   seed: number;
   combatRules?: DungeonEngineContext['combatRules'];
@@ -89,6 +99,7 @@ export function createDungeonSandbox(options: DungeonSandboxOptions): DungeonSan
   const ctx: DungeonEngineContext = {
     definition: options.definition,
     dependencies: options.dependencies,
+    rewards: options.rewards,
     fighter: options.fighter,
     runKey: `sandbox-${options.seed}`,
     playerFlags: options.playerFlags,

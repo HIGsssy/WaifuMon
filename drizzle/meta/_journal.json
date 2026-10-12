@@ -435,6 +435,27 @@
       "when": 1821045600000,
       "tag": "0061_dungeon_import_history",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1821132000000,
+      "tag": "0062_dungeon_loot_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1821218400000,
+      "tag": "0063_dungeon_reward_snapshots",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1821304800000,
+      "tag": "0064_dungeon_unbanked_waifubux",
+      "breakpoints": true
     }
   ]
 }

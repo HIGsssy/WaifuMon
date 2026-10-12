@@ -533,7 +533,7 @@ describe('what dungeons hold on to', () => {
     await expect(w.enemies.delete('warden', { expectedRevision: warden.revision }, 'admin')).rejects.toBeInstanceOf(EnemyInUseError);
   });
 
-  it('stores nothing but the definition tables this phase added', async () => {
+  it('stores the expected dungeon foundation and authoring catalogue tables', async () => {
     const tables = await w.t.db.execute(
       sql`select table_name from information_schema.tables where table_schema = 'public' and table_name like 'dungeon%' order by 1`,
     );
@@ -542,6 +542,8 @@ describe('what dungeons hold on to', () => {
       'dungeon_daily_usage',
       'dungeon_definitions',
       'dungeon_import_history',
+      'dungeon_loot_table_events',
+      'dungeon_loot_tables',
       'dungeon_revisions',
       'dungeon_run_events',
       'dungeon_run_events_prototype',

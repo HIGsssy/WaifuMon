@@ -996,7 +996,24 @@ describe('OpenAPI registration', () => {
       // when stale). `publish` and `rollback` are the only writes that change
       // what players get and need `dungeons.publish`. There is no delete.
       // `validate`, `package/inspect` and `sandbox` write nothing but carry a
-      // body; they need `dungeons.read`.
+      // body; they need `dungeons.read`. So does `scene-preview`, which renders
+      // a fight picture and persists nothing but the render cache.
+      'POST /api/v1/admin/dungeons/scene-preview',
+      // The dungeon loot-table catalogue (Phase 2B T4). Create, save, archive,
+      // restore, duplicate and delete need `dungeons.write` — there is no
+      // separate permission, and `rewards.write` grants nothing here. Writes
+      // to an existing table name the revision they edited (409 when stale);
+      // delete is refused while a draft, or a revision with no embedded
+      // snapshot, still needs the table. `validate` writes nothing but
+      // carries a body; it needs `dungeons.read`.
+      'DELETE /api/v1/admin/dungeons/loot-tables/{key}',
+      'POST /api/v1/admin/dungeons/loot-tables',
+      'POST /api/v1/admin/dungeons/loot-tables/validate',
+      'POST /api/v1/admin/dungeons/loot-tables/test-roll',
+      'POST /api/v1/admin/dungeons/loot-tables/{key}/archive',
+      'POST /api/v1/admin/dungeons/loot-tables/{key}/duplicate',
+      'POST /api/v1/admin/dungeons/loot-tables/{key}/restore',
+      'PUT /api/v1/admin/dungeons/loot-tables/{key}',
       'POST /api/v1/admin/dungeons/definitions',
       'POST /api/v1/admin/dungeons/import/apply',
       'POST /api/v1/admin/dungeons/import/plan',

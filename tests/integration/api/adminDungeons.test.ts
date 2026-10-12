@@ -19,7 +19,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createPlatformApiServer } from '../../../src/api/server';
 import type { ZodFastify } from '../../../src/api/plugins/typeProvider';
 import type { PortalSession, PortalSessionService } from '../../../src/api/portalSession';
-import { dungeonContentEvents, dungeonDefinitions, dungeonRevisions, dungeonRunEvents, dungeonRuns } from '../../../src/db/schema';
+import { dungeonContentEvents, dungeonDefinitions, dungeonRevisions, dungeonRunEvents, dungeonRuns, items } from '../../../src/db/schema';
+import { createDungeonLootTableService } from '../../../src/modules/dungeons/dungeonLootTableService';
 import { readDungeonPackage } from '../../../src/modules/dungeons/package/dungeonPackage';
 import { randomUUID } from 'node:crypto';
 import { DUNGEON_ISSUE_CODES } from '../../../src/modules/dungeons/validation/dungeonValidation';
@@ -184,6 +185,7 @@ interface Revision {
   revisionId: number;
   number: number;
   contentHash: string;
+  gameplayHash: string | null;
   source: string;
   draftRevision: number;
   publishedBy: string | null;
@@ -1241,6 +1243,69 @@ describe('dungeon artwork picker', () => {
       fs.renameSync(parked, dungeons);
     }
     expect((await call('GET', '/admin/dungeons/artwork/browse')).json().data).toMatchObject({ path: 'dungeons', missing: false });
+  });
+});
+
+/* ───────────────────────── reward snapshots (T6) ───────────────────────── */
+
+describe('reward dependency reporting', () => {
+  it('returns gameplay hashes, dependency changes and the pinned snapshot on list, detail, publish and revision reads', async () => {
+    const KEY = 'snapshot_api_tunnels';
+    const tables = createDungeonLootTableService({ db: w.t.db });
+    await w.t.db.insert(items).values({ slug: 'snapshot_api_prize', name: 'API Prize', category: 'material', enabled: true });
+    const body = (quantity: number) => ({
+      guaranteed: [{ id: 'prize', grant: { type: 'item', item: 'snapshot_api_prize', quantity: { min: quantity, max: quantity } } }],
+      chances: [],
+      pools: [],
+    });
+    const loot = await tables.create({ key: 'snapshot_api_table', name: 'API hoard', body: body(1) as never }, 'author');
+    await create(KEY, (d) => {
+      d.rooms[0].actions.push({ id: 'api_hoard', type: 'reward', rewards: { guaranteed: [], chances: [], tables: [{ id: 'loot', table: loot.key, draws: 1 }] } });
+    });
+    const first = await publish(KEY);
+    expect(first).toMatchObject({
+      unchanged: false,
+      revision: { number: 1, gameplayHash: expect.stringMatching(/^sha256:[a-f0-9]{64}$/) },
+      dungeon: { draftDiffers: false, dependenciesDiffer: false, dependencyChanges: [], draftGameplayHash: first.revision.gameplayHash },
+    });
+    expect(first.revision.gameplayHash).not.toBe(first.revision.contentHash);
+
+    const edited = await tables.update(loot.key, { expectedRevision: 1, body: body(3) as never }, 'author');
+    const changed = {
+      draftDiffers: false,
+      dependenciesDiffer: true,
+      dependencyChanges: [{ kind: 'table', tableKey: loot.key, name: 'API hoard', status: 'changed', publishedHash: loot.contentHash, currentHash: edited.contentHash }],
+      published: { number: 1, gameplayHash: first.revision.gameplayHash },
+    };
+    expect(await getDungeon(KEY)).toMatchObject(changed);
+    const listed = data<{ dungeons: Json[] }>(await call('GET', '/admin/dungeons/definitions')).dungeons;
+    expect(listed.find((d) => d.key === KEY)).toMatchObject(changed);
+    // Dungeons with no v2 rewards report nothing.
+    for (const other of listed.filter((d) => d.key !== KEY)) {
+      expect(other, other.key).toMatchObject({ draftGameplayHash: null, dependencyChanges: [] });
+    }
+
+    const second = await publish(KEY);
+    expect(second).toMatchObject({ unchanged: false, revision: { number: 2, contentHash: first.revision.contentHash } });
+    expect(second.revision.gameplayHash).not.toBe(first.revision.gameplayHash);
+    expect((await getRevisions(KEY)).map((r) => [r.number, r.gameplayHash])).toEqual([
+      [2, second.revision.gameplayHash],
+      [1, first.revision.gameplayHash],
+    ]);
+    const one = data<Json>(await call('GET', `${base(KEY)}/revisions/1`));
+    expect(one.rewardSnapshot).toMatchObject({
+      format: 'waifumon-dungeon-reward-snapshot',
+      tables: { [loot.key]: { body: body(1), contentHash: loot.contentHash } },
+      items: { snapshot_api_prize: { name: 'API Prize', category: 'material' } },
+    });
+    expect(data<Json>(await call('GET', `${base(KEY)}/revisions/2`)).rewardSnapshot.tables[loot.key].body).toEqual(body(3));
+  });
+
+  it('reads a legacy revision with a null snapshot and gameplay hash', async () => {
+    const KEY = 'snapshot_api_legacy';
+    await create(KEY);
+    expect(await publish(KEY)).toMatchObject({ revision: { gameplayHash: null }, dungeon: { published: { gameplayHash: null }, dependenciesDiffer: false } });
+    expect(data<Json>(await call('GET', `${base(KEY)}/revisions/1`))).toMatchObject({ rewardSnapshot: null, gameplayHash: null });
   });
 });
 

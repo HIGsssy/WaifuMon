@@ -69,6 +69,8 @@ export const WAIFU_UNAVAILABILITY_REASONS = [
   'care_target',
   /** Deployed on an expedition that has not finished. */
   'on_expedition',
+  /** The pinned fighter of an active dungeon run. Release/conversion only. */
+  'in_dungeon',
 ] as const;
 
 export type WaifuUnavailabilityReason = (typeof WAIFU_UNAVAILABILITY_REASONS)[number];
@@ -89,6 +91,7 @@ export const WAIFU_UNAVAILABILITY_LABELS: Readonly<
   buddy: 'She is your active Buddy.',
   care_target: 'She is the focus of Care Mode.',
   on_expedition: 'She is away on an expedition.',
+  in_dungeon: 'She is in a dungeon run. Finish or abandon the run first.',
 };
 
 /** Short badge text for list and inspect screens — "Lv.24 Lilith · Away". */
@@ -100,6 +103,7 @@ export const WAIFU_UNAVAILABILITY_BADGES: Readonly<
   buddy: 'Buddy',
   care_target: 'In Care',
   on_expedition: 'On Expedition',
+  in_dungeon: 'In Dungeon',
 };
 
 /**

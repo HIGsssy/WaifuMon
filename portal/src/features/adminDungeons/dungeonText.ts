@@ -271,7 +271,28 @@ export function friendlyIssue(
       title = `${R}: an enemy is in the same random group twice.`;
       help = 'Keep one entry and raise its chance instead.';
       break;
+    case 'reward_item_missing':
+    case 'reward_item_capped':
+    case 'reward_item_disabled':
+    case 'reward_equipment_empty':
+    case 'reward_table_archived':
+    case 'reward_table_invalid':
+    case 'reward_shards_unset':
+    case 'reward_too_much_gear':
+    case 'reward_too_many_draws':
+    case 'reward_affection_too_large':
+    case 'reward_currency_too_large':
+    case 'reward_pool_all_nothing':
+    case 'reward_legacy_mixed':
+    case 'reward_abandon_more_than_defeat':
+      title = humanise(issue.message, definition);
+      break;
     case 'reward_empty':
+      if (issue.path.includes('.rewards')) {
+        title = `${R}: the ${activity} Rewards section gives nothing yet.`;
+        help = 'Add a reward when this activity should give something.';
+        break;
+      }
       title = `The treasure in ${R} gives nothing.`;
       help = 'Choose a reward table or set a currency amount.';
       break;
@@ -280,6 +301,10 @@ export function friendlyIssue(
       help = 'Set the amount to 0, or give the dungeon a progression currency.';
       break;
     case 'reward_table_missing':
+      if (issue.path.includes('.rewards')) {
+        title = humanise(issue.message, definition);
+        break;
+      }
       title = `The treasure in ${R} uses a reward table that no longer exists.`;
       help = 'Choose another reward table.';
       break;

@@ -25,6 +25,19 @@
  * only. A layout-only save bumps `draftRevision` (it is the lock) and leaves
  * the hash alone.
  *
+ * ## Reward snapshots
+ *
+ * A definition that uses v2 `rewards` depends on things outside itself: loot
+ * table bodies, which equipment a selector matches, items. Publishing pins
+ * those in the revision (`rewardSnapshot`, `content/dungeonRewardSnapshot.ts`)
+ * and compares `gameplayHash` (content hash + snapshot hash), so an edited
+ * table or a change in eligible gear publishes as a new revision although the
+ * definition has not changed, and no stored revision ever changes under a
+ * catalogue edit. `contentHash` keeps meaning the definition alone. A
+ * definition with no v2 rewards has neither field and behaves as it always did.
+ * Rollback reuses the target's own snapshot and checks only that what it
+ * names can still be paid.
+ *
  * ## Audit
  *
  * Every write appends to `dungeon_content_events` in its own transaction.
@@ -49,6 +62,7 @@ import {
 import {
   DungeonDraftStaleError,
   DungeonInvalidError,
+  type DungeonIssueDetail,
   DungeonKeyTakenError,
   DungeonNotFoundError,
   DungeonRevisionNotFoundError,
@@ -60,6 +74,20 @@ import type { ArtworkStorage } from '../artworkAssets/artworkStorage';
 import { resolveEnemyVisual, type ManagedEnemyArtwork } from '../artworkAssets/enemyArtworkService';
 import { managedArtworkIndex, managedArtworkKey, resolveManagedArtworkIds } from '../artworkAssets/managedArtworkLookup';
 import { createDungeonImportService, type DungeonImportService } from './package/dungeonImportService';
+import { loadDungeonRewardContext, loadSnapshotLiveDependencies, type DungeonRewardSnapshotLiveDependencies } from './dungeonRewardContext';
+import {
+  DungeonRewardSnapshotSchema,
+  dungeonGameplayHash,
+  dungeonRewardDependencyChanges,
+  hasDungeonRewardBundles,
+  readDungeonRewardSnapshot,
+  resolveDungeonRewardDependencies,
+  type DungeonRewardDependencyChange,
+  type DungeonRewardSnapshot,
+} from './content/dungeonRewardSnapshot';
+import { dungeonDependencies } from './content/dungeonDefinition';
+import { equipmentSelectorKey } from '../equipment/rewardSelector';
+import { buildPreviewRewardSnapshot, previewRewardContext, testRollDungeonRewards, type DungeonTestRollRequest, type DungeonTestRollResult } from './dungeonRewardPreview';
 import { assertDungeonRewardDependencies } from './dungeonRewardValidation';
 import {
   DUNGEON_ACTION_TYPES,
@@ -93,6 +121,8 @@ export interface DungeonPublishedInfo {
   revisionId: number;
   number: number;
   contentHash: string;
+  /** Content hash plus the pinned reward snapshot's; null when the revision has no v2 rewards. */
+  gameplayHash: string | null;
   publishedAt: Date;
   publishedBy: string | null;
 }
@@ -106,8 +136,22 @@ export interface DungeonSummary {
   draftRevision: number;
   draftHash: string;
   published: DungeonPublishedInfo | null;
-  /** The draft holds gameplay changes the published revision does not. */
+  /** The draft's definition differs from the published revision's. Reward dependencies are reported apart. */
   draftDiffers: boolean;
+  /**
+   * The gameplay hash publishing the draft now would write. Null when the
+   * draft has no v2 rewards, or while a reward dependency is missing,
+   * archived, unreadable or matches no equipment.
+   */
+  draftGameplayHash: string | null;
+  /**
+   * The published revision's definition is the draft's, yet its pinned
+   * rewards are not what the catalogues hold now: publishing would write a
+   * new revision (or is blocked by a broken dependency, see `dependencyChanges`).
+   */
+  dependenciesDiffer: boolean;
+  /** What changed under the draft's rewards since publication, and any dependency that is broken now. */
+  dependencyChanges: DungeonRewardDependencyChange[];
   /** Enabled and published: players can start runs. */
   open: boolean;
   updatedAt: Date;
@@ -124,6 +168,7 @@ export interface DungeonRevisionSummary {
   revisionId: number;
   number: number;
   contentHash: string;
+  gameplayHash: string | null;
   source: DungeonRevisionSource;
   draftRevision: number;
   publishedAt: Date;
@@ -136,6 +181,8 @@ export interface DungeonRevisionSummary {
 export interface DungeonRevisionDetail extends DungeonRevisionSummary {
   content: DungeonDefinition;
   layout: DungeonLayout;
+  /** The reward dependencies the revision pinned when it was published; null without v2 rewards. */
+  rewardSnapshot: DungeonRewardSnapshot | null;
 }
 
 export interface DungeonContentEvent {
@@ -190,6 +237,8 @@ export interface PublishedDungeon {
   row: DungeonDefinitionRow;
   revision: DungeonRevisionRow;
   definition: DungeonDefinition;
+  /** The revision's pinned reward snapshot; null without v2 rewards. Not read by gameplay yet. */
+  rewards: DungeonRewardSnapshot | null;
 }
 
 export interface DungeonContentService extends DungeonImportService {
@@ -200,6 +249,9 @@ export interface DungeonContentService extends DungeonImportService {
   resolveManagedArtwork(ref: { category: string; contentHash: string }): Promise<string | null>;
   /** Dry run against this server. Writes nothing. */
   validate(definition: unknown): Promise<DungeonValidationReport>;
+  /** Ephemeral authoring snapshot; never persisted or granted. An explicit snapshot pins published rewards. */
+  previewRewards(definition: unknown, options?: { tables?: Record<string, unknown>; snapshot?: DungeonRewardSnapshot | null }): Promise<DungeonValidationReport & { rewards: DungeonRewardSnapshot | null }>;
+  testRoll(input: DungeonTestRollRequest): Promise<DungeonTestRollResult>;
   /** @throws {DungeonInvalidError | DungeonKeyTakenError} */
   create(input: { definition: unknown; layout?: unknown }, actor: string | null): Promise<DungeonDetail>;
   /**
@@ -235,7 +287,10 @@ export interface DungeonContentService extends DungeonImportService {
   /** One dungeon's published revision, or why there is none to play. */
   published(tx: DbOrTx, key: string): Promise<PublishedDungeon | 'missing' | 'unpublished' | 'disabled'>;
   /** The revision a run is pinned to. */
-  revisionById(tx: DbOrTx, revisionId: number): Promise<{ revision: DungeonRevisionRow; definition: DungeonDefinition } | null>;
+  revisionById(
+    tx: DbOrTx,
+    revisionId: number,
+  ): Promise<{ revision: DungeonRevisionRow; definition: DungeonDefinition; rewards: DungeonRewardSnapshot | null } | null>;
   /** What validation needs to know about this server. */
   validationContext(tx?: DbOrTx): Promise<DungeonValidationContext>;
 }
@@ -268,6 +323,63 @@ function parseStoredDefinition(key: string, raw: unknown): DungeonDefinition {
   return parsed.data;
 }
 
+/** A revision's pinned snapshot as stored. Shape only: the row is immutable and was hashed when written. */
+function parseStoredRewardSnapshot(revision: DungeonRevisionRow): DungeonRewardSnapshot | null {
+  if (revision.rewardSnapshot == null) return null;
+  const parsed = DungeonRewardSnapshotSchema.safeParse(revision.rewardSnapshot);
+  if (!parsed.success) {
+    throw new DungeonInvalidError(
+      parsed.error.issues.map((i) => ({
+        code: 'reward_snapshot_invalid',
+        severity: 'error' as const,
+        path: ['rewardSnapshot', ...i.path].join('.'),
+        message: `stored dungeon "${revision.dungeonKey}" revision ${revision.number}: ${i.message}`,
+      })),
+    );
+  }
+  return parsed.data;
+}
+
+/**
+ * What a rollback may rely on from a revision published with v2 rewards: its
+ * own snapshot. Validation reads the pinned tables, pools and items instead
+ * of the live catalogue, so a table edited, archived or deleted since does
+ * not matter; `snapshotLiveIssues` checks the rows a payout still needs.
+ */
+function snapshotRewardContext(snapshot: DungeonRewardSnapshot): Pick<DungeonValidationContext, 'lootTables' | 'items' | 'resolveEquipmentSelector'> {
+  return {
+    lootTables: new Map(
+      Object.entries(snapshot.tables).map(([key, t]) => [key, { name: t.name, body: t.body, archivedAt: null, tier: t.tier, revision: t.sourceRevision }]),
+    ),
+    items: new Map(Object.entries(snapshot.items).map(([slug, item]) => [slug, { ...item, enabled: true, maxOwned: null }])),
+    resolveEquipmentSelector: (selector) => (snapshot.equipmentPools[equipmentSelectorKey(selector)] ?? []).map((c) => ({ ...c, enabled: true })),
+  };
+}
+
+/** Design 9.2: every pinned item must still exist and be uncapped, every pinned equipment definition must still exist. */
+function snapshotLiveIssues(
+  definition: DungeonDefinition,
+  snapshot: DungeonRewardSnapshot,
+  live: DungeonRewardSnapshotLiveDependencies,
+): DungeonIssue[] {
+  const issues: DungeonIssueDetail[] = [];
+  const label = `dungeon "${definition.name}" (${definition.key})`;
+  for (const [slug, pinned] of Object.entries(snapshot.items)) {
+    const item = live.items.get(slug);
+    const path = `rewardSnapshot.items.${slug}`;
+    if (!item) issues.push({ code: 'reward_item_missing', severity: 'error', path, message: `${label}: item "${pinned.name}" (${slug}) no longer exists, so this revision's loot cannot be paid.` });
+    else if (item.maxOwned !== null) issues.push({ code: 'reward_item_capped', severity: 'error', path, message: `${label}: "${item.name}" is now limited to ${item.maxOwned} per player, so it cannot be dungeon loot.` });
+  }
+  for (const [selectorKey, pool] of Object.entries(snapshot.equipmentPools)) {
+    for (const candidate of pool) {
+      if (!live.equipmentKeys.has(candidate.key)) {
+        issues.push({ code: 'reward_equipment_missing', severity: 'error', path: `rewardSnapshot.equipmentPools.${selectorKey}`, message: `${label}: gear "${candidate.name}" (${candidate.key}) no longer exists, so this revision's loot cannot be paid.` });
+      }
+    }
+  }
+  return issues as DungeonIssue[];
+}
+
 function parseStoredLayout(raw: unknown): DungeonLayout {
   const parsed = DungeonLayoutSchema.safeParse(raw);
   return parsed.success ? parsed.data : { ...EMPTY_DUNGEON_LAYOUT };
@@ -276,18 +388,20 @@ function parseStoredLayout(raw: unknown): DungeonLayout {
 export function createDungeonContentService(deps: DungeonContentServiceDeps): DungeonContentService {
   const { db } = deps;
 
-  async function validationContext(tx: DbOrTx = db): Promise<DungeonValidationContext> {
+  async function validationContext(tx: DbOrTx = db, rewardContext?: DungeonValidationContext): Promise<DungeonValidationContext> {
     const [enemies, tables, currencies, managed] = await Promise.all([
       deps.enemies.definitions(tx),
       tx.select({ id: rewardTables.tableId, enabled: rewardTables.enabled }).from(rewardTables).where(eq(rewardTables.kind, 'expedition')),
       tx.select({ key: progressionCurrencies.currencyKey, enabled: progressionCurrencies.enabled }).from(progressionCurrencies),
       managedArtworkIndex(tx),
     ]);
+    const rewards = rewardContext ?? await loadDungeonRewardContext(tx);
     const assetsDir = deps.assetsDir;
     return {
+      ...rewards,
       enemies: new Map(enemies.map((e) => [e.key, { enabled: e.enabled }])),
       rewardTables: new Map(tables.map((t) => [t.id, { enabled: t.enabled }])),
-      currencies: new Map(currencies.map((c) => [c.key, { enabled: c.enabled }])),
+      currencies: rewardContext?.currencies ?? new Map(currencies.map((c) => [c.key, { enabled: c.enabled }])),
       regions: new Map(deps.getRegions().map((r) => [r.id, { enabled: r.enabled }])),
       // The same lookup a run uses, so a reference is flagged exactly when a player would lose the picture.
       managedArtwork: new Set(managed.keys()),
@@ -317,8 +431,41 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
     return revision ?? null;
   }
 
-  function summaryOf(row: DungeonDefinitionRow, published: DungeonRevisionRow | null): DungeonSummary {
+  /**
+   * The draft's reward dependencies against `rewards` (the live catalogues),
+   * compared with what the published revision pinned. An unreadable draft or
+   * stored snapshot reports nothing rather than failing a list.
+   */
+  function dependencyReport(
+    row: DungeonDefinitionRow,
+    published: DungeonRevisionRow | null,
+    draft: DungeonDefinition | null,
+    rewards: DungeonValidationContext,
+  ): Pick<DungeonSummary, 'draftGameplayHash' | 'dependenciesDiffer' | 'dependencyChanges'> {
+    if (!draft || !hasDungeonRewardBundles(draft)) {
+      return {
+        draftGameplayHash: null,
+        dependenciesDiffer: published != null && published.contentHash === row.draftHash && published.gameplayHash != null,
+        dependencyChanges: [],
+      };
+    }
+    const state = resolveDungeonRewardDependencies(draft, rewards);
+    const draftGameplayHash = state.snapshot ? dungeonGameplayHash(row.draftHash, state.snapshot.hash) : null;
+    return {
+      draftGameplayHash,
+      dependenciesDiffer: published != null && published.contentHash === row.draftHash && published.gameplayHash !== draftGameplayHash,
+      dependencyChanges: dungeonRewardDependencyChanges(published ? readDungeonRewardSnapshot(published.rewardSnapshot) : null, state),
+    };
+  }
+
+  function summaryOf(
+    row: DungeonDefinitionRow,
+    published: DungeonRevisionRow | null,
+    rewards: DungeonValidationContext,
+    parsedDraft?: DungeonDefinition,
+  ): DungeonSummary {
     const draft = row.draft as { name?: unknown; rooms?: unknown };
+    const definition = parsedDraft ?? DungeonDefinitionSchema.safeParse(row.draft).data ?? null;
     return {
       key: row.dungeonKey,
       name: typeof draft.name === 'string' ? draft.name : row.dungeonKey,
@@ -331,10 +478,12 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
         revisionId: published.id,
         number: published.number,
         contentHash: published.contentHash,
+        gameplayHash: published.gameplayHash,
         publishedAt: published.publishedAt,
         publishedBy: published.publishedBy,
       },
       draftDiffers: published == null || published.contentHash !== row.draftHash,
+      ...dependencyReport(row, published, definition, rewards),
       open: row.enabled && published != null,
       updatedAt: row.updatedAt,
       updatedBy: row.updatedBy,
@@ -344,8 +493,9 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
   async function detailOf(tx: DbOrTx, row: DungeonDefinitionRow): Promise<DungeonDetail> {
     const published = await publishedInfo(tx, row);
     const draft = parseStoredDefinition(row.dungeonKey, row.draft);
-    const { issues } = validateDungeonDefinition(draft, await validationContext(tx));
-    return { ...summaryOf(row, published), draft, layout: parseStoredLayout(row.layout), issues };
+    const ctx = await validationContext(tx);
+    const { issues } = validateDungeonDefinition(draft, ctx);
+    return { ...summaryOf(row, published, ctx, draft), draft, layout: parseStoredLayout(row.layout), issues };
   }
 
   async function lockRow(tx: DbOrTx, key: string): Promise<DungeonDefinitionRow> {
@@ -384,6 +534,7 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
       revisionId: revision.id,
       number: revision.number,
       contentHash: revision.contentHash,
+      gameplayHash: revision.gameplayHash,
       source: revision.source,
       draftRevision: revision.draftRevision,
       publishedAt: revision.publishedAt,
@@ -399,9 +550,12 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
 
     async list() {
       const rows = await db.select().from(dungeonDefinitions).orderBy(asc(dungeonDefinitions.position), asc(dungeonDefinitions.dungeonKey));
-      const revisions = await db.select().from(dungeonRevisions);
+      const publishedIds = rows.flatMap((row) => (row.publishedRevisionId == null ? [] : [row.publishedRevisionId]));
+      const revisions = publishedIds.length ? await db.select().from(dungeonRevisions).where(inArray(dungeonRevisions.id, publishedIds)) : [];
       const byId = new Map(revisions.map((r) => [r.id, r]));
-      return rows.map((row) => summaryOf(row, row.publishedRevisionId == null ? null : (byId.get(row.publishedRevisionId) ?? null)));
+      // One read of the loot catalogue, items and rewardable equipment for every dungeon.
+      const rewards = await loadDungeonRewardContext(db);
+      return rows.map((row) => summaryOf(row, row.publishedRevisionId == null ? null : (byId.get(row.publishedRevisionId) ?? null), rewards));
     },
 
     async get(key) {
@@ -449,6 +603,30 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
         issues,
         publishable: definition != null && !hasErrors(issues),
       };
+    },
+
+    async testRoll(input) {
+      return db.transaction(async (tx) => testRollDungeonRewards(input, await loadDungeonRewardContext(tx)),
+        { accessMode: 'read only', isolationLevel: 'repeatable read' });
+    },
+
+    async previewRewards(raw, options = {}) {
+      return db.transaction(async (tx) => {
+        const ctx = await validationContext(tx);
+        const pinned = options.snapshot === undefined ? undefined : readDungeonRewardSnapshot(options.snapshot);
+        const overrides = previewRewardContext({ ...ctx, ...(pinned ? snapshotRewardContext(pinned) : {}) }, options.tables);
+        const report = validateDungeonDefinition(raw, overrides.context);
+        const issues = [...overrides.issues, ...report.issues];
+        if (report.definition && hasDungeonRewardBundles(report.definition) && options.snapshot !== undefined && !pinned) {
+          throw new DungeonInvalidError([{ code: 'reward_snapshot_invalid', severity: 'error', path: 'rewardSnapshot',
+            message: 'This published revision has a missing, invalid or unsupported reward snapshot. Republish its repaired draft.' }]);
+        }
+        const rewards = report.definition && !hasErrors(issues)
+          ? pinned ?? buildPreviewRewardSnapshot(report.definition, overrides.context) : null;
+        return { ...report, issues, rewards,
+          contentHash: report.definition ? dungeonContentHash(report.definition) : null,
+          publishable: report.definition !== null && !hasErrors(issues) };
+      }, { accessMode: 'read only', isolationLevel: 'repeatable read' });
     },
 
     async create(input, actor) {
@@ -527,13 +705,33 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
         }
         const definition = parseStoredDefinition(key, row.draft);
         await assertDungeonRewardDependencies(tx, definition);
-        const { issues } = validateDungeonDefinition(definition, await validationContext(tx));
+        const rewards = hasDungeonRewardBundles(definition)
+          ? await loadDungeonRewardContext(tx, { lootTableKeys: dungeonDependencies(definition).lootTables, lock: true })
+          : undefined;
+        const ctx = await validationContext(tx, rewards);
+        const { issues } = validateDungeonDefinition(definition, ctx);
         if (hasErrors(issues)) throw new DungeonInvalidError(issues);
 
         const current = await publishedInfo(tx, row);
         const active = await activeRunCounts(tx, key);
         const contentHash = dungeonContentHash(definition);
-        if (current && current.contentHash === contentHash) {
+        // Built from the rows validation just read, which stay share-locked until
+        // this transaction ends: the snapshot is the catalogue as validated.
+        // Row locks cannot hold back an equipment definition that does not exist
+        // yet. One inserted meanwhile is simply not in this snapshot, exactly as
+        // if it had been added after the publish, and is reported afterwards as
+        // a dependency change (design 9.2, "Locking and consistency").
+        let rewardSnapshot: DungeonRewardSnapshot | null = null;
+        if (rewards) {
+          rewardSnapshot = resolveDungeonRewardDependencies(definition, rewards).snapshot;
+          if (!rewardSnapshot) {
+            throw new DungeonInvalidError([{ code: 'reward_snapshot_incomplete', severity: 'error', path: 'rewards', message: `dungeon "${definition.name}" (${key}): its reward dependencies passed validation but could not be pinned` }]);
+          }
+          rewardSnapshot = DungeonRewardSnapshotSchema.parse(rewardSnapshot);
+        }
+        const gameplayHash = rewardSnapshot ? dungeonGameplayHash(contentHash, rewardSnapshot.hash) : null;
+        // With no snapshot on either side this is the content-hash comparison it always was.
+        if (current && current.contentHash === contentHash && current.gameplayHash === gameplayHash) {
           return { dungeon: await detailOf(tx, row), revision: revisionSummary(current, current.id, active), unchanged: true };
         }
 
@@ -555,6 +753,8 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
             source: 'editor',
             draftRevision: row.draftRevision,
             publishedBy: actor,
+            rewardSnapshot: rewardSnapshot as Record<string, unknown> | null,
+            gameplayHash,
           })
           .returning();
         const [updated] = await tx
@@ -569,6 +769,7 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
           draftRevision: row.draftRevision,
           previousRevision: current?.number ?? null,
           warnings: issues.filter((i) => i.severity === 'warning').length,
+          ...(rewardSnapshot ? { gameplayHash, rewardSnapshotHash: rewardSnapshot.hash, definitionChanged: current?.contentHash !== contentHash } : {}),
         });
         deps.logger?.info({ tag: 'dungeons/published', dungeonKey: key, revision: revision!.number, contentHash, actor }, 'dungeon published');
         return { dungeon: await detailOf(tx, updated!), revision: revisionSummary(revision!, revision!.id, active), unchanged: false };
@@ -583,7 +784,8 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
           .from(dungeonRevisions)
           .where(and(eq(dungeonRevisions.dungeonKey, key), eq(dungeonRevisions.number, input.revision)));
         if (!target) throw new DungeonRevisionNotFoundError(key, input.revision);
-        await assertDungeonRewardDependencies(tx, parseStoredDefinition(key, target.content));
+        const targetDefinition = parseStoredDefinition(key, target.content);
+        await assertDungeonRewardDependencies(tx, targetDefinition);
         const active = await activeRunCounts(tx, key);
         const current = await publishedInfo(tx, row);
         if (current?.id === target.id) {
@@ -591,7 +793,24 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
         }
         // What an old revision names may be gone by now; a rollback must not
         // put a dungeon live that this server can no longer run.
-        const { issues } = validateDungeonDefinition(target.content, await validationContext(tx));
+        // A revision with v2 rewards comes back with the snapshot it was
+        // published with. It is never rebuilt from today's loot catalogue.
+        let snapshot: DungeonRewardSnapshot | null = null;
+        if (hasDungeonRewardBundles(targetDefinition)) {
+          snapshot = readDungeonRewardSnapshot(target.rewardSnapshot);
+          if (!snapshot || target.gameplayHash !== dungeonGameplayHash(target.contentHash, snapshot.hash)) {
+            throw new DungeonInvalidError([{
+              code: 'reward_snapshot_missing',
+              severity: 'error',
+              path: 'rewardSnapshot',
+              message: `dungeon "${targetDefinition.name}" (${key}) revision ${target.number} has no usable reward snapshot, so its loot cannot be reproduced. Publish the draft again instead of rolling back to it.`,
+            }]);
+          }
+        }
+        // T5's dependency locks (items, equipment, currencies) are kept; only the loot tables are no longer read.
+        const ctx = await validationContext(tx, snapshot ? await loadDungeonRewardContext(tx, { lootTableKeys: [], lock: true }) : undefined);
+        const { issues } = validateDungeonDefinition(target.content, snapshot ? { ...ctx, ...snapshotRewardContext(snapshot) } : ctx);
+        if (snapshot) issues.push(...snapshotLiveIssues(targetDefinition, snapshot, await loadSnapshotLiveDependencies(tx, snapshot, { lock: true })));
         if (hasErrors(issues)) throw new DungeonInvalidError(issues);
         const [updated] = await tx
           .update(dungeonDefinitions)
@@ -603,6 +822,7 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
           revisionId: target.id,
           contentHash: target.contentHash,
           previousRevision: current?.number ?? null,
+          ...(target.gameplayHash ? { gameplayHash: target.gameplayHash } : {}),
         });
         deps.logger?.info({ tag: 'dungeons/rolled-back', dungeonKey: key, revision: target.number, from: current?.number ?? null, actor }, 'dungeon rolled back');
         return { dungeon: await detailOf(tx, updated!), revision: revisionSummary(target, target.id, active), unchanged: false };
@@ -639,6 +859,7 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
         ...revisionSummary(revision, row.publishedRevisionId, await activeRunCounts(db, key)),
         content: parseStoredDefinition(key, revision.content),
         layout: parseStoredLayout(revision.layout),
+        rewardSnapshot: parseStoredRewardSnapshot(revision),
       };
     },
 
@@ -699,7 +920,7 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
       const out: PublishedDungeon[] = [];
       for (const { row, revision } of rows) {
         try {
-          out.push({ row, revision, definition: parseStoredDefinition(row.dungeonKey, revision.content) });
+          out.push({ row, revision, definition: parseStoredDefinition(row.dungeonKey, revision.content), rewards: parseStoredRewardSnapshot(revision) });
         } catch (err) {
           deps.logger?.error({ err, tag: 'dungeons/unreadable-revision', dungeonKey: row.dungeonKey, revision: revision.number }, 'published dungeon revision could not be read — hidden');
         }
@@ -713,12 +934,14 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
       if (!row.enabled) return 'disabled';
       const revision = await publishedInfo(tx, row);
       if (!revision) return 'unpublished';
-      return { row, revision, definition: parseStoredDefinition(key, revision.content) };
+      return { row, revision, definition: parseStoredDefinition(key, revision.content), rewards: parseStoredRewardSnapshot(revision) };
     },
 
     async revisionById(tx, revisionId) {
       const [revision] = await tx.select().from(dungeonRevisions).where(eq(dungeonRevisions.id, revisionId));
-      return revision ? { revision, definition: parseStoredDefinition(revision.dungeonKey, revision.content) } : null;
+      return revision
+        ? { revision, definition: parseStoredDefinition(revision.dungeonKey, revision.content), rewards: parseStoredRewardSnapshot(revision) }
+        : null;
     },
   };
   return service;

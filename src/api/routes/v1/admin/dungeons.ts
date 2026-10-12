@@ -30,6 +30,8 @@
  * verifies a file on its own terms.
  */
 import { z } from 'zod';
+import { adminDungeonLootTableRoutes } from './dungeonLootTables';
+import { dungeonLootTableTierSchema } from '../../../schemas/dungeonLootTables';
 import { readFile } from 'node:fs/promises';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { ApiContext } from '../../../context';
@@ -90,6 +92,8 @@ import {
 import { mirrorsPlayerBuddy } from '../../../../modules/artworkAssets/scenePlacement';
 import { DungeonEngineContentError } from '../../../../modules/dungeons/engine/combat';
 import { autoPlayDungeonSandbox, createDungeonSandbox } from '../../../../modules/dungeons/engine/sandbox';
+import { DungeonPreviewTablesSchema } from '../../../../modules/dungeons/dungeonRewardPreview';
+import type { DungeonRewardSnapshot } from '../../../../modules/dungeons/content/dungeonRewardSnapshot';
 import type { DungeonInput, EngineDependencies } from '../../../../modules/dungeons/engine/types';
 import { dungeonPackageFilename, readDungeonPackage } from '../../../../modules/dungeons/package/dungeonPackage';
 import { DungeonImportApplySchema, DungeonImportPlanSchema, DungeonImportResultSchema, DungeonImportHistorySchema } from '../../../../modules/dungeons/package/dungeonImportService';
@@ -138,6 +142,27 @@ const issueSchema = z.object({
   severity: z.enum(['error', 'warning']),
 });
 
+const dependencyChangeSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('table'),
+    tableKey: z.string(),
+    name: z.string(),
+    /** `changed`: the body differs from the one published. The rest block publication until repaired. */
+    status: z.enum(['changed', 'missing', 'archived', 'invalid']),
+    publishedHash: z.string().nullable(),
+    currentHash: z.string().nullable(),
+  }),
+  z.object({
+    kind: z.literal('equipment'),
+    selectorKey: z.string(),
+    description: z.string(),
+    /** `empty`: nothing is eligible any more. */
+    status: z.enum(['changed', 'empty']),
+    added: z.array(z.string()),
+    removed: z.array(z.string()),
+  }),
+]);
+
 const summarySchema = z.object({
   key: z.string(),
   name: z.string(),
@@ -151,12 +176,19 @@ const summarySchema = z.object({
       revisionId: z.number().int(),
       number: z.number().int(),
       contentHash: z.string(),
+      /** Null when the revision has no v2 rewards. */
+      gameplayHash: z.string().nullable(),
       publishedAt: z.string(),
       publishedBy: z.string().nullable(),
     })
     .nullable(),
-  /** The draft holds gameplay changes the published revision does not. */
+  /** The draft's definition differs from the published revision's. */
   draftDiffers: z.boolean(),
+  /** The gameplay hash a publish would write now; null without v2 rewards or while a reward dependency is broken. */
+  draftGameplayHash: z.string().nullable(),
+  /** The definition is published as is, but the reward dependencies it pinned are not what the catalogues hold now. */
+  dependenciesDiffer: z.boolean(),
+  dependencyChanges: z.array(dependencyChangeSchema),
   /** Enabled and published: players can start runs. */
   open: z.boolean(),
   updatedAt: z.string(),
@@ -173,6 +205,7 @@ const revisionSummarySchema = z.object({
   revisionId: z.number().int(),
   number: z.number().int(),
   contentHash: z.string(),
+  gameplayHash: z.string().nullable(),
   source: z.string(),
   draftRevision: z.number().int(),
   publishedAt: z.string(),
@@ -182,7 +215,12 @@ const revisionSummarySchema = z.object({
   activeRuns: z.number().int(),
 });
 
-const revisionDetailSchema = revisionSummarySchema.extend({ content: documentSchema, layout: documentSchema });
+const revisionDetailSchema = revisionSummarySchema.extend({
+  content: documentSchema,
+  layout: documentSchema,
+  /** The reward dependencies pinned at publication; null without v2 rewards. */
+  rewardSnapshot: documentSchema.nullable(),
+});
 
 const publishResultSchema = z.object({
   dungeon: detailSchema,
@@ -201,6 +239,24 @@ const contentEventSchema = z.object({
 });
 
 const referenceSchema = z.object({
+  lootTables: z.array(
+    z.object({
+      key: z.string(),
+      name: z.string(),
+      tier: dungeonLootTableTierSchema.nullable(),
+      archived: z.boolean(),
+      contentHash: z.string(),
+    }),
+  ),
+  items: z.array(
+    z.object({
+      slug: z.string(),
+      name: z.string(),
+      category: z.string(),
+      enabled: z.boolean(),
+      maxOwned: z.number().int().nullable(),
+    }),
+  ),
   actionTypes: z.array(z.string()),
   reservedActionTypes: z.record(z.string(), z.string()),
   enemies: z.array(
@@ -257,6 +313,8 @@ const sandboxInputSchema = z.discriminatedUnion('type', [
 
 const sandboxBody = z
   .object({
+    /** Unsaved table bodies for draft/unsaved playthroughs only. */
+    tables: DungeonPreviewTablesSchema.optional(),
     /** An unsaved definition, validated against this server first. */
     definition: z.unknown().optional(),
     /** A saved dungeon; `source` picks its draft or its published revision. */
@@ -272,6 +330,9 @@ const sandboxBody = z
   })
   .refine((body) => (body.definition === undefined) !== (body.key === undefined), {
     message: 'send exactly one of `definition` (an unsaved definition) or `key` (a saved dungeon)',
+  })
+  .refine((body) => !(body.key !== undefined && body.source === 'published' && body.tables !== undefined), {
+    message: 'published sandbox runs use their pinned reward snapshot; tables overrides are for drafts',
   });
 
 const sandboxSchema = z.object({
@@ -359,6 +420,9 @@ function toSummary(s: DungeonSummary): z.infer<typeof summarySchema> {
     draftHash: s.draftHash,
     published: s.published && { ...s.published, publishedAt: s.published.publishedAt.toISOString() },
     draftDiffers: s.draftDiffers,
+    draftGameplayHash: s.draftGameplayHash,
+    dependenciesDiffer: s.dependenciesDiffer,
+    dependencyChanges: s.dependencyChanges,
     open: s.open,
     updatedAt: s.updatedAt.toISOString(),
     updatedBy: s.updatedBy,
@@ -379,6 +443,7 @@ function toRevisionSummary(r: DungeonRevisionSummary): z.infer<typeof revisionSu
     revisionId: r.revisionId,
     number: r.number,
     contentHash: r.contentHash,
+    gameplayHash: r.gameplayHash,
     source: r.source,
     draftRevision: r.draftRevision,
     publishedAt: r.publishedAt.toISOString(),
@@ -393,6 +458,7 @@ function toRevisionDetail(r: DungeonRevisionDetail): z.infer<typeof revisionDeta
     ...toRevisionSummary(r),
     content: r.content as unknown as Record<string, unknown>,
     layout: r.layout as unknown as Record<string, unknown>,
+    rewardSnapshot: r.rewardSnapshot as Record<string, unknown> | null,
   };
 }
 
@@ -449,6 +515,7 @@ const binaryReply = (reply: FastifyReply) => reply as unknown as BinaryReply;
 export const adminDungeonRoutes =
   (ctx: ApiContext): FastifyPluginAsyncZod =>
   async (app) => {
+    await app.register(adminDungeonLootTableRoutes(ctx));
     const contentService = ctx.services.dungeonContent;
     const currencyService = ctx.services.progressionCurrency;
     const authorization = ctx.portalAuthorization;
@@ -784,14 +851,33 @@ export const adminDungeonRoutes =
         preValidation: gate('dungeons.read'),
         schema: {
           tags,
-          summary: 'Action types, enemies, reward tables, currencies and regions the dungeon editor offers',
+          summary: 'Action types, enemies, reward tables, loot tables, items, currencies and regions the dungeon editor offers',
           response: { 200: dataSchema(referenceSchema), ...commonErrorResponses },
         },
       },
       async (req) => {
-        const reference = await dungeons.reference();
+        const [reference, lootTables] = await Promise.all([
+          dungeons.reference(),
+          ctx.services.dungeonLootTables?.list({ includeArchived: true }) ?? Promise.resolve([]),
+        ]);
         return ok(req, {
           ...reference,
+          lootTables: lootTables.map((t) => ({
+            key: t.key,
+            name: t.name,
+            tier: t.tier,
+            archived: t.archivedAt !== null,
+            contentHash: t.contentHash,
+          })),
+          items: ctx.getContent().items
+            .map((i) => ({
+              slug: i.slug,
+              name: i.name,
+              category: i.category,
+              enabled: i.enabled,
+              maxOwned: i.maxOwned ?? null,
+            }))
+            .sort((a, b) => a.name.localeCompare(b.name)),
           actionTypes: [...reference.actionTypes],
           reservedActionTypes: { ...reference.reservedActionTypes },
         });
@@ -851,12 +937,12 @@ export const adminDungeonRoutes =
     );
 
     /**
-     * The definition a sandbox request names, validated against this server.
-     * A saved dungeon is validated again on the way in: what its draft or its
-     * published revision names may have gone since it was written.
+     * Validate drafts against current dependencies and request-only tables.
+     * Published rewards are validated against their own verified snapshot.
      */
-    async function sandboxDefinition(body: z.infer<typeof sandboxBody>): Promise<DungeonDefinition> {
+    async function sandboxDefinition(body: z.infer<typeof sandboxBody>): Promise<{ definition: DungeonDefinition; rewards: DungeonRewardSnapshot | null }> {
       let raw: unknown = body.definition;
+      let snapshot: DungeonRewardSnapshot | null | undefined;
       if (body.key !== undefined) {
         const key = body.key;
         const detail = await translate(() => dungeons.get(key));
@@ -873,11 +959,15 @@ export const adminDungeonRoutes =
             );
           }
           raw = revision.content;
+          snapshot = revision.rewardSnapshot;
         }
       }
-      const report = await dungeons.validate(raw);
+      const report = await translate(() => dungeons.previewRewards(raw, {
+        ...(body.tables === undefined ? {} : { tables: body.tables }),
+        ...(snapshot === undefined ? {} : { snapshot }),
+      }));
       if (!report.definition || hasErrors(report.issues)) throw withDetails(new DungeonInvalidError(report.issues));
-      return report.definition;
+      return { definition: report.definition, rewards: report.rewards };
     }
 
     app.post(
@@ -893,7 +983,8 @@ export const adminDungeonRoutes =
             'against this server’s live enemies, applies `inputs` in order (stopping at the first one refused) ' +
             'and then, with `autoPlay`, takes the first thing on offer until the run ends or `maxSteps`. The same ' +
             'request always plays out the same way. Nothing is persisted and nothing is granted: effects are ' +
-            'only listed. In this phase the sandbox pays no reward-table rewards, only currency ranges. A ' +
+            'only listed. Draft v2 rewards use current dependencies and optional unsaved tables; published ' +
+            'v2 rewards use their pinned snapshot. Legacy rewards retain currency-only previews. A ' +
             'definition with errors is refused with 400 DUNGEON_INVALID',
           body: sandboxBody,
           response: {
@@ -907,16 +998,17 @@ export const adminDungeonRoutes =
       },
       async (req) => {
         const body = req.body;
-        const definition = await sandboxDefinition(body);
+        const { definition, rewards } = await sandboxDefinition(body);
         const enemies = ctx.services.enemies ? (await ctx.services.enemies.snapshot()).definitions : [];
         const dependencies: EngineDependencies = {
           enemies: Object.fromEntries(enemies.map((enemy) => [enemy.key, enemy])),
-          // No table is snapshotted, so a reward pays its currency range only.
+          // Preserve legacy currency-only sandbox behavior; v2 tables live in `rewards`.
           rewardTables: {},
         };
         try {
           const sandbox = createDungeonSandbox({
             definition,
+            rewards,
             dependencies,
             fighter: { waifuId: 0, name: 'Sandbox Buddy', ...body.fighter },
             seed: body.seed,

@@ -63,6 +63,7 @@ import type { BossArtworkService } from '../modules/bosses/bossArtworkService';
 import type { EnemyCatalogueService } from '../modules/enemies/enemyService';
 import type { BossDefinitionService } from '../modules/bosses/bossDefinitionService';
 import type { SceneCompositionService } from '../modules/artworkAssets/sceneComposition';
+import type { DungeonLootTableService } from '../modules/dungeons/dungeonLootTableService';
 import type { DungeonContentService } from '../modules/dungeons/dungeonContentService';
 import type { DungeonRunService } from '../modules/dungeons/dungeonRunService';
 import type { DungeonAllowanceService } from '../modules/dungeons/dungeonAllowanceService';
@@ -250,6 +251,8 @@ export interface AppServices {
   equipmentWorkshop?: EquipmentWorkshopService | undefined;
   /** Dungeon authoring: drafts, publication, rollback, audit and export (Portal Admin). */
   dungeonContent?: DungeonContentService | undefined;
+  /** Dedicated dungeon reward catalogue (Portal Admin). */
+  dungeonLootTables?: DungeonLootTableService | undefined;
   /** Playable dungeon runs (start, step, extract, abandon). Requires the `equipment` unlock. */
   dungeonRuns?: DungeonRunService | undefined;
   /** The daily Delve allowance and Delve-wide settings (Portal Admin, test controls). */

@@ -23,11 +23,11 @@
  *   dg|exq|<runId>                  extraction confirmation
  *   dg|ex|<runId>|<step>            extract
  *   dg|abq|<runId>                  abandon confirmation
- *   dg|ab|<runId>                   abandon
+ *   dg|ab|<runId>|<step>            abandon the confirmed step
  *
  * `<step>` is the run's step when the button was drawn. The service refuses an
  * input whose step is not the run's current one, so a stale or double-clicked
- * button changes nothing. Abandoning carries no step: it is always allowed.
+ * button changes nothing. Old step-less abandon buttons reopen confirmation.
  */
 import { ActionRowBuilder, type AttachmentBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, embedLength } from 'discord.js';
 import { BASIS_POINTS, type DungeonActionType } from '../modules/dungeons/content/dungeonDefinition';
@@ -44,13 +44,14 @@ import type {
   DungeonSettlement,
 } from '../modules/dungeons/dungeonRunService';
 import type { DungeonRecentEntry, DungeonWaveResult } from '../modules/dungeons/engine/types';
+import { settleCurrency } from '../modules/dungeons/engine/rewards';
 import type { DungeonActionView, DungeonConnectionView } from '../modules/dungeons/engine/view';
 import { formatCombatBonus, type CombatBonus } from '../modules/equipment/combatBonuses';
 import { EQUIPMENT_SLOTS, type EquipmentSlot } from '../modules/equipment/vocabulary';
 import { formatProgressionAmount } from '../modules/progressionCurrency/progressionCurrencyService';
 import { blockerLine, modifiersLine, summarizeCombatEvents, type TrialArt } from './combatTrialPresenter';
 import type { SessionPayload } from './ephemeralSession';
-import { EMPTY_SLOT, SLOT_EMOJI } from './equipmentPresenter';
+import { EMPTY_SLOT, SLOT_EMOJI, formatMultiplier } from './equipmentPresenter';
 import { buildCustomId } from './types';
 
 export const DUNGEON_TITLE = '⛏️ Delve';
@@ -88,7 +89,7 @@ export const dgId = {
   extractConfirm: (runId: number) => buildCustomId('dg', 'exq', String(runId)),
   extract: (runId: number, step: number) => buildCustomId('dg', 'ex', String(runId), String(step)),
   abandonConfirm: (runId: number) => buildCustomId('dg', 'abq', String(runId)),
-  abandon: (runId: number) => buildCustomId('dg', 'ab', String(runId)),
+  abandon: (runId: number, step?: number) => buildCustomId('dg', 'ab', String(runId), ...(step === undefined ? [] : [String(step)])),
 };
 
 const ACTION_HEADING: Readonly<Record<DungeonActionType, string>> = {
@@ -178,6 +179,76 @@ function percent(basisPoints: number): string {
   return `${Number((basisPoints / (BASIS_POINTS / 100)).toFixed(2))}%`;
 }
 
+function phase2(view: DungeonRunView): boolean {
+  return view.rewardFormat === 'v2' || view.settlement?.waifubux != null || view.core.unbankedWaifubux > 0 ||
+    view.secured.some((r) => r.kind === 'essence' || r.kind === 'affection' || (r.kind === 'equipment' && r.dropId !== undefined));
+}
+
+function riskLines(view: DungeonRunView): string[] {
+  const risk = view.atRisk ?? { shards: view.core.unbankedCurrency, waifubux: view.core.unbankedWaifubux ?? 0 };
+  return [currencyAmount(view.currency, risk.shards), ...(phase2(view) ? [`${risk.waifubux.toLocaleString('en-US')} WaifuBux`] : [])];
+}
+
+function retentionLines(dungeon: DungeonCard): string[] {
+  return [
+    'Complete or extract: keep everything.',
+    `Defeated: keep ${percent(dungeon.defeatRetentionBasisPoints)} of at-risk currency.`,
+    `Abandon: keep ${percent(dungeon.abandonRetentionBasisPoints ?? dungeon.defeatRetentionBasisPoints)} of at-risk currency.`,
+    ...(dungeon.rewardFormat === 'v2' ? [`${currencyName(dungeon.currency)} and dungeon-earned WaifuBux stay at risk until banked.`] : []),
+  ];
+}
+
+/** Whole reward rows, with a count instead of a cut-off final item. */
+function rewardList(lines: readonly string[], max = 900): string {
+  const shown: string[] = [];
+  for (const line of lines) {
+    const omitted = lines.length - shown.length - 1;
+    const suffix = omitted > 0 ? `\nand ${omitted} more rewards` : '';
+    if ([...shown, line].join('\n').length + suffix.length > max) break;
+    shown.push(line);
+  }
+  const omitted = lines.length - shown.length;
+  if (omitted > 0) shown.push(`and ${omitted} more rewards`);
+  return shown.join('\n') || 'Nothing yet.';
+}
+
+function itemLabel(slug: string, itemName: (slug: string) => string): string {
+  const name = itemName(slug);
+  return truncate(name && name !== slug ? name : 'Unknown item', 180);
+}
+
+function bonusNote(grant: { bonusPercent: number; bonus: string; baseAmount: number }): string {
+  return grant.bonus === 'pinned' && grant.bonusPercent > 0
+    ? ` (${grant.baseAmount} base, +${grant.bonusPercent}% Buddy bonus)` : '';
+}
+
+/** All values here are actual secured receipts, including pinned recipients. */
+function keptLines(secured: readonly DungeonSecuredReward[], itemName: (slug: string) => string, detailed: boolean): string[] {
+  const lines: string[] = [];
+  const bux = secured.reduce((sum, s) => sum + (s.kind === 'waifubux' ? s.amount : 0), 0);
+  if (bux > 0) lines.push(`${bux.toLocaleString('en-US')} WaifuBux`);
+  const essence = secured.filter((s) => s.kind === 'essence');
+  if (detailed) for (const grant of essence) lines.push(`+${grant.granted} Essence${bonusNote(grant)}`);
+  else if (essence.length) lines.push(`${essence.reduce((sum, s) => sum + s.granted, 0)} Essence`);
+  const affection = secured.filter((s) => s.kind === 'affection');
+  if (detailed) for (const grant of affection) lines.push(`♥ +${grant.granted} Affection → **${truncate(grant.name, 120)}**${bonusNote(grant)}`);
+  else {
+    const recipients = new Map<number, { name: string; amount: number }>();
+    for (const grant of affection) recipients.set(grant.waifuId, { name: grant.name, amount: (recipients.get(grant.waifuId)?.amount ?? 0) + grant.granted });
+    for (const grant of recipients.values()) lines.push(`♥ ${grant.amount} Affection → ${truncate(grant.name, 120)}`);
+  }
+  const totals = new Map<string, number>();
+  for (const s of secured) if (s.kind === 'item') totals.set(s.slug, (totals.get(s.slug) ?? 0) + s.quantity);
+  for (const [slug, quantity] of totals) lines.push(`${detailed ? '+' : ''}${quantity} ${itemLabel(slug, itemName)}`);
+  for (const gear of secured) if (gear.kind === 'equipment') {
+    const slot = gear.slot[0]?.toUpperCase() + gear.slot.slice(1);
+    const roll = detailed ? ` · ${slot} · ${formatMultiplier(gear.rolledMultiplierBp)}` : '';
+    const bonuses = detailed ? ((gear.combatBonuses ?? []) as CombatBonus[]).map((b) => ` · ${formatCombatBonus(b)}`).join('') : '';
+    lines.push(`${slotEmoji(gear.slot)} **${truncate(gear.displayName, 160)}** (${gear.rarity})${roll}${bonuses}`);
+  }
+  return lines;
+}
+
 function fighterBlock(fighter: DungeonFighter, currentHp: number, maxHp: number = fighter.maxHp): string {
   return [
     `HP **${currentHp} / ${maxHp}**`,
@@ -231,11 +302,12 @@ function latestRewards(view: DungeonRunView): DungeonRewardSummary | null {
   const planned = view.core.recent.filter((r): r is Extract<DungeonRecentEntry, { kind: 'reward' }> => r.kind === 'reward');
   if (planned.length === 0 && view.latestSecured.length === 0) return null;
   const summary = { currency: 0, waifubux: 0, items: [] as { slug: string; quantity: number }[], equipment: [] as DungeonRewardSummary['equipment'][number][] };
-  for (const r of planned) summary.currency += r.plan.currency;
+  if (view.latestAtRisk) summary.currency = view.latestAtRisk.shards;
+  else for (const r of planned) if (!('v' in r.plan)) summary.currency += r.plan.currency;
   for (const s of view.latestSecured) {
     if (s.kind === 'equipment') summary.equipment.push(s);
     else if (s.kind === 'waifubux') summary.waifubux += s.amount;
-    else summary.items.push({ slug: s.slug, quantity: s.quantity });
+    else if (s.kind === 'item') summary.items.push({ slug: s.slug, quantity: s.quantity });
   }
   return summary;
 }
@@ -243,14 +315,17 @@ function latestRewards(view: DungeonRunView): DungeonRewardSummary | null {
 /** A short roll-up of everything the run has secured so far. */
 export function securedSummary(secured: readonly DungeonSecuredReward[], itemName: (slug: string) => string): string {
   if (secured.length === 0) return 'Nothing yet.';
+  if (secured.some((s) => s.kind === 'essence' || s.kind === 'affection' || (s.kind === 'equipment' && s.dropId !== undefined))) {
+    return rewardList(keptLines(secured, itemName, false));
+  }
   const lines: string[] = [];
   for (const s of secured) if (s.kind === 'equipment') lines.push(`${slotEmoji(s.slot)} ${s.displayName} (${s.rarity})`);
   const bux = secured.reduce((sum, s) => sum + (s.kind === 'waifubux' ? s.amount : 0), 0);
   if (bux > 0) lines.push(`${bux} WaifuBux`);
   const itemTotals = new Map<string, number>();
   for (const s of secured) if (s.kind === 'item') itemTotals.set(s.slug, (itemTotals.get(s.slug) ?? 0) + s.quantity);
-  for (const [slug, quantity] of itemTotals) lines.push(`${quantity} ${itemName(slug)}`);
-  return truncate(lines.join('\n'), 1024);
+  for (const [slug, quantity] of itemTotals) lines.push(`${quantity} ${itemLabel(slug, itemName)}`);
+  return rewardList(lines);
 }
 
 /** `Daily Runs: **2 / 3** remaining`, from the configured limit — never a written number. */
@@ -289,6 +364,7 @@ function dungeonField(dungeon: DungeonCard): { name: string; value: string } {
     dungeon.currency
       ? `Pays: ${currencyName(dungeon.currency)} · you hold **${currencyAmount(dungeon.currency, dungeon.balance)}**`
       : null,
+    ...retentionLines(dungeon),
   ].filter((l): l is string => l != null);
   return { name: truncate(dungeon.name, 256), value: lines.join('\n') };
 }
@@ -320,13 +396,14 @@ export function buildDungeonHome(view: DungeonHomeView, opts: DungeonScreenOptio
       .addFields(
         { name: 'Where', value: truncate(`${roomName(run)} — ${roomsLine(run)} rooms cleared`, 1024), inline: true },
         { name: truncate(run.fighter.name, 200), value: fighterBlock(run.fighter, run.core.hp, run.core.maxHp), inline: true },
-        { name: `Unbanked ${currencyName(run.currency)}`, value: currencyAmount(run.currency, run.core.unbankedCurrency) },
-        { name: 'Secured', value: securedSummary(run.secured, opts.itemName) },
+        { name: phase2(run) ? 'At Risk' : `Unbanked ${currencyName(run.currency)}`, value: phase2(run) ? riskLines(run).join('\n') : currencyAmount(run.currency, run.core.unbankedCurrency) },
+        { name: phase2(run) ? 'Kept' : 'Secured', value: securedSummary(run.secured, opts.itemName) },
       );
     const art = opts.art ?? {};
     applyArt(embed, art);
+    fitEmbed(embed);
     return {
-      content: opts.status ?? '',
+      content: truncate(opts.status ?? '', 2000),
       embeds: [embed],
       components: [
         row(
@@ -364,7 +441,8 @@ export function buildDungeonHome(view: DungeonHomeView, opts: DungeonScreenOptio
   const components: ActionRowBuilder<ButtonBuilder>[] = [];
   if (shown.length) components.push(row(...shown.map((d) => button(dgId.zone(d.key), d.name, ButtonStyle.Primary))));
   components.push(row(menuButton()));
-  return { content: opts.status ?? '', embeds: [embed], components, files: files(opts.art ?? {}) };
+  fitEmbed(embed);
+  return { content: truncate(opts.status ?? '', 2000), embeds: [embed], components, files: files(opts.art ?? {}) };
 }
 
 // ── dungeon detail ──────────────────────────────────────────────────────────
@@ -399,12 +477,13 @@ export function buildDungeonDetail(view: DungeonDetailView, opts: DungeonScreenO
       dungeon.currency
         ? `${currencyName(dungeon.currency)} are banked when you extract or finish. If you fall, you keep ${percent(dungeon.defeatRetentionBasisPoints)}.`
         : null,
-      'Gear you find is yours at once.',
+      dungeon.rewardFormat === 'v2' ? 'Items, equipment, Essence and affection are kept as soon as earned.' : 'Gear you find is yours at once.',
     ]
       .filter((l): l is string => l != null)
       .join('\n'),
     inline: true,
   });
+  embed.addFields({ name: 'Currency risk', value: retentionLines(dungeon).join('\n') });
   if (dungeon.currency) embed.addFields({ name: 'You hold', value: currencyAmount(dungeon.currency, dungeon.balance) });
   embed.addFields({ name: 'Locked in', value: EQUIPMENT_NOTE });
   const blocked = blockerLine(blocker);
@@ -430,8 +509,9 @@ export function buildDungeonDetail(view: DungeonDetailView, opts: DungeonScreenO
       actions.push(button(buildCustomId('eq', 'home'), 'Equipment', ButtonStyle.Primary, '🔧'));
     }
   }
+  fitEmbed(embed);
   return {
-    content: opts.status ?? '',
+    content: truncate(opts.status ?? '', 2000),
     embeds: [embed],
     components: [row(...actions), row(homeButton('All Dungeons'), menuButton())],
     files: files(art),
@@ -525,15 +605,35 @@ function recentBlock(view: DungeonRunView, opts: DungeonScreenOptions): { lines:
     }
   }
 
-  const rewards = latestRewards(view);
-  if (rewards) {
-    fields.push(
-      hasRewards(rewards)
-        ? { name: '🎁 Rewards', value: truncate(rewardLines(rewards, view.currency, opts.itemName).join('\n'), 1024) }
-        : { name: '🎁 Cache', value: 'Empty.' },
-    );
+  if (phase2(view)) {
+    if (view.latestAtRisk) {
+      const risk = view.latestAtRisk;
+      if (risk.shards > 0 || risk.waifubux > 0) fields.push({ name: '🎁 At Risk earned', value: [
+        risk.shards > 0 ? `+${currencyAmount(view.currency, risk.shards)}` : null,
+        risk.waifubux > 0 ? `+${risk.waifubux.toLocaleString('en-US')} WaifuBux` : null,
+        'Held in this run until banked.',
+      ].filter((l): l is string => l !== null).join('\n') });
+    }
+    if (view.latestSecured.length) fields.push({ name: '🎁 Kept this step', value: rewardList(keptLines(view.latestSecured, opts.itemName, true)) });
+    else if (view.latestAtRisk && view.latestAtRisk.shards === 0 && view.latestAtRisk.waifubux === 0) {
+      fields.push({ name: '🎁 Rewards', value: 'No rewards this time.' });
+    }
+  } else {
+    const rewards = latestRewards(view);
+    if (rewards) {
+      fields.push(
+        hasRewards(rewards)
+          ? { name: '🎁 Rewards', value: rewardList(rewardLines(rewards, view.currency, (slug) => itemLabel(slug, opts.itemName))) }
+          : { name: '🎁 Cache', value: 'Empty.' },
+      );
+    }
   }
-  return { lines, fields };
+  // Preserve reward fields even when a valid step auto-follows many rests.
+  const rewardFields = fields.filter((f) => f.name.startsWith('🎁'));
+  const otherFields = fields.filter((f) => !f.name.startsWith('🎁'));
+  const omitted = Math.max(0, otherFields.length - 8);
+  if (omitted) lines.push(`and ${omitted} more activity results`);
+  return { lines, fields: [...otherFields.slice(0, 8), ...rewardFields] };
 }
 
 function isFight(action: DungeonActionView): boolean {
@@ -614,6 +714,14 @@ export function settlementLines(view: DungeonRunView): string[] {
   if (!s) return [];
   const lines = [`Rooms cleared: **${roomsLine(view)}**`, `HP: ${s.finalHp} / ${view.core.maxHp}`];
   if (s.cause === 'stalemate') lines.push('The fight ran out the clock — you were forced back.');
+  if (s.waifubux) {
+    lines.push(
+      `${currencyName(view.currency)} — Earned: ${s.earned.toLocaleString('en-US')} · Banked: **${s.banked.toLocaleString('en-US')}** · Lost: ${s.lost.toLocaleString('en-US')}`,
+      `WaifuBux — Earned: ${s.waifubux.earned.toLocaleString('en-US')} · Banked: **${s.waifubux.banked.toLocaleString('en-US')}** · Lost: ${s.waifubux.lost.toLocaleString('en-US')}`,
+    );
+    if (s.bankingSkipped) lines.push(`${currencyName(view.currency)} cannot be banked right now.`);
+    return lines;
+  }
   lines.push(`Earned: ${currencyAmount(view.currency, s.earned)}`);
   if (s.bankingSkipped) {
     lines.push(`Banked: nothing — ${currencyName(view.currency)} cannot be banked right now.`);
@@ -626,11 +734,22 @@ export function settlementLines(view: DungeonRunView): string[] {
   return lines;
 }
 
-/** Discord refuses an embed over 6000 characters in all; the description gives way first. */
+/** Keep currency/results intact; shorten narrative and secondary fields first. */
 function fitEmbed(embed: EmbedBuilder): void {
-  const over = embedLength(embed.data) - EMBED_TOTAL_LIMIT;
+  let over = embedLength(embed.data) - EMBED_TOTAL_LIMIT;
+  if (over <= 0) return;
   const description = embed.data.description;
-  if (over > 0 && description) embed.setDescription(truncate(description, Math.max(1, description.length - over)));
+  if (description) embed.setDescription(truncate(description, Math.max(1, description.length - over)));
+  over = embedLength(embed.data) - EMBED_TOTAL_LIMIT;
+  const fields = embed.data.fields ?? [];
+  const important = (name: string) => name.startsWith('🎁') || ['At Risk', 'Result', 'Kept', 'Kept — yours to keep', 'Secured', 'Secured — yours to keep', 'Currency risk'].includes(name);
+  for (const field of [...fields].reverse().filter((f) => !important(f.name))) {
+    if (over <= 0) break;
+    const length = Math.max(1, field.value.length - over);
+    field.value = truncate(field.value, length);
+    over = embedLength(embed.data) - EMBED_TOTAL_LIMIT;
+  }
+  embed.setFields(fields);
 }
 
 /**
@@ -686,12 +805,12 @@ export function buildRunScreen(view: DungeonRunView, opts: DungeonScreenOptions)
   if (over) {
     embed.addFields(
       { name: 'Result', value: truncate(settlementLines(view).join('\n'), 1024) || '—' },
-      { name: 'Secured — yours to keep', value: securedSummary(view.secured, opts.itemName) },
+      { name: phase2(view) ? 'Kept — yours to keep' : 'Secured — yours to keep', value: securedSummary(view.secured, opts.itemName) },
     );
   } else {
     embed.addFields(
-      { name: `Unbanked ${currencyName(view.currency)}`, value: currencyAmount(view.currency, core.unbankedCurrency), inline: true },
-      { name: 'Secured', value: securedSummary(view.secured, opts.itemName), inline: true },
+      { name: phase2(view) ? 'At Risk' : `Unbanked ${currencyName(view.currency)}`, value: phase2(view) ? riskLines(view).join('\n') : currencyAmount(view.currency, core.unbankedCurrency), inline: true },
+      { name: phase2(view) ? 'Kept' : 'Secured', value: securedSummary(view.secured, opts.itemName), inline: true },
       { name: 'Rooms cleared', value: roomsLine(view), inline: true },
     );
     const locked = shown.filter((c) => !c.open);
@@ -715,7 +834,7 @@ export function buildRunScreen(view: DungeonRunView, opts: DungeonScreenOptions)
       embed.addFields({
         name: '🚪 Extraction point',
         value: core.canExtract
-          ? `You can leave here and bank all ${currencyAmount(view.currency, core.unbankedCurrency)}.`
+          ? `You can leave here and bank all ${riskLines(view).join(' and ')}.`
           : 'You can leave from here once this room is done.',
       });
     }
@@ -739,7 +858,7 @@ export function buildRunScreen(view: DungeonRunView, opts: DungeonScreenOptions)
     last.push(button(dgId.abandonConfirm(view.id), 'Abandon', core.stuck ? ButtonStyle.Danger : ButtonStyle.Secondary), menuButton());
     components.push(row(...last));
   }
-  return { content: opts.status ?? '', embeds: [embed], components, files: files(art) };
+  return { content: truncate(opts.status ?? '', 2000), embeds: [embed], components, files: files(art) };
 }
 
 /** The status line for an action's result; null when it simply happened. */
@@ -768,7 +887,7 @@ export function buildExtractConfirm(view: DungeonRunView): SessionPayload {
     .setColor(COLOR_GOOD)
     .setDescription(
       [
-        `You'll bank all **${currencyAmount(view.currency, view.core.unbankedCurrency)}** and the run ends here, in ${truncate(roomName(view), 200)} with ${roomsLine(view)} rooms cleared.`,
+        `You'll bank all **${riskLines(view).join(' and ')}** and the run ends here, in ${truncate(roomName(view), 200)} with ${roomsLine(view)} rooms cleared.`,
         'Everything you have secured is already yours.',
         'There is no coming back to this run.',
       ].join('\n'),
@@ -787,13 +906,22 @@ export function buildExtractConfirm(view: DungeonRunView): SessionPayload {
 }
 
 export function buildAbandonConfirm(view: DungeonRunView): SessionPayload {
+  const retention = view.abandonRetentionBasisPoints ?? view.defeatRetentionBasisPoints;
+  const shards = view.atRisk?.shards ?? view.core.unbankedCurrency;
+  const bux = view.atRisk?.waifubux ?? view.core.unbankedWaifubux ?? 0;
+  const shardShare = settleCurrency(shards, retention);
+  const buxShare = settleCurrency(bux, retention);
   const embed = new EmbedBuilder()
     .setTitle(truncate(`🏳️ Abandon ${view.dungeon.name}?`, 256))
     .setColor(COLOR_BAD)
     .setDescription(
       [
-        `Abandoning counts as a defeat: you keep ${percent(view.defeatRetentionBasisPoints)} of your **${currencyAmount(view.currency, view.core.unbankedCurrency)}** unbanked.`,
-        'Everything you have secured is already yours.',
+        phase2(view)
+          ? `Abandon: keep ${percent(retention)} of at-risk currency.`
+          : `Abandoning: you keep ${percent(retention)} of your **${currencyAmount(view.currency, shards)}** unbanked.`,
+        `${currencyName(view.currency)} — At risk: ${shards.toLocaleString('en-US')} · Keep: **${shardShare.banked.toLocaleString('en-US')}** · Lose: ${shardShare.lost.toLocaleString('en-US')}`,
+        phase2(view) ? `WaifuBux — At risk: ${bux.toLocaleString('en-US')} · Keep: **${buxShare.banked.toLocaleString('en-US')}** · Lose: ${buxShare.lost.toLocaleString('en-US')}` : null,
+        'Previously secured equipment, items, Essence and affection remain yours.',
         view.core.canExtract ? 'You are on an extraction point — extracting banks all of it instead.' : null,
       ]
         .filter((l): l is string => l != null)
@@ -804,7 +932,7 @@ export function buildAbandonConfirm(view: DungeonRunView): SessionPayload {
     embeds: [embed],
     components: [
       row(
-        button(dgId.abandon(view.id), 'Abandon Run', ButtonStyle.Danger),
+        button(dgId.abandon(view.id, view.step), 'Abandon Run', ButtonStyle.Danger),
         button(dgId.run(view.id), 'Back to Run', ButtonStyle.Secondary),
       ),
     ],

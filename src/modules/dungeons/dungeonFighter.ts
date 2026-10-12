@@ -5,6 +5,7 @@
  */
 import { CombatBuddyRequiredError, CombatLoadoutIncompleteError } from '../../shared/errors';
 import type { CombatModifiers } from '../combat/combatTypes';
+import { buddyBonusPercent, type BuddyBonus, type BuddyBonusEffectId } from '../buddyBonus/buddyBonusEffects';
 import type { CombatBonus } from '../equipment/combatBonuses';
 import type { CombatStats } from '../equipment/equipmentMath';
 import { EQUIPMENT_SLOTS, type EquipmentSlot } from '../equipment/vocabulary';
@@ -35,7 +36,27 @@ export interface DungeonFighter {
   maxHp: number;
   /** The aggregated, capped combat modifiers, frozen at start like ATK / DEF / HP. */
   modifiers?: CombatModifiers;
+  /** Absent on historical runs; never filled from the live Buddy on read. */
+  rewardBonuses?: DungeonRewardBonuses;
   gear: Record<EquipmentSlot, DungeonFighterGear>;
+}
+
+export interface DungeonRewardBonuses {
+  affectionGainPercent: number;
+  essenceGainPercent: number;
+  source: { speciesSlug: string; effectId: BuddyBonusEffectId; bonusName: string } | null;
+}
+
+/** Copy scalar values once at start; later content reloads cannot retune them. */
+export function pinnedRewardBonuses(speciesSlug: string, bonus: BuddyBonus | null): DungeonRewardBonuses {
+  const affectionGainPercent = buddyBonusPercent(bonus, 'affection_gain');
+  const essenceGainPercent = buddyBonusPercent(bonus, 'essence_gain');
+  return {
+    affectionGainPercent,
+    essenceGainPercent,
+    source: bonus && (affectionGainPercent !== 0 || essenceGainPercent !== 0)
+      ? { speciesSlug, effectId: bonus.effectId, bonusName: bonus.name } : null,
+  };
 }
 
 /**

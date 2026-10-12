@@ -53,7 +53,7 @@ describe('room sequences', () => {
     const claimStep = state.step;
     apply({ type: 'advance' });
     expect(state.cursor.roomId).toBe('hall');
-    expect(state.rewardClaims['run:unit:loot:pay']?.currency).toBe(10);
+    expect(state.rewardClaims['run:unit:loot:pay']).toMatchObject({ currency: 10 });
     // Claim protection is independent of action records and survives serialization.
     state = JSON.parse(JSON.stringify(state)) as DungeonRunState;
     state.rooms.loot!.actions = {};

@@ -32,6 +32,7 @@
  *   6. graph     reachability and routes to an ending.
  */
 import type { ZodIssue } from 'zod';
+import { validateDungeonRewards, rewardShapeIssue, type DungeonRewardValidationContext } from './dungeonRewardValidation';
 import {
   ACTION_OUTCOMES,
   DECLINED_OUTCOME,
@@ -53,6 +54,20 @@ import { defaultDestination, destinationFor, destinationsOf, SUCCESS_OUTCOME } f
 
 export const DUNGEON_ISSUE_CODES = [
   'schema',
+  'reward_item_missing',
+  'reward_item_capped',
+  'reward_item_disabled',
+  'reward_equipment_empty',
+  'reward_table_archived',
+  'reward_table_invalid',
+  'reward_shards_unset',
+  'reward_too_much_gear',
+  'reward_too_many_draws',
+  'reward_affection_too_large',
+  'reward_currency_too_large',
+  'reward_pool_all_nothing',
+  'reward_legacy_mixed',
+  'reward_abandon_more_than_defeat',
   'unsupported_action_type',
   'unknown_action_type',
   'duplicate_room_id',
@@ -114,7 +129,7 @@ export interface DungeonIssue {
 /** A name that exists outside the definition, and whether it is switched on. */
 export type DungeonReferenceIndex = ReadonlyMap<string, { enabled: boolean }>;
 
-export interface DungeonValidationContext {
+export interface DungeonValidationContext extends DungeonRewardValidationContext {
   enemies?: DungeonReferenceIndex | undefined;
   /** `expedition`-kind reward tables. */
   rewardTables?: DungeonReferenceIndex | undefined;
@@ -188,7 +203,7 @@ export function validateDungeonDefinition(raw: unknown, ctx: DungeonValidationCo
       const path = zodPath(issue.path);
       // The dedicated code already says what is wrong with that action.
       if ([...typed.paths].some((p) => path === p || path.startsWith(`${p}.`))) continue;
-      issues.push({ code: 'schema', severity: 'error', path, message: issue.message });
+      issues.push(rewardShapeIssue(raw, path, issue.message) ?? { code: 'schema', severity: 'error', path, message: issue.message });
     }
     return { definition: null, issues };
   }
@@ -389,7 +404,7 @@ export function validateDungeonDefinition(raw: unknown, ctx: DungeonValidationCo
         }
       }
 
-      if (action.type === 'reward') {
+      if (action.type === 'reward' && action.reward) {
         const { rewardTable, equipmentRewardTable, currency } = action.reward;
         if (!rewardTable && !equipmentRewardTable && currency.max <= 0) {
           add('reward_empty', 'warning', `${path}.reward`, `action "${action.id}" pays nothing: it names no reward table and no currency`);
@@ -522,5 +537,6 @@ export function validateDungeonDefinition(raw: unknown, ctx: DungeonValidationCo
     }
   });
 
+  issues.push(...validateDungeonRewards(definition, ctx).issues);
   return { definition, issues };
 }

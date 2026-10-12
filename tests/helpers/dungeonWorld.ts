@@ -158,8 +158,10 @@ export async function createDungeonWorld(
     ...(opts.logger ? { logger: opts.logger } : {}),
     featureUnlocks: svc.featureUnlocks,
     combatStats: stats,
+    buddyBonus: app.buddyBonus,
     currencies,
     currency: app.currency,
+    collection: app.collection,
     inventory: app.inventory,
     equipmentRewards: createEquipmentRewardService({
       equipment: svc.equipment,

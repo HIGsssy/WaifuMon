@@ -16,12 +16,42 @@
 import { expeditionDrawInt } from '../../expeditions/expeditionRandom';
 import { mergeGrants, rollExpeditionTable } from '../../expeditions/expeditionRewards';
 import { BASIS_POINTS, type RewardSpec } from '../content/dungeonDefinition';
-import type { DungeonRewardPlan, DungeonRngSource, EngineDependencies } from './types';
+import { DUNGEON_REWARD_LIMITS } from '../content/dungeonRewards';
+import type { DungeonRewardSnapshot } from '../content/dungeonRewardSnapshot';
+import { DungeonEngineContentError } from './combat';
+import type { DungeonRewardPlanV2, DungeonRewardResolverSnapshot } from './lootResolver';
+import type { DungeonResolvedRewardPlan, DungeonRewardPlan, DungeonRngSource, EngineDependencies } from './types';
 
 export const NO_REWARD_PLAN: DungeonRewardPlan = Object.freeze({ currency: 0, waifubux: 0, items: [], equipment: [] });
 
-export function planHasSecuredRewards(plan: Pick<DungeonRewardPlan, 'waifubux' | 'items' | 'equipment'>): boolean {
+export function isDungeonRewardPlanV2(plan: DungeonResolvedRewardPlan): plan is DungeonRewardPlanV2 {
+  return 'v' in plan && plan.v === 2;
+}
+
+export function planHasSecuredRewards(plan: DungeonResolvedRewardPlan): boolean {
+  if (isDungeonRewardPlanV2(plan)) {
+    const { secured } = plan;
+    return secured.essence > 0 || secured.affection > 0 || secured.items.length > 0 || secured.equipment.length > 0;
+  }
   return plan.waifubux > 0 || plan.items.length > 0 || plan.equipment.length > 0;
+}
+
+/** T6's immutable table records adapted to T2's body map, without catalogue I/O. */
+export function rewardResolverSnapshot(snapshot: DungeonRewardSnapshot): DungeonRewardResolverSnapshot {
+  return {
+    hash: snapshot.hash,
+    tables: new Map(Object.entries(snapshot.tables).map(([key, table]) => [key, table.body])),
+    equipmentPools: snapshot.equipmentPools,
+  };
+}
+
+/** Also bounds the product used by retention rounding well below MAX_SAFE_INTEGER. */
+export function addAtRiskCurrency(total: number, amount = 0): number {
+  const limit = DUNGEON_REWARD_LIMITS.atRiskCurrencyPerDungeon;
+  if (!Number.isSafeInteger(total) || total < 0 || !Number.isSafeInteger(amount) || amount < 0 || total + amount > limit) {
+    throw new DungeonEngineContentError(`at-risk currency must be a non-negative safe integer at most ${limit}`);
+  }
+  return total + amount;
 }
 
 /** `amount × basisPoints / 10000`, rounded toward zero. */

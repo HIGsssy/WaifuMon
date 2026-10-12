@@ -571,7 +571,7 @@ describe('abandoning', () => {
     expect(embedOf(confirm).description).toContain('you keep 25% of your **14 Ascension Tokens** unbanked');
     expect(embedOf(confirm).description).toContain('You are on an extraction point');
     expect(labelsOf(confirm)).toEqual(['Abandon Run', 'Back to Run']);
-    expect(routeOf(buttonOf(confirm, 'Abandon Run'))).toBe(`dg|ab|${runId}`);
+    expect(routeOf(buttonOf(confirm, 'Abandon Run'))).toBe(`dg|ab|${runId}|${before.step}`);
     expect(routeOf(buttonOf(confirm, 'Back to Run'))).toBe(`dg|run|${runId}`);
     expect(await runRow(runId)).toEqual(before);
     expect(shapeOf(await press(prov, confirm, 'Back to Run'))).toEqual(shapeOf(screen));
@@ -637,7 +637,7 @@ describe('malformed custom ids', () => {
       ['exq: a trailing argument', handleDungeonExtractConfirm, [id, '0']],
       ['abq: run id is not a number', handleDungeonAbandonConfirm, ['run']],
       ['ab: run id is missing', handleDungeonAbandon, []],
-      ['ab: a trailing argument', handleDungeonAbandon, [id, '0']],
+      ['ab: a trailing argument', handleDungeonAbandon, [id, '0', 'extra']],
       ['run: run id has a decimal', handleDungeonRun, ['1.5']],
       ['run: a trailing argument', handleDungeonRun, [id, '0']],
       ['zone: key is missing', handleDungeonZone, []],
@@ -733,6 +733,7 @@ describe('after a restart', () => {
       }),
       currencies: createProgressionCurrencyService(w.t.db),
       currency: w.app.currency,
+      collection: w.app.collection,
       inventory: w.app.inventory,
       equipmentRewards: createEquipmentRewardService({ equipment: svc.equipment, getAffixes: svc.getAffixes, featureUnlocks: svc.featureUnlocks }),
     });

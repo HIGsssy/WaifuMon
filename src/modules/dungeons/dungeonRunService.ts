@@ -34,7 +34,7 @@
  *                 a run in progress.
  *   fighter       the Buddy and Equipment-derived stats, as before.
  *
- * ## Rewards (Phase 1A)
+ * ## Rewards
  *
  * A `reward` action pays an existing expedition reward table and a range of
  * progression currency. Gear, WaifuBux and items are **secured** — granted in
@@ -43,8 +43,10 @@
  * abandon). Delivery is safe against replay because it shares the step's
  * transaction and step check; gear additionally carries a grant key derived
  * from the action's claim key, and banking the existing ledger request key.
- * Phase 2 puts a claims row behind the same claim key — nothing here assumes
- * it will not.
+ * V2 activities use the immutable revision's loot snapshot. Essence, items,
+ * seeded gear and pinned-copy affection are secured in this transaction;
+ * Shards and WaifuBux stay on the run until both are settled atomically.
+ * Claims remain in the run row; there is no separate delivery queue.
  *
  * ## Eligibility, allowance and regions
  *
@@ -69,6 +71,7 @@ import {
   DungeonDailyLimitError,
   DungeonInvalidError,
   DungeonRewardItemUnavailableError,
+  DungeonRewardGrantError,
   DungeonRunActiveError,
   DungeonRunNotFoundError,
   DungeonUnavailableError,
@@ -84,6 +87,8 @@ import type { CombatEvent, CombatRules } from '../combat/combatTypes';
 import type { CombatEnemyDefinition } from '../combat/enemyDefinitions';
 import type { ExpeditionRewardTable } from '../content/schemas';
 import type { CurrencyService } from '../currency/currencyService';
+import type { CollectionService } from '../collection/collectionService';
+import { applyPercentModifierInt } from '../buddyBonus/buddyBonusEffects';
 import type { EnemyCatalogueService } from '../enemies/enemyService';
 import type { CombatStatsService } from '../equipment/combatStatsService';
 import type { CombatStats, CombatStatsUnavailableReason } from '../equipment/equipmentMath';
@@ -102,8 +107,10 @@ import {
 } from './content/dungeonDefinition';
 import type { DungeonAllowanceService, DungeonDailyAllowance } from './dungeonAllowanceService';
 import type { DungeonContentService } from './dungeonContentService';
-import { fighterFromCombatStats, type DungeonFighter } from './dungeonFighter';
-import { equipmentGrantKey } from './engine/rewards';
+import { fighterFromCombatStats, pinnedRewardBonuses, type DungeonFighter } from './dungeonFighter';
+import type { BuddyBonusService } from '../buddyBonus/buddyBonusService';
+import { equipmentGrantKey, rewardClaimKey } from './engine/rewards';
+import { dungeonGameplayHash, hasDungeonRewardBundles, readDungeonRewardSnapshot } from './content/dungeonRewardSnapshot';
 import { applyDungeonEffects } from './engine/sandbox';
 import { randomDungeonSeed } from './engine/seeds';
 import { startDungeonRun, stepDungeon } from './engine/step';
@@ -113,6 +120,8 @@ import type {
   DungeonEffectsPort,
   DungeonEngineContext,
   DungeonEquipmentGrant,
+  DungeonEssenceGrant,
+  DungeonAffectionGrant,
   DungeonInput,
   DungeonLogEntry,
   DungeonRefusal,
@@ -170,13 +179,18 @@ export interface DungeonCard {
   /** The player's permanent balance of that currency. */
   balance: number;
   defeatRetentionBasisPoints: number;
+  /** Read-only settings for the reward risk explanation. */
+  abandonRetentionBasisPoints?: number;
+  rewardFormat?: 'v2';
 }
 
 /** A reward a run has already handed to the player for good. */
 export type DungeonSecuredReward =
   | ({ kind: 'equipment'; source: string; step: number } & DungeonEquipmentGrant)
   | { kind: 'waifubux'; source: string; step: number; amount: number }
-  | { kind: 'item'; source: string; step: number; slug: string; quantity: number };
+  | { kind: 'item'; source: string; step: number; slug: string; quantity: number }
+  | ({ kind: 'essence'; source: string; step: number } & DungeonEssenceGrant)
+  | ({ kind: 'affection'; source: string; step: number } & DungeonAffectionGrant);
 
 /** How a run ended and what was banked. Stored on the run once, when it ends. */
 export interface DungeonSettlement extends DungeonRunEnd {
@@ -184,6 +198,7 @@ export interface DungeonSettlement extends DungeonRunEnd {
   bankingSkipped: 'no_currency' | 'currency_disabled' | null;
   /** The permanent balance after banking; null when nothing was banked. */
   balanceAfter: number | null;
+  waifubuxBalanceAfter?: number | null;
 }
 
 export interface DungeonSceneEnemy {
@@ -217,6 +232,14 @@ export interface DungeonRunView {
   secured: DungeonSecuredReward[];
   /** The secured rewards the latest step handed over. */
   latestSecured: DungeonSecuredReward[];
+  /** Absent on historical serialized views; current reads expose both totals. */
+  atRisk?: { shards: number; waifubux: number };
+  /** Only newly committed claims represented in this stored step. */
+  latestAtRisk?: { shards: number; waifubux: number } | null;
+  /** Published display-name fallback when loaded content no longer names an item. */
+  rewardItemNames?: Record<string, string>;
+  abandonRetentionBasisPoints?: number;
+  rewardFormat?: 'v2';
   settlement: DungeonSettlement | null;
   startedAt: Date;
   completedAt: Date | null;
@@ -304,8 +327,11 @@ export interface DungeonRunServiceDeps {
   allowance: Pick<DungeonAllowanceService, 'status' | 'consume'>;
   featureUnlocks: Pick<FeatureUnlockService, 'isUnlocked'>;
   combatStats: Pick<CombatStatsService, 'calculateCombatStats' | 'snapshotCombatStats'>;
+  /** Resolves the pinned fighter's species, never a later active Buddy. */
+  buddyBonus?: Pick<BuddyBonusService, 'bonusForSpeciesSlug'>;
   currencies: Pick<ProgressionCurrencyService, 'get' | 'getBalance' | 'grant'>;
-  currency: Pick<CurrencyService, 'grantWaifubux'>;
+  currency: Pick<CurrencyService, 'grantWaifubux' | 'grantEssence'>;
+  collection: Pick<CollectionService, 'awardCopyAffection'>;
   inventory: Pick<InventoryService, 'addItem'>;
   equipmentRewards: Pick<EquipmentRewardService, 'grantChosenEquipmentReward'>;
   logger?: Pick<Logger, 'debug' | 'info' | 'warn' | 'error'> | undefined;
@@ -345,6 +371,7 @@ function stateOf(row: DungeonRunRow): DungeonRunState {
     rooms: row.roomStates as unknown as DungeonRunState['rooms'],
     rewardClaims: row.rewardClaims as unknown as DungeonRunState['rewardClaims'],
     unbankedCurrency: row.unbankedCurrency,
+    unbankedWaifubux: row.unbankedWaifubux,
     recent: row.recent as unknown as DungeonRunState['recent'],
     end: row.settlement ? (row.settlement as unknown as DungeonRunEnd) : null,
   };
@@ -412,6 +439,8 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
       currency: meta && { key: meta.key, singularName: meta.singularName, pluralName: meta.pluralName, icon: meta.icon },
       balance: meta ? await deps.currencies.getBalance(playerId, meta.key, tx) : 0,
       defeatRetentionBasisPoints: definition.settings.defeatCurrencyRetentionBasisPoints,
+      abandonRetentionBasisPoints: definition.settings.abandonCurrencyRetentionBasisPoints ?? definition.settings.defeatCurrencyRetentionBasisPoints,
+      ...(hasDungeonRewardBundles(definition) ? { rewardFormat: 'v2' as const } : {}),
     };
   }
 
@@ -499,8 +528,24 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
   // ── loading and viewing a run ─────────────────────────────────────────────
 
   async function load(tx: DbOrTx, row: DungeonRunRow): Promise<LoadedRun> {
-    const pinned = await deps.content.revisionById(tx, row.revisionId);
+    const cursor = row.cursor as unknown as DungeonRunState['cursor'];
+    const claimKey = cursor.actionId === null ? `revision:${row.revisionId}` : rewardClaimKey(String(row.id), cursor.roomId, cursor.actionId);
+    let pinned: Awaited<ReturnType<DungeonRunServiceDeps['content']['revisionById']>>;
+    try {
+      pinned = await deps.content.revisionById(tx, row.revisionId);
+    } catch (cause) {
+      if (!(cause instanceof DungeonInvalidError) || !cause.issues.some((i) => i.code === 'reward_snapshot_invalid')) throw cause;
+      throw rewardFailure(row, claimKey, 'reward_snapshot', cause);
+    }
     if (!pinned) throw new DungeonRunNotFoundError(row.id);
+    const rewards = readDungeonRewardSnapshot(pinned.rewards);
+    if (hasDungeonRewardBundles(pinned.definition) &&
+      (!rewards || dungeonGameplayHash(pinned.revision.contentHash, rewards.hash) !== pinned.revision.gameplayHash)) {
+      throw rewardFailure(row, claimKey, 'reward_snapshot', new Error(
+        !rewards ? 'Pinned revision reward snapshot is missing, invalid or resolver-incompatible'
+          : 'Pinned revision reward snapshot does not match its gameplay hash',
+      ));
+    }
     const snapshot = row.dependencySnapshot as unknown as DungeonDependencySnapshot;
     const fighter = row.fighter as unknown as DungeonFighter;
     return {
@@ -514,6 +559,7 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
         dependencies: { enemies: snapshot.enemies, rewardTables: snapshot.rewardTables },
         fighter,
         runKey: String(row.id),
+        rewards,
         combatRules: deps.combatRules,
       },
     };
@@ -556,6 +602,13 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
     }
 
     const secured = row.securedRewards as unknown as DungeonSecuredReward[];
+    // Read the committed claims, not the engine's proposed grant amounts.
+    const claimed = core.recent.flatMap((r) => r.kind === 'reward' && Object.hasOwn(state.rewardClaims, r.claimKey)
+      ? [state.rewardClaims[r.claimKey]!] : []);
+    const latestAtRisk = claimed.length ? claimed.reduce((total, plan) => ({
+      shards: total.shards + ('v' in plan ? plan.atRisk.shards : plan.currency),
+      waifubux: total.waifubux + ('v' in plan ? plan.atRisk.waifubux : 0),
+    }), { shards: 0, waifubux: 0 }) : null;
     const room = definition.rooms.find((r) => r.id === core.room.id);
     const roomBackground = resolveDungeonArtwork(room?.background ?? null, snapshot.artwork ?? {});
     const dungeonBackground = resolveDungeonArtwork(definition.background, snapshot.artwork ?? {});
@@ -580,6 +633,11 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
       defeatRetentionBasisPoints: definition.settings.defeatCurrencyRetentionBasisPoints,
       secured,
       latestSecured: secured.filter((s) => s.step === row.step),
+      atRisk: { shards: core.unbankedCurrency, waifubux: core.unbankedWaifubux },
+      latestAtRisk,
+      ...(run.ctx.rewards ? { rewardItemNames: Object.fromEntries(Object.entries(run.ctx.rewards.items).map(([slug, item]) => [slug, item.name])) } : {}),
+      abandonRetentionBasisPoints: definition.settings.abandonCurrencyRetentionBasisPoints ?? definition.settings.defeatCurrencyRetentionBasisPoints,
+      ...(run.ctx.rewards ? { rewardFormat: 'v2' as const } : {}),
       settlement: (row.settlement as unknown as DungeonSettlement | null) ?? null,
       startedAt: row.startedAt,
       completedAt: row.completedAt,
@@ -587,6 +645,64 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
   }
 
   // ── the live effects adapter ──────────────────────────────────────────────
+
+  function rewardFailure(row: DungeonRunRow, claimKey: string, dependency: string, cause?: unknown,
+    activity: unknown = row.cursor): DungeonRewardGrantError {
+    deps.logger?.error(
+      { tag: 'dungeons/reward-grant-failed', runId: row.id, revisionId: row.revisionId, claimKey,
+        activity, dependency, err: cause },
+      'dungeon reward delivery aborted; all grants and progress roll back',
+    );
+    return new DungeonRewardGrantError(row.id, claimKey, dependency, cause);
+  }
+
+  async function grantV2(tx: DbOrTx, run: LoadedRun, effect: Extract<DungeonEffect, { type: 'grant_rewards' }>): Promise<DungeonEffectReceipt> {
+    const { plan, claimKey } = effect;
+    if (!('v' in plan)) throw new Error('Expected v2 reward plan');
+    const { row, fighter } = run;
+    const bonus = fighter.rewardBonuses ? 'pinned' as const : 'not_pinned' as const;
+    const receipt: Extract<DungeonEffectReceipt, { type: 'grant_rewards' }> = {
+      type: 'grant_rewards', claimKey, waifubux: 0, items: [], equipment: [], plan,
+    };
+    let dependency = 'essence';
+    try {
+      if (plan.secured.essence > 0) {
+        const bonusPercent = fighter.rewardBonuses?.essenceGainPercent ?? 0;
+        const granted = applyPercentModifierInt(plan.secured.essence, bonusPercent);
+        const balances = await deps.currency.grantEssence(tx, row.playerId, granted);
+        receipt.essence = { baseAmount: plan.secured.essence, granted, bonusPercent, bonus, balanceAfter: balances.essence };
+      }
+      for (const grant of [...plan.secured.items].sort((a, b) => a.item < b.item ? -1 : a.item > b.item ? 1 : 0)) {
+        dependency = `item:${grant.item}`;
+        // Hold the catalogue row until delivery commits, including cap validation.
+        const [item] = await tx.select().from(items).where(eq(items.slug, grant.item)).for('share');
+        if (!item) throw new DungeonRewardItemUnavailableError(row.id, claimKey, grant.item);
+        if (item.maxOwned !== null) throw new Error(`Promised item ${grant.item} now has maxOwned=${item.maxOwned}`);
+        await deps.inventory.addItem(tx, row.playerId, item.id, grant.quantity);
+        receipt.items.push({ slug: grant.item, quantity: grant.quantity });
+      }
+      for (const [rewardIndex, drop] of [...plan.secured.equipment].sort((a, b) => a.dropId < b.dropId ? -1 : a.dropId > b.dropId ? 1 : 0).entries()) {
+        dependency = `equipment:${drop.definitionKey}:${drop.dropId}`;
+        const grant = await deps.equipmentRewards.grantChosenEquipmentReward(tx, {
+          playerId: row.playerId, definitionKey: drop.definitionKey, rollSeed: drop.rollSeed,
+          allowDisabled: true, promised: true, source: { type: 'dungeon', key: row.dungeonKey },
+          grantKey: `dungeon:${claimKey}:${drop.dropId}`,
+        });
+        receipt.equipment.push({ rewardIndex, ...grant, dropId: drop.dropId, rollSeed: drop.rollSeed });
+      }
+      if (plan.secured.affection > 0) {
+        dependency = `affection:${fighter.waifuId}`;
+        const bonusPercent = fighter.rewardBonuses?.affectionGainPercent ?? 0;
+        const grant = await deps.collection.awardCopyAffection(tx, {
+          playerId: row.playerId, waifuId: fighter.waifuId, baseAmount: plan.secured.affection, bonusPercent,
+        });
+        receipt.affection = { ...grant, name: fighter.name, speciesSlug: fighter.speciesSlug, bonusPercent, bonus };
+      }
+      return receipt;
+    } catch (cause) {
+      throw rewardFailure(row, claimKey, dependency, cause, { roomId: effect.roomId, actionId: effect.actionId });
+    }
+  }
 
   /**
    * Carries the engine's effects out for real, inside the step's transaction.
@@ -598,6 +714,7 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
       async apply(effect: DungeonEffect): Promise<DungeonEffectReceipt> {
         if (effect.type === 'grant_rewards') {
           const { plan, claimKey } = effect;
+          if ('v' in plan) return grantV2(tx, run, effect);
           if (plan.waifubux > 0) await deps.currency.grantWaifubux(tx, row.playerId, plan.waifubux);
 
           const granted: typeof plan.items = [];
@@ -648,27 +765,45 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
         }
 
         const { end, currencyKey, requestKey } = effect;
-        if (end.banked <= 0) return { type: 'settle_run', banked: 0, bankingSkipped: null, balanceAfter: null };
-        const live = currencyKey ? await deps.currencies.get(currencyKey, tx) : null;
-        if (!live || !live.enabled) {
-          // The currency was removed or switched off under the run. The run
-          // still ends; what could not be banked is recorded, not invented.
-          deps.logger?.warn(
-            { tag: 'dungeons/banking-skipped', runId: row.id, currencyKey, amount: end.banked },
-            'dungeon settlement could not bank: the progression currency is missing or disabled',
-          );
-          return { type: 'settle_run', banked: 0, bankingSkipped: live ? 'currency_disabled' : 'no_currency', balanceAfter: null };
+        const receipt: Extract<DungeonEffectReceipt, { type: 'settle_run' }> = {
+          type: 'settle_run', banked: 0, bankingSkipped: null, balanceAfter: null,
+        };
+        let dependency = 'settlement:shards';
+        try {
+          if (end.banked > 0) {
+            const live = currencyKey ? await deps.currencies.get(currencyKey, tx) : null;
+            if (!live || !live.enabled) {
+              // Preserve the old missing/disabled progression-currency policy.
+              deps.logger?.warn(
+                { tag: 'dungeons/banking-skipped', runId: row.id, currencyKey, amount: end.banked },
+                'dungeon settlement could not bank: the progression currency is missing or disabled',
+              );
+              receipt.bankingSkipped = live ? 'currency_disabled' : 'no_currency';
+            } else {
+              const grant = await deps.currencies.grant(tx, {
+                playerId: row.playerId,
+                currencyKey: live.key,
+                amount: end.banked,
+                reason: BANK_REASON[end.outcome],
+                sourceRef: `dungeon_run:${row.id}`,
+                requestKey,
+                metadata: { dungeonKey: row.dungeonKey, outcome: end.outcome, earned: end.earned, retentionBasisPoints: end.retentionBasisPoints },
+              });
+              receipt.banked = end.banked;
+              receipt.balanceAfter = grant.balance;
+            }
+          }
+          // WaifuBux has its own wallet; missing Shards does not invalidate it.
+          if (end.waifubux) {
+            dependency = 'settlement:waifubux';
+            const balanceAfter = end.waifubux.banked > 0
+              ? (await deps.currency.grantWaifubux(tx, row.playerId, end.waifubux.banked)).waifubux : null;
+            receipt.waifubux = { banked: end.waifubux.banked, balanceAfter };
+          }
+          return receipt;
+        } catch (cause) {
+          throw rewardFailure(row, requestKey, dependency, cause);
         }
-        const grant = await deps.currencies.grant(tx, {
-          playerId: row.playerId,
-          currencyKey: live.key,
-          amount: end.banked,
-          reason: BANK_REASON[end.outcome],
-          sourceRef: `dungeon_run:${row.id}`,
-          requestKey,
-          metadata: { dungeonKey: row.dungeonKey, outcome: end.outcome, earned: end.earned, retentionBasisPoints: end.retentionBasisPoints },
-        });
-        return { type: 'settle_run', banked: end.banked, bankingSkipped: null, balanceAfter: grant.balance };
       },
     };
   }
@@ -689,11 +824,17 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
         for (const e of receipt.equipment) secured.push({ kind: 'equipment', source, step, ...e });
         if (receipt.waifubux > 0) secured.push({ kind: 'waifubux', source, step, amount: receipt.waifubux });
         for (const i of receipt.items) secured.push({ kind: 'item', source, step, slug: i.slug, quantity: i.quantity });
+        if (receipt.essence) secured.push({ kind: 'essence', source, step, ...receipt.essence });
+        if (receipt.affection) secured.push({ kind: 'affection', source, step, ...receipt.affection });
         log.push({
           type: 'rewards_granted',
           roomId: null,
           actionId: null,
-          payload: { claimKey: receipt.claimKey, waifubux: receipt.waifubux, items: receipt.items, equipment: receipt.equipment },
+          payload: { claimKey: receipt.claimKey, waifubux: receipt.waifubux, items: receipt.items, equipment: receipt.equipment,
+            ...(receipt.plan ? { v: 2, plan: receipt.plan, atRisk: receipt.plan.atRisk } : {}),
+            ...(receipt.essence ? { essence: receipt.essence } : {}),
+            ...(receipt.affection ? { affection: receipt.affection } : {}),
+          },
         });
       } else if (settlement) {
         settlement = {
@@ -702,6 +843,11 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
           lost: settlement.earned - receipt.banked,
           bankingSkipped: receipt.bankingSkipped,
           balanceAfter: receipt.balanceAfter,
+          ...(receipt.waifubux && settlement.waifubux ? {
+            waifubux: { earned: settlement.waifubux.earned, banked: receipt.waifubux.banked,
+              lost: settlement.waifubux.earned - receipt.waifubux.banked },
+            waifubuxBalanceAfter: receipt.waifubux.balanceAfter,
+          } : {}),
         };
         if (receipt.banked > 0) {
           log.push({
@@ -710,6 +856,10 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
             actionId: null,
             payload: { currencyKey: run.definition.settings.progressionCurrency, amount: receipt.banked, balanceAfter: receipt.balanceAfter },
           });
+        }
+        if (receipt.waifubux && receipt.waifubux.banked > 0) {
+          log.push({ type: 'currency_banked', roomId: settlement.roomId, actionId: null,
+            payload: { currencyKey: 'waifubux', amount: receipt.waifubux.banked, balanceAfter: receipt.waifubux.balanceAfter } });
         }
       }
     }
@@ -762,6 +912,9 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
       }
 
       const fighter = fighterFromCombatStats(await deps.combatStats.snapshotCombatStats(tx, playerId));
+      fighter.rewardBonuses = pinnedRewardBonuses(
+        fighter.speciesSlug, deps.buddyBonus?.bonusForSpeciesSlug(fighter.speciesSlug) ?? null,
+      );
       const snapshot = await buildSnapshot(tx, definition);
       // Spent before the run is created so an exhausted allowance is refused
       // cheaply; it is only kept if everything below commits.
@@ -845,6 +998,7 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
         roomStates: state.rooms as unknown as Record<string, unknown>,
         rewardClaims: state.rewardClaims as unknown as Record<string, unknown>,
         unbankedCurrency: state.unbankedCurrency,
+        unbankedWaifubux: state.unbankedWaifubux ?? 0,
         recent: state.recent as unknown as Record<string, unknown>[],
         securedRewards: [...(run.row.securedRewards as unknown as DungeonSecuredReward[]), ...extra.secured] as unknown as Record<string, unknown>[],
         settlement: extra.settlement as unknown as Record<string, unknown> | null,

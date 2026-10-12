@@ -36,14 +36,13 @@
  * dedicated issue code rather than a schema error.
  */
 import { z } from 'zod';
+import { equipmentSelectorKey, type EquipmentRewardSelector } from '../../equipment/rewardSelector';
+import { DungeonIdSchema as id, DungeonKeySchema as dungeonKey } from './dungeonIdentifiers';
+import { DungeonRewardBundleSchema } from './dungeonRewards';
+
+export { DUNGEON_KEY_PATTERN, DUNGEON_KEY_MAX_LENGTH, DUNGEON_ID_PATTERN, DUNGEON_ID_MAX_LENGTH } from './dungeonIdentifiers';
 
 export const BASIS_POINTS = 10_000;
-
-export const DUNGEON_KEY_PATTERN = /^[a-z0-9]+(?:_[a-z0-9]+)*$/;
-export const DUNGEON_KEY_MAX_LENGTH = 64;
-/** Rooms, actions, connections and flags. Short enough to ride in a Discord custom id. */
-export const DUNGEON_ID_PATTERN = /^[a-z0-9]+(?:[_-][a-z0-9]+)*$/;
-export const DUNGEON_ID_MAX_LENGTH = 40;
 
 export const DUNGEON_MAX_ROOMS = 200;
 export const DUNGEON_MAX_CONNECTIONS = 600;
@@ -58,14 +57,6 @@ export const DUNGEON_MAX_POOL_ENTRIES = 50;
 export const DUNGEON_MAX_FLAGS = 200;
 export const DUNGEON_MAX_CONDITION_DEPTH = 6;
 
-const dungeonKey = z
-  .string()
-  .max(DUNGEON_KEY_MAX_LENGTH)
-  .regex(DUNGEON_KEY_PATTERN, 'must be lower_snake_case');
-const id = z
-  .string()
-  .max(DUNGEON_ID_MAX_LENGTH)
-  .regex(DUNGEON_ID_PATTERN, 'must be lower-case letters, digits, "_" or "-"');
 const referenceKey = z.string().trim().min(1).max(100);
 const basisPoints = z.number().int().min(0).max(BASIS_POINTS);
 const shortText = (max: number) => z.string().trim().max(max);
@@ -220,12 +211,14 @@ const combatFields = {
    * Either way each wave is its own seeded fight and its own log entry.
    */
   advance: z.enum(['confirm', 'auto']).default('confirm'),
+  /** Phase 2 authoring only; absence must not change legacy content hashes. */
+  rewards: DungeonRewardBundleSchema.optional(),
 };
 
 /**
  * Phase 1A's minimal reward: one existing global table (and, optionally, a
  * second one for gear) plus a range of the dungeon's progression currency.
- * Phase 2 replaces `reward` with the full bundle; this shape is a subset of it.
+ * Kept for existing content. Phase 2 bundles use a separate optional `rewards` field.
  */
 export const RewardSpecSchema = z
   .object({
@@ -272,8 +265,12 @@ export const DungeonActionSchema = z.discriminatedUnion('type', [
       connectionId: id.optional(),
     })
     .strict(),
-  z.object({ type: z.literal('reward'), ...actionBase, reward: RewardSpecSchema }).strict(),
-]);
+  z.object({ type: z.literal('reward'), ...actionBase, reward: RewardSpecSchema.optional(), rewards: DungeonRewardBundleSchema.optional() }).strict(),
+]).superRefine((action, ctx) => {
+  if (action.type === 'reward' && (action.reward !== undefined) === (action.rewards !== undefined)) {
+    ctx.addIssue({ code: 'custom', path: ['reward'], message: 'treasure must have exactly one of reward or rewards' });
+  }
+});
 export type DungeonAction = z.infer<typeof DungeonActionSchema>;
 export type DungeonActionType = DungeonAction['type'];
 export type CombatAction = Extract<DungeonAction, { type: 'combat' | 'boss' }>;
@@ -348,8 +345,10 @@ export const DungeonSettingsSchema = z
   .object({
     /** The progression currency rewards pay and settlement banks; null pays none. */
     progressionCurrency: referenceKey.nullable().default(null),
-    /** Share of the unbanked currency kept on defeat or abandon. */
+    /** Share of the unbanked currency kept on defeat; legacy abandonment uses this too. */
     defeatCurrencyRetentionBasisPoints: basisPoints.default(0),
+    /** When absent, Phase 2 settlement will use the defeat rate. No new schema default. */
+    abandonCurrencyRetentionBasisPoints: basisPoints.optional(),
   })
   .strict();
 
@@ -407,6 +406,10 @@ export interface DungeonDependencies {
   enemies: string[];
   /** `expedition`-kind reward table ids. */
   rewardTables: string[];
+  /** Phase 2 direct dependencies; referenced table bodies are resolved separately. */
+  lootTables: string[];
+  items: string[];
+  equipmentSelectors: EquipmentRewardSelector[];
   regions: string[];
   currencies: string[];
   artwork: DungeonArtworkRef[];
@@ -420,6 +423,10 @@ export interface DungeonDependencies {
 export function dungeonDependencies(definition: DungeonDefinition): DungeonDependencies {
   const enemies = new Set<string>();
   const rewardTables = new Set<string>();
+  const lootTables = new Set<string>();
+  const items = new Set<string>();
+  const equipmentSelectors = new Map<string, EquipmentRewardSelector>();
+  const currencies = new Set<string>(definition.settings.progressionCurrency ? [definition.settings.progressionCurrency] : []);
   const artwork = new Map<string, DungeonArtworkRef>();
   const art = (ref: DungeonArtworkRef | null) => {
     if (ref) artwork.set(ref.kind === 'shipped' ? `shipped:${ref.path}` : `managed:${ref.category}:${ref.contentHash}`, ref);
@@ -431,17 +438,28 @@ export function dungeonDependencies(definition: DungeonDefinition): DungeonDepen
     for (const action of room.actions) {
       if (isCombatAction(action)) {
         for (const wave of action.waves) for (const key of waveEnemyKeys(wave)) enemies.add(key);
-      } else if (action.type === 'reward') {
+      } else if (action.type === 'reward' && action.reward) {
         if (action.reward.rewardTable) rewardTables.add(action.reward.rewardTable);
         if (action.reward.equipmentRewardTable) rewardTables.add(action.reward.equipmentRewardTable);
+      }
+      if ((isCombatAction(action) || action.type === 'reward') && action.rewards) {
+        for (const ref of action.rewards.tables) lootTables.add(ref.table);
+        for (const { grant } of [...action.rewards.guaranteed, ...action.rewards.chances]) {
+          if (grant.type === 'item') items.add(grant.item);
+          if (grant.type === 'equipment') equipmentSelectors.set(equipmentSelectorKey(grant.selector), grant.selector);
+          if (grant.type === 'currency' && grant.currency !== 'shards') currencies.add(grant.currency);
+        }
       }
     }
   }
   return {
     enemies: [...enemies].sort(),
     rewardTables: [...rewardTables].sort(),
+    lootTables: [...lootTables].sort(),
+    items: [...items].sort(),
+    equipmentSelectors: [...equipmentSelectors.entries()].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([, selector]) => selector),
     regions: [...new Set(definition.availableRegions)].sort(),
-    currencies: definition.settings.progressionCurrency ? [definition.settings.progressionCurrency] : [],
+    currencies: [...currencies].sort(),
     artwork: [...artwork.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([, ref]) => ref),
   };
 }

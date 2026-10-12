@@ -61,7 +61,7 @@ import {
   LoadoutConflictError,
   type DismantleProblem,
 } from '../../shared/errors';
-import { defaultRng, type Rng } from '../../shared/random';
+import { defaultRng, seededRng, type Rng } from '../../shared/random';
 import { recordDomainAdminAction } from '../admin/adminActionAudit';
 import type { FeatureUnlockService } from '../features/featureUnlockService';
 import type { EquipmentAffixCatalogue } from './affixCatalogue';
@@ -147,6 +147,12 @@ export interface GrantEquipmentInput {
   allowDisabled?: boolean;
   /** Defaults to `{ kind: 'random' }`. */
   roll?: EquipmentRollSpec;
+  /**
+   * Optional unsigned 32-bit seed for random instance properties. Uses a
+   * local stream across copies; reproducible while generation inputs stay
+   * unchanged. Fixed rolls remain dictated and do not use the seed.
+   */
+  rollSeed?: number;
 }
 
 export interface GrantEquipmentResult {
@@ -701,6 +707,7 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
     definition: EquipmentDefinitionRow,
     spec: EquipmentRollSpec | undefined,
     quantity: number,
+    rollSeed: number | undefined,
   ): EquipmentRoll[] {
     const affixes = deps.getAffixes();
     const kind: unknown = spec?.kind ?? 'random';
@@ -712,9 +719,10 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
       const issues = multiplierRangeIssues(definition.slot, definition);
       if (issues.length > 0) throw new EquipmentValidationError(issues);
       const combatBonuses = deps.getCombatBonuses?.() ?? null;
+      const rollRng = rollSeed === undefined ? rng : seededRng(rollSeed);
       try {
         return Array.from({ length: quantity }, () =>
-          rollEquipmentInstance(definition, { rng, affixes, combatBonuses }),
+          rollEquipmentInstance(definition, { rng: rollRng, affixes, combatBonuses }),
         );
       } catch (err) {
         // A pool that cannot supply its rarity's distinct bonuses is a content
@@ -917,6 +925,12 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
       if (grantKey !== null && grantKey.trim() === '') {
         throw new RangeError('grantKey must not be blank');
       }
+      if (
+        input.rollSeed !== undefined &&
+        (!Number.isInteger(input.rollSeed) || input.rollSeed < 0 || input.rollSeed > 0xffff_ffff)
+      ) {
+        throw new RangeError('rollSeed must be an unsigned 32-bit integer');
+      }
 
       // FOR SHARE: a concurrent definition update (which takes FOR UPDATE)
       // cannot change the slot underneath the copy we are about to make.
@@ -934,7 +948,7 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
 
       let rolls: EquipmentRoll[];
       try {
-        rolls = rollCopies(definition, input.roll, quantity);
+        rolls = rollCopies(definition, input.roll, quantity, input.rollSeed);
       } catch (err) {
         // A retry must return what the grant created the first time, even if
         // the definition's range has since moved and the dictated roll no

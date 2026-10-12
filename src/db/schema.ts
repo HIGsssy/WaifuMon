@@ -15,6 +15,7 @@ import {
   WORKSHOP_SLOT_CHOICE_SQL_LIST,
 } from '../modules/equipment/vocabulary';
 import { FEATURE_KEY_SQL_LIST, FEATURE_UNLOCK_SOURCE_SQL_LIST } from '../modules/features/vocabulary';
+import type { DungeonLootTableBody } from '../modules/dungeons/content/dungeonRewards';
 import {
   ARTWORK_MODE_SQL_LIST,
   ENCOUNTERED_ARTWORK_KEY_SQL_LIST,
@@ -3079,10 +3080,23 @@ export const dungeonRevisions = pgTable(
     draftRevision: integer('draft_revision').notNull(),
     publishedBy: text('published_by'),
     publishedAt: timestamp('published_at', { withTimezone: true }).notNull().defaultNow(),
+    /**
+     * The reward dependencies this revision's v2 rewards resolve from (0063),
+     * as `content/dungeonRewardSnapshot.ts` writes it. Null when the
+     * definition has no v2 reward bundle.
+     */
+    rewardSnapshot: jsonb('reward_snapshot').$type<Record<string, unknown>>(),
+    /** Content hash plus the snapshot's hash; null exactly when `rewardSnapshot` is. */
+    gameplayHash: text('gameplay_hash'),
   },
   (t) => [
     check('dungeon_revisions_number_check', sql`${t.number} >= 1`),
     check('dungeon_revisions_source_check', sql`${t.source} in ('editor','import')`),
+    check(
+      'dungeon_revisions_reward_snapshot_check',
+      sql`(${t.rewardSnapshot} is null) = (${t.gameplayHash} is null) and jsonb_typeof(${t.rewardSnapshot}) = 'object'`,
+    ),
+    check('dungeon_revisions_gameplay_hash_check', sql`${t.gameplayHash} ~ '^sha256:[a-f0-9]{64}$'`),
     uniqueIndex('dungeon_revisions_key_number_uq').on(t.dungeonKey, t.number),
   ],
 );
@@ -3128,6 +3142,102 @@ export const dungeonContentEvents = pgTable(
 );
 
 export type DungeonContentEventRow = typeof dungeonContentEvents.$inferSelect;
+
+export const DUNGEON_LOOT_TABLE_TIERS = ['common', 'rare', 'boss', 'legendary'] as const;
+export type DungeonLootTableTier = (typeof DUNGEON_LOOT_TABLE_TIERS)[number];
+export const DUNGEON_LOOT_TABLE_ORIGINS = ['portal', 'import', 'converted', 'seed'] as const;
+export type DungeonLootTableOrigin = (typeof DUNGEON_LOOT_TABLE_ORIGINS)[number];
+export const DUNGEON_LOOT_TABLE_EVENT_ACTIONS = [
+  'created',
+  'updated',
+  'archived',
+  'restored',
+  'deleted',
+  'duplicated',
+  'imported',
+  'converted',
+] as const;
+export type DungeonLootTableEventAction = (typeof DUNGEON_LOOT_TABLE_EVENT_ACTIONS)[number];
+
+/** Dungeon-only mutable authoring catalogue (0062). No connection to reward_tables. */
+export const dungeonLootTables = pgTable(
+  'dungeon_loot_tables',
+  {
+    tableKey: text('table_key').primaryKey(),
+    name: text('name').notNull(),
+    description: text('description').notNull().default(''),
+    tier: text('tier').$type<DungeonLootTableTier>(),
+    body: jsonb('body').$type<DungeonLootTableBody>().notNull(),
+    contentHash: text('content_hash').notNull(),
+    revision: integer('revision').notNull().default(1),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    origin: text('origin').$type<DungeonLootTableOrigin>().notNull().default('portal'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    createdBy: text('created_by'),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedBy: text('updated_by'),
+  },
+  (t) => [
+    check(
+      'dungeon_loot_tables_key_check',
+      sql`char_length(${t.tableKey}) <= 64 and ${t.tableKey} ~ '^[a-z0-9]+(_[a-z0-9]+)*$'`,
+    ),
+    check('dungeon_loot_tables_name_check', sql`char_length(btrim(${t.name})) between 1 and 100`),
+    check('dungeon_loot_tables_description_check', sql`char_length(${t.description}) <= 600`),
+    check('dungeon_loot_tables_tier_check', sql`${t.tier} in ('common','rare','boss','legendary')`),
+    check('dungeon_loot_tables_body_check', sql`jsonb_typeof(${t.body}) = 'object'`),
+    check('dungeon_loot_tables_hash_check', sql`${t.contentHash} ~ '^[a-f0-9]{64}$'`),
+    check('dungeon_loot_tables_revision_check', sql`${t.revision} >= 1`),
+    check(
+      'dungeon_loot_tables_origin_check',
+      sql`${t.origin} in ('portal','import','converted','seed')`,
+    ),
+    index('dungeon_loot_tables_active_tier_name_idx')
+      .on(t.tier, t.name, t.tableKey)
+      .where(sql`${t.archivedAt} is null`),
+  ],
+);
+export type DungeonLootTableRow = typeof dungeonLootTables.$inferSelect;
+
+/** No FK to the catalogue: audit history must survive deletion and key reuse. */
+export const dungeonLootTableEvents = pgTable(
+  'dungeon_loot_table_events',
+  {
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    tableKey: text('table_key').notNull(),
+    action: text('action').$type<DungeonLootTableEventAction>().notNull(),
+    actor: text('actor'),
+    revision: integer('revision').notNull(),
+    origin: text('origin').$type<DungeonLootTableOrigin>().notNull(),
+    previousContentHash: text('previous_content_hash'),
+    newContentHash: text('new_content_hash'),
+    details: jsonb('details').$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check(
+      'dungeon_loot_table_events_key_check',
+      sql`char_length(${t.tableKey}) <= 64 and ${t.tableKey} ~ '^[a-z0-9]+(_[a-z0-9]+)*$'`,
+    ),
+    check(
+      'dungeon_loot_table_events_action_check',
+      sql`${t.action} in ('created','updated','archived','restored','deleted','duplicated','imported','converted')`,
+    ),
+    check('dungeon_loot_table_events_revision_check', sql`${t.revision} >= 1`),
+    check(
+      'dungeon_loot_table_events_origin_check',
+      sql`${t.origin} in ('portal','import','converted','seed')`,
+    ),
+    check(
+      'dungeon_loot_table_events_previous_hash_check',
+      sql`${t.previousContentHash} ~ '^[a-f0-9]{64}$'`,
+    ),
+    check('dungeon_loot_table_events_new_hash_check', sql`${t.newContentHash} ~ '^[a-f0-9]{64}$'`),
+    check('dungeon_loot_table_events_details_check', sql`jsonb_typeof(${t.details}) = 'object'`),
+    index('dungeon_loot_table_events_key_idx').on(t.tableKey, t.id.desc()),
+  ],
+);
+export type DungeonLootTableEventRow = typeof dungeonLootTableEvents.$inferSelect;
 
 /** One successful import request, also the durable idempotency receipt. No package payload. */
 export const dungeonImportHistory = pgTable('dungeon_import_history', {
@@ -3275,6 +3385,7 @@ export const dungeonRuns = pgTable(
     /** Reward claims survive retreat and room resume independently. */
     rewardClaims: jsonb('reward_claims').$type<Record<string, unknown>>().notNull().default({}),
     unbankedCurrency: integer('unbanked_currency').notNull().default(0),
+    unbankedWaifubux: integer('unbanked_waifubux').notNull().default(0),
     /** What the latest step did, for redisplay. */
     recent: jsonb('recent').$type<Record<string, unknown>[]>().notNull().default([]),
     securedRewards: jsonb('secured_rewards').$type<Record<string, unknown>[]>().notNull().default([]),
@@ -3294,6 +3405,7 @@ export const dungeonRuns = pgTable(
     check('dungeon_runs_seed_check', sql`${t.seed} >= 0 and ${t.seed} <= 4294967295`),
     check('dungeon_runs_step_check', sql`${t.step} >= 0`),
     check('dungeon_runs_unbanked_check', sql`${t.unbankedCurrency} >= 0`),
+    check('dungeon_runs_unbanked_waifubux_check', sql`${t.unbankedWaifubux} >= 0`),
     check('dungeon_runs_hp_check', sql`${t.currentHp} >= 0`),
     check('dungeon_runs_completed_check', sql`(${t.status} = 'active') = (${t.completedAt} is null)`),
     check('dungeon_runs_settlement_check', sql`${t.status} <> 'active' or ${t.settlement} is null`),

@@ -14,6 +14,8 @@ import type { ExpeditionEquipmentDraw, ExpeditionItemGrant } from '../../expedit
 import type { EquipmentRewardCandidate } from '../../rewardTables/rewardTableCore';
 import type { Rng } from '../../../shared/random';
 import type { DungeonActionType, DungeonDefinition, DungeonFlagScope } from '../content/dungeonDefinition';
+import type { DungeonRewardSnapshot } from '../content/dungeonRewardSnapshot';
+import type { DungeonRewardPlanV2 } from './lootResolver';
 
 // ── what a run is handed ────────────────────────────────────────────────────
 
@@ -49,6 +51,8 @@ export interface DungeonEngineContext {
   /** A validated definition: the published revision's content, or a draft in the sandbox. */
   definition: DungeonDefinition;
   dependencies: EngineDependencies;
+  /** Verified snapshot from this run's pinned revision. Never the live catalogue. */
+  rewards?: DungeonRewardSnapshot | null | undefined;
   fighter: EngineFighter;
   /** Namespaces claim and settlement keys: the run id live, any label in a sandbox. */
   runKey: string;
@@ -126,12 +130,15 @@ export interface DungeonRewardPlan {
   equipment: ExpeditionEquipmentDraw[];
 }
 
+/** Legacy stored claims lack a version; v2 uses the existing T2 plan verbatim. */
+export type DungeonResolvedRewardPlan = DungeonRewardPlan | DungeonRewardPlanV2;
+
 export type DungeonActionDetail =
   | { kind: 'combat'; waves: DungeonWaveResult[]; waveCount: number }
   | { kind: 'rest'; healBasisPoints: number; hpBefore: number; hpAfter: number }
   | { kind: 'gate'; passed: boolean }
   | { kind: 'set_flag'; flag: string; scope: DungeonFlagScope; value: boolean }
-  | { kind: 'reward'; claimKey: string; plan: DungeonRewardPlan }
+  | { kind: 'reward'; claimKey: string; plan: DungeonResolvedRewardPlan }
   | { kind: 'leave'; connectionId: string | null };
 
 export interface DungeonActionRecord {
@@ -164,6 +171,8 @@ export interface DungeonRunEnd {
   retentionBasisPoints: number;
   banked: number;
   lost: number;
+  /** Absent on legacy settlements. Both currencies use the same retention. */
+  waifubux?: { earned: number; banked: number; lost: number };
 }
 
 /** One thing the latest step did, compact enough to keep on the run for redisplay. */
@@ -172,7 +181,7 @@ export type DungeonRecentEntry =
   | { kind: 'rest'; roomId: string; actionId: string; hpBefore: number; hpAfter: number; healBasisPoints: number }
   | { kind: 'gate'; roomId: string; actionId: string; passed: boolean; blockedText: string }
   | { kind: 'flag'; roomId: string; actionId: string; flag: string; value: boolean }
-  | { kind: 'reward'; roomId: string; actionId: string; claimKey: string; plan: DungeonRewardPlan }
+  | { kind: 'reward'; roomId: string; actionId: string; claimKey: string; plan: DungeonResolvedRewardPlan }
   | { kind: 'declined'; roomId: string; actionId: string }
   | { kind: 'room_completed'; roomId: string }
   | { kind: 'retreated'; fromRoomId: string; toRoomId: string }
@@ -190,8 +199,10 @@ export interface DungeonRunState {
   flags: Record<string, boolean>;
   rooms: Record<string, DungeonRoomState>;
   /** Paid plans by stable claim key; navigation never clears these. */
-  rewardClaims: Record<string, DungeonRewardPlan>;
+  rewardClaims: Record<string, DungeonResolvedRewardPlan>;
   unbankedCurrency: number;
+  /** V2 dungeon-earned WaifuBux only; absent on historical engine states. */
+  unbankedWaifubux?: number;
   /** What the latest applied step did. Replaced, not appended, each step. */
   recent: DungeonRecentEntry[];
   end: DungeonRunEnd | null;
@@ -238,8 +249,8 @@ export type DungeonEffect =
       claimKey: string;
       roomId: string;
       actionId: string;
-      /** WaifuBux, items and gear to hand over now. Its currency is already on the run, unbanked. */
-      plan: DungeonRewardPlan;
+      /** Secured rewards only. At-risk currencies are already on the run. */
+      plan: DungeonResolvedRewardPlan;
     }
   | {
       type: 'settle_run';
@@ -259,6 +270,32 @@ export interface DungeonEquipmentGrant {
   rarity: string;
   rolledMultiplierBp: number;
   combatBonuses?: unknown[] | undefined;
+  /** V2 provenance and actual rolled properties; absent on legacy receipts. */
+  dropId?: string;
+  rollSeed?: number;
+  name?: string;
+  affixKey?: string | null;
+  alreadyGranted?: boolean;
+}
+
+export interface DungeonEssenceGrant {
+  baseAmount: number;
+  granted: number;
+  bonusPercent: number;
+  bonus: 'pinned' | 'not_pinned';
+  balanceAfter: number;
+}
+
+export interface DungeonAffectionGrant {
+  waifuId: number;
+  name: string;
+  speciesSlug: string;
+  baseAmount: number;
+  granted: number;
+  bonusPercent: number;
+  bonus: 'pinned' | 'not_pinned';
+  affectionBefore: number;
+  affectionAfter: number;
 }
 
 export type DungeonEffectReceipt =
@@ -268,6 +305,10 @@ export type DungeonEffectReceipt =
       waifubux: number;
       items: ExpeditionItemGrant[];
       equipment: DungeonEquipmentGrant[];
+      /** V2 resolution provenance; absent on legacy receipts. */
+      plan?: DungeonRewardPlanV2;
+      essence?: DungeonEssenceGrant;
+      affection?: DungeonAffectionGrant;
     }
   | {
       type: 'settle_run';
@@ -275,6 +316,8 @@ export type DungeonEffectReceipt =
       /** Why nothing could be banked, when the currency is missing or disabled. */
       bankingSkipped: 'no_currency' | 'currency_disabled' | null;
       balanceAfter: number | null;
+      /** Actual V2 banking; separate from progression bankingSkipped. */
+      waifubux?: { banked: number; balanceAfter: number | null };
     };
 
 /**

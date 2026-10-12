@@ -10,8 +10,8 @@
  * was drawn for, passed on as `expectedStep`. A double-click, a Discord retry
  * or a button from an earlier screen names a step the run has left; the
  * service refuses it as `stale`, changes nothing, and the run is repainted as
- * it now stands. Abandoning carries no step — it is always allowed, and a
- * second click finds the run already over.
+ * it now stands. Abandon confirmations also carry the quoted step; older
+ * step-less buttons reopen a current confirmation without settling.
  */
 import type { ButtonInteraction } from 'discord.js';
 import { ownedArtworkImage } from '../assets/attachRenderedCard';
@@ -80,9 +80,9 @@ async function buddyArtwork(ctx: AppContext, playerId: number, waifuId: number |
   }
 }
 
-function options(ctx: AppContext, art: TrialArt, status?: string | null): DungeonScreenOptions {
+function options(ctx: AppContext, art: TrialArt, status?: string | null, pinnedItems: Readonly<Record<string, string>> = {}): DungeonScreenOptions {
   return {
-    itemName: (slug) => ctx.content.items.find((i) => i.slug === slug)?.name ?? slug,
+    itemName: (slug) => ctx.content.items.find((i) => i.slug === slug)?.name ?? pinnedItems[slug] ?? 'Unknown item',
     art,
     status: status ?? null,
   };
@@ -97,7 +97,7 @@ async function runArt(ctx: AppContext, playerId: number, view: DungeonRunView): 
 }
 
 async function runScreen(ctx: AppContext, playerId: number, view: DungeonRunView, status?: string | null) {
-  return buildRunScreen(view, options(ctx, await runArt(ctx, playerId, view), status));
+  return buildRunScreen(view, options(ctx, await runArt(ctx, playerId, view), status, view.rewardItemNames));
 }
 
 async function homeScreen(ctx: AppContext, service: DungeonRunService, playerId: number, status?: string | null) {
@@ -107,7 +107,7 @@ async function homeScreen(ctx: AppContext, service: DungeonRunService, playerId:
   const art = view.activeRun
     ? await runArt(ctx, playerId, view.activeRun)
     : { scene: await dungeonZoneArtwork(ctx, view.dungeons) };
-  return buildDungeonHome(view, options(ctx, art, status));
+  return buildDungeonHome(view, options(ctx, art, status, view.activeRun?.rewardItemNames));
 }
 
 async function detailScreen(
@@ -312,9 +312,16 @@ export async function handleDungeonAbandonConfirm(ctx: AppContext, i: ButtonInte
   });
 }
 
-/** `dg|ab|<runId>` — abandon: settled like a defeat. No step: abandoning is always allowed. */
+/** `dg|ab|<runId>|<step>` — abandon only the state the player confirmed. */
 export async function handleDungeonAbandon(ctx: AppContext, i: ButtonInteraction, prov: Provisioned, args: string[]) {
-  const parsed = parseRun(args);
+  // Historical buttons cannot safely quote today's losses. Ask again.
+  if (args.length === 1) return handleDungeonAbandonConfirm(ctx, i, prov, args);
+  const parsed = parseRunStep(args, 0);
   if (!parsed) return respondEphemeral(i, MALFORMED);
-  return run(ctx, i, prov, (s) => step(ctx, s, prov.playerId, parsed.runId, { type: 'abandon' }));
+  return run(ctx, i, prov, async (s) => {
+    const result = await s.act(prov.playerId, parsed.runId, { type: 'abandon', expectedStep: parsed.step });
+    const notice = result.status === 'refused' && result.run.status !== 'active'
+      ? actionNotice({ status: 'refused', refusal: 'run_over' }) : actionNotice(result);
+    return runScreen(ctx, prov.playerId, result.run, notice);
+  });
 }

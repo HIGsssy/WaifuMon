@@ -25,13 +25,15 @@ describe('deploymentBlockers', () => {
     ['buddy', BUDDY_OK, []],
     ['favorite', DEFAULT, []],
     ['favorite', BUDDY_OK, []],
+    ['in_dungeon', DEFAULT, []],
+    ['in_dungeon', BUDDY_OK, []],
   ] as const)('%s with %o blocks %o', (reason, config, expected) => {
     expect(deploymentBlockers([reason], config)).toEqual(expected);
   });
 
   it('has a decision for every reason in the vocabulary', () => {
     // A new reason fails here until someone decides whether it blocks.
-    const decided = new Set(['released', 'on_expedition', 'care_target', 'buddy', 'favorite']);
+    const decided = new Set(['released', 'on_expedition', 'care_target', 'buddy', 'favorite', 'in_dungeon']);
     expect(WAIFU_UNAVAILABILITY_REASONS.filter((r) => !decided.has(r))).toEqual([]);
   });
 

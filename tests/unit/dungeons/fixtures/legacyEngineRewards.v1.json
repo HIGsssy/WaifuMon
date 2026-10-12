@@ -1,0 +1,350 @@
+[
+  {
+    "seed": 0,
+    "plan": {
+      "currency": 4,
+      "waifubux": 18,
+      "items": [
+        {
+          "slug": "sticky_joystick",
+          "quantity": 2
+        }
+      ],
+      "equipment": []
+    },
+    "effects": [
+      {
+        "type": "grant_rewards",
+        "claimKey": "run:legacy-vector:hall:treasure",
+        "roomId": "hall",
+        "actionId": "treasure",
+        "plan": {
+          "currency": 4,
+          "waifubux": 18,
+          "items": [
+            {
+              "slug": "sticky_joystick",
+              "quantity": 2
+            }
+          ],
+          "equipment": []
+        }
+      }
+    ],
+    "recent": [
+      {
+        "kind": "reward",
+        "roomId": "hall",
+        "actionId": "treasure",
+        "claimKey": "run:legacy-vector:hall:treasure",
+        "plan": {
+          "currency": 4,
+          "waifubux": 18,
+          "items": [
+            {
+              "slug": "sticky_joystick",
+              "quantity": 2
+            }
+          ],
+          "equipment": []
+        }
+      },
+      {
+        "kind": "room_completed",
+        "roomId": "hall"
+      }
+    ],
+    "claimLog": [
+      {
+        "type": "action_completed",
+        "roomId": "hall",
+        "actionId": "treasure",
+        "payload": {
+          "actionType": "reward",
+          "outcome": "claimed",
+          "claimKey": "run:legacy-vector:hall:treasure",
+          "plan": {
+            "currency": 4,
+            "waifubux": 18,
+            "items": [
+              {
+                "slug": "sticky_joystick",
+                "quantity": 2
+              }
+            ],
+            "equipment": []
+          },
+          "alreadyClaimed": false
+        }
+      },
+      {
+        "type": "room_completed",
+        "roomId": "hall",
+        "actionId": null,
+        "payload": {
+          "kind": "room",
+          "hp": 370
+        }
+      }
+    ],
+    "end": {
+      "outcome": "extracted",
+      "cause": "extraction",
+      "roomId": "hall",
+      "finalHp": 370,
+      "earned": 4,
+      "retentionBasisPoints": 10000,
+      "banked": 4,
+      "lost": 0
+    },
+    "settlement": [
+      {
+        "type": "settle_run",
+        "requestKey": "dungeon_run:v1:legacy-vector:settlement",
+        "end": {
+          "outcome": "extracted",
+          "cause": "extraction",
+          "roomId": "hall",
+          "finalHp": 370,
+          "earned": 4,
+          "retentionBasisPoints": 10000,
+          "banked": 4,
+          "lost": 0
+        },
+        "currencyKey": "ascension_currency"
+      }
+    ]
+  },
+  {
+    "seed": 42,
+    "plan": {
+      "currency": 11,
+      "waifubux": 23,
+      "items": [
+        {
+          "slug": "sticky_joystick",
+          "quantity": 2
+        }
+      ],
+      "equipment": []
+    },
+    "effects": [
+      {
+        "type": "grant_rewards",
+        "claimKey": "run:legacy-vector:hall:treasure",
+        "roomId": "hall",
+        "actionId": "treasure",
+        "plan": {
+          "currency": 11,
+          "waifubux": 23,
+          "items": [
+            {
+              "slug": "sticky_joystick",
+              "quantity": 2
+            }
+          ],
+          "equipment": []
+        }
+      }
+    ],
+    "recent": [
+      {
+        "kind": "reward",
+        "roomId": "hall",
+        "actionId": "treasure",
+        "claimKey": "run:legacy-vector:hall:treasure",
+        "plan": {
+          "currency": 11,
+          "waifubux": 23,
+          "items": [
+            {
+              "slug": "sticky_joystick",
+              "quantity": 2
+            }
+          ],
+          "equipment": []
+        }
+      },
+      {
+        "kind": "room_completed",
+        "roomId": "hall"
+      }
+    ],
+    "claimLog": [
+      {
+        "type": "action_completed",
+        "roomId": "hall",
+        "actionId": "treasure",
+        "payload": {
+          "actionType": "reward",
+          "outcome": "claimed",
+          "claimKey": "run:legacy-vector:hall:treasure",
+          "plan": {
+            "currency": 11,
+            "waifubux": 23,
+            "items": [
+              {
+                "slug": "sticky_joystick",
+                "quantity": 2
+              }
+            ],
+            "equipment": []
+          },
+          "alreadyClaimed": false
+        }
+      },
+      {
+        "type": "room_completed",
+        "roomId": "hall",
+        "actionId": null,
+        "payload": {
+          "kind": "room",
+          "hp": 370
+        }
+      }
+    ],
+    "end": {
+      "outcome": "extracted",
+      "cause": "extraction",
+      "roomId": "hall",
+      "finalHp": 370,
+      "earned": 11,
+      "retentionBasisPoints": 10000,
+      "banked": 11,
+      "lost": 0
+    },
+    "settlement": [
+      {
+        "type": "settle_run",
+        "requestKey": "dungeon_run:v1:legacy-vector:settlement",
+        "end": {
+          "outcome": "extracted",
+          "cause": "extraction",
+          "roomId": "hall",
+          "finalHp": 370,
+          "earned": 11,
+          "retentionBasisPoints": 10000,
+          "banked": 11,
+          "lost": 0
+        },
+        "currencyKey": "ascension_currency"
+      }
+    ]
+  },
+  {
+    "seed": 4294967295,
+    "plan": {
+      "currency": 4,
+      "waifubux": 15,
+      "items": [
+        {
+          "slug": "sticky_joystick",
+          "quantity": 2
+        }
+      ],
+      "equipment": []
+    },
+    "effects": [
+      {
+        "type": "grant_rewards",
+        "claimKey": "run:legacy-vector:hall:treasure",
+        "roomId": "hall",
+        "actionId": "treasure",
+        "plan": {
+          "currency": 4,
+          "waifubux": 15,
+          "items": [
+            {
+              "slug": "sticky_joystick",
+              "quantity": 2
+            }
+          ],
+          "equipment": []
+        }
+      }
+    ],
+    "recent": [
+      {
+        "kind": "reward",
+        "roomId": "hall",
+        "actionId": "treasure",
+        "claimKey": "run:legacy-vector:hall:treasure",
+        "plan": {
+          "currency": 4,
+          "waifubux": 15,
+          "items": [
+            {
+              "slug": "sticky_joystick",
+              "quantity": 2
+            }
+          ],
+          "equipment": []
+        }
+      },
+      {
+        "kind": "room_completed",
+        "roomId": "hall"
+      }
+    ],
+    "claimLog": [
+      {
+        "type": "action_completed",
+        "roomId": "hall",
+        "actionId": "treasure",
+        "payload": {
+          "actionType": "reward",
+          "outcome": "claimed",
+          "claimKey": "run:legacy-vector:hall:treasure",
+          "plan": {
+            "currency": 4,
+            "waifubux": 15,
+            "items": [
+              {
+                "slug": "sticky_joystick",
+                "quantity": 2
+              }
+            ],
+            "equipment": []
+          },
+          "alreadyClaimed": false
+        }
+      },
+      {
+        "type": "room_completed",
+        "roomId": "hall",
+        "actionId": null,
+        "payload": {
+          "kind": "room",
+          "hp": 370
+        }
+      }
+    ],
+    "end": {
+      "outcome": "extracted",
+      "cause": "extraction",
+      "roomId": "hall",
+      "finalHp": 370,
+      "earned": 4,
+      "retentionBasisPoints": 10000,
+      "banked": 4,
+      "lost": 0
+    },
+    "settlement": [
+      {
+        "type": "settle_run",
+        "requestKey": "dungeon_run:v1:legacy-vector:settlement",
+        "end": {
+          "outcome": "extracted",
+          "cause": "extraction",
+          "roomId": "hall",
+          "finalHp": 370,
+          "earned": 4,
+          "retentionBasisPoints": 10000,
+          "banked": 4,
+          "lost": 0
+        },
+        "currencyKey": "ascension_currency"
+      }
+    ]
+  }
+]

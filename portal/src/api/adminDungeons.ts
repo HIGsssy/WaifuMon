@@ -85,10 +85,29 @@ export interface DungeonIssue {
   path: string;
   message: string;
 }
+export type DungeonRewardDependencyChange =
+  | {
+      kind: 'table';
+      tableKey: string;
+      name: string;
+      status: 'changed' | 'missing' | 'archived' | 'invalid';
+      publishedHash: string | null;
+      currentHash: string | null;
+    }
+  | {
+      kind: 'equipment';
+      selectorKey: string;
+      description: string;
+      status: 'changed' | 'empty';
+      added: string[];
+      removed: string[];
+    };
 export interface DungeonPublishedInfo {
   revisionId: number;
   number: number;
   contentHash: string;
+  /** Null when the revision has no new-format rewards. */
+  gameplayHash?: string | null;
   publishedAt: string;
   publishedBy: string | null;
 }
@@ -102,6 +121,10 @@ export interface DungeonSummary {
   draftHash: string;
   published: DungeonPublishedInfo | null;
   draftDiffers: boolean;
+  /** Reward dependency reporting (T6). The Portal does not render these yet. */
+  draftGameplayHash?: string | null;
+  dependenciesDiffer?: boolean;
+  dependencyChanges?: DungeonRewardDependencyChange[];
   open: boolean;
   updatedAt: string;
   updatedBy: string | null;
@@ -120,6 +143,7 @@ export interface DungeonRevision extends DungeonPublishedInfo {
 export interface DungeonRevisionDetail extends DungeonRevision {
   content: DungeonDefinition;
   layout: DungeonLayout;
+  rewardSnapshot?: Record<string, unknown> | null;
 }
 export interface DungeonPublishResult {
   dungeon: DungeonDetail;
@@ -146,6 +170,20 @@ export interface DungeonRegionRef {
   enabled: boolean;
 }
 export interface DungeonReferenceData {
+  lootTables: Array<{
+    key: string;
+    name: string;
+    tier: 'common' | 'rare' | 'boss' | 'legendary' | null;
+    archived: boolean;
+    contentHash: string;
+  }>;
+  items: Array<{
+    slug: string;
+    name: string;
+    category: string;
+    enabled: boolean;
+    maxOwned: number | null;
+  }>;
   actionTypes: string[];
   reservedActionTypes: Record<string, string>;
   enemies: Array<{

@@ -60,6 +60,8 @@ export const revision: api.DungeonRevision = {
   activeRuns: 1,
 };
 export const reference: api.DungeonReferenceData = {
+  lootTables: [],
+  items: [],
   actionTypes: ['reward'],
   reservedActionTypes: {},
   enemies: [

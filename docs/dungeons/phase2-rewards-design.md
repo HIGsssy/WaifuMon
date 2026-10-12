@@ -708,7 +708,7 @@ Affection is secured: it is in the player's collection the moment the activity i
 
 Three layers, the first two in Phase 2:
 
-1. **Which piece: frozen at publication.** Each selector's candidate list is resolved when the dungeon is published and stored in the revision's reward snapshot (section 9). The engine picks from that list with the drop's seeded stream. New equipment added later does not enter a published dungeon's loot until it is published again.
+1. **Which piece: frozen at publication.** Each selector's candidate list is resolved when the dungeon is published and stored in the revision's reward snapshot (section 9). The engine picks from that list with the drop's seeded stream. New equipment added later does not enter a published dungeon's loot until it is published again; the dungeon list and detail report it as an equipment dependency change (9.2). Only identities are frozen: the definition keys decide the gameplay hash, and no roll input is copied.
 2. **What it rolls: seeded per drop.** The plan carries `rollSeed = seedOf('loot', roomId, actionId, 'gear', dropId)`. A small, additive extension lets `grantChosenEquipmentReward` accept `rollSeed`, which the equipment service turns into `seededRng(rollSeed)` for `rollEquipmentInstance` in place of its shared RNG. Callers that pass nothing behave exactly as now. A retry after a rollback therefore rolls the same multiplier, affix and bonuses.
 3. **Roll inputs: live, documented.** The definition's multiplier range, the affix catalogue and the combat-bonus catalogue are read at grant time. If an admin edits them between a failed attempt and its retry, the retry can produce a different instance. No player ever saw the first one, and nothing was committed, so this is not a reroll a player can cause. Freezing these inputs too would mean snapshotting three more catalogues into every revision; that is deferred (decision D7).
 
@@ -746,14 +746,36 @@ interface DungeonRewardSnapshot {
   }>;
   equipmentPools: Record<string, EquipmentRewardCandidate[]>;   // by equipmentSelectorKey, inline and in tables
   items: Record<string, { name: string; category: string }>;    // every item referenced, as validated
-  hash: string;                                  // sha256 of the canonical snapshot without this field
+  hash: string;                                  // "sha256:<hex>" over the gameplay identity below
 }
 ```
 
+**What `hash` covers (as implemented in T6).** The hash is the snapshot's *gameplay identity*, not a digest of the whole document. It is the sha256 of the canonical JSON of:
+
+```ts
+{
+  format, version, resolverVersion,
+  tables:         { [tableKey]: bodyHash },            // sha256 of the canonical table body
+  equipmentPools: { [selectorKey]: string[] },         // eligible definition keys, sorted
+  items:          string[],                            // item slugs, sorted
+}
+```
+
+Stored beside it and deliberately **not** hashed: a table's `name`, `tier` and `sourceRevision`; an item's `name` and `category`; a candidate's `name`, `slot` and `rarity`. These are display metadata and provenance. Consequences:
+
+* Renaming a loot table, changing its tier or description, renaming an item or a piece of gear does not change the hash, so it never forces a new dungeon revision. (An earlier draft of this section hashed the whole snapshot, which would have made every rename a gameplay revision.)
+* A revision's snapshot keeps the metadata it was published with. A later publish that is caused by a real gameplay change records the metadata current at that time; nothing rewrites an older snapshot.
+* A slot or rarity edit that matters does so by changing which definitions a selector matches, and that changes the key list.
+* `tables[key].contentHash` is the catalogue's body hash (bare hex, as `dungeon_loot_tables.content_hash`), recomputed from the body when the snapshot is built.
+* A stored snapshot is trusted only if its recomputed hash equals `hash` (`readDungeonRewardSnapshot`); rollback and the deletion guard use that check.
+
+Code: `src/modules/dungeons/content/dungeonRewardSnapshot.ts`.
+
 Rules:
 
-* A definition with no v2 bundle has `reward_snapshot = null` and `gameplay_hash = null`. For it, everything works as today and the content hash remains the only hash.
-* Otherwise `gameplay_hash = sha256(canonical({ v: 1, contentHash, rewardSnapshotHash }))`.
+* A definition with no v2 bundle has `reward_snapshot = null` and `gameplay_hash = null`. For it, everything works as today and the content hash remains the only hash. A v2 bundle that is empty still gets a (empty) snapshot.
+* Otherwise `gameplay_hash = "sha256:" + sha256(canonical({ v: 1, contentHash, rewardSnapshotHash }))`.
+* The database keeps the pair together: both columns are null or both are set (`dungeon_revisions_reward_snapshot_check`, migration 0063).
 * `content_hash` keeps its current meaning (the definition alone). It is what packages and the draft hash already use.
 * Item names in the snapshot are a display fallback and evidence of what was validated. Live names are still shown when the item exists.
 
@@ -764,19 +786,48 @@ Inside the existing publish transaction, after the definition row is locked:
 1. Collect the referenced table keys. Lock those `dungeon_loot_tables` rows `FOR SHARE`, in key order.
 2. Validate the definition, then every referenced table body, then every item and selector they reach (section 11.1). Any error blocks publication.
 3. Resolve every selector's candidates and build the snapshot.
-4. Compare `gameplay_hash` (or `content_hash` when there is no snapshot) with the current published revision. Equal means `unchanged`. Different means a new revision, even when the definition itself has not changed.
+4. Compare `content_hash` **and** `gameplay_hash` with the current published revision. Both equal means `unchanged`. Otherwise a new revision is written, even when the definition itself has not changed. With no snapshot on either side this is the content-hash comparison it always was.
 5. Insert the revision with the snapshot and both hashes.
 
-**Draft state.** `detailOf` computes the draft's would-be gameplay hash and returns, beside `draftDiffers`, a list the editor renders as "Loot changed":
+**Locking and consistency.** The snapshot is built from the rows validation read, in the same transaction, and those rows stay locked `FOR SHARE` until the revision commits: the referenced loot tables, then items, then equipment definitions, then progression currencies, each in key order. An edit, disable, archive or delete of any of them waits for the publish (or the publish waits for it), so the stored snapshot is exactly the catalogue state that was validated.
+
+*Limit: equipment inserted during a publish.* Row locks cannot cover a row that does not exist yet. A **new** equipment definition that would match a filter selector (for example "any R Attack"), committed while a publish is in flight, is not in that publish's snapshot. This does not invalidate the snapshot:
+
+* The snapshot is still a true, validated state of the catalogue: the one at the moment publication read it. The outcome is the same as if the publish had finished just before the insert.
+* A published snapshot is a frozen promise, not a mirror of the live catalogue. By design (8.2, layer 1), equipment added after a publication never enters that revision's loot. A piece inserted a moment earlier is treated the same way as one inserted a day later.
+* Every candidate that *is* pinned exists and was eligible, so nothing in the snapshot is unpayable.
+* It is not silent. The next `list` or detail read reports `dependenciesDiffer` with an `equipment` change whose `added` names the new piece; publishing again pins it.
+
+Closing the gap would need a table-level lock on `equipment_definitions` for the length of every publish. That was not taken: legacy validation (T-A3) share-locks equipment rows earlier in the same transaction, so a later table lock could deadlock against a concurrent equipment edit, and the gain is only the ordering of two admin actions that were racing anyway.
+
+**Draft state.** `draftDiffers` keeps its original meaning: the draft's *definition* differs from the published one. Reward dependencies are reported beside it, on both `list` and detail:
 
 ```ts
-dependencyChanges: { tableKey: string; name: string; status: 'changed' | 'missing' | 'archived';
-                     publishedHash: string | null; currentHash: string | null }[]
+draftGameplayHash: string | null    // what a publish would write now; null without v2 rewards
+                                    // or while a dependency is broken
+dependenciesDiffer: boolean         // the definition is published as is, but its pinned rewards
+                                    // are not what the catalogues hold now
+dependencyChanges: (
+  | { kind: 'table'; tableKey: string; name: string;
+      status: 'changed' | 'missing' | 'archived' | 'invalid';
+      publishedHash: string | null; currentHash: string | null }
+  | { kind: 'equipment'; selectorKey: string; description: string;
+      status: 'changed' | 'empty';
+      added: string[]; removed: string[] }        // definition keys
+)[]
+published.gameplayHash: string | null
 ```
 
-`list` computes the same flag for all dungeons from one read of the catalogue and one read of rewardable equipment definitions.
+* `table` entries: `changed` means the body differs from the one pinned. `missing`, `archived` and `invalid` (an unreadable stored body) mean the draft cannot be published until repaired; they are listed even when nothing is published yet.
+* `equipment` entries, one per selector the published snapshot also pinned: `changed` lists the definition keys that became eligible (`added`) or stopped being eligible (`removed`) since publication; `empty` means nothing matches any more. `description` is the selector in words ("Any R Attack Equipment").
+* Only dependencies both sides name are compared. A table or selector the draft newly references is a definition change, which `draftDiffers` already reports.
+* The editor renders these as "Loot changed" in T15. Until then the Portal shows `draftDiffers` only.
 
-**Rollback** moves the pointer to an older revision, which brings its own snapshot. The existing "can this server still run it" check is extended: every item in the snapshot must still exist and be uncapped, and every equipment candidate's definition must still exist. The loot tables themselves need not exist any more.
+`list` computes this for all dungeons from one read of the catalogue, items and rewardable equipment definitions.
+
+**Rollback** moves the pointer to an older revision, which brings its own snapshot; it is never rebuilt from the current catalogue. The existing "can this server still run it" check is extended: every item in the snapshot must still exist and be uncapped, and every equipment candidate's definition must still exist (a disabled one is still payable). The loot tables themselves need not exist any more. A revision that uses v2 rewards but has no snapshot, or whose snapshot does not match its hash, cannot be rolled back to (`reward_snapshot_missing`); publish again instead.
+
+**Deleting a loot table.** A draft that references the table always blocks deletion. A published revision blocks it only while that revision has no verified embedded snapshot holding the table (`snapshotStatus: 'not_embedded'` in where-used); with one (`'embedded'`) the revision reads the body from itself.
 
 ### 9.3 Runs
 
@@ -975,6 +1026,7 @@ Tests: unit validation tests; one snapshot of legacy issues before and after.
 Scope: migration adding `reward_snapshot` and `gameplay_hash`; snapshot builder; publish, `detailOf`, `list` and rollback per 9.2; `revisionById` returns the snapshot.
 Accept: editing a referenced table makes the dungeon report "Loot changed" and publishing creates a new revision though the definition is unchanged; editing, archiving and deleting that table afterwards changes neither the old nor the new revision's snapshot; publishing twice with no change returns `unchanged`; a legacy-only dungeon publishes with null snapshot and its existing hash behaviour.
 Tests: integration; include the immutability trigger still refusing an UPDATE.
+Status: implemented (migration `0063_dungeon_reward_snapshots`). Sections 9.1 and 9.2 describe it as built: the gameplay-only snapshot hash, the equipment dependency changes, and the equipment-insertion limit.
 
 ### Group C: execution
 
@@ -1074,5 +1126,6 @@ Each has a recommendation; the design above assumes it. An answer of "as recomme
 
 * An item that gains a cap, or an equipment definition that is deleted, after a dungeon is published can make one activity's reward undeliverable until an admin fixes it. T15's health check surfaces this; it does not prevent it.
 * Equipment stat rolls are stable across retries only while the definition's ranges and the affix and bonus catalogues are unchanged (D7).
+* An equipment definition inserted while a dungeon is being published is not in that publication's snapshot. The snapshot stays valid and the dungeon reports the new piece as a dependency change until it is published again (9.2, "Locking and consistency").
 * Database-only dungeons and their real use of expedition tables could not be enumerated, as in the audit. T-A2 and the conversion tool are written to cope with any number of them.
 * No test was run for this document. Behaviour described as existing was read from the code or taken from the audit.

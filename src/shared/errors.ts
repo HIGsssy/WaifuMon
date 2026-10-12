@@ -303,9 +303,9 @@ export class NotADuplicateError extends AppError {
  * `reasons` lets one message name both causes at once.
  */
 export class WaifuReleaseBlockedError extends AppError {
-  readonly reasons: readonly ('favorite' | 'buddy' | 'on_expedition')[];
+  readonly reasons: readonly ('favorite' | 'buddy' | 'on_expedition' | 'in_dungeon')[];
 
-  constructor(reasons: readonly ('favorite' | 'buddy' | 'on_expedition')[]) {
+  constructor(reasons: readonly ('favorite' | 'buddy' | 'on_expedition' | 'in_dungeon')[]) {
     // Normalised rather than trusted: this is the one AppError whose
     // constructor reads its argument's shape, and the API's error sweep
     // instantiates every subclass generically.
@@ -316,15 +316,17 @@ export class WaifuReleaseBlockedError extends AppError {
     // switching Buddy would not help while she is on the other side of the
     // map, so leading with that is the only advice that actually unblocks.
     const isAway = list.includes('on_expedition');
-    const userMessage = isAway
-      ? 'She is away on an expedition — collect her first.'
-      : isFav && isBuddy
-        ? 'She is a ★ favourite **and** your active buddy — unfavourite her and switch buddies first.'
-        : isFav
-          ? 'Favourite Waifumon cannot be released — unfavourite her first.'
-          : isBuddy
-            ? 'Your active Buddy cannot be released — switch or clear your Buddy first.'
-            : 'She cannot be released right now.';
+    const userMessage = list.includes('in_dungeon')
+      ? 'She is in a dungeon run. Finish or abandon the run first.'
+      : isAway
+        ? 'She is away on an expedition — collect her first.'
+        : isFav && isBuddy
+          ? 'She is a ★ favourite **and** your active buddy — unfavourite her and switch buddies first.'
+          : isFav
+            ? 'Favourite Waifumon cannot be released — unfavourite her first.'
+            : isBuddy
+              ? 'Your active Buddy cannot be released — switch or clear your Buddy first.'
+              : 'She cannot be released right now.';
     super(
       'WAIFU_RELEASE_BLOCKED',
       `Cannot release waifu: ${list.join('+') || 'unspecified'}`,
@@ -1239,15 +1241,17 @@ export class WaifuUnavailableError extends AppError {
     const list = Array.isArray(reasons) ? reasons.map(String) : [];
     const who = typeof name === 'string' && name.trim() ? name.trim() : 'She';
     const explanation =
-      list.includes('on_expedition')
-        ? `${who} is already away on an expedition.`
-        : list.includes('buddy')
-          ? `${who} is your active Buddy — switch Buddies first.`
-          : list.includes('care_target')
-            ? `${who} is the focus of Care Mode — leave Care Mode first.`
-            : list.includes('released')
-              ? `${who} has already been released.`
-              : `${who} is not available right now.`;
+      list.includes('in_dungeon')
+        ? `${who} is in a dungeon run. Finish or abandon the run first.`
+        : list.includes('on_expedition')
+          ? `${who} is already away on an expedition.`
+          : list.includes('buddy')
+            ? `${who} is your active Buddy — switch Buddies first.`
+            : list.includes('care_target')
+              ? `${who} is the focus of Care Mode — leave Care Mode first.`
+              : list.includes('released')
+                ? `${who} has already been released.`
+                : `${who} is not available right now.`;
     super(
       'WAIFU_UNAVAILABLE',
       `Waifu unavailable: ${list.join('+') || 'unspecified'}`,
@@ -1756,6 +1760,18 @@ export class DungeonRewardItemUnavailableError extends AppError {
       `Dungeon run ${runId} reward "${claimKey}" requires unavailable item "${slug}"`,
       "This dungeon reward can't be delivered right now. Your progress is safe. Please try again later.",
     );
+  }
+}
+
+/** A pinned reward dependency or grant failed; retry after repair is safe. */
+export class DungeonRewardGrantError extends AppError {
+  constructor(readonly runId: number, readonly claimKey: string, readonly dependency: string, cause?: unknown) {
+    super(
+      'DUNGEON_REWARD_GRANT_FAILED',
+      `Dungeon run ${runId} reward "${claimKey}" could not deliver ${dependency}`,
+      "This dungeon reward can't be delivered right now. Your progress has not advanced. Please try again shortly.",
+    );
+    this.cause = cause;
   }
 }
 

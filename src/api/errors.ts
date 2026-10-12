@@ -199,6 +199,7 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   REWARD_TABLE_INVALID: 400,
   /** Admin: a dungeon definition failed validation — issues are in `details`. */
   DUNGEON_INVALID: 400,
+  DUNGEON_LOOT_TABLE_INVALID: 400,
   DUNGEON_IMPORT_INVALID: 400,
   /** Admin: an enemy failed validation — issues are in `details`. */
   ENEMY_INVALID: 400,
@@ -235,6 +236,7 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   CONTENT_INVALID: 500,
   DB_UNAVAILABLE: 503,
   DUNGEON_REWARD_ITEM_UNAVAILABLE: 503,
+  DUNGEON_REWARD_GRANT_FAILED: 503,
   /**
    * The card SVG kit is missing a file, or the base template is not the shape
    * the composer expects. A broken deploy, never caller-triggerable — 500, and
@@ -260,6 +262,7 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   PROGRESSION_CURRENCY_NOT_FOUND: 404,
   DUNGEON_RUN_NOT_FOUND: 404,
   DUNGEON_NOT_FOUND: 404,
+  DUNGEON_LOOT_TABLE_NOT_FOUND: 404,
   DUNGEON_REVISION_NOT_FOUND: 404,
   SESSION_NOT_FOUND: 404,
   BUDDY_NOT_SET: 404,
@@ -328,6 +331,9 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   REWARD_TABLE_DELETE_REFUSED: 409,
   /** Admin: a dungeon draft save or publish named a revision someone else has since replaced. */
   DUNGEON_DRAFT_STALE: 409,
+  DUNGEON_LOOT_TABLE_STALE: 409,
+  DUNGEON_LOOT_TABLE_KEY_TAKEN: 409,
+  DUNGEON_LOOT_TABLE_DELETE_REFUSED: 409,
   DUNGEON_IMPORT_STALE: 409,
   DUNGEON_IMPORT_REQUEST_CONFLICT: 409,
   /** Admin: creating a dungeon under a key another dungeon already has. */

@@ -847,6 +847,8 @@ describe('permissions and CSRF', () => {
     expect((await api.inject({ method: 'GET', url: '/api/v1/admin/artwork/assets' })).statusCode).toBe(401);
     const res = await api.inject({ method: 'POST', url: '/api/v1/admin/artwork/assets?category=enemy_sprite', headers: { 'content-type': 'image/png' }, payload: await png() });
     expect(res.statusCode).toBe(401);
+    const scene = await api.inject({ method: 'POST', url: '/api/v1/admin/dungeons/scene-preview', payload: { enemyKey: 'grunt', backgrounds: [] } });
+    expect(scene.statusCode).toBe(401);
   });
 
   it('refuses a signed-in player with no artwork permission — reads and writes alike', async () => {
@@ -871,6 +873,8 @@ describe('permissions and CSRF', () => {
       ['PUT', `/admin/artwork/assets/${asset.id}/enabled`, { enabled: false }],
       ['DELETE', `/admin/artwork/assets/${asset.id}`, undefined],
       ['POST', '/admin/artwork/scene-preview', { background: { assetId: asset.id } }],
+      // The dungeon editor's fight preview is gated on `dungeons.read`, which this player lacks too.
+      ['POST', '/admin/dungeons/scene-preview', { enemyKey: 'grunt', backgrounds: [] }],
     ] as const) {
       const res = await api.inject({ method, url: `/api/v1${url}`, ...player, ...(payload ? { payload } : {}) });
       expect(res.statusCode, `${method} ${url}`).toBe(403);

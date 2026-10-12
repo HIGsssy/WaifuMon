@@ -48,7 +48,9 @@ import {
 } from '../content/dungeonDefinition';
 import { DungeonEngineContentError, fightWave, selectWaveEnemy } from './combat';
 import { conditionFacts, evaluateCondition } from './conditions';
-import { hpAfterRest, planHasSecuredRewards, rewardClaimKey, rollRewardPlan, settleCurrency, settlementRequestKey } from './rewards';
+import { addAtRiskCurrency, hpAfterRest, isDungeonRewardPlanV2, planHasSecuredRewards, rewardClaimKey, rewardResolverSnapshot, rollRewardPlan, settleCurrency, settlementRequestKey } from './rewards';
+import { DUNGEON_LOOT_RESOLVER_VERSION, resolveRewardBundle } from './lootResolver';
+import type { DungeonRewardBundle } from '../content/dungeonRewards';
 import { FAILURE_OUTCOMES, destinationFor, forwardIndex } from './routing';
 import { dungeonRngSource } from './seeds';
 import type {
@@ -111,8 +113,13 @@ function record(w: Work, room: DungeonRoom, action: DungeonAction, rec: Omit<Dun
 function endRun(w: Work, outcome: DungeonRunOutcome, cause: DungeonRunEnd['cause']): void {
   const { state } = w;
   const kept = outcome === 'extracted' || outcome === 'completed';
-  const retentionBasisPoints = kept ? BASIS_POINTS : w.ctx.definition.settings.defeatCurrencyRetentionBasisPoints;
-  const earned = state.unbankedCurrency;
+  const settings = w.ctx.definition.settings;
+  const retentionBasisPoints = kept ? BASIS_POINTS : outcome === 'abandoned'
+    ? settings.abandonCurrencyRetentionBasisPoints ?? settings.defeatCurrencyRetentionBasisPoints
+    : settings.defeatCurrencyRetentionBasisPoints;
+  const earned = addAtRiskCurrency(state.unbankedCurrency);
+  const waifubuxEarned = addAtRiskCurrency(state.unbankedWaifubux ?? 0);
+  const hasV2Rewards = w.ctx.rewards != null || waifubuxEarned > 0 || Object.values(state.rewardClaims).some(isDungeonRewardPlanV2);
   const end: DungeonRunEnd = {
     outcome,
     cause,
@@ -121,11 +128,13 @@ function endRun(w: Work, outcome: DungeonRunOutcome, cause: DungeonRunEnd['cause
     earned,
     retentionBasisPoints,
     ...settleCurrency(earned, retentionBasisPoints),
+    ...(hasV2Rewards ? { waifubux: { earned: waifubuxEarned, ...settleCurrency(waifubuxEarned, retentionBasisPoints) } } : {}),
   };
   state.status = outcome;
   state.end = end;
   // Nothing is unbanked once the run is settled; `end.earned` keeps the figure.
   state.unbankedCurrency = 0;
+  if (state.unbankedWaifubux !== undefined || hasV2Rewards) state.unbankedWaifubux = 0;
   state.cursor = { ...state.cursor, actionId: null, waveIndex: 0 };
   w.effects.push({
     type: 'settle_run',
@@ -298,6 +307,27 @@ function runSequence(w: Work, room: DungeonRoom, startIndex: number): void {
 
 // ── actions that take input ─────────────────────────────────────────────────
 
+/** Claim before routing: retreat can delete the action record, never this identity. */
+function claimRewards(w: Work, room: DungeonRoom, action: DungeonAction, bundle: DungeonRewardBundle) {
+  const place = { roomId: room.id, actionId: action.id };
+  const claimKey = rewardClaimKey(w.ctx.runKey, room.id, action.id);
+  const existing = w.state.rewardClaims[claimKey];
+  if (Object.hasOwn(w.state.rewardClaims, claimKey)) return { claimKey, plan: existing!, alreadyClaimed: true };
+  const snapshot = w.ctx.rewards;
+  if (!snapshot || snapshot.resolverVersion !== DUNGEON_LOOT_RESOLVER_VERSION) {
+    throw new DungeonEngineContentError(`room "${room.id}" action "${action.id}" requires its pinned reward snapshot`);
+  }
+  const plan = resolveRewardBundle(bundle, rewardResolverSnapshot(snapshot), w.state.seed, place);
+  const shards = addAtRiskCurrency(w.state.unbankedCurrency, plan.atRisk.shards);
+  const waifubux = addAtRiskCurrency(w.state.unbankedWaifubux ?? 0, plan.atRisk.waifubux);
+  w.state.rewardClaims[claimKey] = plan;
+  w.state.unbankedCurrency = shards;
+  w.state.unbankedWaifubux = waifubux;
+  if (planHasSecuredRewards(plan)) w.effects.push({ type: 'grant_rewards', claimKey, ...place, plan });
+  w.state.recent.push({ kind: 'reward', ...place, claimKey, plan });
+  return { claimKey, plan, alreadyClaimed: false };
+}
+
 function fightWaves(w: Work, room: DungeonRoom, index: number, action: CombatAction): Flow | 'await' {
   const rs = roomState(w, room.id);
   const existing = rs.actions[action.id];
@@ -349,12 +379,13 @@ function fightWaves(w: Work, room: DungeonRoom, index: number, action: CombatAct
     }
 
     if (waveIndex + 1 >= action.waves.length) {
+      const claim = action.rewards ? claimRewards(w, room, action, action.rewards) : null;
       record(w, room, action, { status: 'completed', outcome: 'victory', detail });
       w.log.push({
         type: 'action_completed',
         roomId: room.id,
         actionId: action.id,
-        payload: { actionType: action.type, outcome: 'victory', wavesFought: waves.length },
+        payload: { actionType: action.type, outcome: 'victory', wavesFought: waves.length, ...(claim ?? {}) },
       });
       return follow(w, room, index, action, 'victory');
     }
@@ -391,10 +422,13 @@ function resolveWithInput(w: Work, room: DungeonRoom, index: number, action: Dun
       const place = { roomId: room.id, actionId: action.id };
       const claimKey = rewardClaimKey(w.ctx.runKey, room.id, action.id);
       const alreadyClaimed = Object.hasOwn(w.state.rewardClaims, claimKey);
-      const plan = alreadyClaimed ? w.state.rewardClaims[claimKey]! : rollRewardPlan(action.reward, place, w.ctx.dependencies, w.rng);
-      if (!alreadyClaimed) {
+      const plan = action.rewards ? claimRewards(w, room, action, action.rewards).plan
+        : alreadyClaimed ? w.state.rewardClaims[claimKey]! : rollRewardPlan(action.reward!, place, w.ctx.dependencies, w.rng);
+      if (!action.rewards && !alreadyClaimed) {
+        // Legacy draws and secured WaifuBux are unchanged.
+        if (isDungeonRewardPlanV2(plan)) throw new DungeonEngineContentError('legacy reward resolved a v2 plan');
         w.state.rewardClaims[claimKey] = plan;
-        w.state.unbankedCurrency += plan.currency;
+        w.state.unbankedCurrency = addAtRiskCurrency(w.state.unbankedCurrency, plan.currency);
         if (planHasSecuredRewards(plan)) w.effects.push({ type: 'grant_rewards', claimKey, ...place, plan });
         w.state.recent.push({ kind: 'reward', ...place, claimKey, plan });
       }
@@ -464,6 +498,7 @@ export function startDungeonRun(
     rooms: {},
     rewardClaims: {},
     unbankedCurrency: 0,
+    unbankedWaifubux: 0,
     recent: [],
     end: null,
   };

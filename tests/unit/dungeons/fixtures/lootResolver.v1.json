@@ -1,0 +1,1013 @@
+{
+  "resolverVersion": 1,
+  "input": {
+    "bundle": {
+      "guaranteed": [
+        {
+          "id": "shards",
+          "grant": {
+            "type": "currency",
+            "currency": "shards",
+            "amount": {
+              "min": 40,
+              "max": 60
+            }
+          }
+        },
+        {
+          "id": "essence",
+          "grant": {
+            "type": "currency",
+            "currency": "essence",
+            "amount": {
+              "min": 3,
+              "max": 7
+            }
+          }
+        },
+        {
+          "id": "bond",
+          "grant": {
+            "type": "affection",
+            "amount": {
+              "min": 1,
+              "max": 3
+            }
+          }
+        },
+        {
+          "id": "gear",
+          "grant": {
+            "type": "equipment",
+            "selector": {
+              "slot": "attack",
+              "rarity": "R"
+            }
+          }
+        }
+      ],
+      "chances": [
+        {
+          "id": "charm",
+          "chanceBasisPoints": 2500,
+          "grant": {
+            "type": "item",
+            "item": "velvet_charm",
+            "quantity": {
+              "min": 1,
+              "max": 2
+            }
+          }
+        },
+        {
+          "id": "bux",
+          "chanceBasisPoints": 5000,
+          "grant": {
+            "type": "currency",
+            "currency": "waifubux",
+            "amount": {
+              "min": 100,
+              "max": 200
+            }
+          }
+        }
+      ],
+      "tables": [
+        {
+          "id": "hoard",
+          "table": "boss_hoard",
+          "draws": 2
+        }
+      ]
+    },
+    "snapshot": {
+      "hash": "t2-resolver-v1-golden",
+      "tables": {
+        "boss_hoard": {
+          "guaranteed": [
+            {
+              "id": "charm",
+              "grant": {
+                "type": "item",
+                "item": "velvet_charm",
+                "quantity": {
+                  "min": 2,
+                  "max": 4
+                }
+              }
+            }
+          ],
+          "chances": [
+            {
+              "id": "gear",
+              "chanceBasisPoints": 2000,
+              "grant": {
+                "type": "equipment",
+                "selector": {
+                  "slot": "attack",
+                  "rarity": "R"
+                }
+              }
+            }
+          ],
+          "pools": [
+            {
+              "id": "bonus",
+              "name": "Bonus or Nothing",
+              "draws": 1,
+              "entries": [
+                {
+                  "id": "affection",
+                  "weight": 2,
+                  "grant": {
+                    "type": "affection",
+                    "amount": {
+                      "min": 2,
+                      "max": 5
+                    }
+                  }
+                },
+                {
+                  "id": "nothing",
+                  "weight": 3,
+                  "nothing": true
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "equipmentPools": {
+        "slot=attack;rarity=R;keys=*": [
+          {
+            "key": "rusty_pipe",
+            "name": "Rusty Pipe",
+            "slot": "attack",
+            "rarity": "R"
+          },
+          {
+            "key": "steel_bat",
+            "name": "Steel Bat",
+            "slot": "attack",
+            "rarity": "R"
+          }
+        ]
+      }
+    },
+    "activity": {
+      "roomId": "boss_room",
+      "actionId": "foreman"
+    }
+  },
+  "vectors": [
+    {
+      "seed": 0,
+      "plan": {
+        "v": 2,
+        "resolverVersion": 1,
+        "snapshotHash": "t2-resolver-v1-golden",
+        "atRisk": {
+          "shards": 55,
+          "waifubux": 167
+        },
+        "secured": {
+          "essence": 3,
+          "affection": 3,
+          "items": [
+            {
+              "item": "velvet_charm",
+              "quantity": 6
+            }
+          ],
+          "equipment": [
+            {
+              "dropId": "g:gear",
+              "definitionKey": "steel_bat",
+              "rollSeed": 3685211434
+            },
+            {
+              "dropId": "t:hoard:1:c:gear",
+              "definitionKey": "rusty_pipe",
+              "rollSeed": 2176219649
+            }
+          ]
+        },
+        "lines": [
+          {
+            "dropId": "c:bux",
+            "source": "chance",
+            "mode": "chance",
+            "entryId": "bux",
+            "hit": true,
+            "rolls": {
+              "chance": {
+                "value": 4798,
+                "chanceBasisPoints": 5000
+              },
+              "quantity": {
+                "min": 100,
+                "max": 200,
+                "value": 167
+              }
+            },
+            "grant": {
+              "type": "currency",
+              "currency": "waifubux",
+              "amount": 167
+            }
+          },
+          {
+            "dropId": "c:charm",
+            "source": "chance",
+            "mode": "chance",
+            "entryId": "charm",
+            "hit": false,
+            "rolls": {
+              "chance": {
+                "value": 2671,
+                "chanceBasisPoints": 2500
+              }
+            },
+            "missReason": "chance_missed"
+          },
+          {
+            "dropId": "g:bond",
+            "source": "guaranteed",
+            "mode": "guaranteed",
+            "entryId": "bond",
+            "hit": true,
+            "rolls": {
+              "quantity": {
+                "min": 1,
+                "max": 3,
+                "value": 3
+              }
+            },
+            "grant": {
+              "type": "affection",
+              "amount": 3
+            }
+          },
+          {
+            "dropId": "g:essence",
+            "source": "guaranteed",
+            "mode": "guaranteed",
+            "entryId": "essence",
+            "hit": true,
+            "rolls": {
+              "quantity": {
+                "min": 3,
+                "max": 7,
+                "value": 3
+              }
+            },
+            "grant": {
+              "type": "currency",
+              "currency": "essence",
+              "amount": 3
+            }
+          },
+          {
+            "dropId": "g:gear",
+            "source": "guaranteed",
+            "mode": "guaranteed",
+            "entryId": "gear",
+            "hit": true,
+            "rolls": {
+              "equipment": {
+                "selectorKey": "slot=attack;rarity=R;keys=*",
+                "candidateCount": 2,
+                "index": 1
+              }
+            },
+            "grant": {
+              "type": "equipment",
+              "definitionKey": "steel_bat",
+              "rollSeed": 3685211434
+            }
+          },
+          {
+            "dropId": "g:shards",
+            "source": "guaranteed",
+            "mode": "guaranteed",
+            "entryId": "shards",
+            "hit": true,
+            "rolls": {
+              "quantity": {
+                "min": 40,
+                "max": 60,
+                "value": 55
+              }
+            },
+            "grant": {
+              "type": "currency",
+              "currency": "shards",
+              "amount": 55
+            }
+          },
+          {
+            "dropId": "t:hoard:0:c:gear",
+            "source": "table",
+            "mode": "chance",
+            "tableKey": "boss_hoard",
+            "tableReferenceId": "hoard",
+            "tableDraw": 0,
+            "entryId": "gear",
+            "hit": false,
+            "rolls": {
+              "chance": {
+                "value": 3992,
+                "chanceBasisPoints": 2000
+              }
+            },
+            "missReason": "chance_missed"
+          },
+          {
+            "dropId": "t:hoard:0:g:charm",
+            "source": "table",
+            "mode": "guaranteed",
+            "tableKey": "boss_hoard",
+            "tableReferenceId": "hoard",
+            "tableDraw": 0,
+            "entryId": "charm",
+            "hit": true,
+            "rolls": {
+              "quantity": {
+                "min": 2,
+                "max": 4,
+                "value": 2
+              }
+            },
+            "grant": {
+              "type": "item",
+              "item": "velvet_charm",
+              "quantity": 2
+            }
+          },
+          {
+            "dropId": "t:hoard:0:p:bonus:0",
+            "source": "table",
+            "mode": "pool",
+            "tableKey": "boss_hoard",
+            "tableReferenceId": "hoard",
+            "tableDraw": 0,
+            "poolId": "bonus",
+            "poolName": "Bonus or Nothing",
+            "poolPick": 0,
+            "entryId": "nothing",
+            "hit": false,
+            "rolls": {
+              "pool": {
+                "value": 0.8288508486002684,
+                "weight": 3,
+                "totalWeight": 5
+              }
+            },
+            "missReason": "nothing"
+          },
+          {
+            "dropId": "t:hoard:1:c:gear",
+            "source": "table",
+            "mode": "chance",
+            "tableKey": "boss_hoard",
+            "tableReferenceId": "hoard",
+            "tableDraw": 1,
+            "entryId": "gear",
+            "hit": true,
+            "rolls": {
+              "chance": {
+                "value": 872,
+                "chanceBasisPoints": 2000
+              },
+              "equipment": {
+                "selectorKey": "slot=attack;rarity=R;keys=*",
+                "candidateCount": 2,
+                "index": 0
+              }
+            },
+            "grant": {
+              "type": "equipment",
+              "definitionKey": "rusty_pipe",
+              "rollSeed": 2176219649
+            }
+          },
+          {
+            "dropId": "t:hoard:1:g:charm",
+            "source": "table",
+            "mode": "guaranteed",
+            "tableKey": "boss_hoard",
+            "tableReferenceId": "hoard",
+            "tableDraw": 1,
+            "entryId": "charm",
+            "hit": true,
+            "rolls": {
+              "quantity": {
+                "min": 2,
+                "max": 4,
+                "value": 4
+              }
+            },
+            "grant": {
+              "type": "item",
+              "item": "velvet_charm",
+              "quantity": 4
+            }
+          },
+          {
+            "dropId": "t:hoard:1:p:bonus:0",
+            "source": "table",
+            "mode": "pool",
+            "tableKey": "boss_hoard",
+            "tableReferenceId": "hoard",
+            "tableDraw": 1,
+            "poolId": "bonus",
+            "poolName": "Bonus or Nothing",
+            "poolPick": 0,
+            "entryId": "nothing",
+            "hit": false,
+            "rolls": {
+              "pool": {
+                "value": 0.5716087217442691,
+                "weight": 3,
+                "totalWeight": 5
+              }
+            },
+            "missReason": "nothing"
+          }
+        ]
+      }
+    },
+    {
+      "seed": 42,
+      "plan": {
+        "v": 2,
+        "resolverVersion": 1,
+        "snapshotHash": "t2-resolver-v1-golden",
+        "atRisk": {
+          "shards": 41,
+          "waifubux": 158
+        },
+        "secured": {
+          "essence": 4,
+          "affection": 7,
+          "items": [
+            {
+              "item": "velvet_charm",
+              "quantity": 5
+            }
+          ],
+          "equipment": [
+            {
+              "dropId": "g:gear",
+              "definitionKey": "rusty_pipe",
+              "rollSeed": 3351524806
+            }
+          ]
+        },
+        "lines": [
+          {
+            "dropId": "c:bux",
+            "source": "chance",
+            "mode": "chance",
+            "entryId": "bux",
+            "hit": true,
+            "rolls": {
+              "chance": {
+                "value": 2210,
+                "chanceBasisPoints": 5000
+              },
+              "quantity": {
+                "min": 100,
+                "max": 200,
+                "value": 158
+              }
+            },
+            "grant": {
+              "type": "currency",
+              "currency": "waifubux",
+              "amount": 158
+            }
+          },
+          {
+            "dropId": "c:charm",
+            "source": "chance",
+            "mode": "chance",
+            "entryId": "charm",
+            "hit": false,
+            "rolls": {
+              "chance": {
+                "value": 8058,
+                "chanceBasisPoints": 2500
+              }
+            },
+            "missReason": "chance_missed"
+          },
+          {
+            "dropId": "g:bond",
+            "source": "guaranteed",
+            "mode": "guaranteed",
+            "entryId": "bond",
+            "hit": true,
+            "rolls": {
+              "quantity": {
+                "min": 1,
+                "max": 3,
+                "value": 2
+              }
+            },
+            "grant": {
+              "type": "affection",
+              "amount": 2
+            }
+          },
+          {
+            "dropId": "g:essence",
+            "source": "guaranteed",
+            "mode": "guaranteed",
+            "entryId": "essence",
+            "hit": true,
+            "rolls": {
+              "quantity": {
+                "min": 3,
+                "max": 7,
+                "value": 4
+              }
+            },
+            "grant": {
+              "type": "currency",
+              "currency": "essence",
+              "amount": 4
+            }
+          },
+          {
+            "dropId": "g:gear",
+            "source": "guaranteed",
+            "mode": "guaranteed",
+            "entryId": "gear",
+            "hit": true,
+            "rolls": {
+              "equipment": {
+                "selectorKey": "slot=attack;rarity=R;keys=*",
+                "candidateCount": 2,
+                "index": 0
+              }
+            },
+            "grant": {
+              "type": "equipment",
+              "definitionKey": "rusty_pipe",
+              "rollSeed": 3351524806
+            }
+          },
+          {
+            "dropId": "g:shards",
+            "source": "guaranteed",
+            "mode": "guaranteed",
+            "entryId": "shards",
+            "hit": true,
+            "rolls": {
+              "quantity": {
+                "min": 40,
+                "max": 60,
+                "value": 41
+              }
+            },
+            "grant": {
+              "type": "currency",
+              "currency": "shards",
+              "amount": 41
+            }
+          },
+          {
+            "dropId": "t:hoard:0:c:gear",
+            "source": "table",
+            "mode": "chance",
+            "tableKey": "boss_hoard",
+            "tableReferenceId": "hoard",
+            "tableDraw": 0,
+            "entryId": "gear",
+            "hit": false,
+            "rolls": {
+              "chance": {
+                "value": 6105,
+                "chanceBasisPoints": 2000
+              }
+            },
+            "missReason": "chance_missed"
+          },
+          {
+            "dropId": "t:hoard:0:g:charm",
+            "source": "table",
+            "mode": "guaranteed",
+            "tableKey": "boss_hoard",
+            "tableReferenceId": "hoard",
+            "tableDraw": 0,
+            "entryId": "charm",
+            "hit": true,
+            "rolls": {
+              "quantity": {
+                "min": 2,
+                "max": 4,
+                "value": 2
+              }
+            },
+            "grant": {
+              "type": "item",
+              "item": "velvet_charm",
+              "quantity": 2
+            }
+          },
+          {
+            "dropId": "t:hoard:0:p:bonus:0",
+            "source": "table",
+            "mode": "pool",
+            "tableKey": "boss_hoard",
+            "tableReferenceId": "hoard",
+            "tableDraw": 0,
+            "poolId": "bonus",
+            "poolName": "Bonus or Nothing",
+            "poolPick": 0,
+            "entryId": "affection",
+            "hit": true,
+            "rolls": {
+              "pool": {
+                "value": 0.07194810407236218,
+                "weight": 2,
+                "totalWeight": 5
+              },
+              "quantity": {
+                "min": 2,
+                "max": 5,
+                "value": 2
+              }
+            },
+            "grant": {
+              "type": "affection",
+              "amount": 2
+            }
+          },
+          {
+            "dropId": "t:hoard:1:c:gear",
+            "source": "table",
+            "mode": "chance",
+            "tableKey": "boss_hoard",
+            "tableReferenceId": "hoard",
+            "tableDraw": 1,
+            "entryId": "gear",
+            "hit": false,
+            "rolls": {
+              "chance": {
+                "value": 6735,
+                "chanceBasisPoints": 2000
+              }
+            },
+            "missReason": "chance_missed"
+          },
+          {
+            "dropId": "t:hoard:1:g:charm",
+            "source": "table",
+            "mode": "guaranteed",
+            "tableKey": "boss_hoard",
+            "tableReferenceId": "hoard",
+            "tableDraw": 1,
+            "entryId": "charm",
+            "hit": true,
+            "rolls": {
+              "quantity": {
+                "min": 2,
+                "max": 4,
+                "value": 3
+              }
+            },
+            "grant": {
+              "type": "item",
+              "item": "velvet_charm",
+              "quantity": 3
+            }
+          },
+          {
+            "dropId": "t:hoard:1:p:bonus:0",
+            "source": "table",
+            "mode": "pool",
+            "tableKey": "boss_hoard",
+            "tableReferenceId": "hoard",
+            "tableDraw": 1,
+            "poolId": "bonus",
+            "poolName": "Bonus or Nothing",
+            "poolPick": 0,
+            "entryId": "affection",
+            "hit": true,
+            "rolls": {
+              "pool": {
+                "value": 0.3878599014133215,
+                "weight": 2,
+                "totalWeight": 5
+              },
+              "quantity": {
+                "min": 2,
+                "max": 5,
+                "value": 3
+              }
+            },
+            "grant": {
+              "type": "affection",
+              "amount": 3
+            }
+          }
+        ]
+      }
+    },
+    {
+      "seed": 4294967295,
+      "plan": {
+        "v": 2,
+        "resolverVersion": 1,
+        "snapshotHash": "t2-resolver-v1-golden",
+        "atRisk": {
+          "shards": 48,
+          "waifubux": 148
+        },
+        "secured": {
+          "essence": 4,
+          "affection": 8,
+          "items": [
+            {
+              "item": "velvet_charm",
+              "quantity": 7
+            }
+          ],
+          "equipment": [
+            {
+              "dropId": "g:gear",
+              "definitionKey": "steel_bat",
+              "rollSeed": 1554988052
+            },
+            {
+              "dropId": "t:hoard:0:c:gear",
+              "definitionKey": "rusty_pipe",
+              "rollSeed": 2677313166
+            }
+          ]
+        },
+        "lines": [
+          {
+            "dropId": "c:bux",
+            "source": "chance",
+            "mode": "chance",
+            "entryId": "bux",
+            "hit": true,
+            "rolls": {
+              "chance": {
+                "value": 3798,
+                "chanceBasisPoints": 5000
+              },
+              "quantity": {
+                "min": 100,
+                "max": 200,
+                "value": 148
+              }
+            },
+            "grant": {
+              "type": "currency",
+              "currency": "waifubux",
+              "amount": 148
+            }
+          },
+          {
+            "dropId": "c:charm",
+            "source": "chance",
+            "mode": "chance",
+            "entryId": "charm",
+            "hit": false,
+            "rolls": {
+              "chance": {
+                "value": 8009,
+                "chanceBasisPoints": 2500
+              }
+            },
+            "missReason": "chance_missed"
+          },
+          {
+            "dropId": "g:bond",
+            "source": "guaranteed",
+            "mode": "guaranteed",
+            "entryId": "bond",
+            "hit": true,
+            "rolls": {
+              "quantity": {
+                "min": 1,
+                "max": 3,
+                "value": 2
+              }
+            },
+            "grant": {
+              "type": "affection",
+              "amount": 2
+            }
+          },
+          {
+            "dropId": "g:essence",
+            "source": "guaranteed",
+            "mode": "guaranteed",
+            "entryId": "essence",
+            "hit": true,
+            "rolls": {
+              "quantity": {
+                "min": 3,
+                "max": 7,
+                "value": 4
+              }
+            },
+            "grant": {
+              "type": "currency",
+              "currency": "essence",
+              "amount": 4
+            }
+          },
+          {
+            "dropId": "g:gear",
+            "source": "guaranteed",
+            "mode": "guaranteed",
+            "entryId": "gear",
+            "hit": true,
+            "rolls": {
+              "equipment": {
+                "selectorKey": "slot=attack;rarity=R;keys=*",
+                "candidateCount": 2,
+                "index": 1
+              }
+            },
+            "grant": {
+              "type": "equipment",
+              "definitionKey": "steel_bat",
+              "rollSeed": 1554988052
+            }
+          },
+          {
+            "dropId": "g:shards",
+            "source": "guaranteed",
+            "mode": "guaranteed",
+            "entryId": "shards",
+            "hit": true,
+            "rolls": {
+              "quantity": {
+                "min": 40,
+                "max": 60,
+                "value": 48
+              }
+            },
+            "grant": {
+              "type": "currency",
+              "currency": "shards",
+              "amount": 48
+            }
+          },
+          {
+            "dropId": "t:hoard:0:c:gear",
+            "source": "table",
+            "mode": "chance",
+            "tableKey": "boss_hoard",
+            "tableReferenceId": "hoard",
+            "tableDraw": 0,
+            "entryId": "gear",
+            "hit": true,
+            "rolls": {
+              "chance": {
+                "value": 563,
+                "chanceBasisPoints": 2000
+              },
+              "equipment": {
+                "selectorKey": "slot=attack;rarity=R;keys=*",
+                "candidateCount": 2,
+                "index": 0
+              }
+            },
+            "grant": {
+              "type": "equipment",
+              "definitionKey": "rusty_pipe",
+              "rollSeed": 2677313166
+            }
+          },
+          {
+            "dropId": "t:hoard:0:g:charm",
+            "source": "table",
+            "mode": "guaranteed",
+            "tableKey": "boss_hoard",
+            "tableReferenceId": "hoard",
+            "tableDraw": 0,
+            "entryId": "charm",
+            "hit": true,
+            "rolls": {
+              "quantity": {
+                "min": 2,
+                "max": 4,
+                "value": 3
+              }
+            },
+            "grant": {
+              "type": "item",
+              "item": "velvet_charm",
+              "quantity": 3
+            }
+          },
+          {
+            "dropId": "t:hoard:0:p:bonus:0",
+            "source": "table",
+            "mode": "pool",
+            "tableKey": "boss_hoard",
+            "tableReferenceId": "hoard",
+            "tableDraw": 0,
+            "poolId": "bonus",
+            "poolName": "Bonus or Nothing",
+            "poolPick": 0,
+            "entryId": "affection",
+            "hit": true,
+            "rolls": {
+              "pool": {
+                "value": 0.0008762255311012268,
+                "weight": 2,
+                "totalWeight": 5
+              },
+              "quantity": {
+                "min": 2,
+                "max": 5,
+                "value": 3
+              }
+            },
+            "grant": {
+              "type": "affection",
+              "amount": 3
+            }
+          },
+          {
+            "dropId": "t:hoard:1:c:gear",
+            "source": "table",
+            "mode": "chance",
+            "tableKey": "boss_hoard",
+            "tableReferenceId": "hoard",
+            "tableDraw": 1,
+            "entryId": "gear",
+            "hit": false,
+            "rolls": {
+              "chance": {
+                "value": 4642,
+                "chanceBasisPoints": 2000
+              }
+            },
+            "missReason": "chance_missed"
+          },
+          {
+            "dropId": "t:hoard:1:g:charm",
+            "source": "table",
+            "mode": "guaranteed",
+            "tableKey": "boss_hoard",
+            "tableReferenceId": "hoard",
+            "tableDraw": 1,
+            "entryId": "charm",
+            "hit": true,
+            "rolls": {
+              "quantity": {
+                "min": 2,
+                "max": 4,
+                "value": 4
+              }
+            },
+            "grant": {
+              "type": "item",
+              "item": "velvet_charm",
+              "quantity": 4
+            }
+          },
+          {
+            "dropId": "t:hoard:1:p:bonus:0",
+            "source": "table",
+            "mode": "pool",
+            "tableKey": "boss_hoard",
+            "tableReferenceId": "hoard",
+            "tableDraw": 1,
+            "poolId": "bonus",
+            "poolName": "Bonus or Nothing",
+            "poolPick": 0,
+            "entryId": "affection",
+            "hit": true,
+            "rolls": {
+              "pool": {
+                "value": 0.13426005537621677,
+                "weight": 2,
+                "totalWeight": 5
+              },
+              "quantity": {
+                "min": 2,
+                "max": 5,
+                "value": 3
+              }
+            },
+            "grant": {
+              "type": "affection",
+              "amount": 3
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

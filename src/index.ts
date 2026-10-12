@@ -60,6 +60,7 @@ import {
 } from './modules/rewardTables/rewardTableStore';
 import { createRewardTableService } from './modules/rewardTables/rewardTableService';
 import { regionLabel } from './modules/locations/regions';
+import { createDungeonLootTableService } from './modules/dungeons/dungeonLootTableService';
 import { createDungeonContentService } from './modules/dungeons/dungeonContentService';
 import { dungeonRewardTableReferences } from './modules/dungeons/dungeonRewardTableReferences';
 import { validateDungeonDefinition } from './modules/dungeons/validation/dungeonValidation';
@@ -77,6 +78,7 @@ import {
 } from './modules/enemies/enemyStore';
 import { createSceneCompositionService } from './modules/artworkAssets/sceneComposition';
 import { createDungeonRunService } from './modules/dungeons/dungeonRunService';
+import { createDungeonAvailabilityProvider } from './modules/dungeons/dungeonAvailability';
 import { createDungeonAllowanceService } from './modules/dungeons/dungeonAllowanceService';
 import { createProgressionCurrencyService } from './modules/progressionCurrency/progressionCurrencyService';
 import { buildAffixCatalogue } from './modules/equipment/affixCatalogue';
@@ -330,6 +332,7 @@ async function main(): Promise<void> {
   const availability = createWaifuAvailabilityService({
     bulkProviders: [
       createCoreAvailabilityProvider(),
+      createDungeonAvailabilityProvider(),
       (tx, playerId, waifuIds) =>
         expeditions?.unavailabilityFor(tx, playerId, waifuIds) ?? Promise.resolve(new Map()),
     ],
@@ -527,8 +530,10 @@ async function main(): Promise<void> {
     regionName: (regionId) => dungeonRegions().find((r) => r.id === regionId)?.name ?? regionLabel(regionId),
     featureUnlocks,
     combatStats,
+    buddyBonus,
     currencies: progressionCurrency,
     currency,
+    collection,
     inventory,
     equipmentRewards,
     logger,
@@ -885,6 +890,7 @@ async function main(): Promise<void> {
       combatTrials,
       equipmentWorkshop,
       dungeonContent,
+      dungeonLootTables: createDungeonLootTableService({ db }),
       dungeonRuns,
       dungeonAllowance,
       progressionCurrency,

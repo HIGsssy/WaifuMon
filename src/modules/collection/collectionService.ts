@@ -208,6 +208,22 @@ export interface BuddyAwardResult {
   affectionBonus: AppliedBuddyBonus | null;
 }
 
+export interface AwardCopyAffectionInput {
+  playerId: number;
+  waifuId: number;
+  baseAmount: number;
+  /** The caller's pinned percentage; 0 for none. Never reads the live Buddy. */
+  bonusPercent: number;
+}
+
+export interface CopyAffectionAwardResult {
+  waifuId: number;
+  baseAmount: number;
+  granted: number;
+  affectionBefore: number;
+  affectionAfter: number;
+}
+
 export interface CollectionService {
   listOwned(playerId: number, opts?: ListOptions): Promise<PaginatedOwned>;
   getDexStats(playerId: number): Promise<DexStats>;
@@ -393,6 +409,12 @@ export interface CollectionService {
     playerId: number,
     baseAmount: number,
   ): Promise<BuddyAwardResult | null>;
+  /**
+   * Flat affection to this exact active owned copy, in the caller's
+   * transaction. Throws WaifuNotOwnedError / WaifuAlreadyReleasedError.
+   * Locks only the copy; no gifts, XP, levels or appearance mutations.
+   */
+  awardCopyAffection(tx: DbOrTx, input: AwardCopyAffectionInput): Promise<CopyAffectionAwardResult>;
   /**
    * Grant XP to the player's **currently equipped Buddy**, inside the caller's
    * transaction, scaled by the `buddy_xp_gain` Buddy Bonus. Returns `null`
@@ -865,20 +887,19 @@ export function createCollectionService(deps: CollectionServiceDeps): Collection
         .for('update');
       const isBuddy = player?.buddyWaifuId === waifuId;
 
-      // Reasons that live outside this transaction's own reads — today that
-      // means "away on an expedition". Asked through the shared vocabulary
-      // rather than by querying `player_expeditions` here, so a future
-      // unavailable state needs no edit at this call site.
+      // External reservations are queried after the player lock, which run
+      // start also holds through commit. Providers only read runs, so this
+      // copy→player path never locks a run behind a reward step's run→copy.
       //
       // Scoped to the reasons *release* cares about: favourite and buddy are
       // already read above from rows this transaction holds locked, and
       // re-reporting them from the provider would double them in the message.
       const external = (await availability.reasonsFor(tx, playerId, waifuId)).filter(
-        (reason: WaifuUnavailabilityReason) => reason === 'on_expedition',
+        (reason: WaifuUnavailabilityReason) => reason === 'on_expedition' || reason === 'in_dungeon',
       );
 
       if (guard.kind === 'release') {
-        const reasons: ('favorite' | 'buddy' | 'on_expedition')[] = [];
+        const reasons: ('favorite' | 'buddy' | 'on_expedition' | 'in_dungeon')[] = [];
         if (locked.isFavorite) reasons.push('favorite');
         if (isBuddy) reasons.push('buddy');
         reasons.push(...external);
@@ -1028,15 +1049,22 @@ export function createCollectionService(deps: CollectionServiceDeps): Collection
     return new Set(rows.map((row) => row.slug));
   }
 
-  /**
-   * The active buddy, resolved inside the caller's transaction, with the
-   * dangling-pointer self-heal.
-   *
-   * A local function rather than only a method, because two other methods in
-   * this file need it and an object literal cannot call its own siblings
-   * without a name for itself. One implementation, so the self-heal is not
-   * something a caller can forget.
-   */
+  /** One lock-and-increment path for flat Buddy and copy-targeted affection. */
+  async function incrementCopyAffection(tx: DbOrTx, input: AwardCopyAffectionInput) {
+    // Row locking serialises release and concurrent awards without taking a
+    // player lock after a future dungeon step's run lock.
+    const [locked] = await tx.select().from(playerWaifus)
+      .where(and(eq(playerWaifus.id, input.waifuId), eq(playerWaifus.playerId, input.playerId)))
+      .for('update');
+    if (!locked) throw new WaifuNotOwnedError(input.waifuId);
+    if (locked.releasedAt != null) throw new WaifuAlreadyReleasedError(input.waifuId);
+    const granted = applyPercentModifierInt(input.baseAmount, input.bonusPercent);
+    const [waifu] = await tx.update(playerWaifus)
+      .set({ affection: locked.affection + granted }).where(eq(playerWaifus.id, locked.id)).returning();
+    return { waifu: waifu!, affectionBefore: locked.affection, granted };
+  }
+
+  /** The active Buddy, with dangling-pointer self-heal, in the caller's transaction. */
   async function resolveActiveBuddy(tx: DbOrTx, playerId: number): Promise<OwnedEntry | null> {
     const [player] = await tx
       .select({ buddyWaifuId: players.buddyWaifuId })
@@ -1316,45 +1344,45 @@ export function createCollectionService(deps: CollectionServiceDeps): Collection
       // no target and names no source — so it applies here by definition, and
       // the item handler never sees a percentage.
       const active = await buddyBonus?.getActiveBuddyBonus(tx, playerId);
-      const affDelta = applyPercentModifierInt(
-        baseAmount,
-        buddyBonusPercent(active?.bonus, 'affection_gain'),
-      );
-      const affectionBonus =
-        active && affDelta > baseAmount
-          ? appliedBuddyBonus(active.bonus, { base: baseAmount, final: affDelta })
-          : null;
-
-      // Lock before the read-modify-write. Two concurrent uses of the same
-      // consumable serialize here, so both awards land rather than one
-      // overwriting the other's total.
-      const [locked] = await tx
-        .select()
-        .from(playerWaifus)
-        .where(and(eq(playerWaifus.id, buddy.waifu.id), eq(playerWaifus.playerId, playerId)))
-        .for('update');
-      // Released between `resolveActiveBuddy` and the lock. Vanishingly
-      // unlikely, and handled as "no buddy" rather than as an error so the
-      // caller's refusal path stays the single way this can fail.
-      if (!locked || locked.releasedAt != null) return null;
-
-      const [updated] = await tx
-        .update(playerWaifus)
-        .set({ affection: locked.affection + affDelta })
-        .where(eq(playerWaifus.id, locked.id))
-        .returning();
+      let award;
+      try {
+        award = await incrementCopyAffection(tx, {
+          playerId, waifuId: buddy.waifu.id, baseAmount,
+          bonusPercent: buddyBonusPercent(active?.bonus, 'affection_gain'),
+        });
+      } catch (err) {
+        // Preserve the existing stale-Buddy refusal convention.
+        if (err instanceof WaifuNotOwnedError || err instanceof WaifuAlreadyReleasedError) return null;
+        throw err;
+      }
+      const affectionBonus = active && award.granted > baseAmount
+        ? appliedBuddyBonus(active.bonus, { base: baseAmount, final: award.granted }) : null;
 
       return {
-        waifu: updated!,
+        waifu: award.waifu,
         xpGranted: 0,
-        affectionGranted: affDelta,
+        affectionGranted: award.granted,
         // Affection does not level a copy, so the level is unchanged and no
         // appearance sync is owed — `syncAppearances` keys off a level rise.
-        fromLevel: locked.level,
-        toLevel: locked.level,
+        fromLevel: award.waifu.level,
+        toLevel: award.waifu.level,
         newAppearances: [],
         xpBonus: null,
         affectionBonus,
+      };
+    },
+
+    async awardCopyAffection(tx, input) {
+      if (!Number.isSafeInteger(input.baseAmount) || input.baseAmount <= 0) {
+        throw new RangeError('awardCopyAffection: baseAmount must be a positive safe integer');
+      }
+      if (!Number.isFinite(input.bonusPercent) || input.bonusPercent < 0) {
+        throw new RangeError('awardCopyAffection: bonusPercent must be finite and non-negative');
+      }
+      const award = await incrementCopyAffection(tx, input);
+      return {
+        waifuId: award.waifu.id, baseAmount: input.baseAmount, granted: award.granted,
+        affectionBefore: award.affectionBefore, affectionAfter: award.waifu.affection,
       };
     },
 
