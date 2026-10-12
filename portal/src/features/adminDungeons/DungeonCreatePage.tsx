@@ -10,6 +10,7 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { useHasPermission } from '@/auth/useSession';
 import { keyFromName, starterDungeon } from './dungeonModel';
 import { DungeonIssues, errorIssues } from './zoneFormParts';
+import { ProgressionCurrencyField } from './ProgressionCurrencyField';
 export function DungeonCreatePage() {
   const navigate = useNavigate();
   const client = useQueryClient();
@@ -18,12 +19,19 @@ export function DungeonCreatePage() {
   const [key, setKey] = useState('');
   const [customKey, setCustomKey] = useState(false);
   const [regions, setRegions] = useState<string[]>([]);
+  const [progressionCurrency, setProgressionCurrency] = useState<string | null>(null);
   const reference = useQuery({
     queryKey: [...DUNGEONS_QUERY_KEY, 'reference'],
     queryFn: ({ signal }) => getDungeonReference(signal),
   });
   const create = useMutation({
-    mutationFn: () => createDungeon(starterDungeon(key, name.trim(), regions)),
+    mutationFn: () => {
+      const definition = starterDungeon(key, name.trim(), regions);
+      return createDungeon({
+        ...definition,
+        settings: { ...definition.settings, progressionCurrency },
+      });
+    },
     onSuccess: async (d) => {
       await client.invalidateQueries({ queryKey: DUNGEONS_QUERY_KEY });
       navigate(`/admin/dungeons/definitions/${encodeURIComponent(d.key)}`);
@@ -72,6 +80,12 @@ export function DungeonCreatePage() {
             }}
           />
         </label>
+        <ProgressionCurrencyField
+          value={progressionCurrency}
+          currencies={reference.data?.currencies}
+          disabled={!canWrite || create.isPending}
+          onChange={setProgressionCurrency}
+        />
         <fieldset disabled={!canWrite || create.isPending}>
           <legend>Available regions</legend>
           {reference.data?.regions.map((r) => (

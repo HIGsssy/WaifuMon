@@ -105,8 +105,14 @@ bonus. An unavailable dependency is shown as an error, not a Nothing result.
 | Baddie Shards and new-format WaifuBux | Accumulate at risk; bank when the run ends |
 | Items, equipment, Essence, affection | Granted immediately on activity success; kept after defeat/abandon |
 
-Shards means the dungeon's configured progression currency. Set that currency
-before adding Shard rewards. The dungeon's Currency Risk settings control both
+Shards means the dungeon's configured progression currency. Choose it during
+creation or in **Dungeon Settings → Progression currency**. New drafts keep the
+explicit **None** default until you select a currency; Shard rewards cannot be
+published with None or an unavailable currency. The checklist's **Dungeon
+settings** action takes you to the selector. Changing it rechecks the unsaved
+draft; Save persists it, and explicit publication changes future runs. Existing
+active runs keep their original revision and currency.
+The dungeon's Currency Risk settings control both
 at-risk currencies: extraction/completion keep 100%, defeat uses the defeat
 rate, and abandon uses its own rate. Each amount rounds down separately.
 New dungeons start with defeat **keep half**, abandon **keep nothing**. Older

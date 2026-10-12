@@ -17,6 +17,8 @@ import {
 } from '../../src/shared/errors';
 import { singleRoomDungeon, testDungeon, testDungeonInput } from '../helpers/dungeonFixtures';
 import { createDungeonWorld, type DungeonWorld } from '../helpers/dungeonWorld';
+import { createDungeonLootTableService } from '../../src/modules/dungeons/dungeonLootTableService';
+import { CURRENCY } from '../helpers/dungeonFixtures';
 
 let w: DungeonWorld;
 beforeAll(async () => {
@@ -30,6 +32,49 @@ let n = 0;
 const fresh = () => `dungeon_${++n}`;
 
 describe('drafts', () => {
+  it('repairs an existing None currency draft without changing published content or active runs', async () => {
+    const key = fresh();
+    const definition = singleRoomDungeon([{ id: 'fight', type: 'combat', waves: [{ enemy: { key: 'grunt' } }],
+      rewards: { guaranteed: [], chances: [], tables: [] } }], d => {
+      d.key = key;
+      d.settings = { progressionCurrency: null, defeatCurrencyRetentionBasisPoints: 5000, abandonCurrencyRetentionBasisPoints: 0 };
+    });
+    const created = await w.content.create({ definition, layout: { rooms: { hall: { x: 12, y: 34 } } } }, 'author');
+    const publication = await w.content.publish(key, { expectedRevision: 1 }, 'publisher');
+    const player = await w.player();
+    const start = await w.runs.start(player.playerId, key);
+    const originalRevisions = await w.t.db.select().from(dungeonRevisions).where(eq(dungeonRevisions.dungeonKey, key));
+    const originalRun = (await w.t.db.select().from(dungeonRuns).where(eq(dungeonRuns.id, start.id)))[0]!;
+    const loot = await createDungeonLootTableService({ db: w.t.db }).create({ key: `${key}_shards`, name: 'Basic run', body: {
+      guaranteed: [{ id: 'shards', grant: { type: 'currency', currency: 'shards', amount: { min: 5, max: 5 } } }], chances: [], pools: [],
+    } }, 'author');
+    const broken = structuredClone(created.draft);
+    const fight = broken.rooms[0]!.actions[0]!;
+    if (fight.type !== 'combat') throw new Error('Missing test combat');
+    fight.rewards!.tables = [{ id: 'basic', table: loot.key, draws: 1 }];
+    const attached = await w.content.saveDraft(key, { definition: broken, expectedRevision: 1 }, 'author');
+    expect(attached.issues).toContainEqual(expect.objectContaining({ code: 'reward_shards_unset', message: expect.stringContaining('Dungeon Settings') }));
+    await expect(w.content.publish(key, { expectedRevision: attached.draftRevision }, 'publisher')).rejects.toBeInstanceOf(DungeonInvalidError);
+    const repaired = { ...attached.draft, settings: { ...attached.draft.settings, progressionCurrency: CURRENCY } };
+    expect((await w.content.validate(repaired)).issues.filter(issue => issue.severity === 'error')).toEqual([]);
+    const saved = await w.content.saveDraft(key, { definition: repaired, expectedRevision: attached.draftRevision }, 'author');
+    const reloaded = (await w.content.get(key))!;
+    expect(reloaded.draft).toEqual(repaired);
+    expect(reloaded.layout).toEqual(created.layout);
+    expect(reloaded.draft.rooms).toEqual(attached.draft.rooms);
+    expect(reloaded.draft.settings).toEqual({ ...definition.settings, progressionCurrency: CURRENCY });
+    expect(reloaded.issues.filter(issue => issue.code === 'reward_shards_unset')).toEqual([]);
+    expect(reloaded.published?.revisionId).toBe(publication.revision.revisionId);
+    expect(await w.t.db.select().from(dungeonRevisions).where(eq(dungeonRevisions.dungeonKey, key))).toEqual(originalRevisions);
+    const next = await w.content.publish(key, { expectedRevision: saved.draftRevision }, 'publisher');
+    expect(next.revision.number).toBe(2);
+    const current = await w.content.published(w.t.db, key);
+    if (typeof current === 'string') throw new Error('Missing published dungeon');
+    expect(current.definition.settings.progressionCurrency).toBe(CURRENCY);
+    expect((await w.content.revision(key, 1))!.content.settings.progressionCurrency).toBeNull();
+    expect((await w.t.db.select().from(dungeonRuns).where(eq(dungeonRuns.id, start.id)))[0]).toEqual(originalRun);
+  });
+
   it('creates an unpublished draft that players cannot see', async () => {
     const key = fresh();
     const created = await w.content.create({ definition: testDungeonInput(key), layout: { rooms: { gate: { x: 1, y: 2 } } } }, 'admin-1');

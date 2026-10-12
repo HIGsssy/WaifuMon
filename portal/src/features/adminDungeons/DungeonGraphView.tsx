@@ -217,6 +217,15 @@ export function DungeonGraphView({
   const [notice, setNotice] = useState('');
   const flow = useRef<ReactFlowInstance<RoomNode, Edge> | null>(null);
   const inspector = useRef<HTMLElement>(null);
+  const [currencyFocus, setCurrencyFocus] = useState(0);
+  useEffect(() => {
+    if (!currencyFocus) return;
+    const field = inspector.current?.querySelector<HTMLSelectElement>(
+      '[aria-label="Progression currency"]',
+    );
+    field?.focus();
+    field?.scrollIntoView?.({ block: 'nearest' });
+  }, [currencyFocus]);
   useEffect(() => {
     if (problemsRequest) setOutlineOpen(true);
   }, [problemsRequest]);
@@ -493,15 +502,21 @@ export function DungeonGraphView({
                         {f.title}
                       </span>{' '}
                       <span className="text-ink-muted">{f.help}</span>
-                      {f.target && (
+                      {(f.target || f.settingsField) && (
                         <Button
                           variant="link"
                           size="sm"
                           className="block h-auto px-0 sm:h-auto"
                           aria-label={`Show me: ${f.title}`}
-                          onClick={() => locate(f.target!, f.actionId)}
+                          onClick={() => {
+                            if (f.settingsField) {
+                              setSelection(null);
+                              setFocusAction(null);
+                              setCurrencyFocus((n) => n + 1);
+                            } else locate(f.target!, f.actionId);
+                          }}
                         >
-                          Show me
+                          {f.settingsField ? 'Dungeon settings' : 'Show me'}
                         </Button>
                       )}
                     </li>

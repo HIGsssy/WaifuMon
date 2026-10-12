@@ -158,6 +158,12 @@ export function bundleIssueText(
   const within = /\.rewards\.(guaranteed|chances|tables)\[(\d+)\](\.body\b)?/.exec(issue.path);
   const list = within?.[1] as 'guaranteed' | 'chances' | 'tables' | undefined;
   const index = Number(within?.[2]);
+  if (issue.code === 'reward_shards_unset')
+    return {
+      at: list ? (bundle[list][index]?.id ?? null) : null,
+      subject: '',
+      text: 'This dungeon needs an available progression currency to pay Baddie Shards. Choose one in Dungeon Settings.',
+    };
   // The server's sentence, without the label that quotes room, activity and entry ids.
   const rest = issue.message
     .replace(

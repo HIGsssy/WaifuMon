@@ -181,9 +181,12 @@ export interface FriendlyIssue {
   level: 'finish' | 'fix' | 'review';
   title: string;
   help: string;
+  /** Map context for inline issues; settingsField overrides the repair navigation. */
   target: MapSelection;
   /** The activity inside the target room, when the issue belongs to one. */
   actionId: string | null;
+  /** A dungeon-level repair rather than a room or path repair. */
+  settingsField?: 'progressionCurrency';
 }
 
 const quoted = (message: string) => /"([^"]*)"/.exec(message)?.[1] ?? '';
@@ -225,6 +228,16 @@ export function friendlyIssue(
 
   let title: string;
   let help = '';
+  if (issue.code === 'reward_shards_unset')
+    return {
+      issue,
+      level: issue.severity === 'error' ? 'fix' : 'review',
+      title: 'Dungeon progression currency needs attention.',
+      help: 'Choose an available progression currency in Dungeon Settings so this dungeon can pay Baddie Shards.',
+      target: room ? { kind: 'room', id: room.id } : null,
+      actionId: action?.id ?? null,
+      settingsField: 'progressionCurrency',
+    };
   // A problem with one of an activity's new-format rewards: say which reward, in words.
   const bundle = issue.path.includes('.rewards') ? action?.rewards : undefined;
   if (bundle && issue.code !== 'reward_empty') {

@@ -663,7 +663,7 @@ describe('validation, legacy treasure and saving', () => {
       'Fix: This item no longer exists. Pick another item.',
     );
     expect(row('40–60 Baddie Shards')).toHaveTextContent(
-      'Fix: This dungeon has no Baddie Shard currency set, so it cannot pay Shards.',
+      'Fix: This dungeon needs an available progression currency to pay Baddie Shards. Choose one in Dungeon Settings.',
     );
     expect(group('chances').getByTestId('chance-row')).toHaveTextContent(
       'Fix: No gear matches “N Health gear”. Loosen the choice.',

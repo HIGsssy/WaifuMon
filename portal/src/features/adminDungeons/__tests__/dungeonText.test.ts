@@ -12,7 +12,6 @@ const codes = [
   'reward_table_missing',
   'reward_table_archived',
   'reward_table_invalid',
-  'reward_shards_unset',
   'reward_too_much_gear',
   'reward_too_many_draws',
   'reward_affection_too_large',
@@ -21,6 +20,28 @@ const codes = [
   'reward_legacy_mixed',
 ];
 describe('friendly reward validation messages', () => {
+  it.each(['guaranteed[0].grant', 'tables[0].body.guaranteed[0].grant'])(
+    'directs missing Shard currency at %s to dungeon settings',
+    (path) => {
+      const friendly = friendlyIssue(
+        {
+          code: 'reward_shards_unset',
+          severity: 'error',
+          path: `rooms[0].actions[0].rewards.${path}`,
+          message: 'This dungeon has no progression currency set.',
+        },
+        definition,
+      );
+      expect(friendly).toMatchObject({
+        level: 'fix',
+        target: { kind: 'room', id: definition.rooms[0]!.id },
+        actionId: null,
+        settingsField: 'progressionCurrency',
+      });
+      expect(friendly.help).toContain('Dungeon Settings');
+      expect(friendly.help).not.toContain('Open the table');
+    },
+  );
   it.each(codes)('renders %s as author-facing text with a room target', (code) => {
     const room = definition.rooms[0]!;
     const issue: DungeonIssue = {

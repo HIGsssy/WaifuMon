@@ -16,6 +16,7 @@ import { RunFlagsEditor } from './RunFlagsEditor';
 import { friendlyIssue, incompleteIssues } from './dungeonText';
 import { DungeonBackgroundField } from './DungeonBackgroundField';
 import { CurrencyRiskSettings } from './CurrencyRiskSettings';
+import { ProgressionCurrencyField } from './ProgressionCurrencyField';
 import { TreasureConversionDialog } from './TreasureConversionDialog';
 import { TreasureConversionContext } from './treasureConversionContext';
 import {
@@ -246,7 +247,7 @@ function Management({ initial }: { initial: api.DungeonDetail }) {
   const issues = incomplete.length ? incomplete : serverIssues;
   const blocksPublish = issues.some((i) => i.severity === 'error');
   useEffect(() => {
-    if (!gameplayDirty || conflict || incomplete.length) return;
+    if (!gameplayDirty || conflict || incomplete.length || report) return;
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
       void check(draft, controller.signal).catch((error) => {
@@ -260,7 +261,7 @@ function Management({ initial }: { initial: api.DungeonDetail }) {
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [draft, gameplayDirty, conflict, incomplete.length]);
+  }, [draft, gameplayDirty, conflict, incomplete.length, report]);
   /**
    * A shared loot table was saved beside the dungeon. Everything checked
    * against the old table is stale: the reference names, the checklist and the
@@ -316,8 +317,24 @@ function Management({ initial }: { initial: api.DungeonDetail }) {
       </section>
       <section className="space-y-3">
         <h2 className="text-sm font-semibold">Dungeon settings</h2>
-        <p className="text-sm text-ink-muted">
-          Progression currency: {draft.settings.progressionCurrency ?? 'None'}
+        <ProgressionCurrencyField
+          value={draft.settings.progressionCurrency}
+          currencies={reference.data?.currencies}
+          disabled={!canWrite || busy || conflict}
+          onChange={(progressionCurrency) => {
+            const next = { ...draft, settings: { ...draft.settings, progressionCurrency } };
+            setDraft(next);
+            setNotice('');
+            void check(next).catch((error) =>
+              setNotice(
+                `Validation failed: ${error instanceof Error ? error.message : 'Request failed'}`,
+              ),
+            );
+          }}
+        />
+        <p className="text-xs text-ink-muted">
+          Save to keep this setting in the draft. Future runs use the change after you publish
+          again; active runs keep their original currency.
         </p>
         <label className="block">
           Name

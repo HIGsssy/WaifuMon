@@ -108,14 +108,14 @@ function checkGrant(
         issues,
         'reward_shards_unset',
         path,
-        `${label}: this dungeon has no Baddie Shard currency set, so it cannot pay Shards.`,
+        `${label}: this dungeon has no progression currency set, so it cannot pay Baddie Shards. Choose an available progression currency in Dungeon Settings.`,
       );
     else if (ctx.currencies && !ctx.currencies.get(currencyKey)?.enabled)
       add(
         issues,
         'reward_shards_unset',
         path,
-        `${label}: the configured Baddie Shard currency "${currencyKey}" is missing or disabled. Choose an available progression currency.`,
+        `${label}: the configured Baddie Shard currency "${currencyKey}" is missing or disabled. Choose an available progression currency in Dungeon Settings.`,
       );
   }
 }

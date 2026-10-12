@@ -194,7 +194,9 @@ describe('T5 reward dependency and work validation', () => {
             : new Map([[CURRENCY, { enabled: state !== 'disabled' }]]),
         lootTables: new Map([['hoard', { name: 'Hoard', archivedAt: null, body: table(shards) }]]),
       });
-      expect(rewards(d, ctx).filter((i) => i.code === 'reward_shards_unset')).toHaveLength(2);
+      const issues = rewards(d, ctx).filter((i) => i.code === 'reward_shards_unset');
+      expect(issues).toHaveLength(2);
+      expect(issues.every((issue) => issue.message.includes('in Dungeon Settings'))).toBe(true);
     },
   );
   it('counts repeated whole-table draws and every pool pick for equipment', () => {

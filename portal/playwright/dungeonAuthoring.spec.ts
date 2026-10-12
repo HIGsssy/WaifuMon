@@ -317,6 +317,14 @@ async function openWithLoot(
   const catalogue = {
     reference: () => ({
       items: ITEMS,
+      currencies: [
+        {
+          key: 'ascension_currency',
+          singularName: 'Baddie Shard',
+          pluralName: 'Baddie Shards',
+          enabled: true,
+        },
+      ],
       lootTables: tables.map((t) => ({
         key: t.key,
         name: t.name,
@@ -325,7 +333,10 @@ async function openWithLoot(
         contentHash: t.contentHash,
       })),
     }),
-    context: () => rewardContext(tables),
+    context: async () => ({
+      ...(await rewardContext(tables)),
+      currencies: new Map([['ascension_currency', { enabled: true }]]),
+    }),
     tables: () =>
       tables.map((t) => ({
         key: t.key,
@@ -488,17 +499,43 @@ test('a reward the dungeon cannot pay is explained in words and blocks publishin
   await page.getByLabel('Amount', { exact: true }).fill('40');
   await page.getByRole('button', { name: 'Add reward', exact: true }).click();
   await expect(rewards.getByTestId('guaranteed-row')).toContainText(
-    'Fix: This dungeon has no Baddie Shard currency set, so it cannot pay Shards.',
+    'Fix: This dungeon needs an available progression currency to pay Baddie Shards. Choose one in Dungeon Settings.',
   );
   const todo = page.getByRole('navigation', { name: 'Dungeon outline' });
-  await expect(todo).toContainText('Boss: “40 Baddie Shards” in the boss fight needs attention.');
+  await expect(todo).toContainText('Dungeon progression currency needs attention.');
   await expect(todo).not.toContainText(/rooms\[|reward_shards|g_[0-9a-f]{8}/);
   await expect(page.getByRole('button', { name: 'Publish draft', exact: true })).toBeDisabled();
-  // The draft can still be saved, so the author can come back to it.
+  // The invalid draft can still be saved and reopened for repair.
   await page.getByRole('button', { name: 'Save draft', exact: true }).click();
   await expect(page.getByText('Draft saved. Publication is unchanged.')).toBeVisible();
   expect(backend.saves).toBe(1);
   await expect(page.getByRole('button', { name: 'Publish draft', exact: true })).toBeDisabled();
+  // Repair the dungeon setting without losing the boss or its rewards.
+  await todo
+    .getByRole('button', { name: 'Show me: Dungeon progression currency needs attention.' })
+    .click();
+  const currency = page.getByLabel('Progression currency', { exact: true });
+  await expect(currency).toBeFocused();
+  await currency.selectOption('ascension_currency');
+  await expect(todo).not.toContainText('Dungeon progression currency needs attention.');
+  await page.getByRole('button', { name: 'Save draft', exact: true }).click();
+  await expect(page.getByText('Draft saved. Publication is unchanged.')).toBeVisible();
+  expect(backend.detail.draft.settings.progressionCurrency).toBe('ascension_currency');
+  expect(
+    backend.detail.draft.rooms.find((room) => room.name === 'Boss')!.actions[0]!.rewards!
+      .guaranteed[0]!.grant,
+  ).toEqual({
+    type: 'currency',
+    currency: 'shards',
+    amount: { min: 40, max: 40 },
+  });
+  expect(backend.publishes).toBe(0);
+  await page.reload();
+  await expect(page.getByLabel('Progression currency', { exact: true })).toHaveValue(
+    'ascension_currency',
+  );
+  expect(backend.saves).toBe(2);
+  await expect(page.getByRole('button', { name: 'Publish draft', exact: true })).toBeEnabled();
 });
 
 test('a long reward list stays usable and does not overflow at any width', async ({ page }) => {
