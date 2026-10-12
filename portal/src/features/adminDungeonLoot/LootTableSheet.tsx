@@ -3,7 +3,7 @@
  * can inspect or retune shared loot without leaving their dungeon. The dungeon
  * draft behind it is untouched; the table saves on its own.
  */
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
 import { LootTableEditor } from './LootTableEditorPage';
 
@@ -13,18 +13,26 @@ export function LootTableSheet({
   tableKey,
   onClose,
   onDirtyChange,
+  onSaved,
 }: {
   tableKey: string;
   onClose: () => void;
   /** Lets the host protect unsaved table edits the way it protects its own. */
   onDirtyChange: (dirty: boolean) => void;
+  /** The table was saved, so anything the host checked against it needs checking again. */
+  onSaved?: () => void;
 }) {
+  const saved = useRef(onSaved);
+  useEffect(() => {
+    saved.current = onSaved;
+  }, [onSaved]);
   const [dirty, setDirty] = useState(false);
   const [embedded] = useState(() => ({
     onDirtyChange: (next: boolean) => {
       setDirty(next);
       onDirtyChange(next);
     },
+    onSaved: () => saved.current?.(),
   }));
   const close = () => {
     if (dirty && !window.confirm(DISCARD_TABLE_EDITS)) return;

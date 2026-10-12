@@ -141,6 +141,7 @@ describe('Phase 1B.1 dungeon management', () => {
     renderAt(undefined, ['dungeons.read', 'dungeons.publish']);
     expect(await screen.findByLabelText('Dungeon name')).toBeDisabled();
     await user.click(screen.getByRole('button', { name: 'Publish draft' }));
+    await user.click(await screen.findByRole('button', { name: 'Publish now' }));
     expect(await screen.findByText('Published revision 3.')).toBeInTheDocument();
     expect(api.publishDungeon).toHaveBeenCalledWith('tunnels', 4);
   });
@@ -157,6 +158,7 @@ describe('Phase 1B.1 dungeon management', () => {
     renderAt();
     await screen.findByLabelText('Dungeon name');
     await user.click(screen.getByRole('button', { name: 'Publish draft' }));
+    await user.click(await screen.findByRole('button', { name: 'Publish now' }));
     expect(await screen.findByText('Cannot publish')).toBeInTheDocument();
     expect(screen.getByText(/wave 1 uses an enemy that no longer exists/)).toBeInTheDocument();
   });

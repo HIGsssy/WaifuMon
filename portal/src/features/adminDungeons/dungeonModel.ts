@@ -1,4 +1,5 @@
 import type { DungeonDefinition } from '@/api/adminDungeons';
+import { NEW_DUNGEON_RISK } from './dungeonRiskModel';
 export function keyFromName(name: string): string {
   return name
     .toLowerCase()
@@ -22,7 +23,8 @@ export function starterDungeon(
     entranceRoomId: 'entrance',
     artwork: null,
     background: null,
-    settings: { progressionCurrency: null, defeatCurrencyRetentionBasisPoints: 0 },
+    // Written out so a new dungeon's risk does not depend on the schema's defaults.
+    settings: { progressionCurrency: null, ...NEW_DUNGEON_RISK },
     flags: [],
     rooms: [{ id: 'entrance', name: 'Entrance', extraction: true, actions: [] }],
     connections: [],

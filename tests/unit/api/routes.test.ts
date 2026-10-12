@@ -1017,6 +1017,12 @@ describe('OpenAPI registration', () => {
       'POST /api/v1/admin/dungeons/definitions',
       'POST /api/v1/admin/dungeons/import/apply',
       'POST /api/v1/admin/dungeons/import/plan',
+      // Legacy treasure conversion (Phase 2 T15B). `plan` writes nothing but
+      // carries a body; `apply` creates the converted loot tables and rewrites
+      // the draft in one transaction, guarded by the draft revision and the
+      // plan hash. Both need `dungeons.write`. Neither publishes.
+      'POST /api/v1/admin/dungeons/definitions/{key}/treasure-conversion/apply',
+      'POST /api/v1/admin/dungeons/definitions/{key}/treasure-conversion/plan',
       'POST /api/v1/admin/dungeons/definitions/{key}/publish',
       'POST /api/v1/admin/dungeons/definitions/{key}/rollback',
       'POST /api/v1/admin/dungeons/package/inspect',

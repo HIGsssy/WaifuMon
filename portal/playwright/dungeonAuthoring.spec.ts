@@ -5,7 +5,7 @@
  */
 import { expect, test, type Page } from '@playwright/test';
 import { starterDungeon } from '../src/features/adminDungeons/dungeonModel';
-import { serveDungeon, validate } from './dungeonBackend';
+import { serveDungeon, validate, type LegacyRewardTable } from './dungeonBackend';
 import { ITEMS, lootTable, rewardContext, serveLoot } from './dungeonLootBackend';
 import { stubApi } from './stubApi';
 
@@ -139,6 +139,10 @@ for (const viewport of [
     // Publishing is its own explicit step.
     expect(backend.publishes).toBe(0);
     await page.getByRole('button', { name: 'Publish draft', exact: true }).click();
+    await expect(page.getByTestId('publish-explanation')).toHaveText(
+      'This is the first publication of this dungeon.',
+    );
+    await page.getByRole('button', { name: 'Publish now', exact: true }).click();
     await expect(page.getByText('Published revision 1.')).toBeVisible();
     expect(backend.publishes).toBe(1);
   });
@@ -301,12 +305,14 @@ const HOARD = {
 async function openWithLoot(
   page: Page,
   definition = starterDungeon('usability', 'Service Tunnels', ['waifu-valley']),
+  hoard: typeof HOARD = HOARD,
+  legacyTables: Record<string, LegacyRewardTable> = {},
 ) {
   await stubApi(page, {
     session: { permissions: ['dungeons.read', 'dungeons.write', 'dungeons.publish'] },
   });
   const tables = [
-    await lootTable('scrapheap_boss_hoard', 'Scrapheap Boss Hoard', HOARD, { tier: 'boss' }),
+    await lootTable('scrapheap_boss_hoard', 'Scrapheap Boss Hoard', hoard, { tier: 'boss' }),
   ];
   const catalogue = {
     reference: () => ({
@@ -320,8 +326,24 @@ async function openWithLoot(
       })),
     }),
     context: () => rewardContext(tables),
+    tables: () =>
+      tables.map((t) => ({
+        key: t.key,
+        name: t.name,
+        archived: t.archivedAt !== null,
+        body: t.body,
+        origin: t.origin,
+      })),
+    create: async (table: { key: string; name: string; description: string; body: unknown }) => {
+      tables.push(
+        await lootTable(table.key, table.name, table.body as typeof HOARD, {
+          description: table.description,
+          origin: 'converted',
+        }),
+      );
+    },
   };
-  const backend = await serveDungeon(page, definition, undefined, catalogue);
+  const backend = await serveDungeon(page, definition, undefined, catalogue, legacyTables);
   const loot = await serveLoot(page, tables, {}, 'loot-tables');
   await page.goto('/admin/dungeons/definitions/usability');
   return { backend, loot, catalogue };
@@ -373,9 +395,9 @@ test('an author gives a boss guaranteed loot, a chance drop and a shared loot ta
     '500 WaifuBux · 25% 1 Velvet Charm · Scrapheap Boss Hoard ×2',
   );
   await expect(rewards.getByTestId('risk-chip')).toHaveText(['At risk', 'Kept', 'Kept']);
-  // This dungeon keeps nothing on defeat, and the explanation says so.
+  // A new dungeon keeps half on defeat and nothing on abandoning, and the explanation says so.
   await expect(rewards.getByTestId('risk-explanation')).toContainText(
-    'the player keeps 0% on defeat and 0% on abandoning',
+    'the player keeps 50% on defeat and 0% on abandoning',
   );
   // Exact odds for the whole bundle, the shared table included, from the server's analyser.
   await expect(rewards.getByTestId('odds-summary')).toHaveText(
@@ -559,4 +581,462 @@ test('a long reward list stays usable and does not overflow at any width', async
   expect(widest).toBeLessThanOrEqual(1);
   if (SHOTS)
     await page.screenshot({ path: `${SHOTS}/rewards-long-${page.viewportSize()!.width}.png` });
+});
+
+// ── Currency risk, loot changes and validation refresh (Phase 2, T15A) ─────
+
+const noSidewaysScroll = async (page: Page) =>
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    ),
+  ).toBeLessThanOrEqual(1);
+
+test('currency risk is set in plain percentages at any width', async ({ page }) => {
+  const backend = await open(page);
+  // A new dungeon starts with both rates written out.
+  expect(backend.detail.draft.settings).toEqual({
+    progressionCurrency: null,
+    defeatCurrencyRetentionBasisPoints: 5000,
+    abandonCurrencyRetentionBasisPoints: 0,
+  });
+  const risk = page.getByTestId('currency-risk');
+  await risk.scrollIntoViewIfNeeded();
+  const defeat = risk.getByLabel('If the player is defeated', { exact: true });
+  const abandon = risk.getByLabel('If the player abandons the run', { exact: true });
+  await expect(defeat.locator('option:checked')).toHaveText('Keep half (50%)');
+  await expect(abandon.locator('option:checked')).toHaveText('Keep nothing (0%)');
+  await expect(risk.getByTestId('risk-explanation')).toContainText(
+    'Finishing the dungeon or extracting always keeps 100%.',
+  );
+  await expect(risk).not.toContainText(/basis|5000/i);
+
+  await abandon.selectOption({ label: 'Keep everything (100%)' });
+  await expect(risk.getByTestId('risk-warning')).toContainText(
+    'Abandoning keeps more than being defeated',
+  );
+  await risk.getByRole('button', { name: /Advanced: custom percentages/ }).click();
+  await risk.getByLabel('Kept on defeat', { exact: true }).fill('62.5');
+  await expect(defeat.locator('option:checked')).toHaveText('Custom: Keep 62.5%');
+  await expect(risk.getByTestId('risk-explanation')).toContainText('Being defeated keeps 62.5%.');
+  await noSidewaysScroll(page);
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/risk-${page.viewportSize()!.width}.png` });
+
+  // The warning is advice: the draft still saves.
+  await page.getByRole('button', { name: 'Save draft', exact: true }).click();
+  await expect(page.getByText('Draft saved. Publication is unchanged.')).toBeVisible();
+  expect(backend.detail.draft.settings).toEqual({
+    progressionCurrency: null,
+    defeatCurrencyRetentionBasisPoints: 6250,
+    abandonCurrencyRetentionBasisPoints: 10000,
+  });
+});
+
+test('an older dungeon keeps abandoning tied to defeat until the author changes it', async ({
+  page,
+  isMobile,
+}) => {
+  desktopOnly(isMobile);
+  const definition = starterDungeon('usability', 'Service Tunnels', ['waifu-valley']);
+  definition.settings = { progressionCurrency: null, defeatCurrencyRetentionBasisPoints: 2500 };
+  const { backend } = await openWithLoot(page, definition);
+  const risk = page.getByTestId('currency-risk');
+  await expect(
+    risk.getByLabel('If the player abandons the run', { exact: true }).locator('option:checked'),
+  ).toHaveText('Same as defeat: Keep 25%');
+  await expect(risk.getByTestId('risk-abandon-fallback')).toContainText('keeps: 25%');
+  await page.getByLabel('Dungeon description').fill('Dusty.');
+  await page.getByRole('button', { name: 'Save draft', exact: true }).click();
+  await expect(page.getByText('Draft saved. Publication is unchanged.')).toBeVisible();
+  expect(backend.detail.draft.description).toBe('Dusty.');
+  expect(backend.detail.draft.settings).toEqual({
+    progressionCurrency: null,
+    defeatCurrencyRetentionBasisPoints: 2500,
+  });
+  expect('abandonCurrencyRetentionBasisPoints' in backend.detail.draft.settings).toBe(false);
+});
+
+test('repairing and retuning a shared loot table refreshes the checklist and shows Loot changed', async ({
+  page,
+  isMobile,
+}) => {
+  desktopOnly(isMobile);
+  await page.setViewportSize({ width: 1366, height: 768 });
+  const definition = starterDungeon('usability', 'Service Tunnels', ['waifu-valley']);
+  definition.rooms.push(
+    {
+      id: 'r_boss',
+      name: 'Boss',
+      kind: 'room',
+      extraction: false,
+      actions: [
+        {
+          id: 'a_boss',
+          type: 'boss',
+          label: '',
+          optional: false,
+          outcomes: {},
+          advance: 'confirm',
+          waves: [{ enemy: { key: 'warden' } }],
+          rewards: {
+            guaranteed: [],
+            chances: [],
+            tables: [{ id: 't_1', table: 'scrapheap_boss_hoard', draws: 1 }],
+          },
+        },
+      ],
+    },
+    { id: 'r_exit', name: 'Exit', kind: 'exit', extraction: false, actions: [] },
+  );
+  definition.connections.push(
+    { id: 'c_1', from: 'entrance', to: 'r_boss' },
+    { id: 'c_2', from: 'r_boss', to: 'r_exit' },
+  );
+  // The shared table holds a disabled item, which no dungeon can publish.
+  const { backend, loot } = await openWithLoot(page, definition, {
+    ...HOARD,
+    guaranteed: [
+      ...HOARD.guaranteed,
+      { id: 'token', grant: { type: 'item', item: 'old_token', quantity: { min: 1, max: 1 } } },
+    ],
+  });
+  const publish = page.getByRole('button', { name: 'Publish draft', exact: true });
+  const status = page.getByTestId('publication-state');
+  const checklist = (text: string) =>
+    page.getByRole('button', { name: `Checklist: ${text}. Show it`, exact: true });
+  const sheet = page.getByTestId('loot-table-sheet');
+  /** Opens the boss's table beside the dungeon, removes one reward, saves it and closes. */
+  const retune = async (reward: RegExp) => {
+    await page.getByRole('button', { name: 'Select room Boss', exact: true }).click();
+    await page
+      .getByRole('button', { name: 'Open table Scrapheap Boss Hoard', exact: true })
+      .click();
+    await sheet.getByRole('button', { name: reward }).click();
+    await sheet.getByRole('button', { name: 'Save table', exact: true }).click();
+    await expect(sheet.getByText(/^Saved\./)).toBeVisible();
+    await page.getByRole('button', { name: 'Close loot table', exact: true }).click();
+    await expect(sheet).toHaveCount(0);
+  };
+
+  await expect(checklist('1 to fix')).toBeVisible();
+  await expect(publish).toBeDisabled();
+  await expect(status).toHaveText('Not published yet');
+
+  // Fixing the table is enough: the dungeon is checked again with no dungeon edit and no save.
+  await retune(/^Remove .*Old Token/);
+  await expect(checklist('Nothing to fix')).toBeVisible();
+  expect(loot.saves).toBe(1);
+  expect(backend.saves).toBe(0);
+  await expect(page.getByRole('button', { name: 'Save draft', exact: true })).toBeDisabled();
+  // The author is still on the boss they were editing.
+  await expect(page.getByLabel('Wave 1 enemy', { exact: true })).toHaveValue('warden');
+
+  await publish.click();
+  await expect(page.getByTestId('publish-explanation')).toHaveText(
+    'This is the first publication of this dungeon.',
+  );
+  await page.getByRole('button', { name: 'Publish now', exact: true }).click();
+  await expect(page.getByText('Published revision 1.')).toBeVisible();
+  await expect(status).toHaveText('Matches publication');
+
+  // Retuning the shared table afterwards changes the loot, not the dungeon, and publishes nothing.
+  await retune(/^Remove .*Bent Gear/);
+  await expect(status).toHaveText('Loot changed');
+  expect(backend.publishes).toBe(1);
+  await page.getByRole('button', { name: 'Show dungeon settings', exact: true }).click();
+  const details = page.getByTestId('publication-details');
+  await expect(details).toContainText(
+    'Loot table “Scrapheap Boss Hoard” gives different rewards now.',
+  );
+  await expect(details).not.toContainText(/sha256|scrapheap_boss_hoard/);
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/loot-changed.png` });
+
+  await publish.click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByTestId('publish-explanation')).toHaveText(
+    'The dungeon itself has not changed. This publishes changes to the loot it uses:',
+  );
+  await expect(dialog).toContainText(
+    'Loot table “Scrapheap Boss Hoard” gives different rewards now.',
+  );
+  await expect(dialog).toContainText('freezes it into a new revision that never changes');
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/publish-confirm.png` });
+  await dialog.getByRole('button', { name: 'Publish now', exact: true }).click();
+  await expect(page.getByText('Published revision 2.')).toBeVisible();
+  await expect(status).toHaveText('Matches publication');
+
+  // An unsaved dungeon edit survives a table save, and is what gets checked.
+  await page.getByLabel('Dungeon description').fill('Half finished.');
+  await retune(/^Remove .*Essence/);
+  await expect(status).toHaveText('Dungeon and loot changed');
+  await page.getByRole('button', { name: 'Show dungeon settings', exact: true }).click();
+  await expect(page.getByLabel('Dungeon description')).toHaveValue('Half finished.');
+  await expect(page.getByRole('button', { name: 'Save draft', exact: true })).toBeEnabled();
+  expect(backend.saves).toBe(0);
+  expect(backend.publishes).toBe(2);
+});
+
+// ── Legacy treasure conversion and Reward Health (Phase 2, T15B) ───────────
+
+const TUNNEL_LOOT = {
+  id: 'tunnel_loot',
+  enabled: true,
+  waifubux: { min: 20, max: 40 },
+  essence: { min: 5, max: 10 },
+  waifuXp: 0,
+  playerXp: 30,
+  groups: [
+    {
+      id: 'salvage',
+      enabled: true,
+      rolls: 2,
+      chanceBasisPoints: 2500,
+      entries: [{ itemId: 'bent_gear', weight: 3, quantity: 2, enabled: true }],
+      equipment: [{ rarity: 'R', weight: 1, enabled: true }],
+    },
+    {
+      id: 'bonus',
+      enabled: false,
+      rolls: 1,
+      chanceBasisPoints: 10000,
+      entries: [{ itemId: 'velvet_charm', weight: 1, quantity: 1, enabled: true }],
+    },
+  ],
+};
+
+test('an author previews, cancels, then converts a legacy treasure and keeps editing it', async ({
+  page,
+  isMobile,
+}) => {
+  desktopOnly(isMobile);
+  await page.setViewportSize({ width: 1366, height: 768 });
+  const definition = starterDungeon('usability', 'Service Tunnels', ['waifu-valley']);
+  definition.rooms.push(
+    {
+      id: 'r_vault',
+      name: 'Vault',
+      kind: 'room',
+      extraction: false,
+      actions: [
+        {
+          id: 'a_chest',
+          type: 'reward',
+          label: '',
+          optional: false,
+          outcomes: {},
+          reward: {
+            rewardTable: 'tunnel_loot',
+            equipmentRewardTable: null,
+            currency: { min: 0, max: 0 },
+          },
+        },
+      ],
+    },
+    { id: 'r_exit', name: 'Exit', kind: 'exit', extraction: false, actions: [] },
+  );
+  definition.connections.push(
+    { id: 'c_1', from: 'entrance', to: 'r_vault' },
+    { id: 'c_2', from: 'r_vault', to: 'r_exit' },
+  );
+  const { backend, loot } = await openWithLoot(page, definition, HOARD, {
+    tunnel_loot: { enabled: true, definition: TUNNEL_LOOT },
+  });
+  await page.getByRole('button', { name: 'Select room Vault', exact: true }).click();
+  const convert = page.getByRole('button', { name: 'Convert to Dungeon Rewards', exact: true });
+  const preview = page.getByTestId('treasure-conversion');
+  await expect(page.getByTestId('legacy-treasure-note')).toBeVisible();
+
+  // The preview, built by the server's own converter.
+  await convert.click();
+  await expect(preview.getByTestId('conversion-legacy')).toContainText('Reward table: tunnel_loot');
+  await expect(preview.getByTestId('conversion-result')).toContainText(
+    'Loot table “tunnel_loot (converted)”, rolled once',
+  );
+  const table = preview.getByTestId('conversion-tables');
+  await expect(table).toContainText('New: “tunnel_loot (converted)”');
+  await expect(table).toContainText('Always: 20–40 WaifuBux');
+  // 25% of a 3 : 1 pick, twice, with nothing the rest of the time.
+  await expect(table).toContainText(
+    '“salvage”, picked twice: 18.8% 2 Bent Gear · 6.25% R gear · 75% nothing',
+  );
+  await expect(preview.getByTestId('conversion-never-paid')).toContainText('5–10 Essence');
+  await expect(preview.getByTestId('conversion-never-paid')).toContainText('30 player XP');
+  await expect(preview.getByTestId('conversion-switched-off')).toContainText(
+    'Group "bonus" is switched off.',
+  );
+  const warnings = preview.getByTestId('conversion-warnings');
+  await expect(warnings).toContainText('are at risk until the player extracts or completes');
+  await expect(warnings).toContainText(
+    'a defeated player keeps 50% and a player who abandons keeps 0%',
+  );
+  await expect(warnings).toContainText('will not get the same loot it would have got before');
+  await expect(warnings).toContainText('until you publish this dungeon again');
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/conversion-preview.png` });
+
+  // Cancelling changes nothing anywhere.
+  await preview.getByRole('button', { name: 'Cancel, keep it as it is', exact: true }).click();
+  await expect(preview).toHaveCount(0);
+  expect(backend.conversions).toBe(0);
+  expect(loot.tables.map((t) => t.key)).toEqual(['scrapheap_boss_hoard']);
+  await expect(page.getByLabel('Reward table', { exact: true })).toHaveValue('tunnel_loot');
+
+  // With unsaved changes the conversion waits for a save, and says why.
+  await page.getByLabel('Room description').fill('An old strongbox.');
+  await expect(convert).toBeDisabled();
+  await expect(page.getByTestId('convert-treasure')).toContainText('Save your draft first.');
+  await page.getByRole('button', { name: 'Save draft', exact: true }).click();
+  await expect(page.getByText('Draft saved. Publication is unchanged.')).toBeVisible();
+
+  await convert.click();
+  await preview.getByRole('button', { name: 'Convert this treasure', exact: true }).click();
+  await expect(
+    page.getByText('Treasure converted, with 1 new loot table. Publication is unchanged.'),
+  ).toBeVisible();
+  expect(backend.conversions).toBe(1);
+  expect(backend.publishes).toBe(0);
+  expect(loot.tables.map((t) => [t.key, t.origin])).toEqual([
+    ['scrapheap_boss_hoard', 'portal'],
+    ['converted_tunnel_loot', 'converted'],
+  ]);
+  const stored = backend.detail.draft.rooms.find((r) => r.id === 'r_vault')!.actions[0]!;
+  expect(stored.reward).toBeUndefined();
+  expect(stored.rewards).toEqual({
+    guaranteed: [],
+    chances: [],
+    tables: [{ id: 't_1', table: 'converted_tunnel_loot', draws: 1 }],
+  });
+  // The earlier edit is still there, and the author is on the same treasure.
+  expect(backend.detail.draft.rooms.find((r) => r.id === 'r_vault')!.description).toBe(
+    'An old strongbox.',
+  );
+  await expect(page.getByTestId('publication-state')).toHaveText('Not published yet');
+
+  // It is now an ordinary Rewards section: the table opens beside it, the odds are real, and it edits.
+  const rewards = page.getByTestId('activity-rewards');
+  await expect(page.getByTestId('legacy-treasure-note')).toHaveCount(0);
+  await expect(rewards.getByTestId('table-row')).toContainText('tunnel_loot (converted)');
+  await expect(rewards.getByTestId('odds-summary')).toContainText('On average:');
+  await rewards.getByLabel('Times tunnel_loot (converted) is rolled').selectOption('2');
+  await page.getByRole('button', { name: 'Save draft', exact: true }).click();
+  await expect(page.getByText('Draft saved. Publication is unchanged.')).toBeVisible();
+  expect(
+    backend.detail.draft.rooms.find((r) => r.id === 'r_vault')!.actions[0]!.rewards!.tables[0]!
+      .draws,
+  ).toBe(2);
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/conversion-done.png` });
+
+  // Publishing stays the author's own, separate decision.
+  await page.getByRole('button', { name: 'Publish draft', exact: true }).click();
+  await page.getByRole('button', { name: 'Publish now', exact: true }).click();
+  await expect(page.getByText('Published revision 1.')).toBeVisible();
+  expect(backend.publishes).toBe(1);
+});
+
+test('Reward Health separates broken published rewards from loot changes and draft problems', async ({
+  page,
+}) => {
+  const { backend } = await openWithLoot(page);
+  backend.health = [
+    {
+      key: 'usability',
+      name: 'Service Tunnels',
+      enabled: true,
+      revision: 3,
+      status: 'broken',
+      draftErrors: 0,
+      activeRuns: 2,
+      activeRevisions: [
+        {
+          revision: 2,
+          activeRuns: 3,
+          status: 'broken',
+          problems: [
+            {
+              type: 'item',
+              reason: 'item_missing',
+              key: 'old_map',
+              name: 'Old Map',
+              message:
+                'Item "Old Map" (old_map) no longer exists, so this revision\'s loot cannot be paid.',
+              hint: 'Create the item again under the same key so these runs can be paid. Publishing again does not change a run in progress.',
+            },
+          ],
+        },
+      ],
+      problems: [
+        {
+          type: 'item',
+          reason: 'item_capped',
+          key: 'founders_badge',
+          name: 'Founder’s Badge',
+          message:
+            '"Founder’s Badge" is now limited to 1 per player, so it cannot be dungeon loot.',
+          hint: "Remove the per-player limit from the item, or replace it in the draft's rewards and publish again.",
+        },
+        {
+          type: 'equipment',
+          reason: 'equipment_missing',
+          key: 'iron_blade',
+          name: 'Iron Blade',
+          message:
+            'Gear "Iron Blade" (iron_blade) no longer exists, so this revision\'s loot cannot be paid.',
+          hint: 'Publish the draft again so the revision freezes gear that exists.',
+        },
+      ],
+    },
+    {
+      key: 'old_mine',
+      name: 'Old Mine',
+      enabled: true,
+      revision: 1,
+      status: 'healthy',
+      draftErrors: 2,
+      activeRuns: 0,
+      activeRevisions: [],
+      problems: [],
+    },
+  ];
+  await page.goto('/admin/dungeons');
+  const panel = page.getByTestId('reward-health');
+  await panel.scrollIntoViewIfNeeded();
+  await expect(panel.getByRole('alert').first()).toContainText(
+    '1 published dungeon has rewards that cannot be delivered.',
+  );
+  const broken = panel.getByTestId('reward-health-usability');
+  await expect(broken).toContainText('Broken published rewards');
+  await expect(broken).toContainText('is now limited to 1 per player');
+  await expect(broken).toContainText('Publish the draft again so the revision freezes gear');
+  // Runs still on an older revision are reported beside it, by count only.
+  await expect(panel.getByTestId('reward-health-stranded')).toContainText(
+    '1 dungeon has runs in progress on an older revision whose rewards cannot be delivered.',
+  );
+  await expect(panel.getByTestId('reward-health-usability-current')).toContainText(
+    'Published revision 3, which new runs start on (2 runs in progress on it):',
+  );
+  const older = panel.getByTestId('reward-health-usability-revision-2');
+  await expect(older).toContainText(
+    'Revision 2, no longer published, with 3 runs still in progress:',
+  );
+  await expect(older).toContainText('Publishing again does not change a run in progress');
+  const drafts = panel.getByTestId('reward-health-drafts');
+  await expect(drafts).toContainText('Players are not affected');
+  await expect(drafts).toContainText('Old Mine: 2 things to fix');
+  await expect(panel.getByTestId('reward-health-old_mine')).toHaveCount(0);
+  await expect(panel).toContainText('is not a problem here');
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(overflow).toBeLessThanOrEqual(1);
+  if (SHOTS)
+    await page.screenshot({
+      path: `${SHOTS}/reward-health-${page.viewportSize()!.width}.png`,
+      fullPage: true,
+    });
+
+  // Once repaired, the same check says so.
+  backend.health = [{ ...(backend.health[1] as object), draftErrors: 0 }];
+  await panel.getByRole('button', { name: 'Check again', exact: true }).click();
+  await expect(panel.getByTestId('reward-health-ok')).toHaveText(
+    'Every published dungeon can deliver its rewards, and so can every older revision a run is still on.',
+  );
 });

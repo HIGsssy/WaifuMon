@@ -4,7 +4,7 @@
  * button text and custom flow sit behind "Advanced options", which opens by
  * itself when an existing activity already uses any of them.
  */
-import { useState } from 'react';
+import { useContext, useState } from 'react';
 import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Copy, Trash2, X } from 'lucide-react';
 import type {
   ActionDestination,
@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { isLegacyTreasure, paysRewards } from '@/features/adminDungeonLoot/bundleModel';
 import { ActivityRewards } from './ActivityRewards';
+import { TreasureConversionContext } from './treasureConversionContext';
 import { DungeonConditionEditor } from './DungeonConditionEditor';
 import { EnemyAppearance } from './EnemyAppearance';
 import { EnemyPicker } from './EnemyPicker';
@@ -283,6 +284,28 @@ function FightEditor({
   );
 }
 
+/** The way from a legacy treasure to its conversion preview. Nothing changes until that is confirmed. */
+function ConvertTreasure({ roomId, actionId }: { roomId: string; actionId: string }) {
+  const host = useContext(TreasureConversionContext);
+  if (!host) return null;
+  return (
+    <div className="space-y-1" data-testid="convert-treasure">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        disabled={host.unavailable !== null}
+        onClick={() => host.open({ roomId, actionId })}
+      >
+        Convert to Dungeon Rewards
+      </Button>
+      <p className={hint}>
+        {host.unavailable ??
+          'Shows exactly what will change first. Nothing is converted until you confirm.'}
+      </p>
+    </div>
+  );
+}
 function Essentials({
   action,
   room,
@@ -399,10 +422,11 @@ function Essentials({
           )}
           <p className={hint} data-testid="legacy-treasure-note">
             This treasure uses the older reward settings, shown here exactly as they are stored. It
-            keeps paying them until it is converted to the new Rewards (guaranteed rewards, chance
-            drops and loot tables). Converting is a separate, deliberate step that is not available
-            yet, so the two kinds of reward are never mixed on one treasure.
+            keeps paying them, and you can keep editing them, until you convert it to the new
+            Rewards (guaranteed rewards, chance drops and loot tables). The two kinds of reward are
+            never mixed on one treasure.
           </p>
+          <ConvertTreasure roomId={room.id} actionId={action.id} />
         </div>
       );
     }

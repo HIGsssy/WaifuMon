@@ -335,6 +335,10 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   DUNGEON_LOOT_TABLE_KEY_TAKEN: 409,
   DUNGEON_LOOT_TABLE_DELETE_REFUSED: 409,
   DUNGEON_IMPORT_STALE: 409,
+  /** Admin: a legacy treasure conversion whose approved plan no longer holds, or that cannot be made. */
+  DUNGEON_CONVERSION_STALE: 409,
+  DUNGEON_CONVERSION_BLOCKED: 409,
+  DUNGEON_CONVERSION_UNAVAILABLE: 409,
   DUNGEON_IMPORT_REQUEST_CONFLICT: 409,
   /** Admin: creating a dungeon under a key another dungeon already has. */
   DUNGEON_KEY_TAKEN: 409,

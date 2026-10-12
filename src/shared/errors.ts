@@ -1617,6 +1617,30 @@ export class DungeonImportError extends AppError {
   }
 }
 
+/**
+ * Converting a legacy treasure was refused; nothing was written.
+ *   STALE        the catalogues or the draft no longer give the plan that was approved
+ *   BLOCKED      the treasure cannot be converted faithfully (`blockers`)
+ *   UNAVAILABLE  the activity is not a legacy treasure (any more)
+ */
+export class DungeonConversionError extends AppError {
+  constructor(
+    code: 'DUNGEON_CONVERSION_STALE' | 'DUNGEON_CONVERSION_BLOCKED' | 'DUNGEON_CONVERSION_UNAVAILABLE',
+    message: string,
+    readonly blockers: readonly { code: string; table: string | null; message: string }[] = [],
+  ) {
+    super(
+      code,
+      message,
+      code === 'DUNGEON_CONVERSION_STALE'
+        ? 'The treasure or a reward table it uses changed since this preview. Review the conversion again.'
+        : code === 'DUNGEON_CONVERSION_BLOCKED'
+          ? 'This treasure cannot be converted yet. Nothing was changed.'
+          : 'This activity is not a legacy treasure, so there is nothing to convert.',
+    );
+  }
+}
+
 /** One problem with a dungeon definition, by path. `code` is stable; see `dungeonValidation.ts`. */
 export interface DungeonIssueDetail {
   code: string;

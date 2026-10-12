@@ -111,6 +111,8 @@ export function install() {
     equipmentPools: {},
   });
   vi.spyOn(api, 'getDungeonImportHistory').mockResolvedValue({ imports: [] });
+  // The dungeon list checks whether published rewards can still be delivered.
+  vi.spyOn(api, 'getDungeonRewardHealth').mockResolvedValue({ dungeons: [] });
   let stored = fixture();
   vi.spyOn(api, 'getDungeon').mockImplementation(async () => structuredClone(stored));
   vi.spyOn(api, 'listDungeons').mockImplementation(async () => ({

@@ -80,6 +80,8 @@ export function LootTableEditorPage() {
  */
 export interface EmbeddedLootEditor {
   onDirtyChange: (dirty: boolean) => void;
+  /** The table was saved: the host's own checks against it are now out of date. */
+  onSaved?: () => void;
 }
 /** One existing table's editor, for a page or a host panel. */
 export function LootTableEditor({
@@ -338,6 +340,7 @@ function Editor({
       setLoaded(table);
       setForm(formOf(table));
       setOpen(null);
+      embedded?.onSaved?.();
       setNotice(
         `Saved. ${republishNote(uses) ?? 'No dungeon was published or changed by saving this table.'}`,
       );

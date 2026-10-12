@@ -42,14 +42,17 @@
  *
  * Every write appends to `dungeon_content_events` in its own transaction.
  */
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { and, asc, count, desc, eq, inArray } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { Db, DbOrTx } from '../../db/client';
 import {
   artworkAssets,
   dungeonContentEvents,
   dungeonDefinitions,
+  dungeonLootTableEvents,
+  dungeonLootTables,
   dungeonRevisions,
   dungeonRuns,
   progressionCurrencies,
@@ -60,6 +63,7 @@ import {
   type DungeonRevisionSource,
 } from '../../db/schema';
 import {
+  DungeonConversionError,
   DungeonDraftStaleError,
   DungeonInvalidError,
   type DungeonIssueDetail,
@@ -89,6 +93,16 @@ import { dungeonDependencies } from './content/dungeonDefinition';
 import { equipmentSelectorKey } from '../equipment/rewardSelector';
 import { buildPreviewRewardSnapshot, previewRewardContext, testRollDungeonRewards, type DungeonTestRollRequest, type DungeonTestRollResult } from './dungeonRewardPreview';
 import { assertDungeonRewardDependencies } from './dungeonRewardValidation';
+import { dungeonLootTableContentHash } from './dungeonLootTableService';
+import {
+  convertLegacyTreasure,
+  type LegacyTableSource,
+  type TreasureConversion,
+  type TreasureConversionTable,
+} from './dungeonTreasureConversion';
+import { canonicalJson } from '../rewardTables/rewardTableCore';
+import type { RewardSpec } from './content/dungeonDefinition';
+import type { DungeonRewardBundle } from './content/dungeonRewards';
 import {
   DUNGEON_ACTION_TYPES,
   DungeonDefinitionSchema,
@@ -229,6 +243,98 @@ export interface DungeonPublishResult {
   unchanged: boolean;
 }
 
+/** Which legacy treasure a conversion is about. */
+export interface DungeonTreasureTarget {
+  roomId: string;
+  actionId: string;
+}
+
+/**
+ * What converting one legacy treasure would do, as the catalogues stand.
+ * Nothing is written to make it. `planHash` names exactly this plan: applying
+ * is refused unless the same plan comes out again inside the transaction.
+ */
+export interface DungeonTreasureConversionPlan extends DungeonTreasureTarget {
+  dungeonKey: string;
+  roomName: string;
+  draftRevision: number;
+  /** The treasure as it is stored now. */
+  legacy: RewardSpec;
+  /** The reward bundle the treasure would get; null while a blocker stands. */
+  rewards: DungeonRewardBundle | null;
+  /** The dungeon loot tables the bundle draws from: new ones to create, identical ones to reuse. */
+  tables: TreasureConversionTable[];
+  omitted: TreasureConversion['omitted'];
+  blockers: TreasureConversion['blockers'];
+  /** What the converted treasure would still need fixing before it can be published. */
+  issues: DungeonIssue[];
+  /** The converted rewards include WaifuBux, which stop being paid immediately. */
+  waifubuxAtRisk: boolean;
+  retention: { defeatBasisPoints: number; abandonBasisPoints: number };
+  planHash: string;
+}
+
+export interface DungeonTreasureConversionResult {
+  dungeon: DungeonDetail;
+  createdTables: string[];
+  reusedTables: string[];
+  /** This plan had already been applied; nothing was written this time. */
+  replayed: boolean;
+}
+
+export type DungeonRewardHealthReason =
+  | 'item_missing'
+  | 'item_capped'
+  | 'equipment_missing'
+  | 'snapshot_missing'
+  | 'snapshot_unreadable'
+  | 'snapshot_unsupported'
+  | 'snapshot_corrupt'
+  | 'revision_unreadable';
+export interface DungeonRewardHealthProblem {
+  type: 'item' | 'equipment' | 'snapshot';
+  reason: DungeonRewardHealthReason;
+  /** Item slug or equipment definition key; null for the snapshot itself. */
+  key: string | null;
+  name: string;
+  message: string;
+  hint: string;
+}
+export interface DungeonRewardHealthEntry {
+  key: string;
+  name: string;
+  enabled: boolean;
+  /** The published revision checked; null while unpublished. */
+  revision: number | null;
+  /**
+   * `healthy`: every frozen reward can still be delivered. `broken`: at least
+   * one cannot. `no_rewards`: the revision has no frozen dungeon rewards to
+   * check (legacy treasure reads its tables when a run starts).
+   */
+  status: 'healthy' | 'broken' | 'no_rewards' | 'unpublished';
+  problems: DungeonRewardHealthProblem[];
+  /** Errors in the draft. They block the next publish and do not affect players. */
+  draftErrors: number;
+  /** Runs in progress on the published revision above. */
+  activeRuns: number;
+  /**
+   * Older revisions that runs in progress are still pinned to, newest first.
+   * A revision nobody is playing is not listed: it promises nothing to anyone.
+   */
+  activeRevisions: DungeonRewardHealthActiveRevision[];
+}
+/** An earlier revision with runs still in progress, and whether it can pay what it promised them. */
+export interface DungeonRewardHealthActiveRevision {
+  revision: number;
+  /** How many runs are in progress on it. A count only: no player is named. */
+  activeRuns: number;
+  status: 'healthy' | 'broken' | 'no_rewards';
+  problems: DungeonRewardHealthProblem[];
+}
+export interface DungeonRewardHealthReport {
+  dungeons: DungeonRewardHealthEntry[];
+}
+
 /** Which content an export carries. */
 export type DungeonExportOrigin = 'draft' | 'published' | { revision: number };
 
@@ -252,6 +358,23 @@ export interface DungeonContentService extends DungeonImportService {
   /** Ephemeral authoring snapshot; never persisted or granted. An explicit snapshot pins published rewards. */
   previewRewards(definition: unknown, options?: { tables?: Record<string, unknown>; snapshot?: DungeonRewardSnapshot | null }): Promise<DungeonValidationReport & { rewards: DungeonRewardSnapshot | null }>;
   testRoll(input: DungeonTestRollRequest): Promise<DungeonTestRollResult>;
+  /**
+   * Preview converting one legacy treasure to dungeon rewards. Writes nothing.
+   * @throws {DungeonNotFoundError | DungeonConversionError}
+   */
+  planTreasureConversion(key: string, target: DungeonTreasureTarget): Promise<DungeonTreasureConversionPlan>;
+  /**
+   * Create the converted loot tables and replace the treasure's `reward` with
+   * `rewards` in the draft, in one transaction. Nothing is published.
+   * @throws {DungeonNotFoundError | DungeonDraftStaleError | DungeonConversionError | DungeonInvalidError}
+   */
+  convertTreasure(
+    key: string,
+    input: DungeonTreasureTarget & { expectedRevision: number; expectedPlanHash: string },
+    actor: string | null,
+  ): Promise<DungeonTreasureConversionResult>;
+  /** Whether each dungeon's published rewards can still be delivered. Reads only. */
+  rewardHealth(): Promise<DungeonRewardHealthReport>;
   /** @throws {DungeonInvalidError | DungeonKeyTakenError} */
   create(input: { definition: unknown; layout?: unknown }, actor: string | null): Promise<DungeonDetail>;
   /**
@@ -357,27 +480,49 @@ function snapshotRewardContext(snapshot: DungeonRewardSnapshot): Pick<DungeonVal
 }
 
 /** Design 9.2: every pinned item must still exist and be uncapped, every pinned equipment definition must still exist. */
+function snapshotLiveProblems(
+  snapshot: DungeonRewardSnapshot,
+  live: DungeonRewardSnapshotLiveDependencies,
+): (DungeonRewardHealthProblem & { path: string; code: string })[] {
+  const problems: (DungeonRewardHealthProblem & { path: string; code: string })[] = [];
+  for (const [slug, pinned] of Object.entries(snapshot.items)) {
+    const item = live.items.get(slug);
+    const path = `rewardSnapshot.items.${slug}`;
+    if (!item) {
+      problems.push({
+        type: 'item', reason: 'item_missing', code: 'reward_item_missing', key: slug, name: pinned.name, path,
+        message: `item "${pinned.name}" (${slug}) no longer exists, so this revision's loot cannot be paid.`,
+        hint: 'Create the item again under the same key, or replace it in the draft\'s rewards and publish again.',
+      });
+    } else if (item.maxOwned !== null) {
+      problems.push({
+        type: 'item', reason: 'item_capped', code: 'reward_item_capped', key: slug, name: item.name, path,
+        message: `"${item.name}" is now limited to ${item.maxOwned} per player, so it cannot be dungeon loot.`,
+        hint: 'Remove the per-player limit from the item, or replace it in the draft\'s rewards and publish again.',
+      });
+    }
+  }
+  for (const [selectorKey, pool] of Object.entries(snapshot.equipmentPools)) {
+    for (const candidate of pool) {
+      if (live.equipmentKeys.has(candidate.key)) continue;
+      problems.push({
+        type: 'equipment', reason: 'equipment_missing', code: 'reward_equipment_missing', key: candidate.key, name: candidate.name,
+        path: `rewardSnapshot.equipmentPools.${selectorKey}`,
+        message: `gear "${candidate.name}" (${candidate.key}) no longer exists, so this revision's loot cannot be paid.`,
+        hint: 'Publish the draft again so the revision freezes gear that exists.',
+      });
+    }
+  }
+  return problems;
+}
+
 function snapshotLiveIssues(
   definition: DungeonDefinition,
   snapshot: DungeonRewardSnapshot,
   live: DungeonRewardSnapshotLiveDependencies,
 ): DungeonIssue[] {
-  const issues: DungeonIssueDetail[] = [];
   const label = `dungeon "${definition.name}" (${definition.key})`;
-  for (const [slug, pinned] of Object.entries(snapshot.items)) {
-    const item = live.items.get(slug);
-    const path = `rewardSnapshot.items.${slug}`;
-    if (!item) issues.push({ code: 'reward_item_missing', severity: 'error', path, message: `${label}: item "${pinned.name}" (${slug}) no longer exists, so this revision's loot cannot be paid.` });
-    else if (item.maxOwned !== null) issues.push({ code: 'reward_item_capped', severity: 'error', path, message: `${label}: "${item.name}" is now limited to ${item.maxOwned} per player, so it cannot be dungeon loot.` });
-  }
-  for (const [selectorKey, pool] of Object.entries(snapshot.equipmentPools)) {
-    for (const candidate of pool) {
-      if (!live.equipmentKeys.has(candidate.key)) {
-        issues.push({ code: 'reward_equipment_missing', severity: 'error', path: `rewardSnapshot.equipmentPools.${selectorKey}`, message: `${label}: gear "${candidate.name}" (${candidate.key}) no longer exists, so this revision's loot cannot be paid.` });
-      }
-    }
-  }
-  return issues as DungeonIssue[];
+  return snapshotLiveProblems(snapshot, live).map((p): DungeonIssueDetail => ({ code: p.code, severity: 'error', path: p.path, message: `${label}: ${p.message}` })) as DungeonIssue[];
 }
 
 function parseStoredLayout(raw: unknown): DungeonLayout {
@@ -544,6 +689,175 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
     };
   }
 
+  /**
+   * The conversion of one legacy treasure as the catalogues stand in `tx`, and
+   * the definition it would leave. With `lock`, the rows it read stay
+   * share-locked until the transaction ends.
+   */
+  async function conversionPlan(
+    tx: DbOrTx,
+    row: DungeonDefinitionRow,
+    target: DungeonTreasureTarget,
+    lock: boolean,
+  ): Promise<{ plan: DungeonTreasureConversionPlan; definition: DungeonDefinition | null }> {
+    const key = row.dungeonKey;
+    const draft = parseStoredDefinition(key, row.draft);
+    const r = draft.rooms.findIndex((room) => room.id === target.roomId);
+    const a = r < 0 ? -1 : draft.rooms[r]!.actions.findIndex((action) => action.id === target.actionId);
+    const action = a < 0 ? undefined : draft.rooms[r]!.actions[a];
+    if (!action || action.type !== 'reward' || !action.reward || action.rewards) {
+      throw new DungeonConversionError('DUNGEON_CONVERSION_UNAVAILABLE', `dungeon "${key}": "${target.roomId}/${target.actionId}" is not a legacy treasure`);
+    }
+    const legacy = action.reward;
+    const ids = [...new Set([legacy.rewardTable, legacy.equipmentRewardTable].filter((id): id is string => id !== null))].sort();
+    let sourceQuery = tx
+      .select()
+      .from(rewardTables)
+      .where(and(eq(rewardTables.kind, 'expedition'), inArray(rewardTables.tableId, ids)))
+      .orderBy(asc(rewardTables.tableId))
+      .$dynamic();
+    let lootQuery = tx
+      .select({ key: dungeonLootTables.tableKey, origin: dungeonLootTables.origin, contentHash: dungeonLootTables.contentHash, archivedAt: dungeonLootTables.archivedAt })
+      .from(dungeonLootTables)
+      .orderBy(asc(dungeonLootTables.tableKey))
+      .$dynamic();
+    if (lock) {
+      sourceQuery = sourceQuery.for('share');
+      lootQuery = lootQuery.for('share');
+    }
+    const sourceRows = ids.length ? await sourceQuery : [];
+    const sources = new Map<string, LegacyTableSource | null>(ids.map((id) => [id, null]));
+    for (const source of sourceRows) sources.set(source.tableId, { enabled: source.enabled, definition: source.definition, contentHash: source.contentHash });
+    const lootRows = await lootQuery;
+    const conversion = convertLegacyTreasure({
+      reward: legacy,
+      sources,
+      lootTables: new Map(lootRows.map((t) => [t.key, { origin: t.origin, contentHash: t.contentHash, archived: t.archivedAt !== null }])),
+      hashBody: dungeonLootTableContentHash,
+    });
+
+    let definition: DungeonDefinition | null = null;
+    let issues: DungeonIssue[] = [];
+    if (conversion.rewards) {
+      const { reward: _legacy, ...rest } = action;
+      const next = {
+        ...draft,
+        rooms: draft.rooms.map((room, ri) => (ri !== r ? room : { ...room, actions: room.actions.map((other, ai) => (ai !== a ? other : { ...rest, rewards: conversion.rewards! })) })),
+      };
+      definition = requireShape(next);
+      // Checked as it will stand once the new tables exist, without creating them.
+      const overrides = previewRewardContext(await validationContext(tx), Object.fromEntries(conversion.tables.map((t) => [t.key, t.body])));
+      const prefix = `rooms[${r}].actions[${a}]`;
+      issues = [...overrides.issues, ...validateDungeonDefinition(definition, overrides.context).issues].filter((i) => i.path.startsWith(prefix));
+    }
+    const bodies = conversion.tables.map((t) => t.body);
+    const paysWaifubux = bodies.some((body) =>
+      [...body.guaranteed, ...body.chances, ...body.pools.flatMap((pool) => pool.entries)].some(
+        (entry) => 'grant' in entry && entry.grant.type === 'currency' && entry.grant.currency === 'waifubux',
+      ),
+    );
+    const planHash = `sha256:${createHash('sha256')
+      .update(canonicalJson({
+        v: 1,
+        dungeonKey: key,
+        roomId: target.roomId,
+        actionId: target.actionId,
+        draftRevision: row.draftRevision,
+        draftHash: row.draftHash,
+        sources: ids.map((id) => ({ id, contentHash: sources.get(id)?.contentHash ?? null, enabled: sources.get(id)?.enabled ?? null })),
+        tables: conversion.tables.map((t) => ({ source: t.sourceTable, action: t.action, key: t.key, contentHash: t.contentHash, draws: t.draws })),
+        rewards: conversion.rewards,
+        blockers: conversion.blockers.map((b) => ({ code: b.code, table: b.table })),
+      }))
+      .digest('hex')}`;
+    return {
+      definition,
+      plan: {
+        dungeonKey: key,
+        roomId: target.roomId,
+        actionId: target.actionId,
+        roomName: draft.rooms[r]!.name,
+        draftRevision: row.draftRevision,
+        legacy,
+        rewards: conversion.rewards,
+        tables: conversion.tables,
+        omitted: conversion.omitted,
+        blockers: conversion.blockers,
+        issues,
+        waifubuxAtRisk: paysWaifubux,
+        retention: {
+          defeatBasisPoints: draft.settings.defeatCurrencyRetentionBasisPoints,
+          abandonBasisPoints: draft.settings.abandonCurrencyRetentionBasisPoints ?? draft.settings.defeatCurrencyRetentionBasisPoints,
+        },
+        planHash,
+      },
+    };
+  }
+
+  /**
+   * A revision's frozen rewards as stored: the trusted snapshot, the reason it
+   * cannot be trusted, or nothing to check (no dungeon rewards). No I/O.
+   * `superseded`: runs are still on it but it is no longer what is published,
+   * so publishing again cannot help them.
+   */
+  function readRevisionRewards(
+    revision: DungeonRevisionRow,
+    superseded: boolean,
+  ): { snapshot: DungeonRewardSnapshot } | { problems: DungeonRewardHealthProblem[] } | null {
+    const snapshotProblem = (reason: DungeonRewardHealthReason, message: string) => ({
+      problems: [{
+        type: 'snapshot' as const,
+        reason,
+        key: null,
+        name: `Revision ${revision.number}`,
+        message,
+        hint: superseded
+          ? 'Publishing cannot repair a revision that is already being played. Its runs can still extract or abandon; new runs use the current revision.'
+          : 'Publish the draft again to freeze a fresh copy of its rewards. Runs already in progress keep this revision.',
+      }],
+    });
+    const content = DungeonDefinitionSchema.safeParse(revision.content);
+    if (!content.success) return snapshotProblem('revision_unreadable', 'The published revision could not be read by this version of the game.');
+    if (!hasDungeonRewardBundles(content.data)) return null;
+    const raw = revision.rewardSnapshot as { format?: unknown; version?: unknown; resolverVersion?: unknown } | null;
+    if (raw == null) return snapshotProblem('snapshot_missing', 'This revision was published without a frozen copy of its rewards, so its loot cannot be paid.');
+    const parsed = DungeonRewardSnapshotSchema.safeParse(raw);
+    if (!parsed.success) {
+      const unsupported = raw.version !== 1 || raw.resolverVersion !== 1 || raw.format !== 'waifumon-dungeon-reward-snapshot';
+      return unsupported
+        ? snapshotProblem('snapshot_unsupported', 'The frozen rewards were written in a format this version of the game cannot resolve.')
+        : snapshotProblem('snapshot_unreadable', 'The frozen copy of this revision\'s rewards is damaged and cannot be read.');
+    }
+    const snapshot = readDungeonRewardSnapshot(raw);
+    if (!snapshot || revision.gameplayHash !== dungeonGameplayHash(revision.contentHash, snapshot.hash)) {
+      return snapshotProblem('snapshot_corrupt', 'The frozen copy of this revision\'s rewards does not match its recorded hash, so it is not trusted.');
+    }
+    return { snapshot };
+  }
+
+  /** What a trusted snapshot names that can no longer be paid: the rollback rules, one line per item or piece of gear. */
+  function liveRewardProblems(
+    snapshot: DungeonRewardSnapshot,
+    live: DungeonRewardSnapshotLiveDependencies,
+    superseded: boolean,
+  ): DungeonRewardHealthProblem[] {
+    const seen = new Set<string>();
+    return snapshotLiveProblems(snapshot, live)
+      .filter((problem) => !seen.has(`${problem.type}:${problem.key}`) && seen.add(`${problem.type}:${problem.key}`))
+      .map(({ path: _path, code: _code, ...problem }) => ({
+        ...problem,
+        message: problem.message.replace(/^./, (c) => c.toUpperCase()),
+        // Republishing changes what new runs get, never a run already on this revision.
+        hint: !superseded
+          ? problem.hint
+          : problem.reason === 'item_capped'
+            ? 'Remove the per-player limit from the item so these runs can be paid. Publishing again does not change a run in progress.'
+            : problem.reason === 'item_missing'
+              ? 'Create the item again under the same key so these runs can be paid. Publishing again does not change a run in progress.'
+              : 'Create the gear again under the same key so these runs can be paid. Publishing again does not change a run in progress.',
+      }));
+  }
+
   const service: DungeonContentService = {
     ...createDungeonImportService({ ...deps, reservedKeys: RESERVED_DUNGEON_KEYS, resolveManagedArtwork: resolveManagedArtworkIds }),
     validationContext,
@@ -608,6 +922,158 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
     async testRoll(input) {
       return db.transaction(async (tx) => testRollDungeonRewards(input, await loadDungeonRewardContext(tx)),
         { accessMode: 'read only', isolationLevel: 'repeatable read' });
+    },
+
+    async planTreasureConversion(key, target) {
+      return db.transaction(async (tx) => {
+        const [row] = await tx.select().from(dungeonDefinitions).where(eq(dungeonDefinitions.dungeonKey, key));
+        if (!row) throw new DungeonNotFoundError(key);
+        return (await conversionPlan(tx, row, target, false)).plan;
+      }, { accessMode: 'read only', isolationLevel: 'repeatable read' });
+    },
+
+    async convertTreasure(key, input, actor) {
+      return db.transaction(async (tx) => {
+        const row = await lockRow(tx, key);
+        if (row.draftRevision !== input.expectedRevision) {
+          // A retry of a conversion that already went through: report it, write nothing.
+          const [done] = await tx
+            .select({ details: dungeonContentEvents.details })
+            .from(dungeonContentEvents)
+            .where(and(
+              eq(dungeonContentEvents.dungeonKey, key),
+              eq(dungeonContentEvents.action, 'draft_saved'),
+              sql`${dungeonContentEvents.details}->'conversion'->>'planHash' = ${input.expectedPlanHash}`,
+            ))
+            .orderBy(desc(dungeonContentEvents.id))
+            .limit(1);
+          const applied = done?.details.conversion as { createdTables?: string[]; reusedTables?: string[] } | undefined;
+          if (applied) {
+            return { dungeon: await detailOf(tx, row), createdTables: applied.createdTables ?? [], reusedTables: applied.reusedTables ?? [], replayed: true };
+          }
+          throw new DungeonDraftStaleError(key, input.expectedRevision, row.draftRevision, row.updatedBy, row.updatedAt);
+        }
+        // The source tables and the loot catalogue are share-locked from here to
+        // the commit, so the plan recomputed below is the one that gets written.
+        const { plan, definition } = await conversionPlan(tx, row, input, true);
+        if (plan.blockers.length > 0 || !definition) {
+          throw new DungeonConversionError('DUNGEON_CONVERSION_BLOCKED', plan.blockers.map((b) => b.message).join(' '), plan.blockers);
+        }
+        if (plan.planHash !== input.expectedPlanHash) {
+          throw new DungeonConversionError('DUNGEON_CONVERSION_STALE', `dungeon "${key}": the conversion plan is now ${plan.planHash}, not ${input.expectedPlanHash}`);
+        }
+        const created = plan.tables.filter((t) => t.action === 'create');
+        for (const table of created) {
+          const [inserted] = await tx
+            .insert(dungeonLootTables)
+            .values({
+              tableKey: table.key,
+              name: table.name,
+              description: table.description,
+              tier: null,
+              body: table.body,
+              contentHash: table.contentHash,
+              origin: 'converted',
+              createdBy: actor,
+              updatedBy: actor,
+            })
+            .onConflictDoNothing({ target: dungeonLootTables.tableKey })
+            .returning();
+          // Someone took the key since the catalogue was read. Never overwrite: plan again.
+          if (!inserted) throw new DungeonConversionError('DUNGEON_CONVERSION_STALE', `dungeon "${key}": loot table "${table.key}" was created concurrently`);
+          await tx.insert(dungeonLootTableEvents).values({
+            tableKey: inserted.tableKey,
+            revision: inserted.revision,
+            origin: inserted.origin,
+            action: 'converted',
+            actor,
+            previousContentHash: null,
+            newContentHash: inserted.contentHash,
+            details: { sourceTable: table.sourceTable, sourceContentHash: table.sourceContentHash, dungeonKey: key, roomId: input.roomId, actionId: input.actionId },
+          });
+        }
+        const draftHash = dungeonContentHash(definition);
+        const [updated] = await tx
+          .update(dungeonDefinitions)
+          .set({
+            draft: definition as unknown as Record<string, unknown>,
+            draftHash,
+            draftRevision: row.draftRevision + 1,
+            updatedAt: new Date(),
+            updatedBy: actor,
+          })
+          .where(eq(dungeonDefinitions.dungeonKey, key))
+          .returning();
+        const createdTables = created.map((t) => t.key);
+        const reusedTables = plan.tables.filter((t) => t.action === 'reuse').map((t) => t.key);
+        await audit(tx, key, 'draft_saved', actor, {
+          draftRevision: updated!.draftRevision,
+          contentHash: draftHash,
+          previousContentHash: row.draftHash,
+          contentChanged: true,
+          layoutChanged: false,
+          conversion: {
+            roomId: input.roomId,
+            actionId: input.actionId,
+            planHash: plan.planHash,
+            createdTables,
+            reusedTables,
+            sourceTables: plan.tables.map((t) => ({ table: t.sourceTable, contentHash: t.sourceContentHash, lootTable: t.key })),
+          },
+        });
+        deps.logger?.info({ tag: 'dungeons/treasure-converted', dungeonKey: key, roomId: input.roomId, actionId: input.actionId, createdTables, reusedTables, actor }, 'legacy treasure converted');
+        return { dungeon: await detailOf(tx, updated!), createdTables, reusedTables, replayed: false };
+      });
+    },
+
+    async rewardHealth() {
+      return db.transaction(async (tx) => {
+        const rows = await tx.select().from(dungeonDefinitions).orderBy(asc(dungeonDefinitions.position), asc(dungeonDefinitions.dungeonKey));
+        // Every revision somebody is playing, in one grouped read: never a query per run or player.
+        const active = await tx
+          .select({ revisionId: dungeonRuns.revisionId, n: count() })
+          .from(dungeonRuns)
+          .where(eq(dungeonRuns.status, 'active'))
+          .groupBy(dungeonRuns.revisionId);
+        const activeRuns = new Map(active.map((r) => [r.revisionId, Number(r.n)]));
+        const publishedIds = new Set(rows.flatMap((row) => (row.publishedRevisionId == null ? [] : [row.publishedRevisionId])));
+        // Published revisions, plus only those older ones that still have runs in progress.
+        const ids = [...new Set([...publishedIds, ...activeRuns.keys()])];
+        const revisions = ids.length ? await tx.select().from(dungeonRevisions).where(inArray(dungeonRevisions.id, ids)) : [];
+        const byId = new Map(revisions.map((r) => [r.id, r]));
+        const read = new Map(revisions.map((r) => [r.id, readRevisionRewards(r, !publishedIds.has(r.id))]));
+        // One read of the items and gear all of those snapshots name between them.
+        const snapshots = [...read.values()].flatMap((r) => (r && 'snapshot' in r ? [r.snapshot] : []));
+        const live = await loadSnapshotLiveDependencies(tx, {
+          items: Object.assign({}, ...snapshots.map((s) => s.items)),
+          equipmentPools: Object.fromEntries(snapshots.flatMap((s, i) => Object.entries(s.equipmentPools).map(([key, pool]) => [`${i}:${key}`, pool]))),
+        });
+        const judge = (revision: DungeonRevisionRow) => {
+          const rewards = read.get(revision.id) ?? null;
+          const superseded = !publishedIds.has(revision.id);
+          const problems = !rewards ? [] : 'problems' in rewards ? rewards.problems : liveRewardProblems(rewards.snapshot, live, superseded);
+          return { problems, status: problems.length > 0 ? 'broken' as const : rewards ? 'healthy' as const : 'no_rewards' as const };
+        };
+        const ctx = await validationContext(tx);
+        const dungeons: DungeonRewardHealthEntry[] = rows.map((row) => {
+          const draft = row.draft as { name?: unknown };
+          const revision = row.publishedRevisionId == null ? null : (byId.get(row.publishedRevisionId) ?? null);
+          return {
+            key: row.dungeonKey,
+            name: typeof draft.name === 'string' ? draft.name : row.dungeonKey,
+            enabled: row.enabled,
+            revision: revision?.number ?? null,
+            ...(revision ? judge(revision) : { status: 'unpublished' as const, problems: [] }),
+            draftErrors: validateDungeonDefinition(row.draft, ctx).issues.filter((i) => i.severity === 'error').length,
+            activeRuns: revision ? (activeRuns.get(revision.id) ?? 0) : 0,
+            activeRevisions: revisions
+              .filter((r) => r.dungeonKey === row.dungeonKey && !publishedIds.has(r.id) && activeRuns.has(r.id))
+              .sort((x, y) => y.number - x.number)
+              .map((r) => ({ revision: r.number, activeRuns: activeRuns.get(r.id)!, ...judge(r) })),
+          };
+        });
+        return { dungeons };
+      }, { accessMode: 'read only', isolationLevel: 'repeatable read' });
     },
 
     async previewRewards(raw, options = {}) {

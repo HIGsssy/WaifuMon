@@ -52,6 +52,7 @@ import {
 } from '../../../adminArtwork';
 import {
   AppError,
+  DungeonConversionError,
   DungeonDraftStaleError,
   DungeonInvalidError,
   DungeonImportError,
@@ -67,6 +68,7 @@ import {
 import type {
   DungeonContentEvent,
   DungeonContentService,
+  DungeonTreasureConversionPlan,
   DungeonDetail,
   DungeonExportOrigin,
   DungeonPublishResult,
@@ -438,6 +440,75 @@ function toDetail(d: DungeonDetail): z.infer<typeof detailSchema> {
   };
 }
 
+const treasureTargetSchema = z.object({ roomId: z.string().min(1).max(64), actionId: z.string().min(1).max(64) }).strict();
+const conversionBlockerSchema = z.object({ code: z.string(), table: z.string().nullable(), message: z.string() });
+const treasureConversionPlanSchema = z.object({
+  dungeonKey: z.string(),
+  roomId: z.string(),
+  actionId: z.string(),
+  roomName: z.string(),
+  draftRevision: z.number().int(),
+  legacy: z.object({
+    rewardTable: z.string().nullable(),
+    equipmentRewardTable: z.string().nullable(),
+    currency: z.object({ min: z.number().int(), max: z.number().int() }),
+  }),
+  rewards: documentSchema.nullable(),
+  tables: z.array(z.object({
+    sourceTable: z.string(),
+    sourceContentHash: z.string(),
+    draws: z.number().int(),
+    action: z.enum(['create', 'reuse']),
+    key: z.string(),
+    name: z.string(),
+    description: z.string(),
+    body: documentSchema,
+    contentHash: z.string(),
+  })),
+  omitted: z.array(z.object({ table: z.string().nullable(), reason: z.enum(['never_paid', 'disabled', 'cannot_drop']), text: z.string() })),
+  blockers: z.array(conversionBlockerSchema),
+  issues: z.array(issueSchema),
+  waifubuxAtRisk: z.boolean(),
+  retention: z.object({ defeatBasisPoints: z.number().int(), abandonBasisPoints: z.number().int() }),
+  planHash: z.string(),
+});
+function toConversionPlan(plan: DungeonTreasureConversionPlan): z.infer<typeof treasureConversionPlanSchema> {
+  return {
+    ...plan,
+    rewards: plan.rewards as unknown as Record<string, unknown> | null,
+    tables: plan.tables.map((t) => ({ ...t, body: t.body as unknown as Record<string, unknown> })),
+  };
+}
+const rewardHealthProblemSchema = z.object({
+  type: z.enum(['item', 'equipment', 'snapshot']),
+  reason: z.enum(['item_missing', 'item_capped', 'equipment_missing', 'snapshot_missing', 'snapshot_unreadable', 'snapshot_unsupported', 'snapshot_corrupt', 'revision_unreadable']),
+  key: z.string().nullable(),
+  name: z.string(),
+  message: z.string(),
+  hint: z.string(),
+});
+const rewardHealthSchema = z.object({
+  dungeons: z.array(z.object({
+    key: z.string(),
+    name: z.string(),
+    enabled: z.boolean(),
+    revision: z.number().int().nullable(),
+    /** The current published revision. */
+    status: z.enum(['healthy', 'broken', 'no_rewards', 'unpublished']),
+    problems: z.array(rewardHealthProblemSchema),
+    draftErrors: z.number().int(),
+    /** Runs in progress on the current published revision. */
+    activeRuns: z.number().int(),
+    /** Older revisions with runs still in progress, newest first. Counts only; no player is identified. */
+    activeRevisions: z.array(z.object({
+      revision: z.number().int(),
+      activeRuns: z.number().int(),
+      status: z.enum(['healthy', 'broken', 'no_rewards']),
+      problems: z.array(rewardHealthProblemSchema),
+    })),
+  })),
+});
+
 function toRevisionSummary(r: DungeonRevisionSummary): z.infer<typeof revisionSummarySchema> {
   return {
     revisionId: r.revisionId,
@@ -482,6 +553,9 @@ function withDetails(err: unknown): unknown {
   if (err instanceof DungeonImportError) return new ApiErrorWithDetails(err.code, err.message, err.userMessage, { issues: err.issues });
   if (err instanceof DungeonInvalidError || err instanceof ProgressionCurrencyInvalidError) {
     return new ApiErrorWithDetails(err.code, err.message, err.userMessage, { issues: err.issues });
+  }
+  if (err instanceof DungeonConversionError) {
+    return new ApiErrorWithDetails(err.code, err.message, err.userMessage, { blockers: [...err.blockers] });
   }
   if (err instanceof DungeonDraftStaleError) {
     return new ApiErrorWithDetails(err.code, err.message, err.userMessage, {
@@ -551,6 +625,51 @@ export const adminDungeonRoutes =
       onRequest: gate('dungeons.write'),
       schema: { tags, summary: 'Apply explicit import decisions to the draft only, with a durable retry receipt', body: DungeonImportApplySchema, response: { 200: dataSchema(DungeonImportResultSchema), 409: errorSchema, ...tooLargeResponse, ...commonErrorResponses } },
     }, async req => ok(req, await translate(() => dungeons.applyImport(req.body, actorOf(req)))));
+    app.post('/admin/dungeons/definitions/:key/treasure-conversion/plan', {
+      onRequest: gate('dungeons.write'),
+      schema: {
+        tags,
+        summary:
+          'Preview converting one legacy treasure to dungeon rewards: the loot tables it would create or reuse, the ' +
+          'reward bundle, what is left out, and anything that blocks it. Writes nothing',
+        params: keyParams,
+        body: treasureTargetSchema,
+        response: { 200: dataSchema(treasureConversionPlanSchema), 409: errorSchema.describe('DUNGEON_CONVERSION_UNAVAILABLE — not a legacy treasure.'), ...dungeonNotFoundResponse, ...commonErrorResponses },
+      },
+    }, async req => ok(req, toConversionPlan(await translate(() => dungeons.planTreasureConversion(req.params.key, req.body)))));
+    app.post('/admin/dungeons/definitions/:key/treasure-conversion/apply', {
+      onRequest: gate('dungeons.write'),
+      schema: {
+        tags,
+        summary:
+          'Apply a previewed conversion in one transaction: create its loot tables and replace the treasure in the ' +
+          'draft. `expectedPlanHash` must be the plan that was reviewed; if the draft, a source table or the loot ' +
+          'catalogue has changed the plan, nothing is written (409 DUNGEON_CONVERSION_STALE). Nothing is published',
+        params: keyParams,
+        body: treasureTargetSchema.extend({ expectedRevision: revisionSchema, expectedPlanHash: z.string().min(1).max(100) }),
+        response: {
+          200: dataSchema(z.object({ dungeon: detailSchema, createdTables: z.array(z.string()), reusedTables: z.array(z.string()), replayed: z.boolean() })),
+          409: errorSchema.describe('DUNGEON_DRAFT_STALE, DUNGEON_CONVERSION_STALE, DUNGEON_CONVERSION_BLOCKED (details.blockers) or DUNGEON_CONVERSION_UNAVAILABLE.'),
+          ...dungeonNotFoundResponse,
+          ...commonErrorResponses,
+          ...invalidResponse,
+        },
+      },
+    }, async req => {
+      const result = await translate(() => dungeons.convertTreasure(req.params.key, req.body, actorOf(req)));
+      return ok(req, { ...result, dungeon: toDetail(result.dungeon) });
+    });
+    app.get('/admin/dungeons/reward-health', {
+      preValidation: gate('dungeons.read'),
+      schema: {
+        tags,
+        summary:
+          'Whether each dungeon\'s published rewards can still be delivered: frozen items that were deleted or capped, ' +
+          'frozen gear that was deleted, and missing, damaged or unsupported reward snapshots. Covers the current ' +
+          'published revision and any older revision that runs in progress are still on. Reads only',
+        response: { 200: dataSchema(rewardHealthSchema), ...commonErrorResponses },
+      },
+    }, async req => ok(req, await dungeons.rewardHealth()));
     app.get('/admin/dungeons/definitions/:key/import-history', {
       preValidation: gate('dungeons.read'),
       schema: { tags, summary: 'Successful dungeon imports and decisions, newest first', params: keyParams, querystring: z.object({ limit: z.coerce.number().int().min(1).max(500).default(100) }), response: { 200: dataSchema(DungeonImportHistorySchema), ...commonErrorResponses } },

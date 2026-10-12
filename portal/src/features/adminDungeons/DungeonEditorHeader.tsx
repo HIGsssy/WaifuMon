@@ -24,6 +24,8 @@ export interface DungeonEditorHeaderProps {
   saveDisabled: boolean;
   publishDisabled: boolean;
   validateDisabled: boolean;
+  /** How the draft stands against what players get; see `publicationState`. */
+  publication: { label: string; summary: string; attention: boolean; broken: boolean };
   view: DungeonEditorView;
   onSave: () => void;
   onPublish: () => void;
@@ -90,6 +92,20 @@ export function DungeonEditorHeader(props: DungeonEditorHeaderProps) {
               Save draft
             </Button>
           )}
+          <Badge
+            variant={
+              props.publication.broken
+                ? 'danger'
+                : props.publication.attention
+                  ? 'solid'
+                  : 'outline'
+            }
+            role="status"
+            title={props.publication.summary}
+            data-testid="publication-state"
+          >
+            {props.publication.label}
+          </Badge>
           {props.canPublish ? (
             <Button disabled={props.publishDisabled} onClick={props.onPublish}>
               Publish draft

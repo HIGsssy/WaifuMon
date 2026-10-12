@@ -24,6 +24,8 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useHasPermission } from '@/auth/useSession';
 import { DungeonImportPanel } from './DungeonImportPanel';
+import { publicationState } from './dungeonPublicationModel';
+import { RewardHealthPanel } from './RewardHealthPanel';
 const formatUpdated = (iso: string) => new Date(iso).toLocaleString();
 export function DungeonsListPage() {
   const [importing, setImporting] = useState(false);
@@ -73,33 +75,59 @@ export function DungeonsListPage() {
         <ErrorState title="Could not change dungeon availability" error={toggle.error} />
       )}
       {query.data?.dungeons.length === 0 && <Card className="p-6">No dungeons yet.</Card>}
-      {query.data?.dungeons.map((d) => (
-        <Card key={d.key} className="flex flex-wrap items-center gap-3 p-4">
-          <div className="flex-1">
-            <Link
-              className="font-medium hover:underline"
-              to={`/admin/dungeons/definitions/${encodeURIComponent(d.key)}`}
+      {query.data?.dungeons.map((d) => {
+        const publication = publicationState(d);
+        return (
+          <Card key={d.key} className="flex flex-wrap items-center gap-3 p-4">
+            <div className="min-w-0 flex-1 basis-64">
+              <Link
+                className="font-medium hover:underline"
+                to={`/admin/dungeons/definitions/${encodeURIComponent(d.key)}`}
+              >
+                {d.name}
+              </Link>
+              <p className="text-sm text-ink-muted">
+                {d.key} · Draft {d.draftRevision} ·{' '}
+                {d.published ? `Published ${d.published.number}` : 'Unpublished'} · {d.roomCount}{' '}
+                rooms
+              </p>
+              <p className="text-xs text-ink-subtle">Validation available on the management page</p>
+              {publication.changes.length > 0 && (
+                <ul
+                  className="mt-1 list-disc pl-5 text-xs text-ink-muted"
+                  data-testid={`loot-changes-${d.key}`}
+                >
+                  {publication.changes.map((change) => (
+                    <li
+                      key={change.id}
+                      title={change.detail}
+                      className={change.broken ? 'text-danger' : undefined}
+                    >
+                      {change.text}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <Badge>{d.enabled ? 'Enabled' : 'Disabled'}</Badge>
+            <Badge
+              variant={
+                publication.broken ? 'danger' : publication.kind === 'matches' ? 'outline' : 'solid'
+              }
+              title={publication.summary}
+              data-testid={`publication-state-${d.key}`}
             >
-              {d.name}
-            </Link>
-            <p className="text-sm text-ink-muted">
-              {d.key} · Draft {d.draftRevision} ·{' '}
-              {d.published ? `Published ${d.published.number}` : 'Unpublished'} · {d.roomCount}{' '}
-              rooms
-            </p>
-            <p className="text-xs text-ink-subtle">Validation available on the management page</p>
-          </div>
-          <Badge>{d.enabled ? 'Enabled' : 'Disabled'}</Badge>
-          <Badge variant="outline">
-            {d.draftDiffers ? 'Unpublished changes' : 'Draft matches publication'}
-          </Badge>
-          {canWrite && (
-            <Button disabled={toggle.isPending} onClick={() => toggle.mutate(d)}>
-              {d.enabled ? 'Disable' : 'Enable'} {d.name}
-            </Button>
-          )}
-        </Card>
-      ))}
+              {publication.label}
+            </Badge>
+            {canWrite && (
+              <Button disabled={toggle.isPending} onClick={() => toggle.mutate(d)}>
+                {d.enabled ? 'Disable' : 'Enable'} {d.name}
+              </Button>
+            )}
+          </Card>
+        );
+      })}
+      <RewardHealthPanel />
       <SettingsPanel canWrite={canWrite} />
       <CurrencyPanel canWrite={canWrite} />
     </div>

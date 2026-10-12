@@ -704,7 +704,7 @@ describe('validation, legacy treasure and saving', () => {
     expect(screen.getByLabelText('Reward table')).toHaveValue('loot');
     expect(screen.getByLabelText('Progression currency min')).toHaveValue(5);
     expect(screen.getByTestId('legacy-treasure-note')).toHaveTextContent(
-      'Converting is a separate, deliberate step that is not available yet',
+      'until you convert it to the new Rewards',
     );
     expect(screen.queryByTestId('activity-rewards')).not.toBeInTheDocument();
     // Another activity changes; the legacy treasure is saved back byte for byte.

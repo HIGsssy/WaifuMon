@@ -2,6 +2,7 @@
 import type { ArtworkDirectory, ArtworkSearchResults } from './adminArtwork';
 import type { DungeonRewardGrant } from './adminDungeonLootTables';
 import { apiClient, getData, postData, putData } from './client';
+import type { DungeonLootTableBody } from './dungeonLootTypes';
 
 export type DungeonArtworkRef =
   | { kind: 'shipped'; path: string }
@@ -137,7 +138,7 @@ export interface DungeonSummary {
   draftHash: string;
   published: DungeonPublishedInfo | null;
   draftDiffers: boolean;
-  /** Reward dependency reporting (T6). The Portal does not render these yet. */
+  /** Reward dependency reporting (T6): the draft's loot against what the published revision pinned. */
   draftGameplayHash?: string | null;
   dependenciesDiffer?: boolean;
   dependencyChanges?: DungeonRewardDependencyChange[];
@@ -317,6 +318,112 @@ export function createDungeon(
     definition,
     ...(layout === undefined ? {} : { layout }),
   });
+}
+// ── Legacy treasure conversion and published reward health (T15B) ──
+
+export interface DungeonTreasureTarget {
+  roomId: string;
+  actionId: string;
+}
+export interface DungeonLegacyReward {
+  rewardTable: string | null;
+  equipmentRewardTable: string | null;
+  currency: { min: number; max: number };
+}
+export interface DungeonConversionTable {
+  /** The expedition reward table it was made from. */
+  sourceTable: string;
+  sourceContentHash: string;
+  /** How many times the treasure rolls it. */
+  draws: number;
+  /** `reuse`: an identical converted table already exists and is used as it is. */
+  action: 'create' | 'reuse';
+  key: string;
+  name: string;
+  description: string;
+  body: DungeonLootTableBody;
+  contentHash: string;
+}
+export interface DungeonConversionBlocker {
+  code: string;
+  table: string | null;
+  message: string;
+}
+export interface DungeonTreasureConversionPlan extends DungeonTreasureTarget {
+  dungeonKey: string;
+  roomName: string;
+  draftRevision: number;
+  legacy: DungeonLegacyReward;
+  /** Null while a blocker stands. */
+  rewards: DungeonRewardBundle | null;
+  tables: DungeonConversionTable[];
+  omitted: Array<{
+    table: string | null;
+    reason: 'never_paid' | 'disabled' | 'cannot_drop';
+    text: string;
+  }>;
+  blockers: DungeonConversionBlocker[];
+  /** What the converted treasure would still need before it can be published. */
+  issues: DungeonIssue[];
+  waifubuxAtRisk: boolean;
+  retention: { defeatBasisPoints: number; abandonBasisPoints: number };
+  /** Names exactly this plan; applying anything else is refused. */
+  planHash: string;
+}
+export interface DungeonTreasureConversionResult {
+  dungeon: DungeonDetail;
+  createdTables: string[];
+  reusedTables: string[];
+  /** The plan had already been applied; nothing was written this time. */
+  replayed: boolean;
+}
+export function planTreasureConversion(
+  key: string,
+  target: DungeonTreasureTarget,
+  signal?: AbortSignal,
+): Promise<DungeonTreasureConversionPlan> {
+  return postData(`${definitionUrl(key)}/treasure-conversion/plan`, target, opts(signal));
+}
+export function convertTreasure(
+  key: string,
+  input: DungeonTreasureTarget & { expectedRevision: number; expectedPlanHash: string },
+): Promise<DungeonTreasureConversionResult> {
+  return postData(`${definitionUrl(key)}/treasure-conversion/apply`, input);
+}
+
+export interface DungeonRewardHealthProblem {
+  type: 'item' | 'equipment' | 'snapshot';
+  reason: string;
+  /** Item or gear key; null for the frozen copy itself. Not a label. */
+  key: string | null;
+  name: string;
+  message: string;
+  hint: string;
+}
+export interface DungeonRewardHealthEntry {
+  key: string;
+  name: string;
+  enabled: boolean;
+  revision: number | null;
+  status: 'healthy' | 'broken' | 'no_rewards' | 'unpublished';
+  problems: DungeonRewardHealthProblem[];
+  /** Errors in the draft: they block the next publish and do not affect players. */
+  draftErrors: number;
+  /** Runs in progress on the published revision. */
+  activeRuns: number;
+  /** Older revisions that runs in progress are still on, newest first. Counts only. */
+  activeRevisions: DungeonRewardHealthActiveRevision[];
+}
+export interface DungeonRewardHealthActiveRevision {
+  revision: number;
+  activeRuns: number;
+  status: 'healthy' | 'broken' | 'no_rewards';
+  problems: DungeonRewardHealthProblem[];
+}
+export function getDungeonRewardHealth(
+  signal?: AbortSignal,
+): Promise<{ dungeons: DungeonRewardHealthEntry[] }> {
+  return getData(`${base}/reward-health`, opts(signal));
 }
 export function saveDungeonDraft(
   key: string,

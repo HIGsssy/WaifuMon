@@ -1,5 +1,5 @@
 /** Dungeon draft management and room map editor. */
-import { useContext, useEffect, useState, type CSSProperties } from 'react';
+import { useContext, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { Link, useParams, useBlocker, UNSAFE_DataRouterContext } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, ChevronRight } from 'lucide-react';
@@ -15,6 +15,15 @@ import { errorIssues } from './zoneFormParts';
 import { RunFlagsEditor } from './RunFlagsEditor';
 import { friendlyIssue, incompleteIssues } from './dungeonText';
 import { DungeonBackgroundField } from './DungeonBackgroundField';
+import { CurrencyRiskSettings } from './CurrencyRiskSettings';
+import { TreasureConversionDialog } from './TreasureConversionDialog';
+import { TreasureConversionContext } from './treasureConversionContext';
+import {
+  PUBLISH_FREEZE_NOTE,
+  publicationState,
+  publishExplanation,
+  type DependencyLine,
+} from './dungeonPublicationModel';
 import { LootTableSheet } from '@/features/adminDungeonLoot/LootTableSheet';
 import { LootTableSheetContext } from '@/features/adminDungeonLoot/lootSheetContext';
 import { DungeonGraphView } from './DungeonGraphView';
@@ -86,6 +95,13 @@ function Management({ initial }: { initial: api.DungeonDetail }) {
   /** A loot table opened beside the dungeon, and whether it has unsaved edits of its own. */
   const [lootTable, setLootTable] = useState<string | null>(null);
   const [lootDirty, setLootDirty] = useState(false);
+  const [confirmingPublish, setConfirmingPublish] = useState(false);
+  /** The legacy treasure whose conversion preview is open. */
+  const [converting, setConverting] = useState<api.DungeonTreasureTarget | null>(null);
+  const [rechecking, setRechecking] = useState(false);
+  // Answers can arrive out of order; only the newest question of each kind is kept.
+  const validationRequest = useRef(0);
+  const publicationRequest = useRef(0);
   const gameplayDirty = JSON.stringify(draft) !== JSON.stringify(loaded.draft);
   const dirty = gameplayDirty || JSON.stringify(layout) !== JSON.stringify(loaded.layout);
   // Leaving the page would lose either kind of unsaved work.
@@ -130,6 +146,9 @@ function Management({ initial }: { initial: api.DungeonDetail }) {
   });
   const refresh = () => void client.invalidateQueries({ queryKey: api.DUNGEONS_QUERY_KEY });
   const accept = (d: api.DungeonDetail, message: string) => {
+    // Anything still in flight was asked about the state this replaces.
+    validationRequest.current++;
+    publicationRequest.current++;
     setLoaded(d);
     setDraft(d.draft);
     setLayout(d.layout);
@@ -153,10 +172,34 @@ function Management({ initial }: { initial: api.DungeonDetail }) {
     onSuccess: (d) => accept(d, 'Draft saved. Publication is unchanged.'),
     onError: failed,
   });
+  /** Checks `definition` (unsaved edits included) against the server as it is now. */
+  const check = async (definition: api.DungeonDefinition, signal?: AbortSignal) => {
+    const request = ++validationRequest.current;
+    const report = await api.validateDungeon(definition, signal);
+    if (request === validationRequest.current)
+      setValidation({ signature: JSON.stringify(definition), report });
+  };
+  /**
+   * Re-reads how the saved draft stands against publication. Only that status
+   * is taken: the draft and layout being edited are never replaced.
+   */
+  const refreshPublication = () => {
+    const request = ++publicationRequest.current;
+    void api
+      .getDungeon(loaded.key)
+      .then((latest) => {
+        if (request !== publicationRequest.current) return;
+        setLoaded((current) =>
+          latest.draftRevision === current.draftRevision
+            ? { ...latest, draft: current.draft, layout: current.layout }
+            : current,
+        );
+      })
+      // The status shown stays as it was; the next check or save reads it again.
+      .catch(() => undefined);
+  };
   const validate = useMutation({
-    mutationFn: (definition: api.DungeonDefinition) => api.validateDungeon(definition),
-    onSuccess: (report, definition) =>
-      setValidation({ signature: JSON.stringify(definition), report }),
+    mutationFn: (definition: api.DungeonDefinition) => check(definition),
     onError: failed,
   });
   const publish = useMutation({
@@ -206,21 +249,52 @@ function Management({ initial }: { initial: api.DungeonDetail }) {
     if (!gameplayDirty || conflict || incomplete.length) return;
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
-      void api
-        .validateDungeon(draft, controller.signal)
-        .then((report) => setValidation({ signature: JSON.stringify(draft), report }))
-        .catch((error) => {
-          if (!controller.signal.aborted)
-            setNotice(
-              `Validation failed: ${error instanceof Error ? error.message : 'Request failed'}`,
-            );
-        });
+      void check(draft, controller.signal).catch((error) => {
+        if (!controller.signal.aborted)
+          setNotice(
+            `Validation failed: ${error instanceof Error ? error.message : 'Request failed'}`,
+          );
+      });
     }, 350);
     return () => {
       window.clearTimeout(timer);
       controller.abort();
     };
   }, [draft, gameplayDirty, conflict, incomplete.length]);
+  /**
+   * A shared loot table was saved beside the dungeon. Everything checked
+   * against the old table is stale: the reference names, the checklist and the
+   * publication status. The draft as it stands here, saved or not, is checked
+   * again; nothing is saved to do it.
+   */
+  const lootSaved = () => {
+    setNotice('');
+    void client.invalidateQueries({ queryKey: [...api.DUNGEONS_QUERY_KEY, 'reference'] });
+    refreshPublication();
+    if (conflict || incomplete.length) return;
+    setRechecking(true);
+    void check(draft)
+      .catch((error) =>
+        setNotice(
+          `Validation failed: ${error instanceof Error ? error.message : 'Request failed'}`,
+        ),
+      )
+      .finally(() => setRechecking(false));
+  };
+  const publication = publicationState(loaded, gameplayDirty);
+  // Converting rewrites the treasure in the saved draft, so it starts only from one.
+  const conversion = {
+    open: setConverting,
+    unavailable: !canWrite
+      ? 'Converting needs permission to edit dungeons.'
+      : conflict
+        ? 'Reload the latest draft before converting.'
+        : dirty
+          ? 'Save your draft first. Converting rewrites this treasure in the saved draft, so it cannot start while this page holds unsaved changes.'
+          : busy
+            ? 'Wait for the current save to finish.'
+            : null,
+  };
   const errors = [
     save.error,
     publish.error,
@@ -235,11 +309,15 @@ function Management({ initial }: { initial: api.DungeonDetail }) {
   };
   const settings = (
     <div className="space-y-5">
+      <section className="space-y-1" aria-label="Publication" data-testid="publication-details">
+        <h2 className="text-sm font-semibold">Publication</h2>
+        <p className="text-xs text-ink-muted">{publication.summary}</p>
+        <DependencyChanges changes={publication.changes} />
+      </section>
       <section className="space-y-3">
         <h2 className="text-sm font-semibold">Dungeon settings</h2>
         <p className="text-sm text-ink-muted">
-          Progression currency: {draft.settings.progressionCurrency ?? 'None'} · Defeat retention:{' '}
-          {draft.settings.defeatCurrencyRetentionBasisPoints / 100}%
+          Progression currency: {draft.settings.progressionCurrency ?? 'None'}
         </p>
         <label className="block">
           Name
@@ -291,6 +369,11 @@ function Management({ initial }: { initial: api.DungeonDetail }) {
           ))}
         </fieldset>
       </section>
+      <CurrencyRiskSettings
+        settings={draft.settings}
+        disabled={!canWrite || busy || conflict}
+        onChange={(next) => patch({ settings: next })}
+      />
       <section className="space-y-3">
         <h2 className="text-sm font-semibold">Pictures</h2>
         <DungeonBackgroundField
@@ -357,6 +440,7 @@ function Management({ initial }: { initial: api.DungeonDetail }) {
           tableKey={lootTable}
           onClose={() => setLootTable(null)}
           onDirtyChange={setLootDirty}
+          onSaved={lootSaved}
         />
       )}
       <DungeonEditorHeader
@@ -366,7 +450,13 @@ function Management({ initial }: { initial: api.DungeonDetail }) {
         draftRevision={loaded.draftRevision}
         publishedRevision={loaded.published?.number ?? null}
         dirty={dirty}
-        validationPending={gameplayDirty && !report && incomplete.length === 0}
+        validationPending={rechecking || (gameplayDirty && !report && incomplete.length === 0)}
+        publication={{
+          label: publication.label,
+          summary: publication.summary,
+          attention: publication.kind !== 'matches',
+          broken: publication.broken,
+        }}
         notice={notice}
         finishCount={incomplete.length}
         errorCount={incomplete.length ? 0 : issues.filter((i) => i.severity === 'error').length}
@@ -378,8 +468,11 @@ function Management({ initial }: { initial: api.DungeonDetail }) {
         validateDisabled={busy || validate.isPending || conflict}
         view={view}
         onSave={() => save.mutate()}
-        onPublish={() => publish.mutate()}
-        onValidate={() => validate.mutate(draft)}
+        onPublish={() => setConfirmingPublish(true)}
+        onValidate={() => {
+          validate.mutate(draft);
+          refreshPublication();
+        }}
         onShowProblems={() => {
           setView('map');
           setProblemsRequest((n) => n + 1);
@@ -419,20 +512,22 @@ function Management({ initial }: { initial: api.DungeonDetail }) {
       {/* Kept mounted behind the secondary view so selection and the canvas survive a visit. */}
       <div hidden={view !== 'map'} className="min-h-0 lg:flex-1">
         <LootTableSheetContext.Provider value={setLootTable}>
-          <DungeonGraphView
-            reference={reference.data}
-            definition={draft}
-            layout={layout}
-            issues={issues}
-            disabled={!canWrite || busy || conflict}
-            settings={settings}
-            problemsRequest={problemsRequest}
-            onChange={(definition, nextLayout) => {
-              setDraft(definition);
-              setLayout(nextLayout);
-              setNotice('');
-            }}
-          />
+          <TreasureConversionContext.Provider value={conversion}>
+            <DungeonGraphView
+              reference={reference.data}
+              definition={draft}
+              layout={layout}
+              issues={issues}
+              disabled={!canWrite || busy || conflict}
+              settings={settings}
+              problemsRequest={problemsRequest}
+              onChange={(definition, nextLayout) => {
+                setDraft(definition);
+                setLayout(nextLayout);
+                setNotice('');
+              }}
+            />
+          </TreasureConversionContext.Provider>
         </LootTableSheetContext.Provider>
       </div>
       {view === 'manage' && (
@@ -545,6 +640,49 @@ function Management({ initial }: { initial: api.DungeonDetail }) {
           </Card>
         </div>
       )}
+      {converting && (
+        <TreasureConversionDialog
+          dungeonKey={loaded.key}
+          draftRevision={loaded.draftRevision}
+          target={converting}
+          reference={reference.data}
+          onClose={() => setConverting(null)}
+          onConverted={(result) => {
+            setConverting(null);
+            const made = result.createdTables.length;
+            accept(
+              result.dungeon,
+              `Treasure converted${made ? `, with ${made} new loot ${made === 1 ? 'table' : 'tables'}` : ''}. Publication is unchanged.`,
+            );
+          }}
+        />
+      )}
+      <Dialog open={confirmingPublish} onOpenChange={setConfirmingPublish}>
+        <DialogContent>
+          <Card className="max-h-full w-full max-w-lg space-y-3 overflow-y-auto p-6">
+            <DialogTitle>Publish {loaded.name}?</DialogTitle>
+            <DialogDescription data-testid="publish-explanation">
+              {publishExplanation(publication)}
+            </DialogDescription>
+            <DependencyChanges changes={publication.changes} />
+            <p className="text-sm text-ink-muted">{PUBLISH_FREEZE_NOTE}</p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                disabled={busy}
+                onClick={() => {
+                  setConfirmingPublish(false);
+                  publish.mutate();
+                }}
+              >
+                Publish now
+              </Button>
+              <Button variant="outline" onClick={() => setConfirmingPublish(false)}>
+                Cancel
+              </Button>
+            </div>
+          </Card>
+        </DialogContent>
+      </Dialog>
       <Dialog
         open={rollbackTarget !== null}
         onOpenChange={(open) => {
@@ -573,6 +711,18 @@ function Management({ initial }: { initial: api.DungeonDetail }) {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+function DependencyChanges({ changes }: { changes: DependencyLine[] }) {
+  if (changes.length === 0) return null;
+  return (
+    <ul className="list-disc space-y-1 pl-5 text-xs text-ink-muted" data-testid="loot-changes">
+      {changes.map((change) => (
+        <li key={change.id} title={change.detail} className={change.broken ? 'text-danger' : ''}>
+          {change.text}
+        </li>
+      ))}
+    </ul>
   );
 }
 function UnsavedNavigationGuard({ dirty }: { dirty: boolean }) {
