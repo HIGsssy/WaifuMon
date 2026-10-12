@@ -14,7 +14,7 @@
       "description": "Patch bolts something serviceable together out of the scrap pile.",
       "rarity": "N",
       "componentCost": 5,
-      "waifubuxCost": 250,
+      "waifubuxCost": 1550,
       "enabled": true
     },
     {
@@ -23,7 +23,7 @@
       "description": "Better parts, fewer sparks. Mostly.",
       "rarity": "R",
       "componentCost": 15,
-      "waifubuxCost": 750,
+      "waifubuxCost": 3750,
       "enabled": true
     },
     {
@@ -32,7 +32,7 @@
       "description": "Patch's best work. Don't ask where the parts came from.",
       "rarity": "SR",
       "componentCost": 40,
-      "waifubuxCost": 2000,
+      "waifubuxCost": 7000,
       "enabled": true
     }
   ]
