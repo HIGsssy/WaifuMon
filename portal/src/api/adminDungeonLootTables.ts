@@ -1,22 +1,15 @@
-/** Dungeon catalogue client. Backend types are erased; no server runtime enters the bundle. */
+/** Dungeon catalogue client. Wire DTOs are local so the Portal builds independently. */
 import { deleteData, getData, postData, putData } from './client';
 import type {
   DungeonLootTable,
   DungeonLootTableUsage,
   DungeonLootTableEvent,
   DungeonLootTableValidation,
-} from '../../../src/api/schemas/dungeonLootTables';
-import type {
   DungeonLootTableBody,
   DungeonRewardGrant,
-} from '../../../src/modules/dungeons/content/dungeonRewards';
+  EquipmentRewardSelector,
+} from './dungeonLootTypes';
 import type { DungeonIssue, DungeonRewardBundle } from './adminDungeons';
-
-/** The existing equipment selector: an optional slot, an optional rarity, optional specific pieces. */
-export type EquipmentRewardSelector = Extract<
-  DungeonRewardGrant,
-  { type: 'equipment' }
->['selector'];
 
 // ── Test Roll (T12). Hand-authored to mirror `dungeonRewardPreview` and `lootResolver`. ──
 
@@ -127,6 +120,7 @@ export type {
   DungeonLootTableValidation,
   DungeonLootTableBody,
   DungeonRewardGrant,
+  EquipmentRewardSelector,
 };
 /** A Test Roll of one table body. Unsaved content is sent as it stands; nothing is written. */
 export interface DungeonTableTestRollInput {
