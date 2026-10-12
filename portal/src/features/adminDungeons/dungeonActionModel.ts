@@ -15,7 +15,8 @@ export const ACTION_TYPES = [
   'leave',
 ] as const;
 export type ActionType = (typeof ACTION_TYPES)[number];
-export const ACTION_OUTCOMES: Record<ActionType, string[]> = {
+/** `event` is not an `ActionType`: it is attached with what it presents, never created bare. */
+export const ACTION_OUTCOMES: Record<ActionType | 'event', string[]> = {
   combat: ['victory', 'defeat'],
   boss: ['victory', 'defeat'],
   reward: ['claimed'],
@@ -23,6 +24,7 @@ export const ACTION_OUTCOMES: Record<ActionType, string[]> = {
   gate: ['passed', 'blocked'],
   set_flag: ['done'],
   leave: [],
+  event: ['resolved', 'nothing'],
 };
 export function actionId(actions: DungeonAction[], uuid = () => crypto.randomUUID()) {
   const ids = new Set(actions.map((a) => a.id));

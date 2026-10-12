@@ -16,6 +16,7 @@ import { RunFlagsEditor } from './RunFlagsEditor';
 import { friendlyIssue, incompleteIssues } from './dungeonText';
 import { DungeonBackgroundField } from './DungeonBackgroundField';
 import { CurrencyRiskSettings } from './CurrencyRiskSettings';
+import { DungeonEventsPanel } from './DungeonEventsPanel';
 import { ProgressionCurrencyField } from './ProgressionCurrencyField';
 import { TreasureConversionDialog } from './TreasureConversionDialog';
 import { TreasureConversionContext } from './treasureConversionContext';
@@ -391,6 +392,14 @@ function Management({ initial }: { initial: api.DungeonDetail }) {
         disabled={!canWrite || busy || conflict}
         onChange={(next) => patch({ settings: next })}
       />
+      <DungeonEventsPanel
+        definition={draft}
+        disabled={!canWrite || busy || conflict}
+        onChange={(definition) => {
+          setDraft(definition);
+          setNotice('');
+        }}
+      />
       <section className="space-y-3">
         <h2 className="text-sm font-semibold">Pictures</h2>
         <DungeonBackgroundField
@@ -476,6 +485,11 @@ function Management({ initial }: { initial: api.DungeonDetail }) {
         }}
         notice={notice}
         finishCount={incomplete.length}
+        finishHint={
+          incomplete.some((i) => !i.path.includes('.waves['))
+            ? 'Finish the items under “Finish before saving” to save.'
+            : undefined
+        }
         errorCount={incomplete.length ? 0 : issues.filter((i) => i.severity === 'error').length}
         warningCount={issues.filter((i) => i.severity !== 'error').length}
         canWrite={canWrite}

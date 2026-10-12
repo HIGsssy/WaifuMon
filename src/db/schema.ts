@@ -3384,6 +3384,8 @@ export const dungeonRuns = pgTable(
     roomStates: jsonb('room_states').$type<Record<string, unknown>>().notNull().default({}),
     /** Reward claims survive retreat and room resume independently. */
     rewardClaims: jsonb('reward_claims').$type<Record<string, unknown>>().notNull().default({}),
+    /** Event selections by `<roomId>:<actionId>`; like claims, they outlive a retreat. */
+    eventStates: jsonb('event_states').$type<Record<string, unknown>>().notNull().default({}),
     unbankedCurrency: integer('unbanked_currency').notNull().default(0),
     unbankedWaifubux: integer('unbanked_waifubux').notNull().default(0),
     /** What the latest step did, for redisplay. */
@@ -3436,6 +3438,8 @@ export const DUNGEON_RUN_EVENT_TYPES = [
   'abandon',
   'currency_banked',
   'rewards_granted',
+  'event_selected',
+  'items_consumed',
 ] as const;
 export type DungeonRunEventType = (typeof DUNGEON_RUN_EVENT_TYPES)[number];
 
@@ -3464,7 +3468,7 @@ export const dungeonRunEvents = pgTable(
   (t) => [
     check(
       'dungeon_run_events_type_check',
-      sql`${t.type} in ('run_started','room_entered','action_skipped','action_declined','combat_wave_resolved','action_completed','action_failed','room_completed','room_retreated','connection_taken','extraction','defeat','completion','abandon','currency_banked','rewards_granted')`,
+      sql`${t.type} in ('run_started','room_entered','action_skipped','action_declined','combat_wave_resolved','action_completed','action_failed','room_completed','room_retreated','connection_taken','extraction','defeat','completion','abandon','currency_banked','rewards_granted','event_selected','items_consumed')`,
     ),
     index('dungeon_run_events_run_idx').on(t.runId, t.id),
   ],

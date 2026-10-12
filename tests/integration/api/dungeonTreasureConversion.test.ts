@@ -542,7 +542,7 @@ describe('reward health for runs in progress on older revisions', () => {
     const pinned = await of('runs_pinned');
     expect(pinned).toMatchObject({ status: 'healthy', revision: 2, activeRuns: 1, problems: [] });
     // Three runs on one revision are one line, not three.
-    expect(pinned.activeRevisions).toEqual([{ revision: 1, activeRuns: 3, status: 'healthy', problems: [] }]);
+    expect(pinned.activeRevisions).toEqual([{ revision: 1, activeRuns: 3, status: 'healthy', problems: [], notices: [] }]);
     expect(await of('runs_none')).toMatchObject({ status: 'healthy', revision: 2, activeRuns: 0, activeRevisions: [] });
     // Dungeons from the earlier tests, with no runs at all, read as they did.
     expect(await of('health_legacy')).toMatchObject({ status: 'no_rewards', activeRuns: 0, activeRevisions: [] });
@@ -567,6 +567,7 @@ describe('reward health for runs in progress on older revisions', () => {
           message: '"Old Prize" is now limited to 1 per player, so it cannot be dungeon loot.',
           hint: expect.stringContaining('Publishing again does not change a run in progress'),
         }],
+        notices: [],
       }]);
       // The same broken revision with nobody on it is outside this check.
       expect(await of('runs_none')).toMatchObject({ status: 'healthy', activeRevisions: [] });

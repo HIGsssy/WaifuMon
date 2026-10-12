@@ -501,7 +501,7 @@ describe('migration 0064 schema', () => {
       const before = (await pool.query('SELECT xmin::text AS version,to_jsonb(r)::text AS row FROM dungeon_runs r')).rows;
       const walletBefore = (await pool.query('SELECT xmin::text AS version,to_jsonb(w)::text AS row FROM player_currencies w')).rows;
       await runMigrations(db, w.t.logger, folder);
-      expect((await pool.query("SELECT xmin::text AS version,(to_jsonb(r)-'unbanked_waifubux')::text AS row FROM dungeon_runs r")).rows).toEqual(before);
+      expect((await pool.query("SELECT xmin::text AS version,(to_jsonb(r)-'unbanked_waifubux'-'event_states')::text AS row FROM dungeon_runs r")).rows).toEqual(before);
       expect((await pool.query('SELECT xmin::text AS version,to_jsonb(w)::text AS row FROM player_currencies w')).rows).toEqual(walletBefore);
       expect((await pool.query('SELECT unbanked_currency,unbanked_waifubux FROM dungeon_runs')).rows).toEqual([{ unbanked_currency: 45, unbanked_waifubux: 0 }]);
       await runMigrations(db, w.t.logger, folder);
@@ -515,9 +515,10 @@ describe('migration 0064 schema', () => {
   });
   it('adds the next journal entry with integer default zero, NOT NULL and nonnegative check', async () => {
     const journal = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../drizzle/meta/_journal.json'), 'utf8'));
-    const head = journal.entries.at(-1);
+    // No longer the newest migration (0065 follows it), so it is found by its own index.
+    const head = journal.entries[64];
     expect(head).toMatchObject({ idx: 64, tag: '0064_dungeon_unbanked_waifubux' });
-    expect(head.when).toBeGreaterThan(journal.entries.at(-2).when);
+    expect(head.when).toBeGreaterThan(journal.entries[63].when);
     const { rows } = await w.t.pool.query("SELECT data_type,is_nullable,column_default FROM information_schema.columns WHERE table_name='dungeon_runs' AND column_name='unbanked_waifubux'");
     expect(rows).toEqual([{ data_type: 'integer', is_nullable: 'NO', column_default: '0' }]);
     const config = getTableConfig(dungeonRuns);

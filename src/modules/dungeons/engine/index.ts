@@ -9,6 +9,8 @@ export * from './conditions';
 export * from './routing';
 export * from './combat';
 export * from './rewards';
+export * from './eventChecks';
+export * from './events';
 export * from './step';
 export * from './view';
 export * from './sandbox';

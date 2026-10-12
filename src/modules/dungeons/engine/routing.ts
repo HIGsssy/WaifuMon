@@ -37,6 +37,7 @@ export const SUCCESS_OUTCOME: Readonly<Record<DungeonActionType, string | null>>
   set_flag: 'done',
   leave: null,
   reward: 'claimed',
+  event: 'resolved',
 };
 
 /** Outcomes recorded as `failed` rather than `completed`. */
@@ -48,6 +49,8 @@ export const FAILURE_OUTCOMES: Readonly<Record<DungeonActionType, readonly strin
   set_flag: [],
   leave: [],
   reward: [],
+  // A failed check is a result of the event, not a failure of the action.
+  event: [],
 };
 
 const NEXT: ActionDestination = { type: 'next' };

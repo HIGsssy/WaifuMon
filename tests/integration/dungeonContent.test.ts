@@ -501,7 +501,6 @@ describe('audit and export', () => {
     await w.content.exportPackage(key, 'draft', 'exporter');
     const history = await w.content.history(key);
     expect(history.map((e) => [e.action, e.actor])).toEqual([
-      ['exported', 'exporter'],
       ['disabled', 'ops'],
       ['published', 'publisher'],
       ['draft_saved', 'editor'],
@@ -511,7 +510,7 @@ describe('audit and export', () => {
     expect(history.find((e) => e.action === 'draft_saved')!.details).toMatchObject({ contentChanged: true, layoutChanged: false });
     // The trail is its own table and survives on its own key.
     const rows = await w.t.db.select().from(dungeonContentEvents).where(eq(dungeonContentEvents.dungeonKey, key));
-    expect(rows).toHaveLength(5);
+    expect(rows).toHaveLength(4);
   });
 
   it('exports the draft as a package that reads back, with this server’s enemies bundled', async () => {

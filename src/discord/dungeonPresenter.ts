@@ -20,6 +20,7 @@
  *   dg|run|<runId>                  the run as it stands (Resume, back from a confirmation)
  *   dg|act|<runId>|<step>|<code>    the pending action: a = advance, d = decline
  *   dg|mv|<runId>|<step>|<connId>   take a connection
+ *   dg|ev|<runId>|<step>|<choiceId> answer the offered event with one of its choices
  *   dg|exq|<runId>                  extraction confirmation
  *   dg|ex|<runId>|<step>            extract
  *   dg|abq|<runId>                  abandon confirmation
@@ -45,6 +46,7 @@ import type {
 } from '../modules/dungeons/dungeonRunService';
 import type { DungeonRecentEntry, DungeonWaveResult } from '../modules/dungeons/engine/types';
 import { settleCurrency } from '../modules/dungeons/engine/rewards';
+import type { DungeonEventChoiceView, DungeonEventView } from '../modules/dungeons/engine/events';
 import type { DungeonActionView, DungeonConnectionView } from '../modules/dungeons/engine/view';
 import { formatCombatBonus, type CombatBonus } from '../modules/equipment/combatBonuses';
 import { EQUIPMENT_SLOTS, type EquipmentSlot } from '../modules/equipment/vocabulary';
@@ -66,6 +68,11 @@ export const STALE_NOTICE = 'That path is no longer available — here’s where
 export const LOCKED_NOTICE = 'That way is locked.';
 export const RUN_OVER_NOTICE = 'That run is over — here’s how it ended.';
 export const NOT_EXTRACTABLE_NOTICE = 'You can’t extract from here.';
+export const CHOICE_UNAVAILABLE_NOTICE = 'That choice isn’t available right now — here’s where you are.';
+export const CHOICE_REQUIRED_NOTICE = 'Pick one of the choices below.';
+/** The promise a screen makes about an item a choice spends. The wording is deliberate: do not soften it. */
+export const CONSUMED_WHEN_SELECTED = 'Consumed when selected.';
+export const CONSUMED_EVEN_IF_CHECK_FAILS = 'Consumed when selected, even if the check fails.';
 export const DAILY_LIMIT_NOTICE = 'You’ve used all of today’s Delve runs.';
 export const DELVE_CLOSED_NOTICE = 'Delve is closed to new runs right now.';
 export const EQUIPMENT_NOTE =
@@ -86,6 +93,8 @@ export const dgId = {
   decline: (runId: number, step: number) => buildCustomId('dg', 'act', String(runId), String(step), 'd'),
   move: (runId: number, step: number, connectionId: string) =>
     buildCustomId('dg', 'mv', String(runId), String(step), connectionId),
+  /** Choice ids are at most 40 characters, so the id stays well under Discord's 100. */
+  choose: (runId: number, step: number, choiceId: string) => buildCustomId('dg', 'ev', String(runId), String(step), choiceId),
   extractConfirm: (runId: number) => buildCustomId('dg', 'exq', String(runId)),
   extract: (runId: number, step: number) => buildCustomId('dg', 'ex', String(runId), String(step)),
   abandonConfirm: (runId: number) => buildCustomId('dg', 'abq', String(runId)),
@@ -100,6 +109,7 @@ const ACTION_HEADING: Readonly<Record<DungeonActionType, string>> = {
   set_flag: 'Something stirs',
   leave: 'Way on',
   reward: 'Cache',
+  event: 'Event',
 };
 const ACTION_EMOJI: Readonly<Record<DungeonActionType, string>> = {
   combat: '⚔️',
@@ -109,6 +119,7 @@ const ACTION_EMOJI: Readonly<Record<DungeonActionType, string>> = {
   set_flag: '✨',
   leave: '🚪',
   reward: '🎁',
+  event: '❔',
 };
 /** The button that carries out a pending action, when its author wrote no label. */
 const ACTION_BUTTON: Readonly<Record<DungeonActionType, string>> = {
@@ -119,6 +130,8 @@ const ACTION_BUTTON: Readonly<Record<DungeonActionType, string>> = {
   set_flag: 'Continue',
   leave: 'Move on',
   reward: 'Open',
+  // Never drawn: an event's buttons are its choices (`eventButtons`).
+  event: 'Continue',
 };
 
 /** Discord: five buttons to a row, five rows to a message. Three rows are the connections'. */
@@ -600,6 +613,29 @@ function recentBlock(view: DungeonRunView, opts: DungeonScreenOptions): { lines:
       case 'room_completed':
         lines.push(`✅ **${truncate(nameOf(entry.roomId), 100)}** is cleared.`);
         break;
+      case 'event_nothing':
+        if (entry.text) lines.push(`_${truncate(entry.text, 200)}_`);
+        break;
+      case 'event': {
+        const told = view.latestEvents?.find((e) => e.roomId === entry.roomId && e.actionId === entry.actionId);
+        const label = truncate(told?.choiceLabel ?? 'Your choice', 60);
+        if (entry.walkedAway) {
+          lines.push(told?.text ? `_${truncate(told.text, 800)}_` : `You leave **${truncate(told?.eventTitle ?? 'it', 80)}** for now.`);
+          break;
+        }
+        const result: string[] = [];
+        if (entry.check) {
+          result.push(`${entry.check.success ? '✅ **Success**' : '❌ **Failed**'} — ${percent(entry.check.chanceBasisPoints)} chance`);
+        }
+        if (told?.text) result.push(truncate(told.text, 800));
+        for (const spent of entry.consumed) result.push(`Used ${spent.quantity}× ${itemLabel(spent.item, (slug) => view.eventItemNames?.[slug] ?? opts.itemName(slug))}`);
+        if (entry.hpAfter !== entry.hpBefore) {
+          const change = entry.hpAfter - entry.hpBefore;
+          result.push(`HP ${entry.hpBefore} → **${entry.hpAfter}** / ${view.core.maxHp} (${change > 0 ? '+' : '−'}${Math.abs(change)})`);
+        }
+        fields.push({ name: truncate(`${EVENT_TONE_EMOJI[told?.tone ?? 'neutral']} ${told?.eventTitle ?? 'Event'} — ${label}`, 256), value: truncate(result.join('\n') || 'Done.', 1024) });
+        break;
+      }
       default:
         break;
     }
@@ -667,7 +703,65 @@ function actionBrief(action: DungeonActionView): string {
   }
 }
 
+const EVENT_TONE_EMOJI = { good: '✨', neutral: '❔', bad: '⚠️' } as const;
+
+/** Why a choice cannot be picked, in the author's words when they wrote some. */
+function unavailableLine(choice: DungeonEventChoiceView): string {
+  if (choice.unavailableText) return truncate(choice.unavailableText, 120);
+  switch (choice.unavailableReason) {
+    case 'items':
+      return 'You don’t have what this needs.';
+    case 'no_way_back':
+      return 'There is nowhere to go back to.';
+    default:
+      return 'Not available right now.';
+  }
+}
+
+/** The offered event's title and narrative, for the description. */
+function eventBrief(event: DungeonEventView): string {
+  return `${ACTION_EMOJI.event} **${truncate(event.title, 80)}**\n${truncate(event.text, 1500)}`;
+}
+
+const CHOICE_OPEN = '▸';
+const CHOICE_CLOSED = '🚫';
+
+/**
+ * One field per choice: what it needs, what it costs and what it risks. Fields
+ * rather than description lines so that a long narrative is what gives way
+ * when an embed is full (`fitEmbed`), never the statement that an item is spent.
+ */
+function eventChoiceFields(view: DungeonRunView, event: DungeonEventView, itemName: (slug: string) => string): Field[] {
+  const named = (slug: string) => view.eventItemNames?.[slug] ?? itemName(slug);
+  return event.choices.slice(0, BUTTONS_PER_ROW).map((choice) => {
+    const notes: string[] = [];
+    if (choice.description) notes.push(truncate(choice.description, 200));
+    for (const item of choice.items) {
+      notes.push(`Needs ${item.quantity}× ${itemLabel(item.item, named)} (you have ${item.owned}).`);
+    }
+    // Said in full wherever an item is spent: it goes when the button is pressed, before any roll.
+    if (choice.consumesOnSelect) notes.push(`**${choice.check ? CONSUMED_EVEN_IF_CHECK_FAILS : CONSUMED_WHEN_SELECTED}**`);
+    if (choice.check) notes.push(`Success chance: **${percent(choice.check.chanceBasisPoints)}**`);
+    if (!choice.available) notes.push(`_${unavailableLine(choice)}_`);
+    return {
+      name: `${choice.available ? CHOICE_OPEN : CHOICE_CLOSED} ${truncate(choice.label, 60)}`,
+      value: truncate(notes.join('\n'), 1024) || (choice.walksAway ? 'Step back for now.' : 'No requirements.'),
+    };
+  });
+}
+
+/** One button per choice, in authored order; an unavailable choice is shown and cannot be pressed. */
+function eventButtons(view: DungeonRunView, event: DungeonEventView): ButtonBuilder[] {
+  return event.choices.slice(0, BUTTONS_PER_ROW).map((choice) => {
+    const label = choice.check ? `${truncate(choice.label, 60)} (${percent(choice.check.chanceBasisPoints)})` : choice.label;
+    const style = choice.walksAway ? ButtonStyle.Secondary : ButtonStyle.Primary;
+    const built = button(dgId.choose(view.id, view.step, choice.id), label, style, choice.available ? undefined : CHOICE_CLOSED);
+    return choice.available ? built : built.setDisabled(true);
+  });
+}
+
 function actionButtons(view: DungeonRunView, action: DungeonActionView): ButtonBuilder[] {
+  if (action.event) return eventButtons(view, action.event);
   const fight = isFight(action);
   const fallback = fight && (action.wave?.index ?? 0) > 0 ? 'Next wave' : ACTION_BUTTON[action.type];
   const buttons = [
@@ -742,7 +836,7 @@ function fitEmbed(embed: EmbedBuilder): void {
   if (description) embed.setDescription(truncate(description, Math.max(1, description.length - over)));
   over = embedLength(embed.data) - EMBED_TOTAL_LIMIT;
   const fields = embed.data.fields ?? [];
-  const important = (name: string) => name.startsWith('🎁') || ['At Risk', 'Result', 'Kept', 'Kept — yours to keep', 'Secured', 'Secured — yours to keep', 'Currency risk'].includes(name);
+  const important = (name: string) => name.startsWith('🎁') || name.startsWith(CHOICE_OPEN) || name.startsWith(CHOICE_CLOSED) || ['At Risk', 'Result', 'Kept', 'Kept — yours to keep', 'Secured', 'Secured — yours to keep', 'Currency risk'].includes(name);
   for (const field of [...fields].reverse().filter((f) => !important(f.name))) {
     if (over <= 0) break;
     const length = Math.max(1, field.value.length - over);
@@ -789,7 +883,7 @@ export function buildRunScreen(view: DungeonRunView, opts: DungeonScreenOptions)
   } else {
     if (core.room.description) body.push(`_${truncate(core.room.description, 1000)}_`, '');
     if (core.phase === 'action' && core.action) {
-      body.push(actionBrief(core.action));
+      body.push(core.action.event ? eventBrief(core.action.event) : actionBrief(core.action));
     } else if (core.stuck) {
       body.push('⚠️ **There is no way forward from here.** Nothing is left to do in this room, no way out of it is open and you cannot extract — abandoning the run is all that is left.');
     } else if (shown.some((c) => c.open)) {
@@ -800,6 +894,7 @@ export function buildRunScreen(view: DungeonRunView, opts: DungeonScreenOptions)
   }
   embed.setDescription(truncate(body.join('\n').trim() || '—', 4096));
   embed.addFields(...latest.fields);
+  if (!over && core.action?.event) embed.addFields(...eventChoiceFields(view, core.action.event, opts.itemName));
 
   embed.addFields({ name: truncate(view.fighter.name, 200), value: fighterBlock(view.fighter, core.hp, core.maxHp), inline: true });
   if (over) {
@@ -873,6 +968,10 @@ export function actionNotice(result: Pick<DungeonActionResult, 'status' | 'refus
       return LOCKED_NOTICE;
     case 'not_extractable':
       return NOT_EXTRACTABLE_NOTICE;
+    case 'choice_unavailable':
+      return CHOICE_UNAVAILABLE_NOTICE;
+    case 'choice_required':
+      return CHOICE_REQUIRED_NOTICE;
     default:
       return STALE_NOTICE;
   }

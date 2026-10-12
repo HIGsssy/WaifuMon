@@ -2,14 +2,15 @@
 
 Hand-authored dungeons: a map of rooms and connections, each room holding an
 ordered sequence of actions, played one step per Discord interaction by a pure
-engine. This document describes the system through **Phase 2 Dungeon Rewards**
-(migrations `0059`–`0064`). The prototype it replaced — procedural zones, one
+engine. This document describes the system through **Phase 3 Dungeon Events**
+(migrations `0059`–`0065`). The prototype it replaced — procedural zones, one
 node = one resolution — is gone; its documentation is in Git history.
 
-The graphical Portal editor, package v1/v2 importer and Dungeon Loot catalogue
-are implemented. Standalone events and WaifuMon encounters remain future phases.
-See the [Dungeon Rewards creator guide](dungeons/dungeon-rewards-guide.md) for
-authoring and the [release assessment](dungeons/phase2-release-readiness.md) for
+The graphical Portal editor, dungeon-local narrative events, random event pools,
+package v1/v2/v3 importer and Dungeon Loot catalogue are implemented. WaifuMon
+encounters remain Phase 4. See the [Dungeon Events creator guide](dungeons/dungeon-events-guide.md)
+and [Dungeon Rewards creator guide](dungeons/dungeon-rewards-guide.md) for authoring,
+and the [Phase 3 release assessment](dungeons/phase3-release-readiness.md) for
 verification and staging requirements. The original [audit](dungeons/phase2-rewards-audit.md)
 and [design](dungeons/phase2-rewards-design.md) retain historical context;
 this page describes current behaviour.
@@ -59,12 +60,25 @@ action types:
 | `set_flag` | Sets a run-scoped flag | `done` |
 | `leave` | Completes the room; with `connectionId`, walks through it | — |
 | `reward` | Treasure: a new reward bundle or legacy tables/currency | `claimed` |
+| `event` | A narrative with choices, selected directly or from a pool | The selected choice's certain result, success or failure |
 
-Every action also takes `when` (a condition: the action is skipped silently
-when false), `optional` (the player may decline; outcome `declined`), a
-`label`, `next` and `outcomes`.
+Actions also take `when` (a condition: the action is skipped silently when
+false), a `label`, `next` and `outcomes`. Supported optional activities can be
+declined with outcome `declined`; events use their authored choices instead of
+a generic decline button.
 
-`event`, `choice`, `objective`, `random_outcome`, `wild_encounter` and `rescue`
+`event` (Phase 3) presents a narrative with choices: one named event, or a draw
+from a weighted pool, both defined in the dungeon's own `events` / `eventPools`.
+It is live: selections are stored on the run (`dungeon_runs.event_states`,
+migration `0065`), a choice is answered with `dg|ev|<runId>|<step>|<choiceId>`,
+and an item a choice spends is consumed in the step's transaction. Events and
+pools are authored in the Dungeon Editor (a room's Event setting, the Events
+list in dungeon settings, and the event and pool side sheets). Event dungeons
+export as package v3, including required item slugs and reachable outcome rewards.
+See the [creator guide](dungeons/dungeon-events-guide.md) and
+[phase3-events-design.md](dungeons/phase3-events-design.md).
+
+`choice`, `objective`, `random_outcome`, `wild_encounter` and `rescue`
 are **reserved** for later phases. A definition that uses one is refused with
 the issue code `unsupported_action_type`, naming the phase. Adding one is a new
 member of `DungeonActionSchema`, a handler in `engine/step.ts` and a
@@ -373,6 +387,7 @@ dg|exq|<runId>                        extraction confirmation
 dg|ex|<runId>|<step>                  extract
 dg|abq|<runId>                        abandon confirmation
 dg|ab|<runId>|<step>                  abandon the quoted step
+dg|ev|<runId>|<step>|<choiceId>       answer the offered event
 ```
 
 Old abandon buttons without a step reopen confirmation before settling.
@@ -423,9 +438,11 @@ optional rooms to be visited.
 
 ## The Dungeon Content Package
 
-One dungeon as portable JSON (`format: "waifumon-dungeon-package"`). New reward
-bundles export as `schemaVersion: 2`; legacy-only definitions still export as v1.
-Both versions are read and verified. The v1 foundation is:
+One dungeon as portable JSON (`format: "waifumon-dungeon-package"`). Definitions
+with an event library, pool or event action export as `schemaVersion: 3`; event-free
+reward bundles use v2 and legacy-only definitions use v1. All three are read and
+verified. An event-free definition's existing hashes and v1/v2 format are preserved.
+The v1 foundation is:
 
 | Member | Content |
 | --- | --- |
@@ -455,10 +472,19 @@ manifest, compare the draft and layout, and validate the target's references.
 The plan includes `planHash`, `packageHash`, `target.expectedRevision`,
 `target.status`, changed fields, per-enemy status and per-path issues.
 `publishable` describes the current target dependencies, before proposed enemy
-creation. Reward tables are checked for missing items and invalid Equipment
-selectors too. Only enemies carry source definition hashes: tables, regions and
-currencies are named by key, so differing source definitions cannot be compared
-and are reported as an explicit limitation.
+creation. Reward dependencies are checked for missing items and invalid Equipment
+selectors too. V2/v3 include hashed Dungeon Loot bodies and a frozen reward
+snapshot. Missing tables can be created; different tables require an explicit
+use-existing or import-as-copy decision. Copy rewrites normal rewards and all
+event outcome branches. V1 legacy reward tables, regions and currencies are
+named by key; their source definitions cannot be compared.
+
+V3 also lists the inventory items required by reachable event choices. It checks
+their availability on the target without creating global item definitions or
+transferring player inventory. Missing or disabled required items need explicit
+acceptance as an incomplete import. All new imports begin disabled and unpublished;
+v2/v3 replacement imports also disable and unpublish the existing dungeon. Review,
+publish and enable before accepting new runs. Existing active runs keep their revision.
 
 Apply takes `{ package, requestId, expectedPlanHash, expectedRevision, decisions }`.
 `requestId` is a fresh UUID for one reviewed apply request; keep the whole request
@@ -605,7 +631,20 @@ permission checks apply to all routes.
 through the sandbox with a synthetic fighter and returns the view, state,
 recorded effects and log. New rewards use a validated ephemeral draft snapshot
 or verified published snapshot, without player grants or writes. Legacy
-expedition loot is not resolved by this reward preview path.
+expedition loot is not resolved by this reward preview path. An event is
+answered with a `choose` input; `inventory` and `fighter.currentSp` are assumed,
+never read from a player. The Dungeon Editor's "Play the dungeon" is this route.
+
+`POST /validate` also answers how a definition's events would play, from the
+engine's own draw and check functions (`engine/eventAuthoring.ts`): `eventPools`
+gives each pool's odds with every entry in the draw (`base`) and for an imagined
+run (`scenario`); `eventPreviews` gives every event's choices as a player in
+that run would meet them (available, hidden, check chance, item cost). The run
+is the optional `eventScenario` in the request — `flags`, `completedRooms`,
+`seenEvents`, `inventory`, `currentSp`, `canTurnBack` — and defaults to an empty
+run with an average Buddy. Both lists are empty for a definition without events
+or one whose shape cannot be read. The Portal shows these numbers and computes
+no odds or availability of its own.
 
 ## Migration 0059
 
@@ -648,6 +687,23 @@ checklist before considering production.
 
 ## Still out of scope
 
-- Standalone events, choices, persistent flags and shared rules (Phase 3).
+- Persistent player flags, event effects other than run flags/percentage health/rewards,
+  and skill checks other than SP.
 - WaifuMon encounters, rescue and recruitment (Phase 4).
 - Re-running a completed room's sequence on re-entry.
+
+## Phase 3 migration and rollout
+
+`0065_dungeon_events` adds non-null `event_states` with an empty-object default
+and extends the run-history type constraint for selection and item consumption.
+Existing event-free runs retain their state and hashes. The constraint replacement
+takes an exclusive lock and validates historical rows; rehearse its duration on a
+representative database and schedule a maintenance window with bounded lock waits.
+
+Deploy the database through 0065, then the matching backend/API and Discord bot,
+then the Portal. Withhold event publishing until all readers support events and
+package v3. Disabling a dungeon stops new starts but does not migrate active runs;
+an older backend cannot safely resume runs pinned to event revisions. Keep the
+additive migration when rolling application code back. The
+[Phase 3 assessment](dungeons/phase3-release-readiness.md) gives the detailed
+deployment, rollback and manual staging checklist.

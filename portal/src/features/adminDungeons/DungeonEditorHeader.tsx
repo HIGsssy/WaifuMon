@@ -17,6 +17,8 @@ export interface DungeonEditorHeaderProps {
   notice: string;
   /** Items that stop the draft being saved at all. */
   finishCount: number;
+  /** What is left to finish, when it is more than fights without an enemy. */
+  finishHint?: string | undefined;
   errorCount: number;
   warningCount: number;
   canWrite: boolean;
@@ -46,7 +48,7 @@ export function DungeonEditorHeader(props: DungeonEditorHeaderProps) {
   const blocking = props.finishCount + props.errorCount;
   // Why the next step is unavailable, said out loud rather than left as a greyed button.
   const hint = props.finishCount
-    ? 'Choose an enemy for every wave to save.'
+    ? (props.finishHint ?? 'Choose an enemy for every wave to save.')
     : props.dirty
       ? props.canPublish
         ? 'Save the draft before publishing.'

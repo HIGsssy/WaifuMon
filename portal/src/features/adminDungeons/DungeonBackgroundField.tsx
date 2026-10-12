@@ -14,15 +14,10 @@
  * by looking: the stored reference changes only on Choose, Clear or an edit
  * under Details.
  */
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router';
 import { ChevronDown, ChevronRight } from 'lucide-react';
-import {
-  dungeonArtworkBlob,
-  dungeonArtworkSource,
-  managedDungeonArtworkBlob,
-  type DungeonArtworkRef,
-} from '@/api/adminDungeons';
+import type { DungeonArtworkRef } from '@/api/adminDungeons';
 import type { ArtworkAssetCategory } from '@/api/adminArtworkAssets';
 import { useHasPermission } from '@/auth/useSession';
 import { ArtworkPickerDialog } from '@/components/admin/ArtworkPicker';
@@ -31,43 +26,7 @@ import { dungeonArtworkSource as shippedDungeonArtwork } from '@/components/admi
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { AssetPickerDialog } from '@/features/adminArtwork/AssetPickerDialog';
-
-type Preview = { state: 'none' | 'loading' | 'missing' } | { state: 'shown'; url: string };
-
-function usePreview(ref: DungeonArtworkRef | null | undefined): Preview {
-  const source = dungeonArtworkSource(ref);
-  const [preview, setPreview] = useState<Preview>({ state: source ? 'loading' : 'none' });
-  useEffect(() => {
-    if (!source) {
-      setPreview({ state: 'none' });
-      return;
-    }
-    setPreview({ state: 'loading' });
-    let url: string | null = null;
-    let cancelled = false;
-    // Fetched the way a run finds it: a shipped file by path, an upload by its content.
-    void (
-      ref?.kind === 'shipped'
-        ? dungeonArtworkBlob(ref.path)
-        : managedDungeonArtworkBlob(ref!.category, ref!.contentHash)
-    )
-      .then((blob) => {
-        if (cancelled) return;
-        url = URL.createObjectURL(blob);
-        setPreview({ state: 'shown', url });
-      })
-      .catch(() => {
-        if (!cancelled) setPreview({ state: 'missing' });
-      });
-    return () => {
-      cancelled = true;
-      if (url) URL.revokeObjectURL(url);
-    };
-    // `source` is the reference's identity.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [source]);
-  return preview;
-}
+import { usePreview } from './useDungeonArtworkPreview';
 
 const pictureName = (ref: DungeonArtworkRef) =>
   ref.kind === 'managed'

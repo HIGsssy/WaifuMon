@@ -13,7 +13,7 @@ import type { ExpeditionRewardTable } from '../../content/schemas';
 import type { ExpeditionEquipmentDraw, ExpeditionItemGrant } from '../../expeditions/expeditionRewards';
 import type { EquipmentRewardCandidate } from '../../rewardTables/rewardTableCore';
 import type { Rng } from '../../../shared/random';
-import type { DungeonActionType, DungeonDefinition, DungeonFlagScope } from '../content/dungeonDefinition';
+import type { DungeonActionType, DungeonDefinition, DungeonEventBranch, DungeonFlagScope } from '../content/dungeonDefinition';
 import type { DungeonRewardSnapshot } from '../content/dungeonRewardSnapshot';
 import type { DungeonRewardPlanV2 } from './lootResolver';
 
@@ -27,6 +27,8 @@ export interface EngineFighter {
   defense: number;
   maxHp: number;
   modifiers?: CombatModifiers | undefined;
+  /** The pinned SP an event check reads. Absent: the check takes its full negative modifier. */
+  currentSp?: number | undefined;
 }
 
 /** A reward table as a run was promised it, with the gear it may pay. */
@@ -58,6 +60,12 @@ export interface DungeonEngineContext {
   runKey: string;
   /** Persistent flags, read-only to the engine. Empty until their store exists. */
   playerFlags?: Readonly<Record<string, boolean>> | undefined;
+  /**
+   * How many of each item the player holds, by slug — a fact handed in, since
+   * the engine cannot look. Only the items a pending event's choices name are
+   * needed; an absent slug is zero. Spending one leaves as a `consume_items` effect.
+   */
+  inventory?: Readonly<Record<string, number>> | undefined;
   /** Overrides for the combat engine's rules. Production passes none. */
   combatRules?: Partial<CombatRules> | undefined;
 }
@@ -121,6 +129,36 @@ export interface DungeonWaveResult {
   combatSeed: number;
 }
 
+// ── events ──────────────────────────────────────────────────────────────────
+
+/** The numbers behind an SP check, kept so a result can be explained and replayed. */
+export interface DungeonEventCheckResult {
+  /** The pinned SP read; null when the fighter carried none. */
+  sp: number | null;
+  chanceBasisPoints: number;
+  /** 0–9999; the check succeeds when it is below the chance. */
+  roll: number;
+  success: boolean;
+}
+
+/**
+ * What an `event` action presents in this run, decided once when the sequence
+ * first reaches it and never again. Ids and numbers only: the text, choices
+ * and outcomes are read from the run's pinned revision.
+ *
+ *   offered   the player is (or will be, on return) choosing
+ *   resolved  a choice was made and its outcome applied
+ *   nothing   a pool drew no event
+ */
+export interface DungeonEventInstance {
+  eventId: string | null;
+  status: 'offered' | 'resolved' | 'nothing';
+  selectedStep: number;
+  /** How a pool arrived at it. `entryId` is null when no entry was eligible. */
+  pool?: { poolId: string; entryId: string | null; eligible: string[]; totalWeight: number; roll: number | null };
+  resolution?: { choiceId: string; branch: DungeonEventBranch; step: number; check?: DungeonEventCheckResult };
+}
+
 /** What resolving something paid, before any of it is granted. */
 export interface DungeonRewardPlan {
   /** Unbanked progression currency. */
@@ -139,7 +177,15 @@ export type DungeonActionDetail =
   | { kind: 'gate'; passed: boolean }
   | { kind: 'set_flag'; flag: string; scope: DungeonFlagScope; value: boolean }
   | { kind: 'reward'; claimKey: string; plan: DungeonResolvedRewardPlan }
-  | { kind: 'leave'; connectionId: string | null };
+  | { kind: 'leave'; connectionId: string | null }
+  | {
+      kind: 'event';
+      /** Null when a pool drew nothing. */
+      eventId: string | null;
+      choiceId: string | null;
+      branch: DungeonEventBranch | null;
+      check: DungeonEventCheckResult | null;
+    };
 
 export interface DungeonActionRecord {
   status: DungeonActionStatus;
@@ -183,6 +229,22 @@ export type DungeonRecentEntry =
   | { kind: 'flag'; roomId: string; actionId: string; flag: string; value: boolean }
   | { kind: 'reward'; roomId: string; actionId: string; claimKey: string; plan: DungeonResolvedRewardPlan }
   | { kind: 'declined'; roomId: string; actionId: string }
+  | {
+      kind: 'event';
+      roomId: string;
+      actionId: string;
+      eventId: string;
+      choiceId: string;
+      branch: DungeonEventBranch;
+      check: DungeonEventCheckResult | null;
+      flags: { flag: string; value: boolean }[];
+      consumed: { item: string; quantity: number }[];
+      hpBefore: number;
+      hpAfter: number;
+      /** The player stepped back; the event is still open. */
+      walkedAway: boolean;
+    }
+  | { kind: 'event_nothing'; roomId: string; actionId: string; text: string }
   | { kind: 'room_completed'; roomId: string }
   | { kind: 'retreated'; fromRoomId: string; toRoomId: string }
   | { kind: 'moved'; connectionId: string; fromRoomId: string; toRoomId: string };
@@ -200,6 +262,12 @@ export interface DungeonRunState {
   rooms: Record<string, DungeonRoomState>;
   /** Paid plans by stable claim key; navigation never clears these. */
   rewardClaims: Record<string, DungeonResolvedRewardPlan>;
+  /**
+   * Event selections by `<roomId>:<actionId>`. Apart from the action records
+   * for the reason `rewardClaims` is: a retreat erases those. Absent until the
+   * run first reaches an event, and on states from before events.
+   */
+  events?: Record<string, DungeonEventInstance>;
   unbankedCurrency: number;
   /** V2 dungeon-earned WaifuBux only; absent on historical engine states. */
   unbankedWaifubux?: number;
@@ -213,6 +281,7 @@ export interface DungeonRunState {
 export type DungeonInput = (
   | { type: 'advance' }
   | { type: 'decline' }
+  | { type: 'choose'; choiceId: string }
   | { type: 'move'; connectionId: string }
   | { type: 'extract' }
   | { type: 'abandon' }
@@ -233,7 +302,12 @@ export type DungeonRefusal =
   | 'not_optional'
   | 'not_available'
   | 'locked'
-  | 'not_extractable';
+  | 'not_extractable'
+  /** `advance` on an event: it takes a choice. */
+  | 'choice_required'
+  | 'choice_unknown'
+  /** The choice's requirements are not met as the run and the inventory stand. */
+  | 'choice_unavailable';
 
 // ── effects ─────────────────────────────────────────────────────────────────
 
@@ -258,6 +332,15 @@ export type DungeonEffect =
       requestKey: string;
       end: DungeonRunEnd;
       currencyKey: string | null;
+    }
+  | {
+      type: 'consume_items';
+      /** `run:<runKey>:<roomId>:<actionId>:consume`. */
+      key: string;
+      roomId: string;
+      actionId: string;
+      /** Spent because a choice was made, whatever its check then did. */
+      items: { item: string; quantity: number }[];
     };
 
 /** A gear drop as handed over. */
@@ -318,7 +401,8 @@ export type DungeonEffectReceipt =
       balanceAfter: number | null;
       /** Actual V2 banking; separate from progression bankingSkipped. */
       waifubux?: { banked: number; balanceAfter: number | null };
-    };
+    }
+  | { type: 'consume_items'; key: string; items: { item: string; quantity: number }[] };
 
 /**
  * How effects reach the world. Two implementations and no others: the live
@@ -348,6 +432,8 @@ export const DUNGEON_RUN_EVENT_TYPES = [
   'abandon',
   'currency_banked',
   'rewards_granted',
+  'event_selected',
+  'items_consumed',
 ] as const;
 export type DungeonRunEventType = (typeof DUNGEON_RUN_EVENT_TYPES)[number];
 

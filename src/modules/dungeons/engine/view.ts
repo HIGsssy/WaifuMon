@@ -7,6 +7,7 @@
 import type { CombatEnemyDefinition } from '../../combat/enemyDefinitions';
 import { isCombatAction, roomOf, type DungeonActionType, type DungeonConnection } from '../content/dungeonDefinition';
 import { selectWaveEnemy } from './combat';
+import { describeOfferedEvent, type DungeonEventView } from './events';
 import { dungeonRngSource } from './seeds';
 import { canExtract, connectionStates, currentAction } from './step';
 import type {
@@ -28,6 +29,8 @@ export interface DungeonActionView {
   wave: { index: number; count: number; enemy: CombatEnemyDefinition } | null;
   /** For a rest: the share of max HP it restores. */
   healBasisPoints: number | null;
+  /** For an event: what is offered and which choices can be made now. Absent on views from before events. */
+  event?: DungeonEventView | null;
 }
 
 export interface DungeonConnectionView {
@@ -105,6 +108,7 @@ export function describeDungeonRun(
             }
           : null,
       healBasisPoints: a.type === 'rest' ? a.healBasisPoints : null,
+      ...(a.type === 'event' ? { event: describeOfferedEvent(state, ctx) } : {}),
     };
   }
 

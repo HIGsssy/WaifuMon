@@ -19,7 +19,9 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createPlatformApiServer } from '../../../src/api/server';
 import type { ZodFastify } from '../../../src/api/plugins/typeProvider';
 import type { PortalSession, PortalSessionService } from '../../../src/api/portalSession';
-import { dungeonContentEvents, dungeonDefinitions, dungeonRevisions, dungeonRunEvents, dungeonRuns, items } from '../../../src/db/schema';
+import { dungeonContentEvents, dungeonDefinitions, dungeonRevisions, dungeonRunEvents, dungeonRuns, items, playerInventory } from '../../../src/db/schema';
+import { DungeonDefinitionSchema } from '../../../src/modules/dungeons/content/dungeonDefinition';
+import { startDungeonRun } from '../../../src/modules/dungeons/engine/step';
 import { createDungeonLootTableService } from '../../../src/modules/dungeons/dungeonLootTableService';
 import { buildDungeonPackage, readDungeonPackage } from '../../../src/modules/dungeons/package/dungeonPackage';
 import { resolveDungeonRewardDependencies } from '../../../src/modules/dungeons/content/dungeonRewardSnapshot';
@@ -33,6 +35,7 @@ import {
   type PortalPermission,
 } from '../../../src/modules/portalAuth/portalAuthService';
 import { CURRENCY, STARTER, TEST_ENEMIES, testDungeonInput, singleRoomDungeon } from '../../helpers/dungeonFixtures';
+import { eventContext, eventDungeonInput } from '../../helpers/dungeonEventFixtures';
 import { createDungeonWorld, type DungeonWorld } from '../../helpers/dungeonWorld';
 import { provisionPlayer } from '../../helpers/fixtures';
 import { createCapturedLogger, createProbes, TEST_TOKEN } from '../../helpers/platformApiFixtures';
@@ -233,6 +236,31 @@ function v2ApiPackage() {
   return { pkg: buildDungeonPackage({ definition, rewardSnapshot, source: { environment: 'staging', origin: 'revision', draftRevision: null, publishedRevision: 1 } }), table, body };
 }
 describe('package import API', () => {
+  it('v3 event-only preview/apply returns named item dependencies, null evidence and secured receipts', async () => {
+    const definition = singleRoomDungeon([{ id: 'story', type: 'event', source: { kind: 'event', eventId: 'door' } }], d => {
+      d.key = 'api_v3_import'; d.flags = [];
+      d.events = [{ id: 'door', title: 'Door', text: 'A closed door.', choices: [
+        { id: 'open', label: 'Open it', items: [{ item: 'sticky_joystick', quantity: 1 }], outcome: {} },
+        { id: 'skip', label: 'Carry on', outcome: {} },
+      ] }];
+    });
+    const pkg = buildDungeonPackage({ definition, source: { environment: 'source', origin: 'revision', draftRevision: null, publishedRevision: 1 } });
+    const preview = await as(WRITER_TOKEN, 'POST', '/admin/dungeons/import/plan', { package: pkg });
+    expect(preview.statusCode, preview.body).toBe(200);
+    const plan = data<Json>(preview);
+    expect(plan).toMatchObject({ validPackage: true, lootTables: [], eventDependencies: { eventCount: 1, poolCount: 0, requiredItems: [{ key: 'sticky_joystick', status: 'available', name: expect.any(String) }] }, rewardSource: { snapshotHash: null, resolverVersion: null } });
+    const request = { package: pkg, requestId: randomUUID(), expectedPlanHash: plan.planHash, expectedRevision: null, decisions: { dungeon: 'create', enemies: {}, allowMissingDependencies: false } };
+    for (const endpoint of ['plan', 'apply']) {
+      const payload = endpoint === 'plan' ? { package: pkg } : request;
+      expect((await as(READER_TOKEN, 'POST', `/admin/dungeons/import/${endpoint}`, payload)).statusCode).toBe(403);
+      expect((await api.inject({ method: 'POST', url: `/api/v1/admin/dungeons/import/${endpoint}`, cookies: { wm_portal_session: WRITER_TOKEN }, payload })).statusCode).toBe(403);
+    }
+    const applied = await as(WRITER_TOKEN, 'POST', '/admin/dungeons/import/apply', request);
+    expect(applied.statusCode, applied.body).toBe(200);
+    expect(data<Json>(applied)).toMatchObject({ sourceSchemaVersion: 3, rewardSnapshotHash: null, createdLootTables: [] });
+    expect(await w.content.get(definition.key)).toMatchObject({ enabled: false, published: null, draft: definition });
+    expect(data<Json>(await as(WRITER_TOKEN, 'POST', '/admin/dungeons/import/apply', request))).toMatchObject({ replayed: true, importId: data<Json>(applied).importId });
+  });
   it('v2 conflict preview and copy application return reward-aware contracts and an unchanged destination table', async () => {
     const { pkg, table, body } = v2ApiPackage();
     const loot = createDungeonLootTableService({ db: w.t.db });
@@ -711,6 +739,56 @@ describe('validate', () => {
     expect((await validate({ key: 'val_shapeless' })).contentHash).toBeNull();
     expect((await call('POST', '/admin/dungeons/validate', {})).statusCode).toBe(200);
   });
+
+  it('answers how the definition’s events would play, for an imagined run, and writes nothing', async () => {
+    type Odds = { totalWeight: number; nothingProbability: number; entries: { id: string; eligible: boolean; reason: string | null; probability: number }[] };
+    type Events = { eventPools: { poolId: string; base: Odds; scenario: Odds }[]; eventPreviews: { eventId: string; choices: Json[] }[] };
+    const insight = async (body: Json) => {
+      const res = await call('POST', '/admin/dungeons/validate', body);
+      expect(res.statusCode, res.body).toBe(200);
+      return data<Events & { definition: Json | null }>(res);
+    };
+    const shares = (odds: Odds) => Object.fromEntries(odds.entries.map((e) => [e.id, e.eligible ? Number(e.probability.toFixed(4)) : e.reason]));
+    const definition = eventDungeonInput('val_events');
+    const counts = await rowCounts();
+
+    // No scenario: an empty run, an average Buddy.
+    const plain = await insight({ definition });
+    expect(plain.eventPools.map((p) => p.poolId)).toEqual(['scrapheap_finds']);
+    expect(shares(plain.eventPools[0]!.base)).toEqual({ e_crate: 0.3, e_drone: 0.2, e_trader: 0.1, e_nothing: 0.4 });
+    expect(shares(plain.eventPools[0]!.scenario)).toEqual(shares(plain.eventPools[0]!.base));
+    const vault = (report: Events) => Object.fromEntries(report.eventPreviews.find((e) => e.eventId === 'sealed_vault')!.choices.map((c) => [c.id, c]));
+    expect(vault(plain).pick_lock).toMatchObject({ check: { chanceBasisPoints: 5500, sp: 200 }, chances: { weakest: 4000, average: 5500, strongest: 7000 } });
+    expect(vault(plain).use_key).toMatchObject({ available: false, unavailableReason: 'items', consumesOnSelect: true, hidden: false });
+    expect(vault(plain).secret).toMatchObject({ available: false, hidden: true });
+
+    // Flags, events already met, an assumed inventory and a strong Buddy at the entrance.
+    const tried = await insight({
+      definition,
+      eventScenario: { flags: ['alarm_triggered'], seenEvents: ['buried_crate'], inventory: { vault_key: 1 }, currentSp: 350, canTurnBack: false },
+    });
+    expect(shares(tried.eventPools[0]!.base)).toEqual(shares(plain.eventPools[0]!.base));
+    expect(shares(tried.eventPools[0]!.scenario)).toEqual({ e_crate: 'already_seen', e_drone: 0.3333, e_trader: 'condition', e_nothing: 0.6667 });
+    expect(vault(tried).use_key).toMatchObject({ available: true, items: [{ item: 'vault_key', quantity: 1, consume: true, owned: 1 }] });
+    expect(vault(tried).pick_lock.check).toEqual({ chanceBasisPoints: 7000, sp: 350 });
+    expect(vault(tried).secret).toMatchObject({ available: true, hidden: false });
+    expect(vault(tried).leave).toMatchObject({ available: false, unavailableReason: 'no_way_back' });
+
+    // Every conditional or once-per-run entry gone, and no Nothing entry: the pool presents nothing.
+    const bare = eventDungeonInput('val_events_bare');
+    bare.eventPools![0]!.entries.pop();
+    const empty = await insight({ definition: bare, eventScenario: { flags: ['alarm_triggered'], seenEvents: ['buried_crate', 'sparking_drone'] } });
+    expect(empty.eventPools[0]!.scenario).toMatchObject({ totalWeight: 0, nothingProbability: 1 });
+    expect(empty.eventPools[0]!.scenario.entries.every((e) => !e.eligible)).toBe(true);
+
+    // Nothing to say about a dungeon without events, or one whose shape cannot be read.
+    expect(await insight({ definition: definitionOf('val_no_events') })).toMatchObject({ eventPools: [], eventPreviews: [] });
+    expect(await insight({ definition: { key: 'val_shapeless' }, eventScenario: { flags: ['x'] } })).toMatchObject({ definition: null, eventPools: [], eventPreviews: [] });
+    // A scenario is bounded like any other input.
+    expect((await call('POST', '/admin/dungeons/validate', { definition, eventScenario: { currentSp: -1 } })).statusCode).toBe(400);
+    expect((await call('POST', '/admin/dungeons/validate', { definition, eventScenario: { inventory: { vault_key: 1.5 } } })).statusCode).toBe(400);
+    expect(await rowCounts()).toEqual(counts);
+  });
 });
 
 /* ───────────────────────── publish, revisions, rollback ───────────────────────── */
@@ -868,6 +946,7 @@ describe('export and package inspection', () => {
 
   it('exports the draft as a package `readDungeonPackage` accepts, hashed like the draft', async () => {
     const detail = await getDungeon(KEY);
+    const historyBefore = await history(KEY);
     const res = await call('GET', `${base(KEY)}/export`);
     expect(res.statusCode, res.body).toBe(200);
     expect(res.headers['content-disposition']).toMatch(/^attachment; filename="[^"]*pkg_tunnels[^"]*\.json"$/);
@@ -887,7 +966,7 @@ describe('export and package inspection', () => {
     expect(pkg.dependencies.regions).toEqual(['waifu-valley']);
     // The file is what a text round trip gives back, too.
     expect(readDungeonPackage(JSON.stringify(pkg)).ok).toBe(true);
-    expect((await history(KEY))[0]).toMatchObject({ action: 'exported' });
+    expect(await history(KEY)).toEqual(historyBefore);
   });
 
   it('exports the published revision, or a numbered one, with that revision’s hash', async () => {
@@ -1041,6 +1120,68 @@ describe('sandbox', () => {
     expect((await play({ key: 'sand_draft_only', autoPlay: true, fighter: { ...STARTER } })).view.status).toBe('completed');
 
     expect(await rowCounts()).toEqual({ ...counts, definitions: counts.definitions + 1, events: counts.events + 1 });
+  });
+
+  it('plays event choices with an assumed inventory, shows what they did, and writes nothing', async () => {
+    const [key] = await w.t.db.insert(items).values({ slug: 'sand_vault_key', name: 'Vault Key', category: 'material', enabled: true }).returning();
+    const { playerId } = await w.player();
+    await w.app.inventory.addItem(w.t.db, playerId, key!.id, 3);
+    // The event fixture without loot this server lacks, needing an item that exists here.
+    const definition = eventDungeonInput('sand_events') as Json;
+    for (const event of definition.events) for (const choice of event.choices) {
+      for (const branch of ['outcome', 'success', 'failure']) delete choice[branch]?.rewards;
+      for (const requirement of choice.items ?? []) requirement.item = 'sand_vault_key';
+    }
+    const pure = eventContext(DungeonDefinitionSchema.parse(definition), { rewards: null });
+    const seed = Array.from({ length: 5000 }, (_, i) => i).find((i) => startDungeonRun(pure, i).state.events!['hall:find']!.eventId === null)!;
+    const counts = await rowCounts();
+    const inventoryBefore = await w.t.db.select().from(playerInventory);
+    const body = { definition, seed, fighter: { ...STARTER, currentSp: 350 } };
+    type EventSandbox = Sandbox & { eventResults: { eventTitle: string; choiceLabel: string; text: string; tone: string }[] };
+    const playEvents = async (extra: Json) => {
+      const res = await call('POST', '/admin/dungeons/sandbox', { ...body, ...extra });
+      expect(res.statusCode, res.body).toBe(200);
+      return data<EventSandbox>(res);
+    };
+
+    // The offered event, as a player would see it: no key assumed, so that choice is unavailable.
+    const offered = await playEvents({ inputs: [{ type: 'move', connectionId: 'c_vault' }] });
+    expect(offered.view.action.event).toMatchObject({ eventId: 'sealed_vault', title: 'The Sealed Vault' });
+    const choice = (played: EventSandbox, id: string) => played.view.action.event.choices.find((c: Json) => c.id === id);
+    expect(choice(offered, 'use_key')).toMatchObject({ available: false, unavailableReason: 'items', consumesOnSelect: true });
+    expect(choice(offered, 'pick_lock').check).toEqual({ chanceBasisPoints: 7000, sp: 350 });
+    expect(offered.state.events).toMatchObject({ 'hall:find': { status: 'nothing' }, 'vault:door': { eventId: 'sealed_vault', status: 'offered' } });
+    expect(offered.eventResults).toEqual([]);
+
+    const refused = await playEvents({ inputs: [{ type: 'move', connectionId: 'c_vault' }, { type: 'choose', choiceId: 'use_key' }] });
+    expect(refused).toMatchObject({ stoppedBy: 'refused', refusal: 'choice_unavailable', steps: 1 });
+    expect((await playEvents({ inputs: [{ type: 'move', connectionId: 'c_vault' }, { type: 'advance' }] })).refusal).toBe('choice_required');
+
+    // With a key assumed: the choice resolves, the item use is listed as an effect, and nobody's inventory moves.
+    const used = await playEvents({ inventory: { sand_vault_key: 1 }, inputs: [{ type: 'move', connectionId: 'c_vault' }, { type: 'choose', choiceId: 'use_key' }] });
+    expect(used.refusal).toBeNull();
+    expect(used.effects).toEqual([expect.objectContaining({ type: 'consume_items', items: [{ item: 'sand_vault_key', quantity: 1 }] })]);
+    expect(used.state.flags).toEqual({ vault_opened: true });
+    expect(used.state.events['vault:door']).toMatchObject({ status: 'resolved', resolution: { choiceId: 'use_key', branch: 'outcome' } });
+    expect(used.eventResults).toEqual([{ roomId: 'vault', actionId: 'door', eventTitle: 'The Sealed Vault', choiceLabel: 'Use the Vault Key', text: 'The door rolls aside.', tone: 'good' }]);
+    expect(used.log.map((entry) => entry.type)).toEqual(expect.arrayContaining(['event_selected', 'action_completed']));
+
+    // The same request plays out the same way, check included; a stronger Buddy only changes the odds.
+    const checked = { inputs: [{ type: 'move', connectionId: 'c_vault' }, { type: 'choose', choiceId: 'pick_lock' }] };
+    const once = await playEvents(checked);
+    expect(await playEvents(checked)).toEqual(once);
+    const { check } = once.state.events['vault:door'].resolution;
+    expect(check).toMatchObject({ sp: 350, chanceBasisPoints: 7000, success: check.roll < 7000 });
+    const weaker = await playEvents({ ...checked, fighter: { ...STARTER } });
+    expect(weaker.state.events['vault:door'].resolution.check).toMatchObject({ sp: 200, chanceBasisPoints: 5500, roll: check.roll });
+
+    // Auto-play answers events and reaches an ending.
+    expect((await playEvents({ autoPlay: true })).view.status).toBe('completed');
+
+    expect((await call('POST', '/admin/dungeons/sandbox', { ...body, inventory: { sand_vault_key: -1 } })).statusCode).toBe(400);
+    expect((await call('POST', '/admin/dungeons/sandbox', { ...body, inputs: [{ type: 'choose' }] })).statusCode).toBe(400);
+    expect(await rowCounts()).toEqual(counts);
+    expect(await w.t.db.select().from(playerInventory)).toEqual(inventoryBefore);
   });
 
   it('a fighter that cannot win is defeated in the sandbox, not on the server', async () => {

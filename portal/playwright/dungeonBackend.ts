@@ -117,6 +117,32 @@ export async function validate(definition: unknown, rewards?: object): Promise<V
 }
 const hasErrors = (issues: DungeonIssue[]) => issues.some((i) => i.severity === 'error');
 
+/**
+ * The engine's own reading of a draft's events and its sandbox, loaded by path
+ * like the validator: pool odds, choice availability, check chances and a
+ * played run are the real thing in a browser test, never a stand-in's sums.
+ */
+const EVENT_AUTHORING = '../../src/modules/dungeons/engine/eventAuthoring';
+const SANDBOX = '../../src/modules/dungeons/engine/sandbox';
+const EVENTS = '../../src/modules/dungeons/engine/events';
+let engine:
+  | Promise<{
+      describeEventAuthoring: (definition: unknown, scenario?: unknown) => object;
+      defaultEventAuthoringScenario: () => object;
+      createDungeonSandbox: (options: unknown) => {
+        view: { phase: string };
+        state: { recent: unknown };
+        effects: unknown[];
+        input: (input: unknown) => Promise<{ status: string; refusal: string | null }>;
+      };
+      describeEventResults: (definition: unknown, recent: unknown) => unknown[];
+    }>
+  | undefined;
+const loadEngine = () =>
+  (engine ??= Promise.all([import(EVENT_AUTHORING), import(SANDBOX), import(EVENTS)]).then(
+    ([authoring, sandbox, events]) => ({ ...authoring, ...sandbox, ...events }),
+  ));
+
 /** Loot the dungeon's rewards may use; see `dungeonLootBackend.ts`. */
 export interface DungeonLootCatalogue {
   /** The reference rows the editor lists. */
@@ -270,6 +296,7 @@ export async function serveDungeon(
   };
   const state = {
     saves: 0,
+    sandboxRuns: 0,
     publishes: 0,
     conversions: 0,
     /** What `GET reward-health` answers; a spec sets it to the situation under test. */
@@ -441,12 +468,54 @@ export async function serveDungeon(
     else if (path.endsWith('/import-history')) data = { imports: [] };
     else if (path.endsWith('/history')) data = { events: [] };
     else if (path.endsWith('/validate')) {
-      const report = await check(route.request().postDataJSON().definition);
+      const body = route.request().postDataJSON();
+      const report = await check(body.definition);
+      const { describeEventAuthoring, defaultEventAuthoringScenario } = await loadEngine();
       data = {
         definition: report.definition,
         contentHash: 'hash',
         issues: report.issues,
         publishable: report.definition != null && !hasErrors(report.issues),
+        ...(report.definition
+          ? describeEventAuthoring(report.definition, {
+              ...defaultEventAuthoringScenario(),
+              ...body.eventScenario,
+            })
+          : { eventPools: [], eventPreviews: [] }),
+      };
+    } else if (path.endsWith('/sandbox')) {
+      // Played by the real engine and kept nowhere, as the real route does.
+      const body = route.request().postDataJSON();
+      const report = await check(body.definition);
+      if (!report.definition || hasErrors(report.issues)) return refuse(report.issues);
+      state.sandboxRuns++;
+      const { createDungeonSandbox, describeEventResults } = await loadEngine();
+      const sandbox = createDungeonSandbox({
+        definition: report.definition,
+        dependencies: { enemies: {}, rewardTables: {} },
+        fighter: { waifuId: 0, name: 'Sandbox Buddy', ...body.fighter },
+        seed: body.seed ?? 1,
+        inventory: body.inventory ?? {},
+      });
+      let steps = 0;
+      let refusal: string | null = null;
+      for (const input of body.inputs ?? []) {
+        const step = await sandbox.input(input);
+        if (step.status === 'refused') {
+          refusal = step.refusal ?? 'refused';
+          break;
+        }
+        steps += 1;
+      }
+      data = {
+        view: sandbox.view,
+        state: sandbox.state,
+        effects: sandbox.effects,
+        log: [],
+        eventResults: describeEventResults(report.definition, sandbox.state.recent),
+        steps,
+        stoppedBy: refusal !== null ? 'refused' : sandbox.view.phase === 'ended' ? 'ended' : null,
+        refusal,
       };
     } else if (path.endsWith('/draft')) {
       const input = route.request().postDataJSON();

@@ -93,6 +93,9 @@ import {
 } from '../../../../modules/artworkAssets/sceneLayers';
 import { mirrorsPlayerBuddy } from '../../../../modules/artworkAssets/scenePlacement';
 import { DungeonEngineContentError } from '../../../../modules/dungeons/engine/combat';
+import { EVENT_SP_NEUTRAL } from '../../../../modules/dungeons/engine/eventChecks';
+import { describeEventAuthoring } from '../../../../modules/dungeons/engine/eventAuthoring';
+import { describeEventResults } from '../../../../modules/dungeons/engine/events';
 import { autoPlayDungeonSandbox, createDungeonSandbox } from '../../../../modules/dungeons/engine/sandbox';
 import { DungeonPreviewTablesSchema } from '../../../../modules/dungeons/dungeonRewardPreview';
 import type { DungeonRewardSnapshot } from '../../../../modules/dungeons/content/dungeonRewardSnapshot';
@@ -280,12 +283,68 @@ const referenceSchema = z.object({
   regions: z.array(z.object({ id: z.string(), name: z.string(), enabled: z.boolean() })),
 });
 
+const MAX_EVENT_SCENARIO_ENTRIES = 200;
+const scenarioIds = z.array(z.string().min(1).max(DUNGEON_ID_MAX_LENGTH)).max(MAX_EVENT_SCENARIO_ENTRIES).default([]);
+/**
+ * An imagined run to judge the definition's events against: what it remembers,
+ * what it has finished and met, what the player holds and how strong the Buddy
+ * is. Assumed only; no run or inventory is read.
+ */
+const eventScenarioSchema = z.object({
+  flags: scenarioIds,
+  completedRooms: scenarioIds,
+  seenEvents: scenarioIds,
+  inventory: z
+    .record(z.string().min(1).max(100), z.number().int().min(0).max(1_000_000))
+    .refine((inventory) => Object.keys(inventory).length <= MAX_EVENT_SCENARIO_ENTRIES, `at most ${MAX_EVENT_SCENARIO_ENTRIES} items may be assumed`)
+    .default({}),
+  currentSp: z.number().int().min(0).max(1_000_000).default(EVENT_SP_NEUTRAL),
+  canTurnBack: z.boolean().default(true),
+});
+
+const eventPoolAnalysisSchema = z.object({
+  totalWeight: z.number().int(),
+  /** The chance that no event is presented; 1 when nothing is in the draw. */
+  nothingProbability: z.number(),
+  entries: z.array(z.object({
+    id: z.string(),
+    eventId: z.string().nullable(),
+    weight: z.number().int(),
+    eligible: z.boolean(),
+    reason: z.enum(['condition', 'already_seen']).nullable(),
+    probability: z.number(),
+  })),
+});
+
+const eventChoicePreviewSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  description: z.string(),
+  available: z.boolean(),
+  unavailableReason: z.enum(['requires', 'items', 'no_way_back']).nullable(),
+  unavailableText: z.string(),
+  check: z.object({ chanceBasisPoints: z.number().int(), sp: z.number().int().nullable() }).nullable(),
+  items: z.array(z.object({ item: z.string(), quantity: z.number().int(), consume: z.boolean(), owned: z.number().int() })),
+  consumesOnSelect: z.boolean(),
+  walksAway: z.boolean(),
+  hidden: z.boolean(),
+  chances: z.object({ weakest: z.number().int(), average: z.number().int(), strongest: z.number().int() }).nullable(),
+});
+
 const validationSchema = z.object({
   /** The definition with defaults applied; null when its shape could not be read. */
   definition: documentSchema.nullable(),
   contentHash: z.string().nullable(),
   issues: z.array(issueSchema),
   publishable: z.boolean(),
+  /**
+   * Each event pool's odds, by the engine's own draw rules: `base` with every
+   * entry in the draw, `scenario` as `eventScenario` (or an empty run) stands.
+   * Empty when the definition has no pools or its shape could not be read.
+   */
+  eventPools: z.array(z.object({ poolId: z.string(), base: eventPoolAnalysisSchema, scenario: eventPoolAnalysisSchema })),
+  /** Each event's choices as a player in the scenario would meet them, hidden ones included and marked. */
+  eventPreviews: z.array(z.object({ eventId: z.string(), choices: z.array(eventChoicePreviewSchema) })),
 });
 
 const packageInspectionSchema = z.object({
@@ -311,7 +370,14 @@ const sandboxInputSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('move'), connectionId: connectionIdSchema }),
   z.object({ type: z.literal('extract') }),
   z.object({ type: z.literal('abandon') }),
+  /** Answer the offered event with one of its choices. */
+  z.object({ type: z.literal('choose'), choiceId: connectionIdSchema }),
 ]);
+const MAX_SANDBOX_INVENTORY_ITEMS = 50;
+/** Item slug → how many the imagined player holds. Assumed, never read from or written to anyone's inventory. */
+const sandboxInventorySchema = z
+  .record(z.string().min(1).max(100), z.number().int().min(0).max(1_000_000))
+  .refine((inventory) => Object.keys(inventory).length <= MAX_SANDBOX_INVENTORY_ITEMS, `at most ${MAX_SANDBOX_INVENTORY_ITEMS} items may be assumed`);
 
 const sandboxBody = z
   .object({
@@ -324,8 +390,16 @@ const sandboxBody = z
     source: z.enum(['draft', 'published']).default('draft'),
     seed: z.number().int().min(0).max(MAX_DUNGEON_SANDBOX_SEED).default(1),
     fighter: z
-      .object({ attack: sandboxStat, defense: sandboxStat, maxHp: sandboxStat })
+      .object({
+        attack: sandboxStat,
+        defense: sandboxStat,
+        maxHp: sandboxStat,
+        /** The Buddy strength event checks read. Omitted: an average Buddy. */
+        currentSp: z.number().int().min(0).max(MAX_SANDBOX_FIGHTER_STAT).optional(),
+      })
       .default({ ...DEFAULT_DUNGEON_SANDBOX_FIGHTER }),
+    /** What the imagined player holds, for event choices that need items. Nothing is ever spent. */
+    inventory: sandboxInventorySchema.default({}),
     inputs: z.array(sandboxInputSchema).max(MAX_DUNGEON_SANDBOX_INPUTS).default([]),
     autoPlay: z.boolean().default(false),
     maxSteps: z.number().int().min(1).max(MAX_DUNGEON_SANDBOX_STEPS).default(MAX_DUNGEON_SANDBOX_STEPS),
@@ -353,6 +427,19 @@ const sandboxSchema = z.object({
       payload: z.record(z.string(), z.unknown()),
     }),
   ),
+  /**
+   * Events as an author needs to see them: what the latest step's choices did,
+   * in their own words. The event on offer is `view.action.event`; every
+   * selection made so far is `state.events`.
+   */
+  eventResults: z.array(z.object({
+    roomId: z.string(),
+    actionId: z.string(),
+    eventTitle: z.string(),
+    choiceLabel: z.string(),
+    text: z.string(),
+    tone: z.enum(['good', 'neutral', 'bad']),
+  })),
   /** Steps applied: the accepted `inputs`, plus whatever auto-play took. */
   steps: z.number().int(),
   /**
@@ -487,6 +574,14 @@ const rewardHealthProblemSchema = z.object({
   message: z.string(),
   hint: z.string(),
 });
+const rewardHealthNoticeSchema = z.object({
+  type: z.literal('event_item'),
+  reason: z.enum(['item_missing', 'item_disabled']),
+  key: z.string(),
+  name: z.string(),
+  message: z.string(),
+  hint: z.string(),
+});
 const rewardHealthSchema = z.object({
   dungeons: z.array(z.object({
     key: z.string(),
@@ -496,6 +591,8 @@ const rewardHealthSchema = z.object({
     /** The current published revision. */
     status: z.enum(['healthy', 'broken', 'no_rewards', 'unpublished']),
     problems: z.array(rewardHealthProblemSchema),
+    /** Informational, never part of `status`: an event choice needs an item that is gone or disabled. */
+    notices: z.array(rewardHealthNoticeSchema),
     draftErrors: z.number().int(),
     /** Runs in progress on the current published revision. */
     activeRuns: z.number().int(),
@@ -505,6 +602,7 @@ const rewardHealthSchema = z.object({
       activeRuns: z.number().int(),
       status: z.enum(['healthy', 'broken', 'no_rewards']),
       problems: z.array(rewardHealthProblemSchema),
+      notices: z.array(rewardHealthNoticeSchema),
     })),
   })),
 });
@@ -1012,14 +1110,19 @@ export const adminDungeonRoutes =
           tags,
           summary:
             'Dry run: every issue this definition has on this server, its content hash, and whether it could be ' +
-            'published. Writes nothing',
-          body: z.object({ definition: z.unknown() }),
+            'published. Also answers how its events would play: every event pool’s odds and every event’s choices, ' +
+            'for the imagined run in `eventScenario` (omitted: nothing remembered, nothing held, an average Buddy). ' +
+            'Writes nothing',
+          body: z.object({ definition: z.unknown(), eventScenario: eventScenarioSchema.optional() }),
           response: { 200: dataSchema(validationSchema), ...tooLargeResponse, ...commonErrorResponses },
         },
       },
       async (req) => {
         const report = await dungeons.validate(req.body.definition);
-        return ok(req, { ...report, definition: report.definition as unknown as Record<string, unknown> | null });
+        const events = report.definition
+          ? describeEventAuthoring(report.definition, req.body.eventScenario)
+          : { eventPools: [], eventPreviews: [] };
+        return ok(req, { ...report, ...events, definition: report.definition as unknown as Record<string, unknown> | null });
       },
     );
 
@@ -1103,7 +1206,10 @@ export const adminDungeonRoutes =
             'and then, with `autoPlay`, takes the first thing on offer until the run ends or `maxSteps`. The same ' +
             'request always plays out the same way. Nothing is persisted and nothing is granted: effects are ' +
             'only listed. Draft v2 rewards use current dependencies and optional unsaved tables; published ' +
-            'v2 rewards use their pinned snapshot. Legacy rewards retain currency-only previews. A ' +
+            'v2 rewards use their pinned snapshot. Legacy rewards retain currency-only previews. An event is ' +
+            'answered with a `choose` input; `inventory` is what the imagined player holds for choices that need ' +
+            'items (item use is listed as an effect and nothing is spent), and `fighter.currentSp` is the ' +
+            'strength event checks read. A ' +
             'definition with errors is refused with 400 DUNGEON_INVALID',
           body: sandboxBody,
           response: {
@@ -1129,8 +1235,9 @@ export const adminDungeonRoutes =
             definition,
             rewards,
             dependencies,
-            fighter: { waifuId: 0, name: 'Sandbox Buddy', ...body.fighter },
+            fighter: { waifuId: 0, name: 'Sandbox Buddy', ...body.fighter, currentSp: body.fighter.currentSp ?? EVENT_SP_NEUTRAL },
             seed: body.seed,
+            inventory: body.inventory,
           });
           let steps = 0;
           let refusal: string | null = null;
@@ -1159,6 +1266,7 @@ export const adminDungeonRoutes =
               const { events: _events, ...payload } = entry.payload;
               return { type: entry.type, roomId: entry.roomId, actionId: entry.actionId, payload };
             }),
+            eventResults: describeEventResults(definition, sandbox.state.recent),
             steps,
             stoppedBy,
             refusal,

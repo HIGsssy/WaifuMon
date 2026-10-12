@@ -61,7 +61,7 @@ describe('validateDungeonDefinition', () => {
 
   it('names a reserved action type and its phase instead of a schema error', () => {
     const { definition, issues } = validate((d) => {
-      room(d, 'gate').actions!.push({ id: 'talk', type: 'event', eventKey: 'x' } as never);
+      room(d, 'gate').actions!.push({ id: 'talk', type: 'objective', objectiveKey: 'x' } as never);
       room(d, 'gate').actions!.push({ id: 'huh', type: 'teleport' } as never);
     });
     expect(definition).toBeNull();

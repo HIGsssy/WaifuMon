@@ -39,6 +39,7 @@ describe('room templates', () => {
       'Boss',
       'Treasure',
       'Rest',
+      'Event',
       'Exit',
       'Empty',
     ]);

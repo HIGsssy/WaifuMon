@@ -108,6 +108,7 @@ import {
   handleDungeonAbandon,
   handleDungeonAbandonConfirm,
   handleDungeonAct,
+  handleDungeonChoose,
   handleDungeonExtract,
   handleDungeonExtractConfirm,
   handleDungeonHome,
@@ -465,6 +466,7 @@ export function createDiscordClient(ctx: AppContext): Client {
       // button from before the cutover gets the registry's "no longer works".
       'dg:act': (i: ButtonInteraction, prov: Provisioned, args: string[]) => handleDungeonAct(ctx, i, prov, args),
       'dg:mv': (i: ButtonInteraction, prov: Provisioned, args: string[]) => handleDungeonMove(ctx, i, prov, args),
+      'dg:ev': (i: ButtonInteraction, prov: Provisioned, args: string[]) => handleDungeonChoose(ctx, i, prov, args),
       'dg:exq': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleDungeonExtractConfirm(ctx, i, prov, args),
       'dg:ex': (i: ButtonInteraction, prov: Provisioned, args: string[]) => handleDungeonExtract(ctx, i, prov, args),

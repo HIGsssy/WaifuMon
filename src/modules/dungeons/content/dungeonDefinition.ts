@@ -37,12 +37,46 @@
  */
 import { z } from 'zod';
 import { equipmentSelectorKey, type EquipmentRewardSelector } from '../../equipment/rewardSelector';
+import {
+  DUNGEON_EVENT_LIMITS,
+  DungeonEventPoolSchema,
+  DungeonEventSchema,
+  DungeonEventSourceSchema,
+  type DungeonEvent,
+  type DungeonEventPool,
+} from './dungeonEvents';
 import { DungeonIdSchema as id, DungeonKeySchema as dungeonKey } from './dungeonIdentifiers';
+import {
+  ActionDestinationSchema,
+  DUNGEON_FLAG_SCOPES,
+  DungeonArtworkRefSchema,
+  DungeonConditionSchema,
+  DungeonFlagDeclarationSchema,
+  basisPoints,
+  referenceKey,
+  shortText,
+  type DungeonArtworkRef,
+} from './dungeonPrimitives';
+import { dungeonRewardSites, reachableDungeonEvents } from './dungeonRewardSites';
 import { DungeonRewardBundleSchema } from './dungeonRewards';
 
 export { DUNGEON_KEY_PATTERN, DUNGEON_KEY_MAX_LENGTH, DUNGEON_ID_PATTERN, DUNGEON_ID_MAX_LENGTH } from './dungeonIdentifiers';
-
-export const BASIS_POINTS = 10_000;
+export {
+  ActionDestinationSchema,
+  BASIS_POINTS,
+  DUNGEON_FLAG_SCOPES,
+  DUNGEON_MAX_CONDITION_DEPTH,
+  DungeonArtworkRefSchema,
+  DungeonConditionSchema,
+  DungeonFlagDeclarationSchema,
+  type ActionDestination,
+  type DungeonArtworkRef,
+  type DungeonCondition,
+  type DungeonFlagDeclaration,
+  type DungeonFlagScope,
+} from './dungeonPrimitives';
+export * from './dungeonEvents';
+export * from './dungeonRewardSites';
 
 export const DUNGEON_MAX_ROOMS = 200;
 export const DUNGEON_MAX_CONNECTIONS = 600;
@@ -55,123 +89,6 @@ export const DUNGEON_MAX_ACTIONS_PER_ROOM = 60;
 export const DUNGEON_MAX_WAVES_PER_ACTION = 100;
 export const DUNGEON_MAX_POOL_ENTRIES = 50;
 export const DUNGEON_MAX_FLAGS = 200;
-export const DUNGEON_MAX_CONDITION_DEPTH = 6;
-
-const referenceKey = z.string().trim().min(1).max(100);
-const basisPoints = z.number().int().min(0).max(BASIS_POINTS);
-const shortText = (max: number) => z.string().trim().max(max);
-
-// ── artwork ─────────────────────────────────────────────────────────────────
-
-/**
- * A picture, named in a way that survives a move between environments: a file
- * shipped under `assets/`, or a managed upload by the sha256 of its bytes.
- * Never a managed asset's id, which is minted per environment.
- */
-export const DungeonArtworkRefSchema = z.discriminatedUnion('kind', [
-  z
-    .object({
-      kind: z.literal('shipped'),
-      path: z
-        .string()
-        .trim()
-        .min(1)
-        .max(300)
-        .refine((p) => !p.startsWith('/') && !p.split('/').includes('..'), 'must be a relative path under assets/'),
-    })
-    .strict(),
-  z
-    .object({
-      kind: z.literal('managed'),
-      category: z.string().trim().min(1).max(40),
-      contentHash: z.string().regex(/^[a-f0-9]{64}$/, 'must be a lower-case sha256 hex digest'),
-      /** The file name it was uploaded under. Informational. */
-      name: shortText(200).optional(),
-    })
-    .strict(),
-]);
-export type DungeonArtworkRef = z.infer<typeof DungeonArtworkRefSchema>;
-
-// ── flags and conditions ────────────────────────────────────────────────────
-
-/**
- * Where a flag lives. `run` flags die with the run. `player` flags persist per
- * player and dungeon; they are declared here so content can be written against
- * them, but nothing sets one until the phase that adds their store.
- *
- * Both are namespaced by the dungeon. A future campaign namespace would be a
- * third scope value, not a change to these two.
- */
-export const DUNGEON_FLAG_SCOPES = ['run', 'player'] as const;
-export type DungeonFlagScope = (typeof DUNGEON_FLAG_SCOPES)[number];
-
-export const DungeonFlagDeclarationSchema = z
-  .object({
-    key: id,
-    scope: z.enum(DUNGEON_FLAG_SCOPES).default('run'),
-    description: shortText(300).default(''),
-  })
-  .strict();
-export type DungeonFlagDeclaration = z.infer<typeof DungeonFlagDeclarationSchema>;
-
-export type DungeonCondition =
-  | { type: 'flag'; flag: string; scope: DungeonFlagScope; equals: boolean }
-  | { type: 'room_completed'; roomId: string }
-  | { type: 'all'; conditions: DungeonCondition[] }
-  | { type: 'any'; conditions: DungeonCondition[] }
-  | { type: 'not'; condition: DungeonCondition };
-
-type DungeonConditionInput =
-  | { type: 'flag'; flag: string; scope?: DungeonFlagScope | undefined; equals?: boolean | undefined }
-  | { type: 'room_completed'; roomId: string }
-  | { type: 'all'; conditions: DungeonConditionInput[] }
-  | { type: 'any'; conditions: DungeonConditionInput[] }
-  | { type: 'not'; condition: DungeonConditionInput };
-
-/**
- * What a `when` or `requires` tests. A small closed vocabulary: Phase 3
- * replaces it with the shared rules module's condition union, of which every
- * member here is one.
- */
-export const DungeonConditionSchema: z.ZodType<DungeonCondition, z.ZodTypeDef, DungeonConditionInput> = z.lazy(() =>
-  z.discriminatedUnion('type', [
-    z
-      .object({
-        type: z.literal('flag'),
-        flag: id,
-        scope: z.enum(DUNGEON_FLAG_SCOPES).default('run'),
-        equals: z.boolean().default(true),
-      })
-      .strict(),
-    z.object({ type: z.literal('room_completed'), roomId: id }).strict(),
-    z.object({ type: z.literal('all'), conditions: z.array(DungeonConditionSchema).min(1).max(20) }).strict(),
-    z.object({ type: z.literal('any'), conditions: z.array(DungeonConditionSchema).min(1).max(20) }).strict(),
-    z.object({ type: z.literal('not'), condition: DungeonConditionSchema }).strict(),
-  ]),
-);
-
-// ── routing ─────────────────────────────────────────────────────────────────
-
-/**
- * Where a room's sequence goes after an action.
- *
- *   next           the action after this one; the room completes after the last
- *   action         a named action later in this room (never earlier)
- *   room_complete  the room completes now, whatever follows
- *   leave          the room completes and the player goes through a connection
- *   retreat        the room is left *unfinished* and the player goes back to
- *                  the room they came from; its sequence resumes on return
- *   end_run        the run ends here
- */
-export const ActionDestinationSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('next') }).strict(),
-  z.object({ type: z.literal('action'), actionId: id }).strict(),
-  z.object({ type: z.literal('room_complete') }).strict(),
-  z.object({ type: z.literal('leave'), connectionId: id }).strict(),
-  z.object({ type: z.literal('retreat') }).strict(),
-  z.object({ type: z.literal('end_run'), outcome: z.enum(['completed', 'defeated']) }).strict(),
-]);
-export type ActionDestination = z.infer<typeof ActionDestinationSchema>;
 
 // ── actions ─────────────────────────────────────────────────────────────────
 
@@ -266,6 +183,8 @@ export const DungeonActionSchema = z.discriminatedUnion('type', [
     })
     .strict(),
   z.object({ type: z.literal('reward'), ...actionBase, reward: RewardSpecSchema.optional(), rewards: DungeonRewardBundleSchema.optional() }).strict(),
+  /** Presents one event from the dungeon's library: a named one, or a draw from a pool. */
+  z.object({ type: z.literal('event'), ...actionBase, source: DungeonEventSourceSchema }).strict(),
 ]).superRefine((action, ctx) => {
   if (action.type === 'reward' && (action.reward !== undefined) === (action.rewards !== undefined)) {
     ctx.addIssue({ code: 'custom', path: ['reward'], message: 'treasure must have exactly one of reward or rewards' });
@@ -274,8 +193,9 @@ export const DungeonActionSchema = z.discriminatedUnion('type', [
 export type DungeonAction = z.infer<typeof DungeonActionSchema>;
 export type DungeonActionType = DungeonAction['type'];
 export type CombatAction = Extract<DungeonAction, { type: 'combat' | 'boss' }>;
+export type EventAction = Extract<DungeonAction, { type: 'event' }>;
 
-export const DUNGEON_ACTION_TYPES = ['combat', 'boss', 'rest', 'gate', 'set_flag', 'leave', 'reward'] as const satisfies readonly DungeonActionType[];
+export const DUNGEON_ACTION_TYPES = ['combat', 'boss', 'rest', 'gate', 'set_flag', 'leave', 'reward', 'event'] as const satisfies readonly DungeonActionType[];
 
 /**
  * Action types later phases add. Named now so a definition that uses one is
@@ -283,7 +203,6 @@ export const DUNGEON_ACTION_TYPES = ['combat', 'boss', 'rest', 'gate', 'set_flag
  * so nothing else claims the name.
  */
 export const RESERVED_ACTION_TYPES = {
-  event: 'Phase 3',
   choice: 'Phase 3',
   objective: 'Phase 3',
   random_outcome: 'a later phase',
@@ -303,6 +222,8 @@ export const ACTION_OUTCOMES: Readonly<Record<DungeonActionType, readonly string
   set_flag: ['done'],
   leave: [],
   reward: ['claimed'],
+  /** `nothing`: a pool drew no event. A failed check is still `resolved`. */
+  event: ['resolved', 'nothing'],
 };
 export const DECLINED_OUTCOME = 'declined';
 
@@ -365,6 +286,9 @@ export const DungeonDefinitionSchema = z
     background: DungeonArtworkRefSchema.nullable().default(null),
     settings: DungeonSettingsSchema.default({}),
     flags: z.array(DungeonFlagDeclarationSchema).max(DUNGEON_MAX_FLAGS).default([]),
+    /** Phase 3 library. Absent, never defaulted: an event-free definition must hash as it always did. */
+    events: z.array(DungeonEventSchema).max(DUNGEON_EVENT_LIMITS.events).optional(),
+    eventPools: z.array(DungeonEventPoolSchema).max(DUNGEON_EVENT_LIMITS.pools).optional(),
     rooms: z.array(DungeonRoomSchema).min(1).max(DUNGEON_MAX_ROOMS),
     connections: z.array(DungeonConnectionSchema).max(DUNGEON_MAX_CONNECTIONS).default([]),
   })
@@ -390,6 +314,16 @@ export function connectionOf(
 ): DungeonConnection | null {
   if (connectionId == null) return null;
   return definition.connections.find((c) => c.id === connectionId) ?? null;
+}
+
+export function eventOf(definition: Pick<DungeonDefinition, 'events'>, eventId: string | null | undefined): DungeonEvent | null {
+  if (eventId == null) return null;
+  return definition.events?.find((e) => e.id === eventId) ?? null;
+}
+
+export function eventPoolOf(definition: Pick<DungeonDefinition, 'eventPools'>, poolId: string | null | undefined): DungeonEventPool | null {
+  if (poolId == null) return null;
+  return definition.eventPools?.find((p) => p.id === poolId) ?? null;
 }
 
 /** A room's outgoing connections, in authored order. */
@@ -442,16 +376,19 @@ export function dungeonDependencies(definition: DungeonDefinition): DungeonDepen
         if (action.reward.rewardTable) rewardTables.add(action.reward.rewardTable);
         if (action.reward.equipmentRewardTable) rewardTables.add(action.reward.equipmentRewardTable);
       }
-      if ((isCombatAction(action) || action.type === 'reward') && action.rewards) {
-        for (const ref of action.rewards.tables) lootTables.add(ref.table);
-        for (const { grant } of [...action.rewards.guaranteed, ...action.rewards.chances]) {
-          if (grant.type === 'item') items.add(grant.item);
-          if (grant.type === 'equipment') equipmentSelectors.set(equipmentSelectorKey(grant.selector), grant.selector);
-          if (grant.type === 'currency' && grant.currency !== 'shards') currencies.add(grant.currency);
-        }
-      }
     }
   }
+  // Reward bundles wherever they sit: activities, then the outcomes of reachable events.
+  for (const { bundle } of dungeonRewardSites(definition)) {
+    for (const ref of bundle.tables) lootTables.add(ref.table);
+    for (const { grant } of [...bundle.guaranteed, ...bundle.chances]) {
+      if (grant.type === 'item') items.add(grant.item);
+      if (grant.type === 'equipment') equipmentSelectors.set(equipmentSelectorKey(grant.selector), grant.selector);
+      if (grant.type === 'currency' && grant.currency !== 'shards') currencies.add(grant.currency);
+    }
+  }
+  const reachable = reachableDungeonEvents(definition);
+  for (const event of definition.events ?? []) if (reachable.has(event.id)) art(event.artwork ?? null);
   return {
     enemies: [...enemies].sort(),
     rewardTables: [...rewardTables].sort(),

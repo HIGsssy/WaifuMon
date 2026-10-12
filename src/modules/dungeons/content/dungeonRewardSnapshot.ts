@@ -37,6 +37,7 @@ import { DUNGEON_LOOT_RESOLVER_VERSION } from '../engine/lootResolver';
 import type { DungeonRewardValidationContext } from '../validation/dungeonRewardValidation';
 import type { DungeonDefinition } from './dungeonDefinition';
 import { DungeonKeySchema } from './dungeonIdentifiers';
+import { dungeonRewardSites } from './dungeonRewardSites';
 import {
   DungeonLootTableBodySchema,
   type DungeonLootTableBody,
@@ -125,11 +126,9 @@ export function dungeonGameplayHash(contentHash: string, rewardSnapshotHash: str
   return `sha256:${sha256({ v: 1, contentHash, rewardSnapshotHash })}`;
 }
 
-/** Whether any activity uses the v2 `rewards` bundle. Without one there is no snapshot. */
+/** Whether any activity or reachable event outcome uses the v2 `rewards` bundle. Without one there is no snapshot. */
 export function hasDungeonRewardBundles(definition: DungeonDefinition): boolean {
-  return definition.rooms.some((room) =>
-    room.actions.some((action) => 'rewards' in action && Boolean(action.rewards)),
-  );
+  return dungeonRewardSites(definition).length > 0;
 }
 
 /**
@@ -204,42 +203,39 @@ export function resolveDungeonRewardDependencies(
 ): DungeonRewardDependencyState {
   const tables = new Map<string, DungeonRewardTableState>();
   const grants: DungeonRewardGrant[] = [];
-  for (const room of definition.rooms) {
-    for (const action of room.actions) {
-      if (!('rewards' in action) || !action.rewards) continue;
-      grants.push(...action.rewards.guaranteed.map((entry) => entry.grant));
-      grants.push(...action.rewards.chances.map((entry) => entry.grant));
-      for (const ref of action.rewards.tables) {
-        if (tables.has(ref.table)) continue;
-        const row = ctx.lootTables?.get(ref.table);
-        if (!row) {
-          tables.set(ref.table, { status: 'missing', name: null, contentHash: null });
-          continue;
-        }
-        const body = DungeonLootTableBodySchema.safeParse(row.body);
-        if (!body.success) {
-          tables.set(ref.table, { status: 'invalid', name: row.name, contentHash: null });
-          continue;
-        }
-        const contentHash = dungeonLootBodyHash(body.data);
-        if (row.archivedAt !== null) {
-          tables.set(ref.table, { status: 'archived', name: row.name, contentHash });
-          continue;
-        }
-        grants.push(...grantsOf(body.data));
-        tables.set(ref.table, {
-          status: 'ok',
-          table: {
-            key: ref.table,
-            name: row.name,
-            tier: row.tier ?? null,
-            // A caller-built catalogue may carry no authoring revision; the service's always does.
-            sourceRevision: row.revision ?? 1,
-            contentHash,
-            body: body.data,
-          },
-        });
+  for (const { bundle } of dungeonRewardSites(definition)) {
+    grants.push(...bundle.guaranteed.map((entry) => entry.grant));
+    grants.push(...bundle.chances.map((entry) => entry.grant));
+    for (const ref of bundle.tables) {
+      if (tables.has(ref.table)) continue;
+      const row = ctx.lootTables?.get(ref.table);
+      if (!row) {
+        tables.set(ref.table, { status: 'missing', name: null, contentHash: null });
+        continue;
       }
+      const body = DungeonLootTableBodySchema.safeParse(row.body);
+      if (!body.success) {
+        tables.set(ref.table, { status: 'invalid', name: row.name, contentHash: null });
+        continue;
+      }
+      const contentHash = dungeonLootBodyHash(body.data);
+      if (row.archivedAt !== null) {
+        tables.set(ref.table, { status: 'archived', name: row.name, contentHash });
+        continue;
+      }
+      grants.push(...grantsOf(body.data));
+      tables.set(ref.table, {
+        status: 'ok',
+        table: {
+          key: ref.table,
+          name: row.name,
+          tier: row.tier ?? null,
+          // A caller-built catalogue may carry no authoring revision; the service's always does.
+          sourceRevision: row.revision ?? 1,
+          contentHash,
+          body: body.data,
+        },
+      });
     }
   }
   const equipment = new Map<string, DungeonRewardDependencyState['equipment'][string]>();

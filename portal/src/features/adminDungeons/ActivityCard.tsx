@@ -29,10 +29,12 @@ import {
   activityChips,
   activityOf,
   activitySummary,
+  isEventActivity,
   newFlagKey,
   roomNameOf,
   type FriendlyIssue,
 } from './dungeonText';
+import { EventActivity } from './EventActivity';
 
 const select = 'w-full rounded-md border border-border bg-surface px-2 py-1.5 text-sm text-ink';
 const field = 'block space-y-1 text-sm';
@@ -43,6 +45,8 @@ const OUTCOME_LABEL: Record<string, string> = {
   defeat: 'After losing',
   claimed: 'After the reward is claimed',
   done: 'Afterwards',
+  resolved: 'After a choice is made (unless its result says otherwise)',
+  nothing: 'If a random pool comes up with nothing',
   passed: 'If the player may continue',
   blocked: 'If the player is turned away',
   declined: 'If the player skips it',
@@ -67,6 +71,7 @@ function DestinationEditor({
   room,
   actionIndex,
   definition,
+  noRetreat = false,
   onChange,
 }: {
   outcome: string;
@@ -74,6 +79,8 @@ function DestinationEditor({
   room: DungeonRoom;
   actionIndex: number;
   definition: DungeonDefinition;
+  /** An event is settled once, so sending the player back would bar the room for good. */
+  noRetreat?: boolean;
   onChange: (destination: ActionDestination | undefined) => void;
 }) {
   const label = OUTCOME_LABEL[outcome] ?? `After “${outcome}”`;
@@ -84,7 +91,9 @@ function DestinationEditor({
     },
     { value: 'next', label: 'Continue with the next activity' },
     { value: 'room_complete', label: 'Skip the rest of this room' },
-    { value: 'retreat', label: 'Send the player back the way they came' },
+    ...(noRetreat && value?.type !== 'retreat'
+      ? []
+      : [{ value: 'retreat', label: 'Send the player back the way they came' }]),
     { value: 'end_run:completed', label: 'Finish the dungeon' },
     { value: 'end_run:defeated', label: 'End the run in defeat' },
     ...room.actions.slice(actionIndex + 1).map((a, offset) => ({
@@ -616,6 +625,7 @@ function AdvancedOptions({
     onChange(next);
   };
   const fight = action.type === 'combat' || action.type === 'boss';
+  const event = isEventActivity(action);
   const outcomes = [
     ...(ACTION_OUTCOMES[action.type as ActionType] ?? []),
     ...(action.optional ? ['declined'] : []),
@@ -623,25 +633,39 @@ function AdvancedOptions({
   const waves = action.waves ?? [];
   return (
     <div className="space-y-3">
-      <label className={field}>
-        Button text players see
-        <Input
-          aria-label="Button text"
-          maxLength={80}
-          placeholder={`Usual text for a ${activityOf(action).title.toLowerCase()}`}
-          value={action.label ?? ''}
-          onChange={(e) => patch({ label: e.target.value })}
-        />
-      </label>
-      <label className="flex items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          aria-label="Player can skip this"
-          checked={action.optional ?? false}
-          onChange={(e) => patch({ optional: e.target.checked })}
-        />
-        Players can choose to skip this
-      </label>
+      {event ? (
+        // An event's buttons are its choices, and it is answered with one of them rather than skipped.
+        (action.optional ?? false) && (
+          <p role="alert" className="text-sm">
+            This event is marked as skippable, which events don’t support.{' '}
+            <Button variant="outline" size="sm" onClick={() => patch({ optional: false })}>
+              Remove that setting
+            </Button>
+          </p>
+        )
+      ) : (
+        <>
+          <label className={field}>
+            Button text players see
+            <Input
+              aria-label="Button text"
+              maxLength={80}
+              placeholder={`Usual text for a ${activityOf(action).title.toLowerCase()}`}
+              value={action.label ?? ''}
+              onChange={(e) => patch({ label: e.target.value })}
+            />
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              aria-label="Player can skip this"
+              checked={action.optional ?? false}
+              onChange={(e) => patch({ optional: e.target.checked })}
+            />
+            Players can choose to skip this
+          </label>
+        </>
+      )}
       {fight && (
         <>
           <label className="flex items-center gap-2 text-sm">
@@ -700,6 +724,7 @@ function AdvancedOptions({
               room={room}
               actionIndex={index}
               definition={definition}
+              noRetreat={event}
               onChange={(next) => {
                 const routes = { ...action.outcomes };
                 if (next) routes[outcome] = next;
@@ -724,6 +749,7 @@ function AdvancedOptions({
               room={room}
               actionIndex={index}
               definition={definition}
+              noRetreat={event}
               onChange={(next) => (next ? patch({ next }) : unset('next'))}
             />
           ))}
@@ -792,6 +818,7 @@ export function ActivityCard({
       Object.keys(action.outcomes ?? {}).length > 0,
   );
   const Icon = meta.icon;
+  const eventActivity = isEventActivity(action);
   return (
     <li
       className={`rounded-lg border ${issues.some((i) => i.level !== 'review') ? 'border-danger/60' : open ? 'border-accent' : 'border-border'}`}
@@ -832,7 +859,28 @@ export function ActivityCard({
           ))}
         </ul>
       )}
-      {open && (
+      {open && eventActivity && (
+        <div className="border-t border-border p-2.5">
+          <EventActivity
+            action={action}
+            definition={definition}
+            reference={reference}
+            disabled={disabled}
+            onPick={(next, nextDefinition) =>
+              // One edit: the activity's new source, and any event or pool created for it.
+              onDefinitionChange({
+                ...nextDefinition,
+                rooms: nextDefinition.rooms.map((r) =>
+                  r.id === room.id
+                    ? { ...r, actions: r.actions.map((a) => (a.id === next.id ? next : a)) }
+                    : r,
+                ),
+              })
+            }
+          />
+        </div>
+      )}
+      {open && !eventActivity && (
         <fieldset disabled={disabled} className="space-y-3 border-t border-border p-2.5">
           <Essentials
             action={action}

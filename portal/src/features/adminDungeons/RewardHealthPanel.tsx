@@ -45,6 +45,12 @@ export function RewardHealthPanel() {
     d.activeRevisions.filter((r) => r.status === 'broken');
   const strandedIn = dungeons.filter((d) => stranded(d).length > 0);
   const affected = dungeons.filter((d) => d.status === 'broken' || stranded(d).length > 0);
+  // Not broken rewards: an event choice asks for an item that is gone or disabled.
+  const noticesOf = (d: DungeonRewardHealthEntry) => [
+    ...(d.notices ?? []),
+    ...d.activeRevisions.flatMap((r) => r.notices ?? []),
+  ];
+  const noticed = dungeons.filter((d) => noticesOf(d).length > 0);
   // A draft problem on a dungeon whose rewards can all be paid is the author's to-do, not an outage.
   const draftOnly = dungeons.filter((d) => !affected.includes(d) && d.draftErrors > 0);
   const of = (status: DungeonRewardHealthEntry['status']) =>
@@ -154,6 +160,30 @@ export function RewardHealthPanel() {
               )}
             </Card>
           ))}
+          {noticed.length > 0 && (
+            <Card className="space-y-1 p-4 text-sm" data-testid="reward-health-notices">
+              <p className="font-medium">Event choices players cannot pick</p>
+              <p className="text-xs text-ink-muted">
+                No reward is affected. An event choice needs an item that is missing or disabled, so
+                players see that choice as unavailable and use another.
+              </p>
+              <ul className="list-disc space-y-1 pl-5">
+                {noticed.map((d) => (
+                  <li key={d.key}>
+                    <Link className="hover:underline" to={editor(d)}>
+                      {d.name}
+                    </Link>
+                    :{' '}
+                    {[...new Map(noticesOf(d).map((n) => [n.key, n])).values()].map((n) => (
+                      <span key={n.key} title={n.key}>
+                        {n.message} <span className="text-ink-muted">{n.hint}</span>{' '}
+                      </span>
+                    ))}
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
           {draftOnly.length > 0 && (
             <Card className="space-y-1 p-4 text-sm" data-testid="reward-health-drafts">
               <p className="font-medium">Drafts with problems</p>

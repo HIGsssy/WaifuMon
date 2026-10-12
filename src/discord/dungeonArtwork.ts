@@ -218,6 +218,19 @@ export async function dungeonRunSceneArtwork(ctx: ArtContext, view: DungeonRunVi
   const { artwork: dungeonArt, background: dungeonBackground } = view.dungeon;
   const roomBackground: ArtworkRef | null = view.roomBackground ?? null;
 
+  // An offered event shows its own picture, as uploaded: no stage and no Buddy over it.
+  // Without one (or if it cannot be read) the room, then the dungeon, stand in.
+  // (`eventArtwork` is on the view exactly when an event is offered.)
+  const eventArt = view.eventArtwork;
+  if (eventArt) {
+    return firstArtwork(ctx, [
+      () => plainArtwork(ctx, eventArt),
+      () => (roomBackground ? plainArtwork(ctx, roomBackground) : null),
+      () => plainArtwork(ctx, dungeonBackground),
+      () => plainArtwork(ctx, dungeonArt),
+    ]);
+  }
+
   const enemy = view.enemy;
   if (enemy) {
     const { visual } = enemy;

@@ -8,7 +8,7 @@ import {
   type DungeonRewardBundle,
   type DungeonRewardGrant,
 } from '../content/dungeonRewards';
-import type { DungeonDefinition } from '../content/dungeonDefinition';
+import { dungeonRewardSites, type DungeonDefinition, type DungeonRewardSiteOwner } from '../content/dungeonDefinition';
 import {
   describeEquipmentSelector,
   equipmentSelectorKey,
@@ -215,6 +215,17 @@ function workIssue(
     message = `the dungeon could bank ${quantity} ${path.endsWith('waifubux') ? 'WaifuBux' : 'Baddie Shards'}. The limit is ${DUNGEON_REWARD_LIMITS.atRiskCurrencyPerDungeon}.`;
   return { code, severity: 'error', path, message: `${label}: ${message}` };
 }
+/** How an issue names the place a bundle sits, in the author's words. */
+function rewardSiteLabel(definition: DungeonDefinition, owner: DungeonRewardSiteOwner): string {
+  if (owner.kind === 'action') {
+    const room = definition.rooms[owner.roomIndex]!;
+    const action = room.actions[owner.actionIndex]!;
+    return `Room "${room.name || room.id}", activity "${action.label || action.id}"`;
+  }
+  const event = definition.events![owner.eventIndex]!;
+  const choice = event.choices[owner.choiceIndex]!;
+  return `Event "${event.title}", choice "${choice.label}"${owner.branch === 'outcome' ? '' : ` (${owner.branch})`}`;
+}
 export function validateDungeonRewards(
   definition: DungeonDefinition,
   ctx: DungeonValidationContext,
@@ -224,89 +235,86 @@ export function validateDungeonRewards(
   const equipmentPools: DungeonRewardEquipmentPools = {};
   const bodies = new Map<string, DungeonLootTableBody>();
   let hasNewRewards = false;
-  definition.rooms.forEach((room, r) =>
-    room.actions.forEach((action, a) => {
-      if (!('rewards' in action) || !action.rewards) return;
-      hasNewRewards = true;
-      const bundle: DungeonRewardBundle = action.rewards;
-      const path = `rooms[${r}].actions[${a}].rewards`;
-      const label = `Room "${room.name || room.id}", activity "${action.label || action.id}"`;
-      if (!bundle.guaranteed.length && !bundle.chances.length && !bundle.tables.length)
-        add(
-          issues,
-          'reward_empty',
-          path,
-          `${label}: this Rewards section gives nothing yet.`,
-          'warning',
-        );
-      for (const list of ['guaranteed', 'chances'] as const)
-        bundle[list].forEach((entry, i) =>
-          checkGrant(
-            entry.grant,
-            `${path}.${list}[${i}].grant`,
-            `${label}, reward "${entry.id}"`,
-            ctx,
-            issues,
-            equipmentPools,
-            options.checkShardsConfiguration === false ? undefined : definition.settings.progressionCurrency,
-          ),
-        );
-      bundle.tables.forEach((ref, i) => {
-        if (!ctx.lootTables) return; // Portable validation has no external catalogue.
-        const table = ctx.lootTables.get(ref.table);
-        const refPath = `${path}.tables[${i}]`;
-        if (!table) {
-          add(
-            issues,
-            'reward_table_missing',
-            refPath,
-            `${label}: loot table "${ref.table}" no longer exists. Remove it or pick another dungeon loot table.`,
-          );
-          return;
-        }
-        const tableLabel = `${label}, loot table "${table.name}"`;
-        if (table.archivedAt !== null)
-          add(
-            issues,
-            'reward_table_archived',
-            refPath,
-            `${tableLabel} is archived. Restore it or pick another.`,
-          );
-        const parsed = DungeonLootTableBodySchema.safeParse(table.body);
-        if (!parsed.success) {
-          add(
-            issues,
-            'reward_table_invalid',
-            refPath,
-            `${tableLabel} has invalid reward settings. Open the loot table and repair its structure.`,
-          );
-          return;
-        }
-        bodies.set(ref.table, parsed.data);
-        checkEntries(
-          parsed.data,
-          `${refPath}.body`,
-          tableLabel,
+  for (const site of dungeonRewardSites(definition)) {
+    hasNewRewards = true;
+    const bundle: DungeonRewardBundle = site.bundle;
+    const path = site.path;
+    const label = rewardSiteLabel(definition, site.owner);
+    if (!bundle.guaranteed.length && !bundle.chances.length && !bundle.tables.length)
+      add(
+        issues,
+        'reward_empty',
+        path,
+        `${label}: this Rewards section gives nothing yet.`,
+        'warning',
+      );
+    for (const list of ['guaranteed', 'chances'] as const)
+      bundle[list].forEach((entry, i) =>
+        checkGrant(
+          entry.grant,
+          `${path}.${list}[${i}].grant`,
+          `${label}, reward "${entry.id}"`,
           ctx,
           issues,
           equipmentPools,
           options.checkShardsConfiguration === false ? undefined : definition.settings.progressionCurrency,
+        ),
+      );
+    bundle.tables.forEach((ref, i) => {
+      if (!ctx.lootTables) return; // Portable validation has no external catalogue.
+      const table = ctx.lootTables.get(ref.table);
+      const refPath = `${path}.tables[${i}]`;
+      if (!table) {
+        add(
+          issues,
+          'reward_table_missing',
+          refPath,
+          `${label}: loot table "${ref.table}" no longer exists. Remove it or pick another dungeon loot table.`,
         );
-        if (
-          !parsed.data.guaranteed.length &&
-          !parsed.data.chances.length &&
-          !parsed.data.pools.length
-        )
-          add(
-            issues,
-            'reward_empty',
-            refPath,
-            `${tableLabel}: this Rewards section gives nothing yet.`,
-            'warning',
-          );
-      });
-    }),
-  );
+        return;
+      }
+      const tableLabel = `${label}, loot table "${table.name}"`;
+      if (table.archivedAt !== null)
+        add(
+          issues,
+          'reward_table_archived',
+          refPath,
+          `${tableLabel} is archived. Restore it or pick another.`,
+        );
+      const parsed = DungeonLootTableBodySchema.safeParse(table.body);
+      if (!parsed.success) {
+        add(
+          issues,
+          'reward_table_invalid',
+          refPath,
+          `${tableLabel} has invalid reward settings. Open the loot table and repair its structure.`,
+        );
+        return;
+      }
+      bodies.set(ref.table, parsed.data);
+      checkEntries(
+        parsed.data,
+        `${refPath}.body`,
+        tableLabel,
+        ctx,
+        issues,
+        equipmentPools,
+        options.checkShardsConfiguration === false ? undefined : definition.settings.progressionCurrency,
+      );
+      if (
+        !parsed.data.guaranteed.length &&
+        !parsed.data.chances.length &&
+        !parsed.data.pools.length
+      )
+        add(
+          issues,
+          'reward_empty',
+          refPath,
+          `${tableLabel}: this Rewards section gives nothing yet.`,
+          'warning',
+        );
+    });
+  }
   const abandon = definition.settings.abandonCurrencyRetentionBasisPoints;
   if (abandon !== undefined && abandon > definition.settings.defeatCurrencyRetentionBasisPoints) {
     add(
@@ -319,19 +327,11 @@ export function validateDungeonRewards(
   }
   if (hasNewRewards) {
     const work = validateDungeonRewardWork(definition, bodies);
+    const sites = dungeonRewardSites(definition);
     for (const i of work.issues) {
       if (i.code === 'reward_table_unresolved') continue; // Precise missing/body issues above; omitted context stays portable.
-      const at = /^rooms\[(\d+)\].actions\[(\d+)\]/.exec(i.path);
-      const room = at ? definition.rooms[Number(at[1])] : undefined;
-      const action = at ? room?.actions[Number(at[2])] : undefined;
-      issues.push(
-        workIssue(
-          i,
-          room && action
-            ? `Room "${room.name || room.id}", activity "${action.label || action.id}"`
-            : `Dungeon "${definition.name}"`,
-        ),
-      );
+      const site = sites.find((candidate) => candidate.path === i.path);
+      issues.push(workIssue(i, site ? rewardSiteLabel(definition, site.owner) : `Dungeon "${definition.name}"`));
     }
   }
   return { issues, equipmentPools };

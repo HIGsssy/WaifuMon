@@ -24,9 +24,20 @@ interface Props {
   value: string;
   onChange: (slug: string) => void;
   disabled?: boolean;
+  /**
+   * Why an item cannot be chosen here, or null. Defaults to the rule for loot;
+   * a picker for something a player must already hold has its own.
+   */
+  unusable?: (item: ItemRef) => string | null;
 }
 
-export function ItemPicker({ items, value, onChange, disabled = false }: Props) {
+export function ItemPicker({
+  items,
+  value,
+  onChange,
+  disabled = false,
+  unusable = itemUnusable,
+}: Props) {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<ItemFilter>('all');
   const needle = search.trim().toLowerCase();
@@ -83,7 +94,7 @@ export function ItemPicker({ items, value, onChange, disabled = false }: Props) 
           className="max-h-56 space-y-0.5 overflow-y-auto rounded-md border border-border bg-surface p-1"
         >
           {shown.map((item) => {
-            const reason = itemUnusable(item);
+            const reason = unusable(item);
             const selected = item.slug === value;
             return (
               <li key={item.slug} role="option" aria-selected={selected} aria-disabled={!!reason}>

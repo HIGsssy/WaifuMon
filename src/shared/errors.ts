@@ -1787,6 +1787,21 @@ export class DungeonRewardItemUnavailableError extends AppError {
   }
 }
 
+/**
+ * An event choice needed an item the player no longer holds when it was spent.
+ * The whole step rolled back: nothing was consumed, decided or paid, and the
+ * event is still open.
+ */
+export class DungeonEventItemUnavailableError extends AppError {
+  constructor(readonly runId: number, readonly slug: string, readonly quantity: number) {
+    super(
+      'DUNGEON_EVENT_ITEM_UNAVAILABLE',
+      `Dungeon run ${runId} event choice needs ${quantity} of item "${slug}", which the player no longer holds`,
+      "You no longer have what that choice needs. Nothing was used and nothing changed.",
+    );
+  }
+}
+
 /** A pinned reward dependency or grant failed; retry after repair is safe. */
 export class DungeonRewardGrantError extends AppError {
   constructor(readonly runId: number, readonly claimKey: string, readonly dependency: string, cause?: unknown) {

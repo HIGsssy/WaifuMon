@@ -2,6 +2,7 @@
 import { z } from 'zod';
 import { EquipmentRewardSelectorSchema } from '../../equipment/rewardSelector';
 import { DungeonIdSchema, DungeonKeySchema } from './dungeonIdentifiers';
+import { dungeonRewardActivities, type DungeonRewardSiteDefinition } from './dungeonRewardSites';
 
 export const DUNGEON_REWARD_LIMITS = Object.freeze({
   guaranteedEntries: 12,
@@ -320,10 +321,18 @@ export interface DungeonRewardWorkDefinition {
       type: string;
       rewards?: DungeonRewardBundle | undefined;
       reward?: { currency: { max: number } } | undefined;
+      source?: DungeonRewardSiteDefinition['rooms'][number]['actions'][number]['source'];
     }[];
   }[];
+  events?: DungeonRewardSiteDefinition['events'];
+  eventPools?: DungeonRewardSiteDefinition['eventPools'];
 }
-/** Each activity can claim once. Includes legacy unbanked Shards, but not legacy secured WaifuBux. */
+/**
+ * Each activity can claim once. Includes legacy unbanked Shards, but not legacy secured WaifuBux.
+ * An event activity claims one outcome of one event it can present: every such
+ * bundle is checked against the per-activity limits, and the dungeon totals
+ * take the largest of them per measure.
+ */
 export function validateDungeonRewardWork(
   definition: DungeonRewardWorkDefinition,
   tables?: DungeonLootTableBodies,
@@ -331,15 +340,28 @@ export function validateDungeonRewardWork(
   const work = emptyWork();
   const unresolved = new Set<string>();
   const issues: DungeonRewardWorkIssue[] = [];
+  const reported = new Set<string>();
+  // Only positions and bundles are read here, so the ids the traversal also reports may be absent.
+  const activities = new Map(dungeonRewardActivities(definition as DungeonRewardSiteDefinition).map((a) => [a.path, a]));
   definition.rooms.forEach((room, ri) =>
     room.actions.forEach((action, ai) => {
-      if (action.type !== 'combat' && action.type !== 'boss' && action.type !== 'reward') return;
-      if (action.rewards) {
-        const result = calculateDungeonRewardBundleWork(action.rewards, tables);
-        addWork(work, result.work);
-        for (const key of result.unresolvedTables) unresolved.add(key);
-        for (const issue of activityWorkIssues(result.work))
-          issues.push({ ...issue, path: `rooms[${ri}].actions[${ai}].rewards` });
+      const activity = activities.get(`rooms[${ri}].actions[${ai}]`);
+      if (activity) {
+        const worst = emptyWork();
+        for (const site of activity.sites) {
+          const result = calculateDungeonRewardBundleWork(site.bundle, tables);
+          worst.resolvedDraws = Math.max(worst.resolvedDraws, result.work.resolvedDraws);
+          worst.equipmentInstances = Math.max(worst.equipmentInstances, result.work.equipmentInstances);
+          worst.affection = Math.max(worst.affection, result.work.affection);
+          for (const currency of ['shards', 'waifubux', 'essence'] as const)
+            worst.currencies[currency] = Math.max(worst.currencies[currency], result.work.currencies[currency]);
+          for (const key of result.unresolvedTables) unresolved.add(key);
+          // An event shared by several rooms is one site: report it once.
+          if (reported.has(site.path)) continue;
+          reported.add(site.path);
+          for (const issue of activityWorkIssues(result.work)) issues.push({ ...issue, path: site.path });
+        }
+        addWork(work, worst);
       } else if (action.type === 'reward' && action.reward)
         work.currencies.shards += action.reward.currency.max;
     }),

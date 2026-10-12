@@ -57,8 +57,20 @@ export interface DungeonImportPlan {
   lootTables?: DungeonLootImportTablePlan[] | undefined;
   equipmentChanges?: DungeonImportEquipmentChange[] | undefined;
   resultingContentHash?: string | undefined;
+  eventDependencies?:
+    | {
+        eventCount: number;
+        poolCount: number;
+        requiredItems: Array<{
+          key: string;
+          name: string;
+          status: 'available' | 'missing' | 'disabled';
+        }>;
+      }
+    | undefined;
   rewardSource?:
-    { origin: 'draft' | 'revision'; snapshotHash: string; resolverVersion: number } | undefined;
+    | { origin: 'draft' | 'revision'; snapshotHash: string | null; resolverVersion: number | null }
+    | undefined;
 }
 export interface DungeonImportDecisions {
   dungeon: 'create' | 'replace' | 'unchanged';
@@ -86,6 +98,6 @@ export interface DungeonImportResult {
   createdLootTables?: string[] | undefined;
   reusedLootTables?: string[] | undefined;
   tableKeyChanges?: Record<string, string> | undefined;
-  sourceSchemaVersion?: 2 | undefined;
-  rewardSnapshotHash?: string | undefined;
+  sourceSchemaVersion?: 2 | 3 | undefined;
+  rewardSnapshotHash?: string | null | undefined;
 }

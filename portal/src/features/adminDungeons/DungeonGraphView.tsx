@@ -41,6 +41,10 @@ import type {
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { ConnectionInspector } from './ConnectionInspector';
+import { DungeonSandboxDialog } from './DungeonSandboxDialog';
+import { EventEditorSheet } from './EventEditorSheet';
+import { EventPoolSheet } from './EventPoolSheet';
+import { EventEditorContext, type EventEditorHost } from './eventEditorContext';
 import { RoomInspector } from './RoomInspector';
 import {
   connectMapRooms,
@@ -63,6 +67,7 @@ import {
   roomLabel,
   roomNameOf,
   roomSummary,
+  type EventIssueTarget,
   type FriendlyIssue,
 } from './dungeonText';
 
@@ -218,6 +223,16 @@ export function DungeonGraphView({
   const flow = useRef<ReactFlowInstance<RoomNode, Edge> | null>(null);
   const inspector = useRef<HTMLElement>(null);
   const [currencyFocus, setCurrencyFocus] = useState(0);
+  /** The event or pool open in its side sheet, and the field asked for; `nonce` renews the request. */
+  const [eventSheet, setEventSheet] = useState<(EventIssueTarget & { nonce: number }) | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const eventHost = useMemo<EventEditorHost>(
+    () => ({
+      open: (target) => setEventSheet((open) => ({ ...target, nonce: (open?.nonce ?? 0) + 1 })),
+      play: () => setPlaying(true),
+    }),
+    [],
+  );
   useEffect(() => {
     if (!currencyFocus) return;
     const field = inspector.current?.querySelector<HTMLSelectElement>(
@@ -381,341 +396,387 @@ export function DungeonGraphView({
         : 'this path';
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-surface lg:flex-row">
-      <nav
-        aria-label="Dungeon outline"
-        hidden={!outlineOpen}
-        className={`max-h-80 shrink-0 flex-col border-b border-border lg:max-h-none lg:w-48 lg:border-r lg:border-b-0 ${outlineOpen ? 'flex' : 'hidden'}`}
-      >
-        <div className="flex items-center justify-between border-b border-border py-1 pr-1 pl-3">
-          <h2 className="text-sm font-semibold">Outline</h2>
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="Hide outline"
-            onClick={() => setOutlineOpen(false)}
-          >
-            <PanelLeftClose />
-          </Button>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-          {!disabled && (
-            <section aria-label="Room palette" className="space-y-2 border-b border-border p-3">
-              <h3 className="text-xs font-semibold tracking-wide text-ink-muted uppercase">
-                Add room
-              </h3>
-              <div className="grid grid-cols-2 gap-1.5">
-                {ROOM_TEMPLATES.map((t) => (
-                  <button
-                    key={t.id}
-                    type="button"
-                    aria-label={`Add ${t.label} room`}
-                    title={t.hint}
-                    className="flex items-center gap-1.5 rounded-md border border-border px-2 py-1.5 text-left text-xs hover:bg-surface-raised"
-                    onClick={() => addRoom(t.id, paletteFrom)}
-                  >
-                    <t.icon className="size-3.5 shrink-0" />
-                    {t.label}
-                  </button>
-                ))}
-              </div>
-              <p className="text-xs text-ink-muted">
-                {paletteFrom
-                  ? `Added after ${roomNameOf(definition, paletteFrom)} and connected to it.`
-                  : 'Added on its own. Select a room first to add the next room after it.'}
-              </p>
-            </section>
-          )}
-          <OutlineSection title="Rooms" count={definition.rooms.length}>
-            <ul>
-              {definition.rooms.map((r) => {
-                const selected = selection?.kind === 'room' && selection.id === r.id;
-                const blocking = issuesAt('room', r.id).filter((f) => f.level !== 'review').length;
-                return (
-                  <li key={r.id}>
+    <EventEditorContext.Provider value={eventHost}>
+      <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-surface lg:flex-row">
+        <nav
+          aria-label="Dungeon outline"
+          hidden={!outlineOpen}
+          className={`max-h-80 shrink-0 flex-col border-b border-border lg:max-h-none lg:w-48 lg:border-r lg:border-b-0 ${outlineOpen ? 'flex' : 'hidden'}`}
+        >
+          <div className="flex items-center justify-between border-b border-border py-1 pr-1 pl-3">
+            <h2 className="text-sm font-semibold">Outline</h2>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Hide outline"
+              onClick={() => setOutlineOpen(false)}
+            >
+              <PanelLeftClose />
+            </Button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+            {!disabled && (
+              <section aria-label="Room palette" className="space-y-2 border-b border-border p-3">
+                <h3 className="text-xs font-semibold tracking-wide text-ink-muted uppercase">
+                  Add room
+                </h3>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {ROOM_TEMPLATES.map((t) => (
                     <button
+                      key={t.id}
                       type="button"
-                      aria-label={`Select room ${roomLabel(r)}`}
-                      aria-pressed={selected}
-                      className={outlineRow(selected)}
-                      onClick={() => locate({ kind: 'room', id: r.id })}
+                      aria-label={`Add ${t.label} room`}
+                      title={t.hint}
+                      className="flex items-center gap-1.5 rounded-md border border-border px-2 py-1.5 text-left text-xs hover:bg-surface-raised"
+                      onClick={() => addRoom(t.id, paletteFrom)}
                     >
-                      <span className="min-w-0 flex-1 truncate">{roomLabel(r)}</span>
-                      {r.id === definition.entranceRoomId && (
-                        <span className="text-[0.65rem] tracking-wide text-ink-subtle uppercase">
-                          Start
-                        </span>
-                      )}
-                      {blocking > 0 && <span className="text-xs text-danger">{blocking}</span>}
+                      <t.icon className="size-3.5 shrink-0" />
+                      {t.label}
                     </button>
-                  </li>
-                );
-              })}
-            </ul>
-          </OutlineSection>
-          <OutlineSection title="Paths" count={definition.connections.length}>
-            {definition.connections.length === 0 && (
-              <p className="px-2 text-xs text-ink-muted">No paths yet.</p>
-            )}
-            <ul>
-              {definition.connections.map((c) => {
-                const selected = selection?.kind === 'connection' && selection.id === c.id;
-                const route = `${roomNameOf(definition, c.from)} → ${roomNameOf(definition, c.to)}`;
-                const state = pathState(c);
-                return (
-                  <li key={c.id}>
-                    <button
-                      type="button"
-                      aria-label={`Select path ${route}${c.label ? ` (${c.label})` : ''}`}
-                      aria-pressed={selected}
-                      className={outlineRow(selected)}
-                      onClick={() => locate({ kind: 'connection', id: c.id })}
-                    >
-                      <span className="min-w-0 flex-1 truncate">{route}</span>
-                      {state !== 'open' && (
-                        <span className="text-[0.65rem] tracking-wide text-ink-subtle uppercase">
-                          {state}
-                        </span>
-                      )}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          </OutlineSection>
-          <OutlineSection title="To do" count={friendly.length} request={problemsRequest}>
-            {friendly.length === 0 && (
-              <p className="px-2 text-xs text-ink-muted">Nothing left to do.</p>
-            )}
-            {levels.map((group) => (
-              <div key={group.title} className="mb-2 px-2">
-                <h4 className="text-[0.7rem] font-semibold text-ink-muted">{group.title}</h4>
-                <ul className="space-y-2 text-xs">
-                  {group.items.map((f, index) => (
-                    <li
-                      key={index}
-                      // The server's own wording stays one hover away for support.
-                      title={`${f.issue.code} · ${f.issue.path || 'dungeon'} · ${f.issue.message}`}
-                      className="break-words"
-                    >
-                      <span className={f.level === 'review' ? 'text-ink' : 'text-danger'}>
-                        {f.title}
-                      </span>{' '}
-                      <span className="text-ink-muted">{f.help}</span>
-                      {(f.target || f.settingsField) && (
-                        <Button
-                          variant="link"
-                          size="sm"
-                          className="block h-auto px-0 sm:h-auto"
-                          aria-label={`Show me: ${f.title}`}
-                          onClick={() => {
-                            if (f.settingsField) {
-                              setSelection(null);
-                              setFocusAction(null);
-                              setCurrencyFocus((n) => n + 1);
-                            } else locate(f.target!, f.actionId);
-                          }}
-                        >
-                          {f.settingsField ? 'Dungeon settings' : 'Show me'}
-                        </Button>
-                      )}
-                    </li>
                   ))}
+                </div>
+                <p className="text-xs text-ink-muted">
+                  {paletteFrom
+                    ? `Added after ${roomNameOf(definition, paletteFrom)} and connected to it.`
+                    : 'Added on its own. Select a room first to add the next room after it.'}
+                </p>
+              </section>
+            )}
+            <OutlineSection title="Rooms" count={definition.rooms.length}>
+              <ul>
+                {definition.rooms.map((r) => {
+                  const selected = selection?.kind === 'room' && selection.id === r.id;
+                  const blocking = issuesAt('room', r.id).filter(
+                    (f) => f.level !== 'review',
+                  ).length;
+                  return (
+                    <li key={r.id}>
+                      <button
+                        type="button"
+                        aria-label={`Select room ${roomLabel(r)}`}
+                        aria-pressed={selected}
+                        className={outlineRow(selected)}
+                        onClick={() => locate({ kind: 'room', id: r.id })}
+                      >
+                        <span className="min-w-0 flex-1 truncate">{roomLabel(r)}</span>
+                        {r.id === definition.entranceRoomId && (
+                          <span className="text-[0.65rem] tracking-wide text-ink-subtle uppercase">
+                            Start
+                          </span>
+                        )}
+                        {blocking > 0 && <span className="text-xs text-danger">{blocking}</span>}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </OutlineSection>
+            <OutlineSection title="Paths" count={definition.connections.length}>
+              {definition.connections.length === 0 && (
+                <p className="px-2 text-xs text-ink-muted">No paths yet.</p>
+              )}
+              <ul>
+                {definition.connections.map((c) => {
+                  const selected = selection?.kind === 'connection' && selection.id === c.id;
+                  const route = `${roomNameOf(definition, c.from)} → ${roomNameOf(definition, c.to)}`;
+                  const state = pathState(c);
+                  return (
+                    <li key={c.id}>
+                      <button
+                        type="button"
+                        aria-label={`Select path ${route}${c.label ? ` (${c.label})` : ''}`}
+                        aria-pressed={selected}
+                        className={outlineRow(selected)}
+                        onClick={() => locate({ kind: 'connection', id: c.id })}
+                      >
+                        <span className="min-w-0 flex-1 truncate">{route}</span>
+                        {state !== 'open' && (
+                          <span className="text-[0.65rem] tracking-wide text-ink-subtle uppercase">
+                            {state}
+                          </span>
+                        )}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </OutlineSection>
+            <OutlineSection title="To do" count={friendly.length} request={problemsRequest}>
+              {friendly.length === 0 && (
+                <p className="px-2 text-xs text-ink-muted">Nothing left to do.</p>
+              )}
+              {levels.map((group) => (
+                <div key={group.title} className="mb-2 px-2">
+                  <h4 className="text-[0.7rem] font-semibold text-ink-muted">{group.title}</h4>
+                  <ul className="space-y-2 text-xs">
+                    {group.items.map((f, index) => (
+                      <li
+                        key={index}
+                        // The server's own wording stays one hover away for support.
+                        title={`${f.issue.code} · ${f.issue.path || 'dungeon'} · ${f.issue.message}`}
+                        className="break-words"
+                      >
+                        <span className={f.level === 'review' ? 'text-ink' : 'text-danger'}>
+                          {f.title}
+                        </span>{' '}
+                        <span className="text-ink-muted">{f.help}</span>
+                        {(f.target || f.settingsField || f.eventTarget) && (
+                          <Button
+                            variant="link"
+                            size="sm"
+                            className="block h-auto px-0 sm:h-auto"
+                            aria-label={`Show me: ${f.title}`}
+                            onClick={() => {
+                              if (f.settingsField) {
+                                setSelection(null);
+                                setFocusAction(null);
+                                setCurrencyFocus((n) => n + 1);
+                              } else if (f.eventTarget) eventHost.open(f.eventTarget);
+                              else locate(f.target!, f.actionId);
+                            }}
+                          >
+                            {f.settingsField ? 'Dungeon settings' : 'Show me'}
+                          </Button>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </OutlineSection>
+          </div>
+        </nav>
+        {!outlineOpen && (
+          <div className="shrink-0 border-b border-border p-1 lg:border-r lg:border-b-0">
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Show outline"
+              onClick={() => setOutlineOpen(true)}
+            >
+              <PanelLeftOpen />
+            </Button>
+          </div>
+        )}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="flex items-baseline gap-3 border-b border-border px-3 py-2">
+            <h2 className="shrink-0 text-sm font-semibold">Dungeon map</h2>
+            {notice ? (
+              <p role="status" className="truncate text-xs text-danger">
+                {notice}
+              </p>
+            ) : (
+              <p className="truncate text-xs text-ink-muted">
+                Press + on a room to add the next one. Drag from a room’s right dot onto another
+                room to connect them.
+              </p>
+            )}
+          </div>
+          <div
+            className="relative h-[70dvh] min-h-96 bg-surface-sunken lg:h-auto lg:min-h-0 lg:flex-1"
+            aria-label="Dungeon map canvas"
+          >
+            <div className="absolute inset-0">
+              <ReactFlow<RoomNode>
+                nodes={nodes}
+                edges={edges}
+                nodeTypes={nodeTypes}
+                onNodesChange={onNodesChange}
+                onEdgesChange={onEdgesChange}
+                onConnect={connect}
+                onInit={(instance) => {
+                  flow.current = instance;
+                }}
+                onNodeClick={(_, node) => {
+                  setSelection({ kind: 'room', id: node.id });
+                  setFocusAction(null);
+                }}
+                onEdgeClick={(_, edge) => setSelection({ kind: 'connection', id: edge.id })}
+                onPaneClick={() => setSelection(null)}
+                onNodeDragStop={(_, node) => {
+                  if (!disabled)
+                    onChange(definition, {
+                      ...layout,
+                      rooms: { ...layout.rooms, [node.id]: node.position },
+                    });
+                }}
+                onMoveEnd={(event, viewport) => {
+                  if (event && !disabled) onChange(definition, { ...layout, viewport });
+                }}
+                nodesDraggable={!disabled}
+                nodesConnectable={!disabled}
+                edgesReconnectable={false}
+                deleteKeyCode={null}
+                defaultViewport={layout.viewport ?? { x: 0, y: 0, zoom: 1 }}
+                fitView={!layout.viewport}
+                fitViewOptions={{ maxZoom: 1, padding: 0.3 }}
+                minZoom={0.05}
+                maxZoom={4}
+              >
+                <Background />
+                <Controls showInteractive={false} />
+                <MiniMap pannable zoomable />
+              </ReactFlow>
+            </div>
+          </div>
+        </div>
+        <aside
+          ref={inspector}
+          aria-label="Map inspector"
+          className="shrink-0 space-y-3 border-t border-border p-4 lg:w-80 lg:overflow-y-auto lg:overscroll-contain lg:border-t-0 lg:border-l xl:w-[22rem] min-[90rem]:w-[25rem]"
+        >
+          {(room || connection) && settings && (
+            <Button variant="ghost" size="sm" onClick={() => setSelection(null)}>
+              Show dungeon settings
+            </Button>
+          )}
+          {!room &&
+            !connection &&
+            (settings ?? <p>Select a room or path on the map to edit it.</p>)}
+          {room && (
+            <RoomInspector
+              key={room.id}
+              room={room}
+              definition={definition}
+              reference={reference}
+              issues={issuesAt('room', room.id)}
+              disabled={disabled}
+              focusName={created}
+              focusActionId={focusAction}
+              onChange={(next) => !disabled && onChange(next, layout)}
+              onSelect={(next) => next && locate(next)}
+              onAddNext={() => setAdding({ from: room.id })}
+              onDelete={() => setDeleting({ kind: 'room', id: room.id })}
+            />
+          )}
+          {connection && (
+            <ConnectionInspector
+              key={connection.id}
+              connection={connection}
+              definition={definition}
+              issues={issuesAt('connection', connection.id)}
+              disabled={disabled}
+              onChange={(next) => !disabled && onChange(next, layout)}
+              onDelete={() => setDeleting({ kind: 'connection', id: connection.id })}
+            />
+          )}
+        </aside>
+        <Dialog open={adding !== null} onOpenChange={(open) => !open && setAdding(null)}>
+          <DialogContent
+            // Focus goes to the new room's name rather than back to the "+" button.
+            onCloseAutoFocus={(e) => e.preventDefault()}
+          >
+            <DialogTitle>
+              {adding?.from
+                ? `What comes after ${roomNameOf(definition, adding.from)}?`
+                : 'What kind of room?'}
+            </DialogTitle>
+            <DialogDescription>
+              The new room is placed next to it and connected automatically. You can add more
+              activities to any room later.
+            </DialogDescription>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              {ROOM_TEMPLATES.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  aria-label={`${t.label} room`}
+                  className="flex items-start gap-2 rounded-lg border border-border p-3 text-left hover:border-accent hover:bg-surface-raised"
+                  onClick={() => addRoom(t.id, adding?.from ?? null)}
+                >
+                  <t.icon className="mt-0.5 size-4 shrink-0" />
+                  <span>
+                    <span className="block text-sm font-medium">{t.label}</span>
+                    <span className="block text-xs text-ink-muted">{t.hint}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </DialogContent>
+        </Dialog>
+        <Dialog open={deleting !== null} onOpenChange={(open) => !open && setDeleting(null)}>
+          <DialogContent>
+            <DialogTitle>
+              {deleting?.kind === 'room' ? `Delete ${deletingName}?` : `Remove ${deletingName}?`}
+            </DialogTitle>
+            <DialogDescription>
+              {deleting?.kind === 'room'
+                ? `The room, everything that happens in it and its paths are removed.${deleting.id === definition.entranceRoomId ? ' It is the start room, so choose another start room afterwards.' : ''}`
+                : 'Players will no longer be able to go this way.'}
+            </DialogDescription>
+            {blockers.length > 0 && (
+              <div role="alert" className="mt-3 text-sm">
+                This is still used elsewhere. Change these first:
+                <ul className="list-disc pl-5">
+                  {[...new Set(blockers.map((path) => describePath(path, definition)))].map(
+                    (text) => (
+                      <li key={text}>{text}</li>
+                    ),
+                  )}
                 </ul>
               </div>
-            ))}
-          </OutlineSection>
-        </div>
-      </nav>
-      {!outlineOpen && (
-        <div className="shrink-0 border-b border-border p-1 lg:border-r lg:border-b-0">
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="Show outline"
-            onClick={() => setOutlineOpen(true)}
-          >
-            <PanelLeftOpen />
-          </Button>
-        </div>
-      )}
-      <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex items-baseline gap-3 border-b border-border px-3 py-2">
-          <h2 className="shrink-0 text-sm font-semibold">Dungeon map</h2>
-          {notice ? (
-            <p role="status" className="truncate text-xs text-danger">
-              {notice}
-            </p>
-          ) : (
-            <p className="truncate text-xs text-ink-muted">
-              Press + on a room to add the next one. Drag from a room’s right dot onto another room
-              to connect them.
-            </p>
-          )}
-        </div>
-        <div
-          className="relative h-[70dvh] min-h-96 bg-surface-sunken lg:h-auto lg:min-h-0 lg:flex-1"
-          aria-label="Dungeon map canvas"
-        >
-          <div className="absolute inset-0">
-            <ReactFlow<RoomNode>
-              nodes={nodes}
-              edges={edges}
-              nodeTypes={nodeTypes}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
-              onConnect={connect}
-              onInit={(instance) => {
-                flow.current = instance;
-              }}
-              onNodeClick={(_, node) => {
-                setSelection({ kind: 'room', id: node.id });
-                setFocusAction(null);
-              }}
-              onEdgeClick={(_, edge) => setSelection({ kind: 'connection', id: edge.id })}
-              onPaneClick={() => setSelection(null)}
-              onNodeDragStop={(_, node) => {
-                if (!disabled)
-                  onChange(definition, {
-                    ...layout,
-                    rooms: { ...layout.rooms, [node.id]: node.position },
-                  });
-              }}
-              onMoveEnd={(event, viewport) => {
-                if (event && !disabled) onChange(definition, { ...layout, viewport });
-              }}
-              nodesDraggable={!disabled}
-              nodesConnectable={!disabled}
-              edgesReconnectable={false}
-              deleteKeyCode={null}
-              defaultViewport={layout.viewport ?? { x: 0, y: 0, zoom: 1 }}
-              fitView={!layout.viewport}
-              fitViewOptions={{ maxZoom: 1, padding: 0.3 }}
-              minZoom={0.05}
-              maxZoom={4}
-            >
-              <Background />
-              <Controls showInteractive={false} />
-              <MiniMap pannable zoomable />
-            </ReactFlow>
-          </div>
-        </div>
-      </div>
-      <aside
-        ref={inspector}
-        aria-label="Map inspector"
-        className="shrink-0 space-y-3 border-t border-border p-4 lg:w-80 lg:overflow-y-auto lg:overscroll-contain lg:border-t-0 lg:border-l xl:w-[22rem] min-[90rem]:w-[25rem]"
-      >
-        {(room || connection) && settings && (
-          <Button variant="ghost" size="sm" onClick={() => setSelection(null)}>
-            Show dungeon settings
-          </Button>
-        )}
-        {!room && !connection && (settings ?? <p>Select a room or path on the map to edit it.</p>)}
-        {room && (
-          <RoomInspector
-            key={room.id}
-            room={room}
+            )}
+            <div className="mt-4 flex gap-2">
+              <Button
+                variant="danger"
+                disabled={disabled || blockers.length > 0}
+                onClick={() => {
+                  if (deleting && !disabled) {
+                    const next = deleteMapEntity(definition, layout, deleting);
+                    onChange(next.definition, next.layout);
+                    setSelection(null);
+                    setDeleting(null);
+                  }
+                }}
+              >
+                {deleting?.kind === 'room' ? 'Delete room' : 'Remove path'}
+              </Button>
+              <Button variant="outline" onClick={() => setDeleting(null)}>
+                Cancel
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+        {eventSheet?.kind === 'event' && (
+          <EventEditorSheet
+            key={eventSheet.id}
+            eventId={eventSheet.id}
             definition={definition}
             reference={reference}
-            issues={issuesAt('room', room.id)}
+            issues={friendly.filter(
+              (f) => f.eventTarget?.kind === 'event' && f.eventTarget.id === eventSheet.id,
+            )}
             disabled={disabled}
-            focusName={created}
-            focusActionId={focusAction}
+            focus={eventSheet}
             onChange={(next) => !disabled && onChange(next, layout)}
-            onSelect={(next) => next && locate(next)}
-            onAddNext={() => setAdding({ from: room.id })}
-            onDelete={() => setDeleting({ kind: 'room', id: room.id })}
+            onClose={() => setEventSheet(null)}
+            onPlay={eventHost.play}
           />
         )}
-        {connection && (
-          <ConnectionInspector
-            key={connection.id}
-            connection={connection}
+        {eventSheet?.kind === 'pool' && (
+          <EventPoolSheet
+            key={eventSheet.id}
+            poolId={eventSheet.id}
             definition={definition}
-            issues={issuesAt('connection', connection.id)}
+            issues={friendly.filter(
+              (f) => f.eventTarget?.kind === 'pool' && f.eventTarget.id === eventSheet.id,
+            )}
             disabled={disabled}
+            focus={eventSheet}
             onChange={(next) => !disabled && onChange(next, layout)}
-            onDelete={() => setDeleting({ kind: 'connection', id: connection.id })}
+            onClose={() => setEventSheet(null)}
+            onOpenEvent={(id) => eventHost.open({ kind: 'event', id })}
+            onPlay={eventHost.play}
           />
         )}
-      </aside>
-      <Dialog open={adding !== null} onOpenChange={(open) => !open && setAdding(null)}>
-        <DialogContent
-          // Focus goes to the new room's name rather than back to the "+" button.
-          onCloseAutoFocus={(e) => e.preventDefault()}
-        >
-          <DialogTitle>
-            {adding?.from
-              ? `What comes after ${roomNameOf(definition, adding.from)}?`
-              : 'What kind of room?'}
-          </DialogTitle>
-          <DialogDescription>
-            The new room is placed next to it and connected automatically. You can add more
-            activities to any room later.
-          </DialogDescription>
-          <div className="mt-4 grid grid-cols-2 gap-2">
-            {ROOM_TEMPLATES.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                aria-label={`${t.label} room`}
-                className="flex items-start gap-2 rounded-lg border border-border p-3 text-left hover:border-accent hover:bg-surface-raised"
-                onClick={() => addRoom(t.id, adding?.from ?? null)}
-              >
-                <t.icon className="mt-0.5 size-4 shrink-0" />
-                <span>
-                  <span className="block text-sm font-medium">{t.label}</span>
-                  <span className="block text-xs text-ink-muted">{t.hint}</span>
-                </span>
-              </button>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
-      <Dialog open={deleting !== null} onOpenChange={(open) => !open && setDeleting(null)}>
-        <DialogContent>
-          <DialogTitle>
-            {deleting?.kind === 'room' ? `Delete ${deletingName}?` : `Remove ${deletingName}?`}
-          </DialogTitle>
-          <DialogDescription>
-            {deleting?.kind === 'room'
-              ? `The room, everything that happens in it and its paths are removed.${deleting.id === definition.entranceRoomId ? ' It is the start room, so choose another start room afterwards.' : ''}`
-              : 'Players will no longer be able to go this way.'}
-          </DialogDescription>
-          {blockers.length > 0 && (
-            <div role="alert" className="mt-3 text-sm">
-              This is still used elsewhere. Change these first:
-              <ul className="list-disc pl-5">
-                {[...new Set(blockers.map((path) => describePath(path, definition)))].map(
-                  (text) => (
-                    <li key={text}>{text}</li>
-                  ),
-                )}
-              </ul>
-            </div>
-          )}
-          <div className="mt-4 flex gap-2">
-            <Button
-              variant="danger"
-              disabled={disabled || blockers.length > 0}
-              onClick={() => {
-                if (deleting && !disabled) {
-                  const next = deleteMapEntity(definition, layout, deleting);
-                  onChange(next.definition, next.layout);
-                  setSelection(null);
-                  setDeleting(null);
-                }
-              }}
-            >
-              {deleting?.kind === 'room' ? 'Delete room' : 'Remove path'}
-            </Button>
-            <Button variant="outline" onClick={() => setDeleting(null)}>
-              Cancel
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-    </div>
+        {playing && (
+          <DungeonSandboxDialog
+            definition={definition}
+            reference={reference}
+            onClose={() => setPlaying(false)}
+          />
+        )}
+      </div>
+    </EventEditorContext.Provider>
   );
 }

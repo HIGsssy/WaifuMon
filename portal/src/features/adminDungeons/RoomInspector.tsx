@@ -12,6 +12,8 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { ActivityCard } from './ActivityCard';
 import { DungeonBackgroundField } from './DungeonBackgroundField';
+import { EventSourcePicker } from './EventSourcePicker';
+import { eventActionsOf, setRoomEvent } from './dungeonEventModel';
 import {
   createAction,
   duplicateAction,
@@ -134,6 +136,7 @@ export function RoomInspector({
     Boolean,
   ) as string[];
   const removing = room.actions.find((a) => a.id === removingId);
+  const eventActions = eventActionsOf(room);
 
   return (
     <div className="space-y-5">
@@ -184,6 +187,33 @@ export function RoomInspector({
           ))}
         </ul>
       )}
+
+      <section aria-label="Event in this room" className="space-y-2">
+        <h3 className={heading}>Event</h3>
+        {eventActions.length > 1 ? (
+          <p className="text-sm text-ink-muted" data-testid="room-event-many">
+            This room has {eventActions.length} events. Each one is set in its own activity below.
+          </p>
+        ) : (
+          <EventSourcePicker
+            label="Room event"
+            value={eventActions[0]?.source}
+            definition={definition}
+            disabled={disabled}
+            allowNone
+            onPick={(source, withCreated) => {
+              const set = setRoomEvent(withCreated, room.id, source);
+              onChange(set.definition);
+              if (set.actionId) setOpenId(set.actionId);
+            }}
+            onClear={() => setRemovingId(eventActions[0]!.id)}
+          />
+        )}
+        <p className="text-xs text-ink-muted">
+          A story moment with choices. It becomes one of the activities below, so it can be moved,
+          given a rule, or followed by a fight or treasure.
+        </p>
+      </section>
 
       <section aria-label="What happens here" className="space-y-2">
         <h3 className={heading}>What happens here?</h3>

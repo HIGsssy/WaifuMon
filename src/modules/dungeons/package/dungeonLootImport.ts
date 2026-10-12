@@ -1,12 +1,12 @@
-/** V2 table decisions and effective draft construction. No writes. */
+/** V2/V3 table decisions and effective draft construction. No writes. */
 import { z } from 'zod';
 import type { DungeonLootTableRow } from '../../../db/schema';
-import { DungeonDefinitionSchema, type DungeonDefinition } from '../content/dungeonDefinition';
+import { DungeonDefinitionSchema, mapDungeonRewardBundles, type DungeonDefinition } from '../content/dungeonDefinition';
 import { DungeonKeySchema } from '../content/dungeonIdentifiers';
 import { DungeonLootTableBodySchema } from '../content/dungeonRewards';
 import { dungeonLootBodyHash } from '../content/dungeonRewardSnapshot';
 import type { DungeonIssueDetail } from '../../../shared/errors';
-import type { DungeonPackageV2Schema } from './dungeonPackage';
+import type { DungeonPackageV2Schema, DungeonPackageV3Schema } from './dungeonPackage';
 
 export const DungeonLootImportDecisionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('create') }).strict(),
@@ -32,7 +32,7 @@ export interface DungeonLootImportCreation {
 }
 const tierSchema = z.enum(['common', 'rare', 'boss', 'legendary']).nullable();
 
-export function planDungeonLootImport(pkg: V2Package, rows: readonly DungeonLootTableRow[], choices: DungeonLootImportDecisions = {}) {
+export function planDungeonLootImport(pkg: V2Package | z.infer<typeof DungeonPackageV3Schema>, rows: readonly DungeonLootTableRow[], choices: DungeonLootImportDecisions = {}) {
   const live = new Map(rows.map(row => [row.tableKey, row]));
   const reserved = new Set([...live.keys(), ...pkg.bundled.dungeonLootTables.map(t => t.key)]);
   const suggestedKeys = new Set(reserved);
@@ -89,12 +89,8 @@ export function planDungeonLootImport(pkg: V2Package, rows: readonly DungeonLoot
     creations.push({ sourceKey: incoming.key, key: targetKey, ...metadata.data, body: incoming.body,
       contentHash: incoming.contentHash, sourceRevision: incoming.sourceRevision });
   }
-  const definition: DungeonDefinition = DungeonDefinitionSchema.parse({ ...pkg.dungeon,
-    rooms: pkg.dungeon.rooms.map(room => ({ ...room, actions: room.actions.map(action =>
-      'rewards' in action && action.rewards ? { ...action, rewards: { ...action.rewards,
-        tables: action.rewards.tables.map(ref => ({ ...ref, table: rewrites.get(ref.table) ?? ref.table })),
-      } } : action),
-    })),
-  });
+  const definition: DungeonDefinition = DungeonDefinitionSchema.parse(mapDungeonRewardBundles(pkg.dungeon, bundle => ({ ...bundle,
+    tables: bundle.tables.map(ref => ({ ...ref, table: rewrites.get(ref.table) ?? ref.table })),
+  })));
   return { definition, tablePlans, creations, issues, rewrites };
 }

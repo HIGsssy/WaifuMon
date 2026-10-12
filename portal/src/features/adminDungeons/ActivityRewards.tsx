@@ -80,6 +80,12 @@ interface Props {
   issues: FriendlyIssue[];
   readOnly: boolean;
   onChange: (action: DungeonAction) => void;
+  /** When the bundle is paid, for a holder that is not a fight or a treasure (an event result). */
+  payout?: string;
+  /** What a Test Roll of it is called. */
+  testTitle?: string;
+  /** Start as one line even when the holder is not a fight. */
+  startCollapsed?: boolean;
 }
 
 export function ActivityRewards({
@@ -90,12 +96,17 @@ export function ActivityRewards({
   issues,
   readOnly,
   onChange,
+  payout,
+  testTitle,
+  startCollapsed = false,
 }: Props) {
   const openTable = useContext(LootTableSheetContext);
   const bundle = action.rewards ?? emptyBundle();
   const rewardIssues = issues.filter((i) => i.issue.path.includes('.rewards'));
   // A boss and a treasure are where loot is expected, so theirs starts open.
-  const [expanded, setExpanded] = useState(action.type !== 'combat' || rewardIssues.length > 0);
+  const [expanded, setExpanded] = useState(
+    (action.type !== 'combat' && !startCollapsed) || rewardIssues.length > 0,
+  );
   const [open, setOpen] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
   /** Percentages as typed, for chance rows whose text is not the stored value. */
@@ -230,7 +241,7 @@ export function ActivityRewards({
       {expanded && (
         <div className="space-y-4 border-t border-border p-2.5">
           <p className="text-xs text-ink-muted" data-testid="payout-timing">
-            {payoutTiming(action)}
+            {payout ?? payoutTiming(action)}
           </p>
           <GuaranteedSection
             form={{ guaranteed: bundle.guaranteed, chances: chanceRows, pools: [] }}
@@ -460,7 +471,7 @@ export function ActivityRewards({
                   progressionCurrency: currency,
                   tables: tables ?? [],
                 }}
-                title={`${meta.title} in ${roomLabel(room)}`}
+                title={testTitle ?? `${meta.title} in ${roomLabel(room)}`}
                 items={items}
               />
             </>

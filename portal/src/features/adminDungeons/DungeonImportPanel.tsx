@@ -382,6 +382,41 @@ export function DungeonImportPanel({ onCancel }: { onCancel: () => void }) {
                   )}
                 </div>
               ))}
+              {plan.eventDependencies && (
+                <div className="space-y-2">
+                  <h3 className="font-semibold">Dungeon events</h3>
+                  <p>
+                    {plan.eventDependencies.eventCount}{' '}
+                    {plan.eventDependencies.eventCount === 1 ? 'event' : 'events'} ·{' '}
+                    {plan.eventDependencies.poolCount}{' '}
+                    {plan.eventDependencies.poolCount === 1 ? 'event pool' : 'event pools'}
+                  </p>
+                  <p>
+                    This import creates a disabled, unpublished draft. Review its dependencies
+                    before publishing.
+                  </p>
+                  <h4 className="font-medium">Required inventory items</h4>
+                  <p>These items must already exist here. Import does not create global items.</p>
+                  {plan.eventDependencies.requiredItems.length === 0 && (
+                    <p>No inventory items required by reachable choices.</p>
+                  )}
+                  <ul>
+                    {plan.eventDependencies.requiredItems.map((item) => (
+                      <li
+                        key={item.key}
+                        className={item.status === 'available' ? '' : 'text-danger'}
+                      >
+                        {item.name}:{' '}
+                        {item.status === 'available'
+                          ? 'Available here'
+                          : item.status === 'missing'
+                            ? 'Missing here — repair before publication'
+                            : 'Disabled here — enable before publication'}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               <DungeonLootImportReview
                 plan={plan}
                 choices={lootTables}

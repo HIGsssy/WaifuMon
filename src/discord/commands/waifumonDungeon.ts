@@ -39,6 +39,7 @@ import {
   CombatBuddyRequiredError,
   CombatLoadoutIncompleteError,
   DungeonDailyLimitError,
+  DungeonEventItemUnavailableError,
   DungeonInvalidError,
   DungeonRunActiveError,
   DungeonRunNotFoundError,
@@ -97,7 +98,7 @@ async function runArt(ctx: AppContext, playerId: number, view: DungeonRunView): 
 }
 
 async function runScreen(ctx: AppContext, playerId: number, view: DungeonRunView, status?: string | null) {
-  return buildRunScreen(view, options(ctx, await runArt(ctx, playerId, view), status, view.rewardItemNames));
+  return buildRunScreen(view, options(ctx, await runArt(ctx, playerId, view), status, { ...view.rewardItemNames, ...view.eventItemNames }));
 }
 
 async function homeScreen(ctx: AppContext, service: DungeonRunService, playerId: number, status?: string | null) {
@@ -278,6 +279,27 @@ export async function handleDungeonMove(ctx: AppContext, i: ButtonInteraction, p
   return run(ctx, i, prov, (s) =>
     step(ctx, s, prov.playerId, parsed.runId, { type: 'move', connectionId, expectedStep: parsed.step }),
   );
+}
+
+/**
+ * `dg|ev|<runId>|<step>|<choiceId>` — answer the offered event. An item the
+ * choice spends that has gone since the screen was drawn aborts the whole
+ * step; the event is repainted, still open, with that choice now unavailable.
+ */
+export async function handleDungeonChoose(ctx: AppContext, i: ButtonInteraction, prov: Provisioned, args: string[]) {
+  const parsed = parseRunStep(args, 1);
+  const choiceId = parsed?.rest[0];
+  if (!parsed || !choiceId || choiceId.length > CONNECTION_ID_MAX_LENGTH || !CONNECTION_ID_PATTERN.test(choiceId)) {
+    return respondEphemeral(i, MALFORMED);
+  }
+  return run(ctx, i, prov, async (s) => {
+    try {
+      return await step(ctx, s, prov.playerId, parsed.runId, { type: 'choose', choiceId, expectedStep: parsed.step });
+    } catch (err) {
+      if (!(err instanceof DungeonEventItemUnavailableError)) throw err;
+      return runScreen(ctx, prov.playerId, await s.run(prov.playerId, parsed.runId), err.userMessage);
+    }
+  });
 }
 
 /** `dg|exq|<runId>` — ask before extracting. Changes nothing. */

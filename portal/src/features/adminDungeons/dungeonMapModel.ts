@@ -91,6 +91,9 @@ export function deletionBlockers(
   definition.connections.forEach((c, i) => {
     if (!connections.has(c.id)) visit(c.requires, `connections[${i}].requires`);
   });
+  // An event choice or pool entry may wait on a room; nothing in them names a path.
+  (definition.events ?? []).forEach((e, i) => visit(e.choices, `events[${i}].choices`));
+  (definition.eventPools ?? []).forEach((p, i) => visit(p.entries, `eventPools[${i}].entries`));
   return paths;
 }
 export function deleteMapEntity(

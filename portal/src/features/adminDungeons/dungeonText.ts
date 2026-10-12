@@ -10,6 +10,7 @@ import {
   Crown,
   Gift,
   LogOut,
+  ScrollText,
   ShieldAlert,
   Swords,
   type LucideIcon,
@@ -19,6 +20,8 @@ import type {
   DungeonAction,
   DungeonCondition,
   DungeonDefinition,
+  DungeonEvent,
+  DungeonEventPool,
   DungeonIssue,
   DungeonReferenceData,
   DungeonRoom,
@@ -26,6 +29,7 @@ import type {
 import { bundleIssueText, rewardsSummary } from '@/features/adminDungeonLoot/bundleModel';
 import { rewardNames } from '@/features/adminDungeonLoot/lootModel';
 import type { ActionType } from './dungeonActionModel';
+import { incompleteEventIssues, type EventBranch } from './dungeonEventModel';
 import type { MapSelection } from './dungeonMapModel';
 
 export const ACTIVITIES: Record<ActionType, { title: string; hint: string; icon: LucideIcon }> = {
@@ -41,8 +45,71 @@ export const ACTIVITIES: Record<ActionType, { title: string; hint: string; icon:
   },
   leave: { title: 'Leave through a path', hint: 'Send the player onward', icon: LogOut },
 };
+/** Not in `ACTIVITIES`: an event is attached through the room's Event control, which also picks what it presents. */
+export const EVENT_ACTIVITY = {
+  title: 'Event',
+  hint: 'A story moment with choices',
+  icon: ScrollText,
+};
+export const isEventActivity = (action: DungeonAction) => action.type === 'event';
 export const activityOf = (action: DungeonAction) =>
-  ACTIVITIES[action.type as ActionType] ?? { title: action.type, hint: '', icon: Bookmark };
+  isEventActivity(action)
+    ? EVENT_ACTIVITY
+    : (ACTIVITIES[action.type as ActionType] ?? { title: action.type, hint: '', icon: Bookmark });
+
+export type EventSourceView =
+  | { kind: 'event'; event: DungeonEvent }
+  | {
+      kind: 'pool';
+      pool: DungeonEventPool;
+      /** The events the pool can present that exist, in entry order. */
+      events: DungeonEvent[];
+      entries: Array<{
+        id: string;
+        label: string;
+        /** Its share of the total weight, with every entry in the draw. */
+        shareBasisPoints: number;
+        conditional: boolean;
+        oncePerRun: boolean;
+      }>;
+    }
+  | { kind: 'missing'; what: string };
+
+/** What an event activity presents, looked up in the dungeon's own events and pools. Reads only. */
+export function eventSourceOf(
+  action: DungeonAction,
+  definition: DungeonDefinition,
+): EventSourceView {
+  const source = action.source;
+  if (!source) return { kind: 'missing', what: 'an event' };
+  const events = definition.events ?? [];
+  if (source.kind === 'event') {
+    const event = events.find((e) => e.id === source.eventId);
+    return event ? { kind: 'event', event } : { kind: 'missing', what: 'an event' };
+  }
+  const pool = (definition.eventPools ?? []).find((p) => p.id === source.poolId);
+  if (!pool) return { kind: 'missing', what: 'a random pool' };
+  const total = pool.entries.reduce((sum, entry) => sum + entry.weight, 0);
+  const eventOf = (id: string) => events.find((e) => e.id === id);
+  return {
+    kind: 'pool',
+    pool,
+    events: pool.entries.flatMap((entry) => {
+      const event = 'eventId' in entry ? eventOf(entry.eventId) : undefined;
+      return event ? [event] : [];
+    }),
+    entries: pool.entries.map((entry) => ({
+      id: entry.id,
+      label:
+        'eventId' in entry
+          ? (eventOf(entry.eventId)?.title ?? 'A missing event')
+          : 'Nothing happens',
+      shareBasisPoints: total > 0 ? Math.round((entry.weight * 10_000) / total) : 0,
+      conditional: Boolean(entry.when),
+      oncePerRun: 'eventId' in entry && entry.oncePerRun !== false,
+    })),
+  };
+}
 
 export const roomLabel = (room: DungeonRoom | undefined) => room?.name || 'Unnamed room';
 export function roomNameOf(definition: DungeonDefinition, id: string) {
@@ -117,6 +184,18 @@ export function activitySummary(
       const connection = definition.connections.find((c) => c.id === action.connectionId);
       return connection ? `Go to ${roomNameOf(definition, connection.to)}` : 'Finish this room';
     }
+    case 'event': {
+      const source = eventSourceOf(action, definition);
+      if (source.kind === 'event') {
+        const n = source.event.choices.length;
+        return `“${source.event.title}” — ${n} ${n === 1 ? 'choice' : 'choices'}`;
+      }
+      if (source.kind === 'pool') {
+        const n = source.events.length;
+        return `Random: “${source.pool.name}” — one of ${n} ${n === 1 ? 'event' : 'events'}, or nothing`;
+      }
+      return `Missing: ${source.what} that is not in this dungeon`;
+    }
     default:
       return '';
   }
@@ -155,9 +234,12 @@ export function roomSummary(
 /** An issue the editor raises itself: the draft cannot be saved in this state. */
 export const INCOMPLETE_CODE = 'editor_incomplete';
 
-/** Fights whose enemy has not been chosen. The server refuses to store them. */
+/**
+ * Fights whose enemy has not been chosen, and event fields left blank. The
+ * server refuses to store them.
+ */
 export function incompleteIssues(definition: DungeonDefinition): DungeonIssue[] {
-  const issues: DungeonIssue[] = [];
+  const issues: DungeonIssue[] = incompleteEventIssues(definition, INCOMPLETE_CODE);
   definition.rooms.forEach((room, r) =>
     room.actions.forEach((action, a) =>
       (action.waves ?? []).forEach((wave, w) => {
@@ -187,6 +269,17 @@ export interface FriendlyIssue {
   actionId: string | null;
   /** A dungeon-level repair rather than a room or path repair. */
   settingsField?: 'progressionCurrency';
+  /** The event or pool editor, and the field in it, that repairs this. */
+  eventTarget?: EventIssueTarget;
+}
+/** Where in the event or pool editor an issue belongs. */
+export interface EventIssueTarget {
+  kind: 'event' | 'pool';
+  id: string;
+  choiceId?: string;
+  entryId?: string;
+  /** The `data-event-field` to bring into view and focus. */
+  field?: string;
 }
 
 const quoted = (message: string) => /"([^"]*)"/.exec(message)?.[1] ?? '';
@@ -204,10 +297,203 @@ function humanise(message: string, definition: DungeonDefinition) {
   for (const c of definition.connections)
     names.set(c.id, `the path ${roomNameOf(definition, c.from)} → ${roomNameOf(definition, c.to)}`);
   for (const flag of definition.flags) names.set(flag.key, flag.description || 'an unnamed note');
+  for (const event of definition.events ?? []) names.set(event.id, `“${event.title}”`);
+  for (const pool of definition.eventPools ?? []) names.set(pool.id, `“${pool.name}”`);
   const text = message.replace(/"([^"]*)"/g, (whole, id: string) => names.get(id) ?? whole);
   return sentence(
-    text.replace(/\baction (?=fight|boss fight|treasure|rest|checkpoint|remember|leave)/g, ''),
+    text.replace(
+      /\baction (?=fight|boss fight|treasure|rest|checkpoint|remember|leave|event)/g,
+      '',
+    ),
   );
+}
+
+const EVENT_HELP: Record<string, { title: (where: string) => string; help: string }> = {
+  event_no_open_choice: {
+    title: (where) => `${where} needs a choice everyone can pick.`,
+    help: 'Players need one choice they can always pick, or they could be stuck. Remove the rule and the item from one choice, or add a plain “Continue”.',
+  },
+  event_unused: {
+    title: (where) => `${where} isn’t used anywhere yet.`,
+    help: 'Attach it to a room or add it to a random pool. Ignore this if it is for later.',
+  },
+  event_pool_unused: {
+    title: (where) => `${where} isn’t used by any room yet.`,
+    help: 'Attach it to a room as a random event. Ignore this if it is for later.',
+  },
+  event_item_missing: {
+    title: (where) => `${where} needs an item that no longer exists.`,
+    help: 'Pick another item, or remove the requirement.',
+  },
+  event_item_disabled: {
+    title: (where) => `${where} needs an item that is switched off.`,
+    help: 'Players may never hold it, so they may never be able to pick this. Choose another item or enable this one.',
+  },
+  event_item_duplicate: {
+    title: (where) => `${where} lists the same item twice.`,
+    help: 'Keep one entry and set its quantity to the total.',
+  },
+  event_check_retreat: {
+    title: (where) => `${where} turns the player back after a skill check.`,
+    help: 'Turning back leaves the event open, so the check would be asked again. Pick another “Then”, or make this choice always give the same result.',
+  },
+  event_retreat_with_effects: {
+    title: (where) => `${where} turns the player back, so it can’t change anything.`,
+    help: 'Turning back leaves the event open. Remove its effects, rewards and used-up items, or pick another “Then”.',
+  },
+  event_check_flat: {
+    title: (where) => `${where} has a skill check every Buddy passes or fails alike.`,
+    help: 'Buddy strength is set to make no difference and the chance is beyond 5–95%. Use a certain result instead, or let strength matter.',
+  },
+  event_choice_contradiction: {
+    title: (where) => `${where} can never be picked.`,
+    help: 'Its rule needs the same thing to have happened and not happened. Open the rule and remove one side.',
+  },
+  event_pool_duplicate_event: {
+    title: (where) => `${where} lists the same event twice.`,
+    help: 'Keep one entry and give it the combined share.',
+  },
+  event_pool_all_nothing: {
+    title: (where) => `${where} holds only Nothing.`,
+    help: 'Add at least one event, or remove the pool from its rooms.',
+  },
+  event_pool_may_be_empty: {
+    title: (where) => `${where} can run out of entries.`,
+    help: 'Every entry has a rule or happens once per run, so a draw can find nothing left. It then results in Nothing, silently. Add a Nothing entry to do that on purpose.',
+  },
+  event_missing: {
+    title: (where) => `${where} lists an event that is no longer in this dungeon.`,
+    help: 'Choose another event for that entry, or remove it.',
+  },
+};
+const INCOMPLETE_EVENT: Record<string, { title: (where: string) => string; help: string }> = {
+  title: { title: (w) => `${w} needs a title.`, help: 'Give the event a title.' },
+  text: { title: (w) => `${w} needs its story.`, help: 'Write what the player reads.' },
+  label: { title: (w) => `${w} needs button text.`, help: 'Write what the button says.' },
+  item: {
+    title: (w) => `${w} needs an item chosen.`,
+    help: 'Pick the item, or remove the requirement.',
+  },
+  name: { title: (w) => `${w} needs a name.`, help: 'Name the pool so you can find it again.' },
+  eventId: {
+    title: (w) => `${w} has an entry with no event chosen.`,
+    help: 'Pick the event, or remove the entry.',
+  },
+};
+
+/** Which field of the event or pool editor a path belongs to. */
+function eventFieldOf(path: string): string | undefined {
+  const rest = path
+    .replace(/^(events|eventPools)\[\d+\]/, '')
+    .replace(/^\.(choices|entries)\[\d+\]/, '');
+  const branch = /^\.(outcome|success|failure)(?:\.(then|effects|rewards|text))?/.exec(rest);
+  if (branch) return branch[2] ? `${branch[1]}.${branch[2]}` : branch[1];
+  const member =
+    /^\.(title|text|artwork|choices|label|description|requires|when|items|check|name|entries|eventId|weight)/.exec(
+      rest,
+    );
+  if (!member) return undefined;
+  return member[1] === 'when' ? 'requires' : member[1];
+}
+
+/**
+ * The server labels an event's reward issue by event and choice; the shared
+ * reward wording expects a room and activity label. Same issue, relabelled.
+ */
+export function asActivityRewardIssue(issue: DungeonIssue): DungeonIssue {
+  return {
+    ...issue,
+    message: issue.message.replace(
+      /^Event "[^"]*", choice "[^"]*"(?: \((?:success|failure)\))?/,
+      'Room "", activity ""',
+    ),
+  };
+}
+
+/** An issue inside the dungeon's events or pools: named in the author's words, and aimed at its editor. */
+function friendlyEventIssue(
+  issue: DungeonIssue,
+  definition: DungeonDefinition,
+  reference: DungeonReferenceData | undefined,
+): FriendlyIssue | null {
+  const inEvent = /^events\[(\d+)\](?:\.choices\[(\d+)\])?/.exec(issue.path);
+  const inPool = /^eventPools\[(\d+)\](?:\.entries\[(\d+)\])?/.exec(issue.path);
+  if (!inEvent && !inPool) return null;
+  const event = inEvent ? definition.events?.[Number(inEvent[1])] : undefined;
+  const choice = inEvent?.[2] !== undefined ? event?.choices[Number(inEvent[2])] : undefined;
+  const pool = inPool ? definition.eventPools?.[Number(inPool[1])] : undefined;
+  const entry = inPool?.[2] !== undefined ? pool?.entries[Number(inPool[2])] : undefined;
+  const where = inEvent
+    ? `Event “${event?.title || 'Untitled'}”${choice ? `, choice “${choice.label || 'Untitled'}”` : ''}`
+    : `Random pool “${pool?.name || 'Unnamed'}”`;
+  const field = eventFieldOf(issue.path);
+  const eventTarget: EventIssueTarget | undefined = event
+    ? {
+        kind: 'event',
+        id: event.id,
+        ...(choice ? { choiceId: choice.id } : {}),
+        ...(field ? { field } : {}),
+      }
+    : pool
+      ? {
+          kind: 'pool',
+          id: pool.id,
+          ...(entry ? { entryId: entry.id } : {}),
+          ...(field ? { field } : {}),
+        }
+      : undefined;
+  const base = {
+    issue,
+    target: null,
+    actionId: null,
+    ...(eventTarget ? { eventTarget } : {}),
+  } satisfies Partial<FriendlyIssue>;
+  if (issue.code === INCOMPLETE_CODE) {
+    const text = INCOMPLETE_EVENT[issue.path.split('.').pop() ?? ''];
+    return {
+      ...base,
+      level: 'finish',
+      title: text ? text.title(where) : `${where} is not finished.`,
+      help: `${text?.help ?? ''} The draft can be saved once this is filled in.`.trim(),
+    };
+  }
+  const level = issue.severity === 'error' ? 'fix' : 'review';
+  if (issue.code === 'reward_shards_unset')
+    return {
+      ...base,
+      level,
+      title: 'Dungeon progression currency needs attention.',
+      help: 'Choose an available progression currency in Dungeon Settings so this dungeon can pay Baddie Shards.',
+      settingsField: 'progressionCurrency',
+    };
+  const branch = /\.(outcome|success|failure)\.rewards/.exec(issue.path)?.[1] as
+    EventBranch | undefined;
+  const bundle = branch ? choice?.[branch]?.rewards : undefined;
+  if (bundle && issue.code !== 'reward_empty') {
+    const found = bundleIssueText(
+      asActivityRewardIssue(issue),
+      bundle,
+      rewardNames(reference?.items),
+      reference?.items ?? [],
+      reference?.lootTables,
+    );
+    return {
+      ...base,
+      level,
+      title: found.subject
+        ? `${where}: ${found.subject} needs attention.`
+        : `${where}: its rewards need attention.`,
+      help: found.text,
+    };
+  }
+  const known = EVENT_HELP[issue.code];
+  if (known) return { ...base, level, title: known.title(where), help: known.help };
+  return {
+    ...base,
+    level,
+    title: `${humanise(issue.message, definition)}${/[.!?]$/.test(issue.message) ? '' : '.'}`,
+    help: '',
+  };
 }
 
 export function friendlyIssue(
@@ -223,11 +509,24 @@ export function friendlyIssue(
   const R = roomLabel(room);
   const activity = action ? activityOf(action).title.toLowerCase() : 'activity';
   const wave = at?.[3] !== undefined ? Number(at[3]) + 1 : null;
+  const unchosenEvent = issue.code === INCOMPLETE_CODE && /\.source$/.test(issue.path);
   const unchosenEnemy =
-    issue.code === INCOMPLETE_CODE || (issue.code === 'schema' && wave !== null && !!action);
+    !unchosenEvent &&
+    (issue.code === INCOMPLETE_CODE || (issue.code === 'schema' && wave !== null && !!action));
+  const eventIssue = friendlyEventIssue(issue, definition, reference);
+  if (eventIssue) return eventIssue;
 
   let title: string;
   let help = '';
+  if (unchosenEvent)
+    return {
+      issue,
+      level: 'finish',
+      title: `${R}: the event activity has no event chosen.`,
+      help: 'Open the activity and choose an event or a random pool. The draft can be saved once it has one.',
+      target: room ? { kind: 'room', id: room.id } : null,
+      actionId: action?.id ?? null,
+    };
   if (issue.code === 'reward_shards_unset')
     return {
       issue,
@@ -367,9 +666,25 @@ export function friendlyIssue(
       title = `${R}: the ${activity} can send players back, but this is the start room.`;
       help = 'There is nowhere to go back to. Choose what happens instead under Advanced options.';
       break;
+    case 'event_missing':
+    case 'event_pool_missing':
+      title = `${R}: the event activity points at ${issue.code === 'event_missing' ? 'an event' : 'a random pool'} that is no longer in this dungeon.`;
+      help = 'Open the activity and choose another, or remove it.';
+      break;
+    case 'event_entrance_no_exit':
+      title = `${R}: the event “${quoted(issue.message)}” can appear here, where players can’t turn back.`;
+      help =
+        'This is the start room, so there is nowhere to go back to. Give that event a choice with no rule and no item that carries on, finishes the room or ends the run.';
+      break;
+    case 'event_route_retreat':
+      title = `${R}: the event’s “what happens afterward” sends players back.`;
+      help =
+        'An event is settled once, so the room could never be passed. Choose something else under Advanced options; to let players step away, give the event a choice that turns back.';
+      break;
     case 'flag_never_set':
       title = `A rule checks “${flagNameOf(definition, quoted(issue.message))}”, but nothing ever remembers it.`;
-      help = 'Add a “Remember something” activity where it should happen.';
+      help =
+        'Add a “Remember something” activity, or an event result that remembers it, where it should happen.';
       break;
     case 'flag_unused':
       title = `“${flagNameOf(definition, quoted(issue.message))}” is remembered but never used.`;
@@ -399,11 +714,16 @@ export function friendlyIssue(
 export function describePath(path: string, definition: DungeonDefinition) {
   const at = /^rooms\[(\d+)\]\.actions(?:\.|\[)(\d+)/.exec(path);
   const via = /^connections\[(\d+)\]/.exec(path);
+  const inEvent = /^events\[(\d+)\]/.exec(path);
+  const inPool = /^eventPools\[(\d+)\]/.exec(path);
   if (at) {
     const room = definition.rooms[Number(at[1])];
     const action = room?.actions[Number(at[2])];
     return `${roomLabel(room)}: ${action ? activityOf(action).title : 'activity'} (activity ${Number(at[2]) + 1})`;
   }
+  if (inEvent) return `Event “${definition.events?.[Number(inEvent[1])]?.title ?? 'Untitled'}”`;
+  if (inPool)
+    return `Random pool “${definition.eventPools?.[Number(inPool[1])]?.name ?? 'Unnamed'}”`;
   if (via) {
     const c = definition.connections[Number(via[1])];
     return c

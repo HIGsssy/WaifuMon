@@ -194,9 +194,9 @@ describe('reading a package', () => {
   });
 
   it('refuses a schema version it does not know, saying which it supports', () => {
-    const result = reread({ ...build(), schemaVersion: 3 });
+    const result = reread({ ...build(), schemaVersion: 4 });
     expect(result.ok).toBe(false);
-    expect(result.issues).toEqual([expect.objectContaining({ code: 'package_schema_version', message: expect.stringContaining('supported: 1, 2') })]);
+    expect(result.issues).toEqual([expect.objectContaining({ code: 'package_schema_version', message: expect.stringContaining('supported: 1, 2, 3') })]);
   });
 
   it('refuses a member it does not understand rather than importing half a dungeon', () => {

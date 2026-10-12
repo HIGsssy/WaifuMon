@@ -54,6 +54,7 @@ export function sandboxEffectsPort(recorded: DungeonEffect[] = []): DungeonEffec
           equipment: [],
         };
       }
+      if (effect.type === 'consume_items') return { type: 'consume_items', key: effect.key, items: effect.items };
       return { type: 'settle_run', banked: effect.end.banked, bankingSkipped: null, balanceAfter: null };
     },
   };
@@ -93,6 +94,8 @@ export interface DungeonSandboxOptions {
   seed: number;
   combatRules?: DungeonEngineContext['combatRules'];
   playerFlags?: DungeonEngineContext['playerFlags'];
+  /** Item quantities to assume the player holds, by slug. Nothing is spent: consumption is only recorded. */
+  inventory?: DungeonEngineContext['inventory'];
 }
 
 export function createDungeonSandbox(options: DungeonSandboxOptions): DungeonSandbox {
@@ -103,6 +106,7 @@ export function createDungeonSandbox(options: DungeonSandboxOptions): DungeonSan
     fighter: options.fighter,
     runKey: `sandbox-${options.seed}`,
     playerFlags: options.playerFlags,
+    inventory: options.inventory,
     combatRules: options.combatRules,
   };
   const rng = dungeonRngSource(options.seed);
@@ -163,7 +167,13 @@ export async function autoPlayDungeonSandbox(
     if (steps >= maxSteps) return { steps, view, stoppedBy: 'max_steps' };
     let input = options.choose?.(view) ?? null;
     if (!input) {
-      if (view.phase === 'action') input = { type: 'advance' };
+      if (view.phase === 'action' && view.action?.event) {
+        // An event takes a choice: the first available one that goes somewhere, else the first available.
+        const choices = view.action.event.choices.filter((c) => c.available);
+        const choice = choices.find((c) => !c.walksAway) ?? choices[0];
+        if (!choice) return { steps, view, stoppedBy: 'stuck' };
+        input = { type: 'choose', choiceId: choice.id };
+      } else if (view.phase === 'action') input = { type: 'advance' };
       else {
         // Prefer a way on over a way back, so a cyclic map is walked forward.
         const open = view.connections.filter((c) => c.open);

@@ -19,6 +19,20 @@ import type { ArtworkDirectory, ArtworkSearchResults } from './adminArtwork';
 import type { DungeonRewardGrant } from './adminDungeonLootTables';
 import { apiClient, getData, postData, putData } from './client';
 import type { DungeonLootTableBody } from './dungeonLootTypes';
+import type {
+  DungeonEventChoiceView,
+  DungeonEventPoolAnalysis,
+  DungeonEventPreview,
+  DungeonEventScenario,
+} from './dungeonEventTypes';
+export type {
+  DungeonEventChoicePreview,
+  DungeonEventChoiceView,
+  DungeonEventPoolAnalysis,
+  DungeonEventPoolOdds,
+  DungeonEventPreview,
+  DungeonEventScenario,
+} from './dungeonEventTypes';
 
 export type DungeonArtworkRef =
   | { kind: 'shipped'; path: string }
@@ -49,6 +63,56 @@ export interface DungeonRewardBundle {
   /** Dungeon loot tables by key, each rolled `draws` times (1–10). */
   tables: Array<{ id: string; table: string; draws: number }>;
 }
+/**
+ * Dungeon Events (Phase 3). The editor changes only the member an author
+ * edits and spreads the rest, so an event or pool is carried through a save
+ * with every other member exactly as it was loaded, including any this mirror
+ * does not name.
+ */
+export type DungeonEventEffect =
+  | { type: 'set_flag'; flag: string; value: boolean }
+  | { type: 'heal' | 'damage'; basisPoints: number };
+export interface DungeonEventOutcome {
+  text?: string;
+  tone?: 'good' | 'neutral' | 'bad';
+  effects?: DungeonEventEffect[];
+  rewards?: DungeonRewardBundle;
+  then?:
+    | { type: 'next' | 'room_complete' | 'retreat' }
+    | { type: 'end_run'; outcome: 'completed' | 'defeated' };
+}
+export interface DungeonEventChoice {
+  id: string;
+  label: string;
+  description?: string;
+  requires?: DungeonCondition;
+  items?: Array<{ item: string; quantity?: number; consume?: boolean }>;
+  unavailableText?: string;
+  hideWhenUnavailable?: boolean;
+  /** One result, or a skill check with a success and a failure. */
+  outcome?: DungeonEventOutcome;
+  check?: { type: 'sp'; baseChanceBasisPoints: number; maxSpModifierBasisPoints?: number };
+  success?: DungeonEventOutcome;
+  failure?: DungeonEventOutcome;
+}
+export interface DungeonEvent {
+  id: string;
+  title: string;
+  text: string;
+  artwork?: DungeonArtworkRef | null;
+  choices: DungeonEventChoice[];
+}
+export type DungeonEventPoolEntry = { id: string; weight: number; when?: DungeonCondition } & (
+  { eventId: string; oncePerRun?: boolean } | { nothing: true; text?: string }
+);
+export interface DungeonEventPool {
+  id: string;
+  name: string;
+  entries: DungeonEventPoolEntry[];
+}
+export type DungeonEventSource =
+  { kind: 'event'; eventId: string } | { kind: 'pool'; poolId: string };
+
 export interface DungeonAction {
   id: string;
   type: string;
@@ -69,6 +133,8 @@ export interface DungeonAction {
   /** Legacy treasure reward. A treasure carries this or `rewards`, never both. */
   reward?: DungeonReward;
   rewards?: DungeonRewardBundle;
+  /** An `event` activity: which event, or which pool, it presents. */
+  source?: DungeonEventSource;
   [field: string]: unknown;
 }
 export interface DungeonRoom {
@@ -104,6 +170,9 @@ export interface DungeonDefinition {
     abandonCurrencyRetentionBasisPoints?: number;
   };
   flags: Array<{ key: string; scope: 'run' | 'player'; description?: string }>;
+  /** The dungeon's events and random pools. Absent in a dungeon that has none. */
+  events?: DungeonEvent[];
+  eventPools?: DungeonEventPool[];
   rooms: DungeonRoom[];
   connections: DungeonConnection[];
 }
@@ -196,6 +265,10 @@ export interface DungeonValidation {
   contentHash: string | null;
   issues: DungeonIssue[];
   publishable: boolean;
+  /** Odds of every event pool, worked out by the server's own draw rules. Absent from an older server. */
+  eventPools?: DungeonEventPoolAnalysis[];
+  /** Every event's choices as a player in the scenario would meet them. */
+  eventPreviews?: DungeonEventPreview[];
 }
 export interface DungeonRegionRef {
   id: string;
@@ -377,6 +450,15 @@ export interface DungeonRewardHealthProblem {
   message: string;
   hint: string;
 }
+/** Worth knowing, not a broken reward: an event choice needs an item that is gone or disabled. */
+export interface DungeonRewardHealthNotice {
+  type: 'event_item';
+  reason: string;
+  key: string;
+  name: string;
+  message: string;
+  hint: string;
+}
 export interface DungeonRewardHealthEntry {
   key: string;
   name: string;
@@ -384,6 +466,8 @@ export interface DungeonRewardHealthEntry {
   revision: number | null;
   status: 'healthy' | 'broken' | 'no_rewards' | 'unpublished';
   problems: DungeonRewardHealthProblem[];
+  /** Informational; never changes `status`. Absent from an older server. */
+  notices?: DungeonRewardHealthNotice[];
   /** Errors in the draft: they block the next publish and do not affect players. */
   draftErrors: number;
   /** Runs in progress on the published revision. */
@@ -396,6 +480,7 @@ export interface DungeonRewardHealthActiveRevision {
   activeRuns: number;
   status: 'healthy' | 'broken' | 'no_rewards';
   problems: DungeonRewardHealthProblem[];
+  notices?: DungeonRewardHealthNotice[];
 }
 export function getDungeonRewardHealth(
   signal?: AbortSignal,
@@ -411,9 +496,101 @@ export function saveDungeonDraft(
 export function validateDungeon(
   definition: DungeonDefinition,
   signal?: AbortSignal,
+  eventScenario?: DungeonEventScenario,
 ): Promise<DungeonValidation> {
-  return postData(`${base}/validate`, { definition }, opts(signal));
+  return postData(
+    `${base}/validate`,
+    { definition, ...(eventScenario ? { eventScenario } : {}) },
+    opts(signal),
+  );
 }
+
+// ── Sandbox: a run played by the real engine that changes nothing ──
+
+export type DungeonSandboxInput =
+  | { type: 'advance' | 'decline' | 'extract' | 'abandon' }
+  | { type: 'move'; connectionId: string }
+  | { type: 'choose'; choiceId: string };
+export interface DungeonSandboxEventView {
+  eventId: string;
+  title: string;
+  text: string;
+  artwork: DungeonArtworkRef | null;
+  /** Choices a player would see; hidden unavailable ones are already left out. */
+  choices: DungeonEventChoiceView[];
+}
+export interface DungeonSandboxView {
+  status: string;
+  step: number;
+  hp: number;
+  maxHp: number;
+  room: { id: string; name: string; description: string; kind: 'room' | 'exit' };
+  phase: 'action' | 'connections' | 'ended';
+  action: {
+    id: string;
+    type: string;
+    label: string;
+    optional: boolean;
+    wave: { index: number; count: number; enemy: { name?: string } } | null;
+    event?: DungeonSandboxEventView | null;
+  } | null;
+  connections: Array<{
+    id: string;
+    label: string;
+    toRoomName: string;
+    toRoomCompleted: boolean;
+    open: boolean;
+    lockedText: string;
+  }>;
+  canExtract: boolean;
+  stuck: boolean;
+  flags: Record<string, boolean>;
+  recent: Array<{ kind: string; [field: string]: unknown }>;
+  end: { outcome: string; cause: string } | null;
+}
+export type DungeonSandboxEffect =
+  | { type: 'consume_items'; items: Array<{ item: string; quantity: number }> }
+  | { type: 'grant_rewards'; plan: Record<string, unknown> }
+  | { type: 'settle_run' };
+export interface DungeonSandboxResult {
+  view: DungeonSandboxView;
+  /** Everything the run would have done to the world. None of it was carried out. */
+  effects: DungeonSandboxEffect[];
+  eventResults: Array<{
+    roomId: string;
+    actionId: string;
+    eventTitle: string;
+    choiceLabel: string;
+    text: string;
+    tone: 'good' | 'neutral' | 'bad';
+  }>;
+  steps: number;
+  stoppedBy: 'ended' | 'stuck' | 'max_steps' | 'refused' | null;
+  refusal: string | null;
+}
+/**
+ * Plays an unsaved definition from its start through `inputs`. The same
+ * request always plays out the same way; nothing is granted, spent or stored.
+ */
+export function playDungeonSandbox(
+  input: {
+    definition: DungeonDefinition;
+    seed: number;
+    inputs: DungeonSandboxInput[];
+    inventory: Record<string, number>;
+    currentSp: number;
+  },
+  signal?: AbortSignal,
+): Promise<DungeonSandboxResult> {
+  const { currentSp, ...body } = input;
+  return postData(
+    `${base}/sandbox`,
+    { ...body, fighter: { ...SANDBOX_FIGHTER, currentSp } },
+    opts(signal),
+  );
+}
+/** The stand-in Buddy a sandbox run fights with; the server's own default stats. */
+const SANDBOX_FIGHTER = { attack: 60, defense: 30, maxHp: 400 };
 export function setDungeonEnabled(key: string, enabled: boolean): Promise<DungeonDetail> {
   return putData(`${definitionUrl(key)}/enabled`, { enabled });
 }

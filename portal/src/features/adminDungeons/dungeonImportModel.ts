@@ -1,6 +1,8 @@
 import type { DungeonImportDecisions, DungeonImportPlan } from '@/api/adminDungeons';
 
 export const INCOMPLETE_REWARD_CODES = [
+  'event_item_missing',
+  'event_item_disabled',
   'reward_item_missing',
   'reward_item_disabled',
   'reward_item_capped',

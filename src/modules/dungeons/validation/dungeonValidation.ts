@@ -30,8 +30,13 @@
  *   4. sequences routing targets, outcomes, flags, conditions, enemy pools;
  *   5. references against the context, when one is given;
  *   6. graph     reachability and routes to an ending.
+ *
+ * Events and event pools are checked by `dungeonEventValidation.ts`, called
+ * from stage 4, with the routing an `event` action can take folded into the
+ * sequence and graph stages here.
  */
 import type { ZodIssue } from 'zod';
+import { eventEffectTypeIssues, eventFlagsSet, validateDungeonEvents, validateEventAction, type EventValidationTools } from './dungeonEventValidation';
 import { validateDungeonRewards, rewardShapeIssue, type DungeonRewardValidationContext } from './dungeonRewardValidation';
 import {
   ACTION_OUTCOMES,
@@ -50,6 +55,7 @@ import {
   type DungeonRoom,
 } from '../content/dungeonDefinition';
 import { conditionDepth, conditionReferences } from '../engine/conditions';
+import { eventActionDestinations } from '../engine/events';
 import { defaultDestination, destinationFor, destinationsOf, SUCCESS_OUTCOME } from '../engine/routing';
 
 export const DUNGEON_ISSUE_CODES = [
@@ -115,6 +121,29 @@ export const DUNGEON_ISSUE_CODES = [
   'room_no_route_to_exit',
   'room_empty',
   'many_connections',
+  'event_missing',
+  'event_pool_missing',
+  'duplicate_event_id',
+  'duplicate_event_pool_id',
+  'duplicate_choice_id',
+  'duplicate_pool_entry_id',
+  'event_unused',
+  'event_pool_unused',
+  'event_optional_unsupported',
+  'event_route_retreat',
+  'event_retreat_with_effects',
+  'event_check_retreat',
+  'event_no_open_choice',
+  'event_entrance_no_exit',
+  'event_choice_contradiction',
+  'event_item_missing',
+  'event_item_disabled',
+  'event_item_duplicate',
+  'event_check_flat',
+  'event_pool_duplicate_event',
+  'event_pool_all_nothing',
+  'event_pool_may_be_empty',
+  'unsupported_event_effect',
 ] as const;
 export type DungeonIssueCode = (typeof DUNGEON_ISSUE_CODES)[number];
 
@@ -195,7 +224,9 @@ function actionTypeIssues(raw: unknown): { issues: DungeonIssue[]; paths: Set<st
 }
 
 export function validateDungeonDefinition(raw: unknown, ctx: DungeonValidationContext = {}): DungeonValidationResult {
-  const typed = actionTypeIssues(raw);
+  const actions = actionTypeIssues(raw);
+  const effects = eventEffectTypeIssues(raw);
+  const typed = { issues: [...actions.issues, ...effects.issues], paths: new Set([...actions.paths, ...effects.paths]) };
   const parsed = DungeonDefinitionSchema.safeParse(raw);
   if (!parsed.success) {
     const issues = [...typed.issues];
@@ -275,6 +306,7 @@ export function validateDungeonDefinition(raw: unknown, ctx: DungeonValidationCo
   const flagsSet = new Set<string>();
   const flagsRead = new Set<string>();
   for (const room of definition.rooms) for (const action of room.actions) if (action.type === 'set_flag') flagsSet.add(action.flag);
+  for (const flag of eventFlagsSet(definition)) flagsSet.add(flag);
 
   const checkCondition = (condition: DungeonCondition | undefined, path: string) => {
     if (!condition) return;
@@ -301,6 +333,15 @@ export function validateDungeonDefinition(raw: unknown, ctx: DungeonValidationCo
   };
 
   definition.connections.forEach((c, i) => checkCondition(c.requires, `connections[${i}].requires`));
+
+  const eventTools: EventValidationTools = { add, checkCondition, flagByKey };
+  validateDungeonEvents(definition, ctx, eventTools);
+
+  /** Where an action can send the sequence, whatever it reports. An event adds what its choices can do. */
+  const everyDestination = (action: DungeonAction): ActionDestination[] =>
+    action.type === 'event'
+      ? eventActionDestinations(definition, action)
+      : [...ACTION_OUTCOMES[action.type], DECLINED_OUTCOME].map((outcome) => destinationFor(action, outcome));
 
   // ── sequences ─────────────────────────────────────────────────────────────
   const checkDestination = (
@@ -393,6 +434,8 @@ export function validateDungeonDefinition(raw: unknown, ctx: DungeonValidationCo
 
       if (action.type === 'gate') checkCondition(action.requires, `${path}.requires`);
 
+      if (action.type === 'event') validateEventAction(definition, action, path, room.id === definition.entranceRoomId, eventTools);
+
       if (action.type === 'set_flag') {
         const declared = flagByKey.get(action.flag);
         if (!declared) {
@@ -440,7 +483,8 @@ export function validateDungeonDefinition(raw: unknown, ctx: DungeonValidationCo
       };
       if (action.when) queue.push(index + 1);
       if (action.optional) onward(destinationFor(action, DECLINED_OUTCOME));
-      for (const outcome of ACTION_OUTCOMES[action.type]) onward(destinationFor(action, outcome));
+      if (action.type === 'event') eventActionDestinations(definition, action).forEach(onward);
+      else for (const outcome of ACTION_OUTCOMES[action.type]) onward(destinationFor(action, outcome));
       if (action.type === 'leave') onward(destinationFor(action, 'done'));
     }
     room.actions.forEach((action, a) => {
@@ -490,9 +534,7 @@ export function validateDungeonDefinition(raw: unknown, ctx: DungeonValidationCo
   }
   // A retreat walks a connection backward.
   const retreats = (room: DungeonRoom) =>
-    room.actions.some((action) =>
-      [...ACTION_OUTCOMES[action.type], DECLINED_OUTCOME].some((outcome) => destinationFor(action, outcome).type === 'retreat'),
-    );
+    room.actions.some((action) => everyDestination(action).some((destination) => destination.type === 'retreat'));
   for (const room of definition.rooms) {
     if (!retreats(room)) continue;
     for (const c of definition.connections) if (c.to === room.id && roomById.has(c.from)) forward.get(room.id)!.add(c.from);
@@ -515,12 +557,7 @@ export function validateDungeonDefinition(raw: unknown, ctx: DungeonValidationCo
   const endsRun = (room: DungeonRoom) =>
     room.kind === 'exit' ||
     room.extraction ||
-    room.actions.some((action) =>
-      [...ACTION_OUTCOMES[action.type], DECLINED_OUTCOME].some((outcome) => {
-        const d = destinationFor(action, outcome);
-        return d.type === 'end_run' && d.outcome === 'completed';
-      }),
-    );
+    room.actions.some((action) => everyDestination(action).some((d) => d.type === 'end_run' && d.outcome === 'completed'));
   const endings = definition.rooms.filter(endsRun).map((r) => r.id);
   if (endings.length === 0) {
     add('no_ending', 'error', 'rooms', 'the dungeon has no exit room and no extraction point, so a run could never be finished');

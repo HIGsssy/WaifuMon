@@ -9,6 +9,7 @@ import {
   Crown,
   DoorOpen,
   Gift,
+  ScrollText,
   Shapes,
   SquareDashed,
   Swords,
@@ -16,9 +17,10 @@ import {
 } from 'lucide-react';
 import type { DungeonDefinition, DungeonLayout, DungeonRoom } from '@/api/adminDungeons';
 import { createAction } from './dungeonActionModel';
+import { createEvent, createEventAction } from './dungeonEventModel';
 import { connectMapRooms, newMapId, positionOf } from './dungeonMapModel';
 
-export type RoomTemplateId = 'combat' | 'boss' | 'treasure' | 'rest' | 'exit' | 'empty';
+export type RoomTemplateId = 'combat' | 'boss' | 'treasure' | 'rest' | 'event' | 'exit' | 'empty';
 export const ROOM_TEMPLATES: ReadonlyArray<{
   id: RoomTemplateId;
   label: string;
@@ -47,6 +49,13 @@ export const ROOM_TEMPLATES: ReadonlyArray<{
     hint: "Restore some of the Buddy's HP.",
     icon: BedDouble,
     roomName: 'Rest',
+  },
+  {
+    id: 'event',
+    label: 'Event',
+    hint: 'A story moment with choices.',
+    icon: ScrollText,
+    roomName: 'Event',
   },
   {
     id: 'exit',
@@ -129,6 +138,8 @@ export function addTemplateRoom(
   const actionType = (
     { combat: 'combat', boss: 'boss', treasure: 'reward', rest: 'rest' } as const
   )[templateId as 'combat' | 'boss' | 'treasure' | 'rest'];
+  // An Event room arrives with a new event of its own: one choice, valid as it stands, ready to rewrite.
+  const event = templateId === 'event' ? createEvent(definition) : null;
   const room: DungeonRoom = {
     id,
     name: uniqueRoomName(definition, template.roomName),
@@ -136,9 +147,14 @@ export function addTemplateRoom(
     kind: templateId === 'exit' ? 'exit' : 'room',
     extraction: false,
     background: null,
-    actions: actionType ? [createAction(actionType, [], definition)] : [],
+    actions: event
+      ? [createEventAction([], { kind: 'event', eventId: event.id })]
+      : actionType
+        ? [createAction(actionType, [], definition)]
+        : [],
   };
-  const withRoom = { ...definition, rooms: [...definition.rooms, room] };
+  const base = event?.definition ?? definition;
+  const withRoom = { ...base, rooms: [...base.rooms, room] };
   const connect = fromRoomId !== null && connectionProblem(withRoom, fromRoomId, id) === null;
   return {
     id,
@@ -163,5 +179,6 @@ export function roomPresentation(room: DungeonRoom): RoomPresentation {
   if (types.size === 0) return { label: 'Empty', icon: SquareDashed };
   if (types.size === 1 && types.has('reward')) return { label: 'Treasure', icon: Gift };
   if (types.size === 1 && types.has('rest')) return { label: 'Rest', icon: BedDouble };
+  if (types.size === 1 && types.has('event')) return { label: 'Event', icon: ScrollText };
   return { label: 'Custom', icon: Shapes };
 }

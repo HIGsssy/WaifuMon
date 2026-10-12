@@ -63,12 +63,14 @@ import {
   dungeonRunEvents,
   dungeonRuns,
   items,
+  playerInventory,
   players,
   rewardTables,
   type DungeonRunRow,
 } from '../../db/schema';
 import {
   DungeonDailyLimitError,
+  DungeonEventItemUnavailableError,
   DungeonInvalidError,
   DungeonRewardItemUnavailableError,
   DungeonRewardGrantError,
@@ -77,6 +79,7 @@ import {
   DungeonUnavailableError,
   EquipmentRewardConfigError,
   FeatureLockedError,
+  InsufficientItemsError,
   PlayerNotFoundError,
   uniqueViolationConstraint,
 } from '../../shared/errors';
@@ -101,6 +104,7 @@ import { equipmentSelectorsOf, resolveEquipmentPools } from '../rewardTables/rew
 import { parseRewardTableRow } from '../rewardTables/rewardTableStore';
 import {
   dungeonDependencies,
+  eventOf,
   isCombatAction,
   type DungeonArtworkRef,
   type DungeonDefinition,
@@ -109,6 +113,7 @@ import type { DungeonAllowanceService, DungeonDailyAllowance } from './dungeonAl
 import type { DungeonContentService } from './dungeonContentService';
 import { fighterFromCombatStats, pinnedRewardBonuses, type DungeonFighter } from './dungeonFighter';
 import type { BuddyBonusService } from '../buddyBonus/buddyBonusService';
+import { describeEventResults, eventInstanceKey, type DungeonEventResultView } from './engine/events';
 import { equipmentGrantKey, rewardClaimKey } from './engine/rewards';
 import { dungeonGameplayHash, hasDungeonRewardBundles, readDungeonRewardSnapshot } from './content/dungeonRewardSnapshot';
 import { applyDungeonEffects } from './engine/sandbox';
@@ -222,6 +227,12 @@ export interface DungeonRunView {
   core: DungeonRunCoreView;
   /** The picture's subject: the enemy about to be fought, else the one just fought this step. */
   enemy: DungeonSceneEnemy | null;
+  /** The offered event's own picture, resolved as the run pinned it. Absent when no event is offered or it has none. */
+  eventArtwork?: ArtworkRef | null;
+  /** Display names of the items the offered event's choices need, and of any the latest step spent. */
+  eventItemNames?: Record<string, string>;
+  /** What the latest step's event choices did, in the words their author wrote. Parallel to `core.recent`'s event entries. */
+  latestEvents?: DungeonEventResultView[];
   /** The current room's backdrop, falling back to the dungeon's. */
   roomBackground: ArtworkRef;
   /** The engine's events for the latest wave fought this step. For formatting; never shown raw. */
@@ -332,7 +343,7 @@ export interface DungeonRunServiceDeps {
   currencies: Pick<ProgressionCurrencyService, 'get' | 'getBalance' | 'grant'>;
   currency: Pick<CurrencyService, 'grantWaifubux' | 'grantEssence'>;
   collection: Pick<CollectionService, 'awardCopyAffection'>;
-  inventory: Pick<InventoryService, 'addItem'>;
+  inventory: Pick<InventoryService, 'addItem' | 'consumeItem'>;
   equipmentRewards: Pick<EquipmentRewardService, 'grantChosenEquipmentReward'>;
   logger?: Pick<Logger, 'debug' | 'info' | 'warn' | 'error'> | undefined;
   /** A region's display name, from the region catalogue. Defaults to a title-cased id. */
@@ -370,6 +381,8 @@ function stateOf(row: DungeonRunRow): DungeonRunState {
     flags: row.flags,
     rooms: row.roomStates as unknown as DungeonRunState['rooms'],
     rewardClaims: row.rewardClaims as unknown as DungeonRunState['rewardClaims'],
+    // The engine creates this only when a run meets an event; a run that never has keeps none.
+    ...(Object.keys(row.eventStates).length > 0 ? { events: row.eventStates as unknown as NonNullable<DungeonRunState['events']> } : {}),
     unbankedCurrency: row.unbankedCurrency,
     unbankedWaifubux: row.unbankedWaifubux,
     recent: row.recent as unknown as DungeonRunState['recent'],
@@ -383,6 +396,8 @@ interface LoadedRun {
   revisionNumber: number;
   snapshot: DungeonDependencySnapshot;
   fighter: DungeonFighter;
+  /** Names of the items the offered event's choices need; empty when none is offered. */
+  eventItemNames: Record<string, string>;
   ctx: DungeonEngineContext;
 }
 
@@ -548,21 +563,60 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
     }
     const snapshot = row.dependencySnapshot as unknown as DungeonDependencySnapshot;
     const fighter = row.fighter as unknown as DungeonFighter;
+    const facts = await eventItemFacts(tx, row.playerId, pinned.definition, stateOf(row));
     return {
       row,
       definition: pinned.definition,
       revisionNumber: pinned.revision.number,
       snapshot,
       fighter,
+      eventItemNames: facts.names,
       ctx: {
         definition: pinned.definition,
         dependencies: { enemies: snapshot.enemies, rewardTables: snapshot.rewardTables },
         fighter,
         runKey: String(row.id),
         rewards,
+        inventory: facts.inventory,
         combatRules: deps.combatRules,
       },
     };
+  }
+
+  /**
+   * What the player holds of the items the offered event's choices name — the
+   * inventory facts the pure engine judges a choice by. Read inside the caller's
+   * transaction and not locked: spending is a conditional decrement, so a
+   * quantity that changes after this read fails the step instead of overspending.
+   * Empty unless the run stands on an offered event.
+   */
+  async function eventItemFacts(
+    tx: DbOrTx,
+    playerId: number,
+    definition: DungeonDefinition,
+    state: Pick<DungeonRunState, 'cursor' | 'events' | 'status'>,
+  ): Promise<{ inventory: Record<string, number>; names: Record<string, string> }> {
+    const none = { inventory: {}, names: {} };
+    if (state.status !== 'active' || state.cursor.actionId == null) return none;
+    const instance = state.events?.[eventInstanceKey(state.cursor.roomId, state.cursor.actionId)];
+    const event = instance?.status === 'offered' ? eventOf(definition, instance.eventId) : null;
+    const slugs = [...new Set((event?.choices ?? []).flatMap((choice) => (choice.items ?? []).map((i) => i.item)))];
+    if (slugs.length === 0) return none;
+    const rows = await tx
+      .select({ slug: items.slug, name: items.name, quantity: playerInventory.quantity })
+      .from(items)
+      .leftJoin(playerInventory, and(eq(playerInventory.itemId, items.id), eq(playerInventory.playerId, playerId)))
+      .where(inArray(items.slug, slugs));
+    return {
+      inventory: Object.fromEntries(rows.map((r) => [r.slug, r.quantity ?? 0])),
+      names: Object.fromEntries(rows.map((r) => [r.slug, r.name])),
+    };
+  }
+
+  /** The run as the row now stands, with the inventory facts of whatever it is standing on now. */
+  async function reloaded(tx: DbOrTx, run: LoadedRun, row: DungeonRunRow): Promise<LoadedRun> {
+    const facts = await eventItemFacts(tx, row.playerId, run.definition, stateOf(row));
+    return { ...run, row, eventItemNames: facts.names, ctx: { ...run.ctx, inventory: facts.inventory } };
   }
 
   async function currencyView(tx: DbOrTx, run: LoadedRun): Promise<DungeonCurrencyView | null> {
@@ -609,6 +663,13 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
       shards: total.shards + ('v' in plan ? plan.atRisk.shards : plan.currency),
       waifubux: total.waifubux + ('v' in plan ? plan.atRisk.waifubux : 0),
     }), { shards: 0, waifubux: 0 }) : null;
+    // The latest step's event choices, read from the pinned revision the run plays.
+    const eventEntries = core.recent.filter((r): r is Extract<typeof r, { kind: 'event' }> => r.kind === 'event');
+    const latestEvents = describeEventResults(definition, core.recent);
+    const spent = [...new Set(eventEntries.flatMap((entry) => entry.consumed.map((c) => c.item)))];
+    const spentNames = spent.length === 0 ? {} : Object.fromEntries(
+      (await tx.select({ slug: items.slug, name: items.name }).from(items).where(inArray(items.slug, spent))).map((r) => [r.slug, r.name]),
+    );
     const room = definition.rooms.find((r) => r.id === core.room.id);
     const roomBackground = resolveDungeonArtwork(room?.background ?? null, snapshot.artwork ?? {});
     const dungeonBackground = resolveDungeonArtwork(definition.background, snapshot.artwork ?? {});
@@ -627,6 +688,9 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
       fighter: run.fighter,
       core,
       enemy: sceneEnemy(run, core.action?.wave?.enemy ?? (lastWave?.kind === 'wave' ? snapshot.enemies[lastWave.wave.enemyKey] : undefined)),
+      ...(core.action?.event ? { eventArtwork: resolveDungeonArtwork(core.action.event.artwork ?? null, snapshot.artwork ?? {}) } : {}),
+      ...(core.action?.event || spent.length > 0 ? { eventItemNames: { ...spentNames, ...run.eventItemNames } } : {}),
+      ...(latestEvents.length > 0 ? { latestEvents } : {}),
       roomBackground: roomBackground.assetId || roomBackground.artworkPath ? roomBackground : dungeonBackground,
       combatEvents: events,
       currency: await currencyView(tx, run),
@@ -705,6 +769,34 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
   }
 
   /**
+   * Spend what an event choice costs. The engine already judged the choice
+   * against quantities read in this transaction; the decrement here is
+   * conditional, so an item spent elsewhere since that read fails the step —
+   * and with it everything the step did — rather than going negative.
+   */
+  async function consumeItems(tx: DbOrTx, run: LoadedRun, effect: Extract<DungeonEffect, { type: 'consume_items' }>): Promise<DungeonEffectReceipt> {
+    const { row } = run;
+    const wanted = [...effect.items].sort((a, b) => (a.item < b.item ? -1 : a.item > b.item ? 1 : 0));
+    const rows = await tx.select({ id: items.id, slug: items.slug }).from(items).where(inArray(items.slug, wanted.map((i) => i.item)));
+    const idBySlug = new Map(rows.map((r) => [r.slug, r.id]));
+    for (const { item, quantity } of wanted) {
+      const itemId = idBySlug.get(item);
+      try {
+        if (itemId === undefined) throw new InsufficientItemsError(0, quantity);
+        await deps.inventory.consumeItem(tx, row.playerId, itemId, quantity);
+      } catch (cause) {
+        if (!(cause instanceof InsufficientItemsError)) throw cause;
+        deps.logger?.info(
+          { tag: 'dungeons/event-item-unavailable', runId: row.id, key: effect.key, slug: item, quantity },
+          'dungeon event choice aborted: the item it spends is no longer held; the step rolls back',
+        );
+        throw new DungeonEventItemUnavailableError(row.id, item, quantity);
+      }
+    }
+    return { type: 'consume_items', key: effect.key, items: wanted };
+  }
+
+  /**
    * Carries the engine's effects out for real, inside the step's transaction.
    * The only place a dungeon touches inventory, currency or Equipment.
    */
@@ -763,6 +855,7 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
           }
           return { type: 'grant_rewards', claimKey, waifubux: plan.waifubux, items: granted, equipment };
         }
+        if (effect.type === 'consume_items') return consumeItems(tx, run, effect);
 
         const { end, currencyKey, requestKey } = effect;
         const receipt: Extract<DungeonEffectReceipt, { type: 'settle_run' }> = {
@@ -836,6 +929,8 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
             ...(receipt.affection ? { affection: receipt.affection } : {}),
           },
         });
+      } else if (receipt.type === 'consume_items') {
+        log.push({ type: 'items_consumed', roomId: null, actionId: null, payload: { key: receipt.key, items: receipt.items } });
       } else if (settlement) {
         settlement = {
           ...settlement,
@@ -975,7 +1070,7 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
         },
         'dungeon run started: daily run consumed',
       );
-      return runView(tx, { ...run, row }, started.combat.at(-1)?.events ?? null);
+      return runView(tx, await reloaded(tx, run, row), started.combat.at(-1)?.events ?? null);
     });
   }
 
@@ -997,6 +1092,7 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
         flags: state.flags,
         roomStates: state.rooms as unknown as Record<string, unknown>,
         rewardClaims: state.rewardClaims as unknown as Record<string, unknown>,
+        eventStates: (state.events ?? {}) as unknown as Record<string, unknown>,
         unbankedCurrency: state.unbankedCurrency,
         unbankedWaifubux: state.unbankedWaifubux ?? 0,
         recent: state.recent as unknown as Record<string, unknown>[],
@@ -1125,7 +1221,7 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
             `dungeon run ${extra.settlement.outcome}`,
           );
         }
-        return { status: 'applied', refusal: null, run: await runView(tx, { ...run, row: written }, result.combat.at(-1)?.events ?? null) };
+        return { status: 'applied', refusal: null, run: await runView(tx, await reloaded(tx, run, written), result.combat.at(-1)?.events ?? null) };
       });
     },
 

@@ -32,7 +32,7 @@
  * ## Versioning
  *
  * `schemaVersion` is the format's version. V1 retains its original shape and bytes; v2 adds
- * required reward evidence and manifests. A reader refuses a version it does not know and — because
+ * required reward evidence and manifests; v3 carries events and required inventory items. A reader refuses a version it does not know and — because
  * the envelope is strict — a member it does not understand, rather than
  * importing half a dungeon.
  *
@@ -50,6 +50,9 @@ import {
   DungeonArtworkRefSchema,
   DungeonDefinitionSchema,
   dungeonDependencies,
+  dungeonRewardSites,
+  dungeonUsesEvents,
+  dungeonRequiredItems,
   type DungeonDefinition,
 } from '../content/dungeonDefinition';
 import { DungeonLayoutSchema, EMPTY_DUNGEON_LAYOUT, pruneDungeonLayout, type DungeonLayout } from '../content/dungeonLayout';
@@ -62,10 +65,12 @@ import { validateDungeonRewards } from '../validation/dungeonRewardValidation';
 import { validateDungeonDefinition, type DungeonIssue } from '../validation/dungeonValidation';
 
 export const DUNGEON_PACKAGE_FORMAT = 'waifumon-dungeon-package' as const;
-export const DUNGEON_PACKAGE_SCHEMA_VERSION = 2 as const;
+export const DUNGEON_PACKAGE_SCHEMA_VERSION = 3 as const;
 /** The versions this build can read. */
-export const DUNGEON_PACKAGE_SUPPORTED_VERSIONS: readonly number[] = [1, 2];
+export const DUNGEON_PACKAGE_SUPPORTED_VERSIONS: readonly number[] = [1, 2, 3];
 export const DUNGEON_PACKAGE_MAX_BUNDLED_ENEMIES = 2000;
+
+const EVENTS_REQUIRE_V3 = 'Event content requires a complete version 3 package. Export this dungeon again as v3.';
 
 const sha256 = z.string().regex(/^sha256:[a-f0-9]{64}$/, 'must be "sha256:" and 64 hex digits');
 const key = z.string().trim().min(1).max(100);
@@ -123,7 +128,7 @@ export const DungeonPackageV2DependenciesSchema = DungeonPackageDependenciesSche
   equipment: z.array(z.object({ selectorKey: z.string(), candidateKeys: z.array(key).min(1) }).strict()),
 });
 export const DungeonPackageV2Schema = DungeonPackageV1Schema.extend({
-  schemaVersion: z.literal(DUNGEON_PACKAGE_SCHEMA_VERSION),
+  schemaVersion: z.literal(2),
   dependencies: DungeonPackageV2DependenciesSchema,
   bundled: z.object({
     enemies: z.array(CombatEnemyDefinitionSchema).max(DUNGEON_PACKAGE_MAX_BUNDLED_ENEMIES),
@@ -137,7 +142,13 @@ export const DungeonPackageV2Schema = DungeonPackageV1Schema.extend({
   rewardSnapshot: DungeonRewardSnapshotSchema,
   rewardSnapshotHash: sha256.nullable(),
 });
-export const DungeonPackageSchema = z.discriminatedUnion('schemaVersion', [DungeonPackageV1Schema, DungeonPackageV2Schema]);
+/** Event envelope: separate reachable inventory requirements, optional reward evidence. */
+export const DungeonPackageV3Schema = DungeonPackageV2Schema.extend({
+  schemaVersion: z.literal(3),
+  dependencies: DungeonPackageV2DependenciesSchema.extend({ requiredItems: z.array(key) }),
+  rewardSnapshot: DungeonRewardSnapshotSchema.nullable(),
+});
+export const DungeonPackageSchema = z.discriminatedUnion('schemaVersion', [DungeonPackageV1Schema, DungeonPackageV2Schema, DungeonPackageV3Schema]);
 export type DungeonPackage = z.infer<typeof DungeonPackageSchema>;
 
 // ── hashing ─────────────────────────────────────────────────────────────────
@@ -170,7 +181,7 @@ export interface BuildDungeonPackageInput {
    * dependency, with a null hash.
    */
   enemies?: ReadonlyMap<string, CombatEnemyDefinition> | undefined;
-  /** Required for v2: resolved current dependencies for drafts, pinned T6 evidence for revisions. */
+  /** Required when reachable rewards exist: live dependencies for drafts, pinned T6 evidence for revisions. */
   rewardSnapshot?: DungeonRewardSnapshot | undefined;
   /** Current catalogue display/provenance fields for a draft; never used for revisions. */
   lootTableMetadata?: ReadonlyMap<string, { description: string; origin: 'portal' | 'import' | 'seed' | 'converted' }> | undefined;
@@ -202,6 +213,7 @@ export function packageDependencies(
 
 export function buildDungeonPackage(input: BuildDungeonPackageInput): DungeonPackage {
   const definition = DungeonDefinitionSchema.parse(input.definition);
+  const usesEvents = dungeonUsesEvents(definition);
   const deps = dungeonDependencies(definition);
   const layout = pruneDungeonLayout(
     DungeonLayoutSchema.parse(input.layout ?? EMPTY_DUNGEON_LAYOUT),
@@ -227,23 +239,32 @@ export function buildDungeonPackage(input: BuildDungeonPackageInput): DungeonPac
       }),
     },
   };
-  if (!hasDungeonRewardBundles(definition)) return DungeonPackageV1Schema.parse(legacy);
-  const snapshot = readDungeonRewardSnapshot(input.rewardSnapshot);
-  if (!snapshot) throw new Error('Cannot export v2 rewards: reward snapshot is missing, invalid or unsupported.');
-  const pkg = DungeonPackageV2Schema.parse({
+  const hasRewards = hasDungeonRewardBundles(definition);
+  if (!hasRewards && !usesEvents) return DungeonPackageV1Schema.parse(legacy);
+  const snapshot = hasRewards ? readDungeonRewardSnapshot(input.rewardSnapshot) : null;
+  if (hasRewards && !snapshot) throw new Error('Cannot export rewards: reward snapshot is missing, invalid or unsupported.');
+  const envelope = {
     ...legacy,
-    schemaVersion: 2,
-    dependencies: { ...legacy.dependencies, ...rewardManifests(snapshot) },
-    bundled: { ...legacy.bundled, dungeonLootTables: Object.keys(snapshot.tables).sort().map((key) => ({
-      ...snapshot.tables[key],
-      description: input.source.origin === 'draft' ? input.lootTableMetadata?.get(key)?.description ?? null : null,
-      origin: input.source.origin === 'draft' ? input.lootTableMetadata?.get(key)?.origin ?? null : null,
-    })) },
+    schemaVersion: usesEvents ? 3 : 2,
+    dependencies: {
+      ...legacy.dependencies,
+      ...(snapshot ? rewardManifests(snapshot) : { dungeonLootTables: [], items: [], equipment: [] }),
+      ...(usesEvents ? { requiredItems: dungeonRequiredItems(definition) } : {}),
+    },
+    bundled: {
+      ...legacy.bundled,
+      dungeonLootTables: snapshot ? Object.keys(snapshot.tables).sort().map((key) => ({
+        ...snapshot.tables[key],
+        description: input.source.origin === 'draft' ? input.lootTableMetadata?.get(key)?.description ?? null : null,
+        origin: input.source.origin === 'draft' ? input.lootTableMetadata?.get(key)?.origin ?? null : null,
+      })) : [],
+    },
     rewardSnapshot: snapshot,
-    rewardSnapshotHash: input.source.origin === 'revision' ? snapshot.hash : null,
-  });
+    rewardSnapshotHash: input.source.origin === 'revision' && snapshot ? snapshot.hash : null,
+  };
+  const pkg = usesEvents ? DungeonPackageV3Schema.parse(envelope) : DungeonPackageV2Schema.parse(envelope);
   const read = readDungeonPackage(pkg);
-  if (!read.ok) throw new Error(`Cannot export v2 rewards: ${read.issues.filter((i) => i.severity === 'error').map((i) => `${i.path}: ${i.message}`).join('; ')}`);
+  if (!read.ok) throw new Error(`Cannot export package: ${read.issues.filter((i) => i.severity === 'error').map((i) => `${i.path}: ${i.message}`).join('; ')}`);
   return pkg;
 }
 
@@ -355,6 +376,8 @@ export function readDungeonPackage(raw: unknown): ReadDungeonPackageResult {
   const dungeon = validateDungeonDefinition(envelope.dungeon);
   for (const issue of dungeon.issues) issues.push({ ...issue, path: issue.path ? `dungeon.${issue.path}` : 'dungeon' });
   if (!dungeon.definition) return { package: null, issues, ok: false };
+  // Whatever version the envelope claims, versions 1 and 2 never held events.
+  if (envelope.schemaVersion !== 3 && dungeonUsesEvents(dungeon.definition)) return fail('package_schema_version', 'dungeon', EVENTS_REQUIRE_V3);
 
   const parsed = DungeonPackageSchema.safeParse(value);
   if (!parsed.success) {
@@ -411,17 +434,31 @@ export function readDungeonPackage(raw: unknown): ReadDungeonPackageResult {
     }
   });
 
-  if (pkg.schemaVersion === 2) {
+  if (pkg.schemaVersion === 3) {
+    if (!dungeonUsesEvents(pkg.dungeon)) error('package_schema_version', 'dungeon', 'v3 requires event content');
+    if (canonicalJson(pkg.dependencies.requiredItems) !== canonicalJson(dungeonRequiredItems(pkg.dungeon)))
+      error('package_dependencies_mismatch', 'dependencies.requiredItems', 'the required inventory items do not match reachable event choices');
+  }
+  if (pkg.schemaVersion !== 1) {
     const snapshot = pkg.rewardSnapshot;
-    if (!hasDungeonRewardBundles(pkg.dungeon))
+    const hasRewards = hasDungeonRewardBundles(pkg.dungeon);
+    if (!snapshot) {
+      if (hasRewards || pkg.rewardSnapshotHash !== null)
+        error('package_reward_snapshot_invalid', 'rewardSnapshot', 'reachable rewards require complete snapshot evidence');
+      for (const member of ['dungeonLootTables', 'items', 'equipment', 'species'] as const)
+        if (pkg.dependencies[member].length) error('package_dependencies_mismatch', `dependencies.${member}`, 'a reward-free package must have empty reward manifests');
+      if (pkg.bundled.dungeonLootTables.length) error('package_bundle_unreferenced', 'bundled.dungeonLootTables', 'a reward-free package cannot bundle loot tables');
+      return { package: pkg, issues, ok: issues.every((i) => i.severity !== 'error') };
+    }
+    if (!hasRewards && pkg.schemaVersion === 3)
+      error('package_reward_snapshot_invalid', 'rewardSnapshot', 'a reward-free v3 package must have null reward evidence');
+    if (!hasRewards && pkg.schemaVersion === 2)
       error('package_reward_snapshot_invalid', 'dungeon', 'v2 requires a Phase 2 reward bundle');
     if (!readDungeonRewardSnapshot(snapshot) ||
         pkg.rewardSnapshotHash !== (pkg.source.origin === 'revision' ? snapshot.hash : null))
       error('package_reward_snapshot_invalid', 'rewardSnapshotHash', 'reward snapshot hash or origin does not match the exported snapshot');
 
-    const referenced = new Set(pkg.dungeon.rooms.flatMap((room) => room.actions.flatMap((action) =>
-      'rewards' in action && action.rewards ? action.rewards.tables.map((ref) => ref.table) : [],
-    )));
+    const referenced = new Set(dungeonRewardSites(pkg.dungeon).flatMap((site) => site.bundle.tables.map((ref) => ref.table)));
     const bundled = new Map<string, DungeonRewardSnapshot['tables'][string]>();
     pkg.bundled.dungeonLootTables.forEach((table, i) => {
       const path = `bundled.dungeonLootTables[${i}]`;

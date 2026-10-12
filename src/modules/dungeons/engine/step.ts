@@ -33,6 +33,15 @@
  * Within a room the cursor only moves down the action list (`routing.ts`), so
  * `runSequence` always terminates. Rooms may be revisited — the map can cycle
  * — but a completed room's sequence does not run again.
+ *
+ * ## Events
+ *
+ * An `event` action is selected when the sequence first reaches it (a named
+ * event, or one draw from a pool) and the selection is stored on the run, so
+ * it is never made twice. The player then answers with `choose`. A choice
+ * resolves the event once — its item cost, check, flags, HP and rewards all
+ * belong to that one step — except a walk-away, which changes nothing and
+ * leaves the event open for a later visit.
  */
 import {
   BASIS_POINTS,
@@ -41,13 +50,28 @@ import {
   connectionsFrom,
   isCombatAction,
   roomOf,
+  eventOf,
+  isWalkAway,
+  type ActionDestination,
   type CombatAction,
   type DungeonAction,
+  type DungeonEventOutcome,
+  type EventAction,
   type DungeonConnection,
   type DungeonRoom,
 } from '../content/dungeonDefinition';
 import { DungeonEngineContentError, fightWave, selectWaveEnemy } from './combat';
 import { conditionFacts, evaluateCondition } from './conditions';
+import { rollEventCheck } from './eventChecks';
+import {
+  applyEventEffects,
+  choiceFacts,
+  describeEventChoice,
+  eventConsumeKey,
+  eventInstanceKey,
+  eventNothingText,
+  selectDungeonEvent,
+} from './events';
 import { addAtRiskCurrency, hpAfterRest, isDungeonRewardPlanV2, planHasSecuredRewards, rewardClaimKey, rewardResolverSnapshot, rollRewardPlan, settleCurrency, settlementRequestKey } from './rewards';
 import { DUNGEON_LOOT_RESOLVER_VERSION, resolveRewardBundle } from './lootResolver';
 import type { DungeonRewardBundle } from '../content/dungeonRewards';
@@ -56,6 +80,7 @@ import { dungeonRngSource } from './seeds';
 import type {
   DungeonActionRecord,
   DungeonEngineContext,
+  DungeonEventInstance,
   DungeonInput,
   DungeonRefusal,
   DungeonRngSource,
@@ -101,7 +126,8 @@ function holds(w: Work, condition: Parameters<typeof evaluateCondition>[0]): boo
 
 /** Whether the sequence stops on this action and waits for the player. */
 export function actionAwaitsInput(action: DungeonAction): boolean {
-  return action.optional || isCombatAction(action) || action.type === 'rest' || action.type === 'reward';
+  // An event waits for a choice unless its pool draws nothing, which `arriveAtEvent` settles.
+  return action.optional || isCombatAction(action) || action.type === 'rest' || action.type === 'reward' || action.type === 'event';
 }
 
 function record(w: Work, room: DungeonRoom, action: DungeonAction, rec: Omit<DungeonActionRecord, 'type' | 'step'>): void {
@@ -184,7 +210,7 @@ function takeConnection(w: Work, connection: DungeonConnection): void {
 
 // ── the sequence ────────────────────────────────────────────────────────────
 
-/** Send the sequence wherever `outcome` routes. */
+/** Send the sequence wherever `outcome` routes, or to `to` when the caller already knows where. */
 function follow(
   w: Work,
   room: DungeonRoom,
@@ -192,8 +218,9 @@ function follow(
   action: DungeonAction,
   outcome: string,
   defeatCause: DungeonRunEnd['cause'] = 'scripted',
+  to?: ActionDestination,
 ): Flow {
-  const destination = destinationFor(action, outcome);
+  const destination = to ?? destinationFor(action, outcome);
   switch (destination.type) {
     case 'next':
       return { kind: 'continue', index: index + 1 };
@@ -295,6 +322,16 @@ function runSequence(w: Work, room: DungeonRoom, startIndex: number): void {
       index += 1;
       continue;
     }
+    if (action.type === 'event') {
+      const arrival = arriveAtEvent(w, room, index, action);
+      if (arrival === 'await') {
+        w.state.cursor = { ...w.state.cursor, actionId: action.id, waveIndex: 0 };
+        return;
+      }
+      if (arrival.kind === 'stop') return;
+      index = arrival.index;
+      continue;
+    }
     if (actionAwaitsInput(action)) {
       w.state.cursor = { ...w.state.cursor, actionId: action.id, waveIndex: 0 };
       return;
@@ -303,6 +340,110 @@ function runSequence(w: Work, room: DungeonRoom, startIndex: number): void {
     if (flow.kind === 'stop') return;
     index = flow.index;
   }
+}
+
+// ── events ──────────────────────────────────────────────────────────────────
+
+function eventOutcome(event: NonNullable<ReturnType<typeof eventOf>>, instance: DungeonEventInstance): DungeonEventOutcome | null {
+  const choice = event.choices.find((c) => c.id === instance.resolution?.choiceId);
+  return (choice && instance.resolution && choice[instance.resolution.branch]) ?? null;
+}
+
+/**
+ * The sequence has reached an `event` action. Select what it presents, once,
+ * and say whether the player has something to answer.
+ */
+function arriveAtEvent(w: Work, room: DungeonRoom, index: number, action: EventAction): Flow | 'await' {
+  const key = eventInstanceKey(room.id, action.id);
+  const place = { roomId: room.id, actionId: action.id };
+  const events = (w.state.events ??= {});
+  let instance = events[key];
+  const selectedNow = !instance;
+  if (!instance) {
+    instance = selectDungeonEvent(w.ctx.definition, action, place, w.state, conditionFacts(w.state, w.ctx.playerFlags), w.rng);
+    events[key] = instance;
+    // What was presented and, for a pool, the draw behind it: enough to audit and replay the selection.
+    w.log.push({ type: 'event_selected', ...place, payload: { eventId: instance.eventId, status: instance.status, source: action.source, pool: instance.pool ?? null } });
+  }
+  if (instance.status === 'offered') return 'await';
+
+  // Nothing drawn, or an event resolved on an earlier visit: nothing is applied
+  // again. The action record is rewritten (a retreat may have erased it) and
+  // the sequence goes where it went before.
+  const detail = {
+    kind: 'event' as const,
+    eventId: instance.eventId,
+    choiceId: instance.resolution?.choiceId ?? null,
+    branch: instance.resolution?.branch ?? null,
+    check: instance.resolution?.check ?? null,
+  };
+  if (instance.status === 'nothing') {
+    record(w, room, action, { status: 'completed', outcome: 'nothing', detail });
+    if (selectedNow) {
+      w.state.recent.push({ kind: 'event_nothing', ...place, text: eventNothingText(w.ctx.definition, instance) });
+      w.log.push({ type: 'action_completed', ...place, payload: { actionType: 'event', outcome: 'nothing', pool: instance.pool ?? null } });
+    }
+    return follow(w, room, index, action, 'nothing');
+  }
+  const event = eventOf(w.ctx.definition, instance.eventId);
+  const outcome = event && eventOutcome(event, instance);
+  if (!outcome) throw new DungeonEngineContentError(`room "${room.id}" action "${action.id}" resolved an event choice the dungeon lacks`);
+  record(w, room, action, { status: 'completed', outcome: 'resolved', detail });
+  return follow(w, room, index, action, 'resolved', 'scripted', outcome.then);
+}
+
+/** The player answers the offered event. A refusal leaves the run exactly as it was. */
+function chooseEventChoice(w: Work, room: DungeonRoom, index: number, action: EventAction, choiceId: string): Flow | DungeonRefusal {
+  const place = { roomId: room.id, actionId: action.id };
+  const instance = w.state.events?.[eventInstanceKey(room.id, action.id)];
+  if (instance?.status !== 'offered') return 'not_available';
+  const event = eventOf(w.ctx.definition, instance.eventId);
+  if (!event) throw new DungeonEngineContentError(`room "${room.id}" action "${action.id}" offers event "${instance.eventId}", which the dungeon lacks`);
+  const choice = event.choices.find((c) => c.id === choiceId);
+  if (!choice) return 'choice_unknown';
+  // Judged again here, on the run and the inventory as they are now: what a screen showed is not trusted.
+  const availability = describeEventChoice(choice, choiceFacts(w.state, w.ctx));
+  if (!availability.available) return 'choice_unavailable';
+
+  const check = choice.check ? rollEventCheck(choice.check, w.ctx.fighter.currentSp, { ...place, choiceId: choice.id }, w.rng) : null;
+  const branch = check ? (check.success ? 'success' : 'failure') : 'outcome';
+  const outcome = choice[branch];
+  if (!outcome) throw new DungeonEngineContentError(`event "${event.id}" choice "${choice.id}" has no ${branch} outcome`);
+
+  if (isWalkAway(outcome)) {
+    // Nothing is decided: the event stays offered and is asked again on return.
+    w.state.recent.push({
+      kind: 'event', ...place, eventId: event.id, choiceId: choice.id, branch, check: null,
+      flags: [], consumed: [], hpBefore: w.state.hp, hpAfter: w.state.hp, walkedAway: true,
+    });
+    return follow(w, room, index, action, 'resolved', 'scripted', outcome.then);
+  }
+
+  // Spent because the choice was made, before and whatever the check. First
+  // among the step's effects, so the cheapest thing to fail fails first.
+  const consumed = availability.items.filter((item) => item.consume).map(({ item, quantity }) => ({ item, quantity }));
+  if (consumed.length > 0) {
+    w.effects.push({ type: 'consume_items', key: eventConsumeKey(w.ctx.runKey, room.id, action.id), ...place, items: consumed });
+  }
+  const applied = applyEventEffects(w.state, w.ctx.fighter.maxHp, outcome.effects);
+  const claim = outcome.rewards ? claimRewards(w, room, action, outcome.rewards) : null;
+  instance.status = 'resolved';
+  instance.resolution = { choiceId: choice.id, branch, step: w.state.step, ...(check ? { check } : {}) };
+  record(w, room, action, {
+    status: 'completed',
+    outcome: 'resolved',
+    detail: { kind: 'event', eventId: event.id, choiceId: choice.id, branch, check },
+  });
+  w.state.recent.push({ kind: 'event', ...place, eventId: event.id, choiceId: choice.id, branch, check, consumed, ...applied, walkedAway: false });
+  w.log.push({
+    type: 'action_completed',
+    ...place,
+    payload: {
+      actionType: 'event', outcome: 'resolved', eventId: event.id, choiceId: choice.id, branch, check,
+      pool: instance.pool ?? null, consumed, ...applied, ...(claim ?? {}),
+    },
+  });
+  return follow(w, room, index, action, 'resolved', 'scripted', outcome.then);
 }
 
 // ── actions that take input ─────────────────────────────────────────────────
@@ -539,10 +680,22 @@ export function stepDungeon(
       break;
     }
 
+    case 'choose': {
+      const at = currentAction(w.state, ctx.definition);
+      if (!at) return refused(state, 'no_action');
+      if (at.action.type !== 'event') return refused(state, 'not_available');
+      const flow = chooseEventChoice(w, room, at.index, at.action, input.choiceId);
+      if (typeof flow === 'string') return refused(state, flow);
+      if (flow.kind === 'continue') runSequence(w, room, flow.index);
+      break;
+    }
+
     case 'advance':
     case 'decline': {
       const at = currentAction(w.state, ctx.definition);
       if (!at) return refused(state, 'no_action');
+      // An event is answered with a choice; it has no single thing to carry out or to decline.
+      if (at.action.type === 'event') return refused(state, input.type === 'advance' ? 'choice_required' : 'not_optional');
       let flow: Flow | 'await';
       if (input.type === 'decline') {
         if (!at.action.optional) return refused(state, 'not_optional');

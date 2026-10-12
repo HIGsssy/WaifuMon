@@ -27,7 +27,7 @@ import {
   DungeonLootImportDecisionsSchema, DungeonLootImportTablePlanSchema, planDungeonLootImport,
   type DungeonLootImportDecisions,
 } from './dungeonLootImport';
-import { dungeonDependencies } from '../content/dungeonDefinition';
+import { dungeonDependencies, dungeonRequiredItems } from '../content/dungeonDefinition';
 import { pruneDungeonLayout } from '../content/dungeonLayout';
 import { validateDungeonDefinition, type DungeonValidationContext } from '../validation/dungeonValidation';
 import { dungeonContentHash, packagedEnemyHash, readDungeonPackage, type ReadDungeonPackageResult } from './dungeonPackage';
@@ -77,7 +77,11 @@ export const DungeonImportPlanSchema = z.object({
   lootTables: z.array(DungeonLootImportTablePlanSchema).optional(),
   equipmentChanges: z.array(equipmentChangeSchema).optional(),
   resultingContentHash: hashSchema.optional(),
-  rewardSource: z.object({ origin: z.enum(['draft', 'revision']), snapshotHash: hashSchema, resolverVersion: z.number().int() }).optional(),
+  eventDependencies: z.object({
+    eventCount: z.number().int().nonnegative(), poolCount: z.number().int().nonnegative(),
+    requiredItems: z.array(z.object({ key: z.string(), name: z.string(), status: z.enum(['available', 'missing', 'disabled']) })),
+  }).optional(),
+  rewardSource: z.object({ origin: z.enum(['draft', 'revision']), snapshotHash: hashSchema.nullable(), resolverVersion: z.number().int().nullable() }).optional(),
 });
 export const DungeonImportResultSchema = z.object({
   importId: z.number().int().positive(),
@@ -92,8 +96,8 @@ export const DungeonImportResultSchema = z.object({
   createdLootTables: z.array(z.string()).optional(),
   reusedLootTables: z.array(z.string()).optional(),
   tableKeyChanges: z.record(z.string()).optional(),
-  sourceSchemaVersion: z.literal(2).optional(),
-  rewardSnapshotHash: hashSchema.optional(),
+  sourceSchemaVersion: z.union([z.literal(2), z.literal(3)]).optional(),
+  rewardSnapshotHash: hashSchema.nullable().optional(),
 });
 export const DungeonImportHistorySchema = z.object({
   imports: z.array(
@@ -214,14 +218,15 @@ export function readImportPackage(raw: unknown): ReadDungeonPackageResult {
       for (const child of Object.values(current.value)) pending.push({ value: child, depth: current.depth + 1 });
   }
   const read = readDungeonPackage(value);
-  // Explicit dispatch: every v2 package enters the reward-aware planner below.
+  // Explicit dispatch: v2 and v3 use catalogue review and disabled/unpublished import semantics.
   if (!read.package) return read;
   switch (read.package.schemaVersion) {
     case 1:
       if (hasDungeonRewardBundles(read.package.dungeon)) return { package: null, ok: false,
         issues: [...read.issues, { code: 'package_schema_version', severity: 'error', path: 'schemaVersion', message: 'Phase 2 rewards require a complete v2 package for import. Export it again as v2.' }] };
       return read;
-    case 2: return read;
+    case 2:
+    case 3: return read;
     default: return { package: null, ok: false, issues: [{ code: 'package_schema_version', severity: 'error', path: 'schemaVersion', message: 'Unsupported import version.' }] };
   }
 }
@@ -278,7 +283,7 @@ export function createDungeonImportService(deps: DungeonImportDeps): DungeonImpo
     let rewards: DungeonValidationContext | undefined;
     let loot: ReturnType<typeof planDungeonLootImport> | undefined;
     let lootRows: typeof dungeonLootTables.$inferSelect[] = [];
-    if (pkg.schemaVersion === 2) {
+    if (pkg.schemaVersion !== 1) {
       if (lock) {
         // Row locks cannot protect missing table keys or new broad-selector candidates.
         // Authoring catalogues are small; SHARE also closes these insertion races.
@@ -287,7 +292,7 @@ export function createDungeonImportService(deps: DungeonImportDeps): DungeonImpo
         await tx.execute(sql`LOCK TABLE equipment_definitions IN SHARE MODE`);
         await tx.execute(sql`LOCK TABLE progression_currencies IN SHARE MODE`);
       }
-      if (!deps.loadRewardContext) refused('DUNGEON_IMPORT_INVALID', 'schemaVersion', 'V2 import reward catalogue validation is unavailable. Import refused.');
+      if (!deps.loadRewardContext) refused('DUNGEON_IMPORT_INVALID', 'schemaVersion', 'Reward and required-item catalogue validation is unavailable. Import refused.');
       rewards = await deps.loadRewardContext(tx, { lock });
       lootRows = await tx.select().from(dungeonLootTables).orderBy(asc(dungeonLootTables.tableKey));
       loot = planDungeonLootImport(pkg, lootRows, lootChoices);
@@ -366,7 +371,7 @@ export function createDungeonImportService(deps: DungeonImportDeps): DungeonImpo
       shippedArtworkExists: ship,
     };
     // Gear selectors may name keys or whole pools. Lock the selector catalogue only when a table uses gear.
-    const gearNeeded = pkg.schemaVersion === 2 || tables.some((t) => (JSON.stringify(t.definition?.groups) ?? '').includes('"equipment"'));
+    const gearNeeded = pkg.schemaVersion !== 1 || tables.some((t) => (JSON.stringify(t.definition?.groups) ?? '').includes('"equipment"'));
     const gearQuery = tx
       .select({
         key: equipmentDefinitions.key,
@@ -389,10 +394,27 @@ export function createDungeonImportService(deps: DungeonImportDeps): DungeonImpo
         path: `dependencies.rewardTables.${t.tableId}.${i.path}`,
       })),
     );
+    const eventDependencies = pkg.schemaVersion === 3 ? {
+      eventCount: pkg.dungeon.events?.length ?? 0,
+      poolCount: pkg.dungeon.eventPools?.length ?? 0,
+      requiredItems: dungeonRequiredItems(definition).map(key => {
+        const item = context.items?.get(key);
+        return { key, name: item?.name ?? key.replaceAll('_', ' '),
+          status: !item ? 'missing' as const : item.enabled ? 'available' as const : 'disabled' as const };
+      }),
+    } : undefined;
+    // Disabled requirements block a complete import even though gameplay validation
+    // treats them as a warning. Explicit incomplete acceptance still permits repair.
+    const requiredItemIssues: DungeonIssueDetail[] = (eventDependencies?.requiredItems ?? [])
+      .filter(item => item.status !== 'available').map(item => ({
+        code: `event_item_${item.status}`, severity: 'error', path: `dependencies.requiredItems.${item.key}`,
+        message: `Required inventory item “${item.name}” is ${item.status} here. Repair it before publication.`,
+      }));
     const issues: DungeonIssueDetail[] = [
       ...read.issues,
       ...(loot?.issues ?? []),
       ...dependencyIssues,
+      ...requiredItemIssues,
       ...validateDungeonDefinition(definition, context).issues.map((i) => ({
         ...i,
         path: `dungeon.${i.path}`,
@@ -416,11 +438,11 @@ export function createDungeonImportService(deps: DungeonImportDeps): DungeonImpo
     if (pkg.schemaVersion === 1 && Object.keys(lootChoices).length)
       issues.push({ code: 'loot_table_decision_invalid', severity: 'error', path: 'lootTables', message: 'V1 packages do not carry dungeon loot tables.' });
     const equipmentChanges: z.infer<typeof equipmentChangeSchema>[] = [];
-    if (pkg.schemaVersion === 2) {
+    if (pkg.schemaVersion !== 1) {
       const resolved = resolveDungeonRewardDependencies(definition, context);
-      const selectorKeys = [...new Set([...Object.keys(pkg.rewardSnapshot.equipmentPools), ...Object.keys(resolved.equipment)])].sort();
+      const selectorKeys = [...new Set([...Object.keys(pkg.rewardSnapshot?.equipmentPools ?? {}), ...Object.keys(resolved.equipment)])].sort();
       for (const selectorKey of selectorKeys) {
-        const sourceCandidates = (pkg.rewardSnapshot.equipmentPools[selectorKey] ?? []).map(c => ({ key: c.key, name: c.name }));
+        const sourceCandidates = (pkg.rewardSnapshot?.equipmentPools[selectorKey] ?? []).map(c => ({ key: c.key, name: c.name }));
         const pool = resolved.equipment[selectorKey];
         const targetCandidates = (pool?.candidates ?? []).map(c => ({ key: c.key, name: c.name }));
         const added = targetCandidates.filter(c => !sourceCandidates.some(s => s.key === c.key));
@@ -494,8 +516,8 @@ export function createDungeonImportService(deps: DungeonImportDeps): DungeonImpo
     const fields = targetRow
       ? [
           ...changedFields(targetRow.draft, definition),
-          ...(pkg.schemaVersion === 2 && targetRow.enabled ? ['enabled'] : []),
-          ...(pkg.schemaVersion === 2 && targetRow.publishedRevisionId !== null ? ['publication'] : []),
+          ...(pkg.schemaVersion !== 1 && targetRow.enabled ? ['enabled'] : []),
+          ...(pkg.schemaVersion !== 1 && targetRow.publishedRevisionId !== null ? ['publication'] : []),
           ...(canonicalJson(targetRow.layout) === canonicalJson(layout) ? [] : ['editor.layout']),
         ]
       : [];
@@ -572,14 +594,15 @@ export function createDungeonImportService(deps: DungeonImportDeps): DungeonImpo
       dependencyIssues,
       plan: {
         ...empty,
+        ...(eventDependencies ? { eventDependencies } : {}),
         target,
         planHash,
         enemies: enemyPlans,
         issues,
         publishable: !issues.some((i) => i.severity === 'error'),
-        ...(pkg.schemaVersion === 2 && loot ? {
+        ...(pkg.schemaVersion !== 1 && loot ? {
           lootTables: loot.tablePlans, equipmentChanges, resultingContentHash: dungeonContentHash(definition),
-          rewardSource: { origin: pkg.source.origin, snapshotHash: pkg.rewardSnapshot.hash, resolverVersion: pkg.rewardSnapshot.resolverVersion },
+          rewardSource: { origin: pkg.source.origin, snapshotHash: pkg.rewardSnapshot?.hash ?? null, resolverVersion: pkg.rewardSnapshot?.resolverVersion ?? null },
         } : {}),
       },
     };
@@ -729,8 +752,8 @@ export function createDungeonImportService(deps: DungeonImportDeps): DungeonImpo
                 revision: inserted.revision, origin: 'import', previousContentHash: null, newContentHash: table.contentHash,
                 details: { packageId: pkg.packageId, packageHash: importHash(pkg), dungeonKey: pkg.dungeon.key,
                   sourceEnvironment: pkg.source.environment, source: pkg.source, sourceTableKey: table.sourceKey, sourceRevision: table.sourceRevision,
-                  sourceOrigin: pkg.schemaVersion === 2 ? pkg.bundled.dungeonLootTables.find(t => t.key === table.sourceKey)!.origin : null,
-                  rewardSnapshotHash: pkg.schemaVersion === 2 ? pkg.rewardSnapshot.hash : null },
+                  sourceOrigin: pkg.schemaVersion !== 1 ? pkg.bundled.dungeonLootTables.find(t => t.key === table.sourceKey)!.origin : null,
+                  rewardSnapshotHash: pkg.schemaVersion !== 1 ? pkg.rewardSnapshot?.hash ?? null : null },
               });
               createdLootTables.push(table.key);
             }
@@ -740,6 +763,7 @@ export function createDungeonImportService(deps: DungeonImportDeps): DungeonImpo
               [
                 ...plan.issues.filter((i) => i.severity === 'warning'),
                 ...dependencyIssues,
+                ...plan.issues.filter(i => i.path.startsWith('dependencies.requiredItems.')),
                 ...validateDungeonDefinition(definition, context).issues.map((i) => ({
                   ...i,
                   path: `dungeon.${i.path}`,
@@ -755,7 +779,7 @@ export function createDungeonImportService(deps: DungeonImportDeps): DungeonImpo
               (i) =>
                 i.severity === 'error' &&
                 !(input.decisions.allowMissingDependencies && (MISSING_DEPENDENCIES.has(i.code) ||
-                  pkg.schemaVersion === 2 && ['reward_item_missing', 'reward_item_disabled', 'reward_item_capped', 'reward_equipment_empty', 'reward_table_archived', 'reward_table_invalid', 'reward_shards_unset'].includes(i.code))),
+                  pkg.schemaVersion !== 1 && ['event_item_missing', 'event_item_disabled', 'reward_item_missing', 'reward_item_disabled', 'reward_item_capped', 'reward_equipment_empty', 'reward_table_archived', 'reward_table_invalid', 'reward_shards_unset'].includes(i.code))),
             ),
           ];
           if (fatal.length) throw new DungeonImportError('DUNGEON_IMPORT_INVALID', fatal);
@@ -790,7 +814,7 @@ export function createDungeonImportService(deps: DungeonImportDeps): DungeonImpo
                 layout: layout as unknown as Record<string, unknown>,
                 draftHash: dungeonContentHash(definition),
                 draftRevision,
-                ...(pkg.schemaVersion === 2 ? { enabled: false, publishedRevisionId: null } : {}),
+                ...(pkg.schemaVersion !== 1 ? { enabled: false, publishedRevisionId: null } : {}),
                 updatedAt: new Date(),
                 updatedBy: actor,
               })
@@ -804,11 +828,11 @@ export function createDungeonImportService(deps: DungeonImportDeps): DungeonImpo
             issues,
             publishable: !issues.some((i) => i.severity === 'error'),
             replayed: false,
-            ...(pkg.schemaVersion === 2 && loot ? {
+            ...(pkg.schemaVersion !== 1 && loot ? {
               contentHash: dungeonContentHash(definition), createdLootTables,
               reusedLootTables: loot.tablePlans.filter(t => t.decision?.action === 'use_existing').map(t => t.targetKey),
-              tableKeyChanges: Object.fromEntries(loot.rewrites), sourceSchemaVersion: 2 as const,
-              rewardSnapshotHash: pkg.rewardSnapshot.hash,
+              tableKeyChanges: Object.fromEntries(loot.rewrites), sourceSchemaVersion: pkg.schemaVersion,
+              rewardSnapshotHash: pkg.rewardSnapshot?.hash ?? null,
             } : {}),
           };
           const [history] = await tx
@@ -836,8 +860,8 @@ export function createDungeonImportService(deps: DungeonImportDeps): DungeonImpo
               result,
               draftRevision,
               createdEnemies,
-              ...(pkg.schemaVersion === 2 ? { sourceSchemaVersion: 2, source: pkg.source, sourceContentHash: pkg.contentHash,
-                contentHash: dungeonContentHash(definition), rewardSnapshotHash: pkg.rewardSnapshot.hash,
+              ...(pkg.schemaVersion !== 1 ? { sourceSchemaVersion: pkg.schemaVersion, source: pkg.source, sourceContentHash: pkg.contentHash,
+                contentHash: dungeonContentHash(definition), rewardSnapshotHash: pkg.rewardSnapshot?.hash ?? null,
                 createdLootTables, tableKeyChanges: loot ? Object.fromEntries(loot.rewrites) : {} } : {}),
               decisions: input.decisions,
             },

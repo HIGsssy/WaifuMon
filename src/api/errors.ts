@@ -236,6 +236,7 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   CONTENT_INVALID: 500,
   DB_UNAVAILABLE: 503,
   DUNGEON_REWARD_ITEM_UNAVAILABLE: 503,
+  DUNGEON_EVENT_ITEM_UNAVAILABLE: 409,
   DUNGEON_REWARD_GRANT_FAILED: 503,
   /**
    * The card SVG kit is missing a file, or the base template is not the shape

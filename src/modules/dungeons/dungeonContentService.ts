@@ -55,6 +55,7 @@ import {
   dungeonLootTables,
   dungeonRevisions,
   dungeonRuns,
+  items,
   progressionCurrencies,
   rewardTables,
   type DungeonContentEventAction,
@@ -89,7 +90,7 @@ import {
   type DungeonRewardDependencyChange,
   type DungeonRewardSnapshot,
 } from './content/dungeonRewardSnapshot';
-import { dungeonDependencies } from './content/dungeonDefinition';
+import { dungeonDependencies, dungeonRequiredItems, dungeonUsesEvents } from './content/dungeonDefinition';
 import { equipmentSelectorKey } from '../equipment/rewardSelector';
 import { buildPreviewRewardSnapshot, previewRewardContext, testRollDungeonRewards, type DungeonTestRollRequest, type DungeonTestRollResult } from './dungeonRewardPreview';
 import { assertDungeonRewardDependencies } from './dungeonRewardValidation';
@@ -301,6 +302,20 @@ export interface DungeonRewardHealthProblem {
   message: string;
   hint: string;
 }
+/**
+ * Something worth knowing that is **not** a broken reward: an item an event
+ * choice needs is gone or disabled, so players will find that choice
+ * unavailable. Nothing fails to be delivered, and the status does not change.
+ */
+export interface DungeonRewardHealthNotice {
+  type: 'event_item';
+  reason: 'item_missing' | 'item_disabled';
+  /** The item slug. */
+  key: string;
+  name: string;
+  message: string;
+  hint: string;
+}
 export interface DungeonRewardHealthEntry {
   key: string;
   name: string;
@@ -314,6 +329,8 @@ export interface DungeonRewardHealthEntry {
    */
   status: 'healthy' | 'broken' | 'no_rewards' | 'unpublished';
   problems: DungeonRewardHealthProblem[];
+  /** Informational findings about the published revision; never part of `status`. */
+  notices: DungeonRewardHealthNotice[];
   /** Errors in the draft. They block the next publish and do not affect players. */
   draftErrors: number;
   /** Runs in progress on the published revision above. */
@@ -331,6 +348,7 @@ export interface DungeonRewardHealthActiveRevision {
   activeRuns: number;
   status: 'healthy' | 'broken' | 'no_rewards';
   problems: DungeonRewardHealthProblem[];
+  notices: DungeonRewardHealthNotice[];
 }
 export interface DungeonRewardHealthReport {
   dungeons: DungeonRewardHealthEntry[];
@@ -470,12 +488,20 @@ function parseStoredRewardSnapshot(revision: DungeonRevisionRow): DungeonRewardS
  * of the live catalogue, so a table edited, archived or deleted since does
  * not matter; `snapshotLiveIssues` checks the rows a payout still needs.
  */
-function snapshotRewardContext(snapshot: DungeonRewardSnapshot): Pick<DungeonValidationContext, 'lootTables' | 'items' | 'resolveEquipmentSelector'> {
+function snapshotRewardContext(
+  snapshot: DungeonRewardSnapshot,
+  liveItems?: DungeonValidationContext['items'],
+): Pick<DungeonValidationContext, 'lootTables' | 'items' | 'resolveEquipmentSelector'> {
   return {
     lootTables: new Map(
       Object.entries(snapshot.tables).map(([key, t]) => [key, { name: t.name, body: t.body, archivedAt: null, tier: t.tier, revision: t.sourceRevision }]),
     ),
-    items: new Map(Object.entries(snapshot.items).map(([slug, item]) => [slug, { ...item, enabled: true, maxOwned: null }])),
+    // The pinned reward items, as promised. Items an event choice *requires* were never pinned — the
+    // slug is their identity — so those are judged against the live catalogue the caller read.
+    items: new Map([
+      ...(liveItems ?? []),
+      ...Object.entries(snapshot.items).map(([slug, item]) => [slug, { ...item, enabled: true, maxOwned: null }] as const),
+    ]),
     resolveEquipmentSelector: (selector) => (snapshot.equipmentPools[equipmentSelectorKey(selector)] ?? []).map((c) => ({ ...c, enabled: true })),
   };
 }
@@ -1049,11 +1075,40 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
           items: Object.assign({}, ...snapshots.map((s) => s.items)),
           equipmentPools: Object.fromEntries(snapshots.flatMap((s, i) => Object.entries(s.equipmentPools).map(([key, pool]) => [`${i}:${key}`, pool]))),
         });
+        // Items the events of those revisions ask players for. Not rewards: a missing one
+        // makes a choice unavailable, which is worth saying and breaks nothing.
+        const required = new Map(revisions.map((r) => {
+          const parsed = DungeonDefinitionSchema.safeParse(r.content);
+          return [r.id, parsed.success ? dungeonRequiredItems(parsed.data) : []] as const;
+        }));
+        const requiredSlugs = [...new Set([...required.values()].flat())];
+        const requiredRows = requiredSlugs.length
+          ? await tx.select({ slug: items.slug, name: items.name, enabled: items.enabled }).from(items).where(inArray(items.slug, requiredSlugs))
+          : [];
+        const requiredItems = new Map(requiredRows.map((r) => [r.slug, r]));
+        const noticesOf = (revision: DungeonRevisionRow): DungeonRewardHealthNotice[] =>
+          (required.get(revision.id) ?? []).flatMap((slug): DungeonRewardHealthNotice[] => {
+            const item = requiredItems.get(slug);
+            if (item?.enabled) return [];
+            const superseded = !publishedIds.has(revision.id);
+            return [{
+              type: 'event_item',
+              reason: item ? 'item_disabled' : 'item_missing',
+              key: slug,
+              name: item?.name ?? slug,
+              message: item
+                ? `An event choice needs “${item.name}”, which is disabled.`
+                : `An event choice needs the item “${slug}”, which no longer exists.`,
+              hint: superseded
+                ? 'Players on this revision see that choice as unavailable; their other choices still work. Restore the item to bring it back for them.'
+                : 'Players see that choice as unavailable; their other choices still work. Restore the item, or change the event and publish again.',
+            }];
+          });
         const judge = (revision: DungeonRevisionRow) => {
           const rewards = read.get(revision.id) ?? null;
           const superseded = !publishedIds.has(revision.id);
           const problems = !rewards ? [] : 'problems' in rewards ? rewards.problems : liveRewardProblems(rewards.snapshot, live, superseded);
-          return { problems, status: problems.length > 0 ? 'broken' as const : rewards ? 'healthy' as const : 'no_rewards' as const };
+          return { problems, notices: noticesOf(revision), status: problems.length > 0 ? 'broken' as const : rewards ? 'healthy' as const : 'no_rewards' as const };
         };
         const ctx = await validationContext(tx);
         const dungeons: DungeonRewardHealthEntry[] = rows.map((row) => {
@@ -1064,7 +1119,7 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
             name: typeof draft.name === 'string' ? draft.name : row.dungeonKey,
             enabled: row.enabled,
             revision: revision?.number ?? null,
-            ...(revision ? judge(revision) : { status: 'unpublished' as const, problems: [] }),
+            ...(revision ? judge(revision) : { status: 'unpublished' as const, problems: [], notices: [] }),
             draftErrors: validateDungeonDefinition(row.draft, ctx).issues.filter((i) => i.severity === 'error').length,
             activeRuns: revision ? (activeRuns.get(revision.id) ?? 0) : 0,
             activeRevisions: revisions
@@ -1081,7 +1136,7 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
       return db.transaction(async (tx) => {
         const ctx = await validationContext(tx);
         const pinned = options.snapshot === undefined ? undefined : readDungeonRewardSnapshot(options.snapshot);
-        const overrides = previewRewardContext({ ...ctx, ...(pinned ? snapshotRewardContext(pinned) : {}) }, options.tables);
+        const overrides = previewRewardContext({ ...ctx, ...(pinned ? snapshotRewardContext(pinned, ctx.items) : {}) }, options.tables);
         const report = validateDungeonDefinition(raw, overrides.context);
         const issues = [...overrides.issues, ...report.issues];
         if (report.definition && hasDungeonRewardBundles(report.definition) && options.snapshot !== undefined && !pinned) {
@@ -1276,7 +1331,7 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
         }
         // T5's dependency locks (items, equipment, currencies) are kept; only the loot tables are no longer read.
         const ctx = await validationContext(tx, snapshot ? await loadDungeonRewardContext(tx, { lootTableKeys: [], lock: true }) : undefined);
-        const { issues } = validateDungeonDefinition(target.content, snapshot ? { ...ctx, ...snapshotRewardContext(snapshot) } : ctx);
+        const { issues } = validateDungeonDefinition(target.content, snapshot ? { ...ctx, ...snapshotRewardContext(snapshot, ctx.items) } : ctx);
         if (snapshot) issues.push(...snapshotLiveIssues(targetDefinition, snapshot, await loadSnapshotLiveDependencies(tx, snapshot, { lock: true })));
         if (hasErrors(issues)) throw new DungeonInvalidError(issues);
         const [updated] = await tx
@@ -1381,6 +1436,12 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
             rewardSnapshot = snapshot;
           }
         }
+        // Reward-free events still need structural verification and field-level
+        // authoring errors. Published exports never consult mutable catalogues here.
+        if (dungeonUsesEvents(definition)) {
+          const { issues } = validateDungeonDefinition(definition);
+          if (hasErrors(issues)) throw new DungeonInvalidError(issues);
+        }
         const enemies = new Map((await deps.enemies.definitions(tx)).map((e) => [e.key, e]));
         let pkg: DungeonPackage;
         try {
@@ -1401,9 +1462,8 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
           if (!rewardSnapshot) throw err;
           throw new DungeonInvalidError([{ code: 'reward_snapshot_invalid', severity: 'error', path: 'rewardSnapshot', message: err instanceof Error ? err.message : String(err) }]);
         }
-        await audit(tx, key, 'exported', actor, { packageId: pkg.packageId, contentHash: pkg.contentHash, origin: pkg.source.origin, revision: pkg.source.publishedRevision });
         return pkg;
-      }, { isolationLevel: 'repeatable read' });
+      }, { isolationLevel: 'repeatable read', accessMode: 'read only' });
     },
 
     async openDungeons(tx = db) {
