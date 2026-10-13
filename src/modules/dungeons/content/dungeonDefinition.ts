@@ -36,6 +36,7 @@
  * dedicated issue code rather than a schema error.
  */
 import { z } from 'zod';
+import { SceneSpriteInstanceSchema, SCENE_SPRITE_MAX_PLACEMENTS, sceneSpriteKeys } from '../sceneSprites/sceneSpriteDefinition';
 import { equipmentSelectorKey, type EquipmentRewardSelector } from '../../equipment/rewardSelector';
 import {
   DUNGEON_EVENT_LIMITS,
@@ -93,6 +94,7 @@ export const DUNGEON_MAX_FLAGS = 200;
 // ── actions ─────────────────────────────────────────────────────────────────
 
 const actionBase = {
+  sceneSprites: z.array(SceneSpriteInstanceSchema).max(SCENE_SPRITE_MAX_PLACEMENTS).optional(),
   id,
   /** What the player reads on the button or heading; a default is used when empty. */
   label: shortText(80).default(''),
@@ -242,6 +244,7 @@ export const DungeonRoomSchema = z
     /** Once this room is complete the player may leave the dungeon here, banking everything. */
     extraction: z.boolean().default(false),
     background: DungeonArtworkRefSchema.nullable().default(null),
+    sceneSprites: z.array(SceneSpriteInstanceSchema).max(SCENE_SPRITE_MAX_PLACEMENTS).optional(),
     actions: z.array(DungeonActionSchema).max(DUNGEON_MAX_ACTIONS_PER_ROOM).default([]),
   })
   .strict();
@@ -337,6 +340,7 @@ export function waveEnemyKeys(wave: CombatWave): string[] {
 }
 
 export interface DungeonDependencies {
+  sceneSprites?: string[];
   enemies: string[];
   /** `expedition`-kind reward table ids. */
   rewardTables: string[];
@@ -354,7 +358,7 @@ export interface DungeonDependencies {
  * content — never declared by hand — so a package's manifest cannot understate
  * what its dungeon needs.
  */
-export function dungeonDependencies(definition: DungeonDefinition): DungeonDependencies {
+export function dungeonDependencies(definition: DungeonDefinition, sceneSprites?: ReadonlyMap<string, { contentHash: string; artworkCategory: string; name: string }>): DungeonDependencies {
   const enemies = new Set<string>();
   const rewardTables = new Set<string>();
   const lootTables = new Set<string>();
@@ -365,6 +369,10 @@ export function dungeonDependencies(definition: DungeonDefinition): DungeonDepen
   const art = (ref: DungeonArtworkRef | null) => {
     if (ref) artwork.set(ref.kind === 'shipped' ? `shipped:${ref.path}` : `managed:${ref.category}:${ref.contentHash}`, ref);
   };
+  for (const key of sceneSpriteKeys(definition)) {
+    const sprite = sceneSprites?.get(key);
+    if (sprite) art({ kind: 'managed', category: sprite.artworkCategory, contentHash: sprite.contentHash, name: sprite.name });
+  }
   art(definition.artwork);
   art(definition.background);
   for (const room of definition.rooms) {
@@ -390,6 +398,7 @@ export function dungeonDependencies(definition: DungeonDefinition): DungeonDepen
   const reachable = reachableDungeonEvents(definition);
   for (const event of definition.events ?? []) if (reachable.has(event.id)) art(event.artwork ?? null);
   return {
+    ...(sceneSpriteKeys(definition).length ? { sceneSprites: sceneSpriteKeys(definition) } : {}),
     enemies: [...enemies].sort(),
     rewardTables: [...rewardTables].sort(),
     lootTables: [...lootTables].sort(),

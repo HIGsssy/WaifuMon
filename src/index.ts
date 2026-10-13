@@ -1,3 +1,4 @@
+import { createSceneSpriteService } from './modules/dungeons/sceneSprites/sceneSpriteService';
 /**
  * Startup order (plan §26): validate env → retry-connect to Postgres →
  * run migrations → load/validate/seed content & assets → register slash
@@ -452,6 +453,7 @@ async function main(): Promise<void> {
    */
   const artworkStorage = createLocalArtworkStorage(config.managedAssetsDir);
   const artworkAssets = createArtworkAssetService({ db, storage: artworkStorage, logger });
+  const dungeonSceneSprites = createSceneSpriteService({ db, assets: artworkAssets });
   /**
    * The Enemy Catalogue. `combat_enemies` is authoritative; the shipped
    * `content/combat/enemies.json` is seeded into it below and after every
@@ -899,6 +901,7 @@ async function main(): Promise<void> {
       bossDefinitions,
       bossArtwork,
       sceneComposition,
+      dungeonSceneSprites,
     },
   };
 

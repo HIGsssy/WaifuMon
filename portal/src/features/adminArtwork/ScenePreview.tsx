@@ -139,15 +139,18 @@ export function ScenePreview({
   sprite,
   placement,
   testId = 'scene-preview',
+  environmentalSprites,
 }: {
   background: ArtworkLayerRef | null;
   sprite?: ArtworkLayerRef | null;
   placement?: SpritePlacement;
   testId?: string;
+  environmentalSprites?: ScenePreviewRequest['environmentalSprites'];
 }) {
   const request: ScenePreviewRequest | null = hasImage(background)
     ? {
         background: background!,
+        ...(environmentalSprites?.length ? { environmentalSprites } : {}),
         ...(hasImage(sprite)
           ? { sprite: sprite!, placement: placement ?? DEFAULT_SPRITE_PLACEMENT, playerBuddy: {} }
           : {}),

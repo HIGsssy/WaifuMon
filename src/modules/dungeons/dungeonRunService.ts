@@ -1,3 +1,4 @@
+import { sceneSpritesForRoom, type SceneSpriteRenderVisual } from './sceneSprites/sceneSpriteSnapshot';
 /**
  * Playing a dungeon run: starting one, stepping it, and settling it.
  *
@@ -216,6 +217,7 @@ export interface DungeonSceneEnemy {
 }
 
 export interface DungeonRunView {
+  sceneSprites?: SceneSpriteRenderVisual[];
   id: number;
   status: DungeonRunStatus;
   /** The step the next input must name. */
@@ -391,6 +393,7 @@ function stateOf(row: DungeonRunRow): DungeonRunState {
 }
 
 interface LoadedRun {
+  sceneSpriteSnapshot: unknown;
   row: DungeonRunRow;
   definition: DungeonDefinition;
   revisionNumber: number;
@@ -568,6 +571,7 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
       row,
       definition: pinned.definition,
       revisionNumber: pinned.revision.number,
+      sceneSpriteSnapshot: pinned.revision.sceneSpriteSnapshot,
       snapshot,
       fighter,
       eventItemNames: facts.names,
@@ -687,6 +691,7 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
       },
       fighter: run.fighter,
       core,
+      ...(run.sceneSpriteSnapshot ? { sceneSprites: sceneSpritesForRoom(definition, core.room.id, core.action?.event || core.action?.wave ? core.action.id : lastWave?.actionId ?? core.action?.id, run.sceneSpriteSnapshot) } : {}),
       enemy: sceneEnemy(run, core.action?.wave?.enemy ?? (lastWave?.kind === 'wave' ? snapshot.enemies[lastWave.wave.enemyKey] : undefined)),
       ...(core.action?.event ? { eventArtwork: resolveDungeonArtwork(core.action.event.artwork ?? null, snapshot.artwork ?? {}) } : {}),
       ...(core.action?.event || spent.length > 0 ? { eventItemNames: { ...spentNames, ...run.eventItemNames } } : {}),

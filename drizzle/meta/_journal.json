@@ -463,6 +463,20 @@
       "when": 1821391200000,
       "tag": "0065_dungeon_events",
       "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1821477600000,
+      "tag": "0066_dungeon_scene_sprites",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1821564000000,
+      "tag": "0067_dungeon_scene_sprite_snapshots",
+      "breakpoints": true
     }
   ]
 }

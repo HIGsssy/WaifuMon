@@ -167,6 +167,7 @@ const RewardTableEditorPage = lazy(() =>
 );
 // Dungeons (drafts, revisions and publication). Gated on
 // `dungeons.read` only.
+const SceneSpritesPage = lazy(() => import('@/features/adminDungeonSceneSprites/SceneSpritesPage').then((m) => ({ default: m.SceneSpritesPage })));
 const DungeonsListPage = lazy(() =>
   import('@/features/adminDungeons/DungeonsListPage').then((m) => ({
     default: m.DungeonsListPage,
@@ -502,6 +503,10 @@ export const routes: RouteObject[] = [
                 <DungeonCreatePage />
               </RequirePortalPermission>
             ),
+          },
+          {
+            path: 'admin/dungeons/scene-sprites',
+            element: <RequirePortalPermission permission="dungeons.read"><SceneSpritesPage /></RequirePortalPermission>,
           },
           {
             path: 'admin/dungeons/loot',

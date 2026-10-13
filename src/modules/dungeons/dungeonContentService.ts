@@ -1,3 +1,5 @@
+import { sceneSpriteCatalogue, freezeSceneSprites, readSceneSpriteSnapshot, pinnedSceneSpriteCatalogue } from './sceneSprites/sceneSpriteSnapshot';
+import { hasSceneSprites } from './sceneSprites/sceneSpriteDefinition';
 /**
  * Dungeon authoring: drafts, publication, rollback, audit and export.
  *
@@ -144,6 +146,7 @@ export interface DungeonPublishedInfo {
 }
 
 export interface DungeonSummary {
+  sceneSpritesDiffer?: boolean;
   key: string;
   name: string;
   enabled: boolean;
@@ -195,6 +198,7 @@ export interface DungeonRevisionSummary {
 }
 
 export interface DungeonRevisionDetail extends DungeonRevisionSummary {
+  sceneSpriteSnapshot?: ReturnType<typeof readSceneSpriteSnapshot>;
   content: DungeonDefinition;
   layout: DungeonLayout;
   /** The reward dependencies the revision pinned when it was published; null without v2 rewards. */
@@ -561,16 +565,18 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
   const { db } = deps;
 
   async function validationContext(tx: DbOrTx = db, rewardContext?: DungeonValidationContext): Promise<DungeonValidationContext> {
-    const [enemies, tables, currencies, managed] = await Promise.all([
+    const [enemies, tables, currencies, managed, sceneSprites] = await Promise.all([
       deps.enemies.definitions(tx),
       tx.select({ id: rewardTables.tableId, enabled: rewardTables.enabled }).from(rewardTables).where(eq(rewardTables.kind, 'expedition')),
       tx.select({ key: progressionCurrencies.currencyKey, enabled: progressionCurrencies.enabled }).from(progressionCurrencies),
       managedArtworkIndex(tx),
+      sceneSpriteCatalogue(tx, deps.artworkStorage),
     ]);
     const rewards = rewardContext ?? await loadDungeonRewardContext(tx);
     const assetsDir = deps.assetsDir;
     return {
       ...rewards,
+      sceneSprites,
       enemies: new Map(enemies.map((e) => [e.key, { enabled: e.enabled }])),
       rewardTables: new Map(tables.map((t) => [t.id, { enabled: t.enabled }])),
       currencies: rewardContext?.currencies ?? new Map(currencies.map((c) => [c.key, { enabled: c.enabled }])),
@@ -630,6 +636,12 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
     };
   }
 
+  function sceneSpritesDiffer(definition: DungeonDefinition | null, published: DungeonRevisionRow | null, ctx: DungeonValidationContext): boolean {
+    if (!definition || !published) return false;
+    try { return (freezeSceneSprites(definition, ctx.sceneSprites ?? new Map())?.hash ?? null) !== (readSceneSpriteSnapshot(published.sceneSpriteSnapshot)?.hash ?? null); }
+    catch { return true; }
+  }
+
   function summaryOf(
     row: DungeonDefinitionRow,
     published: DungeonRevisionRow | null,
@@ -656,6 +668,7 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
       },
       draftDiffers: published == null || published.contentHash !== row.draftHash,
       ...dependencyReport(row, published, definition, rewards),
+      ...(definition && (hasSceneSprites(definition) || published?.sceneSpriteSnapshot) ? { sceneSpritesDiffer: sceneSpritesDiffer(definition, published, rewards) } : {}),
       open: row.enabled && published != null,
       updatedAt: row.updatedAt,
       updatedBy: row.updatedBy,
@@ -895,7 +908,7 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
       const revisions = publishedIds.length ? await db.select().from(dungeonRevisions).where(inArray(dungeonRevisions.id, publishedIds)) : [];
       const byId = new Map(revisions.map((r) => [r.id, r]));
       // One read of the loot catalogue, items and rewardable equipment for every dungeon.
-      const rewards = await loadDungeonRewardContext(db);
+      const rewards: DungeonValidationContext = { ...await loadDungeonRewardContext(db), sceneSprites: await sceneSpriteCatalogue(db, deps.artworkStorage) };
       return rows.map((row) => summaryOf(row, row.publishedRevisionId == null ? null : (byId.get(row.publishedRevisionId) ?? null), rewards));
     },
 
@@ -1182,6 +1195,8 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
 
     async saveDraft(key, input, actor) {
       return db.transaction(async (tx) => {
+        await tx.execute(sql`LOCK TABLE dungeon_scene_sprites IN SHARE MODE`);
+        await tx.execute(sql`LOCK TABLE dungeon_scene_sprites IN SHARE MODE`);
         const row = await lockRow(tx, key);
         if (row.draftRevision !== input.expectedRevision) {
           throw new DungeonDraftStaleError(key, input.expectedRevision, row.draftRevision, row.updatedBy, row.updatedAt);
@@ -1221,6 +1236,7 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
 
     async publish(key, input, actor) {
       return db.transaction(async (tx) => {
+        await tx.execute(sql`LOCK TABLE dungeon_scene_sprites IN SHARE MODE`);
         const row = await lockRow(tx, key);
         if (row.draftRevision !== input.expectedRevision) {
           throw new DungeonDraftStaleError(key, input.expectedRevision, row.draftRevision, row.updatedBy, row.updatedAt);
@@ -1230,7 +1246,8 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
         const rewards = hasDungeonRewardBundles(definition)
           ? await loadDungeonRewardContext(tx, { lootTableKeys: dungeonDependencies(definition).lootTables, lock: true })
           : undefined;
-        const ctx = await validationContext(tx, rewards);
+        const spriteCatalogue = await sceneSpriteCatalogue(tx, deps.artworkStorage, true);
+        const ctx = { ...await validationContext(tx, rewards), sceneSprites: spriteCatalogue };
         const { issues } = validateDungeonDefinition(definition, ctx);
         if (hasErrors(issues)) throw new DungeonInvalidError(issues);
 
@@ -1251,9 +1268,10 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
           }
           rewardSnapshot = DungeonRewardSnapshotSchema.parse(rewardSnapshot);
         }
+        const sceneSpriteSnapshot = freezeSceneSprites(definition, spriteCatalogue);
         const gameplayHash = rewardSnapshot ? dungeonGameplayHash(contentHash, rewardSnapshot.hash) : null;
         // With no snapshot on either side this is the content-hash comparison it always was.
-        if (current && current.contentHash === contentHash && current.gameplayHash === gameplayHash) {
+        if (current && current.contentHash === contentHash && current.gameplayHash === gameplayHash && (readSceneSpriteSnapshot(current.sceneSpriteSnapshot)?.hash ?? null) === (sceneSpriteSnapshot?.hash ?? null)) {
           return { dungeon: await detailOf(tx, row), revision: revisionSummary(current, current.id, active), unchanged: true };
         }
 
@@ -1276,6 +1294,7 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
             draftRevision: row.draftRevision,
             publishedBy: actor,
             rewardSnapshot: rewardSnapshot as Record<string, unknown> | null,
+            sceneSpriteSnapshot,
             gameplayHash,
           })
           .returning();
@@ -1290,6 +1309,7 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
           contentHash,
           draftRevision: row.draftRevision,
           previousRevision: current?.number ?? null,
+          ...(sceneSpriteSnapshot ? { sceneSpriteSnapshotHash: sceneSpriteSnapshot.hash, sceneSpriteKeys: Object.keys(sceneSpriteSnapshot.sprites) } : {}),
           warnings: issues.filter((i) => i.severity === 'warning').length,
           ...(rewardSnapshot ? { gameplayHash, rewardSnapshotHash: rewardSnapshot.hash, definitionChanged: current?.contentHash !== contentHash } : {}),
         });
@@ -1331,6 +1351,9 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
         }
         // T5's dependency locks (items, equipment, currencies) are kept; only the loot tables are no longer read.
         const ctx = await validationContext(tx, snapshot ? await loadDungeonRewardContext(tx, { lootTableKeys: [], lock: true }) : undefined);
+        const pinnedSprites = await pinnedSceneSpriteCatalogue(tx, target.sceneSpriteSnapshot, deps.artworkStorage);
+        if (hasSceneSprites(targetDefinition) && !readSceneSpriteSnapshot(target.sceneSpriteSnapshot)) throw new DungeonInvalidError([{ code: 'scene_sprite_snapshot_invalid', severity: 'error', path: 'rooms', message: 'This revision has no usable frozen scene sprites. Publish the draft again.' }]);
+        ctx.sceneSprites = pinnedSprites;
         const { issues } = validateDungeonDefinition(target.content, snapshot ? { ...ctx, ...snapshotRewardContext(snapshot, ctx.items) } : ctx);
         if (snapshot) issues.push(...snapshotLiveIssues(targetDefinition, snapshot, await loadSnapshotLiveDependencies(tx, snapshot, { lock: true })));
         if (hasErrors(issues)) throw new DungeonInvalidError(issues);
@@ -1382,6 +1405,7 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
         content: parseStoredDefinition(key, revision.content),
         layout: parseStoredLayout(revision.layout),
         rewardSnapshot: parseStoredRewardSnapshot(revision),
+        ...(revision.sceneSpriteSnapshot ? { sceneSpriteSnapshot: readSceneSpriteSnapshot(revision.sceneSpriteSnapshot) } : {}),
       };
     },
 
@@ -1442,6 +1466,7 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
           const { issues } = validateDungeonDefinition(definition);
           if (hasErrors(issues)) throw new DungeonInvalidError(issues);
         }
+        if (hasSceneSprites(definition)) throw new DungeonInvalidError([{ code: 'schema', severity: 'error', path: 'rooms', message: 'Packages with Scene Sprites are temporarily unavailable until sprite dependencies can be bundled safely. Remove placements from a copy to export it.' }]);
         const enemies = new Map((await deps.enemies.definitions(tx)).map((e) => [e.key, e]));
         let pkg: DungeonPackage;
         try {

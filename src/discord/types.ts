@@ -1,3 +1,4 @@
+import type { SceneSpriteService } from '../modules/dungeons/sceneSprites/sceneSpriteService';
 import type {
   ButtonInteraction,
   ChatInputCommandInteraction,
@@ -261,6 +262,7 @@ export interface AppServices {
   artworkAssets?: ArtworkAssetService | undefined;
   /** The Enemy Catalogue: DB-backed combat enemies, shared by dungeons and Combat Trials. */
   enemies?: EnemyCatalogueService | undefined;
+  dungeonSceneSprites?: SceneSpriteService | undefined;
   /** Boss Management: DB-backed boss definitions and their availability schedules (Portal Admin). */
   bossDefinitions?: BossDefinitionService | undefined;
   /** Boss artwork library and uploads. Absent on a build without managed artwork. */

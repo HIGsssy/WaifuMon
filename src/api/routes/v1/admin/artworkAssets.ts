@@ -93,7 +93,7 @@ const assetSchema = z.object({
 });
 
 const referenceSchema = z.object({
-  kind: z.enum(['dungeon_zone', 'combat_enemy', 'boss']),
+  kind: z.enum(['dungeon_zone', 'combat_enemy', 'boss', 'dungeon_scene_sprite']),
   key: z.string(),
   name: z.string().nullable(),
   field: z.string(),
@@ -434,7 +434,7 @@ export const adminArtworkAssetRoutes =
         },
       },
       async (req) => {
-        const result = await assets.setEnabled(req.params.id, req.body.enabled, actorOf(req));
+        const result = await translate(() => assets.setEnabled(req.params.id, req.body.enabled, actorOf(req)));
         if (!result) throw notFound(req.params.id);
         return ok(req, { asset: toAsset(result.asset), references: result.references });
       },
@@ -478,6 +478,7 @@ export const adminArtworkAssetRoutes =
               '`x-scene-player-buddy*` headers report who was drawn and how much of her the enemy sprite covers',
             body: z
               .object({
+                environmentalSprites: z.array(z.object({ ref: layerRefSchema, placement: SpritePlacementSchema, mirror: z.boolean(), visualLayer: z.enum(['background', 'foreground']) }).strict()).max(10).optional(),
                 background: layerRefSchema,
                 sprite: layerRefSchema.nullable().optional(),
                 placement: SpritePlacementSchema.optional(),
@@ -525,7 +526,13 @@ export const adminArtworkAssetRoutes =
               }
             }
           }
+          const environmentalSprites = [];
+          for (const item of req.body.environmentalSprites ?? []) {
+            const layer = await resolve(item.ref);
+            if (layer) environmentalSprites.push({ layer, placement: item.placement, mirror: item.mirror, visualLayer: item.visualLayer });
+          }
           const request = {
+            environmentalSprites,
             background,
             sprite: spriteLayer
               ? { layer: spriteLayer, placement: req.body.placement ?? SpritePlacementSchema.parse({}) }

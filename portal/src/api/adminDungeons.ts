@@ -1,3 +1,4 @@
+import type { SceneSpriteInstance } from './adminDungeonSceneSprites';
 /** Phase 1A dungeon authoring API. All calls use the shared authenticated client. */
 import type {
   DungeonImportPlan,
@@ -114,6 +115,7 @@ export type DungeonEventSource =
   { kind: 'event'; eventId: string } | { kind: 'pool'; poolId: string };
 
 export interface DungeonAction {
+  sceneSprites?: SceneSpriteInstance[];
   id: string;
   type: string;
   label?: string;
@@ -138,6 +140,7 @@ export interface DungeonAction {
   [field: string]: unknown;
 }
 export interface DungeonRoom {
+  sceneSprites?: SceneSpriteInstance[];
   id: string;
   name?: string;
   description?: string;
@@ -223,6 +226,7 @@ export interface DungeonSummary {
   draftHash: string;
   published: DungeonPublishedInfo | null;
   draftDiffers: boolean;
+  sceneSpritesDiffer?: boolean;
   /** Reward dependency reporting (T6): the draft's loot against what the published revision pinned. */
   draftGameplayHash?: string | null;
   dependenciesDiffer?: boolean;
@@ -243,6 +247,7 @@ export interface DungeonRevision extends DungeonPublishedInfo {
   activeRuns: number;
 }
 export interface DungeonRevisionDetail extends DungeonRevision {
+  sceneSpriteSnapshot?: Record<string, unknown> | null;
   content: DungeonDefinition;
   layout: DungeonLayout;
   rewardSnapshot?: Record<string, unknown> | null;
@@ -701,7 +706,7 @@ export interface DungeonScenePreview {
  * dungeon artwork). Rejects with a 404 when the enemy has nothing to show.
  */
 export async function previewDungeonScene(
-  input: { enemyKey: string; backgrounds: Array<DungeonArtworkRef | null> },
+  input: { enemyKey?: string; backgrounds: Array<DungeonArtworkRef | null>; roomSprites?: SceneSpriteInstance[]; activitySprites?: SceneSpriteInstance[] },
   signal?: AbortSignal,
 ): Promise<DungeonScenePreview> {
   const response = await apiClient.post<Blob>(`${base}/scene-preview`, input, {

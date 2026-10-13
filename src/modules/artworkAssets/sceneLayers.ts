@@ -107,6 +107,7 @@ export async function composeFightScene(
     backgrounds: readonly (ArtworkRef | null | undefined)[];
     sprite: { ref: ArtworkRef; placement: SpritePlacement };
     playerBuddy?: SceneRequest['playerBuddy'];
+    environmentalSprites?: SceneRequest['environmentalSprites'];
   },
 ): Promise<{ scene: ComposedScene; background: FightSceneBackground } | null> {
   const spriteLayer = await resolveArtworkLayer(deps, input.sprite.ref);
@@ -120,10 +121,25 @@ export async function composeFightScene(
   for (const candidate of candidates) {
     const scene = await deps.scenes.compose({
       background: candidate.layer,
+      ...(input.environmentalSprites ? { environmentalSprites: input.environmentalSprites } : {}),
       sprite: { layer: spriteLayer, placement: input.sprite.placement },
       playerBuddy: input.playerBuddy ?? null,
     });
     if (scene) return { scene, background: candidate.background };
+  }
+  return null;
+}
+
+/** Non-combat scenes and opaque full-art fallbacks use the same cached compositor. */
+export async function composeEnvironmentalScene(
+  deps: { assets?: Pick<ArtworkAssetService, 'layer'> | undefined; assetsDir: string; scenes: Pick<SceneCompositionService, 'compose'> },
+  input: { backgrounds: readonly (ArtworkRef | null | undefined)[]; environmentalSprites: SceneRequest['environmentalSprites']; playerBuddy?: SceneRequest['playerBuddy'] },
+): Promise<{ scene: ComposedScene; background: FightSceneBackground } | null> {
+  for (const [index, ref] of [...input.backgrounds, null].entries()) {
+    const layer = index === input.backgrounds.length ? plainBackdropLayer() : ref ? await resolveArtworkLayer(deps, ref) : null;
+    if (!layer) continue;
+    const scene = await deps.scenes.compose({ background: layer, environmentalSprites: input.environmentalSprites, playerBuddy: input.playerBuddy ?? null });
+    if (scene) return { scene, background: index === input.backgrounds.length ? 'plain' : index };
   }
   return null;
 }

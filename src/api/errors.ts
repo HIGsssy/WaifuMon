@@ -199,6 +199,10 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   REWARD_TABLE_INVALID: 400,
   /** Admin: a dungeon definition failed validation — issues are in `details`. */
   DUNGEON_INVALID: 400,
+  SCENE_SPRITE_INVALID: 400,
+  SCENE_SPRITE_STALE: 409,
+  SCENE_SPRITE_KEY_TAKEN: 409,
+  SCENE_SPRITE_IN_USE: 409,
   DUNGEON_LOOT_TABLE_INVALID: 400,
   DUNGEON_IMPORT_INVALID: 400,
   /** Admin: an enemy failed validation — issues are in `details`. */

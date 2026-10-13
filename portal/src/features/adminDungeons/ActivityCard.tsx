@@ -1,3 +1,4 @@
+import { SceneSpritesEditor } from './SceneSpritesEditor';
 /**
  * One thing that happens in a room, as a compact card. Collapsed it is a
  * sentence; opened it asks only for what that kind of activity needs. Rules,
@@ -906,6 +907,10 @@ export function ActivityCard({
           />
         </div>
       )}
+      {open && <div className="px-2.5 pb-2.5"><SceneSpritesEditor scope="activity" value={action.sceneSprites} roomSprites={room.sceneSprites}
+        backgrounds={[...(action.type === 'event' && action.source?.kind === 'event' ? [definition.events?.find((e) => e.id === (action.source?.kind === 'event' ? action.source.eventId : undefined))?.artwork] : []), room.background, definition.background, definition.artwork]}
+        enemyKey={(action.type === 'combat' || action.type === 'boss') && action.waves?.[0] ? ('key' in action.waves[0].enemy ? action.waves[0].enemy.key : action.waves[0].enemy.pool[0]?.key) : undefined}
+        disabled={disabled} onChange={(sceneSprites) => { const next = { ...action }; if (sceneSprites) next.sceneSprites = sceneSprites; else delete next.sceneSprites; onChange(next); }} /></div>}
       {open && (
         <fieldset disabled={disabled} className="space-y-3 px-2.5 pb-2.5">
           <div className="flex flex-wrap items-center gap-1 border-t border-border pt-2">

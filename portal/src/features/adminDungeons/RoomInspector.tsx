@@ -1,3 +1,4 @@
+import { SceneSpritesEditor } from './SceneSpritesEditor';
 /**
  * A room as its author thinks of it: what it is called, what happens in it,
  * and where the player can go next. Engine-level settings stay available under
@@ -175,6 +176,11 @@ export function RoomInspector({
         />
       </fieldset>
 
+      <SceneSpritesEditor scope="room" value={room.sceneSprites} backgrounds={[room.background, definition.background, definition.artwork]} disabled={disabled}
+        onChange={(sceneSprites) => {
+          const next = { ...room }; if (sceneSprites) next.sceneSprites = sceneSprites; else delete next.sceneSprites;
+          onChange({ ...definition, rooms: definition.rooms.map((r) => r.id === room.id ? next : r) });
+        }} />
       {roomIssues.length > 0 && (
         <ul
           aria-label="To do in this room"

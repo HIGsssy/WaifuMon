@@ -53,6 +53,7 @@ function webpResponse(request: Request): Response {
 }
 
 export const handlers = [
+  http.get('/api/v1/admin/dungeons/scene-sprites', () => data({ sprites: [] })),
   // ── Players ───────────────────────────────────────────────────────────────
   // The identity bridge the dev-login session provider starts from. It answers
   // for exactly one pair, so a test can exercise "this account has not played

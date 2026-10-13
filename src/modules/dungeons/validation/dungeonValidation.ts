@@ -1,3 +1,5 @@
+import { sceneSpriteSites } from '../sceneSprites/sceneSpriteDefinition';
+import type { SceneSpriteCatalogue } from '../sceneSprites/sceneSpriteSnapshot';
 /**
  * Dungeon definition validation.
  *
@@ -117,6 +119,11 @@ export const DUNGEON_ISSUE_CODES = [
   'currency_missing',
   'currency_disabled',
   'artwork_missing',
+  'scene_sprite_missing',
+  'scene_sprite_archived',
+  'scene_sprite_artwork_missing',
+  'scene_sprite_duplicate_instance',
+  'scene_sprite_snapshot_invalid',
   'room_unreachable',
   'room_no_route_to_exit',
   'room_empty',
@@ -159,6 +166,7 @@ export interface DungeonIssue {
 export type DungeonReferenceIndex = ReadonlyMap<string, { enabled: boolean }>;
 
 export interface DungeonValidationContext extends DungeonRewardValidationContext {
+  sceneSprites?: SceneSpriteCatalogue;
   enemies?: DungeonReferenceIndex | undefined;
   /** `expedition`-kind reward tables. */
   rewardTables?: DungeonReferenceIndex | undefined;
@@ -240,6 +248,19 @@ export function validateDungeonDefinition(raw: unknown, ctx: DungeonValidationCo
   }
   const definition = parsed.data;
   const issues: DungeonIssue[] = [];
+  for (const site of sceneSpriteSites(definition)) {
+    const ids = new Set<string>();
+    for (const [i, instance] of site.instances.entries()) {
+      const path = `${site.path}[${i}]`;
+      if (ids.has(instance.id)) issues.push({ code: 'scene_sprite_duplicate_instance', severity: 'error', path: `${path}.id`, message: 'Each placed sprite needs its own instance identifier.' });
+      ids.add(instance.id);
+      if (!ctx.sceneSprites) continue;
+      const sprite = ctx.sceneSprites.get(instance.spriteKey);
+      if (!sprite) issues.push({ code: 'scene_sprite_missing', severity: 'error', path: `${path}.spriteKey`, message: `Scene sprite "${instance.spriteKey}" does not exist. Choose another sprite.` });
+      else if (sprite.archived) issues.push({ code: 'scene_sprite_archived', severity: 'error', path: `${path}.spriteKey`, message: `Scene sprite "${sprite.name}" is archived. Restore it or choose another sprite.` });
+      else if (!sprite.usable) issues.push({ code: 'scene_sprite_artwork_missing', severity: 'error', path, message: `Artwork for scene sprite "${sprite.name}" is unavailable. Select active artwork in Dungeon Scene Sprites.` });
+    }
+  }
   const add = (code: DungeonIssueCode, severity: DungeonIssue['severity'], path: string, message: string) =>
     issues.push({ code, severity, path, message });
 

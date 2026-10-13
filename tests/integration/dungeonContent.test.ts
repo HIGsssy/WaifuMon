@@ -593,6 +593,8 @@ describe('what dungeons hold on to', () => {
       'dungeon_run_events_prototype',
       'dungeon_runs',
       'dungeon_runs_prototype',
+      'dungeon_scene_sprite_events',
+      'dungeon_scene_sprites',
       'dungeon_settings',
       'dungeon_zones_prototype',
     ]);

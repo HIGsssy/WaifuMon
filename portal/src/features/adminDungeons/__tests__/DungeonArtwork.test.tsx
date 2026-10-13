@@ -284,7 +284,7 @@ describe('enemy appearance in fights', () => {
       expect.anything(),
     );
     // Authors never pick a sprite per use: there is no sprite control in the wave.
-    expect(screen.queryByLabelText(/sprite/i)).toBeNull();
+    expect(screen.queryByLabelText('Sprite position')).toBeNull();
     expect(screen.queryByText('Unsaved dungeon changes')).toBeNull();
   });
   it('explains the plain stage and an enemy with nothing to show', async () => {

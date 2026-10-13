@@ -62,9 +62,10 @@ import path from 'node:path';
 import { AttachmentBuilder } from 'discord.js';
 import { ARTWORK_MIME_EXTENSIONS } from '../modules/artworkAssets/imageInspection';
 import { mirrorsPlayerBuddy, type SpritePlacement } from '../modules/artworkAssets/scenePlacement';
-import type { SceneLayer } from '../modules/artworkAssets/sceneComposition';
+import type { SceneLayer, SceneRequest } from '../modules/artworkAssets/sceneComposition';
 import {
   composeFightScene,
+  composeEnvironmentalScene,
   playerBuddySpriteLayer,
   resolveArtworkLayer,
   type ArtworkRef,
@@ -163,12 +164,13 @@ async function spriteScene(
   sprite: ArtworkRef,
   placement: SpritePlacement,
   playerBuddy: BuddyActor | null,
+  environmentalSprites?: SceneRequest['environmentalSprites'],
 ): Promise<TrialArtwork | null> {
   const scenes = ctx.services.sceneComposition;
   if (!scenes) return null;
   const composed = await composeFightScene(
     { assets: ctx.services.artworkAssets, assetsDir: ctx.config.assetsDir, scenes },
-    { backgrounds, sprite: { ref: sprite, placement }, playerBuddy },
+    { backgrounds, sprite: { ref: sprite, placement }, playerBuddy, ...(environmentalSprites ? { environmentalSprites } : {}) },
   );
   return composed && attachment(composed.scene.absolutePath, `dungeon-scene-${composed.scene.cacheKey.slice(0, 16)}.webp`);
 }
@@ -217,6 +219,37 @@ export async function dungeonZoneArtwork(
 export async function dungeonRunSceneArtwork(ctx: ArtContext, view: DungeonRunView): Promise<TrialArtwork | null> {
   const { artwork: dungeonArt, background: dungeonBackground } = view.dungeon;
   const roomBackground: ArtworkRef | null = view.roomBackground ?? null;
+  if (view.sceneSprites?.length && ctx.services.sceneComposition) {
+    const environmentalSprites: NonNullable<SceneRequest['environmentalSprites']>[number][] = [];
+    for (const visual of view.sceneSprites) {
+      try {
+        const layer = await ctx.services.artworkAssets?.layer(visual.assetId);
+        if (layer && layer.hash === visual.contentHash) environmentalSprites.push({ layer, placement: visual.placement, mirror: visual.mirror, visualLayer: visual.visualLayer });
+      } catch (err) { ctx.logger.warn({ err, tag: 'dungeons/scene-sprite-unavailable' }, 'Scene sprite artwork unavailable — skipped'); }
+    }
+    const scenes = ctx.services.sceneComposition;
+    const deps = { assets: ctx.services.artworkAssets, assetsDir: ctx.config.assetsDir, scenes };
+    const compose = async (backgrounds: (ArtworkRef | null | undefined)[], buddy?: BuddyActor | null) => {
+      const rendered = await composeEnvironmentalScene(deps, { backgrounds, environmentalSprites, playerBuddy: buddy });
+      return rendered && attachment(rendered.scene.absolutePath, `dungeon-scene-${rendered.scene.cacheKey.slice(0, 16)}.webp`);
+    };
+    if (view.eventArtwork) return compose([view.eventArtwork, roomBackground, dungeonBackground, dungeonArt]);
+    if (view.enemy) {
+      const visual = view.enemy.visual;
+      const buddy = playerBuddyActor(ctx, view.fighter?.speciesSlug);
+      return firstArtwork(ctx, [
+        () => spriteScene(ctx, [roomBackground, dungeonBackground, dungeonArt], { assetId: visual.spriteAssetId, artworkPath: visual.spriteArtworkPath }, visual.spritePlacement, buddy, environmentalSprites),
+        async () => {
+          const full = { assetId: visual.artworkAssetId, artworkPath: visual.artworkPath };
+          if (!await resolveArtworkLayer(deps, full)) return null;
+          return compose([full]);
+        },
+        () => compose([roomBackground, dungeonBackground, dungeonArt], buddy),
+      ]);
+    }
+    return compose([roomBackground, dungeonBackground, dungeonArt]);
+  }
+
 
   // An offered event shows its own picture, as uploaded: no stage and no Buddy over it.
   // Without one (or if it cannot be read) the room, then the dungeon, stand in.

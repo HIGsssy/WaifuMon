@@ -1,3 +1,5 @@
+import { SceneSpriteInstanceSchema, resolveSceneSpriteInstance } from '../../../../modules/dungeons/sceneSprites/sceneSpriteDefinition';
+import { composeEnvironmentalScene } from '../../../../modules/artworkAssets/sceneLayers';
 /**
  * Portal admin — dungeon authoring, the progression currency, and the sandbox.
  *
@@ -189,6 +191,7 @@ const summarySchema = z.object({
     .nullable(),
   /** The draft's definition differs from the published revision's. */
   draftDiffers: z.boolean(),
+  sceneSpritesDiffer: z.boolean().optional(),
   /** The gameplay hash a publish would write now; null without v2 rewards or while a reward dependency is broken. */
   draftGameplayHash: z.string().nullable(),
   /** The definition is published as is, but the reward dependencies it pinned are not what the catalogues hold now. */
@@ -225,6 +228,7 @@ const revisionDetailSchema = revisionSummarySchema.extend({
   layout: documentSchema,
   /** The reward dependencies pinned at publication; null without v2 rewards. */
   rewardSnapshot: documentSchema.nullable(),
+  sceneSpriteSnapshot: documentSchema.nullable().optional(),
 });
 
 const publishResultSchema = z.object({
@@ -1395,7 +1399,9 @@ export const adminDungeonRoutes =
               'but the render cache',
             body: z
               .object({
-                enemyKey: z.string().min(1).max(100),
+                enemyKey: z.string().min(1).max(100).optional(),
+                roomSprites: z.array(SceneSpriteInstanceSchema).max(5).optional(),
+                activitySprites: z.array(SceneSpriteInstanceSchema).max(5).optional(),
                 /** In fallback order: the room's own background, the dungeon background, the dungeon artwork. */
                 backgrounds: z.array(DungeonArtworkRefSchema.nullable()).max(4).default([]),
               })
@@ -1404,6 +1410,27 @@ export const adminDungeonRoutes =
           },
         },
         async (req, reply) => {
+          const environmentalSprites = [];
+          const instances = [...req.body.roomSprites ?? [], ...req.body.activitySprites ?? []];
+          const spriteCatalogue = instances.length ? await ctx.services.dungeonSceneSprites?.list() ?? [] : [];
+          for (const instance of instances) {
+            const sprite = spriteCatalogue.find((s) => s.key === instance.spriteKey);
+            if (!sprite) continue;
+            const visual = resolveSceneSpriteInstance(sprite, instance);
+            const layer = await artworkAssets?.layer(visual.assetId);
+            if (layer) environmentalSprites.push({ layer, placement: visual.placement, mirror: visual.mirror, visualLayer: visual.visualLayer });
+          }
+          const previewBackgrounds = await Promise.all(req.body.backgrounds.map((ref) => resolvedArtwork(ref)));
+          const previewDeps = { assets: artworkAssets, assetsDir, scenes };
+          const sendScene = async (composed: NonNullable<Awaited<ReturnType<typeof composeEnvironmentalScene>>>, mode: 'sprite' | 'full-art' = 'sprite') => {
+            binaryReply(reply).header('content-type', composed.scene.contentType).header('x-content-type-options', 'nosniff').header('cache-control', 'private, no-cache')
+              .header('x-dungeon-scene', mode).header('x-dungeon-scene-background', String(composed.background)).send(await readFile(composed.scene.absolutePath));
+          };
+          if (!req.body.enemyKey) {
+            const composed = await composeEnvironmentalScene(previewDeps, { backgrounds: previewBackgrounds, environmentalSprites });
+            if (!composed) throw new AppError('NOT_FOUND', 'Scene unavailable', 'This scene could not be drawn.');
+            await sendScene(composed); return reply;
+          }
           const catalogue = await enemyCatalogue.snapshot();
           const enemy = catalogue.definitions.find((e) => e.key === req.body.enemyKey);
           if (!enemy) throw new AppError('NOT_FOUND', `Enemy ${req.body.enemyKey} not found`, 'That enemy is not in the Enemy Catalogue.');
@@ -1418,11 +1445,12 @@ export const adminDungeonRoutes =
               break;
             }
           }
-          const backgrounds = await Promise.all(req.body.backgrounds.map((ref) => resolvedArtwork(ref)));
+          const backgrounds = previewBackgrounds;
           const layers = { assets: artworkAssets, assetsDir, scenes };
           if (visual.spriteAssetId || visual.spriteArtworkPath) {
             const composed = await composeFightScene(layers, {
               backgrounds,
+              environmentalSprites,
               sprite: { ref: { assetId: visual.spriteAssetId, artworkPath: visual.spriteArtworkPath }, placement: visual.spritePlacement },
               playerBuddy,
             });
@@ -1445,8 +1473,16 @@ export const adminDungeonRoutes =
             : shippedArt?.status === 'available'
               ? { bytes: await readFile(shippedArt.absolutePath), contentType: shippedArt.contentType }
               : null;
+          if (!art && environmentalSprites.length) {
+            const composed = await composeEnvironmentalScene(previewDeps, { backgrounds, environmentalSprites, playerBuddy });
+            if (composed) { await sendScene(composed); return reply; }
+          }
           if (!art) {
             throw new AppError('NOT_FOUND', 'Enemy has no usable artwork', 'This enemy has no sprite or artwork that can be shown.');
+          }
+          if (environmentalSprites.length) {
+            const composed = await composeEnvironmentalScene(previewDeps, { backgrounds: [{ assetId: visual.artworkAssetId, artworkPath: visual.artworkPath }], environmentalSprites });
+            if (composed) { await sendScene(composed, 'full-art'); return reply; }
           }
           binaryReply(reply)
             .header('content-type', art.contentType)

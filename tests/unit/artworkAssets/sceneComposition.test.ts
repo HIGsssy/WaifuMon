@@ -375,7 +375,7 @@ describe('the player Buddy: a reserved left-side actor', () => {
   });
 
   it('layers background, then Buddy, then enemy', async () => {
-    expect(SCENE_LAYER_ORDER).toEqual(['background', 'playerBuddy', 'sprite']);
+    expect(SCENE_LAYER_ORDER).toEqual(['background', 'backgroundSprites', 'playerBuddy', 'sprite', 'foregroundSprites']);
     const buddy = await opaqueSprite(200, 300, GREEN, 'webp');
     // A small enemy authored into her side: it covers part of her box.
     const enemyPlacement = placement({ anchor: 'bottom-left', scaleBasisPoints: 3000 });

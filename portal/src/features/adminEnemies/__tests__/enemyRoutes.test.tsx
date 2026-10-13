@@ -103,10 +103,11 @@ describe('enemy routes', () => {
 });
 
 describe('navigation', () => {
-  it('lists Enemies between Dungeons and Boss Management, for `enemies.read`', () => {
+  it('lists Enemies after dungeon catalogues and before Boss Management, for `enemies.read`', () => {
     const labels = NAV_ITEMS.map((item) => item.label);
     const at = labels.indexOf('Admin — Enemies');
-    expect(labels[at - 1]).toBe('Admin — Dungeons');
+    expect(labels[at - 1]).toBe('Admin — Dungeon Scene Sprites');
+    expect(labels[at - 2]).toBe('Admin — Dungeons');
     expect(labels[at + 1]).toBe('Admin — Boss Management');
     expect(NAV_ITEMS[at]).toMatchObject({
       to: '/admin/enemies',

@@ -1904,7 +1904,7 @@ export class ArtworkUploadInvalidError extends AppError {
 
 /** What still points at a managed artwork asset. */
 export interface ArtworkAssetReference {
-  kind: 'dungeon_zone' | 'combat_enemy' | 'boss';
+  kind: 'dungeon_zone' | 'combat_enemy' | 'boss' | 'dungeon_scene_sprite';
   key: string;
   /** Display name where one is known. */
   name: string | null;
@@ -1919,12 +1919,14 @@ export class ArtworkAssetInUseError extends AppError {
    * @param refused what was refused: a delete (the default), or a move to
    *   another category while dungeons name the asset by category and hash.
    */
-  constructor(assetId: string, references: ArtworkAssetReference[], refused: 'delete' | 'recategorise' = 'delete') {
+  constructor(assetId: string, references: ArtworkAssetReference[], refused: 'delete' | 'recategorise' | 'replace' | 'disable' = 'delete') {
     const list = Array.isArray(references) ? references : [];
     super(
       'ARTWORK_ASSET_IN_USE',
       `Artwork asset ${String(assetId)} is still referenced by ${list.length} place(s)`,
-      refused === 'recategorise'
+      refused === 'replace' || refused === 'disable'
+        ? 'That artwork is frozen in a published dungeon revision. Upload a new image and select it on the scene sprite instead; existing revisions keep this image.'
+        : refused === 'recategorise'
         ? 'That artwork is used by a dungeon, which finds it by its category. Clear it from every dungeon first, or upload it again under the other category.'
         : 'That artwork is still in use. Clear every reference to it first, or disable it instead.',
     );

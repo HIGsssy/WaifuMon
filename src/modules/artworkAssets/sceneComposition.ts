@@ -69,7 +69,7 @@ export const SCENE_RENDERER_VERSION = 1;
 export const SCENE_CONTENT_TYPE = 'image/webp';
 const SCENE_WEBP_QUALITY = 86;
 /** The z-order of a scene, bottom to top. See the module comment. */
-export const SCENE_LAYER_ORDER = ['background', 'playerBuddy', 'sprite'] as const;
+export const SCENE_LAYER_ORDER = ['background', 'backgroundSprites', 'playerBuddy', 'sprite', 'foregroundSprites'] as const;
 
 /** One image going into a scene. `load` is only called on a cache miss. */
 export interface SceneLayer {
@@ -79,7 +79,10 @@ export interface SceneLayer {
   load(): Promise<Buffer | null>;
 }
 
+export interface SceneEnvironmentalSprite { layer: SceneLayer; placement: SpritePlacement; mirror: boolean; visualLayer: 'background' | 'foreground' }
+
 export interface SceneRequest {
+  environmentalSprites?: readonly SceneEnvironmentalSprite[] | undefined;
   background: SceneLayer;
   sprite?: { layer: SceneLayer; placement: SpritePlacement } | null;
   /**
@@ -132,7 +135,7 @@ export function sceneCacheKey(request: SceneRequest): string {
   const sprite = request.sprite
     ? { hash: request.sprite.layer.hash, placement: SpritePlacementSchema.parse(request.sprite.placement) }
     : null;
-  const identity = [
+  const identity: unknown[] = [
     'scene',
     SCENE_RENDERER_VERSION,
     request.background.hash,
@@ -155,12 +158,16 @@ export function sceneCacheKey(request: SceneRequest): string {
       ...(request.playerBuddy.mirror ? ['mirrored'] : []),
     ]);
   }
+  if (request.environmentalSprites?.length) identity.push(['environmentalSprites', request.environmentalSprites.map((s) => [
+    s.layer.hash, SpritePlacementSchema.parse(s.placement), s.mirror, s.visualLayer,
+  ])]);
   return createHash('sha256').update(JSON.stringify(identity)).digest('hex');
 }
 
 /** Render a scene to WebP bytes. Throws on undecodable input. */
 export async function renderScene(input: {
   background: Buffer;
+  environmentalSprites?: readonly { bytes: Buffer; placement: SpritePlacement; mirror: boolean; visualLayer: 'background' | 'foreground' }[];
   sprite?: { bytes: Buffer; placement: SpritePlacement } | null;
   playerBuddy?: { bytes: Buffer; mirror?: boolean } | null;
   output?: SceneOutputSpec;
@@ -192,14 +199,20 @@ export async function renderScene(input: {
     return { input: sprite, left: box.left, top: box.top };
   };
 
-  // Pushed in SCENE_LAYER_ORDER: the Buddy first, the enemy over her.
+  // Environmental layers bracket the existing Buddy → enemy actor order.
   const layers: sharp.OverlayOptions[] = [];
+  for (const sprite of input.environmentalSprites ?? []) if (sprite.visualLayer === 'background') {
+    layers.push(await overlay(sprite.bytes, (source) => layoutSprite(source, sprite.placement, output), sprite.mirror));
+  }
   if (input.playerBuddy) {
     layers.push(await overlay(input.playerBuddy.bytes, (source) => layoutPlayerBuddy(source, output), input.playerBuddy.mirror === true));
   }
   if (input.sprite) {
     const { placement } = input.sprite;
     layers.push(await overlay(input.sprite.bytes, (source) => layoutSprite(source, placement, output)));
+  }
+  for (const sprite of input.environmentalSprites ?? []) if (sprite.visualLayer === 'foreground') {
+    layers.push(await overlay(sprite.bytes, (source) => layoutSprite(source, sprite.placement, output), sprite.mirror));
   }
   return canvas.composite(layers).webp({ quality: SCENE_WEBP_QUALITY }).toBuffer();
 }
@@ -251,9 +264,23 @@ export function createSceneCompositionService(deps: SceneCompositionDeps): Scene
       playerBuddy = { bytes, mirror: request.playerBuddy.mirror === true };
     }
 
+    const environmentalSprites: NonNullable<Parameters<typeof renderScene>[0]['environmentalSprites']>[number][] = [];
+    for (const [index, item] of (request.environmentalSprites ?? []).entries()) {
+      try {
+        const bytes = await item.layer.load();
+        if (!bytes) throw new Error('Artwork unavailable');
+        const placement = SpritePlacementSchema.parse(item.placement);
+        await sharp(bytes, { limitInputPixels: ARTWORK_MAX_PIXELS, failOn: 'error' }).toBuffer();
+        environmentalSprites.push({ bytes, placement, mirror: item.mirror, visualLayer: item.visualLayer });
+      } catch (err) {
+        deps.logger?.warn({ tag: 'scene/environmental-sprite-omitted', index, err }, 'Environmental sprite unavailable — composing without it');
+        // A degraded render has its own key and never poisons the complete scene's cache.
+        return compose({ ...request, environmentalSprites: request.environmentalSprites!.filter((_, i) => i !== index) });
+      }
+    }
     let rendered: Buffer;
     try {
-      rendered = await renderScene({ background, sprite, playerBuddy, ...(request.output ? { output: request.output } : {}) });
+      rendered = await renderScene({ background, sprite, playerBuddy, environmentalSprites, ...(request.output ? { output: request.output } : {}) });
     } catch (err) {
       // With her in the scene the failure may be hers alone: try once more without.
       if (request.playerBuddy) return withoutBuddy(request, 'scene would not render with the sprite', err);

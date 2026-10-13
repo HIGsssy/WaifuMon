@@ -3086,6 +3086,7 @@ export const dungeonRevisions = pgTable(
      * definition has no v2 reward bundle.
      */
     rewardSnapshot: jsonb('reward_snapshot').$type<Record<string, unknown>>(),
+    sceneSpriteSnapshot: jsonb('scene_sprite_snapshot').$type<Record<string, unknown>>(),
     /** Content hash plus the snapshot's hash; null exactly when `rewardSnapshot` is. */
     gameplayHash: text('gameplay_hash'),
   },
@@ -3524,6 +3525,7 @@ export const ARTWORK_ASSET_CATEGORIES = [
   'dungeon_zone',
   'dungeon_background',
   'enemy_sprite',
+  'dungeon_scene_sprite',
   'enemy_art',
   'event_art',
   'npc_portrait',
@@ -3576,7 +3578,7 @@ export const artworkAssets = pgTable(
   (t) => [
     check(
       'artwork_assets_category_check',
-      sql`${t.category} in ('dungeon_zone','dungeon_background','enemy_sprite','enemy_art','event_art','npc_portrait','equipment_art','boss_art')`,
+      sql`${t.category} in ('dungeon_zone','dungeon_background','enemy_sprite','dungeon_scene_sprite','enemy_art','event_art','npc_portrait','equipment_art','boss_art')`,
     ),
     check('artwork_assets_mime_check', sql`${t.mimeType} in ('image/png','image/webp','image/jpeg')`),
     check('artwork_assets_status_check', sql`${t.status} in ('active','disabled','deleted')`),
@@ -3805,3 +3807,24 @@ export const bossDefinitionEvents = pgTable(
     index('boss_definition_events_recent_idx').on(t.id.desc()),
   ],
 );
+
+/** Managed environmental sprite catalogue; artwork remains in the shared store. */
+export const dungeonSceneSprites = pgTable('dungeon_scene_sprites', {
+  spriteKey: text('sprite_key').primaryKey(),
+  definition: jsonb('definition').$type<Record<string, unknown>>().notNull(),
+  assetId: uuid('asset_id').notNull().references(() => artworkAssets.id),
+  revision: integer('revision').notNull().default(1),
+  archivedAt: timestamp('archived_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedBy: text('updated_by'),
+}, (t) => [check('dungeon_scene_sprites_revision_check', sql`${t.revision} >= 1`)]);
+
+export const dungeonSceneSpriteEvents = pgTable('dungeon_scene_sprite_events', {
+  id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+  spriteKey: text('sprite_key').notNull(),
+  action: text('action').$type<'created' | 'updated' | 'archived' | 'restored' | 'deleted'>().notNull(),
+  actor: text('actor'),
+  details: jsonb('details').$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index('dungeon_scene_sprite_events_key_idx').on(t.spriteKey, t.id.desc())]);

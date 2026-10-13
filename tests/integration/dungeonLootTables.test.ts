@@ -866,7 +866,7 @@ describe('migration and Drizzle consistency', () => {
       const storedRevisions = async () =>
         (
           await pool.query(
-            "SELECT to_jsonb(r) - 'reward_snapshot' - 'gameplay_hash' AS row FROM dungeon_revisions r ORDER BY id",
+            "SELECT to_jsonb(r) - 'reward_snapshot' - 'gameplay_hash' - 'scene_sprite_snapshot' AS row FROM dungeon_revisions r ORDER BY id",
           )
         ).rows;
       const before = {

@@ -24,6 +24,7 @@ export type ArtworkAssetCategory =
   | 'dungeon_zone'
   | 'dungeon_background'
   | 'enemy_sprite'
+  | 'dungeon_scene_sprite'
   | 'enemy_art'
   | 'event_art'
   | 'npc_portrait'
@@ -34,6 +35,7 @@ export const ARTWORK_CATEGORY_LABELS: Record<ArtworkAssetCategory, string> = {
   dungeon_zone: 'Dungeon zone art',
   dungeon_background: 'Dungeon background',
   enemy_sprite: 'Enemy sprite',
+  dungeon_scene_sprite: 'Dungeon scene sprite',
   enemy_art: 'Enemy full art',
   event_art: 'Event art',
   npc_portrait: 'NPC portrait',
@@ -66,7 +68,7 @@ export interface ArtworkAsset {
 }
 
 export interface ArtworkAssetReference {
-  kind: 'dungeon_zone' | 'combat_enemy' | 'boss';
+  kind: 'dungeon_zone' | 'combat_enemy' | 'boss' | 'dungeon_scene_sprite';
   key: string;
   name: string | null;
   field: string;
@@ -252,6 +254,7 @@ export async function artworkAssetBlob(source: string): Promise<Blob> {
 }
 
 export interface ScenePreviewRequest {
+  environmentalSprites?: Array<{ ref: ArtworkLayerRef; placement: SpritePlacement; mirror: boolean; visualLayer: 'background' | 'foreground' }>;
   background: ArtworkLayerRef;
   sprite?: ArtworkLayerRef | null;
   placement?: SpritePlacement;

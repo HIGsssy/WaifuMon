@@ -1,3 +1,4 @@
+import { hasSceneSprites } from '../sceneSprites/sceneSpriteDefinition';
 /**
  * The Dungeon Content Package — one dungeon as a portable, versioned file.
  *
@@ -213,6 +214,7 @@ export function packageDependencies(
 
 export function buildDungeonPackage(input: BuildDungeonPackageInput): DungeonPackage {
   const definition = DungeonDefinitionSchema.parse(input.definition);
+  if (hasSceneSprites(definition)) throw new Error('Packages with Scene Sprites are temporarily unavailable until sprite dependencies can be bundled safely.');
   const usesEvents = dungeonUsesEvents(definition);
   const deps = dungeonDependencies(definition);
   const layout = pruneDungeonLayout(
@@ -298,6 +300,7 @@ export const DUNGEON_PACKAGE_ISSUE_CODES = [
   'package_format',
   'package_schema_version',
   'package_schema',
+  'package_scene_sprites_unsupported',
   'package_key_mismatch',
   'package_hash_mismatch',
   'package_dependencies_mismatch',
@@ -376,6 +379,7 @@ export function readDungeonPackage(raw: unknown): ReadDungeonPackageResult {
   const dungeon = validateDungeonDefinition(envelope.dungeon);
   for (const issue of dungeon.issues) issues.push({ ...issue, path: issue.path ? `dungeon.${issue.path}` : 'dungeon' });
   if (!dungeon.definition) return { package: null, issues, ok: false };
+  if (hasSceneSprites(dungeon.definition)) return fail('package_scene_sprites_unsupported', 'dungeon.rooms', 'Packages containing Scene Sprites are temporarily unavailable; this package cannot carry their frozen artwork dependencies safely.');
   // Whatever version the envelope claims, versions 1 and 2 never held events.
   if (envelope.schemaVersion !== 3 && dungeonUsesEvents(dungeon.definition)) return fail('package_schema_version', 'dungeon', EVENTS_REQUIRE_V3);
 

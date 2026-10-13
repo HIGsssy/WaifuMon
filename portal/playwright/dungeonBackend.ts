@@ -351,6 +351,7 @@ export async function serveDungeon(
         status: 404,
         json: { error: { code: 'NOT_FOUND', message: 'Not found.' }, meta },
       });
+    if (path.endsWith('/scene-sprites') && route.request().method() === 'GET') return route.fulfill({ json: { data: { sprites: [] }, meta } });
     if (path.endsWith('/artwork/managed')) {
       const query = new URL(route.request().url()).searchParams;
       const held = LIBRARY.some(

@@ -62,6 +62,7 @@ const ACTION_LABELS: Record<string, string> = {
 };
 
 function referenceLink(ref: ArtworkAssetReference): { to: string; label: string } {
+  if (ref.kind === 'dungeon_scene_sprite') return { to: '/admin/dungeons/scene-sprites', label: `Scene sprite ${ref.name ?? ref.key}` };
   if (ref.kind === 'boss') {
     return { to: `/admin/bosses/${encodeURIComponent(ref.key)}`, label: `Boss ${ref.name ?? ref.key}` };
   }

@@ -5,7 +5,7 @@
  */
 import type { DungeonRewardDependencyChange, DungeonSummary } from '@/api/adminDungeons';
 
-export type PublicationKind = 'unpublished' | 'matches' | 'definition' | 'loot' | 'both';
+export type PublicationKind = 'unpublished' | 'matches' | 'definition' | 'loot' | 'both' | 'visuals';
 
 export interface DependencyLine {
   id: string;
@@ -18,6 +18,7 @@ export interface DependencyLine {
 
 export interface PublicationState {
   kind: PublicationKind;
+  visuals?: boolean;
   /** A loot dependency is missing, archived, unreadable or matches nothing. */
   broken: boolean;
   /** The short overall status. */
@@ -28,7 +29,7 @@ export interface PublicationState {
 
 type Source = Pick<
   DungeonSummary,
-  'published' | 'draftDiffers' | 'dependenciesDiffer' | 'dependencyChanges'
+  'published' | 'draftDiffers' | 'dependenciesDiffer' | 'dependencyChanges' | 'sceneSpritesDiffer'
 >;
 
 const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
@@ -79,6 +80,7 @@ export function describeDependencyChange(change: DungeonRewardDependencyChange):
 }
 
 const LABELS: Record<PublicationKind, string> = {
+  visuals: 'Scene sprites changed',
   unpublished: 'Not published yet',
   matches: 'Matches publication',
   definition: 'Dungeon changed',
@@ -87,6 +89,7 @@ const LABELS: Record<PublicationKind, string> = {
 };
 
 const SUMMARIES: Record<PublicationKind, string> = {
+  visuals: 'Scene sprite artwork or defaults have changed. Published scenes keep their frozen images and placement until you publish again.',
   unpublished: 'Players cannot start runs until this dungeon is published.',
   matches: 'Players get exactly what this draft holds.',
   definition:
@@ -112,7 +115,7 @@ export function publicationState(source: Source, unsavedDefinition = false): Pub
         ? 'definition'
         : loot
           ? 'loot'
-          : 'matches';
+          : source.sceneSpritesDiffer ? 'visuals' : 'matches';
   // The server can report a difference it cannot itemise, such as a changed item.
   if (source.published && (source.dependenciesDiffer ?? false) && changes.length === 0)
     changes.push({
@@ -123,6 +126,7 @@ export function publicationState(source: Source, unsavedDefinition = false): Pub
     });
   return {
     kind,
+    ...(source.sceneSpritesDiffer ? { visuals: true } : {}),
     broken,
     label: broken ? 'Loot needs repair' : LABELS[kind],
     summary: broken
@@ -134,9 +138,12 @@ export function publicationState(source: Source, unsavedDefinition = false): Pub
 
 /** What pressing Publish will do, for the confirmation. */
 export function publishExplanation(state: PublicationState): string {
+  if (state.visuals) return 'This freezes the current scene sprites into a new revision, along with any dungeon and reward changes. Existing runs keep their earlier revision.';
   switch (state.kind) {
     case 'unpublished':
       return 'This is the first publication of this dungeon.';
+    case 'visuals':
+      return 'This freezes the current scene sprite artwork and defaults into a new revision.';
     case 'matches':
       return 'Nothing has changed since the last publication, so no new revision will be made.';
     case 'definition':
@@ -149,4 +156,4 @@ export function publishExplanation(state: PublicationState): string {
 }
 
 export const PUBLISH_FREEZE_NOTE =
-  'Publishing checks every reward and freezes it into a new revision that never changes. Editing a loot table afterwards does not affect players until you publish again.';
+  'Publishing checks every reward and freezes it into a new revision that never changes. Editing a loot table afterwards does not affect players until you publish again. Scene sprite artwork and defaults are frozen in the same revision.';

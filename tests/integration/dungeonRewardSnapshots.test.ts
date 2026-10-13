@@ -748,7 +748,7 @@ describe('migration 0063', () => {
 
       await runMigrations(db, w.t.logger, folder);
 
-      const strip = "SELECT xmin::text AS version, (to_jsonb(r) - 'reward_snapshot' - 'gameplay_hash')::text AS row FROM dungeon_revisions r ORDER BY id";
+      const strip = "SELECT xmin::text AS version, (to_jsonb(r) - 'reward_snapshot' - 'gameplay_hash' - 'scene_sprite_snapshot')::text AS row FROM dungeon_revisions r ORDER BY id";
       // Same row versions: no stored revision was rewritten, only described with two more columns.
       expect(await rows(strip)).toEqual(before.revisions);
       expect(await rows(drafts)).toEqual(before.drafts);

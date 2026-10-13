@@ -94,6 +94,12 @@ export const NAV_ITEMS: readonly NavItem[] = [
     requiresPermission: 'dungeons.read',
   },
   {
+    to: '/admin/dungeons/scene-sprites',
+    label: 'Admin — Dungeon Scene Sprites',
+    icon: Images,
+    requiresPermission: 'dungeons.read',
+  },
+  {
     // The Enemy Catalogue: shared by dungeons and Combat Trials, owned by neither.
     to: '/admin/enemies',
     label: 'Admin — Enemies',

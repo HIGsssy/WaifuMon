@@ -1,3 +1,4 @@
+import { readSceneSpriteSnapshot } from '../dungeons/sceneSprites/sceneSpriteSnapshot';
 /**
  * Managed artwork — images uploaded through Portal Admin.
  *
@@ -35,6 +36,8 @@ import {
   bossDefinitions,
   bossEncounters,
   combatEnemies,
+  dungeonSceneSprites,
+  dungeonRevisions,
   type ArtworkAssetCategory,
   type ArtworkAssetEventAction,
   type ArtworkAssetMimeType,
@@ -248,9 +251,19 @@ export function createArtworkAssetService(deps: ArtworkAssetServiceDeps): Artwor
     });
   }
 
+  async function pinnedReferences(tx: DbOrTx, id: string): Promise<ArtworkAssetReference[]> {
+    const out: ArtworkAssetReference[] = [];
+    for (const row of await tx.select().from(dungeonRevisions)) {
+      const snapshot = readSceneSpriteSnapshot(row.sceneSpriteSnapshot);
+      for (const [key, sprite] of Object.entries(snapshot?.sprites ?? {})) if (sprite.assetId === id) out.push({ kind: 'dungeon_zone', key: row.dungeonKey,
+        name: typeof row.content.name === 'string' ? row.content.name : row.dungeonKey, field: `revision[${row.number}].sceneSpriteSnapshot[${key}]` });
+    }
+    return out;
+  }
+
   async function referencesOf(tx: DbOrTx, id: string): Promise<ArtworkAssetReference[]> {
     const wanted = id.toLowerCase();
-    const out: ArtworkAssetReference[] = [];
+    const out: ArtworkAssetReference[] = await pinnedReferences(tx, wanted);
     // Dungeons are a handful of documents; scanning them is simpler and
     // safer than a JSON path query that has to track the document shape.
     const [asset] = await tx
@@ -283,6 +296,8 @@ export function createArtworkAssetService(deps: ArtworkAssetServiceDeps): Artwor
       if (enemy.artworkAssetId === wanted) out.push({ kind: 'combat_enemy', key: enemy.key, name: enemy.name, field: 'artworkAssetId' });
       if (enemy.spriteAssetId === wanted) out.push({ kind: 'combat_enemy', key: enemy.key, name: enemy.name, field: 'spriteAssetId' });
     }
+    const sprites = await tx.select().from(dungeonSceneSprites).where(eq(dungeonSceneSprites.assetId, wanted));
+    for (const sprite of sprites) out.push({ kind: 'dungeon_scene_sprite', key: sprite.spriteKey, name: String(sprite.definition.name), field: 'assetId' });
     const bosses = await tx
       .select({ key: bossDefinitions.bossKey, name: bossDefinitions.name })
       .from(bossDefinitions)
@@ -372,6 +387,8 @@ export function createArtworkAssetService(deps: ArtworkAssetServiceDeps): Artwor
         .transaction(async (tx) => {
         const row = await rowOf(tx, id, true);
         if (!row || row.status === 'deleted') return null;
+        const pinned = await pinnedReferences(tx, row.id);
+        if (pinned.length) throw new ArtworkAssetInUseError(row.id, pinned, 'replace');
         const storageKey = artworkStorageKey({
           category: row.category,
           assetId: row.id,
@@ -458,6 +475,8 @@ export function createArtworkAssetService(deps: ArtworkAssetServiceDeps): Artwor
         const row = await rowOf(tx, id, true);
         if (!row || row.status === 'deleted') return null;
         const references = await referencesOf(tx, row.id);
+        const pinned = enabled ? [] : await pinnedReferences(tx, row.id);
+        if (pinned.length) throw new ArtworkAssetInUseError(row.id, pinned, 'disable');
         const status: ArtworkAssetStatus = enabled ? 'active' : 'disabled';
         if (row.status === status) return { asset: toAsset(row), references };
         const [updated] = await tx

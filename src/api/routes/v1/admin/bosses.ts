@@ -312,7 +312,7 @@ const artworkAssetSchema = z.object({
 const managedArtworkSchema = z.object({ asset: artworkAssetSchema, usedBy: z.array(artworkUserSchema) });
 
 const artworkReferenceSchema = z.object({
-  kind: z.enum(['dungeon_zone', 'combat_enemy', 'boss']),
+  kind: z.enum(['dungeon_zone', 'combat_enemy', 'boss', 'dungeon_scene_sprite']),
   key: z.string(),
   name: z.string().nullable(),
   field: z.string(),

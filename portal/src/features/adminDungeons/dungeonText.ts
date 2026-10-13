@@ -513,6 +513,11 @@ export function friendlyIssue(
   const unchosenEnemy =
     !unchosenEvent &&
     (issue.code === INCOMPLETE_CODE || (issue.code === 'schema' && wave !== null && !!action));
+  if (issue.path.includes('.sceneSprites')) return {
+    issue, level: 'finish', title: `${R}${action ? `, ${activity}` : ''}: ${issue.message}`,
+    help: 'Open Scene Sprites here to adjust or remove the placement. Check its artwork and archive status in Dungeon Scene Sprites.',
+    target: room ? { kind: 'room', id: room.id } : null, actionId: action?.id ?? null,
+  };
   const eventIssue = friendlyEventIssue(issue, definition, reference);
   if (eventIssue) return eventIssue;
 
